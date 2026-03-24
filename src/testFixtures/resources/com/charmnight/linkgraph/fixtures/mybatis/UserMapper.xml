@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<mapper namespace="com.charmnight.linkgraph.fixtures.mybatis.UserMapper">
+    <select id="selectUser" resultType="java.lang.String">
+        SELECT username
+        FROM users
+        WHERE id = #{id}
+    </select>
+</mapper>
