@@ -1,0 +1,13 @@
+<idea-plugin>
+    <id>com.charmnight.linkgraph</id>
+    <name>Link Graph</name>
+    <vendor>CharmNight</vendor>
+
+    <resource-bundle>messages.LinkGraphBundle</resource-bundle>
+
+    <description><![CDATA[
+    Link Graph plugin bootstrap.
+  ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+</idea-plugin>
