@@ -117,6 +117,7 @@ class GraphModelTest {
             toNodeId = node.id,
             label = "calls",
             certainty = Certainty.RULE_INFERRED,
+            bindingStatus = BindingStatus.PARTIALLY_SYNCED,
             status = "ACTIVE",
             diff = GraphDiff(status = DiffStatus.MODIFIED),
         )
@@ -127,6 +128,7 @@ class GraphModelTest {
         assertEquals(DiffStatus.ONLY_IN_MERMAID, roundTrip.nodes.single().diff.status)
         assertEquals(DiffStatus.MODIFIED, roundTrip.edges.single().diff.status)
         assertEquals(Certainty.RULE_INFERRED, roundTrip.edges.single().certainty)
+        assertEquals(BindingStatus.PARTIALLY_SYNCED, roundTrip.edges.single().bindingStatus)
         assertEquals("ACTIVE", roundTrip.edges.single().status)
     }
 

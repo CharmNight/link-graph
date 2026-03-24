@@ -7,6 +7,7 @@ data class GraphEdge(
     val toNodeId: String,
     val label: String? = null,
     val certainty: Certainty = Certainty.PROVEN,
+    val bindingStatus: BindingStatus = BindingStatus.BOUND,
     val status: String? = null,
     val diff: GraphDiff = GraphDiff(),
     val evidence: List<GraphEvidence> = emptyList(),
