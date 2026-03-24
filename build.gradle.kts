@@ -49,15 +49,15 @@ intellijPlatform {
 
 val buildFrontend by tasks.registering {
     group = "build"
-    description = "Build frontend assets when frontend/package.json exists."
-    onlyIf { file("frontend/package.json").exists() }
+    description = "Build frontend assets when web/package.json exists."
+    onlyIf { file("web/package.json").exists() }
     doLast {
         exec {
-            workingDir = file("frontend")
+            workingDir = file("web")
             commandLine("npm", "ci")
         }
         exec {
-            workingDir = file("frontend")
+            workingDir = file("web")
             commandLine("npm", "run", "build")
         }
     }

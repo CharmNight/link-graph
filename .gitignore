@@ -30,6 +30,8 @@ target/
 build/
 !**/src/main/**/build/
 !**/src/test/**/build/
+.gradle/
+.intellijPlatform/
 
 ### VS Code ###
 .vscode/

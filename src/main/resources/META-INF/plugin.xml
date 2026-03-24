@@ -10,4 +10,19 @@
   ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow
+                id="Link Graph"
+                anchor="right"
+                factoryClass="com.charmnight.linkgraph.toolwindow.LinkGraphToolWindowFactory"/>
+    </extensions>
+
+    <actions>
+        <action
+                id="com.charmnight.linkgraph.OpenLinkGraphAction"
+                class="com.charmnight.linkgraph.actions.OpenLinkGraphAction">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+    </actions>
 </idea-plugin>
