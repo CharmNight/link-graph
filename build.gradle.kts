@@ -1,4 +1,5 @@
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.gradle.api.tasks.testing.Test
 
 plugins {
     kotlin("jvm") version "2.1.20"
@@ -33,6 +34,13 @@ kotlin {
     jvmToolchain(providers.gradleProperty("javaVersion").get().toInt())
 }
 
+sourceSets {
+    named("test") {
+        java.srcDir("src/integrationTest/kotlin")
+        resources.srcDir("src/integrationTest/resources")
+    }
+}
+
 intellijPlatform {
     pluginConfiguration {
         id = "com.charmnight.linkgraph"
@@ -46,6 +54,31 @@ intellijPlatform {
             name = "CharmNight"
         }
     }
+}
+
+val integrationTest by tasks.registering(Test::class) {
+    description = "Runs integration tests."
+    group = "verification"
+    dependsOn(
+        tasks.named("testClasses"),
+        tasks.named("prepareTestSandbox"),
+        tasks.named("prepareTest"),
+    )
+    val baseTestTask = tasks.named<Test>("test").get()
+    val testSourceSet = sourceSets.named("test").get()
+    val mainSourceSet = sourceSets.named("main").get()
+    testClassesDirs = testSourceSet.output.classesDirs
+    classpath = baseTestTask.classpath + mainSourceSet.output
+    jvmArgumentProviders.addAll(baseTestTask.jvmArgumentProviders)
+    systemProperties.putAll(baseTestTask.systemProperties)
+    environment(baseTestTask.environment)
+    workingDir = baseTestTask.workingDir
+    javaLauncher.set(baseTestTask.javaLauncher)
+    minHeapSize = baseTestTask.minHeapSize
+    maxHeapSize = baseTestTask.maxHeapSize
+    useJUnit()
+    include("**/*IT.class")
+    shouldRunAfter(tasks.named("test"))
 }
 
 val buildFrontend by tasks.registering {
@@ -65,6 +98,14 @@ val buildFrontend by tasks.registering {
 }
 
 tasks {
+    test {
+        exclude("**/*IT.class")
+    }
+
+    check {
+        dependsOn(integrationTest)
+    }
+
     processResources {
         dependsOn(buildFrontend)
     }
