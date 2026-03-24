@@ -1,0 +1,3 @@
+<beans>
+    <property name="uncertain.target.alias" value="com.charmnight.linkgraph.fixtures.uncertain.ReflectionTarget#handle" />
+</beans>

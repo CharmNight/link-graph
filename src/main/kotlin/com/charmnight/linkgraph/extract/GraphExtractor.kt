@@ -12,6 +12,9 @@ class GraphExtractor(
     private val httpFeignResolver: HttpFeignResolver = HttpFeignResolver(javaResolver),
     private val dubboResolver: DubboResolver = DubboResolver(javaResolver),
     private val mqResolver: MqResolver = MqResolver(javaResolver),
+    private val configResolver: ConfigResolver = ConfigResolver(javaResolver),
+    private val docResolver: DocResolver = DocResolver(javaResolver),
+    private val uncertainLinkResolver: UncertainLinkResolver = UncertainLinkResolver(javaResolver),
     private val methodFlowBuilder: MethodFlowBuilder = MethodFlowBuilder(),
 ) {
     fun extract(request: GraphExtractionRequest): GraphExtractionResult {
@@ -42,6 +45,9 @@ class GraphExtractor(
                 httpFeignResolver.resolve(method, resolverContext),
                 dubboResolver.resolve(method, resolverContext),
                 mqResolver.resolve(method, resolverContext),
+                configResolver.resolve(method, resolverContext),
+                docResolver.resolve(method, resolverContext),
+                uncertainLinkResolver.resolve(method, resolverContext),
             ).forEach { output ->
                 output.nodes.forEach(graph::addNode)
                 output.edges.forEach(graph::addEdge)
