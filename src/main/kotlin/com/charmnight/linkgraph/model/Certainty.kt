@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.model
 
 enum class Certainty {
-    CERTAIN,
-    UNCERTAIN,
+    PROVEN,
+    RULE_INFERRED,
+    LLM_SUGGESTED,
 }

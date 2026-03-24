@@ -1,8 +1,8 @@
 package com.charmnight.linkgraph.model
 
 enum class DiffStatus {
-    UNCHANGED,
-    ADDED,
-    REMOVED,
+    MATCHED,
+    ONLY_IN_CODE,
+    ONLY_IN_MERMAID,
     MODIFIED,
 }
