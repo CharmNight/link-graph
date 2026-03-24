@@ -25,5 +25,20 @@
                 class="com.charmnight.linkgraph.actions.OpenLinkGraphAction">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
+        <action
+                id="com.charmnight.linkgraph.ImportMermaidAction"
+                class="com.charmnight.linkgraph.actions.ImportMermaidAction">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+        <action
+                id="com.charmnight.linkgraph.ExportMermaidAction"
+                class="com.charmnight.linkgraph.actions.ExportMermaidAction">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+        <action
+                id="com.charmnight.linkgraph.ShowDiffModeAction"
+                class="com.charmnight.linkgraph.actions.ShowDiffModeAction">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
     </actions>
 </idea-plugin>
