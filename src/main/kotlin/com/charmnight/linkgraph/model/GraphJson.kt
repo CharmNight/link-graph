@@ -76,6 +76,20 @@ object GraphJson {
 
     private fun diffToMap(diff: GraphDiff): Map<String, Any?> = linkedMapOf(
         "status" to diff.status.name,
+        "fields" to diff.fields,
+        "counterpartId" to diff.counterpartId,
+        "message" to diff.message,
+        "summary" to diff.summary,
+        "entries" to diff.entries.map { diffEntryToMap(it) },
+    )
+
+    private fun diffEntryToMap(entry: GraphDiffEntry): Map<String, Any?> = linkedMapOf(
+        "elementKind" to entry.elementKind.name,
+        "elementId" to entry.elementId,
+        "status" to entry.status.name,
+        "counterpartId" to entry.counterpartId,
+        "fields" to entry.fields,
+        "message" to entry.message,
     )
 
     private fun parseNode(raw: Map<*, *>): GraphNode {
@@ -129,8 +143,28 @@ object GraphJson {
         if (raw == null) {
             return GraphDiff()
         }
-        val status = raw.requiredString("status")
-        return GraphDiff(status = DiffStatus.valueOf(status))
+        return GraphDiff(
+            status = DiffStatus.valueOf(raw.requiredString("status")),
+            fields = parseStringList(raw["fields"] as? List<*>),
+            counterpartId = raw.optionalString("counterpartId"),
+            message = raw.optionalString("message"),
+            summary = raw.optionalString("summary"),
+            entries = parseDiffEntries(raw["entries"] as? List<*>),
+        )
+    }
+
+    private fun parseDiffEntries(raw: List<*>?): List<GraphDiffEntry> {
+        return raw.orEmpty().mapNotNull {
+            val map = it as? Map<*, *> ?: return@mapNotNull null
+            GraphDiffEntry(
+                elementKind = GraphDiffElementKind.valueOf(map.requiredString("elementKind")),
+                elementId = map.requiredString("elementId"),
+                status = DiffStatus.valueOf(map.requiredString("status")),
+                counterpartId = map.optionalString("counterpartId"),
+                fields = parseStringList(map["fields"] as? List<*>),
+                message = map.optionalString("message"),
+            )
+        }
     }
 
     private fun parseEvidenceList(raw: List<*>?): List<GraphEvidence> {
