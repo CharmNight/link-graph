@@ -57,6 +57,11 @@ export interface LinkGraphEdge {
   label?: string;
 }
 
+export interface LinkGraphDocument {
+  nodes: LinkGraphNode[];
+  edges: LinkGraphEdge[];
+}
+
 export interface SyncPreviewItem {
   id: string;
   title: string;
@@ -69,4 +74,11 @@ export interface DiffItem {
   title: string;
   status: DiffStatus;
   description: string;
+}
+
+export interface LinkGraphBootstrapState {
+  graph: LinkGraphDocument;
+  diffItems: DiffItem[];
+  syncPreviewItems: SyncPreviewItem[];
+  selectedNodeId?: string | null;
 }

@@ -44,12 +44,14 @@ class LinkGraphProjectService(private val project: Project) {
         source: String,
     ) {
         stateService().loadGraph(graph, source)
+        browserPanel?.syncFromProjectState()
     }
 
     fun importMermaid(mermaid: String): GraphDocument {
         val parseResult = mermaidImporter.import(mermaid)
         mermaidValidator.validate(parseResult.document, parseResult.issues)
         stateService().importMermaid(mermaid, parseResult.document)
+        browserPanel?.syncFromProjectState()
         return parseResult.document
     }
 
@@ -67,6 +69,7 @@ class LinkGraphProjectService(private val project: Project) {
         val designGraph = snapshot.designGraph ?: return null
         return graphDiffer.diff(codeGraph, designGraph).also { result ->
             stateService().showDiffMode(result.graph, result.diff)
+            browserPanel?.syncFromProjectState()
         }
     }
 
@@ -76,6 +79,7 @@ class LinkGraphProjectService(private val project: Project) {
 
     fun pushSelectedMethod(signature: String) {
         stateService().pushSelectedMethod(signature)
+        browserPanel?.syncFromProjectState()
     }
 
     private fun stateService(): GraphEditorStateService {

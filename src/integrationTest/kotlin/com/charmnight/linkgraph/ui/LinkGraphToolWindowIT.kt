@@ -60,7 +60,8 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         assertNotNull(content!!.component)
 
         val browserPanel = GraphBrowserPanel(project)
-        assertTrue(browserPanel.currentEntryUrl().contains("linkgraph"))
+        assertTrue(browserPanel.currentEntryUrl().contains("linkgraph/index.html"))
+        assertTrue(!browserPanel.currentEntryUrl().contains("editor-shell"))
     }
 
     fun testSelectedMethodContextCanBePushedIntoUiState() {

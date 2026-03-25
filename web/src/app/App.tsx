@@ -1,12 +1,12 @@
 import { startTransition, useDeferredValue, useState } from "react";
-import { exportMermaid, getSampleSyncPreview, publishGraphChange, requestSyncPreview } from "./api";
+import { exportMermaid, getSampleSyncPreview, publishGraphChange, readBootstrapState, requestSyncPreview } from "./api";
 import { DiffPanel } from "./components/DiffPanel";
 import { GraphCanvas } from "./components/GraphCanvas";
 import { Legend } from "./components/Legend";
 import { PropertyPanel } from "./components/PropertyPanel";
 import { SyncPreviewPanel } from "./components/SyncPreviewPanel";
 import { Toolbar } from "./components/Toolbar";
-import type { DiffItem, LinkGraphEdge, LinkGraphNode } from "./types";
+import type { DiffItem, LinkGraphBootstrapState, LinkGraphEdge, LinkGraphNode } from "./types";
 
 const INITIAL_NODES: LinkGraphNode[] = [
   {
@@ -52,10 +52,25 @@ const DIFF_ITEMS: DiffItem[] = [
   },
 ];
 
+const SAMPLE_STATE: LinkGraphBootstrapState = {
+  graph: {
+    nodes: INITIAL_NODES,
+    edges: INITIAL_EDGES,
+  },
+  diffItems: DIFF_ITEMS,
+  syncPreviewItems: getSampleSyncPreview(),
+  selectedNodeId: INITIAL_NODES[0]?.id ?? null,
+};
+
 export function App() {
-  const [nodes, setNodes] = useState<LinkGraphNode[]>(INITIAL_NODES);
-  const [edges, setEdges] = useState<LinkGraphEdge[]>(INITIAL_EDGES);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(INITIAL_NODES[0].id);
+  const initialState = readBootstrapState() ?? SAMPLE_STATE;
+  const [nodes, setNodes] = useState<LinkGraphNode[]>(() => initialState.graph.nodes);
+  const [edges, setEdges] = useState<LinkGraphEdge[]>(() => initialState.graph.edges);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
+    () => initialState.selectedNodeId ?? initialState.graph.nodes[0]?.id ?? null,
+  );
+  const [diffItems] = useState<DiffItem[]>(() => initialState.diffItems);
+  const [syncPreviewItems] = useState(() => initialState.syncPreviewItems);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
 
@@ -69,9 +84,10 @@ export function App() {
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null;
 
-  function syncNodes(nextNodes: LinkGraphNode[]) {
+  function syncGraph(nextNodes: LinkGraphNode[], nextEdges: LinkGraphEdge[]) {
     setNodes(nextNodes);
-    publishGraphChange(nextNodes);
+    setEdges(nextEdges);
+    publishGraphChange(nextNodes, nextEdges);
   }
 
   function handleAddNode() {
@@ -83,15 +99,16 @@ export function App() {
         certainty: "LLM_SUGGESTED",
         bindingStatus: "DESIGN_ONLY",
       };
-      syncNodes([...nodes, nextNode]);
+      syncGraph([...nodes, nextNode], edges);
       setSelectedNodeId(nextNode.id);
     });
   }
 
   function handleDeleteNode(nodeId: string) {
     startTransition(() => {
-      syncNodes(nodes.filter((node) => node.id !== nodeId));
-      setEdges(edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
+      const nextNodes = nodes.filter((node) => node.id !== nodeId);
+      const nextEdges = edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId);
+      syncGraph(nextNodes, nextEdges);
       if (selectedNodeId === nodeId) {
         setSelectedNodeId(null);
       }
@@ -100,18 +117,21 @@ export function App() {
 
   function handleUpdateNode(nextNode: LinkGraphNode) {
     startTransition(() => {
-      syncNodes(nodes.map((node) => (node.id === nextNode.id ? nextNode : node)));
+      syncGraph(
+        nodes.map((node) => (node.id === nextNode.id ? nextNode : node)),
+        edges,
+      );
       setSelectedNodeId(nextNode.id);
     });
   }
 
   function handleReconnectEdge(edgeId: string) {
     startTransition(() => {
-      setEdges(
+      const nextEdges =
         edges.map((edge) =>
           edge.id === edgeId ? { ...edge, target: nodes[0]?.id ?? edge.target } : edge,
-        ),
-      );
+        );
+      syncGraph(nodes, nextEdges);
     });
   }
 
@@ -145,8 +165,8 @@ export function App() {
             onUpdateNode={handleUpdateNode}
             onDeleteNode={handleDeleteNode}
           />
-          <DiffPanel items={DIFF_ITEMS} />
-          <SyncPreviewPanel items={getSampleSyncPreview()} />
+          <DiffPanel items={diffItems} />
+          <SyncPreviewPanel items={syncPreviewItems} />
         </div>
       </main>
     </div>

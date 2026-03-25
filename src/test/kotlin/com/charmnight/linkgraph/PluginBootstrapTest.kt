@@ -68,6 +68,15 @@ class PluginBootstrapTest {
         assertTrue("Did not expect legacy frontend/ path in hook", !scriptText.contains("frontend/package.json"))
     }
 
+    @Test
+    fun packagedResourcesContainBuiltFrontendEntry() {
+        val entry = javaClass.classLoader.getResource("linkgraph/index.html")
+        assertNotNull("Expected built frontend entry under linkgraph/index.html", entry)
+
+        val html = entry!!.openStream().bufferedReader().use { it.readText() }
+        assertTrue("Expected bundled frontend entry to reference built assets", html.contains("assets/"))
+    }
+
     private fun firstElementByTagNameAndAttribute(
         document: org.w3c.dom.Document,
         tagName: String,

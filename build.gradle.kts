@@ -108,5 +108,8 @@ tasks {
 
     processResources {
         dependsOn(buildFrontend)
+        from("web/dist") {
+            into("linkgraph")
+        }
     }
 }
