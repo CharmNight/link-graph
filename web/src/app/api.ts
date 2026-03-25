@@ -13,6 +13,7 @@ interface BackendGraphNode {
   id: string;
   type: NodeType;
   title: string;
+  location?: string;
   signature?: string;
   doc?: string;
   certainty: Certainty;
@@ -41,6 +42,8 @@ declare global {
       exportMermaid?: () => void;
       requestSyncPreview?: () => void;
       graphChanged?: (payload: BackendGraphDocument) => void;
+      nodeSelected?: (nodeId: string) => void;
+      requestSourceNavigation?: (nodeId: string) => void;
     };
     linkGraphBootstrap?: LinkGraphBootstrapState;
   }
@@ -58,12 +61,21 @@ export function requestSyncPreview(): void {
   window.linkGraphBridge?.requestSyncPreview?.();
 }
 
+export function publishNodeSelected(nodeId: string): void {
+  window.linkGraphBridge?.nodeSelected?.(nodeId);
+}
+
+export function requestSourceNavigation(nodeId: string): void {
+  window.linkGraphBridge?.requestSourceNavigation?.(nodeId);
+}
+
 export function publishGraphChange(nodes: LinkGraphNode[], edges: LinkGraphEdge[]): void {
   window.linkGraphBridge?.graphChanged?.({
     nodes: nodes.map((node) => ({
       id: node.id,
       type: node.type,
       title: node.title,
+      location: node.location,
       signature: node.signature,
       doc: node.doc,
       certainty: node.certainty,

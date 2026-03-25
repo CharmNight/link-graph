@@ -2,9 +2,10 @@ import type { DiffItem } from "../types";
 
 interface DiffPanelProps {
   items: DiffItem[];
+  onSelectItem: (itemId: string) => void;
 }
 
-export function DiffPanel({ items }: DiffPanelProps) {
+export function DiffPanel({ items, onSelectItem }: DiffPanelProps) {
   return (
     <section className="side-panel diff-panel">
       <p className="eyebrow">Graph Diff</p>
@@ -17,6 +18,9 @@ export function DiffPanel({ items }: DiffPanelProps) {
               <span className={`risk-pill risk-${item.status.toLowerCase()}`}>{item.status}</span>
             </div>
             <p>{item.description}</p>
+            <button type="button" className="ghost-button" onClick={() => onSelectItem(item.id)}>
+              Focus {item.id}
+            </button>
           </article>
         ))}
       </div>

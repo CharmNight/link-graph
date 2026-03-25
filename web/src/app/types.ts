@@ -42,6 +42,7 @@ export interface LinkGraphNode {
   id: string;
   type: NodeType;
   title: string;
+  location?: string;
   signature?: string;
   doc?: string;
   certainty: Certainty;

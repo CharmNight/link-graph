@@ -5,9 +5,15 @@ interface PropertyPanelProps {
   selectedNode: LinkGraphNode | null;
   onUpdateNode: (node: LinkGraphNode) => void;
   onDeleteNode: (nodeId: string) => void;
+  onRequestSourceNavigation: (nodeId: string) => void;
 }
 
-export function PropertyPanel({ selectedNode, onUpdateNode, onDeleteNode }: PropertyPanelProps) {
+export function PropertyPanel({
+  selectedNode,
+  onUpdateNode,
+  onDeleteNode,
+  onRequestSourceNavigation,
+}: PropertyPanelProps) {
   const [draft, setDraft] = useState<LinkGraphNode | null>(selectedNode);
 
   useEffect(() => {
@@ -59,6 +65,14 @@ export function PropertyPanel({ selectedNode, onUpdateNode, onDeleteNode }: Prop
       <div className="panel-actions">
         <button type="button" className="primary-button" onClick={() => onUpdateNode(draft)}>
           Save Changes
+        </button>
+        <button
+          type="button"
+          className="ghost-button"
+          disabled={!draft.location}
+          onClick={() => onRequestSourceNavigation(draft.id)}
+        >
+          Open Source
         </button>
         <button type="button" className="ghost-button" onClick={() => onDeleteNode(draft.id)}>
           Delete Node

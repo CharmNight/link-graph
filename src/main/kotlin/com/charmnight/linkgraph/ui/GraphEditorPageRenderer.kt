@@ -60,6 +60,7 @@ class GraphEditorPageRenderer {
         "id" to node.id,
         "type" to node.type.name,
         "title" to node.title,
+        "location" to node.location,
         "signature" to node.signature,
         "doc" to node.doc,
         "certainty" to node.certainty.name,

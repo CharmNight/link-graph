@@ -7,6 +7,7 @@ interface GraphCanvasProps {
   nodes: LinkGraphNode[];
   edges: LinkGraphEdge[];
   onAddNode: () => void;
+  onSelectNode: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
   onReconnectEdge: (edgeId: string) => void;
 }
@@ -15,6 +16,7 @@ export function GraphCanvas({
   nodes,
   edges,
   onAddNode,
+  onSelectNode,
   onDeleteNode,
   onReconnectEdge,
 }: GraphCanvasProps) {
@@ -70,6 +72,9 @@ export function GraphCanvas({
             <h3>{node.title}</h3>
             {node.signature ? <p className="muted">{node.signature}</p> : null}
             <div className="card-actions">
+              <button type="button" onClick={() => onSelectNode(node.id)}>
+                Inspect {node.id}
+              </button>
               <button type="button" onClick={() => onDeleteNode(node.id)}>
                 Delete {node.id}
               </button>

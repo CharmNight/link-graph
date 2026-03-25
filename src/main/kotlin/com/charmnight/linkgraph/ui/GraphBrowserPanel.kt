@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.model.GraphJson
 import com.intellij.openapi.project.Project
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
+import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
 import java.awt.BorderLayout
 import org.cef.browser.CefBrowser
@@ -20,9 +21,11 @@ class GraphBrowserPanel(
     private val pageRenderer = GraphEditorPageRenderer()
     private val entryUrl: String = resolveEntryUrl()
     private val browser: JBCefBrowser? = createBrowser()
-    private val exportMermaidQuery: JBCefJSQuery? = browser?.let(JBCefJSQuery::create)
-    private val requestSyncPreviewQuery: JBCefJSQuery? = browser?.let(JBCefJSQuery::create)
-    private val graphChangedQuery: JBCefJSQuery? = browser?.let(JBCefJSQuery::create)
+    private val exportMermaidQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val requestSyncPreviewQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val graphChangedQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val nodeSelectedQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val requestSourceNavigationQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
 
     init {
         browser?.let(::configureBrowser)
@@ -57,6 +60,14 @@ class GraphBrowserPanel(
             bridge.dispatch(GraphEditorMessage.RequestSyncPreview)
             JBCefJSQuery.Response("ok")
         }
+        nodeSelectedQuery?.addHandler { nodeId ->
+            bridge.dispatch(GraphEditorMessage.NodeSelected(nodeId))
+            JBCefJSQuery.Response("ok")
+        }
+        requestSourceNavigationQuery?.addHandler { nodeId ->
+            bridge.dispatch(GraphEditorMessage.RequestSourceNavigation(nodeId))
+            JBCefJSQuery.Response("ok")
+        }
         graphChangedQuery?.addHandler { payload ->
             runCatching {
                 bridge.dispatch(GraphEditorMessage.GraphChanged(GraphJson.fromJson(payload)))
@@ -88,6 +99,8 @@ class GraphBrowserPanel(
             window.linkGraphBridge = {
               exportMermaid: () => { ${exportMermaidQuery?.inject("'exportMermaid'") ?: ""} },
               requestSyncPreview: () => { ${requestSyncPreviewQuery?.inject("'requestSyncPreview'") ?: ""} },
+              nodeSelected: (nodeId) => { ${nodeSelectedQuery?.inject("nodeId") ?: ""} },
+              requestSourceNavigation: (nodeId) => { ${requestSourceNavigationQuery?.inject("nodeId") ?: ""} },
               graphChanged: (payload) => { ${graphChangedQuery?.inject("JSON.stringify(payload)") ?: ""} }
             };
         """.trimIndent()

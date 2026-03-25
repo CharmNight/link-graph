@@ -156,4 +156,41 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         assertEquals(3, target.line)
         assertTrue(FileEditorManager.getInstance(project).selectedFiles.contains(projectFile.virtualFile))
     }
+
+    fun testBridgeDispatchExportsMermaidAndRequestsSourceNavigation() {
+        val projectFile = myFixture.addFileToProject(
+            "src/main/java/com/example/OrderController.java",
+            """
+                package com.example;
+
+                class OrderController {
+                    void submit() {}
+                }
+            """.trimIndent(),
+        )
+        val document = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:order-controller-submit",
+                    type = NodeType.METHOD,
+                    title = "OrderController.submit",
+                    location = "src/main/java/com/example/OrderController.java:3:1",
+                    signature = "com.example.OrderController.submit():void",
+                ),
+            ),
+        )
+        val bridge = GraphEditorBridge(project)
+
+        bridge.dispatch(GraphEditorMessage.LoadGraph(document, "bridge-test"))
+        bridge.dispatch(GraphEditorMessage.NodeSelected("method:order-controller-submit"))
+        bridge.dispatch(GraphEditorMessage.ExportMermaid)
+        bridge.dispatch(GraphEditorMessage.RequestSourceNavigation("method:order-controller-submit"))
+
+        val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
+        assertEquals("method:order-controller-submit", snapshot.selectedNodeId)
+        assertNotNull(snapshot.exportedMermaid)
+        assertTrue(snapshot.exportedMermaid!!.contains("OrderController.submit"))
+        assertEquals("method:order-controller-submit", snapshot.sourceNavigationNodeId)
+        assertTrue(FileEditorManager.getInstance(project).selectedFiles.contains(projectFile.virtualFile))
+    }
 }

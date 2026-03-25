@@ -11,6 +11,7 @@ const bootstrapState: LinkGraphBootstrapState = {
         id: "method:submit-order",
         type: "METHOD",
         title: "OrderController.submit",
+        location: "src/main/java/com/example/OrderController.java:8:1",
         signature: "com.example.OrderController.submit():void",
         doc: "Submit order entry.",
         certainty: "PROVEN",
@@ -60,6 +61,8 @@ describe("App", () => {
       exportMermaid: vi.fn(),
       requestSyncPreview: vi.fn(),
       graphChanged: vi.fn(),
+      nodeSelected: vi.fn(),
+      requestSourceNavigation: vi.fn(),
     };
   });
 
@@ -103,5 +106,20 @@ describe("App", () => {
 
     expect(window.linkGraphBridge?.exportMermaid).toHaveBeenCalledTimes(1);
     expect(window.linkGraphBridge?.requestSyncPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("selects nodes from diff panel and requests source navigation from the property panel", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /focus class:order-draft-dto/i }));
+    expect(window.linkGraphBridge?.nodeSelected).toHaveBeenCalledWith("class:order-draft-dto");
+    expect(screen.getByRole("heading", { name: "class:order-draft-dto" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /inspect method:submit-order/i }));
+    expect(window.linkGraphBridge?.nodeSelected).toHaveBeenCalledWith("method:submit-order");
+
+    await user.click(screen.getByRole("button", { name: /open source/i }));
+    expect(window.linkGraphBridge?.requestSourceNavigation).toHaveBeenCalledWith("method:submit-order");
   });
 });

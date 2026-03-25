@@ -37,6 +37,7 @@ describe("GraphCanvas", () => {
         nodes={nodes}
         edges={edges}
         onAddNode={() => undefined}
+        onSelectNode={() => undefined}
         onDeleteNode={() => undefined}
         onReconnectEdge={() => undefined}
       />,
@@ -57,17 +58,20 @@ describe("GraphCanvas", () => {
         nodes={nodes}
         edges={edges}
         onAddNode={() => events.push("add")}
+        onSelectNode={(nodeId) => events.push(`select:${nodeId}`)}
         onDeleteNode={(nodeId) => events.push(`delete:${nodeId}`)}
         onReconnectEdge={(edgeId) => events.push(`reconnect:${edgeId}`)}
       />,
     );
 
     await user.click(screen.getByRole("button", { name: /add node/i }));
+    await user.click(screen.getByRole("button", { name: /inspect method:place-order/i }));
     await user.click(screen.getByRole("button", { name: /delete method:place-order/i }));
     await user.click(screen.getByRole("button", { name: /reconnect call:place-order->insert-order/i }));
 
     expect(events).toEqual([
       "add",
+      "select:method:place-order",
       "delete:method:place-order",
       "reconnect:call:place-order->insert-order",
     ]);

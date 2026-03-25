@@ -7,6 +7,7 @@ const node: LinkGraphNode = {
   id: "method:place-order",
   type: "METHOD",
   title: "OrderService.place",
+  location: "src/main/java/com/example/OrderService.java:12:1",
   signature: "com.example.OrderService.place(java.lang.String):void",
   doc: "Places an order.",
   certainty: "PROVEN",
@@ -18,22 +19,26 @@ describe("PropertyPanel", () => {
     const user = userEvent.setup();
     const updates: LinkGraphNode[] = [];
     const deleted: string[] = [];
+    const opened: string[] = [];
 
     render(
       <PropertyPanel
         selectedNode={node}
         onUpdateNode={(nextNode) => updates.push(nextNode)}
         onDeleteNode={(nodeId) => deleted.push(nodeId)}
+        onRequestSourceNavigation={(nodeId) => opened.push(nodeId)}
       />,
     );
 
     await user.clear(screen.getByLabelText(/title/i));
     await user.type(screen.getByLabelText(/title/i), "OrderService.placeDraft");
     await user.click(screen.getByRole("button", { name: /save changes/i }));
+    await user.click(screen.getByRole("button", { name: /open source/i }));
     await user.click(screen.getByRole("button", { name: /delete node/i }));
 
     expect(updates).toHaveLength(1);
     expect(updates[0].title).toBe("OrderService.placeDraft");
+    expect(opened).toEqual(["method:place-order"]);
     expect(deleted).toEqual(["method:place-order"]);
   });
 });

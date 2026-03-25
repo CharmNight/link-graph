@@ -1,5 +1,13 @@
 import { startTransition, useDeferredValue, useState } from "react";
-import { exportMermaid, getSampleSyncPreview, publishGraphChange, readBootstrapState, requestSyncPreview } from "./api";
+import {
+  exportMermaid,
+  getSampleSyncPreview,
+  publishGraphChange,
+  publishNodeSelected,
+  readBootstrapState,
+  requestSourceNavigation,
+  requestSyncPreview,
+} from "./api";
 import { DiffPanel } from "./components/DiffPanel";
 import { GraphCanvas } from "./components/GraphCanvas";
 import { Legend } from "./components/Legend";
@@ -13,6 +21,7 @@ const INITIAL_NODES: LinkGraphNode[] = [
     id: "method:place-order",
     type: "METHOD",
     title: "OrderService.place",
+    location: "src/main/java/com/example/OrderService.java:12:1",
     signature: "com.example.OrderService.place(java.lang.String):void",
     doc: "Places a new order and dispatches persistence work.",
     certainty: "PROVEN",
@@ -83,6 +92,25 @@ export function App() {
   });
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null;
+
+  function handleSelectNode(nodeId: string) {
+    startTransition(() => {
+      setSelectedNodeId(nodeId);
+      publishNodeSelected(nodeId);
+    });
+  }
+
+  function handleDiffItemSelect(itemId: string) {
+    const targetNode = nodes.find((node) => node.id === itemId);
+    if (!targetNode) {
+      return;
+    }
+    handleSelectNode(targetNode.id);
+  }
+
+  function handleRequestSourceNavigation(nodeId: string) {
+    requestSourceNavigation(nodeId);
+  }
 
   function syncGraph(nextNodes: LinkGraphNode[], nextEdges: LinkGraphEdge[]) {
     setNodes(nextNodes);
@@ -155,6 +183,7 @@ export function App() {
           nodes={filteredNodes}
           edges={edges}
           onAddNode={handleAddNode}
+          onSelectNode={handleSelectNode}
           onDeleteNode={handleDeleteNode}
           onReconnectEdge={handleReconnectEdge}
         />
@@ -164,8 +193,9 @@ export function App() {
             selectedNode={selectedNode}
             onUpdateNode={handleUpdateNode}
             onDeleteNode={handleDeleteNode}
+            onRequestSourceNavigation={handleRequestSourceNavigation}
           />
-          <DiffPanel items={diffItems} />
+          <DiffPanel items={diffItems} onSelectItem={handleDiffItemSelect} />
           <SyncPreviewPanel items={syncPreviewItems} />
         </div>
       </main>
