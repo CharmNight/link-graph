@@ -43,3 +43,4 @@ build/
 docs/superpowers/
 web/node_modules/
 web/dist/
+.idea/
