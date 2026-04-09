@@ -62,6 +62,8 @@ import com.charmnight.linkgraph.ui.DraftPatchApplyResult
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.GraphEditorStateService.OperationFeedbackLevel
 import com.charmnight.linkgraph.ui.GraphLayoutPosition
+import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
+import com.charmnight.linkgraph.workbench.DraftWorkbenchService
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.application.ApplicationManager
@@ -202,6 +204,8 @@ class LinkGraphProjectService(
     private val graphGenerationService by lazy { GraphGenerationService() }
     /** 图审计补丁服务。 */
     private val graphAuditPatchService by lazy { GraphAuditPatchService() }
+    /** 统一草稿层服务。 */
+    private val draftWorkbenchService by lazy { DraftWorkbenchService() }
     /** diff 审核补丁服务。 */
     private val graphDiffPatchService by lazy { GraphDiffPatchService() }
     /** 链路讲解服务。 */
@@ -527,6 +531,29 @@ class LinkGraphProjectService(
         reviewWorkflow.requestAuditAsync(question, selectedNodeIds)
     }
 
+    /** 确认一条审计候选变更并写入统一草稿层。 */
+    fun confirmAuditCandidateChange(changeId: String): DraftWorkbenchEntry? {
+        val stateService = stateService()
+        val snapshot = stateService.snapshot()
+        val candidate = snapshot.auditResult?.candidateChanges?.firstOrNull { it.changeId == changeId } ?: return null
+        val confirmation = draftWorkbenchService.confirmCandidateChange(snapshot.draftWorkbenchState, candidate)
+        val graph = applyDraftEntriesToGraph(
+            baseGraph = snapshot.workingGraph ?: snapshot.visibleGraph ?: GraphDocument(),
+            entries = confirmation.draftState.draftChanges,
+        )
+        stateService.markDraftWorkbenchState(confirmation.draftState)
+        stateService.markGraphChanged(
+            graph = graph,
+            selectedMethodSignature = snapshot.selectedMethodSignature,
+            preserveDraftPatchUndo = true,
+        )
+        stateService.markOperationFeedback(
+            OperationFeedbackLevel.SUCCESS,
+            "已确认候选变更，并写入草稿层。",
+        )
+        return confirmation.draftChanges.lastOrNull()
+    }
+
     /** 基于代码事实图和设计基线发起同步差异问答。 */
     fun requestDiffReview(
         question: String,
@@ -757,6 +784,50 @@ class LinkGraphProjectService(
     /** 获取图编辑器状态服务。 */
     private fun stateService(): GraphEditorStateService {
         return project.getService(GraphEditorStateService::class.java)
+    }
+
+    /** 把统一草稿层中的变更条目投影到当前工作图。 */
+    private fun applyDraftEntriesToGraph(
+        baseGraph: GraphDocument,
+        entries: List<DraftWorkbenchEntry>,
+    ): GraphDocument {
+        val existingNodeIds = baseGraph.nodes.mapTo(linkedSetOf()) { it.id }
+        val addedNodes = entries.mapNotNull { entry ->
+            val nodeId = "draft-entry:${entry.entryId}"
+            if (nodeId in existingNodeIds) {
+                null
+            } else {
+                GraphNode(
+                    id = nodeId,
+                    type = NodeType.DOC_PAGE,
+                    title = entry.title.ifBlank { entry.sourceChangeId ?: entry.entryId },
+                    doc = listOfNotNull(entry.afterState, entry.reason.takeIf(String::isNotBlank)).joinToString("\n"),
+                    sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                    metadata = mapOf(
+                        "draft.entryId" to entry.entryId,
+                        "draft.entryKind" to entry.kind.name,
+                    ),
+                )
+            }
+        }
+        val addedEdges = entries.flatMap { entry ->
+            val toNodeId = "draft-entry:${entry.entryId}"
+            entry.targetNodeIds.map { targetNodeId ->
+                GraphEdge(
+                    id = GraphEdge.stableId(EdgeType.LINKS_DOC, targetNodeId, toNodeId, "draft-manual"),
+                    type = EdgeType.LINKS_DOC,
+                    fromNodeId = targetNodeId,
+                    toNodeId = toNodeId,
+                    label = "草稿变更",
+                    sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                    metadata = mapOf("draft.entryId" to entry.entryId),
+                )
+            }
+        }.filterNot { edge -> baseGraph.edges.any { it.id == edge.id } }
+        return baseGraph.copy(
+            nodes = baseGraph.nodes + addedNodes,
+            edges = baseGraph.edges + addedEdges,
+        )
     }
 
     /** 返回当前真正生效的生成设置。 */

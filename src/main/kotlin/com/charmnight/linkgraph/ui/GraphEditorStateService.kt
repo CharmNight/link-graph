@@ -16,6 +16,7 @@ import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
 import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
+import com.charmnight.linkgraph.workbench.DraftWorkbenchState
 import com.intellij.openapi.components.Service
 
 /**
@@ -334,6 +335,7 @@ class GraphEditorStateService {
                 resourceRelationView = nextViewDocuments.resourceRelationView,
                 diff = null,
                 diffMode = false,
+                draftWorkbenchState = DraftWorkbenchState(),
                 draftPatchPreview = null,
                 draftPatchUndoState = null,
                 lastDraftPatchApplyResult = null,
@@ -403,6 +405,7 @@ class GraphEditorStateService {
                 resourceRelationView = nextViewDocuments.resourceRelationView,
                 diff = null,
                 diffMode = false,
+                draftWorkbenchState = DraftWorkbenchState(),
                 draftPatchPreview = null,
                 draftPatchUndoState = null,
                 lastDraftPatchApplyResult = null,
@@ -454,6 +457,7 @@ class GraphEditorStateService {
                 factGraphView = outcome.factGraphView,
                 flowchartView = outcome.flowchartView,
                 resourceRelationView = outcome.resourceRelationView,
+                draftWorkbenchState = DraftWorkbenchState(),
                 draftPatchPreview = null,
                 draftPatchUndoState = null,
                 lastDraftPatchApplyResult = null,
@@ -540,6 +544,7 @@ class GraphEditorStateService {
                 resourceRelationView = nextViewDocuments.resourceRelationView,
                 diff = null,
                 diffMode = false,
+                draftWorkbenchState = DraftWorkbenchState(),
                 draftPatchPreview = null,
                 draftPatchUndoState = null,
                 lastDraftPatchApplyResult = null,
@@ -608,6 +613,7 @@ class GraphEditorStateService {
                 resourceRelationView = nextViewDocuments.resourceRelationView,
                 diff = diff,
                 diffMode = true,
+                draftWorkbenchState = DraftWorkbenchState(),
                 draftPatchPreview = graph.patch,
                 draftPatchUndoState = null,
                 lastDraftPatchApplyResult = null,
@@ -718,6 +724,7 @@ class GraphEditorStateService {
                 factGraphView = nextViewDocuments.factGraphView,
                 flowchartView = nextViewDocuments.flowchartView,
                 resourceRelationView = nextViewDocuments.resourceRelationView,
+                draftWorkbenchState = currentState.draftWorkbenchState,
                 draftPatchPreview = null,
                 draftPatchUndoState = if (preserveDraftPatchUndo) currentState.draftPatchUndoState else null,
                 lastDraftPatchApplyResult = null,
@@ -833,6 +840,16 @@ class GraphEditorStateService {
             it.copy(
                 draftPatchPreview = patch,
                 lastMessageType = "draftPatchPreview",
+            )
+        }
+    }
+
+    /** 记录统一草稿层状态。 */
+    fun markDraftWorkbenchState(state: DraftWorkbenchState) {
+        mutate {
+            it.copy(
+                draftWorkbenchState = state,
+                lastMessageType = "draftWorkbenchState",
             )
         }
     }
@@ -1303,6 +1320,8 @@ class GraphEditorStateService {
         val resourceRelationView: ResourceRelationViewDocument? = null,
         /** 当前分析展示模式。 */
         val analysisDisplayMode: AnalysisDisplayMode = AnalysisDisplayMode.FACT_GRAPH,
+        /** 统一草稿层状态。 */
+        val draftWorkbenchState: DraftWorkbenchState = DraftWorkbenchState(),
         /** 当前预览中的草稿补丁。 */
         val draftPatchPreview: GraphPatch? = null,
         /** 草稿补丁应用回退信息。 */

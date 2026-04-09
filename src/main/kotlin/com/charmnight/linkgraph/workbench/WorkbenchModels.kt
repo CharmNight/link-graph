@@ -60,6 +60,14 @@ data class CandidateDraftChange(
 data class DraftWorkbenchEntry(
     val entryId: String,
     val kind: DraftEntryKind,
+    val title: String = "",
+    val sourceChangeId: String? = null,
+    val targetStepIds: List<String> = emptyList(),
+    val targetNodeIds: List<String> = emptyList(),
+    val beforeState: String? = null,
+    val afterState: String? = null,
+    val reason: String = "",
+    val impactSummary: String = "",
 )
 
 data class AuditConversationMessage(
@@ -86,4 +94,15 @@ data class AuditConversationTurnResult(
     val session: AuditConversationSession,
     val newCandidateChanges: List<CandidateDraftChange> = emptyList(),
     val draftWrites: List<DraftWorkbenchEntry> = emptyList(),
+)
+
+data class DraftWorkbenchState(
+    val draftChanges: List<DraftWorkbenchEntry> = emptyList(),
+    val draftNotes: List<DraftWorkbenchEntry> = emptyList(),
+)
+
+data class DraftConfirmationResult(
+    val draftState: DraftWorkbenchState,
+    val draftChanges: List<DraftWorkbenchEntry> = emptyList(),
+    val graphChanged: Boolean = false,
 )
