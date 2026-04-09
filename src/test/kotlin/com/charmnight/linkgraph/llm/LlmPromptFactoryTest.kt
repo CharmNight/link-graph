@@ -333,10 +333,11 @@ class LlmPromptFactoryTest {
             settings = settings,
         )
 
-        assertTrue(promptPackage.systemPrompt.contains("链路可读性美化助手"))
+        assertTrue(promptPackage.systemPrompt.contains("步骤化链路讲解助手"))
         assertTrue(promptPackage.userPrompt.contains("ShiroUtils.getSysUser"))
         assertTrue(promptPackage.userPrompt.contains("BeanUtils.copyBeanProp(user, obj)"))
         assertTrue(promptPackage.userPrompt.contains("id=flow-action:copy-bean"))
+        assertTrue(promptPackage.userPrompt.contains("当前粒度"))
         assertTrue(promptPackage.userPrompt.contains("当前方法内部折叠节点"))
         assertTrue(promptPackage.userPrompt.contains("跨方法扩展折叠节点"))
         assertTrue(promptPackage.userPrompt.contains("汇报版"))

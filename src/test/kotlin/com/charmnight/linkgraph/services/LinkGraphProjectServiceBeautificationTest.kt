@@ -94,10 +94,9 @@ class LinkGraphProjectServiceBeautificationTest : BasePlatformTestCase() {
         assertEquals(LlmResultSource.MOCK, result.source)
         assertEquals(result, snapshot.graphBeautificationResult)
         assertEquals("graphBeautificationResult", snapshot.lastMessageType)
-        assertEquals("当前链路讲解", result.summaryTitle)
-        assertTrue(result.summary.contains("ShiroUtils.getSysUser"))
-        assertTrue(result.sections.any { it.title == "当前方法内部" && it.content.contains("BeanUtils.copyBeanProp(user, obj)") })
-        assertTrue(result.sections.any { it.title == "跨方法扩展" && it.content.contains("UserMapper.selectUserById") })
+        assertTrue(result.steps.isNotEmpty())
+        assertTrue(result.steps.any { it.description.contains("BeanUtils.copyBeanProp(user, obj)") })
+        assertTrue(result.steps.any { it.downstreamTargets.contains(crossMethodNode.id) })
         assertTrue(result.warnings.any { it.contains("当前方法内部仍有 1 个节点未展开") })
         assertTrue(result.warnings.any { it.contains("跨方法扩展仍有 1 个节点未展开") })
         assertTrue(result.promptPreview.contains("ShiroUtils.getSysUser"))
@@ -215,8 +214,7 @@ class LinkGraphProjectServiceBeautificationTest : BasePlatformTestCase() {
             explanationFocus = "只解释当前画布内容",
         )
 
-        assertTrue(result.summary.contains("人工补充说明") || result.sections.any { it.content.contains("人工补充说明") })
-        assertTrue(!result.summary.contains("LegacyFallback.handle"))
-        assertTrue(result.sections.none { it.content.contains("LegacyFallback.handle") })
+        assertTrue(result.promptPreview.contains("人工补充说明"))
+        assertTrue(!result.promptPreview.contains("LegacyFallback.handle"))
     }
 }

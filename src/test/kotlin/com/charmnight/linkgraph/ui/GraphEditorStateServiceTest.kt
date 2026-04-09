@@ -7,7 +7,7 @@ import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
 import com.charmnight.linkgraph.semantic.outcome.AnalysisProjectionStats
 import com.charmnight.linkgraph.llm.GraphBeautificationResult
-import com.charmnight.linkgraph.llm.GraphBeautificationSection
+import com.charmnight.linkgraph.llm.GraphBeautificationStep
 import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.GenerationPlanItem
 import com.charmnight.linkgraph.llm.GenerationPlanSource
@@ -22,6 +22,8 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
+import com.charmnight.linkgraph.workbench.StepGranularity
+import com.charmnight.linkgraph.workbench.StepKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -481,26 +483,27 @@ class GraphEditorStateServiceTest {
         )
         val result = GraphBeautificationResult(
             source = LlmResultSource.MOCK,
-            summaryTitle = "当前方法讲解",
-            summary = "先走参数校验，再进入核心下游调用。",
-            sections = listOf(
-                GraphBeautificationSection(
-                    id = "current-method",
+            granularity = StepGranularity.BUSINESS,
+            steps = listOf(
+                GraphBeautificationStep(
+                    stepId = "step-place-draft",
                     title = "当前方法内部",
-                    content = "先判断参数，再调用 placeDraft。",
-                ),
-            ),
-            findings = listOf(
-                ResultEvidenceFinding(
-                    id = "direct-place-draft",
-                    claim = "当前方法直接调用了 placeDraft。",
-                    evidenceLevel = ResultEvidenceLevel.DIRECT_SOURCE,
-                    references = listOf(
-                        ResultEvidenceReference(
-                            nodeId = "method:order-service-place",
-                            filePath = "/tmp/OrderService.java",
-                            startLine = 12,
-                            endLine = 14,
+                    granularity = StepGranularity.BUSINESS,
+                    kind = StepKind.BUSINESS_ACTION,
+                    description = "先判断参数，再调用 placeDraft。",
+                    evidence = listOf(
+                        ResultEvidenceFinding(
+                            id = "direct-place-draft",
+                            claim = "当前方法直接调用了 placeDraft。",
+                            evidenceLevel = ResultEvidenceLevel.DIRECT_SOURCE,
+                            references = listOf(
+                                ResultEvidenceReference(
+                                    nodeId = "method:order-service-place",
+                                    filePath = "/tmp/OrderService.java",
+                                    startLine = 12,
+                                    endLine = 14,
+                                ),
+                            ),
                         ),
                     ),
                 ),
@@ -515,7 +518,7 @@ class GraphEditorStateServiceTest {
         var snapshot = service.snapshot()
         assertEquals(result, snapshot.graphBeautificationResult)
         assertEquals("graphBeautificationResult", snapshot.lastMessageType)
-        assertEquals(ResultEvidenceLevel.DIRECT_SOURCE, snapshot.graphBeautificationResult?.findings?.single()?.evidenceLevel)
+        assertEquals(ResultEvidenceLevel.DIRECT_SOURCE, snapshot.graphBeautificationResult?.steps?.single()?.evidence?.single()?.evidenceLevel)
 
         service.loadGraph(graph, "currentMethod")
 
@@ -605,13 +608,14 @@ class GraphEditorStateServiceTest {
         )
         val beautificationResult = GraphBeautificationResult(
             source = LlmResultSource.MOCK,
-            summaryTitle = "当前链路讲解",
-            summary = "先校验，再写库。",
-            sections = listOf(
-                GraphBeautificationSection(
-                    id = "current-method",
+            granularity = StepGranularity.BUSINESS,
+            steps = listOf(
+                GraphBeautificationStep(
+                    stepId = "step-validate-before-write",
                     title = "当前方法内部",
-                    content = "先校验参数，再调用下游。",
+                    granularity = StepGranularity.BUSINESS,
+                    kind = StepKind.BUSINESS_ACTION,
+                    description = "先校验参数，再调用下游。",
                 ),
             ),
             promptPreview = "beautification prompt",

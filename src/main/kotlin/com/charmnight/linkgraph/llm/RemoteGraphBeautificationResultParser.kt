@@ -1,8 +1,11 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.workbench.StepGranularity
+import com.charmnight.linkgraph.workbench.StepKind
+
 /**
  * 解析远程 LLM 返回的链路讲解结果。
- * 除总览摘要外，还会拆出多个结构化 section 供前端按块展示。
+ * 当前改为解析步骤化讲解结果。
  */
 internal object RemoteGraphBeautificationResultParser {
     /** 把远程返回的 JSON 文本解析为讲解结果对象。 */
@@ -13,34 +16,40 @@ internal object RemoteGraphBeautificationResultParser {
         /** 解析后的 JSON 根对象。 */
         val root = RemoteBeautificationJsonParser(RemoteStructuredJsonExtractor.extract(content)).parseValue() as? Map<*, *>
             ?: error("LLM response root must be a JSON object.")
-        /** 远程返回的讲解分段列表。 */
-        val sections = (root["sections"] as? List<*>).orEmpty().mapNotNull { raw ->
-            parseSection(raw as? Map<*, *>)
+        /** 远程返回的步骤化讲解列表。 */
+        val steps = (root["steps"] as? List<*>).orEmpty().mapIndexedNotNull { index, raw ->
+            parseStep(raw as? Map<*, *>, index)
         }
         return GraphBeautificationResult(
             source = LlmResultSource.REMOTE,
-            summaryTitle = root["summaryTitle"] as? String ?: "当前链路讲解",
-            summary = root["summary"] as? String ?: root["answer"] as? String ?: error("LLM response must contain summary."),
-            sections = sections,
-            findings = parseResultEvidenceFindings(root["findings"]),
+            granularity = StepGranularity.BUSINESS,
+            steps = steps,
             promptPreview = prompt,
             warnings = (root["warnings"] as? List<*>).orEmpty().mapNotNull { it as? String },
         )
     }
 
-    /** 解析单个讲解 section。 */
-    private fun parseSection(raw: Map<*, *>?): GraphBeautificationSection? {
+    /** 解析单个步骤。 */
+    private fun parseStep(
+        raw: Map<*, *>?,
+        index: Int,
+    ): GraphBeautificationStep? {
         raw ?: return null
-        /** section 标题。 */
+        /** 步骤标题。 */
         val title = raw["title"] as? String ?: return null
-        /** section 正文内容。 */
-        val content = raw["content"] as? String ?: return null
-        /** section 稳定标识，缺失时回退到标题。 */
-        val id = raw["id"] as? String ?: title
-        return GraphBeautificationSection(
-            id = id,
+        /** 步骤说明。 */
+        val description = raw["description"] as? String ?: return null
+        /** 步骤稳定标识，缺失时回退到序号。 */
+        val stepId = raw["stepId"] as? String ?: "step-$index"
+        return GraphBeautificationStep(
+            stepId = stepId,
             title = title,
-            content = content,
+            granularity = StepGranularity.BUSINESS,
+            kind = StepKind.BUSINESS_ACTION,
+            description = description,
+            evidence = parseResultEvidenceFindings(raw["evidence"]),
+            followUpQuestions = (raw["followUpQuestions"] as? List<*>).orEmpty().mapNotNull { it as? String },
+            downstreamTargets = (raw["downstreamTargets"] as? List<*>).orEmpty().mapNotNull { it as? String },
         )
     }
 }

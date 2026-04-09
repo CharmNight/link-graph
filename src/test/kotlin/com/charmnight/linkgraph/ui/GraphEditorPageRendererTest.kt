@@ -11,7 +11,7 @@ import com.charmnight.linkgraph.mermaid.MermaidIssue
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
 import com.charmnight.linkgraph.llm.GraphBeautificationResult
-import com.charmnight.linkgraph.llm.GraphBeautificationSection
+import com.charmnight.linkgraph.llm.GraphBeautificationStep
 import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.GenerationPlanItem
 import com.charmnight.linkgraph.llm.GenerationPlanSource
@@ -33,6 +33,8 @@ import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
+import com.charmnight.linkgraph.workbench.StepGranularity
+import com.charmnight.linkgraph.workbench.StepKind
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -413,26 +415,27 @@ class GraphEditorPageRendererTest {
             ),
             graphBeautificationResult = GraphBeautificationResult(
                 source = LlmResultSource.MOCK,
-                summaryTitle = "链路讲解占位结果",
-                summary = "当前方法先做输入处理，再进入下游调用。",
-                sections = listOf(
-                    GraphBeautificationSection(
-                        id = "anchor-method",
+                granularity = StepGranularity.BUSINESS,
+                steps = listOf(
+                    GraphBeautificationStep(
+                        stepId = "step-submit-order",
                         title = "当前方法内部",
-                        content = "先进入 OrderController.submit，再调用后续节点。",
-                    ),
-                ),
-                findings = listOf(
-                    ResultEvidenceFinding(
-                        id = "submit-direct-call",
-                        claim = "当前方法直接进入 OrderController.submit。",
-                        evidenceLevel = ResultEvidenceLevel.DIRECT_SOURCE,
-                        references = listOf(
-                            ResultEvidenceReference(
-                                nodeId = "method:submit-order",
-                                filePath = "/tmp/OrderController.java",
-                                startLine = 21,
-                                endLine = 28,
+                        granularity = StepGranularity.BUSINESS,
+                        kind = StepKind.BUSINESS_ACTION,
+                        description = "先进入 OrderController.submit，再调用后续节点。",
+                        evidence = listOf(
+                            ResultEvidenceFinding(
+                                id = "submit-direct-call",
+                                claim = "当前方法直接进入 OrderController.submit。",
+                                evidenceLevel = ResultEvidenceLevel.DIRECT_SOURCE,
+                                references = listOf(
+                                    ResultEvidenceReference(
+                                        nodeId = "method:submit-order",
+                                        filePath = "/tmp/OrderController.java",
+                                        startLine = 21,
+                                        endLine = 28,
+                                    ),
+                                ),
                             ),
                         ),
                     ),
@@ -486,10 +489,11 @@ class GraphEditorPageRendererTest {
         assertTrue(rendered.contains("已应用 1 条草稿图变更。"))
         assertTrue(rendered.contains("DefaultFallback"))
         assertTrue(rendered.contains("\"graphBeautificationResult\""))
-        assertTrue(rendered.contains("\"findings\""))
+        assertTrue(rendered.contains("\"steps\""))
+        assertTrue(rendered.contains("\"evidence\""))
         assertTrue(rendered.contains("\"DIRECT_SOURCE\""))
         assertTrue(rendered.contains("submit-direct-call"))
-        assertTrue(rendered.contains("链路讲解占位结果"))
+        assertTrue(rendered.contains("step-submit-order"))
         assertFalse(rendered.contains("Beautification prompt preview"))
         assertTrue(rendered.contains("\"promptPreviewArtifactId\""))
         assertTrue(rendered.contains("\"diffReviewRequestState\""))

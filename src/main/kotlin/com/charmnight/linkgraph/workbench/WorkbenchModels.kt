@@ -32,6 +32,8 @@ data class WorkbenchStep(
     val granularity: StepGranularity,
     val kind: StepKind,
     val description: String = "",
+    val nodeRefs: List<String> = emptyList(),
+    val downstreamTargets: List<String> = emptyList(),
 )
 
 data class StepProjectionResult(

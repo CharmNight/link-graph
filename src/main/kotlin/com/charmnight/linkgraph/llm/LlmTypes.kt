@@ -6,6 +6,8 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
+import com.charmnight.linkgraph.workbench.StepGranularity
+import com.charmnight.linkgraph.workbench.StepKind
 
 /**
  * 生成计划的上下文快照。
@@ -100,18 +102,8 @@ data class GraphBeautificationContext(
     val preferredStyle: String? = null,
     /** 保存讲解关注点。 */
     val explanationFocus: String? = null,
-)
-
-/**
- * 表示讲解结果中的一个章节。
- */
-data class GraphBeautificationSection(
-    /** 保存章节标识。 */
-    val id: String,
-    /** 保存章节标题。 */
-    val title: String,
-    /** 保存章节正文内容。 */
-    val content: String,
+    /** 保存当前讲解粒度。 */
+    val granularity: StepGranularity = StepGranularity.BUSINESS,
 )
 
 /**
@@ -236,17 +228,32 @@ data class GraphPatchResult(
 /**
  * 表示图讲解结果。
  */
+data class GraphBeautificationStep(
+    /** 保存步骤标识。 */
+    val stepId: String,
+    /** 保存步骤标题。 */
+    val title: String,
+    /** 保存讲解粒度。 */
+    val granularity: StepGranularity = StepGranularity.BUSINESS,
+    /** 保存步骤类型。 */
+    val kind: StepKind = StepKind.BUSINESS_ACTION,
+    /** 保存步骤说明。 */
+    val description: String,
+    /** 保存步骤证据。 */
+    val evidence: List<ResultEvidenceFinding> = emptyList(),
+    /** 保存当前步骤可继续追问的问题。 */
+    val followUpQuestions: List<String> = emptyList(),
+    /** 保存可继续下钻的目标。 */
+    val downstreamTargets: List<String> = emptyList(),
+)
+
 data class GraphBeautificationResult(
     /** 保存结果来源。 */
     val source: LlmResultSource,
-    /** 保存摘要标题。 */
-    val summaryTitle: String,
-    /** 保存摘要正文。 */
-    val summary: String,
-    /** 保存章节列表。 */
-    val sections: List<GraphBeautificationSection> = emptyList(),
-    /** 保存结构化证据结论。 */
-    val findings: List<ResultEvidenceFinding> = emptyList(),
+    /** 保存当前讲解粒度。 */
+    val granularity: StepGranularity = StepGranularity.BUSINESS,
+    /** 保存步骤化讲解结果。 */
+    val steps: List<GraphBeautificationStep> = emptyList(),
     /** 保存提示词预览。 */
     val promptPreview: String = "",
     /** 保存警告列表。 */

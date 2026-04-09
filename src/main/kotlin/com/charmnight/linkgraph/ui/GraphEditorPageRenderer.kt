@@ -521,16 +521,19 @@ class GraphEditorPageRenderer {
         promptPreviewArtifactId: String?,
     ): Map<String, Any?> = linkedMapOf(
         "source" to result.source.name,
-        "summaryTitle" to result.summaryTitle,
-        "summary" to result.summary,
-        "sections" to result.sections.map { section ->
+        "granularity" to result.granularity.name,
+        "steps" to result.steps.map { step ->
             linkedMapOf(
-                "id" to section.id,
-                "title" to section.title,
-                "content" to section.content,
+                "stepId" to step.stepId,
+                "title" to step.title,
+                "granularity" to step.granularity.name,
+                "kind" to step.kind.name,
+                "description" to step.description,
+                "evidence" to step.evidence.map(::resultEvidenceFindingToMap),
+                "followUpQuestions" to step.followUpQuestions,
+                "downstreamTargets" to step.downstreamTargets,
             )
         },
-        "findings" to result.findings.map(::resultEvidenceFindingToMap),
         "promptPreviewArtifactId" to promptPreviewArtifactId,
         "warnings" to result.warnings,
     )
