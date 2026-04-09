@@ -1,1 +1,1 @@
-rootProject.name = "link-graph-v1"
+rootProject.name = "link-graph"

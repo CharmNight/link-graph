@@ -10,17 +10,27 @@ import com.intellij.psi.PsiMethodCallExpression
 import com.intellij.psi.PsiReferenceExpression
 import com.intellij.psi.util.PsiTreeUtil
 
+/**
+ * 解析方法中的 Dubbo 引用关系。
+ */
 class DubboResolver(
+    /** 保存 Java 辅助解析器，用于生成方法稳定键。 */
     private val javaResolver: JavaResolver = JavaResolver(),
 ) {
+    /**
+     * 扫描方法体中的 DubboReference 调用，并生成代理依赖边。
+     */
     fun resolve(method: PsiMethod, context: ResolverContext): ResolverOutput {
+        // 没有方法体时无法扫描调用表达式。
         val body = method.body ?: return ResolverOutput()
         val methodNodeId = GraphNode.stableId(NodeType.METHOD, javaResolver.methodKey(method))
+        // 用有序映射去重服务节点和代理边。
         val nodes = linkedMapOf<String, GraphNode>()
         val edges = linkedMapOf<String, GraphEdge>()
 
         PsiTreeUtil.findChildrenOfType(body, PsiMethodCallExpression::class.java)
             .forEach { callExpression ->
+                // Dubbo 调用通常以字段为限定符，这里先取出字段引用。
                 val qualifier = callExpression.methodExpression.qualifierExpression as? PsiReferenceExpression
                     ?: return@forEach
                 val field = qualifier.resolve() as? PsiField ?: return@forEach
@@ -28,6 +38,7 @@ class DubboResolver(
                     return@forEach
                 }
 
+                // 解析出服务接口类型后，构建服务节点。
                 val serviceInterface = callExpression.resolveMethod()?.containingClass ?: return@forEach
                 val qualifiedName = serviceInterface.qualifiedName ?: return@forEach
                 val serviceNode = GraphNode(

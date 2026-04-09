@@ -3,13 +3,13 @@ package com.charmnight.linkgraph.extract
 import com.charmnight.linkgraph.model.Certainty
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.testing.addJavaFixture
+import com.charmnight.linkgraph.testing.addResourceFixture
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.assertTrue
 
 class UncertainLinkResolverTest : BasePlatformTestCase() {
@@ -118,15 +118,47 @@ class UncertainLinkResolverTest : BasePlatformTestCase() {
         )
     }
 
+    fun testKeepsAopAdviceVisibleAsProxyLink() {
+        loadJavaFixture("aop/AopOrderFlow.java")
+
+        val method = findMethod(
+            "com.charmnight.linkgraph.fixtures.aop.OrderService",
+            "place",
+        )
+
+        val result = GraphExtractor().extract(
+            GraphExtractionRequest(entryMethods = listOf(method)),
+        )
+
+        val targetMethod = result.document.nodes.single { it.title == "OrderService.place" }
+        val aroundAdvice = result.document.nodes.single { it.title == "TracingAspect.wrapPlace" }
+        val beforeAdvice = result.document.nodes.single { it.title == "TracingAspect.beforeAudited" }
+
+        assertTrue(
+            result.document.edges.any { edge ->
+                edge.type == EdgeType.USES_PROXY &&
+                    edge.fromNodeId == aroundAdvice.id &&
+                    edge.toNodeId == targetMethod.id &&
+                    edge.certainty == Certainty.RULE_INFERRED &&
+                    edge.uncertainty?.reason?.contains("AOP", ignoreCase = true) == true
+            },
+        )
+        assertTrue(
+            result.document.edges.any { edge ->
+                edge.type == EdgeType.USES_PROXY &&
+                    edge.fromNodeId == beforeAdvice.id &&
+                    edge.toNodeId == targetMethod.id &&
+                    edge.certainty == Certainty.RULE_INFERRED
+            },
+        )
+    }
+
     private fun loadJavaFixture(relativePath: String) {
-        val fixturePath = Path.of("src/testFixtures/java/com/charmnight/linkgraph/fixtures/$relativePath")
-        val projectRelativePath = "com/charmnight/linkgraph/fixtures/$relativePath"
-        myFixture.addFileToProject(projectRelativePath, Files.readString(fixturePath))
+        myFixture.addJavaFixture(relativePath)
     }
 
     private fun loadResourceFixture(relativePath: String, projectRelativePath: String = "com/charmnight/linkgraph/fixtures/$relativePath") {
-        val fixturePath = Path.of("src/testFixtures/resources/com/charmnight/linkgraph/fixtures/$relativePath")
-        myFixture.addFileToProject(projectRelativePath, Files.readString(fixturePath))
+        myFixture.addResourceFixture(relativePath, projectRelativePath)
     }
 
     private fun findMethod(className: String, methodName: String): PsiMethod {

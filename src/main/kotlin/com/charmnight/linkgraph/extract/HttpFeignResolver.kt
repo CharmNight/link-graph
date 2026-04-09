@@ -8,18 +8,28 @@ import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiMethodCallExpression
 import com.intellij.psi.util.PsiTreeUtil
 
+/**
+ * 解析方法中的 Feign 调用和对应 HTTP 目标关系。
+ */
 class HttpFeignResolver(
+    /** 保存 Java 辅助解析器，用于生成方法稳定键。 */
     private val javaResolver: JavaResolver = JavaResolver(),
 ) {
+    /**
+     * 扫描方法体中的 Feign 调用，并生成 Feign 节点、HTTP 节点和关系边。
+     */
     fun resolve(method: PsiMethod, context: ResolverContext): ResolverOutput {
+        // 没有方法体时无法扫描调用表达式。
         val body = method.body ?: return ResolverOutput()
         val methodNodeId = GraphNode.stableId(NodeType.METHOD, javaResolver.methodKey(method))
+        // 用有序映射去重节点和边，用集合去重补充方法。
         val nodes = linkedMapOf<String, GraphNode>()
         val edges = linkedMapOf<String, GraphEdge>()
         val additionalMethods = linkedSetOf<PsiMethod>()
 
         PsiTreeUtil.findChildrenOfType(body, PsiMethodCallExpression::class.java)
             .forEach { callExpression ->
+                // 先解析出被调方法及其所属 Feign 接口。
                 val resolvedMethod = callExpression.resolveMethod() ?: return@forEach
                 val ownerClass = resolvedMethod.containingClass ?: return@forEach
                 val feignAnnotation = ResolverSupport.findAnnotation(
@@ -43,11 +53,12 @@ class HttpFeignResolver(
                     metadata = mapOf(
                         "clientClass" to clientClass,
                         "httpMethod" to httpMethod,
-                        "path" to path,
+                    "path" to path,
                     ),
                 )
                 nodes[feignNode.id] = feignNode
 
+                // 再根据 HTTP 方法和路径构造目标接口节点。
                 val endpointNode = ResolverSupport.endpointNode(
                     httpMethod = httpMethod,
                     path = path,
@@ -70,6 +81,7 @@ class HttpFeignResolver(
                 )
 
                 context.allProjectMethods()
+                    // 额外收集项目中实现同一路由签名的方法，便于继续展开。
                     .filter { candidate -> ResolverSupport.endpointSignature(candidate) == httpMethod to path }
                     .forEach(additionalMethods::add)
             }

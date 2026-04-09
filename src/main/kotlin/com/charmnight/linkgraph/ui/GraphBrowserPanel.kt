@@ -1,36 +1,104 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.model.GraphJson
+import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
 import java.awt.BorderLayout
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
+import org.cef.handler.CefDisplayHandlerAdapter
+import org.cef.handler.CefLoadHandler
 import org.cef.handler.CefLoadHandlerAdapter
 import javax.swing.JComponent
 import javax.swing.JEditorPane
 import javax.swing.JPanel
 
-class GraphBrowserPanel(
+/**
+ * IDEA 工具窗口里的 JCEF 外壳。
+ * 负责把前端产物装进浏览器、注入 bridge，并在项目状态变化时重新下发 bootstrap 数据。
+ */
+class GraphBrowserPanel private constructor(
     project: Project,
-) : JPanel(BorderLayout()) {
-    private val bridge: GraphEditorBridge = GraphEditorBridge(project)
+    private val frontendAssetLoader: FrontendAssetLoader,
+) : JPanel(BorderLayout()), Disposable {
+    constructor(project: Project) : this(project, ClasspathFrontendAssetLoader())
+    private val transportState = GraphBrowserTransportState()
+    private val bridge: GraphEditorBridge = GraphEditorBridge(
+        project = project,
+        onFrontendReady = ::handleFrontendReady,
+        onSnapshotAck = ::handleSnapshotAck,
+    )
     private val pageRenderer = GraphEditorPageRenderer()
-    private val entryUrl: String = resolveEntryUrl()
+    private val sliceRenderer = GraphEditorTransportSliceRenderer(pageRenderer)
+    private val pendingTransportSnapshots = mutableMapOf<Long, GraphEditorStateService.Snapshot>()
+    private val entryUrl: String = INLINE_ENTRY_URL
+    private val frontendHtml: String = resolveFrontendHtml()
     private val browser: JBCefBrowser? = createBrowser()
+    private val debugTracingEnabled: Boolean =
+        System.getenv(DEBUG_TRACE_ENV)?.trim()?.equals("true", ignoreCase = true) == true
+    private val interactionProbeEnabled: Boolean =
+        debugTracingEnabled &&
+            System.getenv(DEBUG_INTERACTION_PROBE_ENV)?.trim()?.equals("true", ignoreCase = true) == true
+    @Volatile
+    private var browserLoaded: Boolean = false
+    @Volatile
+    private var disposed: Boolean = false
+    private var lastDispatchedSnapshot: GraphEditorStateService.Snapshot = bridge.currentState()
+    private val importMermaidQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val exportMermaidQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val showDiffModeQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestSyncPreviewQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val requestAuditQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val requestDiffReviewQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val requestGraphBeautificationQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val applyDraftPatchPreviewQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val clearDraftPatchPreviewQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val restoreDraftPatchPreviewQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val undoLastDraftPatchApplyQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val requestGenerationPlanQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val requestCodeDraftsQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val requestCurrentMethodGraphQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val requestAnalysisDisplayModeQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val requestOpenSettingsQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val applyCodeDraftsQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val applySingleCodeDraftQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val requestDraftNavigationQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val requestArtifactQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val graphChangedQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val frontendReadyQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val snapshotAckQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val layoutChangedQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val nodeSelectedQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestSourceNavigationQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val requestExpandOverflowNodeQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val debugTraceQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
 
     init {
         browser?.let(::configureBrowser)
         add(browser?.component ?: createFallbackView(entryUrl), BorderLayout.CENTER)
+        logger.info("准备加载链路图前端入口: $entryUrl")
         bridge.onFrontendLoaded(entryUrl)
+        // 首次 loadHTML 时就内嵌 bootstrap，避免前端先渲染一版演示态再切到真实项目状态。
+        val initialSnapshot = lastDispatchedSnapshot
+        sliceRenderer.renderBootstrapInitScript(
+            sessionId = transportState.sessionId,
+            snapshot = initialSnapshot,
+        )
+        val initialHtml = pageRenderer.render(
+            frontendHtml,
+            transportState.sessionId,
+            initialSnapshot,
+            artifactRefs = sliceRenderer.currentArtifactRefs(),
+        )
+        browser?.loadHTML(initialHtml, entryUrl)
     }
 
     fun currentEntryUrl(): String = entryUrl
@@ -38,8 +106,37 @@ class GraphBrowserPanel(
     fun bridge(): GraphEditorBridge = bridge
 
     fun syncFromProjectState() {
-        val entryHtml = loadEntryHtml() ?: return
-        browser?.loadHTML(pageRenderer.render(entryHtml, bridge.currentState()), entryUrl)
+        if (disposed) {
+            return
+        }
+        val currentBrowser = browser ?: return
+        val snapshot = bridge.currentState()
+        logger.info("开始向前端同步链路图状态: ${snapshotSummary(snapshot)}")
+        val transportScript = sliceRenderer.renderIncrementalScript(
+            sessionId = transportState.sessionId,
+            previousSnapshot = lastDispatchedSnapshot,
+            snapshot = snapshot,
+        ) ?: return
+        val transportToExecute = transportState.onSnapshotAvailable(
+            revision = snapshot.snapshotRevision,
+            script = transportScript,
+        )
+        pendingTransportSnapshots[snapshot.snapshotRevision] = snapshot
+        executeSnapshotScript(
+            browser = currentBrowser,
+            transport = transportToExecute,
+            reason = "sync:${snapshot.lastMessageType ?: "unknown"}",
+        )
+    }
+
+    override fun dispose() {
+        if (disposed) {
+            return
+        }
+        disposed = true
+        browserLoaded = false
+        removeAll()
+        browser?.dispose()
     }
 
     private fun createBrowser(): JBCefBrowser? {
@@ -52,13 +149,129 @@ class GraphBrowserPanel(
     }
 
     private fun configureBrowser(browser: JBCefBrowser) {
+        importMermaidQuery?.addHandler { mermaid ->
+            bridge.dispatch(GraphEditorMessage.ImportMermaid(mermaid))
+            JBCefJSQuery.Response("ok")
+        }
         exportMermaidQuery?.addHandler {
             bridge.dispatch(GraphEditorMessage.ExportMermaid)
+            JBCefJSQuery.Response("ok")
+        }
+        showDiffModeQuery?.addHandler {
+            bridge.dispatch(GraphEditorMessage.ShowDiffMode)
             JBCefJSQuery.Response("ok")
         }
         requestSyncPreviewQuery?.addHandler {
             bridge.dispatch(GraphEditorMessage.RequestSyncPreview)
             JBCefJSQuery.Response("ok")
+        }
+        requestAuditQuery?.addHandler { payload ->
+            val (question, selectedNodeIds) = parseQuestionWithIds(payload)
+            logger.info(
+                "收到前端请求：审计, question=${summarizePayloadText(question)}, selectedNodeIds=$selectedNodeIds",
+            )
+            bridge.dispatch(
+                GraphEditorMessage.RequestAudit(
+                    question = question,
+                    selectedNodeIds = selectedNodeIds,
+                ),
+            )
+            JBCefJSQuery.Response("ok")
+        }
+        requestDiffReviewQuery?.addHandler { payload ->
+            val (question, selectedDiffItemIds) = parseQuestionWithIds(payload)
+            bridge.dispatch(
+                GraphEditorMessage.RequestDiffReview(
+                    question = question,
+                    selectedDiffItemIds = selectedDiffItemIds,
+                ),
+            )
+            JBCefJSQuery.Response("ok")
+        }
+        requestGraphBeautificationQuery?.addHandler { payload ->
+            val (goal, preferredStyle, explanationFocus) = parseBeautificationPayload(payload)
+            logger.info(
+                "收到前端请求：链路讲解, goal=${summarizePayloadText(goal)}, preferredStyle=${summarizePayloadText(preferredStyle)}, " +
+                    "explanationFocus=${summarizePayloadText(explanationFocus)}",
+            )
+            bridge.dispatch(
+                GraphEditorMessage.RequestGraphBeautification(
+                    goal = goal,
+                    preferredStyle = preferredStyle,
+                    explanationFocus = explanationFocus,
+                ),
+            )
+            JBCefJSQuery.Response("ok")
+        }
+        applyDraftPatchPreviewQuery?.addHandler { payload ->
+            val operationIds = parseEncodedList(payload).toSet().takeIf { it.isNotEmpty() }
+            bridge.dispatch(GraphEditorMessage.ApplyDraftPatchPreview(operationIds))
+            JBCefJSQuery.Response("ok")
+        }
+        clearDraftPatchPreviewQuery?.addHandler {
+            bridge.dispatch(GraphEditorMessage.ClearDraftPatchPreview)
+            JBCefJSQuery.Response("ok")
+        }
+        restoreDraftPatchPreviewQuery?.addHandler { payload ->
+            bridge.dispatch(
+                GraphEditorMessage.RestoreDraftPatchPreview(
+                    GraphEditorMessage.DraftPatchPreviewSource.valueOf(payload),
+                ),
+            )
+            JBCefJSQuery.Response("ok")
+        }
+        undoLastDraftPatchApplyQuery?.addHandler {
+            bridge.dispatch(GraphEditorMessage.UndoLastDraftPatchApply)
+            JBCefJSQuery.Response("ok")
+        }
+        requestGenerationPlanQuery?.addHandler {
+            bridge.dispatch(GraphEditorMessage.RequestGenerationPlan)
+            JBCefJSQuery.Response("ok")
+        }
+        requestCodeDraftsQuery?.addHandler {
+            bridge.dispatch(GraphEditorMessage.RequestCodeDrafts)
+            JBCefJSQuery.Response("ok")
+        }
+        requestCurrentMethodGraphQuery?.addHandler {
+            logger.info("收到前端请求：加载当前方法链路, 当前快照=${snapshotSummary(bridge.currentState())}")
+            bridge.dispatch(GraphEditorMessage.RequestCurrentMethodGraph)
+            JBCefJSQuery.Response("ok")
+        }
+        requestAnalysisDisplayModeQuery?.addHandler { payload ->
+            runCatching {
+                bridge.dispatch(
+                    GraphEditorMessage.RequestAnalysisDisplayMode(
+                        AnalysisDisplayMode.valueOf(payload),
+                    ),
+                )
+                JBCefJSQuery.Response("ok")
+            }.getOrElse { error ->
+                JBCefJSQuery.Response(null, 1, error.message ?: "切换展示模式失败")
+            }
+        }
+        requestOpenSettingsQuery?.addHandler {
+            bridge.dispatch(GraphEditorMessage.OpenSettings)
+            JBCefJSQuery.Response("ok")
+        }
+        applyCodeDraftsQuery?.addHandler {
+            bridge.dispatch(GraphEditorMessage.ApplyCodeDrafts)
+            JBCefJSQuery.Response("ok")
+        }
+        applySingleCodeDraftQuery?.addHandler { draftId ->
+            bridge.dispatch(GraphEditorMessage.ApplySingleCodeDraft(draftId))
+            JBCefJSQuery.Response("ok")
+        }
+        requestDraftNavigationQuery?.addHandler { targetPath ->
+            bridge.dispatch(GraphEditorMessage.RequestDraftNavigation(targetPath))
+            JBCefJSQuery.Response("ok")
+        }
+        requestArtifactQuery?.addHandler { payload ->
+            runCatching {
+                dispatchArtifactSlice(parseEncodedList(payload))
+                JBCefJSQuery.Response("ok")
+            }.getOrElse { error ->
+                JBCefJSQuery.Response(null, 1, error.message ?: "artifact 请求失败")
+            }
         }
         nodeSelectedQuery?.addHandler { nodeId ->
             bridge.dispatch(GraphEditorMessage.NodeSelected(nodeId))
@@ -68,16 +281,73 @@ class GraphBrowserPanel(
             bridge.dispatch(GraphEditorMessage.RequestSourceNavigation(nodeId))
             JBCefJSQuery.Response("ok")
         }
+        requestExpandOverflowNodeQuery?.addHandler { nodeId ->
+            bridge.dispatch(GraphEditorMessage.RequestExpandOverflowNode(nodeId))
+            JBCefJSQuery.Response("ok")
+        }
         graphChangedQuery?.addHandler { payload ->
             runCatching {
-                bridge.dispatch(GraphEditorMessage.GraphChanged(GraphJson.fromJson(payload)))
+                val graph = GraphJson.fromJson(payload)
+                logger.info(
+                    "收到前端 graphChanged: nodes=${graph.nodes.size}, edges=${graph.edges.size}, sampleNodeIds=${graph.nodes.take(6).map { it.id }}",
+                )
+                bridge.dispatch(GraphEditorMessage.GraphChanged(graph))
                 JBCefJSQuery.Response("ok")
             }.getOrElse { error ->
-                JBCefJSQuery.Response(null, 1, error.message ?: "graphChanged failed")
+                JBCefJSQuery.Response(null, 1, error.message ?: "链路图变更同步失败")
             }
+        }
+        frontendReadyQuery?.addHandler { payload ->
+            runCatching {
+                bridge.dispatch(
+                    GraphEditorMessage.FrontendReady(
+                        lastAppliedRevision = parseNullableRevision(payload),
+                    ),
+                )
+                JBCefJSQuery.Response("ok")
+            }.getOrElse { error ->
+                JBCefJSQuery.Response(null, 1, error.message ?: "前端 ready 握手失败")
+            }
+        }
+        snapshotAckQuery?.addHandler { payload ->
+            runCatching {
+                bridge.dispatch(
+                    GraphEditorMessage.SnapshotAck(
+                        revision = payload.toLongOrNull() ?: error("无效的 snapshot revision: $payload"),
+                    ),
+                )
+                JBCefJSQuery.Response("ok")
+            }.getOrElse { error ->
+                JBCefJSQuery.Response(null, 1, error.message ?: "快照确认失败")
+            }
+        }
+        layoutChangedQuery?.addHandler { payload ->
+            runCatching {
+                bridge.dispatch(GraphEditorMessage.LayoutChanged(parseLayoutPositions(payload)))
+                JBCefJSQuery.Response("ok")
+            }.getOrElse { error ->
+                JBCefJSQuery.Response(null, 1, error.message ?: "链路图布局同步失败")
+            }
+        }
+        debugTraceQuery?.addHandler { payload ->
+            logger.info("前端 trace: $payload")
+            JBCefJSQuery.Response("ok")
         }
         browser.jbCefClient.addLoadHandler(
             object : CefLoadHandlerAdapter() {
+                override fun onLoadStart(
+                    cefBrowser: CefBrowser,
+                    frame: CefFrame,
+                    transitionType: org.cef.network.CefRequest.TransitionType?,
+                ) {
+                    if (!frame.isMain) {
+                        return
+                    }
+                    logger.info("JCEF 开始加载页面: ${cefBrowser.url}")
+                    browserLoaded = false
+                    transportState.onMainFrameLoadStarted()
+                }
+
                 override fun onLoadEnd(
                     cefBrowser: CefBrowser,
                     frame: CefFrame,
@@ -86,24 +356,700 @@ class GraphBrowserPanel(
                     if (!frame.isMain) {
                         return
                     }
+                    logger.info("JCEF 页面加载完成: url=${cefBrowser.url}, status=$httpStatusCode")
+                    browserLoaded = true
+                    logger.info("开始注入链路图 bridge 脚本")
                     cefBrowser.executeJavaScript(buildBridgeScript(), cefBrowser.url, 0)
+                    executeSnapshotScript(
+                        browser = browser,
+                        transport = transportState.onMainFrameLoadEnded(),
+                        reason = "loadEnd",
+                    )
+                }
+
+                override fun onLoadError(
+                    cefBrowser: CefBrowser,
+                    frame: CefFrame,
+                    errorCode: CefLoadHandler.ErrorCode,
+                    errorText: String,
+                    failedUrl: String,
+                ) {
+                    if (!frame.isMain) {
+                        return
+                    }
+                    logger.warn("JCEF 页面加载失败: url=$failedUrl, errorCode=$errorCode, errorText=$errorText")
                 }
             },
             browser.cefBrowser,
         )
-        syncFromProjectState()
+        browser.jbCefClient.addDisplayHandler(
+            object : CefDisplayHandlerAdapter() {
+                override fun onConsoleMessage(
+                    browser: CefBrowser?,
+                    level: org.cef.CefSettings.LogSeverity?,
+                    message: String?,
+                    source: String?,
+                    line: Int,
+                ): Boolean {
+                    logger.warn("JCEF console[$level] $message ($source:$line)")
+                    return false
+                }
+            },
+            browser.cefBrowser,
+        )
     }
 
     private fun buildBridgeScript(): String {
+        val debugBridgeScript = if (debugTracingEnabled) {
+            """
+            window.__linkGraphDebugEnabled = true;
+            window.__linkGraphInteractionProbe = ${if (interactionProbeEnabled) "true" else "false"};
+            window.__linkGraphTraceBuffer = Array.isArray(window.__linkGraphTraceBuffer) ? window.__linkGraphTraceBuffer : [];
+            window.linkGraphDebugTrace = (payload) => { ${debugTraceQuery?.inject("payload") ?: ""} };
+            if (Array.isArray(window.__linkGraphTraceBuffer) && window.__linkGraphTraceBuffer.length > 0) {
+              window.__linkGraphTraceBuffer.forEach((payload) => window.linkGraphDebugTrace(payload));
+              window.__linkGraphTraceBuffer = [];
+            }
+            """.trimIndent()
+        } else {
+            """
+            window.__linkGraphDebugEnabled = false;
+            window.__linkGraphInteractionProbe = false;
+            window.__linkGraphTraceBuffer = [];
+            """.trimIndent()
+        }
         return """
+            ${if (debugTracingEnabled) """console.log("link-graph bridge 注入开始");""" else ""}
+            $debugBridgeScript
             window.linkGraphBridge = {
+              importMermaid: (mermaid) => { ${importMermaidQuery?.inject("mermaid") ?: ""} },
               exportMermaid: () => { ${exportMermaidQuery?.inject("'exportMermaid'") ?: ""} },
+              showDiffMode: () => { ${showDiffModeQuery?.inject("'showDiffMode'") ?: ""} },
               requestSyncPreview: () => { ${requestSyncPreviewQuery?.inject("'requestSyncPreview'") ?: ""} },
+              requestAudit: (question, selectedNodeIds) => { ${requestAuditQuery?.inject("[(question ? encodeURIComponent(question) : ''), ((selectedNodeIds || []).map((value) => encodeURIComponent(value)).join(','))].join('\\u001f')") ?: ""} },
+              requestDiffReview: (question, selectedDiffItemIds) => { ${requestDiffReviewQuery?.inject("[(question ? encodeURIComponent(question) : ''), ((selectedDiffItemIds || []).map((value) => encodeURIComponent(value)).join(','))].join('\\u001f')") ?: ""} },
+              requestGraphBeautification: (goal, preferredStyle, explanationFocus) => { ${requestGraphBeautificationQuery?.inject("[(goal ? encodeURIComponent(goal) : ''), (preferredStyle ? encodeURIComponent(preferredStyle) : ''), (explanationFocus ? encodeURIComponent(explanationFocus) : '')].join('\\u001f')") ?: ""} },
+              applyDraftPatchPreview: (operationIds) => { ${applyDraftPatchPreviewQuery?.inject("((operationIds || []).map((value) => encodeURIComponent(value)).join(','))") ?: ""} },
+              clearDraftPatchPreview: () => { ${clearDraftPatchPreviewQuery?.inject("'clearDraftPatchPreview'") ?: ""} },
+              restoreDraftPatchPreview: (source) => { ${restoreDraftPatchPreviewQuery?.inject("source") ?: ""} },
+              undoLastDraftPatchApply: () => { ${undoLastDraftPatchApplyQuery?.inject("'undoLastDraftPatchApply'") ?: ""} },
+              requestGenerationPlan: () => { ${requestGenerationPlanQuery?.inject("'requestGenerationPlan'") ?: ""} },
+              requestCodeDrafts: () => { ${requestCodeDraftsQuery?.inject("'requestCodeDrafts'") ?: ""} },
+              requestCurrentMethodGraph: () => { ${requestCurrentMethodGraphQuery?.inject("'requestCurrentMethodGraph'") ?: ""} },
+              requestAnalysisDisplayMode: (displayMode) => { ${requestAnalysisDisplayModeQuery?.inject("displayMode") ?: ""} },
+              requestOpenSettings: () => { ${requestOpenSettingsQuery?.inject("'requestOpenSettings'") ?: ""} },
+              applyCodeDrafts: () => { ${applyCodeDraftsQuery?.inject("'applyCodeDrafts'") ?: ""} },
+              applySingleCodeDraft: (draftId) => { ${applySingleCodeDraftQuery?.inject("draftId") ?: ""} },
+              requestDraftNavigation: (targetPath) => { ${requestDraftNavigationQuery?.inject("targetPath") ?: ""} },
+              requestArtifact: (artifactIds) => { ${requestArtifactQuery?.inject("((artifactIds || []).map((value) => encodeURIComponent(value)).join(','))") ?: ""} },
+              frontendReady: (payload) => { ${frontendReadyQuery?.inject("payload && Number.isFinite(payload.lastAppliedRevision) ? String(payload.lastAppliedRevision) : ''") ?: ""} },
+              snapshotAck: (payload) => { ${snapshotAckQuery?.inject("payload && Number.isFinite(payload.revision) ? String(payload.revision) : ''") ?: ""} },
               nodeSelected: (nodeId) => { ${nodeSelectedQuery?.inject("nodeId") ?: ""} },
+              layoutChanged: (payload) => { ${layoutChangedQuery?.inject("((payload && Array.isArray(payload.positions) ? payload.positions : []).map((item) => [encodeURIComponent(item.nodeId), item.x, item.y].join('\\u001f')).join('\\u001e'))") ?: ""} },
               requestSourceNavigation: (nodeId) => { ${requestSourceNavigationQuery?.inject("nodeId") ?: ""} },
+              requestExpandOverflowNode: (nodeId) => { ${requestExpandOverflowNodeQuery?.inject("nodeId") ?: ""} },
               graphChanged: (payload) => { ${graphChangedQuery?.inject("JSON.stringify(payload)") ?: ""} }
             };
+            window.dispatchEvent(new Event("link-graph-bridge-ready"));
+            ${if (debugTracingEnabled) """console.log("link-graph bridge 注入完成");""" else ""}
         """.trimIndent()
+    }
+
+    private fun handleFrontendReady(lastAppliedRevision: Long?) {
+        val currentBrowser = browser ?: return
+        executeSnapshotScript(
+            browser = currentBrowser,
+            transport = transportState.onFrontendReady(lastAppliedRevision),
+            reason = "frontendReady",
+        )
+    }
+
+    private fun handleSnapshotAck(revision: Long) {
+        val currentBrowser = browser ?: return
+        executeSnapshotScript(
+            browser = currentBrowser,
+            transport = transportState.onSnapshotAcknowledged(revision),
+            reason = "snapshotAck:$revision",
+        )
+    }
+
+    private fun executeSnapshotScript(
+        browser: JBCefBrowser,
+        transport: GraphBrowserTransportState.DispatchedTransport?,
+        reason: String,
+    ) {
+        val dispatchedTransport = transport ?: return
+        if (dispatchedTransport.script.isBlank()) {
+            return
+        }
+        pendingTransportSnapshots.remove(dispatchedTransport.revision)?.let { dispatchedSnapshot ->
+            lastDispatchedSnapshot = dispatchedSnapshot
+        }
+        browser.cefBrowser.executeJavaScript(
+            dispatchedTransport.script,
+            browser.cefBrowser.url,
+            0,
+        )
+        scheduleRuntimeProbe(reason)
+    }
+
+    private fun dispatchArtifactSlice(artifactIds: List<String>) {
+        val currentBrowser = browser ?: return
+        if (artifactIds.isEmpty()) {
+            return
+        }
+        val artifactContents = sliceRenderer.artifactContents(artifactIds)
+        if (artifactContents.isEmpty()) {
+            return
+        }
+        val currentSnapshot = bridge.currentState()
+        val script = sliceRenderer.renderScript(
+            listOf(
+                GraphEditorTransportEnvelope.ArtifactSlice(
+                    sessionId = transportState.sessionId,
+                    revision = currentSnapshot.snapshotRevision,
+                    state = linkedMapOf(
+                        "artifactContents" to artifactContents,
+                        "snapshotRevision" to currentSnapshot.snapshotRevision,
+                        "lastMessageType" to "artifactSlice",
+                    ),
+                ),
+            ),
+        )
+        currentBrowser.cefBrowser.executeJavaScript(script, currentBrowser.cefBrowser.url, 0)
+    }
+
+    private fun scheduleRuntimeProbe(reason: String) {
+        if (!debugTracingEnabled) {
+            return
+        }
+        val currentBrowser = browser ?: return
+        if (!browserLoaded) {
+            return
+        }
+        currentBrowser.cefBrowser.executeJavaScript(
+            buildRuntimeProbeScript(reason),
+            currentBrowser.cefBrowser.url,
+            0,
+        )
+    }
+
+    private fun buildRuntimeProbeScript(reason: String): String {
+        val escapedReason = escapeJsString(reason)
+        return """
+            (function() {
+              const reason = "$escapedReason";
+              const delays = [0, 120, 480, 1200, 2500];
+              const round = (value) => Number.isFinite(value) ? Math.round(value) : null;
+              const summarizeRect = (element) => {
+                if (!element || !element.getBoundingClientRect) {
+                  return null;
+                }
+                const rect = element.getBoundingClientRect();
+                return {
+                  width: Math.round(rect.width),
+                  height: Math.round(rect.height),
+                  top: Math.round(rect.top),
+                  left: Math.round(rect.left),
+                  right: Math.round(rect.right),
+                  bottom: Math.round(rect.bottom)
+                };
+              };
+              const summarizeSvgRect = (rect) => {
+                if (!rect) {
+                  return null;
+                }
+                return {
+                  x: round(rect.x),
+                  y: round(rect.y),
+                  width: round(rect.width),
+                  height: round(rect.height)
+                };
+              };
+              const summarizePoint = (point) => {
+                if (!point) {
+                  return null;
+                }
+                return {
+                  x: round(point.x),
+                  y: round(point.y)
+                };
+              };
+              const summarizeFlowPoint = (point, flowHostRect, viewportState) => {
+                if (!point || !flowHostRect || !viewportState || !Number.isFinite(viewportState.scale) || Math.abs(viewportState.scale) < 0.0001) {
+                  return null;
+                }
+                return {
+                  x: round((point.x - flowHostRect.left - viewportState.translateX) / viewportState.scale),
+                  y: round((point.y - flowHostRect.top - viewportState.translateY) / viewportState.scale)
+                };
+              };
+              const summarizeRectCenter = (element) => {
+                if (!element || !element.getBoundingClientRect) {
+                  return null;
+                }
+                const rect = element.getBoundingClientRect();
+                return {
+                  x: round((rect.left + rect.right) / 2),
+                  y: round((rect.top + rect.bottom) / 2)
+                };
+              };
+              const parseViewportState = (viewport) => {
+                const style = viewport?.getAttribute ? (viewport.getAttribute("style") ?? "") : "";
+                const matched = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)\s*scale\(([-\d.]+)\)/.exec(style);
+                if (!matched) {
+                  return null;
+                }
+                const translateX = Number.parseFloat(matched[1] ?? "");
+                const translateY = Number.parseFloat(matched[2] ?? "");
+                const scale = Number.parseFloat(matched[3] ?? "");
+                if (!Number.isFinite(translateX) || !Number.isFinite(translateY) || !Number.isFinite(scale)) {
+                  return null;
+                }
+                return {
+                  translateX,
+                  translateY,
+                  scale
+                };
+              };
+              const emitPayload = (payload) => {
+                if (typeof window.linkGraphDebugTrace === "function") {
+                  window.linkGraphDebugTrace(payload);
+                  return;
+                }
+                window.__linkGraphTraceBuffer = Array.isArray(window.__linkGraphTraceBuffer) ? window.__linkGraphTraceBuffer : [];
+                window.__linkGraphTraceBuffer.push(payload);
+              };
+              const emitEvent = (event, payload) => {
+                emitPayload(JSON.stringify({
+                  time: new Date().toISOString(),
+                  event,
+                  payload: payload ?? null
+                }));
+              };
+              const intersects = (left, right) => {
+                if (!left || !right) {
+                  return false;
+                }
+                return !(left.right < right.left || left.left > right.right || left.bottom < right.top || left.top > right.bottom);
+              };
+              const summarizeHandle = (element, flowHostRect, viewportState) => {
+                const screenCenter = summarizeRectCenter(element);
+                return {
+                  handleId: element?.dataset?.handleid ?? null,
+                  nodeId: element?.dataset?.nodeid ?? null,
+                  handlePosition: element?.dataset?.handlepos ?? null,
+                  rect: summarizeRect(element),
+                  screenCenter,
+                  flowPoint: summarizeFlowPoint(screenCenter, flowHostRect, viewportState)
+                };
+              };
+              const summarizeFlowNode = (element, flowHostRect, viewportState) => {
+                const shell = element?.querySelector(".flowchart-react-node, .fact-graph-react-node, .resource-relation-react-node");
+                const card = shell?.querySelector(".flow-node-card");
+                const handles = shell
+                  ? Array.from(shell.querySelectorAll(".react-flow__handle")).map((handle) => summarizeHandle(handle, flowHostRect, viewportState))
+                  : [];
+                return {
+                  nodeId: element?.dataset?.id ?? element?.dataset?.nodeid ?? null,
+                  selected: element?.classList?.contains("selected") === true,
+                  wrapperRect: summarizeRect(element),
+                  wrapperCenter: summarizeRectCenter(element),
+                  wrapperCenterFlowPoint: summarizeFlowPoint(summarizeRectCenter(element), flowHostRect, viewportState),
+                  shellRect: summarizeRect(shell),
+                  cardRect: summarizeRect(card),
+                  handleRects: handles
+                };
+              };
+              const summarizeDecisionNode = (element, flowHostRect, viewportState) => {
+                const summary = summarizeFlowNode(element, flowHostRect, viewportState);
+                return {
+                  ...summary,
+                  shellRect: summary.shellRect,
+                  cardRect: summary.cardRect
+                };
+              };
+              const summarizeEdge = (element) => {
+                const path = element?.querySelector(".react-flow__edge-path");
+                const length = path?.getTotalLength ? path.getTotalLength() : null;
+                const safeLength = typeof length === "number" && Number.isFinite(length) ? length : null;
+                return {
+                  edgeId: element?.dataset?.id ?? null,
+                  pathD: path?.getAttribute("d") ?? null,
+                  pathBox: (() => {
+                    try {
+                      return path?.getBBox ? summarizeSvgRect(path.getBBox()) : null;
+                    } catch (error) {
+                      return { error: String(error) };
+                    }
+                  })(),
+                  startPoint: safeLength !== null && path?.getPointAtLength ? summarizePoint(path.getPointAtLength(0)) : null,
+                  endPoint: safeLength !== null && path?.getPointAtLength
+                    ? summarizePoint(path.getPointAtLength(Math.max(safeLength - 0.01, 0)))
+                    : null
+                };
+              };
+              const summarizeProbeNode = (element, flowHostRect, viewportState) => ({
+                nodeId: element?.dataset?.id ?? element?.dataset?.nodeid ?? null,
+                rect: summarizeRect(element),
+                center: summarizeRectCenter(element),
+                centerFlowPoint: summarizeFlowPoint(summarizeRectCenter(element), flowHostRect, viewportState),
+                transform: element?.style?.transform ?? null,
+                handles: Array.from(element?.querySelectorAll?.(".react-flow__handle") ?? []).map((handle) =>
+                  summarizeHandle(handle, flowHostRect, viewportState),
+                )
+              });
+              const summarizeVisibleEdges = () =>
+                Array.from(document.querySelectorAll(".react-flow__edge")).slice(0, 24).map((edge) => summarizeEdge(edge));
+              const edgeSignature = (edge) => JSON.stringify({
+                pathD: edge?.pathD ?? null,
+                startPoint: edge?.startPoint ?? null,
+                endPoint: edge?.endPoint ?? null
+              });
+              const countChangedEdges = (beforeEdges, afterEdges) => {
+                const beforeIndex = new Map((beforeEdges ?? []).map((edge) => [edge.edgeId, edgeSignature(edge)]));
+                return (afterEdges ?? []).reduce((count, edge) => {
+                  if (!edge?.edgeId) {
+                    return count;
+                  }
+                  return beforeIndex.get(edge.edgeId) === edgeSignature(edge) ? count : count + 1;
+                }, 0);
+              };
+              const dispatchMouseEvent = (targets, type, x, y, buttons) => {
+                targets.forEach((target) => {
+                  if (!target?.dispatchEvent) {
+                    return;
+                  }
+                  target.dispatchEvent(new MouseEvent(type, {
+                    bubbles: true,
+                    cancelable: true,
+                    composed: true,
+                    button: 0,
+                    buttons,
+                    which: buttons === 0 ? 0 : 1,
+                    detail: 1,
+                    clientX: x,
+                    clientY: y,
+                    screenX: x,
+                    screenY: y,
+                    view: window
+                  }));
+                });
+              };
+              const dispatchPointerEvent = (targets, type, x, y, buttons) => {
+                if (typeof window.PointerEvent !== "function") {
+                  return;
+                }
+                targets.forEach((target) => {
+                  if (!target?.dispatchEvent) {
+                    return;
+                  }
+                  target.dispatchEvent(new PointerEvent(type, {
+                    bubbles: true,
+                    cancelable: true,
+                    composed: true,
+                    button: 0,
+                    buttons,
+                    clientX: x,
+                    clientY: y,
+                    screenX: x,
+                    screenY: y,
+                    pointerId: 1,
+                    pointerType: "mouse",
+                    isPrimary: true,
+                    view: window
+                  }));
+                });
+              };
+              const dispatchDragGesture = (targets, phase, x, y, buttons) => {
+                if (phase === "down") {
+                  dispatchPointerEvent(targets, "pointerdown", x, y, buttons);
+                  dispatchMouseEvent(targets, "mousedown", x, y, buttons);
+                  return;
+                }
+                if (phase === "move") {
+                  dispatchPointerEvent(targets, "pointermove", x, y, buttons);
+                  dispatchMouseEvent(targets, "mousemove", x, y, buttons);
+                  return;
+                }
+                dispatchPointerEvent(targets, "pointerup", x, y, buttons);
+                dispatchMouseEvent(targets, "mouseup", x, y, buttons);
+              };
+              const selectDragDelta = (forwardSpace, backwardSpace, preferred) => {
+                if (forwardSpace >= preferred) {
+                  return preferred;
+                }
+                if (backwardSpace >= preferred) {
+                  return -preferred;
+                }
+                if (forwardSpace >= 16) {
+                  return Math.max(Math.min(forwardSpace - 8, preferred), 8);
+                }
+                if (backwardSpace >= 16) {
+                  return -Math.max(Math.min(backwardSpace - 8, preferred), 8);
+                }
+                return 0;
+              };
+              const summarizeDragSnapshot = (nodeId) => {
+                const node = Array.from(document.querySelectorAll(".react-flow__node")).find((element) =>
+                  (element?.dataset?.id ?? element?.dataset?.nodeid ?? null) === nodeId,
+                );
+                const flowHost = document.querySelector(".react-flow");
+                const viewport = document.querySelector(".react-flow__viewport");
+                const viewportState = parseViewportState(viewport);
+                return {
+                  node: summarizeProbeNode(node, flowHost?.getBoundingClientRect ? flowHost.getBoundingClientRect() : null, viewportState),
+                  edges: summarizeVisibleEdges(),
+                  viewportStyle: document.querySelector(".react-flow__viewport")?.getAttribute("style") ?? null
+                };
+              };
+              const runInteractionProbe = () => {
+                if (window.__linkGraphInteractionProbe !== true || String(reason).indexOf("loadAnalysisOutcome") === -1) {
+                  return;
+                }
+                window.__linkGraphInteractionState = window.__linkGraphInteractionState ?? {};
+                const interactionState = window.__linkGraphInteractionState;
+                const runKey = String(reason);
+                if (interactionState.lastDragRunKey === runKey) {
+                  return;
+                }
+                interactionState.lastDragRunKey = runKey;
+                window.setTimeout(() => {
+                  const shell = document.querySelector("[data-testid='graph-canvas-shell']");
+                  const shellRect = shell?.getBoundingClientRect ? shell.getBoundingClientRect() : null;
+                  const visibleNodes = Array.from(document.querySelectorAll(".react-flow__node")).filter((node) =>
+                    intersects(node?.getBoundingClientRect ? node.getBoundingClientRect() : null, shellRect),
+                  );
+                  const targetNode = visibleNodes[0];
+                  if (!targetNode || !shellRect) {
+                    emitEvent("jcef.interactionProbe.drag.skipped", {
+                      reason,
+                      cause: "no-visible-node",
+                      visibleNodeCount: visibleNodes.length
+                    });
+                    return;
+                  }
+                  const targetNodeId = targetNode?.dataset?.id ?? targetNode?.dataset?.nodeid ?? null;
+                  const targetRect = targetNode.getBoundingClientRect ? targetNode.getBoundingClientRect() : null;
+                  if (!targetRect || !targetNodeId) {
+                    emitEvent("jcef.interactionProbe.drag.skipped", {
+                      reason,
+                      cause: "missing-node-geometry"
+                    });
+                    return;
+                  }
+                  const deltaX = selectDragDelta(shellRect.right - targetRect.right, targetRect.left - shellRect.left, 56);
+                  const deltaY = selectDragDelta(shellRect.bottom - targetRect.bottom, targetRect.top - shellRect.top, 28);
+                  if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) {
+                    emitEvent("jcef.interactionProbe.drag.skipped", {
+                      reason,
+                      cause: "insufficient-drag-room",
+                      nodeId: targetNodeId
+                    });
+                    return;
+                  }
+                  const startX = Math.round((targetRect.left + targetRect.right) / 2);
+                  const startY = Math.round((targetRect.top + targetRect.bottom) / 2);
+                  const endX = startX + deltaX;
+                  const endY = startY + deltaY;
+                  const beforeSnapshot = summarizeDragSnapshot(targetNodeId);
+                  emitEvent("jcef.interactionProbe.drag.started", {
+                    reason,
+                    nodeId: targetNodeId,
+                    start: { x: startX, y: startY },
+                    delta: { x: deltaX, y: deltaY },
+                    before: beforeSnapshot
+                  });
+                  dispatchDragGesture([targetNode], "down", startX, startY, 1);
+                  window.setTimeout(() => {
+                    dispatchDragGesture([window], "move", startX + Math.round(deltaX * 0.2), startY + Math.round(deltaY * 0.2), 1);
+                  }, 24);
+                  window.setTimeout(() => {
+                    dispatchDragGesture([window], "move", startX + Math.round(deltaX * 0.65), startY + Math.round(deltaY * 0.65), 1);
+                  }, 56);
+                  window.setTimeout(() => {
+                    dispatchDragGesture([window], "move", endX, endY, 1);
+                    emitEvent("jcef.interactionProbe.drag.progress", {
+                      reason,
+                      nodeId: targetNodeId,
+                      snapshot: summarizeDragSnapshot(targetNodeId)
+                    });
+                  }, 96);
+                  window.setTimeout(() => {
+                    dispatchDragGesture([window], "up", endX, endY, 0);
+                    window.setTimeout(() => {
+                      const afterSnapshot = summarizeDragSnapshot(targetNodeId);
+                      const beforeRect = beforeSnapshot?.node?.rect ?? null;
+                      const afterRect = afterSnapshot?.node?.rect ?? null;
+                      const movedDistance = beforeRect && afterRect
+                        ? round(Math.hypot(afterRect.left - beforeRect.left, afterRect.top - beforeRect.top))
+                        : null;
+                      emitEvent("jcef.interactionProbe.drag.completed", {
+                        reason,
+                        nodeId: targetNodeId,
+                        movedDistance,
+                        changedEdgeCount: countChangedEdges(beforeSnapshot?.edges ?? [], afterSnapshot?.edges ?? []),
+                        after: afterSnapshot
+                      });
+                    }, 96);
+                  }, 168);
+                }, 900);
+              };
+              const emit = (stage) => {
+                try {
+                  const root = document.getElementById("root");
+                  const shell = document.querySelector("[data-testid='graph-canvas-shell']");
+                  const flowHost = document.querySelector(".react-flow");
+                  const viewport = document.querySelector(".react-flow__viewport");
+                  const viewportState = parseViewportState(viewport);
+                  const flowNodes = Array.from(document.querySelectorAll(".react-flow__node"));
+                  const decisionNodes = Array.from(document.querySelectorAll(".react-flow__node")).filter((node) =>
+                    node.querySelector(".flowchart-react-node.kind-decision"),
+                  );
+                  const flowEdges = Array.from(document.querySelectorAll(".react-flow__edge"));
+                  const shellRectRaw = shell && shell.getBoundingClientRect ? shell.getBoundingClientRect() : null;
+                  const firstNodeRectRaw = flowNodes[0] && flowNodes[0].getBoundingClientRect ? flowNodes[0].getBoundingClientRect() : null;
+                  const visibleNodeCountInShell = shellRectRaw
+                    ? flowNodes.reduce((count, node) => {
+                        const rect = node.getBoundingClientRect ? node.getBoundingClientRect() : null;
+                        return intersects(rect, shellRectRaw) ? count + 1 : count;
+                      }, 0)
+                    : null;
+                  const payload = JSON.stringify({
+                    time: new Date().toISOString(),
+                    event: "jcef.runtimeProbe",
+                    payload: {
+                      reason,
+                      stage,
+                      readyState: document.readyState,
+                      title: document.title,
+                      rootChildren: root ? root.childElementCount : null,
+                      rootTextSample: root ? (root.textContent || "").trim().slice(0, 120) : null,
+                      flowNodeCount: flowNodes.length,
+                      flowEdgeCount: document.querySelectorAll(".react-flow__edge").length,
+                      flowCardCount: document.querySelectorAll(".flow-node-card").length,
+                      visibleNodeCountInShell,
+                      shellRect: summarizeRect(shell),
+                      flowHostRect: summarizeRect(flowHost),
+                      anchorTitle: document.querySelector(".canvas-reading-card.is-anchor .canvas-reading-title")?.textContent?.trim() ?? null,
+                      selectedSummaryTitle: document.querySelectorAll(".canvas-reading-card .canvas-reading-title")[1]?.textContent?.trim() ?? null,
+                      selectedCanvasTitle:
+                        document.querySelector(".react-flow__node.selected .flowchart-node-title, .react-flow__node.selected .flow-node-owner")
+                          ?.textContent
+                          ?.trim() ?? null,
+                      viewportState,
+                      firstNodeRect: firstNodeRectRaw ? {
+                        width: Math.round(firstNodeRectRaw.width),
+                        height: Math.round(firstNodeRectRaw.height),
+                        top: Math.round(firstNodeRectRaw.top),
+                        left: Math.round(firstNodeRectRaw.left)
+                      } : null,
+                      viewportStyle: viewport ? (viewport.getAttribute("style") || null) : null,
+                      flowNodesWithHandles: flowNodes
+                        .filter((node) => node.querySelector(".react-flow__handle"))
+                        .slice(0, 12)
+                        .map((node) => summarizeFlowNode(node, flowHost?.getBoundingClientRect ? flowHost.getBoundingClientRect() : null, viewportState)),
+                      decisionNodes: decisionNodes.slice(0, 6).map((node) =>
+                        summarizeDecisionNode(node, flowHost?.getBoundingClientRect ? flowHost.getBoundingClientRect() : null, viewportState),
+                      ),
+                      flowEdges: flowEdges.slice(0, 24).map((edge) => summarizeEdge(edge))
+                    }
+                  });
+                  emitPayload(payload);
+                } catch (error) {
+                  const payload = JSON.stringify({
+                    time: new Date().toISOString(),
+                    event: "jcef.runtimeProbeFailed",
+                    payload: {
+                      reason,
+                      stage,
+                      error: String(error)
+                    }
+                  });
+                  emitPayload(payload);
+                }
+              };
+              delays.forEach((delay) => window.setTimeout(() => emit("t" + delay), delay));
+              runInteractionProbe();
+            })();
+        """.trimIndent()
+    }
+
+    private fun escapeJsString(value: String): String = buildString(value.length + 8) {
+        value.forEach { char ->
+            when (char) {
+                '\\' -> append("\\\\")
+                '"' -> append("\\\"")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> append(char)
+            }
+        }
+    }
+
+    private fun parseQuestionWithIds(payload: String): Pair<String, List<String>> {
+        val parts = payload.split(PAYLOAD_SEPARATOR, limit = 2)
+        val question = decodePayloadValue(parts.firstOrNull().orEmpty())
+        val selectedNodeIds = parseEncodedList(parts.getOrNull(1).orEmpty())
+        return question to selectedNodeIds
+    }
+
+    private fun parseBeautificationPayload(payload: String): Triple<String, String?, String?> {
+        val parts = payload.split(PAYLOAD_SEPARATOR, limit = 3)
+        val goal = decodePayloadValue(parts.getOrNull(0).orEmpty())
+        val preferredStyle = parts.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
+        val explanationFocus = parts.getOrNull(2)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
+        return Triple(goal, preferredStyle, explanationFocus)
+    }
+
+    private fun parseNullableRevision(payload: String): Long? = payload.trim().takeIf { it.isNotEmpty() }?.toLongOrNull()
+
+    private fun parseEncodedList(payload: String): List<String> {
+        if (payload.isBlank()) {
+            return emptyList()
+        }
+        return payload
+            .split(',')
+            .mapNotNull { raw ->
+                raw.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
+            }
+    }
+
+    private fun parseLayoutPositions(payload: String): Map<String, GraphLayoutPosition> {
+        if (payload.isBlank()) {
+            return emptyMap()
+        }
+        return payload
+            .split('\u001e')
+            .mapNotNull { entry ->
+                val parts = entry.split(PAYLOAD_SEPARATOR)
+                if (parts.size != 3) {
+                    return@mapNotNull null
+                }
+                val nodeId = decodePayloadValue(parts[0])
+                val x = parts[1].toDoubleOrNull() ?: return@mapNotNull null
+                val y = parts[2].toDoubleOrNull() ?: return@mapNotNull null
+                nodeId to GraphLayoutPosition(x = x, y = y)
+            }
+            .toMap()
+    }
+
+    private fun decodePayloadValue(value: String): String = URLDecoder.decode(value, StandardCharsets.UTF_8)
+
+    private fun summarizePayloadText(
+        value: String?,
+        maxLength: Int = 160,
+    ): String {
+        val normalized = value?.trim().orEmpty()
+        if (normalized.isBlank()) {
+            return "\"\""
+        }
+        return if (normalized.length <= maxLength) {
+            normalized
+        } else {
+            normalized.take(maxLength) + "...(trimmed)"
+        }
     }
 
     private fun createFallbackView(entryUrl: String): JComponent {
@@ -112,8 +1058,8 @@ class GraphBrowserPanel(
             """
             <html>
               <body>
-                <h2>Link Graph Editor Shell</h2>
-                <p>Frontend entry: $entryUrl</p>
+                <h2>链路图编辑器外壳</h2>
+                <p>前端入口：$entryUrl</p>
               </body>
             </html>
             """.trimIndent(),
@@ -122,19 +1068,52 @@ class GraphBrowserPanel(
         }
     }
 
-    private fun loadEntryHtml(): String? {
-        return javaClass.getResource("/linkgraph/index.html")
-            ?.readText()
-            ?: javaClass.getResource("/linkgraph/editor-shell.html")?.readText()
+    private fun resolveFrontendHtml(): String {
+        return runCatching {
+            frontendAssetLoader.loadInlineEntryHtml()
+        }.onFailure { error ->
+            logger.warn("构建链路图前端页面失败，回退到占位页", error)
+        }.getOrElse {
+            createFallbackHtml(FALLBACK_ENTRY_URL)
+        }
     }
 
-    private fun resolveEntryUrl(): String {
-        return javaClass.getResource("/linkgraph/index.html")?.toExternalForm()
-            ?: javaClass.getResource("/linkgraph/editor-shell.html")?.toExternalForm()
-            ?: FALLBACK_ENTRY_URL
+    private fun createFallbackHtml(entryUrl: String): String {
+        return """
+        <html>
+          <body>
+            <h2>链路图编辑器外壳</h2>
+            <p>前端入口：$entryUrl</p>
+          </body>
+        </html>
+        """.trimIndent()
     }
 
     companion object {
+        private const val PAYLOAD_SEPARATOR: String = "\u001F"
+        private const val DEBUG_TRACE_ENV: String = "LINKGRAPH_DEBUG_TRACE"
+        private const val DEBUG_INTERACTION_PROBE_ENV: String = "LINKGRAPH_DEBUG_INTERACTION_PROBE"
         const val FALLBACK_ENTRY_URL: String = "linkgraph://shell/index.html"
+        const val INLINE_ENTRY_URL: String = "https://linkgraph.local/index.html"
+        private val logger = Logger.getInstance(GraphBrowserPanel::class.java)
+    }
+
+    private fun snapshotSummary(snapshot: GraphEditorStateService.Snapshot): String {
+        fun graphSummary(document: com.charmnight.linkgraph.model.GraphDocument?): String {
+            if (document == null) {
+                return "0/0"
+            }
+            return "${document.nodes.size}/${document.edges.size} sample=${document.nodes.take(6).map { it.id }}"
+        }
+
+        return buildString {
+            append("lastMessageType=").append(snapshot.lastMessageType)
+            append(", lastGraphSource=").append(snapshot.lastGraphSource)
+            append(", selectedNodeId=").append(snapshot.selectedNodeId)
+            append(", visibleGraph=").append(graphSummary(snapshot.visibleGraph))
+            append(", workingGraph=").append(graphSummary(snapshot.workingGraph))
+            append(", referenceFactGraph=").append(graphSummary(snapshot.referenceFactGraph))
+            append(", feedback=").append(snapshot.operationFeedback?.message)
+        }
     }
 }

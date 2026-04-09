@@ -2,13 +2,12 @@ package com.charmnight.linkgraph.extract
 
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.testing.addJavaFixture
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -49,6 +48,21 @@ class SpringResolverTest : BasePlatformTestCase() {
             result.document.edges.any { edge ->
                 edge.type == EdgeType.CALL &&
                     edge.fromNodeId == nodesByTitle.getValue("OrderController.getOrder").id &&
+                    result.document.nodes.any { node ->
+                        node.id == edge.toNodeId &&
+                            node.type == NodeType.FLOW_ACTION &&
+                            node.title.contains("service.findOrder(id)")
+                    }
+            },
+        )
+        assertTrue(
+            result.document.edges.any { edge ->
+                edge.type == EdgeType.CALL &&
+                    result.document.nodes.any { node ->
+                        node.id == edge.fromNodeId &&
+                            node.type == NodeType.FLOW_ACTION &&
+                            node.title.contains("service.findOrder(id)")
+                    } &&
                     edge.toNodeId == nodesByTitle.getValue("DefaultOrderService.findOrder").id
             },
         )
@@ -56,6 +70,21 @@ class SpringResolverTest : BasePlatformTestCase() {
             result.document.edges.any { edge ->
                 edge.type == EdgeType.CALL &&
                     edge.fromNodeId == nodesByTitle.getValue("DefaultOrderService.findOrder").id &&
+                    result.document.nodes.any { node ->
+                        node.id == edge.toNodeId &&
+                            node.type == NodeType.FLOW_ACTION &&
+                            node.title.contains("repository.loadOrder(id)")
+                    }
+            },
+        )
+        assertTrue(
+            result.document.edges.any { edge ->
+                edge.type == EdgeType.CALL &&
+                    result.document.nodes.any { node ->
+                        node.id == edge.fromNodeId &&
+                            node.type == NodeType.FLOW_ACTION &&
+                            node.title.contains("repository.loadOrder(id)")
+                    } &&
                     edge.toNodeId == nodesByTitle.getValue("JdbcOrderRepository.loadOrder").id
             },
         )
@@ -75,10 +104,27 @@ class SpringResolverTest : BasePlatformTestCase() {
         )
     }
 
+    fun testDoesNotLeaveStandaloneSpringBeanClassNodeWhenNoDependencyEdgeExists() {
+        loadFixture("spring/SpringBeanWithoutDependencies.java")
+        val method = findMethod(
+            "com.charmnight.linkgraph.fixtures.spring.SpringBeanWithoutDependencies",
+            "normalize",
+        )
+
+        val result = GraphExtractor().extract(
+            GraphExtractionRequest(entryMethods = listOf(method)),
+        )
+
+        assertTrue(
+            result.document.nodes.none { node ->
+                node.type == NodeType.CLASS && node.title == "SpringBeanWithoutDependencies"
+            },
+            "expected no standalone spring bean class node when the class has no dependency edges",
+        )
+    }
+
     private fun loadFixture(relativePath: String) {
-        val fixturePath = Path.of("src/testFixtures/java/com/charmnight/linkgraph/fixtures/$relativePath")
-        val projectRelativePath = "com/charmnight/linkgraph/fixtures/$relativePath"
-        myFixture.addFileToProject(projectRelativePath, Files.readString(fixturePath))
+        myFixture.addJavaFixture(relativePath)
     }
 
     private fun findMethod(className: String, methodName: String): PsiMethod {

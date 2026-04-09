@@ -2,13 +2,12 @@ package com.charmnight.linkgraph.extract
 
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.testing.addJavaFixture
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -45,6 +44,21 @@ class DubboResolverTest : BasePlatformTestCase() {
             result.document.edges.any { edge ->
                 edge.type == EdgeType.CALL &&
                     edge.fromNodeId == consumerMethod.id &&
+                    result.document.nodes.any { node ->
+                        node.id == edge.toNodeId &&
+                            node.type == NodeType.FLOW_ACTION &&
+                            node.title.contains("orderDubboService.fetchOrder(id)")
+                    }
+            },
+        )
+        assertTrue(
+            result.document.edges.any { edge ->
+                edge.type == EdgeType.CALL &&
+                    result.document.nodes.any { node ->
+                        node.id == edge.fromNodeId &&
+                            node.type == NodeType.FLOW_ACTION &&
+                            node.title.contains("orderDubboService.fetchOrder(id)")
+                    } &&
                     edge.toNodeId == providerMethod.id
             },
         )
@@ -58,9 +72,7 @@ class DubboResolverTest : BasePlatformTestCase() {
     }
 
     private fun loadFixture(relativePath: String) {
-        val fixturePath = Path.of("src/testFixtures/java/com/charmnight/linkgraph/fixtures/$relativePath")
-        val projectRelativePath = "com/charmnight/linkgraph/fixtures/$relativePath"
-        myFixture.addFileToProject(projectRelativePath, Files.readString(fixturePath))
+        myFixture.addJavaFixture(relativePath)
     }
 
     private fun findMethod(className: String, methodName: String): PsiMethod {

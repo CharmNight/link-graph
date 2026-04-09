@@ -56,8 +56,8 @@ class GraphDifferTest {
         assertTrue(
             result.diff.entries.any { it.elementId == mermaidOnlyNode.id && it.status == DiffStatus.ONLY_IN_MERMAID },
         )
-        assertTrue(result.diff.summary.orEmpty().contains("only in code"))
-        assertTrue(result.diff.summary.orEmpty().contains("only in Mermaid"))
+        assertTrue(result.diff.summary.orEmpty().contains("仅代码存在"))
+        assertTrue(result.diff.summary.orEmpty().contains("仅 Mermaid 存在"))
     }
 
     @Test
