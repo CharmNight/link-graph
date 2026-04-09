@@ -22,6 +22,9 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
+import com.charmnight.linkgraph.workbench.DraftEntryKind
+import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
+import com.charmnight.linkgraph.workbench.DraftWorkbenchState
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.charmnight.linkgraph.workbench.StepKind
 import kotlin.test.Test
@@ -30,6 +33,28 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class GraphEditorStateServiceTest {
+    @Test
+    fun markDraftWorkbenchStateStoresUnifiedDraftEntries() {
+        val service = GraphEditorStateService()
+
+        service.markDraftWorkbenchState(
+            DraftWorkbenchState(
+                draftChanges = listOf(
+                    DraftWorkbenchEntry(
+                        entryId = "draft-change-1",
+                        kind = DraftEntryKind.CHANGE,
+                        sourceChangeId = "change-upload-condition",
+                    ),
+                ),
+            ),
+        )
+
+        val snapshot = service.snapshot()
+        assertEquals(1, snapshot.draftWorkbenchState.draftChanges.size)
+        assertEquals("change-upload-condition", snapshot.draftWorkbenchState.draftChanges.first().sourceChangeId)
+        assertEquals("draftWorkbenchState", snapshot.lastMessageType)
+    }
+
     @Test
     fun loadAnalysisOutcome同时更新展示模式与可见图() {
         val service = GraphEditorStateService()
