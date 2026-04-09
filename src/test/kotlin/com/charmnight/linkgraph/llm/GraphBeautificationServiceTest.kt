@@ -6,41 +6,61 @@ import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.settings.LlmProviderType
+import com.charmnight.linkgraph.workbench.StepGranularity
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class GraphBeautificationServiceTest {
     @Test
-    fun requestsRemoteBeautificationWhenOpenAiCompatibleProviderIsReady() {
+    fun requestsRemoteStepExplanationWhenOpenAiCompatibleProviderIsReady() {
         val service = DefaultGraphBeautificationService(
             gateway = object : LlmGateway {
                 override fun generate(request: LlmRequest): LlmResponse {
                     return LlmResponse(
                         content = """
                             {
-                              "summaryTitle": "远程链路讲解",
-                              "summary": "远程 LLM 已根据当前图和源码片段整理讲解。",
-                              "sections": [
+                              "steps": [
                                 {
-                                  "id": "current-method",
-                                  "title": "当前方法内部",
-                                  "content": "当前方法先读取 subject，再切换新的 principal。"
-                                }
-                              ],
-                              "findings": [
-                                {
-                                  "id": "direct-run-as",
-                                  "claim": "当前方法直接调用了 subject.runAs(newPrincipalCollection)。",
-                                  "evidenceLevel": "DIRECT_SOURCE",
-                                  "references": [
+                                  "stepId": "step-load-subject",
+                                  "title": "读取当前 subject",
+                                  "description": "先从上下文拿到当前 subject，后续要在它上面切换 principal。",
+                                  "followUpQuestions": ["这个 subject 从哪里来的？"],
+                                  "evidence": [
                                     {
-                                      "nodeId": "flow-action:run-as",
-                                      "filePath": "/tmp/ShiroUtils.java",
-                                      "startLine": 12,
-                                      "endLine": 12
+                                      "id": "direct-subject",
+                                      "claim": "当前步骤直接读取了 subject。",
+                                      "evidenceLevel": "DIRECT_GRAPH",
+                                      "references": [
+                                        {
+                                          "nodeId": "flow-action:get-subject"
+                                        }
+                                      ]
                                     }
-                                  ]
+                                  ],
+                                  "downstreamTargets": []
+                                },
+                                {
+                                  "stepId": "step-run-as",
+                                  "title": "切换 principal",
+                                  "description": "调用 runAs 切换新的 principal collection。",
+                                  "followUpQuestions": ["这个 principalCollection 是怎么构造的？"],
+                                  "evidence": [
+                                    {
+                                      "id": "direct-run-as",
+                                      "claim": "当前方法直接调用了 subject.runAs(newPrincipalCollection)。",
+                                      "evidenceLevel": "DIRECT_SOURCE",
+                                      "references": [
+                                        {
+                                          "nodeId": "flow-action:run-as",
+                                          "filePath": "/tmp/ShiroUtils.java",
+                                          "startLine": 12,
+                                          "endLine": 12
+                                        }
+                                      ]
+                                    }
+                                  ],
+                                  "downstreamTargets": ["method:build-principal-collection"]
                                 }
                               ],
                               "warnings": ["远程讲解仅基于当前图输入，不等于完整源码真值。"]
@@ -64,18 +84,21 @@ class GraphBeautificationServiceTest {
         )
 
         assertEquals(LlmResultSource.REMOTE, result.source)
-        assertEquals("远程链路讲解", result.summaryTitle)
-        assertTrue(result.summary.contains("远程 LLM"))
-        assertTrue(result.sections.any { it.title == "当前方法内部" && it.content.contains("principal") })
-        assertTrue(result.findings.any { finding ->
+        assertEquals(StepGranularity.BUSINESS, result.granularity)
+        assertEquals(2, result.steps.size)
+        assertEquals("step-run-as", result.steps[1].stepId)
+        assertTrue(result.steps[1].description.contains("runAs"))
+        assertTrue(result.steps[1].followUpQuestions.any { it.contains("principalCollection") })
+        assertTrue(result.steps[1].evidence.any { finding ->
             finding.evidenceLevel == ResultEvidenceLevel.DIRECT_SOURCE &&
                 finding.references.any { reference -> reference.nodeId == "flow-action:run-as" }
         })
+        assertEquals(listOf("method:build-principal-collection"), result.steps[1].downstreamTargets)
         assertTrue(result.warnings.any { it.contains("不等于完整源码真值") })
     }
 
     @Test
-    fun fallsBackToLocalBeautificationWhenRemoteBeautificationFails() {
+    fun fallsBackToLocalStepExplanationWhenRemoteBeautificationFails() {
         val service = DefaultGraphBeautificationService(
             gateway = object : LlmGateway {
                 override fun generate(request: LlmRequest): LlmResponse {
@@ -96,16 +119,18 @@ class GraphBeautificationServiceTest {
         )
 
         assertEquals(LlmResultSource.MOCK, result.source)
-        assertTrue(result.summary.contains("ShiroUtils.setSysUser"))
-        assertTrue(result.findings.any { finding ->
+        assertEquals(listOf("step-load-subject", "step-run-as", "step-return"), result.steps.map { it.stepId })
+        assertTrue(result.steps[1].description.contains("runAs"))
+        assertTrue(result.steps[1].evidence.any { finding ->
             finding.evidenceLevel == ResultEvidenceLevel.DIRECT_SOURCE &&
                 finding.references.any { reference -> reference.nodeId == "flow-action:run-as" }
         })
+        assertTrue(result.steps[1].followUpQuestions.isNotEmpty())
         assertTrue(result.warnings.any { it.contains("远程 LLM 链路讲解失败") })
     }
 
     @Test
-    fun explainsHowToFixRemoteBeautificationConfigurationBeforeUse() {
+    fun explainsHowToFixRemoteStepExplanationConfigurationBeforeUse() {
         val result = DefaultGraphBeautificationService().beautify(
             context = beautificationContext(),
             settings = LinkGraphSettingsState(
@@ -120,6 +145,7 @@ class GraphBeautificationServiceTest {
         assertEquals(LlmResultSource.MOCK, result.source)
         assertTrue(result.warnings.any { it.contains("远程 LLM 配置未就绪") })
         assertTrue(result.warnings.any { it.contains("本地规则讲解") })
+        assertTrue(result.steps.isNotEmpty())
     }
 
     private fun beautificationContext(): GraphBeautificationContext {
@@ -131,17 +157,45 @@ class GraphBeautificationServiceTest {
             signature = methodSignature,
             sourceTag = GraphSourceTag.FACT,
         )
+        val getSubjectNode = GraphNode(
+            id = "flow-action:get-subject",
+            type = NodeType.FLOW_ACTION,
+            title = "SecurityUtils.getSubject()",
+            signature = "SecurityUtils.getSubject()",
+            metadata = mapOf(
+                "workbench.businessStepId" to "step-load-subject",
+                "workbench.businessStepTitle" to "读取当前 subject",
+                "source.startLine" to "11",
+            ),
+            sourceTag = GraphSourceTag.FACT,
+        )
         val actionNode = GraphNode(
             id = "flow-action:run-as",
             type = NodeType.FLOW_ACTION,
             title = "subject.runAs(newPrincipalCollection)",
             signature = "subject.runAs(newPrincipalCollection)",
+            metadata = mapOf(
+                "workbench.businessStepId" to "step-run-as",
+                "workbench.businessStepTitle" to "切换 principal",
+                "source.startLine" to "12",
+            ),
+            sourceTag = GraphSourceTag.FACT,
+        )
+        val returnNode = GraphNode(
+            id = "flow-terminal:return",
+            type = NodeType.TERMINAL,
+            title = "return",
+            metadata = mapOf(
+                "workbench.businessStepId" to "step-return",
+                "workbench.businessStepTitle" to "返回调用结果",
+                "source.startLine" to "13",
+            ),
             sourceTag = GraphSourceTag.FACT,
         )
         return GraphBeautificationContext(
             presentationContext = GraphPresentationContext(
-                graph = GraphDocument(nodes = listOf(methodNode, actionNode)),
-                fullGraph = GraphDocument(nodes = listOf(methodNode, actionNode)),
+                graph = GraphDocument(nodes = listOf(methodNode, getSubjectNode, actionNode, returnNode)),
+                fullGraph = GraphDocument(nodes = listOf(methodNode, getSubjectNode, actionNode, returnNode)),
                 anchorNodeId = methodNode.id,
             ),
             sourceContext = listOf(

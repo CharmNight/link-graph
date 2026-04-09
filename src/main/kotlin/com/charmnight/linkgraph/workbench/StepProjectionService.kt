@@ -23,6 +23,7 @@ class StepProjectionService {
                         granularity = StepGranularity.BUSINESS,
                         kind = stepKindFor(node),
                         description = "",
+                        nodeRefs = listOf(node.id),
                     )
                 }
                 .toList()

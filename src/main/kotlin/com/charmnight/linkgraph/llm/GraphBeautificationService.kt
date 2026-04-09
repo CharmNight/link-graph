@@ -3,6 +3,10 @@ package com.charmnight.linkgraph.llm
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
+import com.charmnight.linkgraph.workbench.StepGranularity
+import com.charmnight.linkgraph.workbench.StepKind
+import com.charmnight.linkgraph.workbench.StepProjectionService
+import com.charmnight.linkgraph.workbench.WorkbenchStep
 
 /**
  * 为“链路 + 代码 -> 可读性美化/解释”预留的稳定服务接口。
@@ -22,8 +26,11 @@ class DefaultGraphBeautificationService(
     private val promptFactory: LlmPromptFactory = LlmPromptFactory(),
     /** 负责发起远程 LLM 请求。 */
     private val gateway: LlmGateway = RoutingLlmGateway(),
+    /** 负责构造稳定步骤。 */
+    private val stepProjectionService: StepProjectionService = StepProjectionService(),
     /** 远程不可用时使用的本地讲解服务。 */
-    private val fallbackService: GraphBeautificationService = PlaceholderGraphBeautificationService(promptFactory),
+    private val fallbackService: GraphBeautificationService =
+        PlaceholderGraphBeautificationService(promptFactory, stepProjectionService),
 ) : GraphBeautificationService {
     /** 负责处理结构化 JSON 响应与自动修复。 */
     private val responseSupport = RemoteStructuredResponseSupport(gateway)
@@ -36,8 +43,14 @@ class DefaultGraphBeautificationService(
     ): GraphBeautificationResult {
         /** 清洗后的生成设置。 */
         val sanitized = settings.sanitized()
+        /** 当前讲解步骤。 */
+        val projectedSteps = stepProjectionService.buildSteps(
+            factGraph = context.presentationContext.graph,
+            draftEntries = emptyList(),
+            granularity = context.granularity,
+        ).steps
         /** 链路讲解提示词包。 */
-        val promptPackage = promptFactory.buildBeautificationPromptPackage(context, sanitized)
+        val promptPackage = promptFactory.buildBeautificationPromptPackage(context, sanitized, projectedSteps)
         if (!sanitized.usesRemoteProvider()) {
             return fallbackService.beautify(context, sanitized, onPreview)
         }
@@ -93,28 +106,28 @@ class DefaultGraphBeautificationService(
         /** 远程链路讲解返回必须遵守的 JSON 结构。 */
         private const val BEAUTIFICATION_SCHEMA = """
 {
-  "summaryTitle": "摘要标题",
-  "summary": "整体说明",
-  "sections": [
+  "steps": [
     {
-      "id": "稳定ID",
-      "title": "分段标题",
-      "content": "分段说明"
-    }
-  ],
-  "findings": [
-    {
-      "id": "稳定ID",
-      "claim": "一条必须可追溯的关键结论",
-      "evidenceLevel": "DIRECT_SOURCE|DIRECT_GRAPH|CALLSITE_ONLY|NOT_OBSERVED",
-      "references": [
+      "stepId": "稳定ID",
+      "title": "步骤标题",
+      "description": "步骤说明",
+      "followUpQuestions": ["可继续追问的问题"],
+      "evidence": [
         {
-          "nodeId": "可选节点ID",
-          "filePath": "可选源码路径",
-          "startLine": 1,
-          "endLine": 3
+          "id": "稳定ID",
+          "claim": "一条必须可追溯的关键结论",
+          "evidenceLevel": "DIRECT_SOURCE|DIRECT_GRAPH|CALLSITE_ONLY|NOT_OBSERVED",
+          "references": [
+            {
+              "nodeId": "可选节点ID",
+              "filePath": "可选源码路径",
+              "startLine": 1,
+              "endLine": 3
+            }
+          ]
         }
-      ]
+      ],
+      "downstreamTargets": ["可继续下钻的目标ID"]
     }
   ],
   "warnings": ["可选警告"]
@@ -126,6 +139,8 @@ class DefaultGraphBeautificationService(
 class PlaceholderGraphBeautificationService(
     /** 负责构造讲解提示词预览。 */
     private val promptFactory: LlmPromptFactory = LlmPromptFactory(),
+    /** 负责构造稳定步骤。 */
+    private val stepProjectionService: StepProjectionService = StepProjectionService(),
 ) : GraphBeautificationService {
     /** 基于本地规则生成稳定可读的链路讲解。 */
     override fun beautify(
@@ -133,8 +148,6 @@ class PlaceholderGraphBeautificationService(
         settings: LinkGraphSettingsState,
         onPreview: ((String, Boolean) -> Unit)?,
     ): GraphBeautificationResult {
-        /** 链路讲解提示词包，仅用于展示预览。 */
-        val promptPackage = promptFactory.buildBeautificationPromptPackage(context, settings)
         /** 当前展示上下文。 */
         val presentation = context.presentationContext
         /** 当前可见图。 */
@@ -143,62 +156,30 @@ class PlaceholderGraphBeautificationService(
         val fullGraph = presentation.fullGraph
         /** 当前讲解锚点节点。 */
         val anchorNode = resolveAnchorNode(context)
-        /** 当前讲解锚点标题。 */
-        val anchorTitle = anchorNode?.title?.ifBlank { null } ?: "当前链路"
         /** 当前可见节点 ID 集合。 */
         val visibleNodeIds = visibleGraph.nodes.map(GraphNode::id).toSet()
-        /** 当前可见节点标题列表。 */
-        val visibleNodeTitles = visibleGraph.nodes
-            .asSequence()
-            .filter { node -> node.id != anchorNode?.id }
-            .map(GraphNode::title)
-            .map(String::trim)
-            .filter(String::isNotBlank)
-            .distinct()
-            .toList()
-        /** 当前可用的源码片段列表。 */
-        val visibleSnippets = context.sourceContext
-            .mapNotNull { snippet -> snippet.snippet?.trim()?.takeIf(String::isNotBlank) }
-            .distinct()
         /** 当前图外仍可继续展开的跨方法节点。 */
         val hiddenCrossMethodNodes = fullGraph.nodes.filter { node ->
             node.id !in visibleNodeIds &&
                 node.type == NodeType.METHOD &&
                 node.signature != anchorNode?.signature
         }
-
-        /** “当前方法内部”章节正文。 */
-        val currentMethodContent = buildCurrentMethodSection(anchorTitle, visibleSnippets, visibleNodeTitles)
-        /** “跨方法扩展”章节正文。 */
-        val crossMethodContent = buildCrossMethodSection(
-            anchorTitle = anchorTitle,
-            crossMethodNodes = hiddenCrossMethodNodes,
-            hiddenCrossMethodNodeCount = presentation.hiddenCrossMethodNodeCount,
+        /** 当前投影出的稳定步骤。 */
+        val projectedSteps = stepProjectionService.buildSteps(
+            factGraph = visibleGraph,
+            draftEntries = emptyList(),
+            granularity = context.granularity,
         )
-        /** 最终输出的讲解章节列表。 */
-        val sections = buildList {
-            add(
-                GraphBeautificationSection(
-                    id = "current-method",
-                    title = "当前方法内部",
-                    content = currentMethodContent,
-                ),
+        /** 链路讲解提示词包，仅用于展示预览。 */
+        val promptPackage = promptFactory.buildBeautificationPromptPackage(context, settings, projectedSteps.steps)
+        /** 步骤化讲解结果。 */
+        val steps = projectedSteps.steps.map { step ->
+            toBeautificationStep(
+                step = step,
+                context = context,
+                hiddenCrossMethodNodes = hiddenCrossMethodNodes,
             )
-            if (crossMethodContent.isNotBlank()) {
-                add(
-                    GraphBeautificationSection(
-                        id = "cross-method",
-                        title = "跨方法扩展",
-                        content = crossMethodContent,
-                    ),
-                )
-            }
         }
-        /** 结构化证据结论列表。 */
-        val findings = buildEvidenceFindings(
-            context = context,
-            anchorNodeId = anchorNode?.id,
-        )
         /** 当前讲解附带的警告列表。 */
         val warnings = buildList {
             if (presentation.hiddenCurrentMethodNodeCount > 0) {
@@ -211,32 +192,10 @@ class PlaceholderGraphBeautificationService(
                 add("当前讲解已按“$style”风格整理。")
             }
         }
-        /** 面向用户展示的整体摘要。 */
-        val summary = buildString {
-            append("当前链路围绕 ")
-            append(anchorTitle)
-            append(" 展开。")
-            if (visibleSnippets.isNotEmpty()) {
-                append("已展示的源码关键动作包括 ")
-                append(visibleSnippets.take(2).joinToString("、") { it.quoted(48) })
-                append("。")
-            } else if (visibleNodeTitles.isNotEmpty()) {
-                append("当前画布里已经可见的关键节点包括 ")
-                append(visibleNodeTitles.take(2).joinToString("、"))
-                append("。")
-            }
-            if (hiddenCrossMethodNodes.isNotEmpty()) {
-                append("跨方法还能继续追到 ")
-                append(hiddenCrossMethodNodes.take(2).joinToString("、") { it.title })
-                append("。")
-            }
-        }
         return GraphBeautificationResult(
             source = LlmResultSource.MOCK,
-            summaryTitle = "当前链路讲解",
-            summary = summary,
-            sections = sections,
-            findings = findings,
+            granularity = context.granularity,
+            steps = steps,
             promptPreview = promptPackage.preview,
             warnings = warnings,
         )
@@ -253,72 +212,68 @@ class PlaceholderGraphBeautificationService(
             ?: presentation.graph.nodes.firstOrNull()
     }
 
-    /** 构造“当前方法内部”章节正文。 */
-    private fun buildCurrentMethodSection(
-        anchorTitle: String,
-        visibleSnippets: List<String>,
-        visibleNodeTitles: List<String>,
-    ): String {
-        if (visibleSnippets.isEmpty()) {
-            return if (visibleNodeTitles.isEmpty()) {
-                "$anchorTitle 当前主要展示已展开的节点关系；由于还没有命中的源码片段，本段说明以链路节点为准。"
-            } else {
-                buildString {
-                    append(anchorTitle)
-                    append(" 当前主要围绕这些已展开节点组织：")
-                    append(visibleNodeTitles.take(3).joinToString("、"))
-                    append("。")
-                }
-            }
-        }
-        return buildString {
-            append(anchorTitle)
-            append(" 当前优先展示方法内部已经落到代码片段的关键动作：")
-            append(visibleSnippets.take(3).joinToString("；") { it.quoted(88) })
-            append("。")
-        }
-    }
-
-    /** 构造“跨方法扩展”章节正文。 */
-    private fun buildCrossMethodSection(
-        anchorTitle: String,
-        crossMethodNodes: List<GraphNode>,
-        hiddenCrossMethodNodeCount: Int,
-    ): String {
-        if (crossMethodNodes.isEmpty()) {
-            return if (hiddenCrossMethodNodeCount > 0) {
-                "$anchorTitle 后面还有未完全展开的跨方法链路，但当前画布里还没有足够信息给出稳定结论。"
-            } else {
-                ""
-            }
-        }
-        return buildString {
-            append("$anchorTitle 在当前方法之外，还能继续延伸到 ")
-            append(crossMethodNodes.take(3).joinToString("、") { it.title })
-            append("。")
-            if (hiddenCrossMethodNodeCount > crossMethodNodes.size) {
-                append("当前只挑出了最关键的跨方法节点，其余分支仍可继续展开。")
-            }
-        }
-    }
-
-    /** 为讲解结果生成结构化证据结论。 */
-    private fun buildEvidenceFindings(
+    /** 把投影步骤补齐成可直接展示的讲解步骤。 */
+    private fun toBeautificationStep(
+        step: WorkbenchStep,
         context: GraphBeautificationContext,
-        anchorNodeId: String?,
+        hiddenCrossMethodNodes: List<GraphNode>,
+    ): GraphBeautificationStep {
+        /** 关联源码片段。 */
+        val snippets = context.sourceContext.filter { snippet -> snippet.nodeId in step.nodeRefs }
+        /** 关联图节点。 */
+        val nodes = context.presentationContext.graph.nodes.filter { node -> node.id in step.nodeRefs }
+        /** 可下钻目标。 */
+        val downstreamTargets = step.downstreamTargets.ifEmpty {
+            if (step.kind == StepKind.RETURN) {
+                emptyList()
+            } else {
+                hiddenCrossMethodNodes.take(2).map(GraphNode::id)
+            }
+        }
+        return GraphBeautificationStep(
+            stepId = step.stepId,
+            title = step.title,
+            granularity = step.granularity,
+            kind = step.kind,
+            description = buildStepDescription(step, snippets.mapNotNull(SourceSnippetContext::snippet), nodes.map(GraphNode::title)),
+            evidence = buildStepEvidence(step, snippets, nodes),
+            followUpQuestions = buildFollowUpQuestions(step, downstreamTargets),
+            downstreamTargets = downstreamTargets,
+        )
+    }
+
+    /** 生成单步说明文本。 */
+    private fun buildStepDescription(
+        step: WorkbenchStep,
+        snippets: List<String>,
+        nodeTitles: List<String>,
+    ): String {
+        val snippetText = snippets
+            .map { it.trim().replace(Regex("\\s+"), " ") }
+            .firstOrNull(String::isNotBlank)
+        return when {
+            snippetText != null -> "${step.title}。当前代码直接执行：$snippetText"
+            step.kind == StepKind.RETURN -> "${step.title}。这里结束当前链路并返回结果。"
+            nodeTitles.isNotEmpty() -> "${step.title}。当前步骤主要围绕 ${nodeTitles.joinToString("、")} 展开。"
+            else -> "${step.title}。当前只拿到了图级步骤骨架，尚未命中更细的源码片段。"
+        }
+    }
+
+    /** 为单个步骤构造证据。 */
+    private fun buildStepEvidence(
+        step: WorkbenchStep,
+        snippets: List<SourceSnippetContext>,
+        nodes: List<GraphNode>,
     ): List<ResultEvidenceFinding> {
-        /** 当前可见节点索引。 */
-        val visibleNodesById = context.presentationContext.graph.nodes.associateBy(GraphNode::id)
-        /** 直接来自源码片段的证据结论。 */
-        val sourceFindings = context.sourceContext.mapIndexedNotNull { index, snippet ->
-            val node = visibleNodesById[snippet.nodeId] ?: return@mapIndexedNotNull null
+        val sourceFindings = snippets.mapIndexed { index, snippet ->
+            val node = nodes.firstOrNull { it.id == snippet.nodeId }
             ResultEvidenceFinding(
-                id = "direct-source-$index",
-                claim = "当前上下文直接展示了节点“${node.title}”。",
+                id = "${step.stepId}-source-$index",
+                claim = "当前步骤直接展示了节点“${node?.title ?: step.title}”。",
                 evidenceLevel = ResultEvidenceLevel.DIRECT_SOURCE,
                 references = listOf(
                     ResultEvidenceReference(
-                        nodeId = node.id,
+                        nodeId = snippet.nodeId,
                         filePath = snippet.filePath,
                         startLine = snippet.startLine,
                         endLine = snippet.endLine,
@@ -326,48 +281,32 @@ class PlaceholderGraphBeautificationService(
                 ),
             )
         }
-        /** 仅看到调用点时的证据结论。 */
-        val invocationFindings = context.presentationContext.graph.nodes
-            .asSequence()
-            .filter { node -> node.id != anchorNodeId }
-            .filter { node -> node.metadata["flow.kind"] == "INVOCATION" }
-            .mapIndexed { index, node ->
-                ResultEvidenceFinding(
-                    id = "callsite-only-$index",
-                    claim = "当前画布只展示了对“${node.title.removePrefix("调用 ").trim()}”的调用点，尚未展示其方法体。",
-                    evidenceLevel = ResultEvidenceLevel.CALLSITE_ONLY,
-                    references = listOf(ResultEvidenceReference(nodeId = node.id)),
-                )
-            }
-            .toList()
-        /** 当缺少源码和调用点证据时回退到图级证据。 */
-        val graphFindings = if (sourceFindings.isNotEmpty() || invocationFindings.isNotEmpty()) {
-            emptyList()
-        } else {
-            context.presentationContext.graph.nodes
-                .asSequence()
-                .filter { node -> node.id != anchorNodeId }
-                .take(2)
-                .mapIndexed { index, node ->
-                    ResultEvidenceFinding(
-                        id = "direct-graph-$index",
-                        claim = "当前画布直接展示了节点“${node.title}”。",
-                        evidenceLevel = ResultEvidenceLevel.DIRECT_GRAPH,
-                        references = listOf(ResultEvidenceReference(nodeId = node.id)),
-                    )
-                }
-                .toList()
+        if (sourceFindings.isNotEmpty()) {
+            return sourceFindings
         }
-        return (sourceFindings + invocationFindings + graphFindings)
-            .distinctBy { finding -> finding.claim to finding.evidenceLevel }
+        return nodes.take(2).mapIndexed { index, node ->
+            ResultEvidenceFinding(
+                id = "${step.stepId}-graph-$index",
+                claim = "当前步骤直接关联了图节点“${node.title}”。",
+                evidenceLevel = ResultEvidenceLevel.DIRECT_GRAPH,
+                references = listOf(ResultEvidenceReference(nodeId = node.id)),
+            )
+        }
     }
 
-    /** 把源码片段裁成适合摘要展示的引用文案。 */
-    private fun String.quoted(limit: Int): String {
-        /** 合并空白后的片段文本。 */
-        val normalized = trim().replace(Regex("\\s+"), " ")
-        /** 按上限裁剪后的片段文本。 */
-        val clipped = if (normalized.length > limit) "${normalized.take(limit)}..." else normalized
-        return "\"$clipped\""
+    /** 生成可继续追问的建议问题。 */
+    private fun buildFollowUpQuestions(
+        step: WorkbenchStep,
+        downstreamTargets: List<String>,
+    ): List<String> {
+        return buildList {
+            add("这一步的输入参数是从哪里来的？")
+            if (step.kind != StepKind.RETURN) {
+                add("这一步失败时会影响什么结果？")
+            }
+            if (downstreamTargets.isNotEmpty()) {
+                add("这一步继续下钻后会进入哪个被调方法？")
+            }
+        }.distinct()
     }
 }

@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.model.GraphDiffEntry
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
+import com.charmnight.linkgraph.workbench.WorkbenchStep
 
 /**
  * 把当前图上下文整理成可审计的提示词。
@@ -417,6 +418,7 @@ class LlmPromptFactory {
     fun buildBeautificationPromptPackage(
         context: GraphBeautificationContext,
         settings: LinkGraphSettingsState,
+        projectedSteps: List<WorkbenchStep> = emptyList(),
     ): LlmPromptPackage {
         /** 当前可见图。 */
         val graph = context.presentationContext.graph
@@ -428,12 +430,17 @@ class LlmPromptFactory {
         val sourceSnippets = context.sourceContext.joinToString("\n") { snippet ->
             sourceSnippetSummary(snippet)
         }.ifBlank { "- 无" }
+        /** 当前稳定步骤摘要。 */
+        val steps = projectedSteps.joinToString("\n") { step ->
+            "- ${step.stepId} | ${step.kind.name} | ${step.title} | nodeRefs=${step.nodeRefs.joinToString()}"
+        }.ifBlank { "- 无" }
         /** 面向模型的系统提示词。 */
         val systemPrompt = """
-            你是 IDEA Link Graph 的链路可读性美化助手。
-            你的职责是基于链路图展示上下文和真实源码片段，输出更易读、更贴近代码逻辑的讲解文案。
-            必须优先解释当前方法内部关键流程，再补充跨方法扩展，不能把图上的折叠部分误写成已展示事实。
-            summary、sections 之外，还必须输出 findings，对每条关键结论标注证据等级和引用。
+            你是 IDEA Link Graph 的步骤化链路讲解助手。
+            你的职责是基于稳定步骤、链路图展示上下文和真实源码片段，补齐每一步是做什么的。
+            必须围绕给定 stepId 输出步骤说明，不允许退回成 summary/sections 报告卡。
+            必须优先解释当前方法内部关键流程，再补充可继续下钻的方向，不能把图上的折叠部分误写成已展示事实。
+            每个步骤都必须输出 evidence 和 followUpQuestions。
             evidenceLevel 只允许：
             - DIRECT_SOURCE：直接来自当前提供的源码片段
             - DIRECT_GRAPH：直接来自当前图节点或图连线
@@ -452,6 +459,10 @@ class LlmPromptFactory {
             当前方法内部折叠节点：${context.presentationContext.hiddenCurrentMethodNodeCount}
             跨方法扩展折叠节点：${context.presentationContext.hiddenCrossMethodNodeCount}
             锚点节点：${context.presentationContext.anchorNodeId ?: "未指定"}
+            当前粒度：${context.granularity.name}
+
+            稳定步骤：
+            $steps
 
             图节点：
             $nodes
@@ -464,28 +475,28 @@ class LlmPromptFactory {
 
             仅返回 JSON，结构如下：
             {
-              "summaryTitle": "摘要标题",
-              "summary": "整体说明",
-              "sections": [
+              "steps": [
                 {
-                  "id": "稳定ID",
-                  "title": "分段标题",
-                  "content": "分段说明"
-                }
-              ],
-              "findings": [
-                {
-                  "id": "稳定ID",
-                  "claim": "一条必须可追溯的关键结论",
-                  "evidenceLevel": "DIRECT_SOURCE|DIRECT_GRAPH|CALLSITE_ONLY|NOT_OBSERVED",
-                  "references": [
+                  "stepId": "稳定ID",
+                  "title": "步骤标题",
+                  "description": "说明这一步在做什么",
+                  "followUpQuestions": ["可继续追问的问题"],
+                  "evidence": [
                     {
-                      "nodeId": "可选节点ID",
-                      "filePath": "可选源码路径",
-                      "startLine": 1,
-                      "endLine": 3
+                      "id": "稳定ID",
+                      "claim": "一条必须可追溯的关键结论",
+                      "evidenceLevel": "DIRECT_SOURCE|DIRECT_GRAPH|CALLSITE_ONLY|NOT_OBSERVED",
+                      "references": [
+                        {
+                          "nodeId": "可选节点ID",
+                          "filePath": "可选源码路径",
+                          "startLine": 1,
+                          "endLine": 3
+                        }
+                      ]
                     }
-                  ]
+                  ],
+                  "downstreamTargets": ["可继续下钻的目标ID"]
                 }
               ],
               "warnings": ["可选警告"]
