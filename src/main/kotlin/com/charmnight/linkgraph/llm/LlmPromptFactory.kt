@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.model.GraphDiffEntry
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
+import com.charmnight.linkgraph.workbench.AuditConversationSession
 import com.charmnight.linkgraph.workbench.WorkbenchStep
 
 /**
@@ -93,6 +94,7 @@ class LlmPromptFactory {
         context: GraphAuditContext,
         question: String,
         settings: LinkGraphSettingsState,
+        session: AuditConversationSession? = null,
     ): LlmPromptPackage {
         /** 当前审计范围内的节点。 */
         val scopeNodes = GraphAuditScopeResolver.resolveScopeNodes(context)
@@ -116,24 +118,32 @@ class LlmPromptFactory {
         val draftNodes = context.draftGraph.nodes.joinToString("\n") { nodeSummary(it) }.ifBlank { "- 无" }
         /** 草稿层边摘要。 */
         val draftEdges = context.draftGraph.edges.joinToString("\n") { edgeSummary(it) }.ifBlank { "- 无" }
+        /** 历史消息摘要。 */
+        val history = session?.messages?.joinToString("\n") { message ->
+            "- [${message.role.name}] ${message.content}"
+        }?.ifBlank { "- 无" } ?: "- 无"
+        /** 已有候选变更摘要。 */
+        val existingChanges = session?.candidateChanges?.joinToString("\n") { change ->
+            "- ${change.changeId} | ${change.title} | before=${change.beforeState ?: "无"} | after=${change.afterState ?: "无"}"
+        }?.ifBlank { "- 无" } ?: "- 无"
         /** 面向模型的系统提示词。 */
         val systemPrompt = """
             你是 IDEA Link Graph 的链路审计助手。
-            你的职责是识别业务黑逻辑、默认兜底、运行时边界和设计遗漏，并把建议写成草稿 patch。
+            你的职责是识别业务黑逻辑、默认兜底、运行时边界和设计遗漏，并输出对话回复与待确认候选变更。
             不允许把推测内容伪装成代码事实。
-            answer 与 patch 之外，还必须输出 findings，对每条关键结论标注证据等级和引用。
+            answer 与 candidateChanges 之外，还必须输出 findings，对每条关键结论标注证据等级和引用。
             evidenceLevel 只允许：
             - DIRECT_SOURCE：直接来自当前提供的源码片段
             - DIRECT_GRAPH：直接来自当前图节点或图连线
             - CALLSITE_ONLY：当前只看到了调用点，没有看到被调实现
             - NOT_OBSERVED：当前提供的上下文没有直接观察到该行为
-            patch.operations[*].metadata 必须补充 "draft.claimType"，可选值仅允许：
-            - CODE_FACT：源码中可以直接定位和验证的事实性说明
-            - RISK_HINT：基于当前代码边界得出的风险或异常提醒
-            - EXPLANATION_NOTE：帮助阅读链路的解释性注释
-            - STRUCTURAL_SUGGESTION：结构补全、补图、待补节点/连线建议
+            candidateChanges[*].status 只允许：
+            - PENDING_CONFIRMATION
+            - CONFIRMED
+            - REJECTED
+            - SUPERSEDED
             回答必须优先围绕当前选中范围作答；如果当前范围不足以支撑结论，再明确说明你借助了整图上下文。
-            回答必须先给审计结论，再给只写入草稿层的 patch 建议。
+            回答必须先给当前轮结论，再给待确认候选变更。不要直接改写草稿层。
             只允许返回 JSON，不允许输出 Markdown、解释性前言、后缀说明或代码块。
             即使信息不足，也必须返回合法 JSON；列表字段使用 []，不要输出自然语言兜底。
         """.trimIndent()
@@ -162,7 +172,13 @@ class LlmPromptFactory {
             草稿层连线：
             $draftEdges
 
-            请先给出审计回答，再给出可写入草稿层的 patch 建议。不要把建议伪装成代码事实。
+            历史消息：
+            $history
+
+            已有待确认候选变更：
+            $existingChanges
+
+            请先给出本轮审计回答，再给出候选变更。不要把建议伪装成代码事实，也不要整表重刷已有候选项。
             仅返回 JSON，结构如下：
             {
               "answer": "审计回答",
@@ -181,34 +197,21 @@ class LlmPromptFactory {
                   ]
                 }
               ],
+              "candidateChanges": [
+                {
+                  "changeId": "稳定ID",
+                  "status": "PENDING_CONFIRMATION|CONFIRMED|REJECTED|SUPERSEDED",
+                  "title": "候选变更标题",
+                  "targetStepIds": ["可选步骤ID"],
+                  "targetNodeIds": ["可选节点ID"],
+                  "beforeState": "修改前状态",
+                  "afterState": "修改后状态",
+                  "reason": "为什么建议这样改",
+                  "impactSummary": "影响摘要"
+                }
+              ],
               "warnings": ["可选警告"],
-              "patch": {
-                "summary": "patch 摘要",
-                "operations": [
-                  {
-                    "id": "稳定ID",
-                    "action": "ADD_NODE|UPDATE_NODE|DELETE_NODE|ADD_EDGE|UPDATE_EDGE|DELETE_EDGE|ADD_ANNOTATION|MARK_UNCERTAIN",
-                    "elementKind": "NODE|EDGE",
-                    "elementId": "元素ID",
-                    "title": "可选标题",
-                    "summary": "可选摘要",
-                    "metadata": {
-                      "draft.claimType": "CODE_FACT|RISK_HINT|EXPLANATION_NOTE|STRUCTURAL_SUGGESTION"
-                    },
-                    "node": {
-                      "id": "节点ID",
-                      "type": "METHOD|CLASS|SQL|HTTP_ENDPOINT|FEIGN_CLIENT|DUBBO_SERVICE|MQ_TOPIC|MQ_CONSUMER|CONFIG_ITEM|XML_RESOURCE|DOC_PAGE|UNCERTAIN_LINK",
-                      "title": "节点标题",
-                      "doc": "可选说明",
-                      "sourceTag": "DRAFT_AI"
-                    }
-                  }
-                ],
-                "addedNodeIds": [],
-                "removedNodeIds": [],
-                "addedEdgeIds": [],
-                "removedEdgeIds": []
-              }
+              "patch": null
             }
         """.trimIndent()
         return LlmPromptPackage(

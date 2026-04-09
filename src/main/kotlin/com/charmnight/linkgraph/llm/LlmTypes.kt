@@ -6,6 +6,8 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
+import com.charmnight.linkgraph.workbench.AuditConversationSession
+import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.charmnight.linkgraph.workbench.StepKind
 
@@ -221,6 +223,12 @@ data class GraphPatchResult(
     val patch: GraphPatch? = null,
     /** 保存结构化证据结论。 */
     val findings: List<ResultEvidenceFinding> = emptyList(),
+    /** 保存待确认候选变更。 */
+    val candidateChanges: List<CandidateDraftChange> = emptyList(),
+    /** 保存本轮新增候选变更。 */
+    val newCandidateChanges: List<CandidateDraftChange> = emptyList(),
+    /** 保存当前审计会话状态。 */
+    val auditSession: AuditConversationSession? = null,
     /** 保存警告列表。 */
     val warnings: List<String> = emptyList(),
 )

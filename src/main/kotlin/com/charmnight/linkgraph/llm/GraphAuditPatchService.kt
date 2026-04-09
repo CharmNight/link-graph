@@ -1,25 +1,27 @@
 package com.charmnight.linkgraph.llm
 
-import com.charmnight.linkgraph.model.EdgeType
-import com.charmnight.linkgraph.model.GraphDiffElementKind
-import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphPatch
-import com.charmnight.linkgraph.model.GraphPatchAction
-import com.charmnight.linkgraph.model.GraphPatchOperation
-import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
+import com.charmnight.linkgraph.workbench.AuditConversationMessage
+import com.charmnight.linkgraph.workbench.AuditConversationService
+import com.charmnight.linkgraph.workbench.AuditConversationSession
+import com.charmnight.linkgraph.workbench.AuditMessageRole
+import com.charmnight.linkgraph.workbench.AuditModelTurn
+import com.charmnight.linkgraph.workbench.CandidateDraftChange
+import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 
 /**
- * 基于当前审计范围生成“回答 + 草稿 patch 预览”。
- * 一期先提供规则化本地结果，保证链路不断。
+ * 基于当前审计范围生成“对话回答 + 待确认候选变更”。
+ * 审计不会直接写草稿层，所有修改都先停留在候选变更区。
  */
 class GraphAuditPatchService(
     /** 负责构造审计提示词。 */
     private val promptFactory: LlmPromptFactory = LlmPromptFactory(),
     /** 负责发起远程 LLM 请求。 */
     private val gateway: LlmGateway = RoutingLlmGateway(),
+    /** 负责维护会话与候选变更。 */
+    private val auditConversationService: AuditConversationService = AuditConversationService(),
 ) {
     /** 负责处理结构化 JSON 响应与自动修复。 */
     private val responseSupport = RemoteStructuredResponseSupport(gateway)
@@ -29,19 +31,18 @@ class GraphAuditPatchService(
         context: GraphAuditContext,
         question: String,
         settings: LinkGraphSettingsState,
+        session: AuditConversationSession? = null,
         onPreview: ((String, Boolean) -> Unit)? = null,
     ): GraphPatchResult {
-        /** 清洗后的生成设置。 */
         val sanitized = settings.sanitized()
-        /** 审计提示词包。 */
-        val promptPackage = promptFactory.buildAuditPromptPackage(context, question, sanitized)
+        val currentSession = ensureUserQuestion(session ?: emptySession(context), question)
+        val promptPackage = promptFactory.buildAuditPromptPackage(context, question, sanitized, currentSession)
         if (!sanitized.usesRemoteProvider()) {
-            return buildMockResult(context, question, promptPackage.preview)
+            return buildMockResult(context, question, promptPackage.preview, currentSession)
         }
-        /** 远程连接参数。 */
         val remoteConnection = sanitized.remoteConnectionOrNull()
         if (remoteConnection == null) {
-            return buildMockResult(context, question, promptPackage.preview).copy(
+            return buildMockResult(context, question, promptPackage.preview, currentSession).copy(
                 warnings = listOf(sanitized.remoteLlmSetupHint("本地规则审计")),
             )
         }
@@ -59,12 +60,13 @@ class GraphAuditPatchService(
                 RemoteGraphPatchResultParser.parse(content, promptPackage.preview, question)
             }
         }.map { remote ->
-            remote.value.withPrependedWarnings(remote.warnings)
+            applyConversationTurn(
+                base = remote.value.withPrependedWarnings(remote.warnings),
+                session = currentSession,
+            )
         }.getOrElse { error ->
-            buildMockResult(context, question, promptPackage.preview).copy(
-                warnings = listOf(
-                    buildRemoteFallbackWarning("审计", error),
-                ),
+            buildMockResult(context, question, promptPackage.preview, currentSession).copy(
+                warnings = listOf(buildRemoteFallbackWarning("审计", error)),
             )
         }
     }
@@ -74,105 +76,52 @@ class GraphAuditPatchService(
         context: GraphAuditContext,
         question: String,
         prompt: String,
+        session: AuditConversationSession,
     ): GraphPatchResult {
-        /** 当前审计范围内的节点。 */
         val scopeNodes = GraphAuditScopeResolver.resolveScopeNodes(context)
-        /** 用户是否在问题中显式强调兜底或默认逻辑。 */
         val hasFallbackIntent = question.contains("兜底") || question.contains("默认")
-        /** 草稿说明节点标题。 */
-        val noteTitle = if (hasFallbackIntent) "默认兜底说明" else "审计补充说明"
-        /** 草稿说明节点正文。 */
-        val noteDoc = if (hasFallbackIntent) {
-            "AI 审计建议：当前范围可能遗漏默认兜底逻辑，建议在草稿层补充说明并人工确认真实实现。"
-        } else {
-            "AI 审计建议：当前范围存在待确认业务规则，建议先以草稿说明节点补充。"
-        }
-        /** 用于生成稳定节点 ID 的范围键。 */
         val scopeKey = scopeNodes.map(GraphNode::id).sorted().joinToString(",").ifBlank { "scope" }
-        /** 草稿说明节点 ID。 */
-        val noteId = GraphNode.stableId(NodeType.DOC_PAGE, "$scopeKey-$noteTitle", "draft-ai")
-        /** 草稿说明节点。 */
-        val noteNode = GraphNode(
-            id = noteId,
-            type = NodeType.DOC_PAGE,
-            title = noteTitle,
-            doc = noteDoc,
-            sourceTag = GraphSourceTag.DRAFT_AI,
-            metadata = mapOf(
-                "draft.reason" to "audit",
-                "draft.claimType" to DRAFT_CLAIM_TYPE_RISK_HINT,
-            ),
-        )
-        /** 初始补丁操作列表。 */
-        val operations = mutableListOf(
-            GraphPatchOperation(
-                id = "audit-add-node-$noteId",
-                action = GraphPatchAction.ADD_NODE,
-                elementKind = GraphDiffElementKind.NODE,
-                elementId = noteId,
-                title = "新增审计说明节点",
-                summary = "把审计建议落到草稿层",
-                node = noteNode,
-                metadata = mapOf("draft.claimType" to DRAFT_CLAIM_TYPE_RISK_HINT),
-            ),
-        )
-        scopeNodes.ifEmpty { context.factGraph.nodes.take(1) }.distinctBy(GraphNode::id).forEach { node ->
-            /** 把说明节点挂到当前范围节点上的草稿边。 */
-            val edge = GraphEdge(
-                id = GraphEdge.stableId(EdgeType.LINKS_DOC, node.id, noteId, "draft-ai"),
-                type = EdgeType.LINKS_DOC,
-                fromNodeId = node.id,
-                toNodeId = noteId,
-                label = "审计建议",
-                sourceTag = GraphSourceTag.DRAFT_AI,
-                metadata = mapOf("draft.reason" to "audit"),
-            )
-            operations += GraphPatchOperation(
-                id = "audit-add-edge-${edge.id}",
-                action = GraphPatchAction.ADD_EDGE,
-                elementKind = GraphDiffElementKind.EDGE,
-                elementId = edge.id,
-                title = "补充审计关系",
-                summary = "把审计说明挂到当前范围节点上",
-                edge = edge,
-                metadata = mapOf("draft.claimType" to DRAFT_CLAIM_TYPE_RISK_HINT),
-            )
-        }
-        /** 当前回答使用的范围标签。 */
         val scopeLabel = when {
             context.selectedNodeIds.isEmpty() -> "整图"
             scopeNodes.size > 1 -> "当前框选范围（${scopeNodes.size} 个节点）"
             else -> "当前节点"
         }
-        /** 面向用户展示的审计回答。 */
         val answer = if (hasFallbackIntent) {
             """
-            结论：$scopeLabel 里存在待确认边界，当前规则分析建议先补一个“默认兜底说明”节点。
-            关键影响：
-            - 当路由条件未命中或黑逻辑只在运行时生效时，人工审计无法从当前图中直接确认真实兜底分支。
-            建议动作：
-            - 先把“默认兜底说明”作为草稿节点挂到当前范围关联节点旁边，再由人工确认是否需要继续落代码。
-            注意事项：
-            - 当前回答来自本地规则分析，仍需结合真实实现复核。
+            当前轮结论：$scopeLabel 里存在待确认边界，建议补一条“默认兜底规则”候选变更。
+            处理建议：先确认条件未命中时的处理分支，再决定是否写入草稿层。
             """.trimIndent()
         } else {
             """
-            结论：$scopeLabel 里存在待确认业务规则，当前规则分析建议先补一条草稿说明。
-            关键影响：
-            - 如果直接交给 AI 生成代码，遗漏的业务约束可能会被当成不存在，从而产生错误实现。
-            建议动作：
-            - 先把待确认规则补成草稿说明节点，后续再决定是否继续生成代码。
-            注意事项：
-            - 当前回答来自本地规则分析，仍需结合真实实现复核。
+            当前轮结论：$scopeLabel 里存在待确认业务规则，建议先补一条候选变更再继续讨论。
+            处理建议：先确认真实业务约束，再决定是否写入草稿层。
             """.trimIndent()
         }
-        /** 单条结论里的核心陈述。 */
         val findingClaim = if (hasFallbackIntent) {
             "当前上下文没有直接观察到默认兜底分支。"
         } else {
             "当前上下文没有直接观察到足以证明完整业务规则的证据。"
         }
-        /** 结构化证据结论列表。 */
+        val candidateChanges = listOf(
+            CandidateDraftChange(
+                changeId = GraphNode.stableId(NodeType.DOC_PAGE, "$scopeKey-audit-change", "audit"),
+                status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+                title = if (hasFallbackIntent) "补充默认兜底规则" else "补充业务规则说明",
+                targetNodeIds = scopeNodes.ifEmpty { context.factGraph.nodes.take(1) }.map(GraphNode::id),
+                beforeState = "当前图中未确认对应业务规则",
+                afterState = if (hasFallbackIntent) {
+                    "补充默认兜底逻辑说明，并确认条件未命中时的处理分支"
+                } else {
+                    "补充当前范围缺失的业务规则说明，并在确认后再写入草稿"
+                },
+                reason = findingClaim,
+                impactSummary = if (hasFallbackIntent) {
+                    "会影响未命中条件时的最终执行路径。"
+                } else {
+                    "会影响当前链路的业务解释与后续代码生成。"
+                },
+            ),
+        )
         val findings = scopeNodes.ifEmpty { context.factGraph.nodes.take(1) }
             .distinctBy(GraphNode::id)
             .mapIndexed { index, node ->
@@ -183,18 +132,82 @@ class GraphAuditPatchService(
                     references = listOf(ResultEvidenceReference(nodeId = node.id)),
                 )
             }
-        return GraphPatchResult(
-            source = LlmResultSource.MOCK,
-            question = question,
-            answer = answer,
-            promptPreview = prompt,
-            patch = GraphPatch(
-                summary = "已生成审计草稿 patch 预览。",
-                operations = operations,
-                addedNodeIds = listOf(noteId),
-                addedEdgeIds = operations.mapNotNull { op -> op.edge?.id },
+        return applyConversationTurn(
+            base = GraphPatchResult(
+                source = LlmResultSource.MOCK,
+                question = question,
+                answer = answer,
+                promptPreview = prompt,
+                findings = findings,
+                candidateChanges = candidateChanges,
             ),
-            findings = findings,
+            session = session,
+        )
+    }
+
+    /** 把本轮回答和候选变更写入会话。 */
+    private fun applyConversationTurn(
+        base: GraphPatchResult,
+        session: AuditConversationSession,
+    ): GraphPatchResult {
+        val candidateChanges = base.candidateChanges.ifEmpty { deriveCandidateChanges(base.patch) }
+        val turnResult = auditConversationService.applyModelTurn(
+            session = session,
+            modelTurn = AuditModelTurn(
+                answer = base.answer,
+                candidateChanges = candidateChanges,
+            ),
+        )
+        return base.copy(
+            patch = null,
+            candidateChanges = turnResult.session.candidateChanges,
+            newCandidateChanges = turnResult.newCandidateChanges,
+            auditSession = turnResult.session,
+        )
+    }
+
+    /** 当远程仍返回 patch 结构时，兜底转换为候选变更。 */
+    private fun deriveCandidateChanges(patch: com.charmnight.linkgraph.model.GraphPatch?): List<CandidateDraftChange> {
+        patch ?: return emptyList()
+        return patch.operations.map { operation ->
+            CandidateDraftChange(
+                changeId = operation.id,
+                status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+                title = operation.title ?: operation.summary ?: operation.elementId,
+                targetNodeIds = listOfNotNull(operation.node?.id, operation.edge?.fromNodeId, operation.edge?.toNodeId).distinct(),
+                beforeState = null,
+                afterState = operation.summary ?: operation.title,
+                reason = "由远程审计建议生成。",
+                impactSummary = patch.summary ?: "",
+            )
+        }
+    }
+
+    /** 把当前用户问题写入会话。 */
+    private fun ensureUserQuestion(
+        session: AuditConversationSession,
+        question: String,
+    ): AuditConversationSession {
+        if (session.messages.lastOrNull()?.role == AuditMessageRole.USER && session.messages.lastOrNull()?.content == question) {
+            return session
+        }
+        return session.copy(
+            messages = session.messages + AuditConversationMessage(
+                messageId = "${session.sessionId}-user-${session.messages.size + 1}",
+                role = AuditMessageRole.USER,
+                content = question,
+                focusTargetId = session.focusTargetId,
+            ),
+        )
+    }
+
+    /** 基于当前范围生成默认空会话。 */
+    private fun emptySession(context: GraphAuditContext): AuditConversationSession {
+        val scopeKey = context.selectedNodeIds.sorted().joinToString(",")
+            .ifBlank { context.factGraph.nodes.firstOrNull()?.id ?: "graph" }
+        return AuditConversationSession(
+            sessionId = "audit-${GraphNode.stableId(NodeType.DOC_PAGE, scopeKey, "session")}",
+            scopeKey = scopeKey,
         )
     }
 
@@ -215,8 +228,6 @@ class GraphAuditPatchService(
     }
 
     private companion object {
-        /** 风险提示型草稿声明。 */
-        private const val DRAFT_CLAIM_TYPE_RISK_HINT = "RISK_HINT"
         /** 远程审计返回必须遵守的 JSON 结构。 */
         private const val PATCH_RESULT_SCHEMA = """
 {
@@ -236,15 +247,21 @@ class GraphAuditPatchService(
       ]
     }
   ],
-  "warnings": ["可选警告"],
-  "patch": {
-    "summary": "patch 摘要",
-    "operations": [],
-    "addedNodeIds": [],
-    "removedNodeIds": [],
-    "addedEdgeIds": [],
-    "removedEdgeIds": []
+  "candidateChanges": [
+    {
+      "changeId": "稳定ID",
+      "status": "PENDING_CONFIRMATION|CONFIRMED|REJECTED|SUPERSEDED",
+      "title": "候选变更标题",
+      "targetStepIds": [],
+      "targetNodeIds": [],
+      "beforeState": "修改前状态",
+      "afterState": "修改后状态",
+      "reason": "为什么建议这样改",
+      "impactSummary": "影响摘要"
     }
+  ],
+  "warnings": ["可选警告"],
+  "patch": null
 }
 """
     }

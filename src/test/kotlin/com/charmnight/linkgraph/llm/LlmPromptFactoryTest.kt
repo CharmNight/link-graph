@@ -274,7 +274,7 @@ class LlmPromptFactoryTest {
 
         assertTrue(auditPackage.systemPrompt.contains("链路审计"))
         assertTrue(auditPackage.userPrompt.contains("当前范围边"))
-        assertTrue(auditPackage.userPrompt.contains("draft.claimType"))
+        assertTrue(auditPackage.userPrompt.contains("candidateChanges"))
         assertTrue(diffPackage.systemPrompt.contains("差异"))
         assertTrue(diffPackage.userPrompt.contains("当前关注差异"))
         assertTrue(diffPackage.userPrompt.contains("draft.claimType"))
