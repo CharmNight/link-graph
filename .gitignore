@@ -1,4 +1,4 @@
-target/
+/target/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
@@ -27,7 +27,7 @@ target/
 /dist/
 /nbdist/
 /.nb-gradle/
-build/
+/build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 .gradle/
@@ -38,9 +38,15 @@ build/
 
 ### Mac OS ###
 .DS_Store
+.claude/
+.kotlin/
+.vite/
+hs_err_pid*
 .worktrees/
 .superpowers/
 docs/superpowers/
 web/node_modules/
 web/dist/
 .idea/
+.link-graph/
+.run/
