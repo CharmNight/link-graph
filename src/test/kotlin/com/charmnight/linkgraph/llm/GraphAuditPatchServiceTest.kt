@@ -3,13 +3,13 @@ package com.charmnight.linkgraph.llm
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphPatchAction
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.GraphUncertainty
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.settings.LlmProviderType
+import com.charmnight.linkgraph.workbench.AuditMessageRole
 import java.net.http.HttpTimeoutException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -48,22 +48,20 @@ class GraphAuditPatchServiceTest {
         )
 
         assertEquals(LlmResultSource.MOCK, result.source)
-        assertTrue(result.answer.contains("结论："))
-        assertTrue(result.answer.contains("关键影响："))
-        assertTrue(result.answer.contains("建议动作："))
+        assertTrue(result.answer.contains("当前轮结论"))
+        assertTrue(result.answer.contains("处理建议"))
         assertTrue(result.answer.contains("默认兜底"))
         assertTrue(result.promptPreview.contains("当前范围"))
-        assertNotNull(result.patch)
-        assertTrue(result.patch!!.operations.any { it.action == GraphPatchAction.ADD_NODE })
-        assertTrue(result.patch.operations.any { it.action == GraphPatchAction.ADD_EDGE })
+        assertEquals(null, result.patch)
         assertTrue(result.findings.any { finding ->
             finding.evidenceLevel == ResultEvidenceLevel.NOT_OBSERVED
         })
-        val addedNode = result.patch.operations.firstNotNullOfOrNull { it.node }
-        assertNotNull(addedNode)
-        assertEquals(GraphSourceTag.DRAFT_AI, addedNode.sourceTag)
-        assertEquals("RISK_HINT", result.patch.operations.first().metadata["draft.claimType"])
-        assertEquals("RISK_HINT", addedNode.metadata["draft.claimType"])
+        assertEquals(1, result.candidateChanges.size)
+        assertTrue(result.candidateChanges.first().title.contains("默认兜底"))
+        assertNotNull(result.auditSession)
+        assertEquals(2, result.auditSession.messages.size)
+        assertEquals(AuditMessageRole.USER, result.auditSession.messages.first().role)
+        assertEquals(AuditMessageRole.ASSISTANT, result.auditSession.messages.last().role)
     }
 
     @Test
@@ -151,9 +149,9 @@ class GraphAuditPatchServiceTest {
                 finding.references.any { reference -> reference.nodeId == "method:order-service-place" }
         })
         assertTrue(result.warnings.any { it.contains("候选建议") })
-        assertNotNull(result.patch)
-        assertEquals("默认兜底说明", result.patch.operations.firstNotNullOfOrNull { it.node }?.title)
-        assertEquals("RISK_HINT", result.patch.operations.first().metadata["draft.claimType"])
+        assertEquals(null, result.patch)
+        assertEquals("新增远程建议节点", result.candidateChanges.firstOrNull()?.title)
+        assertEquals("doc:remote-fallback", result.candidateChanges.firstOrNull()?.targetNodeIds?.firstOrNull())
     }
 
     @Test
@@ -458,10 +456,8 @@ class GraphAuditPatchServiceTest {
             ),
         )
 
-        assertNotNull(result.patch)
-        val linkedEdge = result.patch!!.operations.firstNotNullOfOrNull { it.edge }
-        assertNotNull(linkedEdge)
-        assertEquals(manualNode.id, linkedEdge.fromNodeId)
+        assertEquals(null, result.patch)
+        assertTrue(result.candidateChanges.any { change -> manualNode.id in change.targetNodeIds })
         assertTrue(result.promptPreview.contains(manualNode.title))
         assertTrue(result.answer.contains("当前节点") || result.answer.contains("当前框选范围"))
     }

@@ -12,6 +12,8 @@ import com.charmnight.linkgraph.model.GraphPatchOperation
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
+import com.charmnight.linkgraph.workbench.CandidateDraftChange
+import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 
 /**
  * 解析远程 LLM 返回的图补丁结果。
@@ -42,6 +44,7 @@ internal object RemoteGraphPatchResultParser {
             promptPreview = prompt,
             patch = patch,
             findings = parseResultEvidenceFindings(root["findings"]),
+            candidateChanges = (root["candidateChanges"] as? List<*>).orEmpty().mapNotNull { parseCandidateChange(it as? Map<*, *>) },
             warnings = warnings,
         )
     }
@@ -60,6 +63,24 @@ internal object RemoteGraphPatchResultParser {
             removedNodeIds = stringList(raw["removedNodeIds"]),
             addedEdgeIds = stringList(raw["addedEdgeIds"]),
             removedEdgeIds = stringList(raw["removedEdgeIds"]),
+        )
+    }
+
+    /** 解析单条候选变更。 */
+    private fun parseCandidateChange(raw: Map<*, *>?): CandidateDraftChange? {
+        raw ?: return null
+        val changeId = raw["changeId"] as? String ?: return null
+        return CandidateDraftChange(
+            changeId = changeId,
+            status = enumValue<CandidateDraftChangeStatus>(raw["status"] as? String)
+                ?: CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+            title = raw["title"] as? String ?: changeId,
+            targetStepIds = stringList(raw["targetStepIds"]),
+            targetNodeIds = stringList(raw["targetNodeIds"]),
+            beforeState = raw["beforeState"] as? String,
+            afterState = raw["afterState"] as? String,
+            reason = raw["reason"] as? String ?: "",
+            impactSummary = raw["impactSummary"] as? String ?: "",
         )
     }
 

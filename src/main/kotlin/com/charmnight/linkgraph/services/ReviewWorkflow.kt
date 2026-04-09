@@ -61,15 +61,11 @@ internal class ReviewWorkflow(
             ),
             question = question,
             settings = settingsProvider(),
+            session = snapshot.auditResult?.auditSession,
         )
         session.mutateBatch {
             apply {
                 markAuditResult(result)
-            }
-            result.patch?.let { patch ->
-                apply {
-                    markDraftPatchPreview(patch)
-                }
             }
         }
         return result
@@ -153,6 +149,7 @@ internal class ReviewWorkflow(
                         context = context,
                         question = prompt,
                         settings = settings,
+                        session = snapshot.auditResult?.auditSession,
                         onPreview = previewUpdater,
                     )
                 })(
@@ -173,8 +170,8 @@ internal class ReviewWorkflow(
                         onSuccess = { auditResult ->
                             val requestState = asyncRequestLifecycle.buildSucceededRequestState(
                                 presentation = presentation,
-                                successMessage = if (auditResult.patch != null) {
-                                    "审计完成，已生成可预览的草稿建议。"
+                                successMessage = if (auditResult.newCandidateChanges.isNotEmpty()) {
+                                    "审计完成，已生成待确认变更。"
                                 } else {
                                     "审计完成。"
                                 },
@@ -191,17 +188,12 @@ internal class ReviewWorkflow(
                                 apply {
                                     markAuditResult(auditResult, requestState)
                                 }
-                                auditResult.patch?.let { patch ->
-                                    apply {
-                                        markDraftPatchPreview(patch)
-                                    }
-                                }
                                 apply {
                                     markOperationFeedback(
                                         feedbackLevel,
                                         requestState.statusMessage
-                                            ?: if (auditResult.patch != null) {
-                                                "审计完成，已生成可预览的草稿建议。"
+                                            ?: if (auditResult.newCandidateChanges.isNotEmpty()) {
+                                                "审计完成，已生成待确认变更。"
                                             } else {
                                                 "审计完成。"
                                             },
