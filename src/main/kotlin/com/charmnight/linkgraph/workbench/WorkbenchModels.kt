@@ -34,7 +34,16 @@ data class WorkbenchStep(
     val description: String = "",
 )
 
+data class StepProjectionResult(
+    val steps: List<WorkbenchStep> = emptyList(),
+)
+
 data class CandidateDraftChange(
     val changeId: String,
     val status: CandidateDraftChangeStatus,
+)
+
+data class DraftWorkbenchEntry(
+    val entryId: String,
+    val kind: DraftEntryKind,
 )
