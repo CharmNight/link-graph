@@ -2,13 +2,12 @@ package com.charmnight.linkgraph.extract
 
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.testing.addJavaFixture
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -60,10 +59,27 @@ class MqResolverTest : BasePlatformTestCase() {
         )
     }
 
+    fun testDoesNotTreatOrdinarySetterArgumentsAsMqTopics() {
+        loadFixture("mq/NonMqSetterCall.java")
+        val method = findMethod(
+            "com.charmnight.linkgraph.fixtures.mq.NonMqSetterCall",
+            "configure",
+        )
+
+        val result = GraphExtractor().extract(
+            GraphExtractionRequest(entryMethods = listOf(method)),
+        )
+
+        assertTrue(
+            result.document.nodes.none { node ->
+                node.type == NodeType.MQ_TOPIC &&
+                    (node.title == "defaultTargetDataSource" || node.title == "targetDataSources")
+            },
+        )
+    }
+
     private fun loadFixture(relativePath: String) {
-        val fixturePath = Path.of("src/testFixtures/java/com/charmnight/linkgraph/fixtures/$relativePath")
-        val projectRelativePath = "com/charmnight/linkgraph/fixtures/$relativePath"
-        myFixture.addFileToProject(projectRelativePath, Files.readString(fixturePath))
+        myFixture.addJavaFixture(relativePath)
     }
 
     private fun findMethod(className: String, methodName: String): PsiMethod {

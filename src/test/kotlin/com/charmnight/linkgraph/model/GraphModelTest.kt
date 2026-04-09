@@ -104,6 +104,7 @@ class GraphModelTest {
             id = GraphNode.stableId(NodeType.CLASS, "com.example.Service"),
             type = NodeType.CLASS,
             title = "Service",
+            sourceTag = GraphSourceTag.DRAFT_AI,
             diff = GraphDiff(status = DiffStatus.ONLY_IN_MERMAID),
         )
         val edge = GraphEdge(
@@ -119,9 +120,28 @@ class GraphModelTest {
             certainty = Certainty.RULE_INFERRED,
             bindingStatus = BindingStatus.PARTIALLY_SYNCED,
             status = "ACTIVE",
+            sourceTag = GraphSourceTag.DESIGN_BASELINE,
             diff = GraphDiff(status = DiffStatus.MODIFIED),
         )
-        val original = GraphDocument(nodes = listOf(node), edges = listOf(edge))
+        val original = GraphDocument(
+            nodes = listOf(node),
+            edges = listOf(edge),
+            patch = GraphPatch(
+                summary = "apply ai suggestions",
+                operations = listOf(
+                    GraphPatchOperation(
+                        id = "patch-op-1",
+                        action = GraphPatchAction.ADD_NODE,
+                        elementKind = GraphDiffElementKind.NODE,
+                        elementId = node.id,
+                        title = "新增草稿节点",
+                        summary = "把 AI 建议节点加入草稿层",
+                        node = node,
+                    ),
+                ),
+                addedNodeIds = listOf(node.id),
+            ),
+        )
 
         val roundTrip = GraphJson.fromJson(GraphJson.toJson(original))
 
@@ -130,6 +150,85 @@ class GraphModelTest {
         assertEquals(Certainty.RULE_INFERRED, roundTrip.edges.single().certainty)
         assertEquals(BindingStatus.PARTIALLY_SYNCED, roundTrip.edges.single().bindingStatus)
         assertEquals("ACTIVE", roundTrip.edges.single().status)
+        assertEquals(GraphSourceTag.DRAFT_AI, roundTrip.nodes.single().sourceTag)
+        assertEquals(GraphSourceTag.DESIGN_BASELINE, roundTrip.edges.single().sourceTag)
+        assertNotNull(roundTrip.patch)
+        assertEquals("apply ai suggestions", roundTrip.patch.summary)
+        assertEquals(GraphPatchAction.ADD_NODE, roundTrip.patch.operations.single().action)
+        assertEquals(node.id, roundTrip.patch.operations.single().elementId)
+    }
+
+    @Test
+    fun flowScopeAndContainmentEdgeRoundTripThroughJson() {
+        val flowScopeNode = GraphNode(
+            id = GraphNode.stableId(NodeType.FLOW_SCOPE, "if (line.isActive())", "com.example.OrderService.process():void"),
+            type = NodeType.FLOW_SCOPE,
+            title = "if (line.isActive())",
+            location = "src/main/java/com/example/OrderService.java:18:9",
+            signature = "branch body · Line",
+            doc = "只处理有效订单行。",
+            sourceKind = "JAVA_FLOW_SCOPE",
+            metadata = mapOf(
+                "flow.kind" to "IF",
+                "flow.parentNodeId" to "method:com-example-orderservice-process",
+            ),
+        )
+        val containmentEdge = GraphEdge(
+            id = GraphEdge.stableId(
+                EdgeType.CONTAINS_FLOW,
+                "method:com-example-orderservice-process",
+                flowScopeNode.id,
+            ),
+            type = EdgeType.CONTAINS_FLOW,
+            fromNodeId = "method:com-example-orderservice-process",
+            toNodeId = flowScopeNode.id,
+            metadata = mapOf("callOrder" to "1"),
+        )
+
+        val roundTrip = GraphJson.fromJson(
+            GraphJson.toJson(
+                GraphDocument(
+                    nodes = listOf(flowScopeNode),
+                    edges = listOf(containmentEdge),
+                ),
+            ),
+        )
+
+        assertEquals(NodeType.FLOW_SCOPE, roundTrip.nodes.single().type)
+        assertEquals("IF", roundTrip.nodes.single().metadata["flow.kind"])
+        assertEquals("JAVA_FLOW_SCOPE", roundTrip.nodes.single().sourceKind)
+        assertEquals(EdgeType.CONTAINS_FLOW, roundTrip.edges.single().type)
+        assertEquals("1", roundTrip.edges.single().metadata["callOrder"])
+    }
+
+    @Test
+    fun flowActionRoundTripPreservesSourceMappingMetadata() {
+        val actionNode = GraphNode(
+            id = "flow-action:copy-bean",
+            type = NodeType.FLOW_ACTION,
+            title = "BeanUtils.copyBeanProp(user, obj)",
+            metadata = mapOf(
+                "source.filePath" to "/tmp/ShiroUtils.java",
+                "source.startOffset" to "100",
+                "source.endOffset" to "132",
+                "flow.anchorMethod" to "com.ruoyi.common.utils.ShiroUtils.getSysUser():SysUser",
+            ),
+        )
+
+        val roundTrip = GraphJson.fromJson(
+            GraphJson.toJson(
+                GraphDocument(nodes = listOf(actionNode)),
+            ),
+        )
+
+        assertEquals(NodeType.FLOW_ACTION, roundTrip.nodes.single().type)
+        assertEquals("/tmp/ShiroUtils.java", roundTrip.nodes.single().metadata["source.filePath"])
+        assertEquals("100", roundTrip.nodes.single().metadata["source.startOffset"])
+        assertEquals("132", roundTrip.nodes.single().metadata["source.endOffset"])
+        assertEquals(
+            "com.ruoyi.common.utils.ShiroUtils.getSysUser():SysUser",
+            roundTrip.nodes.single().metadata["flow.anchorMethod"],
+        )
     }
 
     @Test
@@ -137,6 +236,10 @@ class GraphModelTest {
         assertEquals(
             setOf(
                 "METHOD",
+                "FLOW_SCOPE",
+                "FLOW_ACTION",
+                "TERMINAL",
+                "MERGE",
                 "CLASS",
                 "SQL",
                 "HTTP_ENDPOINT",
@@ -155,6 +258,7 @@ class GraphModelTest {
         assertEquals(
             setOf(
                 "CALL",
+                "CONTROL_FLOW",
                 "IMPLEMENTS",
                 "INJECT",
                 "ROUTES_TO",
@@ -167,6 +271,7 @@ class GraphModelTest {
                 "REFLECTS_TO",
                 "SPI_RESOLVES_TO",
                 "GENERATES",
+                "CONTAINS_FLOW",
             ),
             EdgeType.entries.map { it.name }.toSet(),
         )
@@ -184,6 +289,25 @@ class GraphModelTest {
         assertEquals(
             setOf("MATCHED", "ONLY_IN_CODE", "ONLY_IN_MERMAID", "MODIFIED"),
             DiffStatus.entries.map { it.name }.toSet(),
+        )
+
+        assertEquals(
+            setOf("FACT", "DESIGN_BASELINE", "DRAFT_MANUAL", "DRAFT_AI", "UNCERTAIN_FACT"),
+            GraphSourceTag.entries.map { it.name }.toSet(),
+        )
+
+        assertEquals(
+            setOf(
+                "ADD_NODE",
+                "UPDATE_NODE",
+                "DELETE_NODE",
+                "ADD_EDGE",
+                "UPDATE_EDGE",
+                "DELETE_EDGE",
+                "ADD_ANNOTATION",
+                "MARK_UNCERTAIN",
+            ),
+            GraphPatchAction.entries.map { it.name }.toSet(),
         )
     }
 }

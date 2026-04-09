@@ -2,13 +2,13 @@ package com.charmnight.linkgraph.extract
 
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.testing.addJavaFixture
+import com.charmnight.linkgraph.testing.addResourceFixture
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -46,15 +46,11 @@ class MyBatisResolverTest : BasePlatformTestCase() {
     }
 
     private fun loadJavaFixture(relativePath: String) {
-        val fixturePath = Path.of("src/testFixtures/java/com/charmnight/linkgraph/fixtures/$relativePath")
-        val projectRelativePath = "com/charmnight/linkgraph/fixtures/$relativePath"
-        myFixture.addFileToProject(projectRelativePath, Files.readString(fixturePath))
+        myFixture.addJavaFixture(relativePath)
     }
 
     private fun loadResourceFixture(relativePath: String) {
-        val fixturePath = Path.of("src/testFixtures/resources/com/charmnight/linkgraph/fixtures/$relativePath")
-        val projectRelativePath = "com/charmnight/linkgraph/fixtures/$relativePath"
-        myFixture.addFileToProject(projectRelativePath, Files.readString(fixturePath))
+        myFixture.addResourceFixture(relativePath)
     }
 
     private fun findMethod(className: String, methodName: String): PsiMethod {

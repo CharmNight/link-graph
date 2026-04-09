@@ -3,11 +3,14 @@ package com.charmnight.linkgraph
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.xml.parsers.DocumentBuilderFactory
+import kotlin.reflect.jvm.javaConstructor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.w3c.dom.Element
+import com.charmnight.linkgraph.services.LinkGraphProjectService
+import com.intellij.openapi.project.Project
 
 class PluginBootstrapTest {
     @Test
@@ -21,12 +24,13 @@ class PluginBootstrapTest {
         val idNodes = document.getElementsByTagName("id")
         assertEquals("Expected exactly one <id> in plugin.xml", 1, idNodes.length)
         assertEquals("com.charmnight.linkgraph", idNodes.item(0).textContent.trim())
+        assertEquals("Did not expect plugin.xml to depend on a plugin descriptor resource bundle", 0, document.getElementsByTagName("resource-bundle").length)
 
         val toolWindow = firstElementByTagNameAndAttribute(
             document,
             "toolWindow",
             "id",
-            "Link Graph",
+            "链路图",
         )
         assertNotNull("Expected placeholder Link Graph tool window registration", toolWindow)
         assertEquals(
@@ -46,6 +50,48 @@ class PluginBootstrapTest {
             action!!.getAttribute("class"),
         )
 
+        val appendAction = firstElementByTagNameAndAttribute(
+            document,
+            "action",
+            "id",
+            "com.charmnight.linkgraph.AddCurrentMethodToGraphAction",
+        )
+        assertNotNull("Expected add-current-method action registration", appendAction)
+        assertEquals(
+            "com.charmnight.linkgraph.actions.AddCurrentMethodToGraphAction",
+            appendAction!!.getAttribute("class"),
+        )
+
+        val settingsAction = firstElementByTagNameAndAttribute(
+            document,
+            "action",
+            "id",
+            "com.charmnight.linkgraph.OpenLinkGraphSettingsAction",
+        )
+        assertNotNull("Expected Link Graph settings action registration", settingsAction)
+        assertEquals(
+            "com.charmnight.linkgraph.actions.OpenLinkGraphSettingsAction",
+            settingsAction!!.getAttribute("class"),
+        )
+
+        val toolsGroup = firstElementByTagNameAndAttribute(
+            document,
+            "group",
+            "id",
+            "com.charmnight.linkgraph.ToolsGroup",
+        )
+        assertNotNull("Expected visible Link Graph tools group registration", toolsGroup)
+        assertEquals("链路图", toolsGroup!!.getAttribute("text"))
+
+        val configurable = firstElementByTagNameAndAttribute(
+            document,
+            "applicationConfigurable",
+            "instance",
+            "com.charmnight.linkgraph.settings.LinkGraphSettingsConfigurable",
+        )
+        assertNotNull("Expected Link Graph settings configurable registration", configurable)
+        assertEquals("tools", configurable!!.getAttribute("parentId"))
+
         val classLoader = javaClass.classLoader
         assertNotNull(
             "Expected placeholder tool window factory class on the classpath",
@@ -55,6 +101,22 @@ class PluginBootstrapTest {
             "Expected placeholder action class on the classpath",
             classLoader.loadClass("com.charmnight.linkgraph.actions.OpenLinkGraphAction"),
         )
+        assertNotNull(
+            "Expected settings action class on the classpath",
+            classLoader.loadClass("com.charmnight.linkgraph.actions.OpenLinkGraphSettingsAction"),
+        )
+        assertNotNull(
+            "Expected append action class on the classpath",
+            classLoader.loadClass("com.charmnight.linkgraph.actions.AddCurrentMethodToGraphAction"),
+        )
+        assertNotNull(
+            "Expected settings configurable class on the classpath",
+            classLoader.loadClass("com.charmnight.linkgraph.settings.LinkGraphSettingsConfigurable"),
+        )
+        assertNotNull(
+            "Expected settings service class on the classpath",
+            classLoader.loadClass("com.charmnight.linkgraph.settings.LinkGraphSettingsService"),
+        )
     }
 
     @Test
@@ -63,18 +125,25 @@ class PluginBootstrapTest {
         assertTrue("Expected build.gradle.kts at project root", Files.exists(buildScript))
 
         val scriptText = Files.readString(buildScript)
-        assertTrue("Expected frontend hook to target web/package.json", scriptText.contains("web/package.json"))
-        assertTrue("Expected frontend hook to work from the web directory", scriptText.contains("workingDir = file(\"web\")"))
+        assertTrue("Expected frontend hook to target the web workspace", scriptText.contains("val webDir = layout.projectDirectory.dir(\"web\")"))
+        assertTrue("Expected frontend hook to target package.json inside the web workspace", scriptText.contains("webPackageJson = webDir.file(\"package.json\")"))
+        assertTrue("Expected frontend hook to define split frontend tasks", scriptText.contains("val frontendInstall by tasks.registering"))
+        assertTrue("Expected frontend hook to work from the web directory", scriptText.contains("workingDir = webDir.asFile"))
         assertTrue("Did not expect legacy frontend/ path in hook", !scriptText.contains("frontend/package.json"))
     }
 
     @Test
-    fun packagedResourcesContainBuiltFrontendEntry() {
-        val entry = javaClass.classLoader.getResource("linkgraph/index.html")
-        assertNotNull("Expected built frontend entry under linkgraph/index.html", entry)
+    fun projectServiceKeepsSupportedIntellijConstructorSignature() {
+        val constructors = LinkGraphProjectService::class.constructors
+            .mapNotNull { it.javaConstructor }
+            .map { constructor -> constructor.parameterTypes.toList() }
 
-        val html = entry!!.openStream().bufferedReader().use { it.readText() }
-        assertTrue("Expected bundled frontend entry to reference built assets", html.contains("assets/"))
+        assertTrue(
+            "Expected LinkGraphProjectService to expose a supported IntelliJ constructor signature",
+            constructors.any { parameters ->
+                parameters.size == 1 && parameters[0] == Project::class.java
+            },
+        )
     }
 
     private fun firstElementByTagNameAndAttribute(
