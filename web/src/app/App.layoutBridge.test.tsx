@@ -65,8 +65,12 @@ const bootstrapState = materializeThreeViewDocuments({
         inputs: ["java.lang.String"],
         outputs: ["com.example.SubmitResult"],
         certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        bindingStatus: "DESIGN_ONLY",
         position: { x: 120, y: 96 },
+        sourceTag: "DRAFT_MANUAL",
+        metadata: {
+          "linkGraph.manual": "true",
+        },
       },
     ],
     edges: [],
@@ -80,8 +84,12 @@ const bootstrapState = materializeThreeViewDocuments({
         inputs: ["java.lang.String"],
         outputs: ["com.example.SubmitResult"],
         certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        bindingStatus: "DESIGN_ONLY",
         position: { x: 120, y: 96 },
+        sourceTag: "DRAFT_MANUAL",
+        metadata: {
+          "linkGraph.manual": "true",
+        },
       },
     ],
     edges: [],
@@ -104,11 +112,13 @@ const flowchartBootstrapState = materializeThreeViewDocuments({
         inputs: ["java.lang.String"],
         outputs: ["com.example.SubmitResult"],
         certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        bindingStatus: "DESIGN_ONLY",
         position: { x: 120, y: 96 },
         metadata: {
           "flowchart.kind": "ENTRY",
+          "linkGraph.manual": "true",
         },
+        sourceTag: "DRAFT_MANUAL",
       },
       {
         id: "action:write-order",
@@ -153,11 +163,13 @@ const flowchartBootstrapState = materializeThreeViewDocuments({
         inputs: ["java.lang.String"],
         outputs: ["com.example.SubmitResult"],
         certainty: "PROVEN",
-        bindingStatus: "BOUND",
+        bindingStatus: "DESIGN_ONLY",
         position: { x: 120, y: 96 },
         metadata: {
           "flowchart.kind": "ENTRY",
+          "linkGraph.manual": "true",
         },
+        sourceTag: "DRAFT_MANUAL",
       },
       {
         id: "action:write-order",
@@ -210,6 +222,7 @@ describe("App layout bridge", () => {
       graphChanged: vi.fn(),
       layoutChanged: vi.fn(),
       nodeSelected: vi.fn(),
+      requestAnalysisDisplayMode: vi.fn(),
     };
   });
 
@@ -217,7 +230,7 @@ describe("App layout bridge", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "simulate move" }));
+    await user.click(screen.getByRole("button", { name: "simulate flowchart move" }));
 
     expect(window.linkGraphBridge?.layoutChanged).toHaveBeenCalledWith({
       positions: [
@@ -233,6 +246,10 @@ describe("App layout bridge", () => {
 
   it("publishes semantic graph changes together with layout snapshots", async () => {
     const user = userEvent.setup();
+    window.linkGraphBootstrap = structuredClone({
+      ...bootstrapState,
+      analysisDisplayMode: "FACT_GRAPH",
+    });
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "simulate add" }));
@@ -241,9 +258,9 @@ describe("App layout bridge", () => {
     expect(window.linkGraphBridge?.layoutChanged).toHaveBeenCalledWith({
       positions: expect.arrayContaining([
         expect.objectContaining({
-          nodeId: "method:submit-order",
-          x: expect.any(Number),
-          y: expect.any(Number),
+          nodeId: "design:2",
+          x: 420,
+          y: 240,
         }),
       ]),
     });
@@ -251,6 +268,10 @@ describe("App layout bridge", () => {
 
   it("consumes a layout-only transport slice while preserving the current graph semantics", async () => {
     const user = userEvent.setup();
+    window.linkGraphBootstrap = structuredClone({
+      ...bootstrapState,
+      analysisDisplayMode: "FACT_GRAPH",
+    });
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "simulate add" }));

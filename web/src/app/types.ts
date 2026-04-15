@@ -21,8 +21,15 @@ export type GraphPatchAction =
   | "MARK_UNCERTAIN";
 export type LlmResultSource = "DISABLED" | "MOCK" | "REMOTE";
 export type ResultEvidenceLevel = "DIRECT_SOURCE" | "DIRECT_GRAPH" | "CALLSITE_ONLY" | "NOT_OBSERVED";
+export type DraftClaimType = "CODE_FACT" | "RISK_HINT" | "EXPLANATION_NOTE" | "STRUCTURAL_SUGGESTION";
 export type DraftPatchPreviewSource = "AUDIT" | "DIFF_REVIEW" | "LAST_APPLIED";
 export type AnalysisDisplayMode = "FACT_GRAPH" | "FLOWCHART" | "RESOURCE_RELATION_VIEW";
+export type StepGranularity = "BUSINESS" | "METHOD_CALL" | "CODE_SEMANTIC";
+export type StepKind = "BUSINESS_ACTION" | "METHOD_CALL" | "CONDITION" | "RETURN" | "RESOURCE_INTERACTION";
+export type CandidateDraftChangeStatus = "PENDING_CONFIRMATION" | "CONFIRMED" | "REJECTED" | "SUPERSEDED";
+export type AuditInvestigationLeadStatus = "OPEN" | "PROMOTED" | "DISMISSED" | "SUPERSEDED";
+export type DraftEntryKind = "CHANGE" | "NOTE";
+export type AuditMessageRole = "USER" | "ASSISTANT";
 
 export type NodeType =
   | "METHOD"
@@ -62,6 +69,11 @@ export type EdgeType =
 export interface GraphPosition {
   x: number;
   y: number;
+}
+
+export interface GraphFocusRequest {
+  nodeId: string;
+  nonce: number;
 }
 
 export interface LinkGraphEdgeRouteSection {
@@ -134,6 +146,16 @@ export interface FlowchartSummary {
   nodeCount: number;
   branchCount: number;
   exceptionPathCount: number;
+  fullNodeCount?: number;
+  fullEdgeCount?: number;
+  hiddenNodeCount?: number;
+  hiddenEdgeCount?: number;
+  truncated?: boolean;
+  incompleteNodeCount?: number;
+  incompleteEdgeCount?: number;
+  semanticallyIncomplete?: boolean;
+  syntheticEdgeCount?: number;
+  syntheticEntryEdgeCount?: number;
 }
 
 export interface FlowchartViewDocument {
@@ -198,6 +220,13 @@ export interface GraphPatchResult {
   promptPreviewArtifactId?: string | null;
   patch?: GraphPatch | null;
   findings: ResultEvidenceFinding[];
+  candidateChanges: CandidateDraftChange[];
+  newCandidateChanges: CandidateDraftChange[];
+  investigationLeads: AuditInvestigationLead[];
+  newInvestigationLeads: AuditInvestigationLead[];
+  sourceContext?: SourceSnippetContext[];
+  evidenceTrace?: EvidenceTraceEntry[];
+  auditSession?: AuditConversationSession | null;
   warnings: string[];
 }
 
@@ -220,30 +249,189 @@ export interface SourceSnippetContext {
   snippet?: string | null;
 }
 
+export interface EvidenceTraceEntry {
+  nodeId: string;
+  filePath: string;
+  reason: string;
+  startLine?: number | null;
+  endLine?: number | null;
+  includedInPrompt: boolean;
+}
+
+export interface EditScope {
+  scopeId: string;
+  targetNodeId: string;
+  filePath: string;
+  language: string;
+  symbolKind: string;
+  symbolSignature?: string | null;
+  startOffset?: number | null;
+  endOffset?: number | null;
+  startLine?: number | null;
+  endLine?: number | null;
+  allowedChangeKinds: string[];
+  supportingFindingIds: string[];
+}
+
+export interface CodeEditOperation {
+  operationId: string;
+  filePath: string;
+  scopeId?: string | null;
+  kind: "REPLACE_METHOD_BODY" | "REPLACE_METHOD_BLOCK" | "INSERT_METHOD_AFTER" | "ADD_IMPORT" | "ADD_FIELD" | "CREATE_FILE";
+  payload: string;
+  warnings: string[];
+}
+
 export interface GraphBeautificationContext {
   presentationContext: GraphPresentationContext;
   sourceContext: SourceSnippetContext[];
   userGoal: string;
   preferredStyle?: string | null;
   explanationFocus?: string | null;
+  followUp?: GraphBeautificationFollowUpRequest | null;
 }
 
-export interface GraphBeautificationSection {
-  id: string;
+export interface GraphBeautificationFollowUpRequest {
+  stepId: string;
+  stepTitle: string;
+  question: string;
+}
+
+export interface GraphBeautificationRequest {
+  goal?: string;
+  preferredStyle?: string | null;
+  explanationFocus?: string | null;
+  granularity?: StepGranularity;
+  followUp?: GraphBeautificationFollowUpRequest | null;
+}
+
+export interface GraphBeautificationStep {
+  stepId: string;
   title: string;
-  content: string;
+  granularity: StepGranularity;
+  kind: StepKind;
+  description: string;
+  primaryNodeId?: string | null;
+  codeSnippet?: string | null;
+  evidence: ResultEvidenceFinding[];
+  followUpQuestions: string[];
+  downstreamTargets: string[];
 }
 
 export interface GraphBeautificationResult {
   source: LlmResultSource;
-  summaryTitle: string;
-  summary: string;
-  sections: GraphBeautificationSection[];
-  findings: ResultEvidenceFinding[];
+  granularity: StepGranularity;
+  steps: GraphBeautificationStep[];
   promptPreview: string | null;
   promptPreviewArtifactId?: string | null;
   warnings: string[];
 }
+
+export interface CandidateDraftChange {
+  changeId: string;
+  status: CandidateDraftChangeStatus;
+  title: string;
+  targetStepIds: string[];
+  targetNodeIds: string[];
+  beforeState?: string | null;
+  afterState?: string | null;
+  reason: string;
+  impactSummary: string;
+  claimType?: DraftClaimType | null;
+  evidence?: ResultEvidenceFinding[];
+  editScopes?: EditScope[];
+}
+
+export interface AuditConversationMessage {
+  messageId: string;
+  role: AuditMessageRole;
+  content: string;
+  focusTargetId?: string | null;
+}
+
+export interface AuditConversationSession {
+  sessionId: string;
+  scopeKey: string;
+  messages: AuditConversationMessage[];
+  candidateChanges: CandidateDraftChange[];
+  investigationLeads: AuditInvestigationLead[];
+  focusTargetId?: string | null;
+}
+
+export interface AuditInvestigationLead {
+  leadId: string;
+  status: AuditInvestigationLeadStatus;
+  title: string;
+  targetStepIds: string[];
+  targetNodeIds: string[];
+  summary: string;
+  evidenceGap: string;
+  recommendedQuestion: string;
+  claimType?: DraftClaimType | null;
+  evidence: ResultEvidenceFinding[];
+}
+
+export interface DraftWorkbenchEntry {
+  entryId: string;
+  kind: DraftEntryKind;
+  title: string;
+  sourceChangeId?: string | null;
+  targetStepIds: string[];
+  targetNodeIds: string[];
+  beforeState?: string | null;
+  afterState?: string | null;
+  reason: string;
+  impactSummary: string;
+  claimType?: DraftClaimType | null;
+  evidence: ResultEvidenceFinding[];
+  editScopes?: EditScope[];
+}
+
+export interface DraftWorkbenchState {
+  draftChanges: DraftWorkbenchEntry[];
+  draftNotes: DraftWorkbenchEntry[];
+}
+
+export interface ExplanationWorkbenchState {
+  result: GraphBeautificationResult | null;
+  requestState: AsyncRequestState;
+  selectedStepId?: string | null;
+  granularity: StepGranularity;
+  historyDepth: number;
+  canReturnToPrevious: boolean;
+  historyTrail: string[];
+  currentSessionLabel?: string | null;
+  previousSessionLabel?: string | null;
+}
+
+export interface AuditWorkbenchState {
+  result: GraphPatchResult | null;
+  requestState: AsyncRequestState;
+  selectedChangeId?: string | null;
+  selectedLeadId?: string | null;
+  questionDraft: string;
+  scopeLabel?: string | null;
+}
+
+export interface DraftWorkbenchViewState {
+  draftState: DraftWorkbenchState;
+  compareMode: "after" | "compare";
+  selectedEntryId?: string | null;
+}
+
+export type WorkbenchSectionId =
+  | "explanation.step-list"
+  | "explanation.step-detail"
+  | "audit.request-status"
+  | "audit.thread"
+  | "audit.composer"
+  | "audit.candidate-changes"
+  | "audit.investigation-leads"
+  | "draft.change-list"
+  | "draft.note-list"
+  | "draft.detail";
+
+export type WorkbenchSectionPreferences = Partial<Record<WorkbenchSectionId, boolean>>;
 
 export interface SyncPreviewItem {
   id: string;
@@ -260,6 +448,7 @@ export interface GenerationPlanItem {
   description: string;
   risk: "LOW" | "MEDIUM" | "HIGH";
   targetPath?: string | null;
+  editScopes?: EditScope[];
 }
 
 export interface GenerationPlan {
@@ -278,6 +467,8 @@ export interface GeneratedCodeDraft {
   targetPath: string;
   content: string | null;
   contentArtifactId?: string | null;
+  editOperations?: CodeEditOperation[];
+  editScopes?: EditScope[];
   warnings: string[];
 }
 
@@ -378,6 +569,7 @@ export interface LinkGraphBootstrapState {
   layoutRevision?: number;
   snapshotRevision?: number;
   draftPatchPreview?: GraphPatch | null;
+  draftWorkbenchState?: DraftWorkbenchState | null;
   canUndoDraftPatchApply?: boolean;
   lastAppliedDraftPatchSummary?: string | null;
   auditResult?: GraphPatchResult | null;
@@ -403,6 +595,7 @@ export interface LinkGraphBootstrapState {
   sourceNavigationState?: SourceNavigationState | null;
   operationFeedback?: OperationFeedback | null;
   graphSurfaceExperiments?: GraphSurfaceExperimentFlags | null;
+  workbenchSectionPreferences?: WorkbenchSectionPreferences | null;
   artifactContents?: Record<string, string>;
   lastMessageType?: string | null;
   lastGraphSource?: string | null;
@@ -420,40 +613,9 @@ export interface LinkGraphTransportEnvelopeBase {
   revision: number;
 }
 
-export interface LinkGraphBootstrapInitEnvelope extends LinkGraphTransportEnvelopeBase {
-  type: "BOOTSTRAP_INIT";
-  state: LinkGraphBootstrapState;
-}
-
-export interface LinkGraphSemanticGraphSliceEnvelope extends LinkGraphTransportEnvelopeBase {
-  type: "SEMANTIC_GRAPH_SLICE";
-  state: Partial<LinkGraphBootstrapState>;
-}
-
-export interface LinkGraphLayoutSliceEnvelope extends LinkGraphTransportEnvelopeBase {
-  type: "LAYOUT_SLICE";
-  state: Partial<LinkGraphBootstrapState>;
-}
-
-export interface LinkGraphWorkflowSliceEnvelope extends LinkGraphTransportEnvelopeBase {
-  type: "WORKFLOW_SLICE";
-  state: Partial<LinkGraphBootstrapState>;
-}
-
-export interface LinkGraphFeedbackSliceEnvelope extends LinkGraphTransportEnvelopeBase {
-  type: "FEEDBACK_SLICE";
-  state: Partial<LinkGraphBootstrapState>;
-}
-
 export interface LinkGraphArtifactSliceEnvelope extends LinkGraphTransportEnvelopeBase {
   type: "ARTIFACT_SLICE";
   state: Partial<LinkGraphBootstrapState>;
 }
 
-export type LinkGraphIncrementalTransportEnvelope =
-  | LinkGraphBootstrapInitEnvelope
-  | LinkGraphSemanticGraphSliceEnvelope
-  | LinkGraphLayoutSliceEnvelope
-  | LinkGraphWorkflowSliceEnvelope
-  | LinkGraphFeedbackSliceEnvelope
-  | LinkGraphArtifactSliceEnvelope;
+export type LinkGraphIncrementalTransportEnvelope = LinkGraphArtifactSliceEnvelope;

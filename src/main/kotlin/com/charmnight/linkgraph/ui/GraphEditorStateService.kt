@@ -703,23 +703,32 @@ class GraphEditorStateService {
         mutate { currentState: Snapshot ->
             /** 生效的方法签名，优先使用显式传入值。 */
             val effectiveSignature = selectedMethodSignature ?: currentState.selectedMethodSignature
-            /** 由新图提取出的布局状态。 */
-            val nextLayoutState = extractLayoutState(graph)
-            /** 图变更后应保留的选中节点。 */
-            val nextSelectedNodeId = resolveSelectedNodeId(
-                graph = graph,
-                selectedNodeId = currentState.selectedNodeId,
-                selectedMethodSignature = effectiveSignature,
-            )
             /** 工作图变更后前端仍应消费的三视图文档。 */
-            val nextViewDocuments = syncEditedViewDocuments(
+            val nextViewDocuments = syncWorkingGraphViewDocuments(
                 currentState = currentState,
                 graph = graph,
                 effectiveSignature = effectiveSignature,
-                nextSelectedNodeId = nextSelectedNodeId,
+            )
+            /** 当前展示模式对应的可见图。 */
+            val nextVisibleGraph = when (currentState.analysisDisplayMode) {
+                AnalysisDisplayMode.FLOWCHART -> nextViewDocuments.flowchartView.visibleGraph
+                AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> nextViewDocuments.resourceRelationView.visibleGraph
+                AnalysisDisplayMode.FACT_GRAPH -> nextViewDocuments.factGraphView.visibleGraph
+            }
+            /** 由当前可见图提取出的布局状态。 */
+            val nextLayoutState = mergeLayoutState(
+                graph = nextVisibleGraph,
+                preferred = currentState.layoutState,
+                fallback = extractLayoutState(nextVisibleGraph),
+            )
+            /** 图变更后应保留的选中节点。 */
+            val nextSelectedNodeId = resolveSelectedNodeId(
+                graph = nextVisibleGraph,
+                selectedNodeId = currentState.selectedNodeId,
+                selectedMethodSignature = effectiveSignature,
             )
             currentState.copy(
-                visibleGraph = graph,
+                visibleGraph = nextVisibleGraph,
                 workingGraph = graph,
                 factGraphView = nextViewDocuments.factGraphView,
                 flowchartView = nextViewDocuments.flowchartView,
@@ -750,6 +759,85 @@ class GraphEditorStateService {
                 snapshotRevision = currentState.snapshotRevision + 1,
                 selectedMethodSignature = effectiveSignature,
                 selectedNodeId = nextSelectedNodeId,
+                lastMessageType = "graphChanged",
+            )
+        }
+    }
+
+    /** 标记当前展示视图的图结构已变化，同时保留其他语义视图。 */
+    fun markViewGraphChanged(
+        graph: GraphDocument,
+        displayMode: AnalysisDisplayMode,
+        selectedMethodSignature: String? = null,
+        preserveDraftPatchUndo: Boolean = false,
+    ) {
+        mutate { currentState: Snapshot ->
+            /** 生效的方法签名，优先使用显式传入值。 */
+            val effectiveSignature = selectedMethodSignature ?: currentState.selectedMethodSignature
+            /** 视图图变更后应保留的选中节点。 */
+            val nextSelectedNodeId = resolveSelectedNodeId(
+                graph = graph,
+                selectedNodeId = currentState.selectedNodeId,
+                selectedMethodSignature = effectiveSignature,
+            )
+            /** 按指定展示模式同步后的三视图文档。 */
+            val nextViewDocuments = syncDisplayModeGraphViewDocuments(
+                currentState = currentState,
+                graph = graph,
+                effectiveSignature = effectiveSignature,
+                nextSelectedNodeId = nextSelectedNodeId,
+                displayMode = displayMode,
+            )
+            /** 当前展示模式对应的可见图。 */
+            val nextVisibleGraph = when (currentState.analysisDisplayMode) {
+                AnalysisDisplayMode.FLOWCHART -> nextViewDocuments.flowchartView.visibleGraph
+                AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> nextViewDocuments.resourceRelationView.visibleGraph
+                AnalysisDisplayMode.FACT_GRAPH -> nextViewDocuments.factGraphView.visibleGraph
+            }
+            /** 由当前可见图提取出的布局状态。 */
+            val nextLayoutState = mergeLayoutState(
+                graph = nextVisibleGraph,
+                preferred = currentState.layoutState,
+                fallback = extractLayoutState(nextVisibleGraph),
+            )
+            /** 当前可见图下最终保留的选中节点。 */
+            val nextVisibleSelectedNodeId = resolveSelectedNodeId(
+                graph = nextVisibleGraph,
+                selectedNodeId = nextSelectedNodeId,
+                selectedMethodSignature = effectiveSignature,
+            )
+            currentState.copy(
+                visibleGraph = nextVisibleGraph,
+                workingGraph = graph,
+                factGraphView = nextViewDocuments.factGraphView,
+                flowchartView = nextViewDocuments.flowchartView,
+                resourceRelationView = nextViewDocuments.resourceRelationView,
+                draftWorkbenchState = currentState.draftWorkbenchState,
+                draftPatchPreview = null,
+                draftPatchUndoState = if (preserveDraftPatchUndo) currentState.draftPatchUndoState else null,
+                lastDraftPatchApplyResult = null,
+                auditResult = null,
+                auditRequestState = AsyncRequestState(),
+                diffReviewResult = null,
+                diffReviewRequestState = AsyncRequestState(),
+                syncPreviewItems = emptyList(),
+                syncPreviewRequested = false,
+                generationPlan = null,
+                generationPlanRequestState = AsyncRequestState(),
+                graphBeautificationResult = null,
+                graphBeautificationRequestState = AsyncRequestState(),
+                generatedCodeDrafts = emptyList(),
+                generatedCodeDraftWarnings = emptyList(),
+                generatedCodeDraftSource = null,
+                generatedCodeDraftPromptPreview = null,
+                generatedCodeDraftWriteReport = null,
+                codeDraftRequestState = AsyncRequestState(),
+                workingGraphDirty = true,
+                layoutState = nextLayoutState,
+                semanticRevision = currentState.semanticRevision + 1,
+                snapshotRevision = currentState.snapshotRevision + 1,
+                selectedMethodSignature = effectiveSignature,
+                selectedNodeId = nextVisibleSelectedNodeId,
                 lastMessageType = "graphChanged",
             )
         }
@@ -1250,11 +1338,26 @@ class GraphEditorStateService {
     fun markOperationFeedback(
         level: OperationFeedbackLevel,
         message: String,
+        preserveLastMessageType: Boolean = false,
     ) {
         mutate {
             it.copy(
                 operationFeedback = OperationFeedback(level = level, message = message),
-                lastMessageType = "operationFeedback",
+                lastMessageType = if (preserveLastMessageType) {
+                    it.lastMessageType
+                } else {
+                    "operationFeedback"
+                },
+            )
+        }
+    }
+
+    /** 写入工作台分区折叠偏好。 */
+    fun markWorkbenchSectionPreferences(preferences: Map<String, Boolean>) {
+        mutate {
+            it.copy(
+                workbenchSectionPreferences = LinkedHashMap(preferences),
+                lastMessageType = "workbenchSectionPreferences",
             )
         }
     }
@@ -1394,6 +1497,8 @@ class GraphEditorStateService {
         val snapshotRevision: Long = 0,
         /** 最近一次操作反馈。 */
         val operationFeedback: OperationFeedback? = null,
+        /** 工作台折叠偏好。 */
+        val workbenchSectionPreferences: Map<String, Boolean> = emptyMap(),
         /** 最近一次状态消息类型。 */
         val lastMessageType: String? = null,
     )

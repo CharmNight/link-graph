@@ -3,9 +3,11 @@ import type { AnalysisDisplayMode } from "../types";
 
 interface LegendProps {
   analysisDisplayMode: AnalysisDisplayMode;
+  hasExplanationFocus?: boolean;
+  hasDraftChanges?: boolean;
 }
 
-export function Legend({ analysisDisplayMode }: LegendProps) {
+export function Legend({ analysisDisplayMode, hasExplanationFocus = false, hasDraftChanges = false }: LegendProps) {
   const modeBadges = (() => {
     switch (analysisDisplayMode) {
       case "FLOWCHART":
@@ -41,6 +43,8 @@ export function Legend({ analysisDisplayMode }: LegendProps) {
       <span className="badge certainty-rule_inferred">{certaintyLabel("RULE_INFERRED")}</span>
       <span className="badge certainty-llm_suggested">{certaintyLabel("LLM_SUGGESTED")}</span>
       <span className="badge diff-modified">{diffStatusLabel("MODIFIED")}</span>
+      {hasExplanationFocus ? <span className="badge legend-highlight-badge explanation-focus">蓝环：当前讲解步骤</span> : null}
+      {hasDraftChanges ? <span className="badge legend-highlight-badge draft-change">橙环：草稿变更节点</span> : null}
       {modeBadges.map((badge) => (
         <span key={badge} className="badge legend-structure-badge">{badge}</span>
       ))}

@@ -16,6 +16,9 @@ class DraftWorkbenchService {
             afterState = candidate.afterState,
             reason = candidate.reason,
             impactSummary = candidate.impactSummary,
+            claimType = candidate.claimType,
+            evidence = candidate.evidence,
+            editScopes = candidate.editScopes,
         )
         val nextDraftChanges = draft.draftChanges
             .filterNot { existing -> existing.sourceChangeId == candidate.changeId }
@@ -23,6 +26,26 @@ class DraftWorkbenchService {
         return DraftConfirmationResult(
             draftState = draft.copy(draftChanges = nextDraftChanges),
             draftChanges = nextDraftChanges,
+            graphChanged = true,
+        )
+    }
+
+    fun unconfirmCandidateChange(
+        draft: DraftWorkbenchState,
+        changeId: String,
+    ): DraftRemovalResult {
+        val removedEntry = draft.draftChanges.firstOrNull { entry -> entry.sourceChangeId == changeId }
+        if (removedEntry == null) {
+            return DraftRemovalResult(
+                draftState = draft,
+                removedEntry = null,
+                graphChanged = false,
+            )
+        }
+        val nextDraftChanges = draft.draftChanges.filterNot { entry -> entry.sourceChangeId == changeId }
+        return DraftRemovalResult(
+            draftState = draft.copy(draftChanges = nextDraftChanges),
+            removedEntry = removedEntry,
             graphChanged = true,
         )
     }

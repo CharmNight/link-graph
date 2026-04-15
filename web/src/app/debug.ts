@@ -3,11 +3,15 @@ import type { LinkGraphBootstrapState, LinkGraphDocument, LinkGraphNode } from "
 declare global {
   interface Window {
     __linkGraphTraceBuffer?: string[];
+    __linkGraphTraceHistory?: string[];
+    __linkGraphLastTrace?: string;
     __linkGraphDebugEnabled?: boolean;
     __linkGraphInteractionProbe?: boolean;
     linkGraphDebugTrace?: (payload: string) => void;
   }
 }
+
+const TRACE_HISTORY_LIMIT = 24;
 
 function nowValue(): number {
   return typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -83,6 +87,12 @@ export function traceLinkGraph(event: string, payload?: unknown): void {
   };
   try {
     const serialized = JSON.stringify(message);
+    window.__linkGraphLastTrace = serialized;
+    window.__linkGraphTraceHistory = window.__linkGraphTraceHistory ?? [];
+    window.__linkGraphTraceHistory.push(serialized);
+    if (window.__linkGraphTraceHistory.length > TRACE_HISTORY_LIMIT) {
+      window.__linkGraphTraceHistory.splice(0, window.__linkGraphTraceHistory.length - TRACE_HISTORY_LIMIT);
+    }
     if (window.linkGraphDebugTrace) {
       window.linkGraphDebugTrace(serialized);
       return;
@@ -98,6 +108,12 @@ export function traceLinkGraph(event: string, payload?: unknown): void {
         error: String(error),
       },
     });
+    window.__linkGraphLastTrace = fallbackMessage;
+    window.__linkGraphTraceHistory = window.__linkGraphTraceHistory ?? [];
+    window.__linkGraphTraceHistory.push(fallbackMessage);
+    if (window.__linkGraphTraceHistory.length > TRACE_HISTORY_LIMIT) {
+      window.__linkGraphTraceHistory.splice(0, window.__linkGraphTraceHistory.length - TRACE_HISTORY_LIMIT);
+    }
     if (window.linkGraphDebugTrace) {
       window.linkGraphDebugTrace(fallbackMessage);
       return;

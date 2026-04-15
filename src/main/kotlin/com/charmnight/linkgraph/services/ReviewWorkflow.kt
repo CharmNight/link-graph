@@ -5,6 +5,7 @@ import com.charmnight.linkgraph.llm.GraphAuditContext
 import com.charmnight.linkgraph.llm.GraphAuditPatchService
 import com.charmnight.linkgraph.llm.GraphBeautificationResult
 import com.charmnight.linkgraph.llm.GraphBeautificationService
+import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.llm.GraphDiffContext
 import com.charmnight.linkgraph.llm.GraphDiffPatchService
 import com.charmnight.linkgraph.llm.GraphPatchResult
@@ -12,6 +13,7 @@ import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.GraphEditorStateService.OperationFeedbackLevel
+import com.charmnight.linkgraph.workbench.StepGranularity
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.diagnostic.Logger
@@ -50,6 +52,7 @@ internal class ReviewWorkflow(
     fun requestAudit(
         question: String,
         selectedNodeIds: List<String> = emptyList(),
+        sourceLeadId: String? = null,
     ): GraphPatchResult {
         val snapshot = session.snapshot()
         val auditGraphs = planningContextFactory.buildAuditGraphs(snapshot, selectedNodeIds)
@@ -58,10 +61,13 @@ internal class ReviewWorkflow(
                 factGraph = auditGraphs.factGraph,
                 draftGraph = auditGraphs.draftGraph,
                 selectedNodeIds = selectedNodeIds,
+                sourceContext = auditGraphs.sourceContext,
+                evidenceTrace = auditGraphs.evidenceTrace,
             ),
             question = question,
             settings = settingsProvider(),
             session = snapshot.auditResult?.auditSession,
+            sourceLeadId = sourceLeadId,
         )
         session.mutateBatch {
             apply {
@@ -77,6 +83,7 @@ internal class ReviewWorkflow(
     fun requestAuditAsync(
         question: String,
         selectedNodeIds: List<String> = emptyList(),
+        sourceLeadId: String? = null,
     ) {
         val requestId = asyncRequestLifecycle.beginAuditRequest()
         val snapshot = session.snapshot()
@@ -150,6 +157,7 @@ internal class ReviewWorkflow(
                         question = prompt,
                         settings = settings,
                         session = snapshot.auditResult?.auditSession,
+                        sourceLeadId = sourceLeadId,
                         onPreview = previewUpdater,
                     )
                 })(
@@ -157,6 +165,8 @@ internal class ReviewWorkflow(
                         factGraph = auditGraphs.factGraph,
                         draftGraph = auditGraphs.draftGraph,
                         selectedNodeIds = selectedNodeIds,
+                        sourceContext = auditGraphs.sourceContext,
+                        evidenceTrace = auditGraphs.evidenceTrace,
                     ),
                     question,
                 )
@@ -197,6 +207,7 @@ internal class ReviewWorkflow(
                                             } else {
                                                 "审计完成。"
                                             },
+                                        preserveLastMessageType = true,
                                     )
                                 }
                             }
@@ -214,6 +225,7 @@ internal class ReviewWorkflow(
                                     markOperationFeedback(
                                         OperationFeedbackLevel.ERROR,
                                         message,
+                                        preserveLastMessageType = true,
                                     )
                                 }
                             }
@@ -374,6 +386,7 @@ internal class ReviewWorkflow(
                                             } else {
                                                 "差异分析完成。"
                                             },
+                                        preserveLastMessageType = true,
                                     )
                                 }
                             }
@@ -391,6 +404,7 @@ internal class ReviewWorkflow(
                                     markOperationFeedback(
                                         OperationFeedbackLevel.ERROR,
                                         message,
+                                        preserveLastMessageType = true,
                                     )
                                 }
                             }
@@ -409,6 +423,8 @@ internal class ReviewWorkflow(
         goal: String = "",
         preferredStyle: String? = null,
         explanationFocus: String? = null,
+        followUp: GraphBeautificationFollowUpContext? = null,
+        granularity: StepGranularity = StepGranularity.BUSINESS,
     ): GraphBeautificationResult {
         val snapshot = session.snapshot()
         val result = graphBeautificationService.beautify(
@@ -417,6 +433,8 @@ internal class ReviewWorkflow(
                 goal = goal,
                 preferredStyle = preferredStyle,
                 explanationFocus = explanationFocus,
+                followUp = followUp,
+                granularity = granularity,
             ),
             settings = settingsProvider(),
         )
@@ -433,6 +451,8 @@ internal class ReviewWorkflow(
         goal: String = "",
         preferredStyle: String? = null,
         explanationFocus: String? = null,
+        followUp: GraphBeautificationFollowUpContext? = null,
+        granularity: StepGranularity = StepGranularity.BUSINESS,
     ) {
         val requestId = asyncRequestLifecycle.beginBeautificationRequest()
         val snapshot = session.snapshot()
@@ -501,6 +521,8 @@ internal class ReviewWorkflow(
                         goal = goal,
                         preferredStyle = preferredStyle,
                         explanationFocus = explanationFocus,
+                        followUp = followUp,
+                        granularity = granularity,
                     ),
                     settings = settings,
                     onPreview = previewUpdater,
@@ -515,7 +537,7 @@ internal class ReviewWorkflow(
                         onSuccess = { beautification ->
                             val requestState = asyncRequestLifecycle.buildSucceededRequestState(
                                 presentation = presentation,
-                                successMessage = "链路讲解已生成。",
+                                successMessage = "链路讲解完成，已更新步骤列表",
                                 completedRemotely = beautification.source == LlmResultSource.REMOTE,
                                 warnings = beautification.warnings,
                             )
@@ -532,7 +554,8 @@ internal class ReviewWorkflow(
                                 apply {
                                     markOperationFeedback(
                                         feedbackLevel,
-                                        requestState.statusMessage ?: "链路讲解已生成。",
+                                        requestState.statusMessage ?: "链路讲解完成，已更新步骤列表",
+                                        preserveLastMessageType = true,
                                     )
                                 }
                             }
@@ -550,6 +573,7 @@ internal class ReviewWorkflow(
                                     markOperationFeedback(
                                         OperationFeedbackLevel.ERROR,
                                         message,
+                                        preserveLastMessageType = true,
                                     )
                                 }
                             }

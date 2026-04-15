@@ -253,13 +253,14 @@ internal class AsyncRequestLifecycleSupport(
     fun buildFailedRequestState(
         presentation: AsyncRequestPresentation,
         message: String,
+        detailMessageOverride: String? = null,
     ): GraphEditorStateService.AsyncRequestState {
         return GraphEditorStateService.AsyncRequestState.failed(
             message = message,
             requestId = presentation.requestId,
             scene = presentation.sceneLabel,
             executionMode = presentation.executionMode,
-            detailMessage = when (presentation.executionMode) {
+            detailMessage = detailMessageOverride ?: when (presentation.executionMode) {
                 GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_READY ->
                     if (presentation.streamingSupported) {
                         "当前采用流式输出，但在最终结构化收敛前失败。请检查请求地址、鉴权、模型配置或网络连通性后重试。"
@@ -348,12 +349,12 @@ internal class AsyncRequestLifecycleSupport(
         phase: String,
         state: GraphEditorStateService.AsyncRequestState,
     ) {
-        logger.info(
+        debugLazy(logger.isDebugEnabled, logger::debug) {
             "异步请求状态: phase=$phase, requestId=${state.requestId}, scene=${state.scene}, " +
                 "executionMode=${state.executionMode}, streaming=${state.streaming}, " +
                 "streamPhase=${state.streamPhase}, fallbackUsed=${state.fallbackUsed}, " +
-                "statusMessage=${state.statusMessage}, detailMessage=${state.detailMessage}",
-        )
+                "statusMessage=${state.statusMessage}, detailMessage=${state.detailMessage}"
+        }
     }
 
     /**

@@ -13,6 +13,8 @@ import type {
   NodeType,
   ResultEvidenceLevel,
   ResultEvidenceReference,
+  StepGranularity,
+  StepKind,
 } from "./types";
 
 export function certaintyLabel(value: Certainty): string {
@@ -119,6 +121,32 @@ export function resultEvidenceLevelLabel(value: ResultEvidenceLevel): string {
       return "仅调用点";
     case "NOT_OBSERVED":
       return "当前未观察到";
+  }
+}
+
+export function stepGranularityLabel(value: StepGranularity): string {
+  switch (value) {
+    case "BUSINESS":
+      return "业务级";
+    case "METHOD_CALL":
+      return "方法调用级";
+    case "CODE_SEMANTIC":
+      return "代码语义级";
+  }
+}
+
+export function stepKindLabel(value: StepKind): string {
+  switch (value) {
+    case "BUSINESS_ACTION":
+      return "业务动作";
+    case "METHOD_CALL":
+      return "方法调用";
+    case "CONDITION":
+      return "条件判断";
+    case "RETURN":
+      return "返回结果";
+    case "RESOURCE_INTERACTION":
+      return "资源交互";
   }
 }
 
@@ -327,5 +355,31 @@ export function draftStatusLabel(value: "READY" | "WRITTEN" | "SKIPPED"): string
       return "已写入";
     case "SKIPPED":
       return "已跳过";
+  }
+}
+
+export function candidateChangeStatusLabel(value: "PENDING_CONFIRMATION" | "CONFIRMED" | "REJECTED" | "SUPERSEDED"): string {
+  switch (value) {
+    case "PENDING_CONFIRMATION":
+      return "待确认";
+    case "CONFIRMED":
+      return "已确认";
+    case "REJECTED":
+      return "已拒绝";
+    case "SUPERSEDED":
+      return "已替代";
+  }
+}
+
+export function investigationLeadStatusLabel(value: "OPEN" | "PROMOTED" | "DISMISSED" | "SUPERSEDED"): string {
+  switch (value) {
+    case "OPEN":
+      return "待取证";
+    case "PROMOTED":
+      return "已转正";
+    case "DISMISSED":
+      return "已排除";
+    case "SUPERSEDED":
+      return "已替代";
   }
 }

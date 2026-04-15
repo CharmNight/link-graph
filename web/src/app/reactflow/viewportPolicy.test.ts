@@ -2,6 +2,21 @@ import { describe, expect, it } from "vitest";
 import { graphBounds, shouldFocusAnchor, shouldPreserveViewportForIncrementalUpdate } from "./viewportPolicy";
 
 describe("viewportPolicy", () => {
+  it("preserves viewport for repeated snapshots of the same visible graph", () => {
+    expect(shouldPreserveViewportForIncrementalUpdate(
+      {
+        anchorNodeId: "method:anchor",
+        nodeIds: new Set(["method:anchor", "method:callee"]),
+        edgeIds: new Set(["edge:anchor->callee"]),
+      },
+      {
+        anchorNodeId: "method:anchor",
+        nodeIds: new Set(["method:anchor", "method:callee"]),
+        edgeIds: new Set(["edge:anchor->callee"]),
+      },
+    )).toBe(true);
+  });
+
   it("preserves viewport for small downstream expansions under the same anchor", () => {
     expect(shouldPreserveViewportForIncrementalUpdate(
       {

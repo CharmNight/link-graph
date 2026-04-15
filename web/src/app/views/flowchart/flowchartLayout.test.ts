@@ -582,6 +582,144 @@ describe("layoutFlowchartView", () => {
     expect(attachment.x).toBeLessThan(decisionCenterX(decision));
   });
 
+  it("routes pre-test loop body and exit from explicit flow roles instead of guessing from TRUE/FALSE labels", async () => {
+    const nodes: LinkGraphNode[] = [
+      {
+        ...methodNode("method:anchor", "LoopService.run"),
+        metadata: { "flowchart.kind": "ENTRY" },
+      },
+      {
+        ...methodNode("scope:loop", "while (hasNext())"),
+        type: "FLOW_SCOPE",
+        metadata: {
+          "flow.kind": "WHILE",
+          "flow.scopeCategory": "LOOP_PRE_TEST",
+          "flowchart.kind": "DECISION",
+        },
+      },
+      {
+        ...methodNode("action:body", "process(item)"),
+        type: "FLOW_ACTION",
+        metadata: { "flowchart.kind": "PROCESS" },
+      },
+      {
+        ...methodNode("action:after", "finish()"),
+        type: "FLOW_ACTION",
+        metadata: { "flowchart.kind": "PROCESS" },
+      },
+    ];
+    const edges: LinkGraphEdge[] = [
+      { id: "entry-loop", type: "CONTROL_FLOW", source: "method:anchor", target: "scope:loop" },
+      {
+        id: "loop-body",
+        type: "CONTROL_FLOW",
+        source: "scope:loop",
+        target: "action:body",
+        metadata: { "flow.edgeRole": "LOOP_BODY" },
+      },
+      {
+        id: "body-back",
+        type: "CONTROL_FLOW",
+        source: "action:body",
+        target: "scope:loop",
+        metadata: { "flow.edgeRole": "LOOP_BACK" },
+      },
+      {
+        id: "loop-exit",
+        type: "CONTROL_FLOW",
+        source: "scope:loop",
+        target: "action:after",
+        metadata: { "flow.edgeRole": "LOOP_EXIT" },
+      },
+    ];
+
+    const laidOut = await layoutFlowchartView({
+      graph: { nodes, edges },
+      nodes,
+      edges,
+      anchorNodeId: "method:anchor",
+      sizeSnapshot: new Map(),
+      reason: "graph",
+    });
+    const index = new Map(laidOut.nodes.map((node) => [node.id, node]));
+    const loop = index.get("scope:loop")!;
+    const body = index.get("action:body")!;
+    const after = index.get("action:after")!;
+    const bodyEdge = laidOut.edges.find((edge) => edge.id === "loop-body")!;
+    const exitEdge = laidOut.edges.find((edge) => edge.id === "loop-exit")!;
+
+    expectDecisionAttachmentMatchesBottomFlow(bodyEdge, loop);
+    expectDecisionAttachmentMatchesTargetSide(exitEdge, loop, after);
+    expect(Math.abs(nodeCenterX(body) - decisionCenterX(loop))).toBeLessThanOrEqual(4);
+  });
+
+  it("routes post-test loop exit downward and back-edge sideways from explicit flow roles", async () => {
+    const nodes: LinkGraphNode[] = [
+      {
+        ...methodNode("method:anchor", "LoopService.flush"),
+        metadata: { "flowchart.kind": "ENTRY" },
+      },
+      {
+        ...methodNode("action:body", "normalize(current)"),
+        type: "FLOW_ACTION",
+        metadata: { "flowchart.kind": "PROCESS" },
+      },
+      {
+        ...methodNode("scope:loop", "do-while (current > 0)"),
+        type: "FLOW_SCOPE",
+        metadata: {
+          "flow.kind": "DO_WHILE",
+          "flow.scopeCategory": "LOOP_POST_TEST",
+          "flowchart.kind": "DECISION",
+        },
+      },
+      {
+        ...methodNode("action:after", "return current"),
+        type: "FLOW_ACTION",
+        metadata: { "flowchart.kind": "PROCESS" },
+      },
+    ];
+    const edges: LinkGraphEdge[] = [
+      { id: "entry-body", type: "CONTROL_FLOW", source: "method:anchor", target: "action:body" },
+      { id: "body-guard", type: "CONTROL_FLOW", source: "action:body", target: "scope:loop" },
+      {
+        id: "guard-back",
+        type: "CONTROL_FLOW",
+        source: "scope:loop",
+        target: "action:body",
+        metadata: { "flow.edgeRole": "LOOP_BACK" },
+      },
+      {
+        id: "guard-exit",
+        type: "CONTROL_FLOW",
+        source: "scope:loop",
+        target: "action:after",
+        metadata: { "flow.edgeRole": "LOOP_EXIT" },
+      },
+    ];
+
+    const laidOut = await layoutFlowchartView({
+      graph: { nodes, edges },
+      nodes,
+      edges,
+      anchorNodeId: "method:anchor",
+      sizeSnapshot: new Map(),
+      reason: "graph",
+    });
+    const index = new Map(laidOut.nodes.map((node) => [node.id, node]));
+    const loop = index.get("scope:loop")!;
+    const body = index.get("action:body")!;
+    const after = index.get("action:after")!;
+    const backEdge = laidOut.edges.find((edge) => edge.id === "guard-back")!;
+    const exitEdge = laidOut.edges.find((edge) => edge.id === "guard-exit")!;
+    const backAttachment = attachmentPointInsideDecision(backEdge, loop);
+
+    expectDecisionAttachmentMatchesBottomFlow(exitEdge, loop);
+    expect(after.position?.y).toBeGreaterThan(loop.position?.y ?? 0);
+    expect(body.position?.y).toBeLessThan(loop.position?.y ?? Number.POSITIVE_INFINITY);
+    expect(backAttachment.x).not.toBeCloseTo(decisionCenterX(loop), 0);
+  });
+
   it("declares a right-side process source port for an explicit manual edge even before the topology contains an exception branch", async () => {
     const nodes: LinkGraphNode[] = [
       {

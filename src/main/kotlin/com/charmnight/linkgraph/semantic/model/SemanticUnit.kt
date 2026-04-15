@@ -20,11 +20,23 @@ data class MethodLikeUnit(
     override val title: String,
     /** 保存方法签名。 */
     val signature: String,
+    /** 保存方法文档摘要。 */
+    val doc: String? = null,
 ) : SemanticUnit
 
 /**
  * 表示流程作用域单元，例如条件或循环块。
  */
+enum class FlowScopeCategory {
+    BRANCH,
+    LOOP_PRE_TEST,
+    LOOP_POST_TEST,
+    SWITCH,
+    TRY,
+    LAMBDA_SCOPE,
+    GENERIC_SCOPE,
+}
+
 data class FlowScopeUnit(
     /** 保存语义单元标识。 */
     override val id: String,
@@ -32,6 +44,10 @@ data class FlowScopeUnit(
     override val title: String,
     /** 保存作用域类型。 */
     val scopeKind: String,
+    /** 保存更稳定的作用域语义分类，供流程图投影直接消费。 */
+    val scopeCategory: FlowScopeCategory? = null,
+    /** 标记当前作用域的控制流语义是否仍有缺口。 */
+    val incomplete: Boolean = false,
 ) : SemanticUnit
 
 /**

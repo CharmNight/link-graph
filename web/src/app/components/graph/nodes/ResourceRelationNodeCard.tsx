@@ -4,16 +4,21 @@ import { IssueBadge } from "../../IssueBadge";
 import type { LinkGraphNode } from "../../../types";
 import { nodeTooltip, resourceLane, resourceLaneLabel, signaturePreview } from "./nodePresentation";
 import { measureNodeContentBox } from "./measureNodeContentBox";
+import { GraphNodeStateBadges } from "./GraphNodeStateBadges";
 
 interface ResourceRelationNodeCardProps {
   node: LinkGraphNode;
   selected: boolean;
+  explanationFocused?: boolean;
+  draftChanged?: boolean;
   onMeasure?: (size: { width: number; height: number }) => void;
 }
 
 export const ResourceRelationNodeCard = memo(function ResourceRelationNodeCard({
   node,
   selected,
+  explanationFocused = false,
+  draftChanged = false,
   onMeasure,
 }: ResourceRelationNodeCardProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -37,6 +42,7 @@ export const ResourceRelationNodeCard = memo(function ResourceRelationNodeCard({
       ].join(" ").trim()}
       data-node-id={node.id}
     >
+      <GraphNodeStateBadges selected={selected} explanationFocused={explanationFocused} draftChanged={draftChanged} />
       <div className="flow-node-head">
         <span className="flow-node-doc">{resourceLaneLabel(lane)}</span>
         <div className="flow-node-tags">

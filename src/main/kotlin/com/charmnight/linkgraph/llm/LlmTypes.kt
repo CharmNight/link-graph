@@ -7,7 +7,9 @@ import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.AuditConversationSession
+import com.charmnight.linkgraph.workbench.AuditInvestigationLead
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
+import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.charmnight.linkgraph.workbench.StepKind
 
@@ -24,6 +26,10 @@ data class GenerationContext(
     val diff: GraphDiff = GraphDiff(),
     /** 保存同步预览条目列表。 */
     val syncPreviewItems: List<SyncPreviewItem> = emptyList(),
+    /** 保存用户已确认的草稿变更条目。 */
+    val confirmedChanges: List<DraftWorkbenchEntry> = emptyList(),
+    /** 保存当前生成场景可直接使用的真实源码片段。 */
+    val sourceContext: List<SourceSnippetContext> = emptyList(),
 )
 
 /**
@@ -36,6 +42,10 @@ data class GraphAuditContext(
     val draftGraph: GraphDocument = GraphDocument(),
     /** 保存当前选中的节点标识列表。 */
     val selectedNodeIds: List<String> = emptyList(),
+    /** 保存审计时可直接送入模型的源码片段。 */
+    val sourceContext: List<SourceSnippetContext> = emptyList(),
+    /** 保存本轮实际收集到的源码证据轨迹。 */
+    val evidenceTrace: List<EvidenceTraceEntry> = emptyList(),
 )
 
 /**
@@ -91,6 +101,66 @@ data class SourceSnippetContext(
 )
 
 /**
+ * 记录一条审计取证轨迹。
+ */
+data class EvidenceTraceEntry(
+    /** 保存关联节点标识。 */
+    val nodeId: String,
+    /** 保存源码文件路径。 */
+    val filePath: String,
+    /** 保存取证原因。 */
+    val reason: String,
+    /** 保存起始行号。 */
+    val startLine: Int? = null,
+    /** 保存结束行号。 */
+    val endLine: Int? = null,
+    /** 标记该片段是否进入本轮 prompt。 */
+    val includedInPrompt: Boolean = true,
+)
+
+/**
+ * 表示一段经过证据锚定的精确编辑作用域。
+ */
+data class EditScope(
+    /** 保存作用域稳定 ID。 */
+    val scopeId: String,
+    /** 保存命中的目标节点。 */
+    val targetNodeId: String,
+    /** 保存目标文件路径。 */
+    val filePath: String,
+    /** 保存语言类型。 */
+    val language: String,
+    /** 保存符号种类。 */
+    val symbolKind: String,
+    /** 保存符号签名。 */
+    val symbolSignature: String? = null,
+    /** 保存起始偏移。 */
+    val startOffset: Int? = null,
+    /** 保存结束偏移。 */
+    val endOffset: Int? = null,
+    /** 保存起始行号。 */
+    val startLine: Int? = null,
+    /** 保存结束行号。 */
+    val endLine: Int? = null,
+    /** 保存允许的改动种类。 */
+    val allowedChangeKinds: List<String> = emptyList(),
+    /** 保存支撑该作用域的 finding IDs。 */
+    val supportingFindingIds: List<String> = emptyList(),
+)
+
+/**
+ * 封装图讲解所需的完整上下文。
+ */
+data class GraphBeautificationFollowUpContext(
+    /** 保存当前聚焦的步骤标识。 */
+    val stepId: String,
+    /** 保存当前聚焦的步骤标题。 */
+    val stepTitle: String,
+    /** 保存用户针对该步骤的追问。 */
+    val question: String,
+)
+
+/**
  * 封装图讲解所需的完整上下文。
  */
 data class GraphBeautificationContext(
@@ -104,6 +174,8 @@ data class GraphBeautificationContext(
     val preferredStyle: String? = null,
     /** 保存讲解关注点。 */
     val explanationFocus: String? = null,
+    /** 保存针对当前步骤的追问上下文。 */
+    val followUp: GraphBeautificationFollowUpContext? = null,
     /** 保存当前讲解粒度。 */
     val granularity: StepGranularity = StepGranularity.BUSINESS,
 )
@@ -191,6 +263,8 @@ data class GenerationPlanItem(
     val risk: SyncPreviewRisk,
     /** 保存目标文件路径。 */
     val targetPath: String? = null,
+    /** 保存该计划项允许触达的精确编辑范围。 */
+    val editScopes: List<EditScope> = emptyList(),
 )
 
 /** 生成计划总结果，前端会据此展示摘要、风险和 prompt 预览。 */
@@ -227,6 +301,14 @@ data class GraphPatchResult(
     val candidateChanges: List<CandidateDraftChange> = emptyList(),
     /** 保存本轮新增候选变更。 */
     val newCandidateChanges: List<CandidateDraftChange> = emptyList(),
+    /** 保存风险线索。 */
+    val investigationLeads: List<AuditInvestigationLead> = emptyList(),
+    /** 保存本轮新增风险线索。 */
+    val newInvestigationLeads: List<AuditInvestigationLead> = emptyList(),
+    /** 保存本轮实际附带的源码片段。 */
+    val sourceContext: List<SourceSnippetContext> = emptyList(),
+    /** 保存本轮实际使用的取证轨迹。 */
+    val evidenceTrace: List<EvidenceTraceEntry> = emptyList(),
     /** 保存当前审计会话状态。 */
     val auditSession: AuditConversationSession? = null,
     /** 保存警告列表。 */
@@ -247,6 +329,10 @@ data class GraphBeautificationStep(
     val kind: StepKind = StepKind.BUSINESS_ACTION,
     /** 保存步骤说明。 */
     val description: String,
+    /** 保存当前步骤主节点。 */
+    val primaryNodeId: String? = null,
+    /** 保存当前步骤对应的源码片段。 */
+    val codeSnippet: String? = null,
     /** 保存步骤证据。 */
     val evidence: List<ResultEvidenceFinding> = emptyList(),
     /** 保存当前步骤可继续追问的问题。 */

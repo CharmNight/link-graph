@@ -3,6 +3,7 @@ import type {
   AnalysisDisplayMode,
   AsyncRequestState,
   DiffItem,
+  DraftWorkbenchState,
   DraftPatchApplyResult,
   FactGraphViewDocument,
   FlowchartViewDocument,
@@ -22,6 +23,8 @@ import type {
   SourceNavigationState,
 } from "../types";
 import type { RequestFailureNotice } from "./bridgeCommandTypes";
+
+const DEFAULT_ANALYSIS_DISPLAY_MODE: AnalysisDisplayMode = "FLOWCHART";
 
 interface UseWorkbenchStateArgs {
   initialState: LinkGraphBootstrapState;
@@ -62,7 +65,7 @@ export function useWorkbenchState({
       initialGraph.nodes,
       initialGraph.edges,
       initialAnchorNodeId,
-      initialState.analysisDisplayMode ?? "FACT_GRAPH",
+      initialState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE,
     ),
   );
   const [edges, setEdges] = useState<LinkGraphEdge[]>(() => initialGraph.edges);
@@ -70,11 +73,10 @@ export function useWorkbenchState({
     () => initialState.selectedNodeId ?? initialGraph.nodes[0]?.id ?? null,
   );
   const [analysisDisplayMode, setAnalysisDisplayMode] = useState<AnalysisDisplayMode>(
-    () => initialState.analysisDisplayMode ?? "FACT_GRAPH",
+    () => initialState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE,
   );
   const [anchorNodeId, setAnchorNodeId] = useState<string | null>(() => initialAnchorNodeId);
   const [detailNodeId, setDetailNodeId] = useState<string | null>(null);
-  const [activeDock, setActiveDock] = useState<"audit" | "issues" | "diff" | "patch" | "sync" | "plan" | "beautification" | "drafts" | null>(null);
   const [auditRequestState, setAuditRequestState] = useState<AsyncRequestState>(() => resolveRequestState(initialState.auditRequestState));
   const [auditTargetNodeIds, setAuditTargetNodeIds] = useState<string[]>([]);
   const [auditQuestionDraft, setAuditQuestionDraft] = useState<string>(() => initialState.auditResult?.question ?? "");
@@ -87,6 +89,9 @@ export function useWorkbenchState({
     () => resolveResourceRelationView(initialState),
   );
   const [draftGraph, setDraftGraph] = useState<LinkGraphDocument | null>(() => resolveWorkingGraph(initialState));
+  const [draftWorkbenchState, setDraftWorkbenchState] = useState<DraftWorkbenchState>(
+    () => initialState.draftWorkbenchState ?? { draftChanges: [], draftNotes: [] },
+  );
   const [designBaseline, setDesignBaseline] = useState<LinkGraphDocument | null>(() => resolveDesignBaselineGraph(initialState));
   const [draftPatchPreview, setDraftPatchPreview] = useState<GraphPatch | null>(() => initialState.draftPatchPreview ?? null);
   const [lastAppliedDraftPatchPreview, setLastAppliedDraftPatchPreview] = useState<GraphPatch | null>(null);
@@ -129,6 +134,7 @@ export function useWorkbenchState({
   const [operationFeedback, setOperationFeedback] = useState<OperationFeedback | null>(
     () => initialState.operationFeedback ?? null,
   );
+  const [lastMessageType, setLastMessageType] = useState<string | null>(() => initialState.lastMessageType ?? null);
   const [graphSurfaceExperiments, setGraphSurfaceExperiments] = useState<GraphSurfaceExperimentFlags | null>(
     () => initialState.graphSurfaceExperiments ?? null,
   );
@@ -150,8 +156,6 @@ export function useWorkbenchState({
     setAnchorNodeId,
     detailNodeId,
     setDetailNodeId,
-    activeDock,
-    setActiveDock,
     auditRequestState,
     setAuditRequestState,
     auditTargetNodeIds,
@@ -172,6 +176,8 @@ export function useWorkbenchState({
     setResourceRelationView,
     draftGraph,
     setDraftGraph,
+    draftWorkbenchState,
+    setDraftWorkbenchState,
     designBaseline,
     setDesignBaseline,
     draftPatchPreview,
@@ -224,6 +230,8 @@ export function useWorkbenchState({
     setSourceNavigationState,
     operationFeedback,
     setOperationFeedback,
+    lastMessageType,
+    setLastMessageType,
     graphSurfaceExperiments,
     setGraphSurfaceExperiments,
     artifactContents,

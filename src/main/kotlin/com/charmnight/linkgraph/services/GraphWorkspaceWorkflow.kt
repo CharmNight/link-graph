@@ -47,7 +47,11 @@ internal class GraphWorkspaceWorkflow(
      * 处理前端主动上报的图结构变更。
      */
     fun handleFrontendGraphChanged(graph: GraphDocument) {
-        session.markGraphChanged(graph, syncBrowser = false)
+        session.markViewGraphChanged(
+            graph = graph,
+            displayMode = session.snapshot().analysisDisplayMode,
+            syncBrowser = false,
+        )
     }
 
     /**

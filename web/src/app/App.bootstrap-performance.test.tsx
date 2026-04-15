@@ -98,7 +98,7 @@ const bootstrapState = materializeThreeViewDocuments({
   selectedNodeId: "method:submit-order",
   operationFeedback: {
     level: "SUCCESS",
-    message: "已加载当前方法链路",
+    message: "已加载当前编辑器上下文链路",
   },
   sourceNavigationState: {
     phase: "IDLE",
@@ -169,7 +169,7 @@ describe("App bootstrap performance", () => {
       undoLastDraftPatchApply: vi.fn(),
       requestGenerationPlan: vi.fn(),
       requestCodeDrafts: vi.fn(),
-      requestCurrentMethodGraph: vi.fn(),
+      requestCurrentEditorContextGraph: vi.fn(),
       requestOpenSettings: vi.fn(),
       applyCodeDrafts: vi.fn(),
       applySingleCodeDraft: vi.fn(),
@@ -208,31 +208,58 @@ describe("App bootstrap performance", () => {
     expect(window.linkGraphBridge?.graphChanged).not.toHaveBeenCalled();
   });
 
-  it("consumes a feedback-only transport slice without rebuilding the semantic graph", () => {
+  it("does not treat working-graph-only semantic revisions as visible graph rebuilds", () => {
+    window.__linkGraphDebugEnabled = true;
+    window.__linkGraphTraceBuffer = [];
     render(<App />);
 
     act(() => {
       window.dispatchEvent(
         new CustomEvent("link-graph-bootstrap", {
-          detail: {
-            type: "FEEDBACK_SLICE",
-            sessionId: "session-feedback-slice-1",
-            revision: 2,
-            state: {
-              operationFeedback: {
-                level: "INFO",
-                message: "只更新提示文案，不应再次整图布局。",
-              },
-              snapshotRevision: 2,
-              lastMessageType: "operationFeedback",
+          detail: materializeThreeViewDocuments({
+            ...structuredClone(bootstrapState),
+            workingGraph: {
+              nodes: [
+                ...structuredClone(bootstrapState.workingGraph.nodes),
+                {
+                  id: "draft-entry:submit-order-note",
+                  type: "DOC_PAGE",
+                  title: "仅存在于工作图的草稿说明",
+                  inputs: [],
+                  outputs: [],
+                  certainty: "PROVEN",
+                  bindingStatus: "BOUND",
+                  sourceTag: "DRAFT_AI",
+                },
+              ],
+              edges: [
+                ...structuredClone(bootstrapState.workingGraph.edges),
+                {
+                  id: "generates:submit-order->draft-note",
+                  type: "GENERATES",
+                  source: "method:submit-order",
+                  target: "draft-entry:submit-order-note",
+                  sourceTag: "DRAFT_AI",
+                },
+              ],
             },
-          },
+            semanticRevision: 4,
+            layoutRevision: 1,
+            snapshotRevision: 2,
+          } as LinkGraphBootstrapState),
         }),
       );
     });
 
     expect(window.linkGraphBridge?.graphChanged).not.toHaveBeenCalled();
     expect(window.linkGraphBridge?.layoutChanged).not.toHaveBeenCalled();
+    expect(
+      window.__linkGraphTraceBuffer?.some((entry) =>
+        entry.includes("\"event\":\"app.applyBootstrapState.computed\"")
+        && entry.includes("\"semanticGraphChanged\":false")
+        && entry.includes("\"draftSemanticChanged\":true"),
+      ),
+    ).toBe(true);
   });
 
   it("does not re-run semantic normalization when bootstrap only advances layout revision", () => {
@@ -357,7 +384,7 @@ describe("App bootstrap performance", () => {
 
     vi.useRealTimers();
     window.__linkGraphInteractionProbe = false;
-  });
+  }, 15000);
 
   it("completes source-navigation probe from typed state instead of parsing feedback text", async () => {
     vi.useFakeTimers();

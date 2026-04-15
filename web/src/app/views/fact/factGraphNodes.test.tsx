@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { buildFactGraphEdges, FACT_GRAPH_NODE_TYPES } from "./factGraphNodes";
+import { createNodeSizeRegistry } from "../../graph/nodeSizeRegistry";
+import { buildFactGraphEdges, buildFactGraphNodes, FACT_GRAPH_NODE_TYPES } from "./factGraphNodes";
 
 const updateNodeInternalsMock = vi.fn();
 
@@ -123,6 +124,39 @@ describe("FACT_GRAPH_NODE_TYPES", () => {
 
     expect(container.querySelector('[data-handle-id="target-left"]')).toHaveAttribute("data-style-opacity", "0.28");
     expect(container.querySelector('[data-handle-id="source-right"]')).toHaveAttribute("data-style-opacity", "0.28");
+  });
+
+  it("marks explanation focus nodes and draft change nodes with dedicated React Flow classes", () => {
+    const builtNodes = buildFactGraphNodes({
+      nodes: [
+        {
+          id: "method:submit-order",
+          type: "METHOD",
+          title: "OrderService.submit",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN",
+          bindingStatus: "BOUND",
+        },
+        {
+          id: "flow-action:guard",
+          type: "FLOW_ACTION",
+          title: "校验条件",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN",
+          bindingStatus: "BOUND",
+        },
+      ],
+      selectedNodeId: "method:submit-order",
+      explanationFocusNodeId: "method:submit-order",
+      draftChangedNodeIds: ["flow-action:guard"],
+      onExpandOverflowNode: vi.fn(),
+      nodeSizeRegistry: createNodeSizeRegistry(),
+    });
+
+    expect(builtNodes.find((node) => node.id === "method:submit-order")?.className ?? "").toContain("is-explanation-focus");
+    expect(builtNodes.find((node) => node.id === "flow-action:guard")?.className ?? "").toContain("is-draft-change");
   });
 
   it("switches fact edges to the shared routed edge renderer when ELK route data is present", () => {

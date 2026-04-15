@@ -12,6 +12,9 @@ import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.settings.LlmProviderType
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
+import com.charmnight.linkgraph.workbench.DraftEntryKind
+import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
+import kotlin.test.assertNotNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -226,6 +229,76 @@ class GraphGenerationServiceTest {
         assertEquals("MiniMax-M2.7", requests.single().model)
         assertEquals(GenerationPlanSource.REMOTE, plan.source)
         assertEquals("Remote plan", plan.summary)
+    }
+
+    @Test
+    fun buildsDeterministicPlanFromConfirmedDraftChangesWhenSyncPreviewIsEmpty() {
+        val service = GraphGenerationService(
+            promptFactory = LlmPromptFactory(),
+            gateway = FakeLlmGateway(),
+        )
+
+        val plan = service.generatePlan(
+            context = GenerationContext(
+                graph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:file-download",
+                            type = NodeType.METHOD,
+                            title = "CommonController.fileDownload",
+                            signature = "com.example.CommonController.fileDownload(java.lang.String):void",
+                            metadata = mapOf(
+                                "source.filePath" to "src/main/java/com/example/CommonController.java",
+                                "source.startLine" to "42",
+                                "source.endLine" to "88",
+                            ),
+                        ),
+                    ),
+                ),
+                confirmedChanges = listOf(
+                    DraftWorkbenchEntry(
+                        entryId = "draft-change-file-download",
+                        kind = DraftEntryKind.CHANGE,
+                        sourceChangeId = "change-file-download",
+                        title = "修改 fileDownload 的路径判定",
+                        targetNodeIds = listOf("method:file-download"),
+                        beforeState = "直接使用 baseUrl 拼接下载路径。",
+                        afterState = "当 /usr 开头时改写到 /tmp；当 C:/ 开头时直接报错；其他路径保持原逻辑。",
+                        reason = "统一处理 Linux 临时目录并阻止 Windows 路径。",
+                        impactSummary = "影响下载路径解析。",
+                        editScopes = listOf(
+                            EditScope(
+                                scopeId = "scope-file-download",
+                                targetNodeId = "method:file-download",
+                                filePath = "src/main/java/com/example/CommonController.java",
+                                language = "JAVA",
+                                symbolKind = "METHOD",
+                                symbolSignature = "com.example.CommonController.fileDownload(java.lang.String):void",
+                                startLine = 42,
+                                endLine = 88,
+                                allowedChangeKinds = listOf("REPLACE_METHOD_BLOCK"),
+                                supportingFindingIds = listOf("finding-file-download"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderType.MOCK.name,
+            ),
+        )
+
+        assertEquals(GenerationPlanSource.MOCK, plan.source)
+        assertTrue(plan.summary.contains("fileDownload"))
+        assertTrue(plan.items.any { it.title.contains("fileDownload") })
+        assertEquals(
+            "src/main/java/com/example/CommonController.java",
+            plan.items.single().targetPath,
+        )
+        val scope = assertNotNull(plan.items.single().editScopes.firstOrNull())
+        assertEquals("scope-file-download", scope.scopeId)
+        assertEquals("com.example.CommonController.fileDownload(java.lang.String):void", scope.symbolSignature)
     }
 
     private fun sampleContext(): GenerationContext {

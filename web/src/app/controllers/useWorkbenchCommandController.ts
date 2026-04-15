@@ -17,25 +17,14 @@ import type {
 } from "../types";
 import type { useBridgeCommandController } from "./useBridgeCommandController";
 
-export type WorkbenchDockPanel =
-  | "audit"
-  | "issues"
-  | "diff"
-  | "patch"
-  | "sync"
-  | "plan"
-  | "beautification"
-  | "drafts"
-  | null;
-
 interface UseWorkbenchCommandControllerArgs {
-  setActiveDock: (dock: WorkbenchDockPanel) => void;
   setGenerationPlan: (nextPlan: null) => void;
   setGenerationPlanRequestState: (nextState: AsyncRequestState) => void;
   setGeneratedCodeDrafts: (drafts: GeneratedCodeDraft[]) => void;
   setGeneratedCodeDraftWarnings: (warnings: string[]) => void;
   setGeneratedCodeDraftSource: (source: null) => void;
   setGeneratedCodeDraftPromptPreview: (preview: null) => void;
+  setGeneratedCodeDraftPromptPreviewArtifactId: (artifactId: null) => void;
   setGeneratedCodeDraftWriteReport: (report: null) => void;
   setCodeDraftRequestState: (nextState: AsyncRequestState) => void;
   bridgeCommands: Pick<
@@ -45,13 +34,13 @@ interface UseWorkbenchCommandControllerArgs {
 }
 
 export function useWorkbenchCommandController({
-  setActiveDock,
   setGenerationPlan,
   setGenerationPlanRequestState,
   setGeneratedCodeDrafts,
   setGeneratedCodeDraftWarnings,
   setGeneratedCodeDraftSource,
   setGeneratedCodeDraftPromptPreview,
+  setGeneratedCodeDraftPromptPreviewArtifactId,
   setGeneratedCodeDraftWriteReport,
   setCodeDraftRequestState,
   bridgeCommands,
@@ -71,9 +60,6 @@ export function useWorkbenchCommandController({
 
   function handleShowDiffMode() {
     bridgeCommands.runBridgeCommand("代码对比", () => showDiffMode(), {
-      onAccepted: () => {
-        setActiveDock("diff");
-      },
       successFeedback: {
         level: "INFO",
         message: "已打开代码对比。",
@@ -83,9 +69,6 @@ export function useWorkbenchCommandController({
 
   function handleRequestSyncPreview() {
     bridgeCommands.runBridgeCommand("同步预览", () => requestSyncPreview(), {
-      onAccepted: () => {
-        setActiveDock("sync");
-      },
       successFeedback: {
         level: "INFO",
         message: "已打开同步预览。",
@@ -99,9 +82,6 @@ export function useWorkbenchCommandController({
       applySubmittedRequestState: (requestState) => {
         setGenerationPlan(null);
         setGenerationPlanRequestState(requestState);
-      },
-      onAccepted: () => {
-        setActiveDock("plan");
       },
       successFeedback: {
         level: "INFO",
@@ -118,11 +98,9 @@ export function useWorkbenchCommandController({
         setGeneratedCodeDraftWarnings([]);
         setGeneratedCodeDraftSource(null);
         setGeneratedCodeDraftPromptPreview(null);
+        setGeneratedCodeDraftPromptPreviewArtifactId(null);
         setGeneratedCodeDraftWriteReport(null);
         setCodeDraftRequestState(requestState);
-      },
-      onAccepted: () => {
-        setActiveDock("drafts");
       },
       successFeedback: {
         level: "INFO",

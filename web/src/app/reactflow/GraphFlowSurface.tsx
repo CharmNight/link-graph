@@ -17,6 +17,7 @@ import { DEFAULT_NODE_CARD_WIDTH } from "../graphNodeSizing";
 import { measureDuration, measureStart, summarizeGraph, traceLinkGraph } from "../debug";
 import type {
   AnalysisDisplayMode,
+  GraphFocusRequest,
   GraphPosition,
   GraphSurfaceExperimentFlags,
   LinkGraphEdge,
@@ -57,6 +58,7 @@ interface GraphFlowSurfaceProps {
   viewportMode?: AnalysisDisplayMode;
   anchorNodeId?: string | null;
   selectedNodeId: string | null;
+  focusNodeRequest?: GraphFocusRequest | null;
   selectedGroupNodeIds?: string[];
   experiments?: GraphSurfaceExperimentFlags | null;
   editable?: boolean;
@@ -157,6 +159,7 @@ export function GraphFlowSurface({
   viewportMode,
   anchorNodeId = null,
   selectedNodeId,
+  focusNodeRequest = null,
   selectedGroupNodeIds = [],
   experiments = null,
   editable = false,
@@ -189,9 +192,28 @@ export function GraphFlowSurface({
   const resizeViewportTimerRef = useRef<number | null>(null);
   const lastResizeShellSizeRef = useRef<{ width: number; height: number } | null>(null);
   const previousViewportGraphRef = useRef<GraphViewportSnapshot | null>(null);
+  const handledFocusNonceRef = useRef<number | null>(null);
+  const previousSelectedNodeIdRef = useRef<string | null>(selectedNodeId);
 
   const onlyRenderVisibleElements = experiments?.onlyRenderVisibleElements === true;
   const dragShieldingEnabled = experiments?.dragShielding === true;
+
+  useEffect(() => {
+    traceLinkGraph("graphFlowSurface.lifecycle.mount", {
+      viewportMode,
+      graph: summarizeGraph({ nodes: positionedNodes, edges }),
+      anchorNodeId: anchorNode?.id ?? null,
+      graphShapeSignature,
+    });
+    return () => {
+      traceLinkGraph("graphFlowSurface.lifecycle.unmount", {
+        viewportMode,
+        graph: summarizeGraph({ nodes: positionedNodes, edges }),
+        anchorNodeId: anchorNode?.id ?? null,
+        graphShapeSignature,
+      });
+    };
+  }, []);
 
   useEffect(() => {
     if (!dragShieldingEnabled && isExperimentalDragging) {
@@ -292,7 +314,7 @@ export function GraphFlowSurface({
       return;
     }
     const size = nodeViewportSize(node);
-    const zoomOptions = reason === "manualAnchor"
+    const zoomOptions = reason === "manualAnchor" || reason === "explicitNodeFocus"
       ? { duration: 0 }
       : { zoom: WIDE_GRAPH_FOCUS_ZOOM, duration: 0 };
     traceLinkGraph("graphFlowSurface.viewport.focusNode", {
@@ -347,14 +369,47 @@ export function GraphFlowSurface({
     }
     clearScheduledFitView();
     const updateViewport = () => {
+      let branch: "flowchartAnchor" | "wideGraphAnchor" | "fitView" = "fitView";
       if (useFlowchartViewport && anchorNode?.position) {
+        branch = "flowchartAnchor";
+        traceLinkGraph("graphFlowSurface.viewport.apply", {
+          reason,
+          branch,
+          viewportMode,
+          useFlowchartViewport,
+          focusAnchor: shouldFocusAnchorOnLoad,
+          anchorNodeId: anchorNode.id,
+          anchorPosition: anchorNode.position,
+          graphShapeSignature,
+        });
         focusNodeInViewport(anchorNode, "flowchartAnchor");
         return;
       }
       if (shouldFocusAnchorOnLoad && anchorNode?.position) {
+        branch = "wideGraphAnchor";
+        traceLinkGraph("graphFlowSurface.viewport.apply", {
+          reason,
+          branch,
+          viewportMode,
+          useFlowchartViewport,
+          focusAnchor: shouldFocusAnchorOnLoad,
+          anchorNodeId: anchorNode.id,
+          anchorPosition: anchorNode.position,
+          graphShapeSignature,
+        });
         focusNodeInViewport(anchorNode, "wideGraphAnchor");
         return;
       }
+      traceLinkGraph("graphFlowSurface.viewport.apply", {
+        reason,
+        branch,
+        viewportMode,
+        useFlowchartViewport,
+        focusAnchor: shouldFocusAnchorOnLoad,
+        anchorNodeId: anchorNode?.id ?? null,
+        anchorPosition: anchorNode?.position ?? null,
+        graphShapeSignature,
+      });
       flowInstance.fitView({
         padding: 0.16,
         duration: 0,
@@ -375,6 +430,40 @@ export function GraphFlowSurface({
   }
 
   useEffect(() => {
+    if (!focusNodeRequest || handledFocusNonceRef.current === focusNodeRequest.nonce) {
+      return;
+    }
+    const targetNode = positionedNodes.find((node) => node.id === focusNodeRequest.nodeId);
+    if (!targetNode?.position || !flowInstance) {
+      return;
+    }
+    handledFocusNonceRef.current = focusNodeRequest.nonce;
+    focusNodeInViewport(targetNode, "explicitNodeFocus");
+  }, [flowInstance, focusNodeRequest, positionedNodes]);
+
+  useEffect(() => {
+    const previousSelectedNodeId = previousSelectedNodeIdRef.current;
+    previousSelectedNodeIdRef.current = selectedNodeId;
+    if (!flowInstance || !selectedNodeId || previousSelectedNodeId === selectedNodeId) {
+      return;
+    }
+    const targetNode = positionedNodes.find((node) => node.id === selectedNodeId);
+    if (!targetNode?.position || selectedNodeId === anchorNode?.id) {
+      return;
+    }
+    traceLinkGraph("graphFlowSurface.viewport.selectionEffect", {
+      previousSelectedNodeId,
+      selectedNodeId,
+      anchorNodeId: anchorNode?.id ?? null,
+      viewportMode,
+    });
+    focusNodeInViewport(targetNode, "selectedNodeChange");
+  }, [anchorNode?.id, flowInstance, positionedNodes, selectedNodeId, viewportMode]);
+
+  useEffect(() => {
+    if (!flowInstance) {
+      return clearScheduledFitView;
+    }
     const nextViewportGraph: GraphViewportSnapshot = {
       anchorNodeId: anchorNode?.id ?? null,
       nodeIds: new Set(positionedNodes.map((node) => node.id)),
@@ -384,6 +473,16 @@ export function GraphFlowSurface({
       previousViewportGraphRef.current,
       nextViewportGraph,
     );
+    traceLinkGraph("graphFlowSurface.viewport.graphEffect", {
+      viewportMode,
+      graph: summarizeGraph({ nodes: positionedNodes, edges }),
+      anchorNodeId: anchorNode?.id ?? null,
+      previousAnchorNodeId: previousViewportGraphRef.current?.anchorNodeId ?? null,
+      preserveViewport,
+      shouldFocusAnchorOnLoad,
+      graphShapeSignature,
+      hasFlowInstance: true,
+    });
     previousViewportGraphRef.current = nextViewportGraph;
     if (preserveViewport) {
       return clearScheduledFitView;
@@ -532,13 +631,6 @@ export function GraphFlowSurface({
     setContextMenu(null);
   };
 
-  const handleNodeDoubleClick: NodeMouseHandler = (_, node) => {
-    focusCanvasShell();
-    onInspectNode(node.id);
-    setSelectedEdgeId(null);
-    setContextMenu(null);
-  };
-
   const handlePaneClick = () => {
     focusCanvasShell();
     onSelectNode("");
@@ -635,10 +727,15 @@ export function GraphFlowSurface({
           elementsSelectable={true}
           disableKeyboardA11y={true}
           onInit={(instance) => {
+            traceLinkGraph("graphFlowSurface.onInit", {
+              viewportMode,
+              graph: summarizeGraph({ nodes: positionedNodes, edges }),
+              anchorNodeId: anchorNode?.id ?? null,
+              graphShapeSignature,
+            });
             setFlowInstance(instance);
           }}
           onNodeClick={handleNodeClick}
-          onNodeDoubleClick={handleNodeDoubleClick}
           onNodeContextMenu={(event, node) => openNodeMenu(event, node.id)}
           onEdgeClick={(event, edge) => {
             event.stopPropagation();

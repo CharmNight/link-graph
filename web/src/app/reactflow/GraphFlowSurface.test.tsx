@@ -499,6 +499,193 @@ describe("GraphFlowSurface", () => {
     expect(reactFlowFitViewMock).toHaveBeenCalledTimes(2);
   });
 
+  it("centers an explicitly requested node even when the graph shape and selection policy stay unchanged", () => {
+    installResizeObserverStub();
+    vi.useFakeTimers();
+
+    const anchorNode = baseNode();
+    const tailNode = {
+      ...baseNode("method:tail"),
+      position: { x: 440, y: 96 },
+    };
+
+    const { rerender } = render(
+      <GraphFlowSurface
+        nodes={[anchorNode, tailNode]}
+        edges={[]}
+        flowNodes={[
+          {
+            id: anchorNode.id,
+            data: { label: anchorNode.title },
+            position: anchorNode.position ?? { x: 0, y: 0 },
+          },
+          {
+            id: tailNode.id,
+            data: { label: tailNode.title },
+            position: tailNode.position ?? { x: 0, y: 0 },
+          },
+        ]}
+        flowEdges={[]}
+        anchorNodeId={anchorNode.id}
+        selectedNodeId={anchorNode.id}
+        selectedGroupNodeIds={[]}
+        editable
+        emptyState={<div>empty</div>}
+        buildPaneActions={() => []}
+        buildNodeActions={() => []}
+        buildEdgeActions={() => []}
+        onSelectNode={() => undefined}
+        onSelectionGroupChange={() => undefined}
+        onInspectNode={() => undefined}
+        onCreateEdge={() => undefined}
+        onMoveNode={() => undefined}
+        onMoveNodes={() => undefined}
+        nodeViewportSize={() => ({ width: 240, height: 120 })}
+      />,
+    );
+
+    act(() => {
+      vi.runAllTimers();
+    });
+    reactFlowSetCenterMock.mockClear();
+
+    rerender(
+      <GraphFlowSurface
+        nodes={[anchorNode, tailNode]}
+        edges={[]}
+        flowNodes={[
+          {
+            id: anchorNode.id,
+            data: { label: anchorNode.title },
+            position: anchorNode.position ?? { x: 0, y: 0 },
+          },
+          {
+            id: tailNode.id,
+            data: { label: tailNode.title },
+            position: tailNode.position ?? { x: 0, y: 0 },
+          },
+        ]}
+        flowEdges={[]}
+        anchorNodeId={anchorNode.id}
+        selectedNodeId={tailNode.id}
+        selectedGroupNodeIds={[]}
+        focusNodeRequest={{ nodeId: tailNode.id, nonce: 1 }}
+        editable
+        emptyState={<div>empty</div>}
+        buildPaneActions={() => []}
+        buildNodeActions={() => []}
+        buildEdgeActions={() => []}
+        onSelectNode={() => undefined}
+        onSelectionGroupChange={() => undefined}
+        onInspectNode={() => undefined}
+        onCreateEdge={() => undefined}
+        onMoveNode={() => undefined}
+        onMoveNodes={() => undefined}
+        nodeViewportSize={() => ({ width: 240, height: 120 })}
+      />,
+    );
+
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(reactFlowSetCenterMock).toHaveBeenCalledWith(560, 156, { duration: 0 });
+    expect(reactFlowFitViewMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("centers a newly selected non-anchor node even when the graph shape stays unchanged", () => {
+    installResizeObserverStub();
+    vi.useFakeTimers();
+
+    const anchorNode = baseNode();
+    const tailNode = {
+      ...baseNode("method:tail"),
+      position: { x: 440, y: 96 },
+    };
+
+    const { rerender } = render(
+      <GraphFlowSurface
+        nodes={[anchorNode, tailNode]}
+        edges={[]}
+        flowNodes={[
+          {
+            id: anchorNode.id,
+            data: { label: anchorNode.title },
+            position: anchorNode.position ?? { x: 0, y: 0 },
+          },
+          {
+            id: tailNode.id,
+            data: { label: tailNode.title },
+            position: tailNode.position ?? { x: 0, y: 0 },
+          },
+        ]}
+        flowEdges={[]}
+        anchorNodeId={anchorNode.id}
+        selectedNodeId={anchorNode.id}
+        selectedGroupNodeIds={[]}
+        editable
+        emptyState={<div>empty</div>}
+        buildPaneActions={() => []}
+        buildNodeActions={() => []}
+        buildEdgeActions={() => []}
+        onSelectNode={() => undefined}
+        onSelectionGroupChange={() => undefined}
+        onInspectNode={() => undefined}
+        onCreateEdge={() => undefined}
+        onMoveNode={() => undefined}
+        onMoveNodes={() => undefined}
+        nodeViewportSize={() => ({ width: 240, height: 120 })}
+      />,
+    );
+
+    act(() => {
+      vi.runAllTimers();
+    });
+    reactFlowSetCenterMock.mockClear();
+
+    rerender(
+      <GraphFlowSurface
+        nodes={[anchorNode, tailNode]}
+        edges={[]}
+        flowNodes={[
+          {
+            id: anchorNode.id,
+            data: { label: anchorNode.title },
+            position: anchorNode.position ?? { x: 0, y: 0 },
+          },
+          {
+            id: tailNode.id,
+            data: { label: tailNode.title },
+            position: tailNode.position ?? { x: 0, y: 0 },
+          },
+        ]}
+        flowEdges={[]}
+        anchorNodeId={anchorNode.id}
+        selectedNodeId={tailNode.id}
+        selectedGroupNodeIds={[]}
+        editable
+        emptyState={<div>empty</div>}
+        buildPaneActions={() => []}
+        buildNodeActions={() => []}
+        buildEdgeActions={() => []}
+        onSelectNode={() => undefined}
+        onSelectionGroupChange={() => undefined}
+        onInspectNode={() => undefined}
+        onCreateEdge={() => undefined}
+        onMoveNode={() => undefined}
+        onMoveNodes={() => undefined}
+        nodeViewportSize={() => ({ width: 240, height: 120 })}
+      />,
+    );
+
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(reactFlowSetCenterMock).toHaveBeenCalledWith(560, 156, { zoom: 0.76, duration: 0 });
+    expect(reactFlowFitViewMock).toHaveBeenCalledTimes(2);
+  });
+
   it("uses the flowchart viewport mode to center the anchor at a readable zoom instead of fitting the entire tall graph", () => {
     installResizeObserverStub();
     vi.useFakeTimers();

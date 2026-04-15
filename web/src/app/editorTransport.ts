@@ -137,15 +137,6 @@ function normalizeTransportEnvelope(
   detail: LinkGraphSnapshotEnvelope | LinkGraphBootstrapState | LinkGraphIncrementalTransportEnvelope,
 ): LinkGraphSnapshotEnvelope | null {
   if (isIncrementalTransportEnvelope(detail)) {
-    if (detail.type === "BOOTSTRAP_INIT") {
-      return {
-        sessionId: detail.sessionId,
-        revision: detail.revision,
-        state: detail.state,
-        transportType: detail.type,
-      };
-    }
-
     const baseState = latestEnvelope?.state ?? window.linkGraphBootstrap ?? null;
     if (!baseState) {
       return null;

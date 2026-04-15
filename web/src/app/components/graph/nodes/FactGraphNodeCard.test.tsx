@@ -112,5 +112,22 @@ describe("FactGraphNodeCard", () => {
     expect(onMeasure).toHaveBeenCalledTimes(1);
     expect(container.querySelector(`[data-node-id="${node.id}"]`)).toHaveClass("is-selected");
     expect(container.querySelector(`[data-node-id="${node.id}"]`)).not.toHaveClass("is-expanded");
+    expect(container.textContent).toContain("当前选中");
+  });
+
+  it("renders readable badges for explanation focus and draft changes", () => {
+    const { container } = render(
+      <FactGraphNodeCard
+        node={factNode()}
+        selected={false}
+        collapsed={false}
+        explanationFocused
+        draftChanged
+      />,
+    );
+
+    expect(container.querySelector(".flow-node-state-badges")).not.toBeNull();
+    expect(container.textContent).toContain("讲解中");
+    expect(container.textContent).toContain("已改草稿");
   });
 });

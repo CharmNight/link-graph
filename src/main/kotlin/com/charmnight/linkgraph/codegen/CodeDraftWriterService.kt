@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.codegen
 
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import java.nio.file.Files
 import java.nio.file.Path
@@ -8,7 +9,11 @@ import java.nio.file.Path
  * 把生成好的代码草案显式写入项目目录。
  * 一期默认只创建不存在的文件，避免静默覆盖用户已有代码。
  */
-class CodeDraftWriterService {
+class CodeDraftWriterService(
+    project: Project? = null,
+) {
+    private val codeEditApplyService = project?.let { CodeEditApplyService(it) }
+
     /** 把生成的代码草稿写入项目目录，并汇总写入结果。 */
     fun writeDrafts(
         projectBasePath: String?,
@@ -30,29 +35,56 @@ class CodeDraftWriterService {
         val warnings = mutableListOf<String>()
 
         drafts.forEach { draft ->
+            val normalizedDraft = ProjectPathNormalizer.normalizeDraft(draft, projectBasePath)
             /** 当前草稿解析出的目标文件路径。 */
-            val target = basePath.resolve(draft.targetPath).normalize()
+            val target = basePath.resolve(normalizedDraft.targetPath).normalize()
             if (!target.startsWith(basePath)) {
-                skippedFiles += draft.targetPath
-                warnings += "已跳过 '${draft.targetPath}'，因为它解析到了项目目录之外。"
+                skippedFiles += normalizedDraft.targetPath
+                warnings += "已跳过 '${normalizedDraft.targetPath}'，因为它解析到了项目目录之外。"
                 return@forEach
             }
             if (Files.exists(target)) {
-                /** 对 Java 文件尝试做保守合并。 */
-                val merged = target.toString().endsWith(".java") && mergeJavaDraft(target, draft)
-                if (merged || hasEquivalentContent(target, draft.content)) {
+                if (normalizedDraft.content != null && Files.isRegularFile(target) && Files.readString(target) == normalizedDraft.content) {
                     refreshFile(target)
-                    writtenFiles += draft.targetPath
+                    writtenFiles += normalizedDraft.targetPath
+                    return@forEach
+                }
+                if (normalizedDraft.editOperations.isNotEmpty()) {
+                    val beforeText = Files.readString(target)
+                    val applyService = codeEditApplyService
+                    if (applyService == null) {
+                        skippedFiles += normalizedDraft.targetPath
+                        warnings += "已跳过 '${normalizedDraft.targetPath}'，因为 scope-safe apply 需要 IDE project 上下文。"
+                        return@forEach
+                    }
+                    val applyResult = applyService.applyToText(
+                        filePath = normalizedDraft.targetPath,
+                        beforeText = beforeText,
+                        operations = normalizedDraft.editOperations,
+                        editScopes = normalizedDraft.editScopes,
+                    )
+                    warnings += applyResult.warnings
+                    if (!applyResult.applied) {
+                        skippedFiles += normalizedDraft.targetPath
+                        return@forEach
+                    }
+                    Files.writeString(target, applyResult.updatedText)
+                    refreshFile(target)
+                    writtenFiles += normalizedDraft.targetPath
+                    return@forEach
+                }
+                skippedFiles += normalizedDraft.targetPath
+                warnings += if (normalizedDraft.editScopes.isEmpty()) {
+                    "已跳过 '${normalizedDraft.targetPath}'，因为 existing-file writeback 缺少 validated scope。"
                 } else {
-                    skippedFiles += draft.targetPath
-                    warnings += "已跳过 '${draft.targetPath}'，因为目标文件已经存在。"
+                    "已跳过 '${normalizedDraft.targetPath}'，因为 scope-safe existing-file writeback 尚未启用。"
                 }
                 return@forEach
             }
             target.parent?.let(Files::createDirectories)
-            Files.writeString(target, draft.content)
+            Files.writeString(target, normalizedDraft.content ?: "")
             refreshFile(target)
-            writtenFiles += draft.targetPath
+            writtenFiles += normalizedDraft.targetPath
         }
 
         return GeneratedCodeDraftWriteReport(
@@ -60,78 +92,6 @@ class CodeDraftWriterService {
             skippedFiles = skippedFiles,
             warnings = warnings,
         )
-    }
-
-    /**
-     * 只对 Java 文件做保守合并：
-     * 追加 import、类注释、字段、方法；若无法可靠识别顶层类型，则直接跳过。
-     */
-    private fun mergeJavaDraft(
-        target: Path,
-        draft: GeneratedCodeDraft,
-    ): Boolean {
-        /** 当前目标文件的原始内容。 */
-        var merged = Files.readString(target)
-        /** 标记合并过程中是否产生了实际变更。 */
-        var changed = false
-
-        /** 草稿中的顶层类型块。 */
-        val draftTypeBlock = findPrimaryTypeBlock(draft.content)
-        /** 目标文件中的顶层类型块。 */
-        val existingTypeBlock = findPrimaryTypeBlock(merged)
-        if (draftTypeBlock == null || existingTypeBlock == null) {
-            return false
-        }
-        if (draftTypeBlock.kind != existingTypeBlock.kind) {
-            return false
-        }
-
-        /** 需要补充到目标文件中的 import 语句。 */
-        val importsToAdd = extractImportLines(draft.content)
-            .filterNot { importLine -> extractImportLines(merged).contains(importLine) }
-        if (importsToAdd.isNotEmpty()) {
-            merged = mergeImports(merged, importsToAdd)
-            changed = true
-        }
-        /** 草稿类声明前的 Javadoc。 */
-        val draftClassDoc = extractLeadingJavadoc(draft.content, draftTypeBlock.declarationStart)
-        if (draftClassDoc != null && extractLeadingJavadoc(merged, existingTypeBlock.declarationStart) == null) {
-            merged = insertClassDoc(merged, existingTypeBlock.declarationStart, draftClassDoc)
-            changed = true
-        }
-
-        /** 目标文件现有的顶层成员。 */
-        val existingMembers = extractTopLevelMembers(merged)
-        /** 目标文件现有字段键集合。 */
-        val existingFieldKeys = existingMembers.filter { it.kind == JavaMemberKind.FIELD }.mapNotNull { it.key }.toSet()
-        /** 目标文件现有方法键集合。 */
-        val existingMethodKeys = existingMembers.filter { it.kind == JavaMemberKind.METHOD }.mapNotNull { it.key }.toSet()
-        /** 草稿文件中的顶层成员。 */
-        val draftMembers = extractTopLevelMembers(draft.content)
-
-        /** 需要新增的字段块。 */
-        val newFieldBlocks = draftMembers
-            .filter { member -> member.kind == JavaMemberKind.FIELD && member.key != null && member.key !in existingFieldKeys }
-            .map(JavaMember::rawBlock)
-        /** 需要新增的方法块。 */
-        val newMethodBlocks = draftMembers
-            .filter { member -> member.kind == JavaMemberKind.METHOD && member.key != null && member.key !in existingMethodKeys }
-            .map(JavaMember::rawBlock)
-
-        if (newFieldBlocks.isNotEmpty() || newMethodBlocks.isNotEmpty()) {
-            merged = mergeMembersIntoType(
-                content = merged,
-                fieldBlocks = newFieldBlocks,
-                methodBlocks = newMethodBlocks,
-            )
-            changed = true
-        }
-
-        if (!changed) {
-            return false
-        }
-        Files.writeString(target, merged)
-        return true
     }
 
     /** 将新增 import 合并进文件头部，并保持排序。 */
@@ -327,14 +287,22 @@ class CodeDraftWriterService {
                 '}' -> depth--
                 ';' -> {
                     if (depth == 0 && memberStart >= 0) {
-                        createMember(body.substring(memberStart, index + 1))?.let(members::add)
+                        createMember(
+                            rawBlock = body.substring(memberStart, index + 1),
+                            startIndex = typeBlock.bodyStart + 1 + memberStart,
+                            endIndexExclusive = typeBlock.bodyStart + 1 + index + 1,
+                        )?.let(members::add)
                         memberStart = -1
                     }
                 }
             }
 
             if (char == '}' && depth == 0 && memberStart >= 0) {
-                createMember(body.substring(memberStart, index + 1))?.let(members::add)
+                createMember(
+                    rawBlock = body.substring(memberStart, index + 1),
+                    startIndex = typeBlock.bodyStart + 1 + memberStart,
+                    endIndexExclusive = typeBlock.bodyStart + 1 + index + 1,
+                )?.let(members::add)
                 memberStart = -1
             }
             index++
@@ -343,7 +311,11 @@ class CodeDraftWriterService {
     }
 
     /** 根据原始代码块识别其属于字段还是方法成员。 */
-    private fun createMember(rawBlock: String): JavaMember? {
+    private fun createMember(
+        rawBlock: String,
+        startIndex: Int,
+        endIndexExclusive: Int,
+    ): JavaMember? {
         /** 去除首尾空白后的成员文本。 */
         val trimmed = rawBlock.trim()
         if (trimmed.isBlank() || trimmed.startsWith("static {") || trimmed == "{") {
@@ -353,8 +325,12 @@ class CodeDraftWriterService {
             return null
         }
         return when {
-            trimmed.endsWith("}") -> methodSignatureKey(trimmed)?.let { JavaMember(trimmed, JavaMemberKind.METHOD, it) }
-            trimmed.endsWith(";") -> fieldKey(trimmed)?.let { JavaMember(trimmed, JavaMemberKind.FIELD, it) }
+            trimmed.endsWith("}") -> methodSignatureKey(trimmed)?.let {
+                JavaMember(trimmed, JavaMemberKind.METHOD, it, startIndex, endIndexExclusive)
+            }
+            trimmed.endsWith(";") -> fieldKey(trimmed)?.let {
+                JavaMember(trimmed, JavaMemberKind.FIELD, it, startIndex, endIndexExclusive)
+            }
             else -> null
         }
     }
@@ -393,6 +369,24 @@ class CodeDraftWriterService {
                 "    ${line.trimEnd()}"
             }
         }
+    }
+
+    /** 按成员范围替换已有 Java 成员块。 */
+    private fun replaceMembersInContent(
+        content: String,
+        replacements: List<Pair<JavaMember, String>>,
+    ): String {
+        var result = content
+        replacements
+            .sortedByDescending { (member, _) -> member.startIndex }
+            .forEach { (member, replacement) ->
+                result = buildString(result.length - (member.endIndexExclusive - member.startIndex) + replacement.length) {
+                    append(result.substring(0, member.startIndex))
+                    append(indentMemberBlock(replacement))
+                    append(result.substring(member.endIndexExclusive))
+                }
+            }
+        return result
     }
 
     /** 在文件中定位第一个顶层类型块。 */
@@ -500,6 +494,10 @@ class CodeDraftWriterService {
         val kind: JavaMemberKind,
         /** 用于去重的稳定键。 */
         val key: String?,
+        /** 成员在完整文件中的起始下标。 */
+        val startIndex: Int,
+        /** 成员在完整文件中的结束下标（开区间）。 */
+        val endIndexExclusive: Int,
     )
 
     /** Java 顶层成员分类。 */

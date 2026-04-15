@@ -88,6 +88,14 @@ function flowchartKind(node?: LinkGraphNode): string {
   return node?.metadata?.["flowchart.kind"] ?? "PROCESS";
 }
 
+function flowScopeCategory(node?: LinkGraphNode): string {
+  return node?.metadata?.["flow.scopeCategory"] ?? "";
+}
+
+function flowEdgeRole(edge?: LinkGraphEdge): string {
+  return edge?.metadata?.["flow.edgeRole"]?.toUpperCase() ?? "";
+}
+
 export function buildOutgoingControlFlowIndex(edges: LinkGraphEdge[]): Map<string, LinkGraphEdge[]> {
   const index = new Map<string, LinkGraphEdge[]>();
   edges.forEach((edge) => {
@@ -329,6 +337,30 @@ export function resolveDecisionSourcePort(
   targetNode: LinkGraphNode | undefined,
   options: DecisionSourcePortResolutionOptions = {},
 ): FlowchartDecisionSourcePortId {
+  const scopeCategory = flowScopeCategory(sourceNode);
+  const edgeRole = flowEdgeRole(options.edge);
+  if (scopeCategory === "LOOP_PRE_TEST") {
+    if (edgeRole === "LOOP_BODY") {
+      return "source-bottom";
+    }
+    if (edgeRole === "LOOP_EXIT") {
+      if (targetNode?.position && sourceNode?.position) {
+        return targetNode.position.x < sourceNode.position.x ? "source-left" : "source-right";
+      }
+      return "source-right";
+    }
+  }
+  if (scopeCategory === "LOOP_POST_TEST") {
+    if (edgeRole === "LOOP_EXIT") {
+      return "source-bottom";
+    }
+    if (edgeRole === "LOOP_BACK") {
+      if (targetNode?.position && sourceNode?.position) {
+        return targetNode.position.x < sourceNode.position.x ? "source-left" : "source-right";
+      }
+      return "source-left";
+    }
+  }
   if (isDecisionFallthroughEdge(options.edge, options.outgoingEdges, options.nodeIndex)) {
     return "source-bottom";
   }

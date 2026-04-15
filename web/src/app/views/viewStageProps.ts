@@ -1,10 +1,14 @@
 import type {
+  GraphFocusRequest,
   GraphSurfaceExperimentFlags,
   GraphPosition,
 } from "../types";
 
 export interface ViewStageProps {
   selectedNodeId: string | null;
+  focusNodeRequest?: GraphFocusRequest | null;
+  explanationFocusNodeId?: string | null;
+  draftChangedNodeIds?: string[];
   selectedGroupNodeIds?: string[];
   hiddenNodeIds?: string[];
   collapsedNodeIds?: string[];

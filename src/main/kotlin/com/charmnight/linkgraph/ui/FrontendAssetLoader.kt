@@ -16,6 +16,7 @@ internal interface FrontendAssetLoader {
  */
 internal class ClasspathFrontendAssetLoader(
     private val classLoader: ClassLoader = ClasspathFrontendAssetLoader::class.java.classLoader,
+    private val developmentDistRoot: Path = Path.of("web/dist"),
 ) : FrontendAssetLoader {
     override fun loadInlineEntryHtml(): String {
         var html = readResourceText("linkgraph/index.html")
@@ -48,15 +49,15 @@ internal class ClasspathFrontendAssetLoader(
     }
 
     private fun readResourceText(resourcePath: String): String {
+        val developmentPath = developmentDistRoot.resolve(resourcePath.removePrefix("linkgraph/"))
+        if (Files.exists(developmentPath)) {
+            return Files.readString(developmentPath, StandardCharsets.UTF_8)
+        }
         val stream = classLoader.getResourceAsStream(resourcePath)
         if (stream != null) {
             return stream.bufferedReader(StandardCharsets.UTF_8).use { reader ->
                 reader.readText()
             }
-        }
-        val developmentPath = Path.of("web/dist").resolve(resourcePath.removePrefix("linkgraph/"))
-        if (Files.exists(developmentPath)) {
-            return Files.readString(developmentPath, StandardCharsets.UTF_8)
         }
         error("未找到前端资源: $resourcePath")
     }

@@ -1,7 +1,9 @@
 package com.charmnight.linkgraph.semantic.provider.code
 
 import com.charmnight.linkgraph.semantic.model.FlowActionUnit
+import com.charmnight.linkgraph.semantic.model.FlowEdgeRole
 import com.charmnight.linkgraph.semantic.model.FlowScopeUnit
+import com.charmnight.linkgraph.semantic.model.FlowScopeCategory
 import com.charmnight.linkgraph.semantic.model.InvocationUnit
 import com.charmnight.linkgraph.semantic.model.MethodLikeUnit
 import com.charmnight.linkgraph.semantic.model.SemanticRelationKind
@@ -57,9 +59,11 @@ class KotlinCodeSemanticProviderTest : BasePlatformTestCase() {
         assertTrue(result.semanticUnits.any { unit ->
             unit is MethodLikeUnit && unit.signature == codeHandle.methodSignature
         })
-        assertTrue(result.semanticUnits.any { unit ->
-            unit is FlowScopeUnit && unit.scopeKind == "SWITCH"
-        })
+        val whenScope = result.semanticUnits
+            .filterIsInstance<FlowScopeUnit>()
+            .firstOrNull { unit -> unit.scopeKind == "SWITCH" }
+        assertTrue(whenScope != null)
+        assertEquals(FlowScopeCategory.SWITCH, whenScope!!.scopeCategory)
         assertTrue(result.semanticUnits.any { unit ->
             unit is MethodLikeUnit && unit.title == "BranchService.sanitize"
         })
@@ -71,6 +75,12 @@ class KotlinCodeSemanticProviderTest : BasePlatformTestCase() {
         })
         assertTrue(result.relations.any { relation ->
             relation.kind == SemanticRelationKind.CONTROL_FLOW && relation.label != null
+        })
+        assertTrue(result.relations.any { relation ->
+            relation.kind == SemanticRelationKind.CONTROL_FLOW && relation.flowEdgeRole == FlowEdgeRole.CASE
+        })
+        assertTrue(result.relations.any { relation ->
+            relation.kind == SemanticRelationKind.CONTROL_FLOW && relation.flowEdgeRole == FlowEdgeRole.DEFAULT
         })
     }
 
@@ -164,5 +174,95 @@ class KotlinCodeSemanticProviderTest : BasePlatformTestCase() {
         assertTrue(result.semanticUnits.any { unit ->
             unit is InvocationUnit && unit.targetSignature?.contains("Policy.allow") == true
         })
+    }
+
+    fun testAnalyzeKotlinDoWhileBuildsExplicitPostTestLoopRoles() {
+        myFixture.configureByText(
+            "LoopService.kt",
+            """
+                package com.example
+
+                class LoopService {
+                    fun flush(seed: Int): Int {
+                        var current = <caret>seed
+                        do {
+                            current = normalize(current)
+                        } while (current > 0)
+                        return current
+                    }
+
+                    private fun normalize(value: Int): Int = value - 1
+                }
+            """.trimIndent(),
+        )
+
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor)
+        val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
+
+        val result = KotlinCodeSemanticProvider().analyze(
+            handle = codeHandle,
+            capturePolicy = SemanticCapturePolicy(),
+            budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 1, maxInvocationsPerUnit = 8),
+        )
+
+        val loopScope = result.semanticUnits
+            .filterIsInstance<FlowScopeUnit>()
+            .firstOrNull { unit -> unit.scopeKind == "DO_WHILE" }
+        val loopBackEdge = result.relations.firstOrNull { relation ->
+            relation.kind == SemanticRelationKind.CONTROL_FLOW && relation.flowEdgeRole == FlowEdgeRole.LOOP_BACK
+        }
+        val loopExitEdge = result.relations.firstOrNull { relation ->
+            relation.kind == SemanticRelationKind.CONTROL_FLOW && relation.flowEdgeRole == FlowEdgeRole.LOOP_EXIT
+        }
+
+        assertTrue(loopScope != null)
+        assertEquals(FlowScopeCategory.LOOP_POST_TEST, loopScope!!.scopeCategory)
+        assertTrue(loopBackEdge != null)
+        assertTrue(loopExitEdge != null)
+        assertTrue(
+            result.relations.any { relation ->
+                relation.kind == SemanticRelationKind.CONTROL_FLOW && relation.flowEdgeRole == FlowEdgeRole.ENTRY
+            },
+        )
+    }
+
+    fun testAnalyzeInfiniteWhileLoopMarksMissingNormalExitAsIncompleteInsteadOfFakingLoopExit() {
+        myFixture.configureByText(
+            "LoopService.kt",
+            """
+                package com.example
+
+                class LoopService {
+                    fun <caret>spin() {
+                        while (true) {
+                            tick()
+                        }
+                    }
+
+                    private fun tick() = Unit
+                }
+            """.trimIndent(),
+        )
+
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor)
+        val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
+
+        val result = KotlinCodeSemanticProvider().analyze(
+            handle = codeHandle,
+            capturePolicy = SemanticCapturePolicy(),
+            budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 1, maxInvocationsPerUnit = 8),
+        )
+
+        val loopScope = result.semanticUnits
+            .filterIsInstance<FlowScopeUnit>()
+            .firstOrNull { unit -> unit.scopeKind == "WHILE" }
+
+        assertTrue(loopScope != null)
+        assertTrue(loopScope!!.incomplete)
+        assertTrue(
+            result.relations.none { relation ->
+                relation.kind == SemanticRelationKind.CONTROL_FLOW && relation.flowEdgeRole == FlowEdgeRole.LOOP_EXIT
+            },
+        )
     }
 }

@@ -4,10 +4,10 @@ import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-class CurrentMethodGraphRequestTrackerTest {
+class CurrentSubjectGraphRequestTrackerTest {
     @Test
     fun onlyMarksLatestRequestAsActive() {
-        val tracker = CurrentMethodGraphRequestTracker()
+        val tracker = CurrentSubjectGraphRequestTracker()
 
         val firstRequestId = tracker.beginRequest()
         val secondRequestId = tracker.beginRequest()

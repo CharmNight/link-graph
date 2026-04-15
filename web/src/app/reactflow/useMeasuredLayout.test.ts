@@ -36,6 +36,62 @@ function manualNode(id: string, title: string, x: number, y: number): LinkGraphN
 }
 
 describe("useMeasuredLayout", () => {
+  it("keeps an unpositioned graph hidden until async layout returns stable coordinates", async () => {
+    const graph: LinkGraphDocument = {
+      nodes: [
+        methodNode("method:anchor", "OrderService.submit"),
+        methodNode("method:callee", "OrderMapper.insert"),
+      ],
+      edges: [
+        {
+          id: "edge:anchor->callee",
+          type: "CALL",
+          source: "method:anchor",
+          target: "method:callee",
+        },
+      ],
+    };
+    let resolveLayout: ((value: { nodes: LinkGraphNode[]; edges: LinkGraphDocument["edges"] }) => void) | null = null;
+    const layout = vi.fn(() =>
+      new Promise<{ nodes: LinkGraphNode[]; edges: LinkGraphDocument["edges"] }>((resolve) => {
+        resolveLayout = resolve;
+      }),
+    );
+
+    const { result } = renderHook(() =>
+      useMeasuredLayout({
+        graph,
+        anchorNodeId: "method:anchor",
+        layout,
+      }),
+    );
+
+    expect(result.current.layoutPending).toBe(true);
+    expect(result.current.nodes).toEqual([]);
+    expect(result.current.edges).toEqual([]);
+
+    await waitFor(() => {
+      expect(layout).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      resolveLayout?.({
+        nodes: graph.nodes.map((node, index) => ({
+          ...node,
+          position: { x: 120 + index * 320, y: 96 },
+        })),
+        edges: graph.edges,
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.nodes[0]?.position).toEqual({ x: 120, y: 96 });
+    });
+    expect(result.current.nodes[1]?.position).toEqual({ x: 440, y: 96 });
+    expect(result.current.edges).toEqual(graph.edges);
+    expect(result.current.layoutPending).toBe(false);
+  });
+
   it("does not trigger a new layout run when the host rerenders only because selection changed", async () => {
     const graph: LinkGraphDocument = {
       nodes: [

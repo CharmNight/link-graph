@@ -87,6 +87,8 @@ class GraphBeautificationServiceTest {
         assertEquals(StepGranularity.BUSINESS, result.granularity)
         assertEquals(2, result.steps.size)
         assertEquals("step-run-as", result.steps[1].stepId)
+        assertEquals("flow-action:run-as", result.steps[1].primaryNodeId)
+        assertEquals("subject.runAs(newPrincipalCollection);", result.steps[1].codeSnippet)
         assertTrue(result.steps[1].description.contains("runAs"))
         assertTrue(result.steps[1].followUpQuestions.any { it.contains("principalCollection") })
         assertTrue(result.steps[1].evidence.any { finding ->
@@ -127,6 +129,31 @@ class GraphBeautificationServiceTest {
         })
         assertTrue(result.steps[1].followUpQuestions.isNotEmpty())
         assertTrue(result.warnings.any { it.contains("远程 LLM 链路讲解失败") })
+    }
+
+    @Test
+    fun followUpQuestionChangesLocalBeautificationResultInsteadOfBeingIgnored() {
+        val result = DefaultGraphBeautificationService().beautify(
+            context = beautificationContext().copy(
+                followUp = GraphBeautificationFollowUpContext(
+                    stepId = "step-run-as",
+                    stepTitle = "切换 principal",
+                    question = "这里失败时会如何处理？",
+                ),
+            ),
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                endpoint = "",
+                apiKey = "",
+                model = "",
+            ),
+        )
+
+        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(listOf("step-run-as"), result.steps.map { it.stepId })
+        assertTrue(result.steps[0].description.contains("这里失败时会如何处理"))
+        assertTrue(result.promptPreview.contains("用户追问：这里失败时会如何处理？"))
     }
 
     @Test

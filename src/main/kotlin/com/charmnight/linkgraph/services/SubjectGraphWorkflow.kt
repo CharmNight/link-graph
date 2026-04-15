@@ -65,8 +65,8 @@ internal class SubjectGraphWorkflow(
     /** 日志记录器。 */
     private val logger: com.intellij.openapi.diagnostic.Logger,
 ) {
-    /** 当前方法链路请求轮次跟踪器。 */
-    private val currentMethodGraphRequestTracker = CurrentMethodGraphRequestTracker()
+    /** 当前主体链路请求轮次跟踪器。 */
+    private val currentSubjectGraphRequestTracker = CurrentSubjectGraphRequestTracker()
 
     /** 当前正在执行的分析任务。 */
     @Volatile
@@ -78,7 +78,7 @@ internal class SubjectGraphWorkflow(
 
     /** 当前请求的分析展示模式。 */
     @Volatile
-    private var requestedAnalysisDisplayMode: AnalysisDisplayMode = AnalysisDisplayMode.FACT_GRAPH
+    private var requestedAnalysisDisplayMode: AnalysisDisplayMode = AnalysisDisplayMode.FLOWCHART
 
     /** 最近一次分析所针对的主题句柄。 */
     @Volatile
@@ -136,36 +136,36 @@ internal class SubjectGraphWorkflow(
             }
             return
         }
+        val effectiveDisplayMode = effectiveAnalysisDisplayModeFor(
+            subject = cachedResult.subject,
+            requestedDisplayMode = displayMode,
+        )
         applyAnalysisResult(
             analysisResult = cachedResult,
             source = currentSnapshot.lastGraphSource ?: sourceForSubject(cachedResult.subject),
             reason = "displayModeSwitch",
+            requestedDisplayModeOverride = effectiveDisplayMode,
         )
-    }
-
-    /**
-     * 异步加载当前方法链路。
-     */
-    fun loadCurrentMethodGraphAsync() {
-        resetCurrentMethodExpansionState()
-        val requestId = beginCurrentMethodGraphRequest()
-        loadCurrentMethodGraphAsync(requestId, deferUntilSmart = true)
     }
 
     /**
      * 异步加载当前编辑器上下文链路。
      */
-    fun loadCurrentEditorContextGraphAsync() {
+    fun loadCurrentEditorContextGraphAsync(editor: Editor? = null) {
         resetCurrentMethodExpansionState()
-        val requestId = beginCurrentMethodGraphRequest()
-        loadCurrentEditorContextGraphAsync(requestId, deferUntilSmart = true)
+        val requestId = beginCurrentSubjectGraphRequest()
+        loadCurrentEditorContextGraphAsync(
+            requestId = requestId,
+            deferUntilSmart = true,
+            editor = editor,
+        )
     }
 
     /**
      * 把当前方法节点追加到画布中。
      */
     fun addCurrentMethodNode(handle: CodeSubjectHandle? = null): Boolean {
-        logger.info("开始追加当前方法节点")
+        debugLazy(logger.isDebugEnabled, logger::debug) { "开始追加当前方法节点" }
         val currentMethodNode = try {
             computeCurrentMethodNode(handle)
         } catch (throwable: Throwable) {
@@ -214,7 +214,9 @@ internal class SubjectGraphWorkflow(
             false,
             true,
         )
-        logger.info("当前方法节点追加完成: signature=${currentMethodNode.methodSignature}")
+        debugLazy(logger.isDebugEnabled, logger::debug) {
+            "当前方法节点追加完成: signature=${currentMethodNode.methodSignature}"
+        }
         return true
     }
 
@@ -268,13 +270,13 @@ internal class SubjectGraphWorkflow(
     }
 
     /**
-     * 展开摘要节点，重新以更宽的预算提取当前方法链路。
+     * 展开摘要节点，重新以更宽的预算提取当前主体链路。
      */
     fun requestExpandOverflowNode(nodeId: String) {
         val snapshot = session.snapshot()
         val node = findNavigationNode(snapshot, nodeId)
         val selectedMethodSignature = snapshot.selectedMethodSignature
-        val requestId = beginCurrentMethodGraphRequest()
+        val requestId = beginCurrentSubjectGraphRequest()
         if (node == null) {
             session.mutate {
                 markOperationFeedback(
@@ -288,7 +290,7 @@ internal class SubjectGraphWorkflow(
             session.mutate {
                 markOperationFeedback(
                     OperationFeedbackLevel.WARNING,
-                    "当前没有可重新提取的方法上下文，请先重新加载当前方法链路。",
+                    "当前没有可重新提取的主体上下文，请先重新加载当前编辑器上下文链路。",
                 )
             }
             return
@@ -346,12 +348,14 @@ internal class SubjectGraphWorkflow(
      */
     fun loadDebugMethodGraphBySignatureAsync(signature: String) {
         val trimmedSignature = signature.trim()
-        val requestId = beginCurrentMethodGraphRequest()
-        logger.info("开始按签名自动提取真实方法链路: signature=$trimmedSignature")
+        val requestId = beginCurrentSubjectGraphRequest()
+        debugLazy(logger.isDebugEnabled, logger::debug) {
+            "开始按签名自动提取真实链路: signature=$trimmedSignature"
+        }
         session.mutate {
             markOperationFeedback(
                 OperationFeedbackLevel.INFO,
-                "正在按签名分析真实方法链路：$trimmedSignature",
+                "正在按签名分析真实主体链路：$trimmedSignature",
             )
         }
         resolveCodeSubjectBySignatureAsync(
@@ -369,85 +373,25 @@ internal class SubjectGraphWorkflow(
     }
 
     /**
-     * 开始一轮新的当前方法链路请求。
+     * 开始一轮新的当前主体链路请求。
      */
-    private fun beginCurrentMethodGraphRequest(): Long {
+    private fun beginCurrentSubjectGraphRequest(): Long {
         currentAnalysisPromise?.cancel()
-        return currentMethodGraphRequestTracker.beginRequest()
+        return currentSubjectGraphRequestTracker.beginRequest()
     }
 
     /**
-     * 判断给定请求是否仍然是最新的一轮当前方法链路请求。
+     * 判断给定请求是否仍然是最新的一轮当前主体链路请求。
      */
-    private fun isLatestCurrentMethodGraphRequest(requestId: Long): Boolean {
-        return currentMethodGraphRequestTracker.isLatest(requestId)
+    private fun isLatestCurrentSubjectGraphRequest(requestId: Long): Boolean {
+        return currentSubjectGraphRequestTracker.isLatest(requestId)
     }
 
     /**
-     * 重置当前方法链路的展开预算。
+     * 重置当前主体链路的展开预算。
      */
     private fun resetCurrentMethodExpansionState() {
         currentProjectionSettings = InteractiveProjectionSettings()
-    }
-
-    /**
-     * 异步加载当前方法链路的内部实现。
-     */
-    private fun loadCurrentMethodGraphAsync(
-        requestId: Long,
-        deferUntilSmart: Boolean,
-    ) {
-        if (deferUntilSmart && shouldDeferCurrentMethodResolutionUntilSmart()) {
-            session.mutate {
-                markOperationFeedback(
-                    OperationFeedbackLevel.INFO,
-                    "项目正在索引，已在索引完成后继续分析当前方法链路。",
-                )
-            }
-            DumbService.getInstance(project).smartInvokeLater(
-                {
-                    if (!project.isDisposed && isLatestCurrentMethodGraphRequest(requestId)) {
-                        loadCurrentMethodGraphAsync(requestId, deferUntilSmart = false)
-                    }
-                },
-                ModalityState.defaultModalityState(),
-            )
-            return
-        }
-
-        val handle = runCatching { locateCurrentSubject() }.getOrElse { throwable ->
-            logger.warn("解析当前方法失败", throwable)
-            session.mutate {
-                markOperationFeedback(
-                    OperationFeedbackLevel.ERROR,
-                    "加载当前方法链路失败：${throwable.message ?: throwable.javaClass.simpleName}",
-                )
-            }
-            return
-        }
-
-        val codeHandle = handle as? CodeSubjectHandle
-        if (codeHandle == null) {
-            session.mutate {
-                markOperationFeedback(
-                    OperationFeedbackLevel.WARNING,
-                    "当前光标不在方法内，请先把光标放到方法签名或方法体内。",
-                )
-            }
-            return
-        }
-
-        session.mutate {
-            markOperationFeedback(
-                OperationFeedbackLevel.INFO,
-                "正在分析当前方法链路：${codeHandle.displayName}",
-            )
-        }
-        submitSubjectAnalysisTask(
-            handle = codeHandle,
-            requestId = requestId,
-            source = CURRENT_METHOD_SOURCE,
-        )
     }
 
     /**
@@ -456,18 +400,23 @@ internal class SubjectGraphWorkflow(
     private fun loadCurrentEditorContextGraphAsync(
         requestId: Long,
         deferUntilSmart: Boolean,
+        editor: Editor? = null,
     ) {
         if (deferUntilSmart && shouldDeferCurrentMethodResolutionUntilSmart()) {
             session.mutate {
                 markOperationFeedback(
                     OperationFeedbackLevel.INFO,
-                    "项目正在索引，已在索引完成后继续分析当前方法链路。",
+                    "项目正在索引，已在索引完成后继续分析当前编辑器上下文链路。",
                 )
             }
             DumbService.getInstance(project).smartInvokeLater(
                 {
-                    if (!project.isDisposed && isLatestCurrentMethodGraphRequest(requestId)) {
-                        loadCurrentEditorContextGraphAsync(requestId, deferUntilSmart = false)
+                    if (!project.isDisposed && isLatestCurrentSubjectGraphRequest(requestId)) {
+                        loadCurrentEditorContextGraphAsync(
+                            requestId = requestId,
+                            deferUntilSmart = false,
+                            editor = editor,
+                        )
                     }
                 },
                 ModalityState.defaultModalityState(),
@@ -475,7 +424,7 @@ internal class SubjectGraphWorkflow(
             return
         }
 
-        val handle = runCatching { locateCurrentSubject() }.getOrElse { throwable ->
+        val handle = runCatching { locateCurrentSubject(editor) }.getOrElse { throwable ->
             logger.warn("解析当前编辑器上下文失败", throwable)
             session.mutate {
                 markOperationFeedback(
@@ -500,7 +449,7 @@ internal class SubjectGraphWorkflow(
                 session.mutate {
                     markOperationFeedback(
                         OperationFeedbackLevel.INFO,
-                        "正在分析当前方法链路：${handle.displayName}",
+                        "正在分析当前编辑器上下文链路：${handle.displayName}",
                     )
                 }
                 submitSubjectAnalysisTask(
@@ -534,7 +483,7 @@ internal class SubjectGraphWorkflow(
         requestId: Long,
         source: String,
     ) {
-        currentAnalysisPromise = ReadAction
+        var analysisTask = ReadAction
             .nonBlocking<AnalysisOutcomeAsyncResult> {
                 if (project.isDisposed) {
                     return@nonBlocking AnalysisOutcomeAsyncResult.cancelled()
@@ -542,15 +491,18 @@ internal class SubjectGraphWorkflow(
                 try {
                     AnalysisOutcomeAsyncResult.success(computeAnalysisResultInReadAction(handle))
                 } catch (throwable: Throwable) {
-                    if (isBenignCurrentMethodGraphCancellation(throwable)) {
+                    if (isBenignCurrentSubjectGraphCancellation(throwable)) {
                         AnalysisOutcomeAsyncResult.cancelled()
                     } else {
                         AnalysisOutcomeAsyncResult.failure(throwable)
                     }
                 }
             }
-            .inSmartMode(project)
             .expireWith(project)
+        if (handle is CodeSubjectHandle) {
+            analysisTask = analysisTask.inSmartMode(project)
+        }
+        currentAnalysisPromise = analysisTask
             .finishOnUiThread(ModalityState.defaultModalityState()) { result ->
                 handleSubjectAnalysisTaskResult(requestId, handle, source, result)
             }
@@ -566,12 +518,14 @@ internal class SubjectGraphWorkflow(
         source: String,
         result: AnalysisOutcomeAsyncResult,
     ) {
-        if (project.isDisposed || !isLatestCurrentMethodGraphRequest(requestId)) {
+        if (project.isDisposed || !isLatestCurrentSubjectGraphRequest(requestId)) {
             return
         }
         when {
             result.cancelled -> {
-                logger.info("当前主体语义分析已取消: subject=${handle.displayName}")
+                debugLazy(logger.isDebugEnabled, logger::debug) {
+                    "当前主体语义分析已取消: subject=${handle.displayName}"
+                }
             }
 
             result.failure != null -> {
@@ -607,10 +561,11 @@ internal class SubjectGraphWorkflow(
     /**
      * 定位当前编辑器光标所在的语义主体。
      */
-    private fun locateCurrentSubject(): SubjectHandle? {
+    private fun locateCurrentSubject(editor: Editor? = null): SubjectHandle? {
         return computeOnIdeThread {
-            val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return@computeOnIdeThread null
-            subjectLocatorProvider().locate(project, editor)
+            val targetEditor = editor ?: FileEditorManager.getInstance(project).selectedTextEditor
+                ?: return@computeOnIdeThread null
+            subjectLocatorProvider().locate(project, targetEditor)
         }
     }
 
@@ -621,7 +576,7 @@ internal class SubjectGraphWorkflow(
         val handle = locateCurrentSubject()
         val codeHandle = handle as? CodeSubjectHandle
         if (codeHandle == null) {
-            logger.info("当前光标不在方法内，无法提取链路图")
+            debugLazy(logger.isDebugEnabled, logger::debug) { "当前光标不在方法内，无法提取链路图" }
         }
         return codeHandle
     }
@@ -653,7 +608,7 @@ internal class SubjectGraphWorkflow(
             }
             ApplicationManager.getApplication().invokeLater(
                 {
-                    if (project.isDisposed || !isLatestCurrentMethodGraphRequest(requestId)) {
+                    if (project.isDisposed || !isLatestCurrentSubjectGraphRequest(requestId)) {
                         return@invokeLater
                     }
                     result.fold(
@@ -667,9 +622,9 @@ internal class SubjectGraphWorkflow(
                                     )
                                 }
                             } else {
-                                logger.info(
-                                    "$failureAction 定位主体完成: signature=${handle.methodSignature}, durationMs=${(System.nanoTime() - startedAt) / 1_000_000}",
-                                )
+                                debugLazy(logger.isDebugEnabled, logger::debug) {
+                                    "$failureAction 定位主体完成: signature=${handle.methodSignature}, durationMs=${(System.nanoTime() - startedAt) / 1_000_000}"
+                                }
                                 onResolved(handle)
                             }
                         },
@@ -693,6 +648,10 @@ internal class SubjectGraphWorkflow(
      * 在读动作里执行语义分析并生成投影结果。
      */
     private fun computeAnalysisResultInReadAction(handle: SubjectHandle): AnalysisExecutionResult? {
+        val effectiveDisplayMode = effectiveAnalysisDisplayModeFor(
+            subject = handle,
+            requestedDisplayMode = requestedAnalysisDisplayMode,
+        )
         val analysisResult = semanticAnalyzerProvider().analyze(
             handle = handle,
             capturePolicy = SemanticCapturePolicy(),
@@ -700,7 +659,7 @@ internal class SubjectGraphWorkflow(
         )
         val outcome = analysisOutcomeFactoryProvider().create(
             analysisResult = analysisResult,
-            displayMode = requestedAnalysisDisplayMode,
+            displayMode = effectiveDisplayMode,
             projectionPolicy = currentProjectionSettings.toProjectionPolicy(),
         )
         return AnalysisExecutionResult(
@@ -717,12 +676,18 @@ internal class SubjectGraphWorkflow(
         source: String,
         reason: String,
         prebuiltOutcome: AnalysisOutcome? = null,
+        requestedDisplayModeOverride: AnalysisDisplayMode? = null,
     ) {
-        val outcome = prebuiltOutcome ?: analysisOutcomeFactoryProvider().create(
-            analysisResult = analysisResult,
-            displayMode = requestedAnalysisDisplayMode,
-            projectionPolicy = currentProjectionSettings.toProjectionPolicy(),
+        val effectiveDisplayMode = requestedDisplayModeOverride ?: effectiveAnalysisDisplayModeFor(
+            subject = analysisResult.subject,
+            requestedDisplayMode = requestedAnalysisDisplayMode,
         )
+        val outcome = prebuiltOutcome?.takeIf { it.displayMode == effectiveDisplayMode }
+            ?: analysisOutcomeFactoryProvider().create(
+                analysisResult = analysisResult,
+                displayMode = effectiveDisplayMode,
+                projectionPolicy = currentProjectionSettings.toProjectionPolicy(),
+            )
         lastAnalyzedSubjectHandle = analysisResult.subject
         lastSemanticAnalysisResult = analysisResult
         requestedAnalysisDisplayMode = outcome.displayMode
@@ -734,9 +699,22 @@ internal class SubjectGraphWorkflow(
         session.mutate {
             loadAnalysisOutcome(outcome, source)
         }
-        logger.info(
-            "统一语义分析加载完成[$reason]: source=$source, mode=${outcome.displayMode}, displayName=${outcome.displayName}, visibleNodes=${outcome.visibleGraph.nodes.size}, fullNodes=${outcome.fullGraph.nodes.size}",
-        )
+        debugLazy(logger.isDebugEnabled, logger::debug) {
+            "统一语义分析加载完成[$reason]: source=$source, mode=${outcome.displayMode}, displayName=${outcome.displayName}, visibleNodes=${outcome.visibleGraph.nodes.size}, fullNodes=${outcome.fullGraph.nodes.size}"
+        }
+    }
+
+    /**
+     * 资源主题不适合流程图视图，统一降级到资源关系视图，避免输出空图或误导结果。
+     */
+    private fun effectiveAnalysisDisplayModeFor(
+        subject: SubjectHandle,
+        requestedDisplayMode: AnalysisDisplayMode,
+    ): AnalysisDisplayMode {
+        if (subject is ResourceSubjectHandle && requestedDisplayMode == AnalysisDisplayMode.FLOWCHART) {
+            return AnalysisDisplayMode.FACT_GRAPH
+        }
+        return requestedDisplayMode
     }
 
     /**
@@ -820,7 +798,9 @@ internal class SubjectGraphWorkflow(
     private fun addCurrentResourceNode(handle: ResourceSubjectHandle): Boolean {
         val node = resourceNodeForHandle(handle)
         val kindLabel = resourceKindLabel(handle.kind)
-        logger.info("开始追加当前节点: nodeId=${node.id}, title=${node.title}, kind=$kindLabel")
+        debugLazy(logger.isDebugEnabled, logger::debug) {
+            "开始追加当前节点: nodeId=${node.id}, title=${node.title}, kind=$kindLabel"
+        }
         val snapshot = session.snapshot()
         val currentGraph = currentVisibleGraph(snapshot)
         val existingNode = currentGraph.nodes.firstOrNull { it.id == node.id }
@@ -847,7 +827,7 @@ internal class SubjectGraphWorkflow(
                 selectNode(mergedNode.id)
             }
         }
-        logger.info("当前节点追加完成: nodeId=${node.id}")
+        debugLazy(logger.isDebugEnabled, logger::debug) { "当前节点追加完成: nodeId=${node.id}" }
         return true
     }
 
@@ -993,17 +973,17 @@ internal class SubjectGraphWorkflow(
     }
 
     /**
-     * 判断当前方法图请求的异常是否属于可忽略取消。
+     * 判断当前主体链路请求的异常是否属于可忽略取消。
      */
-    private fun isBenignCurrentMethodGraphCancellation(throwable: Throwable): Boolean {
+    private fun isBenignCurrentSubjectGraphCancellation(throwable: Throwable): Boolean {
         if (throwable is ProcessCanceledException || throwable is AlreadyDisposedException || throwable is CancellationException) {
             return true
         }
-        return throwable.cause?.let(::isBenignCurrentMethodGraphCancellation) == true
+        return throwable.cause?.let(::isBenignCurrentSubjectGraphCancellation) == true
     }
 
     companion object {
-        /** 当前方法链路的来源标记。 */
+        /** 当前代码主体链路的来源标记。 */
         private const val CURRENT_METHOD_SOURCE = "currentMethod"
         /** 当前上下文链路的来源标记。 */
         private const val CURRENT_CONTEXT_SOURCE = "currentContext"

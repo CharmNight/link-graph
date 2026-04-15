@@ -1,6 +1,9 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.actions.OpenLinkGraphAction
+import com.charmnight.linkgraph.codegen.CodeEditOperation
+import com.charmnight.linkgraph.codegen.CodeEditOperationKind
+import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.model.DiffStatus
 import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.GraphDocument
@@ -10,6 +13,12 @@ import com.charmnight.linkgraph.model.GraphPatchAction
 import com.charmnight.linkgraph.model.GraphPatchOperation
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.llm.EditScope
+import com.charmnight.linkgraph.llm.GraphPatchResult
+import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.llm.ResultEvidenceFinding
+import com.charmnight.linkgraph.llm.ResultEvidenceLevel
+import com.charmnight.linkgraph.llm.ResultEvidenceReference
 import com.charmnight.linkgraph.navigation.SourceNavigationService
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.semantic.SemanticAnalyzer
@@ -42,6 +51,8 @@ import java.nio.file.Path
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import com.charmnight.linkgraph.workbench.CandidateDraftChange
+import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 
 class LinkGraphToolWindowIT : BasePlatformTestCase() {
     override fun setUp() {
@@ -274,7 +285,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         )
         assertTrue(
             "expected accessor current-method graph to include downstream normalize call",
-            visibleGraph.nodes.any { node -> node.title == "Formatter.normalize" },
+            visibleGraph.nodes.any { node -> node.title.contains("Formatter.normalize") },
         )
         assertTrue(
             "custom Kotlin getter should not be shown as unsupported boundary",
@@ -321,7 +332,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         )
         assertTrue(
             "expected constructor current-method graph to include initializer downstream call",
-            visibleGraph.nodes.any { node -> node.title == "Formatter.normalize" },
+            visibleGraph.nodes.any { node -> node.title.contains("Formatter.normalize") },
         )
         assertTrue(
             "supported Kotlin constructor should not be shown as unsupported boundary",
@@ -656,7 +667,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         assertEquals(null, snapshot.draftPatchPreview)
     }
 
-    fun testRequestAuditGeneratesAnswerAndDraftPatchPreview() {
+    fun testRequestAuditGeneratesAnswerAndInvestigationLeads() {
         val projectService = project.getService(LinkGraphProjectService::class.java)
         projectService.loadGraph(
             GraphDocument(
@@ -687,8 +698,10 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         assertNotNull(result)
         assertTrue(result.answer.contains("默认兜底"))
         assertNotNull(snapshot.auditResult)
-        assertNotNull(snapshot.draftPatchPreview)
-        assertTrue(snapshot.draftPatchPreview!!.operations.any { it.action == GraphPatchAction.ADD_NODE })
+        assertEquals(null, snapshot.draftPatchPreview)
+        assertTrue(snapshot.auditResult!!.investigationLeads.isNotEmpty())
+        assertTrue(snapshot.auditResult!!.investigationLeads.any { it.targetNodeIds.contains("uncertain:channel-router") })
+        assertEquals(null, snapshot.auditResult!!.patch)
     }
 
     fun testRequestDiffReviewGeneratesRevisionPatchPreview() {
@@ -724,7 +737,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         assertTrue(snapshot.draftPatchPreview!!.operations.any { it.action == GraphPatchAction.ADD_NODE })
     }
 
-    fun testClearDraftPatchPreviewCanBeRestoredFromAuditResult() {
+    fun testRestoreDraftPatchPreviewFromAuditResultIsUnavailable() {
         val projectService = project.getService(LinkGraphProjectService::class.java)
         projectService.loadGraph(
             GraphDocument(
@@ -744,17 +757,12 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             question = "请审计当前范围：这段链路是否遗漏了默认兜底逻辑？",
             selectedNodeIds = listOf("uncertain:channel-router"),
         )
-        projectService.clearDraftPatchPreview()
+        val restored = projectService.restoreDraftPatchPreview(LinkGraphProjectService.DraftPatchPreviewSource.AUDIT)
 
-        var snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
+        val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
         assertNotNull(snapshot.auditResult)
+        assertEquals(null, restored)
         assertEquals(null, snapshot.draftPatchPreview)
-
-        projectService.restoreDraftPatchPreview(LinkGraphProjectService.DraftPatchPreviewSource.AUDIT)
-
-        snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
-        assertNotNull(snapshot.draftPatchPreview)
-        assertTrue(snapshot.draftPatchPreview!!.operations.any { it.action == GraphPatchAction.ADD_NODE })
     }
 
     fun testUndoLastDraftPatchApplyRestoresDraftGraphAndPreview() {
@@ -1118,34 +1126,64 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         assertTrue("Unexpected issues: ${snapshot.mermaidIssues}", snapshot.mermaidIssues.isEmpty())
     }
 
-    fun testBridgeDispatchRequestsAuditAndAppliesDraftPatch() {
+    fun testBridgeDispatchRequestsAuditAndConfirmsCandidateChangeIntoDraftGraph() {
         val bridge = GraphEditorBridge(project)
+        val stateService = project.getService(GraphEditorStateService::class.java)
         val codeGraph = GraphDocument(
             nodes = listOf(
                 GraphNode(
-                    id = "uncertain:channel-router",
-                    type = NodeType.UNCERTAIN_LINK,
-                    title = "ChannelStrategyRouter.resolve",
-                    sourceTag = GraphSourceTag.UNCERTAIN_FACT,
+                    id = "method:order-service-place",
+                    type = NodeType.METHOD,
+                    title = "OrderService.place",
+                    sourceTag = GraphSourceTag.FACT,
                 ),
             ),
         )
 
         bridge.dispatch(GraphEditorMessage.LoadGraph(codeGraph, "bridge-code"))
-        bridge.dispatch(
-            GraphEditorMessage.RequestAudit(
-                question = "请审计当前范围：这段链路是否遗漏了默认兜底逻辑？",
-                selectedNodeIds = listOf("uncertain:channel-router"),
+        stateService.markAuditResult(
+            GraphPatchResult(
+                source = LlmResultSource.MOCK,
+                question = "请确认这条已证实的业务变更",
+                answer = "当前源码里直接能看到这条变更需要确认。",
+                promptPreview = "prompt",
+                candidateChanges = listOf(
+                    CandidateDraftChange(
+                        changeId = "change-order-service-place",
+                        status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+                        title = "修正下单主流程条件",
+                        targetNodeIds = listOf("method:order-service-place"),
+                        beforeState = "if (a > 10)",
+                        afterState = "if (a < 100)",
+                        reason = "当前源码里直接能看到条件判断写反。",
+                        impactSummary = "会影响下单主流程分支。",
+                        claimType = "CODE_FACT",
+                        evidence = listOf(
+                            ResultEvidenceFinding(
+                                id = "finding-order-service-place",
+                                claim = "源码里直接能看到条件判断写反。",
+                                evidenceLevel = ResultEvidenceLevel.DIRECT_SOURCE,
+                                references = listOf(ResultEvidenceReference(nodeId = "method:order-service-place")),
+                            ),
+                        ),
+                    ),
+                ),
             ),
         )
-        waitForAuditResultAndDraftPreview()
-        bridge.dispatch(GraphEditorMessage.ApplyDraftPatchPreview())
+        val confirmedChangeId = "change-order-service-place"
+        bridge.dispatch(GraphEditorMessage.ConfirmAuditCandidateChange(confirmedChangeId))
         waitForDraftGraphNodeCount(expectedNodeCount = 2)
 
-        val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
-        assertEquals(null, snapshot.auditResult)
+        val snapshot = stateService.snapshot()
+        assertEquals(confirmedChangeId, snapshot.auditResult?.candidateChanges?.firstOrNull()?.changeId)
+        assertEquals(
+            com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus.CONFIRMED,
+            snapshot.auditResult?.candidateChanges?.firstOrNull()?.status,
+        )
+        assertEquals(1, snapshot.draftWorkbenchState.draftChanges.size)
+        assertEquals(confirmedChangeId, snapshot.draftWorkbenchState.draftChanges.first().sourceChangeId)
         assertEquals(2, snapshot.workingGraph?.nodes?.size)
-        assertTrue(snapshot.workingGraph!!.nodes.any { it.sourceTag == GraphSourceTag.DRAFT_AI })
+        assertTrue(snapshot.workingGraph!!.nodes.any { it.sourceTag == GraphSourceTag.DRAFT_MANUAL })
     }
 
     fun testBridgeDispatchClearsAndUndoesDraftPatchPreview() {
@@ -1160,24 +1198,32 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
                 ),
             ),
         )
+        val mermaid = """
+            graph TD
+            ENTRY["METHOD|ChannelStrategyRouter.resolve"]
+            FALLBACK["DOC_PAGE|DefaultChannelFallback"]
+            ENTRY -- LINKS_DOC --> FALLBACK
+        """.trimIndent()
 
         bridge.dispatch(GraphEditorMessage.LoadGraph(codeGraph, "bridge-code"))
+        bridge.dispatch(GraphEditorMessage.ImportMermaid(mermaid))
+        bridge.dispatch(GraphEditorMessage.ShowDiffMode)
         bridge.dispatch(
-            GraphEditorMessage.RequestAudit(
-                question = "请审计当前范围：这段链路是否遗漏了默认兜底逻辑？",
-                selectedNodeIds = listOf("uncertain:channel-router"),
+            GraphEditorMessage.RequestDiffReview(
+                question = "这些差异意味着什么？请给出修订草稿。",
+                selectedDiffItemIds = listOf("uncertain:channel-router"),
             ),
         )
-        waitForAuditResultAndDraftPreview()
+        waitForDiffReviewResultAndDraftPreview()
         bridge.dispatch(GraphEditorMessage.ClearDraftPatchPreview)
-        bridge.dispatch(GraphEditorMessage.RestoreDraftPatchPreview(GraphEditorMessage.DraftPatchPreviewSource.AUDIT))
+        bridge.dispatch(GraphEditorMessage.RestoreDraftPatchPreview(GraphEditorMessage.DraftPatchPreviewSource.DIFF_REVIEW))
         bridge.dispatch(GraphEditorMessage.ApplyDraftPatchPreview())
         waitForDraftGraphNodeCount(expectedNodeCount = 2)
         bridge.dispatch(GraphEditorMessage.UndoLastDraftPatchApply)
         waitForDraftUndoState()
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
-        assertEquals(null, snapshot.auditResult)
+        assertEquals(null, snapshot.diffReviewResult)
         assertNotNull(snapshot.draftPatchPreview)
         assertEquals(1, snapshot.workingGraph?.nodes?.size)
         assertEquals("undoDraftPatchApply", snapshot.lastMessageType)
@@ -1311,6 +1357,219 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         )
     }
 
+    fun testBridgeDispatchAppliesStructuredJavaDraftToExistingFile() {
+        val bridge = GraphEditorBridge(project)
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        val targetPath = "src/main/java/com/example/CommonController.java"
+        val writtenPath = Path.of(project.basePath!!).resolve(targetPath)
+        Files.createDirectories(writtenPath.parent)
+        Files.writeString(
+            writtenPath,
+            """
+                package com.example;
+
+                public class CommonController {
+                    public String download(String resource) {
+                        return resource;
+                    }
+
+                    public String uploadFile(String fileName) {
+                        return fileName;
+                    }
+                }
+            """.trimIndent(),
+        )
+        val draft = GeneratedCodeDraft(
+            id = "draft-java-upload-file",
+            sourceNodeId = "method:upload-file",
+            title = "CommonController.java",
+            targetPath = targetPath,
+            editOperations = listOf(
+                CodeEditOperation(
+                    operationId = "op-java-upload-file",
+                    filePath = targetPath,
+                    scopeId = "scope-java-upload-file",
+                    kind = CodeEditOperationKind.REPLACE_METHOD_BLOCK,
+                    payload = """
+                        public String uploadFile(String fileName) {
+                            if (fileName == null || fileName.isBlank()) {
+                                throw new IllegalArgumentException("fileName");
+                            }
+                            return fileName.trim();
+                        }
+                    """.trimIndent(),
+                ),
+            ),
+            editScopes = listOf(
+                EditScope(
+                    scopeId = "scope-java-upload-file",
+                    targetNodeId = "method:upload-file",
+                    filePath = targetPath,
+                    language = "JAVA",
+                    symbolKind = "METHOD",
+                    symbolSignature = "com.example.CommonController.uploadFile(java.lang.String):java.lang.String",
+                    startLine = 8,
+                    endLine = 10,
+                    allowedChangeKinds = listOf("REPLACE_METHOD_BLOCK"),
+                    supportingFindingIds = listOf("finding-java-upload-file"),
+                ),
+            ),
+        )
+
+        stateService.markGeneratedCodeDrafts(listOf(draft), emptyList(), LlmResultSource.MOCK, promptPreview = null)
+        bridge.dispatch(GraphEditorMessage.ApplySingleCodeDraft(draft.id))
+        waitForCodeDraftWriteReport()
+
+        val snapshot = stateService.snapshot()
+        assertNotNull(snapshot.generatedCodeDraftWriteReport)
+        assertTrue(snapshot.generatedCodeDraftWriteReport!!.writtenFiles.contains(targetPath))
+        val written = Files.readString(writtenPath)
+        assertTrue(written.contains("""throw new IllegalArgumentException("fileName")"""))
+        assertTrue(written.contains("return fileName.trim();"))
+        assertTrue(written.contains("public String download(String resource) {\n        return resource;\n    }"))
+    }
+
+    fun testBridgeDispatchAppliesStructuredKotlinDraftToExistingFile() {
+        val bridge = GraphEditorBridge(project)
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        val targetPath = "src/main/kotlin/com/example/CommonController.kt"
+        val writtenPath = Path.of(project.basePath!!).resolve(targetPath)
+        Files.createDirectories(writtenPath.parent)
+        Files.writeString(
+            writtenPath,
+            """
+                package com.example
+
+                class CommonController {
+                    fun download(resource: String): String {
+                        return resource
+                    }
+
+                    fun uploadFile(fileName: String): String {
+                        return fileName
+                    }
+                }
+            """.trimIndent(),
+        )
+        val draft = GeneratedCodeDraft(
+            id = "draft-kotlin-upload-file",
+            sourceNodeId = "method:upload-file-kt",
+            title = "CommonController.kt",
+            targetPath = targetPath,
+            editOperations = listOf(
+                CodeEditOperation(
+                    operationId = "op-kotlin-upload-file",
+                    filePath = targetPath,
+                    scopeId = "scope-kotlin-upload-file",
+                    kind = CodeEditOperationKind.REPLACE_METHOD_BLOCK,
+                    payload = """
+                        fun uploadFile(fileName: String): String {
+                            require(fileName.isNotBlank()) { "fileName" }
+                            return fileName.trim()
+                        }
+                    """.trimIndent(),
+                ),
+            ),
+            editScopes = listOf(
+                EditScope(
+                    scopeId = "scope-kotlin-upload-file",
+                    targetNodeId = "method:upload-file-kt",
+                    filePath = targetPath,
+                    language = "KOTLIN",
+                    symbolKind = "FUNCTION",
+                    symbolSignature = "com.example.CommonController.uploadFile(kotlin.String):kotlin.String",
+                    startLine = 8,
+                    endLine = 10,
+                    allowedChangeKinds = listOf("REPLACE_METHOD_BLOCK"),
+                    supportingFindingIds = listOf("finding-kotlin-upload-file"),
+                ),
+            ),
+        )
+
+        stateService.markGeneratedCodeDrafts(listOf(draft), emptyList(), LlmResultSource.MOCK, promptPreview = null)
+        bridge.dispatch(GraphEditorMessage.ApplySingleCodeDraft(draft.id))
+        waitForCodeDraftWriteReport()
+
+        val snapshot = stateService.snapshot()
+        assertNotNull(snapshot.generatedCodeDraftWriteReport)
+        assertTrue(snapshot.generatedCodeDraftWriteReport!!.writtenFiles.contains(targetPath))
+        val written = Files.readString(writtenPath)
+        assertTrue(written.contains("""require(fileName.isNotBlank()) { "fileName" }"""))
+        assertTrue(written.contains("return fileName.trim()"))
+        assertTrue(written.contains("fun download(resource: String): String {\n        return resource\n    }"))
+    }
+
+    fun testBridgeDispatchRejectsStructuredExistingFileOverreachAndKeepsFileUntouched() {
+        val bridge = GraphEditorBridge(project)
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        val targetPath = "src/main/java/com/example/CommonController.java"
+        val writtenPath = Path.of(project.basePath!!).resolve(targetPath)
+        Files.createDirectories(writtenPath.parent)
+        val before = """
+            package com.example;
+
+            public class CommonController {
+                public String download(String resource) {
+                    return resource;
+                }
+
+                public String uploadFile(String fileName) {
+                    return fileName;
+                }
+            }
+        """.trimIndent()
+        Files.writeString(writtenPath, before)
+        val draft = GeneratedCodeDraft(
+            id = "draft-java-overreach",
+            sourceNodeId = "method:upload-file",
+            title = "CommonController.java",
+            targetPath = targetPath,
+            editOperations = listOf(
+                CodeEditOperation(
+                    operationId = "op-java-overreach",
+                    filePath = targetPath,
+                    scopeId = "scope-java-upload-file",
+                    kind = CodeEditOperationKind.REPLACE_METHOD_BLOCK,
+                    payload = """
+                        public String download(String resource) {
+                            return resource + "-changed";
+                        }
+                    """.trimIndent(),
+                ),
+            ),
+            editScopes = listOf(
+                EditScope(
+                    scopeId = "scope-java-upload-file",
+                    targetNodeId = "method:upload-file",
+                    filePath = targetPath,
+                    language = "JAVA",
+                    symbolKind = "METHOD",
+                    symbolSignature = "com.example.CommonController.uploadFile(java.lang.String):java.lang.String",
+                    startLine = 8,
+                    endLine = 10,
+                    allowedChangeKinds = listOf("REPLACE_METHOD_BLOCK"),
+                    supportingFindingIds = listOf("finding-java-upload-file"),
+                ),
+            ),
+        )
+
+        stateService.markGeneratedCodeDrafts(listOf(draft), emptyList(), LlmResultSource.MOCK, promptPreview = null)
+        bridge.dispatch(GraphEditorMessage.ApplySingleCodeDraft(draft.id))
+        waitForCodeDraftWriteReport()
+
+        val snapshot = stateService.snapshot()
+        assertNotNull(snapshot.generatedCodeDraftWriteReport)
+        assertTrue(snapshot.generatedCodeDraftWriteReport!!.skippedFiles.contains(targetPath))
+        assertTrue(
+            snapshot.generatedCodeDraftWriteReport!!.warnings.any { warning ->
+                warning.contains("越界", ignoreCase = false) ||
+                    warning.contains("未授权") ||
+                    warning.contains("检测到")
+            },
+        )
+        assertEquals(before, Files.readString(writtenPath).trim())
+    }
+
     private fun waitForGraphSource(expectedSource: String) {
         repeat(20) {
             PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
@@ -1364,16 +1623,33 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         fail("Expected generation plan to be available")
     }
 
-    private fun waitForAuditResultAndDraftPreview() {
+    private fun waitForAuditResultAndFollowUps() {
         repeat(50) {
             PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
             val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
-            if (snapshot.auditResult != null && snapshot.draftPatchPreview != null) {
+            if (
+                snapshot.auditResult != null && (
+                    snapshot.auditResult!!.candidateChanges.isNotEmpty() ||
+                        snapshot.auditResult!!.investigationLeads.isNotEmpty()
+                )
+            ) {
                 return
             }
             Thread.sleep(100)
         }
-        fail("Expected audit result and draft patch preview to be available")
+        fail("Expected audit result with candidate changes or investigation leads to be available")
+    }
+
+    private fun waitForDiffReviewResultAndDraftPreview() {
+        repeat(50) {
+            PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+            val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
+            if (snapshot.diffReviewResult != null && snapshot.draftPatchPreview != null) {
+                return
+            }
+            Thread.sleep(100)
+        }
+        fail("Expected diff review result and draft patch preview to be available")
     }
 
     private fun waitForDraftGraphNodeCount(expectedNodeCount: Int) {

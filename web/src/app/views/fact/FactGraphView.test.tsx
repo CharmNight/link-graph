@@ -19,6 +19,7 @@ vi.mock("../../reactflow/GraphFlowSurface", () => ({
     anchorNodeId?: string | null;
     editable?: boolean;
     header?: ReactNode;
+    emptyState?: ReactNode;
     nodes: Array<{ position?: { x: number; y: number } }>;
     edges: Array<unknown>;
     buildPaneActions: (context: {
@@ -42,6 +43,7 @@ vi.mock("../../reactflow/GraphFlowSurface", () => ({
         data-node-position={props.nodes[0]?.position ? `${props.nodes[0].position.x}:${props.nodes[0].position.y}` : ""}
       >
         {props.header}
+        {props.nodes.length === 0 ? props.emptyState : null}
         {props.nodes.length}:{props.edges.length}
         <button type="button" onClick={() => formatAction?.onSelect()}>
           format
@@ -160,5 +162,33 @@ describe("FactGraphView", () => {
 
     expect(requestRelayout).toHaveBeenCalledTimes(1);
     expect(upstreamFormatLayout).not.toHaveBeenCalled();
+  });
+
+  it("shows a loading empty state while a non-empty fact graph is still waiting for stable layout coordinates", () => {
+    useMeasuredLayoutMock.mockReturnValue({
+      nodes: [],
+      edges: [],
+      layoutPending: true,
+      requestRelayout: vi.fn(),
+    });
+
+    render(
+      <FactGraphView
+        view={view}
+        selectedNodeId="method:submit-order"
+        onAddNode={noop}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onDeleteNode={noop}
+        onCreateEdge={noop}
+        onDeleteEdge={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onImportMermaid={noop}
+      />,
+    );
+
+    expect(screen.getByText("正在整理链路画布")).toBeInTheDocument();
+    expect(screen.queryByText("画布里还没有节点")).not.toBeInTheDocument();
   });
 });

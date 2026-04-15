@@ -90,7 +90,7 @@ describe("actionSchema", () => {
     });
 
     expect(editableActions.map((action) => action.label)).toEqual([
-      "查看详情",
+      "编辑节点",
       "打开源码",
       "讲解当前链路",
       "审计当前节点",
@@ -128,7 +128,7 @@ describe("actionSchema", () => {
     });
 
     expect(resourceActions.map((action) => action.label)).toEqual([
-      "查看详情",
+      "编辑节点",
       "讲解当前链路",
       "审计当前节点",
       "设为审计范围起点",

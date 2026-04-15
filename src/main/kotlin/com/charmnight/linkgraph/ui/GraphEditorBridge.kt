@@ -2,6 +2,7 @@ package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.services.LinkGraphProjectService
+import com.charmnight.linkgraph.workbench.WorkbenchLayoutPreferencesService
 import com.intellij.openapi.project.Project
 
 /**
@@ -20,6 +21,11 @@ class GraphEditorBridge(
     private val stateService: GraphEditorStateService = project.getService(GraphEditorStateService::class.java)
     /** 项目级业务服务。 */
     private val projectService: LinkGraphProjectService = project.getService(LinkGraphProjectService::class.java)
+    /** 工作台布局偏好服务。 */
+    private val workbenchLayoutPreferencesService: WorkbenchLayoutPreferencesService = project.getService(WorkbenchLayoutPreferencesService::class.java)
+    private val workbenchPreferencesHydrationLock = Any()
+    @Volatile
+    private var workbenchPreferencesHydrated: Boolean = false
 
     /** 前端页面加载完成后登记入口地址。 */
     fun onFrontendLoaded(entryUrl: String) {
@@ -44,7 +50,13 @@ class GraphEditorBridge(
             is GraphEditorMessage.RequestSourceNavigation -> projectService.requestSourceNavigation(message.nodeId)
             is GraphEditorMessage.RequestExpandOverflowNode -> projectService.requestExpandOverflowNode(message.nodeId)
             is GraphEditorMessage.RequestSyncPreview -> projectService.requestSyncPreview()
-            is GraphEditorMessage.RequestAudit -> projectService.requestAuditAsync(message.question, message.selectedNodeIds)
+            is GraphEditorMessage.RequestAudit -> projectService.requestAuditAsync(
+                message.question,
+                message.selectedNodeIds,
+                message.sourceLeadId,
+            )
+            is GraphEditorMessage.ConfirmAuditCandidateChange -> projectService.confirmAuditCandidateChange(message.changeId)
+            is GraphEditorMessage.UnconfirmAuditCandidateChange -> projectService.unconfirmAuditCandidateChange(message.changeId)
             is GraphEditorMessage.RequestDiffReview -> projectService.requestDiffReviewAsync(
                 message.question,
                 message.selectedDiffItemIds,
@@ -53,6 +65,12 @@ class GraphEditorBridge(
                 goal = message.goal,
                 preferredStyle = message.preferredStyle,
                 explanationFocus = message.explanationFocus,
+                followUp = message.followUp,
+                granularity = message.granularity,
+            )
+            is GraphEditorMessage.UpdateWorkbenchSectionPreference -> projectService.updateWorkbenchSectionPreference(
+                sectionId = message.sectionId,
+                expanded = message.expanded,
             )
             is GraphEditorMessage.GraphBeautificationResult -> stateService.markGraphBeautificationResult(message.result)
             is GraphEditorMessage.ApplyDraftPatchPreview -> projectService.applyDraftPatchPreview(message.operationIds)
@@ -63,7 +81,7 @@ class GraphEditorBridge(
             is GraphEditorMessage.UndoLastDraftPatchApply -> projectService.undoLastDraftPatchApply()
             is GraphEditorMessage.RequestGenerationPlan -> projectService.requestGenerationPlanAsync()
             is GraphEditorMessage.RequestCodeDrafts -> projectService.requestCodeDraftsAsync()
-            is GraphEditorMessage.RequestCurrentMethodGraph -> projectService.loadCurrentMethodGraphAsync()
+            is GraphEditorMessage.RequestCurrentEditorContextGraph -> projectService.loadCurrentEditorContextGraphAsync()
             is GraphEditorMessage.RequestAnalysisDisplayMode -> projectService.requestAnalysisDisplayMode(message.displayMode)
             is GraphEditorMessage.OpenSettings -> projectService.openSettings()
             is GraphEditorMessage.ApplyCodeDrafts -> projectService.applyCodeDrafts()
@@ -81,5 +99,27 @@ class GraphEditorBridge(
     }
 
     /** 返回当前桥接器观察到的最新状态快照。 */
-    fun currentState(): GraphEditorStateService.Snapshot = stateService.snapshot()
+    fun currentState(): GraphEditorStateService.Snapshot {
+        ensureWorkbenchPreferencesHydrated()
+        return stateService.snapshot()
+    }
+
+    private fun ensureWorkbenchPreferencesHydrated() {
+        if (workbenchPreferencesHydrated) {
+            return
+        }
+        synchronized(workbenchPreferencesHydrationLock) {
+            if (workbenchPreferencesHydrated) {
+                return
+            }
+            val currentSnapshot = stateService.snapshot()
+            if (currentSnapshot.workbenchSectionPreferences.isEmpty()) {
+                val persistedPreferences = workbenchLayoutPreferencesService.snapshot()
+                if (persistedPreferences.isNotEmpty()) {
+                    stateService.markWorkbenchSectionPreferences(persistedPreferences)
+                }
+            }
+            workbenchPreferencesHydrated = true
+        }
+    }
 }

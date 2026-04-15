@@ -150,7 +150,7 @@ class EditorPopupContextActionTest : BasePlatformTestCase() {
 
             val queuedSnapshot = project.getService(GraphEditorStateService::class.java).snapshot()
             assertEquals(OperationFeedbackLevel.INFO, queuedSnapshot.operationFeedback?.level)
-            assertEquals("项目正在索引，已在索引完成后继续分析当前方法链路。", queuedSnapshot.operationFeedback?.message)
+            assertEquals("项目正在索引，已在索引完成后继续分析当前编辑器上下文链路。", queuedSnapshot.operationFeedback?.message)
         } finally {
             DumbModeTestUtils.endEternalDumbModeTaskAndWaitForSmartMode(project, token)
         }

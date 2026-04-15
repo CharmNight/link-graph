@@ -21,6 +21,7 @@ const FLOWCHART_LAYOUT_OPTIONS: LayoutOptions = {
   "elk.algorithm": "layered",
   "org.eclipse.elk.direction": "DOWN",
   "org.eclipse.elk.edgeRouting": "ORTHOGONAL",
+  "org.eclipse.elk.partitioning.activate": "true",
   "org.eclipse.elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
   "org.eclipse.elk.layered.spacing.nodeNodeBetweenLayers": "112",
   "org.eclipse.elk.layered.spacing.edgeNodeBetweenLayers": "48",
@@ -35,6 +36,14 @@ function flowchartKind(node?: MeasuredLayoutRequest["nodes"][number]): string {
 
 function normalizedFlowLabel(edge?: MeasuredLayoutRequest["edges"][number]): string {
   return edge?.label?.trim().toUpperCase() ?? "";
+}
+
+function flowEdgeRole(edge?: LinkGraphEdge): string {
+  return edge?.metadata?.["flow.edgeRole"]?.toUpperCase() ?? "";
+}
+
+function flowScopeCategory(node?: LinkGraphNode): string {
+  return node?.metadata?.["flow.scopeCategory"] ?? "";
 }
 
 function flowPortDefinitions(
@@ -209,6 +218,7 @@ function buildLayoutNodes(
   nodeSizeIndex: Map<string, { width: number; height: number }>,
   outgoingControlFlowBySource: Map<string, LinkGraphEdge[]>,
   mergeTargetPortCountsByNode: Map<string, FlowchartMergeTargetPortCounts>,
+  partitionByNodeId: Map<string, number>,
 ) {
   return nodes.map((node) => {
     const size = resolveMeasuredNodeSize(node, sizeSnapshot, "FLOWCHART");
@@ -230,12 +240,56 @@ function buildLayoutNodes(
       },
       layoutOptions: {
         "org.eclipse.elk.portConstraints": "FIXED_SIDE",
+        "org.eclipse.elk.partitioning.partition": String(partitionByNodeId.get(node.id) ?? 0),
         ...(node.id === anchorNodeId
           ? { "org.eclipse.elk.layered.layering.layerConstraint": "FIRST" }
           : {}),
       },
     };
   });
+}
+
+function buildPartitionIndex(
+  nodes: LinkGraphNode[],
+  edges: LinkGraphEdge[],
+): Map<string, number> {
+  const nodeIndex = new Map(nodes.map((node) => [node.id, node]));
+  const partitions = new Map<string, number>();
+  nodes.forEach((node) => partitions.set(node.id, 0));
+  edges.forEach((edge) => {
+    if (edge.type !== "CONTROL_FLOW") {
+      return;
+    }
+    const sourceNode = nodeIndex.get(edge.source);
+    if (flowScopeCategory(sourceNode) === "LOOP_PRE_TEST" && flowEdgeRole(edge) === "LOOP_EXIT") {
+      partitions.set(edge.target, 1);
+    }
+  });
+  return partitions;
+}
+
+function flowEdgeLayoutOptions(
+  edge: LinkGraphEdge,
+  nodeIndex: Map<string, LinkGraphNode>,
+): LayoutOptions | undefined {
+  const edgeRole = flowEdgeRole(edge);
+  if (edgeRole === "LOOP_BACK") {
+    return {
+      "org.eclipse.elk.layered.priority.direction": "0",
+    };
+  }
+  const targetScopeCategory = flowScopeCategory(nodeIndex.get(edge.target));
+  if (targetScopeCategory === "LOOP_POST_TEST") {
+    return {
+      "org.eclipse.elk.layered.priority.direction": "12",
+    };
+  }
+  if (edgeRole === "LOOP_BODY" || edgeRole === "LOOP_EXIT") {
+    return {
+      "org.eclipse.elk.layered.priority.direction": "10",
+    };
+  }
+  return undefined;
 }
 
 export async function layoutFlowchartView({
@@ -248,6 +302,7 @@ export async function layoutFlowchartView({
   const outgoingControlFlowBySource = buildOutgoingControlFlowIndex(edges);
   const incomingControlFlowByTarget = buildIncomingControlFlowIndex(edges);
   const nodeSizeIndex = new Map<string, { width: number; height: number }>();
+  const partitionByNodeId = buildPartitionIndex(nodes, edges);
   const initialLayoutNodes = buildLayoutNodes(
     nodes,
     anchorNodeId,
@@ -255,6 +310,7 @@ export async function layoutFlowchartView({
     nodeSizeIndex,
     outgoingControlFlowBySource,
     new Map(),
+    partitionByNodeId,
   );
   const initialLayout = await executeElkLayout({
     mode: "FLOWCHART",
@@ -276,6 +332,7 @@ export async function layoutFlowchartView({
     nodeSizeIndex,
     outgoingControlFlowBySource,
     mergeTargetPortLayout.countsByNodeId,
+    partitionByNodeId,
   );
   const laidOut = await executeElkLayout({
     mode: "FLOWCHART",
@@ -304,6 +361,7 @@ export async function layoutFlowchartView({
           nodeIndex,
           mergeTargetPortLayout.targetHandleByEdgeId.get(edge.id),
         ),
+        layoutOptions: flowEdgeLayoutOptions(edge, nodeIndex),
       };
     }),
   });

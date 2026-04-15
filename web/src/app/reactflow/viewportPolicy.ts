@@ -72,6 +72,10 @@ export function shouldPreserveViewportForIncrementalUpdate(
   const removedNodeCount = [...previous.nodeIds].filter((nodeId) => !next.nodeIds.has(nodeId)).length;
   const removedEdgeCount = [...previous.edgeIds].filter((edgeId) => !next.edgeIds.has(edgeId)).length;
 
+  if (addedNodeCount === 0 && addedEdgeCount === 0 && removedNodeCount === 0 && removedEdgeCount === 0) {
+    return true;
+  }
+
   if (addedNodeCount > 0 && removedNodeCount > 0) {
     return false;
   }

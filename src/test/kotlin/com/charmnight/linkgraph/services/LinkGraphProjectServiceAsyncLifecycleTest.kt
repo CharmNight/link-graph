@@ -17,6 +17,50 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
+    fun testGenerationPlanAsyncRejectsWhenNoConfirmedDraftChangesExist() {
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        stateService.loadGraphProjection(
+            visibleGraph = sampleGraph(),
+            fullGraph = sampleGraph(),
+            source = "currentMethod",
+            selectedMethodSignature = "com.example.OrderService.place():void",
+        )
+
+        val service = project.getService(LinkGraphProjectService::class.java)
+        service.requestGenerationPlanAsync()
+
+        val snapshot = waitForSnapshot { current ->
+            current.generationPlanRequestState.phase == GraphEditorStateService.AsyncRequestPhase.FAILED
+        }
+
+        assertEquals(GraphEditorStateService.AsyncRequestPhase.FAILED, snapshot.generationPlanRequestState.phase)
+        assertEquals("实现计划", snapshot.generationPlanRequestState.scene)
+        assertTrue(snapshot.generationPlanRequestState.errorMessage?.contains("请先确认至少一条草稿变更") == true)
+        assertEquals(GraphEditorStateService.OperationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
+    }
+
+    fun testCodeDraftAsyncRejectsWhenNoConfirmedDraftChangesExist() {
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        stateService.loadGraphProjection(
+            visibleGraph = sampleGraph(),
+            fullGraph = sampleGraph(),
+            source = "currentMethod",
+            selectedMethodSignature = "com.example.OrderService.place():void",
+        )
+
+        val service = project.getService(LinkGraphProjectService::class.java)
+        service.requestCodeDraftsAsync()
+
+        val snapshot = waitForSnapshot { current ->
+            current.codeDraftRequestState.phase == GraphEditorStateService.AsyncRequestPhase.FAILED
+        }
+
+        assertEquals(GraphEditorStateService.AsyncRequestPhase.FAILED, snapshot.codeDraftRequestState.phase)
+        assertEquals("代码草稿", snapshot.codeDraftRequestState.scene)
+        assertTrue(snapshot.codeDraftRequestState.errorMessage?.contains("请先确认至少一条草稿变更") == true)
+        assertEquals(GraphEditorStateService.OperationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
+    }
+
     fun testAuditAsyncSuccessDoesNotGetOverwrittenByItsOwnTimeout() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraphProjection(
