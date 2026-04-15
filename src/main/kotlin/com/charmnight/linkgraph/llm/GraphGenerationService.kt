@@ -1,8 +1,10 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
+import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 
 /**
  * 统一封装“根据当前图上下文生成实现计划”的入口。
@@ -82,8 +84,10 @@ class GraphGenerationService(
         context: GenerationContext,
         prompt: String,
     ): GenerationPlan {
+        /** 根据已确认草稿变更转换出的计划条目。 */
+        val confirmedItems = context.confirmedChanges.map { change -> confirmedChangeToPlanItem(change, context) }
         /** 根据同步预览项转换出的计划条目。 */
-        val items = context.syncPreviewItems.map { preview ->
+        val previewItems = context.syncPreviewItems.map { preview ->
             GenerationPlanItem(
                 id = preview.id,
                 title = preview.title,
@@ -92,6 +96,7 @@ class GraphGenerationService(
                 targetPath = inferTargetPath(preview),
             )
         }
+        val items = (confirmedItems + previewItems).distinctBy { it.id }
         /** 计划摘要。 */
         val summary = if (items.isEmpty()) {
             "当前图中未推断出明确的代码改动项。"
@@ -105,6 +110,9 @@ class GraphGenerationService(
             }
             if (items.isEmpty()) {
                 add("当前计划来自规则化推断，未发现可执行的同步项。")
+            }
+            if (confirmedItems.isEmpty() && context.confirmedChanges.isNotEmpty()) {
+                add("已确认草稿变更存在，但当前仍无法为它们定位明确的代码文件。")
             }
         }
         return GenerationPlan(
@@ -135,6 +143,23 @@ class GraphGenerationService(
                 description = item["description"] as? String ?: "",
                 risk = SyncPreviewRisk.entries.firstOrNull { it.name == riskName } ?: SyncPreviewRisk.MEDIUM,
                 targetPath = item["targetPath"] as? String,
+                editScopes = (item["editScopes"] as? List<*>).orEmpty().mapNotNull { rawScope ->
+                    val scope = rawScope as? Map<*, *> ?: return@mapNotNull null
+                    EditScope(
+                        scopeId = scope["scopeId"] as? String ?: return@mapNotNull null,
+                        targetNodeId = scope["targetNodeId"] as? String ?: return@mapNotNull null,
+                        filePath = scope["filePath"] as? String ?: return@mapNotNull null,
+                        language = scope["language"] as? String ?: "TEXT",
+                        symbolKind = scope["symbolKind"] as? String ?: "UNKNOWN",
+                        symbolSignature = scope["symbolSignature"] as? String,
+                        startOffset = (scope["startOffset"] as? Number)?.toInt(),
+                        endOffset = (scope["endOffset"] as? Number)?.toInt(),
+                        startLine = (scope["startLine"] as? Number)?.toInt(),
+                        endLine = (scope["endLine"] as? Number)?.toInt(),
+                        allowedChangeKinds = (scope["allowedChangeKinds"] as? List<*>).orEmpty().mapNotNull { it as? String },
+                        supportingFindingIds = (scope["supportingFindingIds"] as? List<*>).orEmpty().mapNotNull { it as? String },
+                    )
+                },
             )
         }
         /** 远程返回的警告信息。 */
@@ -173,6 +198,38 @@ class GraphGenerationService(
         }
     }
 
+    /** 把已确认草稿变更转换为规则化计划条目。 */
+    private fun confirmedChangeToPlanItem(
+        change: DraftWorkbenchEntry,
+        context: GenerationContext,
+    ): GenerationPlanItem {
+        val nodeById = context.graph.nodes.associateBy(GraphNode::id)
+        val targetPath = change.targetNodeIds
+            .asSequence()
+            .mapNotNull { nodeId ->
+                nodeById[nodeId]?.metadata?.get("source.filePath")
+                    ?: nodeById[nodeId]?.location?.substringBefore(':')
+            }
+            .firstOrNull()
+        val description = buildString {
+            append(change.reason.ifBlank { "根据已确认草稿变更执行代码修改。" })
+            change.afterState?.takeIf { it.isNotBlank() }?.let {
+                append(" 修改目标：").append(it)
+            }
+            change.impactSummary.takeIf { it.isNotBlank() }?.let {
+                append(" 影响：").append(it)
+            }
+        }
+        return GenerationPlanItem(
+            id = change.sourceChangeId ?: change.entryId,
+            title = change.title.ifBlank { change.sourceChangeId ?: change.entryId },
+            description = description,
+            risk = if (targetPath != null) SyncPreviewRisk.MEDIUM else SyncPreviewRisk.HIGH,
+            targetPath = targetPath,
+            editScopes = change.editScopes,
+        )
+    }
+
     private companion object {
         /** 远程实现计划结构化结果的 JSON Schema 示例。 */
         private const val GENERATION_PLAN_SCHEMA = """
@@ -184,7 +241,8 @@ class GraphGenerationService(
       "title": "需要变更的内容",
       "description": "原因与做法",
       "risk": "LOW|MEDIUM|HIGH",
-      "targetPath": "可选路径"
+      "targetPath": "可选路径",
+      "editScopes": []
     }
   ],
   "warnings": ["可选警告"]

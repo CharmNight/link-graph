@@ -34,6 +34,63 @@ import kotlin.test.assertTrue
 
 class GraphEditorStateServiceTest {
     @Test
+    fun markOperationFeedbackCanPreserveExistingLastMessageType() {
+        val service = GraphEditorStateService()
+
+        service.markGraphBeautificationResult(GraphBeautificationResult(source = LlmResultSource.MOCK))
+        service.markOperationFeedback(
+            level = GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+            message = "链路讲解完成，已更新步骤列表",
+            preserveLastMessageType = true,
+        )
+
+        val snapshot = service.snapshot()
+        assertEquals("graphBeautificationResult", snapshot.lastMessageType)
+        assertEquals("链路讲解完成，已更新步骤列表", snapshot.operationFeedback?.message)
+    }
+
+    @Test
+    fun markGraphChanged保留前端上报后的现有节点布局() {
+        val service = GraphEditorStateService()
+        val initialGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:order-service-place",
+                    type = NodeType.METHOD,
+                    title = "OrderService.place",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf(
+                        "ui.x" to "120",
+                        "ui.y" to "96",
+                    ),
+                ),
+            ),
+        )
+
+        service.loadGraph(initialGraph, "currentMethod")
+        service.markLayoutChanged(
+            mapOf(
+                "method:order-service-place" to GraphLayoutPosition(
+                    x = 520.0,
+                    y = 240.0,
+                ),
+            ),
+        )
+
+        service.markGraphChanged(
+            initialGraph.copy(
+                nodes = initialGraph.nodes.map { node ->
+                    node.copy(metadata = node.metadata - "ui.x" - "ui.y")
+                },
+            ),
+        )
+
+        val snapshot = service.snapshot()
+        assertEquals(520.0, snapshot.layoutState.positions["method:order-service-place"]?.x)
+        assertEquals(240.0, snapshot.layoutState.positions["method:order-service-place"]?.y)
+    }
+
+    @Test
     fun markDraftWorkbenchStateStoresUnifiedDraftEntries() {
         val service = GraphEditorStateService()
 
@@ -336,7 +393,7 @@ class GraphEditorStateServiceTest {
     }
 
     @Test
-    fun markGraphChanged在流程图模式下只更新流程图文档() {
+    fun markGraphChanged在流程图模式下更新当前流程图文档并保留其他语义视图() {
         val service = GraphEditorStateService()
         val factGraph = GraphDocument(
             nodes = listOf(
@@ -415,13 +472,14 @@ class GraphEditorStateServiceTest {
         val snapshot = service.snapshot()
         assertEquals(editedFlowchartGraph, snapshot.visibleGraph)
         assertEquals(editedFlowchartGraph, snapshot.flowchartView?.visibleGraph)
+        assertEquals(editedFlowchartGraph, snapshot.workingGraph)
         assertEquals(factGraph, snapshot.factGraphView?.visibleGraph)
         assertEquals(resourceGraph, snapshot.resourceRelationView?.visibleGraph)
         assertEquals(true, snapshot.workingGraphDirty)
     }
 
     @Test
-    fun switchAnalysisDisplayMode在脏编辑态下复用当前三视图文档() {
+    fun switchAnalysisDisplayMode在全局图变更后保留各视图独立文档() {
         val service = GraphEditorStateService()
         val factGraph = GraphDocument(
             nodes = listOf(
@@ -494,6 +552,95 @@ class GraphEditorStateServiceTest {
     }
 
     @Test
+    fun markViewGraphChanged在流程图模式下更新流程图文档并保留其他视图() {
+        val service = GraphEditorStateService()
+        val factGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:fact-anchor",
+                    type = NodeType.METHOD,
+                    title = "FactAnchor",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+            ),
+        )
+        val flowchartGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:flow-entry",
+                    type = NodeType.METHOD,
+                    title = "FlowEntry",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf("flowchart.kind" to "ENTRY"),
+                ),
+            ),
+        )
+        val resourceGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "sql:order-save",
+                    type = NodeType.SQL,
+                    title = "order_mapper.xml#save",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf("resource.lane" to "DATA"),
+                ),
+            ),
+        )
+
+        service.loadAnalysisOutcome(
+            outcome = AnalysisOutcome(
+                displayMode = AnalysisDisplayMode.FLOWCHART,
+                visibleGraph = flowchartGraph,
+                fullGraph = factGraph,
+                anchorNodeId = "method:flow-entry",
+                selectedMethodSignature = "com.example.OrderService.place():void",
+                displayName = "OrderService.place",
+                feedbackLevel = GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+                feedbackMessage = "已加载流程图",
+                projectionStats = AnalysisProjectionStats(),
+                factGraphView = FactGraphViewDocument(
+                    visibleGraph = factGraph,
+                    fullGraph = factGraph,
+                    anchorNodeId = "method:fact-anchor",
+                ),
+                flowchartView = FlowchartViewDocument(
+                    visibleGraph = flowchartGraph,
+                    fullGraph = flowchartGraph,
+                    anchorNodeId = "method:flow-entry",
+                ),
+                resourceRelationView = ResourceRelationViewDocument(
+                    visibleGraph = resourceGraph,
+                    fullGraph = resourceGraph,
+                    anchorNodeId = "sql:order-save",
+                ),
+            ),
+            source = "currentSubject",
+        )
+
+        val editedFlowchartGraph = GraphDocument(
+            nodes = flowchartGraph.nodes + GraphNode(
+                id = "design:1",
+                type = NodeType.METHOD,
+                title = "ManualFlowStep",
+                sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                metadata = mapOf("flowchart.kind" to "PROCESS"),
+            ),
+        )
+
+        service.markViewGraphChanged(
+            graph = editedFlowchartGraph,
+            displayMode = AnalysisDisplayMode.FLOWCHART,
+        )
+
+        val snapshot = service.snapshot()
+        assertEquals(editedFlowchartGraph, snapshot.visibleGraph)
+        assertEquals(editedFlowchartGraph, snapshot.flowchartView?.visibleGraph)
+        assertEquals(editedFlowchartGraph, snapshot.workingGraph)
+        assertEquals(factGraph, snapshot.factGraphView?.visibleGraph)
+        assertEquals(resourceGraph, snapshot.resourceRelationView?.visibleGraph)
+    }
+
+    @Test
     fun markGraphBeautificationResultStoresResultAndGraphReloadClearsIt() {
         val service = GraphEditorStateService()
         val graph = GraphDocument(
@@ -516,6 +663,8 @@ class GraphEditorStateServiceTest {
                     granularity = StepGranularity.BUSINESS,
                     kind = StepKind.BUSINESS_ACTION,
                     description = "先判断参数，再调用 placeDraft。",
+                    primaryNodeId = "method:order-service-place",
+                    codeSnippet = "placeDraft(order);",
                     evidence = listOf(
                         ResultEvidenceFinding(
                             id = "direct-place-draft",

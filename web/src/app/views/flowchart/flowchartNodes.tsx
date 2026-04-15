@@ -20,6 +20,7 @@ import type { LinkGraphEdge, LinkGraphNode } from "../../types";
 import { edgeTypeLabel } from "../../labels";
 import { FlowchartNodeCard } from "../../components/graph/nodes/FlowchartNodeCard";
 import { flowchartKind } from "../../components/graph/nodes/nodePresentation";
+import { canEditNodeLayout } from "../../layoutEditability";
 import type { RoutedEdgeData } from "../../reactflow/RoutedEdge";
 import {
   buildIncomingControlFlowIndex,
@@ -32,12 +33,15 @@ import {
   isDecisionFallthroughEdge,
   resolveDecisionSourcePort,
 } from "./decisionPortGeometry";
+import { resolveGraphNodeHighlightClassName } from "../graphNodeHighlights";
 
 interface FlowchartNodeData {
   node: LinkGraphNode;
   hasExceptionSource: boolean;
   mergeLeftTargetCount: number;
   mergeRightTargetCount: number;
+  explanationFocused?: boolean;
+  draftChanged?: boolean;
   onMeasure?: (size: NodeMeasuredSize) => void;
 }
 
@@ -45,6 +49,8 @@ interface BuildFlowchartNodesOptions {
   nodes: LinkGraphNode[];
   edges: LinkGraphEdge[];
   selectedNodeId: string | null;
+  explanationFocusNodeId?: string | null;
+  draftChangedNodeIds?: string[];
   nodeSizeRegistry: NodeSizeRegistry;
 }
 
@@ -194,6 +200,8 @@ function FlowchartReactNode({ id, data, isConnectable, selected }: NodeProps<Flo
       <FlowchartNodeCard
         node={data.node}
         selected={selected}
+        explanationFocused={data.explanationFocused}
+        draftChanged={data.draftChanged}
         onMeasure={data.onMeasure}
       />
     </div>
@@ -329,9 +337,12 @@ export function buildFlowchartNodes({
   nodes,
   edges,
   selectedNodeId,
+  explanationFocusNodeId = null,
+  draftChangedNodeIds = [],
   nodeSizeRegistry,
 }: BuildFlowchartNodesOptions): Array<Node<FlowchartNodeData>> {
   const nodeIndex = new Map(nodes.map((node) => [node.id, node]));
+  const draftChangedNodeIdSet = new Set(draftChangedNodeIds);
   const outgoingControlFlowBySource = buildOutgoingControlFlowIndex(edges);
   const incomingControlFlowByTarget = buildIncomingControlFlowIndex(edges);
   const mergeTargetPortLayout = buildMergeTargetPortLayout(
@@ -346,8 +357,14 @@ export function buildFlowchartNodes({
     return {
       id: node.id,
       type: "flowchartNode",
-      className: `flowchart-rf-node kind-${kind.toLowerCase()}`,
+      className: resolveGraphNodeHighlightClassName({
+        baseClassName: `flowchart-rf-node kind-${kind.toLowerCase()}`,
+        nodeId: node.id,
+        explanationFocusNodeId,
+        draftChangedNodeIdSet,
+      }),
       selected: selectedNodeId === node.id,
+      draggable: canEditNodeLayout(node),
       position: node.position ?? { x: 80, y: 88 },
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top,
@@ -356,6 +373,8 @@ export function buildFlowchartNodes({
         hasExceptionSource: hasExceptionControlFlowOutlet(node, outgoingControlFlowBySource.get(node.id)),
         mergeLeftTargetCount: mergeTargetPortCounts?.leftCount ?? 0,
         mergeRightTargetCount: mergeTargetPortCounts?.rightCount ?? 0,
+        explanationFocused: explanationFocusNodeId === node.id,
+        draftChanged: draftChangedNodeIdSet.has(node.id),
         onMeasure: (size) => nodeSizeRegistry.set(node.id, size),
       },
       style: flowchartNodeStyle(node),

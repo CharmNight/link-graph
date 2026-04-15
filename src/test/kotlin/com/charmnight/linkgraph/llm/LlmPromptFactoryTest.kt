@@ -14,6 +14,8 @@ import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.settings.LlmProviderType
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
+import com.charmnight.linkgraph.workbench.DraftEntryKind
+import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -105,6 +107,15 @@ class LlmPromptFactoryTest {
                 ),
                 draftGraph = GraphDocument(),
                 selectedNodeIds = listOf("method:order-service-place"),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:order-service-place",
+                        filePath = "src/main/java/com/example/OrderService.java",
+                        startLine = 41,
+                        endLine = 55,
+                        snippet = "if (channel == null) { return defaultChannel(); }",
+                    ),
+                ),
             ),
             question = "这段链路是否遗漏了默认兜底逻辑？",
             settings = LinkGraphSettingsState(
@@ -157,6 +168,10 @@ class LlmPromptFactoryTest {
         assertTrue(auditPrompt.contains("这段链路是否遗漏了默认兜底逻辑"))
         assertTrue(auditPrompt.contains("当前范围"))
         assertTrue(auditPrompt.contains("OrderService.place"))
+        assertTrue(auditPrompt.contains("相关源码片段"))
+        assertTrue(auditPrompt.contains("defaultChannel"))
+        assertTrue(auditPrompt.contains("你的第一优先级是直接回答“用户问题”"))
+        assertTrue(auditPrompt.contains("禁止输出与用户问题无关的通用安全、性能、规范性建议"))
         assertTrue(diffPrompt.contains("这些差异意味着什么"))
         assertTrue(diffPrompt.contains("DefaultChannelFallback"))
         assertTrue(diffPrompt.contains("ONLY_IN_MERMAID"))
@@ -193,6 +208,15 @@ class LlmPromptFactoryTest {
                 ),
                 draftGraph = GraphDocument(),
                 selectedNodeIds = listOf("method:order-service-place"),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:order-service-place",
+                        filePath = "src/main/java/com/example/OrderService.java",
+                        startLine = 41,
+                        endLine = 55,
+                        snippet = "if (channel == null) { return defaultChannel(); }",
+                    ),
+                ),
             ),
             question = "请审计当前范围是否遗漏默认兜底逻辑？",
             settings = settings,
@@ -274,12 +298,108 @@ class LlmPromptFactoryTest {
 
         assertTrue(auditPackage.systemPrompt.contains("链路审计"))
         assertTrue(auditPackage.userPrompt.contains("当前范围边"))
+        assertTrue(auditPackage.userPrompt.contains("相关源码片段"))
+        assertTrue(auditPackage.userPrompt.contains("defaultChannel"))
         assertTrue(auditPackage.userPrompt.contains("candidateChanges"))
+        assertTrue(auditPackage.userPrompt.contains("investigationLeads"))
         assertTrue(diffPackage.systemPrompt.contains("差异"))
         assertTrue(diffPackage.userPrompt.contains("当前关注差异"))
         assertTrue(diffPackage.userPrompt.contains("draft.claimType"))
         assertTrue(codePackage.systemPrompt.contains("代码生成"))
         assertTrue(codePackage.userPrompt.contains("目标文件"))
+    }
+
+    @Test
+    fun generationAndCodePromptPackagesIncludeConfirmedDraftChanges() {
+        val factory = LlmPromptFactory()
+        val settings = LinkGraphSettingsState(
+            llmEnabled = true,
+            provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+            model = "gpt-5.4",
+        )
+        val context = GenerationContext(
+            graph = GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:file-download",
+                        type = NodeType.METHOD,
+                        title = "CommonController.fileDownload",
+                        location = "src/main/java/com/example/CommonController.java:42",
+                        signature = "com.example.CommonController.fileDownload(java.lang.String):void",
+                        metadata = mapOf(
+                            "source.filePath" to "src/main/java/com/example/CommonController.java",
+                            "source.startLine" to "42",
+                            "source.endLine" to "88",
+                        ),
+                    ),
+                ),
+            ),
+            sourceContext = listOf(
+                SourceSnippetContext(
+                    nodeId = "method:file-download",
+                    filePath = "src/main/java/com/example/CommonController.java",
+                    startLine = 42,
+                    endLine = 88,
+                    snippet = """
+                        public String fileDownload(String baseUrl) {
+                            if (baseUrl.startsWith("/usr")) {
+                                return baseUrl.replaceFirst("/usr", "/tmp");
+                            }
+                            return baseUrl;
+                        }
+                    """.trimIndent(),
+                ),
+            ),
+            confirmedChanges = listOf(
+                DraftWorkbenchEntry(
+                    entryId = "draft-change-file-download",
+                    kind = DraftEntryKind.CHANGE,
+                    sourceChangeId = "change-file-download",
+                    title = "修改 fileDownload 的路径判定",
+                    targetNodeIds = listOf("method:file-download"),
+                    beforeState = "直接使用 baseUrl 拼接下载路径。",
+                    afterState = "当 /usr 开头时改写到 /tmp；当 C:/ 开头时直接报错；其他路径保持原逻辑。",
+                    reason = "统一处理 Linux 临时目录并阻止 Windows 路径。",
+                    impactSummary = "影响下载文件路径解析。",
+                    editScopes = listOf(
+                        EditScope(
+                            scopeId = "scope-file-download",
+                            targetNodeId = "method:file-download",
+                            filePath = "src/main/java/com/example/CommonController.java",
+                            language = "JAVA",
+                            symbolKind = "METHOD",
+                            symbolSignature = "com.example.CommonController.fileDownload(java.lang.String):void",
+                            startLine = 42,
+                            endLine = 88,
+                            allowedChangeKinds = listOf("REPLACE_METHOD_BLOCK", "REPLACE_METHOD_BODY"),
+                            supportingFindingIds = listOf("finding-file-download"),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val generationPackage = factory.buildGenerationPromptPackage(context, settings)
+        val codePackage = factory.buildCodeGenerationPromptPackage(context, plan = null, settings = settings)
+
+        assertTrue(generationPackage.userPrompt.contains("已确认草稿变更"))
+        assertTrue(generationPackage.userPrompt.contains("修改 fileDownload 的路径判定"))
+        assertTrue(generationPackage.userPrompt.contains("src/main/java/com/example/CommonController.java"))
+        assertTrue(generationPackage.userPrompt.contains("claimType"))
+        assertTrue(generationPackage.userPrompt.contains("相关源码片段"))
+        assertTrue(generationPackage.userPrompt.contains("baseUrl.replaceFirst(\"/usr\", \"/tmp\")"))
+        assertTrue(codePackage.userPrompt.contains("已确认草稿变更"))
+        assertTrue(codePackage.userPrompt.contains("C:/ 开头时直接报错"))
+        assertTrue(codePackage.userPrompt.contains("evidence"))
+        assertTrue(codePackage.systemPrompt.contains("保留目标文件中与本次变更无关的现有代码"))
+        assertTrue(codePackage.userPrompt.contains("如果目标文件已经明确指向现有源码"))
+        assertTrue(codePackage.userPrompt.contains("不要删除未提及的成员"))
+        assertTrue(codePackage.userPrompt.contains("scope-file-download"))
+        assertTrue(codePackage.userPrompt.contains("symbolSignature=com.example.CommonController.fileDownload(java.lang.String):void"))
+        assertTrue(codePackage.userPrompt.contains("allowedChangeKinds=REPLACE_METHOD_BLOCK, REPLACE_METHOD_BODY"))
+        assertTrue(codePackage.userPrompt.contains("相关源码片段"))
+        assertTrue(codePackage.userPrompt.contains("baseUrl.replaceFirst(\"/usr\", \"/tmp\")"))
+        assertTrue(codePackage.systemPrompt.contains("禁止声称未提供源码上下文"))
     }
 
     @Test
@@ -329,11 +449,17 @@ class LlmPromptFactoryTest {
                 userGoal = "把当前方法链路讲清楚",
                 preferredStyle = "汇报版",
                 explanationFocus = "先解释当前方法内部，再补跨方法扩展",
+                followUp = GraphBeautificationFollowUpContext(
+                    stepId = "step-copy-bean",
+                    stepTitle = "Step 2 复制用户信息",
+                    question = "这里复制失败时会怎么处理？",
+                ),
             ),
             settings = settings,
         )
 
         assertTrue(promptPackage.systemPrompt.contains("步骤化链路讲解助手"))
+        assertTrue(promptPackage.systemPrompt.contains("如果提供了追问上下文"))
         assertTrue(promptPackage.userPrompt.contains("ShiroUtils.getSysUser"))
         assertTrue(promptPackage.userPrompt.contains("BeanUtils.copyBeanProp(user, obj)"))
         assertTrue(promptPackage.userPrompt.contains("id=flow-action:copy-bean"))
@@ -341,5 +467,9 @@ class LlmPromptFactoryTest {
         assertTrue(promptPackage.userPrompt.contains("当前方法内部折叠节点"))
         assertTrue(promptPackage.userPrompt.contains("跨方法扩展折叠节点"))
         assertTrue(promptPackage.userPrompt.contains("汇报版"))
+        assertTrue(promptPackage.userPrompt.contains("讲解模式：追问讲解"))
+        assertTrue(promptPackage.userPrompt.contains("用户追问：这里复制失败时会怎么处理？"))
+        assertTrue(promptPackage.userPrompt.contains("本轮回答必须先直接回答用户追问"))
+        assertTrue(promptPackage.userPrompt.contains("如果当前证据不足，必须明确写出“不足以确认”"))
     }
 }

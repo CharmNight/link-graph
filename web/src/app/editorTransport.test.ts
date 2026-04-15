@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { LinkGraphBootstrapState, LinkGraphSnapshotEnvelope } from "./types";
+import type { LinkGraphBootstrapState, LinkGraphIncrementalTransportEnvelope, LinkGraphSnapshotEnvelope } from "./types";
 import {
   acknowledgeSnapshot,
   announceFrontendReady,
@@ -52,6 +52,20 @@ function envelope(revision: number): LinkGraphSnapshotEnvelope {
   };
 }
 
+function artifactSlice(revision: number): LinkGraphIncrementalTransportEnvelope {
+  return {
+    type: "ARTIFACT_SLICE",
+    sessionId: "session-1",
+    revision,
+    state: {
+      artifactContents: {
+        "artifact:draft-1": "public class OrderDraftDto {}",
+      },
+      snapshotRevision: revision,
+    },
+  };
+}
+
 describe("editorTransport", () => {
   afterEach(() => {
     resetEditorTransportForTest();
@@ -87,7 +101,7 @@ describe("editorTransport", () => {
     unsubscribe();
   });
 
-  it("merges artifact slices into the latest bootstrap state without overwriting graph state", () => {
+  it("merges artifact slices into the latest snapshot state without overwriting graph state", () => {
     dispatchBootstrapForTest(envelope(1));
     const receivedArtifacts: Array<Record<string, string> | undefined> = [];
 
@@ -98,17 +112,7 @@ describe("editorTransport", () => {
     });
 
     announceFrontendReady();
-    dispatchBootstrapForTest({
-      type: "ARTIFACT_SLICE",
-      sessionId: "session-1",
-      revision: 1,
-      state: {
-        artifactContents: {
-          "artifact:draft-1": "public class OrderDraftDto {}",
-        },
-        snapshotRevision: 1,
-      },
-    });
+    dispatchBootstrapForTest(artifactSlice(1));
 
     expect(receivedArtifacts.at(-1)).toEqual({
       "artifact:draft-1": "public class OrderDraftDto {}",

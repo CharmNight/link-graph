@@ -20,6 +20,7 @@ vi.mock("../../reactflow/GraphFlowSurface", () => ({
     editable?: boolean;
     viewportMode?: string;
     header?: ReactNode;
+    emptyState?: ReactNode;
     nodes: Array<{ position?: { x: number; y: number } }>;
     edges: Array<{ id: string }>;
     flowEdges: Array<{ id: string }>;
@@ -49,6 +50,7 @@ vi.mock("../../reactflow/GraphFlowSurface", () => ({
         data-flow-edge-ids={props.flowEdges.map((edge) => edge.id).join("|")}
       >
         {props.header}
+        {props.nodes.length === 0 ? props.emptyState : null}
         {props.nodes.length}:{props.edges.length}
         <button type="button" onClick={() => formatAction?.onSelect()}>
           format
@@ -110,6 +112,105 @@ const view: FlowchartViewDocument = {
     nodeCount: 1,
     branchCount: 0,
     exceptionPathCount: 0,
+  },
+};
+
+const loopSummaryView: FlowchartViewDocument = {
+  visibleGraph: {
+    nodes: [
+      {
+        id: "method:render",
+        type: "METHOD",
+        title: "ScopedCallChain.render",
+        inputs: [],
+        outputs: [],
+        certainty: "PROVEN",
+        bindingStatus: "BOUND",
+        metadata: {
+          "flowchart.kind": "ENTRY",
+        },
+      },
+      {
+        id: "scope:foreach",
+        type: "FLOW_SCOPE",
+        title: "for (line : lines)",
+        inputs: [],
+        outputs: [],
+        certainty: "PROVEN",
+        bindingStatus: "BOUND",
+        metadata: {
+          "flow.kind": "FOREACH",
+          "flowchart.kind": "DECISION",
+        },
+      },
+    ],
+    edges: [
+      {
+        id: "control-entry-loop",
+        type: "CONTROL_FLOW",
+        source: "method:render",
+        target: "scope:foreach",
+      },
+    ],
+  },
+  fullGraph: {
+    nodes: [],
+    edges: [],
+  },
+  anchorNodeId: "method:render",
+  summary: {
+    nodeCount: 2,
+    branchCount: 1,
+    exceptionPathCount: 0,
+  },
+};
+
+const fidelityWarningView: FlowchartViewDocument = {
+  ...view,
+  summary: {
+    nodeCount: 2,
+    branchCount: 1,
+    exceptionPathCount: 0,
+    fullNodeCount: 5,
+    fullEdgeCount: 4,
+    hiddenNodeCount: 3,
+    hiddenEdgeCount: 2,
+    truncated: true,
+    incompleteNodeCount: 1,
+    incompleteEdgeCount: 0,
+    semanticallyIncomplete: true,
+    syntheticEdgeCount: 0,
+    syntheticEntryEdgeCount: 0,
+  },
+};
+
+const syntheticEntryView: FlowchartViewDocument = {
+  ...view,
+  visibleGraph: {
+    nodes: view.visibleGraph.nodes,
+    edges: [
+      {
+        id: "contains-entry",
+        type: "CONTAINS_FLOW",
+        source: "method:submit-order",
+        target: "scope:guard",
+      },
+    ],
+  },
+  summary: {
+    nodeCount: 2,
+    branchCount: 1,
+    exceptionPathCount: 0,
+    fullNodeCount: 2,
+    fullEdgeCount: 1,
+    hiddenNodeCount: 0,
+    hiddenEdgeCount: 0,
+    truncated: false,
+    incompleteNodeCount: 0,
+    incompleteEdgeCount: 0,
+    semanticallyIncomplete: false,
+    syntheticEdgeCount: 0,
+    syntheticEntryEdgeCount: 0,
   },
 };
 
@@ -233,5 +334,123 @@ describe("FlowchartView", () => {
     expect(screen.getByText("当前选中")).toBeInTheDocument();
     expect(screen.getByText("OrderController.submit")).toBeInTheDocument();
     expect(screen.getByText("!FileUtils.checkAllowDownload(fileName)")).toBeInTheDocument();
+  });
+
+  it("adds unified hover titles to truncated summary titles", () => {
+    render(
+      <FlowchartView
+        view={view}
+        selectedNodeId="scope:guard"
+        onAddNode={noop}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onDeleteNode={noop}
+        onCreateEdge={noop}
+        onDeleteEdge={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onImportMermaid={noop}
+      />,
+    );
+
+    expect(screen.getByText("OrderController.submit")).toHaveAttribute("title", "OrderController.submit");
+    expect(screen.getByText("!FileUtils.checkAllowDownload(fileName)")).toHaveAttribute(
+      "title",
+      "!FileUtils.checkAllowDownload(fileName)",
+    );
+  });
+
+  it("shows loop scopes in the branch summary when they are projected as decision nodes", () => {
+    render(
+      <FlowchartView
+        view={loopSummaryView}
+        selectedNodeId="scope:foreach"
+        onAddNode={noop}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onDeleteNode={noop}
+        onCreateEdge={noop}
+        onDeleteEdge={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onImportMermaid={noop}
+      />,
+    );
+
+    expect(screen.getByText("共 2 个流程节点，1 个分支判断，异常路径 0 条。")).toBeInTheDocument();
+  });
+
+  it("shows truncation and semantic incompleteness warnings in the flowchart summary", () => {
+    render(
+      <FlowchartView
+        view={fidelityWarningView}
+        selectedNodeId="scope:guard"
+        onAddNode={noop}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onDeleteNode={noop}
+        onCreateEdge={noop}
+        onDeleteEdge={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onImportMermaid={noop}
+      />,
+    );
+
+    expect(screen.getByText("已截断")).toBeInTheDocument();
+    expect(screen.getByText("语义不完整")).toBeInTheDocument();
+    expect(screen.getByText("当前仅展示 2/5 个节点，隐藏 3 个节点、2 条边。")).toBeInTheDocument();
+  });
+
+  it("marks the summary when the view relies on a synthetic entry edge to connect the anchor method", () => {
+    render(
+      <FlowchartView
+        view={syntheticEntryView}
+        selectedNodeId="scope:guard"
+        onAddNode={noop}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onDeleteNode={noop}
+        onCreateEdge={noop}
+        onDeleteEdge={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onImportMermaid={noop}
+      />,
+    );
+
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
+      "data-edge-ids",
+      "flowchart-entry:method:submit-order->scope:guard",
+    );
+    expect(screen.getByText("含合成入口")).toBeInTheDocument();
+  });
+
+  it("shows a loading empty state while a non-empty flowchart is still waiting for stable layout coordinates", () => {
+    useMeasuredLayoutMock.mockReturnValue({
+      nodes: [],
+      edges: [],
+      layoutPending: true,
+      requestRelayout: vi.fn(),
+    });
+
+    render(
+      <FlowchartView
+        view={view}
+        selectedNodeId="method:submit-order"
+        onAddNode={noop}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onDeleteNode={noop}
+        onCreateEdge={noop}
+        onDeleteEdge={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onImportMermaid={noop}
+      />,
+    );
+
+    expect(screen.getByText("正在整理流程图")).toBeInTheDocument();
+    expect(screen.queryByText("当前没有可展示的流程节点")).not.toBeInTheDocument();
   });
 });

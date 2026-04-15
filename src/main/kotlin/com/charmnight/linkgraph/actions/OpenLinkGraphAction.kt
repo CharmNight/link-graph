@@ -58,8 +58,9 @@ class OpenLinkGraphAction : DumbAwareAction(
     override fun actionPerformed(event: AnActionEvent) {
         // 无项目时无法访问项目级服务。
         val project = event.project ?: return
+        val editor = event.getData(CommonDataKeys.EDITOR)
         project.getService(LinkGraphToolWindowSession::class.java).openToolWindow()
         val projectService = project.getService(LinkGraphProjectService::class.java)
-        projectService.loadCurrentEditorContextGraphAsync()
+        projectService.loadCurrentEditorContextGraphAsync(editor)
     }
 }

@@ -8,6 +8,7 @@ import com.intellij.psi.PsiBlockStatement
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiCodeBlock
 import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiLambdaExpression
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiModifier
 import com.intellij.psi.PsiMethodCallExpression
@@ -204,10 +205,13 @@ internal fun resolveKotlinPropertyAccessorSource(method: PsiMethod): KotlinPrope
     }
 }
 
-internal fun resolveDownstreamTargetMethods(root: PsiElement): List<PsiMethod> {
+internal fun resolveDownstreamTargetMethods(
+    root: PsiElement,
+    includeNestedLambdas: Boolean = true,
+): List<PsiMethod> {
     return when (root) {
         is KtElement -> resolveKotlinTargetMethods(root)
-        else -> resolveJavaTargetMethods(root)
+        else -> resolveJavaTargetMethods(root, includeNestedLambdas)
     }
 }
 
@@ -285,7 +289,10 @@ internal fun isProjectSourceMethod(method: PsiMethod): Boolean {
     return ProjectFileIndex.getInstance(method.project).isInContent(virtualFile)
 }
 
-private fun resolveJavaTargetMethods(root: PsiElement): List<PsiMethod> {
+private fun resolveJavaTargetMethods(
+    root: PsiElement,
+    includeNestedLambdas: Boolean,
+): List<PsiMethod> {
     val callExpressions = buildList<PsiElement> {
         if (root is PsiMethodCallExpression || root is PsiNewExpression) {
             add(root)
@@ -294,6 +301,7 @@ private fun resolveJavaTargetMethods(root: PsiElement): List<PsiMethod> {
         addAll(PsiTreeUtil.collectElementsOfType(root, PsiNewExpression::class.java))
     }
     return callExpressions
+        .filter { expression -> includeNestedLambdas || !isNestedInsideJavaLambda(expression, root) }
         .mapNotNull { expression ->
             when (expression) {
                 is PsiMethodCallExpression -> expression.resolveMethod()
@@ -304,6 +312,14 @@ private fun resolveJavaTargetMethods(root: PsiElement): List<PsiMethod> {
         .flatMap(::concreteTargetMethods)
         .filter(::isProjectSourceMethod)
         .distinctBy(::methodSignature)
+}
+
+private fun isNestedInsideJavaLambda(
+    element: PsiElement,
+    root: PsiElement,
+): Boolean {
+    val lambdaAncestor = PsiTreeUtil.getParentOfType(element, PsiLambdaExpression::class.java, false) ?: return false
+    return lambdaAncestor != root && PsiTreeUtil.isAncestor(root, lambdaAncestor, true)
 }
 
 private fun resolveKotlinTargetMethods(root: KtElement): List<PsiMethod> {

@@ -5,7 +5,9 @@ import com.charmnight.linkgraph.testing.fixtureFileName
 import com.charmnight.linkgraph.testing.readJavaFixture
 import com.charmnight.linkgraph.semantic.graph.GraphAssembler
 import com.charmnight.linkgraph.semantic.model.FlowActionUnit
+import com.charmnight.linkgraph.semantic.model.FlowEdgeRole
 import com.charmnight.linkgraph.semantic.model.FlowScopeUnit
+import com.charmnight.linkgraph.semantic.model.FlowScopeCategory
 import com.charmnight.linkgraph.semantic.model.InvocationUnit
 import com.charmnight.linkgraph.semantic.model.MergeUnit
 import com.charmnight.linkgraph.semantic.model.MethodLikeUnit
@@ -17,6 +19,7 @@ import com.charmnight.linkgraph.semantic.policy.SemanticCapturePolicy
 import com.charmnight.linkgraph.semantic.policy.TraversalBudgetPolicy
 import com.charmnight.linkgraph.semantic.subject.CaretSubjectLocator
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectHandle
+import com.charmnight.linkgraph.ui.view.FlowchartProjector
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class JavaCodeSemanticProviderTest : BasePlatformTestCase() {
@@ -150,6 +153,25 @@ class JavaCodeSemanticProviderTest : BasePlatformTestCase() {
         assertTrue(result.sourceMappings.any { mapping -> mapping.targetUnitId == result.anchors.single().targetUnitId })
     }
 
+    fun testAnalyzeJavaMethodCapturesMethodDocComment() {
+        loadFixtureWithCaret("simple/SimpleCallChain.java", "load(String orderId)")
+
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor)
+        val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
+
+        val result = JavaCodeSemanticProvider().analyze(
+            handle = codeHandle,
+            capturePolicy = SemanticCapturePolicy(),
+            budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 1, maxInvocationsPerUnit = 8),
+        )
+
+        val entryMethod = result.semanticUnits.firstOrNull { unit ->
+            unit is MethodLikeUnit && unit.signature == codeHandle.methodSignature
+        } as? MethodLikeUnit
+
+        assertEquals("Loads an order summary.", entryMethod?.doc)
+    }
+
     fun testAnalyzeFileDownloadMethodProducesDecisionFlowchartBranches() {
         myFixture.configureByText(
             "CommonController.java",
@@ -203,6 +225,8 @@ class JavaCodeSemanticProviderTest : BasePlatformTestCase() {
         )
 
         val flowchart = GraphAssembler().assemble(result, AnalysisDisplayMode.FLOWCHART)
+        val tryScope = result.semanticUnits.filterIsInstance<FlowScopeUnit>().firstOrNull { unit -> unit.scopeKind == "TRY" }
+        val ifScope = result.semanticUnits.filterIsInstance<FlowScopeUnit>().firstOrNull { unit -> unit.scopeKind == "IF" }
         val decisionNode = flowchart.nodes.firstOrNull { node ->
             node.type == com.charmnight.linkgraph.model.NodeType.FLOW_SCOPE &&
                 node.metadata["flowchart.kind"] == "DECISION"
@@ -219,6 +243,8 @@ class JavaCodeSemanticProviderTest : BasePlatformTestCase() {
         }
 
         assertTrue("应当识别出 fileDownload 的下载校验条件节点", decisionNode != null)
+        assertEquals(FlowScopeCategory.TRY, tryScope?.scopeCategory)
+        assertEquals(FlowScopeCategory.BRANCH, ifScope?.scopeCategory)
         assertTrue("应当把 guard throw 分支投影为终止节点", terminalThrowNode != null)
         assertTrue("应当保留 FALSE 分支上的后续正常步骤", realFileNameNode != null)
         assertTrue(
@@ -233,6 +259,20 @@ class JavaCodeSemanticProviderTest : BasePlatformTestCase() {
                 edge.fromNodeId == decisionNode!!.id &&
                     edge.toNodeId == terminalThrowNode!!.id &&
                     edge.label == "TRUE"
+            },
+        )
+        assertTrue(
+            "if TRUE 边必须显式标记为 TRUE_BRANCH，当前流程图边如下：\n$edgeSummary",
+            result.relations.any { relation ->
+                relation.kind == SemanticRelationKind.CONTROL_FLOW &&
+                    relation.flowEdgeRole == FlowEdgeRole.TRUE_BRANCH
+            },
+        )
+        assertTrue(
+            "try 异常边必须显式标记为 EXCEPTION，当前流程图边如下：\n$edgeSummary",
+            result.relations.any { relation ->
+                relation.kind == SemanticRelationKind.CONTROL_FLOW &&
+                    relation.flowEdgeRole == FlowEdgeRole.EXCEPTION
             },
         )
         assertTrue(
@@ -392,6 +432,406 @@ class JavaCodeSemanticProviderTest : BasePlatformTestCase() {
                     relation.fromUnitId == mergeUnit!!.id &&
                     relation.toUnitId == postBranchAction!!.id
             },
+        )
+    }
+
+    fun testAnalyzeJavaMethodPreservesLambdaBodyControlFlowInsideForEachCalls() {
+        loadFixtureWithCaret("simple/ScopedCallChain.java", "render(Order order)")
+
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor)
+        val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
+        val result = JavaCodeSemanticProvider().analyze(
+            handle = codeHandle,
+            capturePolicy = SemanticCapturePolicy(),
+            budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 1, maxInvocationsPerUnit = 16),
+        )
+
+        val lambdaScope = result.semanticUnits
+            .filterIsInstance<FlowScopeUnit>()
+            .firstOrNull { unit -> unit.scopeKind == "LAMBDA" && unit.title.contains("forEach") }
+        val nestedIf = result.semanticUnits
+            .filterIsInstance<FlowScopeUnit>()
+            .firstOrNull { unit -> unit.scopeKind == "IF" && unit.title.contains("line.isActive") }
+        val lambdaConditionAction = result.semanticUnits
+            .filterIsInstance<FlowActionUnit>()
+            .firstOrNull { unit -> unit.actionKind == "CONDITION" && unit.title.contains("line.isActive") }
+        val lambdaGetSkuCall = result.semanticUnits
+            .filterIsInstance<InvocationUnit>()
+            .firstOrNull { unit ->
+                unit.targetSignature?.contains("Line.getSku") == true &&
+                    result.relations.any { relation ->
+                        relation.kind == SemanticRelationKind.CONTROL_FLOW &&
+                            relation.toUnitId == unit.id
+                    }
+            }
+        val relationSummary = result.relations
+            .filter { relation -> relation.kind == SemanticRelationKind.CONTROL_FLOW }
+            .joinToString(separator = "\n") { relation ->
+                "${relation.fromUnitId} -> ${relation.toUnitId} [${relation.label ?: ""}]"
+            }
+
+        assertTrue("forEach lambda 应生成独立 LAMBDA 作用域，当前控制流如下：\n$relationSummary", lambdaScope != null)
+        assertTrue("lambda 体里的 if 应保留为独立条件节点，当前控制流如下：\n$relationSummary", nestedIf != null)
+        assertTrue("lambda 体里的条件调用应保留为独立 guard 动作，当前控制流如下：\n$relationSummary", lambdaConditionAction != null)
+        assertTrue(
+            "lambda 体里的 getSku 调用应进入当前方法语义链，当前控制流如下：\n$relationSummary",
+            lambdaGetSkuCall != null,
+        )
+        assertTrue(
+            "lambda 作用域应通过控制流连接到内部条件链，当前控制流如下：\n$relationSummary",
+            result.relations.any { relation ->
+                relation.kind == SemanticRelationKind.CONTROL_FLOW &&
+                    relation.fromUnitId == lambdaScope!!.id &&
+                    relation.toUnitId == lambdaConditionAction!!.id
+            },
+        )
+        assertTrue(
+            "条件 guard 执行后应继续进入 if 作用域，当前控制流如下：\n$relationSummary",
+            result.relations.any { relation ->
+                relation.kind == SemanticRelationKind.CONTROL_FLOW &&
+                    relation.toUnitId == nestedIf!!.id
+            },
+        )
+    }
+
+    fun testAnalyzeUploadFilesMethodPreservesControlFlowAroundUrlsAdd() {
+        myFixture.configureByText(
+            "CommonController.java",
+            """
+                package com.ruoyi.web.controller.common;
+
+                import java.util.ArrayList;
+                import java.util.List;
+
+                class CommonController {
+                    AjaxResult <caret>uploadFiles(MultipartFile[] files) {
+                        try {
+                            List<String> urls = new ArrayList<>();
+                            for (MultipartFile file : files) {
+                                String fileName = FileUploadUtils.upload("/tmp/", file);
+                                String url = ServerConfig.getUrl() + fileName;
+                                urls.add(url);
+                            }
+                            return AjaxResult.success(urls);
+                        } catch (Exception e) {
+                            return AjaxResult.error(e.getMessage());
+                        }
+                    }
+                }
+
+                interface MultipartFile {}
+
+                class FileUploadUtils {
+                    static String upload(String basePath, MultipartFile file) { return basePath + file; }
+                }
+
+                class ServerConfig {
+                    static String getUrl() { return "https://example.test/"; }
+                }
+
+                class AjaxResult {
+                    static AjaxResult success(Object payload) { return new AjaxResult(); }
+                    static AjaxResult error(String message) { return new AjaxResult(); }
+                }
+            """.trimIndent(),
+        )
+
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor)
+        val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
+        val result = JavaCodeSemanticProvider().analyze(
+            handle = codeHandle,
+            capturePolicy = SemanticCapturePolicy(),
+            budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 1, maxInvocationsPerUnit = 16),
+        )
+
+        val urlsAddAction = result.semanticUnits
+            .filterIsInstance<FlowActionUnit>()
+            .firstOrNull { unit -> unit.title.contains("urls.add(url)") }
+        val loopScope = result.semanticUnits
+            .filterIsInstance<FlowScopeUnit>()
+            .firstOrNull { unit -> unit.scopeKind == "FOR" || unit.scopeKind == "FOREACH" }
+        val relationSummary = result.relations
+            .filter { relation -> relation.kind == SemanticRelationKind.CONTROL_FLOW }
+            .joinToString(separator = "\n") { relation ->
+                "${relation.fromUnitId} -> ${relation.toUnitId} [${relation.label ?: ""}]"
+            }
+
+        assertTrue("应当保留 urls.add(url) 动作节点，当前控制流如下：\n$relationSummary", urlsAddAction != null)
+        assertTrue("应当保留循环作用域，当前控制流如下：\n$relationSummary", loopScope != null)
+        assertTrue(
+            "urls.add(url) 必须有上游控制流连入，当前控制流如下：\n$relationSummary",
+            result.relations.any { relation ->
+                relation.kind == SemanticRelationKind.CONTROL_FLOW &&
+                    relation.toUnitId == urlsAddAction!!.id
+            },
+        )
+        assertTrue(
+            "urls.add(url) 执行后必须继续连回循环或后续节点，当前控制流如下：\n$relationSummary",
+            result.relations.any { relation ->
+                relation.kind == SemanticRelationKind.CONTROL_FLOW &&
+                    relation.fromUnitId == urlsAddAction!!.id
+            },
+        )
+
+        val flowchart = GraphAssembler().assemble(result, AnalysisDisplayMode.FLOWCHART)
+        val flowchartEdgeSummary = flowchart.edges.joinToString(separator = "\n") { edge ->
+            "${edge.fromNodeId} -> ${edge.toNodeId} [${edge.label ?: ""}]"
+        }
+
+        assertTrue(
+            "流程图里也应保留 urls.add(url) 节点，当前流程图边如下：\n$flowchartEdgeSummary",
+            flowchart.nodes.any { node -> node.id == urlsAddAction!!.id },
+        )
+        assertTrue(
+            "流程图里 urls.add(url) 也必须有上游控制流，当前流程图边如下：\n$flowchartEdgeSummary",
+            flowchart.edges.any { edge ->
+                edge.type == com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW &&
+                    edge.toNodeId == urlsAddAction!!.id
+            },
+        )
+        assertTrue(
+            "流程图里 urls.add(url) 也必须有后续控制流，当前流程图边如下：\n$flowchartEdgeSummary",
+            flowchart.edges.any { edge ->
+                edge.type == com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW &&
+                    edge.fromNodeId == urlsAddAction!!.id
+            },
+        )
+    }
+
+    fun testAnalyzeUploadFilesMethodKeepsGetUrlInvocationConnectedToUrlsAdd() {
+        myFixture.configureByText(
+            "CommonController.java",
+            """
+                package com.ruoyi.web.controller.common;
+
+                import java.util.ArrayList;
+                import java.util.List;
+
+                class CommonController {
+                    private final ServerConfig serverConfig = new ServerConfig();
+
+                    AjaxResult <caret>uploadFiles(MultipartFile[] files) {
+                        try {
+                            String filePath = RuoYiConfig.getUploadPath();
+                            List<String> urls = new ArrayList<String>();
+                            List<String> fileNames = new ArrayList<String>();
+                            List<String> newFileNames = new ArrayList<String>();
+                            List<String> originalFilenames = new ArrayList<String>();
+                            for (MultipartFile file : files) {
+                                String fileName = FileUploadUtils.upload(filePath, file);
+                                String url = serverConfig.getUrl() + fileName;
+                                urls.add(url);
+                                fileNames.add(fileName);
+                                newFileNames.add(FileUtils.getName(fileName));
+                                originalFilenames.add(file.getOriginalFilename());
+                            }
+                            AjaxResult ajax = AjaxResult.success();
+                            ajax.put("urls", StringUtils.join(urls, ","));
+                            ajax.put("fileNames", StringUtils.join(fileNames, ","));
+                            ajax.put("newFileNames", StringUtils.join(newFileNames, ","));
+                            ajax.put("originalFilenames", StringUtils.join(originalFilenames, ","));
+                            return ajax;
+                        } catch (Exception e) {
+                            return AjaxResult.error(e.getMessage());
+                        }
+                    }
+                }
+
+                interface MultipartFile {
+                    String getOriginalFilename();
+                }
+
+                class FileUploadUtils {
+                    static String upload(String basePath, MultipartFile file) { return basePath + file; }
+                }
+
+                class FileUtils {
+                    static String getName(String fileName) { return fileName; }
+                }
+
+                class RuoYiConfig {
+                    static String getUploadPath() { return "/tmp/"; }
+                }
+
+                class ServerConfig {
+                    String getUrl() { return "https://example.test/"; }
+                }
+
+                class StringUtils {
+                    static String join(List<String> values, String delimiter) { return String.join(delimiter, values); }
+                }
+
+                class AjaxResult {
+                    static AjaxResult success() { return new AjaxResult(); }
+                    static AjaxResult error(String message) { return new AjaxResult(); }
+                    AjaxResult put(String key, Object value) { return this; }
+                }
+            """.trimIndent(),
+        )
+
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor)
+        val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
+        val result = JavaCodeSemanticProvider().analyze(
+            handle = codeHandle,
+            capturePolicy = SemanticCapturePolicy(),
+            budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 1, maxInvocationsPerUnit = 16),
+        )
+
+        val urlsAddAction = result.semanticUnits
+            .filterIsInstance<FlowActionUnit>()
+            .firstOrNull { unit -> unit.title.contains("urls.add(url)") }
+        val getUrlInvocation = result.semanticUnits
+            .filterIsInstance<InvocationUnit>()
+            .firstOrNull { unit -> unit.targetSignature?.contains("ServerConfig.getUrl") == true }
+        val relationSummary = result.relations
+            .filter { relation -> relation.kind == SemanticRelationKind.CONTROL_FLOW }
+            .joinToString(separator = "\n") { relation ->
+                "${relation.fromUnitId} -> ${relation.toUnitId} [${relation.label ?: ""}]"
+            }
+
+        assertTrue("应当识别出 urls.add(url) 节点，当前控制流如下：\n$relationSummary", urlsAddAction != null)
+        assertTrue("应当识别出 ServerConfig.getUrl 调用节点，当前控制流如下：\n$relationSummary", getUrlInvocation != null)
+        assertTrue(
+            "调用 ServerConfig.getUrl 后必须继续连到 urls.add(url)，当前控制流如下：\n$relationSummary",
+            result.relations.any { relation ->
+                relation.kind == SemanticRelationKind.CONTROL_FLOW &&
+                    relation.fromUnitId == getUrlInvocation!!.id &&
+                    relation.toUnitId == urlsAddAction!!.id
+            },
+        )
+
+        val flowchart = GraphAssembler().assemble(result, AnalysisDisplayMode.FLOWCHART)
+        val flowchartEdgeSummary = flowchart.edges.joinToString(separator = "\n") { edge ->
+            "${edge.fromNodeId} -> ${edge.toNodeId} [${edge.label ?: ""}]"
+        }
+
+        assertTrue(
+            "流程图里调用 ServerConfig.getUrl 后也必须继续连到 urls.add(url)，当前流程图边如下：\n$flowchartEdgeSummary",
+            flowchart.edges.any { edge ->
+                edge.type == com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW &&
+                    edge.fromNodeId == getUrlInvocation!!.id &&
+                    edge.toNodeId == urlsAddAction!!.id
+            },
+        )
+
+        val flowchartView = FlowchartProjector().project(result)
+        val visibleEdgeSummary = flowchartView.visibleGraph.edges.joinToString(separator = "\n") { edge ->
+            "${edge.fromNodeId} -> ${edge.toNodeId} [${edge.label ?: ""}]"
+        }
+
+        assertTrue(
+            "当前真实可见流程图也必须保留 ServerConfig.getUrl -> urls.add(url)，当前 visibleGraph 边如下：\n$visibleEdgeSummary",
+            flowchartView.visibleGraph.edges.any { edge ->
+                edge.type == com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW &&
+                    edge.fromNodeId == getUrlInvocation!!.id &&
+                    edge.toNodeId == urlsAddAction!!.id
+            },
+        )
+    }
+
+    fun testAnalyzeUploadFilesMethodBuildsExplicitLoopRolesForForeachControlFlow() {
+        myFixture.configureByText(
+            "CommonController.java",
+            """
+                package com.ruoyi.web.controller.common;
+
+                import java.util.ArrayList;
+                import java.util.List;
+
+                class CommonController {
+                    AjaxResult <caret>uploadFiles(MultipartFile[] files) {
+                        List<String> urls = new ArrayList<String>();
+                        for (MultipartFile file : files) {
+                            urls.add(file.getOriginalFilename());
+                        }
+                        return AjaxResult.success(urls);
+                    }
+                }
+
+                interface MultipartFile {
+                    String getOriginalFilename();
+                }
+
+                class AjaxResult {
+                    static AjaxResult success(Object payload) { return new AjaxResult(); }
+                }
+            """.trimIndent(),
+        )
+
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor)
+        val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
+        val result = JavaCodeSemanticProvider().analyze(
+            handle = codeHandle,
+            capturePolicy = SemanticCapturePolicy(),
+            budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 1, maxInvocationsPerUnit = 16),
+        )
+
+        val loopScope = result.semanticUnits
+            .filterIsInstance<FlowScopeUnit>()
+            .firstOrNull { unit -> unit.scopeKind == "FOREACH" }
+        val loopBodyEdge = result.relations.firstOrNull { relation ->
+            relation.kind == SemanticRelationKind.CONTROL_FLOW && relation.flowEdgeRole == FlowEdgeRole.LOOP_BODY
+        }
+        val loopExitEdge = result.relations.firstOrNull { relation ->
+            relation.kind == SemanticRelationKind.CONTROL_FLOW && relation.flowEdgeRole == FlowEdgeRole.LOOP_EXIT
+        }
+        val loopBackEdge = result.relations.firstOrNull { relation ->
+            relation.kind == SemanticRelationKind.CONTROL_FLOW && relation.flowEdgeRole == FlowEdgeRole.LOOP_BACK
+        }
+
+        assertTrue("应当识别出显式 FOREACH 作用域", loopScope != null)
+        assertEquals(FlowScopeCategory.LOOP_PRE_TEST, loopScope!!.scopeCategory)
+        assertTrue("应当显式标记循环体入口边", loopBodyEdge != null)
+        assertTrue("应当显式标记循环退出边", loopExitEdge != null)
+        assertTrue("应当显式标记循环回边", loopBackEdge != null)
+    }
+
+    fun testAnalyzeInfiniteWhileLoopMarksMissingNormalExitAsIncompleteInsteadOfFakingLoopExit() {
+        myFixture.configureByText(
+            "LoopService.java",
+            """
+                package com.example;
+
+                class LoopService {
+                    void <caret>spin() {
+                        while (true) {
+                            tick();
+                        }
+                    }
+
+                    private void tick() {}
+                }
+            """.trimIndent(),
+        )
+
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor)
+        val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
+        val result = JavaCodeSemanticProvider().analyze(
+            handle = codeHandle,
+            capturePolicy = SemanticCapturePolicy(),
+            budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 1, maxInvocationsPerUnit = 8),
+        )
+
+        val loopScope = result.semanticUnits
+            .filterIsInstance<FlowScopeUnit>()
+            .firstOrNull { unit -> unit.scopeKind == "WHILE" }
+
+        assertTrue("应当识别出 while 作用域", loopScope != null)
+        assertTrue("无可证正常退出路径的循环必须显式标记为不完整，而不是伪造退出边", loopScope!!.incomplete)
+        assertTrue(
+            "while(true) 不应生成假的 LOOP_EXIT 边",
+            result.relations.none { relation ->
+                relation.kind == SemanticRelationKind.CONTROL_FLOW && relation.flowEdgeRole == FlowEdgeRole.LOOP_EXIT
+            },
+        )
+
+        val flowchart = GraphAssembler().assemble(result, AnalysisDisplayMode.FLOWCHART)
+        val projectedLoop = flowchart.nodes.firstOrNull { node -> node.id == loopScope.id }
+        assertTrue(projectedLoop != null)
+        assertEquals("true", projectedLoop!!.metadata["flow.incomplete"])
+        assertTrue(
+            "流程图也不应保留不存在的 LOOP_EXIT 边",
+            flowchart.edges.none { edge -> edge.metadata["flow.edgeRole"] == FlowEdgeRole.LOOP_EXIT.name },
         )
     }
 

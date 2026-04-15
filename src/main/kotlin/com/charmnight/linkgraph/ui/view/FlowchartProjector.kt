@@ -22,11 +22,7 @@ class FlowchartProjector(
             visibleGraph = visibleGraph,
             fullGraph = fullGraph,
             anchorNodeId = anchorNodeId,
-            summary = FlowchartSummary(
-                nodeCount = visibleGraph.nodes.size,
-                branchCount = visibleGraph.nodes.count { it.metadata?.get("flowchart.kind") == "DECISION" },
-                exceptionPathCount = visibleGraph.edges.count { it.label?.trim()?.uppercase() == "EXCEPTION" },
-            ),
+            summary = deriveFlowchartSummary(visibleGraph = visibleGraph, fullGraph = fullGraph),
         )
     }
 
@@ -40,7 +36,6 @@ class FlowchartProjector(
         }
         val nodeById = graph.nodes.associateBy { it.id }
         val outgoingBySource = graph.edges.groupBy { it.fromNodeId }
-        val incomingByTarget = graph.edges.groupBy { it.toNodeId }
         val seed = anchorNodeId?.takeIf(nodeById::containsKey) ?: graph.nodes.firstOrNull()?.id ?: return graph
         val queue = ArrayDeque<String>()
         val visibleNodeIds = linkedSetOf<String>()
@@ -50,13 +45,14 @@ class FlowchartProjector(
 
         while (queue.isNotEmpty() && visibleNodeIds.size < projectionPolicy.maxVisibleNodes) {
             val current = queue.removeFirst()
-            val candidateEdges = (outgoingBySource[current].orEmpty() + incomingByTarget[current].orEmpty())
+            val candidateEdges = outgoingBySource[current]
+                .orEmpty()
                 .sortedBy { it.id }
             for (edge in candidateEdges) {
                 if (visibleEdgeIds.size >= projectionPolicy.maxVisibleEdges) {
                     break
                 }
-                val neighborId = if (edge.fromNodeId == current) edge.toNodeId else edge.fromNodeId
+                val neighborId = edge.toNodeId
                 if (neighborId !in visibleNodeIds && visibleNodeIds.size >= projectionPolicy.maxVisibleNodes) {
                     continue
                 }

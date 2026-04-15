@@ -15,12 +15,16 @@ import type { LinkGraphEdge, LinkGraphNode } from "../../types";
 import { edgeTypeLabel } from "../../labels";
 import { FactGraphNodeCard } from "../../components/graph/nodes/FactGraphNodeCard";
 import { isDecisionFlowScope, isFlowActionNode } from "../../components/graph/nodes/nodePresentation";
+import { canEditNodeLayout } from "../../layoutEditability";
 import type { RoutedEdgeData } from "../../reactflow/RoutedEdge";
+import { resolveGraphNodeHighlightClassName } from "../graphNodeHighlights";
 
 interface FactGraphNodeData {
   node: LinkGraphNode;
   collapsed: boolean;
   collapsedCount?: number;
+  explanationFocused?: boolean;
+  draftChanged?: boolean;
   onExpandOverflow: () => void;
   onMeasure?: (size: NodeMeasuredSize) => void;
 }
@@ -28,6 +32,8 @@ interface FactGraphNodeData {
 interface BuildFactGraphNodesOptions {
   nodes: LinkGraphNode[];
   selectedNodeId: string | null;
+  explanationFocusNodeId?: string | null;
+  draftChangedNodeIds?: string[];
   collapsedNodeIds?: Iterable<string>;
   collapsedDescendantCountByNodeId?: Record<string, number>;
   onExpandOverflowNode: (nodeId: string) => void;
@@ -74,6 +80,8 @@ function FactGraphReactNode({ id, data, selected, isConnectable }: NodeProps<Fac
         selected={selected}
         collapsed={data.collapsed}
         collapsedCount={data.collapsedCount}
+        explanationFocused={data.explanationFocused}
+        draftChanged={data.draftChanged}
         onMeasure={data.onMeasure}
         onExpandOverflow={data.onExpandOverflow}
       />
@@ -173,16 +181,25 @@ function factGraphEdgeStyle(edge: LinkGraphEdge) {
 export function buildFactGraphNodes({
   nodes,
   selectedNodeId,
+  explanationFocusNodeId = null,
+  draftChangedNodeIds = [],
   collapsedNodeIds = [],
   collapsedDescendantCountByNodeId = {},
   onExpandOverflowNode,
   nodeSizeRegistry,
 }: BuildFactGraphNodesOptions): Array<Node<FactGraphNodeData>> {
   const collapsedNodeIdSet = new Set(collapsedNodeIds);
+  const draftChangedNodeIdSet = new Set(draftChangedNodeIds);
   return nodes.map((node) => ({
     id: node.id,
     type: "factGraphNode",
+    className: resolveGraphNodeHighlightClassName({
+      nodeId: node.id,
+      explanationFocusNodeId,
+      draftChangedNodeIdSet,
+    }) || undefined,
     selected: selectedNodeId === node.id,
+    draggable: canEditNodeLayout(node),
     position: node.position ?? { x: 80, y: 88 },
     sourcePosition: Position.Right,
     targetPosition: Position.Left,
@@ -190,6 +207,8 @@ export function buildFactGraphNodes({
       node,
       collapsed: collapsedNodeIdSet.has(node.id),
       collapsedCount: collapsedDescendantCountByNodeId[node.id],
+      explanationFocused: explanationFocusNodeId === node.id,
+      draftChanged: draftChangedNodeIdSet.has(node.id),
       onExpandOverflow: () => onExpandOverflowNode(node.id),
       onMeasure: (size) => nodeSizeRegistry.set(node.id, size),
     },

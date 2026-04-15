@@ -1,10 +1,13 @@
+import { useState } from "react";
 import { asyncRequestExecutionModeLabel } from "../labels";
 import type { AsyncRequestState } from "../types";
+import { resolveAsyncRequestPrimaryMessage } from "../asyncRequestStatus";
 
 interface AsyncRequestBannerProps {
   requestState?: AsyncRequestState | null;
   isRequesting?: boolean;
   requestError?: string | null;
+  telemetryCollapsedByDefault?: boolean;
 }
 
 export function resolveEffectiveRequestState(
@@ -54,13 +57,7 @@ function bannerTone(requestState: AsyncRequestState): "is-info" | "is-warning" |
 }
 
 function bannerTitle(requestState: AsyncRequestState): string | null {
-  if (requestState.statusMessage?.trim()) {
-    return requestState.statusMessage.trim();
-  }
-  if ((requestState.phase === "FAILED" || requestState.phase === "TIMED_OUT") && requestState.errorMessage?.trim()) {
-    return requestState.errorMessage.trim();
-  }
-  return null;
+  return resolveAsyncRequestPrimaryMessage(requestState);
 }
 
 function bannerDetail(requestState: AsyncRequestState): string | null {
@@ -78,6 +75,11 @@ function bannerDetail(requestState: AsyncRequestState): string | null {
 }
 
 function bannerTelemetry(requestState: AsyncRequestState): Array<{ label: string; value: string }> {
+  const promptPreviewStatus = requestState.promptPreviewAvailable
+    ? requestState.phase === "SUCCEEDED"
+      ? "可查看"
+      : "结果后可查看"
+    : null;
   const fields: Array<{ label: string; value: string | null }> = [
     {
       label: "请求",
@@ -105,11 +107,11 @@ function bannerTelemetry(requestState: AsyncRequestState): Array<{ label: string
     },
     {
       label: "返回方式",
-      value: requestState.phase !== "IDLE" ? (requestState.streaming ? "流式输出" : "完整返回") : null,
+      value: requestState.phase !== "IDLE" ? (requestState.streaming ? "流式预览" : "完整返回") : null,
     },
     {
       label: "提示词",
-      value: requestState.promptPreviewAvailable ? "可查看" : null,
+      value: promptPreviewStatus,
     },
   ];
   return fields.filter((field): field is { label: string; value: string } => Boolean(field.value));
@@ -119,6 +121,7 @@ export function AsyncRequestBanner({
   requestState,
   isRequesting = false,
   requestError,
+  telemetryCollapsedByDefault = false,
 }: AsyncRequestBannerProps) {
   const effectiveRequestState = resolveEffectiveRequestState(requestState, isRequesting, requestError);
   if (!effectiveRequestState) {
@@ -133,21 +136,40 @@ export function AsyncRequestBanner({
   if (!tone && !title && !detail && !preview && telemetry.length === 0) {
     return null;
   }
+  const hasExpandableDetails = Boolean(preview) || telemetry.length > 0;
+  const [detailsExpanded, setDetailsExpanded] = useState(() => !telemetryCollapsedByDefault);
+  const shouldShowDetails = !hasExpandableDetails || detailsExpanded;
 
   return (
     <div className={`request-state-banner ${tone ?? ""}`.trim()}>
-      {title ? <strong>{title}</strong> : null}
+      <div className="request-state-banner-head">
+        {title ? <strong className="request-state-banner-title">{title}</strong> : null}
+        {hasExpandableDetails && telemetryCollapsedByDefault ? (
+          <button
+            type="button"
+            className="ghost-button compact"
+            aria-expanded={detailsExpanded}
+            onClick={() => setDetailsExpanded((current) => !current)}
+          >
+            {detailsExpanded ? "收起请求详情" : "展开请求详情"}
+          </button>
+        ) : null}
+      </div>
       {detail ? <p className="muted">{detail}</p> : null}
-      {preview ? <pre className="request-state-preview">{preview}</pre> : null}
-      {telemetry.length > 0 ? (
-        <dl className="request-state-meta-grid">
-          {telemetry.map((item) => (
-            <div key={`${item.label}:${item.value}`} className="request-state-meta-item">
-              <dt>{item.label}</dt>
-              <dd>{item.value}</dd>
-            </div>
-          ))}
-        </dl>
+      {shouldShowDetails ? (
+        <div className="request-state-banner-details">
+          {preview ? <pre className="request-state-preview">{preview}</pre> : null}
+          {telemetry.length > 0 ? (
+            <dl className="request-state-meta-grid">
+              {telemetry.map((item) => (
+                <div key={`${item.label}:${item.value}`} className="request-state-meta-item">
+                  <dt>{item.label}</dt>
+                  <dd>{item.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

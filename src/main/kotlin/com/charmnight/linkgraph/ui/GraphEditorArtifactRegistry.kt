@@ -35,15 +35,15 @@ class GraphEditorArtifactRegistry {
             return artifactId
         }
 
-        val draftContentArtifactIds = snapshot.generatedCodeDrafts.associate { draft ->
-            draft.id to requireNotNull(
-                register(
-                    kind = "draft-content",
-                    ownerKey = draft.id,
-                    content = draft.content,
-                ),
-            )
-        }
+        val draftContentArtifactIds = snapshot.generatedCodeDrafts.mapNotNull { draft ->
+            register(
+                kind = "draft-content",
+                ownerKey = draft.id,
+                content = draft.content,
+            )?.let { artifactId ->
+                draft.id to artifactId
+            }
+        }.toMap()
 
         val snapshotArtifacts = SnapshotArtifacts(
             auditPromptPreviewArtifactId = register(

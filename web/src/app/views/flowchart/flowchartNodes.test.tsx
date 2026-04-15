@@ -63,6 +63,22 @@ function decisionNode(): LinkGraphNode {
   };
 }
 
+function loopDecisionNode(): LinkGraphNode {
+  return {
+    id: "scope:foreach",
+    type: "FLOW_SCOPE",
+    title: "for (line : lines)",
+    inputs: [],
+    outputs: [],
+    certainty: "PROVEN",
+    bindingStatus: "BOUND",
+    metadata: {
+      "flow.kind": "FOREACH",
+      "flowchart.kind": "DECISION",
+    },
+  };
+}
+
 function mergeNode(metadata?: Record<string, string>): LinkGraphNode {
   return {
     id: "merge:after",
@@ -303,6 +319,28 @@ describe("buildFlowchartNodes", () => {
     expect(container.querySelector('[data-handle-id="source-bottom"]')).toHaveAttribute("data-style-transform", "translate(-50%, 0)");
   });
 
+  it("renders foreach loop scopes with the same decision handles as branch nodes", () => {
+    const FlowchartNode = FLOWCHART_NODE_TYPES.flowchartNode as (props: Record<string, unknown>) => JSX.Element;
+
+    const { container } = render(
+      <FlowchartNode
+        id="scope:foreach"
+        data={{
+          node: loopDecisionNode(),
+        }}
+        selected={false}
+        isConnectable
+      />,
+    );
+
+    expect(container.querySelector(".flowchart-react-node.kind-decision")).toBeInTheDocument();
+    expect(screen.getAllByTestId("react-flow-handle")).toHaveLength(4);
+    expect(container.querySelector('[data-handle-id="target-top"]')).toHaveAttribute("data-position", "top");
+    expect(container.querySelector('[data-handle-id="source-left"]')).toHaveAttribute("data-position", "left");
+    expect(container.querySelector('[data-handle-id="source-right"]')).toHaveAttribute("data-position", "right");
+    expect(container.querySelector('[data-handle-id="source-bottom"]')).toHaveAttribute("data-position", "bottom");
+  });
+
   it("keeps the decision wrapper stretched to the same minimum height as the ELK layout box", () => {
     const FlowchartNode = FLOWCHART_NODE_TYPES.flowchartNode as (props: Record<string, unknown>) => JSX.Element;
 
@@ -326,6 +364,8 @@ describe("buildFlowchartNodes", () => {
       nodes: [decisionNode()],
       edges: [],
       selectedNodeId: "scope:if",
+      explanationFocusNodeId: null,
+      draftChangedNodeIds: [],
       nodeSizeRegistry: createNodeSizeRegistry(),
     })[0];
 
@@ -594,6 +634,36 @@ describe("buildFlowchartNodes", () => {
     expect(builtEdges.find((edge) => edge.id === "edge:delete-false")?.sourceHandle).toBe("source-bottom");
     expect(builtEdges.find((edge) => edge.id === "edge:delete-false")?.targetHandle).toBe("target-top");
     expect(builtEdges.find((edge) => edge.id === "design-link:delete-bypass")?.sourceHandle).toBe("source-right");
+  });
+
+  it("locks semantic flowchart nodes while keeping manual draft nodes draggable", () => {
+    const registry = createNodeSizeRegistry();
+    const semantic = {
+      ...methodNode("method:semantic", "CommonController.uploadFiles"),
+      position: { x: 120, y: 96 },
+      sourceTag: "FACT" as const,
+      metadata: { "flowchart.kind": "ENTRY" },
+    };
+    const manual = {
+      ...methodNode("design:manual", "人工补充节点"),
+      position: { x: 520, y: 96 },
+      bindingStatus: "DESIGN_ONLY" as const,
+      sourceTag: "DRAFT_MANUAL" as const,
+      metadata: {
+        "flowchart.kind": "PROCESS",
+        "linkGraph.manual": "true",
+      },
+    };
+
+    const builtNodes = buildFlowchartNodes({
+      nodes: [semantic, manual],
+      edges: [],
+      selectedNodeId: null,
+      nodeSizeRegistry: registry,
+    });
+
+    expect(builtNodes.find((node) => node.id === semantic.id)?.draggable).toBe(false);
+    expect(builtNodes.find((node) => node.id === manual.id)?.draggable).toBe(true);
   });
 
   it("prefers explicit edge handle intent over inferred decision semantics when building flowchart edges", () => {
@@ -882,6 +952,8 @@ describe("buildFlowchartNodes", () => {
       nodes: strippedNodes,
       edges: laidOut.edges,
       selectedNodeId: null,
+      explanationFocusNodeId: null,
+      draftChangedNodeIds: [],
       nodeSizeRegistry: createNodeSizeRegistry(),
     });
     const FlowchartNode = FLOWCHART_NODE_TYPES.flowchartNode as (props: Record<string, unknown>) => JSX.Element;
@@ -916,5 +988,29 @@ describe("buildFlowchartNodes", () => {
     expect(container.querySelector('[data-handle-id="source-right"]')).toBeInTheDocument();
     expect(container.querySelector('[data-handle-id="target-left-0"]')).toBeInTheDocument();
     expect(container.querySelector('[data-handle-id="target-right-0"]')).toBeInTheDocument();
+  });
+
+  it("marks explanation focus nodes and draft change nodes with dedicated React Flow classes", () => {
+    const builtNodes = buildFlowchartNodes({
+      nodes: [
+        {
+          ...methodNode("method:anchor", "CommonController.fileDownload"),
+          metadata: { "flowchart.kind": "ENTRY" },
+        },
+        {
+          ...methodNode("action:guard", "validate()"),
+          type: "FLOW_ACTION",
+          metadata: { "flowchart.kind": "PROCESS" },
+        },
+      ],
+      edges: [],
+      selectedNodeId: "method:anchor",
+      explanationFocusNodeId: "method:anchor",
+      draftChangedNodeIds: ["action:guard"],
+      nodeSizeRegistry: createNodeSizeRegistry(),
+    });
+
+    expect(builtNodes.find((node) => node.id === "method:anchor")?.className ?? "").toContain("is-explanation-focus");
+    expect(builtNodes.find((node) => node.id === "action:guard")?.className ?? "").toContain("is-draft-change");
   });
 });

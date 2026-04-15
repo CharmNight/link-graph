@@ -206,6 +206,7 @@ class GraphEditorPageRenderer {
                 resourceRelationViewToMap(it, editorSnapshot.layoutState)
             },
             "draftPatchPreview" to snapshot.draftPatchPreview?.let(::patchToMap),
+            "draftWorkbenchState" to draftWorkbenchStateToMap(snapshot.draftWorkbenchState),
             "canUndoDraftPatchApply" to (snapshot.draftPatchUndoState != null),
             "lastAppliedDraftPatchSummary" to snapshot.draftPatchUndoState?.patchPreview?.summary,
             "lastDraftPatchApplyResult" to snapshot.lastDraftPatchApplyResult?.let(::draftPatchApplyResultToMap),
@@ -260,20 +261,28 @@ class GraphEditorPageRenderer {
                             "description" to item.description,
                             "risk" to item.risk.name,
                             "targetPath" to item.targetPath,
+                            "editScopes" to item.editScopes.map(::editScopeToMap),
                         )
                     },
                 )
             },
             "generationPlanRequestState" to requestStateToMap(snapshot.generationPlanRequestState),
             "generatedCodeDrafts" to snapshot.generatedCodeDrafts.map { draft ->
-                linkedMapOf(
+                val contentArtifactId = artifactRefs.generatedCodeDraftContentArtifactIds[draft.id]
+                linkedMapOf<String, Any?>(
                     "id" to draft.id,
                     "sourceNodeId" to draft.sourceNodeId,
                     "title" to draft.title,
                     "targetPath" to draft.targetPath,
-                    "contentArtifactId" to artifactRefs.generatedCodeDraftContentArtifactIds[draft.id],
+                    "contentArtifactId" to contentArtifactId,
+                    "editOperations" to draft.editOperations.map(::codeEditOperationToMap),
+                    "editScopes" to draft.editScopes.map(::editScopeToMap),
                     "warnings" to draft.warnings,
-                )
+                ).apply {
+                    if (contentArtifactId == null && draft.content != null) {
+                        put("content", draft.content)
+                    }
+                }
             },
             "generatedCodeDraftWarnings" to snapshot.generatedCodeDraftWarnings,
             "generatedCodeDraftSource" to snapshot.generatedCodeDraftSource?.name,
@@ -299,6 +308,7 @@ class GraphEditorPageRenderer {
             "snapshotRevision" to editorSnapshot.snapshotRevision,
             "selectedNodeId" to (snapshot.selectedNodeId ?: visibleGraph.nodes.firstOrNull()?.id),
             "sourceNavigationState" to sourceNavigationStateToMap(snapshot.sourceNavigationState),
+            "workbenchSectionPreferences" to LinkedHashMap(snapshot.workbenchSectionPreferences),
             "lastMessageType" to snapshot.lastMessageType,
             "lastGraphSource" to snapshot.lastGraphSource,
             "operationFeedback" to snapshot.operationFeedback?.let { feedback ->
@@ -445,6 +455,16 @@ class GraphEditorPageRenderer {
             "nodeCount" to document.summary.nodeCount,
             "branchCount" to document.summary.branchCount,
             "exceptionPathCount" to document.summary.exceptionPathCount,
+            "fullNodeCount" to document.summary.fullNodeCount,
+            "fullEdgeCount" to document.summary.fullEdgeCount,
+            "hiddenNodeCount" to document.summary.hiddenNodeCount,
+            "hiddenEdgeCount" to document.summary.hiddenEdgeCount,
+            "truncated" to document.summary.truncated,
+            "incompleteNodeCount" to document.summary.incompleteNodeCount,
+            "incompleteEdgeCount" to document.summary.incompleteEdgeCount,
+            "semanticallyIncomplete" to document.summary.semanticallyIncomplete,
+            "syntheticEdgeCount" to document.summary.syntheticEdgeCount,
+            "syntheticEntryEdgeCount" to document.summary.syntheticEntryEdgeCount,
         ),
         layoutState = layoutState,
     )
@@ -512,6 +532,13 @@ class GraphEditorPageRenderer {
         "promptPreviewArtifactId" to promptPreviewArtifactId,
         "warnings" to result.warnings,
         "findings" to result.findings.map(::resultEvidenceFindingToMap),
+        "candidateChanges" to result.candidateChanges.map(::candidateDraftChangeToMap),
+        "newCandidateChanges" to result.newCandidateChanges.map(::candidateDraftChangeToMap),
+        "investigationLeads" to result.investigationLeads.map(::auditInvestigationLeadToMap),
+        "newInvestigationLeads" to result.newInvestigationLeads.map(::auditInvestigationLeadToMap),
+        "sourceContext" to result.sourceContext.map(::sourceSnippetContextToMap),
+        "evidenceTrace" to result.evidenceTrace.map(::evidenceTraceEntryToMap),
+        "auditSession" to result.auditSession?.let(::auditConversationSessionToMap),
         "patch" to result.patch?.let(::patchToMap),
     )
 
@@ -529,6 +556,8 @@ class GraphEditorPageRenderer {
                 "granularity" to step.granularity.name,
                 "kind" to step.kind.name,
                 "description" to step.description,
+                "primaryNodeId" to step.primaryNodeId,
+                "codeSnippet" to step.codeSnippet,
                 "evidence" to step.evidence.map(::resultEvidenceFindingToMap),
                 "followUpQuestions" to step.followUpQuestions,
                 "downstreamTargets" to step.downstreamTargets,
@@ -561,6 +590,134 @@ class GraphEditorPageRenderer {
         "appliedEdgeIds" to result.appliedEdgeIds,
         "focusNodeId" to result.focusNodeId,
         "appliedTargets" to result.appliedTargets,
+    )
+
+    private fun draftWorkbenchStateToMap(
+        state: com.charmnight.linkgraph.workbench.DraftWorkbenchState,
+    ): Map<String, Any?> = linkedMapOf(
+        "draftChanges" to state.draftChanges.map(::draftWorkbenchEntryToMap),
+        "draftNotes" to state.draftNotes.map(::draftWorkbenchEntryToMap),
+    )
+
+    private fun draftWorkbenchEntryToMap(
+        entry: com.charmnight.linkgraph.workbench.DraftWorkbenchEntry,
+    ): Map<String, Any?> = linkedMapOf(
+        "entryId" to entry.entryId,
+        "kind" to entry.kind.name,
+        "title" to entry.title,
+        "sourceChangeId" to entry.sourceChangeId,
+        "targetStepIds" to entry.targetStepIds,
+        "targetNodeIds" to entry.targetNodeIds,
+        "beforeState" to entry.beforeState,
+        "afterState" to entry.afterState,
+        "reason" to entry.reason,
+        "impactSummary" to entry.impactSummary,
+        "claimType" to entry.claimType,
+        "evidence" to entry.evidence.map(::resultEvidenceFindingToMap),
+        "editScopes" to entry.editScopes.map(::editScopeToMap),
+    )
+
+    private fun candidateDraftChangeToMap(
+        change: com.charmnight.linkgraph.workbench.CandidateDraftChange,
+    ): Map<String, Any?> = linkedMapOf(
+        "changeId" to change.changeId,
+        "status" to change.status.name,
+        "title" to change.title,
+        "targetStepIds" to change.targetStepIds,
+        "targetNodeIds" to change.targetNodeIds,
+        "beforeState" to change.beforeState,
+        "afterState" to change.afterState,
+        "reason" to change.reason,
+        "impactSummary" to change.impactSummary,
+        "claimType" to change.claimType,
+        "evidence" to change.evidence.map(::resultEvidenceFindingToMap),
+        "editScopes" to change.editScopes.map(::editScopeToMap),
+    )
+
+    private fun auditConversationSessionToMap(
+        session: com.charmnight.linkgraph.workbench.AuditConversationSession,
+    ): Map<String, Any?> = linkedMapOf(
+        "sessionId" to session.sessionId,
+        "scopeKey" to session.scopeKey,
+        "messages" to session.messages.map(::auditConversationMessageToMap),
+        "candidateChanges" to session.candidateChanges.map(::candidateDraftChangeToMap),
+        "investigationLeads" to session.investigationLeads.map(::auditInvestigationLeadToMap),
+        "focusTargetId" to session.focusTargetId,
+    )
+
+    private fun auditInvestigationLeadToMap(
+        lead: com.charmnight.linkgraph.workbench.AuditInvestigationLead,
+    ): Map<String, Any?> = linkedMapOf(
+        "leadId" to lead.leadId,
+        "status" to lead.status.name,
+        "title" to lead.title,
+        "targetStepIds" to lead.targetStepIds,
+        "targetNodeIds" to lead.targetNodeIds,
+        "summary" to lead.summary,
+        "evidenceGap" to lead.evidenceGap,
+        "recommendedQuestion" to lead.recommendedQuestion,
+        "claimType" to lead.claimType,
+        "evidence" to lead.evidence.map(::resultEvidenceFindingToMap),
+    )
+
+    private fun auditConversationMessageToMap(
+        message: com.charmnight.linkgraph.workbench.AuditConversationMessage,
+    ): Map<String, Any?> = linkedMapOf(
+        "messageId" to message.messageId,
+        "role" to message.role.name,
+        "content" to message.content,
+        "focusTargetId" to message.focusTargetId,
+    )
+
+    private fun sourceSnippetContextToMap(
+        snippet: com.charmnight.linkgraph.llm.SourceSnippetContext,
+    ): Map<String, Any?> = linkedMapOf(
+        "nodeId" to snippet.nodeId,
+        "filePath" to snippet.filePath,
+        "startOffset" to snippet.startOffset,
+        "endOffset" to snippet.endOffset,
+        "startLine" to snippet.startLine,
+        "endLine" to snippet.endLine,
+        "snippet" to snippet.snippet,
+    )
+
+    private fun evidenceTraceEntryToMap(
+        trace: com.charmnight.linkgraph.llm.EvidenceTraceEntry,
+    ): Map<String, Any?> = linkedMapOf(
+        "nodeId" to trace.nodeId,
+        "filePath" to trace.filePath,
+        "reason" to trace.reason,
+        "startLine" to trace.startLine,
+        "endLine" to trace.endLine,
+        "includedInPrompt" to trace.includedInPrompt,
+    )
+
+    private fun editScopeToMap(
+        scope: com.charmnight.linkgraph.llm.EditScope,
+    ): Map<String, Any?> = linkedMapOf(
+        "scopeId" to scope.scopeId,
+        "targetNodeId" to scope.targetNodeId,
+        "filePath" to scope.filePath,
+        "language" to scope.language,
+        "symbolKind" to scope.symbolKind,
+        "symbolSignature" to scope.symbolSignature,
+        "startOffset" to scope.startOffset,
+        "endOffset" to scope.endOffset,
+        "startLine" to scope.startLine,
+        "endLine" to scope.endLine,
+        "allowedChangeKinds" to scope.allowedChangeKinds,
+        "supportingFindingIds" to scope.supportingFindingIds,
+    )
+
+    private fun codeEditOperationToMap(
+        operation: com.charmnight.linkgraph.codegen.CodeEditOperation,
+    ): Map<String, Any?> = linkedMapOf(
+        "operationId" to operation.operationId,
+        "filePath" to operation.filePath,
+        "scopeId" to operation.scopeId,
+        "kind" to operation.kind.name,
+        "payload" to operation.payload,
+        "warnings" to operation.warnings,
     )
 
     /** 表示已经编码好的原始 JSON 片段，写出时不再做字符串转义。 */

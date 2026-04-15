@@ -232,6 +232,49 @@ class GraphModelTest {
     }
 
     @Test
+    fun flowchartMetadataRoundTripPreservesExplicitControlFlowRoles() {
+        val loopNode = GraphNode(
+            id = "scope:foreach",
+            type = NodeType.FLOW_SCOPE,
+            title = "for (file : files)",
+            metadata = mapOf(
+                "flow.kind" to "FOREACH",
+                "flow.scopeKind" to "FOREACH",
+                "flow.scopeCategory" to "LOOP_PRE_TEST",
+                "flow.incomplete" to "false",
+            ),
+        )
+        val loopBodyEdge = GraphEdge(
+            id = "control:loop-body",
+            type = EdgeType.CONTROL_FLOW,
+            fromNodeId = loopNode.id,
+            toNodeId = "action:upload",
+            label = "TRUE",
+            metadata = mapOf(
+                "flow.edgeRole" to "LOOP_BODY",
+                "flow.synthetic" to "false",
+                "flow.provenance" to "SEMANTIC_ANALYSIS",
+            ),
+        )
+
+        val roundTrip = GraphJson.fromJson(
+            GraphJson.toJson(
+                GraphDocument(
+                    nodes = listOf(loopNode),
+                    edges = listOf(loopBodyEdge),
+                ),
+            ),
+        )
+
+        assertEquals("LOOP_PRE_TEST", roundTrip.nodes.single().metadata["flow.scopeCategory"])
+        assertEquals("FOREACH", roundTrip.nodes.single().metadata["flow.scopeKind"])
+        assertEquals("false", roundTrip.nodes.single().metadata["flow.incomplete"])
+        assertEquals("LOOP_BODY", roundTrip.edges.single().metadata["flow.edgeRole"])
+        assertEquals("false", roundTrip.edges.single().metadata["flow.synthetic"])
+        assertEquals("SEMANTIC_ANALYSIS", roundTrip.edges.single().metadata["flow.provenance"])
+    }
+
+    @Test
     fun approvedEnumSurfaceExists() {
         assertEquals(
             setOf(

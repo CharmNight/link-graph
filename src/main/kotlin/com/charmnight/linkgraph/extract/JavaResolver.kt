@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.services.debugLazy
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.roots.ProjectFileIndex
@@ -90,13 +91,17 @@ class JavaResolver {
         }
         val body = method.body ?: run {
             if (semantic.domain != MethodSemanticDomain.JAVA) {
-                logger.info("静态下游提取跳过: reason=noBody, ${semantic.debugInfo(methodKey(method))}")
+                debugLazy(logger.isDebugEnabled, logger::debug) {
+                    "静态下游提取跳过: reason=noBody, ${semantic.debugInfo(methodKey(method))}"
+                }
             }
             return ResolvedMethodFlow(boundary = semantic.explicitCurrentMethodBoundary(methodKey(method)))
         }
         val resolvedFlow = resolveJavaCallGraph(method, body)
         if (resolvedFlow.calls.isEmpty() && semantic.domain != MethodSemanticDomain.JAVA) {
-            logger.info("静态下游提取结果为空: ${semantic.debugInfo(methodKey(method))}")
+            debugLazy(logger.isDebugEnabled, logger::debug) {
+                "静态下游提取结果为空: ${semantic.debugInfo(methodKey(method))}"
+            }
         }
         return resolvedFlow
     }
@@ -108,11 +113,15 @@ class JavaResolver {
         val methodSignature = methodKey(method)
         val executionPlan = resolveKotlinExecutionPlan(method, semantic)
         executionPlan.boundary?.let { boundary ->
-            logger.info("静态下游提取跳过: reason=${executionPlan.reasonTag}, ${semantic.debugInfo(methodSignature)}")
+            debugLazy(logger.isDebugEnabled, logger::debug) {
+                "静态下游提取跳过: reason=${executionPlan.reasonTag}, ${semantic.debugInfo(methodSignature)}"
+            }
             return ResolvedMethodFlow(boundary = boundary)
         }
         if (executionPlan.roots.isEmpty()) {
-            logger.info("静态下游提取跳过: reason=noKotlinExecutionRoots, ${semantic.debugInfo(methodSignature)}")
+            debugLazy(logger.isDebugEnabled, logger::debug) {
+                "静态下游提取跳过: reason=noKotlinExecutionRoots, ${semantic.debugInfo(methodSignature)}"
+            }
             return ResolvedMethodFlow()
         }
         val methodNodeId = GraphNode.stableId(NodeType.METHOD, methodKey(method))
@@ -125,7 +134,9 @@ class JavaResolver {
             occurrence.register(callOrder)
         }
         if (resolvedCalls.isEmpty()) {
-            logger.info("静态下游提取结果为空: ${semantic.debugInfo(methodKey(method))}")
+            debugLazy(logger.isDebugEnabled, logger::debug) {
+                "静态下游提取结果为空: ${semantic.debugInfo(methodKey(method))}"
+            }
         }
         return ResolvedMethodFlow(calls = resolvedCalls.values.toList())
     }
@@ -177,7 +188,9 @@ class JavaResolver {
             }
             callers.values.sortedBy(::methodKey).also { resolvedCallers ->
                 if (resolvedCallers.isEmpty() && semantic.domain != MethodSemanticDomain.JAVA) {
-                    logger.info("静态上游提取结果为空: ${semantic.debugInfo(methodKey(method))}")
+                    debugLazy(logger.isDebugEnabled, logger::debug) {
+                        "静态上游提取结果为空: ${semantic.debugInfo(methodKey(method))}"
+                    }
                 }
             }
         }
@@ -1177,7 +1190,9 @@ class JavaResolver {
             if (!isBenignPsiCancellation(throwable)) {
                 throw throwable
             }
-            logger.info("链路解析在 PSI/索引释放后提前终止: ${throwable.javaClass.simpleName}")
+            debugLazy(logger.isDebugEnabled, logger::debug) {
+                "链路解析在 PSI/索引释放后提前终止: ${throwable.javaClass.simpleName}"
+            }
             fallback
         }
     }

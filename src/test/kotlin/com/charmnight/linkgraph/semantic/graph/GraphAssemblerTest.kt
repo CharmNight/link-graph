@@ -3,6 +3,7 @@ package com.charmnight.linkgraph.semantic.graph
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.model.FlowActionUnit
+import com.charmnight.linkgraph.semantic.model.FlowEdgeRole
 import com.charmnight.linkgraph.semantic.model.InvocationUnit
 import com.charmnight.linkgraph.semantic.model.MergeUnit
 import com.charmnight.linkgraph.semantic.model.MethodLikeUnit
@@ -11,6 +12,7 @@ import com.charmnight.linkgraph.semantic.model.SemanticAnalysisResult
 import com.charmnight.linkgraph.semantic.model.SemanticAnchor
 import com.charmnight.linkgraph.semantic.model.SemanticRelation
 import com.charmnight.linkgraph.semantic.model.SemanticRelationKind
+import com.charmnight.linkgraph.semantic.model.FlowScopeCategory
 import com.charmnight.linkgraph.semantic.model.TerminalUnit
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.subject.ResourceSubjectHandle
@@ -54,6 +56,28 @@ class GraphAssemblerTest {
         assertTrue(resourceView.edges.any { edge -> edge.type == EdgeType.LINKS_DOC })
         assertTrue(resourceView.nodes.none { node -> node.type == NodeType.FLOW_ACTION })
         assertTrue(resourceView.edges.none { edge -> edge.type == EdgeType.CONTROL_FLOW })
+    }
+
+    @Test
+    fun factGraphShouldCarryMethodDocIntoProjectedNode() {
+        val sample = sampleAnalysisResult()
+        val methodId = sample.anchors.single().targetUnitId
+        val analysisResult = sample.copy(
+            semanticUnits = sample.semanticUnits.map { unit ->
+                if (unit is MethodLikeUnit && unit.id == methodId) {
+                    unit.copy(doc = "提交订单入口，负责参数校验与下游编排。")
+                } else {
+                    unit
+                }
+            },
+        )
+
+        val factGraph = GraphAssembler().assemble(analysisResult, AnalysisDisplayMode.FACT_GRAPH)
+
+        assertEquals(
+            "提交订单入口，负责参数校验与下游编排。",
+            factGraph.nodes.first { node -> node.id == methodId }.doc,
+        )
     }
 
     @Test
@@ -315,6 +339,153 @@ class GraphAssemblerTest {
             ),
             flowchart.edges.map { edge -> "${edge.fromNodeId}->${edge.toNodeId}:${edge.label ?: ""}" },
         )
+    }
+
+    @Test
+    fun flowchartShouldProjectLoopScopesAsDecisionNodes() {
+        val subject = sampleAnalysisResult().subject
+        val entryMethod = MethodLikeUnit(
+            id = "method:loop-entry",
+            title = "LoopSample.render",
+            signature = "com.example.LoopSample.render():void",
+        )
+        val foreachScope = com.charmnight.linkgraph.semantic.model.FlowScopeUnit(
+            id = "scope:foreach",
+            title = "for (item : items)",
+            scopeKind = "FOREACH",
+        )
+        val bodyAction = FlowActionUnit(
+            id = "action:body",
+            title = "process(item)",
+            actionKind = "ACTION",
+        )
+        val afterAction = FlowActionUnit(
+            id = "action:after",
+            title = "finish()",
+            actionKind = "ACTION",
+        )
+        val result = SemanticAnalysisResult(
+            subject = subject,
+            anchors = listOf(SemanticAnchor(id = "anchor-loop", targetUnitId = entryMethod.id, label = "入口")),
+            semanticUnits = listOf(entryMethod, foreachScope, bodyAction, afterAction),
+            relations = listOf(
+                SemanticRelation(
+                    kind = SemanticRelationKind.CONTROL_FLOW,
+                    fromUnitId = entryMethod.id,
+                    toUnitId = foreachScope.id,
+                    flowEdgeRole = FlowEdgeRole.ENTRY,
+                ),
+                SemanticRelation(
+                    kind = SemanticRelationKind.CONTROL_FLOW,
+                    fromUnitId = foreachScope.id,
+                    toUnitId = bodyAction.id,
+                    label = "TRUE",
+                    flowEdgeRole = FlowEdgeRole.LOOP_BODY,
+                ),
+                SemanticRelation(
+                    kind = SemanticRelationKind.CONTROL_FLOW,
+                    fromUnitId = bodyAction.id,
+                    toUnitId = foreachScope.id,
+                    label = "LOOP_BACK",
+                    flowEdgeRole = FlowEdgeRole.LOOP_BACK,
+                ),
+                SemanticRelation(
+                    kind = SemanticRelationKind.CONTROL_FLOW,
+                    fromUnitId = foreachScope.id,
+                    toUnitId = afterAction.id,
+                    label = "FALSE",
+                    flowEdgeRole = FlowEdgeRole.LOOP_EXIT,
+                ),
+            ),
+            diagnostics = emptyList(),
+            boundaries = emptyList(),
+            sourceMappings = emptyList(),
+        )
+
+        val flowchart = GraphAssembler().assemble(result, AnalysisDisplayMode.FLOWCHART)
+        val projectedLoop = flowchart.nodes.first { node -> node.id == foreachScope.id }
+        val loopBodyEdge = flowchart.edges.first { edge -> edge.fromNodeId == foreachScope.id && edge.toNodeId == bodyAction.id }
+        val loopExitEdge = flowchart.edges.first { edge -> edge.fromNodeId == foreachScope.id && edge.toNodeId == afterAction.id }
+        val loopBackEdge = flowchart.edges.first { edge -> edge.fromNodeId == bodyAction.id && edge.toNodeId == foreachScope.id }
+
+        assertEquals("DECISION", projectedLoop.metadata["flowchart.kind"])
+        assertEquals("LOOP_PRE_TEST", projectedLoop.metadata["flow.scopeCategory"])
+        assertEquals("FOREACH", projectedLoop.metadata["flow.scopeKind"])
+        assertEquals(FlowScopeCategory.LOOP_PRE_TEST.name, projectedLoop.metadata["flow.scopeCategory"])
+        assertEquals(FlowEdgeRole.LOOP_BODY.name, loopBodyEdge.metadata["flow.edgeRole"])
+        assertEquals(FlowEdgeRole.LOOP_EXIT.name, loopExitEdge.metadata["flow.edgeRole"])
+        assertEquals(FlowEdgeRole.LOOP_BACK.name, loopBackEdge.metadata["flow.edgeRole"])
+    }
+
+    @Test
+    fun flowchartShouldProjectPostTestLoopsWithExplicitScopeCategoryAndEdgeRoles() {
+        val subject = sampleAnalysisResult().subject
+        val entryMethod = MethodLikeUnit(
+            id = "method:post-loop-entry",
+            title = "LoopSample.flush",
+            signature = "com.example.LoopSample.flush():void",
+        )
+        val doWhileScope = com.charmnight.linkgraph.semantic.model.FlowScopeUnit(
+            id = "scope:do-while",
+            title = "do-while (pending())",
+            scopeKind = "DO_WHILE",
+            scopeCategory = FlowScopeCategory.LOOP_POST_TEST,
+        )
+        val bodyAction = FlowActionUnit(
+            id = "action:drain",
+            title = "drain()",
+            actionKind = "ACTION",
+        )
+        val afterAction = FlowActionUnit(
+            id = "action:complete",
+            title = "complete()",
+            actionKind = "ACTION",
+        )
+        val result = SemanticAnalysisResult(
+            subject = subject,
+            anchors = listOf(SemanticAnchor(id = "anchor-post-loop", targetUnitId = entryMethod.id, label = "入口")),
+            semanticUnits = listOf(entryMethod, doWhileScope, bodyAction, afterAction),
+            relations = listOf(
+                SemanticRelation(
+                    kind = SemanticRelationKind.CONTROL_FLOW,
+                    fromUnitId = entryMethod.id,
+                    toUnitId = bodyAction.id,
+                    flowEdgeRole = FlowEdgeRole.ENTRY,
+                ),
+                SemanticRelation(
+                    kind = SemanticRelationKind.CONTROL_FLOW,
+                    fromUnitId = bodyAction.id,
+                    toUnitId = doWhileScope.id,
+                    flowEdgeRole = FlowEdgeRole.NORMAL,
+                ),
+                SemanticRelation(
+                    kind = SemanticRelationKind.CONTROL_FLOW,
+                    fromUnitId = doWhileScope.id,
+                    toUnitId = bodyAction.id,
+                    label = "TRUE",
+                    flowEdgeRole = FlowEdgeRole.LOOP_BACK,
+                ),
+                SemanticRelation(
+                    kind = SemanticRelationKind.CONTROL_FLOW,
+                    fromUnitId = doWhileScope.id,
+                    toUnitId = afterAction.id,
+                    label = "FALSE",
+                    flowEdgeRole = FlowEdgeRole.LOOP_EXIT,
+                ),
+            ),
+            diagnostics = emptyList(),
+            boundaries = emptyList(),
+            sourceMappings = emptyList(),
+        )
+
+        val flowchart = GraphAssembler().assemble(result, AnalysisDisplayMode.FLOWCHART)
+        val projectedLoop = flowchart.nodes.first { node -> node.id == doWhileScope.id }
+        val loopBackEdge = flowchart.edges.first { edge -> edge.fromNodeId == doWhileScope.id && edge.toNodeId == bodyAction.id }
+        val loopExitEdge = flowchart.edges.first { edge -> edge.fromNodeId == doWhileScope.id && edge.toNodeId == afterAction.id }
+
+        assertEquals(FlowScopeCategory.LOOP_POST_TEST.name, projectedLoop.metadata["flow.scopeCategory"])
+        assertEquals(FlowEdgeRole.LOOP_BACK.name, loopBackEdge.metadata["flow.edgeRole"])
+        assertEquals(FlowEdgeRole.LOOP_EXIT.name, loopExitEdge.metadata["flow.edgeRole"])
     }
 
     private fun sampleAnalysisResult(): SemanticAnalysisResult {

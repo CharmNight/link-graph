@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.services
 
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 
 /**
@@ -59,6 +60,27 @@ internal class ProjectEditorSession(
     ) {
         stateService.markGraphChanged(
             graph = graph,
+            selectedMethodSignature = selectedMethodSignature,
+            preserveDraftPatchUndo = preserveDraftPatchUndo,
+        )
+        if (syncBrowser) {
+            onBrowserSyncRequested()
+        }
+    }
+
+    /**
+     * 记录当前展示视图内的图结构变化，并按需通知浏览器同步。
+     */
+    fun markViewGraphChanged(
+        graph: GraphDocument,
+        displayMode: AnalysisDisplayMode,
+        selectedMethodSignature: String? = null,
+        preserveDraftPatchUndo: Boolean = false,
+        syncBrowser: Boolean = true,
+    ) {
+        stateService.markViewGraphChanged(
+            graph = graph,
+            displayMode = displayMode,
             selectedMethodSignature = selectedMethodSignature,
             preserveDraftPatchUndo = preserveDraftPatchUndo,
         )

@@ -1,8 +1,12 @@
 package com.charmnight.linkgraph.services
 
 import com.charmnight.linkgraph.diff.GraphDiffer
+import com.charmnight.linkgraph.codegen.ProjectPathNormalizer
 import com.charmnight.linkgraph.llm.GenerationContext
+import com.charmnight.linkgraph.llm.GenerationPlan
+import com.charmnight.linkgraph.llm.GenerationPlanItem
 import com.charmnight.linkgraph.llm.GraphBeautificationContext
+import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.llm.GraphGenerationService
 import com.charmnight.linkgraph.llm.GraphPresentationContext
 import com.charmnight.linkgraph.llm.SourceSnippetContext
@@ -14,6 +18,7 @@ import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewPlanner
 import com.charmnight.linkgraph.ui.GraphEditorStateService
+import com.charmnight.linkgraph.workbench.StepGranularity
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
@@ -28,13 +33,20 @@ internal class PlanningContextFactory(
     private val syncPreviewPlanner: SyncPreviewPlanner,
     /** 图生成服务。 */
     private val graphGenerationService: GraphGenerationService,
+    /** 审计源码证据收集器。 */
+    private val auditEvidenceCollector: AuditEvidenceCollector = AuditEvidenceCollector(),
     /** 当前真正生效的生成设置。 */
     private val settingsProvider: () -> LinkGraphSettingsState,
+    /** 当前项目根路径提供器。 */
+    private val projectBasePathProvider: () -> String? = { null },
 ) {
     /**
      * 计算实现计划和代码草稿共用的规划载荷。
      */
-    fun computePlanningPayload(snapshot: GraphEditorStateService.Snapshot): PlanningPayload {
+    fun computePlanningPayload(
+        snapshot: GraphEditorStateService.Snapshot,
+        generationPlanOverride: GenerationPlan? = snapshot.generationPlan,
+    ): PlanningPayload {
         val workingGraph = currentWorkingGraph(snapshot)
         val diffResult = when {
             snapshot.designBaselineGraph != null -> graphDiffer.diff(workingGraph, snapshot.designBaselineGraph)
@@ -54,6 +66,11 @@ internal class PlanningContextFactory(
             diff = diff,
             previewItems = previewItems,
             snapshot = snapshot,
+            sourceContext = buildGenerationSourceSnippetContexts(
+                planningGraph = planningGraph,
+                confirmedChanges = snapshot.draftWorkbenchState.draftChanges,
+                planItems = generationPlanOverride?.items.orEmpty(),
+            ),
         )
     }
 
@@ -65,13 +82,16 @@ internal class PlanningContextFactory(
         diff: GraphDiff,
         previewItems: List<SyncPreviewItem>,
         snapshot: GraphEditorStateService.Snapshot,
+        sourceContext: List<SourceSnippetContext>,
         onPreview: ((String, Boolean) -> Unit)? = null,
-    ) = graphGenerationService.generatePlan(
+        ) = graphGenerationService.generatePlan(
         context = GenerationContext(
             graph = planningGraph,
             mermaidIssues = snapshot.mermaidIssues,
             diff = diff,
             syncPreviewItems = previewItems,
+            confirmedChanges = snapshot.draftWorkbenchState.draftChanges,
+            sourceContext = sourceContext,
         ),
         settings = settingsProvider(),
         onPreview = onPreview,
@@ -85,6 +105,8 @@ internal class PlanningContextFactory(
         goal: String,
         preferredStyle: String?,
         explanationFocus: String?,
+        followUp: GraphBeautificationFollowUpContext?,
+        granularity: StepGranularity,
     ): GraphBeautificationContext {
         val visibleGraph = currentVisibleGraph(snapshot)
         val workingGraph = currentWorkingGraph(snapshot)
@@ -119,6 +141,8 @@ internal class PlanningContextFactory(
             userGoal = goal,
             preferredStyle = preferredStyle,
             explanationFocus = explanationFocus,
+            followUp = followUp,
+            granularity = granularity,
         )
     }
 
@@ -135,9 +159,25 @@ internal class PlanningContextFactory(
         } else {
             snapshot.referenceFactGraph ?: workingGraph
         }
+        val evidenceCollection = auditEvidenceCollector.collect(
+            graph = mergeAuditEvidenceGraph(backgroundFactGraph, workingGraph),
+            selectedNodeIds = selectedNodeIds,
+        )
         return AuditGraphs(
             factGraph = backgroundFactGraph,
             draftGraph = workingGraph,
+            sourceContext = evidenceCollection.sourceContext,
+            evidenceTrace = evidenceCollection.evidenceTrace,
+        )
+    }
+
+    private fun mergeAuditEvidenceGraph(
+        factGraph: GraphDocument,
+        draftGraph: GraphDocument,
+    ): GraphDocument {
+        return GraphDocument(
+            nodes = (draftGraph.nodes + factGraph.nodes).distinctBy(GraphNode::id),
+            edges = (draftGraph.edges + factGraph.edges).distinctBy { edge -> edge.id },
         )
     }
 
@@ -238,10 +278,150 @@ internal class PlanningContextFactory(
                     endOffset = endOffset,
                     startLine = node.metadata["source.startLine"]?.toIntOrNull(),
                     endLine = node.metadata["source.endLine"]?.toIntOrNull(),
-                    snippet = readSourceSnippet(filePath, startOffset, endOffset),
+                    snippet = readSourceSnippet(
+                        filePath = filePath,
+                        startOffset = startOffset,
+                        endOffset = endOffset,
+                        startLine = node.metadata["source.startLine"]?.toIntOrNull(),
+                        endLine = node.metadata["source.endLine"]?.toIntOrNull(),
+                    ),
                 )
             }
             .toList()
+    }
+
+    /**
+     * 为实现计划和代码生成收集可直接发给模型的真实源码片段。
+     */
+    private fun buildGenerationSourceSnippetContexts(
+        planningGraph: GraphDocument,
+        confirmedChanges: List<com.charmnight.linkgraph.workbench.DraftWorkbenchEntry>,
+        planItems: List<GenerationPlanItem>,
+    ): List<SourceSnippetContext> {
+        val nodeById = planningGraph.nodes.associateBy(GraphNode::id)
+        val snippets = linkedMapOf<String, SourceSnippetContext>()
+
+        confirmedChanges.forEach { change ->
+            val scopedSnippets = change.editScopes.mapNotNull { scope ->
+                sourceSnippetFromScope(scope, nodeById)
+            }
+            val fallbackSnippets = if (scopedSnippets.isEmpty()) {
+                change.targetNodeIds.mapNotNull { nodeId ->
+                    sourceSnippetFromNode(nodeById[nodeId])
+                }
+            } else {
+                emptyList()
+            }
+            (scopedSnippets + fallbackSnippets).forEach { snippet ->
+                snippets.putIfAbsent(snippetKey(snippet), snippet)
+            }
+        }
+
+        planItems
+            .flatMap(GenerationPlanItem::editScopes)
+            .mapNotNull { scope -> sourceSnippetFromScope(scope, nodeById) }
+            .forEach { snippet ->
+                snippets.putIfAbsent(snippetKey(snippet), snippet)
+            }
+
+        return snippets.values.toList()
+    }
+
+    /**
+     * 从精确 edit scope 读取当前源码片段。
+     */
+    private fun sourceSnippetFromScope(
+        scope: com.charmnight.linkgraph.llm.EditScope,
+        nodeById: Map<String, GraphNode>,
+    ): SourceSnippetContext? {
+        if (scope.filePath.isBlank()) {
+            return null
+        }
+        val node = nodeById[scope.targetNodeId]
+        val normalizedOffsets = normalizeSnippetOffsets(
+            startOffset = scope.startOffset ?: node?.metadata?.get("source.startOffset")?.toIntOrNull(),
+            endOffset = scope.endOffset ?: node?.metadata?.get("source.endOffset")?.toIntOrNull(),
+        )
+        val startOffset = normalizedOffsets.first
+        val endOffset = normalizedOffsets.second
+        val startLine = scope.startLine ?: node?.metadata?.get("source.startLine")?.toIntOrNull()
+        val endLine = scope.endLine ?: node?.metadata?.get("source.endLine")?.toIntOrNull()
+        return SourceSnippetContext(
+            nodeId = scope.targetNodeId,
+            filePath = scope.filePath,
+            startOffset = startOffset,
+            endOffset = endOffset,
+            startLine = startLine,
+            endLine = endLine,
+            snippet = readSourceSnippet(
+                filePath = scope.filePath,
+                startOffset = startOffset,
+                endOffset = endOffset,
+                startLine = startLine,
+                endLine = endLine,
+            ),
+        )
+    }
+
+    /**
+     * 从节点本身的 source metadata 读取源码片段。
+     */
+    private fun sourceSnippetFromNode(node: GraphNode?): SourceSnippetContext? {
+        node ?: return null
+        val filePath = node.metadata["source.filePath"] ?: return null
+        val normalizedOffsets = normalizeSnippetOffsets(
+            startOffset = node.metadata["source.startOffset"]?.toIntOrNull(),
+            endOffset = node.metadata["source.endOffset"]?.toIntOrNull(),
+        )
+        val startOffset = normalizedOffsets.first
+        val endOffset = normalizedOffsets.second
+        val startLine = node.metadata["source.startLine"]?.toIntOrNull()
+        val endLine = node.metadata["source.endLine"]?.toIntOrNull()
+        return SourceSnippetContext(
+            nodeId = node.id,
+            filePath = filePath,
+            startOffset = startOffset,
+            endOffset = endOffset,
+            startLine = startLine,
+            endLine = endLine,
+            snippet = readSourceSnippet(
+                filePath = filePath,
+                startOffset = startOffset,
+                endOffset = endOffset,
+                startLine = startLine,
+                endLine = endLine,
+            ),
+        )
+    }
+
+    /**
+     * 为去重生成稳定 key。
+     */
+    private fun snippetKey(snippet: SourceSnippetContext): String {
+        return listOf(
+            snippet.nodeId,
+            snippet.filePath,
+            snippet.startOffset?.toString().orEmpty(),
+            snippet.endOffset?.toString().orEmpty(),
+            snippet.startLine?.toString().orEmpty(),
+            snippet.endLine?.toString().orEmpty(),
+        ).joinToString("|")
+    }
+
+    /**
+     * 过滤非法偏移，避免把坏 offset 误当成文件头片段。
+     */
+    private fun normalizeSnippetOffsets(
+        startOffset: Int?,
+        endOffset: Int?,
+    ): Pair<Int?, Int?> {
+        if (startOffset == null || endOffset == null) {
+            return null to null
+        }
+        if (startOffset < 0 || endOffset < startOffset) {
+            return null to null
+        }
+        return startOffset to endOffset
     }
 
     /**
@@ -251,12 +431,14 @@ internal class PlanningContextFactory(
         filePath: String,
         startOffset: Int?,
         endOffset: Int?,
+        startLine: Int? = null,
+        endLine: Int? = null,
     ): String? {
         if (filePath.isBlank()) {
             return null
         }
         return runCatching {
-            val path = Path.of(filePath)
+            val path = ProjectPathNormalizer.resolvePath(filePath, projectBasePathProvider()) ?: return null
             if (!Files.isRegularFile(path)) {
                 return null
             }
@@ -264,12 +446,24 @@ internal class PlanningContextFactory(
             if (content.isBlank()) {
                 return null
             }
-            val snippet = if (startOffset != null && endOffset != null) {
-                val start = startOffset.coerceIn(0, content.length)
-                val end = endOffset.coerceIn(start, content.length)
-                content.substring(start, end)
-            } else {
-                content
+            val snippet = when {
+                startOffset != null && endOffset != null -> {
+                    val start = startOffset.coerceIn(0, content.length)
+                    val end = endOffset.coerceIn(start, content.length)
+                    content.substring(start, end)
+                }
+
+                startLine != null && endLine != null -> {
+                    val lines = content.replace("\r\n", "\n").lines()
+                    if (lines.isEmpty()) {
+                        return null
+                    }
+                    val start = (startLine - 1).coerceIn(0, lines.lastIndex)
+                    val end = (endLine - 1).coerceIn(start, lines.lastIndex)
+                    lines.subList(start, end + 1).joinToString("\n")
+                }
+
+                else -> content
             }
             normalizeSourceSnippetForPrompt(snippet)
         }.recoverCatching { error ->
@@ -344,9 +538,12 @@ internal data class PlanningPayload(
     val diff: GraphDiff,
     val previewItems: List<SyncPreviewItem>,
     val snapshot: GraphEditorStateService.Snapshot,
+    val sourceContext: List<SourceSnippetContext> = emptyList(),
 )
 
 internal data class AuditGraphs(
     val factGraph: GraphDocument,
     val draftGraph: GraphDocument,
+    val sourceContext: List<SourceSnippetContext> = emptyList(),
+    val evidenceTrace: List<com.charmnight.linkgraph.llm.EvidenceTraceEntry> = emptyList(),
 )

@@ -1,7 +1,10 @@
 package com.charmnight.linkgraph.ui
 
+import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.model.GraphJson
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
+import com.charmnight.linkgraph.services.debugLazy
+import com.charmnight.linkgraph.workbench.StepGranularity
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
@@ -57,6 +60,8 @@ class GraphBrowserPanel private constructor(
     private val showDiffModeQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestSyncPreviewQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestAuditQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val confirmAuditCandidateChangeQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val unconfirmAuditCandidateChangeQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestDiffReviewQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestGraphBeautificationQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val applyDraftPatchPreviewQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
@@ -65,8 +70,9 @@ class GraphBrowserPanel private constructor(
     private val undoLastDraftPatchApplyQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestGenerationPlanQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestCodeDraftsQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
-    private val requestCurrentMethodGraphQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val requestCurrentEditorContextGraphQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestAnalysisDisplayModeQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val updateWorkbenchSectionPreferenceQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestOpenSettingsQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val applyCodeDraftsQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val applySingleCodeDraftQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
@@ -84,7 +90,7 @@ class GraphBrowserPanel private constructor(
     init {
         browser?.let(::configureBrowser)
         add(browser?.component ?: createFallbackView(entryUrl), BorderLayout.CENTER)
-        logger.info("准备加载链路图前端入口: $entryUrl")
+        debugLazy(logger.isDebugEnabled, logger::debug) { "准备加载链路图前端入口: $entryUrl" }
         bridge.onFrontendLoaded(entryUrl)
         // 首次 loadHTML 时就内嵌 bootstrap，避免前端先渲染一版演示态再切到真实项目状态。
         val initialSnapshot = lastDispatchedSnapshot
@@ -111,7 +117,9 @@ class GraphBrowserPanel private constructor(
         }
         val currentBrowser = browser ?: return
         val snapshot = bridge.currentState()
-        logger.info("开始向前端同步链路图状态: ${snapshotSummary(snapshot)}")
+        debugLazy(logger.isDebugEnabled, logger::debug) {
+            "开始向前端同步链路图状态: ${snapshotSummary(snapshot)}"
+        }
         val transportScript = sliceRenderer.renderIncrementalScript(
             sessionId = transportState.sessionId,
             previousSnapshot = lastDispatchedSnapshot,
@@ -166,16 +174,25 @@ class GraphBrowserPanel private constructor(
             JBCefJSQuery.Response("ok")
         }
         requestAuditQuery?.addHandler { payload ->
-            val (question, selectedNodeIds) = parseQuestionWithIds(payload)
-            logger.info(
-                "收到前端请求：审计, question=${summarizePayloadText(question)}, selectedNodeIds=$selectedNodeIds",
-            )
+            val request = parseAuditRequestPayload(payload)
+            debugLazy(logger.isDebugEnabled, logger::debug) {
+                "收到前端请求：审计, question=${summarizePayloadText(request.question)}, selectedNodeIds=${request.selectedNodeIds}, sourceLeadId=${request.sourceLeadId}"
+            }
             bridge.dispatch(
                 GraphEditorMessage.RequestAudit(
-                    question = question,
-                    selectedNodeIds = selectedNodeIds,
+                    question = request.question,
+                    selectedNodeIds = request.selectedNodeIds,
+                    sourceLeadId = request.sourceLeadId,
                 ),
             )
+            JBCefJSQuery.Response("ok")
+        }
+        confirmAuditCandidateChangeQuery?.addHandler { payload ->
+            bridge.dispatch(GraphEditorMessage.ConfirmAuditCandidateChange(changeId = payload))
+            JBCefJSQuery.Response("ok")
+        }
+        unconfirmAuditCandidateChangeQuery?.addHandler { payload ->
+            bridge.dispatch(GraphEditorMessage.UnconfirmAuditCandidateChange(changeId = payload))
             JBCefJSQuery.Response("ok")
         }
         requestDiffReviewQuery?.addHandler { payload ->
@@ -189,16 +206,18 @@ class GraphBrowserPanel private constructor(
             JBCefJSQuery.Response("ok")
         }
         requestGraphBeautificationQuery?.addHandler { payload ->
-            val (goal, preferredStyle, explanationFocus) = parseBeautificationPayload(payload)
-            logger.info(
-                "收到前端请求：链路讲解, goal=${summarizePayloadText(goal)}, preferredStyle=${summarizePayloadText(preferredStyle)}, " +
-                    "explanationFocus=${summarizePayloadText(explanationFocus)}",
-            )
+            val request = parseBeautificationPayload(payload)
+            debugLazy(logger.isDebugEnabled, logger::debug) {
+                "收到前端请求：链路讲解, goal=${summarizePayloadText(request.goal)}, preferredStyle=${summarizePayloadText(request.preferredStyle)}, " +
+                    "explanationFocus=${summarizePayloadText(request.explanationFocus)}, followUpStepId=${summarizePayloadText(request.followUp?.stepId)}, granularity=${request.granularity}"
+            }
             bridge.dispatch(
                 GraphEditorMessage.RequestGraphBeautification(
-                    goal = goal,
-                    preferredStyle = preferredStyle,
-                    explanationFocus = explanationFocus,
+                    goal = request.goal,
+                    preferredStyle = request.preferredStyle,
+                    explanationFocus = request.explanationFocus,
+                    followUp = request.followUp,
+                    granularity = request.granularity,
                 ),
             )
             JBCefJSQuery.Response("ok")
@@ -225,6 +244,9 @@ class GraphBrowserPanel private constructor(
             JBCefJSQuery.Response("ok")
         }
         requestGenerationPlanQuery?.addHandler {
+            debugLazy(logger.isDebugEnabled, logger::debug) {
+                "收到前端请求：生成实现计划, 当前快照=${snapshotSummary(bridge.currentState())}"
+            }
             bridge.dispatch(GraphEditorMessage.RequestGenerationPlan)
             JBCefJSQuery.Response("ok")
         }
@@ -232,9 +254,11 @@ class GraphBrowserPanel private constructor(
             bridge.dispatch(GraphEditorMessage.RequestCodeDrafts)
             JBCefJSQuery.Response("ok")
         }
-        requestCurrentMethodGraphQuery?.addHandler {
-            logger.info("收到前端请求：加载当前方法链路, 当前快照=${snapshotSummary(bridge.currentState())}")
-            bridge.dispatch(GraphEditorMessage.RequestCurrentMethodGraph)
+        requestCurrentEditorContextGraphQuery?.addHandler {
+            debugLazy(logger.isDebugEnabled, logger::debug) {
+                "收到前端请求：加载当前编辑器上下文链路, 当前快照=${snapshotSummary(bridge.currentState())}"
+            }
+            bridge.dispatch(GraphEditorMessage.RequestCurrentEditorContextGraph)
             JBCefJSQuery.Response("ok")
         }
         requestAnalysisDisplayModeQuery?.addHandler { payload ->
@@ -247,6 +271,22 @@ class GraphBrowserPanel private constructor(
                 JBCefJSQuery.Response("ok")
             }.getOrElse { error ->
                 JBCefJSQuery.Response(null, 1, error.message ?: "切换展示模式失败")
+            }
+        }
+        updateWorkbenchSectionPreferenceQuery?.addHandler { payload ->
+            runCatching {
+                val parts = payload.split('\u001f')
+                val sectionId = URLDecoder.decode(parts.getOrNull(0).orEmpty(), StandardCharsets.UTF_8)
+                val expanded = parts.getOrNull(1) == "1"
+                bridge.dispatch(
+                    GraphEditorMessage.UpdateWorkbenchSectionPreference(
+                        sectionId = sectionId,
+                        expanded = expanded,
+                    ),
+                )
+                JBCefJSQuery.Response("ok")
+            }.getOrElse { error ->
+                JBCefJSQuery.Response(null, 1, error.message ?: "更新工作台偏好失败")
             }
         }
         requestOpenSettingsQuery?.addHandler {
@@ -288,9 +328,9 @@ class GraphBrowserPanel private constructor(
         graphChangedQuery?.addHandler { payload ->
             runCatching {
                 val graph = GraphJson.fromJson(payload)
-                logger.info(
-                    "收到前端 graphChanged: nodes=${graph.nodes.size}, edges=${graph.edges.size}, sampleNodeIds=${graph.nodes.take(6).map { it.id }}",
-                )
+                debugLazy(logger.isDebugEnabled, logger::debug) {
+                    "收到前端 graphChanged: nodes=${graph.nodes.size}, edges=${graph.edges.size}, sampleNodeIds=${graph.nodes.take(6).map { it.id }}"
+                }
                 bridge.dispatch(GraphEditorMessage.GraphChanged(graph))
                 JBCefJSQuery.Response("ok")
             }.getOrElse { error ->
@@ -330,7 +370,7 @@ class GraphBrowserPanel private constructor(
             }
         }
         debugTraceQuery?.addHandler { payload ->
-            logger.info("前端 trace: $payload")
+            debugLazy(logger.isDebugEnabled, logger::debug) { "前端 trace: $payload" }
             JBCefJSQuery.Response("ok")
         }
         browser.jbCefClient.addLoadHandler(
@@ -343,7 +383,7 @@ class GraphBrowserPanel private constructor(
                     if (!frame.isMain) {
                         return
                     }
-                    logger.info("JCEF 开始加载页面: ${cefBrowser.url}")
+                    debugLazy(logger.isDebugEnabled, logger::debug) { "JCEF 开始加载页面: ${cefBrowser.url}" }
                     browserLoaded = false
                     transportState.onMainFrameLoadStarted()
                 }
@@ -356,9 +396,11 @@ class GraphBrowserPanel private constructor(
                     if (!frame.isMain) {
                         return
                     }
-                    logger.info("JCEF 页面加载完成: url=${cefBrowser.url}, status=$httpStatusCode")
+                    debugLazy(logger.isDebugEnabled, logger::debug) {
+                        "JCEF 页面加载完成: url=${cefBrowser.url}, status=$httpStatusCode"
+                    }
                     browserLoaded = true
-                    logger.info("开始注入链路图 bridge 脚本")
+                    debugLazy(logger.isDebugEnabled, logger::debug) { "开始注入链路图 bridge 脚本" }
                     cefBrowser.executeJavaScript(buildBridgeScript(), cefBrowser.url, 0)
                     executeSnapshotScript(
                         browser = browser,
@@ -426,17 +468,20 @@ class GraphBrowserPanel private constructor(
               exportMermaid: () => { ${exportMermaidQuery?.inject("'exportMermaid'") ?: ""} },
               showDiffMode: () => { ${showDiffModeQuery?.inject("'showDiffMode'") ?: ""} },
               requestSyncPreview: () => { ${requestSyncPreviewQuery?.inject("'requestSyncPreview'") ?: ""} },
-              requestAudit: (question, selectedNodeIds) => { ${requestAuditQuery?.inject("[(question ? encodeURIComponent(question) : ''), ((selectedNodeIds || []).map((value) => encodeURIComponent(value)).join(','))].join('\\u001f')") ?: ""} },
+              requestAudit: (question, selectedNodeIds, sourceLeadId) => { ${requestAuditQuery?.inject("[(question ? encodeURIComponent(question) : ''), ((selectedNodeIds || []).map((value) => encodeURIComponent(value)).join(',')), (sourceLeadId ? encodeURIComponent(sourceLeadId) : '')].join('\\u001f')") ?: ""} },
+              confirmAuditCandidateChange: (changeId) => { ${confirmAuditCandidateChangeQuery?.inject("changeId") ?: ""} },
+              unconfirmAuditCandidateChange: (changeId) => { ${unconfirmAuditCandidateChangeQuery?.inject("changeId") ?: ""} },
               requestDiffReview: (question, selectedDiffItemIds) => { ${requestDiffReviewQuery?.inject("[(question ? encodeURIComponent(question) : ''), ((selectedDiffItemIds || []).map((value) => encodeURIComponent(value)).join(','))].join('\\u001f')") ?: ""} },
-              requestGraphBeautification: (goal, preferredStyle, explanationFocus) => { ${requestGraphBeautificationQuery?.inject("[(goal ? encodeURIComponent(goal) : ''), (preferredStyle ? encodeURIComponent(preferredStyle) : ''), (explanationFocus ? encodeURIComponent(explanationFocus) : '')].join('\\u001f')") ?: ""} },
+              requestGraphBeautification: (goal, preferredStyle, explanationFocus, granularity, followUpStepId, followUpStepTitle, followUpQuestion) => { ${requestGraphBeautificationQuery?.inject("[(goal ? encodeURIComponent(goal) : ''), (preferredStyle ? encodeURIComponent(preferredStyle) : ''), (explanationFocus ? encodeURIComponent(explanationFocus) : ''), (granularity ? encodeURIComponent(granularity) : ''), (followUpStepId ? encodeURIComponent(followUpStepId) : ''), (followUpStepTitle ? encodeURIComponent(followUpStepTitle) : ''), (followUpQuestion ? encodeURIComponent(followUpQuestion) : '')].join('\\u001f')") ?: ""} },
               applyDraftPatchPreview: (operationIds) => { ${applyDraftPatchPreviewQuery?.inject("((operationIds || []).map((value) => encodeURIComponent(value)).join(','))") ?: ""} },
               clearDraftPatchPreview: () => { ${clearDraftPatchPreviewQuery?.inject("'clearDraftPatchPreview'") ?: ""} },
               restoreDraftPatchPreview: (source) => { ${restoreDraftPatchPreviewQuery?.inject("source") ?: ""} },
               undoLastDraftPatchApply: () => { ${undoLastDraftPatchApplyQuery?.inject("'undoLastDraftPatchApply'") ?: ""} },
               requestGenerationPlan: () => { ${requestGenerationPlanQuery?.inject("'requestGenerationPlan'") ?: ""} },
               requestCodeDrafts: () => { ${requestCodeDraftsQuery?.inject("'requestCodeDrafts'") ?: ""} },
-              requestCurrentMethodGraph: () => { ${requestCurrentMethodGraphQuery?.inject("'requestCurrentMethodGraph'") ?: ""} },
+              requestCurrentEditorContextGraph: () => { ${requestCurrentEditorContextGraphQuery?.inject("'requestCurrentEditorContextGraph'") ?: ""} },
               requestAnalysisDisplayMode: (displayMode) => { ${requestAnalysisDisplayModeQuery?.inject("displayMode") ?: ""} },
+              updateWorkbenchSectionPreference: (sectionId, expanded) => { ${updateWorkbenchSectionPreferenceQuery?.inject("[(sectionId ? encodeURIComponent(sectionId) : ''), (expanded ? '1' : '0')].join('\\u001f')") ?: ""} },
               requestOpenSettings: () => { ${requestOpenSettingsQuery?.inject("'requestOpenSettings'") ?: ""} },
               applyCodeDrafts: () => { ${applyCodeDraftsQuery?.inject("'applyCodeDrafts'") ?: ""} },
               applySingleCodeDraft: (draftId) => { ${applySingleCodeDraftQuery?.inject("draftId") ?: ""} },
@@ -555,6 +600,33 @@ class GraphBrowserPanel private constructor(
                   bottom: Math.round(rect.bottom)
                 };
               };
+              const summarizeBoxMetrics = (element) => {
+                if (!element) {
+                  return null;
+                }
+                return {
+                  clientWidth: Number.isFinite(element.clientWidth) ? Math.round(element.clientWidth) : null,
+                  clientHeight: Number.isFinite(element.clientHeight) ? Math.round(element.clientHeight) : null,
+                  scrollWidth: Number.isFinite(element.scrollWidth) ? Math.round(element.scrollWidth) : null,
+                  scrollHeight: Number.isFinite(element.scrollHeight) ? Math.round(element.scrollHeight) : null,
+                  offsetWidth: Number.isFinite(element.offsetWidth) ? Math.round(element.offsetWidth) : null,
+                  offsetHeight: Number.isFinite(element.offsetHeight) ? Math.round(element.offsetHeight) : null
+                };
+              };
+              const summarizeComputedStyle = (element, properties) => {
+                if (!element || typeof window.getComputedStyle !== "function") {
+                  return null;
+                }
+                try {
+                  const computed = window.getComputedStyle(element);
+                  return properties.reduce((result, propertyName) => {
+                    result[propertyName] = computed.getPropertyValue(propertyName) || null;
+                    return result;
+                  }, {});
+                } catch (error) {
+                  return { error: String(error) };
+                }
+              };
               const summarizeSvgRect = (rect) => {
                 if (!rect) {
                   return null;
@@ -610,6 +682,32 @@ class GraphBrowserPanel private constructor(
                   translateX,
                   translateY,
                   scale
+                };
+              };
+              const summarizeIntersection = (left, right) => {
+                if (!left || !right) {
+                  return null;
+                }
+                const width = Math.max(0, Math.min(left.right, right.right) - Math.max(left.left, right.left));
+                const height = Math.max(0, Math.min(left.bottom, right.bottom) - Math.max(left.top, right.top));
+                return {
+                  width: round(width),
+                  height: round(height),
+                  area: round(width * height)
+                };
+              };
+              const summarizeVisualViewport = () => {
+                if (!window.visualViewport) {
+                  return null;
+                }
+                return {
+                  width: round(window.visualViewport.width),
+                  height: round(window.visualViewport.height),
+                  offsetLeft: round(window.visualViewport.offsetLeft),
+                  offsetTop: round(window.visualViewport.offsetTop),
+                  pageLeft: round(window.visualViewport.pageLeft),
+                  pageTop: round(window.visualViewport.pageTop),
+                  scale: round(window.visualViewport.scale)
                 };
               };
               const emitPayload = (payload) => {
@@ -669,6 +767,12 @@ class GraphBrowserPanel private constructor(
                   cardRect: summary.cardRect
                 };
               };
+              const summarizeFlowNodeGeometry = (element, flowHostRect, viewportState) => ({
+                nodeId: element?.dataset?.id ?? element?.dataset?.nodeid ?? null,
+                selected: element?.classList?.contains("selected") === true,
+                className: element?.className ?? null,
+                ...summarizeFlowNode(element, flowHostRect, viewportState)
+              });
               const summarizeEdge = (element) => {
                 const path = element?.querySelector(".react-flow__edge-path");
                 const length = path?.getTotalLength ? path.getTotalLength() : null;
@@ -687,6 +791,97 @@ class GraphBrowserPanel private constructor(
                   endPoint: safeLength !== null && path?.getPointAtLength
                     ? summarizePoint(path.getPointAtLength(Math.max(safeLength - 0.01, 0)))
                     : null
+                };
+              };
+              const summarizeEdgeGeometry = (element) => ({
+                edgeId: element?.dataset?.id ?? null,
+                className: element?.className ?? null,
+                ...summarizeEdge(element)
+              });
+              const summarizeNodeVisual = (element) => {
+                if (!element) {
+                  return null;
+                }
+                const shell = element.querySelector(".flowchart-react-node, .fact-graph-react-node, .resource-relation-react-node");
+                const card = shell?.querySelector(".flow-node-card");
+                const title = shell?.querySelector(".flowchart-node-title, .flow-node-owner");
+                return {
+                  nodeId: element?.dataset?.id ?? element?.dataset?.nodeid ?? null,
+                  wrapperClassName: element?.className ?? null,
+                  shellClassName: shell?.className ?? null,
+                  cardClassName: card?.className ?? null,
+                  titleText: title?.textContent?.trim() ?? null,
+                  wrapperRect: summarizeRect(element),
+                  shellRect: summarizeRect(shell),
+                  cardRect: summarizeRect(card),
+                  wrapperStyle: summarizeComputedStyle(element, [
+                    "opacity",
+                    "transform",
+                    "filter",
+                    "outline",
+                    "outline-offset",
+                    "box-shadow",
+                    "pointer-events"
+                  ]),
+                  shellStyle: summarizeComputedStyle(shell, [
+                    "opacity",
+                    "transform",
+                    "filter",
+                    "background-color",
+                    "border",
+                    "border-color",
+                    "border-width",
+                    "border-style",
+                    "border-radius",
+                    "box-shadow",
+                    "outline",
+                    "outline-offset"
+                  ]),
+                  cardStyle: summarizeComputedStyle(card, [
+                    "opacity",
+                    "transform",
+                    "filter",
+                    "background-color",
+                    "border",
+                    "border-color",
+                    "border-width",
+                    "border-style",
+                    "border-radius",
+                    "box-shadow",
+                    "outline",
+                    "outline-offset"
+                  ]),
+                  titleStyle: summarizeComputedStyle(title, [
+                    "color",
+                    "opacity",
+                    "font-size",
+                    "font-weight",
+                    "line-height",
+                    "text-decoration"
+                  ])
+                };
+              };
+              const summarizeEdgeVisual = (element) => {
+                if (!element) {
+                  return null;
+                }
+                const path = element.querySelector(".react-flow__edge-path");
+                return {
+                  edgeId: element?.dataset?.id ?? null,
+                  className: element?.className ?? null,
+                  pathClassName: path?.className?.baseVal ?? path?.className ?? null,
+                  pathStyleAttribute: path?.getAttribute?.("style") ?? null,
+                  markerStart: path?.getAttribute?.("marker-start") ?? null,
+                  markerEnd: path?.getAttribute?.("marker-end") ?? null,
+                  pathStyle: summarizeComputedStyle(path, [
+                    "opacity",
+                    "stroke",
+                    "stroke-width",
+                    "stroke-dasharray",
+                    "filter",
+                    "marker-start",
+                    "marker-end"
+                  ])
                 };
               };
               const summarizeProbeNode = (element, flowHostRect, viewportState) => ({
@@ -803,6 +998,57 @@ class GraphBrowserPanel private constructor(
                   viewportStyle: document.querySelector(".react-flow__viewport")?.getAttribute("style") ?? null
                 };
               };
+              const parseTraceMessage = (serialized) => {
+                if (typeof serialized !== "string" || serialized.length === 0) {
+                  return null;
+                }
+                try {
+                  return JSON.parse(serialized);
+                } catch (error) {
+                  return null;
+                }
+              };
+              const summarizeTraceDiagnostics = () => {
+                const history = Array.isArray(window.__linkGraphTraceHistory) ? window.__linkGraphTraceHistory : [];
+                const parsedHistory = history
+                  .slice(-12)
+                  .map((entry) => parseTraceMessage(entry))
+                  .filter((entry) => entry && typeof entry === "object");
+                const reverseHistory = [...parsedHistory].reverse();
+                const lastTrace = parseTraceMessage(window.__linkGraphLastTrace);
+                const lastViewportTrace = reverseHistory.find((entry) => {
+                  const eventName = String(entry?.event ?? "");
+                  return eventName === "graphFlowSurface.scheduleViewport"
+                    || eventName.startsWith("graphFlowSurface.viewport");
+                }) ?? null;
+                const lastBootstrapTrace = reverseHistory.find((entry) =>
+                  String(entry?.event ?? "").startsWith("app.applyBootstrapState"),
+                ) ?? null;
+                return {
+                  debugEnabled: window.__linkGraphDebugEnabled === true,
+                  interactionProbeEnabled: window.__linkGraphInteractionProbe === true,
+                  hasTraceSink: typeof window.linkGraphDebugTrace === "function",
+                  traceBufferLength: Array.isArray(window.__linkGraphTraceBuffer) ? window.__linkGraphTraceBuffer.length : 0,
+                  traceHistoryLength: history.length,
+                  lastTraceEvent: lastTrace?.event ?? null,
+                  lastTraceTime: lastTrace?.time ?? null,
+                  recentTraceEvents: parsedHistory.map((entry) => entry?.event ?? null),
+                  lastViewportTrace: lastViewportTrace
+                    ? {
+                        event: lastViewportTrace.event ?? null,
+                        time: lastViewportTrace.time ?? null,
+                        payload: lastViewportTrace.payload ?? null
+                      }
+                    : null,
+                  lastBootstrapTrace: lastBootstrapTrace
+                    ? {
+                        event: lastBootstrapTrace.event ?? null,
+                        time: lastBootstrapTrace.time ?? null,
+                        payload: lastBootstrapTrace.payload ?? null
+                      }
+                    : null
+                };
+              };
               const runInteractionProbe = () => {
                 if (window.__linkGraphInteractionProbe !== true || String(reason).indexOf("loadAnalysisOutcome") === -1) {
                   return;
@@ -898,17 +1144,49 @@ class GraphBrowserPanel private constructor(
               const emit = (stage) => {
                 try {
                   const root = document.getElementById("root");
+                  const html = document.documentElement;
+                  const body = document.body;
                   const shell = document.querySelector("[data-testid='graph-canvas-shell']");
                   const flowHost = document.querySelector(".react-flow");
+                  const flowPane = document.querySelector(".react-flow__pane");
+                  const flowNodesLayer = document.querySelector(".react-flow__nodes");
+                  const flowEdgesLayer = document.querySelector(".react-flow__edges");
+                  const flowEdgesSvg = flowEdgesLayer?.querySelector("svg") ?? null;
+                  const workbenchShell = document.querySelector(".workbench-shell");
+                  const workbenchPanel = document.querySelector(".workbench-panel-body");
+                  const activeWorkbenchTab = document.querySelector(".workbench-tab-button.active");
+                  const requestBanner = document.querySelector(".async-request-banner");
                   const viewport = document.querySelector(".react-flow__viewport");
                   const viewportState = parseViewportState(viewport);
                   const flowNodes = Array.from(document.querySelectorAll(".react-flow__node"));
+                  const selectedNodes = flowNodes.filter((node) => node.classList?.contains("selected"));
+                  const explanationFocusNodes = flowNodes.filter((node) => node.classList?.contains("is-explanation-focus"));
+                  const draftChangedNodes = flowNodes.filter((node) => node.classList?.contains("is-draft-change"));
+                  const highlightedNodes = flowNodes.filter((node) =>
+                    node.classList?.contains("selected") ||
+                      node.classList?.contains("is-explanation-focus") ||
+                      node.classList?.contains("is-draft-change"),
+                  );
                   const decisionNodes = Array.from(document.querySelectorAll(".react-flow__node")).filter((node) =>
                     node.querySelector(".flowchart-react-node.kind-decision"),
                   );
                   const flowEdges = Array.from(document.querySelectorAll(".react-flow__edge"));
+                  const allFlowNodeRects = flowNodes
+                    .map((node) =>
+                      summarizeFlowNodeGeometry(
+                        node,
+                        flowHost?.getBoundingClientRect ? flowHost.getBoundingClientRect() : null,
+                        viewportState,
+                      ),
+                    )
+                    .sort((left, right) => String(left?.nodeId ?? "").localeCompare(String(right?.nodeId ?? "")));
+                  const allFlowEdgeEndpoints = flowEdges
+                    .map((edge) => summarizeEdgeGeometry(edge))
+                    .sort((left, right) => String(left?.edgeId ?? "").localeCompare(String(right?.edgeId ?? "")));
                   const shellRectRaw = shell && shell.getBoundingClientRect ? shell.getBoundingClientRect() : null;
                   const firstNodeRectRaw = flowNodes[0] && flowNodes[0].getBoundingClientRect ? flowNodes[0].getBoundingClientRect() : null;
+                  const selectedNodeRectRaw = selectedNodes[0] && selectedNodes[0].getBoundingClientRect ? selectedNodes[0].getBoundingClientRect() : null;
+                  const flowHostRectRaw = flowHost && flowHost.getBoundingClientRect ? flowHost.getBoundingClientRect() : null;
                   const visibleNodeCountInShell = shellRectRaw
                     ? flowNodes.reduce((count, node) => {
                         const rect = node.getBoundingClientRect ? node.getBoundingClientRect() : null;
@@ -923,14 +1201,52 @@ class GraphBrowserPanel private constructor(
                       stage,
                       readyState: document.readyState,
                       title: document.title,
+                      devicePixelRatio: Number.isFinite(window.devicePixelRatio) ? window.devicePixelRatio : null,
+                      visualViewport: summarizeVisualViewport(),
+                      windowSize: {
+                        innerWidth: round(window.innerWidth),
+                        innerHeight: round(window.innerHeight),
+                        outerWidth: round(window.outerWidth),
+                        outerHeight: round(window.outerHeight),
+                        scrollX: round(window.scrollX),
+                        scrollY: round(window.scrollY)
+                      },
+                      screenSize: {
+                        width: round(window.screen?.width),
+                        height: round(window.screen?.height),
+                        availWidth: round(window.screen?.availWidth),
+                        availHeight: round(window.screen?.availHeight)
+                      },
                       rootChildren: root ? root.childElementCount : null,
                       rootTextSample: root ? (root.textContent || "").trim().slice(0, 120) : null,
                       flowNodeCount: flowNodes.length,
                       flowEdgeCount: document.querySelectorAll(".react-flow__edge").length,
                       flowCardCount: document.querySelectorAll(".flow-node-card").length,
+                      selectedNodeCount: selectedNodes.length,
+                      explanationFocusNodeCount: explanationFocusNodes.length,
+                      draftChangedNodeCount: draftChangedNodes.length,
                       visibleNodeCountInShell,
+                      htmlRect: summarizeRect(html),
+                      bodyRect: summarizeRect(body),
                       shellRect: summarizeRect(shell),
                       flowHostRect: summarizeRect(flowHost),
+                      flowPaneRect: summarizeRect(flowPane),
+                      flowNodesLayerRect: summarizeRect(flowNodesLayer),
+                      flowEdgesLayerRect: summarizeRect(flowEdgesLayer),
+                      flowEdgesSvgRect: summarizeRect(flowEdgesSvg),
+                      workbenchShellRect: summarizeRect(workbenchShell),
+                      workbenchPanelRect: summarizeRect(workbenchPanel),
+                      htmlBox: summarizeBoxMetrics(html),
+                      bodyBox: summarizeBoxMetrics(body),
+                      rootBox: summarizeBoxMetrics(root),
+                      shellBox: summarizeBoxMetrics(shell),
+                      flowHostBox: summarizeBoxMetrics(flowHost),
+                      flowPaneBox: summarizeBoxMetrics(flowPane),
+                      flowEdgesSvgBox: summarizeBoxMetrics(flowEdgesSvg),
+                      activeWorkbenchTab: activeWorkbenchTab?.textContent?.trim() ?? null,
+                      activeWorkbenchTabId: activeWorkbenchTab?.id ?? null,
+                      requestBannerText: requestBanner?.textContent?.trim()?.slice(0, 200) ?? null,
+                      debugTraceState: summarizeTraceDiagnostics(),
                       anchorTitle: document.querySelector(".canvas-reading-card.is-anchor .canvas-reading-title")?.textContent?.trim() ?? null,
                       selectedSummaryTitle: document.querySelectorAll(".canvas-reading-card .canvas-reading-title")[1]?.textContent?.trim() ?? null,
                       selectedCanvasTitle:
@@ -938,6 +1254,8 @@ class GraphBrowserPanel private constructor(
                           ?.textContent
                           ?.trim() ?? null,
                       viewportState,
+                      selectedNodeIntersectionWithShell: summarizeIntersection(selectedNodeRectRaw, shellRectRaw),
+                      selectedNodeIntersectionWithFlowHost: summarizeIntersection(selectedNodeRectRaw, flowHostRectRaw),
                       firstNodeRect: firstNodeRectRaw ? {
                         width: Math.round(firstNodeRectRaw.width),
                         height: Math.round(firstNodeRectRaw.height),
@@ -945,14 +1263,130 @@ class GraphBrowserPanel private constructor(
                         left: Math.round(firstNodeRectRaw.left)
                       } : null,
                       viewportStyle: viewport ? (viewport.getAttribute("style") || null) : null,
+                      htmlStyle: summarizeComputedStyle(html, [
+                        "overflow",
+                        "overflow-x",
+                        "overflow-y",
+                        "clip-path",
+                        "contain",
+                        "transform",
+                        "filter"
+                      ]),
+                      bodyStyle: summarizeComputedStyle(body, [
+                        "overflow",
+                        "overflow-x",
+                        "overflow-y",
+                        "clip-path",
+                        "contain",
+                        "transform",
+                        "filter"
+                      ]),
+                      rootStyle: summarizeComputedStyle(root, [
+                        "display",
+                        "position",
+                        "overflow",
+                        "overflow-x",
+                        "overflow-y",
+                        "clip-path",
+                        "contain",
+                        "transform",
+                        "filter"
+                      ]),
+                      shellStyle: summarizeComputedStyle(shell, [
+                        "display",
+                        "position",
+                        "overflow",
+                        "overflow-x",
+                        "overflow-y",
+                        "clip-path",
+                        "contain",
+                        "isolation",
+                        "transform",
+                        "transform-origin",
+                        "will-change",
+                        "filter"
+                      ]),
+                      flowHostStyle: summarizeComputedStyle(flowHost, [
+                        "display",
+                        "position",
+                        "overflow",
+                        "overflow-x",
+                        "overflow-y",
+                        "clip-path",
+                        "contain",
+                        "isolation",
+                        "transform",
+                        "transform-origin",
+                        "will-change",
+                        "filter"
+                      ]),
+                      flowPaneStyle: summarizeComputedStyle(flowPane, [
+                        "display",
+                        "position",
+                        "overflow",
+                        "clip-path",
+                        "transform",
+                        "transform-origin",
+                        "will-change",
+                        "pointer-events"
+                      ]),
                       flowNodesWithHandles: flowNodes
                         .filter((node) => node.querySelector(".react-flow__handle"))
                         .slice(0, 12)
                         .map((node) => summarizeFlowNode(node, flowHost?.getBoundingClientRect ? flowHost.getBoundingClientRect() : null, viewportState)),
+                      allFlowNodeRects,
+                      highlightedNodes: highlightedNodes.slice(0, 12).map((node) => ({
+                        nodeId: node?.dataset?.id ?? node?.dataset?.nodeid ?? null,
+                        className: node?.className ?? null,
+                        title:
+                          node.querySelector(".flowchart-node-title, .flow-node-owner")
+                            ?.textContent
+                            ?.trim() ?? null,
+                      })),
                       decisionNodes: decisionNodes.slice(0, 6).map((node) =>
                         summarizeDecisionNode(node, flowHost?.getBoundingClientRect ? flowHost.getBoundingClientRect() : null, viewportState),
                       ),
-                      flowEdges: flowEdges.slice(0, 24).map((edge) => summarizeEdge(edge))
+                      flowEdgesLayerStyle: summarizeComputedStyle(flowEdgesLayer, [
+                        "display",
+                        "position",
+                        "overflow",
+                        "overflow-x",
+                        "overflow-y",
+                        "clip-path",
+                        "transform",
+                        "transform-origin",
+                        "filter",
+                        "pointer-events"
+                      ]),
+                      flowEdgesSvgStyle: summarizeComputedStyle(flowEdgesSvg, [
+                        "display",
+                        "position",
+                        "overflow",
+                        "overflow-x",
+                        "overflow-y",
+                        "clip-path",
+                        "transform",
+                        "transform-origin",
+                        "filter",
+                        "pointer-events"
+                      ]),
+                      viewportComputedStyle: summarizeComputedStyle(viewport, [
+                        "display",
+                        "position",
+                        "overflow",
+                        "clip-path",
+                        "contain",
+                        "transform",
+                        "transform-origin",
+                        "will-change",
+                        "filter",
+                        "opacity"
+                      ]),
+                      flowEdges: flowEdges.slice(0, 24).map((edge) => summarizeEdge(edge)),
+                      allFlowEdgeEndpoints,
+                      selectedNodeVisual: summarizeNodeVisual(selectedNodes[0] ?? null),
+                      highlightedNodeVisuals: highlightedNodes.slice(0, 4).map((node) => summarizeNodeVisual(node)),
+                      edgeVisualSample: flowEdges.slice(0, 8).map((edge) => summarizeEdgeVisual(edge))
                     }
                   });
                   emitPayload(payload);
@@ -995,12 +1429,56 @@ class GraphBrowserPanel private constructor(
         return question to selectedNodeIds
     }
 
-    private fun parseBeautificationPayload(payload: String): Triple<String, String?, String?> {
+    private data class AuditRequestPayload(
+        val question: String,
+        val selectedNodeIds: List<String>,
+        val sourceLeadId: String?,
+    )
+
+    private fun parseAuditRequestPayload(payload: String): AuditRequestPayload {
         val parts = payload.split(PAYLOAD_SEPARATOR, limit = 3)
+        return AuditRequestPayload(
+            question = decodePayloadValue(parts.firstOrNull().orEmpty()),
+            selectedNodeIds = parseEncodedList(parts.getOrNull(1).orEmpty()),
+            sourceLeadId = parts.getOrNull(2)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue),
+        )
+    }
+
+    private data class BeautificationPayload(
+        val goal: String,
+        val preferredStyle: String?,
+        val explanationFocus: String?,
+        val followUp: GraphBeautificationFollowUpContext?,
+        val granularity: StepGranularity,
+    )
+
+    private fun parseBeautificationPayload(payload: String): BeautificationPayload {
+        val parts = payload.split(PAYLOAD_SEPARATOR, limit = 7)
         val goal = decodePayloadValue(parts.getOrNull(0).orEmpty())
         val preferredStyle = parts.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
         val explanationFocus = parts.getOrNull(2)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
-        return Triple(goal, preferredStyle, explanationFocus)
+        val granularity = parts.getOrNull(3)
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::decodePayloadValue)
+            ?.let { raw -> runCatching { StepGranularity.valueOf(raw) }.getOrDefault(StepGranularity.BUSINESS) }
+            ?: StepGranularity.BUSINESS
+        val followUpStepId = parts.getOrNull(4)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
+        val followUpStepTitle = parts.getOrNull(5)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
+        val followUpQuestion = parts.getOrNull(6)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
+        val followUp = if (
+            followUpStepId != null &&
+            followUpStepTitle != null &&
+            followUpQuestion != null
+        ) {
+            GraphBeautificationFollowUpContext(
+                stepId = followUpStepId,
+                stepTitle = followUpStepTitle,
+                question = followUpQuestion,
+            )
+        } else {
+            null
+        }
+        return BeautificationPayload(goal, preferredStyle, explanationFocus, followUp, granularity)
     }
 
     private fun parseNullableRevision(payload: String): Long? = payload.trim().takeIf { it.isNotEmpty() }?.toLongOrNull()
@@ -1106,13 +1584,39 @@ class GraphBrowserPanel private constructor(
             return "${document.nodes.size}/${document.edges.size} sample=${document.nodes.take(6).map { it.id }}"
         }
 
+        fun requestStateSummary(state: GraphEditorStateService.AsyncRequestState): String {
+            return buildString {
+                append("phase=").append(state.phase)
+                append(", requestId=").append(state.requestId)
+                append(", streaming=").append(state.streaming)
+                append(", status=").append(state.statusMessage)
+                append(", detail=").append(state.detailMessage)
+                append(", error=").append(state.errorMessage)
+                append(", provider=").append(state.providerLabel)
+                append(", model=").append(state.model)
+            }
+        }
+
+        fun generationPlanSummary(plan: com.charmnight.linkgraph.llm.GenerationPlan?): String {
+            if (plan == null) {
+                return "null"
+            }
+            return "source=${plan.source}, items=${plan.items.size}, warnings=${plan.warnings.size}, summary=${summarizePayloadText(plan.summary)}"
+        }
+
         return buildString {
             append("lastMessageType=").append(snapshot.lastMessageType)
             append(", lastGraphSource=").append(snapshot.lastGraphSource)
+            append(", analysisDisplayMode=").append(snapshot.analysisDisplayMode)
+            append(", semanticRevision=").append(snapshot.semanticRevision)
+            append(", layoutRevision=").append(snapshot.layoutRevision)
+            append(", snapshotRevision=").append(snapshot.snapshotRevision)
             append(", selectedNodeId=").append(snapshot.selectedNodeId)
             append(", visibleGraph=").append(graphSummary(snapshot.visibleGraph))
             append(", workingGraph=").append(graphSummary(snapshot.workingGraph))
             append(", referenceFactGraph=").append(graphSummary(snapshot.referenceFactGraph))
+            append(", generationPlan=").append(generationPlanSummary(snapshot.generationPlan))
+            append(", generationPlanRequestState=").append(requestStateSummary(snapshot.generationPlanRequestState))
             append(", feedback=").append(snapshot.operationFeedback?.message)
         }
     }

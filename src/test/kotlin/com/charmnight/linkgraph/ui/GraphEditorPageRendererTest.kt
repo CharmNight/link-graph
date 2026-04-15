@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.ui
 
+import com.charmnight.linkgraph.codegen.CodeEditOperation
+import com.charmnight.linkgraph.codegen.CodeEditOperationKind
 import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
 import com.charmnight.linkgraph.ui.view.FactGraphSummary
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
@@ -12,6 +14,7 @@ import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
 import com.charmnight.linkgraph.llm.GraphBeautificationResult
 import com.charmnight.linkgraph.llm.GraphBeautificationStep
+import com.charmnight.linkgraph.llm.EditScope
 import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.GenerationPlanItem
 import com.charmnight.linkgraph.llm.GenerationPlanSource
@@ -35,6 +38,14 @@ import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.charmnight.linkgraph.workbench.StepKind
+import com.charmnight.linkgraph.workbench.AuditConversationMessage
+import com.charmnight.linkgraph.workbench.AuditConversationSession
+import com.charmnight.linkgraph.workbench.AuditMessageRole
+import com.charmnight.linkgraph.workbench.CandidateDraftChange
+import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
+import com.charmnight.linkgraph.workbench.DraftEntryKind
+import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
+import com.charmnight.linkgraph.workbench.DraftWorkbenchState
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -101,6 +112,33 @@ class GraphEditorPageRendererTest {
         assertTrue(json.contains("\"model\":\"gpt-test\""))
         assertTrue(json.contains("\"endpointSummary\":\"example.com/v1/chat/completions\""))
         assertTrue(json.contains("\"promptPreviewAvailable\":true"))
+    }
+
+    @Test
+    fun bootstrapJson输出工作台折叠偏好字段() {
+        val renderer = GraphEditorPageRenderer()
+        val snapshot = GraphEditorStateService.Snapshot(
+            visibleGraph = GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:submit-order",
+                        type = NodeType.METHOD,
+                        title = "OrderController.submit",
+                        sourceTag = GraphSourceTag.FACT,
+                    ),
+                ),
+            ),
+            workbenchSectionPreferences = mapOf(
+                "audit.request-status" to true,
+                "audit.candidate-changes" to false,
+            ),
+        )
+
+        val json = renderer.bootstrapJson(snapshot)
+
+        assertTrue(json.contains("\"workbenchSectionPreferences\""))
+        assertTrue(json.contains("\"audit.request-status\":true"))
+        assertTrue(json.contains("\"audit.candidate-changes\":false"))
     }
 
     @Test
@@ -220,6 +258,16 @@ class GraphEditorPageRendererTest {
                     nodeCount = 1,
                     branchCount = 0,
                     exceptionPathCount = 0,
+                    fullNodeCount = 3,
+                    fullEdgeCount = 2,
+                    hiddenNodeCount = 2,
+                    hiddenEdgeCount = 1,
+                    truncated = true,
+                    incompleteNodeCount = 1,
+                    incompleteEdgeCount = 0,
+                    semanticallyIncomplete = true,
+                    syntheticEdgeCount = 0,
+                    syntheticEntryEdgeCount = 0,
                 ),
             ),
             resourceRelationView = ResourceRelationViewDocument(
@@ -255,12 +303,19 @@ class GraphEditorPageRendererTest {
         assertTrue(json.contains("\"visibleNodeCount\":1"))
         assertTrue(json.contains("\"branchCount\":0"))
         assertTrue(json.contains("\"exceptionPathCount\":0"))
+        assertTrue(json.contains("\"fullNodeCount\":3"))
+        assertTrue(json.contains("\"hiddenNodeCount\":2"))
+        assertTrue(json.contains("\"hiddenEdgeCount\":1"))
+        assertTrue(json.contains("\"truncated\":true"))
+        assertTrue(json.contains("\"incompleteNodeCount\":1"))
+        assertTrue(json.contains("\"semanticallyIncomplete\":true"))
         assertTrue(json.contains("\"laneCounts\":{\"DATA\":1}"))
     }
 
     @Test
     fun rendersBootstrapStateIntoFrontendHtml() {
         val renderer = GraphEditorPageRenderer()
+        val artifactRegistry = GraphEditorArtifactRegistry()
         val html = """
             <html>
               <head><title>Link Graph</title></head>
@@ -387,6 +442,20 @@ class GraphEditorPageRendererTest {
                         description = "Generate DTO class skeleton.",
                         risk = SyncPreviewRisk.LOW,
                         targetPath = "src/main/java/com/example/OrderDraftDto.java",
+                        editScopes = listOf(
+                            EditScope(
+                                scopeId = "scope-submit-order",
+                                targetNodeId = "method:submit-order",
+                                filePath = "src/main/java/com/example/OrderController.java",
+                                language = "JAVA",
+                                symbolKind = "METHOD",
+                                symbolSignature = "com.example.OrderController#submit(java.lang.String)",
+                                startLine = 18,
+                                endLine = 27,
+                                allowedChangeKinds = listOf("REPLACE_METHOD_BLOCK"),
+                                supportingFindingIds = listOf("submit-direct-call"),
+                            ),
+                        ),
                     ),
                 ),
                 warnings = listOf("Review mapper binding before applying code."),
@@ -399,6 +468,36 @@ class GraphEditorPageRendererTest {
                     title = "OrderDraftDto.java",
                     targetPath = "src/main/java/com/example/OrderDraftDto.java",
                     content = "package com.example;\nclass OrderDraftDto {}",
+                ),
+                GeneratedCodeDraft(
+                    id = "draft-2",
+                    sourceNodeId = "method:submit-order",
+                    title = "OrderController.java",
+                    targetPath = "src/main/java/com/example/OrderController.java",
+                    editOperations = listOf(
+                        CodeEditOperation(
+                            operationId = "edit-1",
+                            filePath = "src/main/java/com/example/OrderController.java",
+                            scopeId = "scope-submit-order",
+                            kind = CodeEditOperationKind.REPLACE_METHOD_BLOCK,
+                            payload = "public SubmitResult submit(String request) {\n    return fallback(request);\n}",
+                        ),
+                    ),
+                    editScopes = listOf(
+                        EditScope(
+                            scopeId = "scope-submit-order",
+                            targetNodeId = "method:submit-order",
+                            filePath = "src/main/java/com/example/OrderController.java",
+                            language = "JAVA",
+                            symbolKind = "METHOD",
+                            symbolSignature = "com.example.OrderController#submit(java.lang.String)",
+                            startLine = 18,
+                            endLine = 27,
+                            allowedChangeKinds = listOf("REPLACE_METHOD_BLOCK"),
+                            supportingFindingIds = listOf("submit-direct-call"),
+                        ),
+                    ),
+                    warnings = listOf("Only the submit method is writable."),
                 ),
             ),
             generatedCodeDraftWriteReport = GeneratedCodeDraftWriteReport(
@@ -423,6 +522,8 @@ class GraphEditorPageRendererTest {
                         granularity = StepGranularity.BUSINESS,
                         kind = StepKind.BUSINESS_ACTION,
                         description = "先进入 OrderController.submit，再调用后续节点。",
+                        primaryNodeId = "method:submit-order",
+                        codeSnippet = "orderService.submit(request);",
                         evidence = listOf(
                             ResultEvidenceFinding(
                                 id = "submit-direct-call",
@@ -447,7 +548,7 @@ class GraphEditorPageRendererTest {
             codeDraftRequestState = GraphEditorStateService.AsyncRequestState.running(),
             operationFeedback = GraphEditorStateService.OperationFeedback(
                 level = GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
-                message = "已加载当前方法链路：OrderController.submit",
+                message = "已加载当前编辑器上下文链路：OrderController.submit",
             ),
             layoutState = GraphLayoutState(
                 positions = mapOf(
@@ -459,7 +560,13 @@ class GraphEditorPageRendererTest {
             snapshotRevision = 11,
         )
 
-        val rendered = renderer.render(html, snapshot)
+        val artifactRefs = artifactRegistry.replaceWith(snapshot)
+        val rendered = renderer.render(
+            entryHtml = html,
+            sessionId = "session-1",
+            snapshot = snapshot,
+            artifactRefs = artifactRefs,
+        )
 
         assertTrue(rendered.contains("window.linkGraphBootstrap"))
         assertTrue(rendered.contains("OrderController.submit"))
@@ -485,6 +592,12 @@ class GraphEditorPageRendererTest {
         assertTrue(rendered.contains("src/main/java/com/example/OrderDraftDto.java"))
         assertFalse(rendered.contains("package com.example;"))
         assertTrue(rendered.contains("\"contentArtifactId\""))
+        assertTrue(rendered.contains("\"editScopes\""))
+        assertTrue(rendered.contains("scope-submit-order"))
+        assertTrue(rendered.contains("\"allowedChangeKinds\":[\"REPLACE_METHOD_BLOCK\"]"))
+        assertTrue(rendered.contains("\"editOperations\""))
+        assertTrue(rendered.contains("\"kind\":\"REPLACE_METHOD_BLOCK\""))
+        assertTrue(rendered.contains("Only the submit method is writable."))
         assertTrue(rendered.contains("\"lastDraftPatchApplyResult\""))
         assertTrue(rendered.contains("已应用 1 条草稿图变更。"))
         assertTrue(rendered.contains("DefaultFallback"))
@@ -502,7 +615,7 @@ class GraphEditorPageRendererTest {
         assertTrue(rendered.contains("\"RUNNING\""))
         assertTrue(rendered.contains("operationFeedback"))
         assertTrue(rendered.contains("SUCCESS"))
-        assertTrue(rendered.contains("已加载当前方法链路：OrderController.submit"))
+        assertTrue(rendered.contains("已加载当前编辑器上下文链路：OrderController.submit"))
         assertTrue(rendered.contains("\"callOrder\":\"0\""))
         assertTrue(rendered.contains("\"layoutState\""))
         assertTrue(rendered.contains("\"semanticRevision\":4"))
@@ -637,5 +750,93 @@ class GraphEditorPageRendererTest {
 
         assertTrue(bootstrapJson.contains(""""sourceNavigationState""""))
         assertTrue(bootstrapJson.contains(""""phase":"IDLE""""))
+    }
+
+    @Test
+    fun bootstrapJsonIncludesWorkbenchConversationAndDraftState() {
+        val renderer = GraphEditorPageRenderer()
+        val candidate = CandidateDraftChange(
+            changeId = "change-upload-condition",
+            status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+            title = "修改上传条件判断",
+            targetStepIds = listOf("step-upload-condition"),
+            targetNodeIds = listOf("flow-action:condition"),
+            beforeState = "if (a > 10)",
+            afterState = "if (a < 100)",
+            reason = "业务条件写反了。",
+            impactSummary = "影响主流程分支。",
+            claimType = "CODE_FACT",
+            evidence = listOf(
+                com.charmnight.linkgraph.llm.ResultEvidenceFinding(
+                    id = "finding-upload-condition",
+                    claim = "当前源码里直接能看到上传条件判断。",
+                    evidenceLevel = com.charmnight.linkgraph.llm.ResultEvidenceLevel.DIRECT_SOURCE,
+                    references = listOf(
+                        com.charmnight.linkgraph.llm.ResultEvidenceReference(
+                            nodeId = "flow-action:condition",
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val snapshot = GraphEditorStateService.Snapshot(
+            auditResult = com.charmnight.linkgraph.llm.GraphPatchResult(
+                source = LlmResultSource.MOCK,
+                question = "这里是不是有问题？",
+                answer = "建议修改条件判断。",
+                promptPreview = "prompt",
+                candidateChanges = listOf(candidate),
+                newCandidateChanges = listOf(candidate),
+                auditSession = AuditConversationSession(
+                    sessionId = "audit-method-submit",
+                    scopeKey = "method:submit",
+                    messages = listOf(
+                        AuditConversationMessage(
+                            messageId = "m-1",
+                            role = AuditMessageRole.USER,
+                            content = "这里是不是有问题？",
+                        ),
+                    ),
+                    candidateChanges = listOf(candidate),
+                    focusTargetId = candidate.changeId,
+                ),
+            ),
+            draftWorkbenchState = DraftWorkbenchState(
+                draftChanges = listOf(
+                    DraftWorkbenchEntry(
+                        entryId = "draft-change-1",
+                        kind = DraftEntryKind.CHANGE,
+                        title = "修改上传条件判断",
+                        sourceChangeId = candidate.changeId,
+                        targetStepIds = listOf("step-upload-condition"),
+                        targetNodeIds = listOf("flow-action:condition"),
+                        afterState = "if (a < 100)",
+                        reason = "业务条件写反了。",
+                    ),
+                ),
+                draftNotes = listOf(
+                    DraftWorkbenchEntry(
+                        entryId = "draft-note-1",
+                        kind = DraftEntryKind.NOTE,
+                        title = "上传目录说明",
+                        targetStepIds = listOf("step-read-upload-dir"),
+                        afterState = "上传目录来自租户配置。",
+                        reason = "讲解中手动加入。",
+                    ),
+                ),
+            ),
+        )
+
+        val bootstrapJson = renderer.bootstrapJson(snapshot)
+
+        assertTrue(bootstrapJson.contains(""""draftWorkbenchState""""))
+        assertTrue(bootstrapJson.contains(""""candidateChanges""""))
+        assertTrue(bootstrapJson.contains(""""newCandidateChanges""""))
+        assertTrue(bootstrapJson.contains(""""auditSession""""))
+        assertTrue(bootstrapJson.contains(""""scopeKey":"method:submit""""))
+        assertTrue(bootstrapJson.contains(""""claimType":"CODE_FACT""""))
+        assertTrue(bootstrapJson.contains(""""evidenceLevel":"DIRECT_SOURCE""""))
+        assertTrue(bootstrapJson.contains(""""kind":"CHANGE""""))
+        assertTrue(bootstrapJson.contains(""""kind":"NOTE""""))
     }
 }

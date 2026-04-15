@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useMemo, useRef } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyDraftPatchPreview,
   clearDraftPatchPreview,
@@ -11,16 +11,17 @@ import {
   readBootstrapState,
   restoreDraftPatchPreview,
   requestAuditAsync,
+  confirmAuditCandidateChange,
+  unconfirmAuditCandidateChange,
   requestArtifactContent,
   requestDiffReviewAsync,
   requestGraphBeautificationAsync,
   undoLastDraftPatchApply,
+  updateWorkbenchSectionPreference,
   applySingleCodeDraft,
 } from "./api";
 import { canNavigateToSource } from "./sourceNavigation";
-import { AuditPanel } from "./components/AuditPanel";
 import { AsyncRequestFailureDialog } from "./components/AsyncRequestFailureDialog";
-import { BeautificationPanel } from "./components/BeautificationPanel";
 import { CodeDraftPanel } from "./components/CodeDraftPanel";
 import { DiffPanel } from "./components/DiffPanel";
 import { GenerationPlanPanel } from "./components/GenerationPlanPanel";
@@ -28,7 +29,6 @@ import { IssuePanel } from "./components/IssuePanel";
 import { Legend } from "./components/Legend";
 import { MermaidImportDialog } from "./components/MermaidImportDialog";
 import { PropertyPanel } from "./components/PropertyPanel";
-import { PatchPreviewPanel } from "./components/PatchPreviewPanel";
 import { SyncPreviewPanel } from "./components/SyncPreviewPanel";
 import { FactGraphView } from "./views/fact/FactGraphView";
 import { FlowchartView } from "./views/flowchart/FlowchartView";
@@ -42,6 +42,7 @@ import {
 } from "./debug";
 import { FifoQueue } from "./fifoQueue";
 import {
+  applyBootstrapEdgeRoutes,
   applyBootstrapNodePositions,
   applyLayoutOnlyNodePositions,
   clearStoredNodePosition,
@@ -56,15 +57,22 @@ import {
   sameNodeIdList,
   syncNodePosition,
 } from "./graphState";
+import { canEditNodeLayout } from "./layoutEditability";
 import { nextManualNodeSequence } from "./manualNodeIds";
 import type {
   AsyncRequestState,
   AnalysisDisplayMode,
+  AuditWorkbenchState,
+  CandidateDraftChange,
   DiffItem,
   DraftPatchPreviewSource,
+  DraftWorkbenchEntry,
+  DraftWorkbenchViewState,
+  ExplanationWorkbenchState,
   GeneratedCodeDraft,
   GeneratedCodeDraftWriteReport,
   GraphBeautificationResult,
+  GraphFocusRequest,
   LinkGraphLayoutState,
   GraphPosition,
   GraphPatch,
@@ -79,22 +87,42 @@ import type {
   LinkGraphNode,
   MermaidIssue,
   OperationFeedback,
+  ResultEvidenceReference,
   ResourceRelationViewDocument,
   SourceNavigationState,
+  StepGranularity,
+  WorkbenchSectionId,
+  WorkbenchSectionPreferences,
 } from "./types";
 import { GraphWorkbench } from "./workbench/GraphWorkbench";
-import { WorkbenchDock } from "./workbench/WorkbenchDock";
+import { AuditTab } from "./workbench/AuditTab";
+import { candidateCanConfirm } from "./workbench/candidateChangeSupport";
+import { DraftTab } from "./workbench/DraftTab";
+import { ExplanationTab } from "./workbench/ExplanationTab";
 import { WorkbenchPropertyDrawer } from "./workbench/WorkbenchPropertyDrawer";
-import { WorkbenchSummary } from "./workbench/WorkbenchSummary";
 import { WorkbenchToolbar } from "./workbench/WorkbenchToolbar";
+import { AUDIT_WORKBENCH_SECTION_IDS } from "./workbench/workbenchSections";
 import type { RequestFailureNotice } from "./controllers/bridgeCommandTypes";
 import { useBootstrapStateController } from "./controllers/useBootstrapStateController";
 import { useBridgeCommandController } from "./controllers/useBridgeCommandController";
 import { useSourceNavigationController } from "./controllers/useSourceNavigationController";
 import { useWorkbenchCommandController } from "./controllers/useWorkbenchCommandController";
 import { useWorkbenchState } from "./controllers/useWorkbenchState";
+import { resolveToolbarFeedback } from "./asyncRequestStatus";
 
-type DockPanel = "audit" | "issues" | "diff" | "patch" | "sync" | "plan" | "beautification" | "drafts" | null;
+type WorkbenchTab = "explanation" | "audit" | "draft" | "plan" | "code";
+type ExplanationRequestMode = "fresh" | "follow_up";
+const DEFAULT_ANALYSIS_DISPLAY_MODE: AnalysisDisplayMode = "FLOWCHART";
+
+interface ExplanationHistoryEntry {
+  result: GraphBeautificationResult;
+  requestState: AsyncRequestState;
+  selectedStepId: string | null;
+  granularity: StepGranularity;
+  sessionLabel: string;
+}
+
+const DEFAULT_EXPLANATION_SESSION_LABEL = "当前链路讲解";
 
 const IDLE_REQUEST_STATE: AsyncRequestState = {
   phase: "IDLE",
@@ -124,16 +152,68 @@ const IDLE_SOURCE_NAVIGATION_STATE: SourceNavigationState = {
   errorMessage: null,
 };
 
-const DOCK_TABS: Array<{ id: Exclude<DockPanel, null>; label: string }> = [
+const WORKBENCH_TABS: Array<{ id: WorkbenchTab; label: string }> = [
+  { id: "explanation", label: "讲解" },
   { id: "audit", label: "审计" },
-  { id: "issues", label: "校验" },
-  { id: "diff", label: "对比" },
-  { id: "patch", label: "草稿预览" },
-  { id: "sync", label: "同步" },
+  { id: "draft", label: "草稿" },
   { id: "plan", label: "计划" },
-  { id: "beautification", label: "讲解" },
-  { id: "drafts", label: "草稿" },
+  { id: "code", label: "代码" },
 ];
+
+const REQUEST_ONLY_SELECTION_MESSAGE_TYPES = new Set([
+  "requestAudit",
+  "auditResult",
+]);
+
+function toDraftWorkbenchEntry(change: CandidateDraftChange): DraftWorkbenchEntry {
+  return {
+    entryId: `draft-${change.changeId}`,
+    kind: "CHANGE",
+    title: change.title,
+    sourceChangeId: change.changeId,
+    targetStepIds: change.targetStepIds,
+    targetNodeIds: change.targetNodeIds,
+    beforeState: change.beforeState ?? null,
+    afterState: change.afterState ?? null,
+    reason: change.reason,
+    impactSummary: change.impactSummary,
+    claimType: change.claimType ?? null,
+    evidence: change.evidence ?? [],
+  };
+}
+
+function resolveEvidenceTargetNodeId(
+  targetNodeIds: string[],
+  evidence?: Array<{ references: Array<{ nodeId?: string | null }> }>,
+): string | null {
+  return targetNodeIds[0]
+    ?? evidence?.flatMap((finding) => finding.references).find((reference) => reference.nodeId)?.nodeId
+    ?? null;
+}
+
+function updateGraphPatchResultCandidateStatus(
+  result: GraphPatchResult | null,
+  changeId: string,
+  status: CandidateDraftChange["status"],
+): GraphPatchResult | null {
+  if (!result) {
+    return result;
+  }
+  return {
+    ...result,
+    candidateChanges: result.candidateChanges.map((candidate) =>
+      candidate.changeId === changeId ? { ...candidate, status } : candidate),
+    newCandidateChanges: result.newCandidateChanges.map((candidate) =>
+      candidate.changeId === changeId ? { ...candidate, status } : candidate),
+    auditSession: result.auditSession
+      ? {
+          ...result.auditSession,
+          candidateChanges: result.auditSession.candidateChanges.map((candidate) =>
+            candidate.changeId === changeId ? { ...candidate, status } : candidate),
+        }
+      : null,
+  };
+}
 
 const INITIAL_NODES: LinkGraphNode[] = [
   {
@@ -208,11 +288,32 @@ function deriveFactGraphSummary(
   };
 }
 
-function deriveFlowchartSummary(visibleGraph: LinkGraphDocument) {
+function deriveFlowchartSummary(
+  visibleGraph: LinkGraphDocument,
+  fullGraph: LinkGraphDocument = visibleGraph,
+) {
+  const hiddenNodeCount = (fullGraph.nodes?.length ?? 0) - visibleGraph.nodes.length;
+  const hiddenEdgeCount = (fullGraph.edges?.length ?? 0) - visibleGraph.edges.length;
+  const incompleteNodeCount = visibleGraph.nodes.filter((node) => node.metadata?.["flow.incomplete"] === "true").length;
+  const incompleteEdgeCount = visibleGraph.edges.filter((edge) => edge.metadata?.["flow.incomplete"] === "true").length;
+  const syntheticEdgeCount = visibleGraph.edges.filter((edge) => edge.metadata?.["flow.synthetic"] === "true").length;
+  const syntheticEntryEdgeCount = visibleGraph.edges.filter(
+    (edge) => edge.metadata?.["flow.synthetic"] === "true" && edge.metadata?.["flow.provenance"] === "SYNTHETIC_PROJECTION",
+  ).length;
   return {
     nodeCount: visibleGraph.nodes.length,
     branchCount: visibleGraph.nodes.filter((node) => node.metadata?.["flowchart.kind"] === "DECISION").length,
     exceptionPathCount: visibleGraph.edges.filter((edge) => edge.label?.trim().toUpperCase() === "EXCEPTION").length,
+    fullNodeCount: fullGraph.nodes.length,
+    fullEdgeCount: fullGraph.edges.length,
+    hiddenNodeCount: Math.max(0, hiddenNodeCount),
+    hiddenEdgeCount: Math.max(0, hiddenEdgeCount),
+    truncated: hiddenNodeCount > 0 || hiddenEdgeCount > 0,
+    incompleteNodeCount,
+    incompleteEdgeCount,
+    semanticallyIncomplete: incompleteNodeCount > 0 || incompleteEdgeCount > 0,
+    syntheticEdgeCount,
+    syntheticEntryEdgeCount,
   };
 }
 
@@ -228,7 +329,7 @@ function deriveResourceRelationSummary(visibleGraph: LinkGraphDocument) {
 }
 
 const SAMPLE_STATE: LinkGraphBootstrapState = {
-  analysisDisplayMode: "FACT_GRAPH",
+  analysisDisplayMode: DEFAULT_ANALYSIS_DISPLAY_MODE,
   visibleGraph: {
     nodes: INITIAL_NODES,
     edges: INITIAL_EDGES,
@@ -267,7 +368,10 @@ const SAMPLE_STATE: LinkGraphBootstrapState = {
       edges: INITIAL_EDGES,
     },
     anchorNodeId: INITIAL_NODES[0]?.id ?? null,
-    summary: deriveFlowchartSummary({ nodes: INITIAL_NODES, edges: INITIAL_EDGES }),
+    summary: deriveFlowchartSummary(
+      { nodes: INITIAL_NODES, edges: INITIAL_EDGES },
+      { nodes: INITIAL_NODES, edges: INITIAL_EDGES },
+    ),
   },
   resourceRelationView: {
     visibleGraph: {
@@ -331,7 +435,7 @@ const SAMPLE_STATE: LinkGraphBootstrapState = {
 };
 
 const EMPTY_STATE: LinkGraphBootstrapState = {
-  analysisDisplayMode: "FACT_GRAPH",
+  analysisDisplayMode: DEFAULT_ANALYSIS_DISPLAY_MODE,
   visibleGraph: {
     nodes: [],
     edges: [],
@@ -363,7 +467,7 @@ const EMPTY_STATE: LinkGraphBootstrapState = {
       edges: [],
     },
     anchorNodeId: null,
-    summary: deriveFlowchartSummary({ nodes: [], edges: [] }),
+    summary: deriveFlowchartSummary({ nodes: [], edges: [] }, { nodes: [], edges: [] }),
   },
   resourceRelationView: {
     visibleGraph: {
@@ -555,6 +659,58 @@ function syncFactGraphViewDocument(
   };
 }
 
+function applyBootstrapRoutesToDocument(
+  nextDocument: LinkGraphDocument,
+  currentDocument: LinkGraphDocument,
+): LinkGraphDocument {
+  const nextEdges = applyBootstrapEdgeRoutes(nextDocument.edges, currentDocument.edges);
+  return nextEdges === nextDocument.edges
+    ? nextDocument
+    : {
+        ...nextDocument,
+        edges: nextEdges,
+      };
+}
+
+function applyBootstrapRoutesToViewDocument<
+  T extends {
+    visibleGraph: LinkGraphDocument;
+    fullGraph: LinkGraphDocument;
+  },
+>(
+  nextView: T,
+  currentView: T,
+): T {
+  return {
+    ...nextView,
+    visibleGraph: applyBootstrapRoutesToDocument(nextView.visibleGraph, currentView.visibleGraph),
+    fullGraph: applyBootstrapRoutesToDocument(nextView.fullGraph, currentView.fullGraph),
+  };
+}
+
+function reuseCurrentViewGraphs<
+  T extends {
+    visibleGraph: LinkGraphDocument;
+    fullGraph: LinkGraphDocument;
+  },
+>(
+  nextView: T,
+  currentView: T,
+  reuseCurrentGraphs: boolean,
+): T {
+  if (!reuseCurrentGraphs) {
+    return nextView;
+  }
+  if (nextView.visibleGraph === currentView.visibleGraph && nextView.fullGraph === currentView.fullGraph) {
+    return nextView;
+  }
+  return {
+    ...nextView,
+    visibleGraph: currentView.visibleGraph,
+    fullGraph: currentView.fullGraph,
+  };
+}
+
 function applyLayoutUpdatesToGraphDocument(
   currentGraph: LinkGraphDocument,
   updates: Array<{ id: string; position: GraphPosition }>,
@@ -595,7 +751,7 @@ function syncFlowchartViewLayout(
     ...currentView,
     visibleGraph,
     fullGraph,
-    summary: deriveFlowchartSummary(visibleGraph),
+    summary: deriveFlowchartSummary(visibleGraph, fullGraph),
   };
 }
 
@@ -615,7 +771,7 @@ function syncResourceRelationViewLayout(
 
 function resolveActiveViewDocument(
   state: LinkGraphBootstrapState,
-  displayMode: AnalysisDisplayMode = state.analysisDisplayMode ?? "FACT_GRAPH",
+  displayMode: AnalysisDisplayMode = state.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE,
 ): FactGraphViewDocument | FlowchartViewDocument | ResourceRelationViewDocument {
   switch (displayMode) {
     case "FLOWCHART":
@@ -717,8 +873,6 @@ export function App() {
     setAnchorNodeId,
     detailNodeId,
     setDetailNodeId,
-    activeDock,
-    setActiveDock,
     auditRequestState,
     setAuditRequestState,
     auditTargetNodeIds,
@@ -739,6 +893,8 @@ export function App() {
     setResourceRelationView,
     draftGraph,
     setDraftGraph,
+    draftWorkbenchState,
+    setDraftWorkbenchState,
     designBaseline,
     setDesignBaseline,
     draftPatchPreview,
@@ -791,6 +947,8 @@ export function App() {
     setSourceNavigationState,
     operationFeedback,
     setOperationFeedback,
+    lastMessageType,
+    setLastMessageType,
     graphSurfaceExperiments,
     setGraphSurfaceExperiments,
     artifactContents,
@@ -829,17 +987,59 @@ export function App() {
     bridgeCommands,
   });
   const workbenchCommands = useWorkbenchCommandController({
-    setActiveDock,
     setGenerationPlan,
     setGenerationPlanRequestState,
     setGeneratedCodeDrafts,
     setGeneratedCodeDraftWarnings,
     setGeneratedCodeDraftSource,
     setGeneratedCodeDraftPromptPreview,
+    setGeneratedCodeDraftPromptPreviewArtifactId,
     setGeneratedCodeDraftWriteReport,
     setCodeDraftRequestState,
     bridgeCommands,
   });
+  const toolbarFeedback = useMemo(() => resolveToolbarFeedback({
+    operationFeedback,
+    lastMessageType,
+    requestStates: [
+      auditRequestState,
+      diffReviewRequestState,
+      graphBeautificationRequestState,
+      generationPlanRequestState,
+      codeDraftRequestState,
+    ],
+  }), [
+    auditRequestState,
+    codeDraftRequestState,
+    diffReviewRequestState,
+    generationPlanRequestState,
+    graphBeautificationRequestState,
+    lastMessageType,
+    operationFeedback,
+  ]);
+  const [activeWorkbenchTab, setActiveWorkbenchTab] = useState<WorkbenchTab>("explanation");
+  const [workbenchSectionPreferences, setWorkbenchSectionPreferences] = useState<WorkbenchSectionPreferences>(
+    () => initialState.workbenchSectionPreferences ?? {},
+  );
+  const [selectedExplanationStepId, setSelectedExplanationStepId] = useState<string | null>(
+    () => graphBeautificationResult?.steps?.[0]?.stepId ?? null,
+  );
+  const [selectedExplanationGranularity, setSelectedExplanationGranularity] = useState<StepGranularity>(
+    () => graphBeautificationResult?.granularity ?? "BUSINESS",
+  );
+  const [explanationHistory, setExplanationHistory] = useState<ExplanationHistoryEntry[]>([]);
+  const [currentExplanationSessionLabel, setCurrentExplanationSessionLabel] = useState(DEFAULT_EXPLANATION_SESSION_LABEL);
+  const [hoveredExplanationStepId, setHoveredExplanationStepId] = useState<string | null>(null);
+  const [selectedAuditChangeId, setSelectedAuditChangeId] = useState<string | null>(null);
+  const [selectedAuditLeadId, setSelectedAuditLeadId] = useState<string | null>(null);
+  const [auditSourceLeadId, setAuditSourceLeadId] = useState<string | null>(null);
+  const [selectedDraftEntryId, setSelectedDraftEntryId] = useState<string | null>(
+    () => initialState.draftWorkbenchState?.draftChanges[0]?.entryId
+      ?? initialState.draftWorkbenchState?.draftNotes[0]?.entryId
+      ?? null,
+  );
+  const [draftCompareMode, setDraftCompareMode] = useState<"after" | "compare">("after");
+  const [focusNodeRequest, setFocusNodeRequest] = useState<GraphFocusRequest | null>(null);
   const semanticRevisionRef = useRef<number | null>(initialState.semanticRevision ?? null);
   const layoutRevisionRef = useRef<number | null>(initialState.layoutRevision ?? null);
   const nextManualNodeIdRef = useRef(nextManualNodeSequence(initialGraph.nodes));
@@ -848,6 +1048,10 @@ export function App() {
   const draftGraphRef = useRef(draftGraph);
   const anchorNodeIdRef = useRef(anchorNodeId);
   const analysisDisplayModeRef = useRef(analysisDisplayMode);
+  const pendingExplanationDrillTargetRef = useRef<string | null>(null);
+  const nextFocusRequestNonceRef = useRef(0);
+  const explanationLocalOverrideRef = useRef(false);
+  const pendingExplanationRequestModeRef = useRef<ExplanationRequestMode | null>(null);
   const requestFailureSignatureRef = useRef<Record<string, string | null>>({
     audit: null,
     diff: null,
@@ -887,8 +1091,22 @@ export function App() {
   }, [anchorNodeId]);
 
   useEffect(() => {
+    setSelectedDraftEntryId((current) => {
+      const allEntries = draftWorkbenchState.draftChanges.concat(draftWorkbenchState.draftNotes);
+      if (current && allEntries.some((entry) => entry.entryId === current)) {
+        return current;
+      }
+      return draftWorkbenchState.draftChanges[0]?.entryId
+        ?? draftWorkbenchState.draftNotes[0]?.entryId
+        ?? null;
+    });
+  }, [draftWorkbenchState.draftChanges, draftWorkbenchState.draftNotes]);
+
+  useEffect(() => {
     analysisDisplayModeRef.current = analysisDisplayMode;
   }, [analysisDisplayMode]);
+
+  const hasConfirmedDraftChanges = draftWorkbenchState.draftChanges.length > 0;
 
   function syncManualNodeIdCounters(nextNodes: Array<{ id: string }>) {
     nextManualNodeIdRef.current = Math.max(
@@ -964,44 +1182,43 @@ export function App() {
     const currentNodes = nodesRef.current;
     const currentEdges = edgesRef.current;
     const currentDraftGraph = draftGraphRef.current;
+    const effectiveCurrentDraftGraph = currentDraftGraph ?? {
+      nodes: currentNodes,
+      edges: currentEdges,
+    };
     const currentAnchorNodeId = anchorNodeIdRef.current;
     const currentAnalysisDisplayMode = analysisDisplayModeRef.current;
-    const nextAnalysisDisplayMode = nextState.analysisDisplayMode ?? "FACT_GRAPH";
+    const nextAnalysisDisplayMode = nextState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE;
     const analysisDisplayModeChanged = nextAnalysisDisplayMode !== currentAnalysisDisplayMode;
     const nextSourceNavigationState = resolveSourceNavigationState(nextState);
-    const nextFactGraphView = resolveFactGraphView(nextState);
-    const nextFlowchartView = resolveFlowchartView(nextState);
-    const nextResourceRelationView = resolveResourceRelationView(nextState);
+    let nextFactGraphView = applyBootstrapRoutesToViewDocument(resolveFactGraphView(nextState), factGraphView);
+    let nextFlowchartView = applyBootstrapRoutesToViewDocument(resolveFlowchartView(nextState), flowchartView);
+    let nextResourceRelationView = applyBootstrapRoutesToViewDocument(
+      resolveResourceRelationView(nextState),
+      resourceRelationView,
+    );
+    const nextWorkingGraph = applyBootstrapRoutesToDocument(resolveWorkingGraph(nextState), effectiveCurrentDraftGraph);
     traceLinkGraph("app.applyBootstrapState.start", {
       bootstrap: summarizeBootstrapState(nextState),
       currentGraph: summarizeGraph({ nodes: currentNodes, edges: currentEdges }),
     });
-    const visibleGraph = resolveActiveViewDocument(nextState, nextAnalysisDisplayMode).visibleGraph;
+    const visibleGraph = resolveActiveViewDocument({
+      ...nextState,
+      factGraphView: nextFactGraphView,
+      flowchartView: nextFlowchartView,
+      resourceRelationView: nextResourceRelationView,
+    }, nextAnalysisDisplayMode).visibleGraph;
     const revisionsAvailable = hasRevision(nextState.semanticRevision) || hasRevision(nextState.layoutRevision);
     const semanticRevisionAdvanced = hasRevision(nextState.semanticRevision)
       && nextState.semanticRevision !== semanticRevisionRef.current;
     const layoutRevisionAdvanced = hasRevision(nextState.layoutRevision)
       && nextState.layoutRevision !== layoutRevisionRef.current;
-    let semanticGraphChanged = semanticRevisionAdvanced;
-    let layoutGraphChanged = semanticGraphChanged || layoutRevisionAdvanced;
-    let nextGraph = {
-      nodes: currentNodes,
-      edges: currentEdges,
-    };
-    if (revisionsAvailable) {
-      if (semanticGraphChanged || layoutGraphChanged) {
-        nextGraph = {
-          ...visibleGraph,
-          nodes: applyBootstrapNodePositions(
-            visibleGraph.nodes,
-            currentNodes,
-            nextState.layoutState,
-            !analysisDisplayModeChanged,
-          ),
-        };
+    let nextVisibleGraphWithPositionsCache: LinkGraphDocument | null = null;
+    function nextVisibleGraphWithPositions() {
+      if (nextVisibleGraphWithPositionsCache) {
+        return nextVisibleGraphWithPositionsCache;
       }
-    } else {
-      nextGraph = {
+      nextVisibleGraphWithPositionsCache = {
         ...visibleGraph,
         nodes: applyBootstrapNodePositions(
           visibleGraph.nodes,
@@ -1010,16 +1227,56 @@ export function App() {
           !analysisDisplayModeChanged,
         ),
       };
-      semanticGraphChanged = graphSemanticSignature({ nodes: currentNodes, edges: currentEdges }) !== graphSemanticSignature(nextGraph);
-      layoutGraphChanged = graphLayoutSignature(currentNodes) !== graphLayoutSignature(nextGraph.nodes);
+      return nextVisibleGraphWithPositionsCache;
     }
+    const visibleSemanticChanged = revisionsAvailable
+      ? analysisDisplayModeChanged
+        || (
+          semanticRevisionAdvanced
+          && graphSemanticSignature({ nodes: currentNodes, edges: currentEdges }) !== graphSemanticSignature(visibleGraph)
+        )
+      : analysisDisplayModeChanged
+        || graphSemanticSignature({ nodes: currentNodes, edges: currentEdges }) !== graphSemanticSignature(visibleGraph);
+    const visibleLayoutChanged = revisionsAvailable
+      ? layoutRevisionAdvanced
+        && graphLayoutSignature(currentNodes) !== graphLayoutSignature(nextVisibleGraphWithPositions().nodes)
+      : graphLayoutSignature(currentNodes) !== graphLayoutSignature(nextVisibleGraphWithPositions().nodes);
+    const semanticGraphChanged = revisionsAvailable
+      ? visibleSemanticChanged
+      : visibleSemanticChanged;
+    const layoutGraphChanged = revisionsAvailable
+      ? semanticGraphChanged || (layoutRevisionAdvanced && visibleLayoutChanged)
+      : semanticGraphChanged || visibleLayoutChanged;
+    const nextGraph = semanticGraphChanged || layoutGraphChanged
+      ? nextVisibleGraphWithPositions()
+      : {
+          nodes: currentNodes,
+          edges: currentEdges,
+        };
+    const reuseCurrentViewGraphsWhenStable = !semanticGraphChanged && !layoutGraphChanged;
+    nextFactGraphView = reuseCurrentViewGraphs(nextFactGraphView, factGraphView, reuseCurrentViewGraphsWhenStable);
+    nextFlowchartView = reuseCurrentViewGraphs(nextFlowchartView, flowchartView, reuseCurrentViewGraphsWhenStable);
+    nextResourceRelationView = reuseCurrentViewGraphs(
+      nextResourceRelationView,
+      resourceRelationView,
+      reuseCurrentViewGraphsWhenStable,
+    );
     const requestedDraftPatchFocusNodeId = nextState.lastMessageType === "draftPatchApplied"
       ? nextState.lastDraftPatchApplyResult?.focusNodeId ?? null
       : null;
     const nextSelectedNodeId = nextState.selectedNodeId ?? nextGraph.nodes[0]?.id ?? null;
+    const shouldPreserveLocalSelection = Boolean(
+      selectedNodeId
+      && !semanticGraphChanged
+      && !layoutGraphChanged
+      && REQUEST_ONLY_SELECTION_MESSAGE_TYPES.has(nextState.lastMessageType ?? "")
+      && nextGraph.nodes.some((node) => node.id === selectedNodeId),
+    );
     const effectiveSelectedNodeId = requestedDraftPatchFocusNodeId && nextGraph.nodes.some((node) => node.id === requestedDraftPatchFocusNodeId)
       ? requestedDraftPatchFocusNodeId
-      : nextSelectedNodeId;
+      : shouldPreserveLocalSelection
+        ? selectedNodeId
+        : nextSelectedNodeId;
     const nextAnchorNodeId = resolveAnchorNodeId(
       nextGraph.nodes,
       shouldResetAnchorNode(nextState, semanticGraphChanged)
@@ -1031,77 +1288,83 @@ export function App() {
           nextGraph.nodes,
           nextGraph.edges,
           nextAnchorNodeId,
-          nextState.analysisDisplayMode ?? "FACT_GRAPH",
+          nextState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE,
         )
       : layoutGraphChanged
         ? applyLayoutOnlyNodePositions(currentNodes, nextGraph.nodes)
         : currentNodes;
     syncManualNodeIdCounters(nextNodes);
-    const effectiveCurrentDraftGraph = currentDraftGraph ?? {
-      nodes: currentNodes,
-      edges: currentEdges,
-    };
     let nextDraftGraph = effectiveCurrentDraftGraph;
     let nextDraftGraphWithPositions = effectiveCurrentDraftGraph;
-    let draftSemanticChanged = semanticGraphChanged;
-    let draftLayoutChanged = layoutGraphChanged;
-    if (revisionsAvailable) {
-      if (draftSemanticChanged || draftLayoutChanged) {
-        nextDraftGraph = resolveWorkingGraph(nextState);
-        nextDraftGraphWithPositions = nextDraftGraph.nodes.length > 0
-          ? {
-              ...nextDraftGraph,
-              nodes: applyBootstrapNodePositions(
-                nextDraftGraph.nodes,
-                effectiveCurrentDraftGraph.nodes,
-                nextState.layoutState,
-                !analysisDisplayModeChanged,
-              ),
-            }
-          : nextDraftGraph;
-      }
-    } else {
-      nextDraftGraph = resolveWorkingGraph(nextState);
-      nextDraftGraphWithPositions = nextDraftGraph.nodes.length > 0
-        ? {
-            ...nextDraftGraph,
-            nodes: applyBootstrapNodePositions(
-              nextDraftGraph.nodes,
-              effectiveCurrentDraftGraph.nodes,
-              nextState.layoutState,
-              !analysisDisplayModeChanged,
-            ),
-          }
-        : nextDraftGraph;
-      draftSemanticChanged = nextState.workingGraph != null
-        ? graphSemanticSignature(effectiveCurrentDraftGraph) !== graphSemanticSignature(nextDraftGraphWithPositions)
-        : semanticGraphChanged;
-      draftLayoutChanged = nextState.workingGraph != null
-        ? graphLayoutSignature(effectiveCurrentDraftGraph.nodes) !== graphLayoutSignature(nextDraftGraphWithPositions.nodes)
-        : layoutGraphChanged;
-    }
+    nextDraftGraph = nextWorkingGraph;
+    nextDraftGraphWithPositions = nextDraftGraph.nodes.length > 0
+      ? {
+          ...nextDraftGraph,
+          nodes: applyBootstrapNodePositions(
+            nextDraftGraph.nodes,
+            effectiveCurrentDraftGraph.nodes,
+            nextState.layoutState,
+            !analysisDisplayModeChanged,
+          ),
+        }
+      : nextDraftGraph;
+    const workingSemanticChanged = nextState.workingGraph != null
+      ? revisionsAvailable
+        ? semanticRevisionAdvanced
+          && graphSemanticSignature(effectiveCurrentDraftGraph) !== graphSemanticSignature(nextDraftGraph)
+        : graphSemanticSignature(effectiveCurrentDraftGraph) !== graphSemanticSignature(nextDraftGraph)
+      : semanticGraphChanged;
+    const workingLayoutChanged = nextState.workingGraph != null
+      ? graphLayoutSignature(effectiveCurrentDraftGraph.nodes) !== graphLayoutSignature(nextDraftGraphWithPositions.nodes)
+      : layoutGraphChanged;
+    const draftSemanticChanged = revisionsAvailable
+      ? workingSemanticChanged
+      : workingSemanticChanged;
+    const draftLayoutChanged = revisionsAvailable
+      ? draftSemanticChanged || (layoutRevisionAdvanced && workingLayoutChanged)
+      : draftSemanticChanged || workingLayoutChanged;
     const nextDraftGraphNodes = draftSemanticChanged && nextDraftGraphWithPositions.nodes.length > 0
       ? normalizeGraphNodes(
           nextDraftGraphWithPositions.nodes,
           nextDraftGraphWithPositions.edges,
           nextAnchorNodeId,
-          nextState.analysisDisplayMode ?? "FACT_GRAPH",
+          nextState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE,
         )
       : draftLayoutChanged
         ? applyLayoutOnlyNodePositions(effectiveCurrentDraftGraph.nodes, nextDraftGraphWithPositions.nodes)
         : effectiveCurrentDraftGraph.nodes;
     traceLinkGraph("app.applyBootstrapState.computed", {
+      lastMessageType: nextState.lastMessageType ?? null,
+      activeWorkbenchTab,
+      analysisDisplayModeChanged,
+      currentAnalysisDisplayMode,
+      nextAnalysisDisplayMode,
       semanticGraphChanged,
       layoutGraphChanged,
+      visibleSemanticChanged,
+      visibleLayoutChanged,
       draftSemanticChanged,
       draftLayoutChanged,
       semanticRevisionAdvanced,
       layoutRevisionAdvanced,
+      currentSemanticRevision: semanticRevisionRef.current,
+      nextSemanticRevision: nextState.semanticRevision ?? null,
+      currentLayoutRevision: layoutRevisionRef.current,
+      nextLayoutRevision: nextState.layoutRevision ?? null,
+      reuseCurrentViewGraphsWhenStable,
       nextAnchorNodeId,
       nextSelectedNodeId,
       nextGraph: summarizeGraph(nextGraph),
       normalizedGraph: summarizeGraph({ nodes: nextNodes, edges: nextGraph.edges }),
       durationMs: measureDuration(startedAt),
+    });
+    traceLinkGraph("app.applyBootstrapState.mutationPlan", {
+      willSetNodes: semanticGraphChanged || layoutGraphChanged,
+      willSetEdges: semanticGraphChanged,
+      nextSelectedNodeId: effectiveSelectedNodeId,
+      nextAnchorNodeId,
+      lastMessageType: nextState.lastMessageType ?? null,
+      activeWorkbenchTab,
     });
     if (semanticGraphChanged || layoutGraphChanged) {
       setNodes(nextNodes);
@@ -1146,6 +1409,7 @@ export function App() {
           nodes: nextDraftGraphNodes,
         }
       : nextDraftGraphWithPositions);
+    setDraftWorkbenchState(nextState.draftWorkbenchState ?? { draftChanges: [], draftNotes: [] });
     setDesignBaseline(resolveDesignBaselineGraph(nextState));
     setDraftPatchPreview(nextState.draftPatchPreview ?? null);
     setCanUndoDraftPatchApply(nextState.canUndoDraftPatchApply ?? false);
@@ -1165,8 +1429,10 @@ export function App() {
     setSyncPreviewItems(nextState.syncPreviewItems);
     setGenerationPlan(nextState.generationPlan ?? null);
     setGenerationPlanRequestState(resolveRequestState(nextState.generationPlanRequestState));
-    setGraphBeautificationResult(nextState.graphBeautificationResult ?? null);
-    setGraphBeautificationRequestState(resolveRequestState(nextState.graphBeautificationRequestState));
+    if (!explanationLocalOverrideRef.current) {
+      setGraphBeautificationResult(nextState.graphBeautificationResult ?? null);
+      setGraphBeautificationRequestState(resolveRequestState(nextState.graphBeautificationRequestState));
+    }
     setGeneratedCodeDrafts(nextState.generatedCodeDrafts ?? []);
     setGeneratedCodeDraftWarnings(nextState.generatedCodeDraftWarnings ?? []);
     setGeneratedCodeDraftSource(nextState.generatedCodeDraftSource ?? null);
@@ -1176,6 +1442,8 @@ export function App() {
     setCodeDraftRequestState(resolveRequestState(nextState.codeDraftRequestState));
     setSourceNavigationState(nextSourceNavigationState);
     setOperationFeedback(nextState.operationFeedback ?? null);
+    setWorkbenchSectionPreferences(nextState.workbenchSectionPreferences ?? {});
+    setLastMessageType(nextState.lastMessageType ?? null);
     setGraphSurfaceExperiments(nextState.graphSurfaceExperiments ?? null);
     if (nextState.artifactContents) {
       setArtifactContents((current) => ({
@@ -1235,6 +1503,16 @@ export function App() {
     }
     return `请审计当前选中的 ${targetNodeIds.length} 个节点及其关联链路，指出可能遗漏的业务链路、异常分支、资源依赖和数据约束。`;
   }
+
+  function buildAuditScopeLabel(targetNodeIds: string[], targetTitle: string | null): string {
+    if (targetNodeIds.length === 0) {
+      return "当前范围：整张链路";
+    }
+    if (targetNodeIds.length === 1) {
+      return `当前节点：${targetTitle ?? targetNodeIds[0]}`;
+    }
+    return `当前范围：${targetNodeIds.length} 个节点`;
+  }
   const collapsedSummary = useMemo(
     () => resolveCollapsedDescendantSummary(nodes, edges, collapsedNodeIds),
     [nodes, edges, collapsedNodeIds],
@@ -1263,6 +1541,7 @@ export function App() {
     setGeneratedCodeDraftWarnings([]);
     setGeneratedCodeDraftSource(null);
     setGeneratedCodeDraftPromptPreview(null);
+    setGeneratedCodeDraftPromptPreviewArtifactId(null);
     setGeneratedCodeDraftWriteReport(null);
     setLastDraftPatchApplyResult(null);
     setCodeDraftRequestState(IDLE_REQUEST_STATE);
@@ -1320,7 +1599,7 @@ export function App() {
         visibleGraph: nextGraph,
         fullGraph: nextGraph,
         anchorNodeId: nextAnchorNodeId,
-        summary: deriveFlowchartSummary(nextGraph),
+        summary: deriveFlowchartSummary(nextGraph, nextGraph),
       }));
     } else if (analysisDisplayMode === "RESOURCE_RELATION_VIEW") {
       const nextGraph = { nodes: laidOutNodes, edges: nextEdges };
@@ -1393,7 +1672,25 @@ export function App() {
     const scope = resolveAuditScope(targetNodeId);
     setAuditTargetNodeIds(scope.nodeIds);
     setAuditQuestionDraft(buildDefaultAuditQuestion(scope.nodeIds, scope.title));
-    setActiveDock("audit");
+    setAuditSourceLeadId(null);
+    setActiveWorkbenchTab("audit");
+  }
+
+  function handleRequestGenerationPlan() {
+    traceLinkGraph("app.requestGenerationPlan.intent", {
+      activeWorkbenchTab,
+      selectedNodeId,
+      analysisDisplayMode,
+      generationPlanRequestPhase: generationPlanRequestState.phase,
+      hasGenerationPlan: generationPlan != null,
+    });
+    setActiveWorkbenchTab("plan");
+    workbenchCommands.handleRequestGenerationPlan();
+  }
+
+  function handleRequestCodeDrafts() {
+    setActiveWorkbenchTab("code");
+    workbenchCommands.handleRequestCodeDrafts();
   }
 
   function handleRequestScopedAudit(targetNodeId?: string) {
@@ -1401,6 +1698,7 @@ export function App() {
     const question = buildDefaultAuditQuestion(scope.nodeIds, scope.title);
     setAuditTargetNodeIds(scope.nodeIds);
     setAuditQuestionDraft(question);
+    setAuditSourceLeadId(null);
     handleRequestAudit(question, scope.nodeIds);
   }
 
@@ -1416,7 +1714,6 @@ export function App() {
     bridgeCommands.runBridgeCommand("导入 Mermaid", () => importMermaid(mermaid), {
       onAccepted: () => {
         setImportDialogOpen(false);
-        setActiveDock("issues");
       },
       successFeedback: {
         level: "INFO",
@@ -1645,6 +1942,10 @@ export function App() {
   }
 
   function handleMoveNode(nodeId: string, position: GraphPosition) {
+    const currentNode = nodes.find((node) => node.id === nodeId);
+    if (!currentNode || !canEditNodeLayout(currentNode)) {
+      return;
+    }
     startTransition(() => {
       const layoutUpdates = [{ id: nodeId, position }];
       const nextNodes = nodes.map((node) => (node.id === nodeId ? syncNodePosition(node, position) : node));
@@ -1684,11 +1985,15 @@ export function App() {
   }
 
   function handleMoveNodes(updates: Array<{ id: string; position: GraphPosition }>) {
-    if (updates.length === 0) {
+    const editableUpdates = updates.filter((update) => {
+      const currentNode = nodes.find((node) => node.id === update.id);
+      return Boolean(currentNode && canEditNodeLayout(currentNode));
+    });
+    if (editableUpdates.length === 0) {
       return;
     }
     startTransition(() => {
-      const updateMap = new Map(updates.map((item) => [item.id, item.position]));
+      const updateMap = new Map(editableUpdates.map((item) => [item.id, item.position]));
       const nextNodes = nodes.map((node) => {
         const nextPosition = updateMap.get(node.id);
         return nextPosition ? syncNodePosition(node, nextPosition) : node;
@@ -1709,17 +2014,17 @@ export function App() {
           ),
         );
       } else if (analysisDisplayMode === "FLOWCHART") {
-        setFlowchartView((current) => syncFlowchartViewLayout(current, updates));
+        setFlowchartView((current) => syncFlowchartViewLayout(current, editableUpdates));
       } else if (analysisDisplayMode === "RESOURCE_RELATION_VIEW") {
-        setResourceRelationView((current) => syncResourceRelationViewLayout(current, updates));
+        setResourceRelationView((current) => syncResourceRelationViewLayout(current, editableUpdates));
       }
       traceLinkGraph("app.layoutPublished", {
         reason: "group-drag",
-        updateCount: updates.length,
-        nodeIds: updates.slice(0, 8).map((update) => update.id),
+        updateCount: editableUpdates.length,
+        nodeIds: editableUpdates.slice(0, 8).map((update) => update.id),
       });
       publishLayoutChange(
-        updates.map((update) => ({
+        editableUpdates.map((update) => ({
           nodeId: update.id,
           x: update.position.x,
           y: update.position.y,
@@ -1759,14 +2064,14 @@ export function App() {
     }
     setAuditQuestionDraft(normalizedQuestion);
     setAuditTargetNodeIds(targetNodeIds);
-    bridgeCommands.submitAsyncBridgeCommand("审计", () => requestAuditAsync(normalizedQuestion, targetNodeIds), {
+    bridgeCommands.submitAsyncBridgeCommand("审计", () => requestAuditAsync(normalizedQuestion, targetNodeIds, auditSourceLeadId), {
       applyRejectedRequestState: setAuditRequestState,
       applySubmittedRequestState: (requestState) => {
         setAuditRequestState(requestState);
         setAuditResult(null);
       },
       onAccepted: () => {
-        setActiveDock("audit");
+        setActiveWorkbenchTab("audit");
       },
       successFeedback: {
         level: "INFO",
@@ -1823,6 +2128,25 @@ export function App() {
     });
     interactionProbeRef.current.inspect = null;
   }, [detailNodeId, detailNode]);
+
+  useEffect(() => {
+    const pendingTargetNodeId = pendingExplanationDrillTargetRef.current;
+    if (!pendingTargetNodeId) {
+      return;
+    }
+    const targetNode = nodes.find((node) => node.id === pendingTargetNodeId);
+    if (!targetNode) {
+      return;
+    }
+    pendingExplanationDrillTargetRef.current = null;
+    setSelectedNodeId(targetNode.id);
+    requestViewportFocus(targetNode.id);
+    setDetailNodeId(targetNode.id);
+    setOperationFeedback({
+      level: "INFO",
+      message: `已自动定位到展开后的被调方法：${targetNode.title}`,
+    });
+  }, [nodes]);
 
   useEffect(() => {
     const pendingMove = interactionProbeRef.current.move;
@@ -1928,9 +2252,6 @@ export function App() {
         setDiffReviewResult(null);
         setDiffReviewRequestState(requestState);
       },
-      onAccepted: () => {
-        setActiveDock("diff");
-      },
       successFeedback: {
         level: "INFO",
         message: diffTargetItemIds.length > 0
@@ -1945,17 +2266,26 @@ export function App() {
     const explanationFocus = focusNode
       ? `请重点讲解节点“${focusNode.title}”在当前链路中的作用、上下游关系与关键分支。`
       : undefined;
+    explanationLocalOverrideRef.current = false;
+    pendingExplanationRequestModeRef.current = "fresh";
     bridgeCommands.submitAsyncBridgeCommand(
       "链路讲解",
-      () => requestGraphBeautificationAsync("", undefined, explanationFocus),
+      () => requestGraphBeautificationAsync({
+        goal: "",
+        preferredStyle: undefined,
+        explanationFocus,
+        granularity: selectedExplanationGranularity,
+      }),
       {
         applyRejectedRequestState: setGraphBeautificationRequestState,
         applySubmittedRequestState: (requestState) => {
+          setExplanationHistory([]);
+          setCurrentExplanationSessionLabel(DEFAULT_EXPLANATION_SESSION_LABEL);
           setGraphBeautificationResult(null);
           setGraphBeautificationRequestState(requestState);
         },
         onAccepted: () => {
-          setActiveDock("beautification");
+          setActiveWorkbenchTab("explanation");
         },
         successFeedback: {
           level: "INFO",
@@ -1965,79 +2295,36 @@ export function App() {
     );
   }
 
-  function handleApplyDraftPatchPreview(operationIds: string[]) {
-    const patchSummary = draftPatchPreview?.summary ?? null;
-    if (draftPatchPreview) {
-      setLastAppliedDraftPatchPreview(draftPatchPreview);
-    }
-    applyDraftPatchPreview(operationIds);
-    setDraftPatchPreview(null);
-    setCanUndoDraftPatchApply(true);
-    setLastAppliedDraftPatchSummary(patchSummary);
-    setOperationFeedback({
-      level: "INFO",
-      message: `已请求应用 ${operationIds.length} 条草稿图变更。`,
-    });
-  }
-
-  function handleOpenPatchPreview(patch: GraphPatch | null, feedbackMessage: string) {
-    if (!patch) {
-      setOperationFeedback({
-        level: "WARNING",
-        message: "当前没有可展示的草稿预览。",
-      });
-      return;
-    }
-    setDraftPatchPreview(patch);
-    setActiveDock("patch");
-    setOperationFeedback({
-      level: "INFO",
-      message: feedbackMessage,
-    });
-  }
-
-  function patchPreviewForSource(source: DraftPatchPreviewSource): GraphPatch | null {
-    switch (source) {
-      case "AUDIT":
-        return auditResult?.patch ?? null;
-      case "DIFF_REVIEW":
-        return diffReviewResult?.patch ?? null;
-      case "LAST_APPLIED":
-        return lastAppliedDraftPatchPreview;
-    }
-  }
-
-  function handleRestoreDraftPatchPreview(source: DraftPatchPreviewSource) {
-    const patch = patchPreviewForSource(source);
-    restoreDraftPatchPreview(source);
-    if (patch) {
-      setDraftPatchPreview(patch);
-    }
-    setActiveDock("patch");
-    setOperationFeedback({
-      level: "INFO",
-      message: "已请求恢复草稿预览。",
-    });
-  }
-
-  function handleClearDraftPatchPreview() {
-    clearDraftPatchPreview();
-    setDraftPatchPreview(null);
-    setOperationFeedback({
-      level: "INFO",
-      message: "已请求清空当前草稿预览。",
-    });
-  }
-
-  function handleUndoLastDraftPatchApply() {
-    undoLastDraftPatchApply();
-    setCanUndoDraftPatchApply(false);
-    setLastAppliedDraftPatchPreview(null);
-    setLastDraftPatchApplyResult(null);
-    setOperationFeedback({
-      level: "INFO",
-      message: "已请求撤销上次草稿写回。",
-    });
+  function handleChangeExplanationGranularity(granularity: StepGranularity) {
+    setSelectedExplanationGranularity(granularity);
+    explanationLocalOverrideRef.current = false;
+    pendingExplanationRequestModeRef.current = "fresh";
+    bridgeCommands.submitAsyncBridgeCommand(
+      "链路讲解",
+      () => requestGraphBeautificationAsync({
+        goal: "",
+        preferredStyle: undefined,
+        explanationFocus: undefined,
+        granularity,
+      }),
+      {
+        applyRejectedRequestState: setGraphBeautificationRequestState,
+        applySubmittedRequestState: (requestState) => {
+          setExplanationHistory([]);
+          setCurrentExplanationSessionLabel(DEFAULT_EXPLANATION_SESSION_LABEL);
+          setGraphBeautificationResult(null);
+          setGraphBeautificationRequestState(requestState);
+        },
+        onAccepted: () => {
+          setSelectedExplanationStepId(null);
+          setActiveWorkbenchTab("explanation");
+        },
+        successFeedback: {
+          level: "INFO",
+          message: `已切换讲解维度：${granularity === "BUSINESS" ? "业务级" : granularity === "METHOD_CALL" ? "方法调用级" : "代码语义级"}`,
+        },
+      },
+    );
   }
 
   useEffect(() => {
@@ -2095,96 +2382,530 @@ export function App() {
     codeDraftRequestState.finishedAtEpochMillis,
   ]);
 
-  function renderDockContent() {
-    switch (activeDock) {
-      case "audit":
-        return (
-          <AuditPanel
-            selectedNodeIds={auditTargetNodeIds}
-            selectedNodeTitle={auditTargetTitle}
-            factGraph={factGraph}
-            draftGraph={draftGraph}
-            designBaseline={designBaseline}
-            result={auditResult}
-            requestState={auditRequestState}
-            initialQuestion={auditQuestionDraft}
-            resolveArtifactText={resolveArtifactText}
-            onRequestArtifact={handleRequestArtifact}
-            onRequestAudit={handleRequestAudit}
-            onOpenPatchPreview={() => handleOpenPatchPreview(auditResult?.patch ?? null, "已打开审计草稿预览。")}
-          />
-        );
-      case "issues":
-        return mermaidIssues.length > 0 ? (
-          <IssuePanel items={mermaidIssues} />
-        ) : (
-          <EmptyDock title="Mermaid 校验结果" description="当前没有需要关注的 Mermaid 问题。" />
-        );
-      case "diff":
-        return diffItems.length > 0 || diffReviewResult || designBaseline ? (
-          <DiffPanel
-            items={diffItems}
-            selectedItemIds={diffTargetItemIds}
-            factGraph={factGraph}
-            designBaseline={designBaseline}
-            result={diffReviewResult}
-            requestState={diffReviewRequestState}
-            resolveArtifactText={resolveArtifactText}
-            onRequestArtifact={handleRequestArtifact}
-            onSelectItem={handleFocusDiffItem}
-            onRequestReview={handleRequestDiffReview}
-            onOpenPatchPreview={() =>
-              handleOpenPatchPreview(diffReviewResult?.patch ?? null, "已打开差异修订草稿预览。")
-            }
-          />
-        ) : (
-          <EmptyDock title="代码对比" description="还没有可对比的设计图。请先导入 Mermaid，或先补充设计节点。" />
-        );
-      case "patch":
-        return (
-          <PatchPreviewPanel
-            patch={draftPatchPreview}
-            lastApplyResult={lastDraftPatchApplyResult}
-            canUndoLastApply={canUndoDraftPatchApply}
-            lastAppliedSummary={lastAppliedDraftPatchSummary}
-            canRestoreAuditPreview={Boolean(auditResult?.patch)}
-            canRestoreDiffPreview={Boolean(diffReviewResult?.patch)}
-            canRestoreLastAppliedPreview={Boolean(lastAppliedDraftPatchPreview) || canUndoDraftPatchApply}
-            onApplySelected={handleApplyDraftPatchPreview}
-            onClearPreview={handleClearDraftPatchPreview}
-            onUndoLastApply={handleUndoLastDraftPatchApply}
-            onRestoreAuditPreview={() => handleRestoreDraftPatchPreview("AUDIT")}
-            onRestoreDiffPreview={() => handleRestoreDraftPatchPreview("DIFF_REVIEW")}
-            onRestoreLastAppliedPreview={() => handleRestoreDraftPatchPreview("LAST_APPLIED")}
-          />
-        );
-      case "sync":
-        return syncPreviewItems.length > 0 ? (
-          <SyncPreviewPanel items={syncPreviewItems} />
-        ) : (
-          <EmptyDock title="同步预览" description="当前还没有可预览的同步动作。请先导入 Mermaid 或先生成差异。" />
-        );
+  useEffect(() => {
+    const firstStepId = graphBeautificationResult?.steps?.[0]?.stepId ?? null;
+    setSelectedExplanationStepId((current) => {
+      if (!graphBeautificationResult?.steps?.length) {
+        return null;
+      }
+      return graphBeautificationResult.steps.some((step) => step.stepId === current) ? current : firstStepId;
+    });
+    setHoveredExplanationStepId((current) =>
+      graphBeautificationResult?.steps?.some((step) => step.stepId === current) ? current : null,
+    );
+  }, [graphBeautificationResult]);
+
+  useEffect(() => {
+    if (!graphBeautificationResult?.granularity) {
+      return;
+    }
+    setSelectedExplanationGranularity(graphBeautificationResult.granularity);
+  }, [graphBeautificationResult?.granularity]);
+
+  useEffect(() => {
+    const firstChangeId = auditResult?.candidateChanges?.[0]?.changeId ?? null;
+    setSelectedAuditChangeId((current) => {
+      if (!auditResult?.candidateChanges?.length) {
+        return null;
+      }
+      return auditResult.candidateChanges.some((change) => change.changeId === current) ? current : firstChangeId;
+    });
+  }, [auditResult]);
+
+  useEffect(() => {
+    const firstLeadId = auditResult?.investigationLeads?.[0]?.leadId ?? null;
+    setSelectedAuditLeadId((current) => {
+      if (!auditResult?.investigationLeads?.length) {
+        return null;
+      }
+      return auditResult.investigationLeads.some((lead) => lead.leadId === current) ? current : firstLeadId;
+    });
+  }, [auditResult]);
+
+  const explanationState: ExplanationWorkbenchState = {
+    result: graphBeautificationResult,
+    requestState: graphBeautificationRequestState,
+    selectedStepId: selectedExplanationStepId,
+    granularity: selectedExplanationGranularity,
+    historyDepth: explanationHistory.length,
+    canReturnToPrevious: explanationHistory.length > 0,
+    historyTrail: [
+      ...explanationHistory.map((entry) => entry.sessionLabel),
+      currentExplanationSessionLabel,
+    ],
+    currentSessionLabel: currentExplanationSessionLabel,
+    previousSessionLabel: explanationHistory[explanationHistory.length - 1]?.sessionLabel ?? null,
+  };
+
+  const auditState: AuditWorkbenchState = {
+    result: auditResult,
+    requestState: auditRequestState,
+    selectedChangeId: selectedAuditChangeId,
+    selectedLeadId: selectedAuditLeadId,
+    questionDraft: auditQuestionDraft,
+    scopeLabel: buildAuditScopeLabel(auditTargetNodeIds, auditTargetTitle),
+  };
+
+  const draftState: DraftWorkbenchViewState = {
+    draftState: draftWorkbenchState,
+    compareMode: draftCompareMode,
+    selectedEntryId: selectedDraftEntryId,
+  };
+  const selectedExplanationStep = graphBeautificationResult?.steps.find((step) => step.stepId === selectedExplanationStepId)
+    ?? graphBeautificationResult?.steps?.[0]
+    ?? null;
+  const hoveredExplanationStep = graphBeautificationResult?.steps.find((step) => step.stepId === hoveredExplanationStepId)
+    ?? null;
+  const explanationFocusNodeId = activeWorkbenchTab === "explanation"
+    ? hoveredExplanationStep?.primaryNodeId ?? selectedExplanationStep?.primaryNodeId ?? null
+    : null;
+  const draftChangedNodeIds = useMemo(
+    () => Array.from(new Set(draftWorkbenchState.draftChanges.flatMap((entry) => entry.targetNodeIds))),
+    [draftWorkbenchState.draftChanges],
+  );
+
+  function handleAddExplanationNoteToDraft(stepId: string) {
+    const step = graphBeautificationResult?.steps.find((item) => item.stepId === stepId);
+    if (!step) {
+      return;
+    }
+    const targetNodeId = step.primaryNodeId
+      ?? step.evidence.flatMap((finding) => finding.references).find((reference) => reference.nodeId)?.nodeId
+      ?? null;
+    const nextEntry: DraftWorkbenchEntry = {
+      entryId: `draft-note:${step.stepId}`,
+      kind: "NOTE",
+      title: step.title,
+      sourceChangeId: null,
+      targetStepIds: [step.stepId],
+      targetNodeIds: targetNodeId ? [targetNodeId] : [],
+      beforeState: null,
+      afterState: step.description,
+      reason: "从讲解步骤加入草稿说明项。",
+      impactSummary: "",
+      claimType: "EXPLANATION_NOTE",
+      evidence: step.evidence,
+    };
+    setDraftWorkbenchState((current) => ({
+      ...current,
+      draftNotes: current.draftNotes.some((entry) => entry.entryId === nextEntry.entryId)
+        ? current.draftNotes
+        : current.draftNotes.concat(nextEntry),
+    }));
+    setSelectedDraftEntryId(nextEntry.entryId);
+    setActiveWorkbenchTab("draft");
+  }
+
+  function resolveDraftNodeTitle(nodeId: string) {
+    return nodes.find((node) => node.id === nodeId)?.title ?? nodeId;
+  }
+
+  function handleSelectDraftEntry(entryId: string) {
+    setSelectedDraftEntryId(entryId);
+  }
+
+  function requestViewportFocus(nodeId: string) {
+    nextFocusRequestNonceRef.current += 1;
+    setFocusNodeRequest({
+      nodeId,
+      nonce: nextFocusRequestNonceRef.current,
+    });
+  }
+
+  function handleLocateDraftChangeNode(entryId: string) {
+    const change = draftWorkbenchState.draftChanges.find((entry) => entry.entryId === entryId);
+    if (!change) {
+      return;
+    }
+    const targetNodeId = change.targetNodeIds[0] ?? null;
+    if (!targetNodeId) {
+      setOperationFeedback({
+        level: "WARNING",
+        message: "这条草稿变更当前没有可定位的图节点。",
+      });
+      return;
+    }
+    setSelectedDraftEntryId(entryId);
+    selectExplanationTargetNode(targetNodeId, { focusViewport: true });
+    setOperationFeedback({
+      level: "INFO",
+      message: `已定位到草稿变更对应节点：${resolveDraftNodeTitle(targetNodeId)}`,
+    });
+  }
+
+  function handleOpenDraftNote(entryId: string) {
+    const note = draftWorkbenchState.draftNotes.find((entry) => entry.entryId === entryId);
+    if (!note) {
+      return;
+    }
+    const targetStepId = note.targetStepIds[0] ?? null;
+    if (targetStepId && graphBeautificationResult?.steps.some((step) => step.stepId === targetStepId)) {
+      setActiveWorkbenchTab("explanation");
+      handleSelectExplanationStep(targetStepId);
+      return;
+    }
+    const targetNodeId = note.targetNodeIds[0] ?? null;
+    if (targetNodeId) {
+      setActiveWorkbenchTab("explanation");
+      selectExplanationTargetNode(targetNodeId, { focusViewport: true });
+      setOperationFeedback({
+        level: "INFO",
+        message: `已根据草稿说明定位到图节点：${targetNodeId}`,
+      });
+      return;
+    }
+    setOperationFeedback({
+      level: "WARNING",
+      message: "这条草稿说明当前没有可回到的讲解步骤或图节点。",
+    });
+  }
+
+  function handleLocateDraftNoteNode(entryId: string) {
+    const note = draftWorkbenchState.draftNotes.find((entry) => entry.entryId === entryId);
+    if (!note) {
+      return;
+    }
+    const targetNodeId = note.targetNodeIds[0] ?? null;
+    if (!targetNodeId) {
+      setOperationFeedback({
+        level: "WARNING",
+        message: "这条草稿说明当前没有可定位的图节点。",
+      });
+      return;
+    }
+    selectExplanationTargetNode(targetNodeId, { focusViewport: true });
+    const targetNode = nodes.find((node) => node.id === targetNodeId) ?? null;
+    setOperationFeedback({
+      level: "INFO",
+      message: `已根据草稿说明定位到图节点：${targetNode?.title ?? targetNodeId}`,
+    });
+  }
+
+  function handleHoverExplanationStep(stepId: string) {
+    setHoveredExplanationStepId(stepId);
+  }
+
+  function handleLeaveExplanationStep() {
+    setHoveredExplanationStepId(null);
+  }
+
+  function handleFollowUpExplanationStep(stepId: string, customQuestion?: string) {
+    const step = graphBeautificationResult?.steps.find((item) => item.stepId === stepId);
+    if (!step) {
+      return;
+    }
+    const followUpQuestion = customQuestion?.trim()
+      || step.followUpQuestions[0]
+      || "请继续解释这一步的关键输入、条件和输出。";
+    const nextSessionLabel = `围绕 ${step.title} 继续讲解`;
+    explanationLocalOverrideRef.current = false;
+    pendingExplanationRequestModeRef.current = "follow_up";
+    bridgeCommands.submitAsyncBridgeCommand(
+      "链路讲解追问",
+      () => requestGraphBeautificationAsync({
+        goal: "",
+        preferredStyle: undefined,
+        explanationFocus: undefined,
+        granularity: selectedExplanationGranularity,
+        followUp: {
+          stepId: step.stepId,
+          stepTitle: step.title,
+          question: followUpQuestion,
+        },
+      }),
+      {
+        applyRejectedRequestState: setGraphBeautificationRequestState,
+        applySubmittedRequestState: (requestState) => {
+          if (graphBeautificationResult) {
+            setExplanationHistory((current) => current.concat({
+              result: graphBeautificationResult,
+              requestState: graphBeautificationRequestState,
+              selectedStepId: selectedExplanationStepId,
+              granularity: selectedExplanationGranularity,
+              sessionLabel: currentExplanationSessionLabel,
+            }));
+          }
+          setCurrentExplanationSessionLabel(nextSessionLabel);
+          setGraphBeautificationResult(null);
+          setGraphBeautificationRequestState(requestState);
+        },
+        onAccepted: () => {
+          setSelectedExplanationStepId(step.stepId);
+          setActiveWorkbenchTab("explanation");
+        },
+        successFeedback: {
+          level: "INFO",
+          message: `已围绕步骤“${step.title}”继续请求讲解。`,
+        },
+      },
+    );
+  }
+
+  function handleReturnToPreviousExplanation() {
+    handleOpenExplanationHistory(explanationHistory.length - 1);
+  }
+
+  function handleOpenExplanationHistory(historyIndex: number) {
+    setExplanationHistory((current) => {
+      const snapshot = current[historyIndex];
+      if (!snapshot) {
+        return current;
+      }
+      explanationLocalOverrideRef.current = true;
+      pendingExplanationRequestModeRef.current = null;
+      setGraphBeautificationResult(snapshot.result);
+      setGraphBeautificationRequestState(snapshot.requestState);
+      setSelectedExplanationStepId(snapshot.selectedStepId);
+      setSelectedExplanationGranularity(snapshot.granularity);
+      setCurrentExplanationSessionLabel(snapshot.sessionLabel);
+      setHoveredExplanationStepId(null);
+      return current.slice(0, historyIndex);
+    });
+  }
+
+  function handleSelectExplanationStep(stepId: string) {
+    setSelectedExplanationStepId(stepId);
+    const targetNodeId = resolveExplanationStepTargetNodeId(stepId);
+    if (!targetNodeId) {
+      return;
+    }
+    selectExplanationTargetNode(targetNodeId);
+  }
+
+  function resolveExplanationStepTargetNodeId(stepId: string) {
+    const step = graphBeautificationResult?.steps.find((item) => item.stepId === stepId);
+    return step?.primaryNodeId
+      ?? step?.evidence.flatMap((finding) => finding.references).find((reference) => reference.nodeId)?.nodeId
+      ?? null;
+  }
+
+  function handleLocateExplanationStepNode(stepId: string) {
+    setSelectedExplanationStepId(stepId);
+    const targetNodeId = resolveExplanationStepTargetNodeId(stepId);
+    if (!targetNodeId) {
+      setOperationFeedback({
+        level: "WARNING",
+        message: "当前步骤没有可定位的图节点。",
+      });
+      return;
+    }
+    selectExplanationTargetNode(targetNodeId, { focusViewport: true });
+    const targetNode = nodes.find((node) => node.id === targetNodeId) ?? null;
+    setOperationFeedback({
+      level: "INFO",
+      message: `已定位到图中节点：${targetNode?.title ?? targetNodeId}`,
+    });
+  }
+
+  function handleInspectExplanationStepNode(stepId: string) {
+    setSelectedExplanationStepId(stepId);
+    const targetNodeId = resolveExplanationStepTargetNodeId(stepId);
+    if (!targetNodeId) {
+      setOperationFeedback({
+        level: "WARNING",
+        message: "当前步骤没有可编辑的图节点。",
+      });
+      return;
+    }
+    handleInspectNode(targetNodeId);
+  }
+
+  function selectExplanationTargetNode(nodeId: string, options?: { focusViewport?: boolean }) {
+    setSelectedNodeId((current) => (current === nodeId ? current : nodeId));
+    setSelectionGroupNodeIds((current) => (current.length === 0 ? current : []));
+    if (options?.focusViewport) {
+      requestViewportFocus(nodeId);
+    }
+    syncSelectedNodeToBridge(nodeId);
+  }
+
+  function handleDrillDownExplanationStep(stepId: string) {
+    const step = graphBeautificationResult?.steps.find((item) => item.stepId === stepId);
+    const targetNodeId = step?.downstreamTargets[0] ?? null;
+    if (!targetNodeId) {
+      setOperationFeedback({
+        level: "WARNING",
+        message: "当前步骤没有可继续下钻的被调方法。",
+      });
+      return;
+    }
+    const targetNode = nodes.find((node) => node.id === targetNodeId) ?? null;
+    if (!targetNode) {
+      const downstreamOverflowNode = nodes.find(
+        (node) => node.metadata?.["linkGraph.overflow.direction"] === "DOWNSTREAM",
+      );
+      if (!downstreamOverflowNode) {
+        setOperationFeedback({
+          level: "WARNING",
+          message: "当前图中还没有展示这个被调方法，请先扩展链路范围。",
+        });
+        return;
+      }
+      pendingExplanationDrillTargetRef.current = targetNodeId;
+      handleExpandOverflowNode(downstreamOverflowNode.id);
+      setOperationFeedback({
+        level: "INFO",
+        message: "当前图中未展示该被调方法，已尝试自动展开下游链路。",
+      });
+      return;
+    }
+    setSelectedNodeId(targetNodeId);
+    requestViewportFocus(targetNodeId);
+    setDetailNodeId(targetNodeId);
+    setOperationFeedback({
+      level: "INFO",
+      message: `已定位到被调方法：${targetNode.title}`,
+    });
+  }
+
+  function handleRevealExplanationReference(reference: ResultEvidenceReference) {
+    if (reference.nodeId) {
+      setDetailNodeId(reference.nodeId);
+      return;
+    }
+    setOperationFeedback({
+      level: "WARNING",
+      message: "当前引用没有可直接跳转的节点标识。",
+    });
+  }
+
+  function activateAuditSection(sectionId: WorkbenchSectionId) {
+    if (!AUDIT_WORKBENCH_SECTION_IDS.includes(sectionId)) {
+      return;
+    }
+    AUDIT_WORKBENCH_SECTION_IDS.forEach((auditSectionId) => {
+      updateWorkbenchSectionPreference(auditSectionId, auditSectionId === sectionId);
+    });
+  }
+
+  function handleSelectAuditChange(changeId: string) {
+    setSelectedAuditChangeId(changeId);
+    const change = auditResult?.candidateChanges.find((item) => item.changeId === changeId) ?? null;
+    const targetNodeId = change ? resolveEvidenceTargetNodeId(change.targetNodeIds, change.evidence) : null;
+    if (!targetNodeId || !nodes.some((node) => node.id === targetNodeId)) {
+      return;
+    }
+    selectExplanationTargetNode(targetNodeId, { focusViewport: true });
+  }
+
+  function handleSelectAuditLead(leadId: string) {
+    setSelectedAuditLeadId(leadId);
+    const lead = auditResult?.investigationLeads.find((item) => item.leadId === leadId) ?? null;
+    const targetNodeId = lead ? resolveEvidenceTargetNodeId(lead.targetNodeIds, lead.evidence) : null;
+    if (!targetNodeId || !nodes.some((node) => node.id === targetNodeId)) {
+      return;
+    }
+    selectExplanationTargetNode(targetNodeId, { focusViewport: true });
+  }
+
+  function handleInvestigateAuditLead(leadId: string) {
+    const lead = auditResult?.investigationLeads.find((item) => item.leadId === leadId) ?? null;
+    if (!lead) {
+      return;
+    }
+    setSelectedAuditLeadId(leadId);
+    setAuditSourceLeadId(leadId);
+    const nextQuestion = lead.recommendedQuestion.trim()
+      || `请继续取证：核对“${lead.title}”对应的直接源码证据。`;
+    setAuditQuestionDraft(nextQuestion);
+    setAuditTargetNodeIds(lead.targetNodeIds);
+    const targetNodeId = resolveEvidenceTargetNodeId(lead.targetNodeIds, lead.evidence);
+    if (targetNodeId && nodes.some((node) => node.id === targetNodeId)) {
+      selectExplanationTargetNode(targetNodeId, { focusViewport: true });
+    }
+    activateAuditSection("audit.composer");
+    setActiveWorkbenchTab("audit");
+    bridgeCommands.submitAsyncBridgeCommand("审计", () => requestAuditAsync(nextQuestion, lead.targetNodeIds, leadId), {
+      applyRejectedRequestState: setAuditRequestState,
+      applySubmittedRequestState: (requestState) => {
+        setAuditRequestState(requestState);
+        setAuditResult(null);
+      },
+      successFeedback: {
+        level: "INFO",
+        message: `已围绕风险线索“${lead.title}”自动发起继续取证。`,
+      },
+    });
+  }
+
+  function handleConfirmCandidateChange(changeId: string) {
+    const candidate = auditResult?.candidateChanges.find((item) => item.changeId === changeId) ?? null;
+    if (candidate && !candidateCanConfirm(candidate)) {
+      setOperationFeedback({
+        level: "WARNING",
+        message: "当前候选变更缺少直接证据，不能直接确认进草稿。",
+      });
+      return;
+    }
+    bridgeCommands.runBridgeCommand("确认候选变更", () => confirmAuditCandidateChange(changeId), {
+      onAccepted: () => {
+        if (candidate) {
+          const nextEntry = toDraftWorkbenchEntry(candidate);
+          setDraftWorkbenchState((current) => ({
+            ...current,
+            draftChanges: current.draftChanges
+              .filter((entry) => entry.sourceChangeId !== candidate.changeId)
+              .concat(nextEntry),
+          }));
+          setSelectedDraftEntryId(nextEntry.entryId);
+          setAuditResult((current) => updateGraphPatchResultCandidateStatus(current, changeId, "CONFIRMED"));
+          if (nextEntry.targetNodeIds[0]) {
+            selectExplanationTargetNode(nextEntry.targetNodeIds[0]);
+          }
+        }
+        setActiveWorkbenchTab("draft");
+      },
+      successFeedback: {
+        level: "SUCCESS",
+        message: "已确认候选变更并写入草稿层。",
+      },
+    });
+  }
+
+  function handleUnconfirmDraftChange(entryId: string) {
+    const entry = draftWorkbenchState.draftChanges.find((item) => item.entryId === entryId) ?? null;
+    const changeId = entry?.sourceChangeId ?? null;
+    if (!entry || !changeId) {
+      return;
+    }
+    bridgeCommands.runBridgeCommand("取消确认候选变更", () => unconfirmAuditCandidateChange(changeId), {
+      onAccepted: () => {
+        setDraftWorkbenchState((current) => ({
+          ...current,
+          draftChanges: current.draftChanges.filter((item) => item.entryId !== entryId),
+        }));
+        setAuditResult((current) => updateGraphPatchResultCandidateStatus(current, changeId, "PENDING_CONFIRMATION"));
+      },
+      successFeedback: {
+        level: "INFO",
+        message: "已取消确认该候选变更，并从草稿层移除。",
+      },
+    });
+  }
+
+  function handleWorkbenchSectionPreferenceChange(sectionId: WorkbenchSectionId, expanded: boolean) {
+    updateWorkbenchSectionPreference(sectionId, expanded);
+  }
+
+  function handleWriteSingleCodeDraft(draftId: string) {
+    bridgeCommands.runBridgeCommand("写入单个代码草稿", () => applySingleCodeDraft(draftId));
+  }
+
+  function renderWorkbenchPanel() {
+    switch (activeWorkbenchTab) {
       case "plan":
         return (
           <GenerationPlanPanel
             plan={generationPlan}
             requestState={generationPlanRequestState}
+            hasConfirmedDraftChanges={hasConfirmedDraftChanges}
             resolveArtifactText={resolveArtifactText}
             onRequestArtifact={handleRequestArtifact}
-            onRequestGeneratePlan={workbenchCommands.handleRequestGenerationPlan}
+            onOpenDraftWorkbench={() => setActiveWorkbenchTab("draft")}
+            onRequestGeneratePlan={handleRequestGenerationPlan}
           />
         );
-      case "beautification":
-        return (
-          <BeautificationPanel
-            result={graphBeautificationResult}
-            requestState={graphBeautificationRequestState}
-            resolveArtifactText={resolveArtifactText}
-            onRequestArtifact={handleRequestArtifact}
-            onRequestBeautification={handleRequestGraphBeautification}
-          />
-        );
-      case "drafts":
+      case "code":
         return (
           <CodeDraftPanel
             drafts={generatedCodeDrafts}
@@ -2196,21 +2917,74 @@ export function App() {
             resolveArtifactText={resolveArtifactText}
             onRequestArtifact={handleRequestArtifact}
             writeReport={generatedCodeDraftWriteReport}
-            hasPlan={Boolean(generationPlan)}
-            onRequestPlan={workbenchCommands.handleRequestGenerationPlan}
-            onRequestDrafts={workbenchCommands.handleRequestCodeDrafts}
+            hasPlan={generationPlan != null}
+            hasConfirmedDraftChanges={hasConfirmedDraftChanges}
+            onOpenDraftWorkbench={() => setActiveWorkbenchTab("draft")}
+            onRequestPlan={handleRequestGenerationPlan}
+            onRequestDrafts={handleRequestCodeDrafts}
             onWriteDrafts={workbenchCommands.handleWriteDrafts}
-            onWriteSingleDraft={applySingleCodeDraft}
+            onWriteSingleDraft={handleWriteSingleCodeDraft}
             onOpenDraft={workbenchCommands.handleOpenDraft}
           />
         );
+      case "audit":
+        return (
+          <AuditTab
+            state={auditState}
+            onQuestionDraftChange={setAuditQuestionDraft}
+            onSubmitQuestion={() => handleRequestAudit(auditQuestionDraft)}
+            onSelectChange={handleSelectAuditChange}
+            onConfirmChange={handleConfirmCandidateChange}
+            onSelectLead={handleSelectAuditLead}
+            onInvestigateLead={handleInvestigateAuditLead}
+            sectionPreferences={workbenchSectionPreferences}
+            onSectionPreferenceChange={handleWorkbenchSectionPreferenceChange}
+          />
+        );
+      case "draft":
+        return (
+          <DraftTab
+            state={draftState}
+            onToggleCompare={() => setDraftCompareMode((current) => current === "after" ? "compare" : "after")}
+            onSelectEntry={handleSelectDraftEntry}
+            onLocateChangeNode={handleLocateDraftChangeNode}
+            onUnconfirmChange={handleUnconfirmDraftChange}
+            onOpenNote={handleOpenDraftNote}
+            onLocateNoteNode={handleLocateDraftNoteNode}
+            resolveNodeTitle={resolveDraftNodeTitle}
+            sectionPreferences={workbenchSectionPreferences}
+            onSectionPreferenceChange={handleWorkbenchSectionPreferenceChange}
+          />
+        );
+      case "explanation":
       default:
-        return null;
+        return (
+          <ExplanationTab
+            state={explanationState}
+            onSelectStep={handleSelectExplanationStep}
+            onLocateStepNode={handleLocateExplanationStepNode}
+            onInspectStepNode={handleInspectExplanationStepNode}
+            onGranularityChange={handleChangeExplanationGranularity}
+            onHoverStep={handleHoverExplanationStep}
+            onLeaveStep={handleLeaveExplanationStep}
+            onAddToDraft={handleAddExplanationNoteToDraft}
+            onDrillDown={handleDrillDownExplanationStep}
+            onFollowUp={handleFollowUpExplanationStep}
+            onRevealReference={handleRevealExplanationReference}
+            onReturnToPrevious={handleReturnToPreviousExplanation}
+            onOpenHistory={handleOpenExplanationHistory}
+            sectionPreferences={workbenchSectionPreferences}
+            onSectionPreferenceChange={handleWorkbenchSectionPreferenceChange}
+          />
+        );
     }
   }
 
   const stageProps = {
     selectedNodeId,
+    focusNodeRequest,
+    explanationFocusNodeId,
+    draftChangedNodeIds,
     selectedGroupNodeIds: selectionGroupNodeIds,
     hiddenNodeIds,
     collapsedNodeIds,
@@ -2263,28 +3037,25 @@ export function App() {
       toolbar={(
         <WorkbenchToolbar
         analysisDisplayMode={analysisDisplayMode}
-        operationFeedback={operationFeedback}
+        operationFeedback={toolbarFeedback}
         onRequestAnalysisDisplayMode={workbenchCommands.handleRequestAnalysisDisplayMode}
         onImportMermaid={handleOpenImportMermaid}
         onExportMermaid={workbenchCommands.handleExportMermaid}
         onShowDiff={workbenchCommands.handleShowDiffMode}
         onRequestSync={workbenchCommands.handleRequestSyncPreview}
-        onRequestGenerationPlan={workbenchCommands.handleRequestGenerationPlan}
+        onRequestGenerationPlan={handleRequestGenerationPlan}
         onRequestGraphBeautification={() => {
           handleRequestGraphBeautification();
         }}
-        onRequestCodeDrafts={workbenchCommands.handleRequestCodeDrafts}
+        onRequestCodeDrafts={handleRequestCodeDrafts}
         onOpenSettings={workbenchCommands.handleOpenSettings}
         />
       )}
-      legend={<Legend analysisDisplayMode={analysisDisplayMode} />}
-      summary={(
-        <WorkbenchSummary
-        selectedNode={selectedNode}
-        onInspectNode={handleInspectNode}
-        onRequestSourceNavigation={handleRequestSourceNavigation}
-        onRequestAudit={handleRequestScopedAudit}
-        onRequestBeautification={handleRequestGraphBeautification}
+      legend={(
+        <Legend
+          analysisDisplayMode={analysisDisplayMode}
+          hasExplanationFocus={explanationFocusNodeId != null}
+          hasDraftChanges={draftChangedNodeIds.length > 0}
         />
       )}
       dialogs={(
@@ -2307,6 +3078,34 @@ export function App() {
         </>
       )}
       stage={stage}
+      workbench={(
+        <section className="workbench-shell">
+          <div className="workbench-tab-nav" role="tablist" aria-label="工作台切换">
+            {WORKBENCH_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                id={`workbench-tab-${tab.id}`}
+                type="button"
+                role="tab"
+                aria-selected={activeWorkbenchTab === tab.id}
+                aria-controls={`workbench-panel-${tab.id}`}
+                className={activeWorkbenchTab === tab.id ? "workbench-tab-button active" : "workbench-tab-button"}
+                onClick={() => setActiveWorkbenchTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div
+            id={`workbench-panel-${activeWorkbenchTab}`}
+            role="tabpanel"
+            aria-labelledby={`workbench-tab-${activeWorkbenchTab}`}
+            className="workbench-panel-body"
+          >
+            {renderWorkbenchPanel()}
+          </div>
+        </section>
+      )}
       propertyDrawer={(
         <WorkbenchPropertyDrawer
         selectedNode={detailNode}
@@ -2316,17 +3115,6 @@ export function App() {
         onRequestSourceNavigation={handleRequestSourceNavigation}
         onClose={() => setDetailNodeId(null)}
         />
-      )}
-      dock={(
-        <WorkbenchDock
-          open={Boolean(activeDock)}
-          activeTab={activeDock ?? "audit"}
-          tabs={DOCK_TABS}
-          onSelectTab={(tabId) => setActiveDock(tabId as DockPanel)}
-          onClose={() => setActiveDock(null)}
-        >
-          {renderDockContent()}
-        </WorkbenchDock>
       )}
     />
   );

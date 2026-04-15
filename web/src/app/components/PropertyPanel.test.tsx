@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { vi } from "vitest";
 import { PropertyPanel } from "./PropertyPanel";
 import type { LinkGraphNode } from "../types";
 
@@ -33,7 +34,7 @@ describe("PropertyPanel", () => {
       />,
     );
 
-    expect(screen.getByRole("dialog", { name: "节点详情" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "编辑节点" })).toBeInTheDocument();
     expect(screen.getByText("类型：方法")).toBeInTheDocument();
     expect(screen.getByText("代码状态：已绑定")).toBeInTheDocument();
     expect(screen.getByText("证据：已确认")).toBeInTheDocument();
@@ -223,5 +224,34 @@ describe("PropertyPanel", () => {
     );
 
     expect(screen.getByLabelText("标题")).toHaveValue("OrderService.placeDraft");
+  });
+
+  it("acts as a real modal and blocks wheel or pointer events from reaching the background", () => {
+    const onBackgroundWheel = vi.fn();
+    const onBackgroundPointerDown = vi.fn();
+
+    const { container } = render(
+      <div onWheel={onBackgroundWheel} onPointerDown={onBackgroundPointerDown}>
+        <PropertyPanel
+          selectedNode={node}
+          onUpdateNode={() => undefined}
+          onDeleteNode={() => undefined}
+          onRequestSourceNavigation={() => undefined}
+          onClose={() => undefined}
+        />
+      </div>,
+    );
+
+    const backdrop = container.querySelector(".property-drawer-backdrop");
+    const dialog = screen.getByRole("dialog", { name: "编辑节点" });
+    expect(backdrop).not.toBeNull();
+
+    fireEvent.wheel(dialog);
+    fireEvent.pointerDown(dialog);
+    fireEvent.wheel(backdrop!);
+    fireEvent.pointerDown(backdrop!);
+
+    expect(onBackgroundWheel).not.toHaveBeenCalled();
+    expect(onBackgroundPointerDown).not.toHaveBeenCalled();
   });
 });

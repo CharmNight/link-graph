@@ -77,7 +77,10 @@ class DefaultGraphBeautificationService(
                 RemoteGraphBeautificationResultParser.parse(content, promptPackage.preview)
             }
         }.map { remote ->
-            remote.value.withPrependedWarnings(remote.warnings)
+            val localBaseline = fallbackService.beautify(context, sanitized, onPreview = null)
+            remote.value
+                .hydrateStepMetadata(localBaseline, context.granularity)
+                .withPrependedWarnings(remote.warnings)
         }.getOrElse { error ->
             /** 本地讲解结果。 */
             val fallbackResult = fallbackService.beautify(context, sanitized, onPreview)
@@ -100,6 +103,31 @@ class DefaultGraphBeautificationService(
             return this
         }
         return copy(warnings = extraWarnings + warnings)
+    }
+
+    /**
+     * 用本地规则已知的源码和节点元数据补齐远程步骤，避免展示字段在远程链路中丢失。
+     */
+    private fun GraphBeautificationResult.hydrateStepMetadata(
+        baseline: GraphBeautificationResult,
+        requestedGranularity: StepGranularity,
+    ): GraphBeautificationResult {
+        val baselineByStepId = baseline.steps.associateBy(GraphBeautificationStep::stepId)
+        return copy(
+            granularity = requestedGranularity,
+            steps = steps.map { step ->
+                val localStep = baselineByStepId[step.stepId]
+                step.copy(
+                    granularity = localStep?.granularity ?: requestedGranularity,
+                    kind = localStep?.kind ?: step.kind,
+                    primaryNodeId = step.primaryNodeId ?: localStep?.primaryNodeId,
+                    codeSnippet = step.codeSnippet ?: localStep?.codeSnippet,
+                    evidence = step.evidence.ifEmpty { localStep?.evidence.orEmpty() },
+                    followUpQuestions = step.followUpQuestions.ifEmpty { localStep?.followUpQuestions.orEmpty() },
+                    downstreamTargets = step.downstreamTargets.ifEmpty { localStep?.downstreamTargets.orEmpty() },
+                )
+            },
+        )
     }
 
     private companion object {
@@ -170,10 +198,14 @@ class PlaceholderGraphBeautificationService(
             draftEntries = emptyList(),
             granularity = context.granularity,
         )
+        /** 追问场景下优先聚焦当前步骤。 */
+        val focusedSteps = context.followUp?.let { followUp ->
+            projectedSteps.steps.filter { step -> step.stepId == followUp.stepId }
+        }?.takeIf { it.isNotEmpty() } ?: projectedSteps.steps
         /** 链路讲解提示词包，仅用于展示预览。 */
         val promptPackage = promptFactory.buildBeautificationPromptPackage(context, settings, projectedSteps.steps)
         /** 步骤化讲解结果。 */
-        val steps = projectedSteps.steps.map { step ->
+        val steps = focusedSteps.map { step ->
             toBeautificationStep(
                 step = step,
                 context = context,
@@ -190,6 +222,9 @@ class PlaceholderGraphBeautificationService(
             }
             context.preferredStyle?.trim()?.takeIf(String::isNotBlank)?.let { style ->
                 add("当前讲解已按“$style”风格整理。")
+            }
+            context.followUp?.let { followUp ->
+                add("当前结果已聚焦步骤“${followUp.stepTitle}”的追问：${followUp.question}")
             }
         }
         return GraphBeautificationResult(
@@ -235,9 +270,20 @@ class PlaceholderGraphBeautificationService(
             title = step.title,
             granularity = step.granularity,
             kind = step.kind,
-            description = buildStepDescription(step, snippets.mapNotNull(SourceSnippetContext::snippet), nodes.map(GraphNode::title)),
+            description = buildStepDescription(
+                step = step,
+                snippets = snippets.mapNotNull(SourceSnippetContext::snippet),
+                nodeTitles = nodes.map(GraphNode::title),
+                followUp = context.followUp?.takeIf { followUp -> followUp.stepId == step.stepId },
+            ),
+            primaryNodeId = step.nodeRefs.firstOrNull(),
+            codeSnippet = snippets.mapNotNull(SourceSnippetContext::snippet).firstOrNull(),
             evidence = buildStepEvidence(step, snippets, nodes),
-            followUpQuestions = buildFollowUpQuestions(step, downstreamTargets),
+            followUpQuestions = buildFollowUpQuestions(
+                step = step,
+                downstreamTargets = downstreamTargets,
+                followUp = context.followUp?.takeIf { followUp -> followUp.stepId == step.stepId },
+            ),
             downstreamTargets = downstreamTargets,
         )
     }
@@ -247,10 +293,23 @@ class PlaceholderGraphBeautificationService(
         step: WorkbenchStep,
         snippets: List<String>,
         nodeTitles: List<String>,
+        followUp: GraphBeautificationFollowUpContext?,
     ): String {
         val snippetText = snippets
             .map { it.trim().replace(Regex("\\s+"), " ") }
             .firstOrNull(String::isNotBlank)
+        if (followUp != null) {
+            return when {
+                snippetText != null ->
+                    "针对追问“${followUp.question}”，当前步骤直接执行：$snippetText"
+                step.kind == StepKind.RETURN ->
+                    "针对追问“${followUp.question}”，这里结束当前链路并返回结果；是否存在额外分支，当前证据不足以确认。"
+                nodeTitles.isNotEmpty() ->
+                    "针对追问“${followUp.question}”，当前只确认这一步围绕 ${nodeTitles.joinToString("、")} 展开；更细的条件和异常处理不足以确认。"
+                else ->
+                    "针对追问“${followUp.question}”，当前证据不足以确认具体逻辑，需要继续展开源码或下钻实现。"
+            }
+        }
         return when {
             snippetText != null -> "${step.title}。当前代码直接执行：$snippetText"
             step.kind == StepKind.RETURN -> "${step.title}。这里结束当前链路并返回结果。"
@@ -298,7 +357,17 @@ class PlaceholderGraphBeautificationService(
     private fun buildFollowUpQuestions(
         step: WorkbenchStep,
         downstreamTargets: List<String>,
+        followUp: GraphBeautificationFollowUpContext?,
     ): List<String> {
+        if (followUp != null) {
+            return buildList {
+                add("这一步对应的代码位置具体在哪里？")
+                add("这里真正的判断条件或前置校验是什么？")
+                if (downstreamTargets.isNotEmpty()) {
+                    add("如果继续下钻，这一步会进入哪个被调方法？")
+                }
+            }.distinct()
+        }
         return buildList {
             add("这一步的输入参数是从哪里来的？")
             if (step.kind != StepKind.RETURN) {

@@ -38,7 +38,7 @@ class LinkGraphProjectServiceStructureTest {
             "locateCodeSubjectBySignatureInReadAction",
             "resolveCodeSubjectBySignatureAsync",
             "computeAnalysisResultInReadAction",
-            "isBenignCurrentMethodGraphCancellation",
+            "isBenignCurrentSubjectGraphCancellation",
             "positionNodeForCanvas",
         ).forEach { helperName ->
             assertFalse(

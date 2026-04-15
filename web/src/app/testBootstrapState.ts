@@ -45,14 +45,27 @@ function buildFlowchartViewDocument(
   visibleGraph: LinkGraphDocument,
   anchorNodeId: string | null,
 ): FlowchartViewDocument {
+  const fullGraph = visibleGraph;
+  const incompleteNodeCount = visibleGraph.nodes.filter((node) => node.metadata?.["flow.incomplete"] === "true").length;
+  const incompleteEdgeCount = visibleGraph.edges.filter((edge) => edge.metadata?.["flow.incomplete"] === "true").length;
   return {
     visibleGraph,
-    fullGraph: visibleGraph,
+    fullGraph,
     anchorNodeId,
     summary: {
       nodeCount: visibleGraph.nodes.length,
       branchCount: visibleGraph.nodes.filter((node) => node.metadata?.["flowchart.kind"] === "DECISION").length,
       exceptionPathCount: visibleGraph.edges.filter((edge) => edge.label?.trim().toUpperCase() === "EXCEPTION").length,
+      fullNodeCount: fullGraph.nodes.length,
+      fullEdgeCount: fullGraph.edges.length,
+      hiddenNodeCount: 0,
+      hiddenEdgeCount: 0,
+      truncated: false,
+      incompleteNodeCount,
+      incompleteEdgeCount,
+      semanticallyIncomplete: incompleteNodeCount > 0 || incompleteEdgeCount > 0,
+      syntheticEdgeCount: visibleGraph.edges.filter((edge) => edge.metadata?.["flow.synthetic"] === "true").length,
+      syntheticEntryEdgeCount: 0,
     },
   };
 }

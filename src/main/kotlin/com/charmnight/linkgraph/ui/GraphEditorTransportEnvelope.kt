@@ -5,31 +5,7 @@ sealed interface GraphEditorTransportEnvelope {
     val revision: Long
     val state: Map<String, Any?>
 
-    data class BootstrapInit(
-        override val sessionId: String,
-        override val revision: Long,
-        override val state: Map<String, Any?>,
-    ) : GraphEditorTransportEnvelope
-
-    data class SemanticGraphSlice(
-        override val sessionId: String,
-        override val revision: Long,
-        override val state: Map<String, Any?>,
-    ) : GraphEditorTransportEnvelope
-
-    data class LayoutSlice(
-        override val sessionId: String,
-        override val revision: Long,
-        override val state: Map<String, Any?>,
-    ) : GraphEditorTransportEnvelope
-
-    data class WorkflowSlice(
-        override val sessionId: String,
-        override val revision: Long,
-        override val state: Map<String, Any?>,
-    ) : GraphEditorTransportEnvelope
-
-    data class FeedbackSlice(
+    data class Snapshot(
         override val sessionId: String,
         override val revision: Long,
         override val state: Map<String, Any?>,

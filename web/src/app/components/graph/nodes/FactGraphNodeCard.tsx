@@ -16,12 +16,15 @@ import {
   signaturePreview,
 } from "./nodePresentation";
 import { measureNodeContentBox } from "./measureNodeContentBox";
+import { GraphNodeStateBadges } from "./GraphNodeStateBadges";
 
 interface FactGraphNodeCardProps {
   node: LinkGraphNode;
   selected: boolean;
   collapsed: boolean;
   collapsedCount?: number;
+  explanationFocused?: boolean;
+  draftChanged?: boolean;
   onMeasure?: (size: { width: number; height: number }) => void;
   onExpandOverflow?: () => void;
 }
@@ -31,6 +34,8 @@ export const FactGraphNodeCard = memo(function FactGraphNodeCard({
   selected,
   collapsed,
   collapsedCount,
+  explanationFocused = false,
+  draftChanged = false,
   onMeasure,
   onExpandOverflow,
 }: FactGraphNodeCardProps) {
@@ -69,6 +74,7 @@ export const FactGraphNodeCard = memo(function FactGraphNodeCard({
       ].join(" ").trim()}
       data-node-id={node.id}
     >
+      <GraphNodeStateBadges selected={selected} explanationFocused={explanationFocused} draftChanged={draftChanged} />
       <div className="flow-node-head">
         <span className="flow-node-doc" title={node.doc ?? factNodeDocText(node)}>
           {factNodeDocText(node)}

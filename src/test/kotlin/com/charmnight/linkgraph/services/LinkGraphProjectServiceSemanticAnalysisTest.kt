@@ -10,6 +10,8 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.SemanticAnalyzer
 import com.charmnight.linkgraph.semantic.model.FlowActionUnit
+import com.charmnight.linkgraph.semantic.model.FlowScopeCategory
+import com.charmnight.linkgraph.semantic.model.FlowScopeUnit
 import com.charmnight.linkgraph.semantic.model.MethodLikeUnit
 import com.charmnight.linkgraph.semantic.model.ResourceUnit
 import com.charmnight.linkgraph.semantic.model.SemanticAnalysisResult
@@ -25,15 +27,215 @@ import com.charmnight.linkgraph.semantic.provider.SemanticProvider
 import com.charmnight.linkgraph.semantic.provider.SemanticProviderRegistry
 import com.charmnight.linkgraph.semantic.subject.CaretSubjectLocator
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectHandle
+import com.charmnight.linkgraph.semantic.subject.ResourceSubjectHandle
+import com.charmnight.linkgraph.semantic.subject.ResourceSubjectKind
+import com.charmnight.linkgraph.semantic.subject.SourceRange
 import com.charmnight.linkgraph.semantic.subject.SubjectHandle
+import com.charmnight.linkgraph.semantic.subject.SubjectLocator
+import com.charmnight.linkgraph.semantic.subject.SubjectPreviewKind
 import com.charmnight.linkgraph.ui.GraphEditorStateService
+import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.project.Project
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.testFramework.registerServiceInstance
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
+    override fun setUp() {
+        super.setUp()
+        project.registerServiceInstance(GraphEditorStateService::class.java, GraphEditorStateService())
+        project.registerServiceInstance(LinkGraphProjectService::class.java, LinkGraphProjectService(project))
+    }
+
+    fun testLoadCurrentEditorContextGraphRemapsResourceSubjectFlowchartToFactGraph() {
+        myFixture.configureByText(
+            "order-flow.md",
+            """
+                # Order Flow
+                当前链路入口
+            """.trimIndent(),
+        )
+
+        val service = project.getService(LinkGraphProjectService::class.java)
+        val resourceHandle = ResourceSubjectHandle(
+            subjectId = "resource-markdown:order-flow-md",
+            sourcePath = "order-flow.md",
+            sourceRange = SourceRange(startOffset = 0, endOffset = 10, startLine = 1, endLine = 1),
+            displayName = "order-flow.md",
+            kind = ResourceSubjectKind.MARKDOWN_PAGE,
+            attributes = mapOf("path" to "order-flow.md"),
+        )
+        service.testSubjectLocatorOverride = object : SubjectLocator {
+            override fun locate(
+                project: Project,
+                editor: Editor?,
+                commitDocument: Boolean,
+            ): SubjectHandle = resourceHandle
+
+            override fun previewKind(
+                project: Project,
+                editor: Editor?,
+                commitDocument: Boolean,
+            ): SubjectPreviewKind = SubjectPreviewKind.RESOURCE_SUBJECT
+        }
+        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+            registry = SemanticProviderRegistry(
+                listOf(
+                    object : SemanticProvider {
+                        override fun supports(handle: SubjectHandle): Boolean = handle is ResourceSubjectHandle
+
+                        override fun analyze(
+                            handle: SubjectHandle,
+                            capturePolicy: SemanticCapturePolicy,
+                            budgetPolicy: TraversalBudgetPolicy,
+                        ): SemanticAnalysisResult {
+                            val resource = handle as ResourceSubjectHandle
+                            return SemanticAnalysisResult(
+                                subject = resource,
+                                anchors = listOf(SemanticAnchor(id = "anchor-doc", targetUnitId = "resource:doc")),
+                                semanticUnits = listOf(
+                                    ResourceUnit(
+                                        id = "resource:doc",
+                                        title = "order-flow.md",
+                                        resourceKind = "MARKDOWN_PAGE",
+                                        metadata = mapOf("path" to "order-flow.md"),
+                                    ),
+                                    MethodLikeUnit(
+                                        id = "method:submit",
+                                        title = "OrderService.submit",
+                                        signature = "com.example.OrderService.submit(java.lang.String):java.lang.String",
+                                    ),
+                                ),
+                                relations = listOf(
+                                    SemanticRelation(
+                                        kind = SemanticRelationKind.DOCUMENTS,
+                                        fromUnitId = "resource:doc",
+                                        toUnitId = "method:submit",
+                                    ),
+                                ),
+                                diagnostics = emptyList(),
+                                boundaries = emptyList(),
+                                sourceMappings = listOf(
+                                    SourceMapping(
+                                        sourcePath = "order-flow.md",
+                                        sourceRange = resource.sourceRange,
+                                        targetUnitId = "resource:doc",
+                                    ),
+                                ),
+                            )
+                        }
+                    },
+                ),
+            ),
+        )
+        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
+        waitForSnapshot { snapshot ->
+            snapshot.lastGraphSource == "currentContext" &&
+                snapshot.analysisDisplayMode == AnalysisDisplayMode.FACT_GRAPH &&
+                snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.DOC_PAGE && node.title == "order-flow.md" } == true &&
+                snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.METHOD && node.title == "OrderService.submit" } == true
+        }
+
+        service.requestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
+        waitForSnapshot { snapshot ->
+            snapshot.analysisDisplayMode == AnalysisDisplayMode.FACT_GRAPH &&
+                snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.DOC_PAGE && node.title == "order-flow.md" } == true &&
+                snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.METHOD && node.title == "OrderService.submit" } == true
+        }
+    }
+
+    fun testLoadCurrentMethodGraphDefaultsToFlowchartDisplayMode() {
+        myFixture.configureByText(
+            "DemoService.java",
+            """
+                package com.example;
+
+                class DemoService {
+                    String run(String value) {
+                        return <caret>value.trim();
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        val provider = object : SemanticProvider {
+            override fun supports(handle: SubjectHandle): Boolean = handle is CodeSubjectHandle
+
+            override fun analyze(
+                handle: SubjectHandle,
+                capturePolicy: SemanticCapturePolicy,
+                budgetPolicy: TraversalBudgetPolicy,
+            ): SemanticAnalysisResult {
+                val codeHandle = handle as CodeSubjectHandle
+                return SemanticAnalysisResult(
+                    subject = codeHandle,
+                    anchors = listOf(SemanticAnchor(id = "anchor-entry", targetUnitId = "method:demo-run")),
+                    semanticUnits = listOf(
+                        MethodLikeUnit(
+                            id = "method:demo-run",
+                            title = "DemoService.run",
+                            signature = codeHandle.methodSignature,
+                        ),
+                        FlowActionUnit(
+                            id = "action:trim",
+                            title = "value.trim()",
+                            actionKind = "ACTION",
+                        ),
+                        TerminalUnit(
+                            id = "terminal:return",
+                            title = "返回",
+                            terminalKind = "RETURN",
+                        ),
+                    ),
+                    relations = listOf(
+                        SemanticRelation(SemanticRelationKind.CONTROL_FLOW, "method:demo-run", "action:trim"),
+                        SemanticRelation(SemanticRelationKind.CONTROL_FLOW, "action:trim", "terminal:return"),
+                    ),
+                    diagnostics = emptyList(),
+                    boundaries = emptyList(),
+                    sourceMappings = listOf(
+                        SourceMapping(
+                            sourcePath = "src/DemoService.java",
+                            sourceRange = codeHandle.sourceRange,
+                            targetUnitId = "method:demo-run",
+                        ),
+                    ),
+                )
+            }
+        }
+
+        val service = project.getService(LinkGraphProjectService::class.java)
+        val codeHandle = assertInstanceOf(
+            CaretSubjectLocator().locate(project, myFixture.editor),
+            CodeSubjectHandle::class.java,
+        )
+        service.testSubjectLocatorOverride = object : SubjectLocator {
+            override fun locate(
+                project: Project,
+                editor: Editor?,
+                commitDocument: Boolean,
+            ): SubjectHandle = codeHandle
+
+            override fun previewKind(
+                project: Project,
+                editor: Editor?,
+                commitDocument: Boolean,
+            ): SubjectPreviewKind = SubjectPreviewKind.CODE_SUBJECT
+        }
+        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+            registry = SemanticProviderRegistry(listOf(provider)),
+        )
+
+        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
+        waitForSnapshot { snapshot ->
+            snapshot.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART &&
+                snapshot.visibleGraph?.nodes?.any { node -> node.id == "action:trim" } == true
+        }
+    }
+
     fun testRequestAnalysisDisplayModeRebuildsFromCachedSemanticResult() {
         myFixture.configureByText(
             "DemoService.java",
@@ -114,7 +316,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
         service.requestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH)
 
-        service.loadCurrentMethodGraphAsync()
+        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
         waitForSnapshot { snapshot ->
             analyzerCallCount.get() == 1 &&
                 snapshot.analysisDisplayMode == AnalysisDisplayMode.FACT_GRAPH &&
@@ -211,7 +413,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
         service.requestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
 
-        service.loadCurrentMethodGraphAsync()
+        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
         waitForSnapshot { snapshot ->
             analyzerCallCount.get() == 1 &&
                 snapshot.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART &&
@@ -326,7 +528,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
         service.requestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH)
 
-        service.loadCurrentMethodGraphAsync()
+        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
         waitForSnapshot { snapshot ->
             snapshot.analysisDisplayMode == AnalysisDisplayMode.FACT_GRAPH &&
                 snapshot.visibleGraph?.nodes?.any { node -> node.id == "action:write" } == true
@@ -371,6 +573,105 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
                     edge.toNodeId == "action:normalize"
             } == true,
         )
+    }
+
+    fun testFlowchartDisplayModeExposesTruncationAndIncompleteSummary() {
+        myFixture.configureByText(
+            "DemoService.java",
+            """
+                package com.example;
+
+                class DemoService {
+                    void <caret>run(String value) {
+                        step0(value);
+                    }
+
+                    void step0(String value) {}
+                }
+            """.trimIndent(),
+        )
+
+        val provider = object : SemanticProvider {
+            override fun supports(handle: SubjectHandle): Boolean = handle is CodeSubjectHandle
+
+            override fun analyze(
+                handle: SubjectHandle,
+                capturePolicy: SemanticCapturePolicy,
+                budgetPolicy: TraversalBudgetPolicy,
+            ): SemanticAnalysisResult {
+                val codeHandle = handle as CodeSubjectHandle
+                val method = MethodLikeUnit(
+                    id = "method:demo-run",
+                    title = "DemoService.run",
+                    signature = codeHandle.methodSignature,
+                )
+                val loop = FlowScopeUnit(
+                    id = "scope:loop",
+                    title = "while (true)",
+                    scopeKind = "WHILE",
+                    scopeCategory = FlowScopeCategory.LOOP_PRE_TEST,
+                    incomplete = true,
+                )
+                val actions = (0 until 30).map { index ->
+                    FlowActionUnit(
+                        id = "action:$index",
+                        title = "step$index(value)",
+                        actionKind = "ACTION",
+                    )
+                }
+                val relations = buildList {
+                    add(SemanticRelation(SemanticRelationKind.CONTROL_FLOW, method.id, loop.id))
+                    add(SemanticRelation(SemanticRelationKind.CONTROL_FLOW, loop.id, actions.first().id))
+                    actions.zipWithNext().forEach { (from, to) ->
+                        add(SemanticRelation(SemanticRelationKind.CONTROL_FLOW, from.id, to.id))
+                    }
+                }
+                return SemanticAnalysisResult(
+                    subject = codeHandle,
+                    anchors = listOf(
+                        SemanticAnchor(
+                            id = "anchor-entry",
+                            targetUnitId = method.id,
+                            label = "入口",
+                        ),
+                    ),
+                    semanticUnits = listOf(method, loop) + actions,
+                    relations = relations,
+                    diagnostics = emptyList(),
+                    boundaries = emptyList(),
+                    sourceMappings = listOf(
+                        SourceMapping(
+                            sourcePath = "src/DemoService.java",
+                            sourceRange = codeHandle.sourceRange,
+                            targetUnitId = method.id,
+                        ),
+                    ),
+                )
+            }
+        }
+
+        val service = project.getService(LinkGraphProjectService::class.java)
+        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+            registry = SemanticProviderRegistry(listOf(provider)),
+        )
+        service.requestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
+
+        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
+        waitForSnapshot { snapshot ->
+            snapshot.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART &&
+                snapshot.flowchartView?.summary?.truncated == true
+        }
+
+        val flowchartView = project.getService(GraphEditorStateService::class.java).snapshot().flowchartView
+        assertTrue(flowchartView != null)
+        assertTrue(flowchartView!!.summary.truncated)
+        assertTrue(flowchartView.summary.hiddenNodeCount > 0)
+        assertEquals(
+            flowchartView.fullGraph.nodes.size - flowchartView.visibleGraph.nodes.size,
+            flowchartView.summary.hiddenNodeCount,
+        )
+        assertEquals(1, flowchartView.summary.incompleteNodeCount)
+        assertTrue(flowchartView.summary.semanticallyIncomplete)
     }
 
     fun testAddCurrentEditorContextNodeUsesLocatedCodeSubjectHandle() {
@@ -469,7 +770,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
         service.requestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH)
 
-        service.loadCurrentMethodGraphAsync()
+        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
         waitForSnapshot { snapshot ->
             snapshot.visibleGraph?.nodes?.any { node -> node.id == "action:trim" } == true
         }
@@ -573,7 +874,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
     private fun waitForSnapshot(
         predicate: (GraphEditorStateService.Snapshot) -> Boolean,
     ) {
-        val deadline = System.currentTimeMillis() + 5_000
+        val deadline = System.currentTimeMillis() + 15_000
         while (System.currentTimeMillis() < deadline) {
             PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
             val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()

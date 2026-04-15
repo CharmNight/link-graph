@@ -1,6 +1,8 @@
 package com.charmnight.linkgraph.semantic.provider.code
 
 import com.charmnight.linkgraph.semantic.model.FlowActionUnit
+import com.charmnight.linkgraph.semantic.model.FlowEdgeRole
+import com.charmnight.linkgraph.semantic.model.FlowScopeCategory
 import com.charmnight.linkgraph.semantic.model.FlowScopeUnit
 import com.charmnight.linkgraph.semantic.model.InvocationUnit
 import com.charmnight.linkgraph.semantic.model.MergeUnit
@@ -38,7 +40,10 @@ import com.intellij.psi.PsiExpressionStatement
 import com.intellij.psi.PsiForStatement
 import com.intellij.psi.PsiForeachStatement
 import com.intellij.psi.PsiIfStatement
+import com.intellij.psi.JavaPsiFacade
+import com.intellij.psi.PsiLambdaExpression
 import com.intellij.psi.PsiMethod
+import com.intellij.psi.PsiMethodCallExpression
 import com.intellij.psi.PsiReturnStatement
 import com.intellij.psi.PsiStatement
 import com.intellij.psi.PsiSwitchLabelStatementBase
@@ -54,6 +59,7 @@ import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.psi.KtForExpression
 import org.jetbrains.kotlin.psi.KtIfExpression
 import org.jetbrains.kotlin.psi.KtLoopExpression
+import org.jetbrains.kotlin.psi.KtParenthesizedExpression
 import org.jetbrains.kotlin.psi.KtReturnExpression
 import org.jetbrains.kotlin.psi.KtThrowExpression
 import org.jetbrains.kotlin.psi.KtTryExpression
@@ -231,14 +237,15 @@ private abstract class BaseFlowSemanticBuilder(
             .let(::attachImplicitMethodCompletion)
         fragment.entryUnitId?.let { entryUnitId ->
             if (capturePolicy.includeControlFlow) {
-                accumulator.addRelation(
-                    SemanticRelation(
-                        kind = SemanticRelationKind.CONTROL_FLOW,
-                        fromUnitId = ownerMethodUnitId,
-                        toUnitId = entryUnitId,
-                    ),
-                )
-            }
+                    accumulator.addRelation(
+                        SemanticRelation(
+                            kind = SemanticRelationKind.CONTROL_FLOW,
+                            fromUnitId = ownerMethodUnitId,
+                            toUnitId = entryUnitId,
+                            flowEdgeRole = FlowEdgeRole.ENTRY,
+                        ),
+                    )
+                }
         }
         return FlowBuildResult(
             discoveredMethods = discoveredMethods.toList(),
@@ -286,6 +293,7 @@ private abstract class BaseFlowSemanticBuilder(
                                     fromUnitId = exit.unitId,
                                     toUnitId = mergeUnit.id,
                                     label = exit.label,
+                                    flowEdgeRole = exit.flowEdgeRole,
                                 ),
                             )
                         }
@@ -304,6 +312,7 @@ private abstract class BaseFlowSemanticBuilder(
                                     fromUnitId = exit.unitId,
                                     toUnitId = fragment.entryUnitId,
                                     label = exit.label,
+                                    flowEdgeRole = exit.flowEdgeRole,
                                 ),
                             )
                         }
@@ -323,6 +332,7 @@ private abstract class BaseFlowSemanticBuilder(
         element: PsiElement,
         title: String,
         actionKind: String = "ACTION",
+        targetMethodsOverride: List<PsiMethod>? = null,
     ): FlowFragment {
         val actionUnit = accumulator.addAction(
             ownerSignature = ownerSignature,
@@ -339,7 +349,7 @@ private abstract class BaseFlowSemanticBuilder(
             )
         }
 
-        val targetMethods = resolveDownstreamTargetMethods(element)
+        val targetMethods = targetMethodsOverride ?: resolveDownstreamTargetMethods(element)
         val visibleTargets = targetMethods.take(budgetPolicy.maxInvocationsPerUnit.coerceAtLeast(0))
         if (targetMethods.size > visibleTargets.size) {
             accumulator.addDiagnostic(
@@ -439,6 +449,7 @@ private abstract class BaseFlowSemanticBuilder(
             element = element,
             title = title,
             scopeKind = "IF",
+            scopeCategory = FlowScopeCategory.BRANCH,
             ownerMethodUnitId = ownerMethodUnitId,
         )
 
@@ -463,6 +474,7 @@ private abstract class BaseFlowSemanticBuilder(
                         fromUnitId = decisionUnit.id,
                         toUnitId = trueFragment.entryUnitId,
                         label = "TRUE",
+                        flowEdgeRole = FlowEdgeRole.TRUE_BRANCH,
                     ),
                 )
             }
@@ -474,6 +486,7 @@ private abstract class BaseFlowSemanticBuilder(
                         fromUnitId = decisionUnit.id,
                         toUnitId = falseFragment.entryUnitId,
                         label = "FALSE",
+                        flowEdgeRole = FlowEdgeRole.FALSE_BRANCH,
                     ),
                 )
             }
@@ -481,11 +494,11 @@ private abstract class BaseFlowSemanticBuilder(
 
         val exits = linkedSetOf<FlowExit>()
         if (trueFragment.entryUnitId == null) {
-            exits += FlowExit(decisionUnit.id, "TRUE")
+            exits += FlowExit(decisionUnit.id, "TRUE", FlowEdgeRole.TRUE_BRANCH)
         }
         exits += trueFragment.exits
         if (falseFragment.entryUnitId == null) {
-            exits += FlowExit(decisionUnit.id, "FALSE")
+            exits += FlowExit(decisionUnit.id, "FALSE", FlowEdgeRole.FALSE_BRANCH)
         }
         exits += falseFragment.exits
 
@@ -509,12 +522,18 @@ private abstract class BaseFlowSemanticBuilder(
         guardFragment: FlowFragment? = null,
         guardPlacement: LoopGuardPlacement = LoopGuardPlacement.BEFORE_BODY,
         postBodyFragment: FlowFragment? = null,
+        hasStructuredExit: Boolean = true,
     ): FlowFragment {
         val loopUnit = accumulator.addScope(
             ownerSignature = ownerSignature,
             element = element,
             title = title,
             scopeKind = scopeKind,
+            scopeCategory = when (guardPlacement) {
+                LoopGuardPlacement.BEFORE_BODY -> FlowScopeCategory.LOOP_PRE_TEST
+                LoopGuardPlacement.AFTER_BODY -> FlowScopeCategory.LOOP_POST_TEST
+            },
+            incomplete = !hasStructuredExit,
             ownerMethodUnitId = ownerMethodUnitId,
         )
         if (capturePolicy.includeControlFlow) {
@@ -526,6 +545,7 @@ private abstract class BaseFlowSemanticBuilder(
                             fromUnitId = exit.unitId,
                             toUnitId = loopUnit.id,
                             label = exit.label,
+                            flowEdgeRole = FlowEdgeRole.NORMAL,
                         ),
                     )
                 }
@@ -537,6 +557,7 @@ private abstract class BaseFlowSemanticBuilder(
                         fromUnitId = loopUnit.id,
                         toUnitId = bodyFragment.entryUnitId,
                         label = "TRUE",
+                        flowEdgeRole = FlowEdgeRole.LOOP_BODY,
                     ),
                 )
             }
@@ -549,6 +570,7 @@ private abstract class BaseFlowSemanticBuilder(
                             fromUnitId = exit.unitId,
                             toUnitId = postBodyFragment.entryUnitId,
                             label = exit.label ?: "LOOP_NEXT",
+                            flowEdgeRole = FlowEdgeRole.LOOP_UPDATE,
                         ),
                     )
                 }
@@ -559,6 +581,7 @@ private abstract class BaseFlowSemanticBuilder(
                             fromUnitId = exit.unitId,
                             toUnitId = loopBackTarget,
                             label = exit.label ?: "LOOP_BACK",
+                            flowEdgeRole = FlowEdgeRole.LOOP_BACK,
                         ),
                     )
                 }
@@ -570,6 +593,7 @@ private abstract class BaseFlowSemanticBuilder(
                             fromUnitId = exit.unitId,
                             toUnitId = loopBackTarget,
                             label = exit.label ?: "LOOP_BACK",
+                            flowEdgeRole = FlowEdgeRole.LOOP_BACK,
                         ),
                     )
                 }
@@ -586,7 +610,11 @@ private abstract class BaseFlowSemanticBuilder(
         }
         return FlowFragment(
             entryUnitId = entryUnitId,
-            exits = linkedSetOf(FlowExit(loopUnit.id, "FALSE")),
+            exits = if (hasStructuredExit) {
+                linkedSetOf(FlowExit(loopUnit.id, "FALSE", FlowEdgeRole.LOOP_EXIT))
+            } else {
+                linkedSetOf()
+            },
             entryElement = entryElement,
         )
     }
@@ -640,6 +668,7 @@ private class JavaFlowSemanticBuilder(
                     bodyFragment = statement.body?.let { buildStatementOrExpression(it) } ?: FlowFragment(null, linkedSetOf()),
                     guardFragment = executableHeaderFragment(statement.condition, actionKind = "CONDITION"),
                     postBodyFragment = updateFragment,
+                    hasStructuredExit = hasStructuredNormalExit(statement.condition),
                 )
                 sequenceFragments(listOfNotNull(initialization, loopBody))
             }
@@ -650,6 +679,7 @@ private class JavaFlowSemanticBuilder(
                 scopeKind = "WHILE",
                 bodyFragment = statement.body?.let { buildStatementOrExpression(it) } ?: FlowFragment(null, linkedSetOf()),
                 guardFragment = executableHeaderFragment(statement.condition, actionKind = "CONDITION"),
+                hasStructuredExit = hasStructuredNormalExit(statement.condition),
             )
 
             is PsiDoWhileStatement -> {
@@ -661,6 +691,7 @@ private class JavaFlowSemanticBuilder(
                     bodyFragment = bodyFragment,
                     guardFragment = executableHeaderFragment(statement.condition, actionKind = "CONDITION"),
                     guardPlacement = LoopGuardPlacement.AFTER_BODY,
+                    hasStructuredExit = hasStructuredNormalExit(statement.condition),
                 )
             }
 
@@ -668,9 +699,18 @@ private class JavaFlowSemanticBuilder(
             is PsiTryStatement -> buildTryStatement(statement)
             is PsiReturnStatement -> buildReturnStatement(statement)
             is PsiThrowStatement -> terminalFragment(statement, summarize(statement.text), "THROW")
-            is PsiExpressionStatement -> actionFragment(statement.expression, summarize(statement.expression.text))
+            is PsiExpressionStatement -> buildExpressionStatement(statement)
             is PsiDeclarationStatement -> buildDeclarationStatement(statement)
             else -> FlowFragment(null, linkedSetOf())
+        }
+    }
+
+    private fun buildExpressionStatement(statement: PsiExpressionStatement): FlowFragment {
+        val methodCall = statement.expression as? PsiMethodCallExpression
+        return if (methodCall != null && methodCall.argumentList.expressions.any { argument -> argument is PsiLambdaExpression }) {
+            buildMethodCallWithLambdaBodies(methodCall)
+        } else {
+            actionFragment(statement.expression, summarize(statement.expression.text))
         }
     }
 
@@ -680,6 +720,63 @@ private class JavaFlowSemanticBuilder(
             is PsiExpression -> actionFragment(element, summarize(element.text))
             else -> FlowFragment(null, linkedSetOf())
         }
+    }
+
+    private fun buildMethodCallWithLambdaBodies(expression: PsiMethodCallExpression): FlowFragment {
+        val resolvedMethod = expression.resolveMethod()
+        val actionFragment = actionFragment(
+            element = expression,
+            title = summarize(expression.text),
+            targetMethodsOverride = resolveDownstreamTargetMethods(expression, includeNestedLambdas = false),
+        )
+        val lambdaFragments = expression.argumentList.expressions
+            .filterIsInstance<PsiLambdaExpression>()
+            .map { lambdaExpression ->
+                buildLambdaScopeFragment(
+                    lambdaExpression = lambdaExpression,
+                    ownerMethod = resolvedMethod,
+                    fallbackName = expression.methodExpression.referenceName,
+                )
+            }
+        return sequenceFragments(listOf(actionFragment) + lambdaFragments)
+    }
+
+    private fun buildLambdaScopeFragment(
+        lambdaExpression: PsiLambdaExpression,
+        ownerMethod: PsiMethod?,
+        fallbackName: String?,
+    ): FlowFragment {
+        val lambdaScope = accumulator.addScope(
+            ownerSignature = ownerSignature,
+            element = lambdaExpression,
+            title = buildJavaLambdaTitle(ownerMethod, fallbackName, lambdaExpression),
+            scopeKind = "LAMBDA",
+            ownerMethodUnitId = ownerMethodUnitId,
+        )
+        val bodyFragment = when (val body = lambdaExpression.body) {
+            is PsiCodeBlock -> buildCodeBlock(body)
+            null -> FlowFragment(null, linkedSetOf())
+            else -> buildStatementOrExpression(body)
+        }
+        if (capturePolicy.includeControlFlow && bodyFragment.entryUnitId != null) {
+            accumulator.addRelation(
+                SemanticRelation(
+                    kind = SemanticRelationKind.CONTROL_FLOW,
+                    fromUnitId = lambdaScope.id,
+                    toUnitId = bodyFragment.entryUnitId,
+                ),
+            )
+        }
+        val exits = if (bodyFragment.entryUnitId == null) {
+            linkedSetOf(FlowExit(lambdaScope.id))
+        } else {
+            bodyFragment.exits
+        }
+        return FlowFragment(
+            entryUnitId = lambdaScope.id,
+            exits = exits,
+            entryElement = lambdaExpression,
+        )
     }
 
     private fun buildIfStatement(statement: PsiIfStatement): FlowFragment {
@@ -700,6 +797,7 @@ private class JavaFlowSemanticBuilder(
             element = statement,
             title = summarize("switch (${statement.expression?.text ?: "..."})"),
             scopeKind = "SWITCH",
+            scopeCategory = FlowScopeCategory.SWITCH,
             ownerMethodUnitId = ownerMethodUnitId,
         )
         val branchFragments = buildSwitchBranches(statement).map { branch ->
@@ -717,6 +815,7 @@ private class JavaFlowSemanticBuilder(
                             fromUnitId = switchUnit.id,
                             toUnitId = entryUnitId,
                             label = branch.label,
+                            flowEdgeRole = branch.label.toCaseFlowRole(),
                         ),
                     )
                 }
@@ -725,13 +824,13 @@ private class JavaFlowSemanticBuilder(
         val exits = linkedSetOf<FlowExit>()
         branchFragments.forEach { branch ->
             if (branch.fragment.entryUnitId == null) {
-                exits += FlowExit(switchUnit.id, branch.label)
+                exits += FlowExit(switchUnit.id, branch.label, branch.label.toCaseFlowRole())
             }
             exits += branch.fragment.exits
         }
         return FlowFragment(
             entryUnitId = switchUnit.id,
-            exits = exits.ifEmpty { linkedSetOf(FlowExit(switchUnit.id)) },
+            exits = exits.ifEmpty { linkedSetOf(FlowExit(switchUnit.id, flowEdgeRole = FlowEdgeRole.DEFAULT)) },
             entryElement = statement,
         )
     }
@@ -776,12 +875,23 @@ private class JavaFlowSemanticBuilder(
         }
     }
 
+    private fun hasStructuredNormalExit(condition: PsiExpression?): Boolean {
+        if (condition == null) {
+            return false
+        }
+        val constant = JavaPsiFacade.getInstance(method.project)
+            .constantEvaluationHelper
+            .computeConstantExpression(condition)
+        return constant != true
+    }
+
     private fun buildTryStatement(statement: PsiTryStatement): FlowFragment {
         val tryScope = accumulator.addScope(
             ownerSignature = ownerSignature,
             element = statement,
             title = "try",
             scopeKind = "TRY",
+            scopeCategory = FlowScopeCategory.TRY,
             ownerMethodUnitId = ownerMethodUnitId,
         )
         val tryFragment = statement.tryBlock?.let(::buildCodeBlock) ?: FlowFragment(null, linkedSetOf())
@@ -791,6 +901,7 @@ private class JavaFlowSemanticBuilder(
                     kind = SemanticRelationKind.CONTROL_FLOW,
                     fromUnitId = tryScope.id,
                     toUnitId = tryFragment.entryUnitId,
+                    flowEdgeRole = FlowEdgeRole.NORMAL,
                 ),
             )
         }
@@ -809,6 +920,7 @@ private class JavaFlowSemanticBuilder(
                             fromUnitId = tryScope.id,
                             toUnitId = entryUnitId,
                             label = "EXCEPTION",
+                            flowEdgeRole = FlowEdgeRole.EXCEPTION,
                         ),
                     )
                 }
@@ -912,6 +1024,7 @@ private class KotlinFlowSemanticBuilder(
                     title = summarize("for (${expression.loopParameter?.name ?: "_"} in ${expression.loopRange?.text ?: "items"})"),
                     scopeKind = "FOREACH",
                     bodyFragment = expression.body?.let(::buildExpression) ?: FlowFragment(null, linkedSetOf()),
+                    hasStructuredExit = true,
                 )
                 sequenceFragments(listOfNotNull(iterationSourceFragment, loopBody))
             }
@@ -922,6 +1035,7 @@ private class KotlinFlowSemanticBuilder(
                 scopeKind = "WHILE",
                 bodyFragment = expression.body?.let(::buildExpression) ?: FlowFragment(null, linkedSetOf()),
                 guardFragment = executableHeaderFragment(expression.condition, actionKind = "CONDITION"),
+                hasStructuredExit = hasStructuredNormalExit(expression.condition),
             )
 
             is KtDoWhileExpression -> loopFragment(
@@ -931,6 +1045,7 @@ private class KotlinFlowSemanticBuilder(
                 bodyFragment = expression.body?.let(::buildExpression) ?: FlowFragment(null, linkedSetOf()),
                 guardFragment = executableHeaderFragment(expression.condition, actionKind = "CONDITION"),
                 guardPlacement = LoopGuardPlacement.AFTER_BODY,
+                hasStructuredExit = hasStructuredNormalExit(expression.condition),
             )
 
             is KtWhenExpression -> buildWhenExpression(expression)
@@ -946,6 +1061,7 @@ private class KotlinFlowSemanticBuilder(
             element = expression,
             title = summarize("when (${expression.subjectExpression?.text ?: "..."})"),
             scopeKind = "SWITCH",
+            scopeCategory = FlowScopeCategory.SWITCH,
             ownerMethodUnitId = ownerMethodUnitId,
         )
         val branchFragments = expression.entries.map { entry ->
@@ -963,6 +1079,7 @@ private class KotlinFlowSemanticBuilder(
                             fromUnitId = whenUnit.id,
                             toUnitId = entryUnitId,
                             label = branch.label,
+                            flowEdgeRole = branch.label.toCaseFlowRole(),
                         ),
                     )
                 }
@@ -971,13 +1088,13 @@ private class KotlinFlowSemanticBuilder(
         val exits = linkedSetOf<FlowExit>()
         branchFragments.forEach { branch ->
             if (branch.fragment.entryUnitId == null) {
-                exits += FlowExit(whenUnit.id, branch.label)
+                exits += FlowExit(whenUnit.id, branch.label, branch.label.toCaseFlowRole())
             }
             exits += branch.fragment.exits
         }
         return FlowFragment(
             entryUnitId = whenUnit.id,
-            exits = exits.ifEmpty { linkedSetOf(FlowExit(whenUnit.id)) },
+            exits = exits.ifEmpty { linkedSetOf(FlowExit(whenUnit.id, flowEdgeRole = FlowEdgeRole.DEFAULT)) },
             entryElement = expression,
         )
     }
@@ -991,6 +1108,13 @@ private class KotlinFlowSemanticBuilder(
         } else {
             normalized
         }
+    }
+
+    private fun hasStructuredNormalExit(condition: KtExpression?): Boolean {
+        val normalized = condition?.unwrapParentheses()?.text
+            ?.replace(Regex("\\s+"), "")
+            ?: return false
+        return normalized != "true"
     }
 
     private fun buildReturnExpression(expression: KtReturnExpression): FlowFragment {
@@ -1025,6 +1149,7 @@ private class KotlinFlowSemanticBuilder(
             element = expression,
             title = "try",
             scopeKind = "TRY",
+            scopeCategory = FlowScopeCategory.TRY,
             ownerMethodUnitId = ownerMethodUnitId,
         )
         val tryFragment = expression.tryBlock.let(::buildExpression)
@@ -1034,6 +1159,7 @@ private class KotlinFlowSemanticBuilder(
                     kind = SemanticRelationKind.CONTROL_FLOW,
                     fromUnitId = tryScope.id,
                     toUnitId = tryFragment.entryUnitId,
+                    flowEdgeRole = FlowEdgeRole.NORMAL,
                 ),
             )
         }
@@ -1051,6 +1177,7 @@ private class KotlinFlowSemanticBuilder(
                             fromUnitId = tryScope.id,
                             toUnitId = entryUnitId,
                             label = "EXCEPTION",
+                            flowEdgeRole = FlowEdgeRole.EXCEPTION,
                         ),
                     )
                 }
@@ -1115,6 +1242,7 @@ private class CodeSemanticAccumulator(
             id = SemanticIdFactory.methodUnitId(signature),
             title = methodDisplayName(method),
             signature = signature,
+            doc = methodDocSummary(method),
         )
         units.putIfAbsent(unit.id, unit)
         addSourceMapping(unit.id, method.navigationElement ?: method)
@@ -1126,17 +1254,34 @@ private class CodeSemanticAccumulator(
         element: PsiElement,
         title: String,
         scopeKind: String,
+        scopeCategory: FlowScopeCategory? = null,
+        incomplete: Boolean = false,
         ownerMethodUnitId: String,
     ): FlowScopeUnit {
         val unit = FlowScopeUnit(
             id = semanticElementId("scope", ownerSignature, element, scopeKind),
             title = title,
             scopeKind = scopeKind,
+            scopeCategory = scopeCategory,
+            incomplete = incomplete,
         )
         units.putIfAbsent(unit.id, unit)
         addSourceMapping(unit.id, element)
         addContains(ownerMethodUnitId, unit.id)
         return unit
+    }
+
+    private fun methodDocSummary(method: PsiMethod): String? {
+        val raw = method.docComment?.text ?: return null
+        return raw
+            .removePrefix("/**")
+            .removeSuffix("*/")
+            .lineSequence()
+            .map { line -> line.trim().removePrefix("*").trim() }
+            .takeWhile { line -> !line.startsWith("@") }
+            .filter { line -> line.isNotBlank() }
+            .joinToString(" ")
+            .ifBlank { null }
     }
 
     fun addAction(
@@ -1214,7 +1359,16 @@ private class CodeSemanticAccumulator(
     }
 
     fun addRelation(relation: SemanticRelation) {
-        val key = listOf(relation.kind.name, relation.fromUnitId, relation.toUnitId, relation.label.orEmpty()).joinToString("|")
+        val key = listOf(
+            relation.kind.name,
+            relation.fromUnitId,
+            relation.toUnitId,
+            relation.label.orEmpty(),
+            relation.flowEdgeRole?.name.orEmpty(),
+            relation.incomplete.toString(),
+            relation.synthetic.toString(),
+            relation.provenance.name,
+        ).joinToString("|")
         relations.putIfAbsent(key, relation)
     }
 
@@ -1286,6 +1440,7 @@ private data class FlowFragment(
 private data class FlowExit(
     val unitId: String,
     val label: String? = null,
+    val flowEdgeRole: FlowEdgeRole? = null,
 )
 
 private data class LabeledBranchFragment(
@@ -1297,6 +1452,22 @@ private data class SwitchBranch(
     val label: String,
     val statements: List<PsiStatement>,
 )
+
+private fun String.toCaseFlowRole(): FlowEdgeRole {
+    return if (this == "DEFAULT") {
+        FlowEdgeRole.DEFAULT
+    } else {
+        FlowEdgeRole.CASE
+    }
+}
+
+private fun KtExpression.unwrapParentheses(): KtExpression {
+    var current: KtExpression = this
+    while (current is KtParenthesizedExpression && current.expression != null) {
+        current = current.expression!!
+    }
+    return current
+}
 
 private data class FlowBuildResult(
     val discoveredMethods: List<PsiMethod>,
@@ -1311,4 +1482,23 @@ private fun summarize(text: String?): String {
         ?.takeIf { it.isNotBlank() }
         ?: return "unknown"
     return if (normalized.length <= 96) normalized else normalized.take(93).trimEnd() + "..."
+}
+
+private fun buildJavaLambdaTitle(
+    ownerMethod: PsiMethod?,
+    fallbackName: String?,
+    lambdaExpression: PsiLambdaExpression,
+): String {
+    val ownerName = ownerMethod?.name?.takeIf { it.isNotBlank() }
+        ?: fallbackName?.takeIf { it.isNotBlank() }
+        ?: "lambda"
+    val parameterNames = lambdaExpression.parameterList.parameters
+        .mapNotNull { parameter -> parameter.name }
+        .joinToString(", ")
+        .takeIf { it.isNotBlank() }
+    return if (parameterNames == null) {
+        "$ownerName λ"
+    } else {
+        "$ownerName λ($parameterNames)"
+    }
 }

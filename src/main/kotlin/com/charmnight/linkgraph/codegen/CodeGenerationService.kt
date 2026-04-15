@@ -3,6 +3,7 @@ package com.charmnight.linkgraph.codegen
 import com.charmnight.linkgraph.llm.GenerationContext
 import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.GenerationPlanItem
+import com.charmnight.linkgraph.llm.EditScope
 import com.charmnight.linkgraph.llm.LlmGateway
 import com.charmnight.linkgraph.llm.LlmPromptFactory
 import com.charmnight.linkgraph.llm.LlmResultSource
@@ -19,6 +20,7 @@ import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
+import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import java.nio.file.Paths
 
 /** 单个可写入项目目录的代码草案。 */
@@ -31,8 +33,12 @@ data class GeneratedCodeDraft(
     val title: String,
     /** 相对项目根目录的目标路径。 */
     val targetPath: String,
-    /** 草稿完整内容。 */
-    val content: String,
+    /** 新文件草稿完整内容；existing-file 结构化改写时为空。 */
+    val content: String? = null,
+    /** 现有文件结构化改写操作。 */
+    val editOperations: List<CodeEditOperation> = emptyList(),
+    /** 已授权的精确编辑作用域。 */
+    val editScopes: List<EditScope> = emptyList(),
     /** 草稿级别的警告信息。 */
     val warnings: List<String> = emptyList(),
 )
@@ -48,6 +54,29 @@ data class CodeGenerationResult(
     /** 本次生成使用的提示词预览。 */
     val promptPreview: String? = null,
 )
+
+/** 当前结果是否包含可写入或可展示的代码草稿。 */
+internal fun CodeGenerationResult.hasUsableDrafts(): Boolean = drafts.isNotEmpty()
+
+/** 为“生成完成但没有任何可用草稿”的场景构造统一报错文案。 */
+internal fun CodeGenerationResult.emptyResultMessage(): String {
+    val leadingWarning = warnings.firstOrNull()?.takeIf(String::isNotBlank)
+    return when {
+        leadingWarning != null -> "未生成任何可用代码草稿：$leadingWarning"
+        source == LlmResultSource.REMOTE -> "远程 LLM 未返回任何可用代码草稿。"
+        else -> "当前上下文未生成任何可用代码草稿。"
+    }
+}
+
+/** 把当前结果里的警告拼成详细说明，供失败态展示。 */
+internal fun CodeGenerationResult.emptyResultDetailMessage(): String? {
+    return warnings
+        .map(String::trim)
+        .filter(String::isNotEmpty)
+        .distinct()
+        .joinToString("\n")
+        .takeIf(String::isNotEmpty)
+}
 
 /** 草案写入项目目录后的结果回执。 */
 data class GeneratedCodeDraftWriteReport(
@@ -109,13 +138,28 @@ class CodeGenerationService(
                     RemoteCodeGenerationResultParser.parse(content, promptPackage.preview)
                 }
             }.onSuccess { remoteResult ->
-                return remoteResult.value.withPrependedWarnings(remoteResult.warnings)
+                val normalizedRemoteResult = remoteResult.value
+                    .attachAuthorizedScopes(plan)
+                    .withPrependedWarnings(remoteResult.warnings)
+                if (normalizedRemoteResult.hasUsableDrafts()) {
+                    return normalizedRemoteResult
+                }
+                /** 远程返回空结果时回退到本地模板，避免把空 drafts 伪装成成功。 */
+                val localResult = generateLocalDrafts(context, plan, promptPackage.preview)
+                val fallbackMessage = if (localResult.hasUsableDrafts()) {
+                    "远程 LLM 未返回任何可用代码草稿，已回退为本地模板。"
+                } else {
+                    "远程 LLM 未返回任何可用代码草稿。"
+                }
+                return localResult.copy(
+                    warnings = listOf(fallbackMessage) + normalizedRemoteResult.warnings + localResult.warnings,
+                )
             }.onFailure { error ->
                 /** 远程失败后的本地回退结果。 */
                 val localResult = generateLocalDrafts(context, plan, promptPackage.preview)
                 return localResult.copy(
                     warnings = listOf(
-                        "远程 LLM 代码生成失败，已回退为本地模板：${LlmUserMessageFormatter.describe(error)}",
+            "远程 LLM 代码生成失败，已回退为本地模板：${LlmUserMessageFormatter.describe(error)}",
                     ) + localResult.warnings,
                 )
             }
@@ -130,6 +174,8 @@ class CodeGenerationService(
         plan: GenerationPlan?,
         promptPreview: String,
     ): CodeGenerationResult {
+        /** 指向现有源码的确认项，当前本地规则无法可靠合成其方法体。 */
+        val modificationWarnings = buildModificationWarnings(context.confirmedChanges, context.graph)
         /** 仅保留 Mermaid 中新增的节点条目。 */
         val draftEntries = context.diff.entries.filter {
             it.elementKind == GraphDiffElementKind.NODE && it.status == DiffStatus.ONLY_IN_MERMAID
@@ -137,6 +183,7 @@ class CodeGenerationService(
         if (draftEntries.isEmpty()) {
             return CodeGenerationResult(
                 drafts = emptyList(),
+                warnings = modificationWarnings,
                 source = LlmResultSource.MOCK,
                 promptPreview = promptPreview,
             )
@@ -166,10 +213,28 @@ class CodeGenerationService(
         }
         return CodeGenerationResult(
             drafts = drafts,
-            warnings = warnings,
+            warnings = modificationWarnings + warnings,
             source = LlmResultSource.MOCK,
             promptPreview = promptPreview,
         )
+    }
+
+    /** 为本地规则模式生成“无法安全改写现有方法”的显式警告。 */
+    private fun buildModificationWarnings(
+        confirmedChanges: List<DraftWorkbenchEntry>,
+        graph: GraphDocument,
+    ): List<String> {
+        if (confirmedChanges.isEmpty()) {
+            return emptyList()
+        }
+        val nodeById = graph.nodes.associateBy(GraphNode::id)
+        return confirmedChanges.mapNotNull { change ->
+            val targetPath = change.targetNodeIds.firstNotNullOfOrNull { nodeId ->
+                nodeById[nodeId]?.metadata?.get("source.filePath")
+                    ?: nodeById[nodeId]?.location?.substringBefore(':')
+            } ?: return@mapNotNull null
+            "已确认变更“${change.title}”指向现有源码 $targetPath；当前本地规则无法安全改写现有方法，也无法生成结构化 edit ops，请启用远程 LLM 代码生成。"
+        }.distinct()
     }
 
     /** 把远程返回的警告插入到结果警告列表前部。 */
@@ -178,6 +243,36 @@ class CodeGenerationService(
             return this
         }
         return copy(warnings = extraWarnings + warnings)
+    }
+
+    /** 用本地 authoritative generation plan 回填 existing-file draft 的授权 scope。 */
+    private fun CodeGenerationResult.attachAuthorizedScopes(plan: GenerationPlan?): CodeGenerationResult {
+        val planScopes = plan?.items.orEmpty().flatMap(GenerationPlanItem::editScopes).distinctBy(EditScope::scopeId)
+        if (planScopes.isEmpty()) {
+            return this
+        }
+        val planItemsByTargetPath = plan?.items.orEmpty()
+            .filter { item -> !item.targetPath.isNullOrBlank() }
+            .groupBy { item -> requireNotNull(item.targetPath) }
+        val patchedDrafts = drafts.map { draft ->
+            if (draft.editOperations.isEmpty() || draft.editScopes.isNotEmpty()) {
+                return@map draft
+            }
+            val operationScopeIds = draft.editOperations.mapNotNull(CodeEditOperation::scopeId).toSet()
+            val matchedScopes = if (operationScopeIds.isNotEmpty()) {
+                planScopes.filter { scope -> scope.scopeId in operationScopeIds }
+            } else {
+                planItemsByTargetPath[draft.targetPath].orEmpty().flatMap(GenerationPlanItem::editScopes)
+            }.distinctBy(EditScope::scopeId)
+            if (matchedScopes.isEmpty()) {
+                draft.copy(
+                    warnings = draft.warnings + "existing-file draft '${draft.targetPath}' 未匹配到本地 authoritative edit scope。",
+                )
+            } else {
+                draft.copy(editScopes = matchedScopes)
+            }
+        }
+        return copy(drafts = patchedDrafts)
     }
 
     /** 为单个节点生成草稿文件。 */

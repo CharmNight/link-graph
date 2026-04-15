@@ -5,6 +5,7 @@ import {
   traceLinkGraph,
 } from "./debug";
 import { FifoQueue } from "./fifoQueue";
+import { canEditNodeLayout } from "./layoutEditability";
 import type {
   AnalysisDisplayMode,
   GraphPosition,
@@ -22,6 +23,9 @@ export function fallbackDesignPosition(index: number): GraphPosition {
 }
 
 export function withStoredNodePosition(node: LinkGraphNode): LinkGraphNode {
+  if (!canEditNodeLayout(node)) {
+    return clearStoredNodePosition(node);
+  }
   if (node.position) {
     return node;
   }
@@ -100,19 +104,52 @@ export function applyBootstrapNodePositions(
 ): LinkGraphNode[] {
   const currentNodeById = new Map(currentNodes.map((node) => [node.id, node]));
   return nextNodes.map((node) => {
+    const layoutEditableNode = canEditNodeLayout(node);
+    const baseNode = layoutEditableNode ? node : clearStoredNodePosition(node);
     const layoutPosition = layoutState?.positions[node.id];
-    if (layoutPosition) {
-      return syncNodePosition(node, layoutPosition);
+    if (layoutEditableNode && layoutPosition) {
+      return syncNodePosition(baseNode, layoutPosition);
     }
-    const existingPosition = resolveNodePosition(node);
-    if (existingPosition) {
-      return syncNodePosition(node, existingPosition);
+    const existingPosition = resolveNodePosition(baseNode);
+    if (layoutEditableNode && existingPosition) {
+      return syncNodePosition(baseNode, existingPosition);
     }
     if (!reuseCurrentPositions) {
-      return node;
+      return baseNode;
     }
-    const currentPosition = resolveNodePosition(currentNodeById.get(node.id) ?? node);
-    return currentPosition ? syncNodePosition(node, currentPosition) : node;
+    const currentPosition = resolveNodePosition(currentNodeById.get(node.id) ?? baseNode);
+    return currentPosition ? syncNodePosition(baseNode, currentPosition) : baseNode;
+  });
+}
+
+function canReuseStoredEdgeRoute(nextEdge: LinkGraphEdge, currentEdge: LinkGraphEdge): boolean {
+  return nextEdge.id === currentEdge.id
+    && nextEdge.type === currentEdge.type
+    && nextEdge.source === currentEdge.source
+    && nextEdge.target === currentEdge.target
+    && (nextEdge.sourceHandle ?? "") === (currentEdge.sourceHandle ?? "")
+    && (nextEdge.targetHandle ?? "") === (currentEdge.targetHandle ?? "")
+    && (nextEdge.label ?? "") === (currentEdge.label ?? "");
+}
+
+export function applyBootstrapEdgeRoutes(
+  nextEdges: LinkGraphEdge[],
+  currentEdges: LinkGraphEdge[],
+  reuseCurrentRoutes = true,
+): LinkGraphEdge[] {
+  if (!reuseCurrentRoutes || nextEdges.length === 0 || currentEdges.length === 0) {
+    return nextEdges;
+  }
+  const currentEdgeById = new Map(currentEdges.map((edge) => [edge.id, edge]));
+  return nextEdges.map((edge) => {
+    const currentEdge = currentEdgeById.get(edge.id);
+    if (!currentEdge?.route || edge.route || !canReuseStoredEdgeRoute(edge, currentEdge)) {
+      return edge;
+    }
+    return {
+      ...edge,
+      route: currentEdge.route,
+    };
   });
 }
 

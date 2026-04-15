@@ -12,6 +12,8 @@ import com.charmnight.linkgraph.model.GraphPatchOperation
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
+import com.charmnight.linkgraph.workbench.AuditInvestigationLead
+import com.charmnight.linkgraph.workbench.AuditInvestigationLeadStatus
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 
@@ -35,6 +37,8 @@ internal object RemoteGraphPatchResultParser {
             ?: error("LLM response must contain answer.")
         /** 远程返回的警告列表。 */
         val warnings = (root["warnings"] as? List<*>).orEmpty().mapNotNull { it as? String }
+        /** 远程返回的结构化证据。 */
+        val findings = parseResultEvidenceFindings(root["findings"])
         /** 远程返回的结构化补丁。 */
         val patch = (root["patch"] as? Map<*, *>)?.let(::parsePatch)
         return GraphPatchResult(
@@ -43,8 +47,13 @@ internal object RemoteGraphPatchResultParser {
             answer = answer,
             promptPreview = prompt,
             patch = patch,
-            findings = parseResultEvidenceFindings(root["findings"]),
-            candidateChanges = (root["candidateChanges"] as? List<*>).orEmpty().mapNotNull { parseCandidateChange(it as? Map<*, *>) },
+            findings = findings,
+            candidateChanges = (root["candidateChanges"] as? List<*>).orEmpty().mapNotNull {
+                parseCandidateChange(it as? Map<*, *>, findings)
+            },
+            investigationLeads = (root["investigationLeads"] as? List<*>).orEmpty().mapNotNull {
+                parseInvestigationLead(it as? Map<*, *>, findings)
+            },
             warnings = warnings,
         )
     }
@@ -67,9 +76,15 @@ internal object RemoteGraphPatchResultParser {
     }
 
     /** 解析单条候选变更。 */
-    private fun parseCandidateChange(raw: Map<*, *>?): CandidateDraftChange? {
+    private fun parseCandidateChange(
+        raw: Map<*, *>?,
+        findings: List<ResultEvidenceFinding>,
+    ): CandidateDraftChange? {
         raw ?: return null
         val changeId = raw["changeId"] as? String ?: return null
+        val findingsById = findings.associateBy(ResultEvidenceFinding::id)
+        val supportingEvidence = stringList(raw["supportingFindingIds"]).mapNotNull(findingsById::get)
+        val embeddedEvidence = parseResultEvidenceFindings(raw["evidence"])
         return CandidateDraftChange(
             changeId = changeId,
             status = enumValue<CandidateDraftChangeStatus>(raw["status"] as? String)
@@ -81,6 +96,33 @@ internal object RemoteGraphPatchResultParser {
             afterState = raw["afterState"] as? String,
             reason = raw["reason"] as? String ?: "",
             impactSummary = raw["impactSummary"] as? String ?: "",
+            claimType = raw["claimType"] as? String,
+            evidence = if (supportingEvidence.isNotEmpty()) supportingEvidence else embeddedEvidence,
+        )
+    }
+
+    /** 解析单条风险线索。 */
+    private fun parseInvestigationLead(
+        raw: Map<*, *>?,
+        findings: List<ResultEvidenceFinding>,
+    ): AuditInvestigationLead? {
+        raw ?: return null
+        val leadId = raw["leadId"] as? String ?: return null
+        val findingsById = findings.associateBy(ResultEvidenceFinding::id)
+        val supportingEvidence = stringList(raw["supportingFindingIds"]).mapNotNull(findingsById::get)
+        val embeddedEvidence = parseResultEvidenceFindings(raw["evidence"])
+        return AuditInvestigationLead(
+            leadId = leadId,
+            status = enumValue<AuditInvestigationLeadStatus>(raw["status"] as? String)
+                ?: AuditInvestigationLeadStatus.OPEN,
+            title = raw["title"] as? String ?: leadId,
+            targetStepIds = stringList(raw["targetStepIds"]),
+            targetNodeIds = stringList(raw["targetNodeIds"]),
+            summary = raw["summary"] as? String ?: "",
+            evidenceGap = raw["evidenceGap"] as? String ?: "",
+            recommendedQuestion = raw["recommendedQuestion"] as? String ?: "",
+            claimType = raw["claimType"] as? String,
+            evidence = if (supportingEvidence.isNotEmpty()) supportingEvidence else embeddedEvidence,
         )
     }
 

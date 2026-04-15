@@ -6,7 +6,9 @@ import {
   readBootstrapState,
   requestAuditAsync,
   requestAnalysisDisplayMode,
+  requestCurrentEditorContextGraph,
   requestGraphBeautificationAsync,
+  updateWorkbenchSectionPreference,
   resetApiBridgeLifecycleStateForTest,
 } from "./api";
 import { resetEditorTransportForTest } from "./editorTransport";
@@ -229,6 +231,28 @@ describe("publishGraphChange", () => {
     expect(requestAnalysisDisplayModeBridge).toHaveBeenCalledWith("FLOWCHART");
   });
 
+  it("把工作台折叠偏好更新转发给 IDE bridge", () => {
+    const updateWorkbenchSectionPreferenceBridge = vi.fn();
+    window.linkGraphBridge = {
+      updateWorkbenchSectionPreference: updateWorkbenchSectionPreferenceBridge,
+    };
+
+    updateWorkbenchSectionPreference("audit.candidate-changes", true);
+
+    expect(updateWorkbenchSectionPreferenceBridge).toHaveBeenCalledWith("audit.candidate-changes", true);
+  });
+
+  it("把当前编辑器上下文加载请求转发给 IDE bridge", () => {
+    const requestCurrentEditorContextGraphBridge = vi.fn();
+    window.linkGraphBridge = {
+      requestCurrentEditorContextGraph: requestCurrentEditorContextGraphBridge,
+    };
+
+    requestCurrentEditorContextGraph();
+
+    expect(requestCurrentEditorContextGraphBridge).toHaveBeenCalledTimes(1);
+  });
+
   it("记录审计请求参数到前端调试 trace", () => {
     const requestAuditBridge = vi.fn();
     const traceSink = vi.fn();
@@ -237,13 +261,18 @@ describe("publishGraphChange", () => {
     };
     window.linkGraphDebugTrace = traceSink;
 
-    requestAuditAsync("请审计当前链路", ["method:place-order", "sql:insert-order"]);
+    requestAuditAsync("请审计当前链路", ["method:place-order", "sql:insert-order"], "lead-risk-1");
 
-    expect(requestAuditBridge).toHaveBeenCalledWith("请审计当前链路", ["method:place-order", "sql:insert-order"]);
+    expect(requestAuditBridge).toHaveBeenCalledWith(
+      "请审计当前链路",
+      ["method:place-order", "sql:insert-order"],
+      "lead-risk-1",
+    );
     const tracePayload = String(traceSink.mock.calls[0]?.[0] ?? "");
     expect(tracePayload).toContain("\"event\":\"api.requestAudit\"");
     expect(tracePayload).toContain("\"question\":\"请审计当前链路\"");
     expect(tracePayload).toContain("\"selectedNodeIds\":[\"method:place-order\",\"sql:insert-order\"]");
+    expect(tracePayload).toContain("\"sourceLeadId\":\"lead-risk-1\"");
   });
 
   it("记录链路讲解请求参数到前端调试 trace", () => {
@@ -254,12 +283,32 @@ describe("publishGraphChange", () => {
     };
     window.linkGraphDebugTrace = traceSink;
 
-    requestGraphBeautificationAsync("", "汇报版", "请重点讲解 placeOrder 节点");
+    requestGraphBeautificationAsync({
+      goal: "",
+      preferredStyle: "汇报版",
+      explanationFocus: "请重点讲解 placeOrder 节点",
+      granularity: "METHOD_CALL",
+      followUp: {
+        stepId: "step-place-order",
+        stepTitle: "Step 1 提交订单",
+        question: "订单失败时怎么处理？",
+      },
+    });
 
-    expect(requestBeautificationBridge).toHaveBeenCalledWith("", "汇报版", "请重点讲解 placeOrder 节点");
+    expect(requestBeautificationBridge).toHaveBeenCalledWith(
+      "",
+      "汇报版",
+      "请重点讲解 placeOrder 节点",
+      "METHOD_CALL",
+      "step-place-order",
+      "Step 1 提交订单",
+      "订单失败时怎么处理？",
+    );
     const tracePayload = String(traceSink.mock.calls[0]?.[0] ?? "");
     expect(tracePayload).toContain("\"event\":\"api.requestGraphBeautification\"");
     expect(tracePayload).toContain("\"preferredStyle\":\"汇报版\"");
     expect(tracePayload).toContain("\"explanationFocus\":\"请重点讲解 placeOrder 节点\"");
+    expect(tracePayload).toContain("\"granularity\":\"METHOD_CALL\"");
+    expect(tracePayload).toContain("\"followUp\":{\"stepId\":\"step-place-order\",\"stepTitle\":\"Step 1 提交订单\",\"question\":\"订单失败时怎么处理？\"}");
   });
 });

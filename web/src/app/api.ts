@@ -4,6 +4,7 @@ import type {
   Certainty,
   DraftPatchPreviewSource,
   DiffStatus,
+  GraphBeautificationRequest,
   GraphPosition,
   GraphSourceTag,
   LinkGraphBootstrapState,
@@ -12,6 +13,7 @@ import type {
   LinkGraphSnapshotEnvelope,
   MermaidIssue,
   NodeType,
+  StepGranularity,
   SyncPreviewItem,
 } from "./types";
 import { summarizeGraph, traceLinkGraph } from "./debug";
@@ -94,12 +96,18 @@ declare global {
       exportMermaid?: () => void;
       showDiffMode?: () => void;
       requestSyncPreview?: () => void;
-      requestAudit?: (question: string, selectedNodeIds?: string[]) => void;
+      requestAudit?: (question: string, selectedNodeIds?: string[], sourceLeadId?: string | null) => void;
+      confirmAuditCandidateChange?: (changeId: string) => void;
+      unconfirmAuditCandidateChange?: (changeId: string) => void;
       requestDiffReview?: (question: string, selectedDiffItemIds?: string[]) => void;
       requestGraphBeautification?: (
         goal?: string,
         preferredStyle?: string | null,
         explanationFocus?: string | null,
+        granularity?: StepGranularity,
+        followUpStepId?: string,
+        followUpStepTitle?: string,
+        followUpQuestion?: string,
       ) => void;
       applyDraftPatchPreview?: (operationIds?: string[]) => void;
       clearDraftPatchPreview?: () => void;
@@ -107,8 +115,9 @@ declare global {
       undoLastDraftPatchApply?: () => void;
       requestGenerationPlan?: () => void;
       requestCodeDrafts?: () => void;
-      requestCurrentMethodGraph?: () => void;
+      requestCurrentEditorContextGraph?: () => void;
       requestAnalysisDisplayMode?: (displayMode: AnalysisDisplayMode) => void;
+      updateWorkbenchSectionPreference?: (sectionId: string, expanded: boolean) => void;
       requestOpenSettings?: () => void;
       applyCodeDrafts?: () => void;
       applySingleCodeDraft?: (draftId: string) => void;
@@ -275,12 +284,33 @@ export function requestSyncPreview(): BridgeInvocationResult {
   });
 }
 
-export function requestAuditAsync(question: string, selectedNodeIds: string[] = []): BridgeInvocationResult {
+export function requestAuditAsync(
+  question: string,
+  selectedNodeIds: string[] = [],
+  sourceLeadId: string | null = null,
+): BridgeInvocationResult {
   return invokeBridgeAction("requestAudit", (bridge) => {
-    bridge.requestAudit?.(question, selectedNodeIds);
+    bridge.requestAudit?.(question, selectedNodeIds, sourceLeadId);
   }, {
     question,
     selectedNodeIds,
+    sourceLeadId,
+  });
+}
+
+export function confirmAuditCandidateChange(changeId: string): BridgeInvocationResult {
+  return invokeBridgeAction("confirmAuditCandidateChange", (bridge) => {
+    bridge.confirmAuditCandidateChange?.(changeId);
+  }, {
+    changeId,
+  });
+}
+
+export function unconfirmAuditCandidateChange(changeId: string): BridgeInvocationResult {
+  return invokeBridgeAction("unconfirmAuditCandidateChange", (bridge) => {
+    bridge.unconfirmAuditCandidateChange?.(changeId);
+  }, {
+    changeId,
   });
 }
 
@@ -291,16 +321,31 @@ export function requestDiffReviewAsync(question: string, selectedDiffItemIds: st
 }
 
 export function requestGraphBeautificationAsync(
-  goal = "",
-  preferredStyle?: string | null,
-  explanationFocus?: string | null,
+  request: GraphBeautificationRequest = {},
 ): BridgeInvocationResult {
+  const {
+    goal = "",
+    preferredStyle,
+    explanationFocus,
+    granularity = "BUSINESS",
+    followUp,
+  } = request;
   return invokeBridgeAction("requestGraphBeautification", (bridge) => {
-    bridge.requestGraphBeautification?.(goal, preferredStyle, explanationFocus);
+    bridge.requestGraphBeautification?.(
+      goal,
+      preferredStyle,
+      explanationFocus,
+      granularity,
+      followUp?.stepId,
+      followUp?.stepTitle,
+      followUp?.question,
+    );
   }, {
     goal,
     preferredStyle: preferredStyle ?? null,
     explanationFocus: explanationFocus ?? null,
+    granularity,
+    followUp: followUp ?? null,
   });
 }
 
@@ -331,6 +376,8 @@ export function undoLastDraftPatchApply(): BridgeInvocationResult {
 export function requestGenerationPlanAsync(): BridgeInvocationResult {
   return invokeBridgeAction("requestGenerationPlan", (bridge) => {
     bridge.requestGenerationPlan?.();
+  }, {
+    action: "requestGenerationPlan",
   });
 }
 
@@ -346,16 +393,25 @@ export const requestGraphBeautification = requestGraphBeautificationAsync;
 export const requestGenerationPlan = requestGenerationPlanAsync;
 export const requestCodeDrafts = requestCodeDraftsAsync;
 
-export function requestCurrentMethodGraph(): BridgeInvocationResult {
-  traceLinkGraph("api.requestCurrentMethodGraph");
-  return invokeBridgeAction("requestCurrentMethodGraph", (bridge) => {
-    bridge.requestCurrentMethodGraph?.();
+export function requestCurrentEditorContextGraph(): BridgeInvocationResult {
+  traceLinkGraph("api.requestCurrentEditorContextGraph");
+  return invokeBridgeAction("requestCurrentEditorContextGraph", (bridge) => {
+    bridge.requestCurrentEditorContextGraph?.();
   });
 }
 
 export function requestAnalysisDisplayMode(displayMode: AnalysisDisplayMode): BridgeInvocationResult {
   return invokeBridgeAction("requestAnalysisDisplayMode", (bridge) => {
     bridge.requestAnalysisDisplayMode?.(displayMode);
+  });
+}
+
+export function updateWorkbenchSectionPreference(sectionId: string, expanded: boolean): BridgeInvocationResult {
+  return invokeBridgeAction("updateWorkbenchSectionPreference", (bridge) => {
+    bridge.updateWorkbenchSectionPreference?.(sectionId, expanded);
+  }, {
+    sectionId,
+    expanded,
   });
 }
 

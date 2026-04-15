@@ -1,6 +1,9 @@
 package com.charmnight.linkgraph.ui
 
+import com.charmnight.linkgraph.codegen.CodeEditOperation
+import com.charmnight.linkgraph.codegen.CodeEditOperationKind
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
+import com.charmnight.linkgraph.llm.EditScope
 import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.GenerationPlanItem
 import com.charmnight.linkgraph.model.GraphDocument
@@ -16,7 +19,7 @@ import kotlin.test.assertTrue
 
 class GraphEditorTransportSliceRendererTest {
     @Test
-    fun feedbackOnlyUpdateDoesNotResendSemanticGraphSlice() {
+    fun anyStateUpdateIsRenderedAsSingleFullSnapshotEnvelope() {
         val renderer = GraphEditorTransportSliceRenderer()
         val previous = snapshot(
             snapshotRevision = 1,
@@ -36,7 +39,7 @@ class GraphEditorTransportSliceRendererTest {
             snapshotRevision = 2,
             operationFeedback = GraphEditorStateService.OperationFeedback(
                 level = GraphEditorStateService.OperationFeedbackLevel.INFO,
-                message = "只更新提示文案，不应重发语义图。",
+                message = "只更新提示文案，也要通过完整权威快照下发。",
             ),
             lastMessageType = "operationFeedback",
         )
@@ -47,43 +50,12 @@ class GraphEditorTransportSliceRendererTest {
             snapshot = current,
         )
 
-        assertEquals(listOf(GraphEditorTransportEnvelope.FeedbackSlice::class), envelopes.map { it::class })
+        assertEquals(1, envelopes.size)
         val script = renderer.renderScript(envelopes)
-        assertTrue(script.contains("只更新提示文案，不应重发语义图。"))
-        assertFalse(script.contains("OrderController.submit"))
-        assertFalse(script.contains("package com.example"))
-    }
-
-    @Test
-    fun layoutOnlyUpdateDoesNotResendSemanticGraphSlice() {
-        val renderer = GraphEditorTransportSliceRenderer()
-        val previous = snapshot(
-            snapshotRevision = 4,
-            semanticRevision = 3,
-            layoutRevision = 1,
-        )
-        val current = previous.copy(
-            snapshotRevision = 5,
-            layoutRevision = 2,
-            layoutState = GraphLayoutState(
-                positions = mapOf(
-                    "method:submit-order" to GraphLayoutPosition(640.0, 320.0),
-                ),
-            ),
-            lastMessageType = "layoutChanged",
-        )
-
-        val envelopes = renderer.renderIncrementalEnvelopes(
-            sessionId = "session-1",
-            previousSnapshot = previous,
-            snapshot = current,
-        )
-
-        assertEquals(listOf(GraphEditorTransportEnvelope.LayoutSlice::class), envelopes.map { it::class })
-        val script = renderer.renderScript(envelopes)
-        assertTrue(script.contains("\"type\":\"LAYOUT_SLICE\""))
-        assertTrue(script.contains("640.0") || script.contains("640"))
-        assertFalse(script.contains("OrderController.submit"))
+        assertTrue(script.contains("只更新提示文案，也要通过完整权威快照下发。"))
+        assertTrue(script.contains("OrderController.submit"))
+        assertTrue(script.contains("contentArtifactId"))
+        assertFalse(script.contains("\"type\":\"FEEDBACK_SLICE\""))
     }
 
     @Test
@@ -94,7 +66,6 @@ class GraphEditorTransportSliceRendererTest {
             snapshot = snapshot(snapshotRevision = 7),
         )
 
-        assertTrue(bootstrapScript.contains("\"type\":\"BOOTSTRAP_INIT\""))
         assertTrue(bootstrapScript.contains("OrderController.submit"))
         assertTrue(bootstrapScript.contains("\"visibleGraph\""))
         assertTrue(bootstrapScript.contains("\"workingGraph\""))
@@ -141,28 +112,80 @@ class GraphEditorTransportSliceRendererTest {
             snapshot = current,
         )
 
-        val workflowEnvelope = envelopes.singleOrNull {
-            it is GraphEditorTransportEnvelope.WorkflowSlice
-        } as? GraphEditorTransportEnvelope.WorkflowSlice
-        assertNotNull(workflowEnvelope)
+        val snapshotEnvelope = envelopes.singleOrNull()
+        assertNotNull(snapshotEnvelope)
 
-        val draftPayload = (workflowEnvelope.state["generatedCodeDrafts"] as? List<*>)?.singleOrNull() as? Map<*, *>
+        val draftPayload = (snapshotEnvelope.state["generatedCodeDrafts"] as? List<*>)?.singleOrNull() as? Map<*, *>
         assertNotNull(draftPayload)
         assertFalse(draftPayload.containsKey("content"))
         assertTrue(draftPayload["contentArtifactId"].toString().isNotBlank())
 
-        val generationPlan = workflowEnvelope.state["generationPlan"] as? Map<*, *>
+        val generationPlan = snapshotEnvelope.state["generationPlan"] as? Map<*, *>
         assertNotNull(generationPlan)
         assertFalse(generationPlan.containsKey("promptPreview"))
         assertTrue(generationPlan["promptPreviewArtifactId"].toString().isNotBlank())
 
-        assertFalse(workflowEnvelope.state.containsKey("generatedCodeDraftPromptPreview"))
-        assertTrue(workflowEnvelope.state["generatedCodeDraftPromptPreviewArtifactId"].toString().isNotBlank())
+        assertFalse(snapshotEnvelope.state.containsKey("generatedCodeDraftPromptPreview"))
+        assertTrue(snapshotEnvelope.state["generatedCodeDraftPromptPreviewArtifactId"].toString().isNotBlank())
 
         val script = renderer.renderScript(envelopes)
         assertFalse(script.contains("public class OrderDraftDto"))
         assertFalse(script.contains("system: generate code"))
         assertFalse(script.contains("system: generate plan"))
+    }
+
+    @Test
+    fun bootstrapInitAllowsStructuredExistingFileDraftWithoutInlineContentArtifact() {
+        val renderer = GraphEditorTransportSliceRenderer()
+        val bootstrapScript = renderer.renderBootstrapInitScript(
+            sessionId = "session-1",
+            snapshot = snapshot(
+                snapshotRevision = 12,
+                generatedCodeDrafts = listOf(
+                    GeneratedCodeDraft(
+                        id = "draft-1",
+                        sourceNodeId = "class:order-draft-dto",
+                        title = "OrderDraftDto.java",
+                        targetPath = "src/main/java/com/example/OrderDraftDto.java",
+                        content = "package com.example;\npublic class OrderDraftDto {}",
+                    ),
+                    GeneratedCodeDraft(
+                        id = "draft-2",
+                        sourceNodeId = "method:submit-order",
+                        title = "OrderController.java",
+                        targetPath = "src/main/java/com/example/OrderController.java",
+                        editOperations = listOf(
+                            CodeEditOperation(
+                                operationId = "edit-1",
+                                filePath = "src/main/java/com/example/OrderController.java",
+                                scopeId = "scope-submit-order",
+                                kind = CodeEditOperationKind.REPLACE_METHOD_BLOCK,
+                                payload = "public SubmitResult submit(String request) {\n    return fallback(request);\n}",
+                            ),
+                        ),
+                        editScopes = listOf(
+                            EditScope(
+                                scopeId = "scope-submit-order",
+                                targetNodeId = "method:submit-order",
+                                filePath = "src/main/java/com/example/OrderController.java",
+                                language = "JAVA",
+                                symbolKind = "METHOD",
+                                symbolSignature = "com.example.OrderController#submit(java.lang.String)",
+                                startLine = 18,
+                                endLine = 27,
+                                allowedChangeKinds = listOf("REPLACE_METHOD_BLOCK"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertTrue(bootstrapScript.contains("\"generatedCodeDrafts\""))
+        assertTrue(bootstrapScript.contains("\"contentArtifactId\""))
+        assertTrue(bootstrapScript.contains("\"kind\":\"REPLACE_METHOD_BLOCK\""))
+        assertTrue(bootstrapScript.contains("scope-submit-order"))
+        assertFalse(bootstrapScript.contains("\"contentArtifactId\":\"draft-content:draft-2"))
     }
 
     private fun snapshot(

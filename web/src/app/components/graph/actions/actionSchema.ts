@@ -121,7 +121,7 @@ export function buildNodeActions({
   onClose,
 }: NodeActionSchemaInput): GraphContextMenuAction[] {
   const actions: GraphContextMenuAction[] = [
-    makeAction("inspect-node", "查看详情", () => {
+    makeAction("inspect-node", "编辑节点", () => {
       onInspectNode(nodeId);
       onClose();
     }),

@@ -119,6 +119,9 @@ function resourceSummaryText(laneCounts: Record<string, number>) {
 export function ResourceRelationView({
   view,
   selectedNodeId,
+  focusNodeRequest = null,
+  explanationFocusNodeId = null,
+  draftChangedNodeIds = [],
   selectedGroupNodeIds = [],
   hiddenNodeIds = [],
   experiments = null,
@@ -156,6 +159,7 @@ export function ResourceRelationView({
     () => layoutState.edges.filter((edge) => !hiddenNodeIdSet.has(edge.source) && !hiddenNodeIdSet.has(edge.target)),
     [layoutState.edges, hiddenNodeIdSet],
   );
+  const isLayoutLoading = layoutState.layoutPending && view.visibleGraph.nodes.length > 0 && layoutState.nodes.length === 0;
   const nodeIndex = useMemo(
     () => new Map(visibleNodes.map((node) => [node.id, node])),
     [visibleNodes],
@@ -165,8 +169,14 @@ export function ResourceRelationView({
     [visibleNodes, selectedNodeId],
   );
   const flowNodes = useMemo(
-    () => buildResourceRelationNodes({ nodes: visibleNodes, selectedNodeId, nodeSizeRegistry }),
-    [visibleNodes, selectedNodeId, nodeSizeRegistry],
+    () => buildResourceRelationNodes({
+      nodes: visibleNodes,
+      selectedNodeId,
+      explanationFocusNodeId,
+      draftChangedNodeIds,
+      nodeSizeRegistry,
+    }),
+    [visibleNodes, selectedNodeId, explanationFocusNodeId, draftChangedNodeIds, nodeSizeRegistry],
   );
   const flowEdges = useMemo(
     () => buildResourceRelationEdges({ edges: visibleEdges }),
@@ -203,16 +213,24 @@ export function ResourceRelationView({
         viewportMode="RESOURCE_RELATION_VIEW"
         anchorNodeId={view.anchorNodeId ?? null}
         selectedNodeId={selectedNodeId}
+        focusNodeRequest={focusNodeRequest}
         selectedGroupNodeIds={selectedGroupNodeIds}
         experiments={experiments}
         editable
         layoutEditable
         header={header}
         emptyState={(
-          <div className="canvas-empty-state">
-            <strong>当前没有可展示的资源关系</strong>
-            <p className="muted">请先完成分析，再查看代码与资源之间的依赖关系。</p>
-          </div>
+          isLayoutLoading ? (
+            <div className="canvas-empty-state">
+              <strong>正在整理资源关系</strong>
+              <p className="muted">资源分析已完成，正在计算稳定布局。</p>
+            </div>
+          ) : (
+            <div className="canvas-empty-state">
+              <strong>当前没有可展示的资源关系</strong>
+              <p className="muted">请先完成分析，再查看代码与资源之间的依赖关系。</p>
+            </div>
+          )
         )}
         buildPaneActions={({ position, hasGroupedSelection, visibleNodeCount, close }) =>
           buildPaneActions({

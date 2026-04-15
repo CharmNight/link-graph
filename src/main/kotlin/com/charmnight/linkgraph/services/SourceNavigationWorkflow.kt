@@ -86,16 +86,16 @@ internal class SourceNavigationWorkflow(
                 }
                 val resolveDurationMs = (System.nanoTime() - resolveStartedAt) / 1_000_000
                 if (resolvedTarget == null) {
-                    logger.info(
-                        "源码定位未命中: nodeId=$nodeId, title=${node.title}, resolveMs=$resolveDurationMs, totalMs=${(System.nanoTime() - requestStartedAt) / 1_000_000}",
-                    )
+                    debugLazy(logger.isDebugEnabled, logger::debug) {
+                        "源码定位未命中: nodeId=$nodeId, title=${node.title}, resolveMs=$resolveDurationMs, totalMs=${(System.nanoTime() - requestStartedAt) / 1_000_000}"
+                    }
                     null
                 } else {
                     val openStartedAt = System.nanoTime()
                     val openedTarget = navigationService.open(resolvedTarget)
-                    logger.info(
-                        "源码定位完成: nodeId=$nodeId, title=${node.title}, resolveMs=$resolveDurationMs, openMs=${(System.nanoTime() - openStartedAt) / 1_000_000}, totalMs=${(System.nanoTime() - requestStartedAt) / 1_000_000}, target=${openedTarget?.filePath}:${openedTarget?.line}:${openedTarget?.column}",
-                    )
+                    debugLazy(logger.isDebugEnabled, logger::debug) {
+                        "源码定位完成: nodeId=$nodeId, title=${node.title}, resolveMs=$resolveDurationMs, openMs=${(System.nanoTime() - openStartedAt) / 1_000_000}, totalMs=${(System.nanoTime() - requestStartedAt) / 1_000_000}, target=${openedTarget?.filePath}:${openedTarget?.line}:${openedTarget?.column}"
+                    }
                     openedTarget
                 }
             }

@@ -153,6 +153,9 @@ function flowchartNodeActions(args: {
 export function FlowchartView({
   view,
   selectedNodeId,
+  focusNodeRequest = null,
+  explanationFocusNodeId = null,
+  draftChangedNodeIds = [],
   selectedGroupNodeIds = [],
   hiddenNodeIds = [],
   experiments = null,
@@ -194,6 +197,11 @@ export function FlowchartView({
     () => layoutState.edges.filter((edge) => !hiddenNodeIdSet.has(edge.source) && !hiddenNodeIdSet.has(edge.target)),
     [layoutState.edges, hiddenNodeIdSet],
   );
+  const isLayoutLoading = layoutState.layoutPending && viewGraph.nodes.length > 0 && layoutState.nodes.length === 0;
+  const syntheticEntryAssisted = useMemo(
+    () => viewGraph.edges.some((edge) => edge.metadata?.["flowchart.synthetic"] === "entry-edge"),
+    [viewGraph.edges],
+  );
   const nodeIndex = useMemo(
     () => new Map(visibleNodes.map((node) => [node.id, node])),
     [visibleNodes],
@@ -207,8 +215,15 @@ export function FlowchartView({
     [visibleNodes, selectedNodeId],
   );
   const flowNodes = useMemo(
-    () => buildFlowchartNodes({ nodes: visibleNodes, edges: visibleEdges, selectedNodeId, nodeSizeRegistry }),
-    [visibleNodes, visibleEdges, selectedNodeId, nodeSizeRegistry],
+    () => buildFlowchartNodes({
+      nodes: visibleNodes,
+      edges: visibleEdges,
+      selectedNodeId,
+      explanationFocusNodeId,
+      draftChangedNodeIds,
+      nodeSizeRegistry,
+    }),
+    [visibleNodes, visibleEdges, selectedNodeId, explanationFocusNodeId, draftChangedNodeIds, nodeSizeRegistry],
   );
   const flowEdges = useMemo(
     () => buildFlowchartEdges({ edges: visibleEdges, nodeIndex }),
@@ -233,20 +248,75 @@ export function FlowchartView({
     });
   }, [flowEdges, visibleNodes]);
 
+  useEffect(() => {
+    if (flowNodes.length === 0) {
+      return;
+    }
+    const highlightedNodes = flowNodes
+      .filter((node) => typeof node.className === "string" && node.className.length > 0)
+      .map((node) => ({
+        id: node.id,
+        className: node.className ?? "",
+        selected: node.selected === true,
+      }));
+    traceLinkGraph("flowchartView.renderState", {
+      nodeCount: flowNodes.length,
+      edgeCount: flowEdges.length,
+      selectedNodeId: selectedNodeId ?? null,
+      selectedCount: flowNodes.filter((node) => node.selected === true).length,
+      explanationFocusNodeId: explanationFocusNodeId ?? null,
+      explanationFocusCount: flowNodes.filter((node) => node.className?.includes("is-explanation-focus")).length,
+      draftChangedCount: flowNodes.filter((node) => node.className?.includes("is-draft-change")).length,
+      highlightedNodeCount: highlightedNodes.length,
+      highlightedNodes: highlightedNodes.slice(0, 12),
+    });
+  }, [explanationFocusNodeId, flowEdges.length, flowNodes, selectedNodeId]);
+
+  const fullNodeCount = view.summary.fullNodeCount ?? view.summary.nodeCount;
+  const hiddenNodeCount = view.summary.hiddenNodeCount ?? 0;
+  const hiddenEdgeCount = view.summary.hiddenEdgeCount ?? 0;
+  const fidelityFlags = [
+    view.summary.truncated ? { label: "已截断", tone: "warning" as const } : null,
+    view.summary.semanticallyIncomplete ? { label: "语义不完整", tone: "warning" as const } : null,
+    syntheticEntryAssisted ? { label: "含合成入口", tone: "info" as const } : null,
+  ].filter((flag): flag is { label: string; tone: "warning" | "info" } => flag != null);
+
   const header = (
     <section className="canvas-reading-summary" aria-label="流程图摘要">
       <div className="canvas-reading-grid">
         <article className="canvas-reading-card is-anchor">
           <span className="canvas-reading-label">当前方法</span>
-          <strong className="canvas-reading-title">{view.summary.nodeCount > 0 ? (anchorNode?.title ?? "流程图") : "流程图"}</strong>
+          <strong
+            className="canvas-reading-title"
+            title={view.summary.nodeCount > 0 ? (anchorNode?.title ?? "流程图") : "流程图"}
+          >
+            {view.summary.nodeCount > 0 ? (anchorNode?.title ?? "流程图") : "流程图"}
+          </strong>
           <span className="canvas-reading-detail">
             共 {view.summary.nodeCount} 个流程节点，{view.summary.branchCount} 个分支判断，异常路径 {view.summary.exceptionPathCount} 条。
           </span>
+          {fidelityFlags.length > 0 ? (
+            <div className="canvas-reading-flags" aria-label="流程图状态">
+              {fidelityFlags.map((flag) => (
+                <span
+                  key={flag.label}
+                  className={`canvas-reading-flag is-${flag.tone}`}
+                >
+                  {flag.label}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {view.summary.truncated ? (
+            <span className="canvas-reading-detail">
+              当前仅展示 {view.summary.nodeCount}/{fullNodeCount} 个节点，隐藏 {hiddenNodeCount} 个节点、{hiddenEdgeCount} 条边。
+            </span>
+          ) : null}
         </article>
         {selectedNode ? (
           <article className="canvas-reading-card">
             <span className="canvas-reading-label">当前选中</span>
-            <strong className="canvas-reading-title">{selectedNode.title}</strong>
+            <strong className="canvas-reading-title" title={selectedNode.title}>{selectedNode.title}</strong>
             <span className="canvas-reading-detail">查看当前流程节点的类型、条件与证据。</span>
           </article>
         ) : null}
@@ -265,16 +335,24 @@ export function FlowchartView({
         viewportMode="FLOWCHART"
         anchorNodeId={view.anchorNodeId ?? null}
         selectedNodeId={selectedNodeId}
+        focusNodeRequest={focusNodeRequest}
         selectedGroupNodeIds={selectedGroupNodeIds}
         experiments={experiments}
         editable
         layoutEditable
         header={header}
         emptyState={(
-          <div className="canvas-empty-state">
-            <strong>当前没有可展示的流程节点</strong>
-            <p className="muted">请先选择方法并完成分析，再查看控制流视图。</p>
-          </div>
+          isLayoutLoading ? (
+            <div className="canvas-empty-state">
+              <strong>正在整理流程图</strong>
+              <p className="muted">链路识别已完成，正在计算稳定布局。</p>
+            </div>
+          ) : (
+            <div className="canvas-empty-state">
+              <strong>当前没有可展示的流程节点</strong>
+              <p className="muted">请先选择方法并完成分析，再查看控制流视图。</p>
+            </div>
+          )
         )}
         buildPaneActions={({ position, hasGroupedSelection, visibleNodeCount, close }) =>
           buildPaneActions({

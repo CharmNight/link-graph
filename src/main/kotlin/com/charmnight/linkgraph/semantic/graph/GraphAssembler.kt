@@ -6,6 +6,7 @@ import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.model.FlowActionUnit
+import com.charmnight.linkgraph.semantic.model.FlowScopeCategory
 import com.charmnight.linkgraph.semantic.model.FlowScopeUnit
 import com.charmnight.linkgraph.semantic.model.InvocationUnit
 import com.charmnight.linkgraph.semantic.model.MergeUnit
@@ -262,6 +263,7 @@ class GraphAssembler {
                 title = unit.title,
                 location = location,
                 signature = unit.signature,
+                doc = unit.doc,
             )
 
             is FlowScopeUnit -> GraphNode(
@@ -269,7 +271,12 @@ class GraphAssembler {
                 type = NodeType.FLOW_SCOPE,
                 title = unit.title,
                 location = location,
-                metadata = mapOf("flow.kind" to unit.scopeKind),
+                metadata = buildMap {
+                    put("flow.kind", unit.scopeKind)
+                    put("flow.scopeKind", unit.scopeKind)
+                    put("flow.scopeCategory", (unit.scopeCategory ?: unit.scopeKind.toScopeCategory()).name)
+                    put("flow.incomplete", unit.incomplete.toString())
+                },
             )
 
             is FlowActionUnit -> GraphNode(
@@ -357,7 +364,11 @@ class GraphAssembler {
                         "flowchart.kind" to if (unit.id == anchorUnitId) "ENTRY" else "SUBROUTINE",
                     )
                     is FlowScopeUnit -> mapOf(
-                        "flowchart.kind" to if (unit.scopeKind in setOf("IF", "SWITCH")) "DECISION" else "SCOPE",
+                        "flowchart.kind" to if (unit.scopeKind in setOf("IF", "SWITCH", "FOREACH", "FOR", "WHILE", "DO_WHILE")) {
+                            "DECISION"
+                        } else {
+                            "SCOPE"
+                        },
                     )
                     is FlowActionUnit -> mapOf(
                         "flowchart.kind" to when {
@@ -420,7 +431,13 @@ class GraphAssembler {
             fromNodeId = fromUnitId,
             toNodeId = toUnitId,
             label = relation.label,
-            metadata = mapOf("linkGraph.view.mode" to displayMode.name),
+            metadata = buildMap {
+                put("linkGraph.view.mode", displayMode.name)
+                relation.flowEdgeRole?.let { role -> put("flow.edgeRole", role.name) }
+                put("flow.incomplete", relation.incomplete.toString())
+                put("flow.synthetic", relation.synthetic.toString())
+                put("flow.provenance", relation.provenance.name)
+            },
         )
     }
 
@@ -522,5 +539,19 @@ private fun SemanticRelation.toEdgeType(
             EdgeType.GENERATES.name -> EdgeType.GENERATES
             else -> EdgeType.REFLECTS_TO
         }
+    }
+}
+
+private fun String.toScopeCategory(): FlowScopeCategory {
+    return when (this) {
+        "IF" -> FlowScopeCategory.BRANCH
+        "SWITCH" -> FlowScopeCategory.SWITCH
+        "FOREACH",
+        "FOR",
+        "WHILE" -> FlowScopeCategory.LOOP_PRE_TEST
+        "DO_WHILE" -> FlowScopeCategory.LOOP_POST_TEST
+        "TRY" -> FlowScopeCategory.TRY
+        "LAMBDA" -> FlowScopeCategory.LAMBDA_SCOPE
+        else -> FlowScopeCategory.GENERIC_SCOPE
     }
 }

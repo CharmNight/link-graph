@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import type { SyntheticEvent, WheelEvent as ReactWheelEvent } from "react";
 import { bindingStatusLabel, certaintyLabel, nodeTypeLabel } from "../labels";
 import { canNavigateToSource } from "../sourceNavigation";
 import type { LinkGraphNode } from "../types";
@@ -125,6 +126,17 @@ export function PropertyPanel({
     if (!draft) {
       return undefined;
     }
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, [draft]);
+
+  useEffect(() => {
+    if (!draft) {
+      return undefined;
+    }
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         onClose();
@@ -137,6 +149,15 @@ export function PropertyPanel({
   if (!draft) {
     return null;
   }
+
+  const stopBoundaryPropagation = (event: SyntheticEvent) => {
+    event.stopPropagation();
+  };
+
+  const swallowBackdropWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
 
   const canOpenSource = canNavigateToSource(draft);
   const usesSignatureFallback = !draft.location?.trim() && canOpenSource;
@@ -152,18 +173,27 @@ export function PropertyPanel({
   const actionEndOffset = draft.metadata?.["source.endOffset"]?.trim() ?? "";
 
   return (
-    <div className="property-drawer-backdrop" onClick={onClose}>
+    <div
+      className="property-drawer-backdrop"
+      onClick={onClose}
+      onPointerDownCapture={stopBoundaryPropagation}
+      onWheelCapture={swallowBackdropWheel}
+      onTouchMoveCapture={stopBoundaryPropagation}
+    >
       <aside
         className="property-drawer"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         onClick={(event) => event.stopPropagation()}
+        onPointerDownCapture={stopBoundaryPropagation}
+        onWheelCapture={stopBoundaryPropagation}
+        onTouchMoveCapture={stopBoundaryPropagation}
       >
         <div className="drawer-header">
           <div>
-            <p className="eyebrow">节点详情</p>
-            <h2 id={titleId}>节点详情</h2>
+            <p className="eyebrow">编辑节点</p>
+            <h2 id={titleId}>编辑节点</h2>
           </div>
           <button type="button" className="ghost-button" onClick={onClose}>
             收起

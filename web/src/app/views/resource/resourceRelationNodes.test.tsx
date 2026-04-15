@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { buildResourceRelationEdges, RESOURCE_RELATION_NODE_TYPES } from "./resourceRelationNodes";
+import { createNodeSizeRegistry } from "../../graph/nodeSizeRegistry";
+import { buildResourceRelationEdges, buildResourceRelationNodes, RESOURCE_RELATION_NODE_TYPES } from "./resourceRelationNodes";
 
 const updateNodeInternalsMock = vi.fn();
 
@@ -117,6 +118,38 @@ describe("RESOURCE_RELATION_NODE_TYPES", () => {
     expect(container.querySelector(".resource-relation-react-node")).toHaveClass("is-connectable");
     expect(container.querySelector('[data-handle-id="target-left"]')).toHaveAttribute("data-style-opacity", "0.28");
     expect(container.querySelector('[data-handle-id="source-right"]')).toHaveAttribute("data-style-opacity", "0.28");
+  });
+
+  it("marks explanation focus nodes and draft change nodes with dedicated React Flow classes", () => {
+    const builtNodes = buildResourceRelationNodes({
+      nodes: [
+        {
+          id: "resource:http",
+          type: "HTTP_ENDPOINT",
+          title: "GET /common/download",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN",
+          bindingStatus: "BOUND",
+        },
+        {
+          id: "resource:sql",
+          type: "SQL",
+          title: "order_mapper.xml#insertOrder",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN",
+          bindingStatus: "BOUND",
+        },
+      ],
+      selectedNodeId: "resource:http",
+      explanationFocusNodeId: "resource:http",
+      draftChangedNodeIds: ["resource:sql"],
+      nodeSizeRegistry: createNodeSizeRegistry(),
+    });
+
+    expect(builtNodes.find((node) => node.id === "resource:http")?.className ?? "").toContain("is-explanation-focus");
+    expect(builtNodes.find((node) => node.id === "resource:sql")?.className ?? "").toContain("is-draft-change");
   });
 
   it("switches resource relation edges to the shared routed edge renderer when ELK route data is present", () => {

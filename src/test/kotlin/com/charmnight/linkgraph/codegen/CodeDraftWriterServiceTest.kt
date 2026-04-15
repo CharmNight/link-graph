@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 
 class CodeDraftWriterServiceTest {
     @Test
-    fun insertsMethodIntoExistingJavaFileInsteadOfSkipping() {
+    fun rejectsExistingJavaFileWriteWithoutValidatedScope() {
         val projectDir = createTempDirectory("link-graph-writer-test")
         val targetFile = projectDir.resolve("src/main/java/com/example/OrderService.java")
         Files.createDirectories(targetFile.parent)
@@ -48,14 +48,15 @@ class CodeDraftWriterServiceTest {
         )
 
         val written = Files.readString(targetFile)
-        assertTrue(report.writtenFiles.contains("src/main/java/com/example/OrderService.java"))
-        assertFalse(report.skippedFiles.contains("src/main/java/com/example/OrderService.java"))
+        assertFalse(report.writtenFiles.contains("src/main/java/com/example/OrderService.java"))
+        assertTrue(report.skippedFiles.contains("src/main/java/com/example/OrderService.java"))
+        assertTrue(report.warnings.any { it.contains("validated scope", ignoreCase = true) })
         assertTrue(written.contains("public void existing()"))
-        assertTrue(written.contains("public void placeDraft(String arg0)"))
+        assertFalse(written.contains("public void placeDraft(String arg0)"))
     }
 
     @Test
-    fun mergesImportsClassDocAndFieldsIntoExistingJavaFile() {
+    fun rejectsExistingJavaFileMergeWithoutValidatedScope() {
         val projectDir = createTempDirectory("link-graph-writer-merge-test")
         val targetFile = projectDir.resolve("src/main/java/com/example/OrderService.java")
         Files.createDirectories(targetFile.parent)
@@ -71,7 +72,7 @@ class CodeDraftWriterServiceTest {
             """.trimIndent(),
         )
 
-        CodeDraftWriterService().writeDrafts(
+        val report = CodeDraftWriterService().writeDrafts(
             projectBasePath = projectDir.toString(),
             drafts = listOf(
                 GeneratedCodeDraft(
@@ -101,11 +102,13 @@ class CodeDraftWriterServiceTest {
         )
 
         val written = Files.readString(targetFile)
-        assertTrue(written.contains("import java.time.Instant;"))
-        assertTrue(written.contains("import java.util.List;"))
-        assertTrue(written.contains("/**\n * 订单服务草稿。"))
-        assertTrue(written.contains("private final List<String> tags = List.of();"))
-        assertTrue(written.contains("public Instant placeDraft(String arg0)"))
+        assertTrue(report.skippedFiles.contains("src/main/java/com/example/OrderService.java"))
+        assertTrue(report.warnings.any { it.contains("validated scope", ignoreCase = true) })
+        assertFalse(written.contains("import java.time.Instant;"))
+        assertFalse(written.contains("import java.util.List;"))
+        assertFalse(written.contains("/**\n * 订单服务草稿。"))
+        assertFalse(written.contains("private final List<String> tags = List.of();"))
+        assertFalse(written.contains("public Instant placeDraft(String arg0)"))
         assertTrue(written.contains("public void existing()"))
     }
 
@@ -135,6 +138,60 @@ class CodeDraftWriterServiceTest {
         assertTrue(firstReport.writtenFiles.contains(draft.targetPath))
         assertTrue(secondReport.writtenFiles.contains(draft.targetPath))
         assertFalse(secondReport.skippedFiles.contains(draft.targetPath))
+    }
+
+    @Test
+    fun blocksExistingMethodReplacementWithoutValidatedScope() {
+        val projectDir = createTempDirectory("link-graph-writer-replace-method-test")
+        val targetFile = projectDir.resolve("src/main/java/com/example/CommonController.java")
+        Files.createDirectories(targetFile.parent)
+        Files.writeString(
+            targetFile,
+            """
+                package com.example;
+
+                public class CommonController {
+                    public String fileDownload(String baseUrl) {
+                        return baseUrl;
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        val report = CodeDraftWriterService().writeDrafts(
+            projectBasePath = projectDir.toString(),
+            drafts = listOf(
+                GeneratedCodeDraft(
+                    id = "draft:method:file-download",
+                    sourceNodeId = "method:file-download",
+                    title = "CommonController.java",
+                    targetPath = "src/main/java/com/example/CommonController.java",
+                    content = """
+                        package com.example;
+
+                        public class CommonController {
+                            public String fileDownload(String baseUrl) {
+                                if (baseUrl.startsWith("/usr")) {
+                                    return baseUrl.replaceFirst("/usr", "/tmp");
+                                }
+                                if (baseUrl.startsWith("C:/")) {
+                                    throw new IllegalArgumentException("windows not supported");
+                                }
+                                return baseUrl;
+                            }
+                        }
+                    """.trimIndent(),
+                ),
+            ),
+        )
+
+        val written = Files.readString(targetFile)
+        assertFalse(report.writtenFiles.contains("src/main/java/com/example/CommonController.java"))
+        assertTrue(report.skippedFiles.contains("src/main/java/com/example/CommonController.java"))
+        assertTrue(report.warnings.any { it.contains("validated scope", ignoreCase = true) })
+        assertFalse(written.contains("baseUrl.startsWith(\"/usr\")"))
+        assertFalse(written.contains("windows not supported"))
+        assertTrue(written.contains("return baseUrl;"))
     }
 
     @Test
@@ -184,5 +241,62 @@ class CodeDraftWriterServiceTest {
             """.trimIndent(),
             Files.readString(targetFile).trim(),
         )
+    }
+
+    @Test
+    fun blocksOverreachOnExistingJavaFileWhenNoValidatedScopeIsAttached() {
+        val projectDir = createTempDirectory("link-graph-writer-overreach-test")
+        val targetFile = projectDir.resolve("src/main/java/com/example/CommonController.java")
+        Files.createDirectories(targetFile.parent)
+        Files.writeString(
+            targetFile,
+            """
+                package com.example;
+
+                public class CommonController {
+                    public String download(String resource) {
+                        return resource;
+                    }
+
+                    public String uploadFile(String fileName) {
+                        return fileName;
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        val report = CodeDraftWriterService().writeDrafts(
+            projectBasePath = projectDir.toString(),
+            drafts = listOf(
+                GeneratedCodeDraft(
+                    id = "draft:method:upload-file",
+                    sourceNodeId = "method:upload-file",
+                    title = "CommonController.java",
+                    targetPath = "src/main/java/com/example/CommonController.java",
+                    content = """
+                        package com.example;
+
+                        public class CommonController {
+                            public String download(String resource) {
+                                return resource + "-changed";
+                            }
+
+                            public String uploadFile(String fileName) {
+                                return fileName.trim();
+                            }
+                        }
+                    """.trimIndent(),
+                ),
+            ),
+        )
+
+        val written = Files.readString(targetFile)
+        assertFalse(report.writtenFiles.contains("src/main/java/com/example/CommonController.java"))
+        assertTrue(report.skippedFiles.contains("src/main/java/com/example/CommonController.java"))
+        assertTrue(report.warnings.any { it.contains("validated scope", ignoreCase = true) })
+        assertFalse(written.contains("""return resource + "-changed";"""))
+        assertFalse(written.contains("return fileName.trim();"))
+        assertTrue(written.contains("return resource;"))
+        assertTrue(written.contains("return fileName;"))
     }
 }

@@ -1,5 +1,9 @@
 package com.charmnight.linkgraph.workbench
 
+import com.charmnight.linkgraph.llm.EditScope
+import com.charmnight.linkgraph.llm.ResultEvidenceFinding
+import com.charmnight.linkgraph.llm.ResultEvidenceLevel
+
 enum class StepGranularity {
     BUSINESS,
     METHOD_CALL,
@@ -18,6 +22,13 @@ enum class CandidateDraftChangeStatus {
     PENDING_CONFIRMATION,
     CONFIRMED,
     REJECTED,
+    SUPERSEDED,
+}
+
+enum class AuditInvestigationLeadStatus {
+    OPEN,
+    PROMOTED,
+    DISMISSED,
     SUPERSEDED,
 }
 
@@ -55,6 +66,33 @@ data class CandidateDraftChange(
     val afterState: String? = null,
     val reason: String = "",
     val impactSummary: String = "",
+    val claimType: String? = null,
+    val evidence: List<ResultEvidenceFinding> = emptyList(),
+    val editScopes: List<EditScope> = emptyList(),
+)
+
+fun CandidateDraftChange.hasDirectEvidence(): Boolean {
+    return evidence.any { finding ->
+        finding.evidenceLevel == ResultEvidenceLevel.DIRECT_SOURCE ||
+            finding.evidenceLevel == ResultEvidenceLevel.DIRECT_GRAPH
+    }
+}
+
+fun CandidateDraftChange.isEligibleForDraftConfirmation(): Boolean {
+    return status == CandidateDraftChangeStatus.PENDING_CONFIRMATION && hasDirectEvidence()
+}
+
+data class AuditInvestigationLead(
+    val leadId: String,
+    val status: AuditInvestigationLeadStatus,
+    val title: String = "",
+    val targetStepIds: List<String> = emptyList(),
+    val targetNodeIds: List<String> = emptyList(),
+    val summary: String = "",
+    val evidenceGap: String = "",
+    val recommendedQuestion: String = "",
+    val claimType: String? = null,
+    val evidence: List<ResultEvidenceFinding> = emptyList(),
 )
 
 data class DraftWorkbenchEntry(
@@ -68,6 +106,9 @@ data class DraftWorkbenchEntry(
     val afterState: String? = null,
     val reason: String = "",
     val impactSummary: String = "",
+    val claimType: String? = null,
+    val evidence: List<ResultEvidenceFinding> = emptyList(),
+    val editScopes: List<EditScope> = emptyList(),
 )
 
 data class AuditConversationMessage(
@@ -82,17 +123,21 @@ data class AuditConversationSession(
     val scopeKey: String,
     val messages: List<AuditConversationMessage> = emptyList(),
     val candidateChanges: List<CandidateDraftChange> = emptyList(),
+    val investigationLeads: List<AuditInvestigationLead> = emptyList(),
     val focusTargetId: String? = null,
 )
 
 data class AuditModelTurn(
     val answer: String,
     val candidateChanges: List<CandidateDraftChange> = emptyList(),
+    val investigationLeads: List<AuditInvestigationLead> = emptyList(),
+    val sourceLeadId: String? = null,
 )
 
 data class AuditConversationTurnResult(
     val session: AuditConversationSession,
     val newCandidateChanges: List<CandidateDraftChange> = emptyList(),
+    val newInvestigationLeads: List<AuditInvestigationLead> = emptyList(),
     val draftWrites: List<DraftWorkbenchEntry> = emptyList(),
 )
 
@@ -104,5 +149,11 @@ data class DraftWorkbenchState(
 data class DraftConfirmationResult(
     val draftState: DraftWorkbenchState,
     val draftChanges: List<DraftWorkbenchEntry> = emptyList(),
+    val graphChanged: Boolean = false,
+)
+
+data class DraftRemovalResult(
+    val draftState: DraftWorkbenchState,
+    val removedEntry: DraftWorkbenchEntry? = null,
     val graphChanged: Boolean = false,
 )

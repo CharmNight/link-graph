@@ -35,6 +35,9 @@ function emptyNode() {
 export function FactGraphView({
   view,
   selectedNodeId,
+  focusNodeRequest = null,
+  explanationFocusNodeId = null,
+  draftChangedNodeIds = [],
   selectedGroupNodeIds = [],
   hiddenNodeIds = [],
   collapsedNodeIds = [],
@@ -78,6 +81,7 @@ export function FactGraphView({
     () => layoutState.edges.filter((edge) => !hiddenNodeIdSet.has(edge.source) && !hiddenNodeIdSet.has(edge.target)),
     [layoutState.edges, hiddenNodeIdSet],
   );
+  const isLayoutLoading = layoutState.layoutPending && view.visibleGraph.nodes.length > 0 && layoutState.nodes.length === 0;
   const nodeIndex = useMemo(
     () => new Map(visibleNodes.map((node) => [node.id, node])),
     [visibleNodes],
@@ -109,6 +113,8 @@ export function FactGraphView({
       buildFactGraphNodes({
         nodes: visibleNodes,
         selectedNodeId,
+        explanationFocusNodeId,
+        draftChangedNodeIds,
         collapsedNodeIds,
         collapsedDescendantCountByNodeId,
         onExpandOverflowNode,
@@ -117,6 +123,8 @@ export function FactGraphView({
     [
       visibleNodes,
       selectedNodeId,
+      explanationFocusNodeId,
+      draftChangedNodeIds,
       collapsedNodeIds,
       collapsedDescendantCountByNodeId,
       onExpandOverflowNode,
@@ -175,6 +183,7 @@ export function FactGraphView({
         viewportMode="FACT_GRAPH"
         anchorNodeId={view.anchorNodeId ?? null}
         selectedNodeId={selectedNodeId}
+        focusNodeRequest={focusNodeRequest}
         selectedGroupNodeIds={selectedGroupNodeIds}
         experiments={experiments}
         editable
@@ -182,10 +191,17 @@ export function FactGraphView({
         header={header}
         canvasMarkers={canvasMarkers}
         emptyState={(
-          <div className="canvas-empty-state">
-            <strong>画布里还没有节点</strong>
-            <p className="muted">请在代码中右键方法，直接查看完整链路或追加到当前画布。</p>
-          </div>
+          isLayoutLoading ? (
+            <div className="canvas-empty-state">
+              <strong>正在整理链路画布</strong>
+              <p className="muted">链路分析已完成，正在计算稳定布局。</p>
+            </div>
+          ) : (
+            <div className="canvas-empty-state">
+              <strong>画布里还没有节点</strong>
+              <p className="muted">请在代码中右键方法，直接查看完整链路或追加到当前画布。</p>
+            </div>
+          )
         )}
         buildPaneActions={({ position, hasGroupedSelection, visibleNodeCount, close }) =>
           buildPaneActions({

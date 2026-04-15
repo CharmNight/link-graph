@@ -163,6 +163,10 @@ function resolvePosition(node?: LinkGraphNode | null): GraphPosition | null {
   return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
 }
 
+function hasResolvedLayoutPositions(nodes: LinkGraphNode[]): boolean {
+  return nodes.length > 0 && nodes.every((node) => resolvePosition(node) !== null);
+}
+
 function syncNodePosition(node: LinkGraphNode, position: GraphPosition): LinkGraphNode {
   return {
     ...node,
@@ -296,9 +300,13 @@ export function useMeasuredLayout({
   );
   const nextPositionSignature = useMemo(() => positionSignature(graph.nodes), [graph.nodes]);
   const [layoutState, setLayoutState] = useState<LayoutState>(() => ({
-    nodes: seedLayoutNodes(graph.nodes, []),
-    edges: seedLayoutEdges(graph.edges, []),
-    layoutPending: false,
+    nodes: hasResolvedLayoutPositions(seedLayoutNodes(graph.nodes, []))
+      ? seedLayoutNodes(graph.nodes, [])
+      : [],
+    edges: hasResolvedLayoutPositions(seedLayoutNodes(graph.nodes, []))
+      ? seedLayoutEdges(graph.edges, [])
+      : [],
+    layoutPending: graph.nodes.length > 0 && !hasResolvedLayoutPositions(seedLayoutNodes(graph.nodes, [])),
   }));
   const latestLayoutStateRef = useRef<LayoutState>(layoutState);
   const triggerRef = useRef<LayoutTriggerSnapshot | null>(null);
@@ -318,9 +326,15 @@ export function useMeasuredLayout({
 
   useEffect(() => {
     setLayoutState((current) => ({
-      ...current,
-      nodes: seedLayoutNodes(graph.nodes, current.nodes),
-      edges: seedLayoutEdges(graph.edges, current.edges),
+      nodes: hasResolvedLayoutPositions(seedLayoutNodes(graph.nodes, current.nodes))
+        ? seedLayoutNodes(graph.nodes, current.nodes)
+        : [],
+      edges: hasResolvedLayoutPositions(seedLayoutNodes(graph.nodes, current.nodes))
+        ? seedLayoutEdges(graph.edges, current.edges)
+        : [],
+      layoutPending: graph.nodes.length > 0
+        ? current.layoutPending || !hasResolvedLayoutPositions(seedLayoutNodes(graph.nodes, current.nodes))
+        : false,
     }));
   }, [graph.edges, graph.nodes, nextPositionSignature]);
 
@@ -385,11 +399,27 @@ export function useMeasuredLayout({
       return;
     }
 
-    setLayoutState((current) => ({
-      nodes: seedLayoutNodes(nextGraph.nodes, current.nodes),
-      edges: seedLayoutEdges(nextGraph.edges, current.edges),
+    if (nextGraph.nodes.length === 0) {
+      const clearedEdges = seedLayoutEdges(nextGraph.edges, currentLayoutState.edges);
+      setLayoutState((current) => {
+        if (current.nodes.length === 0 && areEdgeSetsEquivalent(current.edges, clearedEdges) && !current.layoutPending) {
+          return current;
+        }
+        return {
+          nodes: [],
+          edges: clearedEdges,
+          layoutPending: false,
+        };
+      });
+      return;
+    }
+
+    const renderableSeededLayout = hasResolvedLayoutPositions(seededNodes);
+    setLayoutState({
+      nodes: renderableSeededLayout ? seededNodes : [],
+      edges: renderableSeededLayout ? seededEdges : [],
       layoutPending: true,
-    }));
+    });
 
     const requestVersion = requestVersionRef.current + 1;
     requestVersionRef.current = requestVersion;
@@ -400,20 +430,6 @@ export function useMeasuredLayout({
       anchorNodeId,
       graph: summarizeGraph(nextGraph),
     });
-
-    if (nextGraph.nodes.length === 0) {
-      setLayoutState((current) => {
-        if (current.nodes.length === 0 && current.edges === nextGraph.edges && !current.layoutPending) {
-          return current;
-        }
-        return {
-          nodes: [],
-          edges: seedLayoutEdges(nextGraph.edges, current.edges),
-          layoutPending: false,
-        };
-      });
-      return;
-    }
 
     void layout({
       graph: nextGraph,

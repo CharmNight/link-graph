@@ -14,16 +14,22 @@ import type { NodeMeasuredSize, NodeSizeRegistry } from "../../graph/nodeSizeReg
 import type { LinkGraphEdge, LinkGraphNode } from "../../types";
 import { edgeTypeLabel } from "../../labels";
 import { ResourceRelationNodeCard } from "../../components/graph/nodes/ResourceRelationNodeCard";
+import { canEditNodeLayout } from "../../layoutEditability";
 import type { RoutedEdgeData } from "../../reactflow/RoutedEdge";
+import { resolveGraphNodeHighlightClassName } from "../graphNodeHighlights";
 
 interface ResourceRelationNodeData {
   node: LinkGraphNode;
+  explanationFocused?: boolean;
+  draftChanged?: boolean;
   onMeasure?: (size: NodeMeasuredSize) => void;
 }
 
 interface BuildResourceRelationNodesOptions {
   nodes: LinkGraphNode[];
   selectedNodeId: string | null;
+  explanationFocusNodeId?: string | null;
+  draftChangedNodeIds?: string[];
   nodeSizeRegistry: NodeSizeRegistry;
 }
 
@@ -65,6 +71,8 @@ function ResourceRelationReactNode({ id, data, selected, isConnectable }: NodePr
       <ResourceRelationNodeCard
         node={data.node}
         selected={selected}
+        explanationFocused={data.explanationFocused}
+        draftChanged={data.draftChanged}
         onMeasure={data.onMeasure}
       />
     </div>
@@ -107,17 +115,28 @@ function resourceEdgeStyle() {
 export function buildResourceRelationNodes({
   nodes,
   selectedNodeId,
+  explanationFocusNodeId = null,
+  draftChangedNodeIds = [],
   nodeSizeRegistry,
 }: BuildResourceRelationNodesOptions): Array<Node<ResourceRelationNodeData>> {
+  const draftChangedNodeIdSet = new Set(draftChangedNodeIds);
   return nodes.map((node) => ({
     id: node.id,
     type: "resourceRelationNode",
+    className: resolveGraphNodeHighlightClassName({
+      nodeId: node.id,
+      explanationFocusNodeId,
+      draftChangedNodeIdSet,
+    }) || undefined,
     selected: selectedNodeId === node.id,
+    draggable: canEditNodeLayout(node),
     position: node.position ?? { x: 80, y: 88 },
     sourcePosition: Position.Right,
     targetPosition: Position.Left,
     data: {
       node,
+      explanationFocused: explanationFocusNodeId === node.id,
+      draftChanged: draftChangedNodeIdSet.has(node.id),
       onMeasure: (size) => nodeSizeRegistry.set(node.id, size),
     },
     style: resourceNodeStyle(node),

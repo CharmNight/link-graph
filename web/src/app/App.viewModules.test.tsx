@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -246,8 +246,12 @@ describe("App view modules", () => {
               inputs: [],
               outputs: [],
               certainty: "PROVEN",
-              bindingStatus: "BOUND",
+              bindingStatus: "DESIGN_ONLY",
               position: { x: 120, y: 96 },
+              sourceTag: "DRAFT_MANUAL",
+              metadata: {
+                "linkGraph.manual": "true",
+              },
             },
           ],
           edges: [],
@@ -261,8 +265,12 @@ describe("App view modules", () => {
               inputs: [],
               outputs: [],
               certainty: "PROVEN",
-              bindingStatus: "BOUND",
+              bindingStatus: "DESIGN_ONLY",
               position: { x: 120, y: 96 },
+              sourceTag: "DRAFT_MANUAL",
+              metadata: {
+                "linkGraph.manual": "true",
+              },
             },
           ],
           edges: [],
@@ -518,8 +526,12 @@ describe("App view modules", () => {
               inputs: [],
               outputs: [],
               certainty: "PROVEN",
-              bindingStatus: "BOUND",
+              bindingStatus: "DESIGN_ONLY",
               position: { x: 120, y: 96 },
+              sourceTag: "DRAFT_MANUAL",
+              metadata: {
+                "linkGraph.manual": "true",
+              },
             },
             {
               id: "flow:decision",
@@ -528,8 +540,12 @@ describe("App view modules", () => {
               inputs: [],
               outputs: [],
               certainty: "PROVEN",
-              bindingStatus: "BOUND",
+              bindingStatus: "DESIGN_ONLY",
               position: { x: 420, y: 96 },
+              sourceTag: "DRAFT_MANUAL",
+              metadata: {
+                "linkGraph.manual": "true",
+              },
             },
           ],
           edges: [
@@ -559,8 +575,12 @@ describe("App view modules", () => {
               inputs: [],
               outputs: [],
               certainty: "PROVEN",
-              bindingStatus: "BOUND",
+              bindingStatus: "DESIGN_ONLY",
               position: { x: 120, y: 96 },
+              sourceTag: "DRAFT_MANUAL",
+              metadata: {
+                "linkGraph.manual": "true",
+              },
             },
             {
               id: "flow:decision",
@@ -569,8 +589,12 @@ describe("App view modules", () => {
               inputs: [],
               outputs: [],
               certainty: "PROVEN",
-              bindingStatus: "BOUND",
+              bindingStatus: "DESIGN_ONLY",
               position: { x: 420, y: 96 },
+              sourceTag: "DRAFT_MANUAL",
+              metadata: {
+                "linkGraph.manual": "true",
+              },
             },
           ],
           edges: [
@@ -618,8 +642,12 @@ describe("App view modules", () => {
               inputs: [],
               outputs: [],
               certainty: "PROVEN",
-              bindingStatus: "BOUND",
+              bindingStatus: "DESIGN_ONLY",
               position: { x: 120, y: 96 },
+              sourceTag: "DRAFT_MANUAL",
+              metadata: {
+                "linkGraph.manual": "true",
+              },
             },
             {
               id: "flow:decision",
@@ -628,8 +656,12 @@ describe("App view modules", () => {
               inputs: [],
               outputs: [],
               certainty: "PROVEN",
-              bindingStatus: "BOUND",
+              bindingStatus: "DESIGN_ONLY",
               position: { x: 420, y: 96 },
+              sourceTag: "DRAFT_MANUAL",
+              metadata: {
+                "linkGraph.manual": "true",
+              },
             },
           ],
           edges: [],
@@ -643,8 +675,12 @@ describe("App view modules", () => {
               inputs: [],
               outputs: [],
               certainty: "PROVEN",
-              bindingStatus: "BOUND",
+              bindingStatus: "DESIGN_ONLY",
               position: { x: 120, y: 96 },
+              sourceTag: "DRAFT_MANUAL",
+              metadata: {
+                "linkGraph.manual": "true",
+              },
             },
             {
               id: "flow:decision",
@@ -653,8 +689,12 @@ describe("App view modules", () => {
               inputs: [],
               outputs: [],
               certainty: "PROVEN",
-              bindingStatus: "BOUND",
+              bindingStatus: "DESIGN_ONLY",
               position: { x: 420, y: 96 },
+              sourceTag: "DRAFT_MANUAL",
+              metadata: {
+                "linkGraph.manual": "true",
+              },
             },
           ],
           edges: [],
@@ -672,9 +712,95 @@ describe("App view modules", () => {
 
     await user.click(screen.getByRole("button", { name: "move-flowchart-group" }));
 
+    await waitFor(() => {
+      expect(screen.getByTestId("flowchart-node-positions")).toHaveTextContent(
+        "flow:entry:700:360|flow:decision:960:360",
+      );
+    });
+  });
+
+  it("does not mutate semantic flowchart nodes during grouped drags when only manual nodes are layout-editable", async () => {
+    const user = userEvent.setup();
+    window.linkGraphBootstrap = bootstrapState("FLOWCHART", {
+      flowchartView: {
+        visibleGraph: {
+          nodes: [
+            {
+              id: "flow:entry",
+              type: "METHOD",
+              title: "entry",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+              position: { x: 120, y: 96 },
+              sourceTag: "FACT",
+            },
+            {
+              id: "flow:decision",
+              type: "METHOD",
+              title: "decision",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "DESIGN_ONLY",
+              position: { x: 420, y: 96 },
+              sourceTag: "DRAFT_MANUAL",
+              metadata: {
+                "linkGraph.manual": "true",
+              },
+            },
+          ],
+          edges: [],
+        },
+        fullGraph: {
+          nodes: [
+            {
+              id: "flow:entry",
+              type: "METHOD",
+              title: "entry",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+              position: { x: 120, y: 96 },
+              sourceTag: "FACT",
+            },
+            {
+              id: "flow:decision",
+              type: "METHOD",
+              title: "decision",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "DESIGN_ONLY",
+              position: { x: 420, y: 96 },
+              sourceTag: "DRAFT_MANUAL",
+              metadata: {
+                "linkGraph.manual": "true",
+              },
+            },
+          ],
+          edges: [],
+        },
+        anchorNodeId: "flow:entry",
+        summary: { nodeCount: 2, branchCount: 1, exceptionPathCount: 0 },
+      },
+    });
+
+    render(<App />);
+
     expect(screen.getByTestId("flowchart-node-positions")).toHaveTextContent(
-      "flow:entry:700:360|flow:decision:960:360",
+      "flow:entry:120:96|flow:decision:420:96",
     );
+
+    await user.click(screen.getByRole("button", { name: "move-flowchart-group" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("flowchart-node-positions")).toHaveTextContent(
+        "flow:entry:120:96|flow:decision:960:360",
+      );
+    });
   });
 
   it("keeps the resource relation view document in sync after local node drags", async () => {
@@ -690,8 +816,12 @@ describe("App view modules", () => {
               inputs: [],
               outputs: [],
               certainty: "PROVEN",
-              bindingStatus: "BOUND",
+              bindingStatus: "DESIGN_ONLY",
               position: { x: 220, y: 140 },
+              sourceTag: "DRAFT_MANUAL",
+              metadata: {
+                "linkGraph.manual": "true",
+              },
             },
           ],
           edges: [],
@@ -705,8 +835,12 @@ describe("App view modules", () => {
               inputs: [],
               outputs: [],
               certainty: "PROVEN",
-              bindingStatus: "BOUND",
+              bindingStatus: "DESIGN_ONLY",
               position: { x: 220, y: 140 },
+              sourceTag: "DRAFT_MANUAL",
+              metadata: {
+                "linkGraph.manual": "true",
+              },
             },
           ],
           edges: [],

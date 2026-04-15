@@ -1,8 +1,10 @@
 package com.charmnight.linkgraph.ui
 
+import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.llm.GraphBeautificationResult as GraphBeautificationPayload
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
+import com.charmnight.linkgraph.workbench.StepGranularity
 
 /**
  * 前后端之间约定的编辑器消息协议。
@@ -112,6 +114,24 @@ sealed interface GraphEditorMessage {
         val question: String,
         /** 保存选中的节点标识列表。 */
         val selectedNodeIds: List<String> = emptyList(),
+        /** 保存继续取证所追踪的风险线索标识。 */
+        val sourceLeadId: String? = null,
+    ) : GraphEditorMessage
+
+    /**
+     * 确认一条审计候选变更。
+     */
+    data class ConfirmAuditCandidateChange(
+        /** 保存待确认的候选变更标识。 */
+        val changeId: String,
+    ) : GraphEditorMessage
+
+    /**
+     * 取消一条已经确认的审计候选变更。
+     */
+    data class UnconfirmAuditCandidateChange(
+        /** 保存待取消确认的候选变更标识。 */
+        val changeId: String,
     ) : GraphEditorMessage
 
     /**
@@ -134,6 +154,10 @@ sealed interface GraphEditorMessage {
         val preferredStyle: String? = null,
         /** 保存讲解关注点。 */
         val explanationFocus: String? = null,
+        /** 保存步骤追问上下文。 */
+        val followUp: GraphBeautificationFollowUpContext? = null,
+        /** 保存讲解维度。 */
+        val granularity: StepGranularity = StepGranularity.BUSINESS,
     ) : GraphEditorMessage
 
     /**
@@ -172,8 +196,8 @@ sealed interface GraphEditorMessage {
     /** 请求生成代码草稿。 */
     data object RequestCodeDrafts : GraphEditorMessage
 
-    /** 请求加载当前方法图。 */
-    data object RequestCurrentMethodGraph : GraphEditorMessage
+    /** 请求加载当前编辑器上下文图。 */
+    data object RequestCurrentEditorContextGraph : GraphEditorMessage
 
     /**
      * 请求切换分析展示模式。
@@ -181,6 +205,16 @@ sealed interface GraphEditorMessage {
     data class RequestAnalysisDisplayMode(
         /** 保存目标展示模式。 */
         val displayMode: AnalysisDisplayMode,
+    ) : GraphEditorMessage
+
+    /**
+     * 更新工作台分区折叠偏好。
+     */
+    data class UpdateWorkbenchSectionPreference(
+        /** 保存分区标识。 */
+        val sectionId: String,
+        /** 保存目标展开状态。 */
+        val expanded: Boolean,
     ) : GraphEditorMessage
 
     /** 请求打开设置页。 */
