@@ -60,6 +60,16 @@ interface BuildFlowchartEdgesOptions {
   nodeIndex: Map<string, LinkGraphNode>;
 }
 
+type VisibleFlowchartHandleId =
+  | "target-top"
+  | "target-right"
+  | "target-bottom"
+  | "target-left"
+  | "source-top"
+  | "source-right"
+  | "source-bottom"
+  | "source-left";
+
 const FLOWCHART_HANDLE_STYLE_BASE: CSSProperties = {
   width: 16,
   height: 16,
@@ -76,6 +86,14 @@ function flowchartHandleStyle(isConnectable: boolean): CSSProperties {
     opacity: isConnectable ? 0.28 : 0,
     pointerEvents: isConnectable ? "all" : "none",
     cursor: isConnectable ? "crosshair" : "default",
+  };
+}
+
+function flowchartAuxiliaryHandleStyle(baseStyle: CSSProperties): CSSProperties {
+  return {
+    ...baseStyle,
+    opacity: 0,
+    pointerEvents: "none",
   };
 }
 
@@ -111,6 +129,48 @@ function flowchartFlushHandleStyle(
   }
 }
 
+function flowchartVisibleHandleStyle(
+  kind: string,
+  handleId: VisibleFlowchartHandleId,
+  position: Position,
+  baseStyle: CSSProperties,
+): CSSProperties {
+  if (
+    kind === "DECISION"
+    && (
+      handleId === "target-top"
+      || handleId === "target-left"
+      || handleId === "target-right"
+      || handleId === "source-left"
+      || handleId === "source-right"
+      || handleId === "source-bottom"
+    )
+  ) {
+    return flowchartDecisionPortHandleStyle(handleId, baseStyle);
+  }
+  return flowchartFlushHandleStyle(position, baseStyle);
+}
+
+const FLOWCHART_VISIBLE_TARGET_HANDLES: Array<{
+  id: Extract<VisibleFlowchartHandleId, `target-${string}`>;
+  position: Position;
+}> = [
+  { id: "target-top", position: Position.Top },
+  { id: "target-right", position: Position.Right },
+  { id: "target-bottom", position: Position.Bottom },
+  { id: "target-left", position: Position.Left },
+];
+
+const FLOWCHART_VISIBLE_SOURCE_HANDLES: Array<{
+  id: Extract<VisibleFlowchartHandleId, `source-${string}`>;
+  position: Position;
+}> = [
+  { id: "source-top", position: Position.Top },
+  { id: "source-right", position: Position.Right },
+  { id: "source-bottom", position: Position.Bottom },
+  { id: "source-left", position: Position.Left },
+];
+
 function flowchartNodeShellStyle(kind: string): CSSProperties | undefined {
   if (kind !== "DECISION") {
     return undefined;
@@ -123,7 +183,8 @@ function flowchartNodeShellStyle(kind: string): CSSProperties | undefined {
 function FlowchartReactNode({ id, data, isConnectable, selected }: NodeProps<FlowchartNodeData>) {
   const kind = flowchartKind(data.node);
   const updateNodeInternals = useUpdateNodeInternals();
-  const style = flowchartHandleStyle(isConnectable);
+  const visibleHandleStyle = flowchartHandleStyle(isConnectable);
+  const auxiliaryHandleStyle = flowchartAuxiliaryHandleStyle(visibleHandleStyle);
   const mergeLeftTargetCount = kind === "MERGE" ? Math.max(1, data.mergeLeftTargetCount) : 0;
   const mergeRightTargetCount = kind === "MERGE" ? Math.max(1, data.mergeRightTargetCount) : 0;
 
@@ -141,18 +202,15 @@ function FlowchartReactNode({ id, data, isConnectable, selected }: NodeProps<Flo
       ].join(" ").trim()}
       style={flowchartNodeShellStyle(kind)}
     >
-      <Handle
-        id="target-top"
-        type="target"
-        position={Position.Top}
-        style={kind === "DECISION" ? flowchartDecisionPortHandleStyle("target-top", style) : flowchartFlushHandleStyle(Position.Top, style)}
-      />
-      {kind === "DECISION" ? (
-        <>
-          <Handle id="target-left" type="target" position={Position.Left} style={flowchartDecisionPortHandleStyle("target-left", style)} />
-          <Handle id="target-right" type="target" position={Position.Right} style={flowchartDecisionPortHandleStyle("target-right", style)} />
-        </>
-      ) : null}
+      {FLOWCHART_VISIBLE_TARGET_HANDLES.map(({ id: handleId, position }) => (
+        <Handle
+          key={handleId}
+          id={handleId}
+          type="target"
+          position={position}
+          style={flowchartVisibleHandleStyle(kind, handleId, position, visibleHandleStyle)}
+        />
+      ))}
       {kind === "MERGE" ? (
         <>
           {Array.from({ length: mergeLeftTargetCount }, (_, index) => (
@@ -161,7 +219,7 @@ function FlowchartReactNode({ id, data, isConnectable, selected }: NodeProps<Flo
               id={flowchartMergeTargetPortId("left", index)}
               type="target"
               position={Position.Left}
-              style={flowchartMergeTargetHandleStyle("left", index, mergeLeftTargetCount, style)}
+              style={flowchartMergeTargetHandleStyle("left", index, mergeLeftTargetCount, auxiliaryHandleStyle)}
             />
           ))}
           {Array.from({ length: mergeRightTargetCount }, (_, index) => (
@@ -170,40 +228,20 @@ function FlowchartReactNode({ id, data, isConnectable, selected }: NodeProps<Flo
               id={flowchartMergeTargetPortId("right", index)}
               type="target"
               position={Position.Right}
-              style={flowchartMergeTargetHandleStyle("right", index, mergeRightTargetCount, style)}
+              style={flowchartMergeTargetHandleStyle("right", index, mergeRightTargetCount, auxiliaryHandleStyle)}
             />
           ))}
         </>
       ) : null}
-      {kind === "DECISION" ? (
-        <>
-          <Handle id="source-left" type="source" position={Position.Left} style={flowchartDecisionPortHandleStyle("source-left", style)} />
-          <Handle id="source-right" type="source" position={Position.Right} style={flowchartDecisionPortHandleStyle("source-right", style)} />
-          <Handle
-            id="source-bottom"
-            type="source"
-            position={Position.Bottom}
-            style={flowchartDecisionPortHandleStyle("source-bottom", style)}
-          />
-        </>
-      ) : kind === "TERMINAL" ? null : (
-        <>
-          {kind !== "MERGE" ? (
-            <Handle
-              id="source-right"
-              type="source"
-              position={Position.Right}
-              style={flowchartFlushHandleStyle(Position.Right, style)}
-            />
-          ) : null}
-          <Handle
-            id="source-bottom"
-            type="source"
-            position={Position.Bottom}
-            style={flowchartFlushHandleStyle(Position.Bottom, style)}
-          />
-        </>
-      )}
+      {FLOWCHART_VISIBLE_SOURCE_HANDLES.map(({ id: handleId, position }) => (
+        <Handle
+          key={handleId}
+          id={handleId}
+          type="source"
+          position={position}
+          style={flowchartVisibleHandleStyle(kind, handleId, position, visibleHandleStyle)}
+        />
+      ))}
       <FlowchartNodeCard
         node={data.node}
         selected={selected}

@@ -95,6 +95,22 @@ function mergeNode(metadata?: Record<string, string>): LinkGraphNode {
   };
 }
 
+function terminalNode(id = "terminal:return", title = "return"): LinkGraphNode {
+  return {
+    id,
+    type: "TERMINAL",
+    title,
+    inputs: [],
+    outputs: [],
+    certainty: "PROVEN",
+    bindingStatus: "BOUND",
+    metadata: {
+      "terminal.kind": "RETURN",
+      "flowchart.kind": "TERMINAL",
+    },
+  };
+}
+
 function methodNode(id: string, title: string): LinkGraphNode {
   return {
     id,
@@ -105,6 +121,17 @@ function methodNode(id: string, title: string): LinkGraphNode {
     certainty: "PROVEN",
     bindingStatus: "BOUND",
   };
+}
+
+function expectBidirectionalPortsOnAllSides(container: HTMLElement) {
+  expect(container.querySelector('[data-handle-id="target-top"]')).toHaveAttribute("data-position", "top");
+  expect(container.querySelector('[data-handle-id="source-top"]')).toHaveAttribute("data-position", "top");
+  expect(container.querySelector('[data-handle-id="target-right"]')).toHaveAttribute("data-position", "right");
+  expect(container.querySelector('[data-handle-id="source-right"]')).toHaveAttribute("data-position", "right");
+  expect(container.querySelector('[data-handle-id="target-bottom"]')).toHaveAttribute("data-position", "bottom");
+  expect(container.querySelector('[data-handle-id="source-bottom"]')).toHaveAttribute("data-position", "bottom");
+  expect(container.querySelector('[data-handle-id="target-left"]')).toHaveAttribute("data-position", "left");
+  expect(container.querySelector('[data-handle-id="source-left"]')).toHaveAttribute("data-position", "left");
 }
 
 function runtimeFileDownloadTopology(): { nodes: LinkGraphNode[]; edges: LinkGraphEdge[] } {
@@ -287,10 +314,19 @@ describe("buildFlowchartNodes", () => {
       />,
     );
 
+    expectBidirectionalPortsOnAllSides(container);
     expect(container.querySelector('[data-handle-id="target-top"]')).toHaveAttribute("data-style-transform", "translate(-50%, 0)");
+    expect(container.querySelector('[data-handle-id="source-top"]')).toHaveAttribute("data-style-transform", "translate(-50%, 0)");
+    expect(container.querySelector('[data-handle-id="target-bottom"]')).toHaveAttribute("data-style-transform", "translate(-50%, 0)");
     expect(container.querySelector('[data-handle-id="source-bottom"]')).toHaveAttribute("data-style-transform", "translate(-50%, 0)");
+    expect(container.querySelector('[data-handle-id="target-right"]')).toHaveAttribute("data-style-top", "50%");
+    expect(container.querySelector('[data-handle-id="target-right"]')).toHaveAttribute("data-style-transform", "translate(0, -50%)");
     expect(container.querySelector('[data-handle-id="source-right"]')).toHaveAttribute("data-style-top", "50%");
     expect(container.querySelector('[data-handle-id="source-right"]')).toHaveAttribute("data-style-transform", "translate(0, -50%)");
+    expect(container.querySelector('[data-handle-id="target-left"]')).toHaveAttribute("data-style-top", "50%");
+    expect(container.querySelector('[data-handle-id="target-left"]')).toHaveAttribute("data-style-transform", "translate(0, -50%)");
+    expect(container.querySelector('[data-handle-id="source-left"]')).toHaveAttribute("data-style-top", "50%");
+    expect(container.querySelector('[data-handle-id="source-left"]')).toHaveAttribute("data-style-transform", "translate(0, -50%)");
   });
 
   it("renders decision handles on the top and both side vertices for local branch and loop routing", () => {
@@ -307,17 +343,21 @@ describe("buildFlowchartNodes", () => {
     );
 
     expect(container.querySelector(".flowchart-react-node.kind-decision")).toHaveClass("is-connectable");
-    expect(screen.getAllByTestId("react-flow-handle")).toHaveLength(6);
-    expect(container.querySelector('[data-handle-id="target-top"]')).toHaveAttribute("data-position", "top");
+    expect(screen.getAllByTestId("react-flow-handle")).toHaveLength(8);
+    expectBidirectionalPortsOnAllSides(container);
     expect(container.querySelector('[data-handle-id="target-top"]')).toHaveAttribute("data-style-transform", "translate(-50%, 0)");
-    expect(container.querySelector('[data-handle-id="target-left"]')).toHaveAttribute("data-position", "left");
-    expect(container.querySelector('[data-handle-id="target-right"]')).toHaveAttribute("data-position", "right");
+    expect(container.querySelector('[data-handle-id="source-top"]')).toHaveAttribute("data-style-transform", "translate(-50%, 0)");
     expect(container.querySelector('[data-handle-id="source-left"]')).toHaveAttribute("data-style-top", "50%");
     expect(container.querySelector('[data-handle-id="source-left"]')).toHaveAttribute("data-style-transform", "translate(0, -50%)");
     expect(container.querySelector('[data-handle-id="source-left"]')).toHaveAttribute("data-style-opacity", "0.28");
+    expect(container.querySelector('[data-handle-id="target-left"]')).toHaveAttribute("data-style-top", "50%");
+    expect(container.querySelector('[data-handle-id="target-left"]')).toHaveAttribute("data-style-transform", "translate(0, -50%)");
     expect(container.querySelector('[data-handle-id="source-right"]')).toHaveAttribute("data-style-top", "50%");
     expect(container.querySelector('[data-handle-id="source-right"]')).toHaveAttribute("data-style-transform", "translate(0, -50%)");
     expect(container.querySelector('[data-handle-id="source-right"]')).toHaveAttribute("data-style-opacity", "0.28");
+    expect(container.querySelector('[data-handle-id="target-right"]')).toHaveAttribute("data-style-top", "50%");
+    expect(container.querySelector('[data-handle-id="target-right"]')).toHaveAttribute("data-style-transform", "translate(0, -50%)");
+    expect(container.querySelector('[data-handle-id="target-bottom"]')).toHaveAttribute("data-style-transform", "translate(-50%, 0)");
     expect(container.querySelector('[data-handle-id="source-bottom"]')).toHaveAttribute("data-style-transform", "translate(-50%, 0)");
   });
 
@@ -336,13 +376,8 @@ describe("buildFlowchartNodes", () => {
     );
 
     expect(container.querySelector(".flowchart-react-node.kind-decision")).toBeInTheDocument();
-    expect(screen.getAllByTestId("react-flow-handle")).toHaveLength(6);
-    expect(container.querySelector('[data-handle-id="target-top"]')).toHaveAttribute("data-position", "top");
-    expect(container.querySelector('[data-handle-id="target-left"]')).toHaveAttribute("data-position", "left");
-    expect(container.querySelector('[data-handle-id="target-right"]')).toHaveAttribute("data-position", "right");
-    expect(container.querySelector('[data-handle-id="source-left"]')).toHaveAttribute("data-position", "left");
-    expect(container.querySelector('[data-handle-id="source-right"]')).toHaveAttribute("data-position", "right");
-    expect(container.querySelector('[data-handle-id="source-bottom"]')).toHaveAttribute("data-position", "bottom");
+    expect(screen.getAllByTestId("react-flow-handle")).toHaveLength(8);
+    expectBidirectionalPortsOnAllSides(container);
   });
 
   it("keeps side-entry target handles available on loop decision nodes so pre-test back-edges can re-enter locally", () => {
@@ -361,6 +396,51 @@ describe("buildFlowchartNodes", () => {
 
     expect(container.querySelector('[data-handle-id="target-left"]')).toBeInTheDocument();
     expect(container.querySelector('[data-handle-id="target-right"]')).toBeInTheDocument();
+  });
+
+  it("keeps terminal nodes connectable on all four sides while routing can still choose not to emit from them automatically", () => {
+    const FlowchartNode = FLOWCHART_NODE_TYPES.flowchartNode as (props: Record<string, unknown>) => JSX.Element;
+
+    const { container } = render(
+      <FlowchartNode
+        id="terminal:return"
+        data={{
+          node: terminalNode(),
+          hasExceptionSource: false,
+          mergeLeftTargetCount: 0,
+          mergeRightTargetCount: 0,
+        }}
+        selected={false}
+        isConnectable
+      />,
+    );
+
+    expectBidirectionalPortsOnAllSides(container);
+  });
+
+  it("keeps merge nodes connectable on all four sides while retaining indexed merge inlet handles for routing", () => {
+    const FlowchartNode = FLOWCHART_NODE_TYPES.flowchartNode as (props: Record<string, unknown>) => JSX.Element;
+
+    const { container } = render(
+      <FlowchartNode
+        id="merge:after"
+        data={{
+          node: mergeNode({
+            "flowchart.mergeLeftTargetCount": "1",
+            "flowchart.mergeRightTargetCount": "1",
+          }),
+          hasExceptionSource: false,
+          mergeLeftTargetCount: 1,
+          mergeRightTargetCount: 1,
+        }}
+        selected={false}
+        isConnectable
+      />,
+    );
+
+    expectBidirectionalPortsOnAllSides(container);
+    expect(container.querySelector('[data-handle-id="target-left-0"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-handle-id="target-right-0"]')).toBeInTheDocument();
   });
 
   it("keeps the decision wrapper stretched to the same minimum height as the ELK layout box", () => {
