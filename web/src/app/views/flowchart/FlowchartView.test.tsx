@@ -380,7 +380,7 @@ describe("FlowchartView", () => {
     expect(screen.getByText("共 2 个流程节点，1 个分支判断，异常路径 0 条。")).toBeInTheDocument();
   });
 
-  it("shows truncation and semantic incompleteness warnings in the flowchart summary", () => {
+  it("shows semantic incompleteness warnings without rendering truncation copy in the flowchart summary", () => {
     render(
       <FlowchartView
         view={fidelityWarningView}
@@ -397,9 +397,9 @@ describe("FlowchartView", () => {
       />,
     );
 
-    expect(screen.getByText("已截断")).toBeInTheDocument();
     expect(screen.getByText("语义不完整")).toBeInTheDocument();
-    expect(screen.getByText("当前仅展示 2/5 个节点，隐藏 3 个节点、2 条边。")).toBeInTheDocument();
+    expect(screen.queryByText("已截断")).not.toBeInTheDocument();
+    expect(screen.queryByText("当前仅展示 2/5 个节点，隐藏 3 个节点、2 条边。")).not.toBeInTheDocument();
   });
 
   it("marks the summary when the view relies on a synthetic entry edge to connect the anchor method", () => {

@@ -9,6 +9,7 @@ import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewPlanner
+import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.GraphLayoutPosition
 
@@ -80,7 +81,13 @@ internal class GraphWorkspaceWorkflow(
      */
     fun exportMermaid(): String {
         val snapshot = session.snapshot()
-        val document = snapshot.designBaselineGraph ?: currentVisibleGraph(snapshot)
+        val document = snapshot.designBaselineGraph
+            ?: if (snapshot.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART) {
+                snapshot.flowchartView?.fullGraph?.takeIf { graph -> graph.nodes.isNotEmpty() || graph.edges.isNotEmpty() }
+            } else {
+                null
+            }
+            ?: currentVisibleGraph(snapshot)
         return mermaidExporter.export(document).also { exported ->
             session.mutateBatch {
                 apply {

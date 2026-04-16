@@ -293,7 +293,7 @@ describe("buildFlowchartNodes", () => {
     expect(container.querySelector('[data-handle-id="source-right"]')).toHaveAttribute("data-style-transform", "translate(0, -50%)");
   });
 
-  it("renders only four decision handles on the diamond vertices", () => {
+  it("renders decision handles on the top and both side vertices for local branch and loop routing", () => {
     const FlowchartNode = FLOWCHART_NODE_TYPES.flowchartNode as (props: Record<string, unknown>) => JSX.Element;
 
     const { container } = render(
@@ -307,9 +307,11 @@ describe("buildFlowchartNodes", () => {
     );
 
     expect(container.querySelector(".flowchart-react-node.kind-decision")).toHaveClass("is-connectable");
-    expect(screen.getAllByTestId("react-flow-handle")).toHaveLength(4);
+    expect(screen.getAllByTestId("react-flow-handle")).toHaveLength(6);
     expect(container.querySelector('[data-handle-id="target-top"]')).toHaveAttribute("data-position", "top");
     expect(container.querySelector('[data-handle-id="target-top"]')).toHaveAttribute("data-style-transform", "translate(-50%, 0)");
+    expect(container.querySelector('[data-handle-id="target-left"]')).toHaveAttribute("data-position", "left");
+    expect(container.querySelector('[data-handle-id="target-right"]')).toHaveAttribute("data-position", "right");
     expect(container.querySelector('[data-handle-id="source-left"]')).toHaveAttribute("data-style-top", "50%");
     expect(container.querySelector('[data-handle-id="source-left"]')).toHaveAttribute("data-style-transform", "translate(0, -50%)");
     expect(container.querySelector('[data-handle-id="source-left"]')).toHaveAttribute("data-style-opacity", "0.28");
@@ -334,11 +336,31 @@ describe("buildFlowchartNodes", () => {
     );
 
     expect(container.querySelector(".flowchart-react-node.kind-decision")).toBeInTheDocument();
-    expect(screen.getAllByTestId("react-flow-handle")).toHaveLength(4);
+    expect(screen.getAllByTestId("react-flow-handle")).toHaveLength(6);
     expect(container.querySelector('[data-handle-id="target-top"]')).toHaveAttribute("data-position", "top");
+    expect(container.querySelector('[data-handle-id="target-left"]')).toHaveAttribute("data-position", "left");
+    expect(container.querySelector('[data-handle-id="target-right"]')).toHaveAttribute("data-position", "right");
     expect(container.querySelector('[data-handle-id="source-left"]')).toHaveAttribute("data-position", "left");
     expect(container.querySelector('[data-handle-id="source-right"]')).toHaveAttribute("data-position", "right");
     expect(container.querySelector('[data-handle-id="source-bottom"]')).toHaveAttribute("data-position", "bottom");
+  });
+
+  it("keeps side-entry target handles available on loop decision nodes so pre-test back-edges can re-enter locally", () => {
+    const FlowchartNode = FLOWCHART_NODE_TYPES.flowchartNode as (props: Record<string, unknown>) => JSX.Element;
+
+    const { container } = render(
+      <FlowchartNode
+        id="scope:foreach"
+        data={{
+          node: loopDecisionNode(),
+        }}
+        selected={false}
+        isConnectable
+      />,
+    );
+
+    expect(container.querySelector('[data-handle-id="target-left"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-handle-id="target-right"]')).toBeInTheDocument();
   });
 
   it("keeps the decision wrapper stretched to the same minimum height as the ELK layout box", () => {
@@ -897,6 +919,53 @@ describe("buildFlowchartNodes", () => {
 
     expect(builtEdges.find((edge) => edge.id === "try-normal")?.sourceHandle).toBe("source-bottom");
     expect(builtEdges.find((edge) => edge.id === "try-exception")?.sourceHandle).toBe("source-right");
+  });
+
+  it("routes pre-test loop back-edges into a loop decision side target instead of forcing them through target-top", () => {
+    const loopNode: LinkGraphNode = {
+      id: "scope:foreach",
+      type: "FLOW_SCOPE",
+      title: "for (file : files)",
+      inputs: [],
+      outputs: [],
+      certainty: "PROVEN",
+      bindingStatus: "BOUND",
+      metadata: {
+        "flow.kind": "FOREACH",
+        "flow.scopeCategory": "LOOP_PRE_TEST",
+        "flowchart.kind": "DECISION",
+      },
+      position: { x: 160, y: 240 },
+    };
+    const bodyTail: LinkGraphNode = {
+      id: "action:add-new-file-name",
+      type: "FLOW_ACTION",
+      title: "newFileNames.add(...)",
+      inputs: [],
+      outputs: [],
+      certainty: "PROVEN",
+      bindingStatus: "BOUND",
+      metadata: { "flowchart.kind": "PROCESS" },
+      position: { x: 160, y: 720 },
+    };
+
+    const builtEdges = buildFlowchartEdges({
+      edges: [
+        {
+          id: "edge:loop-back",
+          type: "CONTROL_FLOW",
+          source: bodyTail.id,
+          target: loopNode.id,
+          metadata: { "flow.edgeRole": "LOOP_BACK" },
+        },
+      ],
+      nodeIndex: new Map([
+        [loopNode.id, loopNode],
+        [bodyTail.id, bodyTail],
+      ]),
+    });
+
+    expect(builtEdges.find((edge) => edge.id === "edge:loop-back")?.targetHandle).not.toBe("target-top");
   });
 
   it("keeps the real fileDownload catch recovery lane and delete cleanup lane on different right-side merge handles", async () => {

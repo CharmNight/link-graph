@@ -41,6 +41,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.testFramework.registerServiceInstance
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
@@ -575,7 +576,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
     }
 
-    fun testFlowchartDisplayModeExposesTruncationAndIncompleteSummary() {
+    fun testFlowchartDisplayModeKeepsIncompleteSummaryWithoutTruncatingVisibleGraph() {
         myFixture.configureByText(
             "DemoService.java",
             """
@@ -659,17 +660,15 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         service.loadCurrentEditorContextGraphAsync(myFixture.editor)
         waitForSnapshot { snapshot ->
             snapshot.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART &&
-                snapshot.flowchartView?.summary?.truncated == true
+                snapshot.flowchartView?.summary?.semanticallyIncomplete == true
         }
 
         val flowchartView = project.getService(GraphEditorStateService::class.java).snapshot().flowchartView
         assertTrue(flowchartView != null)
-        assertTrue(flowchartView!!.summary.truncated)
-        assertTrue(flowchartView.summary.hiddenNodeCount > 0)
-        assertEquals(
-            flowchartView.fullGraph.nodes.size - flowchartView.visibleGraph.nodes.size,
-            flowchartView.summary.hiddenNodeCount,
-        )
+        assertFalse(flowchartView!!.summary.truncated)
+        assertEquals(flowchartView.fullGraph.nodes.size, flowchartView.visibleGraph.nodes.size)
+        assertEquals(0, flowchartView.summary.hiddenNodeCount)
+        assertEquals(0, flowchartView.summary.hiddenEdgeCount)
         assertEquals(1, flowchartView.summary.incompleteNodeCount)
         assertTrue(flowchartView.summary.semanticallyIncomplete)
     }
