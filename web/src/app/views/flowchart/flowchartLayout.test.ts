@@ -148,6 +148,143 @@ function runtimeFileDownloadTopology(): { nodes: LinkGraphNode[]; edges: LinkGra
   return { nodes, edges };
 }
 
+function uploadFilesLoopTopology(): { nodes: LinkGraphNode[]; edges: LinkGraphEdge[] } {
+  const nodes: LinkGraphNode[] = [
+    {
+      ...methodNode("method:anchor", "CommonController.uploadFiles"),
+      metadata: { "flowchart.kind": "ENTRY" },
+    },
+    {
+      ...methodNode("scope:try", "try"),
+      type: "FLOW_SCOPE",
+      metadata: { "flow.kind": "TRY", "flowchart.kind": "SCOPE" },
+    },
+    {
+      ...methodNode("action:file-path", "filePath = getUploadPath()"),
+      type: "FLOW_ACTION",
+      metadata: { "flowchart.kind": "PROCESS" },
+    },
+    {
+      ...methodNode("action:init-urls", "urls = new ArrayList<>()"),
+      type: "FLOW_ACTION",
+      metadata: { "flowchart.kind": "PROCESS" },
+    },
+    {
+      ...methodNode("action:init-file-names", "fileNames = new ArrayList<>()"),
+      type: "FLOW_ACTION",
+      metadata: { "flowchart.kind": "PROCESS" },
+    },
+    {
+      ...methodNode("action:init-new-file-names", "newFileNames = new ArrayList<>()"),
+      type: "FLOW_ACTION",
+      metadata: { "flowchart.kind": "PROCESS" },
+    },
+    {
+      ...methodNode("scope:foreach", "for (file : files)"),
+      type: "FLOW_SCOPE",
+      metadata: {
+        "flow.kind": "FOREACH",
+        "flow.scopeCategory": "LOOP_PRE_TEST",
+        "flowchart.kind": "DECISION",
+      },
+    },
+    {
+      ...methodNode("action:upload", "fileName = upload(filePath, file)"),
+      type: "FLOW_ACTION",
+      metadata: { "flowchart.kind": "PROCESS" },
+    },
+    {
+      ...methodNode("action:get-url", "url = serverConfig.getUrl() + fileName"),
+      type: "FLOW_ACTION",
+      metadata: { "flowchart.kind": "PROCESS" },
+    },
+    {
+      ...methodNode("action:add-url", "urls.add(url)"),
+      type: "FLOW_ACTION",
+      metadata: { "flowchart.kind": "PROCESS" },
+    },
+    {
+      ...methodNode("action:add-file-name", "fileNames.add(fileName)"),
+      type: "FLOW_ACTION",
+      metadata: { "flowchart.kind": "PROCESS" },
+    },
+    {
+      ...methodNode("action:add-new-file-name", "newFileNames.add(getName(fileName))"),
+      type: "FLOW_ACTION",
+      metadata: { "flowchart.kind": "PROCESS" },
+    },
+    {
+      ...methodNode("action:success", "ajax = AjaxResult.success()"),
+      type: "FLOW_ACTION",
+      metadata: { "flowchart.kind": "PROCESS" },
+    },
+    {
+      ...methodNode("action:put-urls", "ajax.put(urls, ...)"),
+      type: "FLOW_ACTION",
+      metadata: { "flowchart.kind": "PROCESS" },
+    },
+    {
+      ...methodNode("action:put-file-names", "ajax.put(fileNames, ...)"),
+      type: "FLOW_ACTION",
+      metadata: { "flowchart.kind": "PROCESS" },
+    },
+    {
+      ...methodNode("action:put-new-file-names", "ajax.put(newFileNames, ...)"),
+      type: "FLOW_ACTION",
+      metadata: { "flowchart.kind": "PROCESS" },
+    },
+    {
+      ...methodNode("action:catch", "AjaxResult.error(e.getMessage())"),
+      type: "FLOW_ACTION",
+      metadata: { "flowchart.kind": "PROCESS" },
+    },
+    {
+      ...methodNode("terminal:return-error", "return AjaxResult.error(...)"),
+      type: "TERMINAL",
+      metadata: { "terminal.kind": "RETURN", "flowchart.kind": "TERMINAL" },
+    },
+  ];
+  const edges: LinkGraphEdge[] = [
+    { id: "entry-try", type: "CONTROL_FLOW", source: "method:anchor", target: "scope:try" },
+    { id: "try-file-path", type: "CONTROL_FLOW", source: "scope:try", target: "action:file-path" },
+    { id: "try-exception", type: "CONTROL_FLOW", source: "scope:try", target: "action:catch", label: "EXCEPTION" },
+    { id: "file-path-init-urls", type: "CONTROL_FLOW", source: "action:file-path", target: "action:init-urls" },
+    { id: "init-urls-init-file-names", type: "CONTROL_FLOW", source: "action:init-urls", target: "action:init-file-names" },
+    { id: "init-file-names-init-new-file-names", type: "CONTROL_FLOW", source: "action:init-file-names", target: "action:init-new-file-names" },
+    { id: "init-new-file-names-foreach", type: "CONTROL_FLOW", source: "action:init-new-file-names", target: "scope:foreach" },
+    {
+      id: "foreach-body",
+      type: "CONTROL_FLOW",
+      source: "scope:foreach",
+      target: "action:upload",
+      metadata: { "flow.edgeRole": "LOOP_BODY" },
+    },
+    { id: "upload-get-url", type: "CONTROL_FLOW", source: "action:upload", target: "action:get-url" },
+    { id: "get-url-add-url", type: "CONTROL_FLOW", source: "action:get-url", target: "action:add-url" },
+    { id: "add-url-add-file-name", type: "CONTROL_FLOW", source: "action:add-url", target: "action:add-file-name" },
+    { id: "add-file-name-add-new-file-name", type: "CONTROL_FLOW", source: "action:add-file-name", target: "action:add-new-file-name" },
+    {
+      id: "add-new-file-name-back",
+      type: "CONTROL_FLOW",
+      source: "action:add-new-file-name",
+      target: "scope:foreach",
+      metadata: { "flow.edgeRole": "LOOP_BACK" },
+    },
+    {
+      id: "foreach-exit",
+      type: "CONTROL_FLOW",
+      source: "scope:foreach",
+      target: "action:success",
+      metadata: { "flow.edgeRole": "LOOP_EXIT" },
+    },
+    { id: "success-put-urls", type: "CONTROL_FLOW", source: "action:success", target: "action:put-urls" },
+    { id: "put-urls-put-file-names", type: "CONTROL_FLOW", source: "action:put-urls", target: "action:put-file-names" },
+    { id: "put-file-names-put-new-file-names", type: "CONTROL_FLOW", source: "action:put-file-names", target: "action:put-new-file-names" },
+    { id: "catch-return-error", type: "CONTROL_FLOW", source: "action:catch", target: "terminal:return-error" },
+  ];
+  return { nodes, edges };
+}
+
 function attachmentPointInsideDecision(
   edge: LinkGraphEdge,
   decision: LinkGraphNode,
@@ -185,6 +322,27 @@ function routeSegments(edge: LinkGraphEdge) {
     startPoint: points[index]!,
     endPoint: point,
   }));
+}
+
+function routeTotalLength(edge: LinkGraphEdge): number {
+  return routeSegments(edge).reduce((total, segment) => (
+    total
+    + Math.abs(segment.startPoint.x - segment.endPoint.x)
+    + Math.abs(segment.startPoint.y - segment.endPoint.y)
+  ), 0);
+}
+
+function routeBounds(edge: LinkGraphEdge) {
+  const points = routePoints(edge);
+  if (points.length === 0) {
+    throw new Error("missing route points");
+  }
+  return {
+    minX: Math.min(...points.map((point) => point.x)),
+    maxX: Math.max(...points.map((point) => point.x)),
+    minY: Math.min(...points.map((point) => point.y)),
+    maxY: Math.max(...points.map((point) => point.y)),
+  };
 }
 
 function isVerticalSegment(segment: { startPoint: GraphPosition; endPoint: GraphPosition }) {
@@ -984,5 +1142,54 @@ describe("layoutFlowchartView", () => {
     const deleteMerge = laidOut.edges.find((edge) => edge.id === "delete-invoke-merge")!;
 
     expect(sharedVerticalOverlap(catchMerge, deleteMerge)).toBeLessThanOrEqual(1);
+  });
+
+  it("keeps the post-loop uploadFiles success chain in topological order instead of dropping the exit node below its own successors", async () => {
+    const { nodes, edges } = uploadFilesLoopTopology();
+
+    const laidOut = await layoutFlowchartView({
+      graph: { nodes, edges },
+      nodes,
+      edges,
+      anchorNodeId: "method:anchor",
+      sizeSnapshot: new Map(),
+      reason: "graph",
+    });
+    const index = new Map(laidOut.nodes.map((node) => [node.id, node]));
+    const loop = index.get("scope:foreach")!;
+    const success = index.get("action:success")!;
+    const putUrls = index.get("action:put-urls")!;
+    const putFileNames = index.get("action:put-file-names")!;
+    const putNewFileNames = index.get("action:put-new-file-names")!;
+
+    expect(success.position?.y).toBeGreaterThan(loop.position?.y ?? 0);
+    expect(putUrls.position?.y).toBeGreaterThan(success.position?.y ?? Number.POSITIVE_INFINITY);
+    expect(putFileNames.position?.y).toBeGreaterThan(putUrls.position?.y ?? Number.POSITIVE_INFINITY);
+    expect(putNewFileNames.position?.y).toBeGreaterThan(putFileNames.position?.y ?? Number.POSITIVE_INFINITY);
+  });
+
+  it("keeps the uploadFiles foreach back-edge in a tight local corridor instead of routing it around the whole loop column", async () => {
+    const { nodes, edges } = uploadFilesLoopTopology();
+
+    const laidOut = await layoutFlowchartView({
+      graph: { nodes, edges },
+      nodes,
+      edges,
+      anchorNodeId: "method:anchor",
+      sizeSnapshot: new Map(),
+      reason: "graph",
+    });
+    const index = new Map(laidOut.nodes.map((node) => [node.id, node]));
+    const loop = index.get("scope:foreach")!;
+    const bodyTail = index.get("action:add-new-file-name")!;
+    const backEdge = laidOut.edges.find((edge) => edge.id === "add-new-file-name-back")!;
+    const bounds = routeBounds(backEdge);
+
+    expect(routeTotalLength(backEdge)).toBeLessThan(
+      ((bodyTail.position?.y ?? 0) - (loop.position?.y ?? 0)) + 420,
+    );
+    expect(bounds.maxY - bounds.minY).toBeLessThan(
+      (bodyTail.position?.y ?? 0) - (loop.position?.y ?? 0) + 220,
+    );
   });
 });

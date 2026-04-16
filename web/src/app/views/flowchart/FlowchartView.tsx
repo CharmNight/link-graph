@@ -272,11 +272,7 @@ export function FlowchartView({
     });
   }, [explanationFocusNodeId, flowEdges.length, flowNodes, selectedNodeId]);
 
-  const fullNodeCount = view.summary.fullNodeCount ?? view.summary.nodeCount;
-  const hiddenNodeCount = view.summary.hiddenNodeCount ?? 0;
-  const hiddenEdgeCount = view.summary.hiddenEdgeCount ?? 0;
   const fidelityFlags = [
-    view.summary.truncated ? { label: "已截断", tone: "warning" as const } : null,
     view.summary.semanticallyIncomplete ? { label: "语义不完整", tone: "warning" as const } : null,
     syntheticEntryAssisted ? { label: "含合成入口", tone: "info" as const } : null,
   ].filter((flag): flag is { label: string; tone: "warning" | "info" } => flag != null);
@@ -306,11 +302,6 @@ export function FlowchartView({
                 </span>
               ))}
             </div>
-          ) : null}
-          {view.summary.truncated ? (
-            <span className="canvas-reading-detail">
-              当前仅展示 {view.summary.nodeCount}/{fullNodeCount} 个节点，隐藏 {hiddenNodeCount} 个节点、{hiddenEdgeCount} 条边。
-            </span>
           ) : null}
         </article>
         {selectedNode ? (

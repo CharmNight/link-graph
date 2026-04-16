@@ -32,6 +32,7 @@ import {
   hasExceptionControlFlowOutlet,
   isDecisionFallthroughEdge,
   resolveDecisionSourcePort,
+  resolveDecisionTargetPort,
 } from "./decisionPortGeometry";
 import { resolveGraphNodeHighlightClassName } from "../graphNodeHighlights";
 
@@ -146,6 +147,12 @@ function FlowchartReactNode({ id, data, isConnectable, selected }: NodeProps<Flo
         position={Position.Top}
         style={kind === "DECISION" ? flowchartDecisionPortHandleStyle("target-top", style) : flowchartFlushHandleStyle(Position.Top, style)}
       />
+      {kind === "DECISION" ? (
+        <>
+          <Handle id="target-left" type="target" position={Position.Left} style={flowchartDecisionPortHandleStyle("target-left", style)} />
+          <Handle id="target-right" type="target" position={Position.Right} style={flowchartDecisionPortHandleStyle("target-right", style)} />
+        </>
+      ) : null}
       {kind === "MERGE" ? (
         <>
           {Array.from({ length: mergeLeftTargetCount }, (_, index) => (
@@ -306,6 +313,9 @@ function resolveFlowTargetHandleId(
   const targetNode = nodeIndex.get(edge.target);
   if (!targetNode) {
     return undefined;
+  }
+  if (flowchartKind(targetNode) === "DECISION") {
+    return resolveDecisionTargetPort(nodeIndex.get(edge.source), targetNode, edge);
   }
   if (flowchartKind(targetNode) !== "MERGE") {
     return "target-top";

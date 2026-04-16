@@ -15,13 +15,13 @@ import {
   type FlowchartMergeTargetPortCounts,
   type FlowchartDecisionPortId,
   resolveDecisionSourcePort,
+  resolveDecisionTargetPort,
 } from "./decisionPortGeometry";
 
 const FLOWCHART_LAYOUT_OPTIONS: LayoutOptions = {
   "elk.algorithm": "layered",
   "org.eclipse.elk.direction": "DOWN",
   "org.eclipse.elk.edgeRouting": "ORTHOGONAL",
-  "org.eclipse.elk.partitioning.activate": "true",
   "org.eclipse.elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
   "org.eclipse.elk.layered.spacing.nodeNodeBetweenLayers": "112",
   "org.eclipse.elk.layered.spacing.edgeNodeBetweenLayers": "48",
@@ -55,6 +55,8 @@ function flowPortDefinitions(
     case "DECISION":
       return [
         { id: "target-top", side: "NORTH" },
+        { id: "target-left", side: "WEST" },
+        { id: "target-right", side: "EAST" },
         { id: "source-left", side: "WEST" },
         { id: "source-right", side: "EAST" },
         { id: "source-bottom", side: "SOUTH" },
@@ -85,8 +87,10 @@ function flowPortDefinitions(
 
 function decisionPortPosition(portId: FlowchartDecisionPortId): Position {
   switch (portId) {
+    case "target-left":
     case "source-left":
       return Position.Left;
+    case "target-right":
     case "source-right":
       return Position.Right;
     case "source-bottom":
@@ -130,14 +134,14 @@ function projectDecisionAttachmentPoint(
     }
   }
   if (edge.target === node.id) {
-    const targetPort = resolveTargetPort(edge, "DECISION", oppositeNode, node);
-    if (targetPort === "target-top") {
+    const targetPort = resolveTargetPort(edge, "DECISION", oppositeNode, node) as FlowchartDecisionPortId | undefined;
+    if (targetPort) {
       return {
         ...edge,
         route: reanchorRouteEnd(
           edge.route,
-          flowchartDecisionPortPoint("target-top", node, size),
-          Position.Top,
+          flowchartDecisionPortPoint(targetPort, node, size),
+          decisionPortPosition(targetPort),
         ),
       };
     }
@@ -191,6 +195,9 @@ function resolveTargetPort(
   if (edge.type !== "CONTROL_FLOW") {
     return undefined;
   }
+  if (targetNodeKind === "DECISION") {
+    return resolveDecisionTargetPort(sourceNode, targetNode, edge);
+  }
   if (targetNodeKind !== "MERGE") {
     return "target-top";
   }
@@ -218,7 +225,6 @@ function buildLayoutNodes(
   nodeSizeIndex: Map<string, { width: number; height: number }>,
   outgoingControlFlowBySource: Map<string, LinkGraphEdge[]>,
   mergeTargetPortCountsByNode: Map<string, FlowchartMergeTargetPortCounts>,
-  partitionByNodeId: Map<string, number>,
 ) {
   return nodes.map((node) => {
     const size = resolveMeasuredNodeSize(node, sizeSnapshot, "FLOWCHART");
@@ -240,32 +246,12 @@ function buildLayoutNodes(
       },
       layoutOptions: {
         "org.eclipse.elk.portConstraints": "FIXED_SIDE",
-        "org.eclipse.elk.partitioning.partition": String(partitionByNodeId.get(node.id) ?? 0),
         ...(node.id === anchorNodeId
           ? { "org.eclipse.elk.layered.layering.layerConstraint": "FIRST" }
           : {}),
       },
     };
   });
-}
-
-function buildPartitionIndex(
-  nodes: LinkGraphNode[],
-  edges: LinkGraphEdge[],
-): Map<string, number> {
-  const nodeIndex = new Map(nodes.map((node) => [node.id, node]));
-  const partitions = new Map<string, number>();
-  nodes.forEach((node) => partitions.set(node.id, 0));
-  edges.forEach((edge) => {
-    if (edge.type !== "CONTROL_FLOW") {
-      return;
-    }
-    const sourceNode = nodeIndex.get(edge.source);
-    if (flowScopeCategory(sourceNode) === "LOOP_PRE_TEST" && flowEdgeRole(edge) === "LOOP_EXIT") {
-      partitions.set(edge.target, 1);
-    }
-  });
-  return partitions;
 }
 
 function flowEdgeLayoutOptions(
@@ -302,7 +288,6 @@ export async function layoutFlowchartView({
   const outgoingControlFlowBySource = buildOutgoingControlFlowIndex(edges);
   const incomingControlFlowByTarget = buildIncomingControlFlowIndex(edges);
   const nodeSizeIndex = new Map<string, { width: number; height: number }>();
-  const partitionByNodeId = buildPartitionIndex(nodes, edges);
   const initialLayoutNodes = buildLayoutNodes(
     nodes,
     anchorNodeId,
@@ -310,7 +295,6 @@ export async function layoutFlowchartView({
     nodeSizeIndex,
     outgoingControlFlowBySource,
     new Map(),
-    partitionByNodeId,
   );
   const initialLayout = await executeElkLayout({
     mode: "FLOWCHART",
@@ -332,7 +316,6 @@ export async function layoutFlowchartView({
     nodeSizeIndex,
     outgoingControlFlowBySource,
     mergeTargetPortLayout.countsByNodeId,
-    partitionByNodeId,
   );
   const laidOut = await executeElkLayout({
     mode: "FLOWCHART",

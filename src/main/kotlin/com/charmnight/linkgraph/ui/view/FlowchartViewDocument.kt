@@ -29,8 +29,6 @@ internal fun deriveFlowchartSummary(
     visibleGraph: GraphDocument,
     fullGraph: GraphDocument,
 ): FlowchartSummary {
-    val hiddenNodeCount = (fullGraph.nodes.map { it.id }.toSet() - visibleGraph.nodes.map { it.id }.toSet()).size
-    val hiddenEdgeCount = (fullGraph.edges.map { it.id }.toSet() - visibleGraph.edges.map { it.id }.toSet()).size
     val incompleteNodeCount = visibleGraph.nodes.count { node -> node.metadata["flow.incomplete"] == "true" }
     val incompleteEdgeCount = visibleGraph.edges.count { edge -> edge.metadata["flow.incomplete"] == "true" }
     val syntheticEdgeCount = visibleGraph.edges.count { edge -> edge.metadata["flow.synthetic"] == "true" }
@@ -43,9 +41,9 @@ internal fun deriveFlowchartSummary(
         exceptionPathCount = visibleGraph.edges.count { it.label?.trim()?.uppercase() == "EXCEPTION" },
         fullNodeCount = fullGraph.nodes.size,
         fullEdgeCount = fullGraph.edges.size,
-        hiddenNodeCount = hiddenNodeCount,
-        hiddenEdgeCount = hiddenEdgeCount,
-        truncated = hiddenNodeCount > 0 || hiddenEdgeCount > 0,
+        hiddenNodeCount = 0,
+        hiddenEdgeCount = 0,
+        truncated = false,
         incompleteNodeCount = incompleteNodeCount,
         incompleteEdgeCount = incompleteEdgeCount,
         semanticallyIncomplete = incompleteNodeCount > 0 || incompleteEdgeCount > 0,

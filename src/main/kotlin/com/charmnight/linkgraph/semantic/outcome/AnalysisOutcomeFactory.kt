@@ -44,9 +44,14 @@ class AnalysisOutcomeFactory(
                 resourceRelationView.anchorNodeId,
             )
         }
-        val hiddenNodeCount = (fullGraph.nodes.map { it.id }.toSet() - visibleGraph.nodes.map { it.id }.toSet()).size
-        val hiddenEdgeCount = (fullGraph.edges.map { it.id }.toSet() - visibleGraph.edges.map { it.id }.toSet()).size
-        val truncated = hiddenNodeCount > 0 || hiddenEdgeCount > 0
+        val (hiddenNodeCount, hiddenEdgeCount, truncated) = when (displayMode) {
+            AnalysisDisplayMode.FLOWCHART -> Triple(0, 0, false)
+            else -> {
+                val hiddenNodes = (fullGraph.nodes.map { it.id }.toSet() - visibleGraph.nodes.map { it.id }.toSet()).size
+                val hiddenEdges = (fullGraph.edges.map { it.id }.toSet() - visibleGraph.edges.map { it.id }.toSet()).size
+                Triple(hiddenNodes, hiddenEdges, hiddenNodes > 0 || hiddenEdges > 0)
+            }
+        }
         val primaryDiagnostic = selectPrimaryFeedbackDiagnostic(analysisResult.diagnostics)
         return AnalysisOutcome(
             displayMode = displayMode,

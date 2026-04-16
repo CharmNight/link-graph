@@ -3,6 +3,8 @@ import type { GraphPosition, LinkGraphEdge, LinkGraphNode } from "../../types";
 
 export type FlowchartDecisionPortId =
   | "target-top"
+  | "target-left"
+  | "target-right"
   | "source-left"
   | "source-right"
   | "source-bottom";
@@ -11,6 +13,11 @@ export type FlowchartDecisionSourcePortId =
   | "source-left"
   | "source-right"
   | "source-bottom";
+
+export type FlowchartDecisionTargetPortId =
+  | "target-top"
+  | "target-left"
+  | "target-right";
 
 export type FlowchartMergeTargetPortId =
   | "target-top"
@@ -57,6 +64,22 @@ const DECISION_PORT_GEOMETRY: Record<FlowchartDecisionPortId, DecisionPortGeomet
     yRatio: 0,
     style: {
       transform: "translate(-50%, 0)",
+    },
+  },
+  "target-left": {
+    xRatio: 0,
+    yRatio: 0.5,
+    style: {
+      top: "50%",
+      transform: "translate(0, -50%)",
+    },
+  },
+  "target-right": {
+    xRatio: 1,
+    yRatio: 0.5,
+    style: {
+      top: "50%",
+      transform: "translate(0, -50%)",
     },
   },
   "source-left": {
@@ -374,4 +397,20 @@ export function resolveDecisionSourcePort(
     return "source-right";
   }
   return "source-bottom";
+}
+
+export function resolveDecisionTargetPort(
+  sourceNode: LinkGraphNode | undefined,
+  targetNode: LinkGraphNode | undefined,
+  edge: LinkGraphEdge | undefined,
+): FlowchartDecisionTargetPortId {
+  const targetScopeCategory = flowScopeCategory(targetNode);
+  const edgeRole = flowEdgeRole(edge);
+  if (targetScopeCategory === "LOOP_PRE_TEST" && edgeRole === "LOOP_BACK") {
+    if (!sourceNode?.position || !targetNode?.position) {
+      return "target-left";
+    }
+    return sourceNode.position.x <= targetNode.position.x ? "target-left" : "target-right";
+  }
+  return "target-top";
 }
