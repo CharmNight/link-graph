@@ -1,6 +1,12 @@
-import type { LinkGraphNode } from "./types";
+import type { AnalysisDisplayMode, LinkGraphNode } from "./types";
 
-export function canEditNodeLayout(node: LinkGraphNode): boolean {
+export function canEditNodeLayout(
+  node: LinkGraphNode,
+  analysisDisplayMode?: AnalysisDisplayMode,
+): boolean {
+  if (analysisDisplayMode === "FLOWCHART") {
+    return true;
+  }
   if (node.metadata?.["linkGraph.manual"] === "true") {
     return true;
   }

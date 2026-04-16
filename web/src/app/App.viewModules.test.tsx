@@ -246,12 +246,9 @@ describe("App view modules", () => {
               inputs: [],
               outputs: [],
               certainty: "PROVEN",
-              bindingStatus: "DESIGN_ONLY",
+              bindingStatus: "BOUND",
               position: { x: 120, y: 96 },
-              sourceTag: "DRAFT_MANUAL",
-              metadata: {
-                "linkGraph.manual": "true",
-              },
+              sourceTag: "FACT",
             },
           ],
           edges: [],
@@ -265,12 +262,9 @@ describe("App view modules", () => {
               inputs: [],
               outputs: [],
               certainty: "PROVEN",
-              bindingStatus: "DESIGN_ONLY",
+              bindingStatus: "BOUND",
               position: { x: 120, y: 96 },
-              sourceTag: "DRAFT_MANUAL",
-              metadata: {
-                "linkGraph.manual": "true",
-              },
+              sourceTag: "FACT",
             },
           ],
           edges: [],
@@ -719,7 +713,7 @@ describe("App view modules", () => {
     });
   });
 
-  it("does not mutate semantic flowchart nodes during grouped drags when only manual nodes are layout-editable", async () => {
+  it("keeps semantic flowchart nodes in sync during grouped drags alongside manual nodes", async () => {
     const user = userEvent.setup();
     window.linkGraphBootstrap = bootstrapState("FLOWCHART", {
       flowchartView: {
@@ -798,7 +792,7 @@ describe("App view modules", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("flowchart-node-positions")).toHaveTextContent(
-        "flow:entry:120:96|flow:decision:960:360",
+        "flow:entry:700:360|flow:decision:960:360",
       );
     });
   });
