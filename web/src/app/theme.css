@@ -2820,9 +2820,18 @@ button {
   opacity: 0.72 !important;
 }
 
+.flowchart-react-node .react-flow__handle {
+  z-index: 3;
+}
+
 .fact-graph-react-node.is-connectable .react-flow__handle:hover,
 .flowchart-react-node.is-connectable .react-flow__handle:hover {
   opacity: 0.92 !important;
+}
+
+.flowchart-react-node.is-connectable .react-flow__handle.target.connectionindicator {
+  opacity: 0.72 !important;
+  pointer-events: all !important;
 }
 
 .flow-node-doc,

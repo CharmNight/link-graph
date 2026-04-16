@@ -1225,6 +1225,7 @@ export function App() {
           currentNodes,
           nextState.layoutState,
           !analysisDisplayModeChanged,
+          nextState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE,
         ),
       };
       return nextVisibleGraphWithPositionsCache;
@@ -1305,6 +1306,7 @@ export function App() {
             effectiveCurrentDraftGraph.nodes,
             nextState.layoutState,
             !analysisDisplayModeChanged,
+            nextState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE,
           ),
         }
       : nextDraftGraph;
@@ -1943,7 +1945,7 @@ export function App() {
 
   function handleMoveNode(nodeId: string, position: GraphPosition) {
     const currentNode = nodes.find((node) => node.id === nodeId);
-    if (!currentNode || !canEditNodeLayout(currentNode)) {
+    if (!currentNode || !canEditNodeLayout(currentNode, analysisDisplayMode)) {
       return;
     }
     startTransition(() => {
@@ -1987,7 +1989,7 @@ export function App() {
   function handleMoveNodes(updates: Array<{ id: string; position: GraphPosition }>) {
     const editableUpdates = updates.filter((update) => {
       const currentNode = nodes.find((node) => node.id === update.id);
-      return Boolean(currentNode && canEditNodeLayout(currentNode));
+      return Boolean(currentNode && canEditNodeLayout(currentNode, analysisDisplayMode));
     });
     if (editableUpdates.length === 0) {
       return;
