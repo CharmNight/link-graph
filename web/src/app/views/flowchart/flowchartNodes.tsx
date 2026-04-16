@@ -80,12 +80,16 @@ const FLOWCHART_HANDLE_STYLE_BASE: CSSProperties = {
   transition: "opacity 0.12s ease",
 };
 
-function flowchartHandleStyle(isConnectable: boolean): CSSProperties {
+function flowchartHandleStyle(
+  isConnectable: boolean,
+  handleDirection: "source" | "target",
+): CSSProperties {
+  const shouldActivate = isConnectable && handleDirection === "source";
   return {
     ...FLOWCHART_HANDLE_STYLE_BASE,
-    opacity: isConnectable ? 0.28 : 0,
-    pointerEvents: isConnectable ? "all" : "none",
-    cursor: isConnectable ? "crosshair" : "default",
+    opacity: shouldActivate ? 0.28 : 0,
+    pointerEvents: handleDirection === "source" ? (isConnectable ? "all" : "none") : "none",
+    cursor: shouldActivate ? "crosshair" : "default",
   };
 }
 
@@ -183,8 +187,9 @@ function flowchartNodeShellStyle(kind: string): CSSProperties | undefined {
 function FlowchartReactNode({ id, data, isConnectable, selected }: NodeProps<FlowchartNodeData>) {
   const kind = flowchartKind(data.node);
   const updateNodeInternals = useUpdateNodeInternals();
-  const visibleHandleStyle = flowchartHandleStyle(isConnectable);
-  const auxiliaryHandleStyle = flowchartAuxiliaryHandleStyle(visibleHandleStyle);
+  const visibleTargetHandleStyle = flowchartHandleStyle(isConnectable, "target");
+  const visibleSourceHandleStyle = flowchartHandleStyle(isConnectable, "source");
+  const auxiliaryHandleStyle = flowchartAuxiliaryHandleStyle(visibleTargetHandleStyle);
   const mergeLeftTargetCount = kind === "MERGE" ? Math.max(1, data.mergeLeftTargetCount) : 0;
   const mergeRightTargetCount = kind === "MERGE" ? Math.max(1, data.mergeRightTargetCount) : 0;
 
@@ -202,13 +207,15 @@ function FlowchartReactNode({ id, data, isConnectable, selected }: NodeProps<Flo
       ].join(" ").trim()}
       style={flowchartNodeShellStyle(kind)}
     >
-      {FLOWCHART_VISIBLE_TARGET_HANDLES.map(({ id: handleId, position }) => (
+      {FLOWCHART_VISIBLE_SOURCE_HANDLES.map(({ id: handleId, position }) => (
         <Handle
           key={handleId}
           id={handleId}
-          type="target"
+          type="source"
           position={position}
-          style={flowchartVisibleHandleStyle(kind, handleId, position, visibleHandleStyle)}
+          isConnectableStart={isConnectable}
+          isConnectableEnd={false}
+          style={flowchartVisibleHandleStyle(kind, handleId, position, visibleSourceHandleStyle)}
         />
       ))}
       {kind === "MERGE" ? (
@@ -219,6 +226,8 @@ function FlowchartReactNode({ id, data, isConnectable, selected }: NodeProps<Flo
               id={flowchartMergeTargetPortId("left", index)}
               type="target"
               position={Position.Left}
+              isConnectableStart={false}
+              isConnectableEnd={isConnectable}
               style={flowchartMergeTargetHandleStyle("left", index, mergeLeftTargetCount, auxiliaryHandleStyle)}
             />
           ))}
@@ -228,18 +237,22 @@ function FlowchartReactNode({ id, data, isConnectable, selected }: NodeProps<Flo
               id={flowchartMergeTargetPortId("right", index)}
               type="target"
               position={Position.Right}
+              isConnectableStart={false}
+              isConnectableEnd={isConnectable}
               style={flowchartMergeTargetHandleStyle("right", index, mergeRightTargetCount, auxiliaryHandleStyle)}
             />
           ))}
         </>
       ) : null}
-      {FLOWCHART_VISIBLE_SOURCE_HANDLES.map(({ id: handleId, position }) => (
+      {FLOWCHART_VISIBLE_TARGET_HANDLES.map(({ id: handleId, position }) => (
         <Handle
           key={handleId}
           id={handleId}
-          type="source"
+          type="target"
           position={position}
-          style={flowchartVisibleHandleStyle(kind, handleId, position, visibleHandleStyle)}
+          isConnectableStart={false}
+          isConnectableEnd={isConnectable}
+          style={flowchartVisibleHandleStyle(kind, handleId, position, visibleTargetHandleStyle)}
         />
       ))}
       <FlowchartNodeCard
@@ -412,7 +425,7 @@ export function buildFlowchartNodes({
         draftChangedNodeIdSet,
       }),
       selected: selectedNodeId === node.id,
-      draggable: canEditNodeLayout(node),
+      draggable: canEditNodeLayout(node, "FLOWCHART"),
       position: node.position ?? { x: 80, y: 88 },
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top,

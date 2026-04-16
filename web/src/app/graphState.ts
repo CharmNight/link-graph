@@ -23,7 +23,14 @@ export function fallbackDesignPosition(index: number): GraphPosition {
 }
 
 export function withStoredNodePosition(node: LinkGraphNode): LinkGraphNode {
-  if (!canEditNodeLayout(node)) {
+  return withStoredNodePositionForMode(node);
+}
+
+export function withStoredNodePositionForMode(
+  node: LinkGraphNode,
+  analysisDisplayMode: AnalysisDisplayMode = "FACT_GRAPH",
+): LinkGraphNode {
+  if (!canEditNodeLayout(node, analysisDisplayMode)) {
     return clearStoredNodePosition(node);
   }
   if (node.position) {
@@ -85,7 +92,7 @@ export function normalizeGraphNodes(
   analysisDisplayMode: AnalysisDisplayMode = "FACT_GRAPH",
 ): LinkGraphNode[] {
   const startedAt = measureStart();
-  const positionedNodes = nextNodes.map(withStoredNodePosition);
+  const positionedNodes = nextNodes.map((node) => withStoredNodePositionForMode(node, analysisDisplayMode));
   traceLinkGraph("app.normalizeGraphNodes.passThrough", {
     analysisDisplayMode,
     anchorNodeId: anchorNodeId ?? null,
@@ -101,10 +108,11 @@ export function applyBootstrapNodePositions(
   currentNodes: LinkGraphNode[],
   layoutState?: LinkGraphLayoutState | null,
   reuseCurrentPositions = true,
+  analysisDisplayMode: AnalysisDisplayMode = "FACT_GRAPH",
 ): LinkGraphNode[] {
   const currentNodeById = new Map(currentNodes.map((node) => [node.id, node]));
   return nextNodes.map((node) => {
-    const layoutEditableNode = canEditNodeLayout(node);
+    const layoutEditableNode = canEditNodeLayout(node, analysisDisplayMode);
     const baseNode = layoutEditableNode ? node : clearStoredNodePosition(node);
     const layoutPosition = layoutState?.positions[node.id];
     if (layoutEditableNode && layoutPosition) {

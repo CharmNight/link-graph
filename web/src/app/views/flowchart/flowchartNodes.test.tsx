@@ -13,11 +13,15 @@ vi.mock("@xyflow/react", () => ({
     type,
     position,
     style,
+    isConnectableStart,
+    isConnectableEnd,
   }: {
     id?: string;
     type: string;
     position: string;
     style?: Record<string, string>;
+    isConnectableStart?: boolean;
+    isConnectableEnd?: boolean;
   }) => (
     <div
       data-testid="react-flow-handle"
@@ -29,6 +33,9 @@ vi.mock("@xyflow/react", () => ({
       data-style-right={style?.right}
       data-style-transform={style?.transform}
       data-style-opacity={style?.opacity}
+      data-style-pointer-events={style?.pointerEvents}
+      data-connectable-start={String(isConnectableStart ?? true)}
+      data-connectable-end={String(isConnectableEnd ?? true)}
     />
   ),
   MarkerType: {
@@ -132,6 +139,55 @@ function expectBidirectionalPortsOnAllSides(container: HTMLElement) {
   expect(container.querySelector('[data-handle-id="source-bottom"]')).toHaveAttribute("data-position", "bottom");
   expect(container.querySelector('[data-handle-id="target-left"]')).toHaveAttribute("data-position", "left");
   expect(container.querySelector('[data-handle-id="source-left"]')).toHaveAttribute("data-position", "left");
+}
+
+function expectSharedAnchorGeometry(container: HTMLElement) {
+  expect(container.querySelector('[data-handle-id="target-top"]')?.getAttribute("data-style-left")).toBe(
+    container.querySelector('[data-handle-id="source-top"]')?.getAttribute("data-style-left"),
+  );
+  expect(container.querySelector('[data-handle-id="target-right"]')?.getAttribute("data-style-right")).toBe(
+    container.querySelector('[data-handle-id="source-right"]')?.getAttribute("data-style-right"),
+  );
+  expect(container.querySelector('[data-handle-id="target-bottom"]')?.getAttribute("data-style-left")).toBe(
+    container.querySelector('[data-handle-id="source-bottom"]')?.getAttribute("data-style-left"),
+  );
+  expect(container.querySelector('[data-handle-id="target-left"]')?.getAttribute("data-style-left")).toBe(
+    container.querySelector('[data-handle-id="source-left"]')?.getAttribute("data-style-left"),
+  );
+}
+
+function expectOnlySourceAnchorsVisible(container: HTMLElement) {
+  for (const handleId of ["top", "right", "bottom", "left"]) {
+    expect(container.querySelector(`[data-handle-id="source-${handleId}"]`)).toHaveAttribute("data-style-opacity", "0.28");
+    expect(container.querySelector(`[data-handle-id="source-${handleId}"]`)).toHaveAttribute("data-style-pointer-events", "all");
+    expect(container.querySelector(`[data-handle-id="target-${handleId}"]`)).toHaveAttribute("data-style-opacity", "0");
+    expect(container.querySelector(`[data-handle-id="target-${handleId}"]`)).toHaveAttribute("data-style-pointer-events", "none");
+  }
+}
+
+function expectSourceStartsAndTargetEnds(container: HTMLElement) {
+  for (const handleId of ["top", "right", "bottom", "left"]) {
+    expect(container.querySelector(`[data-handle-id="source-${handleId}"]`)).toHaveAttribute("data-connectable-start", "true");
+    expect(container.querySelector(`[data-handle-id="source-${handleId}"]`)).toHaveAttribute("data-connectable-end", "false");
+    expect(container.querySelector(`[data-handle-id="target-${handleId}"]`)).toHaveAttribute("data-connectable-start", "false");
+    expect(container.querySelector(`[data-handle-id="target-${handleId}"]`)).toHaveAttribute("data-connectable-end", "true");
+  }
+}
+
+function expectTargetHandlesRenderedAfterSources() {
+  const handles = screen.getAllByTestId("react-flow-handle");
+  expect(handles.slice(0, 4).map((handle) => handle.getAttribute("data-type"))).toEqual([
+    "source",
+    "source",
+    "source",
+    "source",
+  ]);
+  expect(handles.slice(4, 8).map((handle) => handle.getAttribute("data-type"))).toEqual([
+    "target",
+    "target",
+    "target",
+    "target",
+  ]);
 }
 
 function runtimeFileDownloadTopology(): { nodes: LinkGraphNode[]; edges: LinkGraphEdge[] } {
@@ -263,6 +319,30 @@ function runtimeFileDownloadTopology(): { nodes: LinkGraphNode[]; edges: LinkGra
 }
 
 describe("buildFlowchartNodes", () => {
+  it("shows a single visible source anchor per side while authoring starts from one point", () => {
+    const FlowchartNode = FLOWCHART_NODE_TYPES.flowchartNode as (props: Record<string, unknown>) => JSX.Element;
+
+    const { container } = render(
+      <FlowchartNode
+        id="scope:if"
+        data={{
+          node: decisionNode(),
+          hasExceptionSource: false,
+          mergeLeftTargetCount: 0,
+          mergeRightTargetCount: 0,
+        }}
+        selected={false}
+        isConnectable
+      />,
+    );
+
+    expectBidirectionalPortsOnAllSides(container);
+    expectSharedAnchorGeometry(container);
+    expectOnlySourceAnchorsVisible(container);
+    expectSourceStartsAndTargetEnds(container);
+    expectTargetHandlesRenderedAfterSources();
+  });
+
   it("refreshes React Flow internals after rendering a custom flowchart node", () => {
     updateNodeInternalsMock.mockClear();
     const FlowchartNode = FLOWCHART_NODE_TYPES.flowchartNode as (props: Record<string, unknown>) => JSX.Element;
@@ -345,6 +425,9 @@ describe("buildFlowchartNodes", () => {
     expect(container.querySelector(".flowchart-react-node.kind-decision")).toHaveClass("is-connectable");
     expect(screen.getAllByTestId("react-flow-handle")).toHaveLength(8);
     expectBidirectionalPortsOnAllSides(container);
+    expectSharedAnchorGeometry(container);
+    expectOnlySourceAnchorsVisible(container);
+    expectSourceStartsAndTargetEnds(container);
     expect(container.querySelector('[data-handle-id="target-top"]')).toHaveAttribute("data-style-transform", "translate(-50%, 0)");
     expect(container.querySelector('[data-handle-id="source-top"]')).toHaveAttribute("data-style-transform", "translate(-50%, 0)");
     expect(container.querySelector('[data-handle-id="source-left"]')).toHaveAttribute("data-style-top", "50%");
@@ -416,6 +499,9 @@ describe("buildFlowchartNodes", () => {
     );
 
     expectBidirectionalPortsOnAllSides(container);
+    expectSharedAnchorGeometry(container);
+    expectOnlySourceAnchorsVisible(container);
+    expectSourceStartsAndTargetEnds(container);
   });
 
   it("keeps merge nodes connectable on all four sides while retaining indexed merge inlet handles for routing", () => {
@@ -738,7 +824,7 @@ describe("buildFlowchartNodes", () => {
     expect(builtEdges.find((edge) => edge.id === "design-link:delete-bypass")?.sourceHandle).toBe("source-right");
   });
 
-  it("locks semantic flowchart nodes while keeping manual draft nodes draggable", () => {
+  it("keeps semantic and manual flowchart nodes draggable so the canvas remains editable", () => {
     const registry = createNodeSizeRegistry();
     const semantic = {
       ...methodNode("method:semantic", "CommonController.uploadFiles"),
@@ -764,7 +850,7 @@ describe("buildFlowchartNodes", () => {
       nodeSizeRegistry: registry,
     });
 
-    expect(builtNodes.find((node) => node.id === semantic.id)?.draggable).toBe(false);
+    expect(builtNodes.find((node) => node.id === semantic.id)?.draggable).toBe(true);
     expect(builtNodes.find((node) => node.id === manual.id)?.draggable).toBe(true);
   });
 
