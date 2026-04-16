@@ -37,7 +37,7 @@ export function GenerationPlanPanel({
       <p className="eyebrow">生成计划</p>
       <h2>Mermaid 到代码</h2>
 
-      <div className="side-panel-scroll-body">
+      <div className="side-panel-scroll-body m-scrollbar">
         {!plan ? (
           <article className="preview-card">
             <AsyncRequestBanner requestState={effectiveRequestState} />

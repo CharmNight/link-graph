@@ -293,14 +293,19 @@ button {
   overflow: hidden;
 }
 
+.workbench-layout::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
 .workspace-stage-content {
-  flex: 1;
+  flex: 1 0 auto;
   min-width: 0;
   min-height: 0;
   display: flex;
 }
 
-.workspace-stage-content > * {
+.workspace-stage-content>* {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
@@ -395,7 +400,7 @@ button {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
 }
 
-.workbench-panel-body > * {
+.workbench-panel-body>* {
   flex: 1 1 auto;
   width: 100%;
   min-width: 0;
@@ -422,9 +427,10 @@ button {
 }
 
 .workbench-draft-head-actions {
-  display: grid;
-  justify-items: end;
+  display: flex;
+  justify-content: end;
   gap: 8px;
+  height: 100%;
 }
 
 .audit-tab {
@@ -512,18 +518,18 @@ button {
   padding: 14px 16px 16px;
 }
 
-.audit-page-body > * {
+.audit-page-body>* {
   min-width: 0;
   min-height: 0;
 }
 
-.audit-page-body > .workbench-audit-thread,
-.audit-page-body > .workbench-candidate-list {
+.audit-page-body>.workbench-audit-thread,
+.audit-page-body>.workbench-candidate-list {
   width: 100%;
   height: 100%;
 }
 
-.audit-page-body > .workbench-chat-input {
+.audit-page-body>.workbench-chat-input {
   width: 100%;
   min-height: 100%;
   height: auto;
@@ -547,7 +553,7 @@ button {
   gap: 2px;
 }
 
-.workbench-tab-head > :first-child,
+.workbench-tab-head> :first-child,
 .workbench-tab-head h2,
 .workbench-step-item strong,
 .workbench-step-detail h3,
@@ -667,9 +673,9 @@ button {
   overflow: hidden;
 }
 
-.workbench-tab-body > *,
-.audit-primary-stack > *,
-.workbench-draft-sidebar > * {
+.workbench-tab-body>*,
+.audit-primary-stack>*,
+.workbench-draft-sidebar>* {
   min-width: 0;
   min-height: 0;
 }
@@ -760,18 +766,18 @@ button {
   overflow: hidden;
 }
 
-.workbench-section-card-body > * {
+.workbench-section-card-body>* {
   min-width: 0;
   min-height: 0;
   height: 100%;
 }
 
-.workbench-section-card-body > .workbench-step-list,
-.workbench-section-card-body > .workbench-step-detail,
-.workbench-section-card-body > .workbench-audit-thread,
-.workbench-section-card-body > .workbench-chat-input,
-.workbench-section-card-body > .workbench-candidate-list,
-.workbench-section-card-body > .workbench-draft-section {
+.workbench-section-card-body>.workbench-step-list,
+.workbench-section-card-body>.workbench-step-detail,
+.workbench-section-card-body>.workbench-audit-thread,
+.workbench-section-card-body>.workbench-chat-input,
+.workbench-section-card-body>.workbench-candidate-list,
+.workbench-section-card-body>.workbench-draft-section {
   width: 100%;
   height: 100%;
   border: 0;
@@ -784,7 +790,7 @@ button {
   padding: 14px 16px 16px;
 }
 
-.request-status-section-body > .request-state-banner {
+.request-status-section-body>.request-state-banner {
   margin: 0;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
@@ -1099,6 +1105,7 @@ button {
   gap: 10px;
   width: 100%;
   min-height: 0;
+  position: relative;
 }
 
 .workbench-chat-input.compact {
@@ -1174,6 +1181,18 @@ button {
   scrollbar-width: thin;
   scrollbar-color: rgba(119, 100, 84, 0.52) rgba(44, 32, 22, 0.08);
   overscroll-behavior: contain;
+}
+
+.m-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.m-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background: rgba(119, 100, 84, 0.44);
+  background-clip: padding-box;
 }
 
 .workbench-audit-thread-body::-webkit-scrollbar {
@@ -1325,7 +1344,7 @@ button {
   overflow: hidden;
 }
 
-.workbench-candidate-content > * {
+.workbench-candidate-content>* {
   min-width: 0;
 }
 
@@ -1456,8 +1475,8 @@ button {
   word-break: break-word;
 }
 
-.workbench-candidate-evidence-item > strong,
-.workbench-candidate-evidence-item > span {
+.workbench-candidate-evidence-item>strong,
+.workbench-candidate-evidence-item>span {
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -2088,7 +2107,7 @@ button {
   pointer-events: none;
 }
 
-.flowchart-react-node.kind-decision > .flow-node-card {
+.flowchart-react-node.kind-decision>.flow-node-card {
   position: relative;
   z-index: 1;
 }
@@ -2483,13 +2502,12 @@ button {
   align-content: start;
   gap: 12px;
   overflow: auto;
-  overflow-x: hidden;
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
   padding-right: 4px;
 }
 
-.side-panel-scroll-body > * {
+.side-panel-scroll-body>* {
   min-width: 0;
 }
 
@@ -2630,7 +2648,7 @@ button {
   color: var(--accent-strong);
 }
 
-.dock-body > .side-panel {
+.dock-body>.side-panel {
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -2725,7 +2743,7 @@ button {
 }
 
 /* P2: 选中态通过 React Flow 原生 .selected class 控制 */
-.react-flow__node.selected > div {
+.react-flow__node.selected>div {
   outline: 2px solid var(--accent) !important;
   outline-offset: 0;
   box-shadow: 0 0 0 4px rgba(14, 139, 114, 0.12), 0 12px 24px rgba(44, 32, 22, 0.12) !important;
@@ -2763,7 +2781,7 @@ button {
     0 12px 26px rgba(44, 32, 22, 0.14) !important;
 }
 
-.react-flow__node.flowchart-rf-node.kind-decision.selected > div {
+.react-flow__node.flowchart-rf-node.kind-decision.selected>div {
   outline: none !important;
   box-shadow: none !important;
 }
@@ -2775,21 +2793,21 @@ button {
     0 0 0 4px rgba(14, 139, 114, 0.12);
 }
 
-.react-flow__node.is-explanation-focus.flowchart-rf-node.kind-decision > .flowchart-react-node::after {
+.react-flow__node.is-explanation-focus.flowchart-rf-node.kind-decision>.flowchart-react-node::after {
   inset: 1px;
   box-shadow:
     inset 0 0 0 2px rgba(25, 90, 153, 0.56),
     0 0 0 6px rgba(25, 90, 153, 0.14);
 }
 
-.react-flow__node.is-draft-change.flowchart-rf-node.kind-decision > .flowchart-react-node::after {
+.react-flow__node.is-draft-change.flowchart-rf-node.kind-decision>.flowchart-react-node::after {
   inset: 1px;
   box-shadow:
     inset 0 0 0 2px rgba(185, 104, 47, 0.56),
     0 0 0 6px rgba(185, 104, 47, 0.14);
 }
 
-.react-flow__node.is-explanation-focus.is-draft-change.flowchart-rf-node.kind-decision > .flowchart-react-node::after {
+.react-flow__node.is-explanation-focus.is-draft-change.flowchart-rf-node.kind-decision>.flowchart-react-node::after {
   inset: 1px;
   box-shadow:
     inset 0 0 0 2px rgba(25, 90, 153, 0.56),
@@ -2819,7 +2837,7 @@ button {
 }
 
 .flow-node-card,
-.flowchart-react-node.kind-decision > .flow-node-card {
+.flowchart-react-node.kind-decision>.flow-node-card {
   position: relative;
 }
 
@@ -2909,6 +2927,7 @@ button {
 }
 
 @media (max-width: 1100px) {
+
   .workspace-toolbar,
   .dock-header {
     flex-direction: column;
@@ -2933,6 +2952,8 @@ button {
 @media (max-width: 780px) {
   .workbench-layout {
     flex-direction: column;
+    display: block;
+    overflow: auto;
   }
 
   .workbench-resizer {
@@ -2943,6 +2964,8 @@ button {
     width: 100%;
     min-width: 0;
     max-width: none;
+
+    width: 100% !important;
   }
 
   .workbench-tab-body,

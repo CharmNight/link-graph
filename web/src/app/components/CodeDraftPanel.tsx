@@ -125,19 +125,23 @@ export function CodeDraftPanel({
 
   return (
     <section className="side-panel code-draft-panel">
-      <div className="preview-head">
+      <div className="preview-head w-full gap-0 block">
         <div>
-          <p className="eyebrow">代码草稿</p>
+          <p className="eyebrow flex items-center justify-between">
+            代码草稿
+
+          <button type="button" className="primary-button" onClick={onWriteDrafts}>
+            写入全部草稿
+          </button>
+          </p>
           <h2>生成文件</h2>
           <p className="muted">来源 {codeDraftSourceLabel(source)}</p>
           <p className="muted">代码草稿只会生成文件内容，不会自动把结果写回当前画布。</p>
         </div>
-        <button type="button" className="primary-button" onClick={onWriteDrafts}>
-          写入全部草稿
-        </button>
+
       </div>
 
-      <div className="side-panel-scroll-body">
+      <div className="side-panel-scroll-body m-scrollbar">
         {warnings.length > 0 ? (
           <div className="warning-list">
             {warnings.map((warning) => (
