@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { App } from "./app/App";
 import { traceLinkGraph } from "./app/debug";
 import "./app/theme.css";
+import 'virtual:uno.css'
 
 window.addEventListener("error", (event) => {
   traceLinkGraph("main.windowError", {

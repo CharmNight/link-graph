@@ -184,8 +184,8 @@ export function AuditTab({
   }
 
   return (
-    <section className="workbench-tab audit-tab">
-      <div className="workbench-tab-head audit-tab-head">
+    <section className="workbench-tab audit-tab block overflow-auto m-scrollbar">
+      <div className="workbench-tab-head audit-tab-head mb-10px">
         <div className="audit-tab-title">
           <p className="eyebrow">审计</p>
           <h2>审计问答</h2>
@@ -193,7 +193,7 @@ export function AuditTab({
         <span className="workbench-session-label audit-scope-label" title={scopeLabel}>{scopeLabel}</span>
       </div>
 
-      <div className="audit-tab-nav" role="tablist" aria-label="审计页面切换">
+      <div className="audit-tab-nav mb-10px" role="tablist" aria-label="审计页面切换">
         {visibleSectionIds.map((sectionId) => (
           <button
             key={sectionId}
@@ -373,15 +373,11 @@ function AuditPagePanel({
       {activeSectionId === "audit.composer" ? (
         <div className="audit-page-body">
           <div
-            className="workbench-chat-input"
+            className="workbench-chat-input p-0 border-0"
             onPointerDownCapture={onStopComposerBoundaryPropagation}
             onMouseDownCapture={onStopComposerBoundaryPropagation}
             onDoubleClickCapture={onStopComposerBoundaryPropagation}
           >
-            <div className="workbench-chat-input-head">
-              <strong>继续提问</strong>
-              <span className="muted">围绕当前范围继续问，回答会优先贴合你的问题。</span>
-            </div>
             <label htmlFor="audit-input" className="sr-only">审计输入框</label>
             <textarea
               id="audit-input"
