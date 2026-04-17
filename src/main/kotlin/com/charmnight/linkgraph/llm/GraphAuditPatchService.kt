@@ -15,11 +15,11 @@ import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 import com.charmnight.linkgraph.workbench.hasDirectEvidence
 
 /**
- * 基于当前审计范围生成“对话回答 + 待确认候选变更”。
- * 审计不会直接写草稿层，所有修改都先停留在候选变更区。
+ * 基于当前问答范围生成“对话回答 + 待确认候选变更”。
+ * 问答不会直接写草稿层，所有修改都先停留在候选变更区。
  */
 class GraphAuditPatchService(
-    /** 负责构造审计提示词。 */
+    /** 负责构造问答提示词。 */
     private val promptFactory: LlmPromptFactory = LlmPromptFactory(),
     /** 负责发起远程 LLM 请求。 */
     private val gateway: LlmGateway = RoutingLlmGateway(),
@@ -29,7 +29,7 @@ class GraphAuditPatchService(
     /** 负责处理结构化 JSON 响应与自动修复。 */
     private val responseSupport = RemoteStructuredResponseSupport(gateway)
 
-    /** 执行链路审计，必要时回退到本地规则结果。 */
+    /** 执行链路问答，必要时回退到本地规则结果。 */
     fun audit(
         context: GraphAuditContext,
         question: String,
@@ -48,7 +48,7 @@ class GraphAuditPatchService(
         val remoteConnection = sanitized.remoteConnectionOrNull()
         if (remoteConnection == null) {
             return buildMockResult(effectiveContext, question, promptPackage.preview, currentSession, sourceLeadId).copy(
-                warnings = listOf(sanitized.remoteLlmSetupHint("本地规则审计")),
+                warnings = listOf(sanitized.remoteLlmSetupHint("本地规则问答")),
             )
         }
         return runCatching {
@@ -57,7 +57,7 @@ class GraphAuditPatchService(
                     systemPrompt = promptPackage.systemPrompt,
                     userPrompt = promptPackage.userPrompt,
                 ),
-                scene = "审计",
+                scene = "问答",
                 schema = PATCH_RESULT_SCHEMA,
                 preferStreaming = remoteConnection.preset.capabilities.supportsStreaming,
                 onPreview = onPreview,
@@ -73,12 +73,12 @@ class GraphAuditPatchService(
             )
         }.getOrElse { error ->
             buildMockResult(effectiveContext, question, promptPackage.preview, currentSession, sourceLeadId).copy(
-                warnings = listOf(buildRemoteFallbackWarning("审计", error)),
+                warnings = listOf(buildRemoteFallbackWarning("问答", error)),
             )
         }
     }
 
-    /** 构造不依赖远程模型的本地审计结果。 */
+    /** 构造不依赖远程模型的本地问答结果。 */
     private fun buildMockResult(
         context: GraphAuditContext,
         question: String,
@@ -238,7 +238,8 @@ class GraphAuditPatchService(
                 targetNodeIds = listOfNotNull(operation.node?.id, operation.edge?.fromNodeId, operation.edge?.toNodeId).distinct(),
                 beforeState = null,
                 afterState = operation.summary ?: operation.title,
-                reason = "由远程审计建议生成。",
+                // 这里会直接透传到候选草稿区，文案需要与问答链路口径保持一致。
+                reason = "由远程问答建议生成。",
                 impactSummary = patch.summary ?: "",
                 claimType = operation.metadata["draft.claimType"],
                 evidence = findings,
@@ -460,7 +461,8 @@ class GraphAuditPatchService(
                 EvidenceTraceEntry(
                     nodeId = snippet.nodeId,
                     filePath = snippet.filePath,
-                    reason = "本轮审计直接附带的源码片段",
+                    // 该理由会展示给后续 runtime / UI 消费方，必须明确这是本轮问答附带的源码证据。
+                    reason = "本轮问答直接附带的源码片段",
                     startLine = snippet.startLine,
                     endLine = snippet.endLine,
                     includedInPrompt = true,
@@ -470,10 +472,10 @@ class GraphAuditPatchService(
     }
 
     private companion object {
-        /** 远程审计返回必须遵守的 JSON 结构。 */
+        /** 远程问答返回必须遵守的 JSON 结构。 */
         private const val PATCH_RESULT_SCHEMA = """
 {
-  "answer": "审计或差异说明",
+  "answer": "问答回答",
   "findings": [
     {
       "id": "稳定ID",

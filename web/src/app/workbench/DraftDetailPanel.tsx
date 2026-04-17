@@ -26,7 +26,7 @@ export function DraftDetailPanel({
       <section className="workbench-draft-section">
         <div className="workbench-empty-card">
           <strong>当前还没有草稿条目</strong>
-          <p className="muted">先在讲解里记为备注，或在审计里确认变更，这里才会出现可操作的草稿内容。</p>
+          <p className="muted">先在讲解里记为备注，或在问答里确认变更，这里才会出现可操作的草稿内容。</p>
         </div>
       </section>
     );

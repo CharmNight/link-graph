@@ -24,7 +24,7 @@ import java.nio.file.InvalidPathException
 import java.nio.file.Path
 
 /**
- * 为计划生成、审计、讲解等流程统一构造上下文载荷。
+ * 为计划生成、问答、讲解等流程统一构造上下文载荷。
  */
 internal class PlanningContextFactory(
     /** 图 diff 比较器。 */
@@ -33,7 +33,7 @@ internal class PlanningContextFactory(
     private val syncPreviewPlanner: SyncPreviewPlanner,
     /** 图生成服务。 */
     private val graphGenerationService: GraphGenerationService,
-    /** 审计源码证据收集器。 */
+    /** 问答源码证据收集器。 */
     private val auditEvidenceCollector: AuditEvidenceCollector = AuditEvidenceCollector(),
     /** 当前真正生效的生成设置。 */
     private val settingsProvider: () -> LinkGraphSettingsState,
@@ -66,11 +66,7 @@ internal class PlanningContextFactory(
             diff = diff,
             previewItems = previewItems,
             snapshot = snapshot,
-            sourceContext = buildGenerationSourceSnippetContexts(
-                planningGraph = planningGraph,
-                confirmedChanges = snapshot.draftWorkbenchState.draftChanges,
-                planItems = generationPlanOverride?.items.orEmpty(),
-            ),
+            sourceContext = emptyList(),
         )
     }
 
@@ -147,11 +143,12 @@ internal class PlanningContextFactory(
     }
 
     /**
-     * 根据选区决定审计时使用的事实图和草稿图。
+     * 根据选区决定问答时使用的事实图和草稿图。
      */
     fun buildAuditGraphs(
         snapshot: GraphEditorStateService.Snapshot,
         selectedNodeIds: List<String>,
+        collectSourceEvidence: Boolean = true,
     ): AuditGraphs {
         val workingGraph = currentWorkingGraph(snapshot)
         val backgroundFactGraph = if (selectedNodeIds.isEmpty()) {
@@ -159,10 +156,14 @@ internal class PlanningContextFactory(
         } else {
             snapshot.referenceFactGraph ?: workingGraph
         }
-        val evidenceCollection = auditEvidenceCollector.collect(
-            graph = mergeAuditEvidenceGraph(backgroundFactGraph, workingGraph),
-            selectedNodeIds = selectedNodeIds,
-        )
+        val evidenceCollection = if (collectSourceEvidence) {
+            auditEvidenceCollector.collect(
+                graph = mergeAuditEvidenceGraph(backgroundFactGraph, workingGraph),
+                selectedNodeIds = selectedNodeIds,
+            )
+        } else {
+            AuditEvidenceCollection()
+        }
         return AuditGraphs(
             factGraph = backgroundFactGraph,
             draftGraph = workingGraph,

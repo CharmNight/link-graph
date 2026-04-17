@@ -22,7 +22,7 @@ import kotlin.test.assertTrue
 
 class PlanningContextFactoryTest {
     @Test
-    fun computePlanningPayloadCollectsGenerationSourceSnippetsFromConfirmedChangesAndPlanScopes() {
+    fun computePlanningPayloadDoesNotPreloadGenerationSourceSnippetsFromConfirmedChangesAndPlanScopes() {
         val sourceFile = Files.createTempFile("generation-source-context", ".java")
         val sourceCode = """
             package com.example;
@@ -156,13 +156,11 @@ class PlanningContextFactoryTest {
             settingsProvider = { LinkGraphSettingsState() },
         ).computePlanningPayload(snapshot, generationPlanOverride = generationPlan)
 
-        assertEquals(2, payload.sourceContext.size)
-        assertTrue(payload.sourceContext.any { it.nodeId == "method:file-download" && it.snippet?.contains("replaceFirst(\"/usr\", \"/tmp\")") == true })
-        assertTrue(payload.sourceContext.any { it.nodeId == "method:upload-file" && it.snippet?.contains("validate(file);") == true })
+        assertTrue(payload.sourceContext.isEmpty())
     }
 
     @Test
-    fun computePlanningPayloadReadsProjectRelativePlanScopeAgainstProjectBasePath() {
+    fun computePlanningPayloadDoesNotReadProjectRelativePlanScopeAgainstProjectBasePath() {
         val projectDir = Files.createTempDirectory("planning-context-project-base")
         val sourceFile = projectDir.resolve("src/main/java/com/example/CommonController.java")
         Files.createDirectories(sourceFile.parent)
@@ -233,7 +231,6 @@ class PlanningContextFactoryTest {
             projectBasePathProvider = { projectDir.toString() },
         ).computePlanningPayload(snapshot, generationPlanOverride = generationPlan)
 
-        assertEquals(1, payload.sourceContext.size)
-        assertTrue(payload.sourceContext.single().snippet?.contains("validate(file);") == true)
+        assertTrue(payload.sourceContext.isEmpty())
     }
 }

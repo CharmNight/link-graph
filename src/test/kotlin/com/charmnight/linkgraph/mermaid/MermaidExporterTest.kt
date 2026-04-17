@@ -40,7 +40,7 @@ class MermaidExporterTest {
                     type = EdgeType.LINKS_DOC,
                     fromNodeId = "method:format-order",
                     toNodeId = "doc:review",
-                    label = "审计建议 [A->B] {保留}",
+                    label = "问答建议 [A->B] {保留}",
                 ),
             ),
         )
@@ -53,10 +53,10 @@ class MermaidExporterTest {
         assertFalse(exported.contains("[订单]"))
         assertFalse(exported.contains("{上下文}"))
         assertFalse(exported.contains("Review(\"A->B\")"))
-        assertFalse(exported.contains("审计建议 [A->B] {保留}"))
+        assertFalse(exported.contains("问答建议 [A->B] {保留}"))
         assertTrue(exported.contains("格式化 ［订单］ ｛上下文｝ ｜ 需要保留可读性"))
         assertTrue(exported.contains("Review（＂A-〉B＂）"))
-        assertTrue(exported.contains("审计建议 ［A-〉B］ ｛保留｝"))
+        assertTrue(exported.contains("问答建议 ［A-〉B］ ｛保留｝"))
     }
 
     @Test

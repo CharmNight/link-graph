@@ -107,7 +107,7 @@ export function patchResultBoundaryDescription(value: LlmResultSource): string {
     case "MOCK":
       return "当前回答属于本地规则分析，用于帮助你定位风险，不是完整源码真值判定。";
     case "REMOTE":
-      return "当前回答属于远程 LLM 建议，可用于辅助审计和补图，但不是代码事实结论。";
+      return "当前回答属于远程 LLM 建议，可用于辅助问答和补图，但不是代码事实结论。";
   }
 }
 

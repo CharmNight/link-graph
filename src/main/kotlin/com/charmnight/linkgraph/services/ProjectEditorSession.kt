@@ -88,4 +88,19 @@ internal class ProjectEditorSession(
             onBrowserSyncRequested()
         }
     }
+
+    /**
+     * 将 runtime 产物摘要写回到 UI 状态。
+     * session 只负责状态同步，不参与 runtime 产物解析。
+     */
+    fun markRuntimeArtifactSummaries(
+        scene: String,
+        summaries: List<GraphEditorStateService.RuntimeArtifactSummary>,
+        syncBrowser: Boolean = true,
+    ) {
+        stateService.markRuntimeArtifactSummaries(scene, summaries)
+        if (syncBrowser) {
+            onBrowserSyncRequested()
+        }
+    }
 }

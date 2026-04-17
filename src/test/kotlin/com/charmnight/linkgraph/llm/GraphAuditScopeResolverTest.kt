@@ -68,7 +68,7 @@ class GraphAuditScopeResolverTest {
         val manualNote = GraphNode(
             id = "doc:manual-note",
             type = NodeType.DOC_PAGE,
-            title = "人工审计说明",
+            title = "人工核查说明",
             sourceTag = GraphSourceTag.DRAFT_MANUAL,
         )
         val secondHopNode = GraphNode(

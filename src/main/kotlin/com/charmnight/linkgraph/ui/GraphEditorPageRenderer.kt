@@ -214,6 +214,16 @@ class GraphEditorPageRenderer {
                 patchResultToMap(it, artifactRefs.auditPromptPreviewArtifactId)
             },
             "auditRequestState" to requestStateToMap(snapshot.auditRequestState),
+            "runtimeArtifactSummaries" to snapshot.runtimeArtifactSummaries.mapValues { (_, summaries) ->
+                summaries.map { summary ->
+                    linkedMapOf(
+                        "artifactId" to summary.artifactId,
+                        "artifactType" to summary.artifactType,
+                        "title" to summary.title,
+                        "description" to summary.description,
+                    )
+                }
+            },
             "diffReviewResult" to snapshot.diffReviewResult?.let {
                 patchResultToMap(it, artifactRefs.diffReviewPromptPreviewArtifactId)
             },

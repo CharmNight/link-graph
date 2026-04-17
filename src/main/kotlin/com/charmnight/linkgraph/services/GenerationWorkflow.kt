@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.services
 
 import com.charmnight.linkgraph.codegen.CodeDraftWriterService
+import com.charmnight.linkgraph.codegen.CodeGenerationResult
 import com.charmnight.linkgraph.codegen.CodeGenerationService
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
@@ -8,9 +9,21 @@ import com.charmnight.linkgraph.codegen.ProjectPathNormalizer
 import com.charmnight.linkgraph.codegen.emptyResultDetailMessage
 import com.charmnight.linkgraph.codegen.emptyResultMessage
 import com.charmnight.linkgraph.llm.GenerationContext
+import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.GenerationPlanSource
 import com.charmnight.linkgraph.llm.GraphGenerationService
 import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.llm.artifact.AgentArtifactStoreService
+import com.charmnight.linkgraph.llm.artifact.ArtifactType
+import com.charmnight.linkgraph.llm.artifact.ArtifactStore
+import com.charmnight.linkgraph.llm.artifact.PlanArtifact
+import com.charmnight.linkgraph.llm.capability.CodegenCapability
+import com.charmnight.linkgraph.llm.capability.CodegenCapabilityInput
+import com.charmnight.linkgraph.llm.capability.PlanCapability
+import com.charmnight.linkgraph.llm.capability.PlanCapabilityInput
+import com.charmnight.linkgraph.llm.runtime.AgentRunCoordinator
+import com.charmnight.linkgraph.llm.runtime.AgentRunResult
+import com.charmnight.linkgraph.llm.runtime.AgentRuntimeContext
 import com.charmnight.linkgraph.navigation.SourceNavigationService
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorStateService
@@ -44,6 +57,20 @@ internal class GenerationWorkflow(
     private val asyncRequestLifecycle: AsyncRequestLifecycleSupport,
     /** 日志记录器。 */
     private val logger: Logger,
+    /** runtime 协调器。 */
+    private val agentRunCoordinator: AgentRunCoordinator = AgentRunCoordinator(),
+    /** 跨 run 共享的 artifact store。 */
+    private val artifactStoreProvider: () -> ArtifactStore = {
+        project.getService(AgentArtifactStoreService::class.java).artifactStore
+    },
+    /** 计划 capability 工厂。 */
+    private val planCapabilityFactory: (PlanCapability.LegacyPlanExecutor) -> PlanCapability = { legacyExecutor ->
+        PlanCapability(legacyPlanExecutor = legacyExecutor)
+    },
+    /** 代码 capability 工厂。 */
+    private val codegenCapabilityFactory: (CodegenCapability.LegacyCodegenExecutor) -> CodegenCapability = { legacyExecutor ->
+        CodegenCapability(project = project, legacyCodegenExecutor = legacyExecutor)
+    },
 ) {
     private data class GenerationPrerequisiteFailure(
         val scene: String,
@@ -60,24 +87,20 @@ internal class GenerationWorkflow(
             markGenerationPlanRequestFailed(message, requestState)
         }?.let { return }
         val payload = planningContextFactory.computePlanningPayload(snapshot)
-        debugLazy(logger.isDebugEnabled, logger::debug) {
-            "开始生成实现计划: ${GenerationDiagnostics.summarizePlanningPayload(payload)}"
+        val runtimeResult = executePlanRuntime(payload)
+        val plan = requireNotNull(runtimeResult.output) {
+            "实现计划 runtime 未返回结果，runId=${runtimeResult.finalState.runId}"
         }
-        val plan = ProjectPathNormalizer.normalizePlan(
-            planningContextFactory.buildPlanSnapshot(
-            planningGraph = payload.planningGraph,
-            diff = payload.diff,
-            previewItems = payload.previewItems,
-            snapshot = payload.snapshot,
-            sourceContext = payload.sourceContext,
+        val requestState = asyncRequestLifecycle.withRuntimeMetadata(
+            requestState = GraphEditorStateService.AsyncRequestState.succeeded(
+                scene = "实现计划",
+                statusMessage = "实现计划已生成。",
             ),
-            project.basePath,
+            runtimeState = runtimeResult.finalState,
         )
-        debugLazy(logger.isDebugEnabled, logger::debug) {
-            "实现计划生成完成: ${GenerationDiagnostics.summarizePlan(plan)}"
-        }
         session.mutate {
-            markGenerationPlan(plan)
+            markRuntimeArtifactSummaries("plan", toRuntimeArtifactSummaries(runtimeResult))
+            markGenerationPlan(plan, requestState)
         }
     }
 
@@ -108,6 +131,9 @@ internal class GenerationWorkflow(
         session.mutateBatch {
             apply {
                 beginGenerationPlanRequest(presentation.requestState)
+            }
+            apply {
+                markRuntimeArtifactSummaries("plan", emptyList())
             }
             apply {
                 markOperationFeedback(
@@ -150,16 +176,8 @@ internal class GenerationWorkflow(
         )
         ApplicationManager.getApplication().executeOnPooledThread {
             val result = runCatching {
-                val payload = planningContextFactory.computePlanningPayload(snapshot)
-                debugLazy(logger.isDebugEnabled, logger::debug) {
-                    "开始异步生成实现计划: ${GenerationDiagnostics.summarizePlanningPayload(payload)}"
-                }
-                planningContextFactory.buildPlanSnapshot(
-                    planningGraph = payload.planningGraph,
-                    diff = payload.diff,
-                    previewItems = payload.previewItems,
-                    snapshot = payload.snapshot,
-                    sourceContext = payload.sourceContext,
+                executePlanRuntime(
+                    payload = planningContextFactory.computePlanningPayload(snapshot),
                     onPreview = previewUpdater,
                 )
             }
@@ -169,16 +187,45 @@ internal class GenerationWorkflow(
                         return@invokeLater
                     }
                     result.fold(
-                        onSuccess = { plan ->
-                            val normalizedPlan = ProjectPathNormalizer.normalizePlan(plan, project.basePath)
-                            debugLazy(logger.isDebugEnabled, logger::debug) {
-                                "异步实现计划生成完成: ${GenerationDiagnostics.summarizePlan(normalizedPlan)}"
+                        onSuccess = { runtimeResult ->
+                            val normalizedPlan = runtimeResult.output
+                            if (normalizedPlan == null) {
+                                val message = "生成计划失败：runtime 未返回结果。"
+                                val requestState = asyncRequestLifecycle.withRuntimeMetadata(
+                                    requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message),
+                                    runtimeState = runtimeResult.finalState,
+                                )
+                                asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
+                                session.mutateBatch {
+                                    apply {
+                                        markRuntimeArtifactSummaries("plan", toRuntimeArtifactSummaries(runtimeResult))
+                                    }
+                                    apply {
+                                        markGenerationPlanRequestFailed(message, requestState)
+                                    }
+                                    apply {
+                                        markOperationFeedback(
+                                            OperationFeedbackLevel.ERROR,
+                                            message,
+                                            preserveLastMessageType = true,
+                                        )
+                                    }
+                                }
+                                return@fold
                             }
-                            val requestState = asyncRequestLifecycle.buildSucceededRequestState(
-                                presentation = presentation,
-                                successMessage = "实现计划已生成。",
-                                completedRemotely = normalizedPlan.source == GenerationPlanSource.REMOTE,
-                                warnings = normalizedPlan.warnings,
+                            debugLazy(logger.isDebugEnabled, logger::debug) {
+                                "异步实现计划生成完成: ${GenerationDiagnostics.summarizePlan(normalizedPlan)}, " +
+                                    "artifactCount=${runtimeResult.artifactSummaries.size}, filesRead=${runtimeResult.finalState.budget.filesRead}, " +
+                                    "stepsUsed=${runtimeResult.finalState.budget.usedSteps}"
+                            }
+                            val requestState = asyncRequestLifecycle.withRuntimeMetadata(
+                                requestState = asyncRequestLifecycle.buildSucceededRequestState(
+                                    presentation = presentation,
+                                    successMessage = "实现计划已生成。",
+                                    completedRemotely = normalizedPlan.source == GenerationPlanSource.REMOTE,
+                                    warnings = normalizedPlan.warnings,
+                                ),
+                                runtimeState = runtimeResult.finalState,
                             )
                             asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
                             val feedbackLevel = if (requestState.fallbackUsed) {
@@ -187,6 +234,9 @@ internal class GenerationWorkflow(
                                 OperationFeedbackLevel.SUCCESS
                             }
                             session.mutateBatch {
+                                apply {
+                                    markRuntimeArtifactSummaries("plan", toRuntimeArtifactSummaries(runtimeResult))
+                                }
                                 apply {
                                     markGenerationPlan(normalizedPlan, requestState)
                                 }
@@ -205,6 +255,9 @@ internal class GenerationWorkflow(
                             val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
                             asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
                             session.mutateBatch {
+                                apply {
+                                    markRuntimeArtifactSummaries("plan", emptyList())
+                                }
                                 apply {
                                     markGenerationPlanRequestFailed(message, requestState)
                                 }
@@ -232,46 +285,27 @@ internal class GenerationWorkflow(
         rejectMissingConfirmedDraftChanges(snapshot, "代码草稿") { message, requestState ->
             markCodeDraftRequestFailed(message, requestState)
         }?.let { return }
-        val payload = planningContextFactory.computePlanningPayload(snapshot)
-        debugLazy(logger.isDebugEnabled, logger::debug) {
-            "开始生成代码草稿: ${GenerationDiagnostics.summarizePlanningPayload(payload)}"
-        }
-        val rawPlan = payload.snapshot.generationPlan ?: planningContextFactory.buildPlanSnapshot(
-            planningGraph = payload.planningGraph,
-            diff = payload.diff,
-            previewItems = payload.previewItems,
-            snapshot = payload.snapshot,
-            sourceContext = payload.sourceContext,
-        )
-        val plan = ProjectPathNormalizer.normalizePlan(rawPlan, project.basePath)
-        val generationPayload = if (payload.snapshot.generationPlan == plan) {
-            payload
-        } else {
-            planningContextFactory.computePlanningPayload(payload.snapshot, generationPlanOverride = plan)
+        rejectOrphanedGenerationPlan(snapshot, "代码草稿") { message, requestState ->
+            markCodeDraftRequestFailed(message, requestState)
+        }?.let { return }
+        val result = executeCodegenRuntime(snapshot)
+        val draftResult = requireNotNull(result.output) {
+            "代码生成 runtime 未返回结果，runId=${result.finalState.runId}"
         }
         debugLazy(logger.isDebugEnabled, logger::debug) {
-            "代码草稿生成使用计划: ${GenerationDiagnostics.summarizePlan(plan)}"
+            "代码草稿生成完成: ${GenerationDiagnostics.summarizeCodeGenerationResult(draftResult)}, " +
+                "artifactCount=${result.artifactSummaries.size}, filesRead=${result.finalState.budget.filesRead}, " +
+                "stepsUsed=${result.finalState.budget.usedSteps}"
         }
-        val result = ProjectPathNormalizer.normalizeDraftResult(
-            codeGenerationService.generateDrafts(
-            context = buildGenerationContext(generationPayload),
-            plan = plan,
-            settings = settingsProvider(),
-            ),
-            project.basePath,
-        )
-        debugLazy(logger.isDebugEnabled, logger::debug) {
-            "代码草稿生成完成: ${GenerationDiagnostics.summarizeCodeGenerationResult(result)}"
-        }
-        if (result.drafts.isEmpty()) {
-            val message = result.emptyResultMessage()
+        if (draftResult.drafts.isEmpty()) {
+            val message = draftResult.emptyResultMessage()
             session.mutateBatch {
                 apply {
                     markCodeDraftRequestFailed(
                         message,
                         GraphEditorStateService.AsyncRequestState.failed(
                             message = message,
-                            detailMessage = result.emptyResultDetailMessage(),
+                            detailMessage = draftResult.emptyResultDetailMessage(),
                         ),
                     )
                 }
@@ -286,11 +320,19 @@ internal class GenerationWorkflow(
             return
         }
         session.mutate {
+            markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(result))
             markGeneratedCodeDrafts(
-                drafts = result.drafts,
-                warnings = result.warnings,
-                source = result.source,
-                promptPreview = result.promptPreview,
+                drafts = draftResult.drafts,
+                warnings = draftResult.warnings,
+                source = draftResult.source,
+                promptPreview = draftResult.promptPreview,
+                requestState = asyncRequestLifecycle.withRuntimeMetadata(
+                    requestState = GraphEditorStateService.AsyncRequestState.succeeded(
+                        scene = "代码草稿",
+                        statusMessage = "代码草稿已生成。",
+                    ),
+                    runtimeState = result.finalState,
+                ),
             )
         }
     }
@@ -301,6 +343,9 @@ internal class GenerationWorkflow(
     fun requestCodeDraftsAsync() {
         val snapshot = session.snapshot()
         rejectMissingConfirmedDraftChanges(snapshot, "代码草稿") { message, requestState ->
+            markCodeDraftRequestFailed(message, requestState)
+        }?.let { return }
+        rejectOrphanedGenerationPlan(snapshot, "代码草稿") { message, requestState ->
             markCodeDraftRequestFailed(message, requestState)
         }?.let { return }
         val requestId = asyncRequestLifecycle.beginCodeDraftRequest()
@@ -321,6 +366,9 @@ internal class GenerationWorkflow(
         session.mutateBatch {
             apply {
                 beginCodeDraftRequest(presentation.requestState)
+            }
+            apply {
+                markRuntimeArtifactSummaries("codegen", emptyList())
             }
             apply {
                 markOperationFeedback(
@@ -363,36 +411,7 @@ internal class GenerationWorkflow(
         )
         ApplicationManager.getApplication().executeOnPooledThread {
             val result = runCatching {
-                val payload = planningContextFactory.computePlanningPayload(snapshot)
-                debugLazy(logger.isDebugEnabled, logger::debug) {
-                    "开始异步生成代码草稿: ${GenerationDiagnostics.summarizePlanningPayload(payload)}"
-                }
-                val rawPlan = payload.snapshot.generationPlan ?: planningContextFactory.buildPlanSnapshot(
-                    planningGraph = payload.planningGraph,
-                    diff = payload.diff,
-                    previewItems = payload.previewItems,
-                    snapshot = payload.snapshot,
-                    sourceContext = payload.sourceContext,
-                    onPreview = previewUpdater,
-                )
-                val plan = ProjectPathNormalizer.normalizePlan(rawPlan, project.basePath)
-                val generationPayload = if (payload.snapshot.generationPlan == plan) {
-                    payload
-                } else {
-                    planningContextFactory.computePlanningPayload(payload.snapshot, generationPlanOverride = plan)
-                }
-                debugLazy(logger.isDebugEnabled, logger::debug) {
-                    "异步代码草稿生成使用计划: ${GenerationDiagnostics.summarizePlan(plan)}"
-                }
-                ProjectPathNormalizer.normalizeDraftResult(
-                    codeGenerationService.generateDrafts(
-                    context = buildGenerationContext(generationPayload),
-                    plan = plan,
-                    settings = settings,
-                    onPreview = previewUpdater,
-                    ),
-                    project.basePath,
-                )
+                executeCodegenRuntime(snapshot, previewUpdater)
             }
             ApplicationManager.getApplication().invokeLater(
                 {
@@ -400,19 +419,19 @@ internal class GenerationWorkflow(
                         return@invokeLater
                     }
                     result.fold(
-                        onSuccess = { drafts ->
-                            debugLazy(logger.isDebugEnabled, logger::debug) {
-                                "异步代码草稿生成完成: ${GenerationDiagnostics.summarizeCodeGenerationResult(drafts)}"
-                            }
-                            if (drafts.drafts.isEmpty()) {
-                                val message = drafts.emptyResultMessage()
-                                val requestState = asyncRequestLifecycle.buildFailedRequestState(
-                                    presentation = presentation,
-                                    message = message,
-                                    detailMessageOverride = drafts.emptyResultDetailMessage(),
+                        onSuccess = { runtimeResult ->
+                            val drafts = runtimeResult.output
+                            if (drafts == null) {
+                                val message = "生成代码草稿失败：runtime 未返回结果。"
+                                val requestState = asyncRequestLifecycle.withRuntimeMetadata(
+                                    requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message),
+                                    runtimeState = runtimeResult.finalState,
                                 )
                                 asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
                                 session.mutateBatch {
+                                    apply {
+                                        markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(runtimeResult))
+                                    }
                                     apply {
                                         markCodeDraftRequestFailed(message, requestState)
                                     }
@@ -426,11 +445,44 @@ internal class GenerationWorkflow(
                                 }
                                 return@fold
                             }
-                            val requestState = asyncRequestLifecycle.buildSucceededRequestState(
-                                presentation = presentation,
-                                successMessage = "代码草稿已生成。",
-                                completedRemotely = drafts.source == LlmResultSource.REMOTE,
-                                warnings = drafts.warnings,
+                            debugLazy(logger.isDebugEnabled, logger::debug) {
+                                "异步代码草稿生成完成: ${GenerationDiagnostics.summarizeCodeGenerationResult(drafts)}, " +
+                                    "artifactCount=${runtimeResult.artifactSummaries.size}, filesRead=${runtimeResult.finalState.budget.filesRead}, " +
+                                    "stepsUsed=${runtimeResult.finalState.budget.usedSteps}"
+                            }
+                            if (drafts.drafts.isEmpty()) {
+                                val message = drafts.emptyResultMessage()
+                                val requestState = asyncRequestLifecycle.buildFailedRequestState(
+                                    presentation = presentation,
+                                    message = message,
+                                    detailMessageOverride = drafts.emptyResultDetailMessage(),
+                                )
+                                asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
+                                session.mutateBatch {
+                                    apply {
+                                        markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(runtimeResult))
+                                    }
+                                    apply {
+                                        markCodeDraftRequestFailed(message, requestState)
+                                    }
+                                    apply {
+                                        markOperationFeedback(
+                                            OperationFeedbackLevel.ERROR,
+                                            message,
+                                            preserveLastMessageType = true,
+                                        )
+                                    }
+                                }
+                                return@fold
+                            }
+                            val requestState = asyncRequestLifecycle.withRuntimeMetadata(
+                                requestState = asyncRequestLifecycle.buildSucceededRequestState(
+                                    presentation = presentation,
+                                    successMessage = "代码草稿已生成。",
+                                    completedRemotely = drafts.source == LlmResultSource.REMOTE,
+                                    warnings = drafts.warnings,
+                                ),
+                                runtimeState = runtimeResult.finalState,
                             )
                             asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
                             val feedbackLevel = if (requestState.fallbackUsed) {
@@ -439,6 +491,9 @@ internal class GenerationWorkflow(
                                 OperationFeedbackLevel.SUCCESS
                             }
                             session.mutateBatch {
+                                apply {
+                                    markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(runtimeResult))
+                                }
                                 apply {
                                     markGeneratedCodeDrafts(
                                         drafts = drafts.drafts,
@@ -463,6 +518,9 @@ internal class GenerationWorkflow(
                             val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
                             asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
                             session.mutateBatch {
+                                apply {
+                                    markRuntimeArtifactSummaries("codegen", emptyList())
+                                }
                                 apply {
                                     markCodeDraftRequestFailed(message, requestState)
                                 }
@@ -535,9 +593,108 @@ internal class GenerationWorkflow(
             mermaidIssues = payload.snapshot.mermaidIssues,
             diff = payload.diff,
             syncPreviewItems = payload.previewItems,
-            confirmedChanges = payload.snapshot.draftWorkbenchState.draftChanges,
-            sourceContext = payload.sourceContext,
+            confirmedChanges = emptyList(),
+            sourceContext = emptyList(),
         )
+    }
+
+    /**
+     * 统一执行计划 runtime。
+     */
+    private fun executePlanRuntime(
+        payload: PlanningPayload,
+        onPreview: ((String, Boolean) -> Unit)? = null,
+    ): AgentRunResult<GenerationPlan> {
+        val runtimeResult = agentRunCoordinator.run(
+            capability = planCapabilityFactory(
+                PlanCapability.LegacyPlanExecutor { input, _, _ ->
+                    ProjectPathNormalizer.normalizePlan(
+                        planningContextFactory.buildPlanSnapshot(
+                            planningGraph = input.planningPayload.planningGraph,
+                            diff = input.planningPayload.diff,
+                            previewItems = input.planningPayload.previewItems,
+                            snapshot = input.planningPayload.snapshot,
+                            sourceContext = input.planningPayload.sourceContext,
+                            onPreview = onPreview,
+                        ),
+                        project.basePath,
+                    )
+                },
+            ),
+            input = PlanCapabilityInput(payload),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = session::snapshot,
+                artifactStore = artifactStoreProvider(),
+            ),
+        )
+        asyncRequestLifecycle.logRuntimeTrace(logger, runtimeResult.finalState)
+        return runtimeResult
+    }
+
+    /**
+     * 统一执行代码生成 runtime。
+     */
+    private fun executeCodegenRuntime(
+        snapshot: GraphEditorStateService.Snapshot,
+        onPreview: ((String, Boolean) -> Unit)? = null,
+    ): AgentRunResult<CodeGenerationResult> {
+        val runtimeResult = agentRunCoordinator.run(
+            capability = codegenCapabilityFactory(
+                CodegenCapability.LegacyCodegenExecutor { input, _, _ ->
+                    ProjectPathNormalizer.normalizeDraftResult(
+                        codeGenerationService.generateDrafts(
+                            context = input.generationContext,
+                            plan = input.plan,
+                            settings = settingsProvider(),
+                            onPreview = onPreview,
+                        ),
+                        project.basePath,
+                    )
+                },
+            ),
+            input = buildCodegenCapabilityInput(snapshot),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = session::snapshot,
+                artifactStore = artifactStoreProvider(),
+            ),
+        )
+        asyncRequestLifecycle.logRuntimeTrace(logger, runtimeResult.finalState)
+        return runtimeResult
+    }
+
+    private fun buildCodegenCapabilityInput(
+        snapshot: GraphEditorStateService.Snapshot,
+    ): CodegenCapabilityInput {
+        val snapshotPlan = snapshot.generationPlan?.let { rawPlan ->
+            ProjectPathNormalizer.normalizePlan(rawPlan, project.basePath)
+        }
+        val plan = snapshotPlan?.let { normalizedPlan ->
+            artifactStoreProvider()
+                .byType(ArtifactType.PLAN)
+                .filterIsInstance<PlanArtifact>()
+                .lastOrNull { artifact -> artifact.plan == normalizedPlan }
+                ?.plan
+                ?: error("当前实现计划缺少对应的 PlanArtifact，请重新生成实现计划后再生成代码草稿。")
+        }
+        val generationPayload = planningContextFactory.computePlanningPayload(
+            snapshot,
+            generationPlanOverride = plan,
+        )
+        return CodegenCapabilityInput(
+            generationContext = buildGenerationContext(generationPayload),
+            plan = plan,
+        )
+    }
+
+    /**
+     * workflow 只消费 runtime 提供的最小摘要，不重新解析 artifact store。
+     */
+    private fun toRuntimeArtifactSummaries(
+        result: AgentRunResult<*>,
+    ): List<GraphEditorStateService.RuntimeArtifactSummary> {
+        return result.artifactSummaries.map(GraphEditorStateService.RuntimeArtifactSummary::from)
     }
 
     /**
@@ -565,7 +722,49 @@ internal class GenerationWorkflow(
         val failure = GenerationPrerequisiteFailure(
             scene = scene,
             message = "生成${scene}前请先确认至少一条草稿变更。",
-            detailMessage = "当前草稿层为空。先在审计结果中确认候选变更，使草稿层承载已确认的修改目标，再继续生成。",
+            detailMessage = "当前草稿层为空。先在问答结果中确认候选变更，使草稿层承载已确认的修改目标，再继续生成。",
+        )
+        session.mutateBatch {
+            apply {
+                rejectRequest(
+                    failure.message,
+                    GraphEditorStateService.AsyncRequestState.failed(
+                        message = failure.message,
+                        scene = failure.scene,
+                        detailMessage = failure.detailMessage,
+                    ),
+                )
+            }
+            apply {
+                markOperationFeedback(
+                    OperationFeedbackLevel.WARNING,
+                    failure.message,
+                    preserveLastMessageType = true,
+                )
+            }
+        }
+        return failure
+    }
+
+    private fun rejectOrphanedGenerationPlan(
+        snapshot: GraphEditorStateService.Snapshot,
+        scene: String,
+        rejectRequest: GraphEditorStateService.(String, GraphEditorStateService.AsyncRequestState) -> Unit,
+    ): GenerationPrerequisiteFailure? {
+        val snapshotPlan = snapshot.generationPlan?.let { rawPlan ->
+            ProjectPathNormalizer.normalizePlan(rawPlan, project.basePath)
+        } ?: return null
+        val hasPlanArtifact = artifactStoreProvider()
+            .byType(ArtifactType.PLAN)
+            .filterIsInstance<PlanArtifact>()
+            .any { artifact -> artifact.plan == snapshotPlan }
+        if (hasPlanArtifact) {
+            return null
+        }
+        val failure = GenerationPrerequisiteFailure(
+            scene = scene,
+            message = "生成${scene}前请先使用 runtime 重新生成实现计划，当前实现计划缺少对应的 PlanArtifact。",
+            detailMessage = "当前 UI 中存在实现计划，但缺少对应的 PlanArtifact。重新生成实现计划后再继续代码草稿生成，避免脱离 artifact lineage 继续执行。",
         )
         session.mutateBatch {
             apply {

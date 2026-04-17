@@ -6,6 +6,7 @@ import com.charmnight.linkgraph.llm.GraphBeautificationResult
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.llm.runtime.AgentRunArtifactSummary
 import com.charmnight.linkgraph.mermaid.MermaidIssue
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
@@ -988,7 +989,7 @@ class GraphEditorStateService {
         }
     }
 
-    /** 写入审计结果及对应请求状态。 */
+    /** 写入问答结果及对应请求状态。 */
     fun markAuditResult(
         result: GraphPatchResult,
         requestState: AsyncRequestState = AsyncRequestState.succeeded(),
@@ -1002,7 +1003,7 @@ class GraphEditorStateService {
         }
     }
 
-    /** 标记审计请求开始执行。 */
+    /** 标记问答请求开始执行。 */
     fun beginAuditRequest(requestState: AsyncRequestState = AsyncRequestState.running()) {
         mutate {
             it.copy(
@@ -1013,7 +1014,7 @@ class GraphEditorStateService {
         }
     }
 
-    /** 标记审计请求失败。 */
+    /** 标记问答请求失败。 */
     fun markAuditRequestFailed(
         message: String,
         requestState: AsyncRequestState = AsyncRequestState.failed(message),
@@ -1027,7 +1028,7 @@ class GraphEditorStateService {
         }
     }
 
-    /** 更新审计请求的流式预览。 */
+    /** 更新问答请求的流式预览。 */
     fun updateAuditRequestPreview(
         requestId: Long,
         previewText: String,
@@ -1042,6 +1043,21 @@ class GraphEditorStateService {
             currentState.copy(
                 auditRequestState = nextRequestState,
                 lastMessageType = "requestAudit",
+            )
+        }
+    }
+
+    /**
+     * 写入 runtime 产物摘要到 UI 状态。
+     * 这里只保留最小展示字段，避免把 runtime 全量内部状态和完整 artifact 直接暴露给前端。
+     */
+    fun markRuntimeArtifactSummaries(
+        scene: String,
+        summaries: List<RuntimeArtifactSummary>,
+    ) {
+        mutate { currentState ->
+            currentState.copy(
+                runtimeArtifactSummaries = currentState.runtimeArtifactSummaries + (scene to summaries),
             )
         }
     }
@@ -1431,10 +1447,12 @@ class GraphEditorStateService {
         val draftPatchUndoState: DraftPatchUndoState? = null,
         /** 最近一次草稿补丁应用结果。 */
         val lastDraftPatchApplyResult: DraftPatchApplyResult? = null,
-        /** 图审计结果。 */
+        /** 图问答结果。 */
         val auditResult: GraphPatchResult? = null,
-        /** 图审计请求状态。 */
+        /** 图问答请求状态。 */
         val auditRequestState: AsyncRequestState = AsyncRequestState(),
+        /** runtime 产物摘要，按场景最小映射到前端。 */
+        val runtimeArtifactSummaries: Map<String, List<RuntimeArtifactSummary>> = emptyMap(),
         /** diff 审核结果。 */
         val diffReviewResult: GraphPatchResult? = null,
         /** diff 审核请求状态。 */
@@ -1502,6 +1520,33 @@ class GraphEditorStateService {
         /** 最近一次状态消息类型。 */
         val lastMessageType: String? = null,
     )
+
+    /**
+     * runtime 产物到 UI 的最小投影。
+     * 它只承载“前端需要展示什么”，不承载 runtime 如何执行。
+     */
+    data class RuntimeArtifactSummary(
+        /** 产物稳定标识。 */
+        val artifactId: String,
+        /** 产物类型。 */
+        val artifactType: String,
+        /** 产物标题。 */
+        val title: String,
+        /** 产物说明。 */
+        val description: String? = null,
+    ) {
+        companion object {
+            /** 将 runtime 摘要压缩成 UI 可见摘要。 */
+            fun from(summary: AgentRunArtifactSummary): RuntimeArtifactSummary {
+                return RuntimeArtifactSummary(
+                    artifactId = summary.artifactId,
+                    artifactType = summary.artifactType,
+                    title = summary.title,
+                    description = summary.description,
+                )
+            }
+        }
+    }
 
     /** 源码跳转操作在前端展示的状态。 */
     data class SourceNavigationState(

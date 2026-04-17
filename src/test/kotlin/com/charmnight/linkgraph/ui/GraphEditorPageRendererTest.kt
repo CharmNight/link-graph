@@ -88,13 +88,13 @@ class GraphEditorPageRendererTest {
                 ),
             ),
             auditRequestState = GraphEditorStateService.AsyncRequestState.running(
-                statusMessage = "正在等待远程 LLM 审计响应",
+                statusMessage = "正在等待远程 LLM 问答响应",
                 detailMessage = "当前采用完整返回，不是流式输出。",
                 startedAtEpochMillis = 1_710_000_000_000,
                 streaming = false,
             ).copy(
                 requestId = 17,
-                scene = "审计",
+                scene = "问答",
                 executionMode = GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_READY,
                 providerLabel = "OpenAI Compatible",
                 model = "gpt-test",
@@ -106,12 +106,52 @@ class GraphEditorPageRendererTest {
         val json = renderer.bootstrapJson(snapshot)
 
         assertTrue(json.contains("\"requestId\":17"))
-        assertTrue(json.contains("\"scene\":\"审计\""))
+        assertTrue(json.contains("\"scene\":\"问答\""))
         assertTrue(json.contains("\"executionMode\":\"REMOTE_READY\""))
         assertTrue(json.contains("\"providerLabel\":\"OpenAI Compatible\""))
         assertTrue(json.contains("\"model\":\"gpt-test\""))
         assertTrue(json.contains("\"endpointSummary\":\"example.com/v1/chat/completions\""))
         assertTrue(json.contains("\"promptPreviewAvailable\":true"))
+    }
+
+    @Test
+    fun bootstrapJson输出runtimeArtifactSummaries字段() {
+        val renderer = GraphEditorPageRenderer()
+        val snapshot = GraphEditorStateService.Snapshot(
+            visibleGraph = GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:submit-order",
+                        type = NodeType.METHOD,
+                        title = "OrderController.submit",
+                        sourceTag = GraphSourceTag.FACT,
+                    ),
+                ),
+            ),
+            runtimeArtifactSummaries = mapOf(
+                "qa" to listOf(
+                    GraphEditorStateService.RuntimeArtifactSummary(
+                        artifactId = "qa-graph-summary",
+                        artifactType = "GRAPH_SUMMARY",
+                        title = "图摘要",
+                        description = "workingGraph",
+                    ),
+                    GraphEditorStateService.RuntimeArtifactSummary(
+                        artifactId = "qa-conclusion",
+                        artifactType = "QA_CONCLUSION",
+                        title = "问答结论",
+                        description = "已完成问答。",
+                    ),
+                ),
+            ),
+        )
+
+        val json = renderer.bootstrapJson(snapshot)
+
+        assertTrue(json.contains("\"runtimeArtifactSummaries\""))
+        assertTrue(json.contains("\"qa\""))
+        assertTrue(json.contains("\"artifactType\":\"GRAPH_SUMMARY\""))
+        assertTrue(json.contains("\"title\":\"问答结论\""))
     }
 
     @Test
@@ -393,7 +433,7 @@ class GraphEditorPageRendererTest {
                         elementKind = GraphDiffElementKind.NODE,
                         elementId = "note:default-fallback",
                         title = "新增默认兜底节点",
-                        summary = "把审计建议写入草稿层",
+                        summary = "把问答建议写入草稿层",
                         node = GraphNode(
                             id = "note:default-fallback",
                             type = NodeType.CLASS,

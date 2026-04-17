@@ -117,6 +117,7 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
         assertEquals(GraphEditorStateService.AsyncRequestPhase.FAILED, snapshot.generationPlanRequestState.phase)
         assertEquals("实现计划", snapshot.generationPlanRequestState.scene)
         assertTrue(snapshot.generationPlanRequestState.errorMessage?.contains("请先确认至少一条草稿变更") == true)
+        assertTrue(snapshot.generationPlanRequestState.detailMessage?.contains("先在问答结果中确认候选变更") == true)
         assertEquals(GraphEditorStateService.OperationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
     }
 
@@ -137,6 +138,7 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
         assertEquals(GraphEditorStateService.AsyncRequestPhase.FAILED, snapshot.codeDraftRequestState.phase)
         assertEquals("代码草稿", snapshot.codeDraftRequestState.scene)
         assertTrue(snapshot.codeDraftRequestState.errorMessage?.contains("请先确认至少一条草稿变更") == true)
+        assertTrue(snapshot.codeDraftRequestState.detailMessage?.contains("先在问答结果中确认候选变更") == true)
         assertEquals(GraphEditorStateService.OperationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
     }
 

@@ -30,7 +30,7 @@ class CurrentMethodBoundaryMarkerTest {
             methodDisplayName = "OrderFacade.submit",
             boundary = ExtractionBoundary(
                 title = "Kotlin 静态提取边界",
-                reason = "当前方法来自 Kotlin PSI，静态调用链提取暂未完整覆盖，已保留当前方法节点供人工审计。",
+                reason = "当前方法来自 Kotlin PSI，静态调用链提取暂未完整覆盖，已保留当前方法节点供人工核查。",
                 kind = "KOTLIN_PSI_BOUNDARY",
             ),
         )
@@ -45,6 +45,7 @@ class CurrentMethodBoundaryMarkerTest {
         assertEquals(BindingStatus.PARTIALLY_SYNCED, boundaryNode.bindingStatus)
         assertEquals(GraphSourceTag.UNCERTAIN_FACT, boundaryNode.sourceTag)
         assertTrue(boundaryNode.signature?.contains("Kotlin PSI") == true)
+        assertTrue(boundaryNode.doc?.contains("继续问答") == true)
         assertEquals("KOTLIN_PSI_BOUNDARY", boundaryNode.metadata["linkGraph.boundary.kind"])
 
         assertTrue(
@@ -90,7 +91,7 @@ class CurrentMethodBoundaryMarkerTest {
             methodDisplayName = "OrderFacade.submit",
             boundary = ExtractionBoundary(
                 title = "Kotlin 静态提取边界",
-                reason = "当前方法来自 Kotlin PSI，静态调用链提取暂未完整覆盖，已保留当前方法节点供人工审计。",
+                reason = "当前方法来自 Kotlin PSI，静态调用链提取暂未完整覆盖，已保留当前方法节点供人工核查。",
                 kind = "KOTLIN_PSI_BOUNDARY",
             ),
         )

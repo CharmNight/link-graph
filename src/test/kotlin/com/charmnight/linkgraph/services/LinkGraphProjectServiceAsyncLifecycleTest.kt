@@ -84,7 +84,7 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             )
         }
 
-        service.requestAuditAsync("请审计当前链路")
+        service.requestAuditAsync("请围绕当前链路进行问答")
 
         val succeeded = waitForSnapshot { current ->
             current.auditRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
@@ -97,7 +97,7 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
         assertEquals(GraphEditorStateService.AsyncRequestPhase.SUCCEEDED, succeeded.auditRequestState.phase)
         assertEquals(GraphEditorStateService.AsyncRequestPhase.SUCCEEDED, afterTimeoutWindow.auditRequestState.phase)
         assertTrue(afterTimeoutWindow.auditRequestState.errorMessage.isNullOrBlank())
-        assertTrue(afterTimeoutWindow.operationFeedback?.message?.contains("审计完成") == true)
+        assertTrue(afterTimeoutWindow.operationFeedback?.message?.contains("问答完成") == true)
     }
 
     fun testAuditAsyncTimesOutAndStopsBlindWaiting() {
@@ -116,14 +116,14 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             Thread.sleep(600)
             GraphPatchResult(
                 source = LlmResultSource.REMOTE,
-                question = "请审计当前链路",
+                question = "请围绕当前链路进行问答",
                 answer = "远程结果",
                 promptPreview = "prompt",
                 warnings = emptyList(),
             )
         }
 
-        service.requestAuditAsync("请审计当前链路")
+        service.requestAuditAsync("请围绕当前链路进行问答")
 
         val snapshot = waitForSnapshot { current ->
             current.auditRequestState.phase == GraphEditorStateService.AsyncRequestPhase.TIMED_OUT
@@ -160,7 +160,7 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             )
         }
 
-        service.requestAuditAsync("请审计当前链路")
+        service.requestAuditAsync("请围绕当前链路进行问答")
 
         val snapshot = waitForSnapshot { current ->
             current.auditRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
@@ -169,7 +169,7 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
         assertEquals(GraphEditorStateService.AsyncRequestPhase.SUCCEEDED, snapshot.auditRequestState.phase)
         assertEquals(GraphEditorStateService.AsyncRequestExecutionMode.LOCAL_RULE, snapshot.auditRequestState.executionMode)
         assertNotNull(snapshot.auditRequestState.requestId)
-        assertEquals("审计", snapshot.auditRequestState.scene)
+        assertEquals("问答", snapshot.auditRequestState.scene)
         assertTrue(snapshot.auditRequestState.statusMessage?.contains("本地规则") == true)
         assertTrue(snapshot.auditRequestState.detailMessage?.contains("未启用") == true)
         assertEquals(false, snapshot.auditRequestState.fallbackUsed)
@@ -192,11 +192,11 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
                 question = question,
                 answer = "已回退到本地规则分析。",
                 promptPreview = "prompt",
-                warnings = listOf("远程 LLM 审计失败，已回退为本地规则分析：HTTP 503。"),
+                warnings = listOf("远程 LLM 问答失败，已回退为本地规则分析：HTTP 503。"),
             )
         }
 
-        service.requestAuditAsync("请审计当前链路")
+        service.requestAuditAsync("请围绕当前链路进行问答")
 
         val snapshot = waitForSnapshot { current ->
             current.auditRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED

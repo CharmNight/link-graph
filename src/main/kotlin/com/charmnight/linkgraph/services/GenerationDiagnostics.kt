@@ -8,7 +8,7 @@ import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 
 /**
- * 为计划生成、代码草稿和审计确认流程提供稳定的诊断摘要，便于真实运行时快速定位输入输出是否偏离预期。
+ * 为计划生成、代码草稿和问答确认流程提供稳定的诊断摘要，便于真实运行时快速定位输入输出是否偏离预期。
  */
 internal object GenerationDiagnostics {
     fun summarizePlanningPayload(payload: PlanningPayload): String {

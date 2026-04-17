@@ -1,5 +1,9 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.llm.runtime.AgentRunFailureReason
+import com.charmnight.linkgraph.llm.runtime.AgentRunState
+import com.charmnight.linkgraph.llm.runtime.AgentStepRecord
+import com.charmnight.linkgraph.llm.runtime.RunBudget
 import com.charmnight.linkgraph.llm.remoteConnectionOrNull
 import com.charmnight.linkgraph.llm.usesRemoteProvider
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
@@ -12,7 +16,7 @@ import java.net.URI
 import java.util.concurrent.TimeUnit
 
 /**
- * 统一管理审计、diff 问答、生成计划、代码草稿和链路讲解的异步请求生命周期。
+ * 统一管理图问答、diff 问答、生成计划、代码草稿和链路讲解的异步请求生命周期。
  */
 internal class AsyncRequestLifecycleSupport(
     /** 当前项目。 */
@@ -22,7 +26,7 @@ internal class AsyncRequestLifecycleSupport(
     /** 测试环境下的超时覆盖值。 */
     private val timeoutOverrideProvider: () -> Long?,
 ) {
-    /** 图审计请求跟踪器。 */
+    /** 图问答请求跟踪器。 */
     private val auditRequestTracker = AsyncRequestTracker()
     /** diff 审核请求跟踪器。 */
     private val diffReviewRequestTracker = AsyncRequestTracker()
@@ -288,6 +292,40 @@ internal class AsyncRequestLifecycleSupport(
     }
 
     /**
+     * 把 runtime 关键信息追加到异步请求状态。
+     * 这里只暴露 runId、capabilityId 和 failureReason 摘要，不把完整 runtime 内部状态塞进 UI snapshot。
+     */
+    fun withRuntimeMetadata(
+        requestState: GraphEditorStateService.AsyncRequestState,
+        runtimeState: AgentRunState,
+    ): GraphEditorStateService.AsyncRequestState {
+        val runtimeSummary = formatRuntimeDetail(runtimeState)
+        val mergedDetail = listOfNotNull(requestState.detailMessage, runtimeSummary)
+            .joinToString(separator = "\n")
+        return requestState.copy(detailMessage = mergedDetail)
+    }
+
+    fun logRuntimeTrace(
+        logger: Logger,
+        runtimeState: AgentRunState,
+    ) {
+        if (!logger.isDebugEnabled) {
+            return
+        }
+        debugLazy(logger.isDebugEnabled, logger::debug) {
+            buildString {
+                append("runtime trace: ").append(runtimeHeader(runtimeState))
+                append(", ").append(formatBudget(runtimeState.budget))
+            }
+        }
+        runtimeState.stepRecords.forEach { record ->
+            debugLazy(logger.isDebugEnabled, logger::debug) {
+                "runtime step: ${formatStepRecord(record)}"
+            }
+        }
+    }
+
+    /**
      * 构造节流后的流式预览回写器，避免每个 token 都触发整页同步。
      */
     fun createStreamingPreviewUpdater(
@@ -354,6 +392,49 @@ internal class AsyncRequestLifecycleSupport(
                 "executionMode=${state.executionMode}, streaming=${state.streaming}, " +
                 "streamPhase=${state.streamPhase}, fallbackUsed=${state.fallbackUsed}, " +
                 "statusMessage=${state.statusMessage}, detailMessage=${state.detailMessage}"
+        }
+    }
+
+    private fun formatRuntimeDetail(runtimeState: AgentRunState): String {
+        val sections = mutableListOf<String>()
+        sections += runtimeHeader(runtimeState)
+        sections += formatBudget(runtimeState.budget)
+        runtimeState.stepRecords.forEach { record ->
+            sections += formatStepRecord(record)
+        }
+        return sections.joinToString(separator = "\n")
+    }
+
+    private fun runtimeHeader(runtimeState: AgentRunState): String {
+        return buildString {
+            append("runtime runId=").append(runtimeState.runId)
+            append(", capability=").append(runtimeState.capabilityId)
+            runtimeState.failureReason?.let {
+                append(", failureReason=").append(it.name)
+            }
+        }
+    }
+
+    private fun formatBudget(budget: RunBudget): String {
+        return buildString {
+            append("runtime budget steps=").append(budget.usedSteps).append('/').append(budget.maxSteps)
+            append(", files=").append(budget.filesRead).append('/').append(budget.maxFilesRead)
+            append(", snippets=").append(budget.snippetsRead).append('/').append(budget.maxSnippets)
+            append(", lines=").append(budget.totalSnippetLinesRead).append('/').append(budget.maxTotalSnippetLines)
+        }
+    }
+
+    private fun formatStepRecord(record: AgentStepRecord): String {
+        return buildString {
+            append("step[").append(record.stepIndex).append("]")
+            append(" phase=").append(record.phase.name)
+            append(", summary=").append(record.summary)
+            record.toolName?.let { toolName ->
+                append(", tool=").append(toolName)
+            }
+            record.nodeId?.let { nodeId ->
+                append(", nodeId=").append(nodeId)
+            }
         }
     }
 

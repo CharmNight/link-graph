@@ -170,6 +170,10 @@ class LlmPromptFactoryTest {
         assertTrue(auditPrompt.contains("OrderService.place"))
         assertTrue(auditPrompt.contains("相关源码片段"))
         assertTrue(auditPrompt.contains("defaultChannel"))
+        assertTrue(auditPrompt.contains("你正在做链路图问答"))
+        assertTrue(auditPrompt.contains("本轮问答回答"))
+        assertTrue(auditPrompt.contains("\"answer\": \"问答回答\""))
+        assertTrue("本轮审计回答" !in auditPrompt)
         assertTrue(auditPrompt.contains("你的第一优先级是直接回答“用户问题”"))
         assertTrue(auditPrompt.contains("禁止输出与用户问题无关的通用安全、性能、规范性建议"))
         assertTrue(diffPrompt.contains("这些差异意味着什么"))
@@ -218,7 +222,7 @@ class LlmPromptFactoryTest {
                     ),
                 ),
             ),
-            question = "请审计当前范围是否遗漏默认兜底逻辑？",
+            question = "请围绕当前范围进行问答，判断是否遗漏默认兜底逻辑？",
             settings = settings,
         )
         val diffPackage = factory.buildDiffReviewPromptPackage(
@@ -296,7 +300,11 @@ class LlmPromptFactoryTest {
             settings = settings,
         )
 
-        assertTrue(auditPackage.systemPrompt.contains("链路审计"))
+        assertTrue(auditPackage.systemPrompt.contains("链路问答"))
+        assertTrue(auditPackage.systemPrompt.contains("不要绕开问题泛化输出通用问答结论"))
+        assertTrue(auditPackage.userPrompt.contains("链路图问答"))
+        assertTrue(auditPackage.userPrompt.contains("\"answer\": \"问答回答\""))
+        assertTrue("链路审计" !in auditPackage.systemPrompt)
         assertTrue(auditPackage.userPrompt.contains("当前范围边"))
         assertTrue(auditPackage.userPrompt.contains("相关源码片段"))
         assertTrue(auditPackage.userPrompt.contains("defaultChannel"))

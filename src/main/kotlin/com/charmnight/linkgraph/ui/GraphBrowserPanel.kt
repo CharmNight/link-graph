@@ -176,7 +176,7 @@ class GraphBrowserPanel private constructor(
         requestAuditQuery?.addHandler { payload ->
             val request = parseAuditRequestPayload(payload)
             debugLazy(logger.isDebugEnabled, logger::debug) {
-                "收到前端请求：审计, question=${summarizePayloadText(request.question)}, selectedNodeIds=${request.selectedNodeIds}, sourceLeadId=${request.sourceLeadId}"
+                "收到前端请求：问答, question=${summarizePayloadText(request.question)}, selectedNodeIds=${request.selectedNodeIds}, sourceLeadId=${request.sourceLeadId}"
             }
             bridge.dispatch(
                 GraphEditorMessage.RequestAudit(

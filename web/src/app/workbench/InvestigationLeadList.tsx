@@ -120,7 +120,7 @@ export function InvestigationLeadList({
       ) : (
         <div className="workbench-empty-card">
           <strong>当前没有风险线索</strong>
-          <p className="muted">如果证据不足但值得继续追问，审计结果会在这里显示为风险线索。</p>
+          <p className="muted">如果证据不足但值得继续追问，问答结果会在这里显示为风险线索。</p>
         </div>
       )}
     </section>

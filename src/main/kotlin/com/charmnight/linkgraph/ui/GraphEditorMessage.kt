@@ -15,7 +15,7 @@ sealed interface GraphEditorMessage {
      * 标识草稿补丁预览的来源。
      */
     enum class DraftPatchPreviewSource {
-        /** 表示预览来自审计结果。 */
+        /** 表示预览来自问答结果。 */
         AUDIT,
         /** 表示预览来自差异评审。 */
         DIFF_REVIEW,
@@ -107,7 +107,7 @@ sealed interface GraphEditorMessage {
     data object RequestSyncPreview : GraphEditorMessage
 
     /**
-     * 请求执行图审计。
+     * 请求执行图问答。
      */
     data class RequestAudit(
         /** 保存用户问题。 */
@@ -119,7 +119,7 @@ sealed interface GraphEditorMessage {
     ) : GraphEditorMessage
 
     /**
-     * 确认一条审计候选变更。
+     * 确认一条问答候选变更。
      */
     data class ConfirmAuditCandidateChange(
         /** 保存待确认的候选变更标识。 */
@@ -127,7 +127,7 @@ sealed interface GraphEditorMessage {
     ) : GraphEditorMessage
 
     /**
-     * 取消一条已经确认的审计候选变更。
+     * 取消一条已经确认的问答候选变更。
      */
     data class UnconfirmAuditCandidateChange(
         /** 保存待取消确认的候选变更标识。 */

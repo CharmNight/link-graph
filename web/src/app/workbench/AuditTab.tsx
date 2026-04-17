@@ -18,7 +18,7 @@ const DEFAULT_ACTIVE_AUDIT_SECTION: WorkbenchSectionId = "audit.composer";
 
 const AUDIT_SECTION_META: Record<WorkbenchSectionId, { title: string }> = {
   "audit.request-status": { title: "请求状态" },
-  "audit.thread": { title: "审计会话" },
+  "audit.thread": { title: "问答会话" },
   "audit.composer": { title: "继续提问" },
   "audit.candidate-changes": { title: "待确认变更" },
   "audit.investigation-leads": { title: "风险线索" },
@@ -187,13 +187,13 @@ export function AuditTab({
     <section className="workbench-tab audit-tab block overflow-auto m-scrollbar">
       <div className="workbench-tab-head audit-tab-head mb-10px">
         <div className="audit-tab-title">
-          <p className="eyebrow">审计</p>
-          <h2>审计问答</h2>
+          <p className="eyebrow">问答</p>
+          <h2>链路问答</h2>
         </div>
         <span className="workbench-session-label audit-scope-label" title={scopeLabel}>{scopeLabel}</span>
       </div>
 
-      <div className="audit-tab-nav mb-10px" role="tablist" aria-label="审计页面切换">
+      <div className="audit-tab-nav mb-10px" role="tablist" aria-label="问答页面切换">
         {visibleSectionIds.map((sectionId) => (
           <button
             key={sectionId}
@@ -289,7 +289,7 @@ function AuditPagePanel({
     >
       <div className="audit-page-head">
         <div className="audit-page-title">
-          <p className="eyebrow">审计</p>
+          <p className="eyebrow">问答</p>
           <h3>{pageTitle}</h3>
         </div>
         <button type="button" className="ghost-button compact" onClick={onCollapse} aria-label="收起当前页面">
@@ -361,7 +361,7 @@ function AuditPagePanel({
               "workbench-audit-thread",
               !messages.length ? "is-empty" : "",
             ].join(" ").trim()}
-            aria-label="审计会话"
+            aria-label="问答会话"
           >
             <div className="workbench-audit-thread-body">
               <AuditConversation messages={messages} requestState={requestStatus} />
@@ -378,10 +378,10 @@ function AuditPagePanel({
             onMouseDownCapture={onStopComposerBoundaryPropagation}
             onDoubleClickCapture={onStopComposerBoundaryPropagation}
           >
-            <label htmlFor="audit-input" className="sr-only">审计输入框</label>
+            <label htmlFor="audit-input" className="sr-only">问答输入框</label>
             <textarea
               id="audit-input"
-              aria-label="审计输入框"
+              aria-label="问答输入框"
               value={state.questionDraft}
               onChange={(event) => onQuestionDraftChange(event.target.value)}
               placeholder="围绕当前方法、链路或待确认变更继续提问"

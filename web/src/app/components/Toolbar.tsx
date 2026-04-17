@@ -64,7 +64,7 @@ export function Toolbar({
   return (
     <header className="workspace-toolbar">
       <div className="toolbar-heading">
-        <p className="eyebrow">审计画布</p>
+        <p className="eyebrow">问答画布</p>
         <div className="toolbar-title-row compact">
           <h1>链路图画布</h1>
           <p className="toolbar-hint">在代码中右键方法，可直接查看完整链路或追加为节点。</p>

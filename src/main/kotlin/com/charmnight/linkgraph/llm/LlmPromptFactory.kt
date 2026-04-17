@@ -9,7 +9,7 @@ import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.WorkbenchStep
 
 /**
- * 把当前图上下文整理成可审计的提示词。
+ * 把当前图上下文整理成可用于问答的提示词。
  * 即便暂时不接远程模型，这里也保留 promptPreview，便于用户确认输入材料。
  */
 class LlmPromptFactory {
@@ -106,18 +106,18 @@ class LlmPromptFactory {
         return buildGenerationPromptPackage(snapshot, settings).userPrompt
     }
 
-    /** 构造链路审计场景的提示词包。 */
+    /** 构造链路问答场景的提示词包。 */
     fun buildAuditPromptPackage(
         context: GraphAuditContext,
         question: String,
         settings: LinkGraphSettingsState,
         session: AuditConversationSession? = null,
     ): LlmPromptPackage {
-        /** 当前审计范围内的节点。 */
+        /** 当前问答范围内的节点。 */
         val scopeNodes = GraphAuditScopeResolver.resolveScopeNodes(context)
-        /** 当前审计范围内的边。 */
+        /** 当前问答范围内的边。 */
         val scopeEdges = GraphAuditScopeResolver.resolveScopeEdges(context, scopeNodes)
-        /** 当前审计范围标签。 */
+        /** 当前问答范围标签。 */
         val scopeText = if (context.selectedNodeIds.isEmpty()) {
             "整图"
         } else {
@@ -164,11 +164,11 @@ class LlmPromptFactory {
         }.ifBlank { "- 无" }
         /** 面向模型的系统提示词。 */
         val systemPrompt = """
-            你是 IDEA Link Graph 的链路审计助手。
+            你是 IDEA Link Graph 的链路问答助手。
             你的职责是识别业务黑逻辑、默认兜底、运行时边界和设计遗漏，并输出对话回复、待确认候选变更以及风险线索。
-            你的第一优先级是直接回答“用户问题”，不要绕开问题泛化输出通用审计结论。
+            你的第一优先级是直接回答“用户问题”，不要绕开问题泛化输出通用问答结论。
             如果用户问题是在“介绍 / 解释 / 讲解链路”，answer 必须先解释链路本身，不要输出无关风险建议。
-            只有当用户问题明确要求审计、找问题、调整逻辑，或者你发现了与用户问题直接相关且证据充分的缺陷时，才允许输出 candidateChanges；否则 candidateChanges 必须返回 []。
+            只有当用户问题明确要求排查问题、找问题、调整逻辑，或者你发现了与用户问题直接相关且证据充分的缺陷时，才允许输出 candidateChanges；否则 candidateChanges 必须返回 []。
             candidateChanges[*] 必须绑定到 findings 中的 supportingFindingIds；如果没有可追溯 findings，就不要输出这条 candidateChange。
             investigationLeads 用来表达“怀疑点 / 需要继续取证的线索”，它们不能冒充已经确认的变更，也不能写成草稿结论。
             如果证据等级只有 CALLSITE_ONLY 或 NOT_OBSERVED，就不要输出 candidateChanges，改为输出 investigationLeads。
@@ -193,7 +193,7 @@ class LlmPromptFactory {
         """.trimIndent()
         /** 面向模型的用户提示词。 */
         val userPrompt = """
-            你正在做链路图审计。
+            你正在做链路图问答。
             目标模型：${settings.sanitized().model}
             当前范围：$scopeText
             用户问题：$question
@@ -237,10 +237,10 @@ class LlmPromptFactory {
             禁止输出与用户问题无关的通用安全、性能、规范性建议。
             candidateChanges 只允许保留与“用户问题”直接相关、且已经有 DIRECT_SOURCE / DIRECT_GRAPH 支撑的修改建议；如果当前轮只是解释链路或回答事实问题，请返回 []。
             investigationLeads 用来承接证据不足但值得继续追问的线索；它们必须明确写出“已观察到什么、还缺什么、下一轮建议问什么”。
-            请先给出本轮审计回答，再给出 candidateChanges 与 investigationLeads。不要把建议伪装成代码事实，也不要整表重刷已有候选项。
+            请先给出本轮问答回答，再给出 candidateChanges 与 investigationLeads。不要把建议伪装成代码事实，也不要整表重刷已有候选项。
             仅返回 JSON，结构如下：
             {
-              "answer": "审计回答",
+              "answer": "问答回答",
               "findings": [
                 {
                   "id": "稳定ID",
@@ -296,7 +296,7 @@ class LlmPromptFactory {
         )
     }
 
-    /** 返回链路审计场景的用户提示词。 */
+    /** 返回链路问答场景的用户提示词。 */
     fun buildAuditPrompt(
         context: GraphAuditContext,
         question: String,

@@ -187,7 +187,7 @@ class GraphDiffPatchService(
         /** 远程差异分析返回必须遵守的 JSON 结构。 */
         private const val PATCH_RESULT_SCHEMA = """
 {
-  "answer": "审计或差异说明",
+  "answer": "差异说明",
   "findings": [
     {
       "id": "稳定ID",

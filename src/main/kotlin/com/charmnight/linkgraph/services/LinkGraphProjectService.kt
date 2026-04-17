@@ -12,6 +12,8 @@ import com.charmnight.linkgraph.llm.GraphDiffPatchService
 import com.charmnight.linkgraph.llm.GraphGenerationService
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.llm.artifact.AgentArtifactStoreService
+import com.charmnight.linkgraph.llm.artifact.ConfirmedIntentArtifact
 import com.charmnight.linkgraph.llm.remoteConnectionOrNull
 import com.charmnight.linkgraph.llm.usesRemoteProvider
 import com.charmnight.linkgraph.llm.DefaultGraphBeautificationService
@@ -145,7 +147,7 @@ class LinkGraphProjectService(
     @TestOnly
     var testAnalysisOutcomeFactoryOverride: AnalysisOutcomeFactory? = null
 
-    /** 测试环境下替换图审计执行器的钩子。 */
+    /** 测试环境下替换图问答执行器的钩子。 */
     @Volatile
     @TestOnly
     var testAuditExecutorOverride: ((GraphAuditContext, String) -> GraphPatchResult)? = null
@@ -207,7 +209,7 @@ class LinkGraphProjectService(
     private val graphPatchApplyService by lazy { GraphPatchApplyService() }
     /** 图生成服务。 */
     private val graphGenerationService by lazy { GraphGenerationService() }
-    /** 图审计补丁服务。 */
+    /** 图问答补丁服务。 */
     private val graphAuditPatchService by lazy { GraphAuditPatchService() }
     /** 统一草稿层服务。 */
     private val draftWorkbenchService by lazy { DraftWorkbenchService() }
@@ -227,6 +229,10 @@ class LinkGraphProjectService(
             stateService = stateService(),
             onBrowserSyncRequested = project.getService(GraphEditorSyncNotifier::class.java)::requestSync,
         )
+    }
+    /** 跨阶段共享的 runtime artifact store。 */
+    private val artifactStore by lazy(LazyThreadSafetyMode.NONE) {
+        project.getService(AgentArtifactStoreService::class.java).artifactStore
     }
 
     /** 图工作区流程。 */
@@ -271,7 +277,7 @@ class LinkGraphProjectService(
         )
     }
 
-    /** 规划、审计与链路讲解上下文工厂。 */
+    /** 规划、问答与链路讲解上下文工厂。 */
     private val planningContextFactory by lazy(LazyThreadSafetyMode.NONE) {
         PlanningContextFactory(
             graphDiffer = graphDiffer,
@@ -319,10 +325,11 @@ class LinkGraphProjectService(
             settingsProvider = ::effectiveGenerationSettings,
             asyncRequestLifecycle = asyncRequestLifecycle,
             logger = logger,
+            artifactStoreProvider = { artifactStore },
         )
     }
 
-    /** 审计、差异分析与链路讲解流程。 */
+    /** 问答、差异分析与链路讲解流程。 */
     private val reviewWorkflow by lazy(LazyThreadSafetyMode.NONE) {
         ReviewWorkflow(
             project = project,
@@ -336,6 +343,7 @@ class LinkGraphProjectService(
             auditExecutorOverrideProvider = { testAuditExecutorOverride },
             asyncRequestLifecycle = asyncRequestLifecycle,
             logger = logger,
+            artifactStoreProvider = { artifactStore },
         )
     }
 
@@ -516,7 +524,7 @@ class LinkGraphProjectService(
         return draftPatchWorkflow.undoLastDraftPatchApply()
     }
 
-    /** 基于当前工作图发起同步审计。 */
+    /** 基于当前工作图发起同步问答。 */
     fun requestAudit(
         question: String,
         selectedNodeIds: List<String> = emptyList(),
@@ -525,7 +533,7 @@ class LinkGraphProjectService(
         return reviewWorkflow.requestAudit(question, selectedNodeIds, sourceLeadId)
     }
 
-    /** 异步发起链路审计，并把结果和补丁预览回写到前端。 */
+    /** 异步发起链路问答，并把结果和补丁预览回写到前端。 */
     fun requestAuditAsync(
         question: String,
         selectedNodeIds: List<String> = emptyList(),
@@ -534,7 +542,7 @@ class LinkGraphProjectService(
         reviewWorkflow.requestAuditAsync(question, selectedNodeIds, sourceLeadId)
     }
 
-    /** 确认一条审计候选变更并写入统一草稿层。 */
+    /** 确认一条问答候选变更并写入统一草稿层。 */
     fun confirmAuditCandidateChange(changeId: String): DraftWorkbenchEntry? {
         val stateService = stateService()
         val snapshot = stateService.snapshot()
@@ -548,7 +556,7 @@ class LinkGraphProjectService(
             return null
         }
         debugLazy(logger.isDebugEnabled, logger::debug) {
-            "确认审计候选变更: ${GenerationDiagnostics.summarizeCandidateChange(candidate)}"
+            "确认问答候选变更: ${GenerationDiagnostics.summarizeCandidateChange(candidate)}"
         }
         val confirmation = draftWorkbenchService.confirmCandidateChange(snapshot.draftWorkbenchState, candidate)
         val graph = syncDraftEntriesOnGraph(
@@ -606,14 +614,20 @@ class LinkGraphProjectService(
             }
         }
         confirmation.draftChanges.lastOrNull()?.let { entry ->
+            artifactStore.save(
+                ConfirmedIntentArtifact(
+                    artifactId = "confirmed-${entry.entryId}",
+                    entry = entry,
+                ),
+            )
             debugLazy(logger.isDebugEnabled, logger::debug) {
-                "审计候选变更已写入草稿层: ${GenerationDiagnostics.summarizeDraftEntry(entry)}"
+                "问答候选变更已写入草稿层: ${GenerationDiagnostics.summarizeDraftEntry(entry)}"
             }
         }
         return confirmation.draftChanges.lastOrNull()
     }
 
-    /** 撤销一条已经确认的审计候选变更，并恢复待确认状态。 */
+    /** 撤销一条已经确认的问答候选变更，并恢复待确认状态。 */
     fun unconfirmAuditCandidateChange(changeId: String): DraftWorkbenchEntry? {
         val stateService = stateService()
         val snapshot = stateService.snapshot()
@@ -621,7 +635,7 @@ class LinkGraphProjectService(
         val removal = draftWorkbenchService.unconfirmCandidateChange(snapshot.draftWorkbenchState, changeId)
         val removedEntry = removal.removedEntry ?: return null
         debugLazy(logger.isDebugEnabled, logger::debug) {
-            "取消确认审计候选变更: ${GenerationDiagnostics.summarizeDraftEntry(removedEntry)}"
+            "取消确认问答候选变更: ${GenerationDiagnostics.summarizeDraftEntry(removedEntry)}"
         }
         val graph = syncDraftEntriesOnGraph(
             baseGraph = snapshot.workingGraph ?: snapshot.visibleGraph ?: GraphDocument(),
@@ -677,6 +691,7 @@ class LinkGraphProjectService(
                 )
             }
         }
+        artifactStore.remove("confirmed-${removedEntry.entryId}")
         return removedEntry
     }
 

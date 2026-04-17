@@ -6,6 +6,7 @@ export default defineConfig({
   base: "./",
   plugins: [react(), UnoCSS()],
   test: {
+    include: ["src/test/**/*.test.{ts,tsx}"],
     environment: "jsdom",
     globals: true,
     css: true,

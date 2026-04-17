@@ -31,8 +31,8 @@ function fallbackSuccessMessage(scene: string): string {
   switch (scene.trim()) {
     case "链路讲解":
       return "链路讲解完成，已更新步骤列表";
-    case "审计":
-      return "审计完成，已更新结果";
+    case "问答":
+      return "问答完成，已更新结果";
     case "差异问答":
       return "差异问答完成，已更新分析结果";
     case "实现计划":

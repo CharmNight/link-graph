@@ -154,7 +154,7 @@ const IDLE_SOURCE_NAVIGATION_STATE: SourceNavigationState = {
 
 const WORKBENCH_TABS: Array<{ id: WorkbenchTab; label: string }> = [
   { id: "explanation", label: "讲解" },
-  { id: "audit", label: "审计" },
+  { id: "audit", label: "问答" },
   { id: "draft", label: "草稿" },
   { id: "plan", label: "计划" },
   { id: "code", label: "代码" },
@@ -1498,12 +1498,12 @@ export function App() {
 
   function buildDefaultAuditQuestion(targetNodeIds: string[], targetTitle: string | null): string {
     if (targetNodeIds.length === 0) {
-      return "请审计当前整张链路图，指出可能遗漏的业务链路、异常分支、资源依赖和数据约束。";
+      return "请围绕当前整张链路图进行问答，指出可能遗漏的业务链路、异常分支、资源依赖和数据约束。";
     }
     if (targetNodeIds.length === 1) {
-      return `请审计节点“${targetTitle ?? targetNodeIds[0]}”及其直接关联链路，指出可能遗漏的业务链路、异常分支、资源依赖和数据约束。`;
+      return `请围绕节点“${targetTitle ?? targetNodeIds[0]}”及其直接关联链路进行问答，指出可能遗漏的业务链路、异常分支、资源依赖和数据约束。`;
     }
-    return `请审计当前选中的 ${targetNodeIds.length} 个节点及其关联链路，指出可能遗漏的业务链路、异常分支、资源依赖和数据约束。`;
+    return `请围绕当前选中的 ${targetNodeIds.length} 个节点及其关联链路进行问答，指出可能遗漏的业务链路、异常分支、资源依赖和数据约束。`;
   }
 
   function buildAuditScopeLabel(targetNodeIds: string[], targetTitle: string | null): string {
@@ -2066,7 +2066,7 @@ export function App() {
     }
     setAuditQuestionDraft(normalizedQuestion);
     setAuditTargetNodeIds(targetNodeIds);
-    bridgeCommands.submitAsyncBridgeCommand("审计", () => requestAuditAsync(normalizedQuestion, targetNodeIds, auditSourceLeadId), {
+    bridgeCommands.submitAsyncBridgeCommand("问答", () => requestAuditAsync(normalizedQuestion, targetNodeIds, auditSourceLeadId), {
       applyRejectedRequestState: setAuditRequestState,
       applySubmittedRequestState: (requestState) => {
         setAuditRequestState(requestState);
@@ -2077,7 +2077,7 @@ export function App() {
       },
       successFeedback: {
         level: "INFO",
-        message: `已发起审计请求${targetNodeIds.length > 0 ? "，范围为当前节点。" : "，范围为整个链路。"}`,
+        message: `已发起问答请求${targetNodeIds.length > 0 ? "，范围为当前节点。" : "，范围为整个链路。"}`,
       },
     });
   }
@@ -2330,7 +2330,7 @@ export function App() {
   }
 
   useEffect(() => {
-    trackRequestFailure("audit", "链路审计", auditRequestState);
+    trackRequestFailure("audit", "链路问答", auditRequestState);
   }, [
     auditRequestState.phase,
     auditRequestState.statusMessage,
@@ -2817,7 +2817,7 @@ export function App() {
     }
     activateAuditSection("audit.composer");
     setActiveWorkbenchTab("audit");
-    bridgeCommands.submitAsyncBridgeCommand("审计", () => requestAuditAsync(nextQuestion, lead.targetNodeIds, leadId), {
+    bridgeCommands.submitAsyncBridgeCommand("问答", () => requestAuditAsync(nextQuestion, lead.targetNodeIds, leadId), {
       applyRejectedRequestState: setAuditRequestState,
       applySubmittedRequestState: (requestState) => {
         setAuditRequestState(requestState);

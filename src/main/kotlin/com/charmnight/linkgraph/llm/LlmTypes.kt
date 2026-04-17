@@ -33,7 +33,7 @@ data class GenerationContext(
 )
 
 /**
- * 封装图审计场景所需的输入上下文。
+ * 封装图问答场景所需的输入上下文。
  */
 data class GraphAuditContext(
     /** 保存事实图。 */
@@ -42,7 +42,7 @@ data class GraphAuditContext(
     val draftGraph: GraphDocument = GraphDocument(),
     /** 保存当前选中的节点标识列表。 */
     val selectedNodeIds: List<String> = emptyList(),
-    /** 保存审计时可直接送入模型的源码片段。 */
+    /** 保存问答时可直接送入模型的源码片段。 */
     val sourceContext: List<SourceSnippetContext> = emptyList(),
     /** 保存本轮实际收集到的源码证据轨迹。 */
     val evidenceTrace: List<EvidenceTraceEntry> = emptyList(),
@@ -101,7 +101,7 @@ data class SourceSnippetContext(
 )
 
 /**
- * 记录一条审计取证轨迹。
+ * 记录一条问答取证轨迹。
  */
 data class EvidenceTraceEntry(
     /** 保存关联节点标识。 */
@@ -309,7 +309,7 @@ data class GraphPatchResult(
     val sourceContext: List<SourceSnippetContext> = emptyList(),
     /** 保存本轮实际使用的取证轨迹。 */
     val evidenceTrace: List<EvidenceTraceEntry> = emptyList(),
-    /** 保存当前审计会话状态。 */
+    /** 保存当前问答会话状态。 */
     val auditSession: AuditConversationSession? = null,
     /** 保存警告列表。 */
     val warnings: List<String> = emptyList(),

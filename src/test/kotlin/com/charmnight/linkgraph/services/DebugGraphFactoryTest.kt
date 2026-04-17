@@ -21,6 +21,8 @@ class DebugGraphFactoryTest {
             "com.example.audit.DataSourceAspect.around(org.aspectj.lang.ProceedingJoinPoint):java.lang.Object",
             definition.anchorSignature,
         )
+        assertTrue(definition.graph.nodes.any { node -> node.doc?.contains("重点核对") == true })
+        assertTrue(definition.graph.nodes.any { node -> node.doc?.contains("问答流水") == true })
     }
 
     @Test

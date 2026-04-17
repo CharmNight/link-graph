@@ -760,6 +760,12 @@ class InteractiveGraphProjectorTest {
             },
             "大图默认投影应保留可继续展开的摘要节点",
         )
+        assertTrue(
+            projection.visibleGraph.nodes.any { node ->
+                node.type == NodeType.UNCERTAIN_LINK && node.doc?.contains("继续问答") == true
+            },
+            "折叠摘要节点文案应与问答口径保持一致",
+        )
     }
 
     private fun methodNode(id: String, title: String) = GraphNode(

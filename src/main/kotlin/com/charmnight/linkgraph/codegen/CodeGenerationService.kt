@@ -90,7 +90,7 @@ data class GeneratedCodeDraftWriteReport(
 
 /**
  * 基于当前链路图、diff 与 generation plan 生成代码草案。
- * 当前优先尝试真实远程 LLM 生成，失败时回退到本地可审计模板，避免链路中断。
+ * 当前优先尝试真实远程 LLM 生成，失败时回退到本地可回溯模板，避免链路中断。
  */
 class CodeGenerationService(
     /** 负责构造生成提示词的工厂。 */

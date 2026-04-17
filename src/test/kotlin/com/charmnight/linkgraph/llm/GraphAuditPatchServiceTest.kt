@@ -53,7 +53,7 @@ class GraphAuditPatchServiceTest {
                     ),
                 ),
             ),
-            question = "请审计当前范围：这段链路是否遗漏了默认兜底逻辑？",
+            question = "请围绕当前范围进行问答：这段链路是否遗漏了默认兜底逻辑？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.MOCK.name,
@@ -79,6 +79,7 @@ class GraphAuditPatchServiceTest {
         )
         assertEquals(1, result.sourceContext.size)
         assertEquals(1, result.evidenceTrace.size)
+        assertEquals("本轮问答直接附带的源码片段", result.evidenceTrace.first().reason)
         assertNotNull(result.auditSession)
         assertEquals(2, result.auditSession.messages.size)
         assertEquals(AuditMessageRole.USER, result.auditSession.messages.first().role)
@@ -136,7 +137,7 @@ class GraphAuditPatchServiceTest {
                 return LlmResponse(
                     content = """
                         {
-                          "answer": "远程审计建议补一个默认兜底说明节点。",
+                          "answer": "远程问答建议补一个默认兜底说明节点。",
                           "findings": [
                             {
                               "id": "fallback-missing",
@@ -159,7 +160,7 @@ class GraphAuditPatchServiceTest {
                               "beforeState": "当前没有默认兜底说明",
                               "afterState": "补充说明这里只缺观测，不是已证实代码事实",
                               "reason": "当前没有直接观察到默认兜底分支。",
-                              "impactSummary": "会影响这条审计建议的真实性边界。",
+                              "impactSummary": "会影响这条问答建议的真实性边界。",
                               "supportingFindingIds": ["fallback-missing"]
                             }
                           ],
@@ -560,7 +561,7 @@ class GraphAuditPatchServiceTest {
                     ),
                 ),
             ),
-            question = "请审计这里的条件判断是否有误？",
+            question = "请围绕这里的条件判断进行问答，判断是否有误？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
@@ -593,10 +594,10 @@ class GraphAuditPatchServiceTest {
                     LlmResponse(
                         content = """
                             {
-                              "answer": "远程审计建议补一个默认兜底说明节点。",
+                              "answer": "远程问答建议补一个默认兜底说明节点。",
                               "warnings": [],
                               "patch": {
-                                "summary": "远程审计草稿",
+                                "summary": "远程问答草稿",
                                 "operations": [
                                   {
                                     "id": "remote-audit-add-node",
@@ -640,7 +641,7 @@ class GraphAuditPatchServiceTest {
                     ),
                 ),
             ),
-            question = "请审计整图是否遗漏默认兜底逻辑？",
+            question = "请围绕整图进行问答，判断是否遗漏默认兜底逻辑？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
@@ -658,6 +659,88 @@ class GraphAuditPatchServiceTest {
     }
 
     @Test
+    fun derivesQuestionScopedCandidateReasonFromRemotePatchFallback() {
+        val gateway = object : LlmGateway {
+            override fun generate(request: LlmRequest): LlmResponse {
+                return LlmResponse(
+                    content = """
+                        {
+                          "answer": "远程问答建议补一个下载路径说明。",
+                          "findings": [
+                            {
+                              "id": "download-direct-source",
+                              "claim": "当前源码里直接能看到下载路径处理逻辑。",
+                              "evidenceLevel": "DIRECT_SOURCE",
+                              "references": [
+                                {
+                                  "nodeId": "method:file-download",
+                                  "filePath": "src/main/java/com/example/CommonController.java",
+                                  "startLine": 42,
+                                  "endLine": 88
+                                }
+                              ]
+                            }
+                          ],
+                          "warnings": [],
+                          "patch": {
+                            "summary": "远程问答草稿",
+                            "operations": [
+                              {
+                                "id": "remote-question-add-doc",
+                                "action": "ADD_NODE",
+                                "elementKind": "NODE",
+                                "elementId": "doc:download-path-note",
+                                "title": "补充下载路径说明",
+                                "summary": "说明当前下载路径拼接约束",
+                                "node": {
+                                  "id": "doc:download-path-note",
+                                  "type": "DOC_PAGE",
+                                  "title": "下载路径说明",
+                                  "doc": "需要补充下载路径处理说明。",
+                                  "sourceTag": "DRAFT_AI"
+                                }
+                              }
+                            ],
+                            "addedNodeIds": ["doc:download-path-note"],
+                            "removedNodeIds": [],
+                            "addedEdgeIds": [],
+                            "removedEdgeIds": []
+                          }
+                        }
+                    """.trimIndent(),
+                    model = request.model,
+                )
+            }
+        }
+
+        val result = GraphAuditPatchService(gateway = gateway).audit(
+            context = GraphAuditContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:file-download",
+                            type = NodeType.METHOD,
+                            title = "CommonController.fileDownload",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                    ),
+                ),
+            ),
+            question = "请判断这里是否需要补充下载路径说明？",
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                endpoint = "http://localhost:8080/v1",
+                apiKey = "token",
+                model = "gpt-test",
+            ),
+        )
+
+        assertEquals(1, result.candidateChanges.size)
+        assertEquals("由远程问答建议生成。", result.candidateChanges.single().reason)
+    }
+
+    @Test
     fun retriesOnceWhenRemoteAuditRequestTimesOut() {
         var callCount = 0
         val result = GraphAuditPatchService(
@@ -670,10 +753,10 @@ class GraphAuditPatchServiceTest {
                     return LlmResponse(
                         content = """
                             {
-                              "answer": "远程审计建议补一个默认兜底说明节点。",
+                              "answer": "远程问答建议补一个默认兜底说明节点。",
                               "warnings": [],
                               "patch": {
-                                "summary": "远程审计草稿",
+                                "summary": "远程问答草稿",
                                 "operations": [
                                   {
                                     "id": "remote-audit-add-node",
@@ -715,7 +798,7 @@ class GraphAuditPatchServiceTest {
                     ),
                 ),
             ),
-            question = "请审计整图是否遗漏默认兜底逻辑？",
+            question = "请围绕整图进行问答，判断是否遗漏默认兜底逻辑？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
@@ -754,7 +837,7 @@ class GraphAuditPatchServiceTest {
                     ),
                 ),
             ),
-            question = "请审计整图是否遗漏默认兜底逻辑？",
+            question = "请围绕整图进行问答，判断是否遗漏默认兜底逻辑？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
@@ -791,7 +874,7 @@ class GraphAuditPatchServiceTest {
                     ),
                 ),
             ),
-            question = "请审计整图是否遗漏默认兜底逻辑？",
+            question = "请围绕整图进行问答，判断是否遗漏默认兜底逻辑？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
@@ -802,7 +885,7 @@ class GraphAuditPatchServiceTest {
         )
 
         assertEquals(LlmResultSource.MOCK, result.source)
-        assertTrue(result.warnings.any { it.contains("远程 LLM 审计失败") })
+        assertTrue(result.warnings.any { it.contains("远程 LLM 问答失败") })
         assertTrue(result.warnings.any { it.contains("model_not_found") })
     }
 
@@ -821,7 +904,7 @@ class GraphAuditPatchServiceTest {
                     ),
                 ),
             ),
-            question = "请审计整图。",
+            question = "请围绕整图进行问答。",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
@@ -870,7 +953,7 @@ class GraphAuditPatchServiceTest {
                 ),
                 selectedNodeIds = listOf(manualNode.id),
             ),
-            question = "请围绕这个手工补充节点继续审计并补全链路。",
+            question = "请围绕这个手工补充节点继续问答并补全链路。",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.MOCK.name,

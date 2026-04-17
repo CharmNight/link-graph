@@ -70,7 +70,7 @@ function resourceNodeActions(args: {
     },
     {
       id: "audit-node",
-      label: "审计当前节点",
+      label: "问答当前节点",
       onSelect: () => {
         args.onRequestAudit(args.nodeId);
         args.onClose();
@@ -78,7 +78,7 @@ function resourceNodeActions(args: {
     },
     {
       id: "set-audit-anchor",
-      label: "设为审计范围起点",
+      label: "设为问答范围起点",
       onSelect: () => {
         args.onOpenAudit(args.nodeId);
         args.onClose();

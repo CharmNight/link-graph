@@ -111,7 +111,7 @@ export function DraftTab({
         <div>
           <p className="eyebrow">草稿</p>
           <h2>统一业务真相层</h2>
-          <p className="muted">默认看修改后，可一键切换前后对比；刚确认的审计变更会直接出现在这里。</p>
+          <p className="muted">默认看修改后，可一键切换前后对比；刚确认的问答变更会直接出现在这里。</p>
         </div>
         <div className="workbench-draft-head-actions flex-col md:flex-row shrink-0">
           <span className="workbench-compare-mode">{compareModeLabel}</span>

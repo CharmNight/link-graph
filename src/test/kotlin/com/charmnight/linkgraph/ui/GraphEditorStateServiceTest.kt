@@ -814,7 +814,7 @@ class GraphEditorStateServiceTest {
         service.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
-                question = "请审计当前链路",
+                question = "请围绕当前链路进行问答",
                 answer = "当前链路缺少兜底说明。",
                 promptPreview = "audit prompt",
             ),

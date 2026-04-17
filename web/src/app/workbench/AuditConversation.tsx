@@ -295,8 +295,8 @@ export function AuditConversation({ messages, requestState = null }: AuditConver
           {requestRunning ? (
             <>
               <p>
-                <strong>正在接收审计回答。</strong>
-                流式内容会先在“请求状态”里持续更新，完成后会落到审计会话中。
+                <strong>正在接收问答回答。</strong>
+                流式内容会先在“请求状态”里持续更新，完成后会落到问答会话中。
               </p>
               {requestPreview ? (
                 <pre className="request-state-preview workbench-chat-pending-preview">{requestPreview}</pre>
@@ -304,7 +304,7 @@ export function AuditConversation({ messages, requestState = null }: AuditConver
             </>
           ) : (
             <p>
-              <strong>当前还没有审计消息。</strong>
+              <strong>当前还没有问答消息。</strong>
               可先输入你的问题，或者围绕当前范围继续追问。
             </p>
           )}
@@ -316,7 +316,7 @@ export function AuditConversation({ messages, requestState = null }: AuditConver
             className={message.role === "USER" ? "workbench-chat-message user" : "workbench-chat-message assistant"}
           >
             <div className="workbench-chat-message-head">
-              <span className="workbench-chat-role">{message.role === "USER" ? "你" : "审计助手"}</span>
+              <span className="workbench-chat-role">{message.role === "USER" ? "你" : "问答助手"}</span>
               {message.role === "ASSISTANT" ? <span className="workbench-chat-tag">结构化回答</span> : null}
             </div>
             <div className="workbench-chat-message-body">

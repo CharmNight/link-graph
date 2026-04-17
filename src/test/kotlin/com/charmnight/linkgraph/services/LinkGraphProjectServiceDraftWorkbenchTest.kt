@@ -6,6 +6,8 @@ import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.llm.ResultEvidenceFinding
 import com.charmnight.linkgraph.llm.ResultEvidenceLevel
 import com.charmnight.linkgraph.llm.ResultEvidenceReference
+import com.charmnight.linkgraph.llm.artifact.AgentArtifactStoreService
+import com.charmnight.linkgraph.llm.artifact.ArtifactType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
@@ -217,6 +219,64 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         assertNull(snapshot.workingGraph?.nodes?.firstOrNull { it.id == "draft-entry:draft-change-upload-condition" })
     }
 
+    fun testConfirmAndUnconfirmCandidateSyncConfirmedIntentArtifactStore() {
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        stateService.loadGraph(
+            GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "flow-action:upload-condition",
+                        type = NodeType.FLOW_ACTION,
+                        title = "上传条件判断",
+                        sourceTag = GraphSourceTag.FACT,
+                    ),
+                ),
+            ),
+            "currentMethod",
+        )
+        stateService.markAuditResult(
+            GraphPatchResult(
+                source = LlmResultSource.MOCK,
+                question = "请确认这条逻辑调整",
+                answer = "建议修改条件判断。",
+                promptPreview = "prompt",
+                candidateChanges = listOf(
+                    CandidateDraftChange(
+                        changeId = "change-upload-condition",
+                        status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+                        title = "修改上传条件判断",
+                        targetNodeIds = listOf("flow-action:upload-condition"),
+                        reason = "原条件错误。",
+                        evidence = listOf(
+                            ResultEvidenceFinding(
+                                id = "finding-upload-condition",
+                                claim = "当前源码里直接能看到上传条件判断。",
+                                evidenceLevel = ResultEvidenceLevel.DIRECT_SOURCE,
+                                references = listOf(ResultEvidenceReference(nodeId = "flow-action:upload-condition")),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val service = project.getService(LinkGraphProjectService::class.java)
+        val artifactStore = project.getService(AgentArtifactStoreService::class.java).artifactStore
+
+        service.confirmAuditCandidateChange("change-upload-condition")
+
+        assertTrue(
+            artifactStore.byType(ArtifactType.CONFIRMED_INTENT)
+                .any { artifact -> artifact.artifactId == "confirmed-draft-change-upload-condition" },
+        )
+
+        service.unconfirmAuditCandidateChange("change-upload-condition")
+
+        assertTrue(
+            artifactStore.byType(ArtifactType.CONFIRMED_INTENT)
+                .none { artifact -> artifact.artifactId == "confirmed-draft-change-upload-condition" },
+        )
+    }
+
     fun testConfirmAuditCandidateChangeRejectsWeakEvidenceSuggestions() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val baseGraph = GraphDocument(
@@ -245,7 +305,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
                         beforeState = "当前图中未确认上传工具内部路径校验",
                         afterState = "补充说明这里只是调用点，需继续核对被调实现",
                         reason = "当前只有调用点证据。",
-                        impactSummary = "会影响这条审计建议是否可直接进入草稿。",
+                        impactSummary = "会影响这条问答建议是否可直接进入草稿。",
                         evidence = listOf(
                             ResultEvidenceFinding(
                                 id = "finding-callsite-only",
