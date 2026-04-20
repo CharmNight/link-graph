@@ -51,7 +51,9 @@ vi.mock("@xyflow/react", () => ({
 }));
 
 vi.mock("../../../../app/components/graph/nodes/FlowchartNodeCard", () => ({
-  FlowchartNodeCard: () => <div data-testid="flowchart-node-card">flowchart-node</div>,
+  FlowchartNodeCard: ({ draftCompareStatus }: { draftCompareStatus?: string }) => (
+    <div data-testid="flowchart-node-card" data-compare-status={draftCompareStatus ?? ""}>flowchart-node</div>
+  ),
 }));
 
 function decisionNode(): LinkGraphNode {
@@ -757,7 +759,7 @@ describe("buildFlowchartNodes", () => {
     expect(builtEdges.find((edge) => edge.id === "edge:delete-false")?.sourceHandle).toBe("source-bottom");
   });
 
-  it("keeps the semantic false fallthrough on the bottom merge lane even when a manual design link adds a third outgoing branch", () => {
+  it("treats a manual decision link as a real third outgoing branch instead of preserving the old two-branch fallthrough heuristic", () => {
     const decision: LinkGraphNode = {
       ...decisionNode(),
       position: { x: 420, y: 240 },
@@ -819,8 +821,8 @@ describe("buildFlowchartNodes", () => {
     });
 
     expect(builtEdges.find((edge) => edge.id === "edge:delete-true")?.sourceHandle).toBe("source-right");
-    expect(builtEdges.find((edge) => edge.id === "edge:delete-false")?.sourceHandle).toBe("source-bottom");
-    expect(builtEdges.find((edge) => edge.id === "edge:delete-false")?.targetHandle).toBe("target-top");
+    expect(builtEdges.find((edge) => edge.id === "edge:delete-false")?.sourceHandle).toBe("source-right");
+    expect(builtEdges.find((edge) => edge.id === "edge:delete-false")?.targetHandle).toBe("target-left-0");
     expect(builtEdges.find((edge) => edge.id === "design-link:delete-bypass")?.sourceHandle).toBe("source-right");
   });
 
@@ -1247,5 +1249,82 @@ describe("buildFlowchartNodes", () => {
 
     expect(builtNodes.find((node) => node.id === "method:anchor")?.className ?? "").toContain("is-explanation-focus");
     expect(builtNodes.find((node) => node.id === "action:guard")?.className ?? "").toContain("is-draft-change");
+  });
+
+  it("maps collapsed guard aliases back to the retained readable node", () => {
+    const builtNodes = buildFlowchartNodes({
+      nodes: [
+        {
+          ...methodNode("scope:guard", "if (!allowed)"),
+          type: "FLOW_SCOPE",
+          metadata: {
+            "flowchart.kind": "DECISION",
+            "flowchart.projectedFromNodeIds": "action:guard,invoke:check-allow-download",
+          },
+        },
+      ],
+      edges: [],
+      selectedNodeId: "scope:guard",
+      draftChangedNodeIds: ["action:guard"],
+      draftCompareNodeStatuses: {
+        "invoke:check-allow-download": "MODIFIED",
+      },
+      nodeSizeRegistry: createNodeSizeRegistry(),
+    });
+
+    expect(builtNodes[0]?.className ?? "").toContain("is-draft-change");
+    expect(builtNodes[0]?.className ?? "").toContain("is-draft-compare-modified");
+    expect(builtNodes[0]?.data.draftCompareStatus).toBe("MODIFIED");
+  });
+
+  it("marks flowchart nodes and edges with draft compare annotations when single-graph compare is active", () => {
+    const builtNodes = buildFlowchartNodes({
+      nodes: [
+        {
+          ...methodNode("method:anchor", "CommonController.fileDownload"),
+          metadata: { "flowchart.kind": "ENTRY" },
+        },
+      ],
+      edges: [],
+      selectedNodeId: "method:anchor",
+      draftCompareNodeStatuses: {
+        "method:anchor": "MODIFIED",
+      },
+      nodeSizeRegistry: createNodeSizeRegistry(),
+    });
+    const builtEdges = buildFlowchartEdges({
+      edges: [
+        {
+          id: "edge:anchor->guard",
+          type: "CONTROL_FLOW",
+          source: "method:anchor",
+          target: "action:guard",
+        },
+      ],
+      nodeIndex: new Map([
+        [
+          "method:anchor",
+          {
+            ...methodNode("method:anchor", "CommonController.fileDownload"),
+            metadata: { "flowchart.kind": "ENTRY" },
+          },
+        ],
+        [
+          "action:guard",
+          {
+            ...methodNode("action:guard", "validate()"),
+            type: "FLOW_ACTION",
+            metadata: { "flowchart.kind": "PROCESS" },
+          },
+        ],
+      ]),
+      draftCompareEdgeStatuses: {
+        "edge:anchor->guard": "MODIFIED",
+      },
+    });
+
+    expect(builtNodes[0]?.className ?? "").toContain("is-draft-compare-modified");
+    expect(builtNodes[0]?.data.draftCompareStatus).toBe("MODIFIED");
+    expect(builtEdges[0]?.className ?? "").toContain("is-draft-compare-modified");
   });
 });

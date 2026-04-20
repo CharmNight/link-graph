@@ -14,8 +14,10 @@ class MermaidImporterTest {
     fun importsMethodAndNonMethodNodesWithTypedEdges() {
         val mermaid = """
             graph TD
-            M1["METHOD|OrderService.place(java.lang.String):void|signature=OrderService.place(java.lang.String):void|location=src/main/java/com/example/OrderService.java:12|inputs=java.lang.String,com.example.OrderRequest|outputs=com.example.OrderResult|doc=Places an order."]
-            H1["HTTP_ENDPOINT|POST /api/orders|path=/api/orders"]
+            %% LG_NODE M1|nodeType=METHOD|title=OrderService.place(java.lang.String):void|signature=OrderService.place(java.lang.String):void|location=src/main/java/com/example/OrderService.java:12|inputs=java.lang.String,com.example.OrderRequest|outputs=com.example.OrderResult|doc=Places an order.
+            %% LG_NODE H1|nodeType=HTTP_ENDPOINT|title=POST /api/orders|path=/api/orders
+            M1["OrderService.place"]
+            H1["POST /api/orders"]
             M1 -- ROUTES_TO --> H1
         """.trimIndent()
 
@@ -122,7 +124,7 @@ class MermaidImporterTest {
     }
 
     @Test
-    fun stillImportsLegacyTypePrefixedLabelsWithoutMetadataTitle() {
+    fun rejectsTypePrefixedNodeBodiesWithoutCommentMetadata() {
         val mermaid = """
             graph TD
             M1["METHOD|OrderService.place"]
@@ -130,18 +132,21 @@ class MermaidImporterTest {
 
         val result = MermaidImporter().import(mermaid)
 
-        assertTrue(result.issues.isEmpty(), "Unexpected issues: ${result.issues}")
+        assertEquals(1, result.issues.size)
+        assertEquals("invalid-node-body", result.issues.single().code)
         val method = result.document.nodes.single()
-        assertEquals(NodeType.METHOD, method.type)
-        assertEquals("OrderService.place", method.title)
+        assertEquals(NodeType.UNCERTAIN_LINK, method.type)
+        assertEquals("M1", method.title)
     }
 
     @Test
     fun acceptsFlowchartHeaderAsGraphDeclaration() {
         val mermaid = """
             flowchart TD
-            M1["METHOD|OrderService.place"]
-            H1["HTTP_ENDPOINT|POST /api/orders|path=/api/orders"]
+            %% LG_NODE M1|nodeType=METHOD|title=OrderService.place
+            %% LG_NODE H1|nodeType=HTTP_ENDPOINT|title=POST /api/orders|path=/api/orders
+            M1["OrderService.place"]
+            H1["POST /api/orders"]
             M1 -- ROUTES_TO --> H1
         """.trimIndent()
 

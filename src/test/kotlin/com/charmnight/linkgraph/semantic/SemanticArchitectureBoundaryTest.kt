@@ -72,6 +72,15 @@ class SemanticArchitectureBoundaryTest {
         )
     }
 
+    @Test
+    fun legacyExtract生产代码目录必须被彻底移除() {
+        val legacyExtractDirectory = projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/extract")
+        assertTrue(
+            !Files.exists(legacyExtractDirectory),
+            "legacy extract 生产代码目录仍存在: ${projectRelativePath(legacyExtractDirectory)}",
+        )
+    }
+
     private fun scanForbiddenImports(
         relativeDirectory: String,
         forbiddenPatterns: List<Regex>,

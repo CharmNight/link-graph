@@ -11,17 +11,23 @@ import {
 } from "@xyflow/react";
 import { nodeCardWidth } from "../../graphNodeSizing";
 import type { NodeMeasuredSize, NodeSizeRegistry } from "../../graph/nodeSizeRegistry";
-import type { LinkGraphEdge, LinkGraphNode } from "../../types";
+import type { DraftCompareStatus, LinkGraphEdge, LinkGraphNode } from "../../types";
 import { edgeTypeLabel } from "../../labels";
 import { ResourceRelationNodeCard } from "../../components/graph/nodes/ResourceRelationNodeCard";
 import { canEditNodeLayout } from "../../layoutEditability";
 import type { RoutedEdgeData } from "../../reactflow/RoutedEdge";
 import { resolveGraphNodeHighlightClassName } from "../graphNodeHighlights";
+import {
+  draftCompareEdgeClassName,
+  draftCompareEdgeStyle,
+  draftCompareMarkerColor,
+} from "../draftComparePresentation";
 
 interface ResourceRelationNodeData {
   node: LinkGraphNode;
   explanationFocused?: boolean;
   draftChanged?: boolean;
+  draftCompareStatus?: DraftCompareStatus;
   onMeasure?: (size: NodeMeasuredSize) => void;
 }
 
@@ -30,11 +36,13 @@ interface BuildResourceRelationNodesOptions {
   selectedNodeId: string | null;
   explanationFocusNodeId?: string | null;
   draftChangedNodeIds?: string[];
+  draftCompareNodeStatuses?: Record<string, DraftCompareStatus>;
   nodeSizeRegistry: NodeSizeRegistry;
 }
 
 interface BuildResourceRelationEdgesOptions {
   edges: LinkGraphEdge[];
+  draftCompareEdgeStatuses?: Record<string, DraftCompareStatus>;
 }
 
 const RESOURCE_HANDLE_STYLE_BASE: CSSProperties = {
@@ -73,6 +81,7 @@ function ResourceRelationReactNode({ id, data, selected, isConnectable }: NodePr
         selected={selected}
         explanationFocused={data.explanationFocused}
         draftChanged={data.draftChanged}
+        draftCompareStatus={data.draftCompareStatus}
         onMeasure={data.onMeasure}
       />
     </div>
@@ -117,6 +126,7 @@ export function buildResourceRelationNodes({
   selectedNodeId,
   explanationFocusNodeId = null,
   draftChangedNodeIds = [],
+  draftCompareNodeStatuses = {},
   nodeSizeRegistry,
 }: BuildResourceRelationNodesOptions): Array<Node<ResourceRelationNodeData>> {
   const draftChangedNodeIdSet = new Set(draftChangedNodeIds);
@@ -127,6 +137,7 @@ export function buildResourceRelationNodes({
       nodeId: node.id,
       explanationFocusNodeId,
       draftChangedNodeIdSet,
+      draftCompareStatus: draftCompareNodeStatuses[node.id],
     }) || undefined,
     selected: selectedNodeId === node.id,
     draggable: canEditNodeLayout(node),
@@ -137,6 +148,7 @@ export function buildResourceRelationNodes({
       node,
       explanationFocused: explanationFocusNodeId === node.id,
       draftChanged: draftChangedNodeIdSet.has(node.id),
+      draftCompareStatus: draftCompareNodeStatuses[node.id],
       onMeasure: (size) => nodeSizeRegistry.set(node.id, size),
     },
     style: resourceNodeStyle(node),
@@ -145,6 +157,7 @@ export function buildResourceRelationNodes({
 
 export function buildResourceRelationEdges({
   edges,
+  draftCompareEdgeStatuses = {},
 }: BuildResourceRelationEdgesOptions): Array<Edge<RoutedEdgeData>> {
   return edges.map((edge) => ({
     id: edge.id,
@@ -152,16 +165,16 @@ export function buildResourceRelationEdges({
     target: edge.target,
     label: resourceEdgeLabel(edge),
     type: "routedEdge",
-    className: "edge-resource-relation",
+    className: draftCompareEdgeClassName("edge-resource-relation", draftCompareEdgeStatuses[edge.id]),
     data: {
       route: edge.route,
     },
-    style: resourceEdgeStyle(),
+    style: draftCompareEdgeStyle(resourceEdgeStyle(), draftCompareEdgeStatuses[edge.id]),
     markerEnd: {
       type: MarkerType.ArrowClosed,
       width: 20,
       height: 20,
-      color: "#5f5a53",
+      color: draftCompareMarkerColor("#5f5a53", draftCompareEdgeStatuses[edge.id]),
     },
   }));
 }

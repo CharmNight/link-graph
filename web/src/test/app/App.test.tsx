@@ -183,14 +183,12 @@ function bootstrapStateFixture(): LinkGraphBootstrapState {
       findings: [],
       candidateChanges: [candidate],
       newCandidateChanges: [candidate],
-      investigationLeads: [],
-      newInvestigationLeads: [],
+      investigationThreads: [],
       auditSession: {
         sessionId: "audit-method-submit",
         scopeKey: "method:submit-order",
         focusTargetId: candidate.changeId,
         candidateChanges: [candidate],
-        investigationLeads: [],
         messages: [
           {
             messageId: "audit-user-1",
@@ -292,8 +290,10 @@ describe("App", () => {
       showDiffMode: vi.fn(),
       requestSyncPreview: vi.fn(),
       requestAudit: vi.fn(),
+      retryLastAuditRequest: vi.fn(),
       confirmAuditCandidateChange: vi.fn(),
       unconfirmAuditCandidateChange: vi.fn(),
+      resolveInvestigationThread: vi.fn(),
       requestDiffReview: vi.fn(),
       requestGraphBeautification: vi.fn(),
       applyDraftPatchPreview: vi.fn(),
@@ -319,14 +319,14 @@ describe("App", () => {
     window.linkGraphBridge = bridge;
   });
 
-  it("renders explanation, qa, draft, plan, and code tabs from the new workbench state", () => {
+  it("renders explanation, qa, draft, and code tabs from the draft-first workbench state", () => {
     render(<App />);
 
     expect(screen.getByRole("tab", { name: "讲解" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "问答" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "草稿" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "计划" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "代码" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "计划" })).not.toBeInTheDocument();
     expect(screen.getByRole("tabpanel", { name: "讲解" })).toBeInTheDocument();
     expect(screen.queryByText("结果面板")).not.toBeInTheDocument();
   });
@@ -343,16 +343,16 @@ describe("App", () => {
     expect(screen.getByLabelText("流程图摘要")).toBeInTheDocument();
   });
 
-  it("switches to the generation plan tab when requesting a plan from the toolbar", async () => {
+  it("switches to the draft tab when requesting implementation suggestions from the toolbar", async () => {
     const user = userEvent.setup();
 
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "更多操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "生成计划" }));
+    await user.click(screen.getByRole("menuitem", { name: "生成实现建议" }));
 
-    expect(screen.getByRole("tab", { name: "计划" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("正在生成计划，请稍候。")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "草稿" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("正在生成实现建议，请稍候。")).toBeInTheDocument();
     expect(window.linkGraphBridge?.requestGenerationPlan).toHaveBeenCalledTimes(1);
   });
 
@@ -369,9 +369,9 @@ describe("App", () => {
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "更多操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "生成计划" }));
+    await user.click(screen.getByRole("menuitem", { name: "生成实现建议" }));
 
-    expect(screen.getByRole("tab", { name: "计划" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "草稿" })).toHaveAttribute("aria-selected", "true");
     expect(window.linkGraphBridge?.requestGenerationPlan).toHaveBeenCalledTimes(1);
   });
 
@@ -388,13 +388,13 @@ describe("App", () => {
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "更多操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "生成草稿" }));
+    await user.click(screen.getByRole("menuitem", { name: "生成代码 diff" }));
 
     expect(screen.getByRole("tab", { name: "代码" })).toHaveAttribute("aria-selected", "true");
     expect(window.linkGraphBridge?.requestCodeDrafts).toHaveBeenCalledTimes(1);
   });
 
-  it("renders generation plan and code draft panels from bootstrap state", async () => {
+  it("renders implementation suggestions inside draft and code diff results inside code from bootstrap state", async () => {
     const user = userEvent.setup();
     window.linkGraphBootstrap = structuredClone({
       ...bootstrapStateFixture(),
@@ -413,6 +413,8 @@ describe("App", () => {
           },
         ],
       },
+      draftVersion: 2,
+      generationPlanDraftVersion: 2,
       generatedCodeDrafts: [
         {
           id: "draft-file-download",
@@ -423,6 +425,7 @@ describe("App", () => {
           warnings: [],
         },
       ],
+      generatedCodeDraftVersion: 2,
       generatedCodeDraftSource: "REMOTE",
       generatedCodeDraftWarnings: ["请复核异常类型。"],
       generatedCodeDraftPromptPreview: null,
@@ -430,14 +433,19 @@ describe("App", () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole("tab", { name: "计划" }));
+    await user.click(screen.getByRole("tab", { name: "草稿" }));
+    expect(screen.getByText("实现建议")).toBeInTheDocument();
+    expect(screen.getByText("草稿版本 v2")).toBeInTheDocument();
+    expect(screen.getByText("实现建议：最新（v2）")).toBeInTheDocument();
+    expect(screen.getByText("代码 diff：最新（v2）")).toBeInTheDocument();
     expect(screen.getByText("修改 CommonController.fileDownload 并保留现有正常路径逻辑。")).toBeInTheDocument();
     expect(screen.getByText("任务：修改 fileDownload 的路径判定")).toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "代码" }));
-    expect(screen.getByText("CommonController.java")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "代码 diff 工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "选择代码 diff 文件：CommonController.java" })).toBeInTheDocument();
     expect(screen.getByText("请复核异常类型。")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "写入 CommonController.java" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "写入当前文件" })).toBeInTheDocument();
   });
 
   it("prefers real async request status in the toolbar over stale operation feedback", () => {
@@ -551,11 +559,11 @@ describe("App", () => {
     });
   });
 
-  it("turns an investigation lead into a concrete continue-investigation path", async () => {
+  it("turns an investigation thread into a concrete continue-investigation path", async () => {
     const user = userEvent.setup();
     const candidate = candidateChangeFixture();
-    const lead = {
-      leadId: "lead-compensate",
+    const thread = {
+      threadId: "thread-compensate",
       status: "OPEN" as const,
       title: "失败补偿可能缺失",
       targetStepIds: ["step-submit-order"],
@@ -579,11 +587,38 @@ describe("App", () => {
         ...bootstrapStateFixture().auditResult!,
         candidateChanges: [candidate],
         newCandidateChanges: [candidate],
-        investigationLeads: [lead],
-        newInvestigationLeads: [lead],
+        investigationThreads: [
+          {
+            threadId: "thread-compensate",
+            status: "OPEN",
+            title: thread.title,
+            targetStepIds: thread.targetStepIds,
+            targetNodeIds: thread.targetNodeIds,
+            summary: thread.summary,
+            evidenceGap: thread.evidenceGap,
+            recommendedQuestion: thread.recommendedQuestion,
+            claimType: thread.claimType,
+            evidence: thread.evidence,
+            latestTurnOutcomeId: null,
+          },
+        ],
         auditSession: {
           ...bootstrapStateFixture().auditResult!.auditSession!,
-          investigationLeads: [lead],
+          investigationThreads: [
+            {
+              threadId: "thread-compensate",
+              status: "OPEN",
+              title: thread.title,
+              targetStepIds: thread.targetStepIds,
+              targetNodeIds: thread.targetNodeIds,
+              summary: thread.summary,
+              evidenceGap: thread.evidenceGap,
+              recommendedQuestion: thread.recommendedQuestion,
+              claimType: thread.claimType,
+              evidence: thread.evidence,
+              latestTurnOutcomeId: null,
+            },
+          ],
         },
       },
     });
@@ -591,7 +626,7 @@ describe("App", () => {
     render(<App />);
 
     await user.click(screen.getByRole("tab", { name: "问答" }));
-    await user.click(screen.getByRole("tab", { name: "风险线索" }));
+    await user.click(screen.getByRole("tab", { name: "风险线程" }));
     await act(async () => {
       dispatchBootstrapForTest({
         sessionId: "session-1",
@@ -600,7 +635,7 @@ describe("App", () => {
           ...structuredClone(window.linkGraphBootstrap!),
           snapshotRevision: 2,
           workbenchSectionPreferences: {
-            "audit.investigation-leads": true,
+            "audit.investigation-threads": true,
           },
         },
       });
@@ -628,9 +663,9 @@ describe("App", () => {
     });
 
     expect(window.linkGraphBridge?.requestAudit).toHaveBeenCalledWith(
-      lead.recommendedQuestion,
+      thread.recommendedQuestion,
       ["method:submit-order"],
-      "lead-compensate",
+      "thread-compensate",
     );
     expect(
       (
@@ -640,13 +675,13 @@ describe("App", () => {
       )?.updateWorkbenchSectionPreference,
     ).toHaveBeenCalledWith("audit.composer", true);
     expect(screen.getByRole("tab", { name: "请求状态" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText(lead.recommendedQuestion)).toBeInTheDocument();
+    expect(screen.getByText(thread.recommendedQuestion)).toBeInTheDocument();
   });
 
-  it("submits continue-investigation from the selected risk thread instead of losing the original lead context", async () => {
+  it("submits continue-investigation from the selected risk thread instead of losing the original thread context", async () => {
     const user = userEvent.setup();
-    const lead = {
-      leadId: "lead-compensate",
+    const thread = {
+      threadId: "thread-compensate",
       status: "OPEN" as const,
       title: "失败补偿可能缺失",
       targetStepIds: ["step-submit-order"],
@@ -668,11 +703,38 @@ describe("App", () => {
       ...bootstrapStateFixture(),
       auditResult: {
         ...bootstrapStateFixture().auditResult!,
-        investigationLeads: [lead],
-        newInvestigationLeads: [lead],
+        investigationThreads: [
+          {
+            threadId: "thread-compensate",
+            status: "OPEN",
+            title: thread.title,
+            targetStepIds: thread.targetStepIds,
+            targetNodeIds: thread.targetNodeIds,
+            summary: thread.summary,
+            evidenceGap: thread.evidenceGap,
+            recommendedQuestion: thread.recommendedQuestion,
+            claimType: thread.claimType,
+            evidence: thread.evidence,
+            latestTurnOutcomeId: null,
+          },
+        ],
         auditSession: {
           ...bootstrapStateFixture().auditResult!.auditSession!,
-          investigationLeads: [lead],
+          investigationThreads: [
+            {
+              threadId: "thread-compensate",
+              status: "OPEN",
+              title: thread.title,
+              targetStepIds: thread.targetStepIds,
+              targetNodeIds: thread.targetNodeIds,
+              summary: thread.summary,
+              evidenceGap: thread.evidenceGap,
+              recommendedQuestion: thread.recommendedQuestion,
+              claimType: thread.claimType,
+              evidence: thread.evidence,
+              latestTurnOutcomeId: null,
+            },
+          ],
         },
       },
     });
@@ -680,7 +742,7 @@ describe("App", () => {
     render(<App />);
 
     await user.click(screen.getByRole("tab", { name: "问答" }));
-    await user.click(screen.getByRole("tab", { name: "风险线索" }));
+    await user.click(screen.getByRole("tab", { name: "风险线程" }));
     await act(async () => {
       dispatchBootstrapForTest({
         sessionId: "session-1",
@@ -689,7 +751,7 @@ describe("App", () => {
           ...structuredClone(window.linkGraphBootstrap!),
           snapshotRevision: 2,
           workbenchSectionPreferences: {
-            "audit.investigation-leads": true,
+            "audit.investigation-threads": true,
           },
         },
       });
@@ -697,9 +759,9 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "继续取证" }));
 
     expect(window.linkGraphBridge?.requestAudit).toHaveBeenCalledWith(
-      lead.recommendedQuestion,
+      thread.recommendedQuestion,
       ["method:submit-order"],
-      "lead-compensate",
+      "thread-compensate",
     );
     expect(window.linkGraphBridge?.requestAudit).toHaveBeenCalledTimes(1);
   });
@@ -710,9 +772,13 @@ describe("App", () => {
     window.dispatchEvent(
       new CustomEvent("link-graph-bootstrap", {
         detail: {
-          ...state,
-          workingGraph: structuredClone(state.workingGraph),
-          snapshotRevision: 7,
+          sessionId: "session-1",
+          revision: 7,
+          state: {
+            ...state,
+            workingGraph: structuredClone(state.workingGraph),
+            snapshotRevision: 7,
+          },
         },
       }),
     );
@@ -1087,8 +1153,93 @@ describe("App", () => {
     expect(screen.getByText("等待后端确认执行方式与执行阶段。")).toBeInTheDocument();
   });
 
-  it("shows a visible failure dialog when the qa bridge is unavailable instead of failing silently", async () => {
+  it("retries the last failed qa request directly from the request status page", async () => {
     const user = userEvent.setup();
+    window.linkGraphBootstrap = structuredClone({
+      ...bootstrapStateFixture(),
+      auditRequestState: {
+        phase: "FAILED",
+        scene: "问答",
+        statusMessage: "问答失败",
+        errorMessage: "上游超时",
+        detailMessage: "连接上游超时",
+      },
+      qaRequestRecoveryState: {
+        lastSubmittedRequest: {
+          requestId: "qa-1",
+          kind: "ASK",
+          question: "这个方法是否遗漏补偿链路？",
+          selectedNodeIds: ["method:submit-order"],
+          sourceThreadId: null,
+          baseSessionId: "audit-method-submit",
+        },
+        lastFailedRequest: {
+          requestId: "qa-1",
+          kind: "ASK",
+          question: "这个方法是否遗漏补偿链路？",
+          selectedNodeIds: ["method:submit-order"],
+          sourceThreadId: null,
+          baseSessionId: "audit-method-submit",
+        },
+      },
+      workbenchSectionPreferences: {
+        "audit.request-status": true,
+      },
+    });
+    render(<App />);
+
+    await user.click(screen.getByRole("tab", { name: "问答" }));
+    await user.click(screen.getByRole("button", { name: "直接重试" }));
+
+    expect(window.linkGraphBridge?.retryLastAuditRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("submits deferred risk resolution from the audit risk page", async () => {
+    const user = userEvent.setup();
+    window.linkGraphBootstrap = structuredClone({
+      ...bootstrapStateFixture(),
+      auditResult: {
+        ...bootstrapStateFixture().auditResult!,
+        investigationThreads: [
+          {
+            threadId: "thread-path-risk",
+            status: "OPEN",
+            title: "补充路径风险说明",
+            targetStepIds: [],
+            targetNodeIds: ["method:submit-order"],
+            summary: "当前只有调用点证据。",
+            evidenceGap: "还没有看到上传工具内部路径校验实现。",
+            recommendedQuestion: "请继续取证：展开 FileUploadUtils.upload，确认是否存在路径规范化或目录校验。",
+            claimType: "RISK_HINT",
+            evidence: [],
+            latestTurnOutcomeId: null,
+            resolution: {
+              threadId: "thread-path-risk",
+              status: "UNRESOLVED",
+              note: "",
+            },
+          },
+        ],
+      },
+      workbenchSectionPreferences: {
+        "audit.investigation-threads": true,
+      },
+    });
+    render(<App />);
+
+    await user.click(screen.getByRole("tab", { name: "问答" }));
+    await user.click(screen.getByRole("button", { name: "暂挂风险" }));
+
+    expect(window.linkGraphBridge?.resolveInvestigationThread).toHaveBeenCalledWith(
+      "thread-path-risk",
+      "DEFERRED",
+      "",
+    );
+  });
+
+  it("keeps the qa request pending until the IDE bridge becomes ready", async () => {
+    const user = userEvent.setup();
+    const requestAudit = vi.fn();
     window.linkGraphBridge = undefined;
     render(<App />);
 
@@ -1100,10 +1251,16 @@ describe("App", () => {
     await user.type(input, "介绍这里有什么安全问题");
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    const dialog = screen.getByRole("dialog", { name: "请求状态通知" });
-    expect(dialog).toBeInTheDocument();
-    expect(within(dialog).getByRole("heading", { name: "问答请求未发出" })).toBeInTheDocument();
-    expect(within(dialog).getByText("IDE bridge 尚未就绪，本次请求没有发出。")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "请求状态通知" })).not.toBeInTheDocument();
+    expect(screen.getByText("问答：已提交问答请求")).toBeInTheDocument();
+    expect(requestAudit).not.toHaveBeenCalled();
+
+    window.linkGraphBridge = {
+      requestAudit,
+    };
+    window.dispatchEvent(new Event("link-graph-bridge-ready"));
+
+    expect(requestAudit).toHaveBeenCalledWith("介绍这里有什么安全问题", [], null);
   });
 
   it("preserves the locally selected node while qa request state updates stream back", async () => {
@@ -1323,6 +1480,732 @@ describe("App", () => {
     await user.click(screen.getByRole("tab", { name: "问答" }));
 
     expect(screen.queryByRole("tab", { name: "待确认变更" })).not.toBeInTheDocument();
+  });
+
+  it("focuses the real patched node in draft mode instead of staying on the stale candidate target", async () => {
+    const user = userEvent.setup();
+    window.linkGraphBootstrap = materializeThreeViewDocuments({
+      visibleGraph: {
+        nodes: [
+          {
+            id: "method:file-download",
+            type: "METHOD",
+            title: "CommonController.fileDownload",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+            },
+          },
+          {
+            id: "flow-scope:delete-guard",
+            type: "FLOW_SCOPE",
+            title: "if (delete == true)",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "DRAFT_AI",
+            metadata: {
+              "flowchart.kind": "DECISION",
+            },
+          },
+        ],
+        edges: [
+          {
+            id: "control:file-download->delete-guard",
+            type: "CONTROL_FLOW",
+            source: "method:file-download",
+            target: "flow-scope:delete-guard",
+            sourceTag: "FACT",
+          },
+        ],
+      },
+      referenceFactGraph: {
+        nodes: [
+          {
+            id: "method:file-download",
+            type: "METHOD",
+            title: "CommonController.fileDownload",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+            },
+          },
+          {
+            id: "flow-scope:delete-guard",
+            type: "FLOW_SCOPE",
+            title: "if (delete)",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "DECISION",
+            },
+          },
+        ],
+        edges: [
+          {
+            id: "control:file-download->delete-guard",
+            type: "CONTROL_FLOW",
+            source: "method:file-download",
+            target: "flow-scope:delete-guard",
+            sourceTag: "FACT",
+          },
+        ],
+      },
+      workingGraph: {
+        nodes: [
+          {
+            id: "method:file-download",
+            type: "METHOD",
+            title: "CommonController.fileDownload",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+            },
+          },
+          {
+            id: "flow-scope:delete-guard",
+            type: "FLOW_SCOPE",
+            title: "if (delete == true)",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "DRAFT_AI",
+            metadata: {
+              "flowchart.kind": "DECISION",
+            },
+          },
+        ],
+        edges: [
+          {
+            id: "control:file-download->delete-guard",
+            type: "CONTROL_FLOW",
+            source: "method:file-download",
+            target: "flow-scope:delete-guard",
+            sourceTag: "FACT",
+          },
+        ],
+      },
+      draftWorkbenchState: {
+        draftChanges: [
+          {
+            entryId: "draft-change-delete-guard",
+            kind: "CHANGE",
+            title: "将删除条件从 if (delete) 改为 if (delete == true)",
+            sourceChangeId: "change-delete-guard",
+            targetStepIds: [],
+            targetNodeIds: ["method:file-download"],
+            beforeState: "if (delete)",
+            afterState: "if (delete == true)",
+            reason: "需要显式判断布尔值。",
+            impactSummary: "影响删除分支。",
+            claimType: "CODE_FACT",
+            evidence: [
+              {
+                id: "finding-delete-guard",
+                claim: "当前源码里直接能看到删除判断条件。",
+                evidenceLevel: "DIRECT_SOURCE",
+                references: [{ nodeId: "flow-scope:delete-guard" }],
+              },
+            ],
+            graphPatch: {
+              summary: "调整删除判断",
+              operations: [
+                {
+                  id: "patch-op-delete-guard",
+                  action: "UPDATE_NODE",
+                  elementKind: "NODE",
+                  elementId: "flow-scope:delete-guard",
+                  node: {
+                    id: "flow-scope:delete-guard",
+                    type: "FLOW_SCOPE",
+                    title: "if (delete == true)",
+                    inputs: [],
+                    outputs: [],
+                    certainty: "LLM_SUGGESTED",
+                    bindingStatus: "BOUND",
+                    metadata: {
+                      "flowchart.kind": "DECISION",
+                    },
+                  },
+                },
+              ],
+              addedNodeIds: [],
+              removedNodeIds: [],
+              addedEdgeIds: [],
+              removedEdgeIds: [],
+            },
+          },
+        ],
+        draftNotes: [],
+      },
+      selectedNodeId: "method:file-download",
+      analysisDisplayMode: "FLOWCHART",
+    });
+
+    const { container } = render(<App />);
+
+    await waitForGraphNode(container, "flow-scope:delete-guard");
+    await user.click(screen.getByRole("tab", { name: "草稿" }));
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-node-id="flow-scope:delete-guard"]')).toHaveClass("is-selected");
+    });
+    const flowchartSummary = screen.getByLabelText("流程图摘要");
+    const currentSelectionCard = within(flowchartSummary)
+      .getByText("当前选中")
+      .closest("article");
+    expect(currentSelectionCard).not.toBeNull();
+    expect(within(currentSelectionCard as HTMLElement).getByText("if (delete == true)")).toBeInTheDocument();
+  });
+
+  it("overlays the stale flowchart visible node with the working-graph decision title while keeping hidden full-graph nodes out of the stage", async () => {
+    const user = userEvent.setup();
+    window.linkGraphBootstrap = materializeThreeViewDocuments({
+      visibleGraph: {
+        nodes: [
+          {
+            id: "method:file-download",
+            type: "METHOD",
+            title: "CommonController.fileDownload",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+            },
+          },
+          {
+            id: "scope:file-download-if",
+            type: "FLOW_SCOPE",
+            title: "if (delete)",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "DECISION",
+              "flow.ownerMethod": "com.example.CommonController.fileDownload(java.lang.String):void",
+            },
+          },
+        ],
+        edges: [
+          {
+            id: "edge:file-download->if-delete",
+            type: "CONTROL_FLOW",
+            source: "method:file-download",
+            target: "scope:file-download-if",
+            sourceTag: "FACT",
+          },
+        ],
+      },
+      workingGraph: {
+        nodes: [
+          {
+            id: "method:file-download",
+            type: "METHOD",
+            title: "CommonController.fileDownload",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+            },
+          },
+          {
+            id: "action:delete-condition",
+            type: "FLOW_ACTION",
+            title: "FileUtils.checkAllowDownload(fileName)",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "PROCESS",
+              "flow.kind": "CONDITION",
+              "flow.ownerMethod": "com.example.CommonController.fileDownload(java.lang.String):void",
+            },
+          },
+          {
+            id: "scope:file-download-if",
+            type: "FLOW_SCOPE",
+            title: "if (delete == true)",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "DRAFT_AI",
+            metadata: {
+              "flowchart.kind": "DECISION",
+              "flowchart.projectedFromNodeIds": "action:delete-condition",
+              "flow.ownerMethod": "com.example.CommonController.fileDownload(java.lang.String):void",
+            },
+          },
+        ],
+        edges: [
+          {
+            id: "edge:file-download->if-delete",
+            type: "CONTROL_FLOW",
+            source: "method:file-download",
+            target: "scope:file-download-if",
+            sourceTag: "FACT",
+          },
+        ],
+      },
+      draftWorkbenchState: {
+        draftChanges: [
+          {
+            entryId: "draft-change-delete-guard",
+            kind: "CHANGE",
+            title: "将删除条件收紧为显式 true 判断",
+            sourceChangeId: "change-delete-guard",
+            targetStepIds: [],
+            targetNodeIds: ["scope:file-download-if"],
+            beforeState: "if (delete)",
+            afterState: "if (delete == true)",
+            reason: "需要显式判断布尔值。",
+            impactSummary: "影响删除分支。",
+            claimType: "CODE_FACT",
+            evidence: [
+              {
+                id: "finding-delete-guard",
+                claim: "当前源码里直接能看到删除判断条件。",
+                evidenceLevel: "DIRECT_SOURCE",
+                references: [{ nodeId: "scope:file-download-if" }],
+              },
+            ],
+            graphPatch: {
+              summary: "调整删除判断",
+              operations: [
+                {
+                  id: "patch-op-delete-guard",
+                  action: "UPDATE_NODE",
+                  elementKind: "NODE",
+                  elementId: "scope:file-download-if",
+                  node: {
+                    id: "scope:file-download-if",
+                    type: "FLOW_SCOPE",
+                    title: "if (delete == true)",
+                    inputs: [],
+                    outputs: [],
+                    certainty: "LLM_SUGGESTED",
+                    bindingStatus: "BOUND",
+                    metadata: {
+                      "flowchart.kind": "DECISION",
+                    },
+                  },
+                },
+              ],
+              addedNodeIds: [],
+              removedNodeIds: [],
+              addedEdgeIds: [],
+              removedEdgeIds: [],
+            },
+          },
+        ],
+        draftNotes: [],
+      },
+      selectedNodeId: "scope:file-download-if",
+      analysisDisplayMode: "FLOWCHART",
+    });
+
+    const { container } = render(<App />);
+
+    await waitForGraphNode(container, "scope:file-download-if");
+    await user.click(screen.getByRole("tab", { name: "草稿" }));
+
+    await waitFor(() => {
+      const flowchartSummary = screen.getByLabelText("流程图摘要");
+      const currentSelectionCard = within(flowchartSummary)
+        .getByText("当前选中")
+        .closest("article");
+      expect(currentSelectionCard).not.toBeNull();
+      expect(within(currentSelectionCard as HTMLElement).getByText("if (delete == true)")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("FileUtils.checkAllowDownload(fileName)")).not.toBeInTheDocument();
+  });
+
+  it("prefers the confirmed draft graphPatch over a stale working graph when presenting flowchart after-state", async () => {
+    const user = userEvent.setup();
+    window.linkGraphBootstrap = materializeThreeViewDocuments({
+      visibleGraph: {
+        nodes: [
+          {
+            id: "method:file-download",
+            type: "METHOD",
+            title: "CommonController.fileDownload",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+            },
+          },
+          {
+            id: "scope:file-download-if",
+            type: "FLOW_SCOPE",
+            title: "if (delete)",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flow.kind": "IF",
+              "flowchart.kind": "DECISION",
+              "flow.ownerMethod": "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void",
+            },
+          },
+        ],
+        edges: [
+          {
+            id: "edge:file-download->if-delete",
+            type: "CONTROL_FLOW",
+            source: "method:file-download",
+            target: "scope:file-download-if",
+            sourceTag: "FACT",
+          },
+        ],
+      },
+      workingGraph: {
+        nodes: [
+          {
+            id: "method:file-download",
+            type: "METHOD",
+            title: "CommonController.fileDownload",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+            },
+          },
+          {
+            id: "scope:file-download-if",
+            type: "FLOW_SCOPE",
+            title: "if (delete)",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flow.kind": "IF",
+              "flowchart.kind": "DECISION",
+              "flow.ownerMethod": "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void",
+            },
+          },
+        ],
+        edges: [
+          {
+            id: "edge:file-download->if-delete",
+            type: "CONTROL_FLOW",
+            source: "method:file-download",
+            target: "scope:file-download-if",
+            sourceTag: "FACT",
+          },
+        ],
+      },
+      draftWorkbenchState: {
+        draftChanges: [
+          {
+            entryId: "draft-change-delete-guard",
+            kind: "CHANGE",
+            title: "将删除条件收紧为显式 true 判断",
+            sourceChangeId: "change-delete-guard",
+            targetStepIds: [],
+            targetNodeIds: ["scope:file-download-if"],
+            beforeState: "if (delete)",
+            afterState: "if (Boolean.TRUE.equals(delete))",
+            reason: "需要规避 delete 为 null 时的误删与 NPE 风险。",
+            impactSummary: "影响删除分支。",
+            claimType: "CODE_FACT",
+            evidence: [
+              {
+                id: "finding-delete-guard",
+                claim: "当前源码里直接能看到删除判断条件。",
+                evidenceLevel: "DIRECT_SOURCE",
+                references: [{ nodeId: "scope:file-download-if" }],
+              },
+            ],
+            graphPatch: {
+              summary: "调整删除判断",
+              operations: [
+                {
+                  id: "patch-op-delete-guard",
+                  action: "UPDATE_NODE",
+                  elementKind: "NODE",
+                  elementId: "scope:file-download-if",
+                  node: {
+                    id: "scope:file-download-if",
+                    type: "FLOW_SCOPE",
+                    title: "if (Boolean.TRUE.equals(delete))",
+                    inputs: [],
+                    outputs: [],
+                    certainty: "LLM_SUGGESTED",
+                    bindingStatus: "BOUND",
+                    sourceTag: "DRAFT_AI",
+                    metadata: {
+                      "flow.kind": "IF",
+                      "flowchart.kind": "DECISION",
+                    },
+                  },
+                },
+              ],
+              addedNodeIds: [],
+              removedNodeIds: [],
+              addedEdgeIds: [],
+              removedEdgeIds: [],
+            },
+          },
+        ],
+        draftNotes: [],
+      },
+      selectedNodeId: "scope:file-download-if",
+      analysisDisplayMode: "FLOWCHART",
+    });
+
+    const { container } = render(<App />);
+
+    await waitForGraphNode(container, "scope:file-download-if");
+    await user.click(screen.getByRole("tab", { name: "草稿" }));
+
+    await waitFor(() => {
+      const flowchartSummary = screen.getByLabelText("流程图摘要");
+      const currentSelectionCard = within(flowchartSummary)
+        .getByText("当前选中")
+        .closest("article");
+      expect(currentSelectionCard).not.toBeNull();
+      expect(within(currentSelectionCard as HTMLElement).getByText("if (Boolean.TRUE.equals(delete))")).toBeInTheDocument();
+    });
+  });
+
+  it("scopes flowchart canvas and draft panel to the current method instead of showing another method's delete draft", async () => {
+    const user = userEvent.setup();
+    window.linkGraphBootstrap = materializeThreeViewDocuments({
+      visibleGraph: {
+        nodes: [
+          {
+            id: "method:upload-file",
+            type: "METHOD",
+            title: "CommonController.uploadFile",
+            signature: "com.example.CommonController.uploadFile(java.lang.String):void",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+            },
+          },
+          {
+            id: "flow-action:upload-prepare",
+            type: "FLOW_ACTION",
+            title: "准备上传目录",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "PROCESS",
+              "flow.ownerMethod": "com.example.CommonController.uploadFile(java.lang.String):void",
+            },
+          },
+          {
+            id: "method:file-download",
+            type: "METHOD",
+            title: "CommonController.fileDownload",
+            signature: "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+            },
+          },
+          {
+            id: "flow-scope:delete-guard",
+            type: "FLOW_SCOPE",
+            title: "if (delete)",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "DECISION",
+              "flow.ownerMethod": "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void",
+            },
+          },
+        ],
+        edges: [
+          {
+            id: "control:upload-file->upload-prepare",
+            type: "CONTROL_FLOW",
+            source: "method:upload-file",
+            target: "flow-action:upload-prepare",
+            sourceTag: "FACT",
+          },
+          {
+            id: "control:file-download->delete-guard",
+            type: "CONTROL_FLOW",
+            source: "method:file-download",
+            target: "flow-scope:delete-guard",
+            sourceTag: "FACT",
+          },
+        ],
+      },
+      workingGraph: {
+        nodes: [
+          {
+            id: "method:upload-file",
+            type: "METHOD",
+            title: "CommonController.uploadFile",
+            signature: "com.example.CommonController.uploadFile(java.lang.String):void",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+            },
+          },
+          {
+            id: "flow-action:upload-prepare",
+            type: "FLOW_ACTION",
+            title: "准备上传目录",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "PROCESS",
+              "flow.ownerMethod": "com.example.CommonController.uploadFile(java.lang.String):void",
+            },
+          },
+          {
+            id: "method:file-download",
+            type: "METHOD",
+            title: "CommonController.fileDownload",
+            signature: "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+            },
+          },
+          {
+            id: "flow-scope:delete-guard",
+            type: "FLOW_SCOPE",
+            title: "if (delete)",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "DECISION",
+              "flow.ownerMethod": "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void",
+            },
+          },
+        ],
+        edges: [
+          {
+            id: "control:upload-file->upload-prepare",
+            type: "CONTROL_FLOW",
+            source: "method:upload-file",
+            target: "flow-action:upload-prepare",
+            sourceTag: "FACT",
+          },
+          {
+            id: "control:file-download->delete-guard",
+            type: "CONTROL_FLOW",
+            source: "method:file-download",
+            target: "flow-scope:delete-guard",
+            sourceTag: "FACT",
+          },
+        ],
+      },
+      referenceFactGraph: {
+        nodes: [],
+        edges: [],
+      },
+      draftWorkbenchState: {
+        draftChanges: [
+          {
+            entryId: "draft-change-delete-guard",
+            kind: "CHANGE",
+            title: "需要先定位用户提到的 if delete 分支",
+            sourceChangeId: "change-delete-guard",
+            targetStepIds: [],
+            targetNodeIds: ["flow-scope:delete-guard"],
+            beforeState: "if (delete)",
+            afterState: "需要先定位用户提到的 if delete 分支",
+            reason: "当前还没拿到精确控制流节点。",
+            impactSummary: "需要先补证据。",
+            claimType: "STRUCTURAL_SUGGESTION",
+            evidence: [
+              {
+                id: "finding-delete-guard",
+                claim: "当前提到的 if delete 位于 fileDownload。",
+                evidenceLevel: "DIRECT_SOURCE",
+                references: [{ nodeId: "flow-scope:delete-guard" }],
+              },
+            ],
+            graphPatch: null,
+          },
+        ],
+        draftNotes: [],
+      },
+      analysisDisplayMode: "FLOWCHART",
+      selectedNodeId: "method:upload-file",
+    });
+
+    const { container } = render(<App />);
+
+    await waitForGraphNode(container, "method:upload-file");
+    expect(container.querySelector('[data-node-id="method:file-download"]')).toBeNull();
+    expect(container.querySelector('[data-node-id="flow-scope:delete-guard"]')).toBeNull();
+
+    await user.click(screen.getByRole("tab", { name: "草稿" }));
+
+    expect(screen.queryByText("需要先定位用户提到的 if delete 分支")).not.toBeInTheDocument();
+    expect(screen.getByText("当前还没有草稿条目")).toBeInTheDocument();
   });
 
   it("allows canceling a confirmed draft change and returns it to pending qa changes", async () => {

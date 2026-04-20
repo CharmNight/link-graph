@@ -116,13 +116,13 @@ export function Toolbar({
               同步预览
             </button>
             <button type="button" role="menuitem" onClick={() => runAndClose(onRequestGenerationPlan)}>
-              生成计划
+              生成实现建议
             </button>
             <button type="button" role="menuitem" onClick={() => runAndClose(onRequestGraphBeautification)}>
               链路讲解
             </button>
             <button type="button" role="menuitem" onClick={() => runAndClose(onRequestCodeDrafts)}>
-              生成草稿
+              生成代码 diff
             </button>
             <button type="button" role="menuitem" onClick={() => runAndClose(onOpenSettings)}>
               设置

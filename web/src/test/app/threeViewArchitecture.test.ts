@@ -18,6 +18,7 @@ describe("three-view architecture gate", () => {
   it("keeps App on the new single-path stage assembly without GraphCanvas imports or fact-view graph overrides", () => {
     const appSource = readFileSync(appPath("App.tsx"), "utf8");
     const graphFlowSurfaceSource = readFileSync(appPath("reactflow", "GraphFlowSurface.tsx"), "utf8");
+    const editorTransportSource = readFileSync(appPath("editorTransport.ts"), "utf8");
 
     expect(appSource).not.toContain("from \"./components/GraphCanvas\"");
     expect(appSource).not.toContain("visibleGraph: {\n              ...factGraphView.visibleGraph,\n              nodes,\n              edges,");
@@ -26,5 +27,7 @@ describe("three-view architecture gate", () => {
     expect(appSource).not.toContain("state.flowchartView?.visibleGraph ?? state.visibleGraph");
     expect(appSource).not.toContain("state.resourceRelationView?.visibleGraph ?? state.visibleGraph");
     expect(graphFlowSurfaceSource).not.toContain("graph-canvas-fallback-board");
+    expect(editorTransportSource).not.toContain("isLegacyBootstrapState");
+    expect(editorTransportSource).not.toContain("\"legacy-bootstrap\"");
   });
 });

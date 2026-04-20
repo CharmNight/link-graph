@@ -13,11 +13,17 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
+import com.charmnight.linkgraph.sync.GraphPatchApplyService
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
+import com.charmnight.linkgraph.ui.view.ResourceRelationSummary
 import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
+import com.charmnight.linkgraph.ui.view.projectReadableFlowchartView
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
+import com.charmnight.linkgraph.workbench.QaRequestRecoveryState
+import com.charmnight.linkgraph.workbench.ReplayableQaRequest
+import com.charmnight.linkgraph.workbench.StageEligibilityDecision
 import com.intellij.openapi.components.Service
 
 /**
@@ -26,6 +32,8 @@ import com.intellij.openapi.components.Service
  */
 @Service(Service.Level.PROJECT)
 class GraphEditorStateService {
+    private val graphPatchApplyService = GraphPatchApplyService()
+
     /** 异步请求在前端展示时的生命周期阶段。 */
     enum class AsyncRequestPhase {
         IDLE,
@@ -329,6 +337,7 @@ class GraphEditorStateService {
             currentState.copy(
                 visibleGraph = graph,
                 workingGraph = graph,
+                referenceWorkingGraph = graph,
                 referenceFactGraph = graph,
                 designBaselineGraph = null,
                 factGraphView = nextViewDocuments.factGraphView,
@@ -342,6 +351,7 @@ class GraphEditorStateService {
                 lastDraftPatchApplyResult = null,
                 auditResult = null,
                 auditRequestState = AsyncRequestState(),
+                qaRequestRecoveryState = QaRequestRecoveryState(),
                 diffReviewResult = null,
                 diffReviewRequestState = AsyncRequestState(),
                 graphBeautificationResult = null,
@@ -351,14 +361,19 @@ class GraphEditorStateService {
                 mermaidIssues = emptyList(),
                 syncPreviewItems = emptyList(),
                 syncPreviewRequested = false,
+                draftVersion = 0,
                 generationPlan = null,
+                generationPlanDraftVersion = null,
                 generationPlanRequestState = AsyncRequestState(),
+                planEligibilityDecision = null,
                 generatedCodeDrafts = emptyList(),
+                generatedCodeDraftVersion = null,
                 generatedCodeDraftWarnings = emptyList(),
                 generatedCodeDraftSource = null,
                 generatedCodeDraftPromptPreview = null,
                 generatedCodeDraftWriteReport = null,
                 codeDraftRequestState = AsyncRequestState(),
+                codeEligibilityDecision = null,
                 workingGraphDirty = false,
                 analysisDisplayMode = AnalysisDisplayMode.FACT_GRAPH,
                 layoutState = nextLayoutState,
@@ -398,7 +413,8 @@ class GraphEditorStateService {
             )
             currentState.copy(
                 visibleGraph = visibleGraph,
-                workingGraph = visibleGraph,
+                workingGraph = fullGraph,
+                referenceWorkingGraph = fullGraph,
                 referenceFactGraph = fullGraph,
                 designBaselineGraph = null,
                 factGraphView = nextViewDocuments.factGraphView,
@@ -412,6 +428,7 @@ class GraphEditorStateService {
                 lastDraftPatchApplyResult = null,
                 auditResult = null,
                 auditRequestState = AsyncRequestState(),
+                qaRequestRecoveryState = QaRequestRecoveryState(),
                 diffReviewResult = null,
                 diffReviewRequestState = AsyncRequestState(),
                 graphBeautificationResult = null,
@@ -421,14 +438,19 @@ class GraphEditorStateService {
                 mermaidIssues = emptyList(),
                 syncPreviewItems = emptyList(),
                 syncPreviewRequested = false,
+                draftVersion = 0,
                 generationPlan = null,
+                generationPlanDraftVersion = null,
                 generationPlanRequestState = AsyncRequestState(),
+                planEligibilityDecision = null,
                 generatedCodeDrafts = emptyList(),
+                generatedCodeDraftVersion = null,
                 generatedCodeDraftWarnings = emptyList(),
                 generatedCodeDraftSource = null,
                 generatedCodeDraftPromptPreview = null,
                 generatedCodeDraftWriteReport = null,
                 codeDraftRequestState = AsyncRequestState(),
+                codeEligibilityDecision = null,
                 workingGraphDirty = false,
                 analysisDisplayMode = AnalysisDisplayMode.FACT_GRAPH,
                 layoutState = nextLayoutState,
@@ -448,22 +470,78 @@ class GraphEditorStateService {
         source: String,
     ) {
         mutate { currentState ->
+            val nextReferenceWorkingGraph = when (outcome.displayMode) {
+                AnalysisDisplayMode.FACT_GRAPH -> outcome.factGraphView?.fullGraph ?: outcome.fullGraph
+                AnalysisDisplayMode.FLOWCHART -> outcome.flowchartView?.fullGraph ?: outcome.fullGraph
+                AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> outcome.resourceRelationView?.fullGraph ?: outcome.fullGraph
+            }
+            val nextReferenceFactGraph = outcome.factGraphView?.fullGraph ?: outcome.fullGraph
+            val preservedDraftState = preservedConfirmedDraftState(currentState, outcome.selectedMethodSignature)
+            val hasPreservedDrafts = preservedDraftState.draftChanges.isNotEmpty()
+            val nextWorkingGraph = if (hasPreservedDrafts) {
+                reapplyConfirmedDraftGraph(nextReferenceWorkingGraph, preservedDraftState)
+            } else {
+                nextReferenceWorkingGraph
+            }
+            val nextViewDocuments = if (hasPreservedDrafts) {
+                buildOutcomeViewDocuments(
+                    outcome = outcome,
+                    workingGraph = nextWorkingGraph,
+                    referenceFactGraph = nextReferenceFactGraph,
+                )
+            } else {
+                GraphEditorViewDocuments(
+                    factGraphView = outcome.factGraphView ?: buildViewDocuments(
+                        visibleGraph = outcome.visibleGraph,
+                        factFullGraph = nextReferenceFactGraph,
+                        selectedNodeId = outcome.anchorNodeId,
+                        selectedMethodSignature = outcome.selectedMethodSignature,
+                    ).factGraphView,
+                    flowchartView = outcome.flowchartView ?: buildViewDocuments(
+                        visibleGraph = outcome.visibleGraph,
+                        factFullGraph = nextReferenceFactGraph,
+                        selectedNodeId = outcome.anchorNodeId,
+                        selectedMethodSignature = outcome.selectedMethodSignature,
+                    ).flowchartView,
+                    resourceRelationView = outcome.resourceRelationView ?: buildViewDocuments(
+                        visibleGraph = outcome.visibleGraph,
+                        factFullGraph = nextReferenceFactGraph,
+                        selectedNodeId = outcome.anchorNodeId,
+                        selectedMethodSignature = outcome.selectedMethodSignature,
+                    ).resourceRelationView,
+                )
+            }
+            val nextVisibleGraph = if (hasPreservedDrafts) {
+                when (outcome.displayMode) {
+                    AnalysisDisplayMode.FACT_GRAPH -> nextViewDocuments.factGraphView.visibleGraph
+                    AnalysisDisplayMode.FLOWCHART -> nextViewDocuments.flowchartView.visibleGraph
+                    AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> nextViewDocuments.resourceRelationView.visibleGraph
+                }
+            } else {
+                when (outcome.displayMode) {
+                    AnalysisDisplayMode.FACT_GRAPH -> outcome.factGraphView?.visibleGraph ?: outcome.visibleGraph
+                    AnalysisDisplayMode.FLOWCHART -> outcome.flowchartView?.visibleGraph ?: outcome.visibleGraph
+                    AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> outcome.resourceRelationView?.visibleGraph ?: outcome.visibleGraph
+                }
+            }
             /** 从结果可见图中提取的布局状态。 */
-            val nextLayoutState = extractLayoutState(outcome.visibleGraph)
+            val nextLayoutState = extractLayoutState(nextVisibleGraph)
             currentState.copy(
-                visibleGraph = outcome.visibleGraph,
-                workingGraph = outcome.visibleGraph,
-                referenceFactGraph = outcome.fullGraph,
+                visibleGraph = nextVisibleGraph,
+                workingGraph = nextWorkingGraph,
+                referenceWorkingGraph = nextReferenceWorkingGraph,
+                referenceFactGraph = nextReferenceFactGraph,
                 designBaselineGraph = null,
-                factGraphView = outcome.factGraphView,
-                flowchartView = outcome.flowchartView,
-                resourceRelationView = outcome.resourceRelationView,
-                draftWorkbenchState = DraftWorkbenchState(),
+                factGraphView = nextViewDocuments.factGraphView,
+                flowchartView = nextViewDocuments.flowchartView,
+                resourceRelationView = nextViewDocuments.resourceRelationView,
+                draftWorkbenchState = preservedDraftState,
                 draftPatchPreview = null,
                 draftPatchUndoState = null,
                 lastDraftPatchApplyResult = null,
                 auditResult = null,
                 auditRequestState = AsyncRequestState(),
+                qaRequestRecoveryState = QaRequestRecoveryState(),
                 diffReviewResult = null,
                 diffReviewRequestState = AsyncRequestState(),
                 graphBeautificationResult = null,
@@ -474,25 +552,30 @@ class GraphEditorStateService {
                 exportedMermaid = null,
                 mermaidIssues = emptyList(),
                 syncPreviewItems = emptyList(),
+                draftVersion = if (hasPreservedDrafts) currentState.draftVersion else 0,
                 generationPlan = null,
+                generationPlanDraftVersion = null,
                 generationPlanRequestState = AsyncRequestState(),
+                planEligibilityDecision = null,
                 generatedCodeDrafts = emptyList(),
+                generatedCodeDraftVersion = null,
                 generatedCodeDraftWarnings = emptyList(),
                 generatedCodeDraftSource = null,
                 generatedCodeDraftPromptPreview = null,
                 generatedCodeDraftWriteReport = null,
                 codeDraftRequestState = AsyncRequestState(),
+                codeEligibilityDecision = null,
                 sourceNavigationState = SourceNavigationState(),
                 syncPreviewRequested = false,
                 toolWindowOpenRequested = currentState.toolWindowOpenRequested,
-                workingGraphDirty = false,
+                workingGraphDirty = hasPreservedDrafts,
                 analysisDisplayMode = outcome.displayMode,
                 layoutState = nextLayoutState,
                 semanticRevision = currentState.semanticRevision + 1,
                 snapshotRevision = currentState.snapshotRevision + 1,
                 selectedMethodSignature = outcome.selectedMethodSignature,
                 selectedNodeId = outcome.anchorNodeId ?: resolveSelectedNodeId(
-                    graph = outcome.visibleGraph,
+                    graph = nextVisibleGraph,
                     selectedNodeId = null,
                     selectedMethodSignature = outcome.selectedMethodSignature,
                 ),
@@ -539,6 +622,7 @@ class GraphEditorStateService {
             currentState.copy(
                 visibleGraph = effectiveVisibleGraph,
                 workingGraph = effectiveDraftGraph,
+                referenceWorkingGraph = currentState.referenceWorkingGraph ?: effectiveDraftGraph,
                 designBaselineGraph = graph ?: currentState.designBaselineGraph,
                 factGraphView = nextViewDocuments.factGraphView,
                 flowchartView = nextViewDocuments.flowchartView,
@@ -551,6 +635,7 @@ class GraphEditorStateService {
                 lastDraftPatchApplyResult = null,
                 auditResult = null,
                 auditRequestState = AsyncRequestState(),
+                qaRequestRecoveryState = QaRequestRecoveryState(),
                 diffReviewResult = null,
                 diffReviewRequestState = AsyncRequestState(),
                 graphBeautificationResult = null,
@@ -559,14 +644,19 @@ class GraphEditorStateService {
                 mermaidIssues = mermaidIssues,
                 syncPreviewItems = emptyList(),
                 syncPreviewRequested = false,
+                draftVersion = 0,
                 generationPlan = null,
+                generationPlanDraftVersion = null,
                 generationPlanRequestState = AsyncRequestState(),
+                planEligibilityDecision = null,
                 generatedCodeDrafts = emptyList(),
+                generatedCodeDraftVersion = null,
                 generatedCodeDraftWarnings = emptyList(),
                 generatedCodeDraftSource = null,
                 generatedCodeDraftPromptPreview = null,
                 generatedCodeDraftWriteReport = null,
                 codeDraftRequestState = AsyncRequestState(),
+                codeEligibilityDecision = null,
                 workingGraphDirty = currentState.workingGraphDirty,
                 layoutState = nextLayoutState,
                 semanticRevision = currentState.semanticRevision + 1,
@@ -609,6 +699,7 @@ class GraphEditorStateService {
             )
             currentState.copy(
                 visibleGraph = graph,
+                referenceWorkingGraph = currentState.referenceWorkingGraph ?: currentState.workingGraph ?: graph,
                 factGraphView = nextViewDocuments.factGraphView,
                 flowchartView = nextViewDocuments.flowchartView,
                 resourceRelationView = nextViewDocuments.resourceRelationView,
@@ -624,13 +715,15 @@ class GraphEditorStateService {
                 graphBeautificationRequestState = AsyncRequestState(),
                 syncPreviewItems = emptyList(),
                 syncPreviewRequested = false,
-                generationPlan = null,
+                generationPlan = currentState.generationPlan,
+                generationPlanDraftVersion = currentState.generationPlanDraftVersion,
                 generationPlanRequestState = AsyncRequestState(),
-                generatedCodeDrafts = emptyList(),
-                generatedCodeDraftWarnings = emptyList(),
-                generatedCodeDraftSource = null,
-                generatedCodeDraftPromptPreview = null,
-                generatedCodeDraftWriteReport = null,
+                generatedCodeDrafts = currentState.generatedCodeDrafts,
+                generatedCodeDraftVersion = currentState.generatedCodeDraftVersion,
+                generatedCodeDraftWarnings = currentState.generatedCodeDraftWarnings,
+                generatedCodeDraftSource = currentState.generatedCodeDraftSource,
+                generatedCodeDraftPromptPreview = currentState.generatedCodeDraftPromptPreview,
+                generatedCodeDraftWriteReport = currentState.generatedCodeDraftWriteReport,
                 codeDraftRequestState = AsyncRequestState(),
                 workingGraphDirty = false,
                 layoutState = nextLayoutState,
@@ -675,7 +768,8 @@ class GraphEditorStateService {
             currentState.copy(
                 analysisDisplayMode = displayMode,
                 visibleGraph = nextVisibleGraph,
-                workingGraph = nextVisibleGraph,
+                workingGraph = currentState.workingGraph ?: nextVisibleGraph,
+                referenceWorkingGraph = currentState.referenceWorkingGraph ?: currentState.workingGraph ?: nextVisibleGraph,
                 layoutState = extractLayoutState(nextVisibleGraph),
                 snapshotRevision = currentState.snapshotRevision + 1,
                 selectedNodeId = nextSelectedNodeId,
@@ -689,10 +783,12 @@ class GraphEditorStateService {
         graph: GraphDocument,
         selectedMethodSignature: String? = null,
         preserveDraftPatchUndo: Boolean = false,
+        workingGraphDirty: Boolean = true,
     ) = markWorkingGraphChanged(
         graph = graph,
         selectedMethodSignature = selectedMethodSignature,
         preserveDraftPatchUndo = preserveDraftPatchUndo,
+        workingGraphDirty = workingGraphDirty,
     )
 
     /** 标记工作图已变化，并重置依赖于旧图的派生状态。 */
@@ -700,6 +796,7 @@ class GraphEditorStateService {
         graph: GraphDocument,
         selectedMethodSignature: String? = null,
         preserveDraftPatchUndo: Boolean = false,
+        workingGraphDirty: Boolean = true,
     ) {
         mutate { currentState: Snapshot ->
             /** 生效的方法签名，优先使用显式传入值。 */
@@ -731,6 +828,7 @@ class GraphEditorStateService {
             currentState.copy(
                 visibleGraph = nextVisibleGraph,
                 workingGraph = graph,
+                referenceWorkingGraph = currentState.referenceWorkingGraph ?: graph,
                 factGraphView = nextViewDocuments.factGraphView,
                 flowchartView = nextViewDocuments.flowchartView,
                 resourceRelationView = nextViewDocuments.resourceRelationView,
@@ -740,21 +838,26 @@ class GraphEditorStateService {
                 lastDraftPatchApplyResult = null,
                 auditResult = null,
                 auditRequestState = AsyncRequestState(),
+                qaRequestRecoveryState = QaRequestRecoveryState(),
                 diffReviewResult = null,
                 diffReviewRequestState = AsyncRequestState(),
                 syncPreviewItems = emptyList(),
                 syncPreviewRequested = false,
-                generationPlan = null,
+                generationPlan = currentState.generationPlan,
+                generationPlanDraftVersion = currentState.generationPlanDraftVersion,
                 generationPlanRequestState = AsyncRequestState(),
+                planEligibilityDecision = null,
                 graphBeautificationResult = null,
                 graphBeautificationRequestState = AsyncRequestState(),
-                generatedCodeDrafts = emptyList(),
-                generatedCodeDraftWarnings = emptyList(),
-                generatedCodeDraftSource = null,
-                generatedCodeDraftPromptPreview = null,
-                generatedCodeDraftWriteReport = null,
+                generatedCodeDrafts = currentState.generatedCodeDrafts,
+                generatedCodeDraftVersion = currentState.generatedCodeDraftVersion,
+                generatedCodeDraftWarnings = currentState.generatedCodeDraftWarnings,
+                generatedCodeDraftSource = currentState.generatedCodeDraftSource,
+                generatedCodeDraftPromptPreview = currentState.generatedCodeDraftPromptPreview,
+                generatedCodeDraftWriteReport = currentState.generatedCodeDraftWriteReport,
                 codeDraftRequestState = AsyncRequestState(),
-                workingGraphDirty = true,
+                codeEligibilityDecision = null,
+                workingGraphDirty = workingGraphDirty,
                 layoutState = nextLayoutState,
                 semanticRevision = currentState.semanticRevision + 1,
                 snapshotRevision = currentState.snapshotRevision + 1,
@@ -771,6 +874,7 @@ class GraphEditorStateService {
         displayMode: AnalysisDisplayMode,
         selectedMethodSignature: String? = null,
         preserveDraftPatchUndo: Boolean = false,
+        workingGraphDirty: Boolean = true,
     ) {
         mutate { currentState: Snapshot ->
             /** 生效的方法签名，优先使用显式传入值。 */
@@ -810,6 +914,7 @@ class GraphEditorStateService {
             currentState.copy(
                 visibleGraph = nextVisibleGraph,
                 workingGraph = graph,
+                referenceWorkingGraph = currentState.referenceWorkingGraph ?: graph,
                 factGraphView = nextViewDocuments.factGraphView,
                 flowchartView = nextViewDocuments.flowchartView,
                 resourceRelationView = nextViewDocuments.resourceRelationView,
@@ -819,12 +924,14 @@ class GraphEditorStateService {
                 lastDraftPatchApplyResult = null,
                 auditResult = null,
                 auditRequestState = AsyncRequestState(),
+                qaRequestRecoveryState = QaRequestRecoveryState(),
                 diffReviewResult = null,
                 diffReviewRequestState = AsyncRequestState(),
                 syncPreviewItems = emptyList(),
                 syncPreviewRequested = false,
                 generationPlan = null,
                 generationPlanRequestState = AsyncRequestState(),
+                planEligibilityDecision = null,
                 graphBeautificationResult = null,
                 graphBeautificationRequestState = AsyncRequestState(),
                 generatedCodeDrafts = emptyList(),
@@ -833,7 +940,8 @@ class GraphEditorStateService {
                 generatedCodeDraftPromptPreview = null,
                 generatedCodeDraftWriteReport = null,
                 codeDraftRequestState = AsyncRequestState(),
-                workingGraphDirty = true,
+                codeEligibilityDecision = null,
+                workingGraphDirty = workingGraphDirty,
                 layoutState = nextLayoutState,
                 semanticRevision = currentState.semanticRevision + 1,
                 snapshotRevision = currentState.snapshotRevision + 1,
@@ -934,10 +1042,14 @@ class GraphEditorStateService {
     }
 
     /** 记录统一草稿层状态。 */
-    fun markDraftWorkbenchState(state: DraftWorkbenchState) {
-        mutate {
-            it.copy(
+    fun markDraftWorkbenchState(
+        state: DraftWorkbenchState,
+        advanceDraftVersion: Boolean = false,
+    ) {
+        mutate { currentState ->
+            currentState.copy(
                 draftWorkbenchState = state,
+                draftVersion = if (advanceDraftVersion) currentState.draftVersion + 1 else currentState.draftVersion,
                 lastMessageType = "draftWorkbenchState",
             )
         }
@@ -993,22 +1105,38 @@ class GraphEditorStateService {
     fun markAuditResult(
         result: GraphPatchResult,
         requestState: AsyncRequestState = AsyncRequestState.succeeded(),
+        completedRequest: ReplayableQaRequest? = null,
     ) {
         mutate {
             it.copy(
                 auditResult = result,
                 auditRequestState = requestState,
+                qaRequestRecoveryState = completedRequest?.let { request ->
+                    it.qaRequestRecoveryState.copy(
+                        lastSubmittedRequest = request,
+                        lastFailedRequest = null,
+                    )
+                } ?: it.qaRequestRecoveryState,
                 lastMessageType = "auditResult",
             )
         }
     }
 
     /** 标记问答请求开始执行。 */
-    fun beginAuditRequest(requestState: AsyncRequestState = AsyncRequestState.running()) {
+    fun beginAuditRequest(
+        requestState: AsyncRequestState = AsyncRequestState.running(),
+        submittedRequest: ReplayableQaRequest? = null,
+    ) {
         mutate {
             it.copy(
                 auditResult = null,
                 auditRequestState = requestState,
+                qaRequestRecoveryState = submittedRequest?.let { request ->
+                    it.qaRequestRecoveryState.copy(
+                        lastSubmittedRequest = request,
+                        lastFailedRequest = null,
+                    )
+                } ?: it.qaRequestRecoveryState,
                 lastMessageType = "requestAudit",
             )
         }
@@ -1018,12 +1146,37 @@ class GraphEditorStateService {
     fun markAuditRequestFailed(
         message: String,
         requestState: AsyncRequestState = AsyncRequestState.failed(message),
+        failedRequest: ReplayableQaRequest? = null,
     ) {
         mutate {
             it.copy(
                 auditResult = null,
                 auditRequestState = requestState,
+                qaRequestRecoveryState = failedRequest?.let { request ->
+                    it.qaRequestRecoveryState.copy(
+                        lastSubmittedRequest = request,
+                        lastFailedRequest = request,
+                    )
+                } ?: it.qaRequestRecoveryState,
                 lastMessageType = "requestAudit",
+            )
+        }
+    }
+
+    fun markPlanEligibilityDecision(decision: StageEligibilityDecision?) {
+        mutate {
+            it.copy(
+                planEligibilityDecision = decision,
+                lastMessageType = "planEligibility",
+            )
+        }
+    }
+
+    fun markCodeEligibilityDecision(decision: StageEligibilityDecision?) {
+        mutate {
+            it.copy(
+                codeEligibilityDecision = decision,
+                lastMessageType = "codeEligibility",
             )
         }
     }
@@ -1194,11 +1347,13 @@ class GraphEditorStateService {
         plan: GenerationPlan,
         requestState: AsyncRequestState = AsyncRequestState.succeeded(),
     ) {
-        mutate {
-            it.copy(
+        mutate { currentState ->
+            currentState.copy(
                 generationPlan = plan,
+                generationPlanDraftVersion = currentState.draftVersion,
                 generationPlanRequestState = requestState,
                 generatedCodeDrafts = emptyList(),
+                generatedCodeDraftVersion = null,
                 generatedCodeDraftWarnings = emptyList(),
                 generatedCodeDraftSource = null,
                 generatedCodeDraftPromptPreview = null,
@@ -1213,8 +1368,10 @@ class GraphEditorStateService {
         mutate {
             it.copy(
                 generationPlan = null,
+                generationPlanDraftVersion = null,
                 generationPlanRequestState = requestState,
                 generatedCodeDrafts = emptyList(),
+                generatedCodeDraftVersion = null,
                 generatedCodeDraftWarnings = emptyList(),
                 generatedCodeDraftSource = null,
                 generatedCodeDraftPromptPreview = null,
@@ -1232,6 +1389,7 @@ class GraphEditorStateService {
         mutate {
             it.copy(
                 generationPlan = null,
+                generationPlanDraftVersion = null,
                 generationPlanRequestState = requestState,
                 lastMessageType = "requestGenerationPlan",
             )
@@ -1265,9 +1423,10 @@ class GraphEditorStateService {
         promptPreview: String?,
         requestState: AsyncRequestState = AsyncRequestState.succeeded(),
     ) {
-        mutate {
-            it.copy(
+        mutate { currentState ->
+            currentState.copy(
                 generatedCodeDrafts = drafts,
+                generatedCodeDraftVersion = currentState.draftVersion,
                 generatedCodeDraftWarnings = warnings,
                 generatedCodeDraftSource = source,
                 generatedCodeDraftPromptPreview = promptPreview,
@@ -1283,6 +1442,7 @@ class GraphEditorStateService {
         mutate {
             it.copy(
                 generatedCodeDrafts = emptyList(),
+                generatedCodeDraftVersion = null,
                 generatedCodeDraftWarnings = emptyList(),
                 generatedCodeDraftSource = null,
                 generatedCodeDraftPromptPreview = null,
@@ -1301,6 +1461,7 @@ class GraphEditorStateService {
         mutate {
             it.copy(
                 generatedCodeDrafts = emptyList(),
+                generatedCodeDraftVersion = null,
                 generatedCodeDraftWarnings = emptyList(),
                 generatedCodeDraftSource = null,
                 generatedCodeDraftPromptPreview = null,
@@ -1427,6 +1588,8 @@ class GraphEditorStateService {
         val visibleGraph: GraphDocument? = null,
         /** 当前可编辑的工作图。 */
         val workingGraph: GraphDocument? = null,
+        /** 当前工作图所属展示模式的稳定参考底图。 */
+        val referenceWorkingGraph: GraphDocument? = null,
         /** 事实图参考基线。 */
         val referenceFactGraph: GraphDocument? = null,
         /** 设计导入基线图。 */
@@ -1451,6 +1614,8 @@ class GraphEditorStateService {
         val auditResult: GraphPatchResult? = null,
         /** 图问答请求状态。 */
         val auditRequestState: AsyncRequestState = AsyncRequestState(),
+        /** 最近一次可重放的问答请求状态。 */
+        val qaRequestRecoveryState: QaRequestRecoveryState = QaRequestRecoveryState(),
         /** runtime 产物摘要，按场景最小映射到前端。 */
         val runtimeArtifactSummaries: Map<String, List<RuntimeArtifactSummary>> = emptyMap(),
         /** diff 审核结果。 */
@@ -1481,12 +1646,20 @@ class GraphEditorStateService {
         val mermaidIssues: List<MermaidIssue> = emptyList(),
         /** 同步预览项列表。 */
         val syncPreviewItems: List<SyncPreviewItem> = emptyList(),
+        /** 当前草稿真相层版本。 */
+        val draftVersion: Long = 0,
         /** 代码生成计划。 */
         val generationPlan: GenerationPlan? = null,
+        /** 当前实现建议绑定的草稿版本。 */
+        val generationPlanDraftVersion: Long? = null,
         /** 代码生成计划请求状态。 */
         val generationPlanRequestState: AsyncRequestState = AsyncRequestState(),
+        /** 当前实现计划准入结果。 */
+        val planEligibilityDecision: StageEligibilityDecision? = null,
         /** 已生成的代码草稿列表。 */
         val generatedCodeDrafts: List<GeneratedCodeDraft> = emptyList(),
+        /** 当前代码 diff 绑定的草稿版本。 */
+        val generatedCodeDraftVersion: Long? = null,
         /** 代码草稿警告列表。 */
         val generatedCodeDraftWarnings: List<String> = emptyList(),
         /** 代码草稿结果来源。 */
@@ -1497,6 +1670,8 @@ class GraphEditorStateService {
         val generatedCodeDraftWriteReport: GeneratedCodeDraftWriteReport? = null,
         /** 代码草稿请求状态。 */
         val codeDraftRequestState: AsyncRequestState = AsyncRequestState(),
+        /** 当前代码草稿准入结果。 */
+        val codeEligibilityDecision: StageEligibilityDecision? = null,
         /** 源码跳转状态。 */
         val sourceNavigationState: SourceNavigationState = SourceNavigationState(),
         /** 是否已经请求过同步预览。 */
@@ -1520,6 +1695,76 @@ class GraphEditorStateService {
         /** 最近一次状态消息类型。 */
         val lastMessageType: String? = null,
     )
+
+    private fun preservedConfirmedDraftState(
+        currentState: Snapshot,
+        nextSelectedMethodSignature: String?,
+    ): DraftWorkbenchState {
+        if (currentState.draftWorkbenchState.draftChanges.isEmpty()) {
+            return DraftWorkbenchState()
+        }
+        val currentSignature = currentState.selectedMethodSignature
+        if (currentSignature.isNullOrBlank() || nextSelectedMethodSignature.isNullOrBlank()) {
+            return DraftWorkbenchState()
+        }
+        return if (currentSignature == nextSelectedMethodSignature) currentState.draftWorkbenchState else DraftWorkbenchState()
+    }
+
+    private fun reapplyConfirmedDraftGraph(
+        baseGraph: GraphDocument,
+        draftState: DraftWorkbenchState,
+    ): GraphDocument {
+        return draftState.draftChanges.fold(baseGraph) { currentGraph, entry ->
+            val patch = entry.graphPatch ?: return@fold currentGraph
+            graphPatchApplyService.apply(currentGraph, patch)
+        }
+    }
+
+    private fun buildOutcomeViewDocuments(
+        outcome: AnalysisOutcome,
+        workingGraph: GraphDocument,
+        referenceFactGraph: GraphDocument,
+    ): GraphEditorViewDocuments {
+        val fallback = buildViewDocuments(
+            visibleGraph = workingGraph,
+            factFullGraph = referenceFactGraph,
+            selectedNodeId = outcome.anchorNodeId,
+            selectedMethodSignature = outcome.selectedMethodSignature,
+        )
+        val anchorNodeId = resolveSelectedNodeId(
+            graph = workingGraph,
+            selectedNodeId = outcome.anchorNodeId,
+            selectedMethodSignature = outcome.selectedMethodSignature,
+        ) ?: workingGraph.nodes.firstOrNull()?.id
+        return when (outcome.displayMode) {
+            AnalysisDisplayMode.FACT_GRAPH -> fallback
+            AnalysisDisplayMode.FLOWCHART -> GraphEditorViewDocuments(
+                factGraphView = outcome.factGraphView ?: fallback.factGraphView,
+                flowchartView = projectReadableFlowchartView(
+                    graph = workingGraph,
+                    anchorNodeId = anchorNodeId,
+                ),
+                resourceRelationView = outcome.resourceRelationView ?: fallback.resourceRelationView,
+            )
+
+            AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> GraphEditorViewDocuments(
+                factGraphView = outcome.factGraphView ?: fallback.factGraphView,
+                flowchartView = outcome.flowchartView ?: fallback.flowchartView,
+                resourceRelationView = (outcome.resourceRelationView ?: fallback.resourceRelationView).copy(
+                    visibleGraph = workingGraph,
+                    fullGraph = workingGraph,
+                    anchorNodeId = anchorNodeId,
+                    summary = ResourceRelationSummary(
+                        visibleNodeCount = workingGraph.nodes.size,
+                        laneCounts = workingGraph.nodes
+                            .groupingBy { it.metadata["resource.lane"] ?: "CODE" }
+                            .eachCount()
+                            .toSortedMap(),
+                    ),
+                ),
+            )
+        }
+    }
 
     /**
      * runtime 产物到 UI 的最小投影。

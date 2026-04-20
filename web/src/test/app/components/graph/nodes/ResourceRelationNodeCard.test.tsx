@@ -48,4 +48,16 @@ describe("ResourceRelationNodeCard", () => {
     expect(container.textContent).toContain("讲解中");
     expect(container.textContent).toContain("已改草稿");
   });
+
+  it("renders a draft compare badge for resource nodes", () => {
+    const { container } = render(
+      <ResourceRelationNodeCard
+        node={resourceNode()}
+        selected={false}
+        draftCompareStatus="MODIFIED"
+      />,
+    );
+
+    expect(container.textContent).toContain("草稿修改");
+  });
 });

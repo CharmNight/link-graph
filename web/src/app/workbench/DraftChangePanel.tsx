@@ -33,7 +33,12 @@ export function DraftChangePanel({
               title={change.title}
               aria-label={`草稿条目：${change.title}`}
             >
-              <span className="workbench-candidate-tab-title">{change.title}</span>
+              <span className="workbench-draft-tab-copy">
+                <span className="workbench-candidate-tab-title">{change.title}</span>
+                {shouldShowAfterStatePreview(change) ? (
+                  <span className="workbench-draft-tab-preview">{change.afterState}</span>
+                ) : null}
+              </span>
               <span className="workbench-status-pill">变更</span>
             </button>
           ))}
@@ -43,4 +48,12 @@ export function DraftChangePanel({
       )}
     </section>
   );
+}
+
+function shouldShowAfterStatePreview(change: DraftWorkbenchEntry): change is DraftWorkbenchEntry & { afterState: string } {
+  const afterState = change.afterState?.trim();
+  if (!afterState) {
+    return false;
+  }
+  return afterState !== change.title.trim();
 }

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { DraftTab } from "../../../app/workbench/DraftTab";
@@ -172,6 +172,39 @@ describe("DraftTab", () => {
     expect(onSelectEntry).toHaveBeenCalledWith("draft-note-1");
   });
 
+  it("shows the exact modified state preview in the draft change list instead of only keeping the prose title", () => {
+    render(
+      <DraftTab
+        state={{
+          ...draftStateFixture(),
+          selectedEntryId: "draft-change-1",
+          draftState: {
+            ...draftStateFixture().draftState,
+            draftChanges: [
+              {
+                ...draftStateFixture().draftState.draftChanges[0],
+                title: "将删除条件收紧为显式 true 判断",
+                beforeState: "if (delete)",
+                afterState: "if (delete == true)",
+              },
+            ],
+          },
+        }}
+        onToggleCompare={vi.fn()}
+        onSelectEntry={vi.fn()}
+        onLocateChangeNode={vi.fn()}
+        onUnconfirmChange={vi.fn()}
+        onOpenNote={vi.fn()}
+        onLocateNoteNode={vi.fn()}
+        resolveNodeTitle={() => "CommonController.fileDownload"}
+      />,
+    );
+
+    const changeButton = screen.getByRole("button", { name: "草稿条目：将删除条件收紧为显式 true 判断" });
+    expect(changeButton).toBeInTheDocument();
+    expect(within(changeButton).getByText("if (delete == true)")).toBeInTheDocument();
+  });
+
   it("shows exact write scopes when a confirmed draft change is scope-authorized", () => {
     render(
       <DraftTab
@@ -254,10 +287,60 @@ describe("DraftTab", () => {
       />,
     );
 
-    expect(screen.getByText("修改前")).toBeInTheDocument();
-    expect(screen.getByText("if (a > 10)")).toBeInTheDocument();
-    expect(screen.getByText("修改后")).toBeInTheDocument();
-    expect(screen.getByText("if (a < 100)")).toBeInTheDocument();
+    const detailCard = screen.getByText("草稿变更详情").closest("section");
+    expect(detailCard).not.toBeNull();
+    expect(within(detailCard as HTMLElement).getByText("修改前")).toBeInTheDocument();
+    expect(within(detailCard as HTMLElement).getByText("if (a > 10)")).toBeInTheDocument();
+    expect(within(detailCard as HTMLElement).getByText("修改后")).toBeInTheDocument();
+    expect(within(detailCard as HTMLElement).getByText("if (a < 100)")).toBeInTheDocument();
+  });
+
+  it("renders an implementation suggestion section inside draft instead of requiring a standalone plan page", () => {
+    render(
+      <DraftTab
+        {...({
+          state: {
+            ...draftStateFixture(),
+            selectedEntryId: "draft-change-1",
+          },
+          draftVersion: 3,
+          codeDiffStatus: "STALE",
+          codeDiffDraftVersion: 2,
+          implementationSuggestion: {
+            status: "FRESH",
+            source: "MOCK",
+            summary: "先修改 OrderController.submit，再补上传目录分支。",
+            warnings: [],
+            promptPreview: null,
+            promptPreviewArtifactId: null,
+            generationPlanDraftVersion: 3,
+            items: [
+              {
+                id: "impl-1",
+                title: "修改 OrderController.submit",
+                description: "补失败分支并保留当前主路径。",
+                targetPath: "src/main/java/com/example/OrderController.java",
+                risk: "MEDIUM",
+              },
+            ],
+          },
+        } as any)}
+        onToggleCompare={vi.fn()}
+        onSelectEntry={vi.fn()}
+        onLocateChangeNode={vi.fn()}
+        onUnconfirmChange={vi.fn()}
+        onOpenNote={vi.fn()}
+        onLocateNoteNode={vi.fn()}
+        resolveNodeTitle={() => "OrderController.submit"}
+      />,
+    );
+
+    expect(screen.getByText("实现建议")).toBeInTheDocument();
+    expect(screen.getByText("草稿版本 v3")).toBeInTheDocument();
+    expect(screen.getByText("实现建议：最新（v3）")).toBeInTheDocument();
+    expect(screen.getByText("代码 diff：待刷新（v2）")).toBeInTheDocument();
+    expect(screen.getByText("先修改 OrderController.submit，再补上传目录分支。")).toBeInTheDocument();
+    expect(screen.getByText("任务：修改 OrderController.submit")).toBeInTheDocument();
   });
 
   it("makes the compare-state change visible near the top of the draft pane", () => {

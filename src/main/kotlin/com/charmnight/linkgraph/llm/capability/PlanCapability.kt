@@ -34,11 +34,11 @@ import java.util.UUID
 
 /**
  * 计划生成 capability。
- * 第一阶段仍复用旧 GraphGenerationService 路径，但执行入口和 confirmed intent 门槛已经迁到 runtime。
+ * runtime 负责门槛校验与证据读取，最终计划由正式执行器生成。
  */
 internal class PlanCapability(
     private val defaultBudget: RunBudget = RunBudget(),
-    private val legacyPlanExecutor: LegacyPlanExecutor,
+    private val planExecutor: PlanExecutor,
     private val toolRegistry: AgentToolRegistry = AgentToolRegistry(
         listOf(
             GetDraftWorkbenchTool(DraftToolFacade()),
@@ -382,7 +382,7 @@ internal class PlanCapability(
                     draftChanges = confirmedChanges,
                 ),
             )
-            val plan = legacyPlanExecutor.invoke(
+            val plan = planExecutor.invoke(
                 input.copy(
                     planningPayload = input.planningPayload.copy(
                         snapshot = runtimeSnapshot,
@@ -408,7 +408,7 @@ internal class PlanCapability(
                     stepRecords = state.stepRecords + AgentStepRecord(
                         stepIndex = state.stepIndex,
                         phase = AgentRunPhase.SUCCEEDED,
-                        summary = "delegate-legacy-plan-service",
+                        summary = "generate-plan",
                     ),
                     lastModelOutput = plan.summary,
                 ),
@@ -438,7 +438,7 @@ internal class PlanCapability(
             .toList()
     }
 
-    fun interface LegacyPlanExecutor {
+    fun interface PlanExecutor {
         fun invoke(
             input: PlanCapabilityInput,
             runtimeContext: AgentRuntimeContext,

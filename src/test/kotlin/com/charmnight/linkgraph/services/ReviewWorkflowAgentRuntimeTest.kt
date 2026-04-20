@@ -9,7 +9,9 @@ import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.llm.capability.QaCapability
 import com.charmnight.linkgraph.llm.runtime.RunBudget
+import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
@@ -68,7 +70,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
             qaCapabilityFactory = {
                 QaCapability(
-                    legacyAuditExecutor = { input, _, _ ->
+                    auditExecutor = { input, _, _ ->
                         GraphPatchResult(
                             source = LlmResultSource.MOCK,
                             question = input.question,
@@ -99,7 +101,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         assertEquals("问答结论", snapshot.runtimeArtifactSummaries["qa"]?.lastOrNull()?.title)
     }
 
-    fun testRequestAuditAsyncReadsCodeEvidenceBeforeLegacyExecutor() {
+    fun testRequestAuditAsyncReadsCodeEvidenceBeforeAuditExecutor() {
         val sourceFile = Files.createTempFile("review-workflow-qa", ".java")
         Files.writeString(
             sourceFile,
@@ -167,7 +169,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
             qaCapabilityFactory = {
                 QaCapability(
-                    legacyAuditExecutor = { input, _, _ ->
+                    auditExecutor = { input, _, _ ->
                         GraphPatchResult(
                             source = LlmResultSource.MOCK,
                             question = input.question,
@@ -190,6 +192,237 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
 
         assertEquals("已读取1段代码证据。", snapshot.auditResult?.answer)
         assertTrue(snapshot.runtimeArtifactSummaries["qa"]?.isNotEmpty() == true)
+    }
+
+    fun testRequestAuditAsyncReadsAdjacentCallEvidenceForExplicitSelection() {
+        val controllerFile = Files.createTempFile("review-workflow-download", ".java")
+        Files.writeString(
+            controllerFile,
+            """
+            class CommonController {
+                String fileDownload(String fileName) {
+                    return RuoYiConfig.getDownloadPath() + fileName;
+                }
+            }
+            """.trimIndent(),
+        )
+        val configFile = Files.createTempFile("review-workflow-config", ".java")
+        Files.writeString(
+            configFile,
+            """
+            class RuoYiConfig {
+                static String getDownloadPath() {
+                    return "/profile/download/";
+                }
+            }
+            """.trimIndent(),
+        )
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        stateService.loadGraph(
+            GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:file-download",
+                        type = NodeType.METHOD,
+                        title = "CommonController.fileDownload",
+                        signature = "com.example.CommonController.fileDownload(java.lang.String):java.lang.String",
+                        sourceTag = GraphSourceTag.FACT,
+                        metadata = mapOf(
+                            "source.filePath" to controllerFile.toString(),
+                            "source.startLine" to "1",
+                            "source.endLine" to "5",
+                        ),
+                    ),
+                    GraphNode(
+                        id = "method:get-download-path",
+                        type = NodeType.METHOD,
+                        title = "RuoYiConfig.getDownloadPath",
+                        signature = "com.example.RuoYiConfig.getDownloadPath():java.lang.String",
+                        sourceTag = GraphSourceTag.FACT,
+                        metadata = mapOf(
+                            "source.filePath" to configFile.toString(),
+                            "source.startLine" to "1",
+                            "source.endLine" to "5",
+                        ),
+                    ),
+                ),
+                edges = listOf(
+                    GraphEdge(
+                        id = "edge:file-download->get-download-path",
+                        type = EdgeType.CALL,
+                        fromNodeId = "method:file-download",
+                        toNodeId = "method:get-download-path",
+                    ),
+                ),
+            ),
+            "currentMethod",
+        )
+        val session = ProjectEditorSession(
+            stateService = stateService,
+            onBrowserSyncRequested = {},
+        )
+        var capturedNodeIds: List<String> = emptyList()
+        val workflow = ReviewWorkflow(
+            project = project,
+            session = session,
+            planningContextFactory = PlanningContextFactory(
+                graphDiffer = GraphDiffer(),
+                syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
+                graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
+                settingsProvider = { LinkGraphSettingsState() },
+            ),
+            graphAuditPatchService = GraphAuditPatchService(),
+            graphDiffPatchService = GraphDiffPatchService(),
+            graphBeautificationService = object : GraphBeautificationService {
+                override fun beautify(
+                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    settings: LinkGraphSettingsState,
+                    onPreview: ((String, Boolean) -> Unit)?,
+                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                    source = LlmResultSource.MOCK,
+                    promptPreview = "unused",
+                )
+            },
+            graphDiffer = GraphDiffer(),
+            settingsProvider = { LinkGraphSettingsState() },
+            auditExecutorOverrideProvider = { null },
+            asyncRequestLifecycle = AsyncRequestLifecycleSupport(
+                project = project,
+                session = session,
+                timeoutOverrideProvider = { 500L },
+            ),
+            logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
+            qaCapabilityFactory = {
+                QaCapability(
+                    auditExecutor = { input, _, _ ->
+                        capturedNodeIds = input.auditContext.sourceContext.map { it.nodeId }
+                        GraphPatchResult(
+                            source = LlmResultSource.MOCK,
+                            question = input.question,
+                            answer = "已读取${capturedNodeIds.size}段代码证据。",
+                            promptPreview = "prompt",
+                        )
+                    },
+                )
+            },
+        )
+
+        workflow.requestAuditAsync(
+            question = "请继续取证：确认下载路径配置是如何解析的",
+            selectedNodeIds = listOf("method:file-download"),
+        )
+
+        val snapshot = waitForSnapshot(stateService) { current ->
+            current.auditRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
+        }
+
+        assertEquals("已读取2段代码证据。", snapshot.auditResult?.answer)
+        assertEquals(
+            listOf("method:file-download", "method:get-download-path"),
+            capturedNodeIds,
+        )
+    }
+
+    fun testRequestAuditAsyncPreservesFactBaselineAndEditableWorkingGraph() {
+        val factMethod = GraphNode(
+            id = "method:file-download",
+            type = NodeType.METHOD,
+            title = "CommonController.fileDownload",
+            signature = "com.example.CommonController.fileDownload(java.lang.String):void",
+            sourceTag = GraphSourceTag.FACT,
+        )
+        val editableDecision = GraphNode(
+            id = "scope:file-download-if",
+            type = NodeType.FLOW_SCOPE,
+            title = "if (delete)",
+            sourceTag = GraphSourceTag.DRAFT_MANUAL,
+            metadata = mapOf(
+                "flowchart.kind" to "DECISION",
+                "flow.ownerMethod" to "com.example.CommonController.fileDownload(java.lang.String):void",
+            ),
+        )
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        stateService.loadGraph(GraphDocument(nodes = listOf(factMethod)), "currentMethod")
+        stateService.markGraphChanged(
+            GraphDocument(
+                nodes = listOf(factMethod, editableDecision),
+                edges = listOf(
+                    GraphEdge(
+                        id = "edge:file-download->if-delete",
+                        type = EdgeType.CONTROL_FLOW,
+                        fromNodeId = factMethod.id,
+                        toNodeId = editableDecision.id,
+                        sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                    ),
+                ),
+            ),
+        )
+        val session = ProjectEditorSession(
+            stateService = stateService,
+            onBrowserSyncRequested = {},
+        )
+        var capturedAuditContext: GraphAuditContext? = null
+        val workflow = ReviewWorkflow(
+            project = project,
+            session = session,
+            planningContextFactory = PlanningContextFactory(
+                graphDiffer = GraphDiffer(),
+                syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
+                graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
+                settingsProvider = { LinkGraphSettingsState() },
+            ),
+            graphAuditPatchService = GraphAuditPatchService(),
+            graphDiffPatchService = GraphDiffPatchService(),
+            graphBeautificationService = object : GraphBeautificationService {
+                override fun beautify(
+                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    settings: LinkGraphSettingsState,
+                    onPreview: ((String, Boolean) -> Unit)?,
+                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                    source = LlmResultSource.MOCK,
+                    promptPreview = "unused",
+                )
+            },
+            graphDiffer = GraphDiffer(),
+            settingsProvider = { LinkGraphSettingsState() },
+            auditExecutorOverrideProvider = { null },
+            asyncRequestLifecycle = AsyncRequestLifecycleSupport(
+                project = project,
+                session = session,
+                timeoutOverrideProvider = { 500L },
+            ),
+            logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
+            qaCapabilityFactory = {
+                QaCapability(
+                    auditExecutor = { input, _, _ ->
+                        capturedAuditContext = input.auditContext
+                        GraphPatchResult(
+                            source = LlmResultSource.MOCK,
+                            question = input.question,
+                            answer = "已捕获 QA 图上下文。",
+                            promptPreview = "prompt",
+                        )
+                    },
+                )
+            },
+        )
+
+        workflow.requestAuditAsync(
+            question = "请确认删除分支是否属于当前方法流程",
+            selectedNodeIds = listOf(factMethod.id),
+        )
+
+        val snapshot = waitForSnapshot(stateService) { current ->
+            current.auditRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
+        }
+
+        assertEquals("已捕获 QA 图上下文。", snapshot.auditResult?.answer)
+        assertEquals(setOf(factMethod.id), capturedAuditContext?.factGraph?.nodes?.map(GraphNode::id)?.toSet())
+        assertEquals(
+            setOf(factMethod.id, editableDecision.id),
+            capturedAuditContext?.editableGraph?.nodes?.map(GraphNode::id)?.toSet(),
+        )
+        assertEquals(listOf(factMethod.id), capturedAuditContext?.selectedNodeIds)
     }
 
     fun testRequestAuditAsyncReadsWholeGraphCodeEvidenceWithoutExplicitSelection() {
@@ -283,7 +516,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
             qaCapabilityFactory = {
                 QaCapability(
-                    legacyAuditExecutor = { input, _, _ ->
+                    auditExecutor = { input, _, _ ->
                         GraphPatchResult(
                             source = LlmResultSource.MOCK,
                             question = input.question,
@@ -402,7 +635,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
             qaCapabilityFactory = {
                 QaCapability(
-                    legacyAuditExecutor = { input, _, _ ->
+                    auditExecutor = { input, _, _ ->
                         capturedMessages = input.session?.messages.orEmpty()
                         GraphPatchResult(
                             source = LlmResultSource.MOCK,
@@ -466,7 +699,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             stateService = stateService,
             onBrowserSyncRequested = {},
         )
-        var legacyInvoked = false
+        var executorInvoked = false
         val workflow = ReviewWorkflow(
             project = project,
             session = session,
@@ -500,8 +733,8 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             qaCapabilityFactory = {
                 QaCapability(
                     defaultBudget = RunBudget(maxFilesRead = 0),
-                    legacyAuditExecutor = { input, _, _ ->
-                        legacyInvoked = true
+                    auditExecutor = { input, _, _ ->
+                        executorInvoked = true
                         GraphPatchResult(
                             source = LlmResultSource.MOCK,
                             question = input.question,
@@ -522,7 +755,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             current.auditRequestState.phase == GraphEditorStateService.AsyncRequestPhase.FAILED
         }
 
-        assertFalse(legacyInvoked)
+        assertFalse(executorInvoked)
         assertEquals(GraphEditorStateService.AsyncRequestPhase.FAILED, snapshot.auditRequestState.phase)
         assertTrue(snapshot.auditRequestState.errorMessage?.contains("runtime 未返回结果") == true)
         assertTrue(snapshot.auditRequestState.detailMessage?.contains("failureReason=MAX_FILES_READ_EXCEEDED") == true)

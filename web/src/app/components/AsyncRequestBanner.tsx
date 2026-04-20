@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { asyncRequestExecutionModeLabel } from "../labels";
+import { asyncRequestExecutionModeLabel, normalizeWorkbenchWording } from "../labels";
 import type { AsyncRequestState } from "../types";
 import { resolveAsyncRequestPrimaryMessage } from "../asyncRequestStatus";
 
@@ -61,15 +61,18 @@ function bannerTitle(requestState: AsyncRequestState): string | null {
 }
 
 function bannerDetail(requestState: AsyncRequestState): string | null {
+  if (requestState.phase === "SUCCEEDED") {
+    return null;
+  }
   if (requestState.detailMessage?.trim()) {
-    return requestState.detailMessage.trim();
+    return normalizeWorkbenchWording(requestState.detailMessage.trim());
   }
   if (
     (requestState.phase === "FAILED" || requestState.phase === "TIMED_OUT") &&
     requestState.errorMessage?.trim() &&
     bannerTitle(requestState) !== requestState.errorMessage.trim()
   ) {
-    return requestState.errorMessage.trim();
+    return normalizeWorkbenchWording(requestState.errorMessage.trim());
   }
   return null;
 }
@@ -87,7 +90,7 @@ function bannerTelemetry(requestState: AsyncRequestState): Array<{ label: string
     },
     {
       label: "场景",
-      value: requestState.scene?.trim() || null,
+      value: requestState.scene?.trim() ? normalizeWorkbenchWording(requestState.scene.trim()) : null,
     },
     {
       label: "执行模式",

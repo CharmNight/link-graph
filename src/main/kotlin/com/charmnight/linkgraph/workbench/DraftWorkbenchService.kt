@@ -1,24 +1,41 @@
 package com.charmnight.linkgraph.workbench
 
+import com.charmnight.linkgraph.model.GraphDocument
+
 class DraftWorkbenchService {
+    private val patchComposer = CandidateGraphPatchComposer()
+
     fun confirmCandidateChange(
         draft: DraftWorkbenchState,
         candidate: CandidateDraftChange,
+        baseGraph: GraphDocument,
     ): DraftConfirmationResult {
+        val normalizedCandidate = patchComposer.normalizeCandidate(candidate, baseGraph)
+        val graphPatch = normalizedCandidate.graphPatch
+        if (graphPatch == null || graphPatch.operations.isEmpty()) {
+            return DraftConfirmationResult(
+                draftState = draft,
+                draftChanges = draft.draftChanges,
+                graphChanged = false,
+                failureReason = "当前候选变更没有形成可应用的真实图 patch，已拒绝写入草稿层。",
+            )
+        }
         val entry = DraftWorkbenchEntry(
             entryId = "draft-${candidate.changeId}",
             kind = DraftEntryKind.CHANGE,
-            title = candidate.title,
-            sourceChangeId = candidate.changeId,
-            targetStepIds = candidate.targetStepIds,
-            targetNodeIds = candidate.targetNodeIds,
-            beforeState = candidate.beforeState,
-            afterState = candidate.afterState,
-            reason = candidate.reason,
-            impactSummary = candidate.impactSummary,
-            claimType = candidate.claimType,
-            evidence = candidate.evidence,
-            editScopes = candidate.editScopes,
+            title = normalizedCandidate.title,
+            sourceChangeId = normalizedCandidate.changeId,
+            targetStepIds = normalizedCandidate.targetStepIds,
+            targetNodeIds = normalizedCandidate.targetNodeIds,
+            beforeState = normalizedCandidate.beforeState,
+            afterState = normalizedCandidate.afterState,
+            reason = normalizedCandidate.reason,
+            impactSummary = normalizedCandidate.impactSummary,
+            claimType = normalizedCandidate.claimType,
+            evidence = normalizedCandidate.evidence,
+            editScopes = normalizedCandidate.editScopes,
+            patchIntent = normalizedCandidate.patchIntent,
+            graphPatch = graphPatch,
         )
         val nextDraftChanges = draft.draftChanges
             .filterNot { existing -> existing.sourceChangeId == candidate.changeId }

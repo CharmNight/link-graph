@@ -1,3 +1,4 @@
+import { normalizeWorkbenchWording } from "./labels";
 import type { AsyncRequestState, OperationFeedback } from "./types";
 
 export interface ToolbarFeedback extends OperationFeedback {
@@ -36,22 +37,22 @@ function fallbackSuccessMessage(scene: string): string {
     case "差异问答":
       return "差异问答完成，已更新分析结果";
     case "实现计划":
-      return "实现计划完成，已更新计划内容";
+      return "实现建议完成，已更新实现建议";
     case "代码草稿":
-      return "代码草稿完成，已更新草稿内容";
+      return "代码 diff 完成，已更新 diff 内容";
     default:
-      return `${scene.trim()}已完成。`;
+      return normalizeWorkbenchWording(`${scene.trim()}已完成。`);
   }
 }
 
 export function resolveAsyncRequestPrimaryMessage(state: AsyncRequestState): string | null {
   const explicitMessage = state.statusMessage?.trim();
   if (explicitMessage) {
-    return explicitMessage;
+    return normalizeWorkbenchWording(explicitMessage);
   }
 
   if (state.phase === "FAILED" || state.phase === "TIMED_OUT") {
-    return state.errorMessage?.trim() || null;
+    return state.errorMessage?.trim() ? normalizeWorkbenchWording(state.errorMessage.trim()) : null;
   }
 
   const scene = state.scene?.trim();
@@ -60,10 +61,10 @@ export function resolveAsyncRequestPrimaryMessage(state: AsyncRequestState): str
   }
 
   if (state.phase === "SUCCEEDED") {
-    return fallbackSuccessMessage(scene);
+    return normalizeWorkbenchWording(fallbackSuccessMessage(scene));
   }
   if (state.phase === "RUNNING") {
-    return `${scene}进行中。`;
+    return normalizeWorkbenchWording(`${scene}进行中。`);
   }
   return null;
 }
@@ -73,7 +74,7 @@ function requestMessage(state: AsyncRequestState): string | null {
   if (!primary) {
     return null;
   }
-  return state.scene?.trim() ? `${state.scene.trim()}：${primary}` : primary;
+  return state.scene?.trim() ? `${normalizeWorkbenchWording(state.scene.trim())}：${primary}` : primary;
 }
 
 function requestLevel(state: AsyncRequestState): OperationFeedback["level"] {

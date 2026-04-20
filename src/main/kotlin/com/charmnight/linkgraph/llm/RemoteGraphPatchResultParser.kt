@@ -12,16 +12,23 @@ import com.charmnight.linkgraph.model.GraphPatchOperation
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.workbench.AuditInvestigationLead
-import com.charmnight.linkgraph.workbench.AuditInvestigationLeadStatus
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
+import com.charmnight.linkgraph.workbench.CandidatePatchIntent
+import com.charmnight.linkgraph.workbench.CandidatePatchIntentMode
+import com.charmnight.linkgraph.workbench.InvestigationThread
+import com.charmnight.linkgraph.workbench.InvestigationThreadStatus
+import com.intellij.openapi.diagnostic.Logger
 
 /**
  * 解析远程 LLM 返回的图补丁结果。
  * 输出内容既包含自然语言回答，也可能附带结构化补丁操作。
  */
 internal object RemoteGraphPatchResultParser {
+    private val logger = Logger.getInstance(RemoteGraphPatchResultParser::class.java)
+    private val traceEnabled: Boolean =
+        System.getenv("LINKGRAPH_DEBUG_TRACE")?.trim()?.equals("true", ignoreCase = true) == true
+
     /** 把远程响应解析为统一的补丁结果对象。 */
     fun parse(
         content: String,
@@ -41,6 +48,22 @@ internal object RemoteGraphPatchResultParser {
         val findings = parseResultEvidenceFindings(root["findings"])
         /** 远程返回的结构化补丁。 */
         val patch = (root["patch"] as? Map<*, *>)?.let(::parsePatch)
+        val rawCandidateChanges = (root["candidateChanges"] as? List<*>).orEmpty()
+        val rawInvestigationThreads = (root["investigationThreads"] as? List<*>).orEmpty()
+        val parsedCandidateChanges = rawCandidateChanges.mapNotNull {
+            parseCandidateChange(it as? Map<*, *>, findings)
+        }
+        val parsedInvestigationThreads = rawInvestigationThreads.mapNotNull {
+            parseInvestigationThread(it as? Map<*, *>, findings)
+        }
+        if (traceEnabled) {
+            logger.warn(
+                "远程问答结构解析: findings=${findings.size}, rawCandidateChanges=${rawCandidateChanges.size}, " +
+                    "parsedCandidateChanges=${parsedCandidateChanges.size}, rawInvestigationThreads=${rawInvestigationThreads.size}, " +
+                    "parsedInvestigationThreads=${parsedInvestigationThreads.size}, patchOperations=${patch?.operations?.size ?: 0}, " +
+                    "candidateSummaries=${candidateSummaries(parsedCandidateChanges)}",
+            )
+        }
         return GraphPatchResult(
             source = LlmResultSource.REMOTE,
             question = question,
@@ -48,12 +71,8 @@ internal object RemoteGraphPatchResultParser {
             promptPreview = prompt,
             patch = patch,
             findings = findings,
-            candidateChanges = (root["candidateChanges"] as? List<*>).orEmpty().mapNotNull {
-                parseCandidateChange(it as? Map<*, *>, findings)
-            },
-            investigationLeads = (root["investigationLeads"] as? List<*>).orEmpty().mapNotNull {
-                parseInvestigationLead(it as? Map<*, *>, findings)
-            },
+            candidateChanges = parsedCandidateChanges,
+            investigationThreads = parsedInvestigationThreads,
             warnings = warnings,
         )
     }
@@ -98,24 +117,26 @@ internal object RemoteGraphPatchResultParser {
             impactSummary = raw["impactSummary"] as? String ?: "",
             claimType = raw["claimType"] as? String,
             evidence = if (supportingEvidence.isNotEmpty()) supportingEvidence else embeddedEvidence,
+            patchIntent = (raw["patchIntent"] as? Map<*, *>)?.let(::parsePatchIntent),
+            graphPatch = (raw["graphPatch"] as? Map<*, *>)?.let(::parsePatch),
         )
     }
 
     /** 解析单条风险线索。 */
-    private fun parseInvestigationLead(
+    private fun parseInvestigationThread(
         raw: Map<*, *>?,
         findings: List<ResultEvidenceFinding>,
-    ): AuditInvestigationLead? {
+    ): InvestigationThread? {
         raw ?: return null
-        val leadId = raw["leadId"] as? String ?: return null
+        val threadId = raw["threadId"] as? String ?: return null
         val findingsById = findings.associateBy(ResultEvidenceFinding::id)
         val supportingEvidence = stringList(raw["supportingFindingIds"]).mapNotNull(findingsById::get)
         val embeddedEvidence = parseResultEvidenceFindings(raw["evidence"])
-        return AuditInvestigationLead(
-            leadId = leadId,
-            status = enumValue<AuditInvestigationLeadStatus>(raw["status"] as? String)
-                ?: AuditInvestigationLeadStatus.OPEN,
-            title = raw["title"] as? String ?: leadId,
+        return InvestigationThread(
+            threadId = threadId,
+            status = enumValue<InvestigationThreadStatus>(raw["status"] as? String)
+                ?: InvestigationThreadStatus.OPEN,
+            title = raw["title"] as? String ?: threadId,
             targetStepIds = stringList(raw["targetStepIds"]),
             targetNodeIds = stringList(raw["targetNodeIds"]),
             summary = raw["summary"] as? String ?: "",
@@ -143,6 +164,17 @@ internal object RemoteGraphPatchResultParser {
             node = parseNode(raw["node"] as? Map<*, *>),
             edge = parseEdge(raw["edge"] as? Map<*, *>),
             metadata = stringMap(raw["metadata"]),
+        )
+    }
+
+    private fun parsePatchIntent(raw: Map<*, *>?): CandidatePatchIntent? {
+        raw ?: return null
+        val mode = enumValue<CandidatePatchIntentMode>(raw["mode"] as? String) ?: return null
+        return CandidatePatchIntent(
+            mode = mode,
+            targetNodeId = raw["targetNodeId"] as? String,
+            attachEdgeId = raw["attachEdgeId"] as? String,
+            falseBranchTargetNodeId = raw["falseBranchTargetNodeId"] as? String,
         )
     }
 
@@ -204,6 +236,24 @@ internal object RemoteGraphPatchResultParser {
     /** 按枚举名称做安全解析。 */
     private inline fun <reified T : Enum<T>> enumValue(name: String?): T? {
         return enumValueByName<T>(name)
+    }
+
+    private fun candidateSummaries(candidates: List<CandidateDraftChange>): String {
+        if (candidates.isEmpty()) {
+            return "[]"
+        }
+        return candidates.take(3).joinToString(
+            prefix = "[",
+            postfix = if (candidates.size > 3) ", ...]" else "]",
+        ) { candidate ->
+            buildString {
+                append(candidate.changeId)
+                append(":evidence=")
+                append(candidate.evidence.size)
+                append(':')
+                append(candidate.evidence.joinToString("|") { evidence -> evidence.evidenceLevel.name })
+            }
+        }
     }
 }
 

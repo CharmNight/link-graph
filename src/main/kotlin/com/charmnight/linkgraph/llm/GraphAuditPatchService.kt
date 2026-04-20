@@ -1,18 +1,23 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.model.GraphEdge
+import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
+import com.charmnight.linkgraph.services.GenerationDiagnostics
 import com.charmnight.linkgraph.workbench.AuditConversationMessage
 import com.charmnight.linkgraph.workbench.AuditConversationService
 import com.charmnight.linkgraph.workbench.AuditConversationSession
-import com.charmnight.linkgraph.workbench.AuditInvestigationLead
-import com.charmnight.linkgraph.workbench.AuditInvestigationLeadStatus
 import com.charmnight.linkgraph.workbench.AuditMessageRole
 import com.charmnight.linkgraph.workbench.AuditModelTurn
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
+import com.charmnight.linkgraph.workbench.CandidateGraphPatchComposer
+import com.charmnight.linkgraph.workbench.InvestigationThread
+import com.charmnight.linkgraph.workbench.InvestigationThreadStatus
 import com.charmnight.linkgraph.workbench.hasDirectEvidence
+import com.intellij.openapi.diagnostic.Logger
 
 /**
  * 基于当前问答范围生成“对话回答 + 待确认候选变更”。
@@ -26,8 +31,13 @@ class GraphAuditPatchService(
     /** 负责维护会话与候选变更。 */
     private val auditConversationService: AuditConversationService = AuditConversationService(),
 ) {
+    private val logger = Logger.getInstance(GraphAuditPatchService::class.java)
+    private val traceEnabled: Boolean =
+        System.getenv("LINKGRAPH_DEBUG_TRACE")?.trim()?.equals("true", ignoreCase = true) == true
     /** 负责处理结构化 JSON 响应与自动修复。 */
     private val responseSupport = RemoteStructuredResponseSupport(gateway)
+    /** 统一候选变更 patch 归一化器。 */
+    private val candidatePatchComposer = CandidateGraphPatchComposer()
 
     /** 执行链路问答，必要时回退到本地规则结果。 */
     fun audit(
@@ -35,19 +45,26 @@ class GraphAuditPatchService(
         question: String,
         settings: LinkGraphSettingsState,
         session: AuditConversationSession? = null,
-        sourceLeadId: String? = null,
+        sourceThreadId: String? = null,
         onPreview: ((String, Boolean) -> Unit)? = null,
     ): GraphPatchResult {
         val effectiveContext = context.withDerivedEvidenceTrace()
         val sanitized = settings.sanitized()
         val currentSession = ensureUserQuestion(session ?: emptySession(effectiveContext), question)
         val promptPackage = promptFactory.buildAuditPromptPackage(effectiveContext, question, sanitized, currentSession)
+        if (traceEnabled) {
+            logger.warn(
+                "问答请求证据快照: question=${question.trim()}, selectedNodeIds=${effectiveContext.selectedNodeIds}, " +
+                    "sourceContext=${sourceContextSummaries(effectiveContext.sourceContext)}, " +
+                    "evidenceTrace=${evidenceTraceSummaries(effectiveContext.evidenceTrace)}",
+            )
+        }
         if (!sanitized.usesRemoteProvider()) {
-            return buildMockResult(effectiveContext, question, promptPackage.preview, currentSession, sourceLeadId)
+            return buildMockResult(effectiveContext, question, promptPackage.preview, currentSession, sourceThreadId)
         }
         val remoteConnection = sanitized.remoteConnectionOrNull()
         if (remoteConnection == null) {
-            return buildMockResult(effectiveContext, question, promptPackage.preview, currentSession, sourceLeadId).copy(
+            return buildMockResult(effectiveContext, question, promptPackage.preview, currentSession, sourceThreadId).copy(
                 warnings = listOf(sanitized.remoteLlmSetupHint("本地规则问答")),
             )
         }
@@ -65,14 +82,23 @@ class GraphAuditPatchService(
                 RemoteGraphPatchResultParser.parse(content, promptPackage.preview, question)
             }
         }.map { remote ->
+            val remoteResult = remote.value.withPrependedWarnings(remote.warnings)
+            if (traceEnabled) {
+                logger.warn(
+                    "问答结果进入归一化: source=${remoteResult.source}, findings=${remoteResult.findings.size}, " +
+                        "candidateChanges=${remoteResult.candidateChanges.size}, investigationThreads=${remoteResult.investigationThreads.size}, " +
+                        "patchOperations=${remoteResult.patch?.operations?.size ?: 0}, " +
+                        "candidateSummaries=${candidateSummaries(remoteResult.candidateChanges)}",
+                )
+            }
             applyConversationTurn(
-                base = remote.value.withPrependedWarnings(remote.warnings),
+                base = remoteResult,
                 context = effectiveContext,
                 session = currentSession,
-                sourceLeadId = sourceLeadId,
+                sourceThreadId = sourceThreadId,
             )
         }.getOrElse { error ->
-            buildMockResult(effectiveContext, question, promptPackage.preview, currentSession, sourceLeadId).copy(
+            buildMockResult(effectiveContext, question, promptPackage.preview, currentSession, sourceThreadId).copy(
                 warnings = listOf(buildRemoteFallbackWarning("问答", error)),
             )
         }
@@ -84,9 +110,10 @@ class GraphAuditPatchService(
         question: String,
         prompt: String,
         session: AuditConversationSession,
-        sourceLeadId: String? = null,
+        sourceThreadId: String? = null,
     ): GraphPatchResult {
         val scopeNodes = GraphAuditScopeResolver.resolveScopeNodes(context)
+        val analysisGraph = context.editableGraph.takeIf { it.nodes.isNotEmpty() || it.edges.isNotEmpty() } ?: context.factGraph
         val hasFallbackIntent = question.contains("兜底") || question.contains("默认")
         val explanationIntent = question.contains("介绍") || question.contains("解释") || question.contains("讲解")
         val explicitAuditIntent = question.contains("审计")
@@ -110,8 +137,8 @@ class GraphAuditPatchService(
                 append(scopeNodes.joinToString(" -> ") { it.title.ifBlank { it.id } })
                 append("。")
             }
-            if (context.factGraph.edges.isNotEmpty()) {
-                append("当前看到的调用/连接数量为 ").append(context.factGraph.edges.size).append("。")
+            if (analysisGraph.edges.isNotEmpty()) {
+                append("当前看到的调用/连接数量为 ").append(analysisGraph.edges.size).append("。")
             }
         }
         val answer = if (explanationIntent && !explicitAuditIntent && !hasFallbackIntent) {
@@ -134,7 +161,7 @@ class GraphAuditPatchService(
         } else {
             "当前上下文没有直接观察到足以证明完整业务规则的证据。"
         }
-        val findings = scopeNodes.ifEmpty { context.factGraph.nodes.take(1) }
+        val findings = scopeNodes.ifEmpty { analysisGraph.nodes.take(1) }
             .distinctBy(GraphNode::id)
             .mapIndexed { index, node ->
                 ResultEvidenceFinding(
@@ -144,15 +171,15 @@ class GraphAuditPatchService(
                     references = listOf(ResultEvidenceReference(nodeId = node.id)),
                 )
             }
-        val investigationLeads = if (explanationIntent && !explicitAuditIntent && !hasFallbackIntent) {
+        val investigationThreads = if (explanationIntent && !explicitAuditIntent && !hasFallbackIntent) {
             emptyList()
         } else {
             listOf(
-                AuditInvestigationLead(
-                    leadId = GraphNode.stableId(NodeType.DOC_PAGE, "$scopeKey-audit-change", "audit-lead"),
-                    status = AuditInvestigationLeadStatus.OPEN,
+                InvestigationThread(
+                    threadId = GraphNode.stableId(NodeType.DOC_PAGE, "$scopeKey-audit-change", "audit-thread"),
+                    status = InvestigationThreadStatus.OPEN,
                     title = if (hasFallbackIntent) "补充默认兜底规则" else "补充业务规则说明",
-                    targetNodeIds = scopeNodes.ifEmpty { context.factGraph.nodes.take(1) }.map(GraphNode::id),
+                    targetNodeIds = scopeNodes.ifEmpty { analysisGraph.nodes.take(1) }.map(GraphNode::id),
                     summary = if (hasFallbackIntent) {
                         "当前还不能证明默认兜底逻辑存在或不存在，需要继续核对条件未命中时的处理分支。"
                     } else {
@@ -180,13 +207,13 @@ class GraphAuditPatchService(
                 answer = answer,
                 promptPreview = prompt,
                 findings = findings,
-                investigationLeads = investigationLeads,
+                investigationThreads = investigationThreads,
                 sourceContext = context.sourceContext,
                 evidenceTrace = context.evidenceTrace,
             ),
             context = context,
             session = session,
-            sourceLeadId = sourceLeadId,
+            sourceThreadId = sourceThreadId,
         )
     }
 
@@ -195,29 +222,61 @@ class GraphAuditPatchService(
         base: GraphPatchResult,
         context: GraphAuditContext,
         session: AuditConversationSession,
-        sourceLeadId: String? = null,
+        sourceThreadId: String? = null,
     ): GraphPatchResult {
         val rawCandidateChanges = base.candidateChanges.ifEmpty { deriveCandidateChanges(base.patch, base.findings) }
         val classification = classifyAuditOutputs(
             candidateChanges = rawCandidateChanges,
-            explicitInvestigationLeads = base.investigationLeads,
+            explicitInvestigationThreads = base.investigationThreads,
             context = context,
+            question = base.question,
         )
+        if (traceEnabled) {
+            logger.warn(
+                "问答结果归一化完成: rawCandidateChanges=${rawCandidateChanges.size}, " +
+                    "derivedFromPatch=${base.candidateChanges.isEmpty() && base.patch != null && rawCandidateChanges.isNotEmpty()}, " +
+                    "classifiedCandidates=${classification.candidateChanges.size}, " +
+                    "classifiedInvestigationThreads=${classification.investigationThreads.size}, " +
+                    "candidateSummaries=${candidateSummaries(classification.candidateChanges)}, " +
+                    "threadSummaries=${threadSummaries(classification.investigationThreads)}",
+            )
+        }
         val turnResult = auditConversationService.applyModelTurn(
             session = session,
             modelTurn = AuditModelTurn(
                 answer = base.answer,
                 candidateChanges = classification.candidateChanges,
-                investigationLeads = classification.investigationLeads,
-                sourceLeadId = sourceLeadId,
+                investigationThreads = classification.investigationThreads,
+                sourceThreadId = sourceThreadId,
+                observedNodeIds = (
+                    context.sourceContext.map(SourceSnippetContext::nodeId) +
+                        context.evidenceTrace.map(EvidenceTraceEntry::nodeId) +
+                        classification.investigationThreads.flatMap(InvestigationThread::targetNodeIds) +
+                        classification.candidateChanges.flatMap(CandidateDraftChange::targetNodeIds)
+                    ).distinct(),
+                observedFilePaths = (
+                    context.sourceContext.map(SourceSnippetContext::filePath) +
+                        context.evidenceTrace.map(EvidenceTraceEntry::filePath) +
+                        classification.investigationThreads.flatMap { thread ->
+                            thread.evidence.flatMap { finding ->
+                                finding.references.mapNotNull(ResultEvidenceReference::filePath)
+                            }
+                        } +
+                        classification.candidateChanges.flatMap { change ->
+                            change.evidence.flatMap { finding ->
+                                finding.references.mapNotNull(ResultEvidenceReference::filePath)
+                            }
+                        }
+                    ).distinct(),
             ),
         )
         return base.copy(
             patch = null,
             candidateChanges = turnResult.session.candidateChanges,
             newCandidateChanges = turnResult.newCandidateChanges,
-            investigationLeads = turnResult.session.investigationLeads,
-            newInvestigationLeads = turnResult.newInvestigationLeads,
+            investigationThreads = turnResult.session.investigationThreads,
+            latestTurnOutcome = turnResult.latestTurnOutcome,
+            recentTurnOutcomes = turnResult.recentTurnOutcomes,
             sourceContext = context.sourceContext,
             evidenceTrace = context.evidenceTrace,
             auditSession = turnResult.session,
@@ -243,47 +302,99 @@ class GraphAuditPatchService(
                 impactSummary = patch.summary ?: "",
                 claimType = operation.metadata["draft.claimType"],
                 evidence = findings,
+                graphPatch = com.charmnight.linkgraph.model.GraphPatch(
+                    summary = patch.summary,
+                    operations = listOf(operation),
+                    addedNodeIds = patch.addedNodeIds.filter { it == operation.elementId },
+                    removedNodeIds = patch.removedNodeIds.filter { it == operation.elementId },
+                    addedEdgeIds = patch.addedEdgeIds.filter { it == operation.elementId },
+                    removedEdgeIds = patch.removedEdgeIds.filter { it == operation.elementId },
+                ),
             )
         }
     }
 
     private fun classifyAuditOutputs(
         candidateChanges: List<CandidateDraftChange>,
-        explicitInvestigationLeads: List<AuditInvestigationLead>,
+        explicitInvestigationThreads: List<InvestigationThread>,
         context: GraphAuditContext,
+        question: String,
     ): ClassifiedAuditOutputs {
         val promotableChanges = mutableListOf<CandidateDraftChange>()
-        val investigationLeads = linkedMapOf<String, AuditInvestigationLead>()
+        val investigationThreads = linkedMapOf<String, InvestigationThread>()
 
-        normalizeCandidateChanges(candidateChanges).forEach { change ->
+        normalizeCandidateChanges(candidateChanges, context).forEach { change ->
             if (change.hasDirectEvidence()) {
+                if (traceEnabled) {
+                    logger.warn("问答候选变更保留为待确认项: ${GenerationDiagnostics.summarizeCandidateChange(change)}")
+                }
                 promotableChanges += change.copy(editScopes = deriveEditScopes(change, context))
             } else {
-                val lead = leadFromWeakCandidateChange(change)
-                investigationLeads[lead.leadId] = lead
+                val thread = threadFromWeakCandidateChange(change)
+                if (traceEnabled) {
+                    logger.warn(
+                        "问答候选变更降级为线索: ${GenerationDiagnostics.summarizeCandidateChange(change)}, " +
+                            "threadId=${thread.threadId}, strongestEvidence=${change.evidence.maxOfOrNull(ResultEvidenceFinding::evidenceLevel)?.name ?: "NONE"}",
+                    )
+                }
+                investigationThreads[thread.threadId] = thread
             }
         }
-        normalizeInvestigationLeads(explicitInvestigationLeads).forEach { lead ->
-            investigationLeads[lead.leadId] = lead
+        val normalizedInvestigationThreads = normalizeInvestigationThreads(explicitInvestigationThreads)
+        if (promotableChanges.isEmpty() && questionExplicitlyRequestsChange(question)) {
+            promoteThreadsToCandidateChanges(normalizedInvestigationThreads, context).forEach { change ->
+                if (traceEnabled) {
+                    logger.warn(
+                        "问答风险线程提升为待确认项: threadBackfill=${change.changeId}, " +
+                            "question=${question.trim()}, " +
+                            "candidate=${GenerationDiagnostics.summarizeCandidateChange(change)}",
+                    )
+                }
+                promotableChanges += change.copy(editScopes = deriveEditScopes(change, context))
+            }
+        }
+        normalizedInvestigationThreads.forEach { thread ->
+            investigationThreads[thread.threadId] = thread
         }
 
         return ClassifiedAuditOutputs(
             candidateChanges = promotableChanges,
-            investigationLeads = investigationLeads.values.toList(),
+            investigationThreads = investigationThreads.values.toList(),
         )
     }
 
-    private fun normalizeCandidateChanges(changes: List<CandidateDraftChange>): List<CandidateDraftChange> {
+    private fun normalizeCandidateChanges(
+        changes: List<CandidateDraftChange>,
+        context: GraphAuditContext,
+    ): List<CandidateDraftChange> {
+        val candidateBaseGraph = GraphDocument(
+            nodes = (context.editableGraph.nodes + context.factGraph.nodes).distinctBy(GraphNode::id),
+            edges = (context.editableGraph.edges + context.factGraph.edges).distinctBy(GraphEdge::id),
+        )
         return changes.mapNotNull { change ->
             val normalizedEvidence = change.evidence.distinctBy(ResultEvidenceFinding::id)
             if (normalizedEvidence.isEmpty()) {
+                if (traceEnabled) {
+                    logger.warn("问答候选变更被丢弃: changeId=${change.changeId}, reason=empty-evidence")
+                }
                 return@mapNotNull null
             }
-            change.copy(
-                claimType = change.claimType ?: inferClaimType(normalizedEvidence),
-                evidence = normalizedEvidence,
-                editScopes = change.editScopes.distinctBy(EditScope::scopeId),
+            val normalizedCandidate = candidatePatchComposer.normalizeCandidate(
+                candidate = change.copy(
+                    claimType = change.claimType ?: inferClaimType(normalizedEvidence),
+                    evidence = normalizedEvidence,
+                    editScopes = change.editScopes.distinctBy(EditScope::scopeId),
+                ),
+                baseGraph = candidateBaseGraph,
             )
+            if (traceEnabled) {
+                logger.warn(
+                    "问答候选变更完成归一化: ${GenerationDiagnostics.summarizeCandidateChange(normalizedCandidate)}, " +
+                        "directEvidence=${normalizedCandidate.hasDirectEvidence()}, " +
+                        "graphPatch=${GenerationDiagnostics.summarizeGraphPatch(normalizedCandidate.graphPatch)}",
+                )
+            }
+            normalizedCandidate
         }
     }
 
@@ -291,7 +402,7 @@ class GraphAuditPatchService(
         change: CandidateDraftChange,
         context: GraphAuditContext,
     ): List<EditScope> {
-        val nodeById = (context.draftGraph.nodes + context.factGraph.nodes).distinctBy(GraphNode::id).associateBy(GraphNode::id)
+        val nodeById = (context.editableGraph.nodes + context.factGraph.nodes).distinctBy(GraphNode::id).associateBy(GraphNode::id)
         val sourceSnippetByNodeId = context.sourceContext.associateBy(SourceSnippetContext::nodeId)
         val supportingFindingIds = change.evidence.map(ResultEvidenceFinding::id)
         return change.targetNodeIds.mapNotNull { nodeId ->
@@ -333,26 +444,87 @@ class GraphAuditPatchService(
         }
     }
 
-    private fun normalizeInvestigationLeads(leads: List<AuditInvestigationLead>): List<AuditInvestigationLead> {
-        return leads.mapNotNull { lead ->
-            val normalizedEvidence = lead.evidence.distinctBy(ResultEvidenceFinding::id)
+    private fun normalizeInvestigationThreads(threads: List<InvestigationThread>): List<InvestigationThread> {
+        return threads.mapNotNull { thread ->
+            val normalizedEvidence = thread.evidence.distinctBy(ResultEvidenceFinding::id)
             if (normalizedEvidence.isEmpty()) {
                 return@mapNotNull null
             }
-            lead.copy(
-                claimType = lead.claimType ?: inferClaimType(normalizedEvidence),
-                summary = lead.summary.ifBlank {
-                    normalizedEvidence.firstOrNull()?.claim ?: lead.title
+            thread.copy(
+                claimType = thread.claimType ?: inferClaimType(normalizedEvidence),
+                summary = thread.summary.ifBlank {
+                    normalizedEvidence.firstOrNull()?.claim ?: thread.title
                 },
-                evidenceGap = lead.evidenceGap.ifBlank {
+                evidenceGap = thread.evidenceGap.ifBlank {
                     inferEvidenceGap(normalizedEvidence)
                 },
-                recommendedQuestion = lead.recommendedQuestion.ifBlank {
-                    buildRecommendedQuestion(lead.title, normalizedEvidence)
+                recommendedQuestion = thread.recommendedQuestion.ifBlank {
+                    buildRecommendedQuestion(thread.title, normalizedEvidence)
                 },
                 evidence = normalizedEvidence,
             )
         }
+    }
+
+    private fun promoteThreadsToCandidateChanges(
+        threads: List<InvestigationThread>,
+        context: GraphAuditContext,
+    ): List<CandidateDraftChange> {
+        val promotedCandidates = threads
+            .filter(::isEligibleForCandidatePromotion)
+            .map(::candidateFromThread)
+        return normalizeCandidateChanges(promotedCandidates, context)
+            .filter { change -> change.hasDirectEvidence() }
+    }
+
+    private fun isEligibleForCandidatePromotion(thread: InvestigationThread): Boolean {
+        return thread.status == InvestigationThreadStatus.OPEN &&
+            (thread.targetNodeIds.isNotEmpty() || thread.targetStepIds.isNotEmpty()) &&
+            thread.evidence.any { finding ->
+                finding.evidenceLevel == ResultEvidenceLevel.DIRECT_SOURCE ||
+                    finding.evidenceLevel == ResultEvidenceLevel.DIRECT_GRAPH
+            }
+    }
+
+    private fun candidateFromThread(thread: InvestigationThread): CandidateDraftChange {
+        val normalizedEvidence = thread.evidence.distinctBy(ResultEvidenceFinding::id)
+        return CandidateDraftChange(
+            changeId = promotedChangeIdForThread(thread.threadId),
+            status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+            title = promotedCandidateTitle(thread),
+            targetStepIds = thread.targetStepIds,
+            targetNodeIds = thread.targetNodeIds,
+            beforeState = null,
+            afterState = thread.summary.takeIf { it.isNotBlank() },
+            reason = thread.summary.ifBlank { thread.evidenceGap },
+            impactSummary = thread.evidenceGap.ifBlank { thread.recommendedQuestion },
+            claimType = thread.claimType ?: inferClaimType(normalizedEvidence),
+            evidence = normalizedEvidence,
+        )
+    }
+
+    private fun promotedChangeIdForThread(threadId: String): String {
+        return if (threadId.startsWith("thread-")) {
+            "change-${threadId.removePrefix("thread-")}"
+        } else {
+            "change-$threadId"
+        }
+    }
+
+    private fun promotedCandidateTitle(thread: InvestigationThread): String {
+        val rawTitle = thread.title.trim()
+        if (rawTitle.isNotBlank() && rawTitle != thread.threadId) {
+            return rawTitle
+        }
+        val summary = thread.summary.trim()
+        if (summary.isNotBlank()) {
+            return summary
+        }
+        val recommendedQuestion = thread.recommendedQuestion.trim()
+        if (recommendedQuestion.isNotBlank()) {
+            return recommendedQuestion
+        }
+        return thread.threadId
     }
 
     private fun inferClaimType(evidence: List<ResultEvidenceFinding>): String {
@@ -367,11 +539,11 @@ class GraphAuditPatchService(
         }
     }
 
-    private fun leadFromWeakCandidateChange(change: CandidateDraftChange): AuditInvestigationLead {
+    private fun threadFromWeakCandidateChange(change: CandidateDraftChange): InvestigationThread {
         val normalizedEvidence = change.evidence.distinctBy(ResultEvidenceFinding::id)
-        return AuditInvestigationLead(
-            leadId = "lead-${change.changeId}",
-            status = AuditInvestigationLeadStatus.OPEN,
+        return InvestigationThread(
+            threadId = "thread-${change.changeId}",
+            status = InvestigationThreadStatus.OPEN,
             title = change.title,
             targetStepIds = change.targetStepIds,
             targetNodeIds = change.targetNodeIds,
@@ -408,6 +580,26 @@ class GraphAuditPatchService(
         }
     }
 
+    private fun questionExplicitlyRequestsChange(question: String): Boolean {
+        val normalizedQuestion = question.replace(Regex("\\s+"), "")
+        return normalizedQuestion.startsWith("改") ||
+            listOf(
+                "修改",
+                "调整",
+                "修正",
+                "修复",
+                "改成",
+                "改为",
+                "怎么改",
+                "如何改",
+                "请把",
+                "补充",
+                "加上",
+                "写成待确认变更",
+                "写成可编辑图",
+            ).any(normalizedQuestion::contains)
+    }
+
     /** 把当前用户问题写入会话。 */
     private fun ensureUserQuestion(
         session: AuditConversationSession,
@@ -429,7 +621,7 @@ class GraphAuditPatchService(
     /** 基于当前范围生成默认空会话。 */
     private fun emptySession(context: GraphAuditContext): AuditConversationSession {
         val scopeKey = context.selectedNodeIds.sorted().joinToString(",")
-            .ifBlank { context.factGraph.nodes.firstOrNull()?.id ?: "graph" }
+            .ifBlank { (context.editableGraph.nodes.firstOrNull() ?: context.factGraph.nodes.firstOrNull())?.id ?: "graph" }
         return AuditConversationSession(
             sessionId = "audit-${GraphNode.stableId(NodeType.DOC_PAGE, scopeKey, "session")}",
             scopeKey = scopeKey,
@@ -495,19 +687,35 @@ class GraphAuditPatchService(
     {
       "changeId": "稳定ID",
       "status": "PENDING_CONFIRMATION|CONFIRMED|REJECTED|SUPERSEDED",
+      "claimType": "CODE_FACT|RISK_HINT|EXPLANATION_NOTE|STRUCTURAL_SUGGESTION",
       "title": "候选变更标题",
       "targetStepIds": [],
       "targetNodeIds": [],
       "beforeState": "修改前状态",
       "afterState": "修改后状态",
       "reason": "为什么建议这样改",
-      "impactSummary": "影响摘要"
+      "impactSummary": "影响摘要",
+      "supportingFindingIds": ["必须对应 findings[*].id"],
+      "patchIntent": {
+        "mode": "UPDATE_EXISTING_NODE|INSERT_NEW_DECISION|INSERT_NEW_ACTION|ANNOTATION_ONLY",
+        "targetNodeId": "UPDATE_EXISTING_NODE|ANNOTATION_ONLY 时必填",
+        "attachEdgeId": "INSERT_NEW_DECISION|INSERT_NEW_ACTION 时必填，必须指向真实 CONTROL_FLOW 边 ID",
+        "falseBranchTargetNodeId": "INSERT_NEW_DECISION 时必填，明确 FALSE 分支真实落点"
+      },
+      "graphPatch": {
+        "summary": "可选；当已提供 patchIntent 时允许省略，由后端合成",
+        "operations": [],
+        "addedNodeIds": [],
+        "removedNodeIds": [],
+        "addedEdgeIds": [],
+        "removedEdgeIds": []
+      }
     }
   ],
-  "investigationLeads": [
+  "investigationThreads": [
     {
-      "leadId": "稳定ID",
-      "status": "OPEN|PROMOTED|DISMISSED|SUPERSEDED",
+      "threadId": "稳定ID",
+      "status": "OPEN|PROMOTED|DISMISSED|BLOCKED|SUPERSEDED",
       "title": "风险线索标题",
       "targetStepIds": [],
       "targetNodeIds": [],
@@ -526,6 +734,90 @@ class GraphAuditPatchService(
 
     private data class ClassifiedAuditOutputs(
         val candidateChanges: List<CandidateDraftChange>,
-        val investigationLeads: List<AuditInvestigationLead>,
+        val investigationThreads: List<InvestigationThread>,
     )
+
+    private fun candidateSummaries(changes: List<CandidateDraftChange>): String {
+        if (changes.isEmpty()) {
+            return "[]"
+        }
+        return changes.take(3).joinToString(
+            prefix = "[",
+            postfix = if (changes.size > 3) ", ...]" else "]",
+        ) { change ->
+            buildString {
+                append(change.changeId)
+                append(':')
+                append(change.evidence.maxOfOrNull(ResultEvidenceFinding::evidenceLevel)?.name ?: "NONE")
+                append(':')
+                append(change.targetNodeIds.joinToString("|").ifBlank { "-" })
+            }
+        }
+    }
+
+    private fun threadSummaries(threads: List<InvestigationThread>): String {
+        if (threads.isEmpty()) {
+            return "[]"
+        }
+        return threads.take(3).joinToString(
+            prefix = "[",
+            postfix = if (threads.size > 3) ", ...]" else "]",
+        ) { thread ->
+            buildString {
+                append(thread.threadId)
+                append(':')
+                append(thread.evidence.maxOfOrNull(ResultEvidenceFinding::evidenceLevel)?.name ?: "NONE")
+                append(':')
+                append(thread.targetNodeIds.joinToString("|").ifBlank { "-" })
+            }
+        }
+    }
+
+    private fun sourceContextSummaries(sourceContext: List<SourceSnippetContext>): String {
+        if (sourceContext.isEmpty()) {
+            return "[]"
+        }
+        return sourceContext.take(4).joinToString(
+            prefix = "[",
+            postfix = if (sourceContext.size > 4) ", ...]" else "]",
+        ) { snippet ->
+            buildString {
+                append(snippet.nodeId)
+                append('@')
+                append(snippet.filePath)
+                snippet.startLine?.let { append(':').append(it) }
+                snippet.endLine?.let { append('-').append(it) }
+                append(" => ")
+                append(
+                    snippet.snippet
+                        .orEmpty()
+                        .lineSequence()
+                        .joinToString(" \\n ") { it.trim() }
+                        .take(220),
+                )
+            }
+        }
+    }
+
+    private fun evidenceTraceSummaries(evidenceTrace: List<EvidenceTraceEntry>): String {
+        if (evidenceTrace.isEmpty()) {
+            return "[]"
+        }
+        return evidenceTrace.take(6).joinToString(
+            prefix = "[",
+            postfix = if (evidenceTrace.size > 6) ", ...]" else "]",
+        ) { trace ->
+            buildString {
+                append(trace.nodeId)
+                append('@')
+                append(trace.filePath)
+                trace.startLine?.let { append(':').append(it) }
+                trace.endLine?.let { append('-').append(it) }
+                append('#')
+                append(trace.reason)
+                append("#included=")
+                append(trace.includedInPrompt)
+            }
+        }
+    }
 }

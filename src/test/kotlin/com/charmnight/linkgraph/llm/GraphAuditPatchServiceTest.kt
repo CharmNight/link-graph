@@ -3,21 +3,26 @@ package com.charmnight.linkgraph.llm
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.model.GraphPatchAction
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.GraphUncertainty
+import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.settings.LlmProviderType
 import com.charmnight.linkgraph.workbench.AuditConversationMessage
 import com.charmnight.linkgraph.workbench.AuditConversationSession
-import com.charmnight.linkgraph.workbench.AuditInvestigationLead
-import com.charmnight.linkgraph.workbench.AuditInvestigationLeadStatus
 import com.charmnight.linkgraph.workbench.AuditMessageRole
+import com.charmnight.linkgraph.workbench.CandidatePatchIntentMode
+import com.charmnight.linkgraph.workbench.InvestigationThread
+import com.charmnight.linkgraph.workbench.InvestigationThreadStatus
+import com.charmnight.linkgraph.workbench.InvestigationTurnOutcomeStatus
 import java.net.http.HttpTimeoutException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GraphAuditPatchServiceTest {
@@ -70,12 +75,12 @@ class GraphAuditPatchServiceTest {
             finding.evidenceLevel == ResultEvidenceLevel.NOT_OBSERVED
         })
         assertTrue(result.candidateChanges.isEmpty())
-        assertEquals(1, result.investigationLeads.size)
-        assertTrue(result.investigationLeads.first().title.contains("默认兜底"))
-        assertEquals("RISK_HINT", result.investigationLeads.first().claimType)
+        assertEquals(1, result.investigationThreads.size)
+        assertTrue(result.investigationThreads.first().title.contains("默认兜底"))
+        assertEquals("RISK_HINT", result.investigationThreads.first().claimType)
         assertEquals(
             ResultEvidenceLevel.NOT_OBSERVED,
-            result.investigationLeads.first().evidence.firstOrNull()?.evidenceLevel,
+            result.investigationThreads.first().evidence.firstOrNull()?.evidenceLevel,
         )
         assertEquals(1, result.sourceContext.size)
         assertEquals(1, result.evidenceTrace.size)
@@ -205,17 +210,218 @@ class GraphAuditPatchServiceTest {
         assertTrue(result.warnings.any { it.contains("候选建议") })
         assertEquals(null, result.patch)
         assertTrue(result.candidateChanges.isEmpty())
-        assertEquals("补一个默认兜底说明节点", result.investigationLeads.firstOrNull()?.title)
-        assertEquals("RISK_HINT", result.investigationLeads.firstOrNull()?.claimType)
-        assertEquals("fallback-missing", result.investigationLeads.firstOrNull()?.evidence?.firstOrNull()?.id)
+        assertEquals("补一个默认兜底说明节点", result.investigationThreads.firstOrNull()?.title)
+        assertEquals("RISK_HINT", result.investigationThreads.firstOrNull()?.claimType)
+        assertEquals("fallback-missing", result.investigationThreads.firstOrNull()?.evidence?.firstOrNull()?.id)
         assertEquals(
             ResultEvidenceLevel.NOT_OBSERVED,
-            result.investigationLeads.firstOrNull()?.evidence?.firstOrNull()?.evidenceLevel,
+            result.investigationThreads.firstOrNull()?.evidence?.firstOrNull()?.evidenceLevel,
         )
     }
 
     @Test
-    fun `follow-up audit with source lead id merges weak evidence back into the original risk thread`() {
+    fun remoteCandidateChangePreservesStructuredGraphPatch() {
+        val gateway = object : LlmGateway {
+            override fun generate(request: LlmRequest): LlmResponse {
+                return LlmResponse(
+                    content = """
+                        {
+                          "answer": "建议把上传路径固定为 /data/upload，并在图上展示调整说明。",
+                          "findings": [
+                            {
+                              "id": "upload-path-found",
+                              "claim": "当前源码里直接能看到上传路径常量。",
+                              "evidenceLevel": "DIRECT_SOURCE",
+                              "references": [
+                                {
+                                  "nodeId": "flow-action:upload-condition"
+                                }
+                              ]
+                            }
+                          ],
+                          "candidateChanges": [
+                            {
+                              "changeId": "change-upload-path",
+                              "status": "PENDING_CONFIRMATION",
+                              "claimType": "CODE_FACT",
+                              "title": "修改上传路径固定值",
+                              "targetNodeIds": ["flow-action:upload-condition"],
+                              "beforeState": "旧路径常量",
+                              "afterState": "固定为 /data/upload",
+                              "reason": "旧路径已经废弃。",
+                              "impactSummary": "上传流程写入新目录。",
+                              "supportingFindingIds": ["upload-path-found"],
+                              "graphPatch": {
+                                "summary": "补充上传路径调整说明节点",
+                                "operations": [
+                                  {
+                                    "id": "patch-op-upload-note",
+                                    "action": "ADD_ANNOTATION",
+                                    "elementKind": "NODE",
+                                    "elementId": "draft-note:change-upload-path",
+                                    "title": "新增路径调整说明节点",
+                                    "node": {
+                                      "id": "draft-note:change-upload-path",
+                                      "type": "DOC_PAGE",
+                                      "title": "上传路径改为 /data/upload",
+                                      "doc": "原路径已废弃，固定改为 /data/upload。",
+                                      "sourceTag": "DRAFT_AI"
+                                    }
+                                  }
+                                ],
+                                "addedNodeIds": ["draft-note:change-upload-path"]
+                              }
+                            }
+                          ],
+                          "warnings": [],
+                          "patch": null
+                        }
+                    """.trimIndent(),
+                    model = request.model,
+                )
+            }
+        }
+
+        val result = GraphAuditPatchService(gateway = gateway).audit(
+            context = GraphAuditContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "flow-action:upload-condition",
+                            type = NodeType.FLOW_ACTION,
+                            title = "上传条件判断",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                    ),
+                ),
+            ),
+            question = "请把上传路径调整方案写成可编辑图",
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                endpoint = "http://localhost:8080/v1",
+                apiKey = "token",
+                model = "gpt-test",
+            ),
+        )
+
+        assertEquals(LlmResultSource.REMOTE, result.source)
+        assertTrue(result.investigationThreads.isEmpty())
+        assertEquals(1, result.candidateChanges.size)
+        assertEquals("change-upload-path", result.candidateChanges.first().changeId)
+        assertEquals("补充上传路径调整说明节点", result.candidateChanges.first().graphPatch?.summary)
+        assertEquals("patch-op-upload-note", result.candidateChanges.first().graphPatch?.operations?.firstOrNull()?.id)
+        assertEquals(GraphPatchAction.ADD_ANNOTATION, result.candidateChanges.first().graphPatch?.operations?.firstOrNull()?.action)
+        assertEquals(GraphDiffElementKind.NODE, result.candidateChanges.first().graphPatch?.operations?.firstOrNull()?.elementKind)
+        assertEquals("draft-note:change-upload-path", result.candidateChanges.first().graphPatch?.addedNodeIds?.single())
+        assertNull(result.patch)
+    }
+
+    @Test
+    fun remoteCandidateChangeParsesExplicitPatchIntentWithoutGraphPatch() {
+        val gateway = object : LlmGateway {
+            override fun generate(request: LlmRequest): LlmResponse {
+                return LlmResponse(
+                    content = """
+                        {
+                          "answer": "建议在删除前增加文件存在性判断。",
+                          "findings": [
+                            {
+                              "id": "delete-flow-found",
+                              "claim": "当前源码里直接能看到删除动作和后续 return。",
+                              "evidenceLevel": "DIRECT_SOURCE",
+                              "references": [
+                                {
+                                  "nodeId": "action:delete-file"
+                                }
+                              ]
+                            }
+                          ],
+                          "candidateChanges": [
+                            {
+                              "changeId": "change-insert-file-exists-guard",
+                              "status": "PENDING_CONFIRMATION",
+                              "claimType": "STRUCTURAL_SUGGESTION",
+                              "title": "在删除前增加文件存在性判断",
+                              "targetNodeIds": ["action:delete-file", "terminal:return"],
+                              "beforeState": "直接执行删除动作",
+                              "afterState": "if (fileExists(filePath))",
+                              "reason": "文件不存在时应跳过删除。",
+                              "impactSummary": "新增一个显式决策节点。",
+                              "supportingFindingIds": ["delete-flow-found"],
+                              "patchIntent": {
+                                "mode": "INSERT_NEW_DECISION",
+                                "attachEdgeId": "edge:entry-delete",
+                                "falseBranchTargetNodeId": "terminal:return"
+                              }
+                            }
+                          ],
+                          "warnings": [],
+                          "patch": null
+                        }
+                    """.trimIndent(),
+                    model = request.model,
+                )
+            }
+        }
+
+        val result = GraphAuditPatchService(gateway = gateway).audit(
+            context = GraphAuditContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:file-download",
+                            type = NodeType.METHOD,
+                            title = "CommonController.fileDownload",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                        GraphNode(
+                            id = "action:delete-file",
+                            type = NodeType.FLOW_ACTION,
+                            title = "FileUtils.deleteFile(filePath)",
+                            sourceTag = GraphSourceTag.FACT,
+                            metadata = mapOf("flowchart.kind" to "PROCESS"),
+                        ),
+                        GraphNode(
+                            id = "terminal:return",
+                            type = NodeType.TERMINAL,
+                            title = "return",
+                            sourceTag = GraphSourceTag.FACT,
+                            metadata = mapOf("flowchart.kind" to "TERMINAL"),
+                        ),
+                    ),
+                    edges = listOf(
+                        GraphEdge(
+                            id = "edge:entry-delete",
+                            type = EdgeType.CONTROL_FLOW,
+                            fromNodeId = "method:file-download",
+                            toNodeId = "action:delete-file",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                    ),
+                ),
+            ),
+            question = "请把删除前增加存在性判断的方案写成可编辑图。",
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                endpoint = "http://localhost:8080/v1",
+                apiKey = "token",
+                model = "gpt-test",
+            ),
+        )
+
+        val change = result.candidateChanges.single()
+        assertEquals(CandidatePatchIntentMode.INSERT_NEW_DECISION, change.patchIntent?.mode)
+        assertEquals("edge:entry-delete", change.patchIntent?.attachEdgeId)
+        assertEquals("terminal:return", change.patchIntent?.falseBranchTargetNodeId)
+        assertNotNull(change.graphPatch)
+        assertEquals(1, change.graphPatch?.addedNodeIds?.size)
+        assertTrue(change.graphPatch?.operations?.any { operation -> operation.action == GraphPatchAction.ADD_NODE } == true)
+    }
+
+    @Test
+    fun `follow-up audit with source thread id merges weak evidence back into the original risk thread`() {
         val gateway = object : LlmGateway {
             override fun generate(request: LlmRequest): LlmResponse {
                 return LlmResponse(
@@ -234,9 +440,9 @@ class GraphAuditPatchServiceTest {
                               ]
                             }
                           ],
-                          "investigationLeads": [
+                          "investigationThreads": [
                             {
-                              "leadId": "lead-upload-follow-up",
+                              "threadId": "thread-upload-follow-up",
                               "status": "OPEN",
                               "claimType": "RISK_HINT",
                               "title": "上传路径校验仍待确认",
@@ -303,13 +509,13 @@ class GraphAuditPatchServiceTest {
                         messageId = "audit-upload-user-1",
                         role = AuditMessageRole.USER,
                         content = "请继续取证：展开 upload 实现。",
-                        focusTargetId = "lead-upload-risk",
+                        focusTargetId = "thread-upload-risk",
                     ),
                 ),
-                investigationLeads = listOf(
-                    AuditInvestigationLead(
-                        leadId = "lead-upload-risk",
-                        status = AuditInvestigationLeadStatus.OPEN,
+                investigationThreads = listOf(
+                    InvestigationThread(
+                        threadId = "thread-upload-risk",
+                        status = InvestigationThreadStatus.OPEN,
                         title = "上传路径风险待确认",
                         targetNodeIds = listOf("flow-action:upload"),
                         summary = "当前只看到上传入口。",
@@ -326,17 +532,17 @@ class GraphAuditPatchServiceTest {
                         ),
                     ),
                 ),
-                focusTargetId = "lead-upload-risk",
+                focusTargetId = "thread-upload-risk",
             ),
-            sourceLeadId = "lead-upload-risk",
+            sourceThreadId = "thread-upload-risk",
         )
 
-        assertEquals(1, result.investigationLeads.size)
-        assertEquals("lead-upload-risk", result.investigationLeads.single().leadId)
-        assertEquals("上传路径校验仍待确认", result.investigationLeads.single().title)
-        assertEquals(2, result.investigationLeads.single().evidence.size)
-        assertTrue(result.newInvestigationLeads.isEmpty())
-        assertEquals("lead-upload-risk", result.auditSession?.focusTargetId)
+        assertEquals(1, result.investigationThreads.size)
+        assertEquals("thread-upload-risk", result.investigationThreads.single().threadId)
+        assertEquals("上传路径校验仍待确认", result.investigationThreads.single().title)
+        assertEquals(2, result.investigationThreads.single().evidence.size)
+        assertEquals(InvestigationTurnOutcomeStatus.OPEN_WITH_PROGRESS, result.latestTurnOutcome?.status)
+        assertEquals("thread-upload-risk", result.auditSession?.focusTargetId)
     }
 
     @Test
@@ -572,8 +778,242 @@ class GraphAuditPatchServiceTest {
         )
 
         assertEquals(1, result.candidateChanges.size)
-        assertTrue(result.investigationLeads.isEmpty())
+        assertTrue(result.investigationThreads.isEmpty())
         assertEquals("change-upload-condition", result.candidateChanges.first().changeId)
+    }
+
+    @Test
+    fun rewritesStructuralSuggestionFromTryScopeToDecisionNode() {
+        val gateway = object : LlmGateway {
+            override fun generate(request: LlmRequest): LlmResponse {
+                return LlmResponse(
+                    content = """
+                        {
+                          "answer": "建议收紧删除条件，在删除前校验文件存在。",
+                          "findings": [
+                            {
+                              "id": "delete-guard-source",
+                              "claim": "当前源码里直接能看到删除分支 if (delete)。",
+                              "evidenceLevel": "DIRECT_SOURCE",
+                              "references": [
+                                {
+                                  "nodeId": "scope:file-download-if"
+                                }
+                              ]
+                            }
+                          ],
+                          "candidateChanges": [
+                            {
+                              "changeId": "change-delete-guard",
+                              "status": "PENDING_CONFIRMATION",
+                              "claimType": "STRUCTURAL_SUGGESTION",
+                              "title": "收紧删除条件并在删除前校验文件存在",
+                              "targetNodeIds": ["scope:file-download-try"],
+                              "beforeState": "if (delete)",
+                              "afterState": "if (Boolean.TRUE.equals(delete) && fileExists(filePath))",
+                              "reason": "delete 为包装类型，且删除前缺少文件存在校验。",
+                              "impactSummary": "删除分支需要更严格的进入条件。",
+                              "supportingFindingIds": ["delete-guard-source"],
+                              "graphPatch": {
+                                "summary": "更新当前 try 作用域节点中的删除分支逻辑",
+                                "operations": [
+                                  {
+                                    "id": "patch-op-update-try",
+                                    "action": "UPDATE_NODE",
+                                    "elementKind": "NODE",
+                                    "elementId": "scope:file-download-try",
+                                    "title": "更新 try 作用域节点",
+                                    "summary": "把 if (delete) 收紧为显式 true 判断并补充文件存在校验。",
+                                    "metadata": {
+                                      "draft.claimType": "STRUCTURAL_SUGGESTION"
+                                    },
+                                    "node": {
+                                      "id": "scope:file-download-try",
+                                      "type": "FLOW_SCOPE",
+                                      "title": "try",
+                                      "doc": "删除分支逻辑更新为更严格的条件。",
+                                      "sourceTag": "DRAFT_AI"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          "warnings": [],
+                          "patch": null
+                        }
+                    """.trimIndent(),
+                    model = request.model,
+                )
+            }
+        }
+
+        val result = GraphAuditPatchService(gateway = gateway).audit(
+            context = GraphAuditContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:file-download",
+                            type = NodeType.METHOD,
+                            title = "CommonController.fileDownload",
+                            signature = "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                        GraphNode(
+                            id = "scope:file-download-try",
+                            type = NodeType.FLOW_SCOPE,
+                            title = "try",
+                            sourceTag = GraphSourceTag.FACT,
+                            metadata = mapOf(
+                                "flowchart.kind" to "SCOPE",
+                                "flow.ownerMethod" to "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
+                            ),
+                        ),
+                        GraphNode(
+                            id = "scope:file-download-if",
+                            type = NodeType.FLOW_SCOPE,
+                            title = "if (delete)",
+                            sourceTag = GraphSourceTag.FACT,
+                            metadata = mapOf(
+                                "flowchart.kind" to "DECISION",
+                                "flow.ownerMethod" to "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            question = "请把删除条件调整方案写成可编辑图。",
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                endpoint = "http://localhost:8080/v1",
+                apiKey = "token",
+                model = "gpt-test",
+            ),
+        )
+
+        val change = result.candidateChanges.single()
+        assertEquals(listOf("scope:file-download-if"), change.targetNodeIds)
+        assertEquals("scope:file-download-if", change.graphPatch?.operations?.singleOrNull()?.elementId)
+        assertEquals("scope:file-download-if", change.graphPatch?.operations?.singleOrNull()?.node?.id)
+        assertEquals(
+            "if (Boolean.TRUE.equals(delete) && fileExists(filePath))",
+            change.graphPatch?.operations?.singleOrNull()?.node?.title,
+        )
+    }
+
+    @Test
+    fun promotesDirectEvidenceLeadToCandidateChangeWhenQuestionExplicitlyRequestsFix() {
+        val gateway = object : LlmGateway {
+            override fun generate(request: LlmRequest): LlmResponse {
+                return LlmResponse(
+                    content = """
+                        {
+                          "answer": "建议把删除条件收紧为显式 true，并在删除前校验文件存在。",
+                          "findings": [
+                            {
+                              "id": "delete-branch-direct-source",
+                              "claim": "当前源码里直接能看到 if (delete) 和 deleteFile(filePath) 删除分支。",
+                              "evidenceLevel": "DIRECT_SOURCE",
+                              "references": [
+                                {
+                                  "nodeId": "scope:file-download-if",
+                                  "filePath": "src/main/java/com/example/CommonController.java",
+                                  "startLine": 60,
+                                  "endLine": 68
+                                }
+                              ]
+                            }
+                          ],
+                          "candidateChanges": [],
+                          "investigationThreads": [
+                            {
+                              "threadId": "thread-expand-delete-decision-node-for-patch",
+                              "status": "OPEN",
+                              "claimType": "STRUCTURAL_SUGGESTION",
+                              "title": "收紧删除条件并在删除前校验文件存在",
+                              "targetNodeIds": ["scope:file-download-if"],
+                              "summary": "删除分支当前只判断 delete，缺少显式 true 判断和文件存在校验。",
+                              "evidenceGap": "还没有把这条修改组织成候选变更。",
+                              "recommendedQuestion": "请把删除分支修复方案写成待确认变更。",
+                              "supportingFindingIds": ["delete-branch-direct-source"]
+                            }
+                          ],
+                          "warnings": [],
+                          "patch": null
+                        }
+                    """.trimIndent(),
+                    model = request.model,
+                )
+            }
+        }
+
+        val result = GraphAuditPatchService(gateway = gateway).audit(
+            context = GraphAuditContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:file-download",
+                            type = NodeType.METHOD,
+                            title = "CommonController.fileDownload",
+                            signature = "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
+                            sourceTag = GraphSourceTag.FACT,
+                            metadata = mapOf(
+                                "source.filePath" to "src/main/java/com/example/CommonController.java",
+                                "source.startLine" to "42",
+                                "source.endLine" to "88",
+                            ),
+                        ),
+                        GraphNode(
+                            id = "scope:file-download-if",
+                            type = NodeType.FLOW_SCOPE,
+                            title = "if (delete)",
+                            sourceTag = GraphSourceTag.FACT,
+                            metadata = mapOf(
+                                "flowchart.kind" to "DECISION",
+                                "flow.ownerMethod" to "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
+                                "source.filePath" to "src/main/java/com/example/CommonController.java",
+                                "source.startLine" to "60",
+                                "source.endLine" to "68",
+                            ),
+                        ),
+                    ),
+                ),
+                selectedNodeIds = listOf("scope:file-download-if"),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "scope:file-download-if",
+                        filePath = "src/main/java/com/example/CommonController.java",
+                        startLine = 60,
+                        endLine = 68,
+                        snippet = "if (delete) { FileUtils.deleteFile(filePath); }",
+                    ),
+                ),
+            ),
+            question = "请把这个删除分支修复成 delete == true，并在删除前校验文件存在。",
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                endpoint = "http://localhost:8080/v1",
+                apiKey = "token",
+                model = "gpt-test",
+            ),
+        )
+
+        assertEquals(1, result.candidateChanges.size)
+        assertEquals("scope:file-download-if", result.candidateChanges.single().targetNodeIds.single())
+        assertEquals("STRUCTURAL_SUGGESTION", result.candidateChanges.single().claimType)
+        assertEquals(
+            "收紧删除条件并在删除前校验文件存在",
+            result.candidateChanges.single().title,
+        )
+        assertEquals(1, result.candidateChanges.single().editScopes.size)
+        assertEquals(
+            "src/main/java/com/example/CommonController.java",
+            result.candidateChanges.single().editScopes.single().filePath,
+        )
+        assertEquals(1, result.investigationThreads.size)
+        assertEquals(InvestigationThreadStatus.PROMOTED, result.investigationThreads.single().status)
     }
 
     @Test
@@ -939,7 +1379,7 @@ class GraphAuditPatchServiceTest {
         val result = GraphAuditPatchService().audit(
             context = GraphAuditContext(
                 factGraph = GraphDocument(nodes = listOf(factNode)),
-                draftGraph = GraphDocument(
+                editableGraph = GraphDocument(
                     nodes = listOf(factNode, manualNode),
                     edges = listOf(
                         GraphEdge(
@@ -961,7 +1401,7 @@ class GraphAuditPatchServiceTest {
         )
 
         assertEquals(null, result.patch)
-        assertTrue(result.investigationLeads.any { lead -> manualNode.id in lead.targetNodeIds })
+        assertTrue(result.investigationThreads.any { thread -> manualNode.id in thread.targetNodeIds })
         assertTrue(result.promptPreview.contains(manualNode.title))
         assertTrue(result.answer.contains("当前节点") || result.answer.contains("当前框选范围"))
     }

@@ -18,6 +18,7 @@ import com.charmnight.linkgraph.llm.EditScope
 import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.GenerationPlanItem
 import com.charmnight.linkgraph.llm.GenerationPlanSource
+import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.llm.ResultEvidenceFinding
 import com.charmnight.linkgraph.llm.ResultEvidenceLevel
@@ -46,11 +47,162 @@ import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
+import com.charmnight.linkgraph.workbench.QaRequestKind
+import com.charmnight.linkgraph.workbench.QaRequestRecoveryState
+import com.charmnight.linkgraph.workbench.ReplayableQaRequest
+import com.charmnight.linkgraph.workbench.StageEligibilityDecision
+import com.charmnight.linkgraph.workbench.StageEligibilityTarget
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GraphEditorPageRendererTest {
+    @Test
+    fun bootstrapJson输出问答恢复状态和阶段准入字段() {
+        val renderer = GraphEditorPageRenderer()
+        val snapshot = GraphEditorStateService.Snapshot(
+            visibleGraph = GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:submit-order",
+                        type = NodeType.METHOD,
+                        title = "OrderController.submit",
+                        sourceTag = GraphSourceTag.FACT,
+                    ),
+                ),
+            ),
+            qaRequestRecoveryState = QaRequestRecoveryState(
+                lastFailedRequest = ReplayableQaRequest(
+                    requestId = "qa-1",
+                    kind = QaRequestKind.ASK,
+                    question = "这里为什么会走兜底分支？",
+                    selectedNodeIds = listOf("method:submit-order"),
+                    baseSession = AuditConversationSession(
+                        sessionId = "audit-1",
+                        scopeKey = "method:submit-order",
+                    ),
+                ),
+            ),
+            planEligibilityDecision = StageEligibilityDecision(
+                target = StageEligibilityTarget.PLAN,
+                allowed = true,
+                message = "当前可以继续生成实现计划。",
+                detailMessage = "风险线程已完成人工决策。",
+                unresolvedThreadIds = listOf("thread-fallback"),
+            ),
+            codeEligibilityDecision = StageEligibilityDecision(
+                target = StageEligibilityTarget.CODE,
+                allowed = false,
+                message = "生成代码草稿前请先处理仍会阻塞代码阶段的风险线程。",
+                detailMessage = "当前仍存在暂挂风险，代码阶段不能越过这些风险直接继续生成。",
+                blockingThreadIds = listOf("thread-fallback"),
+            ),
+        )
+
+        val json = renderer.bootstrapJson(snapshot)
+
+        assertTrue(json.contains("\"qaRequestRecoveryState\""))
+        assertTrue(json.contains("\"lastFailedRequest\""))
+        assertTrue(json.contains("\"requestId\":\"qa-1\""))
+        assertTrue(json.contains("\"planEligibilityDecision\""))
+        assertTrue(json.contains("\"codeEligibilityDecision\""))
+        assertTrue(json.contains("\"blockingThreadIds\":[\"thread-fallback\"]"))
+    }
+
+    @Test
+    fun bootstrapJson输出当前视图对应的referenceWorkingGraph字段() {
+        val renderer = GraphEditorPageRenderer()
+        val snapshot = GraphEditorStateService.Snapshot(
+            visibleGraph = GraphDocument(),
+            workingGraph = GraphDocument(),
+            referenceWorkingGraph = GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:reference-working",
+                        type = NodeType.METHOD,
+                        title = "ReferenceWorkingGraph.submit",
+                        sourceTag = GraphSourceTag.FACT,
+                    ),
+                ),
+            ),
+        )
+
+        val json = renderer.bootstrapJson(snapshot)
+
+        assertTrue(json.contains("\"referenceWorkingGraph\""))
+        assertTrue(json.contains("\"method:reference-working\""))
+    }
+
+    @Test
+    fun bootstrapJson保持当前图内容而不再执行旧版草稿工件清洗() {
+        val renderer = GraphEditorPageRenderer()
+        val workingGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:submit-order",
+                    type = NodeType.METHOD,
+                    title = "OrderController.submit",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+                GraphNode(
+                    id = "draft-entry:change-submit-order",
+                    type = NodeType.DOC_PAGE,
+                    title = "draft projection",
+                    sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                    metadata = mapOf("draft.entryId" to "change-submit-order"),
+                ),
+            ),
+            edges = listOf(
+                GraphEdge(
+                    id = "links:submit-order->draft-projection",
+                    type = com.charmnight.linkgraph.model.EdgeType.LINKS_DOC,
+                    fromNodeId = "method:submit-order",
+                    toNodeId = "draft-entry:change-submit-order",
+                    sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                    metadata = mapOf("draft.entryId" to "change-submit-order"),
+                ),
+            ),
+        )
+        val snapshot = GraphEditorStateService.Snapshot(
+            visibleGraph = workingGraph,
+            workingGraph = workingGraph,
+            factGraphView = FactGraphViewDocument(
+                visibleGraph = workingGraph,
+                fullGraph = workingGraph,
+                anchorNodeId = "method:submit-order",
+                summary = FactGraphSummary(
+                    anchorTitle = "OrderController.submit",
+                    visibleNodeCount = 2,
+                    fullNodeCount = 2,
+                ),
+            ),
+            flowchartView = FlowchartViewDocument(
+                visibleGraph = workingGraph,
+                fullGraph = workingGraph,
+                anchorNodeId = "method:submit-order",
+                summary = FlowchartSummary(
+                    nodeCount = 2,
+                    branchCount = 0,
+                    exceptionPathCount = 0,
+                ),
+            ),
+            resourceRelationView = ResourceRelationViewDocument(
+                visibleGraph = workingGraph,
+                fullGraph = workingGraph,
+                anchorNodeId = "method:submit-order",
+                summary = ResourceRelationSummary(
+                    visibleNodeCount = 2,
+                    laneCounts = mapOf("CODE" to 2),
+                ),
+            ),
+        )
+
+        val json = renderer.bootstrapJson(snapshot)
+
+        assertTrue(json.contains("draft-entry:change-submit-order"))
+        assertTrue(json.contains("links:submit-order-\\u003Edraft-projection"))
+    }
+
     @Test
     fun bootstrapJson输出展示模式字段() {
         val renderer = GraphEditorPageRenderer()
@@ -182,6 +334,89 @@ class GraphEditorPageRendererTest {
     }
 
     @Test
+    fun bootstrapJson输出草稿图补丁字段() {
+        val renderer = GraphEditorPageRenderer()
+        val graphPatch = GraphPatch(
+            summary = "补充路径调整说明节点",
+            operations = listOf(
+                GraphPatchOperation(
+                    id = "patch-op-upload-note",
+                    action = GraphPatchAction.ADD_ANNOTATION,
+                    elementKind = GraphDiffElementKind.NODE,
+                    elementId = "draft-note:change-upload-condition",
+                    title = "新增路径调整说明节点",
+                    node = GraphNode(
+                        id = "draft-note:change-upload-condition",
+                        type = NodeType.DOC_PAGE,
+                        title = "上传路径改为 /data/upload",
+                        sourceTag = GraphSourceTag.DRAFT_AI,
+                    ),
+                ),
+            ),
+            addedNodeIds = listOf("draft-note:change-upload-condition"),
+        )
+        val snapshot = GraphEditorStateService.Snapshot(
+            visibleGraph = GraphDocument(),
+            workingGraph = GraphDocument(),
+            draftWorkbenchState = DraftWorkbenchState(
+                draftChanges = listOf(
+                    DraftWorkbenchEntry(
+                        entryId = "draft-change-upload-condition",
+                        kind = DraftEntryKind.CHANGE,
+                        title = "修改上传路径固定值",
+                        sourceChangeId = "change-upload-condition",
+                        targetNodeIds = listOf("flow-action:upload-condition"),
+                        reason = "旧路径已经废弃。",
+                        impactSummary = "上传流程固定写入新路径。",
+                        claimType = "CODE_FACT",
+                        evidence = listOf(
+                            ResultEvidenceFinding(
+                                id = "finding-upload-condition",
+                                claim = "当前源码里直接能看到上传条件判断。",
+                                evidenceLevel = ResultEvidenceLevel.DIRECT_SOURCE,
+                                references = listOf(ResultEvidenceReference(nodeId = "flow-action:upload-condition")),
+                            ),
+                        ),
+                        graphPatch = graphPatch,
+                    ),
+                ),
+            ),
+            auditResult = GraphPatchResult(
+                source = LlmResultSource.MOCK,
+                question = "请确认这条路径调整",
+                answer = "建议补充路径调整说明节点。",
+                promptPreview = "prompt",
+                candidateChanges = listOf(
+                    CandidateDraftChange(
+                        changeId = "change-upload-condition",
+                        status = CandidateDraftChangeStatus.CONFIRMED,
+                        title = "修改上传路径固定值",
+                        targetNodeIds = listOf("flow-action:upload-condition"),
+                        reason = "旧路径已经废弃。",
+                        impactSummary = "上传流程固定写入新路径。",
+                        claimType = "CODE_FACT",
+                        evidence = listOf(
+                            ResultEvidenceFinding(
+                                id = "finding-upload-condition",
+                                claim = "当前源码里直接能看到上传条件判断。",
+                                evidenceLevel = ResultEvidenceLevel.DIRECT_SOURCE,
+                                references = listOf(ResultEvidenceReference(nodeId = "flow-action:upload-condition")),
+                            ),
+                        ),
+                        graphPatch = graphPatch,
+                    ),
+                ),
+            ),
+        )
+
+        val json = renderer.bootstrapJson(snapshot)
+
+        assertTrue(json.contains("\"graphPatch\""))
+        assertTrue(json.contains("\"patch-op-upload-note\""))
+        assertTrue(json.contains("\"draft-note:change-upload-condition\""))
+    }
+
+    @Test
     fun bootstrapJson输出流式预览字段() {
         val renderer = GraphEditorPageRenderer()
         val snapshot = GraphEditorStateService.Snapshot(
@@ -257,6 +492,27 @@ class GraphEditorPageRendererTest {
     @Test
     fun bootstrapJson输出三视图独立投影文档() {
         val renderer = GraphEditorPageRenderer()
+        val flowchartFullGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "action:guard-condition",
+                    type = NodeType.FLOW_ACTION,
+                    title = "!checkAllowDownload(fileName)",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf(
+                        "flowchart.kind" to "PROCESS",
+                        "flow.kind" to "CONDITION",
+                    ),
+                ),
+                GraphNode(
+                    id = "method:flow-entry",
+                    type = NodeType.METHOD,
+                    title = "FlowEntry",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf("flowchart.kind" to "ENTRY"),
+                ),
+            ),
+        )
         val snapshot = GraphEditorStateService.Snapshot(
             analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
             visibleGraph = GraphDocument(),
@@ -292,7 +548,7 @@ class GraphEditorPageRendererTest {
                         ),
                     ),
                 ),
-                fullGraph = GraphDocument(),
+                fullGraph = flowchartFullGraph,
                 anchorNodeId = "method:flow-entry",
                 summary = FlowchartSummary(
                     nodeCount = 1,
@@ -336,6 +592,8 @@ class GraphEditorPageRendererTest {
         assertTrue(json.contains("\"factGraphView\""))
         assertTrue(json.contains("\"flowchartView\""))
         assertTrue(json.contains("\"resourceRelationView\""))
+        assertTrue(json.contains("\"workingGraph\""))
+        assertTrue(json.contains("action:guard-condition"))
         assertTrue(json.contains("FactAnchor"))
         assertTrue(json.contains("FlowEntry"))
         assertTrue(json.contains("order_mapper.xml#insertOrder"))
@@ -472,6 +730,7 @@ class GraphEditorPageRendererTest {
                     nodeId = "draft:create-order",
                 ),
             ),
+            draftVersion = 4,
             generationPlan = GenerationPlan(
                 source = GenerationPlanSource.MOCK,
                 summary = "Create DTO and align service wiring.",
@@ -501,6 +760,7 @@ class GraphEditorPageRendererTest {
                 warnings = listOf("Review mapper binding before applying code."),
                 promptPreview = "Prompt preview",
             ),
+            generationPlanDraftVersion = 3,
             generatedCodeDrafts = listOf(
                 GeneratedCodeDraft(
                     id = "draft-1",
@@ -540,6 +800,7 @@ class GraphEditorPageRendererTest {
                     warnings = listOf("Only the submit method is writable."),
                 ),
             ),
+            generatedCodeDraftVersion = 2,
             generatedCodeDraftWriteReport = GeneratedCodeDraftWriteReport(
                 writtenFiles = listOf("src/main/java/com/example/OrderDraftDto.java"),
                 skippedFiles = emptyList(),
@@ -651,6 +912,9 @@ class GraphEditorPageRendererTest {
         assertTrue(rendered.contains("\"promptPreviewArtifactId\""))
         assertTrue(rendered.contains("\"diffReviewRequestState\""))
         assertTrue(rendered.contains("\"codeDraftRequestState\""))
+        assertTrue(rendered.contains("\"draftVersion\":4"))
+        assertTrue(rendered.contains("\"generationPlanDraftVersion\":3"))
+        assertTrue(rendered.contains("\"generatedCodeDraftVersion\":2"))
         assertTrue(rendered.contains("差异分析失败：HTTP 503"))
         assertTrue(rendered.contains("\"RUNNING\""))
         assertTrue(rendered.contains("operationFeedback"))
@@ -878,5 +1142,6 @@ class GraphEditorPageRendererTest {
         assertTrue(bootstrapJson.contains(""""evidenceLevel":"DIRECT_SOURCE""""))
         assertTrue(bootstrapJson.contains(""""kind":"CHANGE""""))
         assertTrue(bootstrapJson.contains(""""kind":"NOTE""""))
+        assertFalse(bootstrapJson.contains(""""investigationLeads""""))
     }
 }

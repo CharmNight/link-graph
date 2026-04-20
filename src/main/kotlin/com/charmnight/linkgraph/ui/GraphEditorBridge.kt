@@ -53,10 +53,16 @@ class GraphEditorBridge(
             is GraphEditorMessage.RequestAudit -> projectService.requestAuditAsync(
                 message.question,
                 message.selectedNodeIds,
-                message.sourceLeadId,
+                message.sourceThreadId,
             )
+            is GraphEditorMessage.RetryLastAuditRequest -> projectService.retryLastAuditRequestAsync()
             is GraphEditorMessage.ConfirmAuditCandidateChange -> projectService.confirmAuditCandidateChange(message.changeId)
             is GraphEditorMessage.UnconfirmAuditCandidateChange -> projectService.unconfirmAuditCandidateChange(message.changeId)
+            is GraphEditorMessage.ResolveInvestigationThread -> projectService.resolveInvestigationThread(
+                threadId = message.threadId,
+                status = message.resolutionStatus,
+                note = message.note,
+            )
             is GraphEditorMessage.RequestDiffReview -> projectService.requestDiffReviewAsync(
                 message.question,
                 message.selectedDiffItemIds,

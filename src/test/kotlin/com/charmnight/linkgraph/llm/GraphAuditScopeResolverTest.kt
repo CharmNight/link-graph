@@ -15,7 +15,7 @@ class GraphAuditScopeResolverTest {
         val staleFactNode = GraphNode(
             id = "method:stale-fact",
             type = NodeType.METHOD,
-            title = "LegacyFallback.handle",
+            title = "FallbackGuard.handle",
             sourceTag = GraphSourceTag.FACT,
         )
         val currentDraftNode = GraphNode(
@@ -37,7 +37,7 @@ class GraphAuditScopeResolverTest {
                     ),
                 ),
             ),
-            draftGraph = GraphDocument(
+            editableGraph = GraphDocument(
                 nodes = listOf(currentDraftNode),
                 edges = emptyList(),
             ),
@@ -79,7 +79,7 @@ class GraphAuditScopeResolverTest {
         )
         val context = GraphAuditContext(
             factGraph = GraphDocument(nodes = listOf(selectedNode, directNeighbor)),
-            draftGraph = GraphDocument(
+            editableGraph = GraphDocument(
                 nodes = listOf(selectedNode, directNeighbor, manualNote, secondHopNode),
                 edges = listOf(
                     GraphEdge(

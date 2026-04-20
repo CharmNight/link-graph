@@ -37,7 +37,8 @@ class AuditConversationServiceTest {
         assertEquals(AuditMessageRole.ASSISTANT, result.session.messages.single().role)
         assertEquals(1, result.newCandidateChanges.size)
         assertEquals(1, result.session.candidateChanges.size)
-        assertTrue(result.session.investigationLeads.isEmpty())
+        assertTrue(result.session.investigationThreads.isEmpty())
+        assertEquals(emptyList(), result.session.turnOutcomes)
         assertTrue(result.draftWrites.isEmpty())
     }
 
@@ -81,17 +82,17 @@ class AuditConversationServiceTest {
     }
 
     @Test
-    fun `audit turn promotes matching investigation lead when direct-evidence change arrives`() {
+    fun `audit turn promotes matching investigation thread when direct-evidence change arrives`() {
         val service = AuditConversationService()
 
         val result = service.applyModelTurn(
             session = AuditConversationSession(
                 sessionId = "method-upload-file",
                 scopeKey = "method:uploadFile",
-                investigationLeads = listOf(
-                    AuditInvestigationLead(
-                        leadId = "lead-upload-condition",
-                        status = AuditInvestigationLeadStatus.OPEN,
+                investigationThreads = listOf(
+                    InvestigationThread(
+                        threadId = "thread-upload-condition",
+                        status = InvestigationThreadStatus.OPEN,
                         title = "上传条件判断可能有误",
                         targetNodeIds = listOf("flow-action:upload-condition"),
                     ),
@@ -111,19 +112,18 @@ class AuditConversationServiceTest {
         )
 
         assertEquals(1, result.session.candidateChanges.size)
-        assertEquals(
-            AuditInvestigationLeadStatus.PROMOTED,
-            result.session.investigationLeads.single().status,
-        )
+        assertEquals(1, result.session.investigationThreads.size)
+        assertEquals(InvestigationThreadStatus.PROMOTED, result.session.investigationThreads.single().status)
+        assertEquals(InvestigationTurnOutcomeStatus.PROMOTED_TO_CANDIDATE, result.latestTurnOutcome?.status)
         assertEquals("change-upload-condition", result.session.focusTargetId)
     }
 
     @Test
-    fun `follow-up investigation keeps a single open lead instead of appending semantically overlapping leads`() {
+    fun `follow-up investigation keeps a single open thread instead of appending semantically overlapping threads`() {
         val service = AuditConversationService()
-        val originalLead = AuditInvestigationLead(
-            leadId = "lead-upload-risk",
-            status = AuditInvestigationLeadStatus.OPEN,
+        val originalThread = InvestigationThread(
+            threadId = "thread-upload-risk",
+            status = InvestigationThreadStatus.OPEN,
             title = "上传路径风险待确认",
             targetNodeIds = listOf("flow-action:upload"),
             summary = "当前只看到上传入口。",
@@ -150,16 +150,16 @@ class AuditConversationServiceTest {
                         content = "请继续取证：展开上传实现，确认路径校验是否真实存在。",
                     ),
                 ),
-                investigationLeads = listOf(originalLead),
-                focusTargetId = "lead-upload-risk",
+                investigationThreads = listOf(originalThread),
+                focusTargetId = "thread-upload-risk",
             ),
             modelTurn = AuditModelTurn(
                 answer = "继续取证后，仍然只能确认这是同一条上传风险主线，需要补充直接源码证据。",
-                sourceLeadId = "lead-upload-risk",
-                investigationLeads = listOf(
-                    AuditInvestigationLead(
-                        leadId = "lead-upload-risk-follow-up",
-                        status = AuditInvestigationLeadStatus.OPEN,
+                sourceThreadId = "thread-upload-risk",
+                investigationThreads = listOf(
+                    InvestigationThread(
+                        threadId = "thread-upload-risk-follow-up",
+                        status = InvestigationThreadStatus.OPEN,
                         title = "上传路径校验仍待确认",
                         targetNodeIds = listOf("flow-action:upload"),
                         summary = "当前看到上传调用继续向下，但还没有直接看到路径规范化或目录校验。",
@@ -178,12 +178,94 @@ class AuditConversationServiceTest {
             ),
         )
 
-        assertEquals(1, result.session.investigationLeads.count { it.status == AuditInvestigationLeadStatus.OPEN })
-        assertEquals(emptyList(), result.newInvestigationLeads)
-        val mergedLead = result.session.investigationLeads.single()
-        assertEquals("lead-upload-risk", mergedLead.leadId)
-        assertEquals("上传路径校验仍待确认", mergedLead.title)
-        assertEquals(2, mergedLead.evidence.size)
-        assertEquals("lead-upload-risk", result.session.focusTargetId)
+        assertEquals(1, result.session.investigationThreads.count { it.status == InvestigationThreadStatus.OPEN })
+        assertEquals(emptyList(), result.newInvestigationThreads)
+        val mergedThread = result.session.investigationThreads.single()
+        assertEquals("thread-upload-risk", mergedThread.threadId)
+        assertEquals("上传路径校验仍待确认", mergedThread.title)
+        assertEquals(2, mergedThread.evidence.size)
+        assertEquals(1, result.session.investigationThreads.size)
+        assertEquals("thread-upload-risk", result.session.investigationThreads.single().threadId)
+        assertEquals(InvestigationTurnOutcomeStatus.OPEN_WITH_PROGRESS, result.latestTurnOutcome?.status)
+        assertEquals(listOf("flow-action:upload"), result.latestTurnOutcome?.evidenceDelta?.addedNodeIds)
+        assertEquals("thread-upload-risk", result.session.focusTargetId)
+    }
+
+    @Test
+    fun `follow-up investigation marks no-progress outcome when evidence and thread content do not advance`() {
+        val service = AuditConversationService()
+
+        val result = service.applyModelTurn(
+            session = AuditConversationSession(
+                sessionId = "method-download",
+                scopeKey = "method:fileDownload",
+                messages = listOf(
+                    AuditConversationMessage(
+                        messageId = "audit-user-1",
+                        role = AuditMessageRole.USER,
+                        content = "请继续取证：确认下载路径配置是如何解析的。",
+                    ),
+                ),
+                investigationThreads = listOf(
+                    InvestigationThread(
+                        threadId = "thread-download-path",
+                        status = InvestigationThreadStatus.OPEN,
+                        title = "下载路径配置待确认",
+                        targetNodeIds = listOf("method:file-download"),
+                        summary = "当前只看到下载入口。",
+                        evidenceGap = "还没有看到配置解析实现。",
+                        recommendedQuestion = "请继续取证：确认下载路径配置是如何解析的。",
+                        evidence = listOf(
+                            ResultEvidenceFinding(
+                                id = "download-callsite",
+                                claim = "当前只看到 fileDownload 调用点。",
+                                evidenceLevel = ResultEvidenceLevel.CALLSITE_ONLY,
+                            ),
+                        ),
+                    ),
+                ),
+                turnOutcomes = listOf(
+                    InvestigationTurnOutcome(
+                        outcomeId = "turn-1",
+                        threadId = "thread-download-path",
+                        status = InvestigationTurnOutcomeStatus.OPEN_WITH_PROGRESS,
+                        summary = "下载路径配置待确认",
+                        detail = "已补充下载入口信息。",
+                        observedNodeIds = listOf("method:file-download"),
+                        observedFilePaths = listOf("CommonController.java"),
+                        strongestEvidenceLevel = ResultEvidenceLevel.CALLSITE_ONLY,
+                    ),
+                ),
+                focusTargetId = "thread-download-path",
+            ),
+            modelTurn = AuditModelTurn(
+                answer = "继续取证后，当前仍然只有原有调用点证据。",
+                sourceThreadId = "thread-download-path",
+                investigationThreads = listOf(
+                    InvestigationThread(
+                        threadId = "thread-download-follow-up",
+                        status = InvestigationThreadStatus.OPEN,
+                        title = "下载路径配置待确认",
+                        targetNodeIds = listOf("method:file-download"),
+                        summary = "当前只看到下载入口。",
+                        evidenceGap = "还没有看到配置解析实现。",
+                        recommendedQuestion = "请继续取证：确认下载路径配置是如何解析的。",
+                        evidence = listOf(
+                            ResultEvidenceFinding(
+                                id = "download-callsite",
+                                claim = "当前只看到 fileDownload 调用点。",
+                                evidenceLevel = ResultEvidenceLevel.CALLSITE_ONLY,
+                            ),
+                        ),
+                    ),
+                ),
+                observedNodeIds = listOf("method:file-download"),
+                observedFilePaths = listOf("CommonController.java"),
+            ),
+        )
+
+        assertEquals(InvestigationTurnOutcomeStatus.OPEN_NO_PROGRESS, result.latestTurnOutcome?.status)
+        assertEquals(emptyList(), result.latestTurnOutcome?.evidenceDelta?.addedNodeIds)
+        assertEquals(emptyList(), result.latestTurnOutcome?.evidenceDelta?.addedFilePaths)
     }
 }

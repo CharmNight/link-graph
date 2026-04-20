@@ -51,6 +51,26 @@ describe("AsyncRequestBanner", () => {
 
     expect(screen.getByText("流式预览")).toBeInTheDocument();
     expect(screen.getByText("可查看")).toBeInTheDocument();
+    expect(screen.queryByText("远程 LLM 已完成流式输出，并已落地最终结构化结果。")).not.toBeInTheDocument();
+  });
+
+  it("keeps failure detail messages visible so operators still get actionable error context", () => {
+    render(
+      <AsyncRequestBanner
+        requestState={{
+          phase: "FAILED",
+          statusMessage: "问答失败",
+          detailMessage: "请求已重试 3 次，最后一次连接上游超时。",
+          errorMessage: "连接上游超时。",
+          streaming: false,
+          fallbackUsed: false,
+          promptPreviewAvailable: false,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("问答失败")).toBeInTheDocument();
+    expect(screen.getByText("请求已重试 3 次，最后一次连接上游超时。")).toBeInTheDocument();
   });
 
   it("can collapse telemetry details so request metadata does not crowd out the main answer area", async () => {

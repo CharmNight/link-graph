@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FlowchartView } from "../../../../app/views/flowchart/FlowchartView";
-import type { FlowchartViewDocument } from "../../../../app/types";
+import type { DraftCompareProjection, FlowchartViewDocument } from "../../../../app/types";
 import { defaultNodeSizeRegistry } from "../../../../app/graph/nodeSizeRegistry";
 
 const { useMeasuredLayoutMock } = vi.hoisted(() => ({
@@ -215,6 +215,24 @@ const syntheticEntryView: FlowchartViewDocument = {
 };
 
 const noop = () => undefined;
+const draftCompareProjection: DraftCompareProjection = {
+  entryId: "draft-change-compensate",
+  entryTitle: "补充失败补偿说明",
+  compareGraph: view.visibleGraph,
+  nodeStatuses: {
+    "method:submit-order": "MODIFIED",
+  },
+  edgeStatuses: {
+    "control-entry": "MODIFIED",
+  },
+  summary: {
+    scopeNodeCount: 1,
+    visibleNodeCount: 1,
+    visibleEdgeCount: 1,
+    hiddenNodeCount: 0,
+    hiddenEdgeCount: 0,
+  },
+};
 const laidOutNodes = [
   {
     ...view.visibleGraph.nodes[0]!,
@@ -279,6 +297,29 @@ describe("FlowchartView", () => {
     expect(measuredLayoutArgs?.nodeSizeRegistry).not.toBe(defaultNodeSizeRegistry);
   });
 
+  it("renders a single-graph draft compare summary when compare annotations are active", () => {
+    render(
+      <FlowchartView
+        view={view}
+        selectedNodeId="method:submit-order"
+        draftCompareProjection={draftCompareProjection}
+        onAddNode={noop}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onDeleteNode={noop}
+        onCreateEdge={noop}
+        onDeleteEdge={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onImportMermaid={noop}
+      />,
+    );
+
+    expect(screen.getByLabelText("草稿对比摘要")).toBeInTheDocument();
+    expect(screen.getByText("补充失败补偿说明")).toBeInTheDocument();
+    expect(screen.getByText("当前对比会直接高亮修改后的真实节点和连线。")).toBeInTheDocument();
+  });
+
   it("handles flowchart relayout inside the view module instead of delegating back to the upstream format callback", async () => {
     const user = userEvent.setup();
     const requestRelayout = vi.fn();
@@ -334,6 +375,80 @@ describe("FlowchartView", () => {
     expect(screen.getByText("当前选中")).toBeInTheDocument();
     expect(screen.getByText("OrderController.submit")).toBeInTheDocument();
     expect(screen.getByText("!FileUtils.checkAllowDownload(fileName)")).toBeInTheDocument();
+  });
+
+  it("keeps the current-method summary pinned to the method entry even when the anchor points at a selected flow node", () => {
+    render(
+      <FlowchartView
+        view={{
+          ...view,
+          anchorNodeId: "scope:guard",
+        }}
+        selectedNodeId="scope:guard"
+        onAddNode={noop}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onDeleteNode={noop}
+        onCreateEdge={noop}
+        onDeleteEdge={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onImportMermaid={noop}
+      />,
+    );
+
+    const summary = screen.getByLabelText("流程图摘要");
+    const currentMethodCard = within(summary).getByText("当前方法").closest("article");
+    const currentSelectionCard = within(summary).getByText("当前选中").closest("article");
+    expect(currentMethodCard).not.toBeNull();
+    expect(currentSelectionCard).not.toBeNull();
+    expect(within(currentMethodCard as HTMLElement).getByText("OrderController.submit")).toBeInTheDocument();
+    expect(within(currentSelectionCard as HTMLElement).getByText("!FileUtils.checkAllowDownload(fileName)")).toBeInTheDocument();
+  });
+
+  it("keeps the method entry visible when the selected flow node carries the owner-method signature but the entry node itself does not", () => {
+    render(
+      <FlowchartView
+        view={{
+          ...view,
+          visibleGraph: {
+            ...view.visibleGraph,
+            nodes: [
+              {
+                ...view.visibleGraph.nodes[0]!,
+                metadata: {
+                  "flowchart.kind": "ENTRY",
+                },
+              },
+              {
+                ...view.visibleGraph.nodes[1]!,
+                metadata: {
+                  "flow.kind": "IF",
+                  "flowchart.kind": "DECISION",
+                  "flow.ownerMethod": "com.example.OrderController.submit(java.lang.String):void",
+                },
+              },
+            ],
+          },
+          anchorNodeId: "scope:guard",
+        }}
+        selectedNodeId="scope:guard"
+        onAddNode={noop}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onDeleteNode={noop}
+        onCreateEdge={noop}
+        onDeleteEdge={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onImportMermaid={noop}
+      />,
+    );
+
+    const summary = screen.getByLabelText("流程图摘要");
+    const currentMethodCard = within(summary).getByText("当前方法").closest("article");
+    expect(currentMethodCard).not.toBeNull();
+    expect(within(currentMethodCard as HTMLElement).getByText("OrderController.submit")).toBeInTheDocument();
   });
 
   it("adds unified hover titles to truncated summary titles", () => {

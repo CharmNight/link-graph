@@ -9,7 +9,7 @@ function auditStateFixture(): AuditWorkbenchState {
   return {
     requestState: { phase: "SUCCEEDED" },
     selectedChangeId: "change-condition",
-    selectedLeadId: null,
+    selectedThreadId: null,
     questionDraft: "",
     scopeLabel: "当前节点：上传方法",
     result: {
@@ -21,7 +21,6 @@ function auditStateFixture(): AuditWorkbenchState {
       findings: [],
       warnings: [],
       newCandidateChanges: [],
-      newInvestigationLeads: [],
       candidateChanges: [
         {
           changeId: "change-condition",
@@ -49,7 +48,6 @@ function auditStateFixture(): AuditWorkbenchState {
         scopeKey: "method:submit",
         focusTargetId: "change-condition",
         candidateChanges: [],
-        investigationLeads: [],
         messages: [
           {
             messageId: "m-1",
@@ -63,7 +61,7 @@ function auditStateFixture(): AuditWorkbenchState {
           },
         ],
       },
-      investigationLeads: [],
+      investigationThreads: [],
     },
   };
 }
@@ -77,8 +75,8 @@ describe("AuditTab", () => {
         onSubmitQuestion={vi.fn()}
         onSelectChange={vi.fn()}
         onConfirmChange={vi.fn()}
-        onSelectLead={vi.fn()}
-        onInvestigateLead={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
       />,
     );
 
@@ -96,9 +94,9 @@ describe("AuditTab", () => {
           ...auditStateFixture(),
           result: {
             ...auditStateFixture().result!,
-            investigationLeads: [
+            investigationThreads: [
               {
-                leadId: "lead-path-risk",
+                threadId: "thread-path-risk",
                 status: "OPEN",
                 title: "补充路径风险说明",
                 targetStepIds: [],
@@ -108,6 +106,7 @@ describe("AuditTab", () => {
                 recommendedQuestion: "请继续取证：展开 FileUploadUtils.upload，确认是否存在路径规范化或目录校验。",
                 claimType: "RISK_HINT",
                 evidence: [],
+                latestTurnOutcomeId: null,
               },
             ],
           },
@@ -116,8 +115,8 @@ describe("AuditTab", () => {
         onSubmitQuestion={vi.fn()}
         onSelectChange={vi.fn()}
         onConfirmChange={vi.fn()}
-        onSelectLead={vi.fn()}
-        onInvestigateLead={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
         sectionPreferences={{ "audit.thread": true }}
       />,
     );
@@ -127,8 +126,30 @@ describe("AuditTab", () => {
       "请求状态",
       "继续提问",
       "待确认变更",
-      "风险线索",
+      "风险线程",
     ]);
+  });
+
+  it("does not render the risk-thread page from legacy investigation leads alone", () => {
+    render(
+      <AuditTab
+        state={{
+          ...auditStateFixture(),
+          result: {
+            ...auditStateFixture().result!,
+            investigationThreads: [],
+          },
+        }}
+        onQuestionDraftChange={vi.fn()}
+        onSubmitQuestion={vi.fn()}
+        onSelectChange={vi.fn()}
+        onConfirmChange={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("tab", { name: "风险线程" })).not.toBeInTheDocument();
   });
 
   it("shows an explicit empty state on the conversation page and hides the candidate tab when there are no pending changes", () => {
@@ -149,8 +170,8 @@ describe("AuditTab", () => {
         onSubmitQuestion={vi.fn()}
         onSelectChange={vi.fn()}
         onConfirmChange={vi.fn()}
-        onSelectLead={vi.fn()}
-        onInvestigateLead={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
         sectionPreferences={{ "audit.thread": true }}
       />,
     );
@@ -179,8 +200,8 @@ describe("AuditTab", () => {
         onSubmitQuestion={vi.fn()}
         onSelectChange={vi.fn()}
         onConfirmChange={vi.fn()}
-        onSelectLead={vi.fn()}
-        onInvestigateLead={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
       />,
     );
 
@@ -196,8 +217,8 @@ describe("AuditTab", () => {
         onSubmitQuestion={vi.fn()}
         onSelectChange={vi.fn()}
         onConfirmChange={vi.fn()}
-        onSelectLead={vi.fn()}
-        onInvestigateLead={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
       />,
     );
 
@@ -236,8 +257,8 @@ describe("AuditTab", () => {
         onSubmitQuestion={vi.fn()}
         onSelectChange={vi.fn()}
         onConfirmChange={vi.fn()}
-        onSelectLead={vi.fn()}
-        onInvestigateLead={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
       />,
     );
 
@@ -283,8 +304,8 @@ describe("AuditTab", () => {
         onSubmitQuestion={vi.fn()}
         onSelectChange={vi.fn()}
         onConfirmChange={vi.fn()}
-        onSelectLead={vi.fn()}
-        onInvestigateLead={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
       />,
     );
 
@@ -303,8 +324,8 @@ describe("AuditTab", () => {
         onSubmitQuestion={vi.fn()}
         onSelectChange={vi.fn()}
         onConfirmChange={vi.fn()}
-        onSelectLead={vi.fn()}
-        onInvestigateLead={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
       />,
     );
 
@@ -359,8 +380,8 @@ describe("AuditTab", () => {
         onSubmitQuestion={vi.fn()}
         onSelectChange={onSelectChange}
         onConfirmChange={vi.fn()}
-        onSelectLead={vi.fn()}
-        onInvestigateLead={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
       />,
     );
 
@@ -377,22 +398,42 @@ describe("AuditTab", () => {
     expect(onSelectChange).toHaveBeenCalledWith("change-exception");
   });
 
-  it("renders weak-evidence outputs inside investigation leads and exposes continue-investigation action", async () => {
+  it("renders weak-evidence outputs inside investigation threads and exposes continue-investigation action", async () => {
     const user = userEvent.setup();
-    const onInvestigateLead = vi.fn();
+    const onInvestigateThread = vi.fn();
 
     render(
       <AuditTab
         state={{
           ...auditStateFixture(),
           selectedChangeId: null,
-          selectedLeadId: "lead-path-risk",
+          selectedThreadId: "thread-path-risk",
           result: {
             ...auditStateFixture().result!,
             candidateChanges: [],
-            investigationLeads: [
+            latestTurnOutcome: {
+              outcomeId: "turn-1",
+              threadId: "thread-path-risk",
+              status: "OPEN_WITH_PROGRESS",
+              summary: "补充路径风险说明",
+              detail: "本轮补充了上传工具调用点，但还没有拿到内部路径校验实现。",
+              candidateChangeId: null,
+              blockedReason: null,
+              evidenceDelta: {
+                addedNodeIds: ["method:upload-file"],
+                addedFilePaths: ["CommonController.java"],
+                previousStrongestEvidenceLevel: "NOT_OBSERVED",
+                currentStrongestEvidenceLevel: "CALLSITE_ONLY",
+                hitRecommendedQuestion: true,
+              },
+              observedNodeIds: ["method:upload-file"],
+              observedFilePaths: ["CommonController.java"],
+              strongestEvidenceLevel: "CALLSITE_ONLY",
+            },
+            recentTurnOutcomes: [],
+            investigationThreads: [
               {
-                leadId: "lead-path-risk",
+                threadId: "thread-path-risk",
                 status: "OPEN",
                 title: "补充路径风险说明",
                 targetStepIds: [],
@@ -409,6 +450,7 @@ describe("AuditTab", () => {
                     references: [{ nodeId: "method:upload-file" }],
                   },
                 ],
+                latestTurnOutcomeId: null,
               },
             ],
           },
@@ -417,14 +459,16 @@ describe("AuditTab", () => {
         onSubmitQuestion={vi.fn()}
         onSelectChange={vi.fn()}
         onConfirmChange={vi.fn()}
-        onSelectLead={vi.fn()}
-        onInvestigateLead={onInvestigateLead}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={onInvestigateThread}
       />,
     );
 
-    await user.click(screen.getByRole("tab", { name: "风险线索" }));
+    await user.click(screen.getByRole("tab", { name: "风险线程" }));
 
-    expect(screen.getByText("风险提示")).toBeInTheDocument();
+    expect(screen.getByText("线程会持续保留，本轮是否推进以“本轮结果”为准。")).toBeInTheDocument();
+    expect(screen.getByText("本轮补充了上传工具调用点，但还没有拿到内部路径校验实现。")).toBeInTheDocument();
+    expect(screen.getByText("有推进")).toBeInTheDocument();
     expect(screen.getByText("仅调用点")).toBeInTheDocument();
     expect(screen.getByText("这里只看到 MultipartFile 被传给上传工具。")).toBeInTheDocument();
     expect(screen.getByText("还没有看到上传工具内部路径校验实现。")).toBeInTheDocument();
@@ -432,7 +476,125 @@ describe("AuditTab", () => {
 
     await user.click(investigateButton);
 
-    expect(onInvestigateLead).toHaveBeenCalledWith("lead-path-risk");
+    expect(onInvestigateThread).toHaveBeenCalledWith("thread-path-risk");
+  });
+
+  it("shows the per-turn investigation outcome alongside the assistant message", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AuditTab
+        state={{
+          ...auditStateFixture(),
+          result: {
+            ...auditStateFixture().result!,
+            auditSession: {
+              ...auditStateFixture().result!.auditSession!,
+              messages: [
+                {
+                  messageId: "m-1",
+                  role: "USER",
+                  content: "请继续取证上传链路。",
+                },
+                {
+                  messageId: "m-2",
+                  role: "ASSISTANT",
+                  content: "这轮还没有拿到上传工具内部实现。",
+                  focusTargetId: "thread-path-risk",
+                  turnOutcomeId: "turn-2",
+                },
+              ],
+              investigationThreads: [
+                {
+                  threadId: "thread-path-risk",
+                  status: "OPEN",
+                  title: "补充路径风险说明",
+                  targetStepIds: [],
+                  targetNodeIds: ["method:upload-file"],
+                  summary: "当前只有调用点证据。",
+                  evidenceGap: "还没有看到上传工具内部路径校验实现。",
+                  recommendedQuestion: "请继续取证：展开 FileUploadUtils.upload，确认是否存在路径规范化或目录校验。",
+                  claimType: "RISK_HINT",
+                  evidence: [],
+                  latestTurnOutcomeId: "turn-2",
+                },
+              ],
+              turnOutcomes: [
+                {
+                  outcomeId: "turn-2",
+                  threadId: "thread-path-risk",
+                  status: "OPEN_NO_PROGRESS",
+                  summary: "补充路径风险说明",
+                  detail: "本轮仍停留在原有风险线程上，没有获得可升级的新证据。",
+                  candidateChangeId: null,
+                  blockedReason: null,
+                  evidenceDelta: {
+                    addedNodeIds: [],
+                    addedFilePaths: [],
+                    previousStrongestEvidenceLevel: "CALLSITE_ONLY",
+                    currentStrongestEvidenceLevel: "CALLSITE_ONLY",
+                    hitRecommendedQuestion: false,
+                  },
+                  observedNodeIds: ["method:upload-file"],
+                  observedFilePaths: ["CommonController.java"],
+                  strongestEvidenceLevel: "CALLSITE_ONLY",
+                },
+              ],
+            },
+            investigationThreads: [
+              {
+                threadId: "thread-path-risk",
+                status: "OPEN",
+                title: "补充路径风险说明",
+                targetStepIds: [],
+                targetNodeIds: ["method:upload-file"],
+                summary: "当前只有调用点证据。",
+                evidenceGap: "还没有看到上传工具内部路径校验实现。",
+                recommendedQuestion: "请继续取证：展开 FileUploadUtils.upload，确认是否存在路径规范化或目录校验。",
+                claimType: "RISK_HINT",
+                evidence: [],
+                latestTurnOutcomeId: "turn-2",
+              },
+            ],
+            recentTurnOutcomes: [
+              {
+                outcomeId: "turn-2",
+                threadId: "thread-path-risk",
+                status: "OPEN_NO_PROGRESS",
+                summary: "补充路径风险说明",
+                detail: "本轮仍停留在原有风险线程上，没有获得可升级的新证据。",
+                candidateChangeId: null,
+                blockedReason: null,
+                evidenceDelta: {
+                  addedNodeIds: [],
+                  addedFilePaths: [],
+                  previousStrongestEvidenceLevel: "CALLSITE_ONLY",
+                  currentStrongestEvidenceLevel: "CALLSITE_ONLY",
+                  hitRecommendedQuestion: false,
+                },
+                observedNodeIds: ["method:upload-file"],
+                observedFilePaths: ["CommonController.java"],
+                strongestEvidenceLevel: "CALLSITE_ONLY",
+              },
+            ],
+            candidateChanges: [],
+          },
+        }}
+        onQuestionDraftChange={vi.fn()}
+        onSubmitQuestion={vi.fn()}
+        onSelectChange={vi.fn()}
+        onConfirmChange={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "问答会话" }));
+
+    expect(screen.getByText("补充路径风险说明")).toBeInTheDocument();
+    expect(screen.getByText("无推进")).toBeInTheDocument();
+    expect(screen.getByText("本轮仍停留在原有风险线程上，没有获得可升级的新证据。")).toBeInTheDocument();
+    expect(screen.getByText("证据等级：仅调用点 -> 仅调用点")).toBeInTheDocument();
   });
 
   it("stops boundary pointer handlers from stealing focus when interacting with the audit composer page", async () => {
@@ -487,8 +649,8 @@ describe("AuditTab", () => {
         onSubmitQuestion={vi.fn()}
         onSelectChange={vi.fn()}
         onConfirmChange={vi.fn()}
-        onSelectLead={vi.fn()}
-        onInvestigateLead={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
         sectionPreferences={{ "audit.thread": true }}
       />,
     );
@@ -533,8 +695,8 @@ describe("AuditTab", () => {
         onSubmitQuestion={vi.fn()}
         onSelectChange={vi.fn()}
         onConfirmChange={vi.fn()}
-        onSelectLead={vi.fn()}
-        onInvestigateLead={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
         sectionPreferences={{ "audit.thread": true }}
       />,
     );
@@ -579,8 +741,8 @@ describe("AuditTab", () => {
         onSubmitQuestion={vi.fn()}
         onSelectChange={vi.fn()}
         onConfirmChange={vi.fn()}
-        onSelectLead={vi.fn()}
-        onInvestigateLead={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
         sectionPreferences={{ "audit.thread": true }}
       />,
     );
@@ -617,8 +779,8 @@ describe("AuditTab", () => {
         onSubmitQuestion={vi.fn()}
         onSelectChange={vi.fn()}
         onConfirmChange={vi.fn()}
-        onSelectLead={vi.fn()}
-        onInvestigateLead={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
         sectionPreferences={{ "audit.thread": true }}
       />,
     );
@@ -642,8 +804,8 @@ describe("AuditTab", () => {
     expect(themeCss).toMatch(/\.workbench-chat-stream\s*\{[^}]*overflow:\s*visible;/s);
     expect(themeCss).toMatch(/\.workbench-chat-message\s*\{[^}]*overflow:\s*visible;/s);
     expect(themeCss).toMatch(/\.audit-rich-scroll-shell\s*\{[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/\.workbench-candidate-detail-pane\s*\{[^}]*overflow-x:\s*hidden;/s);
-    expect(themeCss).toMatch(/\.workbench-candidate-card\s*\{[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.workbench-candidate-detail-pane\s*\{[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.workbench-candidate-card\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*100%;/s);
     expect(themeCss).toMatch(/\.request-state-banner-details\s*\{[^}]*overflow:\s*auto;/s);
   });
 

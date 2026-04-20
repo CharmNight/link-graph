@@ -39,17 +39,18 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.ui.GraphEditorStateService
+import java.util.ArrayDeque
 import java.util.UUID
 
 /**
  * 第一版问答 capability。
- * 当前仍委托旧 GraphAuditPatchService 执行真实问答，但执行入口已经迁到 runtime，后续可以在此演进为多步工具读取。
+ * runtime 负责读取图与代码证据，最终问答由正式执行器完成。
  */
 class QaCapability(
     /** 默认运行预算。 */
     private val defaultBudget: RunBudget = RunBudget(),
-    /** 旧问答执行器。 */
-    private val legacyAuditExecutor: LegacyAuditExecutor,
+    /** 正式问答执行器。 */
+    private val auditExecutor: AuditExecutor,
     /** capability 可用工具注册表。 */
     private val toolRegistry: AgentToolRegistry = AgentToolRegistry(
         listOf<AgentTool>(
@@ -64,6 +65,7 @@ class QaCapability(
     ),
 ) : AgentCapability<QaCapabilityInput, GraphPatchResult> {
     private val wholeGraphEvidenceTargetLimit: Int = 5
+    private val explicitSelectionTraversalDepth: Int = 2
 
     override val capabilityId: String = "qa"
 
@@ -115,7 +117,7 @@ class QaCapability(
                 0 -> readDraftWorkbench(state, runtimeContext)
                 1 -> collectGraphSummary(state, runtimeContext, input)
                 2 -> collectCodeEvidenceIfNeeded(state, runtimeContext, input)
-                else -> executeLegacyAuditStep(state, runtimeContext, input)
+                else -> executeAuditStep(state, runtimeContext, input)
             }
         }
     }
@@ -166,21 +168,16 @@ class QaCapability(
         )
     }
 
-    /**
-     * 暂时保留旧 service 作为底层执行器，确保 fallback、流式预览和结果解析不退化。
-     * 等图工具和代码工具接进来后，再把这里拆成真正的多步行为。
-     */
-    fun executeLegacyAudit(
+    fun executeAudit(
         input: QaCapabilityInput,
         runtimeContext: AgentRuntimeContext,
         state: AgentRunState = buildInitialState(input, runtimeContext),
     ): GraphPatchResult {
-        return legacyAuditExecutor.invoke(input, runtimeContext, state)
+        return auditExecutor.invoke(input, runtimeContext, state)
     }
 
     /**
-     * 第一步先读取图摘要。
-     * 即使底层问答暂时还委托旧 service，也必须先真实执行一次图工具，确保 runtime 已经具备按需读取图的能力。
+     * 第一步先读取图摘要，确保 runtime 主链路已经具备按需读取图的能力。
      */
     private fun collectGraphSummary(
         state: AgentRunState,
@@ -262,18 +259,14 @@ class QaCapability(
         )
     }
 
-    /**
-     * 第二步委托旧问答执行器。
-     * 这样既保留现有 fallback/解析能力，也让 runtime 的图读取步骤成为真实主链路的一部分。
-     */
-    private fun executeLegacyAuditStep(
+    private fun executeAuditStep(
         state: AgentRunState,
         runtimeContext: AgentRuntimeContext,
         input: QaCapabilityInput,
     ): AgentStepExecutionResult {
         return runCatching {
             val augmentedInput = buildAugmentedInput(input, state, runtimeContext)
-            val result = executeLegacyAudit(
+            val result = executeAudit(
                 input = augmentedInput,
                 runtimeContext = runtimeContext,
                 state = state,
@@ -309,9 +302,9 @@ class QaCapability(
                         stepIndex = state.stepIndex,
                         phase = AgentRunPhase.SUCCEEDED,
                         summary = if (candidateArtifactRefs.isEmpty()) {
-                            "delegate-legacy-audit-service"
+                            "execute-audit"
                         } else {
-                            "delegate-legacy-audit-service-and-create-candidate-drafts"
+                            "execute-audit-and-create-candidate-drafts"
                         },
                         toolName = if (candidateArtifactRefs.isEmpty()) null else "create_candidate_draft",
                     ),
@@ -327,7 +320,7 @@ class QaCapability(
                     stepRecords = state.stepRecords + AgentStepRecord(
                         stepIndex = state.stepIndex,
                         phase = AgentRunPhase.FAILED,
-                        summary = "delegate-legacy-audit-service",
+                        summary = "execute-audit",
                     ),
                     lastModelOutput = throwable.message ?: throwable.javaClass.simpleName,
                     failureReason = AgentRunFailureReason.CAPABILITY_EXECUTION_FAILED,
@@ -338,7 +331,7 @@ class QaCapability(
 
     /**
      * 第二步根据当前图选区按需读取代码。
-     * 只有当旧上下文没有现成源码证据时，runtime 才补充读取，避免继续依赖一次性大上下文。
+     * 只有当当前上下文没有现成源码证据时，runtime 才补充读取，避免继续依赖一次性大上下文。
      */
     private fun collectCodeEvidenceIfNeeded(
         state: AgentRunState,
@@ -483,16 +476,52 @@ class QaCapability(
         runtimeContext: AgentRuntimeContext,
     ): List<String> {
         val explicitSelection = input.auditContext.selectedNodeIds.distinct()
-        if (explicitSelection.isNotEmpty()) {
-            return explicitSelection
-        }
         val graphSummary = extractGraphSummary(state, runtimeContext)
+        val runtimeGraph = graphSummary?.graph
+            ?: input.auditContext.editableGraph.takeIf { graph -> graph.nodes.isNotEmpty() || graph.edges.isNotEmpty() }
+            ?: input.auditContext.factGraph
+        if (explicitSelection.isNotEmpty()) {
+            return expandExplicitSelectionEvidenceTargets(runtimeGraph, explicitSelection)
+        }
         val runtimeSelection = graphSummary?.selectedNodeIds.orEmpty().distinct()
         if (runtimeSelection.isNotEmpty()) {
-            return runtimeSelection
+            return expandExplicitSelectionEvidenceTargets(runtimeGraph, runtimeSelection)
         }
-        val runtimeGraph = graphSummary?.graph ?: input.auditContext.factGraph
         return selectWholeGraphEvidenceTargets(runtimeGraph)
+    }
+
+    private fun expandExplicitSelectionEvidenceTargets(
+        graph: GraphDocument,
+        selectedNodeIds: List<String>,
+    ): List<String> {
+        if (selectedNodeIds.isEmpty()) {
+            return emptyList()
+        }
+        val nodeById = graph.nodes.associateBy(GraphNode::id)
+        val orderedTargets = linkedSetOf<String>()
+        val visitedNodeIds = mutableSetOf<String>()
+        val queue = ArrayDeque(selectedNodeIds.map { nodeId -> TraversalTarget(nodeId, 0) })
+        while (queue.isNotEmpty() && orderedTargets.size < wholeGraphEvidenceTargetLimit) {
+            val current = queue.removeFirst()
+            if (!visitedNodeIds.add(current.nodeId)) {
+                continue
+            }
+            val node = nodeById[current.nodeId] ?: continue
+            if (hasReadableSourceAnchor(node)) {
+                orderedTargets += node.id
+            }
+            if (current.depth >= explicitSelectionTraversalDepth) {
+                continue
+            }
+            relatedNodeIds(graph, current.nodeId).forEach { nextNodeId ->
+                if (nextNodeId !in visitedNodeIds) {
+                    queue += TraversalTarget(nextNodeId, current.depth + 1)
+                }
+            }
+        }
+        return orderedTargets.ifEmpty {
+            selectedNodeIds.filter { nodeId -> nodeById[nodeId]?.let(::hasReadableSourceAnchor) == true }
+        }.toList()
     }
 
     private fun selectWholeGraphEvidenceTargets(
@@ -510,6 +539,19 @@ class QaCapability(
             )
             .take(wholeGraphEvidenceTargetLimit)
             .map(GraphNode::id)
+            .toList()
+    }
+
+    private fun relatedNodeIds(
+        graph: GraphDocument,
+        nodeId: String,
+    ): List<String> {
+        return graph.edges
+            .asSequence()
+            .filter { edge -> edge.fromNodeId == nodeId || edge.toNodeId == nodeId }
+            .flatMap { edge -> sequenceOf(edge.fromNodeId, edge.toNodeId) }
+            .filter { relatedNodeId -> relatedNodeId != nodeId }
+            .distinct()
             .toList()
     }
 
@@ -589,9 +631,6 @@ class QaCapability(
         val selectedNodeIds = graphSummary?.selectedNodeIds
             ?.ifEmpty { input.auditContext.selectedNodeIds }
             ?: input.auditContext.selectedNodeIds
-        val runtimeFactGraph = graphSummary?.graph
-            ?.let { graph -> scopeGraph(graph, selectedNodeIds) }
-            ?: GraphDocument()
         val codeEvidence = state.artifactRefs
             .asSequence()
             .mapNotNull(runtimeContext.artifactStore::get)
@@ -608,8 +647,6 @@ class QaCapability(
             .toList()
         return input.copy(
             auditContext = input.auditContext.copy(
-                factGraph = runtimeFactGraph,
-                draftGraph = GraphDocument(),
                 selectedNodeIds = selectedNodeIds,
                 sourceContext = codeEvidence
                     .distinctBy { snippet -> "${snippet.filePath}:${snippet.startLine}:${snippet.endLine}" },
@@ -639,37 +676,23 @@ class QaCapability(
             .lastOrNull()
     }
 
-    private fun scopeGraph(
-        graph: GraphDocument,
-        selectedNodeIds: List<String>,
-    ): GraphDocument {
-        if (selectedNodeIds.isEmpty()) {
-            return graph
-        }
-        val context = GraphAuditContext(
-            factGraph = graph,
-            selectedNodeIds = selectedNodeIds,
-        )
-        val scopeNodes = GraphAuditScopeResolver.resolveScopeNodes(context)
-        val scopeEdges = GraphAuditScopeResolver.resolveScopeEdges(context, scopeNodes)
-        return GraphDocument(
-            nodes = scopeNodes,
-            edges = scopeEdges,
-        )
-    }
-
-    fun interface LegacyAuditExecutor {
+    fun interface AuditExecutor {
         fun invoke(
             input: QaCapabilityInput,
             runtimeContext: AgentRuntimeContext,
             state: AgentRunState,
         ): GraphPatchResult
     }
+
+    private data class TraversalTarget(
+        val nodeId: String,
+        val depth: Int,
+    )
 }
 
 /**
  * 问答 capability 的输入结构。
- * 第一阶段只包装旧问答 service 已经需要的参数，后续再补 tool 决策、artifact 依赖等字段。
+ * 当前包装问答执行器所需的上下文，后续可继续扩展 tool 决策与 artifact 依赖。
  */
 data class QaCapabilityInput(
     /** 用户问题。 */
@@ -680,8 +703,8 @@ data class QaCapabilityInput(
     val settings: LinkGraphSettingsState = LinkGraphSettingsState(),
     /** 当前多轮问答会话。 */
     val session: AuditConversationSession? = null,
-    /** 如果是追问，则记录上游 leadId。 */
-    val sourceLeadId: String? = null,
+    /** 如果是追问，则记录上游 threadId。 */
+    val sourceThreadId: String? = null,
     /** 流式预览回调。 */
     val onPreview: ((String, Boolean) -> Unit)? = null,
 )

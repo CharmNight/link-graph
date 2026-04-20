@@ -12,7 +12,7 @@ export const AUDIT_WORKBENCH_SECTION_IDS: WorkbenchSectionId[] = [
   "audit.request-status",
   "audit.composer",
   "audit.candidate-changes",
-  "audit.investigation-leads",
+  "audit.investigation-threads",
 ];
 
 const DEFAULT_SECTION_PREFERENCES: Record<WorkbenchSectionId, boolean> = {
@@ -22,7 +22,7 @@ const DEFAULT_SECTION_PREFERENCES: Record<WorkbenchSectionId, boolean> = {
   "audit.thread": true,
   "audit.composer": false,
   "audit.candidate-changes": false,
-  "audit.investigation-leads": false,
+  "audit.investigation-threads": false,
   "draft.change-list": true,
   "draft.note-list": false,
   "draft.detail": true,

@@ -11,6 +11,7 @@ import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.sync.SyncPreviewPlanner
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
+import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
@@ -21,6 +22,45 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class PlanningContextFactoryTest {
+    @Test
+    fun buildAuditGraphsPreservesReferenceFactGraphWhileUsingWorkingGraphAsEditableGraph() {
+        val factGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:file-download",
+                    type = NodeType.METHOD,
+                    title = "CommonController.fileDownload",
+                ),
+            ),
+        )
+        val editableGraph = GraphDocument(
+            nodes = factGraph.nodes + GraphNode(
+                id = "scope:file-download-if",
+                type = NodeType.FLOW_SCOPE,
+                title = "if (delete)",
+            ),
+        )
+        val snapshot = GraphEditorStateService.Snapshot(
+            analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
+            referenceFactGraph = factGraph,
+            workingGraph = editableGraph,
+        )
+
+        val auditGraphs = PlanningContextFactory(
+            graphDiffer = GraphDiffer(),
+            syncPreviewPlanner = SyncPreviewPlanner(),
+            graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
+            settingsProvider = { LinkGraphSettingsState() },
+        ).buildAuditGraphs(
+            snapshot = snapshot,
+            selectedNodeIds = emptyList(),
+            collectSourceEvidence = false,
+        )
+
+        assertEquals(factGraph, auditGraphs.factGraph)
+        assertEquals(editableGraph, auditGraphs.editableGraph)
+    }
+
     @Test
     fun computePlanningPayloadDoesNotPreloadGenerationSourceSnippetsFromConfirmedChangesAndPlanScopes() {
         val sourceFile = Files.createTempFile("generation-source-context", ".java")

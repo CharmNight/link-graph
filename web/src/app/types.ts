@@ -8,6 +8,7 @@ export type BindingStatus =
   | "CONFLICTED";
 
 export type DiffStatus = "MATCHED" | "ONLY_IN_CODE" | "ONLY_IN_MERMAID" | "MODIFIED";
+export type DraftCompareStatus = "MODIFIED" | "ADDED" | "REMOVED";
 export type GraphSourceTag = "FACT" | "DESIGN_BASELINE" | "DRAFT_MANUAL" | "DRAFT_AI" | "UNCERTAIN_FACT";
 export type GraphDiffElementKind = "NODE" | "EDGE";
 export type GraphPatchAction =
@@ -27,9 +28,24 @@ export type AnalysisDisplayMode = "FACT_GRAPH" | "FLOWCHART" | "RESOURCE_RELATIO
 export type StepGranularity = "BUSINESS" | "METHOD_CALL" | "CODE_SEMANTIC";
 export type StepKind = "BUSINESS_ACTION" | "METHOD_CALL" | "CONDITION" | "RETURN" | "RESOURCE_INTERACTION";
 export type CandidateDraftChangeStatus = "PENDING_CONFIRMATION" | "CONFIRMED" | "REJECTED" | "SUPERSEDED";
-export type AuditInvestigationLeadStatus = "OPEN" | "PROMOTED" | "DISMISSED" | "SUPERSEDED";
+export type InvestigationThreadStatus = "OPEN" | "PROMOTED" | "DISMISSED" | "BLOCKED" | "SUPERSEDED";
+export type RiskResolutionStatus =
+  | "UNRESOLVED"
+  | "DEFERRED"
+  | "ACCEPTED_RISK"
+  | "EVIDENCE_EXHAUSTED"
+  | "DISMISSED"
+  | "PROMOTED";
+export type InvestigationTurnOutcomeStatus =
+  | "PROMOTED_TO_CANDIDATE"
+  | "OPEN_WITH_PROGRESS"
+  | "OPEN_NO_PROGRESS"
+  | "DISMISSED"
+  | "BLOCKED";
 export type DraftEntryKind = "CHANGE" | "NOTE";
 export type AuditMessageRole = "USER" | "ASSISTANT";
+export type QaRequestKind = "ASK" | "INVESTIGATE_THREAD";
+export type StageEligibilityTarget = "PLAN" | "CODE";
 
 export type NodeType =
   | "METHOD"
@@ -222,8 +238,9 @@ export interface GraphPatchResult {
   findings: ResultEvidenceFinding[];
   candidateChanges: CandidateDraftChange[];
   newCandidateChanges: CandidateDraftChange[];
-  investigationLeads: AuditInvestigationLead[];
-  newInvestigationLeads: AuditInvestigationLead[];
+  investigationThreads?: InvestigationThread[];
+  latestTurnOutcome?: InvestigationTurnOutcome | null;
+  recentTurnOutcomes?: InvestigationTurnOutcome[];
   sourceContext?: SourceSnippetContext[];
   evidenceTrace?: EvidenceTraceEntry[];
   auditSession?: AuditConversationSession | null;
@@ -340,6 +357,21 @@ export interface CandidateDraftChange {
   claimType?: DraftClaimType | null;
   evidence?: ResultEvidenceFinding[];
   editScopes?: EditScope[];
+  patchIntent?: CandidatePatchIntent | null;
+  graphPatch?: GraphPatch | null;
+}
+
+export type CandidatePatchIntentMode =
+  | "UPDATE_EXISTING_NODE"
+  | "INSERT_NEW_DECISION"
+  | "INSERT_NEW_ACTION"
+  | "ANNOTATION_ONLY";
+
+export interface CandidatePatchIntent {
+  mode: CandidatePatchIntentMode;
+  targetNodeId?: string | null;
+  attachEdgeId?: string | null;
+  falseBranchTargetNodeId?: string | null;
 }
 
 export interface AuditConversationMessage {
@@ -347,6 +379,7 @@ export interface AuditConversationMessage {
   role: AuditMessageRole;
   content: string;
   focusTargetId?: string | null;
+  turnOutcomeId?: string | null;
 }
 
 export interface AuditConversationSession {
@@ -354,13 +387,36 @@ export interface AuditConversationSession {
   scopeKey: string;
   messages: AuditConversationMessage[];
   candidateChanges: CandidateDraftChange[];
-  investigationLeads: AuditInvestigationLead[];
+  investigationThreads?: InvestigationThread[];
+  turnOutcomes?: InvestigationTurnOutcome[];
   focusTargetId?: string | null;
 }
 
-export interface AuditInvestigationLead {
-  leadId: string;
-  status: AuditInvestigationLeadStatus;
+export interface InvestigationEvidenceDelta {
+  addedNodeIds: string[];
+  addedFilePaths: string[];
+  previousStrongestEvidenceLevel?: ResultEvidenceLevel | null;
+  currentStrongestEvidenceLevel?: ResultEvidenceLevel | null;
+  hitRecommendedQuestion: boolean;
+}
+
+export interface InvestigationTurnOutcome {
+  outcomeId: string;
+  threadId: string;
+  status: InvestigationTurnOutcomeStatus;
+  summary: string;
+  detail: string;
+  candidateChangeId?: string | null;
+  blockedReason?: string | null;
+  evidenceDelta: InvestigationEvidenceDelta;
+  observedNodeIds: string[];
+  observedFilePaths: string[];
+  strongestEvidenceLevel?: ResultEvidenceLevel | null;
+}
+
+export interface InvestigationThread {
+  threadId: string;
+  status: InvestigationThreadStatus;
   title: string;
   targetStepIds: string[];
   targetNodeIds: string[];
@@ -369,6 +425,38 @@ export interface AuditInvestigationLead {
   recommendedQuestion: string;
   claimType?: DraftClaimType | null;
   evidence: ResultEvidenceFinding[];
+  latestTurnOutcomeId?: string | null;
+  resolution?: RiskResolution | null;
+}
+
+export interface RiskResolution {
+  threadId: string;
+  status: RiskResolutionStatus;
+  note: string;
+}
+
+export interface ReplayableQaRequest {
+  requestId: string;
+  kind: QaRequestKind;
+  question: string;
+  selectedNodeIds: string[];
+  sourceThreadId?: string | null;
+  baseSessionId?: string | null;
+}
+
+export interface QaRequestRecoveryState {
+  lastSubmittedRequest?: ReplayableQaRequest | null;
+  lastFailedRequest?: ReplayableQaRequest | null;
+}
+
+export interface StageEligibilityDecision {
+  target: StageEligibilityTarget;
+  stageLabel: string;
+  allowed: boolean;
+  message: string;
+  detailMessage: string;
+  blockingThreadIds: string[];
+  unresolvedThreadIds: string[];
 }
 
 export interface DraftWorkbenchEntry {
@@ -385,6 +473,8 @@ export interface DraftWorkbenchEntry {
   claimType?: DraftClaimType | null;
   evidence: ResultEvidenceFinding[];
   editScopes?: EditScope[];
+  patchIntent?: CandidatePatchIntent | null;
+  graphPatch?: GraphPatch | null;
 }
 
 export interface DraftWorkbenchState {
@@ -407,8 +497,9 @@ export interface ExplanationWorkbenchState {
 export interface AuditWorkbenchState {
   result: GraphPatchResult | null;
   requestState: AsyncRequestState;
+  qaRequestRecoveryState?: QaRequestRecoveryState | null;
   selectedChangeId?: string | null;
-  selectedLeadId?: string | null;
+  selectedThreadId?: string | null;
   questionDraft: string;
   scopeLabel?: string | null;
 }
@@ -419,6 +510,35 @@ export interface DraftWorkbenchViewState {
   selectedEntryId?: string | null;
 }
 
+export interface DraftImplementationSuggestionState {
+  status: "MISSING" | "RUNNING" | "FRESH" | "STALE" | "FAILED";
+  summary?: string | null;
+  items: GenerationPlanItem[];
+  source?: GenerationPlanSource | null;
+  warnings: string[];
+  promptPreview?: string | null;
+  promptPreviewArtifactId?: string | null;
+  draftVersion?: number | null;
+  generationPlanDraftVersion?: number | null;
+}
+
+export interface DraftCompareSummary {
+  scopeNodeCount: number;
+  visibleNodeCount: number;
+  visibleEdgeCount: number;
+  hiddenNodeCount: number;
+  hiddenEdgeCount: number;
+}
+
+export interface DraftCompareProjection {
+  entryId: string;
+  entryTitle: string;
+  compareGraph: LinkGraphDocument;
+  nodeStatuses: Record<string, DraftCompareStatus>;
+  edgeStatuses: Record<string, DraftCompareStatus>;
+  summary: DraftCompareSummary;
+}
+
 export type WorkbenchSectionId =
   | "explanation.step-list"
   | "explanation.step-detail"
@@ -426,7 +546,7 @@ export type WorkbenchSectionId =
   | "audit.thread"
   | "audit.composer"
   | "audit.candidate-changes"
-  | "audit.investigation-leads"
+  | "audit.investigation-threads"
   | "draft.change-list"
   | "draft.note-list"
   | "draft.detail";
@@ -559,6 +679,7 @@ export interface LinkGraphBootstrapState {
   analysisDisplayMode?: AnalysisDisplayMode | null;
   visibleGraph: LinkGraphDocument;
   workingGraph: LinkGraphDocument;
+  referenceWorkingGraph?: LinkGraphDocument | null;
   referenceFactGraph?: LinkGraphDocument | null;
   designBaselineGraph?: LinkGraphDocument | null;
   factGraphView?: FactGraphViewDocument | null;
@@ -574,6 +695,7 @@ export interface LinkGraphBootstrapState {
   lastAppliedDraftPatchSummary?: string | null;
   auditResult?: GraphPatchResult | null;
   auditRequestState?: AsyncRequestState | null;
+  qaRequestRecoveryState?: QaRequestRecoveryState | null;
   diffReviewResult?: GraphPatchResult | null;
   diffReviewRequestState?: AsyncRequestState | null;
   graphBeautificationResult?: GraphBeautificationResult | null;
@@ -581,15 +703,20 @@ export interface LinkGraphBootstrapState {
   mermaidIssues: MermaidIssue[];
   diffItems: DiffItem[];
   syncPreviewItems: SyncPreviewItem[];
+  draftVersion?: number;
   generationPlan?: GenerationPlan | null;
+  generationPlanDraftVersion?: number | null;
   generationPlanRequestState?: AsyncRequestState | null;
+  planEligibilityDecision?: StageEligibilityDecision | null;
   generatedCodeDrafts?: GeneratedCodeDraft[];
+  generatedCodeDraftVersion?: number | null;
   generatedCodeDraftWarnings?: string[];
   generatedCodeDraftSource?: LlmResultSource | null;
   generatedCodeDraftPromptPreview?: string | null;
   generatedCodeDraftPromptPreviewArtifactId?: string | null;
   generatedCodeDraftWriteReport?: GeneratedCodeDraftWriteReport | null;
   codeDraftRequestState?: AsyncRequestState | null;
+  codeEligibilityDecision?: StageEligibilityDecision | null;
   lastDraftPatchApplyResult?: DraftPatchApplyResult | null;
   selectedNodeId?: string | null;
   sourceNavigationState?: SourceNavigationState | null;
@@ -605,7 +732,7 @@ export interface LinkGraphSnapshotEnvelope {
   sessionId: string;
   revision: number;
   state: LinkGraphBootstrapState;
-  transportType?: LinkGraphIncrementalTransportEnvelope["type"] | "LEGACY_BOOTSTRAP";
+  transportType?: LinkGraphIncrementalTransportEnvelope["type"];
 }
 
 export interface LinkGraphTransportEnvelopeBase {

@@ -8,6 +8,7 @@ vi.mock("../../app/views/fact/FactGraphView", () => ({
   FactGraphView: ({
     view,
     onAddNode,
+    draftCompareProjection,
   }: {
     view: {
       visibleGraph: {
@@ -15,9 +16,15 @@ vi.mock("../../app/views/fact/FactGraphView", () => ({
       };
     };
     onAddNode: (kind: "METHOD" | "DOC_PAGE", position?: { x: number; y: number }) => void;
+    draftCompareProjection?: {
+      entryTitle: string;
+      nodeStatuses: Record<string, string>;
+    } | null;
   }) => (
     <div data-testid="fact-graph-view">
       <span data-testid="fact-node-count">{view.visibleGraph.nodes.length}</span>
+      <span data-testid="fact-compare-title">{draftCompareProjection?.entryTitle ?? ""}</span>
+      <span data-testid="fact-compare-node-count">{Object.keys(draftCompareProjection?.nodeStatuses ?? {}).length}</span>
       <button type="button" onClick={() => onAddNode("DOC_PAGE", { x: 240, y: 180 })}>
         add-node
       </button>
@@ -33,10 +40,11 @@ vi.mock("../../app/views/flowchart/FlowchartView", () => ({
     onInsertNodeIntoEdge,
     onMoveNode,
     onMoveNodes,
+    draftCompareProjection,
   }: {
     view: {
       visibleGraph: {
-        nodes: Array<{ id: string; position?: { x: number; y: number } }>;
+        nodes: Array<{ id: string; title?: string; position?: { x: number; y: number } }>;
         edges: Array<{
           id: string;
           type?: string;
@@ -56,9 +64,18 @@ vi.mock("../../app/views/flowchart/FlowchartView", () => ({
     onInsertNodeIntoEdge?: (edgeId: string, kind: "METHOD" | "DOC_PAGE") => void;
     onMoveNode: (nodeId: string, position: { x: number; y: number }) => void;
     onMoveNodes?: (updates: Array<{ id: string; position: { x: number; y: number } }>) => void;
+    draftCompareProjection?: {
+      entryTitle: string;
+      nodeStatuses: Record<string, string>;
+    } | null;
   }) => (
     <div data-testid="flowchart-view">
       <span data-testid="flowchart-node-count">{view.visibleGraph.nodes.length}</span>
+      <span data-testid="flowchart-node-titles">
+        {view.visibleGraph.nodes.map((node) => `${node.id}:${node.title ?? ""}`).join("|")}
+      </span>
+      <span data-testid="flowchart-compare-title">{draftCompareProjection?.entryTitle ?? ""}</span>
+      <span data-testid="flowchart-compare-node-count">{Object.keys(draftCompareProjection?.nodeStatuses ?? {}).length}</span>
       <span data-testid="flowchart-node-positions">
         {view.visibleGraph.nodes
           .map((node) => `${node.id}:${node.position?.x ?? ""}:${node.position?.y ?? ""}`)
@@ -116,6 +133,7 @@ vi.mock("../../app/views/resource/ResourceRelationView", () => ({
     view,
     onAddNode,
     onMoveNode,
+    draftCompareProjection,
   }: {
     view: {
       visibleGraph: {
@@ -124,9 +142,15 @@ vi.mock("../../app/views/resource/ResourceRelationView", () => ({
     };
     onAddNode: (kind: "METHOD" | "DOC_PAGE", position?: { x: number; y: number }) => void;
     onMoveNode: (nodeId: string, position: { x: number; y: number }) => void;
+    draftCompareProjection?: {
+      entryTitle: string;
+      nodeStatuses: Record<string, string>;
+    } | null;
   }) => (
     <div data-testid="resource-relation-view">
       <span data-testid="resource-node-count">{view.visibleGraph.nodes.length}</span>
+      <span data-testid="resource-compare-title">{draftCompareProjection?.entryTitle ?? ""}</span>
+      <span data-testid="resource-compare-node-count">{Object.keys(draftCompareProjection?.nodeStatuses ?? {}).length}</span>
       <span data-testid="resource-node-positions">
         {view.visibleGraph.nodes
           .map((node) => `${node.id}:${node.position?.x ?? ""}:${node.position?.y ?? ""}`)
@@ -231,6 +255,645 @@ describe("App view modules", () => {
     await user.click(screen.getByRole("button", { name: "add-node" }));
 
     expect(screen.getByTestId("fact-node-count")).toHaveTextContent("1");
+  });
+
+  it("passes draft compare projection into the active fact-graph view module", async () => {
+    const user = userEvent.setup();
+    window.linkGraphBootstrap = bootstrapState("FACT_GRAPH", {
+        factGraphView: {
+          visibleGraph: {
+            nodes: [
+              {
+                id: "method:submit-order",
+                type: "METHOD",
+                title: "OrderController.submit",
+                inputs: [],
+                outputs: [],
+                certainty: "PROVEN",
+                bindingStatus: "BOUND",
+              },
+            ],
+            edges: [],
+          },
+          fullGraph: {
+            nodes: [
+              {
+                id: "method:submit-order",
+                type: "METHOD",
+                title: "OrderController.submit",
+                inputs: [],
+                outputs: [],
+                certainty: "PROVEN",
+                bindingStatus: "BOUND",
+              },
+            ],
+            edges: [],
+          },
+          anchorNodeId: "method:submit-order",
+          summary: { anchorTitle: "OrderController.submit", visibleNodeCount: 1, fullNodeCount: 1 },
+        },
+        workingGraph: {
+          nodes: [
+            {
+              id: "method:submit-order",
+              type: "METHOD",
+              title: "OrderController.submit",
+              inputs: [],
+              outputs: [],
+              doc: "增加失败补偿处理说明。",
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+            },
+          ],
+          edges: [],
+        },
+        referenceFactGraph: {
+          nodes: [
+            {
+              id: "method:submit-order",
+              type: "METHOD",
+              title: "OrderController.submit",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+            },
+          ],
+          edges: [],
+        },
+        draftWorkbenchState: {
+          draftChanges: [
+            {
+              entryId: "draft-change-compensate",
+              kind: "CHANGE",
+              title: "补充失败补偿说明",
+              sourceChangeId: "change-compensate",
+              targetStepIds: ["step-submit-order"],
+              targetNodeIds: ["method:submit-order"],
+              beforeState: "当前没有失败补偿说明",
+              afterState: "补充失败补偿逻辑说明",
+              reason: "当前链路缺少失败补偿语义。",
+              impactSummary: "影响订单提交失败后的处理理解。",
+              claimType: "CODE_FACT",
+              evidence: [],
+            },
+          ],
+          draftNotes: [],
+        },
+      });
+
+    render(<App />);
+
+    expect(screen.getByTestId("fact-compare-node-count")).toHaveTextContent("0");
+
+    await user.click(screen.getByRole("tab", { name: "草稿" }));
+    await user.click(screen.getByRole("button", { name: "一键对比前后" }));
+
+    expect(screen.getByTestId("fact-compare-title")).toHaveTextContent("补充失败补偿说明");
+    expect(screen.getByTestId("fact-compare-node-count")).toHaveTextContent("1");
+  });
+
+  it("passes the after-state flowchart node title into the active flowchart view module instead of leaving the stale visible title in place", async () => {
+    const user = userEvent.setup();
+    window.linkGraphBootstrap = bootstrapState("FLOWCHART", {
+      flowchartView: {
+        visibleGraph: {
+          nodes: [
+            {
+              id: "method:file-download",
+              type: "METHOD",
+              title: "CommonController.fileDownload",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+              metadata: {
+                "flowchart.kind": "ENTRY",
+              },
+            },
+            {
+              id: "scope:file-download-if",
+              type: "FLOW_SCOPE",
+              title: "if (delete)",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+              metadata: {
+                "flowchart.kind": "DECISION",
+                "flow.ownerMethod": "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void",
+              },
+            },
+          ],
+          edges: [],
+        },
+        fullGraph: {
+          nodes: [
+            {
+              id: "method:file-download",
+              type: "METHOD",
+              title: "CommonController.fileDownload",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+              metadata: {
+                "flowchart.kind": "ENTRY",
+              },
+            },
+            {
+              id: "scope:file-download-if",
+              type: "FLOW_SCOPE",
+              title: "if (delete)",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+              metadata: {
+                "flowchart.kind": "DECISION",
+                "flow.ownerMethod": "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void",
+              },
+            },
+          ],
+          edges: [],
+        },
+        anchorNodeId: "method:file-download",
+        summary: { nodeCount: 2, branchCount: 1, exceptionPathCount: 0 },
+      },
+      workingGraph: {
+        nodes: [
+          {
+            id: "method:file-download",
+            type: "METHOD",
+            title: "CommonController.fileDownload",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+            },
+          },
+          {
+            id: "scope:file-download-if",
+            type: "FLOW_SCOPE",
+            title: "if (delete)",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            metadata: {
+              "flowchart.kind": "DECISION",
+              "flow.ownerMethod": "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void",
+            },
+          },
+        ],
+        edges: [],
+      },
+      draftWorkbenchState: {
+        draftChanges: [
+          {
+            entryId: "draft-change-delete-guard",
+            kind: "CHANGE",
+            title: "将删除条件收紧为显式 true 判断",
+            sourceChangeId: "change-delete-guard",
+            targetStepIds: [],
+            targetNodeIds: ["scope:file-download-if"],
+            beforeState: "if (delete)",
+            afterState: "if (delete == true)",
+            reason: "需要显式判断布尔值。",
+            impactSummary: "影响删除分支。",
+            claimType: "CODE_FACT",
+            evidence: [
+              {
+                id: "finding-delete-guard",
+                claim: "当前源码里直接能看到删除判断条件。",
+                evidenceLevel: "DIRECT_SOURCE",
+                references: [{ nodeId: "scope:file-download-if" }],
+              },
+            ],
+            graphPatch: {
+              summary: "调整删除判断",
+              operations: [
+                {
+                  id: "patch-op-delete-guard",
+                  action: "UPDATE_NODE",
+                  elementKind: "NODE",
+                  elementId: "scope:file-download-if",
+                  node: {
+                    id: "scope:file-download-if",
+                    type: "FLOW_SCOPE",
+                    title: "if (delete == true)",
+                    inputs: [],
+                    outputs: [],
+                    certainty: "LLM_SUGGESTED",
+                    bindingStatus: "BOUND",
+                    metadata: {
+                      "flowchart.kind": "DECISION",
+                    },
+                  },
+                },
+              ],
+              addedNodeIds: [],
+              removedNodeIds: [],
+              addedEdgeIds: [],
+              removedEdgeIds: [],
+            },
+          },
+        ],
+        draftNotes: [],
+      },
+      selectedNodeId: "scope:file-download-if",
+    });
+
+    render(<App />);
+
+    await user.click(screen.getByRole("tab", { name: "草稿" }));
+
+    expect(screen.getByTestId("flowchart-node-titles")).toHaveTextContent("scope:file-download-if:if (delete == true)");
+  });
+
+  it.each([
+    {
+      mode: "FLOWCHART" as const,
+      countTestId: "flowchart-compare-node-count",
+      titleTestId: "flowchart-compare-title",
+      state: bootstrapState("FLOWCHART", {
+        flowchartView: {
+          visibleGraph: {
+            nodes: [
+              {
+                id: "method:submit-order",
+                type: "METHOD",
+                title: "OrderController.submit",
+                inputs: [],
+                outputs: [],
+                certainty: "PROVEN",
+                bindingStatus: "BOUND",
+                metadata: {
+                  "flowchart.kind": "ENTRY",
+                },
+              },
+            ],
+            edges: [],
+          },
+          fullGraph: {
+            nodes: [
+              {
+                id: "method:submit-order",
+                type: "METHOD",
+                title: "OrderController.submit",
+                inputs: [],
+                outputs: [],
+                doc: "增加失败补偿处理说明。",
+                certainty: "PROVEN",
+                bindingStatus: "BOUND",
+              },
+            ],
+            edges: [],
+          },
+          anchorNodeId: "method:submit-order",
+          summary: { nodeCount: 1, branchCount: 0, exceptionPathCount: 0 },
+        },
+        referenceWorkingGraph: {
+          nodes: [
+            {
+              id: "method:submit-order",
+              type: "METHOD",
+              title: "OrderController.submit",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+              metadata: {
+                "flowchart.kind": "ENTRY",
+              },
+            },
+          ],
+          edges: [],
+        },
+        workingGraph: {
+          nodes: [
+            {
+              id: "method:submit-order",
+              type: "METHOD",
+              title: "OrderController.submit",
+              inputs: [],
+              outputs: [],
+              doc: "增加失败补偿处理说明。",
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+            },
+          ],
+          edges: [],
+        },
+        referenceFactGraph: {
+          nodes: [
+            {
+              id: "method:submit-order",
+              type: "METHOD",
+              title: "OrderController.submit",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+            },
+          ],
+          edges: [],
+        },
+        draftWorkbenchState: {
+          draftChanges: [
+            {
+              entryId: "draft-change-compensate",
+              kind: "CHANGE",
+              title: "补充失败补偿说明",
+              sourceChangeId: "change-compensate",
+              targetStepIds: ["step-submit-order"],
+              targetNodeIds: ["method:submit-order"],
+              beforeState: "当前没有失败补偿说明",
+              afterState: "补充失败补偿逻辑说明",
+              reason: "当前链路缺少失败补偿语义。",
+              impactSummary: "影响订单提交失败后的处理理解。",
+              claimType: "CODE_FACT",
+              evidence: [],
+              graphPatch: {
+                summary: "补充失败补偿说明",
+                operations: [
+                  {
+                    id: "patch-op-submit-order-doc",
+                    action: "UPDATE_NODE",
+                    elementKind: "NODE",
+                    elementId: "method:submit-order",
+                    node: {
+                      id: "method:submit-order",
+                      type: "METHOD",
+                      title: "OrderController.submit",
+                      inputs: [],
+                      outputs: [],
+                      doc: "增加失败补偿处理说明。",
+                      certainty: "PROVEN",
+                      bindingStatus: "BOUND",
+                    },
+                  },
+                ],
+                addedNodeIds: [],
+                removedNodeIds: [],
+                addedEdgeIds: [],
+                removedEdgeIds: [],
+              },
+            },
+          ],
+          draftNotes: [],
+        },
+      }),
+    },
+    {
+      mode: "RESOURCE_RELATION_VIEW" as const,
+      tabName: "resource-relation-view",
+      countTestId: "resource-compare-node-count",
+      titleTestId: "resource-compare-title",
+      state: bootstrapState("RESOURCE_RELATION_VIEW", {
+        resourceRelationView: {
+          visibleGraph: {
+            nodes: [
+              {
+                id: "method:submit-order",
+                type: "METHOD",
+                title: "OrderController.submit",
+                inputs: [],
+                outputs: [],
+                certainty: "PROVEN",
+                bindingStatus: "BOUND",
+                metadata: {
+                  "resource.lane": "CODE",
+                },
+              },
+            ],
+            edges: [],
+          },
+          fullGraph: {
+            nodes: [
+              {
+                id: "method:submit-order",
+                type: "METHOD",
+                title: "OrderController.submit",
+                inputs: [],
+                outputs: [],
+                doc: "增加失败补偿处理说明。",
+                certainty: "PROVEN",
+                bindingStatus: "BOUND",
+              },
+            ],
+            edges: [],
+          },
+          anchorNodeId: "method:submit-order",
+          summary: { visibleNodeCount: 1, laneCounts: { CODE: 1 } },
+        },
+        referenceWorkingGraph: {
+          nodes: [
+            {
+              id: "method:submit-order",
+              type: "METHOD",
+              title: "OrderController.submit",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+              metadata: {
+                "resource.lane": "CODE",
+              },
+            },
+          ],
+          edges: [],
+        },
+        workingGraph: {
+          nodes: [
+            {
+              id: "method:submit-order",
+              type: "METHOD",
+              title: "OrderController.submit",
+              inputs: [],
+              outputs: [],
+              doc: "增加失败补偿处理说明。",
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+            },
+          ],
+          edges: [],
+        },
+        referenceFactGraph: {
+          nodes: [
+            {
+              id: "method:submit-order",
+              type: "METHOD",
+              title: "OrderController.submit",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+            },
+          ],
+          edges: [],
+        },
+        draftWorkbenchState: {
+          draftChanges: [
+            {
+              entryId: "draft-change-compensate",
+              kind: "CHANGE",
+              title: "补充失败补偿说明",
+              sourceChangeId: "change-compensate",
+              targetStepIds: ["step-submit-order"],
+              targetNodeIds: ["method:submit-order"],
+              beforeState: "当前没有失败补偿说明",
+              afterState: "补充失败补偿逻辑说明",
+              reason: "当前链路缺少失败补偿语义。",
+              impactSummary: "影响订单提交失败后的处理理解。",
+              claimType: "CODE_FACT",
+              evidence: [],
+              graphPatch: {
+                summary: "补充失败补偿说明",
+                operations: [
+                  {
+                    id: "patch-op-submit-order-doc",
+                    action: "UPDATE_NODE",
+                    elementKind: "NODE",
+                    elementId: "method:submit-order",
+                    node: {
+                      id: "method:submit-order",
+                      type: "METHOD",
+                      title: "OrderController.submit",
+                      inputs: [],
+                      outputs: [],
+                      doc: "增加失败补偿处理说明。",
+                      certainty: "PROVEN",
+                      bindingStatus: "BOUND",
+                      metadata: {
+                        "resource.lane": "CODE",
+                      },
+                    },
+                  },
+                ],
+                addedNodeIds: [],
+                removedNodeIds: [],
+                addedEdgeIds: [],
+                removedEdgeIds: [],
+              },
+            },
+          ],
+          draftNotes: [],
+        },
+      }),
+    },
+  ])("passes a draft compare projection into the active $mode view module when the selected draft change has a real graph diff", async ({
+    state,
+    countTestId,
+    titleTestId,
+  }) => {
+    const user = userEvent.setup();
+    window.linkGraphBootstrap = state;
+
+    render(<App />);
+
+    expect(screen.getByTestId(countTestId)).toHaveTextContent("0");
+
+    await user.click(screen.getByRole("tab", { name: "草稿" }));
+    await user.click(screen.getByRole("button", { name: "一键对比前后" }));
+
+    expect(screen.getByTestId(titleTestId)).toHaveTextContent("补充失败补偿说明");
+    expect(screen.getByTestId(countTestId)).toHaveTextContent("1");
+  });
+
+  it("does not pass a compare projection into the active view when the selected draft change has no real graph diff", async () => {
+    const user = userEvent.setup();
+    window.linkGraphBootstrap = bootstrapState("FACT_GRAPH", {
+      factGraphView: {
+        visibleGraph: {
+          nodes: [
+            {
+              id: "method:submit-order",
+              type: "METHOD",
+              title: "OrderController.submit",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+            },
+          ],
+          edges: [],
+        },
+        fullGraph: {
+          nodes: [
+            {
+              id: "method:submit-order",
+              type: "METHOD",
+              title: "OrderController.submit",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+            },
+          ],
+          edges: [],
+        },
+        anchorNodeId: "method:submit-order",
+        summary: { anchorTitle: "OrderController.submit", visibleNodeCount: 1, fullNodeCount: 1 },
+      },
+      workingGraph: {
+        nodes: [
+          {
+            id: "method:submit-order",
+            type: "METHOD",
+            title: "OrderController.submit",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+          },
+        ],
+        edges: [],
+      },
+      referenceFactGraph: {
+        nodes: [
+          {
+            id: "method:submit-order",
+            type: "METHOD",
+            title: "OrderController.submit",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+          },
+        ],
+        edges: [],
+      },
+      draftWorkbenchState: {
+        draftChanges: [
+          {
+            entryId: "draft-change-compensate",
+            kind: "CHANGE",
+            title: "补充失败补偿说明",
+            sourceChangeId: "change-compensate",
+            targetStepIds: ["step-submit-order"],
+            targetNodeIds: ["method:submit-order"],
+            beforeState: "当前没有失败补偿说明",
+            afterState: "补充失败补偿逻辑说明",
+            reason: "当前链路缺少失败补偿语义。",
+            impactSummary: "影响订单提交失败后的处理理解。",
+            claimType: "CODE_FACT",
+            evidence: [],
+          },
+        ],
+        draftNotes: [],
+      },
+    });
+
+    render(<App />);
+
+    await user.click(screen.getByRole("tab", { name: "草稿" }));
+    await user.click(screen.getByRole("button", { name: "一键对比前后" }));
+
+    expect(screen.getByTestId("fact-compare-title")).toBeEmptyDOMElement();
+    expect(screen.getByTestId("fact-compare-node-count")).toHaveTextContent("0");
   });
 
   it("keeps the flowchart view document in sync after local node drags", async () => {
@@ -866,15 +1529,15 @@ describe("App view modules", () => {
     expect(screen.getByTestId("resource-node-count")).toHaveTextContent("1");
   });
 
-  it("does not rebuild a fact view from legacy visibleGraph when the dedicated view document is missing", () => {
+  it("does not rebuild a fact view from raw visibleGraph when the dedicated view document is missing", () => {
     window.linkGraphBootstrap = {
       ...bootstrapState("FACT_GRAPH"),
       visibleGraph: {
         nodes: [
           {
-            id: "method:legacy",
+            id: "method:raw-visible",
             type: "METHOD",
-            title: "LegacyNode",
+            title: "RawVisibleNode",
             inputs: [],
             outputs: [],
             certainty: "PROVEN",

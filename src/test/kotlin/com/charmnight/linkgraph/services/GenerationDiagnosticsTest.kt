@@ -118,7 +118,7 @@ class GenerationDiagnosticsTest {
         val reportSummary = GenerationDiagnostics.summarizeWriteReport(
             GeneratedCodeDraftWriteReport(
                 writtenFiles = listOf("src/main/java/com/example/CommonController.java"),
-                skippedFiles = listOf("src/main/java/com/example/LegacyController.java"),
+                skippedFiles = listOf("src/main/java/com/example/FallbackController.java"),
                 warnings = listOf("已跳过已有冲突文件。"),
             ),
         )
@@ -131,6 +131,6 @@ class GenerationDiagnosticsTest {
         assertTrue(resultSummary.contains("CommonController.java"))
         assertTrue(reportSummary.contains("written=1"))
         assertTrue(reportSummary.contains("skipped=1"))
-        assertTrue(reportSummary.contains("LegacyController.java"))
+        assertTrue(reportSummary.contains("FallbackController.java"))
     }
 }

@@ -5,25 +5,22 @@ import { describe, expect, it } from "vitest";
 const APP_ROOT = path.resolve(import.meta.dirname, "../../app");
 
 describe("frontend wording cleanup", () => {
-  it("does not keep 审计 wording in production app files", () => {
-    const files = [
-      "App.tsx",
-      "asyncRequestStatus.ts",
-      "labels.ts",
-      "components/Toolbar.tsx",
-      "components/graph/actions/actionSchema.ts",
-      "views/flowchart/FlowchartView.tsx",
-      "views/resource/ResourceRelationView.tsx",
-      "workbench/AuditConversation.tsx",
-      "workbench/AuditTab.tsx",
-      "workbench/DraftDetailPanel.tsx",
-      "workbench/DraftTab.tsx",
-      "workbench/InvestigationLeadList.tsx",
-    ];
+  it("keeps draft-first wording for implementation suggestion and code diff entry points", () => {
+    const toolbar = readFileSync(path.join(APP_ROOT, "components/Toolbar.tsx"), "utf8");
+    const generationPlanPanel = readFileSync(path.join(APP_ROOT, "components/GenerationPlanPanel.tsx"), "utf8");
+    const codeDraftPanel = readFileSync(path.join(APP_ROOT, "components/CodeDraftPanel.tsx"), "utf8");
 
-    for (const relativePath of files) {
-      const content = readFileSync(path.join(APP_ROOT, relativePath), "utf8");
-      expect(content, `前端生产文件不应继续保留“审计”口径：${relativePath}`).not.toContain("审计");
-    }
+    expect(toolbar).toContain("生成实现建议");
+    expect(toolbar).toContain("生成代码 diff");
+    expect(toolbar).not.toContain("生成计划");
+    expect(toolbar).not.toContain("生成草稿");
+
+    expect(generationPlanPanel).toContain("实现建议阶段准入状态尚未就绪");
+    expect(generationPlanPanel).toContain("生成实现建议");
+    expect(generationPlanPanel).not.toContain("计划阶段准入状态尚未就绪");
+
+    expect(codeDraftPanel).toContain("生成代码 diff");
+    expect(codeDraftPanel).toContain("代码 diff 工作台");
+    expect(codeDraftPanel).not.toContain("生成代码草稿");
   });
 });

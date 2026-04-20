@@ -124,9 +124,12 @@ class GraphWorkspaceWorkflowTest {
         )
         val mermaid = """
             graph TD
-            ENTRY["METHOD|OrderService.place|signature=com.example.OrderService.place(java.lang.String):void"]
-            DTO["CLASS|OrderDraftDto"]
-            ENTRY -- CALL --> DTO
+            %% LG_NODE ENTRY|nodeId=method:order-service-place|nodeType=METHOD|title=OrderService.place|signature=com.example.OrderService.place%28java.lang.String%29:void
+            %% LG_NODE DTO|nodeId=class:orderdraftdto|nodeType=CLASS|title=OrderDraftDto
+            ENTRY["OrderService.place"]
+            DTO["OrderDraftDto"]
+            %% LG_EDGE ENTRY|to=DTO|edgeType=CALL
+            ENTRY -- 调用 --> DTO
         """.trimIndent()
 
         workflow.loadGraph(codeGraph, "code-graph")

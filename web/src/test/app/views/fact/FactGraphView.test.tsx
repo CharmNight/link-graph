@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FactGraphView } from "../../../../app/views/fact/FactGraphView";
-import type { FactGraphViewDocument } from "../../../../app/types";
+import type { DraftCompareProjection, FactGraphViewDocument } from "../../../../app/types";
 import { defaultNodeSizeRegistry } from "../../../../app/graph/nodeSizeRegistry";
 
 const { useMeasuredLayoutMock } = vi.hoisted(() => ({
@@ -81,6 +81,22 @@ const view: FactGraphViewDocument = {
 };
 
 const noop = () => undefined;
+const draftCompareProjection: DraftCompareProjection = {
+  entryId: "draft-change-compensate",
+  entryTitle: "补充失败补偿说明",
+  compareGraph: view.visibleGraph,
+  nodeStatuses: {
+    "method:submit-order": "MODIFIED",
+  },
+  edgeStatuses: {},
+  summary: {
+    scopeNodeCount: 1,
+    visibleNodeCount: 1,
+    visibleEdgeCount: 0,
+    hiddenNodeCount: 0,
+    hiddenEdgeCount: 0,
+  },
+};
 const laidOutNodes = [
   {
     ...view.visibleGraph.nodes[0]!,
@@ -128,6 +144,28 @@ describe("FactGraphView", () => {
       graph: view.visibleGraph,
     }));
     expect(measuredLayoutArgs?.nodeSizeRegistry).not.toBe(defaultNodeSizeRegistry);
+  });
+
+  it("renders a draft compare summary above the fact graph when compare annotations are active", () => {
+    render(
+      <FactGraphView
+        view={view}
+        selectedNodeId="method:submit-order"
+        draftCompareProjection={draftCompareProjection}
+        onAddNode={noop}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onDeleteNode={noop}
+        onCreateEdge={noop}
+        onDeleteEdge={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onImportMermaid={noop}
+      />,
+    );
+
+    expect(screen.getByLabelText("草稿对比摘要")).toBeInTheDocument();
+    expect(screen.getByText("补充失败补偿说明")).toBeInTheDocument();
   });
 
   it("handles fact-graph relayout inside the view module instead of delegating back to the upstream format callback", async () => {

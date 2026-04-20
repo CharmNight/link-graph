@@ -13,6 +13,7 @@ import type {
   LinkGraphSnapshotEnvelope,
   MermaidIssue,
   NodeType,
+  RiskResolutionStatus,
   StepGranularity,
   SyncPreviewItem,
 } from "./types";
@@ -41,13 +42,21 @@ type PendingBridgeLifecycleState = {
   snapshotAck: SnapshotAckPayload | null;
 };
 
+type PendingBridgeAction = {
+  actionName: BridgeMethodName;
+  invoke: (bridge: Bridge) => void;
+  tracePayload?: unknown;
+};
+
 const pendingBridgeLifecycleState: PendingBridgeLifecycleState = {
   frontendReady: null,
   snapshotAck: null,
 };
+const pendingBridgeActions: PendingBridgeAction[] = [];
 
 let bridgeReadyListenerInstalled = false;
 const BRIDGE_UNAVAILABLE_MESSAGE = "IDE bridge 尚未就绪，本次请求没有发出。";
+const BRIDGE_PROTOCOL_MISMATCH_MESSAGE = "IDE bridge 协议未对齐，本次请求没有发出。";
 
 // JCEF 页面的唯一后端入口：读取 bootstrap，并把前端交互重新发布给 IDEA bridge。
 interface BackendGraphNode {
@@ -86,7 +95,9 @@ interface BackendGraphDocument {
 
 declare global {
   interface WindowEventMap {
-    "link-graph-bootstrap": CustomEvent<LinkGraphBootstrapState | LinkGraphSnapshotEnvelope>;
+    "link-graph-bootstrap": CustomEvent<
+      LinkGraphSnapshotEnvelope | import("./types").LinkGraphIncrementalTransportEnvelope
+    >;
     "link-graph-bridge-ready": Event;
   }
 
@@ -96,9 +107,11 @@ declare global {
       exportMermaid?: () => void;
       showDiffMode?: () => void;
       requestSyncPreview?: () => void;
-      requestAudit?: (question: string, selectedNodeIds?: string[], sourceLeadId?: string | null) => void;
+      requestAudit?: (question: string, selectedNodeIds?: string[], sourceThreadId?: string | null) => void;
+      retryLastAuditRequest?: () => void;
       confirmAuditCandidateChange?: (changeId: string) => void;
       unconfirmAuditCandidateChange?: (changeId: string) => void;
+      resolveInvestigationThread?: (threadId: string, resolutionStatus: RiskResolutionStatus, note?: string) => void;
       requestDiffReview?: (question: string, selectedDiffItemIds?: string[]) => void;
       requestGraphBeautification?: (
         goal?: string,
@@ -145,8 +158,13 @@ function ensureBridgeReadyListener(): void {
   if (bridgeReadyListenerInstalled || typeof window === "undefined") {
     return;
   }
-  window.addEventListener("link-graph-bridge-ready", flushPendingBridgeLifecycleState);
+  window.addEventListener("link-graph-bridge-ready", flushPendingBridgeState);
   bridgeReadyListenerInstalled = true;
+}
+
+function flushPendingBridgeState(): void {
+  flushPendingBridgeLifecycleState();
+  flushPendingBridgeActions();
 }
 
 function flushPendingBridgeLifecycleState(): void {
@@ -162,6 +180,31 @@ function flushPendingBridgeLifecycleState(): void {
     bridge.snapshotAck?.(pendingBridgeLifecycleState.snapshotAck);
     pendingBridgeLifecycleState.snapshotAck = null;
   }
+}
+
+function flushPendingBridgeActions(): void {
+  const bridge = window.linkGraphBridge;
+  if (!bridge || pendingBridgeActions.length === 0) {
+    return;
+  }
+  const queuedActions = pendingBridgeActions.splice(0, pendingBridgeActions.length);
+  queuedActions.forEach(({ actionName, invoke, tracePayload }) => {
+    const bridgeAction = bridge[actionName];
+    if (typeof bridgeAction !== "function") {
+      traceLinkGraph("api.bridgeQueuedActionDropped", {
+        actionName,
+        hasBridge: true,
+      });
+      return;
+    }
+    if (tracePayload !== undefined) {
+      traceLinkGraph(`api.${String(actionName)}`, {
+        ...((typeof tracePayload === "object" && tracePayload !== null) ? tracePayload : { value: tracePayload }),
+        queuedUntilBridgeReady: true,
+      });
+    }
+    invoke(bridge);
+  });
 }
 
 function dispatchFrontendReady(payload: FrontendReadyPayload): void {
@@ -191,28 +234,29 @@ function invokeBridgeAction(
 ): BridgeInvocationResult {
   const bridge = window.linkGraphBridge;
   if (!bridge) {
-    traceLinkGraph("api.bridgeUnavailable", {
+    ensureBridgeReadyListener();
+    pendingBridgeActions.push({
+      actionName,
+      invoke,
+      tracePayload,
+    });
+    traceLinkGraph("api.bridgePending", {
       actionName,
       hasBridge: false,
+      queuedActionCount: pendingBridgeActions.length,
     });
-    return {
-      ok: false,
-      message: BRIDGE_UNAVAILABLE_MESSAGE,
-      detailMessage: "JCEF 页面与 IDEA 后端连接尚未建立，请等待页面初始化完成后重试。",
-    };
+    return { ok: true };
   }
   const bridgeAction = bridge[actionName];
   if (typeof bridgeAction !== "function") {
-    const detailMessage = bridge
-      ? `IDE bridge 已注入，但当前未暴露 ${String(actionName)} 方法，本次请求没有发出。`
-      : "JCEF 页面与 IDEA 后端连接尚未建立，请等待页面初始化完成后重试。";
-    traceLinkGraph("api.bridgeUnavailable", {
+    const detailMessage = `IDE bridge 已注入，但当前未暴露 ${String(actionName)} 方法，本次请求没有发出。`;
+    traceLinkGraph("api.bridgeProtocolMismatch", {
       actionName,
       hasBridge: true,
     });
     return {
       ok: false,
-      message: BRIDGE_UNAVAILABLE_MESSAGE,
+      message: BRIDGE_PROTOCOL_MISMATCH_MESSAGE,
       detailMessage,
     };
   }
@@ -250,6 +294,7 @@ export function acknowledgeSnapshot(revision: number): void {
 export function resetApiBridgeLifecycleStateForTest(): void {
   pendingBridgeLifecycleState.frontendReady = null;
   pendingBridgeLifecycleState.snapshotAck = null;
+  pendingBridgeActions.splice(0, pendingBridgeActions.length);
 }
 
 export function importMermaid(mermaid: string): BridgeInvocationResult {
@@ -287,14 +332,20 @@ export function requestSyncPreview(): BridgeInvocationResult {
 export function requestAuditAsync(
   question: string,
   selectedNodeIds: string[] = [],
-  sourceLeadId: string | null = null,
+  sourceThreadId: string | null = null,
 ): BridgeInvocationResult {
   return invokeBridgeAction("requestAudit", (bridge) => {
-    bridge.requestAudit?.(question, selectedNodeIds, sourceLeadId);
+    bridge.requestAudit?.(question, selectedNodeIds, sourceThreadId);
   }, {
     question,
     selectedNodeIds,
-    sourceLeadId,
+    sourceThreadId,
+  });
+}
+
+export function retryLastAuditRequestAsync(): BridgeInvocationResult {
+  return invokeBridgeAction("retryLastAuditRequest", (bridge) => {
+    bridge.retryLastAuditRequest?.();
   });
 }
 
@@ -311,6 +362,20 @@ export function unconfirmAuditCandidateChange(changeId: string): BridgeInvocatio
     bridge.unconfirmAuditCandidateChange?.(changeId);
   }, {
     changeId,
+  });
+}
+
+export function resolveInvestigationThread(
+  threadId: string,
+  resolutionStatus: RiskResolutionStatus,
+  note = "",
+): BridgeInvocationResult {
+  return invokeBridgeAction("resolveInvestigationThread", (bridge) => {
+    bridge.resolveInvestigationThread?.(threadId, resolutionStatus, note);
+  }, {
+    threadId,
+    resolutionStatus,
+    note,
   });
 }
 
@@ -388,6 +453,7 @@ export function requestCodeDraftsAsync(): BridgeInvocationResult {
 }
 
 export const requestAudit = requestAuditAsync;
+export const retryLastAuditRequest = retryLastAuditRequestAsync;
 export const requestDiffReview = requestDiffReviewAsync;
 export const requestGraphBeautification = requestGraphBeautificationAsync;
 export const requestGenerationPlan = requestGenerationPlanAsync;

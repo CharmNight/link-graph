@@ -1,4 +1,5 @@
 import type { LinkGraphBootstrapState, LinkGraphDocument, LinkGraphNode } from "./types";
+import { resolveWorkingGraphDocument } from "./workingGraphDocument";
 
 declare global {
   interface Window {
@@ -64,7 +65,7 @@ export function summarizeGraph(document?: LinkGraphDocument | null) {
 export function summarizeBootstrapState(state: LinkGraphBootstrapState) {
   return {
     visibleGraph: summarizeGraph(state.visibleGraph),
-    workingGraph: summarizeGraph(state.workingGraph),
+    workingGraph: summarizeGraph(resolveWorkingGraphDocument(state)),
     referenceFactGraph: summarizeGraph(state.referenceFactGraph),
     designBaselineGraph: summarizeGraph(state.designBaselineGraph),
     sourceNavigationState: state.sourceNavigationState?.phase ?? "IDLE",

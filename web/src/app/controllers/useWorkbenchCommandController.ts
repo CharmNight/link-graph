@@ -85,7 +85,7 @@ export function useWorkbenchCommandController({
       },
       successFeedback: {
         level: "INFO",
-        message: "已请求生成实现计划。",
+        message: "已请求生成实现建议。",
       },
     });
   }
@@ -104,7 +104,7 @@ export function useWorkbenchCommandController({
       },
       successFeedback: {
         level: "INFO",
-        message: "已请求生成代码草稿。",
+        message: "已请求生成代码 diff。",
       },
     });
   }
@@ -119,7 +119,7 @@ export function useWorkbenchCommandController({
   }
 
   function handleWriteDrafts() {
-    bridgeCommands.runBridgeCommand("写入代码草稿", () => applyCodeDrafts());
+    bridgeCommands.runBridgeCommand("写入代码 diff", () => applyCodeDrafts());
   }
 
   function handleOpenDraft(targetPath: string) {

@@ -119,4 +119,24 @@ describe("editorTransport", () => {
     });
     unsubscribe();
   });
+
+  it("ignores bootstrap events that do not carry a transport envelope", () => {
+    const received: number[] = [];
+    const unsubscribe = subscribeBootstrap((nextEnvelope) => {
+      received.push(nextEnvelope.revision);
+    });
+
+    window.dispatchEvent(
+      new CustomEvent("link-graph-bootstrap", {
+        detail: {
+          ...structuredClone(sampleState),
+          snapshotRevision: 9,
+        },
+      }),
+    );
+    announceFrontendReady();
+
+    expect(received).toEqual([]);
+    unsubscribe();
+  });
 });

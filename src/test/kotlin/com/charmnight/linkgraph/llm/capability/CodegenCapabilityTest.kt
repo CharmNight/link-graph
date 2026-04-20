@@ -38,7 +38,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
         val capability = CodegenCapability(
             project = project,
             defaultBudget = RunBudget(),
-            legacyCodegenExecutor = { _, _, _ ->
+            codegenExecutor = { _, _, _ ->
                 CodeGenerationResult(
                     drafts = listOf(
                         GeneratedCodeDraft(
@@ -93,7 +93,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
         assertNotNull(result.finalState.failureReason)
     }
 
-    fun testPassesRuntimeReadSourceEvidenceToLegacyExecutorInsteadOfPreloadedSnippet() {
+    fun testPassesRuntimeReadSourceEvidenceToCodegenExecutorInsteadOfPreloadedSnippet() {
         val sourceFile = Files.createTempFile("codegen-runtime-evidence", ".java")
         Files.writeString(
             sourceFile,
@@ -122,7 +122,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
         val capability = CodegenCapability(
             project = project,
             defaultBudget = RunBudget(),
-            legacyCodegenExecutor = { input, _, _ ->
+            codegenExecutor = { input, _, _ ->
                 executorSourceContext = input.generationContext.sourceContext
                 CodeGenerationResult(
                     drafts = listOf(
@@ -207,7 +207,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
         val capability = CodegenCapability(
             project = project,
             defaultBudget = RunBudget(),
-            legacyCodegenExecutor = { _, _, _ ->
+            codegenExecutor = { _, _, _ ->
                 CodeGenerationResult(
                     drafts = listOf(
                         GeneratedCodeDraft(
@@ -317,7 +317,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
         assertTrue(checkWritableCalled)
     }
 
-    fun testUsesConfirmedIntentArtifactsAsLegacyCodegenInputInsteadOfInitialGenerationContext() {
+    fun testUsesConfirmedIntentArtifactsAsCodegenInputInsteadOfInitialGenerationContext() {
         val runtimeScope = EditScope(
             scopeId = "scope-runtime",
             targetNodeId = "method:upload-file",
@@ -345,7 +345,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
         val capability = CodegenCapability(
             project = project,
             defaultBudget = RunBudget(),
-            legacyCodegenExecutor = { input, _, _ ->
+            codegenExecutor = { input, _, _ ->
                 capturedConfirmedChanges = input.generationContext.confirmedChanges
                 capturedSourceContext = input.generationContext.sourceContext
                 CodeGenerationResult(
@@ -471,7 +471,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
 
     fun testStopsReadingAdditionalFilesWithinSameCodegenStepAfterBudgetIsExhausted() {
         var readCount = 0
-        var legacyInvoked = false
+        var executorInvoked = false
         val firstScope = EditScope(
             scopeId = "scope-1",
             targetNodeId = "method:first",
@@ -493,8 +493,8 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
         val capability = CodegenCapability(
             project = project,
             defaultBudget = RunBudget(maxFilesRead = 1),
-            legacyCodegenExecutor = { _, _, _ ->
-                legacyInvoked = true
+            codegenExecutor = { _, _, _ ->
+                executorInvoked = true
                 CodeGenerationResult(drafts = emptyList())
             },
             toolRegistry = AgentToolRegistry(
@@ -555,16 +555,16 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             ),
         )
 
-        assertFalse(legacyInvoked)
+        assertFalse(executorInvoked)
         assertEquals(1, readCount)
         assertNull(result.output)
         assertEquals(com.charmnight.linkgraph.llm.runtime.AgentRunFailureReason.MAX_FILES_READ_EXCEEDED, result.finalState.failureReason)
     }
 
-    fun testRejectsInvalidExistingFileScopeBeforeCallingLegacyCodegenExecutor() {
+    fun testRejectsInvalidExistingFileScopeBeforeCallingCodegenExecutor() {
         val sourceFile = Files.createTempFile("codegen-prevalidate-scope", ".java")
         Files.writeString(sourceFile, "class UploadController { void upload() {} }")
-        var legacyInvoked = false
+        var executorInvoked = false
         val scope = EditScope(
             scopeId = "scope-invalid",
             targetNodeId = "method:upload-file",
@@ -578,8 +578,8 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
         val capability = CodegenCapability(
             project = project,
             defaultBudget = RunBudget(),
-            legacyCodegenExecutor = { _, _, _ ->
-                legacyInvoked = true
+            codegenExecutor = { _, _, _ ->
+                executorInvoked = true
                 CodeGenerationResult(
                     drafts = listOf(
                         GeneratedCodeDraft(
@@ -667,7 +667,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             ),
         )
 
-        assertFalse(legacyInvoked)
+        assertFalse(executorInvoked)
         assertNull(result.output)
         assertEquals(com.charmnight.linkgraph.llm.runtime.AgentRunFailureReason.EVIDENCE_INSUFFICIENT, result.finalState.failureReason)
     }

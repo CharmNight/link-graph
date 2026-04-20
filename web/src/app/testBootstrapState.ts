@@ -6,6 +6,7 @@ import type {
   LinkGraphNode,
   ResourceRelationViewDocument,
 } from "./types";
+import { resolveWorkingGraphDocument } from "./workingGraphDocument";
 
 const EMPTY_DOCUMENT: LinkGraphDocument = {
   nodes: [],
@@ -94,7 +95,14 @@ export function materializeThreeViewDocuments(
   state: LinkGraphBootstrapState,
 ): LinkGraphBootstrapState {
   const visibleGraph = state.visibleGraph ?? state.workingGraph ?? EMPTY_DOCUMENT;
-  const workingGraph = state.workingGraph ?? visibleGraph;
+  const workingGraph = resolveWorkingGraphDocument({
+    ...state,
+    visibleGraph,
+    workingGraph: state.workingGraph ?? visibleGraph,
+  });
+  const referenceWorkingGraph = state.referenceWorkingGraph
+    ?? state.workingGraph
+    ?? visibleGraph;
   const referenceFactGraph = state.referenceFactGraph ?? null;
   const factFullGraph = referenceFactGraph ?? visibleGraph;
   const anchorNodeId = resolveAnchorNodeId(visibleGraph.nodes, state.selectedNodeId ?? null);
@@ -103,6 +111,7 @@ export function materializeThreeViewDocuments(
     ...state,
     visibleGraph,
     workingGraph,
+    referenceWorkingGraph,
     factGraphView: buildFactGraphViewDocument(visibleGraph, factFullGraph, anchorNodeId),
     flowchartView: buildFlowchartViewDocument(visibleGraph, anchorNodeId),
     resourceRelationView: buildResourceRelationViewDocument(visibleGraph, anchorNodeId),

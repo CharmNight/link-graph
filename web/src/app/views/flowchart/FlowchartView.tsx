@@ -7,6 +7,7 @@ import { useMeasuredLayout } from "../../reactflow/useMeasuredLayout";
 import { GraphFlowSurface } from "../../reactflow/GraphFlowSurface";
 import { canNavigateToSource } from "../../sourceNavigation";
 import type { FlowchartViewDocument, LinkGraphDocument, LinkGraphEdge } from "../../types";
+import { DraftCompareSummary } from "../../components/DraftCompareSummary";
 import type { ViewStageProps } from "../viewStageProps";
 import { layoutFlowchartView } from "./flowchartLayout";
 import {
@@ -68,6 +69,76 @@ function sanitizeFlowchartGraph(
     ...graph,
     edges: [...visibleEdges, syntheticEntryEdge],
   };
+}
+
+function resolveNodeOwnerSignature(node: LinkGraphDocument["nodes"][number] | null | undefined): string | null {
+  if (!node) {
+    return null;
+  }
+  return node.metadata?.["flow.ownerMethod"]?.trim()
+    || node.signature?.trim()
+    || null;
+}
+
+function scopeFlowchartGraphToAnchorMethod(
+  graph: LinkGraphDocument,
+  anchorNodeId: string | null | undefined,
+): LinkGraphDocument {
+  const anchorNode = graph.nodes.find((node) => node.id === anchorNodeId) ?? null;
+  const anchorSignature = resolveNodeOwnerSignature(anchorNode);
+  if (!anchorSignature) {
+    return graph;
+  }
+  const ownerScopedNodes = graph.nodes.filter((node) => {
+    if (node.id === anchorNodeId) {
+      return true;
+    }
+    return resolveNodeOwnerSignature(node) === anchorSignature;
+  });
+  const ownerScopedNodeIds = new Set(ownerScopedNodes.map((node) => node.id));
+  const entryScopedNodes = graph.nodes.filter((node) => {
+    if (ownerScopedNodeIds.has(node.id)) {
+      return false;
+    }
+    if (node.metadata?.["flowchart.kind"] !== "ENTRY" && node.type !== "METHOD") {
+      return false;
+    }
+    return graph.edges.some((edge) => edge.source === node.id && ownerScopedNodeIds.has(edge.target));
+  });
+  const scopedNodes = [...ownerScopedNodes, ...entryScopedNodes];
+  if (scopedNodes.length === 0 || scopedNodes.length === graph.nodes.length) {
+    return graph;
+  }
+  const scopedNodeIds = new Set(scopedNodes.map((node) => node.id));
+  return {
+    ...graph,
+    nodes: scopedNodes,
+    edges: graph.edges.filter((edge) => scopedNodeIds.has(edge.source) && scopedNodeIds.has(edge.target)),
+  };
+}
+
+function resolveCurrentMethodNode(args: {
+  nodes: LinkGraphDocument["nodes"];
+  anchorNodeId: string | null | undefined;
+  selectedNodeId: string | null | undefined;
+}) {
+  const { nodes, anchorNodeId, selectedNodeId } = args;
+  const anchorNode = nodes.find((node) => node.id === anchorNodeId) ?? null;
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null;
+  const anchorSignature = resolveNodeOwnerSignature(anchorNode);
+  const selectedSignature = resolveNodeOwnerSignature(selectedNode);
+  const methodNodeForSignature = (signature: string | null) => {
+    if (!signature) {
+      return null;
+    }
+    return nodes.find((node) => node.type === "METHOD" && resolveNodeOwnerSignature(node) === signature) ?? null;
+  };
+
+  return methodNodeForSignature(anchorSignature)
+    ?? methodNodeForSignature(selectedSignature)
+    ?? nodes.find((node) => node.metadata?.["flowchart.kind"] === "ENTRY") ?? null
+    ?? nodes.find((node) => node.type === "METHOD") ?? null
+    ?? anchorNode;
 }
 
 function flowchartNodeActions(args: {
@@ -156,6 +227,7 @@ export function FlowchartView({
   focusNodeRequest = null,
   explanationFocusNodeId = null,
   draftChangedNodeIds = [],
+  draftCompareProjection = null,
   selectedGroupNodeIds = [],
   hiddenNodeIds = [],
   experiments = null,
@@ -176,9 +248,14 @@ export function FlowchartView({
   onImportMermaid,
 }: FlowchartViewProps) {
   const nodeSizeRegistry = useMemo(() => createNodeSizeRegistry(), []);
+  const presentedGraph = draftCompareProjection?.compareGraph ?? view.visibleGraph;
+  const scopedGraph = useMemo(
+    () => scopeFlowchartGraphToAnchorMethod(presentedGraph, view.anchorNodeId ?? null),
+    [presentedGraph, view.anchorNodeId],
+  );
   const viewGraph = useMemo(
-    () => sanitizeFlowchartGraph(view.visibleGraph, view.anchorNodeId ?? null),
-    [view.anchorNodeId, view.visibleGraph],
+    () => sanitizeFlowchartGraph(scopedGraph, view.anchorNodeId ?? null),
+    [scopedGraph, view.anchorNodeId],
   );
   const layoutState = useMeasuredLayout({
     graph: viewGraph,
@@ -210,6 +287,14 @@ export function FlowchartView({
     () => visibleNodes.find((node) => node.id === view.anchorNodeId) ?? null,
     [view.anchorNodeId, visibleNodes],
   );
+  const currentMethodNode = useMemo(
+    () => resolveCurrentMethodNode({
+      nodes: visibleNodes,
+      anchorNodeId: view.anchorNodeId ?? null,
+      selectedNodeId,
+    }),
+    [selectedNodeId, view.anchorNodeId, visibleNodes],
+  );
   const selectedNode = useMemo(
     () => visibleNodes.find((node) => node.id === selectedNodeId) ?? null,
     [visibleNodes, selectedNodeId],
@@ -221,13 +306,26 @@ export function FlowchartView({
       selectedNodeId,
       explanationFocusNodeId,
       draftChangedNodeIds,
+      draftCompareNodeStatuses: draftCompareProjection?.nodeStatuses,
       nodeSizeRegistry,
     }),
-    [visibleNodes, visibleEdges, selectedNodeId, explanationFocusNodeId, draftChangedNodeIds, nodeSizeRegistry],
+    [
+      visibleNodes,
+      visibleEdges,
+      selectedNodeId,
+      explanationFocusNodeId,
+      draftChangedNodeIds,
+      draftCompareProjection?.nodeStatuses,
+      nodeSizeRegistry,
+    ],
   );
   const flowEdges = useMemo(
-    () => buildFlowchartEdges({ edges: visibleEdges, nodeIndex }),
-    [visibleEdges, nodeIndex],
+    () => buildFlowchartEdges({
+      edges: visibleEdges,
+      nodeIndex,
+      draftCompareEdgeStatuses: draftCompareProjection?.edgeStatuses,
+    }),
+    [draftCompareProjection?.edgeStatuses, visibleEdges, nodeIndex],
   );
 
   useEffect(() => {
@@ -279,14 +377,15 @@ export function FlowchartView({
 
   const header = (
     <section className="canvas-reading-summary" aria-label="流程图摘要">
+      {draftCompareProjection ? <DraftCompareSummary projection={draftCompareProjection} /> : null}
       <div className="canvas-reading-grid">
         <article className="canvas-reading-card is-anchor">
           <span className="canvas-reading-label">当前方法</span>
           <strong
             className="canvas-reading-title"
-            title={view.summary.nodeCount > 0 ? (anchorNode?.title ?? "流程图") : "流程图"}
+            title={view.summary.nodeCount > 0 ? (currentMethodNode?.title ?? anchorNode?.title ?? "流程图") : "流程图"}
           >
-            {view.summary.nodeCount > 0 ? (anchorNode?.title ?? "流程图") : "流程图"}
+            {view.summary.nodeCount > 0 ? (currentMethodNode?.title ?? anchorNode?.title ?? "流程图") : "流程图"}
           </strong>
           <span className="canvas-reading-detail">
             共 {view.summary.nodeCount} 个流程节点，{view.summary.branchCount} 个分支判断，异常路径 {view.summary.exceptionPathCount} 条。

@@ -131,10 +131,10 @@ class LlmPromptFactory {
         val selectedNodes = scopeNodes.joinToString("\n") { nodeSummary(it) }.ifBlank { "- 无" }
         /** 当前范围边摘要。 */
         val selectedEdges = scopeEdges.joinToString("\n") { edgeSummary(it) }.ifBlank { "- 无" }
-        /** 草稿层节点摘要。 */
-        val draftNodes = context.draftGraph.nodes.joinToString("\n") { nodeSummary(it) }.ifBlank { "- 无" }
-        /** 草稿层边摘要。 */
-        val draftEdges = context.draftGraph.edges.joinToString("\n") { edgeSummary(it) }.ifBlank { "- 无" }
+        /** 当前可编辑图节点摘要。 */
+        val editableNodes = context.editableGraph.nodes.joinToString("\n") { nodeSummary(it) }.ifBlank { "- 无" }
+        /** 当前可编辑图边摘要。 */
+        val editableEdges = context.editableGraph.edges.joinToString("\n") { edgeSummary(it) }.ifBlank { "- 无" }
         /** 历史消息摘要。 */
         val history = session?.messages?.joinToString("\n") { message ->
             "- [${message.role.name}] ${message.content}"
@@ -143,9 +143,9 @@ class LlmPromptFactory {
         val existingChanges = session?.candidateChanges?.joinToString("\n") { change ->
             "- ${change.changeId} | ${change.title} | before=${change.beforeState ?: "无"} | after=${change.afterState ?: "无"}"
         }?.ifBlank { "- 无" } ?: "- 无"
-        /** 已有风险线索摘要。 */
-        val existingInvestigationLeads = session?.investigationLeads?.joinToString("\n") { lead ->
-            "- ${lead.leadId} | ${lead.title} | gap=${lead.evidenceGap.ifBlank { "未标注" }} | next=${lead.recommendedQuestion.ifBlank { "未标注" }}"
+        /** 已有风险线程摘要。 */
+        val existingInvestigationThreads = session?.investigationThreads?.joinToString("\n") { thread ->
+            "- ${thread.threadId} | ${thread.title} | gap=${thread.evidenceGap.ifBlank { "未标注" }} | next=${thread.recommendedQuestion.ifBlank { "未标注" }}"
         }?.ifBlank { "- 无" } ?: "- 无"
         /** 真实源码片段摘要。 */
         val sourceSnippets = context.sourceContext.joinToString("\n") { snippet ->
@@ -170,12 +170,22 @@ class LlmPromptFactory {
             如果用户问题是在“介绍 / 解释 / 讲解链路”，answer 必须先解释链路本身，不要输出无关风险建议。
             只有当用户问题明确要求排查问题、找问题、调整逻辑，或者你发现了与用户问题直接相关且证据充分的缺陷时，才允许输出 candidateChanges；否则 candidateChanges 必须返回 []。
             candidateChanges[*] 必须绑定到 findings 中的 supportingFindingIds；如果没有可追溯 findings，就不要输出这条 candidateChange。
-            investigationLeads 用来表达“怀疑点 / 需要继续取证的线索”，它们不能冒充已经确认的变更，也不能写成草稿结论。
-            如果证据等级只有 CALLSITE_ONLY 或 NOT_OBSERVED，就不要输出 candidateChanges，改为输出 investigationLeads。
-            investigationLeads[*] 也必须绑定到 findings 中的 supportingFindingIds；如果没有可追溯 findings，就不要输出这条 investigationLead。
+            如果 candidateChanges[*] 表示真实流程改动，必须提供 patchIntent；禁止只写自然语言然后让后端猜“是修改现有节点还是新增节点”。
+            patchIntent.mode 只允许：UPDATE_EXISTING_NODE、INSERT_NEW_DECISION、INSERT_NEW_ACTION、ANNOTATION_ONLY。
+            UPDATE_EXISTING_NODE 与 ANNOTATION_ONLY 必须提供 patchIntent.targetNodeId，且该 ID 必须是当前可编辑图中的真实节点 ID。
+            INSERT_NEW_ACTION 与 INSERT_NEW_DECISION 必须提供 patchIntent.attachEdgeId，且该 ID 必须是当前可编辑图中的真实 CONTROL_FLOW 边 ID。
+            INSERT_NEW_DECISION 还必须提供 patchIntent.falseBranchTargetNodeId，明确 FALSE 分支落到哪个真实节点；禁止让后端猜 FALSE 分支。
+            对 if/switch/循环/条件/分支 的修改，优先表达为 UPDATE_EXISTING_NODE 或 INSERT_NEW_DECISION；禁止把这类改动写到 try/catch 等 flowchart.kind=SCOPE 容器节点上。
+            当 candidateChanges[*] 已提供 patchIntent 时，graphPatch 可以省略，由后端依据 patchIntent 合成真实 patch；如果你提供 graphPatch，也必须与 patchIntent 语义一致。
+            “事实图”表示代码事实基线；“当前可编辑图”表示当前工作台里可用于定位节点 ID、边 ID 和 graphPatch 落点的图。不要把当前可编辑图误称为事实图。
+            当你描述 DIRECT_GRAPH 证据时，必须明确是来自“事实图”还是“当前可编辑图”；如果结论依赖真实控制流节点 ID、边 ID 或 patch 落点，只能基于“当前可编辑图”。
+            只有当 candidateChanges[*] 是纯解释性补充、不会改变真实流程结构时，才允许使用 EXPLANATION_NOTE，并且此时 patchIntent.mode 必须是 ANNOTATION_ONLY。
+            investigationThreads 用来表达“怀疑点 / 需要继续取证的线程”，它们不能冒充已经确认的变更，也不能写成草稿结论。
+            如果证据等级只有 CALLSITE_ONLY 或 NOT_OBSERVED，就不要输出 candidateChanges，改为输出 investigationThreads。
+            investigationThreads[*] 也必须绑定到 findings 中的 supportingFindingIds；如果没有可追溯 findings，就不要输出这条 investigationThread。
             禁止输出与用户问题无关的通用安全、性能、规范性建议。
             不允许把推测内容伪装成代码事实。
-            answer、candidateChanges、investigationLeads 之外，还必须输出 findings，对每条关键结论标注证据等级和引用。
+            answer、candidateChanges、investigationThreads 之外，还必须输出 findings，对每条关键结论标注证据等级和引用。
             evidenceLevel 只允许：
             - DIRECT_SOURCE：直接来自当前提供的源码片段
             - DIRECT_GRAPH：直接来自当前图节点或图连线
@@ -216,11 +226,11 @@ class LlmPromptFactory {
             事实图连线：
             $factEdges
 
-            草稿层节点：
-            $draftNodes
+            当前可编辑图节点：
+            $editableNodes
 
-            草稿层连线：
-            $draftEdges
+            当前可编辑图连线：
+            $editableEdges
 
             历史消息：
             $history
@@ -228,16 +238,16 @@ class LlmPromptFactory {
             已有待确认候选变更：
             $existingChanges
 
-            已有风险线索：
-            $existingInvestigationLeads
+            已有风险线程：
+            $existingInvestigationThreads
 
             请逐条对照“用户问题”回答。
             如果当前上下文不足以回答用户问题，answer 必须明确说明“当前证据不足以回答该问题”，不要转而输出无关建议。
             你的第一优先级是直接回答“用户问题”。
             禁止输出与用户问题无关的通用安全、性能、规范性建议。
             candidateChanges 只允许保留与“用户问题”直接相关、且已经有 DIRECT_SOURCE / DIRECT_GRAPH 支撑的修改建议；如果当前轮只是解释链路或回答事实问题，请返回 []。
-            investigationLeads 用来承接证据不足但值得继续追问的线索；它们必须明确写出“已观察到什么、还缺什么、下一轮建议问什么”。
-            请先给出本轮问答回答，再给出 candidateChanges 与 investigationLeads。不要把建议伪装成代码事实，也不要整表重刷已有候选项。
+            investigationThreads 用来承接证据不足但值得继续追问的线程；它们必须明确写出“已观察到什么、还缺什么、下一轮建议问什么”。
+            请先给出本轮问答回答，再给出 candidateChanges 与 investigationThreads。不要把建议伪装成代码事实，也不要整表重刷已有候选项。
             仅返回 JSON，结构如下：
             {
               "answer": "问答回答",
@@ -268,15 +278,41 @@ class LlmPromptFactory {
                   "afterState": "修改后状态",
                   "reason": "为什么建议这样改",
                   "impactSummary": "影响摘要",
-                  "supportingFindingIds": ["必须对应 findings[*].id"]
+                  "supportingFindingIds": ["必须对应 findings[*].id"],
+                  "patchIntent": {
+                    "mode": "UPDATE_EXISTING_NODE|INSERT_NEW_DECISION|INSERT_NEW_ACTION|ANNOTATION_ONLY",
+                    "targetNodeId": "UPDATE_EXISTING_NODE|ANNOTATION_ONLY 时必填",
+                    "attachEdgeId": "INSERT_NEW_DECISION|INSERT_NEW_ACTION 时必填，必须指向真实 CONTROL_FLOW 边 ID",
+                    "falseBranchTargetNodeId": "INSERT_NEW_DECISION 时必填，明确 FALSE 分支真实落点"
+                  },
+                  "graphPatch": {
+                    "summary": "可选；当已提供 patchIntent 时允许省略，由后端合成",
+                    "operations": [
+                      {
+                        "id": "稳定ID",
+                        "action": "ADD_NODE|UPDATE_NODE|DELETE_NODE|ADD_EDGE|UPDATE_EDGE|DELETE_EDGE|ADD_ANNOTATION|MARK_UNCERTAIN",
+                        "elementKind": "NODE|EDGE",
+                        "elementId": "元素ID",
+                        "title": "可选标题",
+                        "summary": "可选摘要",
+                        "metadata": {
+                          "draft.claimType": "CODE_FACT|RISK_HINT|EXPLANATION_NOTE|STRUCTURAL_SUGGESTION"
+                        }
+                      }
+                    ],
+                    "addedNodeIds": [],
+                    "removedNodeIds": [],
+                    "addedEdgeIds": [],
+                    "removedEdgeIds": []
+                  }
                 }
               ],
-              "investigationLeads": [
+              "investigationThreads": [
                 {
-                  "leadId": "稳定ID",
-                  "status": "OPEN|PROMOTED|DISMISSED|SUPERSEDED",
+                  "threadId": "稳定ID",
+                  "status": "OPEN|PROMOTED|DISMISSED|BLOCKED|SUPERSEDED",
                   "claimType": "RISK_HINT|STRUCTURAL_SUGGESTION",
-                  "title": "风险线索标题",
+                  "title": "风险线程标题",
                   "targetStepIds": ["可选步骤ID"],
                   "targetNodeIds": ["可选节点ID"],
                   "summary": "当前已经观察到什么",
@@ -706,9 +742,13 @@ class LlmPromptFactory {
         val outputs = if (node.outputs.isEmpty()) "" else " | outputs=${node.outputs.joinToString()}"
         /** 节点文档字段片段。 */
         val doc = node.doc?.takeIf { it.isNotBlank() }?.let { " | doc=$it" }.orEmpty()
+        /** 节点流程图元数据片段。 */
+        val flowchartKind = node.metadata["flowchart.kind"]?.let { " | flowchart.kind=$it" }.orEmpty()
+        /** 节点所属方法片段。 */
+        val ownerMethod = node.metadata["flow.ownerMethod"]?.let { " | flow.ownerMethod=$it" }.orEmpty()
         /** 节点来源字段片段。 */
         val sourceTag = " | source=${node.sourceTag.name}"
-        return "- $id[${node.type.name}] ${node.title}$location$signature$inputs$outputs$doc$sourceTag"
+        return "- $id[${node.type.name}] ${node.title}$location$signature$inputs$outputs$doc$flowchartKind$ownerMethod$sourceTag"
     }
 
     /** 把源码片段上下文转换成提示词里的单行摘要。 */

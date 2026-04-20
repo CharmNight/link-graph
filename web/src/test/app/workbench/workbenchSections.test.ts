@@ -7,7 +7,7 @@ import {
 describe("workbenchSections", () => {
   it("includes investigation leads in the default section preferences", () => {
     expect(defaultWorkbenchSectionPreferences()).toMatchObject({
-      "audit.investigation-leads": false,
+      "audit.investigation-threads": false,
     });
   });
 
@@ -15,10 +15,10 @@ describe("workbenchSections", () => {
     const effective = resolveEffectiveWorkbenchSectionPreferences({
       tab: "audit",
       preferences: {
-        "audit.investigation-leads": true,
+        "audit.investigation-threads": true,
       },
     });
 
-    expect(effective["audit.investigation-leads"]).toBe(true);
+    expect(effective["audit.investigation-threads"]).toBe(true);
   });
 });

@@ -635,7 +635,7 @@ describe("layoutFlowchartView", () => {
     expect(Math.abs((merge.position?.x ?? 0) + 66 - decisionCenterX(decision))).toBeLessThanOrEqual(4);
   });
 
-  it("keeps the semantic false fallthrough centered even when a manual design link adds a third outgoing decision edge", async () => {
+  it("routes a manual decision link as a real third branch instead of preserving the old centered fallthrough", async () => {
     const nodes: LinkGraphNode[] = [
       {
         ...methodNode("method:anchor", "CommonController.fileDownload"),
@@ -696,8 +696,8 @@ describe("layoutFlowchartView", () => {
     const merge = index.get("merge:after-delete")!;
     const falseEdge = laidOut.edges.find((edge) => edge.id === "delete-false")!;
 
-    expectDecisionAttachmentMatchesBottomFlow(falseEdge, decision);
-    expect(Math.abs((merge.position?.x ?? 0) + 66 - decisionCenterX(decision))).toBeLessThanOrEqual(4);
+    expectDecisionAttachmentMatchesTargetSide(falseEdge, decision, merge);
+    expect(nodeCenterX(merge)).toBeGreaterThan(decisionCenterX(decision) + 20);
   });
 
   it("feeds explicit edge handles into ELK so a manual decision edge can leave from the requested side", async () => {

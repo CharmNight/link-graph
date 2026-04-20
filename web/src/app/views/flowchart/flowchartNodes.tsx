@@ -16,7 +16,7 @@ import {
   flowchartNodeCardWidth,
 } from "../../graphNodeSizing";
 import type { NodeMeasuredSize, NodeSizeRegistry } from "../../graph/nodeSizeRegistry";
-import type { LinkGraphEdge, LinkGraphNode } from "../../types";
+import type { DraftCompareStatus, LinkGraphEdge, LinkGraphNode } from "../../types";
 import { edgeTypeLabel } from "../../labels";
 import { FlowchartNodeCard } from "../../components/graph/nodes/FlowchartNodeCard";
 import { flowchartKind } from "../../components/graph/nodes/nodePresentation";
@@ -35,6 +35,11 @@ import {
   resolveDecisionTargetPort,
 } from "./decisionPortGeometry";
 import { resolveGraphNodeHighlightClassName } from "../graphNodeHighlights";
+import {
+  draftCompareEdgeClassName,
+  draftCompareEdgeStyle,
+  draftCompareMarkerColor,
+} from "../draftComparePresentation";
 
 interface FlowchartNodeData {
   node: LinkGraphNode;
@@ -43,6 +48,7 @@ interface FlowchartNodeData {
   mergeRightTargetCount: number;
   explanationFocused?: boolean;
   draftChanged?: boolean;
+  draftCompareStatus?: DraftCompareStatus;
   onMeasure?: (size: NodeMeasuredSize) => void;
 }
 
@@ -52,13 +58,17 @@ interface BuildFlowchartNodesOptions {
   selectedNodeId: string | null;
   explanationFocusNodeId?: string | null;
   draftChangedNodeIds?: string[];
+  draftCompareNodeStatuses?: Record<string, DraftCompareStatus>;
   nodeSizeRegistry: NodeSizeRegistry;
 }
 
 interface BuildFlowchartEdgesOptions {
   edges: LinkGraphEdge[];
   nodeIndex: Map<string, LinkGraphNode>;
+  draftCompareEdgeStatuses?: Record<string, DraftCompareStatus>;
 }
+
+const FLOWCHART_ALIAS_IDS_KEY = "flowchart.projectedFromNodeIds";
 
 type VisibleFlowchartHandleId =
   | "target-top"
@@ -260,6 +270,7 @@ function FlowchartReactNode({ id, data, isConnectable, selected }: NodeProps<Flo
         selected={selected}
         explanationFocused={data.explanationFocused}
         draftChanged={data.draftChanged}
+        draftCompareStatus={data.draftCompareStatus}
         onMeasure={data.onMeasure}
       />
     </div>
@@ -394,12 +405,41 @@ function flowchartEdgeStyle(edge: LinkGraphEdge) {
   }
 }
 
+function projectedAliasNodeIds(node: LinkGraphNode): string[] {
+  const rawAliasNodeIds = node.metadata?.[FLOWCHART_ALIAS_IDS_KEY];
+  if (!rawAliasNodeIds) {
+    return [];
+  }
+  return rawAliasNodeIds
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+function nodeMatchesProjectedId(node: LinkGraphNode, expectedNodeId: string): boolean {
+  return node.id === expectedNodeId || projectedAliasNodeIds(node).includes(expectedNodeId);
+}
+
+function resolveProjectedDraftCompareStatus(
+  node: LinkGraphNode,
+  draftCompareNodeStatuses: Record<string, DraftCompareStatus>,
+): DraftCompareStatus | undefined {
+  const exactStatus = draftCompareNodeStatuses[node.id];
+  if (exactStatus) {
+    return exactStatus;
+  }
+  return projectedAliasNodeIds(node)
+    .map((aliasNodeId) => draftCompareNodeStatuses[aliasNodeId])
+    .find(Boolean);
+}
+
 export function buildFlowchartNodes({
   nodes,
   edges,
   selectedNodeId,
   explanationFocusNodeId = null,
   draftChangedNodeIds = [],
+  draftCompareNodeStatuses = {},
   nodeSizeRegistry,
 }: BuildFlowchartNodesOptions): Array<Node<FlowchartNodeData>> {
   const nodeIndex = new Map(nodes.map((node) => [node.id, node]));
@@ -415,6 +455,9 @@ export function buildFlowchartNodes({
   return nodes.map((node) => {
     const kind = flowchartKind(node);
     const mergeTargetPortCounts = mergeTargetPortLayout.countsByNodeId.get(node.id);
+    const projectedDraftChanged = Array.from(draftChangedNodeIdSet)
+      .some((draftChangedNodeId) => nodeMatchesProjectedId(node, draftChangedNodeId));
+    const projectedDraftCompareStatus = resolveProjectedDraftCompareStatus(node, draftCompareNodeStatuses);
     return {
       id: node.id,
       type: "flowchartNode",
@@ -422,7 +465,8 @@ export function buildFlowchartNodes({
         baseClassName: `flowchart-rf-node kind-${kind.toLowerCase()}`,
         nodeId: node.id,
         explanationFocusNodeId,
-        draftChangedNodeIdSet,
+        draftChangedNodeIdSet: projectedDraftChanged ? new Set([node.id]) : new Set(),
+        draftCompareStatus: projectedDraftCompareStatus,
       }),
       selected: selectedNodeId === node.id,
       draggable: canEditNodeLayout(node, "FLOWCHART"),
@@ -435,7 +479,8 @@ export function buildFlowchartNodes({
         mergeLeftTargetCount: mergeTargetPortCounts?.leftCount ?? 0,
         mergeRightTargetCount: mergeTargetPortCounts?.rightCount ?? 0,
         explanationFocused: explanationFocusNodeId === node.id,
-        draftChanged: draftChangedNodeIdSet.has(node.id),
+        draftChanged: projectedDraftChanged,
+        draftCompareStatus: projectedDraftCompareStatus,
         onMeasure: (size) => nodeSizeRegistry.set(node.id, size),
       },
       style: flowchartNodeStyle(node),
@@ -446,6 +491,7 @@ export function buildFlowchartNodes({
 export function buildFlowchartEdges({
   edges,
   nodeIndex,
+  draftCompareEdgeStatuses = {},
 }: BuildFlowchartEdgesOptions): Array<Edge<RoutedEdgeData>> {
   const outgoingControlFlowBySource = buildOutgoingControlFlowIndex(edges);
   const incomingControlFlowByTarget = buildIncomingControlFlowIndex(edges);
@@ -468,16 +514,19 @@ export function buildFlowchartEdges({
       mergeTargetPortLayout.targetHandleByEdgeId,
     ),
     type: "routedEdge",
-    className: "edge-domain",
+    className: draftCompareEdgeClassName("edge-domain", draftCompareEdgeStatuses[edge.id]),
     data: {
       route: edge.route,
     },
-    style: flowchartEdgeStyle(edge),
+    style: draftCompareEdgeStyle(flowchartEdgeStyle(edge), draftCompareEdgeStatuses[edge.id]),
     markerEnd: {
       type: MarkerType.ArrowClosed,
       width: 20,
       height: 20,
-      color: edge.type === "CONTROL_FLOW" || edge.type === "CONTAINS_FLOW" ? "#195a99" : "#8f4f23",
+      color: draftCompareMarkerColor(
+        edge.type === "CONTROL_FLOW" || edge.type === "CONTAINS_FLOW" ? "#195a99" : "#8f4f23",
+        draftCompareEdgeStatuses[edge.id],
+      ),
     },
   }));
 }

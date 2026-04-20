@@ -56,12 +56,14 @@ internal class ProjectEditorSession(
         graph: GraphDocument,
         selectedMethodSignature: String? = null,
         preserveDraftPatchUndo: Boolean = false,
+        workingGraphDirty: Boolean = true,
         syncBrowser: Boolean = true,
     ) {
         stateService.markGraphChanged(
             graph = graph,
             selectedMethodSignature = selectedMethodSignature,
             preserveDraftPatchUndo = preserveDraftPatchUndo,
+            workingGraphDirty = workingGraphDirty,
         )
         if (syncBrowser) {
             onBrowserSyncRequested()
@@ -76,6 +78,7 @@ internal class ProjectEditorSession(
         displayMode: AnalysisDisplayMode,
         selectedMethodSignature: String? = null,
         preserveDraftPatchUndo: Boolean = false,
+        workingGraphDirty: Boolean = true,
         syncBrowser: Boolean = true,
     ) {
         stateService.markViewGraphChanged(
@@ -83,6 +86,7 @@ internal class ProjectEditorSession(
             displayMode = displayMode,
             selectedMethodSignature = selectedMethodSignature,
             preserveDraftPatchUndo = preserveDraftPatchUndo,
+            workingGraphDirty = workingGraphDirty,
         )
         if (syncBrowser) {
             onBrowserSyncRequested()

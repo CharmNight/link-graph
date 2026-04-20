@@ -8,11 +8,13 @@ import {
   requestAnalysisDisplayMode,
   requestCurrentEditorContextGraph,
   requestGraphBeautificationAsync,
+  resolveInvestigationThread,
+  retryLastAuditRequestAsync,
   updateWorkbenchSectionPreference,
   resetApiBridgeLifecycleStateForTest,
 } from "../../app/api";
 import { resetEditorTransportForTest } from "../../app/editorTransport";
-import type { LinkGraphEdge, LinkGraphNode } from "../../app/types";
+import type { LinkGraphEdge, LinkGraphNode, RiskResolutionStatus } from "../../app/types";
 
 function methodNode(id: string, title: string): LinkGraphNode {
   return {
@@ -261,18 +263,80 @@ describe("publishGraphChange", () => {
     };
     window.linkGraphDebugTrace = traceSink;
 
-    requestAuditAsync("请围绕当前链路进行问答", ["method:place-order", "sql:insert-order"], "lead-risk-1");
+    requestAuditAsync("请围绕当前链路进行问答", ["method:place-order", "sql:insert-order"], "thread-risk-1");
 
     expect(requestAuditBridge).toHaveBeenCalledWith(
       "请围绕当前链路进行问答",
       ["method:place-order", "sql:insert-order"],
-      "lead-risk-1",
+      "thread-risk-1",
     );
     const tracePayload = String(traceSink.mock.calls[0]?.[0] ?? "");
     expect(tracePayload).toContain("\"event\":\"api.requestAudit\"");
     expect(tracePayload).toContain("\"question\":\"请围绕当前链路进行问答\"");
     expect(tracePayload).toContain("\"selectedNodeIds\":[\"method:place-order\",\"sql:insert-order\"]");
-    expect(tracePayload).toContain("\"sourceLeadId\":\"lead-risk-1\"");
+    expect(tracePayload).toContain("\"sourceThreadId\":\"thread-risk-1\"");
+  });
+
+  it("把风险决策请求转发给 IDE bridge", () => {
+    const resolveInvestigationThreadBridge = vi.fn();
+    window.linkGraphBridge = {
+      resolveInvestigationThread: resolveInvestigationThreadBridge,
+    };
+
+    resolveInvestigationThread("thread-risk-1", "ACCEPTED_RISK");
+
+    expect(resolveInvestigationThreadBridge).toHaveBeenCalledWith("thread-risk-1", "ACCEPTED_RISK", "");
+  });
+
+  it("把问答重试请求转发给 IDE bridge", () => {
+    const retryLastAuditRequestBridge = vi.fn();
+    window.linkGraphBridge = {
+      retryLastAuditRequest: retryLastAuditRequestBridge,
+    };
+
+    retryLastAuditRequestAsync();
+
+    expect(retryLastAuditRequestBridge).toHaveBeenCalledTimes(1);
+  });
+
+  it("在 bridge 已注入但缺少方法时返回协议未对齐错误", () => {
+    window.linkGraphBridge = {
+      requestAudit: vi.fn(),
+    };
+
+    const result = resolveInvestigationThread("thread-risk-1", "DEFERRED" satisfies RiskResolutionStatus);
+
+    expect(result).toEqual({
+      ok: false,
+      message: "IDE bridge 协议未对齐，本次请求没有发出。",
+      detailMessage: "IDE bridge 已注入，但当前未暴露 resolveInvestigationThread 方法，本次请求没有发出。",
+    });
+  });
+
+  it("在 bridge 稍后注入时补发问答请求，而不是直接丢弃", () => {
+    const requestAuditBridge = vi.fn();
+    window.linkGraphBridge = undefined;
+
+    const result = requestAuditAsync(
+      "请围绕当前链路进行问答",
+      ["method:place-order", "sql:insert-order"],
+      "thread-risk-1",
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(requestAuditBridge).not.toHaveBeenCalled();
+
+    window.linkGraphBridge = {
+      requestAudit: requestAuditBridge,
+    };
+    window.dispatchEvent(new Event("link-graph-bridge-ready"));
+
+    expect(requestAuditBridge).toHaveBeenCalledTimes(1);
+    expect(requestAuditBridge).toHaveBeenCalledWith(
+      "请围绕当前链路进行问答",
+      ["method:place-order", "sql:insert-order"],
+      "thread-risk-1",
+    );
   });
 
   it("记录链路讲解请求参数到前端调试 trace", () => {

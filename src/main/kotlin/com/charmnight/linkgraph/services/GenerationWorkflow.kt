@@ -28,6 +28,8 @@ import com.charmnight.linkgraph.navigation.SourceNavigationService
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.GraphEditorStateService.OperationFeedbackLevel
+import com.charmnight.linkgraph.workbench.RiskResolutionService
+import com.charmnight.linkgraph.workbench.StageEligibilityDecision
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.diagnostic.Logger
@@ -64,13 +66,15 @@ internal class GenerationWorkflow(
         project.getService(AgentArtifactStoreService::class.java).artifactStore
     },
     /** 计划 capability 工厂。 */
-    private val planCapabilityFactory: (PlanCapability.LegacyPlanExecutor) -> PlanCapability = { legacyExecutor ->
-        PlanCapability(legacyPlanExecutor = legacyExecutor)
+    private val planCapabilityFactory: (PlanCapability.PlanExecutor) -> PlanCapability = { planExecutor ->
+        PlanCapability(planExecutor = planExecutor)
     },
     /** 代码 capability 工厂。 */
-    private val codegenCapabilityFactory: (CodegenCapability.LegacyCodegenExecutor) -> CodegenCapability = { legacyExecutor ->
-        CodegenCapability(project = project, legacyCodegenExecutor = legacyExecutor)
+    private val codegenCapabilityFactory: (CodegenCapability.CodegenExecutor) -> CodegenCapability = { codegenExecutor ->
+        CodegenCapability(project = project, codegenExecutor = codegenExecutor)
     },
+    /** 风险决策与阶段准入服务。 */
+    private val riskResolutionService: RiskResolutionService = RiskResolutionService(),
 ) {
     private data class GenerationPrerequisiteFailure(
         val scene: String,
@@ -83,7 +87,8 @@ internal class GenerationWorkflow(
      */
     fun requestGenerationPlan() {
         val snapshot = session.snapshot()
-        rejectMissingConfirmedDraftChanges(snapshot, "实现计划") { message, requestState ->
+        val (planDecision, _) = refreshEligibilityDecisions(snapshot)
+        rejectStageEligibility(planDecision, "实现计划") { message, requestState ->
             markGenerationPlanRequestFailed(message, requestState)
         }?.let { return }
         val payload = planningContextFactory.computePlanningPayload(snapshot)
@@ -109,7 +114,8 @@ internal class GenerationWorkflow(
      */
     fun requestGenerationPlanAsync() {
         val snapshot = session.snapshot()
-        rejectMissingConfirmedDraftChanges(snapshot, "实现计划") { message, requestState ->
+        val (planDecision, _) = refreshEligibilityDecisions(snapshot)
+        rejectStageEligibility(planDecision, "实现计划") { message, requestState ->
             markGenerationPlanRequestFailed(message, requestState)
         }?.let { return }
         val requestId = asyncRequestLifecycle.beginGenerationPlanRequest()
@@ -282,7 +288,8 @@ internal class GenerationWorkflow(
      */
     fun requestCodeDrafts() {
         val snapshot = session.snapshot()
-        rejectMissingConfirmedDraftChanges(snapshot, "代码草稿") { message, requestState ->
+        val (_, codeDecision) = refreshEligibilityDecisions(snapshot)
+        rejectStageEligibility(codeDecision, "代码草稿") { message, requestState ->
             markCodeDraftRequestFailed(message, requestState)
         }?.let { return }
         rejectOrphanedGenerationPlan(snapshot, "代码草稿") { message, requestState ->
@@ -342,7 +349,8 @@ internal class GenerationWorkflow(
      */
     fun requestCodeDraftsAsync() {
         val snapshot = session.snapshot()
-        rejectMissingConfirmedDraftChanges(snapshot, "代码草稿") { message, requestState ->
+        val (_, codeDecision) = refreshEligibilityDecisions(snapshot)
+        rejectStageEligibility(codeDecision, "代码草稿") { message, requestState ->
             markCodeDraftRequestFailed(message, requestState)
         }?.let { return }
         rejectOrphanedGenerationPlan(snapshot, "代码草稿") { message, requestState ->
@@ -607,7 +615,7 @@ internal class GenerationWorkflow(
     ): AgentRunResult<GenerationPlan> {
         val runtimeResult = agentRunCoordinator.run(
             capability = planCapabilityFactory(
-                PlanCapability.LegacyPlanExecutor { input, _, _ ->
+                PlanCapability.PlanExecutor { input, _, _ ->
                     ProjectPathNormalizer.normalizePlan(
                         planningContextFactory.buildPlanSnapshot(
                             planningGraph = input.planningPayload.planningGraph,
@@ -641,7 +649,7 @@ internal class GenerationWorkflow(
     ): AgentRunResult<CodeGenerationResult> {
         val runtimeResult = agentRunCoordinator.run(
             capability = codegenCapabilityFactory(
-                CodegenCapability.LegacyCodegenExecutor { input, _, _ ->
+                CodegenCapability.CodegenExecutor { input, _, _ ->
                     ProjectPathNormalizer.normalizeDraftResult(
                         codeGenerationService.generateDrafts(
                             context = input.generationContext,
@@ -711,18 +719,34 @@ internal class GenerationWorkflow(
         warnings = (previous?.warnings.orEmpty() + current.warnings).distinct(),
     )
 
-    private fun rejectMissingConfirmedDraftChanges(
+    private fun refreshEligibilityDecisions(
         snapshot: GraphEditorStateService.Snapshot,
+    ): Pair<StageEligibilityDecision, StageEligibilityDecision> {
+        val planDecision = riskResolutionService.evaluatePlanEligibility(snapshot)
+        val codeDecision = riskResolutionService.evaluateCodeEligibility(snapshot)
+        session.mutateBatch {
+            apply {
+                markPlanEligibilityDecision(planDecision)
+            }
+            apply {
+                markCodeEligibilityDecision(codeDecision)
+            }
+        }
+        return planDecision to codeDecision
+    }
+
+    private fun rejectStageEligibility(
+        decision: StageEligibilityDecision,
         scene: String,
         rejectRequest: GraphEditorStateService.(String, GraphEditorStateService.AsyncRequestState) -> Unit,
     ): GenerationPrerequisiteFailure? {
-        if (snapshot.draftWorkbenchState.draftChanges.isNotEmpty()) {
+        if (decision.allowed) {
             return null
         }
         val failure = GenerationPrerequisiteFailure(
             scene = scene,
-            message = "生成${scene}前请先确认至少一条草稿变更。",
-            detailMessage = "当前草稿层为空。先在问答结果中确认候选变更，使草稿层承载已确认的修改目标，再继续生成。",
+            message = decision.message,
+            detailMessage = decision.detailMessage,
         )
         session.mutateBatch {
             apply {

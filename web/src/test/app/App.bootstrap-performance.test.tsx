@@ -222,7 +222,7 @@ describe("App bootstrap performance", () => {
               nodes: [
                 ...structuredClone(bootstrapState.workingGraph.nodes),
                 {
-                  id: "draft-entry:submit-order-note",
+                  id: "working-note:submit-order",
                   type: "DOC_PAGE",
                   title: "仅存在于工作图的草稿说明",
                   inputs: [],
@@ -238,7 +238,7 @@ describe("App bootstrap performance", () => {
                   id: "generates:submit-order->draft-note",
                   type: "GENERATES",
                   source: "method:submit-order",
-                  target: "draft-entry:submit-order-note",
+                  target: "working-note:submit-order",
                   sourceTag: "DRAFT_AI",
                 },
               ],

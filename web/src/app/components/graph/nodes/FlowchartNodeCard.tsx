@@ -1,14 +1,16 @@
 import { memo, useLayoutEffect, useRef } from "react";
-import type { LinkGraphNode } from "../../../types";
+import type { DraftCompareStatus, LinkGraphNode } from "../../../types";
 import { flowchartKind, flowchartKindLabel, nodeTooltip, signaturePreview } from "./nodePresentation";
 import { measureNodeContentBox } from "./measureNodeContentBox";
 import { GraphNodeStateBadges } from "./GraphNodeStateBadges";
+import { IssueBadge } from "../../IssueBadge";
 
 interface FlowchartNodeCardProps {
   node: LinkGraphNode;
   selected: boolean;
   explanationFocused?: boolean;
   draftChanged?: boolean;
+  draftCompareStatus?: DraftCompareStatus;
   onMeasure?: (size: { width: number; height: number }) => void;
 }
 
@@ -17,6 +19,7 @@ export const FlowchartNodeCard = memo(function FlowchartNodeCard({
   selected,
   explanationFocused = false,
   draftChanged = false,
+  draftCompareStatus,
   onMeasure,
 }: FlowchartNodeCardProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -40,7 +43,12 @@ export const FlowchartNodeCard = memo(function FlowchartNodeCard({
       data-node-id={node.id}
     >
       <GraphNodeStateBadges selected={selected} explanationFocused={explanationFocused} draftChanged={draftChanged} />
-      <span className="flowchart-node-kind">{flowchartKindLabel(node)}</span>
+      <div className="flow-node-head">
+        <span className="flowchart-node-kind">{flowchartKindLabel(node)}</span>
+        <div className="flow-node-tags">
+          <IssueBadge draftCompareStatus={draftCompareStatus} />
+        </div>
+      </div>
       <strong className="flowchart-node-title" title={node.title}>
         {node.title}
       </strong>

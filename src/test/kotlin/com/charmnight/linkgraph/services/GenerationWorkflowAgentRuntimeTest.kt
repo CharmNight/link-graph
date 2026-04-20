@@ -75,7 +75,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
             planCapabilityFactory = {
                 PlanCapability(
-                    legacyPlanExecutor = { _, _, _ ->
+                    planExecutor = { _, _, _ ->
                         GenerationPlan(
                             source = GenerationPlanSource.MOCK,
                             summary = "runtime 计划",
@@ -87,7 +87,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             codegenCapabilityFactory = {
                 CodegenCapability(
                     project = project,
-                    legacyCodegenExecutor = { _, _, _ ->
+                    codegenExecutor = { _, _, _ ->
                         CodeGenerationResult(
                             drafts = listOf(
                                 GeneratedCodeDraft(
@@ -159,7 +159,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
             planCapabilityFactory = {
                 PlanCapability(
-                    legacyPlanExecutor = { _, _, _ ->
+                    planExecutor = { _, _, _ ->
                         GenerationPlan(
                             source = GenerationPlanSource.MOCK,
                             summary = "runtime 计划",
@@ -171,7 +171,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             codegenCapabilityFactory = {
                 CodegenCapability(
                     project = project,
-                    legacyCodegenExecutor = { input, _, _ ->
+                    codegenExecutor = { input, _, _ ->
                         capturedPlan = input.plan
                         CodeGenerationResult(
                             drafts = listOf(
@@ -251,7 +251,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             codegenCapabilityFactory = {
                 CodegenCapability(
                     project = project,
-                    legacyCodegenExecutor = { _, _, _ ->
+                    codegenExecutor = { _, _, _ ->
                         CodeGenerationResult(
                             drafts = listOf(
                                 GeneratedCodeDraft(
@@ -347,7 +347,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             codegenCapabilityFactory = {
                 CodegenCapability(
                     project = project,
-                    legacyCodegenExecutor = { _, _, _ ->
+                    codegenExecutor = { _, _, _ ->
                         CodeGenerationResult(
                             drafts = listOf(
                                 GeneratedCodeDraft(
@@ -383,7 +383,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         assertTrue(snapshot.codeDraftRequestState.detailMessage?.contains("failureReason=EVIDENCE_INSUFFICIENT") == true)
     }
 
-    fun testRequestCodeDraftsAsyncRejectsInvalidExistingFileScopeBeforeLegacyExecutorRuns() {
+    fun testRequestCodeDraftsAsyncRejectsInvalidExistingFileScopeBeforeCodegenExecutorRuns() {
         val sourceFile = Files.createTempFile("generation-workflow-prevalidate", ".java")
         Files.writeString(sourceFile, "class UploadController { void uploadFile(String file) {} }")
         val scope = EditScope(
@@ -411,7 +411,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             ),
         )
         val session = ProjectEditorSession(stateService) {}
-        var legacyInvoked = false
+        var executorInvoked = false
         val workflow = GenerationWorkflow(
             project = project,
             session = session,
@@ -435,8 +435,8 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             codegenCapabilityFactory = {
                 CodegenCapability(
                     project = project,
-                    legacyCodegenExecutor = { _, _, _ ->
-                        legacyInvoked = true
+                    codegenExecutor = { _, _, _ ->
+                        executorInvoked = true
                         CodeGenerationResult(
                             drafts = listOf(
                                 GeneratedCodeDraft(
@@ -496,7 +496,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             it.codeDraftRequestState.phase == GraphEditorStateService.AsyncRequestPhase.FAILED
         }
 
-        assertFalse(legacyInvoked)
+        assertFalse(executorInvoked)
         assertTrue(snapshot.codeDraftRequestState.errorMessage?.contains("runtime 未返回结果") == true)
         assertTrue(snapshot.codeDraftRequestState.detailMessage?.contains("failureReason=EVIDENCE_INSUFFICIENT") == true)
     }
@@ -540,7 +540,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
             planCapabilityFactory = {
                 PlanCapability(
-                    legacyPlanExecutor = { _, _, _ ->
+                    planExecutor = { _, _, _ ->
                         GenerationPlan(
                             source = GenerationPlanSource.MOCK,
                             summary = "runtime 计划",
@@ -552,7 +552,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             codegenCapabilityFactory = {
                 CodegenCapability(
                     project = project,
-                    legacyCodegenExecutor = { _, _, _ ->
+                    codegenExecutor = { _, _, _ ->
                         CodeGenerationResult(
                             drafts = listOf(
                                 GeneratedCodeDraft(
@@ -688,7 +688,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             codegenCapabilityFactory = {
                 CodegenCapability(
                     project = project,
-                    legacyCodegenExecutor = { input, _, _ ->
+                    codegenExecutor = { input, _, _ ->
                         capturedPlan = input.plan
                         CodeGenerationResult(
                             drafts = listOf(

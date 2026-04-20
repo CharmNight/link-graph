@@ -51,4 +51,16 @@ describe("FlowchartNodeCard", () => {
     expect(container.textContent).toContain("讲解中");
     expect(container.textContent).toContain("已改草稿");
   });
+
+  it("renders a draft compare badge instead of leaving flowchart compare state invisible", () => {
+    const { container } = render(
+      <FlowchartNodeCard
+        node={flowNode()}
+        selected={false}
+        draftCompareStatus="MODIFIED"
+      />,
+    );
+
+    expect(container.textContent).toContain("草稿修改");
+  });
 });

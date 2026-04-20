@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.llm.GraphBeautificationResult as GraphBeautificationPayload
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
+import com.charmnight.linkgraph.workbench.RiskResolutionStatus
 import com.charmnight.linkgraph.workbench.StepGranularity
 
 /**
@@ -114,9 +115,12 @@ sealed interface GraphEditorMessage {
         val question: String,
         /** 保存选中的节点标识列表。 */
         val selectedNodeIds: List<String> = emptyList(),
-        /** 保存继续取证所追踪的风险线索标识。 */
-        val sourceLeadId: String? = null,
+        /** 保存继续取证所追踪的风险线程标识。 */
+        val sourceThreadId: String? = null,
     ) : GraphEditorMessage
+
+    /** 请求直接重试最近一次失败的问答。 */
+    data object RetryLastAuditRequest : GraphEditorMessage
 
     /**
      * 确认一条问答候选变更。
@@ -132,6 +136,18 @@ sealed interface GraphEditorMessage {
     data class UnconfirmAuditCandidateChange(
         /** 保存待取消确认的候选变更标识。 */
         val changeId: String,
+    ) : GraphEditorMessage
+
+    /**
+     * 请求为风险线程写入人工决策。
+     */
+    data class ResolveInvestigationThread(
+        /** 保存线程标识。 */
+        val threadId: String,
+        /** 保存人工决策状态。 */
+        val resolutionStatus: RiskResolutionStatus,
+        /** 保存可选备注。 */
+        val note: String = "",
     ) : GraphEditorMessage
 
     /**

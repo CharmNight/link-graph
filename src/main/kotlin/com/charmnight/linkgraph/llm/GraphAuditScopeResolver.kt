@@ -11,8 +11,8 @@ internal object GraphAuditScopeResolver {
      * 选择问答时优先使用的图。
      */
     private fun scopeGraph(context: GraphAuditContext): com.charmnight.linkgraph.model.GraphDocument {
-        // 草稿图非空时优先分析草稿，否则回退到事实图。
-        return context.draftGraph.takeIf { it.nodes.isNotEmpty() || it.edges.isNotEmpty() } ?: context.factGraph
+        // 问答范围与 patch 落点一律基于当前可编辑图；缺省时再回退到事实图。
+        return context.editableGraph.takeIf { it.nodes.isNotEmpty() || it.edges.isNotEmpty() } ?: context.factGraph
     }
 
     /**

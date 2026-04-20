@@ -6,7 +6,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlin.test.assertEquals
 
 class LinkGraphProjectServiceWorkbenchLayoutTest : BasePlatformTestCase() {
-    fun testUpdateWorkbenchSectionPreferenceWritesRuntimeAndPersistentStateForInvestigationLeads() {
+    fun testUpdateWorkbenchSectionPreferenceWritesRuntimeAndPersistentStateForInvestigationThreads() {
         var syncRequestedCount = 0
         val connection = project.messageBus.connect(testRootDisposable)
         connection.subscribe(
@@ -19,18 +19,18 @@ class LinkGraphProjectServiceWorkbenchLayoutTest : BasePlatformTestCase() {
         )
 
         project.getService(LinkGraphProjectService::class.java)
-            .updateWorkbenchSectionPreference("audit.investigation-leads", true)
+            .updateWorkbenchSectionPreference("audit.investigation-threads", true)
 
         assertEquals(
             true,
             project.getService(GraphEditorStateService::class.java)
                 .snapshot()
-                .workbenchSectionPreferences["audit.investigation-leads"],
+                .workbenchSectionPreferences["audit.investigation-threads"],
         )
         assertEquals(
             true,
             project.getService(WorkbenchLayoutPreferencesService::class.java)
-                .snapshot()["audit.investigation-leads"],
+                .snapshot()["audit.investigation-threads"],
         )
         assertEquals(1, syncRequestedCount)
     }

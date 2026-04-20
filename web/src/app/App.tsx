@@ -11,7 +11,9 @@ import {
   readBootstrapState,
   restoreDraftPatchPreview,
   requestAuditAsync,
+  retryLastAuditRequestAsync,
   confirmAuditCandidateChange,
+  resolveInvestigationThread,
   unconfirmAuditCandidateChange,
   requestArtifactContent,
   requestDiffReviewAsync,
@@ -24,7 +26,6 @@ import { canNavigateToSource } from "./sourceNavigation";
 import { AsyncRequestFailureDialog } from "./components/AsyncRequestFailureDialog";
 import { CodeDraftPanel } from "./components/CodeDraftPanel";
 import { DiffPanel } from "./components/DiffPanel";
-import { GenerationPlanPanel } from "./components/GenerationPlanPanel";
 import { IssuePanel } from "./components/IssuePanel";
 import { Legend } from "./components/Legend";
 import { MermaidImportDialog } from "./components/MermaidImportDialog";
@@ -58,7 +59,9 @@ import {
   syncNodePosition,
 } from "./graphState";
 import { canEditNodeLayout } from "./layoutEditability";
+import { deriveInvestigationThreads } from "./investigationThreads";
 import { nextManualNodeSequence } from "./manualNodeIds";
+import { resolveWorkingGraphDocument } from "./workingGraphDocument";
 import type {
   AsyncRequestState,
   AnalysisDisplayMode,
@@ -67,6 +70,7 @@ import type {
   DiffItem,
   DraftPatchPreviewSource,
   DraftWorkbenchEntry,
+  DraftImplementationSuggestionState,
   DraftWorkbenchViewState,
   ExplanationWorkbenchState,
   GeneratedCodeDraft,
@@ -86,9 +90,13 @@ import type {
   LinkGraphEdge,
   LinkGraphNode,
   MermaidIssue,
+  InvestigationThread,
+  InvestigationTurnOutcome,
   OperationFeedback,
+  QaRequestRecoveryState,
   ResultEvidenceReference,
   ResourceRelationViewDocument,
+  StageEligibilityDecision,
   SourceNavigationState,
   StepGranularity,
   WorkbenchSectionId,
@@ -109,8 +117,9 @@ import { useSourceNavigationController } from "./controllers/useSourceNavigation
 import { useWorkbenchCommandController } from "./controllers/useWorkbenchCommandController";
 import { useWorkbenchState } from "./controllers/useWorkbenchState";
 import { resolveToolbarFeedback } from "./asyncRequestStatus";
+import { buildDraftCompareProjection } from "./draftCompareProjection";
 
-type WorkbenchTab = "explanation" | "audit" | "draft" | "plan" | "code";
+type WorkbenchTab = "explanation" | "audit" | "draft" | "code";
 type ExplanationRequestMode = "fresh" | "follow_up";
 const DEFAULT_ANALYSIS_DISPLAY_MODE: AnalysisDisplayMode = "FLOWCHART";
 
@@ -152,11 +161,15 @@ const IDLE_SOURCE_NAVIGATION_STATE: SourceNavigationState = {
   errorMessage: null,
 };
 
+const EMPTY_QA_REQUEST_RECOVERY_STATE: QaRequestRecoveryState = {
+  lastSubmittedRequest: null,
+  lastFailedRequest: null,
+};
+
 const WORKBENCH_TABS: Array<{ id: WorkbenchTab; label: string }> = [
   { id: "explanation", label: "讲解" },
   { id: "audit", label: "问答" },
   { id: "draft", label: "草稿" },
-  { id: "plan", label: "计划" },
   { id: "code", label: "代码" },
 ];
 
@@ -165,6 +178,238 @@ const REQUEST_ONLY_SELECTION_MESSAGE_TYPES = new Set([
   "auditResult",
 ]);
 
+function resolveGraphPatchNodeIds(patch: GraphPatch | null | undefined): string[] {
+  if (!patch) {
+    return [];
+  }
+  const nodeIds: string[] = [];
+  for (const operation of patch.operations) {
+    if (operation.node?.id) {
+      nodeIds.push(operation.node.id);
+    }
+    if (operation.edge?.source) {
+      nodeIds.push(operation.edge.source);
+    }
+    if (operation.edge?.target) {
+      nodeIds.push(operation.edge.target);
+    }
+  }
+  return Array.from(new Set(nodeIds));
+}
+
+function resolveDraftEntryTargetNodeIds(entry: DraftWorkbenchEntry | CandidateDraftChange | null): string[] {
+  if (!entry) {
+    return [];
+  }
+  const patchNodeIds = resolveGraphPatchNodeIds(entry.graphPatch ?? null);
+  const evidenceNodeIds = entry.evidence.flatMap(
+    (finding) => finding.references.map((reference) => reference.nodeId).filter(Boolean) as string[],
+  );
+  const resolvedNodeIds = Array.from(new Set([...patchNodeIds, ...evidenceNodeIds]));
+  if (resolvedNodeIds.length > 0) {
+    return resolvedNodeIds;
+  }
+  return Array.from(new Set(entry.targetNodeIds));
+}
+
+function resolveDraftEntryPrimaryNodeId(entry: DraftWorkbenchEntry | CandidateDraftChange | null): string | null {
+  return resolveDraftEntryTargetNodeIds(entry)[0] ?? null;
+}
+
+function resolveNodeOwnerSignature(node: LinkGraphNode | null | undefined): string | null {
+  if (!node) {
+    return null;
+  }
+  return node.metadata?.["flow.ownerMethod"]?.trim()
+    || node.signature?.trim()
+    || null;
+}
+
+function scopeFlowchartGraphToAnchorMethod(
+  graph: LinkGraphDocument,
+  anchorNodeId: string | null | undefined,
+): LinkGraphDocument {
+  const anchorNode = graph.nodes.find((node) => node.id === anchorNodeId) ?? null;
+  const anchorSignature = resolveNodeOwnerSignature(anchorNode);
+  if (!anchorSignature) {
+    return graph;
+  }
+  const scopedNodes = graph.nodes.filter((node) => {
+    if (node.id === anchorNodeId) {
+      return true;
+    }
+    return resolveNodeOwnerSignature(node) === anchorSignature;
+  });
+  if (scopedNodes.length === 0 || scopedNodes.length === graph.nodes.length) {
+    return graph;
+  }
+  const scopedNodeIds = new Set(scopedNodes.map((node) => node.id));
+  const scopedEdges = graph.edges.filter((edge) => scopedNodeIds.has(edge.source) && scopedNodeIds.has(edge.target));
+  return {
+    ...graph,
+    nodes: scopedNodes,
+    edges: scopedEdges,
+  };
+}
+
+function projectedAliasNodeIds(node: LinkGraphNode): string[] {
+  const rawAliasNodeIds = node.metadata?.["flowchart.projectedFromNodeIds"];
+  if (!rawAliasNodeIds) {
+    return [];
+  }
+  return rawAliasNodeIds
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+function resolveDisplayedNodeId(
+  requestedNodeId: string | null | undefined,
+  nodes: LinkGraphNode[],
+): string | null {
+  const normalizedRequestedNodeId = requestedNodeId?.trim();
+  if (!normalizedRequestedNodeId) {
+    return null;
+  }
+  if (nodes.some((node) => node.id === normalizedRequestedNodeId)) {
+    return normalizedRequestedNodeId;
+  }
+  return nodes.find((node) => projectedAliasNodeIds(node).includes(normalizedRequestedNodeId))?.id ?? null;
+}
+
+function mergeFlowchartPresentationNode(
+  visibleNode: LinkGraphNode,
+  nextNode: LinkGraphNode,
+): LinkGraphNode {
+  return {
+    ...visibleNode,
+    ...nextNode,
+    id: visibleNode.id,
+    position: visibleNode.position ?? nextNode.position,
+    metadata: {
+      ...(visibleNode.metadata ?? {}),
+      ...(nextNode.metadata ?? {}),
+    },
+  };
+}
+
+function resolveFlowchartPatchNode(
+  entry: DraftWorkbenchEntry,
+  node: LinkGraphNode,
+): LinkGraphNode | null {
+  for (const operation of entry.graphPatch?.operations ?? []) {
+    if (!operation.node) {
+      continue;
+    }
+    const patchTargetId = operation.node.id || operation.elementId;
+    if (patchTargetId === node.id || projectedAliasNodeIds(node).includes(patchTargetId)) {
+      return operation.node;
+    }
+  }
+  return null;
+}
+
+function flowchartPresentationNodeChanged(currentNode: LinkGraphNode, nextNode: LinkGraphNode): boolean {
+  return currentNode.title !== nextNode.title
+    || currentNode.doc !== nextNode.doc
+    || currentNode.signature !== nextNode.signature
+    || currentNode.sourceTag !== nextNode.sourceTag
+    || currentNode.type !== nextNode.type
+    || currentNode.certainty !== nextNode.certainty
+    || currentNode.bindingStatus !== nextNode.bindingStatus;
+}
+
+function overlayDraftEntryOntoFlowchartView(args: {
+  view: FlowchartViewDocument;
+  workingGraph: LinkGraphDocument | null;
+  entry: DraftWorkbenchEntry | null;
+  activeWorkbenchTab: WorkbenchTab;
+  compareMode: "after" | "compare";
+}): FlowchartViewDocument {
+  const {
+    view,
+    workingGraph,
+    entry,
+    activeWorkbenchTab,
+    compareMode,
+  } = args;
+  if (
+    activeWorkbenchTab !== "draft"
+    || compareMode !== "after"
+    || entry?.kind !== "CHANGE"
+  ) {
+    return view;
+  }
+
+  const scopedNodeIds = new Set(resolveDraftEntryTargetNodeIds(entry));
+  if (scopedNodeIds.size === 0) {
+    return view;
+  }
+  const workingNodesById = new Map((workingGraph?.nodes ?? []).map((node) => [node.id, node]));
+  let changed = false;
+  const overlayNode = (node: LinkGraphNode): LinkGraphNode => {
+    const isTargetedVisibleNode = scopedNodeIds.has(node.id)
+      || projectedAliasNodeIds(node).some((aliasNodeId) => scopedNodeIds.has(aliasNodeId));
+    if (!isTargetedVisibleNode) {
+      return node;
+    }
+    const patchNode = resolveFlowchartPatchNode(entry, node);
+    if (patchNode) {
+      const mergedNode = mergeFlowchartPresentationNode(node, patchNode);
+      if (flowchartPresentationNodeChanged(node, mergedNode)) {
+        changed = true;
+      }
+      return mergedNode;
+    }
+    const workingNode = workingNodesById.get(node.id);
+    if (workingNode) {
+      const mergedNode = mergeFlowchartPresentationNode(node, workingNode);
+      if (flowchartPresentationNodeChanged(node, mergedNode)) {
+        changed = true;
+      }
+      return mergedNode;
+    }
+    return node;
+  };
+
+  const nextVisibleGraph = {
+    ...view.visibleGraph,
+    nodes: view.visibleGraph.nodes.map(overlayNode),
+  };
+  if (!changed) {
+    return view;
+  }
+  return {
+    ...view,
+    visibleGraph: nextVisibleGraph,
+    fullGraph: {
+      ...view.fullGraph,
+      nodes: view.fullGraph.nodes.map(overlayNode),
+    },
+  };
+}
+
+function resolveEntryOwnerSignatures(
+  entry: DraftWorkbenchEntry | CandidateDraftChange | null,
+  graph: LinkGraphDocument,
+): Set<string> {
+  const signatures = new Set<string>();
+  const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+  for (const nodeId of resolveDraftEntryTargetNodeIds(entry)) {
+    const signature = resolveNodeOwnerSignature(nodesById.get(nodeId) ?? null);
+    if (signature) {
+      signatures.add(signature);
+    }
+  }
+  for (const scope of entry?.editScopes ?? []) {
+    const signature = scope.symbolSignature?.trim();
+    if (signature) {
+      signatures.add(signature);
+    }
+  }
+  return signatures;
+}
+
 function toDraftWorkbenchEntry(change: CandidateDraftChange): DraftWorkbenchEntry {
   return {
     entryId: `draft-${change.changeId}`,
@@ -172,13 +417,15 @@ function toDraftWorkbenchEntry(change: CandidateDraftChange): DraftWorkbenchEntr
     title: change.title,
     sourceChangeId: change.changeId,
     targetStepIds: change.targetStepIds,
-    targetNodeIds: change.targetNodeIds,
+    targetNodeIds: resolveDraftEntryTargetNodeIds(change),
     beforeState: change.beforeState ?? null,
     afterState: change.afterState ?? null,
     reason: change.reason,
     impactSummary: change.impactSummary,
     claimType: change.claimType ?? null,
     evidence: change.evidence ?? [],
+    patchIntent: change.patchIntent ?? null,
+    graphPatch: change.graphPatch ?? null,
   };
 }
 
@@ -188,6 +435,16 @@ function resolveEvidenceTargetNodeId(
 ): string | null {
   return targetNodeIds[0]
     ?? evidence?.flatMap((finding) => finding.references).find((reference) => reference.nodeId)?.nodeId
+    ?? null;
+}
+
+function deriveLatestTurnOutcome(result: GraphPatchResult | null): InvestigationTurnOutcome | null {
+  if (!result) {
+    return null;
+  }
+  return result.latestTurnOutcome
+    ?? result.recentTurnOutcomes[result.recentTurnOutcomes.length - 1]
+    ?? result.auditSession?.turnOutcomes?.[result.auditSession.turnOutcomes.length - 1]
     ?? null;
 }
 
@@ -391,6 +648,7 @@ const SAMPLE_STATE: LinkGraphBootstrapState = {
   lastAppliedDraftPatchSummary: null,
   auditResult: null,
   auditRequestState: IDLE_REQUEST_STATE,
+  qaRequestRecoveryState: EMPTY_QA_REQUEST_RECOVERY_STATE,
   diffReviewResult: null,
   diffReviewRequestState: IDLE_REQUEST_STATE,
   mermaidIssues: getSampleMermaidIssues(),
@@ -399,7 +657,7 @@ const SAMPLE_STATE: LinkGraphBootstrapState = {
   generationPlan: {
     source: "MOCK",
     summary: "创建 DTO 并补齐服务接线。",
-    warnings: ["当前计划来自本地规则推断。"],
+    warnings: ["当前实现建议来自本地规则推断。"],
     promptPreview: "提示词预览",
     items: [
       {
@@ -423,8 +681,10 @@ const SAMPLE_STATE: LinkGraphBootstrapState = {
   ],
   generatedCodeDraftWarnings: [],
   generationPlanRequestState: IDLE_REQUEST_STATE,
+  planEligibilityDecision: null,
   graphBeautificationRequestState: IDLE_REQUEST_STATE,
   codeDraftRequestState: IDLE_REQUEST_STATE,
+  codeEligibilityDecision: null,
   generatedCodeDraftWriteReport: {
     writtenFiles: ["src/main/java/com/example/OrderDraftDto.java"],
     skippedFiles: [],
@@ -487,6 +747,7 @@ const EMPTY_STATE: LinkGraphBootstrapState = {
   lastAppliedDraftPatchSummary: null,
   auditResult: null,
   auditRequestState: IDLE_REQUEST_STATE,
+  qaRequestRecoveryState: EMPTY_QA_REQUEST_RECOVERY_STATE,
   diffReviewResult: null,
   diffReviewRequestState: IDLE_REQUEST_STATE,
   mermaidIssues: [],
@@ -494,10 +755,12 @@ const EMPTY_STATE: LinkGraphBootstrapState = {
   syncPreviewItems: [],
   generationPlan: null,
   generationPlanRequestState: IDLE_REQUEST_STATE,
+  planEligibilityDecision: null,
   generatedCodeDrafts: [],
   generatedCodeDraftWarnings: [],
   graphBeautificationRequestState: IDLE_REQUEST_STATE,
   codeDraftRequestState: IDLE_REQUEST_STATE,
+  codeEligibilityDecision: null,
   generatedCodeDraftWriteReport: null,
   selectedNodeId: null,
   sourceNavigationState: IDLE_SOURCE_NAVIGATION_STATE,
@@ -548,7 +811,25 @@ function resolveVisibleGraph(state: LinkGraphBootstrapState): LinkGraphDocument 
 }
 
 function resolveWorkingGraph(state: LinkGraphBootstrapState): LinkGraphDocument {
-  return state.workingGraph ?? state.visibleGraph ?? EMPTY_STATE.workingGraph;
+  return resolveWorkingGraphDocument(state);
+}
+
+function resolveReferenceWorkingGraph(
+  state: LinkGraphBootstrapState,
+  displayMode: AnalysisDisplayMode = state.analysisDisplayMode ?? "FACT_GRAPH",
+): LinkGraphDocument | null {
+  if (state.referenceWorkingGraph) {
+    return state.referenceWorkingGraph;
+  }
+  switch (displayMode) {
+    case "FLOWCHART":
+      return state.flowchartView?.fullGraph ?? state.workingGraph ?? null;
+    case "RESOURCE_RELATION_VIEW":
+      return state.resourceRelationView?.fullGraph ?? state.workingGraph ?? null;
+    case "FACT_GRAPH":
+    default:
+      return state.factGraphView?.fullGraph ?? state.referenceFactGraph ?? state.workingGraph ?? null;
+  }
 }
 
 function resolveReferenceFactGraph(state: LinkGraphBootstrapState): LinkGraphDocument | null {
@@ -883,6 +1164,8 @@ export function App() {
     setSelectionGroupNodeIds,
     collapsedNodeIds,
     setCollapsedNodeIds,
+    referenceWorkingGraph,
+    setReferenceWorkingGraph,
     factGraph,
     setFactGraph,
     factGraphView,
@@ -915,8 +1198,12 @@ export function App() {
     setDiffItems,
     syncPreviewItems,
     setSyncPreviewItems,
+    draftVersion,
+    setDraftVersion,
     generationPlan,
     setGenerationPlan,
+    generationPlanDraftVersion,
+    setGenerationPlanDraftVersion,
     generationPlanRequestState,
     setGenerationPlanRequestState,
     diffReviewRequestState,
@@ -927,6 +1214,8 @@ export function App() {
     setGraphBeautificationRequestState,
     generatedCodeDrafts,
     setGeneratedCodeDrafts,
+    generatedCodeDraftVersion,
+    setGeneratedCodeDraftVersion,
     generatedCodeDraftWarnings,
     setGeneratedCodeDraftWarnings,
     generatedCodeDraftSource,
@@ -964,6 +1253,7 @@ export function App() {
     initialGraph,
     initialAnchorNodeId,
     resolveRequestState,
+    resolveReferenceWorkingGraph,
     resolveReferenceFactGraph,
     resolveFactGraphView,
     resolveFlowchartView,
@@ -973,6 +1263,15 @@ export function App() {
     resolveSourceNavigationState,
     normalizeGraphNodes,
   });
+  const [qaRequestRecoveryState, setQaRequestRecoveryState] = useState<QaRequestRecoveryState>(
+    () => initialState.qaRequestRecoveryState ?? EMPTY_QA_REQUEST_RECOVERY_STATE,
+  );
+  const [planEligibilityDecision, setPlanEligibilityDecision] = useState<StageEligibilityDecision | null>(
+    () => initialState.planEligibilityDecision ?? null,
+  );
+  const [codeEligibilityDecision, setCodeEligibilityDecision] = useState<StageEligibilityDecision | null>(
+    () => initialState.codeEligibilityDecision ?? null,
+  );
   const bridgeCommands = useBridgeCommandController({
     setOperationFeedback,
     setRequestFailureNotice,
@@ -1031,8 +1330,8 @@ export function App() {
   const [currentExplanationSessionLabel, setCurrentExplanationSessionLabel] = useState(DEFAULT_EXPLANATION_SESSION_LABEL);
   const [hoveredExplanationStepId, setHoveredExplanationStepId] = useState<string | null>(null);
   const [selectedAuditChangeId, setSelectedAuditChangeId] = useState<string | null>(null);
-  const [selectedAuditLeadId, setSelectedAuditLeadId] = useState<string | null>(null);
-  const [auditSourceLeadId, setAuditSourceLeadId] = useState<string | null>(null);
+  const [selectedAuditThreadId, setSelectedAuditThreadId] = useState<string | null>(null);
+  const [auditSourceThreadId, setAuditSourceThreadId] = useState<string | null>(null);
   const [selectedDraftEntryId, setSelectedDraftEntryId] = useState<string | null>(
     () => initialState.draftWorkbenchState?.draftChanges[0]?.entryId
       ?? initialState.draftWorkbenchState?.draftNotes[0]?.entryId
@@ -1105,8 +1404,6 @@ export function App() {
   useEffect(() => {
     analysisDisplayModeRef.current = analysisDisplayMode;
   }, [analysisDisplayMode]);
-
-  const hasConfirmedDraftChanges = draftWorkbenchState.draftChanges.length > 0;
 
   function syncManualNodeIdCounters(nextNodes: Array<{ id: string }>) {
     nextManualNodeIdRef.current = Math.max(
@@ -1403,6 +1700,7 @@ export function App() {
           }
         : nextResourceRelationView,
     );
+    setReferenceWorkingGraph(resolveReferenceWorkingGraph(nextState, nextAnalysisDisplayMode));
     setFactGraph(resolveReferenceFactGraph(nextState));
     setAnalysisDisplayMode(nextAnalysisDisplayMode);
     setDraftGraph(nextDraftGraphWithPositions.nodes.length > 0
@@ -1422,6 +1720,7 @@ export function App() {
     }
     setAuditResult(nextState.auditResult ?? null);
     setAuditRequestState(resolveRequestState(nextState.auditRequestState));
+    setQaRequestRecoveryState(nextState.qaRequestRecoveryState ?? EMPTY_QA_REQUEST_RECOVERY_STATE);
     setDiffReviewResult(nextState.diffReviewResult ?? null);
     setDiffReviewRequestState(resolveRequestState(nextState.diffReviewRequestState));
     setAnchorNodeId(nextAnchorNodeId);
@@ -1429,19 +1728,24 @@ export function App() {
     setMermaidIssues(nextState.mermaidIssues ?? []);
     setDiffItems(nextState.diffItems);
     setSyncPreviewItems(nextState.syncPreviewItems);
+    setDraftVersion(nextState.draftVersion ?? null);
     setGenerationPlan(nextState.generationPlan ?? null);
+    setGenerationPlanDraftVersion(nextState.generationPlanDraftVersion ?? null);
     setGenerationPlanRequestState(resolveRequestState(nextState.generationPlanRequestState));
+    setPlanEligibilityDecision(nextState.planEligibilityDecision ?? null);
     if (!explanationLocalOverrideRef.current) {
       setGraphBeautificationResult(nextState.graphBeautificationResult ?? null);
       setGraphBeautificationRequestState(resolveRequestState(nextState.graphBeautificationRequestState));
     }
     setGeneratedCodeDrafts(nextState.generatedCodeDrafts ?? []);
+    setGeneratedCodeDraftVersion(nextState.generatedCodeDraftVersion ?? null);
     setGeneratedCodeDraftWarnings(nextState.generatedCodeDraftWarnings ?? []);
     setGeneratedCodeDraftSource(nextState.generatedCodeDraftSource ?? null);
     setGeneratedCodeDraftPromptPreview(nextState.generatedCodeDraftPromptPreview ?? null);
     setGeneratedCodeDraftPromptPreviewArtifactId(nextState.generatedCodeDraftPromptPreviewArtifactId ?? null);
     setGeneratedCodeDraftWriteReport(nextState.generatedCodeDraftWriteReport ?? null);
     setCodeDraftRequestState(resolveRequestState(nextState.codeDraftRequestState));
+    setCodeEligibilityDecision(nextState.codeEligibilityDecision ?? null);
     setSourceNavigationState(nextSourceNavigationState);
     setOperationFeedback(nextState.operationFeedback ?? null);
     setWorkbenchSectionPreferences(nextState.workbenchSectionPreferences ?? {});
@@ -1532,11 +1836,13 @@ export function App() {
     setLastAppliedDraftPatchSummary(null);
     setAuditResult(null);
     setAuditRequestState(IDLE_REQUEST_STATE);
+    setQaRequestRecoveryState(EMPTY_QA_REQUEST_RECOVERY_STATE);
     setDiffReviewResult(null);
     setDiffReviewRequestState(IDLE_REQUEST_STATE);
     setSyncPreviewItems([]);
     setGenerationPlan(null);
     setGenerationPlanRequestState(IDLE_REQUEST_STATE);
+    setPlanEligibilityDecision(null);
     setGraphBeautificationResult(null);
     setGraphBeautificationRequestState(IDLE_REQUEST_STATE);
     setGeneratedCodeDrafts([]);
@@ -1547,6 +1853,7 @@ export function App() {
     setGeneratedCodeDraftWriteReport(null);
     setLastDraftPatchApplyResult(null);
     setCodeDraftRequestState(IDLE_REQUEST_STATE);
+    setCodeEligibilityDecision(null);
   }
 
   function syncGraph(
@@ -1674,7 +1981,7 @@ export function App() {
     const scope = resolveAuditScope(targetNodeId);
     setAuditTargetNodeIds(scope.nodeIds);
     setAuditQuestionDraft(buildDefaultAuditQuestion(scope.nodeIds, scope.title));
-    setAuditSourceLeadId(null);
+    setAuditSourceThreadId(null);
     setActiveWorkbenchTab("audit");
   }
 
@@ -1686,7 +1993,7 @@ export function App() {
       generationPlanRequestPhase: generationPlanRequestState.phase,
       hasGenerationPlan: generationPlan != null,
     });
-    setActiveWorkbenchTab("plan");
+    setActiveWorkbenchTab("draft");
     workbenchCommands.handleRequestGenerationPlan();
   }
 
@@ -1700,7 +2007,7 @@ export function App() {
     const question = buildDefaultAuditQuestion(scope.nodeIds, scope.title);
     setAuditTargetNodeIds(scope.nodeIds);
     setAuditQuestionDraft(question);
-    setAuditSourceLeadId(null);
+    setAuditSourceThreadId(null);
     handleRequestAudit(question, scope.nodeIds);
   }
 
@@ -1953,10 +2260,7 @@ export function App() {
       const nextNodes = nodes.map((node) => (node.id === nodeId ? syncNodePosition(node, position) : node));
       setNodes(nextNodes);
       setDraftGraph((current) => current
-        ? {
-            ...current,
-            nodes: nextNodes,
-          }
+        ? applyLayoutUpdatesToGraphDocument(current, layoutUpdates)
         : current);
       if (analysisDisplayMode === "FACT_GRAPH") {
         setFactGraphView((current) =>
@@ -2002,10 +2306,7 @@ export function App() {
       });
       setNodes(nextNodes);
       setDraftGraph((current) => current
-        ? {
-            ...current,
-            nodes: nextNodes,
-          }
+        ? applyLayoutUpdatesToGraphDocument(current, editableUpdates)
         : current);
       if (analysisDisplayMode === "FACT_GRAPH") {
         setFactGraphView((current) =>
@@ -2066,7 +2367,7 @@ export function App() {
     }
     setAuditQuestionDraft(normalizedQuestion);
     setAuditTargetNodeIds(targetNodeIds);
-    bridgeCommands.submitAsyncBridgeCommand("问答", () => requestAuditAsync(normalizedQuestion, targetNodeIds, auditSourceLeadId), {
+    bridgeCommands.submitAsyncBridgeCommand("问答", () => requestAuditAsync(normalizedQuestion, targetNodeIds, auditSourceThreadId), {
       applyRejectedRequestState: setAuditRequestState,
       applySubmittedRequestState: (requestState) => {
         setAuditRequestState(requestState);
@@ -2079,6 +2380,45 @@ export function App() {
         level: "INFO",
         message: `已发起问答请求${targetNodeIds.length > 0 ? "，范围为当前节点。" : "，范围为整个链路。"}`,
       },
+    });
+  }
+
+  function handleRetryLastAuditRequest() {
+    const failedRequest = qaRequestRecoveryState.lastFailedRequest;
+    if (!failedRequest) {
+      return;
+    }
+    setAuditQuestionDraft(failedRequest.question);
+    setAuditTargetNodeIds(failedRequest.selectedNodeIds);
+    setAuditSourceThreadId(failedRequest.sourceThreadId ?? null);
+    activateAuditSection("audit.request-status");
+    setActiveWorkbenchTab("audit");
+    bridgeCommands.submitAsyncBridgeCommand("问答", () => retryLastAuditRequestAsync(), {
+      applyRejectedRequestState: setAuditRequestState,
+      applySubmittedRequestState: (requestState) => {
+        setAuditRequestState(requestState);
+        setAuditResult(null);
+      },
+      successFeedback: {
+        level: "INFO",
+        message: "已提交失败问答的直接重试请求。",
+      },
+    });
+  }
+
+  function handleEditFailedAuditRequest() {
+    const failedRequest = qaRequestRecoveryState.lastFailedRequest;
+    if (!failedRequest) {
+      return;
+    }
+    setAuditQuestionDraft(failedRequest.question);
+    setAuditTargetNodeIds(failedRequest.selectedNodeIds);
+    setAuditSourceThreadId(failedRequest.sourceThreadId ?? null);
+    activateAuditSection("audit.composer");
+    setActiveWorkbenchTab("audit");
+    setOperationFeedback({
+      level: "INFO",
+      message: "已把失败问答回填到输入区，可修改后重新提交。",
     });
   }
 
@@ -2352,7 +2692,7 @@ export function App() {
   ]);
 
   useEffect(() => {
-    trackRequestFailure("plan", "实现计划", generationPlanRequestState);
+    trackRequestFailure("plan", "实现建议", generationPlanRequestState);
   }, [
     generationPlanRequestState.phase,
     generationPlanRequestState.statusMessage,
@@ -2374,7 +2714,7 @@ export function App() {
   ]);
 
   useEffect(() => {
-    trackRequestFailure("drafts", "代码草稿", codeDraftRequestState);
+    trackRequestFailure("drafts", "代码 diff", codeDraftRequestState);
   }, [
     codeDraftRequestState.phase,
     codeDraftRequestState.statusMessage,
@@ -2415,12 +2755,13 @@ export function App() {
   }, [auditResult]);
 
   useEffect(() => {
-    const firstLeadId = auditResult?.investigationLeads?.[0]?.leadId ?? null;
-    setSelectedAuditLeadId((current) => {
-      if (!auditResult?.investigationLeads?.length) {
+    const investigationThreads = deriveInvestigationThreads(auditResult);
+    const firstLeadId = investigationThreads[0]?.threadId ?? null;
+    setSelectedAuditThreadId((current) => {
+      if (!investigationThreads.length) {
         return null;
       }
-      return auditResult.investigationLeads.some((lead) => lead.leadId === current) ? current : firstLeadId;
+      return investigationThreads.some((thread) => thread.threadId === current) ? current : firstLeadId;
     });
   }, [auditResult]);
 
@@ -2442,17 +2783,103 @@ export function App() {
   const auditState: AuditWorkbenchState = {
     result: auditResult,
     requestState: auditRequestState,
+    qaRequestRecoveryState,
     selectedChangeId: selectedAuditChangeId,
-    selectedLeadId: selectedAuditLeadId,
+    selectedThreadId: selectedAuditThreadId,
     questionDraft: auditQuestionDraft,
     scopeLabel: buildAuditScopeLabel(auditTargetNodeIds, auditTargetTitle),
   };
 
+  const draftImplementationSuggestionState: DraftImplementationSuggestionState = {
+    status: generationPlan?.summary
+      ? (
+        draftVersion != null
+        && generationPlanDraftVersion != null
+        && generationPlanDraftVersion < draftVersion
+          ? "STALE"
+          : "FRESH"
+      )
+      : generationPlanRequestState.phase === "RUNNING"
+        ? "RUNNING"
+        : generationPlanRequestState.phase === "FAILED" || generationPlanRequestState.phase === "TIMED_OUT"
+          ? "FAILED"
+          : "MISSING",
+    summary: generationPlan?.summary ?? null,
+    items: generationPlan?.items ?? [],
+    source: generationPlan?.source ?? null,
+    warnings: generationPlan?.warnings ?? [],
+    promptPreview: generationPlan?.promptPreview ?? null,
+    promptPreviewArtifactId: generationPlan?.promptPreviewArtifactId ?? null,
+    draftVersion,
+    generationPlanDraftVersion,
+  };
+  const codeDiffStatus: "MISSING" | "RUNNING" | "FRESH" | "STALE" | "FAILED" = generatedCodeDrafts.length > 0
+    ? (
+      draftVersion != null
+      && generatedCodeDraftVersion != null
+      && generatedCodeDraftVersion < draftVersion
+        ? "STALE"
+        : "FRESH"
+    )
+    : codeDraftRequestState.phase === "RUNNING"
+      ? "RUNNING"
+      : codeDraftRequestState.phase === "FAILED" || codeDraftRequestState.phase === "TIMED_OUT"
+        ? "FAILED"
+        : "MISSING";
+  const activeViewGraph = analysisDisplayMode === "FLOWCHART"
+    ? flowchartView.visibleGraph
+    : analysisDisplayMode === "RESOURCE_RELATION_VIEW"
+      ? resourceRelationView.visibleGraph
+      : factGraphView.visibleGraph;
+  const activeAnchorNodeId = analysisDisplayMode === "FLOWCHART"
+    ? flowchartView.anchorNodeId ?? null
+    : analysisDisplayMode === "RESOURCE_RELATION_VIEW"
+      ? resourceRelationView.anchorNodeId ?? null
+      : factGraphView.anchorNodeId ?? null;
+  const activeMethodSignature = useMemo(() => {
+    const activeAnchorNode = activeViewGraph.nodes.find((node) => node.id === activeAnchorNodeId) ?? null;
+    return resolveNodeOwnerSignature(activeAnchorNode);
+  }, [activeAnchorNodeId, activeViewGraph.nodes]);
+  const filteredDraftWorkbenchState = useMemo(() => {
+    if (!activeMethodSignature) {
+      return draftWorkbenchState;
+    }
+    const filterEntries = (entries: DraftWorkbenchEntry[]) => entries.filter((entry) => {
+      const ownerSignatures = resolveEntryOwnerSignatures(entry, draftGraph);
+      if (ownerSignatures.size > 0) {
+        return ownerSignatures.has(activeMethodSignature);
+      }
+      return resolveDraftEntryTargetNodeIds(entry).some((nodeId) => resolveDisplayedNodeId(nodeId, activeViewGraph.nodes) != null);
+    });
+    return {
+      draftChanges: filterEntries(draftWorkbenchState.draftChanges),
+      draftNotes: filterEntries(draftWorkbenchState.draftNotes),
+    };
+  }, [activeMethodSignature, activeViewGraph.nodes, draftGraph, draftWorkbenchState]);
   const draftState: DraftWorkbenchViewState = {
-    draftState: draftWorkbenchState,
+    draftState: filteredDraftWorkbenchState,
     compareMode: draftCompareMode,
     selectedEntryId: selectedDraftEntryId,
   };
+  const selectedDraftEntry = useMemo(
+    () =>
+      filteredDraftWorkbenchState.draftChanges.find((entry) => entry.entryId === selectedDraftEntryId)
+      ?? filteredDraftWorkbenchState.draftNotes.find((entry) => entry.entryId === selectedDraftEntryId)
+      ?? filteredDraftWorkbenchState.draftChanges[0]
+      ?? filteredDraftWorkbenchState.draftNotes[0]
+      ?? null,
+    [filteredDraftWorkbenchState.draftChanges, filteredDraftWorkbenchState.draftNotes, selectedDraftEntryId],
+  );
+  const presentedFlowchartView = useMemo(
+    () => overlayDraftEntryOntoFlowchartView({
+      view: flowchartView,
+      workingGraph: draftGraph,
+      entry: selectedDraftEntry,
+      activeWorkbenchTab,
+      compareMode: draftCompareMode,
+    }),
+    [activeWorkbenchTab, draftCompareMode, draftGraph, flowchartView, selectedDraftEntry],
+  );
   const selectedExplanationStep = graphBeautificationResult?.steps.find((step) => step.stepId === selectedExplanationStepId)
     ?? graphBeautificationResult?.steps?.[0]
     ?? null;
@@ -2462,8 +2889,23 @@ export function App() {
     ? hoveredExplanationStep?.primaryNodeId ?? selectedExplanationStep?.primaryNodeId ?? null
     : null;
   const draftChangedNodeIds = useMemo(
-    () => Array.from(new Set(draftWorkbenchState.draftChanges.flatMap((entry) => entry.targetNodeIds))),
-    [draftWorkbenchState.draftChanges],
+    () => Array.from(new Set(filteredDraftWorkbenchState.draftChanges.flatMap((entry) => resolveDraftEntryTargetNodeIds(entry)))),
+    [filteredDraftWorkbenchState.draftChanges],
+  );
+  const draftCompareProjection = useMemo(
+    () => {
+      const referenceGraph = analysisDisplayMode === "FACT_GRAPH"
+        ? factGraph
+        : referenceWorkingGraph;
+      return buildDraftCompareProjection({
+        compareMode: draftCompareMode,
+        selectedEntry: selectedDraftEntry,
+        visibleGraph: activeViewGraph,
+        referenceGraph,
+        workingGraph: draftGraph,
+      });
+    },
+    [activeViewGraph, analysisDisplayMode, draftCompareMode, draftGraph, factGraph, referenceWorkingGraph, selectedDraftEntry],
   );
 
   function handleAddExplanationNoteToDraft(stepId: string) {
@@ -2504,6 +2946,17 @@ export function App() {
 
   function handleSelectDraftEntry(entryId: string) {
     setSelectedDraftEntryId(entryId);
+    const entry = draftWorkbenchState.draftChanges.find((item) => item.entryId === entryId)
+      ?? draftWorkbenchState.draftNotes.find((item) => item.entryId === entryId)
+      ?? null;
+    const targetNodeId = resolveDraftEntryTargetNodeIds(entry)
+      .map((nodeId) => resolveDisplayedNodeId(nodeId, nodes))
+      .find(Boolean)
+      ?? null;
+    if (!targetNodeId) {
+      return;
+    }
+    selectExplanationTargetNode(targetNodeId, { focusViewport: true });
   }
 
   function requestViewportFocus(nodeId: string) {
@@ -2519,7 +2972,10 @@ export function App() {
     if (!change) {
       return;
     }
-    const targetNodeId = change.targetNodeIds[0] ?? null;
+    const targetNodeId = resolveDraftEntryTargetNodeIds(change)
+      .map((nodeId) => resolveDisplayedNodeId(nodeId, nodes))
+      .find(Boolean)
+      ?? null;
     if (!targetNodeId) {
       setOperationFeedback({
         level: "WARNING",
@@ -2547,12 +3003,13 @@ export function App() {
       return;
     }
     const targetNodeId = note.targetNodeIds[0] ?? null;
-    if (targetNodeId) {
+    const displayedTargetNodeId = resolveDisplayedNodeId(targetNodeId, nodes);
+    if (displayedTargetNodeId) {
       setActiveWorkbenchTab("explanation");
-      selectExplanationTargetNode(targetNodeId, { focusViewport: true });
+      selectExplanationTargetNode(displayedTargetNodeId, { focusViewport: true });
       setOperationFeedback({
         level: "INFO",
-        message: `已根据草稿说明定位到图节点：${targetNodeId}`,
+        message: `已根据草稿说明定位到图节点：${displayedTargetNodeId}`,
       });
       return;
     }
@@ -2567,7 +3024,7 @@ export function App() {
     if (!note) {
       return;
     }
-    const targetNodeId = note.targetNodeIds[0] ?? null;
+    const targetNodeId = resolveDisplayedNodeId(note.targetNodeIds[0] ?? null, nodes);
     if (!targetNodeId) {
       setOperationFeedback({
         level: "WARNING",
@@ -2676,9 +3133,12 @@ export function App() {
 
   function resolveExplanationStepTargetNodeId(stepId: string) {
     const step = graphBeautificationResult?.steps.find((item) => item.stepId === stepId);
-    return step?.primaryNodeId
+    return resolveDisplayedNodeId(
+      step?.primaryNodeId
       ?? step?.evidence.flatMap((finding) => finding.references).find((reference) => reference.nodeId)?.nodeId
-      ?? null;
+      ?? null,
+      nodes,
+    );
   }
 
   function handleLocateExplanationStepNode(stepId: string) {
@@ -2783,41 +3243,45 @@ export function App() {
   function handleSelectAuditChange(changeId: string) {
     setSelectedAuditChangeId(changeId);
     const change = auditResult?.candidateChanges.find((item) => item.changeId === changeId) ?? null;
-    const targetNodeId = change ? resolveEvidenceTargetNodeId(change.targetNodeIds, change.evidence) : null;
-    if (!targetNodeId || !nodes.some((node) => node.id === targetNodeId)) {
+    const targetNodeId = change
+      ? resolveDisplayedNodeId(resolveEvidenceTargetNodeId(change.targetNodeIds, change.evidence), nodes)
+      : null;
+    if (!targetNodeId) {
       return;
     }
     selectExplanationTargetNode(targetNodeId, { focusViewport: true });
   }
 
-  function handleSelectAuditLead(leadId: string) {
-    setSelectedAuditLeadId(leadId);
-    const lead = auditResult?.investigationLeads.find((item) => item.leadId === leadId) ?? null;
-    const targetNodeId = lead ? resolveEvidenceTargetNodeId(lead.targetNodeIds, lead.evidence) : null;
-    if (!targetNodeId || !nodes.some((node) => node.id === targetNodeId)) {
+  function handleSelectAuditThread(threadId: string) {
+    setSelectedAuditThreadId(threadId);
+    const thread = deriveInvestigationThreads(auditResult).find((item) => item.threadId === threadId) ?? null;
+    const targetNodeId = thread
+      ? resolveDisplayedNodeId(resolveEvidenceTargetNodeId(thread.targetNodeIds, thread.evidence), nodes)
+      : null;
+    if (!targetNodeId) {
       return;
     }
     selectExplanationTargetNode(targetNodeId, { focusViewport: true });
   }
 
-  function handleInvestigateAuditLead(leadId: string) {
-    const lead = auditResult?.investigationLeads.find((item) => item.leadId === leadId) ?? null;
-    if (!lead) {
+  function handleInvestigateAuditThread(threadId: string) {
+    const thread = deriveInvestigationThreads(auditResult).find((item) => item.threadId === threadId) ?? null;
+    if (!thread) {
       return;
     }
-    setSelectedAuditLeadId(leadId);
-    setAuditSourceLeadId(leadId);
-    const nextQuestion = lead.recommendedQuestion.trim()
-      || `请继续取证：核对“${lead.title}”对应的直接源码证据。`;
+    setSelectedAuditThreadId(threadId);
+    setAuditSourceThreadId(threadId);
+    const nextQuestion = thread.recommendedQuestion.trim()
+      || `请继续取证：核对“${thread.title}”对应的直接源码证据。`;
     setAuditQuestionDraft(nextQuestion);
-    setAuditTargetNodeIds(lead.targetNodeIds);
-    const targetNodeId = resolveEvidenceTargetNodeId(lead.targetNodeIds, lead.evidence);
-    if (targetNodeId && nodes.some((node) => node.id === targetNodeId)) {
+    setAuditTargetNodeIds(thread.targetNodeIds);
+    const targetNodeId = resolveDisplayedNodeId(resolveEvidenceTargetNodeId(thread.targetNodeIds, thread.evidence), nodes);
+    if (targetNodeId) {
       selectExplanationTargetNode(targetNodeId, { focusViewport: true });
     }
     activateAuditSection("audit.composer");
     setActiveWorkbenchTab("audit");
-    bridgeCommands.submitAsyncBridgeCommand("问答", () => requestAuditAsync(nextQuestion, lead.targetNodeIds, leadId), {
+    bridgeCommands.submitAsyncBridgeCommand("问答", () => requestAuditAsync(nextQuestion, thread.targetNodeIds, threadId), {
       applyRejectedRequestState: setAuditRequestState,
       applySubmittedRequestState: (requestState) => {
         setAuditRequestState(requestState);
@@ -2825,7 +3289,27 @@ export function App() {
       },
       successFeedback: {
         level: "INFO",
-        message: `已围绕风险线索“${lead.title}”自动发起继续取证。`,
+        message: `已围绕风险线程“${thread.title}”自动发起继续取证。`,
+      },
+    });
+  }
+
+  function handleResolveAuditThread(
+    threadId: string,
+    resolutionStatus: "DEFERRED" | "ACCEPTED_RISK" | "DISMISSED",
+  ) {
+    setSelectedAuditThreadId(threadId);
+    activateAuditSection("audit.investigation-threads");
+    setActiveWorkbenchTab("audit");
+    bridgeCommands.runBridgeCommand("风险决策", () => resolveInvestigationThread(threadId, resolutionStatus), {
+      successFeedback: {
+        level: "INFO",
+        message:
+          resolutionStatus === "DEFERRED"
+            ? "已提交风险暂挂决策。"
+            : resolutionStatus === "ACCEPTED_RISK"
+              ? "已提交接受风险决策。"
+              : "已提交排除风险决策。",
       },
     });
   }
@@ -2851,8 +3335,12 @@ export function App() {
           }));
           setSelectedDraftEntryId(nextEntry.entryId);
           setAuditResult((current) => updateGraphPatchResultCandidateStatus(current, changeId, "CONFIRMED"));
-          if (nextEntry.targetNodeIds[0]) {
-            selectExplanationTargetNode(nextEntry.targetNodeIds[0]);
+          const targetNodeId = resolveDraftEntryTargetNodeIds(nextEntry)
+            .map((nodeId) => resolveDisplayedNodeId(nodeId, nodes))
+            .find(Boolean)
+            ?? null;
+          if (targetNodeId) {
+            selectExplanationTargetNode(targetNodeId, { focusViewport: true });
           }
         }
         setActiveWorkbenchTab("draft");
@@ -2893,20 +3381,23 @@ export function App() {
     bridgeCommands.runBridgeCommand("写入单个代码草稿", () => applySingleCodeDraft(draftId));
   }
 
+  useEffect(() => {
+    if (activeWorkbenchTab !== "draft" || !selectedDraftEntry) {
+      return;
+    }
+    const targetNodeId = resolveDraftEntryPrimaryNodeId(selectedDraftEntry);
+    const displayedTargetNodeId = resolveDisplayedNodeId(targetNodeId, nodes);
+    if (!displayedTargetNodeId) {
+      return;
+    }
+    if (selectedNodeId === displayedTargetNodeId) {
+      return;
+    }
+    selectExplanationTargetNode(displayedTargetNodeId, { focusViewport: true });
+  }, [activeWorkbenchTab, nodes, selectedDraftEntry, selectedNodeId]);
+
   function renderWorkbenchPanel() {
     switch (activeWorkbenchTab) {
-      case "plan":
-        return (
-          <GenerationPlanPanel
-            plan={generationPlan}
-            requestState={generationPlanRequestState}
-            hasConfirmedDraftChanges={hasConfirmedDraftChanges}
-            resolveArtifactText={resolveArtifactText}
-            onRequestArtifact={handleRequestArtifact}
-            onOpenDraftWorkbench={() => setActiveWorkbenchTab("draft")}
-            onRequestGeneratePlan={handleRequestGenerationPlan}
-          />
-        );
       case "code":
         return (
           <CodeDraftPanel
@@ -2920,8 +3411,11 @@ export function App() {
             onRequestArtifact={handleRequestArtifact}
             writeReport={generatedCodeDraftWriteReport}
             hasPlan={generationPlan != null}
-            hasConfirmedDraftChanges={hasConfirmedDraftChanges}
+            eligibilityDecision={codeEligibilityDecision}
+            draftVersion={draftVersion}
+            generatedCodeDraftVersion={generatedCodeDraftVersion}
             onOpenDraftWorkbench={() => setActiveWorkbenchTab("draft")}
+            onOpenAuditWorkbench={() => setActiveWorkbenchTab("audit")}
             onRequestPlan={handleRequestGenerationPlan}
             onRequestDrafts={handleRequestCodeDrafts}
             onWriteDrafts={workbenchCommands.handleWriteDrafts}
@@ -2935,10 +3429,15 @@ export function App() {
             state={auditState}
             onQuestionDraftChange={setAuditQuestionDraft}
             onSubmitQuestion={() => handleRequestAudit(auditQuestionDraft)}
+            onRetryLastRequest={handleRetryLastAuditRequest}
+            onEditFailedRequest={handleEditFailedAuditRequest}
             onSelectChange={handleSelectAuditChange}
             onConfirmChange={handleConfirmCandidateChange}
-            onSelectLead={handleSelectAuditLead}
-            onInvestigateLead={handleInvestigateAuditLead}
+            onSelectThread={handleSelectAuditThread}
+            onInvestigateThread={handleInvestigateAuditThread}
+            onDeferRisk={(threadId) => handleResolveAuditThread(threadId, "DEFERRED")}
+            onAcceptRisk={(threadId) => handleResolveAuditThread(threadId, "ACCEPTED_RISK")}
+            onDismissRisk={(threadId) => handleResolveAuditThread(threadId, "DISMISSED")}
             sectionPreferences={workbenchSectionPreferences}
             onSectionPreferenceChange={handleWorkbenchSectionPreferenceChange}
           />
@@ -2947,6 +3446,16 @@ export function App() {
         return (
           <DraftTab
             state={draftState}
+            implementationSuggestion={draftImplementationSuggestionState}
+            implementationSuggestionRequestState={generationPlanRequestState}
+            implementationSuggestionEligibilityDecision={planEligibilityDecision}
+            draftVersion={draftVersion}
+            codeDiffStatus={codeDiffStatus}
+            codeDiffDraftVersion={generatedCodeDraftVersion}
+            resolveArtifactText={resolveArtifactText}
+            onRequestArtifact={handleRequestArtifact}
+            onRequestGeneratePlan={handleRequestGenerationPlan}
+            onOpenAuditWorkbench={() => setActiveWorkbenchTab("audit")}
             onToggleCompare={() => setDraftCompareMode((current) => current === "after" ? "compare" : "after")}
             onSelectEntry={handleSelectDraftEntry}
             onLocateChangeNode={handleLocateDraftChangeNode}
@@ -2987,6 +3496,7 @@ export function App() {
     focusNodeRequest,
     explanationFocusNodeId,
     draftChangedNodeIds,
+    draftCompareProjection,
     selectedGroupNodeIds: selectionGroupNodeIds,
     hiddenNodeIds,
     collapsedNodeIds,
@@ -3017,7 +3527,7 @@ export function App() {
     ? (
       <FlowchartView
         {...stageProps}
-        view={flowchartView}
+        view={presentedFlowchartView}
       />
     )
     : analysisDisplayMode === "RESOURCE_RELATION_VIEW"
@@ -3058,6 +3568,7 @@ export function App() {
           analysisDisplayMode={analysisDisplayMode}
           hasExplanationFocus={explanationFocusNodeId != null}
           hasDraftChanges={draftChangedNodeIds.length > 0}
+          draftCompareProjection={draftCompareProjection}
         />
       )}
       dialogs={(

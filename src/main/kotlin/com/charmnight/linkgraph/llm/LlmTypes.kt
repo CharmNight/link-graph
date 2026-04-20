@@ -7,9 +7,10 @@ import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.AuditConversationSession
-import com.charmnight.linkgraph.workbench.AuditInvestigationLead
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
+import com.charmnight.linkgraph.workbench.InvestigationThread
+import com.charmnight.linkgraph.workbench.InvestigationTurnOutcome
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.charmnight.linkgraph.workbench.StepKind
 
@@ -38,8 +39,8 @@ data class GenerationContext(
 data class GraphAuditContext(
     /** 保存事实图。 */
     val factGraph: GraphDocument = GraphDocument(),
-    /** 保存草稿图。 */
-    val draftGraph: GraphDocument = GraphDocument(),
+    /** 保存可编辑图。 */
+    val editableGraph: GraphDocument = GraphDocument(),
     /** 保存当前选中的节点标识列表。 */
     val selectedNodeIds: List<String> = emptyList(),
     /** 保存问答时可直接送入模型的源码片段。 */
@@ -301,10 +302,12 @@ data class GraphPatchResult(
     val candidateChanges: List<CandidateDraftChange> = emptyList(),
     /** 保存本轮新增候选变更。 */
     val newCandidateChanges: List<CandidateDraftChange> = emptyList(),
-    /** 保存风险线索。 */
-    val investigationLeads: List<AuditInvestigationLead> = emptyList(),
-    /** 保存本轮新增风险线索。 */
-    val newInvestigationLeads: List<AuditInvestigationLead> = emptyList(),
+    /** 保存当前风险线程。 */
+    val investigationThreads: List<InvestigationThread> = emptyList(),
+    /** 保存本轮最新结果。 */
+    val latestTurnOutcome: InvestigationTurnOutcome? = null,
+    /** 保存最近若干轮结果。 */
+    val recentTurnOutcomes: List<InvestigationTurnOutcome> = emptyList(),
     /** 保存本轮实际附带的源码片段。 */
     val sourceContext: List<SourceSnippetContext> = emptyList(),
     /** 保存本轮实际使用的取证轨迹。 */

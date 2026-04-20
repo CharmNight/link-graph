@@ -21,8 +21,6 @@ class GraphEditorPageRenderer {
         private const val MAX_SECONDARY_LAYER_SERIALIZED_NODES = 96
         /** 允许完整内联的次级图层最大边数。 */
         private const val MAX_SECONDARY_LAYER_SERIALIZED_EDGES = 144
-        /** 兼容旧版前端事件协议时使用的默认会话 ID。 */
-        private const val LEGACY_SESSION_ID = "legacy"
         /** 节点 x 坐标的元数据键。 */
         private const val UI_X_KEY = "ui.x"
         /** 节点 y 坐标的元数据键。 */
@@ -31,15 +29,6 @@ class GraphEditorPageRenderer {
         private const val UI_PREFIX = "ui."
         /** 需要从语义元数据中过滤掉的布局前缀。 */
         private const val LAYOUT_PREFIX = "layout."
-    }
-
-    /** 为旧版前端入口生成 bootstrap 脚本。 */
-    fun bootstrapScript(snapshot: GraphEditorStateService.Snapshot): String {
-        return bootstrapScript(
-            sessionId = LEGACY_SESSION_ID,
-            snapshot = snapshot,
-            artifactRefs = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
-        )
     }
 
     /** 为指定会话生成 bootstrap 脚本和自定义事件。 */
@@ -72,18 +61,6 @@ class GraphEditorPageRenderer {
             window.linkGraphBootstrap = $stateJson;
             window.dispatchEvent(new CustomEvent("link-graph-bootstrap", { detail: $envelopeJson }));
         """.trimIndent()
-    }
-
-    /** 用旧版会话协议把 bootstrap 脚本注入入口 HTML。 */
-    fun render(
-        entryHtml: String,
-        snapshot: GraphEditorStateService.Snapshot,
-    ): String {
-        return render(
-            entryHtml = entryHtml,
-            sessionId = LEGACY_SESSION_ID,
-            snapshot = snapshot,
-        )
     }
 
     /** 把 bootstrap 脚本注入入口 HTML 的 `<head>` 中。 */
@@ -181,6 +158,8 @@ class GraphEditorPageRenderer {
         val visibleGraph = editorSnapshot.visibleGraph
         /** 当前工作图。 */
         val workingGraph = editorSnapshot.workingGraph
+        /** 当前展示模式的参考工作图。 */
+        val referenceWorkingGraph = snapshot.referenceWorkingGraph
         /** 事实图基线。 */
         val referenceFactGraph = editorSnapshot.referenceFactGraph
         /** 设计基线图。 */
@@ -190,6 +169,9 @@ class GraphEditorPageRenderer {
             "analysisDisplayMode" to snapshot.analysisDisplayMode.name,
             "visibleGraph" to documentToMap(visibleGraph, includeFullContent = true, layoutState = snapshot.layoutState),
             "workingGraph" to documentToMap(workingGraph, includeFullContent = true, layoutState = editorSnapshot.layoutState),
+            "referenceWorkingGraph" to referenceWorkingGraph?.let {
+                documentToMap(it, includeFullContent = true, layoutState = editorSnapshot.layoutState)
+            },
             "referenceFactGraph" to referenceFactGraph?.let {
                 documentToMap(it, includeFullContent = false, layoutState = editorSnapshot.layoutState)
             },
@@ -214,6 +196,7 @@ class GraphEditorPageRenderer {
                 patchResultToMap(it, artifactRefs.auditPromptPreviewArtifactId)
             },
             "auditRequestState" to requestStateToMap(snapshot.auditRequestState),
+            "qaRequestRecoveryState" to qaRequestRecoveryStateToMap(snapshot.qaRequestRecoveryState),
             "runtimeArtifactSummaries" to snapshot.runtimeArtifactSummaries.mapValues { (_, summaries) ->
                 summaries.map { summary ->
                     linkedMapOf(
@@ -258,6 +241,7 @@ class GraphEditorPageRenderer {
                     "risk" to item.risk.name,
                 )
             },
+            "draftVersion" to snapshot.draftVersion,
             "generationPlan" to snapshot.generationPlan?.let { plan ->
                 linkedMapOf(
                     "source" to plan.source.name,
@@ -276,7 +260,9 @@ class GraphEditorPageRenderer {
                     },
                 )
             },
+            "generationPlanDraftVersion" to snapshot.generationPlanDraftVersion,
             "generationPlanRequestState" to requestStateToMap(snapshot.generationPlanRequestState),
+            "planEligibilityDecision" to snapshot.planEligibilityDecision?.let(::stageEligibilityDecisionToMap),
             "generatedCodeDrafts" to snapshot.generatedCodeDrafts.map { draft ->
                 val contentArtifactId = artifactRefs.generatedCodeDraftContentArtifactIds[draft.id]
                 linkedMapOf<String, Any?>(
@@ -294,10 +280,12 @@ class GraphEditorPageRenderer {
                     }
                 }
             },
+            "generatedCodeDraftVersion" to snapshot.generatedCodeDraftVersion,
             "generatedCodeDraftWarnings" to snapshot.generatedCodeDraftWarnings,
             "generatedCodeDraftSource" to snapshot.generatedCodeDraftSource?.name,
             "generatedCodeDraftPromptPreviewArtifactId" to artifactRefs.generatedCodeDraftPromptPreviewArtifactId,
             "codeDraftRequestState" to requestStateToMap(snapshot.codeDraftRequestState),
+            "codeEligibilityDecision" to snapshot.codeEligibilityDecision?.let(::stageEligibilityDecisionToMap),
             "generatedCodeDraftWriteReport" to snapshot.generatedCodeDraftWriteReport?.let { report ->
                 linkedMapOf(
                     "writtenFiles" to report.writtenFiles,
@@ -352,6 +340,36 @@ class GraphEditorPageRenderer {
         "model" to state.model,
         "endpointSummary" to state.endpointSummary,
         "promptPreviewAvailable" to state.promptPreviewAvailable,
+    )
+
+    private fun qaRequestRecoveryStateToMap(
+        state: com.charmnight.linkgraph.workbench.QaRequestRecoveryState,
+    ): Map<String, Any?> = linkedMapOf(
+        "lastSubmittedRequest" to state.lastSubmittedRequest?.let(::replayableQaRequestToMap),
+        "lastFailedRequest" to state.lastFailedRequest?.let(::replayableQaRequestToMap),
+    )
+
+    private fun replayableQaRequestToMap(
+        request: com.charmnight.linkgraph.workbench.ReplayableQaRequest,
+    ): Map<String, Any?> = linkedMapOf(
+        "requestId" to request.requestId,
+        "kind" to request.kind.name,
+        "question" to request.question,
+        "selectedNodeIds" to request.selectedNodeIds,
+        "sourceThreadId" to request.sourceThreadId,
+        "baseSessionId" to request.baseSession?.sessionId,
+    )
+
+    private fun stageEligibilityDecisionToMap(
+        decision: com.charmnight.linkgraph.workbench.StageEligibilityDecision,
+    ): Map<String, Any?> = linkedMapOf(
+        "target" to decision.target.name,
+        "stageLabel" to decision.stageLabel,
+        "allowed" to decision.allowed,
+        "message" to decision.message,
+        "detailMessage" to decision.detailMessage,
+        "blockingThreadIds" to decision.blockingThreadIds,
+        "unresolvedThreadIds" to decision.unresolvedThreadIds,
     )
 
     /** 把源码跳转状态转换成前端可消费的映射。 */
@@ -541,8 +559,9 @@ class GraphEditorPageRenderer {
         "findings" to result.findings.map(::resultEvidenceFindingToMap),
         "candidateChanges" to result.candidateChanges.map(::candidateDraftChangeToMap),
         "newCandidateChanges" to result.newCandidateChanges.map(::candidateDraftChangeToMap),
-        "investigationLeads" to result.investigationLeads.map(::auditInvestigationLeadToMap),
-        "newInvestigationLeads" to result.newInvestigationLeads.map(::auditInvestigationLeadToMap),
+        "investigationThreads" to result.investigationThreads.map(::investigationThreadToMap),
+        "latestTurnOutcome" to result.latestTurnOutcome?.let(::investigationTurnOutcomeToMap),
+        "recentTurnOutcomes" to result.recentTurnOutcomes.map(::investigationTurnOutcomeToMap),
         "sourceContext" to result.sourceContext.map(::sourceSnippetContextToMap),
         "evidenceTrace" to result.evidenceTrace.map(::evidenceTraceEntryToMap),
         "auditSession" to result.auditSession?.let(::auditConversationSessionToMap),
@@ -622,6 +641,8 @@ class GraphEditorPageRenderer {
         "claimType" to entry.claimType,
         "evidence" to entry.evidence.map(::resultEvidenceFindingToMap),
         "editScopes" to entry.editScopes.map(::editScopeToMap),
+        "patchIntent" to entry.patchIntent?.let(::candidatePatchIntentToMap),
+        "graphPatch" to entry.graphPatch?.let(::patchToMap),
     )
 
     private fun candidateDraftChangeToMap(
@@ -639,6 +660,17 @@ class GraphEditorPageRenderer {
         "claimType" to change.claimType,
         "evidence" to change.evidence.map(::resultEvidenceFindingToMap),
         "editScopes" to change.editScopes.map(::editScopeToMap),
+        "patchIntent" to change.patchIntent?.let(::candidatePatchIntentToMap),
+        "graphPatch" to change.graphPatch?.let(::patchToMap),
+    )
+
+    private fun candidatePatchIntentToMap(
+        intent: com.charmnight.linkgraph.workbench.CandidatePatchIntent,
+    ): Map<String, Any?> = linkedMapOf(
+        "mode" to intent.mode.name,
+        "targetNodeId" to intent.targetNodeId,
+        "attachEdgeId" to intent.attachEdgeId,
+        "falseBranchTargetNodeId" to intent.falseBranchTargetNodeId,
     )
 
     private fun auditConversationSessionToMap(
@@ -648,23 +680,56 @@ class GraphEditorPageRenderer {
         "scopeKey" to session.scopeKey,
         "messages" to session.messages.map(::auditConversationMessageToMap),
         "candidateChanges" to session.candidateChanges.map(::candidateDraftChangeToMap),
-        "investigationLeads" to session.investigationLeads.map(::auditInvestigationLeadToMap),
+        "investigationThreads" to session.investigationThreads.map(::investigationThreadToMap),
+        "turnOutcomes" to session.turnOutcomes.map(::investigationTurnOutcomeToMap),
         "focusTargetId" to session.focusTargetId,
     )
 
-    private fun auditInvestigationLeadToMap(
-        lead: com.charmnight.linkgraph.workbench.AuditInvestigationLead,
+    private fun investigationThreadToMap(
+        thread: com.charmnight.linkgraph.workbench.InvestigationThread,
     ): Map<String, Any?> = linkedMapOf(
-        "leadId" to lead.leadId,
-        "status" to lead.status.name,
-        "title" to lead.title,
-        "targetStepIds" to lead.targetStepIds,
-        "targetNodeIds" to lead.targetNodeIds,
-        "summary" to lead.summary,
-        "evidenceGap" to lead.evidenceGap,
-        "recommendedQuestion" to lead.recommendedQuestion,
-        "claimType" to lead.claimType,
-        "evidence" to lead.evidence.map(::resultEvidenceFindingToMap),
+        "threadId" to thread.threadId,
+        "status" to thread.status.name,
+        "title" to thread.title,
+        "targetStepIds" to thread.targetStepIds,
+        "targetNodeIds" to thread.targetNodeIds,
+        "summary" to thread.summary,
+        "evidenceGap" to thread.evidenceGap,
+        "recommendedQuestion" to thread.recommendedQuestion,
+        "claimType" to thread.claimType,
+        "evidence" to thread.evidence.map(::resultEvidenceFindingToMap),
+        "latestTurnOutcomeId" to thread.latestTurnOutcomeId,
+        "resolution" to thread.resolution?.let(::riskResolutionToMap),
+    )
+
+    private fun riskResolutionToMap(
+        resolution: com.charmnight.linkgraph.workbench.RiskResolution,
+    ): Map<String, Any?> = linkedMapOf(
+        "threadId" to resolution.threadId,
+        "status" to resolution.status.name,
+        "note" to resolution.note,
+    )
+
+    private fun investigationTurnOutcomeToMap(
+        outcome: com.charmnight.linkgraph.workbench.InvestigationTurnOutcome,
+    ): Map<String, Any?> = linkedMapOf(
+        "outcomeId" to outcome.outcomeId,
+        "threadId" to outcome.threadId,
+        "status" to outcome.status.name,
+        "summary" to outcome.summary,
+        "detail" to outcome.detail,
+        "candidateChangeId" to outcome.candidateChangeId,
+        "blockedReason" to outcome.blockedReason,
+        "evidenceDelta" to linkedMapOf(
+            "addedNodeIds" to outcome.evidenceDelta.addedNodeIds,
+            "addedFilePaths" to outcome.evidenceDelta.addedFilePaths,
+            "previousStrongestEvidenceLevel" to outcome.evidenceDelta.previousStrongestEvidenceLevel?.name,
+            "currentStrongestEvidenceLevel" to outcome.evidenceDelta.currentStrongestEvidenceLevel?.name,
+            "hitRecommendedQuestion" to outcome.evidenceDelta.hitRecommendedQuestion,
+        ),
+        "observedNodeIds" to outcome.observedNodeIds,
+        "observedFilePaths" to outcome.observedFilePaths,
+        "strongestEvidenceLevel" to outcome.strongestEvidenceLevel?.name,
     )
 
     private fun auditConversationMessageToMap(
@@ -674,6 +739,7 @@ class GraphEditorPageRenderer {
         "role" to message.role.name,
         "content" to message.content,
         "focusTargetId" to message.focusTargetId,
+        "turnOutcomeId" to message.turnOutcomeId,
     )
 
     private fun sourceSnippetContextToMap(

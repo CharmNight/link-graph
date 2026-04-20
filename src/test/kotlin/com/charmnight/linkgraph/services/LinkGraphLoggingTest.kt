@@ -51,7 +51,7 @@ class LinkGraphLoggingTest {
             "src/main/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectService.kt",
             "src/main/kotlin/com/charmnight/linkgraph/services/SourceNavigationWorkflow.kt",
             "src/main/kotlin/com/charmnight/linkgraph/toolwindow/LinkGraphToolWindowSession.kt",
-            "src/main/kotlin/com/charmnight/linkgraph/extract/JavaResolver.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/semantic/provider/code/CodeInvocationSemanticResolver.kt",
         )
 
         files.forEach { relativePath ->

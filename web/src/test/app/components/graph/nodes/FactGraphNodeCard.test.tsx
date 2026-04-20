@@ -130,4 +130,17 @@ describe("FactGraphNodeCard", () => {
     expect(container.textContent).toContain("讲解中");
     expect(container.textContent).toContain("已改草稿");
   });
+
+  it("renders a draft compare badge for fact nodes", () => {
+    const { container } = render(
+      <FactGraphNodeCard
+        node={factNode()}
+        selected={false}
+        collapsed={false}
+        draftCompareStatus="MODIFIED"
+      />,
+    );
+
+    expect(container.textContent).toContain("草稿修改");
+  });
 });

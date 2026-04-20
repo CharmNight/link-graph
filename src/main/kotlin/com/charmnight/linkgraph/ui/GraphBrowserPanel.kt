@@ -3,7 +3,10 @@ package com.charmnight.linkgraph.ui
 import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.model.GraphJson
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
+import com.charmnight.linkgraph.services.currentVisibleGraph
+import com.charmnight.linkgraph.services.currentWorkingGraph
 import com.charmnight.linkgraph.services.debugLazy
+import com.charmnight.linkgraph.workbench.RiskResolutionStatus
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.Logger
@@ -60,8 +63,10 @@ class GraphBrowserPanel private constructor(
     private val showDiffModeQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestSyncPreviewQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestAuditQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val retryLastAuditRequestQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val confirmAuditCandidateChangeQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val unconfirmAuditCandidateChangeQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val resolveInvestigationThreadQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestDiffReviewQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestGraphBeautificationQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val applyDraftPatchPreviewQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
@@ -120,6 +125,9 @@ class GraphBrowserPanel private constructor(
         debugLazy(logger.isDebugEnabled, logger::debug) {
             "开始向前端同步链路图状态: ${snapshotSummary(snapshot)}"
         }
+        runtimeTrace {
+            "开始向前端同步链路图状态: ${snapshotSummary(snapshot)}, delta=${snapshotDeltaSummary(lastDispatchedSnapshot, snapshot)}"
+        }
         val transportScript = sliceRenderer.renderIncrementalScript(
             sessionId = transportState.sessionId,
             previousSnapshot = lastDispatchedSnapshot,
@@ -176,15 +184,19 @@ class GraphBrowserPanel private constructor(
         requestAuditQuery?.addHandler { payload ->
             val request = parseAuditRequestPayload(payload)
             debugLazy(logger.isDebugEnabled, logger::debug) {
-                "收到前端请求：问答, question=${summarizePayloadText(request.question)}, selectedNodeIds=${request.selectedNodeIds}, sourceLeadId=${request.sourceLeadId}"
+                "收到前端请求：问答, question=${summarizePayloadText(request.question)}, selectedNodeIds=${request.selectedNodeIds}, sourceThreadId=${request.sourceThreadId}"
             }
             bridge.dispatch(
                 GraphEditorMessage.RequestAudit(
                     question = request.question,
                     selectedNodeIds = request.selectedNodeIds,
-                    sourceLeadId = request.sourceLeadId,
+                    sourceThreadId = request.sourceThreadId,
                 ),
             )
+            JBCefJSQuery.Response("ok")
+        }
+        retryLastAuditRequestQuery?.addHandler {
+            bridge.dispatch(GraphEditorMessage.RetryLastAuditRequest)
             JBCefJSQuery.Response("ok")
         }
         confirmAuditCandidateChangeQuery?.addHandler { payload ->
@@ -194,6 +206,21 @@ class GraphBrowserPanel private constructor(
         unconfirmAuditCandidateChangeQuery?.addHandler { payload ->
             bridge.dispatch(GraphEditorMessage.UnconfirmAuditCandidateChange(changeId = payload))
             JBCefJSQuery.Response("ok")
+        }
+        resolveInvestigationThreadQuery?.addHandler { payload ->
+            runCatching {
+                val request = parseResolveInvestigationThreadPayload(payload)
+                bridge.dispatch(
+                    GraphEditorMessage.ResolveInvestigationThread(
+                        threadId = request.threadId,
+                        resolutionStatus = request.resolutionStatus,
+                        note = request.note,
+                    ),
+                )
+                JBCefJSQuery.Response("ok")
+            }.getOrElse { error ->
+                JBCefJSQuery.Response(null, 1, error.message ?: "风险决策提交失败")
+            }
         }
         requestDiffReviewQuery?.addHandler { payload ->
             val (question, selectedDiffItemIds) = parseQuestionWithIds(payload)
@@ -370,6 +397,7 @@ class GraphBrowserPanel private constructor(
             }
         }
         debugTraceQuery?.addHandler { payload ->
+            runtimeTrace { "前端 trace: $payload" }
             debugLazy(logger.isDebugEnabled, logger::debug) { "前端 trace: $payload" }
             JBCefJSQuery.Response("ok")
         }
@@ -468,9 +496,11 @@ class GraphBrowserPanel private constructor(
               exportMermaid: () => { ${exportMermaidQuery?.inject("'exportMermaid'") ?: ""} },
               showDiffMode: () => { ${showDiffModeQuery?.inject("'showDiffMode'") ?: ""} },
               requestSyncPreview: () => { ${requestSyncPreviewQuery?.inject("'requestSyncPreview'") ?: ""} },
-              requestAudit: (question, selectedNodeIds, sourceLeadId) => { ${requestAuditQuery?.inject("[(question ? encodeURIComponent(question) : ''), ((selectedNodeIds || []).map((value) => encodeURIComponent(value)).join(',')), (sourceLeadId ? encodeURIComponent(sourceLeadId) : '')].join('\\u001f')") ?: ""} },
+              requestAudit: (question, selectedNodeIds, sourceThreadId) => { ${requestAuditQuery?.inject("[(question ? encodeURIComponent(question) : ''), ((selectedNodeIds || []).map((value) => encodeURIComponent(value)).join(',')), (sourceThreadId ? encodeURIComponent(sourceThreadId) : '')].join('\\u001f')") ?: ""} },
+              retryLastAuditRequest: () => { ${retryLastAuditRequestQuery?.inject("'retryLastAuditRequest'") ?: ""} },
               confirmAuditCandidateChange: (changeId) => { ${confirmAuditCandidateChangeQuery?.inject("changeId") ?: ""} },
               unconfirmAuditCandidateChange: (changeId) => { ${unconfirmAuditCandidateChangeQuery?.inject("changeId") ?: ""} },
+              resolveInvestigationThread: (threadId, resolutionStatus, note) => { ${resolveInvestigationThreadQuery?.inject("[(threadId ? encodeURIComponent(threadId) : ''), (resolutionStatus ? encodeURIComponent(resolutionStatus) : ''), (note ? encodeURIComponent(note) : '')].join('\\u001f')") ?: ""} },
               requestDiffReview: (question, selectedDiffItemIds) => { ${requestDiffReviewQuery?.inject("[(question ? encodeURIComponent(question) : ''), ((selectedDiffItemIds || []).map((value) => encodeURIComponent(value)).join(','))].join('\\u001f')") ?: ""} },
               requestGraphBeautification: (goal, preferredStyle, explanationFocus, granularity, followUpStepId, followUpStepTitle, followUpQuestion) => { ${requestGraphBeautificationQuery?.inject("[(goal ? encodeURIComponent(goal) : ''), (preferredStyle ? encodeURIComponent(preferredStyle) : ''), (explanationFocus ? encodeURIComponent(explanationFocus) : ''), (granularity ? encodeURIComponent(granularity) : ''), (followUpStepId ? encodeURIComponent(followUpStepId) : ''), (followUpStepTitle ? encodeURIComponent(followUpStepTitle) : ''), (followUpQuestion ? encodeURIComponent(followUpQuestion) : '')].join('\\u001f')") ?: ""} },
               applyDraftPatchPreview: (operationIds) => { ${applyDraftPatchPreviewQuery?.inject("((operationIds || []).map((value) => encodeURIComponent(value)).join(','))") ?: ""} },
@@ -1432,7 +1462,7 @@ class GraphBrowserPanel private constructor(
     private data class AuditRequestPayload(
         val question: String,
         val selectedNodeIds: List<String>,
-        val sourceLeadId: String?,
+        val sourceThreadId: String?,
     )
 
     private fun parseAuditRequestPayload(payload: String): AuditRequestPayload {
@@ -1440,7 +1470,31 @@ class GraphBrowserPanel private constructor(
         return AuditRequestPayload(
             question = decodePayloadValue(parts.firstOrNull().orEmpty()),
             selectedNodeIds = parseEncodedList(parts.getOrNull(1).orEmpty()),
-            sourceLeadId = parts.getOrNull(2)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue),
+            sourceThreadId = parts.getOrNull(2)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue),
+        )
+    }
+
+    private data class ResolveInvestigationThreadPayload(
+        val threadId: String,
+        val resolutionStatus: RiskResolutionStatus,
+        val note: String,
+    )
+
+    private fun parseResolveInvestigationThreadPayload(payload: String): ResolveInvestigationThreadPayload {
+        val parts = payload.split(PAYLOAD_SEPARATOR, limit = 3)
+        val threadId = decodePayloadValue(parts.firstOrNull().orEmpty()).ifBlank {
+            error("风险线程标识不能为空")
+        }
+        val resolutionStatus = parts.getOrNull(1)
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::decodePayloadValue)
+            ?.let(RiskResolutionStatus::valueOf)
+            ?: error("风险决策状态不能为空")
+        val note = parts.getOrNull(2)?.let(::decodePayloadValue).orEmpty()
+        return ResolveInvestigationThreadPayload(
+            threadId = threadId,
+            resolutionStatus = resolutionStatus,
+            note = note,
         )
     }
 
@@ -1605,6 +1659,8 @@ class GraphBrowserPanel private constructor(
         }
 
         return buildString {
+            val effectiveVisibleGraph = currentVisibleGraph(snapshot)
+            val effectiveWorkingGraph = currentWorkingGraph(snapshot)
             append("lastMessageType=").append(snapshot.lastMessageType)
             append(", lastGraphSource=").append(snapshot.lastGraphSource)
             append(", analysisDisplayMode=").append(snapshot.analysisDisplayMode)
@@ -1612,12 +1668,53 @@ class GraphBrowserPanel private constructor(
             append(", layoutRevision=").append(snapshot.layoutRevision)
             append(", snapshotRevision=").append(snapshot.snapshotRevision)
             append(", selectedNodeId=").append(snapshot.selectedNodeId)
-            append(", visibleGraph=").append(graphSummary(snapshot.visibleGraph))
-            append(", workingGraph=").append(graphSummary(snapshot.workingGraph))
+            append(", visibleGraph=").append(graphSummary(effectiveVisibleGraph))
+            append(", workingGraph=").append(graphSummary(effectiveWorkingGraph))
             append(", referenceFactGraph=").append(graphSummary(snapshot.referenceFactGraph))
             append(", generationPlan=").append(generationPlanSummary(snapshot.generationPlan))
             append(", generationPlanRequestState=").append(requestStateSummary(snapshot.generationPlanRequestState))
             append(", feedback=").append(snapshot.operationFeedback?.message)
+        }
+    }
+
+    private fun snapshotDeltaSummary(
+        previous: GraphEditorStateService.Snapshot,
+        next: GraphEditorStateService.Snapshot,
+    ): String {
+        return buildString {
+            append("visible{").append(graphDeltaSummary(currentVisibleGraph(previous), currentVisibleGraph(next))).append("}")
+            append(", working{").append(graphDeltaSummary(currentWorkingGraph(previous), currentWorkingGraph(next))).append("}")
+        }
+    }
+
+    private fun graphDeltaSummary(
+        previous: com.charmnight.linkgraph.model.GraphDocument?,
+        next: com.charmnight.linkgraph.model.GraphDocument?,
+    ): String {
+        val previousNodes = previous?.nodes?.associateBy { it.id }.orEmpty()
+        val nextNodes = next?.nodes?.associateBy { it.id }.orEmpty()
+        val added = nextNodes.keys.subtract(previousNodes.keys)
+        val removed = previousNodes.keys.subtract(nextNodes.keys)
+        val retitled = nextNodes.keys.intersect(previousNodes.keys)
+            .mapNotNull { nodeId ->
+                val before = previousNodes[nodeId] ?: return@mapNotNull null
+                val after = nextNodes[nodeId] ?: return@mapNotNull null
+                if (before.title == after.title) {
+                    null
+                } else {
+                    "$nodeId:${summarizePayloadText(before.title)} -> ${summarizePayloadText(after.title)}"
+                }
+            }
+        return buildString {
+            append("added=").append(added.take(4))
+            append(", removed=").append(removed.take(4))
+            append(", retitled=").append(retitled.take(4))
+        }
+    }
+
+    private fun runtimeTrace(message: () -> String) {
+        if (debugTracingEnabled) {
+            logger.warn(message())
         }
     }
 }

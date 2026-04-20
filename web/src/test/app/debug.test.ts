@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { traceLinkGraph } from "../../app/debug";
+import { summarizeBootstrapState, traceLinkGraph } from "../../app/debug";
+import type { LinkGraphBootstrapState } from "../../app/types";
 
 describe("traceLinkGraph", () => {
   const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -50,5 +51,113 @@ describe("traceLinkGraph", () => {
     expect(traceSink).toHaveBeenCalledTimes(1);
     expect(window.__linkGraphTraceHistory ?? []).toHaveLength(1);
     expect(window.__linkGraphLastTrace).toContain("\"branch\":\"fitView\"");
+  });
+
+  it("summarizes the authoritative top-level flowchart working graph instead of the stale full graph view", () => {
+    const state = {
+      analysisDisplayMode: "FLOWCHART",
+      visibleGraph: {
+        nodes: [
+          {
+            id: "decision:guard",
+            type: "FLOW_SCOPE",
+            title: "if (!allowed)",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            metadata: {
+              "flowchart.kind": "DECISION",
+            },
+          },
+        ],
+        edges: [],
+      },
+      workingGraph: {
+        nodes: [
+          {
+            id: "decision:guard",
+            type: "FLOW_SCOPE",
+            title: "if (!allowed)",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            metadata: {
+              "flowchart.kind": "DECISION",
+            },
+          },
+        ],
+        edges: [],
+      },
+      flowchartView: {
+        visibleGraph: {
+          nodes: [
+            {
+              id: "decision:guard",
+              type: "FLOW_SCOPE",
+              title: "if (!allowed)",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+              metadata: {
+                "flowchart.kind": "DECISION",
+              },
+            },
+          ],
+          edges: [],
+        },
+        fullGraph: {
+          nodes: [
+            {
+              id: "condition:guard",
+              type: "FLOW_ACTION",
+              title: "!checkAllowDownload(fileName)",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+              metadata: {
+                "flowchart.kind": "PROCESS",
+                "flow.kind": "CONDITION",
+              },
+            },
+            {
+              id: "decision:guard",
+              type: "FLOW_SCOPE",
+              title: "if (!allowed)",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+              metadata: {
+                "flowchart.kind": "DECISION",
+              },
+            },
+          ],
+          edges: [],
+        },
+        anchorNodeId: "decision:guard",
+        summary: {
+          nodeCount: 1,
+          branchCount: 1,
+          exceptionPathCount: 0,
+          fullNodeCount: 2,
+          fullEdgeCount: 0,
+          hiddenNodeCount: 1,
+          hiddenEdgeCount: 0,
+          truncated: true,
+        },
+      },
+      mermaidIssues: [],
+      diffItems: [],
+      syncPreviewItems: [],
+    } satisfies LinkGraphBootstrapState;
+
+    const summary = summarizeBootstrapState(state);
+
+    expect(summary.workingGraph.nodes).toBe(1);
+    expect(summary.workingGraph.sampleNodeIds).toEqual(["decision:guard"]);
   });
 });

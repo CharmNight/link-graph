@@ -143,7 +143,7 @@ internal class PlanningContextFactory(
     }
 
     /**
-     * 根据选区决定问答时使用的事实图和草稿图。
+     * 根据选区决定问答时使用的事实图和可编辑图。
      */
     fun buildAuditGraphs(
         snapshot: GraphEditorStateService.Snapshot,
@@ -151,11 +151,7 @@ internal class PlanningContextFactory(
         collectSourceEvidence: Boolean = true,
     ): AuditGraphs {
         val workingGraph = currentWorkingGraph(snapshot)
-        val backgroundFactGraph = if (selectedNodeIds.isEmpty()) {
-            workingGraph
-        } else {
-            snapshot.referenceFactGraph ?: workingGraph
-        }
+        val backgroundFactGraph = snapshot.referenceFactGraph ?: workingGraph
         val evidenceCollection = if (collectSourceEvidence) {
             auditEvidenceCollector.collect(
                 graph = mergeAuditEvidenceGraph(backgroundFactGraph, workingGraph),
@@ -166,7 +162,7 @@ internal class PlanningContextFactory(
         }
         return AuditGraphs(
             factGraph = backgroundFactGraph,
-            draftGraph = workingGraph,
+            editableGraph = workingGraph,
             sourceContext = evidenceCollection.sourceContext,
             evidenceTrace = evidenceCollection.evidenceTrace,
         )
@@ -174,11 +170,11 @@ internal class PlanningContextFactory(
 
     private fun mergeAuditEvidenceGraph(
         factGraph: GraphDocument,
-        draftGraph: GraphDocument,
+        editableGraph: GraphDocument,
     ): GraphDocument {
         return GraphDocument(
-            nodes = (draftGraph.nodes + factGraph.nodes).distinctBy(GraphNode::id),
-            edges = (draftGraph.edges + factGraph.edges).distinctBy { edge -> edge.id },
+            nodes = (editableGraph.nodes + factGraph.nodes).distinctBy(GraphNode::id),
+            edges = (editableGraph.edges + factGraph.edges).distinctBy { edge -> edge.id },
         )
     }
 
@@ -544,7 +540,7 @@ internal data class PlanningPayload(
 
 internal data class AuditGraphs(
     val factGraph: GraphDocument,
-    val draftGraph: GraphDocument,
+    val editableGraph: GraphDocument,
     val sourceContext: List<SourceSnippetContext> = emptyList(),
     val evidenceTrace: List<com.charmnight.linkgraph.llm.EvidenceTraceEntry> = emptyList(),
 )

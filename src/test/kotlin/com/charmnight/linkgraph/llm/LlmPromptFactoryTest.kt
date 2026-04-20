@@ -103,9 +103,19 @@ class LlmPromptFactoryTest {
                             signature = "com.example.OrderService.place(java.lang.String):void",
                             sourceTag = GraphSourceTag.FACT,
                         ),
+                        GraphNode(
+                            id = "scope:order-service-if",
+                            type = NodeType.FLOW_SCOPE,
+                            title = "if (channel == null)",
+                            sourceTag = GraphSourceTag.FACT,
+                            metadata = mapOf(
+                                "flowchart.kind" to "DECISION",
+                                "flow.ownerMethod" to "com.example.OrderService.place(java.lang.String):void",
+                            ),
+                        ),
                     ),
                 ),
-                draftGraph = GraphDocument(),
+                editableGraph = GraphDocument(),
                 selectedNodeIds = listOf("method:order-service-place"),
                 sourceContext = listOf(
                     SourceSnippetContext(
@@ -173,6 +183,8 @@ class LlmPromptFactoryTest {
         assertTrue(auditPrompt.contains("你正在做链路图问答"))
         assertTrue(auditPrompt.contains("本轮问答回答"))
         assertTrue(auditPrompt.contains("\"answer\": \"问答回答\""))
+        assertTrue(auditPrompt.contains("flowchart.kind=DECISION"))
+        assertTrue(auditPrompt.contains("flow.ownerMethod=com.example.OrderService.place(java.lang.String):void"))
         assertTrue("本轮审计回答" !in auditPrompt)
         assertTrue(auditPrompt.contains("你的第一优先级是直接回答“用户问题”"))
         assertTrue(auditPrompt.contains("禁止输出与用户问题无关的通用安全、性能、规范性建议"))
@@ -210,7 +222,7 @@ class LlmPromptFactoryTest {
                         ),
                     ),
                 ),
-                draftGraph = GraphDocument(),
+                editableGraph = GraphDocument(),
                 selectedNodeIds = listOf("method:order-service-place"),
                 sourceContext = listOf(
                     SourceSnippetContext(
@@ -309,12 +321,68 @@ class LlmPromptFactoryTest {
         assertTrue(auditPackage.userPrompt.contains("相关源码片段"))
         assertTrue(auditPackage.userPrompt.contains("defaultChannel"))
         assertTrue(auditPackage.userPrompt.contains("candidateChanges"))
-        assertTrue(auditPackage.userPrompt.contains("investigationLeads"))
+        assertTrue(auditPackage.userPrompt.contains("\"patchIntent\""))
+        assertTrue(auditPackage.userPrompt.contains("\"graphPatch\""))
+        assertTrue(auditPackage.systemPrompt.contains("必须提供 patchIntent"))
+        assertTrue(auditPackage.systemPrompt.contains("INSERT_NEW_DECISION"))
+        assertTrue(auditPackage.userPrompt.contains("investigationThreads"))
+        assertTrue(auditPackage.userPrompt.contains("\"threadId\""))
         assertTrue(diffPackage.systemPrompt.contains("差异"))
         assertTrue(diffPackage.userPrompt.contains("当前关注差异"))
         assertTrue(diffPackage.userPrompt.contains("draft.claimType"))
         assertTrue(codePackage.systemPrompt.contains("代码生成"))
         assertTrue(codePackage.userPrompt.contains("目标文件"))
+    }
+
+    @Test
+    fun auditPromptPackageSeparatesFactGraphFromEditableGraphSemantics() {
+        val factory = LlmPromptFactory()
+        val settings = LinkGraphSettingsState(
+            llmEnabled = true,
+            provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+            model = "gpt-4.1-mini",
+        )
+        val factMethod = GraphNode(
+            id = "method:file-download",
+            type = NodeType.METHOD,
+            title = "CommonController.fileDownload",
+            sourceTag = GraphSourceTag.FACT,
+        )
+        val editableDecision = GraphNode(
+            id = "scope:file-download-if",
+            type = NodeType.FLOW_SCOPE,
+            title = "if (delete)",
+            sourceTag = GraphSourceTag.DRAFT_MANUAL,
+            metadata = mapOf("flowchart.kind" to "DECISION"),
+        )
+
+        val auditPackage = factory.buildAuditPromptPackage(
+            context = GraphAuditContext(
+                factGraph = GraphDocument(nodes = listOf(factMethod)),
+                editableGraph = GraphDocument(
+                    nodes = listOf(factMethod, editableDecision),
+                    edges = listOf(
+                        GraphEdge(
+                            id = "edge:file-download->if-delete",
+                            type = com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW,
+                            fromNodeId = factMethod.id,
+                            toNodeId = editableDecision.id,
+                            sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                        ),
+                    ),
+                ),
+                selectedNodeIds = listOf(factMethod.id),
+            ),
+            question = "请确认当前删除分支应该落在哪个真实节点上？",
+            settings = settings,
+        )
+
+        assertTrue(auditPackage.userPrompt.contains("事实图节点"))
+        assertTrue(auditPackage.userPrompt.contains("当前可编辑图节点"))
+        assertTrue(auditPackage.userPrompt.contains("当前可编辑图连线"))
+        assertTrue(auditPackage.userPrompt.contains("if (delete)"))
+        assertTrue(auditPackage.systemPrompt.contains("不要把当前可编辑图误称为事实图"))
+        assertTrue(auditPackage.systemPrompt.contains("必须明确是来自“事实图”还是“当前可编辑图”"))
     }
 
     @Test

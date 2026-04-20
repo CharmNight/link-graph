@@ -36,7 +36,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
     fun testRejectsPlanGenerationWhenNoConfirmedIntentExists() {
         val capability = PlanCapability(
             defaultBudget = RunBudget(),
-            legacyPlanExecutor = { _, _, _ ->
+            planExecutor = { _, _, _ ->
                 GenerationPlan(
                     source = GenerationPlanSource.MOCK,
                     summary = "should not happen",
@@ -69,7 +69,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
     fun testGeneratesPlanAfterReadingConfirmedIntent() {
         val capability = PlanCapability(
             defaultBudget = RunBudget(),
-            legacyPlanExecutor = { input, _, _ ->
+            planExecutor = { input, _, _ ->
                 GenerationPlan(
                     source = GenerationPlanSource.MOCK,
                     summary = "生成计划",
@@ -134,7 +134,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
         )
     }
 
-    fun testBuildsLegacyPlanInputFromRuntimeArtifactsAndToolsInsteadOfInitialPayload() {
+    fun testBuildsPlanInputFromRuntimeArtifactsAndToolsInsteadOfInitialPayload() {
         val runtimeScope = EditScope(
             scopeId = "scope-runtime",
             targetNodeId = "method:upload-file",
@@ -174,7 +174,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
         var capturedPayload: PlanningPayload? = null
         val capability = PlanCapability(
             defaultBudget = RunBudget(),
-            legacyPlanExecutor = { input, _, _ ->
+            planExecutor = { input, _, _ ->
                 capturedPayload = input.planningPayload
                 GenerationPlan(
                     source = GenerationPlanSource.MOCK,
@@ -294,7 +294,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
 
     fun testStopsReadingAdditionalFilesWithinSamePlanStepAfterBudgetIsExhausted() {
         var readCount = 0
-        var legacyInvoked = false
+        var executorInvoked = false
         val firstScope = EditScope(
             scopeId = "scope-1",
             targetNodeId = "method:first",
@@ -315,8 +315,8 @@ class PlanCapabilityTest : BasePlatformTestCase() {
         )
         val capability = PlanCapability(
             defaultBudget = RunBudget(maxFilesRead = 1),
-            legacyPlanExecutor = { _, _, _ ->
-                legacyInvoked = true
+            planExecutor = { _, _, _ ->
+                executorInvoked = true
                 GenerationPlan(
                     source = GenerationPlanSource.MOCK,
                     summary = "不应该执行到这里",
@@ -402,7 +402,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
             ),
         )
 
-        assertFalse(legacyInvoked)
+        assertFalse(executorInvoked)
         assertEquals(1, readCount)
         assertEquals(null, result.output)
         assertEquals(AgentRunFailureReason.MAX_FILES_READ_EXCEEDED, result.finalState.failureReason)

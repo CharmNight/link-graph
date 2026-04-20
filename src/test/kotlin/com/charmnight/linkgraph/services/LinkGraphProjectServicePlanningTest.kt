@@ -26,10 +26,10 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
             sourceTag = GraphSourceTag.FACT,
         )
         val staleFactOnlyNode = GraphNode(
-            id = "method:legacy-fallback",
+            id = "method:fallback-guard",
             type = NodeType.METHOD,
-            title = "LegacyFallback.handle",
-            signature = "com.example.LegacyFallback.handle():void",
+            title = "FallbackGuard.handle",
+            signature = "com.example.FallbackGuard.handle():void",
             sourceTag = GraphSourceTag.FACT,
         )
         val currentDraftNode = GraphNode(
@@ -97,7 +97,7 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
         val plan = snapshot.generationPlan
         assertTrue(plan != null, "应生成计划结果")
         assertTrue(plan.promptPreview.contains("人工补充说明"))
-        assertTrue(!plan.promptPreview.contains("LegacyFallback.handle"))
+        assertTrue(!plan.promptPreview.contains("FallbackGuard.handle"))
     }
 
     fun testRequestGenerationPlanRejectsWhenNoConfirmedDraftChangesExist() {

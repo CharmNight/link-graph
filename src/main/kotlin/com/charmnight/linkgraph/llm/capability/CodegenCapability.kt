@@ -38,12 +38,12 @@ import java.util.UUID
 
 /**
  * 代码生成 capability。
- * 它先读取 confirmed intent，再读取目标代码证据，最后才委托旧 CodeGenerationService 生成草稿并执行本地硬边界校验。
+ * 它先读取 confirmed intent，再读取目标代码证据，最后由正式执行器生成草稿并执行本地硬边界校验。
  */
 internal class CodegenCapability(
     project: Project,
     private val defaultBudget: RunBudget = RunBudget(),
-    private val legacyCodegenExecutor: LegacyCodegenExecutor,
+    private val codegenExecutor: CodegenExecutor,
     private val validationToolFacade: ValidationToolFacade = ValidationToolFacade(),
     private val toolRegistry: AgentToolRegistry = AgentToolRegistry(
         listOf(
@@ -327,7 +327,7 @@ internal class CodegenCapability(
                     snippet = artifact.snippet,
                 )
             }
-            val result = legacyCodegenExecutor.invoke(
+            val result = codegenExecutor.invoke(
                 input.copy(
                     generationContext = input.generationContext.copy(
                         confirmedChanges = confirmedChanges,
@@ -391,7 +391,7 @@ internal class CodegenCapability(
                     stepRecords = state.stepRecords + AgentStepRecord(
                         stepIndex = state.stepIndex,
                         phase = AgentRunPhase.SUCCEEDED,
-                        summary = "delegate-legacy-codegen-service",
+                        summary = "generate-code-drafts",
                     ),
                     lastModelOutput = "已生成代码草稿。",
                 ),
@@ -504,7 +504,7 @@ internal class CodegenCapability(
             .toList()
     }
 
-    fun interface LegacyCodegenExecutor {
+    fun interface CodegenExecutor {
         fun invoke(
             input: CodegenCapabilityInput,
             runtimeContext: AgentRuntimeContext,

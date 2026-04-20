@@ -7,4 +7,3 @@ package com.charmnight.linkgraph.workbench
 typealias QaConversationMessage = AuditConversationMessage
 typealias QaConversationSession = AuditConversationSession
 typealias QaModelTurn = AuditModelTurn
-typealias QaInvestigationLead = AuditInvestigationLead

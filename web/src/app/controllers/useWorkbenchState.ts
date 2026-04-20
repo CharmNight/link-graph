@@ -31,6 +31,7 @@ interface UseWorkbenchStateArgs {
   initialGraph: LinkGraphDocument;
   initialAnchorNodeId: string | null;
   resolveRequestState: (state?: AsyncRequestState | null) => AsyncRequestState;
+  resolveReferenceWorkingGraph: (state: LinkGraphBootstrapState, displayMode?: AnalysisDisplayMode) => LinkGraphDocument | null;
   resolveReferenceFactGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
   resolveFactGraphView: (state: LinkGraphBootstrapState) => FactGraphViewDocument;
   resolveFlowchartView: (state: LinkGraphBootstrapState) => FlowchartViewDocument;
@@ -51,6 +52,7 @@ export function useWorkbenchState({
   initialGraph,
   initialAnchorNodeId,
   resolveRequestState,
+  resolveReferenceWorkingGraph,
   resolveReferenceFactGraph,
   resolveFactGraphView,
   resolveFlowchartView,
@@ -82,6 +84,9 @@ export function useWorkbenchState({
   const [auditQuestionDraft, setAuditQuestionDraft] = useState<string>(() => initialState.auditResult?.question ?? "");
   const [selectionGroupNodeIds, setSelectionGroupNodeIds] = useState<string[]>([]);
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<string[]>([]);
+  const [referenceWorkingGraph, setReferenceWorkingGraph] = useState<LinkGraphDocument | null>(
+    () => resolveReferenceWorkingGraph(initialState, initialState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE),
+  );
   const [factGraph, setFactGraph] = useState<LinkGraphDocument | null>(() => resolveReferenceFactGraph(initialState));
   const [factGraphView, setFactGraphView] = useState<FactGraphViewDocument>(() => resolveFactGraphView(initialState));
   const [flowchartView, setFlowchartView] = useState<FlowchartViewDocument>(() => resolveFlowchartView(initialState));
@@ -104,7 +109,11 @@ export function useWorkbenchState({
   const [mermaidIssues, setMermaidIssues] = useState<MermaidIssue[]>(() => initialState.mermaidIssues ?? []);
   const [diffItems, setDiffItems] = useState<DiffItem[]>(() => initialState.diffItems);
   const [syncPreviewItems, setSyncPreviewItems] = useState(() => initialState.syncPreviewItems);
+  const [draftVersion, setDraftVersion] = useState<number | null>(() => initialState.draftVersion ?? null);
   const [generationPlan, setGenerationPlan] = useState(() => initialState.generationPlan ?? null);
+  const [generationPlanDraftVersion, setGenerationPlanDraftVersion] = useState<number | null>(
+    () => initialState.generationPlanDraftVersion ?? null,
+  );
   const [generationPlanRequestState, setGenerationPlanRequestState] = useState<AsyncRequestState>(() => resolveRequestState(initialState.generationPlanRequestState));
   const [diffReviewRequestState, setDiffReviewRequestState] = useState<AsyncRequestState>(() => resolveRequestState(initialState.diffReviewRequestState));
   const [graphBeautificationResult, setGraphBeautificationResult] = useState<GraphBeautificationResult | null>(
@@ -112,6 +121,9 @@ export function useWorkbenchState({
   );
   const [graphBeautificationRequestState, setGraphBeautificationRequestState] = useState<AsyncRequestState>(() => resolveRequestState(initialState.graphBeautificationRequestState));
   const [generatedCodeDrafts, setGeneratedCodeDrafts] = useState<GeneratedCodeDraft[]>(() => initialState.generatedCodeDrafts ?? []);
+  const [generatedCodeDraftVersion, setGeneratedCodeDraftVersion] = useState<number | null>(
+    () => initialState.generatedCodeDraftVersion ?? null,
+  );
   const [generatedCodeDraftWarnings, setGeneratedCodeDraftWarnings] = useState<string[]>(() => initialState.generatedCodeDraftWarnings ?? []);
   const [generatedCodeDraftSource, setGeneratedCodeDraftSource] = useState(() => initialState.generatedCodeDraftSource ?? null);
   const [generatedCodeDraftPromptPreview, setGeneratedCodeDraftPromptPreview] = useState(
@@ -166,6 +178,8 @@ export function useWorkbenchState({
     setSelectionGroupNodeIds,
     collapsedNodeIds,
     setCollapsedNodeIds,
+    referenceWorkingGraph,
+    setReferenceWorkingGraph,
     factGraph,
     setFactGraph,
     factGraphView,
@@ -198,8 +212,12 @@ export function useWorkbenchState({
     setDiffItems,
     syncPreviewItems,
     setSyncPreviewItems,
+    draftVersion,
+    setDraftVersion,
     generationPlan,
     setGenerationPlan,
+    generationPlanDraftVersion,
+    setGenerationPlanDraftVersion,
     generationPlanRequestState,
     setGenerationPlanRequestState,
     diffReviewRequestState,
@@ -210,6 +228,8 @@ export function useWorkbenchState({
     setGraphBeautificationRequestState,
     generatedCodeDrafts,
     setGeneratedCodeDrafts,
+    generatedCodeDraftVersion,
+    setGeneratedCodeDraftVersion,
     generatedCodeDraftWarnings,
     setGeneratedCodeDraftWarnings,
     generatedCodeDraftSource,

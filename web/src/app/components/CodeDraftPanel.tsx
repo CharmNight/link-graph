@@ -1,11 +1,13 @@
+import { useEffect, useState } from "react";
 import type {
   AsyncRequestState,
   CodeEditOperation,
   GeneratedCodeDraft,
   GeneratedCodeDraftWriteReport,
   LlmResultSource,
+  StageEligibilityDecision,
 } from "../types";
-import { draftStatusLabel } from "../labels";
+import { draftStatusLabel, normalizeWorkbenchWording } from "../labels";
 import { AsyncRequestBanner, resolveEffectiveRequestState } from "./AsyncRequestBanner";
 import { ArtifactTextDisclosure } from "./ArtifactTextDisclosure";
 
@@ -22,8 +24,11 @@ interface CodeDraftPanelProps {
   onRequestArtifact?: (artifactId: string) => void;
   writeReport?: GeneratedCodeDraftWriteReport | null;
   hasPlan?: boolean;
-  hasConfirmedDraftChanges?: boolean;
+  eligibilityDecision?: StageEligibilityDecision | null;
+  draftVersion?: number | null;
+  generatedCodeDraftVersion?: number | null;
   onOpenDraftWorkbench: () => void;
+  onOpenAuditWorkbench?: () => void;
   onRequestPlan: () => void;
   onRequestDrafts: () => void;
   onWriteDrafts: () => void;
@@ -96,6 +101,13 @@ function codeEditOperationSummary(operation: CodeEditOperation, draftTargetPath:
   return `${codeEditOperationLabel(operation.kind)} · ${targetName}`;
 }
 
+function draftFileSummary(draft: GeneratedCodeDraft): string {
+  if ((draft.editOperations ?? []).length > 0) {
+    return `预计改动 ${(draft.editOperations ?? []).length} 处`;
+  }
+  return "当前仅提供完整文件内容";
+}
+
 export function CodeDraftPanel({
   drafts,
   warnings,
@@ -109,8 +121,11 @@ export function CodeDraftPanel({
   onRequestArtifact,
   writeReport,
   hasPlan = false,
-  hasConfirmedDraftChanges = true,
+  eligibilityDecision,
+  draftVersion = null,
+  generatedCodeDraftVersion = null,
   onOpenDraftWorkbench,
+  onOpenAuditWorkbench,
   onRequestPlan,
   onRequestDrafts,
   onWriteDrafts,
@@ -122,23 +137,58 @@ export function CodeDraftPanel({
   const draftError = effectiveRequestState?.phase === "FAILED" || effectiveRequestState?.phase === "TIMED_OUT"
     ? effectiveRequestState.errorMessage ?? null
     : null;
+  const awaitingEligibilityDecision = eligibilityDecision == null;
+  const canRequestDrafts = eligibilityDecision?.allowed === true;
+  const blockedByRisk = Boolean(eligibilityDecision && !eligibilityDecision.allowed && eligibilityDecision.blockingThreadIds.length > 0);
+  const emptyMessage = normalizeWorkbenchWording(drafting
+    ? "正在生成代码 diff，请稍候。"
+    : draftError
+      ? "当前请求失败，可查看上方状态并按需重试。"
+      : eligibilityDecision?.message
+        ?? "代码阶段准入状态尚未就绪。");
+  const emptyDetail = normalizeWorkbenchWording(eligibilityDecision?.detailMessage
+    || (awaitingEligibilityDecision
+      ? "当前还没有收到代码阶段的统一准入决策，请先回到问答链路等待状态同步完成。"
+      : null));
+  const staleDrafts = drafts.length > 0
+    && draftVersion != null
+    && generatedCodeDraftVersion != null
+    && generatedCodeDraftVersion < draftVersion;
+  const staleMessage = staleDrafts
+    ? `当前代码 diff 基于草稿 v${generatedCodeDraftVersion} 生成，当前草稿已更新到 v${draftVersion}，请先重新生成。`
+    : null;
+  const [selectedDraftId, setSelectedDraftId] = useState<string | null>(drafts[0]?.id ?? null);
+  const selectedDraft = drafts.find((draft) => draft.id === selectedDraftId) ?? drafts[0] ?? null;
+  const canWrite = !staleDrafts;
+
+  useEffect(() => {
+    if (drafts.length === 0) {
+      setSelectedDraftId(null);
+      return;
+    }
+    setSelectedDraftId((current) => (current && drafts.some((draft) => draft.id === current) ? current : drafts[0]?.id ?? null));
+  }, [drafts]);
 
   return (
     <section className="side-panel code-draft-panel">
       <div className="preview-head w-full gap-0 block">
         <div>
-          <p className="eyebrow flex items-center justify-between">
-            代码草稿
-
-          <button type="button" className="primary-button" onClick={onWriteDrafts}>
-            写入全部草稿
-          </button>
-          </p>
-          <h2>生成文件</h2>
+          <p className="eyebrow">代码 diff</p>
+          <h2>代码 diff 工作台</h2>
+          {generatedCodeDraftVersion != null ? <p className="muted">基于草稿 v{generatedCodeDraftVersion} 生成</p> : null}
           <p className="muted">来源 {codeDraftSourceLabel(source)}</p>
-          <p className="muted">代码草稿只会生成文件内容，不会自动把结果写回当前画布。</p>
+          <p className="muted">代码阶段优先展示改了什么，完整正文只作为次级查看。</p>
         </div>
-
+        {drafts.length > 0 ? (
+          <div className="panel-actions">
+            <button type="button" className="ghost-button" onClick={onRequestDrafts}>
+              重新生成 diff
+            </button>
+            <button type="button" className="primary-button" onClick={onWriteDrafts} disabled={!canWrite}>
+              写入全部
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="side-panel-scroll-body m-scrollbar">
@@ -150,6 +200,12 @@ export function CodeDraftPanel({
               </p>
             ))}
           </div>
+        ) : null}
+
+        {staleMessage ? (
+          <article className="preview-card code-diff-stale-banner">
+            <p className="muted">{staleMessage}</p>
+          </article>
         ) : null}
 
         <ArtifactTextDisclosure
@@ -180,81 +236,109 @@ export function CodeDraftPanel({
           </div>
         ) : null}
 
-        <div className="preview-list">
-          {drafts.length === 0 ? (
-            <article className="preview-card">
-              <AsyncRequestBanner requestState={effectiveRequestState} />
-              <p className="muted">
-                {drafting
-                  ? "正在生成代码草稿，请稍候。"
-                  : draftError
-                    ? "当前请求失败，可查看上方状态并按需重试。"
-                    : !hasConfirmedDraftChanges
-                      ? "请先确认至少一条草稿变更，再生成代码草稿。"
-                      : hasPlan
-                      ? "还没有代码草稿。当前已经有实现计划，可以直接继续生成草稿。"
-                      : "还没有代码草稿。请先生成计划，再继续生成草稿。"}
-              </p>
-              {!drafting ? (
-                <div className="panel-actions">
-                  {!hasConfirmedDraftChanges ? (
+        {drafts.length === 0 ? (
+          <article className="preview-card">
+            <AsyncRequestBanner requestState={effectiveRequestState} />
+            <p className="muted">{emptyMessage}</p>
+            {emptyDetail ? <p className="muted">{emptyDetail}</p> : null}
+            {!drafting ? (
+              <div className="panel-actions">
+                {!canRequestDrafts ? (
+                  (awaitingEligibilityDecision || blockedByRisk) && onOpenAuditWorkbench ? (
+                    <button type="button" className="primary-button" onClick={onOpenAuditWorkbench}>
+                      前往问答风险
+                    </button>
+                  ) : (
                     <button type="button" className="primary-button" onClick={onOpenDraftWorkbench}>
                       前往草稿层
                     </button>
-                  ) : hasPlan ? (
-                    <button type="button" className="primary-button" onClick={onRequestDrafts}>
-                      {draftError ? "重试生成草稿" : "生成草稿"}
-                    </button>
-                  ) : (
-                    <button type="button" className="primary-button" onClick={onRequestPlan}>
-                      先生成计划
-                    </button>
-                  )}
-                </div>
-              ) : null}
-            </article>
-          ) : (
-            drafts.map((draft) => {
-              const status = resolveDraftStatus(draft, writeReport);
-              return (
-                <article key={draft.id} className="preview-card">
-                  <div className="preview-head">
-                    <strong>{draft.title}</strong>
+                  )
+                ) : hasPlan ? (
+                  <button type="button" className="primary-button" onClick={onRequestDrafts}>
+                    {draftError ? "重试生成 diff" : "生成代码 diff"}
+                  </button>
+                ) : (
+                  <button type="button" className="primary-button" onClick={onRequestPlan}>
+                    先生成实现建议
+                  </button>
+                )}
+              </div>
+            ) : null}
+          </article>
+        ) : selectedDraft ? (
+          <div className="code-diff-layout">
+            <div className="code-diff-file-list">
+              {drafts.map((draft) => {
+                const status = resolveDraftStatus(draft, writeReport);
+                const selected = draft.id === selectedDraft.id;
+                return (
+                  <button
+                    key={draft.id}
+                    type="button"
+                    className={selected ? "code-diff-file-button active" : "code-diff-file-button"}
+                    aria-pressed={selected}
+                    aria-label={`选择代码 diff 文件：${draft.title}`}
+                    onClick={() => setSelectedDraftId(draft.id)}
+                  >
+                    <span className="code-diff-file-name">{draft.title}</span>
+                    <span className="code-diff-file-meta">{draftFileSummary(draft)}</span>
                     <span className={`risk-pill ${statusClassName(status)}`}>{draftStatusLabel(status)}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <article className="preview-card code-diff-detail">
+              <div className="preview-head">
+                <strong>{selectedDraft.title}</strong>
+                <span className={`risk-pill ${statusClassName(resolveDraftStatus(selectedDraft, writeReport))}`}>
+                  {draftStatusLabel(resolveDraftStatus(selectedDraft, writeReport))}
+                </span>
+              </div>
+              <p className="muted">{selectedDraft.targetPath}</p>
+              <div className="panel-actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => onWriteSingleDraft(selectedDraft.id)}
+                  disabled={!canWrite}
+                >
+                  写入当前文件
+                </button>
+                <button type="button" className="ghost-button" onClick={() => onOpenDraft(selectedDraft.targetPath)}>
+                  打开目标文件
+                </button>
+                <button type="button" className="ghost-button" onClick={onOpenDraftWorkbench}>
+                  回到草稿查看业务意图
+                </button>
+              </div>
+
+              <section className="panel-section">
+                <strong>代码 diff</strong>
+                {(selectedDraft.editOperations ?? []).length > 0 ? (
+                  <div className="code-diff-operation-list">
+                    {selectedDraft.editOperations?.map((operation) => (
+                      <div key={operation.operationId} className="code-diff-operation-card">
+                        <strong>{codeEditOperationSummary(operation, selectedDraft.targetPath)}</strong>
+                        <pre className="prompt-preview code-diff-payload">{operation.payload}</pre>
+                      </div>
+                    ))}
                   </div>
-                  <p className="muted">{draft.targetPath}</p>
-                  {draft.editOperations?.length ? (
-                    <p className="muted">结构化改写 {draft.editOperations.length} 条，写回时会走本地 scope-safe apply。</p>
-                  ) : null}
-                  <div className="panel-actions">
-                    <button type="button" className="primary-button" onClick={() => onWriteSingleDraft(draft.id)}>
-                      写入 {draft.title}
-                    </button>
-                    <button type="button" className="ghost-button" onClick={() => onOpenDraft(draft.targetPath)}>
-                      打开 {draft.title}
-                    </button>
-                  </div>
-                  <ArtifactTextDisclosure
-                    buttonLabel="查看正文"
-                    expandedLabel="隐藏正文"
-                    artifactId={draft.contentArtifactId ?? null}
-                    text={draft.content ?? (draft.contentArtifactId ? resolveArtifactText?.(draft.contentArtifactId) : null)}
-                    onRequestArtifact={onRequestArtifact}
-                  />
-                  {draft.editOperations?.length ? (
-                    <div className="warning-list">
-                      {draft.editOperations.map((operation) => (
-                        <p key={operation.operationId} className="muted">
-                          {codeEditOperationSummary(operation, draft.targetPath)}
-                        </p>
-                      ))}
-                    </div>
-                  ) : null}
-                </article>
-              );
-            })
-          )}
-        </div>
+                ) : (
+                  <p className="muted">当前结果没有结构化改写操作，完整文件内容在下方按需展开查看。</p>
+                )}
+              </section>
+
+              <ArtifactTextDisclosure
+                buttonLabel="查看完整内容"
+                expandedLabel="隐藏完整内容"
+                artifactId={selectedDraft.contentArtifactId ?? null}
+                text={selectedDraft.content ?? (selectedDraft.contentArtifactId ? resolveArtifactText?.(selectedDraft.contentArtifactId) : null)}
+                onRequestArtifact={onRequestArtifact}
+              />
+            </article>
+          </div>
+        ) : null}
       </div>
     </section>
   );

@@ -38,7 +38,9 @@ vi.mock("@xyflow/react", () => ({
 }));
 
 vi.mock("../../../../app/components/graph/nodes/FactGraphNodeCard", () => ({
-  FactGraphNodeCard: () => <div data-testid="fact-graph-node-card">fact-node</div>,
+  FactGraphNodeCard: ({ draftCompareStatus }: { draftCompareStatus?: string }) => (
+    <div data-testid="fact-graph-node-card" data-compare-status={draftCompareStatus ?? ""}>fact-node</div>
+  ),
 }));
 
 describe("FACT_GRAPH_NODE_TYPES", () => {
@@ -190,5 +192,44 @@ describe("FACT_GRAPH_NODE_TYPES", () => {
         ],
       },
     });
+  });
+
+  it("marks fact nodes and edges with draft compare annotations when single-graph compare is active", () => {
+    const builtNodes = buildFactGraphNodes({
+      nodes: [
+        {
+          id: "method:submit-order",
+          type: "METHOD",
+          title: "OrderService.submit",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN",
+          bindingStatus: "BOUND",
+        },
+      ],
+      selectedNodeId: "method:submit-order",
+      draftCompareNodeStatuses: {
+        "method:submit-order": "MODIFIED",
+      },
+      onExpandOverflowNode: vi.fn(),
+      nodeSizeRegistry: createNodeSizeRegistry(),
+    });
+    const builtEdge = buildFactGraphEdges({
+      edges: [
+        {
+          id: "edge:anchor->tail",
+          type: "CALL",
+          source: "method:anchor",
+          target: "method:tail",
+        },
+      ],
+      draftCompareEdgeStatuses: {
+        "edge:anchor->tail": "MODIFIED",
+      },
+    })[0];
+
+    expect(builtNodes[0]?.className ?? "").toContain("is-draft-compare-modified");
+    expect(builtNodes[0]?.data.draftCompareStatus).toBe("MODIFIED");
+    expect(builtEdge?.className ?? "").toContain("is-draft-compare-modified");
   });
 });

@@ -3,6 +3,7 @@ package com.charmnight.linkgraph.workbench
 import com.charmnight.linkgraph.llm.EditScope
 import com.charmnight.linkgraph.llm.ResultEvidenceFinding
 import com.charmnight.linkgraph.llm.ResultEvidenceLevel
+import com.charmnight.linkgraph.model.GraphPatch
 
 enum class StepGranularity {
     BUSINESS,
@@ -25,11 +26,29 @@ enum class CandidateDraftChangeStatus {
     SUPERSEDED,
 }
 
-enum class AuditInvestigationLeadStatus {
+enum class InvestigationThreadStatus {
     OPEN,
     PROMOTED,
     DISMISSED,
+    BLOCKED,
     SUPERSEDED,
+}
+
+enum class RiskResolutionStatus {
+    UNRESOLVED,
+    DEFERRED,
+    ACCEPTED_RISK,
+    EVIDENCE_EXHAUSTED,
+    DISMISSED,
+    PROMOTED,
+}
+
+enum class InvestigationTurnOutcomeStatus {
+    PROMOTED_TO_CANDIDATE,
+    OPEN_WITH_PROGRESS,
+    OPEN_NO_PROGRESS,
+    DISMISSED,
+    BLOCKED,
 }
 
 enum class DraftEntryKind {
@@ -37,9 +56,35 @@ enum class DraftEntryKind {
     NOTE,
 }
 
+enum class CandidatePatchIntentMode {
+    UPDATE_EXISTING_NODE,
+    INSERT_NEW_DECISION,
+    INSERT_NEW_ACTION,
+    ANNOTATION_ONLY,
+}
+
+data class CandidatePatchIntent(
+    val mode: CandidatePatchIntentMode,
+    val targetNodeId: String? = null,
+    val attachEdgeId: String? = null,
+    val falseBranchTargetNodeId: String? = null,
+)
+
 enum class AuditMessageRole {
     USER,
     ASSISTANT,
+}
+
+enum class QaRequestKind {
+    ASK,
+    INVESTIGATE_THREAD,
+}
+
+enum class StageEligibilityTarget(
+    val label: String,
+) {
+    PLAN("实现计划"),
+    CODE("代码草稿"),
 }
 
 data class WorkbenchStep(
@@ -69,6 +114,8 @@ data class CandidateDraftChange(
     val claimType: String? = null,
     val evidence: List<ResultEvidenceFinding> = emptyList(),
     val editScopes: List<EditScope> = emptyList(),
+    val patchIntent: CandidatePatchIntent? = null,
+    val graphPatch: GraphPatch? = null,
 )
 
 fun CandidateDraftChange.hasDirectEvidence(): Boolean {
@@ -82,9 +129,31 @@ fun CandidateDraftChange.isEligibleForDraftConfirmation(): Boolean {
     return status == CandidateDraftChangeStatus.PENDING_CONFIRMATION && hasDirectEvidence()
 }
 
-data class AuditInvestigationLead(
-    val leadId: String,
-    val status: AuditInvestigationLeadStatus,
+data class InvestigationEvidenceDelta(
+    val addedNodeIds: List<String> = emptyList(),
+    val addedFilePaths: List<String> = emptyList(),
+    val previousStrongestEvidenceLevel: ResultEvidenceLevel? = null,
+    val currentStrongestEvidenceLevel: ResultEvidenceLevel? = null,
+    val hitRecommendedQuestion: Boolean = false,
+)
+
+data class InvestigationTurnOutcome(
+    val outcomeId: String,
+    val threadId: String,
+    val status: InvestigationTurnOutcomeStatus,
+    val summary: String = "",
+    val detail: String = "",
+    val candidateChangeId: String? = null,
+    val blockedReason: String? = null,
+    val evidenceDelta: InvestigationEvidenceDelta = InvestigationEvidenceDelta(),
+    val observedNodeIds: List<String> = emptyList(),
+    val observedFilePaths: List<String> = emptyList(),
+    val strongestEvidenceLevel: ResultEvidenceLevel? = null,
+)
+
+data class InvestigationThread(
+    val threadId: String,
+    val status: InvestigationThreadStatus,
     val title: String = "",
     val targetStepIds: List<String> = emptyList(),
     val targetNodeIds: List<String> = emptyList(),
@@ -93,6 +162,14 @@ data class AuditInvestigationLead(
     val recommendedQuestion: String = "",
     val claimType: String? = null,
     val evidence: List<ResultEvidenceFinding> = emptyList(),
+    val latestTurnOutcomeId: String? = null,
+    val resolution: RiskResolution? = null,
+)
+
+data class RiskResolution(
+    val threadId: String,
+    val status: RiskResolutionStatus,
+    val note: String = "",
 )
 
 data class DraftWorkbenchEntry(
@@ -109,6 +186,8 @@ data class DraftWorkbenchEntry(
     val claimType: String? = null,
     val evidence: List<ResultEvidenceFinding> = emptyList(),
     val editScopes: List<EditScope> = emptyList(),
+    val patchIntent: CandidatePatchIntent? = null,
+    val graphPatch: GraphPatch? = null,
 )
 
 data class AuditConversationMessage(
@@ -116,6 +195,7 @@ data class AuditConversationMessage(
     val role: AuditMessageRole,
     val content: String,
     val focusTargetId: String? = null,
+    val turnOutcomeId: String? = null,
 )
 
 data class AuditConversationSession(
@@ -123,23 +203,55 @@ data class AuditConversationSession(
     val scopeKey: String,
     val messages: List<AuditConversationMessage> = emptyList(),
     val candidateChanges: List<CandidateDraftChange> = emptyList(),
-    val investigationLeads: List<AuditInvestigationLead> = emptyList(),
+    val investigationThreads: List<InvestigationThread> = emptyList(),
+    val turnOutcomes: List<InvestigationTurnOutcome> = emptyList(),
     val focusTargetId: String? = null,
 )
 
 data class AuditModelTurn(
     val answer: String,
     val candidateChanges: List<CandidateDraftChange> = emptyList(),
-    val investigationLeads: List<AuditInvestigationLead> = emptyList(),
-    val sourceLeadId: String? = null,
+    val investigationThreads: List<InvestigationThread> = emptyList(),
+    val sourceThreadId: String? = null,
+    val observedNodeIds: List<String> = emptyList(),
+    val observedFilePaths: List<String> = emptyList(),
+    val blockedReason: String? = null,
 )
 
 data class AuditConversationTurnResult(
     val session: AuditConversationSession,
     val newCandidateChanges: List<CandidateDraftChange> = emptyList(),
-    val newInvestigationLeads: List<AuditInvestigationLead> = emptyList(),
+    val newInvestigationThreads: List<InvestigationThread> = emptyList(),
+    val latestTurnOutcome: InvestigationTurnOutcome? = null,
+    val recentTurnOutcomes: List<InvestigationTurnOutcome> = emptyList(),
     val draftWrites: List<DraftWorkbenchEntry> = emptyList(),
 )
+
+data class ReplayableQaRequest(
+    val requestId: String,
+    val kind: QaRequestKind,
+    val question: String,
+    val selectedNodeIds: List<String> = emptyList(),
+    val sourceThreadId: String? = null,
+    val baseSession: AuditConversationSession? = null,
+)
+
+data class QaRequestRecoveryState(
+    val lastSubmittedRequest: ReplayableQaRequest? = null,
+    val lastFailedRequest: ReplayableQaRequest? = null,
+)
+
+data class StageEligibilityDecision(
+    val target: StageEligibilityTarget,
+    val allowed: Boolean,
+    val message: String,
+    val detailMessage: String = "",
+    val blockingThreadIds: List<String> = emptyList(),
+    val unresolvedThreadIds: List<String> = emptyList(),
+) {
+    val stageLabel: String
+        get() = target.label
+}
 
 data class DraftWorkbenchState(
     val draftChanges: List<DraftWorkbenchEntry> = emptyList(),
@@ -150,6 +262,7 @@ data class DraftConfirmationResult(
     val draftState: DraftWorkbenchState,
     val draftChanges: List<DraftWorkbenchEntry> = emptyList(),
     val graphChanged: Boolean = false,
+    val failureReason: String? = null,
 )
 
 data class DraftRemovalResult(

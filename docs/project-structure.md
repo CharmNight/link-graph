@@ -33,10 +33,8 @@
   - JCEF 容器、前后端桥接、传输渲染和前端资源加载。
 - `services`
   - 项目级编排服务与工作流协调。
-- `extract`
-  - 代码和资源的事实抽取。
 - `semantic`
-  - 语义分析与主体定位。
+  - 语义分析、事实构建与主体定位。
 - `model`
   - 共享图模型定义。
 - `mermaid`、`diff`、`sync`、`navigation`、`codegen`、`llm`、`settings`

@@ -38,7 +38,9 @@ vi.mock("@xyflow/react", () => ({
 }));
 
 vi.mock("../../../../app/components/graph/nodes/ResourceRelationNodeCard", () => ({
-  ResourceRelationNodeCard: () => <div data-testid="resource-node-card">resource-node</div>,
+  ResourceRelationNodeCard: ({ draftCompareStatus }: { draftCompareStatus?: string }) => (
+    <div data-testid="resource-node-card" data-compare-status={draftCompareStatus ?? ""}>resource-node</div>
+  ),
 }));
 
 describe("RESOURCE_RELATION_NODE_TYPES", () => {
@@ -183,5 +185,43 @@ describe("RESOURCE_RELATION_NODE_TYPES", () => {
         ],
       },
     });
+  });
+
+  it("marks resource nodes and edges with draft compare annotations when single-graph compare is active", () => {
+    const builtNodes = buildResourceRelationNodes({
+      nodes: [
+        {
+          id: "resource:http",
+          type: "HTTP_ENDPOINT",
+          title: "GET /common/download",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN",
+          bindingStatus: "BOUND",
+        },
+      ],
+      selectedNodeId: "resource:http",
+      draftCompareNodeStatuses: {
+        "resource:http": "MODIFIED",
+      },
+      nodeSizeRegistry: createNodeSizeRegistry(),
+    });
+    const builtEdge = buildResourceRelationEdges({
+      edges: [
+        {
+          id: "edge:method->resource",
+          type: "ROUTES_TO",
+          source: "method:anchor",
+          target: "resource:http",
+        },
+      ],
+      draftCompareEdgeStatuses: {
+        "edge:method->resource": "MODIFIED",
+      },
+    })[0];
+
+    expect(builtNodes[0]?.className ?? "").toContain("is-draft-compare-modified");
+    expect(builtNodes[0]?.data.draftCompareStatus).toBe("MODIFIED");
+    expect(builtEdge?.className ?? "").toContain("is-draft-compare-modified");
   });
 });

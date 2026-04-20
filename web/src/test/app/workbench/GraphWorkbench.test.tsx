@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { GraphWorkbench } from "../../../app/workbench/GraphWorkbench";
+import themeCss from "../../../app/theme.css?raw";
 
 describe("GraphWorkbench", () => {
   it("owns the toolbar legend canvas property drawer and workbench slots in one stable page skeleton", () => {
@@ -37,6 +38,7 @@ describe("GraphWorkbench", () => {
 
     const shell = screen.getByTestId("graph-workbench");
     const layout = shell.querySelector(".workbench-layout") as HTMLElement;
+    const stage = shell.querySelector(".workspace-stage-content") as HTMLElement;
     const panel = screen.getByLabelText("工作台").closest(".workbench-panel") as HTMLElement;
     const separator = screen.getByRole("separator", { name: "调整工作台宽度" });
 
@@ -57,6 +59,7 @@ describe("GraphWorkbench", () => {
     fireEvent.mouseUp(window);
 
     expect(panel.style.width).toBe("500px");
+    expect(stage.style.width).toBe("676px");
   });
 
   it("does not impose a fixed maximum width smaller than the remaining layout space", () => {
@@ -90,5 +93,11 @@ describe("GraphWorkbench", () => {
     fireEvent.mouseUp(window);
 
     expect(panel.style.width).toBe("880px");
+  });
+
+  it("lets narrow screens scroll vertically instead of clipping the stage header", () => {
+    expect(themeCss).toMatch(
+      /@media\s*\(max-width:\s*780px\)\s*\{[\s\S]*?\.app-shell\s*\{[\s\S]*?height:\s*auto;[\s\S]*?overflow-y:\s*auto;[\s\S]*?\}[\s\S]*?\.workspace-stage\s*\{[\s\S]*?overflow:\s*visible;[\s\S]*?\}[\s\S]*?\.graph-canvas-panel\s*\{[\s\S]*?min-height:\s*420px;[\s\S]*?\}[\s\S]*?\}/s,
+    );
   });
 });

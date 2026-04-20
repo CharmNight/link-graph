@@ -1,4 +1,5 @@
 import type {
+  DraftCompareProjection,
   GraphFocusRequest,
   GraphSurfaceExperimentFlags,
   GraphPosition,
@@ -9,6 +10,7 @@ export interface ViewStageProps {
   focusNodeRequest?: GraphFocusRequest | null;
   explanationFocusNodeId?: string | null;
   draftChangedNodeIds?: string[];
+  draftCompareProjection?: DraftCompareProjection | null;
   selectedGroupNodeIds?: string[];
   hiddenNodeIds?: string[];
   collapsedNodeIds?: string[];

@@ -14,12 +14,23 @@ import com.charmnight.linkgraph.llm.artifact.AgentArtifactStoreService
 import com.charmnight.linkgraph.llm.artifact.ArtifactStore
 import com.charmnight.linkgraph.llm.capability.QaCapability
 import com.charmnight.linkgraph.llm.capability.QaCapabilityInput
+import com.charmnight.linkgraph.llm.remoteConnectionOrNull
 import com.charmnight.linkgraph.llm.runtime.AgentRunCoordinator
 import com.charmnight.linkgraph.llm.runtime.AgentRunResult
 import com.charmnight.linkgraph.llm.runtime.AgentRuntimeContext
+import com.charmnight.linkgraph.llm.usesRemoteProvider
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.GraphEditorStateService.OperationFeedbackLevel
+import com.charmnight.linkgraph.workbench.AuditConversationMessage
+import com.charmnight.linkgraph.workbench.AuditConversationService
+import com.charmnight.linkgraph.workbench.AuditConversationSession
+import com.charmnight.linkgraph.workbench.AuditMessageRole
+import com.charmnight.linkgraph.workbench.AuditModelTurn
+import com.charmnight.linkgraph.workbench.QaRequestLifecycleService
+import com.charmnight.linkgraph.workbench.ReplayableQaRequest
+import com.charmnight.linkgraph.workbench.RiskResolutionService
+import com.charmnight.linkgraph.workbench.RiskResolutionStatus
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
@@ -58,10 +69,19 @@ internal class ReviewWorkflow(
     private val artifactStoreProvider: () -> ArtifactStore = {
         project.getService(AgentArtifactStoreService::class.java).artifactStore
     },
+    /** 运行时链路追踪是否开启。 */
+    private val runtimeQaTraceEnabled: Boolean =
+        System.getenv("LINKGRAPH_DEBUG_TRACE")?.trim()?.equals("true", ignoreCase = true) == true,
     /** 问答 capability 工厂。 */
-    private val qaCapabilityFactory: (QaCapability.LegacyAuditExecutor) -> QaCapability = { legacyExecutor ->
-        QaCapability(legacyAuditExecutor = legacyExecutor)
+    private val qaCapabilityFactory: (QaCapability.AuditExecutor) -> QaCapability = { auditExecutor ->
+        QaCapability(auditExecutor = auditExecutor)
     },
+    /** 可重放问答请求生命周期服务。 */
+    private val qaRequestLifecycleService: QaRequestLifecycleService = QaRequestLifecycleService(),
+    /** 问答会话归一化服务。 */
+    private val auditConversationService: AuditConversationService = AuditConversationService(),
+    /** 风险决策与阶段准入服务。 */
+    private val riskResolutionService: RiskResolutionService = RiskResolutionService(),
 ) {
     /**
      * 基于当前工作图发起同步问答。
@@ -69,21 +89,26 @@ internal class ReviewWorkflow(
     fun requestAudit(
         question: String,
         selectedNodeIds: List<String> = emptyList(),
-        sourceLeadId: String? = null,
+        sourceThreadId: String? = null,
     ): GraphPatchResult {
         val snapshot = session.snapshot()
+        val request = qaRequestLifecycleService.buildReplayableRequest(
+            snapshot = snapshot,
+            question = question,
+            selectedNodeIds = selectedNodeIds,
+            sourceThreadId = sourceThreadId,
+        )
         val result = executeQaRuntime(
             input = buildQaCapabilityInput(
                 snapshot = snapshot,
-                question = question,
-                selectedNodeIds = selectedNodeIds,
-                sourceLeadId = sourceLeadId,
+                request = request,
             ),
         )
+        val output = normalizeAuditResult(requireNotNull(result.output), request)
         val requestState = asyncRequestLifecycle.withRuntimeMetadata(
             requestState = GraphEditorStateService.AsyncRequestState.succeeded(
                 scene = "问答",
-                statusMessage = if (result.output?.newCandidateChanges?.isNotEmpty() == true) {
+                statusMessage = if (output.newCandidateChanges.isNotEmpty()) {
                     "问答完成，已生成待确认变更。"
                 } else {
                     "问答完成。"
@@ -91,15 +116,22 @@ internal class ReviewWorkflow(
             ),
             runtimeState = result.finalState,
         )
+        val (planDecision, codeDecision) = evaluateEligibility(snapshot.copy(auditResult = output))
         session.mutateBatch {
             apply {
                 markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(result))
             }
             apply {
-                markAuditResult(requireNotNull(result.output), requestState)
+                markAuditResult(output, requestState, completedRequest = request)
+            }
+            apply {
+                markPlanEligibilityDecision(planDecision)
+            }
+            apply {
+                markCodeEligibilityDecision(codeDecision)
             }
         }
-        return requireNotNull(result.output)
+        return output
     }
 
     /**
@@ -108,192 +140,76 @@ internal class ReviewWorkflow(
     fun requestAuditAsync(
         question: String,
         selectedNodeIds: List<String> = emptyList(),
-        sourceLeadId: String? = null,
+        sourceThreadId: String? = null,
     ) {
-        val requestId = asyncRequestLifecycle.beginAuditRequest()
         val snapshot = session.snapshot()
-        val settings = settingsProvider()
-        val presentation = asyncRequestLifecycle.buildAsyncRequestPresentation(
-            requestId = requestId,
-            sceneLabel = "问答",
-            settings = settings,
+        val request = qaRequestLifecycleService.buildReplayableRequest(
+            snapshot = snapshot,
+            question = question,
+            selectedNodeIds = selectedNodeIds,
+            sourceThreadId = sourceThreadId,
         )
-        val previewUpdater = if (presentation.requestState.streaming) {
-            asyncRequestLifecycle.createStreamingPreviewUpdater(
-                requestId,
-                GraphEditorStateService::updateAuditRequestPreview,
-            )
-        } else {
-            null
+        executeAuditAsync(
+            snapshot = snapshot,
+            request = request,
+            feedbackMessage = buildAuditStartMessage(
+                remoteRequested = effectiveRemoteRequested(),
+                streamingSupported = effectiveStreamingSupported(),
+                selectedNodeIds = selectedNodeIds,
+            ),
+        )
+    }
+
+    fun retryLastAuditRequestAsync() {
+        val snapshot = session.snapshot()
+        val request = snapshot.qaRequestRecoveryState.lastFailedRequest
+        if (request == null) {
+            session.mutate {
+                markOperationFeedback(
+                    OperationFeedbackLevel.WARNING,
+                    "当前没有可直接重试的失败问答请求。",
+                )
+            }
+            return
         }
+        executeAuditAsync(
+            snapshot = snapshot,
+            request = request,
+            feedbackMessage = "正在重试上一次失败的问答请求，请稍候。",
+        )
+    }
+
+    fun resolveInvestigationThread(
+        threadId: String,
+        status: RiskResolutionStatus,
+        note: String = "",
+    ) {
+        val snapshot = session.snapshot()
+        val auditResult = snapshot.auditResult ?: return
+        val updatedResult = riskResolutionService.applyResolution(
+            result = auditResult,
+            threadId = threadId,
+            status = status,
+            note = note,
+        ) ?: return
+        val (planDecision, codeDecision) = evaluateEligibility(snapshot.copy(auditResult = updatedResult))
         session.mutateBatch {
             apply {
-                beginAuditRequest(presentation.requestState)
+                markAuditResult(updatedResult, snapshot.auditRequestState)
             }
             apply {
-                markRuntimeArtifactSummaries("qa", emptyList())
+                markPlanEligibilityDecision(planDecision)
+            }
+            apply {
+                markCodeEligibilityDecision(codeDecision)
             }
             apply {
                 markOperationFeedback(
-                    OperationFeedbackLevel.INFO,
-                    if (presentation.remoteRequested) {
-                        if (presentation.streamingSupported) {
-                            "已发起远程 LLM 问答请求，当前采用流式输出。"
-                        } else {
-                            "已发起远程 LLM 问答请求，当前采用完整返回。"
-                        }
-                    } else {
-                        if (selectedNodeIds.isEmpty()) {
-                            "正在对整个链路执行问答，请稍候。"
-                        } else {
-                            "正在对当前选中范围执行问答，请稍候。"
-                        }
-                    },
+                    OperationFeedbackLevel.SUCCESS,
+                    resolutionFeedbackMessage(status, codeDecision.allowed),
+                    preserveLastMessageType = true,
                 )
             }
-        }
-        asyncRequestLifecycle.logAsyncRequestEvent(logger, "started", presentation.requestState)
-        asyncRequestLifecycle.scheduleAsyncRequestTimeout(
-            requestId = requestId,
-            timeoutMillis = presentation.timeoutMillis,
-            completeRequest = asyncRequestLifecycle::completeAuditRequest,
-            onTimeout = {
-                val timedOutState = asyncRequestLifecycle.buildTimedOutRequestState(presentation)
-                asyncRequestLifecycle.logAsyncRequestEvent(logger, "timedOut", timedOutState)
-                session.mutateBatch {
-                    apply {
-                                markAuditRequestFailed(
-                            timedOutState.errorMessage ?: "问答超时",
-                            timedOutState,
-                        )
-                    }
-                    apply {
-                        markOperationFeedback(
-                            OperationFeedbackLevel.ERROR,
-                            timedOutState.errorMessage ?: "问答超时",
-                        )
-                    }
-                }
-            },
-        )
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val result = runCatching {
-                executeQaRuntime(
-                    input = buildQaCapabilityInput(
-                        snapshot = snapshot,
-                        question = question,
-                        selectedNodeIds = selectedNodeIds,
-                        sourceLeadId = sourceLeadId,
-                        onPreview = previewUpdater,
-                    ),
-                )
-            }
-            ApplicationManager.getApplication().invokeLater(
-                {
-                    if (project.isDisposed || !asyncRequestLifecycle.completeAuditRequest(requestId)) {
-                        return@invokeLater
-                    }
-                    result.fold(
-                        onSuccess = { runtimeResult ->
-                            val auditResult = runtimeResult.output
-                            if (auditResult == null) {
-                                val message = "问答失败：runtime 未返回结果。"
-                                val requestState = asyncRequestLifecycle.withRuntimeMetadata(
-                                    requestState = asyncRequestLifecycle.buildFailedRequestState(
-                                        presentation = presentation,
-                                        message = message,
-                                    ),
-                                    runtimeState = runtimeResult.finalState,
-                                )
-                                asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
-                                session.mutateBatch {
-                                    apply {
-                                        markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(runtimeResult))
-                                    }
-                                    apply {
-                                        markAuditRequestFailed(message, requestState)
-                                    }
-                                    apply {
-                                        markOperationFeedback(
-                                            OperationFeedbackLevel.ERROR,
-                                            message,
-                                            preserveLastMessageType = true,
-                                        )
-                                    }
-                                }
-                                return@fold
-                            }
-                            val requestState = asyncRequestLifecycle.withRuntimeMetadata(
-                                requestState = asyncRequestLifecycle.buildSucceededRequestState(
-                                    presentation = presentation,
-                                    successMessage = if (auditResult.newCandidateChanges.isNotEmpty()) {
-                                        "问答完成，已生成待确认变更。"
-                                    } else {
-                                        "问答完成。"
-                                    },
-                                    completedRemotely = auditResult.source == LlmResultSource.REMOTE,
-                                    warnings = auditResult.warnings,
-                                ),
-                                runtimeState = runtimeResult.finalState,
-                            )
-                            asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
-                            debugLazy(logger.isDebugEnabled, logger::debug) {
-                                "问答 runtime 成功: runId=${runtimeResult.finalState.runId}, capabilityId=${runtimeResult.finalState.capabilityId}, " +
-                                    "stepIndex=${runtimeResult.finalState.stepIndex}, artifactCount=${runtimeResult.artifactSummaries.size}, " +
-                                    "filesRead=${runtimeResult.finalState.budget.filesRead}, stepsUsed=${runtimeResult.finalState.budget.usedSteps}, " +
-                                    "failureReason=${runtimeResult.finalState.failureReason}"
-                            }
-                            val feedbackLevel = if (requestState.fallbackUsed) {
-                                OperationFeedbackLevel.WARNING
-                            } else {
-                                OperationFeedbackLevel.SUCCESS
-                            }
-                            session.mutateBatch {
-                                apply {
-                                    markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(runtimeResult))
-                                }
-                                apply {
-                                    markAuditResult(auditResult, requestState)
-                                }
-                                apply {
-                                    markOperationFeedback(
-                                        feedbackLevel,
-                                        requestState.statusMessage
-                                            ?: if (auditResult.newCandidateChanges.isNotEmpty()) {
-                                                "问答完成，已生成待确认变更。"
-                                            } else {
-                                                "问答完成。"
-                                            },
-                                        preserveLastMessageType = true,
-                                    )
-                                }
-                            }
-                        },
-                        onFailure = { throwable ->
-                            logger.warn("异步问答失败", throwable)
-                            val message = "问答失败：${throwable.message ?: throwable.javaClass.simpleName}"
-                            val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
-                            asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
-                            session.mutateBatch {
-                                apply {
-                                    markRuntimeArtifactSummaries("qa", emptyList())
-                                }
-                                apply {
-                                    markAuditRequestFailed(message, requestState)
-                                }
-                                apply {
-                                    markOperationFeedback(
-                                        OperationFeedbackLevel.ERROR,
-                                        message,
-                                        preserveLastMessageType = true,
-                                    )
-                                }
-                            }
-                        },
-                    )
-                },
-                ModalityState.defaultModalityState(),
-            )
         }
     }
 
@@ -305,7 +221,7 @@ internal class ReviewWorkflow(
         input: QaCapabilityInput,
     ): AgentRunResult<GraphPatchResult> {
         val capability = qaCapabilityFactory(
-            QaCapability.LegacyAuditExecutor { qaInput, _, _ ->
+            QaCapability.AuditExecutor { qaInput, _, _ ->
                 val overrideExecutor = auditExecutorOverrideProvider()
                 if (overrideExecutor != null) {
                     overrideExecutor(qaInput.auditContext, qaInput.question)
@@ -315,7 +231,7 @@ internal class ReviewWorkflow(
                         question = qaInput.question,
                         settings = qaInput.settings,
                         session = qaInput.session,
-                        sourceLeadId = qaInput.sourceLeadId,
+                        sourceThreadId = qaInput.sourceThreadId,
                         onPreview = qaInput.onPreview,
                     )
                 }
@@ -349,33 +265,337 @@ internal class ReviewWorkflow(
         return result.artifactSummaries.map(GraphEditorStateService.RuntimeArtifactSummary::from)
     }
 
+    private fun runtimeTrace(message: () -> String) {
+        if (runtimeQaTraceEnabled) {
+            logger.warn(message())
+        }
+    }
+
     /**
      * 基于当前快照构造问答 capability 输入。
      * 第一阶段仍复用 PlanningContextFactory 的问答图和源码证据构造，避免在 runtime 壳落地前提前拆散主链路。
      */
     private fun buildQaCapabilityInput(
         snapshot: GraphEditorStateService.Snapshot,
-        question: String,
-        selectedNodeIds: List<String>,
-        sourceLeadId: String?,
+        request: ReplayableQaRequest,
         onPreview: ((String, Boolean) -> Unit)? = null,
     ): QaCapabilityInput {
         val auditGraphs = planningContextFactory.buildAuditGraphs(
             snapshot = snapshot,
-            selectedNodeIds = selectedNodeIds,
+            selectedNodeIds = request.selectedNodeIds,
             collectSourceEvidence = false,
         )
         return QaCapabilityInput(
-            question = question,
+            question = request.question,
             auditContext = GraphAuditContext(
                 factGraph = auditGraphs.factGraph,
-                draftGraph = auditGraphs.draftGraph,
-                selectedNodeIds = selectedNodeIds,
+                editableGraph = auditGraphs.editableGraph,
+                selectedNodeIds = request.selectedNodeIds,
             ),
             settings = settingsProvider(),
-            session = snapshot.auditResult?.auditSession,
-            sourceLeadId = sourceLeadId,
+            session = request.baseSession ?: snapshot.auditResult?.auditSession,
+            sourceThreadId = request.sourceThreadId,
             onPreview = onPreview,
+        )
+    }
+
+    private fun executeAuditAsync(
+        snapshot: GraphEditorStateService.Snapshot,
+        request: ReplayableQaRequest,
+        feedbackMessage: String,
+    ) {
+        val requestId = asyncRequestLifecycle.beginAuditRequest()
+        val settings = settingsProvider()
+        val presentation = asyncRequestLifecycle.buildAsyncRequestPresentation(
+            requestId = requestId,
+            sceneLabel = "问答",
+            settings = settings,
+        )
+        val previewUpdater = if (presentation.requestState.streaming) {
+            asyncRequestLifecycle.createStreamingPreviewUpdater(
+                requestId,
+                GraphEditorStateService::updateAuditRequestPreview,
+            )
+        } else {
+            null
+        }
+        session.mutateBatch {
+            apply {
+                beginAuditRequest(presentation.requestState, submittedRequest = request)
+            }
+            apply {
+                markRuntimeArtifactSummaries("qa", emptyList())
+            }
+            apply {
+                markOperationFeedback(
+                    OperationFeedbackLevel.INFO,
+                    feedbackMessage,
+                )
+            }
+        }
+        asyncRequestLifecycle.logAsyncRequestEvent(logger, "started", presentation.requestState)
+        asyncRequestLifecycle.scheduleAsyncRequestTimeout(
+            requestId = requestId,
+            timeoutMillis = presentation.timeoutMillis,
+            completeRequest = asyncRequestLifecycle::completeAuditRequest,
+            onTimeout = {
+                val timedOutState = asyncRequestLifecycle.buildTimedOutRequestState(presentation)
+                asyncRequestLifecycle.logAsyncRequestEvent(logger, "timedOut", timedOutState)
+                session.mutateBatch {
+                    apply {
+                        markAuditRequestFailed(
+                            timedOutState.errorMessage ?: "问答超时",
+                            timedOutState,
+                            failedRequest = request,
+                        )
+                    }
+                    apply {
+                        markOperationFeedback(
+                            OperationFeedbackLevel.ERROR,
+                            timedOutState.errorMessage ?: "问答超时",
+                        )
+                    }
+                }
+            },
+        )
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val result = runCatching {
+                executeQaRuntime(
+                    input = buildQaCapabilityInput(
+                        snapshot = snapshot,
+                        request = request,
+                        onPreview = previewUpdater,
+                    ),
+                )
+            }
+            ApplicationManager.getApplication().invokeLater(
+                {
+                    if (project.isDisposed || !asyncRequestLifecycle.completeAuditRequest(requestId)) {
+                        return@invokeLater
+                    }
+                    result.fold(
+                        onSuccess = { runtimeResult ->
+                            val auditResult = runtimeResult.output
+                            if (auditResult == null) {
+                                val message = "问答失败：runtime 未返回结果。"
+                                val requestState = asyncRequestLifecycle.withRuntimeMetadata(
+                                    requestState = asyncRequestLifecycle.buildFailedRequestState(
+                                        presentation = presentation,
+                                        message = message,
+                                    ),
+                                    runtimeState = runtimeResult.finalState,
+                                )
+                                asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
+                                session.mutateBatch {
+                                    apply {
+                                        markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(runtimeResult))
+                                    }
+                                    apply {
+                                        markAuditRequestFailed(message, requestState, failedRequest = request)
+                                    }
+                                    apply {
+                                        markOperationFeedback(
+                                            OperationFeedbackLevel.ERROR,
+                                            message,
+                                            preserveLastMessageType = true,
+                                        )
+                                    }
+                                }
+                                return@fold
+                            }
+                            val requestState = asyncRequestLifecycle.withRuntimeMetadata(
+                                requestState = asyncRequestLifecycle.buildSucceededRequestState(
+                                    presentation = presentation,
+                                    successMessage = if (auditResult.newCandidateChanges.isNotEmpty()) {
+                                        "问答完成，已生成待确认变更。"
+                                    } else {
+                                        "问答完成。"
+                                    },
+                                    completedRemotely = auditResult.source == LlmResultSource.REMOTE,
+                                    warnings = auditResult.warnings,
+                                ),
+                                runtimeState = runtimeResult.finalState,
+                            )
+                            asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
+                            debugLazy(logger.isDebugEnabled, logger::debug) {
+                                "问答 runtime 成功: runId=${runtimeResult.finalState.runId}, capabilityId=${runtimeResult.finalState.capabilityId}, " +
+                                    "stepIndex=${runtimeResult.finalState.stepIndex}, artifactCount=${runtimeResult.artifactSummaries.size}, " +
+                                    "filesRead=${runtimeResult.finalState.budget.filesRead}, stepsUsed=${runtimeResult.finalState.budget.usedSteps}, " +
+                                    "failureReason=${runtimeResult.finalState.failureReason}"
+                            }
+                            runtimeTrace {
+                                val candidates = auditResult.newCandidateChanges.ifEmpty { auditResult.candidateChanges }
+                                val candidateSummary = candidates.take(3).joinToString(
+                                    prefix = "[",
+                                    postfix = if (candidates.size > 3) ", ...]" else "]",
+                                ) { candidate ->
+                                    GenerationDiagnostics.summarizeCandidateChange(candidate) +
+                                        ", graphPatch=" + GenerationDiagnostics.summarizeGraphPatch(candidate.graphPatch)
+                                }
+                                "问答 runtime 结果: source=${auditResult.source}, " +
+                                    "candidateCount=${auditResult.candidateChanges.size}, " +
+                                    "newCandidateCount=${auditResult.newCandidateChanges.size}, " +
+                                    "candidates=$candidateSummary"
+                            }
+                            val normalizedAuditResult = normalizeAuditResult(auditResult, request)
+                            val feedbackLevel = if (requestState.fallbackUsed) {
+                                OperationFeedbackLevel.WARNING
+                            } else {
+                                OperationFeedbackLevel.SUCCESS
+                            }
+                            val (planDecision, codeDecision) = evaluateEligibility(snapshot.copy(auditResult = normalizedAuditResult))
+                            session.mutateBatch {
+                                apply {
+                                    markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(runtimeResult))
+                                }
+                                apply {
+                                    markAuditResult(normalizedAuditResult, requestState, completedRequest = request)
+                                }
+                                apply {
+                                    markPlanEligibilityDecision(planDecision)
+                                }
+                                apply {
+                                    markCodeEligibilityDecision(codeDecision)
+                                }
+                                apply {
+                                    markOperationFeedback(
+                                        feedbackLevel,
+                                        requestState.statusMessage
+                                            ?: if (normalizedAuditResult.newCandidateChanges.isNotEmpty()) {
+                                                "问答完成，已生成待确认变更。"
+                                            } else {
+                                                "问答完成。"
+                                            },
+                                        preserveLastMessageType = true,
+                                    )
+                                }
+                            }
+                        },
+                        onFailure = { throwable ->
+                            logger.warn("异步问答失败", throwable)
+                            val message = "问答失败：${throwable.message ?: throwable.javaClass.simpleName}"
+                            val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
+                            asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
+                            session.mutateBatch {
+                                apply {
+                                    markRuntimeArtifactSummaries("qa", emptyList())
+                                }
+                                apply {
+                                    markAuditRequestFailed(message, requestState, failedRequest = request)
+                                }
+                                apply {
+                                    markOperationFeedback(
+                                        OperationFeedbackLevel.ERROR,
+                                        message,
+                                        preserveLastMessageType = true,
+                                    )
+                                }
+                            }
+                        },
+                    )
+                },
+                ModalityState.defaultModalityState(),
+            )
+        }
+    }
+
+    private fun evaluateEligibility(
+        snapshot: GraphEditorStateService.Snapshot,
+    ) = riskResolutionService.evaluatePlanEligibility(snapshot) to riskResolutionService.evaluateCodeEligibility(snapshot)
+
+    private fun effectiveRemoteRequested(): Boolean = settingsProvider().usesRemoteProvider()
+
+    private fun effectiveStreamingSupported(): Boolean {
+        val settings = settingsProvider()
+        return settings.remoteConnectionOrNull()?.preset?.capabilities?.supportsStreaming == true
+    }
+
+    private fun buildAuditStartMessage(
+        remoteRequested: Boolean,
+        streamingSupported: Boolean,
+        selectedNodeIds: List<String>,
+    ): String {
+        if (remoteRequested) {
+            return if (streamingSupported) {
+                "已发起远程 LLM 问答请求，当前采用流式输出。"
+            } else {
+                "已发起远程 LLM 问答请求，当前采用完整返回。"
+            }
+        }
+        return if (selectedNodeIds.isEmpty()) {
+            "正在对整个链路执行问答，请稍候。"
+        } else {
+            "正在对当前选中范围执行问答，请稍候。"
+        }
+    }
+
+    private fun resolutionFeedbackMessage(
+        status: RiskResolutionStatus,
+        codeAllowed: Boolean,
+    ): String {
+        return when (status) {
+            RiskResolutionStatus.DEFERRED -> "已暂挂该风险线程。现在可以继续生成实现计划，但代码阶段仍会保持拦截。"
+            RiskResolutionStatus.ACCEPTED_RISK ->
+                if (codeAllowed) {
+                    "已接受该风险。当前已有确认草稿变更，计划与代码阶段都可以继续。"
+                } else {
+                    "已接受该风险。当前可以继续生成实现计划；代码阶段仍需至少一条已确认草稿变更。"
+                }
+            RiskResolutionStatus.EVIDENCE_EXHAUSTED -> "已标记该风险线程证据穷尽。现在可以继续生成实现计划，但代码阶段仍会保持拦截。"
+            RiskResolutionStatus.DISMISSED -> "已排除该风险线程，后续阶段将按剩余风险与草稿状态重新判断。"
+            RiskResolutionStatus.PROMOTED -> "该风险线程已提升为可执行变更，后续阶段将按草稿确认状态继续判断。"
+            RiskResolutionStatus.UNRESOLVED -> "已恢复为未决风险线程，后续阶段将重新进入阻塞判断。"
+        }
+    }
+
+    private fun normalizeAuditResult(
+        result: GraphPatchResult,
+        request: ReplayableQaRequest,
+    ): GraphPatchResult {
+        if (result.auditSession != null) {
+            return result
+        }
+        val baseSession = ensureQuestionCaptured(
+            session = request.baseSession ?: AuditConversationSession(
+                sessionId = "audit-${request.requestId}",
+                scopeKey = request.selectedNodeIds.sorted().joinToString(",").ifBlank { "graph" },
+            ),
+            question = request.question,
+        )
+        val turnResult = auditConversationService.applyModelTurn(
+            session = baseSession,
+            modelTurn = AuditModelTurn(
+                answer = result.answer,
+                candidateChanges = result.candidateChanges,
+                investigationThreads = result.investigationThreads,
+                sourceThreadId = request.sourceThreadId,
+            ),
+        )
+        return result.copy(
+            candidateChanges = turnResult.session.candidateChanges,
+            newCandidateChanges = result.newCandidateChanges.ifEmpty { turnResult.newCandidateChanges },
+            investigationThreads = result.investigationThreads.ifEmpty { turnResult.session.investigationThreads },
+            latestTurnOutcome = result.latestTurnOutcome ?: turnResult.latestTurnOutcome,
+            recentTurnOutcomes = result.recentTurnOutcomes.ifEmpty { turnResult.recentTurnOutcomes },
+            auditSession = turnResult.session,
+        )
+    }
+
+    private fun ensureQuestionCaptured(
+        session: AuditConversationSession,
+        question: String,
+    ): AuditConversationSession {
+        val lastMessage = session.messages.lastOrNull()
+        if (lastMessage?.role == AuditMessageRole.USER && lastMessage.content == question) {
+            return session
+        }
+        return session.copy(
+            messages = session.messages + AuditConversationMessage(
+                messageId = "${session.sessionId}-user-${session.messages.size + 1}",
+                role = AuditMessageRole.USER,
+                content = question,
+                focusTargetId = session.focusTargetId,
+            ),
         )
     }
 

@@ -16,8 +16,12 @@ import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.llm.ResultEvidenceFinding
 import com.charmnight.linkgraph.llm.ResultEvidenceLevel
 import com.charmnight.linkgraph.llm.ResultEvidenceReference
+import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.GraphPatch
+import com.charmnight.linkgraph.model.GraphPatchAction
+import com.charmnight.linkgraph.model.GraphPatchOperation
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
@@ -190,6 +194,7 @@ class GraphEditorStateServiceTest {
         assertEquals(AnalysisDisplayMode.FACT_GRAPH, snapshot.analysisDisplayMode)
         assertEquals("currentSubject", snapshot.lastGraphSource)
         assertEquals(visibleGraph, snapshot.visibleGraph)
+        assertEquals(fullGraph, snapshot.workingGraph)
         assertEquals(fullGraph, snapshot.referenceFactGraph)
         assertEquals("method:order-service-place", snapshot.selectedNodeId)
         assertEquals("com.example.OrderService.place(java.lang.String):void", snapshot.selectedMethodSignature)
@@ -200,6 +205,244 @@ class GraphEditorStateServiceTest {
         assertEquals("method:order-service-place", snapshot.factGraphView?.anchorNodeId)
         assertEquals("method:order-service-place", snapshot.flowchartView?.anchorNodeId)
         assertEquals("sql:order-repository-save", snapshot.resourceRelationView?.anchorNodeId)
+    }
+
+    @Test
+    fun loadAnalysisOutcome在流程图模式下保留完整工作图并单独维护事实基线() {
+        val service = GraphEditorStateService()
+        val factGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:fact-anchor",
+                    type = NodeType.METHOD,
+                    title = "FactAnchor",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+            ),
+        )
+        val flowchartVisibleGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "scope:guard",
+                    type = NodeType.FLOW_SCOPE,
+                    title = "if (!allowed)",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf("flowchart.kind" to "DECISION"),
+                ),
+            ),
+        )
+        val flowchartFullGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "action:guard-condition",
+                    type = NodeType.FLOW_ACTION,
+                    title = "!checkAllowDownload(fileName)",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf(
+                        "flowchart.kind" to "PROCESS",
+                        "flow.kind" to "CONDITION",
+                    ),
+                ),
+                GraphNode(
+                    id = "scope:guard",
+                    type = NodeType.FLOW_SCOPE,
+                    title = "if (!allowed)",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf("flowchart.kind" to "DECISION"),
+                ),
+            ),
+        )
+
+        service.loadAnalysisOutcome(
+            outcome = AnalysisOutcome(
+                displayMode = AnalysisDisplayMode.FLOWCHART,
+                visibleGraph = flowchartVisibleGraph,
+                fullGraph = flowchartFullGraph,
+                anchorNodeId = "scope:guard",
+                selectedMethodSignature = "com.example.OrderService.place():void",
+                displayName = "OrderService.place",
+                feedbackLevel = GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+                feedbackMessage = "已加载流程图",
+                projectionStats = AnalysisProjectionStats(),
+                factGraphView = FactGraphViewDocument(
+                    visibleGraph = factGraph,
+                    fullGraph = factGraph,
+                    anchorNodeId = "method:fact-anchor",
+                ),
+                flowchartView = FlowchartViewDocument(
+                    visibleGraph = flowchartVisibleGraph,
+                    fullGraph = flowchartFullGraph,
+                    anchorNodeId = "scope:guard",
+                ),
+                resourceRelationView = ResourceRelationViewDocument(),
+            ),
+            source = "currentSubject",
+        )
+
+        val snapshot = service.snapshot()
+        assertEquals(flowchartVisibleGraph, snapshot.visibleGraph)
+        assertEquals(flowchartFullGraph, snapshot.workingGraph)
+        assertEquals(factGraph, snapshot.referenceFactGraph)
+    }
+
+    @Test
+    fun loadAnalysisOutcome在同方法重载时保留已确认草稿并重新应用到新流程图底图() {
+        val service = GraphEditorStateService()
+        val selectedMethodSignature = "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void"
+        val factGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:file-download",
+                    type = NodeType.METHOD,
+                    title = "CommonController.fileDownload",
+                    signature = selectedMethodSignature,
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+            ),
+        )
+        val flowchartVisibleGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "scope:file-download-if",
+                    type = NodeType.FLOW_SCOPE,
+                    title = "if (delete)",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf("flowchart.kind" to "DECISION"),
+                ),
+            ),
+        )
+        val flowchartFullGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:file-download",
+                    type = NodeType.METHOD,
+                    title = "CommonController.fileDownload",
+                    signature = selectedMethodSignature,
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf("flowchart.kind" to "ENTRY"),
+                ),
+                GraphNode(
+                    id = "scope:file-download-if",
+                    type = NodeType.FLOW_SCOPE,
+                    title = "if (delete)",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf("flowchart.kind" to "DECISION"),
+                ),
+            ),
+        )
+        val confirmedDraftState = DraftWorkbenchState(
+            draftChanges = listOf(
+                DraftWorkbenchEntry(
+                    entryId = "draft-change-delete-guard",
+                    kind = DraftEntryKind.CHANGE,
+                    sourceChangeId = "change-delete-guard",
+                    targetNodeIds = listOf("scope:file-download-if"),
+                    beforeState = "if (delete)",
+                    afterState = "if (delete == true)",
+                    graphPatch = GraphPatch(
+                        summary = "更新删除判断",
+                        operations = listOf(
+                            GraphPatchOperation(
+                                id = "patch-op-update-delete-guard",
+                                action = GraphPatchAction.UPDATE_NODE,
+                                elementKind = GraphDiffElementKind.NODE,
+                                elementId = "scope:file-download-if",
+                                node = GraphNode(
+                                    id = "scope:file-download-if",
+                                    type = NodeType.FLOW_SCOPE,
+                                    title = "if (delete == true)",
+                                    sourceTag = GraphSourceTag.DRAFT_AI,
+                                    metadata = mapOf("flowchart.kind" to "DECISION"),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        service.loadAnalysisOutcome(
+            outcome = AnalysisOutcome(
+                displayMode = AnalysisDisplayMode.FLOWCHART,
+                visibleGraph = flowchartVisibleGraph,
+                fullGraph = flowchartFullGraph,
+                anchorNodeId = "scope:file-download-if",
+                selectedMethodSignature = selectedMethodSignature,
+                displayName = "CommonController.fileDownload",
+                feedbackLevel = GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+                feedbackMessage = "已加载流程图",
+                projectionStats = AnalysisProjectionStats(),
+                factGraphView = FactGraphViewDocument(
+                    visibleGraph = factGraph,
+                    fullGraph = factGraph,
+                    anchorNodeId = "method:file-download",
+                ),
+                flowchartView = FlowchartViewDocument(
+                    visibleGraph = flowchartVisibleGraph,
+                    fullGraph = flowchartFullGraph,
+                    anchorNodeId = "scope:file-download-if",
+                ),
+                resourceRelationView = ResourceRelationViewDocument(),
+            ),
+            source = "currentSubject",
+        )
+        service.markDraftWorkbenchState(confirmedDraftState, advanceDraftVersion = true)
+        service.markWorkingGraphChanged(
+            graph = flowchartFullGraph.copy(
+                nodes = flowchartFullGraph.nodes.map { node ->
+                    if (node.id == "scope:file-download-if") {
+                        node.copy(title = "if (delete == true)", sourceTag = GraphSourceTag.DRAFT_AI)
+                    } else {
+                        node
+                    }
+                },
+            ),
+            selectedMethodSignature = selectedMethodSignature,
+            workingGraphDirty = true,
+        )
+
+        service.loadAnalysisOutcome(
+            outcome = AnalysisOutcome(
+                displayMode = AnalysisDisplayMode.FLOWCHART,
+                visibleGraph = flowchartVisibleGraph,
+                fullGraph = flowchartFullGraph,
+                anchorNodeId = "scope:file-download-if",
+                selectedMethodSignature = selectedMethodSignature,
+                displayName = "CommonController.fileDownload",
+                feedbackLevel = GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+                feedbackMessage = "已重新加载流程图",
+                projectionStats = AnalysisProjectionStats(),
+                factGraphView = FactGraphViewDocument(
+                    visibleGraph = factGraph,
+                    fullGraph = factGraph,
+                    anchorNodeId = "method:file-download",
+                ),
+                flowchartView = FlowchartViewDocument(
+                    visibleGraph = flowchartVisibleGraph,
+                    fullGraph = flowchartFullGraph,
+                    anchorNodeId = "scope:file-download-if",
+                ),
+                resourceRelationView = ResourceRelationViewDocument(),
+            ),
+            source = "currentSubject",
+        )
+
+        val snapshot = service.snapshot()
+        assertEquals(1, snapshot.draftWorkbenchState.draftChanges.size)
+        assertEquals(1L, snapshot.draftVersion)
+        assertEquals(true, snapshot.workingGraphDirty)
+        assertEquals(
+            "if (delete == true)",
+            snapshot.workingGraph?.nodes?.firstOrNull { it.id == "scope:file-download-if" }?.title,
+        )
+        assertEquals(
+            "if (delete == true)",
+            snapshot.flowchartView?.visibleGraph?.nodes?.firstOrNull { it.id == "scope:file-download-if" }?.title,
+        )
+        assertEquals(
+            factGraph,
+            snapshot.referenceFactGraph,
+        )
     }
 
     @Test
@@ -470,11 +713,12 @@ class GraphEditorStateServiceTest {
         service.markGraphChanged(editedFlowchartGraph)
 
         val snapshot = service.snapshot()
-        assertEquals(editedFlowchartGraph, snapshot.visibleGraph)
-        assertEquals(editedFlowchartGraph, snapshot.flowchartView?.visibleGraph)
+        assertEquals(listOf("method:flow-entry", "design-note:1"), snapshot.visibleGraph?.nodes?.map { it.id })
+        assertEquals("READABLE", snapshot.visibleGraph?.nodes?.firstOrNull { it.id == "method:flow-entry" }?.metadata?.get("flowchart.projection.mode"))
+        assertEquals(listOf("method:flow-entry", "design-note:1"), snapshot.flowchartView?.visibleGraph?.nodes?.map { it.id })
         assertEquals(editedFlowchartGraph, snapshot.workingGraph)
-        assertEquals(factGraph, snapshot.factGraphView?.visibleGraph)
-        assertEquals(resourceGraph, snapshot.resourceRelationView?.visibleGraph)
+        assertEquals(editedFlowchartGraph, snapshot.factGraphView?.visibleGraph)
+        assertEquals(editedFlowchartGraph, snapshot.resourceRelationView?.visibleGraph)
         assertEquals(true, snapshot.workingGraphDirty)
     }
 
@@ -542,12 +786,14 @@ class GraphEditorStateServiceTest {
         service.switchAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH)
         var snapshot = service.snapshot()
         assertEquals(AnalysisDisplayMode.FACT_GRAPH, snapshot.analysisDisplayMode)
-        assertEquals(factGraph, snapshot.visibleGraph)
+        assertEquals(editedFlowchartGraph, snapshot.visibleGraph)
+        assertTrue(snapshot.visibleGraph?.nodes?.any { it.id == "design:1" } == true)
 
         service.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
         snapshot = service.snapshot()
         assertEquals(AnalysisDisplayMode.FLOWCHART, snapshot.analysisDisplayMode)
-        assertEquals(editedFlowchartGraph, snapshot.visibleGraph)
+        assertEquals(listOf("method:flow-entry", "design:1"), snapshot.visibleGraph?.nodes?.map { it.id })
+        assertEquals("READABLE", snapshot.visibleGraph?.nodes?.firstOrNull { it.id == "method:flow-entry" }?.metadata?.get("flowchart.projection.mode"))
         assertTrue(snapshot.visibleGraph?.nodes?.any { it.id == "design:1" } == true)
     }
 
@@ -633,8 +879,9 @@ class GraphEditorStateServiceTest {
         )
 
         val snapshot = service.snapshot()
-        assertEquals(editedFlowchartGraph, snapshot.visibleGraph)
-        assertEquals(editedFlowchartGraph, snapshot.flowchartView?.visibleGraph)
+        assertEquals(listOf("method:flow-entry", "design:1"), snapshot.visibleGraph?.nodes?.map { it.id })
+        assertEquals("READABLE", snapshot.visibleGraph?.nodes?.firstOrNull { it.id == "method:flow-entry" }?.metadata?.get("flowchart.projection.mode"))
+        assertEquals(listOf("method:flow-entry", "design:1"), snapshot.flowchartView?.visibleGraph?.nodes?.map { it.id })
         assertEquals(editedFlowchartGraph, snapshot.workingGraph)
         assertEquals(factGraph, snapshot.factGraphView?.visibleGraph)
         assertEquals(resourceGraph, snapshot.resourceRelationView?.visibleGraph)
@@ -887,6 +1134,129 @@ class GraphEditorStateServiceTest {
         assertEquals(null, snapshot.generatedCodeDraftSource)
         assertEquals(null, snapshot.generatedCodeDraftPromptPreview)
         assertEquals("requestGenerationPlan", snapshot.lastMessageType)
+    }
+
+    @Test
+    fun markDraftWorkbenchStateCanAdvanceDraftVersion() {
+        val service = GraphEditorStateService()
+
+        service.markDraftWorkbenchState(
+            DraftWorkbenchState(
+                draftChanges = listOf(
+                    DraftWorkbenchEntry(
+                        entryId = "draft-change-1",
+                        kind = DraftEntryKind.CHANGE,
+                        title = "补充失败补偿说明",
+                        targetNodeIds = listOf("method:submit-order"),
+                    ),
+                ),
+            ),
+            advanceDraftVersion = true,
+        )
+        service.markDraftWorkbenchState(
+            DraftWorkbenchState(
+                draftChanges = listOf(
+                    DraftWorkbenchEntry(
+                        entryId = "draft-change-2",
+                        kind = DraftEntryKind.CHANGE,
+                        title = "补充重试分支",
+                        targetNodeIds = listOf("method:submit-order"),
+                    ),
+                ),
+            ),
+            advanceDraftVersion = true,
+        )
+
+        val snapshot = service.snapshot()
+        assertEquals(2L, snapshot.draftVersion)
+    }
+
+    @Test
+    fun markWorkingGraphChangedPreservesPlanAndCodeDraftsAfterDraftVersionAdvance() {
+        val service = GraphEditorStateService()
+        val graph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:submit-order",
+                    type = NodeType.METHOD,
+                    title = "OrderController.submit",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+            ),
+        )
+
+        service.loadGraph(graph, "currentMethod")
+        service.markDraftWorkbenchState(
+            DraftWorkbenchState(
+                draftChanges = listOf(
+                    DraftWorkbenchEntry(
+                        entryId = "draft-change-1",
+                        kind = DraftEntryKind.CHANGE,
+                        title = "补充失败补偿说明",
+                        targetNodeIds = listOf("method:submit-order"),
+                        afterState = "订单失败时补充补偿链路说明",
+                    ),
+                ),
+            ),
+            advanceDraftVersion = true,
+        )
+        service.markGenerationPlan(
+            GenerationPlan(
+                source = GenerationPlanSource.MOCK,
+                summary = "先补失败补偿，再补重试分支。",
+                warnings = emptyList(),
+                promptPreview = "plan prompt",
+            ),
+        )
+        service.markGeneratedCodeDrafts(
+            drafts = listOf(
+                GeneratedCodeDraft(
+                    id = "draft-1",
+                    sourceNodeId = "method:submit-order",
+                    title = "OrderController.java",
+                    targetPath = "src/main/java/com/example/OrderController.java",
+                    content = "class OrderController {}",
+                ),
+            ),
+            warnings = listOf("仅生成主方法草稿"),
+            source = LlmResultSource.MOCK,
+            promptPreview = "code prompt",
+        )
+        service.markDraftWorkbenchState(
+            DraftWorkbenchState(
+                draftChanges = listOf(
+                    DraftWorkbenchEntry(
+                        entryId = "draft-change-1",
+                        kind = DraftEntryKind.CHANGE,
+                        title = "补充失败补偿说明",
+                        targetNodeIds = listOf("method:submit-order"),
+                        afterState = "订单失败时补充补偿与重试链路说明",
+                    ),
+                ),
+            ),
+            advanceDraftVersion = true,
+        )
+        service.markWorkingGraphChanged(
+            graph = GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:submit-order",
+                        type = NodeType.METHOD,
+                        title = "OrderController.submit with compensation",
+                        sourceTag = GraphSourceTag.FACT,
+                    ),
+                ),
+            ),
+        )
+
+        val snapshot = service.snapshot()
+        assertEquals(2L, snapshot.draftVersion)
+        assertEquals(1L, snapshot.generationPlanDraftVersion)
+        assertEquals(1L, snapshot.generatedCodeDraftVersion)
+        assertEquals("先补失败补偿，再补重试分支。", snapshot.generationPlan?.summary)
+        assertEquals(1, snapshot.generatedCodeDrafts.size)
+        assertEquals(GraphEditorStateService.AsyncRequestPhase.IDLE, snapshot.generationPlanRequestState.phase)
+        assertEquals(GraphEditorStateService.AsyncRequestPhase.IDLE, snapshot.codeDraftRequestState.phase)
     }
 
     @Test

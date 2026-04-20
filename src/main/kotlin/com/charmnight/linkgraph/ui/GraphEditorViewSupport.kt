@@ -1,7 +1,6 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.model.GraphDocument
-import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.ui.view.FactGraphSummary
 import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
@@ -9,6 +8,8 @@ import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
 import com.charmnight.linkgraph.ui.view.ResourceRelationSummary
 import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
 import com.charmnight.linkgraph.ui.view.deriveFlowchartSummary
+import com.charmnight.linkgraph.ui.view.projectReadableFlowchartView
+import com.charmnight.linkgraph.ui.view.resolveProjectedFlowchartNodeId
 
 internal fun resolveSelectedNodeId(
     graph: GraphDocument,
@@ -17,6 +18,9 @@ internal fun resolveSelectedNodeId(
 ): String? {
     if (selectedNodeId != null && graph.nodes.any { it.id == selectedNodeId }) {
         return selectedNodeId
+    }
+    resolveProjectedFlowchartNodeId(graph, selectedNodeId)?.let { projectedNodeId ->
+        return projectedNodeId
     }
     return findNodeIdBySignature(graph, selectedMethodSignature)
 }
@@ -71,14 +75,9 @@ internal fun buildViewDocuments(
                 anchorNodeId = anchorNodeId,
             ).toSummary(),
         ),
-        flowchartView = FlowchartViewDocument(
-            visibleGraph = effectiveVisibleGraph,
-            fullGraph = effectiveVisibleGraph,
+        flowchartView = projectReadableFlowchartView(
+            graph = effectiveVisibleGraph,
             anchorNodeId = anchorNodeId,
-            summary = FlowchartViewSummary(
-                visibleGraph = effectiveVisibleGraph,
-                fullGraph = effectiveVisibleGraph,
-            ).toSummary(),
         ),
         resourceRelationView = ResourceRelationViewDocument(
             visibleGraph = effectiveVisibleGraph,
@@ -96,54 +95,11 @@ internal fun syncWorkingGraphViewDocuments(
     graph: GraphDocument,
     effectiveSignature: String?,
 ): GraphEditorViewDocuments {
-    val fallback = buildViewDocuments(
+    return buildViewDocuments(
         visibleGraph = graph,
         factFullGraph = currentState.referenceFactGraph ?: graph,
         selectedNodeId = currentState.selectedNodeId,
         selectedMethodSignature = effectiveSignature,
-    )
-    val nextFactGraphView = if (currentState.analysisDisplayMode == AnalysisDisplayMode.FACT_GRAPH) {
-        fallback.factGraphView
-    } else {
-        currentState.factGraphView ?: fallback.factGraphView
-    }
-    val nextFlowchartGraph = if (currentState.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART) {
-        graph.withoutDraftProjectionArtifacts()
-    } else {
-        currentState.flowchartView?.visibleGraph ?: fallback.flowchartView.visibleGraph
-    }
-    val nextFlowchartAnchorNodeId = resolveSelectedNodeId(
-        graph = nextFlowchartGraph,
-        selectedNodeId = currentState.selectedNodeId,
-        selectedMethodSignature = effectiveSignature,
-    ) ?: nextFlowchartGraph.nodes.firstOrNull()?.id
-    val nextResourceGraph = if (currentState.analysisDisplayMode == AnalysisDisplayMode.RESOURCE_RELATION_VIEW) {
-        graph
-    } else {
-        currentState.resourceRelationView?.visibleGraph ?: fallback.resourceRelationView.visibleGraph
-    }
-    val nextResourceAnchorNodeId = resolveSelectedNodeId(
-        graph = nextResourceGraph,
-        selectedNodeId = currentState.selectedNodeId,
-        selectedMethodSignature = effectiveSignature,
-    ) ?: nextResourceGraph.nodes.firstOrNull()?.id
-    return GraphEditorViewDocuments(
-        factGraphView = nextFactGraphView,
-        flowchartView = (currentState.flowchartView ?: fallback.flowchartView).copy(
-            visibleGraph = nextFlowchartGraph,
-            fullGraph = nextFlowchartGraph,
-            anchorNodeId = nextFlowchartAnchorNodeId,
-            summary = FlowchartViewSummary(
-                visibleGraph = nextFlowchartGraph,
-                fullGraph = nextFlowchartGraph,
-            ).toSummary(),
-        ),
-        resourceRelationView = (currentState.resourceRelationView ?: fallback.resourceRelationView).copy(
-            visibleGraph = nextResourceGraph,
-            fullGraph = nextResourceGraph,
-            anchorNodeId = nextResourceAnchorNodeId,
-            summary = ResourceRelationViewSummary(visibleGraph = nextResourceGraph).toSummary(),
-        ),
     )
 }
 
@@ -167,20 +123,17 @@ internal fun syncDisplayModeGraphViewDocuments(
     ) ?: graph.nodes.firstOrNull()?.id
     return when (displayMode) {
         AnalysisDisplayMode.FLOWCHART -> {
-            val flowchartGraph = graph.withoutDraftProjectionArtifacts()
-            val flowchartAnchorNodeId = resolveSelectedNodeId(
-                graph = flowchartGraph,
-                selectedNodeId = nextSelectedNodeId,
-                selectedMethodSignature = effectiveSignature,
-            ) ?: flowchartGraph.nodes.firstOrNull()?.id
+            val flowchartView = projectReadableFlowchartView(
+                graph = graph,
+                anchorNodeId = resolveSelectedNodeId(
+                    graph = graph,
+                    selectedNodeId = nextSelectedNodeId,
+                    selectedMethodSignature = effectiveSignature,
+                ) ?: graph.nodes.firstOrNull()?.id,
+            )
             GraphEditorViewDocuments(
                 factGraphView = currentState.factGraphView ?: fallback.factGraphView,
-                flowchartView = (currentState.flowchartView ?: fallback.flowchartView).copy(
-                    visibleGraph = flowchartGraph,
-                    fullGraph = flowchartGraph,
-                    anchorNodeId = flowchartAnchorNodeId,
-                    summary = FlowchartViewSummary(visibleGraph = flowchartGraph, fullGraph = flowchartGraph).toSummary(),
-                ),
+                flowchartView = flowchartView,
                 resourceRelationView = currentState.resourceRelationView ?: fallback.resourceRelationView,
             )
         }
@@ -243,22 +196,6 @@ internal fun mergeLayoutState(
         node.id to position
     }.toMap()
     return GraphLayoutState(positions)
-}
-
-private fun GraphDocument.withoutDraftProjectionArtifacts(): GraphDocument {
-    val filteredNodes = nodes.filterNot { node ->
-        node.sourceTag == GraphSourceTag.DRAFT_MANUAL && node.metadata["draft.entryId"] != null
-    }
-    val retainedNodeIds = filteredNodes.mapTo(linkedSetOf()) { it.id }
-    val filteredEdges = edges.filterNot { edge ->
-        (edge.sourceTag == GraphSourceTag.DRAFT_MANUAL && edge.metadata["draft.entryId"] != null) ||
-            edge.fromNodeId !in retainedNodeIds ||
-            edge.toNodeId !in retainedNodeIds
-    }
-    return copy(
-        nodes = filteredNodes,
-        edges = filteredEdges,
-    )
 }
 
 internal data class GraphEditorViewDocuments(

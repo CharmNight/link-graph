@@ -437,7 +437,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         service.requestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH)
         waitForSnapshot { snapshot ->
             snapshot.analysisDisplayMode == AnalysisDisplayMode.FACT_GRAPH &&
-                snapshot.visibleGraph?.nodes?.none { node -> node.id == "design:manual-step" } == true
+                snapshot.visibleGraph?.nodes?.any { node -> node.id == "design:manual-step" } == true
         }
 
         service.requestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
@@ -576,7 +576,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
     }
 
-    fun testFlowchartDisplayModeKeepsIncompleteSummaryWithoutTruncatingVisibleGraph() {
+    fun testFlowchartDisplayModeKeepsIncompleteSummaryWhenProjectionIsTruncated() {
         myFixture.configureByText(
             "DemoService.java",
             """
@@ -665,10 +665,13 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
 
         val flowchartView = project.getService(GraphEditorStateService::class.java).snapshot().flowchartView
         assertTrue(flowchartView != null)
-        assertFalse(flowchartView!!.summary.truncated)
-        assertEquals(flowchartView.fullGraph.nodes.size, flowchartView.visibleGraph.nodes.size)
-        assertEquals(0, flowchartView.summary.hiddenNodeCount)
-        assertEquals(0, flowchartView.summary.hiddenEdgeCount)
+        assertTrue(flowchartView!!.summary.truncated)
+        assertTrue(flowchartView.fullGraph.nodes.size > flowchartView.visibleGraph.nodes.size)
+        assertEquals(
+            flowchartView.fullGraph.nodes.size - flowchartView.visibleGraph.nodes.size,
+            flowchartView.summary.hiddenNodeCount,
+        )
+        assertTrue(flowchartView.summary.hiddenEdgeCount > 0)
         assertEquals(1, flowchartView.summary.incompleteNodeCount)
         assertTrue(flowchartView.summary.semanticallyIncomplete)
     }
@@ -718,7 +721,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
     }
 
-    fun testRequestExpandOverflowNodeRerunsSemanticAnalysisWithoutLegacyGraphExtractor() {
+    fun testRequestExpandOverflowNodeRerunsSemanticAnalysisWithSemanticPipelineOnly() {
         myFixture.configureByText(
             "DemoService.java",
             """
@@ -803,7 +806,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         assertEquals("DemoService.run", expandedSnapshot.visibleGraph?.nodes?.firstOrNull { it.id == "method:demo-run" }?.title)
     }
 
-    fun testDebugSignatureAutoloadRerunsSemanticAnalysisWithoutLegacyGraphExtractor() {
+    fun testDebugSignatureAutoloadRerunsSemanticAnalysisWithSemanticPipelineOnly() {
         myFixture.configureByText(
             "DemoService.java",
             """
@@ -868,6 +871,66 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         assertEquals(1, analyzerCallCount.get())
         assertEquals("currentMethod", snapshot.lastGraphSource)
         assertTrue(snapshot.visibleGraph?.nodes?.any { node -> node.id == "method:demo-run" } == true)
+    }
+
+    fun testLoadCurrentEditorContextGraphKeepsExternalInvocationForKotlinAccessor() {
+        myFixture.configureByText(
+            "AccessorService.kt",
+            """
+                package com.example
+
+                class Formatter {
+                    fun normalize(value: String): String {
+                        return value.trim()
+                    }
+                }
+
+                class AccessorService(
+                    private val formatter: Formatter = Formatter(),
+                ) {
+                    var raw: String = " seed "
+                        get() = formatter.normalize(<caret>field)
+                }
+            """.trimIndent(),
+        )
+
+        val service = project.getService(LinkGraphProjectService::class.java)
+        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
+
+        waitForSnapshot { snapshot ->
+            snapshot.lastGraphSource == "currentMethod" &&
+                snapshot.visibleGraph?.nodes?.any { node -> node.title.contains("Formatter.normalize") } == true
+        }
+    }
+
+    fun testLoadCurrentEditorContextGraphKeepsExternalInvocationForKotlinPrimaryConstructor() {
+        myFixture.configureByText(
+            "PrimaryCtorFlow.kt",
+            """
+                package com.example
+
+                class Formatter {
+                    fun normalize(value: String): String {
+                        return value.trim()
+                    }
+                }
+
+                class PrimaryCtorFlow(
+                    value: String,
+                    private val formatter: Formatter = Formatter(),
+                ) {
+                    private val normalized = formatter.normalize(<caret>value)
+                }
+            """.trimIndent(),
+        )
+
+        val service = project.getService(LinkGraphProjectService::class.java)
+        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
+
+        waitForSnapshot { snapshot ->
+            snapshot.lastGraphSource == "currentMethod" &&
+                snapshot.visibleGraph?.nodes?.any { node -> node.title.contains("Formatter.normalize") } == true
+        }
     }
 
     private fun waitForSnapshot(

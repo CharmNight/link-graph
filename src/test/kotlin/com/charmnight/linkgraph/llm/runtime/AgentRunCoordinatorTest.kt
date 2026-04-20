@@ -126,7 +126,7 @@ class AgentRunCoordinatorTest : BasePlatformTestCase() {
                     stepRecords = state.stepRecords + AgentStepRecord(
                         stepIndex = state.stepIndex,
                         phase = AgentRunPhase.SUCCEEDED,
-                        summary = "delegate-legacy-service",
+                        summary = "delegate-service",
                     ),
                 ),
             )

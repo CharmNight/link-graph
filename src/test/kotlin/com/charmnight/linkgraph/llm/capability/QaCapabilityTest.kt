@@ -22,11 +22,11 @@ import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.AuditConversationMessage
 import com.charmnight.linkgraph.workbench.AuditConversationSession
-import com.charmnight.linkgraph.workbench.AuditInvestigationLead
-import com.charmnight.linkgraph.workbench.AuditInvestigationLeadStatus
 import com.charmnight.linkgraph.workbench.AuditMessageRole
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
+import com.charmnight.linkgraph.workbench.InvestigationThread
+import com.charmnight.linkgraph.workbench.InvestigationThreadStatus
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.nio.file.Files
 import kotlin.test.assertEquals
@@ -39,7 +39,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
     fun testBuildsQaInitialStateFromQuestionAndUsesQaCapabilityId() {
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            legacyAuditExecutor = { input, _, _ ->
+            auditExecutor = { input, _, _ ->
                 GraphPatchResult(
                     source = LlmResultSource.MOCK,
                     question = input.question,
@@ -67,10 +67,10 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertEquals("qa", state.capabilityId)
     }
 
-    fun testPreservesFallbackWarningsWhenDelegatingToLegacyAuditExecutor() {
+    fun testPreservesFallbackWarningsWhenAuditExecutorFallsBack() {
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            legacyAuditExecutor = { input, _, _ ->
+            auditExecutor = { input, _, _ ->
                 GraphPatchResult(
                     source = LlmResultSource.MOCK,
                     question = input.question,
@@ -81,7 +81,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             },
         )
 
-        val result = capability.executeLegacyAudit(
+        val result = capability.executeAudit(
             input = QaCapabilityInput(
                 question = "请围绕当前链路进行问答",
                 auditContext = GraphAuditContext(),
@@ -97,11 +97,11 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertTrue(result.warnings.single().contains("已回退"))
     }
 
-    fun testUsesGraphToolBeforeDelegatingToLegacyAuditExecutor() {
+    fun testUsesGraphToolBeforeRunningAuditExecutor() {
         var toolInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            legacyAuditExecutor = { input, _, _ ->
+            auditExecutor = { input, _, _ ->
                 GraphPatchResult(
                     source = LlmResultSource.MOCK,
                     question = input.question,
@@ -208,7 +208,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertEquals("get_selected_scope", result.finalState.stepRecords[1].toolName)
     }
 
-    fun testReadsCodeEvidenceBeforeDelegatingToLegacyAuditWhenSourceContextIsMissing() {
+    fun testReadsCodeEvidenceBeforeRunningAuditExecutorWhenSourceContextIsMissing() {
         val sourceFile = Files.createTempFile("qa-capability", ".java")
         Files.writeString(
             sourceFile,
@@ -223,7 +223,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         var capturedSourceContext: List<SourceSnippetContext> = emptyList()
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            legacyAuditExecutor = { input, _, _ ->
+            auditExecutor = { input, _, _ ->
                 capturedSourceContext = input.auditContext.sourceContext
                 GraphPatchResult(
                     source = LlmResultSource.MOCK,
@@ -275,7 +275,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertTrue(snippet.snippet?.contains("fallback(request)") == true)
     }
 
-    fun testStopsBeforeLegacyAuditWhenCodeReadExceedsBudget() {
+    fun testStopsBeforeAuditExecutionWhenCodeReadExceedsBudget() {
         val sourceFile = Files.createTempFile("qa-capability-budget", ".java")
         Files.writeString(
             sourceFile,
@@ -287,11 +287,11 @@ class QaCapabilityTest : BasePlatformTestCase() {
             }
             """.trimIndent(),
         )
-        var legacyInvoked = false
+        var executorInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(maxFilesRead = 0),
-            legacyAuditExecutor = { input, _, _ ->
-                legacyInvoked = true
+            auditExecutor = { input, _, _ ->
+                executorInvoked = true
                 GraphPatchResult(
                     source = LlmResultSource.MOCK,
                     question = input.question,
@@ -334,18 +334,18 @@ class QaCapabilityTest : BasePlatformTestCase() {
             ),
         )
 
-        assertFalse(legacyInvoked)
+        assertFalse(executorInvoked)
         assertNull(result.output)
         assertEquals(AgentRunFailureReason.MAX_FILES_READ_EXCEEDED, result.finalState.failureReason)
     }
 
     fun testStopsReadingAdditionalFilesWithinSameQaStepAfterBudgetIsExhausted() {
         var readCount = 0
-        var legacyInvoked = false
+        var executorInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(maxFilesRead = 1),
-            legacyAuditExecutor = { input, _, _ ->
-                legacyInvoked = true
+            auditExecutor = { input, _, _ ->
+                executorInvoked = true
                 GraphPatchResult(
                     source = LlmResultSource.MOCK,
                     question = input.question,
@@ -508,7 +508,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             ),
         )
 
-        assertFalse(legacyInvoked)
+        assertFalse(executorInvoked)
         assertEquals(1, readCount)
         assertNull(result.output)
         assertEquals(AgentRunFailureReason.MAX_FILES_READ_EXCEEDED, result.finalState.failureReason)
@@ -516,11 +516,11 @@ class QaCapabilityTest : BasePlatformTestCase() {
 
     fun testStopsReadingAdditionalSnippetsWithinSameQaStepAfterSnippetBudgetIsExhausted() {
         var readCount = 0
-        var legacyInvoked = false
+        var executorInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(maxFilesRead = 5, maxSnippets = 1),
-            legacyAuditExecutor = { input, _, _ ->
-                legacyInvoked = true
+            auditExecutor = { input, _, _ ->
+                executorInvoked = true
                 GraphPatchResult(
                     source = LlmResultSource.MOCK,
                     question = input.question,
@@ -666,18 +666,18 @@ class QaCapabilityTest : BasePlatformTestCase() {
             ),
         )
 
-        assertFalse(legacyInvoked)
+        assertFalse(executorInvoked)
         assertEquals(1, readCount)
         assertNull(result.output)
         assertEquals(AgentRunFailureReason.MAX_SNIPPETS_EXCEEDED, result.finalState.failureReason)
     }
 
-    fun testStopsBeforeLegacyAuditWhenSingleSnippetExceedsLineBudget() {
-        var legacyInvoked = false
+    fun testStopsBeforeAuditExecutionWhenSingleSnippetExceedsLineBudget() {
+        var executorInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(maxSnippetLines = 1),
-            legacyAuditExecutor = { input, _, _ ->
-                legacyInvoked = true
+            auditExecutor = { input, _, _ ->
+                executorInvoked = true
                 GraphPatchResult(
                     source = LlmResultSource.MOCK,
                     question = input.question,
@@ -801,7 +801,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             ),
         )
 
-        assertFalse(legacyInvoked)
+        assertFalse(executorInvoked)
         assertNull(result.output)
         assertEquals(AgentRunFailureReason.MAX_SNIPPET_LINES_EXCEEDED, result.finalState.failureReason)
     }
@@ -809,7 +809,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
     fun testPersistsCandidateDraftArtifactsFromQaResult() {
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            legacyAuditExecutor = { input, _, _ ->
+            auditExecutor = { input, _, _ ->
                 GraphPatchResult(
                     source = LlmResultSource.MOCK,
                     question = input.question,
@@ -866,11 +866,11 @@ class QaCapabilityTest : BasePlatformTestCase() {
     }
 
     fun testPreloadedSourceContextStillConsumesRuntimeBudget() {
-        var legacyInvoked = false
+        var executorInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(maxFilesRead = 0),
-            legacyAuditExecutor = { input, _, _ ->
-                legacyInvoked = true
+            auditExecutor = { input, _, _ ->
+                executorInvoked = true
                 GraphPatchResult(
                     source = LlmResultSource.MOCK,
                     question = input.question,
@@ -915,12 +915,12 @@ class QaCapabilityTest : BasePlatformTestCase() {
             ),
         )
 
-        assertFalse(legacyInvoked)
+        assertFalse(executorInvoked)
         assertNull(result.output)
         assertEquals(AgentRunFailureReason.MAX_FILES_READ_EXCEEDED, result.finalState.failureReason)
     }
 
-    fun testRebuildsLegacyAuditInputFromRuntimeArtifactsAndPreservesConversationHistory() {
+    fun testRebuildsAuditInputFromRuntimeArtifactsWithoutOverwritingGraphContext() {
         val sourceFile = Files.createTempFile("qa-runtime-artifacts", ".java")
         Files.writeString(
             sourceFile,
@@ -974,7 +974,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         var capturedSession: AuditConversationSession? = null
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            legacyAuditExecutor = { input, _, _ ->
+            auditExecutor = { input, _, _ ->
                 capturedAuditContext = input.auditContext
                 capturedSession = input.session
                 GraphPatchResult(
@@ -992,7 +992,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                 question = "解释这里为什么会 fallback",
                 auditContext = GraphAuditContext(
                     factGraph = staleGraph,
-                    draftGraph = staleGraph,
+                    editableGraph = staleGraph,
                     selectedNodeIds = listOf("method:upload-file"),
                     sourceContext = listOf(
                         SourceSnippetContext(
@@ -1021,11 +1021,11 @@ class QaCapabilityTest : BasePlatformTestCase() {
                             title = "existing candidate",
                         ),
                     ),
-                    investigationLeads = listOf(
-                        AuditInvestigationLead(
-                            leadId = "lead-1",
-                            status = AuditInvestigationLeadStatus.OPEN,
-                            title = "existing lead",
+                    investigationThreads = listOf(
+                        InvestigationThread(
+                            threadId = "thread-1",
+                            status = InvestigationThreadStatus.OPEN,
+                            title = "existing thread",
                         ),
                     ),
                 ),
@@ -1044,13 +1044,13 @@ class QaCapabilityTest : BasePlatformTestCase() {
 
         assertEquals("runtime qa", result.output?.answer)
         assertEquals(listOf("method:upload-file"), capturedAuditContext?.selectedNodeIds)
-        assertEquals(runtimeGraph.nodes.map { it.id }.toSet(), capturedAuditContext?.factGraph?.nodes?.map { it.id }?.toSet())
-        assertTrue(capturedAuditContext?.draftGraph?.nodes?.isEmpty() == true)
+        assertEquals(staleGraph.nodes.map { it.id }.toSet(), capturedAuditContext?.factGraph?.nodes?.map { it.id }?.toSet())
+        assertEquals(staleGraph.nodes.map { it.id }.toSet(), capturedAuditContext?.editableGraph?.nodes?.map { it.id }?.toSet())
         assertEquals(sourceFile.toString(), capturedAuditContext?.sourceContext?.singleOrNull()?.filePath)
         assertTrue(capturedAuditContext?.sourceContext?.singleOrNull()?.snippet?.contains("fallback") == true)
         assertEquals(1, capturedSession?.messages?.size)
         assertEquals("历史问题", capturedSession?.messages?.singleOrNull()?.content)
         assertEquals(1, capturedSession?.candidateChanges?.size)
-        assertEquals(1, capturedSession?.investigationLeads?.size)
+        assertEquals(1, capturedSession?.investigationThreads?.size)
     }
 }

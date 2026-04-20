@@ -3,6 +3,7 @@ import type {
   AsyncRequestExecutionMode,
   BindingStatus,
   Certainty,
+  DraftCompareStatus,
   DiffStatus,
   EdgeType,
   GenerationPlanSource,
@@ -53,6 +54,18 @@ export function diffStatusLabel(value: DiffStatus): string {
       return "仅 Mermaid 存在";
     case "MODIFIED":
       return "已修改";
+  }
+}
+
+export function draftCompareStatusLabel(value: DraftCompareStatus): string {
+  switch (value) {
+    case "ADDED":
+      return "草稿新增";
+    case "REMOVED":
+      return "草稿删除";
+    case "MODIFIED":
+    default:
+      return "草稿修改";
   }
 }
 
@@ -358,6 +371,33 @@ export function draftStatusLabel(value: "READY" | "WRITTEN" | "SKIPPED"): string
   }
 }
 
+const WORKBENCH_WORDING_REPLACEMENTS: Array<[from: string, to: string]> = [
+  ["生成实现计划", "生成实现建议"],
+  ["实现计划已生成", "实现建议已生成"],
+  ["实现计划生成", "实现建议生成"],
+  ["实现计划失败", "实现建议失败"],
+  ["计划阶段", "实现建议阶段"],
+  ["当前计划", "当前实现建议"],
+  ["计划内容", "实现建议"],
+  ["生成计划", "生成实现建议"],
+  ["实现计划", "实现建议"],
+  ["生成代码草稿", "生成代码 diff"],
+  ["代码草稿已生成", "代码 diff 已生成"],
+  ["代码草稿生成", "代码 diff 生成"],
+  ["代码草稿失败", "代码 diff 失败"],
+  ["写入代码草稿", "写入代码 diff"],
+  ["代码草稿", "代码 diff"],
+  ["生成草稿", "生成代码 diff"],
+];
+
+export function normalizeWorkbenchWording(text: string): string {
+  let nextText = text;
+  WORKBENCH_WORDING_REPLACEMENTS.forEach(([from, to]) => {
+    nextText = nextText.replaceAll(from, to);
+  });
+  return nextText;
+}
+
 export function candidateChangeStatusLabel(value: "PENDING_CONFIRMATION" | "CONFIRMED" | "REJECTED" | "SUPERSEDED"): string {
   switch (value) {
     case "PENDING_CONFIRMATION":
@@ -381,5 +421,58 @@ export function investigationLeadStatusLabel(value: "OPEN" | "PROMOTED" | "DISMI
       return "已排除";
     case "SUPERSEDED":
       return "已替代";
+  }
+}
+
+export function investigationThreadStatusLabel(value: "OPEN" | "PROMOTED" | "DISMISSED" | "BLOCKED" | "SUPERSEDED"): string {
+  switch (value) {
+    case "OPEN":
+      return "进行中";
+    case "PROMOTED":
+      return "已升级";
+    case "DISMISSED":
+      return "已排除";
+    case "BLOCKED":
+      return "已阻塞";
+    case "SUPERSEDED":
+      return "已替代";
+  }
+}
+
+export function investigationTurnOutcomeStatusLabel(
+  value: "PROMOTED_TO_CANDIDATE" | "OPEN_WITH_PROGRESS" | "OPEN_NO_PROGRESS" | "DISMISSED" | "BLOCKED",
+): string {
+  switch (value) {
+    case "PROMOTED_TO_CANDIDATE":
+      return "已升级";
+    case "OPEN_WITH_PROGRESS":
+      return "有推进";
+    case "OPEN_NO_PROGRESS":
+      return "无推进";
+    case "DISMISSED":
+      return "已排除";
+    case "BLOCKED":
+      return "取证受阻";
+  }
+}
+
+export function riskResolutionStatusLabel(
+  value?: "UNRESOLVED" | "DEFERRED" | "ACCEPTED_RISK" | "EVIDENCE_EXHAUSTED" | "DISMISSED" | "PROMOTED" | null,
+): string {
+  switch (value) {
+    case "UNRESOLVED":
+      return "未决";
+    case "DEFERRED":
+      return "暂挂";
+    case "ACCEPTED_RISK":
+      return "接受风险";
+    case "EVIDENCE_EXHAUSTED":
+      return "证据穷尽";
+    case "DISMISSED":
+      return "已排除";
+    case "PROMOTED":
+      return "已升级";
+    default:
+      return "未决";
   }
 }

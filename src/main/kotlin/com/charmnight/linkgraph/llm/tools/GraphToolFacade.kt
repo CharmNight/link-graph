@@ -4,6 +4,8 @@ import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.services.currentWorkingGraph
+import com.charmnight.linkgraph.services.currentWorkingGraphSource
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import java.util.ArrayDeque
 
@@ -14,20 +16,12 @@ import java.util.ArrayDeque
 class GraphToolFacade {
     /** 返回当前最适合问答使用的工作图。 */
     fun currentGraph(snapshot: GraphEditorStateService.Snapshot): GraphDocument {
-        return snapshot.workingGraph
-            ?: snapshot.visibleGraph
-            ?: snapshot.referenceFactGraph
-            ?: GraphDocument()
+        return currentWorkingGraph(snapshot)
     }
 
     /** 返回当前图来源标签，便于调试和日志记录。 */
     fun currentGraphSource(snapshot: GraphEditorStateService.Snapshot): String {
-        return when {
-            snapshot.workingGraph != null -> "workingGraph"
-            snapshot.visibleGraph != null -> "visibleGraph"
-            snapshot.referenceFactGraph != null -> "referenceFactGraph"
-            else -> "emptyGraph"
-        }
+        return currentWorkingGraphSource(snapshot)
     }
 
     /** 解析当前选区；若调用方显式给了 nodeIds，则优先使用调用方输入。 */

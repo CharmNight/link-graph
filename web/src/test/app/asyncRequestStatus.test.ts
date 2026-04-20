@@ -114,7 +114,7 @@ describe("resolveToolbarFeedback", () => {
 
     expect(result).toEqual({
       level: "ERROR",
-      message: "代码草稿：代码草稿失败",
+      message: "代码 diff：代码 diff 失败",
       source: "async-request",
     });
   });

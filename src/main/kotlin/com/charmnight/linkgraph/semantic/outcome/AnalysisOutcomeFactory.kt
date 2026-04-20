@@ -45,7 +45,11 @@ class AnalysisOutcomeFactory(
             )
         }
         val (hiddenNodeCount, hiddenEdgeCount, truncated) = when (displayMode) {
-            AnalysisDisplayMode.FLOWCHART -> Triple(0, 0, false)
+            AnalysisDisplayMode.FLOWCHART -> Triple(
+                flowchartView.summary.hiddenNodeCount,
+                flowchartView.summary.hiddenEdgeCount,
+                flowchartView.summary.truncated,
+            )
             else -> {
                 val hiddenNodes = (fullGraph.nodes.map { it.id }.toSet() - visibleGraph.nodes.map { it.id }.toSet()).size
                 val hiddenEdges = (fullGraph.edges.map { it.id }.toSet() - visibleGraph.edges.map { it.id }.toSet()).size

@@ -1,6 +1,8 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.services.currentVisibleGraph
+import com.charmnight.linkgraph.services.currentWorkingGraph
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
@@ -57,19 +59,19 @@ data class GraphEditorSnapshot(
 /**
  * 将状态服务内部快照转换为前端桥接层使用的快照模型。
  */
-fun GraphEditorStateService.Snapshot.editorSnapshot(): GraphEditorSnapshot = GraphEditorSnapshot(
-    // 可见图缺失时回退到工作图，保证前端始终拿到可渲染的图结构。
-    visibleGraph = visibleGraph ?: workingGraph ?: GraphDocument(),
-    // 工作图缺失时同样回退到可见图，避免编辑态出现空文档。
-    workingGraph = workingGraph ?: visibleGraph ?: GraphDocument(),
-    referenceFactGraph = referenceFactGraph,
-    designBaselineGraph = designBaselineGraph,
-    factGraphView = factGraphView,
-    flowchartView = flowchartView,
-    resourceRelationView = resourceRelationView,
-    analysisDisplayMode = analysisDisplayMode,
-    layoutState = layoutState,
-    semanticRevision = semanticRevision,
-    layoutRevision = layoutRevision,
-    snapshotRevision = snapshotRevision,
-)
+fun GraphEditorStateService.Snapshot.editorSnapshot(): GraphEditorSnapshot {
+    return GraphEditorSnapshot(
+        visibleGraph = currentVisibleGraph(this),
+        workingGraph = currentWorkingGraph(this),
+        referenceFactGraph = factGraphView?.fullGraph ?: referenceFactGraph,
+        designBaselineGraph = designBaselineGraph,
+        factGraphView = factGraphView,
+        flowchartView = flowchartView,
+        resourceRelationView = resourceRelationView,
+        analysisDisplayMode = analysisDisplayMode,
+        layoutState = layoutState,
+        semanticRevision = semanticRevision,
+        layoutRevision = layoutRevision,
+        snapshotRevision = snapshotRevision,
+    )
+}
