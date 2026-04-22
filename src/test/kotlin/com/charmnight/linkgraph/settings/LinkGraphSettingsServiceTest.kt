@@ -7,9 +7,25 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class LinkGraphSettingsServiceTest {
+    private class FakeSecretStore(
+        initialApiKey: String = "",
+    ) : LinkGraphSecretStore {
+        var storedApiKey: String = initialApiKey
+
+        override fun loadApiKey(): String = storedApiKey
+
+        override fun saveApiKey(apiKey: String) {
+            storedApiKey = apiKey
+        }
+
+        override fun clearApiKey() {
+            storedApiKey = ""
+        }
+    }
+
     @Test
     fun exposesExpectedDefaultSettings() {
-        val snapshot = LinkGraphSettingsService().snapshot()
+        val snapshot = LinkGraphSettingsService(FakeSecretStore()).snapshot()
 
         assertFalse(snapshot.llmEnabled)
         assertEquals(LlmProviderType.MOCK, snapshot.providerType())
@@ -21,10 +37,11 @@ class LinkGraphSettingsServiceTest {
     }
 
     @Test
-    fun sanitizesAndPersistsSettingsState() {
-        val service = LinkGraphSettingsService()
+    fun sanitizesRuntimeSnapshotAndSplitsApiKeyFromPersistedState() {
+        val secretStore = FakeSecretStore()
+        val service = LinkGraphSettingsService(secretStore)
 
-        service.loadState(
+        service.update(
             LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
@@ -44,19 +61,30 @@ class LinkGraphSettingsServiceTest {
         assertEquals("gpt-4.1-mini", snapshot.model.trim())
         assertEquals(30, snapshot.effectiveTimeoutSeconds())
         assertEquals(1.0, snapshot.effectiveTemperature())
+        assertEquals("secret-key", secretStore.storedApiKey)
+        assertEquals(
+            LinkGraphPersistentSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                endpoint = "https://api.example.com/v1",
+                model = "gpt-4.1-mini",
+                timeoutSeconds = 30,
+                temperature = 1.0,
+            ),
+            service.state,
+        )
         assertTrue(service.isRemoteGenerationReady())
     }
 
     @Test
     fun remoteGenerationRequiresCompleteConnectionInfo() {
-        val service = LinkGraphSettingsService()
+        val service = LinkGraphSettingsService(FakeSecretStore())
 
         service.loadState(
-            LinkGraphSettingsState(
+            LinkGraphPersistentSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
                 endpoint = "",
-                apiKey = "",
                 model = "",
             ),
         )
@@ -66,14 +94,13 @@ class LinkGraphSettingsServiceTest {
 
     @Test
     fun usesMiniMaxPresetDefaultsWhenEndpointAndModelAreBlank() {
-        val service = LinkGraphSettingsService()
+        val service = LinkGraphSettingsService(FakeSecretStore(initialApiKey = " secret-key "))
 
         service.loadState(
-            LinkGraphSettingsState(
+            LinkGraphPersistentSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.MINIMAX_ANTHROPIC.id,
                 endpoint = "",
-                apiKey = " secret-key ",
                 model = "",
             ),
         )
@@ -87,14 +114,13 @@ class LinkGraphSettingsServiceTest {
 
     @Test
     fun usesOpenAiResponsesPresetDefaultsWhenEndpointAndModelAreBlank() {
-        val service = LinkGraphSettingsService()
+        val service = LinkGraphSettingsService(FakeSecretStore(initialApiKey = " secret-key "))
 
         service.loadState(
-            LinkGraphSettingsState(
+            LinkGraphPersistentSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_RESPONSES.id,
                 endpoint = "",
-                apiKey = " secret-key ",
                 model = "",
             ),
         )
@@ -104,5 +130,24 @@ class LinkGraphSettingsServiceTest {
         assertEquals("https://api.openai.com/v1", snapshot.effectiveEndpoint())
         assertEquals("gpt-4.1-mini", snapshot.effectiveModel())
         assertTrue(service.isRemoteGenerationReady())
+    }
+
+    @Test
+    fun clearsStoredApiKeyWhenUpdatedStateLeavesKeyBlank() {
+        val secretStore = FakeSecretStore(initialApiKey = "secret-key")
+        val service = LinkGraphSettingsService(secretStore)
+
+        service.update(
+            LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                endpoint = "https://api.example.com/v1",
+                apiKey = "",
+                model = "gpt-4.1-mini",
+            ),
+        )
+
+        assertEquals("", secretStore.storedApiKey)
+        assertFalse(service.isRemoteGenerationReady())
     }
 }

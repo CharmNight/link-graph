@@ -108,6 +108,18 @@ data class LinkGraphSettingsState(
         )
     }
 
+    fun toPersistentState(): LinkGraphPersistentSettingsState {
+        val sanitized = sanitized()
+        return LinkGraphPersistentSettingsState(
+            llmEnabled = sanitized.llmEnabled,
+            provider = sanitized.provider,
+            endpoint = sanitized.endpoint,
+            model = sanitized.model,
+            timeoutSeconds = sanitized.timeoutSeconds,
+            temperature = sanitized.temperature,
+        )
+    }
+
     companion object {
         /** 定义 LLM 默认关闭。 */
         const val DEFAULT_LLM_ENABLED: Boolean = false
@@ -129,6 +141,35 @@ data class LinkGraphSettingsState(
 }
 
 /**
+ * Link Graph 的 XML 持久化设置模型。
+ * 只允许落盘非敏感字段；API Key 必须走 IDE 安全存储。
+ */
+data class LinkGraphPersistentSettingsState(
+    var llmEnabled: Boolean = LinkGraphSettingsState.DEFAULT_LLM_ENABLED,
+    var provider: String = LinkGraphSettingsState.DEFAULT_PROVIDER_ID,
+    var endpoint: String = "",
+    var model: String = LinkGraphSettingsState.DEFAULT_MODEL,
+    var timeoutSeconds: Int = LinkGraphSettingsState.DEFAULT_TIMEOUT_SECONDS,
+    var temperature: Double = LinkGraphSettingsState.DEFAULT_TEMPERATURE,
+) {
+    fun sanitized(): LinkGraphPersistentSettingsState {
+        return toRuntimeState().toPersistentState()
+    }
+
+    fun toRuntimeState(apiKey: String = ""): LinkGraphSettingsState {
+        return LinkGraphSettingsState(
+            llmEnabled = llmEnabled,
+            provider = provider,
+            endpoint = endpoint,
+            apiKey = apiKey,
+            model = model,
+            timeoutSeconds = timeoutSeconds,
+            temperature = temperature,
+        ).sanitized()
+    }
+}
+
+/**
  * 插件级设置存储。
  * 当前主要承载 LLM 生成计划所需的 provider、endpoint、model 和鉴权信息。
  */
@@ -137,32 +178,47 @@ data class LinkGraphSettingsState(
     storages = [Storage("link-graph.xml")],
 )
 @Service(Service.Level.APP)
-class LinkGraphSettingsService : PersistentStateComponent<LinkGraphSettingsState> {
+class LinkGraphSettingsService : PersistentStateComponent<LinkGraphPersistentSettingsState> {
     /** 保存当前持久化状态。 */
-    private var state = LinkGraphSettingsState()
+    private var state = LinkGraphPersistentSettingsState()
+    private val secretStore: LinkGraphSecretStore
+
+    constructor() {
+        secretStore = PasswordSafeLinkGraphSecretStore()
+    }
+
+    internal constructor(secretStore: LinkGraphSecretStore) {
+        this.secretStore = secretStore
+    }
 
     /**
      * 返回当前持久化状态。
      */
-    override fun getState(): LinkGraphSettingsState = state
+    override fun getState(): LinkGraphPersistentSettingsState = state
 
     /**
      * 加载外部持久化状态。
      */
-    override fun loadState(state: LinkGraphSettingsState) {
+    override fun loadState(state: LinkGraphPersistentSettingsState) {
         this.state = state.sanitized()
     }
 
     /**
      * 返回规范化后的设置快照。
      */
-    fun snapshot(): LinkGraphSettingsState = state.sanitized()
+    fun snapshot(): LinkGraphSettingsState = state.toRuntimeState(apiKey = secretStore.loadApiKey())
 
     /**
      * 更新设置状态。
      */
     fun update(nextState: LinkGraphSettingsState) {
-        state = nextState.sanitized()
+        val sanitized = nextState.sanitized()
+        state = sanitized.toPersistentState()
+        if (sanitized.apiKey.isBlank()) {
+            secretStore.clearApiKey()
+        } else {
+            secretStore.saveApiKey(sanitized.apiKey)
+        }
     }
 
     /**

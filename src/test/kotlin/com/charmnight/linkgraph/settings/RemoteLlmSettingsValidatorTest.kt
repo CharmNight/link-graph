@@ -7,6 +7,7 @@ import com.charmnight.linkgraph.llm.LlmRequest
 import com.charmnight.linkgraph.llm.LlmResponse
 import com.charmnight.linkgraph.llm.LlmStreamEvent
 import com.charmnight.linkgraph.llm.LlmWireProtocol
+import com.charmnight.linkgraph.llm.RemoteLlmEndpointPolicy
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -207,5 +208,67 @@ class RemoteLlmSettingsValidatorTest {
             "远程 LLM 配置验证通过。\n已验证接口：https://api.openai.com/v1/responses\n模型：gpt-4.1-mini",
             result.message,
         )
+    }
+
+    @Test
+    fun rejectsHttpEndpointByDefault() {
+        val result = RemoteLlmSettingsValidator(
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    error("validator should reject insecure endpoint before calling gateway")
+                }
+            },
+        ).validate(
+            LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                endpoint = "http://example.com/v1",
+                apiKey = "token",
+                model = "gpt-4.1-mini",
+            ),
+        )
+
+        assertFalse(result.ok)
+        assertEquals(
+            "请求地址必须使用 https://；http:// 仅允许在调试开关开启时使用。",
+            result.message,
+        )
+    }
+
+    @Test
+    fun allowsHttpEndpointOnlyWhenDebugPolicyExplicitlyEnabled() {
+        val requests = mutableListOf<LlmRequest>()
+        val result = RemoteLlmSettingsValidator(
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    error("validator should still use the preset's real probe shape")
+                }
+
+                override fun stream(
+                    request: LlmRequest,
+                    listener: (LlmStreamEvent) -> Unit,
+                ): LlmResponse {
+                    requests += request
+                    val response = LlmResponse(content = "OK", model = request.model)
+                    listener(LlmStreamEvent.Started(model = request.model))
+                    listener(LlmStreamEvent.TextDelta("OK"))
+                    listener(LlmStreamEvent.Completed(response))
+                    return response
+                }
+            },
+            endpointPolicy = RemoteLlmEndpointPolicy(allowInsecureHttp = true),
+        ).validate(
+            LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                endpoint = "http://example.com/v1",
+                apiKey = "token",
+                model = "gpt-4.1-mini",
+            ),
+        )
+
+        assertTrue(result.ok)
+        assertEquals(1, requests.size)
+        assertEquals("http://example.com/v1", requests.single().endpoint)
     }
 }

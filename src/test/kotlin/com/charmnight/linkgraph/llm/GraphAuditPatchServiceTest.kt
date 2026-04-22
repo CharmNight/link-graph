@@ -304,7 +304,7 @@ class GraphAuditPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
-                endpoint = "http://localhost:8080/v1",
+                endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -408,7 +408,7 @@ class GraphAuditPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
-                endpoint = "http://localhost:8080/v1",
+                endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -514,7 +514,7 @@ class GraphAuditPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
-                endpoint = "http://localhost:8080/v1",
+                endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -606,7 +606,7 @@ class GraphAuditPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
-                endpoint = "http://localhost:8080/v1",
+                endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -733,7 +733,7 @@ class GraphAuditPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
-                endpoint = "http://localhost:8080/v1",
+                endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -808,7 +808,7 @@ class GraphAuditPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
-                endpoint = "http://localhost:8080/v1",
+                endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -880,7 +880,7 @@ class GraphAuditPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
-                endpoint = "http://localhost:8080/v1",
+                endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -995,7 +995,7 @@ class GraphAuditPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
-                endpoint = "http://localhost:8080/v1",
+                endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1103,7 +1103,7 @@ class GraphAuditPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
-                endpoint = "http://localhost:8080/v1",
+                endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1198,7 +1198,7 @@ class GraphAuditPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
-                endpoint = "http://localhost:8080/v1",
+                endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1283,7 +1283,7 @@ class GraphAuditPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
-                endpoint = "http://localhost:8080/v1",
+                endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1355,7 +1355,7 @@ class GraphAuditPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
-                endpoint = "http://localhost:8080/v1",
+                endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1394,7 +1394,7 @@ class GraphAuditPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
-                endpoint = "http://localhost:8080/v1",
+                endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1431,7 +1431,7 @@ class GraphAuditPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
-                endpoint = "http://localhost:8080/v1",
+                endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1598,7 +1598,7 @@ class GraphAuditPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
-                endpoint = "http://localhost:8080/v1",
+                endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1673,7 +1673,7 @@ class GraphAuditPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderType.OPENAI_COMPATIBLE.name,
-                endpoint = "http://localhost:8080/v1",
+                endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),

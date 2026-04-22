@@ -9,6 +9,7 @@ import com.charmnight.linkgraph.llm.LlmStructuredOutput
 import com.charmnight.linkgraph.llm.LlmStructuredSchemas
 import com.charmnight.linkgraph.llm.LlmUserMessageFormatter
 import com.charmnight.linkgraph.llm.LlmWireProtocol
+import com.charmnight.linkgraph.llm.RemoteLlmEndpointPolicy
 import com.charmnight.linkgraph.llm.RemoteLlmConnection
 import com.charmnight.linkgraph.llm.RoutingLlmGateway
 import com.charmnight.linkgraph.llm.remoteConnectionOrNull
@@ -30,6 +31,8 @@ data class RemoteLlmSettingsValidationResult(
 class RemoteLlmSettingsValidator(
     /** 保存执行远程校验请求的网关。 */
     private val gateway: LlmGateway = RoutingLlmGateway(),
+    /** 保存远程 endpoint 协议策略。 */
+    private val endpointPolicy: RemoteLlmEndpointPolicy = RemoteLlmEndpointPolicy(),
 ) {
     /**
      * 校验设置页中的远程 LLM 配置是否可用。
@@ -87,14 +90,14 @@ class RemoteLlmSettingsValidator(
                 },
             )
         }
-        if (!LlmUserMessageFormatter.isLikelyEndpoint(effectiveEndpoint)) {
+        endpointPolicy.validationError(effectiveEndpoint)?.let { errorMessage ->
             return RemoteLlmSettingsValidationResult(
                 ok = false,
-                message = "请求地址格式不正确，请填写以 http:// 或 https:// 开头的地址。",
+                message = errorMessage,
             )
         }
         // 只有生成出完整远程连接配置后，才真正发起验证请求。
-        val remoteConnection = sanitized.remoteConnectionOrNull()
+        val remoteConnection = sanitized.remoteConnectionOrNull(endpointPolicy = endpointPolicy)
             ?: return RemoteLlmSettingsValidationResult(
                 ok = false,
                 message = "远程 LLM 配置不完整，请检查请求地址、API 密钥和模型名。",
