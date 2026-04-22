@@ -29,6 +29,7 @@ import com.charmnight.linkgraph.workbench.InvestigationThread
 import com.charmnight.linkgraph.workbench.InvestigationThreadStatus
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -209,7 +210,9 @@ class QaCapabilityTest : BasePlatformTestCase() {
     }
 
     fun testReadsCodeEvidenceBeforeRunningAuditExecutorWhenSourceContextIsMissing() {
-        val sourceFile = Files.createTempFile("qa-capability", ".java")
+        val sourceFile = Path.of(requireNotNull(project.basePath))
+            .resolve("src/main/java/com/example/QaCapabilityUploadService.java")
+        Files.createDirectories(sourceFile.parent)
         Files.writeString(
             sourceFile,
             """
@@ -276,7 +279,9 @@ class QaCapabilityTest : BasePlatformTestCase() {
     }
 
     fun testStopsBeforeAuditExecutionWhenCodeReadExceedsBudget() {
-        val sourceFile = Files.createTempFile("qa-capability-budget", ".java")
+        val sourceFile = Path.of(requireNotNull(project.basePath))
+            .resolve("src/main/java/com/example/QaCapabilityBudgetGuard.java")
+        Files.createDirectories(sourceFile.parent)
         Files.writeString(
             sourceFile,
             """
@@ -921,7 +926,9 @@ class QaCapabilityTest : BasePlatformTestCase() {
     }
 
     fun testRebuildsAuditInputFromRuntimeArtifactsWithoutOverwritingGraphContext() {
-        val sourceFile = Files.createTempFile("qa-runtime-artifacts", ".java")
+        val sourceFile = Path.of(requireNotNull(project.basePath))
+            .resolve("src/main/java/com/example/QaRuntimeArtifactsController.java")
+        Files.createDirectories(sourceFile.parent)
         Files.writeString(
             sourceFile,
             """
@@ -1052,5 +1059,69 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertEquals("历史问题", capturedSession?.messages?.singleOrNull()?.content)
         assertEquals(1, capturedSession?.candidateChanges?.size)
         assertEquals(1, capturedSession?.investigationThreads?.size)
+    }
+
+    fun testSkipsProjectExternalCodeEvidenceForQaRuntime() {
+        val sourceFile = Files.createTempFile("qa-external-evidence", ".java")
+        Files.writeString(
+            sourceFile,
+            """
+            class QaExternalEvidence {
+                String submit(String request) {
+                    return fallback(request);
+                }
+            }
+            """.trimIndent(),
+        )
+        var capturedSourceContext: List<SourceSnippetContext> = emptyList()
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            auditExecutor = { input, _, _ ->
+                capturedSourceContext = input.auditContext.sourceContext
+                GraphPatchResult(
+                    source = LlmResultSource.MOCK,
+                    question = input.question,
+                    answer = "未读取项目外代码证据。",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+
+        val result = AgentRunCoordinator().run(
+            capability = capability,
+            input = QaCapabilityInput(
+                question = "请结合代码解释这里为什么会走 fallback",
+                auditContext = GraphAuditContext(
+                    selectedNodeIds = listOf("method:upload-file"),
+                ),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = {
+                    GraphEditorStateService.Snapshot(
+                        workingGraph = GraphDocument(
+                            nodes = listOf(
+                                GraphNode(
+                                    id = "method:upload-file",
+                                    type = NodeType.METHOD,
+                                    title = "QaExternalEvidence.submit",
+                                    signature = "com.example.QaExternalEvidence.submit(java.lang.String):java.lang.String",
+                                    metadata = mapOf(
+                                        "source.filePath" to sourceFile.toString(),
+                                        "source.startLine" to "1",
+                                        "source.endLine" to "5",
+                                    ),
+                                ),
+                            ),
+                        ),
+                    )
+                },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertEquals("未读取项目外代码证据。", result.output?.answer)
+        assertTrue(capturedSourceContext.isEmpty())
+        assertTrue(result.finalState.artifactRefs.none { it.type == ArtifactType.CODE_EVIDENCE })
     }
 }

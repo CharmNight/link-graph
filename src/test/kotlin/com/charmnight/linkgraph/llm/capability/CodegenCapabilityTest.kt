@@ -94,7 +94,9 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
     }
 
     fun testPassesRuntimeReadSourceEvidenceToCodegenExecutorInsteadOfPreloadedSnippet() {
-        val sourceFile = Files.createTempFile("codegen-runtime-evidence", ".java")
+        val sourceFile = java.nio.file.Path.of(requireNotNull(project.basePath))
+            .resolve("src/main/java/com/example/CodegenRuntimeEvidenceController.java")
+        Files.createDirectories(sourceFile.parent)
         Files.writeString(
             sourceFile,
             """
@@ -663,6 +665,94 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = { GraphEditorStateService.Snapshot() },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertFalse(executorInvoked)
+        assertNull(result.output)
+        assertEquals(com.charmnight.linkgraph.llm.runtime.AgentRunFailureReason.EVIDENCE_INSUFFICIENT, result.finalState.failureReason)
+    }
+
+    fun testSkipsProjectExternalConfirmedIntentEvidence() {
+        val sourceFile = Files.createTempFile("codegen-external-evidence", ".java")
+        Files.writeString(
+            sourceFile,
+            """
+            class CodegenExternalEvidence {
+                void uploadFile(String file) {
+                    validate(file);
+                }
+                void validate(String file) {}
+            }
+            """.trimIndent(),
+        )
+        val scope = EditScope(
+            scopeId = "scope-upload",
+            targetNodeId = "method:upload-file",
+            filePath = sourceFile.toString(),
+            language = "JAVA",
+            symbolKind = "METHOD",
+            symbolSignature = "com.example.CodegenExternalEvidence.uploadFile(java.lang.String):void",
+            startLine = 1,
+            endLine = 4,
+            allowedChangeKinds = listOf("REPLACE_METHOD_BODY"),
+        )
+        var executorInvoked = false
+        val capability = CodegenCapability(
+            project = project,
+            defaultBudget = RunBudget(),
+            codegenExecutor = { _, _, _ ->
+                executorInvoked = true
+                CodeGenerationResult(
+                    drafts = listOf(
+                        GeneratedCodeDraft(
+                            id = "draft-1",
+                            sourceNodeId = "method:upload-file",
+                            title = "new file draft",
+                            targetPath = "src/main/java/com/example/UploadDraft.java",
+                            content = "class UploadDraft {}",
+                        ),
+                    ),
+                )
+            },
+        )
+
+        val result = AgentRunCoordinator().run(
+            capability = capability,
+            input = CodegenCapabilityInput(
+                generationContext = com.charmnight.linkgraph.llm.GenerationContext(
+                    graph = GraphDocument(),
+                    confirmedChanges = listOf(
+                        DraftWorkbenchEntry(
+                            entryId = "draft-confirmed",
+                            kind = DraftEntryKind.CHANGE,
+                            title = "rewrite upload",
+                            editScopes = listOf(scope),
+                        ),
+                    ),
+                ),
+                plan = GenerationPlan(
+                    source = GenerationPlanSource.MOCK,
+                    summary = "rewrite upload",
+                ),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = {
+                    GraphEditorStateService.Snapshot(
+                        draftWorkbenchState = DraftWorkbenchState(
+                            draftChanges = listOf(
+                                DraftWorkbenchEntry(
+                                    entryId = "draft-confirmed",
+                                    kind = DraftEntryKind.CHANGE,
+                                    title = "rewrite upload",
+                                    editScopes = listOf(scope),
+                                ),
+                            ),
+                        ),
+                    )
+                },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )

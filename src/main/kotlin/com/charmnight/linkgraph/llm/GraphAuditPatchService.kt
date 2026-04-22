@@ -30,6 +30,8 @@ class GraphAuditPatchService(
     private val gateway: LlmGateway = RoutingLlmGateway(),
     /** 负责维护会话与候选变更。 */
     private val auditConversationService: AuditConversationService = AuditConversationService(),
+    /** 负责从本地可信上下文推导 edit scope 路径。 */
+    private val trustedEditScopePathResolver: TrustedEditScopePathResolver = TrustedEditScopePathResolver(),
 ) {
     private val logger = Logger.getInstance(GraphAuditPatchService::class.java)
     private val traceEnabled: Boolean =
@@ -495,27 +497,26 @@ class GraphAuditPatchService(
             val node = nodeById[nodeId] ?: return@mapNotNull null
             val directReference = change.evidence.firstNotNullOfOrNull { finding ->
                 finding.references.firstOrNull { reference ->
-                    (reference.nodeId == null || reference.nodeId == nodeId) && !reference.filePath.isNullOrBlank()
-                }?.let { reference -> finding to reference }
+                    reference.nodeId == null || reference.nodeId == nodeId
+                }
             }
-            val reference = directReference?.second
             val snippet = sourceSnippetByNodeId[nodeId]
-            val filePath = reference?.filePath
-                ?: snippet?.filePath
-                ?: node.metadata["source.filePath"]
-                ?: node.location?.substringBefore(':')
-                ?: return@mapNotNull null
+            val location = trustedEditScopePathResolver.resolve(
+                node = node,
+                snippet = snippet,
+                reference = directReference,
+            ) ?: return@mapNotNull null
             EditScope(
                 scopeId = "scope-${change.changeId}-$nodeId",
                 targetNodeId = nodeId,
-                filePath = filePath,
-                language = inferLanguage(filePath),
+                filePath = location.filePath,
+                language = inferLanguage(location.filePath),
                 symbolKind = node.type.name,
                 symbolSignature = editableSymbolSignature(node),
-                startOffset = snippet?.startOffset ?: node.metadata["source.startOffset"]?.toIntOrNull(),
-                endOffset = snippet?.endOffset ?: node.metadata["source.endOffset"]?.toIntOrNull(),
-                startLine = reference?.startLine ?: snippet?.startLine ?: node.metadata["source.startLine"]?.toIntOrNull(),
-                endLine = reference?.endLine ?: snippet?.endLine ?: node.metadata["source.endLine"]?.toIntOrNull(),
+                startOffset = location.startOffset,
+                endOffset = location.endOffset,
+                startLine = location.startLine,
+                endLine = location.endLine,
                 allowedChangeKinds = listOf("REPLACE_METHOD_BLOCK", "REPLACE_METHOD_BODY", "ADD_IMPORT"),
                 supportingFindingIds = supportingFindingIds,
             )

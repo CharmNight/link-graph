@@ -1518,4 +1518,168 @@ class GraphAuditPatchServiceTest {
         assertTrue(result.promptPreview.contains(manualNode.title))
         assertTrue(result.answer.contains("当前节点") || result.answer.contains("当前框选范围"))
     }
+
+    @Test
+    fun ignoresRemoteReferenceFilePathWhenTrustedLocalPathExists() {
+        val gateway = object : LlmGateway {
+            override fun generate(request: LlmRequest): LlmResponse {
+                return LlmResponse(
+                    content = """
+                        {
+                          "answer": "这里可以直接确认 fileDownload 方法需要调整。",
+                          "findings": [
+                            {
+                              "id": "download-source",
+                              "claim": "当前源码里直接能看到 fileDownload 方法。",
+                              "evidenceLevel": "DIRECT_SOURCE",
+                              "references": [
+                                {
+                                  "nodeId": "method:file-download",
+                                  "filePath": "/tmp/forged/CommonController.java",
+                                  "startLine": 42,
+                                  "endLine": 88
+                                }
+                              ]
+                            }
+                          ],
+                          "candidateChanges": [
+                            {
+                              "changeId": "change-file-download",
+                              "status": "PENDING_CONFIRMATION",
+                              "claimType": "CODE_FACT",
+                              "title": "调整 fileDownload 里的路径规则",
+                              "targetNodeIds": ["method:file-download"],
+                              "reason": "当前源码里直接可见。",
+                              "impactSummary": "影响下载路径解析。",
+                              "supportingFindingIds": ["download-source"]
+                            }
+                          ],
+                          "warnings": [],
+                          "patch": null
+                        }
+                    """.trimIndent(),
+                    model = request.model,
+                )
+            }
+        }
+
+        val result = GraphAuditPatchService(gateway = gateway).audit(
+            context = GraphAuditContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:file-download",
+                            type = NodeType.METHOD,
+                            title = "CommonController.fileDownload",
+                            signature = "com.example.CommonController.fileDownload(java.lang.String):void",
+                            sourceTag = GraphSourceTag.FACT,
+                            metadata = mapOf(
+                                "source.filePath" to "src/main/java/com/example/CommonController.java",
+                                "source.startOffset" to "1200",
+                                "source.endOffset" to "1640",
+                            ),
+                        ),
+                    ),
+                ),
+                selectedNodeIds = listOf("method:file-download"),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:file-download",
+                        filePath = "src/main/java/com/example/CommonController.java",
+                        startOffset = 1200,
+                        endOffset = 1640,
+                        startLine = 42,
+                        endLine = 88,
+                        snippet = "public void fileDownload(String baseUrl) { return; }",
+                    ),
+                ),
+            ),
+            question = "请确认这里的路径规则是否需要调整？",
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                endpoint = "http://localhost:8080/v1",
+                apiKey = "token",
+                model = "gpt-test",
+            ),
+        )
+
+        assertEquals(
+            "src/main/java/com/example/CommonController.java",
+            result.candidateChanges.single().editScopes.single().filePath,
+        )
+    }
+
+    @Test
+    fun doesNotDeriveEditScopeFromRemoteReferenceFilePathAlone() {
+        val gateway = object : LlmGateway {
+            override fun generate(request: LlmRequest): LlmResponse {
+                return LlmResponse(
+                    content = """
+                        {
+                          "answer": "这里可以直接确认 fileDownload 方法需要调整。",
+                          "findings": [
+                            {
+                              "id": "download-source",
+                              "claim": "当前源码里直接能看到 fileDownload 方法。",
+                              "evidenceLevel": "DIRECT_SOURCE",
+                              "references": [
+                                {
+                                  "nodeId": "method:file-download",
+                                  "filePath": "/tmp/forged/CommonController.java",
+                                  "startLine": 42,
+                                  "endLine": 88
+                                }
+                              ]
+                            }
+                          ],
+                          "candidateChanges": [
+                            {
+                              "changeId": "change-file-download",
+                              "status": "PENDING_CONFIRMATION",
+                              "claimType": "CODE_FACT",
+                              "title": "调整 fileDownload 里的路径规则",
+                              "targetNodeIds": ["method:file-download"],
+                              "reason": "当前源码里直接可见。",
+                              "impactSummary": "影响下载路径解析。",
+                              "supportingFindingIds": ["download-source"]
+                            }
+                          ],
+                          "warnings": [],
+                          "patch": null
+                        }
+                    """.trimIndent(),
+                    model = request.model,
+                )
+            }
+        }
+
+        val result = GraphAuditPatchService(gateway = gateway).audit(
+            context = GraphAuditContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:file-download",
+                            type = NodeType.METHOD,
+                            title = "CommonController.fileDownload",
+                            signature = "com.example.CommonController.fileDownload(java.lang.String):void",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                    ),
+                ),
+                selectedNodeIds = listOf("method:file-download"),
+            ),
+            question = "请确认这里的路径规则是否需要调整？",
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                endpoint = "http://localhost:8080/v1",
+                apiKey = "token",
+                model = "gpt-test",
+            ),
+        )
+
+        assertEquals(1, result.candidateChanges.size)
+        assertTrue(result.candidateChanges.single().editScopes.isEmpty())
+    }
 }

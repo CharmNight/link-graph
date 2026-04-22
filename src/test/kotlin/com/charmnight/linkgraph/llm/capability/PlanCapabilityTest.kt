@@ -28,6 +28,7 @@ import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import java.nio.file.Files
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -408,5 +409,88 @@ class PlanCapabilityTest : BasePlatformTestCase() {
         assertEquals(1, readCount)
         assertEquals(null, result.output)
         assertEquals(AgentRunFailureReason.MAX_FILES_READ_EXCEEDED, result.finalState.failureReason)
+    }
+
+    fun testSkipsProjectExternalConfirmedIntentEvidence() {
+        val sourceFile = Files.createTempFile("plan-external-evidence", ".java")
+        Files.writeString(
+            sourceFile,
+            """
+            class PlanExternalEvidence {
+                void submit() {
+                    validate();
+                }
+                void validate() {}
+            }
+            """.trimIndent(),
+        )
+        val externalScope = EditScope(
+            scopeId = "scope-external",
+            targetNodeId = "method:submit",
+            filePath = sourceFile.toString(),
+            language = "JAVA",
+            symbolKind = "METHOD",
+            symbolSignature = "com.example.PlanExternalEvidence.submit():void",
+            startLine = 1,
+            endLine = 4,
+            allowedChangeKinds = listOf("REPLACE_METHOD_BODY"),
+        )
+        var capturedPayload: PlanningPayload? = null
+        val capability = PlanCapability(
+            defaultBudget = RunBudget(),
+            planExecutor = { input, _, _ ->
+                capturedPayload = input.planningPayload
+                GenerationPlan(
+                    source = GenerationPlanSource.MOCK,
+                    summary = "skip external evidence",
+                )
+            },
+        )
+
+        val result = AgentRunCoordinator().run(
+            capability = capability,
+            input = PlanCapabilityInput(
+                planningPayload = PlanningPayload(
+                    planningGraph = GraphDocument(),
+                    diff = GraphDiff(),
+                    previewItems = emptyList(),
+                    snapshot = GraphEditorStateService.Snapshot(
+                        draftWorkbenchState = DraftWorkbenchState(
+                            draftChanges = listOf(
+                                DraftWorkbenchEntry(
+                                    entryId = "draft-runtime",
+                                    kind = DraftEntryKind.CHANGE,
+                                    title = "runtime confirmed",
+                                    editScopes = listOf(externalScope),
+                                ),
+                            ),
+                        ),
+                    ),
+                    sourceContext = emptyList(),
+                ),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = {
+                    GraphEditorStateService.Snapshot(
+                        draftWorkbenchState = DraftWorkbenchState(
+                            draftChanges = listOf(
+                                DraftWorkbenchEntry(
+                                    entryId = "draft-runtime",
+                                    kind = DraftEntryKind.CHANGE,
+                                    title = "runtime confirmed",
+                                    editScopes = listOf(externalScope),
+                                ),
+                            ),
+                        ),
+                    )
+                },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertEquals("skip external evidence", result.output?.summary)
+        assertNotNull(capturedPayload)
+        assertTrue(capturedPayload!!.sourceContext.isEmpty())
     }
 }

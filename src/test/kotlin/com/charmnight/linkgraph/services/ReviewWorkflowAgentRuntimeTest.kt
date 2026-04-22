@@ -25,6 +25,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.assertFalse
@@ -103,9 +104,8 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
     }
 
     fun testRequestAuditAsyncReadsCodeEvidenceBeforeAuditExecutor() {
-        val sourceFile = Files.createTempFile("review-workflow-qa", ".java")
-        Files.writeString(
-            sourceFile,
+        val sourceFile = projectSourceFile(
+            "src/main/java/com/example/ReviewWorkflowQaUploadService.java",
             """
             class UploadService {
                 String submit(String request) {
@@ -196,9 +196,8 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
     }
 
     fun testRequestAuditAsyncReadsAdjacentCallEvidenceForExplicitSelection() {
-        val controllerFile = Files.createTempFile("review-workflow-download", ".java")
-        Files.writeString(
-            controllerFile,
+        val controllerFile = projectSourceFile(
+            "src/main/java/com/example/ReviewWorkflowDownloadController.java",
             """
             class CommonController {
                 String fileDownload(String fileName) {
@@ -207,9 +206,8 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             }
             """.trimIndent(),
         )
-        val configFile = Files.createTempFile("review-workflow-config", ".java")
-        Files.writeString(
-            configFile,
+        val configFile = projectSourceFile(
+            "src/main/java/com/example/ReviewWorkflowDownloadConfig.java",
             """
             class RuoYiConfig {
                 static String getDownloadPath() {
@@ -325,9 +323,8 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
     }
 
     fun testRequestAuditAsyncBuildsCandidateChangeFromRuntimeCodeEvidenceInMockMode() {
-        val sourceFile = Files.createTempFile("review-workflow-qa-direct-source", ".java")
-        Files.writeString(
-            sourceFile,
+        val sourceFile = projectSourceFile(
+            "src/main/java/com/example/ReviewWorkflowDirectSourceController.java",
             """
             class CommonController {
                 void fileDownload(String fileName, Boolean delete) {
@@ -527,9 +524,8 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
     }
 
     fun testRequestAuditAsyncReadsWholeGraphCodeEvidenceWithoutExplicitSelection() {
-        val uploadFile = Files.createTempFile("review-workflow-whole-graph-upload", ".java")
-        Files.writeString(
-            uploadFile,
+        val uploadFile = projectSourceFile(
+            "src/main/java/com/example/ReviewWorkflowWholeGraphUploadService.java",
             """
             class UploadService {
                 String submit(String request) {
@@ -538,9 +534,8 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             }
             """.trimIndent(),
         )
-        val auditFile = Files.createTempFile("review-workflow-whole-graph-audit", ".java")
-        Files.writeString(
-            auditFile,
+        val auditFile = projectSourceFile(
+            "src/main/java/com/example/ReviewWorkflowWholeGraphAuditService.java",
             """
             class AuditService {
                 boolean shouldAudit(String request) {
@@ -644,9 +639,8 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
     }
 
     fun testRequestAuditAsyncPreservesFollowUpConversationHistoryThroughRuntime() {
-        val sourceFile = Files.createTempFile("review-workflow-follow-up-history", ".java")
-        Files.writeString(
-            sourceFile,
+        val sourceFile = projectSourceFile(
+            "src/main/java/com/example/ReviewWorkflowFollowUpHistoryService.java",
             """
             class UploadService {
                 String submit(String request) {
@@ -765,9 +759,8 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
     }
 
     fun testRequestAuditAsyncStopsWhenRuntimeCodeReadExceedsBudget() {
-        val sourceFile = Files.createTempFile("review-workflow-budget", ".java")
-        Files.writeString(
-            sourceFile,
+        val sourceFile = projectSourceFile(
+            "src/main/java/com/example/ReviewWorkflowBudgetGuard.java",
             """
             class UploadService {
                 String submit(String request) {
@@ -863,6 +856,16 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         assertTrue(snapshot.auditRequestState.detailMessage?.contains("step[2]") == true)
         assertTrue(snapshot.auditRequestState.detailMessage?.contains("tool=read_source_snippet") == true)
         assertTrue(snapshot.auditRequestState.detailMessage?.contains("nodeId=method:submit") == true)
+    }
+
+    private fun projectSourceFile(
+        relativePath: String,
+        content: String,
+    ): Path {
+        val path = Path.of(requireNotNull(project.basePath)).resolve(relativePath)
+        Files.createDirectories(path.parent)
+        Files.writeString(path, content)
+        return path
     }
 
     private fun sampleGraph(): GraphDocument {
