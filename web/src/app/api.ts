@@ -127,6 +127,7 @@ declare global {
       restoreDraftPatchPreview?: (source: DraftPatchPreviewSource) => void;
       undoLastDraftPatchApply?: () => void;
       requestGenerationPlan?: () => void;
+      requestGenerationPlanDiscussion?: (question: string, focusItemId?: string | null) => void;
       requestCodeDrafts?: () => void;
       requestCurrentEditorContextGraph?: () => void;
       requestAnalysisDisplayMode?: (displayMode: AnalysisDisplayMode) => void;
@@ -134,6 +135,7 @@ declare global {
       requestOpenSettings?: () => void;
       applyCodeDrafts?: () => void;
       applySingleCodeDraft?: (draftId: string) => void;
+      openCodeDraftNativeDiff?: (draftId: string) => void;
       requestArtifact?: (artifactIds: string[]) => void;
       graphChanged?: (payload: BackendGraphDocument) => void;
       frontendReady?: (payload: { lastAppliedRevision: number | null }) => void;
@@ -446,6 +448,19 @@ export function requestGenerationPlanAsync(): BridgeInvocationResult {
   });
 }
 
+export function requestGenerationPlanDiscussionAsync(
+  question: string,
+  focusItemId: string | null = null,
+): BridgeInvocationResult {
+  return invokeBridgeAction("requestGenerationPlanDiscussion", (bridge) => {
+    bridge.requestGenerationPlanDiscussion?.(question, focusItemId);
+  }, {
+    action: "requestGenerationPlanDiscussion",
+    question,
+    focusItemId,
+  });
+}
+
 export function requestCodeDraftsAsync(): BridgeInvocationResult {
   return invokeBridgeAction("requestCodeDrafts", (bridge) => {
     bridge.requestCodeDrafts?.();
@@ -457,6 +472,7 @@ export const retryLastAuditRequest = retryLastAuditRequestAsync;
 export const requestDiffReview = requestDiffReviewAsync;
 export const requestGraphBeautification = requestGraphBeautificationAsync;
 export const requestGenerationPlan = requestGenerationPlanAsync;
+export const requestGenerationPlanDiscussion = requestGenerationPlanDiscussionAsync;
 export const requestCodeDrafts = requestCodeDraftsAsync;
 
 export function requestCurrentEditorContextGraph(): BridgeInvocationResult {
@@ -496,6 +512,12 @@ export function applyCodeDrafts(): BridgeInvocationResult {
 export function applySingleCodeDraft(draftId: string): BridgeInvocationResult {
   return invokeBridgeAction("applySingleCodeDraft", (bridge) => {
     bridge.applySingleCodeDraft?.(draftId);
+  });
+}
+
+export function openCodeDraftNativeDiff(draftId: string): BridgeInvocationResult {
+  return invokeBridgeAction("openCodeDraftNativeDiff", (bridge) => {
+    bridge.openCodeDraftNativeDiff?.(draftId);
   });
 }
 

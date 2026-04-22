@@ -5,9 +5,10 @@ import type {
   GeneratedCodeDraft,
   GeneratedCodeDraftWriteReport,
   LlmResultSource,
+  PreparedCodeEdit,
   StageEligibilityDecision,
 } from "../types";
-import { draftStatusLabel, normalizeWorkbenchWording } from "../labels";
+import { draftStatusLabel, normalizeOptionalWorkbenchWording, normalizeWorkbenchWording } from "../labels";
 import { AsyncRequestBanner, resolveEffectiveRequestState } from "./AsyncRequestBanner";
 import { ArtifactTextDisclosure } from "./ArtifactTextDisclosure";
 
@@ -15,8 +16,6 @@ interface CodeDraftPanelProps {
   drafts: GeneratedCodeDraft[];
   warnings: string[];
   requestState?: AsyncRequestState | null;
-  isRequesting?: boolean;
-  requestError?: string | null;
   source?: LlmResultSource | null;
   promptPreview?: string | null;
   promptPreviewArtifactId?: string | null;
@@ -28,11 +27,12 @@ interface CodeDraftPanelProps {
   draftVersion?: number | null;
   generatedCodeDraftVersion?: number | null;
   onOpenDraftWorkbench: () => void;
-  onOpenAuditWorkbench?: () => void;
+  onOpenDraftValidation?: () => void;
   onRequestPlan: () => void;
   onRequestDrafts: () => void;
   onWriteDrafts: () => void;
   onWriteSingleDraft: (draftId: string) => void;
+  onOpenNativeDiff?: (draftId: string) => void;
   onOpenDraft: (targetPath: string) => void;
 }
 
@@ -60,15 +60,16 @@ function statusClassName(status: "READY" | "WRITTEN" | "SKIPPED"): string {
   }
 }
 
-function codeDraftSourceLabel(source?: LlmResultSource | null): string {
+function codeDraftSourceLabel(source?: LlmResultSource | null): string | null {
   switch (source) {
     case "REMOTE":
       return "远程 LLM";
     case "DISABLED":
       return "未启用";
     case "MOCK":
-    default:
       return "本地规则";
+    default:
+      return null;
   }
 }
 
@@ -101,6 +102,11 @@ function codeEditOperationSummary(operation: CodeEditOperation, draftTargetPath:
   return `${codeEditOperationLabel(operation.kind)} · ${targetName}`;
 }
 
+function preparedEditSummary(edit: PreparedCodeEdit, draftTargetPath: string): string {
+  const targetName = basename(edit.filePath || draftTargetPath);
+  return `${codeEditOperationLabel(edit.kind)} · ${targetName}`;
+}
+
 function draftFileSummary(draft: GeneratedCodeDraft): string {
   if ((draft.editOperations ?? []).length > 0) {
     return `预计改动 ${(draft.editOperations ?? []).length} 处`;
@@ -112,8 +118,6 @@ export function CodeDraftPanel({
   drafts,
   warnings,
   requestState,
-  isRequesting = false,
-  requestError,
   source,
   promptPreview,
   promptPreviewArtifactId,
@@ -125,14 +129,16 @@ export function CodeDraftPanel({
   draftVersion = null,
   generatedCodeDraftVersion = null,
   onOpenDraftWorkbench,
-  onOpenAuditWorkbench,
+  onOpenDraftValidation,
   onRequestPlan,
   onRequestDrafts,
   onWriteDrafts,
   onWriteSingleDraft,
+  onOpenNativeDiff,
   onOpenDraft,
 }: CodeDraftPanelProps) {
-  const effectiveRequestState = resolveEffectiveRequestState(requestState, isRequesting, requestError);
+  const effectiveRequestState = resolveEffectiveRequestState(requestState);
+  const sourceLabel = codeDraftSourceLabel(source);
   const drafting = effectiveRequestState?.phase === "RUNNING";
   const draftError = effectiveRequestState?.phase === "FAILED" || effectiveRequestState?.phase === "TIMED_OUT"
     ? effectiveRequestState.errorMessage ?? null
@@ -140,16 +146,19 @@ export function CodeDraftPanel({
   const awaitingEligibilityDecision = eligibilityDecision == null;
   const canRequestDrafts = eligibilityDecision?.allowed === true;
   const blockedByRisk = Boolean(eligibilityDecision && !eligibilityDecision.allowed && eligibilityDecision.blockingThreadIds.length > 0);
+  const openDraftValidation = onOpenDraftValidation ?? onOpenDraftWorkbench;
   const emptyMessage = normalizeWorkbenchWording(drafting
     ? "正在生成代码 diff，请稍候。"
     : draftError
       ? "当前请求失败，可查看上方状态并按需重试。"
       : eligibilityDecision?.message
         ?? "代码阶段准入状态尚未就绪。");
-  const emptyDetail = normalizeWorkbenchWording(eligibilityDecision?.detailMessage
-    || (awaitingEligibilityDecision
-      ? "当前还没有收到代码阶段的统一准入决策，请先回到问答链路等待状态同步完成。"
-      : null));
+  const emptyDetail = normalizeOptionalWorkbenchWording(
+    eligibilityDecision?.detailMessage
+    ?? (awaitingEligibilityDecision
+      ? "请先回到草稿层完成验证状态同步，再决定是否生成代码 diff。"
+      : null),
+  );
   const staleDrafts = drafts.length > 0
     && draftVersion != null
     && generatedCodeDraftVersion != null
@@ -176,7 +185,7 @@ export function CodeDraftPanel({
           <p className="eyebrow">代码 diff</p>
           <h2>代码 diff 工作台</h2>
           {generatedCodeDraftVersion != null ? <p className="muted">基于草稿 v{generatedCodeDraftVersion} 生成</p> : null}
-          <p className="muted">来源 {codeDraftSourceLabel(source)}</p>
+          {sourceLabel ? <p className="muted">来源 {sourceLabel}</p> : null}
           <p className="muted">代码阶段优先展示改了什么，完整正文只作为次级查看。</p>
         </div>
         {drafts.length > 0 ? (
@@ -238,21 +247,23 @@ export function CodeDraftPanel({
 
         {drafts.length === 0 ? (
           <article className="preview-card">
-            <AsyncRequestBanner requestState={effectiveRequestState} />
+            <AsyncRequestBanner requestState={effectiveRequestState} telemetryCollapsedByDefault />
             <p className="muted">{emptyMessage}</p>
             {emptyDetail ? <p className="muted">{emptyDetail}</p> : null}
             {!drafting ? (
               <div className="panel-actions">
-                {!canRequestDrafts ? (
-                  (awaitingEligibilityDecision || blockedByRisk) && onOpenAuditWorkbench ? (
-                    <button type="button" className="primary-button" onClick={onOpenAuditWorkbench}>
-                      前往问答风险
-                    </button>
-                  ) : (
-                    <button type="button" className="primary-button" onClick={onOpenDraftWorkbench}>
-                      前往草稿层
-                    </button>
-                  )
+                {!canRequestDrafts && blockedByRisk ? (
+                  <button type="button" className="primary-button" onClick={openDraftValidation}>
+                    处理阻塞风险
+                  </button>
+                ) : !canRequestDrafts && awaitingEligibilityDecision ? (
+                  <button type="button" className="primary-button" onClick={openDraftValidation}>
+                    打开草稿验证区
+                  </button>
+                ) : !canRequestDrafts ? (
+                  <button type="button" className="primary-button" onClick={onOpenDraftWorkbench}>
+                    前往草稿层
+                  </button>
                 ) : hasPlan ? (
                   <button type="button" className="primary-button" onClick={onRequestDrafts}>
                     {draftError ? "重试生成 diff" : "生成代码 diff"}
@@ -305,6 +316,11 @@ export function CodeDraftPanel({
                 >
                   写入当前文件
                 </button>
+                {onOpenNativeDiff ? (
+                  <button type="button" className="ghost-button" onClick={() => onOpenNativeDiff(selectedDraft.id)}>
+                    查看真实 Diff
+                  </button>
+                ) : null}
                 <button type="button" className="ghost-button" onClick={() => onOpenDraft(selectedDraft.targetPath)}>
                   打开目标文件
                 </button>
@@ -315,12 +331,25 @@ export function CodeDraftPanel({
 
               <section className="panel-section">
                 <strong>代码 diff</strong>
-                {(selectedDraft.editOperations ?? []).length > 0 ? (
+                {(selectedDraft.preparedEdits ?? []).length > 0 ? (
+                  <div className="code-diff-operation-list">
+                    {selectedDraft.preparedEdits?.map((edit) => (
+                      <div key={edit.operationId} className="code-diff-operation-card">
+                        <strong>{preparedEditSummary(edit, selectedDraft.targetPath)}</strong>
+                        {edit.targetSymbolSignature ? <p className="muted">{edit.targetSymbolSignature}</p> : null}
+                        <strong>修改前</strong>
+                        <pre className="prompt-preview code-diff-payload">{edit.beforeText || "(空)"}</pre>
+                        <strong>修改后</strong>
+                        <pre className="prompt-preview code-diff-payload">{edit.afterText || "(空)"}</pre>
+                      </div>
+                    ))}
+                  </div>
+                ) : (selectedDraft.editOperations ?? []).length > 0 ? (
                   <div className="code-diff-operation-list">
                     {selectedDraft.editOperations?.map((operation) => (
                       <div key={operation.operationId} className="code-diff-operation-card">
                         <strong>{codeEditOperationSummary(operation, selectedDraft.targetPath)}</strong>
-                        <pre className="prompt-preview code-diff-payload">{operation.payload}</pre>
+                        <p className="muted">当前结构化结果尚未准备出本地 patch 预览，请查看告警或直接打开原生 Diff。</p>
                       </div>
                     ))}
                   </div>

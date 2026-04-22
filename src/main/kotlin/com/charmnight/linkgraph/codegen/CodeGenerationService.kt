@@ -8,6 +8,7 @@ import com.charmnight.linkgraph.llm.LlmGateway
 import com.charmnight.linkgraph.llm.LlmPromptFactory
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.llm.LlmUserMessageFormatter
+import com.charmnight.linkgraph.llm.LlmStructuredSchemas
 import com.charmnight.linkgraph.llm.RemoteStructuredResponseSupport
 import com.charmnight.linkgraph.llm.RoutingLlmGateway
 import com.charmnight.linkgraph.llm.remoteConnectionOrNull
@@ -39,6 +40,8 @@ data class GeneratedCodeDraft(
     val editOperations: List<CodeEditOperation> = emptyList(),
     /** 已授权的精确编辑作用域。 */
     val editScopes: List<EditScope> = emptyList(),
+    /** 基于当前本地文件准备出的局部 patch 预览。 */
+    val preparedEdits: List<PreparedCodeEdit> = emptyList(),
     /** 草稿级别的警告信息。 */
     val warnings: List<String> = emptyList(),
 )
@@ -49,6 +52,8 @@ data class CodeGenerationResult(
     val drafts: List<GeneratedCodeDraft>,
     /** 生成阶段的全局警告列表。 */
     val warnings: List<String> = emptyList(),
+    /** 失败或回退时保留的结构化诊断详情。 */
+    val diagnosticDetail: String? = null,
     /** 结果来源，标记是远程还是本地模板。 */
     val source: LlmResultSource = LlmResultSource.MOCK,
     /** 本次生成使用的提示词预览。 */
@@ -70,11 +75,15 @@ internal fun CodeGenerationResult.emptyResultMessage(): String {
 
 /** 把当前结果里的警告拼成详细说明，供失败态展示。 */
 internal fun CodeGenerationResult.emptyResultDetailMessage(): String? {
-    return warnings
+    val warningDetail = warnings
         .map(String::trim)
         .filter(String::isNotEmpty)
         .distinct()
         .joinToString("\n")
+        .takeIf(String::isNotEmpty)
+    val diagnostic = diagnosticDetail?.trim()?.takeIf(String::isNotEmpty)
+    return listOfNotNull(warningDetail, diagnostic)
+        .joinToString("\n\n")
         .takeIf(String::isNotEmpty)
 }
 
@@ -131,7 +140,7 @@ class CodeGenerationService(
                         userPrompt = promptPackage.userPrompt,
                     ),
                     scene = "代码生成",
-                    schema = CODE_GENERATION_RESULT_SCHEMA,
+                    schema = LlmStructuredSchemas.CODE_GENERATION_RESULT,
                     preferStreaming = remoteConnection.preset.capabilities.supportsStreaming,
                     onPreview = onPreview,
                 ) { content ->
@@ -139,7 +148,7 @@ class CodeGenerationService(
                 }
             }.onSuccess { remoteResult ->
                 val normalizedRemoteResult = remoteResult.value
-                    .attachAuthorizedScopes(plan)
+                    .attachAuthorizedScopes(context.confirmedChanges)
                     .withPrependedWarnings(remoteResult.warnings)
                 if (normalizedRemoteResult.hasUsableDrafts()) {
                     return normalizedRemoteResult
@@ -159,8 +168,9 @@ class CodeGenerationService(
                 val localResult = generateLocalDrafts(context, plan, promptPackage.preview)
                 return localResult.copy(
                     warnings = listOf(
-            "远程 LLM 代码生成失败，已回退为本地模板：${LlmUserMessageFormatter.describe(error)}",
+                        "远程 LLM 代码生成失败，已回退为本地模板：${LlmUserMessageFormatter.describe(error)}",
                     ) + localResult.warnings,
+                    diagnosticDetail = error.message?.trim(),
                 )
             }
         }
@@ -245,31 +255,43 @@ class CodeGenerationService(
         return copy(warnings = extraWarnings + warnings)
     }
 
-    /** 用本地 authoritative generation plan 回填 existing-file draft 的授权 scope。 */
-    private fun CodeGenerationResult.attachAuthorizedScopes(plan: GenerationPlan?): CodeGenerationResult {
-        val planScopes = plan?.items.orEmpty().flatMap(GenerationPlanItem::editScopes).distinctBy(EditScope::scopeId)
-        if (planScopes.isEmpty()) {
+    /** 用已确认变更里的 authoritative scopes 回填 existing-file draft 的授权范围。 */
+    private fun CodeGenerationResult.attachAuthorizedScopes(confirmedChanges: List<DraftWorkbenchEntry>): CodeGenerationResult {
+        val confirmedScopes = confirmedChanges
+            .flatMap(DraftWorkbenchEntry::editScopes)
+            .distinctBy(EditScope::scopeId)
+        if (confirmedScopes.isEmpty()) {
             return this
         }
-        val planItemsByTargetPath = plan?.items.orEmpty()
-            .filter { item -> !item.targetPath.isNullOrBlank() }
-            .groupBy { item -> requireNotNull(item.targetPath) }
+        val scopesByFilePath = confirmedScopes.groupBy(EditScope::filePath)
         val patchedDrafts = drafts.map { draft ->
             if (draft.editOperations.isEmpty() || draft.editScopes.isNotEmpty()) {
                 return@map draft
             }
             val operationScopeIds = draft.editOperations.mapNotNull(CodeEditOperation::scopeId).toSet()
             val matchedScopes = if (operationScopeIds.isNotEmpty()) {
-                planScopes.filter { scope -> scope.scopeId in operationScopeIds }
+                confirmedScopes.filter { scope -> scope.scopeId in operationScopeIds }
             } else {
-                planItemsByTargetPath[draft.targetPath].orEmpty().flatMap(GenerationPlanItem::editScopes)
+                scopesByFilePath[draft.targetPath].orEmpty()
             }.distinctBy(EditScope::scopeId)
             if (matchedScopes.isEmpty()) {
                 draft.copy(
                     warnings = draft.warnings + "existing-file draft '${draft.targetPath}' 未匹配到本地 authoritative edit scope。",
                 )
             } else {
-                draft.copy(editScopes = matchedScopes)
+                val matchedScopeById = matchedScopes.associateBy(EditScope::scopeId)
+                val authoritativeTargetPath = matchedScopes.firstOrNull()?.filePath ?: draft.targetPath
+                draft.copy(
+                    targetPath = authoritativeTargetPath,
+                    editOperations = draft.editOperations.map { operation ->
+                        val authoritativePath = operation.scopeId
+                            ?.let(matchedScopeById::get)
+                            ?.filePath
+                            ?: authoritativeTargetPath
+                        operation.copy(filePath = authoritativePath)
+                    },
+                    editScopes = matchedScopes,
+                )
             }
         }
         return copy(drafts = patchedDrafts)
@@ -661,23 +683,6 @@ class CodeGenerationService(
     companion object {
         /** 无法推断时使用的默认包名。 */
         private const val DEFAULT_PACKAGE = "com.generated.linkgraph"
-        /** 远程代码生成结构化结果的 JSON Schema 示例。 */
-        private const val CODE_GENERATION_RESULT_SCHEMA = """
-{
-  "summary": "本次生成摘要",
-  "warnings": ["可选警告"],
-  "drafts": [
-    {
-      "id": "稳定ID",
-      "sourceNodeId": "来源节点ID",
-      "title": "文件名",
-      "targetPath": "项目内相对路径",
-      "content": "完整文件内容",
-      "warnings": []
-    }
-  ]
-}
-"""
     }
 }
 

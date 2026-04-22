@@ -164,6 +164,10 @@ class LinkGraphProjectService(
     @TestOnly
     var testAsyncRequestTimeoutMillisOverride: Long? = null
 
+    @Volatile
+    @TestOnly
+    var testOpenCodeDraftNativeDiffOverride: ((String) -> Unit)? = null
+
     /** 负责把编辑器上下文封装成代码主题句柄的工厂。 */
     private val codeSubjectHandleFactory: CodeSubjectHandleFactory by lazy(LazyThreadSafetyMode.NONE) { CodeSubjectHandleFactory() }
     /** 默认的主题定位器实现。 */
@@ -478,6 +482,22 @@ class LinkGraphProjectService(
         generationWorkflow.requestGenerationPlanAsync()
     }
 
+    /** 针对当前实现建议继续追问。 */
+    fun requestGenerationPlanDiscussion(
+        question: String,
+        focusItemId: String? = null,
+    ) {
+        generationWorkflow.requestGenerationPlanDiscussion(question, focusItemId)
+    }
+
+    /** 异步追问当前实现建议。 */
+    fun requestGenerationPlanDiscussionAsync(
+        question: String,
+        focusItemId: String? = null,
+    ) {
+        generationWorkflow.requestGenerationPlanDiscussionAsync(question, focusItemId)
+    }
+
     /** 基于当前规划上下文生成代码草稿。 */
     fun requestCodeDrafts() {
         generationWorkflow.requestCodeDrafts()
@@ -496,6 +516,11 @@ class LinkGraphProjectService(
     /** 仅写入单个指定代码草稿。 */
     fun applySingleCodeDraft(draftId: String) {
         generationWorkflow.applySingleCodeDraft(draftId)
+    }
+
+    /** 打开指定代码草稿的原生 IDE diff。 */
+    fun openCodeDraftNativeDiff(draftId: String) {
+        testOpenCodeDraftNativeDiffOverride?.invoke(draftId) ?: generationWorkflow.openCodeDraftNativeDiff(draftId)
     }
 
     /** 请求跳转到草稿文件路径。 */
@@ -707,7 +732,7 @@ class LinkGraphProjectService(
                         ),
                     ),
                 )
-                markPlanEligibilityDecision(riskResolutionService.evaluatePlanEligibility(refreshedSnapshot))
+                markDraftValidationState(riskResolutionService.evaluateDraftValidation(refreshedSnapshot))
                 markCodeEligibilityDecision(riskResolutionService.evaluateCodeEligibility(refreshedSnapshot))
             }
             apply {
@@ -817,7 +842,7 @@ class LinkGraphProjectService(
                         ),
                     ),
                 )
-                markPlanEligibilityDecision(riskResolutionService.evaluatePlanEligibility(refreshedSnapshot))
+                markDraftValidationState(riskResolutionService.evaluateDraftValidation(refreshedSnapshot))
                 markCodeEligibilityDecision(riskResolutionService.evaluateCodeEligibility(refreshedSnapshot))
             }
             apply {

@@ -205,9 +205,7 @@ class CodeEditValidationService(
     }
 
     private fun methodSignature(method: PsiMethod): String {
-        return "${method.containingClass?.qualifiedName}.${method.name}(" +
-            method.parameterList.parameters.joinToString(",") { parameter -> normalizeTypeName(parameter.type.canonicalText) } +
-            "):${normalizeTypeName(method.returnType?.canonicalText ?: "void")}"
+        return JavaMethodSignatureTextSupport.methodSignature(method)
     }
 
     private fun normalizedMethodText(method: PsiMethod): String {
@@ -254,23 +252,6 @@ class CodeEditValidationService(
 
     private fun normalizedKotlinFunctionText(function: KtNamedFunction): String {
         return function.text.replace("\r\n", "\n").replace(Regex("\\s+"), " ").trim()
-    }
-
-    private fun normalizeTypeName(typeName: String): String {
-        return when (typeName) {
-            "String" -> "java.lang.String"
-            "Object" -> "java.lang.Object"
-            "Integer" -> "java.lang.Integer"
-            "Long" -> "java.lang.Long"
-            "Boolean" -> "java.lang.Boolean"
-            "Double" -> "java.lang.Double"
-            "Float" -> "java.lang.Float"
-            "Short" -> "java.lang.Short"
-            "Byte" -> "java.lang.Byte"
-            "Character" -> "java.lang.Character"
-            "Void" -> "java.lang.Void"
-            else -> typeName
-        }
     }
 
     private fun normalizeKotlinTypeName(typeName: String): String {

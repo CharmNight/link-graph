@@ -398,6 +398,14 @@ export function normalizeWorkbenchWording(text: string): string {
   return nextText;
 }
 
+export function normalizeOptionalWorkbenchWording(text?: string | null): string | null {
+  const nextText = text?.trim();
+  if (!nextText) {
+    return null;
+  }
+  return normalizeWorkbenchWording(nextText);
+}
+
 export function candidateChangeStatusLabel(value: "PENDING_CONFIRMATION" | "CONFIRMED" | "REJECTED" | "SUPERSEDED"): string {
   switch (value) {
     case "PENDING_CONFIRMATION":

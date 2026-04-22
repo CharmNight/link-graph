@@ -170,21 +170,6 @@ class PlanningContextFactoryTest {
                     description = "补上传校验。",
                     risk = SyncPreviewRisk.MEDIUM,
                     targetPath = sourceFile.toString(),
-                    editScopes = listOf(
-                        EditScope(
-                            scopeId = "scope-upload-file",
-                            targetNodeId = "method:upload-file",
-                            filePath = sourceFile.toString(),
-                            language = "JAVA",
-                            symbolKind = "METHOD",
-                            symbolSignature = "com.example.CommonController.uploadFile(java.lang.String):void",
-                            startOffset = uploadStartOffset,
-                            endOffset = uploadEndOffset,
-                            startLine = 11,
-                            endLine = 13,
-                            allowedChangeKinds = listOf("REPLACE_METHOD_BLOCK"),
-                        ),
-                    ),
                 ),
             ),
         )
@@ -246,19 +231,6 @@ class PlanningContextFactoryTest {
                     description = "补上传校验。",
                     risk = SyncPreviewRisk.MEDIUM,
                     targetPath = "src/main/java/com/example/CommonController.java",
-                    editScopes = listOf(
-                        EditScope(
-                            scopeId = "scope-upload-file",
-                            targetNodeId = "method:upload-file",
-                            filePath = "src/main/java/com/example/CommonController.java",
-                            language = "JAVA",
-                            symbolKind = "METHOD",
-                            symbolSignature = "com.example.CommonController.uploadFile(java.lang.String):void",
-                            startLine = 4,
-                            endLine = 6,
-                            allowedChangeKinds = listOf("REPLACE_METHOD_BLOCK"),
-                        ),
-                    ),
                 ),
             ),
         )

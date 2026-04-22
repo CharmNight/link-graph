@@ -20,7 +20,10 @@ import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
 import com.charmnight.linkgraph.ui.view.ResourceRelationSummary
 import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
 import com.charmnight.linkgraph.ui.view.projectReadableFlowchartView
+import com.charmnight.linkgraph.workbench.DraftValidationState
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
+import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionResult
+import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession
 import com.charmnight.linkgraph.workbench.QaRequestRecoveryState
 import com.charmnight.linkgraph.workbench.ReplayableQaRequest
 import com.charmnight.linkgraph.workbench.StageEligibilityDecision
@@ -365,7 +368,9 @@ class GraphEditorStateService {
                 generationPlan = null,
                 generationPlanDraftVersion = null,
                 generationPlanRequestState = AsyncRequestState(),
-                planEligibilityDecision = null,
+                draftValidationState = null,
+                generationPlanDiscussionSession = null,
+                generationPlanDiscussionRequestState = AsyncRequestState(),
                 generatedCodeDrafts = emptyList(),
                 generatedCodeDraftVersion = null,
                 generatedCodeDraftWarnings = emptyList(),
@@ -442,7 +447,9 @@ class GraphEditorStateService {
                 generationPlan = null,
                 generationPlanDraftVersion = null,
                 generationPlanRequestState = AsyncRequestState(),
-                planEligibilityDecision = null,
+                draftValidationState = null,
+                generationPlanDiscussionSession = null,
+                generationPlanDiscussionRequestState = AsyncRequestState(),
                 generatedCodeDrafts = emptyList(),
                 generatedCodeDraftVersion = null,
                 generatedCodeDraftWarnings = emptyList(),
@@ -556,7 +563,9 @@ class GraphEditorStateService {
                 generationPlan = null,
                 generationPlanDraftVersion = null,
                 generationPlanRequestState = AsyncRequestState(),
-                planEligibilityDecision = null,
+                draftValidationState = null,
+                generationPlanDiscussionSession = null,
+                generationPlanDiscussionRequestState = AsyncRequestState(),
                 generatedCodeDrafts = emptyList(),
                 generatedCodeDraftVersion = null,
                 generatedCodeDraftWarnings = emptyList(),
@@ -648,7 +657,9 @@ class GraphEditorStateService {
                 generationPlan = null,
                 generationPlanDraftVersion = null,
                 generationPlanRequestState = AsyncRequestState(),
-                planEligibilityDecision = null,
+                draftValidationState = null,
+                generationPlanDiscussionSession = null,
+                generationPlanDiscussionRequestState = AsyncRequestState(),
                 generatedCodeDrafts = emptyList(),
                 generatedCodeDraftVersion = null,
                 generatedCodeDraftWarnings = emptyList(),
@@ -846,7 +857,9 @@ class GraphEditorStateService {
                 generationPlan = currentState.generationPlan,
                 generationPlanDraftVersion = currentState.generationPlanDraftVersion,
                 generationPlanRequestState = AsyncRequestState(),
-                planEligibilityDecision = null,
+                draftValidationState = currentState.draftValidationState,
+                generationPlanDiscussionSession = currentState.generationPlanDiscussionSession,
+                generationPlanDiscussionRequestState = currentState.generationPlanDiscussionRequestState,
                 graphBeautificationResult = null,
                 graphBeautificationRequestState = AsyncRequestState(),
                 generatedCodeDrafts = currentState.generatedCodeDrafts,
@@ -930,8 +943,11 @@ class GraphEditorStateService {
                 syncPreviewItems = emptyList(),
                 syncPreviewRequested = false,
                 generationPlan = null,
+                generationPlanDraftVersion = null,
                 generationPlanRequestState = AsyncRequestState(),
-                planEligibilityDecision = null,
+                draftValidationState = currentState.draftValidationState,
+                generationPlanDiscussionSession = null,
+                generationPlanDiscussionRequestState = AsyncRequestState(),
                 graphBeautificationResult = null,
                 graphBeautificationRequestState = AsyncRequestState(),
                 generatedCodeDrafts = emptyList(),
@@ -1163,11 +1179,11 @@ class GraphEditorStateService {
         }
     }
 
-    fun markPlanEligibilityDecision(decision: StageEligibilityDecision?) {
+    fun markDraftValidationState(state: DraftValidationState?) {
         mutate {
             it.copy(
-                planEligibilityDecision = decision,
-                lastMessageType = "planEligibility",
+                draftValidationState = state,
+                lastMessageType = "draftValidation",
             )
         }
     }
@@ -1352,6 +1368,8 @@ class GraphEditorStateService {
                 generationPlan = plan,
                 generationPlanDraftVersion = currentState.draftVersion,
                 generationPlanRequestState = requestState,
+                generationPlanDiscussionSession = null,
+                generationPlanDiscussionRequestState = AsyncRequestState(),
                 generatedCodeDrafts = emptyList(),
                 generatedCodeDraftVersion = null,
                 generatedCodeDraftWarnings = emptyList(),
@@ -1370,6 +1388,8 @@ class GraphEditorStateService {
                 generationPlan = null,
                 generationPlanDraftVersion = null,
                 generationPlanRequestState = requestState,
+                generationPlanDiscussionSession = null,
+                generationPlanDiscussionRequestState = AsyncRequestState(),
                 generatedCodeDrafts = emptyList(),
                 generatedCodeDraftVersion = null,
                 generatedCodeDraftWarnings = emptyList(),
@@ -1391,6 +1411,8 @@ class GraphEditorStateService {
                 generationPlan = null,
                 generationPlanDraftVersion = null,
                 generationPlanRequestState = requestState,
+                generationPlanDiscussionSession = null,
+                generationPlanDiscussionRequestState = AsyncRequestState(),
                 lastMessageType = "requestGenerationPlan",
             )
         }
@@ -1411,6 +1433,64 @@ class GraphEditorStateService {
             currentState.copy(
                 generationPlanRequestState = nextRequestState,
                 lastMessageType = "requestGenerationPlan",
+            )
+        }
+    }
+
+    /** 写入实现建议追问结果。 */
+    fun markGenerationPlanDiscussion(
+        result: GenerationPlanDiscussionResult,
+        requestState: AsyncRequestState = AsyncRequestState.succeeded(),
+    ) {
+        mutate {
+            it.copy(
+                generationPlanDiscussionSession = result.session,
+                generationPlanDiscussionRequestState = requestState,
+                lastMessageType = "requestGenerationPlanDiscussion",
+            )
+        }
+    }
+
+    /** 标记实现建议追问开始执行。 */
+    fun beginGenerationPlanDiscussionRequest(
+        requestState: AsyncRequestState = AsyncRequestState.running(),
+    ) {
+        mutate {
+            it.copy(
+                generationPlanDiscussionRequestState = requestState,
+                lastMessageType = "requestGenerationPlanDiscussion",
+            )
+        }
+    }
+
+    /** 标记实现建议追问请求失败。 */
+    fun markGenerationPlanDiscussionRequestFailed(
+        message: String,
+        requestState: AsyncRequestState = AsyncRequestState.failed(message),
+    ) {
+        mutate {
+            it.copy(
+                generationPlanDiscussionRequestState = requestState,
+                lastMessageType = "requestGenerationPlanDiscussion",
+            )
+        }
+    }
+
+    /** 更新实现建议追问请求的流式预览。 */
+    fun updateGenerationPlanDiscussionRequestPreview(
+        requestId: Long,
+        previewText: String,
+        finalizingStructuredResult: Boolean = false,
+    ) {
+        mutate { currentState ->
+            val nextRequestState = currentState.generationPlanDiscussionRequestState.updatedPreviewOrNull(
+                requestId = requestId,
+                previewText = previewText,
+                finalizingStructuredResult = finalizingStructuredResult,
+            ) ?: return@mutate currentState
+            currentState.copy(
+                generationPlanDiscussionRequestState = nextRequestState,
+                lastMessageType = "requestGenerationPlanDiscussion",
             )
         }
     }
@@ -1654,8 +1734,12 @@ class GraphEditorStateService {
         val generationPlanDraftVersion: Long? = null,
         /** 代码生成计划请求状态。 */
         val generationPlanRequestState: AsyncRequestState = AsyncRequestState(),
-        /** 当前实现计划准入结果。 */
-        val planEligibilityDecision: StageEligibilityDecision? = null,
+        /** 当前草稿验证状态。 */
+        val draftValidationState: DraftValidationState? = null,
+        /** 当前实现建议追问会话。 */
+        val generationPlanDiscussionSession: GenerationPlanDiscussionSession? = null,
+        /** 当前实现建议追问请求状态。 */
+        val generationPlanDiscussionRequestState: AsyncRequestState = AsyncRequestState(),
         /** 已生成的代码草稿列表。 */
         val generatedCodeDrafts: List<GeneratedCodeDraft> = emptyList(),
         /** 当前代码 diff 绑定的草稿版本。 */

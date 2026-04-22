@@ -30,6 +30,20 @@ function candidateChangeFixture(): CandidateDraftChange {
         references: [{ nodeId: "method:submit-order" }],
       },
     ],
+    editScopes: [
+      {
+        scopeId: "scope-change-compensate",
+        targetNodeId: "method:submit-order",
+        filePath: "/project/src/main/java/com/example/OrderController.java",
+        language: "JAVA",
+        symbolKind: "METHOD",
+        symbolSignature: "com.example.OrderController.submit():void",
+        startLine: 8,
+        endLine: 16,
+        allowedChangeKinds: ["REPLACE_METHOD_BODY"],
+        supportingFindingIds: ["finding-compensate"],
+      },
+    ],
   };
 }
 
@@ -343,7 +357,7 @@ describe("App", () => {
     expect(screen.getByLabelText("流程图摘要")).toBeInTheDocument();
   });
 
-  it("switches to the draft tab when requesting implementation suggestions from the toolbar", async () => {
+  it("switches to the draft tab when requesting implementation suggestions from the toolbar without synthesizing a local running state", async () => {
     const user = userEvent.setup();
 
     render(<App />);
@@ -352,7 +366,8 @@ describe("App", () => {
     await user.click(screen.getByRole("menuitem", { name: "生成实现建议" }));
 
     expect(screen.getByRole("tab", { name: "草稿" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("正在生成实现建议，请稍候。")).toBeInTheDocument();
+    expect(screen.queryByText("正在生成实现建议，请稍候。")).not.toBeInTheDocument();
+    expect(screen.getByText("实现建议会基于当前草稿快照生成。")).toBeInTheDocument();
     expect(window.linkGraphBridge?.requestGenerationPlan).toHaveBeenCalledTimes(1);
   });
 
@@ -392,6 +407,61 @@ describe("App", () => {
 
     expect(screen.getByRole("tab", { name: "代码" })).toHaveAttribute("aria-selected", "true");
     expect(window.linkGraphBridge?.requestCodeDrafts).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not locally clear the current code diff or synthesize a running request before the backend snapshot arrives", async () => {
+    const user = userEvent.setup();
+    window.linkGraphBootstrap = structuredClone({
+      ...bootstrapStateFixture(),
+      generatedCodeDrafts: [
+        {
+          id: "draft-file-download",
+          sourceNodeId: "method:file-download",
+          title: "CommonController.java",
+          targetPath: "src/main/java/com/example/CommonController.java",
+          editOperations: [
+            {
+              operationId: "op-replace-delete-if-block",
+              filePath: "src/main/java/com/example/CommonController.java",
+              scopeId: "scope-change-update-delete-condition",
+              kind: "REPLACE_METHOD_BLOCK",
+              payload: "if (delete == true) { FileUtils.deleteFile(filePath); }",
+              warnings: [],
+            },
+          ],
+          editScopes: [],
+          warnings: [],
+        },
+      ],
+      generatedCodeDraftSource: "MOCK",
+      generatedCodeDraftWarnings: [],
+      generatedCodeDraftWriteReport: null,
+      codeDraftRequestState: {
+        phase: "IDLE",
+        errorMessage: null,
+      },
+      codeEligibilityDecision: {
+        target: "CODE",
+        stageLabel: "代码草稿",
+        allowed: true,
+        message: "当前可以继续生成代码 diff。",
+        detailMessage: "风险线程已完成人工决策。",
+        blockingThreadIds: [],
+        unresolvedThreadIds: [],
+      },
+    });
+
+    render(<App />);
+
+    await user.click(screen.getByRole("tab", { name: "代码" }));
+    expect(screen.getAllByText("CommonController.java")).toHaveLength(2);
+
+    await user.click(screen.getByRole("button", { name: "重新生成 diff" }));
+
+    expect(window.linkGraphBridge?.requestCodeDrafts).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByText("CommonController.java")).toHaveLength(2);
+    expect(screen.queryByText("正在生成代码 diff，请稍候。")).not.toBeInTheDocument();
+    expect(screen.queryByText(/代码 diff 生成：已提交代码草稿请求/)).not.toBeInTheDocument();
   });
 
   it("renders implementation suggestions inside draft and code diff results inside code from bootstrap state", async () => {
@@ -469,6 +539,36 @@ describe("App", () => {
 
     expect(screen.getByText("问答：问答完成，已生成待确认变更。")).toBeInTheDocument();
     expect(screen.queryByText("已发起远程 LLM 问答请求，当前采用流式输出。")).not.toBeInTheDocument();
+  });
+
+  it("keeps code diff async failures inside the code workbench instead of reopening a global failure dialog", async () => {
+    const user = userEvent.setup();
+    window.linkGraphBootstrap = structuredClone({
+      ...bootstrapStateFixture(),
+      codeDraftRequestState: {
+        phase: "FAILED",
+        scene: "代码 diff 生成",
+        statusMessage: "代码 diff 失败",
+        errorMessage: "未生成任何可用代码 diff：远程 LLM 代码生成失败。",
+        detailMessage: "返回内容未通过结构化校验，自动修复重试仍失败。",
+        startedAtEpochMillis: 120,
+        finishedAtEpochMillis: 180,
+      },
+      generatedCodeDrafts: [],
+      generatedCodeDraftWarnings: [],
+      generatedCodeDraftWriteReport: null,
+    });
+
+    render(<App />);
+
+    await user.click(screen.getByRole("tab", { name: "代码" }));
+
+    const codeTabPanel = screen.getByRole("tabpanel", { name: "代码" });
+    expect(within(codeTabPanel).getByText("当前请求失败，可查看上方状态并按需重试。")).toBeInTheDocument();
+    expect(within(codeTabPanel).getByText("返回内容未通过结构化校验，自动修复重试仍失败。")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "请求状态通知" })).not.toBeInTheDocument();
+    });
   });
 
   it("shows a completed explanation success hint in the toolbar even when the backend only leaves a generic operation feedback marker", () => {
@@ -557,6 +657,56 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByRole("tab", { name: "问答会话" })).toHaveAttribute("aria-selected", "true");
     });
+  });
+
+  it("opens and expands draft validation when code generation is blocked by unresolved risks", async () => {
+    const user = userEvent.setup();
+    window.linkGraphBootstrap = structuredClone({
+      ...bootstrapStateFixture(),
+      workbenchSectionPreferences: {
+        "draft.validation": false,
+      },
+      draftValidationState: {
+        status: "REVIEW_REQUIRED",
+        message: "当前草稿仍有待验证风险。",
+        detailMessage: "请先确认这些风险是继续取证、接受、排除，还是回退对应草稿变更。",
+        unresolvedThreadIds: ["thread-risk-1"],
+        unresolvedThreads: [
+          {
+            threadId: "thread-risk-1",
+            title: "删除分支仍缺少异常处理证据",
+            summary: "当前还不能直接进入代码阶段。",
+            recommendedQuestion: "删除失败时的兜底链路是否已经补齐？",
+            resolution: null,
+          },
+        ],
+      },
+      codeEligibilityDecision: {
+        target: "CODE",
+        stageLabel: "代码草稿",
+        allowed: false,
+        message: "生成代码 diff 前请先处理仍会阻塞代码阶段的风险线程。",
+        detailMessage: "当前仍有未处理或证据未穷尽的风险线程，代码阶段不能直接继续生成。",
+        blockingThreadIds: ["thread-risk-1"],
+        unresolvedThreadIds: ["thread-risk-1"],
+      },
+    } satisfies LinkGraphBootstrapState);
+
+    render(<App />);
+
+    await user.click(screen.getByRole("tab", { name: "代码" }));
+    await user.click(screen.getByRole("button", { name: "处理阻塞风险" }));
+
+    expect(screen.getByRole("tab", { name: "草稿" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: "收起草稿验证" })).toBeInTheDocument();
+    expect(screen.getByText("当前草稿仍有待验证风险。")).toBeInTheDocument();
+    expect(
+      (
+        window.linkGraphBridge as typeof window.linkGraphBridge & {
+          updateWorkbenchSectionPreference: ReturnType<typeof vi.fn>;
+        }
+      )?.updateWorkbenchSectionPreference,
+    ).toHaveBeenCalledWith("draft.validation", true);
   });
 
   it("turns an investigation thread into a concrete continue-investigation path", async () => {
@@ -884,6 +1034,7 @@ describe("App", () => {
       phase: "SUCCEEDED",
       errorMessage: null,
     };
+    nextState.lastMessageType = "graphBeautificationResult";
 
     await act(async () => {
       dispatchBootstrapForTest({
@@ -1135,7 +1286,7 @@ describe("App", () => {
     expect(input).toHaveValue("介绍这个方法");
   });
 
-  it("submits the qa question from the qa tab and shows an immediate running banner", async () => {
+  it("submits the qa question from the qa tab without synthesizing a local running banner before the backend snapshot arrives", async () => {
     const user = userEvent.setup();
     render(<App />);
 
@@ -1149,8 +1300,9 @@ describe("App", () => {
 
     expect(window.linkGraphBridge?.requestAudit).toHaveBeenCalledWith("介绍这里有什么安全问题", [], null);
     expect(screen.getByRole("button", { name: "收起当前页面" })).toBeInTheDocument();
-    expect(screen.getByText("已提交问答请求")).toBeInTheDocument();
-    expect(screen.getByText("等待后端确认执行方式与执行阶段。")).toBeInTheDocument();
+    expect(screen.queryByText("已提交问答请求")).not.toBeInTheDocument();
+    expect(screen.queryByText("等待后端确认执行方式与执行阶段。")).not.toBeInTheDocument();
+    expect(screen.getByText("已发起问答请求，范围为整个链路。")).toBeInTheDocument();
   });
 
   it("retries the last failed qa request directly from the request status page", async () => {
@@ -1237,7 +1389,7 @@ describe("App", () => {
     );
   });
 
-  it("keeps the qa request pending until the IDE bridge becomes ready", async () => {
+  it("keeps the qa request pending until the IDE bridge becomes ready without fabricating async request state locally", async () => {
     const user = userEvent.setup();
     const requestAudit = vi.fn();
     window.linkGraphBridge = undefined;
@@ -1252,7 +1404,8 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(screen.queryByRole("dialog", { name: "请求状态通知" })).not.toBeInTheDocument();
-    expect(screen.getByText("问答：已提交问答请求")).toBeInTheDocument();
+    expect(screen.queryByText("问答：已提交问答请求")).not.toBeInTheDocument();
+    expect(screen.getByText("已发起问答请求，范围为整个链路。")).toBeInTheDocument();
     expect(requestAudit).not.toHaveBeenCalled();
 
     window.linkGraphBridge = {
@@ -1364,6 +1517,7 @@ describe("App", () => {
       phase: "SUCCEEDED",
       errorMessage: null,
     };
+    nextState.lastMessageType = "graphBeautificationResult";
 
     await act(async () => {
       dispatchBootstrapForTest({
@@ -1377,7 +1531,38 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: "方法调用级" }));
 
-    expect(screen.queryByRole("button", { name: "返回上一讲解：当前链路讲解" })).not.toBeInTheDocument();
+    const methodCallState = structuredClone(bootstrapStateFixture());
+    methodCallState.snapshotRevision = 3;
+    methodCallState.graphBeautificationResult = {
+      ...methodCallState.graphBeautificationResult!,
+      granularity: "METHOD_CALL",
+      steps: [
+        {
+          ...explanationStepFixture(),
+          stepId: "step-submit-order-method-call",
+          granularity: "METHOD_CALL",
+          title: "Step 1 方法调用级讲解",
+          description: "这里切换到方法调用级重新组织步骤。",
+        },
+      ],
+    };
+    methodCallState.graphBeautificationRequestState = {
+      phase: "SUCCEEDED",
+      errorMessage: null,
+    };
+    methodCallState.lastMessageType = "graphBeautificationResult";
+
+    await act(async () => {
+      dispatchBootstrapForTest({
+        sessionId: "session-1",
+        revision: 3,
+        state: methodCallState,
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "返回上一讲解：当前链路讲解" })).not.toBeInTheDocument();
+    });
   });
 
   it("shows explanation history breadcrumbs and lets the reader jump back to an earlier explanation snapshot", async () => {
@@ -1400,6 +1585,7 @@ describe("App", () => {
         },
       ],
     };
+    followUpStateOne.lastMessageType = "graphBeautificationResult";
 
     await act(async () => {
       dispatchBootstrapForTest({
@@ -1425,6 +1611,7 @@ describe("App", () => {
         },
       ],
     };
+    followUpStateTwo.lastMessageType = "graphBeautificationResult";
 
     await act(async () => {
       dispatchBootstrapForTest({
@@ -1434,8 +1621,8 @@ describe("App", () => {
       });
     });
 
-    expect(screen.getByRole("button", { name: "讲解历史：当前链路讲解" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "讲解历史：围绕 Step 1 提交订单请求 继续讲解" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "讲解历史：当前链路讲解" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "讲解历史：围绕 Step 1 提交订单请求 继续讲解" })).toBeInTheDocument();
     expect(screen.getAllByText("Step 1.2 继续分析失败补偿").length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole("button", { name: "讲解历史：当前链路讲解" }));
@@ -1471,6 +1658,8 @@ describe("App", () => {
     expect(screen.getByText("当前链路缺少失败补偿语义。")).toBeInTheDocument();
     expect(screen.getByText("修改后")).toBeInTheDocument();
     expect(screen.queryByText("修改前")).not.toBeInTheDocument();
+    expect(screen.getByText("已授权 1 个精确写回范围。")).toBeInTheDocument();
+    expect(screen.getByText("/project/src/main/java/com/example/OrderController.java:8-16")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "一键对比前后" }));
 
@@ -1845,6 +2034,335 @@ describe("App", () => {
       expect(within(currentSelectionCard as HTMLElement).getByText("if (delete == true)")).toBeInTheDocument();
     });
     expect(screen.queryByText("FileUtils.checkAllowDownload(fileName)")).not.toBeInTheDocument();
+  });
+
+  it("keeps flowchart node positions stable when draft after-mode only changes presentation text", async () => {
+    const user = userEvent.setup();
+    window.linkGraphBootstrap = materializeThreeViewDocuments({
+      visibleGraph: {
+        nodes: [
+          {
+            id: "method:file-download",
+            type: "METHOD",
+            title: "CommonController.fileDownload",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+            },
+          },
+          {
+            id: "flow-scope:delete-guard",
+            type: "FLOW_SCOPE",
+            title: "if (delete)",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "DECISION",
+              "flow.kind": "IF",
+              "flow.ownerMethod": "com.example.CommonController.fileDownload(java.lang.String):void",
+            },
+          },
+        ],
+        edges: [
+          {
+            id: "edge:file-download->delete-guard",
+            type: "CONTROL_FLOW",
+            source: "method:file-download",
+            target: "flow-scope:delete-guard",
+            sourceTag: "FACT",
+          },
+        ],
+      },
+      workingGraph: {
+        nodes: [
+          {
+            id: "method:file-download",
+            type: "METHOD",
+            title: "CommonController.fileDownload",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+            },
+          },
+          {
+            id: "flow-scope:delete-guard",
+            type: "FLOW_SCOPE",
+            title: "if (Boolean.TRUE.equals(delete) && fileExists(filePath))",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "DRAFT_AI",
+            metadata: {
+              "flowchart.kind": "DECISION",
+              "flow.kind": "IF",
+              "flow.ownerMethod": "com.example.CommonController.fileDownload(java.lang.String):void",
+            },
+          },
+        ],
+        edges: [
+          {
+            id: "edge:file-download->delete-guard",
+            type: "CONTROL_FLOW",
+            source: "method:file-download",
+            target: "flow-scope:delete-guard",
+            sourceTag: "FACT",
+          },
+        ],
+      },
+      draftWorkbenchState: {
+        draftChanges: [
+          {
+            entryId: "draft-delete-guard",
+            kind: "CHANGE",
+            title: "收紧删除条件",
+            sourceChangeId: "change-delete-guard",
+            targetStepIds: [],
+            targetNodeIds: ["flow-scope:delete-guard"],
+            beforeState: "if (delete)",
+            afterState: "if (Boolean.TRUE.equals(delete) && fileExists(filePath))",
+            reason: "避免 Boolean 拆箱并增加文件存在性校验。",
+            impactSummary: "影响删除分支。",
+            claimType: "CODE_FACT",
+            evidence: [
+              {
+                id: "finding-delete-guard",
+                claim: "当前源码里直接能看到删除判断条件。",
+                evidenceLevel: "DIRECT_SOURCE",
+                references: [{ nodeId: "flow-scope:delete-guard" }],
+              },
+            ],
+            graphPatch: {
+              summary: "调整删除判断",
+              operations: [
+                {
+                  id: "patch-op-delete-guard",
+                  action: "UPDATE_NODE",
+                  elementKind: "NODE",
+                  elementId: "flow-scope:delete-guard",
+                  node: {
+                    id: "flow-scope:delete-guard",
+                    type: "FLOW_SCOPE",
+                    title: "if (Boolean.TRUE.equals(delete) && fileExists(filePath))",
+                    inputs: [],
+                    outputs: [],
+                    certainty: "LLM_SUGGESTED",
+                    bindingStatus: "BOUND",
+                    metadata: {
+                      "flowchart.kind": "DECISION",
+                      "flow.kind": "IF",
+                    },
+                  },
+                },
+              ],
+              addedNodeIds: [],
+              removedNodeIds: [],
+              addedEdgeIds: [],
+              removedEdgeIds: [],
+            },
+          },
+        ],
+        draftNotes: [],
+      },
+      selectedNodeId: "method:file-download",
+      analysisDisplayMode: "FLOWCHART",
+    });
+
+    const { container } = render(<App />);
+
+    await waitForGraphNode(container, "flow-scope:delete-guard");
+    const beforeWrapper = container.querySelector('[data-node-id="flow-scope:delete-guard"]')?.closest(".react-flow__node");
+    expect(beforeWrapper).not.toBeNull();
+    const beforeTransform = (beforeWrapper as HTMLElement).style.transform;
+    expect(beforeTransform).toContain("translate(");
+
+    await user.click(screen.getByRole("tab", { name: "草稿" }));
+
+    await waitFor(() => {
+      const flowchartSummary = screen.getByLabelText("流程图摘要");
+      const currentSelectionCard = within(flowchartSummary).getByText("当前选中").closest("article");
+      expect(currentSelectionCard).not.toBeNull();
+      expect(within(currentSelectionCard as HTMLElement).getByText("if (Boolean.TRUE.equals(delete) && fileExists(filePath))")).toBeInTheDocument();
+    });
+
+    const afterWrapper = container.querySelector('[data-node-id="flow-scope:delete-guard"]')?.closest(".react-flow__node");
+    expect(afterWrapper).not.toBeNull();
+    expect((afterWrapper as HTMLElement).style.transform).toBe(beforeTransform);
+  });
+
+  it("does not relayout child nodes when draft after-mode only retitles the anchor method", async () => {
+    const user = userEvent.setup();
+    window.linkGraphBootstrap = materializeThreeViewDocuments({
+      visibleGraph: {
+        nodes: [
+          {
+            id: "method:file-download",
+            type: "METHOD",
+            title: "CommonController.fileDownload",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+            },
+          },
+          {
+            id: "scope:file-download-if",
+            type: "FLOW_SCOPE",
+            title: "if (delete)",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "DECISION",
+              "flow.kind": "IF",
+              "flow.ownerMethod": "com.example.CommonController.fileDownload(java.lang.String):void",
+            },
+          },
+        ],
+        edges: [
+          {
+            id: "edge:file-download->if-delete",
+            type: "CONTROL_FLOW",
+            source: "method:file-download",
+            target: "scope:file-download-if",
+            sourceTag: "FACT",
+          },
+        ],
+      },
+      workingGraph: {
+        nodes: [
+          {
+            id: "method:file-download",
+            type: "METHOD",
+            title: "if (Boolean.TRUE.equals(delete) && fileExists(filePath))",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "DRAFT_AI",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+            },
+          },
+          {
+            id: "scope:file-download-if",
+            type: "FLOW_SCOPE",
+            title: "if (delete)",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            sourceTag: "FACT",
+            metadata: {
+              "flowchart.kind": "DECISION",
+              "flow.kind": "IF",
+              "flow.ownerMethod": "com.example.CommonController.fileDownload(java.lang.String):void",
+            },
+          },
+        ],
+        edges: [
+          {
+            id: "edge:file-download->if-delete",
+            type: "CONTROL_FLOW",
+            source: "method:file-download",
+            target: "scope:file-download-if",
+            sourceTag: "FACT",
+          },
+        ],
+      },
+      draftWorkbenchState: {
+        draftChanges: [
+          {
+            entryId: "draft-method-title",
+            kind: "CHANGE",
+            title: "收紧删除条件",
+            sourceChangeId: "change-method-title",
+            targetStepIds: [],
+            targetNodeIds: ["method:file-download"],
+            beforeState: "CommonController.fileDownload",
+            afterState: "if (Boolean.TRUE.equals(delete) && fileExists(filePath))",
+            reason: "复现草稿 after 模式只变展示文本的场景。",
+            impactSummary: "不应触发布局重算。",
+            claimType: "CODE_FACT",
+            evidence: [
+              {
+                id: "finding-method-title",
+                claim: "当前方法节点在草稿层会被投影为 after title。",
+                evidenceLevel: "DIRECT_SOURCE",
+                references: [{ nodeId: "method:file-download" }],
+              },
+            ],
+            graphPatch: {
+              summary: "调整方法展示标题",
+              operations: [
+                {
+                  id: "patch-op-method-title",
+                  action: "UPDATE_NODE",
+                  elementKind: "NODE",
+                  elementId: "method:file-download",
+                  node: {
+                    id: "method:file-download",
+                    type: "METHOD",
+                    title: "if (Boolean.TRUE.equals(delete) && fileExists(filePath))",
+                    inputs: [],
+                    outputs: [],
+                    certainty: "LLM_SUGGESTED",
+                    bindingStatus: "BOUND",
+                    metadata: {
+                      "flowchart.kind": "ENTRY",
+                    },
+                  },
+                },
+              ],
+              addedNodeIds: [],
+              removedNodeIds: [],
+              addedEdgeIds: [],
+              removedEdgeIds: [],
+            },
+          },
+        ],
+        draftNotes: [],
+      },
+      selectedNodeId: "method:file-download",
+      analysisDisplayMode: "FLOWCHART",
+    });
+
+    const { container } = render(<App />);
+
+    await waitForGraphNode(container, "scope:file-download-if");
+    const beforeWrapper = container.querySelector('[data-node-id="scope:file-download-if"]')?.closest(".react-flow__node");
+    expect(beforeWrapper).not.toBeNull();
+    const beforeTransform = (beforeWrapper as HTMLElement).style.transform;
+    expect(beforeTransform).toContain("translate(");
+
+    await user.click(screen.getByRole("tab", { name: "草稿" }));
+
+    await waitFor(() => {
+      const flowchartSummary = screen.getByLabelText("流程图摘要");
+      const currentSelectionCard = within(flowchartSummary).getByText("当前选中").closest("article");
+      expect(currentSelectionCard).not.toBeNull();
+      expect(within(currentSelectionCard as HTMLElement).getByText("if (Boolean.TRUE.equals(delete) && fileExists(filePath))")).toBeInTheDocument();
+    });
+
+    const afterWrapper = container.querySelector('[data-node-id="scope:file-download-if"]')?.closest(".react-flow__node");
+    expect(afterWrapper).not.toBeNull();
+    expect((afterWrapper as HTMLElement).style.transform).toBe(beforeTransform);
   });
 
   it("prefers the confirmed draft graphPatch over a stale working graph when presenting flowchart after-state", async () => {

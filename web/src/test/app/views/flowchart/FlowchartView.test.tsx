@@ -320,6 +320,44 @@ describe("FlowchartView", () => {
     expect(screen.getByText("当前对比会直接高亮修改后的真实节点和连线。")).toBeInTheDocument();
   });
 
+  it("uses the base layout graph for ELK while still rendering the overlaid draft title", () => {
+    const overlaidView: FlowchartViewDocument = {
+      ...view,
+      visibleGraph: {
+        ...view.visibleGraph,
+        nodes: view.visibleGraph.nodes.map((node) => (
+          node.id === "method:submit-order"
+            ? {
+              ...node,
+              title: "if (Boolean.TRUE.equals(delete) && fileExists(filePath))",
+            }
+            : node
+        )),
+      },
+    };
+
+    render(
+      <FlowchartView
+        view={overlaidView}
+        layoutView={view}
+        selectedNodeId="method:submit-order"
+        onAddNode={noop}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onDeleteNode={noop}
+        onCreateEdge={noop}
+        onDeleteEdge={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onImportMermaid={noop}
+      />,
+    );
+
+    const measuredLayoutArgs = useMeasuredLayoutMock.mock.calls.at(-1)?.[0];
+    expect(measuredLayoutArgs?.graph.nodes[0]?.title).toBe("OrderController.submit");
+    expect(screen.getAllByText("if (Boolean.TRUE.equals(delete) && fileExists(filePath))").length).toBeGreaterThan(0);
+  });
+
   it("handles flowchart relayout inside the view module instead of delegating back to the upstream format callback", async () => {
     const user = userEvent.setup();
     const requestRelayout = vi.fn();

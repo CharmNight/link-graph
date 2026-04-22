@@ -16,6 +16,7 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
+import com.charmnight.linkgraph.settings.LlmProviderType
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.AuditConversationMessage
 import com.charmnight.linkgraph.workbench.AuditConversationSession
@@ -321,6 +322,106 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             listOf("method:file-download", "method:get-download-path"),
             capturedNodeIds,
         )
+    }
+
+    fun testRequestAuditAsyncBuildsCandidateChangeFromRuntimeCodeEvidenceInMockMode() {
+        val sourceFile = Files.createTempFile("review-workflow-qa-direct-source", ".java")
+        Files.writeString(
+            sourceFile,
+            """
+            class CommonController {
+                void fileDownload(String fileName, Boolean delete) {
+                    if (delete) {
+                        FileUtils.deleteFile(fileName);
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        stateService.loadGraph(
+            GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:file-download",
+                        type = NodeType.METHOD,
+                        title = "CommonController.fileDownload",
+                        signature = "com.example.CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
+                        sourceTag = GraphSourceTag.FACT,
+                        metadata = mapOf(
+                            "source.filePath" to sourceFile.toString(),
+                            "source.startLine" to "1",
+                            "source.endLine" to "7",
+                        ),
+                    ),
+                ),
+            ),
+            "currentMethod",
+        )
+        val session = ProjectEditorSession(
+            stateService = stateService,
+            onBrowserSyncRequested = {},
+        )
+        val workflow = ReviewWorkflow(
+            project = project,
+            session = session,
+            planningContextFactory = PlanningContextFactory(
+                graphDiffer = GraphDiffer(),
+                syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
+                graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
+                settingsProvider = {
+                    LinkGraphSettingsState(
+                        llmEnabled = true,
+                        provider = LlmProviderType.MOCK.name,
+                    )
+                },
+            ),
+            graphAuditPatchService = GraphAuditPatchService(),
+            graphDiffPatchService = GraphDiffPatchService(),
+            graphBeautificationService = object : GraphBeautificationService {
+                override fun beautify(
+                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    settings: LinkGraphSettingsState,
+                    onPreview: ((String, Boolean) -> Unit)?,
+                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                    source = LlmResultSource.MOCK,
+                    promptPreview = "unused",
+                )
+            },
+            graphDiffer = GraphDiffer(),
+            settingsProvider = {
+                LinkGraphSettingsState(
+                    llmEnabled = true,
+                    provider = LlmProviderType.MOCK.name,
+                )
+            },
+            auditExecutorOverrideProvider = { null },
+            asyncRequestLifecycle = AsyncRequestLifecycleSupport(
+                project = project,
+                session = session,
+                timeoutOverrideProvider = { 500L },
+            ),
+            logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
+        )
+
+        workflow.requestAuditAsync(
+            question = "请把这里的 if(delete) 改成 delete == true，并在删除前校验 filePath 是否存在。",
+            selectedNodeIds = listOf("method:file-download"),
+        )
+
+        val snapshot = waitForSnapshot(stateService) { current ->
+            current.auditRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
+        }
+
+        assertEquals(LlmResultSource.MOCK, snapshot.auditResult?.source)
+        assertEquals(1, snapshot.auditResult?.candidateChanges?.size)
+        assertTrue(snapshot.auditResult?.investigationThreads?.isEmpty() == true)
+        assertEquals("method:file-download", snapshot.auditResult?.candidateChanges?.single()?.targetNodeIds?.single())
+        assertEquals(
+            sourceFile.toString(),
+            snapshot.auditResult?.candidateChanges?.single()?.editScopes?.singleOrNull()?.filePath,
+        )
+        assertTrue(snapshot.auditResult?.answer?.contains("待确认变更") == true)
     }
 
     fun testRequestAuditAsyncPreservesFactBaselineAndEditableWorkingGraph() {

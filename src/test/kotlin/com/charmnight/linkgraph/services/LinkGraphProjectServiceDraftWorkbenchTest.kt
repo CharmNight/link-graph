@@ -810,6 +810,238 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
     }
 
+    fun testConfirmingMultipleAuditCandidateChangesPreservesFlowchartOrderAndLayout() {
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        val selectedMethodSignature = "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void"
+        val baseGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:file-download",
+                    type = NodeType.METHOD,
+                    title = "CommonController.fileDownload",
+                    signature = selectedMethodSignature,
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf(
+                        "flowchart.kind" to "ENTRY",
+                        "flow.ownerMethod" to selectedMethodSignature,
+                        "ui.x" to "32",
+                        "ui.y" to "24",
+                    ),
+                ),
+                GraphNode(
+                    id = "scope:allow-download",
+                    type = NodeType.FLOW_SCOPE,
+                    title = "if (!FileUtils.checkAllowDownload(fileName))",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf(
+                        "flowchart.kind" to "DECISION",
+                        "flow.ownerMethod" to selectedMethodSignature,
+                        "ui.x" to "192",
+                        "ui.y" to "24",
+                    ),
+                ),
+                GraphNode(
+                    id = "scope:delete-file",
+                    type = NodeType.FLOW_SCOPE,
+                    title = "if (delete)",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf(
+                        "flowchart.kind" to "DECISION",
+                        "flow.ownerMethod" to selectedMethodSignature,
+                        "ui.x" to "352",
+                        "ui.y" to "24",
+                    ),
+                ),
+                GraphNode(
+                    id = "terminal:return",
+                    type = NodeType.TERMINAL,
+                    title = "return",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf(
+                        "flowchart.kind" to "TERMINAL",
+                        "flow.ownerMethod" to selectedMethodSignature,
+                        "ui.x" to "512",
+                        "ui.y" to "24",
+                    ),
+                ),
+            ),
+            edges = listOf(
+                GraphEdge(
+                    id = "edge:entry-allow",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = "method:file-download",
+                    toNodeId = "scope:allow-download",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+                GraphEdge(
+                    id = "edge:allow-delete",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = "scope:allow-download",
+                    toNodeId = "scope:delete-file",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+                GraphEdge(
+                    id = "edge:delete-return",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = "scope:delete-file",
+                    toNodeId = "terminal:return",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+            ),
+        )
+        stateService.loadGraph(baseGraph, selectedMethodSignature)
+        stateService.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
+        stateService.markAuditResult(
+            GraphPatchResult(
+                source = LlmResultSource.MOCK,
+                question = "请确认这两条流程调整",
+                answer = "先收紧 delete 判断，再补一个文件存在校验节点。",
+                promptPreview = "prompt",
+                candidateChanges = listOf(
+                    CandidateDraftChange(
+                        changeId = "change-delete-guard",
+                        status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+                        title = "收紧删除条件",
+                        targetNodeIds = listOf("scope:delete-file"),
+                        beforeState = "if (delete)",
+                        afterState = "if (Boolean.TRUE.equals(delete))",
+                        reason = "delete 为包装类型，需要显式布尔判断。",
+                        impactSummary = "影响删除分支进入条件。",
+                        claimType = "CODE_FACT",
+                        graphPatch = GraphPatch(
+                            summary = "更新删除判断节点",
+                            operations = listOf(
+                                GraphPatchOperation(
+                                    id = "patch-op-update-delete-guard",
+                                    action = GraphPatchAction.UPDATE_NODE,
+                                    elementKind = GraphDiffElementKind.NODE,
+                                    elementId = "scope:delete-file",
+                                    node = GraphNode(
+                                        id = "scope:delete-file",
+                                        type = NodeType.FLOW_SCOPE,
+                                        title = "if (Boolean.TRUE.equals(delete))",
+                                        sourceTag = GraphSourceTag.DRAFT_AI,
+                                        metadata = mapOf(
+                                            "flowchart.kind" to "DECISION",
+                                            "flow.ownerMethod" to selectedMethodSignature,
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        evidence = listOf(
+                            ResultEvidenceFinding(
+                                id = "finding-delete-guard",
+                                claim = "当前源码里直接能看到 delete 条件。",
+                                evidenceLevel = ResultEvidenceLevel.DIRECT_SOURCE,
+                                references = listOf(ResultEvidenceReference(nodeId = "scope:delete-file")),
+                            ),
+                        ),
+                    ),
+                    CandidateDraftChange(
+                        changeId = "change-file-exists-guard",
+                        status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+                        title = "插入文件存在校验节点",
+                        targetNodeIds = listOf("scope:delete-file"),
+                        beforeState = "if (Boolean.TRUE.equals(delete)) -> return",
+                        afterState = "if (Boolean.TRUE.equals(delete)) -> Files.exists(filePath) -> return",
+                        reason = "删除前需要明确文件是否存在。",
+                        impactSummary = "在删除判断后增加一个校验步骤。",
+                        claimType = "CODE_FACT",
+                        graphPatch = GraphPatch(
+                            summary = "插入文件存在校验节点并重连边",
+                            operations = listOf(
+                                GraphPatchOperation(
+                                    id = "patch-op-add-exists-node",
+                                    action = GraphPatchAction.ADD_NODE,
+                                    elementKind = GraphDiffElementKind.NODE,
+                                    elementId = "draft:aaa-file-exists",
+                                    node = GraphNode(
+                                        id = "draft:aaa-file-exists",
+                                        type = NodeType.FLOW_ACTION,
+                                        title = "Files.exists(Path.of(filePath))",
+                                        sourceTag = GraphSourceTag.DRAFT_AI,
+                                        metadata = mapOf(
+                                            "flowchart.kind" to "PROCESS",
+                                            "flow.ownerMethod" to selectedMethodSignature,
+                                        ),
+                                    ),
+                                ),
+                                GraphPatchOperation(
+                                    id = "patch-op-delete-delete-return",
+                                    action = GraphPatchAction.DELETE_EDGE,
+                                    elementKind = GraphDiffElementKind.EDGE,
+                                    elementId = "edge:delete-return",
+                                ),
+                                GraphPatchOperation(
+                                    id = "patch-op-add-delete-exists",
+                                    action = GraphPatchAction.ADD_EDGE,
+                                    elementKind = GraphDiffElementKind.EDGE,
+                                    elementId = "edge:delete-exists",
+                                    edge = GraphEdge(
+                                        id = "edge:delete-exists",
+                                        type = EdgeType.CONTROL_FLOW,
+                                        fromNodeId = "scope:delete-file",
+                                        toNodeId = "draft:aaa-file-exists",
+                                        sourceTag = GraphSourceTag.DRAFT_AI,
+                                    ),
+                                ),
+                                GraphPatchOperation(
+                                    id = "patch-op-add-exists-return",
+                                    action = GraphPatchAction.ADD_EDGE,
+                                    elementKind = GraphDiffElementKind.EDGE,
+                                    elementId = "edge:exists-return",
+                                    edge = GraphEdge(
+                                        id = "edge:exists-return",
+                                        type = EdgeType.CONTROL_FLOW,
+                                        fromNodeId = "draft:aaa-file-exists",
+                                        toNodeId = "terminal:return",
+                                        sourceTag = GraphSourceTag.DRAFT_AI,
+                                    ),
+                                ),
+                            ),
+                        ),
+                        evidence = listOf(
+                            ResultEvidenceFinding(
+                                id = "finding-file-exists-guard",
+                                claim = "当前删除分支直接返回，没有额外文件存在校验。",
+                                evidenceLevel = ResultEvidenceLevel.DIRECT_SOURCE,
+                                references = listOf(ResultEvidenceReference(nodeId = "scope:delete-file")),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val service = project.getService(LinkGraphProjectService::class.java)
+        service.confirmAuditCandidateChange("change-delete-guard")
+        service.confirmAuditCandidateChange("change-file-exists-guard")
+
+        val snapshot = stateService.snapshot()
+        val expectedNodeOrder = listOf(
+            "method:file-download",
+            "scope:allow-download",
+            "scope:delete-file",
+            "terminal:return",
+            "draft:aaa-file-exists",
+        )
+        assertEquals(expectedNodeOrder, snapshot.workingGraph?.nodes?.map { it.id })
+        assertEquals(expectedNodeOrder, snapshot.flowchartView?.visibleGraph?.nodes?.map { it.id })
+        assertEquals(
+            "if (Boolean.TRUE.equals(delete))",
+            snapshot.flowchartView?.visibleGraph?.nodes?.firstOrNull { it.id == "scope:delete-file" }?.title,
+        )
+        assertEquals(
+            listOf("edge:entry-allow", "edge:allow-delete", "edge:delete-exists", "edge:exists-return"),
+            snapshot.flowchartView?.visibleGraph?.edges?.map { it.id },
+        )
+        assertEquals(32.0, snapshot.layoutState.positions["method:file-download"]?.x)
+        assertEquals(24.0, snapshot.layoutState.positions["method:file-download"]?.y)
+        assertEquals(352.0, snapshot.layoutState.positions["scope:delete-file"]?.x)
+        assertEquals(24.0, snapshot.layoutState.positions["scope:delete-file"]?.y)
+    }
+
     fun testConfirmAuditCandidateChangeInFlowchartModeRebuildsFromFlowchartBaseInsteadOfFactGraph() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val selectedMethodSignature = "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void"

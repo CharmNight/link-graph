@@ -138,6 +138,18 @@ class GraphEditorBridgeTest : BasePlatformTestCase() {
         assertTrue(snapshot.visibleGraph?.nodes?.any { it.title == "OrderService.submit" } == true)
     }
 
+    fun testDispatchOpenCodeDraftNativeDiffRoutesToProjectService() {
+        val projectService = project.getService(LinkGraphProjectService::class.java)
+        var requestedDraftId: String? = null
+        projectService.testOpenCodeDraftNativeDiffOverride = { draftId ->
+            requestedDraftId = draftId
+        }
+
+        GraphEditorBridge(project).dispatch(GraphEditorMessage.OpenCodeDraftNativeDiff("draft:file-download"))
+
+        assertEquals("draft:file-download", requestedDraftId)
+    }
+
     private fun waitForSnapshot(
         predicate: (GraphEditorStateService.Snapshot) -> Boolean,
     ): GraphEditorStateService.Snapshot {

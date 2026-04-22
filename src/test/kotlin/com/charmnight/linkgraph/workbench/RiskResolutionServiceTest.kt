@@ -6,6 +6,8 @@ import com.charmnight.linkgraph.ui.GraphEditorStateService
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RiskResolutionServiceTest {
@@ -49,9 +51,18 @@ class RiskResolutionServiceTest {
     }
 
     @Test
-    fun `deferred risk allows plan without confirmed draft changes`() {
-        val decision = service.evaluatePlanEligibility(
+    fun `draft validation flags unresolved risks inside the draft stage`() {
+        val decision = service.evaluateDraftValidation(
             GraphEditorStateService.Snapshot(
+                draftWorkbenchState = DraftWorkbenchState(
+                    draftChanges = listOf(
+                        DraftWorkbenchEntry(
+                            entryId = "draft-1",
+                            kind = DraftEntryKind.CHANGE,
+                            title = "补充默认兜底",
+                        ),
+                    ),
+                ),
                 auditResult = GraphPatchResult(
                     source = LlmResultSource.MOCK,
                     question = "请判断这里是否遗漏默认兜底",
@@ -72,8 +83,9 @@ class RiskResolutionServiceTest {
             ),
         )
 
-        assertTrue(decision.allowed)
-        assertEquals("实现计划", decision.stageLabel)
+        assertEquals(DraftValidationStatus.REVIEW_REQUIRED, decision.status)
+        assertEquals(listOf("thread-fallback"), decision.unresolvedThreadIds)
+        assertTrue(decision.message.contains("待验证风险"))
     }
 
     @Test
@@ -110,7 +122,8 @@ class RiskResolutionServiceTest {
         )
 
         assertFalse(decision.allowed)
-        assertTrue(decision.detailMessage.contains("暂挂风险"))
+        val detailMessage = assertNotNull(decision.detailMessage)
+        assertTrue(detailMessage.contains("暂挂风险"))
     }
 
     @Test
@@ -148,5 +161,26 @@ class RiskResolutionServiceTest {
 
         assertTrue(decision.allowed)
         assertEquals("代码草稿", decision.stageLabel)
+        assertNull(decision.detailMessage)
+    }
+
+    @Test
+    fun `draft validation reports ready when confirmed draft changes have no unresolved risk`() {
+        val decision = service.evaluateDraftValidation(
+            GraphEditorStateService.Snapshot(
+                draftWorkbenchState = DraftWorkbenchState(
+                    draftChanges = listOf(
+                        DraftWorkbenchEntry(
+                            entryId = "draft-1",
+                            kind = DraftEntryKind.CHANGE,
+                            title = "补充默认兜底",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(DraftValidationStatus.READY, decision.status)
+        assertNull(decision.detailMessage)
     }
 }

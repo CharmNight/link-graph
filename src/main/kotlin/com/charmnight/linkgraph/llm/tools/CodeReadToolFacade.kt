@@ -33,9 +33,12 @@ class CodeReadToolFacade(
         startLine: Int? = null,
         endLine: Int? = null,
         fallbackSnippet: String? = null,
+        projectBasePath: String? = null,
     ): String? {
         fallbackSnippet?.takeIf { it.isNotBlank() }?.let { return it }
-        val path = runCatching { Paths.get(filePath) }.getOrNull() ?: return null
+        val path = com.charmnight.linkgraph.codegen.ProjectPathNormalizer.resolvePath(filePath, projectBasePath)
+            ?: runCatching { Paths.get(filePath) }.getOrNull()
+            ?: return null
         if (!Files.exists(path)) {
             return null
         }
@@ -72,6 +75,7 @@ class CodeReadToolFacade(
                 startLine = startLine,
                 endLine = endLine,
                 fallbackSnippet = fallback?.snippet,
+                projectBasePath = null,
             ),
         )
     }

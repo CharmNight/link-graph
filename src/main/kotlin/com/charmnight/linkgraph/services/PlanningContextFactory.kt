@@ -4,7 +4,6 @@ import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.codegen.ProjectPathNormalizer
 import com.charmnight.linkgraph.llm.GenerationContext
 import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GenerationPlanItem
 import com.charmnight.linkgraph.llm.GraphBeautificationContext
 import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.llm.GraphGenerationService
@@ -285,79 +284,6 @@ internal class PlanningContextFactory(
                 )
             }
             .toList()
-    }
-
-    /**
-     * 为实现计划和代码生成收集可直接发给模型的真实源码片段。
-     */
-    private fun buildGenerationSourceSnippetContexts(
-        planningGraph: GraphDocument,
-        confirmedChanges: List<com.charmnight.linkgraph.workbench.DraftWorkbenchEntry>,
-        planItems: List<GenerationPlanItem>,
-    ): List<SourceSnippetContext> {
-        val nodeById = planningGraph.nodes.associateBy(GraphNode::id)
-        val snippets = linkedMapOf<String, SourceSnippetContext>()
-
-        confirmedChanges.forEach { change ->
-            val scopedSnippets = change.editScopes.mapNotNull { scope ->
-                sourceSnippetFromScope(scope, nodeById)
-            }
-            val fallbackSnippets = if (scopedSnippets.isEmpty()) {
-                change.targetNodeIds.mapNotNull { nodeId ->
-                    sourceSnippetFromNode(nodeById[nodeId])
-                }
-            } else {
-                emptyList()
-            }
-            (scopedSnippets + fallbackSnippets).forEach { snippet ->
-                snippets.putIfAbsent(snippetKey(snippet), snippet)
-            }
-        }
-
-        planItems
-            .flatMap(GenerationPlanItem::editScopes)
-            .mapNotNull { scope -> sourceSnippetFromScope(scope, nodeById) }
-            .forEach { snippet ->
-                snippets.putIfAbsent(snippetKey(snippet), snippet)
-            }
-
-        return snippets.values.toList()
-    }
-
-    /**
-     * 从精确 edit scope 读取当前源码片段。
-     */
-    private fun sourceSnippetFromScope(
-        scope: com.charmnight.linkgraph.llm.EditScope,
-        nodeById: Map<String, GraphNode>,
-    ): SourceSnippetContext? {
-        if (scope.filePath.isBlank()) {
-            return null
-        }
-        val node = nodeById[scope.targetNodeId]
-        val normalizedOffsets = normalizeSnippetOffsets(
-            startOffset = scope.startOffset ?: node?.metadata?.get("source.startOffset")?.toIntOrNull(),
-            endOffset = scope.endOffset ?: node?.metadata?.get("source.endOffset")?.toIntOrNull(),
-        )
-        val startOffset = normalizedOffsets.first
-        val endOffset = normalizedOffsets.second
-        val startLine = scope.startLine ?: node?.metadata?.get("source.startLine")?.toIntOrNull()
-        val endLine = scope.endLine ?: node?.metadata?.get("source.endLine")?.toIntOrNull()
-        return SourceSnippetContext(
-            nodeId = scope.targetNodeId,
-            filePath = scope.filePath,
-            startOffset = startOffset,
-            endOffset = endOffset,
-            startLine = startLine,
-            endLine = endLine,
-            snippet = readSourceSnippet(
-                filePath = scope.filePath,
-                startOffset = startOffset,
-                endOffset = endOffset,
-                startLine = startLine,
-                endLine = endLine,
-            ),
-        )
     }
 
     /**

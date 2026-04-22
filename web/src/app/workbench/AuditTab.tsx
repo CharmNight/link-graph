@@ -363,10 +363,32 @@ function AuditPagePanel({
           )}
           {canRetryFailedRequest ? (
             <div className="panel-actions">
-              <button type="button" className="primary-button" onClick={onRetryLastRequest}>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => {
+                  traceLinkGraph("workbench.audit.retryLastRequest.clicked", {
+                    activeSectionId,
+                    requestPhase: requestStatus?.phase ?? null,
+                    hasFailedRequest: failedRequest != null,
+                  });
+                  onRetryLastRequest();
+                }}
+              >
                 直接重试
               </button>
-              <button type="button" className="ghost-button" onClick={onEditFailedRequest}>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => {
+                  traceLinkGraph("workbench.audit.editFailedRequest.clicked", {
+                    activeSectionId,
+                    requestPhase: requestStatus?.phase ?? null,
+                    hasFailedRequest: failedRequest != null,
+                  });
+                  onEditFailedRequest();
+                }}
+              >
                 修改后重试
               </button>
             </div>

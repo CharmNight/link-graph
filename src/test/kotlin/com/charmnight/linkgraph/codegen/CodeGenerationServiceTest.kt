@@ -473,7 +473,121 @@ class CodeGenerationServiceTest {
         assertEquals(1, result.drafts.size)
         assertEquals("src/main/java/com/example/OrderDraftDto.java", result.drafts.single().targetPath)
         assertTrue(result.warnings.any { it.contains("远程 LLM 代码生成失败") })
-        assertTrue(result.warnings.any { it.contains("content or editOperations") })
+        assertTrue(result.warnings.any { it.contains("结构化校验") || it.contains("模型输出格式") })
+        assertNotNull(result.diagnosticDetail)
+        assertTrue(result.diagnosticDetail!!.contains("首次解析错误"))
+        assertTrue(result.diagnosticDetail!!.contains("重试解析错误"))
+        assertTrue(result.diagnosticDetail!!.contains("must provide content or editOperations"))
+        assertTrue(result.emptyResultDetailMessage()!!.contains("首次返回片段"))
+    }
+
+    @Test
+    fun summarizesStructuredJsonRepairFailureWithoutDumpingRawModelPayloadIntoWarnings() {
+        val requests = mutableListOf<LlmRequest>()
+        val result = CodeGenerationService(
+            promptFactory = LlmPromptFactory(),
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    requests += request
+                    return LlmResponse(
+                        content = """
+                            {
+                              "summary": "远程代码草稿",
+                              "warnings": [],
+                              "drafts": [
+                                {
+                                  "id": "draft-remote-common-controller",
+                                  "sourceNodeId": "method:file-download",
+                                  "title": "CommonController.java",
+                                  "targetPath": "src/main/java/com/example/CommonController.java",
+                                  "editOperations": [
+                                    {
+                                      "operationId": "op-replace-file-download",
+                                      "filePath": "src/main/java/com/example/CommonController.java",
+                                      "scopeId": "scope-file-download",
+                                      "kind": "REPLACE_METHOD_BLOCK"
+                                    }
+                                  ],
+                                  "warnings": []
+                                }
+                              ]
+                            }
+                        """.trimIndent(),
+                        model = request.model,
+                    )
+                }
+            },
+        ).generateDrafts(
+            context = GenerationContext(
+                graph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:file-download",
+                            type = NodeType.METHOD,
+                            title = "CommonController.fileDownload",
+                            signature = "com.example.CommonController.fileDownload(java.lang.String):java.lang.String",
+                        ),
+                    ),
+                ),
+                confirmedChanges = listOf(
+                    DraftWorkbenchEntry(
+                        entryId = "draft-change-file-download",
+                        kind = DraftEntryKind.CHANGE,
+                        title = "修改 fileDownload 的路径判定",
+                        targetNodeIds = listOf("method:file-download"),
+                        editScopes = listOf(
+                            EditScope(
+                                scopeId = "scope-file-download",
+                                targetNodeId = "method:file-download",
+                                filePath = "src/main/java/com/example/CommonController.java",
+                                language = "JAVA",
+                                symbolKind = "METHOD",
+                                symbolSignature = "com.example.CommonController.fileDownload(java.lang.String):java.lang.String",
+                                startLine = 12,
+                                endLine = 24,
+                                allowedChangeKinds = listOf("REPLACE_METHOD_BLOCK"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            plan = GenerationPlan(
+                source = GenerationPlanSource.REMOTE,
+                summary = "Modify CommonController.java",
+                items = listOf(
+                    GenerationPlanItem(
+                        id = "plan-file-download",
+                        title = "修改 fileDownload",
+                        description = "只允许改 fileDownload。",
+                        risk = SyncPreviewRisk.MEDIUM,
+                        targetPath = "src/main/java/com/example/CommonController.java",
+                    ),
+                ),
+            ),
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                endpoint = "https://api.example.com/v1",
+                apiKey = "secret-key",
+                model = "gpt-5.4",
+            ),
+        )
+
+        assertEquals(2, requests.size)
+        assertTrue(requests[1].userPrompt.contains("\"editOperations\""))
+        assertTrue(requests[1].userPrompt.contains("\"payload\""))
+        assertTrue(requests[1].userPrompt.contains("\"scopeId\""))
+        assertTrue(requests[1].userPrompt.contains("payload is required"))
+        assertTrue(requests[1].userPrompt.contains("上一次结构化校验失败的具体原因"))
+        assertEquals(LlmResultSource.MOCK, result.source)
+        assertTrue(result.warnings.any { it.contains("返回内容未通过结构化校验") })
+        assertTrue(result.warnings.none { it.contains("首次返回片段") })
+        assertTrue(result.warnings.none { it.contains("\"summary\"") })
+        assertNotNull(result.diagnosticDetail)
+        assertTrue(result.diagnosticDetail!!.contains("首次返回片段"))
+        assertTrue(result.diagnosticDetail!!.contains("重试返回片段"))
+        assertTrue(result.diagnosticDetail!!.contains("payload is required"))
+        assertTrue(result.emptyResultDetailMessage()!!.contains("重试返回片段"))
     }
 
     @Test
@@ -573,17 +687,12 @@ class CodeGenerationServiceTest {
                         ),
                     ),
                 ),
-            ),
-            plan = GenerationPlan(
-                source = GenerationPlanSource.REMOTE,
-                summary = "Modify CommonController.java",
-                items = listOf(
-                    GenerationPlanItem(
-                        id = "plan-file-download",
-                        title = "修改 fileDownload",
-                        description = "只允许改 fileDownload。",
-                        risk = SyncPreviewRisk.MEDIUM,
-                        targetPath = "src/main/java/com/example/CommonController.java",
+                confirmedChanges = listOf(
+                    DraftWorkbenchEntry(
+                        entryId = "draft-change-file-download",
+                        kind = DraftEntryKind.CHANGE,
+                        title = "修改 fileDownload 的路径判定",
+                        targetNodeIds = listOf("method:file-download"),
                         editScopes = listOf(
                             EditScope(
                                 scopeId = "scope-file-download",
@@ -598,6 +707,19 @@ class CodeGenerationServiceTest {
                                 supportingFindingIds = listOf("finding-file-download"),
                             ),
                         ),
+                    ),
+                ),
+            ),
+            plan = GenerationPlan(
+                source = GenerationPlanSource.REMOTE,
+                summary = "Modify CommonController.java",
+                items = listOf(
+                    GenerationPlanItem(
+                        id = "plan-file-download",
+                        title = "修改 fileDownload",
+                        description = "只允许改 fileDownload。",
+                        risk = SyncPreviewRisk.MEDIUM,
+                        targetPath = "src/main/java/com/example/CommonController.java",
                     ),
                 ),
             ),

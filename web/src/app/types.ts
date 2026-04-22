@@ -449,12 +449,22 @@ export interface QaRequestRecoveryState {
   lastFailedRequest?: ReplayableQaRequest | null;
 }
 
+export type DraftValidationStatus = "EMPTY" | "REVIEW_REQUIRED" | "READY";
+
+export interface DraftValidationState {
+  status: DraftValidationStatus;
+  message: string;
+  detailMessage?: string | null;
+  unresolvedThreadIds: string[];
+  unresolvedThreads: InvestigationThread[];
+}
+
 export interface StageEligibilityDecision {
   target: StageEligibilityTarget;
   stageLabel: string;
   allowed: boolean;
   message: string;
-  detailMessage: string;
+  detailMessage?: string | null;
   blockingThreadIds: string[];
   unresolvedThreadIds: string[];
 }
@@ -510,6 +520,19 @@ export interface DraftWorkbenchViewState {
   selectedEntryId?: string | null;
 }
 
+export interface GenerationPlanDiscussionMessage {
+  messageId: string;
+  role: AuditMessageRole;
+  content: string;
+  focusItemId?: string | null;
+}
+
+export interface GenerationPlanDiscussionSession {
+  sessionId: string;
+  messages: GenerationPlanDiscussionMessage[];
+  focusItemId?: string | null;
+}
+
 export interface DraftImplementationSuggestionState {
   status: "MISSING" | "RUNNING" | "FRESH" | "STALE" | "FAILED";
   summary?: string | null;
@@ -549,7 +572,8 @@ export type WorkbenchSectionId =
   | "audit.investigation-threads"
   | "draft.change-list"
   | "draft.note-list"
-  | "draft.detail";
+  | "draft.detail"
+  | "draft.validation";
 
 export type WorkbenchSectionPreferences = Partial<Record<WorkbenchSectionId, boolean>>;
 
@@ -568,7 +592,6 @@ export interface GenerationPlanItem {
   description: string;
   risk: "LOW" | "MEDIUM" | "HIGH";
   targetPath?: string | null;
-  editScopes?: EditScope[];
 }
 
 export interface GenerationPlan {
@@ -589,6 +612,20 @@ export interface GeneratedCodeDraft {
   contentArtifactId?: string | null;
   editOperations?: CodeEditOperation[];
   editScopes?: EditScope[];
+  preparedEdits?: PreparedCodeEdit[];
+  warnings: string[];
+}
+
+export interface PreparedCodeEdit {
+  operationId: string;
+  filePath: string;
+  scopeId?: string | null;
+  kind: CodeEditOperation["kind"];
+  targetSymbolSignature?: string | null;
+  startOffset: number;
+  endOffset: number;
+  beforeText: string;
+  afterText: string;
   warnings: string[];
 }
 
@@ -707,7 +744,9 @@ export interface LinkGraphBootstrapState {
   generationPlan?: GenerationPlan | null;
   generationPlanDraftVersion?: number | null;
   generationPlanRequestState?: AsyncRequestState | null;
-  planEligibilityDecision?: StageEligibilityDecision | null;
+  draftValidationState?: DraftValidationState | null;
+  generationPlanDiscussionSession?: GenerationPlanDiscussionSession | null;
+  generationPlanDiscussionRequestState?: AsyncRequestState | null;
   generatedCodeDrafts?: GeneratedCodeDraft[];
   generatedCodeDraftVersion?: number | null;
   generatedCodeDraftWarnings?: string[];

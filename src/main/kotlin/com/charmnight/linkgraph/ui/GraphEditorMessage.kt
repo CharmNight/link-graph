@@ -209,6 +209,16 @@ sealed interface GraphEditorMessage {
     /** 请求生成改动计划。 */
     data object RequestGenerationPlan : GraphEditorMessage
 
+    /**
+     * 请求继续追问当前实现建议。
+     */
+    data class RequestGenerationPlanDiscussion(
+        /** 保存用户追问。 */
+        val question: String,
+        /** 保存当前聚焦的建议条目标识。 */
+        val focusItemId: String? = null,
+    ) : GraphEditorMessage
+
     /** 请求生成代码草稿。 */
     data object RequestCodeDrafts : GraphEditorMessage
 
@@ -243,6 +253,14 @@ sealed interface GraphEditorMessage {
      * 请求应用单个代码草稿。
      */
     data class ApplySingleCodeDraft(
+        /** 保存草稿标识。 */
+        val draftId: String,
+    ) : GraphEditorMessage
+
+    /**
+     * 请求打开指定代码草稿的原生 IDE diff。
+     */
+    data class OpenCodeDraftNativeDiff(
         /** 保存草稿标识。 */
         val draftId: String,
     ) : GraphEditorMessage

@@ -123,4 +123,134 @@ class GraphPatchApplyServiceTest {
         assertTrue(applied.nodes.none { it.id == noteNode.id })
         assertTrue(applied.edges.isEmpty())
     }
+
+    @Test
+    fun preservesExistingGraphModelOrderWhenApplyingDraftPatch() {
+        val baseGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:file-download",
+                    type = NodeType.METHOD,
+                    title = "CommonController.fileDownload",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+                GraphNode(
+                    id = "scope:allow-download",
+                    type = NodeType.FLOW_SCOPE,
+                    title = "if (!FileUtils.checkAllowDownload(fileName))",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+                GraphNode(
+                    id = "scope:delete-file",
+                    type = NodeType.FLOW_SCOPE,
+                    title = "if (delete)",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+                GraphNode(
+                    id = "terminal:return",
+                    type = NodeType.TERMINAL,
+                    title = "return",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+            ),
+            edges = listOf(
+                GraphEdge(
+                    id = "edge:entry-allow",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = "method:file-download",
+                    toNodeId = "scope:allow-download",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+                GraphEdge(
+                    id = "edge:allow-delete",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = "scope:allow-download",
+                    toNodeId = "scope:delete-file",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+                GraphEdge(
+                    id = "edge:delete-return",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = "scope:delete-file",
+                    toNodeId = "terminal:return",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+            ),
+        )
+        val patch = GraphPatch(
+            operations = listOf(
+                GraphPatchOperation(
+                    id = "update-delete-guard",
+                    action = GraphPatchAction.UPDATE_NODE,
+                    elementKind = GraphDiffElementKind.NODE,
+                    elementId = "scope:delete-file",
+                    node = baseGraph.nodes[2].copy(
+                        title = "if (Boolean.TRUE.equals(delete))",
+                        sourceTag = GraphSourceTag.DRAFT_AI,
+                    ),
+                ),
+                GraphPatchOperation(
+                    id = "add-earlier-sorting-node",
+                    action = GraphPatchAction.ADD_NODE,
+                    elementKind = GraphDiffElementKind.NODE,
+                    elementId = "draft:aaa-check",
+                    node = GraphNode(
+                        id = "draft:aaa-check",
+                        type = NodeType.FLOW_ACTION,
+                        title = "Files.exists(Path.of(filePath))",
+                        sourceTag = GraphSourceTag.DRAFT_AI,
+                    ),
+                ),
+                GraphPatchOperation(
+                    id = "add-edge-delete-check",
+                    action = GraphPatchAction.ADD_EDGE,
+                    elementKind = GraphDiffElementKind.EDGE,
+                    elementId = "edge:delete-check",
+                    edge = GraphEdge(
+                        id = "edge:delete-check",
+                        type = EdgeType.CONTROL_FLOW,
+                        fromNodeId = "scope:delete-file",
+                        toNodeId = "draft:aaa-check",
+                        sourceTag = GraphSourceTag.DRAFT_AI,
+                    ),
+                ),
+                GraphPatchOperation(
+                    id = "add-edge-check-return",
+                    action = GraphPatchAction.ADD_EDGE,
+                    elementKind = GraphDiffElementKind.EDGE,
+                    elementId = "edge:check-return",
+                    edge = GraphEdge(
+                        id = "edge:check-return",
+                        type = EdgeType.CONTROL_FLOW,
+                        fromNodeId = "draft:aaa-check",
+                        toNodeId = "terminal:return",
+                        sourceTag = GraphSourceTag.DRAFT_AI,
+                    ),
+                ),
+            ),
+        )
+
+        val applied = GraphPatchApplyService().apply(baseGraph, patch)
+
+        assertEquals(
+            listOf(
+                "method:file-download",
+                "scope:allow-download",
+                "scope:delete-file",
+                "terminal:return",
+                "draft:aaa-check",
+            ),
+            applied.nodes.map { it.id },
+        )
+        assertEquals(
+            listOf(
+                "edge:entry-allow",
+                "edge:allow-delete",
+                "edge:delete-return",
+                "edge:delete-check",
+                "edge:check-return",
+            ),
+            applied.edges.map { it.id },
+        )
+    }
 }

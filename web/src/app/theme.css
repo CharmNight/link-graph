@@ -796,7 +796,6 @@ button {
   margin: 0;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
-  height: 100%;
   min-height: 0;
 }
 
@@ -1806,6 +1805,33 @@ button {
   word-break: break-word;
 }
 
+.workbench-draft-intent-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(185, 104, 47, 0.18);
+  background:
+    linear-gradient(135deg, rgba(255, 247, 239, 0.92), rgba(255, 252, 247, 0.98));
+}
+
+.workbench-draft-intent-card strong {
+  font-size: 0.96rem;
+  line-height: 1.45;
+}
+
+.workbench-draft-intent-card p {
+  margin: 0;
+}
+
+.workbench-edit-scope-signature {
+  display: block;
+  font-family: "JetBrains Mono", "IBM Plex Mono", "PingFang SC", monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
 .workbench-draft-note-button {
   width: 100%;
   text-align: left;
@@ -2580,18 +2606,23 @@ button {
 
 .generation-plan-panel {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 12px;
+  min-width: 0;
   min-height: 0;
-  overflow: hidden;
 }
 
 .code-draft-panel {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
+  align-content: start;
+}
+
+.code-draft-panel > .side-panel-scroll-body {
+  min-height: auto;
+  overflow: visible;
+  padding-right: 0;
 }
 
 .side-panel-scroll-body {
@@ -2607,6 +2638,20 @@ button {
 }
 
 .side-panel-scroll-body>* {
+  min-width: 0;
+}
+
+.generation-plan-flow-body {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  overflow: visible;
+  padding-right: 0;
+}
+
+.generation-plan-flow-body>* {
   min-width: 0;
 }
 
@@ -2676,6 +2721,11 @@ button {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.code-draft-panel .prompt-preview {
+  min-height: auto;
+  overflow: visible;
 }
 
 .workspace-dock-backdrop {
@@ -2762,6 +2812,12 @@ button {
   gap: 12px;
 }
 
+.workbench-draft-implementation-suggestion {
+  min-width: 0;
+  min-height: 0;
+  align-self: start;
+}
+
 .code-diff-layout {
   display: grid;
   grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
@@ -2769,16 +2825,22 @@ button {
   min-height: 0;
 }
 
+.code-diff-layout>* {
+  min-width: 0;
+}
+
 .code-diff-file-list {
   display: grid;
   gap: 10px;
   align-content: start;
+  min-width: 0;
 }
 
 .code-diff-file-button {
   display: grid;
   gap: 6px;
   justify-items: start;
+  min-width: 0;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -2790,6 +2852,14 @@ button {
   border-color: rgba(25, 90, 153, 0.34);
   box-shadow: 0 10px 24px rgba(25, 90, 153, 0.12);
   background: linear-gradient(135deg, rgba(232, 242, 252, 0.94), rgba(255, 255, 255, 0.96));
+}
+
+.code-diff-file-name,
+.code-diff-file-meta {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .code-diff-file-name {
@@ -2804,21 +2874,42 @@ button {
 .code-diff-detail {
   display: grid;
   gap: 12px;
+  min-width: 0;
+}
+
+.code-diff-detail .preview-head,
+.code-diff-detail .panel-actions {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.code-diff-detail .preview-head>*,
+.code-diff-detail .muted {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .code-diff-operation-list {
   display: grid;
   gap: 10px;
+  min-width: 0;
 }
 
 .code-diff-operation-card {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .code-diff-payload {
   margin: 0;
   min-height: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .code-diff-stale-banner {
@@ -2833,7 +2924,40 @@ button {
   padding: 12px;
 }
 
-@media (max-width: 1080px) {
+.generation-plan-panel .preview-card,
+.generation-plan-panel .preview-list,
+.generation-plan-panel .warning-list {
+  min-width: 0;
+}
+
+.generation-plan-panel .preview-head {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.generation-plan-panel .preview-head>* {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.generation-plan-panel p,
+.generation-plan-panel strong,
+.generation-plan-panel .muted,
+.generation-plan-panel .badge,
+.generation-plan-panel .risk-pill,
+.generation-plan-panel .prompt-preview {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.generation-plan-panel .prompt-preview {
+  overflow-x: hidden;
+}
+
+@container (max-width: 720px) {
   .code-diff-layout {
     grid-template-columns: 1fr;
   }

@@ -93,7 +93,7 @@ internal object RemoteCodeGenerationResultParser {
             scopeId = raw["scopeId"] as? String,
             kind = CodeEditOperationKind.entries.firstOrNull { it.name == kindName }
                 ?: error("LLM response draft[$draftIndex].editOperations[$operationIndex].kind '$kindName' is unsupported."),
-            payload = payload,
+            payload = CodeEditPayloadNormalizer.normalize(payload),
             warnings = warnings,
         )
     }
@@ -123,7 +123,7 @@ internal object RemoteCodeGenerationResultParser {
 }
 
 /** 供代码草稿结果解析使用的最小 JSON 解析器。 */
-private class RemoteCodeGenerationJsonParser(private val text: String) {
+internal class RemoteCodeGenerationJsonParser(private val text: String) {
     /** 当前读取游标位置。 */
     private var index: Int = 0
 

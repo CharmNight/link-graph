@@ -44,21 +44,24 @@ import com.charmnight.linkgraph.workbench.AuditConversationSession
 import com.charmnight.linkgraph.workbench.AuditMessageRole
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
+import com.charmnight.linkgraph.workbench.DraftValidationState
+import com.charmnight.linkgraph.workbench.DraftValidationStatus
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
+import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionMessage
+import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession
 import com.charmnight.linkgraph.workbench.QaRequestKind
 import com.charmnight.linkgraph.workbench.QaRequestRecoveryState
 import com.charmnight.linkgraph.workbench.ReplayableQaRequest
 import com.charmnight.linkgraph.workbench.StageEligibilityDecision
-import com.charmnight.linkgraph.workbench.StageEligibilityTarget
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GraphEditorPageRendererTest {
     @Test
-    fun bootstrapJson输出问答恢复状态和阶段准入字段() {
+    fun bootstrapJson输出问答恢复状态草稿验证和建议追问字段() {
         val renderer = GraphEditorPageRenderer()
         val snapshot = GraphEditorStateService.Snapshot(
             visibleGraph = GraphDocument(
@@ -83,15 +86,26 @@ class GraphEditorPageRendererTest {
                     ),
                 ),
             ),
-            planEligibilityDecision = StageEligibilityDecision(
-                target = StageEligibilityTarget.PLAN,
-                allowed = true,
-                message = "当前可以继续生成实现计划。",
-                detailMessage = "风险线程已完成人工决策。",
+            draftValidationState = DraftValidationState(
+                status = DraftValidationStatus.REVIEW_REQUIRED,
+                message = "当前草稿仍有待验证风险。",
+                detailMessage = "请先确认这些风险是继续取证、接受、排除，还是回退对应草稿变更。",
                 unresolvedThreadIds = listOf("thread-fallback"),
             ),
+            generationPlanDiscussionSession = GenerationPlanDiscussionSession(
+                sessionId = "plan-discussion-1",
+                messages = listOf(
+                    GenerationPlanDiscussionMessage(
+                        messageId = "message-1",
+                        role = AuditMessageRole.USER,
+                        content = "为什么建议先改这个 service？",
+                        focusItemId = "item-1",
+                    ),
+                ),
+                focusItemId = "item-1",
+            ),
             codeEligibilityDecision = StageEligibilityDecision(
-                target = StageEligibilityTarget.CODE,
+                target = com.charmnight.linkgraph.workbench.StageEligibilityTarget.CODE,
                 allowed = false,
                 message = "生成代码草稿前请先处理仍会阻塞代码阶段的风险线程。",
                 detailMessage = "当前仍存在暂挂风险，代码阶段不能越过这些风险直接继续生成。",
@@ -104,9 +118,38 @@ class GraphEditorPageRendererTest {
         assertTrue(json.contains("\"qaRequestRecoveryState\""))
         assertTrue(json.contains("\"lastFailedRequest\""))
         assertTrue(json.contains("\"requestId\":\"qa-1\""))
-        assertTrue(json.contains("\"planEligibilityDecision\""))
+        assertTrue(json.contains("\"draftValidationState\""))
+        assertTrue(json.contains("\"generationPlanDiscussionSession\""))
+        assertTrue(json.contains("\"focusItemId\":\"item-1\""))
         assertTrue(json.contains("\"codeEligibilityDecision\""))
         assertTrue(json.contains("\"blockingThreadIds\":[\"thread-fallback\"]"))
+    }
+
+    @Test
+    fun bootstrapJson为缺省草稿验证说明输出null而不是空字符串() {
+        val renderer = GraphEditorPageRenderer()
+        val snapshot = GraphEditorStateService.Snapshot(
+            visibleGraph = GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:submit-order",
+                        type = NodeType.METHOD,
+                        title = "OrderController.submit",
+                        sourceTag = GraphSourceTag.FACT,
+                    ),
+                ),
+            ),
+            draftValidationState = DraftValidationState(
+                status = DraftValidationStatus.READY,
+                message = "当前草稿已完成验证，可以继续生成实现建议或代码 diff。",
+            ),
+        )
+
+        val json = renderer.bootstrapJson(snapshot)
+
+        assertTrue(json.contains("\"draftValidationState\""))
+        assertTrue(json.contains("\"detailMessage\":null"))
+        assertFalse(json.contains("\"detailMessage\":\"\""))
     }
 
     @Test
@@ -741,20 +784,6 @@ class GraphEditorPageRendererTest {
                         description = "Generate DTO class skeleton.",
                         risk = SyncPreviewRisk.LOW,
                         targetPath = "src/main/java/com/example/OrderDraftDto.java",
-                        editScopes = listOf(
-                            EditScope(
-                                scopeId = "scope-submit-order",
-                                targetNodeId = "method:submit-order",
-                                filePath = "src/main/java/com/example/OrderController.java",
-                                language = "JAVA",
-                                symbolKind = "METHOD",
-                                symbolSignature = "com.example.OrderController#submit(java.lang.String)",
-                                startLine = 18,
-                                endLine = 27,
-                                allowedChangeKinds = listOf("REPLACE_METHOD_BLOCK"),
-                                supportingFindingIds = listOf("submit-direct-call"),
-                            ),
-                        ),
                     ),
                 ),
                 warnings = listOf("Review mapper binding before applying code."),
@@ -985,6 +1014,89 @@ class GraphEditorPageRendererTest {
         assertTrue(bootstrapJson.contains(""""position":{"""))
         assertTrue(bootstrapJson.contains(""""x":640"""))
         assertTrue(bootstrapJson.contains(""""y":320"""))
+    }
+
+    @Test
+    fun serializesFlowchartViewNodePositionFromLayoutStateAfterDraftRebuild() {
+        val renderer = GraphEditorPageRenderer()
+        val flowchartVisibleGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:file-download",
+                    type = NodeType.METHOD,
+                    title = "CommonController.fileDownload",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf("flowchart.kind" to "ENTRY"),
+                ),
+                GraphNode(
+                    id = "scope:delete-file",
+                    type = NodeType.FLOW_SCOPE,
+                    title = "if (Boolean.TRUE.equals(delete))",
+                    sourceTag = GraphSourceTag.DRAFT_AI,
+                    metadata = mapOf("flowchart.kind" to "DECISION"),
+                ),
+                GraphNode(
+                    id = "draft:file-exists-check",
+                    type = NodeType.FLOW_ACTION,
+                    title = "Files.exists(Path.of(filePath))",
+                    sourceTag = GraphSourceTag.DRAFT_AI,
+                    metadata = mapOf("flowchart.kind" to "PROCESS"),
+                ),
+            ),
+            edges = listOf(
+                GraphEdge(
+                    id = "edge:entry-delete",
+                    type = com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW,
+                    fromNodeId = "method:file-download",
+                    toNodeId = "scope:delete-file",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+                GraphEdge(
+                    id = "edge:delete-exists",
+                    type = com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW,
+                    fromNodeId = "scope:delete-file",
+                    toNodeId = "draft:file-exists-check",
+                    sourceTag = GraphSourceTag.DRAFT_AI,
+                ),
+            ),
+        )
+        val snapshot = GraphEditorStateService.Snapshot(
+            analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
+            visibleGraph = flowchartVisibleGraph,
+            workingGraph = flowchartVisibleGraph,
+            flowchartView = FlowchartViewDocument(
+                visibleGraph = flowchartVisibleGraph,
+                fullGraph = flowchartVisibleGraph,
+                anchorNodeId = "scope:delete-file",
+                summary = FlowchartSummary(
+                    nodeCount = 3,
+                    branchCount = 1,
+                    fullNodeCount = 3,
+                    fullEdgeCount = 2,
+                ),
+            ),
+            layoutState = GraphLayoutState(
+                positions = mapOf(
+                    "method:file-download" to GraphLayoutPosition(x = 32.0, y = 24.0),
+                    "scope:delete-file" to GraphLayoutPosition(x = 352.0, y = 24.0),
+                    "draft:file-exists-check" to GraphLayoutPosition(x = 512.0, y = 24.0),
+                ),
+            ),
+        )
+
+        val bootstrapJson = renderer.bootstrapJson(snapshot)
+
+        assertTrue(bootstrapJson.contains(""""flowchartView""""))
+        assertTrue(bootstrapJson.contains(""""scope:delete-file""""))
+        assertTrue(bootstrapJson.contains(""""draft:file-exists-check""""))
+        assertTrue(
+            bootstrapJson.contains(""""position":{"x":352.0,"y":24.0}""") ||
+                bootstrapJson.contains(""""position":{"x":352,"y":24}"""),
+        )
+        assertTrue(
+            bootstrapJson.contains(""""position":{"x":512.0,"y":24.0}""") ||
+                bootstrapJson.contains(""""position":{"x":512,"y":24}"""),
+        )
     }
 
     @Test

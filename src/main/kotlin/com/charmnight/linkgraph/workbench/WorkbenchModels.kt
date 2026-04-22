@@ -83,8 +83,13 @@ enum class QaRequestKind {
 enum class StageEligibilityTarget(
     val label: String,
 ) {
-    PLAN("实现计划"),
     CODE("代码草稿"),
+}
+
+enum class DraftValidationStatus {
+    EMPTY,
+    REVIEW_REQUIRED,
+    READY,
 }
 
 data class WorkbenchStep(
@@ -208,6 +213,29 @@ data class AuditConversationSession(
     val focusTargetId: String? = null,
 )
 
+data class GenerationPlanDiscussionMessage(
+    val messageId: String,
+    val role: AuditMessageRole,
+    val content: String,
+    val focusItemId: String? = null,
+)
+
+data class GenerationPlanDiscussionSession(
+    val sessionId: String,
+    val messages: List<GenerationPlanDiscussionMessage> = emptyList(),
+    val focusItemId: String? = null,
+)
+
+data class GenerationPlanDiscussionResult(
+    val source: com.charmnight.linkgraph.llm.LlmResultSource,
+    val question: String,
+    val answer: String,
+    val promptPreview: String,
+    val focusItemId: String? = null,
+    val session: GenerationPlanDiscussionSession,
+    val warnings: List<String> = emptyList(),
+)
+
 data class AuditModelTurn(
     val answer: String,
     val candidateChanges: List<CandidateDraftChange> = emptyList(),
@@ -241,11 +269,19 @@ data class QaRequestRecoveryState(
     val lastFailedRequest: ReplayableQaRequest? = null,
 )
 
+data class DraftValidationState(
+    val status: DraftValidationStatus,
+    val message: String,
+    val detailMessage: String? = null,
+    val unresolvedThreadIds: List<String> = emptyList(),
+    val unresolvedThreads: List<InvestigationThread> = emptyList(),
+)
+
 data class StageEligibilityDecision(
     val target: StageEligibilityTarget,
     val allowed: Boolean,
     val message: String,
-    val detailMessage: String = "",
+    val detailMessage: String? = null,
     val blockingThreadIds: List<String> = emptyList(),
     val unresolvedThreadIds: List<String> = emptyList(),
 ) {

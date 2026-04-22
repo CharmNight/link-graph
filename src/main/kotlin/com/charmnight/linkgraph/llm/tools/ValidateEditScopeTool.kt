@@ -21,7 +21,7 @@ class ValidateEditScopeTool(
         return ToolResult(
             toolName = name,
             payload = mapOf(
-                "valid" to validationToolFacade.hasValidEditScope(draft),
+                "valid" to validationToolFacade.hasValidEditScope(draft, context.project.basePath),
             ),
         )
     }

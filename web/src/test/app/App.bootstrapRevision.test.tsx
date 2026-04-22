@@ -209,6 +209,18 @@ const flowchartBootstrapState = materializeThreeViewDocuments({
   snapshotRevision: 4,
 } as const satisfies LinkGraphBootstrapState);
 
+function dispatchBootstrapState(state: LinkGraphBootstrapState, revision = state.snapshotRevision ?? 1) {
+  window.dispatchEvent(
+    new CustomEvent("link-graph-bootstrap", {
+      detail: {
+        sessionId: "test-session-bootstrap-revision",
+        revision,
+        state,
+      },
+    }),
+  );
+}
+
 describe("App bootstrap revisions", () => {
   beforeEach(() => {
     resetEditorTransportForTest();
@@ -228,39 +240,35 @@ describe("App bootstrap revisions", () => {
     expect(await screen.findByText("method:submit-order:120,96")).toBeInTheDocument();
 
     act(() => {
-      window.dispatchEvent(
-        new CustomEvent("link-graph-bootstrap", {
-          detail: materializeThreeViewDocuments({
-            ...structuredClone(bootstrapState),
-            visibleGraph: {
-              nodes: [
-                {
-                  ...structuredClone(bootstrapState.visibleGraph.nodes[0]),
-                  position: { x: 640, y: 320 },
-                },
-              ],
-              edges: [],
+      dispatchBootstrapState(materializeThreeViewDocuments({
+        ...structuredClone(bootstrapState),
+        visibleGraph: {
+          nodes: [
+            {
+              ...structuredClone(bootstrapState.visibleGraph.nodes[0]),
+              position: { x: 640, y: 320 },
             },
-            workingGraph: {
-              nodes: [
-                {
-                  ...structuredClone(bootstrapState.workingGraph.nodes[0]),
-                  position: { x: 640, y: 320 },
-                },
-              ],
-              edges: [],
+          ],
+          edges: [],
+        },
+        workingGraph: {
+          nodes: [
+            {
+              ...structuredClone(bootstrapState.workingGraph.nodes[0]),
+              position: { x: 640, y: 320 },
             },
-            layoutState: {
-              positions: {
-                "method:submit-order": { x: 640, y: 320 },
-              },
-            },
-            semanticRevision: 3,
-            layoutRevision: 2,
-            snapshotRevision: 5,
-          }),
-        }),
-      );
+          ],
+          edges: [],
+        },
+        layoutState: {
+          positions: {
+            "method:submit-order": { x: 640, y: 320 },
+          },
+        },
+        semanticRevision: 3,
+        layoutRevision: 2,
+        snapshotRevision: 5,
+      }));
     });
 
     expect(await screen.findByText("method:submit-order:640,320")).toBeInTheDocument();
@@ -277,38 +285,34 @@ describe("App bootstrap revisions", () => {
     expect(await screen.findByText("edge:entry->decision:route")).toBeInTheDocument();
 
     act(() => {
-      window.dispatchEvent(
-        new CustomEvent("link-graph-bootstrap", {
-          detail: materializeThreeViewDocuments({
-            ...structuredClone(flowchartBootstrapState),
-            visibleGraph: {
-              nodes: structuredClone(flowchartBootstrapState.visibleGraph.nodes),
-              edges: [
-                {
-                  id: "edge:entry->decision",
-                  type: "CONTROL_FLOW",
-                  source: "flow:entry",
-                  target: "flow:decision",
-                },
-              ],
+      dispatchBootstrapState(materializeThreeViewDocuments({
+        ...structuredClone(flowchartBootstrapState),
+        visibleGraph: {
+          nodes: structuredClone(flowchartBootstrapState.visibleGraph.nodes),
+          edges: [
+            {
+              id: "edge:entry->decision",
+              type: "CONTROL_FLOW",
+              source: "flow:entry",
+              target: "flow:decision",
             },
-            workingGraph: {
-              nodes: structuredClone(flowchartBootstrapState.workingGraph.nodes),
-              edges: [
-                {
-                  id: "edge:entry->decision",
-                  type: "CONTROL_FLOW",
-                  source: "flow:entry",
-                  target: "flow:decision",
-                },
-              ],
+          ],
+        },
+        workingGraph: {
+          nodes: structuredClone(flowchartBootstrapState.workingGraph.nodes),
+          edges: [
+            {
+              id: "edge:entry->decision",
+              type: "CONTROL_FLOW",
+              source: "flow:entry",
+              target: "flow:decision",
             },
-            semanticRevision: 4,
-            layoutRevision: 1,
-            snapshotRevision: 5,
-          }),
-        }),
-      );
+          ],
+        },
+        semanticRevision: 4,
+        layoutRevision: 1,
+        snapshotRevision: 5,
+      }));
     });
 
     expect(await screen.findByText("edge:entry->decision:route")).toBeInTheDocument();

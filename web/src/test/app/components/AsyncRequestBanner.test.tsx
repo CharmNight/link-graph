@@ -73,6 +73,43 @@ describe("AsyncRequestBanner", () => {
     expect(screen.getByText("请求已重试 3 次，最后一次连接上游超时。")).toBeInTheDocument();
   });
 
+  it("collapses multiline failure detail to a short summary when telemetry is collapsed by default", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AsyncRequestBanner
+        telemetryCollapsedByDefault
+        requestState={{
+          phase: "FAILED",
+          statusMessage: "代码 diff 失败",
+          detailMessage: [
+            "返回内容未通过结构化校验，自动修复重试仍失败。",
+            "首次解析错误：payload is required",
+            "首次返回片段：{\"summary\":\"...\"}",
+          ].join("\n"),
+          errorMessage: "生成代码 diff 失败。",
+          streaming: false,
+          fallbackUsed: false,
+          requestId: 9,
+          scene: "代码 diff",
+          executionMode: "REMOTE_READY",
+          providerLabel: "通用 OpenAI Responses",
+          model: "gpt-5.4",
+          endpointSummary: "example.com/v1/responses",
+          promptPreviewAvailable: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("返回内容未通过结构化校验，自动修复重试仍失败。")).toBeInTheDocument();
+    expect(screen.queryByText(/首次解析错误：payload is required/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "展开请求详情" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "展开请求详情" }));
+
+    expect(screen.getByText(/首次解析错误：payload is required/)).toBeInTheDocument();
+  });
+
   it("can collapse telemetry details so request metadata does not crowd out the main answer area", async () => {
     const user = userEvent.setup();
 

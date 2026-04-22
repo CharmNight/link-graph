@@ -3,111 +3,96 @@ import userEvent from "@testing-library/user-event";
 import { GenerationPlanPanel } from "../../../app/components/GenerationPlanPanel";
 import themeCss from "../../../app/theme.css?raw";
 
-function eligibilityDecisionFixture(overrides?: Partial<any>) {
-  return {
-    target: "PLAN",
-    stageLabel: "实现计划",
-    allowed: true,
-    message: "当前可以继续生成实现建议。",
-    detailMessage: "风险线程已完成人工决策。",
-    blockingThreadIds: [],
-    unresolvedThreadIds: [],
-    ...overrides,
-  };
-}
-
 describe("GenerationPlanPanel", () => {
-  it("offers a direct generate action in the empty state using implementation-suggestion wording", async () => {
+  it("offers a direct generate action in the empty state without waiting for plan eligibility", async () => {
     const user = userEvent.setup();
     const events: string[] = [];
 
     render(
       <GenerationPlanPanel
         plan={null}
-        isRequesting={false}
-        eligibilityDecision={eligibilityDecisionFixture()}
-        onOpenDraftWorkbench={() => events.push("open-draft")}
         onRequestGeneratePlan={() => events.push("generate-plan")}
       />,
     );
 
-    expect(screen.getByText("当前可以继续生成实现建议。")).toBeInTheDocument();
+    expect(screen.getByText("实现建议会基于当前草稿快照生成。")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "生成实现建议" }));
 
     expect(events).toEqual(["generate-plan"]);
   });
 
-  it("requires confirmed draft changes before implementation suggestions can start", async () => {
-    const user = userEvent.setup();
-    const events: string[] = [];
-
+  it("shows a backend-authored running state and explains that implementation suggestions use the current draft snapshot", () => {
     render(
       <GenerationPlanPanel
         plan={null}
-        isRequesting={false}
-        eligibilityDecision={eligibilityDecisionFixture({
-          allowed: false,
-          message: "生成实现建议前请先确认至少一条草稿变更。",
-          detailMessage: "当前草稿层为空。先在问答结果中确认候选变更，使草稿层承载已确认的修改目标，再继续生成。",
-        })}
-        onOpenDraftWorkbench={() => events.push("open-draft")}
-        onRequestGeneratePlan={() => events.push("generate-plan")}
-      />,
-    );
-
-    expect(screen.getByText("生成实现建议前请先确认至少一条草稿变更。")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "前往草稿层" }));
-
-    expect(events).toEqual(["open-draft"]);
-  });
-
-  it("blocks plan generation when the eligibility decision is missing instead of falling back to local draft state", async () => {
-    const user = userEvent.setup();
-    const events: string[] = [];
-
-    render(
-      <GenerationPlanPanel
-        plan={null}
-        isRequesting={false}
-        onOpenDraftWorkbench={() => events.push("open-draft")}
-        onOpenAuditWorkbench={() => events.push("open-audit")}
-        onRequestGeneratePlan={() => events.push("generate-plan")}
-      />,
-    );
-
-    expect(screen.getByText("实现建议阶段准入状态尚未就绪。")).toBeInTheDocument();
-    expect(screen.getByText("当前还没有收到实现建议阶段的统一准入决策，请先回到问答链路等待状态同步完成。")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "前往问答风险" }));
-
-    expect(events).toEqual(["open-audit"]);
-  });
-
-  it("shows a loading state and explains that implementation suggestions use the current working graph", () => {
-    render(
-      <GenerationPlanPanel
-        plan={null}
-        isRequesting={true}
-        eligibilityDecision={eligibilityDecisionFixture()}
-        onOpenDraftWorkbench={() => undefined}
+        requestState={{
+          phase: "RUNNING",
+          scene: "实现计划",
+          statusMessage: "已提交实现建议请求",
+          detailMessage: "等待后端确认执行方式与执行阶段。",
+          errorMessage: null,
+        }}
         onRequestGeneratePlan={() => undefined}
       />,
     );
 
     expect(screen.getByText("正在生成实现建议，请稍候。")).toBeInTheDocument();
-    expect(screen.getByText("风险线程已完成人工决策。")).toBeInTheDocument();
+    expect(screen.getByText("实现建议会基于当前草稿快照生成。")).toBeInTheDocument();
   });
 
-  it("shows the failure reason and allows retrying implementation suggestions", async () => {
+  it("renders suggestion-scoped follow-up controls instead of redirecting back to audit", async () => {
+    const user = userEvent.setup();
+    const events: string[] = [];
+
+    render(
+      <GenerationPlanPanel
+        plan={{
+          source: "REMOTE",
+          summary: "补齐 DTO 与 service 接线。",
+          warnings: [],
+          promptPreview: null,
+          promptPreviewArtifactId: null,
+          items: [
+            {
+              id: "item-1",
+              title: "处理上传路径",
+              description: "在 base url 解析后补路径分支。",
+              targetPath: "src/main/java/com/example/UploadService.java",
+              risk: "MEDIUM",
+            },
+          ],
+        } as any}
+        discussionQuestionDraft="这里为什么建议改 UploadService？"
+        discussionSession={{
+          sessionId: "plan-discussion-1",
+          messages: [],
+          focusItemId: "item-1",
+        } as any}
+        onDiscussionQuestionDraftChange={(value) => events.push(`draft:${value}`)}
+        onSubmitDiscussion={() => events.push("submit-discussion")}
+        onRequestGeneratePlan={() => events.push("generate-plan")}
+      />,
+    );
+
+    expect(screen.getByText("继续追问这份实现建议")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "追问建议" }));
+
+    expect(events).toContain("submit-discussion");
+  });
+
+  it("shows the backend failure reason and allows retrying implementation suggestions", async () => {
     const user = userEvent.setup();
     const events: string[] = [];
 
     render(
       <GenerationPlanPanel
         plan={null}
-        isRequesting={false}
-        requestError="生成实现建议失败：HTTP 503"
-        eligibilityDecision={eligibilityDecisionFixture()}
-        onOpenDraftWorkbench={() => undefined}
+        requestState={{
+          phase: "FAILED",
+          scene: "实现计划",
+          statusMessage: "实现建议失败",
+          errorMessage: "生成实现建议失败：HTTP 503",
+        }}
         onRequestGeneratePlan={() => events.push("retry-plan")}
       />,
     );
@@ -132,9 +117,6 @@ describe("GenerationPlanPanel", () => {
           promptPreviewArtifactId: "artifact:plan-prompt",
           items: [],
         } as any}
-        isRequesting={false}
-        eligibilityDecision={eligibilityDecisionFixture()}
-        onOpenDraftWorkbench={() => undefined}
         resolveArtifactText={() => null}
         onRequestArtifact={(artifactId) => events.push(`artifact:${artifactId}`)}
         onRequestGeneratePlan={() => events.push("retry-plan")}
@@ -157,11 +139,8 @@ describe("GenerationPlanPanel", () => {
           promptPreviewArtifactId: null,
           items: [],
         } as any}
-        isRequesting={false}
         draftVersion={3}
         generationPlanDraftVersion={2}
-        eligibilityDecision={eligibilityDecisionFixture()}
-        onOpenDraftWorkbench={() => undefined}
         onRequestGeneratePlan={() => undefined}
       />,
     );
@@ -170,7 +149,7 @@ describe("GenerationPlanPanel", () => {
     expect(screen.getByText("基于草稿 v2 生成")).toBeInTheDocument();
   });
 
-  it("uses a dedicated scroll body so long plans are not clipped inside the workbench panel", () => {
+  it("renders a natural-flow body so implementation suggestions no longer create an inner scroll area", () => {
     const { container } = render(
       <GenerationPlanPanel
         plan={{
@@ -189,17 +168,55 @@ describe("GenerationPlanPanel", () => {
             },
           ],
         } as any}
-        isRequesting={false}
-        eligibilityDecision={eligibilityDecisionFixture()}
-        onOpenDraftWorkbench={() => undefined}
         onRequestGeneratePlan={() => undefined}
       />,
     );
 
-    expect(container.querySelector(".generation-plan-panel > .side-panel-scroll-body")).not.toBeNull();
+    expect(container.querySelector(".generation-plan-panel > .generation-plan-flow-body")).not.toBeNull();
     expect(themeCss).toMatch(
-      /\.generation-plan-panel\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto\s+auto\s+minmax\(0,\s*1fr\);[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/s,
+      /\.generation-plan-panel\s*\{[^}]*display:\s*grid;[^}]*gap:\s*12px;[^}]*min-width:\s*0;[^}]*min-height:\s*0;/s,
     );
-    expect(themeCss).toMatch(/\.side-panel-scroll-body\s*\{[^}]*min-height:\s*0;[^}]*overflow:\s*auto;/s);
+    expect(themeCss).toMatch(
+      /\.generation-plan-flow-body\s*\{[^}]*min-height:\s*0;[^}]*display:\s*grid;[^}]*overflow:\s*visible;/s,
+    );
+  });
+
+  it("lets implementation suggestions expand naturally so the workbench owns scrolling", () => {
+    const { container } = render(
+      <GenerationPlanPanel
+        plan={{
+          source: "REMOTE",
+          summary: "这是一段很长的实现建议摘要，用来验证在结果渲染后不会出现横向滚动，也不会在实现建议内部再套一层纵向滚动。",
+          warnings: ["这是一个很长的警告提示，用来验证内容会在卡片内部自然换行，而不是把横向滚动条顶出来。"],
+          promptPreview: "这是一个很长的提示词内容，用来验证实现建议面板内部不再自带滚动区域，而是跟随外层工作台自然铺开。",
+          promptPreviewArtifactId: null,
+          items: [
+            {
+              id: "item-1",
+              title: "处理一个特别长的目标标题，验证标题与风险徽标并排时不会撑出横向滚动区域",
+              description: "这里的说明文字也故意写长一点，确保在实现建议输出完成后，整个卡片内容会自动换行并由外层工作台统一滚动。",
+              targetPath: "src/main/java/com/example/really/long/path/UploadServiceImplementation.java",
+              risk: "MEDIUM",
+            },
+          ],
+        } as any}
+        discussionQuestionDraft="为什么建议先改这里？如果这里不改，有没有更小范围的替代方案？"
+        onRequestGeneratePlan={() => undefined}
+      />,
+    );
+
+    expect(container.querySelector(".generation-plan-panel > .generation-plan-flow-body")).not.toBeNull();
+    expect(themeCss).toMatch(
+      /\.generation-plan-panel\s*\{[^}]*display:\s*grid;[^}]*gap:\s*12px;[^}]*min-width:\s*0;[^}]*min-height:\s*0;/s,
+    );
+    expect(themeCss).toMatch(
+      /\.generation-plan-flow-body\s*\{[^}]*display:\s*grid;[^}]*gap:\s*12px;[^}]*overflow:\s*visible;[^}]*padding-right:\s*0;/s,
+    );
+    expect(themeCss).toMatch(
+      /\.generation-plan-panel\s+\.preview-head\s*\{[^}]*flex-wrap:\s*wrap;/s,
+    );
+    expect(themeCss).toMatch(
+      /\.generation-plan-panel\s+\.preview-head\s*>\s*\*\s*\{[^}]*min-width:\s*0;[^}]*overflow-wrap:\s*anywhere;/s,
+    );
   });
 });

@@ -315,7 +315,7 @@ internal class CodegenCapability(
                     .asSequence()
                     .flatMap { change -> change.editScopes.asSequence() }
                     .firstOrNull { scope ->
-                        scope.filePath == artifact.filePath &&
+                        referToSameFile(scope.filePath, artifact.filePath, runtimeContext.project.basePath) &&
                             scope.startLine == artifact.startLine &&
                             scope.endLine == artifact.endLine
                     }
@@ -347,7 +347,7 @@ internal class CodegenCapability(
                         runBudget = state.budget,
                     ),
                 ).payload["valid"] as? Boolean ?: false) ||
-                    !validationToolFacade.hasReadEvidence(draft, evidenceArtifacts) ||
+                    !validationToolFacade.hasReadEvidence(draft, evidenceArtifacts, runtimeContext.project.basePath) ||
                     !(toolRegistry.require("check_writable_draft").invoke(
                         input = mapOf("draft" to draft),
                         context = ToolExecutionContext(
@@ -435,7 +435,7 @@ internal class CodegenCapability(
                     input = mapOf("draft" to probeDraft),
                     context = context,
                 ).payload["writable"] as? Boolean ?: false
-                val hasEvidence = validationToolFacade.hasReadEvidence(probeDraft, evidenceArtifacts)
+                val hasEvidence = validationToolFacade.hasReadEvidence(probeDraft, evidenceArtifacts, runtimeContext.project.basePath)
                 if (!valid || !writable || !hasEvidence) {
                     return AgentStepExecutionResult.Fail(
                         state.copy(
@@ -510,6 +510,19 @@ internal class CodegenCapability(
             runtimeContext: AgentRuntimeContext,
             state: AgentRunState,
         ): CodeGenerationResult
+    }
+
+    private fun referToSameFile(
+        left: String,
+        right: String,
+        projectBasePath: String?,
+    ): Boolean {
+        val leftResolved = com.charmnight.linkgraph.codegen.ProjectPathNormalizer.resolvePath(left, projectBasePath)
+        val rightResolved = com.charmnight.linkgraph.codegen.ProjectPathNormalizer.resolvePath(right, projectBasePath)
+        if (leftResolved != null && rightResolved != null) {
+            return leftResolved == rightResolved
+        }
+        return left.replace('\\', '/') == right.replace('\\', '/')
     }
 }
 

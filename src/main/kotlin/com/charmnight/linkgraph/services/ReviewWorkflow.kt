@@ -116,7 +116,7 @@ internal class ReviewWorkflow(
             ),
             runtimeState = result.finalState,
         )
-        val (planDecision, codeDecision) = evaluateEligibility(snapshot.copy(auditResult = output))
+        val (draftValidationState, codeDecision) = evaluateEligibility(snapshot.copy(auditResult = output))
         session.mutateBatch {
             apply {
                 markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(result))
@@ -125,7 +125,7 @@ internal class ReviewWorkflow(
                 markAuditResult(output, requestState, completedRequest = request)
             }
             apply {
-                markPlanEligibilityDecision(planDecision)
+                markDraftValidationState(draftValidationState)
             }
             apply {
                 markCodeEligibilityDecision(codeDecision)
@@ -192,13 +192,13 @@ internal class ReviewWorkflow(
             status = status,
             note = note,
         ) ?: return
-        val (planDecision, codeDecision) = evaluateEligibility(snapshot.copy(auditResult = updatedResult))
+        val (draftValidationState, codeDecision) = evaluateEligibility(snapshot.copy(auditResult = updatedResult))
         session.mutateBatch {
             apply {
                 markAuditResult(updatedResult, snapshot.auditRequestState)
             }
             apply {
-                markPlanEligibilityDecision(planDecision)
+                markDraftValidationState(draftValidationState)
             }
             apply {
                 markCodeEligibilityDecision(codeDecision)
@@ -443,7 +443,7 @@ internal class ReviewWorkflow(
                             } else {
                                 OperationFeedbackLevel.SUCCESS
                             }
-                            val (planDecision, codeDecision) = evaluateEligibility(snapshot.copy(auditResult = normalizedAuditResult))
+                            val (draftValidationState, codeDecision) = evaluateEligibility(snapshot.copy(auditResult = normalizedAuditResult))
                             session.mutateBatch {
                                 apply {
                                     markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(runtimeResult))
@@ -452,7 +452,7 @@ internal class ReviewWorkflow(
                                     markAuditResult(normalizedAuditResult, requestState, completedRequest = request)
                                 }
                                 apply {
-                                    markPlanEligibilityDecision(planDecision)
+                                    markDraftValidationState(draftValidationState)
                                 }
                                 apply {
                                     markCodeEligibilityDecision(codeDecision)
@@ -501,7 +501,7 @@ internal class ReviewWorkflow(
 
     private fun evaluateEligibility(
         snapshot: GraphEditorStateService.Snapshot,
-    ) = riskResolutionService.evaluatePlanEligibility(snapshot) to riskResolutionService.evaluateCodeEligibility(snapshot)
+    ) = riskResolutionService.evaluateDraftValidation(snapshot) to riskResolutionService.evaluateCodeEligibility(snapshot)
 
     private fun effectiveRemoteRequested(): Boolean = settingsProvider().usesRemoteProvider()
 

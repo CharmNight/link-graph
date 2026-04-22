@@ -15,6 +15,7 @@ import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
+import com.intellij.util.concurrency.AppExecutorUtil
 import java.awt.BorderLayout
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
@@ -74,6 +75,7 @@ class GraphBrowserPanel private constructor(
     private val restoreDraftPatchPreviewQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val undoLastDraftPatchApplyQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestGenerationPlanQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val requestGenerationPlanDiscussionQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestCodeDraftsQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestCurrentEditorContextGraphQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestAnalysisDisplayModeQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
@@ -81,6 +83,7 @@ class GraphBrowserPanel private constructor(
     private val requestOpenSettingsQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val applyCodeDraftsQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val applySingleCodeDraftQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
+    private val openCodeDraftNativeDiffQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestDraftNavigationQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val requestArtifactQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
     private val graphChangedQuery: JBCefJSQuery? = browser?.let { JBCefJSQuery.create(it as JBCefBrowserBase) }
@@ -277,6 +280,16 @@ class GraphBrowserPanel private constructor(
             bridge.dispatch(GraphEditorMessage.RequestGenerationPlan)
             JBCefJSQuery.Response("ok")
         }
+        requestGenerationPlanDiscussionQuery?.addHandler { payload ->
+            val request = parseGenerationPlanDiscussionPayload(payload)
+            bridge.dispatch(
+                GraphEditorMessage.RequestGenerationPlanDiscussion(
+                    question = request.question,
+                    focusItemId = request.focusItemId,
+                ),
+            )
+            JBCefJSQuery.Response("ok")
+        }
         requestCodeDraftsQuery?.addHandler {
             bridge.dispatch(GraphEditorMessage.RequestCodeDrafts)
             JBCefJSQuery.Response("ok")
@@ -321,11 +334,21 @@ class GraphBrowserPanel private constructor(
             JBCefJSQuery.Response("ok")
         }
         applyCodeDraftsQuery?.addHandler {
-            bridge.dispatch(GraphEditorMessage.ApplyCodeDrafts)
+            dispatchBridgeAsync("写入全部代码草稿") {
+                GraphEditorMessage.ApplyCodeDrafts
+            }
             JBCefJSQuery.Response("ok")
         }
         applySingleCodeDraftQuery?.addHandler { draftId ->
-            bridge.dispatch(GraphEditorMessage.ApplySingleCodeDraft(draftId))
+            dispatchBridgeAsync("写入单个代码草稿") {
+                GraphEditorMessage.ApplySingleCodeDraft(draftId)
+            }
+            JBCefJSQuery.Response("ok")
+        }
+        openCodeDraftNativeDiffQuery?.addHandler { draftId ->
+            dispatchBridgeAsync("打开代码草稿原生 Diff") {
+                GraphEditorMessage.OpenCodeDraftNativeDiff(draftId)
+            }
             JBCefJSQuery.Response("ok")
         }
         requestDraftNavigationQuery?.addHandler { targetPath ->
@@ -397,8 +420,10 @@ class GraphBrowserPanel private constructor(
             }
         }
         debugTraceQuery?.addHandler { payload ->
-            runtimeTrace { "前端 trace: $payload" }
-            debugLazy(logger.isDebugEnabled, logger::debug) { "前端 trace: $payload" }
+            if (shouldLogFrontendTrace(payload)) {
+                runtimeTrace { "前端 trace: $payload" }
+                debugLazy(logger.isDebugEnabled, logger::debug) { "前端 trace: $payload" }
+            }
             JBCefJSQuery.Response("ok")
         }
         browser.jbCefClient.addLoadHandler(
@@ -508,6 +533,7 @@ class GraphBrowserPanel private constructor(
               restoreDraftPatchPreview: (source) => { ${restoreDraftPatchPreviewQuery?.inject("source") ?: ""} },
               undoLastDraftPatchApply: () => { ${undoLastDraftPatchApplyQuery?.inject("'undoLastDraftPatchApply'") ?: ""} },
               requestGenerationPlan: () => { ${requestGenerationPlanQuery?.inject("'requestGenerationPlan'") ?: ""} },
+              requestGenerationPlanDiscussion: (question, focusItemId) => { ${requestGenerationPlanDiscussionQuery?.inject("[(question ? encodeURIComponent(question) : ''), (focusItemId ? encodeURIComponent(focusItemId) : '')].join('\\u001f')") ?: ""} },
               requestCodeDrafts: () => { ${requestCodeDraftsQuery?.inject("'requestCodeDrafts'") ?: ""} },
               requestCurrentEditorContextGraph: () => { ${requestCurrentEditorContextGraphQuery?.inject("'requestCurrentEditorContextGraph'") ?: ""} },
               requestAnalysisDisplayMode: (displayMode) => { ${requestAnalysisDisplayModeQuery?.inject("displayMode") ?: ""} },
@@ -515,6 +541,7 @@ class GraphBrowserPanel private constructor(
               requestOpenSettings: () => { ${requestOpenSettingsQuery?.inject("'requestOpenSettings'") ?: ""} },
               applyCodeDrafts: () => { ${applyCodeDraftsQuery?.inject("'applyCodeDrafts'") ?: ""} },
               applySingleCodeDraft: (draftId) => { ${applySingleCodeDraftQuery?.inject("draftId") ?: ""} },
+              openCodeDraftNativeDiff: (draftId) => { ${openCodeDraftNativeDiffQuery?.inject("draftId") ?: ""} },
               requestDraftNavigation: (targetPath) => { ${requestDraftNavigationQuery?.inject("targetPath") ?: ""} },
               requestArtifact: (artifactIds) => { ${requestArtifactQuery?.inject("((artifactIds || []).map((value) => encodeURIComponent(value)).join(','))") ?: ""} },
               frontendReady: (payload) => { ${frontendReadyQuery?.inject("payload && Number.isFinite(payload.lastAppliedRevision) ? String(payload.lastAppliedRevision) : ''") ?: ""} },
@@ -1459,6 +1486,19 @@ class GraphBrowserPanel private constructor(
         return question to selectedNodeIds
     }
 
+    private data class GenerationPlanDiscussionPayload(
+        val question: String,
+        val focusItemId: String?,
+    )
+
+    private fun parseGenerationPlanDiscussionPayload(payload: String): GenerationPlanDiscussionPayload {
+        val parts = payload.split(PAYLOAD_SEPARATOR, limit = 2)
+        return GenerationPlanDiscussionPayload(
+            question = decodePayloadValue(parts.firstOrNull().orEmpty()),
+            focusItemId = parts.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue),
+        )
+    }
+
     private data class AuditRequestPayload(
         val question: String,
         val selectedNodeIds: List<String>,
@@ -1569,6 +1609,27 @@ class GraphBrowserPanel private constructor(
 
     private fun decodePayloadValue(value: String): String = URLDecoder.decode(value, StandardCharsets.UTF_8)
 
+    private fun shouldLogFrontendTrace(payload: String): Boolean {
+        if (payload.isBlank()) {
+            return false
+        }
+        val event = FRONTEND_TRACE_EVENT_REGEX.find(payload)?.groupValues?.getOrNull(1) ?: return true
+        return event !in NOISY_FRONTEND_TRACE_EVENTS
+    }
+
+    private fun dispatchBridgeAsync(
+        actionLabel: String,
+        messageProvider: () -> GraphEditorMessage,
+    ) {
+        AppExecutorUtil.getAppExecutorService().execute {
+            runCatching {
+                bridge.dispatch(messageProvider())
+            }.onFailure { error ->
+                logger.warn("异步处理前端请求失败: $actionLabel", error)
+            }
+        }
+    }
+
     private fun summarizePayloadText(
         value: String?,
         maxLength: Int = 160,
@@ -1627,6 +1688,11 @@ class GraphBrowserPanel private constructor(
         private const val DEBUG_INTERACTION_PROBE_ENV: String = "LINKGRAPH_DEBUG_INTERACTION_PROBE"
         const val FALLBACK_ENTRY_URL: String = "linkgraph://shell/index.html"
         const val INLINE_ENTRY_URL: String = "https://linkgraph.local/index.html"
+        private val FRONTEND_TRACE_EVENT_REGEX: Regex = Regex(""""event":"([^"]+)"""")
+        private val NOISY_FRONTEND_TRACE_EVENTS: Set<String> = setOf(
+            "routedEdge.render",
+            "jcef.runtimeProbe",
+        )
         private val logger = Logger.getInstance(GraphBrowserPanel::class.java)
     }
 

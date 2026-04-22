@@ -26,17 +26,6 @@ class ProjectPathNormalizerTest {
                     description = "desc",
                     risk = SyncPreviewRisk.MEDIUM,
                     targetPath = absoluteProjectFile,
-                    editScopes = listOf(
-                        EditScope(
-                            scopeId = "scope-upload-file",
-                            targetNodeId = "method:upload-file",
-                            filePath = absoluteProjectFile,
-                            language = "JAVA",
-                            symbolKind = "METHOD",
-                            symbolSignature = "com.ruoyi.web.controller.common.CommonController.uploadFile(org.springframework.web.multipart.MultipartFile):com.ruoyi.common.core.domain.AjaxResult",
-                            allowedChangeKinds = listOf("REPLACE_METHOD_BLOCK"),
-                        ),
-                    ),
                 ),
                 GenerationPlanItem(
                     id = "plan-external",
@@ -44,15 +33,6 @@ class ProjectPathNormalizerTest {
                     description = "desc",
                     risk = SyncPreviewRisk.HIGH,
                     targetPath = externalFile,
-                    editScopes = listOf(
-                        EditScope(
-                            scopeId = "scope-external",
-                            targetNodeId = "method:external",
-                            filePath = externalFile,
-                            language = "JAVA",
-                            symbolKind = "METHOD",
-                        ),
-                    ),
                 ),
             ),
         )
@@ -95,12 +75,7 @@ class ProjectPathNormalizerTest {
             "ruoyi-admin/src/main/java/com/ruoyi/web/controller/common/CommonController.java",
             normalizedPlan.items.first().targetPath,
         )
-        assertEquals(
-            "ruoyi-admin/src/main/java/com/ruoyi/web/controller/common/CommonController.java",
-            normalizedPlan.items.first().editScopes.single().filePath,
-        )
         assertEquals(externalFile, normalizedPlan.items.last().targetPath)
-        assertEquals(externalFile, normalizedPlan.items.last().editScopes.single().filePath)
 
         val normalizedDraft = normalizedResult.drafts.single()
         assertEquals(

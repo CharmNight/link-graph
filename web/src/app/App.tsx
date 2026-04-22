@@ -21,6 +21,7 @@ import {
   undoLastDraftPatchApply,
   updateWorkbenchSectionPreference,
   applySingleCodeDraft,
+  openCodeDraftNativeDiff,
 } from "./api";
 import { canNavigateToSource } from "./sourceNavigation";
 import { AsyncRequestFailureDialog } from "./components/AsyncRequestFailureDialog";
@@ -424,6 +425,7 @@ function toDraftWorkbenchEntry(change: CandidateDraftChange): DraftWorkbenchEntr
     impactSummary: change.impactSummary,
     claimType: change.claimType ?? null,
     evidence: change.evidence ?? [],
+    editScopes: change.editScopes ?? [],
     patchIntent: change.patchIntent ?? null,
     graphPatch: change.graphPatch ?? null,
   };
@@ -681,7 +683,9 @@ const SAMPLE_STATE: LinkGraphBootstrapState = {
   ],
   generatedCodeDraftWarnings: [],
   generationPlanRequestState: IDLE_REQUEST_STATE,
-  planEligibilityDecision: null,
+  draftValidationState: null,
+  generationPlanDiscussionSession: null,
+  generationPlanDiscussionRequestState: IDLE_REQUEST_STATE,
   graphBeautificationRequestState: IDLE_REQUEST_STATE,
   codeDraftRequestState: IDLE_REQUEST_STATE,
   codeEligibilityDecision: null,
@@ -755,7 +759,9 @@ const EMPTY_STATE: LinkGraphBootstrapState = {
   syncPreviewItems: [],
   generationPlan: null,
   generationPlanRequestState: IDLE_REQUEST_STATE,
-  planEligibilityDecision: null,
+  draftValidationState: null,
+  generationPlanDiscussionSession: null,
+  generationPlanDiscussionRequestState: IDLE_REQUEST_STATE,
   generatedCodeDrafts: [],
   generatedCodeDraftWarnings: [],
   graphBeautificationRequestState: IDLE_REQUEST_STATE,
@@ -1206,6 +1212,12 @@ export function App() {
     setGenerationPlanDraftVersion,
     generationPlanRequestState,
     setGenerationPlanRequestState,
+    draftValidationState,
+    setDraftValidationState,
+    generationPlanDiscussionSession,
+    setGenerationPlanDiscussionSession,
+    generationPlanDiscussionRequestState,
+    setGenerationPlanDiscussionRequestState,
     diffReviewRequestState,
     setDiffReviewRequestState,
     graphBeautificationResult,
@@ -1266,12 +1278,10 @@ export function App() {
   const [qaRequestRecoveryState, setQaRequestRecoveryState] = useState<QaRequestRecoveryState>(
     () => initialState.qaRequestRecoveryState ?? EMPTY_QA_REQUEST_RECOVERY_STATE,
   );
-  const [planEligibilityDecision, setPlanEligibilityDecision] = useState<StageEligibilityDecision | null>(
-    () => initialState.planEligibilityDecision ?? null,
-  );
   const [codeEligibilityDecision, setCodeEligibilityDecision] = useState<StageEligibilityDecision | null>(
     () => initialState.codeEligibilityDecision ?? null,
   );
+  const [generationPlanDiscussionQuestionDraft, setGenerationPlanDiscussionQuestionDraft] = useState("");
   const bridgeCommands = useBridgeCommandController({
     setOperationFeedback,
     setRequestFailureNotice,
@@ -1286,15 +1296,6 @@ export function App() {
     bridgeCommands,
   });
   const workbenchCommands = useWorkbenchCommandController({
-    setGenerationPlan,
-    setGenerationPlanRequestState,
-    setGeneratedCodeDrafts,
-    setGeneratedCodeDraftWarnings,
-    setGeneratedCodeDraftSource,
-    setGeneratedCodeDraftPromptPreview,
-    setGeneratedCodeDraftPromptPreviewArtifactId,
-    setGeneratedCodeDraftWriteReport,
-    setCodeDraftRequestState,
     bridgeCommands,
   });
   const toolbarFeedback = useMemo(() => resolveToolbarFeedback({
@@ -1351,13 +1352,8 @@ export function App() {
   const nextFocusRequestNonceRef = useRef(0);
   const explanationLocalOverrideRef = useRef(false);
   const pendingExplanationRequestModeRef = useRef<ExplanationRequestMode | null>(null);
-  const requestFailureSignatureRef = useRef<Record<string, string | null>>({
-    audit: null,
-    diff: null,
-    plan: null,
-    beautification: null,
-    drafts: null,
-  });
+  const pendingExplanationSessionLabelRef = useRef<string | null>(null);
+  const pendingExplanationHistoryEntryRef = useRef<ExplanationHistoryEntry | null>(null);
   const interactionProbeRef = useRef<{
     scheduled: boolean;
     selection: { ids: string[]; startedAt: number } | null;
@@ -1410,35 +1406,6 @@ export function App() {
       nextManualNodeIdRef.current,
       nextManualNodeSequence(nextNodes),
     );
-  }
-
-  function trackRequestFailure(
-    scope: keyof typeof requestFailureSignatureRef.current,
-    title: string,
-    requestState: AsyncRequestState,
-  ) {
-    if (requestState.phase !== "FAILED" && requestState.phase !== "TIMED_OUT") {
-      requestFailureSignatureRef.current[scope] = null;
-      return;
-    }
-
-    const signature = [
-      requestState.phase,
-      requestState.statusMessage ?? "",
-      requestState.errorMessage ?? "",
-      requestState.detailMessage ?? "",
-      requestState.startedAtEpochMillis ?? "",
-      requestState.finishedAtEpochMillis ?? "",
-    ].join("|");
-    if (requestFailureSignatureRef.current[scope] === signature) {
-      return;
-    }
-    requestFailureSignatureRef.current[scope] = signature;
-    setRequestFailureNotice({
-      title: requestState.statusMessage?.trim() || `${title}失败`,
-      message: requestState.errorMessage?.trim() || `${title}失败，请检查模型设置、网络与插件日志。`,
-      detailMessage: requestState.detailMessage?.trim() || null,
-    });
   }
 
   function maybeCompleteSourceNavigationProbe(nextSourceNavigationState: SourceNavigationState) {
@@ -1732,7 +1699,9 @@ export function App() {
     setGenerationPlan(nextState.generationPlan ?? null);
     setGenerationPlanDraftVersion(nextState.generationPlanDraftVersion ?? null);
     setGenerationPlanRequestState(resolveRequestState(nextState.generationPlanRequestState));
-    setPlanEligibilityDecision(nextState.planEligibilityDecision ?? null);
+    setDraftValidationState(nextState.draftValidationState ?? null);
+    setGenerationPlanDiscussionSession(nextState.generationPlanDiscussionSession ?? null);
+    setGenerationPlanDiscussionRequestState(resolveRequestState(nextState.generationPlanDiscussionRequestState));
     if (!explanationLocalOverrideRef.current) {
       setGraphBeautificationResult(nextState.graphBeautificationResult ?? null);
       setGraphBeautificationRequestState(resolveRequestState(nextState.graphBeautificationRequestState));
@@ -1842,7 +1811,10 @@ export function App() {
     setSyncPreviewItems([]);
     setGenerationPlan(null);
     setGenerationPlanRequestState(IDLE_REQUEST_STATE);
-    setPlanEligibilityDecision(null);
+    setDraftValidationState(null);
+    setGenerationPlanDiscussionSession(null);
+    setGenerationPlanDiscussionRequestState(IDLE_REQUEST_STATE);
+    setGenerationPlanDiscussionQuestionDraft("");
     setGraphBeautificationResult(null);
     setGraphBeautificationRequestState(IDLE_REQUEST_STATE);
     setGeneratedCodeDrafts([]);
@@ -1985,6 +1957,15 @@ export function App() {
     setActiveWorkbenchTab("audit");
   }
 
+  function handleOpenDraftValidation() {
+    setActiveWorkbenchTab("draft");
+    setWorkbenchSectionPreferences((current) => ({
+      ...current,
+      "draft.validation": true,
+    }));
+    updateWorkbenchSectionPreference("draft.validation", true);
+  }
+
   function handleRequestGenerationPlan() {
     traceLinkGraph("app.requestGenerationPlan.intent", {
       activeWorkbenchTab,
@@ -2000,6 +1981,22 @@ export function App() {
   function handleRequestCodeDrafts() {
     setActiveWorkbenchTab("code");
     workbenchCommands.handleRequestCodeDrafts();
+  }
+
+  function handleRequestGenerationPlanDiscussion() {
+    const question = generationPlanDiscussionQuestionDraft.trim();
+    if (!question) {
+      setOperationFeedback({
+        level: "WARNING",
+        message: "请先输入你对实现建议的追问。",
+      });
+      return;
+    }
+    setActiveWorkbenchTab("draft");
+    workbenchCommands.handleRequestGenerationPlanDiscussion(
+      question,
+      generationPlanDiscussionSession?.focusItemId ?? null,
+    );
   }
 
   function handleRequestScopedAudit(targetNodeId?: string) {
@@ -2368,11 +2365,6 @@ export function App() {
     setAuditQuestionDraft(normalizedQuestion);
     setAuditTargetNodeIds(targetNodeIds);
     bridgeCommands.submitAsyncBridgeCommand("问答", () => requestAuditAsync(normalizedQuestion, targetNodeIds, auditSourceThreadId), {
-      applyRejectedRequestState: setAuditRequestState,
-      applySubmittedRequestState: (requestState) => {
-        setAuditRequestState(requestState);
-        setAuditResult(null);
-      },
       onAccepted: () => {
         setActiveWorkbenchTab("audit");
       },
@@ -2394,11 +2386,6 @@ export function App() {
     activateAuditSection("audit.request-status");
     setActiveWorkbenchTab("audit");
     bridgeCommands.submitAsyncBridgeCommand("问答", () => retryLastAuditRequestAsync(), {
-      applyRejectedRequestState: setAuditRequestState,
-      applySubmittedRequestState: (requestState) => {
-        setAuditRequestState(requestState);
-        setAuditResult(null);
-      },
       successFeedback: {
         level: "INFO",
         message: "已提交失败问答的直接重试请求。",
@@ -2589,11 +2576,6 @@ export function App() {
 
   function handleRequestDiffReview(question: string) {
     bridgeCommands.submitAsyncBridgeCommand("差异问答", () => requestDiffReviewAsync(question, diffTargetItemIds), {
-      applyRejectedRequestState: setDiffReviewRequestState,
-      applySubmittedRequestState: (requestState) => {
-        setDiffReviewResult(null);
-        setDiffReviewRequestState(requestState);
-      },
       successFeedback: {
         level: "INFO",
         message: diffTargetItemIds.length > 0
@@ -2619,14 +2601,14 @@ export function App() {
         granularity: selectedExplanationGranularity,
       }),
       {
-        applyRejectedRequestState: setGraphBeautificationRequestState,
-        applySubmittedRequestState: (requestState) => {
-          setExplanationHistory([]);
-          setCurrentExplanationSessionLabel(DEFAULT_EXPLANATION_SESSION_LABEL);
-          setGraphBeautificationResult(null);
-          setGraphBeautificationRequestState(requestState);
+        onRejected: () => {
+          pendingExplanationRequestModeRef.current = null;
+          pendingExplanationSessionLabelRef.current = null;
+          pendingExplanationHistoryEntryRef.current = null;
         },
         onAccepted: () => {
+          pendingExplanationSessionLabelRef.current = DEFAULT_EXPLANATION_SESSION_LABEL;
+          pendingExplanationHistoryEntryRef.current = null;
           setActiveWorkbenchTab("explanation");
         },
         successFeedback: {
@@ -2650,14 +2632,14 @@ export function App() {
         granularity,
       }),
       {
-        applyRejectedRequestState: setGraphBeautificationRequestState,
-        applySubmittedRequestState: (requestState) => {
-          setExplanationHistory([]);
-          setCurrentExplanationSessionLabel(DEFAULT_EXPLANATION_SESSION_LABEL);
-          setGraphBeautificationResult(null);
-          setGraphBeautificationRequestState(requestState);
+        onRejected: () => {
+          pendingExplanationRequestModeRef.current = null;
+          pendingExplanationSessionLabelRef.current = null;
+          pendingExplanationHistoryEntryRef.current = null;
         },
         onAccepted: () => {
+          pendingExplanationSessionLabelRef.current = DEFAULT_EXPLANATION_SESSION_LABEL;
+          pendingExplanationHistoryEntryRef.current = null;
           setSelectedExplanationStepId(null);
           setActiveWorkbenchTab("explanation");
         },
@@ -2670,59 +2652,46 @@ export function App() {
   }
 
   useEffect(() => {
-    trackRequestFailure("audit", "链路问答", auditRequestState);
-  }, [
-    auditRequestState.phase,
-    auditRequestState.statusMessage,
-    auditRequestState.errorMessage,
-    auditRequestState.detailMessage,
-    auditRequestState.startedAtEpochMillis,
-    auditRequestState.finishedAtEpochMillis,
-  ]);
+    if (!generationPlan) {
+      setGenerationPlanDiscussionQuestionDraft("");
+      return;
+    }
+    if (generationPlanDiscussionRequestState.phase === "SUCCEEDED") {
+      setGenerationPlanDiscussionQuestionDraft("");
+    }
+  }, [generationPlan, generationPlanDiscussionRequestState.phase]);
 
   useEffect(() => {
-    trackRequestFailure("diff", "差异问答", diffReviewRequestState);
-  }, [
-    diffReviewRequestState.phase,
-    diffReviewRequestState.statusMessage,
-    diffReviewRequestState.errorMessage,
-    diffReviewRequestState.detailMessage,
-    diffReviewRequestState.startedAtEpochMillis,
-    diffReviewRequestState.finishedAtEpochMillis,
-  ]);
+    if (graphBeautificationRequestState.phase !== "FAILED" && graphBeautificationRequestState.phase !== "TIMED_OUT") {
+      return;
+    }
+    pendingExplanationRequestModeRef.current = null;
+    pendingExplanationSessionLabelRef.current = null;
+    pendingExplanationHistoryEntryRef.current = null;
+  }, [graphBeautificationRequestState.phase]);
 
   useEffect(() => {
-    trackRequestFailure("plan", "实现建议", generationPlanRequestState);
-  }, [
-    generationPlanRequestState.phase,
-    generationPlanRequestState.statusMessage,
-    generationPlanRequestState.errorMessage,
-    generationPlanRequestState.detailMessage,
-    generationPlanRequestState.startedAtEpochMillis,
-    generationPlanRequestState.finishedAtEpochMillis,
-  ]);
+    if (graphBeautificationRequestState.phase !== "SUCCEEDED" || graphBeautificationResult == null) {
+      return;
+    }
+    const pendingMode = pendingExplanationRequestModeRef.current;
+    const pendingSessionLabel = pendingExplanationSessionLabelRef.current;
+    const pendingHistoryEntry = pendingExplanationHistoryEntryRef.current;
 
-  useEffect(() => {
-    trackRequestFailure("beautification", "链路讲解", graphBeautificationRequestState);
-  }, [
-    graphBeautificationRequestState.phase,
-    graphBeautificationRequestState.statusMessage,
-    graphBeautificationRequestState.errorMessage,
-    graphBeautificationRequestState.detailMessage,
-    graphBeautificationRequestState.startedAtEpochMillis,
-    graphBeautificationRequestState.finishedAtEpochMillis,
-  ]);
+    if (pendingMode === "fresh") {
+      setExplanationHistory([]);
+    }
+    if (pendingMode === "follow_up" && pendingHistoryEntry) {
+      setExplanationHistory((current) => current.concat(pendingHistoryEntry));
+    }
+    if (pendingSessionLabel) {
+      setCurrentExplanationSessionLabel(pendingSessionLabel);
+    }
 
-  useEffect(() => {
-    trackRequestFailure("drafts", "代码 diff", codeDraftRequestState);
-  }, [
-    codeDraftRequestState.phase,
-    codeDraftRequestState.statusMessage,
-    codeDraftRequestState.errorMessage,
-    codeDraftRequestState.detailMessage,
-    codeDraftRequestState.startedAtEpochMillis,
-    codeDraftRequestState.finishedAtEpochMillis,
-  ]);
+    pendingExplanationRequestModeRef.current = null;
+    pendingExplanationSessionLabelRef.current = null;
+    pendingExplanationHistoryEntryRef.current = null;
+  }, [graphBeautificationRequestState.phase, graphBeautificationResult]);
 
   useEffect(() => {
     const firstStepId = graphBeautificationResult?.steps?.[0]?.stepId ?? null;
@@ -3073,22 +3042,22 @@ export function App() {
         },
       }),
       {
-        applyRejectedRequestState: setGraphBeautificationRequestState,
-        applySubmittedRequestState: (requestState) => {
-          if (graphBeautificationResult) {
-            setExplanationHistory((current) => current.concat({
-              result: graphBeautificationResult,
-              requestState: graphBeautificationRequestState,
-              selectedStepId: selectedExplanationStepId,
-              granularity: selectedExplanationGranularity,
-              sessionLabel: currentExplanationSessionLabel,
-            }));
-          }
-          setCurrentExplanationSessionLabel(nextSessionLabel);
-          setGraphBeautificationResult(null);
-          setGraphBeautificationRequestState(requestState);
+        onRejected: () => {
+          pendingExplanationRequestModeRef.current = null;
+          pendingExplanationSessionLabelRef.current = null;
+          pendingExplanationHistoryEntryRef.current = null;
         },
         onAccepted: () => {
+          pendingExplanationHistoryEntryRef.current = graphBeautificationResult
+            ? {
+                result: graphBeautificationResult,
+                requestState: graphBeautificationRequestState,
+                selectedStepId: selectedExplanationStepId,
+                granularity: selectedExplanationGranularity,
+                sessionLabel: currentExplanationSessionLabel,
+              }
+            : null;
+          pendingExplanationSessionLabelRef.current = nextSessionLabel;
           setSelectedExplanationStepId(step.stepId);
           setActiveWorkbenchTab("explanation");
         },
@@ -3112,6 +3081,8 @@ export function App() {
       }
       explanationLocalOverrideRef.current = true;
       pendingExplanationRequestModeRef.current = null;
+      pendingExplanationSessionLabelRef.current = null;
+      pendingExplanationHistoryEntryRef.current = null;
       setGraphBeautificationResult(snapshot.result);
       setGraphBeautificationRequestState(snapshot.requestState);
       setSelectedExplanationStepId(snapshot.selectedStepId);
@@ -3282,11 +3253,6 @@ export function App() {
     activateAuditSection("audit.composer");
     setActiveWorkbenchTab("audit");
     bridgeCommands.submitAsyncBridgeCommand("问答", () => requestAuditAsync(nextQuestion, thread.targetNodeIds, threadId), {
-      applyRejectedRequestState: setAuditRequestState,
-      applySubmittedRequestState: (requestState) => {
-        setAuditRequestState(requestState);
-        setAuditResult(null);
-      },
       successFeedback: {
         level: "INFO",
         message: `已围绕风险线程“${thread.title}”自动发起继续取证。`,
@@ -3381,6 +3347,10 @@ export function App() {
     bridgeCommands.runBridgeCommand("写入单个代码草稿", () => applySingleCodeDraft(draftId));
   }
 
+  function handleOpenCodeDraftNativeDiff(draftId: string) {
+    bridgeCommands.runBridgeCommand("打开代码草稿原生 Diff", () => openCodeDraftNativeDiff(draftId));
+  }
+
   useEffect(() => {
     if (activeWorkbenchTab !== "draft" || !selectedDraftEntry) {
       return;
@@ -3415,11 +3385,12 @@ export function App() {
             draftVersion={draftVersion}
             generatedCodeDraftVersion={generatedCodeDraftVersion}
             onOpenDraftWorkbench={() => setActiveWorkbenchTab("draft")}
-            onOpenAuditWorkbench={() => setActiveWorkbenchTab("audit")}
+            onOpenDraftValidation={handleOpenDraftValidation}
             onRequestPlan={handleRequestGenerationPlan}
             onRequestDrafts={handleRequestCodeDrafts}
             onWriteDrafts={workbenchCommands.handleWriteDrafts}
             onWriteSingleDraft={handleWriteSingleCodeDraft}
+            onOpenNativeDiff={handleOpenCodeDraftNativeDiff}
             onOpenDraft={workbenchCommands.handleOpenDraft}
           />
         );
@@ -3448,13 +3419,18 @@ export function App() {
             state={draftState}
             implementationSuggestion={draftImplementationSuggestionState}
             implementationSuggestionRequestState={generationPlanRequestState}
-            implementationSuggestionEligibilityDecision={planEligibilityDecision}
+            draftValidationState={draftValidationState}
+            implementationSuggestionDiscussionQuestionDraft={generationPlanDiscussionQuestionDraft}
+            implementationSuggestionDiscussionSession={generationPlanDiscussionSession}
+            implementationSuggestionDiscussionRequestState={generationPlanDiscussionRequestState}
             draftVersion={draftVersion}
             codeDiffStatus={codeDiffStatus}
             codeDiffDraftVersion={generatedCodeDraftVersion}
             resolveArtifactText={resolveArtifactText}
             onRequestArtifact={handleRequestArtifact}
             onRequestGeneratePlan={handleRequestGenerationPlan}
+            onImplementationSuggestionDiscussionQuestionDraftChange={setGenerationPlanDiscussionQuestionDraft}
+            onSubmitImplementationSuggestionDiscussion={handleRequestGenerationPlanDiscussion}
             onOpenAuditWorkbench={() => setActiveWorkbenchTab("audit")}
             onToggleCompare={() => setDraftCompareMode((current) => current === "after" ? "compare" : "after")}
             onSelectEntry={handleSelectDraftEntry}
@@ -3528,6 +3504,7 @@ export function App() {
       <FlowchartView
         {...stageProps}
         view={presentedFlowchartView}
+        layoutView={flowchartView}
       />
     )
     : analysisDisplayMode === "RESOURCE_RELATION_VIEW"

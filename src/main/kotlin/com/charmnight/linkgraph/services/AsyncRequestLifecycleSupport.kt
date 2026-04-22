@@ -32,6 +32,8 @@ internal class AsyncRequestLifecycleSupport(
     private val diffReviewRequestTracker = AsyncRequestTracker()
     /** 生成计划请求跟踪器。 */
     private val generationPlanRequestTracker = AsyncRequestTracker()
+    /** 实现建议追问请求跟踪器。 */
+    private val generationPlanDiscussionRequestTracker = AsyncRequestTracker()
     /** 代码草稿请求跟踪器。 */
     private val codeDraftRequestTracker = AsyncRequestTracker()
     /** 链路讲解请求跟踪器。 */
@@ -49,6 +51,10 @@ internal class AsyncRequestLifecycleSupport(
 
     fun completeGenerationPlanRequest(requestId: Long): Boolean = generationPlanRequestTracker.finishRequest(requestId)
 
+    fun beginGenerationPlanDiscussionRequest(): Long = generationPlanDiscussionRequestTracker.beginRequest()
+
+    fun completeGenerationPlanDiscussionRequest(requestId: Long): Boolean = generationPlanDiscussionRequestTracker.finishRequest(requestId)
+
     fun beginCodeDraftRequest(): Long = codeDraftRequestTracker.beginRequest()
 
     fun completeCodeDraftRequest(requestId: Long): Boolean = codeDraftRequestTracker.finishRequest(requestId)
@@ -64,6 +70,7 @@ internal class AsyncRequestLifecycleSupport(
         auditRequestTracker.invalidate()
         diffReviewRequestTracker.invalidate()
         generationPlanRequestTracker.invalidate()
+        generationPlanDiscussionRequestTracker.invalidate()
         codeDraftRequestTracker.invalidate()
         beautificationRequestTracker.invalidate()
     }

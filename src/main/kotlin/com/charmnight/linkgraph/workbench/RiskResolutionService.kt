@@ -31,43 +31,36 @@ class RiskResolutionService {
         )
     }
 
-    fun evaluatePlanEligibility(
+    fun evaluateDraftValidation(
         snapshot: GraphEditorStateService.Snapshot,
-    ): StageEligibilityDecision {
+    ): DraftValidationState {
         val threads = resolveThreads(snapshot)
-        val unresolvedThreads = threads.filter(::isPlanBlocking)
-        if (unresolvedThreads.isNotEmpty()) {
-            return StageEligibilityDecision(
-                target = StageEligibilityTarget.PLAN,
-                allowed = false,
-                message = "生成实现计划前请先处理仍在阻塞的风险线程。",
-                detailMessage = "当前仍有未决风险。你可以继续取证、暂挂风险、接受风险，或明确排除风险后再继续。",
-                blockingThreadIds = unresolvedThreads.map(InvestigationThread::threadId),
+        val unresolvedThreads = threads.filter(::isDraftValidationBlocking)
+        if (snapshot.draftWorkbenchState.draftChanges.isEmpty()) {
+            return DraftValidationState(
+                status = DraftValidationStatus.EMPTY,
+                message = "当前还没有确认草稿变更，请先在草稿层确认修改目标。",
+                detailMessage = if (unresolvedThreads.isNotEmpty()) {
+                    "当前同时存在待验证风险。你可以先继续取证，或先确认哪些候选变更应进入草稿层。"
+                } else {
+                    "草稿层用于承载已经确认的业务意图；实现建议会基于当前草稿快照生成。"
+                },
                 unresolvedThreadIds = unresolvedThreads.map(InvestigationThread::threadId),
+                unresolvedThreads = unresolvedThreads,
             )
         }
-        if (snapshot.draftWorkbenchState.draftChanges.isNotEmpty()) {
-            return StageEligibilityDecision(
-                target = StageEligibilityTarget.PLAN,
-                allowed = true,
-                message = "当前可以继续生成实现计划。",
-                unresolvedThreadIds = unresolvedThreadIds(threads),
+        if (unresolvedThreads.isNotEmpty()) {
+            return DraftValidationState(
+                status = DraftValidationStatus.REVIEW_REQUIRED,
+                message = "当前草稿仍有待验证风险。",
+                detailMessage = "请先确认这些风险是继续取证、接受、排除，还是回退对应草稿变更。",
+                unresolvedThreadIds = unresolvedThreads.map(InvestigationThread::threadId),
+                unresolvedThreads = unresolvedThreads,
             )
         }
-        if (threads.any(::isPlanOnlyContinuationResolution)) {
-            return StageEligibilityDecision(
-                target = StageEligibilityTarget.PLAN,
-                allowed = true,
-                message = "当前风险已完成人工决策，可以继续生成实现计划。",
-                detailMessage = "当前还没有确认草稿变更，但可以先生成计划整理实现路径与风险摘要。",
-                unresolvedThreadIds = unresolvedThreadIds(threads),
-            )
-        }
-        return StageEligibilityDecision(
-            target = StageEligibilityTarget.PLAN,
-            allowed = false,
-            message = "生成实现计划前请先确认至少一条草稿变更。",
-            detailMessage = "当前草稿层为空。先在问答结果中确认候选变更，使草稿层承载已确认的修改目标，再继续生成。",
+        return DraftValidationState(
+            status = DraftValidationStatus.READY,
+            message = "当前草稿已完成验证，可以继续生成实现建议或代码 diff。",
         )
     }
 
@@ -123,20 +116,11 @@ class RiskResolutionService {
         }.map(InvestigationThread::threadId)
     }
 
-    private fun isPlanBlocking(thread: InvestigationThread): Boolean {
+    private fun isDraftValidationBlocking(thread: InvestigationThread): Boolean {
         return when (thread.resolution?.status ?: RiskResolutionStatus.UNRESOLVED) {
-            RiskResolutionStatus.UNRESOLVED -> true
-            else -> false
-        }
-    }
-
-    private fun isPlanOnlyContinuationResolution(thread: InvestigationThread): Boolean {
-        return when (thread.resolution?.status) {
+            RiskResolutionStatus.UNRESOLVED,
             RiskResolutionStatus.DEFERRED,
-            RiskResolutionStatus.ACCEPTED_RISK,
             RiskResolutionStatus.EVIDENCE_EXHAUSTED,
-            RiskResolutionStatus.DISMISSED,
-            RiskResolutionStatus.PROMOTED,
             -> true
             else -> false
         }

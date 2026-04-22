@@ -58,10 +58,11 @@ class GraphPatchApplyService {
             }
         }
 
-        // 返回排序后的新图，并清空已消费的补丁载荷。
+        // 保留原图 model order，并把新增元素按补丁执行顺序追加。
+        // Flowchart 的 ELK 布局启用了 forceNodeModelOrder，按 id 重排会直接改变布局结果。
         return graph.copy(
-            nodes = workingNodes.values.sortedBy { it.id },
-            edges = workingEdges.values.sortedBy { it.id },
+            nodes = workingNodes.values.toList(),
+            edges = workingEdges.values.toList(),
             patch = null,
         )
     }

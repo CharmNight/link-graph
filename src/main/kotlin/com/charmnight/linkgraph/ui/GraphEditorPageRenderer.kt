@@ -255,14 +255,15 @@ class GraphEditorPageRenderer {
                             "description" to item.description,
                             "risk" to item.risk.name,
                             "targetPath" to item.targetPath,
-                            "editScopes" to item.editScopes.map(::editScopeToMap),
                         )
                     },
                 )
             },
             "generationPlanDraftVersion" to snapshot.generationPlanDraftVersion,
             "generationPlanRequestState" to requestStateToMap(snapshot.generationPlanRequestState),
-            "planEligibilityDecision" to snapshot.planEligibilityDecision?.let(::stageEligibilityDecisionToMap),
+            "draftValidationState" to snapshot.draftValidationState?.let(::draftValidationStateToMap),
+            "generationPlanDiscussionSession" to snapshot.generationPlanDiscussionSession?.let(::generationPlanDiscussionSessionToMap),
+            "generationPlanDiscussionRequestState" to requestStateToMap(snapshot.generationPlanDiscussionRequestState),
             "generatedCodeDrafts" to snapshot.generatedCodeDrafts.map { draft ->
                 val contentArtifactId = artifactRefs.generatedCodeDraftContentArtifactIds[draft.id]
                 linkedMapOf<String, Any?>(
@@ -273,6 +274,7 @@ class GraphEditorPageRenderer {
                     "contentArtifactId" to contentArtifactId,
                     "editOperations" to draft.editOperations.map(::codeEditOperationToMap),
                     "editScopes" to draft.editScopes.map(::editScopeToMap),
+                    "preparedEdits" to draft.preparedEdits.map(::preparedCodeEditToMap),
                     "warnings" to draft.warnings,
                 ).apply {
                     if (contentArtifactId == null && draft.content != null) {
@@ -685,6 +687,31 @@ class GraphEditorPageRenderer {
         "focusTargetId" to session.focusTargetId,
     )
 
+    private fun generationPlanDiscussionSessionToMap(
+        session: com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession,
+    ): Map<String, Any?> = linkedMapOf(
+        "sessionId" to session.sessionId,
+        "messages" to session.messages.map { message ->
+            linkedMapOf(
+                "messageId" to message.messageId,
+                "role" to message.role.name,
+                "content" to message.content,
+                "focusItemId" to message.focusItemId,
+            )
+        },
+        "focusItemId" to session.focusItemId,
+    )
+
+    private fun draftValidationStateToMap(
+        state: com.charmnight.linkgraph.workbench.DraftValidationState,
+    ): Map<String, Any?> = linkedMapOf(
+        "status" to state.status.name,
+        "message" to state.message,
+        "detailMessage" to state.detailMessage,
+        "unresolvedThreadIds" to state.unresolvedThreadIds,
+        "unresolvedThreads" to state.unresolvedThreads.map(::investigationThreadToMap),
+    )
+
     private fun investigationThreadToMap(
         thread: com.charmnight.linkgraph.workbench.InvestigationThread,
     ): Map<String, Any?> = linkedMapOf(
@@ -791,6 +818,21 @@ class GraphEditorPageRenderer {
         "kind" to operation.kind.name,
         "payload" to operation.payload,
         "warnings" to operation.warnings,
+    )
+
+    private fun preparedCodeEditToMap(
+        edit: com.charmnight.linkgraph.codegen.PreparedCodeEdit,
+    ): Map<String, Any?> = linkedMapOf(
+        "operationId" to edit.operationId,
+        "filePath" to edit.filePath,
+        "scopeId" to edit.scopeId,
+        "kind" to edit.kind.name,
+        "targetSymbolSignature" to edit.targetSymbolSignature,
+        "startOffset" to edit.startOffset,
+        "endOffset" to edit.endOffset,
+        "beforeText" to edit.beforeText,
+        "afterText" to edit.afterText,
+        "warnings" to edit.warnings,
     )
 
     /** 表示已经编码好的原始 JSON 片段，写出时不再做字符串转义。 */

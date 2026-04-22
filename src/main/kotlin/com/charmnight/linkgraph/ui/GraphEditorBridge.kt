@@ -86,12 +86,17 @@ class GraphEditorBridge(
             )
             is GraphEditorMessage.UndoLastDraftPatchApply -> projectService.undoLastDraftPatchApply()
             is GraphEditorMessage.RequestGenerationPlan -> projectService.requestGenerationPlanAsync()
+            is GraphEditorMessage.RequestGenerationPlanDiscussion -> projectService.requestGenerationPlanDiscussionAsync(
+                question = message.question,
+                focusItemId = message.focusItemId,
+            )
             is GraphEditorMessage.RequestCodeDrafts -> projectService.requestCodeDraftsAsync()
             is GraphEditorMessage.RequestCurrentEditorContextGraph -> projectService.loadCurrentEditorContextGraphAsync()
             is GraphEditorMessage.RequestAnalysisDisplayMode -> projectService.requestAnalysisDisplayMode(message.displayMode)
             is GraphEditorMessage.OpenSettings -> projectService.openSettings()
             is GraphEditorMessage.ApplyCodeDrafts -> projectService.applyCodeDrafts()
             is GraphEditorMessage.ApplySingleCodeDraft -> projectService.applySingleCodeDraft(message.draftId)
+            is GraphEditorMessage.OpenCodeDraftNativeDiff -> projectService.openCodeDraftNativeDiff(message.draftId)
             is GraphEditorMessage.RequestDraftNavigation -> projectService.requestDraftNavigation(message.targetPath)
         }
     }

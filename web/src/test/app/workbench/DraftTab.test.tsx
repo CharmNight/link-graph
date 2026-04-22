@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { DraftTab } from "../../../app/workbench/DraftTab";
 import type { DraftWorkbenchViewState } from "../../../app/types";
+import themeCss from "../../../app/theme.css?raw";
 
 function draftStateFixture(): DraftWorkbenchViewState {
   return {
@@ -63,7 +64,9 @@ describe("DraftTab", () => {
     expect(screen.getByRole("button", { name: "收起草稿变更项" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "收起草稿说明详情" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "草稿说明项" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "草稿验证" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "草稿条目：上传目录说明" })).not.toBeInTheDocument();
+    expect(screen.queryByText("草稿验证状态正在同步，当前先以草稿内容作为后续生成的唯一输入。")).not.toBeInTheDocument();
   });
 
   it("renders draft changes above draft notes", async () => {
@@ -249,6 +252,59 @@ describe("DraftTab", () => {
     expect(screen.getByText("OrderController.submit(java.lang.String)")).toBeInTheDocument();
   });
 
+  it("renders confirmed intent-only changes without fake before after placeholders and keeps compare entry available", () => {
+    render(
+      <DraftTab
+        state={{
+          ...draftStateFixture(),
+          selectedEntryId: "draft-change-1",
+          draftState: {
+            ...draftStateFixture().draftState,
+            draftChanges: [
+              {
+                ...draftStateFixture().draftState.draftChanges[0],
+                title: "收紧删除条件并补 filePath 存在校验",
+                beforeState: null,
+                afterState: null,
+                reason: "当前源码片段已直接锚定到本轮修改请求涉及的位置。",
+                impactSummary: "已具备直接源码证据，可继续进入精确代码 diff 生成。",
+                editScopes: [
+                  {
+                    scopeId: "scope-change-intent-1",
+                    targetNodeId: "flow-action:condition",
+                    filePath: "src/main/java/com/example/CommonController.java",
+                    language: "JAVA",
+                    symbolKind: "METHOD",
+                    symbolSignature: "CommonController.fileDownload(java.lang.String,java.lang.Boolean)",
+                    startLine: 42,
+                    endLine: 88,
+                    allowedChangeKinds: ["REPLACE_METHOD_BLOCK"],
+                    supportingFindingIds: ["finding-condition"],
+                  },
+                ],
+              },
+            ],
+          },
+        }}
+        onToggleCompare={vi.fn()}
+        onSelectEntry={vi.fn()}
+        onLocateChangeNode={vi.fn()}
+        onUnconfirmChange={vi.fn()}
+        onOpenNote={vi.fn()}
+        onLocateNoteNode={vi.fn()}
+        resolveNodeTitle={() => "CommonController.fileDownload"}
+      />,
+    );
+
+    expect(screen.getByText("变更意图")).toBeInTheDocument();
+    expect(screen.getByText("当前阶段已完成源码定位，但还没有生成具体代码 diff。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "切换链路对比" })).toBeEnabled();
+    expect(screen.getByText("当前条目已锁定变更范围，可切到链路对比查看受影响节点与关系。")).toBeInTheDocument();
+    expect(screen.queryByText("未提供")).not.toBeInTheDocument();
+    expect(screen.getByText("src/main/java/com/example/CommonController.java:42-88")).toBeInTheDocument();
+    expect(screen.getByText("CommonController.fileDownload(java.lang.String,java.lang.Boolean)")).toBeInTheDocument();
+  });
+
   it("shows the selected note detail so jumping into draft after recording a note is actionable", () => {
     render(
       <DraftTab
@@ -386,5 +442,47 @@ describe("DraftTab", () => {
     const nodePosition = container.textContent?.indexOf(nodeSection.textContent ?? "") ?? -1;
     expect(comparePosition).toBeGreaterThanOrEqual(0);
     expect(nodePosition).toBeGreaterThan(comparePosition);
+  });
+
+  it("keeps implementation suggestions on the page scroll instead of nesting a second scroll container", () => {
+    const { container } = render(
+      <DraftTab
+        state={draftStateFixture()}
+        implementationSuggestion={{
+          status: "FRESH",
+          source: "REMOTE",
+          summary: "这是一段足够长的实现建议摘要，用来验证实现建议区域会跟随外层工作台自然铺开，而不是自己出现内部滚动条。",
+          warnings: [
+            "这是一个较长的实现建议提示，用来验证实现建议区内部内容会自动换行。",
+          ],
+          items: [
+            {
+              id: "plan-item-1",
+              title: "处理一个特别长的建议标题，验证在工作台里不会撑出横向滚动",
+              description: "建议描述同样写长一点，确保布局在结果出现后保持自适应。",
+              risk: "MEDIUM",
+              targetPath: "src/main/java/com/example/really/long/path/UploadServiceImplementation.java",
+            },
+          ],
+          promptPreview: "prompt",
+          promptPreviewArtifactId: null,
+          generationPlanDraftVersion: 1,
+        }}
+        draftVersion={1}
+        onToggleCompare={vi.fn()}
+        onSelectEntry={vi.fn()}
+        onLocateChangeNode={vi.fn()}
+        onUnconfirmChange={vi.fn()}
+        onOpenNote={vi.fn()}
+        onLocateNoteNode={vi.fn()}
+        resolveNodeTitle={(nodeId) => nodeId}
+      />,
+    );
+
+    expect(container.querySelector(".workbench-draft-implementation-suggestion > .generation-plan-panel")).not.toBeNull();
+    expect(container.querySelector(".workbench-draft-implementation-suggestion .generation-plan-flow-body")).not.toBeNull();
+    expect(themeCss).toMatch(
+      /\.workbench-draft-implementation-suggestion\s*\{[^}]*min-width:\s*0;[^}]*align-self:\s*start;/s,
+    );
   });
 });

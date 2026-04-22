@@ -75,7 +75,7 @@ class GraphAuditPatchService(
                     userPrompt = promptPackage.userPrompt,
                 ),
                 scene = "问答",
-                schema = PATCH_RESULT_SCHEMA,
+                schema = LlmStructuredSchemas.PATCH_RESULT,
                 preferStreaming = remoteConnection.preset.capabilities.supportsStreaming,
                 onPreview = onPreview,
             ) { content ->
@@ -130,6 +130,11 @@ class GraphAuditPatchService(
             scopeNodes.size > 1 -> "当前框选范围（${scopeNodes.size} 个节点）"
             else -> "当前节点"
         }
+        val directSourceFindings = buildMockDirectSourceFindings(context)
+        val directSourceTargets = resolveMockDirectSourceTargets(context, scopeNodes, analysisGraph)
+        val canBuildCandidateChange = questionExplicitlyRequestsChange(question) &&
+            directSourceFindings.isNotEmpty() &&
+            directSourceTargets.isNotEmpty()
         val explanationAnswer = buildString {
             append("当前范围说明：").append(scopeLabel).append("。")
             if (scopeNodes.isNotEmpty()) {
@@ -141,7 +146,12 @@ class GraphAuditPatchService(
                 append("当前看到的调用/连接数量为 ").append(analysisGraph.edges.size).append("。")
             }
         }
-        val answer = if (explanationIntent && !explicitAuditIntent && !hasFallbackIntent) {
+        val answer = if (canBuildCandidateChange) {
+            """
+            当前轮结论：$scopeLabel 已直接观察到可落点的源码证据，已生成待确认变更。
+            处理建议：下一步应基于当前 edit scope 继续生成精确代码 diff，而不是退回风险线索。
+            """.trimIndent()
+        } else if (explanationIntent && !explicitAuditIntent && !hasFallbackIntent) {
             explanationAnswer
         } else if (hasFallbackIntent) {
             """
@@ -154,24 +164,44 @@ class GraphAuditPatchService(
             处理建议：先确认真实业务约束，拿到直接证据后再决定是否写入草稿层。
             """.trimIndent()
         }
-        val findingClaim = if (explanationIntent && !explicitAuditIntent && !hasFallbackIntent) {
-            "当前图里可以直接观察到该链路范围内的节点与连接关系。"
-        } else if (hasFallbackIntent) {
-            "当前上下文没有直接观察到默认兜底分支。"
+        val findings = if (canBuildCandidateChange) {
+            directSourceFindings
         } else {
-            "当前上下文没有直接观察到足以证明完整业务规则的证据。"
-        }
-        val findings = scopeNodes.ifEmpty { analysisGraph.nodes.take(1) }
-            .distinctBy(GraphNode::id)
-            .mapIndexed { index, node ->
-                ResultEvidenceFinding(
-                    id = "audit-finding-$index",
-                    claim = findingClaim,
-                    evidenceLevel = ResultEvidenceLevel.NOT_OBSERVED,
-                    references = listOf(ResultEvidenceReference(nodeId = node.id)),
-                )
+            val findingClaim = if (explanationIntent && !explicitAuditIntent && !hasFallbackIntent) {
+                "当前图里可以直接观察到该链路范围内的节点与连接关系。"
+            } else if (hasFallbackIntent) {
+                "当前上下文没有直接观察到默认兜底分支。"
+            } else {
+                "当前上下文没有直接观察到足以证明完整业务规则的证据。"
             }
-        val investigationThreads = if (explanationIntent && !explicitAuditIntent && !hasFallbackIntent) {
+            scopeNodes.ifEmpty { analysisGraph.nodes.take(1) }
+                .distinctBy(GraphNode::id)
+                .mapIndexed { index, node ->
+                    ResultEvidenceFinding(
+                        id = "audit-finding-$index",
+                        claim = findingClaim,
+                        evidenceLevel = ResultEvidenceLevel.NOT_OBSERVED,
+                        references = listOf(ResultEvidenceReference(nodeId = node.id)),
+                    )
+                }
+        }
+        val candidateChanges = if (canBuildCandidateChange) {
+            listOf(
+                CandidateDraftChange(
+                    changeId = buildMockCandidateChangeId(directSourceTargets),
+                    status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+                    title = buildMockCandidateTitle(question, directSourceTargets),
+                    targetNodeIds = directSourceTargets.map(GraphNode::id),
+                    reason = "当前源码片段已直接锚定到本轮修改请求涉及的位置。",
+                    impactSummary = "已具备直接源码证据，可继续进入精确代码 diff 生成。",
+                    claimType = "CODE_FACT",
+                    evidence = findings,
+                ),
+            )
+        } else {
+            emptyList()
+        }
+        val investigationThreads = if (canBuildCandidateChange || (explanationIntent && !explicitAuditIntent && !hasFallbackIntent)) {
             emptyList()
         } else {
             listOf(
@@ -207,6 +237,7 @@ class GraphAuditPatchService(
                 answer = answer,
                 promptPreview = prompt,
                 findings = findings,
+                candidateChanges = candidateChanges,
                 investigationThreads = investigationThreads,
                 sourceContext = context.sourceContext,
                 evidenceTrace = context.evidenceTrace,
@@ -215,6 +246,61 @@ class GraphAuditPatchService(
             session = session,
             sourceThreadId = sourceThreadId,
         )
+    }
+
+    private fun buildMockDirectSourceFindings(
+        context: GraphAuditContext,
+    ): List<ResultEvidenceFinding> {
+        return context.sourceContext
+            .distinctBy { snippet -> "${snippet.nodeId}:${snippet.filePath}:${snippet.startLine}:${snippet.endLine}" }
+            .mapIndexed { index, snippet ->
+                ResultEvidenceFinding(
+                    id = "audit-direct-source-$index",
+                    claim = "当前源码片段里已经直接定位到本轮修改请求涉及的实现位置。",
+                    evidenceLevel = ResultEvidenceLevel.DIRECT_SOURCE,
+                    references = listOf(
+                        ResultEvidenceReference(
+                            nodeId = snippet.nodeId,
+                            filePath = snippet.filePath,
+                            startLine = snippet.startLine,
+                            endLine = snippet.endLine,
+                        ),
+                    ),
+                )
+            }
+    }
+
+    private fun resolveMockDirectSourceTargets(
+        context: GraphAuditContext,
+        scopeNodes: List<GraphNode>,
+        analysisGraph: GraphDocument,
+    ): List<GraphNode> {
+        val nodeById = analysisGraph.nodes.associateBy(GraphNode::id)
+        val preferredNodeIds = (
+            scopeNodes.map(GraphNode::id) +
+                context.sourceContext.map(SourceSnippetContext::nodeId)
+            ).distinct()
+        return preferredNodeIds.mapNotNull(nodeById::get).ifEmpty {
+            analysisGraph.nodes.take(1)
+        }
+    }
+
+    private fun buildMockCandidateChangeId(targetNodes: List<GraphNode>): String {
+        val scopeKey = targetNodes.joinToString(",") { it.id }.ifBlank { "scope" }
+        return GraphNode.stableId(NodeType.DOC_PAGE, scopeKey, "mock-candidate-change")
+    }
+
+    private fun buildMockCandidateTitle(
+        question: String,
+        targetNodes: List<GraphNode>,
+    ): String {
+        val normalizedQuestion = question.trim().removeSuffix("。")
+        val trimmedQuestion = normalizedQuestion.removePrefix("请").trim()
+        if (trimmedQuestion.isNotBlank()) {
+            return trimmedQuestion.take(64)
+        }
+        val nodeLabel = targetNodes.joinToString(" / ") { node -> node.title.ifBlank { node.id } }
+        return "调整 $nodeLabel"
     }
 
     /** 把本轮回答和候选变更写入会话。 */
@@ -425,7 +511,7 @@ class GraphAuditPatchService(
                 filePath = filePath,
                 language = inferLanguage(filePath),
                 symbolKind = node.type.name,
-                symbolSignature = node.signature,
+                symbolSignature = editableSymbolSignature(node),
                 startOffset = snippet?.startOffset ?: node.metadata["source.startOffset"]?.toIntOrNull(),
                 endOffset = snippet?.endOffset ?: node.metadata["source.endOffset"]?.toIntOrNull(),
                 startLine = reference?.startLine ?: snippet?.startLine ?: node.metadata["source.startLine"]?.toIntOrNull(),
@@ -441,6 +527,16 @@ class GraphAuditPatchService(
             filePath.endsWith(".kt", ignoreCase = true) -> "KOTLIN"
             filePath.endsWith(".java", ignoreCase = true) -> "JAVA"
             else -> "TEXT"
+        }
+    }
+
+    private fun editableSymbolSignature(node: GraphNode): String? {
+        return when (node.type) {
+            NodeType.FLOW_SCOPE, NodeType.FLOW_ACTION, NodeType.TERMINAL ->
+                node.metadata["flow.ownerMethod"]
+                    ?: node.metadata["flow.anchorMethod"]
+                    ?: node.signature
+            else -> node.signature
         }
     }
 
@@ -582,22 +678,53 @@ class GraphAuditPatchService(
 
     private fun questionExplicitlyRequestsChange(question: String): Boolean {
         val normalizedQuestion = question.replace(Regex("\\s+"), "")
-        return normalizedQuestion.startsWith("改") ||
-            listOf(
-                "修改",
-                "调整",
-                "修正",
-                "修复",
-                "改成",
-                "改为",
-                "怎么改",
-                "如何改",
-                "请把",
-                "补充",
-                "加上",
-                "写成待确认变更",
-                "写成可编辑图",
-            ).any(normalizedQuestion::contains)
+        if (normalizedQuestion.isBlank()) {
+            return false
+        }
+        val imperativeMarkers = listOf(
+            "请把",
+            "请将",
+            "改成",
+            "改为",
+            "调整成",
+            "调整为",
+            "修成",
+            "修复成",
+            "补上",
+            "加上",
+            "怎么改",
+            "如何改",
+            "写成待确认变更",
+            "写成可编辑图",
+            "生成代码diff",
+            "生成diff",
+            "输出diff",
+            "给出diff",
+        )
+        if (imperativeMarkers.any(normalizedQuestion::contains)) {
+            return true
+        }
+        if (Regex("^(请)?(直接)?(修改|调整|修正|修复|改|修|补|加|将)").containsMatchIn(normalizedQuestion)) {
+            return true
+        }
+        val discussionMarkers = listOf(
+            "为什么",
+            "为何",
+            "是否",
+            "是不是",
+            "哪里",
+            "在哪",
+            "解释",
+            "介绍",
+            "讲解",
+            "确认",
+            "分析",
+            "说明",
+        )
+        if (discussionMarkers.any(normalizedQuestion::contains)) {
+            return false
+        }
+        return false
     }
 
     /** 把当前用户问题写入会话。 */
@@ -661,75 +788,6 @@ class GraphAuditPatchService(
                 )
             },
         )
-    }
-
-    private companion object {
-        /** 远程问答返回必须遵守的 JSON 结构。 */
-        private const val PATCH_RESULT_SCHEMA = """
-{
-  "answer": "问答回答",
-  "findings": [
-    {
-      "id": "稳定ID",
-      "claim": "一条必须可追溯的关键结论",
-      "evidenceLevel": "DIRECT_SOURCE|DIRECT_GRAPH|CALLSITE_ONLY|NOT_OBSERVED",
-      "references": [
-        {
-          "nodeId": "可选节点ID",
-          "filePath": "可选源码路径",
-          "startLine": 1,
-          "endLine": 3
-        }
-      ]
-    }
-  ],
-  "candidateChanges": [
-    {
-      "changeId": "稳定ID",
-      "status": "PENDING_CONFIRMATION|CONFIRMED|REJECTED|SUPERSEDED",
-      "claimType": "CODE_FACT|RISK_HINT|EXPLANATION_NOTE|STRUCTURAL_SUGGESTION",
-      "title": "候选变更标题",
-      "targetStepIds": [],
-      "targetNodeIds": [],
-      "beforeState": "修改前状态",
-      "afterState": "修改后状态",
-      "reason": "为什么建议这样改",
-      "impactSummary": "影响摘要",
-      "supportingFindingIds": ["必须对应 findings[*].id"],
-      "patchIntent": {
-        "mode": "UPDATE_EXISTING_NODE|INSERT_NEW_DECISION|INSERT_NEW_ACTION|ANNOTATION_ONLY",
-        "targetNodeId": "UPDATE_EXISTING_NODE|ANNOTATION_ONLY 时必填",
-        "attachEdgeId": "INSERT_NEW_DECISION|INSERT_NEW_ACTION 时必填，必须指向真实 CONTROL_FLOW 边 ID",
-        "falseBranchTargetNodeId": "INSERT_NEW_DECISION 时必填，明确 FALSE 分支真实落点"
-      },
-      "graphPatch": {
-        "summary": "可选；当已提供 patchIntent 时允许省略，由后端合成",
-        "operations": [],
-        "addedNodeIds": [],
-        "removedNodeIds": [],
-        "addedEdgeIds": [],
-        "removedEdgeIds": []
-      }
-    }
-  ],
-  "investigationThreads": [
-    {
-      "threadId": "稳定ID",
-      "status": "OPEN|PROMOTED|DISMISSED|BLOCKED|SUPERSEDED",
-      "title": "风险线索标题",
-      "targetStepIds": [],
-      "targetNodeIds": [],
-      "summary": "当前已经观察到什么",
-      "evidenceGap": "还缺什么证据",
-      "recommendedQuestion": "下一轮建议追问什么",
-      "claimType": "RISK_HINT",
-      "supportingFindingIds": ["必须对应 findings[*].id"]
-    }
-  ],
-  "warnings": ["可选警告"],
-  "patch": null
-}
-"""
     }
 
     private data class ClassifiedAuditOutputs(

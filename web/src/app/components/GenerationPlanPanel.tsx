@@ -1,45 +1,48 @@
-import type { AsyncRequestState, GenerationPlan, StageEligibilityDecision } from "../types";
+import type {
+  AsyncRequestState,
+  GenerationPlan,
+  GenerationPlanDiscussionSession,
+} from "../types";
 import { AsyncRequestBanner, resolveEffectiveRequestState } from "./AsyncRequestBanner";
-import { generationSourceLabel, normalizeWorkbenchWording, riskLabel } from "../labels";
+import { generationSourceLabel, riskLabel } from "../labels";
 import { ArtifactTextDisclosure } from "./ArtifactTextDisclosure";
 
 interface GenerationPlanPanelProps {
   plan?: GenerationPlan | null;
   requestState?: AsyncRequestState | null;
-  isRequesting?: boolean;
-  requestError?: string | null;
-  eligibilityDecision?: StageEligibilityDecision | null;
   draftVersion?: number | null;
   generationPlanDraftVersion?: number | null;
   resolveArtifactText?: (artifactId: string) => string | null;
   onRequestArtifact?: (artifactId: string) => void;
-  onOpenDraftWorkbench: () => void;
-  onOpenAuditWorkbench?: () => void;
   onRequestGeneratePlan: () => void;
+  discussionQuestionDraft?: string;
+  discussionSession?: GenerationPlanDiscussionSession | null;
+  discussionRequestState?: AsyncRequestState | null;
+  onDiscussionQuestionDraftChange?: (value: string) => void;
+  onSubmitDiscussion?: () => void;
 }
 
 export function GenerationPlanPanel({
   plan,
   requestState,
-  isRequesting = false,
-  requestError,
-  eligibilityDecision,
   draftVersion = null,
   generationPlanDraftVersion = null,
   resolveArtifactText,
   onRequestArtifact,
-  onOpenDraftWorkbench,
-  onOpenAuditWorkbench,
   onRequestGeneratePlan,
+  discussionQuestionDraft = "",
+  discussionSession = null,
+  discussionRequestState,
+  onDiscussionQuestionDraftChange,
+  onSubmitDiscussion,
 }: GenerationPlanPanelProps) {
-  const effectiveRequestState = resolveEffectiveRequestState(requestState, isRequesting, requestError);
+  const effectiveRequestState = resolveEffectiveRequestState(requestState);
   const planning = effectiveRequestState?.phase === "RUNNING";
   const planningError = effectiveRequestState?.phase === "FAILED" || effectiveRequestState?.phase === "TIMED_OUT"
     ? effectiveRequestState.errorMessage ?? null
     : null;
-  const awaitingEligibilityDecision = eligibilityDecision == null;
-  const canRequestPlan = eligibilityDecision?.allowed === true;
-  const blockedByRisk = Boolean(eligibilityDecision && !eligibilityDecision.allowed && eligibilityDecision.blockingThreadIds.length > 0);
+  const effectiveDiscussionRequestState = resolveEffectiveRequestState(discussionRequestState);
+  const discussing = effectiveDiscussionRequestState?.phase === "RUNNING";
   const stalePlan = plan != null
     && draftVersion != null
     && generationPlanDraftVersion != null
@@ -47,16 +50,18 @@ export function GenerationPlanPanel({
   const staleMessage = stalePlan
     ? `当前实现建议基于草稿 v${generationPlanDraftVersion} 生成，当前草稿已更新到 v${draftVersion}，请先刷新实现建议。`
     : null;
-  const primaryMessage = normalizeWorkbenchWording(planning
+  const primaryMessage = planning
     ? "正在生成实现建议，请稍候。"
     : planningError
       ? "当前请求失败，可查看上方状态并按需重试。"
-      : eligibilityDecision?.message
-        ?? "实现建议阶段准入状态尚未就绪。");
-  const secondaryMessage = normalizeWorkbenchWording(eligibilityDecision?.detailMessage
-    || (awaitingEligibilityDecision
-      ? "当前还没有收到实现建议阶段的统一准入决策，请先回到问答链路等待状态同步完成。"
-      : "本次实现建议会基于当前工作图，而不是历史事实快照。"));
+      : "实现建议会基于当前草稿快照生成。";
+  const discussionMessages = discussionSession?.messages ?? [];
+  const canSubmitDiscussion = Boolean(
+    plan
+      && !discussing
+      && onSubmitDiscussion
+      && discussionQuestionDraft.trim().length > 0,
+  );
 
   return (
     <section className="side-panel generation-plan-panel">
@@ -64,7 +69,7 @@ export function GenerationPlanPanel({
       <h2>先整理实现路径</h2>
       {generationPlanDraftVersion != null ? <p className="muted">基于草稿 v{generationPlanDraftVersion} 生成</p> : null}
 
-      <div className="side-panel-scroll-body m-scrollbar">
+      <div className="generation-plan-flow-body">
         {staleMessage ? (
           <article className="preview-card code-diff-stale-banner">
             <p className="muted">{staleMessage}</p>
@@ -75,27 +80,12 @@ export function GenerationPlanPanel({
           <article className="preview-card">
             <AsyncRequestBanner requestState={effectiveRequestState} />
             <p className="muted">{primaryMessage}</p>
-            <p className="muted">{secondaryMessage}</p>
+            {planning ? <p className="muted">实现建议会基于当前草稿快照生成。</p> : null}
             {!planning ? (
               <div className="panel-actions">
-                {canRequestPlan ? (
-                  <button type="button" className="primary-button" onClick={onRequestGeneratePlan}>
-                    {planningError ? "重试生成实现建议" : "生成实现建议"}
-                  </button>
-                ) : awaitingEligibilityDecision || blockedByRisk ? (
-                  <button
-                    type="button"
-                    className="primary-button"
-                    onClick={onOpenAuditWorkbench}
-                    disabled={!onOpenAuditWorkbench}
-                  >
-                    前往问答风险
-                  </button>
-                ) : (
-                  <button type="button" className="primary-button" onClick={onOpenDraftWorkbench}>
-                    前往草稿层
-                  </button>
-                )}
+                <button type="button" className="primary-button" onClick={onRequestGeneratePlan}>
+                  {planningError ? "重试生成实现建议" : "生成实现建议"}
+                </button>
               </div>
             ) : null}
           </article>
@@ -134,6 +124,46 @@ export function GenerationPlanPanel({
                 {item.targetPath ? <p className="muted">目标：{item.targetPath}</p> : null}
               </article>
             ))}
+
+            <article className="preview-card">
+              <div className="preview-head">
+                <strong>继续追问这份实现建议</strong>
+                {discussionSession?.focusItemId ? <span className="badge">聚焦 {discussionSession.focusItemId}</span> : null}
+              </div>
+              <p className="muted">如果你对某条建议有异议或需要展开理由，直接在这里追问，不再跳回问答页。</p>
+              <AsyncRequestBanner requestState={effectiveDiscussionRequestState} />
+              {discussionMessages.length > 0 ? (
+                <div className="warning-list">
+                  {discussionMessages.map((message) => (
+                    <div key={message.messageId}>
+                      <strong>{message.role === "USER" ? "你" : "建议问答"}</strong>
+                      <p className="muted">{message.content}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <label className="sr-only" htmlFor="generation-plan-discussion-question">
+                追问实现建议
+              </label>
+              <textarea
+                id="generation-plan-discussion-question"
+                className="prompt-preview"
+                rows={3}
+                value={discussionQuestionDraft}
+                placeholder="例如：为什么建议改这里？有没有更小的改法？"
+                onChange={(event) => onDiscussionQuestionDraftChange?.(event.target.value)}
+              />
+              <div className="panel-actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => onSubmitDiscussion?.()}
+                  disabled={!canSubmitDiscussion}
+                >
+                  追问建议
+                </button>
+              </div>
+            </article>
           </div>
         )}
       </div>

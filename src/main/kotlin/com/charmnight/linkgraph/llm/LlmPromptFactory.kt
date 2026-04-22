@@ -6,6 +6,7 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.workbench.AuditConversationSession
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
+import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession
 import com.charmnight.linkgraph.workbench.WorkbenchStep
 
 /**
@@ -104,6 +105,103 @@ class LlmPromptFactory {
         settings: LinkGraphSettingsState,
     ): String {
         return buildGenerationPromptPackage(snapshot, settings).userPrompt
+    }
+
+    /**
+     * 构造实现建议追问场景的提示词包。
+     */
+    fun buildGenerationPlanDiscussionPromptPackage(
+        context: GenerationContext,
+        plan: GenerationPlan,
+        question: String,
+        settings: LinkGraphSettingsState,
+        session: GenerationPlanDiscussionSession? = null,
+        focusItemId: String? = null,
+    ): LlmPromptPackage {
+        val nodes = context.graph.nodes.joinToString("\n") { nodeSummary(it) }.ifBlank { "- 无" }
+        val edges = context.graph.edges.joinToString("\n") { edgeSummary(it) }.ifBlank { "- 无" }
+        val confirmedChanges = context.confirmedChanges
+            .joinToString("\n") { change -> confirmedChangeSummary(change, context.graph) }
+            .ifBlank { "- 无" }
+        val planItems = plan.items.joinToString("\n") { item ->
+            buildString {
+                append("- ").append(item.id).append(" | ").append(item.title)
+                if (item.targetPath != null) {
+                    append(" | targetPath=").append(item.targetPath)
+                }
+                if (item.description.isNotBlank()) {
+                    append(" | description=").append(item.description)
+                }
+            }
+        }.ifBlank { "- 无" }
+        val history = session?.messages?.joinToString("\n") { message ->
+            "- [${message.role.name}] ${message.content}"
+        }?.ifBlank { "- 无" } ?: "- 无"
+        val focusItem = focusItemId
+            ?.let { targetId -> plan.items.firstOrNull { item -> item.id == targetId } }
+            ?.let { item ->
+                buildString {
+                    append(item.id).append(" | ").append(item.title)
+                    if (item.targetPath != null) {
+                        append(" | targetPath=").append(item.targetPath)
+                    }
+                    if (item.description.isNotBlank()) {
+                        append(" | description=").append(item.description)
+                    }
+                }
+            }
+            ?: "未指定"
+        val systemPrompt = """
+            你是 IDEA Link Graph 的实现建议追问助手。
+            你的职责是围绕“当前已经生成的实现建议”回答用户问题。
+            你只能解释、澄清、细化当前实现建议；不要把用户重新导向风险问答，也不要生成新的风险线程、候选变更或草稿 patch。
+            如果用户质疑某条建议，优先解释这条建议的原因、影响范围、可替代方案和边界，而不是回到链路问答取证。
+            回答必须明确：这是对当前实现建议的补充说明，不是新的风险裁决。
+            只允许返回 JSON，不允许输出 Markdown、解释性前言、后缀说明或代码块。
+            即使信息不足，也必须返回合法 JSON；warnings 使用 []。
+        """.trimIndent()
+        val userPrompt = """
+            你正在回答用户对“当前实现建议”的追问。
+            目标模型：${settings.sanitized().model}
+            用户问题：$question
+            当前聚焦条目：$focusItem
+
+            当前实现建议摘要：
+            ${plan.summary}
+
+            当前实现建议条目：
+            $planItems
+
+            已确认草稿变更：
+            $confirmedChanges
+
+            当前工作图节点：
+            $nodes
+
+            当前工作图连线：
+            $edges
+
+            历史追问：
+            $history
+
+            只回答这份实现建议本身：
+            - 可以解释为什么这样建议
+            - 可以指出更小改法、替代拆法、影响范围
+            - 不要让用户跳回风险问答
+            - 不要输出新的 investigationThreads、candidateChanges 或 patch
+
+            仅返回 JSON，结构如下：
+            {
+              "answer": "对当前实现建议的回答",
+              "focusItemId": "可选，当前聚焦的实现建议条目 ID",
+              "warnings": ["可选警告"]
+            }
+        """.trimIndent()
+        return LlmPromptPackage(
+            systemPrompt = systemPrompt,
+            userPrompt = userPrompt,
+            preview = promptPreview(systemPrompt, userPrompt),
+        )
     }
 
     /** 构造链路问答场景的提示词包。 */
@@ -474,26 +572,8 @@ class LlmPromptFactory {
         val diff = context.diff.entries.joinToString("\n") { entry -> diffSummary(entry) }.ifBlank { "- 无" }
         /** 计划项摘要。 */
         val planItems = plan?.items.orEmpty().joinToString("\n") { item ->
-            "- [${item.risk.name}] ${item.title} | target=${item.targetPath ?: "未指定"} | scopes=${item.editScopes.size} | ${item.description}"
+            "- [${item.risk.name}] ${item.title} | target=${item.targetPath ?: "未指定"} | ${item.description}"
         }.ifBlank { "- 无" }
-        /** 计划中带出的精确 scope 详情。 */
-        val planScopeDetails = plan?.items.orEmpty()
-            .flatMap { item ->
-                item.editScopes.map { scope ->
-                    buildString {
-                        append("- planItem=").append(item.id)
-                        append(" | scopeId=").append(scope.scopeId)
-                        append(" | filePath=").append(scope.filePath)
-                        append(" | symbolKind=").append(scope.symbolKind)
-                        scope.symbolSignature?.let { append(" | symbolSignature=").append(it) }
-                        scope.startLine?.let { append(" | startLine=").append(it) }
-                        scope.endLine?.let { append(" | endLine=").append(it) }
-                        append(" | allowedChangeKinds=").append(scope.allowedChangeKinds.joinToString(", "))
-                    }
-                }
-            }
-            .let { details -> details.ifEmpty { listOf("- 无") } }
-            .joinToString("\n")
         /** 已确认草稿变更携带的 scope 详情。 */
         val confirmedChangeScopeDetails = context.confirmedChanges
             .flatMap { change ->
@@ -562,9 +642,6 @@ class LlmPromptFactory {
 
             计划项：
             $planItems
-
-            已授权 edit scopes：
-            $planScopeDetails
 
             目标文件：
             ${plan?.items.orEmpty().mapNotNull { it.targetPath }.ifEmpty { listOf("未指定") }.joinToString("\n")}

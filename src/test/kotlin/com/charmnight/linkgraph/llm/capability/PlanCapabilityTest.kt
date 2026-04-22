@@ -31,15 +31,16 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.test.assertNull
 
 class PlanCapabilityTest : BasePlatformTestCase() {
-    fun testRejectsPlanGenerationWhenNoConfirmedIntentExists() {
+    fun testAllowsPlanGenerationWhenNoConfirmedIntentExists() {
         val capability = PlanCapability(
             defaultBudget = RunBudget(),
             planExecutor = { _, _, _ ->
                 GenerationPlan(
                     source = GenerationPlanSource.MOCK,
-                    summary = "should not happen",
+                    summary = "plan without confirmed intent",
                 )
             },
         )
@@ -62,8 +63,9 @@ class PlanCapabilityTest : BasePlatformTestCase() {
             ),
         )
 
-        assertEquals(null, result.output)
-        assertNotNull(result.finalState.failureReason)
+        assertEquals("plan without confirmed intent", result.output?.summary)
+        assertNull(result.finalState.failureReason)
+        assertEquals(5, result.finalState.stepIndex)
     }
 
     fun testGeneratesPlanAfterReadingConfirmedIntent() {

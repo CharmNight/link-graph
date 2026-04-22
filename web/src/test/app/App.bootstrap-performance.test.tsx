@@ -148,6 +148,18 @@ function buildDenseBootstrapState(nodeCount: number): LinkGraphBootstrapState {
   } as LinkGraphBootstrapState);
 }
 
+function dispatchBootstrapState(state: LinkGraphBootstrapState, revision = state.snapshotRevision ?? 1) {
+  window.dispatchEvent(
+    new CustomEvent("link-graph-bootstrap", {
+      detail: {
+        sessionId: "test-session-bootstrap-performance",
+        revision,
+        state,
+      },
+    }),
+  );
+}
+
 describe("App bootstrap performance", () => {
   beforeEach(() => {
     resetEditorTransportForTest();
@@ -192,17 +204,13 @@ describe("App bootstrap performance", () => {
     render(<App />);
 
     act(() => {
-      window.dispatchEvent(
-        new CustomEvent("link-graph-bootstrap", {
-          detail: {
-            ...structuredClone(bootstrapState),
-            operationFeedback: {
-              level: "INFO",
-              message: "只更新提示文案，不应再次整图布局。",
-            },
-          },
-        }),
-      );
+      dispatchBootstrapState({
+        ...structuredClone(bootstrapState),
+        operationFeedback: {
+          level: "INFO",
+          message: "只更新提示文案，不应再次整图布局。",
+        },
+      } as LinkGraphBootstrapState);
     });
 
     expect(window.linkGraphBridge?.graphChanged).not.toHaveBeenCalled();
@@ -214,41 +222,37 @@ describe("App bootstrap performance", () => {
     render(<App />);
 
     act(() => {
-      window.dispatchEvent(
-        new CustomEvent("link-graph-bootstrap", {
-          detail: materializeThreeViewDocuments({
-            ...structuredClone(bootstrapState),
-            workingGraph: {
-              nodes: [
-                ...structuredClone(bootstrapState.workingGraph.nodes),
-                {
-                  id: "working-note:submit-order",
-                  type: "DOC_PAGE",
-                  title: "仅存在于工作图的草稿说明",
-                  inputs: [],
-                  outputs: [],
-                  certainty: "PROVEN",
-                  bindingStatus: "BOUND",
-                  sourceTag: "DRAFT_AI",
-                },
-              ],
-              edges: [
-                ...structuredClone(bootstrapState.workingGraph.edges),
-                {
-                  id: "generates:submit-order->draft-note",
-                  type: "GENERATES",
-                  source: "method:submit-order",
-                  target: "working-note:submit-order",
-                  sourceTag: "DRAFT_AI",
-                },
-              ],
+      dispatchBootstrapState(materializeThreeViewDocuments({
+        ...structuredClone(bootstrapState),
+        workingGraph: {
+          nodes: [
+            ...structuredClone(bootstrapState.workingGraph.nodes),
+            {
+              id: "working-note:submit-order",
+              type: "DOC_PAGE",
+              title: "仅存在于工作图的草稿说明",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+              sourceTag: "DRAFT_AI",
             },
-            semanticRevision: 4,
-            layoutRevision: 1,
-            snapshotRevision: 2,
-          } as LinkGraphBootstrapState),
-        }),
-      );
+          ],
+          edges: [
+            ...structuredClone(bootstrapState.workingGraph.edges),
+            {
+              id: "generates:submit-order->draft-note",
+              type: "GENERATES",
+              source: "method:submit-order",
+              target: "working-note:submit-order",
+              sourceTag: "DRAFT_AI",
+            },
+          ],
+        },
+        semanticRevision: 4,
+        layoutRevision: 1,
+        snapshotRevision: 2,
+      } as LinkGraphBootstrapState));
     });
 
     expect(window.linkGraphBridge?.graphChanged).not.toHaveBeenCalled();
@@ -274,41 +278,37 @@ describe("App bootstrap performance", () => {
     render(<App />);
 
     act(() => {
-      window.dispatchEvent(
-        new CustomEvent("link-graph-bootstrap", {
-          detail: materializeThreeViewDocuments({
-            ...structuredClone(revisionState),
-            visibleGraph: {
-              nodes: [
-                {
-                  ...structuredClone(revisionState.visibleGraph.nodes[0]),
-                  position: { x: 640, y: 320 },
-                },
-                structuredClone(revisionState.visibleGraph.nodes[1]),
-              ],
-              edges: structuredClone(revisionState.visibleGraph.edges),
+      dispatchBootstrapState(materializeThreeViewDocuments({
+        ...structuredClone(revisionState),
+        visibleGraph: {
+          nodes: [
+            {
+              ...structuredClone(revisionState.visibleGraph.nodes[0]),
+              position: { x: 640, y: 320 },
             },
-            workingGraph: {
-              nodes: [
-                {
-                  ...structuredClone(revisionState.workingGraph.nodes[0]),
-                  position: { x: 640, y: 320 },
-                },
-                structuredClone(revisionState.workingGraph.nodes[1]),
-              ],
-              edges: structuredClone(revisionState.workingGraph.edges),
+            structuredClone(revisionState.visibleGraph.nodes[1]),
+          ],
+          edges: structuredClone(revisionState.visibleGraph.edges),
+        },
+        workingGraph: {
+          nodes: [
+            {
+              ...structuredClone(revisionState.workingGraph.nodes[0]),
+              position: { x: 640, y: 320 },
             },
-            layoutState: {
-              positions: {
-                "method:submit-order": { x: 640, y: 320 },
-              },
-            },
-            semanticRevision: 3,
-            layoutRevision: 2,
-            snapshotRevision: 5,
-          } as LinkGraphBootstrapState),
-        }),
-      );
+            structuredClone(revisionState.workingGraph.nodes[1]),
+          ],
+          edges: structuredClone(revisionState.workingGraph.edges),
+        },
+        layoutState: {
+          positions: {
+            "method:submit-order": { x: 640, y: 320 },
+          },
+        },
+        semanticRevision: 3,
+        layoutRevision: 2,
+        snapshotRevision: 5,
+      } as LinkGraphBootstrapState));
     });
 
     expect(window.linkGraphBridge?.graphChanged).not.toHaveBeenCalled();
@@ -349,18 +349,14 @@ describe("App bootstrap performance", () => {
     metadataReads = 0;
 
     act(() => {
-      window.dispatchEvent(
-        new CustomEvent("link-graph-bootstrap", {
-          detail: {
-            ...trackedBootstrapState,
-            operationFeedback: {
-              level: "INFO",
-              message: "只刷新反馈，不应再触发语义图签名读取。",
-            },
-            snapshotRevision: 5,
-          },
-        }),
-      );
+      dispatchBootstrapState({
+        ...trackedBootstrapState,
+        operationFeedback: {
+          level: "INFO",
+          message: "只刷新反馈，不应再触发语义图签名读取。",
+        },
+        snapshotRevision: 5,
+      });
     });
 
     expect(metadataReads).toBe(0);
@@ -403,26 +399,22 @@ describe("App bootstrap performance", () => {
     });
 
     act(() => {
-      window.dispatchEvent(
-        new CustomEvent("link-graph-bootstrap", {
-          detail: {
-            ...buildDenseBootstrapState(120),
-            snapshotRevision: 2,
-            operationFeedback: {
-              level: "SUCCESS",
-              message: "这个文案不应该被 probe 用来判断源码导航完成。",
-            },
-            sourceNavigationState: {
-              nodeId: "method:dense-0",
-              phase: "SUCCEEDED",
-              result: "OPENED",
-              targetPath: "src/main/java/com/example/DenseController.java",
-              line: 1,
-              column: 1,
-            },
-          } as unknown as LinkGraphBootstrapState,
-        }),
-      );
+      dispatchBootstrapState({
+        ...buildDenseBootstrapState(120),
+        snapshotRevision: 2,
+        operationFeedback: {
+          level: "SUCCESS",
+          message: "这个文案不应该被 probe 用来判断源码导航完成。",
+        },
+        sourceNavigationState: {
+          nodeId: "method:dense-0",
+          phase: "SUCCEEDED",
+          result: "OPENED",
+          targetPath: "src/main/java/com/example/DenseController.java",
+          line: 1,
+          column: 1,
+        },
+      } as unknown as LinkGraphBootstrapState);
     });
 
     act(() => {

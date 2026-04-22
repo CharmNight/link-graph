@@ -74,7 +74,12 @@ describe("DiffPanel", () => {
         factGraph={{ nodes: [], edges: [] }}
         designBaseline={{ nodes: [], edges: [] }}
         result={null}
-        requestError="差异问答失败：HTTP 503"
+        requestState={{
+          phase: "FAILED",
+          scene: "差异问答",
+          statusMessage: "差异问答失败",
+          errorMessage: "差异问答失败：HTTP 503",
+        }}
         onSelectItem={() => undefined}
         onRequestReview={(question) => questions.push(question)}
         onOpenPatchPreview={() => undefined}

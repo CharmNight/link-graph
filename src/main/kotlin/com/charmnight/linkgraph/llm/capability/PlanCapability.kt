@@ -156,19 +156,19 @@ internal class PlanCapability(
         @Suppress("UNCHECKED_CAST")
         val artifactRefs = result.payload["artifactRefs"] as? List<com.charmnight.linkgraph.llm.artifact.ArtifactRef> ?: emptyList()
         if (confirmedCount <= 0) {
-            return AgentStepExecutionResult.fail(
+            return AgentStepExecutionResult.continueWith(
                 state.copy(
-                    phase = AgentRunPhase.FAILED,
+                    phase = AgentRunPhase.RUNNING,
                     budget = state.budget.recordStep(),
                     stepIndex = state.stepIndex + 1,
-                    failureReason = AgentRunFailureReason.EVIDENCE_INSUFFICIENT,
+                    artifactRefs = state.artifactRefs + artifactRefs,
                     stepRecords = state.stepRecords + AgentStepRecord(
                         stepIndex = state.stepIndex,
-                        phase = AgentRunPhase.FAILED,
-                        summary = "read-confirmed-intent",
+                        phase = AgentRunPhase.RUNNING,
+                        summary = "skip-confirmed-intent",
                         toolName = result.toolName,
                     ),
-                    lastModelOutput = "当前没有已确认正式意图，禁止生成计划。",
+                    lastModelOutput = "当前没有已确认正式意图，计划将直接基于当前草稿快照和图差异生成。",
                 ),
             )
         }

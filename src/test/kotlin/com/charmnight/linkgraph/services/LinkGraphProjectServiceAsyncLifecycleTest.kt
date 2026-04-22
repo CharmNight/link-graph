@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
-    fun testGenerationPlanAsyncRejectsWhenNoConfirmedDraftChangesExist() {
+    fun testGenerationPlanAsyncAllowsRequestsWhenNoConfirmedDraftChangesExist() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraphProjection(
             visibleGraph = sampleGraph(),
@@ -27,16 +27,25 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
         )
 
         val service = project.getService(LinkGraphProjectService::class.java)
+        service.testEffectiveGenerationSettingsOverride = LinkGraphSettingsState(
+            llmEnabled = true,
+            provider = "MOCK",
+            timeoutSeconds = 45,
+        )
         service.requestGenerationPlanAsync()
 
         val snapshot = waitForSnapshot { current ->
-            current.generationPlanRequestState.phase == GraphEditorStateService.AsyncRequestPhase.FAILED
+            current.generationPlanRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
         }
 
-        assertEquals(GraphEditorStateService.AsyncRequestPhase.FAILED, snapshot.generationPlanRequestState.phase)
-        assertEquals("实现计划", snapshot.generationPlanRequestState.scene)
-        assertTrue(snapshot.generationPlanRequestState.errorMessage?.contains("请先确认至少一条草稿变更") == true)
-        assertEquals(GraphEditorStateService.OperationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
+        assertEquals(GraphEditorStateService.AsyncRequestPhase.SUCCEEDED, snapshot.generationPlanRequestState.phase)
+        assertEquals("实现计划生成", snapshot.generationPlanRequestState.scene)
+        assertEquals(
+            GraphEditorStateService.AsyncRequestExecutionMode.LOCAL_RULE,
+            snapshot.generationPlanRequestState.executionMode,
+        )
+        assertNotNull(snapshot.generationPlan)
+        assertEquals(GraphEditorStateService.OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
     }
 
     fun testCodeDraftAsyncRejectsWhenNoConfirmedDraftChangesExist() {

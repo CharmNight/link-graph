@@ -11,7 +11,7 @@ function Harness({
 }: {
   result: BridgeInvocationResult;
 }) {
-  const [requestState, setRequestState] = useState<AsyncRequestState | null>(null);
+  const [requestState] = useState<AsyncRequestState | null>(null);
   const [operationFeedback, setOperationFeedback] = useState<OperationFeedback | null>(null);
   const [notice, setNotice] = useState<{ title: string; message: string; detailMessage?: string | null } | null>(
     null,
@@ -27,8 +27,6 @@ function Harness({
         type="button"
         onClick={() => {
           controller.submitAsyncBridgeCommand("源码跳转", () => result, {
-            applySubmittedRequestState: setRequestState,
-            applyRejectedRequestState: setRequestState,
             successFeedback: {
               level: "INFO",
               message: "正在定位源码：OrderController.submit",
@@ -60,18 +58,18 @@ function Harness({
 }
 
 describe("useBridgeCommandController", () => {
-  it("records a submitted async request only after the bridge accepts the command", async () => {
+  it("does not locally advance async business state after the bridge accepts the command", async () => {
     const user = userEvent.setup();
     render(<Harness result={{ ok: true }} />);
 
     await user.click(screen.getByRole("button", { name: "提交异步命令" }));
 
-    expect(screen.getByTestId("request-phase").textContent).toBe("RUNNING");
+    expect(screen.getByTestId("request-phase").textContent).toBe("NONE");
     expect(screen.getByTestId("feedback-message").textContent).toBe("正在定位源码：OrderController.submit");
     expect(screen.getByTestId("notice-title").textContent).toBe("NONE");
   });
 
-  it("publishes failure feedback instead of fake success when the bridge rejects the command", async () => {
+  it("does not locally write async rejection into business state and surfaces the bridge failure notice instead", async () => {
     const user = userEvent.setup();
     render(
       <Harness
@@ -85,7 +83,7 @@ describe("useBridgeCommandController", () => {
 
     await user.click(screen.getByRole("button", { name: "提交异步命令" }));
 
-    expect(screen.getByTestId("request-phase").textContent).toBe("FAILED");
+    expect(screen.getByTestId("request-phase").textContent).toBe("NONE");
     expect(screen.getByTestId("feedback-message").textContent).toBe("IDE bridge 尚未就绪，本次请求没有发出。");
     expect(screen.getByTestId("notice-title").textContent).toBe("源码跳转请求未发出");
     expect(screen.queryByText("正在定位源码：OrderController.submit")).not.toBeInTheDocument();

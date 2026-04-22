@@ -9,10 +9,11 @@ class CodeEditScopeResolver {
     fun resolveScope(
         operation: CodeEditOperation,
         scopes: List<EditScope>,
+        projectBasePath: String? = null,
     ): EditScope? {
-        val normalizedPath = operation.filePath.normalizeSeparators()
         return scopes.firstOrNull { scope ->
-            scope.scopeId == operation.scopeId && scope.filePath.normalizeSeparators() == normalizedPath
+            scope.scopeId == operation.scopeId &&
+                pathsReferToSameFile(scope.filePath, operation.filePath, projectBasePath)
         }
     }
 
@@ -32,4 +33,17 @@ class CodeEditScopeResolver {
     }
 
     private fun String.normalizeSeparators(): String = replace('\\', '/')
+
+    private fun pathsReferToSameFile(
+        left: String,
+        right: String,
+        projectBasePath: String?,
+    ): Boolean {
+        val leftResolved = ProjectPathNormalizer.resolvePath(left, projectBasePath)
+        val rightResolved = ProjectPathNormalizer.resolvePath(right, projectBasePath)
+        if (leftResolved != null && rightResolved != null) {
+            return leftResolved == rightResolved
+        }
+        return left.normalizeSeparators() == right.normalizeSeparators()
+    }
 }

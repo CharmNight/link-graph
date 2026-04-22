@@ -27,17 +27,173 @@ import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
+import com.intellij.diff.merge.MergeRequest
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.nio.file.Files
+import java.nio.file.Paths
 import kotlin.test.assertFalse
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
+    fun testOpenCodeDraftNativeDiffUsesWritableMergeRequest() {
+        val projectBasePath = project.basePath?.toString() ?: throw AssertionError("project base path unavailable")
+        val targetPath = "build/tests/native-merge/CommonController.java"
+        val targetFile = Paths.get(projectBasePath, targetPath)
+        Files.createDirectories(targetFile.parent)
+        Files.writeString(
+            targetFile,
+            """
+                package com.example;
+
+                public class CommonController {
+                    public void fileDownload(String fileName, Boolean delete) {
+                        String realFileName = System.currentTimeMillis() + fileName.substring(fileName.indexOf("_") + 1);
+                        String filePath = "/tmp/" + realFileName;
+                        FileUtils.writeBytes(filePath, response.getOutputStream());
+                        if (delete) {
+                            FileUtils.deleteFile(filePath);
+                        }
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        stateService.loadGraph(sampleGraph(), "currentMethod")
+        stateService.markGeneratedCodeDrafts(
+            drafts = listOf(
+                GeneratedCodeDraft(
+                    id = "draft-1",
+                    sourceNodeId = "scope:file-download-if",
+                    title = "rewrite delete guard",
+                    targetPath = targetPath,
+                    editOperations = listOf(
+                        CodeEditOperation(
+                            operationId = "op-1",
+                            filePath = targetPath,
+                            scopeId = "scope-file-download-if",
+                            kind = CodeEditOperationKind.REPLACE_METHOD_BODY,
+                            payload = """{
+                                if (Boolean.TRUE.equals(delete)) {
+                                    FileUtils.deleteFile(filePath);
+                                }
+                            }""".trimIndent(),
+                        ),
+                    ),
+                    editScopes = listOf(
+                        EditScope(
+                            scopeId = "scope-file-download-if",
+                            targetNodeId = "scope:file-download-if",
+                            filePath = targetPath,
+                            language = "JAVA",
+                            symbolKind = "FLOW_SCOPE",
+                            symbolSignature = "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void",
+                            startLine = 7,
+                            endLine = 9,
+                            allowedChangeKinds = listOf("REPLACE_METHOD_BODY"),
+                        ),
+                    ),
+                ),
+            ),
+            warnings = emptyList(),
+            source = LlmResultSource.MOCK,
+            promptPreview = null,
+        )
+        val mergeRequests = mutableListOf<MergeRequest>()
+        val session = ProjectEditorSession(stateService) {}
+        val workflow = GenerationWorkflow(
+            project = project,
+            session = session,
+            planningContextFactory = PlanningContextFactory(
+                graphDiffer = GraphDiffer(),
+                syncPreviewPlanner = SyncPreviewPlanner(),
+                graphGenerationService = GraphGenerationService(),
+                settingsProvider = { LinkGraphSettingsState() },
+            ),
+            graphGenerationService = GraphGenerationService(),
+            codeGenerationService = CodeGenerationService(),
+            codeDraftWriterService = CodeDraftWriterService(project),
+            sourceNavigationServiceProvider = { project.getService(SourceNavigationService::class.java) },
+            settingsProvider = { LinkGraphSettingsState() },
+            asyncRequestLifecycle = AsyncRequestLifecycleSupport(
+                project = project,
+                session = session,
+                timeoutOverrideProvider = { 500L },
+            ),
+            logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
+            showCodeDraftMergeRequest = { _, request ->
+                mergeRequests += request
+            },
+        )
+
+        workflow.openCodeDraftNativeDiff("draft-1")
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+
+        assertEquals(1, mergeRequests.size)
+        assertNotNull(mergeRequests.single())
+    }
+
+    fun testApplySingleCodeDraftWritesFileAndPublishesFeedback() {
+        val projectBasePath = project.basePath?.toString() ?: throw AssertionError("project base path unavailable")
+        val targetPath = "build/tests/apply-single-draft/RuntimeChain.java"
+        val targetFile = Paths.get(projectBasePath, targetPath)
+        Files.createDirectories(targetFile.parent)
+
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        stateService.loadGraph(sampleGraph(), "currentMethod")
+        stateService.markGeneratedCodeDrafts(
+            drafts = listOf(
+                GeneratedCodeDraft(
+                    id = "draft-1",
+                    sourceNodeId = "method:file-download",
+                    title = "RuntimeChain.java",
+                    targetPath = targetPath,
+                    content = "class RuntimeChain {}",
+                ),
+            ),
+            warnings = emptyList(),
+            source = LlmResultSource.MOCK,
+            promptPreview = null,
+        )
+        val session = ProjectEditorSession(stateService) {}
+        val workflow = GenerationWorkflow(
+            project = project,
+            session = session,
+            planningContextFactory = PlanningContextFactory(
+                graphDiffer = GraphDiffer(),
+                syncPreviewPlanner = SyncPreviewPlanner(),
+                graphGenerationService = GraphGenerationService(),
+                settingsProvider = { LinkGraphSettingsState() },
+            ),
+            graphGenerationService = GraphGenerationService(),
+            codeGenerationService = CodeGenerationService(),
+            codeDraftWriterService = CodeDraftWriterService(project),
+            sourceNavigationServiceProvider = { project.getService(SourceNavigationService::class.java) },
+            settingsProvider = { LinkGraphSettingsState() },
+            asyncRequestLifecycle = AsyncRequestLifecycleSupport(
+                project = project,
+                session = session,
+                timeoutOverrideProvider = { 500L },
+            ),
+            logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
+        )
+
+        workflow.applySingleCodeDraft("draft-1")
+
+        val snapshot = stateService.snapshot()
+        assertTrue(snapshot.generatedCodeDraftWriteReport?.writtenFiles?.contains(targetPath) == true)
+        assertEquals(GraphEditorStateService.OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
+        assertEquals("代码草稿已写入当前文件。", snapshot.operationFeedback?.message)
+        assertTrue(Files.exists(targetFile))
+        assertEquals("class RuntimeChain {}", Files.readString(targetFile))
+    }
+
     fun testRequestGenerationPlanAsyncRoutesThroughRuntime() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraph(sampleGraph(), "currentMethod")
@@ -70,7 +226,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
                 session = session,
-                timeoutOverrideProvider = { 500L },
+                timeoutOverrideProvider = { 3_000L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
             planCapabilityFactory = {
@@ -283,8 +439,159 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             it.codeDraftRequestState.phase == GraphEditorStateService.AsyncRequestPhase.FAILED
         }
 
-        assertTrue(snapshot.codeDraftRequestState.errorMessage?.contains("runtime 未返回结果") == true)
+        assertTrue(
+            snapshot.codeDraftRequestState.errorMessage?.contains("证据不足") == true ||
+                snapshot.codeDraftRequestState.errorMessage?.contains("本地安全校验") == true,
+        )
         assertTrue(snapshot.codeDraftRequestState.detailMessage?.contains("failureReason=EVIDENCE_INSUFFICIENT") == true)
+    }
+
+    fun testRequestCodeDraftsAsyncPreparesExistingFileDraftForFlowScopeUsingOwnerMethodSignature() {
+        val targetPath = "src/main/java/com/ruoyi/web/controller/common/CommonController.java"
+        val targetFile = java.nio.file.Path.of(requireNotNull(project.basePath)).resolve(targetPath)
+        Files.createDirectories(targetFile.parent)
+        Files.writeString(
+            targetFile,
+            """
+            package com.ruoyi.web.controller.common;
+
+            import javax.servlet.http.HttpServletRequest;
+            import javax.servlet.http.HttpServletResponse;
+
+            public class CommonController {
+                public void fileDownload(
+                    String fileName,
+                    Boolean delete,
+                    HttpServletResponse response,
+                    HttpServletRequest request
+                ) {
+                    if (delete) {
+                        response.setContentType("application/octet-stream");
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        val scope = EditScope(
+            scopeId = "scope-file-download-if",
+            targetNodeId = "scope:file-download-if",
+            filePath = targetPath,
+            language = "JAVA",
+            symbolKind = "FLOW_SCOPE",
+            symbolSignature = "com.ruoyi.web.controller.common.CommonController.fileDownload(java.lang.String,java.lang.Boolean,javax.servlet.http.HttpServletResponse,javax.servlet.http.HttpServletRequest):void",
+            startLine = 11,
+            endLine = 13,
+            allowedChangeKinds = listOf("REPLACE_METHOD_BODY"),
+        )
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        stateService.loadGraph(
+            GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:file-download",
+                        type = NodeType.METHOD,
+                        title = "CommonController.fileDownload",
+                        signature = "com.ruoyi.web.controller.common.CommonController.fileDownload(java.lang.String,java.lang.Boolean,javax.servlet.http.HttpServletResponse,javax.servlet.http.HttpServletRequest):void",
+                        sourceTag = GraphSourceTag.FACT,
+                        metadata = mapOf(
+                            "source.filePath" to targetPath,
+                            "source.startLine" to "6",
+                            "source.endLine" to "15",
+                        ),
+                    ),
+                    GraphNode(
+                        id = "scope:file-download-if",
+                        type = NodeType.FLOW_SCOPE,
+                        title = "if (delete)",
+                        sourceTag = GraphSourceTag.FACT,
+                        metadata = mapOf(
+                            "flow.ownerMethod" to "com.ruoyi.web.controller.common.CommonController.fileDownload(java.lang.String,java.lang.Boolean,javax.servlet.http.HttpServletResponse,javax.servlet.http.HttpServletRequest):void",
+                            "source.filePath" to targetPath,
+                            "source.startLine" to "11",
+                            "source.endLine" to "13",
+                        ),
+                    ),
+                ),
+            ),
+            "currentMethod",
+        )
+        stateService.markDraftWorkbenchState(
+            DraftWorkbenchState(
+                draftChanges = listOf(
+                    DraftWorkbenchEntry(
+                        entryId = "draft-1",
+                        kind = DraftEntryKind.CHANGE,
+                        title = "收紧删除条件",
+                        editScopes = listOf(scope),
+                    ),
+                ),
+            ),
+        )
+        val session = ProjectEditorSession(stateService) {}
+        val workflow = GenerationWorkflow(
+            project = project,
+            session = session,
+            planningContextFactory = PlanningContextFactory(
+                graphDiffer = GraphDiffer(),
+                syncPreviewPlanner = SyncPreviewPlanner(),
+                graphGenerationService = GraphGenerationService(),
+                settingsProvider = { LinkGraphSettingsState() },
+            ),
+            graphGenerationService = GraphGenerationService(),
+            codeGenerationService = CodeGenerationService(),
+            codeDraftWriterService = CodeDraftWriterService(project),
+            sourceNavigationServiceProvider = { project.getService(SourceNavigationService::class.java) },
+            settingsProvider = { LinkGraphSettingsState() },
+            asyncRequestLifecycle = AsyncRequestLifecycleSupport(
+                project = project,
+                session = session,
+                timeoutOverrideProvider = { 500L },
+            ),
+            logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
+            codegenCapabilityFactory = {
+                CodegenCapability(
+                    project = project,
+                    codegenExecutor = { _, _, _ ->
+                        CodeGenerationResult(
+                            drafts = listOf(
+                                GeneratedCodeDraft(
+                                    id = "draft-1",
+                                    sourceNodeId = "scope:file-download-if",
+                                    title = "rewrite delete guard",
+                                    targetPath = targetPath,
+                                    editOperations = listOf(
+                                        CodeEditOperation(
+                                            operationId = "op-1",
+                                            filePath = targetPath,
+                                            scopeId = "scope-file-download-if",
+                                            kind = CodeEditOperationKind.REPLACE_METHOD_BODY,
+                                            payload = """{
+                                                if (Boolean.TRUE.equals(delete)) {
+                                                    response.setContentType("application/octet-stream");
+                                                }
+                                            }""".trimIndent(),
+                                        ),
+                                    ),
+                                    editScopes = listOf(scope),
+                                ),
+                            ),
+                        )
+                    },
+                )
+            },
+        )
+
+        workflow.requestCodeDraftsAsync()
+
+        val snapshot = waitForSnapshot(stateService) {
+            it.codeDraftRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
+        }
+
+        val draft = snapshot.generatedCodeDrafts.single()
+        assertEquals("scope:file-download-if", draft.sourceNodeId)
+        assertTrue(draft.preparedEdits.isNotEmpty())
+        assertTrue(draft.preparedEdits.single().afterText.contains("Boolean.TRUE.equals(delete)"))
+        assertFalse(draft.warnings.any { warning -> warning.contains("越界符号改写") })
     }
 
     fun testRequestCodeDraftsAsyncRejectsExistingFileEditWhenEditScopeIsInvalid() {
@@ -379,7 +686,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             it.codeDraftRequestState.phase == GraphEditorStateService.AsyncRequestPhase.FAILED
         }
 
-        assertTrue(snapshot.codeDraftRequestState.errorMessage?.contains("runtime 未返回结果") == true)
+        assertTrue(snapshot.codeDraftRequestState.errorMessage?.contains("本地安全校验") == true)
         assertTrue(snapshot.codeDraftRequestState.detailMessage?.contains("failureReason=EVIDENCE_INSUFFICIENT") == true)
     }
 
@@ -497,7 +804,96 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         }
 
         assertFalse(executorInvoked)
-        assertTrue(snapshot.codeDraftRequestState.errorMessage?.contains("runtime 未返回结果") == true)
+        assertTrue(snapshot.codeDraftRequestState.errorMessage?.contains("本地安全校验") == true)
+        assertTrue(snapshot.codeDraftRequestState.detailMessage?.contains("failureReason=EVIDENCE_INSUFFICIENT") == true)
+    }
+
+    fun testRequestCodeDraftsAsyncReportsAuthoritativeValidationFailureInsteadOfRuntimeMissingResult() {
+        val sourceFile = Files.createTempFile("generation-workflow-validation-message", ".java")
+        Files.writeString(sourceFile, "class UploadController { void uploadFile(String file) {} }")
+        val scope = EditScope(
+            scopeId = "scope-upload",
+            targetNodeId = "method:upload-file",
+            filePath = sourceFile.toString(),
+            language = "JAVA",
+            symbolKind = "METHOD",
+            symbolSignature = "UploadController.uploadFile(java.lang.String):void",
+            startLine = 1,
+            endLine = 1,
+            allowedChangeKinds = listOf("REPLACE_METHOD_BODY"),
+        )
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        stateService.loadGraph(sampleGraph(), "currentMethod")
+        stateService.markDraftWorkbenchState(
+            DraftWorkbenchState(
+                draftChanges = listOf(
+                    DraftWorkbenchEntry(
+                        entryId = "draft-1",
+                        kind = DraftEntryKind.CHANGE,
+                        title = "修改上传逻辑",
+                        editScopes = listOf(scope),
+                    ),
+                ),
+            ),
+        )
+        val session = ProjectEditorSession(stateService) {}
+        val workflow = GenerationWorkflow(
+            project = project,
+            session = session,
+            planningContextFactory = PlanningContextFactory(
+                graphDiffer = GraphDiffer(),
+                syncPreviewPlanner = SyncPreviewPlanner(),
+                graphGenerationService = GraphGenerationService(),
+                settingsProvider = { LinkGraphSettingsState() },
+            ),
+            graphGenerationService = GraphGenerationService(),
+            codeGenerationService = CodeGenerationService(),
+            codeDraftWriterService = CodeDraftWriterService(project),
+            sourceNavigationServiceProvider = { project.getService(SourceNavigationService::class.java) },
+            settingsProvider = { LinkGraphSettingsState() },
+            asyncRequestLifecycle = AsyncRequestLifecycleSupport(
+                project = project,
+                session = session,
+                timeoutOverrideProvider = { 500L },
+            ),
+            logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
+            codegenCapabilityFactory = {
+                CodegenCapability(
+                    project = project,
+                    codegenExecutor = { _, _, _ ->
+                        CodeGenerationResult(
+                            drafts = listOf(
+                                GeneratedCodeDraft(
+                                    id = "draft-1",
+                                    sourceNodeId = "method:upload-file",
+                                    title = "rewrite upload",
+                                    targetPath = sourceFile.toString(),
+                                    editOperations = listOf(
+                                        CodeEditOperation(
+                                            operationId = "op-1",
+                                            filePath = sourceFile.toString(),
+                                            scopeId = "scope-upload",
+                                            kind = CodeEditOperationKind.ADD_FIELD,
+                                            payload = "private String extra;",
+                                        ),
+                                    ),
+                                    editScopes = listOf(scope),
+                                ),
+                            ),
+                        )
+                    },
+                )
+            },
+        )
+
+        workflow.requestCodeDraftsAsync()
+
+        val snapshot = waitForSnapshot(stateService) {
+            it.codeDraftRequestState.phase == GraphEditorStateService.AsyncRequestPhase.FAILED
+        }
+
+        assertFalse(snapshot.codeDraftRequestState.errorMessage?.contains("runtime 未返回结果") == true)
+        assertTrue(snapshot.codeDraftRequestState.errorMessage?.contains("本地安全校验") == true)
         assertTrue(snapshot.codeDraftRequestState.detailMessage?.contains("failureReason=EVIDENCE_INSUFFICIENT") == true)
     }
 

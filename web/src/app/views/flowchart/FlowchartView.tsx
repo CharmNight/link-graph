@@ -18,6 +18,7 @@ import {
 
 interface FlowchartViewProps extends ViewStageProps {
   view: FlowchartViewDocument;
+  layoutView?: FlowchartViewDocument;
 }
 
 function fallbackSourceNode() {
@@ -223,6 +224,7 @@ function flowchartNodeActions(args: {
 
 export function FlowchartView({
   view,
+  layoutView,
   selectedNodeId,
   focusNodeRequest = null,
   explanationFocusNodeId = null,
@@ -249,13 +251,22 @@ export function FlowchartView({
 }: FlowchartViewProps) {
   const nodeSizeRegistry = useMemo(() => createNodeSizeRegistry(), []);
   const presentedGraph = draftCompareProjection?.compareGraph ?? view.visibleGraph;
-  const scopedGraph = useMemo(
+  const layoutSourceGraph = draftCompareProjection?.compareGraph ?? layoutView?.visibleGraph ?? view.visibleGraph;
+  const scopedLayoutGraph = useMemo(
+    () => scopeFlowchartGraphToAnchorMethod(layoutSourceGraph, view.anchorNodeId ?? null),
+    [layoutSourceGraph, view.anchorNodeId],
+  );
+  const scopedPresentedGraph = useMemo(
     () => scopeFlowchartGraphToAnchorMethod(presentedGraph, view.anchorNodeId ?? null),
     [presentedGraph, view.anchorNodeId],
   );
   const viewGraph = useMemo(
-    () => sanitizeFlowchartGraph(scopedGraph, view.anchorNodeId ?? null),
-    [scopedGraph, view.anchorNodeId],
+    () => sanitizeFlowchartGraph(scopedLayoutGraph, view.anchorNodeId ?? null),
+    [scopedLayoutGraph, view.anchorNodeId],
+  );
+  const presentedViewGraph = useMemo(
+    () => sanitizeFlowchartGraph(scopedPresentedGraph, view.anchorNodeId ?? null),
+    [scopedPresentedGraph, view.anchorNodeId],
   );
   const layoutState = useMeasuredLayout({
     graph: viewGraph,
@@ -266,9 +277,30 @@ export function FlowchartView({
   });
 
   const hiddenNodeIdSet = useMemo(() => new Set(hiddenNodeIds), [hiddenNodeIds]);
+  const presentedNodesById = useMemo(
+    () => new Map(presentedViewGraph.nodes.map((node) => [node.id, node])),
+    [presentedViewGraph.nodes],
+  );
   const visibleNodes = useMemo(
-    () => layoutState.nodes.filter((node) => !hiddenNodeIdSet.has(node.id)),
-    [layoutState.nodes, hiddenNodeIdSet],
+    () => layoutState.nodes
+      .filter((node) => !hiddenNodeIdSet.has(node.id))
+      .map((node) => {
+        const presentedNode = presentedNodesById.get(node.id);
+        if (!presentedNode) {
+          return node;
+        }
+        return {
+          ...node,
+          ...presentedNode,
+          id: node.id,
+          position: node.position,
+          metadata: {
+            ...(node.metadata ?? {}),
+            ...(presentedNode.metadata ?? {}),
+          },
+        };
+      }),
+    [hiddenNodeIdSet, layoutState.nodes, presentedNodesById],
   );
   const visibleEdges = useMemo(
     () => layoutState.edges.filter((edge) => !hiddenNodeIdSet.has(edge.source) && !hiddenNodeIdSet.has(edge.target)),

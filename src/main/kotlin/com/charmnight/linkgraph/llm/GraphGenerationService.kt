@@ -60,7 +60,7 @@ class GraphGenerationService(
                     userPrompt = promptPackage.userPrompt,
                 ),
                 scene = "实现计划生成",
-                schema = GENERATION_PLAN_SCHEMA,
+                schema = LlmStructuredSchemas.GENERATION_PLAN,
                 preferStreaming = remoteConnection.preset.capabilities.supportsStreaming,
                 onPreview = onPreview,
             ) { content ->
@@ -143,23 +143,6 @@ class GraphGenerationService(
                 description = item["description"] as? String ?: "",
                 risk = SyncPreviewRisk.entries.firstOrNull { it.name == riskName } ?: SyncPreviewRisk.MEDIUM,
                 targetPath = item["targetPath"] as? String,
-                editScopes = (item["editScopes"] as? List<*>).orEmpty().mapNotNull { rawScope ->
-                    val scope = rawScope as? Map<*, *> ?: return@mapNotNull null
-                    EditScope(
-                        scopeId = scope["scopeId"] as? String ?: return@mapNotNull null,
-                        targetNodeId = scope["targetNodeId"] as? String ?: return@mapNotNull null,
-                        filePath = scope["filePath"] as? String ?: return@mapNotNull null,
-                        language = scope["language"] as? String ?: "TEXT",
-                        symbolKind = scope["symbolKind"] as? String ?: "UNKNOWN",
-                        symbolSignature = scope["symbolSignature"] as? String,
-                        startOffset = (scope["startOffset"] as? Number)?.toInt(),
-                        endOffset = (scope["endOffset"] as? Number)?.toInt(),
-                        startLine = (scope["startLine"] as? Number)?.toInt(),
-                        endLine = (scope["endLine"] as? Number)?.toInt(),
-                        allowedChangeKinds = (scope["allowedChangeKinds"] as? List<*>).orEmpty().mapNotNull { it as? String },
-                        supportingFindingIds = (scope["supportingFindingIds"] as? List<*>).orEmpty().mapNotNull { it as? String },
-                    )
-                },
             )
         }
         /** 远程返回的警告信息。 */
@@ -226,29 +209,9 @@ class GraphGenerationService(
             description = description,
             risk = if (targetPath != null) SyncPreviewRisk.MEDIUM else SyncPreviewRisk.HIGH,
             targetPath = targetPath,
-            editScopes = change.editScopes,
         )
     }
 
-    private companion object {
-        /** 远程实现计划结构化结果的 JSON Schema 示例。 */
-        private const val GENERATION_PLAN_SCHEMA = """
-{
-  "summary": "简短计划摘要",
-  "items": [
-    {
-      "id": "稳定ID",
-      "title": "需要变更的内容",
-      "description": "原因与做法",
-      "risk": "LOW|MEDIUM|HIGH",
-      "targetPath": "可选路径",
-      "editScopes": []
-    }
-  ],
-  "warnings": ["可选警告"]
-}
-"""
-    }
 }
 
 /**

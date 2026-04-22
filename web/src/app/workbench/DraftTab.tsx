@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type {
   AsyncRequestState,
+  DraftValidationState,
   DraftImplementationSuggestionState,
   DraftWorkbenchEntry,
   DraftWorkbenchViewState,
-  StageEligibilityDecision,
+  GenerationPlanDiscussionSession,
   WorkbenchSectionId,
   WorkbenchSectionPreferences,
 } from "../types";
@@ -12,6 +13,7 @@ import { DraftChangePanel } from "./DraftChangePanel";
 import { DraftDetailPanel } from "./DraftDetailPanel";
 import { DraftNotePanel } from "./DraftNotePanel";
 import { GenerationPlanPanel } from "../components/GenerationPlanPanel";
+import { DraftValidationPanel } from "./DraftValidationPanel";
 import { WorkbenchSection } from "./WorkbenchSection";
 import { resolveEffectiveWorkbenchSectionPreferences } from "./workbenchSections";
 
@@ -19,13 +21,18 @@ interface DraftTabProps {
   state: DraftWorkbenchViewState;
   implementationSuggestion?: DraftImplementationSuggestionState | null;
   implementationSuggestionRequestState?: AsyncRequestState | null;
-  implementationSuggestionEligibilityDecision?: StageEligibilityDecision | null;
+  draftValidationState?: DraftValidationState | null;
+  implementationSuggestionDiscussionQuestionDraft?: string;
+  implementationSuggestionDiscussionSession?: GenerationPlanDiscussionSession | null;
+  implementationSuggestionDiscussionRequestState?: AsyncRequestState | null;
   draftVersion?: number | null;
   codeDiffStatus?: "MISSING" | "RUNNING" | "FRESH" | "STALE" | "FAILED";
   codeDiffDraftVersion?: number | null;
   resolveArtifactText?: (artifactId: string) => string | null;
   onRequestArtifact?: (artifactId: string) => void;
   onRequestGeneratePlan?: () => void;
+  onImplementationSuggestionDiscussionQuestionDraftChange?: (value: string) => void;
+  onSubmitImplementationSuggestionDiscussion?: () => void;
   onOpenAuditWorkbench?: () => void;
   onToggleCompare: () => void;
   onSelectEntry: (entryId: string) => void;
@@ -42,13 +49,18 @@ export function DraftTab({
   state,
   implementationSuggestion = null,
   implementationSuggestionRequestState = null,
-  implementationSuggestionEligibilityDecision = null,
+  draftValidationState = null,
+  implementationSuggestionDiscussionQuestionDraft = "",
+  implementationSuggestionDiscussionSession = null,
+  implementationSuggestionDiscussionRequestState = null,
   draftVersion = null,
   codeDiffStatus = "MISSING",
   codeDiffDraftVersion = null,
   resolveArtifactText,
   onRequestArtifact,
   onRequestGeneratePlan = () => undefined,
+  onImplementationSuggestionDiscussionQuestionDraftChange = () => undefined,
+  onSubmitImplementationSuggestionDiscussion = () => undefined,
   onOpenAuditWorkbench,
   onToggleCompare,
   onSelectEntry,
@@ -71,6 +83,7 @@ export function DraftTab({
     ?? state.draftState.draftChanges[0]
     ?? state.draftState.draftNotes[0]
     ?? null;
+  const selectedEntryHasComparableDraftState = hasComparableDraftState(selectedEntry);
   const compareAvailable = selectedEntry?.kind === "CHANGE";
   const effectiveSectionPreferences = resolveEffectiveWorkbenchSectionPreferences({
     tab: "draft",
@@ -78,9 +91,21 @@ export function DraftTab({
     layoutHeight,
   });
   const detailTitle = resolveDraftDetailTitle(selectedEntry);
-  const compareModeLabel = compareAvailable
-    ? state.compareMode === "after" ? "当前显示：修改后" : "当前显示：前后对比"
-    : "当前显示：说明项";
+  const compareModeLabel = resolveCompareModeLabel(
+    selectedEntry,
+    state.compareMode,
+    selectedEntryHasComparableDraftState,
+  );
+  const compareActionLabel = resolveCompareActionLabel(
+    selectedEntry,
+    state.compareMode,
+    selectedEntryHasComparableDraftState,
+  );
+  const draftIntro = resolveDraftIntroCopy(
+    selectedEntry,
+    state.compareMode,
+    selectedEntryHasComparableDraftState,
+  );
   const implementationSuggestionStatusLabel = resolveDerivedArtifactStatusLabel(
     implementationSuggestion?.status ?? "MISSING",
     implementationSuggestion?.generationPlanDraftVersion ?? null,
@@ -140,7 +165,7 @@ export function DraftTab({
         <div>
           <p className="eyebrow">草稿</p>
           <h2>统一业务真相层</h2>
-          <p className="muted">默认看修改后，可一键切换前后对比；刚确认的问答变更会直接出现在这里。</p>
+          <p className="muted">{draftIntro}</p>
           <div className="panel-actions">
             <span className="badge">草稿版本 {draftVersion != null ? `v${draftVersion}` : "未建立"}</span>
             <span className="badge">实现建议：{implementationSuggestionStatusLabel}</span>
@@ -150,7 +175,7 @@ export function DraftTab({
         <div className="workbench-draft-head-actions flex-col md:flex-row shrink-0">
           <span className="workbench-compare-mode">{compareModeLabel}</span>
           <button type="button" className="workbench-compare-mode " onClick={onToggleCompare} disabled={!compareAvailable}>
-            {compareAvailable ? (state.compareMode === "after" ? "一键对比前后" : "切回修改后") : "说明项无需前后对比"}
+            {compareActionLabel}
           </button>
         </div>
       </div>
@@ -203,6 +228,17 @@ export function DraftTab({
             showTitle={false}
           />
         </WorkbenchSection>
+        <WorkbenchSection
+          title="草稿验证"
+          expanded={effectiveSectionPreferences["draft.validation"] ?? true}
+          onToggle={(nextExpanded) => handleSectionToggle("draft.validation", nextExpanded)}
+          minBodyHeight={180}
+        >
+          <DraftValidationPanel
+            validationState={draftValidationState}
+            onOpenAuditWorkbench={onOpenAuditWorkbench}
+          />
+        </WorkbenchSection>
         <div className="workbench-draft-implementation-suggestion">
           <GenerationPlanPanel
             plan={implementationSuggestion?.summary ? {
@@ -214,14 +250,16 @@ export function DraftTab({
               items: implementationSuggestion.items,
             } : null}
             requestState={implementationSuggestionRequestState}
-            eligibilityDecision={implementationSuggestionEligibilityDecision}
+            discussionQuestionDraft={implementationSuggestionDiscussionQuestionDraft}
+            discussionSession={implementationSuggestionDiscussionSession}
+            discussionRequestState={implementationSuggestionDiscussionRequestState}
             draftVersion={draftVersion}
             generationPlanDraftVersion={implementationSuggestion?.generationPlanDraftVersion ?? null}
             resolveArtifactText={resolveArtifactText}
             onRequestArtifact={onRequestArtifact}
-            onOpenDraftWorkbench={() => undefined}
-            onOpenAuditWorkbench={onOpenAuditWorkbench}
             onRequestGeneratePlan={onRequestGeneratePlan}
+            onDiscussionQuestionDraftChange={onImplementationSuggestionDiscussionQuestionDraftChange}
+            onSubmitDiscussion={onSubmitImplementationSuggestionDiscussion}
           />
         </div>
       </div>
@@ -234,6 +272,61 @@ function resolveDraftDetailTitle(entry: DraftWorkbenchEntry | null): string {
     return "草稿说明详情";
   }
   return entry.kind === "CHANGE" ? "草稿变更详情" : "草稿说明详情";
+}
+
+function hasComparableDraftState(entry: DraftWorkbenchEntry | null): boolean {
+  if (!entry || entry.kind !== "CHANGE") {
+    return false;
+  }
+  const beforeState = entry.beforeState?.trim();
+  const afterState = entry.afterState?.trim();
+  return Boolean(beforeState) && Boolean(afterState);
+}
+
+function resolveDraftIntroCopy(
+  entry: DraftWorkbenchEntry | null,
+  compareMode: "after" | "compare",
+  hasComparableState: boolean,
+): string {
+  if (entry?.kind === "CHANGE" && hasComparableState) {
+    return compareMode === "after"
+      ? "当前条目已生成修改后状态，可切到前后对比查看完整变更。"
+      : "当前条目正在展示前后对比，可直接核对修改前后的差异。";
+  }
+  if (entry?.kind === "CHANGE") {
+    return compareMode === "after"
+      ? "当前条目已锁定变更范围，可切到链路对比查看受影响节点与关系。"
+      : "当前条目正在展示链路对比，可直接核对本次变更覆盖的节点与关系。";
+  }
+  return "说明项记录业务解释，不参与前后对比；刚确认的问答变更会直接出现在这里。";
+}
+
+function resolveCompareModeLabel(
+  entry: DraftWorkbenchEntry | null,
+  compareMode: "after" | "compare",
+  hasComparableState: boolean,
+): string {
+  if (entry?.kind !== "CHANGE") {
+    return "当前显示：说明项";
+  }
+  if (hasComparableState) {
+    return compareMode === "after" ? "当前显示：修改后" : "当前显示：前后对比";
+  }
+  return compareMode === "after" ? "当前显示：变更意图" : "当前显示：链路对比";
+}
+
+function resolveCompareActionLabel(
+  entry: DraftWorkbenchEntry | null,
+  compareMode: "after" | "compare",
+  hasComparableState: boolean,
+): string {
+  if (entry?.kind !== "CHANGE") {
+    return "说明项无需前后对比";
+  }
+  if (hasComparableState) {
+    return compareMode === "after" ? "一键对比前后" : "切回修改后";
+  }
+  return compareMode === "after" ? "切换链路对比" : "切回变更意图";
 }
 
 function resolveDerivedArtifactStatusLabel(

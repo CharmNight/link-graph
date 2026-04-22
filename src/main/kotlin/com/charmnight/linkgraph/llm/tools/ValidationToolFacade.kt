@@ -24,7 +24,10 @@ class ValidationToolFacade(
     }
 
     /** 检查 existing-file draft 是否具备合法作用域。 */
-    fun hasValidEditScope(draft: GeneratedCodeDraft): Boolean {
+    fun hasValidEditScope(
+        draft: GeneratedCodeDraft,
+        projectBasePath: String? = null,
+    ): Boolean {
         if (draft.editOperations.isEmpty()) {
             return true
         }
@@ -32,7 +35,7 @@ class ValidationToolFacade(
             return false
         }
         return draft.editOperations.all { operation ->
-            val scope = codeEditScopeResolver.resolveScope(operation, draft.editScopes)
+            val scope = codeEditScopeResolver.resolveScope(operation, draft.editScopes, projectBasePath)
             scope != null && codeEditScopeResolver.isOperationAllowed(operation, scope)
         }
     }
@@ -41,18 +44,38 @@ class ValidationToolFacade(
     fun hasReadEvidence(
         draft: GeneratedCodeDraft,
         evidenceArtifacts: List<CodeEvidenceArtifact>,
+        projectBasePath: String? = null,
     ): Boolean {
         if (draft.editOperations.isEmpty()) {
             return true
         }
-        val targetPath = draft.targetPath.replace('\\', '/')
+        val candidatePaths = buildSet {
+            add(draft.targetPath)
+            draft.editOperations.mapTo(this, CodeEditOperation::filePath)
+            draft.editScopes.mapTo(this, EditScope::filePath)
+        }
         return evidenceArtifacts.any { artifact ->
-            artifact.filePath.replace('\\', '/') == targetPath
+            candidatePaths.any { candidatePath ->
+                pathsReferToSameFile(candidatePath, artifact.filePath, projectBasePath)
+            }
         }
     }
 
     /** 判断草稿是否满足最小写回条件。 */
     fun isWritableDraft(draft: GeneratedCodeDraft): Boolean {
         return draft.content != null || (draft.editOperations.isNotEmpty() && draft.editScopes.isNotEmpty())
+    }
+
+    private fun pathsReferToSameFile(
+        left: String,
+        right: String,
+        projectBasePath: String?,
+    ): Boolean {
+        val leftResolved = com.charmnight.linkgraph.codegen.ProjectPathNormalizer.resolvePath(left, projectBasePath)
+        val rightResolved = com.charmnight.linkgraph.codegen.ProjectPathNormalizer.resolvePath(right, projectBasePath)
+        if (leftResolved != null && rightResolved != null) {
+            return leftResolved == rightResolved
+        }
+        return left.replace('\\', '/') == right.replace('\\', '/')
     }
 }

@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.settings
 
 import com.charmnight.linkgraph.llm.LlmGateway
+import com.charmnight.linkgraph.llm.LlmDeliveryMode
 import com.charmnight.linkgraph.llm.LlmProviderPresets
 import com.charmnight.linkgraph.llm.LlmRequest
 import com.charmnight.linkgraph.llm.LlmResponse
@@ -92,6 +93,43 @@ class RemoteLlmSettingsValidatorTest {
     }
 
     @Test
+    fun validatesStreamingProbeForStreamingCapableOpenAiCompatiblePreset() {
+        val streamedRequests = mutableListOf<LlmRequest>()
+        val result = RemoteLlmSettingsValidator(
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    error("validator should probe streaming because question requests use streaming for this preset")
+                }
+
+                override fun stream(
+                    request: LlmRequest,
+                    listener: (LlmStreamEvent) -> Unit,
+                ): LlmResponse {
+                    streamedRequests += request
+                    val response = LlmResponse(content = "OK", model = request.model)
+                    listener(LlmStreamEvent.Started(model = request.model))
+                    listener(LlmStreamEvent.TextDelta("OK"))
+                    listener(LlmStreamEvent.Completed(response))
+                    return response
+                }
+            },
+        ).validate(
+            LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                endpoint = "https://example.com/v1",
+                apiKey = "token",
+                model = "gpt-4.1-mini",
+            ),
+        )
+
+        assertTrue(result.ok)
+        assertEquals(1, streamedRequests.size)
+        assertEquals(LlmDeliveryMode.STREAM, streamedRequests.single().deliveryMode)
+        assertEquals(LlmWireProtocol.OPENAI_CHAT_COMPLETIONS, streamedRequests.single().protocol)
+    }
+
+    @Test
     fun validatesMiniMaxAnthropicPresetWithDefaultEndpointAndModel() {
         val requests = mutableListOf<LlmRequest>()
         val result = RemoteLlmSettingsValidator(
@@ -127,22 +165,26 @@ class RemoteLlmSettingsValidatorTest {
 
     @Test
     fun validatesOpenAiResponsesPresetWithResponsesEndpoint() {
-        val requests = mutableListOf<LlmRequest>()
+        val streamedRequests = mutableListOf<LlmRequest>()
         val result = RemoteLlmSettingsValidator(
             gateway = object : LlmGateway {
                 override fun generate(request: LlmRequest): LlmResponse {
-                    requests += request
-                    return LlmResponse(
-                        content = """{"output":[{"type":"message","content":[{"type":"output_text","text":"OK"}]}]}""",
-                        model = request.model,
-                    )
+                    error("validator should probe streaming structured responses because question requests use them")
                 }
 
                 override fun stream(
                     request: LlmRequest,
                     listener: (LlmStreamEvent) -> Unit,
                 ): LlmResponse {
-                    error("validator should use full-response probing")
+                    streamedRequests += request
+                    val response = LlmResponse(
+                        content = """{"output":[{"type":"message","content":[{"type":"output_text","text":"OK"}]}]}""",
+                        model = request.model,
+                    )
+                    listener(LlmStreamEvent.Started(model = request.model))
+                    listener(LlmStreamEvent.TextDelta(response.content))
+                    listener(LlmStreamEvent.Completed(response))
+                    return response
                 }
             },
         ).validate(
@@ -156,9 +198,11 @@ class RemoteLlmSettingsValidatorTest {
         )
 
         assertTrue(result.ok)
-        assertEquals(1, requests.size)
-        assertEquals(LlmWireProtocol.OPENAI_RESPONSES, requests.single().protocol)
-        assertEquals("https://api.openai.com/v1", requests.single().endpoint)
+        assertEquals(1, streamedRequests.size)
+        assertEquals(LlmWireProtocol.OPENAI_RESPONSES, streamedRequests.single().protocol)
+        assertEquals(LlmDeliveryMode.STREAM, streamedRequests.single().deliveryMode)
+        assertEquals("https://api.openai.com/v1", streamedRequests.single().endpoint)
+        assertTrue(streamedRequests.single().structuredOutput?.schema?.contains("candidateChanges") == true)
         assertEquals(
             "远程 LLM 配置验证通过。\n已验证接口：https://api.openai.com/v1/responses\n模型：gpt-4.1-mini",
             result.message,

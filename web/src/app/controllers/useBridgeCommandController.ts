@@ -1,6 +1,5 @@
 import type { BridgeInvocationResult } from "../api";
 import type {
-  AsyncRequestState,
   OperationFeedback,
 } from "../types";
 import type {
@@ -14,49 +13,6 @@ import type {
 interface UseBridgeCommandControllerArgs {
   setOperationFeedback: (feedback: OperationFeedback | null) => void;
   setRequestFailureNotice: (notice: RequestFailureNotice | null) => void;
-}
-
-export function createSubmittedRequestState(scene: string): AsyncRequestState {
-  return {
-    phase: "RUNNING",
-    requestId: null,
-    scene,
-    executionMode: null,
-    statusMessage: `已提交${scene}请求`,
-    errorMessage: null,
-    detailMessage: "等待后端确认执行方式与执行阶段。",
-    startedAtEpochMillis: Date.now(),
-    finishedAtEpochMillis: null,
-    streaming: false,
-    fallbackUsed: false,
-    providerLabel: null,
-    model: null,
-    endpointSummary: null,
-    promptPreviewAvailable: false,
-  };
-}
-
-export function createBridgeRejectedRequestState(
-  scene: string,
-  result: Extract<BridgeInvocationResult, { ok: false }>,
-): AsyncRequestState {
-  return {
-    phase: "FAILED",
-    requestId: null,
-    scene,
-    executionMode: null,
-    statusMessage: `${scene}请求未发出`,
-    errorMessage: result.message,
-    detailMessage: result.detailMessage,
-    startedAtEpochMillis: null,
-    finishedAtEpochMillis: Date.now(),
-    streaming: false,
-    fallbackUsed: false,
-    providerLabel: null,
-    model: null,
-    endpointSummary: null,
-    promptPreviewAvailable: false,
-  };
 }
 
 export function createBridgeFailureNotice(
@@ -79,21 +35,18 @@ export function useBridgeCommandController({
     result: Extract<BridgeInvocationResult, { ok: false }>,
     options: BridgeCommandFailureOptions = {},
   ): BridgeRejectedCommand {
-    const requestState = createBridgeRejectedRequestState(scene, result);
     const notice = createBridgeFailureNotice(scene, result);
     const feedback: OperationFeedback = {
       level: options.failureFeedbackLevel ?? "ERROR",
-      message: options.failureMessage ?? requestState.errorMessage ?? `${scene}请求未发出`,
+      message: options.failureMessage ?? result.message ?? `${scene}请求未发出`,
     };
 
-    options.applyRejectedRequestState?.(requestState);
     setOperationFeedback(feedback);
     if (options.announceFailure !== false) {
       setRequestFailureNotice(notice);
     }
 
     const rejection = {
-      requestState,
       feedback,
       notice,
     };
@@ -129,7 +82,6 @@ export function useBridgeCommandController({
       return result;
     }
 
-    options.applySubmittedRequestState?.(createSubmittedRequestState(scene));
     options.onAccepted?.();
     if (options.successFeedback) {
       setOperationFeedback(options.successFeedback);

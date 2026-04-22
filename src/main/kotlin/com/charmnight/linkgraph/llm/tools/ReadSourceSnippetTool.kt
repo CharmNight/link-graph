@@ -25,6 +25,7 @@ class ReadSourceSnippetTool(
             startLine = startLine,
             endLine = endLine,
             fallbackSnippet = input["fallbackSnippet"]?.toString(),
+            projectBasePath = context.project.basePath,
         ) ?: return ToolResult(toolName = name, success = false, errorMessage = "未读取到源码片段")
         return ToolResult(
             toolName = name,

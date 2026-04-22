@@ -296,9 +296,6 @@ class GraphGenerationServiceTest {
             "src/main/java/com/example/CommonController.java",
             plan.items.single().targetPath,
         )
-        val scope = assertNotNull(plan.items.single().editScopes.firstOrNull())
-        assertEquals("scope-file-download", scope.scopeId)
-        assertEquals("com.example.CommonController.fileDownload(java.lang.String):void", scope.symbolSignature)
     }
 
     private fun sampleContext(): GenerationContext {

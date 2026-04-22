@@ -6,27 +6,15 @@ import {
   requestDraftNavigation,
   requestExpandOverflowNode,
   requestGenerationPlanAsync,
+  requestGenerationPlanDiscussionAsync,
   requestOpenSettings,
   requestSyncPreview,
   showDiffMode,
 } from "../api";
-import type {
-  AnalysisDisplayMode,
-  AsyncRequestState,
-  GeneratedCodeDraft,
-} from "../types";
+import type { AnalysisDisplayMode } from "../types";
 import type { useBridgeCommandController } from "./useBridgeCommandController";
 
 interface UseWorkbenchCommandControllerArgs {
-  setGenerationPlan: (nextPlan: null) => void;
-  setGenerationPlanRequestState: (nextState: AsyncRequestState) => void;
-  setGeneratedCodeDrafts: (drafts: GeneratedCodeDraft[]) => void;
-  setGeneratedCodeDraftWarnings: (warnings: string[]) => void;
-  setGeneratedCodeDraftSource: (source: null) => void;
-  setGeneratedCodeDraftPromptPreview: (preview: null) => void;
-  setGeneratedCodeDraftPromptPreviewArtifactId: (artifactId: null) => void;
-  setGeneratedCodeDraftWriteReport: (report: null) => void;
-  setCodeDraftRequestState: (nextState: AsyncRequestState) => void;
   bridgeCommands: Pick<
     ReturnType<typeof useBridgeCommandController>,
     "runBridgeCommand" | "submitAsyncBridgeCommand"
@@ -34,15 +22,6 @@ interface UseWorkbenchCommandControllerArgs {
 }
 
 export function useWorkbenchCommandController({
-  setGenerationPlan,
-  setGenerationPlanRequestState,
-  setGeneratedCodeDrafts,
-  setGeneratedCodeDraftWarnings,
-  setGeneratedCodeDraftSource,
-  setGeneratedCodeDraftPromptPreview,
-  setGeneratedCodeDraftPromptPreviewArtifactId,
-  setGeneratedCodeDraftWriteReport,
-  setCodeDraftRequestState,
   bridgeCommands,
 }: UseWorkbenchCommandControllerArgs) {
   function handleRequestAnalysisDisplayMode(displayMode: AnalysisDisplayMode) {
@@ -78,11 +57,6 @@ export function useWorkbenchCommandController({
 
   function handleRequestGenerationPlan() {
     bridgeCommands.submitAsyncBridgeCommand("实现计划", () => requestGenerationPlanAsync(), {
-      applyRejectedRequestState: setGenerationPlanRequestState,
-      applySubmittedRequestState: (requestState) => {
-        setGenerationPlan(null);
-        setGenerationPlanRequestState(requestState);
-      },
       successFeedback: {
         level: "INFO",
         message: "已请求生成实现建议。",
@@ -92,21 +66,24 @@ export function useWorkbenchCommandController({
 
   function handleRequestCodeDrafts() {
     bridgeCommands.submitAsyncBridgeCommand("代码草稿", () => requestCodeDraftsAsync(), {
-      applyRejectedRequestState: setCodeDraftRequestState,
-      applySubmittedRequestState: (requestState) => {
-        setGeneratedCodeDrafts([]);
-        setGeneratedCodeDraftWarnings([]);
-        setGeneratedCodeDraftSource(null);
-        setGeneratedCodeDraftPromptPreview(null);
-        setGeneratedCodeDraftPromptPreviewArtifactId(null);
-        setGeneratedCodeDraftWriteReport(null);
-        setCodeDraftRequestState(requestState);
-      },
       successFeedback: {
         level: "INFO",
         message: "已请求生成代码 diff。",
       },
     });
+  }
+
+  function handleRequestGenerationPlanDiscussion(question: string, focusItemId?: string | null) {
+    bridgeCommands.submitAsyncBridgeCommand(
+      "实现建议追问",
+      () => requestGenerationPlanDiscussionAsync(question, focusItemId),
+      {
+        successFeedback: {
+          level: "INFO",
+          message: "已提交实现建议追问。",
+        },
+      },
+    );
   }
 
   function handleOpenSettings() {
@@ -141,6 +118,7 @@ export function useWorkbenchCommandController({
     handleShowDiffMode,
     handleRequestSyncPreview,
     handleRequestGenerationPlan,
+    handleRequestGenerationPlanDiscussion,
     handleRequestCodeDrafts,
     handleOpenSettings,
     handleWriteDrafts,

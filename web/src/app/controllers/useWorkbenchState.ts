@@ -115,6 +115,13 @@ export function useWorkbenchState({
     () => initialState.generationPlanDraftVersion ?? null,
   );
   const [generationPlanRequestState, setGenerationPlanRequestState] = useState<AsyncRequestState>(() => resolveRequestState(initialState.generationPlanRequestState));
+  const [draftValidationState, setDraftValidationState] = useState(() => initialState.draftValidationState ?? null);
+  const [generationPlanDiscussionSession, setGenerationPlanDiscussionSession] = useState(
+    () => initialState.generationPlanDiscussionSession ?? null,
+  );
+  const [generationPlanDiscussionRequestState, setGenerationPlanDiscussionRequestState] = useState<AsyncRequestState>(
+    () => resolveRequestState(initialState.generationPlanDiscussionRequestState),
+  );
   const [diffReviewRequestState, setDiffReviewRequestState] = useState<AsyncRequestState>(() => resolveRequestState(initialState.diffReviewRequestState));
   const [graphBeautificationResult, setGraphBeautificationResult] = useState<GraphBeautificationResult | null>(
     () => initialState.graphBeautificationResult ?? null,
@@ -220,6 +227,12 @@ export function useWorkbenchState({
     setGenerationPlanDraftVersion,
     generationPlanRequestState,
     setGenerationPlanRequestState,
+    draftValidationState,
+    setDraftValidationState,
+    generationPlanDiscussionSession,
+    setGenerationPlanDiscussionSession,
+    generationPlanDiscussionRequestState,
+    setGenerationPlanDiscussionRequestState,
     diffReviewRequestState,
     setDiffReviewRequestState,
     graphBeautificationResult,
