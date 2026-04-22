@@ -15,7 +15,6 @@
                 anchor="right"
                 stripeTitle="链路图"
                 factoryClass="com.charmnight.linkgraph.toolwindow.LinkGraphToolWindowFactory"/>
-        <postStartupActivity implementation="com.charmnight.linkgraph.toolwindow.LinkGraphDebugStartupActivity"/>
         <applicationConfigurable
                 parentId="tools"
                 id="com.charmnight.linkgraph.settings"

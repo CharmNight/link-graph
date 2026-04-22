@@ -92,6 +92,27 @@ class PluginBootstrapTest {
         assertNotNull("Expected Link Graph settings configurable registration", configurable)
         assertEquals("tools", configurable!!.getAttribute("parentId"))
 
+        val debugStartupActivity = firstElementByTagNameAndAttribute(
+            document,
+            "postStartupActivity",
+            "implementation",
+            "com.charmnight.linkgraph.toolwindow.LinkGraphDebugStartupActivity",
+        )
+        assertTrue(
+            "Did not expect default published plugin.xml to register debug startup activity",
+            debugStartupActivity == null,
+        )
+        val debugPackageStartupActivity = firstElementByTagNameAndAttribute(
+            document,
+            "postStartupActivity",
+            "implementation",
+            "com.charmnight.linkgraph.toolwindow.debug.LinkGraphDebugStartupActivity",
+        )
+        assertTrue(
+            "Did not expect default published plugin.xml to register debug-package startup activity",
+            debugPackageStartupActivity == null,
+        )
+
         val classLoader = javaClass.classLoader
         assertNotNull(
             "Expected placeholder tool window factory class on the classpath",
