@@ -34,7 +34,7 @@ class GraphEditorPageRenderer {
     /** 为指定会话生成 bootstrap 脚本和自定义事件。 */
     fun bootstrapScript(
         sessionId: String,
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     ): String {
         return bootstrapScript(
             sessionId = sessionId,
@@ -46,7 +46,7 @@ class GraphEditorPageRenderer {
     /** 为指定会话生成 bootstrap 脚本和自定义事件。 */
     fun bootstrapScript(
         sessionId: String,
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
     ): String {
         /** 当前快照序列化后的状态 JSON。 */
@@ -67,7 +67,7 @@ class GraphEditorPageRenderer {
     fun render(
         entryHtml: String,
         sessionId: String,
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     ): String {
         return render(
             entryHtml = entryHtml,
@@ -81,7 +81,7 @@ class GraphEditorPageRenderer {
     fun render(
         entryHtml: String,
         sessionId: String,
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
     ): String {
         /** 注入页面的脚本标签内容。 */
@@ -98,7 +98,7 @@ class GraphEditorPageRenderer {
     }
 
     /** 直接返回前端所需的 bootstrap JSON。 */
-    fun bootstrapJson(snapshot: GraphEditorStateService.Snapshot): String {
+    fun bootstrapJson(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): String {
         return bootstrapJson(
             snapshot = snapshot,
             artifactRefs = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
@@ -107,7 +107,7 @@ class GraphEditorPageRenderer {
 
     /** 直接返回前端所需的 bootstrap JSON。 */
     fun bootstrapJson(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
     ): String {
         return encodeBootstrapJson(snapshot, artifactRefs)
@@ -116,7 +116,7 @@ class GraphEditorPageRenderer {
     /** 生成携带会话信息的外层 envelope JSON。 */
     private fun encodeSnapshotEnvelopeJson(
         sessionId: String,
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         stateJson: String,
     ): String {
         /** 发往前端事件的外层载荷。 */
@@ -133,14 +133,14 @@ class GraphEditorPageRenderer {
 
     /** 将完整编辑器快照编码成前端 bootstrap JSON。 */
     private fun encodeBootstrapJson(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts,
     ): String {
         return sanitizeJson(toJson(bootstrapPayload(snapshot, artifactRefs)))
     }
 
     /** 构建完整 bootstrap 状态载荷，供 init 与增量 slice 复用。 */
-    internal fun bootstrapPayload(snapshot: GraphEditorStateService.Snapshot): LinkedHashMap<String, Any?> {
+    internal fun bootstrapPayload(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): LinkedHashMap<String, Any?> {
         return bootstrapPayload(
             snapshot = snapshot,
             artifactRefs = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
@@ -149,7 +149,7 @@ class GraphEditorPageRenderer {
 
     /** 构建完整 bootstrap 状态载荷，供 init 与增量 slice 复用。 */
     internal fun bootstrapPayload(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
     ): LinkedHashMap<String, Any?> {
         /** 从状态服务快照中整理出的编辑器快照。 */
@@ -322,7 +322,7 @@ class GraphEditorPageRenderer {
     }
 
     /** 把异步请求状态转换成前端可消费的映射。 */
-    private fun requestStateToMap(state: GraphEditorStateService.AsyncRequestState): Map<String, Any?> = linkedMapOf(
+    private fun requestStateToMap(state: com.charmnight.linkgraph.ui.AsyncRequestState): Map<String, Any?> = linkedMapOf(
         "phase" to state.phase.name,
         "requestId" to state.requestId,
         "scene" to state.scene,
@@ -376,7 +376,7 @@ class GraphEditorPageRenderer {
 
     /** 把源码跳转状态转换成前端可消费的映射。 */
     private fun sourceNavigationStateToMap(
-        state: GraphEditorStateService.SourceNavigationState,
+        state: com.charmnight.linkgraph.ui.SourceNavigationState,
     ): Map<String, Any?> = linkedMapOf(
         "nodeId" to state.nodeId,
         "phase" to state.phase.name,

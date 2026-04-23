@@ -73,7 +73,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    GraphEditorStateService.Snapshot(
+                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         draftWorkbenchState = DraftWorkbenchState(
                             draftChanges = listOf(
                                 DraftWorkbenchEntry(
@@ -180,7 +180,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    GraphEditorStateService.Snapshot(
+                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         draftWorkbenchState = DraftWorkbenchState(
                             draftChanges = listOf(
                                 DraftWorkbenchEntry(
@@ -298,7 +298,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    GraphEditorStateService.Snapshot(
+                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         draftWorkbenchState = DraftWorkbenchState(
                             draftChanges = listOf(
                                 DraftWorkbenchEntry(
@@ -461,7 +461,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { GraphEditorStateService.Snapshot() },
+                snapshotSupplier = { com.charmnight.linkgraph.ui.GraphEditorStateSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -552,7 +552,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { GraphEditorStateService.Snapshot() },
+                snapshotSupplier = { com.charmnight.linkgraph.ui.GraphEditorStateSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -664,7 +664,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { GraphEditorStateService.Snapshot() },
+                snapshotSupplier = { com.charmnight.linkgraph.ui.GraphEditorStateSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -740,7 +740,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    GraphEditorStateService.Snapshot(
+                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         draftWorkbenchState = DraftWorkbenchState(
                             draftChanges = listOf(
                                 DraftWorkbenchEntry(

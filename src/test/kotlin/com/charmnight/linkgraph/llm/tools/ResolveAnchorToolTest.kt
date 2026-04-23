@@ -13,7 +13,7 @@ import kotlin.test.assertNotNull
 class ResolveAnchorToolTest : BasePlatformTestCase() {
     fun testResolvesAnchorByNodeId() {
         val tool = ResolveAnchorTool(CodeReadToolFacade())
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             workingGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(
@@ -42,7 +42,7 @@ class ResolveAnchorToolTest : BasePlatformTestCase() {
 
     fun testResolvesAnchorBySymbolSignature() {
         val tool = ResolveAnchorTool(CodeReadToolFacade())
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             workingGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(

@@ -16,7 +16,7 @@ internal class ProjectEditorSession(
     /**
      * 读取当前状态快照。
      */
-    fun snapshot(): GraphEditorStateService.Snapshot = stateService.snapshot()
+    fun snapshot(): com.charmnight.linkgraph.ui.GraphEditorStateSnapshot = stateService.snapshot()
 
     /**
      * 对编辑器状态执行一次原子修改。
@@ -59,7 +59,7 @@ internal class ProjectEditorSession(
         workingGraphDirty: Boolean = true,
         syncBrowser: Boolean = true,
     ) {
-        stateService.markGraphChanged(
+        stateService.graph.markGraphChanged(
             graph = graph,
             selectedMethodSignature = selectedMethodSignature,
             preserveDraftPatchUndo = preserveDraftPatchUndo,
@@ -81,7 +81,7 @@ internal class ProjectEditorSession(
         workingGraphDirty: Boolean = true,
         syncBrowser: Boolean = true,
     ) {
-        stateService.markViewGraphChanged(
+        stateService.graph.markViewGraphChanged(
             graph = graph,
             displayMode = displayMode,
             selectedMethodSignature = selectedMethodSignature,
@@ -99,10 +99,10 @@ internal class ProjectEditorSession(
      */
     fun markRuntimeArtifactSummaries(
         scene: String,
-        summaries: List<GraphEditorStateService.RuntimeArtifactSummary>,
+        summaries: List<com.charmnight.linkgraph.ui.RuntimeArtifactSummary>,
         syncBrowser: Boolean = true,
     ) {
-        stateService.markRuntimeArtifactSummaries(scene, summaries)
+        stateService.workbench.markRuntimeArtifactSummaries(scene, summaries)
         if (syncBrowser) {
             onBrowserSyncRequested()
         }

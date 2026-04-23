@@ -13,7 +13,6 @@ import com.charmnight.linkgraph.llm.GraphGenerationService
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.llm.artifact.AgentArtifactStoreService
-import com.charmnight.linkgraph.llm.artifact.ConfirmedIntentArtifact
 import com.charmnight.linkgraph.llm.remoteConnectionOrNull
 import com.charmnight.linkgraph.llm.usesRemoteProvider
 import com.charmnight.linkgraph.llm.DefaultGraphBeautificationService
@@ -27,9 +26,7 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.model.GraphPatchAction
 import com.charmnight.linkgraph.model.GraphPatchOperation
-import com.charmnight.linkgraph.settings.LinkGraphSettingsConfigurable
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.settings.LinkGraphSettingsService
 import com.charmnight.linkgraph.navigation.SourceNavigationService
 import com.charmnight.linkgraph.semantic.SemanticAnalyzer
 import com.charmnight.linkgraph.semantic.model.SemanticAnalysisResult
@@ -59,8 +56,7 @@ import com.charmnight.linkgraph.sync.GraphPatchApplyService
 import com.charmnight.linkgraph.sync.SyncPreviewPlanner
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.charmnight.linkgraph.ui.DraftPatchApplyResult
-import com.charmnight.linkgraph.ui.GraphEditorStateService
-import com.charmnight.linkgraph.ui.GraphEditorStateService.OperationFeedbackLevel
+import com.charmnight.linkgraph.ui.OperationFeedbackLevel
 import com.charmnight.linkgraph.ui.GraphLayoutPosition
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
@@ -72,15 +68,11 @@ import com.charmnight.linkgraph.workbench.WorkbenchLayoutPreferencesService
 import com.charmnight.linkgraph.workbench.isEligibleForDraftConfirmation
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
-import com.intellij.openapi.application.WriteIntentReadAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.ide.CopyPasteManager
-import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.DumbService
@@ -93,9 +85,7 @@ import java.net.URI
 import java.util.concurrent.CancellationException
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.atomic.AtomicReference
 import org.jetbrains.concurrency.CancellablePromise
 import org.jetbrains.annotations.TestOnly
 
@@ -119,9 +109,6 @@ class LinkGraphProjectService(
     /** 当前服务所属项目。 */
     private val project: Project,
 ) : Disposable {
-    private val runtimeTraceEnabled: Boolean =
-        System.getenv("LINKGRAPH_DEBUG_TRACE")?.trim()?.equals("true", ignoreCase = true) == true
-
     /** 草稿补丁预览的来源类型。 */
     enum class DraftPatchPreviewSource {
         AUDIT,
@@ -229,12 +216,39 @@ class LinkGraphProjectService(
     private val codeGenerationService by lazy { CodeGenerationService() }
     /** 代码草稿写入服务。 */
     private val codeDraftWriterService by lazy { CodeDraftWriterService(project) }
+    /** 已确认候选变更 workflow。 */
+    private val confirmedDraftChangeWorkflow by lazy { ConfirmedDraftChangeWorkflow(draftWorkbenchService, graphPatchApplyService) }
+    /** 图结构诊断日志。 */
+    private val graphDiagnosticsLogger by lazy { GraphDiagnosticsLogger(logger) }
+    /** 线程切换、设置解析与 trace 运行时支持。 */
+    private val runtimeSupport by lazy(LazyThreadSafetyMode.NONE) {
+        LinkGraphProjectRuntimeSupport(
+            project = project,
+            logger = logger,
+            openSettingsOverrideProvider = { testOpenSettingsOverride },
+            effectiveGenerationSettingsOverrideProvider = { testEffectiveGenerationSettingsOverride },
+        )
+    }
+    /** 已确认候选变更同步 workflow。 */
+    private val confirmedDraftChangeSyncWorkflow by lazy(LazyThreadSafetyMode.NONE) {
+        ConfirmedDraftChangeSyncWorkflow(
+            stateServiceProvider = runtimeSupport::stateService,
+            confirmedDraftChangeWorkflow = confirmedDraftChangeWorkflow,
+            riskResolutionService = riskResolutionService,
+            graphDiagnosticsLogger = graphDiagnosticsLogger,
+            artifactStoreProvider = { artifactStore },
+            invalidateAuditRequests = ::invalidateAuditRequests,
+            mutateEditorStateBatch = { block -> mutateEditorStateBatch(block = block) },
+            logger = logger,
+            runtimeTrace = { message -> runtimeSupport.runtimeTrace { message } },
+        )
+    }
     /** 调试图工厂。 */
     private val debugGraphFactory by lazy { DebugGraphFactory() }
     /** 项目级编辑器状态会话。 */
-    private val editorSession by lazy(LazyThreadSafetyMode.NONE) {
+    internal val editorSession by lazy(LazyThreadSafetyMode.NONE) {
         ProjectEditorSession(
-            stateService = stateService(),
+            stateService = runtimeSupport.stateService(),
             onBrowserSyncRequested = project.getService(GraphEditorSyncNotifier::class.java)::requestSync,
         )
     }
@@ -244,7 +258,7 @@ class LinkGraphProjectService(
     }
 
     /** 图工作区流程。 */
-    private val graphWorkspaceWorkflow by lazy(LazyThreadSafetyMode.NONE) {
+    internal val graphWorkspaceWorkflow by lazy(LazyThreadSafetyMode.NONE) {
         GraphWorkspaceWorkflow(
             session = editorSession,
             mermaidImporter = mermaidImporter,
@@ -262,7 +276,7 @@ class LinkGraphProjectService(
     }
 
     /** 草稿补丁流程。 */
-    private val draftPatchWorkflow by lazy(LazyThreadSafetyMode.NONE) {
+    internal val draftPatchWorkflow by lazy(LazyThreadSafetyMode.NONE) {
         DraftPatchWorkflow(
             session = editorSession,
             graphPatchApplyService = graphPatchApplyService,
@@ -291,7 +305,7 @@ class LinkGraphProjectService(
             graphDiffer = graphDiffer,
             syncPreviewPlanner = syncPreviewPlanner,
             graphGenerationService = graphGenerationService,
-            settingsProvider = ::effectiveGenerationSettings,
+            settingsProvider = runtimeSupport::effectiveGenerationSettings,
             projectBasePathProvider = { project.basePath },
         )
     }
@@ -315,13 +329,13 @@ class LinkGraphProjectService(
                 )
             },
             onInvalidateAuditRequests = ::invalidateAuditRequests,
-            onLogGraphDiagnostics = ::logGraphDiagnostics,
+            onLogGraphDiagnostics = graphDiagnosticsLogger::log,
             logger = logger,
         )
     }
 
     /** 实现计划与代码草稿流程。 */
-    private val generationWorkflow by lazy(LazyThreadSafetyMode.NONE) {
+    internal val generationWorkflow by lazy(LazyThreadSafetyMode.NONE) {
         GenerationWorkflow(
             project = project,
             session = editorSession,
@@ -330,7 +344,7 @@ class LinkGraphProjectService(
             codeGenerationService = codeGenerationService,
             codeDraftWriterService = codeDraftWriterService,
             sourceNavigationServiceProvider = { project.getService(SourceNavigationService::class.java) },
-            settingsProvider = ::effectiveGenerationSettings,
+            settingsProvider = runtimeSupport::effectiveGenerationSettings,
             asyncRequestLifecycle = asyncRequestLifecycle,
             logger = logger,
             artifactStoreProvider = { artifactStore },
@@ -338,7 +352,7 @@ class LinkGraphProjectService(
     }
 
     /** 问答、差异分析与链路讲解流程。 */
-    private val reviewWorkflow by lazy(LazyThreadSafetyMode.NONE) {
+    internal val reviewWorkflow by lazy(LazyThreadSafetyMode.NONE) {
         ReviewWorkflow(
             project = project,
             session = editorSession,
@@ -347,7 +361,7 @@ class LinkGraphProjectService(
             graphDiffPatchService = graphDiffPatchService,
             graphBeautificationService = graphBeautificationService,
             graphDiffer = graphDiffer,
-            settingsProvider = ::effectiveGenerationSettings,
+            settingsProvider = runtimeSupport::effectiveGenerationSettings,
             auditExecutorOverrideProvider = { testAuditExecutorOverride },
             asyncRequestLifecycle = asyncRequestLifecycle,
             logger = logger,
@@ -356,19 +370,24 @@ class LinkGraphProjectService(
     }
 
     /** 源码跳转与设置页流程。 */
-    private val sourceNavigationWorkflow by lazy(LazyThreadSafetyMode.NONE) {
+    internal val sourceNavigationWorkflow by lazy(LazyThreadSafetyMode.NONE) {
         SourceNavigationWorkflow(
             project = project,
             session = editorSession,
             sourceNavigationServiceProvider = { project.getService(SourceNavigationService::class.java) },
-            navigationNodeFinder = ::findNavigationNode,
-            showSettingsDialog = {
-                computeOnIdeThread {
-                    testOpenSettingsOverride?.invoke() ?: ShowSettingsUtil.getInstance()
-                        .showSettingsDialog(project, LinkGraphSettingsConfigurable::class.java)
-                }
-            },
+            navigationNodeFinder = ::findTrustedNavigationNode,
+            showSettingsDialog = runtimeSupport::openSettingsDialog,
             logger = logger,
+        )
+    }
+    /** 调试模式 workflow。 */
+    private val projectDebugWorkflow by lazy(LazyThreadSafetyMode.NONE) {
+        ProjectDebugWorkflow(
+            logger = logger,
+            debugGraphFactory = debugGraphFactory,
+            subjectGraphWorkflow = subjectGraphWorkflow,
+            invalidateAuditRequests = ::invalidateAuditRequests,
+            mutateEditorStateBatch = { block -> mutateEditorStateBatch(block = block) },
         )
     }
 
@@ -399,6 +418,11 @@ class LinkGraphProjectService(
         )
     }
 
+    internal fun resetWorkspaceGraphContext() {
+        subjectGraphWorkflow.clearLastAnalysisCache()
+        invalidateAuditRequests()
+    }
+
     /** 在同步会话中批量修改编辑器状态。 */
     private fun <T> mutateEditorStateBatch(
         syncBrowser: Boolean = true,
@@ -415,28 +439,6 @@ class LinkGraphProjectService(
     /** 异步加载当前编辑器上下文链路。 */
     fun loadCurrentEditorContextGraphAsync(editor: Editor? = null) {
         subjectGraphWorkflow.loadCurrentEditorContextGraphAsync(editor)
-    }
-
-    /** 直接加载指定图文档到编辑器状态。 */
-    fun loadGraph(
-        graph: GraphDocument,
-        source: String,
-    ) {
-        subjectGraphWorkflow.clearLastAnalysisCache()
-        invalidateAuditRequests()
-        graphWorkspaceWorkflow.loadGraph(graph, source)
-    }
-
-    /** 处理前端主动上报的图结构变更。 */
-    fun handleFrontendGraphChanged(graph: GraphDocument) {
-        subjectGraphWorkflow.clearLastAnalysisCache()
-        invalidateAuditRequests()
-        graphWorkspaceWorkflow.handleFrontendGraphChanged(graph)
-    }
-
-    /** 处理前端主动上报的布局变更。 */
-    fun handleFrontendLayoutChanged(positions: Map<String, GraphLayoutPosition>) {
-        graphWorkspaceWorkflow.handleFrontendLayoutChanged(positions)
     }
 
     /** 把当前方法节点追加到画布中。 */
@@ -477,11 +479,6 @@ class LinkGraphProjectService(
         generationWorkflow.requestGenerationPlan()
     }
 
-    /** 异步生成实现计划，并把请求状态同步到前端。 */
-    fun requestGenerationPlanAsync() {
-        generationWorkflow.requestGenerationPlanAsync()
-    }
-
     /** 针对当前实现建议继续追问。 */
     fun requestGenerationPlanDiscussion(
         question: String,
@@ -490,42 +487,9 @@ class LinkGraphProjectService(
         generationWorkflow.requestGenerationPlanDiscussion(question, focusItemId)
     }
 
-    /** 异步追问当前实现建议。 */
-    fun requestGenerationPlanDiscussionAsync(
-        question: String,
-        focusItemId: String? = null,
-    ) {
-        generationWorkflow.requestGenerationPlanDiscussionAsync(question, focusItemId)
-    }
-
     /** 基于当前规划上下文生成代码草稿。 */
     fun requestCodeDrafts() {
         generationWorkflow.requestCodeDrafts()
-    }
-
-    /** 异步生成代码草稿，并把请求状态同步到前端。 */
-    fun requestCodeDraftsAsync() {
-        generationWorkflow.requestCodeDraftsAsync()
-    }
-
-    /** 把当前全部代码草稿批量写入项目目录。 */
-    fun applyCodeDrafts() {
-        generationWorkflow.applyCodeDrafts()
-    }
-
-    /** 仅写入单个指定代码草稿。 */
-    fun applySingleCodeDraft(draftId: String) {
-        generationWorkflow.applySingleCodeDraft(draftId)
-    }
-
-    /** 打开指定代码草稿的原生 IDE diff。 */
-    fun openCodeDraftNativeDiff(draftId: String) {
-        testOpenCodeDraftNativeDiffOverride?.invoke(draftId) ?: generationWorkflow.openCodeDraftNativeDiff(draftId)
-    }
-
-    /** 请求跳转到草稿文件路径。 */
-    fun requestDraftNavigation(targetPath: String) {
-        generationWorkflow.requestDraftNavigation(targetPath)
     }
 
     /** 在前端展示草稿补丁预览。 */
@@ -562,15 +526,6 @@ class LinkGraphProjectService(
         return reviewWorkflow.requestAudit(question, selectedNodeIds, sourceThreadId)
     }
 
-    /** 异步发起链路问答，并把结果和补丁预览回写到前端。 */
-    fun requestAuditAsync(
-        question: String,
-        selectedNodeIds: List<String> = emptyList(),
-        sourceThreadId: String? = null,
-    ) {
-        reviewWorkflow.requestAuditAsync(question, selectedNodeIds, sourceThreadId)
-    }
-
     /** 直接重试最近一次失败的问答请求。 */
     fun retryLastAuditRequestAsync() {
         reviewWorkflow.retryLastAuditRequestAsync()
@@ -587,294 +542,12 @@ class LinkGraphProjectService(
 
     /** 确认一条问答候选变更并写入统一草稿层。 */
     fun confirmAuditCandidateChange(changeId: String): DraftWorkbenchEntry? {
-        val stateService = stateService()
-        val snapshot = stateService.snapshot()
-        val auditResult = snapshot.auditResult ?: return null
-        val candidate = auditResult.candidateChanges.firstOrNull { it.changeId == changeId } ?: return null
-        val baseGraph = currentWorkingGraph(snapshot)
-        if (!candidate.isEligibleForDraftConfirmation()) {
-            stateService.markOperationFeedback(
-                OperationFeedbackLevel.WARNING,
-                "当前候选变更缺少直接证据，不能直接写入草稿层。",
-            )
-            return null
-        }
-        if (!candidateBelongsToSelectedMethod(candidate, snapshot.selectedMethodSignature, baseGraph)) {
-            stateService.markOperationFeedback(
-                OperationFeedbackLevel.WARNING,
-                "当前候选变更不属于当前选中的方法，不能直接写入草稿层。",
-            )
-            return null
-        }
-        debugLazy(logger.isDebugEnabled, logger::debug) {
-            "确认问答候选变更: ${GenerationDiagnostics.summarizeCandidateChange(candidate)}"
-        }
-        runtimeTrace {
-            "运行时确认候选变更: ${GenerationDiagnostics.summarizeCandidateChange(candidate)}, " +
-                "graphPatch=${GenerationDiagnostics.summarizeGraphPatch(candidate.graphPatch)}, " +
-                "baseTargets=${GenerationDiagnostics.summarizeNodeStates(baseGraph, observedNodeIds(candidate))}"
-        }
-        val confirmation = draftWorkbenchService.confirmCandidateChange(
-            draft = snapshot.draftWorkbenchState,
-            candidate = candidate,
-            baseGraph = baseGraph,
-        )
-        if (confirmation.failureReason != null) {
-            stateService.markOperationFeedback(
-                OperationFeedbackLevel.WARNING,
-                confirmation.failureReason,
-            )
-            return null
-        }
-        val rebuiltGraph = rebuildConfirmedDraftGraph(snapshot, confirmation.draftState)
-        runtimeTrace {
-            "运行时确认候选变更后图状态: changeId=${candidate.changeId}, " +
-                "draftCount=${confirmation.draftState.draftChanges.size}, " +
-                "rebuiltTargets=${GenerationDiagnostics.summarizeNodeStates(rebuiltGraph, observedNodeIds(candidate))}"
-        }
-        invalidateAuditRequests()
-        val confirmedEntry = confirmation.draftChanges.lastOrNull()
-        mutateEditorStateBatch {
-            apply {
-                markDraftWorkbenchState(
-                    state = confirmation.draftState,
-                    advanceDraftVersion = true,
-                )
-            }
-            apply {
-                markWorkingGraphChanged(
-                    graph = rebuiltGraph,
-                    selectedMethodSignature = snapshot.selectedMethodSignature,
-                    workingGraphDirty = confirmation.draftState.draftChanges.isNotEmpty(),
-                )
-            }
-            apply {
-                markAuditResult(
-                    auditResult.copy(
-                        candidateChanges = auditResult.candidateChanges.map { currentCandidate ->
-                            if (currentCandidate.changeId == changeId) {
-                                currentCandidate.copy(
-                                    status = CandidateDraftChangeStatus.CONFIRMED,
-                                    targetNodeIds = confirmedEntry?.targetNodeIds ?: currentCandidate.targetNodeIds,
-                                    graphPatch = confirmedEntry?.graphPatch ?: currentCandidate.graphPatch,
-                                )
-                            } else {
-                                currentCandidate
-                            }
-                        },
-                        newCandidateChanges = auditResult.newCandidateChanges.map { currentCandidate ->
-                            if (currentCandidate.changeId == changeId) {
-                                currentCandidate.copy(
-                                    status = CandidateDraftChangeStatus.CONFIRMED,
-                                    targetNodeIds = confirmedEntry?.targetNodeIds ?: currentCandidate.targetNodeIds,
-                                    graphPatch = confirmedEntry?.graphPatch ?: currentCandidate.graphPatch,
-                                )
-                            } else {
-                                currentCandidate
-                            }
-                        },
-                        auditSession = auditResult.auditSession?.copy(
-                            candidateChanges = auditResult.auditSession.candidateChanges.map { currentCandidate ->
-                                if (currentCandidate.changeId == changeId) {
-                                    currentCandidate.copy(
-                                        status = CandidateDraftChangeStatus.CONFIRMED,
-                                        targetNodeIds = confirmedEntry?.targetNodeIds ?: currentCandidate.targetNodeIds,
-                                        graphPatch = confirmedEntry?.graphPatch ?: currentCandidate.graphPatch,
-                                    )
-                                } else {
-                                    currentCandidate
-                                }
-                            },
-                        ),
-                    ),
-                    snapshot.auditRequestState,
-                )
-            }
-            apply {
-                val refreshedSnapshot = snapshot.copy(
-                    draftWorkbenchState = confirmation.draftState,
-                    draftVersion = snapshot.draftVersion + 1,
-                    auditResult = auditResult.copy(
-                        candidateChanges = auditResult.candidateChanges.map { currentCandidate ->
-                            if (currentCandidate.changeId == changeId) {
-                                currentCandidate.copy(
-                                    status = CandidateDraftChangeStatus.CONFIRMED,
-                                    targetNodeIds = confirmedEntry?.targetNodeIds ?: currentCandidate.targetNodeIds,
-                                    graphPatch = confirmedEntry?.graphPatch ?: currentCandidate.graphPatch,
-                                )
-                            } else {
-                                currentCandidate
-                            }
-                        },
-                        newCandidateChanges = auditResult.newCandidateChanges.map { currentCandidate ->
-                            if (currentCandidate.changeId == changeId) {
-                                currentCandidate.copy(
-                                    status = CandidateDraftChangeStatus.CONFIRMED,
-                                    targetNodeIds = confirmedEntry?.targetNodeIds ?: currentCandidate.targetNodeIds,
-                                    graphPatch = confirmedEntry?.graphPatch ?: currentCandidate.graphPatch,
-                                )
-                            } else {
-                                currentCandidate
-                            }
-                        },
-                        auditSession = auditResult.auditSession?.copy(
-                            candidateChanges = auditResult.auditSession.candidateChanges.map { currentCandidate ->
-                                if (currentCandidate.changeId == changeId) {
-                                    currentCandidate.copy(
-                                        status = CandidateDraftChangeStatus.CONFIRMED,
-                                        targetNodeIds = confirmedEntry?.targetNodeIds ?: currentCandidate.targetNodeIds,
-                                        graphPatch = confirmedEntry?.graphPatch ?: currentCandidate.graphPatch,
-                                    )
-                                } else {
-                                    currentCandidate
-                                }
-                            },
-                        ),
-                    ),
-                )
-                markDraftValidationState(riskResolutionService.evaluateDraftValidation(refreshedSnapshot))
-                markCodeEligibilityDecision(riskResolutionService.evaluateCodeEligibility(refreshedSnapshot))
-            }
-            apply {
-                markOperationFeedback(
-                    OperationFeedbackLevel.SUCCESS,
-                    "已确认候选变更，并写入草稿层。",
-                )
-            }
-        }
-        confirmedEntry?.let { entry ->
-            artifactStore.save(
-                ConfirmedIntentArtifact(
-                    artifactId = "confirmed-${entry.entryId}",
-                    entry = entry,
-                ),
-            )
-            debugLazy(logger.isDebugEnabled, logger::debug) {
-                "问答候选变更已写入草稿层: ${GenerationDiagnostics.summarizeDraftEntry(entry)}"
-            }
-        }
-        return confirmation.draftChanges.lastOrNull()
+        return confirmedDraftChangeSyncWorkflow.confirm(changeId)
     }
 
     /** 撤销一条已经确认的问答候选变更，并恢复待确认状态。 */
     fun unconfirmAuditCandidateChange(changeId: String): DraftWorkbenchEntry? {
-        val stateService = stateService()
-        val snapshot = stateService.snapshot()
-        val auditResult = snapshot.auditResult ?: return null
-        val removal = draftWorkbenchService.unconfirmCandidateChange(snapshot.draftWorkbenchState, changeId)
-        val removedEntry = removal.removedEntry ?: return null
-        val rebuiltGraph = rebuildConfirmedDraftGraph(snapshot, removal.draftState)
-        debugLazy(logger.isDebugEnabled, logger::debug) {
-            "取消确认问答候选变更: ${GenerationDiagnostics.summarizeDraftEntry(removedEntry)}"
-        }
-        invalidateAuditRequests()
-        mutateEditorStateBatch {
-            apply {
-                markDraftWorkbenchState(
-                    state = removal.draftState,
-                    advanceDraftVersion = true,
-                )
-            }
-            apply {
-                markWorkingGraphChanged(
-                    graph = rebuiltGraph,
-                    selectedMethodSignature = snapshot.selectedMethodSignature,
-                    workingGraphDirty = removal.draftState.draftChanges.isNotEmpty(),
-                )
-            }
-            apply {
-                markAuditResult(
-                    auditResult.copy(
-                        candidateChanges = auditResult.candidateChanges.map { currentCandidate ->
-                            if (currentCandidate.changeId == changeId) {
-                                currentCandidate.copy(status = CandidateDraftChangeStatus.PENDING_CONFIRMATION)
-                            } else {
-                                currentCandidate
-                            }
-                        },
-                        newCandidateChanges = auditResult.newCandidateChanges.map { currentCandidate ->
-                            if (currentCandidate.changeId == changeId) {
-                                currentCandidate.copy(status = CandidateDraftChangeStatus.PENDING_CONFIRMATION)
-                            } else {
-                                currentCandidate
-                            }
-                        },
-                        auditSession = auditResult.auditSession?.copy(
-                            candidateChanges = auditResult.auditSession.candidateChanges.map { currentCandidate ->
-                                if (currentCandidate.changeId == changeId) {
-                                    currentCandidate.copy(status = CandidateDraftChangeStatus.PENDING_CONFIRMATION)
-                                } else {
-                                    currentCandidate
-                                }
-                            },
-                        ),
-                    ),
-                    snapshot.auditRequestState,
-                )
-            }
-            apply {
-                val refreshedSnapshot = snapshot.copy(
-                    draftWorkbenchState = removal.draftState,
-                    draftVersion = snapshot.draftVersion + 1,
-                    auditResult = auditResult.copy(
-                        candidateChanges = auditResult.candidateChanges.map { currentCandidate ->
-                            if (currentCandidate.changeId == changeId) {
-                                currentCandidate.copy(status = CandidateDraftChangeStatus.PENDING_CONFIRMATION)
-                            } else {
-                                currentCandidate
-                            }
-                        },
-                        newCandidateChanges = auditResult.newCandidateChanges.map { currentCandidate ->
-                            if (currentCandidate.changeId == changeId) {
-                                currentCandidate.copy(status = CandidateDraftChangeStatus.PENDING_CONFIRMATION)
-                            } else {
-                                currentCandidate
-                            }
-                        },
-                        auditSession = auditResult.auditSession?.copy(
-                            candidateChanges = auditResult.auditSession.candidateChanges.map { currentCandidate ->
-                                if (currentCandidate.changeId == changeId) {
-                                    currentCandidate.copy(status = CandidateDraftChangeStatus.PENDING_CONFIRMATION)
-                                } else {
-                                    currentCandidate
-                                }
-                            },
-                        ),
-                    ),
-                )
-                markDraftValidationState(riskResolutionService.evaluateDraftValidation(refreshedSnapshot))
-                markCodeEligibilityDecision(riskResolutionService.evaluateCodeEligibility(refreshedSnapshot))
-            }
-            apply {
-                markOperationFeedback(
-                    OperationFeedbackLevel.INFO,
-                    "已取消确认该候选变更，并从草稿层移除。",
-                )
-            }
-        }
-        artifactStore.remove("confirmed-${removedEntry.entryId}")
-        return removedEntry
-    }
-
-    private fun rebuildConfirmedDraftGraph(
-        snapshot: GraphEditorStateService.Snapshot,
-        draftState: com.charmnight.linkgraph.workbench.DraftWorkbenchState,
-    ): GraphDocument {
-        val baseGraph = snapshot.referenceWorkingGraph ?: snapshot.referenceFactGraph ?: currentWorkingGraph(snapshot)
-        return draftState.draftChanges.fold(baseGraph) { currentGraph, entry ->
-            val patch = entry.graphPatch ?: return@fold currentGraph
-            runtimeTrace {
-                "运行时重建已确认草稿图(应用前): entryId=${entry.entryId}, sourceChangeId=${entry.sourceChangeId}, " +
-                    "patch=${GenerationDiagnostics.summarizeGraphPatch(patch)}, " +
-                    "targets=${GenerationDiagnostics.summarizeNodeStates(currentGraph, patch.operations.map { it.elementId })}"
-            }
-            val nextGraph = graphPatchApplyService.apply(currentGraph, patch)
-            runtimeTrace {
-                "运行时重建已确认草稿图(应用后): entryId=${entry.entryId}, sourceChangeId=${entry.sourceChangeId}, " +
-                    "targets=${GenerationDiagnostics.summarizeNodeStates(nextGraph, patch.operations.map { it.elementId })}"
-            }
-            nextGraph
-        }
+        return confirmedDraftChangeSyncWorkflow.unconfirm(changeId)
     }
 
     /** 基于代码事实图和设计基线发起同步差异问答。 */
@@ -883,14 +556,6 @@ class LinkGraphProjectService(
         selectedDiffItemIds: List<String> = emptyList(),
     ): GraphPatchResult? {
         return reviewWorkflow.requestDiffReview(question, selectedDiffItemIds)
-    }
-
-    /** 异步发起差异问答，并把修订草稿回写到前端。 */
-    fun requestDiffReviewAsync(
-        question: String,
-        selectedDiffItemIds: List<String> = emptyList(),
-    ) {
-        reviewWorkflow.requestDiffReviewAsync(question, selectedDiffItemIds)
     }
 
     /** 生成当前链路图的讲解与润色说明。 */
@@ -904,41 +569,9 @@ class LinkGraphProjectService(
         return reviewWorkflow.requestGraphBeautification(goal, preferredStyle, explanationFocus, followUp, granularity)
     }
 
-    /** 异步生成链路讲解，并把请求状态同步到前端。 */
-    fun requestGraphBeautificationAsync(
-        goal: String = "",
-        preferredStyle: String? = null,
-        explanationFocus: String? = null,
-        followUp: GraphBeautificationFollowUpContext? = null,
-        granularity: StepGranularity = StepGranularity.BUSINESS,
-    ) {
-        reviewWorkflow.requestGraphBeautificationAsync(goal, preferredStyle, explanationFocus, followUp, granularity)
-    }
-
     /** 展开摘要节点，重新以更宽的预算提取当前主体链路。 */
     fun requestExpandOverflowNode(nodeId: String) {
         subjectGraphWorkflow.requestExpandOverflowNode(nodeId)
-    }
-
-    /** 更新工作台分区折叠偏好，并同步给前端。 */
-    fun updateWorkbenchSectionPreference(sectionId: String, expanded: Boolean) {
-        val nextPreferences = project
-            .getService(WorkbenchLayoutPreferencesService::class.java)
-            .update(sectionId, expanded)
-        debugLazy(logger.isDebugEnabled, logger::debug) {
-            "更新工作台分区偏好: sectionId=$sectionId, expanded=$expanded, nextPreferences=$nextPreferences"
-        }
-        editorSession.mutate {
-            markWorkbenchSectionPreferences(nextPreferences)
-        }
-    }
-
-    /**
-     * 按节点位置尝试打开源码，并把结果明确回写到前端状态。
-     * 对缺失位置、文件不存在等情况都给出提示，避免前端看起来“没反应”。
-     */
-    fun requestSourceNavigation(nodeId: String): SourceNavigationService.NavigationTarget? {
-        return sourceNavigationWorkflow.requestSourceNavigation(nodeId)
     }
 
     /** 打开插件设置页。 */
@@ -961,281 +594,36 @@ class LinkGraphProjectService(
         return subjectGraphWorkflow.previewCurrentEditorSubjectKind(editor)
     }
 
-    /** 在 IDEA 线程中安全执行读操作。 */
-    private fun <T> computeOnIdeThread(action: () -> T): T {
-        /** 全局应用对象。 */
-        val application = ApplicationManager.getApplication()
-        if (application.isDispatchThread) {
-            return WriteIntentReadAction.compute<T, RuntimeException>(action)
-        }
-
-        /** 是否已经在 IDEA 线程成功完成执行。 */
-        val completed = AtomicBoolean(false)
-        /** 执行结果。 */
-        val result = AtomicReference<T>()
-        /** 执行过程中捕获的异常。 */
-        val error = AtomicReference<Throwable?>()
-        application.invokeAndWait(
-            {
-                try {
-                    result.set(WriteIntentReadAction.compute<T, RuntimeException>(action))
-                    completed.set(true)
-                } catch (throwable: Throwable) {
-                    error.set(throwable)
-                }
-            },
-            ModalityState.defaultModalityState(),
-        )
-        error.get()?.let { throw it }
-        check(completed.get()) { "未能在 IDEA 线程中完成链路图请求" }
-        return result.get()
-    }
-
     /** 把最新状态同步到浏览器面板。 */
     /** 在调试模式下按环境变量预设启动后的展示模式。 */
     @JvmName("prepareDebugRequestedAnalysisDisplayModeIfPresent")
     internal fun prepareDebugRequestedAnalysisDisplayModeIfPresent() {
-        val displayMode = resolveDebugRequestedAnalysisDisplayMode() ?: return
-        if (!subjectGraphWorkflow.prepareRequestedAnalysisDisplayMode(displayMode)) {
-            return
-        }
-        debugLazy(logger.isDebugEnabled, logger::debug) {
-            "检测到调试展示模式环境变量 $DEBUG_ANALYSIS_DISPLAY_MODE_ENV=$displayMode，将在自动载图时优先展示该模式"
-        }
-    }
-
-    /** 解析调试用的展示模式环境变量。 */
-    private fun resolveDebugRequestedAnalysisDisplayMode(): AnalysisDisplayMode? {
-        val rawValue = System.getenv(DEBUG_ANALYSIS_DISPLAY_MODE_ENV)
-            ?.trim()
-            ?.takeIf(String::isNotBlank)
-            ?: return null
-        return runCatching {
-            AnalysisDisplayMode.valueOf(rawValue.uppercase())
-        }.getOrElse { error ->
-            logger.warn("无效的调试展示模式环境变量: $DEBUG_ANALYSIS_DISPLAY_MODE_ENV=$rawValue", error)
-            null
-        }
+        projectDebugWorkflow.prepareDebugRequestedAnalysisDisplayModeIfPresent(DEBUG_ANALYSIS_DISPLAY_MODE_ENV)
     }
 
     /** 按调试模式注入预置链路图。 */
     @JvmName("loadDebugGraph")
     internal fun loadDebugGraph(mode: String) {
-        /** 调试图定义。 */
-        val debugGraph = debugGraphFactory.create(mode)
-        if (debugGraph == null) {
-            logger.warn("未知的调试自动载图模式: $mode")
-            return
-        }
-        debugLazy(logger.isDebugEnabled, logger::debug) {
-            "开始注入调试链路图: mode=$mode, summary=${debugGraph.summary}"
-        }
-        invalidateAuditRequests()
-        mutateEditorStateBatch {
-            apply {
-                loadGraphProjection(
-                    visibleGraph = debugGraph.graph,
-                    fullGraph = debugGraph.graph,
-                    source = "debug:$mode",
-                    selectedMethodSignature = debugGraph.anchorSignature,
-                )
-            }
-            apply {
-                markOperationFeedback(
-                    OperationFeedbackLevel.INFO,
-                    "已自动载入诊断链路图：${debugGraph.summary}",
-                )
-            }
-        }
+        projectDebugWorkflow.loadDebugGraph(mode)
     }
 
     /** 按方法签名异步载入真实方法链路图。 */
     @JvmName("loadDebugMethodGraphBySignatureAsync")
     internal fun loadDebugMethodGraphBySignatureAsync(signature: String) {
-        subjectGraphWorkflow.loadDebugMethodGraphBySignatureAsync(signature)
-    }
-
-    /** 输出链路图的诊断摘要，便于排查数据问题。 */
-    private fun logGraphDiagnostics(
-        reason: String,
-        graph: GraphDocument?,
-    ) {
-        if (graph == null) {
-            debugLazy(logger.isDebugEnabled, logger::debug) { "链路图诊断[$reason]: graph=null" }
-            return
-        }
-        /** 图中所有节点 ID。 */
-        val nodeIds = graph.nodes.map { it.id }
-        /** 节点 ID 去重后的集合。 */
-        val nodeIdSet = nodeIds.toSet()
-        /** 重复节点 ID 样本。 */
-        val duplicateNodeIds = nodeIds.groupingBy { it }.eachCount()
-            .filterValues { it > 1 }
-            .keys
-            .take(6)
-        /** 图中所有边 ID。 */
-        val edgeIds = graph.edges.map { it.id }
-        /** 重复边 ID 样本。 */
-        val duplicateEdgeIds = edgeIds.groupingBy { it }.eachCount()
-            .filterValues { it > 1 }
-            .keys
-            .take(6)
-        /** 悬空边样本。 */
-        val danglingEdges = graph.edges
-            .filter { edge -> edge.fromNodeId !in nodeIdSet || edge.toNodeId !in nodeIdSet }
-            .take(6)
-            .map { edge -> "${edge.id}(${edge.fromNodeId}->${edge.toNodeId})" }
-        /** 具备画布坐标的节点位置集合。 */
-        val positionedNodes = graph.nodes.mapNotNull { node ->
-            val x = node.metadata[UI_X_KEY]?.toDoubleOrNull()
-            val y = node.metadata[UI_Y_KEY]?.toDoubleOrNull()
-            if (x != null && y != null) {
-                x to y
-            } else {
-                null
-            }
-        }
-        /** 节点 X 坐标范围。 */
-        val xRange = if (positionedNodes.isEmpty()) {
-            "n/a"
-        } else {
-            "${positionedNodes.minOf { it.first }.toInt()}..${positionedNodes.maxOf { it.first }.toInt()}"
-        }
-        /** 节点 Y 坐标范围。 */
-        val yRange = if (positionedNodes.isEmpty()) {
-            "n/a"
-        } else {
-            "${positionedNodes.minOf { it.second }.toInt()}..${positionedNodes.maxOf { it.second }.toInt()}"
-        }
-        /** 最大出度。 */
-        val maxOutDegree = graph.edges.groupingBy { it.fromNodeId }.eachCount().values.maxOrNull() ?: 0
-        /** 最大入度。 */
-        val maxInDegree = graph.edges.groupingBy { it.toNodeId }.eachCount().values.maxOrNull() ?: 0
-        /** 节点类型分布摘要。 */
-        val typeSummary = graph.nodes.groupingBy { it.type.name }.eachCount().entries
-            .sortedByDescending { it.value }
-            .joinToString(", ") { "${it.key}:${it.value}" }
-        debugLazy(logger.isDebugEnabled, logger::debug) {
-            "链路图诊断[$reason]: nodes=${graph.nodes.size}, edges=${graph.edges.size}, " +
-                "duplicateNodeIds=$duplicateNodeIds, duplicateEdgeIds=$duplicateEdgeIds, danglingEdges=$danglingEdges, " +
-                "positioned=${positionedNodes.size}, xRange=$xRange, yRange=$yRange, maxOutDegree=$maxOutDegree, maxInDegree=$maxInDegree, " +
-                "sampleNodes=${graph.nodes.take(6).map { it.id }}, nodeTypes=[$typeSummary]"
-        }
-    }
-
-    /** 获取图编辑器状态服务。 */
-    private fun stateService(): GraphEditorStateService {
-        return project.getService(GraphEditorStateService::class.java)
-    }
-
-    /** 返回当前真正生效的生成设置。 */
-    private fun effectiveGenerationSettings() = testEffectiveGenerationSettingsOverride
-        ?: ApplicationManager.getApplication()
-            .getService(LinkGraphSettingsService::class.java)
-            .snapshot()
-
-    private fun observedNodeIds(candidate: CandidateDraftChange): List<String> {
-        val nodeIds = linkedSetOf<String>()
-        nodeIds += candidate.targetNodeIds
-        nodeIds += candidate.graphPatch?.operations
-            ?.mapNotNull { operation -> operation.node?.id?.takeIf(String::isNotBlank) ?: operation.elementId.takeIf(String::isNotBlank) }
-            .orEmpty()
-        candidate.evidence
-            .flatMap { finding -> finding.references }
-            .mapNotNullTo(nodeIds) { reference -> reference.nodeId?.takeIf(String::isNotBlank) }
-        return nodeIds.toList()
-    }
-
-    private fun candidateBelongsToSelectedMethod(
-        candidate: CandidateDraftChange,
-        selectedMethodSignature: String?,
-        baseGraph: GraphDocument,
-    ): Boolean {
-        val expectedSignature = selectedMethodSignature?.trim().orEmpty()
-        if (expectedSignature.isEmpty()) {
-            return true
-        }
-        if (!graphContainsMethodSignature(baseGraph, expectedSignature)) {
-            return true
-        }
-        val candidateSignatures = resolveCandidateMethodSignatures(candidate, baseGraph)
-        return candidateSignatures.isEmpty() || expectedSignature in candidateSignatures
-    }
-
-    private fun graphContainsMethodSignature(
-        graph: GraphDocument,
-        selectedMethodSignature: String,
-    ): Boolean {
-        return graph.nodes.any { node ->
-            node.signature == selectedMethodSignature ||
-                node.metadata["flow.anchorMethod"] == selectedMethodSignature ||
-                node.metadata["flow.ownerMethod"] == selectedMethodSignature
-        }
-    }
-
-    private fun resolveCandidateMethodSignatures(
-        candidate: CandidateDraftChange,
-        baseGraph: GraphDocument,
-    ): Set<String> {
-        val nodesById = baseGraph.nodes.associateBy(GraphNode::id)
-        val signatures = linkedSetOf<String>()
-        candidate.editScopes
-            .mapNotNullTo(signatures) { scope -> scope.symbolSignature?.trim()?.takeIf(String::isNotEmpty) }
-        candidate.targetNodeIds
-            .mapNotNullTo(signatures) { nodeId -> resolveNodeMethodSignature(nodesById[nodeId]) }
-        candidate.evidence
-            .flatMap { finding -> finding.references }
-            .mapNotNullTo(signatures) { reference -> resolveNodeMethodSignature(nodesById[reference.nodeId]) }
-        candidate.graphPatch?.operations.orEmpty().forEach { operation ->
-            resolveNodeMethodSignature(nodesById[operation.elementId])?.let(signatures::add)
-            resolveNodeMethodSignature(nodesById[operation.node?.id])?.let(signatures::add)
-            resolveNodeMethodSignature(operation.node)?.let(signatures::add)
-            resolveNodeMethodSignature(nodesById[operation.edge?.fromNodeId])?.let(signatures::add)
-            resolveNodeMethodSignature(nodesById[operation.edge?.toNodeId])?.let(signatures::add)
-        }
-        return signatures
-    }
-
-    private fun resolveNodeMethodSignature(node: GraphNode?): String? {
-        if (node == null) {
-            return null
-        }
-        return node.signature?.trim()?.takeIf(String::isNotEmpty)
-            ?: node.metadata["flow.anchorMethod"]?.trim()?.takeIf(String::isNotEmpty)
-            ?: node.metadata["flow.ownerMethod"]?.trim()?.takeIf(String::isNotEmpty)
-    }
-
-    private fun runtimeTrace(message: () -> String) {
-        if (runtimeTraceEnabled) {
-            logger.warn(message())
-        }
+        projectDebugWorkflow.loadDebugMethodGraphBySignatureAsync(signature)
     }
 
     companion object {
-        /** 画布 X 坐标 metadata 键。 */
-        private const val UI_X_KEY = "ui.x"
-        /** 画布 Y 坐标 metadata 键。 */
-        private const val UI_Y_KEY = "ui.y"
         /** 调试启动时指定展示模式的环境变量。 */
         private const val DEBUG_ANALYSIS_DISPLAY_MODE_ENV = "LINKGRAPH_DEBUG_ANALYSIS_DISPLAY_MODE"
         /** 服务日志记录器。 */
         private val logger = Logger.getInstance(LinkGraphProjectService::class.java)
     }
-
-    private data class DebugGraphDefinition(
-        /** 调试图本体。 */
-        val graph: GraphDocument,
-        /** 调试图锚点方法签名。 */
-        val anchorSignature: String,
-        /** 调试图摘要说明。 */
-        val summary: String,
-    )
-
 }
 
 /** 按优先级从多个图快照里查找指定节点。 */
 internal fun findNavigationNode(
-    snapshot: GraphEditorStateService.Snapshot,
+    snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     nodeId: String,
 ): GraphNode? {
     return sequenceOf(
@@ -1247,4 +635,12 @@ internal fun findNavigationNode(
         .filterNotNull()
         .flatMap { graph -> graph.nodes.asSequence() }
         .firstOrNull { node -> node.id == nodeId }
+}
+
+/** 仅从后端可信导航索引中查找允许跳转的节点。 */
+internal fun findTrustedNavigationNode(
+    snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+    nodeId: String,
+): GraphNode? {
+    return snapshot.trustedNavigationNodes[nodeId]
 }

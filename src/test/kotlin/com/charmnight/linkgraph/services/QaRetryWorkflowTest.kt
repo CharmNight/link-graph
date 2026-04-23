@@ -80,13 +80,13 @@ class QaRetryWorkflowTest : BasePlatformTestCase() {
 
         workflow.requestAuditAsync("这里为什么会走兜底分支？")
         waitForSnapshot(stateService) { current ->
-            current.auditRequestState.phase == GraphEditorStateService.AsyncRequestPhase.FAILED
+            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
         }
 
         workflow.retryLastAuditRequestAsync()
 
         val snapshot = waitForSnapshot(stateService) { current ->
-            current.auditRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
+            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
 
         assertEquals(2, attemptCount)
@@ -113,8 +113,8 @@ class QaRetryWorkflowTest : BasePlatformTestCase() {
 
     private fun waitForSnapshot(
         stateService: GraphEditorStateService,
-        predicate: (GraphEditorStateService.Snapshot) -> Boolean,
-    ): GraphEditorStateService.Snapshot {
+        predicate: (com.charmnight.linkgraph.ui.GraphEditorStateSnapshot) -> Boolean,
+    ): com.charmnight.linkgraph.ui.GraphEditorStateSnapshot {
         var latest = stateService.snapshot()
         PlatformTestUtil.waitWithEventsDispatching("等待问答状态收敛", {
             latest = stateService.snapshot()

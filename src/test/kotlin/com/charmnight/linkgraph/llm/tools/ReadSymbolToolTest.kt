@@ -30,7 +30,7 @@ class ReadSymbolToolTest : BasePlatformTestCase() {
             }
             """.trimIndent(),
         )
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             workingGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(
@@ -78,7 +78,7 @@ class ReadSymbolToolTest : BasePlatformTestCase() {
             }
             """.trimIndent(),
         )
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             workingGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(

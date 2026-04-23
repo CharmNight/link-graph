@@ -41,6 +41,10 @@ describe("PropertyPanel", () => {
     expect(screen.queryByText("METHOD")).not.toBeInTheDocument();
     expect(screen.queryByText("BOUND")).not.toBeInTheDocument();
     expect(screen.queryByText("PROVEN")).not.toBeInTheDocument();
+    expect(screen.getByText("源码位置")).toBeInTheDocument();
+    expect(screen.getByText("符号签名")).toBeInTheDocument();
+    expect(screen.queryByLabelText("位置")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("签名")).not.toBeInTheDocument();
 
     await user.clear(screen.getByLabelText("标题"));
     await user.type(screen.getByLabelText("标题"), "OrderService.placeDraft");
@@ -160,6 +164,8 @@ describe("PropertyPanel", () => {
     expect(screen.getByText("该节点不是独立方法，而是当前方法里的流程作用域容器。")).toBeInTheDocument();
     expect(screen.getByText("作用域类型")).toBeInTheDocument();
     expect(screen.getByText("Lambda 作用域")).toBeInTheDocument();
+    expect(screen.getByText("流程摘要")).toBeInTheDocument();
+    expect(screen.getByText("lambda body · Line")).toBeInTheDocument();
     expect(screen.queryByLabelText("输入")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("输出")).not.toBeInTheDocument();
   });
@@ -193,6 +199,8 @@ describe("PropertyPanel", () => {
     expect(screen.getByText("该节点表示当前方法中的内部执行动作，用来补齐代码阅读顺序，不等同于独立方法定义。")).toBeInTheDocument();
     expect(screen.getByText("所属方法")).toBeInTheDocument();
     expect(screen.getByText("com.example.ShiroUtils.setSysUser(com.example.User):void")).toBeInTheDocument();
+    expect(screen.getByText("动作表达式")).toBeInTheDocument();
+    expect(screen.getByText("SecurityUtils.getSubject()")).toBeInTheDocument();
   });
 
   it("keeps unsaved edits when the same node is refreshed from graph sync", async () => {

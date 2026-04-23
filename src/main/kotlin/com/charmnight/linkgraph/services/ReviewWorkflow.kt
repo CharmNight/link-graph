@@ -21,7 +21,7 @@ import com.charmnight.linkgraph.llm.runtime.AgentRuntimeContext
 import com.charmnight.linkgraph.llm.usesRemoteProvider
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorStateService
-import com.charmnight.linkgraph.ui.GraphEditorStateService.OperationFeedbackLevel
+import com.charmnight.linkgraph.ui.OperationFeedbackLevel
 import com.charmnight.linkgraph.workbench.AuditConversationMessage
 import com.charmnight.linkgraph.workbench.AuditConversationService
 import com.charmnight.linkgraph.workbench.AuditConversationSession
@@ -106,7 +106,7 @@ internal class ReviewWorkflow(
         )
         val output = normalizeAuditResult(requireNotNull(result.output), request)
         val requestState = asyncRequestLifecycle.withRuntimeMetadata(
-            requestState = GraphEditorStateService.AsyncRequestState.succeeded(
+            requestState = com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(
                 scene = "问答",
                 statusMessage = if (output.newCandidateChanges.isNotEmpty()) {
                     "问答完成，已生成待确认变更。"
@@ -119,16 +119,16 @@ internal class ReviewWorkflow(
         val (draftValidationState, codeDecision) = evaluateEligibility(snapshot.copy(auditResult = output))
         session.mutateBatch {
             apply {
-                markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(result))
+                workbench.markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(result))
             }
             apply {
-                markAuditResult(output, requestState, completedRequest = request)
+                asyncRequests.markAuditResult(output, requestState, completedRequest = request)
             }
             apply {
-                markDraftValidationState(draftValidationState)
+                workbench.markDraftValidationState(draftValidationState)
             }
             apply {
-                markCodeEligibilityDecision(codeDecision)
+                workbench.markCodeEligibilityDecision(codeDecision)
             }
         }
         return output
@@ -165,7 +165,7 @@ internal class ReviewWorkflow(
         val request = snapshot.qaRequestRecoveryState.lastFailedRequest
         if (request == null) {
             session.mutate {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.WARNING,
                     "当前没有可直接重试的失败问答请求。",
                 )
@@ -195,16 +195,16 @@ internal class ReviewWorkflow(
         val (draftValidationState, codeDecision) = evaluateEligibility(snapshot.copy(auditResult = updatedResult))
         session.mutateBatch {
             apply {
-                markAuditResult(updatedResult, snapshot.auditRequestState)
+                asyncRequests.markAuditResult(updatedResult, snapshot.auditRequestState)
             }
             apply {
-                markDraftValidationState(draftValidationState)
+                workbench.markDraftValidationState(draftValidationState)
             }
             apply {
-                markCodeEligibilityDecision(codeDecision)
+                workbench.markCodeEligibilityDecision(codeDecision)
             }
             apply {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.SUCCESS,
                     resolutionFeedbackMessage(status, codeDecision.allowed),
                     preserveLastMessageType = true,
@@ -261,8 +261,8 @@ internal class ReviewWorkflow(
      */
     private fun toRuntimeArtifactSummaries(
         result: AgentRunResult<*>,
-    ): List<GraphEditorStateService.RuntimeArtifactSummary> {
-        return result.artifactSummaries.map(GraphEditorStateService.RuntimeArtifactSummary::from)
+    ): List<com.charmnight.linkgraph.ui.RuntimeArtifactSummary> {
+        return result.artifactSummaries.map(com.charmnight.linkgraph.ui.RuntimeArtifactSummary::from)
     }
 
     private fun runtimeTrace(message: () -> String) {
@@ -276,7 +276,7 @@ internal class ReviewWorkflow(
      * 第一阶段仍复用 PlanningContextFactory 的问答图和源码证据构造，避免在 runtime 壳落地前提前拆散主链路。
      */
     private fun buildQaCapabilityInput(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         request: ReplayableQaRequest,
         onPreview: ((String, Boolean) -> Unit)? = null,
     ): QaCapabilityInput {
@@ -300,7 +300,7 @@ internal class ReviewWorkflow(
     }
 
     private fun executeAuditAsync(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         request: ReplayableQaRequest,
         feedbackMessage: String,
     ) {
@@ -314,20 +314,22 @@ internal class ReviewWorkflow(
         val previewUpdater = if (presentation.requestState.streaming) {
             asyncRequestLifecycle.createStreamingPreviewUpdater(
                 requestId,
-                GraphEditorStateService::updateAuditRequestPreview,
+                { id, previewText, finalizing ->
+                    asyncRequests.updateAuditRequestPreview(id, previewText, finalizing)
+                },
             )
         } else {
             null
         }
         session.mutateBatch {
             apply {
-                beginAuditRequest(presentation.requestState, submittedRequest = request)
+                asyncRequests.beginAuditRequest(presentation.requestState, submittedRequest = request)
             }
             apply {
-                markRuntimeArtifactSummaries("qa", emptyList())
+                workbench.markRuntimeArtifactSummaries("qa", emptyList())
             }
             apply {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.INFO,
                     feedbackMessage,
                 )
@@ -343,14 +345,14 @@ internal class ReviewWorkflow(
                 asyncRequestLifecycle.logAsyncRequestEvent(logger, "timedOut", timedOutState)
                 session.mutateBatch {
                     apply {
-                        markAuditRequestFailed(
+                        asyncRequests.markAuditRequestFailed(
                             timedOutState.errorMessage ?: "问答超时",
                             timedOutState,
                             failedRequest = request,
                         )
                     }
                     apply {
-                        markOperationFeedback(
+                        workbench.markOperationFeedback(
                             OperationFeedbackLevel.ERROR,
                             timedOutState.errorMessage ?: "问答超时",
                         )
@@ -388,13 +390,13 @@ internal class ReviewWorkflow(
                                 asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
                                 session.mutateBatch {
                                     apply {
-                                        markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(runtimeResult))
+                                        workbench.markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(runtimeResult))
                                     }
                                     apply {
-                                        markAuditRequestFailed(message, requestState, failedRequest = request)
+                                        asyncRequests.markAuditRequestFailed(message, requestState, failedRequest = request)
                                     }
                                     apply {
-                                        markOperationFeedback(
+                                        workbench.markOperationFeedback(
                                             OperationFeedbackLevel.ERROR,
                                             message,
                                             preserveLastMessageType = true,
@@ -446,19 +448,19 @@ internal class ReviewWorkflow(
                             val (draftValidationState, codeDecision) = evaluateEligibility(snapshot.copy(auditResult = normalizedAuditResult))
                             session.mutateBatch {
                                 apply {
-                                    markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(runtimeResult))
+                                    workbench.markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(runtimeResult))
                                 }
                                 apply {
-                                    markAuditResult(normalizedAuditResult, requestState, completedRequest = request)
+                                    asyncRequests.markAuditResult(normalizedAuditResult, requestState, completedRequest = request)
                                 }
                                 apply {
-                                    markDraftValidationState(draftValidationState)
+                                    workbench.markDraftValidationState(draftValidationState)
                                 }
                                 apply {
-                                    markCodeEligibilityDecision(codeDecision)
+                                    workbench.markCodeEligibilityDecision(codeDecision)
                                 }
                                 apply {
-                                    markOperationFeedback(
+                                    workbench.markOperationFeedback(
                                         feedbackLevel,
                                         requestState.statusMessage
                                             ?: if (normalizedAuditResult.newCandidateChanges.isNotEmpty()) {
@@ -478,13 +480,13 @@ internal class ReviewWorkflow(
                             asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
                             session.mutateBatch {
                                 apply {
-                                    markRuntimeArtifactSummaries("qa", emptyList())
+                                    workbench.markRuntimeArtifactSummaries("qa", emptyList())
                                 }
                                 apply {
-                                    markAuditRequestFailed(message, requestState, failedRequest = request)
+                                    asyncRequests.markAuditRequestFailed(message, requestState, failedRequest = request)
                                 }
                                 apply {
-                                    markOperationFeedback(
+                                    workbench.markOperationFeedback(
                                         OperationFeedbackLevel.ERROR,
                                         message,
                                         preserveLastMessageType = true,
@@ -500,7 +502,7 @@ internal class ReviewWorkflow(
     }
 
     private fun evaluateEligibility(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     ) = riskResolutionService.evaluateDraftValidation(snapshot) to riskResolutionService.evaluateCodeEligibility(snapshot)
 
     private fun effectiveRemoteRequested(): Boolean = settingsProvider().usesRemoteProvider()
@@ -607,7 +609,7 @@ internal class ReviewWorkflow(
         selectedDiffItemIds: List<String> = emptyList(),
     ): GraphPatchResult? {
         session.mutate(syncBrowser = false) {
-            beginDiffReviewRequest()
+            asyncRequests.beginDiffReviewRequest()
         }
         val context = buildDiffReviewContext(selectedDiffItemIds) ?: return null
         val result = graphDiffPatchService.review(
@@ -617,11 +619,11 @@ internal class ReviewWorkflow(
         )
         session.mutateBatch {
             apply {
-                markDiffReviewResult(result)
+                asyncRequests.markDiffReviewResult(result)
             }
             result.patch?.let { patch ->
                 apply {
-                    markDraftPatchPreview(patch)
+                    workbench.markDraftPatchPreview(patch)
                 }
             }
         }
@@ -646,17 +648,19 @@ internal class ReviewWorkflow(
         val previewUpdater = if (presentation.requestState.streaming) {
             asyncRequestLifecycle.createStreamingPreviewUpdater(
                 requestId,
-                GraphEditorStateService::updateDiffReviewRequestPreview,
+                { id, previewText, finalizing ->
+                    asyncRequests.updateDiffReviewRequestPreview(id, previewText, finalizing)
+                },
             )
         } else {
             null
         }
         session.mutateBatch {
             apply {
-                beginDiffReviewRequest(presentation.requestState)
+                asyncRequests.beginDiffReviewRequest(presentation.requestState)
             }
             apply {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.INFO,
                     if (presentation.remoteRequested) {
                         if (presentation.streamingSupported) {
@@ -684,13 +688,13 @@ internal class ReviewWorkflow(
                 asyncRequestLifecycle.logAsyncRequestEvent(logger, "timedOut", timedOutState)
                 session.mutateBatch {
                     apply {
-                        markDiffReviewRequestFailed(
+                        asyncRequests.markDiffReviewRequestFailed(
                             timedOutState.errorMessage ?: "差异分析超时",
                             timedOutState,
                         )
                     }
                     apply {
-                        markOperationFeedback(
+                        workbench.markOperationFeedback(
                             OperationFeedbackLevel.ERROR,
                             timedOutState.errorMessage ?: "差异分析超时",
                         )
@@ -732,15 +736,15 @@ internal class ReviewWorkflow(
                             }
                             session.mutateBatch {
                                 apply {
-                                    markDiffReviewResult(diffReviewResult, requestState)
+                                    asyncRequests.markDiffReviewResult(diffReviewResult, requestState)
                                 }
                                 diffReviewResult.patch?.let { patch ->
                                     apply {
-                                        markDraftPatchPreview(patch)
+                                        workbench.markDraftPatchPreview(patch)
                                     }
                                 }
                                 apply {
-                                    markOperationFeedback(
+                                    workbench.markOperationFeedback(
                                         feedbackLevel,
                                         requestState.statusMessage
                                             ?: if (diffReviewResult.patch != null) {
@@ -760,10 +764,10 @@ internal class ReviewWorkflow(
                             asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
                             session.mutateBatch {
                                 apply {
-                                    markDiffReviewRequestFailed(message, requestState)
+                                    asyncRequests.markDiffReviewRequestFailed(message, requestState)
                                 }
                                 apply {
-                                    markOperationFeedback(
+                                    workbench.markOperationFeedback(
                                         OperationFeedbackLevel.ERROR,
                                         message,
                                         preserveLastMessageType = true,
@@ -801,7 +805,7 @@ internal class ReviewWorkflow(
             settings = settingsProvider(),
         )
         session.mutate {
-            markGraphBeautificationResult(result)
+            asyncRequests.markGraphBeautificationResult(result)
         }
         return result
     }
@@ -827,17 +831,19 @@ internal class ReviewWorkflow(
         val previewUpdater = if (presentation.requestState.streaming) {
             asyncRequestLifecycle.createStreamingPreviewUpdater(
                 requestId,
-                GraphEditorStateService::updateGraphBeautificationRequestPreview,
+                { id, previewText, finalizing ->
+                    asyncRequests.updateGraphBeautificationRequestPreview(id, previewText, finalizing)
+                },
             )
         } else {
             null
         }
         session.mutateBatch {
             apply {
-                beginGraphBeautificationRequest(presentation.requestState)
+                asyncRequests.beginGraphBeautificationRequest(presentation.requestState)
             }
             apply {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.INFO,
                     if (presentation.remoteRequested) {
                         if (presentation.streamingSupported) {
@@ -861,13 +867,13 @@ internal class ReviewWorkflow(
                 asyncRequestLifecycle.logAsyncRequestEvent(logger, "timedOut", timedOutState)
                 session.mutateBatch {
                     apply {
-                        markGraphBeautificationRequestFailed(
+                        asyncRequests.markGraphBeautificationRequestFailed(
                             timedOutState.errorMessage ?: "链路讲解超时",
                             timedOutState,
                         )
                     }
                     apply {
-                        markOperationFeedback(
+                        workbench.markOperationFeedback(
                             OperationFeedbackLevel.ERROR,
                             timedOutState.errorMessage ?: "链路讲解超时",
                         )
@@ -911,10 +917,10 @@ internal class ReviewWorkflow(
                             }
                             session.mutateBatch {
                                 apply {
-                                    markGraphBeautificationResult(beautification, requestState)
+                                    asyncRequests.markGraphBeautificationResult(beautification, requestState)
                                 }
                                 apply {
-                                    markOperationFeedback(
+                                    workbench.markOperationFeedback(
                                         feedbackLevel,
                                         requestState.statusMessage ?: "链路讲解完成，已更新步骤列表",
                                         preserveLastMessageType = true,
@@ -929,10 +935,10 @@ internal class ReviewWorkflow(
                             asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
                             session.mutateBatch {
                                 apply {
-                                    markGraphBeautificationRequestFailed(message, requestState)
+                                    asyncRequests.markGraphBeautificationRequestFailed(message, requestState)
                                 }
                                 apply {
-                                    markOperationFeedback(
+                                    workbench.markOperationFeedback(
                                         OperationFeedbackLevel.ERROR,
                                         message,
                                         preserveLastMessageType = true,
@@ -957,10 +963,10 @@ internal class ReviewWorkflow(
         if (factGraph == null || designBaseline == null) {
             session.mutateBatch {
                 apply {
-                    markDiffReviewRequestFailed("请先准备代码事实图和设计基线，再发起差异问答。")
+                    asyncRequests.markDiffReviewRequestFailed("请先准备代码事实图和设计基线，再发起差异问答。")
                 }
                 apply {
-                    markOperationFeedback(
+                    workbench.markOperationFeedback(
                         OperationFeedbackLevel.WARNING,
                         "请先准备代码事实图和设计基线，再发起差异问答。",
                     )

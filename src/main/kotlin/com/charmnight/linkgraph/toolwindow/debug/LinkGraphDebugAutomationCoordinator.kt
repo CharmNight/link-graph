@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.toolwindow.debug
 
+import com.charmnight.linkgraph.services.GraphEditorCommandRouter
 import com.charmnight.linkgraph.services.LinkGraphProjectService
 import com.charmnight.linkgraph.services.debugLazy
 import com.charmnight.linkgraph.toolwindow.LinkGraphToolWindowSession
@@ -30,6 +31,7 @@ internal class LinkGraphDebugAutomationCoordinator(
         }
 
         val toolWindowSession = project.getService(LinkGraphToolWindowSession::class.java)
+        val commandRouter = project.getService(GraphEditorCommandRouter::class.java)
         val projectService = project.getService(LinkGraphProjectService::class.java)
         if (request.requiresToolWindowOpen) {
             debugLazy(logger.isDebugEnabled, logger::debug) { "debug 入口触发工具窗口自动打开" }
@@ -62,14 +64,14 @@ internal class LinkGraphDebugAutomationCoordinator(
         if (request.autoRequestPlan) {
             debugLazy(logger.isDebugEnabled, logger::debug) { "检测到调试自动请求：生成计划" }
             schedule(DEBUG_AUTO_REQUEST_PLAN_DELAY_MS) {
-                projectService.requestGenerationPlanAsync()
+                commandRouter.requestGenerationPlanAsync()
             }
         }
 
         if (request.autoRequestCodeDrafts) {
             debugLazy(logger.isDebugEnabled, logger::debug) { "检测到调试自动请求：生成代码草稿" }
             schedule(DEBUG_AUTO_REQUEST_CODE_DRAFTS_DELAY_MS) {
-                projectService.requestCodeDraftsAsync()
+                commandRouter.requestCodeDraftsAsync()
             }
         }
     }

@@ -186,7 +186,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    GraphEditorStateService.Snapshot(
+                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         workingGraph = GraphDocument(
                             nodes = listOf(
                                 GraphNode(
@@ -248,7 +248,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    GraphEditorStateService.Snapshot(
+                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         workingGraph = GraphDocument(
                             nodes = listOf(
                                 GraphNode(
@@ -317,7 +317,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    GraphEditorStateService.Snapshot(
+                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         workingGraph = GraphDocument(
                             nodes = listOf(
                                 GraphNode(
@@ -482,7 +482,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    GraphEditorStateService.Snapshot(
+                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         workingGraph = GraphDocument(
                             nodes = listOf(
                                 GraphNode(
@@ -640,7 +640,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    GraphEditorStateService.Snapshot(
+                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         workingGraph = GraphDocument(
                             nodes = listOf(
                                 GraphNode(
@@ -785,7 +785,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    GraphEditorStateService.Snapshot(
+                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         workingGraph = GraphDocument(
                             nodes = listOf(
                                 GraphNode(
@@ -849,7 +849,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    GraphEditorStateService.Snapshot(
+                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         workingGraph = GraphDocument(
                             nodes = listOf(
                                 GraphNode(
@@ -904,7 +904,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    GraphEditorStateService.Snapshot(
+                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         workingGraph = GraphDocument(
                             nodes = listOf(
                                 GraphNode(
@@ -1040,7 +1040,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    GraphEditorStateService.Snapshot(
+                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         selectedNodeId = "method:upload-file",
                         workingGraph = runtimeGraph,
                     )
@@ -1098,7 +1098,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    GraphEditorStateService.Snapshot(
+                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         workingGraph = GraphDocument(
                             nodes = listOf(
                                 GraphNode(

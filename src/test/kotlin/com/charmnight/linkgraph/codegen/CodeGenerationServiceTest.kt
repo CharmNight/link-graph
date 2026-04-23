@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.codegen
 
+import com.charmnight.linkgraph.llm.LlmProviderPresets
 import com.charmnight.linkgraph.llm.GenerationContext
 import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.GenerationPlanItem
@@ -21,7 +22,6 @@ import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.settings.LlmProviderType
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
@@ -229,7 +229,7 @@ class CodeGenerationServiceTest {
             ),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://api.example.com/v1",
                 apiKey = "secret-key",
                 model = "gpt-5.4",
@@ -318,7 +318,7 @@ class CodeGenerationServiceTest {
             ),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://api.example.com/v1",
                 apiKey = "secret-key",
                 model = "gpt-5.4",
@@ -386,7 +386,7 @@ class CodeGenerationServiceTest {
             ),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://api.example.com/v1",
                 apiKey = "secret-key",
                 model = "gpt-5.4",
@@ -462,7 +462,7 @@ class CodeGenerationServiceTest {
             ),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://api.example.com/v1",
                 apiKey = "secret-key",
                 model = "gpt-5.4",
@@ -566,7 +566,7 @@ class CodeGenerationServiceTest {
             ),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://api.example.com/v1",
                 apiKey = "secret-key",
                 model = "gpt-5.4",
@@ -630,7 +630,7 @@ class CodeGenerationServiceTest {
             ),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.MOCK.name,
+                provider = LlmProviderPresets.MOCK.id,
             ),
         )
 
@@ -725,7 +725,7 @@ class CodeGenerationServiceTest {
             ),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://api.example.com/v1",
                 apiKey = "secret-key",
                 model = "gpt-5.4",

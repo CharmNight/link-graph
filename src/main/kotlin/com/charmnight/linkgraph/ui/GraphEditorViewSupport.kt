@@ -91,7 +91,7 @@ internal fun buildViewDocuments(
 }
 
 internal fun syncWorkingGraphViewDocuments(
-    currentState: GraphEditorStateService.Snapshot,
+    currentState: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     graph: GraphDocument,
     effectiveSignature: String?,
 ): GraphEditorViewDocuments {
@@ -104,7 +104,7 @@ internal fun syncWorkingGraphViewDocuments(
 }
 
 internal fun syncDisplayModeGraphViewDocuments(
-    currentState: GraphEditorStateService.Snapshot,
+    currentState: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     graph: GraphDocument,
     effectiveSignature: String?,
     nextSelectedNodeId: String?,
@@ -154,7 +154,7 @@ internal fun syncDisplayModeGraphViewDocuments(
 }
 
 internal fun resolveVisibleGraphForDisplayMode(
-    snapshot: GraphEditorStateService.Snapshot,
+    snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     displayMode: AnalysisDisplayMode,
 ): GraphDocument {
     return when (displayMode) {

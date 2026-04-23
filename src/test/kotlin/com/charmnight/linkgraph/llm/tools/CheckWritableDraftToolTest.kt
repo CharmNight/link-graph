@@ -19,7 +19,7 @@ class CheckWritableDraftToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = GraphEditorStateService.Snapshot(),
+                snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
                 artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
@@ -41,7 +41,7 @@ class CheckWritableDraftToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = GraphEditorStateService.Snapshot(),
+                snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
                 artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),

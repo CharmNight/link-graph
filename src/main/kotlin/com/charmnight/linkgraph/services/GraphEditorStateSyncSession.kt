@@ -25,7 +25,7 @@ internal class GraphEditorStateSyncSession(
     /**
      * 读取当前状态快照。
      */
-    fun snapshot(): GraphEditorStateService.Snapshot = stateService.snapshot()
+    fun snapshot(): com.charmnight.linkgraph.ui.GraphEditorStateSnapshot = stateService.snapshot()
 
     /**
      * 在会话结束时按需触发一次同步。

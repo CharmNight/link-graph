@@ -29,7 +29,7 @@ import com.charmnight.linkgraph.llm.runtime.AgentRuntimeContext
 import com.charmnight.linkgraph.navigation.SourceNavigationService
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorStateService
-import com.charmnight.linkgraph.ui.GraphEditorStateService.OperationFeedbackLevel
+import com.charmnight.linkgraph.ui.OperationFeedbackLevel
 import com.charmnight.linkgraph.workbench.RiskResolutionService
 import com.charmnight.linkgraph.workbench.StageEligibilityDecision
 import com.intellij.diff.DiffRequestFactory
@@ -112,16 +112,16 @@ internal class GenerationWorkflow(
         val runtimeResult = executePlanRuntime(payload)
         val plan = resolvePlanResult(payload, runtimeResult)
         val requestState = asyncRequestLifecycle.withRuntimeMetadata(
-            requestState = GraphEditorStateService.AsyncRequestState.succeeded(
+            requestState = com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(
                 scene = "实现计划",
                 statusMessage = "实现计划已生成。",
             ),
             runtimeState = runtimeResult.finalState,
         )
         session.mutate {
-            markRuntimeArtifactSummaries("plan", toRuntimeArtifactSummaries(runtimeResult))
-            markGenerationPlan(plan, requestState)
-            markOperationFeedback(
+            workbench.markRuntimeArtifactSummaries("plan", toRuntimeArtifactSummaries(runtimeResult))
+            asyncRequests.markGenerationPlan(plan, requestState)
+            workbench.markOperationFeedback(
                 OperationFeedbackLevel.SUCCESS,
                 requestState.statusMessage ?: "实现计划已生成。",
                 preserveLastMessageType = true,
@@ -141,25 +141,27 @@ internal class GenerationWorkflow(
             requestId = requestId,
             sceneLabel = "实现计划生成",
             settings = effectiveSettings,
-            disabledMode = GraphEditorStateService.AsyncRequestExecutionMode.DISABLED,
+            disabledMode = com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.DISABLED,
         )
         val previewUpdater = if (presentation.requestState.streaming) {
             asyncRequestLifecycle.createStreamingPreviewUpdater(
                 requestId,
-                GraphEditorStateService::updateGenerationPlanRequestPreview,
+                { id, previewText, finalizing ->
+                    asyncRequests.updateGenerationPlanRequestPreview(id, previewText, finalizing)
+                },
             )
         } else {
             null
         }
         session.mutateBatch {
             apply {
-                beginGenerationPlanRequest(presentation.requestState)
+                asyncRequests.beginGenerationPlanRequest(presentation.requestState)
             }
             apply {
-                markRuntimeArtifactSummaries("plan", emptyList())
+                workbench.markRuntimeArtifactSummaries("plan", emptyList())
             }
             apply {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.INFO,
                     if (presentation.remoteRequested) {
                         if (presentation.streamingSupported) {
@@ -184,13 +186,13 @@ internal class GenerationWorkflow(
                 asyncRequestLifecycle.logAsyncRequestEvent(logger, "timedOut", timedOutState)
                 session.mutateBatch {
                     apply {
-                        markGenerationPlanRequestFailed(
+                        asyncRequests.markGenerationPlanRequestFailed(
                             timedOutState.errorMessage ?: "实现计划生成超时",
                             timedOutState,
                         )
                     }
                     apply {
-                        markOperationFeedback(
+                        workbench.markOperationFeedback(
                             OperationFeedbackLevel.ERROR,
                             timedOutState.errorMessage ?: "实现计划生成超时",
                         )
@@ -235,13 +237,13 @@ internal class GenerationWorkflow(
                             }
                             session.mutateBatch {
                                 apply {
-                                    markRuntimeArtifactSummaries("plan", toRuntimeArtifactSummaries(runtimeResult))
+                                    workbench.markRuntimeArtifactSummaries("plan", toRuntimeArtifactSummaries(runtimeResult))
                                 }
                                 apply {
-                                    markGenerationPlan(normalizedPlan, requestState)
+                                    asyncRequests.markGenerationPlan(normalizedPlan, requestState)
                                 }
                                 apply {
-                                    markOperationFeedback(
+                                    workbench.markOperationFeedback(
                                         feedbackLevel,
                                         requestState.statusMessage ?: "实现计划已生成。",
                                         preserveLastMessageType = true,
@@ -256,13 +258,13 @@ internal class GenerationWorkflow(
                             asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
                             session.mutateBatch {
                                 apply {
-                                    markRuntimeArtifactSummaries("plan", emptyList())
+                                    workbench.markRuntimeArtifactSummaries("plan", emptyList())
                                 }
                                 apply {
-                                    markGenerationPlanRequestFailed(message, requestState)
+                                    asyncRequests.markGenerationPlanRequestFailed(message, requestState)
                                 }
                                 apply {
-                                    markOperationFeedback(
+                                    workbench.markOperationFeedback(
                                         OperationFeedbackLevel.ERROR,
                                         message,
                                         preserveLastMessageType = true,
@@ -287,7 +289,7 @@ internal class GenerationWorkflow(
         question = question,
         focusItemId = focusItemId,
         mutateState = { result, requestState ->
-            markGenerationPlanDiscussion(result, requestState)
+            asyncRequests.markGenerationPlanDiscussion(result, requestState)
         },
     )
 
@@ -326,17 +328,19 @@ internal class GenerationWorkflow(
         val previewUpdater = if (presentation.requestState.streaming) {
             asyncRequestLifecycle.createStreamingPreviewUpdater(
                 requestId,
-                GraphEditorStateService::updateGenerationPlanDiscussionRequestPreview,
+                { id, previewText, finalizing ->
+                    asyncRequests.updateGenerationPlanDiscussionRequestPreview(id, previewText, finalizing)
+                },
             )
         } else {
             null
         }
         session.mutateBatch {
             apply {
-                beginGenerationPlanDiscussionRequest(presentation.requestState)
+                asyncRequests.beginGenerationPlanDiscussionRequest(presentation.requestState)
             }
             apply {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.INFO,
                     if (presentation.remoteRequested) {
                         if (presentation.streamingSupported) {
@@ -360,13 +364,13 @@ internal class GenerationWorkflow(
                 asyncRequestLifecycle.logAsyncRequestEvent(logger, "timedOut", timedOutState)
                 session.mutateBatch {
                     apply {
-                        markGenerationPlanDiscussionRequestFailed(
+                        asyncRequests.markGenerationPlanDiscussionRequestFailed(
                             timedOutState.errorMessage ?: "实现建议追问超时",
                             timedOutState,
                         )
                     }
                     apply {
-                        markOperationFeedback(
+                        workbench.markOperationFeedback(
                             OperationFeedbackLevel.ERROR,
                             timedOutState.errorMessage ?: "实现建议追问超时",
                         )
@@ -412,10 +416,10 @@ internal class GenerationWorkflow(
                             }
                             session.mutateBatch {
                                 apply {
-                                    markGenerationPlanDiscussion(discussion, requestState)
+                                    asyncRequests.markGenerationPlanDiscussion(discussion, requestState)
                                 }
                                 apply {
-                                    markOperationFeedback(
+                                    workbench.markOperationFeedback(
                                         feedbackLevel,
                                         requestState.statusMessage ?: "实现建议追问已更新。",
                                         preserveLastMessageType = true,
@@ -430,10 +434,10 @@ internal class GenerationWorkflow(
                             asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
                             session.mutateBatch {
                                 apply {
-                                    markGenerationPlanDiscussionRequestFailed(message, requestState)
+                                    asyncRequests.markGenerationPlanDiscussionRequestFailed(message, requestState)
                                 }
                                 apply {
-                                    markOperationFeedback(
+                                    workbench.markOperationFeedback(
                                         OperationFeedbackLevel.ERROR,
                                         message,
                                         preserveLastMessageType = true,
@@ -455,10 +459,10 @@ internal class GenerationWorkflow(
         val snapshot = session.snapshot()
         val codeDecision = refreshDraftAndCodeState(snapshot)
         rejectStageEligibility(codeDecision, "代码草稿") { message, requestState ->
-            markCodeDraftRequestFailed(message, requestState)
+            asyncRequests.markCodeDraftRequestFailed(message, requestState)
         }?.let { return }
         rejectOrphanedGenerationPlan(snapshot, "代码草稿") { message, requestState ->
-            markCodeDraftRequestFailed(message, requestState)
+            asyncRequests.markCodeDraftRequestFailed(message, requestState)
         }?.let { return }
         val result = executeCodegenRuntime(snapshot)
         val draftResult = result.output
@@ -466,13 +470,13 @@ internal class GenerationWorkflow(
             val failure = resolveCodegenRuntimeFailure(result.finalState)
             session.mutateBatch {
                 apply {
-                    markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(result))
+                    workbench.markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(result))
                 }
                 apply {
-                    markCodeDraftRequestFailed(
+                    asyncRequests.markCodeDraftRequestFailed(
                         failure.message,
                         asyncRequestLifecycle.withRuntimeMetadata(
-                            requestState = GraphEditorStateService.AsyncRequestState.failed(
+                            requestState = com.charmnight.linkgraph.ui.AsyncRequestState.failed(
                                 message = failure.message,
                                 scene = "代码草稿",
                                 detailMessage = failure.detailMessage,
@@ -482,7 +486,7 @@ internal class GenerationWorkflow(
                     )
                 }
                 apply {
-                    markOperationFeedback(
+                    workbench.markOperationFeedback(
                         OperationFeedbackLevel.ERROR,
                         failure.message,
                         preserveLastMessageType = true,
@@ -500,16 +504,16 @@ internal class GenerationWorkflow(
             val message = draftResult.emptyResultMessage()
             session.mutateBatch {
                 apply {
-                    markCodeDraftRequestFailed(
+                    asyncRequests.markCodeDraftRequestFailed(
                         message,
-                        GraphEditorStateService.AsyncRequestState.failed(
+                        com.charmnight.linkgraph.ui.AsyncRequestState.failed(
                             message = message,
                             detailMessage = draftResult.emptyResultDetailMessage(),
                         ),
                     )
                 }
                 apply {
-                    markOperationFeedback(
+                    workbench.markOperationFeedback(
                         OperationFeedbackLevel.ERROR,
                         message,
                         preserveLastMessageType = true,
@@ -520,14 +524,14 @@ internal class GenerationWorkflow(
         }
         val preparedDrafts = enrichDraftsWithPreparedEdits(draftResult.drafts)
         session.mutate {
-            markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(result))
-            markGeneratedCodeDrafts(
+            workbench.markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(result))
+            asyncRequests.markGeneratedCodeDrafts(
                 drafts = preparedDrafts,
                 warnings = draftResult.warnings,
                 source = draftResult.source,
                 promptPreview = draftResult.promptPreview,
                 requestState = asyncRequestLifecycle.withRuntimeMetadata(
-                    requestState = GraphEditorStateService.AsyncRequestState.succeeded(
+                    requestState = com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(
                         scene = "代码草稿",
                         statusMessage = "代码草稿已生成。",
                     ),
@@ -544,10 +548,10 @@ internal class GenerationWorkflow(
         val snapshot = session.snapshot()
         val codeDecision = refreshDraftAndCodeState(snapshot)
         rejectStageEligibility(codeDecision, "代码草稿") { message, requestState ->
-            markCodeDraftRequestFailed(message, requestState)
+            asyncRequests.markCodeDraftRequestFailed(message, requestState)
         }?.let { return }
         rejectOrphanedGenerationPlan(snapshot, "代码草稿") { message, requestState ->
-            markCodeDraftRequestFailed(message, requestState)
+            asyncRequests.markCodeDraftRequestFailed(message, requestState)
         }?.let { return }
         val requestId = asyncRequestLifecycle.beginCodeDraftRequest()
         val settings = settingsProvider()
@@ -559,20 +563,22 @@ internal class GenerationWorkflow(
         val previewUpdater = if (presentation.requestState.streaming) {
             asyncRequestLifecycle.createStreamingPreviewUpdater(
                 requestId,
-                GraphEditorStateService::updateCodeDraftRequestPreview,
+                { id, previewText, finalizing ->
+                    asyncRequests.updateCodeDraftRequestPreview(id, previewText, finalizing)
+                },
             )
         } else {
             null
         }
         session.mutateBatch {
             apply {
-                beginCodeDraftRequest(presentation.requestState)
+                asyncRequests.beginCodeDraftRequest(presentation.requestState)
             }
             apply {
-                markRuntimeArtifactSummaries("codegen", emptyList())
+                workbench.markRuntimeArtifactSummaries("codegen", emptyList())
             }
             apply {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.INFO,
                     if (presentation.remoteRequested) {
                         if (presentation.streamingSupported) {
@@ -596,13 +602,13 @@ internal class GenerationWorkflow(
                 asyncRequestLifecycle.logAsyncRequestEvent(logger, "timedOut", timedOutState)
                 session.mutateBatch {
                     apply {
-                        markCodeDraftRequestFailed(
+                        asyncRequests.markCodeDraftRequestFailed(
                             timedOutState.errorMessage ?: "代码草稿生成超时",
                             timedOutState,
                         )
                     }
                     apply {
-                        markOperationFeedback(
+                        workbench.markOperationFeedback(
                             OperationFeedbackLevel.ERROR,
                             timedOutState.errorMessage ?: "代码草稿生成超时",
                         )
@@ -641,13 +647,13 @@ internal class GenerationWorkflow(
                                 asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
                                 session.mutateBatch {
                                     apply {
-                                        markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(runtimeResult))
+                                        workbench.markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(runtimeResult))
                                     }
                                     apply {
-                                        markCodeDraftRequestFailed(failure.message, requestState)
+                                        asyncRequests.markCodeDraftRequestFailed(failure.message, requestState)
                                     }
                                     apply {
-                                        markOperationFeedback(
+                                        workbench.markOperationFeedback(
                                             OperationFeedbackLevel.ERROR,
                                             failure.message,
                                             preserveLastMessageType = true,
@@ -671,13 +677,13 @@ internal class GenerationWorkflow(
                                 asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
                                 session.mutateBatch {
                                     apply {
-                                        markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(runtimeResult))
+                                        workbench.markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(runtimeResult))
                                     }
                                     apply {
-                                        markCodeDraftRequestFailed(message, requestState)
+                                        asyncRequests.markCodeDraftRequestFailed(message, requestState)
                                     }
                                     apply {
-                                        markOperationFeedback(
+                                        workbench.markOperationFeedback(
                                             OperationFeedbackLevel.ERROR,
                                             message,
                                             preserveLastMessageType = true,
@@ -703,10 +709,10 @@ internal class GenerationWorkflow(
                             }
                             session.mutateBatch {
                                 apply {
-                                    markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(runtimeResult))
+                                    workbench.markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(runtimeResult))
                                 }
                                 apply {
-                                    markGeneratedCodeDrafts(
+                                    asyncRequests.markGeneratedCodeDrafts(
                                         drafts = preparedResult.preparedDrafts ?: drafts.drafts,
                                         warnings = drafts.warnings,
                                         source = drafts.source,
@@ -715,7 +721,7 @@ internal class GenerationWorkflow(
                                     )
                                 }
                                 apply {
-                                    markOperationFeedback(
+                                    workbench.markOperationFeedback(
                                         feedbackLevel,
                                         requestState.statusMessage ?: "代码草稿已生成。",
                                         preserveLastMessageType = true,
@@ -730,13 +736,13 @@ internal class GenerationWorkflow(
                             asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
                             session.mutateBatch {
                                 apply {
-                                    markRuntimeArtifactSummaries("codegen", emptyList())
+                                    workbench.markRuntimeArtifactSummaries("codegen", emptyList())
                                 }
                                 apply {
-                                    markCodeDraftRequestFailed(message, requestState)
+                                    asyncRequests.markCodeDraftRequestFailed(message, requestState)
                                 }
                                 apply {
-                                    markOperationFeedback(
+                                    workbench.markOperationFeedback(
                                         OperationFeedbackLevel.ERROR,
                                         message,
                                         preserveLastMessageType = true,
@@ -764,7 +770,7 @@ internal class GenerationWorkflow(
             "批量写入代码草稿完成: ${GenerationDiagnostics.summarizeWriteReport(report)}"
         }
         session.mutate {
-            markGeneratedCodeDraftWriteReport(report)
+            workbench.markGeneratedCodeDraftWriteReport(report)
         }
         report.writtenFiles.firstOrNull()?.let(sourceNavigationServiceProvider()::navigateToPath)
     }
@@ -777,7 +783,7 @@ internal class GenerationWorkflow(
         val draft = snapshot.generatedCodeDrafts.firstOrNull { it.id == draftId }
         if (draft == null) {
             session.mutate {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.ERROR,
                     "未找到代码草稿 '$draftId'，无法写入当前文件。",
                 )
@@ -793,7 +799,7 @@ internal class GenerationWorkflow(
         }
         session.mutateBatch {
             apply {
-                markGeneratedCodeDraftWriteReport(mergeWriteReport(snapshot.generatedCodeDraftWriteReport, report))
+                workbench.markGeneratedCodeDraftWriteReport(mergeWriteReport(snapshot.generatedCodeDraftWriteReport, report))
             }
             apply {
                 val (level, message) = when {
@@ -809,7 +815,7 @@ internal class GenerationWorkflow(
                     else -> OperationFeedbackLevel.WARNING to
                         "当前文件未写入，请查看代码 diff 写入报告。"
                 }
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     level,
                     message,
                 )
@@ -823,7 +829,7 @@ internal class GenerationWorkflow(
         val draft = snapshot.generatedCodeDrafts.firstOrNull { it.id == draftId }
         if (draft == null) {
             session.mutate {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.ERROR,
                     "未找到代码草稿 '$draftId'，无法打开原生 diff。",
                 )
@@ -833,7 +839,7 @@ internal class GenerationWorkflow(
         val projectBasePath = project.basePath
         if (projectBasePath.isNullOrBlank()) {
             session.mutate {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.ERROR,
                     "项目根路径不可用，无法打开代码草稿 diff。",
                 )
@@ -849,7 +855,7 @@ internal class GenerationWorkflow(
         }
         if (beforeText == null) {
             session.mutate {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.ERROR,
                     "目标文件 '${normalizedDraft.targetPath}' 不存在，无法打开代码草稿 diff。",
                 )
@@ -861,7 +867,7 @@ internal class GenerationWorkflow(
                 val prepared = codeDraftWriterService.prepareExistingFileDraft(projectBasePath, normalizedDraft)
                 if (!prepared.canApply) {
                     session.mutate {
-                        markOperationFeedback(
+                        workbench.markOperationFeedback(
                             OperationFeedbackLevel.ERROR,
                             prepared.warnings.firstOrNull() ?: "无法为代码草稿准备原生 diff。",
                         )
@@ -873,7 +879,7 @@ internal class GenerationWorkflow(
             normalizedDraft.content != null -> normalizedDraft.content
             else -> {
                 session.mutate {
-                    markOperationFeedback(
+                    workbench.markOperationFeedback(
                         OperationFeedbackLevel.ERROR,
                         "当前代码草稿没有可展示的 diff 内容。",
                     )
@@ -886,7 +892,7 @@ internal class GenerationWorkflow(
                 val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(target)
                 if (virtualFile == null) {
                     session.mutate {
-                        markOperationFeedback(
+                        workbench.markOperationFeedback(
                             OperationFeedbackLevel.ERROR,
                             "无法定位目标文件 '${normalizedDraft.targetPath}' 的 IDE VirtualFile，无法打开可写入 merge。",
                         )
@@ -909,7 +915,7 @@ internal class GenerationWorkflow(
                             MergeResult.CANCEL,
                             MergeResult.LEFT,
                             -> session.mutate {
-                                markOperationFeedback(
+                                workbench.markOperationFeedback(
                                     OperationFeedbackLevel.INFO,
                                     "已取消代码草稿 merge，当前文件未写入。",
                                     preserveLastMessageType = true,
@@ -919,7 +925,7 @@ internal class GenerationWorkflow(
                             MergeResult.RIGHT,
                             MergeResult.RESOLVED,
                             -> session.mutate {
-                                markGeneratedCodeDraftWriteReport(
+                                workbench.markGeneratedCodeDraftWriteReport(
                                     mergeWriteReport(
                                         snapshot().generatedCodeDraftWriteReport,
                                         GeneratedCodeDraftWriteReport(
@@ -927,7 +933,7 @@ internal class GenerationWorkflow(
                                         ),
                                     ),
                                 )
-                                markOperationFeedback(
+                                workbench.markOperationFeedback(
                                     OperationFeedbackLevel.SUCCESS,
                                     "代码草稿 merge 已写入当前文件。",
                                     preserveLastMessageType = true,
@@ -937,7 +943,7 @@ internal class GenerationWorkflow(
                     }
                 }.getOrElse { error ->
                     session.mutate {
-                        markOperationFeedback(
+                        workbench.markOperationFeedback(
                             OperationFeedbackLevel.ERROR,
                             error.message ?: "无法为代码草稿创建可写入 merge 请求。",
                         )
@@ -974,7 +980,7 @@ internal class GenerationWorkflow(
      * 请求跳转到草稿文件路径。
      */
     fun requestDraftNavigation(targetPath: String) {
-        sourceNavigationServiceProvider().navigateToPath(targetPath)
+        sourceNavigationServiceProvider().navigateToProjectPath(targetPath)
     }
 
     /**
@@ -1051,7 +1057,7 @@ internal class GenerationWorkflow(
      * 统一执行代码生成 runtime。
      */
     private fun executeCodegenRuntime(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         onPreview: ((String, Boolean) -> Unit)? = null,
     ): AgentRunResult<CodeGenerationResult> {
         val runtimeResult = agentRunCoordinator.run(
@@ -1111,7 +1117,7 @@ internal class GenerationWorkflow(
     }
 
     private fun buildCodegenCapabilityInput(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     ): CodegenCapabilityInput {
         val snapshotPlan = snapshot.generationPlan?.let { rawPlan ->
             ProjectPathNormalizer.normalizePlan(rawPlan, project.basePath)
@@ -1139,8 +1145,8 @@ internal class GenerationWorkflow(
      */
     private fun toRuntimeArtifactSummaries(
         result: AgentRunResult<*>,
-    ): List<GraphEditorStateService.RuntimeArtifactSummary> {
-        return result.artifactSummaries.map(GraphEditorStateService.RuntimeArtifactSummary::from)
+    ): List<com.charmnight.linkgraph.ui.RuntimeArtifactSummary> {
+        return result.artifactSummaries.map(com.charmnight.linkgraph.ui.RuntimeArtifactSummary::from)
     }
 
     /**
@@ -1160,7 +1166,7 @@ internal class GenerationWorkflow(
     private fun runGenerationPlanDiscussion(
         question: String,
         focusItemId: String?,
-        mutateState: GraphEditorStateService.(com.charmnight.linkgraph.workbench.GenerationPlanDiscussionResult, GraphEditorStateService.AsyncRequestState) -> Unit,
+        mutateState: GraphEditorStateService.(com.charmnight.linkgraph.workbench.GenerationPlanDiscussionResult, com.charmnight.linkgraph.ui.AsyncRequestState) -> Unit,
     ): com.charmnight.linkgraph.workbench.GenerationPlanDiscussionResult? {
         val normalizedQuestion = question.trim()
         if (normalizedQuestion.isEmpty()) {
@@ -1193,7 +1199,7 @@ internal class GenerationWorkflow(
             session = snapshot.generationPlanDiscussionSession,
             focusItemId = focusItemId,
         )
-        val requestState = GraphEditorStateService.AsyncRequestState.succeeded(
+        val requestState = com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(
             scene = "实现建议追问",
             statusMessage = "实现建议追问已更新。",
         )
@@ -1202,7 +1208,7 @@ internal class GenerationWorkflow(
                 mutateState(result, requestState)
             }
             apply {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     level = if (result.warnings.isNotEmpty()) OperationFeedbackLevel.WARNING else OperationFeedbackLevel.SUCCESS,
                     message = if (result.warnings.isNotEmpty()) {
                         result.warnings.first()
@@ -1220,17 +1226,17 @@ internal class GenerationWorkflow(
         message: String,
         detailMessage: String?,
     ) {
-        val requestState = GraphEditorStateService.AsyncRequestState.failed(
+        val requestState = com.charmnight.linkgraph.ui.AsyncRequestState.failed(
             message = message,
             scene = "实现建议追问",
             detailMessage = detailMessage,
         )
         session.mutateBatch {
             apply {
-                markGenerationPlanDiscussionRequestFailed(message, requestState)
+                asyncRequests.markGenerationPlanDiscussionRequestFailed(message, requestState)
             }
             apply {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.WARNING,
                     message,
                     preserveLastMessageType = true,
@@ -1251,16 +1257,16 @@ internal class GenerationWorkflow(
     )
 
     private fun refreshDraftAndCodeState(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     ): StageEligibilityDecision {
         val draftValidationState = riskResolutionService.evaluateDraftValidation(snapshot)
         val codeDecision = riskResolutionService.evaluateCodeEligibility(snapshot)
         session.mutateBatch {
             apply {
-                markDraftValidationState(draftValidationState)
+                workbench.markDraftValidationState(draftValidationState)
             }
             apply {
-                markCodeEligibilityDecision(codeDecision)
+                workbench.markCodeEligibilityDecision(codeDecision)
             }
         }
         return codeDecision
@@ -1269,7 +1275,7 @@ internal class GenerationWorkflow(
     private fun rejectStageEligibility(
         decision: StageEligibilityDecision,
         scene: String,
-        rejectRequest: GraphEditorStateService.(String, GraphEditorStateService.AsyncRequestState) -> Unit,
+        rejectRequest: GraphEditorStateService.(String, com.charmnight.linkgraph.ui.AsyncRequestState) -> Unit,
     ): GenerationPrerequisiteFailure? {
         if (decision.allowed) {
             return null
@@ -1283,7 +1289,7 @@ internal class GenerationWorkflow(
             apply {
                 rejectRequest(
                     failure.message,
-                    GraphEditorStateService.AsyncRequestState.failed(
+                    com.charmnight.linkgraph.ui.AsyncRequestState.failed(
                         message = failure.message,
                         scene = failure.scene,
                         detailMessage = failure.detailMessage,
@@ -1291,7 +1297,7 @@ internal class GenerationWorkflow(
                 )
             }
             apply {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.WARNING,
                     failure.message,
                     preserveLastMessageType = true,
@@ -1302,9 +1308,9 @@ internal class GenerationWorkflow(
     }
 
     private fun rejectOrphanedGenerationPlan(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         scene: String,
-        rejectRequest: GraphEditorStateService.(String, GraphEditorStateService.AsyncRequestState) -> Unit,
+        rejectRequest: GraphEditorStateService.(String, com.charmnight.linkgraph.ui.AsyncRequestState) -> Unit,
     ): GenerationPrerequisiteFailure? {
         val snapshotPlan = snapshot.generationPlan?.let { rawPlan ->
             ProjectPathNormalizer.normalizePlan(rawPlan, project.basePath)
@@ -1325,7 +1331,7 @@ internal class GenerationWorkflow(
             apply {
                 rejectRequest(
                     failure.message,
-                    GraphEditorStateService.AsyncRequestState.failed(
+                    com.charmnight.linkgraph.ui.AsyncRequestState.failed(
                         message = failure.message,
                         scene = failure.scene,
                         detailMessage = failure.detailMessage,
@@ -1333,7 +1339,7 @@ internal class GenerationWorkflow(
                 )
             }
             apply {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.WARNING,
                     failure.message,
                     preserveLastMessageType = true,

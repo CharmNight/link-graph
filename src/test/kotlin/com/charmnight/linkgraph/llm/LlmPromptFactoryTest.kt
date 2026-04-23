@@ -11,7 +11,6 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.settings.LlmProviderType
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.DraftEntryKind
@@ -76,7 +75,7 @@ class LlmPromptFactoryTest {
             ),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 model = "gpt-4.1-mini",
             ),
         )
@@ -130,7 +129,7 @@ class LlmPromptFactoryTest {
             question = "这段链路是否遗漏了默认兜底逻辑？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.MOCK.name,
+                provider = LlmProviderPresets.MOCK.id,
                 model = "gpt-4.1-mini",
             ),
         )
@@ -170,7 +169,7 @@ class LlmPromptFactoryTest {
             question = "这些差异意味着什么？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.MOCK.name,
+                provider = LlmProviderPresets.MOCK.id,
                 model = "gpt-4.1-mini",
             ),
         )
@@ -198,7 +197,7 @@ class LlmPromptFactoryTest {
         val factory = LlmPromptFactory()
         val settings = LinkGraphSettingsState(
             llmEnabled = true,
-            provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+            provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
             model = "gpt-4.1-mini",
         )
 
@@ -339,7 +338,7 @@ class LlmPromptFactoryTest {
         val factory = LlmPromptFactory()
         val settings = LinkGraphSettingsState(
             llmEnabled = true,
-            provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+            provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
             model = "gpt-4.1-mini",
         )
         val factMethod = GraphNode(
@@ -390,7 +389,7 @@ class LlmPromptFactoryTest {
         val factory = LlmPromptFactory()
         val settings = LinkGraphSettingsState(
             llmEnabled = true,
-            provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+            provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
             model = "gpt-5.4",
         )
         val context = GenerationContext(
@@ -486,7 +485,7 @@ class LlmPromptFactoryTest {
         val factory = LlmPromptFactory()
         val settings = LinkGraphSettingsState(
             llmEnabled = true,
-            provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+            provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
             model = "gpt-4.1-mini",
         )
 

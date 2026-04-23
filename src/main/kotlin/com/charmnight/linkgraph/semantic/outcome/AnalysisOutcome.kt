@@ -23,7 +23,7 @@ data class AnalysisOutcome(
     /** 保存展示名称。 */
     val displayName: String,
     /** 保存操作反馈等级。 */
-    val feedbackLevel: GraphEditorStateService.OperationFeedbackLevel,
+    val feedbackLevel: com.charmnight.linkgraph.ui.OperationFeedbackLevel,
     /** 保存反馈消息。 */
     val feedbackMessage: String,
     /** 保存投影阶段的统计信息。 */

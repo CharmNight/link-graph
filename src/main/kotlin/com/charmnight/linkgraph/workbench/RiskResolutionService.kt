@@ -32,7 +32,7 @@ class RiskResolutionService {
     }
 
     fun evaluateDraftValidation(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     ): DraftValidationState {
         val threads = resolveThreads(snapshot)
         val unresolvedThreads = threads.filter(::isDraftValidationBlocking)
@@ -65,7 +65,7 @@ class RiskResolutionService {
     }
 
     fun evaluateCodeEligibility(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     ): StageEligibilityDecision {
         val threads = resolveThreads(snapshot)
         if (snapshot.draftWorkbenchState.draftChanges.isEmpty()) {
@@ -102,7 +102,7 @@ class RiskResolutionService {
         )
     }
 
-    private fun resolveThreads(snapshot: GraphEditorStateService.Snapshot): List<InvestigationThread> {
+    private fun resolveThreads(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): List<InvestigationThread> {
         val result = snapshot.auditResult ?: return emptyList()
         return result.auditSession?.investigationThreads
             ?.takeIf(List<InvestigationThread>::isNotEmpty)

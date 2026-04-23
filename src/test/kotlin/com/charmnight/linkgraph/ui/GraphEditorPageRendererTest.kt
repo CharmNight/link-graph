@@ -63,7 +63,7 @@ class GraphEditorPageRendererTest {
     @Test
     fun bootstrapJson输出问答恢复状态草稿验证和建议追问字段() {
         val renderer = GraphEditorPageRenderer()
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             visibleGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(
@@ -128,7 +128,7 @@ class GraphEditorPageRendererTest {
     @Test
     fun bootstrapJson为缺省草稿验证说明输出null而不是空字符串() {
         val renderer = GraphEditorPageRenderer()
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             visibleGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(
@@ -155,7 +155,7 @@ class GraphEditorPageRendererTest {
     @Test
     fun bootstrapJson输出当前视图对应的referenceWorkingGraph字段() {
         val renderer = GraphEditorPageRenderer()
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             visibleGraph = GraphDocument(),
             workingGraph = GraphDocument(),
             referenceWorkingGraph = GraphDocument(
@@ -206,7 +206,7 @@ class GraphEditorPageRendererTest {
                 ),
             ),
         )
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             visibleGraph = workingGraph,
             workingGraph = workingGraph,
             factGraphView = FactGraphViewDocument(
@@ -249,7 +249,7 @@ class GraphEditorPageRendererTest {
     @Test
     fun bootstrapJson输出展示模式字段() {
         val renderer = GraphEditorPageRenderer()
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             analysisDisplayMode = AnalysisDisplayMode.FACT_GRAPH,
             visibleGraph = GraphDocument(
                 nodes = listOf(
@@ -271,7 +271,7 @@ class GraphEditorPageRendererTest {
     @Test
     fun bootstrapJson输出异步请求遥测字段() {
         val renderer = GraphEditorPageRenderer()
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             visibleGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(
@@ -282,7 +282,7 @@ class GraphEditorPageRendererTest {
                     ),
                 ),
             ),
-            auditRequestState = GraphEditorStateService.AsyncRequestState.running(
+            auditRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.running(
                 statusMessage = "正在等待远程 LLM 问答响应",
                 detailMessage = "当前采用完整返回，不是流式输出。",
                 startedAtEpochMillis = 1_710_000_000_000,
@@ -290,7 +290,7 @@ class GraphEditorPageRendererTest {
             ).copy(
                 requestId = 17,
                 scene = "问答",
-                executionMode = GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_READY,
+                executionMode = com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_READY,
                 providerLabel = "OpenAI Compatible",
                 model = "gpt-test",
                 endpointSummary = "example.com/v1/chat/completions",
@@ -312,7 +312,7 @@ class GraphEditorPageRendererTest {
     @Test
     fun bootstrapJson输出runtimeArtifactSummaries字段() {
         val renderer = GraphEditorPageRenderer()
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             visibleGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(
@@ -325,13 +325,13 @@ class GraphEditorPageRendererTest {
             ),
             runtimeArtifactSummaries = mapOf(
                 "qa" to listOf(
-                    GraphEditorStateService.RuntimeArtifactSummary(
+                    com.charmnight.linkgraph.ui.RuntimeArtifactSummary(
                         artifactId = "qa-graph-summary",
                         artifactType = "GRAPH_SUMMARY",
                         title = "图摘要",
                         description = "workingGraph",
                     ),
-                    GraphEditorStateService.RuntimeArtifactSummary(
+                    com.charmnight.linkgraph.ui.RuntimeArtifactSummary(
                         artifactId = "qa-conclusion",
                         artifactType = "QA_CONCLUSION",
                         title = "问答结论",
@@ -352,7 +352,7 @@ class GraphEditorPageRendererTest {
     @Test
     fun bootstrapJson输出工作台折叠偏好字段() {
         val renderer = GraphEditorPageRenderer()
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             visibleGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(
@@ -398,7 +398,7 @@ class GraphEditorPageRendererTest {
             ),
             addedNodeIds = listOf("draft-note:change-upload-condition"),
         )
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             visibleGraph = GraphDocument(),
             workingGraph = GraphDocument(),
             draftWorkbenchState = DraftWorkbenchState(
@@ -462,7 +462,7 @@ class GraphEditorPageRendererTest {
     @Test
     fun bootstrapJson输出流式预览字段() {
         val renderer = GraphEditorPageRenderer()
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             visibleGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(
@@ -473,7 +473,7 @@ class GraphEditorPageRendererTest {
                     ),
                 ),
             ),
-            graphBeautificationRequestState = GraphEditorStateService.AsyncRequestState.running(
+            graphBeautificationRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.running(
                 statusMessage = "正在等待远程 LLM 链路讲解响应",
                 detailMessage = "当前采用流式输出。",
                 streaming = true,
@@ -494,7 +494,7 @@ class GraphEditorPageRendererTest {
     @Test
     fun bootstrapJson输出修订号布局与选中节点字段() {
         val renderer = GraphEditorPageRenderer()
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
             visibleGraph = GraphDocument(
                 nodes = listOf(
@@ -556,7 +556,7 @@ class GraphEditorPageRendererTest {
                 ),
             ),
         )
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
             visibleGraph = GraphDocument(),
             workingGraph = GraphDocument(),
@@ -663,7 +663,7 @@ class GraphEditorPageRendererTest {
               <body><div id="root"></div></body>
             </html>
         """.trimIndent()
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             visibleGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(
@@ -874,10 +874,10 @@ class GraphEditorPageRendererTest {
                 promptPreview = "Beautification prompt preview",
                 warnings = listOf("GraphBeautificationService 当前仍是占位实现。"),
             ),
-            diffReviewRequestState = GraphEditorStateService.AsyncRequestState.failed("差异分析失败：HTTP 503"),
-            codeDraftRequestState = GraphEditorStateService.AsyncRequestState.running(),
-            operationFeedback = GraphEditorStateService.OperationFeedback(
-                level = GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+            diffReviewRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.failed("差异分析失败：HTTP 503"),
+            codeDraftRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.running(),
+            operationFeedback = com.charmnight.linkgraph.ui.OperationFeedback(
+                level = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
                 message = "已加载当前编辑器上下文链路：OrderController.submit",
             ),
             layoutState = GraphLayoutState(
@@ -964,7 +964,7 @@ class GraphEditorPageRendererTest {
         val renderer = GraphEditorPageRenderer()
         val script = renderer.bootstrapScript(
             sessionId = "session-1",
-            snapshot = GraphEditorStateService.Snapshot(
+            snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                 visibleGraph = GraphDocument(),
                 workingGraph = GraphDocument(),
                 snapshotRevision = 5,
@@ -981,7 +981,7 @@ class GraphEditorPageRendererTest {
     @Test
     fun serializesNodePositionFromLayoutStateEvenWithoutUiMetadata() {
         val renderer = GraphEditorPageRenderer()
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             visibleGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(
@@ -1060,7 +1060,7 @@ class GraphEditorPageRendererTest {
                 ),
             ),
         )
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
             visibleGraph = flowchartVisibleGraph,
             workingGraph = flowchartVisibleGraph,
@@ -1122,7 +1122,7 @@ class GraphEditorPageRendererTest {
                 ),
             ),
         )
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             visibleGraph = visibleGraph,
             workingGraph = workingGraph,
             referenceFactGraph = GraphDocument(
@@ -1162,7 +1162,7 @@ class GraphEditorPageRendererTest {
     fun bootstrapJsonIncludesTypedSourceNavigationState() {
         val renderer = GraphEditorPageRenderer()
 
-        val bootstrapJson = renderer.bootstrapJson(GraphEditorStateService.Snapshot())
+        val bootstrapJson = renderer.bootstrapJson(com.charmnight.linkgraph.ui.GraphEditorStateSnapshot())
 
         assertTrue(bootstrapJson.contains(""""sourceNavigationState""""))
         assertTrue(bootstrapJson.contains(""""phase":"IDLE""""))
@@ -1195,7 +1195,7 @@ class GraphEditorPageRendererTest {
                 ),
             ),
         )
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             auditResult = com.charmnight.linkgraph.llm.GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "这里是不是有问题？",

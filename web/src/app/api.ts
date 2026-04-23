@@ -42,21 +42,15 @@ type PendingBridgeLifecycleState = {
   snapshotAck: SnapshotAckPayload | null;
 };
 
-type PendingBridgeAction = {
-  actionName: BridgeMethodName;
-  invoke: (bridge: Bridge) => void;
-  tracePayload?: unknown;
-};
-
 const pendingBridgeLifecycleState: PendingBridgeLifecycleState = {
   frontendReady: null,
   snapshotAck: null,
 };
-const pendingBridgeActions: PendingBridgeAction[] = [];
 
 let bridgeReadyListenerInstalled = false;
 const BRIDGE_UNAVAILABLE_MESSAGE = "IDE bridge 尚未就绪，本次请求没有发出。";
 const BRIDGE_PROTOCOL_MISMATCH_MESSAGE = "IDE bridge 协议未对齐，本次请求没有发出。";
+const BRIDGE_UNAVAILABLE_DETAIL_MESSAGE = "JCEF 页面与 IDEA 后端连接尚未建立，请等待页面初始化完成后重试。";
 
 // JCEF 页面的唯一后端入口：读取 bootstrap，并把前端交互重新发布给 IDEA bridge。
 interface BackendGraphNode {
@@ -166,7 +160,6 @@ function ensureBridgeReadyListener(): void {
 
 function flushPendingBridgeState(): void {
   flushPendingBridgeLifecycleState();
-  flushPendingBridgeActions();
 }
 
 function flushPendingBridgeLifecycleState(): void {
@@ -182,31 +175,6 @@ function flushPendingBridgeLifecycleState(): void {
     bridge.snapshotAck?.(pendingBridgeLifecycleState.snapshotAck);
     pendingBridgeLifecycleState.snapshotAck = null;
   }
-}
-
-function flushPendingBridgeActions(): void {
-  const bridge = window.linkGraphBridge;
-  if (!bridge || pendingBridgeActions.length === 0) {
-    return;
-  }
-  const queuedActions = pendingBridgeActions.splice(0, pendingBridgeActions.length);
-  queuedActions.forEach(({ actionName, invoke, tracePayload }) => {
-    const bridgeAction = bridge[actionName];
-    if (typeof bridgeAction !== "function") {
-      traceLinkGraph("api.bridgeQueuedActionDropped", {
-        actionName,
-        hasBridge: true,
-      });
-      return;
-    }
-    if (tracePayload !== undefined) {
-      traceLinkGraph(`api.${String(actionName)}`, {
-        ...((typeof tracePayload === "object" && tracePayload !== null) ? tracePayload : { value: tracePayload }),
-        queuedUntilBridgeReady: true,
-      });
-    }
-    invoke(bridge);
-  });
 }
 
 function dispatchFrontendReady(payload: FrontendReadyPayload): void {
@@ -236,18 +204,15 @@ function invokeBridgeAction(
 ): BridgeInvocationResult {
   const bridge = window.linkGraphBridge;
   if (!bridge) {
-    ensureBridgeReadyListener();
-    pendingBridgeActions.push({
-      actionName,
-      invoke,
-      tracePayload,
-    });
     traceLinkGraph("api.bridgePending", {
       actionName,
       hasBridge: false,
-      queuedActionCount: pendingBridgeActions.length,
     });
-    return { ok: true };
+    return {
+      ok: false,
+      message: BRIDGE_UNAVAILABLE_MESSAGE,
+      detailMessage: BRIDGE_UNAVAILABLE_DETAIL_MESSAGE,
+    };
   }
   const bridgeAction = bridge[actionName];
   if (typeof bridgeAction !== "function") {
@@ -296,7 +261,6 @@ export function acknowledgeSnapshot(revision: number): void {
 export function resetApiBridgeLifecycleStateForTest(): void {
   pendingBridgeLifecycleState.frontendReady = null;
   pendingBridgeLifecycleState.snapshotAck = null;
-  pendingBridgeActions.splice(0, pendingBridgeActions.length);
 }
 
 export function importMermaid(mermaid: string): BridgeInvocationResult {

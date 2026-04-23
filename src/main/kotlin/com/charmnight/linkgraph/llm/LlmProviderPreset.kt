@@ -133,11 +133,6 @@ object LlmProviderPresets {
      * 根据标识解析预设，未知值时回退到安全默认值。
      */
     fun resolve(id: String): LlmProviderPreset {
-        return entries.firstOrNull { preset -> preset.id == id } ?: when (id) {
-            "MOCK" -> MOCK
-            "OPENAI_COMPATIBLE" -> OPENAI_COMPATIBLE
-            "OPENAI_RESPONSES" -> OPENAI_RESPONSES
-            else -> MOCK
-        }
+        return entries.firstOrNull { preset -> preset.id == id } ?: MOCK
     }
 }

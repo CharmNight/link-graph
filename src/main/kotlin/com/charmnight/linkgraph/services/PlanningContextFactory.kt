@@ -43,7 +43,7 @@ internal class PlanningContextFactory(
      * 计算实现计划和代码草稿共用的规划载荷。
      */
     fun computePlanningPayload(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         generationPlanOverride: GenerationPlan? = snapshot.generationPlan,
     ): PlanningPayload {
         val workingGraph = currentWorkingGraph(snapshot)
@@ -76,7 +76,7 @@ internal class PlanningContextFactory(
         planningGraph: GraphDocument,
         diff: GraphDiff,
         previewItems: List<SyncPreviewItem>,
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         sourceContext: List<SourceSnippetContext>,
         onPreview: ((String, Boolean) -> Unit)? = null,
         ) = graphGenerationService.generatePlan(
@@ -96,7 +96,7 @@ internal class PlanningContextFactory(
      * 构造链路讲解所需的展示和源码上下文。
      */
     fun buildGraphBeautificationContext(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         goal: String,
         preferredStyle: String?,
         explanationFocus: String?,
@@ -145,7 +145,7 @@ internal class PlanningContextFactory(
      * 根据选区决定问答时使用的事实图和可编辑图。
      */
     fun buildAuditGraphs(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         selectedNodeIds: List<String>,
         collectSourceEvidence: Boolean = true,
     ): AuditGraphs {
@@ -181,7 +181,7 @@ internal class PlanningContextFactory(
      * 为链路讲解选择最合适的锚点节点。
      */
     private fun resolveBeautificationAnchorNodeId(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         visibleGraph: GraphDocument,
     ): String? {
         snapshot.selectedMethodSignature
@@ -198,7 +198,7 @@ internal class PlanningContextFactory(
      * 统计当前方法内和跨方法被折叠隐藏的节点数量。
      */
     private fun computeBeautificationHiddenCounts(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         visibleGraph: GraphDocument,
         fullGraph: GraphDocument,
         anchorNodeId: String?,
@@ -460,7 +460,7 @@ internal data class PlanningPayload(
     val planningGraph: GraphDocument,
     val diff: GraphDiff,
     val previewItems: List<SyncPreviewItem>,
-    val snapshot: GraphEditorStateService.Snapshot,
+    val snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     val sourceContext: List<SourceSnippetContext> = emptyList(),
 )
 

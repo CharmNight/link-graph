@@ -4,7 +4,10 @@ import path from "node:path";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const API_PATH = path.join(REPO_ROOT, "web/src/app/api.ts");
-const BROWSER_PANEL_PATH = path.join(REPO_ROOT, "src/main/kotlin/com/charmnight/linkgraph/ui/GraphBrowserPanel.kt");
+const BRIDGE_REGISTRAR_PATH = path.join(
+  REPO_ROOT,
+  "src/main/kotlin/com/charmnight/linkgraph/ui/GraphBrowserBridgeRegistrar.kt",
+);
 
 function bridgeMethodsDeclaredInApi(source: string): string[] {
   const interfaceMatch = source.match(/linkGraphBridge\?: \{([\s\S]*?)\n    \};/);
@@ -17,36 +20,36 @@ function bridgeMethodsDeclaredInApi(source: string): string[] {
 function injectedBridgeMethods(source: string): Map<string, string> {
   const scriptMatch = source.match(/window\.linkGraphBridge = \{([\s\S]*?)\n\s*\};/);
   if (!scriptMatch) {
-    throw new Error("Failed to locate linkGraphBridge injection script in GraphBrowserPanel.kt");
+    throw new Error("Failed to locate linkGraphBridge injection script in GraphBrowserBridgeRegistrar.kt");
   }
   return new Map(
     Array.from(
-      scriptMatch[1].matchAll(/^\s+([A-Za-z0-9_]+):\s*\([\s\S]*?\$\{([A-Za-z0-9_]+)\?\.inject/gm),
+      scriptMatch[1].matchAll(/^\s+([A-Za-z0-9_]+):\s*\([\s\S]*?\$\{([A-Za-z0-9_]+)\.inject/gm),
       (match) => [match[1], match[2]],
     ),
   );
 }
 
 function registeredHandlerQueries(source: string): Set<string> {
-  return new Set(Array.from(source.matchAll(/([A-Za-z0-9_]+Query)\?\.addHandler/g), (match) => match[1]));
+  return new Set(Array.from(source.matchAll(/([A-Za-z0-9_]+Query)\.addHandler/g), (match) => match[1]));
 }
 
 describe("bridge contract", () => {
   it("injects every frontend-declared bridge method into the browser runtime", () => {
     const apiSource = readFileSync(API_PATH, "utf8");
-    const browserPanelSource = readFileSync(BROWSER_PANEL_PATH, "utf8");
+    const bridgeRegistrarSource = readFileSync(BRIDGE_REGISTRAR_PATH, "utf8");
 
     const declaredMethods = bridgeMethodsDeclaredInApi(apiSource);
-    const injectedMethods = new Set(injectedBridgeMethods(browserPanelSource).keys());
+    const injectedMethods = new Set(injectedBridgeMethods(bridgeRegistrarSource).keys());
 
     expect([...declaredMethods].filter((method) => !injectedMethods.has(method))).toEqual([]);
   });
 
   it("backs every injected runtime bridge method with a registered JCEF handler", () => {
-    const browserPanelSource = readFileSync(BROWSER_PANEL_PATH, "utf8");
+    const bridgeRegistrarSource = readFileSync(BRIDGE_REGISTRAR_PATH, "utf8");
 
-    const methodToQuery = injectedBridgeMethods(browserPanelSource);
-    const registeredQueries = registeredHandlerQueries(browserPanelSource);
+    const methodToQuery = injectedBridgeMethods(bridgeRegistrarSource);
+    const registeredQueries = registeredHandlerQueries(bridgeRegistrarSource);
 
     expect(
       [...methodToQuery.entries()].filter(([, queryName]) => !registeredQueries.has(queryName)),

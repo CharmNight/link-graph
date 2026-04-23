@@ -41,9 +41,9 @@ class GraphEditorStateServiceTest {
     fun markOperationFeedbackCanPreserveExistingLastMessageType() {
         val service = GraphEditorStateService()
 
-        service.markGraphBeautificationResult(GraphBeautificationResult(source = LlmResultSource.MOCK))
-        service.markOperationFeedback(
-            level = GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+        service.asyncRequests.markGraphBeautificationResult(GraphBeautificationResult(source = LlmResultSource.MOCK))
+        service.workbench.markOperationFeedback(
+            level = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
             message = "链路讲解完成，已更新步骤列表",
             preserveLastMessageType = true,
         )
@@ -98,7 +98,7 @@ class GraphEditorStateServiceTest {
     fun markDraftWorkbenchStateStoresUnifiedDraftEntries() {
         val service = GraphEditorStateService()
 
-        service.markDraftWorkbenchState(
+        service.workbench.markDraftWorkbenchState(
             DraftWorkbenchState(
                 draftChanges = listOf(
                     DraftWorkbenchEntry(
@@ -148,7 +148,7 @@ class GraphEditorStateServiceTest {
                 anchorNodeId = "method:order-service-place",
                 selectedMethodSignature = "com.example.OrderService.place(java.lang.String):void",
                 displayName = "OrderService.place",
-                feedbackLevel = GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+                feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
                 feedbackMessage = "已加载当前主体分析：OrderService.place",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
@@ -261,7 +261,7 @@ class GraphEditorStateServiceTest {
                 anchorNodeId = "scope:guard",
                 selectedMethodSignature = "com.example.OrderService.place():void",
                 displayName = "OrderService.place",
-                feedbackLevel = GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+                feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
                 feedbackMessage = "已加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
@@ -369,7 +369,7 @@ class GraphEditorStateServiceTest {
                 anchorNodeId = "scope:file-download-if",
                 selectedMethodSignature = selectedMethodSignature,
                 displayName = "CommonController.fileDownload",
-                feedbackLevel = GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+                feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
                 feedbackMessage = "已加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
@@ -386,7 +386,7 @@ class GraphEditorStateServiceTest {
             ),
             source = "currentSubject",
         )
-        service.markDraftWorkbenchState(confirmedDraftState, advanceDraftVersion = true)
+        service.workbench.markDraftWorkbenchState(confirmedDraftState, advanceDraftVersion = true)
         service.markWorkingGraphChanged(
             graph = flowchartFullGraph.copy(
                 nodes = flowchartFullGraph.nodes.map { node ->
@@ -409,7 +409,7 @@ class GraphEditorStateServiceTest {
                 anchorNodeId = "scope:file-download-if",
                 selectedMethodSignature = selectedMethodSignature,
                 displayName = "CommonController.fileDownload",
-                feedbackLevel = GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+                feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
                 feedbackMessage = "已重新加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
@@ -475,7 +475,7 @@ class GraphEditorStateServiceTest {
         )
 
         service.loadGraph(factGraph, "currentMethod")
-        service.markGenerationPlan(plan)
+        service.asyncRequests.markGenerationPlan(plan)
         val beforeLayoutChange = service.snapshot()
         service.markLayoutChanged(
             mapOf(
@@ -679,7 +679,7 @@ class GraphEditorStateServiceTest {
                 anchorNodeId = "method:flow-entry",
                 selectedMethodSignature = "com.example.OrderService.place():void",
                 displayName = "OrderService.place",
-                feedbackLevel = GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+                feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
                 feedbackMessage = "已加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
@@ -755,7 +755,7 @@ class GraphEditorStateServiceTest {
                 anchorNodeId = "method:flow-entry",
                 selectedMethodSignature = "com.example.OrderService.place():void",
                 displayName = "OrderService.place",
-                feedbackLevel = GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+                feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
                 feedbackMessage = "已加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
@@ -841,7 +841,7 @@ class GraphEditorStateServiceTest {
                 anchorNodeId = "method:flow-entry",
                 selectedMethodSignature = "com.example.OrderService.place():void",
                 displayName = "OrderService.place",
-                feedbackLevel = GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+                feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
                 feedbackMessage = "已加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
@@ -934,7 +934,7 @@ class GraphEditorStateServiceTest {
         )
 
         service.loadGraph(graph, "currentMethod")
-        service.markGraphBeautificationResult(result)
+        service.asyncRequests.markGraphBeautificationResult(result)
 
         var snapshot = service.snapshot()
         assertEquals(result, snapshot.graphBeautificationResult)
@@ -969,7 +969,7 @@ class GraphEditorStateServiceTest {
         )
 
         service.loadGraph(graph, "currentMethod")
-        service.markDraftPatchApplyResult(report)
+        service.workbench.markDraftPatchApplyResult(report)
 
         var snapshot = service.snapshot()
         assertEquals(report, snapshot.lastDraftPatchApplyResult)
@@ -996,7 +996,7 @@ class GraphEditorStateServiceTest {
         )
 
         service.loadGraph(graph, "currentMethod")
-        service.markAuditResult(
+        service.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "旧问题",
@@ -1005,7 +1005,7 @@ class GraphEditorStateServiceTest {
             ),
         )
 
-        service.beginAuditRequest()
+        service.asyncRequests.beginAuditRequest()
 
         val snapshot = service.snapshot()
         assertEquals(graph, snapshot.visibleGraph)
@@ -1046,19 +1046,19 @@ class GraphEditorStateServiceTest {
         service.loadGraph(graph, "currentMethod")
         val afterLoad = service.snapshot()
 
-        service.beginGraphBeautificationRequest()
+        service.asyncRequests.beginGraphBeautificationRequest()
         val afterBeginBeautification = service.snapshot()
         assertEquals(afterLoad.snapshotRevision + 1, afterBeginBeautification.snapshotRevision)
 
-        service.markGraphBeautificationResult(beautificationResult)
+        service.asyncRequests.markGraphBeautificationResult(beautificationResult)
         val afterBeautificationResult = service.snapshot()
         assertEquals(afterBeginBeautification.snapshotRevision + 1, afterBeautificationResult.snapshotRevision)
 
-        service.beginAuditRequest()
+        service.asyncRequests.beginAuditRequest()
         val afterBeginAudit = service.snapshot()
         assertEquals(afterBeautificationResult.snapshotRevision + 1, afterBeginAudit.snapshotRevision)
 
-        service.markAuditResult(
+        service.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "请围绕当前链路进行问答",
@@ -1075,8 +1075,8 @@ class GraphEditorStateServiceTest {
         val service = GraphEditorStateService()
         val initial = service.snapshot()
 
-        service.markOperationFeedback(
-            level = GraphEditorStateService.OperationFeedbackLevel.INFO,
+        service.workbench.markOperationFeedback(
+            level = com.charmnight.linkgraph.ui.OperationFeedbackLevel.INFO,
             message = "正在生成链路讲解，请稍候。",
         )
 
@@ -1101,7 +1101,7 @@ class GraphEditorStateServiceTest {
         )
 
         service.loadGraph(graph, "currentMethod")
-        service.markGeneratedCodeDrafts(
+        service.asyncRequests.markGeneratedCodeDrafts(
             drafts = listOf(
                 com.charmnight.linkgraph.codegen.GeneratedCodeDraft(
                     id = "draft-1",
@@ -1115,7 +1115,7 @@ class GraphEditorStateServiceTest {
             source = LlmResultSource.MOCK,
             promptPreview = "old prompt",
         )
-        service.beginGenerationPlanRequest()
+        service.asyncRequests.beginGenerationPlanRequest()
 
         val plan = GenerationPlan(
             source = GenerationPlanSource.MOCK,
@@ -1123,11 +1123,11 @@ class GraphEditorStateServiceTest {
             warnings = emptyList(),
             promptPreview = "new prompt",
         )
-        service.markGenerationPlan(plan)
+        service.asyncRequests.markGenerationPlan(plan)
 
         val snapshot = service.snapshot()
         assertEquals(plan, snapshot.generationPlan)
-        assertEquals(GraphEditorStateService.AsyncRequestPhase.SUCCEEDED, snapshot.generationPlanRequestState.phase)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, snapshot.generationPlanRequestState.phase)
         assertEquals(null, snapshot.generationPlanRequestState.errorMessage)
         assertEquals(emptyList(), snapshot.generatedCodeDrafts)
         assertEquals(emptyList(), snapshot.generatedCodeDraftWarnings)
@@ -1140,7 +1140,7 @@ class GraphEditorStateServiceTest {
     fun markDraftWorkbenchStateCanAdvanceDraftVersion() {
         val service = GraphEditorStateService()
 
-        service.markDraftWorkbenchState(
+        service.workbench.markDraftWorkbenchState(
             DraftWorkbenchState(
                 draftChanges = listOf(
                     DraftWorkbenchEntry(
@@ -1153,7 +1153,7 @@ class GraphEditorStateServiceTest {
             ),
             advanceDraftVersion = true,
         )
-        service.markDraftWorkbenchState(
+        service.workbench.markDraftWorkbenchState(
             DraftWorkbenchState(
                 draftChanges = listOf(
                     DraftWorkbenchEntry(
@@ -1186,7 +1186,7 @@ class GraphEditorStateServiceTest {
         )
 
         service.loadGraph(graph, "currentMethod")
-        service.markDraftWorkbenchState(
+        service.workbench.markDraftWorkbenchState(
             DraftWorkbenchState(
                 draftChanges = listOf(
                     DraftWorkbenchEntry(
@@ -1200,7 +1200,7 @@ class GraphEditorStateServiceTest {
             ),
             advanceDraftVersion = true,
         )
-        service.markGenerationPlan(
+        service.asyncRequests.markGenerationPlan(
             GenerationPlan(
                 source = GenerationPlanSource.MOCK,
                 summary = "先补失败补偿，再补重试分支。",
@@ -1208,7 +1208,7 @@ class GraphEditorStateServiceTest {
                 promptPreview = "plan prompt",
             ),
         )
-        service.markGeneratedCodeDrafts(
+        service.asyncRequests.markGeneratedCodeDrafts(
             drafts = listOf(
                 GeneratedCodeDraft(
                     id = "draft-1",
@@ -1222,7 +1222,7 @@ class GraphEditorStateServiceTest {
             source = LlmResultSource.MOCK,
             promptPreview = "code prompt",
         )
-        service.markDraftWorkbenchState(
+        service.workbench.markDraftWorkbenchState(
             DraftWorkbenchState(
                 draftChanges = listOf(
                     DraftWorkbenchEntry(
@@ -1255,8 +1255,8 @@ class GraphEditorStateServiceTest {
         assertEquals(1L, snapshot.generatedCodeDraftVersion)
         assertEquals("先补失败补偿，再补重试分支。", snapshot.generationPlan?.summary)
         assertEquals(1, snapshot.generatedCodeDrafts.size)
-        assertEquals(GraphEditorStateService.AsyncRequestPhase.IDLE, snapshot.generationPlanRequestState.phase)
-        assertEquals(GraphEditorStateService.AsyncRequestPhase.IDLE, snapshot.codeDraftRequestState.phase)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.IDLE, snapshot.generationPlanRequestState.phase)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.IDLE, snapshot.codeDraftRequestState.phase)
     }
 
     @Test
@@ -1274,17 +1274,17 @@ class GraphEditorStateServiceTest {
         )
 
         service.loadGraph(graph, "currentMethod")
-        service.beginDiffReviewRequest()
+        service.asyncRequests.beginDiffReviewRequest()
 
         var snapshot = service.snapshot()
-        assertEquals(GraphEditorStateService.AsyncRequestPhase.RUNNING, snapshot.diffReviewRequestState.phase)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.RUNNING, snapshot.diffReviewRequestState.phase)
         assertEquals(null, snapshot.diffReviewRequestState.errorMessage)
         assertEquals(null, snapshot.diffReviewResult)
 
-        service.markDiffReviewRequestFailed("差异分析失败：HTTP 503")
+        service.asyncRequests.markDiffReviewRequestFailed("差异分析失败：HTTP 503")
 
         snapshot = service.snapshot()
-        assertEquals(GraphEditorStateService.AsyncRequestPhase.FAILED, snapshot.diffReviewRequestState.phase)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED, snapshot.diffReviewRequestState.phase)
         assertEquals("差异分析失败：HTTP 503", snapshot.diffReviewRequestState.errorMessage)
         assertEquals(null, snapshot.diffReviewResult)
     }
@@ -1304,7 +1304,7 @@ class GraphEditorStateServiceTest {
         )
 
         service.loadGraph(graph, "currentMethod")
-        service.markAuditResult(
+        service.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "旧问题",
@@ -1312,7 +1312,7 @@ class GraphEditorStateServiceTest {
                 promptPreview = "old prompt",
             ),
         )
-        service.markDiffReviewResult(
+        service.asyncRequests.markDiffReviewResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "旧差异问题",
@@ -1320,7 +1320,7 @@ class GraphEditorStateServiceTest {
                 promptPreview = "old diff prompt",
             ),
         )
-        service.markDraftPatchPreview(
+        service.workbench.markDraftPatchPreview(
             GraphPatch(
                 summary = "旧草稿预览",
                 operations = emptyList(),

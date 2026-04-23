@@ -7,7 +7,7 @@ import com.charmnight.linkgraph.ui.GraphEditorStateService
 /**
  * 从编辑器快照中解析当前可见图，统一回退优先级，避免不同流程各自维护副本。
  */
-internal fun currentVisibleGraph(snapshot: GraphEditorStateService.Snapshot): GraphDocument {
+internal fun currentVisibleGraph(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): GraphDocument {
     val modeVisibleGraph = when (snapshot.analysisDisplayMode) {
         AnalysisDisplayMode.FACT_GRAPH -> snapshot.factGraphView?.visibleGraph
         AnalysisDisplayMode.FLOWCHART -> snapshot.flowchartView?.visibleGraph
@@ -26,7 +26,7 @@ internal fun currentVisibleGraph(snapshot: GraphEditorStateService.Snapshot): Gr
 /**
  * 从编辑器快照中解析当前可编辑工作图。
  */
-internal fun currentWorkingGraph(snapshot: GraphEditorStateService.Snapshot): GraphDocument {
+internal fun currentWorkingGraph(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): GraphDocument {
     return (
         snapshot.workingGraph
             ?: if (snapshot.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART) {
@@ -41,7 +41,7 @@ internal fun currentWorkingGraph(snapshot: GraphEditorStateService.Snapshot): Gr
         )
 }
 
-internal fun currentWorkingGraphSource(snapshot: GraphEditorStateService.Snapshot): String {
+internal fun currentWorkingGraphSource(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): String {
     if (snapshot.workingGraph != null) {
         return "workingGraph"
     }

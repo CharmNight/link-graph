@@ -12,7 +12,7 @@ data class AgentRuntimeContext(
     /** 当前项目。 */
     val project: Project,
     /** 只读快照获取器。 */
-    val snapshotSupplier: () -> GraphEditorStateService.Snapshot?,
+    val snapshotSupplier: () -> com.charmnight.linkgraph.ui.GraphEditorStateSnapshot?,
     /** 本轮产物仓库。 */
     val artifactStore: ArtifactStore,
 )

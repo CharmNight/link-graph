@@ -31,6 +31,8 @@ internal class GraphWorkspaceWorkflow(
     private val syncPreviewPlanner: SyncPreviewPlanner,
     /** 剪贴板写入函数。 */
     private val copyToClipboard: (String) -> Boolean,
+    /** 前端图变更清洗器。 */
+    private val frontendGraphMutationSanitizer: FrontendGraphMutationSanitizer = FrontendGraphMutationSanitizer(),
 ) {
     /**
      * 直接加载指定图文档到编辑器状态。
@@ -48,9 +50,11 @@ internal class GraphWorkspaceWorkflow(
      * 处理前端主动上报的图结构变更。
      */
     fun handleFrontendGraphChanged(graph: GraphDocument) {
+        val snapshot = session.snapshot()
+        val sanitizedGraph = frontendGraphMutationSanitizer.sanitize(snapshot, graph)
         session.markViewGraphChanged(
-            graph = graph,
-            displayMode = session.snapshot().analysisDisplayMode,
+            graph = sanitizedGraph,
+            displayMode = snapshot.analysisDisplayMode,
             syncBrowser = false,
         )
     }
@@ -95,8 +99,8 @@ internal class GraphWorkspaceWorkflow(
                 }
                 val copiedToClipboard = copyToClipboard(exported)
                 apply {
-                    markOperationFeedback(
-                        GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+                    workbench.markOperationFeedback(
+                        com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
                         if (copiedToClipboard) {
                             "已导出 Mermaid，并复制到剪贴板。"
                         } else {
@@ -140,7 +144,7 @@ internal class GraphWorkspaceWorkflow(
             graph?.let { syncPreviewPlanner.plan(it, diff) }
         }.orEmpty()
         session.mutate {
-            requestSyncPreview(previewItems)
+            workbench.requestSyncPreview(previewItems)
         }
         return previewItems
     }

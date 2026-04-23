@@ -53,7 +53,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
         stateService.loadGraph(baseGraph, "currentMethod")
-        stateService.markAuditResult(
+        stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "请确认这条逻辑调整",
@@ -145,7 +145,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
         stateService.loadGraph(baseGraph, "currentMethod")
-        stateService.markAuditResult(
+        stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "请确认这条删除条件调整",
@@ -267,7 +267,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
         stateService.loadGraph(baseGraph, "currentMethod")
         stateService.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
-        stateService.markAuditResult(
+        stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "请确认这条逻辑调整",
@@ -327,7 +327,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
         stateService.loadGraph(baseGraph, "currentMethod")
-        stateService.markGenerationPlan(
+        stateService.asyncRequests.markGenerationPlan(
             GenerationPlan(
                 source = GenerationPlanSource.MOCK,
                 summary = "旧实现建议",
@@ -335,7 +335,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
                 promptPreview = "plan prompt",
             ),
         )
-        stateService.markGeneratedCodeDrafts(
+        stateService.asyncRequests.markGeneratedCodeDrafts(
             drafts = listOf(
                 GeneratedCodeDraft(
                     id = "draft-1",
@@ -349,7 +349,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             source = LlmResultSource.MOCK,
             promptPreview = "code prompt",
         )
-        stateService.markAuditResult(
+        stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "请确认这条逻辑调整",
@@ -403,7 +403,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
         stateService.loadGraph(baseGraph, "currentMethod")
-        stateService.markAuditResult(
+        stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "请确认这条逻辑调整",
@@ -462,7 +462,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
         stateService.loadGraph(baseGraph, "currentMethod")
-        stateService.markAuditResult(
+        stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "请确认这条逻辑调整",
@@ -553,7 +553,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
         stateService.loadGraph(baseGraph, "currentMethod")
-        stateService.markAuditResult(
+        stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "请确认这条逻辑调整",
@@ -585,7 +585,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
 
         val service = project.getService(LinkGraphProjectService::class.java)
         service.confirmAuditCandidateChange("change-upload-condition")
-        stateService.markGenerationPlan(
+        stateService.asyncRequests.markGenerationPlan(
             GenerationPlan(
                 source = GenerationPlanSource.MOCK,
                 summary = "确认后的实现建议",
@@ -593,7 +593,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
                 promptPreview = "plan prompt",
             ),
         )
-        stateService.markGeneratedCodeDrafts(
+        stateService.asyncRequests.markGeneratedCodeDrafts(
             drafts = listOf(
                 GeneratedCodeDraft(
                     id = "draft-1",
@@ -634,7 +634,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
             "currentMethod",
         )
-        stateService.markAuditResult(
+        stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "请确认这条逻辑调整",
@@ -693,7 +693,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
         stateService.loadGraph(baseGraph, "currentMethod")
-        stateService.markAuditResult(
+        stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "这里是否有路径问题？",
@@ -762,7 +762,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
         stateService.loadGraph(baseGraph, "currentMethod")
         stateService.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
-        stateService.markAuditResult(
+        stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "请确认这条逻辑调整",
@@ -891,7 +891,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
         stateService.loadGraph(baseGraph, selectedMethodSignature)
         stateService.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
-        stateService.markAuditResult(
+        stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "请确认这两条流程调整",
@@ -1118,7 +1118,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
                 anchorNodeId = "scope:file-download-if",
                 selectedMethodSignature = selectedMethodSignature,
                 displayName = "CommonController.fileDownload",
-                feedbackLevel = GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+                feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
                 feedbackMessage = "已加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
@@ -1135,7 +1135,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
             source = "currentSubject",
         )
-        stateService.markAuditResult(
+        stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "请确认这条逻辑调整",
@@ -1240,7 +1240,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
         stateService.loadGraph(baseGraph, "currentMethod")
         stateService.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
-        stateService.markAuditResult(
+        stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "请确认这条逻辑调整",
@@ -1338,7 +1338,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
         stateService.loadGraph(baseGraph, "currentMethod")
         stateService.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
-        stateService.markAuditResult(
+        stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "请确认这条逻辑调整",
@@ -1438,7 +1438,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
         stateService.loadGraph(baseGraph, "currentMethod")
         stateService.pushSelectedMethod(uploadSignature)
-        stateService.markAuditResult(
+        stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "这里是否需要调整删除逻辑？",

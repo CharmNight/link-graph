@@ -934,7 +934,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
     }
 
     private fun waitForSnapshot(
-        predicate: (GraphEditorStateService.Snapshot) -> Boolean,
+        predicate: (com.charmnight.linkgraph.ui.GraphEditorStateSnapshot) -> Boolean,
     ) {
         val deadline = System.currentTimeMillis() + 15_000
         while (System.currentTimeMillis() < deadline) {

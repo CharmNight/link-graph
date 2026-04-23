@@ -5,7 +5,7 @@ import java.util.UUID
 
 class QaRequestLifecycleService {
     fun buildReplayableRequest(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         question: String,
         selectedNodeIds: List<String>,
         sourceThreadId: String?,

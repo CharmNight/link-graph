@@ -37,8 +37,8 @@ class GraphEditorTransportSliceRendererTest {
         )
         val current = previous.copy(
             snapshotRevision = 2,
-            operationFeedback = GraphEditorStateService.OperationFeedback(
-                level = GraphEditorStateService.OperationFeedbackLevel.INFO,
+            operationFeedback = com.charmnight.linkgraph.ui.OperationFeedback(
+                level = com.charmnight.linkgraph.ui.OperationFeedbackLevel.INFO,
                 message = "只更新提示文案，也要通过完整权威快照下发。",
             ),
             lastMessageType = "operationFeedback",
@@ -193,8 +193,8 @@ class GraphEditorTransportSliceRendererTest {
         semanticRevision: Long = 0,
         layoutRevision: Long = 0,
         generatedCodeDrafts: List<GeneratedCodeDraft> = emptyList(),
-    ): GraphEditorStateService.Snapshot {
-        return GraphEditorStateService.Snapshot(
+    ): com.charmnight.linkgraph.ui.GraphEditorStateSnapshot {
+        return com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             visibleGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(

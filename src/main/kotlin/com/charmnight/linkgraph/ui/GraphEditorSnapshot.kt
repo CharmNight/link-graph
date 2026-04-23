@@ -59,7 +59,7 @@ data class GraphEditorSnapshot(
 /**
  * 将状态服务内部快照转换为前端桥接层使用的快照模型。
  */
-fun GraphEditorStateService.Snapshot.editorSnapshot(): GraphEditorSnapshot {
+fun com.charmnight.linkgraph.ui.GraphEditorStateSnapshot.editorSnapshot(): GraphEditorSnapshot {
     return GraphEditorSnapshot(
         visibleGraph = currentVisibleGraph(this),
         workingGraph = currentWorkingGraph(this),

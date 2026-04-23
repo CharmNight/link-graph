@@ -15,18 +15,18 @@ import java.util.ArrayDeque
  */
 class GraphToolFacade {
     /** 返回当前最适合问答使用的工作图。 */
-    fun currentGraph(snapshot: GraphEditorStateService.Snapshot): GraphDocument {
+    fun currentGraph(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): GraphDocument {
         return currentWorkingGraph(snapshot)
     }
 
     /** 返回当前图来源标签，便于调试和日志记录。 */
-    fun currentGraphSource(snapshot: GraphEditorStateService.Snapshot): String {
+    fun currentGraphSource(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): String {
         return currentWorkingGraphSource(snapshot)
     }
 
     /** 解析当前选区；若调用方显式给了 nodeIds，则优先使用调用方输入。 */
     fun selectedNodeIds(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         requestedNodeIds: List<String> = emptyList(),
     ): List<String> {
         return requestedNodeIds.ifEmpty {
@@ -36,7 +36,7 @@ class GraphToolFacade {
 
     /** 返回指定节点详情。 */
     fun nodeDetail(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         nodeId: String,
     ): GraphNode? {
         return currentGraph(snapshot).nodes.firstOrNull { it.id == nodeId }
@@ -47,7 +47,7 @@ class GraphToolFacade {
      * 第一阶段仅按无向一跳/多跳近邻展开，足够支撑问答先收缩讨论范围。
      */
     fun expandNeighborhood(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         nodeId: String,
         depth: Int = 1,
     ): GraphDocument {
@@ -82,5 +82,5 @@ class GraphToolFacade {
     }
 
     /** 返回当前差异对象，没有则返回空 diff。 */
-    fun currentDiff(snapshot: GraphEditorStateService.Snapshot): GraphDiff = snapshot.diff ?: GraphDiff()
+    fun currentDiff(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): GraphDiff = snapshot.diff ?: GraphDiff()
 }

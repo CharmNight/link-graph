@@ -81,6 +81,18 @@ class SourceNavigationService(
     }
 
     /**
+     * 仅按项目根目录内路径打开文件，拒绝项目外绝对路径和越界相对路径。
+     */
+    fun navigateToProjectPath(
+        filePath: String,
+        line: Int = 1,
+        column: Int = 1,
+    ): NavigationTarget? {
+        val virtualFile = resolveProjectScopedFile(filePath) ?: return null
+        return open(virtualFile, line, column)
+    }
+
+    /**
      * 打开指定导航目标。
      */
     fun open(target: NavigationTarget): NavigationTarget? {
@@ -210,6 +222,54 @@ class SourceNavigationService(
             .takeUnless { safePath(it)?.isAbsolute == true }
             ?.removePrefix("./")
             ?.let(::findProjectFileByRelativePath)
+
+    /**
+     * 仅解析当前项目根目录内的本地文件。
+     */
+    private fun resolveProjectScopedFile(filePath: String): VirtualFile? {
+        val rawPath = safePath(filePath)?.normalize() ?: return null
+        val allowedRoots = projectScopedRoots()
+        if (allowedRoots.isEmpty()) {
+            return null
+        }
+        if (!rawPath.isAbsolute) {
+            val relativePath = rawPath.toString().replace('\\', '/').removePrefix("./")
+            findProjectFileByRelativePath(relativePath)
+                ?.takeUnless(VirtualFile::isDirectory)
+                ?.takeIf { file ->
+                    val candidatePath = safePath(file.path)
+                        ?.normalize()
+                    candidatePath != null && allowedRoots.any { root -> candidatePath.startsWith(root) }
+                }
+                ?.let { return it }
+        }
+        val resolvedPath = if (rawPath.isAbsolute) {
+            rawPath
+        } else {
+            val baseRoot = allowedRoots.first()
+            baseRoot.resolve(rawPath).normalize()
+        }
+        if (allowedRoots.none { root -> resolvedPath.startsWith(root) }) {
+            return null
+        }
+        return LocalFileSystem.getInstance()
+            .refreshAndFindFileByNioFile(resolvedPath)
+            ?.takeUnless(VirtualFile::isDirectory)
+    }
+
+    private fun projectScopedRoots(): List<Path> {
+        return buildList {
+            project.basePath
+                ?.let(::safePath)
+                ?.takeIf(Path::isAbsolute)
+                ?.normalize()
+                ?.let(::add)
+            ProjectRootManager.getInstance(project).contentRoots
+                .asSequence()
+                .mapNotNull { root -> safePath(root.path)?.normalize() }
+                .forEach(::add)
+        }.distinct()
+    }
 
     /**
      * 在项目内容根中查找相对路径对应文件。

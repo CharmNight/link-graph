@@ -4,16 +4,15 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
-import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.view.FlowchartSummary
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class LinkGraphProjectServiceNavigationTest {
     @Test
-    fun findNavigationNodeFallsBackToDraftGraphAndDesignBaseline() {
+    fun findTrustedNavigationNodeRejectsDraftGraphAndDesignBaselineFallbacks() {
         val draftNode = GraphNode(
             id = "draft:manual-node",
             type = NodeType.DOC_PAGE,
@@ -28,19 +27,18 @@ class LinkGraphProjectServiceNavigationTest {
             signature = "com.example.OrderDraftDto",
             sourceTag = GraphSourceTag.DESIGN_BASELINE,
         )
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             visibleGraph = GraphDocument(),
             workingGraph = GraphDocument(nodes = listOf(draftNode)),
             designBaselineGraph = GraphDocument(nodes = listOf(baselineNode)),
         )
 
-        assertEquals(draftNode, findNavigationNode(snapshot, draftNode.id))
-        assertNotNull(findNavigationNode(snapshot, baselineNode.id))
-        assertEquals("OrderDraftDto", findNavigationNode(snapshot, baselineNode.id)?.title)
+        assertNull(findTrustedNavigationNode(snapshot, draftNode.id))
+        assertNull(findTrustedNavigationNode(snapshot, baselineNode.id))
     }
 
     @Test
-    fun findNavigationNodeReadsFlowchartFullGraphForProjectedNodes() {
+    fun findTrustedNavigationNodeReadsTrustedNavigationIndexForProjectedNodes() {
         val projectedDecisionNode = GraphNode(
             id = "decision:allowed",
             type = NodeType.FLOW_SCOPE,
@@ -61,10 +59,14 @@ class LinkGraphProjectServiceNavigationTest {
                 "flow.kind" to "CONDITION",
             ),
         )
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             analysisDisplayMode = com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode.FLOWCHART,
             visibleGraph = GraphDocument(nodes = listOf(projectedDecisionNode)),
             workingGraph = null,
+            trustedNavigationNodes = mapOf(
+                hiddenConditionNode.id to hiddenConditionNode,
+                projectedDecisionNode.id to projectedDecisionNode,
+            ),
             flowchartView = FlowchartViewDocument(
                 visibleGraph = GraphDocument(nodes = listOf(projectedDecisionNode)),
                 fullGraph = GraphDocument(nodes = listOf(hiddenConditionNode, projectedDecisionNode)),
@@ -78,6 +80,6 @@ class LinkGraphProjectServiceNavigationTest {
             ),
         )
 
-        assertEquals(hiddenConditionNode, findNavigationNode(snapshot, hiddenConditionNode.id))
+        assertEquals(hiddenConditionNode, findTrustedNavigationNode(snapshot, hiddenConditionNode.id))
     }
 }

@@ -313,7 +313,7 @@ describe("publishGraphChange", () => {
     });
   });
 
-  it("在 bridge 稍后注入时补发问答请求，而不是直接丢弃", () => {
+  it("在 bridge 未注入时直接返回失败，而不是把用户命令伪装成已接受", () => {
     const requestAuditBridge = vi.fn();
     window.linkGraphBridge = undefined;
 
@@ -323,7 +323,11 @@ describe("publishGraphChange", () => {
       "thread-risk-1",
     );
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({
+      ok: false,
+      message: "IDE bridge 尚未就绪，本次请求没有发出。",
+      detailMessage: "JCEF 页面与 IDEA 后端连接尚未建立，请等待页面初始化完成后重试。",
+    });
     expect(requestAuditBridge).not.toHaveBeenCalled();
 
     window.linkGraphBridge = {
@@ -331,12 +335,7 @@ describe("publishGraphChange", () => {
     };
     window.dispatchEvent(new Event("link-graph-bridge-ready"));
 
-    expect(requestAuditBridge).toHaveBeenCalledTimes(1);
-    expect(requestAuditBridge).toHaveBeenCalledWith(
-      "请围绕当前链路进行问答",
-      ["method:place-order", "sql:insert-order"],
-      "thread-risk-1",
-    );
+    expect(requestAuditBridge).not.toHaveBeenCalled();
   });
 
   it("记录链路讲解请求参数到前端调试 trace", () => {

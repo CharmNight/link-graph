@@ -15,11 +15,11 @@ class GraphEditorStateSyncSessionTest {
             onSyncRequested = { syncCount += 1 },
         ) {
             apply {
-                beginGenerationPlanRequest()
+                asyncRequests.beginGenerationPlanRequest()
             }
             apply {
-                markOperationFeedback(
-                    GraphEditorStateService.OperationFeedbackLevel.INFO,
+                workbench.markOperationFeedback(
+                    com.charmnight.linkgraph.ui.OperationFeedbackLevel.INFO,
                     "正在生成实现计划，请稍候。",
                 )
             }

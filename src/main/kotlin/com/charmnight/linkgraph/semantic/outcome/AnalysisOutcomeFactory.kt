@@ -100,14 +100,14 @@ class AnalysisOutcomeFactory(
     private fun resolveFeedbackLevel(
         diagnostic: SemanticDiagnostic?,
         truncated: Boolean,
-    ): GraphEditorStateService.OperationFeedbackLevel {
+    ): com.charmnight.linkgraph.ui.OperationFeedbackLevel {
         return when (diagnostic?.severity) {
-            SemanticDiagnosticSeverity.ERROR -> GraphEditorStateService.OperationFeedbackLevel.ERROR
-            SemanticDiagnosticSeverity.WARNING -> GraphEditorStateService.OperationFeedbackLevel.WARNING
+            SemanticDiagnosticSeverity.ERROR -> com.charmnight.linkgraph.ui.OperationFeedbackLevel.ERROR
+            SemanticDiagnosticSeverity.WARNING -> com.charmnight.linkgraph.ui.OperationFeedbackLevel.WARNING
             else -> if (truncated) {
-                GraphEditorStateService.OperationFeedbackLevel.WARNING
+                com.charmnight.linkgraph.ui.OperationFeedbackLevel.WARNING
             } else {
-                GraphEditorStateService.OperationFeedbackLevel.SUCCESS
+                com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS
             }
         }
     }

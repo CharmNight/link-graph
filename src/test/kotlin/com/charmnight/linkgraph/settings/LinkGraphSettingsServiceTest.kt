@@ -28,7 +28,8 @@ class LinkGraphSettingsServiceTest {
         val snapshot = LinkGraphSettingsService(FakeSecretStore()).snapshot()
 
         assertFalse(snapshot.llmEnabled)
-        assertEquals(LlmProviderType.MOCK, snapshot.providerType())
+        assertEquals(LlmProviderPresets.MOCK.id, snapshot.providerPreset().id)
+        assertFalse(snapshot.providerPreset().isRemote)
         assertEquals("", snapshot.normalizedEndpoint())
         assertEquals("", snapshot.apiKey)
         assertEquals(LinkGraphSettingsState.DEFAULT_MODEL, snapshot.model)
@@ -44,7 +45,7 @@ class LinkGraphSettingsServiceTest {
         service.update(
             LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = " https://api.example.com/v1/ ",
                 apiKey = " secret-key ",
                 model = " gpt-4.1-mini ",
@@ -55,7 +56,8 @@ class LinkGraphSettingsServiceTest {
 
         val snapshot = service.snapshot()
         assertTrue(snapshot.llmEnabled)
-        assertEquals(LlmProviderType.OPENAI_COMPATIBLE, snapshot.providerType())
+        assertEquals(LlmProviderPresets.OPENAI_COMPATIBLE.id, snapshot.providerPreset().id)
+        assertTrue(snapshot.providerPreset().isRemote)
         assertEquals("https://api.example.com/v1", snapshot.normalizedEndpoint())
         assertEquals("secret-key", snapshot.apiKey.trim())
         assertEquals("gpt-4.1-mini", snapshot.model.trim())
@@ -65,7 +67,7 @@ class LinkGraphSettingsServiceTest {
         assertEquals(
             LinkGraphPersistentSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://api.example.com/v1",
                 model = "gpt-4.1-mini",
                 timeoutSeconds = 30,
@@ -83,7 +85,7 @@ class LinkGraphSettingsServiceTest {
         service.loadState(
             LinkGraphPersistentSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "",
                 model = "",
             ),
@@ -140,7 +142,7 @@ class LinkGraphSettingsServiceTest {
         service.update(
             LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://api.example.com/v1",
                 apiKey = "",
                 model = "gpt-4.1-mini",

@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.llm.LlmProviderPresets
 import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.llm.GraphAuditContext
 import com.charmnight.linkgraph.llm.GraphAuditPatchService
@@ -16,7 +17,6 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.settings.LlmProviderType
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.AuditConversationMessage
 import com.charmnight.linkgraph.workbench.AuditConversationSession
@@ -88,10 +88,10 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         workflow.requestAuditAsync("请围绕当前链路进行问答")
 
         val snapshot = waitForSnapshot(stateService) { current ->
-            current.auditRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
+            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
 
-        assertEquals(GraphEditorStateService.AsyncRequestPhase.SUCCEEDED, snapshot.auditRequestState.phase)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, snapshot.auditRequestState.phase)
         assertEquals("runtime 已接管问答入口。", snapshot.auditResult?.answer)
         assertTrue(snapshot.auditRequestState.detailMessage?.contains("runId=") == true)
         assertTrue(snapshot.auditRequestState.detailMessage?.contains("capability=qa") == true)
@@ -188,7 +188,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
 
         val snapshot = waitForSnapshot(stateService) { current ->
-            current.auditRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
+            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
 
         assertEquals("已读取1段代码证据。", snapshot.auditResult?.answer)
@@ -312,7 +312,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
 
         val snapshot = waitForSnapshot(stateService) { current ->
-            current.auditRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
+            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
 
         assertEquals("已读取2段代码证据。", snapshot.auditResult?.answer)
@@ -369,7 +369,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 settingsProvider = {
                     LinkGraphSettingsState(
                         llmEnabled = true,
-                        provider = LlmProviderType.MOCK.name,
+                        provider = LlmProviderPresets.MOCK.id,
                     )
                 },
             ),
@@ -389,7 +389,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = {
                 LinkGraphSettingsState(
                     llmEnabled = true,
-                    provider = LlmProviderType.MOCK.name,
+                    provider = LlmProviderPresets.MOCK.id,
                 )
             },
             auditExecutorOverrideProvider = { null },
@@ -407,7 +407,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
 
         val snapshot = waitForSnapshot(stateService) { current ->
-            current.auditRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
+            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
 
         assertEquals(LlmResultSource.MOCK, snapshot.auditResult?.source)
@@ -511,7 +511,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
 
         val snapshot = waitForSnapshot(stateService) { current ->
-            current.auditRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
+            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
 
         assertEquals("已捕获 QA 图上下文。", snapshot.auditResult?.answer)
@@ -630,7 +630,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
 
         val snapshot = waitForSnapshot(stateService) { current ->
-            current.auditRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
+            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
 
         assertTrue(snapshot.auditResult?.answer?.contains("整图读取") == true)
@@ -669,7 +669,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             ),
             "currentMethod",
         )
-        stateService.markAuditResult(
+        stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = "历史问题",
@@ -749,7 +749,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
 
         val snapshot = waitForSnapshot(stateService) { current ->
-            current.auditRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
+            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
 
         assertEquals("follow-up runtime ok", snapshot.auditResult?.answer)
@@ -846,11 +846,11 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
 
         val snapshot = waitForSnapshot(stateService) { current ->
-            current.auditRequestState.phase == GraphEditorStateService.AsyncRequestPhase.FAILED
+            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
         }
 
         assertFalse(executorInvoked)
-        assertEquals(GraphEditorStateService.AsyncRequestPhase.FAILED, snapshot.auditRequestState.phase)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED, snapshot.auditRequestState.phase)
         assertTrue(snapshot.auditRequestState.errorMessage?.contains("runtime 未返回结果") == true)
         assertTrue(snapshot.auditRequestState.detailMessage?.contains("failureReason=MAX_FILES_READ_EXCEEDED") == true)
         assertTrue(snapshot.auditRequestState.detailMessage?.contains("step[2]") == true)
@@ -884,8 +884,8 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
 
     private fun waitForSnapshot(
         stateService: GraphEditorStateService,
-        predicate: (GraphEditorStateService.Snapshot) -> Boolean,
-    ): GraphEditorStateService.Snapshot {
+        predicate: (com.charmnight.linkgraph.ui.GraphEditorStateSnapshot) -> Boolean,
+    ): com.charmnight.linkgraph.ui.GraphEditorStateSnapshot {
         val deadline = System.currentTimeMillis() + 5_000
         while (System.currentTimeMillis() < deadline) {
             PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()

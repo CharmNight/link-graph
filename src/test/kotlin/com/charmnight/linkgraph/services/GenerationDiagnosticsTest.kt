@@ -52,7 +52,7 @@ class GenerationDiagnosticsTest {
                     risk = SyncPreviewRisk.MEDIUM,
                 ),
             ),
-            snapshot = GraphEditorStateService.Snapshot(
+            snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                 draftWorkbenchState = com.charmnight.linkgraph.workbench.DraftWorkbenchState(
                     draftChanges = listOf(
                         DraftWorkbenchEntry(

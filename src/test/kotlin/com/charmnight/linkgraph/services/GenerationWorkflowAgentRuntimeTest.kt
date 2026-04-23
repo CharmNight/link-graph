@@ -66,7 +66,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
 
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraph(sampleGraph(), "currentMethod")
-        stateService.markGeneratedCodeDrafts(
+        stateService.asyncRequests.markGeneratedCodeDrafts(
             drafts = listOf(
                 GeneratedCodeDraft(
                     id = "draft-1",
@@ -147,7 +147,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
 
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraph(sampleGraph(), "currentMethod")
-        stateService.markGeneratedCodeDrafts(
+        stateService.asyncRequests.markGeneratedCodeDrafts(
             drafts = listOf(
                 GeneratedCodeDraft(
                     id = "draft-1",
@@ -188,7 +188,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
 
         val snapshot = stateService.snapshot()
         assertTrue(snapshot.generatedCodeDraftWriteReport?.writtenFiles?.contains(targetPath) == true)
-        assertEquals(GraphEditorStateService.OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
+        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
         assertEquals("代码草稿已写入当前文件。", snapshot.operationFeedback?.message)
         assertTrue(Files.exists(targetFile))
         assertEquals("class RuntimeChain {}", Files.readString(targetFile))
@@ -197,7 +197,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
     fun testRequestGenerationPlanAsyncRoutesThroughRuntime() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraph(sampleGraph(), "currentMethod")
-        stateService.markDraftWorkbenchState(
+        stateService.workbench.markDraftWorkbenchState(
             DraftWorkbenchState(
                 draftChanges = listOf(
                     DraftWorkbenchEntry(
@@ -263,7 +263,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         workflow.requestGenerationPlanAsync()
 
         val snapshot = waitForSnapshot(stateService) {
-            it.generationPlanRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
+            it.generationPlanRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
 
         assertEquals("runtime 计划", snapshot.generationPlan?.summary)
@@ -277,7 +277,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
     fun testRequestCodeDraftsAsyncDoesNotBackfillPlanOutsideRuntime() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraph(sampleGraph(), "currentMethod")
-        stateService.markDraftWorkbenchState(
+        stateService.workbench.markDraftWorkbenchState(
             DraftWorkbenchState(
                 draftChanges = listOf(
                     DraftWorkbenchEntry(
@@ -348,7 +348,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         workflow.requestCodeDraftsAsync()
 
         val snapshot = waitForSnapshot(stateService) {
-            it.codeDraftRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
+            it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
 
         assertEquals(1, snapshot.generatedCodeDrafts.size)
@@ -371,7 +371,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraph(sampleGraph(), "currentMethod")
-        stateService.markDraftWorkbenchState(
+        stateService.workbench.markDraftWorkbenchState(
             DraftWorkbenchState(
                 draftChanges = listOf(
                     DraftWorkbenchEntry(
@@ -436,7 +436,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         workflow.requestCodeDraftsAsync()
 
         val snapshot = waitForSnapshot(stateService) {
-            it.codeDraftRequestState.phase == GraphEditorStateService.AsyncRequestPhase.FAILED
+            it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
         }
 
         assertTrue(
@@ -515,7 +515,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             ),
             "currentMethod",
         )
-        stateService.markDraftWorkbenchState(
+        stateService.workbench.markDraftWorkbenchState(
             DraftWorkbenchState(
                 draftChanges = listOf(
                     DraftWorkbenchEntry(
@@ -584,7 +584,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         workflow.requestCodeDraftsAsync()
 
         val snapshot = waitForSnapshot(stateService) {
-            it.codeDraftRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
+            it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
 
         val draft = snapshot.generatedCodeDrafts.single()
@@ -618,7 +618,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraph(sampleGraph(), "currentMethod")
-        stateService.markDraftWorkbenchState(
+        stateService.workbench.markDraftWorkbenchState(
             DraftWorkbenchState(
                 draftChanges = listOf(
                     DraftWorkbenchEntry(
@@ -683,7 +683,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         workflow.requestCodeDraftsAsync()
 
         val snapshot = waitForSnapshot(stateService) {
-            it.codeDraftRequestState.phase == GraphEditorStateService.AsyncRequestPhase.FAILED
+            it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
         }
 
         assertTrue(snapshot.codeDraftRequestState.errorMessage?.contains("本地安全校验") == true)
@@ -705,7 +705,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraph(sampleGraph(), "currentMethod")
-        stateService.markDraftWorkbenchState(
+        stateService.workbench.markDraftWorkbenchState(
             DraftWorkbenchState(
                 draftChanges = listOf(
                     DraftWorkbenchEntry(
@@ -800,7 +800,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         workflow.requestCodeDraftsAsync()
 
         val snapshot = waitForSnapshot(stateService) {
-            it.codeDraftRequestState.phase == GraphEditorStateService.AsyncRequestPhase.FAILED
+            it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
         }
 
         assertFalse(executorInvoked)
@@ -824,7 +824,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraph(sampleGraph(), "currentMethod")
-        stateService.markDraftWorkbenchState(
+        stateService.workbench.markDraftWorkbenchState(
             DraftWorkbenchState(
                 draftChanges = listOf(
                     DraftWorkbenchEntry(
@@ -889,7 +889,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         workflow.requestCodeDraftsAsync()
 
         val snapshot = waitForSnapshot(stateService) {
-            it.codeDraftRequestState.phase == GraphEditorStateService.AsyncRequestPhase.FAILED
+            it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
         }
 
         assertFalse(snapshot.codeDraftRequestState.errorMessage?.contains("runtime 未返回结果") == true)
@@ -902,7 +902,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         val absoluteTargetPath = java.nio.file.Path.of(requireNotNull(project.basePath)).resolve(relativeTargetPath)
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraph(sampleGraph(), "currentMethod")
-        stateService.markDraftWorkbenchState(
+        stateService.workbench.markDraftWorkbenchState(
             DraftWorkbenchState(
                 draftChanges = listOf(
                     DraftWorkbenchEntry(
@@ -967,13 +967,13 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
 
         workflow.requestGenerationPlanAsync()
         val planSnapshot = waitForSnapshot(stateService) {
-            it.generationPlanRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
+            it.generationPlanRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
         assertEquals("runtime 计划", planSnapshot.generationPlan?.summary)
 
         workflow.requestCodeDraftsAsync()
         val codegenSnapshot = waitForSnapshot(stateService) {
-            it.codeDraftRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
+            it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
         assertEquals(1, codegenSnapshot.generatedCodeDrafts.size)
 
@@ -988,7 +988,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
     fun testRequestCodeDraftsAsyncRejectsSnapshotPlanWithoutPlanArtifactLineage() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraph(sampleGraph(), "currentMethod")
-        stateService.markDraftWorkbenchState(
+        stateService.workbench.markDraftWorkbenchState(
             DraftWorkbenchState(
                 draftChanges = listOf(
                     DraftWorkbenchEntry(
@@ -999,7 +999,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        stateService.markGenerationPlan(
+        stateService.asyncRequests.markGenerationPlan(
             GenerationPlan(
                 source = GenerationPlanSource.MOCK,
                 summary = "orphan plan",
@@ -1032,7 +1032,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         workflow.requestCodeDraftsAsync()
 
         val snapshot = waitForSnapshot(stateService) {
-            it.codeDraftRequestState.phase == GraphEditorStateService.AsyncRequestPhase.FAILED
+            it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
         }
 
         assertTrue(snapshot.codeDraftRequestState.errorMessage?.contains("PlanArtifact") == true)
@@ -1045,7 +1045,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraph(sampleGraph(), "currentMethod")
-        stateService.markDraftWorkbenchState(
+        stateService.workbench.markDraftWorkbenchState(
             DraftWorkbenchState(
                 draftChanges = listOf(
                     DraftWorkbenchEntry(
@@ -1056,7 +1056,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        stateService.markGenerationPlan(plan)
+        stateService.asyncRequests.markGenerationPlan(plan)
         val artifactStore = project.getService(AgentArtifactStoreService::class.java).artifactStore
         artifactStore.save(PlanArtifact("plan-current", plan))
         val session = ProjectEditorSession(stateService) {}
@@ -1105,7 +1105,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         workflow.requestCodeDraftsAsync()
 
         val snapshot = waitForSnapshot(stateService) {
-            it.codeDraftRequestState.phase == GraphEditorStateService.AsyncRequestPhase.SUCCEEDED
+            it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
 
         assertEquals(plan, capturedPlan)
@@ -1128,8 +1128,8 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
 
     private fun waitForSnapshot(
         stateService: GraphEditorStateService,
-        predicate: (GraphEditorStateService.Snapshot) -> Boolean,
-    ): GraphEditorStateService.Snapshot {
+        predicate: (com.charmnight.linkgraph.ui.GraphEditorStateSnapshot) -> Boolean,
+    ): com.charmnight.linkgraph.ui.GraphEditorStateSnapshot {
         val deadline = System.currentTimeMillis() + 5_000
         while (System.currentTimeMillis() < deadline) {
             PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()

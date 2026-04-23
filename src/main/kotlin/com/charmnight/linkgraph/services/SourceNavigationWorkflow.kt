@@ -4,7 +4,7 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.navigation.SourceNavigationService
 import com.charmnight.linkgraph.ui.GraphEditorStateService
-import com.charmnight.linkgraph.ui.GraphEditorStateService.OperationFeedbackLevel
+import com.charmnight.linkgraph.ui.OperationFeedbackLevel
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
@@ -22,7 +22,7 @@ internal class SourceNavigationWorkflow(
     /** 源码跳转服务提供器。 */
     private val sourceNavigationServiceProvider: () -> SourceNavigationService,
     /** 节点查找器。 */
-    private val navigationNodeFinder: (GraphEditorStateService.Snapshot, String) -> GraphNode?,
+    private val navigationNodeFinder: (com.charmnight.linkgraph.ui.GraphEditorStateSnapshot, String) -> GraphNode?,
     /** 实际打开设置页动作。 */
     private val showSettingsDialog: () -> Unit,
     /** 日志记录器。 */
@@ -42,12 +42,12 @@ internal class SourceNavigationWorkflow(
             node == null -> {
                 session.mutateBatch {
                     apply {
-                        markSourceNavigationFailed(nodeId, "未找到节点，无法打开源码。")
+                        markSourceNavigationFailed(nodeId, "当前节点没有可信源码锚点，无法打开源码。")
                     }
                     apply {
-                        markOperationFeedback(
+                        workbench.markOperationFeedback(
                             OperationFeedbackLevel.WARNING,
-                            "未找到节点，无法打开源码。",
+                            "当前节点没有可信源码锚点，无法打开源码。",
                         )
                     }
                 }
@@ -60,7 +60,7 @@ internal class SourceNavigationWorkflow(
                         markSourceNavigationFailed(nodeId, "节点 ${node.title} 暂无可跳转的源码位置。")
                     }
                     apply {
-                        markOperationFeedback(
+                        workbench.markOperationFeedback(
                             OperationFeedbackLevel.WARNING,
                             "节点 ${node.title} 暂无可跳转的源码位置。",
                         )
@@ -71,7 +71,7 @@ internal class SourceNavigationWorkflow(
         }
 
         session.mutate {
-            markOperationFeedback(
+            workbench.markOperationFeedback(
                 OperationFeedbackLevel.INFO,
                 "正在定位源码：${node.title}",
             )
@@ -115,7 +115,7 @@ internal class SourceNavigationWorkflow(
                                         )
                                     }
                                     apply {
-                                        markOperationFeedback(
+                                        workbench.markOperationFeedback(
                                             OperationFeedbackLevel.SUCCESS,
                                             "已打开源码：${node.title}",
                                         )
@@ -127,7 +127,7 @@ internal class SourceNavigationWorkflow(
                                         markSourceNavigationNotFound(nodeId)
                                     }
                                     apply {
-                                        markOperationFeedback(
+                                        workbench.markOperationFeedback(
                                             OperationFeedbackLevel.WARNING,
                                             "未找到源码位置：${node.location ?: node.signature ?: node.title}",
                                         )
@@ -143,7 +143,7 @@ internal class SourceNavigationWorkflow(
                                     markSourceNavigationFailed(nodeId, errorMessage)
                                 }
                                 apply {
-                                    markOperationFeedback(
+                                    workbench.markOperationFeedback(
                                         OperationFeedbackLevel.ERROR,
                                         "打开源码失败：$errorMessage",
                                     )
@@ -164,7 +164,7 @@ internal class SourceNavigationWorkflow(
     fun openSettings() {
         runCatching {
             session.mutate {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.SUCCESS,
                     "已打开 IDE 设置 > Link Graph。",
                 )
@@ -173,7 +173,7 @@ internal class SourceNavigationWorkflow(
         }.onFailure { throwable ->
             logger.warn("打开 Link Graph 设置失败", throwable)
             session.mutate {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.ERROR,
                     "打开插件设置失败：${throwable.message ?: throwable.javaClass.simpleName}",
                 )

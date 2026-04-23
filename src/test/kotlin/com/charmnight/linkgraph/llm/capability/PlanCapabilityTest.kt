@@ -53,13 +53,13 @@ class PlanCapabilityTest : BasePlatformTestCase() {
                     planningGraph = GraphDocument(),
                     diff = com.charmnight.linkgraph.model.GraphDiff(),
                     previewItems = emptyList(),
-                    snapshot = GraphEditorStateService.Snapshot(),
+                    snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
                     sourceContext = emptyList(),
                 ),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { GraphEditorStateService.Snapshot() },
+                snapshotSupplier = { com.charmnight.linkgraph.ui.GraphEditorStateSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -96,7 +96,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
                     ),
                     diff = com.charmnight.linkgraph.model.GraphDiff(),
                     previewItems = emptyList(),
-                    snapshot = GraphEditorStateService.Snapshot(
+                    snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         draftWorkbenchState = DraftWorkbenchState(
                             draftChanges = listOf(
                                 DraftWorkbenchEntry(
@@ -113,7 +113,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    GraphEditorStateService.Snapshot(
+                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         draftWorkbenchState = DraftWorkbenchState(
                             draftChanges = listOf(
                                 DraftWorkbenchEntry(
@@ -263,7 +263,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
                     planningGraph = GraphDocument(),
                     diff = GraphDiff(),
                     previewItems = emptyList(),
-                    snapshot = GraphEditorStateService.Snapshot(
+                    snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         draftWorkbenchState = DraftWorkbenchState(
                             draftChanges = listOf(staleEntry),
                         ),
@@ -281,7 +281,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { GraphEditorStateService.Snapshot() },
+                snapshotSupplier = { com.charmnight.linkgraph.ui.GraphEditorStateSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -394,13 +394,13 @@ class PlanCapabilityTest : BasePlatformTestCase() {
                     planningGraph = GraphDocument(),
                     diff = GraphDiff(),
                     previewItems = emptyList(),
-                    snapshot = GraphEditorStateService.Snapshot(),
+                    snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
                     sourceContext = emptyList(),
                 ),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { GraphEditorStateService.Snapshot() },
+                snapshotSupplier = { com.charmnight.linkgraph.ui.GraphEditorStateSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -454,7 +454,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
                     planningGraph = GraphDocument(),
                     diff = GraphDiff(),
                     previewItems = emptyList(),
-                    snapshot = GraphEditorStateService.Snapshot(
+                    snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         draftWorkbenchState = DraftWorkbenchState(
                             draftChanges = listOf(
                                 DraftWorkbenchEntry(
@@ -472,7 +472,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    GraphEditorStateService.Snapshot(
+                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                         draftWorkbenchState = DraftWorkbenchState(
                             draftChanges = listOf(
                                 DraftWorkbenchEntry(

@@ -13,7 +13,7 @@ import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
  */
 class DraftToolFacade {
     /** 返回当前候选草稿。 */
-    fun candidateDrafts(snapshot: GraphEditorStateService.Snapshot): List<CandidateDraftArtifact> {
+    fun candidateDrafts(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): List<CandidateDraftArtifact> {
         return snapshot.auditResult?.candidateChanges.orEmpty()
             .filter { change -> change.status == CandidateDraftChangeStatus.PENDING_CONFIRMATION }
             .map { change ->
@@ -25,7 +25,7 @@ class DraftToolFacade {
     }
 
     /** 返回当前已确认正式意图。 */
-    fun confirmedIntents(snapshot: GraphEditorStateService.Snapshot): List<ConfirmedIntentArtifact> {
+    fun confirmedIntents(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): List<ConfirmedIntentArtifact> {
         return snapshot.draftWorkbenchState.draftChanges.map { entry ->
             ConfirmedIntentArtifact(
                 artifactId = "confirmed-${entry.entryId}",
@@ -36,7 +36,7 @@ class DraftToolFacade {
 
     /** 把当前已确认正式意图同步到 artifact store，并返回对应引用。 */
     fun syncConfirmedIntents(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactStore: ArtifactStore,
     ): List<ArtifactRef> {
         val currentArtifacts = confirmedIntents(snapshot)
@@ -50,7 +50,7 @@ class DraftToolFacade {
 
     /** 把当前候选草稿同步到 artifact store，并返回对应引用。 */
     fun syncCandidateDrafts(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactStore: ArtifactStore,
     ): List<ArtifactRef> {
         val currentArtifacts = candidateDrafts(snapshot)

@@ -9,7 +9,6 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.settings.LlmProviderType
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.DraftEntryKind
@@ -48,7 +47,7 @@ class GraphGenerationServiceTest {
             context = sampleContext(),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.MOCK.name,
+                provider = LlmProviderPresets.MOCK.id,
             ),
         )
 
@@ -85,7 +84,7 @@ class GraphGenerationServiceTest {
             context = sampleContext(),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://api.example.com/v1",
                 apiKey = "secret-key",
                 model = "gpt-4.1-mini",
@@ -143,7 +142,7 @@ class GraphGenerationServiceTest {
             context = sampleContext(),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://api.example.com/v1",
                 apiKey = "secret-key",
                 model = "gpt-4.1-mini",
@@ -168,7 +167,7 @@ class GraphGenerationServiceTest {
             context = sampleContext(),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "",
                 apiKey = "",
                 model = "",
@@ -285,7 +284,7 @@ class GraphGenerationServiceTest {
             ),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.MOCK.name,
+                provider = LlmProviderPresets.MOCK.id,
             ),
         )
 

@@ -1,7 +1,6 @@
 package com.charmnight.linkgraph.llm
 
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.settings.LlmProviderType
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -13,7 +12,7 @@ class RemoteLlmProviderSupportTest {
     fun rejectsHttpEndpointByDefaultWhenBuildingRemoteConnection() {
         val connection = LinkGraphSettingsState(
             llmEnabled = true,
-            provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+            provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
             endpoint = "http://example.com/v1",
             apiKey = "token",
             model = "gpt-4.1-mini",
@@ -26,7 +25,7 @@ class RemoteLlmProviderSupportTest {
     fun allowsHttpEndpointOnlyWhenDebugPolicyEnabled() {
         val connection = LinkGraphSettingsState(
             llmEnabled = true,
-            provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+            provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
             endpoint = "http://example.com/v1",
             apiKey = "token",
             model = "gpt-4.1-mini",
@@ -42,7 +41,7 @@ class RemoteLlmProviderSupportTest {
     fun setupHintMarksHttpEndpointAsInsecure() {
         val message = LinkGraphSettingsState(
             llmEnabled = true,
-            provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+            provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
             endpoint = "http://example.com/v1",
             apiKey = "token",
             model = "gpt-4.1-mini",

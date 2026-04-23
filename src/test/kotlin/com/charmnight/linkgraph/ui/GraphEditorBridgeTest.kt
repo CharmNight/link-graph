@@ -35,7 +35,7 @@ class GraphEditorBridgeTest : BasePlatformTestCase() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val preferencesService = project.getService(WorkbenchLayoutPreferencesService::class.java)
         preferencesService.update("audit.request-status", true)
-        stateService.markWorkbenchSectionPreferences(emptyMap())
+        stateService.workbench.markWorkbenchSectionPreferences(emptyMap())
 
         val snapshot = GraphEditorBridge(project).currentState()
 
@@ -140,29 +140,42 @@ class GraphEditorBridgeTest : BasePlatformTestCase() {
 
     fun testDispatchOpenCodeDraftNativeDiffRoutesToProjectService() {
         val projectService = project.getService(LinkGraphProjectService::class.java)
-        var requestedDraftId: String? = null
+        val requestedDraftIds = mutableListOf<String>()
         projectService.testOpenCodeDraftNativeDiffOverride = { draftId ->
-            requestedDraftId = draftId
+            requestedDraftIds += draftId
         }
 
         GraphEditorBridge(project).dispatch(GraphEditorMessage.OpenCodeDraftNativeDiff("draft:file-download"))
 
-        assertEquals("draft:file-download", requestedDraftId)
+        waitForCondition("等待 code draft diff 路由到项目服务") {
+            "draft:file-download" in requestedDraftIds
+        }
+
+        assertEquals("draft:file-download", requestedDraftIds.last())
     }
 
     private fun waitForSnapshot(
-        predicate: (GraphEditorStateService.Snapshot) -> Boolean,
-    ): GraphEditorStateService.Snapshot {
-        val deadline = System.currentTimeMillis() + 5_000
-        while (System.currentTimeMillis() < deadline) {
+        predicate: (com.charmnight.linkgraph.ui.GraphEditorStateSnapshot) -> Boolean,
+    ): com.charmnight.linkgraph.ui.GraphEditorStateSnapshot {
+        waitForCondition("等待桥接后的编辑器上下文快照收敛") {
             PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
             val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
-            if (predicate(snapshot)) {
-                return snapshot
+            predicate(snapshot)
+        }
+        return project.getService(GraphEditorStateService::class.java).snapshot()
+    }
+
+    private fun waitForCondition(
+        message: String,
+        predicate: () -> Boolean,
+    ) {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (System.currentTimeMillis() < deadline) {
+            if (predicate()) {
+                return
             }
             Thread.sleep(50)
         }
-        fail("等待桥接后的编辑器上下文快照收敛超时")
-        throw IllegalStateException("unreachable")
+        fail("$message 超时")
     }
 }

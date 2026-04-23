@@ -10,7 +10,6 @@ import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.settings.LlmProviderType
 import com.charmnight.linkgraph.workbench.AuditConversationMessage
 import com.charmnight.linkgraph.workbench.AuditConversationSession
 import com.charmnight.linkgraph.workbench.AuditMessageRole
@@ -61,7 +60,7 @@ class GraphAuditPatchServiceTest {
             question = "请围绕当前范围进行问答：这段链路是否遗漏了默认兜底逻辑？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.MOCK.name,
+                provider = LlmProviderPresets.MOCK.id,
             ),
         )
 
@@ -124,7 +123,7 @@ class GraphAuditPatchServiceTest {
             question = "介绍下这个链路",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.MOCK.name,
+                provider = LlmProviderPresets.MOCK.id,
             ),
         )
 
@@ -175,7 +174,7 @@ class GraphAuditPatchServiceTest {
             question = "请把这里的 if(delete) 改成 delete == true，并在删除前校验 filePath 是否存在。",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.MOCK.name,
+                provider = LlmProviderPresets.MOCK.id,
             ),
         )
 
@@ -233,7 +232,7 @@ class GraphAuditPatchServiceTest {
             question = "这里为什么要修改 delete 分支？请结合当前代码解释一下。",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.MOCK.name,
+                provider = LlmProviderPresets.MOCK.id,
             ),
         )
 
@@ -303,7 +302,7 @@ class GraphAuditPatchServiceTest {
             question = "请审计整图是否遗漏默认兜底逻辑？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
@@ -407,7 +406,7 @@ class GraphAuditPatchServiceTest {
             question = "请把上传路径调整方案写成可编辑图",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
@@ -513,7 +512,7 @@ class GraphAuditPatchServiceTest {
             question = "请把删除前增加存在性判断的方案写成可编辑图。",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
@@ -605,7 +604,7 @@ class GraphAuditPatchServiceTest {
             question = "请继续取证：定位 upload 实现中的路径校验逻辑。",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
@@ -732,7 +731,7 @@ class GraphAuditPatchServiceTest {
             question = "请确认这里的路径规则是否需要调整？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
@@ -807,7 +806,7 @@ class GraphAuditPatchServiceTest {
             question = "这里是不是有问题？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
@@ -879,7 +878,7 @@ class GraphAuditPatchServiceTest {
             question = "请围绕这里的条件判断进行问答，判断是否有误？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
@@ -994,7 +993,7 @@ class GraphAuditPatchServiceTest {
             question = "请把删除条件调整方案写成可编辑图。",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
@@ -1102,7 +1101,7 @@ class GraphAuditPatchServiceTest {
             question = "请把这个删除分支修复成 delete == true，并在删除前校验文件存在。",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
@@ -1197,7 +1196,7 @@ class GraphAuditPatchServiceTest {
             question = "请围绕整图进行问答，判断是否遗漏默认兜底逻辑？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
@@ -1282,7 +1281,7 @@ class GraphAuditPatchServiceTest {
             question = "请判断这里是否需要补充下载路径说明？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
@@ -1354,7 +1353,7 @@ class GraphAuditPatchServiceTest {
             question = "请围绕整图进行问答，判断是否遗漏默认兜底逻辑？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
@@ -1393,7 +1392,7 @@ class GraphAuditPatchServiceTest {
             question = "请围绕整图进行问答，判断是否遗漏默认兜底逻辑？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
@@ -1430,7 +1429,7 @@ class GraphAuditPatchServiceTest {
             question = "请围绕整图进行问答，判断是否遗漏默认兜底逻辑？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
@@ -1460,7 +1459,7 @@ class GraphAuditPatchServiceTest {
             question = "请围绕整图进行问答。",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "",
                 apiKey = "",
                 model = "",
@@ -1509,7 +1508,7 @@ class GraphAuditPatchServiceTest {
             question = "请围绕这个手工补充节点继续问答并补全链路。",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.MOCK.name,
+                provider = LlmProviderPresets.MOCK.id,
             ),
         )
 
@@ -1597,7 +1596,7 @@ class GraphAuditPatchServiceTest {
             question = "请确认这里的路径规则是否需要调整？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
@@ -1672,7 +1671,7 @@ class GraphAuditPatchServiceTest {
             question = "请确认这里的路径规则是否需要调整？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",

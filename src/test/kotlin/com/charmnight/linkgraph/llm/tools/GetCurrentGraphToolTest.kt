@@ -29,7 +29,7 @@ class GetCurrentGraphToolTest : BasePlatformTestCase() {
             input = emptyMap(),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = GraphEditorStateService.Snapshot(
+                snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                     workingGraph = graph,
                     selectedNodeId = "method:upload-file",
                 ),
@@ -74,7 +74,7 @@ class GetCurrentGraphToolTest : BasePlatformTestCase() {
             input = emptyMap(),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = GraphEditorStateService.Snapshot(
+                snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                     analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
                     visibleGraph = visibleGraph,
                     workingGraph = visibleGraph,

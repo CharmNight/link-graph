@@ -73,7 +73,7 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
             graph = GraphDocument(nodes = listOf(visibleMethodNode, currentDraftNode)),
             selectedMethodSignature = methodSignature,
         )
-        stateService.markDraftWorkbenchState(
+        stateService.workbench.markDraftWorkbenchState(
             DraftWorkbenchState(
                 draftChanges = listOf(
                     DraftWorkbenchEntry(
@@ -116,9 +116,9 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
         val snapshot = stateService.snapshot()
         val plan = snapshot.generationPlan
         assertTrue(plan != null, "即使当前草稿为空，也应该允许生成实现建议。")
-        assertEquals(GraphEditorStateService.AsyncRequestPhase.SUCCEEDED, snapshot.generationPlanRequestState.phase)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, snapshot.generationPlanRequestState.phase)
         assertEquals("实现计划", snapshot.generationPlanRequestState.scene)
-        assertEquals(GraphEditorStateService.OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
+        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
     }
 
     fun testRequestGenerationPlanNoLongerBlocksOnUnresolvedRiskThreads() {
@@ -129,7 +129,7 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
             source = "currentContext",
             selectedMethodSignature = "com.example.OrderController.submit():void",
         )
-        stateService.markAuditResult(
+        stateService.asyncRequests.markAuditResult(
             com.charmnight.linkgraph.llm.GraphPatchResult(
                 source = com.charmnight.linkgraph.llm.LlmResultSource.MOCK,
                 question = "这里是否还有默认兜底分支？",
@@ -143,7 +143,7 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
                     ),
                 ),
             ),
-            GraphEditorStateService.AsyncRequestState.succeeded(scene = "问答"),
+            com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(scene = "问答"),
         )
 
         val service = project.getService(LinkGraphProjectService::class.java)
@@ -151,7 +151,7 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
 
         val snapshot = stateService.snapshot()
         assertTrue(snapshot.generationPlan != null, "实现建议不应再被风险线程阻塞。")
-        assertEquals(GraphEditorStateService.AsyncRequestPhase.SUCCEEDED, snapshot.generationPlanRequestState.phase)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, snapshot.generationPlanRequestState.phase)
     }
 
     fun testRequestGenerationPlanDiscussionStaysInsideSuggestionStage() {
@@ -173,7 +173,7 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
         assertEquals("USER", discussionSession.messages[0].role.name)
         assertEquals("ASSISTANT", discussionSession.messages[1].role.name)
         assertTrue(discussionSession.messages[1].content.contains("实现建议"))
-        assertEquals(GraphEditorStateService.AsyncRequestPhase.SUCCEEDED, snapshot.generationPlanDiscussionRequestState.phase)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, snapshot.generationPlanDiscussionRequestState.phase)
         assertNull(snapshot.auditResult, "实现建议追问不应把用户重新导向风险问答结果。")
     }
 
@@ -191,11 +191,11 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
 
         val snapshot = stateService.snapshot()
         assertTrue(snapshot.generatedCodeDrafts.isEmpty())
-        assertEquals(GraphEditorStateService.AsyncRequestPhase.FAILED, snapshot.codeDraftRequestState.phase)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED, snapshot.codeDraftRequestState.phase)
         assertEquals("代码草稿", snapshot.codeDraftRequestState.scene)
         assertTrue(snapshot.codeDraftRequestState.errorMessage?.contains("请先确认至少一条草稿变更") == true)
         assertTrue(snapshot.codeDraftRequestState.detailMessage?.contains("先在问答结果中确认候选变更") == true)
-        assertEquals(GraphEditorStateService.OperationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
+        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
     }
 
     private fun sampleGraph(): GraphDocument {

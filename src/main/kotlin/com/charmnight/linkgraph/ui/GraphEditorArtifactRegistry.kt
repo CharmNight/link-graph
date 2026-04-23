@@ -1,6 +1,5 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.ui.GraphEditorStateService.Snapshot
 import java.security.MessageDigest
 
 /**
@@ -23,7 +22,7 @@ class GraphEditorArtifactRegistry {
 
     private var artifacts: Map<String, String> = emptyMap()
 
-    fun replaceWith(snapshot: Snapshot): SnapshotArtifacts {
+    fun replaceWith(snapshot: GraphEditorStateSnapshot): SnapshotArtifacts {
         val nextArtifacts = linkedMapOf<String, String>()
 
         fun register(kind: String, ownerKey: String, content: String?): String? {

@@ -20,7 +20,7 @@ class GetDraftWorkbenchToolTest : BasePlatformTestCase() {
             input = emptyMap(),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = GraphEditorStateService.Snapshot(
+                snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                     auditResult = com.charmnight.linkgraph.llm.GraphPatchResult(
                         source = com.charmnight.linkgraph.llm.LlmResultSource.MOCK,
                         question = "Q",
@@ -66,7 +66,7 @@ class GetDraftWorkbenchToolTest : BasePlatformTestCase() {
             input = emptyMap(),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = GraphEditorStateService.Snapshot(
+                snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                     auditResult = com.charmnight.linkgraph.llm.GraphPatchResult(
                         source = com.charmnight.linkgraph.llm.LlmResultSource.MOCK,
                         question = "Q",

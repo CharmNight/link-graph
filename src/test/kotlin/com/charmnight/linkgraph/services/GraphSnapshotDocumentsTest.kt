@@ -30,7 +30,7 @@ class GraphSnapshotDocumentsTest {
         assertEquals(
             visibleGraph,
             currentVisibleGraph(
-                GraphEditorStateService.Snapshot(
+                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                     visibleGraph = visibleGraph,
                     workingGraph = workingGraph,
                     referenceFactGraph = factGraph,
@@ -41,7 +41,7 @@ class GraphSnapshotDocumentsTest {
         assertEquals(
             workingGraph,
             currentVisibleGraph(
-                GraphEditorStateService.Snapshot(
+                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                     visibleGraph = null,
                     workingGraph = workingGraph,
                     referenceFactGraph = factGraph,
@@ -52,7 +52,7 @@ class GraphSnapshotDocumentsTest {
         assertEquals(
             factGraph,
             currentVisibleGraph(
-                GraphEditorStateService.Snapshot(
+                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                     visibleGraph = null,
                     workingGraph = null,
                     referenceFactGraph = factGraph,
@@ -63,7 +63,7 @@ class GraphSnapshotDocumentsTest {
         assertEquals(
             baselineGraph,
             currentVisibleGraph(
-                GraphEditorStateService.Snapshot(
+                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                     visibleGraph = null,
                     workingGraph = null,
                     referenceFactGraph = null,
@@ -91,7 +91,7 @@ class GraphSnapshotDocumentsTest {
         assertEquals(
             workingGraph,
             currentWorkingGraph(
-                GraphEditorStateService.Snapshot(
+                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                     visibleGraph = visibleGraph,
                     workingGraph = workingGraph,
                     referenceFactGraph = factGraph,
@@ -102,7 +102,7 @@ class GraphSnapshotDocumentsTest {
         assertEquals(
             visibleGraph,
             currentWorkingGraph(
-                GraphEditorStateService.Snapshot(
+                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                     visibleGraph = visibleGraph,
                     workingGraph = null,
                     referenceFactGraph = factGraph,
@@ -113,7 +113,7 @@ class GraphSnapshotDocumentsTest {
         assertEquals(
             factGraph,
             currentWorkingGraph(
-                GraphEditorStateService.Snapshot(
+                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                     visibleGraph = null,
                     workingGraph = null,
                     referenceFactGraph = factGraph,
@@ -124,7 +124,7 @@ class GraphSnapshotDocumentsTest {
         assertEquals(
             baselineGraph,
             currentWorkingGraph(
-                GraphEditorStateService.Snapshot(
+                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                     visibleGraph = null,
                     workingGraph = null,
                     referenceFactGraph = null,
@@ -160,13 +160,13 @@ class GraphSnapshotDocumentsTest {
         )
 
         val sanitizedVisible = currentVisibleGraph(
-            GraphEditorStateService.Snapshot(
+            com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                 visibleGraph = visibleGraph,
                 workingGraph = visibleGraph,
             ),
         )
         val sanitizedWorking = currentWorkingGraph(
-            GraphEditorStateService.Snapshot(
+            com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                 visibleGraph = visibleGraph,
                 workingGraph = visibleGraph,
             ),
@@ -199,7 +199,7 @@ class GraphSnapshotDocumentsTest {
         assertEquals(
             workingGraph,
             currentWorkingGraph(
-                GraphEditorStateService.Snapshot(
+                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                     analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
                     visibleGraph = visibleGraph,
                     workingGraph = workingGraph,
@@ -214,7 +214,7 @@ class GraphSnapshotDocumentsTest {
         assertEquals(
             "workingGraph",
             currentWorkingGraphSource(
-                GraphEditorStateService.Snapshot(
+                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                     analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
                     visibleGraph = visibleGraph,
                     workingGraph = workingGraph,
@@ -229,7 +229,7 @@ class GraphSnapshotDocumentsTest {
         assertEquals(
             fullGraph,
             currentWorkingGraph(
-                GraphEditorStateService.Snapshot(
+                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                     analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
                     visibleGraph = visibleGraph,
                     workingGraph = null,
@@ -244,7 +244,7 @@ class GraphSnapshotDocumentsTest {
         assertEquals(
             "flowchartView.fullGraph",
             currentWorkingGraphSource(
-                GraphEditorStateService.Snapshot(
+                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
                     analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
                     visibleGraph = visibleGraph,
                     workingGraph = null,

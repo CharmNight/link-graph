@@ -82,7 +82,7 @@ internal class AsyncRequestLifecycleSupport(
         requestId: Long,
         sceneLabel: String,
         settings: LinkGraphSettingsState,
-        disabledMode: GraphEditorStateService.AsyncRequestExecutionMode = GraphEditorStateService.AsyncRequestExecutionMode.LOCAL_RULE,
+        disabledMode: com.charmnight.linkgraph.ui.AsyncRequestExecutionMode = com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.LOCAL_RULE,
         promptPreviewAvailable: Boolean = true,
     ): AsyncRequestPresentation {
         val sanitized = settings.sanitized()
@@ -90,44 +90,44 @@ internal class AsyncRequestLifecycleSupport(
         val remotePresetSelected = sanitized.usesRemoteProvider()
         val streamingSupported = remoteConnection?.preset?.capabilities?.supportsStreaming == true
         val executionMode = when {
-            remoteConnection != null -> GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_READY
+            remoteConnection != null -> com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_READY
             !sanitized.llmEnabled -> disabledMode
-            else -> GraphEditorStateService.AsyncRequestExecutionMode.LOCAL_RULE
+            else -> com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.LOCAL_RULE
         }
-        val remoteRequested = executionMode == GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_READY
+        val remoteRequested = executionMode == com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_READY
         val timeoutMillis = (timeoutOverrideProvider()
             ?: sanitized.effectiveTimeoutSeconds().toLong() * 1_000L)
             .coerceAtLeast(1L)
         val timeoutSecondsText = ((timeoutMillis + 999L) / 1_000L).toString()
-        val requestState = GraphEditorStateService.AsyncRequestState.running(
+        val requestState = com.charmnight.linkgraph.ui.AsyncRequestState.running(
             requestId = requestId,
             scene = sceneLabel,
             executionMode = executionMode,
             statusMessage = when (executionMode) {
-                GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_READY -> "正在等待远程 LLM ${sceneLabel}响应"
-                GraphEditorStateService.AsyncRequestExecutionMode.LOCAL_RULE -> "正在执行${sceneLabel}本地规则"
-                GraphEditorStateService.AsyncRequestExecutionMode.DISABLED -> "正在处理${sceneLabel}请求"
-                GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_FALLBACK -> "正在执行${sceneLabel}"
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_READY -> "正在等待远程 LLM ${sceneLabel}响应"
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.LOCAL_RULE -> "正在执行${sceneLabel}本地规则"
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.DISABLED -> "正在处理${sceneLabel}请求"
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_FALLBACK -> "正在执行${sceneLabel}"
             },
             detailMessage = when (executionMode) {
-                GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_READY ->
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_READY ->
                     if (streamingSupported) {
                         "当前采用流式输出，界面会持续追加预览；最终会在结束后收敛为结构化结果。最长等待 ${timeoutSecondsText} 秒。"
                     } else {
                         "当前采用完整返回，不是流式输出。最长等待 ${timeoutSecondsText} 秒，超时后会停止等待并明确提示失败。"
                     }
-                GraphEditorStateService.AsyncRequestExecutionMode.LOCAL_RULE -> when {
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.LOCAL_RULE -> when {
                     !sanitized.llmEnabled -> "远程 LLM 未启用，当前直接执行本地规则或模板，不会等待远程响应。"
                     remotePresetSelected -> "远程配置未就绪，当前直接执行本地规则或模板，不会等待远程响应。"
                     else -> "当前配置使用本地规则或模板执行，不会发起远程 LLM 请求。"
                 }
-                GraphEditorStateService.AsyncRequestExecutionMode.DISABLED ->
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.DISABLED ->
                     "LLM 生成功能未启用，当前不会发起远程请求。"
-                GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_FALLBACK ->
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_FALLBACK ->
                     "当前请求已回退到本地规则。"
             },
-            streaming = executionMode == GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_READY && streamingSupported,
-            streamPhase = if (executionMode == GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_READY && streamingSupported) {
+            streaming = executionMode == com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_READY && streamingSupported,
+            streamPhase = if (executionMode == com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_READY && streamingSupported) {
                 "STREAMING"
             } else {
                 null
@@ -158,38 +158,38 @@ internal class AsyncRequestLifecycleSupport(
      */
     fun buildTimedOutRequestState(
         presentation: AsyncRequestPresentation,
-    ): GraphEditorStateService.AsyncRequestState {
+    ): com.charmnight.linkgraph.ui.AsyncRequestState {
         val timeoutSecondsText = ((presentation.timeoutMillis + 999L) / 1_000L).toString()
-        return GraphEditorStateService.AsyncRequestState.timedOut(
+        return com.charmnight.linkgraph.ui.AsyncRequestState.timedOut(
             message = when (presentation.executionMode) {
-                GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_READY ->
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_READY ->
                     if (presentation.streamingSupported) {
                         "${presentation.sceneLabel}超时，已停止等待远程 LLM 流式输出。"
                     } else {
                         "${presentation.sceneLabel}超时，已停止等待远程 LLM 完整返回。"
                     }
-                GraphEditorStateService.AsyncRequestExecutionMode.LOCAL_RULE ->
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.LOCAL_RULE ->
                     "${presentation.sceneLabel}超时，已停止等待本地规则或模板结果。"
-                GraphEditorStateService.AsyncRequestExecutionMode.DISABLED ->
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.DISABLED ->
                     "${presentation.sceneLabel}处理超时。"
-                GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_FALLBACK ->
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_FALLBACK ->
                     "${presentation.sceneLabel}超时。"
             },
             requestId = presentation.requestId,
             scene = presentation.sceneLabel,
             executionMode = presentation.executionMode,
             detailMessage = when (presentation.executionMode) {
-                GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_READY ->
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_READY ->
                     if (presentation.streamingSupported) {
                         "当前采用流式输出，但在 ${timeoutSecondsText} 秒内仍未完成最终结构化收敛，请检查网络、模型配置或缩短超时时间后重试。"
                     } else {
                         "当前采用完整返回，不是流式输出。已达到 ${timeoutSecondsText} 秒等待上限，请检查网络、模型配置或缩短超时时间后重试。"
                     }
-                GraphEditorStateService.AsyncRequestExecutionMode.LOCAL_RULE ->
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.LOCAL_RULE ->
                     "本地规则或模板执行超过 ${timeoutSecondsText} 秒仍未完成，请检查当前图规模、插件日志或测试桩。"
-                GraphEditorStateService.AsyncRequestExecutionMode.DISABLED ->
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.DISABLED ->
                     "当前未启用远程 LLM，本次请求本应快速返回禁用说明；若持续超时，请检查插件线程状态。"
-                GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_FALLBACK ->
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_FALLBACK ->
                     "请求已进入回退路径，但在 ${timeoutSecondsText} 秒内仍未完成。"
             },
             startedAtEpochMillis = presentation.requestState.startedAtEpochMillis,
@@ -213,33 +213,33 @@ internal class AsyncRequestLifecycleSupport(
         successMessage: String,
         completedRemotely: Boolean,
         warnings: List<String>,
-    ): GraphEditorStateService.AsyncRequestState {
+    ): com.charmnight.linkgraph.ui.AsyncRequestState {
         val executionMode = if (presentation.remoteRequested && !completedRemotely) {
-            GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_FALLBACK
+            com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_FALLBACK
         } else {
             presentation.executionMode
         }
-        val fallbackUsed = executionMode == GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_FALLBACK
+        val fallbackUsed = executionMode == com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_FALLBACK
         val detailMessage = when {
             fallbackUsed -> warnings.firstOrNull()
                 ?: "远程 LLM ${presentation.sceneLabel}失败，当前结果已回退到本地规则或模板。"
             completedRemotely && presentation.streamingSupported -> "远程 LLM 已完成流式输出，并已落地最终结构化结果。"
             completedRemotely -> "远程 LLM 已返回完整结果。当前仍不是流式输出。"
-            executionMode == GraphEditorStateService.AsyncRequestExecutionMode.DISABLED ->
+            executionMode == com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.DISABLED ->
                 "LLM 生成功能已关闭，当前结果用于说明为何本次请求没有发起远程调用。"
-            executionMode == GraphEditorStateService.AsyncRequestExecutionMode.LOCAL_RULE && !presentation.llmEnabled ->
+            executionMode == com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.LOCAL_RULE && !presentation.llmEnabled ->
                 "远程 LLM 未启用，当前结果来自本地规则或模板执行。"
-            executionMode == GraphEditorStateService.AsyncRequestExecutionMode.LOCAL_RULE && presentation.remotePresetSelected ->
+            executionMode == com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.LOCAL_RULE && presentation.remotePresetSelected ->
                 "远程配置未就绪，当前结果来自本地规则或模板执行。"
             else -> "当前结果来自本地规则或模板执行。"
         }
-        return GraphEditorStateService.AsyncRequestState.succeeded(
+        return com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(
             requestId = presentation.requestId,
             scene = presentation.sceneLabel,
             executionMode = executionMode,
             statusMessage = when {
                 fallbackUsed -> "${presentation.sceneLabel}完成，已回退到本地规则或模板结果。"
-                executionMode == GraphEditorStateService.AsyncRequestExecutionMode.LOCAL_RULE ->
+                executionMode == com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.LOCAL_RULE ->
                     "${presentation.sceneLabel}完成，结果来自本地规则或模板。"
                 else -> successMessage
             },
@@ -265,24 +265,24 @@ internal class AsyncRequestLifecycleSupport(
         presentation: AsyncRequestPresentation,
         message: String,
         detailMessageOverride: String? = null,
-    ): GraphEditorStateService.AsyncRequestState {
-        return GraphEditorStateService.AsyncRequestState.failed(
+    ): com.charmnight.linkgraph.ui.AsyncRequestState {
+        return com.charmnight.linkgraph.ui.AsyncRequestState.failed(
             message = message,
             requestId = presentation.requestId,
             scene = presentation.sceneLabel,
             executionMode = presentation.executionMode,
             detailMessage = detailMessageOverride ?: when (presentation.executionMode) {
-                GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_READY ->
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_READY ->
                     if (presentation.streamingSupported) {
                         "当前采用流式输出，但在最终结构化收敛前失败。请检查请求地址、鉴权、模型配置或网络连通性后重试。"
                     } else {
                         "当前采用完整返回，不是流式输出。请检查请求地址、鉴权、模型配置或网络连通性后重试。"
                     }
-                GraphEditorStateService.AsyncRequestExecutionMode.LOCAL_RULE ->
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.LOCAL_RULE ->
                     "当前走本地规则或模板执行，请检查插件日志、测试桩或当前输入图状态。"
-                GraphEditorStateService.AsyncRequestExecutionMode.DISABLED ->
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.DISABLED ->
                     "当前未启用远程 LLM，本次请求不应进入远程执行链路。"
-                GraphEditorStateService.AsyncRequestExecutionMode.REMOTE_FALLBACK ->
+                com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_FALLBACK ->
                     "远程请求已进入回退路径，但最终仍失败。"
             },
             startedAtEpochMillis = presentation.requestState.startedAtEpochMillis,
@@ -303,9 +303,9 @@ internal class AsyncRequestLifecycleSupport(
      * 这里只暴露 runId、capabilityId 和 failureReason 摘要，不把完整 runtime 内部状态塞进 UI snapshot。
      */
     fun withRuntimeMetadata(
-        requestState: GraphEditorStateService.AsyncRequestState,
+        requestState: com.charmnight.linkgraph.ui.AsyncRequestState,
         runtimeState: AgentRunState,
-    ): GraphEditorStateService.AsyncRequestState {
+    ): com.charmnight.linkgraph.ui.AsyncRequestState {
         val runtimeSummary = formatRuntimeDetail(runtimeState)
         val mergedDetail = listOfNotNull(requestState.detailMessage, runtimeSummary)
             .joinToString(separator = "\n")
@@ -392,7 +392,7 @@ internal class AsyncRequestLifecycleSupport(
     fun logAsyncRequestEvent(
         logger: Logger,
         phase: String,
-        state: GraphEditorStateService.AsyncRequestState,
+        state: com.charmnight.linkgraph.ui.AsyncRequestState,
     ) {
         debugLazy(logger.isDebugEnabled, logger::debug) {
             "异步请求状态: phase=$phase, requestId=${state.requestId}, scene=${state.scene}, " +
@@ -482,9 +482,9 @@ internal data class AsyncRequestPresentation(
     /** 场景展示名称。 */
     val sceneLabel: String,
     /** 本次请求采用的执行模式。 */
-    val executionMode: GraphEditorStateService.AsyncRequestExecutionMode,
+    val executionMode: com.charmnight.linkgraph.ui.AsyncRequestExecutionMode,
     /** 面向前端的运行中状态。 */
-    val requestState: GraphEditorStateService.AsyncRequestState,
+    val requestState: com.charmnight.linkgraph.ui.AsyncRequestState,
     /** 是否实际发起了远程请求。 */
     val remoteRequested: Boolean,
     /** 超时时间，单位毫秒。 */

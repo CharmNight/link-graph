@@ -15,7 +15,7 @@ class CodeReadToolFacade(
 ) {
     /** 根据 nodeId 或 symbol 定位代码锚点。 */
     fun resolveAnchor(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         nodeId: String? = null,
         symbolSignature: String? = null,
     ): GraphNode? {
@@ -52,7 +52,7 @@ class CodeReadToolFacade(
 
     /** 根据 symbol 直接读取关联片段。 */
     fun readSymbol(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         symbolSignature: String,
         fallbackSourceContexts: List<SourceSnippetContext> = emptyList(),
         projectBasePath: String? = null,

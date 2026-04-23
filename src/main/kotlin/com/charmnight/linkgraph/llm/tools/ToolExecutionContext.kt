@@ -13,7 +13,7 @@ data class ToolExecutionContext(
     /** 当前项目。 */
     val project: Project,
     /** 当前只读快照。 */
-    val snapshot: GraphEditorStateService.Snapshot,
+    val snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     /** 当前产物仓库。 */
     val artifactStore: ArtifactStore,
     /** 当前预算快照。 */

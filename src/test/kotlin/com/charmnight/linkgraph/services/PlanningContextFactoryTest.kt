@@ -40,7 +40,7 @@ class PlanningContextFactoryTest {
                 title = "if (delete)",
             ),
         )
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
             referenceFactGraph = factGraph,
             workingGraph = editableGraph,
@@ -129,7 +129,7 @@ class PlanningContextFactoryTest {
                 ),
             ),
         )
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
             workingGraph = graph,
             draftWorkbenchState = DraftWorkbenchState(
                 draftChanges = listOf(
@@ -220,7 +220,7 @@ class PlanningContextFactoryTest {
                 ),
             ),
         )
-        val snapshot = GraphEditorStateService.Snapshot(workingGraph = graph)
+        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(workingGraph = graph)
         val generationPlan = GenerationPlan(
             source = GenerationPlanSource.REMOTE,
             summary = "修改 uploadFile",

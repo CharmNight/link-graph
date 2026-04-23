@@ -25,7 +25,7 @@ class RemoteLlmSettingsValidatorTest {
         ).validate(
             LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "",
                 apiKey = "",
                 model = "",
@@ -50,7 +50,7 @@ class RemoteLlmSettingsValidatorTest {
         ).validate(
             LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://example.com/v1",
                 apiKey = "token",
                 model = "gpt-5.4",
@@ -79,7 +79,7 @@ class RemoteLlmSettingsValidatorTest {
         ).validate(
             LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://example.com/v1",
                 apiKey = "token",
                 model = "gpt-4.1-mini",
@@ -117,7 +117,7 @@ class RemoteLlmSettingsValidatorTest {
         ).validate(
             LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://example.com/v1",
                 apiKey = "token",
                 model = "gpt-4.1-mini",
@@ -221,7 +221,7 @@ class RemoteLlmSettingsValidatorTest {
         ).validate(
             LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "http://example.com/v1",
                 apiKey = "token",
                 model = "gpt-4.1-mini",
@@ -260,7 +260,7 @@ class RemoteLlmSettingsValidatorTest {
         ).validate(
             LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "http://example.com/v1",
                 apiKey = "token",
                 model = "gpt-4.1-mini",

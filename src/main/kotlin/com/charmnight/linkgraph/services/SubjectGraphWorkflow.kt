@@ -19,7 +19,7 @@ import com.charmnight.linkgraph.semantic.subject.SubjectLocator
 import com.charmnight.linkgraph.semantic.subject.SubjectPreviewKind
 import com.charmnight.linkgraph.semantic.subject.canonicalTypeText
 import com.charmnight.linkgraph.ui.GraphEditorStateService
-import com.charmnight.linkgraph.ui.GraphEditorStateService.OperationFeedbackLevel
+import com.charmnight.linkgraph.ui.OperationFeedbackLevel
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
@@ -129,7 +129,7 @@ internal class SubjectGraphWorkflow(
         val cachedResult = lastSemanticAnalysisResult
         if (cachedResult == null) {
             session.mutate {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.WARNING,
                     "当前结果不是基于统一语义分析生成，无法直接切换展示模式，请重新分析当前主体。",
                 )
@@ -171,7 +171,7 @@ internal class SubjectGraphWorkflow(
         } catch (throwable: Throwable) {
             logger.warn("追加当前方法节点失败", throwable)
             session.mutate {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.ERROR,
                     "追加当前方法节点失败：${throwable.message ?: throwable.javaClass.simpleName}",
                 )
@@ -179,7 +179,7 @@ internal class SubjectGraphWorkflow(
             return false
         } ?: run {
             session.mutate {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.WARNING,
                     "当前光标不在方法内，请先把光标放到方法签名或方法体内。",
                 )
@@ -199,7 +199,7 @@ internal class SubjectGraphWorkflow(
             currentGraph.nodes.map { node -> if (node.id == mergedNode.id) mergedNode else node }
         }
         session.mutate {
-            markOperationFeedback(
+            workbench.markOperationFeedback(
                 OperationFeedbackLevel.SUCCESS,
                 if (existingNode == null) {
                     "已追加当前方法节点：${currentMethodNode.methodDisplayName}"
@@ -226,7 +226,7 @@ internal class SubjectGraphWorkflow(
     fun addCurrentEditorContextNode(): Boolean {
         if (shouldDeferCurrentMethodResolutionUntilSmart()) {
             session.mutate {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.INFO,
                     "项目正在索引，已在索引完成后追加当前方法节点。",
                 )
@@ -247,7 +247,7 @@ internal class SubjectGraphWorkflow(
         } catch (throwable: Throwable) {
             logger.warn("解析当前编辑器上下文失败", throwable)
             session.mutate {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.ERROR,
                     "追加当前节点失败：${throwable.message ?: throwable.javaClass.simpleName}",
                 )
@@ -255,7 +255,7 @@ internal class SubjectGraphWorkflow(
             return false
         } ?: run {
             session.mutate {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.WARNING,
                     "当前光标不在可识别的方法或资源节点内，请把光标放到方法、Mapper SQL、配置项、Markdown 或 SQL 文件内容上。",
                 )
@@ -279,7 +279,7 @@ internal class SubjectGraphWorkflow(
         val requestId = beginCurrentSubjectGraphRequest()
         if (node == null) {
             session.mutate {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.WARNING,
                     "未找到需要展开的摘要节点。",
                 )
@@ -288,7 +288,7 @@ internal class SubjectGraphWorkflow(
         }
         if (selectedMethodSignature.isNullOrBlank()) {
             session.mutate {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.WARNING,
                     "当前没有可重新提取的主体上下文，请先重新加载当前编辑器上下文链路。",
                 )
@@ -298,7 +298,7 @@ internal class SubjectGraphWorkflow(
 
         currentProjectionSettings = currentProjectionSettings.expandFor(node)
         session.mutate {
-            markOperationFeedback(
+            workbench.markOperationFeedback(
                 OperationFeedbackLevel.INFO,
                 "正在继续展开链路：${node.title}",
             )
@@ -353,7 +353,7 @@ internal class SubjectGraphWorkflow(
             "开始按签名自动提取真实链路: signature=$trimmedSignature"
         }
         session.mutate {
-            markOperationFeedback(
+            workbench.markOperationFeedback(
                 OperationFeedbackLevel.INFO,
                 "正在按签名分析真实主体链路：$trimmedSignature",
             )
@@ -404,7 +404,7 @@ internal class SubjectGraphWorkflow(
     ) {
         if (deferUntilSmart && shouldDeferCurrentMethodResolutionUntilSmart()) {
             session.mutate {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.INFO,
                     "项目正在索引，已在索引完成后继续分析当前编辑器上下文链路。",
                 )
@@ -427,7 +427,7 @@ internal class SubjectGraphWorkflow(
         val handle = runCatching { locateCurrentSubject(editor) }.getOrElse { throwable ->
             logger.warn("解析当前编辑器上下文失败", throwable)
             session.mutate {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.ERROR,
                     "加载当前节点关联图失败：${throwable.message ?: throwable.javaClass.simpleName}",
                 )
@@ -438,7 +438,7 @@ internal class SubjectGraphWorkflow(
         when (handle) {
             null -> {
                 session.mutate {
-                    markOperationFeedback(
+                    workbench.markOperationFeedback(
                         OperationFeedbackLevel.WARNING,
                         "当前光标不在可识别的方法或资源节点内，请把光标放到方法、Mapper SQL、配置项、Markdown 或 SQL 文件内容上。",
                     )
@@ -447,7 +447,7 @@ internal class SubjectGraphWorkflow(
 
             is CodeSubjectHandle -> {
                 session.mutate {
-                    markOperationFeedback(
+                    workbench.markOperationFeedback(
                         OperationFeedbackLevel.INFO,
                         "正在分析当前编辑器上下文链路：${handle.displayName}",
                     )
@@ -461,7 +461,7 @@ internal class SubjectGraphWorkflow(
 
             is ResourceSubjectHandle -> {
                 session.mutate {
-                    markOperationFeedback(
+                    workbench.markOperationFeedback(
                         OperationFeedbackLevel.INFO,
                         "正在分析当前节点关联图：${handle.displayName}",
                     )
@@ -531,7 +531,7 @@ internal class SubjectGraphWorkflow(
             result.failure != null -> {
                 logger.warn("异步语义分析失败", result.failure)
                 session.mutate {
-                    markOperationFeedback(
+                    workbench.markOperationFeedback(
                         OperationFeedbackLevel.ERROR,
                         "加载当前主体链路失败：${result.failure.message ?: result.failure.javaClass.simpleName}",
                     )
@@ -540,7 +540,7 @@ internal class SubjectGraphWorkflow(
 
             result.result == null -> {
                 session.mutate {
-                    markOperationFeedback(
+                    workbench.markOperationFeedback(
                         OperationFeedbackLevel.WARNING,
                         "当前主体在分析过程中失效，请重新触发链路分析。",
                     )
@@ -616,7 +616,7 @@ internal class SubjectGraphWorkflow(
                             if (handle == null) {
                                 logger.warn("$failureAction 失败: signature=$signature, reason=methodNotFound")
                                 session.mutate {
-                                    markOperationFeedback(
+                                    workbench.markOperationFeedback(
                                         OperationFeedbackLevel.WARNING,
                                         "未在当前项目中找到方法：$signature",
                                     )
@@ -631,7 +631,7 @@ internal class SubjectGraphWorkflow(
                         onFailure = { throwable ->
                             logger.warn("$failureAction 异常", throwable)
                             session.mutate {
-                                markOperationFeedback(
+                                workbench.markOperationFeedback(
                                     OperationFeedbackLevel.ERROR,
                                     "$failureAction 失败：${throwable.message ?: throwable.javaClass.simpleName}",
                                 )
@@ -814,7 +814,7 @@ internal class SubjectGraphWorkflow(
         onMarkGraphChanged(currentGraph.copy(nodes = nextNodes), null, false, false)
         session.mutateBatch {
             apply {
-                markOperationFeedback(
+                workbench.markOperationFeedback(
                     OperationFeedbackLevel.SUCCESS,
                     if (existingNode == null) {
                         "已追加当前${kindLabel}节点：${node.title}"

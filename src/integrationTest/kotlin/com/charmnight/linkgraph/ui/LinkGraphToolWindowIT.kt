@@ -129,11 +129,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
     }
 
     fun testRuntimeProbeScriptBuffersTracePayloadsAndCollectsDecisionGeometry() {
-        val browserPanel = GraphBrowserPanel(project)
-        val method = GraphBrowserPanel::class.java.getDeclaredMethod("buildRuntimeProbeScript", String::class.java)
-        method.isAccessible = true
-
-        val script = method.invoke(browserPanel, "flowchart-debug") as String
+        val script = GraphBrowserDebugProbe.buildRuntimeProbeScript("flowchart-debug")
 
         assertTrue(script.contains("__linkGraphTraceBuffer"))
         assertTrue(script.contains("dataset?.handleid"))

@@ -10,7 +10,6 @@ import com.charmnight.linkgraph.model.GraphPatchAction
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.settings.LlmProviderType
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -56,7 +55,7 @@ class GraphDiffPatchServiceTest {
             question = "这些差异意味着什么？请给出修订草稿。",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.MOCK.name,
+                provider = LlmProviderPresets.MOCK.id,
             ),
         )
 
@@ -149,7 +148,7 @@ class GraphDiffPatchServiceTest {
             question = "请解释这些差异并给出修订草稿。",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
@@ -240,7 +239,7 @@ class GraphDiffPatchServiceTest {
             question = "请解释这些差异并给出修订草稿。",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
@@ -273,7 +272,7 @@ class GraphDiffPatchServiceTest {
             question = "请解释差异。",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "",
                 apiKey = "",
                 model = "",
@@ -340,7 +339,7 @@ class GraphDiffPatchServiceTest {
             question = "请只围绕当前差异焦点给出修订草稿。",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.MOCK.name,
+                provider = LlmProviderPresets.MOCK.id,
             ),
         )
 

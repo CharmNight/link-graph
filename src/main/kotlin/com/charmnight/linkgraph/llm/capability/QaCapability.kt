@@ -284,7 +284,7 @@ class QaCapability(
                         input = mapOf("candidate" to candidate),
                         context = ToolExecutionContext(
                             project = runtimeContext.project,
-                            snapshot = runtimeContext.snapshotSupplier() ?: GraphEditorStateService.Snapshot(),
+                            snapshot = runtimeContext.snapshotSupplier() ?: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
                             artifactStore = runtimeContext.artifactStore,
                             runBudget = state.budget,
                         ),

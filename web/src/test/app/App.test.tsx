@@ -1389,7 +1389,7 @@ describe("App", () => {
     );
   });
 
-  it("keeps the qa request pending until the IDE bridge becomes ready without fabricating async request state locally", async () => {
+  it("surfaces a bridge-unavailable failure instead of pretending the qa request was accepted", async () => {
     const user = userEvent.setup();
     const requestAudit = vi.fn();
     window.linkGraphBridge = undefined;
@@ -1403,9 +1403,10 @@ describe("App", () => {
     await user.type(input, "介绍这里有什么安全问题");
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(screen.queryByRole("dialog", { name: "请求状态通知" })).not.toBeInTheDocument();
+    const failureDialog = screen.getByRole("dialog", { name: "请求状态通知" });
+    expect(failureDialog).toBeInTheDocument();
     expect(screen.queryByText("问答：已提交问答请求")).not.toBeInTheDocument();
-    expect(screen.getByText("已发起问答请求，范围为整个链路。")).toBeInTheDocument();
+    expect(failureDialog).toHaveTextContent("IDE bridge 尚未就绪，本次请求没有发出。");
     expect(requestAudit).not.toHaveBeenCalled();
 
     window.linkGraphBridge = {
@@ -1413,7 +1414,7 @@ describe("App", () => {
     };
     window.dispatchEvent(new Event("link-graph-bridge-ready"));
 
-    expect(requestAudit).toHaveBeenCalledWith("介绍这里有什么安全问题", [], null);
+    expect(requestAudit).not.toHaveBeenCalled();
   });
 
   it("preserves the locally selected node while qa request state updates stream back", async () => {

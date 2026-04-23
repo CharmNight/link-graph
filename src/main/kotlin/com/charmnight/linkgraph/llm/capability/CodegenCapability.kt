@@ -342,7 +342,7 @@ internal class CodegenCapability(
                     input = mapOf("draft" to draft),
                     context = ToolExecutionContext(
                         project = runtimeContext.project,
-                        snapshot = runtimeContext.snapshotSupplier() ?: com.charmnight.linkgraph.ui.GraphEditorStateService.Snapshot(),
+                        snapshot = runtimeContext.snapshotSupplier() ?: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
                         artifactStore = runtimeContext.artifactStore,
                         runBudget = state.budget,
                     ),
@@ -352,7 +352,7 @@ internal class CodegenCapability(
                         input = mapOf("draft" to draft),
                         context = ToolExecutionContext(
                             project = runtimeContext.project,
-                            snapshot = runtimeContext.snapshotSupplier() ?: com.charmnight.linkgraph.ui.GraphEditorStateService.Snapshot(),
+                            snapshot = runtimeContext.snapshotSupplier() ?: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
                             artifactStore = runtimeContext.artifactStore,
                             runBudget = state.budget,
                         ),
@@ -415,7 +415,7 @@ internal class CodegenCapability(
         confirmedChanges: List<com.charmnight.linkgraph.workbench.DraftWorkbenchEntry>,
         evidenceArtifacts: List<CodeEvidenceArtifact>,
     ): AgentStepExecutionResult.Fail? {
-        val snapshot = runtimeContext.snapshotSupplier() ?: com.charmnight.linkgraph.ui.GraphEditorStateService.Snapshot()
+        val snapshot = runtimeContext.snapshotSupplier() ?: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot()
         val context = ToolExecutionContext(
             project = runtimeContext.project,
             snapshot = snapshot,

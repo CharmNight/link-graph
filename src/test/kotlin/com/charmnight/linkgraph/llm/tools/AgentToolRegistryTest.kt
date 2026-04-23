@@ -29,7 +29,7 @@ class AgentToolRegistryTest : BasePlatformTestCase() {
             input = mapOf("value" to "ok"),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = GraphEditorStateService.Snapshot(),
+                snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
                 artifactStore = InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
