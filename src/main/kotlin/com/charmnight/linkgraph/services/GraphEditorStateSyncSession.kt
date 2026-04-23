@@ -1,13 +1,16 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.ui.GraphEditorStateMutationContext
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 
 /**
  * 把多次状态修改合并到一次同步通知中的会话对象。
  */
 internal class GraphEditorStateSyncSession(
-    /** 保存图编辑器状态服务。 */
-    private val stateService: GraphEditorStateService,
+    /** 保存批量修改所使用的草稿上下文。 */
+    private val mutationContext: GraphEditorStateMutationContext,
+    /** 保存最终提交动作。 */
+    private val commit: () -> Unit,
     /** 保存触发同步请求的回调。 */
     private val onSyncRequested: () -> Unit,
 ) {
@@ -17,15 +20,15 @@ internal class GraphEditorStateSyncSession(
     /**
      * 执行一次状态修改，并把会话标记为脏。
      */
-    fun apply(action: GraphEditorStateService.() -> Unit) {
-        stateService.action()
+    fun apply(action: GraphEditorStateMutationContext.() -> Unit) {
+        mutationContext.action()
         dirty = true
     }
 
     /**
      * 读取当前状态快照。
      */
-    fun snapshot(): com.charmnight.linkgraph.ui.GraphEditorStateSnapshot = stateService.snapshot()
+    fun snapshot(): com.charmnight.linkgraph.ui.GraphEditorStateSnapshot = mutationContext.snapshot()
 
     /**
      * 在会话结束时按需触发一次同步。
@@ -34,7 +37,7 @@ internal class GraphEditorStateSyncSession(
         if (!dirty) {
             return
         }
-        // 只有实际发生状态变更时才通知前端同步。
+        commit()
         onSyncRequested()
         dirty = false
     }
@@ -48,15 +51,19 @@ internal fun <T> withGraphEditorStateSyncSession(
     onSyncRequested: () -> Unit,
     block: GraphEditorStateSyncSession.() -> T,
 ): T {
-    // 会话对象负责聚合多次状态写入后的同步请求。
+    val draftContext = stateService.newDraftMutationContext()
     val session = GraphEditorStateSyncSession(
-        stateService = stateService,
+        mutationContext = draftContext,
+        commit = {
+            stateService.replaceSnapshot(draftContext.committedState())
+        },
         onSyncRequested = onSyncRequested,
     )
-    return try {
-        session.block()
-    } finally {
-        // 无论 block 是否抛错，都尝试把已产生的变更同步出去。
+    val result = session.block()
+    try {
         session.flush()
+    } catch (throwable: Throwable) {
+        throw throwable
     }
+    return result
 }

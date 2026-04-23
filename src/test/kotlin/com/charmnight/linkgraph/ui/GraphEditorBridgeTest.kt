@@ -21,16 +21,27 @@ import com.charmnight.linkgraph.semantic.subject.SubjectHandle
 import com.charmnight.linkgraph.semantic.subject.SubjectLocator
 import com.charmnight.linkgraph.semantic.subject.SubjectPreviewKind
 import com.charmnight.linkgraph.services.LinkGraphProjectService
+import com.charmnight.linkgraph.services.LinkGraphProjectTestOverrides
+import com.charmnight.linkgraph.services.GraphEditorCommandRouter
 import com.charmnight.linkgraph.workbench.WorkbenchLayoutPreferencesService
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.testFramework.registerServiceInstance
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class GraphEditorBridgeTest : BasePlatformTestCase() {
+    override fun setUp() {
+        super.setUp()
+        project.registerServiceInstance(GraphEditorStateService::class.java, GraphEditorStateService())
+        project.registerServiceInstance(LinkGraphProjectTestOverrides::class.java, LinkGraphProjectTestOverrides())
+        project.registerServiceInstance(LinkGraphProjectService::class.java, LinkGraphProjectService(project))
+        project.registerServiceInstance(GraphEditorCommandRouter::class.java, GraphEditorCommandRouter(project))
+    }
+
     fun testCurrentStateHydratesPersistentWorkbenchPreferencesIntoRuntimeSnapshot() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val preferencesService = project.getService(WorkbenchLayoutPreferencesService::class.java)
@@ -51,7 +62,7 @@ class GraphEditorBridgeTest : BasePlatformTestCase() {
                 当前链路入口
             """.trimIndent(),
         )
-        val projectService = project.getService(LinkGraphProjectService::class.java)
+        val testOverrides = project.getService(com.charmnight.linkgraph.services.LinkGraphProjectTestOverrides::class.java)
         val resourceHandle = ResourceSubjectHandle(
             subjectId = "resource-markdown:order-flow-md",
             sourcePath = "order-flow.md",
@@ -60,7 +71,7 @@ class GraphEditorBridgeTest : BasePlatformTestCase() {
             kind = ResourceSubjectKind.MARKDOWN_PAGE,
             attributes = mapOf("path" to "order-flow.md"),
         )
-        projectService.testSubjectLocatorOverride = object : SubjectLocator {
+        testOverrides.subjectLocator = object : SubjectLocator {
             override fun locate(
                 project: Project,
                 editor: Editor?,
@@ -73,7 +84,7 @@ class GraphEditorBridgeTest : BasePlatformTestCase() {
                 commitDocument: Boolean,
             ): SubjectPreviewKind = SubjectPreviewKind.RESOURCE_SUBJECT
         }
-        projectService.testSemanticAnalyzerOverride = SemanticAnalyzer(
+        testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(
                 listOf(
                     object : SemanticProvider {
@@ -131,6 +142,9 @@ class GraphEditorBridgeTest : BasePlatformTestCase() {
                 current.analysisDisplayMode == AnalysisDisplayMode.FACT_GRAPH &&
                 current.visibleGraph?.nodes?.any { node ->
                     node.type == NodeType.DOC_PAGE && node.title == "order-flow.md"
+                } == true &&
+                current.visibleGraph?.nodes?.any { node ->
+                    node.title == "OrderService.submit"
                 } == true
         }
 
@@ -139,9 +153,9 @@ class GraphEditorBridgeTest : BasePlatformTestCase() {
     }
 
     fun testDispatchOpenCodeDraftNativeDiffRoutesToProjectService() {
-        val projectService = project.getService(LinkGraphProjectService::class.java)
+        val testOverrides = project.getService(com.charmnight.linkgraph.services.LinkGraphProjectTestOverrides::class.java)
         val requestedDraftIds = mutableListOf<String>()
-        projectService.testOpenCodeDraftNativeDiffOverride = { draftId ->
+        testOverrides.openCodeDraftNativeDiff = { draftId ->
             requestedDraftIds += draftId
         }
 

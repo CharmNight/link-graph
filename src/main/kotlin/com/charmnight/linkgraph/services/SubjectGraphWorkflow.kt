@@ -48,6 +48,8 @@ internal class SubjectGraphWorkflow(
     private val session: ProjectEditorSession,
     /** 规划上下文工厂。 */
     private val planningContextFactory: PlanningContextFactory,
+    /** 异步请求生命周期支持。 */
+    private val asyncRequestLifecycle: AsyncRequestLifecycleSupport,
     /** 当前主体定位器。 */
     private val subjectLocatorProvider: () -> SubjectLocator,
     /** 当前语义分析器。 */
@@ -599,49 +601,46 @@ internal class SubjectGraphWorkflow(
         failureAction: String,
         onResolved: (CodeSubjectHandle) -> Unit,
     ) {
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val startedAt = System.nanoTime()
-            val result = runCatching {
+        val startedAt = System.nanoTime()
+        asyncRequestLifecycle.runBackgroundTask(
+            work = {
                 ReadAction.compute<CodeSubjectHandle?, RuntimeException> {
                     locateCodeSubjectBySignatureInReadAction(signature)
                 }
-            }
-            ApplicationManager.getApplication().invokeLater(
-                {
-                    if (project.isDisposed || !isLatestCurrentSubjectGraphRequest(requestId)) {
-                        return@invokeLater
-                    }
-                    result.fold(
-                        onSuccess = { handle ->
-                            if (handle == null) {
-                                logger.warn("$failureAction 失败: signature=$signature, reason=methodNotFound")
-                                session.mutate {
-                                    workbench.markOperationFeedback(
-                                        OperationFeedbackLevel.WARNING,
-                                        "未在当前项目中找到方法：$signature",
-                                    )
-                                }
-                            } else {
-                                debugLazy(logger.isDebugEnabled, logger::debug) {
-                                    "$failureAction 定位主体完成: signature=${handle.methodSignature}, durationMs=${(System.nanoTime() - startedAt) / 1_000_000}"
-                                }
-                                onResolved(handle)
-                            }
-                        },
-                        onFailure = { throwable ->
-                            logger.warn("$failureAction 异常", throwable)
+            },
+            onCompleted = { result ->
+                if (project.isDisposed || !isLatestCurrentSubjectGraphRequest(requestId)) {
+                    return@runBackgroundTask
+                }
+                result.fold(
+                    onSuccess = { handle ->
+                        if (handle == null) {
+                            logger.warn("$failureAction 失败: signature=$signature, reason=methodNotFound")
                             session.mutate {
                                 workbench.markOperationFeedback(
-                                    OperationFeedbackLevel.ERROR,
-                                    "$failureAction 失败：${throwable.message ?: throwable.javaClass.simpleName}",
+                                    OperationFeedbackLevel.WARNING,
+                                    "未在当前项目中找到方法：$signature",
                                 )
                             }
-                        },
-                    )
-                },
-                ModalityState.defaultModalityState(),
-            )
-        }
+                        } else {
+                            debugLazy(logger.isDebugEnabled, logger::debug) {
+                                "$failureAction 定位主体完成: signature=${handle.methodSignature}, durationMs=${(System.nanoTime() - startedAt) / 1_000_000}"
+                            }
+                            onResolved(handle)
+                        }
+                    },
+                    onFailure = { throwable ->
+                        logger.warn("$failureAction 异常", throwable)
+                        session.mutate {
+                            workbench.markOperationFeedback(
+                                OperationFeedbackLevel.ERROR,
+                                "$failureAction 失败：${throwable.message ?: throwable.javaClass.simpleName}",
+                            )
+                        }
+                    },
+                )
+            },
+        )
     }
 
     /**
@@ -961,15 +960,7 @@ internal class SubjectGraphWorkflow(
      * 在线程池里执行读动作并等待结果。
      */
     private fun <T> computeOnBackgroundReadThread(action: () -> T): T {
-        val application = ApplicationManager.getApplication()
-        val future = application.executeOnPooledThread<T> {
-            ReadAction.compute<T, RuntimeException>(action)
-        }
-        return try {
-            future.get()
-        } catch (error: ExecutionException) {
-            throw error.cause ?: error
-        }
+        return asyncRequestLifecycle.computeOnBackgroundReadThread(action)
     }
 
     /**

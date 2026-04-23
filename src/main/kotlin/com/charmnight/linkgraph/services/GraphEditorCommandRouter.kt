@@ -20,26 +20,34 @@ import com.intellij.openapi.project.Project
 class GraphEditorCommandRouter(
     private val project: Project,
 ) {
+    private val projectService: LinkGraphProjectService by lazy(LazyThreadSafetyMode.NONE) {
+        project.getService(LinkGraphProjectService::class.java)
+    }
+
+    private val testOverrides: LinkGraphProjectTestOverrides by lazy(LazyThreadSafetyMode.NONE) {
+        project.getService(LinkGraphProjectTestOverrides::class.java)
+    }
+
     fun dispatch(message: GraphEditorMessage) {
         when (message) {
             is GraphEditorMessage.LoadGraph -> loadGraph(message.graph, message.source)
-            is GraphEditorMessage.ImportMermaid -> projectService().importMermaid(message.mermaid)
-            GraphEditorMessage.ExportMermaid -> projectService().exportMermaid()
-            GraphEditorMessage.ShowDiffMode -> projectService().showDiffMode()
+            is GraphEditorMessage.ImportMermaid -> projectService.importMermaid(message.mermaid)
+            GraphEditorMessage.ExportMermaid -> projectService.exportMermaid()
+            GraphEditorMessage.ShowDiffMode -> projectService.showDiffMode()
             is GraphEditorMessage.GraphChanged -> handleFrontendGraphChanged(message.graph)
             is GraphEditorMessage.LayoutChanged -> handleFrontendLayoutChanged(message.positions)
             is GraphEditorMessage.RequestSourceNavigation -> requestSourceNavigation(message.nodeId)
-            is GraphEditorMessage.RequestExpandOverflowNode -> projectService().requestExpandOverflowNode(message.nodeId)
+            is GraphEditorMessage.RequestExpandOverflowNode -> projectService.requestExpandOverflowNode(message.nodeId)
             GraphEditorMessage.RequestSyncPreview -> requestSyncPreview()
             is GraphEditorMessage.RequestAudit -> requestAuditAsync(
                 message.question,
                 message.selectedNodeIds,
                 message.sourceThreadId,
             )
-            GraphEditorMessage.RetryLastAuditRequest -> projectService().retryLastAuditRequestAsync()
-            is GraphEditorMessage.ConfirmAuditCandidateChange -> projectService().confirmAuditCandidateChange(message.changeId)
-            is GraphEditorMessage.UnconfirmAuditCandidateChange -> projectService().unconfirmAuditCandidateChange(message.changeId)
-            is GraphEditorMessage.ResolveInvestigationThread -> projectService().resolveInvestigationThread(
+            GraphEditorMessage.RetryLastAuditRequest -> projectService.retryLastAuditRequestAsync()
+            is GraphEditorMessage.ConfirmAuditCandidateChange -> projectService.confirmAuditCandidateChange(message.changeId)
+            is GraphEditorMessage.UnconfirmAuditCandidateChange -> projectService.unconfirmAuditCandidateChange(message.changeId)
+            is GraphEditorMessage.ResolveInvestigationThread -> projectService.resolveInvestigationThread(
                 threadId = message.threadId,
                 status = message.resolutionStatus,
                 note = message.note,
@@ -52,25 +60,25 @@ class GraphEditorCommandRouter(
                 followUp = message.followUp,
                 granularity = message.granularity,
             )
-            is GraphEditorMessage.ApplyDraftPatchPreview -> projectService().applyDraftPatchPreview(message.operationIds)
+            is GraphEditorMessage.ApplyDraftPatchPreview -> projectService.applyDraftPatchPreview(message.operationIds)
             GraphEditorMessage.ClearDraftPatchPreview -> clearDraftPatchPreview()
-            is GraphEditorMessage.RestoreDraftPatchPreview -> projectService().restoreDraftPatchPreview(
+            is GraphEditorMessage.RestoreDraftPatchPreview -> projectService.restoreDraftPatchPreview(
                 LinkGraphProjectService.DraftPatchPreviewSource.valueOf(message.source.name),
             )
-            GraphEditorMessage.UndoLastDraftPatchApply -> projectService().undoLastDraftPatchApply()
+            GraphEditorMessage.UndoLastDraftPatchApply -> projectService.undoLastDraftPatchApply()
             GraphEditorMessage.RequestGenerationPlan -> requestGenerationPlanAsync()
             is GraphEditorMessage.RequestGenerationPlanDiscussion -> requestGenerationPlanDiscussionAsync(
                 message.question,
                 message.focusItemId,
             )
             GraphEditorMessage.RequestCodeDrafts -> requestCodeDraftsAsync()
-            GraphEditorMessage.RequestCurrentEditorContextGraph -> projectService().loadCurrentEditorContextGraphAsync()
-            is GraphEditorMessage.RequestAnalysisDisplayMode -> projectService().requestAnalysisDisplayMode(message.displayMode)
+            GraphEditorMessage.RequestCurrentEditorContextGraph -> projectService.loadCurrentEditorContextGraphAsync()
+            is GraphEditorMessage.RequestAnalysisDisplayMode -> projectService.requestAnalysisDisplayMode(message.displayMode)
             is GraphEditorMessage.UpdateWorkbenchSectionPreference -> updateWorkbenchSectionPreference(
                 message.sectionId,
                 message.expanded,
             )
-            GraphEditorMessage.OpenSettings -> projectService().openSettings()
+            GraphEditorMessage.OpenSettings -> projectService.openSettings()
             GraphEditorMessage.ApplyCodeDrafts -> applyCodeDrafts()
             is GraphEditorMessage.ApplySingleCodeDraft -> applySingleCodeDraft(message.draftId)
             is GraphEditorMessage.OpenCodeDraftNativeDiff -> openCodeDraftNativeDiff(message.draftId)
@@ -87,37 +95,37 @@ class GraphEditorCommandRouter(
         graph: GraphDocument,
         source: String,
     ) {
-        projectService().resetWorkspaceGraphContext()
-        projectService().graphWorkspaceWorkflow.loadGraph(graph, source)
+        projectService.resetWorkspaceGraphContext()
+        projectService.graphWorkspaceWorkflow.loadGraph(graph, source)
     }
 
     fun handleFrontendGraphChanged(graph: GraphDocument) {
-        projectService().resetWorkspaceGraphContext()
-        projectService().graphWorkspaceWorkflow.handleFrontendGraphChanged(graph)
+        projectService.resetWorkspaceGraphContext()
+        projectService.graphWorkspaceWorkflow.handleFrontendGraphChanged(graph)
     }
 
     fun handleFrontendLayoutChanged(positions: Map<String, GraphLayoutPosition>) {
-        projectService().graphWorkspaceWorkflow.handleFrontendLayoutChanged(positions)
+        projectService.graphWorkspaceWorkflow.handleFrontendLayoutChanged(positions)
     }
 
     fun requestSourceNavigation(nodeId: String) =
-        projectService().sourceNavigationWorkflow.requestSourceNavigation(nodeId)
+        projectService.sourceNavigationWorkflow.requestSourceNavigation(nodeId)
 
-    fun requestSyncPreview(): List<SyncPreviewItem> = projectService().graphWorkspaceWorkflow.requestSyncPreview()
+    fun requestSyncPreview(): List<SyncPreviewItem> = projectService.graphWorkspaceWorkflow.requestSyncPreview()
 
     fun requestAuditAsync(
         question: String,
         selectedNodeIds: List<String> = emptyList(),
         sourceThreadId: String? = null,
     ) {
-        projectService().reviewWorkflow.requestAuditAsync(question, selectedNodeIds, sourceThreadId)
+        projectService.reviewWorkflow.requestAuditAsync(question, selectedNodeIds, sourceThreadId)
     }
 
     fun requestDiffReviewAsync(
         question: String,
         selectedDiffItemIds: List<String> = emptyList(),
     ) {
-        projectService().reviewWorkflow.requestDiffReviewAsync(question, selectedDiffItemIds)
+        projectService.reviewWorkflow.requestDiffReviewAsync(question, selectedDiffItemIds)
     }
 
     fun requestGraphBeautificationAsync(
@@ -127,7 +135,7 @@ class GraphEditorCommandRouter(
         followUp: GraphBeautificationFollowUpContext? = null,
         granularity: StepGranularity = StepGranularity.BUSINESS,
     ) {
-        projectService().reviewWorkflow.requestGraphBeautificationAsync(
+        projectService.reviewWorkflow.requestGraphBeautificationAsync(
             goal = goal,
             preferredStyle = preferredStyle,
             explanationFocus = explanationFocus,
@@ -137,36 +145,35 @@ class GraphEditorCommandRouter(
     }
 
     fun requestGenerationPlanAsync() {
-        projectService().generationWorkflow.requestGenerationPlanAsync()
+        projectService.generationWorkflow.requestGenerationPlanAsync()
     }
 
     fun requestGenerationPlanDiscussionAsync(
         question: String,
         focusItemId: String? = null,
     ) {
-        projectService().generationWorkflow.requestGenerationPlanDiscussionAsync(question, focusItemId)
+        projectService.generationWorkflow.requestGenerationPlanDiscussionAsync(question, focusItemId)
     }
 
     fun requestCodeDraftsAsync() {
-        projectService().generationWorkflow.requestCodeDraftsAsync()
+        projectService.generationWorkflow.requestCodeDraftsAsync()
     }
 
     fun applyCodeDrafts() {
-        projectService().generationWorkflow.applyCodeDrafts()
+        projectService.generationWorkflow.applyCodeDrafts()
     }
 
     fun applySingleCodeDraft(draftId: String) {
-        projectService().generationWorkflow.applySingleCodeDraft(draftId)
+        projectService.generationWorkflow.applySingleCodeDraft(draftId)
     }
 
     fun openCodeDraftNativeDiff(draftId: String) {
-        val projectService = projectService()
-        projectService.testOpenCodeDraftNativeDiffOverride?.invoke(draftId)
+        testOverrides.openCodeDraftNativeDiff?.invoke(draftId)
             ?: projectService.generationWorkflow.openCodeDraftNativeDiff(draftId)
     }
 
     fun requestDraftNavigation(targetPath: String) {
-        projectService().generationWorkflow.requestDraftNavigation(targetPath)
+        projectService.generationWorkflow.requestDraftNavigation(targetPath)
     }
 
     fun updateWorkbenchSectionPreference(
@@ -182,10 +189,8 @@ class GraphEditorCommandRouter(
     }
 
     fun clearDraftPatchPreview() {
-        projectService().draftPatchWorkflow.clearDraftPatchPreview()
+        projectService.draftPatchWorkflow.clearDraftPatchPreview()
     }
-
-    private fun projectService(): LinkGraphProjectService = project.getService(LinkGraphProjectService::class.java)
 
     private companion object {
         private val logger = Logger.getInstance(GraphEditorCommandRouter::class.java)

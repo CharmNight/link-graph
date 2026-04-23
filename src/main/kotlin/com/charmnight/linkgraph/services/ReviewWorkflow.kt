@@ -360,8 +360,8 @@ internal class ReviewWorkflow(
                 }
             },
         )
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val result = runCatching {
+        asyncRequestLifecycle.runBackgroundTask(
+            work = {
                 executeQaRuntime(
                     input = buildQaCapabilityInput(
                         snapshot = snapshot,
@@ -369,118 +369,27 @@ internal class ReviewWorkflow(
                         onPreview = previewUpdater,
                     ),
                 )
-            }
-            ApplicationManager.getApplication().invokeLater(
-                {
-                    if (project.isDisposed || !asyncRequestLifecycle.completeAuditRequest(requestId)) {
-                        return@invokeLater
-                    }
-                    result.fold(
-                        onSuccess = { runtimeResult ->
-                            val auditResult = runtimeResult.output
-                            if (auditResult == null) {
-                                val message = "问答失败：runtime 未返回结果。"
-                                val requestState = asyncRequestLifecycle.withRuntimeMetadata(
-                                    requestState = asyncRequestLifecycle.buildFailedRequestState(
-                                        presentation = presentation,
-                                        message = message,
-                                    ),
-                                    runtimeState = runtimeResult.finalState,
-                                )
-                                asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
-                                session.mutateBatch {
-                                    apply {
-                                        workbench.markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(runtimeResult))
-                                    }
-                                    apply {
-                                        asyncRequests.markAuditRequestFailed(message, requestState, failedRequest = request)
-                                    }
-                                    apply {
-                                        workbench.markOperationFeedback(
-                                            OperationFeedbackLevel.ERROR,
-                                            message,
-                                            preserveLastMessageType = true,
-                                        )
-                                    }
-                                }
-                                return@fold
-                            }
+            },
+            onCompleted = { result ->
+                if (project.isDisposed || !asyncRequestLifecycle.completeAuditRequest(requestId)) {
+                    return@runBackgroundTask
+                }
+                result.fold(
+                    onSuccess = { runtimeResult ->
+                        val auditResult = runtimeResult.output
+                        if (auditResult == null) {
+                            val message = "问答失败：runtime 未返回结果。"
                             val requestState = asyncRequestLifecycle.withRuntimeMetadata(
-                                requestState = asyncRequestLifecycle.buildSucceededRequestState(
+                                requestState = asyncRequestLifecycle.buildFailedRequestState(
                                     presentation = presentation,
-                                    successMessage = if (auditResult.newCandidateChanges.isNotEmpty()) {
-                                        "问答完成，已生成待确认变更。"
-                                    } else {
-                                        "问答完成。"
-                                    },
-                                    completedRemotely = auditResult.source == LlmResultSource.REMOTE,
-                                    warnings = auditResult.warnings,
+                                    message = message,
                                 ),
                                 runtimeState = runtimeResult.finalState,
                             )
-                            asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
-                            debugLazy(logger.isDebugEnabled, logger::debug) {
-                                "问答 runtime 成功: runId=${runtimeResult.finalState.runId}, capabilityId=${runtimeResult.finalState.capabilityId}, " +
-                                    "stepIndex=${runtimeResult.finalState.stepIndex}, artifactCount=${runtimeResult.artifactSummaries.size}, " +
-                                    "filesRead=${runtimeResult.finalState.budget.filesRead}, stepsUsed=${runtimeResult.finalState.budget.usedSteps}, " +
-                                    "failureReason=${runtimeResult.finalState.failureReason}"
-                            }
-                            runtimeTrace {
-                                val candidates = auditResult.newCandidateChanges.ifEmpty { auditResult.candidateChanges }
-                                val candidateSummary = candidates.take(3).joinToString(
-                                    prefix = "[",
-                                    postfix = if (candidates.size > 3) ", ...]" else "]",
-                                ) { candidate ->
-                                    GenerationDiagnostics.summarizeCandidateChange(candidate) +
-                                        ", graphPatch=" + GenerationDiagnostics.summarizeGraphPatch(candidate.graphPatch)
-                                }
-                                "问答 runtime 结果: source=${auditResult.source}, " +
-                                    "candidateCount=${auditResult.candidateChanges.size}, " +
-                                    "newCandidateCount=${auditResult.newCandidateChanges.size}, " +
-                                    "candidates=$candidateSummary"
-                            }
-                            val normalizedAuditResult = normalizeAuditResult(auditResult, request)
-                            val feedbackLevel = if (requestState.fallbackUsed) {
-                                OperationFeedbackLevel.WARNING
-                            } else {
-                                OperationFeedbackLevel.SUCCESS
-                            }
-                            val (draftValidationState, codeDecision) = evaluateEligibility(snapshot.copy(auditResult = normalizedAuditResult))
-                            session.mutateBatch {
-                                apply {
-                                    workbench.markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(runtimeResult))
-                                }
-                                apply {
-                                    asyncRequests.markAuditResult(normalizedAuditResult, requestState, completedRequest = request)
-                                }
-                                apply {
-                                    workbench.markDraftValidationState(draftValidationState)
-                                }
-                                apply {
-                                    workbench.markCodeEligibilityDecision(codeDecision)
-                                }
-                                apply {
-                                    workbench.markOperationFeedback(
-                                        feedbackLevel,
-                                        requestState.statusMessage
-                                            ?: if (normalizedAuditResult.newCandidateChanges.isNotEmpty()) {
-                                                "问答完成，已生成待确认变更。"
-                                            } else {
-                                                "问答完成。"
-                                            },
-                                        preserveLastMessageType = true,
-                                    )
-                                }
-                            }
-                        },
-                        onFailure = { throwable ->
-                            logger.warn("异步问答失败", throwable)
-                            val message = "问答失败：${throwable.message ?: throwable.javaClass.simpleName}"
-                            val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
                             asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
                             session.mutateBatch {
                                 apply {
-                                    workbench.markRuntimeArtifactSummaries("qa", emptyList())
+                                    workbench.markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(runtimeResult))
                                 }
                                 apply {
                                     asyncRequests.markAuditRequestFailed(message, requestState, failedRequest = request)
@@ -493,12 +402,100 @@ internal class ReviewWorkflow(
                                     )
                                 }
                             }
-                        },
-                    )
-                },
-                ModalityState.defaultModalityState(),
-            )
-        }
+                            return@fold
+                        }
+                        val requestState = asyncRequestLifecycle.withRuntimeMetadata(
+                            requestState = asyncRequestLifecycle.buildSucceededRequestState(
+                                presentation = presentation,
+                                successMessage = if (auditResult.newCandidateChanges.isNotEmpty()) {
+                                    "问答完成，已生成待确认变更。"
+                                } else {
+                                    "问答完成。"
+                                },
+                                completedRemotely = auditResult.source == LlmResultSource.REMOTE,
+                                warnings = auditResult.warnings,
+                            ),
+                            runtimeState = runtimeResult.finalState,
+                        )
+                        asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
+                        debugLazy(logger.isDebugEnabled, logger::debug) {
+                            "问答 runtime 成功: runId=${runtimeResult.finalState.runId}, capabilityId=${runtimeResult.finalState.capabilityId}, " +
+                                "stepIndex=${runtimeResult.finalState.stepIndex}, artifactCount=${runtimeResult.artifactSummaries.size}, " +
+                                "filesRead=${runtimeResult.finalState.budget.filesRead}, stepsUsed=${runtimeResult.finalState.budget.usedSteps}, " +
+                                "failureReason=${runtimeResult.finalState.failureReason}"
+                        }
+                        runtimeTrace {
+                            val candidates = auditResult.newCandidateChanges.ifEmpty { auditResult.candidateChanges }
+                            val candidateSummary = candidates.take(3).joinToString(
+                                prefix = "[",
+                                postfix = if (candidates.size > 3) ", ...]" else "]",
+                            ) { candidate ->
+                                GenerationDiagnostics.summarizeCandidateChange(candidate) +
+                                    ", graphPatch=" + GenerationDiagnostics.summarizeGraphPatch(candidate.graphPatch)
+                            }
+                            "问答 runtime 结果: source=${auditResult.source}, " +
+                                "candidateCount=${auditResult.candidateChanges.size}, " +
+                                "newCandidateCount=${auditResult.newCandidateChanges.size}, " +
+                                "candidates=$candidateSummary"
+                        }
+                        val normalizedAuditResult = normalizeAuditResult(auditResult, request)
+                        val feedbackLevel = if (requestState.fallbackUsed) {
+                            OperationFeedbackLevel.WARNING
+                        } else {
+                            OperationFeedbackLevel.SUCCESS
+                        }
+                        val (draftValidationState, codeDecision) = evaluateEligibility(snapshot.copy(auditResult = normalizedAuditResult))
+                        session.mutateBatch {
+                            apply {
+                                workbench.markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(runtimeResult))
+                            }
+                            apply {
+                                asyncRequests.markAuditResult(normalizedAuditResult, requestState, completedRequest = request)
+                            }
+                            apply {
+                                workbench.markDraftValidationState(draftValidationState)
+                            }
+                            apply {
+                                workbench.markCodeEligibilityDecision(codeDecision)
+                            }
+                            apply {
+                                workbench.markOperationFeedback(
+                                    feedbackLevel,
+                                    requestState.statusMessage
+                                        ?: if (normalizedAuditResult.newCandidateChanges.isNotEmpty()) {
+                                            "问答完成，已生成待确认变更。"
+                                        } else {
+                                            "问答完成。"
+                                        },
+                                    preserveLastMessageType = true,
+                                )
+                            }
+                        }
+                    },
+                    onFailure = { throwable ->
+                        logger.warn("异步问答失败", throwable)
+                        val message = "问答失败：${throwable.message ?: throwable.javaClass.simpleName}"
+                        val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
+                        asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
+                        session.mutateBatch {
+                            apply {
+                                workbench.markRuntimeArtifactSummaries("qa", emptyList())
+                            }
+                            apply {
+                                asyncRequests.markAuditRequestFailed(message, requestState, failedRequest = request)
+                            }
+                            apply {
+                                workbench.markOperationFeedback(
+                                    OperationFeedbackLevel.ERROR,
+                                    message,
+                                    preserveLastMessageType = true,
+                                )
+                            }
+                        }
+                    },
+                )
+            },
+        )
     }
 
     private fun evaluateEligibility(
@@ -702,84 +699,81 @@ internal class ReviewWorkflow(
                 }
             },
         )
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val result = runCatching {
+        asyncRequestLifecycle.runBackgroundTask(
+            work = {
                 graphDiffPatchService.review(
                     context = context,
                     question = question,
                     settings = settings,
                     onPreview = previewUpdater,
                 )
-            }
-            ApplicationManager.getApplication().invokeLater(
-                {
-                    if (project.isDisposed || !asyncRequestLifecycle.completeDiffReviewRequest(requestId)) {
-                        return@invokeLater
-                    }
-                    result.fold(
-                        onSuccess = { diffReviewResult ->
-                            val requestState = asyncRequestLifecycle.buildSucceededRequestState(
-                                presentation = presentation,
-                                successMessage = if (diffReviewResult.patch != null) {
-                                    "差异分析完成，已生成可预览的修订草稿。"
-                                } else {
-                                    "差异分析完成。"
-                                },
-                                completedRemotely = diffReviewResult.source == LlmResultSource.REMOTE,
-                                warnings = diffReviewResult.warnings,
-                            )
-                            asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
-                            val feedbackLevel = if (requestState.fallbackUsed) {
-                                OperationFeedbackLevel.WARNING
+            },
+            onCompleted = { result ->
+                if (project.isDisposed || !asyncRequestLifecycle.completeDiffReviewRequest(requestId)) {
+                    return@runBackgroundTask
+                }
+                result.fold(
+                    onSuccess = { diffReviewResult ->
+                        val requestState = asyncRequestLifecycle.buildSucceededRequestState(
+                            presentation = presentation,
+                            successMessage = if (diffReviewResult.patch != null) {
+                                "差异分析完成，已生成可预览的修订草稿。"
                             } else {
-                                OperationFeedbackLevel.SUCCESS
+                                "差异分析完成。"
+                            },
+                            completedRemotely = diffReviewResult.source == LlmResultSource.REMOTE,
+                            warnings = diffReviewResult.warnings,
+                        )
+                        asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
+                        val feedbackLevel = if (requestState.fallbackUsed) {
+                            OperationFeedbackLevel.WARNING
+                        } else {
+                            OperationFeedbackLevel.SUCCESS
+                        }
+                        session.mutateBatch {
+                            apply {
+                                asyncRequests.markDiffReviewResult(diffReviewResult, requestState)
                             }
-                            session.mutateBatch {
+                            diffReviewResult.patch?.let { patch ->
                                 apply {
-                                    asyncRequests.markDiffReviewResult(diffReviewResult, requestState)
-                                }
-                                diffReviewResult.patch?.let { patch ->
-                                    apply {
-                                        workbench.markDraftPatchPreview(patch)
-                                    }
-                                }
-                                apply {
-                                    workbench.markOperationFeedback(
-                                        feedbackLevel,
-                                        requestState.statusMessage
-                                            ?: if (diffReviewResult.patch != null) {
-                                                "差异分析完成，已生成可预览的修订草稿。"
-                                            } else {
-                                                "差异分析完成。"
-                                            },
-                                        preserveLastMessageType = true,
-                                    )
+                                    workbench.markDraftPatchPreview(patch)
                                 }
                             }
-                        },
-                        onFailure = { throwable ->
-                            logger.warn("异步差异分析失败", throwable)
-                            val message = "差异分析失败：${throwable.message ?: throwable.javaClass.simpleName}"
-                            val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
-                            asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
-                            session.mutateBatch {
-                                apply {
-                                    asyncRequests.markDiffReviewRequestFailed(message, requestState)
-                                }
-                                apply {
-                                    workbench.markOperationFeedback(
-                                        OperationFeedbackLevel.ERROR,
-                                        message,
-                                        preserveLastMessageType = true,
-                                    )
-                                }
+                            apply {
+                                workbench.markOperationFeedback(
+                                    feedbackLevel,
+                                    requestState.statusMessage
+                                        ?: if (diffReviewResult.patch != null) {
+                                            "差异分析完成，已生成可预览的修订草稿。"
+                                        } else {
+                                            "差异分析完成。"
+                                        },
+                                    preserveLastMessageType = true,
+                                )
                             }
-                        },
-                    )
-                },
-                ModalityState.defaultModalityState(),
-            )
-        }
+                        }
+                    },
+                    onFailure = { throwable ->
+                        logger.warn("异步差异分析失败", throwable)
+                        val message = "差异分析失败：${throwable.message ?: throwable.javaClass.simpleName}"
+                        val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
+                        asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
+                        session.mutateBatch {
+                            apply {
+                                asyncRequests.markDiffReviewRequestFailed(message, requestState)
+                            }
+                            apply {
+                                workbench.markOperationFeedback(
+                                    OperationFeedbackLevel.ERROR,
+                                    message,
+                                    preserveLastMessageType = true,
+                                )
+                            }
+                        }
+                    },
+                )
+            },
+        )
     }
 
     /**
@@ -881,8 +875,8 @@ internal class ReviewWorkflow(
                 }
             },
         )
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val result = runCatching {
+        asyncRequestLifecycle.runBackgroundTask(
+            work = {
                 graphBeautificationService.beautify(
                     context = planningContextFactory.buildGraphBeautificationContext(
                         snapshot = snapshot,
@@ -895,62 +889,59 @@ internal class ReviewWorkflow(
                     settings = settings,
                     onPreview = previewUpdater,
                 )
-            }
-            ApplicationManager.getApplication().invokeLater(
-                {
-                    if (project.isDisposed || !asyncRequestLifecycle.completeBeautificationRequest(requestId)) {
-                        return@invokeLater
-                    }
-                    result.fold(
-                        onSuccess = { beautification ->
-                            val requestState = asyncRequestLifecycle.buildSucceededRequestState(
-                                presentation = presentation,
-                                successMessage = "链路讲解完成，已更新步骤列表",
-                                completedRemotely = beautification.source == LlmResultSource.REMOTE,
-                                warnings = beautification.warnings,
-                            )
-                            asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
-                            val feedbackLevel = if (requestState.fallbackUsed) {
-                                OperationFeedbackLevel.WARNING
-                            } else {
-                                OperationFeedbackLevel.SUCCESS
+            },
+            onCompleted = { result ->
+                if (project.isDisposed || !asyncRequestLifecycle.completeBeautificationRequest(requestId)) {
+                    return@runBackgroundTask
+                }
+                result.fold(
+                    onSuccess = { beautification ->
+                        val requestState = asyncRequestLifecycle.buildSucceededRequestState(
+                            presentation = presentation,
+                            successMessage = "链路讲解完成，已更新步骤列表",
+                            completedRemotely = beautification.source == LlmResultSource.REMOTE,
+                            warnings = beautification.warnings,
+                        )
+                        asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
+                        val feedbackLevel = if (requestState.fallbackUsed) {
+                            OperationFeedbackLevel.WARNING
+                        } else {
+                            OperationFeedbackLevel.SUCCESS
+                        }
+                        session.mutateBatch {
+                            apply {
+                                asyncRequests.markGraphBeautificationResult(beautification, requestState)
                             }
-                            session.mutateBatch {
-                                apply {
-                                    asyncRequests.markGraphBeautificationResult(beautification, requestState)
-                                }
-                                apply {
-                                    workbench.markOperationFeedback(
-                                        feedbackLevel,
-                                        requestState.statusMessage ?: "链路讲解完成，已更新步骤列表",
-                                        preserveLastMessageType = true,
-                                    )
-                                }
+                            apply {
+                                workbench.markOperationFeedback(
+                                    feedbackLevel,
+                                    requestState.statusMessage ?: "链路讲解完成，已更新步骤列表",
+                                    preserveLastMessageType = true,
+                                )
                             }
-                        },
-                        onFailure = { throwable ->
-                            logger.warn("异步生成链路讲解失败", throwable)
-                            val message = "生成链路讲解失败：${throwable.message ?: throwable.javaClass.simpleName}"
-                            val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
-                            asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
-                            session.mutateBatch {
-                                apply {
-                                    asyncRequests.markGraphBeautificationRequestFailed(message, requestState)
-                                }
-                                apply {
-                                    workbench.markOperationFeedback(
-                                        OperationFeedbackLevel.ERROR,
-                                        message,
-                                        preserveLastMessageType = true,
-                                    )
-                                }
+                        }
+                    },
+                    onFailure = { throwable ->
+                        logger.warn("异步生成链路讲解失败", throwable)
+                        val message = "生成链路讲解失败：${throwable.message ?: throwable.javaClass.simpleName}"
+                        val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
+                        asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
+                        session.mutateBatch {
+                            apply {
+                                asyncRequests.markGraphBeautificationRequestFailed(message, requestState)
                             }
-                        },
-                    )
-                },
-                ModalityState.defaultModalityState(),
-            )
-        }
+                            apply {
+                                workbench.markOperationFeedback(
+                                    OperationFeedbackLevel.ERROR,
+                                    message,
+                                    preserveLastMessageType = true,
+                                )
+                            }
+                        }
+                    },
+                )
+            },
+        )
     }
 
     /**

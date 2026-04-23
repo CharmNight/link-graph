@@ -43,7 +43,6 @@ class SourceNavigationService(
      * 解析节点对应的导航目标，但不实际打开文件。
      */
     fun resolve(node: GraphNode): NavigationTarget? {
-        // 优先使用节点自带的位置串进行跳转解析。
         val locationTarget = node.location
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
@@ -51,7 +50,7 @@ class SourceNavigationService(
         if (locationTarget != null) {
             return locationTarget
         }
-        // 位置串缺失时，再尝试根据签名推导源码位置。
+        // 对 bridge 入口来说，位置串优先于签名推导，避免同名符号导致跳错文件。
         return resolveNavigationTargetFromSignature(node)?.let { target ->
             NavigationTarget(
                 filePath = target.virtualFile.path,

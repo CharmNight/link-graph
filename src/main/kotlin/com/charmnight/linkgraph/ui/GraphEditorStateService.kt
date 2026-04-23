@@ -106,15 +106,25 @@ class GraphEditorStateService {
 
     fun markLastMessageType(messageType: String) = graph.markLastMessageType(messageType)
 
-    private fun mutate(transform: (GraphEditorStateSnapshot) -> GraphEditorStateSnapshot) {
+    internal fun newDraftMutationContext(
+        baseState: GraphEditorStateSnapshot = snapshot(),
+    ): DraftGraphEditorStateMutationContext = DraftGraphEditorStateMutationContext(baseState, graphPatchApplyService)
+
+    internal fun replaceSnapshot(nextState: GraphEditorStateSnapshot) {
         synchronized(lock) {
             val currentState = state
-            val nextState = transform(currentState)
             state = when {
                 nextState == currentState -> currentState
                 nextState.snapshotRevision != currentState.snapshotRevision -> nextState
                 else -> nextState.copy(snapshotRevision = currentState.snapshotRevision + 1)
             }
+        }
+    }
+
+    private fun mutate(transform: (GraphEditorStateSnapshot) -> GraphEditorStateSnapshot) {
+        synchronized(lock) {
+            val currentState = state
+            replaceSnapshot(transform(currentState))
         }
     }
 }

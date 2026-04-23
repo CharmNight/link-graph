@@ -11,12 +11,21 @@ import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.testFramework.registerServiceInstance
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
+    override fun setUp() {
+        super.setUp()
+        project.registerServiceInstance(GraphEditorStateService::class.java, GraphEditorStateService())
+        project.registerServiceInstance(LinkGraphProjectTestOverrides::class.java, LinkGraphProjectTestOverrides())
+        project.registerServiceInstance(LinkGraphProjectService::class.java, LinkGraphProjectService(project))
+        project.registerServiceInstance(GraphEditorCommandRouter::class.java, GraphEditorCommandRouter(project))
+    }
+
     fun testGenerationPlanAsyncAllowsRequestsWhenNoConfirmedDraftChangesExist() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraphProjection(
@@ -26,9 +35,9 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             selectedMethodSignature = "com.example.OrderService.place():void",
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
         val commandRouter = project.getService(GraphEditorCommandRouter::class.java)
-        service.testEffectiveGenerationSettingsOverride = LinkGraphSettingsState(
+        testOverrides.effectiveGenerationSettings = LinkGraphSettingsState(
             llmEnabled = true,
             provider = "MOCK",
             timeoutSeconds = 45,
@@ -36,7 +45,8 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
         commandRouter.requestGenerationPlanAsync()
 
         val snapshot = waitForSnapshot { current ->
-            current.generationPlanRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
+            current.generationPlanRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED &&
+                current.generationPlanRequestState.scene == "实现计划生成"
         }
 
         assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, snapshot.generationPlanRequestState.phase)
@@ -58,7 +68,7 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             selectedMethodSignature = "com.example.OrderService.place():void",
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
+        project.getService(LinkGraphProjectTestOverrides::class.java)
         project.getService(GraphEditorCommandRouter::class.java).requestCodeDraftsAsync()
 
         val snapshot = waitForSnapshot { current ->
@@ -80,11 +90,11 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             selectedMethodSignature = "com.example.OrderService.place():void",
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
         val commandRouter = project.getService(GraphEditorCommandRouter::class.java)
-        service.testEffectiveGenerationSettingsOverride = remoteSettings()
-        service.testAsyncRequestTimeoutMillisOverride = 120
-        service.testAuditExecutorOverride = { _: GraphAuditContext, question: String ->
+        testOverrides.effectiveGenerationSettings = remoteSettings()
+        testOverrides.asyncRequestTimeoutMillis = 120
+        testOverrides.auditExecutor = { _: GraphAuditContext, question: String ->
             Thread.sleep(20)
             GraphPatchResult(
                 source = LlmResultSource.REMOTE,
@@ -98,7 +108,8 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
         commandRouter.requestAuditAsync("请围绕当前链路进行问答")
 
         val succeeded = waitForSnapshot { current ->
-            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
+            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED &&
+                current.auditRequestState.scene == "问答"
         }
 
         Thread.sleep(220)
@@ -120,11 +131,11 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             selectedMethodSignature = "com.example.OrderService.place():void",
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
         val commandRouter = project.getService(GraphEditorCommandRouter::class.java)
-        service.testEffectiveGenerationSettingsOverride = remoteSettings()
-        service.testAsyncRequestTimeoutMillisOverride = 120
-        service.testAuditExecutorOverride = { _: GraphAuditContext, _: String ->
+        testOverrides.effectiveGenerationSettings = remoteSettings()
+        testOverrides.asyncRequestTimeoutMillis = 120
+        testOverrides.auditExecutor = { _: GraphAuditContext, _: String ->
             Thread.sleep(600)
             GraphPatchResult(
                 source = LlmResultSource.REMOTE,
@@ -138,7 +149,8 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
         commandRouter.requestAuditAsync("请围绕当前链路进行问答")
 
         val snapshot = waitForSnapshot { current ->
-            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.TIMED_OUT
+            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.TIMED_OUT &&
+                current.auditRequestState.scene == "问答"
         }
 
         assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.TIMED_OUT, snapshot.auditRequestState.phase)
@@ -156,14 +168,14 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             selectedMethodSignature = "com.example.OrderService.place():void",
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
         val commandRouter = project.getService(GraphEditorCommandRouter::class.java)
-        service.testEffectiveGenerationSettingsOverride = LinkGraphSettingsState(
+        testOverrides.effectiveGenerationSettings = LinkGraphSettingsState(
             llmEnabled = false,
             provider = "MOCK",
             timeoutSeconds = 45,
         )
-        service.testAuditExecutorOverride = { _: GraphAuditContext, question: String ->
+        testOverrides.auditExecutor = { _: GraphAuditContext, question: String ->
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = question,
@@ -176,7 +188,8 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
         commandRouter.requestAuditAsync("请围绕当前链路进行问答")
 
         val snapshot = waitForSnapshot { current ->
-            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
+            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED &&
+                current.auditRequestState.scene == "问答"
         }
 
         assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, snapshot.auditRequestState.phase)
@@ -197,10 +210,10 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             selectedMethodSignature = "com.example.OrderService.place():void",
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
         val commandRouter = project.getService(GraphEditorCommandRouter::class.java)
-        service.testEffectiveGenerationSettingsOverride = remoteSettings()
-        service.testAuditExecutorOverride = { _: GraphAuditContext, question: String ->
+        testOverrides.effectiveGenerationSettings = remoteSettings()
+        testOverrides.auditExecutor = { _: GraphAuditContext, question: String ->
             GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = question,
@@ -213,7 +226,8 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
         commandRouter.requestAuditAsync("请围绕当前链路进行问答")
 
         val snapshot = waitForSnapshot { current ->
-            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
+            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED &&
+                current.auditRequestState.scene == "问答"
         }
 
         assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, snapshot.auditRequestState.phase)

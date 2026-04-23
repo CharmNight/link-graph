@@ -29,6 +29,7 @@ import com.charmnight.linkgraph.llm.runtime.AgentRuntimeContext
 import com.charmnight.linkgraph.navigation.SourceNavigationService
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorStateService
+import com.charmnight.linkgraph.ui.GraphEditorStateMutationContext
 import com.charmnight.linkgraph.ui.OperationFeedbackLevel
 import com.charmnight.linkgraph.workbench.RiskResolutionService
 import com.charmnight.linkgraph.workbench.StageEligibilityDecision
@@ -200,83 +201,80 @@ internal class GenerationWorkflow(
                 }
             },
         )
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val result = runCatching {
+        asyncRequestLifecycle.runBackgroundTask(
+            work = {
                 executePlanRuntime(
                     payload = payload,
                     onPreview = previewUpdater,
                 )
-            }
-            ApplicationManager.getApplication().invokeLater(
-                {
-                    if (project.isDisposed || !asyncRequestLifecycle.completeGenerationPlanRequest(requestId)) {
-                        return@invokeLater
-                    }
-                    result.fold(
-                        onSuccess = { runtimeResult ->
-                            val normalizedPlan = resolvePlanResult(payload, runtimeResult)
-                            debugLazy(logger.isDebugEnabled, logger::debug) {
-                                "异步实现计划生成完成: ${GenerationDiagnostics.summarizePlan(normalizedPlan)}, " +
-                                    "artifactCount=${runtimeResult.artifactSummaries.size}, filesRead=${runtimeResult.finalState.budget.filesRead}, " +
-                                    "stepsUsed=${runtimeResult.finalState.budget.usedSteps}"
+            },
+            onCompleted = { result ->
+                if (project.isDisposed || !asyncRequestLifecycle.completeGenerationPlanRequest(requestId)) {
+                    return@runBackgroundTask
+                }
+                result.fold(
+                    onSuccess = { runtimeResult ->
+                        val normalizedPlan = resolvePlanResult(payload, runtimeResult)
+                        debugLazy(logger.isDebugEnabled, logger::debug) {
+                            "异步实现计划生成完成: ${GenerationDiagnostics.summarizePlan(normalizedPlan)}, " +
+                                "artifactCount=${runtimeResult.artifactSummaries.size}, filesRead=${runtimeResult.finalState.budget.filesRead}, " +
+                                "stepsUsed=${runtimeResult.finalState.budget.usedSteps}"
+                        }
+                        val requestState = asyncRequestLifecycle.withRuntimeMetadata(
+                            requestState = asyncRequestLifecycle.buildSucceededRequestState(
+                                presentation = presentation,
+                                successMessage = "实现计划已生成。",
+                                completedRemotely = normalizedPlan.source == GenerationPlanSource.REMOTE,
+                                warnings = normalizedPlan.warnings,
+                            ),
+                            runtimeState = runtimeResult.finalState,
+                        )
+                        asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
+                        val feedbackLevel = if (requestState.fallbackUsed) {
+                            OperationFeedbackLevel.WARNING
+                        } else {
+                            OperationFeedbackLevel.SUCCESS
+                        }
+                        session.mutateBatch {
+                            apply {
+                                workbench.markRuntimeArtifactSummaries("plan", toRuntimeArtifactSummaries(runtimeResult))
                             }
-                            val requestState = asyncRequestLifecycle.withRuntimeMetadata(
-                                requestState = asyncRequestLifecycle.buildSucceededRequestState(
-                                    presentation = presentation,
-                                    successMessage = "实现计划已生成。",
-                                    completedRemotely = normalizedPlan.source == GenerationPlanSource.REMOTE,
-                                    warnings = normalizedPlan.warnings,
-                                ),
-                                runtimeState = runtimeResult.finalState,
-                            )
-                            asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
-                            val feedbackLevel = if (requestState.fallbackUsed) {
-                                OperationFeedbackLevel.WARNING
-                            } else {
-                                OperationFeedbackLevel.SUCCESS
+                            apply {
+                                asyncRequests.markGenerationPlan(normalizedPlan, requestState)
                             }
-                            session.mutateBatch {
-                                apply {
-                                    workbench.markRuntimeArtifactSummaries("plan", toRuntimeArtifactSummaries(runtimeResult))
-                                }
-                                apply {
-                                    asyncRequests.markGenerationPlan(normalizedPlan, requestState)
-                                }
-                                apply {
-                                    workbench.markOperationFeedback(
-                                        feedbackLevel,
-                                        requestState.statusMessage ?: "实现计划已生成。",
-                                        preserveLastMessageType = true,
-                                    )
-                                }
+                            apply {
+                                workbench.markOperationFeedback(
+                                    feedbackLevel,
+                                    requestState.statusMessage ?: "实现计划已生成。",
+                                    preserveLastMessageType = true,
+                                )
                             }
-                        },
-                        onFailure = { throwable ->
-                            logger.warn("异步生成计划失败", throwable)
-                            val message = "生成计划失败：${throwable.message ?: throwable.javaClass.simpleName}"
-                            val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
-                            asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
-                            session.mutateBatch {
-                                apply {
-                                    workbench.markRuntimeArtifactSummaries("plan", emptyList())
-                                }
-                                apply {
-                                    asyncRequests.markGenerationPlanRequestFailed(message, requestState)
-                                }
-                                apply {
-                                    workbench.markOperationFeedback(
-                                        OperationFeedbackLevel.ERROR,
-                                        message,
-                                        preserveLastMessageType = true,
-                                    )
-                                }
+                        }
+                    },
+                    onFailure = { throwable ->
+                        logger.warn("异步生成计划失败", throwable)
+                        val message = "生成计划失败：${throwable.message ?: throwable.javaClass.simpleName}"
+                        val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
+                        asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
+                        session.mutateBatch {
+                            apply {
+                                workbench.markRuntimeArtifactSummaries("plan", emptyList())
                             }
-                        },
-                    )
-                },
-                ModalityState.defaultModalityState(),
-            )
-        }
+                            apply {
+                                asyncRequests.markGenerationPlanRequestFailed(message, requestState)
+                            }
+                            apply {
+                                workbench.markOperationFeedback(
+                                    OperationFeedbackLevel.ERROR,
+                                    message,
+                                    preserveLastMessageType = true,
+                                )
+                            }
+                        }
+                    },
+                )
+            },
+        )
     }
 
     /**
@@ -378,8 +376,8 @@ internal class GenerationWorkflow(
                 }
             },
         )
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val result = runCatching {
+        asyncRequestLifecycle.runBackgroundTask(
+            work = {
                 generationPlanDiscussionService.discuss(
                     context = planningPayloadToGenerationContext(
                         planningContextFactory.computePlanningPayload(
@@ -394,62 +392,59 @@ internal class GenerationWorkflow(
                     focusItemId = focusItemId,
                     onPreview = previewUpdater,
                 )
-            }
-            ApplicationManager.getApplication().invokeLater(
-                {
-                    if (project.isDisposed || !asyncRequestLifecycle.completeGenerationPlanDiscussionRequest(requestId)) {
-                        return@invokeLater
-                    }
-                    result.fold(
-                        onSuccess = { discussion ->
-                            val requestState = asyncRequestLifecycle.buildSucceededRequestState(
-                                presentation = presentation,
-                                successMessage = "实现建议追问已更新。",
-                                completedRemotely = discussion.source == LlmResultSource.REMOTE,
-                                warnings = discussion.warnings,
-                            )
-                            asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
-                            val feedbackLevel = if (requestState.fallbackUsed) {
-                                OperationFeedbackLevel.WARNING
-                            } else {
-                                OperationFeedbackLevel.SUCCESS
+            },
+            onCompleted = { result ->
+                if (project.isDisposed || !asyncRequestLifecycle.completeGenerationPlanDiscussionRequest(requestId)) {
+                    return@runBackgroundTask
+                }
+                result.fold(
+                    onSuccess = { discussion ->
+                        val requestState = asyncRequestLifecycle.buildSucceededRequestState(
+                            presentation = presentation,
+                            successMessage = "实现建议追问已更新。",
+                            completedRemotely = discussion.source == LlmResultSource.REMOTE,
+                            warnings = discussion.warnings,
+                        )
+                        asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
+                        val feedbackLevel = if (requestState.fallbackUsed) {
+                            OperationFeedbackLevel.WARNING
+                        } else {
+                            OperationFeedbackLevel.SUCCESS
+                        }
+                        session.mutateBatch {
+                            apply {
+                                asyncRequests.markGenerationPlanDiscussion(discussion, requestState)
                             }
-                            session.mutateBatch {
-                                apply {
-                                    asyncRequests.markGenerationPlanDiscussion(discussion, requestState)
-                                }
-                                apply {
-                                    workbench.markOperationFeedback(
-                                        feedbackLevel,
-                                        requestState.statusMessage ?: "实现建议追问已更新。",
-                                        preserveLastMessageType = true,
-                                    )
-                                }
+                            apply {
+                                workbench.markOperationFeedback(
+                                    feedbackLevel,
+                                    requestState.statusMessage ?: "实现建议追问已更新。",
+                                    preserveLastMessageType = true,
+                                )
                             }
-                        },
-                        onFailure = { throwable ->
-                            logger.warn("异步追问实现建议失败", throwable)
-                            val message = "实现建议追问失败：${throwable.message ?: throwable.javaClass.simpleName}"
-                            val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
-                            asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
-                            session.mutateBatch {
-                                apply {
-                                    asyncRequests.markGenerationPlanDiscussionRequestFailed(message, requestState)
-                                }
-                                apply {
-                                    workbench.markOperationFeedback(
-                                        OperationFeedbackLevel.ERROR,
-                                        message,
-                                        preserveLastMessageType = true,
-                                    )
-                                }
+                        }
+                    },
+                    onFailure = { throwable ->
+                        logger.warn("异步追问实现建议失败", throwable)
+                        val message = "实现建议追问失败：${throwable.message ?: throwable.javaClass.simpleName}"
+                        val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
+                        asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
+                        session.mutateBatch {
+                            apply {
+                                asyncRequests.markGenerationPlanDiscussionRequestFailed(message, requestState)
                             }
-                        },
-                    )
-                },
-                ModalityState.defaultModalityState(),
-            )
-        }
+                            apply {
+                                workbench.markOperationFeedback(
+                                    OperationFeedbackLevel.ERROR,
+                                    message,
+                                    preserveLastMessageType = true,
+                                )
+                            }
+                        }
+                    },
+                )
+            },
+        )
     }
 
     /**
@@ -616,127 +611,67 @@ internal class GenerationWorkflow(
                 }
             },
         )
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val result: Result<PreparedCodegenRuntimeResult> = runCatching {
+        asyncRequestLifecycle.runBackgroundTask(
+            work = {
                 val runtimeResult = executeCodegenRuntime(snapshot, previewUpdater)
                 val preparedDrafts = runtimeResult.output
                     ?.drafts
                     ?.takeIf { drafts -> drafts.isNotEmpty() }
                     ?.let(::enrichDraftsWithPreparedEdits)
                 PreparedCodegenRuntimeResult(runtimeResult, preparedDrafts)
-            }
-            ApplicationManager.getApplication().invokeLater(
-                {
-                    if (project.isDisposed || !asyncRequestLifecycle.completeCodeDraftRequest(requestId)) {
-                        return@invokeLater
-                    }
-                    result.fold(
-                        onSuccess = { preparedResult ->
-                            val runtimeResult = preparedResult.runtimeResult
-                            val drafts = runtimeResult.output
-                            if (drafts == null) {
-                                val failure = resolveCodegenRuntimeFailure(runtimeResult.finalState)
-                                val requestState = asyncRequestLifecycle.withRuntimeMetadata(
-                                    requestState = asyncRequestLifecycle.buildFailedRequestState(
-                                        presentation = presentation,
-                                        message = failure.message,
-                                        detailMessageOverride = failure.detailMessage,
-                                    ),
-                                    runtimeState = runtimeResult.finalState,
-                                )
-                                asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
-                                session.mutateBatch {
-                                    apply {
-                                        workbench.markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(runtimeResult))
-                                    }
-                                    apply {
-                                        asyncRequests.markCodeDraftRequestFailed(failure.message, requestState)
-                                    }
-                                    apply {
-                                        workbench.markOperationFeedback(
-                                            OperationFeedbackLevel.ERROR,
-                                            failure.message,
-                                            preserveLastMessageType = true,
-                                        )
-                                    }
-                                }
-                                return@fold
-                            }
-                            debugLazy(logger.isDebugEnabled, logger::debug) {
-                                "异步代码草稿生成完成: ${GenerationDiagnostics.summarizeCodeGenerationResult(drafts)}, " +
-                                    "artifactCount=${runtimeResult.artifactSummaries.size}, filesRead=${runtimeResult.finalState.budget.filesRead}, " +
-                                    "stepsUsed=${runtimeResult.finalState.budget.usedSteps}"
-                            }
-                            if (drafts.drafts.isEmpty()) {
-                                val message = drafts.emptyResultMessage()
-                                val requestState = asyncRequestLifecycle.buildFailedRequestState(
-                                    presentation = presentation,
-                                    message = message,
-                                    detailMessageOverride = drafts.emptyResultDetailMessage(),
-                                )
-                                asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
-                                session.mutateBatch {
-                                    apply {
-                                        workbench.markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(runtimeResult))
-                                    }
-                                    apply {
-                                        asyncRequests.markCodeDraftRequestFailed(message, requestState)
-                                    }
-                                    apply {
-                                        workbench.markOperationFeedback(
-                                            OperationFeedbackLevel.ERROR,
-                                            message,
-                                            preserveLastMessageType = true,
-                                        )
-                                    }
-                                }
-                                return@fold
-                            }
+            },
+            onCompleted = { result ->
+                if (project.isDisposed || !asyncRequestLifecycle.completeCodeDraftRequest(requestId)) {
+                    return@runBackgroundTask
+                }
+                result.fold(
+                    onSuccess = { preparedResult ->
+                        val runtimeResult = preparedResult.runtimeResult
+                        val drafts = runtimeResult.output
+                        if (drafts == null) {
+                            val failure = resolveCodegenRuntimeFailure(runtimeResult.finalState)
                             val requestState = asyncRequestLifecycle.withRuntimeMetadata(
-                                requestState = asyncRequestLifecycle.buildSucceededRequestState(
+                                requestState = asyncRequestLifecycle.buildFailedRequestState(
                                     presentation = presentation,
-                                    successMessage = "代码草稿已生成。",
-                                    completedRemotely = drafts.source == LlmResultSource.REMOTE,
-                                    warnings = drafts.warnings,
+                                    message = failure.message,
+                                    detailMessageOverride = failure.detailMessage,
                                 ),
                                 runtimeState = runtimeResult.finalState,
                             )
-                            asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
-                            val feedbackLevel = if (requestState.fallbackUsed) {
-                                OperationFeedbackLevel.WARNING
-                            } else {
-                                OperationFeedbackLevel.SUCCESS
-                            }
+                            asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
                             session.mutateBatch {
                                 apply {
                                     workbench.markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(runtimeResult))
                                 }
                                 apply {
-                                    asyncRequests.markGeneratedCodeDrafts(
-                                        drafts = preparedResult.preparedDrafts ?: drafts.drafts,
-                                        warnings = drafts.warnings,
-                                        source = drafts.source,
-                                        promptPreview = drafts.promptPreview,
-                                        requestState = requestState,
-                                    )
+                                    asyncRequests.markCodeDraftRequestFailed(failure.message, requestState)
                                 }
                                 apply {
                                     workbench.markOperationFeedback(
-                                        feedbackLevel,
-                                        requestState.statusMessage ?: "代码草稿已生成。",
+                                        OperationFeedbackLevel.ERROR,
+                                        failure.message,
                                         preserveLastMessageType = true,
                                     )
                                 }
                             }
-                        },
-                        onFailure = { throwable ->
-                            logger.warn("异步生成代码草稿失败", throwable)
-                            val message = "生成代码草稿失败：${throwable.message ?: throwable.javaClass.simpleName}"
-                            val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
+                            return@fold
+                        }
+                        debugLazy(logger.isDebugEnabled, logger::debug) {
+                            "异步代码草稿生成完成: ${GenerationDiagnostics.summarizeCodeGenerationResult(drafts)}, " +
+                                "artifactCount=${runtimeResult.artifactSummaries.size}, filesRead=${runtimeResult.finalState.budget.filesRead}, " +
+                                "stepsUsed=${runtimeResult.finalState.budget.usedSteps}"
+                        }
+                        if (drafts.drafts.isEmpty()) {
+                            val message = drafts.emptyResultMessage()
+                            val requestState = asyncRequestLifecycle.buildFailedRequestState(
+                                presentation = presentation,
+                                message = message,
+                                detailMessageOverride = drafts.emptyResultDetailMessage(),
+                            )
                             asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
                             session.mutateBatch {
                                 apply {
-                                    workbench.markRuntimeArtifactSummaries("codegen", emptyList())
+                                    workbench.markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(runtimeResult))
                                 }
                                 apply {
                                     asyncRequests.markCodeDraftRequestFailed(message, requestState)
@@ -749,12 +684,69 @@ internal class GenerationWorkflow(
                                     )
                                 }
                             }
-                        },
-                    )
-                },
-                ModalityState.defaultModalityState(),
-            )
-        }
+                            return@fold
+                        }
+                        val requestState = asyncRequestLifecycle.withRuntimeMetadata(
+                            requestState = asyncRequestLifecycle.buildSucceededRequestState(
+                                presentation = presentation,
+                                successMessage = "代码草稿已生成。",
+                                completedRemotely = drafts.source == LlmResultSource.REMOTE,
+                                warnings = drafts.warnings,
+                            ),
+                            runtimeState = runtimeResult.finalState,
+                        )
+                        asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
+                        val feedbackLevel = if (requestState.fallbackUsed) {
+                            OperationFeedbackLevel.WARNING
+                        } else {
+                            OperationFeedbackLevel.SUCCESS
+                        }
+                        session.mutateBatch {
+                            apply {
+                                workbench.markRuntimeArtifactSummaries("codegen", toRuntimeArtifactSummaries(runtimeResult))
+                            }
+                            apply {
+                                asyncRequests.markGeneratedCodeDrafts(
+                                    drafts = preparedResult.preparedDrafts ?: drafts.drafts,
+                                    warnings = drafts.warnings,
+                                    source = drafts.source,
+                                    promptPreview = drafts.promptPreview,
+                                    requestState = requestState,
+                                )
+                            }
+                            apply {
+                                workbench.markOperationFeedback(
+                                    feedbackLevel,
+                                    requestState.statusMessage ?: "代码草稿已生成。",
+                                    preserveLastMessageType = true,
+                                )
+                            }
+                        }
+                    },
+                    onFailure = { throwable ->
+                        logger.warn("异步生成代码草稿失败", throwable)
+                        val message = "生成代码草稿失败：${throwable.message ?: throwable.javaClass.simpleName}"
+                        val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
+                        asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
+                        session.mutateBatch {
+                            apply {
+                                workbench.markRuntimeArtifactSummaries("codegen", emptyList())
+                            }
+                            apply {
+                                asyncRequests.markCodeDraftRequestFailed(message, requestState)
+                            }
+                            apply {
+                                workbench.markOperationFeedback(
+                                    OperationFeedbackLevel.ERROR,
+                                    message,
+                                    preserveLastMessageType = true,
+                                )
+                            }
+                        }
+                    },
+                )
+            },
+        )
     }
 
     /**
@@ -1166,7 +1158,7 @@ internal class GenerationWorkflow(
     private fun runGenerationPlanDiscussion(
         question: String,
         focusItemId: String?,
-        mutateState: GraphEditorStateService.(com.charmnight.linkgraph.workbench.GenerationPlanDiscussionResult, com.charmnight.linkgraph.ui.AsyncRequestState) -> Unit,
+        mutateState: GraphEditorStateMutationContext.(com.charmnight.linkgraph.workbench.GenerationPlanDiscussionResult, com.charmnight.linkgraph.ui.AsyncRequestState) -> Unit,
     ): com.charmnight.linkgraph.workbench.GenerationPlanDiscussionResult? {
         val normalizedQuestion = question.trim()
         if (normalizedQuestion.isEmpty()) {
@@ -1275,7 +1267,7 @@ internal class GenerationWorkflow(
     private fun rejectStageEligibility(
         decision: StageEligibilityDecision,
         scene: String,
-        rejectRequest: GraphEditorStateService.(String, com.charmnight.linkgraph.ui.AsyncRequestState) -> Unit,
+        rejectRequest: GraphEditorStateMutationContext.(String, com.charmnight.linkgraph.ui.AsyncRequestState) -> Unit,
     ): GenerationPrerequisiteFailure? {
         if (decision.allowed) {
             return null
@@ -1310,7 +1302,7 @@ internal class GenerationWorkflow(
     private fun rejectOrphanedGenerationPlan(
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         scene: String,
-        rejectRequest: GraphEditorStateService.(String, com.charmnight.linkgraph.ui.AsyncRequestState) -> Unit,
+        rejectRequest: GraphEditorStateMutationContext.(String, com.charmnight.linkgraph.ui.AsyncRequestState) -> Unit,
     ): GenerationPrerequisiteFailure? {
         val snapshotPlan = snapshot.generationPlan?.let { rawPlan ->
             ProjectPathNormalizer.normalizePlan(rawPlan, project.basePath)

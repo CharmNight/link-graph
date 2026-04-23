@@ -2,37 +2,25 @@ package com.charmnight.linkgraph.services
 
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
+import com.charmnight.linkgraph.ui.GraphEditorStateMutationContext
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 
-/**
- * 封装项目级图编辑器状态读写，以及状态变化后的浏览器同步。
- */
+/** 封装项目级编辑器状态提交；batch 内修改先落到草稿快照，再一次性提交并触发浏览器同步。 */
 internal class ProjectEditorSession(
-    /** 保存图编辑器状态服务。 */
     private val stateService: GraphEditorStateService,
-    /** 保存浏览器同步请求回调。 */
     private val onBrowserSyncRequested: () -> Unit,
 ) {
-    /**
-     * 读取当前状态快照。
-     */
     fun snapshot(): com.charmnight.linkgraph.ui.GraphEditorStateSnapshot = stateService.snapshot()
 
-    /**
-     * 对编辑器状态执行一次原子修改。
-     */
     fun mutate(
         syncBrowser: Boolean = true,
-        action: GraphEditorStateService.() -> Unit,
+        action: GraphEditorStateMutationContext.() -> Unit,
     ) {
         mutateBatch(syncBrowser) {
             apply(action)
         }
     }
 
-    /**
-     * 在同步会话中批量修改编辑器状态。
-     */
     fun <T> mutateBatch(
         syncBrowser: Boolean = true,
         block: GraphEditorStateSyncSession.() -> T,

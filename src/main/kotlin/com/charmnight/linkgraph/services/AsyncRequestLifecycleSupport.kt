@@ -7,12 +7,16 @@ import com.charmnight.linkgraph.llm.runtime.RunBudget
 import com.charmnight.linkgraph.llm.remoteConnectionOrNull
 import com.charmnight.linkgraph.llm.usesRemoteProvider
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
+import com.charmnight.linkgraph.ui.GraphEditorStateMutationContext
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.util.concurrency.AppExecutorUtil
 import java.net.URI
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -337,7 +341,7 @@ internal class AsyncRequestLifecycleSupport(
      */
     fun createStreamingPreviewUpdater(
         requestId: Long,
-        updatePreview: GraphEditorStateService.(Long, String, Boolean) -> Unit,
+        updatePreview: GraphEditorStateMutationContext.(Long, String, Boolean) -> Unit,
     ): (String, Boolean) -> Unit {
         var lastPublishedAt = 0L
         var lastPublishedText = ""
@@ -399,6 +403,35 @@ internal class AsyncRequestLifecycleSupport(
                 "executionMode=${state.executionMode}, streaming=${state.streaming}, " +
                 "streamPhase=${state.streamPhase}, fallbackUsed=${state.fallbackUsed}, " +
                 "statusMessage=${state.statusMessage}, detailMessage=${state.detailMessage}"
+        }
+    }
+
+    fun <T> runBackgroundTask(
+        work: () -> T,
+        onCompleted: (Result<T>) -> Unit,
+        modalityState: ModalityState = ModalityState.defaultModalityState(),
+    ) {
+        AppExecutorUtil.getAppExecutorService().execute {
+            val result = runCatching(work)
+            ApplicationManager.getApplication().invokeLater(
+                {
+                    if (!project.isDisposed) {
+                        onCompleted(result)
+                    }
+                },
+                modalityState,
+            )
+        }
+    }
+
+    fun <T> computeOnBackgroundReadThread(action: () -> T): T {
+        val future = AppExecutorUtil.getAppExecutorService().submit<T> {
+            ReadAction.compute<T, RuntimeException>(action)
+        }
+        return try {
+            future.get()
+        } catch (error: ExecutionException) {
+            throw error.cause ?: error
         }
     }
 

@@ -116,44 +116,9 @@ class LinkGraphProjectService(
         LAST_APPLIED,
     }
 
-    /** 测试环境下替换打开设置行为的钩子。 */
-    @Volatile
-    @TestOnly
-    var testOpenSettingsOverride: (() -> Unit)? = null
-
-    /** 测试环境下替换主题定位器的钩子。 */
-    @Volatile
-    @TestOnly
-    var testSubjectLocatorOverride: SubjectLocator? = null
-
-    /** 测试环境下替换语义分析器的钩子。 */
-    @Volatile
-    @TestOnly
-    var testSemanticAnalyzerOverride: SemanticAnalyzer? = null
-
-    /** 测试环境下替换分析结果工厂的钩子。 */
-    @Volatile
-    @TestOnly
-    var testAnalysisOutcomeFactoryOverride: AnalysisOutcomeFactory? = null
-
-    /** 测试环境下替换图问答执行器的钩子。 */
-    @Volatile
-    @TestOnly
-    var testAuditExecutorOverride: ((GraphAuditContext, String) -> GraphPatchResult)? = null
-
-    /** 测试环境下替换生效生成设置的钩子。 */
-    @Volatile
-    @TestOnly
-    var testEffectiveGenerationSettingsOverride: LinkGraphSettingsState? = null
-
-    /** 测试环境下替换异步请求超时时间的钩子。 */
-    @Volatile
-    @TestOnly
-    var testAsyncRequestTimeoutMillisOverride: Long? = null
-
-    @Volatile
-    @TestOnly
-    var testOpenCodeDraftNativeDiffOverride: ((String) -> Unit)? = null
+    private val testOverrides: LinkGraphProjectTestOverrides by lazy(LazyThreadSafetyMode.NONE) {
+        project.getService(LinkGraphProjectTestOverrides::class.java)
+    }
 
     /** 负责把编辑器上下文封装成代码主题句柄的工厂。 */
     private val codeSubjectHandleFactory: CodeSubjectHandleFactory by lazy(LazyThreadSafetyMode.NONE) { CodeSubjectHandleFactory() }
@@ -181,13 +146,13 @@ class LinkGraphProjectService(
     }
     /** 当前生效的主题定位器。 */
     private val subjectLocator: SubjectLocator
-        get() = testSubjectLocatorOverride ?: defaultSubjectLocator
+        get() = testOverrides.subjectLocator ?: defaultSubjectLocator
     /** 当前生效的语义分析器。 */
     private val semanticAnalyzer: SemanticAnalyzer
-        get() = testSemanticAnalyzerOverride ?: defaultSemanticAnalyzer
+        get() = testOverrides.semanticAnalyzer ?: defaultSemanticAnalyzer
     /** 当前生效的分析结果工厂。 */
     private val analysisOutcomeFactory: AnalysisOutcomeFactory
-        get() = testAnalysisOutcomeFactoryOverride ?: defaultAnalysisOutcomeFactory
+        get() = testOverrides.analysisOutcomeFactory ?: defaultAnalysisOutcomeFactory
     /** Mermaid 导入器。 */
     private val mermaidImporter by lazy { MermaidImporter() }
     /** Mermaid 校验器。 */
@@ -225,8 +190,8 @@ class LinkGraphProjectService(
         LinkGraphProjectRuntimeSupport(
             project = project,
             logger = logger,
-            openSettingsOverrideProvider = { testOpenSettingsOverride },
-            effectiveGenerationSettingsOverrideProvider = { testEffectiveGenerationSettingsOverride },
+            openSettingsOverrideProvider = { testOverrides.openSettings },
+            effectiveGenerationSettingsOverrideProvider = { testOverrides.effectiveGenerationSettings },
         )
     }
     /** 已确认候选变更同步 workflow。 */
@@ -295,7 +260,7 @@ class LinkGraphProjectService(
         AsyncRequestLifecycleSupport(
             project = project,
             session = editorSession,
-            timeoutOverrideProvider = { testAsyncRequestTimeoutMillisOverride },
+            timeoutOverrideProvider = { testOverrides.asyncRequestTimeoutMillis },
         )
     }
 
@@ -316,6 +281,7 @@ class LinkGraphProjectService(
             project = project,
             session = editorSession,
             planningContextFactory = planningContextFactory,
+            asyncRequestLifecycle = asyncRequestLifecycle,
             subjectLocatorProvider = { subjectLocator },
             semanticAnalyzerProvider = { semanticAnalyzer },
             analysisOutcomeFactoryProvider = { analysisOutcomeFactory },
@@ -362,7 +328,7 @@ class LinkGraphProjectService(
             graphBeautificationService = graphBeautificationService,
             graphDiffer = graphDiffer,
             settingsProvider = runtimeSupport::effectiveGenerationSettings,
-            auditExecutorOverrideProvider = { testAuditExecutorOverride },
+            auditExecutorOverrideProvider = { testOverrides.auditExecutor },
             asyncRequestLifecycle = asyncRequestLifecycle,
             logger = logger,
             artifactStoreProvider = { artifactStore },

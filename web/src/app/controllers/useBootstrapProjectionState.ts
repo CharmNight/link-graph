@@ -17,29 +17,18 @@ import {
 import type {
   AnalysisDisplayMode,
   AsyncRequestState,
-  DraftPatchApplyResult,
-  DraftWorkbenchEntry,
   FactGraphViewDocument,
   FlowchartViewDocument,
-  GeneratedCodeDraft,
-  GeneratedCodeDraftWriteReport,
-  GraphBeautificationResult,
-  GraphPatch,
-  GraphPatchResult,
-  GraphSurfaceExperimentFlags,
   LinkGraphBootstrapState,
   LinkGraphDocument,
-  LinkGraphEdge,
-  LinkGraphLayoutState,
   LinkGraphNode,
-  MermaidIssue,
-  OperationFeedback,
-  QaRequestRecoveryState,
   ResourceRelationViewDocument,
   SourceNavigationState,
-  StageEligibilityDecision,
-  WorkbenchSectionPreferences,
 } from "../types";
+import type {
+  WorkbenchCanvasState,
+  WorkbenchProjectionState,
+} from "./useWorkbenchState";
 
 const DEFAULT_ANALYSIS_DISPLAY_MODE: AnalysisDisplayMode = "FLOWCHART";
 const REQUEST_ONLY_SELECTION_MESSAGE_TYPES = new Set([
@@ -49,70 +38,17 @@ const REQUEST_ONLY_SELECTION_MESSAGE_TYPES = new Set([
 
 interface UseBootstrapProjectionStateArgs {
   nodesRef: MutableRefObject<LinkGraphNode[]>;
-  edgesRef: MutableRefObject<LinkGraphEdge[]>;
+  edgesRef: MutableRefObject<LinkGraphDocument["edges"]>;
   draftGraphRef: MutableRefObject<LinkGraphDocument | null>;
   anchorNodeIdRef: MutableRefObject<string | null>;
   analysisDisplayModeRef: MutableRefObject<AnalysisDisplayMode>;
   semanticRevisionRef: MutableRefObject<number | null>;
   layoutRevisionRef: MutableRefObject<number | null>;
-  selectedNodeId: string | null;
-  nodes: LinkGraphNode[];
-  edges: LinkGraphEdge[];
-  factGraphView: FactGraphViewDocument;
-  flowchartView: FlowchartViewDocument;
-  resourceRelationView: ResourceRelationViewDocument;
-  setNodes: Dispatch<SetStateAction<LinkGraphNode[]>>;
-  setEdges: Dispatch<SetStateAction<LinkGraphEdge[]>>;
-  setFactGraphView: Dispatch<SetStateAction<FactGraphViewDocument>>;
-  setFlowchartView: Dispatch<SetStateAction<FlowchartViewDocument>>;
-  setResourceRelationView: Dispatch<SetStateAction<ResourceRelationViewDocument>>;
-  setReferenceWorkingGraph: Dispatch<SetStateAction<LinkGraphDocument | null>>;
-  setFactGraph: Dispatch<SetStateAction<LinkGraphDocument | null>>;
-  setAnalysisDisplayMode: Dispatch<SetStateAction<AnalysisDisplayMode>>;
-  setDraftGraph: Dispatch<SetStateAction<LinkGraphDocument | null>>;
-  setDraftWorkbenchState: Dispatch<SetStateAction<{ draftChanges: DraftWorkbenchEntry[]; draftNotes: DraftWorkbenchEntry[] }>>;
-  setDesignBaseline: Dispatch<SetStateAction<LinkGraphDocument | null>>;
-  setDraftPatchPreview: Dispatch<SetStateAction<GraphPatch | null>>;
-  setCanUndoDraftPatchApply: Dispatch<SetStateAction<boolean>>;
-  setLastAppliedDraftPatchSummary: Dispatch<SetStateAction<string | null>>;
-  setLastAppliedDraftPatchPreview: Dispatch<SetStateAction<GraphPatch | null>>;
-  setLastDraftPatchApplyResult: Dispatch<SetStateAction<DraftPatchApplyResult | null>>;
-  setAuditResult: Dispatch<SetStateAction<GraphPatchResult | null>>;
-  setAuditRequestState: Dispatch<SetStateAction<AsyncRequestState>>;
-  setQaRequestRecoveryState: Dispatch<SetStateAction<QaRequestRecoveryState>>;
-  setDiffReviewResult: Dispatch<SetStateAction<GraphPatchResult | null>>;
-  setDiffReviewRequestState: Dispatch<SetStateAction<AsyncRequestState>>;
-  setAnchorNodeId: Dispatch<SetStateAction<string | null>>;
-  setSelectedNodeId: Dispatch<SetStateAction<string | null>>;
-  setMermaidIssues: Dispatch<SetStateAction<MermaidIssue[]>>;
-  setDiffItems: Dispatch<SetStateAction<any[]>>;
-  setSyncPreviewItems: Dispatch<SetStateAction<any[]>>;
-  setDraftVersion: Dispatch<SetStateAction<number | null>>;
-  setGenerationPlan: Dispatch<SetStateAction<any | null>>;
-  setGenerationPlanDraftVersion: Dispatch<SetStateAction<number | null>>;
-  setGenerationPlanRequestState: Dispatch<SetStateAction<AsyncRequestState>>;
-  setDraftValidationState: Dispatch<SetStateAction<any | null>>;
-  setGenerationPlanDiscussionSession: Dispatch<SetStateAction<any | null>>;
-  setGenerationPlanDiscussionRequestState: Dispatch<SetStateAction<AsyncRequestState>>;
+  canvasState: WorkbenchCanvasState;
+  setCanvasState: Dispatch<SetStateAction<WorkbenchCanvasState>>;
+  projectionState: WorkbenchProjectionState;
+  setProjectionState: Dispatch<SetStateAction<WorkbenchProjectionState>>;
   explanationLocalOverrideRef: MutableRefObject<boolean>;
-  setGraphBeautificationResult: Dispatch<SetStateAction<GraphBeautificationResult | null>>;
-  setGraphBeautificationRequestState: Dispatch<SetStateAction<AsyncRequestState>>;
-  setGeneratedCodeDrafts: Dispatch<SetStateAction<GeneratedCodeDraft[]>>;
-  setGeneratedCodeDraftVersion: Dispatch<SetStateAction<number | null>>;
-  setGeneratedCodeDraftWarnings: Dispatch<SetStateAction<string[]>>;
-  setGeneratedCodeDraftSource: Dispatch<SetStateAction<"DISABLED" | "MOCK" | "REMOTE" | null>>;
-  setGeneratedCodeDraftPromptPreview: Dispatch<SetStateAction<string | null>>;
-  setGeneratedCodeDraftPromptPreviewArtifactId: Dispatch<SetStateAction<string | null>>;
-  setGeneratedCodeDraftWriteReport: Dispatch<SetStateAction<GeneratedCodeDraftWriteReport | null>>;
-  setCodeDraftRequestState: Dispatch<SetStateAction<AsyncRequestState>>;
-  setCodeEligibilityDecision: Dispatch<SetStateAction<StageEligibilityDecision | null>>;
-  setSourceNavigationState: Dispatch<SetStateAction<SourceNavigationState>>;
-  setOperationFeedback: Dispatch<SetStateAction<OperationFeedback | null>>;
-  setWorkbenchSectionPreferences: Dispatch<SetStateAction<WorkbenchSectionPreferences>>;
-  setLastMessageType: Dispatch<SetStateAction<string | null>>;
-  setGraphSurfaceExperiments: Dispatch<SetStateAction<GraphSurfaceExperimentFlags | null>>;
-  setArtifactContents: Dispatch<SetStateAction<Record<string, string>>>;
-  setDetailNodeId: Dispatch<SetStateAction<string | null>>;
   setSelectionGroupNodeIds: Dispatch<SetStateAction<string[]>>;
   setCollapsedNodeIds: Dispatch<SetStateAction<string[]>>;
   setDiffTargetItemIds: Dispatch<SetStateAction<string[]>>;
@@ -134,7 +70,10 @@ interface UseBootstrapProjectionStateArgs {
     nextView: T,
     currentView: T,
   ) => T;
-  applyBootstrapRoutesToDocument: (nextDocument: LinkGraphDocument, currentDocument: LinkGraphDocument) => LinkGraphDocument;
+  applyBootstrapRoutesToDocument: (
+    nextDocument: LinkGraphDocument,
+    currentDocument: LinkGraphDocument,
+  ) => LinkGraphDocument;
   resolveAnchorNodeId: (nodes: LinkGraphNode[], preferredNodeId: string | null) => string | null;
   shouldResetAnchorNode: (state: LinkGraphBootstrapState, semanticGraphChanged: boolean) => boolean;
   deriveFactGraphSummary: (
@@ -142,7 +81,10 @@ interface UseBootstrapProjectionStateArgs {
     fullGraph: LinkGraphDocument,
     anchorNodeId: string | null,
   ) => FactGraphViewDocument["summary"];
-  resolveReferenceWorkingGraph: (state: LinkGraphBootstrapState, displayMode: AnalysisDisplayMode) => LinkGraphDocument | null;
+  resolveReferenceWorkingGraph: (
+    state: LinkGraphBootstrapState,
+    displayMode: AnalysisDisplayMode,
+  ) => LinkGraphDocument | null;
   resolveReferenceFactGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
   resolveDesignBaselineGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
   resolveRequestState: (state?: AsyncRequestState | null) => AsyncRequestState;
@@ -163,13 +105,22 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
     const nextAnalysisDisplayMode = nextState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE;
     const analysisDisplayModeChanged = nextAnalysisDisplayMode !== currentAnalysisDisplayMode;
     const nextSourceNavigationState = args.resolveSourceNavigationState(nextState);
-    let nextFactGraphView = args.applyBootstrapRoutesToViewDocument(args.resolveFactGraphView(nextState), args.factGraphView);
-    let nextFlowchartView = args.applyBootstrapRoutesToViewDocument(args.resolveFlowchartView(nextState), args.flowchartView);
+    let nextFactGraphView = args.applyBootstrapRoutesToViewDocument(
+      args.resolveFactGraphView(nextState),
+      args.canvasState.factGraphView,
+    );
+    let nextFlowchartView = args.applyBootstrapRoutesToViewDocument(
+      args.resolveFlowchartView(nextState),
+      args.canvasState.flowchartView,
+    );
     let nextResourceRelationView = args.applyBootstrapRoutesToViewDocument(
       args.resolveResourceRelationView(nextState),
-      args.resourceRelationView,
+      args.canvasState.resourceRelationView,
     );
-    const nextWorkingGraph = args.applyBootstrapRoutesToDocument(args.resolveWorkingGraph(nextState), effectiveCurrentDraftGraph);
+    const nextWorkingGraph = args.applyBootstrapRoutesToDocument(
+      args.resolveWorkingGraph(nextState),
+      effectiveCurrentDraftGraph,
+    );
     traceLinkGraph("app.applyBootstrapState.start", {
       bootstrap: summarizeBootstrapState(nextState),
       currentGraph: summarizeGraph({ nodes: currentNodes, edges: currentEdges }),
@@ -190,50 +141,55 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       && !semanticRevisionAdvanced
       && !layoutRevisionAdvanced;
     if (skipGraphSignatureChecks) {
-      args.setDraftWorkbenchState(nextState.draftWorkbenchState ?? { draftChanges: [], draftNotes: [] });
-      args.setDraftPatchPreview(nextState.draftPatchPreview ?? null);
-      args.setCanUndoDraftPatchApply(nextState.canUndoDraftPatchApply ?? false);
-      args.setLastAppliedDraftPatchSummary(nextState.lastAppliedDraftPatchSummary ?? null);
-      args.setLastDraftPatchApplyResult(nextState.lastDraftPatchApplyResult ?? null);
-      if (!(nextState.canUndoDraftPatchApply ?? false) && !nextState.lastAppliedDraftPatchSummary) {
-        args.setLastAppliedDraftPatchPreview(null);
-      }
-      args.setAuditResult(nextState.auditResult ?? null);
-      args.setAuditRequestState(args.resolveRequestState(nextState.auditRequestState));
-      args.setQaRequestRecoveryState(nextState.qaRequestRecoveryState ?? { lastSubmittedRequest: null, lastFailedRequest: null });
-      args.setDiffReviewResult(nextState.diffReviewResult ?? null);
-      args.setDiffReviewRequestState(args.resolveRequestState(nextState.diffReviewRequestState));
-      args.setDraftVersion(nextState.draftVersion ?? null);
-      args.setGenerationPlan(nextState.generationPlan ?? null);
-      args.setGenerationPlanDraftVersion(nextState.generationPlanDraftVersion ?? null);
-      args.setGenerationPlanRequestState(args.resolveRequestState(nextState.generationPlanRequestState));
-      args.setDraftValidationState(nextState.draftValidationState ?? null);
-      args.setGenerationPlanDiscussionSession(nextState.generationPlanDiscussionSession ?? null);
-      args.setGenerationPlanDiscussionRequestState(args.resolveRequestState(nextState.generationPlanDiscussionRequestState));
-      if (!args.explanationLocalOverrideRef.current) {
-        args.setGraphBeautificationResult(nextState.graphBeautificationResult ?? null);
-        args.setGraphBeautificationRequestState(args.resolveRequestState(nextState.graphBeautificationRequestState));
-      }
-      args.setGeneratedCodeDrafts(nextState.generatedCodeDrafts ?? []);
-      args.setGeneratedCodeDraftVersion(nextState.generatedCodeDraftVersion ?? null);
-      args.setGeneratedCodeDraftWarnings(nextState.generatedCodeDraftWarnings ?? []);
-      args.setGeneratedCodeDraftSource(nextState.generatedCodeDraftSource ?? null);
-      args.setGeneratedCodeDraftPromptPreview(nextState.generatedCodeDraftPromptPreview ?? null);
-      args.setGeneratedCodeDraftPromptPreviewArtifactId(nextState.generatedCodeDraftPromptPreviewArtifactId ?? null);
-      args.setGeneratedCodeDraftWriteReport(nextState.generatedCodeDraftWriteReport ?? null);
-      args.setCodeDraftRequestState(args.resolveRequestState(nextState.codeDraftRequestState));
-      args.setCodeEligibilityDecision(nextState.codeEligibilityDecision ?? null);
-      args.setSourceNavigationState(nextSourceNavigationState);
-      args.setOperationFeedback(nextState.operationFeedback ?? null);
-      args.setWorkbenchSectionPreferences(nextState.workbenchSectionPreferences ?? {});
-      args.setLastMessageType(nextState.lastMessageType ?? null);
-      args.setGraphSurfaceExperiments(nextState.graphSurfaceExperiments ?? null);
-      if (nextState.artifactContents) {
-        args.setArtifactContents((current) => ({
-          ...current,
-          ...nextState.artifactContents,
-        }));
-      }
+      args.setProjectionState({
+        ...args.projectionState,
+        draftWorkbenchState: nextState.draftWorkbenchState ?? { draftChanges: [], draftNotes: [] },
+        draftPatchPreview: nextState.draftPatchPreview ?? null,
+        canUndoDraftPatchApply: nextState.canUndoDraftPatchApply ?? false,
+        lastAppliedDraftPatchSummary: nextState.lastAppliedDraftPatchSummary ?? null,
+        lastAppliedDraftPatchPreview: !(nextState.canUndoDraftPatchApply ?? false) && !nextState.lastAppliedDraftPatchSummary
+          ? null
+          : args.projectionState.lastAppliedDraftPatchPreview,
+        lastDraftPatchApplyResult: nextState.lastDraftPatchApplyResult ?? null,
+        auditResult: nextState.auditResult ?? null,
+        auditRequestState: args.resolveRequestState(nextState.auditRequestState),
+        qaRequestRecoveryState: nextState.qaRequestRecoveryState ?? { lastSubmittedRequest: null, lastFailedRequest: null },
+        diffReviewResult: nextState.diffReviewResult ?? null,
+        diffReviewRequestState: args.resolveRequestState(nextState.diffReviewRequestState),
+        draftVersion: nextState.draftVersion ?? null,
+        generationPlan: nextState.generationPlan ?? null,
+        generationPlanDraftVersion: nextState.generationPlanDraftVersion ?? null,
+        generationPlanRequestState: args.resolveRequestState(nextState.generationPlanRequestState),
+        draftValidationState: nextState.draftValidationState ?? null,
+        generationPlanDiscussionSession: nextState.generationPlanDiscussionSession ?? null,
+        generationPlanDiscussionRequestState: args.resolveRequestState(nextState.generationPlanDiscussionRequestState),
+        graphBeautificationResult: args.explanationLocalOverrideRef.current
+          ? args.projectionState.graphBeautificationResult
+          : nextState.graphBeautificationResult ?? null,
+        graphBeautificationRequestState: args.explanationLocalOverrideRef.current
+          ? args.projectionState.graphBeautificationRequestState
+          : args.resolveRequestState(nextState.graphBeautificationRequestState),
+        generatedCodeDrafts: nextState.generatedCodeDrafts ?? [],
+        generatedCodeDraftVersion: nextState.generatedCodeDraftVersion ?? null,
+        generatedCodeDraftWarnings: nextState.generatedCodeDraftWarnings ?? [],
+        generatedCodeDraftSource: nextState.generatedCodeDraftSource ?? null,
+        generatedCodeDraftPromptPreview: nextState.generatedCodeDraftPromptPreview ?? null,
+        generatedCodeDraftPromptPreviewArtifactId: nextState.generatedCodeDraftPromptPreviewArtifactId ?? null,
+        generatedCodeDraftWriteReport: nextState.generatedCodeDraftWriteReport ?? null,
+        codeDraftRequestState: args.resolveRequestState(nextState.codeDraftRequestState),
+        codeEligibilityDecision: nextState.codeEligibilityDecision ?? null,
+        sourceNavigationState: nextSourceNavigationState,
+        operationFeedback: nextState.operationFeedback ?? null,
+        workbenchSectionPreferences: nextState.workbenchSectionPreferences ?? {},
+        lastMessageType: nextState.lastMessageType ?? null,
+        graphSurfaceExperiments: nextState.graphSurfaceExperiments ?? null,
+        artifactContents: nextState.artifactContents
+          ? {
+              ...args.projectionState.artifactContents,
+              ...nextState.artifactContents,
+            }
+          : args.projectionState.artifactContents,
+      });
       if (hasRevision(nextState.semanticRevision)) {
         args.semanticRevisionRef.current = nextState.semanticRevision;
       }
@@ -259,9 +215,7 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       };
       return nextVisibleGraphWithPositionsCache;
     }
-    const visibleSemanticChanged = skipGraphSignatureChecks
-      ? false
-      : revisionsAvailable
+    const visibleSemanticChanged = revisionsAvailable
       ? analysisDisplayModeChanged
         || (
           semanticRevisionAdvanced
@@ -269,9 +223,7 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
         )
       : analysisDisplayModeChanged
         || graphSemanticSignature({ nodes: currentNodes, edges: currentEdges }) !== graphSemanticSignature(visibleGraph);
-    const visibleLayoutChanged = skipGraphSignatureChecks
-      ? false
-      : revisionsAvailable
+    const visibleLayoutChanged = revisionsAvailable
       ? layoutRevisionAdvanced
         && graphLayoutSignature(currentNodes) !== graphLayoutSignature(nextVisibleGraphWithPositions().nodes)
       : graphLayoutSignature(currentNodes) !== graphLayoutSignature(nextVisibleGraphWithPositions().nodes);
@@ -286,11 +238,11 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
           edges: currentEdges,
         };
     const reuseCurrentViewGraphsWhenStable = !semanticGraphChanged && !layoutGraphChanged;
-    nextFactGraphView = reuseCurrentViewGraphs(nextFactGraphView, args.factGraphView, reuseCurrentViewGraphsWhenStable);
-    nextFlowchartView = reuseCurrentViewGraphs(nextFlowchartView, args.flowchartView, reuseCurrentViewGraphsWhenStable);
+    nextFactGraphView = reuseCurrentViewGraphs(nextFactGraphView, args.canvasState.factGraphView, reuseCurrentViewGraphsWhenStable);
+    nextFlowchartView = reuseCurrentViewGraphs(nextFlowchartView, args.canvasState.flowchartView, reuseCurrentViewGraphsWhenStable);
     nextResourceRelationView = reuseCurrentViewGraphs(
       nextResourceRelationView,
-      args.resourceRelationView,
+      args.canvasState.resourceRelationView,
       reuseCurrentViewGraphsWhenStable,
     );
     const requestedDraftPatchFocusNodeId = nextState.lastMessageType === "draftPatchApplied"
@@ -298,16 +250,16 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       : null;
     const nextSelectedNodeId = nextState.selectedNodeId ?? nextGraph.nodes[0]?.id ?? null;
     const shouldPreserveLocalSelection = Boolean(
-      args.selectedNodeId
+      args.canvasState.selectedNodeId
       && !semanticGraphChanged
       && !layoutGraphChanged
       && REQUEST_ONLY_SELECTION_MESSAGE_TYPES.has(nextState.lastMessageType ?? "")
-      && nextGraph.nodes.some((node) => node.id === args.selectedNodeId),
+      && nextGraph.nodes.some((node) => node.id === args.canvasState.selectedNodeId),
     );
     const effectiveSelectedNodeId = requestedDraftPatchFocusNodeId && nextGraph.nodes.some((node) => node.id === requestedDraftPatchFocusNodeId)
       ? requestedDraftPatchFocusNodeId
       : shouldPreserveLocalSelection
-        ? args.selectedNodeId
+        ? args.canvasState.selectedNodeId
         : nextSelectedNodeId;
     const nextAnchorNodeId = args.resolveAnchorNodeId(
       nextGraph.nodes,
@@ -326,31 +278,26 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
         ? applyLayoutOnlyNodePositions(currentNodes, nextGraph.nodes)
         : currentNodes;
     args.syncManualNodeIdCounters(nextNodes);
-    let nextDraftGraph = nextWorkingGraph;
-    const nextDraftGraphWithPositions = nextDraftGraph.nodes.length > 0
+    const nextDraftGraphWithPositions = nextWorkingGraph.nodes.length > 0
       ? {
-          ...nextDraftGraph,
+          ...nextWorkingGraph,
           nodes: applyBootstrapNodePositions(
-            nextDraftGraph.nodes,
+            nextWorkingGraph.nodes,
             effectiveCurrentDraftGraph.nodes,
             nextState.layoutState,
             !analysisDisplayModeChanged,
             nextState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE,
           ),
         }
-      : nextDraftGraph;
+      : nextWorkingGraph;
     const workingSemanticChanged = nextState.workingGraph != null
-      ? skipGraphSignatureChecks
-        ? false
-        : revisionsAvailable
-          ? semanticRevisionAdvanced
-            && graphSemanticSignature(effectiveCurrentDraftGraph) !== graphSemanticSignature(nextDraftGraph)
-          : graphSemanticSignature(effectiveCurrentDraftGraph) !== graphSemanticSignature(nextDraftGraph)
+      ? revisionsAvailable
+        ? semanticRevisionAdvanced
+          && graphSemanticSignature(effectiveCurrentDraftGraph) !== graphSemanticSignature(nextWorkingGraph)
+        : graphSemanticSignature(effectiveCurrentDraftGraph) !== graphSemanticSignature(nextWorkingGraph)
       : semanticGraphChanged;
     const workingLayoutChanged = nextState.workingGraph != null
-      ? skipGraphSignatureChecks
-        ? false
-        : graphLayoutSignature(effectiveCurrentDraftGraph.nodes) !== graphLayoutSignature(nextDraftGraphWithPositions.nodes)
+      ? graphLayoutSignature(effectiveCurrentDraftGraph.nodes) !== graphLayoutSignature(nextDraftGraphWithPositions.nodes)
       : layoutGraphChanged;
     const draftSemanticChanged = workingSemanticChanged;
     const draftLayoutChanged = revisionsAvailable
@@ -397,14 +344,16 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       nextAnchorNodeId,
       lastMessageType: nextState.lastMessageType ?? null,
     });
-    if (semanticGraphChanged || layoutGraphChanged) {
-      args.setNodes(nextNodes);
-    }
-    if (semanticGraphChanged) {
-      args.setEdges(nextGraph.edges);
-    }
-    args.setFactGraphView(
-      nextAnalysisDisplayMode === "FACT_GRAPH"
+    args.setCanvasState({
+      ...args.canvasState,
+      nodes: semanticGraphChanged || layoutGraphChanged ? nextNodes : currentNodes,
+      edges: semanticGraphChanged ? nextGraph.edges : currentEdges,
+      selectedNodeId: effectiveSelectedNodeId,
+      analysisDisplayMode: nextAnalysisDisplayMode,
+      anchorNodeId: nextAnchorNodeId,
+      referenceWorkingGraph: args.resolveReferenceWorkingGraph(nextState, nextAnalysisDisplayMode),
+      factGraph: args.resolveReferenceFactGraph(nextState),
+      factGraphView: nextAnalysisDisplayMode === "FACT_GRAPH"
         ? {
             ...nextFactGraphView,
             anchorNodeId: nextAnchorNodeId,
@@ -415,85 +364,84 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
             ),
           }
         : nextFactGraphView,
-    );
-    args.setFlowchartView(
-      nextAnalysisDisplayMode === "FLOWCHART"
+      flowchartView: nextAnalysisDisplayMode === "FLOWCHART"
         ? {
             ...nextFlowchartView,
             anchorNodeId: nextAnchorNodeId,
           }
         : nextFlowchartView,
-    );
-    args.setResourceRelationView(
-      nextAnalysisDisplayMode === "RESOURCE_RELATION_VIEW"
+      resourceRelationView: nextAnalysisDisplayMode === "RESOURCE_RELATION_VIEW"
         ? {
             ...nextResourceRelationView,
             anchorNodeId: nextAnchorNodeId,
           }
         : nextResourceRelationView,
-    );
-    args.setReferenceWorkingGraph(args.resolveReferenceWorkingGraph(nextState, nextAnalysisDisplayMode));
-    args.setFactGraph(args.resolveReferenceFactGraph(nextState));
-    args.setAnalysisDisplayMode(nextAnalysisDisplayMode);
-    args.setDraftGraph(nextDraftGraphWithPositions.nodes.length > 0
-      ? {
-          ...nextDraftGraphWithPositions,
-          nodes: nextDraftGraphNodes,
-        }
-      : nextDraftGraphWithPositions);
-    args.setDraftWorkbenchState(nextState.draftWorkbenchState ?? { draftChanges: [], draftNotes: [] });
-    args.setDesignBaseline(args.resolveDesignBaselineGraph(nextState));
-    args.setDraftPatchPreview(nextState.draftPatchPreview ?? null);
-    args.setCanUndoDraftPatchApply(nextState.canUndoDraftPatchApply ?? false);
-    args.setLastAppliedDraftPatchSummary(nextState.lastAppliedDraftPatchSummary ?? null);
-    args.setLastDraftPatchApplyResult(nextState.lastDraftPatchApplyResult ?? null);
-    if (!(nextState.canUndoDraftPatchApply ?? false) && !nextState.lastAppliedDraftPatchSummary) {
-      args.setLastAppliedDraftPatchPreview(null);
-    }
-    args.setAuditResult(nextState.auditResult ?? null);
-    args.setAuditRequestState(args.resolveRequestState(nextState.auditRequestState));
-    args.setQaRequestRecoveryState(nextState.qaRequestRecoveryState ?? { lastSubmittedRequest: null, lastFailedRequest: null });
-    args.setDiffReviewResult(nextState.diffReviewResult ?? null);
-    args.setDiffReviewRequestState(args.resolveRequestState(nextState.diffReviewRequestState));
-    args.setAnchorNodeId(nextAnchorNodeId);
-    args.setSelectedNodeId(effectiveSelectedNodeId);
-    args.setMermaidIssues(nextState.mermaidIssues ?? []);
-    args.setDiffItems(nextState.diffItems);
-    args.setSyncPreviewItems(nextState.syncPreviewItems);
-    args.setDraftVersion(nextState.draftVersion ?? null);
-    args.setGenerationPlan(nextState.generationPlan ?? null);
-    args.setGenerationPlanDraftVersion(nextState.generationPlanDraftVersion ?? null);
-    args.setGenerationPlanRequestState(args.resolveRequestState(nextState.generationPlanRequestState));
-    args.setDraftValidationState(nextState.draftValidationState ?? null);
-    args.setGenerationPlanDiscussionSession(nextState.generationPlanDiscussionSession ?? null);
-    args.setGenerationPlanDiscussionRequestState(args.resolveRequestState(nextState.generationPlanDiscussionRequestState));
-    if (!args.explanationLocalOverrideRef.current) {
-      args.setGraphBeautificationResult(nextState.graphBeautificationResult ?? null);
-      args.setGraphBeautificationRequestState(args.resolveRequestState(nextState.graphBeautificationRequestState));
-    }
-    args.setGeneratedCodeDrafts(nextState.generatedCodeDrafts ?? []);
-    args.setGeneratedCodeDraftVersion(nextState.generatedCodeDraftVersion ?? null);
-    args.setGeneratedCodeDraftWarnings(nextState.generatedCodeDraftWarnings ?? []);
-    args.setGeneratedCodeDraftSource(nextState.generatedCodeDraftSource ?? null);
-    args.setGeneratedCodeDraftPromptPreview(nextState.generatedCodeDraftPromptPreview ?? null);
-    args.setGeneratedCodeDraftPromptPreviewArtifactId(nextState.generatedCodeDraftPromptPreviewArtifactId ?? null);
-    args.setGeneratedCodeDraftWriteReport(nextState.generatedCodeDraftWriteReport ?? null);
-    args.setCodeDraftRequestState(args.resolveRequestState(nextState.codeDraftRequestState));
-    args.setCodeEligibilityDecision(nextState.codeEligibilityDecision ?? null);
-    args.setSourceNavigationState(nextSourceNavigationState);
-    args.setOperationFeedback(nextState.operationFeedback ?? null);
-    args.setWorkbenchSectionPreferences(nextState.workbenchSectionPreferences ?? {});
-    args.setLastMessageType(nextState.lastMessageType ?? null);
-    args.setGraphSurfaceExperiments(nextState.graphSurfaceExperiments ?? null);
-    if (nextState.artifactContents) {
-      args.setArtifactContents((current) => ({
-        ...current,
-        ...nextState.artifactContents,
-      }));
-    }
-    if (requestedDraftPatchFocusNodeId && nextNodes.some((node) => node.id === requestedDraftPatchFocusNodeId)) {
-      args.setDetailNodeId(requestedDraftPatchFocusNodeId);
-    }
+      draftGraph: nextDraftGraphWithPositions.nodes.length > 0
+        ? {
+            ...nextDraftGraphWithPositions,
+            nodes: nextDraftGraphNodes,
+          }
+        : nextDraftGraphWithPositions,
+    });
+    const requestedDetailNodeId = requestedDraftPatchFocusNodeId && nextNodes.some((node) => node.id === requestedDraftPatchFocusNodeId)
+      ? requestedDraftPatchFocusNodeId
+      : args.projectionState.detailNodeId;
+    args.setProjectionState({
+      ...args.projectionState,
+      detailNodeId: requestedDetailNodeId && nextNodes.some((node) => node.id === requestedDetailNodeId)
+        ? requestedDetailNodeId
+        : null,
+      draftWorkbenchState: nextState.draftWorkbenchState ?? { draftChanges: [], draftNotes: [] },
+      designBaseline: args.resolveDesignBaselineGraph(nextState),
+      draftPatchPreview: nextState.draftPatchPreview ?? null,
+      canUndoDraftPatchApply: nextState.canUndoDraftPatchApply ?? false,
+      lastAppliedDraftPatchSummary: nextState.lastAppliedDraftPatchSummary ?? null,
+      lastAppliedDraftPatchPreview: !(nextState.canUndoDraftPatchApply ?? false) && !nextState.lastAppliedDraftPatchSummary
+        ? null
+        : args.projectionState.lastAppliedDraftPatchPreview,
+      lastDraftPatchApplyResult: nextState.lastDraftPatchApplyResult ?? null,
+      auditResult: nextState.auditResult ?? null,
+      auditRequestState: args.resolveRequestState(nextState.auditRequestState),
+      qaRequestRecoveryState: nextState.qaRequestRecoveryState ?? { lastSubmittedRequest: null, lastFailedRequest: null },
+      diffReviewResult: nextState.diffReviewResult ?? null,
+      diffReviewRequestState: args.resolveRequestState(nextState.diffReviewRequestState),
+      mermaidIssues: nextState.mermaidIssues ?? [],
+      diffItems: nextState.diffItems,
+      syncPreviewItems: nextState.syncPreviewItems,
+      draftVersion: nextState.draftVersion ?? null,
+      generationPlan: nextState.generationPlan ?? null,
+      generationPlanDraftVersion: nextState.generationPlanDraftVersion ?? null,
+      generationPlanRequestState: args.resolveRequestState(nextState.generationPlanRequestState),
+      draftValidationState: nextState.draftValidationState ?? null,
+      generationPlanDiscussionSession: nextState.generationPlanDiscussionSession ?? null,
+      generationPlanDiscussionRequestState: args.resolveRequestState(nextState.generationPlanDiscussionRequestState),
+      graphBeautificationResult: args.explanationLocalOverrideRef.current
+        ? args.projectionState.graphBeautificationResult
+        : nextState.graphBeautificationResult ?? null,
+      graphBeautificationRequestState: args.explanationLocalOverrideRef.current
+        ? args.projectionState.graphBeautificationRequestState
+        : args.resolveRequestState(nextState.graphBeautificationRequestState),
+      generatedCodeDrafts: nextState.generatedCodeDrafts ?? [],
+      generatedCodeDraftVersion: nextState.generatedCodeDraftVersion ?? null,
+      generatedCodeDraftWarnings: nextState.generatedCodeDraftWarnings ?? [],
+      generatedCodeDraftSource: nextState.generatedCodeDraftSource ?? null,
+      generatedCodeDraftPromptPreview: nextState.generatedCodeDraftPromptPreview ?? null,
+      generatedCodeDraftPromptPreviewArtifactId: nextState.generatedCodeDraftPromptPreviewArtifactId ?? null,
+      generatedCodeDraftWriteReport: nextState.generatedCodeDraftWriteReport ?? null,
+      codeDraftRequestState: args.resolveRequestState(nextState.codeDraftRequestState),
+      codeEligibilityDecision: nextState.codeEligibilityDecision ?? null,
+      sourceNavigationState: nextSourceNavigationState,
+      operationFeedback: nextState.operationFeedback ?? null,
+      workbenchSectionPreferences: nextState.workbenchSectionPreferences ?? {},
+      lastMessageType: nextState.lastMessageType ?? null,
+      graphSurfaceExperiments: nextState.graphSurfaceExperiments ?? null,
+      artifactContents: nextState.artifactContents
+        ? {
+            ...args.projectionState.artifactContents,
+            ...nextState.artifactContents,
+          }
+        : args.projectionState.artifactContents,
+    });
     if (semanticGraphChanged) {
       args.setSelectionGroupNodeIds([]);
       args.setCollapsedNodeIds([]);
@@ -509,7 +457,6 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
     if (hasRevision(nextState.layoutRevision)) {
       args.layoutRevisionRef.current = nextState.layoutRevision;
     }
-    args.setDetailNodeId((current) => (current && nextNodes.some((node) => node.id === current) ? current : null));
   }
 
   return {

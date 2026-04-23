@@ -48,6 +48,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
     override fun setUp() {
         super.setUp()
         project.registerServiceInstance(GraphEditorStateService::class.java, GraphEditorStateService())
+        project.registerServiceInstance(LinkGraphProjectTestOverrides::class.java, LinkGraphProjectTestOverrides())
         project.registerServiceInstance(LinkGraphProjectService::class.java, LinkGraphProjectService(project))
     }
 
@@ -61,6 +62,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
 
         val service = project.getService(LinkGraphProjectService::class.java)
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
         val resourceHandle = ResourceSubjectHandle(
             subjectId = "resource-markdown:order-flow-md",
             sourcePath = "order-flow.md",
@@ -69,7 +71,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
             kind = ResourceSubjectKind.MARKDOWN_PAGE,
             attributes = mapOf("path" to "order-flow.md"),
         )
-        service.testSubjectLocatorOverride = object : SubjectLocator {
+        testOverrides.subjectLocator = object : SubjectLocator {
             override fun locate(
                 project: Project,
                 editor: Editor?,
@@ -82,7 +84,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
                 commitDocument: Boolean,
             ): SubjectPreviewKind = SubjectPreviewKind.RESOURCE_SUBJECT
         }
-        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+        testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(
                 listOf(
                     object : SemanticProvider {
@@ -209,11 +211,12 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         }
 
         val service = project.getService(LinkGraphProjectService::class.java)
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
         val codeHandle = assertInstanceOf(
             CaretSubjectLocator().locate(project, myFixture.editor),
             CodeSubjectHandle::class.java,
         )
-        service.testSubjectLocatorOverride = object : SubjectLocator {
+        testOverrides.subjectLocator = object : SubjectLocator {
             override fun locate(
                 project: Project,
                 editor: Editor?,
@@ -226,7 +229,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
                 commitDocument: Boolean,
             ): SubjectPreviewKind = SubjectPreviewKind.CODE_SUBJECT
         }
-        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+        testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
 
@@ -312,7 +315,8 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         }
 
         val service = project.getService(LinkGraphProjectService::class.java)
-        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
         service.requestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH)
@@ -409,7 +413,8 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         }
 
         val service = project.getService(LinkGraphProjectService::class.java)
-        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
         service.requestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
@@ -524,7 +529,8 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         }
 
         val service = project.getService(LinkGraphProjectService::class.java)
-        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
         service.requestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH)
@@ -652,7 +658,8 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         }
 
         val service = project.getService(LinkGraphProjectService::class.java)
-        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
         service.requestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
@@ -702,7 +709,8 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
 
         val service = project.getService(LinkGraphProjectService::class.java)
-        service.testSubjectLocatorOverride = object : com.charmnight.linkgraph.semantic.subject.SubjectLocator {
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        testOverrides.subjectLocator = object : com.charmnight.linkgraph.semantic.subject.SubjectLocator {
             override fun locate(
                 project: com.intellij.openapi.project.Project,
                 editor: com.intellij.openapi.editor.Editor?,
@@ -736,7 +744,8 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
         val analyzerCallCount = AtomicInteger(0)
         val service = project.getService(LinkGraphProjectService::class.java)
-        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(
                 listOf(semanticProvider { codeHandle, budgetPolicy ->
                     analyzerCallCount.incrementAndGet()
@@ -825,7 +834,8 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
         val analyzerCallCount = AtomicInteger(0)
         val service = project.getService(LinkGraphProjectService::class.java)
-        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(
                 listOf(semanticProvider { handle, _ ->
                     analyzerCallCount.incrementAndGet()
@@ -895,6 +905,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
 
         val service = project.getService(LinkGraphProjectService::class.java)
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
         service.loadCurrentEditorContextGraphAsync(myFixture.editor)
 
         waitForSnapshot { snapshot ->
@@ -925,6 +936,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
 
         val service = project.getService(LinkGraphProjectService::class.java)
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
         service.loadCurrentEditorContextGraphAsync(myFixture.editor)
 
         waitForSnapshot { snapshot ->
