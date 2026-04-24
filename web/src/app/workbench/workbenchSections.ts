@@ -26,7 +26,6 @@ const DEFAULT_SECTION_PREFERENCES: Record<WorkbenchSectionId, boolean> = {
   "draft.change-list": true,
   "draft.note-list": false,
   "draft.detail": true,
-  "draft.validation": false,
 };
 
 const AUDIT_COLLAPSE_PRIORITY: WorkbenchSectionConstraint[] = [

@@ -8,7 +8,6 @@ import type {
   GenerationPlanDiscussionSession,
   LinkGraphNode,
   OperationFeedback,
-  WorkbenchSectionPreferences,
 } from "../types";
 import { resolveAuditTargetNodeIds } from "../appGraphSupport";
 import type { useAppBridgeController } from "./useAppBridgeController";
@@ -30,14 +29,13 @@ interface UseAppWorkbenchShellControllerArgs {
   setAuditQuestionDraft: Dispatch<SetStateAction<string>>;
   setAuditSourceThreadId: Dispatch<SetStateAction<string | null>>;
   setActiveWorkbenchTab: Dispatch<SetStateAction<WorkbenchTab>>;
-  setWorkbenchSectionPreferences: Dispatch<SetStateAction<WorkbenchSectionPreferences>>;
   setOperationFeedback: Dispatch<SetStateAction<OperationFeedback | null>>;
   setDiffTargetItemIds: Dispatch<SetStateAction<string[]>>;
   handleRequestAudit: ReturnType<typeof useAuditWorkbenchController>["handleRequestAudit"];
   handleInspectNode: (nodeId: string) => void;
   bridgeCommands: Pick<
     ReturnType<typeof useAppBridgeController>,
-    "handleWorkbenchSectionPreferenceChange" | "handleConfirmImportMermaid"
+    "handleConfirmImportMermaid"
   >;
   workbenchCommands: Pick<
     ReturnType<typeof useWorkbenchCommandController>,
@@ -75,12 +73,7 @@ export function useAppWorkbenchShellController(args: UseAppWorkbenchShellControl
   }
 
   function handleOpenDraftValidation() {
-    args.setActiveWorkbenchTab("draft");
-    args.setWorkbenchSectionPreferences((current) => ({
-      ...current,
-      "draft.validation": true,
-    }));
-    args.bridgeCommands.handleWorkbenchSectionPreferenceChange("draft.validation", true);
+    args.setActiveWorkbenchTab("code");
   }
 
   function handleRequestGenerationPlan() {
@@ -91,7 +84,7 @@ export function useAppWorkbenchShellController(args: UseAppWorkbenchShellControl
       generationPlanRequestPhase: args.generationPlanRequestState.phase,
       hasGenerationPlan: args.generationPlan != null,
     });
-    args.setActiveWorkbenchTab("draft");
+    args.setActiveWorkbenchTab("code");
     args.workbenchCommands.handleRequestGenerationPlan();
   }
 
@@ -109,7 +102,7 @@ export function useAppWorkbenchShellController(args: UseAppWorkbenchShellControl
       });
       return;
     }
-    args.setActiveWorkbenchTab("draft");
+    args.setActiveWorkbenchTab("code");
     args.workbenchCommands.handleRequestGenerationPlanDiscussion(
       question,
       args.generationPlanDiscussionSession?.focusItemId ?? null,

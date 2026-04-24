@@ -71,19 +71,19 @@ describe("useAppBridgeController", () => {
     const { result, runBridgeCommand, submitAsyncBridgeCommand } = renderController();
 
     act(() => {
-      result.current.controller.handleWorkbenchSectionPreferenceChange("draft.validation", true);
+      result.current.controller.handleWorkbenchSectionPreferenceChange("audit.request-status", true);
       result.current.controller.handleConfirmImportMermaid("graph TD\nA-->B");
       result.current.controller.handleRequestDiffReview("why changed?", ["node-a"]);
       result.current.controller.handleWriteSingleCodeDraft("draft-1");
       result.current.controller.handleOpenCodeDraftNativeDiff("draft-1");
     });
 
-    expect(updateWorkbenchSectionPreference).toHaveBeenCalledWith("draft.validation", true);
+    expect(updateWorkbenchSectionPreference).toHaveBeenCalledWith("audit.request-status", true);
     expect(importMermaid).toHaveBeenCalledWith("graph TD\nA-->B");
     expect(requestDiffReviewAsync).toHaveBeenCalledWith("why changed?", ["node-a"]);
     expect(applySingleCodeDraft).toHaveBeenCalledWith("draft-1");
     expect(openCodeDraftNativeDiff).toHaveBeenCalledWith("draft-1");
-    expect(result.current.workbenchSectionPreferences["draft.validation"]).toBe(true);
+    expect(result.current.workbenchSectionPreferences["audit.request-status"]).toBe(true);
     expect(runBridgeCommand).toHaveBeenCalledTimes(3);
     expect(submitAsyncBridgeCommand).toHaveBeenCalledTimes(1);
     expect(result.current.importDialogOpen).toBe(false);

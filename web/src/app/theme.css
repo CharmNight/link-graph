@@ -435,8 +435,14 @@ button {
 .workbench-draft-head-actions {
   display: flex;
   justify-content: end;
+  align-items: flex-start;
   gap: 8px;
-  height: 100%;
+  height: auto;
+}
+
+.workbench-compare-action {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .audit-tab {
@@ -2733,6 +2739,12 @@ button {
   min-height: auto;
   overflow: visible;
   padding-right: 0;
+}
+
+.code-stage-analysis-stack {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
 }
 
 .side-panel-scroll-body {

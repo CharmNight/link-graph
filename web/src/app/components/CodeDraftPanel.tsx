@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 import type {
   AsyncRequestState,
   CodeEditOperation,
+  DraftImplementationSuggestionState,
+  DraftValidationState,
   GeneratedCodeDraft,
   GeneratedCodeDraftWriteReport,
+  GenerationPlanDiscussionSession,
   LlmResultSource,
   PreparedCodeEdit,
   StageEligibilityDecision,
@@ -11,6 +14,8 @@ import type {
 import { draftStatusLabel, normalizeOptionalWorkbenchWording, normalizeWorkbenchWording } from "../labels";
 import { AsyncRequestBanner, resolveEffectiveRequestState } from "./AsyncRequestBanner";
 import { ArtifactTextDisclosure } from "./ArtifactTextDisclosure";
+import { GenerationPlanPanel } from "./GenerationPlanPanel";
+import { DraftValidationPanel } from "../workbench/DraftValidationPanel";
 
 interface CodeDraftPanelProps {
   drafts: GeneratedCodeDraft[];
@@ -22,14 +27,23 @@ interface CodeDraftPanelProps {
   resolveArtifactText?: (artifactId: string) => string | null;
   onRequestArtifact?: (artifactId: string) => void;
   writeReport?: GeneratedCodeDraftWriteReport | null;
+  draftValidationState?: DraftValidationState | null;
+  implementationSuggestion?: DraftImplementationSuggestionState | null;
+  implementationSuggestionRequestState?: AsyncRequestState | null;
+  implementationSuggestionDiscussionQuestionDraft?: string;
+  implementationSuggestionDiscussionSession?: GenerationPlanDiscussionSession | null;
+  implementationSuggestionDiscussionRequestState?: AsyncRequestState | null;
   hasPlan?: boolean;
   eligibilityDecision?: StageEligibilityDecision | null;
   draftVersion?: number | null;
   generatedCodeDraftVersion?: number | null;
   onOpenDraftWorkbench: () => void;
   onOpenDraftValidation?: () => void;
+  onOpenAuditWorkbench?: () => void;
   onRequestPlan: () => void;
   onRequestDrafts: () => void;
+  onImplementationSuggestionDiscussionQuestionDraftChange?: (value: string) => void;
+  onSubmitImplementationSuggestionDiscussion?: () => void;
   onWriteDrafts: () => void;
   onWriteSingleDraft: (draftId: string) => void;
   onOpenNativeDiff?: (draftId: string) => void;
@@ -124,14 +138,23 @@ export function CodeDraftPanel({
   resolveArtifactText,
   onRequestArtifact,
   writeReport,
+  draftValidationState = null,
+  implementationSuggestion = null,
+  implementationSuggestionRequestState = null,
+  implementationSuggestionDiscussionQuestionDraft = "",
+  implementationSuggestionDiscussionSession = null,
+  implementationSuggestionDiscussionRequestState = null,
   hasPlan = false,
   eligibilityDecision,
   draftVersion = null,
   generatedCodeDraftVersion = null,
   onOpenDraftWorkbench,
   onOpenDraftValidation,
+  onOpenAuditWorkbench,
   onRequestPlan,
   onRequestDrafts,
+  onImplementationSuggestionDiscussionQuestionDraftChange,
+  onSubmitImplementationSuggestionDiscussion,
   onWriteDrafts,
   onWriteSingleDraft,
   onOpenNativeDiff,
@@ -169,6 +192,14 @@ export function CodeDraftPanel({
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(drafts[0]?.id ?? null);
   const selectedDraft = drafts.find((draft) => draft.id === selectedDraftId) ?? drafts[0] ?? null;
   const canWrite = !staleDrafts;
+  const implementationPlan = implementationSuggestion?.summary ? {
+    source: implementationSuggestion.source ?? "MOCK",
+    summary: implementationSuggestion.summary,
+    warnings: implementationSuggestion.warnings,
+    promptPreview: implementationSuggestion.promptPreview ?? null,
+    promptPreviewArtifactId: implementationSuggestion.promptPreviewArtifactId ?? null,
+    items: implementationSuggestion.items,
+  } : null;
 
   useEffect(() => {
     if (drafts.length === 0) {
@@ -180,6 +211,27 @@ export function CodeDraftPanel({
 
   return (
     <section className="side-panel code-draft-panel">
+      <div className="code-stage-analysis-stack">
+        <DraftValidationPanel
+          validationState={draftValidationState}
+          onOpenAuditWorkbench={onOpenAuditWorkbench}
+        />
+        <GenerationPlanPanel
+          plan={implementationPlan}
+          requestState={implementationSuggestionRequestState}
+          discussionQuestionDraft={implementationSuggestionDiscussionQuestionDraft}
+          discussionSession={implementationSuggestionDiscussionSession}
+          discussionRequestState={implementationSuggestionDiscussionRequestState}
+          draftVersion={draftVersion}
+          generationPlanDraftVersion={implementationSuggestion?.generationPlanDraftVersion ?? null}
+          resolveArtifactText={resolveArtifactText}
+          onRequestArtifact={onRequestArtifact}
+          onRequestGeneratePlan={onRequestPlan}
+          onDiscussionQuestionDraftChange={onImplementationSuggestionDiscussionQuestionDraftChange}
+          onSubmitDiscussion={onSubmitImplementationSuggestionDiscussion}
+        />
+      </div>
+
       <div className="preview-head w-full gap-0 block">
         <div>
           <p className="eyebrow">代码 diff</p>

@@ -510,7 +510,7 @@ describe.sequential("App", () => {
     expect(screen.getByLabelText("流程图摘要")).toBeInTheDocument();
   });
 
-  it("switches to the draft tab when requesting implementation suggestions from the toolbar without synthesizing a local running state", async () => {
+  it("switches to the code tab when requesting implementation suggestions from the toolbar without synthesizing a local running state", async () => {
     const user = userEvent.setup();
 
     render(<App />);
@@ -518,9 +518,9 @@ describe.sequential("App", () => {
     await user.click(screen.getByRole("button", { name: "更多操作" }));
     await user.click(screen.getByRole("menuitem", { name: "生成实现建议" }));
 
-    expect(screen.getByRole("tab", { name: "草稿" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "代码" })).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByText("正在生成实现建议，请稍候。")).not.toBeInTheDocument();
-    expect(screen.getByText("实现建议会基于当前草稿快照生成。")).toBeInTheDocument();
+    expect(screen.getAllByText("实现建议会基于当前草稿快照生成。").length).toBeGreaterThan(0);
     expect(window.linkGraphBridge?.requestGenerationPlan).toHaveBeenCalledTimes(1);
   });
 
@@ -539,7 +539,7 @@ describe.sequential("App", () => {
     await user.click(screen.getByRole("button", { name: "更多操作" }));
     await user.click(screen.getByRole("menuitem", { name: "生成实现建议" }));
 
-    expect(screen.getByRole("tab", { name: "草稿" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "代码" })).toHaveAttribute("aria-selected", "true");
     expect(window.linkGraphBridge?.requestGenerationPlan).toHaveBeenCalledTimes(1);
   });
 
@@ -618,7 +618,7 @@ describe.sequential("App", () => {
     expect(screen.queryByText(/代码 diff 生成：已提交代码草稿请求/)).not.toBeInTheDocument();
   });
 
-  it("renders implementation suggestions inside draft and code diff results inside code from bootstrap state", async () => {
+  it("renders migrated implementation analysis above code diff results from bootstrap state", async () => {
     const user = userEvent.setup();
     window.linkGraphBootstrap = structuredClone({
       ...bootstrapStateFixture(),
@@ -657,15 +657,15 @@ describe.sequential("App", () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole("tab", { name: "草稿" }));
-    expect(screen.getByText("实现建议")).toBeInTheDocument();
-    expect(screen.getByText("草稿版本 v2")).toBeInTheDocument();
-    expect(screen.getByText("实现建议：最新（v2）")).toBeInTheDocument();
-    expect(screen.getByText("代码 diff：最新（v2）")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "代码" }));
+    const codePanel = screen.getByRole("tabpanel", { name: "代码" });
+    const codeText = codePanel.textContent ?? "";
+    expect(codeText.indexOf("实现建议")).toBeGreaterThanOrEqual(0);
+    expect(codeText.indexOf("实现建议")).toBeLessThan(codeText.indexOf("代码 diff 工作台"));
+    expect(screen.getAllByText("基于草稿 v2 生成").length).toBeGreaterThan(0);
     expect(screen.getByText("修改 CommonController.fileDownload 并保留现有正常路径逻辑。")).toBeInTheDocument();
     expect(screen.getByText("任务：修改 fileDownload 的路径判定")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "代码" }));
     expect(screen.getByRole("heading", { name: "代码 diff 工作台" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "选择代码 diff 文件：CommonController.java" })).toBeInTheDocument();
     expect(screen.getByText("请复核异常类型。")).toBeInTheDocument();
@@ -811,13 +811,10 @@ describe.sequential("App", () => {
     });
   });
 
-  it("opens and expands draft validation when code generation is blocked by unresolved risks", async () => {
+  it("keeps blocked code generation focused on the code tab validation analysis", async () => {
     const user = userEvent.setup();
     window.linkGraphBootstrap = structuredClone({
       ...bootstrapStateFixture(),
-      workbenchSectionPreferences: {
-        "draft.validation": false,
-      },
       draftValidationState: {
         status: "REVIEW_REQUIRED",
         message: "当前草稿仍有待验证风险。",
@@ -854,16 +851,9 @@ describe.sequential("App", () => {
     await user.click(screen.getByRole("tab", { name: "代码" }));
     await user.click(screen.getByRole("button", { name: "处理阻塞风险" }));
 
-    expect(screen.getByRole("tab", { name: "草稿" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("button", { name: "收起草稿验证" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "代码" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("当前草稿仍有待验证风险。")).toBeInTheDocument();
-    expect(
-      (
-        window.linkGraphBridge as typeof window.linkGraphBridge & {
-          updateWorkbenchSectionPreference: ReturnType<typeof vi.fn>;
-        }
-      )?.updateWorkbenchSectionPreference,
-    ).toHaveBeenCalledWith("draft.validation", true);
+    expect(window.linkGraphBridge?.updateWorkbenchSectionPreference).not.toHaveBeenCalled();
   });
 
   it("turns an investigation thread into a concrete continue-investigation path", async () => {

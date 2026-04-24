@@ -20,6 +20,60 @@ function eligibilityDecisionFixture(
 }
 
 describe("CodeDraftPanel", () => {
+  it("places draft validation and implementation suggestions above the code diff module", () => {
+    const { container } = render(
+      <CodeDraftPanel
+        {...({
+          draftValidationState: {
+            status: "READY",
+            message: "草稿验证已通过，可以进入代码阶段。",
+            detailMessage: null,
+            unresolvedThreadIds: [],
+            unresolvedThreads: [],
+          },
+          implementationSuggestion: {
+            status: "FRESH",
+            source: "REMOTE",
+            summary: "先整理 CommonController.fileDownload 的实现路径。",
+            warnings: [],
+            promptPreview: null,
+            promptPreviewArtifactId: null,
+            generationPlanDraftVersion: 3,
+            items: [
+              {
+                id: "plan-file-download",
+                title: "补删除前置校验",
+                description: "先确认 filePath 存在，再执行删除分支。",
+                targetPath: "src/main/java/com/example/CommonController.java",
+                risk: "MEDIUM",
+              },
+            ],
+          },
+        } as any)}
+        drafts={[]}
+        warnings={[]}
+        source={null}
+        promptPreview={null}
+        writeReport={null}
+        hasPlan={true}
+        eligibilityDecision={eligibilityDecisionFixture()}
+        onOpenDraftWorkbench={() => undefined}
+        onRequestPlan={() => undefined}
+        onRequestDrafts={() => undefined}
+        onWriteDrafts={() => undefined}
+        onWriteSingleDraft={() => undefined}
+        onOpenDraft={() => undefined}
+      />,
+    );
+
+    const text = container.textContent ?? "";
+    expect(text.indexOf("草稿验证")).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf("实现建议")).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf("草稿验证")).toBeLessThan(text.indexOf("代码 diff 工作台"));
+    expect(text.indexOf("实现建议")).toBeLessThan(text.indexOf("代码 diff 工作台"));
+    expect(screen.getByText("先整理 CommonController.fileDownload 的实现路径。")).toBeInTheDocument();
+  });
+
   it("offers a direct generate-plan action before any plan exists", async () => {
     const user = userEvent.setup();
     const events: string[] = [];

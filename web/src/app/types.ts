@@ -649,8 +649,7 @@ export type WorkbenchSectionId =
   | "audit.investigation-threads"
   | "draft.change-list"
   | "draft.note-list"
-  | "draft.detail"
-  | "draft.validation";
+  | "draft.detail";
 
 export type WorkbenchSectionPreferences = Partial<Record<WorkbenchSectionId, boolean>>;
 

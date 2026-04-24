@@ -76,7 +76,7 @@ describe("DraftTab", () => {
     expect(themeCss).toMatch(/\.draft-layout\s*\{[^}]*align-content:\s*start;[^}]*overflow:\s*visible;/s);
     expect(themeCss).toMatch(/\.workbench-draft-sidebar\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*overflow:\s*visible;/s);
     expect(themeCss).toMatch(/\.draft-layout\s+\.workbench-section-card\.expanded\s*\{[^}]*flex:\s*0\s+0\s+auto;[^}]*min-height:\s*auto;/s);
-    expect(themeCss).toMatch(/\.workbench-draft-implementation-suggestion\s*\{[^}]*min-width:\s*0;[^}]*align-self:\s*start;/s);
+    expect(themeCss).toMatch(/\.workbench-draft-main\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*overflow:\s*visible;/s);
   });
 
   it("keeps draft detail below the tab header instead of letting content be covered", () => {
@@ -86,8 +86,7 @@ describe("DraftTab", () => {
     expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.workbench-draft-sidebar,\s*\.workbench-draft-main\s*\{[\s\S]*min-height:\s*auto;/);
     expect(themeCss).toMatch(/\.draft-layout\s+\.workbench-section-card-body\s*\{[^}]*flex:\s*0\s+0\s+auto;[^}]*min-height:\s*auto;/s);
     expect(themeCss).toMatch(/\.draft-layout\s+\.workbench-section-card-body\s*>\s*\.workbench-draft-section\s*\{[^}]*min-height:\s*auto;/s);
-    expect(themeCss).toMatch(/\.workbench-draft-implementation-suggestion\s*\{[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/\.generation-plan-panel\s*\{[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.workbench-draft-main\s*\{[^}]*overflow:\s*visible;/s);
   });
 
   it("expands the selected draft note list so note context is visible", () => {
@@ -107,7 +106,7 @@ describe("DraftTab", () => {
     expect(screen.getByRole("button", { name: "收起草稿变更项" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "收起草稿说明详情" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "收起草稿说明项" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "草稿验证" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "草稿验证" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "草稿条目：上传目录说明" })).toBeInTheDocument();
     expect(screen.queryByText("草稿验证状态正在同步，当前先以草稿内容作为后续生成的唯一输入。")).not.toBeInTheDocument();
   });
@@ -393,7 +392,7 @@ describe("DraftTab", () => {
     expect(within(detailCard as HTMLElement).getByText("if (a < 100)")).toBeInTheDocument();
   });
 
-  it("renders an implementation suggestion section inside draft instead of requiring a standalone plan page", () => {
+  it("keeps implementation suggestion status in draft without rendering the migrated analysis detail", () => {
     render(
       <DraftTab
         {...({
@@ -433,12 +432,11 @@ describe("DraftTab", () => {
       />,
     );
 
-    expect(screen.getByText("实现建议")).toBeInTheDocument();
     expect(screen.getByText("草稿版本 v3")).toBeInTheDocument();
     expect(screen.getByText("实现建议：最新（v3）")).toBeInTheDocument();
     expect(screen.getByText("代码 diff：待刷新（v2）")).toBeInTheDocument();
-    expect(screen.getByText("先修改 OrderController.submit，再补上传目录分支。")).toBeInTheDocument();
-    expect(screen.getByText("任务：修改 OrderController.submit")).toBeInTheDocument();
+    expect(screen.queryByText("先修改 OrderController.submit，再补上传目录分支。")).not.toBeInTheDocument();
+    expect(screen.queryByText("任务：修改 OrderController.submit")).not.toBeInTheDocument();
   });
 
   it("makes the compare-state change visible near the top of the draft pane", () => {
@@ -486,7 +484,32 @@ describe("DraftTab", () => {
     expect(nodePosition).toBeGreaterThan(comparePosition);
   });
 
-  it("keeps implementation suggestions on the page scroll instead of nesting a second scroll container", () => {
+  it("keeps the draft compare controls compact instead of stretching across the header", () => {
+    render(
+      <DraftTab
+        state={{
+          ...draftStateFixture(),
+          selectedEntryId: "draft-change-1",
+        }}
+        onToggleCompare={vi.fn()}
+        onSelectEntry={vi.fn()}
+        onLocateChangeNode={vi.fn()}
+        onUnconfirmChange={vi.fn()}
+        onOpenNote={vi.fn()}
+        onLocateNoteNode={vi.fn()}
+        resolveNodeTitle={() => "OrderController.submit"}
+      />,
+    );
+
+    const compareStatus = screen.getByText("当前显示：修改后");
+    const compareAction = screen.getByRole("button", { name: "一键对比前后" });
+    expect(compareStatus).toHaveClass("workbench-compare-mode");
+    expect(compareAction).toHaveClass("workbench-compare-action");
+    expect(compareAction).not.toHaveClass("workbench-compare-mode");
+    expect(themeCss).toMatch(/\.workbench-draft-head-actions\s*\{[^}]*align-items:\s*flex-start;[^}]*height:\s*auto;/s);
+  });
+
+  it("does not keep the migrated implementation analysis inside the draft tab", () => {
     const { container } = render(
       <DraftTab
         state={draftStateFixture()}
@@ -521,11 +544,9 @@ describe("DraftTab", () => {
       />,
     );
 
-    expect(container.querySelector(".workbench-draft-implementation-suggestion > .generation-plan-panel")).not.toBeNull();
-    expect(container.querySelector(".workbench-draft-implementation-suggestion .generation-plan-flow-body")).not.toBeNull();
-    expect(themeCss).toMatch(
-      /\.workbench-draft-implementation-suggestion\s*\{[^}]*min-width:\s*0;[^}]*align-self:\s*start;/s,
-    );
+    expect(container.querySelector(".workbench-draft-implementation-suggestion")).toBeNull();
+    expect(container.querySelector(".generation-plan-panel")).toBeNull();
+    expect(screen.queryByText("这是一段足够长的实现建议摘要，用来验证实现建议区域会跟随外层工作台自然铺开，而不是自己出现内部滚动条。")).not.toBeInTheDocument();
   });
 
   it("auto-expands the draft note list when the selected draft entry is a note", () => {

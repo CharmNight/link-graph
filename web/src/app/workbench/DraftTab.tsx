@@ -1,39 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import type {
-  AsyncRequestState,
-  DraftValidationState,
   DraftImplementationSuggestionState,
   DraftWorkbenchEntry,
   DraftWorkbenchViewState,
-  GenerationPlanDiscussionSession,
   WorkbenchSectionId,
   WorkbenchSectionPreferences,
 } from "../types";
 import { DraftChangePanel } from "./DraftChangePanel";
 import { DraftDetailPanel } from "./DraftDetailPanel";
 import { DraftNotePanel } from "./DraftNotePanel";
-import { GenerationPlanPanel } from "../components/GenerationPlanPanel";
-import { DraftValidationPanel } from "./DraftValidationPanel";
 import { WorkbenchSection } from "./WorkbenchSection";
 import { resolveEffectiveWorkbenchSectionPreferences } from "./workbenchSections";
 
 interface DraftTabProps {
   state: DraftWorkbenchViewState;
   implementationSuggestion?: DraftImplementationSuggestionState | null;
-  implementationSuggestionRequestState?: AsyncRequestState | null;
-  draftValidationState?: DraftValidationState | null;
-  implementationSuggestionDiscussionQuestionDraft?: string;
-  implementationSuggestionDiscussionSession?: GenerationPlanDiscussionSession | null;
-  implementationSuggestionDiscussionRequestState?: AsyncRequestState | null;
   draftVersion?: number | null;
   codeDiffStatus?: "MISSING" | "RUNNING" | "FRESH" | "STALE" | "FAILED";
   codeDiffDraftVersion?: number | null;
-  resolveArtifactText?: (artifactId: string) => string | null;
-  onRequestArtifact?: (artifactId: string) => void;
-  onRequestGeneratePlan?: () => void;
-  onImplementationSuggestionDiscussionQuestionDraftChange?: (value: string) => void;
-  onSubmitImplementationSuggestionDiscussion?: () => void;
-  onOpenAuditWorkbench?: () => void;
   onToggleCompare: () => void;
   onSelectEntry: (entryId: string) => void;
   onLocateChangeNode: (entryId: string) => void;
@@ -48,20 +32,9 @@ interface DraftTabProps {
 export function DraftTab({
   state,
   implementationSuggestion = null,
-  implementationSuggestionRequestState = null,
-  draftValidationState = null,
-  implementationSuggestionDiscussionQuestionDraft = "",
-  implementationSuggestionDiscussionSession = null,
-  implementationSuggestionDiscussionRequestState = null,
   draftVersion = null,
   codeDiffStatus = "MISSING",
   codeDiffDraftVersion = null,
-  resolveArtifactText,
-  onRequestArtifact,
-  onRequestGeneratePlan = () => undefined,
-  onImplementationSuggestionDiscussionQuestionDraftChange = () => undefined,
-  onSubmitImplementationSuggestionDiscussion = () => undefined,
-  onOpenAuditWorkbench,
   onToggleCompare,
   onSelectEntry,
   onLocateChangeNode,
@@ -175,7 +148,7 @@ export function DraftTab({
         </div>
         <div className="workbench-draft-head-actions flex-col md:flex-row shrink-0">
           <span className="workbench-compare-mode">{compareModeLabel}</span>
-          <button type="button" className="workbench-compare-mode " onClick={onToggleCompare} disabled={!compareAvailable}>
+          <button type="button" className="ghost-button compact workbench-compare-action" onClick={onToggleCompare} disabled={!compareAvailable}>
             {compareActionLabel}
           </button>
         </div>
@@ -227,39 +200,6 @@ export function DraftTab({
               showTitle={false}
             />
           </WorkbenchSection>
-          <WorkbenchSection
-            title="草稿验证"
-            expanded={effectiveSectionPreferences["draft.validation"] ?? true}
-            onToggle={(nextExpanded) => handleSectionToggle("draft.validation", nextExpanded)}
-          >
-            <DraftValidationPanel
-              validationState={draftValidationState}
-              onOpenAuditWorkbench={onOpenAuditWorkbench}
-            />
-          </WorkbenchSection>
-          <div className="workbench-draft-implementation-suggestion">
-            <GenerationPlanPanel
-              plan={implementationSuggestion?.summary ? {
-                source: implementationSuggestion.source ?? "MOCK",
-                summary: implementationSuggestion.summary,
-                warnings: implementationSuggestion.warnings,
-                promptPreview: implementationSuggestion.promptPreview ?? null,
-                promptPreviewArtifactId: implementationSuggestion.promptPreviewArtifactId ?? null,
-                items: implementationSuggestion.items,
-              } : null}
-              requestState={implementationSuggestionRequestState}
-              discussionQuestionDraft={implementationSuggestionDiscussionQuestionDraft}
-              discussionSession={implementationSuggestionDiscussionSession}
-              discussionRequestState={implementationSuggestionDiscussionRequestState}
-              draftVersion={draftVersion}
-              generationPlanDraftVersion={implementationSuggestion?.generationPlanDraftVersion ?? null}
-              resolveArtifactText={resolveArtifactText}
-              onRequestArtifact={onRequestArtifact}
-              onRequestGeneratePlan={onRequestGeneratePlan}
-              onDiscussionQuestionDraftChange={onImplementationSuggestionDiscussionQuestionDraftChange}
-              onSubmitDiscussion={onSubmitImplementationSuggestionDiscussion}
-            />
-          </div>
         </div>
       </div>
     </section>
