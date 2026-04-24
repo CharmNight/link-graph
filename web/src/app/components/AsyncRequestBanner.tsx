@@ -149,21 +149,22 @@ export function AsyncRequestBanner({
     return null;
   }
   const hasExpandableDetails = Boolean(preview) || telemetry.length > 0 || Boolean(expandedDetail);
-  const [detailsExpanded, setDetailsExpanded] = useState(() => !telemetryCollapsedByDefault);
-  const shouldShowDetails = !hasExpandableDetails || detailsExpanded;
+  const shouldCollapseDetailsByDefault = telemetryCollapsedByDefault || Boolean(preview);
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  const shouldShowDetails = !shouldCollapseDetailsByDefault || detailsExpanded;
 
   return (
-    <div className={`request-state-banner ${tone ?? ""}`.trim()}>
+    <div className={`request-state-banner ${tone ?? ""}`.trim()} aria-live="polite">
       <div className="request-state-banner-head">
         {title ? <strong className="request-state-banner-title">{title}</strong> : null}
-        {hasExpandableDetails && telemetryCollapsedByDefault ? (
+        {hasExpandableDetails && shouldCollapseDetailsByDefault ? (
           <button
             type="button"
             className="ghost-button compact"
-            aria-expanded={detailsExpanded}
+            aria-expanded={shouldShowDetails}
             onClick={() => setDetailsExpanded((current) => !current)}
           >
-            {detailsExpanded ? "收起请求详情" : "展开请求详情"}
+            {shouldShowDetails ? "收起请求详情" : "展开请求详情"}
           </button>
         ) : null}
       </div>

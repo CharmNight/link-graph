@@ -3,6 +3,36 @@ import userEvent from "@testing-library/user-event";
 import { AsyncRequestBanner } from "../../../app/components/AsyncRequestBanner";
 
 describe("AsyncRequestBanner", () => {
+  it("keeps streaming preview text collapsed by default so raw LLM payloads do not flood panels", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AsyncRequestBanner
+        requestState={{
+          phase: "RUNNING",
+          statusMessage: "正在等待远程 LLM 实现建议生成响应",
+          detailMessage: "当前采用流式输出，界面会持续追加预览。",
+          errorMessage: null,
+          streaming: true,
+          previewText: "{\"summary\":\"调整 fileDownload 的删除分支判断\",\"items\":[{\"id\":\"x\"}]}",
+          requestId: 10,
+          scene: "实现计划",
+          executionMode: "REMOTE_READY",
+          promptPreviewAvailable: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("正在等待远程 LLM 实现建议生成响应")).toBeInTheDocument();
+    expect(screen.getByText("当前采用流式输出，界面会持续追加预览。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "展开请求详情" })).toBeInTheDocument();
+    expect(screen.queryByText(/调整 fileDownload 的删除分支判断/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "展开请求详情" }));
+
+    expect(screen.getByText(/调整 fileDownload 的删除分支判断/)).toBeInTheDocument();
+  });
+
   it("describes streaming requests as preview-oriented while they are still running", () => {
     render(
       <AsyncRequestBanner

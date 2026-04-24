@@ -645,6 +645,43 @@ describe("AuditTab", () => {
     expect(onBoundaryMouseDown).not.toHaveBeenCalled();
   });
 
+  it("keeps pending LLM preview out of the empty chat thread while the request is still running", () => {
+    render(
+      <AuditTab
+        state={{
+          ...auditStateFixture(),
+          requestState: {
+            phase: "RUNNING",
+            scene: "问答",
+            statusMessage: "正在等待远程 LLM 问答响应",
+            detailMessage: "当前采用流式输出，界面会持续追加预览。",
+            previewText: "{\"summary\":\"这个方法负责文件上传\",\"changes\":[]}",
+            errorMessage: null,
+            streaming: true,
+          },
+          result: {
+            ...auditStateFixture().result!,
+            auditSession: {
+              ...auditStateFixture().result!.auditSession!,
+              messages: [],
+            },
+          },
+        }}
+        onQuestionDraftChange={vi.fn()}
+        onSubmitQuestion={vi.fn()}
+        onSelectChange={vi.fn()}
+        onConfirmChange={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
+        sectionPreferences={{ "audit.thread": true }}
+      />,
+    );
+
+    expect(screen.getByText(/正在接收问答回答/)).toBeInTheDocument();
+    expect(screen.getByText(/流式内容会先在“请求状态”里持续更新/)).toBeInTheDocument();
+    expect(screen.queryByText(/这个方法负责文件上传/)).not.toBeInTheDocument();
+  });
+
   it("renders assistant answers as readable sections instead of one raw paragraph", async () => {
     const user = userEvent.setup();
     const { container } = render(

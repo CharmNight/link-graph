@@ -343,7 +343,6 @@ export function AuditConversation({
   investigationThreads = [],
   requestState = null,
 }: AuditConversationProps) {
-  const requestPreview = requestState?.previewText?.trim() || null;
   const requestRunning = requestState?.phase === "RUNNING";
   const outcomesById = new Map(turnOutcomes.map((outcome) => [outcome.outcomeId, outcome]));
   const threadsById = new Map(investigationThreads.map((thread) => [thread.threadId, thread]));
@@ -358,9 +357,6 @@ export function AuditConversation({
                 <strong>正在接收问答回答。</strong>
                 流式内容会先在“请求状态”里持续更新，完成后会落到问答会话中。
               </p>
-              {requestPreview ? (
-                <pre className="request-state-preview workbench-chat-pending-preview">{requestPreview}</pre>
-              ) : null}
             </>
           ) : (
             <p>

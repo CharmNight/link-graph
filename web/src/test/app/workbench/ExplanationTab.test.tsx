@@ -255,9 +255,10 @@ describe("ExplanationTab", () => {
     expect(onLocateStepNode).toHaveBeenCalledWith("step-read-upload-dir");
   });
 
-  it("lets the explanation reader contribute its full height to the workbench scroller", () => {
+  it("fills the explanation reader height and lets child panes own scrolling", () => {
     expect(themeCss).toMatch(/\.workbench-tab\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
-    expect(themeCss).toMatch(/\.explanation-layout\s*\{[^}]*grid-template-columns:\s*320px\s+minmax\(0,\s*1fr\);[^}]*align-items:\s*start;/s);
+    expect(themeCss).toMatch(/\.explanation-layout\s*\{[^}]*grid-template-columns:\s*320px\s+minmax\(0,\s*1fr\);[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\);[^}]*align-items:\s*stretch;[^}]*align-content:\s*stretch;[^}]*height:\s*100%;/s);
+    expect(themeCss).toMatch(/\.explanation-tab\s*\{[^}]*overflow-y:\s*hidden;/s);
   });
 
   it("uses a wider fixed step-list column and prevents horizontal scrolling in explanation panes", () => {
