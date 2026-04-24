@@ -181,13 +181,12 @@ export function DraftTab({
         </div>
       </div>
       <div ref={layoutRef} className="workbench-tab-body draft-layout">
-        <div className="workbench-draft-sidebar mb-10px">
+        <div className="workbench-draft-sidebar">
           <WorkbenchSection
             title="草稿变更项"
             expanded={effectiveSectionPreferences["draft.change-list"] ?? true}
             onToggle={(nextExpanded) => handleSectionToggle("draft.change-list", nextExpanded)}
             meta={<span className="badge">{state.draftState.draftChanges.length}</span>}
-            minBodyHeight={160}
           >
             <DraftChangePanel
               changes={state.draftState.draftChanges}
@@ -201,7 +200,6 @@ export function DraftTab({
             expanded={selectedEntryIsNote || (effectiveSectionPreferences["draft.note-list"] ?? false)}
             onToggle={(nextExpanded) => handleSectionToggle("draft.note-list", nextExpanded)}
             meta={<span className="badge">{state.draftState.draftNotes.length}</span>}
-            minBodyHeight={140}
           >
             <DraftNotePanel
               notes={state.draftState.draftNotes}
@@ -211,57 +209,57 @@ export function DraftTab({
             />
           </WorkbenchSection>
         </div>
-        <WorkbenchSection
-          title={detailTitle}
-          expanded={effectiveSectionPreferences["draft.detail"] ?? true}
-          onToggle={(nextExpanded) => handleSectionToggle("draft.detail", nextExpanded)}
-          meta={selectedEntry ? <span className="badge">{selectedEntry.kind === "CHANGE" ? "变更" : "说明"}</span> : null}
-          minBodyHeight={260}
-        >
-          <DraftDetailPanel
-            entry={selectedEntry}
-            compareMode={state.compareMode}
-            onLocateChangeNode={onLocateChangeNode}
-            onUnconfirmChange={onUnconfirmChange}
-            onOpenNote={onOpenNote}
-            onLocateNoteNode={onLocateNoteNode}
-            resolveNodeTitle={resolveNodeTitle}
-            showTitle={false}
-          />
-        </WorkbenchSection>
-        <WorkbenchSection
-          title="草稿验证"
-          expanded={effectiveSectionPreferences["draft.validation"] ?? true}
-          onToggle={(nextExpanded) => handleSectionToggle("draft.validation", nextExpanded)}
-          minBodyHeight={180}
-        >
-          <DraftValidationPanel
-            validationState={draftValidationState}
-            onOpenAuditWorkbench={onOpenAuditWorkbench}
-          />
-        </WorkbenchSection>
-        <div className="workbench-draft-implementation-suggestion">
-          <GenerationPlanPanel
-            plan={implementationSuggestion?.summary ? {
-              source: implementationSuggestion.source ?? "MOCK",
-              summary: implementationSuggestion.summary,
-              warnings: implementationSuggestion.warnings,
-              promptPreview: implementationSuggestion.promptPreview ?? null,
-              promptPreviewArtifactId: implementationSuggestion.promptPreviewArtifactId ?? null,
-              items: implementationSuggestion.items,
-            } : null}
-            requestState={implementationSuggestionRequestState}
-            discussionQuestionDraft={implementationSuggestionDiscussionQuestionDraft}
-            discussionSession={implementationSuggestionDiscussionSession}
-            discussionRequestState={implementationSuggestionDiscussionRequestState}
-            draftVersion={draftVersion}
-            generationPlanDraftVersion={implementationSuggestion?.generationPlanDraftVersion ?? null}
-            resolveArtifactText={resolveArtifactText}
-            onRequestArtifact={onRequestArtifact}
-            onRequestGeneratePlan={onRequestGeneratePlan}
-            onDiscussionQuestionDraftChange={onImplementationSuggestionDiscussionQuestionDraftChange}
-            onSubmitDiscussion={onSubmitImplementationSuggestionDiscussion}
-          />
+        <div className="workbench-draft-main">
+          <WorkbenchSection
+            title={detailTitle}
+            expanded={effectiveSectionPreferences["draft.detail"] ?? true}
+            onToggle={(nextExpanded) => handleSectionToggle("draft.detail", nextExpanded)}
+            meta={selectedEntry ? <span className="badge">{selectedEntry.kind === "CHANGE" ? "变更" : "说明"}</span> : null}
+          >
+            <DraftDetailPanel
+              entry={selectedEntry}
+              compareMode={state.compareMode}
+              onLocateChangeNode={onLocateChangeNode}
+              onUnconfirmChange={onUnconfirmChange}
+              onOpenNote={onOpenNote}
+              onLocateNoteNode={onLocateNoteNode}
+              resolveNodeTitle={resolveNodeTitle}
+              showTitle={false}
+            />
+          </WorkbenchSection>
+          <WorkbenchSection
+            title="草稿验证"
+            expanded={effectiveSectionPreferences["draft.validation"] ?? true}
+            onToggle={(nextExpanded) => handleSectionToggle("draft.validation", nextExpanded)}
+          >
+            <DraftValidationPanel
+              validationState={draftValidationState}
+              onOpenAuditWorkbench={onOpenAuditWorkbench}
+            />
+          </WorkbenchSection>
+          <div className="workbench-draft-implementation-suggestion">
+            <GenerationPlanPanel
+              plan={implementationSuggestion?.summary ? {
+                source: implementationSuggestion.source ?? "MOCK",
+                summary: implementationSuggestion.summary,
+                warnings: implementationSuggestion.warnings,
+                promptPreview: implementationSuggestion.promptPreview ?? null,
+                promptPreviewArtifactId: implementationSuggestion.promptPreviewArtifactId ?? null,
+                items: implementationSuggestion.items,
+              } : null}
+              requestState={implementationSuggestionRequestState}
+              discussionQuestionDraft={implementationSuggestionDiscussionQuestionDraft}
+              discussionSession={implementationSuggestionDiscussionSession}
+              discussionRequestState={implementationSuggestionDiscussionRequestState}
+              draftVersion={draftVersion}
+              generationPlanDraftVersion={implementationSuggestion?.generationPlanDraftVersion ?? null}
+              resolveArtifactText={resolveArtifactText}
+              onRequestArtifact={onRequestArtifact}
+              onRequestGeneratePlan={onRequestGeneratePlan}
+              onDiscussionQuestionDraftChange={onImplementationSuggestionDiscussionQuestionDraftChange}
+              onSubmitDiscussion={onSubmitImplementationSuggestionDiscussion}
+            />
+          </div>
         </div>
       </div>
     </section>

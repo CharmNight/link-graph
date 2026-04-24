@@ -407,7 +407,7 @@ describe("CodeDraftPanel", () => {
 
     expect(container.querySelector(".code-draft-panel > .side-panel-scroll-body")).not.toBeNull();
     expect(themeCss).toMatch(
-      /\.code-draft-panel\s*\{[^}]*display:\s*grid;[^}]*min-height:\s*0;[^}]*overflow:\s*auto;/s,
+      /\.code-draft-panel\s*\{[^}]*display:\s*grid;[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s,
     );
     expect(themeCss).toMatch(
       /\.code-draft-panel\s*>\s*\.side-panel-scroll-body\s*\{[^}]*min-height:\s*auto;[^}]*overflow:\s*visible;/s,
@@ -445,7 +445,7 @@ describe("CodeDraftPanel", () => {
   });
 
   it("lets the outer draft scroll container own full-content scrolling instead of nesting prompt-preview scrollbars", () => {
-    expect(themeCss).toMatch(/\.code-draft-panel\s*\{[^}]*overflow:\s*auto;/s);
+    expect(themeCss).toMatch(/\.code-draft-panel\s*\{[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
     expect(themeCss).toMatch(
       /\.code-draft-panel\s*>\s*\.side-panel-scroll-body\s*\{[^}]*min-height:\s*auto;[^}]*overflow:\s*visible;/s,
     );

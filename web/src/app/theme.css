@@ -319,7 +319,9 @@ button {
   min-height: 0;
   padding: 12px;
   display: flex;
+  flex-direction: column;
   flex: 0 0 auto;
+  align-self: stretch;
   min-width: 0;
   container-type: inline-size;
   overflow: hidden;
@@ -392,28 +394,25 @@ button {
 .workbench-panel-body {
   min-height: 0;
   min-width: 0;
-  flex: 1 1 auto;
-  overflow-y: auto;
-  overflow-x: hidden;
-  display: flex;
-  align-items: stretch;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 20px;
   background: rgba(255, 252, 247, 0.92);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
-  scrollbar-gutter: stable;
 }
 
 .workbench-panel-body>* {
-  flex: 1 1 auto;
+  height: 100%;
   width: 100%;
   min-width: 0;
-  min-height: 100%;
+  min-height: 0;
 }
 
 .workbench-tab {
-  height: auto;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   min-width: 0;
   width: 100%;
   display: grid;
@@ -421,7 +420,9 @@ button {
   align-content: stretch;
   gap: 14px;
   padding: 16px;
-  overflow: visible;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
 }
 
 .workbench-tab-head {
@@ -443,7 +444,6 @@ button {
   gap: 10px;
   padding-block: 14px;
   align-content: stretch;
-  overflow: visible;
 }
 
 .draft-tab {
@@ -481,22 +481,24 @@ button {
 }
 
 .audit-tab-panel {
-  height: auto;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   min-width: 0;
-  overflow: visible;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .audit-page-panel {
-  height: auto;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   min-width: 0;
   display: grid;
-  grid-template-rows: auto auto;
+  grid-template-rows: auto minmax(0, 1fr);
   border: 1px solid var(--line);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.74);
-  overflow: visible;
+  overflow: hidden;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
 }
 
@@ -527,8 +529,23 @@ button {
   min-width: 0;
   display: grid;
   grid-template-rows: auto;
-  overflow: visible;
+  align-content: start;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
   padding: 14px 16px 16px;
+}
+
+.request-status-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  grid-template-rows: unset;
+}
+
+.request-status-section-body>* {
+  flex: 0 0 auto;
 }
 
 .audit-page-body>* {
@@ -545,12 +562,12 @@ button {
 
 .audit-page-body>.workbench-chat-input {
   width: 100%;
-  min-height: 100%;
-  height: auto;
+  min-height: 0;
+  height: 100%;
 }
 
 .audit-page-collapsed-state {
-  height: auto;
+  height: 100%;
   min-height: 220px;
   display: grid;
   place-items: center;
@@ -661,7 +678,14 @@ button {
 
 .explanation-layout {
   grid-template-columns: 320px minmax(0, 1fr);
-  align-items: start;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  align-content: stretch;
+  height: 100%;
+}
+
+.explanation-tab {
+  overflow-y: hidden;
 }
 
 .workbench-stack {
@@ -677,22 +701,44 @@ button {
 .draft-layout {
   grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
   min-height: 0;
-  height: 100%;
   align-content: start;
   overflow: visible;
 }
 
 .workbench-draft-sidebar {
   min-height: 0;
-  display: grid;
-  grid-template-rows: auto auto;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
   overflow: visible;
 }
 
+.workbench-draft-main {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: visible;
+}
+
+.draft-layout .workbench-section-card.expanded {
+  flex: 0 0 auto;
+  min-height: auto;
+}
+
+.draft-layout .workbench-section-card-body {
+  flex: 0 0 auto;
+  min-height: auto;
+}
+
+.draft-layout .workbench-section-card-body>.workbench-draft-section {
+  min-height: auto;
+}
+
 .workbench-tab-body>*,
 .audit-primary-stack>*,
-.workbench-draft-sidebar>* {
+.workbench-draft-sidebar>*,
+.workbench-draft-main>* {
   min-width: 0;
   min-height: 0;
 }
@@ -844,6 +890,10 @@ button {
   gap: 12px;
   min-height: 0;
   overflow: auto;
+}
+
+.workbench-draft-section {
+  overflow: visible;
 }
 
 .workbench-step-list,
@@ -2510,7 +2560,6 @@ button {
   border-radius: 14px;
   border: 1px solid var(--line);
   background: rgba(255, 252, 247, 0.88);
-  overflow: hidden;
 }
 
 .request-status-section-body .request-state-banner {
@@ -2539,9 +2588,27 @@ button {
   padding-right: 0;
 }
 
+.request-state-banner .muted {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.request-state-preview {
+  display: block;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.06);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.55;
+}
+
 .request-status-section-body .request-state-banner-details {
   min-height: 0;
-  max-height: none;
+  max-height: 280px;
   overflow: auto;
   padding-right: 4px;
 }
@@ -2654,9 +2721,12 @@ button {
 .code-draft-panel {
   display: grid;
   gap: 12px;
+  height: 100%;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   align-content: start;
+  scrollbar-gutter: stable;
 }
 
 .code-draft-panel > .side-panel-scroll-body {
@@ -3418,10 +3488,25 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .explanation-layout,
-  .draft-layout,
+  .explanation-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(120px, 35%) minmax(0, 1fr);
+    align-content: stretch;
+  }
+
+  .draft-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    align-items: stretch;
+  }
+
   .workbench-before-after {
     grid-template-columns: 1fr;
+  }
+
+  .workbench-draft-sidebar,
+  .workbench-draft-main {
+    min-height: auto;
   }
 
   .workbench-draft-sidebar {
@@ -3431,6 +3516,13 @@ button {
   .workbench-candidate-content {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto;
+    align-items: stretch;
+  }
+
+  .workbench-candidate-selector,
+  .workbench-candidate-detail-pane,
+  .workbench-candidate-card {
+    min-height: auto;
   }
 
   .workbench-candidate-selector {

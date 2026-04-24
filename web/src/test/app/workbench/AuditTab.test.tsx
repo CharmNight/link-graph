@@ -816,12 +816,13 @@ describe("AuditTab", () => {
     expect(screen.queryByText("风险提醒")).not.toBeInTheDocument();
   });
 
-  it("lets audit pages expand into the workbench scroll owner instead of clipping lower actions", () => {
-    expect(themeCss).toMatch(/\.audit-tab\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+minmax\(0,\s*1fr\);[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/\.audit-tab-panel\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*100%;[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/\.audit-page-panel\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*100%;[^}]*grid-template-rows:\s*auto\s+auto;[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/\.audit-page-body\s*\{[^}]*grid-template-rows:\s*auto;[^}]*overflow:\s*visible;/s);
+  it("keeps tall audit page cards inside a scrollable page body instead of clipping lower actions", () => {
+    expect(themeCss).toMatch(/\.audit-tab\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+minmax\(0,\s*1fr\);[^}]*align-content:\s*stretch;/s);
+    expect(themeCss).toMatch(/\.audit-tab-panel\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*display:\s*grid;[^}]*overflow:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.audit-page-panel\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);[^}]*overflow:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.audit-page-body\s*\{[^}]*grid-template-rows:\s*auto;[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;[^}]*scrollbar-gutter:\s*stable;/s);
     expect(themeCss).toMatch(/\.audit-page-body\s*>\s*\.workbench-audit-thread,\s*\.audit-page-body\s*>\s*\.workbench-candidate-list\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*100%;/s);
+    expect(themeCss).toMatch(/\.request-status-section-body\s*>\s*\*\s*\{[^}]*flex:\s*0\s+0\s+auto;/s);
     expect(themeCss).toMatch(/\.workbench-chat-stream\s*\{[^}]*overflow:\s*visible;/s);
     expect(themeCss).toMatch(/\.workbench-chat-message\s*\{[^}]*overflow:\s*visible;/s);
     expect(themeCss).toMatch(/\.audit-rich-scroll-shell\s*\{[^}]*overflow:\s*visible;/s);
@@ -830,7 +831,7 @@ describe("AuditTab", () => {
   });
 
   it("keeps the audit composer anchored instead of stretching the form out of view on short screens", () => {
-    expect(themeCss).toMatch(/\.audit-page-body\s*>\s*\.workbench-chat-input\s*\{[^}]*width:\s*100%;[^}]*min-height:\s*100%;[^}]*height:\s*auto;/s);
+    expect(themeCss).toMatch(/\.audit-page-body\s*>\s*\.workbench-chat-input\s*\{[^}]*width:\s*100%;[^}]*min-height:\s*0;[^}]*height:\s*100%;/s);
     expect(themeCss).toMatch(/\.workbench-chat-input\s*\{[^}]*display:\s*grid;[^}]*align-content:\s*start;[^}]*min-height:\s*0;/s);
   });
 
@@ -842,7 +843,9 @@ describe("AuditTab", () => {
   });
 
   it("stacks candidate selector and detail by workbench container width, not only viewport width", () => {
-    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.workbench-candidate-content\s*\{[\s\S]*grid-template-columns:\s*1fr;[\s\S]*grid-template-rows:\s*auto\s+auto;/);
+    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.workbench-candidate-content\s*\{[\s\S]*grid-template-columns:\s*1fr;[\s\S]*grid-template-rows:\s*auto\s+auto;[\s\S]*align-items:\s*stretch;/);
+    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.workbench-candidate-selector,\s*\.workbench-candidate-detail-pane,\s*\.workbench-candidate-card\s*\{[\s\S]*min-height:\s*auto;/);
+    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.workbench-candidate-selector\s*\{[\s\S]*max-height:\s*none;[\s\S]*overflow:\s*visible;/);
     expect(themeCss).toMatch(/\.workbench-candidate-detail-pane,\s*\.workbench-candidate-card\s*\{[^}]*overflow-wrap:\s*anywhere;[^}]*word-break:\s*break-word;/s);
   });
 

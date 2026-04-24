@@ -256,7 +256,7 @@ describe("ExplanationTab", () => {
   });
 
   it("lets the explanation reader contribute its full height to the workbench scroller", () => {
-    expect(themeCss).toMatch(/\.workbench-tab\s*\{[^}]*grid-template-rows:\s*auto\s+auto;[^}]*align-content:\s*start;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.workbench-tab\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
     expect(themeCss).toMatch(/\.explanation-layout\s*\{[^}]*grid-template-columns:\s*320px\s+minmax\(0,\s*1fr\);[^}]*align-items:\s*start;/s);
   });
 

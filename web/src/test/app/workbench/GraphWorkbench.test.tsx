@@ -96,8 +96,8 @@ describe("GraphWorkbench", () => {
   });
 
   it("uses the right workbench body as the scroll owner instead of clipping nested tab content", () => {
-    expect(themeCss).toMatch(/\.workbench-panel-body\s*\{[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
-    expect(themeCss).toMatch(/\.workbench-tab\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*100%;[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);[^}]*align-content:\s*stretch;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.workbench-panel-body\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\);[^}]*overflow:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.workbench-tab\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);[^}]*align-content:\s*stretch;[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
     expect(themeCss).toMatch(/\.workbench-tab-body\s*\{[^}]*align-content:\s*start;[^}]*overflow:\s*visible;/s);
     expect(themeCss).toMatch(/\.workbench-section-card-body\s*\{[^}]*grid-template-rows:\s*auto;[^}]*overflow:\s*visible;/s);
     expect(themeCss).toMatch(/\.workbench-section-card-body\s*>\s*\*\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*100%;/s);
@@ -105,11 +105,11 @@ describe("GraphWorkbench", () => {
 
   it("lets the active workbench tab fill unused vertical panel space", () => {
     expect(themeCss).toMatch(/\.workbench-shell\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);/s);
-    expect(themeCss).toMatch(/\.workbench-panel-body\s*\{[^}]*align-items:\s*stretch;/s);
-    expect(themeCss).toMatch(/\.workbench-tab\s*\{[^}]*align-content:\s*stretch;/s);
+    expect(themeCss).toMatch(/\.workbench-panel-body>\*\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;/s);
+    expect(themeCss).toMatch(/\.workbench-tab\s*\{[^}]*height:\s*100%;[^}]*align-content:\s*stretch;/s);
     expect(themeCss).toMatch(/\.audit-tab\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+minmax\(0,\s*1fr\);[^}]*align-content:\s*stretch;/s);
-    expect(themeCss).toMatch(/\.audit-tab-panel\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*100%;/s);
-    expect(themeCss).toMatch(/\.audit-page-panel\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*100%;[^}]*grid-template-rows:\s*auto\s+auto;/s);
+    expect(themeCss).toMatch(/\.audit-tab-panel\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;/s);
+    expect(themeCss).toMatch(/\.audit-page-panel\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);/s);
   });
 
   it("lets desktop workbench layouts grow vertically instead of being hidden by the stage shell", () => {

@@ -74,13 +74,18 @@ describe("DraftTab", () => {
 
   it("lets draft rows expand into the workbench scroll owner instead of clipping generated follow-up sections", () => {
     expect(themeCss).toMatch(/\.draft-layout\s*\{[^}]*align-content:\s*start;[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/\.workbench-draft-sidebar\s*\{[^}]*grid-template-rows:\s*auto\s+auto;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.workbench-draft-sidebar\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.draft-layout\s+\.workbench-section-card\.expanded\s*\{[^}]*flex:\s*0\s+0\s+auto;[^}]*min-height:\s*auto;/s);
     expect(themeCss).toMatch(/\.workbench-draft-implementation-suggestion\s*\{[^}]*min-width:\s*0;[^}]*align-self:\s*start;/s);
   });
 
   it("keeps draft detail below the tab header instead of letting content be covered", () => {
     expect(themeCss).toMatch(/\.draft-tab\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);/s);
-    expect(themeCss).toMatch(/\.draft-layout\s*\{[^}]*min-height:\s*0;[^}]*height:\s*100%;/s);
+    expect(themeCss).toMatch(/\.draft-layout\s*\{[^}]*min-height:\s*0;[^}]*align-content:\s*start;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.draft-layout\s*\{[\s\S]*grid-template-columns:\s*1fr;[\s\S]*grid-template-rows:\s*auto\s+auto;[\s\S]*align-items:\s*stretch;/);
+    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.workbench-draft-sidebar,\s*\.workbench-draft-main\s*\{[\s\S]*min-height:\s*auto;/);
+    expect(themeCss).toMatch(/\.draft-layout\s+\.workbench-section-card-body\s*\{[^}]*flex:\s*0\s+0\s+auto;[^}]*min-height:\s*auto;/s);
+    expect(themeCss).toMatch(/\.draft-layout\s+\.workbench-section-card-body\s*>\s*\.workbench-draft-section\s*\{[^}]*min-height:\s*auto;/s);
     expect(themeCss).toMatch(/\.workbench-draft-implementation-suggestion\s*\{[^}]*overflow:\s*visible;/s);
     expect(themeCss).toMatch(/\.generation-plan-panel\s*\{[^}]*overflow:\s*visible;/s);
   });
