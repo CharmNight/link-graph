@@ -711,7 +711,7 @@ internal class SubjectGraphWorkflow(
         requestedDisplayMode: AnalysisDisplayMode,
     ): AnalysisDisplayMode {
         if (subject is ResourceSubjectHandle && requestedDisplayMode == AnalysisDisplayMode.FLOWCHART) {
-            return AnalysisDisplayMode.FACT_GRAPH
+            return AnalysisDisplayMode.RESOURCE_RELATION_VIEW
         }
         return requestedDisplayMode
     }

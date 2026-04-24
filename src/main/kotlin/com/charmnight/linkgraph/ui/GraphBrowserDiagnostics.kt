@@ -36,17 +36,20 @@ internal object GraphBrowserDiagnostics {
 
         return buildString {
             val effectiveVisibleGraph = currentVisibleGraph(snapshot)
-            val effectiveWorkingGraph = currentWorkingGraph(snapshot)
+            val effectiveWorkspaceGraph = currentWorkingGraph(snapshot)
+            val currentSceneState = snapshot.currentSceneState()
             append("lastMessageType=").append(snapshot.lastMessageType)
             append(", lastGraphSource=").append(snapshot.lastGraphSource)
             append(", analysisDisplayMode=").append(snapshot.analysisDisplayMode)
+            append(", currentSceneId=").append(snapshot.currentSceneId)
             append(", semanticRevision=").append(snapshot.semanticRevision)
-            append(", layoutRevision=").append(snapshot.layoutRevision)
+            append(", workspaceRevision=").append(snapshot.workspaceRevision)
+            append(", layoutRevision=").append(currentSceneState.layoutRevision)
             append(", snapshotRevision=").append(snapshot.snapshotRevision)
-            append(", selectedNodeId=").append(snapshot.selectedNodeId)
+            append(", selectedNodeId=").append(currentSceneState.selectedNodeId)
             append(", visibleGraph=").append(graphSummary(effectiveVisibleGraph))
-            append(", workingGraph=").append(graphSummary(effectiveWorkingGraph))
-            append(", referenceFactGraph=").append(graphSummary(snapshot.referenceFactGraph))
+            append(", workspaceGraph=").append(graphSummary(effectiveWorkspaceGraph))
+            append(", semanticFactGraph=").append(graphSummary(snapshot.semanticFactGraph))
             append(", generationPlan=").append(generationPlanSummary(snapshot.generationPlan))
             append(", generationPlanRequestState=").append(requestStateSummary(snapshot.generationPlanRequestState))
             append(", feedback=").append(snapshot.operationFeedback?.message)
@@ -59,7 +62,7 @@ internal object GraphBrowserDiagnostics {
     ): String {
         return buildString {
             append("visible{").append(graphDeltaSummary(currentVisibleGraph(previous), currentVisibleGraph(next))).append("}")
-            append(", working{").append(graphDeltaSummary(currentWorkingGraph(previous), currentWorkingGraph(next))).append("}")
+            append(", workspace{").append(graphDeltaSummary(currentWorkingGraph(previous), currentWorkingGraph(next))).append("}")
         }
     }
 
@@ -103,4 +106,3 @@ internal object GraphBrowserDiagnostics {
         }
     }
 }
-

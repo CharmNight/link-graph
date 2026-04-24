@@ -5,7 +5,6 @@ import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
-import com.charmnight.linkgraph.sync.GraphPatchApplyService
 
 internal interface GraphEditorStateMutationContext {
     val graph: GraphEditorGraphStateSupport
@@ -59,21 +58,6 @@ internal interface GraphEditorStateMutationContext {
         workingGraphDirty: Boolean = true,
     )
 
-    fun markWorkingGraphChanged(
-        graph: GraphDocument,
-        selectedMethodSignature: String? = null,
-        preserveDraftPatchUndo: Boolean = false,
-        workingGraphDirty: Boolean = true,
-    )
-
-    fun markViewGraphChanged(
-        graph: GraphDocument,
-        displayMode: AnalysisDisplayMode,
-        selectedMethodSignature: String? = null,
-        preserveDraftPatchUndo: Boolean = false,
-        workingGraphDirty: Boolean = true,
-    )
-
     fun markLayoutChanged(positions: Map<String, GraphLayoutPosition>)
 
     fun requestSourceNavigation(nodeId: String)
@@ -97,17 +81,17 @@ internal interface GraphEditorStateMutationContext {
     fun markLastMessageType(messageType: String)
 }
 
-internal class DraftGraphEditorStateMutationContext(
-    initialState: GraphEditorStateSnapshot,
-    graphPatchApplyService: GraphPatchApplyService,
+internal class LiveGraphEditorStateMutationContext(
+    private val stateService: GraphEditorStateService,
 ) : GraphEditorStateMutationContext {
-    private var draftState: GraphEditorStateSnapshot = initialState
+    override val graph: GraphEditorGraphStateSupport
+        get() = stateService.graph
+    override val asyncRequests: GraphEditorAsyncRequestStateSupport
+        get() = stateService.asyncRequests
+    override val workbench: GraphEditorWorkbenchStateSupport
+        get() = stateService.workbench
 
-    override val graph: GraphEditorGraphStateSupport = GraphEditorGraphStateSupport(::mutate, graphPatchApplyService)
-    override val asyncRequests: GraphEditorAsyncRequestStateSupport = GraphEditorAsyncRequestStateSupport(::mutate)
-    override val workbench: GraphEditorWorkbenchStateSupport = GraphEditorWorkbenchStateSupport(::mutate)
-
-    override fun snapshot(): GraphEditorStateSnapshot = draftState.copy()
+    override fun snapshot(): GraphEditorStateSnapshot = stateService.snapshot()
 
     override fun markFrontendLoaded(entryUrl: String) = graph.markFrontendLoaded(entryUrl)
 
@@ -154,27 +138,6 @@ internal class DraftGraphEditorStateMutationContext(
         workingGraphDirty: Boolean,
     ) = this.graph.markGraphChanged(graph, selectedMethodSignature, preserveDraftPatchUndo, workingGraphDirty)
 
-    override fun markWorkingGraphChanged(
-        graph: GraphDocument,
-        selectedMethodSignature: String?,
-        preserveDraftPatchUndo: Boolean,
-        workingGraphDirty: Boolean,
-    ) = this.graph.markWorkingGraphChanged(graph, selectedMethodSignature, preserveDraftPatchUndo, workingGraphDirty)
-
-    override fun markViewGraphChanged(
-        graph: GraphDocument,
-        displayMode: AnalysisDisplayMode,
-        selectedMethodSignature: String?,
-        preserveDraftPatchUndo: Boolean,
-        workingGraphDirty: Boolean,
-    ) = this.graph.markViewGraphChanged(
-        graph,
-        displayMode,
-        selectedMethodSignature,
-        preserveDraftPatchUndo,
-        workingGraphDirty,
-    )
-
     override fun markLayoutChanged(positions: Map<String, GraphLayoutPosition>) = graph.markLayoutChanged(positions)
 
     override fun requestSourceNavigation(nodeId: String) = graph.requestSourceNavigation(nodeId)
@@ -196,12 +159,4 @@ internal class DraftGraphEditorStateMutationContext(
     override fun markToolWindowOpened() = graph.markToolWindowOpened()
 
     override fun markLastMessageType(messageType: String) = graph.markLastMessageType(messageType)
-
-    fun committedState(): GraphEditorStateSnapshot = draftState
-
-    private fun mutate(transform: (GraphEditorStateSnapshot) -> GraphEditorStateSnapshot) {
-        val currentState = draftState
-        val nextState = transform(currentState)
-        draftState = nextState
-    }
 }

@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.codegen
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.llm.EditScope
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlin.test.assertEquals
@@ -561,6 +563,56 @@ class CodeEditApplyServiceTest : BasePlatformTestCase() {
         assertTrue(result.canApply, result.warnings.joinToString(" | "))
         assertTrue(result.previewText.contains("if (Boolean.TRUE.equals(delete))"))
         assertFalse(result.previewText.contains("\"replacement\""))
+    }
+
+    fun testJavaFlowScopeReplacementAcceptsMethodSignatureWrappedNewBodyPayload() {
+        val before = """
+            package com.example;
+
+            public class CommonController {
+                public void fileDownload(String fileName, Boolean delete) {
+                    String realFileName = System.currentTimeMillis() + fileName.substring(fileName.indexOf("_") + 1);
+                    String filePath = "/tmp/" + realFileName;
+                    FileUtils.writeBytes(filePath, response.getOutputStream());
+                    if (delete) {
+                        FileUtils.deleteFile(filePath);
+                    }
+                }
+            }
+        """.trimIndent()
+
+        val result = CodeEditApplyService(project).prepareEdits(
+            filePath = "src/main/java/com/example/CommonController.java",
+            beforeText = before,
+            operations = listOf(
+                CodeEditOperation(
+                    operationId = "op-delete-guard",
+                    filePath = "src/main/java/com/example/CommonController.java",
+                    scopeId = "scope-delete-branch",
+                    kind = CodeEditOperationKind.REPLACE_METHOD_BODY,
+                    payload = "{\"methodSignature\":\"com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void\",\"newBody\":\"if (Boolean.TRUE.equals(delete)) {\\n    FileUtils.deleteFile(filePath);\\n}\"}",
+                ),
+            ),
+            editScopes = listOf(
+                EditScope(
+                    scopeId = "scope-delete-branch",
+                    targetNodeId = "scope:file-download-if",
+                    filePath = "src/main/java/com/example/CommonController.java",
+                    language = "JAVA",
+                    symbolKind = "FLOW_SCOPE",
+                    symbolSignature = "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void",
+                    startLine = 8,
+                    endLine = 10,
+                    allowedChangeKinds = listOf("REPLACE_METHOD_BODY"),
+                    supportingFindingIds = listOf("finding-delete-branch"),
+                ),
+            ),
+        )
+
+        assertTrue(result.canApply, result.warnings.joinToString(" | "))
+        assertTrue(result.previewText.contains("if (Boolean.TRUE.equals(delete))"))
+        assertFalse(result.previewText.contains("methodSignature"))
+        assertFalse(result.preparedEdits.single().afterText.contains("newBody"))
     }
 
     fun testJavaFlowScopeReplacementAcceptsReplaceWithPayload() {

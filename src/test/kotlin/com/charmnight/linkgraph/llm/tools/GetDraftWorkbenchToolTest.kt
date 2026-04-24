@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.llm.artifact.ArtifactType
 import com.charmnight.linkgraph.llm.artifact.CandidateDraftArtifact
 import com.charmnight.linkgraph.llm.artifact.ConfirmedIntentArtifact
@@ -20,7 +22,7 @@ class GetDraftWorkbenchToolTest : BasePlatformTestCase() {
             input = emptyMap(),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+                snapshot = testSnapshot(
                     auditResult = com.charmnight.linkgraph.llm.GraphPatchResult(
                         source = com.charmnight.linkgraph.llm.LlmResultSource.MOCK,
                         question = "Q",
@@ -66,7 +68,7 @@ class GetDraftWorkbenchToolTest : BasePlatformTestCase() {
             input = emptyMap(),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+                snapshot = testSnapshot(
                     auditResult = com.charmnight.linkgraph.llm.GraphPatchResult(
                         source = com.charmnight.linkgraph.llm.LlmResultSource.MOCK,
                         question = "Q",

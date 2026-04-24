@@ -67,6 +67,25 @@ function auditStateFixture(): AuditWorkbenchState {
 }
 
 describe("AuditTab", () => {
+
+  it("keeps the tab root on the CSS grid contract instead of Uno display or overflow utilities", () => {
+    const { container } = render(
+      <AuditTab
+        state={auditStateFixture()}
+        onQuestionDraftChange={vi.fn()}
+        onSubmitQuestion={vi.fn()}
+        onSelectChange={vi.fn()}
+        onConfirmChange={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
+      />,
+    );
+
+    const tab = container.querySelector(".workbench-tab");
+    expect(tab).not.toBeNull();
+    expect(tab).not.toHaveClass("block");
+    expect(tab).not.toHaveClass("overflow-auto");
+  });
   it("shows the scope label and keeps the composer page active by default", () => {
     render(
       <AuditTab
@@ -610,6 +629,8 @@ describe("AuditTab", () => {
           onSubmitQuestion={vi.fn()}
           onSelectChange={vi.fn()}
           onConfirmChange={vi.fn()}
+          onSelectThread={vi.fn()}
+          onInvestigateThread={vi.fn()}
         />
       </div>,
     );
@@ -795,16 +816,15 @@ describe("AuditTab", () => {
     expect(screen.queryByText("风险提醒")).not.toBeInTheDocument();
   });
 
-  it("keeps audit pages and nested message areas scrollable when content exceeds the panel bounds", () => {
-    expect(themeCss).toMatch(/\.audit-tab\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+minmax\(0,\s*1fr\);/s);
-    expect(themeCss).toMatch(/\.audit-tab-panel\s*\{[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/s);
-    expect(themeCss).toMatch(/\.audit-page-panel\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);/s);
-    expect(themeCss).toMatch(/\.audit-page-body\s*\{[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
-    expect(themeCss).toMatch(/\.workbench-audit-thread-body\s*\{[^}]*overflow-y:\s*auto;[^}]*scrollbar-gutter:\s*stable/s);
+  it("lets audit pages expand into the workbench scroll owner instead of clipping lower actions", () => {
+    expect(themeCss).toMatch(/\.audit-tab\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+minmax\(0,\s*1fr\);[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.audit-tab-panel\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*100%;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.audit-page-panel\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*100%;[^}]*grid-template-rows:\s*auto\s+auto;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.audit-page-body\s*\{[^}]*grid-template-rows:\s*auto;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.audit-page-body\s*>\s*\.workbench-audit-thread,\s*\.audit-page-body\s*>\s*\.workbench-candidate-list\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*100%;/s);
     expect(themeCss).toMatch(/\.workbench-chat-stream\s*\{[^}]*overflow:\s*visible;/s);
     expect(themeCss).toMatch(/\.workbench-chat-message\s*\{[^}]*overflow:\s*visible;/s);
     expect(themeCss).toMatch(/\.audit-rich-scroll-shell\s*\{[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/\.workbench-candidate-detail-pane\s*\{[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
     expect(themeCss).toMatch(/\.workbench-candidate-card\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*100%;/s);
     expect(themeCss).toMatch(/\.request-state-banner-details\s*\{[^}]*overflow:\s*auto;/s);
   });
@@ -820,4 +840,10 @@ describe("AuditTab", () => {
     expect(themeCss).toMatch(/\.workbench-candidate-evidence-item\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
     expect(themeCss).toMatch(/\.workbench-candidate-evidence-item\s*>\s*strong,\s*\.workbench-candidate-evidence-item\s*>\s*span\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
   });
+
+  it("stacks candidate selector and detail by workbench container width, not only viewport width", () => {
+    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.workbench-candidate-content\s*\{[\s\S]*grid-template-columns:\s*1fr;[\s\S]*grid-template-rows:\s*auto\s+auto;/);
+    expect(themeCss).toMatch(/\.workbench-candidate-detail-pane,\s*\.workbench-candidate-card\s*\{[^}]*overflow-wrap:\s*anywhere;[^}]*word-break:\s*break-word;/s);
+  });
+
 });

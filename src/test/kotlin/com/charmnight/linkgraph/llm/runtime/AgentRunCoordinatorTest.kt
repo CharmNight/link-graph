@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.runtime
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.llm.capability.AgentCapability
 import com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore
 import com.intellij.testFramework.fixtures.BasePlatformTestCase

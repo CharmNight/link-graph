@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore
 import com.charmnight.linkgraph.llm.runtime.RunBudget
 import com.charmnight.linkgraph.model.GraphDocument
@@ -13,7 +15,7 @@ import kotlin.test.assertNotNull
 class ResolveAnchorToolTest : BasePlatformTestCase() {
     fun testResolvesAnchorByNodeId() {
         val tool = ResolveAnchorTool(CodeReadToolFacade())
-        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+        val snapshot = testSnapshot(
             workingGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(
@@ -42,7 +44,7 @@ class ResolveAnchorToolTest : BasePlatformTestCase() {
 
     fun testResolvesAnchorBySymbolSignature() {
         val tool = ResolveAnchorTool(CodeReadToolFacade())
-        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+        val snapshot = testSnapshot(
             workingGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(

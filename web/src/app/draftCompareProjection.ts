@@ -333,26 +333,29 @@ function buildNodeComparisons(
 ): DraftCompareElement[] {
   const referenceNodesById = new Map(referenceGraph.nodes.map((node) => [node.id, node]));
   const workingNodesById = new Map(workingGraph.nodes.map((node) => [node.id, node]));
+  const comparisons: DraftCompareElement[] = [];
 
-  return Array.from(scopeNodeIds)
-    .sort()
-    .flatMap((nodeId) => {
-      const referenceNode = referenceNodesById.get(nodeId);
-      const workingNode = workingNodesById.get(nodeId);
-      if (referenceNode == null && workingNode == null) {
-        return [];
-      }
-      if (referenceNode == null && workingNode != null) {
-        return [{ currentId: workingNode.id, referenceId: null, status: "ADDED" }];
-      }
-      if (referenceNode != null && workingNode == null) {
-        return [{ currentId: null, referenceId: referenceNode.id, status: "REMOVED" }];
-      }
-      if (!nodesDiffer(referenceNode, workingNode)) {
-        return [];
-      }
-      return [{ currentId: workingNode.id, referenceId: referenceNode.id, status: "MODIFIED" }];
-    });
+  for (const nodeId of Array.from(scopeNodeIds).sort()) {
+    const referenceNode = referenceNodesById.get(nodeId);
+    const workingNode = workingNodesById.get(nodeId);
+    if (referenceNode == null && workingNode == null) {
+      continue;
+    }
+    if (referenceNode == null && workingNode != null) {
+      comparisons.push({ currentId: workingNode.id, referenceId: null, status: "ADDED" });
+      continue;
+    }
+    if (referenceNode != null && workingNode == null) {
+      comparisons.push({ currentId: null, referenceId: referenceNode.id, status: "REMOVED" });
+      continue;
+    }
+    if (!referenceNode || !workingNode || !nodesDiffer(referenceNode, workingNode)) {
+      continue;
+    }
+    comparisons.push({ currentId: workingNode.id, referenceId: referenceNode.id, status: "MODIFIED" });
+  }
+
+  return comparisons;
 }
 
 function buildEdgeComparisons(

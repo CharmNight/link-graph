@@ -1,126 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { resolveWorkingGraphDocument } from "../../app/workingGraphDocument";
-import type { LinkGraphBootstrapState } from "../../app/types";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 
-function bootstrapState(): LinkGraphBootstrapState {
-  return {
-    analysisDisplayMode: "FLOWCHART",
-    visibleGraph: {
-      nodes: [
-        {
-          id: "scope:guard",
-          type: "FLOW_SCOPE",
-          title: "if (!allowed)",
-          inputs: [],
-          outputs: [],
-          certainty: "PROVEN",
-          bindingStatus: "BOUND",
-          metadata: {
-            "flowchart.kind": "DECISION",
-          },
-        },
-      ],
-      edges: [],
-    },
-    workingGraph: {
-      nodes: [
-        {
-          id: "scope:guard",
-          type: "FLOW_SCOPE",
-          title: "if (!allowed)",
-          inputs: [],
-          outputs: [],
-          certainty: "PROVEN",
-          bindingStatus: "BOUND",
-          metadata: {
-            "flowchart.kind": "DECISION",
-          },
-        },
-      ],
-      edges: [],
-    },
-    flowchartView: {
-      visibleGraph: {
-        nodes: [
-          {
-            id: "scope:guard",
-            type: "FLOW_SCOPE",
-            title: "if (!allowed)",
-            inputs: [],
-            outputs: [],
-            certainty: "PROVEN",
-            bindingStatus: "BOUND",
-            metadata: {
-              "flowchart.kind": "DECISION",
-            },
-          },
-        ],
-        edges: [],
-      },
-      fullGraph: {
-        nodes: [
-          {
-            id: "action:guard-condition",
-            type: "FLOW_ACTION",
-            title: "!checkAllowDownload(fileName)",
-            inputs: [],
-            outputs: [],
-            certainty: "PROVEN",
-            bindingStatus: "BOUND",
-            metadata: {
-              "flowchart.kind": "PROCESS",
-              "flow.kind": "CONDITION",
-            },
-          },
-          {
-            id: "scope:guard",
-            type: "FLOW_SCOPE",
-            title: "if (!allowed)",
-            inputs: [],
-            outputs: [],
-            certainty: "PROVEN",
-            bindingStatus: "BOUND",
-            metadata: {
-              "flowchart.kind": "DECISION",
-            },
-          },
-        ],
-        edges: [],
-      },
-      anchorNodeId: "scope:guard",
-      summary: {
-        nodeCount: 1,
-        branchCount: 1,
-        exceptionPathCount: 0,
-        fullNodeCount: 2,
-        fullEdgeCount: 0,
-        hiddenNodeCount: 1,
-        hiddenEdgeCount: 0,
-        truncated: true,
-      },
-    },
-    mermaidIssues: [],
-    diffItems: [],
-    syncPreviewItems: [],
-  };
-}
+const REPO_ROOT = path.resolve(__dirname, "../../..");
+const WORKING_GRAPH_DOCUMENT_PATH = path.join(REPO_ROOT, "src/app/workingGraphDocument.ts");
+const SAMPLE_STATE_PATH = path.join(REPO_ROOT, "src/app/sampleState.ts");
+const DEBUG_PATH = path.join(REPO_ROOT, "src/app/debug.ts");
+const TEST_BOOTSTRAP_PATH = path.join(REPO_ROOT, "src/app/testBootstrapState.ts");
 
-describe("resolveWorkingGraphDocument", () => {
-  it("prefers the top-level working graph over the stale flowchart full graph", () => {
-    const resolved = resolveWorkingGraphDocument(bootstrapState());
-
-    expect(resolved.nodes.map((node) => node.id)).toEqual(["scope:guard"]);
+describe("workingGraphDocument architecture gate", () => {
+  it("removes the legacy workingGraphDocument helper entirely", () => {
+    expect(existsSync(WORKING_GRAPH_DOCUMENT_PATH)).toBe(false);
   });
 
-  it("falls back to the flowchart full graph only when the top-level working graph is missing", () => {
-    const state = bootstrapState();
-    delete (state as Partial<LinkGraphBootstrapState>).workingGraph;
+  it("removes all imports of the legacy workingGraphDocument helper", () => {
+    const sampleStateSource = readFileSync(SAMPLE_STATE_PATH, "utf8");
+    const debugSource = readFileSync(DEBUG_PATH, "utf8");
+    const testBootstrapSource = readFileSync(TEST_BOOTSTRAP_PATH, "utf8");
 
-    const resolved = resolveWorkingGraphDocument(state);
-
-    expect(resolved.nodes.map((node) => node.id)).toEqual([
-      "action:guard-condition",
-      "scope:guard",
-    ]);
+    expect(sampleStateSource).not.toContain("workingGraphDocument");
+    expect(debugSource).not.toContain("workingGraphDocument");
+    expect(testBootstrapSource).not.toContain("workingGraphDocument");
   });
 });

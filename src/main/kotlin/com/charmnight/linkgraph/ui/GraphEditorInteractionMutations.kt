@@ -4,74 +4,21 @@ import com.charmnight.linkgraph.mermaid.MermaidIssue
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphPatch
-import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 
 internal fun GraphEditorStateSnapshot.withImportedMermaid(
     mermaid: String,
     graph: GraphDocument?,
     mermaidIssues: List<MermaidIssue>,
 ): GraphEditorStateSnapshot {
-    val hasWorkingGraph = workingGraph != null || visibleGraph != null
-    val effectiveDraftGraph = if (hasWorkingGraph) {
-        workingGraph ?: visibleGraph
-    } else {
-        graph
-    }
-    val effectiveVisibleGraph = if (hasWorkingGraph) {
-        visibleGraph ?: workingGraph
-    } else {
-        graph
-    }
-    val nextLayoutState = extractLayoutState(effectiveVisibleGraph ?: effectiveDraftGraph)
-    val nextViewDocuments = buildViewDocuments(
-        visibleGraph = effectiveVisibleGraph ?: effectiveDraftGraph,
-        factFullGraph = referenceFactGraph ?: effectiveVisibleGraph ?: effectiveDraftGraph,
-        selectedNodeId = selectedNodeId,
-        selectedMethodSignature = selectedMethodSignature,
-    )
+    val nextDesignBaselineGraph = graph ?: designBaselineGraph
     return copy(
-        visibleGraph = effectiveVisibleGraph,
-        workingGraph = effectiveDraftGraph,
-        referenceWorkingGraph = referenceWorkingGraph ?: effectiveDraftGraph,
-        designBaselineGraph = graph ?: designBaselineGraph,
-        factGraphView = nextViewDocuments.factGraphView,
-        flowchartView = nextViewDocuments.flowchartView,
-        resourceRelationView = nextViewDocuments.resourceRelationView,
-        diff = null,
-        diffMode = false,
-        draftWorkbenchState = com.charmnight.linkgraph.workbench.DraftWorkbenchState(),
-        draftPatchPreview = null,
-        draftPatchUndoState = null,
-        lastDraftPatchApplyResult = null,
-        auditResult = null,
-        auditRequestState = AsyncRequestState(),
-        qaRequestRecoveryState = com.charmnight.linkgraph.workbench.QaRequestRecoveryState(),
-        diffReviewResult = null,
-        diffReviewRequestState = AsyncRequestState(),
-        graphBeautificationResult = null,
-        graphBeautificationRequestState = AsyncRequestState(),
+        designBaselineGraph = nextDesignBaselineGraph,
         importedMermaid = mermaid,
         mermaidIssues = mermaidIssues,
+        diff = null,
+        diffGraph = null,
         syncPreviewItems = emptyList(),
         syncPreviewRequested = false,
-        draftVersion = 0,
-        generationPlan = null,
-        generationPlanDraftVersion = null,
-        generationPlanRequestState = AsyncRequestState(),
-        draftValidationState = null,
-        generationPlanDiscussionSession = null,
-        generationPlanDiscussionRequestState = AsyncRequestState(),
-        generatedCodeDrafts = emptyList(),
-        generatedCodeDraftVersion = null,
-        generatedCodeDraftWarnings = emptyList(),
-        generatedCodeDraftSource = null,
-        generatedCodeDraftPromptPreview = null,
-        generatedCodeDraftWriteReport = null,
-        codeDraftRequestState = AsyncRequestState(),
-        codeEligibilityDecision = null,
-        workingGraphDirty = workingGraphDirty,
-        layoutState = nextLayoutState,
-        semanticRevision = semanticRevision + 1,
         snapshotRevision = snapshotRevision + 1,
         lastMessageType = "importMermaid",
     )
@@ -81,82 +28,76 @@ internal fun GraphEditorStateSnapshot.withShownDiffMode(
     graph: GraphDocument,
     diff: GraphDiff,
 ): GraphEditorStateSnapshot {
-    val nextLayoutState = extractLayoutState(graph)
-    val nextSelectedNodeId = resolveSelectedNodeId(
-        graph = graph,
-        selectedNodeId = selectedNodeId,
-        selectedMethodSignature = selectedMethodSignature,
-    )
-    val nextViewDocuments = buildViewDocuments(
-        visibleGraph = graph,
-        factFullGraph = referenceFactGraph ?: graph,
-        selectedNodeId = nextSelectedNodeId,
-        selectedMethodSignature = selectedMethodSignature,
+    val currentWorkspaceScene = currentSceneId.toAnalysisDisplayMode()?.toWorkspaceSceneId() ?: previousWorkspaceSceneId
+    val diffSceneState = sceneState(GraphSceneId.DIFF).copy(
+        selectedNodeId = resolveSelectedNodeId(
+            graph = graph,
+            selectedNodeId = sceneState(GraphSceneId.DIFF).selectedNodeId,
+            selectedMethodSignature = selectedMethodSignature,
+        ),
+        anchorNodeId = sceneState(GraphSceneId.DIFF).anchorNodeId
+            ?.takeIf { anchorNodeId -> graph.nodes.any { it.id == anchorNodeId } }
+            ?: graph.nodes.firstOrNull()?.id,
+        layoutState = extractLayoutState(graph),
+        layoutRevision = sceneState(GraphSceneId.DIFF).layoutRevision + 1,
     )
     return copy(
-        visibleGraph = graph,
-        referenceWorkingGraph = referenceWorkingGraph ?: workingGraph ?: graph,
-        factGraphView = nextViewDocuments.factGraphView,
-        flowchartView = nextViewDocuments.flowchartView,
-        resourceRelationView = nextViewDocuments.resourceRelationView,
         diff = diff,
-        diffMode = true,
-        draftWorkbenchState = com.charmnight.linkgraph.workbench.DraftWorkbenchState(),
+        diffGraph = graph,
+        currentSceneId = GraphSceneId.DIFF,
+        previousWorkspaceSceneId = currentWorkspaceScene,
+        sceneStates = sceneStates.withSceneState(GraphSceneId.DIFF, diffSceneState),
         draftPatchPreview = graph.patch,
-        draftPatchUndoState = null,
-        lastDraftPatchApplyResult = null,
-        diffReviewResult = null,
-        diffReviewRequestState = AsyncRequestState(),
-        graphBeautificationResult = null,
-        graphBeautificationRequestState = AsyncRequestState(),
-        syncPreviewItems = emptyList(),
-        syncPreviewRequested = false,
-        generationPlan = generationPlan,
-        generationPlanDraftVersion = generationPlanDraftVersion,
-        generationPlanRequestState = AsyncRequestState(),
-        generatedCodeDrafts = generatedCodeDrafts,
-        generatedCodeDraftVersion = generatedCodeDraftVersion,
-        generatedCodeDraftWarnings = generatedCodeDraftWarnings,
-        generatedCodeDraftSource = generatedCodeDraftSource,
-        generatedCodeDraftPromptPreview = generatedCodeDraftPromptPreview,
-        generatedCodeDraftWriteReport = generatedCodeDraftWriteReport,
-        codeDraftRequestState = AsyncRequestState(),
-        workingGraphDirty = false,
-        layoutState = nextLayoutState,
-        semanticRevision = semanticRevision + 1,
-        snapshotRevision = snapshotRevision + 1,
-        selectedNodeId = nextSelectedNodeId,
         lastMessageType = "showDiffMode",
+        snapshotRevision = snapshotRevision + 1,
     )
 }
 
 internal fun GraphEditorStateSnapshot.withSelectedMethod(
     signature: String,
 ): GraphEditorStateSnapshot {
+    val graph = currentVisibleGraphForMutation()
+    val sceneState = currentSceneState()
+    val nextSelectedNodeId = findNodeIdBySignature(graph, signature) ?: sceneState.selectedNodeId
     return copy(
         selectedMethodSignature = signature,
-        selectedNodeId = findNodeIdBySignature(visibleGraph ?: workingGraph, signature) ?: selectedNodeId,
+        sceneStates = sceneStates.withSceneState(
+            currentSceneId,
+            sceneState.copy(selectedNodeId = nextSelectedNodeId),
+        ),
         lastMessageType = "selectedMethod",
+        snapshotRevision = snapshotRevision + 1,
     )
 }
 
 internal fun GraphEditorStateSnapshot.withSelectedNode(
     nodeId: String,
 ): GraphEditorStateSnapshot {
+    val sceneState = currentSceneState()
     return copy(
-        selectedNodeId = nodeId,
+        sceneStates = sceneStates.withSceneState(
+            currentSceneId,
+            sceneState.copy(selectedNodeId = nodeId),
+        ),
         lastMessageType = "nodeSelected",
+        snapshotRevision = snapshotRevision + 1,
     )
 }
 
 internal fun GraphEditorStateSnapshot.withLayoutChanged(
     positions: Map<String, GraphLayoutPosition>,
 ): GraphEditorStateSnapshot {
+    val sceneState = currentSceneState()
     return copy(
-        layoutState = layoutState.copy(
-            positions = layoutState.positions + positions,
+        sceneStates = sceneStates.withSceneState(
+            currentSceneId,
+            sceneState.copy(
+                layoutState = sceneState.layoutState.copy(
+                    positions = sceneState.layoutState.positions + positions,
+                ),
+                layoutRevision = sceneState.layoutRevision + 1,
+            ),
         ),
-        layoutRevision = layoutRevision + 1,
         snapshotRevision = snapshotRevision + 1,
         lastMessageType = "layoutChanged",
     )
@@ -171,6 +112,7 @@ internal fun GraphEditorStateSnapshot.withRequestedSourceNavigation(
             phase = SourceNavigationPhase.RUNNING,
         ),
         lastMessageType = "requestSourceNavigation",
+        snapshotRevision = snapshotRevision + 1,
     )
 }
 
@@ -190,6 +132,7 @@ internal fun GraphEditorStateSnapshot.withOpenedSourceNavigation(
             column = column,
         ),
         lastMessageType = "sourceNavigationSucceeded",
+        snapshotRevision = snapshotRevision + 1,
     )
 }
 
@@ -202,6 +145,7 @@ internal fun GraphEditorStateSnapshot.withMissingSourceNavigation(
             phase = SourceNavigationPhase.NOT_FOUND,
         ),
         lastMessageType = "sourceNavigationNotFound",
+        snapshotRevision = snapshotRevision + 1,
     )
 }
 
@@ -216,6 +160,7 @@ internal fun GraphEditorStateSnapshot.withFailedSourceNavigation(
             errorMessage = errorMessage,
         ),
         lastMessageType = "sourceNavigationFailed",
+        snapshotRevision = snapshotRevision + 1,
     )
 }
 
@@ -225,5 +170,15 @@ internal fun GraphEditorStateSnapshot.withDraftPatchPreview(
     return copy(
         draftPatchPreview = patch,
         lastMessageType = "draftPatchPreview",
+        snapshotRevision = snapshotRevision + 1,
     )
+}
+
+private fun GraphEditorStateSnapshot.currentVisibleGraphForMutation(): GraphDocument {
+    return when (currentSceneId) {
+        GraphSceneId.WORKSPACE_FACT -> factGraphView.visibleGraph
+        GraphSceneId.WORKSPACE_FLOWCHART -> flowchartView.visibleGraph
+        GraphSceneId.WORKSPACE_RESOURCE_RELATION -> resourceRelationView.visibleGraph
+        GraphSceneId.DIFF -> diffGraph ?: GraphDocument()
+    }
 }

@@ -32,6 +32,8 @@ describe("PatchResultSummary", () => {
               ],
             },
           ],
+          candidateChanges: [],
+          newCandidateChanges: [],
           promptPreview: "prompt",
           warnings: [
             "远程 LLM 问答失败，已回退为本地规则分析：HTTP 503 / model_not_found。已尝试接口：https://example.com/v1/chat/completions，模型：gpt-5.4。",
@@ -64,6 +66,8 @@ describe("PatchResultSummary", () => {
           question: "这段链路的真正提示词是什么？",
           answer: "结论：当前可以看到调试用提示词。",
           findings: [],
+          candidateChanges: [],
+          newCandidateChanges: [],
           promptPreview: "system: audit graph\nuser: inspect fallback branch",
           warnings: [],
         }}

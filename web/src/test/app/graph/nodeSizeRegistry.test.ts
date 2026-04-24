@@ -40,4 +40,19 @@ describe("nodeSizeRegistry", () => {
     registry.clear("node:a");
     expect(registry.get("node:a")).toBeUndefined();
   });
+
+  it("reuses a stable measurement reporter per node so visual-only rerenders do not re-trigger layout collection", () => {
+    const registry = createNodeSizeRegistry();
+
+    const nodeAReporter = registry.reporter("node:a");
+    const nodeAReporterAgain = registry.reporter("node:a");
+    const nodeBReporter = registry.reporter("node:b");
+
+    expect(nodeAReporter).toBe(nodeAReporterAgain);
+    expect(nodeAReporter).not.toBe(nodeBReporter);
+
+    nodeAReporter({ width: 480, height: 180 });
+
+    expect(registry.get("node:a")).toEqual({ width: 480, height: 180 });
+  });
 });

@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.codegen.CodeGenerationResult
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
@@ -52,7 +54,7 @@ class GenerationDiagnosticsTest {
                     risk = SyncPreviewRisk.MEDIUM,
                 ),
             ),
-            snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+            snapshot = testSnapshot(
                 draftWorkbenchState = com.charmnight.linkgraph.workbench.DraftWorkbenchState(
                     draftChanges = listOf(
                         DraftWorkbenchEntry(

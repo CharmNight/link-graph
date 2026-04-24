@@ -392,7 +392,7 @@ class LinkGraphProjectService(
     /** 在同步会话中批量修改编辑器状态。 */
     private fun <T> mutateEditorStateBatch(
         syncBrowser: Boolean = true,
-        block: GraphEditorStateSyncSession.() -> T,
+        block: com.charmnight.linkgraph.ui.GraphEditorStateMutationContext.() -> T,
     ): T {
         return editorSession.mutateBatch(syncBrowser = syncBrowser, block = block)
     }
@@ -595,7 +595,7 @@ internal fun findNavigationNode(
     return sequenceOf(
         currentVisibleGraph(snapshot),
         currentWorkingGraph(snapshot),
-        snapshot.referenceFactGraph,
+        snapshot.semanticFactGraph,
         snapshot.designBaselineGraph,
     )
         .filterNotNull()

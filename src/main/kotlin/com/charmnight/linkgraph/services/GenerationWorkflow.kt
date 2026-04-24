@@ -840,8 +840,9 @@ internal class GenerationWorkflow(
         }
         val normalizedDraft = ProjectPathNormalizer.normalizeDraft(draft, projectBasePath)
         val target = Path.of(projectBasePath).normalize().resolve(normalizedDraft.targetPath).normalize()
+        val targetExists = Files.exists(target)
         val beforeText = when {
-            Files.exists(target) -> Files.readString(target)
+            targetExists -> Files.readString(target)
             normalizedDraft.content != null -> ""
             else -> null
         }
@@ -868,7 +869,16 @@ internal class GenerationWorkflow(
                 }
                 prepared.previewText
             }
-            normalizedDraft.content != null -> normalizedDraft.content
+            normalizedDraft.content != null && !targetExists -> normalizedDraft.content
+            normalizedDraft.content != null -> {
+                session.mutate {
+                    workbench.markOperationFeedback(
+                        OperationFeedbackLevel.ERROR,
+                        "现有文件代码草稿必须使用结构化 editOperations；已拒绝用 content 打开可写 merge，避免删除未授权逻辑。",
+                    )
+                }
+                return
+            }
             else -> {
                 session.mutate {
                     workbench.markOperationFeedback(

@@ -1,3 +1,4 @@
+import { resolveFlowchartKind } from "./flowchartKind";
 import type { LinkGraphNode } from "./types";
 
 export const DEFAULT_NODE_CARD_WIDTH = 408;
@@ -27,7 +28,7 @@ function extraFlowchartNodeWidth(node: Pick<LinkGraphNode, "type" | "metadata" |
   if (!isLongCodeLikeTitle(node.title)) {
     return 0;
   }
-  const kind = node.metadata?.["flowchart.kind"] ?? "PROCESS";
+  const kind = resolveFlowchartKind(node);
   if (kind === "DECISION") {
     return 88;
   }
@@ -48,7 +49,7 @@ export function nodeCardWidth(node: Pick<LinkGraphNode, "type" | "metadata" | "t
 }
 
 export function flowchartNodeCardWidth(node: Pick<LinkGraphNode, "type" | "metadata" | "title">): number {
-  const kind = node.metadata?.["flowchart.kind"] ?? "PROCESS";
+  const kind = resolveFlowchartKind(node);
   switch (kind) {
     case "DECISION":
       return FLOWCHART_DECISION_WIDTH + extraFlowchartNodeWidth(node);

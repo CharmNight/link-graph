@@ -6,132 +6,99 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
-import com.charmnight.linkgraph.ui.GraphEditorStateService
+import com.charmnight.linkgraph.ui.GraphEditorStateSnapshot
+import com.charmnight.linkgraph.ui.GraphSceneId
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
+import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
+import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class GraphSnapshotDocumentsTest {
     @Test
-    fun currentVisibleGraphFallsBackFromVisibleToWorkingFactAndBaseline() {
-        val visibleGraph = GraphDocument(
-            nodes = listOf(GraphNode(id = "visible", type = NodeType.METHOD, title = "visible")),
+    fun currentVisibleGraphUsesCurrentSceneProjectionAndDiffGraph() {
+        val factVisible = GraphDocument(
+            nodes = listOf(GraphNode(id = "fact-visible", type = NodeType.METHOD, title = "fact")),
         )
-        val workingGraph = GraphDocument(
-            nodes = listOf(GraphNode(id = "working", type = NodeType.METHOD, title = "working")),
+        val flowchartVisible = GraphDocument(
+            nodes = listOf(GraphNode(id = "flow-visible", type = NodeType.METHOD, title = "flow")),
         )
-        val factGraph = GraphDocument(
-            nodes = listOf(GraphNode(id = "fact", type = NodeType.METHOD, title = "fact")),
+        val resourceVisible = GraphDocument(
+            nodes = listOf(GraphNode(id = "resource-visible", type = NodeType.METHOD, title = "resource")),
         )
-        val baselineGraph = GraphDocument(
-            nodes = listOf(GraphNode(id = "baseline", type = NodeType.CLASS, title = "baseline")),
+        val diffGraph = GraphDocument(
+            nodes = listOf(GraphNode(id = "diff-visible", type = NodeType.CLASS, title = "diff")),
         )
 
-        assertEquals(
-            visibleGraph,
-            currentVisibleGraph(
-                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
-                    visibleGraph = visibleGraph,
-                    workingGraph = workingGraph,
-                    referenceFactGraph = factGraph,
-                    designBaselineGraph = baselineGraph,
-                ),
+        val baseSnapshot = snapshot(
+            workspaceGraph = GraphDocument(
+                nodes = listOf(GraphNode(id = "workspace", type = NodeType.METHOD, title = "workspace")),
             ),
+            factGraphView = FactGraphViewDocument(visibleGraph = factVisible, fullGraph = factVisible),
+            flowchartView = FlowchartViewDocument(visibleGraph = flowchartVisible, fullGraph = flowchartVisible),
+            resourceRelationView = ResourceRelationViewDocument(
+                visibleGraph = resourceVisible,
+                fullGraph = resourceVisible,
+            ),
+            diffGraph = diffGraph,
+        )
+
+        assertEquals(factVisible, currentVisibleGraph(baseSnapshot.copy(currentSceneId = GraphSceneId.WORKSPACE_FACT)))
+        assertEquals(
+            flowchartVisible,
+            currentVisibleGraph(baseSnapshot.copy(currentSceneId = GraphSceneId.WORKSPACE_FLOWCHART)),
         )
         assertEquals(
-            workingGraph,
-            currentVisibleGraph(
-                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
-                    visibleGraph = null,
-                    workingGraph = workingGraph,
-                    referenceFactGraph = factGraph,
-                    designBaselineGraph = baselineGraph,
-                ),
-            ),
+            resourceVisible,
+            currentVisibleGraph(baseSnapshot.copy(currentSceneId = GraphSceneId.WORKSPACE_RESOURCE_RELATION)),
         )
-        assertEquals(
-            factGraph,
-            currentVisibleGraph(
-                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
-                    visibleGraph = null,
-                    workingGraph = null,
-                    referenceFactGraph = factGraph,
-                    designBaselineGraph = baselineGraph,
-                ),
-            ),
-        )
-        assertEquals(
-            baselineGraph,
-            currentVisibleGraph(
-                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
-                    visibleGraph = null,
-                    workingGraph = null,
-                    referenceFactGraph = null,
-                    designBaselineGraph = baselineGraph,
-                ),
-            ),
-        )
+        assertEquals(diffGraph, currentVisibleGraph(baseSnapshot.copy(currentSceneId = GraphSceneId.DIFF)))
     }
 
     @Test
-    fun currentWorkingGraphFallsBackFromWorkingToVisibleFactAndBaseline() {
-        val visibleGraph = GraphDocument(
-            nodes = listOf(GraphNode(id = "visible", type = NodeType.METHOD, title = "visible")),
+    fun currentVisibleGraphDoesNotFallbackToWorkspaceOrReferenceGraphsWhenProjectionIsEmpty() {
+        val workspaceGraph = GraphDocument(
+            nodes = listOf(GraphNode(id = "workspace", type = NodeType.METHOD, title = "workspace")),
         )
-        val workingGraph = GraphDocument(
-            nodes = listOf(GraphNode(id = "working", type = NodeType.METHOD, title = "working")),
+        val semanticFactGraph = GraphDocument(
+            nodes = listOf(GraphNode(id = "semantic", type = NodeType.METHOD, title = "semantic")),
         )
-        val factGraph = GraphDocument(
-            nodes = listOf(GraphNode(id = "fact", type = NodeType.METHOD, title = "fact")),
-        )
-        val baselineGraph = GraphDocument(
+        val designBaselineGraph = GraphDocument(
             nodes = listOf(GraphNode(id = "baseline", type = NodeType.CLASS, title = "baseline")),
         )
+        val emptyGraph = GraphDocument()
 
-        assertEquals(
-            workingGraph,
-            currentWorkingGraph(
-                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
-                    visibleGraph = visibleGraph,
-                    workingGraph = workingGraph,
-                    referenceFactGraph = factGraph,
-                    designBaselineGraph = baselineGraph,
-                ),
-            ),
+        val factSnapshot = snapshot(
+            currentSceneId = GraphSceneId.WORKSPACE_FACT,
+            workspaceGraph = workspaceGraph,
+            semanticFactGraph = semanticFactGraph,
+            designBaselineGraph = designBaselineGraph,
+            factGraphView = FactGraphViewDocument(visibleGraph = emptyGraph, fullGraph = semanticFactGraph),
+            flowchartView = FlowchartViewDocument(visibleGraph = workspaceGraph, fullGraph = workspaceGraph),
+            resourceRelationView = ResourceRelationViewDocument(visibleGraph = workspaceGraph, fullGraph = workspaceGraph),
         )
-        assertEquals(
-            visibleGraph,
-            currentWorkingGraph(
-                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
-                    visibleGraph = visibleGraph,
-                    workingGraph = null,
-                    referenceFactGraph = factGraph,
-                    designBaselineGraph = baselineGraph,
-                ),
-            ),
+        val flowchartSnapshot = snapshot(
+            currentSceneId = GraphSceneId.WORKSPACE_FLOWCHART,
+            workspaceGraph = workspaceGraph,
+            semanticFactGraph = semanticFactGraph,
+            designBaselineGraph = designBaselineGraph,
+            factGraphView = FactGraphViewDocument(visibleGraph = semanticFactGraph, fullGraph = semanticFactGraph),
+            flowchartView = FlowchartViewDocument(visibleGraph = emptyGraph, fullGraph = workspaceGraph),
+            resourceRelationView = ResourceRelationViewDocument(visibleGraph = workspaceGraph, fullGraph = workspaceGraph),
         )
-        assertEquals(
-            factGraph,
-            currentWorkingGraph(
-                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
-                    visibleGraph = null,
-                    workingGraph = null,
-                    referenceFactGraph = factGraph,
-                    designBaselineGraph = baselineGraph,
-                ),
-            ),
+        val resourceSnapshot = snapshot(
+            currentSceneId = GraphSceneId.WORKSPACE_RESOURCE_RELATION,
+            workspaceGraph = workspaceGraph,
+            semanticFactGraph = semanticFactGraph,
+            designBaselineGraph = designBaselineGraph,
+            factGraphView = FactGraphViewDocument(visibleGraph = semanticFactGraph, fullGraph = semanticFactGraph),
+            flowchartView = FlowchartViewDocument(visibleGraph = workspaceGraph, fullGraph = workspaceGraph),
+            resourceRelationView = ResourceRelationViewDocument(visibleGraph = emptyGraph, fullGraph = workspaceGraph),
         )
-        assertEquals(
-            baselineGraph,
-            currentWorkingGraph(
-                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
-                    visibleGraph = null,
-                    workingGraph = null,
-                    referenceFactGraph = null,
-                    designBaselineGraph = baselineGraph,
-                ),
-            ),
-        )
+
+        assertEquals(emptyGraph, currentVisibleGraph(factSnapshot))
+        assertEquals(emptyGraph, currentVisibleGraph(flowchartSnapshot))
+        assertEquals(emptyGraph, currentVisibleGraph(resourceSnapshot))
     }
 
     @Test
@@ -159,18 +126,12 @@ class GraphSnapshotDocumentsTest {
             ),
         )
 
-        val sanitizedVisible = currentVisibleGraph(
-            com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
-                visibleGraph = visibleGraph,
-                workingGraph = visibleGraph,
-            ),
+        val snapshot = snapshot(
+            workspaceGraph = visibleGraph,
+            factGraphView = FactGraphViewDocument(visibleGraph = visibleGraph, fullGraph = visibleGraph),
         )
-        val sanitizedWorking = currentWorkingGraph(
-            com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
-                visibleGraph = visibleGraph,
-                workingGraph = visibleGraph,
-            ),
-        )
+        val sanitizedVisible = currentVisibleGraph(snapshot)
+        val sanitizedWorking = currentWorkingGraph(snapshot)
 
         assertEquals(visibleGraph.nodes.map(GraphNode::id), sanitizedVisible.nodes.map(GraphNode::id))
         assertEquals(visibleGraph.edges.map(GraphEdge::id), sanitizedVisible.edges.map(GraphEdge::id))
@@ -179,82 +140,109 @@ class GraphSnapshotDocumentsTest {
     }
 
     @Test
-    fun currentWorkingGraphInFlowchartModePrefersWorkingGraphBeforeFlowchartFullGraph() {
-        val visibleGraph = GraphDocument(
-            nodes = listOf(GraphNode(id = "scope:guard", type = NodeType.METHOD, title = "if")),
+    fun currentWorkingGraphUsesWorkspaceGraphAcrossScenes() {
+        val workspaceGraph = GraphDocument(
+            nodes = listOf(GraphNode(id = "workspace", type = NodeType.METHOD, title = "workspace")),
         )
-        val workingGraph = GraphDocument(
-            nodes = listOf(
-                GraphNode(id = "scope:guard", type = NodeType.METHOD, title = "if (delete == true)"),
-                GraphNode(id = "action:delete-file", type = NodeType.METHOD, title = "delete file"),
-            ),
+        val semanticFactGraph = GraphDocument(
+            nodes = listOf(GraphNode(id = "semantic", type = NodeType.METHOD, title = "semantic")),
         )
-        val fullGraph = GraphDocument(
-            nodes = listOf(
-                GraphNode(id = "action:guard-condition", type = NodeType.METHOD, title = "condition"),
-                GraphNode(id = "scope:guard", type = NodeType.METHOD, title = "if"),
-            ),
+        val designBaselineGraph = GraphDocument(
+            nodes = listOf(GraphNode(id = "baseline", type = NodeType.CLASS, title = "baseline")),
         )
 
-        assertEquals(
-            workingGraph,
-            currentWorkingGraph(
-                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
-                    analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
-                    visibleGraph = visibleGraph,
-                    workingGraph = workingGraph,
-                    flowchartView = FlowchartViewDocument(
-                        visibleGraph = visibleGraph,
-                        fullGraph = fullGraph,
-                        anchorNodeId = "scope:guard",
-                    ),
+        listOf(
+            GraphSceneId.WORKSPACE_FACT,
+            GraphSceneId.WORKSPACE_FLOWCHART,
+            GraphSceneId.WORKSPACE_RESOURCE_RELATION,
+        ).forEach { sceneId ->
+            val snapshot = snapshot(
+                currentSceneId = sceneId,
+                workspaceGraph = workspaceGraph,
+                semanticFactGraph = semanticFactGraph,
+                designBaselineGraph = designBaselineGraph,
+                factGraphView = FactGraphViewDocument(visibleGraph = semanticFactGraph, fullGraph = semanticFactGraph),
+                flowchartView = FlowchartViewDocument(visibleGraph = semanticFactGraph, fullGraph = semanticFactGraph),
+                resourceRelationView = ResourceRelationViewDocument(
+                    visibleGraph = semanticFactGraph,
+                    fullGraph = semanticFactGraph,
                 ),
-            ),
-        )
-        assertEquals(
-            "workingGraph",
-            currentWorkingGraphSource(
-                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
-                    analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
-                    visibleGraph = visibleGraph,
-                    workingGraph = workingGraph,
-                    flowchartView = FlowchartViewDocument(
-                        visibleGraph = visibleGraph,
-                        fullGraph = fullGraph,
-                        anchorNodeId = "scope:guard",
-                    ),
-                ),
-            ),
-        )
-        assertEquals(
-            fullGraph,
-            currentWorkingGraph(
-                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
-                    analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
-                    visibleGraph = visibleGraph,
-                    workingGraph = null,
-                    flowchartView = FlowchartViewDocument(
-                        visibleGraph = visibleGraph,
-                        fullGraph = fullGraph,
-                        anchorNodeId = "scope:guard",
-                    ),
-                ),
-            ),
-        )
-        assertEquals(
-            "flowchartView.fullGraph",
-            currentWorkingGraphSource(
-                com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
-                    analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
-                    visibleGraph = visibleGraph,
-                    workingGraph = null,
-                    flowchartView = FlowchartViewDocument(
-                        visibleGraph = visibleGraph,
-                        fullGraph = fullGraph,
-                        anchorNodeId = "scope:guard",
-                    ),
-                ),
-            ),
-        )
+            )
+
+            assertEquals(workspaceGraph, currentWorkingGraph(snapshot))
+            assertEquals("workspaceGraph", currentWorkingGraphSource(snapshot))
+        }
     }
+
+    @Test
+    fun currentWorkingGraphDoesNotFallbackToProjectionOrReferenceGraphsWhenWorkspaceGraphIsEmpty() {
+        val flowchartFullGraph = GraphDocument(
+            nodes = listOf(GraphNode(id = "flow-full", type = NodeType.METHOD, title = "flow full")),
+        )
+        val resourceFullGraph = GraphDocument(
+            nodes = listOf(GraphNode(id = "resource-full", type = NodeType.METHOD, title = "resource full")),
+        )
+        val semanticFactGraph = GraphDocument(
+            nodes = listOf(GraphNode(id = "semantic", type = NodeType.METHOD, title = "semantic")),
+        )
+        val designBaselineGraph = GraphDocument(
+            nodes = listOf(GraphNode(id = "baseline", type = NodeType.CLASS, title = "baseline")),
+        )
+        val emptyGraph = GraphDocument()
+
+        val flowchartSnapshot = snapshot(
+            currentSceneId = GraphSceneId.WORKSPACE_FLOWCHART,
+            workspaceGraph = emptyGraph,
+            semanticFactGraph = semanticFactGraph,
+            designBaselineGraph = designBaselineGraph,
+            factGraphView = FactGraphViewDocument(visibleGraph = semanticFactGraph, fullGraph = semanticFactGraph),
+            flowchartView = FlowchartViewDocument(visibleGraph = emptyGraph, fullGraph = flowchartFullGraph),
+            resourceRelationView = ResourceRelationViewDocument(visibleGraph = emptyGraph, fullGraph = resourceFullGraph),
+        )
+        val resourceSnapshot = snapshot(
+            currentSceneId = GraphSceneId.WORKSPACE_RESOURCE_RELATION,
+            workspaceGraph = emptyGraph,
+            semanticFactGraph = semanticFactGraph,
+            designBaselineGraph = designBaselineGraph,
+            factGraphView = FactGraphViewDocument(visibleGraph = semanticFactGraph, fullGraph = semanticFactGraph),
+            flowchartView = FlowchartViewDocument(visibleGraph = emptyGraph, fullGraph = flowchartFullGraph),
+            resourceRelationView = ResourceRelationViewDocument(visibleGraph = emptyGraph, fullGraph = resourceFullGraph),
+        )
+
+        assertEquals(emptyGraph, currentWorkingGraph(flowchartSnapshot))
+        assertEquals("emptyGraph", currentWorkingGraphSource(flowchartSnapshot))
+        assertEquals(emptyGraph, currentWorkingGraph(resourceSnapshot))
+        assertEquals("emptyGraph", currentWorkingGraphSource(resourceSnapshot))
+    }
+}
+
+private fun snapshot(
+    currentSceneId: GraphSceneId = GraphSceneId.WORKSPACE_FACT,
+    workspaceGraph: GraphDocument = GraphDocument(),
+    semanticFactGraph: GraphDocument = GraphDocument(),
+    designBaselineGraph: GraphDocument? = null,
+    factGraphView: FactGraphViewDocument = FactGraphViewDocument(),
+    flowchartView: FlowchartViewDocument = FlowchartViewDocument(),
+    resourceRelationView: ResourceRelationViewDocument = ResourceRelationViewDocument(),
+    diffGraph: GraphDocument? = null,
+): GraphEditorStateSnapshot {
+    val analysisDisplayMode = when (currentSceneId) {
+        GraphSceneId.WORKSPACE_FACT -> AnalysisDisplayMode.FACT_GRAPH
+        GraphSceneId.WORKSPACE_FLOWCHART -> AnalysisDisplayMode.FLOWCHART
+        GraphSceneId.WORKSPACE_RESOURCE_RELATION -> AnalysisDisplayMode.RESOURCE_RELATION_VIEW
+        GraphSceneId.DIFF -> AnalysisDisplayMode.FACT_GRAPH
+    }
+    return GraphEditorStateSnapshot(
+        semanticFactGraph = semanticFactGraph,
+        workspaceBaseGraph = semanticFactGraph,
+        workspaceGraph = workspaceGraph,
+        designBaselineGraph = designBaselineGraph,
+        factGraphView = factGraphView,
+        flowchartView = flowchartView,
+        resourceRelationView = resourceRelationView,
+        analysisDisplayMode = analysisDisplayMode,
+        currentSceneId = currentSceneId,
+        previousWorkspaceSceneId = GraphSceneId.WORKSPACE_FACT,
+        diffGraph = diffGraph,
+    )
 }

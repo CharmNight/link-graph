@@ -1,13 +1,13 @@
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, type CSSProperties } from "react";
 import {
   Handle,
   MarkerType,
   Position,
   useUpdateNodeInternals,
-  type CSSProperties,
   type Edge,
   type Node,
   type NodeProps,
+  type NodeTypes,
 } from "@xyflow/react";
 import {
   FLOWCHART_DECISION_MIN_HEIGHT,
@@ -41,7 +41,7 @@ import {
   draftCompareMarkerColor,
 } from "../draftComparePresentation";
 
-interface FlowchartNodeData {
+interface FlowchartNodeData extends Record<string, unknown> {
   node: LinkGraphNode;
   hasExceptionSource: boolean;
   mergeLeftTargetCount: number;
@@ -67,6 +67,9 @@ interface BuildFlowchartEdgesOptions {
   nodeIndex: Map<string, LinkGraphNode>;
   draftCompareEdgeStatuses?: Record<string, DraftCompareStatus>;
 }
+
+type FlowchartFlowNode = Node<FlowchartNodeData, "flowchartNode">;
+type FlowchartFlowNodeProps = NodeProps<FlowchartFlowNode>;
 
 const FLOWCHART_ALIAS_IDS_KEY = "flowchart.projectedFromNodeIds";
 
@@ -194,7 +197,7 @@ function flowchartNodeShellStyle(kind: string): CSSProperties | undefined {
   };
 }
 
-function FlowchartReactNode({ id, data, isConnectable, selected }: NodeProps<FlowchartNodeData>) {
+function FlowchartReactNode({ id, data, isConnectable, selected }: FlowchartFlowNodeProps) {
   const kind = flowchartKind(data.node);
   const updateNodeInternals = useUpdateNodeInternals();
   const visibleTargetHandleStyle = flowchartHandleStyle(isConnectable, "target");
@@ -277,7 +280,7 @@ function FlowchartReactNode({ id, data, isConnectable, selected }: NodeProps<Flo
   );
 }
 
-export const FLOWCHART_NODE_TYPES = {
+export const FLOWCHART_NODE_TYPES: NodeTypes = {
   flowchartNode: FlowchartReactNode,
 };
 
@@ -441,7 +444,7 @@ export function buildFlowchartNodes({
   draftChangedNodeIds = [],
   draftCompareNodeStatuses = {},
   nodeSizeRegistry,
-}: BuildFlowchartNodesOptions): Array<Node<FlowchartNodeData>> {
+}: BuildFlowchartNodesOptions): FlowchartFlowNode[] {
   const nodeIndex = new Map(nodes.map((node) => [node.id, node]));
   const draftChangedNodeIdSet = new Set(draftChangedNodeIds);
   const outgoingControlFlowBySource = buildOutgoingControlFlowIndex(edges);
@@ -481,7 +484,7 @@ export function buildFlowchartNodes({
         explanationFocused: explanationFocusNodeId === node.id,
         draftChanged: projectedDraftChanged,
         draftCompareStatus: projectedDraftCompareStatus,
-        onMeasure: (size) => nodeSizeRegistry.set(node.id, size),
+        onMeasure: nodeSizeRegistry.reporter(node.id),
       },
       style: flowchartNodeStyle(node),
     };
@@ -492,7 +495,7 @@ export function buildFlowchartEdges({
   edges,
   nodeIndex,
   draftCompareEdgeStatuses = {},
-}: BuildFlowchartEdgesOptions): Array<Edge<RoutedEdgeData>> {
+}: BuildFlowchartEdgesOptions): Array<Edge<RoutedEdgeData, "routedEdge">> {
   const outgoingControlFlowBySource = buildOutgoingControlFlowIndex(edges);
   const incomingControlFlowByTarget = buildIncomingControlFlowIndex(edges);
   const mergeTargetPortLayout = buildMergeTargetPortLayout(

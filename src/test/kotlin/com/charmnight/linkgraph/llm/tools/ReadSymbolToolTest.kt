@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.llm.SourceSnippetContext
 import com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore
 import com.charmnight.linkgraph.llm.runtime.RunBudget
@@ -30,7 +32,7 @@ class ReadSymbolToolTest : BasePlatformTestCase() {
             }
             """.trimIndent(),
         )
-        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+        val snapshot = testSnapshot(
             workingGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(
@@ -78,7 +80,7 @@ class ReadSymbolToolTest : BasePlatformTestCase() {
             }
             """.trimIndent(),
         )
-        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+        val snapshot = testSnapshot(
             workingGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(

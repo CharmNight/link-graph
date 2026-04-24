@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.capability
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.codegen.CodeEditOperation
 import com.charmnight.linkgraph.codegen.CodeEditOperationKind
 import com.charmnight.linkgraph.codegen.CodeGenerationResult
@@ -73,7 +75,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+                    testSnapshot(
                         draftWorkbenchState = DraftWorkbenchState(
                             draftChanges = listOf(
                                 DraftWorkbenchEntry(
@@ -180,7 +182,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+                    testSnapshot(
                         draftWorkbenchState = DraftWorkbenchState(
                             draftChanges = listOf(
                                 DraftWorkbenchEntry(
@@ -298,7 +300,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+                    testSnapshot(
                         draftWorkbenchState = DraftWorkbenchState(
                             draftChanges = listOf(
                                 DraftWorkbenchEntry(
@@ -461,7 +463,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { com.charmnight.linkgraph.ui.GraphEditorStateSnapshot() },
+                snapshotSupplier = { testSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -552,7 +554,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { com.charmnight.linkgraph.ui.GraphEditorStateSnapshot() },
+                snapshotSupplier = { testSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -664,7 +666,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { com.charmnight.linkgraph.ui.GraphEditorStateSnapshot() },
+                snapshotSupplier = { testSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -740,7 +742,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             runtimeContext = AgentRuntimeContext(
                 project = project,
                 snapshotSupplier = {
-                    com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+                    testSnapshot(
                         draftWorkbenchState = DraftWorkbenchState(
                             draftChanges = listOf(
                                 DraftWorkbenchEntry(

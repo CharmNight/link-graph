@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore
 import com.charmnight.linkgraph.llm.runtime.RunBudget
 import com.charmnight.linkgraph.ui.GraphEditorStateService
@@ -35,7 +37,7 @@ class ReadSourceSnippetToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
+                snapshot = testSnapshot(),
                 artifactStore = InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
@@ -72,7 +74,7 @@ class ReadSourceSnippetToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
+                snapshot = testSnapshot(),
                 artifactStore = InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
@@ -105,7 +107,7 @@ class ReadSourceSnippetToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
+                snapshot = testSnapshot(),
                 artifactStore = InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
@@ -138,7 +140,7 @@ class ReadSourceSnippetToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
+                snapshot = testSnapshot(),
                 artifactStore = InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),

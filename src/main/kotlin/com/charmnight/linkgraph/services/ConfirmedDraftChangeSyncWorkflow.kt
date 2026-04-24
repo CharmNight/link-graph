@@ -2,6 +2,7 @@ package com.charmnight.linkgraph.services
 
 import com.charmnight.linkgraph.llm.artifact.ArtifactStore
 import com.charmnight.linkgraph.llm.artifact.ConfirmedIntentArtifact
+import com.charmnight.linkgraph.ui.GraphEditorStateMutationContext
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.OperationFeedbackLevel
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
@@ -15,7 +16,7 @@ internal class ConfirmedDraftChangeSyncWorkflow(
     private val graphDiagnosticsLogger: GraphDiagnosticsLogger,
     private val artifactStoreProvider: () -> ArtifactStore,
     private val invalidateAuditRequests: () -> Unit,
-    private val mutateEditorStateBatch: (GraphEditorStateSyncSession.() -> Unit) -> Unit,
+    private val mutateEditorStateBatch: (GraphEditorStateMutationContext.() -> Unit) -> Unit,
     private val logger: Logger,
     private val runtimeTrace: (String) -> Unit,
 ) {
@@ -61,7 +62,7 @@ internal class ConfirmedDraftChangeSyncWorkflow(
                         )
                     }
                     apply {
-                        markWorkingGraphChanged(
+                        markGraphChanged(
                             graph = confirmation.rebuiltGraph,
                             selectedMethodSignature = snapshot.selectedMethodSignature,
                             workingGraphDirty = confirmation.draftState.draftChanges.isNotEmpty(),
@@ -124,7 +125,7 @@ internal class ConfirmedDraftChangeSyncWorkflow(
                         )
                     }
                     apply {
-                        markWorkingGraphChanged(
+                        markGraphChanged(
                             graph = removal.rebuiltGraph,
                             selectedMethodSignature = snapshot.selectedMethodSignature,
                             workingGraphDirty = removal.draftState.draftChanges.isNotEmpty(),

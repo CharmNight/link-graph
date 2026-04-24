@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.semantic.provider.resource
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.semantic.model.ResourceUnit
 import com.charmnight.linkgraph.semantic.policy.SemanticCapturePolicy
 import com.charmnight.linkgraph.semantic.policy.TraversalBudgetPolicy

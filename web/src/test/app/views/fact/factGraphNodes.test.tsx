@@ -161,6 +161,47 @@ describe("FACT_GRAPH_NODE_TYPES", () => {
     expect(builtNodes.find((node) => node.id === "flow-action:guard")?.className ?? "").toContain("is-draft-change");
   });
 
+  it("reuses fact node measurement reporters when only explanation focus changes", () => {
+    const registry = createNodeSizeRegistry();
+    const nodes = [
+      {
+        id: "method:submit-order",
+        type: "METHOD" as const,
+        title: "OrderService.submit",
+        inputs: [],
+        outputs: [],
+        certainty: "PROVEN" as const,
+        bindingStatus: "BOUND" as const,
+      },
+      {
+        id: "flow-action:guard",
+        type: "FLOW_ACTION" as const,
+        title: "校验条件",
+        inputs: [],
+        outputs: [],
+        certainty: "PROVEN" as const,
+        bindingStatus: "BOUND" as const,
+      },
+    ];
+
+    const initialNodes = buildFactGraphNodes({
+      nodes,
+      selectedNodeId: "method:submit-order",
+      onExpandOverflowNode: vi.fn(),
+      nodeSizeRegistry: registry,
+    });
+    const hoveredNodes = buildFactGraphNodes({
+      nodes,
+      selectedNodeId: "method:submit-order",
+      explanationFocusNodeId: "flow-action:guard",
+      onExpandOverflowNode: vi.fn(),
+      nodeSizeRegistry: registry,
+    });
+
+    expect(initialNodes[0]?.data.onMeasure).toBe(hoveredNodes[0]?.data.onMeasure);
+    expect(initialNodes[1]?.data.onMeasure).toBe(hoveredNodes[1]?.data.onMeasure);
+  });
+
   it("switches fact edges to the shared routed edge renderer when ELK route data is present", () => {
     const builtEdge = buildFactGraphEdges({
       edges: [

@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.ui
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
 import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
@@ -31,12 +33,36 @@ import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.charmnight.linkgraph.workbench.StepKind
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class GraphEditorStateServiceTest {
+    private val root: Path = Path.of("").toAbsolutePath()
+
+    @Test
+    fun stateServiceRemovesLegacyPartialViewMutationEntrypoints() {
+        val serviceSource = Files.readString(
+            root.resolve("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorStateService.kt"),
+        )
+        val modelSource = Files.readString(
+            root.resolve("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorStateModels.kt"),
+        )
+
+        assertTrue(serviceSource.contains("GraphEditorStateStore"))
+        assertTrue(serviceSource.contains("fun markGraphChanged("))
+        assertTrue(modelSource.contains("val currentSceneId: GraphSceneId"))
+        assertTrue(modelSource.contains("val sceneStates: Map<GraphSceneId, GraphSceneState>"))
+        assertTrue(modelSource.contains("val workspaceGraph: GraphDocument"))
+        assertTrue(modelSource.contains("val workspaceBaseGraph: GraphDocument"))
+        assertTrue(modelSource.contains("val semanticFactGraph: GraphDocument"))
+        kotlin.test.assertFalse(serviceSource.contains("fun markViewGraphChanged("))
+        kotlin.test.assertFalse(serviceSource.contains("fun markWorkingGraphChanged("))
+    }
+
     @Test
     fun markOperationFeedbackCanPreserveExistingLastMessageType() {
         val service = GraphEditorStateService()
@@ -193,9 +219,10 @@ class GraphEditorStateServiceTest {
         val snapshot = service.snapshot()
         assertEquals(AnalysisDisplayMode.FACT_GRAPH, snapshot.analysisDisplayMode)
         assertEquals("currentSubject", snapshot.lastGraphSource)
-        assertEquals(visibleGraph, snapshot.visibleGraph)
+        assertEquals(fullGraph, snapshot.visibleGraph)
         assertEquals(fullGraph, snapshot.workingGraph)
         assertEquals(fullGraph, snapshot.referenceFactGraph)
+        assertEquals(GraphSceneId.WORKSPACE_FACT, snapshot.currentSceneId)
         assertEquals("method:order-service-place", snapshot.selectedNodeId)
         assertEquals("com.example.OrderService.place(java.lang.String):void", snapshot.selectedMethodSignature)
         assertEquals("已加载当前主体分析：OrderService.place", snapshot.operationFeedback?.message)
@@ -204,7 +231,7 @@ class GraphEditorStateServiceTest {
         assertNotNull(snapshot.resourceRelationView)
         assertEquals("method:order-service-place", snapshot.factGraphView?.anchorNodeId)
         assertEquals("method:order-service-place", snapshot.flowchartView?.anchorNodeId)
-        assertEquals("sql:order-repository-save", snapshot.resourceRelationView?.anchorNodeId)
+        assertEquals("method:order-service-place", snapshot.resourceRelationView?.anchorNodeId)
     }
 
     @Test
@@ -280,9 +307,12 @@ class GraphEditorStateServiceTest {
         )
 
         val snapshot = service.snapshot()
-        assertEquals(flowchartVisibleGraph, snapshot.visibleGraph)
-        assertEquals(flowchartFullGraph, snapshot.workingGraph)
+        assertEquals(GraphSceneId.WORKSPACE_FLOWCHART, snapshot.currentSceneId)
         assertEquals(factGraph, snapshot.referenceFactGraph)
+        assertEquals(flowchartFullGraph, snapshot.factGraphView.fullGraph)
+        assertEquals(flowchartFullGraph, snapshot.workingGraph)
+        assertEquals(flowchartFullGraph, snapshot.referenceWorkingGraph)
+        assertEquals(flowchartFullGraph, snapshot.flowchartView.fullGraph)
     }
 
     @Test
@@ -798,7 +828,7 @@ class GraphEditorStateServiceTest {
     }
 
     @Test
-    fun markViewGraphChanged在流程图模式下更新流程图文档并保留其他视图() {
+    fun markViewGraphChanged测试适配层会把流程图编辑提升为canonicalWorkspaceGraph重建全部视图() {
         val service = GraphEditorStateService()
         val factGraph = GraphDocument(
             nodes = listOf(
@@ -883,8 +913,8 @@ class GraphEditorStateServiceTest {
         assertEquals("READABLE", snapshot.visibleGraph?.nodes?.firstOrNull { it.id == "method:flow-entry" }?.metadata?.get("flowchart.projection.mode"))
         assertEquals(listOf("method:flow-entry", "design:1"), snapshot.flowchartView?.visibleGraph?.nodes?.map { it.id })
         assertEquals(editedFlowchartGraph, snapshot.workingGraph)
-        assertEquals(factGraph, snapshot.factGraphView?.visibleGraph)
-        assertEquals(resourceGraph, snapshot.resourceRelationView?.visibleGraph)
+        assertEquals(editedFlowchartGraph, snapshot.factGraphView?.visibleGraph)
+        assertEquals(editedFlowchartGraph, snapshot.resourceRelationView?.visibleGraph)
     }
 
     @Test
@@ -1334,6 +1364,6 @@ class GraphEditorStateServiceTest {
         assertEquals(null, snapshot.auditResult)
         assertEquals(null, snapshot.diffReviewResult)
         assertEquals(null, snapshot.draftPatchPreview)
-        assertEquals("graphChanged", snapshot.lastMessageType)
+        assertEquals("workspaceGraphChanged", snapshot.lastMessageType)
     }
 }

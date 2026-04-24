@@ -154,6 +154,45 @@ describe("RESOURCE_RELATION_NODE_TYPES", () => {
     expect(builtNodes.find((node) => node.id === "resource:sql")?.className ?? "").toContain("is-draft-change");
   });
 
+  it("reuses resource node measurement reporters when only explanation focus changes", () => {
+    const registry = createNodeSizeRegistry();
+    const nodes = [
+      {
+        id: "resource:http",
+        type: "HTTP_ENDPOINT" as const,
+        title: "GET /common/download",
+        inputs: [],
+        outputs: [],
+        certainty: "PROVEN" as const,
+        bindingStatus: "BOUND" as const,
+      },
+      {
+        id: "resource:sql",
+        type: "SQL" as const,
+        title: "order_mapper.xml#insertOrder",
+        inputs: [],
+        outputs: [],
+        certainty: "PROVEN" as const,
+        bindingStatus: "BOUND" as const,
+      },
+    ];
+
+    const initialNodes = buildResourceRelationNodes({
+      nodes,
+      selectedNodeId: "resource:http",
+      nodeSizeRegistry: registry,
+    });
+    const hoveredNodes = buildResourceRelationNodes({
+      nodes,
+      selectedNodeId: "resource:http",
+      explanationFocusNodeId: "resource:sql",
+      nodeSizeRegistry: registry,
+    });
+
+    expect(initialNodes[0]?.data.onMeasure).toBe(hoveredNodes[0]?.data.onMeasure);
+    expect(initialNodes[1]?.data.onMeasure).toBe(hoveredNodes[1]?.data.onMeasure);
+  });
+
   it("switches resource relation edges to the shared routed edge renderer when ELK route data is present", () => {
     const builtEdge = buildResourceRelationEdges({
       edges: [

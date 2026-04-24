@@ -1,19 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
-import {
-  measureDuration,
-  measureStart,
-  summarizeBootstrapState,
-  summarizeGraph,
-  traceLinkGraph,
-} from "../debug";
-import {
-  applyBootstrapNodePositions,
-  applyLayoutOnlyNodePositions,
-  graphLayoutSignature,
-  graphSemanticSignature,
-  hasRevision,
-  normalizeGraphNodes,
-} from "../graphState";
+import { measureDuration, measureStart, summarizeBootstrapState, summarizeGraph, traceLinkGraph } from "../debug";
+import { applyLayoutOnlyNodePositions, resolveNodePosition, syncNodePosition } from "../graphState";
 import type {
   AnalysisDisplayMode,
   AsyncRequestState,
@@ -21,7 +8,10 @@ import type {
   FlowchartViewDocument,
   LinkGraphBootstrapState,
   LinkGraphDocument,
+  LinkGraphLayoutState,
   LinkGraphNode,
+  LinkGraphSceneId,
+  LinkGraphSceneState,
   ResourceRelationViewDocument,
   SourceNavigationState,
 } from "../types";
@@ -31,10 +21,12 @@ import type {
 } from "./useWorkbenchState";
 
 const DEFAULT_ANALYSIS_DISPLAY_MODE: AnalysisDisplayMode = "FLOWCHART";
-const REQUEST_ONLY_SELECTION_MESSAGE_TYPES = new Set([
-  "requestAudit",
-  "auditResult",
-]);
+
+type GraphViewDocumentLike = {
+  visibleGraph: LinkGraphDocument;
+  fullGraph: LinkGraphDocument;
+  anchorNodeId?: string | null;
+};
 
 interface UseBootstrapProjectionStateArgs {
   nodesRef: MutableRefObject<LinkGraphNode[]>;
@@ -50,7 +42,6 @@ interface UseBootstrapProjectionStateArgs {
   setProjectionState: Dispatch<SetStateAction<WorkbenchProjectionState>>;
   explanationLocalOverrideRef: MutableRefObject<boolean>;
   setSelectionGroupNodeIds: Dispatch<SetStateAction<string[]>>;
-  setCollapsedNodeIds: Dispatch<SetStateAction<string[]>>;
   setDiffTargetItemIds: Dispatch<SetStateAction<string[]>>;
   syncManualNodeIdCounters: (nextNodes: Array<{ id: string }>) => void;
   resolveSourceNavigationState: (state: LinkGraphBootstrapState) => SourceNavigationState;
@@ -66,339 +57,378 @@ interface UseBootstrapProjectionStateArgs {
     },
     displayMode: AnalysisDisplayMode,
   ) => { visibleGraph: LinkGraphDocument };
-  applyBootstrapRoutesToViewDocument: <T extends { visibleGraph: LinkGraphDocument; fullGraph: LinkGraphDocument }>(
+  applyBootstrapRoutesToViewDocument: <T extends GraphViewDocumentLike>(
     nextView: T,
     currentView: T,
   ) => T;
-  applyBootstrapRoutesToDocument: (
-    nextDocument: LinkGraphDocument,
-    currentDocument: LinkGraphDocument,
-  ) => LinkGraphDocument;
+  reuseCurrentViewGraphs: <T extends GraphViewDocumentLike>(
+    nextView: T,
+    currentView: T,
+    reuseCurrentGraphs: boolean,
+  ) => T;
   resolveAnchorNodeId: (nodes: LinkGraphNode[], preferredNodeId: string | null) => string | null;
-  shouldResetAnchorNode: (state: LinkGraphBootstrapState, semanticGraphChanged: boolean) => boolean;
-  deriveFactGraphSummary: (
-    visibleGraph: LinkGraphDocument,
-    fullGraph: LinkGraphDocument,
-    anchorNodeId: string | null,
-  ) => FactGraphViewDocument["summary"];
-  resolveReferenceWorkingGraph: (
-    state: LinkGraphBootstrapState,
-    displayMode: AnalysisDisplayMode,
-  ) => LinkGraphDocument | null;
-  resolveReferenceFactGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
+  resolveWorkspaceBaseGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
+  resolveSemanticFactGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
   resolveDesignBaselineGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
   resolveRequestState: (state?: AsyncRequestState | null) => AsyncRequestState;
+}
+
+function createEmptySceneState(): LinkGraphSceneState {
+  return {
+    selectedNodeId: null,
+    anchorNodeId: null,
+    layoutState: {
+      positions: {},
+    },
+    layoutRevision: 0,
+    collapsedNodeIds: [],
+  };
+}
+
+function filterLayoutState(
+  layoutState: LinkGraphLayoutState | null | undefined,
+  nodes: LinkGraphNode[],
+): LinkGraphLayoutState {
+  const positions = layoutState?.positions ?? {};
+  return {
+    positions: Object.fromEntries(
+      nodes.flatMap((node) => {
+        const position = positions[node.id];
+        return position ? [[node.id, position]] : [];
+      }),
+    ),
+  };
+}
+
+function normalizeSceneState(
+  sceneState: LinkGraphSceneState | null | undefined,
+  nodes: LinkGraphNode[],
+  resolveAnchorNodeId: (nodes: LinkGraphNode[], preferredNodeId: string | null) => string | null,
+): LinkGraphSceneState {
+  const baseSceneState = sceneState ?? createEmptySceneState();
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const selectedNodeId = baseSceneState.selectedNodeId && nodeIds.has(baseSceneState.selectedNodeId)
+    ? baseSceneState.selectedNodeId
+    : nodes[0]?.id ?? null;
+  const preferredAnchorNodeId = baseSceneState.anchorNodeId && nodeIds.has(baseSceneState.anchorNodeId)
+    ? baseSceneState.anchorNodeId
+    : selectedNodeId;
+
+  return {
+    ...baseSceneState,
+    selectedNodeId,
+    anchorNodeId: resolveAnchorNodeId(nodes, preferredAnchorNodeId),
+    layoutState: filterLayoutState(baseSceneState.layoutState, nodes),
+    collapsedNodeIds: (baseSceneState.collapsedNodeIds ?? []).filter((nodeId) => nodeIds.has(nodeId)),
+  };
+}
+
+function applySceneLayoutToGraph(
+  graph: LinkGraphDocument,
+  currentGraph: LinkGraphDocument,
+  sceneState: LinkGraphSceneState,
+): LinkGraphDocument {
+  const currentNodeById = new Map(currentGraph.nodes.map((node) => [node.id, node]));
+  let changed = false;
+  const nextNodes = graph.nodes.map((node) => {
+    const layoutPosition = sceneState.layoutState.positions[node.id];
+    if (layoutPosition) {
+      const currentPosition = resolveNodePosition(node);
+      if (currentPosition?.x === layoutPosition.x && currentPosition?.y === layoutPosition.y) {
+        return node;
+      }
+      changed = true;
+      return syncNodePosition(node, layoutPosition);
+    }
+    if (resolveNodePosition(node)) {
+      return node;
+    }
+    const currentPosition = resolveNodePosition(currentNodeById.get(node.id));
+    if (!currentPosition) {
+      return node;
+    }
+    changed = true;
+    return syncNodePosition(node, currentPosition);
+  });
+  return !changed
+    ? graph
+    : {
+        ...graph,
+        nodes: nextNodes,
+      };
+}
+
+function applyBootstrapLayoutToGraph(
+  graph: LinkGraphDocument,
+  bootstrapGraph: LinkGraphDocument,
+): LinkGraphDocument {
+  const nextNodes = applyLayoutOnlyNodePositions(graph.nodes, bootstrapGraph.nodes);
+  return nextNodes === graph.nodes
+    ? graph
+    : {
+        ...graph,
+        nodes: nextNodes,
+      };
+}
+
+function applyBootstrapLayoutToViewDocument<T extends GraphViewDocumentLike>(
+  view: T,
+  bootstrapView: T,
+): T {
+  const nextVisibleGraph = applyBootstrapLayoutToGraph(view.visibleGraph, bootstrapView.visibleGraph);
+  const nextFullGraph = applyBootstrapLayoutToGraph(view.fullGraph, bootstrapView.fullGraph);
+
+  if (nextVisibleGraph === view.visibleGraph && nextFullGraph === view.fullGraph) {
+    return view;
+  }
+
+  return {
+    ...view,
+    visibleGraph: nextVisibleGraph,
+    fullGraph: nextFullGraph,
+  };
+}
+
+function applySceneStateToViewDocument<T extends GraphViewDocumentLike>(
+  view: T,
+  currentView: T,
+  sceneState: LinkGraphSceneState,
+): T {
+  const nextVisibleGraph = applySceneLayoutToGraph(
+    view.visibleGraph,
+    currentView.visibleGraph,
+    sceneState,
+  );
+  const nextFullGraph = applySceneLayoutToGraph(
+    view.fullGraph,
+    currentView.fullGraph,
+    sceneState,
+  );
+
+  if (
+    nextVisibleGraph === view.visibleGraph
+    && nextFullGraph === view.fullGraph
+    && (view.anchorNodeId ?? null) === sceneState.anchorNodeId
+  ) {
+    return view;
+  }
+
+  return {
+    ...view,
+    visibleGraph: nextVisibleGraph,
+    fullGraph: nextFullGraph,
+    anchorNodeId: sceneState.anchorNodeId,
+  };
+}
+
+function resolveSceneNodes(
+  sceneId: LinkGraphSceneId,
+  factGraphView: FactGraphViewDocument,
+  flowchartView: FlowchartViewDocument,
+  resourceRelationView: ResourceRelationViewDocument,
+  fallbackVisibleGraph: LinkGraphDocument,
+  currentSceneId: LinkGraphSceneId,
+): LinkGraphNode[] {
+  switch (sceneId) {
+    case "WORKSPACE_FACT":
+      return factGraphView.visibleGraph.nodes;
+    case "WORKSPACE_FLOWCHART":
+      return flowchartView.visibleGraph.nodes;
+    case "WORKSPACE_RESOURCE_RELATION":
+      return resourceRelationView.visibleGraph.nodes;
+    case "DIFF":
+      return currentSceneId === "DIFF" ? fallbackVisibleGraph.nodes : [];
+    default:
+      return [];
+  }
+}
+
+function mergeSceneState(args: {
+  nextSceneState: LinkGraphSceneState | undefined;
+  currentSceneState: LinkGraphSceneState | undefined;
+  nodes: LinkGraphNode[];
+  preserveLocalSceneUi: boolean;
+  resolveAnchorNodeId: (nodes: LinkGraphNode[], preferredNodeId: string | null) => string | null;
+}): LinkGraphSceneState {
+  const bootstrapSceneState = args.nextSceneState ?? createEmptySceneState();
+  const currentSceneState = args.currentSceneState ?? bootstrapSceneState;
+  const preserveLocalLayout = args.preserveLocalSceneUi
+    && currentSceneState.layoutRevision >= bootstrapSceneState.layoutRevision;
+
+  const mergedSceneState = args.preserveLocalSceneUi
+    ? {
+        ...bootstrapSceneState,
+        selectedNodeId: currentSceneState.selectedNodeId,
+        anchorNodeId: currentSceneState.anchorNodeId,
+        collapsedNodeIds: currentSceneState.collapsedNodeIds,
+        layoutState: preserveLocalLayout ? currentSceneState.layoutState : bootstrapSceneState.layoutState,
+        layoutRevision: preserveLocalLayout ? currentSceneState.layoutRevision : bootstrapSceneState.layoutRevision,
+      }
+    : bootstrapSceneState;
+
+  return normalizeSceneState(mergedSceneState, args.nodes, args.resolveAnchorNodeId);
 }
 
 export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArgs) {
   function applyBootstrapState(nextState: LinkGraphBootstrapState) {
     const startedAt = measureStart();
-    const currentNodes = args.nodesRef.current;
-    const currentEdges = args.edgesRef.current;
-    const currentDraftGraph = args.draftGraphRef.current;
-    const effectiveCurrentDraftGraph = currentDraftGraph ?? {
-      nodes: currentNodes,
-      edges: currentEdges,
-    };
-    const currentAnchorNodeId = args.anchorNodeIdRef.current;
-    const currentAnalysisDisplayMode = args.analysisDisplayModeRef.current;
-    const nextAnalysisDisplayMode = nextState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE;
-    const analysisDisplayModeChanged = nextAnalysisDisplayMode !== currentAnalysisDisplayMode;
+    const nextAnalysisDisplayMode = nextState.analysisDisplayMode
+      ?? args.analysisDisplayModeRef.current
+      ?? args.canvasState.analysisDisplayMode
+      ?? DEFAULT_ANALYSIS_DISPLAY_MODE;
+    const currentSemanticRevision = args.semanticRevisionRef.current;
+    const reuseCurrentProjectionGraphs = nextState.workspaceRevision === args.canvasState.workspaceRevision
+      && nextState.semanticRevision === currentSemanticRevision;
     const nextSourceNavigationState = args.resolveSourceNavigationState(nextState);
-    let nextFactGraphView = args.applyBootstrapRoutesToViewDocument(
+
+    const bootstrapFactGraphView = args.applyBootstrapRoutesToViewDocument(
       args.resolveFactGraphView(nextState),
       args.canvasState.factGraphView,
     );
-    let nextFlowchartView = args.applyBootstrapRoutesToViewDocument(
+    const bootstrapFlowchartView = args.applyBootstrapRoutesToViewDocument(
       args.resolveFlowchartView(nextState),
       args.canvasState.flowchartView,
     );
-    let nextResourceRelationView = args.applyBootstrapRoutesToViewDocument(
+    const bootstrapResourceRelationView = args.applyBootstrapRoutesToViewDocument(
       args.resolveResourceRelationView(nextState),
       args.canvasState.resourceRelationView,
     );
-    const nextWorkingGraph = args.applyBootstrapRoutesToDocument(
-      args.resolveWorkingGraph(nextState),
-      effectiveCurrentDraftGraph,
+
+    const projectedFactGraphView = applyBootstrapLayoutToViewDocument(
+      args.reuseCurrentViewGraphs(
+        bootstrapFactGraphView,
+        args.canvasState.factGraphView,
+        reuseCurrentProjectionGraphs,
+      ),
+      bootstrapFactGraphView,
     );
-    traceLinkGraph("app.applyBootstrapState.start", {
-      bootstrap: summarizeBootstrapState(nextState),
-      currentGraph: summarizeGraph({ nodes: currentNodes, edges: currentEdges }),
-    });
-    const visibleGraph = args.resolveActiveViewDocument({
+    const projectedFlowchartView = applyBootstrapLayoutToViewDocument(
+      args.reuseCurrentViewGraphs(
+        bootstrapFlowchartView,
+        args.canvasState.flowchartView,
+        reuseCurrentProjectionGraphs,
+      ),
+      bootstrapFlowchartView,
+    );
+    const projectedResourceRelationView = applyBootstrapLayoutToViewDocument(
+      args.reuseCurrentViewGraphs(
+        bootstrapResourceRelationView,
+        args.canvasState.resourceRelationView,
+        reuseCurrentProjectionGraphs,
+      ),
+      bootstrapResourceRelationView,
+    );
+
+    const provisionalVisibleGraph = args.resolveActiveViewDocument({
+      ...nextState,
+      factGraphView: projectedFactGraphView,
+      flowchartView: projectedFlowchartView,
+      resourceRelationView: projectedResourceRelationView,
+    }, nextAnalysisDisplayMode).visibleGraph;
+
+    const sceneIds = Array.from(new Set([
+      ...Object.keys(nextState.sceneStates),
+      ...Object.keys(args.canvasState.sceneStates),
+    ])) as LinkGraphSceneId[];
+
+    const mergedSceneStates = Object.fromEntries(
+      sceneIds.map((sceneId) => {
+        const nodes = resolveSceneNodes(
+          sceneId,
+          projectedFactGraphView,
+          projectedFlowchartView,
+          projectedResourceRelationView,
+          provisionalVisibleGraph,
+          nextState.currentSceneId,
+        );
+        return [
+          sceneId,
+          mergeSceneState({
+            nextSceneState: nextState.sceneStates[sceneId],
+            currentSceneState: args.canvasState.sceneStates[sceneId],
+            nodes,
+            preserveLocalSceneUi: reuseCurrentProjectionGraphs,
+            resolveAnchorNodeId: args.resolveAnchorNodeId,
+          }),
+        ];
+      }),
+    ) as Record<LinkGraphSceneId, LinkGraphSceneState>;
+
+    let nextFactGraphView = applySceneStateToViewDocument(
+      projectedFactGraphView,
+      args.canvasState.factGraphView,
+      mergedSceneStates.WORKSPACE_FACT ?? createEmptySceneState(),
+    );
+    let nextFlowchartView = applySceneStateToViewDocument(
+      projectedFlowchartView,
+      args.canvasState.flowchartView,
+      mergedSceneStates.WORKSPACE_FLOWCHART ?? createEmptySceneState(),
+    );
+    let nextResourceRelationView = applySceneStateToViewDocument(
+      projectedResourceRelationView,
+      args.canvasState.resourceRelationView,
+      mergedSceneStates.WORKSPACE_RESOURCE_RELATION ?? createEmptySceneState(),
+    );
+
+    const resolvedVisibleGraph = args.resolveActiveViewDocument({
       ...nextState,
       factGraphView: nextFactGraphView,
       flowchartView: nextFlowchartView,
       resourceRelationView: nextResourceRelationView,
+      sceneStates: mergedSceneStates,
     }, nextAnalysisDisplayMode).visibleGraph;
-    const revisionsAvailable = hasRevision(nextState.semanticRevision) || hasRevision(nextState.layoutRevision);
-    const semanticRevisionAdvanced = hasRevision(nextState.semanticRevision)
-      && nextState.semanticRevision !== args.semanticRevisionRef.current;
-    const layoutRevisionAdvanced = hasRevision(nextState.layoutRevision)
-      && nextState.layoutRevision !== args.layoutRevisionRef.current;
-    const skipGraphSignatureChecks = revisionsAvailable
-      && !analysisDisplayModeChanged
-      && !semanticRevisionAdvanced
-      && !layoutRevisionAdvanced;
-    if (skipGraphSignatureChecks) {
-      args.setProjectionState({
-        ...args.projectionState,
-        draftWorkbenchState: nextState.draftWorkbenchState ?? { draftChanges: [], draftNotes: [] },
-        draftPatchPreview: nextState.draftPatchPreview ?? null,
-        canUndoDraftPatchApply: nextState.canUndoDraftPatchApply ?? false,
-        lastAppliedDraftPatchSummary: nextState.lastAppliedDraftPatchSummary ?? null,
-        lastAppliedDraftPatchPreview: !(nextState.canUndoDraftPatchApply ?? false) && !nextState.lastAppliedDraftPatchSummary
-          ? null
-          : args.projectionState.lastAppliedDraftPatchPreview,
-        lastDraftPatchApplyResult: nextState.lastDraftPatchApplyResult ?? null,
-        auditResult: nextState.auditResult ?? null,
-        auditRequestState: args.resolveRequestState(nextState.auditRequestState),
-        qaRequestRecoveryState: nextState.qaRequestRecoveryState ?? { lastSubmittedRequest: null, lastFailedRequest: null },
-        diffReviewResult: nextState.diffReviewResult ?? null,
-        diffReviewRequestState: args.resolveRequestState(nextState.diffReviewRequestState),
-        draftVersion: nextState.draftVersion ?? null,
-        generationPlan: nextState.generationPlan ?? null,
-        generationPlanDraftVersion: nextState.generationPlanDraftVersion ?? null,
-        generationPlanRequestState: args.resolveRequestState(nextState.generationPlanRequestState),
-        draftValidationState: nextState.draftValidationState ?? null,
-        generationPlanDiscussionSession: nextState.generationPlanDiscussionSession ?? null,
-        generationPlanDiscussionRequestState: args.resolveRequestState(nextState.generationPlanDiscussionRequestState),
-        graphBeautificationResult: args.explanationLocalOverrideRef.current
-          ? args.projectionState.graphBeautificationResult
-          : nextState.graphBeautificationResult ?? null,
-        graphBeautificationRequestState: args.explanationLocalOverrideRef.current
-          ? args.projectionState.graphBeautificationRequestState
-          : args.resolveRequestState(nextState.graphBeautificationRequestState),
-        generatedCodeDrafts: nextState.generatedCodeDrafts ?? [],
-        generatedCodeDraftVersion: nextState.generatedCodeDraftVersion ?? null,
-        generatedCodeDraftWarnings: nextState.generatedCodeDraftWarnings ?? [],
-        generatedCodeDraftSource: nextState.generatedCodeDraftSource ?? null,
-        generatedCodeDraftPromptPreview: nextState.generatedCodeDraftPromptPreview ?? null,
-        generatedCodeDraftPromptPreviewArtifactId: nextState.generatedCodeDraftPromptPreviewArtifactId ?? null,
-        generatedCodeDraftWriteReport: nextState.generatedCodeDraftWriteReport ?? null,
-        codeDraftRequestState: args.resolveRequestState(nextState.codeDraftRequestState),
-        codeEligibilityDecision: nextState.codeEligibilityDecision ?? null,
-        sourceNavigationState: nextSourceNavigationState,
-        operationFeedback: nextState.operationFeedback ?? null,
-        workbenchSectionPreferences: nextState.workbenchSectionPreferences ?? {},
-        lastMessageType: nextState.lastMessageType ?? null,
-        graphSurfaceExperiments: nextState.graphSurfaceExperiments ?? null,
-        artifactContents: nextState.artifactContents
-          ? {
-              ...args.projectionState.artifactContents,
-              ...nextState.artifactContents,
-            }
-          : args.projectionState.artifactContents,
-      });
-      if (hasRevision(nextState.semanticRevision)) {
-        args.semanticRevisionRef.current = nextState.semanticRevision;
-      }
-      if (hasRevision(nextState.layoutRevision)) {
-        args.layoutRevisionRef.current = nextState.layoutRevision;
-      }
-      return;
-    }
-    let nextVisibleGraphWithPositionsCache: LinkGraphDocument | null = null;
-    function nextVisibleGraphWithPositions() {
-      if (nextVisibleGraphWithPositionsCache) {
-        return nextVisibleGraphWithPositionsCache;
-      }
-      nextVisibleGraphWithPositionsCache = {
-        ...visibleGraph,
-        nodes: applyBootstrapNodePositions(
-          visibleGraph.nodes,
-          currentNodes,
-          nextState.layoutState,
-          !analysisDisplayModeChanged,
-          nextState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE,
-        ),
-      };
-      return nextVisibleGraphWithPositionsCache;
-    }
-    const visibleSemanticChanged = revisionsAvailable
-      ? analysisDisplayModeChanged
-        || (
-          semanticRevisionAdvanced
-          && graphSemanticSignature({ nodes: currentNodes, edges: currentEdges }) !== graphSemanticSignature(visibleGraph)
-        )
-      : analysisDisplayModeChanged
-        || graphSemanticSignature({ nodes: currentNodes, edges: currentEdges }) !== graphSemanticSignature(visibleGraph);
-    const visibleLayoutChanged = revisionsAvailable
-      ? layoutRevisionAdvanced
-        && graphLayoutSignature(currentNodes) !== graphLayoutSignature(nextVisibleGraphWithPositions().nodes)
-      : graphLayoutSignature(currentNodes) !== graphLayoutSignature(nextVisibleGraphWithPositions().nodes);
-    const semanticGraphChanged = visibleSemanticChanged;
-    const layoutGraphChanged = revisionsAvailable
-      ? semanticGraphChanged || (layoutRevisionAdvanced && visibleLayoutChanged)
-      : semanticGraphChanged || visibleLayoutChanged;
-    const nextGraph = semanticGraphChanged || layoutGraphChanged
-      ? nextVisibleGraphWithPositions()
-      : {
-          nodes: currentNodes,
-          edges: currentEdges,
-        };
-    const reuseCurrentViewGraphsWhenStable = !semanticGraphChanged && !layoutGraphChanged;
-    nextFactGraphView = reuseCurrentViewGraphs(nextFactGraphView, args.canvasState.factGraphView, reuseCurrentViewGraphsWhenStable);
-    nextFlowchartView = reuseCurrentViewGraphs(nextFlowchartView, args.canvasState.flowchartView, reuseCurrentViewGraphsWhenStable);
-    nextResourceRelationView = reuseCurrentViewGraphs(
-      nextResourceRelationView,
-      args.canvasState.resourceRelationView,
-      reuseCurrentViewGraphsWhenStable,
-    );
-    const requestedDraftPatchFocusNodeId = nextState.lastMessageType === "draftPatchApplied"
-      ? nextState.lastDraftPatchApplyResult?.focusNodeId ?? null
-      : null;
-    const nextSelectedNodeId = nextState.selectedNodeId ?? nextGraph.nodes[0]?.id ?? null;
-    const shouldPreserveLocalSelection = Boolean(
-      args.canvasState.selectedNodeId
-      && !semanticGraphChanged
-      && !layoutGraphChanged
-      && REQUEST_ONLY_SELECTION_MESSAGE_TYPES.has(nextState.lastMessageType ?? "")
-      && nextGraph.nodes.some((node) => node.id === args.canvasState.selectedNodeId),
-    );
-    const effectiveSelectedNodeId = requestedDraftPatchFocusNodeId && nextGraph.nodes.some((node) => node.id === requestedDraftPatchFocusNodeId)
-      ? requestedDraftPatchFocusNodeId
-      : shouldPreserveLocalSelection
-        ? args.canvasState.selectedNodeId
-        : nextSelectedNodeId;
-    const nextAnchorNodeId = args.resolveAnchorNodeId(
-      nextGraph.nodes,
-      args.shouldResetAnchorNode(nextState, semanticGraphChanged)
-        ? effectiveSelectedNodeId
-        : currentAnchorNodeId ?? effectiveSelectedNodeId,
-    );
-    const nextNodes = semanticGraphChanged
-      ? normalizeGraphNodes(
-          nextGraph.nodes,
-          nextGraph.edges,
-          nextAnchorNodeId,
-          nextState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE,
-        )
-      : layoutGraphChanged
-        ? applyLayoutOnlyNodePositions(currentNodes, nextGraph.nodes)
-        : currentNodes;
-    args.syncManualNodeIdCounters(nextNodes);
-    const nextDraftGraphWithPositions = nextWorkingGraph.nodes.length > 0
-      ? {
-          ...nextWorkingGraph,
-          nodes: applyBootstrapNodePositions(
-            nextWorkingGraph.nodes,
-            effectiveCurrentDraftGraph.nodes,
-            nextState.layoutState,
-            !analysisDisplayModeChanged,
-            nextState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE,
-          ),
-        }
-      : nextWorkingGraph;
-    const workingSemanticChanged = nextState.workingGraph != null
-      ? revisionsAvailable
-        ? semanticRevisionAdvanced
-          && graphSemanticSignature(effectiveCurrentDraftGraph) !== graphSemanticSignature(nextWorkingGraph)
-        : graphSemanticSignature(effectiveCurrentDraftGraph) !== graphSemanticSignature(nextWorkingGraph)
-      : semanticGraphChanged;
-    const workingLayoutChanged = nextState.workingGraph != null
-      ? graphLayoutSignature(effectiveCurrentDraftGraph.nodes) !== graphLayoutSignature(nextDraftGraphWithPositions.nodes)
-      : layoutGraphChanged;
-    const draftSemanticChanged = workingSemanticChanged;
-    const draftLayoutChanged = revisionsAvailable
-      ? draftSemanticChanged || (layoutRevisionAdvanced && workingLayoutChanged)
-      : draftSemanticChanged || workingLayoutChanged;
-    const nextDraftGraphNodes = draftSemanticChanged && nextDraftGraphWithPositions.nodes.length > 0
-      ? normalizeGraphNodes(
-          nextDraftGraphWithPositions.nodes,
-          nextDraftGraphWithPositions.edges,
-          nextAnchorNodeId,
-          nextState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE,
-        )
-      : draftLayoutChanged
-        ? applyLayoutOnlyNodePositions(effectiveCurrentDraftGraph.nodes, nextDraftGraphWithPositions.nodes)
-        : effectiveCurrentDraftGraph.nodes;
-    traceLinkGraph("app.applyBootstrapState.computed", {
-      lastMessageType: nextState.lastMessageType ?? null,
-      analysisDisplayModeChanged,
-      currentAnalysisDisplayMode,
-      nextAnalysisDisplayMode,
-      semanticGraphChanged,
-      layoutGraphChanged,
-      visibleSemanticChanged,
-      visibleLayoutChanged,
-      draftSemanticChanged,
-      draftLayoutChanged,
-      semanticRevisionAdvanced,
-      layoutRevisionAdvanced,
-      currentSemanticRevision: args.semanticRevisionRef.current,
-      nextSemanticRevision: nextState.semanticRevision ?? null,
-      currentLayoutRevision: args.layoutRevisionRef.current,
-      nextLayoutRevision: nextState.layoutRevision ?? null,
-      reuseCurrentViewGraphsWhenStable,
-      nextAnchorNodeId,
-      nextSelectedNodeId,
-      nextGraph: summarizeGraph(nextGraph),
-      normalizedGraph: summarizeGraph({ nodes: nextNodes, edges: nextGraph.edges }),
+    const visibleGraph = resolvedVisibleGraph;
+    const nextSceneState = mergedSceneStates[nextState.currentSceneId] ?? createEmptySceneState();
+    const nextNodes = visibleGraph.nodes;
+    const nextEdges = visibleGraph.edges;
+    const nextSelectedNodeId = nextSceneState.selectedNodeId ?? nextNodes[0]?.id ?? null;
+    const nextAnchorNodeId = nextSceneState.anchorNodeId ?? args.resolveAnchorNodeId(nextNodes, nextSelectedNodeId);
+    const nextWorkspaceGraph = args.resolveWorkingGraph(nextState);
+    const nextDraftGraph = reuseCurrentProjectionGraphs
+      ? args.draftGraphRef.current ?? nextWorkspaceGraph
+      : nextWorkspaceGraph;
+
+    traceLinkGraph("app.applyBootstrapState", {
+      bootstrap: summarizeBootstrapState(nextState),
+      visibleGraph: summarizeGraph(visibleGraph),
+      reuseCurrentProjectionGraphs,
       durationMs: measureDuration(startedAt),
     });
-    traceLinkGraph("app.applyBootstrapState.mutationPlan", {
-      willSetNodes: semanticGraphChanged || layoutGraphChanged,
-      willSetEdges: semanticGraphChanged,
-      nextSelectedNodeId: effectiveSelectedNodeId,
-      nextAnchorNodeId,
-      lastMessageType: nextState.lastMessageType ?? null,
-    });
-    args.setCanvasState({
-      ...args.canvasState,
-      nodes: semanticGraphChanged || layoutGraphChanged ? nextNodes : currentNodes,
-      edges: semanticGraphChanged ? nextGraph.edges : currentEdges,
-      selectedNodeId: effectiveSelectedNodeId,
+
+    args.nodesRef.current = nextNodes;
+    args.edgesRef.current = nextEdges;
+    args.draftGraphRef.current = nextDraftGraph;
+    args.anchorNodeIdRef.current = nextAnchorNodeId;
+    args.analysisDisplayModeRef.current = nextAnalysisDisplayMode;
+    args.semanticRevisionRef.current = nextState.semanticRevision ?? args.semanticRevisionRef.current;
+    args.layoutRevisionRef.current = nextSceneState.layoutRevision ?? null;
+
+    args.setCanvasState((current) => ({
+      ...current,
+      nodes: nextNodes,
+      edges: nextEdges,
+      selectedNodeId: nextSelectedNodeId,
       analysisDisplayMode: nextAnalysisDisplayMode,
       anchorNodeId: nextAnchorNodeId,
-      referenceWorkingGraph: args.resolveReferenceWorkingGraph(nextState, nextAnalysisDisplayMode),
-      factGraph: args.resolveReferenceFactGraph(nextState),
-      factGraphView: nextAnalysisDisplayMode === "FACT_GRAPH"
-        ? {
-            ...nextFactGraphView,
-            anchorNodeId: nextAnchorNodeId,
-            summary: args.deriveFactGraphSummary(
-              nextFactGraphView.visibleGraph,
-              nextFactGraphView.fullGraph,
-              nextAnchorNodeId,
-            ),
-          }
-        : nextFactGraphView,
-      flowchartView: nextAnalysisDisplayMode === "FLOWCHART"
-        ? {
-            ...nextFlowchartView,
-            anchorNodeId: nextAnchorNodeId,
-          }
-        : nextFlowchartView,
-      resourceRelationView: nextAnalysisDisplayMode === "RESOURCE_RELATION_VIEW"
-        ? {
-            ...nextResourceRelationView,
-            anchorNodeId: nextAnchorNodeId,
-          }
-        : nextResourceRelationView,
-      draftGraph: nextDraftGraphWithPositions.nodes.length > 0
-        ? {
-            ...nextDraftGraphWithPositions,
-            nodes: nextDraftGraphNodes,
-          }
-        : nextDraftGraphWithPositions,
-    });
-    const requestedDetailNodeId = requestedDraftPatchFocusNodeId && nextNodes.some((node) => node.id === requestedDraftPatchFocusNodeId)
-      ? requestedDraftPatchFocusNodeId
-      : args.projectionState.detailNodeId;
-    args.setProjectionState({
-      ...args.projectionState,
-      detailNodeId: requestedDetailNodeId && nextNodes.some((node) => node.id === requestedDetailNodeId)
-        ? requestedDetailNodeId
-        : null,
-      draftWorkbenchState: nextState.draftWorkbenchState ?? { draftChanges: [], draftNotes: [] },
+      currentSceneId: nextState.currentSceneId,
+      sceneStates: mergedSceneStates,
+      workspaceGraph: nextWorkspaceGraph,
+      workspaceBaseGraph: args.resolveWorkspaceBaseGraph(nextState),
+      semanticFactGraph: args.resolveSemanticFactGraph(nextState),
+      workspaceRevision: nextState.workspaceRevision ?? current.workspaceRevision,
+      factGraphView: nextFactGraphView,
+      flowchartView: nextFlowchartView,
+      resourceRelationView: nextResourceRelationView,
+      draftGraph: nextDraftGraph,
+    }));
+
+    args.setProjectionState((current) => ({
+      ...current,
       designBaseline: args.resolveDesignBaselineGraph(nextState),
+      draftWorkbenchState: nextState.draftWorkbenchState ?? { draftChanges: [], draftNotes: [] },
       draftPatchPreview: nextState.draftPatchPreview ?? null,
       canUndoDraftPatchApply: nextState.canUndoDraftPatchApply ?? false,
       lastAppliedDraftPatchSummary: nextState.lastAppliedDraftPatchSummary ?? null,
-      lastAppliedDraftPatchPreview: !(nextState.canUndoDraftPatchApply ?? false) && !nextState.lastAppliedDraftPatchSummary
-        ? null
-        : args.projectionState.lastAppliedDraftPatchPreview,
       lastDraftPatchApplyResult: nextState.lastDraftPatchApplyResult ?? null,
       auditResult: nextState.auditResult ?? null,
       auditRequestState: args.resolveRequestState(nextState.auditRequestState),
@@ -406,8 +436,8 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       diffReviewResult: nextState.diffReviewResult ?? null,
       diffReviewRequestState: args.resolveRequestState(nextState.diffReviewRequestState),
       mermaidIssues: nextState.mermaidIssues ?? [],
-      diffItems: nextState.diffItems,
-      syncPreviewItems: nextState.syncPreviewItems,
+      diffItems: nextState.diffItems ?? [],
+      syncPreviewItems: nextState.syncPreviewItems ?? [],
       draftVersion: nextState.draftVersion ?? null,
       generationPlan: nextState.generationPlan ?? null,
       generationPlanDraftVersion: nextState.generationPlanDraftVersion ?? null,
@@ -416,10 +446,10 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       generationPlanDiscussionSession: nextState.generationPlanDiscussionSession ?? null,
       generationPlanDiscussionRequestState: args.resolveRequestState(nextState.generationPlanDiscussionRequestState),
       graphBeautificationResult: args.explanationLocalOverrideRef.current
-        ? args.projectionState.graphBeautificationResult
+        ? current.graphBeautificationResult
         : nextState.graphBeautificationResult ?? null,
       graphBeautificationRequestState: args.explanationLocalOverrideRef.current
-        ? args.projectionState.graphBeautificationRequestState
+        ? current.graphBeautificationRequestState
         : args.resolveRequestState(nextState.graphBeautificationRequestState),
       generatedCodeDrafts: nextState.generatedCodeDrafts ?? [],
       generatedCodeDraftVersion: nextState.generatedCodeDraftVersion ?? null,
@@ -437,44 +467,18 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       graphSurfaceExperiments: nextState.graphSurfaceExperiments ?? null,
       artifactContents: nextState.artifactContents
         ? {
-            ...args.projectionState.artifactContents,
+            ...current.artifactContents,
             ...nextState.artifactContents,
           }
-        : args.projectionState.artifactContents,
-    });
-    if (semanticGraphChanged) {
-      args.setSelectionGroupNodeIds([]);
-      args.setCollapsedNodeIds([]);
-      args.setDiffTargetItemIds([]);
-    } else {
-      args.setSelectionGroupNodeIds((current) => current.filter((nodeId) => nextNodes.some((node) => node.id === nodeId)));
-      args.setCollapsedNodeIds((current) => current.filter((nodeId) => nextNodes.some((node) => node.id === nodeId)));
-      args.setDiffTargetItemIds((current) => current.filter((itemId) => nextState.diffItems.some((item) => item.id === itemId)));
-    }
-    if (hasRevision(nextState.semanticRevision)) {
-      args.semanticRevisionRef.current = nextState.semanticRevision;
-    }
-    if (hasRevision(nextState.layoutRevision)) {
-      args.layoutRevisionRef.current = nextState.layoutRevision;
-    }
+        : current.artifactContents,
+    }));
+
+    args.syncManualNodeIdCounters(nextNodes);
+    args.setSelectionGroupNodeIds((current) => current.filter((nodeId) => nextNodes.some((node) => node.id === nodeId)));
+    args.setDiffTargetItemIds((current) => current.filter((itemId) => nextState.diffItems.some((item) => item.id === itemId)));
   }
 
   return {
     applyBootstrapState,
-  };
-}
-
-function reuseCurrentViewGraphs<T extends { visibleGraph: LinkGraphDocument; fullGraph: LinkGraphDocument }>(
-  nextView: T,
-  currentView: T,
-  reuseCurrentGraph: boolean,
-): T {
-  if (!reuseCurrentGraph) {
-    return nextView;
-  }
-  return {
-    ...nextView,
-    visibleGraph: currentView.visibleGraph,
-    fullGraph: currentView.fullGraph,
   };
 }

@@ -28,17 +28,49 @@ data class DraftPatchUndoState(
     val patchPreview: GraphPatch? = null,
 )
 
+enum class GraphSceneId {
+    WORKSPACE_FACT,
+    WORKSPACE_FLOWCHART,
+    WORKSPACE_RESOURCE_RELATION,
+    DIFF,
+}
+
+data class GraphSceneState(
+    val selectedNodeId: String? = null,
+    val anchorNodeId: String? = null,
+    val layoutState: GraphLayoutState = GraphLayoutState(),
+    val layoutRevision: Long = 0,
+    val collapsedNodeIds: Set<String> = emptySet(),
+)
+
+internal fun defaultGraphSceneStates(): Map<GraphSceneId, GraphSceneState> = GraphSceneId.entries.associateWith { GraphSceneState() }
+
+fun AnalysisDisplayMode.toWorkspaceSceneId(): GraphSceneId = when (this) {
+    AnalysisDisplayMode.FACT_GRAPH -> GraphSceneId.WORKSPACE_FACT
+    AnalysisDisplayMode.FLOWCHART -> GraphSceneId.WORKSPACE_FLOWCHART
+    AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> GraphSceneId.WORKSPACE_RESOURCE_RELATION
+}
+
+fun GraphSceneId.toAnalysisDisplayMode(): AnalysisDisplayMode? = when (this) {
+    GraphSceneId.WORKSPACE_FACT -> AnalysisDisplayMode.FACT_GRAPH
+    GraphSceneId.WORKSPACE_FLOWCHART -> AnalysisDisplayMode.FLOWCHART
+    GraphSceneId.WORKSPACE_RESOURCE_RELATION -> AnalysisDisplayMode.RESOURCE_RELATION_VIEW
+    GraphSceneId.DIFF -> null
+}
+
 data class GraphEditorStateSnapshot(
-    val visibleGraph: GraphDocument? = null,
-    val workingGraph: GraphDocument? = null,
-    val referenceWorkingGraph: GraphDocument? = null,
-    val referenceFactGraph: GraphDocument? = null,
+    val semanticFactGraph: GraphDocument = GraphDocument(),
+    val workspaceBaseGraph: GraphDocument = GraphDocument(),
+    val workspaceGraph: GraphDocument = GraphDocument(),
     val designBaselineGraph: GraphDocument? = null,
     val trustedNavigationNodes: Map<String, GraphNode> = emptyMap(),
-    val factGraphView: FactGraphViewDocument? = null,
-    val flowchartView: FlowchartViewDocument? = null,
-    val resourceRelationView: ResourceRelationViewDocument? = null,
+    val factGraphView: FactGraphViewDocument = FactGraphViewDocument(),
+    val flowchartView: FlowchartViewDocument = FlowchartViewDocument(),
+    val resourceRelationView: ResourceRelationViewDocument = ResourceRelationViewDocument(),
     val analysisDisplayMode: AnalysisDisplayMode = AnalysisDisplayMode.FACT_GRAPH,
+    val currentSceneId: GraphSceneId = GraphSceneId.WORKSPACE_FACT,
+    val previousWorkspaceSceneId: GraphSceneId = GraphSceneId.WORKSPACE_FACT,
+    val sceneStates: Map<GraphSceneId, GraphSceneState> = defaultGraphSceneStates(),
     val draftWorkbenchState: DraftWorkbenchState = DraftWorkbenchState(),
     val draftPatchPreview: GraphPatch? = null,
     val draftPatchUndoState: DraftPatchUndoState? = null,
@@ -52,11 +84,10 @@ data class GraphEditorStateSnapshot(
     val graphBeautificationResult: GraphBeautificationResult? = null,
     val graphBeautificationRequestState: AsyncRequestState = AsyncRequestState(),
     val diff: GraphDiff? = null,
-    val diffMode: Boolean = false,
+    val diffGraph: GraphDocument? = null,
     val lastGraphSource: String? = null,
     val frontendEntryUrl: String? = null,
     val selectedMethodSignature: String? = null,
-    val selectedNodeId: String? = null,
     val importedMermaid: String? = null,
     val exportedMermaid: String? = null,
     val mermaidIssues: List<MermaidIssue> = emptyList(),
@@ -80,14 +111,17 @@ data class GraphEditorStateSnapshot(
     val syncPreviewRequested: Boolean = false,
     val toolWindowOpenRequested: Boolean = false,
     val workingGraphDirty: Boolean = false,
-    val layoutState: GraphLayoutState = GraphLayoutState(),
     val semanticRevision: Long = 0,
-    val layoutRevision: Long = 0,
+    val workspaceRevision: Long = 0,
     val snapshotRevision: Long = 0,
     val operationFeedback: OperationFeedback? = null,
     val workbenchSectionPreferences: Map<String, Boolean> = emptyMap(),
     val lastMessageType: String? = null,
-)
+) {
+    fun sceneState(sceneId: GraphSceneId): GraphSceneState = sceneStates[sceneId] ?: GraphSceneState()
+
+    fun currentSceneState(): GraphSceneState = sceneState(currentSceneId)
+}
 
 data class RuntimeArtifactSummary(
     val artifactId: String,

@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.workbench
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.ui.GraphEditorStateService
@@ -53,7 +55,7 @@ class RiskResolutionServiceTest {
     @Test
     fun `draft validation flags unresolved risks inside the draft stage`() {
         val decision = service.evaluateDraftValidation(
-            com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+            testSnapshot(
                 draftWorkbenchState = DraftWorkbenchState(
                     draftChanges = listOf(
                         DraftWorkbenchEntry(
@@ -91,7 +93,7 @@ class RiskResolutionServiceTest {
     @Test
     fun `deferred risk blocks code generation even with confirmed draft changes`() {
         val decision = service.evaluateCodeEligibility(
-            com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+            testSnapshot(
                 draftWorkbenchState = DraftWorkbenchState(
                     draftChanges = listOf(
                         DraftWorkbenchEntry(
@@ -129,7 +131,7 @@ class RiskResolutionServiceTest {
     @Test
     fun `accepted risk allows code generation when confirmed draft changes exist`() {
         val decision = service.evaluateCodeEligibility(
-            com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+            testSnapshot(
                 draftWorkbenchState = DraftWorkbenchState(
                     draftChanges = listOf(
                         DraftWorkbenchEntry(
@@ -167,7 +169,7 @@ class RiskResolutionServiceTest {
     @Test
     fun `draft validation reports ready when confirmed draft changes have no unresolved risk`() {
         val decision = service.evaluateDraftValidation(
-            com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+            testSnapshot(
                 draftWorkbenchState = DraftWorkbenchState(
                     draftChanges = listOf(
                         DraftWorkbenchEntry(

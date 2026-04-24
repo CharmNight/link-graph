@@ -16,12 +16,16 @@ interface UseAppBridgeControllerArgs {
     "runBridgeCommand" | "submitAsyncBridgeCommand"
   >;
   setImportDialogOpen: (open: boolean) => void;
+  setWorkbenchSectionPreferences: (
+    value: Record<string, boolean> | ((current: Record<string, boolean>) => Record<string, boolean>),
+  ) => void;
 }
 
 export function useAppBridgeController({
   artifactContents,
   bridgeCommands,
   setImportDialogOpen,
+  setWorkbenchSectionPreferences,
 }: UseAppBridgeControllerArgs) {
   function resolveArtifactText(artifactId: string): string | null {
     return artifactContents[artifactId] ?? null;
@@ -35,6 +39,15 @@ export function useAppBridgeController({
   }
 
   function handleWorkbenchSectionPreferenceChange(sectionId: WorkbenchSectionId, expanded: boolean) {
+    setWorkbenchSectionPreferences((current) => {
+      if ((current[sectionId] ?? false) === expanded) {
+        return current;
+      }
+      return {
+        ...current,
+        [sectionId]: expanded,
+      };
+    });
     updateWorkbenchSectionPreference(sectionId, expanded);
   }
 

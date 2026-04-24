@@ -202,10 +202,10 @@ private fun looksLikeFlowchartGraph(graph: GraphDocument): Boolean {
     }
 }
 
-private fun isDecisionNode(node: GraphNode): Boolean = node.metadata["flowchart.kind"] == "DECISION"
+private fun isDecisionNode(node: GraphNode): Boolean = resolveFlowchartKind(node) == "DECISION"
 
 private fun isReadableActionNode(node: GraphNode): Boolean {
-    if (node.metadata["flowchart.kind"] != "PROCESS") {
+    if (resolveFlowchartKind(node) != "PROCESS") {
         return false
     }
     val flowKind = node.metadata["flow.kind"]

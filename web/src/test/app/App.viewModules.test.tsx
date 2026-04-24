@@ -2,7 +2,11 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../app/App";
-import type { LinkGraphBootstrapState } from "../../app/types";
+import {
+  materializeThreeViewDocuments,
+  type TestBootstrapState,
+  type TestBootstrapStateInput,
+} from "../../app/testBootstrapState";
 
 vi.mock("../../app/views/fact/FactGraphView", () => ({
   FactGraphView: ({
@@ -167,10 +171,10 @@ vi.mock("../../app/views/resource/ResourceRelationView", () => ({
 }));
 
 function bootstrapState(
-  analysisDisplayMode: LinkGraphBootstrapState["analysisDisplayMode"],
-  overrides: Partial<LinkGraphBootstrapState> = {},
-): LinkGraphBootstrapState {
-  const baseState: LinkGraphBootstrapState = {
+  analysisDisplayMode: TestBootstrapState["analysisDisplayMode"],
+  overrides: Partial<TestBootstrapStateInput> = {},
+): TestBootstrapState {
+  const baseInput: TestBootstrapStateInput = {
     analysisDisplayMode,
     visibleGraph: {
       nodes: [],
@@ -207,19 +211,21 @@ function bootstrapState(
       summary: { visibleNodeCount: 0, laneCounts: {} },
     },
   };
-  return {
-    ...baseState,
+  const materializedState = materializeThreeViewDocuments({
+    ...structuredClone(baseInput),
     ...overrides,
-    visibleGraph: overrides.visibleGraph ?? baseState.visibleGraph,
-    workingGraph: overrides.workingGraph ?? baseState.workingGraph,
-    referenceFactGraph: overrides.referenceFactGraph ?? baseState.referenceFactGraph,
-    designBaselineGraph: overrides.designBaselineGraph ?? baseState.designBaselineGraph,
-    mermaidIssues: overrides.mermaidIssues ?? baseState.mermaidIssues,
-    diffItems: overrides.diffItems ?? baseState.diffItems,
-    syncPreviewItems: overrides.syncPreviewItems ?? baseState.syncPreviewItems,
-    factGraphView: overrides.factGraphView ?? baseState.factGraphView,
-    flowchartView: overrides.flowchartView ?? baseState.flowchartView,
-    resourceRelationView: overrides.resourceRelationView ?? baseState.resourceRelationView,
+  });
+  return {
+    ...materializedState,
+    factGraphView: Object.prototype.hasOwnProperty.call(overrides, "factGraphView")
+      ? overrides.factGraphView
+      : materializedState.factGraphView,
+    flowchartView: Object.prototype.hasOwnProperty.call(overrides, "flowchartView")
+      ? overrides.flowchartView
+      : materializedState.flowchartView,
+    resourceRelationView: Object.prototype.hasOwnProperty.call(overrides, "resourceRelationView")
+      ? overrides.resourceRelationView
+      : materializedState.resourceRelationView,
   };
 }
 
@@ -1530,8 +1536,7 @@ describe("App view modules", () => {
   });
 
   it("does not rebuild a fact view from raw visibleGraph when the dedicated view document is missing", () => {
-    window.linkGraphBootstrap = {
-      ...bootstrapState("FACT_GRAPH"),
+    window.linkGraphBootstrap = bootstrapState("FACT_GRAPH", {
       visibleGraph: {
         nodes: [
           {
@@ -1547,7 +1552,7 @@ describe("App view modules", () => {
         edges: [],
       },
       factGraphView: undefined,
-    };
+    });
 
     render(<App />);
 

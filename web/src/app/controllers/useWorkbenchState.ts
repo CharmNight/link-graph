@@ -20,7 +20,10 @@ import type {
   LinkGraphBootstrapState,
   LinkGraphDocument,
   LinkGraphEdge,
+  LinkGraphLayoutState,
   LinkGraphNode,
+  LinkGraphSceneId,
+  LinkGraphSceneState,
   LlmResultSource,
   MermaidIssue,
   OperationFeedback,
@@ -41,8 +44,12 @@ export interface WorkbenchCanvasState {
   selectedNodeId: string | null;
   analysisDisplayMode: AnalysisDisplayMode;
   anchorNodeId: string | null;
-  referenceWorkingGraph: LinkGraphDocument | null;
-  factGraph: LinkGraphDocument | null;
+  currentSceneId: LinkGraphSceneId;
+  sceneStates: Record<LinkGraphSceneId, LinkGraphSceneState>;
+  workspaceGraph: LinkGraphDocument;
+  workspaceBaseGraph: LinkGraphDocument | null;
+  semanticFactGraph: LinkGraphDocument | null;
+  workspaceRevision: number | null;
   factGraphView: FactGraphViewDocument;
   flowchartView: FlowchartViewDocument;
   resourceRelationView: ResourceRelationViewDocument;
@@ -97,11 +104,12 @@ interface UseWorkbenchStateArgs {
   initialGraph: LinkGraphDocument;
   initialAnchorNodeId: string | null;
   resolveRequestState: (state?: AsyncRequestState | null) => AsyncRequestState;
-  resolveReferenceWorkingGraph: (state: LinkGraphBootstrapState, displayMode?: AnalysisDisplayMode) => LinkGraphDocument | null;
-  resolveReferenceFactGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
+  resolveWorkspaceBaseGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
+  resolveSemanticFactGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
   resolveFactGraphView: (state: LinkGraphBootstrapState) => FactGraphViewDocument;
   resolveFlowchartView: (state: LinkGraphBootstrapState) => FlowchartViewDocument;
   resolveResourceRelationView: (state: LinkGraphBootstrapState) => ResourceRelationViewDocument;
+  resolveCurrentSceneState: (state: LinkGraphBootstrapState) => LinkGraphSceneState;
   resolveWorkingGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
   resolveDesignBaselineGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
   resolveSourceNavigationState: (state: LinkGraphBootstrapState) => SourceNavigationState;
@@ -118,12 +126,153 @@ function updateStateField<S, K extends keyof S>(
   key: K,
 ): Dispatch<SetStateAction<S[K]>> {
   return (value) => {
-    setState((current) => ({
-      ...current,
-      [key]: typeof value === "function"
+    setState((current) => {
+      const nextValue = typeof value === "function"
         ? (value as (currentValue: S[K]) => S[K])(current[key])
-        : value,
-    }));
+        : value;
+      if (Object.is(current[key], nextValue)) {
+        return current;
+      }
+      return {
+        ...current,
+        [key]: nextValue,
+      };
+    });
+  };
+}
+
+function resolveStateAction<T>(value: SetStateAction<T>, currentValue: T): T {
+  return typeof value === "function"
+    ? (value as (currentValue: T) => T)(currentValue)
+    : value;
+}
+
+function createEmptySceneState(): LinkGraphSceneState {
+  return {
+    selectedNodeId: null,
+    anchorNodeId: null,
+    layoutState: {
+      positions: {},
+    },
+    layoutRevision: 0,
+    collapsedNodeIds: [],
+  };
+}
+
+function sameNodeIdList(left: string[] | undefined, right: string[] | undefined): boolean {
+  const normalizedLeft = left ?? [];
+  const normalizedRight = right ?? [];
+  if (normalizedLeft.length !== normalizedRight.length) {
+    return false;
+  }
+  return normalizedLeft.every((nodeId, index) => nodeId === normalizedRight[index]);
+}
+
+function sameLayoutState(
+  left: LinkGraphLayoutState | undefined,
+  right: LinkGraphLayoutState | undefined,
+): boolean {
+  const leftPositions = left?.positions ?? {};
+  const rightPositions = right?.positions ?? {};
+  const leftKeys = Object.keys(leftPositions);
+  const rightKeys = Object.keys(rightPositions);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  return leftKeys.every((nodeId) => {
+    const leftPosition = leftPositions[nodeId];
+    const rightPosition = rightPositions[nodeId];
+    return rightPosition != null
+      && leftPosition.x === rightPosition.x
+      && leftPosition.y === rightPosition.y;
+  });
+}
+
+function sameSceneFieldValue<K extends keyof LinkGraphSceneState>(
+  key: K,
+  left: LinkGraphSceneState[K],
+  right: LinkGraphSceneState[K],
+): boolean {
+  if (key === "collapsedNodeIds") {
+    return sameNodeIdList(left as string[] | undefined, right as string[] | undefined);
+  }
+  if (key === "layoutState") {
+    return sameLayoutState(
+      left as LinkGraphLayoutState | undefined,
+      right as LinkGraphLayoutState | undefined,
+    );
+  }
+  return Object.is(left, right);
+}
+
+function updateCurrentSceneStateField<K extends keyof LinkGraphSceneState>(
+  setState: Dispatch<SetStateAction<WorkbenchCanvasState>>,
+  key: K,
+  mirrorField?: keyof Pick<WorkbenchCanvasState, "selectedNodeId" | "anchorNodeId">,
+): Dispatch<SetStateAction<LinkGraphSceneState[K]>> {
+  return (value) => {
+    setState((current) => {
+      const currentSceneId = current.currentSceneId;
+      const currentSceneState = current.sceneStates[currentSceneId] ?? createEmptySceneState();
+      const nextValue = resolveStateAction(value, currentSceneState[key]);
+      const mirrorValue = mirrorField ? current[mirrorField] : undefined;
+      if (
+        sameSceneFieldValue(key, currentSceneState[key], nextValue)
+        && (!mirrorField || Object.is(mirrorValue, nextValue))
+      ) {
+        return current;
+      }
+      const nextSceneState = {
+        ...currentSceneState,
+        [key]: nextValue,
+      };
+
+      return {
+        ...current,
+        ...(mirrorField
+          ? {
+              [mirrorField]: nextValue,
+            }
+          : {}),
+        sceneStates: {
+          ...current.sceneStates,
+          [currentSceneId]: nextSceneState,
+        },
+      };
+    });
+  };
+}
+
+function updateCurrentSceneNodeField(
+  setState: Dispatch<SetStateAction<WorkbenchCanvasState>>,
+  key: "selectedNodeId" | "anchorNodeId",
+  mirrorField: "selectedNodeId" | "anchorNodeId",
+): Dispatch<SetStateAction<string | null>> {
+  return (value) => {
+    setState((current) => {
+      const currentSceneId = current.currentSceneId;
+      const currentSceneState = current.sceneStates[currentSceneId] ?? createEmptySceneState();
+      const nextValue = resolveStateAction(value, currentSceneState[key] ?? null);
+      if (
+        Object.is(currentSceneState[key] ?? null, nextValue)
+        && Object.is(current[mirrorField] ?? null, nextValue)
+      ) {
+        return current;
+      }
+      const nextSceneState = {
+        ...currentSceneState,
+        [key]: nextValue,
+      };
+
+      return {
+        ...current,
+        [mirrorField]: nextValue,
+        sceneStates: {
+          ...current.sceneStates,
+          [currentSceneId]: nextSceneState,
+        },
+      };
+    });
   };
 }
 
@@ -131,11 +280,12 @@ function buildInitialCanvasState({
   initialState,
   initialGraph,
   initialAnchorNodeId,
-  resolveReferenceWorkingGraph,
-  resolveReferenceFactGraph,
+  resolveWorkspaceBaseGraph,
+  resolveSemanticFactGraph,
   resolveFactGraphView,
   resolveFlowchartView,
   resolveResourceRelationView,
+  resolveCurrentSceneState,
   resolveWorkingGraph,
   normalizeGraphNodes,
 }: Pick<
@@ -143,15 +293,17 @@ function buildInitialCanvasState({
   | "initialState"
   | "initialGraph"
   | "initialAnchorNodeId"
-  | "resolveReferenceWorkingGraph"
-  | "resolveReferenceFactGraph"
+  | "resolveWorkspaceBaseGraph"
+  | "resolveSemanticFactGraph"
   | "resolveFactGraphView"
   | "resolveFlowchartView"
   | "resolveResourceRelationView"
+  | "resolveCurrentSceneState"
   | "resolveWorkingGraph"
   | "normalizeGraphNodes"
 >): WorkbenchCanvasState {
   const analysisDisplayMode = initialState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE;
+  const sceneState = resolveCurrentSceneState(initialState);
   return {
     nodes: normalizeGraphNodes(
       initialGraph.nodes,
@@ -160,11 +312,15 @@ function buildInitialCanvasState({
       analysisDisplayMode,
     ),
     edges: initialGraph.edges,
-    selectedNodeId: initialState.selectedNodeId ?? initialGraph.nodes[0]?.id ?? null,
+    selectedNodeId: sceneState.selectedNodeId ?? initialGraph.nodes[0]?.id ?? null,
     analysisDisplayMode,
-    anchorNodeId: initialAnchorNodeId,
-    referenceWorkingGraph: resolveReferenceWorkingGraph(initialState, analysisDisplayMode),
-    factGraph: resolveReferenceFactGraph(initialState),
+    anchorNodeId: initialAnchorNodeId ?? sceneState.anchorNodeId ?? initialGraph.nodes[0]?.id ?? null,
+    currentSceneId: initialState.currentSceneId,
+    sceneStates: initialState.sceneStates,
+    workspaceGraph: resolveWorkingGraph(initialState) ?? initialGraph,
+    workspaceBaseGraph: resolveWorkspaceBaseGraph(initialState),
+    semanticFactGraph: resolveSemanticFactGraph(initialState),
+    workspaceRevision: initialState.workspaceRevision ?? null,
     factGraphView: resolveFactGraphView(initialState),
     flowchartView: resolveFlowchartView(initialState),
     resourceRelationView: resolveResourceRelationView(initialState),
@@ -227,11 +383,12 @@ export function useWorkbenchState({
   initialGraph,
   initialAnchorNodeId,
   resolveRequestState,
-  resolveReferenceWorkingGraph,
-  resolveReferenceFactGraph,
+  resolveWorkspaceBaseGraph,
+  resolveSemanticFactGraph,
   resolveFactGraphView,
   resolveFlowchartView,
   resolveResourceRelationView,
+  resolveCurrentSceneState,
   resolveWorkingGraph,
   resolveDesignBaselineGraph,
   resolveSourceNavigationState,
@@ -242,11 +399,12 @@ export function useWorkbenchState({
       initialState,
       initialGraph,
       initialAnchorNodeId,
-      resolveReferenceWorkingGraph,
-      resolveReferenceFactGraph,
+      resolveWorkspaceBaseGraph,
+      resolveSemanticFactGraph,
       resolveFactGraphView,
       resolveFlowchartView,
       resolveResourceRelationView,
+      resolveCurrentSceneState,
       resolveWorkingGraph,
       normalizeGraphNodes,
     }),
@@ -262,24 +420,30 @@ export function useWorkbenchState({
   const [auditTargetNodeIds, setAuditTargetNodeIds] = useState<string[]>([]);
   const [auditQuestionDraft, setAuditQuestionDraft] = useState<string>(() => initialState.auditResult?.question ?? "");
   const [selectionGroupNodeIds, setSelectionGroupNodeIds] = useState<string[]>([]);
-  const [collapsedNodeIds, setCollapsedNodeIds] = useState<string[]>([]);
   const [requestFailureNotice, setRequestFailureNotice] = useState<RequestFailureNotice | null>(null);
   const [isImportDialogOpen, setImportDialogOpen] = useState(false);
   const [mermaidDraft, setMermaidDraft] = useState("");
   const [diffTargetItemIds, setDiffTargetItemIds] = useState<string[]>([]);
+  const collapsedNodeIds = canvasState.sceneStates[canvasState.currentSceneId]?.collapsedNodeIds ?? [];
+  const setCollapsedNodeIds = updateCurrentSceneStateField(setCanvasState, "collapsedNodeIds");
 
   const canvasSetters = {
     setNodes: updateStateField(setCanvasState, "nodes"),
     setEdges: updateStateField(setCanvasState, "edges"),
-    setSelectedNodeId: updateStateField(setCanvasState, "selectedNodeId"),
+    setSelectedNodeId: updateCurrentSceneNodeField(setCanvasState, "selectedNodeId", "selectedNodeId"),
     setAnalysisDisplayMode: updateStateField(setCanvasState, "analysisDisplayMode"),
-    setAnchorNodeId: updateStateField(setCanvasState, "anchorNodeId"),
-    setReferenceWorkingGraph: updateStateField(setCanvasState, "referenceWorkingGraph"),
-    setFactGraph: updateStateField(setCanvasState, "factGraph"),
+    setAnchorNodeId: updateCurrentSceneNodeField(setCanvasState, "anchorNodeId", "anchorNodeId"),
+    setCurrentSceneId: updateStateField(setCanvasState, "currentSceneId"),
+    setSceneStates: updateStateField(setCanvasState, "sceneStates"),
+    setWorkspaceGraph: updateStateField(setCanvasState, "workspaceGraph"),
+    setWorkspaceBaseGraph: updateStateField(setCanvasState, "workspaceBaseGraph"),
+    setSemanticFactGraph: updateStateField(setCanvasState, "semanticFactGraph"),
+    setWorkspaceRevision: updateStateField(setCanvasState, "workspaceRevision"),
     setFactGraphView: updateStateField(setCanvasState, "factGraphView"),
     setFlowchartView: updateStateField(setCanvasState, "flowchartView"),
     setResourceRelationView: updateStateField(setCanvasState, "resourceRelationView"),
     setDraftGraph: updateStateField(setCanvasState, "draftGraph"),
+    setSceneLayoutState: updateCurrentSceneStateField(setCanvasState, "layoutState"),
   };
 
   const projectionSetters = {

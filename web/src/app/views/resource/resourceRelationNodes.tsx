@@ -1,13 +1,13 @@
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, type CSSProperties } from "react";
 import {
   Handle,
   MarkerType,
   Position,
   useUpdateNodeInternals,
-  type CSSProperties,
   type Edge,
   type Node,
   type NodeProps,
+  type NodeTypes,
 } from "@xyflow/react";
 import { nodeCardWidth } from "../../graphNodeSizing";
 import type { NodeMeasuredSize, NodeSizeRegistry } from "../../graph/nodeSizeRegistry";
@@ -23,7 +23,7 @@ import {
   draftCompareMarkerColor,
 } from "../draftComparePresentation";
 
-interface ResourceRelationNodeData {
+interface ResourceRelationNodeData extends Record<string, unknown> {
   node: LinkGraphNode;
   explanationFocused?: boolean;
   draftChanged?: boolean;
@@ -45,6 +45,9 @@ interface BuildResourceRelationEdgesOptions {
   draftCompareEdgeStatuses?: Record<string, DraftCompareStatus>;
 }
 
+type ResourceRelationFlowNode = Node<ResourceRelationNodeData, "resourceRelationNode">;
+type ResourceRelationFlowNodeProps = NodeProps<ResourceRelationFlowNode>;
+
 const RESOURCE_HANDLE_STYLE_BASE: CSSProperties = {
   width: 16,
   height: 16,
@@ -64,7 +67,7 @@ function resourceHandleStyle(isConnectable: boolean): CSSProperties {
   };
 }
 
-function ResourceRelationReactNode({ id, data, selected, isConnectable }: NodeProps<ResourceRelationNodeData>) {
+function ResourceRelationReactNode({ id, data, selected, isConnectable }: ResourceRelationFlowNodeProps) {
   const updateNodeInternals = useUpdateNodeInternals();
   const handleStyle = resourceHandleStyle(isConnectable);
 
@@ -88,7 +91,7 @@ function ResourceRelationReactNode({ id, data, selected, isConnectable }: NodePr
   );
 }
 
-export const RESOURCE_RELATION_NODE_TYPES = {
+export const RESOURCE_RELATION_NODE_TYPES: NodeTypes = {
   resourceRelationNode: ResourceRelationReactNode,
 };
 
@@ -128,7 +131,7 @@ export function buildResourceRelationNodes({
   draftChangedNodeIds = [],
   draftCompareNodeStatuses = {},
   nodeSizeRegistry,
-}: BuildResourceRelationNodesOptions): Array<Node<ResourceRelationNodeData>> {
+}: BuildResourceRelationNodesOptions): ResourceRelationFlowNode[] {
   const draftChangedNodeIdSet = new Set(draftChangedNodeIds);
   return nodes.map((node) => ({
     id: node.id,
@@ -149,7 +152,7 @@ export function buildResourceRelationNodes({
       explanationFocused: explanationFocusNodeId === node.id,
       draftChanged: draftChangedNodeIdSet.has(node.id),
       draftCompareStatus: draftCompareNodeStatuses[node.id],
-      onMeasure: (size) => nodeSizeRegistry.set(node.id, size),
+      onMeasure: nodeSizeRegistry.reporter(node.id),
     },
     style: resourceNodeStyle(node),
   }));
@@ -158,7 +161,7 @@ export function buildResourceRelationNodes({
 export function buildResourceRelationEdges({
   edges,
   draftCompareEdgeStatuses = {},
-}: BuildResourceRelationEdgesOptions): Array<Edge<RoutedEdgeData>> {
+}: BuildResourceRelationEdgesOptions): Array<Edge<RoutedEdgeData, "routedEdge">> {
   return edges.map((edge) => ({
     id: edge.id,
     source: edge.source,

@@ -1,9 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CodeDraftPanel } from "../../../app/components/CodeDraftPanel";
+import type { StageEligibilityDecision } from "../../../app/types";
 import themeCss from "../../../app/theme.css?raw";
 
-function eligibilityDecisionFixture(overrides?: Partial<any>) {
+function eligibilityDecisionFixture(
+  overrides: Partial<StageEligibilityDecision> = {},
+): StageEligibilityDecision {
   return {
     target: "CODE",
     stageLabel: "代码草稿",

@@ -1,6 +1,9 @@
 package com.charmnight.linkgraph.actions
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.services.LinkGraphProjectService
 import com.charmnight.linkgraph.services.LinkGraphProjectTestOverrides
 import com.charmnight.linkgraph.semantic.subject.SubjectHandle
@@ -285,7 +288,7 @@ class EditorPopupContextActionTest : BasePlatformTestCase() {
         assertTrue(snapshot.visibleGraph!!.nodes.any { node -> node.type == NodeType.METHOD && node.title == "OrderService.submit" })
     }
 
-    fun testOpenActionLoadsExactOverloadedMethodGraphFromMarkdownMethodSignatureReference() {
+    fun testOpenActionResolvesExactOverloadedMethodFromMarkdownMethodSignatureReference() {
         myFixture.addFileToProject(
             "src/main/java/com/example/OrderService.java",
             """
@@ -327,15 +330,19 @@ class EditorPopupContextActionTest : BasePlatformTestCase() {
 
         action.actionPerformed(event)
         waitForGraphNode(NodeType.DOC_PAGE, "order-flow.md")
-        waitForGraphNode(NodeType.METHOD, "OrderService.store")
+        waitForGraphNode(NodeType.METHOD, "OrderService.submit")
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
         assertEquals("currentContext", snapshot.lastGraphSource)
+        assertEquals(AnalysisDisplayMode.RESOURCE_RELATION_VIEW, snapshot.analysisDisplayMode)
+        assertEquals("com.example.OrderService.submit(java.lang.Long):java.lang.String", snapshot.selectedMethodSignature)
         assertNotNull(snapshot.visibleGraph)
         val methodNodes = snapshot.visibleGraph!!.nodes.filter { node -> node.type == NodeType.METHOD }
         assertTrue(methodNodes.any { node -> node.signature == "com.example.OrderService.submit(java.lang.Long):java.lang.String" })
-        assertTrue(methodNodes.any { node -> node.title == "OrderService.store" })
+        assertFalse(methodNodes.any { node -> node.signature == "com.example.OrderService.submit(java.lang.String):java.lang.String" })
         assertFalse(methodNodes.any { node -> node.title == "OrderService.normalize" })
+        assertFalse(methodNodes.any { node -> node.title == "OrderService.store" })
+        assertTrue(snapshot.trustedNavigationNodes.values.any { node -> node.title == "OrderService.store" })
     }
 
     fun testOpenActionFallsBackToNodeGraphWhenMarkdownMethodReferenceIsAmbiguous() {

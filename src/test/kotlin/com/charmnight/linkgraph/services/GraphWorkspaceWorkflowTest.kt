@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.mermaid.MermaidExporter
 import com.charmnight.linkgraph.mermaid.MermaidImporter
@@ -12,17 +14,36 @@ import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
 import com.charmnight.linkgraph.sync.SyncPreviewPlanner
+import com.charmnight.linkgraph.ui.GraphEditOperation
+import com.charmnight.linkgraph.ui.GraphEditScript
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.GraphLayoutPosition
+import com.charmnight.linkgraph.ui.GraphSceneId
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
 import com.charmnight.linkgraph.ui.view.deriveFlowchartSummary
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GraphWorkspaceWorkflowTest {
+    private val root: Path = Path.of("").toAbsolutePath()
+
+    @Test
+    fun workflowUsesCommandBasedEditScriptInsteadOfWholeGraphWriteback() {
+        val source = Files.readString(
+            root.resolve("src/main/kotlin/com/charmnight/linkgraph/services/GraphWorkspaceWorkflow.kt"),
+        )
+
+        assertTrue(source.contains("handleFrontendEditScript"))
+        assertFalse(source.contains("handleFrontendGraphChanged"))
+        assertFalse(source.contains("markViewGraphChanged"))
+    }
+
     @Test
     fun exportMermaidUsesFullFlowchartGraphWhenVisibleGraphIsTruncated() {
         val stateService = GraphEditorStateService()
@@ -206,16 +227,20 @@ class GraphWorkspaceWorkflowTest {
         )
         stateService.loadGraph(trustedNode.asGraph(), "trusted-graph")
 
-        workflow.handleFrontendGraphChanged(
-            GraphDocument(
-                nodes = listOf(
-                    trustedNode.copy(
-                        title = "OrderService.placeDraft",
-                        location = "/tmp/escape.java:1:1",
-                        signature = "java.lang.Runtime.exec(java.lang.String):void",
-                        inputs = listOf("java.lang.String", "com.example.OrderDraft"),
-                        outputs = listOf("com.example.OrderDraft"),
-                        doc = "Edited doc",
+        workflow.handleFrontendEditScript(
+            GraphEditScript(
+                sceneId = GraphSceneId.WORKSPACE_FACT,
+                baseWorkspaceRevision = stateService.snapshot().workspaceRevision,
+                operations = listOf(
+                    GraphEditOperation.UpsertNode(
+                        trustedNode.copy(
+                            title = "OrderService.placeDraft",
+                            location = "/tmp/escape.java:1:1",
+                            signature = "java.lang.Runtime.exec(java.lang.String):void",
+                            inputs = listOf("java.lang.String", "com.example.OrderDraft"),
+                            outputs = listOf("com.example.OrderDraft"),
+                            doc = "Edited doc",
+                        ),
                     ),
                 ),
             ),
@@ -249,16 +274,20 @@ class GraphWorkspaceWorkflowTest {
             copyToClipboard = { false },
         )
 
-        workflow.handleFrontendGraphChanged(
-            GraphDocument(
-                nodes = listOf(
-                    GraphNode(
-                        id = "design:1",
-                        type = NodeType.METHOD,
-                        title = "Manual draft node",
-                        location = "/tmp/escape.java:1:1",
-                        signature = "java.lang.System.exit(int):void",
-                        doc = "User-authored draft node",
+        workflow.handleFrontendEditScript(
+            GraphEditScript(
+                sceneId = GraphSceneId.WORKSPACE_FACT,
+                baseWorkspaceRevision = stateService.snapshot().workspaceRevision,
+                operations = listOf(
+                    GraphEditOperation.UpsertNode(
+                        GraphNode(
+                            id = "design:1",
+                            type = NodeType.METHOD,
+                            title = "Manual draft node",
+                            location = "/tmp/escape.java:1:1",
+                            signature = "java.lang.System.exit(int):void",
+                            doc = "User-authored draft node",
+                        ),
                     ),
                 ),
             ),

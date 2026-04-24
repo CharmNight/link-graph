@@ -95,6 +95,29 @@ describe("GraphWorkbench", () => {
     expect(panel.style.width).toBe("880px");
   });
 
+  it("uses the right workbench body as the scroll owner instead of clipping nested tab content", () => {
+    expect(themeCss).toMatch(/\.workbench-panel-body\s*\{[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.workbench-tab\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*100%;[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);[^}]*align-content:\s*stretch;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.workbench-tab-body\s*\{[^}]*align-content:\s*start;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.workbench-section-card-body\s*\{[^}]*grid-template-rows:\s*auto;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.workbench-section-card-body\s*>\s*\*\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*100%;/s);
+  });
+
+  it("lets the active workbench tab fill unused vertical panel space", () => {
+    expect(themeCss).toMatch(/\.workbench-shell\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);/s);
+    expect(themeCss).toMatch(/\.workbench-panel-body\s*\{[^}]*align-items:\s*stretch;/s);
+    expect(themeCss).toMatch(/\.workbench-tab\s*\{[^}]*align-content:\s*stretch;/s);
+    expect(themeCss).toMatch(/\.audit-tab\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+minmax\(0,\s*1fr\);[^}]*align-content:\s*stretch;/s);
+    expect(themeCss).toMatch(/\.audit-tab-panel\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*100%;/s);
+    expect(themeCss).toMatch(/\.audit-page-panel\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*100%;[^}]*grid-template-rows:\s*auto\s+auto;/s);
+  });
+
+  it("lets desktop workbench layouts grow vertically instead of being hidden by the stage shell", () => {
+    expect(themeCss).toMatch(/(?:^|\n)\.app-shell\s*\{[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;/s);
+    expect(themeCss).toMatch(/(?:^|\n)\.workspace-stage\s*\{[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/(?:^|\n)\.workbench-layout\s*\{[^}]*overflow:\s*visible;/s);
+  });
+
   it("lets narrow screens scroll vertically instead of clipping the stage header", () => {
     expect(themeCss).toMatch(
       /@media\s*\(max-width:\s*780px\)\s*\{[\s\S]*?\.app-shell\s*\{[\s\S]*?height:\s*auto;[\s\S]*?overflow-y:\s*auto;[\s\S]*?\}[\s\S]*?\.workspace-stage\s*\{[\s\S]*?overflow:\s*visible;[\s\S]*?\}[\s\S]*?\.graph-canvas-panel\s*\{[\s\S]*?min-height:\s*420px;[\s\S]*?\}[\s\S]*?\}/s,

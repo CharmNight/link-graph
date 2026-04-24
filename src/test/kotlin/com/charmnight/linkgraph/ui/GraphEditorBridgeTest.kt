@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.ui
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.SemanticAnalyzer
 import com.charmnight.linkgraph.semantic.model.MethodLikeUnit
@@ -139,7 +141,7 @@ class GraphEditorBridgeTest : BasePlatformTestCase() {
 
         val snapshot = waitForSnapshot { current ->
             current.lastGraphSource == "currentContext" &&
-                current.analysisDisplayMode == AnalysisDisplayMode.FACT_GRAPH &&
+                current.analysisDisplayMode == AnalysisDisplayMode.RESOURCE_RELATION_VIEW &&
                 current.visibleGraph?.nodes?.any { node ->
                     node.type == NodeType.DOC_PAGE && node.title == "order-flow.md"
                 } == true &&

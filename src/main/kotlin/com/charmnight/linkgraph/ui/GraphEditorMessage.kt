@@ -57,11 +57,11 @@ sealed interface GraphEditorMessage {
     ) : GraphEditorMessage
 
     /**
-     * 通知前端图结构已变更。
+     * 请求把当前 scene 的结构编辑脚本应用到 canonical workspace graph。
      */
-    data class GraphChanged(
-        /** 保存最新图数据。 */
-        val graph: GraphDocument,
+    data class ApplyGraphEditScript(
+        /** 保存待应用的编辑脚本。 */
+        val script: GraphEditScript,
     ) : GraphEditorMessage
 
     /**

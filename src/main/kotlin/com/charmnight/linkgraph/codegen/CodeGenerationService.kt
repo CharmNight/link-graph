@@ -149,6 +149,7 @@ class CodeGenerationService(
             }.onSuccess { remoteResult ->
                 val normalizedRemoteResult = remoteResult.value
                     .attachAuthorizedScopes(context.confirmedChanges)
+                    .rejectUnsafeExistingFileContentDrafts(context.confirmedChanges)
                     .withPrependedWarnings(remoteResult.warnings)
                 if (normalizedRemoteResult.hasUsableDrafts()) {
                     return normalizedRemoteResult
@@ -296,6 +297,54 @@ class CodeGenerationService(
         }
         return copy(drafts = patchedDrafts)
     }
+
+    /** 拒绝把现有文件的局部片段当整文件 content 返回，避免后续 merge 删除未授权逻辑。 */
+    private fun CodeGenerationResult.rejectUnsafeExistingFileContentDrafts(
+        confirmedChanges: List<DraftWorkbenchEntry>,
+    ): CodeGenerationResult {
+        val authorizedExistingFiles = confirmedChanges
+            .flatMap(DraftWorkbenchEntry::editScopes)
+            .map { scope -> normalizeGeneratedDraftPath(scope.filePath) }
+            .toSet()
+        if (authorizedExistingFiles.isEmpty()) {
+            return this
+        }
+
+        val retainedDrafts = mutableListOf<GeneratedCodeDraft>()
+        val rejectionWarnings = mutableListOf<String>()
+        drafts.forEach { draft ->
+            val draftPath = normalizeGeneratedDraftPath(draft.targetPath)
+            val operationPaths = draft.editOperations
+                .map { operation -> normalizeGeneratedDraftPath(operation.filePath) }
+                .toSet()
+            val touchesExistingAuthorizedFile = draftPath in authorizedExistingFiles ||
+                operationPaths.any { operationPath -> operationPath in authorizedExistingFiles }
+            if (!touchesExistingAuthorizedFile) {
+                retainedDrafts += draft
+                return@forEach
+            }
+
+            if (draft.editOperations.isEmpty() && draft.content != null) {
+                rejectionWarnings += "已拒绝 existing-file draft '${draft.targetPath}'：现有文件必须使用结构化 editOperations，不能用 content 作为整文件 merge 预览。"
+                return@forEach
+            }
+            if (draft.editOperations.isNotEmpty() && draft.content != null) {
+                retainedDrafts += draft.copy(
+                    content = null,
+                    warnings = draft.warnings + "已忽略 existing-file draft '${draft.targetPath}' 的 content；以结构化 editOperations 为准。",
+                )
+                return@forEach
+            }
+            retainedDrafts += draft
+        }
+
+        return copy(
+            drafts = retainedDrafts,
+            warnings = warnings + rejectionWarnings,
+        )
+    }
+
+    private fun normalizeGeneratedDraftPath(path: String): String = path.replace('\\', '/').trim()
 
     /** 为单个节点生成草稿文件。 */
     private fun generateDraft(

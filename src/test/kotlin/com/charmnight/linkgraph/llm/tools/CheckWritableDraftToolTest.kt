@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.llm.runtime.RunBudget
 import com.charmnight.linkgraph.ui.GraphEditorStateService
@@ -19,7 +21,7 @@ class CheckWritableDraftToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
+                snapshot = testSnapshot(),
                 artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
@@ -41,7 +43,7 @@ class CheckWritableDraftToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
+                snapshot = testSnapshot(),
                 artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),

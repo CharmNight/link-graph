@@ -48,7 +48,7 @@ internal class GraphBrowserBridgeRegistrar(
     private val openCodeDraftNativeDiffQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val requestDraftNavigationQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val requestArtifactQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
-    private val graphChangedQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    private val applyGraphEditScriptQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val frontendReadyQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val snapshotAckQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val layoutChangedQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
@@ -265,16 +265,16 @@ internal class GraphBrowserBridgeRegistrar(
             bridge.dispatch(GraphEditorMessage.RequestExpandOverflowNode(nodeId))
             JBCefJSQuery.Response("ok")
         }
-        graphChangedQuery.addHandler { payload ->
+        applyGraphEditScriptQuery.addHandler { payload ->
             runCatching {
-                val graph = GraphJson.fromJson(payload)
+                val script = GraphBrowserPayloadParser.parseGraphEditScript(payload)
                 debugLazy(logger.isDebugEnabled, logger::debug) {
-                    "收到前端 graphChanged: nodes=${graph.nodes.size}, edges=${graph.edges.size}, sampleNodeIds=${graph.nodes.take(6).map { it.id }}"
+                    "收到前端 applyGraphEditScript: sceneId=${script.sceneId}, baseWorkspaceRevision=${script.baseWorkspaceRevision}, operationCount=${script.operations.size}"
                 }
-                bridge.dispatch(GraphEditorMessage.GraphChanged(graph))
+                bridge.dispatch(GraphEditorMessage.ApplyGraphEditScript(script))
                 JBCefJSQuery.Response("ok")
             }.getOrElse { error ->
-                JBCefJSQuery.Response(null, 1, error.message ?: "链路图变更同步失败")
+                JBCefJSQuery.Response(null, 1, error.message ?: "链路图编辑脚本同步失败")
             }
         }
         frontendReadyQuery.addHandler { payload ->
@@ -374,7 +374,7 @@ internal class GraphBrowserBridgeRegistrar(
               layoutChanged: (payload) => { ${layoutChangedQuery.inject("((payload && Array.isArray(payload.positions) ? payload.positions : []).map((item) => [encodeURIComponent(item.nodeId), item.x, item.y].join('\\u001f')).join('\\u001e'))")} },
               requestSourceNavigation: (nodeId) => { ${requestSourceNavigationQuery.inject("nodeId")} },
               requestExpandOverflowNode: (nodeId) => { ${requestExpandOverflowNodeQuery.inject("nodeId")} },
-              graphChanged: (payload) => { ${graphChangedQuery.inject("JSON.stringify(payload)")} }
+              applyGraphEditScript: (payload) => { ${applyGraphEditScriptQuery.inject("JSON.stringify(payload)")} }
             };
             window.dispatchEvent(new Event("link-graph-bridge-ready"));
             ${if (debugTracingEnabled) """console.log("link-graph bridge 注入完成");""" else ""}

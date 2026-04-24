@@ -108,10 +108,10 @@ internal class PlanningContextFactory(
         val fullGraph = if (snapshot.workingGraphDirty) {
             workingGraph
         } else {
-            snapshot.referenceFactGraph ?: workingGraph
+            snapshot.semanticFactGraph.takeIf { graph -> graph.nodes.isNotEmpty() || graph.edges.isNotEmpty() } ?: workingGraph
         }
         val anchorNodeId = resolveBeautificationAnchorNodeId(snapshot, visibleGraph)
-        val selectedNodeIds = snapshot.selectedNodeId?.let(::listOf).orEmpty()
+        val selectedNodeIds = snapshot.currentSceneState().selectedNodeId?.let(::listOf).orEmpty()
         val (hiddenCurrentMethodNodeCount, hiddenCrossMethodNodeCount) = computeBeautificationHiddenCounts(
             snapshot = snapshot,
             visibleGraph = visibleGraph,
@@ -150,7 +150,9 @@ internal class PlanningContextFactory(
         collectSourceEvidence: Boolean = true,
     ): AuditGraphs {
         val workingGraph = currentWorkingGraph(snapshot)
-        val backgroundFactGraph = snapshot.referenceFactGraph ?: workingGraph
+        val backgroundFactGraph = snapshot.semanticFactGraph
+            .takeIf { graph -> graph.nodes.isNotEmpty() || graph.edges.isNotEmpty() }
+            ?: workingGraph
         val evidenceCollection = if (collectSourceEvidence) {
             auditEvidenceCollector.collect(
                 graph = mergeAuditEvidenceGraph(backgroundFactGraph, workingGraph),
@@ -184,11 +186,12 @@ internal class PlanningContextFactory(
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         visibleGraph: GraphDocument,
     ): String? {
+        val currentSceneSelection = snapshot.currentSceneState().selectedNodeId
         snapshot.selectedMethodSignature
             ?.let { GraphNode.stableId(NodeType.METHOD, it) }
             ?.takeIf { anchorId -> visibleGraph.nodes.any { it.id == anchorId } }
             ?.let { return it }
-        return snapshot.selectedNodeId
+        return currentSceneSelection
             ?.takeIf { nodeId -> visibleGraph.nodes.any { it.id == nodeId } }
             ?: visibleGraph.nodes.firstOrNull { it.type == NodeType.METHOD }?.id
             ?: visibleGraph.nodes.firstOrNull()?.id

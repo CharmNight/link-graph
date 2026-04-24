@@ -1,4 +1,5 @@
 import { FifoQueue } from "./fifoQueue";
+import { resolveFlowchartKind } from "./flowchartKind";
 import {
   applyBootstrapEdgeRoutes,
   resolveNodePosition,
@@ -14,12 +15,14 @@ import type {
   GraphPatch,
   GraphPatchResult,
   GraphPosition,
+  InvestigationThread,
   InvestigationTurnOutcome,
   LinkGraphBootstrapState,
   LinkGraphDocument,
   LinkGraphEdge,
   LinkGraphNode,
   ResourceRelationViewDocument,
+  RiskResolutionStatus,
 } from "./types";
 
 export function resolveGraphPatchNodeIds(patch: GraphPatch | null | undefined): string[] {
@@ -46,7 +49,7 @@ export function resolveDraftEntryTargetNodeIds(entry: DraftWorkbenchEntry | Cand
     return [];
   }
   const patchNodeIds = resolveGraphPatchNodeIds(entry.graphPatch ?? null);
-  const evidenceNodeIds = entry.evidence.flatMap(
+  const evidenceNodeIds = (entry.evidence ?? []).flatMap(
     (finding) => finding.references.map((reference) => reference.nodeId).filter(Boolean) as string[],
   );
   const resolvedNodeIds = Array.from(new Set([...patchNodeIds, ...evidenceNodeIds]));
@@ -287,8 +290,9 @@ export function deriveLatestTurnOutcome(result: GraphPatchResult | null): Invest
   if (!result) {
     return null;
   }
+  const recentTurnOutcomes = result.recentTurnOutcomes ?? [];
   return result.latestTurnOutcome
-    ?? result.recentTurnOutcomes[result.recentTurnOutcomes.length - 1]
+    ?? recentTurnOutcomes[recentTurnOutcomes.length - 1]
     ?? result.auditSession?.turnOutcomes?.[result.auditSession.turnOutcomes.length - 1]
     ?? null;
 }
@@ -312,6 +316,42 @@ export function updateGraphPatchResultCandidateStatus(
           ...result.auditSession,
           candidateChanges: result.auditSession.candidateChanges.map((candidate) =>
             candidate.changeId === changeId ? { ...candidate, status } : candidate),
+        }
+      : null,
+  };
+}
+
+export function updateGraphPatchResultThreadResolution(
+  result: GraphPatchResult | null,
+  threadId: string,
+  status: RiskResolutionStatus,
+  note = "",
+): GraphPatchResult | null {
+  if (!result) {
+    return result;
+  }
+
+  const updateThread = (thread: InvestigationThread): InvestigationThread => {
+    if (thread.threadId !== threadId) {
+      return thread;
+    }
+    return {
+      ...thread,
+      resolution: {
+        threadId,
+        status,
+        note: note || thread.resolution?.note || "",
+      },
+    };
+  };
+
+  return {
+    ...result,
+    investigationThreads: result.investigationThreads?.map(updateThread),
+    auditSession: result.auditSession
+      ? {
+          ...result.auditSession,
+          investigationThreads: (result.auditSession.investigationThreads ?? []).map(updateThread),
         }
       : null,
   };
@@ -345,7 +385,7 @@ export function deriveFlowchartSummary(
   ).length;
   return {
     nodeCount: visibleGraph.nodes.length,
-    branchCount: visibleGraph.nodes.filter((node) => node.metadata?.["flowchart.kind"] === "DECISION").length,
+    branchCount: visibleGraph.nodes.filter((node) => resolveFlowchartKind(node) === "DECISION").length,
     exceptionPathCount: visibleGraph.edges.filter((edge) => edge.label?.trim().toUpperCase() === "EXCEPTION").length,
     fullNodeCount: fullGraph.nodes.length,
     fullEdgeCount: fullGraph.edges.length,
@@ -383,12 +423,12 @@ export function resolveAnchorNodeId(
 
 export function shouldResetAnchorNode(
   state: LinkGraphBootstrapState,
-  graphChanged: boolean,
+  workspaceGraphChanged: boolean,
 ): boolean {
-  if (graphChanged) {
+  if (workspaceGraphChanged) {
     return true;
   }
-  return state.lastMessageType === "loadGraph" || state.lastMessageType === "graphChanged";
+  return state.lastMessageType === "loadGraph" || state.lastMessageType === "workspaceGraphChanged";
 }
 
 function mergeVisibleGraphIntoFactFullGraph(

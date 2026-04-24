@@ -35,6 +35,28 @@ function registeredHandlerQueries(source: string): Set<string> {
 }
 
 describe("bridge contract", () => {
+  it("removes the legacy graphChanged whole-document bridge method", () => {
+    const apiSource = readFileSync(API_PATH, "utf8");
+    const bridgeRegistrarSource = readFileSync(BRIDGE_REGISTRAR_PATH, "utf8");
+
+    expect(apiSource).not.toContain("graphChanged?:");
+    expect(apiSource).not.toContain("invokeBridgeAction(\"graphChanged\"");
+    expect(bridgeRegistrarSource).not.toContain("graphChangedQuery");
+    expect(bridgeRegistrarSource).not.toContain("GraphEditorMessage.GraphChanged");
+    expect(bridgeRegistrarSource).not.toContain("graphChanged: (payload)");
+  });
+
+  it("declares the command-based graph edit bridge method on both sides", () => {
+    const apiSource = readFileSync(API_PATH, "utf8");
+    const bridgeRegistrarSource = readFileSync(BRIDGE_REGISTRAR_PATH, "utf8");
+
+    expect(apiSource).toContain("applyGraphEditScript?:");
+    expect(apiSource).toContain("invokeBridgeAction(\"applyGraphEditScript\"");
+    expect(bridgeRegistrarSource).toContain("applyGraphEditScriptQuery");
+    expect(bridgeRegistrarSource).toContain("GraphEditorMessage.ApplyGraphEditScript");
+    expect(bridgeRegistrarSource).toContain("applyGraphEditScript: (payload)");
+  });
+
   it("injects every frontend-declared bridge method into the browser runtime", () => {
     const apiSource = readFileSync(API_PATH, "utf8");
     const bridgeRegistrarSource = readFileSync(BRIDGE_REGISTRAR_PATH, "utf8");

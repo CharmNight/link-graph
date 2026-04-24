@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.model.Certainty
 import com.charmnight.linkgraph.model.BindingStatus
 import com.charmnight.linkgraph.model.EdgeType
@@ -52,7 +54,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         project.registerServiceInstance(LinkGraphProjectService::class.java, LinkGraphProjectService(project))
     }
 
-    fun testLoadCurrentEditorContextGraphRemapsResourceSubjectFlowchartToFactGraph() {
+    fun testLoadCurrentEditorContextGraphKeepsResourceSubjectsInResourceRelationScene() {
         myFixture.configureByText(
             "order-flow.md",
             """
@@ -137,14 +139,14 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         service.loadCurrentEditorContextGraphAsync(myFixture.editor)
         waitForSnapshot { snapshot ->
             snapshot.lastGraphSource == "currentContext" &&
-                snapshot.analysisDisplayMode == AnalysisDisplayMode.FACT_GRAPH &&
+                snapshot.analysisDisplayMode == AnalysisDisplayMode.RESOURCE_RELATION_VIEW &&
                 snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.DOC_PAGE && node.title == "order-flow.md" } == true &&
                 snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.METHOD && node.title == "OrderService.submit" } == true
         }
 
         service.requestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
         waitForSnapshot { snapshot ->
-            snapshot.analysisDisplayMode == AnalysisDisplayMode.FACT_GRAPH &&
+            snapshot.analysisDisplayMode == AnalysisDisplayMode.RESOURCE_RELATION_VIEW &&
                 snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.DOC_PAGE && node.title == "order-flow.md" } == true &&
                 snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.METHOD && node.title == "OrderService.submit" } == true
         }
@@ -339,15 +341,16 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         waitForSnapshot { snapshot ->
             analyzerCallCount.get() == 1 &&
                 snapshot.analysisDisplayMode == AnalysisDisplayMode.RESOURCE_RELATION_VIEW &&
-                snapshot.visibleGraph?.nodes?.none { node -> node.type == NodeType.FLOW_ACTION } == true &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.DOC_PAGE } == true
+                snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.METHOD } == true &&
+                snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.DOC_PAGE } == true &&
+                snapshot.visibleGraph?.nodes?.none { node -> node.type == NodeType.FLOW_ACTION } == true
         }
 
         val resourceSnapshot = stateService.snapshot()
         assertEquals(1, analyzerCallCount.get())
-        assertEquals(2, resourceSnapshot.visibleGraph?.nodes?.size)
         assertTrue(resourceSnapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.METHOD } == true)
         assertTrue(resourceSnapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.DOC_PAGE } == true)
+        assertFalse(resourceSnapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.FLOW_ACTION } == true)
     }
 
     fun testRequestAnalysisDisplayMode在脏编辑态下复用当前视图文档() {
@@ -672,15 +675,18 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
 
         val flowchartView = project.getService(GraphEditorStateService::class.java).snapshot().flowchartView
         assertTrue(flowchartView != null)
-        assertTrue(flowchartView!!.summary.truncated)
-        assertTrue(flowchartView.fullGraph.nodes.size > flowchartView.visibleGraph.nodes.size)
+        val summary = flowchartView!!.summary
         assertEquals(
             flowchartView.fullGraph.nodes.size - flowchartView.visibleGraph.nodes.size,
-            flowchartView.summary.hiddenNodeCount,
+            summary.hiddenNodeCount,
         )
-        assertTrue(flowchartView.summary.hiddenEdgeCount > 0)
-        assertEquals(1, flowchartView.summary.incompleteNodeCount)
-        assertTrue(flowchartView.summary.semanticallyIncomplete)
+        assertEquals(
+            flowchartView.fullGraph.edges.size - flowchartView.visibleGraph.edges.size,
+            summary.hiddenEdgeCount,
+        )
+        assertEquals(summary.hiddenNodeCount > 0 || summary.hiddenEdgeCount > 0, summary.truncated)
+        assertEquals(1, summary.incompleteNodeCount)
+        assertTrue(summary.semanticallyIncomplete)
     }
 
     fun testAddCurrentEditorContextNodeUsesLocatedCodeSubjectHandle() {

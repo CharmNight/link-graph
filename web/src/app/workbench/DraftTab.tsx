@@ -84,6 +84,7 @@ export function DraftTab({
     ?? state.draftState.draftNotes[0]
     ?? null;
   const selectedEntryHasComparableDraftState = hasComparableDraftState(selectedEntry);
+  const selectedEntryIsNote = selectedEntry?.kind === "NOTE";
   const compareAvailable = selectedEntry?.kind === "CHANGE";
   const effectiveSectionPreferences = resolveEffectiveWorkbenchSectionPreferences({
     tab: "draft",
@@ -126,7 +127,7 @@ export function DraftTab({
     }
 
     function measureLayoutHeight() {
-      const nextHeight = layoutNode.getBoundingClientRect().height;
+      const nextHeight = layoutNode?.getBoundingClientRect().height ?? 0;
       setLayoutHeight(nextHeight > 0 ? Math.round(nextHeight) : null);
     }
 
@@ -160,7 +161,7 @@ export function DraftTab({
   }
 
   return (
-    <section className="workbench-tab draft-tab overflow-auto block m-scrollbar">
+    <section className="workbench-tab draft-tab m-scrollbar">
       <div className="workbench-tab-head mb10px">
         <div>
           <p className="eyebrow">草稿</p>
@@ -179,7 +180,7 @@ export function DraftTab({
           </button>
         </div>
       </div>
-      <div ref={layoutRef} className="workbench-tab-body draft-layout block">
+      <div ref={layoutRef} className="workbench-tab-body draft-layout">
         <div className="workbench-draft-sidebar mb-10px">
           <WorkbenchSection
             title="草稿变更项"
@@ -197,7 +198,7 @@ export function DraftTab({
           </WorkbenchSection>
           <WorkbenchSection
             title="草稿说明项"
-            expanded={effectiveSectionPreferences["draft.note-list"] ?? false}
+            expanded={selectedEntryIsNote || (effectiveSectionPreferences["draft.note-list"] ?? false)}
             onToggle={(nextExpanded) => handleSectionToggle("draft.note-list", nextExpanded)}
             meta={<span className="badge">{state.draftState.draftNotes.length}</span>}
             minBodyHeight={140}

@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.WorkbenchLayoutPreferencesService
 import com.intellij.testFramework.fixtures.BasePlatformTestCase

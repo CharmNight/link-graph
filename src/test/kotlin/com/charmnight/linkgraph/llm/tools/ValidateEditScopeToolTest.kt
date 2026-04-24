@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.codegen.CodeEditOperation
 import com.charmnight.linkgraph.codegen.CodeEditOperationKind
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
@@ -31,7 +33,7 @@ class ValidateEditScopeToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
+                snapshot = testSnapshot(),
                 artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
@@ -73,7 +75,7 @@ class ValidateEditScopeToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
+                snapshot = testSnapshot(),
                 artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
@@ -116,7 +118,7 @@ class ValidateEditScopeToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
+                snapshot = testSnapshot(),
                 artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),

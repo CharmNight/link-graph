@@ -12,6 +12,21 @@ describe("flowchartNodeCardWidth", () => {
     expect(width).toBeGreaterThan(FLOWCHART_DECISION_WIDTH);
   });
 
+
+
+  it("treats flow-scope IF nodes as decision sized even when stale metadata says process", () => {
+    const width = flowchartNodeCardWidth({
+      type: "FLOW_SCOPE",
+      title: "if (delete)",
+      metadata: {
+        "flow.kind": "IF",
+        "flowchart.kind": "PROCESS",
+      },
+    } as any);
+
+    expect(width).toBe(FLOWCHART_DECISION_WIDTH);
+  });
+
   it("widens long code-like process titles so invocation labels keep readable line breaks", () => {
     const width = flowchartNodeCardWidth({
       type: "FLOW_ACTION",

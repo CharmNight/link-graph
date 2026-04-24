@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.semantic
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcomeFactory

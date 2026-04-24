@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.semantic.provider.code
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.testing.addResourceFixture
 import com.charmnight.linkgraph.testing.fixtureFileName
 import com.charmnight.linkgraph.testing.readJavaFixture

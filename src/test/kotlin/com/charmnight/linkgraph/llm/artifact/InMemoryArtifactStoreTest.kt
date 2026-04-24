@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.artifact
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.LlmResultSource
 import kotlin.test.Test

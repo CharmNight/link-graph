@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.semantic.outcome
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.semantic.model.FlowActionUnit
 import com.charmnight.linkgraph.semantic.model.FlowScopeCategory
 import com.charmnight.linkgraph.semantic.model.FlowScopeUnit

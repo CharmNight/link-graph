@@ -1,26 +1,35 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
-import { publishGraphChange, publishLayoutChange } from "../api";
+import { publishGraphEditScript, publishLayoutChange } from "../api";
 import { measureDuration, measureStart, summarizeGraph, traceLinkGraph } from "../debug";
-import { clearStoredNodePosition, extractLayoutPayload, normalizeGraphNodes } from "../graphState";
+import { clearStoredNodePosition, extractLayoutPayload, extractLayoutState, normalizeGraphNodes } from "../graphState";
 import type {
   AnalysisDisplayMode,
   FactGraphViewDocument,
+  GraphEditOperation,
+  GraphEditScript,
+  LinkGraphSceneId,
   FlowchartViewDocument,
   LinkGraphDocument,
   LinkGraphEdge,
+  LinkGraphLayoutState,
   LinkGraphNode,
   ResourceRelationViewDocument,
 } from "../types";
 
 interface UseGraphEditControllerArgs {
+  nodes: LinkGraphNode[];
+  edges: LinkGraphEdge[];
   selectedNodeId: string | null;
   detailNodeId: string | null;
   analysisDisplayMode: AnalysisDisplayMode;
+  currentSceneId: LinkGraphSceneId;
+  workspaceRevision: number | null;
   anchorNodeIdRef: MutableRefObject<string | null>;
   setNodes: Dispatch<SetStateAction<LinkGraphNode[]>>;
   setEdges: Dispatch<SetStateAction<LinkGraphEdge[]>>;
   setAnchorNodeId: Dispatch<SetStateAction<string | null>>;
   setSelectedNodeId: Dispatch<SetStateAction<string | null>>;
+  setSceneLayoutState: Dispatch<SetStateAction<LinkGraphLayoutState>>;
   setCollapsedNodeIds: Dispatch<SetStateAction<string[]>>;
   setDetailNodeId: Dispatch<SetStateAction<string | null>>;
   setDraftGraph: Dispatch<SetStateAction<LinkGraphDocument | null>>;
@@ -41,6 +50,58 @@ interface UseGraphEditControllerArgs {
 }
 
 export function useGraphEditController(args: UseGraphEditControllerArgs) {
+  function buildGraphEditScript(
+    previousNodes: LinkGraphNode[],
+    previousEdges: LinkGraphEdge[],
+    nextNodes: LinkGraphNode[],
+    nextEdges: LinkGraphEdge[],
+  ): GraphEditScript {
+    const previousNodesById = new Map(previousNodes.map((node) => [node.id, node]));
+    const previousEdgesById = new Map(previousEdges.map((edge) => [edge.id, edge]));
+    const operations: GraphEditOperation[] = [];
+
+    for (const node of nextNodes) {
+      const previousNode = previousNodesById.get(node.id);
+      if (JSON.stringify(previousNode ?? null) !== JSON.stringify(node)) {
+        operations.push({
+          type: "UPSERT_NODE",
+          node,
+        });
+      }
+    }
+    for (const node of previousNodes) {
+      if (!nextNodes.some((currentNode) => currentNode.id === node.id)) {
+        operations.push({
+          type: "REMOVE_NODE",
+          nodeId: node.id,
+        });
+      }
+    }
+    for (const edge of nextEdges) {
+      const previousEdge = previousEdgesById.get(edge.id);
+      if (JSON.stringify(previousEdge ?? null) !== JSON.stringify(edge)) {
+        operations.push({
+          type: "UPSERT_EDGE",
+          edge,
+        });
+      }
+    }
+    for (const edge of previousEdges) {
+      if (!nextEdges.some((currentEdge) => currentEdge.id === edge.id)) {
+        operations.push({
+          type: "REMOVE_EDGE",
+          edgeId: edge.id,
+        });
+      }
+    }
+
+    return {
+      sceneId: args.currentSceneId,
+      baseWorkspaceRevision: args.workspaceRevision ?? 0,
+      operations,
+    };
+  }
+
   function syncGraph(
     nextNodes: LinkGraphNode[],
     nextEdges: LinkGraphEdge[],
@@ -72,6 +133,7 @@ export function useGraphEditController(args: UseGraphEditControllerArgs) {
     args.setEdges(nextEdges);
     args.setAnchorNodeId(nextAnchorNodeId);
     args.setSelectedNodeId(nextSelectedNodeId);
+    args.setSceneLayoutState(extractLayoutState(laidOutNodes));
     args.syncManualNodeIdCounters(laidOutNodes);
     args.setCollapsedNodeIds((current) => current.filter((nodeId) => laidOutNodes.some((node) => node.id === nodeId)));
     if (args.detailNodeId && !laidOutNodes.some((node) => node.id === args.detailNodeId)) {
@@ -107,7 +169,14 @@ export function useGraphEditController(args: UseGraphEditControllerArgs) {
     }
     args.setAuditTargetNodeIds((current) => current.filter((nodeId) => laidOutNodes.some((node) => node.id === nodeId)));
     args.clearLocalDerivedGraphState();
-    publishGraphChange(laidOutNodes, nextEdges);
+    publishGraphEditScript(
+      buildGraphEditScript(
+        args.nodes,
+        args.edges,
+        laidOutNodes,
+        nextEdges,
+      ),
+    );
     publishLayoutChange(extractLayoutPayload(laidOutNodes));
   }
 

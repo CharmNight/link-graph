@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.llm.EditScope
 import com.charmnight.linkgraph.llm.GenerationPlan
@@ -40,7 +42,7 @@ class PlanningContextFactoryTest {
                 title = "if (delete)",
             ),
         )
-        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+        val snapshot = testSnapshot(
             analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
             referenceFactGraph = factGraph,
             workingGraph = editableGraph,
@@ -129,7 +131,7 @@ class PlanningContextFactoryTest {
                 ),
             ),
         )
-        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+        val snapshot = testSnapshot(
             workingGraph = graph,
             draftWorkbenchState = DraftWorkbenchState(
                 draftChanges = listOf(
@@ -220,7 +222,7 @@ class PlanningContextFactoryTest {
                 ),
             ),
         )
-        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(workingGraph = graph)
+        val snapshot = testSnapshot(workingGraph = graph)
         val generationPlan = GenerationPlan(
             source = GenerationPlanSource.REMOTE,
             summary = "修改 uploadFile",

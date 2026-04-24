@@ -106,6 +106,20 @@ export interface LinkGraphLayoutState {
   positions: Record<string, GraphPosition>;
 }
 
+export type LinkGraphSceneId =
+  | "WORKSPACE_FACT"
+  | "WORKSPACE_FLOWCHART"
+  | "WORKSPACE_RESOURCE_RELATION"
+  | "DIFF";
+
+export interface LinkGraphSceneState {
+  selectedNodeId?: string | null;
+  anchorNodeId?: string | null;
+  layoutState: LinkGraphLayoutState;
+  layoutRevision: number;
+  collapsedNodeIds: string[];
+}
+
 export interface LinkGraphNode {
   id: string;
   type: NodeType;
@@ -155,6 +169,7 @@ export interface FactGraphViewDocument {
   visibleGraph: LinkGraphDocument;
   fullGraph: LinkGraphDocument;
   anchorNodeId?: string | null;
+  projectionIndex?: GraphProjectionIndex;
   summary: FactGraphSummary;
 }
 
@@ -178,6 +193,7 @@ export interface FlowchartViewDocument {
   visibleGraph: LinkGraphDocument;
   fullGraph: LinkGraphDocument;
   anchorNodeId?: string | null;
+  projectionIndex?: GraphProjectionIndex;
   summary: FlowchartSummary;
 }
 
@@ -190,7 +206,44 @@ export interface ResourceRelationViewDocument {
   visibleGraph: LinkGraphDocument;
   fullGraph: LinkGraphDocument;
   anchorNodeId?: string | null;
+  projectionIndex?: GraphProjectionIndex;
   summary: ResourceRelationSummary;
+}
+
+export type GraphProjectionMappingKind =
+  | "EXACT"
+  | "MERGED_ALIAS"
+  | "PATH_ALIAS"
+  | "SYNTHETIC_READONLY"
+  | "OVERFLOW_READONLY";
+
+export type GraphEditCommandKind =
+  | "ADD_NODE"
+  | "UPDATE_NODE"
+  | "DELETE_NODE"
+  | "DELETE_NODE_SUBTREE"
+  | "CONNECT_NODES"
+  | "DELETE_EDGE"
+  | "INSERT_NODE_INTO_EDGE";
+
+export interface GraphProjectionNodeMapping {
+  projectedNodeId: string;
+  mappingKind: GraphProjectionMappingKind;
+  canonicalNodeIds: string[];
+  editableCommandKinds: GraphEditCommandKind[];
+}
+
+export interface GraphProjectionEdgeMapping {
+  projectedEdgeId: string;
+  mappingKind: GraphProjectionMappingKind;
+  canonicalEdgeIds: string[];
+  canonicalPathNodeIds: string[];
+  editableCommandKinds: GraphEditCommandKind[];
+}
+
+export interface GraphProjectionIndex {
+  nodeMappings: Record<string, GraphProjectionNodeMapping>;
+  edgeMappings: Record<string, GraphProjectionEdgeMapping>;
 }
 
 export interface GraphPatchOperation {
@@ -212,6 +265,30 @@ export interface GraphPatch {
   removedNodeIds: string[];
   addedEdgeIds: string[];
   removedEdgeIds: string[];
+}
+
+export type GraphEditOperation =
+  | {
+      type: "UPSERT_NODE";
+      node: LinkGraphNode;
+    }
+  | {
+      type: "REMOVE_NODE";
+      nodeId: string;
+    }
+  | {
+      type: "UPSERT_EDGE";
+      edge: LinkGraphEdge;
+    }
+  | {
+      type: "REMOVE_EDGE";
+      edgeId: string;
+    };
+
+export interface GraphEditScript {
+  sceneId: LinkGraphSceneId;
+  baseWorkspaceRevision: number;
+  operations: GraphEditOperation[];
 }
 
 export interface ResultEvidenceReference {
@@ -714,17 +791,17 @@ export interface GraphSurfaceExperimentFlags {
 
 export interface LinkGraphBootstrapState {
   analysisDisplayMode?: AnalysisDisplayMode | null;
-  visibleGraph: LinkGraphDocument;
-  workingGraph: LinkGraphDocument;
-  referenceWorkingGraph?: LinkGraphDocument | null;
-  referenceFactGraph?: LinkGraphDocument | null;
+  currentSceneId: LinkGraphSceneId;
+  sceneStates: Record<LinkGraphSceneId, LinkGraphSceneState>;
+  workspaceGraph: LinkGraphDocument;
+  workspaceBaseGraph: LinkGraphDocument;
+  semanticFactGraph: LinkGraphDocument;
   designBaselineGraph?: LinkGraphDocument | null;
   factGraphView?: FactGraphViewDocument | null;
   flowchartView?: FlowchartViewDocument | null;
   resourceRelationView?: ResourceRelationViewDocument | null;
-  layoutState?: LinkGraphLayoutState | null;
   semanticRevision?: number;
-  layoutRevision?: number;
+  workspaceRevision?: number;
   snapshotRevision?: number;
   draftPatchPreview?: GraphPatch | null;
   draftWorkbenchState?: DraftWorkbenchState | null;
@@ -757,7 +834,6 @@ export interface LinkGraphBootstrapState {
   codeDraftRequestState?: AsyncRequestState | null;
   codeEligibilityDecision?: StageEligibilityDecision | null;
   lastDraftPatchApplyResult?: DraftPatchApplyResult | null;
-  selectedNodeId?: string | null;
   sourceNavigationState?: SourceNavigationState | null;
   operationFeedback?: OperationFeedback | null;
   graphSurfaceExperiments?: GraphSurfaceExperimentFlags | null;

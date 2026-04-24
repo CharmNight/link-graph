@@ -123,8 +123,8 @@ describe("RoutedEdge", () => {
         sourceY={80}
         targetX={220}
         targetY={260}
-        sourcePosition="left"
-        targetPosition="top"
+        sourcePosition={"left" as never}
+        targetPosition={"top" as never}
         data={{
           route: {
             sections: [
@@ -163,8 +163,8 @@ describe("RoutedEdge", () => {
         sourceY={82}
         targetX={163}
         targetY={182}
-        sourcePosition="bottom"
-        targetPosition="top"
+        sourcePosition={"bottom" as never}
+        targetPosition={"top" as never}
         data={{
           route: {
             sections: [
@@ -202,8 +202,8 @@ describe("RoutedEdge", () => {
         sourceY={112}
         targetX={208}
         targetY={232}
-        sourcePosition="bottom"
-        targetPosition="top"
+        sourcePosition={"bottom" as never}
+        targetPosition={"top" as never}
         data={{
           route: {
             sections: [
@@ -241,8 +241,8 @@ describe("RoutedEdge", () => {
         sourceY={180}
         targetX={480}
         targetY={340}
-        sourcePosition="bottom"
-        targetPosition="top"
+        sourcePosition={"bottom" as never}
+        targetPosition={"top" as never}
         data={{
           route: {
             sections: [
@@ -283,8 +283,8 @@ describe("RoutedEdge", () => {
         sourceY={180}
         targetX={480}
         targetY={280}
-        sourcePosition="bottom"
-        targetPosition="top"
+        sourcePosition={"bottom" as never}
+        targetPosition={"top" as never}
       />,
     );
 
@@ -314,8 +314,8 @@ describe("RoutedEdge", () => {
         sourceY={180}
         targetX={640}
         targetY={320}
-        sourcePosition="bottom"
-        targetPosition="top"
+        sourcePosition={"bottom" as never}
+        targetPosition={"top" as never}
         data={{
           route: {
             sections: [

@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.navigation
 
+import com.charmnight.linkgraph.testing.*
+
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.nio.file.Files
 import kotlin.test.assertEquals

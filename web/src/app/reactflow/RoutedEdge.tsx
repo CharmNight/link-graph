@@ -1,5 +1,12 @@
 import { useEffect, useMemo } from "react";
-import { BaseEdge, type Edge, type EdgeProps, type InternalNode, useStore } from "@xyflow/react";
+import {
+  BaseEdge,
+  type Edge,
+  type EdgeProps,
+  type EdgeTypes,
+  type InternalNode,
+  useStore,
+} from "@xyflow/react";
 import { traceLinkGraph } from "../debug";
 import type { GraphPosition, LinkGraphEdgeRoute, LinkGraphEdgeRouteSection } from "../types";
 import {
@@ -9,11 +16,11 @@ import {
 } from "./orthogonalEdgeRouting";
 import { reanchorRouteToEndpoints } from "./orthogonalRoute";
 
-export interface RoutedEdgeData {
+export interface RoutedEdgeData extends Record<string, unknown> {
   route?: LinkGraphEdgeRoute;
 }
 
-type RoutedGraphEdge = Edge<RoutedEdgeData, "routedEdge">;
+export type RoutedGraphEdge = Edge<RoutedEdgeData, "routedEdge">;
 
 function sectionPoints(section: LinkGraphEdgeRouteSection): GraphPosition[] {
   return [section.startPoint, ...(section.bendPoints ?? []), section.endPoint];
@@ -403,6 +410,6 @@ export function RoutedEdge({
   );
 }
 
-export const ROUTED_EDGE_TYPES = {
+export const ROUTED_EDGE_TYPES: EdgeTypes = {
   routedEdge: RoutedEdge,
 };

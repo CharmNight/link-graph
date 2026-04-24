@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.codegen
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.llm.LlmProviderPresets
 import com.charmnight.linkgraph.llm.GenerationContext
 import com.charmnight.linkgraph.llm.GenerationPlan
@@ -637,6 +639,94 @@ class CodeGenerationServiceTest {
         assertTrue(result.drafts.isEmpty())
         assertTrue(result.warnings.any { it.contains("无法安全改写现有方法") })
         assertTrue(result.warnings.any { it.contains("远程 LLM") })
+    }
+
+    @Test
+    fun rejectsRemoteExistingFileDraftThatUsesContentInsteadOfEditOperations() {
+        val result = CodeGenerationService(
+            promptFactory = LlmPromptFactory(),
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    return LlmResponse(
+                        content = """
+                            {
+                              "summary": "远程代码草稿",
+                              "warnings": [],
+                              "drafts": [
+                                {
+                                  "id": "draft-unsafe-common-controller",
+                                  "sourceNodeId": "method:file-download",
+                                  "title": "CommonController.java",
+                                  "targetPath": "src/main/java/com/example/CommonController.java",
+                                  "content": "if (Boolean.TRUE.equals(delete)) {\n    FileUtils.deleteFile(filePath);\n}",
+                                  "warnings": []
+                                }
+                              ]
+                            }
+                        """.trimIndent(),
+                        model = request.model,
+                    )
+                }
+            },
+        ).generateDrafts(
+            context = GenerationContext(
+                graph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:file-download",
+                            type = NodeType.METHOD,
+                            title = "CommonController.fileDownload",
+                            signature = "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void",
+                        ),
+                    ),
+                ),
+                confirmedChanges = listOf(
+                    DraftWorkbenchEntry(
+                        entryId = "draft-change-file-download",
+                        kind = DraftEntryKind.CHANGE,
+                        title = "收紧 fileDownload 删除条件",
+                        targetNodeIds = listOf("method:file-download"),
+                        editScopes = listOf(
+                            EditScope(
+                                scopeId = "scope-file-download-delete",
+                                targetNodeId = "scope:file-download-delete",
+                                filePath = "src/main/java/com/example/CommonController.java",
+                                language = "JAVA",
+                                symbolKind = "FLOW_SCOPE",
+                                symbolSignature = "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void",
+                                startLine = 8,
+                                endLine = 10,
+                                allowedChangeKinds = listOf("REPLACE_METHOD_BODY"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            plan = GenerationPlan(
+                source = GenerationPlanSource.REMOTE,
+                summary = "Modify CommonController.java",
+                items = listOf(
+                    GenerationPlanItem(
+                        id = "plan-file-download",
+                        title = "修改 fileDownload",
+                        description = "只允许改 fileDownload。",
+                        risk = SyncPreviewRisk.MEDIUM,
+                        targetPath = "src/main/java/com/example/CommonController.java",
+                    ),
+                ),
+            ),
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://api.example.com/v1",
+                apiKey = "secret-key",
+                model = "gpt-5.4",
+            ),
+        )
+
+        assertEquals(LlmResultSource.MOCK, result.source)
+        assertTrue(result.drafts.isEmpty())
+        assertTrue(result.warnings.any { it.contains("existing-file") && it.contains("content") })
     }
 
     @Test

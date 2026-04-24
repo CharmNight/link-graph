@@ -251,7 +251,7 @@ export function FlowchartView({
 }: FlowchartViewProps) {
   const nodeSizeRegistry = useMemo(() => createNodeSizeRegistry(), []);
   const presentedGraph = draftCompareProjection?.compareGraph ?? view.visibleGraph;
-  const layoutSourceGraph = draftCompareProjection?.compareGraph ?? layoutView?.visibleGraph ?? view.visibleGraph;
+  const layoutSourceGraph = layoutView?.visibleGraph ?? view.visibleGraph;
   const scopedLayoutGraph = useMemo(
     () => scopeFlowchartGraphToAnchorMethod(layoutSourceGraph, view.anchorNodeId ?? null),
     [layoutSourceGraph, view.anchorNodeId],
@@ -268,9 +268,17 @@ export function FlowchartView({
     () => sanitizeFlowchartGraph(scopedPresentedGraph, view.anchorNodeId ?? null),
     [scopedPresentedGraph, view.anchorNodeId],
   );
+  const layoutAnchorNodeId = useMemo(
+    () => resolveCurrentMethodNode({
+      nodes: viewGraph.nodes,
+      anchorNodeId: view.anchorNodeId ?? null,
+      selectedNodeId,
+    })?.id ?? view.anchorNodeId ?? null,
+    [selectedNodeId, view.anchorNodeId, viewGraph.nodes],
+  );
   const layoutState = useMeasuredLayout({
     graph: viewGraph,
-    anchorNodeId: view.anchorNodeId ?? null,
+    anchorNodeId: layoutAnchorNodeId,
     nodeSizeRegistry,
     layout: layoutFlowchartView,
     debugLabel: "flowchart",

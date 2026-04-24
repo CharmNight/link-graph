@@ -1,8 +1,13 @@
 package com.charmnight.linkgraph.workbench
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
+import com.charmnight.linkgraph.model.GraphDiffElementKind
+import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.model.GraphPatchAction
+import com.charmnight.linkgraph.model.GraphPatchOperation
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
@@ -86,6 +91,62 @@ class DraftWorkbenchServiceTest {
         assertEquals("if (delete)", patch?.operations?.singleOrNull()?.node?.title)
         assertTrue(patch?.operations?.singleOrNull()?.node?.doc?.contains("已观察到源码中的删除逻辑是 if (delete)") == true)
         assertTrue(patch?.addedNodeIds?.isEmpty() == true)
+    }
+
+    @Test
+    fun `normalizing an update patch preserves if scope decision shape when candidate metadata says process`() {
+        val service = DraftWorkbenchService()
+        val baseGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "scope:delete-if",
+                    type = NodeType.FLOW_SCOPE,
+                    title = "if (delete)",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf(
+                        "flow.kind" to "IF",
+                        "flowchart.kind" to "DECISION",
+                    ),
+                ),
+            ),
+        )
+
+        val result = service.confirmCandidateChange(
+            draft = DraftWorkbenchState(),
+            candidate = CandidateDraftChange(
+                changeId = "change-delete-if",
+                status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+                title = "收紧删除判断",
+                targetNodeIds = listOf("scope:delete-if"),
+                beforeState = "if (delete)",
+                afterState = "if (Boolean.TRUE.equals(delete))",
+                reason = "delete 是包装类型。",
+                impactSummary = "影响删除分支。",
+                claimType = "CODE_FACT",
+                graphPatch = GraphPatch(
+                    summary = "更新删除判断",
+                    operations = listOf(
+                        GraphPatchOperation(
+                            id = "patch-update-delete-if",
+                            action = GraphPatchAction.UPDATE_NODE,
+                            elementKind = GraphDiffElementKind.NODE,
+                            elementId = "scope:delete-if",
+                            node = GraphNode(
+                                id = "scope:delete-if",
+                                type = NodeType.FLOW_SCOPE,
+                                title = "if (Boolean.TRUE.equals(delete))",
+                                sourceTag = GraphSourceTag.DRAFT_AI,
+                                metadata = mapOf("flowchart.kind" to "PROCESS"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            baseGraph = baseGraph,
+        )
+
+        val normalizedNode = result.draftChanges.single().graphPatch?.operations?.singleOrNull()?.node
+        assertEquals("DECISION", normalizedNode?.metadata?.get("flowchart.kind"))
     }
 
     @Test

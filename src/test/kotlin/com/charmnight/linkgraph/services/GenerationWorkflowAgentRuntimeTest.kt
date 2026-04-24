@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.codegen.CodeDraftWriterService
 import com.charmnight.linkgraph.codegen.CodeEditOperation
 import com.charmnight.linkgraph.codegen.CodeEditOperationKind
@@ -137,6 +139,85 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
 
         assertEquals(1, mergeRequests.size)
         assertNotNull(mergeRequests.single())
+    }
+
+    fun testOpenCodeDraftNativeDiffRejectsContentOnlyExistingFileDraft() {
+        val projectBasePath = project.basePath?.toString() ?: throw AssertionError("project base path unavailable")
+        val targetPath = "build/tests/native-merge-content-only/CommonController.java"
+        val targetFile = Paths.get(projectBasePath, targetPath)
+        Files.createDirectories(targetFile.parent)
+        Files.writeString(
+            targetFile,
+            """
+                package com.example;
+
+                public class CommonController {
+                    public void fileDownload(String fileName, Boolean delete) {
+                        String realFileName = System.currentTimeMillis() + fileName;
+                        String filePath = "/tmp/" + realFileName;
+                        FileUtils.writeBytes(filePath, response.getOutputStream());
+                        if (delete) {
+                            FileUtils.deleteFile(filePath);
+                        }
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        stateService.loadGraph(sampleGraph(), "currentMethod")
+        stateService.asyncRequests.markGeneratedCodeDrafts(
+            drafts = listOf(
+                GeneratedCodeDraft(
+                    id = "draft-content-only",
+                    sourceNodeId = "method:file-download",
+                    title = "unsafe snippet",
+                    targetPath = targetPath,
+                    content = """
+                        if (Boolean.TRUE.equals(delete)) {
+                            FileUtils.deleteFile(filePath);
+                        }
+                    """.trimIndent(),
+                ),
+            ),
+            warnings = emptyList(),
+            source = LlmResultSource.REMOTE,
+            promptPreview = null,
+        )
+        val mergeRequests = mutableListOf<MergeRequest>()
+        val session = ProjectEditorSession(stateService) {}
+        val workflow = GenerationWorkflow(
+            project = project,
+            session = session,
+            planningContextFactory = PlanningContextFactory(
+                graphDiffer = GraphDiffer(),
+                syncPreviewPlanner = SyncPreviewPlanner(),
+                graphGenerationService = GraphGenerationService(),
+                settingsProvider = { LinkGraphSettingsState() },
+            ),
+            graphGenerationService = GraphGenerationService(),
+            codeGenerationService = CodeGenerationService(),
+            codeDraftWriterService = CodeDraftWriterService(project),
+            sourceNavigationServiceProvider = { project.getService(SourceNavigationService::class.java) },
+            settingsProvider = { LinkGraphSettingsState() },
+            asyncRequestLifecycle = AsyncRequestLifecycleSupport(
+                project = project,
+                session = session,
+                timeoutOverrideProvider = { 500L },
+            ),
+            logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
+            showCodeDraftMergeRequest = { _, request ->
+                mergeRequests += request
+            },
+        )
+
+        workflow.openCodeDraftNativeDiff("draft-content-only")
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+
+        val snapshot = stateService.snapshot()
+        assertTrue(mergeRequests.isEmpty(), "content-only existing-file draft must not open a writable merge")
+        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.ERROR, snapshot.operationFeedback?.level)
+        assertTrue(snapshot.operationFeedback?.message?.contains("结构化 editOperations") == true)
     }
 
     fun testApplySingleCodeDraftWritesFileAndPublishesFeedback() {

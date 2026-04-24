@@ -1,4 +1,5 @@
 import ELK from "elkjs/lib/elk.bundled.js";
+import { resolveFlowchartKind } from "../flowchartKind";
 import type { ElkEdgeSection, ElkExtendedEdge, ElkNode, LayoutOptions } from "elkjs/lib/elk-api";
 import {
   FLOWCHART_DECISION_MIN_HEIGHT,
@@ -203,7 +204,7 @@ export function resolveMeasuredNodeSize(
   mode: AnalysisDisplayMode,
 ): NodeMeasuredSize {
   if (mode === "FLOWCHART") {
-    const kind = node.metadata?.["flowchart.kind"] ?? "PROCESS";
+    const kind = resolveFlowchartKind(node);
     const minimumSize = {
       width: flowchartNodeCardWidth(node),
       height: kind === "DECISION"

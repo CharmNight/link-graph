@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.codegen
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.llm.EditScope
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager

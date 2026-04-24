@@ -29,6 +29,8 @@ describe("DiffPanel", () => {
           question: "为什么设计节点没有落地？",
           answer: "设计基线里有 DTO，但代码事实层还没有对应实现。",
           findings: [],
+          candidateChanges: [],
+          newCandidateChanges: [],
           promptPreview: "prompt",
           warnings: ["模型 gpt-5.4 在当前兼容服务中不可用（HTTP 503 / model_not_found）。请在设置中改成服务端已开通的模型。"],
           patch: {

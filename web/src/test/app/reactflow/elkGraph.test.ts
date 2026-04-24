@@ -70,4 +70,34 @@ describe("executeElkLayout", () => {
       height: FLOWCHART_DECISION_MIN_HEIGHT,
     });
   });
+
+
+  it("keeps stale process metadata on IF scopes from shrinking the decision layout box", () => {
+    const measuredDecision = resolveMeasuredNodeSize(
+      {
+        ...node("stale-decision"),
+        type: "FLOW_SCOPE",
+        title: "if (delete)",
+        metadata: {
+          "flow.kind": "IF",
+          "flowchart.kind": "PROCESS",
+        },
+      },
+      new Map([
+        [
+          "stale-decision",
+          {
+            width: 180,
+            height: 144,
+          },
+        ],
+      ]),
+      "FLOWCHART",
+    );
+
+    expect(measuredDecision).toEqual({
+      width: FLOWCHART_DECISION_WIDTH,
+      height: FLOWCHART_DECISION_MIN_HEIGHT,
+    });
+  });
 });

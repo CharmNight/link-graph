@@ -14,6 +14,7 @@ internal class GraphEditorGraphStateSupport(
             it.copy(
                 frontendEntryUrl = entryUrl,
                 lastMessageType = "frontendLoaded",
+                snapshotRevision = it.snapshotRevision + 1,
             )
         }
     }
@@ -61,12 +62,13 @@ internal class GraphEditorGraphStateSupport(
             it.copy(
                 exportedMermaid = mermaid,
                 lastMessageType = "exportMermaid",
+                snapshotRevision = it.snapshotRevision + 1,
             )
         }
     }
 
     fun showDiffMode(
-        graph: GraphDocument,
+        graph: com.charmnight.linkgraph.model.GraphDocument,
         diff: com.charmnight.linkgraph.model.GraphDiff,
     ) {
         mutate { currentState -> currentState.withShownDiffMode(graph, diff) }
@@ -91,42 +93,8 @@ internal class GraphEditorGraphStateSupport(
         workingGraphDirty: Boolean = true,
     ) {
         mutate { currentState ->
-            currentState.withWorkingGraphChanged(
+            currentState.withWorkspaceGraphChanged(
                 graph = graph,
-                selectedMethodSignatureOverride = selectedMethodSignature,
-                preserveDraftPatchUndo = preserveDraftPatchUndo,
-                workingGraphDirtyOverride = workingGraphDirty,
-            )
-        }
-    }
-
-    fun markWorkingGraphChanged(
-        graph: GraphDocument,
-        selectedMethodSignature: String? = null,
-        preserveDraftPatchUndo: Boolean = false,
-        workingGraphDirty: Boolean = true,
-    ) {
-        mutate { currentState ->
-            currentState.withWorkingGraphChanged(
-                graph = graph,
-                selectedMethodSignatureOverride = selectedMethodSignature,
-                preserveDraftPatchUndo = preserveDraftPatchUndo,
-                workingGraphDirtyOverride = workingGraphDirty,
-            )
-        }
-    }
-
-    fun markViewGraphChanged(
-        graph: GraphDocument,
-        displayMode: AnalysisDisplayMode,
-        selectedMethodSignature: String? = null,
-        preserveDraftPatchUndo: Boolean = false,
-        workingGraphDirty: Boolean = true,
-    ) {
-        mutate { currentState ->
-            currentState.withViewGraphChanged(
-                graph = graph,
-                displayMode = displayMode,
                 selectedMethodSignatureOverride = selectedMethodSignature,
                 preserveDraftPatchUndo = preserveDraftPatchUndo,
                 workingGraphDirtyOverride = workingGraphDirty,
@@ -167,13 +135,17 @@ internal class GraphEditorGraphStateSupport(
             it.copy(
                 toolWindowOpenRequested = true,
                 lastMessageType = "toolWindowOpened",
+                snapshotRevision = it.snapshotRevision + 1,
             )
         }
     }
 
     fun markLastMessageType(messageType: String) {
         mutate {
-            it.copy(lastMessageType = messageType)
+            it.copy(
+                lastMessageType = messageType,
+                snapshotRevision = it.snapshotRevision + 1,
+            )
         }
     }
 }

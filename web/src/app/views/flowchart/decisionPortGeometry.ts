@@ -1,4 +1,5 @@
-import type { CSSProperties } from "@xyflow/react";
+import type { CSSProperties } from "react";
+import { resolveFlowchartKind } from "../../flowchartKind";
 import type { GraphPosition, LinkGraphEdge, LinkGraphNode } from "../../types";
 
 export type FlowchartDecisionPortId =
@@ -100,7 +101,7 @@ const DECISION_PORT_GEOMETRY: Record<FlowchartDecisionPortId, DecisionPortGeomet
 };
 
 function flowchartKind(node?: LinkGraphNode): string {
-  return node?.metadata?.["flowchart.kind"] ?? "PROCESS";
+  return resolveFlowchartKind(node);
 }
 
 function flowScopeCategory(node?: LinkGraphNode): string {

@@ -2,8 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../app/App";
 import { resetEditorTransportForTest } from "../../app/editorTransport";
-import { materializeThreeViewDocuments } from "../../app/testBootstrapState";
-import type { LinkGraphBootstrapState } from "../../app/types";
+import { materializeThreeViewDocuments, type TestBootstrapState } from "../../app/testBootstrapState";
 
 vi.mock("../../app/views/fact/FactGraphView", () => ({
   FactGraphView: ({
@@ -61,6 +60,7 @@ vi.mock("../../app/views/flowchart/FlowchartView", () => ({
 }));
 
 const bootstrapState = materializeThreeViewDocuments({
+  analysisDisplayMode: "FACT_GRAPH",
   visibleGraph: {
     nodes: [
       {
@@ -100,7 +100,7 @@ const bootstrapState = materializeThreeViewDocuments({
   semanticRevision: 3,
   layoutRevision: 1,
   snapshotRevision: 4,
-} as const satisfies LinkGraphBootstrapState);
+});
 
 const flowchartBootstrapState = materializeThreeViewDocuments({
   analysisDisplayMode: "FLOWCHART",
@@ -207,9 +207,9 @@ const flowchartBootstrapState = materializeThreeViewDocuments({
   semanticRevision: 3,
   layoutRevision: 1,
   snapshotRevision: 4,
-} as const satisfies LinkGraphBootstrapState);
+});
 
-function dispatchBootstrapState(state: LinkGraphBootstrapState, revision = state.snapshotRevision ?? 1) {
+function dispatchBootstrapState(state: TestBootstrapState, revision = state.snapshotRevision ?? 1) {
   window.dispatchEvent(
     new CustomEvent("link-graph-bootstrap", {
       detail: {
@@ -227,10 +227,7 @@ describe("App bootstrap revisions", () => {
   });
 
   it("applies layout-only bootstrap updates without needing a semantic graph refresh", async () => {
-    window.linkGraphBootstrap = structuredClone({
-      ...bootstrapState,
-      analysisDisplayMode: "FACT_GRAPH",
-    });
+    window.linkGraphBootstrap = structuredClone(bootstrapState);
     window.linkGraphBridge = {
       nodeSelected: vi.fn(),
     };

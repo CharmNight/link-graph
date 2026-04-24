@@ -225,14 +225,24 @@ export function applyLayoutOnlyNodePositions(
   nextNodes: LinkGraphNode[],
 ): LinkGraphNode[] {
   const nextNodeById = new Map(nextNodes.map((node) => [node.id, node]));
-  return currentNodes.map((currentNode) => {
+  let changed = false;
+  const positionedNodes = currentNodes.map((currentNode) => {
     const nextNode = nextNodeById.get(currentNode.id);
     if (!nextNode) {
       return currentNode;
     }
     const nextPosition = resolveNodePosition(nextNode);
-    return nextPosition ? syncNodePosition(currentNode, nextPosition) : currentNode;
+    if (!nextPosition) {
+      return currentNode;
+    }
+    const currentPosition = resolveNodePosition(currentNode);
+    if (currentPosition?.x === nextPosition.x && currentPosition?.y === nextPosition.y) {
+      return currentNode;
+    }
+    changed = true;
+    return syncNodePosition(currentNode, nextPosition);
   });
+  return changed ? positionedNodes : currentNodes;
 }
 
 export function hasRevision(revision?: number): revision is number {
@@ -247,6 +257,14 @@ export function extractLayoutPayload(nodes: LinkGraphNode[]): Array<{ nodeId: st
         y: node.position.y,
       }]
     : []));
+}
+
+export function extractLayoutState(nodes: LinkGraphNode[]): LinkGraphLayoutState {
+  return {
+    positions: Object.fromEntries(
+      extractLayoutPayload(nodes).map(({ nodeId, x, y }) => [nodeId, { x, y }]),
+    ),
+  };
 }
 
 export function sameNodeIdList(left: string[], right: string[]): boolean {

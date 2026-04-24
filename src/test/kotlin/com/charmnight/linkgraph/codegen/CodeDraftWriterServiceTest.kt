@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.codegen
 
+import com.charmnight.linkgraph.testing.*
+
 import java.nio.file.Files
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test

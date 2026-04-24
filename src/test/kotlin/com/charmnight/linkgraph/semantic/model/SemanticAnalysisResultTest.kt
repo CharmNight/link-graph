@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.semantic.model
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.semantic.subject.ResourceSubjectHandle
 import com.charmnight.linkgraph.semantic.subject.ResourceSubjectKind
 import com.charmnight.linkgraph.semantic.subject.SourceRange

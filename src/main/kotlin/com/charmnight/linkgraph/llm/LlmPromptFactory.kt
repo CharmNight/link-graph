@@ -612,6 +612,8 @@ class LlmPromptFactory {
             如果目标已经指向现有 Java 文件，生成结果必须继续沿用原有包名、类型名和未提及成员，不允许把整文件改写成无关的新骨架。
             Java existing-file 可用 operation kind：REPLACE_METHOD_BLOCK、REPLACE_METHOD_BODY、ADD_IMPORT、ADD_FIELD、INSERT_METHOD_AFTER。
             Kotlin existing-file 可用 operation kind：REPLACE_METHOD_BLOCK、REPLACE_METHOD_BODY。
+            editOperations[].payload 必须是纯源码片段字符串：REPLACE_METHOD_BODY 返回方法体代码块或语句，REPLACE_METHOD_BLOCK 返回完整方法或可替换代码块。
+            禁止把 methodSignature、changeType、existingCodeSnippet、newImplementation 等包装字段或元数据序列化进 payload；这些信息只能放在 operation/scope 字段中。
             只允许返回 JSON，不允许输出 Markdown、解释性前言、后缀说明或代码块。
             即使信息不足，也必须返回合法 JSON；列表字段使用 []，不要输出自然语言兜底。
             新文件 draft 才允许返回完整 content。
@@ -667,7 +669,7 @@ class LlmPromptFactory {
                       "filePath": "项目内相对路径",
                       "scopeId": "必须对应既有 edit scope",
                       "kind": "REPLACE_METHOD_BLOCK|REPLACE_METHOD_BODY|INSERT_METHOD_AFTER|ADD_IMPORT|ADD_FIELD|CREATE_FILE",
-                      "payload": "结构化操作负载",
+                      "payload": "纯源码片段，不要放 methodSignature/changeType/existingCodeSnippet 等元数据包装",
                       "warnings": ["可选警告"]
                     }
                   ],

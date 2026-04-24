@@ -95,7 +95,7 @@ internal class ConfirmedDraftChangeWorkflow(
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         draftState: com.charmnight.linkgraph.workbench.DraftWorkbenchState,
     ): GraphDocument {
-        val baseGraph = snapshot.referenceWorkingGraph ?: snapshot.referenceFactGraph ?: currentWorkingGraph(snapshot)
+        val baseGraph = snapshot.workspaceBaseGraph
         return draftState.draftChanges.fold(baseGraph) { currentGraph, entry ->
             val patch = entry.graphPatch ?: return@fold currentGraph
             graphPatchApplyService.apply(currentGraph, patch)

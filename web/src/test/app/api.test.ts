@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   acknowledgeSnapshot,
   announceFrontendReady,
-  publishGraphChange,
+  publishGraphEditScript,
   readBootstrapState,
   requestAuditAsync,
   requestAnalysisDisplayMode,
@@ -30,7 +30,7 @@ function methodNode(id: string, title: string): LinkGraphNode {
   };
 }
 
-describe("publishGraphChange", () => {
+describe("publishGraphEditScript", () => {
   afterEach(() => {
     resetEditorTransportForTest();
     resetApiBridgeLifecycleStateForTest();
@@ -38,10 +38,10 @@ describe("publishGraphChange", () => {
     window.linkGraphDebugTrace = undefined;
   });
 
-  it("keeps edge metadata when syncing the graph back to the IDE bridge", () => {
-    const graphChanged = vi.fn();
+  it("keeps edge metadata when syncing canonical graph edits back to the IDE bridge", () => {
+    const applyGraphEditScript = vi.fn();
     window.linkGraphBridge = {
-      graphChanged,
+      applyGraphEditScript,
     };
 
     const nodes: LinkGraphNode[] = [
@@ -60,34 +60,60 @@ describe("publishGraphChange", () => {
       },
     ];
 
-    publishGraphChange(nodes, edges);
-
-    expect(graphChanged).toHaveBeenCalledWith({
-      nodes: [
-        expect.objectContaining({
-          id: "anchor",
-        }),
-        expect.objectContaining({
-          id: "callee",
-        }),
+    publishGraphEditScript({
+      sceneId: "WORKSPACE_FLOWCHART",
+      baseWorkspaceRevision: 7,
+      operations: [
+        {
+          type: "UPSERT_NODE",
+          node: nodes[0]!,
+        },
+        {
+          type: "UPSERT_NODE",
+          node: nodes[1]!,
+        },
+        {
+          type: "UPSERT_EDGE",
+          edge: edges[0]!,
+        },
       ],
-      edges: [
+    });
+
+    expect(applyGraphEditScript).toHaveBeenCalledWith({
+      sceneId: "WORKSPACE_FLOWCHART",
+      baseWorkspaceRevision: 7,
+      operations: [
         expect.objectContaining({
-          id: "edge-call",
-          fromNodeId: "anchor",
-          toNodeId: "callee",
-          metadata: {
-            callOrder: "0",
-          },
+          type: "UPSERT_NODE",
+          node: expect.objectContaining({
+            id: "anchor",
+          }),
+        }),
+        expect.objectContaining({
+          type: "UPSERT_NODE",
+          node: expect.objectContaining({
+            id: "callee",
+          }),
+        }),
+        expect.objectContaining({
+          type: "UPSERT_EDGE",
+          edge: expect.objectContaining({
+            id: "edge-call",
+            fromNodeId: "anchor",
+            toNodeId: "callee",
+            metadata: {
+              callOrder: "0",
+            },
+          }),
         }),
       ],
     });
   });
 
   it("does not copy canvas positions into semantic node metadata", () => {
-    const graphChanged = vi.fn();
+    const applyGraphEditScript = vi.fn();
     window.linkGraphBridge = {
-      graphChanged,
+      applyGraphEditScript,
     };
 
     const nodes: LinkGraphNode[] = [
@@ -100,17 +126,26 @@ describe("publishGraphChange", () => {
       },
     ];
 
-    publishGraphChange(nodes, []);
+    publishGraphEditScript({
+      sceneId: "WORKSPACE_FACT",
+      baseWorkspaceRevision: 3,
+      operations: [
+        {
+          type: "UPSERT_NODE",
+          node: nodes[0]!,
+        },
+      ],
+    });
 
-    expect(graphChanged.mock.calls[0]?.[0]?.nodes?.[0]?.metadata).toEqual({
+    expect(applyGraphEditScript.mock.calls[0]?.[0]?.operations?.[0]?.node?.metadata).toEqual({
       "linkGraph.manual": "true",
     });
   });
 
   it("strips legacy ui position keys from semantic node metadata", () => {
-    const graphChanged = vi.fn();
+    const applyGraphEditScript = vi.fn();
     window.linkGraphBridge = {
-      graphChanged,
+      applyGraphEditScript,
     };
 
     const nodes: LinkGraphNode[] = [
@@ -126,9 +161,18 @@ describe("publishGraphChange", () => {
       },
     ];
 
-    publishGraphChange(nodes, []);
+    publishGraphEditScript({
+      sceneId: "WORKSPACE_RESOURCE_RELATION",
+      baseWorkspaceRevision: 5,
+      operations: [
+        {
+          type: "UPSERT_NODE",
+          node: nodes[0]!,
+        },
+      ],
+    });
 
-    expect(graphChanged.mock.calls[0]?.[0]?.nodes?.[0]?.metadata).toEqual({
+    expect(applyGraphEditScript.mock.calls[0]?.[0]?.operations?.[0]?.node?.metadata).toEqual({
       "linkGraph.manual": "true",
     });
   });
@@ -206,11 +250,46 @@ describe("publishGraphChange", () => {
   it("从 bootstrap 读取当前展示模式", () => {
     window.linkGraphBootstrap = {
       analysisDisplayMode: "FACT_GRAPH",
-      visibleGraph: {
+      currentSceneId: "WORKSPACE_FACT",
+      sceneStates: {
+        WORKSPACE_FACT: {
+          selectedNodeId: null,
+          anchorNodeId: null,
+          layoutState: { positions: {} },
+          layoutRevision: 0,
+          collapsedNodeIds: [],
+        },
+        WORKSPACE_FLOWCHART: {
+          selectedNodeId: null,
+          anchorNodeId: null,
+          layoutState: { positions: {} },
+          layoutRevision: 0,
+          collapsedNodeIds: [],
+        },
+        WORKSPACE_RESOURCE_RELATION: {
+          selectedNodeId: null,
+          anchorNodeId: null,
+          layoutState: { positions: {} },
+          layoutRevision: 0,
+          collapsedNodeIds: [],
+        },
+        DIFF: {
+          selectedNodeId: null,
+          anchorNodeId: null,
+          layoutState: { positions: {} },
+          layoutRevision: 0,
+          collapsedNodeIds: [],
+        },
+      },
+      workspaceGraph: {
         nodes: [],
         edges: [],
       },
-      workingGraph: {
+      workspaceBaseGraph: {
+        nodes: [],
+        edges: [],
+      },
+      semanticFactGraph: {
         nodes: [],
         edges: [],
       },

@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.ui
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.codegen.CodeEditOperation
 import com.charmnight.linkgraph.codegen.CodeEditOperationKind
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
@@ -67,8 +69,9 @@ class GraphEditorTransportSliceRendererTest {
         )
 
         assertTrue(bootstrapScript.contains("OrderController.submit"))
-        assertTrue(bootstrapScript.contains("\"visibleGraph\""))
-        assertTrue(bootstrapScript.contains("\"workingGraph\""))
+        assertTrue(bootstrapScript.contains("\"workspaceGraph\""))
+        assertTrue(bootstrapScript.contains("\"workspaceBaseGraph\""))
+        assertTrue(bootstrapScript.contains("\"sceneStates\""))
     }
 
     @Test
@@ -194,7 +197,7 @@ class GraphEditorTransportSliceRendererTest {
         layoutRevision: Long = 0,
         generatedCodeDrafts: List<GeneratedCodeDraft> = emptyList(),
     ): com.charmnight.linkgraph.ui.GraphEditorStateSnapshot {
-        return com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+        return testSnapshot(
             visibleGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(

@@ -130,6 +130,9 @@ export function GraphWorkbench({
     if (!layoutElement || !stageElement || !workbenchElement) {
       return;
     }
+    const resolvedLayoutElement = layoutElement;
+    const resolvedStageElement = stageElement;
+    const resolvedWorkbenchElement = workbenchElement;
 
     function summarizeRect(element: Element) {
       const rect = element.getBoundingClientRect();
@@ -146,12 +149,12 @@ export function GraphWorkbench({
         reason,
         dragging,
         workbenchWidth,
-        layoutRect: summarizeRect(layoutElement),
-        stageRect: summarizeRect(stageElement),
-        workbenchRect: summarizeRect(workbenchElement),
-        stageScrollHeight: stageElement.scrollHeight,
-        workbenchScrollHeight: workbenchElement.scrollHeight,
-        workbenchClientHeight: workbenchElement.clientHeight,
+        layoutRect: summarizeRect(resolvedLayoutElement),
+        stageRect: summarizeRect(resolvedStageElement),
+        workbenchRect: summarizeRect(resolvedWorkbenchElement),
+        stageScrollHeight: resolvedStageElement.scrollHeight,
+        workbenchScrollHeight: resolvedWorkbenchElement.scrollHeight,
+        workbenchClientHeight: resolvedWorkbenchElement.clientHeight,
       });
     }
 
@@ -160,15 +163,15 @@ export function GraphWorkbench({
       return;
     }
     const observer = new ResizeObserver(() => {
-      const metrics = buildLayoutMetrics(layoutElement);
+      const metrics = buildLayoutMetrics(resolvedLayoutElement);
       if (metrics) {
         setLayoutWidth(metrics.layoutWidth);
       }
       emit("resize");
     });
-    observer.observe(layoutElement);
-    observer.observe(stageElement);
-    observer.observe(workbenchElement);
+    observer.observe(resolvedLayoutElement);
+    observer.observe(resolvedStageElement);
+    observer.observe(resolvedWorkbenchElement);
     return () => observer.disconnect();
   }, [dragging, workbenchWidth]);
 

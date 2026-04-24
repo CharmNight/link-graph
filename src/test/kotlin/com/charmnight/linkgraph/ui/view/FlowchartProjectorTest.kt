@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.ui.view
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
@@ -27,6 +29,28 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FlowchartProjectorTest {
+
+    @Test
+    fun deriveFlowchartSummaryCountsFlowScopeIfAsBranchWhenMetadataIsStaleProcess() {
+        val graph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "scope:delete-if",
+                    type = NodeType.FLOW_SCOPE,
+                    title = "if (delete)",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf(
+                        "flow.kind" to "IF",
+                        "flowchart.kind" to "PROCESS",
+                    ),
+                ),
+            ),
+            edges = emptyList(),
+        )
+
+        assertEquals(1, deriveFlowchartSummary(graph, graph).branchCount)
+    }
+
     @Test
     fun projectReadableFlowchartViewExcludesDraftAnnotationNodesAndDocumentEdges() {
         val graph = GraphDocument(

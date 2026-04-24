@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { summarizeBootstrapState, traceLinkGraph } from "../../app/debug";
-import type { LinkGraphBootstrapState } from "../../app/types";
+import { materializeThreeViewDocuments } from "../../app/testBootstrapState";
 
 describe("traceLinkGraph", () => {
   const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -54,7 +54,7 @@ describe("traceLinkGraph", () => {
   });
 
   it("summarizes the authoritative top-level flowchart working graph instead of the stale full graph view", () => {
-    const state = {
+    const state = materializeThreeViewDocuments({
       analysisDisplayMode: "FLOWCHART",
       visibleGraph: {
         nodes: [
@@ -153,11 +153,11 @@ describe("traceLinkGraph", () => {
       mermaidIssues: [],
       diffItems: [],
       syncPreviewItems: [],
-    } satisfies LinkGraphBootstrapState;
+    });
 
     const summary = summarizeBootstrapState(state);
 
-    expect(summary.workingGraph.nodes).toBe(1);
-    expect(summary.workingGraph.sampleNodeIds).toEqual(["decision:guard"]);
+    expect(summary.workspaceGraph.nodes).toBe(1);
+    expect(summary.workspaceGraph.sampleNodeIds).toEqual(["decision:guard"]);
   });
 });

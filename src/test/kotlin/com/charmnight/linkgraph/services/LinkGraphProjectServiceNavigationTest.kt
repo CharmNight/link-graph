@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
@@ -27,7 +29,7 @@ class LinkGraphProjectServiceNavigationTest {
             signature = "com.example.OrderDraftDto",
             sourceTag = GraphSourceTag.DESIGN_BASELINE,
         )
-        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+        val snapshot = testSnapshot(
             visibleGraph = GraphDocument(),
             workingGraph = GraphDocument(nodes = listOf(draftNode)),
             designBaselineGraph = GraphDocument(nodes = listOf(baselineNode)),
@@ -59,7 +61,7 @@ class LinkGraphProjectServiceNavigationTest {
                 "flow.kind" to "CONDITION",
             ),
         )
-        val snapshot = com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+        val snapshot = testSnapshot(
             analysisDisplayMode = com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode.FLOWCHART,
             visibleGraph = GraphDocument(nodes = listOf(projectedDecisionNode)),
             workingGraph = null,

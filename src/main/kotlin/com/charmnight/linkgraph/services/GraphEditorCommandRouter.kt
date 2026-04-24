@@ -34,7 +34,7 @@ class GraphEditorCommandRouter(
             is GraphEditorMessage.ImportMermaid -> projectService.importMermaid(message.mermaid)
             GraphEditorMessage.ExportMermaid -> projectService.exportMermaid()
             GraphEditorMessage.ShowDiffMode -> projectService.showDiffMode()
-            is GraphEditorMessage.GraphChanged -> handleFrontendGraphChanged(message.graph)
+            is GraphEditorMessage.ApplyGraphEditScript -> handleFrontendGraphEditScript(message.script)
             is GraphEditorMessage.LayoutChanged -> handleFrontendLayoutChanged(message.positions)
             is GraphEditorMessage.RequestSourceNavigation -> requestSourceNavigation(message.nodeId)
             is GraphEditorMessage.RequestExpandOverflowNode -> projectService.requestExpandOverflowNode(message.nodeId)
@@ -99,9 +99,9 @@ class GraphEditorCommandRouter(
         projectService.graphWorkspaceWorkflow.loadGraph(graph, source)
     }
 
-    fun handleFrontendGraphChanged(graph: GraphDocument) {
+    fun handleFrontendGraphEditScript(script: com.charmnight.linkgraph.ui.GraphEditScript) {
         projectService.resetWorkspaceGraphContext()
-        projectService.graphWorkspaceWorkflow.handleFrontendGraphChanged(graph)
+        projectService.graphWorkspaceWorkflow.handleFrontendEditScript(script)
     }
 
     fun handleFrontendLayoutChanged(positions: Map<String, GraphLayoutPosition>) {

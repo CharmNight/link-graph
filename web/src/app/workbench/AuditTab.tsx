@@ -18,13 +18,17 @@ import { InvestigationThreadList } from "./InvestigationThreadList";
 
 const DEFAULT_ACTIVE_AUDIT_SECTION: WorkbenchSectionId = "audit.composer";
 
-const AUDIT_SECTION_META: Record<WorkbenchSectionId, { title: string }> = {
+const AUDIT_SECTION_META: Partial<Record<WorkbenchSectionId, { title: string }>> = {
   "audit.request-status": { title: "请求状态" },
   "audit.thread": { title: "问答会话" },
   "audit.composer": { title: "继续提问" },
   "audit.candidate-changes": { title: "待确认变更" },
   "audit.investigation-threads": { title: "风险线程" },
 };
+
+function auditSectionTitle(sectionId: WorkbenchSectionId): string {
+  return AUDIT_SECTION_META[sectionId]?.title ?? sectionId;
+}
 
 interface AuditTabProps {
   state: AuditWorkbenchState;
@@ -208,7 +212,7 @@ export function AuditTab({
   }
 
   return (
-    <section className="workbench-tab audit-tab block overflow-auto m-scrollbar">
+    <section className="workbench-tab audit-tab m-scrollbar">
       <div className="workbench-tab-head audit-tab-head mb-10px">
         <div className="audit-tab-title">
           <p className="eyebrow">问答</p>
@@ -224,13 +228,13 @@ export function AuditTab({
             id={`audit-page-tab-${sectionId}`}
             type="button"
             role="tab"
-            aria-label={AUDIT_SECTION_META[sectionId].title}
+            aria-label={auditSectionTitle(sectionId)}
             aria-selected={activeSectionId === sectionId}
             aria-controls={`audit-page-panel-${sectionId}`}
             className={activeSectionId === sectionId ? "audit-tab-button active" : "audit-tab-button"}
             onClick={() => handleTabSelect(sectionId)}
           >
-              <span>{AUDIT_SECTION_META[sectionId].title}</span>
+              <span>{auditSectionTitle(sectionId)}</span>
               {sectionId === "audit.candidate-changes" ? <span className="badge">{changes.length}</span> : null}
               {sectionId === "audit.investigation-threads" ? <span className="badge">{threads.length}</span> : null}
             </button>
@@ -325,7 +329,7 @@ function AuditPagePanel({
   onCollapse,
   onStopComposerBoundaryPropagation,
 }: AuditPagePanelProps) {
-  const pageTitle = AUDIT_SECTION_META[activeSectionId].title;
+  const pageTitle = auditSectionTitle(activeSectionId);
   const latestQuestion = state.questionDraft.trim() || state.result?.question || "";
   const sourceContext = state.result?.sourceContext ?? [];
   const evidenceTrace = state.result?.evidenceTrace ?? [];

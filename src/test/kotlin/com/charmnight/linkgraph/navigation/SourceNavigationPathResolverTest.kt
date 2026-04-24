@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.navigation
 
+import com.charmnight.linkgraph.testing.*
+
 import com.intellij.openapi.vfs.StandardFileSystems
 import kotlin.test.Test
 import kotlin.test.assertEquals

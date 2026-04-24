@@ -358,6 +358,77 @@ describe("FlowchartView", () => {
     expect(screen.getAllByText("if (Boolean.TRUE.equals(delete) && fileExists(filePath))").length).toBeGreaterThan(0);
   });
 
+
+  it("keeps draft compare overlay out of the ELK layout source so switching entries does not relayout the graph", () => {
+    const projectionWithExtraNode: DraftCompareProjection = {
+      ...draftCompareProjection,
+      compareGraph: {
+        nodes: [
+          {
+            ...view.visibleGraph.nodes[0]!,
+            title: "OrderController.submit after draft",
+          },
+          view.visibleGraph.nodes[1]!,
+          {
+            id: "scope:extra-draft-node",
+            type: "FLOW_ACTION",
+            title: "Only in selected draft change",
+            inputs: [],
+            outputs: [],
+            certainty: "LLM_SUGGESTED",
+            bindingStatus: "BOUND",
+            metadata: {
+              "flowchart.kind": "PROCESS",
+            },
+          },
+        ],
+        edges: [
+          ...view.visibleGraph.edges,
+          {
+            id: "control-extra-draft-node",
+            type: "CONTROL_FLOW",
+            source: "scope:guard",
+            target: "scope:extra-draft-node",
+          },
+        ],
+      },
+      nodeStatuses: {
+        "method:submit-order": "MODIFIED",
+        "scope:extra-draft-node": "ADDED",
+      },
+      edgeStatuses: {
+        "control-extra-draft-node": "ADDED",
+      },
+    };
+
+    render(
+      <FlowchartView
+        view={view}
+        layoutView={view}
+        selectedNodeId="method:submit-order"
+        draftCompareProjection={projectionWithExtraNode}
+        onAddNode={noop}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onDeleteNode={noop}
+        onCreateEdge={noop}
+        onDeleteEdge={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onImportMermaid={noop}
+      />,
+    );
+
+    const measuredLayoutArgs = useMeasuredLayoutMock.mock.calls.at(-1)?.[0];
+    expect(measuredLayoutArgs?.graph.nodes.map((node) => node.id)).toEqual([
+      "method:submit-order",
+      "scope:guard",
+    ]);
+    expect(measuredLayoutArgs?.graph.nodes[0]?.title).toBe("OrderController.submit");
+    expect(measuredLayoutArgs?.graph.edges.map((edge) => edge.id)).toEqual(["control-entry"]);
+    expect(screen.getAllByText("OrderController.submit after draft").length).toBeGreaterThan(0);
+  });
+
   it("handles flowchart relayout inside the view module instead of delegating back to the upstream format callback", async () => {
     const user = userEvent.setup();
     const requestRelayout = vi.fn();
@@ -390,6 +461,32 @@ describe("FlowchartView", () => {
 
     expect(requestRelayout).toHaveBeenCalledTimes(1);
     expect(upstreamFormatLayout).not.toHaveBeenCalled();
+  });
+
+
+  it("keeps the method entry as the ELK layout anchor when the scene anchor is a selected flow node", () => {
+    render(
+      <FlowchartView
+        view={{
+          ...view,
+          anchorNodeId: "scope:guard",
+        }}
+        selectedNodeId="scope:guard"
+        onAddNode={noop}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onDeleteNode={noop}
+        onCreateEdge={noop}
+        onDeleteEdge={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onImportMermaid={noop}
+      />,
+    );
+
+    const measuredLayoutArgs = useMeasuredLayoutMock.mock.calls.at(-1)?.[0];
+    expect(measuredLayoutArgs?.anchorNodeId).toBe("method:submit-order");
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute("data-anchor", "scope:guard");
   });
 
   it("keeps the current-method summary pinned to the anchor method instead of replacing it with the selected flow node", () => {

@@ -15,6 +15,7 @@ import type {
   LinkGraphNode,
   OperationFeedback,
   QaRequestRecoveryState,
+  RiskResolutionStatus,
   WorkbenchSectionId,
 } from "../types";
 import { candidateCanConfirm } from "../workbench/candidateChangeSupport";
@@ -52,6 +53,11 @@ interface UseAuditWorkbenchControllerArgs {
     result: GraphPatchResult | null,
     changeId: string,
     status: CandidateDraftChange["status"],
+  ) => GraphPatchResult | null;
+  updateGraphPatchResultThreadResolution: (
+    result: GraphPatchResult | null,
+    threadId: string,
+    status: RiskResolutionStatus,
   ) => GraphPatchResult | null;
   resolveDraftEntryTargetNodeIds: (entry: DraftWorkbenchEntry | CandidateDraftChange | null) => string[];
   resolveDisplayedNodeId: (nodeId: string | null | undefined, nodes: LinkGraphNode[]) => string | null;
@@ -221,6 +227,9 @@ export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArg
     activateAuditSection("audit.investigation-threads");
     args.setActiveWorkbenchTab("audit");
     args.bridgeCommands.runBridgeCommand("风险决策", () => resolveInvestigationThread(threadId, resolutionStatus), {
+      onAccepted: () => {
+        args.setAuditResult((current) => args.updateGraphPatchResultThreadResolution(current, threadId, resolutionStatus));
+      },
       successFeedback: {
         level: "INFO",
         message:
@@ -255,12 +264,13 @@ export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArg
   }
 
   useEffect(() => {
-    const firstChangeId = args.auditResult?.candidateChanges?.[0]?.changeId ?? null;
+    const pendingChanges = args.auditResult?.candidateChanges.filter((change) => change.status === "PENDING_CONFIRMATION") ?? [];
+    const firstChangeId = pendingChanges[0]?.changeId ?? null;
     args.setSelectedAuditChangeId((current) => {
-      if (!args.auditResult?.candidateChanges?.length) {
+      if (!pendingChanges.length) {
         return null;
       }
-      return args.auditResult.candidateChanges.some((change) => change.changeId === current) ? current : firstChangeId;
+      return pendingChanges.some((change) => change.changeId === current) ? current : firstChangeId;
     });
   }, [args.auditResult, args.setSelectedAuditChangeId]);
 

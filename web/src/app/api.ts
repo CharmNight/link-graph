@@ -4,6 +4,7 @@ import type {
   Certainty,
   DraftPatchPreviewSource,
   DiffStatus,
+  GraphEditScript,
   GraphBeautificationRequest,
   GraphPosition,
   GraphSourceTag,
@@ -11,11 +12,9 @@ import type {
   LinkGraphEdge,
   LinkGraphNode,
   LinkGraphSnapshotEnvelope,
-  MermaidIssue,
   NodeType,
   RiskResolutionStatus,
   StepGranularity,
-  SyncPreviewItem,
 } from "./types";
 import { summarizeGraph, traceLinkGraph } from "./debug";
 import {
@@ -53,40 +52,6 @@ const BRIDGE_PROTOCOL_MISMATCH_MESSAGE = "IDE bridge 协议未对齐，本次请
 const BRIDGE_UNAVAILABLE_DETAIL_MESSAGE = "JCEF 页面与 IDEA 后端连接尚未建立，请等待页面初始化完成后重试。";
 
 // JCEF 页面的唯一后端入口：读取 bootstrap，并把前端交互重新发布给 IDEA bridge。
-interface BackendGraphNode {
-  id: string;
-  type: NodeType;
-  title: string;
-  location?: string;
-  signature?: string;
-  inputs: string[];
-  outputs: string[];
-  doc?: string;
-  certainty: Certainty;
-  bindingStatus: BindingStatus;
-  diff: {
-    status: DiffStatus;
-  };
-  position?: GraphPosition;
-  metadata?: Record<string, string>;
-  sourceTag?: GraphSourceTag;
-}
-
-interface BackendGraphEdge {
-  id: string;
-  type: string;
-  fromNodeId: string;
-  toNodeId: string;
-  label?: string;
-  metadata?: Record<string, string>;
-  sourceTag?: GraphSourceTag;
-}
-
-interface BackendGraphDocument {
-  nodes: BackendGraphNode[];
-  edges: BackendGraphEdge[];
-}
-
 declare global {
   interface WindowEventMap {
     "link-graph-bootstrap": CustomEvent<
@@ -131,7 +96,7 @@ declare global {
       applySingleCodeDraft?: (draftId: string) => void;
       openCodeDraftNativeDiff?: (draftId: string) => void;
       requestArtifact?: (artifactIds: string[]) => void;
-      graphChanged?: (payload: BackendGraphDocument) => void;
+      applyGraphEditScript?: (payload: unknown) => void;
       frontendReady?: (payload: { lastAppliedRevision: number | null }) => void;
       snapshotAck?: (payload: { revision: number }) => void;
       layoutChanged?: (payload: {
@@ -511,40 +476,64 @@ export function requestExpandOverflowNode(nodeId: string): BridgeInvocationResul
   });
 }
 
-export function publishGraphChange(nodes: LinkGraphNode[], edges: LinkGraphEdge[]): BridgeInvocationResult {
-  traceLinkGraph("api.publishGraphChange", {
-    graph: summarizeGraph({ nodes, edges }),
+export function publishGraphEditScript(script: GraphEditScript): BridgeInvocationResult {
+  const payload = {
+    sceneId: script.sceneId,
+    baseWorkspaceRevision: script.baseWorkspaceRevision,
+    operations: script.operations.map((operation) => {
+      switch (operation.type) {
+        case "UPSERT_NODE":
+          return {
+            type: operation.type,
+            node: {
+              id: operation.node.id,
+              type: operation.node.type,
+              title: operation.node.title,
+              location: operation.node.location,
+              signature: operation.node.signature,
+              inputs: operation.node.inputs ?? [],
+              outputs: operation.node.outputs ?? [],
+              doc: operation.node.doc,
+              certainty: operation.node.certainty,
+              bindingStatus: operation.node.bindingStatus,
+              metadata: buildNodeMetadata(operation.node),
+              sourceTag: operation.node.sourceTag,
+            },
+          };
+        case "REMOVE_NODE":
+          return {
+            type: operation.type,
+            nodeId: operation.nodeId,
+          };
+        case "UPSERT_EDGE":
+          return {
+            type: operation.type,
+            edge: {
+              id: operation.edge.id,
+              type: operation.edge.type,
+              fromNodeId: operation.edge.source,
+              toNodeId: operation.edge.target,
+              label: operation.edge.label,
+              metadata: operation.edge.metadata,
+              sourceTag: operation.edge.sourceTag,
+            },
+          };
+        case "REMOVE_EDGE":
+          return {
+            type: operation.type,
+            edgeId: operation.edgeId,
+          };
+      }
+    }),
+  };
+  traceLinkGraph("api.publishGraphEditScript", {
+    sceneId: script.sceneId,
+    baseWorkspaceRevision: script.baseWorkspaceRevision,
+    operationCount: script.operations.length,
   });
-  return invokeBridgeAction("graphChanged", (bridge) => {
-    bridge.graphChanged?.({
-      nodes: nodes.map((node) => ({
-        id: node.id,
-        type: node.type,
-        title: node.title,
-        location: node.location,
-        signature: node.signature,
-        inputs: node.inputs ?? [],
-        outputs: node.outputs ?? [],
-        doc: node.doc,
-        certainty: node.certainty,
-        bindingStatus: node.bindingStatus,
-        metadata: buildNodeMetadata(node),
-        sourceTag: node.sourceTag,
-        diff: {
-          status: node.diffStatus ?? "MATCHED",
-        },
-      })),
-      edges: edges.map((edge) => ({
-        id: edge.id,
-        type: edge.type,
-        fromNodeId: edge.source,
-        toNodeId: edge.target,
-        label: edge.label,
-        metadata: edge.metadata,
-        sourceTag: edge.sourceTag,
-      })),
-    });
-  });
+  return invokeBridgeAction("applyGraphEditScript", (bridge) => {
+    bridge.applyGraphEditScript?.(payload);
+  }, payload);
 }
 
 export function publishLayoutChange(
@@ -564,37 +553,8 @@ export function publishLayoutChange(
   });
 }
 
-export function getSampleSyncPreview(): SyncPreviewItem[] {
-  return [
-    {
-      id: "create-order-draft",
-      title: "新增 DTO",
-      description: "生成 OrderDraftDto.java",
-      risk: "LOW",
-    },
-    {
-      id: "wire-place-draft",
-      title: "补齐服务调用",
-      description: "把 controller 流程接到 placeDraft 服务",
-      risk: "MEDIUM",
-    },
-  ];
-}
-
 function buildNodeMetadata(node: LinkGraphNode): Record<string, string> {
   return Object.fromEntries(
     Object.entries(node.metadata ?? {}).filter(([key]) => !key.startsWith("ui.") && !key.startsWith("layout.")),
   );
-}
-
-export function getSampleMermaidIssues(): MermaidIssue[] {
-  return [
-    {
-      category: "SEMANTIC",
-      code: "missing-method-signature",
-      message: "方法节点 'design:submit-order' 缺少 signature 元数据。",
-      line: 3,
-      nodeId: "design:submit-order",
-    },
-  ];
 }

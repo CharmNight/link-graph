@@ -1,28 +1,24 @@
-import { getSampleMermaidIssues, getSampleSyncPreview, readBootstrapState } from "./api";
-import {
-  deriveFactGraphSummary,
-  deriveFlowchartSummary,
-  deriveResourceRelationSummary,
-  resolveAnchorNodeId,
-} from "./appGraphSupport";
-import { summarizeBootstrapState, traceLinkGraph } from "./debug";
-import { resolveWorkingGraphDocument } from "./workingGraphDocument";
+import { readBootstrapState } from "./api";
+import { resolveFlowchartKind } from "./flowchartKind";
 import type {
   AnalysisDisplayMode,
   AsyncRequestState,
-  DiffItem,
   FactGraphViewDocument,
   FlowchartViewDocument,
   LinkGraphBootstrapState,
   LinkGraphDocument,
   LinkGraphEdge,
+  LinkGraphLayoutState,
   LinkGraphNode,
+  LinkGraphSceneId,
+  LinkGraphSceneState,
   QaRequestRecoveryState,
   ResourceRelationViewDocument,
   SourceNavigationState,
 } from "./types";
 
 export const DEFAULT_ANALYSIS_DISPLAY_MODE: AnalysisDisplayMode = "FLOWCHART";
+export const DEFAULT_SCENE_ID: LinkGraphSceneId = "WORKSPACE_FLOWCHART";
 
 export const IDLE_REQUEST_STATE: AsyncRequestState = {
   phase: "IDLE",
@@ -57,6 +53,134 @@ export const EMPTY_QA_REQUEST_RECOVERY_STATE: QaRequestRecoveryState = {
   lastFailedRequest: null,
 };
 
+const EMPTY_DOCUMENT: LinkGraphDocument = {
+  nodes: [],
+  edges: [],
+};
+
+const EMPTY_LAYOUT_STATE: LinkGraphLayoutState = {
+  positions: {},
+};
+
+function sampleSyncPreview() {
+  return [
+    {
+      id: "create-order-draft",
+      title: "新增 DTO",
+      description: "生成 OrderDraftDto.java",
+      risk: "LOW" as const,
+    },
+    {
+      id: "wire-place-draft",
+      title: "补齐服务调用",
+      description: "把 controller 流程接到 placeDraft 服务",
+      risk: "MEDIUM" as const,
+    },
+  ];
+}
+
+function sampleMermaidIssues() {
+  return [
+    {
+      category: "SEMANTIC" as const,
+      code: "missing-method-signature",
+      message: "方法节点 'design:submit-order' 缺少 signature 元数据。",
+      line: 3,
+      nodeId: "design:submit-order",
+    },
+  ];
+}
+
+function createSceneState(
+  selectedNodeId: string | null = null,
+  anchorNodeId: string | null = selectedNodeId,
+  layoutState: LinkGraphLayoutState = EMPTY_LAYOUT_STATE,
+): LinkGraphSceneState {
+  return {
+    selectedNodeId,
+    anchorNodeId,
+    layoutState,
+    layoutRevision: 0,
+    collapsedNodeIds: [],
+  };
+}
+
+function createDefaultSceneStates(
+  selectedNodeId: string | null = null,
+  layoutState: LinkGraphLayoutState = EMPTY_LAYOUT_STATE,
+): Record<LinkGraphSceneId, LinkGraphSceneState> {
+  return {
+    WORKSPACE_FACT: createSceneState(selectedNodeId, selectedNodeId, layoutState),
+    WORKSPACE_FLOWCHART: createSceneState(selectedNodeId, selectedNodeId, layoutState),
+    WORKSPACE_RESOURCE_RELATION: createSceneState(selectedNodeId, selectedNodeId, layoutState),
+    DIFF: createSceneState(null, null, EMPTY_LAYOUT_STATE),
+  };
+}
+
+function resolveAnchorNodeId(
+  nodes: LinkGraphNode[],
+  preferredNodeId?: string | null,
+): string | null {
+  if (preferredNodeId && nodes.some((node) => node.id === preferredNodeId)) {
+    return preferredNodeId;
+  }
+  return nodes.find((node) => node.type === "METHOD")?.id ?? nodes[0]?.id ?? null;
+}
+
+function deriveFactGraphSummary(
+  visibleGraph: LinkGraphDocument,
+  fullGraph: LinkGraphDocument,
+  anchorNodeId?: string | null,
+) {
+  return {
+    anchorTitle: fullGraph.nodes.find((node) => node.id === anchorNodeId)?.title
+      ?? visibleGraph.nodes.find((node) => node.id === anchorNodeId)?.title
+      ?? null,
+    visibleNodeCount: visibleGraph.nodes.length,
+    fullNodeCount: fullGraph.nodes.length,
+  };
+}
+
+function deriveFlowchartSummary(
+  visibleGraph: LinkGraphDocument,
+  fullGraph: LinkGraphDocument = visibleGraph,
+) {
+  const hiddenNodeCount = Math.max(0, fullGraph.nodes.length - visibleGraph.nodes.length);
+  const hiddenEdgeCount = Math.max(0, fullGraph.edges.length - visibleGraph.edges.length);
+  const incompleteNodeCount = visibleGraph.nodes.filter((node) => node.metadata?.["flow.incomplete"] === "true").length;
+  const incompleteEdgeCount = visibleGraph.edges.filter((edge) => edge.metadata?.["flow.incomplete"] === "true").length;
+  const syntheticEdgeCount = visibleGraph.edges.filter((edge) => edge.metadata?.["flow.synthetic"] === "true").length;
+  const syntheticEntryEdgeCount = visibleGraph.edges.filter(
+    (edge) => edge.metadata?.["flow.synthetic"] === "true" && edge.metadata?.["flow.provenance"] === "SYNTHETIC_PROJECTION",
+  ).length;
+  return {
+    nodeCount: visibleGraph.nodes.length,
+    branchCount: visibleGraph.nodes.filter((node) => resolveFlowchartKind(node) === "DECISION").length,
+    exceptionPathCount: visibleGraph.edges.filter((edge) => edge.label?.trim().toUpperCase() === "EXCEPTION").length,
+    fullNodeCount: fullGraph.nodes.length,
+    fullEdgeCount: fullGraph.edges.length,
+    hiddenNodeCount,
+    hiddenEdgeCount,
+    truncated: hiddenNodeCount > 0 || hiddenEdgeCount > 0,
+    incompleteNodeCount,
+    incompleteEdgeCount,
+    semanticallyIncomplete: incompleteNodeCount > 0 || incompleteEdgeCount > 0,
+    syntheticEdgeCount,
+    syntheticEntryEdgeCount,
+  };
+}
+
+function deriveResourceRelationSummary(visibleGraph: LinkGraphDocument) {
+  return {
+    visibleNodeCount: visibleGraph.nodes.length,
+    laneCounts: visibleGraph.nodes.reduce<Record<string, number>>((counts, node) => {
+      const lane = node.metadata?.["resource.lane"] ?? "CODE";
+      counts[lane] = (counts[lane] ?? 0) + 1;
+      return counts;
+    }, {}),
+  };
+}
+
 const INITIAL_NODES: LinkGraphNode[] = [
   {
     id: "method:place-order",
@@ -88,6 +212,7 @@ const INITIAL_NODES: LinkGraphNode[] = [
     metadata: {
       "ui.x": "380",
       "ui.y": "196",
+      "resource.lane": "DATA",
     },
   },
 ];
@@ -101,80 +226,80 @@ const INITIAL_EDGES: LinkGraphEdge[] = [
   },
 ];
 
-const DIFF_ITEMS: DiffItem[] = [
-  {
-    id: "method:place-order",
-    title: "OrderService.place",
-    status: "MODIFIED",
-    description: "Mermaid 设计期望存在草稿 DTO 分支，但当前代码尚未接入。",
-  },
-  {
-    id: "sql:insert-order",
-    title: "insert into orders",
-    status: "ONLY_IN_CODE",
-    description: "SQL 节点存在于代码中，但导入的设计图里没有。",
-  },
-];
+const INITIAL_GRAPH: LinkGraphDocument = {
+  nodes: INITIAL_NODES,
+  edges: INITIAL_EDGES,
+};
+
+const INITIAL_SELECTED_NODE_ID = INITIAL_NODES[0]?.id ?? null;
+const INITIAL_LAYOUT_STATE: LinkGraphLayoutState = {
+  positions: Object.fromEntries(
+    INITIAL_NODES
+      .filter((node) => node.position)
+      .map((node) => [node.id, node.position!]),
+  ),
+};
+
+const EMPTY_PROJECTION_INDEX = {
+  nodeMappings: {},
+  edgeMappings: {},
+};
+
+function buildFactGraphView(
+  visibleGraph: LinkGraphDocument,
+  fullGraph: LinkGraphDocument,
+  anchorNodeId: string | null,
+): FactGraphViewDocument {
+  return {
+    visibleGraph,
+    fullGraph,
+    anchorNodeId,
+    projectionIndex: EMPTY_PROJECTION_INDEX,
+    summary: deriveFactGraphSummary(visibleGraph, fullGraph, anchorNodeId),
+  };
+}
+
+function buildFlowchartView(
+  visibleGraph: LinkGraphDocument,
+  fullGraph: LinkGraphDocument,
+  anchorNodeId: string | null,
+): FlowchartViewDocument {
+  return {
+    visibleGraph,
+    fullGraph,
+    anchorNodeId,
+    projectionIndex: EMPTY_PROJECTION_INDEX,
+    summary: deriveFlowchartSummary(visibleGraph, fullGraph),
+  };
+}
+
+function buildResourceRelationView(
+  visibleGraph: LinkGraphDocument,
+  fullGraph: LinkGraphDocument,
+  anchorNodeId: string | null,
+): ResourceRelationViewDocument {
+  return {
+    visibleGraph,
+    fullGraph,
+    anchorNodeId,
+    projectionIndex: EMPTY_PROJECTION_INDEX,
+    summary: deriveResourceRelationSummary(visibleGraph),
+  };
+}
 
 export const SAMPLE_STATE: LinkGraphBootstrapState = {
   analysisDisplayMode: DEFAULT_ANALYSIS_DISPLAY_MODE,
-  visibleGraph: {
-    nodes: INITIAL_NODES,
-    edges: INITIAL_EDGES,
-  },
-  workingGraph: {
-    nodes: INITIAL_NODES,
-    edges: INITIAL_EDGES,
-  },
-  referenceFactGraph: {
-    nodes: INITIAL_NODES,
-    edges: INITIAL_EDGES,
-  },
-  factGraphView: {
-    visibleGraph: {
-      nodes: INITIAL_NODES,
-      edges: INITIAL_EDGES,
-    },
-    fullGraph: {
-      nodes: INITIAL_NODES,
-      edges: INITIAL_EDGES,
-    },
-    anchorNodeId: INITIAL_NODES[0]?.id ?? null,
-    summary: deriveFactGraphSummary(
-      { nodes: INITIAL_NODES, edges: INITIAL_EDGES },
-      { nodes: INITIAL_NODES, edges: INITIAL_EDGES },
-      INITIAL_NODES[0]?.id ?? null,
-    ),
-  },
-  flowchartView: {
-    visibleGraph: {
-      nodes: INITIAL_NODES,
-      edges: INITIAL_EDGES,
-    },
-    fullGraph: {
-      nodes: INITIAL_NODES,
-      edges: INITIAL_EDGES,
-    },
-    anchorNodeId: INITIAL_NODES[0]?.id ?? null,
-    summary: deriveFlowchartSummary(
-      { nodes: INITIAL_NODES, edges: INITIAL_EDGES },
-      { nodes: INITIAL_NODES, edges: INITIAL_EDGES },
-    ),
-  },
-  resourceRelationView: {
-    visibleGraph: {
-      nodes: INITIAL_NODES,
-      edges: INITIAL_EDGES,
-    },
-    fullGraph: {
-      nodes: INITIAL_NODES,
-      edges: INITIAL_EDGES,
-    },
-    anchorNodeId: INITIAL_NODES[0]?.id ?? null,
-    summary: deriveResourceRelationSummary({ nodes: INITIAL_NODES, edges: INITIAL_EDGES }),
-  },
+  currentSceneId: DEFAULT_SCENE_ID,
+  sceneStates: createDefaultSceneStates(INITIAL_SELECTED_NODE_ID, INITIAL_LAYOUT_STATE),
+  workspaceGraph: INITIAL_GRAPH,
+  workspaceBaseGraph: INITIAL_GRAPH,
+  semanticFactGraph: INITIAL_GRAPH,
+  factGraphView: buildFactGraphView(INITIAL_GRAPH, INITIAL_GRAPH, INITIAL_SELECTED_NODE_ID),
+  flowchartView: buildFlowchartView(INITIAL_GRAPH, INITIAL_GRAPH, INITIAL_SELECTED_NODE_ID),
+  resourceRelationView: buildResourceRelationView(INITIAL_GRAPH, INITIAL_GRAPH, INITIAL_SELECTED_NODE_ID),
   designBaselineGraph: null,
   draftPatchPreview: null,
+  draftWorkbenchState: { draftChanges: [], draftNotes: [] },
   canUndoDraftPatchApply: false,
   lastAppliedDraftPatchSummary: null,
   auditResult: null,
@@ -182,9 +307,25 @@ export const SAMPLE_STATE: LinkGraphBootstrapState = {
   qaRequestRecoveryState: EMPTY_QA_REQUEST_RECOVERY_STATE,
   diffReviewResult: null,
   diffReviewRequestState: IDLE_REQUEST_STATE,
-  mermaidIssues: getSampleMermaidIssues(),
-  diffItems: DIFF_ITEMS,
-  syncPreviewItems: getSampleSyncPreview(),
+  graphBeautificationResult: null,
+  graphBeautificationRequestState: IDLE_REQUEST_STATE,
+  mermaidIssues: sampleMermaidIssues(),
+  diffItems: [
+    {
+      id: "method:place-order",
+      title: "OrderService.place",
+      status: "MODIFIED",
+      description: "Mermaid 设计期望存在草稿 DTO 分支，但当前代码尚未接入。",
+    },
+    {
+      id: "sql:insert-order",
+      title: "insert into orders",
+      status: "ONLY_IN_CODE",
+      description: "SQL 节点存在于代码中，但导入的设计图里没有。",
+    },
+  ],
+  syncPreviewItems: sampleSyncPreview(),
+  draftVersion: 0,
   generationPlan: {
     source: "MOCK",
     summary: "创建 DTO 并补齐服务接线。",
@@ -215,7 +356,6 @@ export const SAMPLE_STATE: LinkGraphBootstrapState = {
   draftValidationState: null,
   generationPlanDiscussionSession: null,
   generationPlanDiscussionRequestState: IDLE_REQUEST_STATE,
-  graphBeautificationRequestState: IDLE_REQUEST_STATE,
   codeDraftRequestState: IDLE_REQUEST_STATE,
   codeEligibilityDecision: null,
   generatedCodeDraftWriteReport: {
@@ -223,59 +363,26 @@ export const SAMPLE_STATE: LinkGraphBootstrapState = {
     skippedFiles: [],
     warnings: [],
   },
-  selectedNodeId: INITIAL_NODES[0]?.id ?? null,
   sourceNavigationState: IDLE_SOURCE_NAVIGATION_STATE,
+  operationFeedback: null,
+  workspaceRevision: 0,
+  semanticRevision: 0,
+  snapshotRevision: 0,
 };
 
 export const EMPTY_STATE: LinkGraphBootstrapState = {
   analysisDisplayMode: DEFAULT_ANALYSIS_DISPLAY_MODE,
-  visibleGraph: {
-    nodes: [],
-    edges: [],
-  },
-  workingGraph: {
-    nodes: [],
-    edges: [],
-  },
-  referenceFactGraph: null,
-  factGraphView: {
-    visibleGraph: {
-      nodes: [],
-      edges: [],
-    },
-    fullGraph: {
-      nodes: [],
-      edges: [],
-    },
-    anchorNodeId: null,
-    summary: deriveFactGraphSummary({ nodes: [], edges: [] }, { nodes: [], edges: [] }, null),
-  },
-  flowchartView: {
-    visibleGraph: {
-      nodes: [],
-      edges: [],
-    },
-    fullGraph: {
-      nodes: [],
-      edges: [],
-    },
-    anchorNodeId: null,
-    summary: deriveFlowchartSummary({ nodes: [], edges: [] }, { nodes: [], edges: [] }),
-  },
-  resourceRelationView: {
-    visibleGraph: {
-      nodes: [],
-      edges: [],
-    },
-    fullGraph: {
-      nodes: [],
-      edges: [],
-    },
-    anchorNodeId: null,
-    summary: deriveResourceRelationSummary({ nodes: [], edges: [] }),
-  },
+  currentSceneId: DEFAULT_SCENE_ID,
+  sceneStates: createDefaultSceneStates(),
+  workspaceGraph: EMPTY_DOCUMENT,
+  workspaceBaseGraph: EMPTY_DOCUMENT,
+  semanticFactGraph: EMPTY_DOCUMENT,
+  factGraphView: buildFactGraphView(EMPTY_DOCUMENT, EMPTY_DOCUMENT, null),
+  flowchartView: buildFlowchartView(EMPTY_DOCUMENT, EMPTY_DOCUMENT, null),
+  resourceRelationView: buildResourceRelationView(EMPTY_DOCUMENT, EMPTY_DOCUMENT, null),
   designBaselineGraph: null,
   draftPatchPreview: null,
+  draftWorkbenchState: { draftChanges: [], draftNotes: [] },
   canUndoDraftPatchApply: false,
   lastAppliedDraftPatchSummary: null,
   auditResult: null,
@@ -283,23 +390,26 @@ export const EMPTY_STATE: LinkGraphBootstrapState = {
   qaRequestRecoveryState: EMPTY_QA_REQUEST_RECOVERY_STATE,
   diffReviewResult: null,
   diffReviewRequestState: IDLE_REQUEST_STATE,
+  graphBeautificationResult: null,
+  graphBeautificationRequestState: IDLE_REQUEST_STATE,
   mermaidIssues: [],
   diffItems: [],
   syncPreviewItems: [],
+  draftVersion: 0,
   generationPlan: null,
+  generatedCodeDrafts: [],
+  generatedCodeDraftWarnings: [],
   generationPlanRequestState: IDLE_REQUEST_STATE,
   draftValidationState: null,
   generationPlanDiscussionSession: null,
   generationPlanDiscussionRequestState: IDLE_REQUEST_STATE,
-  generatedCodeDrafts: [],
-  generatedCodeDraftWarnings: [],
-  graphBeautificationRequestState: IDLE_REQUEST_STATE,
   codeDraftRequestState: IDLE_REQUEST_STATE,
   codeEligibilityDecision: null,
-  generatedCodeDraftWriteReport: null,
-  selectedNodeId: null,
   sourceNavigationState: IDLE_SOURCE_NAVIGATION_STATE,
   operationFeedback: null,
+  workspaceRevision: 0,
+  semanticRevision: 0,
+  snapshotRevision: 0,
 };
 
 function shouldUseSampleState(): boolean {
@@ -318,63 +428,42 @@ export function resolveInitialState(args: {
 }): LinkGraphBootstrapState {
   const bootstrapState = readBootstrapState();
   if (bootstrapState) {
-    traceLinkGraph("app.resolveInitialState.bootstrap", summarizeBootstrapState(bootstrapState));
     return bootstrapState;
   }
-  traceLinkGraph("app.resolveInitialState.fallback", {
-    useSampleState: shouldUseSampleState(),
-  });
   return shouldUseSampleState() ? args.sampleState : args.emptyState;
 }
 
 export function resolveWorkingGraph(state: LinkGraphBootstrapState): LinkGraphDocument {
-  return resolveWorkingGraphDocument(state);
+  return state.workspaceGraph ?? EMPTY_DOCUMENT;
 }
 
-export function resolveReferenceWorkingGraph(
-  state: LinkGraphBootstrapState,
-  displayMode: AnalysisDisplayMode = state.analysisDisplayMode ?? "FACT_GRAPH",
-): LinkGraphDocument | null {
-  if (state.referenceWorkingGraph) {
-    return state.referenceWorkingGraph;
-  }
-  switch (displayMode) {
-    case "FLOWCHART":
-      return state.flowchartView?.fullGraph ?? state.workingGraph ?? null;
-    case "RESOURCE_RELATION_VIEW":
-      return state.resourceRelationView?.fullGraph ?? state.workingGraph ?? null;
-    case "FACT_GRAPH":
-    default:
-      return state.factGraphView?.fullGraph ?? state.referenceFactGraph ?? state.workingGraph ?? null;
-  }
+export function resolveWorkspaceBaseGraph(state: LinkGraphBootstrapState): LinkGraphDocument | null {
+  return state.workspaceBaseGraph ?? null;
+}
+
+export function resolveSemanticFactGraph(state: LinkGraphBootstrapState): LinkGraphDocument | null {
+  return state.semanticFactGraph ?? null;
 }
 
 export function resolveFactGraphView(
   state: LinkGraphBootstrapState,
-  emptyState: LinkGraphBootstrapState,
+  emptyState: LinkGraphBootstrapState = EMPTY_STATE,
 ): FactGraphViewDocument {
-  return state.factGraphView ?? emptyState.factGraphView;
+  return state.factGraphView ?? emptyState.factGraphView!;
 }
 
 export function resolveFlowchartView(
   state: LinkGraphBootstrapState,
-  emptyState: LinkGraphBootstrapState,
+  emptyState: LinkGraphBootstrapState = EMPTY_STATE,
 ): FlowchartViewDocument {
-  return state.flowchartView ?? emptyState.flowchartView;
+  return state.flowchartView ?? emptyState.flowchartView!;
 }
 
 export function resolveResourceRelationView(
   state: LinkGraphBootstrapState,
-  emptyState: LinkGraphBootstrapState,
+  emptyState: LinkGraphBootstrapState = EMPTY_STATE,
 ): ResourceRelationViewDocument {
-  return state.resourceRelationView ?? emptyState.resourceRelationView;
-}
-
-export function resolveReferenceFactGraph(
-  state: LinkGraphBootstrapState,
-  emptyState: LinkGraphBootstrapState,
-): LinkGraphDocument | null {
-  return resolveFactGraphView(state, emptyState).fullGraph;
+  return state.resourceRelationView ?? emptyState.resourceRelationView!;
 }
 
 export function resolveDesignBaselineGraph(state: LinkGraphBootstrapState): LinkGraphDocument | null {
@@ -383,7 +472,7 @@ export function resolveDesignBaselineGraph(state: LinkGraphBootstrapState): Link
 
 export function resolveSourceNavigationState(
   state: LinkGraphBootstrapState,
-  idleState: SourceNavigationState,
+  idleState: SourceNavigationState = IDLE_SOURCE_NAVIGATION_STATE,
 ): SourceNavigationState {
   return state.sourceNavigationState ?? idleState;
 }
@@ -393,6 +482,12 @@ export function resolveRequestState(state?: AsyncRequestState | null): AsyncRequ
     ...IDLE_REQUEST_STATE,
     ...(state ?? {}),
   };
+}
+
+export function resolveCurrentSceneState(
+  state: LinkGraphBootstrapState,
+): LinkGraphSceneState {
+  return state.sceneStates[state.currentSceneId] ?? createSceneState();
 }
 
 export function resolveActiveViewDocument(
@@ -412,8 +507,9 @@ export function resolveActiveViewDocument(
 
 export function resolveInitialAnchorNodeId(state: LinkGraphBootstrapState): string | null {
   const initialGraph = resolveActiveViewDocument(state).visibleGraph;
+  const sceneState = resolveCurrentSceneState(state);
   return resolveAnchorNodeId(
     initialGraph.nodes,
-    state.selectedNodeId ?? initialGraph.nodes[0]?.id ?? null,
+    sceneState.anchorNodeId ?? sceneState.selectedNodeId ?? initialGraph.nodes[0]?.id ?? null,
   );
 }

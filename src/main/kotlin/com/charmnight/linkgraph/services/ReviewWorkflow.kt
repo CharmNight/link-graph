@@ -949,7 +949,7 @@ internal class ReviewWorkflow(
      */
     private fun buildDiffReviewContext(selectedDiffItemIds: List<String>): GraphDiffContext? {
         val snapshot = session.snapshot()
-        val factGraph = snapshot.referenceFactGraph
+        val factGraph = snapshot.semanticFactGraph.takeIf { it.nodes.isNotEmpty() || it.edges.isNotEmpty() }
         val designBaseline = snapshot.designBaselineGraph
         if (factGraph == null || designBaseline == null) {
             session.mutateBatch {

@@ -17,6 +17,7 @@ import com.charmnight.linkgraph.model.EdgeType
  */
 class CandidateGraphPatchComposer {
     private val controlFragmentRegex = Regex("""\b(?:if|switch|while|for|do-while|catch)\s*\([^`\n{}]+\)""", RegexOption.IGNORE_CASE)
+    private val decisionScopeKinds = setOf("IF", "SWITCH", "FOREACH", "FOR", "WHILE", "DO_WHILE")
 
     fun normalizeCandidate(
         candidate: CandidateDraftChange,
@@ -107,16 +108,30 @@ class CandidateGraphPatchComposer {
             ),
             doc = buildPatchedNodeDoc(targetNode, candidate),
             sourceTag = GraphSourceTag.DRAFT_AI,
-            metadata = targetNode.metadata +
-                operation.node?.metadata.orEmpty() +
-                operation.metadata +
-                buildDraftMetadata(candidate),
+            metadata = normalizeUpdatedNodeMetadata(
+                targetNode = targetNode,
+                incomingMetadata = operation.node?.metadata.orEmpty() + operation.metadata + buildDraftMetadata(candidate),
+            ),
         )
         return operation.copy(
             elementId = targetNode.id,
             node = normalizedNode,
             metadata = operation.metadata + buildDraftMetadata(candidate),
         )
+    }
+
+    private fun normalizeUpdatedNodeMetadata(
+        targetNode: GraphNode,
+        incomingMetadata: Map<String, String>,
+    ): Map<String, String> {
+        val mergedMetadata = targetNode.metadata + incomingMetadata
+        val structuralFlowchartKind = when {
+            targetNode.metadata["flowchart.kind"] == "DECISION" -> "DECISION"
+            targetNode.type == NodeType.FLOW_SCOPE && targetNode.metadata["flow.kind"] in decisionScopeKinds -> "DECISION"
+            else -> null
+        }
+        return structuralFlowchartKind?.let { kind -> mergedMetadata + ("flowchart.kind" to kind) }
+            ?: mergedMetadata
     }
 
     private fun synthesizePatch(

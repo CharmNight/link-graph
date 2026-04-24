@@ -53,6 +53,31 @@ function explanationStateFixture(): ExplanationWorkbenchState {
 }
 
 describe("ExplanationTab", () => {
+
+  it("keeps the tab root on the CSS grid contract instead of Uno display or overflow utilities", () => {
+    const { container } = render(
+      <ExplanationTab
+        state={explanationStateFixture()}
+        onSelectStep={vi.fn()}
+        onLocateStepNode={vi.fn()}
+        onInspectStepNode={vi.fn()}
+        onGranularityChange={vi.fn()}
+        onAddToDraft={vi.fn()}
+        onDrillDown={vi.fn()}
+        onFollowUp={vi.fn()}
+        onRevealReference={vi.fn()}
+      />,
+    );
+
+    const tab = container.querySelector(".workbench-tab");
+    const body = container.querySelector(".workbench-tab-body");
+    expect(tab).not.toBeNull();
+    expect(tab).not.toHaveClass("block");
+    expect(tab).not.toHaveClass("overflow-auto");
+    expect(body).not.toBeNull();
+    expect(body).not.toHaveClass("block");
+    expect(body).not.toHaveClass("overflow-auto");
+  });
   it("expands the core explanation modules by default on first use", () => {
     render(
       <ExplanationTab
@@ -230,10 +255,21 @@ describe("ExplanationTab", () => {
     expect(onLocateStepNode).toHaveBeenCalledWith("step-read-upload-dir");
   });
 
+  it("lets the explanation reader contribute its full height to the workbench scroller", () => {
+    expect(themeCss).toMatch(/\.workbench-tab\s*\{[^}]*grid-template-rows:\s*auto\s+auto;[^}]*align-content:\s*start;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.explanation-layout\s*\{[^}]*grid-template-columns:\s*320px\s+minmax\(0,\s*1fr\);[^}]*align-items:\s*start;/s);
+  });
+
   it("uses a wider fixed step-list column and prevents horizontal scrolling in explanation panes", () => {
     expect(themeCss).toMatch(/\.explanation-layout\s*\{[^}]*grid-template-columns:\s*320px\s+minmax\(0,\s*1fr\);/s);
     expect(themeCss).toMatch(/\.workbench-step-list,\s*\.workbench-step-detail[^{]*\{[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
     expect(themeCss).toMatch(/\.workbench-step-item\s*\{[^}]*overflow:\s*hidden;/s);
     expect(themeCss).toMatch(/\.workbench-step-snippet,\s*\.workbench-step-meta,\s*\.workbench-step-ref\s*\{[^}]*overflow-wrap:\s*anywhere;[^}]*word-break:\s*break-word;/s);
   });
+
+  it("lets narrow explanation content wrap without hiding action controls", () => {
+    expect(themeCss).toMatch(/\.workbench-step-detail,\s*\.workbench-step-section,\s*\.workbench-code-snippet-shell,\s*\.workbench-reference-card\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;/s);
+    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.workbench-step-detail-head \.panel-actions\s*\{[\s\S]*grid-template-columns:\s*1fr;/);
+  });
+
 });

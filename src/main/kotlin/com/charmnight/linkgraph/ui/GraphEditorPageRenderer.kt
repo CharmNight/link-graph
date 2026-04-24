@@ -152,40 +152,29 @@ class GraphEditorPageRenderer {
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
     ): LinkedHashMap<String, Any?> {
-        /** 从状态服务快照中整理出的编辑器快照。 */
         val editorSnapshot = snapshot.editorSnapshot()
-        /** 当前前端主视图展示的图。 */
-        val visibleGraph = editorSnapshot.visibleGraph
-        /** 当前工作图。 */
-        val workingGraph = editorSnapshot.workingGraph
-        /** 当前展示模式的参考工作图。 */
-        val referenceWorkingGraph = snapshot.referenceWorkingGraph
-        /** 事实图基线。 */
-        val referenceFactGraph = editorSnapshot.referenceFactGraph
-        /** 设计基线图。 */
-        val designBaselineGraph = editorSnapshot.designBaselineGraph
-        /** 整体 bootstrap 载荷。 */
+        val factSceneState = snapshot.sceneState(GraphSceneId.WORKSPACE_FACT)
+        val flowchartSceneState = snapshot.sceneState(GraphSceneId.WORKSPACE_FLOWCHART)
+        val resourceSceneState = snapshot.sceneState(GraphSceneId.WORKSPACE_RESOURCE_RELATION)
+        val currentSceneState = snapshot.currentSceneState()
         val payload = linkedMapOf<String, Any?>(
             "analysisDisplayMode" to snapshot.analysisDisplayMode.name,
-            "visibleGraph" to documentToMap(visibleGraph, includeFullContent = true, layoutState = snapshot.layoutState),
-            "workingGraph" to documentToMap(workingGraph, includeFullContent = true, layoutState = editorSnapshot.layoutState),
-            "referenceWorkingGraph" to referenceWorkingGraph?.let {
-                documentToMap(it, includeFullContent = true, layoutState = editorSnapshot.layoutState)
+            "currentSceneId" to editorSnapshot.currentSceneId.name,
+            "workspaceGraph" to documentToMap(editorSnapshot.workspaceGraph, includeFullContent = true),
+            "workspaceBaseGraph" to documentToMap(editorSnapshot.workspaceBaseGraph, includeFullContent = true),
+            "semanticFactGraph" to documentToMap(editorSnapshot.semanticFactGraph, includeFullContent = false),
+            "designBaselineGraph" to editorSnapshot.designBaselineGraph?.let {
+                documentToMap(it, includeFullContent = false)
             },
-            "referenceFactGraph" to referenceFactGraph?.let {
-                documentToMap(it, includeFullContent = false, layoutState = editorSnapshot.layoutState)
-            },
-            "designBaselineGraph" to designBaselineGraph?.let {
-                documentToMap(it, includeFullContent = false, layoutState = editorSnapshot.layoutState)
-            },
+            "sceneStates" to sceneStatesToMap(snapshot.sceneStates),
             "factGraphView" to editorSnapshot.factGraphView?.let {
-                factGraphViewToMap(it, editorSnapshot.layoutState)
+                factGraphViewToMap(it, factSceneState.layoutState)
             },
             "flowchartView" to editorSnapshot.flowchartView?.let {
-                flowchartViewToMap(it, editorSnapshot.layoutState)
+                flowchartViewToMap(it, flowchartSceneState.layoutState)
             },
             "resourceRelationView" to editorSnapshot.resourceRelationView?.let {
-                resourceRelationViewToMap(it, editorSnapshot.layoutState)
+                resourceRelationViewToMap(it, resourceSceneState.layoutState)
             },
             "draftPatchPreview" to snapshot.draftPatchPreview?.let(::patchToMap),
             "draftWorkbenchState" to draftWorkbenchStateToMap(snapshot.draftWorkbenchState),
@@ -228,7 +217,7 @@ class GraphEditorPageRenderer {
             "diffItems" to snapshot.diff?.entries.orEmpty().map { entry ->
                 linkedMapOf(
                     "id" to entry.elementId,
-                    "title" to resolveDiffTitle(entry, workingGraph),
+                    "title" to resolveDiffTitle(entry, editorSnapshot.workspaceGraph),
                     "status" to entry.status.name,
                     "description" to (entry.message ?: entry.fields.joinToString()),
                 )
@@ -295,18 +284,9 @@ class GraphEditorPageRenderer {
                     "warnings" to report.warnings,
                 )
             },
-            "layoutState" to linkedMapOf(
-                "positions" to editorSnapshot.layoutState.positions.mapValues { (_, position) ->
-                    linkedMapOf(
-                        "x" to position.x,
-                        "y" to position.y,
-                    )
-                },
-            ),
             "semanticRevision" to editorSnapshot.semanticRevision,
-            "layoutRevision" to editorSnapshot.layoutRevision,
+            "workspaceRevision" to editorSnapshot.workspaceRevision,
             "snapshotRevision" to editorSnapshot.snapshotRevision,
-            "selectedNodeId" to (snapshot.selectedNodeId ?: visibleGraph.nodes.firstOrNull()?.id),
             "sourceNavigationState" to sourceNavigationStateToMap(snapshot.sourceNavigationState),
             "workbenchSectionPreferences" to LinkedHashMap(snapshot.workbenchSectionPreferences),
             "lastMessageType" to snapshot.lastMessageType,
@@ -320,6 +300,31 @@ class GraphEditorPageRenderer {
         )
         return payload
     }
+
+    private fun sceneStatesToMap(
+        sceneStates: Map<GraphSceneId, GraphSceneState>,
+    ): Map<String, Any?> {
+        return sceneStates.entries.associate { (sceneId, state) ->
+            sceneId.name to graphSceneStateToMap(state)
+        }
+    }
+
+    private fun graphSceneStateToMap(
+        state: GraphSceneState,
+    ): Map<String, Any?> = linkedMapOf(
+        "selectedNodeId" to state.selectedNodeId,
+        "anchorNodeId" to state.anchorNodeId,
+        "collapsedNodeIds" to state.collapsedNodeIds.toList(),
+        "layoutRevision" to state.layoutRevision,
+        "layoutState" to linkedMapOf(
+            "positions" to state.layoutState.positions.mapValues { (_, position) ->
+                linkedMapOf(
+                    "x" to position.x,
+                    "y" to position.y,
+                )
+            },
+        ),
+    )
 
     /** 把异步请求状态转换成前端可消费的映射。 */
     private fun requestStateToMap(state: com.charmnight.linkgraph.ui.AsyncRequestState): Map<String, Any?> = linkedMapOf(
@@ -465,6 +470,7 @@ class GraphEditorPageRenderer {
         visibleGraph = document.visibleGraph,
         fullGraph = document.fullGraph,
         anchorNodeId = document.anchorNodeId,
+        projectionIndex = document.projectionIndex,
         summary = linkedMapOf(
             "anchorTitle" to document.summary.anchorTitle,
             "visibleNodeCount" to document.summary.visibleNodeCount,
@@ -481,6 +487,7 @@ class GraphEditorPageRenderer {
         visibleGraph = document.visibleGraph,
         fullGraph = document.fullGraph,
         anchorNodeId = document.anchorNodeId,
+        projectionIndex = document.projectionIndex,
         summary = linkedMapOf(
             "nodeCount" to document.summary.nodeCount,
             "branchCount" to document.summary.branchCount,
@@ -504,6 +511,7 @@ class GraphEditorPageRenderer {
         visibleGraph = document.visibleGraph,
         fullGraph = document.fullGraph,
         anchorNodeId = document.anchorNodeId,
+        projectionIndex = document.projectionIndex,
         summary = linkedMapOf(
             "visibleNodeCount" to document.summary.visibleNodeCount,
             "laneCounts" to document.summary.laneCounts,
@@ -516,13 +524,37 @@ class GraphEditorPageRenderer {
         visibleGraph: GraphDocument,
         fullGraph: GraphDocument,
         anchorNodeId: String?,
+        projectionIndex: com.charmnight.linkgraph.ui.view.GraphProjectionIndex,
         summary: Map<String, Any?>,
         layoutState: GraphLayoutState? = null,
     ): Map<String, Any?> = linkedMapOf(
         "visibleGraph" to documentToMap(visibleGraph, includeFullContent = true, layoutState = layoutState),
         "fullGraph" to documentToMap(fullGraph, includeFullContent = false, layoutState = layoutState),
         "anchorNodeId" to anchorNodeId,
+        "projectionIndex" to projectionIndexToMap(projectionIndex),
         "summary" to summary,
+    )
+
+    private fun projectionIndexToMap(
+        projectionIndex: com.charmnight.linkgraph.ui.view.GraphProjectionIndex,
+    ): Map<String, Any?> = linkedMapOf(
+        "nodeMappings" to projectionIndex.nodeMappings.mapValues { (_, mapping) ->
+            linkedMapOf(
+                "projectedNodeId" to mapping.projectedNodeId,
+                "mappingKind" to mapping.mappingKind.name,
+                "canonicalNodeIds" to mapping.canonicalNodeIds,
+                "editableCommandKinds" to mapping.editableCommandKinds.map { it.name },
+            )
+        },
+        "edgeMappings" to projectionIndex.edgeMappings.mapValues { (_, mapping) ->
+            linkedMapOf(
+                "projectedEdgeId" to mapping.projectedEdgeId,
+                "mappingKind" to mapping.mappingKind.name,
+                "canonicalEdgeIds" to mapping.canonicalEdgeIds,
+                "canonicalPathNodeIds" to mapping.canonicalPathNodeIds,
+                "editableCommandKinds" to mapping.editableCommandKinds.map { it.name },
+            )
+        },
     )
 
     /** 把图补丁转换为前端使用的 Map 结构。 */

@@ -2,16 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   applyDraftPatchPreview,
   clearDraftPatchPreview,
-  publishGraphChange,
   restoreDraftPatchPreview,
   confirmAuditCandidateChange,
   undoLastDraftPatchApply,
 } from "./api";
 import {
   applyLayoutUpdatesToGraphDocument,
-  applyBootstrapRoutesToDocument,
   applyBootstrapRoutesToViewDocument,
-  deriveFactGraphSummary,
   deriveFlowchartSummary,
   deriveLatestTurnOutcome,
   deriveResourceRelationSummary,
@@ -25,13 +22,14 @@ import {
   resolveEntryOwnerSignatures,
   resolveEvidenceTargetNodeId,
   resolveNodeOwnerSignature,
+  reuseCurrentViewGraphs,
   scopeFlowchartGraphToAnchorMethod,
-  shouldResetAnchorNode,
   syncFactGraphViewDocument,
   syncFlowchartViewLayout,
   syncResourceRelationViewLayout,
   toDraftWorkbenchEntry,
   updateGraphPatchResultCandidateStatus,
+  updateGraphPatchResultThreadResolution,
 } from "./appGraphSupport";
 import { AsyncRequestFailureDialog } from "./components/AsyncRequestFailureDialog";
 import { AppGraphStage } from "./components/AppGraphStage";
@@ -111,22 +109,22 @@ import { useWorkbenchCommandController } from "./controllers/useWorkbenchCommand
 import { useWorkbenchState } from "./controllers/useWorkbenchState";
 import { resolveToolbarFeedback } from "./asyncRequestStatus";
 import {
-  DEFAULT_ANALYSIS_DISPLAY_MODE,
   EMPTY_QA_REQUEST_RECOVERY_STATE,
   EMPTY_STATE,
   IDLE_REQUEST_STATE,
-  IDLE_SOURCE_NAVIGATION_STATE,
   SAMPLE_STATE,
   resolveActiveViewDocument,
+  resolveCurrentSceneState,
   resolveDesignBaselineGraph,
   resolveFactGraphView,
   resolveFlowchartView,
+  resolveInitialAnchorNodeId,
   resolveInitialState,
-  resolveReferenceFactGraph,
-  resolveReferenceWorkingGraph,
   resolveRequestState,
   resolveResourceRelationView,
+  resolveSemanticFactGraph,
   resolveSourceNavigationState,
+  resolveWorkspaceBaseGraph,
   resolveWorkingGraph,
 } from "./sampleState";
 
@@ -153,10 +151,7 @@ export function App() {
   }
   const initialState = initialStateRef.current;
   const initialGraph = resolveActiveViewDocument(initialState).visibleGraph;
-  const initialAnchorNodeId = resolveAnchorNodeId(
-    initialGraph.nodes,
-    initialState.selectedNodeId ?? initialGraph.nodes[0]?.id ?? null,
-  );
+  const initialAnchorNodeId = resolveInitialAnchorNodeId(initialState);
   const {
     canvasState,
     setCanvasState,
@@ -185,14 +180,15 @@ export function App() {
     initialGraph,
     initialAnchorNodeId,
     resolveRequestState,
-    resolveReferenceWorkingGraph,
-    resolveReferenceFactGraph: (state) => resolveReferenceFactGraph(state, EMPTY_STATE),
-    resolveFactGraphView: (state) => resolveFactGraphView(state, EMPTY_STATE),
-    resolveFlowchartView: (state) => resolveFlowchartView(state, EMPTY_STATE),
-    resolveResourceRelationView: (state) => resolveResourceRelationView(state, EMPTY_STATE),
+    resolveWorkspaceBaseGraph,
+    resolveSemanticFactGraph,
+    resolveFactGraphView,
+    resolveFlowchartView,
+    resolveResourceRelationView,
+    resolveCurrentSceneState,
     resolveWorkingGraph,
     resolveDesignBaselineGraph,
-    resolveSourceNavigationState: (state) => resolveSourceNavigationState(state, IDLE_SOURCE_NAVIGATION_STATE),
+    resolveSourceNavigationState,
     normalizeGraphNodes,
   });
   const {
@@ -201,8 +197,10 @@ export function App() {
     selectedNodeId,
     analysisDisplayMode,
     anchorNodeId,
-    referenceWorkingGraph,
-    factGraph,
+    currentSceneId,
+    workspaceBaseGraph,
+    semanticFactGraph,
+    workspaceRevision,
     factGraphView,
     flowchartView,
     resourceRelationView,
@@ -212,10 +210,8 @@ export function App() {
     setNodes,
     setEdges,
     setSelectedNodeId,
-    setAnalysisDisplayMode,
     setAnchorNodeId,
-    setReferenceWorkingGraph,
-    setFactGraph,
+    setSceneLayoutState,
     setFactGraphView,
     setFlowchartView,
     setResourceRelationView,
@@ -322,6 +318,7 @@ export function App() {
     artifactContents,
     bridgeCommands,
     setImportDialogOpen,
+    setWorkbenchSectionPreferences,
   });
   const sourceNavigationCommands = useSourceNavigationController({
     nodes,
@@ -374,7 +371,7 @@ export function App() {
   );
   const [draftCompareMode, setDraftCompareMode] = useState<"after" | "compare">("after");
   const semanticRevisionRef = useRef<number | null>(initialState.semanticRevision ?? null);
-  const layoutRevisionRef = useRef<number | null>(initialState.layoutRevision ?? null);
+  const layoutRevisionRef = useRef<number | null>(resolveCurrentSceneState(initialState).layoutRevision ?? null);
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   const draftGraphRef = useRef(draftGraph);
@@ -468,14 +465,19 @@ export function App() {
   }
 
   const { syncGraph } = useGraphEditController({
+    nodes,
+    edges,
     selectedNodeId,
     detailNodeId,
     analysisDisplayMode,
+    currentSceneId,
+    workspaceRevision,
     anchorNodeIdRef,
     setNodes,
     setEdges,
     setAnchorNodeId,
     setSelectedNodeId,
+    setSceneLayoutState,
     setCollapsedNodeIds,
     setDetailNodeId,
     setDraftGraph,
@@ -535,6 +537,7 @@ export function App() {
     nextManualNodeIdRef,
     anchorNodeIdRef,
     setNodes,
+    setSceneLayoutState,
     setDraftGraph,
     setFactGraphView,
     setFlowchartView,
@@ -590,6 +593,7 @@ export function App() {
     selectExplanationTargetNode,
     toDraftWorkbenchEntry,
     updateGraphPatchResultCandidateStatus,
+    updateGraphPatchResultThreadResolution,
     resolveDraftEntryTargetNodeIds,
     resolveDisplayedNodeId,
     resolveEvidenceTargetNodeId,
@@ -608,7 +612,6 @@ export function App() {
     setProjectionState,
     explanationLocalOverrideRef,
     setSelectionGroupNodeIds,
-    setCollapsedNodeIds,
     setDiffTargetItemIds,
     syncManualNodeIdCounters,
     resolveSourceNavigationState,
@@ -618,12 +621,10 @@ export function App() {
     resolveWorkingGraph,
     resolveActiveViewDocument,
     applyBootstrapRoutesToViewDocument,
-    applyBootstrapRoutesToDocument,
+    reuseCurrentViewGraphs,
     resolveAnchorNodeId,
-    shouldResetAnchorNode,
-    deriveFactGraphSummary,
-    resolveReferenceWorkingGraph,
-    resolveReferenceFactGraph,
+    resolveWorkspaceBaseGraph,
+    resolveSemanticFactGraph,
     resolveDesignBaselineGraph,
     resolveRequestState,
   });
@@ -775,8 +776,8 @@ export function App() {
     selectedDraftEntryId,
     draftCompareMode,
     draftGraph,
-    factGraph,
-    referenceWorkingGraph,
+    semanticFactGraph,
+    workspaceBaseGraph,
     factGraphView,
     flowchartView,
     resourceRelationView,

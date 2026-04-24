@@ -48,8 +48,8 @@ interface UseWorkbenchDerivedStateArgs {
   selectedDraftEntryId: string | null;
   draftCompareMode: "after" | "compare";
   draftGraph: LinkGraphDocument | null;
-  factGraph: LinkGraphDocument | null;
-  referenceWorkingGraph: LinkGraphDocument | null;
+  semanticFactGraph: LinkGraphDocument | null;
+  workspaceBaseGraph: LinkGraphDocument | null;
   factGraphView: { visibleGraph: LinkGraphDocument; anchorNodeId?: string | null };
   flowchartView: FlowchartViewDocument;
   resourceRelationView: ResourceRelationViewDocument;
@@ -164,17 +164,17 @@ export function useWorkbenchDerivedState(args: UseWorkbenchDerivedStateArgs) {
   const draftCompareProjection = useMemo(
     () => {
       const referenceGraph = args.analysisDisplayMode === "FACT_GRAPH"
-        ? args.factGraph
-        : args.referenceWorkingGraph;
+        ? args.semanticFactGraph
+        : args.workspaceBaseGraph;
       return buildDraftCompareProjection({
         compareMode: args.draftCompareMode,
         selectedEntry: selectedDraftEntry,
         visibleGraph: activeViewGraph,
         referenceGraph,
-        workingGraph: args.draftGraph,
+        workingGraph: args.draftGraph ?? { nodes: [], edges: [] },
       });
     },
-    [activeViewGraph, args.analysisDisplayMode, args.draftCompareMode, args.draftGraph, args.factGraph, args.referenceWorkingGraph, selectedDraftEntry],
+    [activeViewGraph, args.analysisDisplayMode, args.draftCompareMode, args.draftGraph, args.semanticFactGraph, args.workspaceBaseGraph, selectedDraftEntry],
   );
 
   const explanationState: ExplanationWorkbenchState = {

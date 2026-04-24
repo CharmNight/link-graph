@@ -1,5 +1,6 @@
 import { Position } from "@xyflow/react";
 import type { LayoutOptions } from "elkjs/lib/elk-api";
+import { resolveFlowchartKind } from "../../flowchartKind";
 import { resolveMeasuredNodeSize, executeElkLayout, type ElkNodePortDefinition } from "../../reactflow/elkGraph";
 import { reanchorRouteEnd, reanchorRouteStart } from "../../reactflow/orthogonalRoute";
 import type { MeasuredLayoutRequest } from "../../reactflow/useMeasuredLayout";
@@ -31,7 +32,7 @@ const FLOWCHART_LAYOUT_OPTIONS: LayoutOptions = {
 };
 
 function flowchartKind(node?: MeasuredLayoutRequest["nodes"][number]): string {
-  return node?.metadata?.["flowchart.kind"] ?? "PROCESS";
+  return resolveFlowchartKind(node);
 }
 
 function normalizedFlowLabel(edge?: MeasuredLayoutRequest["edges"][number]): string {

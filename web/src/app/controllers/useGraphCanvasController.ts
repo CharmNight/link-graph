@@ -1,6 +1,7 @@
 import { startTransition, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { publishLayoutChange } from "../api";
 import { measureDuration, measureStart, traceLinkGraph } from "../debug";
+import { extractLayoutState } from "../graphState";
 import { canEditNodeLayout } from "../layoutEditability";
 import type {
   AnalysisDisplayMode,
@@ -9,6 +10,7 @@ import type {
   GraphPosition,
   LinkGraphDocument,
   LinkGraphEdge,
+  LinkGraphLayoutState,
   LinkGraphNode,
   OperationFeedback,
   ResourceRelationViewDocument,
@@ -24,6 +26,7 @@ interface UseGraphCanvasControllerArgs {
   nextManualNodeIdRef: MutableRefObject<number>;
   anchorNodeIdRef: MutableRefObject<string | null>;
   setNodes: Dispatch<SetStateAction<LinkGraphNode[]>>;
+  setSceneLayoutState: Dispatch<SetStateAction<LinkGraphLayoutState>>;
   setDraftGraph: Dispatch<SetStateAction<LinkGraphDocument | null>>;
   setFactGraphView: Dispatch<SetStateAction<FactGraphViewDocument>>;
   setFlowchartView: Dispatch<SetStateAction<FlowchartViewDocument>>;
@@ -297,6 +300,7 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
       const layoutUpdates = [{ id: nodeId, position }];
       const nextNodes = args.nodes.map((node) => (node.id === nodeId ? args.syncNodePosition(node, position) : node));
       args.setNodes(nextNodes);
+      args.setSceneLayoutState(extractLayoutState(nextNodes));
       args.setDraftGraph((current) => current
         ? args.applyLayoutUpdatesToGraphDocument(current, layoutUpdates)
         : current);
@@ -344,6 +348,7 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
         return nextPosition ? args.syncNodePosition(node, nextPosition) : node;
       });
       args.setNodes(nextNodes);
+      args.setSceneLayoutState(extractLayoutState(nextNodes));
       args.setDraftGraph((current) => current
         ? args.applyLayoutUpdatesToGraphDocument(current, editableUpdates)
         : current);

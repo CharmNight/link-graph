@@ -79,7 +79,7 @@ export function ExplanationTab({
     }
 
     function measureLayoutHeight() {
-      const nextHeight = layoutNode.getBoundingClientRect().height;
+      const nextHeight = layoutNode?.getBoundingClientRect().height ?? 0;
       setLayoutHeight(nextHeight > 0 ? Math.round(nextHeight) : null);
     }
 
@@ -113,7 +113,7 @@ export function ExplanationTab({
   }
 
   return (
-    <section className="workbench-tab explanation-tab block overflow-auto m-scrollbar">
+    <section className="workbench-tab explanation-tab m-scrollbar">
       <div className="workbench-tab-head mb14px">
         <div className="workbench-explanation-head">
           <p className="eyebrow">讲解</p>
@@ -161,7 +161,7 @@ export function ExplanationTab({
           ))}
         </div>
       </div>
-      <div ref={layoutRef} className="workbench-tab-body explanation-layout block">
+      <div ref={layoutRef} className="workbench-tab-body explanation-layout">
         <WorkbenchSection
           title="步骤列表"
           expanded={effectiveSectionPreferences["explanation.step-list"] ?? true}

@@ -3,8 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../app/App";
 import { resetEditorTransportForTest } from "../../app/editorTransport";
-import { materializeThreeViewDocuments } from "../../app/testBootstrapState";
-import type { LinkGraphBootstrapState } from "../../app/types";
+import { materializeThreeViewDocuments, type TestBootstrapState } from "../../app/testBootstrapState";
 
 vi.mock("../../app/views/fact/FactGraphView", () => ({
   FactGraphView: ({
@@ -100,7 +99,7 @@ const bootstrapState = materializeThreeViewDocuments({
   diffItems: [],
   syncPreviewItems: [],
   selectedNodeId: "method:submit-order",
-} as const satisfies LinkGraphBootstrapState);
+});
 
 const flowchartBootstrapState = materializeThreeViewDocuments({
   visibleGraph: {
@@ -212,14 +211,14 @@ const flowchartBootstrapState = materializeThreeViewDocuments({
   syncPreviewItems: [],
   selectedNodeId: "method:submit-order",
   analysisDisplayMode: "FLOWCHART",
-} as const satisfies LinkGraphBootstrapState);
+});
 
 describe("App layout bridge", () => {
   beforeEach(() => {
     resetEditorTransportForTest();
     window.linkGraphBootstrap = structuredClone(bootstrapState);
     window.linkGraphBridge = {
-      graphChanged: vi.fn(),
+      applyGraphEditScript: vi.fn(),
       layoutChanged: vi.fn(),
       nodeSelected: vi.fn(),
       requestAnalysisDisplayMode: vi.fn(),
@@ -241,20 +240,34 @@ describe("App layout bridge", () => {
         },
       ],
     });
-    expect(window.linkGraphBridge?.graphChanged).not.toHaveBeenCalled();
+    expect(window.linkGraphBridge?.applyGraphEditScript).not.toHaveBeenCalled();
   });
 
   it("publishes semantic graph changes together with layout snapshots", async () => {
     const user = userEvent.setup();
-    window.linkGraphBootstrap = structuredClone({
+    window.linkGraphBootstrap = materializeThreeViewDocuments({
       ...bootstrapState,
       analysisDisplayMode: "FACT_GRAPH",
+      currentSceneId: "WORKSPACE_FACT",
     });
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "simulate add" }));
 
-    expect(window.linkGraphBridge?.graphChanged).toHaveBeenCalledTimes(1);
+    expect(window.linkGraphBridge?.applyGraphEditScript).toHaveBeenCalledTimes(1);
+    expect(window.linkGraphBridge?.applyGraphEditScript).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sceneId: "WORKSPACE_FACT",
+        operations: expect.arrayContaining([
+          expect.objectContaining({
+            type: "UPSERT_NODE",
+            node: expect.objectContaining({
+              id: "design:2",
+            }),
+          }),
+        ]),
+      }),
+    );
     expect(window.linkGraphBridge?.layoutChanged).toHaveBeenCalledWith({
       positions: expect.arrayContaining([
         expect.objectContaining({
@@ -268,29 +281,36 @@ describe("App layout bridge", () => {
 
   it("consumes a layout-only transport slice while preserving the current graph semantics", async () => {
     const user = userEvent.setup();
-    window.linkGraphBootstrap = structuredClone({
+    window.linkGraphBootstrap = materializeThreeViewDocuments({
       ...bootstrapState,
       analysisDisplayMode: "FACT_GRAPH",
+      currentSceneId: "WORKSPACE_FACT",
     });
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "simulate add" }));
-    expect(window.linkGraphBridge?.graphChanged).toHaveBeenCalledTimes(1);
+    expect(window.linkGraphBridge?.applyGraphEditScript).toHaveBeenCalledTimes(1);
 
     act(() => {
       window.dispatchEvent(
         new CustomEvent("link-graph-bootstrap", {
           detail: {
-            type: "LAYOUT_SLICE",
+            type: "ARTIFACT_SLICE",
             sessionId: "session-layout-slice-1",
             revision: 2,
             state: {
-              layoutState: {
-                positions: {
-                  "method:submit-order": { x: 640, y: 320 },
+              sceneStates: {
+                ...bootstrapState.sceneStates,
+                WORKSPACE_FACT: {
+                  ...bootstrapState.sceneStates.WORKSPACE_FACT,
+                  layoutState: {
+                    positions: {
+                      "method:submit-order": { x: 640, y: 320 },
+                    },
+                  },
+                  layoutRevision: 2,
                 },
               },
-              layoutRevision: 2,
               snapshotRevision: 2,
               lastMessageType: "layoutChanged",
             },
@@ -307,7 +327,7 @@ describe("App layout bridge", () => {
     resetEditorTransportForTest();
     window.linkGraphBootstrap = structuredClone(flowchartBootstrapState);
     window.linkGraphBridge = {
-      graphChanged: vi.fn(),
+      applyGraphEditScript: vi.fn(),
       layoutChanged: vi.fn(),
       nodeSelected: vi.fn(),
     };

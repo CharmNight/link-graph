@@ -30,9 +30,11 @@ function renderController() {
   const hook = renderHook(() => {
     const [artifactContents, setArtifactContents] = useState<Record<string, string>>({ loaded: "cached artifact" });
     const [importDialogOpen, setImportDialogOpen] = useState(true);
+    const [workbenchSectionPreferences, setWorkbenchSectionPreferences] = useState<Record<string, boolean>>({});
     return {
       artifactContents,
       importDialogOpen,
+      workbenchSectionPreferences,
       controller: useAppBridgeController({
         artifactContents,
         bridgeCommands: {
@@ -40,6 +42,7 @@ function renderController() {
           submitAsyncBridgeCommand,
         } as never,
         setImportDialogOpen,
+        setWorkbenchSectionPreferences,
       }),
       setArtifactContents,
     };
@@ -80,6 +83,7 @@ describe("useAppBridgeController", () => {
     expect(requestDiffReviewAsync).toHaveBeenCalledWith("why changed?", ["node-a"]);
     expect(applySingleCodeDraft).toHaveBeenCalledWith("draft-1");
     expect(openCodeDraftNativeDiff).toHaveBeenCalledWith("draft-1");
+    expect(result.current.workbenchSectionPreferences["draft.validation"]).toBe(true);
     expect(runBridgeCommand).toHaveBeenCalledTimes(3);
     expect(submitAsyncBridgeCommand).toHaveBeenCalledTimes(1);
     expect(result.current.importDialogOpen).toBe(false);

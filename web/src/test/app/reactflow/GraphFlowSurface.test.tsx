@@ -692,7 +692,7 @@ describe("GraphFlowSurface", () => {
 
     renderSurface({
       nodeViewportSize: () => ({ width: 240, height: 120 }),
-      ...({ viewportMode: "FLOWCHART" } as never),
+      viewportMode: "FLOWCHART",
     });
 
     act(() => {

@@ -3,6 +3,7 @@ package com.charmnight.linkgraph.ui.view
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.model.NodeType
 
 data class FlowchartSummary(
     val nodeCount: Int = 0,
@@ -25,7 +26,20 @@ data class FlowchartViewDocument(
     val fullGraph: GraphDocument = GraphDocument(),
     val anchorNodeId: String? = null,
     val summary: FlowchartSummary = FlowchartSummary(),
+    val projectionIndex: GraphProjectionIndex = GraphProjectionIndex.EMPTY,
 )
+
+private val decisionFlowScopeKinds = setOf("IF", "SWITCH", "FOREACH", "FOR", "WHILE", "DO_WHILE")
+
+internal fun resolveFlowchartKind(node: GraphNode): String {
+    val flowKind = node.metadata["flow.kind"]?.trim()?.uppercase()
+    return when {
+        node.type == NodeType.FLOW_SCOPE && flowKind in decisionFlowScopeKinds -> "DECISION"
+        node.type == NodeType.MERGE -> "MERGE"
+        node.type == NodeType.TERMINAL -> "TERMINAL"
+        else -> node.metadata["flowchart.kind"] ?: "PROCESS"
+    }
+}
 
 internal fun deriveFlowchartSummary(
     visibleGraph: GraphDocument,
@@ -41,7 +55,7 @@ internal fun deriveFlowchartSummary(
     val hiddenEdgeCount = (fullGraph.edges.map(GraphEdge::id).toSet() - visibleGraph.edges.map(GraphEdge::id).toSet()).size
     return FlowchartSummary(
         nodeCount = visibleGraph.nodes.size,
-        branchCount = visibleGraph.nodes.count { it.metadata["flowchart.kind"] == "DECISION" },
+        branchCount = visibleGraph.nodes.count { resolveFlowchartKind(it) == "DECISION" },
         exceptionPathCount = visibleGraph.edges.count { it.label?.trim()?.uppercase() == "EXCEPTION" },
         fullNodeCount = fullGraph.nodes.size,
         fullEdgeCount = fullGraph.edges.size,

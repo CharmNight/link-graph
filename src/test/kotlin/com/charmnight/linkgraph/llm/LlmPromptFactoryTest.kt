@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.mermaid.MermaidIssue
 import com.charmnight.linkgraph.model.DiffStatus
 import com.charmnight.linkgraph.model.GraphDiff
@@ -477,6 +479,9 @@ class LlmPromptFactoryTest {
         assertTrue(!codePackage.userPrompt.contains("planItem="))
         assertTrue(codePackage.userPrompt.contains("相关源码片段"))
         assertTrue(codePackage.userPrompt.contains("baseUrl.replaceFirst(\"/usr\", \"/tmp\")"))
+        assertTrue(codePackage.systemPrompt.contains("editOperations[].payload 必须是纯源码片段字符串"))
+        assertTrue(codePackage.systemPrompt.contains("禁止把 methodSignature、changeType、existingCodeSnippet、newImplementation 等包装字段或元数据序列化进 payload"))
+        assertTrue(codePackage.userPrompt.contains("纯源码片段，不要放 methodSignature/changeType/existingCodeSnippet 等元数据包装"))
         assertTrue(codePackage.systemPrompt.contains("禁止声称未提供源码上下文"))
     }
 

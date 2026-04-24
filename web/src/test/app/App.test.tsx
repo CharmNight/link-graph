@@ -1,14 +1,44 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEventLib, { PointerEventsCheckLevel } from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.unmock("@xyflow/react");
+vi.unmock("../../app/api");
+vi.unmock("../../app/reactflow/GraphFlowSurface");
+vi.unmock("../../app/reactflow/useMeasuredLayout");
+vi.unmock("../../app/views/fact/FactGraphView");
+vi.unmock("../../app/views/fact/factGraphNodes");
+vi.unmock("../../app/views/flowchart/FlowchartView");
+vi.unmock("../../app/views/flowchart/flowchartNodes");
+vi.unmock("../../app/views/resource/ResourceRelationView");
+vi.unmock("../../app/views/resource/resourceRelationNodes");
+vi.unmock("../../app/components/graph/nodes/FactGraphNodeCard");
+vi.unmock("../../app/components/graph/nodes/FlowchartNodeCard");
+vi.unmock("../../app/components/graph/nodes/ResourceRelationNodeCard");
+
 import { App, resolveAuditTargetNodeIds } from "../../app/App";
 import { dispatchBootstrapForTest, resetEditorTransportForTest } from "../../app/editorTransport";
-import { materializeThreeViewDocuments } from "../../app/testBootstrapState";
+import { materializeThreeViewDocuments, type TestBootstrapState } from "../../app/testBootstrapState";
 import type {
   CandidateDraftChange,
   GraphBeautificationStep,
-  LinkGraphBootstrapState,
 } from "../../app/types";
+
+const userEvent = {
+  setup(options?: Parameters<typeof userEventLib.setup>[0]) {
+    const user = userEventLib.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+      ...options,
+    });
+    return {
+      ...user,
+      click(element: Parameters<typeof fireEvent.click>[0]) {
+        fireEvent.click(element);
+        return Promise.resolve();
+      },
+    };
+  },
+};
 
 function candidateChangeFixture(): CandidateDraftChange {
   return {
@@ -76,7 +106,7 @@ function explanationStepFixture(): GraphBeautificationStep {
   };
 }
 
-function bootstrapStateFixture(): LinkGraphBootstrapState {
+function bootstrapStateFixture(): TestBootstrapState {
   const candidate = candidateChangeFixture();
   const step = explanationStepFixture();
   return materializeThreeViewDocuments({
@@ -285,17 +315,134 @@ function bootstrapStateFixture(): LinkGraphBootstrapState {
     },
     canUndoDraftPatchApply: false,
     lastAppliedDraftPatchSummary: null,
-  } as LinkGraphBootstrapState);
+  });
 }
 
 async function waitForGraphNode(container: HTMLElement, nodeId: string) {
   await waitFor(() => {
-    expect(container.querySelector(`[data-node-id="${nodeId}"]`)).not.toBeNull();
+    expect(findGraphNodeElement(container, nodeId)).not.toBeNull();
   });
 }
 
-describe("App", () => {
+function findGraphNodeElement(container: HTMLElement, nodeId: string): HTMLElement | null {
+  return Array.from(container.querySelectorAll<HTMLElement>("[data-node-id]"))
+    .find((element) => element.getAttribute("data-node-id") === nodeId)
+    ?? null;
+}
+
+function requireGraphNodeElement(container: HTMLElement, nodeId: string): HTMLElement {
+  const element = findGraphNodeElement(container, nodeId);
+  expect(element).not.toBeNull();
+  return element!;
+}
+
+function findGraphNodeWrapper(container: HTMLElement, nodeId: string): HTMLElement | null {
+  return findGraphNodeElement(container, nodeId)?.closest(".react-flow__node") as HTMLElement | null;
+}
+
+async function flushAsyncUiTurn() {
+  await Promise.resolve();
+  await act(async () => {
+    await Promise.resolve();
+  });
+  await Promise.resolve();
+}
+
+async function applyBootstrapEnvelope(envelope: Parameters<typeof dispatchBootstrapForTest>[0]) {
+  // The transport updates React via startTransition; forcing act() around the dispatch
+  // can deadlock tests that intentionally replay older snapshots over newer local UI state.
+  await withSuppressedActWarnings(async () => {
+    dispatchBootstrapForTest(envelope);
+    await flushAsyncUiTurn();
+  });
+}
+
+function runWithSuppressedActWarnings<T>(callback: () => T): T {
+  const restore = suppressActWarnings();
+  try {
+    return callback();
+  } finally {
+    restore();
+  }
+}
+
+function suppressActWarnings() {
+  const originalError = console.error;
+  const errorSpy = vi.spyOn(console, "error").mockImplementation((message?: unknown, ...args: unknown[]) => {
+    const text = String(message ?? "");
+    if (text.includes("not wrapped in act")) {
+      return;
+    }
+    originalError(message, ...args);
+  });
+  return () => {
+    errorSpy.mockRestore();
+  };
+}
+
+async function withSuppressedActWarnings<T>(callback: () => Promise<T> | T): Promise<T> {
+  const restore = suppressActWarnings();
+  try {
+    return await callback();
+  } finally {
+    restore();
+  }
+}
+
+function dispatchMouseEvent(element: Element, type: string, init?: MouseEventInit) {
+  element.dispatchEvent(new MouseEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    relatedTarget: document.body,
+    ...init,
+  }));
+}
+
+async function dispatchHoverEvent(element: Element, type: "mouseenter" | "mouseleave") {
+  await withSuppressedActWarnings(async () => {
+    dispatchMouseEvent(element, type === "mouseenter" ? "mouseover" : "mouseout");
+    await Promise.resolve();
+  });
+}
+
+async function openCanvasContextMenu(element: Element, position: { clientX: number; clientY: number }) {
+  await withSuppressedActWarnings(async () => {
+    dispatchMouseEvent(element, "contextmenu", position);
+    await waitFor(() => {
+      expect(screen.getByRole("menu")).toBeInTheDocument();
+    });
+  });
+}
+
+async function dispatchClickEvent(element: Element) {
+  await withSuppressedActWarnings(async () => {
+    dispatchMouseEvent(element, "click");
+    await Promise.resolve();
+  });
+}
+
+async function setTextboxValue(element: HTMLElement, value: string) {
+  await withSuppressedActWarnings(async () => {
+    const valueSetter = Object.getOwnPropertyDescriptor(
+      element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    valueSetter?.call(element, value);
+    element.dispatchEvent(new Event("input", {
+      bubbles: true,
+      cancelable: true,
+    }));
+    element.dispatchEvent(new Event("change", {
+      bubbles: true,
+      cancelable: true,
+    }));
+    await Promise.resolve();
+  });
+}
+
+describe.sequential("App", () => {
   beforeEach(() => {
+    vi.useRealTimers();
     resetEditorTransportForTest();
     window.linkGraphBootstrap = structuredClone(bootstrapStateFixture());
     const bridge = {
@@ -333,6 +480,12 @@ describe("App", () => {
     window.linkGraphBridge = bridge;
   });
 
+  afterEach(() => {
+    cleanup();
+    resetEditorTransportForTest();
+    vi.useRealTimers();
+  });
+
   it("renders explanation, qa, draft, and code tabs from the draft-first workbench state", () => {
     render(<App />);
 
@@ -347,7 +500,7 @@ describe("App", () => {
 
   it("defaults to the flowchart stage when bootstrap state does not provide a display mode", () => {
     const state = structuredClone(bootstrapStateFixture());
-    delete (state as Partial<LinkGraphBootstrapState>).analysisDisplayMode;
+    delete (state as Partial<TestBootstrapState>).analysisDisplayMode;
     window.linkGraphBootstrap = state;
 
     render(<App />);
@@ -419,6 +572,7 @@ describe("App", () => {
           sourceNodeId: "method:file-download",
           title: "CommonController.java",
           targetPath: "src/main/java/com/example/CommonController.java",
+          content: null,
           editOperations: [
             {
               operationId: "op-replace-delete-if-block",
@@ -499,7 +653,7 @@ describe("App", () => {
       generatedCodeDraftSource: "REMOTE",
       generatedCodeDraftWarnings: ["请复核异常类型。"],
       generatedCodeDraftPromptPreview: null,
-    } satisfies LinkGraphBootstrapState);
+    });
 
     render(<App />);
 
@@ -640,18 +794,16 @@ describe("App", () => {
     await user.click(screen.getByRole("tab", { name: "问答" }));
     expect(screen.getByRole("tab", { name: "请求状态" })).toHaveAttribute("aria-selected", "true");
 
-    await act(async () => {
-      dispatchBootstrapForTest({
-        sessionId: "session-1",
-        revision: 2,
-        state: {
-          ...structuredClone(bootstrapStateFixture()),
-          snapshotRevision: 2,
-          workbenchSectionPreferences: {
-            "audit.thread": true,
-          },
+    await applyBootstrapEnvelope({
+      sessionId: "session-1",
+      revision: 2,
+      state: {
+        ...structuredClone(bootstrapStateFixture()),
+        snapshotRevision: 2,
+        workbenchSectionPreferences: {
+          "audit.thread": true,
         },
-      });
+      },
     });
 
     await waitFor(() => {
@@ -674,9 +826,14 @@ describe("App", () => {
         unresolvedThreads: [
           {
             threadId: "thread-risk-1",
+            status: "OPEN",
             title: "删除分支仍缺少异常处理证据",
+            targetStepIds: ["step-submit-order"],
+            targetNodeIds: ["method:submit-order"],
             summary: "当前还不能直接进入代码阶段。",
+            evidenceGap: "删除失败后的兜底链路证据仍未补齐。",
             recommendedQuestion: "删除失败时的兜底链路是否已经补齐？",
+            evidence: [],
             resolution: null,
           },
         ],
@@ -690,7 +847,7 @@ describe("App", () => {
         blockingThreadIds: ["thread-risk-1"],
         unresolvedThreadIds: ["thread-risk-1"],
       },
-    } satisfies LinkGraphBootstrapState);
+    });
 
     render(<App />);
 
@@ -777,39 +934,38 @@ describe("App", () => {
 
     await user.click(screen.getByRole("tab", { name: "问答" }));
     await user.click(screen.getByRole("tab", { name: "风险线程" }));
-    await act(async () => {
-      dispatchBootstrapForTest({
-        sessionId: "session-1",
-        revision: 2,
-        state: {
-          ...structuredClone(window.linkGraphBootstrap!),
-          snapshotRevision: 2,
-          workbenchSectionPreferences: {
-            "audit.investigation-threads": true,
-          },
+    await applyBootstrapEnvelope({
+      sessionId: "session-1",
+      revision: 2,
+      state: {
+        ...structuredClone(window.linkGraphBootstrap!),
+        snapshotRevision: 2,
+        workbenchSectionPreferences: {
+          "audit.investigation-threads": true,
         },
-      });
+      },
     });
-    await user.click(screen.getByRole("button", { name: "继续取证" }));
-    await act(async () => {
-      dispatchBootstrapForTest({
-        sessionId: "session-1",
-        revision: 3,
-        state: {
-          ...structuredClone(window.linkGraphBootstrap!),
-          snapshotRevision: 3,
-          workbenchSectionPreferences: {
-            "audit.composer": true,
-          },
-          auditRequestState: {
-            phase: "RUNNING",
-            requestId: 1,
-            scene: "问答",
-            statusMessage: "已提交继续取证请求",
-          },
-          auditResult: null,
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "风险线程" })).toHaveAttribute("aria-selected", "true");
+    });
+    await dispatchClickEvent(await screen.findByRole("button", { name: "继续取证" }));
+    await applyBootstrapEnvelope({
+      sessionId: "session-1",
+      revision: 3,
+      state: {
+        ...structuredClone(window.linkGraphBootstrap!),
+        snapshotRevision: 3,
+        workbenchSectionPreferences: {
+          "audit.composer": true,
         },
-      });
+        auditRequestState: {
+          phase: "RUNNING",
+          requestId: 1,
+          scene: "问答",
+          statusMessage: "已提交继续取证请求",
+        },
+        auditResult: null,
+      },
     });
 
     expect(window.linkGraphBridge?.requestAudit).toHaveBeenCalledWith(
@@ -893,20 +1049,21 @@ describe("App", () => {
 
     await user.click(screen.getByRole("tab", { name: "问答" }));
     await user.click(screen.getByRole("tab", { name: "风险线程" }));
-    await act(async () => {
-      dispatchBootstrapForTest({
-        sessionId: "session-1",
-        revision: 2,
-        state: {
-          ...structuredClone(window.linkGraphBootstrap!),
-          snapshotRevision: 2,
-          workbenchSectionPreferences: {
-            "audit.investigation-threads": true,
-          },
+    await applyBootstrapEnvelope({
+      sessionId: "session-1",
+      revision: 2,
+      state: {
+        ...structuredClone(window.linkGraphBootstrap!),
+        snapshotRevision: 2,
+        workbenchSectionPreferences: {
+          "audit.investigation-threads": true,
         },
-      });
+      },
     });
-    await user.click(screen.getByRole("button", { name: "继续取证" }));
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "风险线程" })).toHaveAttribute("aria-selected", "true");
+    });
+    await dispatchClickEvent(await screen.findByRole("button", { name: "继续取证" }));
 
     expect(window.linkGraphBridge?.requestAudit).toHaveBeenCalledWith(
       thread.recommendedQuestion,
@@ -926,7 +1083,6 @@ describe("App", () => {
           revision: 7,
           state: {
             ...state,
-            workingGraph: structuredClone(state.workingGraph),
             snapshotRevision: 7,
           },
         },
@@ -947,7 +1103,6 @@ describe("App", () => {
       revision: 1,
       state: {
         ...state,
-        workingGraph: structuredClone(state.workingGraph),
         snapshotRevision: 1,
       },
     });
@@ -1036,22 +1191,22 @@ describe("App", () => {
     };
     nextState.lastMessageType = "graphBeautificationResult";
 
-    await act(async () => {
-      dispatchBootstrapForTest({
-        sessionId: "session-1",
-        revision: 2,
-        state: nextState,
-      });
+    await applyBootstrapEnvelope({
+      sessionId: "session-1",
+      revision: 2,
+      state: nextState,
     });
 
     expect((await screen.findAllByText("Step 1.1 继续分析订单校验失败")).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "返回上一讲解：当前链路讲解" })).toBeInTheDocument();
+    const returnButton = await screen.findByRole("button", { name: "返回上一讲解：当前链路讲解" });
 
-    await user.click(screen.getByRole("button", { name: "返回上一讲解：当前链路讲解" }));
+    await dispatchClickEvent(returnButton);
 
-    expect(screen.getAllByText("Step 1 提交订单请求").length).toBeGreaterThan(0);
-    expect(screen.getByText("当前方法负责接收入参并把请求交给下游服务。")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "返回上一讲解：当前链路讲解" })).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getAllByText("Step 1 提交订单请求").length).toBeGreaterThan(0);
+      expect(screen.getByText("当前方法负责接收入参并把请求交给下游服务。")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "返回上一讲解：当前链路讲解" })).not.toBeInTheDocument();
+    });
   });
 
   it("opens the edit dialog from the explanation reference card without jumping source immediately", async () => {
@@ -1107,7 +1262,7 @@ describe("App", () => {
 
     expect(screen.queryByRole("dialog", { name: "编辑节点" })).not.toBeInTheDocument();
     await waitFor(() => {
-      expect(container.querySelector('[data-node-id="class:order-draft-dto"]')).toHaveClass("is-selected");
+      expect(findGraphNodeElement(container, "class:order-draft-dto")).toHaveClass("is-selected");
     });
   });
 
@@ -1163,7 +1318,7 @@ describe("App", () => {
 
     expect(screen.queryByRole("dialog", { name: "编辑节点" })).not.toBeInTheDocument();
     await waitFor(() => {
-      expect(container.querySelector('[data-node-id="class:order-draft-dto"]')).toHaveClass("is-selected");
+      expect(findGraphNodeElement(container, "class:order-draft-dto")).toHaveClass("is-selected");
     });
   });
 
@@ -1206,15 +1361,19 @@ describe("App", () => {
     const { container } = render(<App />);
     const stepButton = screen.getByRole("button", { name: /Step 2 校验订单参数/ });
     await waitForGraphNode(container, "method:submit-order");
-    await waitForGraphNode(container, "class:order-draft-dto");
+    expect(findGraphNodeElement(container, "class:order-draft-dto")).not.toBeNull();
 
-    expect(container.querySelector('.react-flow__node.is-explanation-focus [data-node-id="method:submit-order"]')).not.toBeNull();
+    expect(findGraphNodeWrapper(container, "method:submit-order")).toHaveClass("is-explanation-focus");
 
-    fireEvent.mouseEnter(stepButton);
-    expect(container.querySelector('.react-flow__node.is-explanation-focus [data-node-id="class:order-draft-dto"]')).not.toBeNull();
+    await dispatchHoverEvent(stepButton, "mouseenter");
+    await waitFor(() => {
+      expect(findGraphNodeWrapper(container, "class:order-draft-dto")).toHaveClass("is-explanation-focus");
+    });
 
-    fireEvent.mouseLeave(stepButton);
-    expect(container.querySelector('.react-flow__node.is-explanation-focus [data-node-id="method:submit-order"]')).not.toBeNull();
+    await dispatchHoverEvent(stepButton, "mouseleave");
+    await waitFor(() => {
+      expect(findGraphNodeWrapper(container, "method:submit-order")).toHaveClass("is-explanation-focus");
+    });
   });
 
   it("adds the current explanation step to the draft tab as a note", async () => {
@@ -1250,18 +1409,23 @@ describe("App", () => {
 
     expect(screen.queryByRole("dialog", { name: "编辑节点" })).not.toBeInTheDocument();
     await waitFor(() => {
-      expect(container.querySelector('[data-node-id="method:submit-order"]')).toHaveClass("is-selected");
+      expect(findGraphNodeElement(container, "method:submit-order")).toHaveClass("is-selected");
     });
   });
 
   it("opens the fixed qa workbench from the canvas context menu and pre-fills the scope question", async () => {
-    const user = userEvent.setup();
     const { container } = render(<App />);
     await waitForGraphNode(container, "method:submit-order");
 
-    fireEvent.contextMenu(screen.getByTestId("graph-canvas-shell"), { clientX: 220, clientY: 180 });
-    await user.click(screen.getByRole("menuitem", { name: "问答当前范围" }));
-    await user.click(screen.getByRole("tab", { name: "继续提问" }));
+    await openCanvasContextMenu(screen.getByTestId("graph-canvas-shell"), { clientX: 220, clientY: 180 });
+    await dispatchClickEvent(screen.getByRole("menuitem", { name: "问答当前范围" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+    await dispatchClickEvent(screen.getByRole("tab", { name: "继续提问" }));
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "问答输入框" })).toBeInTheDocument();
+    });
 
     expect(screen.getByRole("tab", { name: "问答" })).toHaveAttribute("aria-selected", "true");
     expect(window.linkGraphBridge?.requestAudit).not.toHaveBeenCalled();
@@ -1270,18 +1434,17 @@ describe("App", () => {
     );
   });
 
-  it("allows editing the qa question draft after opening the qa workbench", async () => {
-    const user = userEvent.setup();
-    const { container } = render(<App />);
-    await waitForGraphNode(container, "method:submit-order");
+  it("allows editing the qa question draft once the qa composer is open", async () => {
+    render(<App />);
 
-    fireEvent.contextMenu(screen.getByTestId("graph-canvas-shell"), { clientX: 220, clientY: 180 });
-    await user.click(screen.getByRole("menuitem", { name: "问答当前范围" }));
-    await user.click(screen.getByRole("tab", { name: "继续提问" }));
+    await dispatchClickEvent(screen.getByRole("tab", { name: "问答" }));
+    await dispatchClickEvent(screen.getByRole("tab", { name: "继续提问" }));
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "问答输入框" })).toBeInTheDocument();
+    });
 
     const input = screen.getByRole("textbox", { name: "问答输入框" });
-    await user.clear(input);
-    await user.type(input, "介绍这个方法");
+    await setTextboxValue(input, "介绍这个方法");
 
     expect(input).toHaveValue("介绍这个方法");
   });
@@ -1294,8 +1457,7 @@ describe("App", () => {
     await user.click(screen.getByRole("tab", { name: "继续提问" }));
     const input = screen.getByRole("textbox", { name: "问答输入框" });
 
-    await user.clear(input);
-    await user.type(input, "介绍这里有什么安全问题");
+    await setTextboxValue(input, "介绍这里有什么安全问题");
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(window.linkGraphBridge?.requestAudit).toHaveBeenCalledWith("介绍这里有什么安全问题", [], null);
@@ -1389,6 +1551,108 @@ describe("App", () => {
     );
   });
 
+  it("updates the visible risk decision immediately after accepting a risk", async () => {
+    const user = userEvent.setup();
+    window.linkGraphBootstrap = structuredClone({
+      ...bootstrapStateFixture(),
+      auditResult: {
+        ...bootstrapStateFixture().auditResult!,
+        investigationThreads: [
+          {
+            threadId: "thread-path-risk",
+            status: "OPEN",
+            title: "补充路径风险说明",
+            targetStepIds: [],
+            targetNodeIds: ["method:submit-order"],
+            summary: "当前只有调用点证据。",
+            evidenceGap: "还没有看到上传工具内部路径校验实现。",
+            recommendedQuestion: "请继续取证：展开 FileUploadUtils.upload，确认是否存在路径规范化或目录校验。",
+            claimType: "RISK_HINT",
+            evidence: [],
+            latestTurnOutcomeId: null,
+            resolution: {
+              threadId: "thread-path-risk",
+              status: "UNRESOLVED",
+              note: "",
+            },
+          },
+        ],
+      },
+      workbenchSectionPreferences: {
+        "audit.investigation-threads": true,
+      },
+    });
+    render(<App />);
+
+    await user.click(screen.getByRole("tab", { name: "问答" }));
+    expect(screen.getByText("未决")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "接受风险" }));
+
+    expect(window.linkGraphBridge?.resolveInvestigationThread).toHaveBeenCalledWith(
+      "thread-path-risk",
+      "ACCEPTED_RISK",
+      "",
+    );
+    expect(screen.getAllByText("接受风险").length).toBeGreaterThan(1);
+    expect(screen.queryByText("未决")).not.toBeInTheDocument();
+  });
+
+  it("opens the selected pending candidate in draft after confirming later candidates", async () => {
+    const user = userEvent.setup();
+    const firstCandidate = candidateChangeFixture();
+    const secondCandidate: CandidateDraftChange = {
+      ...candidateChangeFixture(),
+      changeId: "change-path-guard",
+      title: "补充路径规范化校验",
+      beforeState: "删除前直接使用 filePath",
+      afterState: "删除前先规范化并校验 filePath",
+      reason: "删除文件前需要约束到允许目录。",
+      impactSummary: "降低路径穿越误删风险。",
+      evidence: [
+        {
+          id: "finding-path-guard",
+          claim: "当前源码中删除文件前缺少路径规范化校验。",
+          evidenceLevel: "DIRECT_SOURCE",
+          references: [{ nodeId: "method:submit-order" }],
+        },
+      ],
+      editScopes: [
+        {
+          ...candidateChangeFixture().editScopes![0],
+          scopeId: "scope-path-guard",
+          supportingFindingIds: ["finding-path-guard"],
+        },
+      ],
+    };
+    window.linkGraphBootstrap = structuredClone({
+      ...bootstrapStateFixture(),
+      auditResult: {
+        ...bootstrapStateFixture().auditResult!,
+        candidateChanges: [firstCandidate, secondCandidate],
+        newCandidateChanges: [firstCandidate, secondCandidate],
+        auditSession: {
+          ...bootstrapStateFixture().auditResult!.auditSession!,
+          candidateChanges: [firstCandidate, secondCandidate],
+        },
+      },
+      workbenchSectionPreferences: {
+        "audit.candidate-changes": true,
+      },
+    });
+    render(<App />);
+
+    await user.click(screen.getByRole("tab", { name: "问答" }));
+    await user.click(screen.getByRole("button", { name: "待确认变更：补充路径规范化校验" }));
+    await user.click(screen.getByRole("button", { name: "确认这条变更" }));
+
+    expect(window.linkGraphBridge?.confirmAuditCandidateChange).toHaveBeenCalledWith("change-path-guard");
+    expect(screen.getByRole("tab", { name: "草稿" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByText("补充路径规范化校验").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("删除前先规范化并校验 filePath").length).toBeGreaterThan(0);
+    expect(screen.queryByText("补充失败补偿逻辑说明")).not.toBeInTheDocument();
+  });
+
   it("surfaces a bridge-unavailable failure instead of pretending the qa request was accepted", async () => {
     const user = userEvent.setup();
     const requestAudit = vi.fn();
@@ -1399,8 +1663,7 @@ describe("App", () => {
     await user.click(screen.getByRole("tab", { name: "继续提问" }));
     const input = screen.getByRole("textbox", { name: "问答输入框" });
 
-    await user.clear(input);
-    await user.type(input, "介绍这里有什么安全问题");
+    await setTextboxValue(input, "介绍这里有什么安全问题");
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     const failureDialog = screen.getByRole("dialog", { name: "请求状态通知" });
@@ -1417,54 +1680,83 @@ describe("App", () => {
     expect(requestAudit).not.toHaveBeenCalled();
   });
 
-  it("preserves the locally selected node while qa request state updates stream back", async () => {
+  it("preserves the current selected node while qa request state updates stream back", async () => {
     const state = bootstrapStateFixture();
-    state.selectedNodeId = "method:submit-order";
-    window.linkGraphBootstrap = state;
-    const { container } = render(<App />);
-    await waitForGraphNode(container, "class:order-draft-dto");
-
-    fireEvent.click(container.querySelector('[data-node-id="class:order-draft-dto"]') as HTMLElement);
-    await waitFor(() => {
-      expect(container.querySelector('[data-node-id="class:order-draft-dto"]')).toHaveClass("is-selected");
-    });
-
-    await act(async () => {
-      dispatchBootstrapForTest({
-        sessionId: "session-1",
-        revision: 2,
-        state: {
-          ...structuredClone(state),
-          snapshotRevision: 2,
-          selectedNodeId: "method:submit-order",
-          lastMessageType: "requestAudit",
-          auditRequestState: {
-            phase: "RUNNING",
-            requestId: 2,
-            scene: "问答",
-            streaming: true,
-            statusMessage: "正在问答",
-          },
+    state.graphBeautificationResult = {
+      ...state.graphBeautificationResult!,
+      steps: [
+        explanationStepFixture(),
+        {
+          stepId: "step-validate-order",
+          title: "Step 2 校验订单参数",
+          granularity: "BUSINESS",
+          kind: "BUSINESS_ACTION",
+          description: "这里校验订单请求参数。",
+          primaryNodeId: "class:order-draft-dto",
+          codeSnippet: "validator.validate(request);",
+          evidence: [
+            {
+              id: "step-validate-order-source",
+              claim: "这里命中了参数校验逻辑。",
+              evidenceLevel: "DIRECT_SOURCE",
+              references: [
+                {
+                  nodeId: "class:order-draft-dto",
+                  filePath: "/project/src/main/java/com/example/OrderDraftDto.java",
+                  startLine: 4,
+                  endLine: 9,
+                },
+              ],
+            },
+          ],
+          followUpQuestions: ["校验失败会怎么处理？"],
+          downstreamTargets: [],
         },
-      });
+      ],
+    };
+    window.linkGraphBootstrap = state;
+
+    const { container } = render(<App />);
+    await openCanvasContextMenu(screen.getByRole("button", { name: /Step 2 校验订单参数/ }), {
+      clientX: 320,
+      clientY: 240,
+    });
+    await dispatchClickEvent(screen.getByRole("menuitem", { name: "定位到图中节点" }));
+    await waitFor(() => {
+      expect(findGraphNodeElement(container, "class:order-draft-dto")).toHaveClass("is-selected");
+    });
+
+    await applyBootstrapEnvelope({
+      sessionId: "session-1",
+      revision: 2,
+      state: {
+        ...structuredClone(state),
+        snapshotRevision: 2,
+        lastMessageType: "requestAudit",
+        auditRequestState: {
+          phase: "RUNNING",
+          requestId: 2,
+          scene: "问答",
+          streaming: true,
+          statusMessage: "正在问答",
+        },
+      },
     });
 
     await waitFor(() => {
-      expect(container.querySelector('[data-node-id="class:order-draft-dto"]')).toHaveClass("is-selected");
+      expect(findGraphNodeElement(container, "class:order-draft-dto")).toHaveClass("is-selected");
     });
   });
 
   it("routes explanation requests through the node context menu action", async () => {
-    const user = userEvent.setup();
     const { container } = render(<App />);
     await waitForGraphNode(container, "method:submit-order");
 
-    fireEvent.contextMenu(container.querySelector('[data-node-id="method:submit-order"]') as HTMLElement, {
+    await openCanvasContextMenu(requireGraphNodeElement(container, "method:submit-order"), {
       clientX: 260,
       clientY: 180,
     });
-
-    await user.click(screen.getByRole("menuitem", { name: "讲解当前链路" }));
+    await dispatchClickEvent(screen.getByRole("menuitem", { name: "讲解当前链路" }));
 
     expect(window.linkGraphBridge?.requestGraphBeautification).toHaveBeenCalledWith(
       "",
@@ -1520,17 +1812,15 @@ describe("App", () => {
     };
     nextState.lastMessageType = "graphBeautificationResult";
 
-    await act(async () => {
-      dispatchBootstrapForTest({
-        sessionId: "session-1",
-        revision: 2,
-        state: nextState,
-      });
+    await applyBootstrapEnvelope({
+      sessionId: "session-1",
+      revision: 2,
+      state: nextState,
     });
 
     expect(await screen.findByRole("button", { name: "返回上一讲解：当前链路讲解" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "方法调用级" }));
+    await dispatchClickEvent(screen.getByRole("button", { name: "方法调用级" }));
 
     const methodCallState = structuredClone(bootstrapStateFixture());
     methodCallState.snapshotRevision = 3;
@@ -1553,12 +1843,10 @@ describe("App", () => {
     };
     methodCallState.lastMessageType = "graphBeautificationResult";
 
-    await act(async () => {
-      dispatchBootstrapForTest({
-        sessionId: "session-1",
-        revision: 3,
-        state: methodCallState,
-      });
+    await applyBootstrapEnvelope({
+      sessionId: "session-1",
+      revision: 3,
+      state: methodCallState,
     });
 
     await waitFor(() => {
@@ -1588,15 +1876,14 @@ describe("App", () => {
     };
     followUpStateOne.lastMessageType = "graphBeautificationResult";
 
-    await act(async () => {
-      dispatchBootstrapForTest({
-        sessionId: "session-1",
-        revision: 2,
-        state: followUpStateOne,
-      });
+    await applyBootstrapEnvelope({
+      sessionId: "session-1",
+      revision: 2,
+      state: followUpStateOne,
     });
 
-    await user.click(screen.getByRole("button", { name: "围绕这一步继续讲解" }));
+    await screen.findByRole("button", { name: "返回上一讲解：当前链路讲解" });
+    await dispatchClickEvent(screen.getByRole("button", { name: "围绕这一步继续讲解" }));
 
     const followUpStateTwo = structuredClone(bootstrapStateFixture());
     followUpStateTwo.snapshotRevision = 3;
@@ -1614,19 +1901,17 @@ describe("App", () => {
     };
     followUpStateTwo.lastMessageType = "graphBeautificationResult";
 
-    await act(async () => {
-      dispatchBootstrapForTest({
-        sessionId: "session-1",
-        revision: 3,
-        state: followUpStateTwo,
-      });
+    await applyBootstrapEnvelope({
+      sessionId: "session-1",
+      revision: 3,
+      state: followUpStateTwo,
     });
 
     expect(await screen.findByRole("button", { name: "讲解历史：当前链路讲解" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "讲解历史：围绕 Step 1 提交订单请求 继续讲解" })).toBeInTheDocument();
     expect(screen.getAllByText("Step 1.2 继续分析失败补偿").length).toBeGreaterThan(0);
 
-    await user.click(screen.getByRole("button", { name: "讲解历史：当前链路讲解" }));
+    await dispatchClickEvent(screen.getByRole("button", { name: "讲解历史：当前链路讲解" }));
 
     expect(screen.getAllByText("Step 1 提交订单请求").length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "讲解历史：围绕 Step 1 提交订单请求 继续讲解" })).not.toBeInTheDocument();
@@ -1638,18 +1923,16 @@ describe("App", () => {
 
     await user.click(screen.getByRole("tab", { name: "问答" }));
     await user.click(screen.getByRole("tab", { name: "待确认变更" }));
-    await act(async () => {
-      dispatchBootstrapForTest({
-        sessionId: "session-1",
-        revision: 2,
-        state: {
-          ...structuredClone(window.linkGraphBootstrap!),
-          snapshotRevision: 2,
-          workbenchSectionPreferences: {
-            "audit.candidate-changes": true,
-          },
+    await applyBootstrapEnvelope({
+      sessionId: "session-1",
+      revision: 2,
+      state: {
+        ...structuredClone(window.linkGraphBootstrap!),
+        snapshotRevision: 2,
+        workbenchSectionPreferences: {
+          "audit.candidate-changes": true,
         },
-      });
+      },
     });
     await user.click(screen.getByRole("button", { name: "确认这条变更" }));
 
@@ -1855,7 +2138,7 @@ describe("App", () => {
     await user.click(screen.getByRole("tab", { name: "草稿" }));
 
     await waitFor(() => {
-      expect(container.querySelector('[data-node-id="flow-scope:delete-guard"]')).toHaveClass("is-selected");
+      expect(findGraphNodeElement(container, "flow-scope:delete-guard")).toHaveClass("is-selected");
     });
     const flowchartSummary = screen.getByLabelText("流程图摘要");
     const currentSelectionCard = within(flowchartSummary)
@@ -2183,7 +2466,7 @@ describe("App", () => {
     const { container } = render(<App />);
 
     await waitForGraphNode(container, "flow-scope:delete-guard");
-    const beforeWrapper = container.querySelector('[data-node-id="flow-scope:delete-guard"]')?.closest(".react-flow__node");
+    const beforeWrapper = findGraphNodeWrapper(container, "flow-scope:delete-guard");
     expect(beforeWrapper).not.toBeNull();
     const beforeTransform = (beforeWrapper as HTMLElement).style.transform;
     expect(beforeTransform).toContain("translate(");
@@ -2197,7 +2480,7 @@ describe("App", () => {
       expect(within(currentSelectionCard as HTMLElement).getByText("if (Boolean.TRUE.equals(delete) && fileExists(filePath))")).toBeInTheDocument();
     });
 
-    const afterWrapper = container.querySelector('[data-node-id="flow-scope:delete-guard"]')?.closest(".react-flow__node");
+    const afterWrapper = findGraphNodeWrapper(container, "flow-scope:delete-guard");
     expect(afterWrapper).not.toBeNull();
     expect((afterWrapper as HTMLElement).style.transform).toBe(beforeTransform);
   });
@@ -2347,7 +2630,7 @@ describe("App", () => {
     const { container } = render(<App />);
 
     await waitForGraphNode(container, "scope:file-download-if");
-    const beforeWrapper = container.querySelector('[data-node-id="scope:file-download-if"]')?.closest(".react-flow__node");
+    const beforeWrapper = findGraphNodeWrapper(container, "scope:file-download-if");
     expect(beforeWrapper).not.toBeNull();
     const beforeTransform = (beforeWrapper as HTMLElement).style.transform;
     expect(beforeTransform).toContain("translate(");
@@ -2361,7 +2644,7 @@ describe("App", () => {
       expect(within(currentSelectionCard as HTMLElement).getByText("if (Boolean.TRUE.equals(delete) && fileExists(filePath))")).toBeInTheDocument();
     });
 
-    const afterWrapper = container.querySelector('[data-node-id="scope:file-download-if"]')?.closest(".react-flow__node");
+    const afterWrapper = findGraphNodeWrapper(container, "scope:file-download-if");
     expect(afterWrapper).not.toBeNull();
     expect((afterWrapper as HTMLElement).style.transform).toBe(beforeTransform);
   });
@@ -2718,8 +3001,8 @@ describe("App", () => {
     const { container } = render(<App />);
 
     await waitForGraphNode(container, "method:upload-file");
-    expect(container.querySelector('[data-node-id="method:file-download"]')).toBeNull();
-    expect(container.querySelector('[data-node-id="flow-scope:delete-guard"]')).toBeNull();
+    expect(findGraphNodeElement(container, "method:file-download")).toBeNull();
+    expect(findGraphNodeElement(container, "flow-scope:delete-guard")).toBeNull();
 
     await user.click(screen.getByRole("tab", { name: "草稿" }));
 
@@ -2733,18 +3016,16 @@ describe("App", () => {
 
     await user.click(screen.getByRole("tab", { name: "问答" }));
     await user.click(screen.getByRole("tab", { name: "待确认变更" }));
-    await act(async () => {
-      dispatchBootstrapForTest({
-        sessionId: "session-1",
-        revision: 2,
-        state: {
-          ...structuredClone(window.linkGraphBootstrap!),
-          snapshotRevision: 2,
-          workbenchSectionPreferences: {
-            "audit.candidate-changes": true,
-          },
+    await applyBootstrapEnvelope({
+      sessionId: "session-1",
+      revision: 2,
+      state: {
+        ...structuredClone(window.linkGraphBootstrap!),
+        snapshotRevision: 2,
+        workbenchSectionPreferences: {
+          "audit.candidate-changes": true,
         },
-      });
+      },
     });
     await user.click(screen.getByRole("button", { name: "确认这条变更" }));
     await user.click(screen.getByRole("button", { name: "取消确认：补充失败补偿说明" }));
@@ -2757,18 +3038,16 @@ describe("App", () => {
 
     expect(screen.getByRole("tab", { name: "待确认变更" })).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "待确认变更" }));
-    await act(async () => {
-      dispatchBootstrapForTest({
-        sessionId: "session-1",
-        revision: 3,
-        state: {
-          ...structuredClone(window.linkGraphBootstrap!),
-          snapshotRevision: 3,
-          workbenchSectionPreferences: {
-            "audit.candidate-changes": true,
-          },
+    await applyBootstrapEnvelope({
+      sessionId: "session-1",
+      revision: 3,
+      state: {
+        ...structuredClone(window.linkGraphBootstrap!),
+        snapshotRevision: 3,
+        workbenchSectionPreferences: {
+          "audit.candidate-changes": true,
         },
-      });
+      },
     });
     expect(screen.getByRole("button", { name: "待确认变更：补充失败补偿说明" })).toBeInTheDocument();
   });
@@ -2778,7 +3057,7 @@ describe("App", () => {
     const { container } = render(<App />);
     await waitForGraphNode(container, "method:submit-order");
 
-    fireEvent.contextMenu(container.querySelector('[data-node-id="method:submit-order"]') as HTMLElement, {
+    fireEvent.contextMenu(requireGraphNodeElement(container, "method:submit-order"), {
       clientX: 260,
       clientY: 180,
     });

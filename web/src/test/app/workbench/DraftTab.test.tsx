@@ -47,7 +47,45 @@ function draftStateFixture(): DraftWorkbenchViewState {
 }
 
 describe("DraftTab", () => {
-  it("expands the core draft modules by default and keeps note list collapsed as a compact title row", () => {
+
+  it("keeps the tab root on the CSS grid contract instead of Uno display or overflow utilities", () => {
+    const { container } = render(
+      <DraftTab
+        state={draftStateFixture()}
+        onToggleCompare={vi.fn()}
+        onSelectEntry={vi.fn()}
+        onLocateChangeNode={vi.fn()}
+        onUnconfirmChange={vi.fn()}
+        onOpenNote={vi.fn()}
+        onLocateNoteNode={vi.fn()}
+        resolveNodeTitle={(nodeId) => nodeId}
+      />,
+    );
+
+    const tab = container.querySelector(".workbench-tab");
+    const body = container.querySelector(".workbench-tab-body");
+    expect(tab).not.toBeNull();
+    expect(tab).not.toHaveClass("block");
+    expect(tab).not.toHaveClass("overflow-auto");
+    expect(body).not.toBeNull();
+    expect(body).not.toHaveClass("block");
+    expect(body).not.toHaveClass("overflow-auto");
+  });
+
+  it("lets draft rows expand into the workbench scroll owner instead of clipping generated follow-up sections", () => {
+    expect(themeCss).toMatch(/\.draft-layout\s*\{[^}]*align-content:\s*start;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.workbench-draft-sidebar\s*\{[^}]*grid-template-rows:\s*auto\s+auto;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.workbench-draft-implementation-suggestion\s*\{[^}]*min-width:\s*0;[^}]*align-self:\s*start;/s);
+  });
+
+  it("keeps draft detail below the tab header instead of letting content be covered", () => {
+    expect(themeCss).toMatch(/\.draft-tab\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);/s);
+    expect(themeCss).toMatch(/\.draft-layout\s*\{[^}]*min-height:\s*0;[^}]*height:\s*100%;/s);
+    expect(themeCss).toMatch(/\.workbench-draft-implementation-suggestion\s*\{[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.generation-plan-panel\s*\{[^}]*overflow:\s*visible;/s);
+  });
+
+  it("expands the selected draft note list so note context is visible", () => {
     render(
       <DraftTab
         state={draftStateFixture()}
@@ -63,9 +101,9 @@ describe("DraftTab", () => {
 
     expect(screen.getByRole("button", { name: "收起草稿变更项" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "收起草稿说明详情" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "草稿说明项" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "收起草稿说明项" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "草稿验证" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "草稿条目：上传目录说明" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "草稿条目：上传目录说明" })).toBeInTheDocument();
     expect(screen.queryByText("草稿验证状态正在同步，当前先以草稿内容作为后续生成的唯一输入。")).not.toBeInTheDocument();
   });
 
@@ -73,7 +111,7 @@ describe("DraftTab", () => {
     const user = userEvent.setup();
     const { container } = render(
       <DraftTab
-        state={draftStateFixture()}
+        state={{ ...draftStateFixture(), selectedEntryId: "draft-change-1" }}
         onToggleCompare={vi.fn()}
         onSelectEntry={vi.fn()}
         onLocateChangeNode={vi.fn()}
@@ -90,7 +128,6 @@ describe("DraftTab", () => {
     expect(screen.queryByRole("button", { name: "草稿条目：上传目录说明" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "草稿说明项" }));
     expect(screen.getByRole("button", { name: "草稿条目：上传目录说明" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "说明项无需前后对比" })).toBeDisabled();
     expect(container.querySelector(".workbench-tab-body.draft-layout")).not.toBeNull();
   });
 
@@ -485,4 +522,28 @@ describe("DraftTab", () => {
       /\.workbench-draft-implementation-suggestion\s*\{[^}]*min-width:\s*0;[^}]*align-self:\s*start;/s,
     );
   });
+
+  it("auto-expands the draft note list when the selected draft entry is a note", () => {
+    render(
+      <DraftTab
+        state={draftStateFixture()}
+        onToggleCompare={vi.fn()}
+        onSelectEntry={vi.fn()}
+        onLocateChangeNode={vi.fn()}
+        onUnconfirmChange={vi.fn()}
+        onOpenNote={vi.fn()}
+        onLocateNoteNode={vi.fn()}
+        resolveNodeTitle={(nodeId) => nodeId}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "收起草稿说明项" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "草稿条目：上传目录说明" })).toBeInTheDocument();
+  });
+
+  it("wraps long draft state snippets so draft information is not visually lost", () => {
+    expect(themeCss).toMatch(/\.workbench-draft-single-state\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*overflow-wrap:\s*anywhere;[^}]*word-break:\s*break-word;/s);
+    expect(themeCss).toMatch(/\.workbench-before-after dd\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*overflow-wrap:\s*anywhere;/s);
+  });
+
 });

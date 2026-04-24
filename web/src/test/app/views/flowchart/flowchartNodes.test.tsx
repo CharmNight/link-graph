@@ -569,6 +569,33 @@ describe("buildFlowchartNodes", () => {
     });
   });
 
+  it("keeps flow-scope if nodes rendered as decisions even when stale metadata says process", () => {
+    const staleIfNode: LinkGraphNode = {
+      ...decisionNode(),
+      metadata: {
+        "flow.kind": "IF",
+        "flowchart.kind": "PROCESS",
+      },
+    };
+
+    const builtNode = buildFlowchartNodes({
+      nodes: [staleIfNode],
+      edges: [],
+      selectedNodeId: "scope:if",
+      explanationFocusNodeId: null,
+      draftChangedNodeIds: [],
+      nodeSizeRegistry: createNodeSizeRegistry(),
+    })[0];
+
+    expect(builtNode?.className ?? "").toContain("kind-decision");
+    expect(builtNode?.style).toMatchObject({
+      background: "transparent",
+      boxShadow: "none",
+      border: "none",
+      borderRadius: 0,
+    });
+  });
+
   it("switches flowchart edges to the shared routed edge renderer when ELK route data is present", () => {
     const routeEdge: LinkGraphEdge = {
       id: "edge:if->true",
@@ -1249,6 +1276,38 @@ describe("buildFlowchartNodes", () => {
 
     expect(builtNodes.find((node) => node.id === "method:anchor")?.className ?? "").toContain("is-explanation-focus");
     expect(builtNodes.find((node) => node.id === "action:guard")?.className ?? "").toContain("is-draft-change");
+  });
+
+  it("reuses flowchart node measurement reporters when only explanation focus changes", () => {
+    const registry = createNodeSizeRegistry();
+    const nodes = [
+      {
+        ...methodNode("method:anchor", "CommonController.fileDownload"),
+        metadata: { "flowchart.kind": "ENTRY" },
+      },
+      {
+        ...methodNode("action:guard", "validate()"),
+        type: "FLOW_ACTION" as const,
+        metadata: { "flowchart.kind": "PROCESS" },
+      },
+    ];
+
+    const initialNodes = buildFlowchartNodes({
+      nodes,
+      edges: [],
+      selectedNodeId: "method:anchor",
+      nodeSizeRegistry: registry,
+    });
+    const hoveredNodes = buildFlowchartNodes({
+      nodes,
+      edges: [],
+      selectedNodeId: "method:anchor",
+      explanationFocusNodeId: "action:guard",
+      nodeSizeRegistry: registry,
+    });
+
+    expect(initialNodes[0]?.data.onMeasure).toBe(hoveredNodes[0]?.data.onMeasure);
+    expect(initialNodes[1]?.data.onMeasure).toBe(hoveredNodes[1]?.data.onMeasure);
   });
 
   it("maps collapsed guard aliases back to the retained readable node", () => {

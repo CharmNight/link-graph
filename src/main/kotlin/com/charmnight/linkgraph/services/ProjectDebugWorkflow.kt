@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.services
 
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
+import com.charmnight.linkgraph.ui.GraphEditorStateMutationContext
 import com.charmnight.linkgraph.ui.OperationFeedbackLevel
 import com.intellij.openapi.diagnostic.Logger
 
@@ -9,7 +10,7 @@ internal class ProjectDebugWorkflow(
     private val debugGraphFactory: DebugGraphFactory,
     private val subjectGraphWorkflow: SubjectGraphWorkflow,
     private val invalidateAuditRequests: () -> Unit,
-    private val mutateEditorStateBatch: (GraphEditorStateSyncSession.() -> Unit) -> Unit,
+    private val mutateEditorStateBatch: (GraphEditorStateMutationContext.() -> Unit) -> Unit,
 ) {
     fun prepareDebugRequestedAnalysisDisplayModeIfPresent(envName: String) {
         val displayMode = resolveDebugRequestedAnalysisDisplayMode(envName) ?: return

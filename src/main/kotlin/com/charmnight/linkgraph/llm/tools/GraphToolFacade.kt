@@ -30,7 +30,7 @@ class GraphToolFacade {
         requestedNodeIds: List<String> = emptyList(),
     ): List<String> {
         return requestedNodeIds.ifEmpty {
-            snapshot.selectedNodeId?.let(::listOf).orEmpty()
+            snapshot.currentSceneState().selectedNodeId?.let(::listOf).orEmpty()
         }
     }
 
