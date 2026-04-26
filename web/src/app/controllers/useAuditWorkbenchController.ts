@@ -124,11 +124,10 @@ export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArg
             args.selectExplanationTargetNode(targetNodeId, { focusViewport: true });
           }
         }
-        args.setActiveWorkbenchTab("draft");
       },
       successFeedback: {
         level: "SUCCESS",
-        message: "已确认候选变更并写入草稿层。",
+        message: "已确认候选变更并写入草稿层，可切到草稿查看。",
       },
     });
   }

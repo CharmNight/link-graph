@@ -84,7 +84,7 @@ describe("resolveToolbarFeedback", () => {
     const result = resolveToolbarFeedback({
       operationFeedback: {
         level: "SUCCESS",
-        message: "已确认候选变更并写入草稿层。",
+        message: "已确认候选变更并写入草稿层，可切到草稿查看。",
       },
       requestStates: [
         { phase: "IDLE" },
@@ -94,7 +94,7 @@ describe("resolveToolbarFeedback", () => {
 
     expect(result).toEqual({
       level: "SUCCESS",
-      message: "已确认候选变更并写入草稿层。",
+      message: "已确认候选变更并写入草稿层，可切到草稿查看。",
       source: "operation-feedback",
     });
   });

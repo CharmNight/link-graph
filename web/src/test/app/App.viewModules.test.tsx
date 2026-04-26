@@ -519,6 +519,157 @@ describe("App view modules", () => {
     expect(screen.getByTestId("flowchart-node-titles")).toHaveTextContent("scope:file-download-if:if (delete == true)");
   });
 
+  it("falls back to the draft after-state title when flowchart patch normalization has not supplied a node payload", async () => {
+    const user = userEvent.setup();
+    window.linkGraphBootstrap = bootstrapState("FLOWCHART", {
+      flowchartView: {
+        visibleGraph: {
+          nodes: [
+            {
+              id: "method:file-download",
+              type: "METHOD",
+              title: "CommonController.fileDownload",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+              metadata: {
+                "flowchart.kind": "ENTRY",
+              },
+            },
+            {
+              id: "scope:file-download-if",
+              type: "FLOW_SCOPE",
+              title: "if (delete)",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+              metadata: {
+                "flowchart.kind": "DECISION",
+                "flow.ownerMethod": "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void",
+              },
+            },
+          ],
+          edges: [],
+        },
+        fullGraph: {
+          nodes: [
+            {
+              id: "method:file-download",
+              type: "METHOD",
+              title: "CommonController.fileDownload",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+              metadata: {
+                "flowchart.kind": "ENTRY",
+              },
+            },
+            {
+              id: "scope:file-download-if",
+              type: "FLOW_SCOPE",
+              title: "if (delete)",
+              inputs: [],
+              outputs: [],
+              certainty: "PROVEN",
+              bindingStatus: "BOUND",
+              metadata: {
+                "flowchart.kind": "DECISION",
+                "flow.ownerMethod": "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void",
+              },
+            },
+          ],
+          edges: [],
+        },
+        anchorNodeId: "method:file-download",
+        summary: { nodeCount: 2, branchCount: 1, exceptionPathCount: 0 },
+      },
+      workingGraph: {
+        nodes: [
+          {
+            id: "method:file-download",
+            type: "METHOD",
+            title: "CommonController.fileDownload",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+            },
+          },
+          {
+            id: "scope:file-download-if",
+            type: "FLOW_SCOPE",
+            title: "if (delete)",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            metadata: {
+              "flowchart.kind": "DECISION",
+              "flow.ownerMethod": "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void",
+            },
+          },
+        ],
+        edges: [],
+      },
+      draftWorkbenchState: {
+        draftChanges: [
+          {
+            entryId: "draft-change-delete-guard",
+            kind: "CHANGE",
+            title: "将删除条件从 if (delete) 改为仅在明确为 true 时删除",
+            sourceChangeId: "change-delete-guard",
+            targetStepIds: [],
+            targetNodeIds: ["scope:file-download-if"],
+            beforeState: "if (delete)",
+            afterState: "将条件更新为显式 true 判断语义，例如 Boolean.TRUE.equals(delete)。",
+            reason: "需要规避 null 边界风险。",
+            impactSummary: "只影响删除分支判断方式。",
+            claimType: "CODE_FACT",
+            evidence: [
+              {
+                id: "finding-delete-guard",
+                claim: "当前源码里直接能看到删除判断条件。",
+                evidenceLevel: "DIRECT_SOURCE",
+                references: [{ nodeId: "method:file-download" }, { nodeId: "scope:file-download-if" }],
+              },
+            ],
+            graphPatch: {
+              summary: "调整删除判断",
+              operations: [
+                {
+                  id: "patch-op-delete-guard",
+                  action: "UPDATE_NODE",
+                  elementKind: "NODE",
+                  elementId: "scope:file-download-if",
+                },
+              ],
+              addedNodeIds: [],
+              removedNodeIds: [],
+              addedEdgeIds: [],
+              removedEdgeIds: [],
+            },
+          },
+        ],
+        draftNotes: [],
+      },
+      selectedNodeId: "scope:file-download-if",
+    });
+
+    render(<App />);
+
+    await user.click(screen.getByRole("tab", { name: "草稿" }));
+
+    expect(screen.getByTestId("flowchart-node-titles")).toHaveTextContent("method:file-download:CommonController.fileDownload");
+    expect(screen.getByTestId("flowchart-node-titles")).toHaveTextContent(
+      "scope:file-download-if:将条件更新为显式 true 判断语义，例如 Boolean.TRUE.equals(delete)。",
+    );
+  });
+
   it.each([
     {
       mode: "FLOWCHART" as const,

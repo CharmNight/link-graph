@@ -34,6 +34,9 @@ export function resolveGraphPatchNodeIds(patch: GraphPatch | null | undefined): 
     if (operation.node?.id) {
       nodeIds.push(operation.node.id);
     }
+    if (operation.elementKind === "NODE" && operation.elementId) {
+      nodeIds.push(operation.elementId);
+    }
     if (operation.edge?.source) {
       nodeIds.push(operation.edge.source);
     }
@@ -143,6 +146,7 @@ function mergeFlowchartPresentationNode(
 function resolveFlowchartPatchNode(
   entry: DraftWorkbenchEntry,
   node: LinkGraphNode,
+  fallbackTargetNodeIds: Set<string>,
 ): LinkGraphNode | null {
   for (const operation of entry.graphPatch?.operations ?? []) {
     if (!operation.node) {
@@ -153,7 +157,22 @@ function resolveFlowchartPatchNode(
       return operation.node;
     }
   }
-  return null;
+  const afterStateTitle = entry.afterState?.trim();
+  const isFallbackTarget = fallbackTargetNodeIds.size === 0
+    || fallbackTargetNodeIds.has(node.id)
+    || projectedAliasNodeIds(node).some((aliasNodeId) => fallbackTargetNodeIds.has(aliasNodeId));
+  if (!afterStateTitle || afterStateTitle === node.title.trim() || !isFallbackTarget || node.type === "METHOD") {
+    return null;
+  }
+  return {
+    ...node,
+    title: afterStateTitle,
+    sourceTag: "DRAFT_AI",
+    metadata: {
+      ...(node.metadata ?? {}),
+      "draft.afterStateFallback": "true",
+    },
+  };
 }
 
 function flowchartPresentationNodeChanged(currentNode: LinkGraphNode, nextNode: LinkGraphNode): boolean {
@@ -192,6 +211,7 @@ export function overlayDraftEntryOntoFlowchartView(args: {
   if (scopedNodeIds.size === 0) {
     return view;
   }
+  const fallbackTargetNodeIds = new Set(resolveGraphPatchNodeIds(entry.graphPatch ?? null));
   const workingNodesById = new Map((workingGraph?.nodes ?? []).map((node) => [node.id, node]));
   let changed = false;
   const overlayNode = (node: LinkGraphNode): LinkGraphNode => {
@@ -200,7 +220,7 @@ export function overlayDraftEntryOntoFlowchartView(args: {
     if (!isTargetedVisibleNode) {
       return node;
     }
-    const patchNode = resolveFlowchartPatchNode(entry, node);
+    const patchNode = resolveFlowchartPatchNode(entry, node, fallbackTargetNodeIds);
     if (patchNode) {
       const mergedNode = mergeFlowchartPresentationNode(node, patchNode);
       if (flowchartPresentationNodeChanged(node, mergedNode)) {

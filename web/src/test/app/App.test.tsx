@@ -1588,7 +1588,7 @@ describe.sequential("App", () => {
     expect(screen.queryByText("未决")).not.toBeInTheDocument();
   });
 
-  it("opens the selected pending candidate in draft after confirming later candidates", async () => {
+  it("keeps qa open after confirming later candidates and selects the draft entry for manual review", async () => {
     const user = userEvent.setup();
     const firstCandidate = candidateChangeFixture();
     const secondCandidate: CandidateDraftChange = {
@@ -1637,6 +1637,8 @@ describe.sequential("App", () => {
     await user.click(screen.getByRole("button", { name: "确认这条变更" }));
 
     expect(window.linkGraphBridge?.confirmAuditCandidateChange).toHaveBeenCalledWith("change-path-guard");
+    expect(screen.getByRole("tab", { name: "问答" })).toHaveAttribute("aria-selected", "true");
+    await user.click(screen.getByRole("tab", { name: "草稿" }));
     expect(screen.getByRole("tab", { name: "草稿" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getAllByText("补充路径规范化校验").length).toBeGreaterThan(0);
     expect(screen.getAllByText("删除前先规范化并校验 filePath").length).toBeGreaterThan(0);
@@ -1907,7 +1909,7 @@ describe.sequential("App", () => {
     expect(screen.queryByRole("button", { name: "讲解历史：围绕 Step 1 提交订单请求 继续讲解" })).not.toBeInTheDocument();
   });
 
-  it("routes candidate confirmation through the IDE bridge and switches to the draft tab", async () => {
+  it("routes candidate confirmation through the IDE bridge without switching away from qa", async () => {
     const user = userEvent.setup();
     render(<App />);
 
@@ -1927,6 +1929,9 @@ describe.sequential("App", () => {
     await user.click(screen.getByRole("button", { name: "确认这条变更" }));
 
     expect(window.linkGraphBridge?.confirmAuditCandidateChange).toHaveBeenCalledWith("change-compensate");
+    expect(screen.getByRole("tab", { name: "问答" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("已确认候选变更并写入草稿层，可切到草稿查看。")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "草稿" }));
     expect(screen.getByRole("tab", { name: "草稿" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getAllByText("补充失败补偿说明")).toHaveLength(2);
     expect(screen.getByText("当前链路缺少失败补偿语义。")).toBeInTheDocument();
@@ -3018,6 +3023,9 @@ describe.sequential("App", () => {
       },
     });
     await user.click(screen.getByRole("button", { name: "确认这条变更" }));
+    expect(screen.getByRole("tab", { name: "问答" })).toHaveAttribute("aria-selected", "true");
+
+    await user.click(screen.getByRole("tab", { name: "草稿" }));
     await user.click(screen.getByRole("button", { name: "取消确认：补充失败补偿说明" }));
 
     expect(window.linkGraphBridge?.unconfirmAuditCandidateChange).toHaveBeenCalledWith("change-compensate");
