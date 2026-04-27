@@ -353,7 +353,7 @@ describe("App view modules", () => {
     expect(screen.getByTestId("fact-compare-node-count")).toHaveTextContent("0");
 
     await user.click(screen.getByRole("tab", { name: "草稿" }));
-    await user.click(screen.getByRole("button", { name: "一键对比前后" }));
+    await user.click(screen.getByRole("button", { name: "查看流程变化" }));
 
     expect(screen.getByTestId("fact-compare-title")).toHaveTextContent("补充失败补偿说明");
     expect(screen.getByTestId("fact-compare-node-count")).toHaveTextContent("1");
@@ -954,7 +954,7 @@ describe("App view modules", () => {
     expect(screen.getByTestId(countTestId)).toHaveTextContent("0");
 
     await user.click(screen.getByRole("tab", { name: "草稿" }));
-    await user.click(screen.getByRole("button", { name: "一键对比前后" }));
+    await user.click(screen.getByRole("button", { name: "查看流程变化" }));
 
     expect(screen.getByTestId(titleTestId)).toHaveTextContent("补充失败补偿说明");
     expect(screen.getByTestId(countTestId)).toHaveTextContent("1");
@@ -1047,7 +1047,7 @@ describe("App view modules", () => {
     render(<App />);
 
     await user.click(screen.getByRole("tab", { name: "草稿" }));
-    await user.click(screen.getByRole("button", { name: "一键对比前后" }));
+    await user.click(screen.getByRole("button", { name: "查看流程变化" }));
 
     expect(screen.getByTestId("fact-compare-title")).toBeEmptyDOMElement();
     expect(screen.getByTestId("fact-compare-node-count")).toHaveTextContent("0");

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { resolveEffectiveRequestState, AsyncRequestBanner } from "../components/AsyncRequestBanner";
 import { traceLinkGraph } from "../debug";
 import { deriveConversationInvestigationThreads, deriveInvestigationThreads } from "../investigationThreads";
@@ -116,6 +116,7 @@ export function AuditTab({
   sectionPreferences,
   onSectionPreferenceChange = () => undefined,
 }: AuditTabProps) {
+  const tabRef = useRef<HTMLElement | null>(null);
   const messages = state.result?.auditSession?.messages ?? [];
   const changes = (state.result?.candidateChanges ?? []).filter((change) => change.status === "PENDING_CONFIRMATION");
   const threads = deriveInvestigationThreads(state.result).filter(
@@ -201,6 +202,7 @@ export function AuditTab({
       activeSectionId,
     });
     syncAuditSectionPreferences(sectionId);
+    resetSharedWorkbenchScroll();
   }
 
   function handleCollapseActivePage() {
@@ -209,11 +211,19 @@ export function AuditTab({
       hasChanges,
     });
     syncAuditSectionPreferences(null);
+    resetSharedWorkbenchScroll();
+  }
+
+  function resetSharedWorkbenchScroll() {
+    const scrollRoot = tabRef.current?.closest(".workbench-panel-body") as HTMLElement | null | undefined;
+    if (scrollRoot) {
+      scrollRoot.scrollTop = 0;
+    }
   }
 
   return (
-    <section className="workbench-tab audit-tab m-scrollbar">
-      <div className="workbench-tab-head audit-tab-head mb-10px">
+    <section ref={tabRef} className="workbench-tab audit-tab">
+      <div className="workbench-tab-head audit-tab-head">
         <div className="audit-tab-title">
           <p className="eyebrow">问答</p>
           <h2>链路问答</h2>
@@ -221,7 +231,7 @@ export function AuditTab({
         <span className="workbench-session-label audit-scope-label" title={scopeLabel}>{scopeLabel}</span>
       </div>
 
-      <div className="audit-tab-nav mb-10px" role="tablist" aria-label="问答页面切换">
+      <div className="audit-tab-nav" role="tablist" aria-label="问答页面切换">
         {visibleSectionIds.map((sectionId) => (
           <button
             key={sectionId}
@@ -234,14 +244,14 @@ export function AuditTab({
             className={activeSectionId === sectionId ? "audit-tab-button active" : "audit-tab-button"}
             onClick={() => handleTabSelect(sectionId)}
           >
-              <span>{auditSectionTitle(sectionId)}</span>
-              {sectionId === "audit.candidate-changes" ? <span className="badge">{changes.length}</span> : null}
-              {sectionId === "audit.investigation-threads" ? <span className="badge">{threads.length}</span> : null}
-            </button>
-          ))}
+            <span>{auditSectionTitle(sectionId)}</span>
+            {sectionId === "audit.candidate-changes" ? <span className="badge">{changes.length}</span> : null}
+            {sectionId === "audit.investigation-threads" ? <span className="badge">{threads.length}</span> : null}
+          </button>
+        ))}
       </div>
 
-      <div className="audit-tab-panel">
+      <div className="audit-tab-panel workbench-page-flow">
         {activeSectionId ? (
           <AuditPagePanel
             activeSectionId={activeSectionId}
@@ -344,7 +354,7 @@ function AuditPagePanel({
       id={`audit-page-panel-${activeSectionId}`}
       role="tabpanel"
       aria-labelledby={`audit-page-tab-${activeSectionId}`}
-      className="audit-page-panel"
+      className="audit-page-panel workbench-card-flow"
     >
       <div className="audit-page-head">
         <div className="audit-page-title">
@@ -467,7 +477,7 @@ function AuditPagePanel({
       ) : null}
 
       {activeSectionId === "audit.composer" ? (
-        <div className="audit-page-body">
+        <div className="audit-page-body composer-section-body">
           <div
             className="workbench-chat-input p-0 border-0"
             onPointerDownCapture={onStopComposerBoundaryPropagation}
@@ -492,7 +502,7 @@ function AuditPagePanel({
       ) : null}
 
       {activeSectionId === "audit.candidate-changes" ? (
-        <div className="audit-page-body">
+        <div className="audit-page-body candidate-changes-section-body">
           <CandidateChangeList
             changes={changes}
             selectedChangeId={state.selectedChangeId ?? null}

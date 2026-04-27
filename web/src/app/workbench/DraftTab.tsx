@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type {
   DraftImplementationSuggestionState,
+  DraftCompareProjection,
   DraftWorkbenchEntry,
   DraftWorkbenchViewState,
   WorkbenchSectionId,
@@ -10,11 +11,13 @@ import { DraftChangePanel } from "./DraftChangePanel";
 import { DraftDetailPanel } from "./DraftDetailPanel";
 import { DraftNotePanel } from "./DraftNotePanel";
 import { WorkbenchSection } from "./WorkbenchSection";
+import { buildDraftFlowChangeSummary } from "./draftFlowChangeSummary";
 import { resolveEffectiveWorkbenchSectionPreferences } from "./workbenchSections";
 
 interface DraftTabProps {
   state: DraftWorkbenchViewState;
   implementationSuggestion?: DraftImplementationSuggestionState | null;
+  draftCompareProjection?: DraftCompareProjection | null;
   draftVersion?: number | null;
   codeDiffStatus?: "MISSING" | "RUNNING" | "FRESH" | "STALE" | "FAILED";
   codeDiffDraftVersion?: number | null;
@@ -32,6 +35,7 @@ interface DraftTabProps {
 export function DraftTab({
   state,
   implementationSuggestion = null,
+  draftCompareProjection = null,
   draftVersion = null,
   codeDiffStatus = "MISSING",
   codeDiffDraftVersion = null,
@@ -57,6 +61,9 @@ export function DraftTab({
     ?? state.draftState.draftNotes[0]
     ?? null;
   const selectedEntryHasComparableDraftState = hasComparableDraftState(selectedEntry);
+  const selectedFlowChangeSummary = draftCompareProjection?.entryId === selectedEntry?.entryId
+    ? buildDraftFlowChangeSummary(draftCompareProjection)
+    : null;
   const selectedEntryIsNote = selectedEntry?.kind === "NOTE";
   const compareAvailable = selectedEntry?.kind === "CHANGE";
   const effectiveSectionPreferences = resolveEffectiveWorkbenchSectionPreferences({
@@ -134,7 +141,7 @@ export function DraftTab({
   }
 
   return (
-    <section className="workbench-tab draft-tab m-scrollbar">
+    <section className="workbench-tab draft-tab">
       <div className="workbench-tab-head mb10px">
         <div>
           <p className="eyebrow">草稿</p>
@@ -153,7 +160,7 @@ export function DraftTab({
           </button>
         </div>
       </div>
-      <div ref={layoutRef} className="workbench-tab-body draft-layout">
+      <div ref={layoutRef} className="workbench-tab-body workbench-page-flow draft-layout">
         <div className="workbench-draft-sidebar">
           <WorkbenchSection
             title="草稿变更项"
@@ -164,6 +171,8 @@ export function DraftTab({
             <DraftChangePanel
               changes={state.draftState.draftChanges}
               selectedEntryId={selectedEntry?.entryId ?? null}
+              compareMode={state.compareMode}
+              selectedFlowChangeSummary={selectedFlowChangeSummary}
               onSelectEntry={onSelectEntry}
               showTitle={false}
             />
@@ -192,6 +201,7 @@ export function DraftTab({
             <DraftDetailPanel
               entry={selectedEntry}
               compareMode={state.compareMode}
+              flowChangeSummary={selectedFlowChangeSummary}
               onLocateChangeNode={onLocateChangeNode}
               onUnconfirmChange={onUnconfirmChange}
               onOpenNote={onOpenNote}
@@ -229,8 +239,8 @@ function resolveDraftIntroCopy(
 ): string {
   if (entry?.kind === "CHANGE" && hasComparableState) {
     return compareMode === "after"
-      ? "当前条目已生成修改后状态，可切到前后对比查看完整变更。"
-      : "当前条目正在展示前后对比，可直接核对修改前后的差异。";
+      ? "当前条目已生成修改后流程，可切到流程变化查看节点与连线差异。"
+      : "当前条目正在展示流程变化，可直接核对节点与连线的新增、删除和修改。";
   }
   if (entry?.kind === "CHANGE") {
     return compareMode === "after"
@@ -249,7 +259,7 @@ function resolveCompareModeLabel(
     return "当前显示：说明项";
   }
   if (hasComparableState) {
-    return compareMode === "after" ? "当前显示：修改后" : "当前显示：前后对比";
+    return compareMode === "after" ? "当前显示：修改后流程" : "当前显示：流程变化";
   }
   return compareMode === "after" ? "当前显示：变更意图" : "当前显示：链路对比";
 }
@@ -263,7 +273,7 @@ function resolveCompareActionLabel(
     return "说明项无需前后对比";
   }
   if (hasComparableState) {
-    return compareMode === "after" ? "一键对比前后" : "切回修改后";
+    return compareMode === "after" ? "查看流程变化" : "切回修改后流程";
   }
   return compareMode === "after" ? "切换链路对比" : "切回变更意图";
 }

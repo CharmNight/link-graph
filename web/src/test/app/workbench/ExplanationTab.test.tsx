@@ -255,15 +255,21 @@ describe("ExplanationTab", () => {
     expect(onLocateStepNode).toHaveBeenCalledWith("step-read-upload-dir");
   });
 
-  it("fills the explanation reader height and lets child panes own scrolling", () => {
-    expect(themeCss).toMatch(/\.workbench-tab\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
-    expect(themeCss).toMatch(/\.explanation-layout\s*\{[^}]*grid-template-columns:\s*320px\s+minmax\(0,\s*1fr\);[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\);[^}]*align-items:\s*stretch;[^}]*align-content:\s*stretch;[^}]*height:\s*100%;/s);
-    expect(themeCss).toMatch(/\.explanation-tab\s*\{[^}]*overflow-y:\s*hidden;/s);
+  it("lets the workbench tab own explanation scrolling instead of nested cards", () => {
+    expect(themeCss).toMatch(/\.workbench-shell\s*\{[^}]*overflow:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.workbench-panel-body\s*\{[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.workbench-tab\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*0;[^}]*grid-template-rows:\s*auto\s+auto;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).not.toMatch(/\.workbench-tab\s*\{[^}]*overflow-y:\s*auto;/s);
+    expect(themeCss).toMatch(/\.explanation-layout\s*\{[^}]*grid-template-columns:\s*320px\s+minmax\(0,\s*1fr\);[^}]*grid-template-rows:\s*auto;[^}]*align-items:\s*start;[^}]*align-content:\s*start;/s);
+    expect(themeCss).not.toMatch(/\.explanation-layout\s*\{[^}]*height:\s*100%;/s);
+    expect(themeCss).not.toMatch(/\.explanation-tab\s*\{[^}]*overflow-y:/s);
+    expect(themeCss).toMatch(/\.explanation-layout\s+\.workbench-section-card-body\s*\{[^}]*grid-template-rows:\s*auto;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.explanation-layout\s+\.workbench-section-card-body\s*>\s*\.workbench-step-list,\s*\.explanation-layout\s+\.workbench-section-card-body\s*>\s*\.workbench-step-detail\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*0;[^}]*overflow:\s*visible;/s);
   });
 
   it("uses a wider fixed step-list column and prevents horizontal scrolling in explanation panes", () => {
     expect(themeCss).toMatch(/\.explanation-layout\s*\{[^}]*grid-template-columns:\s*320px\s+minmax\(0,\s*1fr\);/s);
-    expect(themeCss).toMatch(/\.workbench-step-list,\s*\.workbench-step-detail[^{]*\{[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.workbench-step-list,\s*\.workbench-step-detail[^{]*\{[^}]*overflow:\s*visible;/s);
     expect(themeCss).toMatch(/\.workbench-step-item\s*\{[^}]*overflow:\s*hidden;/s);
     expect(themeCss).toMatch(/\.workbench-step-snippet,\s*\.workbench-step-meta,\s*\.workbench-step-ref\s*\{[^}]*overflow-wrap:\s*anywhere;[^}]*word-break:\s*break-word;/s);
   });

@@ -359,7 +359,7 @@ export function AuditConversation({
               </p>
             </>
           ) : (
-            <p>
+            <p className="workbench-chat-empty-message">
               <strong>当前还没有问答消息。</strong>
               可先输入你的问题，或者围绕当前范围继续追问。
             </p>

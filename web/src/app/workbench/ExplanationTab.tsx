@@ -113,7 +113,7 @@ export function ExplanationTab({
   }
 
   return (
-    <section className="workbench-tab explanation-tab m-scrollbar">
+    <section className="workbench-tab explanation-tab">
       <div className="workbench-tab-head">
         <div className="workbench-explanation-head">
           <p className="eyebrow">讲解</p>
@@ -161,7 +161,7 @@ export function ExplanationTab({
           ))}
         </div>
       </div>
-      <div ref={layoutRef} className="workbench-tab-body explanation-layout">
+      <div ref={layoutRef} className="workbench-tab-body workbench-page-flow explanation-layout">
         <WorkbenchSection
           sectionId="explanation.step-list"
           title="步骤列表"

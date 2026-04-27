@@ -429,7 +429,7 @@ describe("CodeDraftPanel", () => {
     expect(events).toEqual(["artifact:artifact:draft-1"]);
   });
 
-  it("lets the code diff panel own scrolling so the header and file detail share one outer scroll range", () => {
+  it("uses the shared workbench tab scroll instead of a private code-panel scroll", () => {
     const { container } = render(
       <CodeDraftPanel
         drafts={[
@@ -459,10 +459,15 @@ describe("CodeDraftPanel", () => {
       />,
     );
 
-    expect(container.querySelector(".code-draft-panel > .side-panel-scroll-body")).not.toBeNull();
+    expect(container.querySelector(".workbench-tab.code-draft-panel > .side-panel-scroll-body.workbench-page-flow")).not.toBeNull();
     expect(themeCss).toMatch(
-      /\.code-draft-panel\s*\{[^}]*display:\s*grid;[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s,
+      /\.workbench-shell\s*\{[^}]*overflow:\s*hidden;/s,
     );
+    expect(themeCss).toMatch(/\.workbench-panel-body\s*\{[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.workbench-tab\s*\{[^}]*height:\s*auto;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).not.toMatch(/\.workbench-tab\s*\{[^}]*overflow-y:\s*auto;/s);
+    expect(themeCss).toMatch(/\.code-draft-panel\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+auto;[^}]*align-content:\s*start;/s);
+    expect(themeCss).not.toMatch(/\.code-draft-panel\s*\{[^}]*overflow-y:\s*auto;/s);
     expect(themeCss).toMatch(
       /\.code-draft-panel\s*>\s*\.side-panel-scroll-body\s*\{[^}]*min-height:\s*auto;[^}]*overflow:\s*visible;/s,
     );
@@ -498,13 +503,16 @@ describe("CodeDraftPanel", () => {
     );
   });
 
-  it("lets the outer draft scroll container own full-content scrolling instead of nesting prompt-preview scrollbars", () => {
-    expect(themeCss).toMatch(/\.code-draft-panel\s*\{[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
+  it("lets the shared workbench tab own full-content scrolling instead of nesting prompt-preview scrollbars", () => {
+    expect(themeCss).toMatch(/\.workbench-shell\s*\{[^}]*overflow:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.workbench-panel-body\s*\{[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
+    expect(themeCss).not.toMatch(/\.workbench-tab\s*\{[^}]*overflow-y:\s*auto;/s);
+    expect(themeCss).not.toMatch(/\.code-draft-panel\s*\{[^}]*overflow-y:\s*auto;/s);
     expect(themeCss).toMatch(
       /\.code-draft-panel\s*>\s*\.side-panel-scroll-body\s*\{[^}]*min-height:\s*auto;[^}]*overflow:\s*visible;/s,
     );
     expect(themeCss).toMatch(
-      /\.code-draft-panel\s+\.prompt-preview\s*\{[^}]*min-height:\s*auto;[^}]*overflow:\s*visible;/s,
+      /\.generation-plan-panel\s+\.prompt-preview\s*\{[^}]*overflow-x:\s*hidden;[^}]*\}[\s\S]*\.code-draft-panel\s+\.prompt-preview,\s*\.code-draft-panel\s+\.generation-plan-panel\s+\.prompt-preview,\s*\.code-draft-panel\s+\.code-diff-payload\s*\{[^}]*min-height:\s*auto;[^}]*overflow:\s*visible;/s,
     );
   });
 

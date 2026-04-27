@@ -1940,7 +1940,7 @@ describe.sequential("App", () => {
     expect(screen.getByText("已授权 1 个精确写回范围。")).toBeInTheDocument();
     expect(screen.getByText("/project/src/main/java/com/example/OrderController.java:8-16")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "一键对比前后" }));
+    await user.click(screen.getByRole("button", { name: "查看流程变化" }));
 
     expect(screen.getByText("修改前")).toBeInTheDocument();
     expect(screen.getByText("当前没有失败补偿说明")).toBeInTheDocument();

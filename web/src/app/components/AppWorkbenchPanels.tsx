@@ -1,4 +1,4 @@
-import type { ComponentProps } from "react";
+import { useEffect, useRef, type ComponentProps } from "react";
 import { CodeDraftPanel } from "./CodeDraftPanel";
 import { AuditTab } from "../workbench/AuditTab";
 import { DraftTab } from "../workbench/DraftTab";
@@ -30,6 +30,7 @@ export function AppWorkbenchPanels({
   draftTabProps,
   explanationTabProps,
 }: AppWorkbenchPanelsProps) {
+  const panelBodyRef = useRef<HTMLDivElement | null>(null);
   let panel = <ExplanationTab {...explanationTabProps} />;
   if (activeWorkbenchTab === "code") {
     panel = <CodeDraftPanel {...codePanelProps} />;
@@ -38,6 +39,12 @@ export function AppWorkbenchPanels({
   } else if (activeWorkbenchTab === "draft") {
     panel = <DraftTab {...draftTabProps} />;
   }
+
+  useEffect(() => {
+    if (panelBodyRef.current) {
+      panelBodyRef.current.scrollTop = 0;
+    }
+  }, [activeWorkbenchTab]);
 
   return (
     <section className="workbench-shell">
@@ -58,10 +65,11 @@ export function AppWorkbenchPanels({
         ))}
       </div>
       <div
+        ref={panelBodyRef}
         id={`workbench-panel-${activeWorkbenchTab}`}
         role="tabpanel"
         aria-labelledby={`workbench-tab-${activeWorkbenchTab}`}
-        className="workbench-panel-body"
+        className="workbench-panel-body m-scrollbar"
       >
         {panel}
       </div>

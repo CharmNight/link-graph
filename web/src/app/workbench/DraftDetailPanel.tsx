@@ -1,8 +1,10 @@
 import type { DraftWorkbenchEntry } from "../types";
+import { draftFlowChangePillClassName, draftFlowChangePills, type DraftFlowChangeSummary } from "./draftFlowChangeSummary";
 
 interface DraftDetailPanelProps {
   entry: DraftWorkbenchEntry | null;
   compareMode: "after" | "compare";
+  flowChangeSummary?: DraftFlowChangeSummary | null;
   resolveNodeTitle: (nodeId: string) => string;
   onLocateChangeNode: (entryId: string) => void;
   onUnconfirmChange: (entryId: string) => void;
@@ -14,6 +16,7 @@ interface DraftDetailPanelProps {
 export function DraftDetailPanel({
   entry,
   compareMode,
+  flowChangeSummary = null,
   resolveNodeTitle,
   onLocateChangeNode,
   onUnconfirmChange,
@@ -38,6 +41,20 @@ export function DraftDetailPanel({
   const afterState = normalizeOptionalText(entry.afterState);
   const hasComparableState = beforeState != null && afterState != null;
   const hasSingleState = afterState != null || beforeState != null;
+  const flowChangePills = compareMode === "compare" ? draftFlowChangePills(flowChangeSummary) : [];
+  const flowChangeSection = isChange && compareMode === "compare" && flowChangeSummary ? (
+    <section className="workbench-step-section workbench-flow-change-summary">
+      <h4>流程变化摘要</h4>
+      <div className="canvas-reading-flags">
+        <span className="canvas-reading-flag is-info">
+          命中节点 {flowChangeSummary.visibleNodeCount} / 范围节点 {flowChangeSummary.scopeNodeCount}
+        </span>
+        {flowChangePills.map((pill) => (
+          <span key={pill.label} className={draftFlowChangePillClassName(pill)}>{pill.label}</span>
+        ))}
+      </div>
+    </section>
+  ) : null;
   const changeStateSection = isChange ? (
     hasComparableState && compareMode === "compare" ? (
       <dl className="workbench-before-after">
@@ -80,6 +97,8 @@ export function DraftDetailPanel({
           <strong>{entry.title}</strong>
           <span className="badge">{isChange ? "已确认" : "讲解备注"}</span>
         </div>
+
+        {flowChangeSection}
 
         {changeStateSection}
 

@@ -197,6 +197,8 @@ describe("AuditTab", () => {
 
     expect(screen.getByText("当前还没有问答消息。")).toBeInTheDocument();
     expect(screen.getByText("可先输入你的问题，或者围绕当前范围继续追问。")).toBeInTheDocument();
+    expect(screen.getByText("当前还没有问答消息。").closest(".workbench-chat-empty")).not.toBeNull();
+    expect(screen.getByText("当前还没有问答消息。").parentElement).toHaveClass("workbench-chat-empty-message");
     expect(screen.queryByRole("tab", { name: "待确认变更" })).not.toBeInTheDocument();
   });
 
@@ -247,6 +249,34 @@ describe("AuditTab", () => {
     expect(screen.getByRole("heading", { level: 3, name: "提问" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "问答输入框" })).toBeInTheDocument();
     expect(screen.queryByText("这里是不是有问题？")).not.toBeInTheDocument();
+  });
+
+  it("resets the shared right-side scroll when switching audit pages", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <section className="workbench-shell">
+        <div className="workbench-panel-body">
+          <AuditTab
+            state={auditStateFixture()}
+            onQuestionDraftChange={vi.fn()}
+            onSubmitQuestion={vi.fn()}
+            onSelectChange={vi.fn()}
+            onConfirmChange={vi.fn()}
+            onSelectThread={vi.fn()}
+            onInvestigateThread={vi.fn()}
+          />
+        </div>
+      </section>,
+    );
+    const shell = container.querySelector(".workbench-shell") as HTMLElement;
+    const panelBody = container.querySelector(".workbench-panel-body") as HTMLElement;
+    shell.scrollTop = 220;
+    panelBody.scrollTop = 220;
+
+    await user.click(screen.getByRole("tab", { name: "请求" }));
+
+    expect(panelBody.scrollTop).toBe(0);
+    expect(shell.scrollTop).toBe(220);
   });
 
   it("auto-opens the request status page while a remote audit request is running", () => {
@@ -853,22 +883,59 @@ describe("AuditTab", () => {
     expect(screen.queryByText("风险提醒")).not.toBeInTheDocument();
   });
 
+  it("keeps the audit page switcher pinned without covering the whole audit page", () => {
+    const { container } = render(
+      <AuditTab
+        state={auditStateFixture()}
+        onQuestionDraftChange={vi.fn()}
+        onSubmitQuestion={vi.fn()}
+        onSelectChange={vi.fn()}
+        onConfirmChange={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector(".audit-tab > .audit-tab-head + .audit-tab-nav")).not.toBeNull();
+    expect(container.querySelector(".audit-tab-sticky-head")).toBeNull();
+    expect(themeCss).toMatch(/\.audit-tab\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+auto;[^}]*padding:\s*16px;[^}]*align-content:\s*start;/s);
+    expect(themeCss).toMatch(/\.audit-tab-nav\s*\{[^}]*position:\s*sticky;[^}]*top:\s*0;[^}]*z-index:\s*2;[^}]*display:\s*grid;/s);
+    expect(themeCss).not.toMatch(/\.audit-tab-sticky-head\s*\{/s);
+  });
+
   it("keeps tall audit page cards inside a scrollable page body instead of clipping lower actions", () => {
-    expect(themeCss).toMatch(/\.audit-tab\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+minmax\(0,\s*1fr\);[^}]*align-content:\s*stretch;/s);
-    expect(themeCss).toMatch(/\.audit-tab-panel\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*display:\s*grid;[^}]*overflow:\s*hidden;/s);
-    expect(themeCss).toMatch(/\.audit-page-panel\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);[^}]*overflow:\s*hidden;/s);
-    expect(themeCss).toMatch(/\.audit-page-body\s*\{[^}]*grid-template-rows:\s*auto;[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;[^}]*scrollbar-gutter:\s*stable;/s);
-    expect(themeCss).toMatch(/\.audit-page-body\s*>\s*\.workbench-audit-thread,\s*\.audit-page-body\s*>\s*\.workbench-candidate-list\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*100%;/s);
+    expect(themeCss).toMatch(/\.audit-tab\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+auto;[^}]*align-content:\s*start;/s);
+    expect(themeCss).toMatch(/\.audit-tab-nav\s*\{[^}]*position:\s*sticky;[^}]*top:\s*0;/s);
+    expect(themeCss).toMatch(/\.audit-tab-panel\s*\{[^}]*min-height:\s*0;[^}]*display:\s*grid;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).not.toMatch(/\.audit-tab-panel\s*\{[^}]*height:\s*100%;/s);
+    expect(themeCss).toMatch(/\.audit-page-panel\s*\{[^}]*min-height:\s*0;[^}]*grid-template-rows:\s*auto\s+auto;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).not.toMatch(/\.audit-page-panel\s*\{[^}]*height:\s*100%;/s);
+    expect(themeCss).toMatch(/\.audit-page-body\s*\{[^}]*grid-template-rows:\s*auto;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.audit-page-body\s*>\s*\.workbench-audit-thread,\s*\.audit-page-body\s*>\s*\.workbench-candidate-list\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*auto;/s);
+    expect(themeCss).toMatch(/\.workbench-chat-empty\s*\{[^}]*min-height:\s*0;/s);
+    expect(themeCss).toMatch(/\.request-status-section-body\s*\{[^}]*overflow:\s*visible;/s);
     expect(themeCss).toMatch(/\.request-status-section-body\s*>\s*\*\s*\{[^}]*flex:\s*0\s+0\s+auto;/s);
     expect(themeCss).toMatch(/\.workbench-chat-stream\s*\{[^}]*overflow:\s*visible;/s);
     expect(themeCss).toMatch(/\.workbench-chat-message\s*\{[^}]*overflow:\s*visible;/s);
     expect(themeCss).toMatch(/\.audit-rich-scroll-shell\s*\{[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/\.workbench-candidate-card\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*100%;/s);
-    expect(themeCss).toMatch(/\.request-state-banner-details\s*\{[^}]*overflow:\s*auto;/s);
+    expect(themeCss).toMatch(/\.workbench-candidate-card\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*auto;/s);
+    expect(themeCss).toMatch(/\.request-state-banner-details\s*\{[^}]*overflow:\s*visible;/s);
+  });
+
+  it("lets pending-change and risk detail pages use the outer workbench scroll instead of nested panes", () => {
+    expect(themeCss).toMatch(/\.audit-page-body\.candidate-changes-section-body\s*\{[^}]*align-content:\s*start;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.candidate-changes-section-body\s*>\s*\.workbench-candidate-list\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*auto;/s);
+    expect(themeCss).toMatch(/\.candidate-changes-section-body\s+\.workbench-candidate-content\s*\{[^}]*height:\s*auto;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.candidate-changes-section-body\s+\.workbench-candidate-detail-pane\s*\{[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.workbench-candidate-selector\s*\{[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.workbench-candidate-card\s*\{[^}]*min-height:\s*auto;/s);
+    expect(themeCss).not.toMatch(/\.candidate-changes-section-body\s+\.workbench-candidate-content\s*\{[^}]*minmax\(0,\s*1fr\)/s);
   });
 
   it("keeps the audit composer anchored instead of stretching the form out of view on short screens", () => {
-    expect(themeCss).toMatch(/\.audit-page-body\s*>\s*\.workbench-chat-input\s*\{[^}]*width:\s*100%;[^}]*min-height:\s*0;[^}]*height:\s*100%;/s);
+    expect(themeCss).toMatch(/\.audit-page-body\.composer-section-body\s*\{[^}]*align-content:\s*start;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).not.toMatch(/\.audit-page-body\.composer-section-body\s*\{[^}]*overflow:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.audit-page-body\.composer-section-body\s*>\s*\.workbench-chat-input\s*\{[^}]*height:\s*auto;/s);
     expect(themeCss).toMatch(/\.workbench-chat-input\s*\{[^}]*display:\s*grid;[^}]*align-content:\s*start;[^}]*min-height:\s*0;/s);
   });
 

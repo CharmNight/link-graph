@@ -210,7 +210,7 @@ export function CodeDraftPanel({
   }, [drafts]);
 
   return (
-    <section className="side-panel code-draft-panel">
+    <section className="workbench-tab code-draft-panel">
       <div className="code-stage-analysis-stack">
         <DraftValidationPanel
           validationState={draftValidationState}
@@ -252,7 +252,7 @@ export function CodeDraftPanel({
         ) : null}
       </div>
 
-      <div className="side-panel-scroll-body m-scrollbar">
+      <div className="side-panel-scroll-body workbench-page-flow">
         {warnings.length > 0 ? (
           <div className="warning-list">
             {warnings.map((warning) => (

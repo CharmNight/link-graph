@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { DraftTab } from "../../../app/workbench/DraftTab";
-import type { DraftWorkbenchViewState } from "../../../app/types";
+import type { DraftCompareProjection, DraftWorkbenchViewState } from "../../../app/types";
 import themeCss from "../../../app/theme.css?raw";
 
 function draftStateFixture(): DraftWorkbenchViewState {
@@ -46,6 +46,30 @@ function draftStateFixture(): DraftWorkbenchViewState {
   };
 }
 
+function draftCompareProjectionFixture(): DraftCompareProjection {
+  return {
+    entryId: "draft-change-1",
+    entryTitle: "修改上传条件判断",
+    compareGraph: { nodes: [], edges: [] },
+    nodeStatuses: {
+      "flow-action:condition": "MODIFIED",
+      "flow-action:guard": "ADDED",
+      "ghost:draft-change-1:flow-action:old-branch": "REMOVED",
+    },
+    edgeStatuses: {
+      "edge-condition-true": "MODIFIED",
+      "edge-new-guard": "ADDED",
+    },
+    summary: {
+      scopeNodeCount: 3,
+      visibleNodeCount: 3,
+      visibleEdgeCount: 2,
+      hiddenNodeCount: 1,
+      hiddenEdgeCount: 0,
+    },
+  };
+}
+
 describe("DraftTab", () => {
 
   it("keeps the tab root on the CSS grid contract instead of Uno display or overflow utilities", () => {
@@ -80,7 +104,7 @@ describe("DraftTab", () => {
   });
 
   it("keeps draft detail below the tab header instead of letting content be covered", () => {
-    expect(themeCss).toMatch(/\.draft-tab\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);/s);
+    expect(themeCss).toMatch(/\.draft-tab\s*\{[^}]*grid-template-rows:\s*auto\s+auto;/s);
     expect(themeCss).toMatch(/\.draft-layout\s*\{[^}]*min-height:\s*0;[^}]*align-content:\s*start;[^}]*overflow:\s*visible;/s);
     expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.draft-layout\s*\{[\s\S]*grid-template-columns:\s*1fr;[\s\S]*grid-template-rows:\s*auto\s+auto;[\s\S]*align-items:\s*stretch;/);
     expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.workbench-draft-sidebar,\s*\.workbench-draft-main\s*\{[\s\S]*min-height:\s*auto;/);
@@ -293,6 +317,42 @@ describe("DraftTab", () => {
     expect(screen.getByText("OrderController.submit(java.lang.String)")).toBeInTheDocument();
   });
 
+  it("turns the draft pane into a flow-change navigator in compare mode", () => {
+    render(
+      <DraftTab
+        state={{
+          ...draftStateFixture(),
+          compareMode: "compare",
+          selectedEntryId: "draft-change-1",
+        }}
+        draftCompareProjection={draftCompareProjectionFixture()}
+        onToggleCompare={vi.fn()}
+        onSelectEntry={vi.fn()}
+        onLocateChangeNode={vi.fn()}
+        onUnconfirmChange={vi.fn()}
+        onOpenNote={vi.fn()}
+        onLocateNoteNode={vi.fn()}
+        resolveNodeTitle={() => "OrderController.submit"}
+      />,
+    );
+
+    expect(screen.getByText("当前显示：流程变化")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "切回修改后流程" })).toBeInTheDocument();
+    expect(screen.getByText("当前条目正在展示流程变化，可直接核对节点与连线的新增、删除和修改。"))
+      .toBeInTheDocument();
+
+    const changeButton = screen.getByRole("button", { name: "草稿条目：修改上传条件判断" });
+    expect(within(changeButton).getByText("流程变化")).toBeInTheDocument();
+    expect(within(changeButton).getByText("草稿修改 1")).toBeInTheDocument();
+    expect(within(changeButton).getByText("草稿新增 1")).toBeInTheDocument();
+    expect(within(changeButton).getByText("草稿删除 1")).toBeInTheDocument();
+    expect(within(changeButton).getByText("命中连线 2")).toBeInTheDocument();
+
+    expect(screen.getByText("流程变化摘要")).toBeInTheDocument();
+    expect(screen.getByText("命中节点 3 / 范围节点 3")).toBeInTheDocument();
+    expect(screen.getAllByText("视图外节点 1").length).toBeGreaterThanOrEqual(1);
+  });
+
   it("renders confirmed intent-only changes without fake before after placeholders and keeps compare entry available", () => {
     render(
       <DraftTab
@@ -456,7 +516,7 @@ describe("DraftTab", () => {
       />,
     );
 
-    expect(screen.getByText("当前显示：修改后")).toBeInTheDocument();
+    expect(screen.getByText("当前显示：修改后流程")).toBeInTheDocument();
 
     rerender(
       <DraftTab
@@ -475,7 +535,7 @@ describe("DraftTab", () => {
       />,
     );
 
-    expect(screen.getByText("当前显示：前后对比")).toBeInTheDocument();
+    expect(screen.getByText("当前显示：流程变化")).toBeInTheDocument();
     const compareLabel = screen.getByText("修改前");
     const nodeSection = screen.getByText("涉及节点");
     const comparePosition = container.textContent?.indexOf(compareLabel.textContent ?? "") ?? -1;
@@ -501,8 +561,8 @@ describe("DraftTab", () => {
       />,
     );
 
-    const compareStatus = screen.getByText("当前显示：修改后");
-    const compareAction = screen.getByRole("button", { name: "一键对比前后" });
+    const compareStatus = screen.getByText("当前显示：修改后流程");
+    const compareAction = screen.getByRole("button", { name: "查看流程变化" });
     expect(compareStatus).toHaveClass("workbench-compare-mode");
     expect(compareAction).toHaveClass("workbench-compare-action");
     expect(compareAction).not.toHaveClass("workbench-compare-mode");

@@ -885,6 +885,7 @@ export function App() {
   const draftTabProps = {
     state: draftState,
     implementationSuggestion: draftImplementationSuggestionState,
+    draftCompareProjection,
     draftVersion,
     codeDiffStatus,
     codeDiffDraftVersion: generatedCodeDraftVersion,
