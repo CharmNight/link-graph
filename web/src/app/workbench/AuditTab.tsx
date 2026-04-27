@@ -19,9 +19,9 @@ import { InvestigationThreadList } from "./InvestigationThreadList";
 const DEFAULT_ACTIVE_AUDIT_SECTION: WorkbenchSectionId = "audit.composer";
 
 const AUDIT_SECTION_META: Partial<Record<WorkbenchSectionId, { title: string }>> = {
-  "audit.request-status": { title: "请求状态" },
+  "audit.request-status": { title: "请求" },
   "audit.thread": { title: "问答会话" },
-  "audit.composer": { title: "继续提问" },
+  "audit.composer": { title: "提问" },
   "audit.candidate-changes": { title: "待确认变更" },
   "audit.investigation-threads": { title: "风险线程" },
 };

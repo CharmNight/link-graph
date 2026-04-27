@@ -8,9 +8,9 @@ interface WorkbenchSectionConstraint {
 }
 
 export const AUDIT_WORKBENCH_SECTION_IDS: WorkbenchSectionId[] = [
-  "audit.thread",
-  "audit.request-status",
   "audit.composer",
+  "audit.request-status",
+  "audit.thread",
   "audit.candidate-changes",
   "audit.investigation-threads",
 ];

@@ -792,7 +792,7 @@ describe.sequential("App", () => {
     render(<App />);
 
     await user.click(screen.getByRole("tab", { name: "问答" }));
-    expect(screen.getByRole("tab", { name: "请求状态" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "请求" })).toHaveAttribute("aria-selected", "true");
 
     await applyBootstrapEnvelope({
       sessionId: "session-1",
@@ -970,7 +970,7 @@ describe.sequential("App", () => {
         }
       )?.updateWorkbenchSectionPreference,
     ).toHaveBeenCalledWith("audit.composer", true);
-    expect(screen.getByRole("tab", { name: "请求状态" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "请求" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText(thread.recommendedQuestion)).toBeInTheDocument();
   });
 
@@ -1412,7 +1412,7 @@ describe.sequential("App", () => {
     await waitFor(() => {
       expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     });
-    await dispatchClickEvent(screen.getByRole("tab", { name: "继续提问" }));
+    await dispatchClickEvent(screen.getByRole("tab", { name: "提问" }));
     await waitFor(() => {
       expect(screen.getByRole("textbox", { name: "问答输入框" })).toBeInTheDocument();
     });
@@ -1428,7 +1428,7 @@ describe.sequential("App", () => {
     render(<App />);
 
     await dispatchClickEvent(screen.getByRole("tab", { name: "问答" }));
-    await dispatchClickEvent(screen.getByRole("tab", { name: "继续提问" }));
+    await dispatchClickEvent(screen.getByRole("tab", { name: "提问" }));
     await waitFor(() => {
       expect(screen.getByRole("textbox", { name: "问答输入框" })).toBeInTheDocument();
     });
@@ -1444,7 +1444,7 @@ describe.sequential("App", () => {
     render(<App />);
 
     await user.click(screen.getByRole("tab", { name: "问答" }));
-    await user.click(screen.getByRole("tab", { name: "继续提问" }));
+    await user.click(screen.getByRole("tab", { name: "提问" }));
     const input = screen.getByRole("textbox", { name: "问答输入框" });
 
     await setTextboxValue(input, "介绍这里有什么安全问题");
@@ -1652,7 +1652,7 @@ describe.sequential("App", () => {
     render(<App />);
 
     await user.click(screen.getByRole("tab", { name: "问答" }));
-    await user.click(screen.getByRole("tab", { name: "继续提问" }));
+    await user.click(screen.getByRole("tab", { name: "提问" }));
     const input = screen.getByRole("textbox", { name: "问答输入框" });
 
     await setTextboxValue(input, "介绍这里有什么安全问题");

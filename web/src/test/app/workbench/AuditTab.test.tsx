@@ -100,8 +100,8 @@ describe("AuditTab", () => {
     );
 
     expect(screen.getByText("当前节点：上传方法")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "继续提问" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("heading", { level: 3, name: "继续提问" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "提问" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { level: 3, name: "提问" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "问答输入框" })).toBeInTheDocument();
     expect(screen.queryByText("这里是不是有问题？")).not.toBeInTheDocument();
   });
@@ -141,9 +141,9 @@ describe("AuditTab", () => {
     );
 
     expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual([
+      "提问",
+      "请求",
       "问答会话",
-      "请求状态",
-      "继续提问",
       "待确认变更",
       "风险线程",
     ]);
@@ -241,10 +241,10 @@ describe("AuditTab", () => {
       />,
     );
 
-    await user.click(screen.getByRole("tab", { name: "继续提问" }));
+    await user.click(screen.getByRole("tab", { name: "提问" }));
 
-    expect(screen.getByRole("tab", { name: "继续提问" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("heading", { level: 3, name: "继续提问" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "提问" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { level: 3, name: "提问" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "问答输入框" })).toBeInTheDocument();
     expect(screen.queryByText("这里是不是有问题？")).not.toBeInTheDocument();
   });
@@ -281,7 +281,7 @@ describe("AuditTab", () => {
       />,
     );
 
-    expect(screen.getByRole("tab", { name: "请求状态" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "请求" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("正在等待远程 LLM 问答响应")).toBeInTheDocument();
     expect(screen.getByText("当前采用流式输出，界面会持续追加预览。")).toBeInTheDocument();
   });
@@ -328,7 +328,7 @@ describe("AuditTab", () => {
       />,
     );
 
-    expect(screen.getByRole("tab", { name: "请求状态" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "请求" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("请继续取证：定位默认兜底分支。")).toBeInTheDocument();
     expect(screen.getAllByText("src/main/java/com/example/OrderController.java:18-30")).toHaveLength(2);
     expect(screen.getByText("从当前风险线索目标节点取证")).toBeInTheDocument();
@@ -353,10 +353,10 @@ describe("AuditTab", () => {
     expect(container.querySelector(".audit-page-panel")).toBeNull();
     expect(screen.getByText("当前页面已收起，点击上方标签继续查看。")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "继续提问" }));
+    await user.click(screen.getByRole("tab", { name: "提问" }));
 
     expect(screen.queryByText("当前页面已收起，点击上方标签继续查看。")).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 3, name: "继续提问" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3, name: "提问" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "问答输入框" })).toBeInTheDocument();
   });
 
@@ -635,7 +635,7 @@ describe("AuditTab", () => {
       </div>,
     );
 
-    await user.click(screen.getByRole("tab", { name: "继续提问" }));
+    await user.click(screen.getByRole("tab", { name: "提问" }));
     onBoundaryPointerDown.mockClear();
     onBoundaryMouseDown.mockClear();
     const input = screen.getByRole("textbox", { name: "问答输入框" });
@@ -678,7 +678,7 @@ describe("AuditTab", () => {
     );
 
     expect(screen.getByText(/正在接收问答回答/)).toBeInTheDocument();
-    expect(screen.getByText(/流式内容会先在“请求状态”里持续更新/)).toBeInTheDocument();
+    expect(screen.getByText(/流式内容会先在“请求”里持续更新/)).toBeInTheDocument();
     expect(screen.queryByText(/这个方法负责文件上传/)).not.toBeInTheDocument();
   });
 
