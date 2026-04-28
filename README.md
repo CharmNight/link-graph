@@ -51,7 +51,7 @@ Link Graph 是一个 IntelliJ Platform 插件，用于在项目内查看代码�
 
 ## 环境要求
 
-- JDK 17
+- JDK 21
 - 可运行当前前端工具链的 Node.js 与 npm
 - 与 `gradle.properties` 中目标平台兼容的 IntelliJ IDEA 版本
 
