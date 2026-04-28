@@ -13,7 +13,7 @@ class GraphEditorTransportSliceRenderer(
 
     fun renderBootstrapInitScript(
         sessionId: String,
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     ): String {
         val artifactRefs = artifactRegistry.replaceWith(snapshot)
         currentArtifactRefs = artifactRefs
@@ -30,8 +30,8 @@ class GraphEditorTransportSliceRenderer(
 
     fun renderIncrementalEnvelopes(
         sessionId: String,
-        previousSnapshot: GraphEditorStateService.Snapshot,
-        snapshot: GraphEditorStateService.Snapshot,
+        previousSnapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     ): List<GraphEditorTransportEnvelope> {
         val previousPayload = pageRenderer.bootstrapPayload(
             previousSnapshot,
@@ -54,8 +54,8 @@ class GraphEditorTransportSliceRenderer(
 
     fun renderIncrementalScript(
         sessionId: String,
-        previousSnapshot: GraphEditorStateService.Snapshot,
-        snapshot: GraphEditorStateService.Snapshot,
+        previousSnapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     ): String? {
         val envelopes = renderIncrementalEnvelopes(sessionId, previousSnapshot, snapshot)
         if (envelopes.isEmpty()) {

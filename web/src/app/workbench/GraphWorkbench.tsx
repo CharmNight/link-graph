@@ -1,9 +1,18 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import { traceLinkGraph } from "../debug";
 
 const DEFAULT_WORKBENCH_WIDTH = 520;
 const MIN_WORKBENCH_WIDTH = 380;
 const MIN_STAGE_WIDTH = 420;
+const WORKBENCH_GAP_WIDTH = 10;
+const WORKBENCH_RESIZER_WIDTH = 14;
 
 interface GraphWorkbenchProps {
   toolbar: ReactNode;
@@ -12,6 +21,38 @@ interface GraphWorkbenchProps {
   stage: ReactNode;
   workbench: ReactNode;
   propertyDrawer?: ReactNode;
+}
+
+interface LayoutMetrics {
+  layoutWidth: number;
+  maxWorkbenchWidth: number;
+  nextWorkbenchWidth: number | null;
+}
+
+function buildLayoutMetrics(
+  layoutElement: HTMLElement | null,
+  clientX?: number,
+): LayoutMetrics | null {
+  const layoutRect = layoutElement?.getBoundingClientRect();
+  if (!layoutRect || layoutRect.width <= 0) {
+    return null;
+  }
+  const layoutWidth = Math.round(layoutRect.width);
+  const maxWorkbenchWidth = Math.max(MIN_WORKBENCH_WIDTH, layoutWidth - MIN_STAGE_WIDTH);
+  if (clientX == null) {
+    return {
+      layoutWidth,
+      maxWorkbenchWidth,
+      nextWorkbenchWidth: null,
+    };
+  }
+  return {
+    layoutWidth,
+    maxWorkbenchWidth,
+    nextWorkbenchWidth: Math.round(
+      Math.max(MIN_WORKBENCH_WIDTH, Math.min(maxWorkbenchWidth, layoutRect.right - clientX)),
+    ),
+  };
 }
 
 export function GraphWorkbench({
@@ -25,53 +66,62 @@ export function GraphWorkbench({
   const layoutRef = useRef<HTMLElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const workbenchRef = useRef<HTMLElement | null>(null);
+  const draggingRef = useRef(false);
   const [workbenchWidth, setWorkbenchWidth] = useState(DEFAULT_WORKBENCH_WIDTH);
+  const [layoutWidth, setLayoutWidth] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
-    function resolveNextWidth(clientX: number) {
-      const layoutRect = layoutRef.current?.getBoundingClientRect();
-      if (!layoutRect) {
-        return null;
-      }
-      const maxWidth = Math.max(MIN_WORKBENCH_WIDTH, layoutRect.width - MIN_STAGE_WIDTH);
-      const nextWidth = Math.max(MIN_WORKBENCH_WIDTH, Math.min(maxWidth, layoutRect.right - clientX));
-      return Math.round(nextWidth);
-    }
-
-    function handleMouseMove(event: MouseEvent) {
-      if (!dragging) {
+    function updateDragWidth(clientX: number) {
+      if (!draggingRef.current) {
         return;
       }
-      const nextWidth = resolveNextWidth(event.clientX);
-      if (nextWidth != null) {
-        setWorkbenchWidth(nextWidth);
+      const metrics = buildLayoutMetrics(layoutRef.current, clientX);
+      if (!metrics || metrics.nextWorkbenchWidth == null) {
+        return;
       }
+      setLayoutWidth(metrics.layoutWidth);
+      setWorkbenchWidth(metrics.nextWorkbenchWidth);
     }
 
-    function handleMouseUp() {
+    function stopDragging() {
+      draggingRef.current = false;
       setDragging(false);
     }
 
-    function handleWindowResize() {
-      const layoutRect = layoutRef.current?.getBoundingClientRect();
-      if (!layoutRect) {
-        return;
-      }
-      const maxWidth = Math.max(MIN_WORKBENCH_WIDTH, layoutRect.width - MIN_STAGE_WIDTH);
-      setWorkbenchWidth((current) => Math.max(MIN_WORKBENCH_WIDTH, Math.min(maxWidth, current)));
+    function handlePointerMove(event: PointerEvent) {
+      updateDragWidth(event.clientX);
     }
 
+    function handleMouseMove(event: MouseEvent) {
+      updateDragWidth(event.clientX);
+    }
+
+    function handleWindowResize() {
+      const metrics = buildLayoutMetrics(layoutRef.current);
+      if (!metrics) {
+        return;
+      }
+      setLayoutWidth(metrics.layoutWidth);
+      setWorkbenchWidth((current) =>
+        Math.max(MIN_WORKBENCH_WIDTH, Math.min(metrics.maxWorkbenchWidth, current)),
+      );
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopDragging);
     window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("mouseup", stopDragging);
     window.addEventListener("resize", handleWindowResize);
     handleWindowResize();
     return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopDragging);
       window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("mouseup", stopDragging);
       window.removeEventListener("resize", handleWindowResize);
     };
-  }, [dragging]);
+  }, []);
 
   useEffect(() => {
     const layoutElement = layoutRef.current;
@@ -80,6 +130,9 @@ export function GraphWorkbench({
     if (!layoutElement || !stageElement || !workbenchElement) {
       return;
     }
+    const resolvedLayoutElement = layoutElement;
+    const resolvedStageElement = stageElement;
+    const resolvedWorkbenchElement = workbenchElement;
 
     function summarizeRect(element: Element) {
       const rect = element.getBoundingClientRect();
@@ -96,12 +149,12 @@ export function GraphWorkbench({
         reason,
         dragging,
         workbenchWidth,
-        layoutRect: summarizeRect(layoutElement),
-        stageRect: summarizeRect(stageElement),
-        workbenchRect: summarizeRect(workbenchElement),
-        stageScrollHeight: stageElement.scrollHeight,
-        workbenchScrollHeight: workbenchElement.scrollHeight,
-        workbenchClientHeight: workbenchElement.clientHeight,
+        layoutRect: summarizeRect(resolvedLayoutElement),
+        stageRect: summarizeRect(resolvedStageElement),
+        workbenchRect: summarizeRect(resolvedWorkbenchElement),
+        stageScrollHeight: resolvedStageElement.scrollHeight,
+        workbenchScrollHeight: resolvedWorkbenchElement.scrollHeight,
+        workbenchClientHeight: resolvedWorkbenchElement.clientHeight,
       });
     }
 
@@ -109,10 +162,16 @@ export function GraphWorkbench({
     if (typeof ResizeObserver === "undefined") {
       return;
     }
-    const observer = new ResizeObserver(() => emit("resize"));
-    observer.observe(layoutElement);
-    observer.observe(stageElement);
-    observer.observe(workbenchElement);
+    const observer = new ResizeObserver(() => {
+      const metrics = buildLayoutMetrics(resolvedLayoutElement);
+      if (metrics) {
+        setLayoutWidth(metrics.layoutWidth);
+      }
+      emit("resize");
+    });
+    observer.observe(resolvedLayoutElement);
+    observer.observe(resolvedStageElement);
+    observer.observe(resolvedWorkbenchElement);
     return () => observer.disconnect();
   }, [dragging, workbenchWidth]);
 
@@ -122,12 +181,44 @@ export function GraphWorkbench({
     }
     event.preventDefault();
     setWorkbenchWidth((current) => {
+      const metrics = buildLayoutMetrics(layoutRef.current);
+      const maxWorkbenchWidth = metrics?.maxWorkbenchWidth ?? DEFAULT_WORKBENCH_WIDTH + MIN_STAGE_WIDTH;
+      if (metrics) {
+        setLayoutWidth(metrics.layoutWidth);
+      }
       const delta = event.key === "ArrowLeft" ? 24 : -24;
-      const layoutWidth = layoutRef.current?.getBoundingClientRect().width ?? DEFAULT_WORKBENCH_WIDTH + MIN_STAGE_WIDTH;
-      const maxWidth = Math.max(MIN_WORKBENCH_WIDTH, layoutWidth - MIN_STAGE_WIDTH);
-      return Math.max(MIN_WORKBENCH_WIDTH, Math.min(maxWidth, current + delta));
+      return Math.max(MIN_WORKBENCH_WIDTH, Math.min(maxWorkbenchWidth, current + delta));
     });
   }
+
+  function handleResizePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    const metrics = buildLayoutMetrics(layoutRef.current);
+    if (metrics) {
+      setLayoutWidth(metrics.layoutWidth);
+    }
+    draggingRef.current = true;
+    setDragging(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function handleResizeMouseDown() {
+    const metrics = buildLayoutMetrics(layoutRef.current);
+    if (metrics) {
+      setLayoutWidth(metrics.layoutWidth);
+    }
+    draggingRef.current = true;
+    setDragging(true);
+  }
+
+  const effectiveMaxWorkbenchWidth = layoutWidth == null
+    ? DEFAULT_WORKBENCH_WIDTH + MIN_STAGE_WIDTH
+    : Math.max(MIN_WORKBENCH_WIDTH, layoutWidth - MIN_STAGE_WIDTH);
+  const stageWidth = layoutWidth == null
+    ? null
+    : Math.max(
+      MIN_STAGE_WIDTH,
+      layoutWidth - workbenchWidth - WORKBENCH_GAP_WIDTH - WORKBENCH_RESIZER_WIDTH,
+    );
 
   return (
     <div className="app-shell graph-workbench" data-testid="graph-workbench">
@@ -136,7 +227,11 @@ export function GraphWorkbench({
       {dialogs}
 
       <main ref={layoutRef} className="workspace-stage workbench-layout">
-        <div ref={stageRef} className="workspace-stage-content">
+        <div
+          ref={stageRef}
+          className="workspace-stage-content"
+          style={stageWidth == null ? undefined : { width: `${stageWidth}px` }}
+        >
           {stage}
         </div>
         <div
@@ -145,13 +240,19 @@ export function GraphWorkbench({
           aria-label="调整工作台宽度"
           aria-orientation="vertical"
           aria-valuemin={MIN_WORKBENCH_WIDTH}
-          aria-valuemax={Math.max(MIN_WORKBENCH_WIDTH, (layoutRef.current?.getBoundingClientRect().width ?? DEFAULT_WORKBENCH_WIDTH + MIN_STAGE_WIDTH) - MIN_STAGE_WIDTH)}
+          aria-valuemax={effectiveMaxWorkbenchWidth}
           aria-valuenow={workbenchWidth}
           className={dragging ? "workbench-resizer dragging" : "workbench-resizer"}
-          onMouseDown={() => setDragging(true)}
+          onPointerDown={handleResizePointerDown}
+          onMouseDown={handleResizeMouseDown}
           onKeyDown={handleResizeKeyDown}
         />
-        <aside ref={workbenchRef} className="workbench-panel" aria-label="工作台" style={{ width: `${workbenchWidth}px` }}>
+        <aside
+          ref={workbenchRef}
+          className="workbench-panel"
+          aria-label="工作台"
+          style={{ width: `${workbenchWidth}px` }}
+        >
           {workbench}
         </aside>
       </main>

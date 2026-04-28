@@ -142,7 +142,7 @@ export function reanchorRouteToEndpoints(
   if (!route || route.sections.length === 0) {
     return route;
   }
-  const sections = route.sections.map((section) => ({
+  const sections: LinkGraphEdgeRouteSection[] = route.sections.map((section) => ({
     ...section,
     startPoint: { ...section.startPoint },
     endPoint: { ...section.endPoint },
@@ -163,7 +163,7 @@ export function reanchorRouteStart(
   if (!route || route.sections.length === 0) {
     return route;
   }
-  const sections = route.sections.map((section) => ({
+  const sections: LinkGraphEdgeRouteSection[] = route.sections.map((section) => ({
     ...section,
     startPoint: { ...section.startPoint },
     endPoint: { ...section.endPoint },
@@ -181,7 +181,7 @@ export function reanchorRouteEnd(
   if (!route || route.sections.length === 0) {
     return route;
   }
-  const sections = route.sections.map((section) => ({
+  const sections: LinkGraphEdgeRouteSection[] = route.sections.map((section) => ({
     ...section,
     startPoint: { ...section.startPoint },
     endPoint: { ...section.endPoint },

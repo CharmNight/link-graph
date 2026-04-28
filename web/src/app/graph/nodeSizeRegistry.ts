@@ -21,6 +21,7 @@ function normalizeSize(size: NodeMeasuredSize): NodeMeasuredSize | null {
 export class NodeSizeRegistry {
   private readonly sizes = new Map<string, NodeMeasuredSize>();
   private readonly listeners = new Set<NodeSizeRegistryListener>();
+  private readonly reporters = new Map<string, (size: NodeMeasuredSize) => void>();
   private revision = 0;
 
   private emitChange(): void {
@@ -75,6 +76,18 @@ export class NodeSizeRegistry {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  reporter(nodeId: string): (size: NodeMeasuredSize) => void {
+    const cachedReporter = this.reporters.get(nodeId);
+    if (cachedReporter) {
+      return cachedReporter;
+    }
+    const nextReporter = (size: NodeMeasuredSize) => {
+      this.set(nodeId, size);
+    };
+    this.reporters.set(nodeId, nextReporter);
+    return nextReporter;
   }
 }
 

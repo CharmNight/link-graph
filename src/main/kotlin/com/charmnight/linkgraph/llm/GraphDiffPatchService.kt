@@ -49,7 +49,7 @@ class GraphDiffPatchService(
                     userPrompt = promptPackage.userPrompt,
                 ),
                 scene = "差异分析",
-                schema = PATCH_RESULT_SCHEMA,
+                schema = LlmStructuredSchemas.PATCH_RESULT,
                 preferStreaming = remoteConnection.preset.capabilities.supportsStreaming,
                 onPreview = onPreview,
             ) { content ->
@@ -184,35 +184,5 @@ class GraphDiffPatchService(
     private companion object {
         /** 结构补全型草稿声明。 */
         private const val DRAFT_CLAIM_TYPE_STRUCTURAL_SUGGESTION = "STRUCTURAL_SUGGESTION"
-        /** 远程差异分析返回必须遵守的 JSON 结构。 */
-        private const val PATCH_RESULT_SCHEMA = """
-{
-  "answer": "审计或差异说明",
-  "findings": [
-    {
-      "id": "稳定ID",
-      "claim": "一条必须可追溯的关键结论",
-      "evidenceLevel": "DIRECT_SOURCE|DIRECT_GRAPH|CALLSITE_ONLY|NOT_OBSERVED",
-      "references": [
-        {
-          "nodeId": "可选节点ID",
-          "filePath": "可选源码路径",
-          "startLine": 1,
-          "endLine": 3
-        }
-      ]
-    }
-  ],
-  "warnings": ["可选警告"],
-  "patch": {
-    "summary": "patch 摘要",
-    "operations": [],
-    "addedNodeIds": [],
-    "removedNodeIds": [],
-    "addedEdgeIds": [],
-    "removedEdgeIds": []
-  }
-}
-"""
     }
 }

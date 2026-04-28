@@ -1,9 +1,20 @@
 import { Fragment, useState, type ReactNode } from "react";
-import type { AsyncRequestState, AuditConversationMessage } from "../types";
+import {
+  investigationTurnOutcomeStatusLabel,
+  resultEvidenceLevelLabel,
+} from "../labels";
+import type {
+  AsyncRequestState,
+  AuditConversationMessage,
+  InvestigationThread,
+  InvestigationTurnOutcome,
+} from "../types";
 import { parseStructuredRichText } from "../structuredRichText";
 
 interface AuditConversationProps {
   messages: AuditConversationMessage[];
+  turnOutcomes?: InvestigationTurnOutcome[];
+  investigationThreads?: InvestigationThread[];
   requestState?: AsyncRequestState | null;
 }
 
@@ -284,9 +295,57 @@ function AssistantAuditMessage({ content }: { content: string }) {
   return renderStructuredAssistantContent(content, expanded, () => setExpanded((current) => !current));
 }
 
-export function AuditConversation({ messages, requestState = null }: AuditConversationProps) {
-  const requestPreview = requestState?.previewText?.trim() || null;
+function buildEvidenceLevelTransition(outcome: InvestigationTurnOutcome): string | null {
+  const previous = outcome.evidenceDelta.previousStrongestEvidenceLevel;
+  const current = outcome.evidenceDelta.currentStrongestEvidenceLevel;
+  if (!previous && !current) {
+    return null;
+  }
+  return `${resultEvidenceLevelLabel(previous ?? "NOT_OBSERVED")} -> ${resultEvidenceLevelLabel(current ?? "NOT_OBSERVED")}`;
+}
+
+function InvestigationOutcomeSummary({
+  outcome,
+  thread,
+}: {
+  outcome: InvestigationTurnOutcome;
+  thread?: InvestigationThread;
+}) {
+  const title = thread?.title || outcome.summary || "风险线程";
+  const evidenceLevelTransition = buildEvidenceLevelTransition(outcome);
+
+  return (
+    <section className="workbench-chat-outcome" aria-label={`本轮结果：${title}`}>
+      <div className="workbench-chat-outcome-head">
+        <div className="workbench-chat-outcome-title">
+          <span className="audit-rich-section-label">本轮结果</span>
+          <strong>{title}</strong>
+        </div>
+        <span className="workbench-status-pill">{investigationTurnOutcomeStatusLabel(outcome.status)}</span>
+      </div>
+      <p>{outcome.detail || "当前没有额外说明。"}</p>
+      <div className="workbench-chat-outcome-meta">
+        {evidenceLevelTransition ? <span>{`证据等级：${evidenceLevelTransition}`}</span> : null}
+        {outcome.evidenceDelta.addedNodeIds.length > 0 ? (
+          <span>{`新增节点：${outcome.evidenceDelta.addedNodeIds.join("、")}`}</span>
+        ) : null}
+        {outcome.evidenceDelta.addedFilePaths.length > 0 ? (
+          <span>{`新增文件：${outcome.evidenceDelta.addedFilePaths.join("、")}`}</span>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+export function AuditConversation({
+  messages,
+  turnOutcomes = [],
+  investigationThreads = [],
+  requestState = null,
+}: AuditConversationProps) {
   const requestRunning = requestState?.phase === "RUNNING";
+  const outcomesById = new Map(turnOutcomes.map((outcome) => [outcome.outcomeId, outcome]));
+  const threadsById = new Map(investigationThreads.map((thread) => [thread.threadId, thread]));
 
   return (
     <div className={messages.length === 0 ? "workbench-chat-stream is-empty" : "workbench-chat-stream"}>
@@ -295,36 +354,43 @@ export function AuditConversation({ messages, requestState = null }: AuditConver
           {requestRunning ? (
             <>
               <p>
-                <strong>正在接收审计回答。</strong>
-                流式内容会先在“请求状态”里持续更新，完成后会落到审计会话中。
+                <strong>正在接收问答回答。</strong>
+                流式内容会先在“请求”里持续更新，完成后会落到问答会话中。
               </p>
-              {requestPreview ? (
-                <pre className="request-state-preview workbench-chat-pending-preview">{requestPreview}</pre>
-              ) : null}
             </>
           ) : (
-            <p>
-              <strong>当前还没有审计消息。</strong>
+            <p className="workbench-chat-empty-message">
+              <strong>当前还没有问答消息。</strong>
               可先输入你的问题，或者围绕当前范围继续追问。
             </p>
           )}
         </div>
       ) : (
         messages.map((message) => (
-          <article
-            key={message.messageId}
-            className={message.role === "USER" ? "workbench-chat-message user" : "workbench-chat-message assistant"}
-          >
-            <div className="workbench-chat-message-head">
-              <span className="workbench-chat-role">{message.role === "USER" ? "你" : "审计助手"}</span>
-              {message.role === "ASSISTANT" ? <span className="workbench-chat-tag">结构化回答</span> : null}
-            </div>
-            <div className="workbench-chat-message-body">
-              {message.role === "ASSISTANT"
-                ? <AssistantAuditMessage content={message.content} />
-                : <p>{message.content}</p>}
-            </div>
-          </article>
+          (() => {
+            const linkedOutcome = message.turnOutcomeId ? outcomesById.get(message.turnOutcomeId) : undefined;
+            const linkedThread = linkedOutcome ? threadsById.get(linkedOutcome.threadId) : undefined;
+
+            return (
+              <article
+                key={message.messageId}
+                className={message.role === "USER" ? "workbench-chat-message user" : "workbench-chat-message assistant"}
+              >
+                <div className="workbench-chat-message-head">
+                  <span className="workbench-chat-role">{message.role === "USER" ? "你" : "问答助手"}</span>
+                  {message.role === "ASSISTANT" ? <span className="workbench-chat-tag">结构化回答</span> : null}
+                </div>
+                <div className="workbench-chat-message-body">
+                  {message.role === "ASSISTANT"
+                    ? <AssistantAuditMessage content={message.content} />
+                    : <p>{message.content}</p>}
+                  {message.role === "ASSISTANT" && linkedOutcome ? (
+                    <InvestigationOutcomeSummary outcome={linkedOutcome} thread={linkedThread} />
+                  ) : null}
+                </div>
+              </article>
+            );
+          })()
         ))
       )}
     </div>

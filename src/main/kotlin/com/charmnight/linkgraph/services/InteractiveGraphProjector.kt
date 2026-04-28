@@ -13,7 +13,7 @@ import java.util.PriorityQueue
 /**
  * 把完整事实图收束成“可交互画布视图”。
  * 当前策略优先保留锚点、直接上游和直接下游；超出部分不会丢失，
- * 而是折叠成上游/下游摘要节点，完整图仍交给后台用于审计和导出。
+ * 而是折叠成上游/下游摘要节点，完整图仍交给后台用于问答分析和导出。
  */
 class InteractiveGraphProjector(
     /** 可见图允许展示的最大节点数。 */
@@ -749,7 +749,7 @@ class InteractiveGraphProjector(
         type = NodeType.UNCERTAIN_LINK,
         title = "${direction.label}已折叠 $hiddenNodeCount 个节点",
         signature = "另有 $hiddenEdgeCount 条链路未在当前交互窗口展开",
-        doc = "完整事实图仍保留在后台，可继续审计、导出 Mermaid，或切换到其他方法重新聚焦。",
+        doc = "完整事实图仍保留在后台，可继续问答、导出 Mermaid，或切换到其他方法重新聚焦。",
         certainty = Certainty.RULE_INFERRED,
         bindingStatus = BindingStatus.PARTIALLY_SYNCED,
         sourceTag = GraphSourceTag.UNCERTAIN_FACT,

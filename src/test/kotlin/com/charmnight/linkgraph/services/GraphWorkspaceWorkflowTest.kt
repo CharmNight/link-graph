@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.mermaid.MermaidExporter
 import com.charmnight.linkgraph.mermaid.MermaidImporter
@@ -12,16 +14,36 @@ import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
 import com.charmnight.linkgraph.sync.SyncPreviewPlanner
+import com.charmnight.linkgraph.ui.GraphEditOperation
+import com.charmnight.linkgraph.ui.GraphEditScript
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.GraphLayoutPosition
+import com.charmnight.linkgraph.ui.GraphSceneId
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
 import com.charmnight.linkgraph.ui.view.deriveFlowchartSummary
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GraphWorkspaceWorkflowTest {
+    private val root: Path = Path.of("").toAbsolutePath()
+
+    @Test
+    fun workflowUsesCommandBasedEditScriptInsteadOfWholeGraphWriteback() {
+        val source = Files.readString(
+            root.resolve("src/main/kotlin/com/charmnight/linkgraph/services/GraphWorkspaceWorkflow.kt"),
+        )
+
+        assertTrue(source.contains("handleFrontendEditScript"))
+        assertFalse(source.contains("handleFrontendGraphChanged"))
+        assertFalse(source.contains("markViewGraphChanged"))
+    }
+
     @Test
     fun exportMermaidUsesFullFlowchartGraphWhenVisibleGraphIsTruncated() {
         val stateService = GraphEditorStateService()
@@ -77,7 +99,7 @@ class GraphWorkspaceWorkflowTest {
                 anchorNodeId = entryNode.id,
                 selectedMethodSignature = entryNode.signature,
                 displayName = "uploadFiles",
-                feedbackLevel = GraphEditorStateService.OperationFeedbackLevel.INFO,
+                feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.INFO,
                 feedbackMessage = "loaded",
                 flowchartView = FlowchartViewDocument(
                     visibleGraph = visibleGraph,
@@ -124,9 +146,12 @@ class GraphWorkspaceWorkflowTest {
         )
         val mermaid = """
             graph TD
-            ENTRY["METHOD|OrderService.place|signature=com.example.OrderService.place(java.lang.String):void"]
-            DTO["CLASS|OrderDraftDto"]
-            ENTRY -- CALL --> DTO
+            %% LG_NODE ENTRY|nodeId=method:order-service-place|nodeType=METHOD|title=OrderService.place|signature=com.example.OrderService.place%28java.lang.String%29:void
+            %% LG_NODE DTO|nodeId=class:orderdraftdto|nodeType=CLASS|title=OrderDraftDto
+            ENTRY["OrderService.place"]
+            DTO["OrderDraftDto"]
+            %% LG_EDGE ENTRY|to=DTO|edgeType=CALL
+            ENTRY -- 调用 --> DTO
         """.trimIndent()
 
         workflow.loadGraph(codeGraph, "code-graph")
@@ -173,4 +198,108 @@ class GraphWorkspaceWorkflowTest {
         assertEquals(128.0, stateService.snapshot().layoutState.positions["method:order-service-place"]?.x)
         assertEquals(256.0, stateService.snapshot().layoutState.positions["method:order-service-place"]?.y)
     }
+
+    @Test
+    fun frontendGraphChangePreservesTrustedNavigationFieldsForExistingNodes() {
+        val stateService = GraphEditorStateService()
+        val session = ProjectEditorSession(
+            stateService = stateService,
+            onBrowserSyncRequested = {},
+        )
+        val workflow = GraphWorkspaceWorkflow(
+            session = session,
+            mermaidImporter = MermaidImporter(),
+            mermaidValidator = MermaidValidator(),
+            mermaidExporter = MermaidExporter(),
+            graphDiffer = GraphDiffer(),
+            syncPreviewPlanner = SyncPreviewPlanner(),
+            copyToClipboard = { false },
+        )
+        val trustedNode = GraphNode(
+            id = "method:order-service-place",
+            type = NodeType.METHOD,
+            title = "OrderService.place",
+            location = "src/main/java/com/example/OrderService.java:12:1",
+            signature = "com.example.OrderService.place(java.lang.String):void",
+            inputs = listOf("java.lang.String"),
+            outputs = listOf("com.example.OrderResult"),
+            doc = "Trusted node",
+        )
+        stateService.loadGraph(trustedNode.asGraph(), "trusted-graph")
+
+        workflow.handleFrontendEditScript(
+            GraphEditScript(
+                sceneId = GraphSceneId.WORKSPACE_FACT,
+                baseWorkspaceRevision = stateService.snapshot().workspaceRevision,
+                operations = listOf(
+                    GraphEditOperation.UpsertNode(
+                        trustedNode.copy(
+                            title = "OrderService.placeDraft",
+                            location = "/tmp/escape.java:1:1",
+                            signature = "java.lang.Runtime.exec(java.lang.String):void",
+                            inputs = listOf("java.lang.String", "com.example.OrderDraft"),
+                            outputs = listOf("com.example.OrderDraft"),
+                            doc = "Edited doc",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val persistedNode = stateService.snapshot().workingGraph?.nodes?.single()
+        assertNotNull(persistedNode)
+        assertEquals("OrderService.placeDraft", persistedNode.title)
+        assertEquals(listOf("java.lang.String", "com.example.OrderDraft"), persistedNode.inputs)
+        assertEquals(listOf("com.example.OrderDraft"), persistedNode.outputs)
+        assertEquals("Edited doc", persistedNode.doc)
+        assertEquals("src/main/java/com/example/OrderService.java:12:1", persistedNode.location)
+        assertEquals("com.example.OrderService.place(java.lang.String):void", persistedNode.signature)
+        assertEquals(NodeType.METHOD, persistedNode.type)
+    }
+
+    @Test
+    fun frontendGraphChangeStripsNavigationFieldsFromNewManualNodes() {
+        val stateService = GraphEditorStateService()
+        val session = ProjectEditorSession(
+            stateService = stateService,
+            onBrowserSyncRequested = {},
+        )
+        val workflow = GraphWorkspaceWorkflow(
+            session = session,
+            mermaidImporter = MermaidImporter(),
+            mermaidValidator = MermaidValidator(),
+            mermaidExporter = MermaidExporter(),
+            graphDiffer = GraphDiffer(),
+            syncPreviewPlanner = SyncPreviewPlanner(),
+            copyToClipboard = { false },
+        )
+
+        workflow.handleFrontendEditScript(
+            GraphEditScript(
+                sceneId = GraphSceneId.WORKSPACE_FACT,
+                baseWorkspaceRevision = stateService.snapshot().workspaceRevision,
+                operations = listOf(
+                    GraphEditOperation.UpsertNode(
+                        GraphNode(
+                            id = "design:1",
+                            type = NodeType.METHOD,
+                            title = "Manual draft node",
+                            location = "/tmp/escape.java:1:1",
+                            signature = "java.lang.System.exit(int):void",
+                            doc = "User-authored draft node",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val persistedNode = stateService.snapshot().workingGraph?.nodes?.single()
+        assertNotNull(persistedNode)
+        assertEquals("Manual draft node", persistedNode.title)
+        assertEquals("User-authored draft node", persistedNode.doc)
+        assertNull(persistedNode.location)
+        assertNull(persistedNode.signature)
+    }
+
+    private fun GraphNode.asGraph() = GraphDocument(nodes = listOf(this))
 }

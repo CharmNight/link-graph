@@ -1,5 +1,5 @@
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
@@ -194,6 +194,8 @@ export function GraphFlowSurface({
   const previousViewportGraphRef = useRef<GraphViewportSnapshot | null>(null);
   const handledFocusNonceRef = useRef<number | null>(null);
   const previousSelectedNodeIdRef = useRef<string | null>(selectedNodeId);
+  const onSelectionGroupChangeRef = useRef(onSelectionGroupChange);
+  const lastSelectionChangeSignatureRef = useRef<string>(selectedGroupNodeIds.join("\u0000"));
 
   const onlyRenderVisibleElements = experiments?.onlyRenderVisibleElements === true;
   const dragShieldingEnabled = experiments?.dragShielding === true;
@@ -214,6 +216,10 @@ export function GraphFlowSurface({
       });
     };
   }, []);
+
+  useEffect(() => {
+    onSelectionGroupChangeRef.current = onSelectionGroupChange;
+  }, [onSelectionGroupChange]);
 
   useEffect(() => {
     if (!dragShieldingEnabled && isExperimentalDragging) {
@@ -638,6 +644,16 @@ export function GraphFlowSurface({
     setContextMenu(null);
   };
 
+  const handleFlowSelectionChange = useCallback(({ nodes: nextNodes }: { nodes: Node[] }) => {
+    const nodeIds = nextNodes.map((node) => node.id);
+    const nextSignature = nodeIds.join("\u0000");
+    if (lastSelectionChangeSignatureRef.current === nextSignature) {
+      return;
+    }
+    lastSelectionChangeSignatureRef.current = nextSignature;
+    onSelectionGroupChangeRef.current(nodeIds);
+  }, []);
+
   const selectedEdgeActions = selectedEdgeId
     ? buildEdgeActions({
         edgeId: selectedEdgeId,
@@ -745,7 +761,7 @@ export function GraphFlowSurface({
             setContextMenu(null);
           }}
           onEdgeContextMenu={(event, edge) => openEdgeMenu(event, edge.id)}
-          onSelectionChange={({ nodes: nextNodes }) => onSelectionGroupChange(nextNodes.map((node) => node.id))}
+          onSelectionChange={handleFlowSelectionChange}
           onSelectionDragStop={(_, movedNodes) => {
             if (!layoutEditable) {
               return;

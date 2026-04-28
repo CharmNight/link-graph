@@ -1,42 +1,17 @@
 import { useState } from "react";
-import { asyncRequestExecutionModeLabel } from "../labels";
+import { asyncRequestExecutionModeLabel, normalizeWorkbenchWording } from "../labels";
 import type { AsyncRequestState } from "../types";
 import { resolveAsyncRequestPrimaryMessage } from "../asyncRequestStatus";
 
 interface AsyncRequestBannerProps {
   requestState?: AsyncRequestState | null;
-  isRequesting?: boolean;
-  requestError?: string | null;
   telemetryCollapsedByDefault?: boolean;
 }
 
 export function resolveEffectiveRequestState(
   requestState?: AsyncRequestState | null,
-  isRequesting = false,
-  requestError?: string | null,
 ): AsyncRequestState | null {
-  if (requestState) {
-    return requestState;
-  }
-  if (isRequesting) {
-    return {
-      phase: "RUNNING",
-      statusMessage: "请求已提交",
-      detailMessage: "等待后端确认执行方式与执行阶段。",
-      errorMessage: null,
-      streaming: false,
-      fallbackUsed: false,
-      promptPreviewAvailable: false,
-    };
-  }
-  if (requestError) {
-    return {
-      phase: "FAILED",
-      statusMessage: "请求失败",
-      errorMessage: requestError,
-    };
-  }
-  return null;
+  return requestState ?? null;
 }
 
 function bannerTone(requestState: AsyncRequestState): "is-info" | "is-warning" | "is-error" | null {
@@ -61,17 +36,53 @@ function bannerTitle(requestState: AsyncRequestState): string | null {
 }
 
 function bannerDetail(requestState: AsyncRequestState): string | null {
+  if (requestState.phase === "SUCCEEDED") {
+    return null;
+  }
   if (requestState.detailMessage?.trim()) {
-    return requestState.detailMessage.trim();
+    return normalizeWorkbenchWording(requestState.detailMessage.trim());
   }
   if (
     (requestState.phase === "FAILED" || requestState.phase === "TIMED_OUT") &&
     requestState.errorMessage?.trim() &&
     bannerTitle(requestState) !== requestState.errorMessage.trim()
   ) {
-    return requestState.errorMessage.trim();
+    return normalizeWorkbenchWording(requestState.errorMessage.trim());
   }
   return null;
+}
+
+function collapseDetailMessage(
+  detail: string | null,
+  collapseByDefault: boolean,
+): { inlineDetail: string | null; expandedDetail: string | null } {
+  const normalizedDetail = detail?.trim() || null;
+  if (!normalizedDetail) {
+    return {
+      inlineDetail: null,
+      expandedDetail: null,
+    };
+  }
+  if (!collapseByDefault) {
+    return {
+      inlineDetail: normalizedDetail,
+      expandedDetail: null,
+    };
+  }
+  const lines = normalizedDetail
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (lines.length <= 1) {
+    return {
+      inlineDetail: normalizedDetail,
+      expandedDetail: null,
+    };
+  }
+  return {
+    inlineDetail: lines[0] ?? normalizedDetail,
+    expandedDetail: normalizedDetail,
+  };
 }
 
 function bannerTelemetry(requestState: AsyncRequestState): Array<{ label: string; value: string }> {
@@ -87,7 +98,7 @@ function bannerTelemetry(requestState: AsyncRequestState): Array<{ label: string
     },
     {
       label: "场景",
-      value: requestState.scene?.trim() || null,
+      value: requestState.scene?.trim() ? normalizeWorkbenchWording(requestState.scene.trim()) : null,
     },
     {
       label: "执行模式",
@@ -119,45 +130,48 @@ function bannerTelemetry(requestState: AsyncRequestState): Array<{ label: string
 
 export function AsyncRequestBanner({
   requestState,
-  isRequesting = false,
-  requestError,
   telemetryCollapsedByDefault = false,
 }: AsyncRequestBannerProps) {
-  const effectiveRequestState = resolveEffectiveRequestState(requestState, isRequesting, requestError);
+  const effectiveRequestState = resolveEffectiveRequestState(requestState);
   if (!effectiveRequestState) {
     return null;
   }
 
   const tone = bannerTone(effectiveRequestState);
   const title = bannerTitle(effectiveRequestState);
-  const detail = bannerDetail(effectiveRequestState);
+  const { inlineDetail, expandedDetail } = collapseDetailMessage(
+    bannerDetail(effectiveRequestState),
+    telemetryCollapsedByDefault,
+  );
   const preview = effectiveRequestState.previewText?.trim() || null;
   const telemetry = bannerTelemetry(effectiveRequestState);
-  if (!tone && !title && !detail && !preview && telemetry.length === 0) {
+  if (!tone && !title && !inlineDetail && !expandedDetail && !preview && telemetry.length === 0) {
     return null;
   }
-  const hasExpandableDetails = Boolean(preview) || telemetry.length > 0;
-  const [detailsExpanded, setDetailsExpanded] = useState(() => !telemetryCollapsedByDefault);
-  const shouldShowDetails = !hasExpandableDetails || detailsExpanded;
+  const hasExpandableDetails = Boolean(preview) || telemetry.length > 0 || Boolean(expandedDetail);
+  const shouldCollapseDetailsByDefault = telemetryCollapsedByDefault || Boolean(preview);
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  const shouldShowDetails = !shouldCollapseDetailsByDefault || detailsExpanded;
 
   return (
-    <div className={`request-state-banner ${tone ?? ""}`.trim()}>
+    <div className={`request-state-banner ${tone ?? ""}`.trim()} aria-live="polite">
       <div className="request-state-banner-head">
         {title ? <strong className="request-state-banner-title">{title}</strong> : null}
-        {hasExpandableDetails && telemetryCollapsedByDefault ? (
+        {hasExpandableDetails && shouldCollapseDetailsByDefault ? (
           <button
             type="button"
             className="ghost-button compact"
-            aria-expanded={detailsExpanded}
+            aria-expanded={shouldShowDetails}
             onClick={() => setDetailsExpanded((current) => !current)}
           >
-            {detailsExpanded ? "收起请求详情" : "展开请求详情"}
+            {shouldShowDetails ? "收起请求详情" : "展开请求详情"}
           </button>
         ) : null}
       </div>
-      {detail ? <p className="muted">{detail}</p> : null}
+      {inlineDetail ? <p className="muted">{inlineDetail}</p> : null}
       {shouldShowDetails ? (
         <div className="request-state-banner-details">
+          {expandedDetail ? <pre className="request-state-preview">{expandedDetail}</pre> : null}
           {preview ? <pre className="request-state-preview">{preview}</pre> : null}
           {telemetry.length > 0 ? (
             <dl className="request-state-meta-grid">

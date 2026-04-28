@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.testing
 
+import com.charmnight.linkgraph.testing.*
+
 import com.intellij.testFramework.fixtures.CodeInsightTestFixture
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path

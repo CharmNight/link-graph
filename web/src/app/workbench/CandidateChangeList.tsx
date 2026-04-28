@@ -32,6 +32,10 @@ export function CandidateChangeList({
   const selectedChangeEvidence = selectedChange ? candidateEvidence(selectedChange) : [];
   const selectedChangeCanConfirm = selectedChange ? candidateCanConfirm(selectedChange) : false;
   const selectedChangeHasWriteScope = (selectedChange?.editScopes?.length ?? 0) > 0;
+  const selectedChangeBeforeState = normalizeOptionalText(selectedChange?.beforeState);
+  const selectedChangeAfterState = normalizeOptionalText(selectedChange?.afterState);
+  const selectedChangeHasComparableState = selectedChangeBeforeState != null && selectedChangeAfterState != null;
+  const selectedChangeHasSingleState = selectedChangeAfterState != null || selectedChangeBeforeState != null;
 
   return (
     <section
@@ -108,16 +112,31 @@ export function CandidateChangeList({
                       <p className="muted">当前没有附带可追溯证据，不能直接确认。</p>
                     )}
                   </section>
-                  <dl className="workbench-before-after">
-                    <div>
-                      <dt>修改前</dt>
-                      <dd>{selectedChange.beforeState ?? "未提供"}</dd>
-                    </div>
-                    <div>
-                      <dt>修改后</dt>
-                      <dd>{selectedChange.afterState ?? "未提供"}</dd>
-                    </div>
-                  </dl>
+                  {selectedChangeHasComparableState ? (
+                    <dl className="workbench-before-after">
+                      <div>
+                        <dt>修改前</dt>
+                        <dd>{selectedChangeBeforeState}</dd>
+                      </div>
+                      <div>
+                        <dt>修改后</dt>
+                        <dd>{selectedChangeAfterState}</dd>
+                      </div>
+                    </dl>
+                  ) : selectedChangeHasSingleState ? (
+                    <section className="workbench-step-section">
+                      <h4>{selectedChangeAfterState != null ? "修改后" : "当前定位源码"}</h4>
+                      <div className="workbench-draft-single-state">{selectedChangeAfterState ?? selectedChangeBeforeState}</div>
+                    </section>
+                  ) : (
+                    <section className="workbench-step-section">
+                      <h4>变更意图</h4>
+                      <div className="workbench-draft-intent-card">
+                        <strong>当前阶段已锁定源码位置，但还没有生成具体代码 diff。</strong>
+                        <p className="muted">确认后会进入草稿层，后续再基于写回边界生成精确 diff。</p>
+                      </div>
+                    </section>
+                  )}
                   <section className="workbench-candidate-evidence">
                     <strong>代码写回边界</strong>
                     {selectedChangeHasWriteScope ? (
@@ -125,7 +144,7 @@ export function CandidateChangeList({
                         {selectedChange.editScopes?.map((scope) => (
                           <li key={scope.scopeId} className="workbench-candidate-evidence-item">
                             <strong>{formatEditScopeLocation(scope.filePath, scope.startLine, scope.endLine)}</strong>
-                            {scope.symbolSignature ? <span>{scope.symbolSignature}</span> : null}
+                            {scope.symbolSignature ? <span className="workbench-edit-scope-signature">{scope.symbolSignature}</span> : null}
                           </li>
                         ))}
                       </ul>
@@ -159,6 +178,11 @@ export function CandidateChangeList({
       )}
     </section>
   );
+}
+
+function normalizeOptionalText(value?: string | null): string | null {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
 }
 
 function formatEditScopeLocation(

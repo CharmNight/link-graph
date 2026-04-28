@@ -1,3 +1,4 @@
+import { resolveFlowchartKind } from "./flowchartKind";
 import type { LinkGraphNode } from "./types";
 
 export const DEFAULT_NODE_CARD_WIDTH = 408;
@@ -11,7 +12,33 @@ export const FLOWCHART_ENTRY_WIDTH = 324;
 export const FLOWCHART_TERMINAL_WIDTH = 280;
 export const FLOWCHART_MERGE_WIDTH = 132;
 
-export function nodeCardWidth(node: Pick<LinkGraphNode, "type" | "metadata">): number {
+function isLongCodeLikeTitle(title?: string | null): boolean {
+  const normalizedTitle = title?.trim() ?? "";
+  if (normalizedTitle.length < 28) {
+    return false;
+  }
+  return normalizedTitle.includes("(")
+    || normalizedTitle.includes(")")
+    || normalizedTitle.includes(".")
+    || normalizedTitle.includes("==")
+    || /[a-z][A-Z]/.test(normalizedTitle);
+}
+
+function extraFlowchartNodeWidth(node: Pick<LinkGraphNode, "type" | "metadata" | "title">): number {
+  if (!isLongCodeLikeTitle(node.title)) {
+    return 0;
+  }
+  const kind = resolveFlowchartKind(node);
+  if (kind === "DECISION") {
+    return 88;
+  }
+  if (kind === "PROCESS" || kind === "SUBROUTINE") {
+    return 56;
+  }
+  return 0;
+}
+
+export function nodeCardWidth(node: Pick<LinkGraphNode, "type" | "metadata" | "title">): number {
   if (node.type === "FLOW_ACTION") {
     return FLOW_ACTION_NODE_CARD_WIDTH;
   }
@@ -21,11 +48,11 @@ export function nodeCardWidth(node: Pick<LinkGraphNode, "type" | "metadata">): n
   return DEFAULT_NODE_CARD_WIDTH;
 }
 
-export function flowchartNodeCardWidth(node: Pick<LinkGraphNode, "type" | "metadata">): number {
-  const kind = node.metadata?.["flowchart.kind"] ?? "PROCESS";
+export function flowchartNodeCardWidth(node: Pick<LinkGraphNode, "type" | "metadata" | "title">): number {
+  const kind = resolveFlowchartKind(node);
   switch (kind) {
     case "DECISION":
-      return FLOWCHART_DECISION_WIDTH;
+      return FLOWCHART_DECISION_WIDTH + extraFlowchartNodeWidth(node);
     case "MERGE":
       return FLOWCHART_MERGE_WIDTH;
     case "TERMINAL":
@@ -33,6 +60,6 @@ export function flowchartNodeCardWidth(node: Pick<LinkGraphNode, "type" | "metad
     case "ENTRY":
       return FLOWCHART_ENTRY_WIDTH;
     default:
-      return FLOWCHART_PROCESS_WIDTH;
+      return FLOWCHART_PROCESS_WIDTH + extraFlowchartNodeWidth(node);
   }
 }

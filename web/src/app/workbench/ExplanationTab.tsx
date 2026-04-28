@@ -79,7 +79,7 @@ export function ExplanationTab({
     }
 
     function measureLayoutHeight() {
-      const nextHeight = layoutNode.getBoundingClientRect().height;
+      const nextHeight = layoutNode?.getBoundingClientRect().height ?? 0;
       setLayoutHeight(nextHeight > 0 ? Math.round(nextHeight) : null);
     }
 
@@ -113,8 +113,8 @@ export function ExplanationTab({
   }
 
   return (
-    <section className="workbench-tab explanation-tab block overflow-auto m-scrollbar">
-      <div className="workbench-tab-head mb14px">
+    <section className="workbench-tab explanation-tab">
+      <div className="workbench-tab-head">
         <div className="workbench-explanation-head">
           <p className="eyebrow">讲解</p>
           <h2>步骤化阅读器</h2>
@@ -161,13 +161,13 @@ export function ExplanationTab({
           ))}
         </div>
       </div>
-      <div ref={layoutRef} className="workbench-tab-body explanation-layout block">
+      <div ref={layoutRef} className="workbench-tab-body workbench-page-flow explanation-layout">
         <WorkbenchSection
+          sectionId="explanation.step-list"
           title="步骤列表"
           expanded={effectiveSectionPreferences["explanation.step-list"] ?? true}
           onToggle={(nextExpanded) => handleSectionToggle("explanation.step-list", nextExpanded)}
           meta={<span className="badge">{steps.length}</span>}
-          minBodyHeight={160}
         >
           <StepList
             steps={steps}
@@ -184,7 +184,6 @@ export function ExplanationTab({
           title="步骤详情"
           expanded={effectiveSectionPreferences["explanation.step-detail"] ?? true}
           onToggle={(nextExpanded) => handleSectionToggle("explanation.step-detail", nextExpanded)}
-          minBodyHeight={260}
         >
           <StepDetail
             step={selectedStep}

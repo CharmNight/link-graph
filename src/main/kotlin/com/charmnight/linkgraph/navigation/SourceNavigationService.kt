@@ -43,7 +43,6 @@ class SourceNavigationService(
      * 解析节点对应的导航目标，但不实际打开文件。
      */
     fun resolve(node: GraphNode): NavigationTarget? {
-        // 优先使用节点自带的位置串进行跳转解析。
         val locationTarget = node.location
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
@@ -51,7 +50,7 @@ class SourceNavigationService(
         if (locationTarget != null) {
             return locationTarget
         }
-        // 位置串缺失时，再尝试根据签名推导源码位置。
+        // 对 bridge 入口来说，位置串优先于签名推导，避免同名符号导致跳错文件。
         return resolveNavigationTargetFromSignature(node)?.let { target ->
             NavigationTarget(
                 filePath = target.virtualFile.path,
@@ -78,6 +77,18 @@ class SourceNavigationService(
                 column = column,
             ),
         )
+    }
+
+    /**
+     * 仅按项目根目录内路径打开文件，拒绝项目外绝对路径和越界相对路径。
+     */
+    fun navigateToProjectPath(
+        filePath: String,
+        line: Int = 1,
+        column: Int = 1,
+    ): NavigationTarget? {
+        val virtualFile = resolveProjectScopedFile(filePath) ?: return null
+        return open(virtualFile, line, column)
     }
 
     /**
@@ -210,6 +221,54 @@ class SourceNavigationService(
             .takeUnless { safePath(it)?.isAbsolute == true }
             ?.removePrefix("./")
             ?.let(::findProjectFileByRelativePath)
+
+    /**
+     * 仅解析当前项目根目录内的本地文件。
+     */
+    private fun resolveProjectScopedFile(filePath: String): VirtualFile? {
+        val rawPath = safePath(filePath)?.normalize() ?: return null
+        val allowedRoots = projectScopedRoots()
+        if (allowedRoots.isEmpty()) {
+            return null
+        }
+        if (!rawPath.isAbsolute) {
+            val relativePath = rawPath.toString().replace('\\', '/').removePrefix("./")
+            findProjectFileByRelativePath(relativePath)
+                ?.takeUnless(VirtualFile::isDirectory)
+                ?.takeIf { file ->
+                    val candidatePath = safePath(file.path)
+                        ?.normalize()
+                    candidatePath != null && allowedRoots.any { root -> candidatePath.startsWith(root) }
+                }
+                ?.let { return it }
+        }
+        val resolvedPath = if (rawPath.isAbsolute) {
+            rawPath
+        } else {
+            val baseRoot = allowedRoots.first()
+            baseRoot.resolve(rawPath).normalize()
+        }
+        if (allowedRoots.none { root -> resolvedPath.startsWith(root) }) {
+            return null
+        }
+        return LocalFileSystem.getInstance()
+            .refreshAndFindFileByNioFile(resolvedPath)
+            ?.takeUnless(VirtualFile::isDirectory)
+    }
+
+    private fun projectScopedRoots(): List<Path> {
+        return buildList {
+            project.basePath
+                ?.let(::safePath)
+                ?.takeIf(Path::isAbsolute)
+                ?.normalize()
+                ?.let(::add)
+            ProjectRootManager.getInstance(project).contentRoots
+                .asSequence()
+                .mapNotNull { root -> safePath(root.path)?.normalize() }
+                .forEach(::add)
+        }.distinct()
+    }
 
     /**
      * 在项目内容根中查找相对路径对应文件。

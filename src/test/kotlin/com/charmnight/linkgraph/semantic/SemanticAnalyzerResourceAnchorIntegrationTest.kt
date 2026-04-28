@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.semantic
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcomeFactory
@@ -11,7 +13,7 @@ import com.charmnight.linkgraph.semantic.provider.code.CodeSemanticProvider
 import com.charmnight.linkgraph.semantic.provider.resource.MarkdownSemanticProvider
 import com.charmnight.linkgraph.semantic.subject.CaretSubjectLocator
 import com.charmnight.linkgraph.semantic.subject.ResourceSubjectHandle
-import com.charmnight.linkgraph.ui.GraphEditorStateService.OperationFeedbackLevel
+import com.charmnight.linkgraph.ui.OperationFeedbackLevel
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class SemanticAnalyzerResourceAnchorIntegrationTest : BasePlatformTestCase() {

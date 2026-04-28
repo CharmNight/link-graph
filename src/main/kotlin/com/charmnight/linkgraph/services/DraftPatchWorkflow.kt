@@ -30,11 +30,11 @@ internal class DraftPatchWorkflow(
     fun previewDraftPatch(patch: GraphPatch) {
         session.mutateBatch {
             apply {
-                markDraftPatchPreview(patch)
+                workbench.markDraftPatchPreview(patch)
             }
             apply {
-                markOperationFeedback(
-                    GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+                workbench.markOperationFeedback(
+                    com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
                     patch.summary ?: "已生成草稿 patch 预览。",
                 )
             }
@@ -50,7 +50,7 @@ internal class DraftPatchWorkflow(
         val baseGraph = currentWorkingGraph(snapshot)
         val selectedOperations = patch.operations.filter { operationIds == null || it.id in operationIds }
         session.mutate(syncBrowser = false) {
-            markDraftPatchApplyUndo(baseGraph, patch)
+            workbench.markDraftPatchApplyUndo(baseGraph, patch)
         }
         val applied = graphPatchApplyService.apply(baseGraph, patch, operationIds)
         onMarkGraphChanged(
@@ -60,16 +60,16 @@ internal class DraftPatchWorkflow(
         )
         session.mutateBatch {
             apply {
-                clearDraftPatchPreview()
+                workbench.clearDraftPatchPreview()
             }
             apply {
-                markOperationFeedback(
-                    GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+                workbench.markOperationFeedback(
+                    com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
                     "已将草稿 patch 应用到当前工作图。",
                 )
             }
             apply {
-                markDraftPatchApplyResult(buildDraftPatchApplyResult(selectedOperations, applied))
+                workbench.markDraftPatchApplyResult(buildDraftPatchApplyResult(selectedOperations, applied))
             }
         }
         return applied
@@ -82,8 +82,8 @@ internal class DraftPatchWorkflow(
         val snapshot = session.snapshot()
         if (snapshot.draftPatchPreview == null) {
             session.mutate {
-                markOperationFeedback(
-                    GraphEditorStateService.OperationFeedbackLevel.WARNING,
+                workbench.markOperationFeedback(
+                    com.charmnight.linkgraph.ui.OperationFeedbackLevel.WARNING,
                     "当前没有可清空的草稿预览。",
                 )
             }
@@ -91,11 +91,11 @@ internal class DraftPatchWorkflow(
         }
         session.mutateBatch {
             apply {
-                clearDraftPatchPreview()
+                workbench.clearDraftPatchPreview()
             }
             apply {
-                markOperationFeedback(
-                    GraphEditorStateService.OperationFeedbackLevel.INFO,
+                workbench.markOperationFeedback(
+                    com.charmnight.linkgraph.ui.OperationFeedbackLevel.INFO,
                     "已清空当前草稿预览。",
                 )
             }
@@ -114,8 +114,8 @@ internal class DraftPatchWorkflow(
         }
         if (patch == null) {
             session.mutate {
-                markOperationFeedback(
-                    GraphEditorStateService.OperationFeedbackLevel.WARNING,
+                workbench.markOperationFeedback(
+                    com.charmnight.linkgraph.ui.OperationFeedbackLevel.WARNING,
                     "当前没有可恢复的草稿预览。",
                 )
             }
@@ -123,11 +123,11 @@ internal class DraftPatchWorkflow(
         }
         session.mutateBatch {
             apply {
-                markDraftPatchPreview(patch)
+                workbench.markDraftPatchPreview(patch)
             }
             apply {
-                markOperationFeedback(
-                    GraphEditorStateService.OperationFeedbackLevel.INFO,
+                workbench.markOperationFeedback(
+                    com.charmnight.linkgraph.ui.OperationFeedbackLevel.INFO,
                     "已恢复草稿预览。",
                 )
             }
@@ -143,8 +143,8 @@ internal class DraftPatchWorkflow(
         val undoState = snapshot.draftPatchUndoState
         if (undoState == null) {
             session.mutate {
-                markOperationFeedback(
-                    GraphEditorStateService.OperationFeedbackLevel.WARNING,
+                workbench.markOperationFeedback(
+                    com.charmnight.linkgraph.ui.OperationFeedbackLevel.WARNING,
                     "当前没有可撤销的草稿写回。",
                 )
             }
@@ -157,16 +157,16 @@ internal class DraftPatchWorkflow(
         )
         session.mutateBatch {
             apply {
-                clearDraftPatchApplyUndo()
+                workbench.clearDraftPatchApplyUndo()
             }
             undoState.patchPreview?.let { patch ->
                 apply {
-                    markDraftPatchPreview(patch)
+                    workbench.markDraftPatchPreview(patch)
                 }
             }
             apply {
-                markOperationFeedback(
-                    GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
+                workbench.markOperationFeedback(
+                    com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
                     "已撤销上次草稿写回，并恢复应用前工作图。",
                 )
             }

@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.semantic
 
+import com.charmnight.linkgraph.testing.*
+
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -69,6 +71,15 @@ class SemanticArchitectureBoundaryTest {
         assertNoViolations(
             title = "LinkGraphProjectService 主路径仍直接依赖 JavaResolver",
             violations = violations,
+        )
+    }
+
+    @Test
+    fun legacyExtract生产代码目录必须被彻底移除() {
+        val legacyExtractDirectory = projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/extract")
+        assertTrue(
+            !Files.exists(legacyExtractDirectory),
+            "legacy extract 生产代码目录仍存在: ${projectRelativePath(legacyExtractDirectory)}",
         )
     }
 

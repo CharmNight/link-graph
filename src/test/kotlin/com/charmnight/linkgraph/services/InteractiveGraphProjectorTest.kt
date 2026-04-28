@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
@@ -759,6 +761,12 @@ class InteractiveGraphProjectorTest {
                 node.type == NodeType.UNCERTAIN_LINK && node.title.contains("已折叠")
             },
             "大图默认投影应保留可继续展开的摘要节点",
+        )
+        assertTrue(
+            projection.visibleGraph.nodes.any { node ->
+                node.type == NodeType.UNCERTAIN_LINK && node.doc?.contains("继续问答") == true
+            },
+            "折叠摘要节点文案应与问答口径保持一致",
         )
     }
 

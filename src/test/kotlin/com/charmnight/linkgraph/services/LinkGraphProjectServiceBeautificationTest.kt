@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphEdge
@@ -178,10 +180,10 @@ class LinkGraphProjectServiceBeautificationTest : BasePlatformTestCase() {
             sourceTag = GraphSourceTag.DRAFT_MANUAL,
         )
         val staleFactOnlyCrossNode = GraphNode(
-            id = "method:legacy-fallback",
+            id = "method:fallback-guard",
             type = NodeType.METHOD,
-            title = "LegacyFallback.handle",
-            signature = "com.example.LegacyFallback.handle():void",
+            title = "FallbackGuard.handle",
+            signature = "com.example.FallbackGuard.handle():void",
             sourceTag = GraphSourceTag.FACT,
         )
         val stateService = project.getService(GraphEditorStateService::class.java)
@@ -215,6 +217,6 @@ class LinkGraphProjectServiceBeautificationTest : BasePlatformTestCase() {
         )
 
         assertTrue(result.promptPreview.contains("人工补充说明"))
-        assertTrue(!result.promptPreview.contains("LegacyFallback.handle"))
+        assertTrue(!result.promptPreview.contains("FallbackGuard.handle"))
     }
 }

@@ -1,4 +1,5 @@
 import type { LinkGraphBootstrapState, LinkGraphDocument, LinkGraphNode } from "./types";
+import { resolveCurrentSceneState, resolveSemanticFactGraph, resolveWorkingGraph } from "./sampleState";
 
 declare global {
   interface Window {
@@ -62,13 +63,16 @@ export function summarizeGraph(document?: LinkGraphDocument | null) {
 }
 
 export function summarizeBootstrapState(state: LinkGraphBootstrapState) {
+  const currentSceneState = resolveCurrentSceneState(state);
   return {
-    visibleGraph: summarizeGraph(state.visibleGraph),
-    workingGraph: summarizeGraph(state.workingGraph),
-    referenceFactGraph: summarizeGraph(state.referenceFactGraph),
+    currentSceneId: state.currentSceneId,
+    workspaceGraph: summarizeGraph(resolveWorkingGraph(state)),
+    workspaceBaseGraph: summarizeGraph(state.workspaceBaseGraph),
+    semanticFactGraph: summarizeGraph(resolveSemanticFactGraph(state)),
     designBaselineGraph: summarizeGraph(state.designBaselineGraph),
     sourceNavigationState: state.sourceNavigationState?.phase ?? "IDLE",
-    selectedNodeId: state.selectedNodeId ?? null,
+    selectedNodeId: currentSceneState.selectedNodeId ?? null,
+    layoutRevision: currentSceneState.layoutRevision,
     operationFeedback: state.operationFeedback?.message ?? null,
     lastMessageType: state.lastMessageType ?? null,
     lastGraphSource: state.lastGraphSource ?? null,

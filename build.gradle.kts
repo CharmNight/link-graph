@@ -58,7 +58,7 @@ intellijPlatform {
         id = "com.charmnight.linkgraph"
         name = "链路图"
         version = providers.gradleProperty("pluginVersion")
-        description = "链路图插件：可视化方法与资源链路，支持 Mermaid 导入、导出、对比，并可基于当前链路生成可审计的代码草稿。"
+        description = "Link Graph is an IntelliJ Platform plugin for exploring method, flowchart, and resource relationships inside a project. It provides a JCEF-based graph workbench with Mermaid import/export, diff preview, source navigation, local fallback workflows, and optional remote LLM-assisted drafts."
         ideaVersion {
             sinceBuild = providers.gradleProperty("platformSinceBuild")
         }

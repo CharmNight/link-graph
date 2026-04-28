@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.semantic.provider.code
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.semantic.model.FlowActionUnit
 import com.charmnight.linkgraph.semantic.model.FlowEdgeRole
 import com.charmnight.linkgraph.semantic.model.FlowScopeUnit
@@ -125,6 +127,82 @@ class KotlinCodeSemanticProviderTest : BasePlatformTestCase() {
         })
         assertTrue(result.relations.any { relation -> relation.kind == SemanticRelationKind.INVOKES })
         assertTrue(result.sourceMappings.isNotEmpty())
+    }
+
+    fun testAnalyzeKotlinAccessorResolvesExternalMethodInvocation() {
+        myFixture.configureByText(
+            "AccessorService.kt",
+            """
+                package com.example
+
+                class Formatter {
+                    fun normalize(value: String): String {
+                        return value.trim()
+                    }
+                }
+
+                class AccessorService(
+                    private val formatter: Formatter = Formatter(),
+                ) {
+                    var raw: String = " seed "
+                        get() = formatter.normalize(<caret>field)
+                }
+            """.trimIndent(),
+        )
+
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor)
+        val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
+
+        val result = KotlinCodeSemanticProvider().analyze(
+            handle = codeHandle,
+            capturePolicy = SemanticCapturePolicy(),
+            budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 1, maxInvocationsPerUnit = 8),
+        )
+
+        assertTrue(result.semanticUnits.any { unit ->
+            unit is MethodLikeUnit && unit.title == "Formatter.normalize"
+        })
+        assertTrue(result.semanticUnits.any { unit ->
+            unit is InvocationUnit && unit.targetSignature?.contains("Formatter.normalize") == true
+        })
+    }
+
+    fun testAnalyzeKotlinPrimaryConstructorResolvesExternalMethodInvocation() {
+        myFixture.configureByText(
+            "PrimaryCtorFlow.kt",
+            """
+                package com.example
+
+                class Formatter {
+                    fun normalize(value: String): String {
+                        return value.trim()
+                    }
+                }
+
+                class PrimaryCtorFlow(
+                    value: String,
+                    private val formatter: Formatter = Formatter(),
+                ) {
+                    private val normalized = formatter.normalize(<caret>value)
+                }
+            """.trimIndent(),
+        )
+
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor)
+        val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
+
+        val result = KotlinCodeSemanticProvider().analyze(
+            handle = codeHandle,
+            capturePolicy = SemanticCapturePolicy(),
+            budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 1, maxInvocationsPerUnit = 8),
+        )
+
+        assertTrue(result.semanticUnits.any { unit ->
+            unit is MethodLikeUnit && unit.title == "Formatter.normalize"
+        })
+        assertTrue(result.semanticUnits.any { unit ->
+            unit is InvocationUnit && unit.targetSignature?.contains("Formatter.normalize") == true
+        })
     }
 
     fun testAnalyzeKotlinIfConditionBuildsExplicitConditionInvocation() {

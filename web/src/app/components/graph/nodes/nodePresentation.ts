@@ -1,4 +1,5 @@
 import { nodeTypeLabel, sourceTagLabel } from "../../../labels";
+import { resolveFlowchartKind } from "../../../flowchartKind";
 import type { LinkGraphNode } from "../../../types";
 
 function shortDoc(value?: string): string | null {
@@ -328,7 +329,7 @@ export function overflowPresentation(node: LinkGraphNode): {
 }
 
 export function flowchartKind(node: LinkGraphNode): string {
-  return node.metadata?.["flowchart.kind"] ?? "PROCESS";
+  return resolveFlowchartKind(node);
 }
 
 export function flowchartKindLabel(node: LinkGraphNode): string {

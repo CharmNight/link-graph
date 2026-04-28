@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
@@ -15,7 +17,7 @@ class GraphAuditScopeResolverTest {
         val staleFactNode = GraphNode(
             id = "method:stale-fact",
             type = NodeType.METHOD,
-            title = "LegacyFallback.handle",
+            title = "FallbackGuard.handle",
             sourceTag = GraphSourceTag.FACT,
         )
         val currentDraftNode = GraphNode(
@@ -37,7 +39,7 @@ class GraphAuditScopeResolverTest {
                     ),
                 ),
             ),
-            draftGraph = GraphDocument(
+            editableGraph = GraphDocument(
                 nodes = listOf(currentDraftNode),
                 edges = emptyList(),
             ),
@@ -68,7 +70,7 @@ class GraphAuditScopeResolverTest {
         val manualNote = GraphNode(
             id = "doc:manual-note",
             type = NodeType.DOC_PAGE,
-            title = "人工审计说明",
+            title = "人工核查说明",
             sourceTag = GraphSourceTag.DRAFT_MANUAL,
         )
         val secondHopNode = GraphNode(
@@ -79,7 +81,7 @@ class GraphAuditScopeResolverTest {
         )
         val context = GraphAuditContext(
             factGraph = GraphDocument(nodes = listOf(selectedNode, directNeighbor)),
-            draftGraph = GraphDocument(
+            editableGraph = GraphDocument(
                 nodes = listOf(selectedNode, directNeighbor, manualNote, secondHopNode),
                 edges = listOf(
                     GraphEdge(

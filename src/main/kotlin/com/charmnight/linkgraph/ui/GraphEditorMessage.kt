@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.llm.GraphBeautificationResult as GraphBeautificationPayload
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
+import com.charmnight.linkgraph.workbench.RiskResolutionStatus
 import com.charmnight.linkgraph.workbench.StepGranularity
 
 /**
@@ -15,7 +16,7 @@ sealed interface GraphEditorMessage {
      * 标识草稿补丁预览的来源。
      */
     enum class DraftPatchPreviewSource {
-        /** 表示预览来自审计结果。 */
+        /** 表示预览来自问答结果。 */
         AUDIT,
         /** 表示预览来自差异评审。 */
         DIFF_REVIEW,
@@ -56,11 +57,11 @@ sealed interface GraphEditorMessage {
     ) : GraphEditorMessage
 
     /**
-     * 通知前端图结构已变更。
+     * 请求把当前 scene 的结构编辑脚本应用到 canonical workspace graph。
      */
-    data class GraphChanged(
-        /** 保存最新图数据。 */
-        val graph: GraphDocument,
+    data class ApplyGraphEditScript(
+        /** 保存待应用的编辑脚本。 */
+        val script: GraphEditScript,
     ) : GraphEditorMessage
 
     /**
@@ -107,19 +108,22 @@ sealed interface GraphEditorMessage {
     data object RequestSyncPreview : GraphEditorMessage
 
     /**
-     * 请求执行图审计。
+     * 请求执行图问答。
      */
     data class RequestAudit(
         /** 保存用户问题。 */
         val question: String,
         /** 保存选中的节点标识列表。 */
         val selectedNodeIds: List<String> = emptyList(),
-        /** 保存继续取证所追踪的风险线索标识。 */
-        val sourceLeadId: String? = null,
+        /** 保存继续取证所追踪的风险线程标识。 */
+        val sourceThreadId: String? = null,
     ) : GraphEditorMessage
 
+    /** 请求直接重试最近一次失败的问答。 */
+    data object RetryLastAuditRequest : GraphEditorMessage
+
     /**
-     * 确认一条审计候选变更。
+     * 确认一条问答候选变更。
      */
     data class ConfirmAuditCandidateChange(
         /** 保存待确认的候选变更标识。 */
@@ -127,11 +131,23 @@ sealed interface GraphEditorMessage {
     ) : GraphEditorMessage
 
     /**
-     * 取消一条已经确认的审计候选变更。
+     * 取消一条已经确认的问答候选变更。
      */
     data class UnconfirmAuditCandidateChange(
         /** 保存待取消确认的候选变更标识。 */
         val changeId: String,
+    ) : GraphEditorMessage
+
+    /**
+     * 请求为风险线程写入人工决策。
+     */
+    data class ResolveInvestigationThread(
+        /** 保存线程标识。 */
+        val threadId: String,
+        /** 保存人工决策状态。 */
+        val resolutionStatus: RiskResolutionStatus,
+        /** 保存可选备注。 */
+        val note: String = "",
     ) : GraphEditorMessage
 
     /**
@@ -193,6 +209,16 @@ sealed interface GraphEditorMessage {
     /** 请求生成改动计划。 */
     data object RequestGenerationPlan : GraphEditorMessage
 
+    /**
+     * 请求继续追问当前实现建议。
+     */
+    data class RequestGenerationPlanDiscussion(
+        /** 保存用户追问。 */
+        val question: String,
+        /** 保存当前聚焦的建议条目标识。 */
+        val focusItemId: String? = null,
+    ) : GraphEditorMessage
+
     /** 请求生成代码草稿。 */
     data object RequestCodeDrafts : GraphEditorMessage
 
@@ -227,6 +253,14 @@ sealed interface GraphEditorMessage {
      * 请求应用单个代码草稿。
      */
     data class ApplySingleCodeDraft(
+        /** 保存草稿标识。 */
+        val draftId: String,
+    ) : GraphEditorMessage
+
+    /**
+     * 请求打开指定代码草稿的原生 IDE diff。
+     */
+    data class OpenCodeDraftNativeDiff(
         /** 保存草稿标识。 */
         val draftId: String,
     ) : GraphEditorMessage

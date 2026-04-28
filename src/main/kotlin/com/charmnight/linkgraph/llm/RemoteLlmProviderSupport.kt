@@ -49,7 +49,9 @@ internal fun LinkGraphSettingsState.usesRemoteProvider(): Boolean {
 }
 
 /** 从设置中提取一份可直接发起远程请求的连接配置。 */
-internal fun LinkGraphSettingsState.remoteConnectionOrNull(): RemoteLlmConnection? {
+internal fun LinkGraphSettingsState.remoteConnectionOrNull(
+    endpointPolicy: RemoteLlmEndpointPolicy = RemoteLlmEndpointPolicy(),
+): RemoteLlmConnection? {
     /** 去除无效字段后的设置快照。 */
     val sanitized = sanitized()
     if (!sanitized.llmEnabled) {
@@ -69,7 +71,7 @@ internal fun LinkGraphSettingsState.remoteConnectionOrNull(): RemoteLlmConnectio
     if (endpoint.isBlank() || apiKey.isBlank() || model.isBlank()) {
         return null
     }
-    if (!LlmUserMessageFormatter.isLikelyEndpoint(endpoint)) {
+    if (endpointPolicy.validationError(endpoint) != null) {
         return null
     }
     return RemoteLlmConnection(

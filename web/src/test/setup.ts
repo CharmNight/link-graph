@@ -30,8 +30,9 @@ if (typeof globalThis.DOMMatrixReadOnly === "undefined") {
       const source = typeof transform === "string" ? transform : "";
       const matrixValues = source.match(/matrix\(([^)]+)\)/)?.[1]
         ?.split(",")
-        .map((value) => Number.parseFloat(value.trim()));
-      this.m22 = Number.isFinite(matrixValues?.[3]) ? matrixValues[3]! : 1;
+        .map((value) => Number.parseFloat(value.trim()))
+        ?? [];
+      this.m22 = Number.isFinite(matrixValues[3]) ? matrixValues[3]! : 1;
     }
   }
 

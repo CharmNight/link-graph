@@ -1,6 +1,6 @@
 import { memo, useLayoutEffect, useRef } from "react";
 import { nodeTypeLabel } from "../../../labels";
-import type { LinkGraphNode } from "../../../types";
+import type { DraftCompareStatus, LinkGraphNode } from "../../../types";
 import { IssueBadge } from "../../IssueBadge";
 import {
   factNodeDocText,
@@ -25,6 +25,7 @@ interface FactGraphNodeCardProps {
   collapsedCount?: number;
   explanationFocused?: boolean;
   draftChanged?: boolean;
+  draftCompareStatus?: DraftCompareStatus;
   onMeasure?: (size: { width: number; height: number }) => void;
   onExpandOverflow?: () => void;
 }
@@ -36,6 +37,7 @@ export const FactGraphNodeCard = memo(function FactGraphNodeCard({
   collapsedCount,
   explanationFocused = false,
   draftChanged = false,
+  draftCompareStatus,
   onMeasure,
   onExpandOverflow,
 }: FactGraphNodeCardProps) {
@@ -86,7 +88,7 @@ export const FactGraphNodeCard = memo(function FactGraphNodeCard({
             </span>
           ) : null}
           {directionText ? <span className="badge hierarchy-badge">{directionText}</span> : null}
-          <IssueBadge certainty={certainty} diffStatus={node.diffStatus} />
+          <IssueBadge certainty={certainty} diffStatus={node.diffStatus} draftCompareStatus={draftCompareStatus} />
         </div>
       </div>
       <strong className="flow-node-owner" title={ownerText}>

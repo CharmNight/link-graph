@@ -1,8 +1,10 @@
 import type { DraftWorkbenchEntry } from "../types";
+import { draftFlowChangePillClassName, draftFlowChangePills, type DraftFlowChangeSummary } from "./draftFlowChangeSummary";
 
 interface DraftDetailPanelProps {
   entry: DraftWorkbenchEntry | null;
   compareMode: "after" | "compare";
+  flowChangeSummary?: DraftFlowChangeSummary | null;
   resolveNodeTitle: (nodeId: string) => string;
   onLocateChangeNode: (entryId: string) => void;
   onUnconfirmChange: (entryId: string) => void;
@@ -14,6 +16,7 @@ interface DraftDetailPanelProps {
 export function DraftDetailPanel({
   entry,
   compareMode,
+  flowChangeSummary = null,
   resolveNodeTitle,
   onLocateChangeNode,
   onUnconfirmChange,
@@ -26,7 +29,7 @@ export function DraftDetailPanel({
       <section className="workbench-draft-section">
         <div className="workbench-empty-card">
           <strong>当前还没有草稿条目</strong>
-          <p className="muted">先在讲解里记为备注，或在审计里确认变更，这里才会出现可操作的草稿内容。</p>
+          <p className="muted">先在讲解里记为备注，或在问答里确认变更，这里才会出现可操作的草稿内容。</p>
         </div>
       </section>
     );
@@ -34,22 +37,48 @@ export function DraftDetailPanel({
 
   const isChange = entry.kind === "CHANGE";
   const targetNodeTitles = entry.targetNodeIds.map((nodeId) => resolveNodeTitle(nodeId));
+  const beforeState = normalizeOptionalText(entry.beforeState);
+  const afterState = normalizeOptionalText(entry.afterState);
+  const hasComparableState = beforeState != null && afterState != null;
+  const hasSingleState = afterState != null || beforeState != null;
+  const flowChangePills = compareMode === "compare" ? draftFlowChangePills(flowChangeSummary) : [];
+  const flowChangeSection = isChange && compareMode === "compare" && flowChangeSummary ? (
+    <section className="workbench-step-section workbench-flow-change-summary">
+      <h4>流程变化摘要</h4>
+      <div className="canvas-reading-flags">
+        <span className="canvas-reading-flag is-info">
+          命中节点 {flowChangeSummary.visibleNodeCount} / 范围节点 {flowChangeSummary.scopeNodeCount}
+        </span>
+        {flowChangePills.map((pill) => (
+          <span key={pill.label} className={draftFlowChangePillClassName(pill)}>{pill.label}</span>
+        ))}
+      </div>
+    </section>
+  ) : null;
   const changeStateSection = isChange ? (
-    compareMode === "compare" ? (
+    hasComparableState && compareMode === "compare" ? (
       <dl className="workbench-before-after">
         <div>
           <dt>修改前</dt>
-          <dd>{entry.beforeState ?? "未提供"}</dd>
+          <dd>{beforeState}</dd>
         </div>
         <div>
           <dt>修改后</dt>
-          <dd>{entry.afterState ?? "未提供"}</dd>
+          <dd>{afterState}</dd>
         </div>
       </dl>
+    ) : hasSingleState ? (
+      <section className="workbench-step-section">
+        <h4>{afterState != null ? "修改后" : "当前定位源码"}</h4>
+        <div className="workbench-draft-single-state">{afterState ?? beforeState}</div>
+      </section>
     ) : (
       <section className="workbench-step-section">
-        <h4>修改后</h4>
-        <div className="workbench-draft-single-state">{entry.afterState ?? "未提供"}</div>
+        <h4>变更意图</h4>
+        <div className="workbench-draft-intent-card">
+          <strong>当前阶段已完成源码定位，但还没有生成具体代码 diff。</strong>
+          <p className="muted">这条草稿现在表达的是“改哪里、为什么改、允许写回到哪里”，不是最终代码文本。</p>
+        </div>
       </section>
     )
   ) : null;
@@ -68,6 +97,8 @@ export function DraftDetailPanel({
           <strong>{entry.title}</strong>
           <span className="badge">{isChange ? "已确认" : "讲解备注"}</span>
         </div>
+
+        {flowChangeSection}
 
         {changeStateSection}
 
@@ -95,7 +126,7 @@ export function DraftDetailPanel({
                   {entry.editScopes?.map((scope) => (
                     <li key={scope.scopeId}>
                       <strong>{formatEditScopeLocation(scope.filePath, scope.startLine, scope.endLine)}</strong>
-                      {scope.symbolSignature ? <span>{scope.symbolSignature}</span> : null}
+                      {scope.symbolSignature ? <span className="workbench-edit-scope-signature">{scope.symbolSignature}</span> : null}
                     </li>
                   ))}
                 </ul>
@@ -172,6 +203,11 @@ export function DraftDetailPanel({
       </article>
     </section>
   );
+}
+
+function normalizeOptionalText(value?: string | null): string | null {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
 }
 
 function formatEditScopeLocation(

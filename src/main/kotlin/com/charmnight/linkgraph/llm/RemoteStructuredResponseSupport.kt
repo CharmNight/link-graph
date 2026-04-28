@@ -107,12 +107,14 @@ internal class RemoteStructuredResponseSupport(
         onPreview: ((String, Boolean) -> Unit)? = null,
         parse: (String) -> T,
     ): RemoteStructuredResult<T> {
+        /** 带原生结构化输出约束的请求。 */
+        val structuredRequest = request.withStructuredOutput(scene, schema)
         /** 请求过程中的附加警告。 */
         val responseWarnings = mutableListOf<String>()
         /** 首轮远程响应。 */
         val firstResponse = runCatching {
             executeRequest(
-                request = request,
+                request = structuredRequest,
                 preferStreaming = preferStreaming,
                 onPreview = onPreview,
             )
@@ -123,7 +125,7 @@ internal class RemoteStructuredResponseSupport(
             responseWarnings += "远程 LLM $scene 首轮请求超时或连接失败，已自动重试 1 次。"
             runCatching {
                 executeRequest(
-                    request = request,
+                    request = structuredRequest,
                     preferStreaming = preferStreaming,
                     onPreview = onPreview,
                 )
@@ -143,9 +145,15 @@ internal class RemoteStructuredResponseSupport(
         /** 首轮解析异常。 */
         val firstError = firstResult.exceptionOrNull() ?: error("Unknown parse failure.")
         /** 用于修复 JSON 的二次请求。 */
-        val repairRequest = request.copy(
+        val repairRequest = structuredRequest.copy(
             systemPrompt = buildRepairSystemPrompt(scene),
-            userPrompt = buildRepairUserPrompt(scene, schema, request, firstResponse.content),
+            userPrompt = buildRepairUserPrompt(
+                scene = scene,
+                schema = schema,
+                request = structuredRequest,
+                originalContent = firstResponse.content,
+                firstError = firstError,
+            ),
             deliveryMode = LlmDeliveryMode.FULL,
         )
         /** 修复请求返回的响应。 */
@@ -223,7 +231,9 @@ internal class RemoteStructuredResponseSupport(
         schema: String,
         request: LlmRequest,
         originalContent: String,
+        firstError: Throwable,
     ): String {
+        val parseError = firstError.message?.trim().orEmpty().ifBlank { firstError::class.java.simpleName }
         return """
             当前场景：$scene
 
@@ -236,10 +246,19 @@ internal class RemoteStructuredResponseSupport(
             原始 user prompt：
             ${request.userPrompt}
 
+            上一次结构化校验失败的具体原因：
+            $parseError
+
+            修复要求：
+            1. 必须严格匹配“目标 JSON 结构”，补齐所有必填字段。
+            2. 如果错误包含 `is required`，对应路径上的字段必须显式提供，不能省略。
+            3. 如果错误指向数组中的某个对象，必须检查同类对象是否也满足相同约束。
+            4. 保留原始任务事实，只修复结构与字段类型，不要添加解释文本。
+
             上一次模型输出：
             ${truncate(originalContent, 10_000)}
 
-            上一次输出无法直接解析为结构化 JSON。请基于原始任务上下文，重新输出一个合法 JSON。
+            上一次输出无法直接解析为结构化 JSON。请基于原始任务上下文与上述校验错误，重新输出一个合法 JSON。
             只返回 JSON。
         """.trimIndent()
     }
@@ -286,5 +305,41 @@ internal class RemoteStructuredResponseSupport(
             message.contains("timeout") ||
             message.contains("connection refused") ||
             message.contains("failed to connect")
+    }
+
+    /** 为结构化请求补齐 provider 可消费的 schema 元数据。 */
+    private fun LlmRequest.withStructuredOutput(
+        scene: String,
+        schema: String,
+    ): LlmRequest {
+        if (structuredOutput != null) {
+            return this
+        }
+        if (!protocol.supportsNativeStructuredOutput()) {
+            return this
+        }
+        return copy(
+            structuredOutput = LlmStructuredOutput(
+                name = normalizeStructuredOutputName(scene),
+                schema = schema.trim(),
+            ),
+        )
+    }
+
+    /** 归一化 provider 侧使用的 schema 名称。 */
+    private fun normalizeStructuredOutputName(scene: String): String {
+        val ascii = scene
+            .lowercase()
+            .replace(Regex("[^a-z0-9]+"), "_")
+            .trim('_')
+        return if (ascii.isNotEmpty()) {
+            "linkgraph_$ascii"
+        } else {
+            "linkgraph_structured_${scene.hashCode().toUInt().toString(16)}"
+        }
+    }
+
+    private fun LlmWireProtocol.supportsNativeStructuredOutput(): Boolean {
+        return this == LlmWireProtocol.OPENAI_RESPONSES
     }
 }

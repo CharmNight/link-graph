@@ -70,7 +70,7 @@ class DefaultGraphBeautificationService(
                     userPrompt = promptPackage.userPrompt,
                 ),
                 scene = "链路讲解",
-                schema = BEAUTIFICATION_SCHEMA,
+                schema = LlmStructuredSchemas.BEAUTIFICATION,
                 preferStreaming = remoteConnection.preset.capabilities.supportsStreaming,
                 onPreview = onPreview,
             ) { content ->
@@ -128,39 +128,6 @@ class DefaultGraphBeautificationService(
                 )
             },
         )
-    }
-
-    private companion object {
-        /** 远程链路讲解返回必须遵守的 JSON 结构。 */
-        private const val BEAUTIFICATION_SCHEMA = """
-{
-  "steps": [
-    {
-      "stepId": "稳定ID",
-      "title": "步骤标题",
-      "description": "步骤说明",
-      "followUpQuestions": ["可继续追问的问题"],
-      "evidence": [
-        {
-          "id": "稳定ID",
-          "claim": "一条必须可追溯的关键结论",
-          "evidenceLevel": "DIRECT_SOURCE|DIRECT_GRAPH|CALLSITE_ONLY|NOT_OBSERVED",
-          "references": [
-            {
-              "nodeId": "可选节点ID",
-              "filePath": "可选源码路径",
-              "startLine": 1,
-              "endLine": 3
-            }
-          ]
-        }
-      ],
-      "downstreamTargets": ["可继续下钻的目标ID"]
-    }
-  ],
-  "warnings": ["可选警告"]
-}
-"""
     }
 }
 

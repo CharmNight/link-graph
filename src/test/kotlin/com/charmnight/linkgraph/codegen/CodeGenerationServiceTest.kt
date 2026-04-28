@@ -1,5 +1,8 @@
 package com.charmnight.linkgraph.codegen
 
+import com.charmnight.linkgraph.testing.*
+
+import com.charmnight.linkgraph.llm.LlmProviderPresets
 import com.charmnight.linkgraph.llm.GenerationContext
 import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.GenerationPlanItem
@@ -21,7 +24,6 @@ import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.settings.LlmProviderType
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
@@ -229,7 +231,7 @@ class CodeGenerationServiceTest {
             ),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://api.example.com/v1",
                 apiKey = "secret-key",
                 model = "gpt-5.4",
@@ -318,7 +320,7 @@ class CodeGenerationServiceTest {
             ),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://api.example.com/v1",
                 apiKey = "secret-key",
                 model = "gpt-5.4",
@@ -386,7 +388,7 @@ class CodeGenerationServiceTest {
             ),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://api.example.com/v1",
                 apiKey = "secret-key",
                 model = "gpt-5.4",
@@ -462,7 +464,7 @@ class CodeGenerationServiceTest {
             ),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://api.example.com/v1",
                 apiKey = "secret-key",
                 model = "gpt-5.4",
@@ -473,7 +475,121 @@ class CodeGenerationServiceTest {
         assertEquals(1, result.drafts.size)
         assertEquals("src/main/java/com/example/OrderDraftDto.java", result.drafts.single().targetPath)
         assertTrue(result.warnings.any { it.contains("远程 LLM 代码生成失败") })
-        assertTrue(result.warnings.any { it.contains("content or editOperations") })
+        assertTrue(result.warnings.any { it.contains("结构化校验") || it.contains("模型输出格式") })
+        assertNotNull(result.diagnosticDetail)
+        assertTrue(result.diagnosticDetail!!.contains("首次解析错误"))
+        assertTrue(result.diagnosticDetail!!.contains("重试解析错误"))
+        assertTrue(result.diagnosticDetail!!.contains("must provide content or editOperations"))
+        assertTrue(result.emptyResultDetailMessage()!!.contains("首次返回片段"))
+    }
+
+    @Test
+    fun summarizesStructuredJsonRepairFailureWithoutDumpingRawModelPayloadIntoWarnings() {
+        val requests = mutableListOf<LlmRequest>()
+        val result = CodeGenerationService(
+            promptFactory = LlmPromptFactory(),
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    requests += request
+                    return LlmResponse(
+                        content = """
+                            {
+                              "summary": "远程代码草稿",
+                              "warnings": [],
+                              "drafts": [
+                                {
+                                  "id": "draft-remote-common-controller",
+                                  "sourceNodeId": "method:file-download",
+                                  "title": "CommonController.java",
+                                  "targetPath": "src/main/java/com/example/CommonController.java",
+                                  "editOperations": [
+                                    {
+                                      "operationId": "op-replace-file-download",
+                                      "filePath": "src/main/java/com/example/CommonController.java",
+                                      "scopeId": "scope-file-download",
+                                      "kind": "REPLACE_METHOD_BLOCK"
+                                    }
+                                  ],
+                                  "warnings": []
+                                }
+                              ]
+                            }
+                        """.trimIndent(),
+                        model = request.model,
+                    )
+                }
+            },
+        ).generateDrafts(
+            context = GenerationContext(
+                graph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:file-download",
+                            type = NodeType.METHOD,
+                            title = "CommonController.fileDownload",
+                            signature = "com.example.CommonController.fileDownload(java.lang.String):java.lang.String",
+                        ),
+                    ),
+                ),
+                confirmedChanges = listOf(
+                    DraftWorkbenchEntry(
+                        entryId = "draft-change-file-download",
+                        kind = DraftEntryKind.CHANGE,
+                        title = "修改 fileDownload 的路径判定",
+                        targetNodeIds = listOf("method:file-download"),
+                        editScopes = listOf(
+                            EditScope(
+                                scopeId = "scope-file-download",
+                                targetNodeId = "method:file-download",
+                                filePath = "src/main/java/com/example/CommonController.java",
+                                language = "JAVA",
+                                symbolKind = "METHOD",
+                                symbolSignature = "com.example.CommonController.fileDownload(java.lang.String):java.lang.String",
+                                startLine = 12,
+                                endLine = 24,
+                                allowedChangeKinds = listOf("REPLACE_METHOD_BLOCK"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            plan = GenerationPlan(
+                source = GenerationPlanSource.REMOTE,
+                summary = "Modify CommonController.java",
+                items = listOf(
+                    GenerationPlanItem(
+                        id = "plan-file-download",
+                        title = "修改 fileDownload",
+                        description = "只允许改 fileDownload。",
+                        risk = SyncPreviewRisk.MEDIUM,
+                        targetPath = "src/main/java/com/example/CommonController.java",
+                    ),
+                ),
+            ),
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://api.example.com/v1",
+                apiKey = "secret-key",
+                model = "gpt-5.4",
+            ),
+        )
+
+        assertEquals(2, requests.size)
+        assertTrue(requests[1].userPrompt.contains("\"editOperations\""))
+        assertTrue(requests[1].userPrompt.contains("\"payload\""))
+        assertTrue(requests[1].userPrompt.contains("\"scopeId\""))
+        assertTrue(requests[1].userPrompt.contains("payload is required"))
+        assertTrue(requests[1].userPrompt.contains("上一次结构化校验失败的具体原因"))
+        assertEquals(LlmResultSource.MOCK, result.source)
+        assertTrue(result.warnings.any { it.contains("返回内容未通过结构化校验") })
+        assertTrue(result.warnings.none { it.contains("首次返回片段") })
+        assertTrue(result.warnings.none { it.contains("\"summary\"") })
+        assertNotNull(result.diagnosticDetail)
+        assertTrue(result.diagnosticDetail!!.contains("首次返回片段"))
+        assertTrue(result.diagnosticDetail!!.contains("重试返回片段"))
+        assertTrue(result.diagnosticDetail!!.contains("payload is required"))
+        assertTrue(result.emptyResultDetailMessage()!!.contains("重试返回片段"))
     }
 
     @Test
@@ -516,13 +632,101 @@ class CodeGenerationServiceTest {
             ),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.MOCK.name,
+                provider = LlmProviderPresets.MOCK.id,
             ),
         )
 
         assertTrue(result.drafts.isEmpty())
         assertTrue(result.warnings.any { it.contains("无法安全改写现有方法") })
         assertTrue(result.warnings.any { it.contains("远程 LLM") })
+    }
+
+    @Test
+    fun rejectsRemoteExistingFileDraftThatUsesContentInsteadOfEditOperations() {
+        val result = CodeGenerationService(
+            promptFactory = LlmPromptFactory(),
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    return LlmResponse(
+                        content = """
+                            {
+                              "summary": "远程代码草稿",
+                              "warnings": [],
+                              "drafts": [
+                                {
+                                  "id": "draft-unsafe-common-controller",
+                                  "sourceNodeId": "method:file-download",
+                                  "title": "CommonController.java",
+                                  "targetPath": "src/main/java/com/example/CommonController.java",
+                                  "content": "if (Boolean.TRUE.equals(delete)) {\n    FileUtils.deleteFile(filePath);\n}",
+                                  "warnings": []
+                                }
+                              ]
+                            }
+                        """.trimIndent(),
+                        model = request.model,
+                    )
+                }
+            },
+        ).generateDrafts(
+            context = GenerationContext(
+                graph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:file-download",
+                            type = NodeType.METHOD,
+                            title = "CommonController.fileDownload",
+                            signature = "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void",
+                        ),
+                    ),
+                ),
+                confirmedChanges = listOf(
+                    DraftWorkbenchEntry(
+                        entryId = "draft-change-file-download",
+                        kind = DraftEntryKind.CHANGE,
+                        title = "收紧 fileDownload 删除条件",
+                        targetNodeIds = listOf("method:file-download"),
+                        editScopes = listOf(
+                            EditScope(
+                                scopeId = "scope-file-download-delete",
+                                targetNodeId = "scope:file-download-delete",
+                                filePath = "src/main/java/com/example/CommonController.java",
+                                language = "JAVA",
+                                symbolKind = "FLOW_SCOPE",
+                                symbolSignature = "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void",
+                                startLine = 8,
+                                endLine = 10,
+                                allowedChangeKinds = listOf("REPLACE_METHOD_BODY"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            plan = GenerationPlan(
+                source = GenerationPlanSource.REMOTE,
+                summary = "Modify CommonController.java",
+                items = listOf(
+                    GenerationPlanItem(
+                        id = "plan-file-download",
+                        title = "修改 fileDownload",
+                        description = "只允许改 fileDownload。",
+                        risk = SyncPreviewRisk.MEDIUM,
+                        targetPath = "src/main/java/com/example/CommonController.java",
+                    ),
+                ),
+            ),
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://api.example.com/v1",
+                apiKey = "secret-key",
+                model = "gpt-5.4",
+            ),
+        )
+
+        assertEquals(LlmResultSource.MOCK, result.source)
+        assertTrue(result.drafts.isEmpty())
+        assertTrue(result.warnings.any { it.contains("existing-file") && it.contains("content") })
     }
 
     @Test
@@ -573,17 +777,12 @@ class CodeGenerationServiceTest {
                         ),
                     ),
                 ),
-            ),
-            plan = GenerationPlan(
-                source = GenerationPlanSource.REMOTE,
-                summary = "Modify CommonController.java",
-                items = listOf(
-                    GenerationPlanItem(
-                        id = "plan-file-download",
-                        title = "修改 fileDownload",
-                        description = "只允许改 fileDownload。",
-                        risk = SyncPreviewRisk.MEDIUM,
-                        targetPath = "src/main/java/com/example/CommonController.java",
+                confirmedChanges = listOf(
+                    DraftWorkbenchEntry(
+                        entryId = "draft-change-file-download",
+                        kind = DraftEntryKind.CHANGE,
+                        title = "修改 fileDownload 的路径判定",
+                        targetNodeIds = listOf("method:file-download"),
                         editScopes = listOf(
                             EditScope(
                                 scopeId = "scope-file-download",
@@ -601,9 +800,22 @@ class CodeGenerationServiceTest {
                     ),
                 ),
             ),
+            plan = GenerationPlan(
+                source = GenerationPlanSource.REMOTE,
+                summary = "Modify CommonController.java",
+                items = listOf(
+                    GenerationPlanItem(
+                        id = "plan-file-download",
+                        title = "修改 fileDownload",
+                        description = "只允许改 fileDownload。",
+                        risk = SyncPreviewRisk.MEDIUM,
+                        targetPath = "src/main/java/com/example/CommonController.java",
+                    ),
+                ),
+            ),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://api.example.com/v1",
                 apiKey = "secret-key",
                 model = "gpt-5.4",

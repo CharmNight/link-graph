@@ -7,13 +7,14 @@ import com.charmnight.linkgraph.settings.LinkGraphSettingsState
  * 重点是明确缺少哪项、去哪修，以及需要先在设置页完成验证。
  */
 internal fun LinkGraphSettingsState.remoteLlmSetupHint(fallbackTarget: String): String {
+    val endpointPolicy = RemoteLlmEndpointPolicy()
     // 收集缺失或格式异常的关键配置项，便于直接展示给用户。
     /** 缺失或格式异常的配置项列表。 */
     val missingFields = buildList {
         if (effectiveEndpoint().isBlank()) {
             add("请求地址")
-        } else if (!LlmUserMessageFormatter.isLikelyEndpoint(effectiveEndpoint())) {
-            add("请求地址格式不正确")
+        } else if (endpointPolicy.validationError(effectiveEndpoint()) != null) {
+            add("请求地址必须使用 https://")
         }
         if (apiKey.isBlank()) {
             add("API 密钥")

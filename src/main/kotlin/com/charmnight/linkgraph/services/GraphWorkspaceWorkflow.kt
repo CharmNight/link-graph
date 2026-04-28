@@ -7,34 +7,27 @@ import com.charmnight.linkgraph.mermaid.MermaidImporter
 import com.charmnight.linkgraph.mermaid.MermaidValidator
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.model.GraphEdge
+import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewPlanner
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
-import com.charmnight.linkgraph.ui.GraphEditorStateService
+import com.charmnight.linkgraph.ui.GraphEditOperation
+import com.charmnight.linkgraph.ui.GraphEditScript
 import com.charmnight.linkgraph.ui.GraphLayoutPosition
+import com.charmnight.linkgraph.ui.toAnalysisDisplayMode
+import com.charmnight.linkgraph.ui.view.GraphProjectionMappingKind
 
-/**
- * 管理工作图、设计基线图、Mermaid 与 diff 的工作区流程。
- */
 internal class GraphWorkspaceWorkflow(
-    /** 项目级编辑器状态会话。 */
     private val session: ProjectEditorSession,
-    /** Mermaid 导入器。 */
     private val mermaidImporter: MermaidImporter,
-    /** Mermaid 校验器。 */
     private val mermaidValidator: MermaidValidator,
-    /** Mermaid 导出器。 */
     private val mermaidExporter: MermaidExporter,
-    /** 图 diff 比较器。 */
     private val graphDiffer: GraphDiffer,
-    /** 同步预览规划器。 */
     private val syncPreviewPlanner: SyncPreviewPlanner,
-    /** 剪贴板写入函数。 */
     private val copyToClipboard: (String) -> Boolean,
+    private val frontendGraphMutationSanitizer: FrontendGraphMutationSanitizer = FrontendGraphMutationSanitizer(),
 ) {
-    /**
-     * 直接加载指定图文档到编辑器状态。
-     */
     fun loadGraph(
         graph: GraphDocument,
         source: String,
@@ -44,29 +37,26 @@ internal class GraphWorkspaceWorkflow(
         }
     }
 
-    /**
-     * 处理前端主动上报的图结构变更。
-     */
-    fun handleFrontendGraphChanged(graph: GraphDocument) {
-        session.markViewGraphChanged(
-            graph = graph,
-            displayMode = session.snapshot().analysisDisplayMode,
+    fun handleFrontendEditScript(script: GraphEditScript) {
+        val snapshot = session.snapshot()
+        if (snapshot.workspaceRevision != script.baseWorkspaceRevision) {
+            return
+        }
+        val nextGraph = applyEditScript(snapshot, script)
+        session.markGraphChanged(
+            graph = nextGraph,
+            selectedMethodSignature = snapshot.selectedMethodSignature,
+            expectedRevision = snapshot.snapshotRevision,
             syncBrowser = false,
         )
     }
 
-    /**
-     * 处理前端主动上报的布局变更。
-     */
     fun handleFrontendLayoutChanged(positions: Map<String, GraphLayoutPosition>) {
         session.mutate(syncBrowser = false) {
             markLayoutChanged(positions)
         }
     }
 
-    /**
-     * 导入 Mermaid 文本并刷新编辑器状态。
-     */
     fun importMermaid(mermaid: String): GraphDocument {
         val parseResult = mermaidImporter.import(mermaid)
         val issues = mermaidValidator.validate(parseResult.document, parseResult.issues)
@@ -76,44 +66,34 @@ internal class GraphWorkspaceWorkflow(
         return parseResult.document
     }
 
-    /**
-     * 导出当前可见图或设计基线为 Mermaid 文本。
-     */
     fun exportMermaid(): String {
         val snapshot = session.snapshot()
         val document = snapshot.designBaselineGraph
             ?: if (snapshot.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART) {
-                snapshot.flowchartView?.fullGraph?.takeIf { graph -> graph.nodes.isNotEmpty() || graph.edges.isNotEmpty() }
+                snapshot.flowchartView.fullGraph.takeIf { graph -> graph.nodes.isNotEmpty() || graph.edges.isNotEmpty() }
             } else {
                 null
             }
             ?: currentVisibleGraph(snapshot)
         return mermaidExporter.export(document).also { exported ->
             session.mutateBatch {
-                apply {
-                    markMermaidExported(exported)
-                }
+                markMermaidExported(exported)
                 val copiedToClipboard = copyToClipboard(exported)
-                apply {
-                    markOperationFeedback(
-                        GraphEditorStateService.OperationFeedbackLevel.SUCCESS,
-                        if (copiedToClipboard) {
-                            "已导出 Mermaid，并复制到剪贴板。"
-                        } else {
-                            "已导出 Mermaid。"
-                        },
-                    )
-                }
+                workbench.markOperationFeedback(
+                    com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
+                    if (copiedToClipboard) {
+                        "已导出 Mermaid，并复制到剪贴板。"
+                    } else {
+                        "已导出 Mermaid。"
+                    },
+                )
             }
         }
     }
 
-    /**
-     * 进入代码事实图与设计基线的差异模式。
-     */
     fun showDiffMode(): GraphDifferResult? {
         val snapshot = session.snapshot()
-        val codeGraph = snapshot.referenceFactGraph ?: return null
+        val codeGraph = snapshot.semanticFactGraph.takeIf { it.nodes.isNotEmpty() || it.edges.isNotEmpty() } ?: return null
         val designGraph = snapshot.designBaselineGraph ?: return null
         return graphDiffer.diff(codeGraph, designGraph).also { result ->
             session.mutate {
@@ -122,27 +102,139 @@ internal class GraphWorkspaceWorkflow(
         }
     }
 
-    /**
-     * 生成当前图的同步预览列表。
-     */
     fun requestSyncPreview(): List<SyncPreviewItem> {
         val snapshot = session.snapshot()
-        val previewContext = when {
-            snapshot.visibleGraph != null && snapshot.diff != null -> snapshot.visibleGraph to snapshot.diff
-            snapshot.referenceFactGraph != null && snapshot.designBaselineGraph != null -> {
-                val result = graphDiffer.diff(snapshot.referenceFactGraph, snapshot.designBaselineGraph)
-                result.graph to result.diff
+        val previewItems = when {
+            snapshot.diffGraph != null && snapshot.diff != null -> syncPreviewPlanner.plan(snapshot.diffGraph, snapshot.diff)
+            snapshot.semanticFactGraph.nodes.isNotEmpty() || snapshot.semanticFactGraph.edges.isNotEmpty() -> {
+                val designBaseline = snapshot.designBaselineGraph ?: return emptyList()
+                val result = graphDiffer.diff(snapshot.semanticFactGraph, designBaseline)
+                syncPreviewPlanner.plan(result.graph, result.diff)
             }
 
-            else -> null
+            else -> emptyList()
         }
-        val previewItems = previewContext?.let { (graph, diff) ->
-            graph?.let { syncPreviewPlanner.plan(it, diff) }
-        }.orEmpty()
         session.mutate {
-            requestSyncPreview(previewItems)
+            workbench.requestSyncPreview(previewItems)
         }
         return previewItems
     }
 
+    private fun applyEditScript(
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        script: GraphEditScript,
+    ): GraphDocument {
+        val projectionIndex = when (script.sceneId.toAnalysisDisplayMode()) {
+            AnalysisDisplayMode.FACT_GRAPH -> snapshot.factGraphView.projectionIndex
+            AnalysisDisplayMode.FLOWCHART -> snapshot.flowchartView.projectionIndex
+            AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> snapshot.resourceRelationView.projectionIndex
+            null -> snapshot.factGraphView.projectionIndex
+        }
+        val workingGraph = snapshot.workspaceGraph
+        val trustedNodes = snapshot.trustedNavigationNodes
+        val nodesById = LinkedHashMap(workingGraph.nodes.associateBy(GraphNode::id))
+        val edgesById = LinkedHashMap(workingGraph.edges.associateBy(GraphEdge::id))
+
+        script.operations.forEach { operation ->
+            when (operation) {
+                is GraphEditOperation.UpsertNode -> {
+                    val targetNodeId = resolveEditableNodeId(operation.node.id, projectionIndex, nodesById)
+                    val sanitizedNode = frontendGraphMutationSanitizer.sanitize(
+                        snapshot,
+                        GraphDocument(nodes = listOf(operation.node)),
+                    ).nodes.firstOrNull() ?: operation.node
+                    val existingTrustedNode = trustedNodes[targetNodeId]
+                    nodesById[targetNodeId] = existingTrustedNode?.copy(
+                        title = sanitizedNode.title,
+                        inputs = sanitizedNode.inputs,
+                        outputs = sanitizedNode.outputs,
+                        doc = sanitizedNode.doc,
+                        metadata = existingTrustedNode.metadata + sanitizedNode.metadata,
+                    ) ?: sanitizedNode.copy(id = targetNodeId)
+                }
+
+                is GraphEditOperation.RemoveNode -> {
+                    val nodeIds = resolveRemovableNodeIds(operation.nodeId, projectionIndex)
+                    nodeIds.forEach(nodesById::remove)
+                    edgesById.entries.removeIf { (_, edge) -> edge.fromNodeId in nodeIds || edge.toNodeId in nodeIds }
+                }
+
+                is GraphEditOperation.UpsertEdge -> {
+                    val targetEdgeId = resolveEditableEdgeId(operation.edge.id, projectionIndex, edgesById)
+                    edgesById[targetEdgeId] = operation.edge.copy(id = targetEdgeId)
+                }
+
+                is GraphEditOperation.RemoveEdge -> {
+                    resolveRemovableEdgeIds(operation.edgeId, projectionIndex).forEach(edgesById::remove)
+                }
+            }
+        }
+
+        return GraphDocument(
+            nodes = nodesById.values.sortedBy { node -> node.id },
+            edges = edgesById.values.sortedBy { edge -> edge.id },
+            patch = workingGraph.patch,
+        )
+    }
+
+    private fun resolveEditableNodeId(
+        projectedNodeId: String,
+        projectionIndex: com.charmnight.linkgraph.ui.view.GraphProjectionIndex,
+        nodesById: Map<String, GraphNode>,
+    ): String {
+        val mapping = projectionIndex.nodeMapping(projectedNodeId)
+        return when {
+            mapping == null -> projectedNodeId
+            mapping.mappingKind == com.charmnight.linkgraph.ui.view.GraphProjectionMappingKind.EXACT &&
+                mapping.canonicalNodeIds.size == 1 -> mapping.canonicalNodeIds.first()
+            projectedNodeId in nodesById -> projectedNodeId
+            else -> projectedNodeId
+        }
+    }
+
+    private fun resolveRemovableNodeIds(
+        projectedNodeId: String,
+        projectionIndex: com.charmnight.linkgraph.ui.view.GraphProjectionIndex,
+    ): Set<String> {
+        val mapping = projectionIndex.nodeMapping(projectedNodeId) ?: return setOf(projectedNodeId)
+        return when (mapping.mappingKind) {
+            GraphProjectionMappingKind.EXACT,
+            GraphProjectionMappingKind.MERGED_ALIAS,
+            -> mapping.canonicalNodeIds.toSet()
+            GraphProjectionMappingKind.PATH_ALIAS,
+            GraphProjectionMappingKind.SYNTHETIC_READONLY,
+            GraphProjectionMappingKind.OVERFLOW_READONLY,
+            -> emptySet()
+        }
+    }
+
+    private fun resolveEditableEdgeId(
+        projectedEdgeId: String,
+        projectionIndex: com.charmnight.linkgraph.ui.view.GraphProjectionIndex,
+        edgesById: Map<String, GraphEdge>,
+    ): String {
+        val mapping = projectionIndex.edgeMapping(projectedEdgeId)
+        return when {
+            mapping == null -> projectedEdgeId
+            mapping.mappingKind == GraphProjectionMappingKind.EXACT &&
+                mapping.canonicalEdgeIds.size == 1 -> mapping.canonicalEdgeIds.first()
+            projectedEdgeId in edgesById -> projectedEdgeId
+            else -> projectedEdgeId
+        }
+    }
+
+    private fun resolveRemovableEdgeIds(
+        projectedEdgeId: String,
+        projectionIndex: com.charmnight.linkgraph.ui.view.GraphProjectionIndex,
+    ): Set<String> {
+        val mapping = projectionIndex.edgeMapping(projectedEdgeId) ?: return setOf(projectedEdgeId)
+        return when (mapping.mappingKind) {
+            GraphProjectionMappingKind.EXACT -> mapping.canonicalEdgeIds.toSet()
+            GraphProjectionMappingKind.MERGED_ALIAS,
+            GraphProjectionMappingKind.PATH_ALIAS,
+            GraphProjectionMappingKind.SYNTHETIC_READONLY,
+            GraphProjectionMappingKind.OVERFLOW_READONLY,
+            -> emptySet()
+        }
+    }
 }

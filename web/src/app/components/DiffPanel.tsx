@@ -13,8 +13,6 @@ interface DiffPanelProps {
   designBaseline?: LinkGraphDocument | null;
   result?: GraphPatchResult | null;
   requestState?: AsyncRequestState | null;
-  isRequesting?: boolean;
-  requestError?: string | null;
   resolveArtifactText?: (artifactId: string) => string | null;
   onRequestArtifact?: (artifactId: string) => void;
   onRequestReview: (question: string) => void;
@@ -29,15 +27,13 @@ export function DiffPanel({
   designBaseline,
   result,
   requestState,
-  isRequesting = false,
-  requestError,
   resolveArtifactText,
   onRequestArtifact,
   onRequestReview,
   onOpenPatchPreview,
 }: DiffPanelProps) {
   const [question, setQuestion] = useState("");
-  const effectiveRequestState = resolveEffectiveRequestState(requestState, isRequesting, requestError);
+  const effectiveRequestState = resolveEffectiveRequestState(requestState);
   const reviewing = effectiveRequestState?.phase === "RUNNING";
   const reviewError =
     effectiveRequestState?.phase === "FAILED" || effectiveRequestState?.phase === "TIMED_OUT"

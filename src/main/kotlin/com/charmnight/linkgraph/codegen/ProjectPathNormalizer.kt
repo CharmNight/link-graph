@@ -84,7 +84,6 @@ object ProjectPathNormalizer {
     ): GenerationPlanItem {
         return item.copy(
             targetPath = item.targetPath?.let { path -> normalizePath(path, projectBasePath) },
-            editScopes = item.editScopes.map { scope -> normalizeEditScope(scope, projectBasePath) },
         )
     }
 

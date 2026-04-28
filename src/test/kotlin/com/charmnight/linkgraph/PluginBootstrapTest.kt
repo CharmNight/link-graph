@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph
 
+import com.charmnight.linkgraph.testing.*
+
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.xml.parsers.DocumentBuilderFactory
@@ -91,6 +93,27 @@ class PluginBootstrapTest {
         )
         assertNotNull("Expected Link Graph settings configurable registration", configurable)
         assertEquals("tools", configurable!!.getAttribute("parentId"))
+
+        val debugStartupActivity = firstElementByTagNameAndAttribute(
+            document,
+            "postStartupActivity",
+            "implementation",
+            "com.charmnight.linkgraph.toolwindow.LinkGraphDebugStartupActivity",
+        )
+        assertTrue(
+            "Did not expect default published plugin.xml to register debug startup activity",
+            debugStartupActivity == null,
+        )
+        val debugPackageStartupActivity = firstElementByTagNameAndAttribute(
+            document,
+            "postStartupActivity",
+            "implementation",
+            "com.charmnight.linkgraph.toolwindow.debug.LinkGraphDebugStartupActivity",
+        )
+        assertTrue(
+            "Did not expect default published plugin.xml to register debug-package startup activity",
+            debugPackageStartupActivity == null,
+        )
 
         val classLoader = javaClass.classLoader
         assertNotNull(

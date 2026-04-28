@@ -73,7 +73,7 @@ internal class DebugGraphFactory {
                 DebugMethodSpec(
                     signature = "com.example.audit.DataSourceAspect.around(org.aspectj.lang.ProceedingJoinPoint):java.lang.Object",
                     title = "DataSourceAspect.around",
-                    doc = "切面切换数据源，属于需要重点审计的黑逻辑。",
+                    doc = "切面切换数据源，属于需要重点核对的黑逻辑。",
                 ),
                 DebugMethodSpec(
                     signature = "com.example.audit.OrderDomainService.prepare(com.example.audit.SubmitRequest):com.example.audit.OrderAggregate",
@@ -123,7 +123,7 @@ internal class DebugGraphFactory {
                 DebugMethodSpec(
                     signature = "com.example.audit.AuditTrailService.record(java.lang.Long):void",
                     title = "AuditTrailService.record",
-                    doc = "记录审计流水。",
+                    doc = "记录问答流水。",
                 ),
                 DebugMethodSpec(
                     signature = "com.example.audit.Notifier.send(java.lang.Long):void",
@@ -164,7 +164,7 @@ internal class DebugGraphFactory {
         }
         return DebugGraphDefinition(
             graph = GraphDocument(nodes = methodNodes, edges = edges),
-            // 锚点选在切面节点上，便于验证非业务核心点的审计体验。
+            // 锚点选在切面节点上，便于验证非业务核心点的问答体验。
             anchorSignature = methodNodes[3].signature.orEmpty(),
             summary = "wide19 线性链路（19 节点）",
         )

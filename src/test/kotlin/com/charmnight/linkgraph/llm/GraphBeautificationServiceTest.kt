@@ -1,11 +1,12 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.settings.LlmProviderType
 import com.charmnight.linkgraph.workbench.StepGranularity
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -76,8 +77,8 @@ class GraphBeautificationServiceTest {
             context = beautificationContext(),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
-                endpoint = "http://localhost:8080/v1",
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -113,8 +114,8 @@ class GraphBeautificationServiceTest {
             context = beautificationContext(),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
-                endpoint = "http://localhost:8080/v1",
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://localhost:8080/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -143,7 +144,7 @@ class GraphBeautificationServiceTest {
             ),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "",
                 apiKey = "",
                 model = "",
@@ -162,7 +163,7 @@ class GraphBeautificationServiceTest {
             context = beautificationContext(),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "",
                 apiKey = "",
                 model = "",

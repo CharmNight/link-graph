@@ -101,6 +101,19 @@ class OpenAiResponsesLlmGateway(
         } else {
             ""
         }
+        val structuredOutputField = request.structuredOutput?.let { structuredOutput ->
+            """
+                ,
+                  "text": {
+                    "format": {
+                      "type": "json_schema",
+                      "name": "${escape(structuredOutput.name)}",
+                      "strict": ${structuredOutput.strict},
+                      "schema": ${structuredOutput.schema.trim()}
+                    }
+                  }
+            """.trimIndent()
+        }.orEmpty()
         return """
             {
               "model": "${escape(request.model)}",
@@ -116,7 +129,7 @@ class OpenAiResponsesLlmGateway(
                     }
                   ]
                 }
-              ]$streamField
+              ]$structuredOutputField$streamField
             }
         """.trimIndent()
     }

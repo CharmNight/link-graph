@@ -30,17 +30,27 @@ enum class CodeEditOperationKind {
     CREATE_FILE,
 }
 
-/**
- * 表示一次结构化应用的结果。
- */
-data class CodeEditApplyResult(
-    /** 是否成功得到可落盘的新文本。 */
-    val applied: Boolean,
-    /** 更新后的文件文本。 */
-    val updatedText: String,
-    /** 过程警告。 */
+data class PreparedCodeEdit(
+    val operationId: String,
+    val filePath: String,
+    val scopeId: String?,
+    val kind: CodeEditOperationKind,
+    val targetSymbolSignature: String?,
+    val startOffset: Int,
+    val endOffset: Int,
+    val beforeText: String,
+    val afterText: String,
     val warnings: List<String> = emptyList(),
 )
+
+data class PreparedCodeEditBatch(
+    val canApply: Boolean,
+    val preparedEdits: List<PreparedCodeEdit> = emptyList(),
+    val previewText: String,
+    val warnings: List<String> = emptyList(),
+) {
+    fun hasPreparedEdits(): Boolean = preparedEdits.isNotEmpty()
+}
 
 /**
  * 表示一次本地验证的结果。

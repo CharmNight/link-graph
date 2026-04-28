@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
@@ -18,11 +20,11 @@ class ProjectEditorSessionTest {
         )
 
         session.mutate {
-            beginGenerationPlanRequest()
+            asyncRequests.beginGenerationPlanRequest()
         }
 
         assertEquals(1, syncCount)
-        assertEquals(GraphEditorStateService.AsyncRequestPhase.RUNNING, stateService.snapshot().generationPlanRequestState.phase)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.RUNNING, stateService.snapshot().generationPlanRequestState.phase)
     }
 
     @Test
@@ -35,11 +37,11 @@ class ProjectEditorSessionTest {
         )
 
         session.mutate(syncBrowser = false) {
-            beginGenerationPlanRequest()
+            asyncRequests.beginGenerationPlanRequest()
         }
 
         assertEquals(0, syncCount)
-        assertEquals(GraphEditorStateService.AsyncRequestPhase.RUNNING, stateService.snapshot().generationPlanRequestState.phase)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.RUNNING, stateService.snapshot().generationPlanRequestState.phase)
     }
 
     @Test

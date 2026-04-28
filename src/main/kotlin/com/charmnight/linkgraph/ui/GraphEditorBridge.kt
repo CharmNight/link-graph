@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.model.GraphDocument
-import com.charmnight.linkgraph.services.LinkGraphProjectService
+import com.charmnight.linkgraph.services.GraphEditorCommandRouter
 import com.charmnight.linkgraph.workbench.WorkbenchLayoutPreferencesService
 import com.intellij.openapi.project.Project
 
@@ -19,8 +19,8 @@ class GraphEditorBridge(
 ) {
     /** 编辑器状态服务。 */
     private val stateService: GraphEditorStateService = project.getService(GraphEditorStateService::class.java)
-    /** 项目级业务服务。 */
-    private val projectService: LinkGraphProjectService = project.getService(LinkGraphProjectService::class.java)
+    /** 图编辑器 bridge 命令路由。 */
+    private val commandRouter: GraphEditorCommandRouter = project.getService(GraphEditorCommandRouter::class.java)
     /** 工作台布局偏好服务。 */
     private val workbenchLayoutPreferencesService: WorkbenchLayoutPreferencesService = project.getService(WorkbenchLayoutPreferencesService::class.java)
     private val workbenchPreferencesHydrationLock = Any()
@@ -38,55 +38,11 @@ class GraphEditorBridge(
      */
     fun dispatch(message: GraphEditorMessage) {
         when (message) {
-            is GraphEditorMessage.LoadGraph -> projectService.loadGraph(message.graph, message.source)
-            is GraphEditorMessage.ImportMermaid -> projectService.importMermaid(message.mermaid)
-            is GraphEditorMessage.ExportMermaid -> projectService.exportMermaid()
-            is GraphEditorMessage.ShowDiffMode -> projectService.showDiffMode()
             is GraphEditorMessage.NodeSelected -> stateService.selectNode(message.nodeId)
-            is GraphEditorMessage.GraphChanged -> projectService.handleFrontendGraphChanged(message.graph)
-            is GraphEditorMessage.LayoutChanged -> projectService.handleFrontendLayoutChanged(message.positions)
             is GraphEditorMessage.FrontendReady -> onFrontendReady(message.lastAppliedRevision)
             is GraphEditorMessage.SnapshotAck -> onSnapshotAck(message.revision)
-            is GraphEditorMessage.RequestSourceNavigation -> projectService.requestSourceNavigation(message.nodeId)
-            is GraphEditorMessage.RequestExpandOverflowNode -> projectService.requestExpandOverflowNode(message.nodeId)
-            is GraphEditorMessage.RequestSyncPreview -> projectService.requestSyncPreview()
-            is GraphEditorMessage.RequestAudit -> projectService.requestAuditAsync(
-                message.question,
-                message.selectedNodeIds,
-                message.sourceLeadId,
-            )
-            is GraphEditorMessage.ConfirmAuditCandidateChange -> projectService.confirmAuditCandidateChange(message.changeId)
-            is GraphEditorMessage.UnconfirmAuditCandidateChange -> projectService.unconfirmAuditCandidateChange(message.changeId)
-            is GraphEditorMessage.RequestDiffReview -> projectService.requestDiffReviewAsync(
-                message.question,
-                message.selectedDiffItemIds,
-            )
-            is GraphEditorMessage.RequestGraphBeautification -> projectService.requestGraphBeautificationAsync(
-                goal = message.goal,
-                preferredStyle = message.preferredStyle,
-                explanationFocus = message.explanationFocus,
-                followUp = message.followUp,
-                granularity = message.granularity,
-            )
-            is GraphEditorMessage.UpdateWorkbenchSectionPreference -> projectService.updateWorkbenchSectionPreference(
-                sectionId = message.sectionId,
-                expanded = message.expanded,
-            )
-            is GraphEditorMessage.GraphBeautificationResult -> stateService.markGraphBeautificationResult(message.result)
-            is GraphEditorMessage.ApplyDraftPatchPreview -> projectService.applyDraftPatchPreview(message.operationIds)
-            is GraphEditorMessage.ClearDraftPatchPreview -> projectService.clearDraftPatchPreview()
-            is GraphEditorMessage.RestoreDraftPatchPreview -> projectService.restoreDraftPatchPreview(
-                LinkGraphProjectService.DraftPatchPreviewSource.valueOf(message.source.name),
-            )
-            is GraphEditorMessage.UndoLastDraftPatchApply -> projectService.undoLastDraftPatchApply()
-            is GraphEditorMessage.RequestGenerationPlan -> projectService.requestGenerationPlanAsync()
-            is GraphEditorMessage.RequestCodeDrafts -> projectService.requestCodeDraftsAsync()
-            is GraphEditorMessage.RequestCurrentEditorContextGraph -> projectService.loadCurrentEditorContextGraphAsync()
-            is GraphEditorMessage.RequestAnalysisDisplayMode -> projectService.requestAnalysisDisplayMode(message.displayMode)
-            is GraphEditorMessage.OpenSettings -> projectService.openSettings()
-            is GraphEditorMessage.ApplyCodeDrafts -> projectService.applyCodeDrafts()
-            is GraphEditorMessage.ApplySingleCodeDraft -> projectService.applySingleCodeDraft(message.draftId)
-            is GraphEditorMessage.RequestDraftNavigation -> projectService.requestDraftNavigation(message.targetPath)
+            is GraphEditorMessage.GraphBeautificationResult -> stateService.asyncRequests.markGraphBeautificationResult(message.result)
+            else -> commandRouter.dispatch(message)
         }
     }
 
@@ -99,7 +55,7 @@ class GraphEditorBridge(
     }
 
     /** 返回当前桥接器观察到的最新状态快照。 */
-    fun currentState(): GraphEditorStateService.Snapshot {
+    fun currentState(): com.charmnight.linkgraph.ui.GraphEditorStateSnapshot {
         ensureWorkbenchPreferencesHydrated()
         return stateService.snapshot()
     }
@@ -116,7 +72,7 @@ class GraphEditorBridge(
             if (currentSnapshot.workbenchSectionPreferences.isEmpty()) {
                 val persistedPreferences = workbenchLayoutPreferencesService.snapshot()
                 if (persistedPreferences.isNotEmpty()) {
-                    stateService.markWorkbenchSectionPreferences(persistedPreferences)
+                    stateService.workbench.markWorkbenchSectionPreferences(persistedPreferences)
                 }
             }
             workbenchPreferencesHydrated = true

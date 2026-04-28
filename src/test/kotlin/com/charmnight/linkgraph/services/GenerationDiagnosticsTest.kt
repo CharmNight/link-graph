@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.codegen.CodeGenerationResult
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
@@ -52,7 +54,7 @@ class GenerationDiagnosticsTest {
                     risk = SyncPreviewRisk.MEDIUM,
                 ),
             ),
-            snapshot = GraphEditorStateService.Snapshot(
+            snapshot = testSnapshot(
                 draftWorkbenchState = com.charmnight.linkgraph.workbench.DraftWorkbenchState(
                     draftChanges = listOf(
                         DraftWorkbenchEntry(
@@ -118,7 +120,7 @@ class GenerationDiagnosticsTest {
         val reportSummary = GenerationDiagnostics.summarizeWriteReport(
             GeneratedCodeDraftWriteReport(
                 writtenFiles = listOf("src/main/java/com/example/CommonController.java"),
-                skippedFiles = listOf("src/main/java/com/example/LegacyController.java"),
+                skippedFiles = listOf("src/main/java/com/example/FallbackController.java"),
                 warnings = listOf("已跳过已有冲突文件。"),
             ),
         )
@@ -131,6 +133,6 @@ class GenerationDiagnosticsTest {
         assertTrue(resultSummary.contains("CommonController.java"))
         assertTrue(reportSummary.contains("written=1"))
         assertTrue(reportSummary.contains("skipped=1"))
-        assertTrue(reportSummary.contains("LegacyController.java"))
+        assertTrue(reportSummary.contains("FallbackController.java"))
     }
 }
