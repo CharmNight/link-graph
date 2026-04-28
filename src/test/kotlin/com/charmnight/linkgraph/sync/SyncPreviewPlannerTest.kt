@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.sync
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.model.DiffStatus
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDiff

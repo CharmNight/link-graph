@@ -12,4 +12,5 @@ data class ResourceRelationViewDocument(
     val fullGraph: GraphDocument = GraphDocument(),
     val anchorNodeId: String? = null,
     val summary: ResourceRelationSummary = ResourceRelationSummary(),
+    val projectionIndex: GraphProjectionIndex = GraphProjectionIndex.EMPTY,
 )

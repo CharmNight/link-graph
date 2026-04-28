@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.testing
 
+import com.charmnight.linkgraph.testing.*
+
 import kotlin.test.Test
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue

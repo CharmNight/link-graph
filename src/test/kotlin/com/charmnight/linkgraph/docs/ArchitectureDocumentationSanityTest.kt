@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.docs
 
+import com.charmnight.linkgraph.testing.*
+
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -42,7 +44,8 @@ class ArchitectureDocumentationSanityTest {
         assertTrue(usage.contains("流程图"))
         assertTrue(usage.contains("资源关系视图"))
         assertTrue(usage.contains("导入 Mermaid"))
-        assertTrue(usage.contains("代码草稿"))
+        assertTrue(usage.contains("实现建议"))
+        assertTrue(usage.contains("代码 diff"))
 
         assertTrue(development.contains("frontendPackResources"))
         assertTrue(development.contains("文档必须使用中文"))

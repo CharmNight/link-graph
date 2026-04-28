@@ -1,46 +1,34 @@
 package com.charmnight.linkgraph.services
 
-import com.charmnight.linkgraph.ui.GraphEditorStateService
+import com.charmnight.linkgraph.testing.*
+
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
-import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class GraphEditorStateSyncSessionTest {
+    private val root: Path = Path.of("").toAbsolutePath()
+
     @Test
-    fun flushesBrowserSyncOnlyOnceAfterMultipleStateMutations() {
-        val stateService = GraphEditorStateService()
-        var syncCount = 0
-
-        withGraphEditorStateSyncSession(
-            stateService = stateService,
-            onSyncRequested = { syncCount += 1 },
-        ) {
-            apply {
-                beginGenerationPlanRequest()
-            }
-            apply {
-                markOperationFeedback(
-                    GraphEditorStateService.OperationFeedbackLevel.INFO,
-                    "正在生成实现计划，请稍候。",
-                )
-            }
-            assertEquals("operationFeedback", snapshot().lastMessageType)
-        }
-
-        assertEquals(1, syncCount)
+    fun legacyBatchSyncSessionIsDeletedInFavorOfStateStore() {
+        assertFalse(
+            Files.exists(root.resolve("src/main/kotlin/com/charmnight/linkgraph/services/GraphEditorStateSyncSession.kt")),
+        )
+        assertTrue(
+            Files.exists(root.resolve("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorStateStore.kt")),
+        )
     }
 
     @Test
-    fun doesNotSyncBrowserWhenNoMutationWasApplied() {
-        val stateService = GraphEditorStateService()
-        var syncCount = 0
+    fun projectEditorSessionUsesStateStoreCommitFlowInsteadOfDraftSnapshotBatch() {
+        val source = Files.readString(
+            root.resolve("src/main/kotlin/com/charmnight/linkgraph/services/ProjectEditorSession.kt"),
+        )
 
-        withGraphEditorStateSyncSession(
-            stateService = stateService,
-            onSyncRequested = { syncCount += 1 },
-        ) {
-            assertEquals(null, snapshot().lastMessageType)
-        }
-
-        assertEquals(0, syncCount)
+        assertFalse(source.contains("withGraphEditorStateSyncSession"))
+        assertFalse(source.contains("markViewGraphChanged"))
+        assertTrue(source.contains("tryCommit"))
     }
 }

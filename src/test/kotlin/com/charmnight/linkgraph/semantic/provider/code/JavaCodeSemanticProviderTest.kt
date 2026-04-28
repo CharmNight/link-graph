@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.semantic.provider.code
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.testing.addResourceFixture
 import com.charmnight.linkgraph.testing.fixtureFileName
 import com.charmnight.linkgraph.testing.readJavaFixture
@@ -598,7 +600,7 @@ class JavaCodeSemanticProviderTest : BasePlatformTestCase() {
         )
     }
 
-    fun testAnalyzeUploadFilesMethodKeepsGetUrlInvocationConnectedToUrlsAdd() {
+    fun testAnalyzeUploadFilesMethodProjectsGetUrlInvocationOntoVisibleActionBeforeUrlsAdd() {
         myFixture.configureByText(
             "CommonController.java",
             """
@@ -715,15 +717,32 @@ class JavaCodeSemanticProviderTest : BasePlatformTestCase() {
         )
 
         val flowchartView = FlowchartProjector().project(result)
+        val projectedVisibleNode = flowchartView.visibleGraph.nodes.firstOrNull { node ->
+            (
+                node.metadata["flowchart.projectedFromNodeIds"]
+                ?.split(',')
+                ?.map(String::trim)
+                ?.contains(getUrlInvocation!!.id)
+                == true
+                )
+        }
         val visibleEdgeSummary = flowchartView.visibleGraph.edges.joinToString(separator = "\n") { edge ->
             "${edge.fromNodeId} -> ${edge.toNodeId} [${edge.label ?: ""}]"
         }
 
         assertTrue(
-            "当前真实可见流程图也必须保留 ServerConfig.getUrl -> urls.add(url)，当前 visibleGraph 边如下：\n$visibleEdgeSummary",
+            "当前真实可见流程图应把 ServerConfig.getUrl 投影到前序动作节点上，当前 visibleGraph 边如下：\n$visibleEdgeSummary",
+            projectedVisibleNode != null,
+        )
+        assertTrue(
+            "当前真实可见流程图不应再直接暴露被折叠的 ServerConfig.getUrl invocation 节点，当前 visibleGraph 边如下：\n$visibleEdgeSummary",
+            flowchartView.visibleGraph.nodes.none { node -> node.id == getUrlInvocation!!.id },
+        )
+        assertTrue(
+            "当前真实可见流程图必须保留“包含 ServerConfig.getUrl 的可见动作节点 -> urls.add(url)”控制流，当前 visibleGraph 边如下：\n$visibleEdgeSummary",
             flowchartView.visibleGraph.edges.any { edge ->
                 edge.type == com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW &&
-                    edge.fromNodeId == getUrlInvocation!!.id &&
+                    edge.fromNodeId == projectedVisibleNode!!.id &&
                     edge.toNodeId == urlsAddAction!!.id
             },
         )

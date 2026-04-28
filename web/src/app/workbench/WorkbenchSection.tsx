@@ -27,8 +27,8 @@ export function WorkbenchSection({
   actions = null,
   minBodyHeight = null,
 }: WorkbenchSectionProps) {
-  const classes = ["workbench-section-card mb12px", expanded ? "expanded" : "collapsed", className].filter(Boolean).join(" ");
-  const bodyClasses = ["workbench-section-card-body", bodyClassName].filter(Boolean).join(" ");
+  const classes = ["workbench-section-card", expanded ? "expanded" : "collapsed", className].filter(Boolean).join(" ");
+  const bodyClasses = ["workbench-section-card-body", "workbench-card-flow", bodyClassName].filter(Boolean).join(" ");
   const bodyStyle: CSSProperties | undefined = minBodyHeight != null ? { minHeight: `${minBodyHeight}px` } : undefined;
 
   return (

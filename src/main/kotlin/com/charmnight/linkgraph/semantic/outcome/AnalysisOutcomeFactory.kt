@@ -45,7 +45,11 @@ class AnalysisOutcomeFactory(
             )
         }
         val (hiddenNodeCount, hiddenEdgeCount, truncated) = when (displayMode) {
-            AnalysisDisplayMode.FLOWCHART -> Triple(0, 0, false)
+            AnalysisDisplayMode.FLOWCHART -> Triple(
+                flowchartView.summary.hiddenNodeCount,
+                flowchartView.summary.hiddenEdgeCount,
+                flowchartView.summary.truncated,
+            )
             else -> {
                 val hiddenNodes = (fullGraph.nodes.map { it.id }.toSet() - visibleGraph.nodes.map { it.id }.toSet()).size
                 val hiddenEdges = (fullGraph.edges.map { it.id }.toSet() - visibleGraph.edges.map { it.id }.toSet()).size
@@ -96,14 +100,14 @@ class AnalysisOutcomeFactory(
     private fun resolveFeedbackLevel(
         diagnostic: SemanticDiagnostic?,
         truncated: Boolean,
-    ): GraphEditorStateService.OperationFeedbackLevel {
+    ): com.charmnight.linkgraph.ui.OperationFeedbackLevel {
         return when (diagnostic?.severity) {
-            SemanticDiagnosticSeverity.ERROR -> GraphEditorStateService.OperationFeedbackLevel.ERROR
-            SemanticDiagnosticSeverity.WARNING -> GraphEditorStateService.OperationFeedbackLevel.WARNING
+            SemanticDiagnosticSeverity.ERROR -> com.charmnight.linkgraph.ui.OperationFeedbackLevel.ERROR
+            SemanticDiagnosticSeverity.WARNING -> com.charmnight.linkgraph.ui.OperationFeedbackLevel.WARNING
             else -> if (truncated) {
-                GraphEditorStateService.OperationFeedbackLevel.WARNING
+                com.charmnight.linkgraph.ui.OperationFeedbackLevel.WARNING
             } else {
-                GraphEditorStateService.OperationFeedbackLevel.SUCCESS
+                com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS
             }
         }
     }

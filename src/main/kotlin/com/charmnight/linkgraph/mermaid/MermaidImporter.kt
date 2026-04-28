@@ -148,39 +148,15 @@ class MermaidImporter(
         val metadata = linkedMapOf<String, String>()
         metadata.putAll(commentMetadata)
 
-        /** 兼容旧版 `TYPE|TITLE|key=value` 节点格式。 */
-        val legacyParts = body.split('|').map { it.trim() }
-        /** 当前节点是否使用了旧版行内属性格式。 */
-        val legacyNodeFormat = legacyParts.size >= 2
-        if (legacyNodeFormat) {
-            for (segment in legacyParts.drop(2)) {
-                /** 当前属性段中等号的位置。 */
-                val delimiterIndex = segment.indexOf('=')
-                if (delimiterIndex <= 0 || delimiterIndex >= segment.length - 1) {
-                    issues += MermaidIssue(
-                        category = MermaidIssue.Category.SYNTAX,
-                        code = "invalid-node-attribute",
-                        message = "节点 '$alias' 的属性 '$segment' 非法，应为 key=value。",
-                        line = line,
-                        nodeId = alias,
-                    )
-                    continue
-                }
-                val key = segment.substring(0, delimiterIndex).trim()
-                val value = segment.substring(delimiterIndex + 1).trim()
-                metadata[key] = value
-            }
-        }
-
         /** 解析出的节点类型名称。 */
-        val typeName = metadata["nodeType"] ?: legacyParts.firstOrNull()
+        val typeName = metadata["nodeType"]
         /** 解析出的节点标题。 */
-        val resolvedTitle = metadata["title"] ?: legacyParts.getOrNull(1)
+        val resolvedTitle = metadata["title"]
         if (typeName.isNullOrBlank() || resolvedTitle.isNullOrBlank()) {
             issues += MermaidIssue(
                 category = MermaidIssue.Category.SYNTAX,
                 code = "invalid-node-body",
-                message = "节点 '$alias' 必须包含 TYPE|TITLE，或通过 LG_NODE 注释提供 nodeType/title。",
+                message = "节点 '$alias' 必须通过 LG_NODE 注释提供 nodeType/title。",
                 line = line,
                 nodeId = alias,
             )

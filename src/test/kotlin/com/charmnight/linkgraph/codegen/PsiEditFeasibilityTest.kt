@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.codegen
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.services.DebugMethodSignatureLocator
 import com.intellij.ide.highlighter.JavaFileType
 import com.intellij.openapi.command.WriteCommandAction

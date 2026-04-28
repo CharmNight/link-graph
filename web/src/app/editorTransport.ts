@@ -1,14 +1,8 @@
-import type {
-  LinkGraphBootstrapState,
-  LinkGraphIncrementalTransportEnvelope,
-  LinkGraphSnapshotEnvelope,
-} from "./types";
+import type { LinkGraphIncrementalTransportEnvelope, LinkGraphSnapshotEnvelope } from "./types";
 
 type BootstrapListener = (envelope: LinkGraphSnapshotEnvelope) => void;
 type SnapshotAcknowledger = (revision: number) => void;
 type FrontendReadyNotifier = (payload: { lastAppliedRevision: number | null }) => void;
-
-const LEGACY_SESSION_ID = "legacy";
 
 let initialized = false;
 let frontendReady = false;
@@ -31,18 +25,8 @@ function isIncrementalTransportEnvelope(value: unknown): value is LinkGraphIncre
   return "type" in value && "sessionId" in value && "revision" in value && "state" in value;
 }
 
-function normalizeEnvelope(
-  detail: LinkGraphSnapshotEnvelope | LinkGraphBootstrapState,
-): LinkGraphSnapshotEnvelope {
-  if (isSnapshotEnvelope(detail)) {
-    return detail;
-  }
-  return {
-    sessionId: LEGACY_SESSION_ID,
-    revision: detail.snapshotRevision ?? 0,
-    state: detail,
-    transportType: "LEGACY_BOOTSTRAP",
-  };
+function normalizeEnvelope(detail: LinkGraphSnapshotEnvelope): LinkGraphSnapshotEnvelope {
+  return detail;
 }
 
 function flushLatestEnvelope(forceDispatch = false): void {
@@ -59,7 +43,7 @@ function flushLatestEnvelope(forceDispatch = false): void {
 }
 
 function handleBootstrapEnvelope(
-  detail: LinkGraphSnapshotEnvelope | LinkGraphBootstrapState | LinkGraphIncrementalTransportEnvelope,
+  detail: LinkGraphSnapshotEnvelope | LinkGraphIncrementalTransportEnvelope,
 ): void {
   const normalizedEnvelope = normalizeTransportEnvelope(detail);
   if (!normalizedEnvelope) {
@@ -73,7 +57,9 @@ function handleBootstrapEnvelope(
 }
 
 function handleBootstrapEvent(event: Event): void {
-  const customEvent = event as CustomEvent<LinkGraphSnapshotEnvelope | LinkGraphBootstrapState>;
+  const customEvent = event as CustomEvent<
+    LinkGraphSnapshotEnvelope | LinkGraphIncrementalTransportEnvelope
+  >;
   handleBootstrapEnvelope(customEvent.detail);
 }
 
@@ -120,7 +106,7 @@ export function acknowledgeSnapshot(
 export function dispatchBootstrapForTest(
   envelope: LinkGraphSnapshotEnvelope | LinkGraphIncrementalTransportEnvelope,
 ): void {
-  handleBootstrapEnvelope(envelope as LinkGraphSnapshotEnvelope | LinkGraphBootstrapState);
+  handleBootstrapEnvelope(envelope);
 }
 
 export function resetEditorTransportForTest(): void {
@@ -134,7 +120,7 @@ export function resetEditorTransportForTest(): void {
 ensureInitialized();
 
 function normalizeTransportEnvelope(
-  detail: LinkGraphSnapshotEnvelope | LinkGraphBootstrapState | LinkGraphIncrementalTransportEnvelope,
+  detail: LinkGraphSnapshotEnvelope | LinkGraphIncrementalTransportEnvelope,
 ): LinkGraphSnapshotEnvelope | null {
   if (isIncrementalTransportEnvelope(detail)) {
     const baseState = latestEnvelope?.state ?? window.linkGraphBootstrap ?? null;
@@ -157,5 +143,8 @@ function normalizeTransportEnvelope(
     };
   }
 
+  if (!isSnapshotEnvelope(detail)) {
+    return null;
+  }
   return normalizeEnvelope(detail);
 }

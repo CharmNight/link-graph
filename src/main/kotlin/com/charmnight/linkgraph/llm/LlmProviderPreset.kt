@@ -45,7 +45,6 @@ data class LlmProviderPreset(
         const val DEFAULT_MINIMAX_MODEL: String = "MiniMax-M2.7"
         /** 远程预设默认具备的能力集合。 */
         val DEFAULT_REMOTE_CAPABILITIES = LlmCapabilitySet(
-            supportsStructuredJson = true,
             supportsStreaming = false,
         )
     }
@@ -55,8 +54,6 @@ data class LlmProviderPreset(
  * 描述一个 provider 预设支持的能力集合。
  */
 data class LlmCapabilitySet(
-    /** 是否支持结构化 JSON 场景。 */
-    val supportsStructuredJson: Boolean = false,
     /** 是否支持流式输出。 */
     val supportsStreaming: Boolean = false,
 )
@@ -80,7 +77,6 @@ object LlmProviderPresets {
         wireProtocol = LlmWireProtocol.OPENAI_CHAT_COMPLETIONS,
         defaultModel = LlmProviderPreset.DEFAULT_GENERIC_MODEL,
         capabilities = LlmCapabilitySet(
-            supportsStructuredJson = true,
             supportsStreaming = true,
         ),
     )
@@ -94,7 +90,6 @@ object LlmProviderPresets {
         defaultEndpoint = "https://api.openai.com/v1",
         defaultModel = LlmProviderPreset.DEFAULT_GENERIC_MODEL,
         capabilities = LlmCapabilitySet(
-            supportsStructuredJson = true,
             supportsStreaming = true,
         ),
     )
@@ -108,7 +103,6 @@ object LlmProviderPresets {
         defaultEndpoint = "https://api.minimax.io/v1",
         defaultModel = LlmProviderPreset.DEFAULT_MINIMAX_MODEL,
         capabilities = LlmCapabilitySet(
-            supportsStructuredJson = true,
             supportsStreaming = true,
         ),
     )
@@ -122,7 +116,6 @@ object LlmProviderPresets {
         defaultEndpoint = "https://api.minimax.io/anthropic",
         defaultModel = LlmProviderPreset.DEFAULT_MINIMAX_MODEL,
         capabilities = LlmCapabilitySet(
-            supportsStructuredJson = true,
             supportsStreaming = false,
         ),
     )
@@ -140,11 +133,6 @@ object LlmProviderPresets {
      * 根据标识解析预设，未知值时回退到安全默认值。
      */
     fun resolve(id: String): LlmProviderPreset {
-        return entries.firstOrNull { preset -> preset.id == id } ?: when (id) {
-            "MOCK" -> MOCK
-            "OPENAI_COMPATIBLE" -> OPENAI_COMPATIBLE
-            "OPENAI_RESPONSES" -> OPENAI_RESPONSES
-            else -> MOCK
-        }
+        return entries.firstOrNull { preset -> preset.id == id } ?: MOCK
     }
 }

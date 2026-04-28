@@ -4,6 +4,7 @@ import type {
   Certainty,
   DraftPatchPreviewSource,
   DiffStatus,
+  GraphEditScript,
   GraphBeautificationRequest,
   GraphPosition,
   GraphSourceTag,
@@ -11,10 +12,9 @@ import type {
   LinkGraphEdge,
   LinkGraphNode,
   LinkGraphSnapshotEnvelope,
-  MermaidIssue,
   NodeType,
+  RiskResolutionStatus,
   StepGranularity,
-  SyncPreviewItem,
 } from "./types";
 import { summarizeGraph, traceLinkGraph } from "./debug";
 import {
@@ -48,45 +48,15 @@ const pendingBridgeLifecycleState: PendingBridgeLifecycleState = {
 
 let bridgeReadyListenerInstalled = false;
 const BRIDGE_UNAVAILABLE_MESSAGE = "IDE bridge 尚未就绪，本次请求没有发出。";
+const BRIDGE_PROTOCOL_MISMATCH_MESSAGE = "IDE bridge 协议未对齐，本次请求没有发出。";
+const BRIDGE_UNAVAILABLE_DETAIL_MESSAGE = "JCEF 页面与 IDEA 后端连接尚未建立，请等待页面初始化完成后重试。";
 
 // JCEF 页面的唯一后端入口：读取 bootstrap，并把前端交互重新发布给 IDEA bridge。
-interface BackendGraphNode {
-  id: string;
-  type: NodeType;
-  title: string;
-  location?: string;
-  signature?: string;
-  inputs: string[];
-  outputs: string[];
-  doc?: string;
-  certainty: Certainty;
-  bindingStatus: BindingStatus;
-  diff: {
-    status: DiffStatus;
-  };
-  position?: GraphPosition;
-  metadata?: Record<string, string>;
-  sourceTag?: GraphSourceTag;
-}
-
-interface BackendGraphEdge {
-  id: string;
-  type: string;
-  fromNodeId: string;
-  toNodeId: string;
-  label?: string;
-  metadata?: Record<string, string>;
-  sourceTag?: GraphSourceTag;
-}
-
-interface BackendGraphDocument {
-  nodes: BackendGraphNode[];
-  edges: BackendGraphEdge[];
-}
-
 declare global {
   interface WindowEventMap {
-    "link-graph-bootstrap": CustomEvent<LinkGraphBootstrapState | LinkGraphSnapshotEnvelope>;
+    "link-graph-bootstrap": CustomEvent<
+      LinkGraphSnapshotEnvelope | import("./types").LinkGraphIncrementalTransportEnvelope
+    >;
     "link-graph-bridge-ready": Event;
   }
 
@@ -96,9 +66,11 @@ declare global {
       exportMermaid?: () => void;
       showDiffMode?: () => void;
       requestSyncPreview?: () => void;
-      requestAudit?: (question: string, selectedNodeIds?: string[], sourceLeadId?: string | null) => void;
+      requestAudit?: (question: string, selectedNodeIds?: string[], sourceThreadId?: string | null) => void;
+      retryLastAuditRequest?: () => void;
       confirmAuditCandidateChange?: (changeId: string) => void;
       unconfirmAuditCandidateChange?: (changeId: string) => void;
+      resolveInvestigationThread?: (threadId: string, resolutionStatus: RiskResolutionStatus, note?: string) => void;
       requestDiffReview?: (question: string, selectedDiffItemIds?: string[]) => void;
       requestGraphBeautification?: (
         goal?: string,
@@ -114,6 +86,7 @@ declare global {
       restoreDraftPatchPreview?: (source: DraftPatchPreviewSource) => void;
       undoLastDraftPatchApply?: () => void;
       requestGenerationPlan?: () => void;
+      requestGenerationPlanDiscussion?: (question: string, focusItemId?: string | null) => void;
       requestCodeDrafts?: () => void;
       requestCurrentEditorContextGraph?: () => void;
       requestAnalysisDisplayMode?: (displayMode: AnalysisDisplayMode) => void;
@@ -121,8 +94,9 @@ declare global {
       requestOpenSettings?: () => void;
       applyCodeDrafts?: () => void;
       applySingleCodeDraft?: (draftId: string) => void;
+      openCodeDraftNativeDiff?: (draftId: string) => void;
       requestArtifact?: (artifactIds: string[]) => void;
-      graphChanged?: (payload: BackendGraphDocument) => void;
+      applyGraphEditScript?: (payload: unknown) => void;
       frontendReady?: (payload: { lastAppliedRevision: number | null }) => void;
       snapshotAck?: (payload: { revision: number }) => void;
       layoutChanged?: (payload: {
@@ -145,8 +119,12 @@ function ensureBridgeReadyListener(): void {
   if (bridgeReadyListenerInstalled || typeof window === "undefined") {
     return;
   }
-  window.addEventListener("link-graph-bridge-ready", flushPendingBridgeLifecycleState);
+  window.addEventListener("link-graph-bridge-ready", flushPendingBridgeState);
   bridgeReadyListenerInstalled = true;
+}
+
+function flushPendingBridgeState(): void {
+  flushPendingBridgeLifecycleState();
 }
 
 function flushPendingBridgeLifecycleState(): void {
@@ -191,28 +169,26 @@ function invokeBridgeAction(
 ): BridgeInvocationResult {
   const bridge = window.linkGraphBridge;
   if (!bridge) {
-    traceLinkGraph("api.bridgeUnavailable", {
+    traceLinkGraph("api.bridgePending", {
       actionName,
       hasBridge: false,
     });
     return {
       ok: false,
       message: BRIDGE_UNAVAILABLE_MESSAGE,
-      detailMessage: "JCEF 页面与 IDEA 后端连接尚未建立，请等待页面初始化完成后重试。",
+      detailMessage: BRIDGE_UNAVAILABLE_DETAIL_MESSAGE,
     };
   }
   const bridgeAction = bridge[actionName];
   if (typeof bridgeAction !== "function") {
-    const detailMessage = bridge
-      ? `IDE bridge 已注入，但当前未暴露 ${String(actionName)} 方法，本次请求没有发出。`
-      : "JCEF 页面与 IDEA 后端连接尚未建立，请等待页面初始化完成后重试。";
-    traceLinkGraph("api.bridgeUnavailable", {
+    const detailMessage = `IDE bridge 已注入，但当前未暴露 ${String(actionName)} 方法，本次请求没有发出。`;
+    traceLinkGraph("api.bridgeProtocolMismatch", {
       actionName,
       hasBridge: true,
     });
     return {
       ok: false,
-      message: BRIDGE_UNAVAILABLE_MESSAGE,
+      message: BRIDGE_PROTOCOL_MISMATCH_MESSAGE,
       detailMessage,
     };
   }
@@ -287,14 +263,20 @@ export function requestSyncPreview(): BridgeInvocationResult {
 export function requestAuditAsync(
   question: string,
   selectedNodeIds: string[] = [],
-  sourceLeadId: string | null = null,
+  sourceThreadId: string | null = null,
 ): BridgeInvocationResult {
   return invokeBridgeAction("requestAudit", (bridge) => {
-    bridge.requestAudit?.(question, selectedNodeIds, sourceLeadId);
+    bridge.requestAudit?.(question, selectedNodeIds, sourceThreadId);
   }, {
     question,
     selectedNodeIds,
-    sourceLeadId,
+    sourceThreadId,
+  });
+}
+
+export function retryLastAuditRequestAsync(): BridgeInvocationResult {
+  return invokeBridgeAction("retryLastAuditRequest", (bridge) => {
+    bridge.retryLastAuditRequest?.();
   });
 }
 
@@ -311,6 +293,20 @@ export function unconfirmAuditCandidateChange(changeId: string): BridgeInvocatio
     bridge.unconfirmAuditCandidateChange?.(changeId);
   }, {
     changeId,
+  });
+}
+
+export function resolveInvestigationThread(
+  threadId: string,
+  resolutionStatus: RiskResolutionStatus,
+  note = "",
+): BridgeInvocationResult {
+  return invokeBridgeAction("resolveInvestigationThread", (bridge) => {
+    bridge.resolveInvestigationThread?.(threadId, resolutionStatus, note);
+  }, {
+    threadId,
+    resolutionStatus,
+    note,
   });
 }
 
@@ -381,6 +377,19 @@ export function requestGenerationPlanAsync(): BridgeInvocationResult {
   });
 }
 
+export function requestGenerationPlanDiscussionAsync(
+  question: string,
+  focusItemId: string | null = null,
+): BridgeInvocationResult {
+  return invokeBridgeAction("requestGenerationPlanDiscussion", (bridge) => {
+    bridge.requestGenerationPlanDiscussion?.(question, focusItemId);
+  }, {
+    action: "requestGenerationPlanDiscussion",
+    question,
+    focusItemId,
+  });
+}
+
 export function requestCodeDraftsAsync(): BridgeInvocationResult {
   return invokeBridgeAction("requestCodeDrafts", (bridge) => {
     bridge.requestCodeDrafts?.();
@@ -388,9 +397,11 @@ export function requestCodeDraftsAsync(): BridgeInvocationResult {
 }
 
 export const requestAudit = requestAuditAsync;
+export const retryLastAuditRequest = retryLastAuditRequestAsync;
 export const requestDiffReview = requestDiffReviewAsync;
 export const requestGraphBeautification = requestGraphBeautificationAsync;
 export const requestGenerationPlan = requestGenerationPlanAsync;
+export const requestGenerationPlanDiscussion = requestGenerationPlanDiscussionAsync;
 export const requestCodeDrafts = requestCodeDraftsAsync;
 
 export function requestCurrentEditorContextGraph(): BridgeInvocationResult {
@@ -433,6 +444,12 @@ export function applySingleCodeDraft(draftId: string): BridgeInvocationResult {
   });
 }
 
+export function openCodeDraftNativeDiff(draftId: string): BridgeInvocationResult {
+  return invokeBridgeAction("openCodeDraftNativeDiff", (bridge) => {
+    bridge.openCodeDraftNativeDiff?.(draftId);
+  });
+}
+
 export function publishNodeSelected(nodeId: string): BridgeInvocationResult {
   traceLinkGraph("api.publishNodeSelected", { nodeId });
   return invokeBridgeAction("nodeSelected", (bridge) => {
@@ -459,40 +476,64 @@ export function requestExpandOverflowNode(nodeId: string): BridgeInvocationResul
   });
 }
 
-export function publishGraphChange(nodes: LinkGraphNode[], edges: LinkGraphEdge[]): BridgeInvocationResult {
-  traceLinkGraph("api.publishGraphChange", {
-    graph: summarizeGraph({ nodes, edges }),
+export function publishGraphEditScript(script: GraphEditScript): BridgeInvocationResult {
+  const payload = {
+    sceneId: script.sceneId,
+    baseWorkspaceRevision: script.baseWorkspaceRevision,
+    operations: script.operations.map((operation) => {
+      switch (operation.type) {
+        case "UPSERT_NODE":
+          return {
+            type: operation.type,
+            node: {
+              id: operation.node.id,
+              type: operation.node.type,
+              title: operation.node.title,
+              location: operation.node.location,
+              signature: operation.node.signature,
+              inputs: operation.node.inputs ?? [],
+              outputs: operation.node.outputs ?? [],
+              doc: operation.node.doc,
+              certainty: operation.node.certainty,
+              bindingStatus: operation.node.bindingStatus,
+              metadata: buildNodeMetadata(operation.node),
+              sourceTag: operation.node.sourceTag,
+            },
+          };
+        case "REMOVE_NODE":
+          return {
+            type: operation.type,
+            nodeId: operation.nodeId,
+          };
+        case "UPSERT_EDGE":
+          return {
+            type: operation.type,
+            edge: {
+              id: operation.edge.id,
+              type: operation.edge.type,
+              fromNodeId: operation.edge.source,
+              toNodeId: operation.edge.target,
+              label: operation.edge.label,
+              metadata: operation.edge.metadata,
+              sourceTag: operation.edge.sourceTag,
+            },
+          };
+        case "REMOVE_EDGE":
+          return {
+            type: operation.type,
+            edgeId: operation.edgeId,
+          };
+      }
+    }),
+  };
+  traceLinkGraph("api.publishGraphEditScript", {
+    sceneId: script.sceneId,
+    baseWorkspaceRevision: script.baseWorkspaceRevision,
+    operationCount: script.operations.length,
   });
-  return invokeBridgeAction("graphChanged", (bridge) => {
-    bridge.graphChanged?.({
-      nodes: nodes.map((node) => ({
-        id: node.id,
-        type: node.type,
-        title: node.title,
-        location: node.location,
-        signature: node.signature,
-        inputs: node.inputs ?? [],
-        outputs: node.outputs ?? [],
-        doc: node.doc,
-        certainty: node.certainty,
-        bindingStatus: node.bindingStatus,
-        metadata: buildNodeMetadata(node),
-        sourceTag: node.sourceTag,
-        diff: {
-          status: node.diffStatus ?? "MATCHED",
-        },
-      })),
-      edges: edges.map((edge) => ({
-        id: edge.id,
-        type: edge.type,
-        fromNodeId: edge.source,
-        toNodeId: edge.target,
-        label: edge.label,
-        metadata: edge.metadata,
-        sourceTag: edge.sourceTag,
-      })),
-    });
-  });
+  return invokeBridgeAction("applyGraphEditScript", (bridge) => {
+    bridge.applyGraphEditScript?.(payload);
+  }, payload);
 }
 
 export function publishLayoutChange(
@@ -512,37 +553,8 @@ export function publishLayoutChange(
   });
 }
 
-export function getSampleSyncPreview(): SyncPreviewItem[] {
-  return [
-    {
-      id: "create-order-draft",
-      title: "新增 DTO",
-      description: "生成 OrderDraftDto.java",
-      risk: "LOW",
-    },
-    {
-      id: "wire-place-draft",
-      title: "补齐服务调用",
-      description: "把 controller 流程接到 placeDraft 服务",
-      risk: "MEDIUM",
-    },
-  ];
-}
-
 function buildNodeMetadata(node: LinkGraphNode): Record<string, string> {
   return Object.fromEntries(
     Object.entries(node.metadata ?? {}).filter(([key]) => !key.startsWith("ui.") && !key.startsWith("layout.")),
   );
-}
-
-export function getSampleMermaidIssues(): MermaidIssue[] {
-  return [
-    {
-      category: "SEMANTIC",
-      code: "missing-method-signature",
-      message: "方法节点 'design:submit-order' 缺少 signature 元数据。",
-      line: 3,
-      nodeId: "design:submit-order",
-    },
-  ];
 }

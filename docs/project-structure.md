@@ -33,10 +33,8 @@
   - JCEF 容器、前后端桥接、传输渲染和前端资源加载。
 - `services`
   - 项目级编排服务与工作流协调。
-- `extract`
-  - 代码和资源的事实抽取。
 - `semantic`
-  - 语义分析与主体定位。
+  - 语义分析、事实构建与主体定位。
 - `model`
   - 共享图模型定义。
 - `mermaid`、`diff`、`sync`、`navigation`、`codegen`、`llm`、`settings`
@@ -61,6 +59,17 @@
 - `workbench`
   - 工作台外壳与停靠布局。
 
+`web/src/test` 承载前端测试代码与测试支撑：
+
+- `setup.ts`
+  - Vitest 全局初始化与 Testing Library 扩展。
+- `vite-config.test.ts`
+  - 校验前端构建与测试约定的配置测试。
+- `app/**`
+  - 镜像 `web/src/app/**` 的前端单元测试与组件测试目录。
+
+前端测试约定采用“业务代码与测试目录分离”的统一结构：业务代码只放在 `web/src/app`，测试只放在 `web/src/test`。新增前端测试时，应优先放到 `web/src/test/app` 下与被测模块路径对应的位置，而不是回写到 `web/src/app`。
+
 ## 构建与打包
 
 前端任务定义在 `build.gradle.kts` 中：
@@ -78,6 +87,8 @@
 - 集成测试：`./gradlew integrationTest`
 - 完整检查：`./gradlew check`
 - 单独运行前端测试：`npm --prefix web test`
+
+前端测试由 Vitest 从 `web/src/test/**/*.test.ts(x)` 统一收集；`web/src/test/setup.ts` 负责全局测试环境初始化。
 
 ## 文档边界
 

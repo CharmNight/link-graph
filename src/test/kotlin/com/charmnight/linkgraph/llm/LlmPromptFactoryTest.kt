@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.mermaid.MermaidIssue
 import com.charmnight.linkgraph.model.DiffStatus
 import com.charmnight.linkgraph.model.GraphDiff
@@ -11,7 +13,6 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.settings.LlmProviderType
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.DraftEntryKind
@@ -76,7 +77,7 @@ class LlmPromptFactoryTest {
             ),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 model = "gpt-4.1-mini",
             ),
         )
@@ -103,9 +104,19 @@ class LlmPromptFactoryTest {
                             signature = "com.example.OrderService.place(java.lang.String):void",
                             sourceTag = GraphSourceTag.FACT,
                         ),
+                        GraphNode(
+                            id = "scope:order-service-if",
+                            type = NodeType.FLOW_SCOPE,
+                            title = "if (channel == null)",
+                            sourceTag = GraphSourceTag.FACT,
+                            metadata = mapOf(
+                                "flowchart.kind" to "DECISION",
+                                "flow.ownerMethod" to "com.example.OrderService.place(java.lang.String):void",
+                            ),
+                        ),
                     ),
                 ),
-                draftGraph = GraphDocument(),
+                editableGraph = GraphDocument(),
                 selectedNodeIds = listOf("method:order-service-place"),
                 sourceContext = listOf(
                     SourceSnippetContext(
@@ -120,7 +131,7 @@ class LlmPromptFactoryTest {
             question = "这段链路是否遗漏了默认兜底逻辑？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.MOCK.name,
+                provider = LlmProviderPresets.MOCK.id,
                 model = "gpt-4.1-mini",
             ),
         )
@@ -160,7 +171,7 @@ class LlmPromptFactoryTest {
             question = "这些差异意味着什么？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.MOCK.name,
+                provider = LlmProviderPresets.MOCK.id,
                 model = "gpt-4.1-mini",
             ),
         )
@@ -170,6 +181,12 @@ class LlmPromptFactoryTest {
         assertTrue(auditPrompt.contains("OrderService.place"))
         assertTrue(auditPrompt.contains("相关源码片段"))
         assertTrue(auditPrompt.contains("defaultChannel"))
+        assertTrue(auditPrompt.contains("你正在做链路图问答"))
+        assertTrue(auditPrompt.contains("本轮问答回答"))
+        assertTrue(auditPrompt.contains("\"answer\": \"问答回答\""))
+        assertTrue(auditPrompt.contains("flowchart.kind=DECISION"))
+        assertTrue(auditPrompt.contains("flow.ownerMethod=com.example.OrderService.place(java.lang.String):void"))
+        assertTrue("本轮审计回答" !in auditPrompt)
         assertTrue(auditPrompt.contains("你的第一优先级是直接回答“用户问题”"))
         assertTrue(auditPrompt.contains("禁止输出与用户问题无关的通用安全、性能、规范性建议"))
         assertTrue(diffPrompt.contains("这些差异意味着什么"))
@@ -182,7 +199,7 @@ class LlmPromptFactoryTest {
         val factory = LlmPromptFactory()
         val settings = LinkGraphSettingsState(
             llmEnabled = true,
-            provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+            provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
             model = "gpt-4.1-mini",
         )
 
@@ -206,7 +223,7 @@ class LlmPromptFactoryTest {
                         ),
                     ),
                 ),
-                draftGraph = GraphDocument(),
+                editableGraph = GraphDocument(),
                 selectedNodeIds = listOf("method:order-service-place"),
                 sourceContext = listOf(
                     SourceSnippetContext(
@@ -218,7 +235,7 @@ class LlmPromptFactoryTest {
                     ),
                 ),
             ),
-            question = "请审计当前范围是否遗漏默认兜底逻辑？",
+            question = "请围绕当前范围进行问答，判断是否遗漏默认兜底逻辑？",
             settings = settings,
         )
         val diffPackage = factory.buildDiffReviewPromptPackage(
@@ -296,12 +313,21 @@ class LlmPromptFactoryTest {
             settings = settings,
         )
 
-        assertTrue(auditPackage.systemPrompt.contains("链路审计"))
+        assertTrue(auditPackage.systemPrompt.contains("链路问答"))
+        assertTrue(auditPackage.systemPrompt.contains("不要绕开问题泛化输出通用问答结论"))
+        assertTrue(auditPackage.userPrompt.contains("链路图问答"))
+        assertTrue(auditPackage.userPrompt.contains("\"answer\": \"问答回答\""))
+        assertTrue("链路审计" !in auditPackage.systemPrompt)
         assertTrue(auditPackage.userPrompt.contains("当前范围边"))
         assertTrue(auditPackage.userPrompt.contains("相关源码片段"))
         assertTrue(auditPackage.userPrompt.contains("defaultChannel"))
         assertTrue(auditPackage.userPrompt.contains("candidateChanges"))
-        assertTrue(auditPackage.userPrompt.contains("investigationLeads"))
+        assertTrue(auditPackage.userPrompt.contains("\"patchIntent\""))
+        assertTrue(auditPackage.userPrompt.contains("\"graphPatch\""))
+        assertTrue(auditPackage.systemPrompt.contains("必须提供 patchIntent"))
+        assertTrue(auditPackage.systemPrompt.contains("INSERT_NEW_DECISION"))
+        assertTrue(auditPackage.userPrompt.contains("investigationThreads"))
+        assertTrue(auditPackage.userPrompt.contains("\"threadId\""))
         assertTrue(diffPackage.systemPrompt.contains("差异"))
         assertTrue(diffPackage.userPrompt.contains("当前关注差异"))
         assertTrue(diffPackage.userPrompt.contains("draft.claimType"))
@@ -310,11 +336,62 @@ class LlmPromptFactoryTest {
     }
 
     @Test
+    fun auditPromptPackageSeparatesFactGraphFromEditableGraphSemantics() {
+        val factory = LlmPromptFactory()
+        val settings = LinkGraphSettingsState(
+            llmEnabled = true,
+            provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+            model = "gpt-4.1-mini",
+        )
+        val factMethod = GraphNode(
+            id = "method:file-download",
+            type = NodeType.METHOD,
+            title = "CommonController.fileDownload",
+            sourceTag = GraphSourceTag.FACT,
+        )
+        val editableDecision = GraphNode(
+            id = "scope:file-download-if",
+            type = NodeType.FLOW_SCOPE,
+            title = "if (delete)",
+            sourceTag = GraphSourceTag.DRAFT_MANUAL,
+            metadata = mapOf("flowchart.kind" to "DECISION"),
+        )
+
+        val auditPackage = factory.buildAuditPromptPackage(
+            context = GraphAuditContext(
+                factGraph = GraphDocument(nodes = listOf(factMethod)),
+                editableGraph = GraphDocument(
+                    nodes = listOf(factMethod, editableDecision),
+                    edges = listOf(
+                        GraphEdge(
+                            id = "edge:file-download->if-delete",
+                            type = com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW,
+                            fromNodeId = factMethod.id,
+                            toNodeId = editableDecision.id,
+                            sourceTag = GraphSourceTag.DRAFT_MANUAL,
+                        ),
+                    ),
+                ),
+                selectedNodeIds = listOf(factMethod.id),
+            ),
+            question = "请确认当前删除分支应该落在哪个真实节点上？",
+            settings = settings,
+        )
+
+        assertTrue(auditPackage.userPrompt.contains("事实图节点"))
+        assertTrue(auditPackage.userPrompt.contains("当前可编辑图节点"))
+        assertTrue(auditPackage.userPrompt.contains("当前可编辑图连线"))
+        assertTrue(auditPackage.userPrompt.contains("if (delete)"))
+        assertTrue(auditPackage.systemPrompt.contains("不要把当前可编辑图误称为事实图"))
+        assertTrue(auditPackage.systemPrompt.contains("必须明确是来自“事实图”还是“当前可编辑图”"))
+    }
+
+    @Test
     fun generationAndCodePromptPackagesIncludeConfirmedDraftChanges() {
         val factory = LlmPromptFactory()
         val settings = LinkGraphSettingsState(
             llmEnabled = true,
-            provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+            provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
             model = "gpt-5.4",
         )
         val context = GenerationContext(
@@ -397,8 +474,14 @@ class LlmPromptFactoryTest {
         assertTrue(codePackage.userPrompt.contains("scope-file-download"))
         assertTrue(codePackage.userPrompt.contains("symbolSignature=com.example.CommonController.fileDownload(java.lang.String):void"))
         assertTrue(codePackage.userPrompt.contains("allowedChangeKinds=REPLACE_METHOD_BLOCK, REPLACE_METHOD_BODY"))
+        assertTrue(codePackage.userPrompt.contains("已确认草稿变更附带的 edit scopes"))
+        assertTrue(!codePackage.userPrompt.contains("已授权 edit scopes："))
+        assertTrue(!codePackage.userPrompt.contains("planItem="))
         assertTrue(codePackage.userPrompt.contains("相关源码片段"))
         assertTrue(codePackage.userPrompt.contains("baseUrl.replaceFirst(\"/usr\", \"/tmp\")"))
+        assertTrue(codePackage.systemPrompt.contains("editOperations[].payload 必须是纯源码片段字符串"))
+        assertTrue(codePackage.systemPrompt.contains("禁止把 methodSignature、changeType、existingCodeSnippet、newImplementation 等包装字段或元数据序列化进 payload"))
+        assertTrue(codePackage.userPrompt.contains("纯源码片段，不要放 methodSignature/changeType/existingCodeSnippet 等元数据包装"))
         assertTrue(codePackage.systemPrompt.contains("禁止声称未提供源码上下文"))
     }
 
@@ -407,7 +490,7 @@ class LlmPromptFactoryTest {
         val factory = LlmPromptFactory()
         val settings = LinkGraphSettingsState(
             llmEnabled = true,
-            provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+            provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
             model = "gpt-4.1-mini",
         )
 

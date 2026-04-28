@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.testing.*
+
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -21,6 +23,8 @@ class DebugGraphFactoryTest {
             "com.example.audit.DataSourceAspect.around(org.aspectj.lang.ProceedingJoinPoint):java.lang.Object",
             definition.anchorSignature,
         )
+        assertTrue(definition.graph.nodes.any { node -> node.doc?.contains("重点核对") == true })
+        assertTrue(definition.graph.nodes.any { node -> node.doc?.contains("问答流水") == true })
     }
 
     @Test

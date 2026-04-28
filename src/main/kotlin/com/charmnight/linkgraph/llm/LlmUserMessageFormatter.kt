@@ -61,7 +61,7 @@ internal object LlmUserMessageFormatter {
 
         when {
             rawMessage.contains("结构化 JSON") -> {
-                return rawMessage
+                return "返回内容未通过结构化校验，自动修复重试仍失败。请检查模型输出格式。"
             }
 
             rawMessage.contains("重试 1 次后仍失败") -> {

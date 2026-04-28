@@ -27,7 +27,7 @@ private val VALID_WORKBENCH_SECTION_IDS = linkedSetOf(
     "audit.thread",
     "audit.composer",
     "audit.candidate-changes",
-    "audit.investigation-leads",
+    "audit.investigation-threads",
     "draft.change-list",
     "draft.note-list",
     "draft.detail",

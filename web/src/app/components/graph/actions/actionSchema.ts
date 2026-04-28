@@ -92,7 +92,7 @@ export function buildPaneActions({
         onFormatLayout();
         onClose();
       }),
-      makeAction("open-audit", hasGroupedSelection ? "审计已框选范围" : "审计当前范围", () => {
+      makeAction("open-audit", hasGroupedSelection ? "问答已框选范围" : "问答当前范围", () => {
         onOpenAudit();
         onClose();
       }),
@@ -139,11 +139,11 @@ export function buildNodeActions({
       onRequestBeautification(nodeId);
       onClose();
     }),
-    makeAction("audit-node", "审计当前节点", () => {
+    makeAction("audit-node", "问答当前节点", () => {
       onRequestAudit(nodeId);
       onClose();
     }),
-    makeAction("set-audit-anchor", "设为审计范围起点", () => {
+    makeAction("set-audit-anchor", "设为问答范围起点", () => {
       onOpenAudit(nodeId);
       onClose();
     }),

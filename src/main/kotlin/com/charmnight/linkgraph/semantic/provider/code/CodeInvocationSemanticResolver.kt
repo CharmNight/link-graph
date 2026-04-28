@@ -25,7 +25,7 @@ data class CodeInvocationSemanticResolution(
 /**
  * 代码语义层的资源/集成关系扩展点。
  *
- * 当前版本先完成与 legacy extract 的边界切断，把关系扩展收口到统一语义协议，
+ * 当前版本先完成与旧抽取链的边界切断，把关系扩展收口到统一语义协议，
  * 后续在这里继续补充 MyBatis、HTTP、MQ、文档等一等关系生产器。
  */
 class CodeInvocationSemanticResolver(

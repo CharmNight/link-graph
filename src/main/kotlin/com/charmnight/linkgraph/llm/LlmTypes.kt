@@ -7,9 +7,10 @@ import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.AuditConversationSession
-import com.charmnight.linkgraph.workbench.AuditInvestigationLead
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
+import com.charmnight.linkgraph.workbench.InvestigationThread
+import com.charmnight.linkgraph.workbench.InvestigationTurnOutcome
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.charmnight.linkgraph.workbench.StepKind
 
@@ -33,16 +34,16 @@ data class GenerationContext(
 )
 
 /**
- * 封装图审计场景所需的输入上下文。
+ * 封装图问答场景所需的输入上下文。
  */
 data class GraphAuditContext(
     /** 保存事实图。 */
     val factGraph: GraphDocument = GraphDocument(),
-    /** 保存草稿图。 */
-    val draftGraph: GraphDocument = GraphDocument(),
+    /** 保存可编辑图。 */
+    val editableGraph: GraphDocument = GraphDocument(),
     /** 保存当前选中的节点标识列表。 */
     val selectedNodeIds: List<String> = emptyList(),
-    /** 保存审计时可直接送入模型的源码片段。 */
+    /** 保存问答时可直接送入模型的源码片段。 */
     val sourceContext: List<SourceSnippetContext> = emptyList(),
     /** 保存本轮实际收集到的源码证据轨迹。 */
     val evidenceTrace: List<EvidenceTraceEntry> = emptyList(),
@@ -101,7 +102,7 @@ data class SourceSnippetContext(
 )
 
 /**
- * 记录一条审计取证轨迹。
+ * 记录一条问答取证轨迹。
  */
 data class EvidenceTraceEntry(
     /** 保存关联节点标识。 */
@@ -263,8 +264,6 @@ data class GenerationPlanItem(
     val risk: SyncPreviewRisk,
     /** 保存目标文件路径。 */
     val targetPath: String? = null,
-    /** 保存该计划项允许触达的精确编辑范围。 */
-    val editScopes: List<EditScope> = emptyList(),
 )
 
 /** 生成计划总结果，前端会据此展示摘要、风险和 prompt 预览。 */
@@ -301,15 +300,17 @@ data class GraphPatchResult(
     val candidateChanges: List<CandidateDraftChange> = emptyList(),
     /** 保存本轮新增候选变更。 */
     val newCandidateChanges: List<CandidateDraftChange> = emptyList(),
-    /** 保存风险线索。 */
-    val investigationLeads: List<AuditInvestigationLead> = emptyList(),
-    /** 保存本轮新增风险线索。 */
-    val newInvestigationLeads: List<AuditInvestigationLead> = emptyList(),
+    /** 保存当前风险线程。 */
+    val investigationThreads: List<InvestigationThread> = emptyList(),
+    /** 保存本轮最新结果。 */
+    val latestTurnOutcome: InvestigationTurnOutcome? = null,
+    /** 保存最近若干轮结果。 */
+    val recentTurnOutcomes: List<InvestigationTurnOutcome> = emptyList(),
     /** 保存本轮实际附带的源码片段。 */
     val sourceContext: List<SourceSnippetContext> = emptyList(),
     /** 保存本轮实际使用的取证轨迹。 */
     val evidenceTrace: List<EvidenceTraceEntry> = emptyList(),
-    /** 保存当前审计会话状态。 */
+    /** 保存当前问答会话状态。 */
     val auditSession: AuditConversationSession? = null,
     /** 保存警告列表。 */
     val warnings: List<String> = emptyList(),
@@ -374,6 +375,16 @@ enum class LlmDeliveryMode {
     STREAM,
 }
 
+/** 描述一次原生结构化输出约束。 */
+data class LlmStructuredOutput(
+    /** provider 侧使用的 schema 名称。 */
+    val name: String,
+    /** machine-readable JSON Schema 文本。 */
+    val schema: String,
+    /** 是否要求 provider 严格遵守 schema。 */
+    val strict: Boolean = true,
+)
+
 /** 发给远程兼容接口的最小请求模型。 */
 data class LlmRequest(
     /** 保存请求协议。 */
@@ -394,6 +405,8 @@ data class LlmRequest(
     val userPrompt: String,
     /** 描述当前请求期望的交付方式。 */
     val deliveryMode: LlmDeliveryMode = LlmDeliveryMode.FULL,
+    /** 原生结构化输出约束；不支持的 provider 会忽略。 */
+    val structuredOutput: LlmStructuredOutput? = null,
 )
 
 /** 远程模型的最小响应模型，只保留当前一期会消费的字段。 */

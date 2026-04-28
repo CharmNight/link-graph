@@ -1,30 +1,36 @@
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, type CSSProperties } from "react";
 import {
   Handle,
   MarkerType,
   Position,
   useUpdateNodeInternals,
-  type CSSProperties,
   type Edge,
   type Node,
   type NodeProps,
+  type NodeTypes,
 } from "@xyflow/react";
 import { nodeCardWidth } from "../../graphNodeSizing";
 import type { NodeMeasuredSize, NodeSizeRegistry } from "../../graph/nodeSizeRegistry";
-import type { LinkGraphEdge, LinkGraphNode } from "../../types";
+import type { DraftCompareStatus, LinkGraphEdge, LinkGraphNode } from "../../types";
 import { edgeTypeLabel } from "../../labels";
 import { FactGraphNodeCard } from "../../components/graph/nodes/FactGraphNodeCard";
 import { isDecisionFlowScope, isFlowActionNode } from "../../components/graph/nodes/nodePresentation";
 import { canEditNodeLayout } from "../../layoutEditability";
 import type { RoutedEdgeData } from "../../reactflow/RoutedEdge";
 import { resolveGraphNodeHighlightClassName } from "../graphNodeHighlights";
+import {
+  draftCompareEdgeClassName,
+  draftCompareEdgeStyle,
+  draftCompareMarkerColor,
+} from "../draftComparePresentation";
 
-interface FactGraphNodeData {
+interface FactGraphNodeData extends Record<string, unknown> {
   node: LinkGraphNode;
   collapsed: boolean;
   collapsedCount?: number;
   explanationFocused?: boolean;
   draftChanged?: boolean;
+  draftCompareStatus?: DraftCompareStatus;
   onExpandOverflow: () => void;
   onMeasure?: (size: NodeMeasuredSize) => void;
 }
@@ -34,6 +40,7 @@ interface BuildFactGraphNodesOptions {
   selectedNodeId: string | null;
   explanationFocusNodeId?: string | null;
   draftChangedNodeIds?: string[];
+  draftCompareNodeStatuses?: Record<string, DraftCompareStatus>;
   collapsedNodeIds?: Iterable<string>;
   collapsedDescendantCountByNodeId?: Record<string, number>;
   onExpandOverflowNode: (nodeId: string) => void;
@@ -42,7 +49,11 @@ interface BuildFactGraphNodesOptions {
 
 interface BuildFactGraphEdgesOptions {
   edges: LinkGraphEdge[];
+  draftCompareEdgeStatuses?: Record<string, DraftCompareStatus>;
 }
+
+type FactGraphFlowNode = Node<FactGraphNodeData, "factGraphNode">;
+type FactGraphFlowNodeProps = NodeProps<FactGraphFlowNode>;
 
 const FACT_GRAPH_HANDLE_STYLE_BASE: CSSProperties = {
   width: 16,
@@ -63,7 +74,7 @@ function factGraphHandleStyle(isConnectable: boolean): CSSProperties {
   };
 }
 
-function FactGraphReactNode({ id, data, selected, isConnectable }: NodeProps<FactGraphNodeData>) {
+function FactGraphReactNode({ id, data, selected, isConnectable }: FactGraphFlowNodeProps) {
   const updateNodeInternals = useUpdateNodeInternals();
   const handleStyle = factGraphHandleStyle(isConnectable);
 
@@ -82,6 +93,7 @@ function FactGraphReactNode({ id, data, selected, isConnectable }: NodeProps<Fac
         collapsedCount={data.collapsedCount}
         explanationFocused={data.explanationFocused}
         draftChanged={data.draftChanged}
+        draftCompareStatus={data.draftCompareStatus}
         onMeasure={data.onMeasure}
         onExpandOverflow={data.onExpandOverflow}
       />
@@ -89,7 +101,7 @@ function FactGraphReactNode({ id, data, selected, isConnectable }: NodeProps<Fac
   );
 }
 
-export const FACT_GRAPH_NODE_TYPES = {
+export const FACT_GRAPH_NODE_TYPES: NodeTypes = {
   factGraphNode: FactGraphReactNode,
 };
 
@@ -183,11 +195,12 @@ export function buildFactGraphNodes({
   selectedNodeId,
   explanationFocusNodeId = null,
   draftChangedNodeIds = [],
+  draftCompareNodeStatuses = {},
   collapsedNodeIds = [],
   collapsedDescendantCountByNodeId = {},
   onExpandOverflowNode,
   nodeSizeRegistry,
-}: BuildFactGraphNodesOptions): Array<Node<FactGraphNodeData>> {
+}: BuildFactGraphNodesOptions): FactGraphFlowNode[] {
   const collapsedNodeIdSet = new Set(collapsedNodeIds);
   const draftChangedNodeIdSet = new Set(draftChangedNodeIds);
   return nodes.map((node) => ({
@@ -197,6 +210,7 @@ export function buildFactGraphNodes({
       nodeId: node.id,
       explanationFocusNodeId,
       draftChangedNodeIdSet,
+      draftCompareStatus: draftCompareNodeStatuses[node.id],
     }) || undefined,
     selected: selectedNodeId === node.id,
     draggable: canEditNodeLayout(node),
@@ -209,8 +223,9 @@ export function buildFactGraphNodes({
       collapsedCount: collapsedDescendantCountByNodeId[node.id],
       explanationFocused: explanationFocusNodeId === node.id,
       draftChanged: draftChangedNodeIdSet.has(node.id),
+      draftCompareStatus: draftCompareNodeStatuses[node.id],
       onExpandOverflow: () => onExpandOverflowNode(node.id),
-      onMeasure: (size) => nodeSizeRegistry.set(node.id, size),
+      onMeasure: nodeSizeRegistry.reporter(node.id),
     },
     style: factGraphNodeStyle(node),
   }));
@@ -218,23 +233,24 @@ export function buildFactGraphNodes({
 
 export function buildFactGraphEdges({
   edges,
-}: BuildFactGraphEdgesOptions): Array<Edge<RoutedEdgeData>> {
+  draftCompareEdgeStatuses = {},
+}: BuildFactGraphEdgesOptions): Array<Edge<RoutedEdgeData, "routedEdge">> {
   return edges.map((edge) => ({
     id: edge.id,
     source: edge.source,
     target: edge.target,
     label: factGraphEdgeLabel(edge),
     type: "routedEdge",
-    className: factGraphEdgeClassName(edge),
+    className: draftCompareEdgeClassName(factGraphEdgeClassName(edge), draftCompareEdgeStatuses[edge.id]),
     data: {
       route: edge.route,
     },
-    style: factGraphEdgeStyle(edge),
+    style: draftCompareEdgeStyle(factGraphEdgeStyle(edge), draftCompareEdgeStatuses[edge.id]),
     markerEnd: {
       type: MarkerType.ArrowClosed,
       width: 20,
       height: 20,
-      color: edge.type === "CALL" ? "#8f4f23" : "#5f5a53",
+      color: draftCompareMarkerColor(edge.type === "CALL" ? "#8f4f23" : "#5f5a53", draftCompareEdgeStatuses[edge.id]),
     },
   }));
 }

@@ -113,7 +113,7 @@ export async function layoutFactGraphView({
 }: MeasuredLayoutRequest) {
   const anchorId = resolveAnchorNodeId(nodes, anchorNodeId);
   if (!anchorId) {
-    return nodes;
+    return { nodes, edges };
   }
   const outgoing = buildOutgoing(edges);
   const incoming = buildIncoming(edges);

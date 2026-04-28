@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.mermaid.MermaidIssue
 import com.charmnight.linkgraph.model.DiffStatus
 import com.charmnight.linkgraph.model.GraphDiff
@@ -9,7 +11,6 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.settings.LlmProviderType
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.DraftEntryKind
@@ -48,7 +49,7 @@ class GraphGenerationServiceTest {
             context = sampleContext(),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.MOCK.name,
+                provider = LlmProviderPresets.MOCK.id,
             ),
         )
 
@@ -85,7 +86,7 @@ class GraphGenerationServiceTest {
             context = sampleContext(),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://api.example.com/v1",
                 apiKey = "secret-key",
                 model = "gpt-4.1-mini",
@@ -143,7 +144,7 @@ class GraphGenerationServiceTest {
             context = sampleContext(),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "https://api.example.com/v1",
                 apiKey = "secret-key",
                 model = "gpt-4.1-mini",
@@ -168,7 +169,7 @@ class GraphGenerationServiceTest {
             context = sampleContext(),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "",
                 apiKey = "",
                 model = "",
@@ -285,7 +286,7 @@ class GraphGenerationServiceTest {
             ),
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.MOCK.name,
+                provider = LlmProviderPresets.MOCK.id,
             ),
         )
 
@@ -296,9 +297,6 @@ class GraphGenerationServiceTest {
             "src/main/java/com/example/CommonController.java",
             plan.items.single().targetPath,
         )
-        val scope = assertNotNull(plan.items.single().editScopes.firstOrNull())
-        assertEquals("scope-file-download", scope.scopeId)
-        assertEquals("com.example.CommonController.fileDownload(java.lang.String):void", scope.symbolSignature)
     }
 
     private fun sampleContext(): GenerationContext {

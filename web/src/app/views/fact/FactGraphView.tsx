@@ -12,6 +12,7 @@ import { shouldFocusAnchor } from "../../reactflow/viewportPolicy";
 import { GraphFlowSurface } from "../../reactflow/GraphFlowSurface";
 import { canNavigateToSource } from "../../sourceNavigation";
 import type { FactGraphViewDocument } from "../../types";
+import { DraftCompareSummary } from "../../components/DraftCompareSummary";
 import type { ViewStageProps } from "../viewStageProps";
 import { layoutFactGraphView } from "./factGraphLayout";
 import { buildFactGraphEdges, buildFactGraphNodes, FACT_GRAPH_NODE_TYPES } from "./factGraphNodes";
@@ -38,6 +39,7 @@ export function FactGraphView({
   focusNodeRequest = null,
   explanationFocusNodeId = null,
   draftChangedNodeIds = [],
+  draftCompareProjection = null,
   selectedGroupNodeIds = [],
   hiddenNodeIds = [],
   collapsedNodeIds = [],
@@ -62,8 +64,9 @@ export function FactGraphView({
   onExpandOverflowNode = () => undefined,
 }: FactGraphViewProps) {
   const nodeSizeRegistry = useMemo(() => createNodeSizeRegistry(), []);
+  const presentedGraph = draftCompareProjection?.compareGraph ?? view.visibleGraph;
   const layoutState = useMeasuredLayout({
-    graph: view.visibleGraph,
+    graph: presentedGraph,
     anchorNodeId: view.anchorNodeId ?? null,
     collapsedNodeIds,
     nodeSizeRegistry,
@@ -81,7 +84,7 @@ export function FactGraphView({
     () => layoutState.edges.filter((edge) => !hiddenNodeIdSet.has(edge.source) && !hiddenNodeIdSet.has(edge.target)),
     [layoutState.edges, hiddenNodeIdSet],
   );
-  const isLayoutLoading = layoutState.layoutPending && view.visibleGraph.nodes.length > 0 && layoutState.nodes.length === 0;
+  const isLayoutLoading = layoutState.layoutPending && presentedGraph.nodes.length > 0 && layoutState.nodes.length === 0;
   const nodeIndex = useMemo(
     () => new Map(visibleNodes.map((node) => [node.id, node])),
     [visibleNodes],
@@ -115,6 +118,7 @@ export function FactGraphView({
         selectedNodeId,
         explanationFocusNodeId,
         draftChangedNodeIds,
+        draftCompareNodeStatuses: draftCompareProjection?.nodeStatuses,
         collapsedNodeIds,
         collapsedDescendantCountByNodeId,
         onExpandOverflowNode,
@@ -125,6 +129,7 @@ export function FactGraphView({
       selectedNodeId,
       explanationFocusNodeId,
       draftChangedNodeIds,
+      draftCompareProjection?.nodeStatuses,
       collapsedNodeIds,
       collapsedDescendantCountByNodeId,
       onExpandOverflowNode,
@@ -132,12 +137,16 @@ export function FactGraphView({
     ],
   );
   const flowEdges = useMemo(
-    () => buildFactGraphEdges({ edges: visibleEdges }),
-    [visibleEdges],
+    () => buildFactGraphEdges({
+      edges: visibleEdges,
+      draftCompareEdgeStatuses: draftCompareProjection?.edgeStatuses,
+    }),
+    [draftCompareProjection?.edgeStatuses, visibleEdges],
   );
 
   const header = anchorNode ? (
     <section className="canvas-reading-summary" aria-label="图阅读摘要">
+      {draftCompareProjection ? <DraftCompareSummary projection={draftCompareProjection} /> : null}
       <div className="canvas-reading-grid">
         <article className="canvas-reading-card is-anchor">
           <span className="canvas-reading-label">当前方法</span>

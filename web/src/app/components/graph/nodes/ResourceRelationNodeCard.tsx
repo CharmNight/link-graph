@@ -1,7 +1,7 @@
 import { memo, useLayoutEffect, useRef } from "react";
 import { nodeTypeLabel } from "../../../labels";
 import { IssueBadge } from "../../IssueBadge";
-import type { LinkGraphNode } from "../../../types";
+import type { DraftCompareStatus, LinkGraphNode } from "../../../types";
 import { nodeTooltip, resourceLane, resourceLaneLabel, signaturePreview } from "./nodePresentation";
 import { measureNodeContentBox } from "./measureNodeContentBox";
 import { GraphNodeStateBadges } from "./GraphNodeStateBadges";
@@ -11,6 +11,7 @@ interface ResourceRelationNodeCardProps {
   selected: boolean;
   explanationFocused?: boolean;
   draftChanged?: boolean;
+  draftCompareStatus?: DraftCompareStatus;
   onMeasure?: (size: { width: number; height: number }) => void;
 }
 
@@ -19,6 +20,7 @@ export const ResourceRelationNodeCard = memo(function ResourceRelationNodeCard({
   selected,
   explanationFocused = false,
   draftChanged = false,
+  draftCompareStatus,
   onMeasure,
 }: ResourceRelationNodeCardProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -46,7 +48,7 @@ export const ResourceRelationNodeCard = memo(function ResourceRelationNodeCard({
       <div className="flow-node-head">
         <span className="flow-node-doc">{resourceLaneLabel(lane)}</span>
         <div className="flow-node-tags">
-          <IssueBadge certainty={undefined} diffStatus={node.diffStatus} />
+          <IssueBadge certainty={undefined} diffStatus={node.diffStatus} draftCompareStatus={draftCompareStatus} />
         </div>
       </div>
       <strong className="flow-node-owner" title={node.title}>

@@ -112,6 +112,19 @@ class OpenAiCompatibleLlmGateway(
         } else {
             ""
         }
+        val structuredOutputField = request.structuredOutput?.let { structuredOutput ->
+            """
+                ,
+                  "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                      "name": "${escape(structuredOutput.name)}",
+                      "strict": ${structuredOutput.strict},
+                      "schema": ${structuredOutput.schema.trim()}
+                    }
+                  }
+            """.trimIndent()
+        }.orEmpty()
         return """
             {
               "model": "${escape(request.model)}",
@@ -125,7 +138,7 @@ class OpenAiCompatibleLlmGateway(
                   "role": "user",
                   "content": "${escape(request.userPrompt)}"
                 }
-              ]$streamField
+              ]$structuredOutputField$streamField
             }
         """.trimIndent()
     }

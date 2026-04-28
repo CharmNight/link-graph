@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.settings
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.llm.LlmProviderPresets
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -7,12 +9,29 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class LinkGraphSettingsServiceTest {
+    private class FakeSecretStore(
+        initialApiKey: String = "",
+    ) : LinkGraphSecretStore {
+        var storedApiKey: String = initialApiKey
+
+        override fun loadApiKey(): String = storedApiKey
+
+        override fun saveApiKey(apiKey: String) {
+            storedApiKey = apiKey
+        }
+
+        override fun clearApiKey() {
+            storedApiKey = ""
+        }
+    }
+
     @Test
     fun exposesExpectedDefaultSettings() {
-        val snapshot = LinkGraphSettingsService().snapshot()
+        val snapshot = LinkGraphSettingsService(FakeSecretStore()).snapshot()
 
         assertFalse(snapshot.llmEnabled)
-        assertEquals(LlmProviderType.MOCK, snapshot.providerType())
+        assertEquals(LlmProviderPresets.MOCK.id, snapshot.providerPreset().id)
+        assertFalse(snapshot.providerPreset().isRemote)
         assertEquals("", snapshot.normalizedEndpoint())
         assertEquals("", snapshot.apiKey)
         assertEquals(LinkGraphSettingsState.DEFAULT_MODEL, snapshot.model)
@@ -21,13 +40,14 @@ class LinkGraphSettingsServiceTest {
     }
 
     @Test
-    fun sanitizesAndPersistsSettingsState() {
-        val service = LinkGraphSettingsService()
+    fun sanitizesRuntimeSnapshotAndSplitsApiKeyFromPersistedState() {
+        val secretStore = FakeSecretStore()
+        val service = LinkGraphSettingsService(secretStore)
 
-        service.loadState(
+        service.update(
             LinkGraphSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = " https://api.example.com/v1/ ",
                 apiKey = " secret-key ",
                 model = " gpt-4.1-mini ",
@@ -38,25 +58,37 @@ class LinkGraphSettingsServiceTest {
 
         val snapshot = service.snapshot()
         assertTrue(snapshot.llmEnabled)
-        assertEquals(LlmProviderType.OPENAI_COMPATIBLE, snapshot.providerType())
+        assertEquals(LlmProviderPresets.OPENAI_COMPATIBLE.id, snapshot.providerPreset().id)
+        assertTrue(snapshot.providerPreset().isRemote)
         assertEquals("https://api.example.com/v1", snapshot.normalizedEndpoint())
         assertEquals("secret-key", snapshot.apiKey.trim())
         assertEquals("gpt-4.1-mini", snapshot.model.trim())
         assertEquals(30, snapshot.effectiveTimeoutSeconds())
         assertEquals(1.0, snapshot.effectiveTemperature())
+        assertEquals("secret-key", secretStore.storedApiKey)
+        assertEquals(
+            LinkGraphPersistentSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://api.example.com/v1",
+                model = "gpt-4.1-mini",
+                timeoutSeconds = 30,
+                temperature = 1.0,
+            ),
+            service.state,
+        )
         assertTrue(service.isRemoteGenerationReady())
     }
 
     @Test
     fun remoteGenerationRequiresCompleteConnectionInfo() {
-        val service = LinkGraphSettingsService()
+        val service = LinkGraphSettingsService(FakeSecretStore())
 
         service.loadState(
-            LinkGraphSettingsState(
+            LinkGraphPersistentSettingsState(
                 llmEnabled = true,
-                provider = LlmProviderType.OPENAI_COMPATIBLE.name,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
                 endpoint = "",
-                apiKey = "",
                 model = "",
             ),
         )
@@ -66,14 +98,13 @@ class LinkGraphSettingsServiceTest {
 
     @Test
     fun usesMiniMaxPresetDefaultsWhenEndpointAndModelAreBlank() {
-        val service = LinkGraphSettingsService()
+        val service = LinkGraphSettingsService(FakeSecretStore(initialApiKey = " secret-key "))
 
         service.loadState(
-            LinkGraphSettingsState(
+            LinkGraphPersistentSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.MINIMAX_ANTHROPIC.id,
                 endpoint = "",
-                apiKey = " secret-key ",
                 model = "",
             ),
         )
@@ -87,14 +118,13 @@ class LinkGraphSettingsServiceTest {
 
     @Test
     fun usesOpenAiResponsesPresetDefaultsWhenEndpointAndModelAreBlank() {
-        val service = LinkGraphSettingsService()
+        val service = LinkGraphSettingsService(FakeSecretStore(initialApiKey = " secret-key "))
 
         service.loadState(
-            LinkGraphSettingsState(
+            LinkGraphPersistentSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_RESPONSES.id,
                 endpoint = "",
-                apiKey = " secret-key ",
                 model = "",
             ),
         )
@@ -104,5 +134,24 @@ class LinkGraphSettingsServiceTest {
         assertEquals("https://api.openai.com/v1", snapshot.effectiveEndpoint())
         assertEquals("gpt-4.1-mini", snapshot.effectiveModel())
         assertTrue(service.isRemoteGenerationReady())
+    }
+
+    @Test
+    fun clearsStoredApiKeyWhenUpdatedStateLeavesKeyBlank() {
+        val secretStore = FakeSecretStore(initialApiKey = "secret-key")
+        val service = LinkGraphSettingsService(secretStore)
+
+        service.update(
+            LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://api.example.com/v1",
+                apiKey = "",
+                model = "gpt-4.1-mini",
+            ),
+        )
+
+        assertEquals("", secretStore.storedApiKey)
+        assertFalse(service.isRemoteGenerationReady())
     }
 }

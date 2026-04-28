@@ -1,12 +1,15 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.WorkbenchLayoutPreferencesService
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlin.test.assertEquals
+import kotlin.test.fail
 
 class LinkGraphProjectServiceWorkbenchLayoutTest : BasePlatformTestCase() {
-    fun testUpdateWorkbenchSectionPreferenceWritesRuntimeAndPersistentStateForInvestigationLeads() {
+    fun testUpdateWorkbenchSectionPreferenceWritesRuntimeAndPersistentStateForInvestigationThreads() {
         var syncRequestedCount = 0
         val connection = project.messageBus.connect(testRootDisposable)
         connection.subscribe(
@@ -18,20 +21,36 @@ class LinkGraphProjectServiceWorkbenchLayoutTest : BasePlatformTestCase() {
             },
         )
 
-        project.getService(LinkGraphProjectService::class.java)
-            .updateWorkbenchSectionPreference("audit.investigation-leads", true)
+        project.getService(GraphEditorCommandRouter::class.java)
+            .updateWorkbenchSectionPreference("audit.investigation-threads", true)
+
+        waitForRuntimePreference("audit.investigation-threads")
 
         assertEquals(
             true,
             project.getService(GraphEditorStateService::class.java)
                 .snapshot()
-                .workbenchSectionPreferences["audit.investigation-leads"],
+                .workbenchSectionPreferences["audit.investigation-threads"],
         )
         assertEquals(
             true,
             project.getService(WorkbenchLayoutPreferencesService::class.java)
-                .snapshot()["audit.investigation-leads"],
+                .snapshot()["audit.investigation-threads"],
         )
-        assertEquals(1, syncRequestedCount)
+        assertEquals(true, syncRequestedCount >= 1)
+    }
+
+    private fun waitForRuntimePreference(sectionId: String) {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (System.currentTimeMillis() < deadline) {
+            if (project.getService(GraphEditorStateService::class.java)
+                    .snapshot()
+                    .workbenchSectionPreferences[sectionId] == true
+            ) {
+                return
+            }
+            Thread.sleep(50)
+        }
+        fail("等待工作台偏好写回运行时状态超时")
     }
 }

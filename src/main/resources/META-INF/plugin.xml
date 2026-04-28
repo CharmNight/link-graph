@@ -3,7 +3,10 @@
     <name>链路图</name>
     <vendor>CharmNight</vendor>
 
-    <description><![CDATA[链路图插件：查看当前方法链路，支持 Mermaid 导入、导出、对比，并可基于当前链路生成代码草稿。]]></description>
+    <description><![CDATA[
+        Link Graph is an IntelliJ Platform plugin for exploring method, flowchart, and resource relationships inside a project.
+        It provides a JCEF-based graph workbench with Mermaid import/export, diff preview, source navigation, local fallback workflows, and optional remote LLM-assisted drafts.
+    ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.java</depends>
@@ -15,12 +18,15 @@
                 anchor="right"
                 stripeTitle="链路图"
                 factoryClass="com.charmnight.linkgraph.toolwindow.LinkGraphToolWindowFactory"/>
-        <postStartupActivity implementation="com.charmnight.linkgraph.toolwindow.LinkGraphDebugStartupActivity"/>
         <applicationConfigurable
                 parentId="tools"
                 id="com.charmnight.linkgraph.settings"
                 displayName="链路图"
                 instance="com.charmnight.linkgraph.settings.LinkGraphSettingsConfigurable"/>
+    </extensions>
+
+    <extensions defaultExtensionNs="org.jetbrains.kotlin">
+        <supportsKotlinPluginMode supportsK2="true"/>
     </extensions>
 
     <actions>

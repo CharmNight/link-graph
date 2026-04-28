@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.semantic.subject
 
+import com.charmnight.linkgraph.testing.*
+
 import com.intellij.testFramework.DumbModeTestUtils
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 

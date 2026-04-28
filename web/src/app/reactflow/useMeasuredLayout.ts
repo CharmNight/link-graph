@@ -95,10 +95,12 @@ function areNodeSetsEquivalent(left: LinkGraphNode[], right: LinkGraphNode[]): b
   const rightIndex = new Map(right.map((node) => [node.id, node]));
   return left.every((node) => {
     const candidate = rightIndex.get(node.id);
+    if (!candidate) {
+      return false;
+    }
     const position = resolvePosition(node);
     const candidatePosition = resolvePosition(candidate);
-    return Boolean(candidate)
-      && nodeSignature(node) === nodeSignature(candidate)
+    return nodeSignature(node) === nodeSignature(candidate)
       && (
         (!position && !candidatePosition)
         || (position && candidatePosition && position.x === candidatePosition.x && position.y === candidatePosition.y)
@@ -119,7 +121,7 @@ function areEdgeSetsEquivalent(left: LinkGraphEdge[], right: LinkGraphEdge[]): b
   const rightIndex = new Map(right.map((edge) => [edge.id, edge]));
   return left.every((edge) => {
     const candidate = rightIndex.get(edge.id);
-    return Boolean(candidate) && edgeSignature(edge) === edgeSignature(candidate);
+    return candidate != null && edgeSignature(edge) === edgeSignature(candidate);
   });
 }
 

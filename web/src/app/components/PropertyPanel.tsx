@@ -73,6 +73,36 @@ function nodeDraftSignature(node: LinkGraphNode | null | undefined): string {
   });
 }
 
+function nodeSourceFieldLabel(node: LinkGraphNode): string {
+  if (node.type === "FLOW_SCOPE") {
+    return "流程摘要";
+  }
+  if (node.type === "FLOW_ACTION") {
+    return "动作表达式";
+  }
+  return "符号签名";
+}
+
+function ReadOnlyField({
+  label,
+  value,
+  code = false,
+}: {
+  label: string;
+  value?: string;
+  code?: boolean;
+}) {
+  if (!value?.trim()) {
+    return null;
+  }
+  return (
+    <div className="form-stack">
+      <p className="eyebrow">{label}</p>
+      <p className={code ? "selected-summary-code" : undefined}>{value}</p>
+    </div>
+  );
+}
+
 interface PropertyPanelProps {
   selectedNode: LinkGraphNode | null;
   onUpdateNode: (node: LinkGraphNode) => void;
@@ -171,6 +201,7 @@ export function PropertyPanel({
   const actionAnchorMethod = draft.metadata?.["flow.anchorMethod"]?.trim() ?? "";
   const actionStartOffset = draft.metadata?.["source.startOffset"]?.trim() ?? "";
   const actionEndOffset = draft.metadata?.["source.endOffset"]?.trim() ?? "";
+  const sourceFieldLabel = nodeSourceFieldLabel(draft);
 
   return (
     <div
@@ -216,14 +247,11 @@ export function PropertyPanel({
           />
         </label>
 
-        <label>
-          位置
-          <input
-            aria-label="位置"
-            value={draft.location ?? ""}
-            onChange={(event) => setDraft({ ...draft, location: event.target.value })}
-          />
-        </label>
+        <section className="panel-section" aria-label="源码锚点">
+          <p className="eyebrow">源码锚点</p>
+          <ReadOnlyField label="源码位置" value={draft.location} code />
+          <ReadOnlyField label={sourceFieldLabel} value={draft.signature} code />
+        </section>
 
         {!canOpenSource ? <p className="muted">该节点当前没有可跳转的源码位置。</p> : null}
         {usesSignatureFallback ? <p className="muted">当前将按方法/类签名在 IDEA 中定位源码。</p> : null}
@@ -279,15 +307,6 @@ export function PropertyPanel({
             ) : null}
           </section>
         ) : null}
-
-        <label>
-          {isFlowScope ? "流程摘要" : isFlowAction ? "动作表达式" : "签名"}
-          <textarea
-            aria-label={isFlowScope ? "流程摘要" : isFlowAction ? "动作表达式" : "签名"}
-            value={draft.signature ?? ""}
-            onChange={(event) => setDraft({ ...draft, signature: event.target.value })}
-          />
-        </label>
 
         {!isFlowScope && !isFlowAction ? (
           <label>

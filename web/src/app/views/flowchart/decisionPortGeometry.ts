@@ -1,4 +1,5 @@
-import type { CSSProperties } from "@xyflow/react";
+import type { CSSProperties } from "react";
+import { resolveFlowchartKind } from "../../flowchartKind";
 import type { GraphPosition, LinkGraphEdge, LinkGraphNode } from "../../types";
 
 export type FlowchartDecisionPortId =
@@ -48,14 +49,6 @@ interface DecisionPortGeometry {
 
 function normalizedFlowLabel(edge: LinkGraphEdge | undefined): string {
   return edge?.label?.trim().toUpperCase() ?? "";
-}
-
-function semanticDecisionOutgoingEdges(outgoingEdges: LinkGraphEdge[] | undefined): LinkGraphEdge[] {
-  if (!outgoingEdges || outgoingEdges.length === 0) {
-    return [];
-  }
-  const authoredEdges = outgoingEdges.filter((edge) => edge.sourceTag !== "DRAFT_MANUAL");
-  return authoredEdges.length > 0 ? authoredEdges : outgoingEdges;
 }
 
 const DECISION_PORT_GEOMETRY: Record<FlowchartDecisionPortId, DecisionPortGeometry> = {
@@ -108,7 +101,7 @@ const DECISION_PORT_GEOMETRY: Record<FlowchartDecisionPortId, DecisionPortGeomet
 };
 
 function flowchartKind(node?: LinkGraphNode): string {
-  return node?.metadata?.["flowchart.kind"] ?? "PROCESS";
+  return resolveFlowchartKind(node);
 }
 
 function flowScopeCategory(node?: LinkGraphNode): string {
@@ -162,7 +155,7 @@ export function isDecisionFallthroughEdge(
   outgoingEdges: LinkGraphEdge[] | undefined,
   nodeIndex: Map<string, LinkGraphNode> | undefined,
 ): boolean {
-  const semanticOutgoingEdges = semanticDecisionOutgoingEdges(outgoingEdges);
+  const semanticOutgoingEdges = outgoingEdges ?? [];
   if (!edge || semanticOutgoingEdges.length !== 2 || !nodeIndex) {
     return false;
   }

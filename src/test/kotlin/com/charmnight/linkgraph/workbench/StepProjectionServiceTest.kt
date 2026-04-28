@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.workbench
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge

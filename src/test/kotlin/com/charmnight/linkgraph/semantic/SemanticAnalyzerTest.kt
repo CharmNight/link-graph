@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.semantic
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.semantic.model.MethodLikeUnit
 import com.charmnight.linkgraph.semantic.model.SemanticAnalysisResult
 import com.charmnight.linkgraph.semantic.model.SemanticAnchor

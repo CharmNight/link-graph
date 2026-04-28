@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.llm.EditScope
 import com.charmnight.linkgraph.llm.GenerationPlan
@@ -11,6 +13,7 @@ import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.sync.SyncPreviewPlanner
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
+import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
@@ -22,7 +25,46 @@ import kotlin.test.assertTrue
 
 class PlanningContextFactoryTest {
     @Test
-    fun computePlanningPayloadCollectsGenerationSourceSnippetsFromConfirmedChangesAndPlanScopes() {
+    fun buildAuditGraphsPreservesReferenceFactGraphWhileUsingWorkingGraphAsEditableGraph() {
+        val factGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:file-download",
+                    type = NodeType.METHOD,
+                    title = "CommonController.fileDownload",
+                ),
+            ),
+        )
+        val editableGraph = GraphDocument(
+            nodes = factGraph.nodes + GraphNode(
+                id = "scope:file-download-if",
+                type = NodeType.FLOW_SCOPE,
+                title = "if (delete)",
+            ),
+        )
+        val snapshot = testSnapshot(
+            analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
+            referenceFactGraph = factGraph,
+            workingGraph = editableGraph,
+        )
+
+        val auditGraphs = PlanningContextFactory(
+            graphDiffer = GraphDiffer(),
+            syncPreviewPlanner = SyncPreviewPlanner(),
+            graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
+            settingsProvider = { LinkGraphSettingsState() },
+        ).buildAuditGraphs(
+            snapshot = snapshot,
+            selectedNodeIds = emptyList(),
+            collectSourceEvidence = false,
+        )
+
+        assertEquals(factGraph, auditGraphs.factGraph)
+        assertEquals(editableGraph, auditGraphs.editableGraph)
+    }
+
+    @Test
+    fun computePlanningPayloadDoesNotPreloadGenerationSourceSnippetsFromConfirmedChangesAndPlanScopes() {
         val sourceFile = Files.createTempFile("generation-source-context", ".java")
         val sourceCode = """
             package com.example;
@@ -89,7 +131,7 @@ class PlanningContextFactoryTest {
                 ),
             ),
         )
-        val snapshot = GraphEditorStateService.Snapshot(
+        val snapshot = testSnapshot(
             workingGraph = graph,
             draftWorkbenchState = DraftWorkbenchState(
                 draftChanges = listOf(
@@ -130,21 +172,6 @@ class PlanningContextFactoryTest {
                     description = "补上传校验。",
                     risk = SyncPreviewRisk.MEDIUM,
                     targetPath = sourceFile.toString(),
-                    editScopes = listOf(
-                        EditScope(
-                            scopeId = "scope-upload-file",
-                            targetNodeId = "method:upload-file",
-                            filePath = sourceFile.toString(),
-                            language = "JAVA",
-                            symbolKind = "METHOD",
-                            symbolSignature = "com.example.CommonController.uploadFile(java.lang.String):void",
-                            startOffset = uploadStartOffset,
-                            endOffset = uploadEndOffset,
-                            startLine = 11,
-                            endLine = 13,
-                            allowedChangeKinds = listOf("REPLACE_METHOD_BLOCK"),
-                        ),
-                    ),
                 ),
             ),
         )
@@ -156,13 +183,11 @@ class PlanningContextFactoryTest {
             settingsProvider = { LinkGraphSettingsState() },
         ).computePlanningPayload(snapshot, generationPlanOverride = generationPlan)
 
-        assertEquals(2, payload.sourceContext.size)
-        assertTrue(payload.sourceContext.any { it.nodeId == "method:file-download" && it.snippet?.contains("replaceFirst(\"/usr\", \"/tmp\")") == true })
-        assertTrue(payload.sourceContext.any { it.nodeId == "method:upload-file" && it.snippet?.contains("validate(file);") == true })
+        assertTrue(payload.sourceContext.isEmpty())
     }
 
     @Test
-    fun computePlanningPayloadReadsProjectRelativePlanScopeAgainstProjectBasePath() {
+    fun computePlanningPayloadDoesNotReadProjectRelativePlanScopeAgainstProjectBasePath() {
         val projectDir = Files.createTempDirectory("planning-context-project-base")
         val sourceFile = projectDir.resolve("src/main/java/com/example/CommonController.java")
         Files.createDirectories(sourceFile.parent)
@@ -197,7 +222,7 @@ class PlanningContextFactoryTest {
                 ),
             ),
         )
-        val snapshot = GraphEditorStateService.Snapshot(workingGraph = graph)
+        val snapshot = testSnapshot(workingGraph = graph)
         val generationPlan = GenerationPlan(
             source = GenerationPlanSource.REMOTE,
             summary = "修改 uploadFile",
@@ -208,19 +233,6 @@ class PlanningContextFactoryTest {
                     description = "补上传校验。",
                     risk = SyncPreviewRisk.MEDIUM,
                     targetPath = "src/main/java/com/example/CommonController.java",
-                    editScopes = listOf(
-                        EditScope(
-                            scopeId = "scope-upload-file",
-                            targetNodeId = "method:upload-file",
-                            filePath = "src/main/java/com/example/CommonController.java",
-                            language = "JAVA",
-                            symbolKind = "METHOD",
-                            symbolSignature = "com.example.CommonController.uploadFile(java.lang.String):void",
-                            startLine = 4,
-                            endLine = 6,
-                            allowedChangeKinds = listOf("REPLACE_METHOD_BLOCK"),
-                        ),
-                    ),
                 ),
             ),
         )
@@ -233,7 +245,6 @@ class PlanningContextFactoryTest {
             projectBasePathProvider = { projectDir.toString() },
         ).computePlanningPayload(snapshot, generationPlanOverride = generationPlan)
 
-        assertEquals(1, payload.sourceContext.size)
-        assertTrue(payload.sourceContext.single().snippet?.contains("validate(file);") == true)
+        assertTrue(payload.sourceContext.isEmpty())
     }
 }

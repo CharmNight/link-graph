@@ -4,7 +4,6 @@ import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.codegen.ProjectPathNormalizer
 import com.charmnight.linkgraph.llm.GenerationContext
 import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GenerationPlanItem
 import com.charmnight.linkgraph.llm.GraphBeautificationContext
 import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.llm.GraphGenerationService
@@ -24,7 +23,7 @@ import java.nio.file.InvalidPathException
 import java.nio.file.Path
 
 /**
- * 为计划生成、审计、讲解等流程统一构造上下文载荷。
+ * 为计划生成、问答、讲解等流程统一构造上下文载荷。
  */
 internal class PlanningContextFactory(
     /** 图 diff 比较器。 */
@@ -33,7 +32,7 @@ internal class PlanningContextFactory(
     private val syncPreviewPlanner: SyncPreviewPlanner,
     /** 图生成服务。 */
     private val graphGenerationService: GraphGenerationService,
-    /** 审计源码证据收集器。 */
+    /** 问答源码证据收集器。 */
     private val auditEvidenceCollector: AuditEvidenceCollector = AuditEvidenceCollector(),
     /** 当前真正生效的生成设置。 */
     private val settingsProvider: () -> LinkGraphSettingsState,
@@ -44,7 +43,7 @@ internal class PlanningContextFactory(
      * 计算实现计划和代码草稿共用的规划载荷。
      */
     fun computePlanningPayload(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         generationPlanOverride: GenerationPlan? = snapshot.generationPlan,
     ): PlanningPayload {
         val workingGraph = currentWorkingGraph(snapshot)
@@ -66,11 +65,7 @@ internal class PlanningContextFactory(
             diff = diff,
             previewItems = previewItems,
             snapshot = snapshot,
-            sourceContext = buildGenerationSourceSnippetContexts(
-                planningGraph = planningGraph,
-                confirmedChanges = snapshot.draftWorkbenchState.draftChanges,
-                planItems = generationPlanOverride?.items.orEmpty(),
-            ),
+            sourceContext = emptyList(),
         )
     }
 
@@ -81,7 +76,7 @@ internal class PlanningContextFactory(
         planningGraph: GraphDocument,
         diff: GraphDiff,
         previewItems: List<SyncPreviewItem>,
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         sourceContext: List<SourceSnippetContext>,
         onPreview: ((String, Boolean) -> Unit)? = null,
         ) = graphGenerationService.generatePlan(
@@ -101,7 +96,7 @@ internal class PlanningContextFactory(
      * 构造链路讲解所需的展示和源码上下文。
      */
     fun buildGraphBeautificationContext(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         goal: String,
         preferredStyle: String?,
         explanationFocus: String?,
@@ -113,10 +108,10 @@ internal class PlanningContextFactory(
         val fullGraph = if (snapshot.workingGraphDirty) {
             workingGraph
         } else {
-            snapshot.referenceFactGraph ?: workingGraph
+            snapshot.semanticFactGraph.takeIf { graph -> graph.nodes.isNotEmpty() || graph.edges.isNotEmpty() } ?: workingGraph
         }
         val anchorNodeId = resolveBeautificationAnchorNodeId(snapshot, visibleGraph)
-        val selectedNodeIds = snapshot.selectedNodeId?.let(::listOf).orEmpty()
+        val selectedNodeIds = snapshot.currentSceneState().selectedNodeId?.let(::listOf).orEmpty()
         val (hiddenCurrentMethodNodeCount, hiddenCrossMethodNodeCount) = computeBeautificationHiddenCounts(
             snapshot = snapshot,
             visibleGraph = visibleGraph,
@@ -147,25 +142,28 @@ internal class PlanningContextFactory(
     }
 
     /**
-     * 根据选区决定审计时使用的事实图和草稿图。
+     * 根据选区决定问答时使用的事实图和可编辑图。
      */
     fun buildAuditGraphs(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         selectedNodeIds: List<String>,
+        collectSourceEvidence: Boolean = true,
     ): AuditGraphs {
         val workingGraph = currentWorkingGraph(snapshot)
-        val backgroundFactGraph = if (selectedNodeIds.isEmpty()) {
-            workingGraph
+        val backgroundFactGraph = snapshot.semanticFactGraph
+            .takeIf { graph -> graph.nodes.isNotEmpty() || graph.edges.isNotEmpty() }
+            ?: workingGraph
+        val evidenceCollection = if (collectSourceEvidence) {
+            auditEvidenceCollector.collect(
+                graph = mergeAuditEvidenceGraph(backgroundFactGraph, workingGraph),
+                selectedNodeIds = selectedNodeIds,
+            )
         } else {
-            snapshot.referenceFactGraph ?: workingGraph
+            AuditEvidenceCollection()
         }
-        val evidenceCollection = auditEvidenceCollector.collect(
-            graph = mergeAuditEvidenceGraph(backgroundFactGraph, workingGraph),
-            selectedNodeIds = selectedNodeIds,
-        )
         return AuditGraphs(
             factGraph = backgroundFactGraph,
-            draftGraph = workingGraph,
+            editableGraph = workingGraph,
             sourceContext = evidenceCollection.sourceContext,
             evidenceTrace = evidenceCollection.evidenceTrace,
         )
@@ -173,11 +171,11 @@ internal class PlanningContextFactory(
 
     private fun mergeAuditEvidenceGraph(
         factGraph: GraphDocument,
-        draftGraph: GraphDocument,
+        editableGraph: GraphDocument,
     ): GraphDocument {
         return GraphDocument(
-            nodes = (draftGraph.nodes + factGraph.nodes).distinctBy(GraphNode::id),
-            edges = (draftGraph.edges + factGraph.edges).distinctBy { edge -> edge.id },
+            nodes = (editableGraph.nodes + factGraph.nodes).distinctBy(GraphNode::id),
+            edges = (editableGraph.edges + factGraph.edges).distinctBy { edge -> edge.id },
         )
     }
 
@@ -185,14 +183,15 @@ internal class PlanningContextFactory(
      * 为链路讲解选择最合适的锚点节点。
      */
     private fun resolveBeautificationAnchorNodeId(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         visibleGraph: GraphDocument,
     ): String? {
+        val currentSceneSelection = snapshot.currentSceneState().selectedNodeId
         snapshot.selectedMethodSignature
             ?.let { GraphNode.stableId(NodeType.METHOD, it) }
             ?.takeIf { anchorId -> visibleGraph.nodes.any { it.id == anchorId } }
             ?.let { return it }
-        return snapshot.selectedNodeId
+        return currentSceneSelection
             ?.takeIf { nodeId -> visibleGraph.nodes.any { it.id == nodeId } }
             ?: visibleGraph.nodes.firstOrNull { it.type == NodeType.METHOD }?.id
             ?: visibleGraph.nodes.firstOrNull()?.id
@@ -202,7 +201,7 @@ internal class PlanningContextFactory(
      * 统计当前方法内和跨方法被折叠隐藏的节点数量。
      */
     private fun computeBeautificationHiddenCounts(
-        snapshot: GraphEditorStateService.Snapshot,
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         visibleGraph: GraphDocument,
         fullGraph: GraphDocument,
         anchorNodeId: String?,
@@ -288,79 +287,6 @@ internal class PlanningContextFactory(
                 )
             }
             .toList()
-    }
-
-    /**
-     * 为实现计划和代码生成收集可直接发给模型的真实源码片段。
-     */
-    private fun buildGenerationSourceSnippetContexts(
-        planningGraph: GraphDocument,
-        confirmedChanges: List<com.charmnight.linkgraph.workbench.DraftWorkbenchEntry>,
-        planItems: List<GenerationPlanItem>,
-    ): List<SourceSnippetContext> {
-        val nodeById = planningGraph.nodes.associateBy(GraphNode::id)
-        val snippets = linkedMapOf<String, SourceSnippetContext>()
-
-        confirmedChanges.forEach { change ->
-            val scopedSnippets = change.editScopes.mapNotNull { scope ->
-                sourceSnippetFromScope(scope, nodeById)
-            }
-            val fallbackSnippets = if (scopedSnippets.isEmpty()) {
-                change.targetNodeIds.mapNotNull { nodeId ->
-                    sourceSnippetFromNode(nodeById[nodeId])
-                }
-            } else {
-                emptyList()
-            }
-            (scopedSnippets + fallbackSnippets).forEach { snippet ->
-                snippets.putIfAbsent(snippetKey(snippet), snippet)
-            }
-        }
-
-        planItems
-            .flatMap(GenerationPlanItem::editScopes)
-            .mapNotNull { scope -> sourceSnippetFromScope(scope, nodeById) }
-            .forEach { snippet ->
-                snippets.putIfAbsent(snippetKey(snippet), snippet)
-            }
-
-        return snippets.values.toList()
-    }
-
-    /**
-     * 从精确 edit scope 读取当前源码片段。
-     */
-    private fun sourceSnippetFromScope(
-        scope: com.charmnight.linkgraph.llm.EditScope,
-        nodeById: Map<String, GraphNode>,
-    ): SourceSnippetContext? {
-        if (scope.filePath.isBlank()) {
-            return null
-        }
-        val node = nodeById[scope.targetNodeId]
-        val normalizedOffsets = normalizeSnippetOffsets(
-            startOffset = scope.startOffset ?: node?.metadata?.get("source.startOffset")?.toIntOrNull(),
-            endOffset = scope.endOffset ?: node?.metadata?.get("source.endOffset")?.toIntOrNull(),
-        )
-        val startOffset = normalizedOffsets.first
-        val endOffset = normalizedOffsets.second
-        val startLine = scope.startLine ?: node?.metadata?.get("source.startLine")?.toIntOrNull()
-        val endLine = scope.endLine ?: node?.metadata?.get("source.endLine")?.toIntOrNull()
-        return SourceSnippetContext(
-            nodeId = scope.targetNodeId,
-            filePath = scope.filePath,
-            startOffset = startOffset,
-            endOffset = endOffset,
-            startLine = startLine,
-            endLine = endLine,
-            snippet = readSourceSnippet(
-                filePath = scope.filePath,
-                startOffset = startOffset,
-                endOffset = endOffset,
-                startLine = startLine,
-                endLine = endLine,
-            ),
-        )
     }
 
     /**
@@ -537,13 +463,13 @@ internal data class PlanningPayload(
     val planningGraph: GraphDocument,
     val diff: GraphDiff,
     val previewItems: List<SyncPreviewItem>,
-    val snapshot: GraphEditorStateService.Snapshot,
+    val snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     val sourceContext: List<SourceSnippetContext> = emptyList(),
 )
 
 internal data class AuditGraphs(
     val factGraph: GraphDocument,
-    val draftGraph: GraphDocument,
+    val editableGraph: GraphDocument,
     val sourceContext: List<SourceSnippetContext> = emptyList(),
     val evidenceTrace: List<com.charmnight.linkgraph.llm.EvidenceTraceEntry> = emptyList(),
 )

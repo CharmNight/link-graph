@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.testing.addJavaFixture
 import com.charmnight.linkgraph.semantic.subject.methodSignature
 import com.intellij.testFramework.fixtures.BasePlatformTestCase

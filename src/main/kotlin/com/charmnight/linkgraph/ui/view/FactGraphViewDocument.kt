@@ -13,4 +13,5 @@ data class FactGraphViewDocument(
     val fullGraph: GraphDocument = GraphDocument(),
     val anchorNodeId: String? = null,
     val summary: FactGraphSummary = FactGraphSummary(),
+    val projectionIndex: GraphProjectionIndex = GraphProjectionIndex.EMPTY,
 )

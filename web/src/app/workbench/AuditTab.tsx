@@ -1,37 +1,48 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { resolveEffectiveRequestState, AsyncRequestBanner } from "../components/AsyncRequestBanner";
 import { traceLinkGraph } from "../debug";
+import { deriveConversationInvestigationThreads, deriveInvestigationThreads } from "../investigationThreads";
 import type {
   AuditConversationMessage,
-  AuditInvestigationLead,
   AuditWorkbenchState,
   CandidateDraftChange,
+  InvestigationThread,
+  InvestigationTurnOutcome,
   WorkbenchSectionId,
   WorkbenchSectionPreferences,
 } from "../types";
 import { AUDIT_WORKBENCH_SECTION_IDS } from "./workbenchSections";
 import { AuditConversation } from "./AuditConversation";
 import { CandidateChangeList } from "./CandidateChangeList";
-import { InvestigationLeadList } from "./InvestigationLeadList";
+import { InvestigationThreadList } from "./InvestigationThreadList";
 
 const DEFAULT_ACTIVE_AUDIT_SECTION: WorkbenchSectionId = "audit.composer";
 
-const AUDIT_SECTION_META: Record<WorkbenchSectionId, { title: string }> = {
-  "audit.request-status": { title: "请求状态" },
-  "audit.thread": { title: "审计会话" },
-  "audit.composer": { title: "继续提问" },
+const AUDIT_SECTION_META: Partial<Record<WorkbenchSectionId, { title: string }>> = {
+  "audit.request-status": { title: "请求" },
+  "audit.thread": { title: "问答会话" },
+  "audit.composer": { title: "提问" },
   "audit.candidate-changes": { title: "待确认变更" },
-  "audit.investigation-leads": { title: "风险线索" },
+  "audit.investigation-threads": { title: "风险线程" },
 };
+
+function auditSectionTitle(sectionId: WorkbenchSectionId): string {
+  return AUDIT_SECTION_META[sectionId]?.title ?? sectionId;
+}
 
 interface AuditTabProps {
   state: AuditWorkbenchState;
   onQuestionDraftChange: (value: string) => void;
   onSubmitQuestion: () => void;
+  onRetryLastRequest?: () => void;
+  onEditFailedRequest?: () => void;
   onSelectChange: (changeId: string) => void;
   onConfirmChange: (changeId: string) => void;
-  onSelectLead: (leadId: string) => void;
-  onInvestigateLead: (leadId: string) => void;
+  onSelectThread: (threadId: string) => void;
+  onInvestigateThread: (threadId: string) => void;
+  onDeferRisk?: (threadId: string) => void;
+  onAcceptRisk?: (threadId: string) => void;
+  onDismissRisk?: (threadId: string) => void;
   sectionPreferences?: WorkbenchSectionPreferences | null;
   onSectionPreferenceChange?: (sectionId: WorkbenchSectionId, expanded: boolean) => void;
 }
@@ -45,13 +56,13 @@ function shouldAutoExpandRequestStatus(requestStatus: ReturnType<typeof resolveE
   );
 }
 
-function resolveVisibleAuditSectionIds(hasChanges: boolean, hasLeads: boolean): WorkbenchSectionId[] {
+function resolveVisibleAuditSectionIds(hasChanges: boolean, hasThreads: boolean): WorkbenchSectionId[] {
   return AUDIT_WORKBENCH_SECTION_IDS.filter((sectionId) => {
     if (sectionId === "audit.candidate-changes") {
       return hasChanges;
     }
-    if (sectionId === "audit.investigation-leads") {
-      return hasLeads;
+    if (sectionId === "audit.investigation-threads") {
+      return hasThreads;
     }
     return true;
   });
@@ -61,10 +72,10 @@ function resolveActiveAuditSectionId(args: {
   preferences: WorkbenchSectionPreferences;
   requestStatus: ReturnType<typeof resolveEffectiveRequestState>;
   hasChanges: boolean;
-  hasLeads: boolean;
+  hasThreads: boolean;
 }): WorkbenchSectionId | null {
-  const { preferences, requestStatus, hasChanges, hasLeads } = args;
-  const visibleSectionIds = resolveVisibleAuditSectionIds(hasChanges, hasLeads);
+  const { preferences, requestStatus, hasChanges, hasThreads } = args;
+  const visibleSectionIds = resolveVisibleAuditSectionIds(hasChanges, hasThreads);
   const explicitExpandedSectionId = visibleSectionIds.find((sectionId) => preferences[sectionId] === true) ?? null;
   if (shouldAutoExpandRequestStatus(requestStatus) && (
     explicitExpandedSectionId == null
@@ -93,19 +104,37 @@ export function AuditTab({
   state,
   onQuestionDraftChange,
   onSubmitQuestion,
+  onRetryLastRequest = () => undefined,
+  onEditFailedRequest = () => undefined,
   onSelectChange,
   onConfirmChange,
-  onSelectLead,
-  onInvestigateLead,
+  onSelectThread,
+  onInvestigateThread,
+  onDeferRisk = () => undefined,
+  onAcceptRisk = () => undefined,
+  onDismissRisk = () => undefined,
   sectionPreferences,
   onSectionPreferenceChange = () => undefined,
 }: AuditTabProps) {
+  const tabRef = useRef<HTMLElement | null>(null);
   const messages = state.result?.auditSession?.messages ?? [];
   const changes = (state.result?.candidateChanges ?? []).filter((change) => change.status === "PENDING_CONFIRMATION");
-  const leads = (state.result?.investigationLeads ?? []).filter((lead) => lead.status === "OPEN");
+  const threads = deriveInvestigationThreads(state.result).filter(
+    (thread) => thread.status === "OPEN" || thread.status === "BLOCKED",
+  );
+  const latestTurnOutcome = state.result?.latestTurnOutcome
+    ?? state.result?.recentTurnOutcomes?.[state.result.recentTurnOutcomes.length - 1]
+    ?? null;
+  const recentTurnOutcomes = state.result?.recentTurnOutcomes
+    ?? state.result?.auditSession?.turnOutcomes
+    ?? [];
+  const conversationTurnOutcomes = state.result?.auditSession?.turnOutcomes
+    ?? state.result?.recentTurnOutcomes
+    ?? [];
+  const conversationThreads = deriveConversationInvestigationThreads(state.result, state.result?.auditSession);
   const scopeLabel = state.scopeLabel ?? "当前链路会话";
   const hasChanges = changes.length > 0;
-  const hasLeads = leads.length > 0;
+  const hasThreads = threads.length > 0;
   const hasMessages = messages.length > 0;
   const [localSectionPreferences, setLocalSectionPreferences] = useState<WorkbenchSectionPreferences>(
     () => sectionPreferences ?? {},
@@ -116,9 +145,9 @@ export function AuditTab({
     preferences: rawSectionPreferences,
     requestStatus,
     hasChanges,
-    hasLeads,
+    hasThreads,
   });
-  const visibleSectionIds = resolveVisibleAuditSectionIds(hasChanges, hasLeads);
+  const visibleSectionIds = resolveVisibleAuditSectionIds(hasChanges, hasThreads);
 
   useEffect(() => {
     if (sectionPreferences == null) {
@@ -130,13 +159,13 @@ export function AuditTab({
   useEffect(() => {
     traceLinkGraph("workbench.audit.layoutResolved", {
       hasChanges,
-      hasLeads,
+      hasThreads,
       hasMessages,
       rawSectionPreferences,
       activeSectionId,
       visibleSectionIds,
     });
-  }, [activeSectionId, hasChanges, hasLeads, hasMessages, rawSectionPreferences, visibleSectionIds]);
+  }, [activeSectionId, hasChanges, hasThreads, hasMessages, rawSectionPreferences, visibleSectionIds]);
 
   function stopComposerBoundaryPropagation(event: {
     stopPropagation: () => void;
@@ -173,6 +202,7 @@ export function AuditTab({
       activeSectionId,
     });
     syncAuditSectionPreferences(sectionId);
+    resetSharedWorkbenchScroll();
   }
 
   function handleCollapseActivePage() {
@@ -181,53 +211,70 @@ export function AuditTab({
       hasChanges,
     });
     syncAuditSectionPreferences(null);
+    resetSharedWorkbenchScroll();
+  }
+
+  function resetSharedWorkbenchScroll() {
+    const scrollRoot = tabRef.current?.closest(".workbench-panel-body") as HTMLElement | null | undefined;
+    if (scrollRoot) {
+      scrollRoot.scrollTop = 0;
+    }
   }
 
   return (
-    <section className="workbench-tab audit-tab block overflow-auto m-scrollbar">
-      <div className="workbench-tab-head audit-tab-head mb-10px">
+    <section ref={tabRef} className="workbench-tab audit-tab">
+      <div className="workbench-tab-head audit-tab-head">
         <div className="audit-tab-title">
-          <p className="eyebrow">审计</p>
-          <h2>审计问答</h2>
+          <p className="eyebrow">问答</p>
+          <h2>链路问答</h2>
         </div>
         <span className="workbench-session-label audit-scope-label" title={scopeLabel}>{scopeLabel}</span>
       </div>
 
-      <div className="audit-tab-nav mb-10px" role="tablist" aria-label="审计页面切换">
+      <div className="audit-tab-nav" role="tablist" aria-label="问答页面切换">
         {visibleSectionIds.map((sectionId) => (
           <button
             key={sectionId}
             id={`audit-page-tab-${sectionId}`}
             type="button"
             role="tab"
-            aria-label={AUDIT_SECTION_META[sectionId].title}
+            aria-label={auditSectionTitle(sectionId)}
             aria-selected={activeSectionId === sectionId}
             aria-controls={`audit-page-panel-${sectionId}`}
             className={activeSectionId === sectionId ? "audit-tab-button active" : "audit-tab-button"}
             onClick={() => handleTabSelect(sectionId)}
           >
-              <span>{AUDIT_SECTION_META[sectionId].title}</span>
-              {sectionId === "audit.candidate-changes" ? <span className="badge">{changes.length}</span> : null}
-              {sectionId === "audit.investigation-leads" ? <span className="badge">{leads.length}</span> : null}
-            </button>
-          ))}
+            <span>{auditSectionTitle(sectionId)}</span>
+            {sectionId === "audit.candidate-changes" ? <span className="badge">{changes.length}</span> : null}
+            {sectionId === "audit.investigation-threads" ? <span className="badge">{threads.length}</span> : null}
+          </button>
+        ))}
       </div>
 
-      <div className="audit-tab-panel">
+      <div className="audit-tab-panel workbench-page-flow">
         {activeSectionId ? (
           <AuditPagePanel
             activeSectionId={activeSectionId}
             state={state}
             messages={messages}
             changes={changes}
-            leads={leads}
+            threads={threads}
+            latestTurnOutcome={latestTurnOutcome}
+            recentTurnOutcomes={recentTurnOutcomes}
+            conversationTurnOutcomes={conversationTurnOutcomes}
+            conversationThreads={conversationThreads}
             requestStatus={requestStatus}
             onQuestionDraftChange={onQuestionDraftChange}
             onSubmitQuestion={onSubmitQuestion}
+            onRetryLastRequest={onRetryLastRequest}
+            onEditFailedRequest={onEditFailedRequest}
             onSelectChange={onSelectChange}
             onConfirmChange={onConfirmChange}
-            onSelectLead={onSelectLead}
-            onInvestigateLead={onInvestigateLead}
+            onSelectThread={onSelectThread}
+            onInvestigateThread={onInvestigateThread}
+            onDeferRisk={onDeferRisk}
+            onAcceptRisk={onAcceptRisk}
+            onDismissRisk={onDismissRisk}
             onCollapse={handleCollapseActivePage}
             onStopComposerBoundaryPropagation={stopComposerBoundaryPropagation}
           />
@@ -246,14 +293,23 @@ interface AuditPagePanelProps {
   state: AuditWorkbenchState;
   messages: AuditConversationMessage[];
   changes: CandidateDraftChange[];
-  leads: AuditInvestigationLead[];
+  threads: InvestigationThread[];
+  latestTurnOutcome: InvestigationTurnOutcome | null;
+  recentTurnOutcomes: InvestigationTurnOutcome[];
+  conversationTurnOutcomes: InvestigationTurnOutcome[];
+  conversationThreads: InvestigationThread[];
   requestStatus: ReturnType<typeof resolveEffectiveRequestState>;
   onQuestionDraftChange: (value: string) => void;
   onSubmitQuestion: () => void;
+  onRetryLastRequest: () => void;
+  onEditFailedRequest: () => void;
   onSelectChange: (changeId: string) => void;
   onConfirmChange: (changeId: string) => void;
-  onSelectLead: (leadId: string) => void;
-  onInvestigateLead: (leadId: string) => void;
+  onSelectThread: (threadId: string) => void;
+  onInvestigateThread: (threadId: string) => void;
+  onDeferRisk: (threadId: string) => void;
+  onAcceptRisk: (threadId: string) => void;
+  onDismissRisk: (threadId: string) => void;
   onCollapse: () => void;
   onStopComposerBoundaryPropagation: (event: { stopPropagation: () => void }) => void;
 }
@@ -263,33 +319,46 @@ function AuditPagePanel({
   state,
   messages,
   changes,
-  leads,
+  threads,
+  latestTurnOutcome,
+  recentTurnOutcomes,
+  conversationTurnOutcomes,
+  conversationThreads,
   requestStatus,
   onQuestionDraftChange,
   onSubmitQuestion,
+  onRetryLastRequest,
+  onEditFailedRequest,
   onSelectChange,
   onConfirmChange,
-  onSelectLead,
-  onInvestigateLead,
+  onSelectThread,
+  onInvestigateThread,
+  onDeferRisk,
+  onAcceptRisk,
+  onDismissRisk,
   onCollapse,
   onStopComposerBoundaryPropagation,
 }: AuditPagePanelProps) {
-  const pageTitle = AUDIT_SECTION_META[activeSectionId].title;
+  const pageTitle = auditSectionTitle(activeSectionId);
   const latestQuestion = state.questionDraft.trim() || state.result?.question || "";
   const sourceContext = state.result?.sourceContext ?? [];
   const evidenceTrace = state.result?.evidenceTrace ?? [];
   const requestStillRunning = requestStatus?.phase === "RUNNING";
+  const failedRequest = state.qaRequestRecoveryState?.lastFailedRequest ?? null;
+  const canRetryFailedRequest = Boolean(
+    failedRequest && (requestStatus?.phase === "FAILED" || requestStatus?.phase === "TIMED_OUT"),
+  );
 
   return (
     <section
       id={`audit-page-panel-${activeSectionId}`}
       role="tabpanel"
       aria-labelledby={`audit-page-tab-${activeSectionId}`}
-      className="audit-page-panel"
+      className="audit-page-panel workbench-card-flow"
     >
       <div className="audit-page-head">
         <div className="audit-page-title">
-          <p className="eyebrow">审计</p>
+          <p className="eyebrow">问答</p>
           <h3>{pageTitle}</h3>
         </div>
         <button type="button" className="ghost-button compact" onClick={onCollapse} aria-label="收起当前页面">
@@ -306,6 +375,38 @@ function AuditPagePanel({
               <p className="muted">当前还没有请求状态。</p>
             </div>
           )}
+          {canRetryFailedRequest ? (
+            <div className="panel-actions">
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => {
+                  traceLinkGraph("workbench.audit.retryLastRequest.clicked", {
+                    activeSectionId,
+                    requestPhase: requestStatus?.phase ?? null,
+                    hasFailedRequest: failedRequest != null,
+                  });
+                  onRetryLastRequest();
+                }}
+              >
+                直接重试
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => {
+                  traceLinkGraph("workbench.audit.editFailedRequest.clicked", {
+                    activeSectionId,
+                    requestPhase: requestStatus?.phase ?? null,
+                    hasFailedRequest: failedRequest != null,
+                  });
+                  onEditFailedRequest();
+                }}
+              >
+                修改后重试
+              </button>
+            </div>
+          ) : null}
           <section className="workbench-step-section">
             <h4>本次问题</h4>
             <div className="workbench-draft-single-state">
@@ -361,27 +462,32 @@ function AuditPagePanel({
               "workbench-audit-thread",
               !messages.length ? "is-empty" : "",
             ].join(" ").trim()}
-            aria-label="审计会话"
+            aria-label="问答会话"
           >
             <div className="workbench-audit-thread-body">
-              <AuditConversation messages={messages} requestState={requestStatus} />
+              <AuditConversation
+                messages={messages}
+                turnOutcomes={conversationTurnOutcomes}
+                investigationThreads={conversationThreads}
+                requestState={requestStatus}
+              />
             </div>
           </section>
         </div>
       ) : null}
 
       {activeSectionId === "audit.composer" ? (
-        <div className="audit-page-body">
+        <div className="audit-page-body composer-section-body">
           <div
             className="workbench-chat-input p-0 border-0"
             onPointerDownCapture={onStopComposerBoundaryPropagation}
             onMouseDownCapture={onStopComposerBoundaryPropagation}
             onDoubleClickCapture={onStopComposerBoundaryPropagation}
           >
-            <label htmlFor="audit-input" className="sr-only">审计输入框</label>
+            <label htmlFor="audit-input" className="sr-only">问答输入框</label>
             <textarea
               id="audit-input"
-              aria-label="审计输入框"
+              aria-label="问答输入框"
               value={state.questionDraft}
               onChange={(event) => onQuestionDraftChange(event.target.value)}
               placeholder="围绕当前方法、链路或待确认变更继续提问"
@@ -396,7 +502,7 @@ function AuditPagePanel({
       ) : null}
 
       {activeSectionId === "audit.candidate-changes" ? (
-        <div className="audit-page-body">
+        <div className="audit-page-body candidate-changes-section-body">
           <CandidateChangeList
             changes={changes}
             selectedChangeId={state.selectedChangeId ?? null}
@@ -407,13 +513,18 @@ function AuditPagePanel({
         </div>
       ) : null}
 
-      {activeSectionId === "audit.investigation-leads" ? (
+      {activeSectionId === "audit.investigation-threads" ? (
         <div className="audit-page-body">
-          <InvestigationLeadList
-            leads={leads}
-            selectedLeadId={state.selectedLeadId ?? null}
-            onSelectLead={onSelectLead}
-            onInvestigateLead={onInvestigateLead}
+          <InvestigationThreadList
+            threads={threads}
+            latestTurnOutcome={latestTurnOutcome}
+            recentTurnOutcomes={recentTurnOutcomes}
+            selectedThreadId={state.selectedThreadId ?? null}
+            onSelectThread={onSelectThread}
+            onInvestigateThread={onInvestigateThread}
+            onDeferRisk={onDeferRisk}
+            onAcceptRisk={onAcceptRisk}
+            onDismissRisk={onDismissRisk}
             showTitle={false}
           />
         </div>

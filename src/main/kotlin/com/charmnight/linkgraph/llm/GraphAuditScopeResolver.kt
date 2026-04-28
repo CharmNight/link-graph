@@ -4,15 +4,15 @@ import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 
 /**
- * 负责计算图审计时实际参与分析的节点与边范围。
+ * 负责计算图问答时实际参与分析的节点与边范围。
  */
 internal object GraphAuditScopeResolver {
     /**
-     * 选择审计时优先使用的图。
+     * 选择问答时优先使用的图。
      */
     private fun scopeGraph(context: GraphAuditContext): com.charmnight.linkgraph.model.GraphDocument {
-        // 草稿图非空时优先审计草稿，否则回退到事实图。
-        return context.draftGraph.takeIf { it.nodes.isNotEmpty() || it.edges.isNotEmpty() } ?: context.factGraph
+        // 问答范围与 patch 落点一律基于当前可编辑图；缺省时再回退到事实图。
+        return context.editableGraph.takeIf { it.nodes.isNotEmpty() || it.edges.isNotEmpty() } ?: context.factGraph
     }
 
     /**
@@ -33,7 +33,7 @@ internal object GraphAuditScopeResolver {
     }
 
     /**
-     * 解析审计范围内的节点集合。
+     * 解析问答范围内的节点集合。
      */
     fun resolveScopeNodes(context: GraphAuditContext): List<GraphNode> {
         // 未选中节点时，直接使用整个作用域图。
@@ -50,7 +50,7 @@ internal object GraphAuditScopeResolver {
                 scopeNodeIds += nodeId
             }
         }
-        // 只要边与选中节点相连，就把边两端节点都纳入审计范围。
+        // 只要边与选中节点相连，就把边两端节点都纳入问答范围。
         scopeEdges(context)
             .filter { edge -> edge.fromNodeId in selectedNodeIds || edge.toNodeId in selectedNodeIds }
             .forEach { edge ->

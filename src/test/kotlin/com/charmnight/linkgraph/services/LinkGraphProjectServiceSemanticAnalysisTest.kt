@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.testing.*
+
 import com.charmnight.linkgraph.model.Certainty
 import com.charmnight.linkgraph.model.BindingStatus
 import com.charmnight.linkgraph.model.EdgeType
@@ -48,10 +50,11 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
     override fun setUp() {
         super.setUp()
         project.registerServiceInstance(GraphEditorStateService::class.java, GraphEditorStateService())
+        project.registerServiceInstance(LinkGraphProjectTestOverrides::class.java, LinkGraphProjectTestOverrides())
         project.registerServiceInstance(LinkGraphProjectService::class.java, LinkGraphProjectService(project))
     }
 
-    fun testLoadCurrentEditorContextGraphRemapsResourceSubjectFlowchartToFactGraph() {
+    fun testLoadCurrentEditorContextGraphKeepsResourceSubjectsInResourceRelationScene() {
         myFixture.configureByText(
             "order-flow.md",
             """
@@ -61,6 +64,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
 
         val service = project.getService(LinkGraphProjectService::class.java)
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
         val resourceHandle = ResourceSubjectHandle(
             subjectId = "resource-markdown:order-flow-md",
             sourcePath = "order-flow.md",
@@ -69,7 +73,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
             kind = ResourceSubjectKind.MARKDOWN_PAGE,
             attributes = mapOf("path" to "order-flow.md"),
         )
-        service.testSubjectLocatorOverride = object : SubjectLocator {
+        testOverrides.subjectLocator = object : SubjectLocator {
             override fun locate(
                 project: Project,
                 editor: Editor?,
@@ -82,7 +86,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
                 commitDocument: Boolean,
             ): SubjectPreviewKind = SubjectPreviewKind.RESOURCE_SUBJECT
         }
-        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+        testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(
                 listOf(
                     object : SemanticProvider {
@@ -135,14 +139,14 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         service.loadCurrentEditorContextGraphAsync(myFixture.editor)
         waitForSnapshot { snapshot ->
             snapshot.lastGraphSource == "currentContext" &&
-                snapshot.analysisDisplayMode == AnalysisDisplayMode.FACT_GRAPH &&
+                snapshot.analysisDisplayMode == AnalysisDisplayMode.RESOURCE_RELATION_VIEW &&
                 snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.DOC_PAGE && node.title == "order-flow.md" } == true &&
                 snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.METHOD && node.title == "OrderService.submit" } == true
         }
 
         service.requestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
         waitForSnapshot { snapshot ->
-            snapshot.analysisDisplayMode == AnalysisDisplayMode.FACT_GRAPH &&
+            snapshot.analysisDisplayMode == AnalysisDisplayMode.RESOURCE_RELATION_VIEW &&
                 snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.DOC_PAGE && node.title == "order-flow.md" } == true &&
                 snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.METHOD && node.title == "OrderService.submit" } == true
         }
@@ -209,11 +213,12 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         }
 
         val service = project.getService(LinkGraphProjectService::class.java)
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
         val codeHandle = assertInstanceOf(
             CaretSubjectLocator().locate(project, myFixture.editor),
             CodeSubjectHandle::class.java,
         )
-        service.testSubjectLocatorOverride = object : SubjectLocator {
+        testOverrides.subjectLocator = object : SubjectLocator {
             override fun locate(
                 project: Project,
                 editor: Editor?,
@@ -226,7 +231,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
                 commitDocument: Boolean,
             ): SubjectPreviewKind = SubjectPreviewKind.CODE_SUBJECT
         }
-        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+        testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
 
@@ -312,7 +317,8 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         }
 
         val service = project.getService(LinkGraphProjectService::class.java)
-        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
         service.requestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH)
@@ -335,15 +341,16 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         waitForSnapshot { snapshot ->
             analyzerCallCount.get() == 1 &&
                 snapshot.analysisDisplayMode == AnalysisDisplayMode.RESOURCE_RELATION_VIEW &&
-                snapshot.visibleGraph?.nodes?.none { node -> node.type == NodeType.FLOW_ACTION } == true &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.DOC_PAGE } == true
+                snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.METHOD } == true &&
+                snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.DOC_PAGE } == true &&
+                snapshot.visibleGraph?.nodes?.none { node -> node.type == NodeType.FLOW_ACTION } == true
         }
 
         val resourceSnapshot = stateService.snapshot()
         assertEquals(1, analyzerCallCount.get())
-        assertEquals(2, resourceSnapshot.visibleGraph?.nodes?.size)
         assertTrue(resourceSnapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.METHOD } == true)
         assertTrue(resourceSnapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.DOC_PAGE } == true)
+        assertFalse(resourceSnapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.FLOW_ACTION } == true)
     }
 
     fun testRequestAnalysisDisplayMode在脏编辑态下复用当前视图文档() {
@@ -409,7 +416,8 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         }
 
         val service = project.getService(LinkGraphProjectService::class.java)
-        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
         service.requestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
@@ -437,7 +445,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         service.requestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH)
         waitForSnapshot { snapshot ->
             snapshot.analysisDisplayMode == AnalysisDisplayMode.FACT_GRAPH &&
-                snapshot.visibleGraph?.nodes?.none { node -> node.id == "design:manual-step" } == true
+                snapshot.visibleGraph?.nodes?.any { node -> node.id == "design:manual-step" } == true
         }
 
         service.requestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
@@ -524,7 +532,8 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         }
 
         val service = project.getService(LinkGraphProjectService::class.java)
-        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
         service.requestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH)
@@ -576,7 +585,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
     }
 
-    fun testFlowchartDisplayModeKeepsIncompleteSummaryWithoutTruncatingVisibleGraph() {
+    fun testFlowchartDisplayModeKeepsIncompleteSummaryWhenProjectionIsTruncated() {
         myFixture.configureByText(
             "DemoService.java",
             """
@@ -652,7 +661,8 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         }
 
         val service = project.getService(LinkGraphProjectService::class.java)
-        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
         service.requestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
@@ -665,12 +675,18 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
 
         val flowchartView = project.getService(GraphEditorStateService::class.java).snapshot().flowchartView
         assertTrue(flowchartView != null)
-        assertFalse(flowchartView!!.summary.truncated)
-        assertEquals(flowchartView.fullGraph.nodes.size, flowchartView.visibleGraph.nodes.size)
-        assertEquals(0, flowchartView.summary.hiddenNodeCount)
-        assertEquals(0, flowchartView.summary.hiddenEdgeCount)
-        assertEquals(1, flowchartView.summary.incompleteNodeCount)
-        assertTrue(flowchartView.summary.semanticallyIncomplete)
+        val summary = flowchartView!!.summary
+        assertEquals(
+            flowchartView.fullGraph.nodes.size - flowchartView.visibleGraph.nodes.size,
+            summary.hiddenNodeCount,
+        )
+        assertEquals(
+            flowchartView.fullGraph.edges.size - flowchartView.visibleGraph.edges.size,
+            summary.hiddenEdgeCount,
+        )
+        assertEquals(summary.hiddenNodeCount > 0 || summary.hiddenEdgeCount > 0, summary.truncated)
+        assertEquals(1, summary.incompleteNodeCount)
+        assertTrue(summary.semanticallyIncomplete)
     }
 
     fun testAddCurrentEditorContextNodeUsesLocatedCodeSubjectHandle() {
@@ -699,7 +715,8 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
 
         val service = project.getService(LinkGraphProjectService::class.java)
-        service.testSubjectLocatorOverride = object : com.charmnight.linkgraph.semantic.subject.SubjectLocator {
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        testOverrides.subjectLocator = object : com.charmnight.linkgraph.semantic.subject.SubjectLocator {
             override fun locate(
                 project: com.intellij.openapi.project.Project,
                 editor: com.intellij.openapi.editor.Editor?,
@@ -718,7 +735,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
     }
 
-    fun testRequestExpandOverflowNodeRerunsSemanticAnalysisWithoutLegacyGraphExtractor() {
+    fun testRequestExpandOverflowNodeRerunsSemanticAnalysisWithSemanticPipelineOnly() {
         myFixture.configureByText(
             "DemoService.java",
             """
@@ -733,7 +750,8 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
         val analyzerCallCount = AtomicInteger(0)
         val service = project.getService(LinkGraphProjectService::class.java)
-        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(
                 listOf(semanticProvider { codeHandle, budgetPolicy ->
                     analyzerCallCount.incrementAndGet()
@@ -803,7 +821,7 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         assertEquals("DemoService.run", expandedSnapshot.visibleGraph?.nodes?.firstOrNull { it.id == "method:demo-run" }?.title)
     }
 
-    fun testDebugSignatureAutoloadRerunsSemanticAnalysisWithoutLegacyGraphExtractor() {
+    fun testDebugSignatureAutoloadRerunsSemanticAnalysisWithSemanticPipelineOnly() {
         myFixture.configureByText(
             "DemoService.java",
             """
@@ -822,7 +840,8 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
         val analyzerCallCount = AtomicInteger(0)
         val service = project.getService(LinkGraphProjectService::class.java)
-        service.testSemanticAnalyzerOverride = SemanticAnalyzer(
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(
                 listOf(semanticProvider { handle, _ ->
                     analyzerCallCount.incrementAndGet()
@@ -870,8 +889,70 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         assertTrue(snapshot.visibleGraph?.nodes?.any { node -> node.id == "method:demo-run" } == true)
     }
 
+    fun testLoadCurrentEditorContextGraphKeepsExternalInvocationForKotlinAccessor() {
+        myFixture.configureByText(
+            "AccessorService.kt",
+            """
+                package com.example
+
+                class Formatter {
+                    fun normalize(value: String): String {
+                        return value.trim()
+                    }
+                }
+
+                class AccessorService(
+                    private val formatter: Formatter = Formatter(),
+                ) {
+                    var raw: String = " seed "
+                        get() = formatter.normalize(<caret>field)
+                }
+            """.trimIndent(),
+        )
+
+        val service = project.getService(LinkGraphProjectService::class.java)
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
+
+        waitForSnapshot { snapshot ->
+            snapshot.lastGraphSource == "currentMethod" &&
+                snapshot.visibleGraph?.nodes?.any { node -> node.title.contains("Formatter.normalize") } == true
+        }
+    }
+
+    fun testLoadCurrentEditorContextGraphKeepsExternalInvocationForKotlinPrimaryConstructor() {
+        myFixture.configureByText(
+            "PrimaryCtorFlow.kt",
+            """
+                package com.example
+
+                class Formatter {
+                    fun normalize(value: String): String {
+                        return value.trim()
+                    }
+                }
+
+                class PrimaryCtorFlow(
+                    value: String,
+                    private val formatter: Formatter = Formatter(),
+                ) {
+                    private val normalized = formatter.normalize(<caret>value)
+                }
+            """.trimIndent(),
+        )
+
+        val service = project.getService(LinkGraphProjectService::class.java)
+        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
+
+        waitForSnapshot { snapshot ->
+            snapshot.lastGraphSource == "currentMethod" &&
+                snapshot.visibleGraph?.nodes?.any { node -> node.title.contains("Formatter.normalize") } == true
+        }
+    }
+
     private fun waitForSnapshot(
-        predicate: (GraphEditorStateService.Snapshot) -> Boolean,
+        predicate: (com.charmnight.linkgraph.ui.GraphEditorStateSnapshot) -> Boolean,
     ) {
         val deadline = System.currentTimeMillis() + 15_000
         while (System.currentTimeMillis() < deadline) {

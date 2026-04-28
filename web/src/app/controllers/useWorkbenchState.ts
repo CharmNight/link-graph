@@ -1,14 +1,18 @@
 import { useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import type {
   AnalysisDisplayMode,
   AsyncRequestState,
   DiffItem,
-  DraftWorkbenchState,
   DraftPatchApplyResult,
+  DraftValidationState,
+  DraftWorkbenchState,
   FactGraphViewDocument,
   FlowchartViewDocument,
   GeneratedCodeDraft,
   GeneratedCodeDraftWriteReport,
+  GenerationPlan,
+  GenerationPlanDiscussionSession,
   GraphBeautificationResult,
   GraphPatch,
   GraphPatchResult,
@@ -16,25 +20,96 @@ import type {
   LinkGraphBootstrapState,
   LinkGraphDocument,
   LinkGraphEdge,
+  LinkGraphLayoutState,
   LinkGraphNode,
+  LinkGraphSceneId,
+  LinkGraphSceneState,
+  LlmResultSource,
   MermaidIssue,
   OperationFeedback,
+  QaRequestRecoveryState,
   ResourceRelationViewDocument,
   SourceNavigationState,
+  StageEligibilityDecision,
+  SyncPreviewItem,
+  WorkbenchSectionPreferences,
 } from "../types";
 import type { RequestFailureNotice } from "./bridgeCommandTypes";
 
 const DEFAULT_ANALYSIS_DISPLAY_MODE: AnalysisDisplayMode = "FLOWCHART";
+
+export interface WorkbenchCanvasState {
+  nodes: LinkGraphNode[];
+  edges: LinkGraphEdge[];
+  selectedNodeId: string | null;
+  analysisDisplayMode: AnalysisDisplayMode;
+  anchorNodeId: string | null;
+  currentSceneId: LinkGraphSceneId;
+  sceneStates: Record<LinkGraphSceneId, LinkGraphSceneState>;
+  workspaceGraph: LinkGraphDocument;
+  workspaceBaseGraph: LinkGraphDocument | null;
+  semanticFactGraph: LinkGraphDocument | null;
+  workspaceRevision: number | null;
+  factGraphView: FactGraphViewDocument;
+  flowchartView: FlowchartViewDocument;
+  resourceRelationView: ResourceRelationViewDocument;
+  draftGraph: LinkGraphDocument | null;
+}
+
+export interface WorkbenchProjectionState {
+  detailNodeId: string | null;
+  draftWorkbenchState: DraftWorkbenchState;
+  designBaseline: LinkGraphDocument | null;
+  draftPatchPreview: GraphPatch | null;
+  lastAppliedDraftPatchPreview: GraphPatch | null;
+  canUndoDraftPatchApply: boolean;
+  lastAppliedDraftPatchSummary: string | null;
+  auditResult: GraphPatchResult | null;
+  auditRequestState: AsyncRequestState;
+  qaRequestRecoveryState: QaRequestRecoveryState;
+  diffReviewResult: GraphPatchResult | null;
+  diffReviewRequestState: AsyncRequestState;
+  mermaidIssues: MermaidIssue[];
+  diffItems: DiffItem[];
+  syncPreviewItems: SyncPreviewItem[];
+  draftVersion: number | null;
+  generationPlan: GenerationPlan | null;
+  generationPlanDraftVersion: number | null;
+  generationPlanRequestState: AsyncRequestState;
+  draftValidationState: DraftValidationState | null;
+  generationPlanDiscussionSession: GenerationPlanDiscussionSession | null;
+  generationPlanDiscussionRequestState: AsyncRequestState;
+  graphBeautificationResult: GraphBeautificationResult | null;
+  graphBeautificationRequestState: AsyncRequestState;
+  generatedCodeDrafts: GeneratedCodeDraft[];
+  generatedCodeDraftVersion: number | null;
+  generatedCodeDraftWarnings: string[];
+  generatedCodeDraftSource: LlmResultSource | null;
+  generatedCodeDraftPromptPreview: string | null;
+  generatedCodeDraftPromptPreviewArtifactId: string | null;
+  generatedCodeDraftWriteReport: GeneratedCodeDraftWriteReport | null;
+  lastDraftPatchApplyResult: DraftPatchApplyResult | null;
+  codeDraftRequestState: AsyncRequestState;
+  codeEligibilityDecision: StageEligibilityDecision | null;
+  sourceNavigationState: SourceNavigationState;
+  operationFeedback: OperationFeedback | null;
+  workbenchSectionPreferences: WorkbenchSectionPreferences;
+  lastMessageType: string | null;
+  graphSurfaceExperiments: GraphSurfaceExperimentFlags | null;
+  artifactContents: Record<string, string>;
+}
 
 interface UseWorkbenchStateArgs {
   initialState: LinkGraphBootstrapState;
   initialGraph: LinkGraphDocument;
   initialAnchorNodeId: string | null;
   resolveRequestState: (state?: AsyncRequestState | null) => AsyncRequestState;
-  resolveReferenceFactGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
+  resolveWorkspaceBaseGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
+  resolveSemanticFactGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
   resolveFactGraphView: (state: LinkGraphBootstrapState) => FactGraphViewDocument;
   resolveFlowchartView: (state: LinkGraphBootstrapState) => FlowchartViewDocument;
   resolveResourceRelationView: (state: LinkGraphBootstrapState) => ResourceRelationViewDocument;
+  resolveCurrentSceneState: (state: LinkGraphBootstrapState) => LinkGraphSceneState;
   resolveWorkingGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
   resolveDesignBaselineGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
   resolveSourceNavigationState: (state: LinkGraphBootstrapState) => SourceNavigationState;
@@ -46,118 +121,381 @@ interface UseWorkbenchStateArgs {
   ) => LinkGraphNode[];
 }
 
+function updateStateField<S, K extends keyof S>(
+  setState: Dispatch<SetStateAction<S>>,
+  key: K,
+): Dispatch<SetStateAction<S[K]>> {
+  return (value) => {
+    setState((current) => {
+      const nextValue = typeof value === "function"
+        ? (value as (currentValue: S[K]) => S[K])(current[key])
+        : value;
+      if (Object.is(current[key], nextValue)) {
+        return current;
+      }
+      return {
+        ...current,
+        [key]: nextValue,
+      };
+    });
+  };
+}
+
+function resolveStateAction<T>(value: SetStateAction<T>, currentValue: T): T {
+  return typeof value === "function"
+    ? (value as (currentValue: T) => T)(currentValue)
+    : value;
+}
+
+function createEmptySceneState(): LinkGraphSceneState {
+  return {
+    selectedNodeId: null,
+    anchorNodeId: null,
+    layoutState: {
+      positions: {},
+    },
+    layoutRevision: 0,
+    collapsedNodeIds: [],
+  };
+}
+
+function sameNodeIdList(left: string[] | undefined, right: string[] | undefined): boolean {
+  const normalizedLeft = left ?? [];
+  const normalizedRight = right ?? [];
+  if (normalizedLeft.length !== normalizedRight.length) {
+    return false;
+  }
+  return normalizedLeft.every((nodeId, index) => nodeId === normalizedRight[index]);
+}
+
+function sameLayoutState(
+  left: LinkGraphLayoutState | undefined,
+  right: LinkGraphLayoutState | undefined,
+): boolean {
+  const leftPositions = left?.positions ?? {};
+  const rightPositions = right?.positions ?? {};
+  const leftKeys = Object.keys(leftPositions);
+  const rightKeys = Object.keys(rightPositions);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  return leftKeys.every((nodeId) => {
+    const leftPosition = leftPositions[nodeId];
+    const rightPosition = rightPositions[nodeId];
+    return rightPosition != null
+      && leftPosition.x === rightPosition.x
+      && leftPosition.y === rightPosition.y;
+  });
+}
+
+function sameSceneFieldValue<K extends keyof LinkGraphSceneState>(
+  key: K,
+  left: LinkGraphSceneState[K],
+  right: LinkGraphSceneState[K],
+): boolean {
+  if (key === "collapsedNodeIds") {
+    return sameNodeIdList(left as string[] | undefined, right as string[] | undefined);
+  }
+  if (key === "layoutState") {
+    return sameLayoutState(
+      left as LinkGraphLayoutState | undefined,
+      right as LinkGraphLayoutState | undefined,
+    );
+  }
+  return Object.is(left, right);
+}
+
+function updateCurrentSceneStateField<K extends keyof LinkGraphSceneState>(
+  setState: Dispatch<SetStateAction<WorkbenchCanvasState>>,
+  key: K,
+  mirrorField?: keyof Pick<WorkbenchCanvasState, "selectedNodeId" | "anchorNodeId">,
+): Dispatch<SetStateAction<LinkGraphSceneState[K]>> {
+  return (value) => {
+    setState((current) => {
+      const currentSceneId = current.currentSceneId;
+      const currentSceneState = current.sceneStates[currentSceneId] ?? createEmptySceneState();
+      const nextValue = resolveStateAction(value, currentSceneState[key]);
+      const mirrorValue = mirrorField ? current[mirrorField] : undefined;
+      if (
+        sameSceneFieldValue(key, currentSceneState[key], nextValue)
+        && (!mirrorField || Object.is(mirrorValue, nextValue))
+      ) {
+        return current;
+      }
+      const nextSceneState = {
+        ...currentSceneState,
+        [key]: nextValue,
+      };
+
+      return {
+        ...current,
+        ...(mirrorField
+          ? {
+              [mirrorField]: nextValue,
+            }
+          : {}),
+        sceneStates: {
+          ...current.sceneStates,
+          [currentSceneId]: nextSceneState,
+        },
+      };
+    });
+  };
+}
+
+function updateCurrentSceneNodeField(
+  setState: Dispatch<SetStateAction<WorkbenchCanvasState>>,
+  key: "selectedNodeId" | "anchorNodeId",
+  mirrorField: "selectedNodeId" | "anchorNodeId",
+): Dispatch<SetStateAction<string | null>> {
+  return (value) => {
+    setState((current) => {
+      const currentSceneId = current.currentSceneId;
+      const currentSceneState = current.sceneStates[currentSceneId] ?? createEmptySceneState();
+      const nextValue = resolveStateAction(value, currentSceneState[key] ?? null);
+      if (
+        Object.is(currentSceneState[key] ?? null, nextValue)
+        && Object.is(current[mirrorField] ?? null, nextValue)
+      ) {
+        return current;
+      }
+      const nextSceneState = {
+        ...currentSceneState,
+        [key]: nextValue,
+      };
+
+      return {
+        ...current,
+        [mirrorField]: nextValue,
+        sceneStates: {
+          ...current.sceneStates,
+          [currentSceneId]: nextSceneState,
+        },
+      };
+    });
+  };
+}
+
+function buildInitialCanvasState({
+  initialState,
+  initialGraph,
+  initialAnchorNodeId,
+  resolveWorkspaceBaseGraph,
+  resolveSemanticFactGraph,
+  resolveFactGraphView,
+  resolveFlowchartView,
+  resolveResourceRelationView,
+  resolveCurrentSceneState,
+  resolveWorkingGraph,
+  normalizeGraphNodes,
+}: Pick<
+  UseWorkbenchStateArgs,
+  | "initialState"
+  | "initialGraph"
+  | "initialAnchorNodeId"
+  | "resolveWorkspaceBaseGraph"
+  | "resolveSemanticFactGraph"
+  | "resolveFactGraphView"
+  | "resolveFlowchartView"
+  | "resolveResourceRelationView"
+  | "resolveCurrentSceneState"
+  | "resolveWorkingGraph"
+  | "normalizeGraphNodes"
+>): WorkbenchCanvasState {
+  const analysisDisplayMode = initialState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE;
+  const sceneState = resolveCurrentSceneState(initialState);
+  return {
+    nodes: normalizeGraphNodes(
+      initialGraph.nodes,
+      initialGraph.edges,
+      initialAnchorNodeId,
+      analysisDisplayMode,
+    ),
+    edges: initialGraph.edges,
+    selectedNodeId: sceneState.selectedNodeId ?? initialGraph.nodes[0]?.id ?? null,
+    analysisDisplayMode,
+    anchorNodeId: initialAnchorNodeId ?? sceneState.anchorNodeId ?? initialGraph.nodes[0]?.id ?? null,
+    currentSceneId: initialState.currentSceneId,
+    sceneStates: initialState.sceneStates,
+    workspaceGraph: resolveWorkingGraph(initialState) ?? initialGraph,
+    workspaceBaseGraph: resolveWorkspaceBaseGraph(initialState),
+    semanticFactGraph: resolveSemanticFactGraph(initialState),
+    workspaceRevision: initialState.workspaceRevision ?? null,
+    factGraphView: resolveFactGraphView(initialState),
+    flowchartView: resolveFlowchartView(initialState),
+    resourceRelationView: resolveResourceRelationView(initialState),
+    draftGraph: resolveWorkingGraph(initialState),
+  };
+}
+
+function buildInitialProjectionState(
+  initialState: LinkGraphBootstrapState,
+  resolveRequestState: (state?: AsyncRequestState | null) => AsyncRequestState,
+  resolveDesignBaselineGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null,
+  resolveSourceNavigationState: (state: LinkGraphBootstrapState) => SourceNavigationState,
+): WorkbenchProjectionState {
+  return {
+    detailNodeId: null,
+    draftWorkbenchState: initialState.draftWorkbenchState ?? { draftChanges: [], draftNotes: [] },
+    designBaseline: resolveDesignBaselineGraph(initialState),
+    draftPatchPreview: initialState.draftPatchPreview ?? null,
+    lastAppliedDraftPatchPreview: null,
+    canUndoDraftPatchApply: initialState.canUndoDraftPatchApply ?? false,
+    lastAppliedDraftPatchSummary: initialState.lastAppliedDraftPatchSummary ?? null,
+    auditResult: initialState.auditResult ?? null,
+    auditRequestState: resolveRequestState(initialState.auditRequestState),
+    qaRequestRecoveryState: initialState.qaRequestRecoveryState ?? { lastSubmittedRequest: null, lastFailedRequest: null },
+    diffReviewResult: initialState.diffReviewResult ?? null,
+    diffReviewRequestState: resolveRequestState(initialState.diffReviewRequestState),
+    mermaidIssues: initialState.mermaidIssues ?? [],
+    diffItems: initialState.diffItems,
+    syncPreviewItems: initialState.syncPreviewItems,
+    draftVersion: initialState.draftVersion ?? null,
+    generationPlan: initialState.generationPlan ?? null,
+    generationPlanDraftVersion: initialState.generationPlanDraftVersion ?? null,
+    generationPlanRequestState: resolveRequestState(initialState.generationPlanRequestState),
+    draftValidationState: initialState.draftValidationState ?? null,
+    generationPlanDiscussionSession: initialState.generationPlanDiscussionSession ?? null,
+    generationPlanDiscussionRequestState: resolveRequestState(initialState.generationPlanDiscussionRequestState),
+    graphBeautificationResult: initialState.graphBeautificationResult ?? null,
+    graphBeautificationRequestState: resolveRequestState(initialState.graphBeautificationRequestState),
+    generatedCodeDrafts: initialState.generatedCodeDrafts ?? [],
+    generatedCodeDraftVersion: initialState.generatedCodeDraftVersion ?? null,
+    generatedCodeDraftWarnings: initialState.generatedCodeDraftWarnings ?? [],
+    generatedCodeDraftSource: initialState.generatedCodeDraftSource ?? null,
+    generatedCodeDraftPromptPreview: initialState.generatedCodeDraftPromptPreview ?? null,
+    generatedCodeDraftPromptPreviewArtifactId: initialState.generatedCodeDraftPromptPreviewArtifactId ?? null,
+    generatedCodeDraftWriteReport: initialState.generatedCodeDraftWriteReport ?? null,
+    lastDraftPatchApplyResult: initialState.lastDraftPatchApplyResult ?? null,
+    codeDraftRequestState: resolveRequestState(initialState.codeDraftRequestState),
+    codeEligibilityDecision: initialState.codeEligibilityDecision ?? null,
+    sourceNavigationState: resolveSourceNavigationState(initialState),
+    operationFeedback: initialState.operationFeedback ?? null,
+    workbenchSectionPreferences: initialState.workbenchSectionPreferences ?? {},
+    lastMessageType: initialState.lastMessageType ?? null,
+    graphSurfaceExperiments: initialState.graphSurfaceExperiments ?? null,
+    artifactContents: initialState.artifactContents ?? {},
+  };
+}
+
 export function useWorkbenchState({
   initialState,
   initialGraph,
   initialAnchorNodeId,
   resolveRequestState,
-  resolveReferenceFactGraph,
+  resolveWorkspaceBaseGraph,
+  resolveSemanticFactGraph,
   resolveFactGraphView,
   resolveFlowchartView,
   resolveResourceRelationView,
+  resolveCurrentSceneState,
   resolveWorkingGraph,
   resolveDesignBaselineGraph,
   resolveSourceNavigationState,
   normalizeGraphNodes,
 }: UseWorkbenchStateArgs) {
-  const [nodes, setNodes] = useState<LinkGraphNode[]>(() =>
-    normalizeGraphNodes(
-      initialGraph.nodes,
-      initialGraph.edges,
+  const [canvasState, setCanvasState] = useState<WorkbenchCanvasState>(() =>
+    buildInitialCanvasState({
+      initialState,
+      initialGraph,
       initialAnchorNodeId,
-      initialState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE,
+      resolveWorkspaceBaseGraph,
+      resolveSemanticFactGraph,
+      resolveFactGraphView,
+      resolveFlowchartView,
+      resolveResourceRelationView,
+      resolveCurrentSceneState,
+      resolveWorkingGraph,
+      normalizeGraphNodes,
+    }),
+  );
+  const [projectionState, setProjectionState] = useState<WorkbenchProjectionState>(() =>
+    buildInitialProjectionState(
+      initialState,
+      resolveRequestState,
+      resolveDesignBaselineGraph,
+      resolveSourceNavigationState,
     ),
   );
-  const [edges, setEdges] = useState<LinkGraphEdge[]>(() => initialGraph.edges);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
-    () => initialState.selectedNodeId ?? initialGraph.nodes[0]?.id ?? null,
-  );
-  const [analysisDisplayMode, setAnalysisDisplayMode] = useState<AnalysisDisplayMode>(
-    () => initialState.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE,
-  );
-  const [anchorNodeId, setAnchorNodeId] = useState<string | null>(() => initialAnchorNodeId);
-  const [detailNodeId, setDetailNodeId] = useState<string | null>(null);
-  const [auditRequestState, setAuditRequestState] = useState<AsyncRequestState>(() => resolveRequestState(initialState.auditRequestState));
   const [auditTargetNodeIds, setAuditTargetNodeIds] = useState<string[]>([]);
   const [auditQuestionDraft, setAuditQuestionDraft] = useState<string>(() => initialState.auditResult?.question ?? "");
   const [selectionGroupNodeIds, setSelectionGroupNodeIds] = useState<string[]>([]);
-  const [collapsedNodeIds, setCollapsedNodeIds] = useState<string[]>([]);
-  const [factGraph, setFactGraph] = useState<LinkGraphDocument | null>(() => resolveReferenceFactGraph(initialState));
-  const [factGraphView, setFactGraphView] = useState<FactGraphViewDocument>(() => resolveFactGraphView(initialState));
-  const [flowchartView, setFlowchartView] = useState<FlowchartViewDocument>(() => resolveFlowchartView(initialState));
-  const [resourceRelationView, setResourceRelationView] = useState<ResourceRelationViewDocument>(
-    () => resolveResourceRelationView(initialState),
-  );
-  const [draftGraph, setDraftGraph] = useState<LinkGraphDocument | null>(() => resolveWorkingGraph(initialState));
-  const [draftWorkbenchState, setDraftWorkbenchState] = useState<DraftWorkbenchState>(
-    () => initialState.draftWorkbenchState ?? { draftChanges: [], draftNotes: [] },
-  );
-  const [designBaseline, setDesignBaseline] = useState<LinkGraphDocument | null>(() => resolveDesignBaselineGraph(initialState));
-  const [draftPatchPreview, setDraftPatchPreview] = useState<GraphPatch | null>(() => initialState.draftPatchPreview ?? null);
-  const [lastAppliedDraftPatchPreview, setLastAppliedDraftPatchPreview] = useState<GraphPatch | null>(null);
-  const [canUndoDraftPatchApply, setCanUndoDraftPatchApply] = useState<boolean>(() => initialState.canUndoDraftPatchApply ?? false);
-  const [lastAppliedDraftPatchSummary, setLastAppliedDraftPatchSummary] = useState<string | null>(
-    () => initialState.lastAppliedDraftPatchSummary ?? null,
-  );
-  const [auditResult, setAuditResult] = useState<GraphPatchResult | null>(() => initialState.auditResult ?? null);
-  const [diffReviewResult, setDiffReviewResult] = useState<GraphPatchResult | null>(() => initialState.diffReviewResult ?? null);
-  const [mermaidIssues, setMermaidIssues] = useState<MermaidIssue[]>(() => initialState.mermaidIssues ?? []);
-  const [diffItems, setDiffItems] = useState<DiffItem[]>(() => initialState.diffItems);
-  const [syncPreviewItems, setSyncPreviewItems] = useState(() => initialState.syncPreviewItems);
-  const [generationPlan, setGenerationPlan] = useState(() => initialState.generationPlan ?? null);
-  const [generationPlanRequestState, setGenerationPlanRequestState] = useState<AsyncRequestState>(() => resolveRequestState(initialState.generationPlanRequestState));
-  const [diffReviewRequestState, setDiffReviewRequestState] = useState<AsyncRequestState>(() => resolveRequestState(initialState.diffReviewRequestState));
-  const [graphBeautificationResult, setGraphBeautificationResult] = useState<GraphBeautificationResult | null>(
-    () => initialState.graphBeautificationResult ?? null,
-  );
-  const [graphBeautificationRequestState, setGraphBeautificationRequestState] = useState<AsyncRequestState>(() => resolveRequestState(initialState.graphBeautificationRequestState));
-  const [generatedCodeDrafts, setGeneratedCodeDrafts] = useState<GeneratedCodeDraft[]>(() => initialState.generatedCodeDrafts ?? []);
-  const [generatedCodeDraftWarnings, setGeneratedCodeDraftWarnings] = useState<string[]>(() => initialState.generatedCodeDraftWarnings ?? []);
-  const [generatedCodeDraftSource, setGeneratedCodeDraftSource] = useState(() => initialState.generatedCodeDraftSource ?? null);
-  const [generatedCodeDraftPromptPreview, setGeneratedCodeDraftPromptPreview] = useState(
-    () => initialState.generatedCodeDraftPromptPreview ?? null,
-  );
-  const [generatedCodeDraftPromptPreviewArtifactId, setGeneratedCodeDraftPromptPreviewArtifactId] = useState<string | null>(
-    () => initialState.generatedCodeDraftPromptPreviewArtifactId ?? null,
-  );
-  const [generatedCodeDraftWriteReport, setGeneratedCodeDraftWriteReport] = useState<GeneratedCodeDraftWriteReport | null>(
-    () => initialState.generatedCodeDraftWriteReport ?? null,
-  );
-  const [lastDraftPatchApplyResult, setLastDraftPatchApplyResult] = useState<DraftPatchApplyResult | null>(
-    () => initialState.lastDraftPatchApplyResult ?? null,
-  );
-  const [codeDraftRequestState, setCodeDraftRequestState] = useState<AsyncRequestState>(() => resolveRequestState(initialState.codeDraftRequestState));
   const [requestFailureNotice, setRequestFailureNotice] = useState<RequestFailureNotice | null>(null);
-  const [sourceNavigationState, setSourceNavigationState] = useState<SourceNavigationState>(
-    () => resolveSourceNavigationState(initialState),
-  );
-  const [operationFeedback, setOperationFeedback] = useState<OperationFeedback | null>(
-    () => initialState.operationFeedback ?? null,
-  );
-  const [lastMessageType, setLastMessageType] = useState<string | null>(() => initialState.lastMessageType ?? null);
-  const [graphSurfaceExperiments, setGraphSurfaceExperiments] = useState<GraphSurfaceExperimentFlags | null>(
-    () => initialState.graphSurfaceExperiments ?? null,
-  );
-  const [artifactContents, setArtifactContents] = useState<Record<string, string>>(() => initialState.artifactContents ?? {});
   const [isImportDialogOpen, setImportDialogOpen] = useState(false);
   const [mermaidDraft, setMermaidDraft] = useState("");
   const [diffTargetItemIds, setDiffTargetItemIds] = useState<string[]>([]);
+  const collapsedNodeIds = canvasState.sceneStates[canvasState.currentSceneId]?.collapsedNodeIds ?? [];
+  const setCollapsedNodeIds = updateCurrentSceneStateField(setCanvasState, "collapsedNodeIds");
+
+  const canvasSetters = {
+    setNodes: updateStateField(setCanvasState, "nodes"),
+    setEdges: updateStateField(setCanvasState, "edges"),
+    setSelectedNodeId: updateCurrentSceneNodeField(setCanvasState, "selectedNodeId", "selectedNodeId"),
+    setAnalysisDisplayMode: updateStateField(setCanvasState, "analysisDisplayMode"),
+    setAnchorNodeId: updateCurrentSceneNodeField(setCanvasState, "anchorNodeId", "anchorNodeId"),
+    setCurrentSceneId: updateStateField(setCanvasState, "currentSceneId"),
+    setSceneStates: updateStateField(setCanvasState, "sceneStates"),
+    setWorkspaceGraph: updateStateField(setCanvasState, "workspaceGraph"),
+    setWorkspaceBaseGraph: updateStateField(setCanvasState, "workspaceBaseGraph"),
+    setSemanticFactGraph: updateStateField(setCanvasState, "semanticFactGraph"),
+    setWorkspaceRevision: updateStateField(setCanvasState, "workspaceRevision"),
+    setFactGraphView: updateStateField(setCanvasState, "factGraphView"),
+    setFlowchartView: updateStateField(setCanvasState, "flowchartView"),
+    setResourceRelationView: updateStateField(setCanvasState, "resourceRelationView"),
+    setDraftGraph: updateStateField(setCanvasState, "draftGraph"),
+    setSceneLayoutState: updateCurrentSceneStateField(setCanvasState, "layoutState"),
+  };
+
+  const projectionSetters = {
+    setDetailNodeId: updateStateField(setProjectionState, "detailNodeId"),
+    setDraftWorkbenchState: updateStateField(setProjectionState, "draftWorkbenchState"),
+    setDesignBaseline: updateStateField(setProjectionState, "designBaseline"),
+    setDraftPatchPreview: updateStateField(setProjectionState, "draftPatchPreview"),
+    setLastAppliedDraftPatchPreview: updateStateField(setProjectionState, "lastAppliedDraftPatchPreview"),
+    setCanUndoDraftPatchApply: updateStateField(setProjectionState, "canUndoDraftPatchApply"),
+    setLastAppliedDraftPatchSummary: updateStateField(setProjectionState, "lastAppliedDraftPatchSummary"),
+    setAuditResult: updateStateField(setProjectionState, "auditResult"),
+    setAuditRequestState: updateStateField(setProjectionState, "auditRequestState"),
+    setQaRequestRecoveryState: updateStateField(setProjectionState, "qaRequestRecoveryState"),
+    setDiffReviewResult: updateStateField(setProjectionState, "diffReviewResult"),
+    setDiffReviewRequestState: updateStateField(setProjectionState, "diffReviewRequestState"),
+    setMermaidIssues: updateStateField(setProjectionState, "mermaidIssues"),
+    setDiffItems: updateStateField(setProjectionState, "diffItems"),
+    setSyncPreviewItems: updateStateField(setProjectionState, "syncPreviewItems"),
+    setDraftVersion: updateStateField(setProjectionState, "draftVersion"),
+    setGenerationPlan: updateStateField(setProjectionState, "generationPlan"),
+    setGenerationPlanDraftVersion: updateStateField(setProjectionState, "generationPlanDraftVersion"),
+    setGenerationPlanRequestState: updateStateField(setProjectionState, "generationPlanRequestState"),
+    setDraftValidationState: updateStateField(setProjectionState, "draftValidationState"),
+    setGenerationPlanDiscussionSession: updateStateField(setProjectionState, "generationPlanDiscussionSession"),
+    setGenerationPlanDiscussionRequestState: updateStateField(setProjectionState, "generationPlanDiscussionRequestState"),
+    setGraphBeautificationResult: updateStateField(setProjectionState, "graphBeautificationResult"),
+    setGraphBeautificationRequestState: updateStateField(setProjectionState, "graphBeautificationRequestState"),
+    setGeneratedCodeDrafts: updateStateField(setProjectionState, "generatedCodeDrafts"),
+    setGeneratedCodeDraftVersion: updateStateField(setProjectionState, "generatedCodeDraftVersion"),
+    setGeneratedCodeDraftWarnings: updateStateField(setProjectionState, "generatedCodeDraftWarnings"),
+    setGeneratedCodeDraftSource: updateStateField(setProjectionState, "generatedCodeDraftSource"),
+    setGeneratedCodeDraftPromptPreview: updateStateField(setProjectionState, "generatedCodeDraftPromptPreview"),
+    setGeneratedCodeDraftPromptPreviewArtifactId: updateStateField(setProjectionState, "generatedCodeDraftPromptPreviewArtifactId"),
+    setGeneratedCodeDraftWriteReport: updateStateField(setProjectionState, "generatedCodeDraftWriteReport"),
+    setLastDraftPatchApplyResult: updateStateField(setProjectionState, "lastDraftPatchApplyResult"),
+    setCodeDraftRequestState: updateStateField(setProjectionState, "codeDraftRequestState"),
+    setCodeEligibilityDecision: updateStateField(setProjectionState, "codeEligibilityDecision"),
+    setSourceNavigationState: updateStateField(setProjectionState, "sourceNavigationState"),
+    setOperationFeedback: updateStateField(setProjectionState, "operationFeedback"),
+    setWorkbenchSectionPreferences: updateStateField(setProjectionState, "workbenchSectionPreferences"),
+    setLastMessageType: updateStateField(setProjectionState, "lastMessageType"),
+    setGraphSurfaceExperiments: updateStateField(setProjectionState, "graphSurfaceExperiments"),
+    setArtifactContents: updateStateField(setProjectionState, "artifactContents"),
+  };
 
   return {
-    nodes,
-    setNodes,
-    edges,
-    setEdges,
-    selectedNodeId,
-    setSelectedNodeId,
-    analysisDisplayMode,
-    setAnalysisDisplayMode,
-    anchorNodeId,
-    setAnchorNodeId,
-    detailNodeId,
-    setDetailNodeId,
-    auditRequestState,
-    setAuditRequestState,
+    canvasState,
+    setCanvasState,
+    canvasSetters,
+    projectionState,
+    setProjectionState,
+    projectionSetters,
     auditTargetNodeIds,
     setAuditTargetNodeIds,
     auditQuestionDraft,
@@ -166,76 +504,8 @@ export function useWorkbenchState({
     setSelectionGroupNodeIds,
     collapsedNodeIds,
     setCollapsedNodeIds,
-    factGraph,
-    setFactGraph,
-    factGraphView,
-    setFactGraphView,
-    flowchartView,
-    setFlowchartView,
-    resourceRelationView,
-    setResourceRelationView,
-    draftGraph,
-    setDraftGraph,
-    draftWorkbenchState,
-    setDraftWorkbenchState,
-    designBaseline,
-    setDesignBaseline,
-    draftPatchPreview,
-    setDraftPatchPreview,
-    lastAppliedDraftPatchPreview,
-    setLastAppliedDraftPatchPreview,
-    canUndoDraftPatchApply,
-    setCanUndoDraftPatchApply,
-    lastAppliedDraftPatchSummary,
-    setLastAppliedDraftPatchSummary,
-    auditResult,
-    setAuditResult,
-    diffReviewResult,
-    setDiffReviewResult,
-    mermaidIssues,
-    setMermaidIssues,
-    diffItems,
-    setDiffItems,
-    syncPreviewItems,
-    setSyncPreviewItems,
-    generationPlan,
-    setGenerationPlan,
-    generationPlanRequestState,
-    setGenerationPlanRequestState,
-    diffReviewRequestState,
-    setDiffReviewRequestState,
-    graphBeautificationResult,
-    setGraphBeautificationResult,
-    graphBeautificationRequestState,
-    setGraphBeautificationRequestState,
-    generatedCodeDrafts,
-    setGeneratedCodeDrafts,
-    generatedCodeDraftWarnings,
-    setGeneratedCodeDraftWarnings,
-    generatedCodeDraftSource,
-    setGeneratedCodeDraftSource,
-    generatedCodeDraftPromptPreview,
-    setGeneratedCodeDraftPromptPreview,
-    generatedCodeDraftPromptPreviewArtifactId,
-    setGeneratedCodeDraftPromptPreviewArtifactId,
-    generatedCodeDraftWriteReport,
-    setGeneratedCodeDraftWriteReport,
-    lastDraftPatchApplyResult,
-    setLastDraftPatchApplyResult,
-    codeDraftRequestState,
-    setCodeDraftRequestState,
     requestFailureNotice,
     setRequestFailureNotice,
-    sourceNavigationState,
-    setSourceNavigationState,
-    operationFeedback,
-    setOperationFeedback,
-    lastMessageType,
-    setLastMessageType,
-    graphSurfaceExperiments,
-    setGraphSurfaceExperiments,
-    artifactContents,
-    setArtifactContents,
     isImportDialogOpen,
     setImportDialogOpen,
     mermaidDraft,
