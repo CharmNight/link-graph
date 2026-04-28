@@ -176,7 +176,7 @@ tasks {
     }
 
     processResources {
-        mustRunAfter(frontendPackResources)
+        dependsOn(frontendPackResources)
         from(generatedFrontendResourcesDir)
     }
 
