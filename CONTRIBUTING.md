@@ -2,7 +2,7 @@
 
 ## 开发环境
 
-- JDK 17
+- JDK 21
 - Node.js 与 npm
 - 与 `gradle.properties` 中目标平台兼容的 IntelliJ IDEA
 
