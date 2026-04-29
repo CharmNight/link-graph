@@ -45,6 +45,28 @@ class ProjectEditorSessionTest {
     }
 
     @Test
+    fun mutateEmitsDebugTraceForMutationAndBrowserSyncStages() {
+        val stateService = GraphEditorStateService()
+        val traceMessages = mutableListOf<String>()
+        val session = ProjectEditorSession(
+            stateService = stateService,
+            runtimeTrace = { message -> traceMessages += message() },
+            onBrowserSyncRequested = {},
+        )
+
+        session.mutate {
+            asyncRequests.beginGenerationPlanRequest()
+        }
+
+        assertEquals(
+            listOf("session.mutate", "session.browserSyncRequested"),
+            traceMessages
+                .mapNotNull { message -> Regex("""stage=([^,]+)""").find(message)?.groupValues?.get(1) }
+                .filter { stage -> stage.startsWith("session.") },
+        )
+    }
+
+    @Test
     fun markGraphChangedUpdatesStateAndSyncsBrowser() {
         val stateService = GraphEditorStateService()
         var syncCount = 0

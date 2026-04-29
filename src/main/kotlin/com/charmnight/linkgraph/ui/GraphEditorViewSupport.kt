@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
+import com.charmnight.linkgraph.services.LinkGraphRenderTrace
 import com.charmnight.linkgraph.ui.view.FactGraphSummary
 import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
@@ -62,12 +63,15 @@ internal fun buildViewDocuments(
     workspaceGraph: GraphDocument,
     selectedNodeId: String?,
     selectedMethodSignature: String?,
+    runtimeTrace: ((() -> String) -> Unit)? = null,
 ): GraphEditorViewDocuments {
+    val totalStartedAt = System.nanoTime()
     val anchorNodeId = resolveSelectedNodeId(
         graph = workspaceGraph,
         selectedNodeId = selectedNodeId,
         selectedMethodSignature = selectedMethodSignature,
     ) ?: workspaceGraph.nodes.firstOrNull()?.id
+    val factStartedAt = System.nanoTime()
     val factGraphView = FactGraphViewDocument(
         visibleGraph = workspaceGraph,
         fullGraph = workspaceGraph,
@@ -79,10 +83,50 @@ internal fun buildViewDocuments(
         ).toSummary(),
         projectionIndex = exactProjectionIndex(workspaceGraph),
     )
+    traceViewStage(
+        runtimeTrace = runtimeTrace,
+        stage = "state.buildViewDocuments.fact",
+        startedAtNanos = factStartedAt,
+    ) {
+        listOf(
+            "workspace=${LinkGraphRenderTrace.graphSummary(workspaceGraph)}",
+            "visible=${LinkGraphRenderTrace.graphSummary(factGraphView.visibleGraph)}",
+        )
+    }
+    val flowProjectStartedAt = System.nanoTime()
     val flowchartView = projectReadableFlowchartView(
         graph = workspaceGraph,
         anchorNodeId = anchorNodeId,
-    ).withProjectionIndex(buildProjectionIndex(itVisibleGraph = null, fullGraph = workspaceGraph))
+    )
+    traceViewStage(
+        runtimeTrace = runtimeTrace,
+        stage = "state.buildViewDocuments.flowchart.projectReadable",
+        startedAtNanos = flowProjectStartedAt,
+    ) {
+        listOf(
+            "workspace=${LinkGraphRenderTrace.graphSummary(workspaceGraph)}",
+            "visible=${LinkGraphRenderTrace.graphSummary(flowchartView.visibleGraph)}",
+        )
+    }
+    val flowIndexStartedAt = System.nanoTime()
+    val flowchartProjectionIndex = buildProjectionIndex(
+        visibleGraph = flowchartView.visibleGraph,
+        fullGraph = workspaceGraph,
+    )
+    val flowchartViewWithIndex = flowchartView.withProjectionIndex(flowchartProjectionIndex)
+    traceViewStage(
+        runtimeTrace = runtimeTrace,
+        stage = "state.buildViewDocuments.flowchart.projectionIndex",
+        startedAtNanos = flowIndexStartedAt,
+    ) {
+        listOf(
+            "visible=${LinkGraphRenderTrace.graphSummary(flowchartView.visibleGraph)}",
+            "full=${LinkGraphRenderTrace.graphSummary(workspaceGraph)}",
+            "nodeMappings=${flowchartProjectionIndex.nodeMappings.size}",
+            "edgeMappings=${flowchartProjectionIndex.edgeMappings.size}",
+        )
+    }
+    val resourceStartedAt = System.nanoTime()
     val resourceRelationView = ResourceRelationViewDocument(
         visibleGraph = workspaceGraph,
         fullGraph = workspaceGraph,
@@ -92,21 +136,55 @@ internal fun buildViewDocuments(
         ).toSummary(),
         projectionIndex = exactProjectionIndex(workspaceGraph),
     )
-    return GraphEditorViewDocuments(
+    traceViewStage(
+        runtimeTrace = runtimeTrace,
+        stage = "state.buildViewDocuments.resource",
+        startedAtNanos = resourceStartedAt,
+    ) {
+        listOf(
+            "workspace=${LinkGraphRenderTrace.graphSummary(workspaceGraph)}",
+            "visible=${LinkGraphRenderTrace.graphSummary(resourceRelationView.visibleGraph)}",
+        )
+    }
+    val documents = GraphEditorViewDocuments(
         factGraphView = factGraphView,
-        flowchartView = flowchartView.copy(
-            projectionIndex = buildProjectionIndex(
-                visibleGraph = flowchartView.visibleGraph,
-                fullGraph = workspaceGraph,
-            ),
-        ),
+        flowchartView = flowchartViewWithIndex,
         resourceRelationView = resourceRelationView,
     )
+    traceViewStage(
+        runtimeTrace = runtimeTrace,
+        stage = "state.buildViewDocuments.total",
+        startedAtNanos = totalStartedAt,
+    ) {
+        listOf(
+            "workspace=${LinkGraphRenderTrace.graphSummary(workspaceGraph)}",
+            "factVisible=${LinkGraphRenderTrace.graphSummary(documents.factGraphView.visibleGraph)}",
+            "flowVisible=${LinkGraphRenderTrace.graphSummary(documents.flowchartView.visibleGraph)}",
+            "resourceVisible=${LinkGraphRenderTrace.graphSummary(documents.resourceRelationView.visibleGraph)}",
+        )
+    }
+    return documents
 }
 
 private fun FlowchartViewDocument.withProjectionIndex(index: GraphProjectionIndex): FlowchartViewDocument = copy(
     projectionIndex = index,
 )
+
+private fun traceViewStage(
+    runtimeTrace: ((() -> String) -> Unit)?,
+    stage: String,
+    startedAtNanos: Long,
+    details: () -> List<String>,
+) {
+    val trace = runtimeTrace ?: return
+    LinkGraphRenderTrace.stage(
+        enabled = true,
+        log = { message -> trace { message } },
+        stage = stage,
+        startedAtNanos = startedAtNanos,
+        details = details,
+    )
+}
 
 internal fun resolveVisibleGraphForDisplayMode(
     snapshot: GraphEditorStateSnapshot,

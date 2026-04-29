@@ -5,6 +5,7 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
+import com.charmnight.linkgraph.services.LinkGraphDebugEnvironment
 import com.charmnight.linkgraph.services.GenerationDiagnostics
 import com.charmnight.linkgraph.workbench.AuditConversationMessage
 import com.charmnight.linkgraph.workbench.AuditConversationService
@@ -35,7 +36,7 @@ class GraphAuditPatchService(
 ) {
     private val logger = Logger.getInstance(GraphAuditPatchService::class.java)
     private val traceEnabled: Boolean =
-        System.getenv("LINKGRAPH_DEBUG_TRACE")?.trim()?.equals("true", ignoreCase = true) == true
+        LinkGraphDebugEnvironment.isEnabled("LINKGRAPH_DEBUG_TRACE")
     /** 负责处理结构化 JSON 响应与自动修复。 */
     private val responseSupport = RemoteStructuredResponseSupport(gateway)
     /** 统一候选变更 patch 归一化器。 */

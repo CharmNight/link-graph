@@ -2,9 +2,9 @@
 
 ## 开发环境
 
-- JDK 21
+- JDK 17
 - Node.js 与 npm
-- 与 `gradle.properties` 中目标平台兼容的 IntelliJ IDEA
+- IntelliJ IDEA 2023.3.4 或更高兼容版本；最低平台 build 由 `gradle.properties` 中的 `platformSinceBuild` 声明
 
 ## 初始化
 

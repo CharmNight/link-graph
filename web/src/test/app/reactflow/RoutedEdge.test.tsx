@@ -51,9 +51,11 @@ function createInternalNode(
 
 function installNodeLookup(...nodes: Array<ReturnType<typeof createInternalNode>>) {
   const nodeLookup = new Map(nodes.map((node) => [node.id, node]));
+  const valuesSpy = vi.spyOn(nodeLookup, "values");
   useStoreMock.mockImplementation((selector: (state: { nodeLookup: typeof nodeLookup }) => unknown) =>
     selector({ nodeLookup }),
   );
+  return { nodeLookup, valuesSpy };
 }
 
 function parsePath(path: string) {
@@ -339,6 +341,112 @@ describe("RoutedEdge", () => {
     };
     expect(
       segments(path).some((segment) => segmentIntersectsRect(segment, obstacleRect)),
+    ).toBe(false);
+  });
+
+  it("keeps stored routes on dense graphs instead of rebuilding an obstacle grid per edge", () => {
+    const obstacles = Array.from({ length: 56 }, (_, index) =>
+      createInternalNode(
+        `obstacle-${index}`,
+        900 + (index % 7) * 72,
+        760 + Math.floor(index / 7) * 34,
+        48,
+        24,
+      ),
+    );
+    const { valuesSpy } = installNodeLookup(
+      createInternalNode("source", 100, 60, 240, 120),
+      createInternalNode("target", 520, 320, 240, 120),
+      ...obstacles,
+    );
+
+    render(
+      <RoutedEdge
+        id="edge:dense"
+        source="source"
+        target="target"
+        sourceX={220}
+        sourceY={180}
+        targetX={640}
+        targetY={320}
+        sourcePosition={"bottom" as never}
+        targetPosition={"top" as never}
+        data={{
+          route: {
+            sections: [
+              {
+                startPoint: { x: 220, y: 180 },
+                bendPoints: [
+                  { x: 220, y: 280 },
+                  { x: 640, y: 280 },
+                ],
+                endPoint: { x: 640, y: 320 },
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("base-edge")).toHaveAttribute(
+      "data-path",
+      "M 220 180 L 220 280 L 640 280 L 640 320",
+    );
+    expect(valuesSpy).not.toHaveBeenCalled();
+  });
+
+  it("repairs stale diagonal routes on dense graphs without drawing through nearby nodes", () => {
+    const farObstacles = Array.from({ length: 56 }, (_, index) =>
+      createInternalNode(
+        `far-obstacle-${index}`,
+        900 + (index % 7) * 72,
+        760 + Math.floor(index / 7) * 34,
+        48,
+        24,
+      ),
+    );
+    installNodeLookup(
+      createInternalNode("source", 100, 60, 240, 120),
+      createInternalNode("target", 520, 320, 240, 120),
+      createInternalNode("near-obstacle", 360, 180, 180, 140),
+      ...farObstacles,
+    );
+
+    render(
+      <RoutedEdge
+        id="edge:dense-stale"
+        source="source"
+        target="target"
+        sourceX={220}
+        sourceY={180}
+        targetX={640}
+        targetY={320}
+        sourcePosition={"bottom" as never}
+        targetPosition={"top" as never}
+        data={{
+          route: {
+            sections: [
+              {
+                startPoint: { x: 220, y: 180 },
+                endPoint: { x: 640, y: 320 },
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    const path = screen.getByTestId("base-edge").getAttribute("data-path") ?? "";
+    const nearObstacleRect = {
+      left: 360,
+      right: 540,
+      top: 180,
+      bottom: 320,
+    };
+
+    expectOrthogonalPath(path);
+    expect(
+      segments(path).some((segment) => segmentIntersectsRect(segment, nearObstacleRect)),
     ).toBe(false);
   });
 });

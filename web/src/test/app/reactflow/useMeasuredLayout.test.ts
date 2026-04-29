@@ -202,6 +202,57 @@ describe("useMeasuredLayout", () => {
     expect(layout).toHaveBeenCalledTimes(2);
   });
 
+  it("does not rerun layout when the effective layout size signature is unchanged", async () => {
+    const registry = createNodeSizeRegistry();
+    const graph: LinkGraphDocument = {
+      nodes: [
+        methodNode("method:anchor", "OrderService.submit"),
+        methodNode("method:callee", "OrderMapper.insert"),
+      ],
+      edges: [],
+    };
+    const layout = vi.fn(async ({ nodes }: { nodes: LinkGraphNode[] }) => ({
+      nodes: nodes.map((node, index) => ({
+        ...node,
+        position: {
+          x: 120 + index * 320,
+          y: 96,
+        },
+      })),
+      edges: graph.edges,
+    }));
+
+    const { result } = renderHook(() =>
+      useMeasuredLayout({
+        graph,
+        anchorNodeId: "method:anchor",
+        nodeSizeRegistry: registry,
+        layout,
+        layoutSizeSignature: (nodes, sizeSnapshot) =>
+          nodes
+            .map((node) => {
+              const size = sizeSnapshot.get(node.id);
+              return `${node.id}:${Math.max(size?.width ?? 408, 408)}x${Math.max(size?.height ?? 156, 156)}`;
+            })
+            .join("::"),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.nodes[1]?.position).toEqual({ x: 440, y: 96 });
+    });
+    expect(layout).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      registry.set("method:anchor", { width: 408, height: 132 });
+    });
+
+    await waitFor(() => {
+      expect(result.current.nodes[0]?.position).toEqual({ x: 120, y: 96 });
+    });
+    expect(layout).toHaveBeenCalledTimes(1);
+  });
+
   it("supports explicit relayout requests without replacing the semantic graph input", async () => {
     const graph: LinkGraphDocument = {
       nodes: [methodNode("method:anchor", "OrderService.submit")],

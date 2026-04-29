@@ -116,6 +116,21 @@ const CONTEXT_MENU_ESTIMATED_HEIGHT = 360;
 const GRAPH_SURFACE_MIN_ZOOM = 0.08;
 const DRAG_POSITION_EPSILON = 0.5;
 
+function hashText(value: string): string {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash * 31) + value.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(36);
+}
+
+function summarizeGraphShapeSignature(signature: string) {
+  return {
+    length: signature.length,
+    hash: hashText(signature),
+  };
+}
+
 function fallbackPosition(index: number): GraphPosition {
   return {
     x: 80 + (index % 3) * 400,
@@ -205,14 +220,14 @@ export function GraphFlowSurface({
       viewportMode,
       graph: summarizeGraph({ nodes: positionedNodes, edges }),
       anchorNodeId: anchorNode?.id ?? null,
-      graphShapeSignature,
+      graphShape: summarizeGraphShapeSignature(graphShapeSignature),
     });
     return () => {
       traceLinkGraph("graphFlowSurface.lifecycle.unmount", {
         viewportMode,
         graph: summarizeGraph({ nodes: positionedNodes, edges }),
         anchorNodeId: anchorNode?.id ?? null,
-        graphShapeSignature,
+        graphShape: summarizeGraphShapeSignature(graphShapeSignature),
       });
     };
   }, []);
@@ -386,7 +401,7 @@ export function GraphFlowSurface({
           focusAnchor: shouldFocusAnchorOnLoad,
           anchorNodeId: anchorNode.id,
           anchorPosition: anchorNode.position,
-          graphShapeSignature,
+          graphShape: summarizeGraphShapeSignature(graphShapeSignature),
         });
         focusNodeInViewport(anchorNode, "flowchartAnchor");
         return;
@@ -401,7 +416,7 @@ export function GraphFlowSurface({
           focusAnchor: shouldFocusAnchorOnLoad,
           anchorNodeId: anchorNode.id,
           anchorPosition: anchorNode.position,
-          graphShapeSignature,
+          graphShape: summarizeGraphShapeSignature(graphShapeSignature),
         });
         focusNodeInViewport(anchorNode, "wideGraphAnchor");
         return;
@@ -414,7 +429,7 @@ export function GraphFlowSurface({
         focusAnchor: shouldFocusAnchorOnLoad,
         anchorNodeId: anchorNode?.id ?? null,
         anchorPosition: anchorNode?.position ?? null,
-        graphShapeSignature,
+        graphShape: summarizeGraphShapeSignature(graphShapeSignature),
       });
       flowInstance.fitView({
         padding: 0.16,
@@ -486,7 +501,7 @@ export function GraphFlowSurface({
       previousAnchorNodeId: previousViewportGraphRef.current?.anchorNodeId ?? null,
       preserveViewport,
       shouldFocusAnchorOnLoad,
-      graphShapeSignature,
+      graphShape: summarizeGraphShapeSignature(graphShapeSignature),
       hasFlowInstance: true,
     });
     previousViewportGraphRef.current = nextViewportGraph;
@@ -747,7 +762,7 @@ export function GraphFlowSurface({
               viewportMode,
               graph: summarizeGraph({ nodes: positionedNodes, edges }),
               anchorNodeId: anchorNode?.id ?? null,
-              graphShapeSignature,
+              graphShape: summarizeGraphShapeSignature(graphShapeSignature),
             });
             setFlowInstance(instance);
           }}

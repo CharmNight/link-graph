@@ -35,11 +35,13 @@ class GraphEditorPageRenderer {
     fun bootstrapScript(
         sessionId: String,
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        debugTracingEnabled: Boolean = false,
     ): String {
         return bootstrapScript(
             sessionId = sessionId,
             snapshot = snapshot,
             artifactRefs = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
+            debugTracingEnabled = debugTracingEnabled,
         )
     }
 
@@ -48,6 +50,7 @@ class GraphEditorPageRenderer {
         sessionId: String,
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
+        debugTracingEnabled: Boolean = false,
     ): String {
         /** 当前快照序列化后的状态 JSON。 */
         val stateJson = bootstrapJson(snapshot, artifactRefs)
@@ -57,9 +60,25 @@ class GraphEditorPageRenderer {
             snapshot = snapshot,
             stateJson = stateJson,
         )
+        val debugPrefix = if (debugTracingEnabled) {
+            """
+            window.__linkGraphDebugEnabled = true;
+            window.__linkGraphTraceBuffer = Array.isArray(window.__linkGraphTraceBuffer) ? window.__linkGraphTraceBuffer : [];
+            console.warn("link-graph bootstrap start: revision=${snapshot.snapshotRevision}");
+            """.trimIndent()
+        } else {
+            ""
+        }
+        val debugSuffix = if (debugTracingEnabled) {
+            """console.warn("link-graph bootstrap dispatched: revision=${snapshot.snapshotRevision}");"""
+        } else {
+            ""
+        }
         return """
+            $debugPrefix
             window.linkGraphBootstrap = $stateJson;
             window.dispatchEvent(new CustomEvent("link-graph-bootstrap", { detail: $envelopeJson }));
+            $debugSuffix
         """.trimIndent()
     }
 
@@ -68,12 +87,14 @@ class GraphEditorPageRenderer {
         entryHtml: String,
         sessionId: String,
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        debugTracingEnabled: Boolean = false,
     ): String {
         return render(
             entryHtml = entryHtml,
             sessionId = sessionId,
             snapshot = snapshot,
             artifactRefs = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
+            debugTracingEnabled = debugTracingEnabled,
         )
     }
 
@@ -83,11 +104,17 @@ class GraphEditorPageRenderer {
         sessionId: String,
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
+        debugTracingEnabled: Boolean = false,
     ): String {
         /** 注入页面的脚本标签内容。 */
         val bootstrapScript = """
             <script>
-              ${bootstrapScript(sessionId = sessionId, snapshot = snapshot, artifactRefs = artifactRefs)}
+              ${bootstrapScript(
+                  sessionId = sessionId,
+                  snapshot = snapshot,
+                  artifactRefs = artifactRefs,
+                  debugTracingEnabled = debugTracingEnabled,
+              )}
             </script>
         """.trimIndent()
         return if (entryHtml.contains("</head>", ignoreCase = true)) {

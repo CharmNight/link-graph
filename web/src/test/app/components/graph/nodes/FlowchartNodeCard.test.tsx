@@ -1,6 +1,7 @@
 import { render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FlowchartNodeCard } from "../../../../../app/components/graph/nodes/FlowchartNodeCard";
+import themeCss from "../../../../../app/theme.css?raw";
 import type { LinkGraphNode } from "../../../../../app/types";
 
 function flowNode(): LinkGraphNode {
@@ -62,5 +63,17 @@ describe("FlowchartNodeCard", () => {
     );
 
     expect(container.textContent).toContain("草稿修改");
+  });
+
+  it("constrains long code-like labels inside flowchart node bounds", () => {
+    expect(themeCss).toMatch(
+      /\.flowchart-node-card\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;/s,
+    );
+    expect(themeCss).toMatch(
+      /\.flowchart-node-card\.kind-decision\s*\{[^}]*width:\s*74%;[^}]*min-width:\s*0;/s,
+    );
+    expect(themeCss).toMatch(
+      /\.flowchart-node-title,\s*\.flowchart-node-detail\s*\{[^}]*min-width:\s*0;[^}]*overflow-wrap:\s*anywhere;[^}]*word-break:\s*break-word;/s,
+    );
   });
 });

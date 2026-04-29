@@ -56,14 +56,24 @@ configurations[integrationTestSourceSet.compileOnlyConfigurationName].extendsFro
 intellijPlatform {
     pluginConfiguration {
         id = "com.charmnight.linkgraph"
-        name = "链路图"
+        name = providers.gradleProperty("pluginName")
         version = providers.gradleProperty("pluginVersion")
         description = "Link Graph is an IntelliJ Platform plugin for exploring method, flowchart, and resource relationships inside a project. It provides a JCEF-based graph workbench with Mermaid import/export, diff preview, source navigation, local fallback workflows, and optional remote LLM-assisted drafts."
         ideaVersion {
             sinceBuild = providers.gradleProperty("platformSinceBuild")
+            untilBuild = provider { null }
         }
         vendor {
             name = "CharmNight"
+        }
+    }
+
+    pluginVerification {
+        ides {
+            ide(
+                providers.gradleProperty("platformType"),
+                providers.gradleProperty("platformVersion"),
+            )
         }
     }
 }

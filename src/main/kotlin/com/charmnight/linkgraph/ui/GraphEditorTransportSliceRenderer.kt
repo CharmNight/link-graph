@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.ui
 
+import com.charmnight.linkgraph.services.LinkGraphRenderTrace
+
 /**
  * 渲染前后端之间的权威快照 transport。
  * 除按需回填 artifact 外，每个 snapshotRevision 只发送一份完整快照。
@@ -7,6 +9,7 @@ package com.charmnight.linkgraph.ui
 class GraphEditorTransportSliceRenderer(
     private val pageRenderer: GraphEditorPageRenderer = GraphEditorPageRenderer(),
     private val artifactRegistry: GraphEditorArtifactRegistry = GraphEditorArtifactRegistry(),
+    private val runtimeTrace: ((() -> String) -> Unit)? = null,
 ) {
     private var currentArtifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts =
         GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY
@@ -15,14 +18,29 @@ class GraphEditorTransportSliceRenderer(
         sessionId: String,
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     ): String {
+        val artifactStartedAt = System.nanoTime()
         val artifactRefs = artifactRegistry.replaceWith(snapshot)
         currentArtifactRefs = artifactRefs
+        traceStage(
+            stage = "transport.bootstrap.artifacts",
+            startedAtNanos = artifactStartedAt,
+        ) {
+            snapshotDetails(snapshot)
+        }
+        val payloadStartedAt = System.nanoTime()
+        val state = pageRenderer.bootstrapPayload(snapshot, artifactRefs)
+        traceStage(
+            stage = "transport.bootstrap.payload",
+            startedAtNanos = payloadStartedAt,
+        ) {
+            snapshotDetails(snapshot) + payloadDetails(state)
+        }
         return renderScript(
             listOf(
                 GraphEditorTransportEnvelope.Snapshot(
                     sessionId = sessionId,
                     revision = snapshot.snapshotRevision,
-                    state = pageRenderer.bootstrapPayload(snapshot, artifactRefs),
+                    state = state,
                 ),
             ),
         )
@@ -33,14 +51,40 @@ class GraphEditorTransportSliceRenderer(
         previousSnapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
     ): List<GraphEditorTransportEnvelope> {
+        val previousStartedAt = System.nanoTime()
         val previousPayload = pageRenderer.bootstrapPayload(
             previousSnapshot,
             artifactRegistry.replaceWith(previousSnapshot),
         )
+        traceStage(
+            stage = "transport.payload.previous",
+            startedAtNanos = previousStartedAt,
+        ) {
+            snapshotDetails(previousSnapshot) + payloadDetails(previousPayload)
+        }
+        val currentStartedAt = System.nanoTime()
         val currentArtifactRefs = artifactRegistry.replaceWith(snapshot)
         this.currentArtifactRefs = currentArtifactRefs
         val currentPayload = pageRenderer.bootstrapPayload(snapshot, currentArtifactRefs)
-        if (previousPayload == currentPayload) {
+        traceStage(
+            stage = "transport.payload.current",
+            startedAtNanos = currentStartedAt,
+        ) {
+            snapshotDetails(snapshot) + payloadDetails(currentPayload)
+        }
+        val compareStartedAt = System.nanoTime()
+        val unchanged = previousPayload == currentPayload
+        traceStage(
+            stage = "transport.payload.compare",
+            startedAtNanos = compareStartedAt,
+        ) {
+            listOf(
+                "unchanged=$unchanged",
+                "previousRevision=${previousSnapshot.snapshotRevision}",
+                "currentRevision=${snapshot.snapshotRevision}",
+            )
+        }
+        if (unchanged) {
             return emptyList()
         }
         return listOf(
@@ -65,7 +109,8 @@ class GraphEditorTransportSliceRenderer(
     }
 
     fun renderScript(envelopes: List<GraphEditorTransportEnvelope>): String {
-        return envelopes.joinToString(separator = "\n") { envelope ->
+        val startedAt = System.nanoTime()
+        val script = envelopes.joinToString(separator = "\n") { envelope ->
             val payload = when (envelope) {
                 is GraphEditorTransportEnvelope.Snapshot -> linkedMapOf(
                     "sessionId" to envelope.sessionId,
@@ -82,6 +127,17 @@ class GraphEditorTransportSliceRenderer(
             val envelopeJson = pageRenderer.sanitizeJson(pageRenderer.toJson(payload))
             """window.dispatchEvent(new CustomEvent("link-graph-bootstrap", { detail: $envelopeJson }));"""
         }
+        traceStage(
+            stage = "transport.renderScript",
+            startedAtNanos = startedAt,
+        ) {
+            listOf(
+                "envelopes=${envelopes.size}",
+                "scriptChars=${script.length}",
+                "revisions=${envelopes.joinToString(separator = "|") { it.revision.toString() }}",
+            )
+        }
+        return script
     }
 
     fun artifactContents(artifactIds: Collection<String>): Map<String, String> {
@@ -89,4 +145,36 @@ class GraphEditorTransportSliceRenderer(
     }
 
     fun currentArtifactRefs(): GraphEditorArtifactRegistry.SnapshotArtifacts = currentArtifactRefs
+
+    private fun traceStage(
+        stage: String,
+        startedAtNanos: Long,
+        details: () -> List<String>,
+    ) {
+        val trace = runtimeTrace ?: return
+        LinkGraphRenderTrace.stage(
+            enabled = true,
+            log = { message -> trace { message } },
+            stage = stage,
+            startedAtNanos = startedAtNanos,
+            details = details,
+        )
+    }
+
+    private fun snapshotDetails(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): List<String> = listOf(
+        "snapshotRevision=${snapshot.snapshotRevision}",
+        "lastMessageType=${snapshot.lastMessageType}",
+        "workspace=${LinkGraphRenderTrace.graphSummary(snapshot.workspaceGraph)}",
+        "workspaceBase=${LinkGraphRenderTrace.graphSummary(snapshot.workspaceBaseGraph)}",
+        "semanticFact=${LinkGraphRenderTrace.graphSummary(snapshot.semanticFactGraph)}",
+        "factVisible=${LinkGraphRenderTrace.graphSummary(snapshot.factGraphView.visibleGraph)}",
+        "flowVisible=${LinkGraphRenderTrace.graphSummary(snapshot.flowchartView.visibleGraph)}",
+        "resourceVisible=${LinkGraphRenderTrace.graphSummary(snapshot.resourceRelationView.visibleGraph)}",
+    )
+
+    private fun payloadDetails(payload: Map<String, Any?>): List<String> = listOf(
+        "payloadKeys=${payload.size}",
+        "hasWorkspaceGraph=${payload.containsKey("workspaceGraph")}",
+        "hasFlowchartView=${payload.containsKey("flowchartView")}",
+    )
 }

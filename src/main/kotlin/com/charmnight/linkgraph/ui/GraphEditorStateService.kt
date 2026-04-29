@@ -5,6 +5,7 @@ import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
+import com.charmnight.linkgraph.services.LinkGraphDebugEnvironment
 import com.charmnight.linkgraph.sync.GraphPatchApplyService
 import com.intellij.openapi.components.Service
 
@@ -12,8 +13,18 @@ import com.intellij.openapi.components.Service
 class GraphEditorStateService {
     private val graphPatchApplyService = GraphPatchApplyService()
     private val store = GraphEditorStateStore()
+    private val debugTracingEnabled: Boolean =
+        LinkGraphDebugEnvironment.isEnabled("LINKGRAPH_DEBUG_TRACE")
 
-    internal val graph: GraphEditorGraphStateSupport = GraphEditorGraphStateSupport(::mutate, graphPatchApplyService)
+    internal val graph: GraphEditorGraphStateSupport = GraphEditorGraphStateSupport(
+        ::mutate,
+        graphPatchApplyService,
+        runtimeTrace = { message ->
+            if (debugTracingEnabled) {
+                com.intellij.openapi.diagnostic.Logger.getInstance(GraphEditorStateService::class.java).warn(message())
+            }
+        },
+    )
     internal val asyncRequests: GraphEditorAsyncRequestStateSupport = GraphEditorAsyncRequestStateSupport(::mutate)
     internal val workbench: GraphEditorWorkbenchStateSupport = GraphEditorWorkbenchStateSupport(::mutate)
 

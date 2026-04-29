@@ -69,6 +69,9 @@ function artifactSlice(revision: number): LinkGraphIncrementalTransportEnvelope 
 describe("editorTransport", () => {
   afterEach(() => {
     resetEditorTransportForTest();
+    window.__linkGraphDebugEnabled = false;
+    window.linkGraphDebugTrace = undefined;
+    window.__linkGraphTraceHistory = undefined;
   });
 
   it("replays the latest bootstrap after frontend announces ready", () => {
@@ -117,6 +120,27 @@ describe("editorTransport", () => {
     expect(receivedArtifacts.at(-1)).toEqual({
       "artifact:draft-1": "public class OrderDraftDto {}",
     });
+    unsubscribe();
+  });
+
+  it("traces artifact slice clone merge and dispatch timing when debug bridge is enabled", () => {
+    const traceSink = vi.fn();
+    window.__linkGraphDebugEnabled = true;
+    window.linkGraphDebugTrace = traceSink;
+    dispatchBootstrapForTest(envelope(1));
+    const received: number[] = [];
+
+    const unsubscribe = subscribeBootstrap((nextEnvelope) => {
+      received.push(nextEnvelope.revision);
+    });
+
+    announceFrontendReady();
+    dispatchBootstrapForTest(artifactSlice(1));
+
+    const events = traceSink.mock.calls.map(([payload]) => JSON.parse(payload as string).event);
+    expect(events).toContain("editorTransport.artifactSlice.merge");
+    expect(events).toContain("editorTransport.flushLatestEnvelope");
+    expect(received).toEqual([1, 1]);
     unsubscribe();
   });
 

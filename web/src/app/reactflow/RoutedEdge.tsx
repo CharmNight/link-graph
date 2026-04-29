@@ -22,6 +22,10 @@ export interface RoutedEdgeData extends Record<string, unknown> {
 
 export type RoutedGraphEdge = Edge<RoutedEdgeData, "routedEdge">;
 
+const LOCAL_OBSTACLE_ROUTING_NODE_LIMIT = 48;
+const DENSE_OBSTACLE_ROUTING_LIMIT = 32;
+const DENSE_OBSTACLE_ROUTING_PADDING = 180;
+
 function sectionPoints(section: LinkGraphEdgeRouteSection): GraphPosition[] {
   return [section.startPoint, ...(section.bendPoints ?? []), section.endPoint];
 }
@@ -46,6 +50,23 @@ function fallbackPath(
       x: (sourceX + targetX) / 2,
       y: (sourceY + targetY) / 2,
     },
+  };
+}
+
+function fallbackOrthogonalRoute(
+  startPoint: GraphPosition,
+  endPoint: GraphPosition,
+): LinkGraphEdgeRoute {
+  const midY = Math.round((startPoint.y + endPoint.y) / 2);
+  return {
+    sections: [
+      sectionFromPoints([
+        startPoint,
+        { x: startPoint.x, y: midY },
+        { x: endPoint.x, y: midY },
+        endPoint,
+      ]),
+    ],
   };
 }
 
@@ -213,6 +234,95 @@ function routeIntersectsObstacles(
   });
 }
 
+interface Bounds {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+function routeBounds(
+  route: LinkGraphEdgeRoute | undefined,
+  startPoint: GraphPosition,
+  endPoint: GraphPosition,
+  padding = 0,
+): Bounds {
+  const points = routePoints(route);
+  const boundPoints = points.length > 1 ? points : [startPoint, endPoint];
+  const xs = boundPoints.map((point) => point.x);
+  const ys = boundPoints.map((point) => point.y);
+  return {
+    left: Math.min(...xs) - padding,
+    right: Math.max(...xs) + padding,
+    top: Math.min(...ys) - padding,
+    bottom: Math.max(...ys) + padding,
+  };
+}
+
+function rectIntersectsBounds(rect: OrthogonalRect, bounds: Bounds): boolean {
+  return rect.x <= bounds.right
+    && rect.x + rect.width >= bounds.left
+    && rect.y <= bounds.bottom
+    && rect.y + rect.height >= bounds.top;
+}
+
+function pointToSegmentDistance(
+  point: GraphPosition,
+  startPoint: GraphPosition,
+  endPoint: GraphPosition,
+): number {
+  const dx = endPoint.x - startPoint.x;
+  const dy = endPoint.y - startPoint.y;
+  if (Math.abs(dx) <= 0.5 && Math.abs(dy) <= 0.5) {
+    return pointDistance(point, startPoint);
+  }
+  const ratio = Math.max(
+    0,
+    Math.min(1, ((point.x - startPoint.x) * dx + (point.y - startPoint.y) * dy) / (dx * dx + dy * dy)),
+  );
+  return pointDistance(point, {
+    x: startPoint.x + ratio * dx,
+    y: startPoint.y + ratio * dy,
+  });
+}
+
+function rectDistanceToRoute(
+  rect: OrthogonalRect,
+  route: LinkGraphEdgeRoute | undefined,
+  startPoint: GraphPosition,
+  endPoint: GraphPosition,
+): number {
+  const points = routePoints(route);
+  const routeLine = points.length > 1 ? points : [startPoint, endPoint];
+  const center = {
+    x: rect.x + rect.width / 2,
+    y: rect.y + rect.height / 2,
+  };
+  return routeLine.slice(1).reduce((distance, point, index) => Math.min(
+    distance,
+    pointToSegmentDistance(center, routeLine[index]!, point),
+  ), Number.POSITIVE_INFINITY);
+}
+
+function denseRoutingObstacles(
+  obstacleRects: OrthogonalRect[],
+  route: LinkGraphEdgeRoute | undefined,
+  startPoint: GraphPosition,
+  endPoint: GraphPosition,
+): OrthogonalRect[] {
+  const bounds = routeBounds(route, startPoint, endPoint, DENSE_OBSTACLE_ROUTING_PADDING);
+  const nearby = obstacleRects.filter((rect) => rectIntersectsBounds(rect, bounds));
+  if (nearby.length <= DENSE_OBSTACLE_ROUTING_LIMIT) {
+    return nearby;
+  }
+  return [...nearby]
+    .sort((left, right) =>
+      rectDistanceToRoute(left, route, startPoint, endPoint)
+      - rectDistanceToRoute(right, route, startPoint, endPoint),
+    )
+    .slice(0, DENSE_OBSTACLE_ROUTING_LIMIT);
+}
+
 function shouldUseLocalRoute(
   route: LinkGraphEdgeRoute | undefined,
   currentStartPoint: GraphPosition,
@@ -220,6 +330,19 @@ function shouldUseLocalRoute(
   startSide: OrthogonalSide | null,
   endSide: OrthogonalSide | null,
   obstacleRects: OrthogonalRect[],
+): boolean {
+  if (routeNeedsLocalRepair(route, currentStartPoint, currentEndPoint, startSide, endSide)) {
+    return true;
+  }
+  return routeIntersectsObstacles(route, obstacleRects);
+}
+
+function routeNeedsLocalRepair(
+  route: LinkGraphEdgeRoute | undefined,
+  currentStartPoint: GraphPosition,
+  currentEndPoint: GraphPosition,
+  startSide: OrthogonalSide | null,
+  endSide: OrthogonalSide | null,
 ): boolean {
   if (!route || !startSide || !endSide) {
     return true;
@@ -238,7 +361,7 @@ function shouldUseLocalRoute(
   if (!routeConformsToSides(route, startSide, endSide)) {
     return true;
   }
-  return routeIntersectsObstacles(route, obstacleRects);
+  return false;
 }
 
 function segmentLength(startPoint: GraphPosition, endPoint: GraphPosition): number {
@@ -300,16 +423,37 @@ export function RoutedEdge({
   const currentStartPoint = { x: sourceX, y: sourceY };
   const currentEndPoint = { x: targetX, y: targetY };
   const fallback = fallbackPath(sourceX, sourceY, targetX, targetY);
-  const adjustedRoute = reanchorRouteToEndpoints(
-    data?.route,
-    currentStartPoint,
-    sourcePosition,
-    currentEndPoint,
-    targetPosition,
+  const adjustedRoute = useMemo(
+    () => reanchorRouteToEndpoints(
+      data?.route,
+      currentStartPoint,
+      sourcePosition,
+      currentEndPoint,
+      targetPosition,
+    ),
+    [
+      currentEndPoint.x,
+      currentEndPoint.y,
+      currentStartPoint.x,
+      currentStartPoint.y,
+      data?.route,
+      sourcePosition,
+      targetPosition,
+    ],
   );
   const localRoute = useMemo(() => {
     const startSide = positionToSide(sourcePosition);
     const endSide = positionToSide(targetPosition);
+    const needsLocalRepair = routeNeedsLocalRepair(
+      adjustedRoute,
+      currentStartPoint,
+      currentEndPoint,
+      startSide,
+      endSide,
+    );
+    if (!needsLocalRepair && nodeLookup.size > LOCAL_OBSTACLE_ROUTING_NODE_LIMIT) {
+      return null;
+    }
     const sourceRect = nodeRect(nodeLookup.get(source));
     const targetRect = nodeRect(nodeLookup.get(target));
     if (!startSide || !endSide || !sourceRect || !targetRect) {
@@ -318,7 +462,13 @@ export function RoutedEdge({
     const obstacleRects = Array.from(nodeLookup.values())
       .map((node) => nodeRect(node))
       .filter((rect): rect is OrthogonalRect => rect !== null && rect.id !== source && rect.id !== target);
-    if (!shouldUseLocalRoute(adjustedRoute, currentStartPoint, currentEndPoint, startSide, endSide, obstacleRects)) {
+    const routeObstacleRects = nodeLookup.size > LOCAL_OBSTACLE_ROUTING_NODE_LIMIT
+      ? denseRoutingObstacles(obstacleRects, adjustedRoute, currentStartPoint, currentEndPoint)
+      : obstacleRects;
+    if (
+      !needsLocalRepair
+      && !shouldUseLocalRoute(adjustedRoute, currentStartPoint, currentEndPoint, startSide, endSide, routeObstacleRects)
+    ) {
       return null;
     }
     return buildOrthogonalEdgeRoute({
@@ -328,7 +478,7 @@ export function RoutedEdge({
       endPoint: currentEndPoint,
       endSide,
       endRect: targetRect,
-      obstacleRects,
+      obstacleRects: routeObstacleRects,
     });
   }, [
     adjustedRoute,
@@ -342,7 +492,7 @@ export function RoutedEdge({
     target,
     targetPosition,
   ]);
-  const renderedRoute = localRoute ?? adjustedRoute;
+  const renderedRoute = localRoute ?? adjustedRoute ?? fallbackOrthogonalRoute(currentStartPoint, currentEndPoint);
   const path = buildRoutePath(renderedRoute) ?? fallback.path;
   const labelPosition = routeLabelPosition(renderedRoute) ?? fallback.labelPosition;
   const originalRouteStart = routeStartPoint(data?.route);

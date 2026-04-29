@@ -308,6 +308,45 @@ function routeFromPoints(points: GraphPosition[]): LinkGraphEdgeRoute {
   };
 }
 
+function fallbackOrthogonalPoints(
+  startPoint: GraphPosition,
+  startStub: GraphPosition,
+  startSide: OrthogonalSide,
+  endStub: GraphPosition,
+  endSide: OrthogonalSide,
+  endPoint: GraphPosition,
+): GraphPosition[] {
+  if (isVerticalSegment(startStub, endStub) || isHorizontalSegment(startStub, endStub)) {
+    return [startPoint, startStub, endStub, endPoint];
+  }
+  if ((startSide === "top" || startSide === "bottom") && (endSide === "top" || endSide === "bottom")) {
+    const midY = round((startStub.y + endStub.y) / 2);
+    return [
+      startPoint,
+      startStub,
+      { x: startStub.x, y: midY },
+      { x: endStub.x, y: midY },
+      endStub,
+      endPoint,
+    ];
+  }
+  if ((startSide === "left" || startSide === "right") && (endSide === "left" || endSide === "right")) {
+    const midX = round((startStub.x + endStub.x) / 2);
+    return [
+      startPoint,
+      startStub,
+      { x: midX, y: startStub.y },
+      { x: midX, y: endStub.y },
+      endStub,
+      endPoint,
+    ];
+  }
+  const corner = startSide === "top" || startSide === "bottom"
+    ? { x: startStub.x, y: endStub.y }
+    : { x: endStub.x, y: startStub.y };
+  return [startPoint, startStub, corner, endStub, endPoint];
+}
+
 export function buildOrthogonalEdgeRoute({
   startPoint,
   startSide,
@@ -361,7 +400,14 @@ export function buildOrthogonalEdgeRoute({
 
   const gridPath = findGridPath(startStub, endStub, searchObstacles, candidatePoints);
   if (!gridPath) {
-    return routeFromPoints([startPoint, startStub, endStub, endPoint]);
+    return routeFromPoints(fallbackOrthogonalPoints(
+      startPoint,
+      startStub,
+      startSide,
+      endStub,
+      endSide,
+      endPoint,
+    ));
   }
   return routeFromPoints([startPoint, ...gridPath, endPoint]);
 }

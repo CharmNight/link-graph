@@ -75,6 +75,35 @@ class GraphEditorTransportSliceRendererTest {
     }
 
     @Test
+    fun renderIncrementalScriptEmitsDebugTraceForPayloadAndScriptStages() {
+        val traceMessages = mutableListOf<String>()
+        val renderer = GraphEditorTransportSliceRenderer(
+            runtimeTrace = { message -> traceMessages += message() },
+        )
+        val previous = snapshot(snapshotRevision = 20)
+        val current = previous.copy(
+            snapshotRevision = 21,
+            operationFeedback = com.charmnight.linkgraph.ui.OperationFeedback(
+                level = com.charmnight.linkgraph.ui.OperationFeedbackLevel.INFO,
+                message = "trace me",
+            ),
+            lastMessageType = "operationFeedback",
+        )
+
+        val script = renderer.renderIncrementalScript(
+            sessionId = "session-1",
+            previousSnapshot = previous,
+            snapshot = current,
+        )
+
+        assertNotNull(script)
+        assertTrue(traceMessages.any { it.contains("stage=transport.payload.previous") })
+        assertTrue(traceMessages.any { it.contains("stage=transport.payload.current") })
+        assertTrue(traceMessages.any { it.contains("stage=transport.renderScript") })
+        assertTrue(traceMessages.any { it.contains("scriptChars=") })
+    }
+
+    @Test
     fun workflowTransportExternalizesLargeArtifactsInsteadOfEmbeddingRawDraftAndPromptContent() {
         val renderer = GraphEditorTransportSliceRenderer()
         val previous = snapshot(snapshotRevision = 10)

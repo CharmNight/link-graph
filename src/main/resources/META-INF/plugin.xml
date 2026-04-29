@@ -1,6 +1,6 @@
 <idea-plugin>
     <id>com.charmnight.linkgraph</id>
-    <name>链路图</name>
+    <name>Link Graph</name>
     <vendor>CharmNight</vendor>
 
     <description><![CDATA[

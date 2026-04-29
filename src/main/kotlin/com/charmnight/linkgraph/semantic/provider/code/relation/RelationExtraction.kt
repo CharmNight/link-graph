@@ -82,7 +82,7 @@ class RelationExtractionContext(
      * 按名称查找文件。
      */
     fun filesNamed(name: String): List<PsiFile> {
-        return FilenameIndex.getVirtualFilesByName(project, name, projectScope)
+        return FilenameIndex.getVirtualFilesByName(name, projectScope)
             .mapNotNull(psiManager::findFile)
             .sortedBy { file -> file.virtualFile?.path ?: file.name }
     }

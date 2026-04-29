@@ -58,4 +58,25 @@ class WorkflowArchitectureRegressionTest {
             "GraphEditorCommandRouter 应持有明确的协作者边界，而不是每个分支动态拉取 project service。",
         )
     }
+
+    @Test
+    fun productionCodeAvoidsVerifierWarnedIntellijApis() {
+        val productionSources = Files.walk(Path.of("src/main/kotlin"))
+            .filter { path -> path.toString().endsWith(".kt") }
+            .use { paths -> paths.toList() }
+
+        val warnedApis = listOf(
+            "WriteIntentReadAction",
+            "FilenameIndex.getVirtualFilesByName(project, name, projectScope)",
+        )
+        val offenders = productionSources.flatMap { path ->
+            val source = Files.readString(path)
+            warnedApis.filter(source::contains).map { api -> "$path uses $api" }
+        }
+
+        assertTrue(
+            offenders.isEmpty(),
+            "Production code should avoid IntelliJ APIs reported by verifier warnings: ${offenders.joinToString()}",
+        )
+    }
 }

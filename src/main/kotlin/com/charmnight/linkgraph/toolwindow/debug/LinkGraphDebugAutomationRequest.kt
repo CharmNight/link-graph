@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.toolwindow.debug
 
+import com.charmnight.linkgraph.services.LinkGraphDebugEnvironment
+
 /**
  * debug-only 工具窗口自动化请求。
  * 默认发布路径不会创建或消费这份配置。
@@ -31,11 +33,11 @@ data class LinkGraphDebugAutomationRequest(
         fun fromEnvironment(): LinkGraphDebugAutomationRequest {
             return LinkGraphDebugAutomationRequest(
                 autoOpenToolWindow = debugFlag(DEBUG_AUTOOPEN_ENV),
-                autoloadGraphMode = System.getenv(DEBUG_AUTOLOAD_GRAPH_ENV)
+                autoloadGraphMode = LinkGraphDebugEnvironment.value(DEBUG_AUTOLOAD_GRAPH_ENV)
                     ?.trim()
                     ?.lowercase()
                     ?.takeIf(String::isNotBlank),
-                autoloadMethodSignature = System.getenv(DEBUG_AUTOLOAD_METHOD_SIGNATURE_ENV)
+                autoloadMethodSignature = LinkGraphDebugEnvironment.value(DEBUG_AUTOLOAD_METHOD_SIGNATURE_ENV)
                     ?.trim()
                     ?.takeIf(String::isNotBlank),
                 autoRequestPlan = debugFlag(DEBUG_AUTO_REQUEST_PLAN_ENV),
@@ -44,7 +46,7 @@ data class LinkGraphDebugAutomationRequest(
         }
 
         private fun debugFlag(envName: String): Boolean {
-            return System.getenv(envName)?.trim()?.equals("true", ignoreCase = true) == true
+            return LinkGraphDebugEnvironment.isEnabled(envName)
         }
     }
 }

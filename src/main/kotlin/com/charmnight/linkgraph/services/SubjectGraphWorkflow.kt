@@ -23,7 +23,6 @@ import com.charmnight.linkgraph.ui.OperationFeedbackLevel
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
-import com.intellij.openapi.application.WriteIntentReadAction
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.progress.ProcessCanceledException
@@ -64,6 +63,8 @@ internal class SubjectGraphWorkflow(
     private val onInvalidateAuditRequests: () -> Unit,
     /** 图诊断日志。 */
     private val onLogGraphDiagnostics: (String, GraphDocument?) -> Unit,
+    /** 运行时渲染链路 trace。 */
+    private val runtimeTrace: ((() -> String) -> Unit)? = null,
     /** 日志记录器。 */
     private val logger: com.intellij.openapi.diagnostic.Logger,
 ) {
@@ -647,20 +648,52 @@ internal class SubjectGraphWorkflow(
      * 在读动作里执行语义分析并生成投影结果。
      */
     private fun computeAnalysisResultInReadAction(handle: SubjectHandle): AnalysisExecutionResult? {
+        val totalStartedAt = System.nanoTime()
         val effectiveDisplayMode = effectiveAnalysisDisplayModeFor(
             subject = handle,
             requestedDisplayMode = requestedAnalysisDisplayMode,
         )
+        val analysisStartedAt = System.nanoTime()
         val analysisResult = semanticAnalyzerProvider().analyze(
             handle = handle,
             capturePolicy = SemanticCapturePolicy(),
             budgetPolicy = currentProjectionSettings.toTraversalBudgetPolicy(),
         )
+        traceStage(
+            stage = "analysis.semanticAnalyzer",
+            startedAtNanos = analysisStartedAt,
+        ) {
+            listOf(
+                "subject=${handle.displayName}",
+                "units=${analysisResult.semanticUnits.size}",
+                "relations=${analysisResult.relations.size}",
+                "anchors=${analysisResult.anchors.size}",
+                "diagnostics=${analysisResult.diagnostics.size}",
+            )
+        }
+        val outcomeStartedAt = System.nanoTime()
         val outcome = analysisOutcomeFactoryProvider().create(
             analysisResult = analysisResult,
             displayMode = effectiveDisplayMode,
             projectionPolicy = currentProjectionSettings.toProjectionPolicy(),
         )
+        traceStage(
+            stage = "analysis.outcomeFactory",
+            startedAtNanos = outcomeStartedAt,
+        ) {
+            outcomeSummaryDetails(outcome)
+        }
+        traceStage(
+            stage = "analysis.total",
+            startedAtNanos = totalStartedAt,
+        ) {
+            listOf(
+                "subject=${handle.displayName}",
+                "mode=${outcome.displayMode}",
+                "visible=${LinkGraphRenderTrace.graphSummary(outcome.visibleGraph)}",
+                "full=${LinkGraphRenderTrace.graphSummary(outcome.fullGraph)}",
+            )
+        }
         return AnalysisExecutionResult(
             analysisResult = analysisResult,
             outcome = outcome,
@@ -681,12 +714,23 @@ internal class SubjectGraphWorkflow(
             subject = analysisResult.subject,
             requestedDisplayMode = requestedAnalysisDisplayMode,
         )
+        val outcomeStartedAt = System.nanoTime()
         val outcome = prebuiltOutcome?.takeIf { it.displayMode == effectiveDisplayMode }
             ?: analysisOutcomeFactoryProvider().create(
                 analysisResult = analysisResult,
                 displayMode = effectiveDisplayMode,
                 projectionPolicy = currentProjectionSettings.toProjectionPolicy(),
             )
+        traceStage(
+            stage = if (prebuiltOutcome?.displayMode == effectiveDisplayMode) {
+                "analysis.outcomeReuse"
+            } else {
+                "analysis.outcomeFactory.apply"
+            },
+            startedAtNanos = outcomeStartedAt,
+        ) {
+            outcomeSummaryDetails(outcome)
+        }
         lastAnalyzedSubjectHandle = analysisResult.subject
         lastSemanticAnalysisResult = analysisResult
         requestedAnalysisDisplayMode = outcome.displayMode
@@ -695,12 +739,46 @@ internal class SubjectGraphWorkflow(
             onLogGraphDiagnostics("semantic:$reason:full", outcome.fullGraph)
         }
         onInvalidateAuditRequests()
+        val mutateStartedAt = System.nanoTime()
         session.mutate {
             loadAnalysisOutcome(outcome, source)
+        }
+        traceStage(
+            stage = "analysis.applyState",
+            startedAtNanos = mutateStartedAt,
+        ) {
+            outcomeSummaryDetails(outcome)
         }
         debugLazy(logger.isDebugEnabled, logger::debug) {
             "统一语义分析加载完成[$reason]: source=$source, mode=${outcome.displayMode}, displayName=${outcome.displayName}, visibleNodes=${outcome.visibleGraph.nodes.size}, fullNodes=${outcome.fullGraph.nodes.size}"
         }
+    }
+
+    private fun traceStage(
+        stage: String,
+        startedAtNanos: Long,
+        details: () -> List<String>,
+    ) {
+        val trace = runtimeTrace ?: return
+        LinkGraphRenderTrace.stage(
+            enabled = true,
+            log = { message -> trace { message } },
+            stage = stage,
+            startedAtNanos = startedAtNanos,
+            details = details,
+        )
+    }
+
+    private fun outcomeSummaryDetails(outcome: AnalysisOutcome): List<String> {
+        return listOf(
+            "mode=${outcome.displayMode}",
+            "visible=${LinkGraphRenderTrace.graphSummary(outcome.visibleGraph)}",
+            "full=${LinkGraphRenderTrace.graphSummary(outcome.fullGraph)}",
+            "factVisible=${LinkGraphRenderTrace.graphSummary(outcome.factGraphView?.visibleGraph)}",
+            "flowVisible=${LinkGraphRenderTrace.graphSummary(outcome.flowchartView?.visibleGraph)}",
+            "resourceVisible=${LinkGraphRenderTrace.graphSummary(outcome.resourceRelationView?.visibleGraph)}",
+            "truncated=${outcome.projectionStats.truncated}",
+        )
     }
 
     /**
@@ -935,7 +1013,7 @@ internal class SubjectGraphWorkflow(
     private fun <T> computeOnIdeThread(action: () -> T): T {
         val application = ApplicationManager.getApplication()
         if (application.isDispatchThread) {
-            return WriteIntentReadAction.compute<T, RuntimeException>(action)
+            return action()
         }
         val completed = AtomicBoolean(false)
         val result = AtomicReference<T>()
@@ -943,7 +1021,7 @@ internal class SubjectGraphWorkflow(
         application.invokeAndWait(
             {
                 try {
-                    result.set(WriteIntentReadAction.compute<T, RuntimeException>(action))
+                    result.set(action())
                     completed.set(true)
                 } catch (throwable: Throwable) {
                     error.set(throwable)

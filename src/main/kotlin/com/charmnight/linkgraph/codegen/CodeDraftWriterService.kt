@@ -2,7 +2,6 @@ package com.charmnight.linkgraph.codegen
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.application.WriteIntentReadAction
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
@@ -187,7 +186,7 @@ class CodeDraftWriterService(
     private fun <T> computeOnIdeThread(action: () -> T): T {
         val application = ApplicationManager.getApplication()
         if (application.isDispatchThread) {
-            return WriteIntentReadAction.compute<T, RuntimeException>(action)
+            return action()
         }
         val completed = AtomicBoolean(false)
         val result = AtomicReference<T>()
@@ -195,7 +194,7 @@ class CodeDraftWriterService(
         application.invokeAndWait(
             {
                 try {
-                    result.set(WriteIntentReadAction.compute<T, RuntimeException>(action))
+                    result.set(action())
                     completed.set(true)
                 } catch (throwable: Throwable) {
                     error.set(throwable)

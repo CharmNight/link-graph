@@ -14,7 +14,7 @@ import { canNavigateToSource } from "../../sourceNavigation";
 import type { FactGraphViewDocument } from "../../types";
 import { DraftCompareSummary } from "../../components/DraftCompareSummary";
 import type { ViewStageProps } from "../viewStageProps";
-import { layoutFactGraphView } from "./factGraphLayout";
+import { factGraphLayoutSizeSignature, layoutFactGraphView } from "./factGraphLayout";
 import { buildFactGraphEdges, buildFactGraphNodes, FACT_GRAPH_NODE_TYPES } from "./factGraphNodes";
 
 interface FactGraphViewProps extends ViewStageProps {
@@ -71,6 +71,7 @@ export function FactGraphView({
     collapsedNodeIds,
     nodeSizeRegistry,
     layout: layoutFactGraphView,
+    layoutSizeSignature: factGraphLayoutSizeSignature,
     debugLabel: "fact",
   });
 

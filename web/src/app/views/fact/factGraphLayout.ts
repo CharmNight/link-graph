@@ -1,8 +1,15 @@
 import type { LayoutOptions } from "elkjs/lib/elk-api";
-import { executeElkLayout, resolveMeasuredNodeSize } from "../../reactflow/elkGraph";
-import type { MeasuredLayoutRequest } from "../../reactflow/useMeasuredLayout";
+import { measureDuration, measureStart, traceLinkGraph } from "../../debug";
+import type { NodeMeasuredSize } from "../../graph/nodeSizeRegistry";
+import {
+  executeElkLayout,
+  resolveMeasuredNodeSize,
+  type ElkEdgeDefinition,
+  type ElkNodeDefinition,
+} from "../../reactflow/elkGraph";
+import type { LayoutSizeSignatureResolver, MeasuredLayoutRequest } from "../../reactflow/useMeasuredLayout";
 
-const FACT_GRAPH_LAYOUT_OPTIONS: LayoutOptions = {
+export const FACT_GRAPH_LAYOUT_OPTIONS: LayoutOptions = {
   "elk.algorithm": "layered",
   "org.eclipse.elk.direction": "RIGHT",
   "org.eclipse.elk.partitioning.activate": "true",
@@ -11,18 +18,31 @@ const FACT_GRAPH_LAYOUT_OPTIONS: LayoutOptions = {
   "org.eclipse.elk.layered.spacing.nodeNodeBetweenLayers": "176",
   "org.eclipse.elk.layered.spacing.edgeNodeBetweenLayers": "92",
   "org.eclipse.elk.spacing.nodeNode": "88",
-  "org.eclipse.elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
-  "org.eclipse.elk.layered.crossingMinimization.forceNodeModelOrder": "true",
 };
 
 type FactDirection = "UPSTREAM" | "CURRENT" | "DOWNSTREAM";
 
 const CURRENT_FACT_NODE_TYPES = new Set(["FLOW_SCOPE", "FLOW_ACTION", "MERGE", "TERMINAL"]);
+const EMPTY_SIZE_SNAPSHOT = new Map<string, NodeMeasuredSize>();
 const PARTITION_INDEX: Record<FactDirection, number> = {
   UPSTREAM: 0,
   CURRENT: 1,
   DOWNSTREAM: 2,
 };
+
+interface FactElkOptionExperimentRequest {
+  nodes: ElkNodeDefinition[];
+  edges: ElkEdgeDefinition[];
+  baseOptions: LayoutOptions;
+}
+
+function emptyDirectionCounts(): Record<FactDirection, number> {
+  return {
+    UPSTREAM: 0,
+    CURRENT: 0,
+    DOWNSTREAM: 0,
+  };
+}
 
 function buildOutgoing(edges: MeasuredLayoutRequest["edges"]) {
   const outgoing = new Map<string, string[]>();
@@ -105,38 +125,165 @@ function resolveFactDirection(
   return { direction: "CURRENT", depth: 1 };
 }
 
+function resolveConservativeFactLayoutSize(
+  node: MeasuredLayoutRequest["nodes"][number],
+  sizeSnapshot: ReadonlyMap<string, NodeMeasuredSize>,
+): NodeMeasuredSize {
+  const fallback = resolveMeasuredNodeSize(node, EMPTY_SIZE_SNAPSHOT, "FACT_GRAPH");
+  const measured = sizeSnapshot.get(node.id);
+  return {
+    width: Math.max(measured?.width ?? fallback.width, fallback.width),
+    height: Math.max(measured?.height ?? fallback.height, fallback.height),
+  };
+}
+
+export const factGraphLayoutSizeSignature: LayoutSizeSignatureResolver = (nodes, sizeSnapshot) =>
+  nodes
+    .map((node) => {
+      const size = resolveConservativeFactLayoutSize(node, sizeSnapshot);
+      return `${node.id}:${size.width}x${size.height}`;
+    })
+    .join("::");
+
+function omitLayoutOptions(
+  options: LayoutOptions,
+  keys: string[],
+): LayoutOptions {
+  const nextOptions = { ...options };
+  keys.forEach((key) => {
+    delete nextOptions[key];
+  });
+  return nextOptions;
+}
+
+function factElkExperimentVariants(baseOptions: LayoutOptions): Array<{ variant: string; layoutOptions: LayoutOptions }> {
+  return [
+    {
+      variant: "polyline-routing",
+      layoutOptions: {
+        ...baseOptions,
+        "org.eclipse.elk.edgeRouting": "POLYLINE",
+      },
+    },
+    {
+      variant: "no-forced-model-order",
+      layoutOptions: omitLayoutOptions(baseOptions, [
+        "org.eclipse.elk.layered.crossingMinimization.forceNodeModelOrder",
+      ]),
+    },
+    {
+      variant: "no-model-order",
+      layoutOptions: omitLayoutOptions(baseOptions, [
+        "org.eclipse.elk.layered.considerModelOrder.strategy",
+        "org.eclipse.elk.layered.crossingMinimization.forceNodeModelOrder",
+      ]),
+    },
+    {
+      variant: "no-partitioning",
+      layoutOptions: {
+        ...baseOptions,
+        "org.eclipse.elk.partitioning.activate": "false",
+      },
+    },
+    {
+      variant: "simple-node-placement",
+      layoutOptions: {
+        ...baseOptions,
+        "org.eclipse.elk.layered.nodePlacement.strategy": "SIMPLE",
+      },
+    },
+  ];
+}
+
+export async function runFactElkOptionExperiments({
+  nodes,
+  edges,
+  baseOptions,
+}: FactElkOptionExperimentRequest): Promise<void> {
+  for (const experiment of factElkExperimentVariants(baseOptions)) {
+    const startedAt = measureStart();
+    try {
+      const result = await executeElkLayout({
+        mode: "FACT_GRAPH",
+        layoutOptions: experiment.layoutOptions,
+        nodes,
+        edges,
+      });
+      traceLinkGraph("factGraphLayout.elkOptionExperiment", {
+        variant: experiment.variant,
+        nodeCount: nodes.length,
+        edgeCount: edges.length,
+        routedEdgeCount: result.edges.filter((edge) => edge.route).length,
+        durationMs: measureDuration(startedAt),
+      });
+    } catch (error) {
+      traceLinkGraph("factGraphLayout.elkOptionExperiment.failed", {
+        variant: experiment.variant,
+        nodeCount: nodes.length,
+        edgeCount: edges.length,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        durationMs: measureDuration(startedAt),
+      });
+    }
+  }
+}
+
 export async function layoutFactGraphView({
   nodes,
   edges,
   anchorNodeId,
   sizeSnapshot,
 }: MeasuredLayoutRequest) {
+  const startedAt = measureStart();
   const anchorId = resolveAnchorNodeId(nodes, anchorNodeId);
   if (!anchorId) {
     return { nodes, edges };
   }
+  const adjacencyStartedAt = measureStart();
   const outgoing = buildOutgoing(edges);
   const incoming = buildIncoming(edges);
+  const adjacencyDurationMs = measureDuration(adjacencyStartedAt);
+  const traversalStartedAt = measureStart();
   const upstreamDistances = bfs(anchorId, incoming);
   const downstreamDistances = bfs(anchorId, outgoing);
+  const traversalDurationMs = measureDuration(traversalStartedAt);
 
+  const definitionStartedAt = measureStart();
+  const directionCounts = emptyDirectionCounts();
+  const layoutNodes = nodes.map((node) => {
+    const direction = resolveFactDirection(node, anchorId, upstreamDistances, downstreamDistances);
+    directionCounts[direction.direction] += 1;
+    return {
+      node,
+      ...resolveMeasuredNodeSize(node, sizeSnapshot, "FACT_GRAPH"),
+      metadata: {
+        "layout.direction": direction.direction,
+        "layout.levelLabel": factDirectionLabel(direction.direction, direction.depth),
+      },
+      layoutOptions: {
+        "org.eclipse.elk.partitioning.partition": String(PARTITION_INDEX[direction.direction]),
+      },
+    };
+  });
+  const layoutEdges = edges.map((edge) => ({ edge }));
+  const definitionDurationMs = measureDuration(definitionStartedAt);
+  traceLinkGraph("factGraphLayout.prepared", {
+    nodeCount: nodes.length,
+    edgeCount: edges.length,
+    anchorNodeId: anchorId,
+    upstreamReachableCount: upstreamDistances.size,
+    downstreamReachableCount: downstreamDistances.size,
+    directionCounts,
+    measuredSizeCount: sizeSnapshot.size,
+    adjacencyDurationMs,
+    traversalDurationMs,
+    definitionDurationMs,
+    totalPreElkDurationMs: measureDuration(startedAt),
+  });
   return executeElkLayout({
     mode: "FACT_GRAPH",
     layoutOptions: FACT_GRAPH_LAYOUT_OPTIONS,
-    nodes: nodes.map((node) => {
-      const direction = resolveFactDirection(node, anchorId, upstreamDistances, downstreamDistances);
-      return {
-        node,
-        ...resolveMeasuredNodeSize(node, sizeSnapshot, "FACT_GRAPH"),
-        metadata: {
-          "layout.direction": direction.direction,
-          "layout.levelLabel": factDirectionLabel(direction.direction, direction.depth),
-        },
-        layoutOptions: {
-          "org.eclipse.elk.partitioning.partition": String(PARTITION_INDEX[direction.direction]),
-        },
-      };
-    }),
-    edges: edges.map((edge) => ({ edge })),
+    nodes: layoutNodes,
+    edges: layoutEdges,
   });
 }
