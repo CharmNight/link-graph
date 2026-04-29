@@ -36,7 +36,7 @@ describe("createElkWorkerFactory", () => {
     const worker = factory?.();
 
     expect(worker).toBeInstanceOf(FakeWorker);
-    expect((worker as InstanceType<typeof FakeWorker>).url).toBe("blob:elk-worker");
+    expect((worker as unknown as InstanceType<typeof FakeWorker>).url).toBe("blob:elk-worker");
     expect(createdBlobs).toEqual([
       {
         parts: ["self.onmessage = () => undefined;"],
@@ -53,6 +53,7 @@ describe("createElkWorkerFactory", () => {
       Worker: undefined,
       URL: {
         createObjectURL: () => "blob:elk-worker",
+        revokeObjectURL: vi.fn(),
       },
     });
 

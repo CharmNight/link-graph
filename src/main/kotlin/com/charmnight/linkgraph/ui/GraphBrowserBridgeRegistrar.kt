@@ -19,7 +19,7 @@ internal class GraphBrowserBridgeRegistrar(
     private val dispatchArtifactSlice: (List<String>) -> Unit,
     private val dispatchBridgeAsync: (String, () -> GraphEditorMessage) -> Unit,
     private val shouldLogFrontendTrace: (String) -> Boolean,
-    private val runtimeTrace: (String) -> Unit,
+    private val runtimeTrace: ((String) -> Unit)?,
 ) {
     private val importMermaidQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val exportMermaidQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
@@ -311,7 +311,7 @@ internal class GraphBrowserBridgeRegistrar(
         }
         debugTraceQuery.addHandler { payload ->
             if (shouldLogFrontendTrace(payload)) {
-                runtimeTrace("前端 trace: $payload")
+                runtimeTrace?.invoke("前端 trace: $payload")
                 debugLazy(logger.isDebugEnabled, logger::debug) { "前端 trace: $payload" }
             }
             JBCefJSQuery.Response("ok")

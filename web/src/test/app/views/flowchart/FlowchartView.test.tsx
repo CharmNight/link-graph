@@ -3,7 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FlowchartView } from "../../../../app/views/flowchart/FlowchartView";
-import type { DraftCompareProjection, FlowchartViewDocument } from "../../../../app/types";
+import type { DraftCompareProjection, FlowchartViewDocument, LinkGraphEdge, LinkGraphNode } from "../../../../app/types";
 import { defaultNodeSizeRegistry } from "../../../../app/graph/nodeSizeRegistry";
 
 const { useMeasuredLayoutMock } = vi.hoisted(() => ({
@@ -420,12 +420,12 @@ describe("FlowchartView", () => {
     );
 
     const measuredLayoutArgs = useMeasuredLayoutMock.mock.calls.at(-1)?.[0];
-    expect(measuredLayoutArgs?.graph.nodes.map((node) => node.id)).toEqual([
+    expect(measuredLayoutArgs?.graph.nodes.map((node: LinkGraphNode) => node.id)).toEqual([
       "method:submit-order",
       "scope:guard",
     ]);
     expect(measuredLayoutArgs?.graph.nodes[0]?.title).toBe("OrderController.submit");
-    expect(measuredLayoutArgs?.graph.edges.map((edge) => edge.id)).toEqual(["control-entry"]);
+    expect(measuredLayoutArgs?.graph.edges.map((edge: LinkGraphEdge) => edge.id)).toEqual(["control-entry"]);
     expect(screen.getAllByText("OrderController.submit after draft").length).toBeGreaterThan(0);
   });
 

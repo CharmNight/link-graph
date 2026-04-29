@@ -99,4 +99,35 @@ class LinkGraphLoggingTest {
             "问答异步失败日志不应继续保留“审计”口径。",
         )
     }
+
+    @Test
+    fun renderTraceCallersUseOptionalTraceSinkSoDisabledTraceDoesNotBuildDetails() {
+        val projectRoot = Path.of(System.getProperty("user.dir"))
+        val runtimeSupport = Files.readString(
+            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectRuntimeSupport.kt"),
+        )
+        val projectService = Files.readString(
+            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectService.kt"),
+        )
+        val graphBrowserPanel = Files.readString(
+            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/ui/GraphBrowserPanel.kt"),
+        )
+
+        assertTrue(
+            runtimeSupport.contains("fun runtimeTraceSink(): (((() -> String) -> Unit))?"),
+            "Runtime support should expose a nullable lazy trace sink so callers can skip trace work entirely.",
+        )
+        assertFalse(
+            projectService.contains("runtimeTrace = { message -> runtimeSupport.runtimeTrace(message) }"),
+            "Project service should not pass always-present render trace lambdas that build details when trace is disabled.",
+        )
+        assertFalse(
+            projectService.contains("runtimeTrace = { message -> runtimeSupport.runtimeTrace { message } }"),
+            "Project service should not wrap string traces in an always-present lazy lambda.",
+        )
+        assertTrue(
+            graphBrowserPanel.contains("private val runtimeTraceSink: (((() -> String) -> Unit))?"),
+            "Browser panel should pass null trace sinks to transport helpers when trace is disabled.",
+        )
+    }
 }

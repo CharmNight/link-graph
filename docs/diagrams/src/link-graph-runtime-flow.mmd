@@ -1,0 +1,37 @@
+sequenceDiagram
+  autonumber
+  actor 用户
+  participant IDE as IntelliJ 编辑器 / 工具窗口
+  participant PS as LinkGraphProjectService
+  participant SA as SemanticAnalyzer + Provider
+  participant State as GraphEditorStateService
+  participant Bridge as JCEF Bridge / Transport 传输
+  participant UI as React 工作台
+  participant LLM as 可选 LLM Gateway
+  participant Code as 代码草稿 / 补丁服务
+
+  用户->>IDE: 打开工具窗口或触发编辑器动作
+  IDE->>PS: 加载当前编辑器上下文 / 添加主体
+  PS->>SA: 定位主体并分析项目事实
+  SA-->>PS: SemanticAnalysisResult / GraphDocument
+  PS->>State: 更新语义图 / 工作区图状态
+  State-->>Bridge: 渲染 Bootstrap 或增量载荷
+  Bridge-->>UI: 执行 JavaScript 更新
+  UI-->>用户: 渲染事实图、流程图、资源关系视图
+
+  用户->>UI: 发起审计 / 讲解 / 实现建议 / 草稿 / 导航
+  UI->>Bridge: window.linkGraphBridge 请求
+  Bridge->>PS: 通过 GraphEditorCommandRouter 路由命令
+
+  alt 本地或确定性工作流
+    PS->>State: 应用导入 / 导出 / 差异 / 同步 / 导航结果
+  else 可选远程 LLM 工作流
+    PS->>LLM: 请求结构化结果
+    LLM-->>PS: 远程结果或回退结果
+    PS->>Code: 校验草稿范围 / 补丁 / 写入预览
+    Code-->>PS: 候选变更或补丁结果
+  end
+
+  PS->>State: 持久化结果与请求状态
+  State-->>Bridge: 增量脚本
+  Bridge-->>UI: 更新图、面板、请求状态、草稿

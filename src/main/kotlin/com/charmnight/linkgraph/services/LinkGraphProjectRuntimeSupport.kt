@@ -44,6 +44,20 @@ internal class LinkGraphProjectRuntimeSupport(
         }
     }
 
+    fun runtimeTraceSink(): (((() -> String) -> Unit))? {
+        if (!runtimeTraceEnabled) {
+            return null
+        }
+        return { message -> logger.warn(message()) }
+    }
+
+    fun eagerRuntimeTraceSink(): ((String) -> Unit)? {
+        if (!runtimeTraceEnabled) {
+            return null
+        }
+        return { message -> logger.warn(message) }
+    }
+
     fun <T> computeOnIdeThread(action: () -> T): T {
         val application = ApplicationManager.getApplication()
         if (application.isDispatchThread) {

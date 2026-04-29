@@ -1,0 +1,98 @@
+flowchart LR
+  %% Link Graph 项目架构图源文件。公开文档只引用同目录上级的 SVG。
+
+  subgraph IDE["IntelliJ Platform / 宿主 IDE"]
+    Editor["编辑器与 PSI\n当前方法 / 资源上下文"]
+    Actions["插件动作与菜单\n打开 / 添加 / 导入 / 导出 / 设置"]
+    ToolWindow["LinkGraphToolWindowFactory\n工具窗口入口"]
+    Settings["设置页 + 应用级服务\nLLM 预设与远程配置"]
+  end
+
+  subgraph Backend["Kotlin 插件后端"]
+    ProjectService["LinkGraphProjectService\n项目级编排入口"]
+    Workflows["工作流服务\n分析 / 工作区 / 审计 / 实现建议 / 代码"]
+    CommandRouter["GraphEditorCommandRouter\n前端命令路由"]
+    StateService["GraphEditorStateService\n后端真值状态"]
+    Renderers["GraphEditorPageRenderer\nGraphEditorTransportSliceRenderer\n页面与 Transport 渲染"]
+    Dispatcher["GraphBrowserTransportDispatcher\nexecuteJavaScript 更新"]
+  end
+
+  subgraph Domain["图与分析领域层"]
+    Subject["SubjectLocator\n光标 / 代码 / 资源主体"]
+    Semantic["SemanticAnalyzer + Provider\nJava/Kotlin, MyBatis XML, SQL, YAML, Markdown"]
+    Outcome["AnalysisOutcomeFactory\n视图投影结果"]
+    Projectors["Fact / Flowchart / Resource Projector\n事实图 / 流程图 / 资源关系"]
+    GraphModel["共享图模型\nGraphDocument / Node / Edge / Patch / Diff"]
+    GraphOps["Mermaid / Diff / Sync / Navigation\n导入导出 / 差异 / 同步 / 源码导航"]
+  end
+
+  subgraph Agent["可选 LLM 与 Agent Runtime"]
+    Gateway["RoutingLlmGateway\n远程 Provider + 本地回退"]
+    Runtime["AgentRunCoordinator\nAgentRuntimeContext"]
+    Capability["Qa / Plan / Codegen Capability\n问答 / 实现建议 / 代码"]
+    Tools["Tool Facade\n图 / 草稿 / 代码 / 校验证据读取"]
+    ArtifactStore["ArtifactStore\nConfirmedIntent / Plan / CodeDraft"]
+  end
+
+  subgraph JCEF["JCEF 运行时边界"]
+    BrowserPanel["GraphBrowserPanel\nJBCefBrowser 容器"]
+    BridgeRegistrar["GraphBrowserBridgeRegistrar\nwindow.linkGraphBridge"]
+    Bridge["GraphEditorBridge\n消息入口"]
+  end
+
+  subgraph Frontend["React + Vite 工作台"]
+    Bootstrap["Bootstrap / Transport 消费"]
+    App["App.tsx 工作台外壳"]
+    Controllers["controllers\n命令 + 状态转换"]
+    Store["前端状态 Store"]
+    Views["views\n事实图 / 流程图 / 资源"]
+    ReactFlow["@xyflow/react + elkjs\n图画布 + 自动布局"]
+    Panels["components + workbench\n详情 / 审计 / 讲解 / 草稿 / 代码"]
+  end
+
+  Editor --> Actions
+  Actions --> ProjectService
+  Actions --> ToolWindow
+  ToolWindow --> BrowserPanel
+  Settings --> ProjectService
+
+  ProjectService --> Subject
+  ProjectService --> Workflows
+  Workflows --> Semantic
+  Semantic --> Outcome
+  Outcome --> Projectors
+  Projectors --> GraphModel
+  ProjectService --> GraphOps
+  GraphOps --> GraphModel
+  ProjectService --> StateService
+  StateService --> Renderers
+  Renderers --> Dispatcher
+
+  Workflows --> Gateway
+  Workflows --> Runtime
+  Runtime --> Capability
+  Capability --> Gateway
+  Capability --> Tools
+  Capability --> ArtifactStore
+  Tools --> StateService
+  Tools --> GraphModel
+  ArtifactStore --> Workflows
+
+  BrowserPanel --> BridgeRegistrar
+  BridgeRegistrar --> Bridge
+  Bridge --> CommandRouter
+  CommandRouter --> ProjectService
+  Dispatcher --> BrowserPanel
+  Dispatcher --> Bootstrap
+  Dispatcher --> Store
+
+  Bootstrap --> App
+  App --> Controllers
+  Controllers --> Store
+  Store --> Views
+  Views --> ReactFlow
+  Store --> Panels
+
+  App -. "用户命令" .-> BridgeRegistrar
+  BridgeRegistrar -. "JBCefJSQuery" .-> Bridge
+  Dispatcher -. "增量 JS" .-> Store

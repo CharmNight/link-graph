@@ -30,17 +30,23 @@ class GraphBrowserPanel private constructor(
         onFrontendReady = ::handleFrontendReady,
         onSnapshotAck = ::handleSnapshotAck,
     )
+    private val debugTracingEnabled: Boolean =
+        LinkGraphDebugEnvironment.isEnabled(DEBUG_TRACE_ENV)
+    private val runtimeTraceSink: (((() -> String) -> Unit))? =
+        if (debugTracingEnabled) {
+            { message -> logger.warn(message()) }
+        } else {
+            null
+        }
     private val pageRenderer = GraphEditorPageRenderer()
     private val sliceRenderer = GraphEditorTransportSliceRenderer(
         pageRenderer = pageRenderer,
-        runtimeTrace = { message -> runtimeTrace(message) },
+        runtimeTrace = runtimeTraceSink,
     )
     private val pendingTransportSnapshots = mutableMapOf<Long, com.charmnight.linkgraph.ui.GraphEditorStateSnapshot>()
     private val entryUrl: String = INLINE_ENTRY_URL
     private val frontendHtml: String = resolveFrontendHtml()
     private val browser: JBCefBrowser? = createBrowser()
-    private val debugTracingEnabled: Boolean =
-        LinkGraphDebugEnvironment.isEnabled(DEBUG_TRACE_ENV)
     private val interactionProbeEnabled: Boolean =
         debugTracingEnabled &&
             LinkGraphDebugEnvironment.isEnabled(DEBUG_INTERACTION_PROBE_ENV)
@@ -54,7 +60,11 @@ class GraphBrowserPanel private constructor(
             dispatchArtifactSlice = { artifactIds -> transportDispatcher.dispatchArtifactSlice(artifactIds) },
             dispatchBridgeAsync = ::dispatchBridgeAsync,
             shouldLogFrontendTrace = ::shouldLogFrontendTrace,
-            runtimeTrace = { message -> runtimeTrace { message } },
+            runtimeTrace = if (debugTracingEnabled) {
+                { message -> logger.warn(message) }
+            } else {
+                null
+            },
         )
     }
     private val transportDispatcher = GraphBrowserTransportDispatcher(
@@ -66,7 +76,7 @@ class GraphBrowserPanel private constructor(
         browserLoadedProvider = { browserLoaded },
         pendingSnapshotConsumer = { revision -> pendingTransportSnapshots.remove(revision) },
         lastDispatchedSnapshotUpdater = { snapshot -> lastDispatchedSnapshot = snapshot },
-        runtimeTrace = { message -> runtimeTrace(message) },
+        runtimeTrace = runtimeTraceSink,
     )
     private val browserLifecycle: GraphBrowserLifecycle? = browser?.let { currentBrowser ->
         GraphBrowserLifecycle(
