@@ -147,4 +147,43 @@ class AnalysisOutcomeFactoryTest {
         assertEquals(3, outcome.projectionStats.hiddenNodeCount)
         assertEquals(outcome.flowchartView?.summary?.hiddenEdgeCount, outcome.projectionStats.hiddenEdgeCount)
     }
+
+    @Test
+    fun emitsProjectionStageTraceWhenRuntimeTraceIsProvided() {
+        val traceMessages = mutableListOf<String>()
+        val result = SemanticAnalysisResult(
+            subject = ResourceSubjectHandle(
+                subjectId = "resource-doc:trace-flow",
+                sourcePath = "docs/trace-flow.md",
+                sourceRange = SourceRange(startOffset = 0, endOffset = 20, startLine = 1, endLine = 1),
+                displayName = "trace-flow.md",
+                kind = ResourceSubjectKind.MARKDOWN_PAGE,
+            ),
+            anchors = listOf(SemanticAnchor(id = "anchor-main", targetUnitId = "method:submit", label = "入口")),
+            semanticUnits = listOf(
+                MethodLikeUnit(
+                    id = "method:submit",
+                    title = "OrderService.submit",
+                    signature = "com.example.OrderService.submit():void",
+                ),
+            ),
+            relations = emptyList(),
+            diagnostics = emptyList(),
+            boundaries = emptyList(),
+            sourceMappings = emptyList(),
+        )
+
+        AnalysisOutcomeFactory(
+            runtimeTrace = { message -> traceMessages += message() },
+        ).create(
+            analysisResult = result,
+            displayMode = AnalysisDisplayMode.FACT_GRAPH,
+            projectionPolicy = ProjectionPolicy(),
+        )
+
+        assertTrue(traceMessages.any { it.contains("stage=analysis.outcome.factProjector") })
+        assertTrue(traceMessages.any { it.contains("stage=analysis.outcome.flowchartProjector") })
+        assertTrue(traceMessages.any { it.contains("stage=analysis.outcome.resourceRelationProjector") })
+        assertTrue(traceMessages.any { it.contains("stage=analysis.outcome.total") })
+    }
 }

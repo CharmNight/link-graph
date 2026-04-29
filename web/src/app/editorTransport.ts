@@ -1,4 +1,5 @@
 import type { LinkGraphIncrementalTransportEnvelope, LinkGraphSnapshotEnvelope } from "./types";
+import { measureDuration, measureStart, traceLinkGraph } from "./debug";
 
 type BootstrapListener = (envelope: LinkGraphSnapshotEnvelope) => void;
 type SnapshotAcknowledger = (revision: number) => void;
@@ -30,6 +31,7 @@ function normalizeEnvelope(detail: LinkGraphSnapshotEnvelope): LinkGraphSnapshot
 }
 
 function flushLatestEnvelope(forceDispatch = false): void {
+  const startedAt = measureStart();
   if (!frontendReady || !latestEnvelope) {
     return;
   }
@@ -39,7 +41,14 @@ function flushLatestEnvelope(forceDispatch = false): void {
   if (latestEnvelope.revision > lastDeliveredRevision) {
     lastDeliveredRevision = latestEnvelope.revision;
   }
+  const listenerCount = listeners.size;
   listeners.forEach((listener) => listener(latestEnvelope as LinkGraphSnapshotEnvelope));
+  traceLinkGraph("editorTransport.flushLatestEnvelope", {
+    revision: latestEnvelope.revision,
+    forceDispatch,
+    listenerCount,
+    durationMs: measureDuration(startedAt),
+  });
 }
 
 function handleBootstrapEnvelope(
@@ -127,18 +136,30 @@ function normalizeTransportEnvelope(
     if (!baseState) {
       return null;
     }
+    const startedAt = measureStart();
+    const baseArtifactCount = Object.keys(baseState.artifactContents ?? {}).length;
+    const incomingArtifactCount = Object.keys(detail.state.artifactContents ?? {}).length;
+    const clonedBaseState = structuredClone(baseState);
+    const state = {
+      ...clonedBaseState,
+      ...detail.state,
+      artifactContents: {
+        ...(baseState.artifactContents ?? {}),
+        ...(detail.state.artifactContents ?? {}),
+      },
+    };
+    traceLinkGraph("editorTransport.artifactSlice.merge", {
+      revision: detail.revision,
+      baseArtifactCount,
+      incomingArtifactCount,
+      mergedArtifactCount: Object.keys(state.artifactContents ?? {}).length,
+      durationMs: measureDuration(startedAt),
+    });
 
     return {
       sessionId: detail.sessionId,
       revision: detail.revision,
-      state: {
-        ...structuredClone(baseState),
-        ...detail.state,
-        artifactContents: {
-          ...(baseState.artifactContents ?? {}),
-          ...(detail.state.artifactContents ?? {}),
-        },
-      },
+      state,
       transportType: detail.type,
     };
   }

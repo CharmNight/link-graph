@@ -2303,6 +2303,8 @@ button {
 }
 
 .flowchart-node-card {
+  width: 100%;
+  min-width: 0;
   justify-items: center;
   align-content: center;
   text-align: center;
@@ -2311,6 +2313,8 @@ button {
 }
 
 .flowchart-node-card.kind-decision {
+  width: 74%;
+  min-width: 0;
   padding: 28px 24px;
 }
 
@@ -3312,9 +3316,10 @@ button {
 .flowchart-node-kind,
 .flowchart-node-title,
 .flowchart-node-detail {
+  min-width: 0;
   max-width: 100%;
-  overflow-wrap: break-word;
-  word-break: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .flowchart-node-title,

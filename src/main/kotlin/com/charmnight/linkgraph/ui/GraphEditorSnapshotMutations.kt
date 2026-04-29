@@ -113,6 +113,7 @@ internal fun GraphEditorStateSnapshot.withLoadedAnalysisOutcome(
     outcome: AnalysisOutcome,
     source: String,
     graphPatchApplyService: GraphPatchApplyService,
+    runtimeTrace: ((() -> String) -> Unit)? = null,
 ): GraphEditorStateSnapshot {
     val nextSemanticFactGraph = outcome.factGraphView?.fullGraph ?: outcome.fullGraph
     val nextWorkspaceBaseGraph = when (outcome.displayMode) {
@@ -131,6 +132,7 @@ internal fun GraphEditorStateSnapshot.withLoadedAnalysisOutcome(
         workspaceGraph = nextWorkspaceGraph,
         selectedNodeId = outcome.anchorNodeId,
         selectedMethodSignature = outcome.selectedMethodSignature,
+        runtimeTrace = runtimeTrace,
     )
     val nextScene = outcome.displayMode.toWorkspaceSceneId()
     val nextVisibleGraph = when (outcome.displayMode) {

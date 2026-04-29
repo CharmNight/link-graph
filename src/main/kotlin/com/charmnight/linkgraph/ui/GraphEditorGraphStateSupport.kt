@@ -8,6 +8,7 @@ import com.charmnight.linkgraph.sync.GraphPatchApplyService
 internal class GraphEditorGraphStateSupport(
     private val mutate: ((GraphEditorStateSnapshot) -> GraphEditorStateSnapshot) -> Unit,
     private val graphPatchApplyService: GraphPatchApplyService,
+    private val runtimeTrace: ((() -> String) -> Unit)? = null,
 ) {
     fun markFrontendLoaded(entryUrl: String) {
         mutate {
@@ -46,7 +47,14 @@ internal class GraphEditorGraphStateSupport(
         outcome: AnalysisOutcome,
         source: String,
     ) {
-        mutate { currentState -> currentState.withLoadedAnalysisOutcome(outcome, source, graphPatchApplyService) }
+        mutate { currentState ->
+            currentState.withLoadedAnalysisOutcome(
+                outcome = outcome,
+                source = source,
+                graphPatchApplyService = graphPatchApplyService,
+                runtimeTrace = runtimeTrace,
+            )
+        }
     }
 
     fun importMermaid(

@@ -302,6 +302,10 @@ afterEach(() => {
   vi.clearAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  delete window.linkGraphDebugTrace;
+  delete window.__linkGraphDebugEnabled;
+  delete window.__linkGraphTraceHistory;
+  delete window.__linkGraphLastTrace;
   resizeObserverCallback = null;
 });
 
@@ -793,5 +797,51 @@ describe("GraphFlowSurface", () => {
     fireEvent.click(screen.getByTestId("reactflow-connect-handled-edge"));
 
     expect(onCreateEdge).toHaveBeenCalledWith("method:anchor", "method:tail", "source-bottom", "target-top");
+  });
+
+  it("summarizes graph shape traces without sending every node and edge id through the bridge", () => {
+    installResizeObserverStub();
+    const traceSink = vi.fn();
+    window.linkGraphDebugTrace = traceSink;
+    const nodes = Array.from({ length: 4 }, (_, index) => ({
+      ...baseNode(`method:very-long-render-chain-node-${index}`),
+      position: { x: 120 + index * 240, y: 96 },
+    }));
+    const edges: LinkGraphEdge[] = nodes.slice(1).map((node, index) => ({
+      id: `edge:very-long-render-chain-edge-${index}`,
+      type: "CALL",
+      source: nodes[index]!.id,
+      target: node.id,
+    }));
+
+    renderSurface({
+      nodes,
+      edges,
+      flowNodes: nodes.map((node) => ({
+        id: node.id,
+        data: { label: node.title },
+        position: node.position ?? { x: 0, y: 0 },
+      })),
+      flowEdges: edges.map((edge) => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+      })),
+      anchorNodeId: nodes[0]!.id,
+    });
+
+    const graphEffectTrace = traceSink.mock.calls
+      .map(([payload]) => JSON.parse(String(payload)))
+      .find((trace) => trace.event === "graphFlowSurface.viewport.graphEffect");
+
+    expect(graphEffectTrace?.payload.graphShapeSignature).toBeUndefined();
+    expect(graphEffectTrace?.payload.graphShape).toEqual({
+      length: expect.any(Number),
+      hash: expect.any(String),
+    });
+    expect(JSON.stringify(graphEffectTrace)).not.toContain(
+      "method:very-long-render-chain-node-0|method:very-long-render-chain-node-1",
+    );
+    expect(JSON.stringify(graphEffectTrace)).not.toContain("edge:very-long-render-chain-edge-2");
   });
 });

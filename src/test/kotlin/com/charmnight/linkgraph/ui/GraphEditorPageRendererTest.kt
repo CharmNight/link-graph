@@ -982,6 +982,25 @@ class GraphEditorPageRendererTest {
     }
 
     @Test
+    fun debugBootstrapScriptEnablesEarlyFrontendTraceWithoutLoggingWholeSnapshotPayload() {
+        val renderer = GraphEditorPageRenderer()
+        val script = renderer.bootstrapScript(
+            sessionId = "session-1",
+            snapshot = testSnapshot(
+                visibleGraph = GraphDocument(),
+                workingGraph = GraphDocument(),
+                snapshotRevision = 5,
+            ),
+            debugTracingEnabled = true,
+        )
+
+        assertTrue(script.contains("window.__linkGraphDebugEnabled = true"))
+        assertTrue(script.contains("link-graph bootstrap start"))
+        assertTrue(script.contains("link-graph bootstrap dispatched"))
+        assertTrue(!script.contains("console.log(window.linkGraphBootstrap"))
+    }
+
+    @Test
     fun serializesNodePositionFromLayoutStateEvenWithoutUiMetadata() {
         val renderer = GraphEditorPageRenderer()
         val snapshot = testSnapshot(

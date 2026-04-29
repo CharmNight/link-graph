@@ -18,7 +18,7 @@ internal class ConfirmedDraftChangeSyncWorkflow(
     private val invalidateAuditRequests: () -> Unit,
     private val mutateEditorStateBatch: (GraphEditorStateMutationContext.() -> Unit) -> Unit,
     private val logger: Logger,
-    private val runtimeTrace: (String) -> Unit,
+    private val runtimeTrace: ((String) -> Unit)?,
 ) {
     fun confirm(changeId: String): DraftWorkbenchEntry? {
         val stateService = stateServiceProvider()
@@ -42,12 +42,12 @@ internal class ConfirmedDraftChangeSyncWorkflow(
                 debugLazy(logger.isDebugEnabled, logger::debug) {
                     "确认问答候选变更: ${GenerationDiagnostics.summarizeCandidateChange(confirmation.candidate)}"
                 }
-                runtimeTrace(
+                runtimeTrace?.invoke(
                     "运行时确认候选变更: ${GenerationDiagnostics.summarizeCandidateChange(confirmation.candidate)}, " +
                         "graphPatch=${GenerationDiagnostics.summarizeGraphPatch(confirmation.candidate.graphPatch)}, " +
                         "baseTargets=${GenerationDiagnostics.summarizeNodeStates(currentWorkingGraph(snapshot), confirmation.observedNodeIds)}",
                 )
-                runtimeTrace(
+                runtimeTrace?.invoke(
                     "运行时确认候选变更后图状态: changeId=${confirmation.candidate.changeId}, " +
                         "draftCount=${confirmation.draftState.draftChanges.size}, " +
                         "rebuiltTargets=${GenerationDiagnostics.summarizeNodeStates(confirmation.rebuiltGraph, confirmation.observedNodeIds)}",

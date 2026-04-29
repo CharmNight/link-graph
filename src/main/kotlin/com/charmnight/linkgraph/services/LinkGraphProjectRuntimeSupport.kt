@@ -6,7 +6,6 @@ import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.application.WriteIntentReadAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
@@ -22,8 +21,8 @@ internal class LinkGraphProjectRuntimeSupport(
     private val openSettingsOverrideProvider: () -> (() -> Unit)?,
     private val effectiveGenerationSettingsOverrideProvider: () -> LinkGraphSettingsState?,
 ) {
-    private val runtimeTraceEnabled: Boolean =
-        System.getenv("LINKGRAPH_DEBUG_TRACE")?.trim()?.equals("true", ignoreCase = true) == true
+    internal val runtimeTraceEnabled: Boolean =
+        LinkGraphDebugEnvironment.isEnabled("LINKGRAPH_DEBUG_TRACE")
 
     fun stateService(): GraphEditorStateService = project.getService(GraphEditorStateService::class.java)
 
@@ -45,10 +44,24 @@ internal class LinkGraphProjectRuntimeSupport(
         }
     }
 
+    fun runtimeTraceSink(): (((() -> String) -> Unit))? {
+        if (!runtimeTraceEnabled) {
+            return null
+        }
+        return { message -> logger.warn(message()) }
+    }
+
+    fun eagerRuntimeTraceSink(): ((String) -> Unit)? {
+        if (!runtimeTraceEnabled) {
+            return null
+        }
+        return { message -> logger.warn(message) }
+    }
+
     fun <T> computeOnIdeThread(action: () -> T): T {
         val application = ApplicationManager.getApplication()
         if (application.isDispatchThread) {
-            return WriteIntentReadAction.compute<T, RuntimeException>(action)
+            return action()
         }
 
         val completed = AtomicBoolean(false)
@@ -57,7 +70,7 @@ internal class LinkGraphProjectRuntimeSupport(
         application.invokeAndWait(
             {
                 try {
-                    result.set(WriteIntentReadAction.compute<T, RuntimeException>(action))
+                    result.set(action())
                     completed.set(true)
                 } catch (throwable: Throwable) {
                     error.set(throwable)

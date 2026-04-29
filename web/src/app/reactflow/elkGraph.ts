@@ -1,6 +1,6 @@
-import ELK from "elkjs/lib/elk.bundled.js";
 import { resolveFlowchartKind } from "../flowchartKind";
 import type { ElkEdgeSection, ElkExtendedEdge, ElkNode, LayoutOptions } from "elkjs/lib/elk-api";
+import { createElkLayoutEngine } from "./elkLayoutEngine";
 import {
   FLOWCHART_DECISION_MIN_HEIGHT,
   FLOWCHART_DECISION_WIDTH,
@@ -9,6 +9,7 @@ import {
   flowchartNodeCardWidth,
   nodeCardWidth,
 } from "../graphNodeSizing";
+import { measureDuration, measureStart, traceLinkGraph } from "../debug";
 import type { NodeMeasuredSize } from "../graph/nodeSizeRegistry";
 import type {
   AnalysisDisplayMode,
@@ -19,7 +20,7 @@ import type {
   LinkGraphNode,
 } from "../types";
 
-const elk = new ELK();
+const elk = createElkLayoutEngine();
 const DEFAULT_NODE_HEIGHT = 156;
 const DEFAULT_ORIGIN: GraphPosition = { x: 120, y: 96 };
 
@@ -139,6 +140,27 @@ function edgeRoute(
     : undefined;
 }
 
+function countPorts(nodes: ElkNodeDefinition[]): number {
+  return nodes.reduce((total, definition) => total + (definition.ports?.length ?? 0), 0);
+}
+
+function summarizeRouteComplexity(edges: LinkGraphEdge[]) {
+  return edges.reduce(
+    (summary, edge) => {
+      const sections = edge.route?.sections ?? [];
+      summary.edgeSectionCount += sections.length;
+      sections.forEach((section) => {
+        summary.bendPointCount += section.bendPoints?.length ?? 0;
+      });
+      return summary;
+    },
+    {
+      edgeSectionCount: 0,
+      bendPointCount: 0,
+    },
+  );
+}
+
 export async function executeElkLayout({
   mode,
   layoutOptions,
@@ -146,6 +168,7 @@ export async function executeElkLayout({
   edges,
   origin = DEFAULT_ORIGIN,
 }: ExecuteElkLayoutOptions): Promise<ExecutedElkLayoutResult> {
+  const startedAt = measureStart();
   const graph: ElkNode = {
     id: "root",
     layoutOptions,
@@ -168,14 +191,18 @@ export async function executeElkLayout({
       layoutOptions: definition.layoutOptions,
     })),
   };
+  const buildGraphDurationMs = measureDuration(startedAt);
 
+  const elkStartedAt = measureStart();
   const laidOutGraph = await elk.layout(graph);
+  const elkDurationMs = measureDuration(elkStartedAt);
+  const postProcessStartedAt = measureStart();
   const children = laidOutGraph.children ?? [];
   const childIndex = new Map(children.map((child) => [child.id, child]));
   const edgeIndex = new Map(((laidOutGraph.edges as ElkExtendedEdge[] | undefined) ?? []).map((edge) => [edge.id, edge]));
   const bounds = childBounds(children);
 
-  return {
+  const result = {
     nodes: nodes.map((definition, index) => {
       const laidOutChild = childIndex.get(definition.node.id);
       const fallbackX = origin.x + index * 40;
@@ -196,6 +223,22 @@ export async function executeElkLayout({
       route: edgeRoute(edgeIndex.get(definition.edge.id), bounds, origin),
     })),
   };
+  const routeComplexity = summarizeRouteComplexity(result.edges);
+  const postProcessDurationMs = measureDuration(postProcessStartedAt);
+  traceLinkGraph("elkLayout.complete", {
+    mode,
+    nodeCount: nodes.length,
+    edgeCount: edges.length,
+    portCount: countPorts(nodes),
+    childCount: children.length,
+    routedEdgeCount: result.edges.filter((edge) => edge.route).length,
+    ...routeComplexity,
+    buildGraphDurationMs,
+    elkDurationMs,
+    postProcessDurationMs,
+    totalDurationMs: measureDuration(startedAt),
+  });
+  return result;
 }
 
 export function resolveMeasuredNodeSize(

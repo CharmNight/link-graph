@@ -12,21 +12,55 @@ import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.view.FactGraphProjector
 import com.charmnight.linkgraph.ui.view.FlowchartProjector
 import com.charmnight.linkgraph.ui.view.ResourceRelationProjector
+import java.util.Locale
 
 class AnalysisOutcomeFactory(
     private val graphAssembler: GraphAssembler = GraphAssembler(),
     private val factGraphProjector: FactGraphProjector = FactGraphProjector(graphAssembler),
     private val flowchartProjector: FlowchartProjector = FlowchartProjector(graphAssembler),
     private val resourceRelationProjector: ResourceRelationProjector = ResourceRelationProjector(graphAssembler),
+    private val runtimeTrace: ((() -> String) -> Unit)? = null,
 ) {
     fun create(
         analysisResult: SemanticAnalysisResult,
         displayMode: AnalysisDisplayMode,
         projectionPolicy: ProjectionPolicy = ProjectionPolicy(),
     ): AnalysisOutcome {
+        val totalStartedAt = System.nanoTime()
+        val factStartedAt = System.nanoTime()
         val factGraphView = factGraphProjector.project(analysisResult, projectionPolicy)
+        traceStage(
+            stage = "analysis.outcome.factProjector",
+            startedAtNanos = factStartedAt,
+        ) {
+            listOf(
+                "visible=${graphSummary(factGraphView.visibleGraph)}",
+                "full=${graphSummary(factGraphView.fullGraph)}",
+            )
+        }
+        val flowStartedAt = System.nanoTime()
         val flowchartView = flowchartProjector.project(analysisResult, projectionPolicy)
+        traceStage(
+            stage = "analysis.outcome.flowchartProjector",
+            startedAtNanos = flowStartedAt,
+        ) {
+            listOf(
+                "visible=${graphSummary(flowchartView.visibleGraph)}",
+                "full=${graphSummary(flowchartView.fullGraph)}",
+                "truncated=${flowchartView.summary.truncated}",
+            )
+        }
+        val resourceStartedAt = System.nanoTime()
         val resourceRelationView = resourceRelationProjector.project(analysisResult, projectionPolicy)
+        traceStage(
+            stage = "analysis.outcome.resourceRelationProjector",
+            startedAtNanos = resourceStartedAt,
+        ) {
+            listOf(
+                "visible=${graphSummary(resourceRelationView.visibleGraph)}",
+                "full=${graphSummary(resourceRelationView.fullGraph)}",
+            )
+        }
         val (fullGraph, visibleGraph, anchorNodeId) = when (displayMode) {
             AnalysisDisplayMode.FACT_GRAPH -> Triple(
                 factGraphView.fullGraph,
@@ -57,7 +91,7 @@ class AnalysisOutcomeFactory(
             }
         }
         val primaryDiagnostic = selectPrimaryFeedbackDiagnostic(analysisResult.diagnostics)
-        return AnalysisOutcome(
+        val outcome = AnalysisOutcome(
             displayMode = displayMode,
             visibleGraph = visibleGraph,
             fullGraph = fullGraph,
@@ -77,6 +111,47 @@ class AnalysisOutcomeFactory(
             flowchartView = flowchartView,
             resourceRelationView = resourceRelationView,
         )
+        traceStage(
+            stage = "analysis.outcome.total",
+            startedAtNanos = totalStartedAt,
+        ) {
+            listOf(
+                "mode=${outcome.displayMode}",
+                "visible=${graphSummary(outcome.visibleGraph)}",
+                "full=${graphSummary(outcome.fullGraph)}",
+                "semanticUnits=${analysisResult.semanticUnits.size}",
+                "relations=${analysisResult.relations.size}",
+            )
+        }
+        return outcome
+    }
+
+    private fun traceStage(
+        stage: String,
+        startedAtNanos: Long,
+        details: () -> List<String>,
+    ) {
+        val trace = runtimeTrace ?: return
+        val durationMs = (System.nanoTime() - startedAtNanos).coerceAtLeast(0L) / 1_000_000.0
+        trace {
+            buildString {
+                append("渲染链路 trace: stage=")
+                append(stage)
+                append(", durationMs=")
+                append(String.format(Locale.ROOT, "%.2f", durationMs))
+                details().filter { it.isNotBlank() }.forEach { detail ->
+                    append(", ")
+                    append(detail)
+                }
+            }
+        }
+    }
+
+    private fun graphSummary(graph: GraphDocument?): String {
+        if (graph == null) {
+            return "nodes=0, edges=0"
+        }
+        return "nodes=${graph.nodes.size}, edges=${graph.edges.size}"
     }
 
     private fun resolveAnchoredMethodSignature(analysisResult: SemanticAnalysisResult): String? {

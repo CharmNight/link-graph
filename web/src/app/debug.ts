@@ -13,6 +13,9 @@ declare global {
 }
 
 const TRACE_HISTORY_LIMIT = 24;
+const NOISY_FRONTEND_TRACE_EVENTS = new Set([
+  "routedEdge.render",
+]);
 
 function nowValue(): number {
   return typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -80,6 +83,9 @@ export function summarizeBootstrapState(state: LinkGraphBootstrapState) {
 }
 
 export function traceLinkGraph(event: string, payload?: unknown): void {
+  if (NOISY_FRONTEND_TRACE_EVENTS.has(event)) {
+    return;
+  }
   const tracingEnabled = window.__linkGraphDebugEnabled === true || typeof window.linkGraphDebugTrace === "function";
   if (!tracingEnabled) {
     return;
@@ -125,4 +131,16 @@ export function traceLinkGraph(event: string, payload?: unknown): void {
     window.__linkGraphTraceBuffer = window.__linkGraphTraceBuffer ?? [];
     window.__linkGraphTraceBuffer.push(fallbackMessage);
   }
+}
+
+export function traceLinkGraphStartup(event: string, payload?: unknown): void {
+  traceLinkGraph(event, payload);
+  if (window.__linkGraphDebugEnabled !== true || typeof console === "undefined") {
+    return;
+  }
+  const lastTrace = window.__linkGraphLastTrace;
+  if (!lastTrace) {
+    return;
+  }
+  console.warn("link-graph startup trace", lastTrace);
 }

@@ -3,6 +3,7 @@ package com.charmnight.linkgraph.ui
 import com.charmnight.linkgraph.services.currentVisibleGraph
 import com.charmnight.linkgraph.services.currentWorkingGraph
 import com.charmnight.linkgraph.services.debugLazy
+import com.charmnight.linkgraph.services.LinkGraphDebugEnvironment
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
@@ -29,17 +30,26 @@ class GraphBrowserPanel private constructor(
         onFrontendReady = ::handleFrontendReady,
         onSnapshotAck = ::handleSnapshotAck,
     )
+    private val debugTracingEnabled: Boolean =
+        LinkGraphDebugEnvironment.isEnabled(DEBUG_TRACE_ENV)
+    private val runtimeTraceSink: (((() -> String) -> Unit))? =
+        if (debugTracingEnabled) {
+            { message -> logger.warn(message()) }
+        } else {
+            null
+        }
     private val pageRenderer = GraphEditorPageRenderer()
-    private val sliceRenderer = GraphEditorTransportSliceRenderer(pageRenderer)
+    private val sliceRenderer = GraphEditorTransportSliceRenderer(
+        pageRenderer = pageRenderer,
+        runtimeTrace = runtimeTraceSink,
+    )
     private val pendingTransportSnapshots = mutableMapOf<Long, com.charmnight.linkgraph.ui.GraphEditorStateSnapshot>()
     private val entryUrl: String = INLINE_ENTRY_URL
     private val frontendHtml: String = resolveFrontendHtml()
     private val browser: JBCefBrowser? = createBrowser()
-    private val debugTracingEnabled: Boolean =
-        System.getenv(DEBUG_TRACE_ENV)?.trim()?.equals("true", ignoreCase = true) == true
     private val interactionProbeEnabled: Boolean =
         debugTracingEnabled &&
-            System.getenv(DEBUG_INTERACTION_PROBE_ENV)?.trim()?.equals("true", ignoreCase = true) == true
+            LinkGraphDebugEnvironment.isEnabled(DEBUG_INTERACTION_PROBE_ENV)
     private val bridgeRegistrar: GraphBrowserBridgeRegistrar? = browser?.let { currentBrowser ->
         GraphBrowserBridgeRegistrar(
             browser = currentBrowser,
@@ -50,7 +60,11 @@ class GraphBrowserPanel private constructor(
             dispatchArtifactSlice = { artifactIds -> transportDispatcher.dispatchArtifactSlice(artifactIds) },
             dispatchBridgeAsync = ::dispatchBridgeAsync,
             shouldLogFrontendTrace = ::shouldLogFrontendTrace,
-            runtimeTrace = { message -> runtimeTrace { message } },
+            runtimeTrace = if (debugTracingEnabled) {
+                { message -> logger.warn(message) }
+            } else {
+                null
+            },
         )
     }
     private val transportDispatcher = GraphBrowserTransportDispatcher(
@@ -62,6 +76,7 @@ class GraphBrowserPanel private constructor(
         browserLoadedProvider = { browserLoaded },
         pendingSnapshotConsumer = { revision -> pendingTransportSnapshots.remove(revision) },
         lastDispatchedSnapshotUpdater = { snapshot -> lastDispatchedSnapshot = snapshot },
+        runtimeTrace = runtimeTraceSink,
     )
     private val browserLifecycle: GraphBrowserLifecycle? = browser?.let { currentBrowser ->
         GraphBrowserLifecycle(
@@ -97,6 +112,12 @@ class GraphBrowserPanel private constructor(
         bridgeRegistrar?.registerHandlers()
         browserLifecycle?.install()
         add(browser?.component ?: createFallbackView(entryUrl), BorderLayout.CENTER)
+        if (debugTracingEnabled) {
+            logger.warn(
+                "链路图 JCEF 初始化: debugTrace=$debugTracingEnabled, interactionProbe=$interactionProbeEnabled, " +
+                    "entryUrl=$entryUrl, frontendHtmlChars=${frontendHtml.length}, hasBrowser=${browser != null}",
+            )
+        }
         debugLazy(logger.isDebugEnabled, logger::debug) { "准备加载链路图前端入口: $entryUrl" }
         bridge.onFrontendLoaded(entryUrl)
         // 首次 loadHTML 时就内嵌 bootstrap，避免前端先渲染一版演示态再切到真实项目状态。
@@ -110,6 +131,7 @@ class GraphBrowserPanel private constructor(
             transportState.sessionId,
             initialSnapshot,
             artifactRefs = sliceRenderer.currentArtifactRefs(),
+            debugTracingEnabled = debugTracingEnabled,
         )
         browser?.loadHTML(initialHtml, entryUrl)
     }

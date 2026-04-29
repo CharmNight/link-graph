@@ -8,6 +8,8 @@ Link Graph 是一个 IntelliJ Platform 插件，不是独立桌面程序。后�
 
 `编辑器/工具窗口入口 -> 项目服务 -> 分析结果与图状态 -> JCEF bridge -> React 工作台`
 
+![Link Graph 架构图](diagrams/link-graph-architecture.svg)
+
 ## 总体分层
 
 - 入口层

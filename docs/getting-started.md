@@ -8,7 +8,7 @@
 
 - JDK 17
 - Node.js 与 npm
-- 与仓库目标平台兼容的 IntelliJ IDEA
+- IntelliJ IDEA 2023.3.4 或更高兼容版本；最低平台 build 由 `gradle.properties` 中的 `platformSinceBuild` 声明
 
 ## 第一次运行
 

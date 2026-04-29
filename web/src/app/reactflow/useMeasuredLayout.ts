@@ -18,12 +18,18 @@ export interface MeasuredLayoutRequest {
   reason: LayoutTriggerReason;
 }
 
+export type LayoutSizeSignatureResolver = (
+  nodes: LinkGraphNode[],
+  sizeSnapshot: ReadonlyMap<string, NodeMeasuredSize>,
+) => string;
+
 export interface UseMeasuredLayoutOptions {
   graph: LinkGraphDocument;
   anchorNodeId?: string | null;
   collapsedNodeIds?: string[];
   nodeSizeRegistry?: NodeSizeRegistry;
   layout: (request: MeasuredLayoutRequest) => Promise<{ nodes: LinkGraphNode[]; edges: LinkGraphEdge[] }>;
+  layoutSizeSignature?: LayoutSizeSignatureResolver;
   debugLabel?: string;
 }
 
@@ -286,6 +292,7 @@ export function useMeasuredLayout({
   collapsedNodeIds = [],
   nodeSizeRegistry = defaultNodeSizeRegistry,
   layout,
+  layoutSizeSignature = sizeSignature,
   debugLabel = "graph",
 }: UseMeasuredLayoutOptions): UseMeasuredLayoutResult {
   const [manualNonce, setManualNonce] = useState(0);
@@ -297,8 +304,8 @@ export function useMeasuredLayout({
     [collapsedNodeIds],
   );
   const nextSizeSignature = useMemo(
-    () => sizeSignature(graph.nodes, measuredSizes),
-    [graph.nodes, measuredSizes],
+    () => layoutSizeSignature(graph.nodes, measuredSizes),
+    [graph.nodes, layoutSizeSignature, measuredSizes],
   );
   const nextPositionSignature = useMemo(() => positionSignature(graph.nodes), [graph.nodes]);
   const [layoutState, setLayoutState] = useState<LayoutState>(() => ({

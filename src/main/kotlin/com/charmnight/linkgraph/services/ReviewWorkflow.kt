@@ -71,7 +71,7 @@ internal class ReviewWorkflow(
     },
     /** 运行时链路追踪是否开启。 */
     private val runtimeQaTraceEnabled: Boolean =
-        System.getenv("LINKGRAPH_DEBUG_TRACE")?.trim()?.equals("true", ignoreCase = true) == true,
+        LinkGraphDebugEnvironment.isEnabled("LINKGRAPH_DEBUG_TRACE"),
     /** 问答 capability 工厂。 */
     private val qaCapabilityFactory: (QaCapability.AuditExecutor) -> QaCapability = { auditExecutor ->
         QaCapability(auditExecutor = auditExecutor)

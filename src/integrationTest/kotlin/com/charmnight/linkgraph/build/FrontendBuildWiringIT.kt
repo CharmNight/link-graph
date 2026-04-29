@@ -20,7 +20,7 @@ class FrontendBuildWiringIT {
         assertTrue(scriptText.contains("val frontendPackResources by tasks.registering(Sync::class)"))
         assertTrue(scriptText.contains("dependsOn(frontendTest)"))
         assertTrue(scriptText.contains("named(\"prepareSandbox\")"))
-        assertTrue(scriptText.contains("mustRunAfter(frontendPackResources)"))
+        assertTrue(scriptText.contains("dependsOn(frontendPackResources)"))
         assertFalse(scriptText.contains("dependsOn(buildFrontend)"))
     }
 }

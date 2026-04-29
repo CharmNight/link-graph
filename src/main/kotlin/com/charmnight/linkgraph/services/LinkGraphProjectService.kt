@@ -142,7 +142,9 @@ class LinkGraphProjectService(
     }
     /** 默认的分析结果工厂实现。 */
     private val defaultAnalysisOutcomeFactory: AnalysisOutcomeFactory by lazy(LazyThreadSafetyMode.NONE) {
-        AnalysisOutcomeFactory()
+        AnalysisOutcomeFactory(
+            runtimeTrace = runtimeSupport.runtimeTraceSink(),
+        )
     }
     /** 当前生效的主题定位器。 */
     private val subjectLocator: SubjectLocator
@@ -205,7 +207,7 @@ class LinkGraphProjectService(
             invalidateAuditRequests = ::invalidateAuditRequests,
             mutateEditorStateBatch = { block -> mutateEditorStateBatch(block = block) },
             logger = logger,
-            runtimeTrace = { message -> runtimeSupport.runtimeTrace { message } },
+            runtimeTrace = runtimeSupport.eagerRuntimeTraceSink(),
         )
     }
     /** 调试图工厂。 */
@@ -215,6 +217,7 @@ class LinkGraphProjectService(
         ProjectEditorSession(
             stateService = runtimeSupport.stateService(),
             onBrowserSyncRequested = project.getService(GraphEditorSyncNotifier::class.java)::requestSync,
+            runtimeTrace = runtimeSupport.runtimeTraceSink(),
         )
     }
     /** 跨阶段共享的 runtime artifact store。 */
@@ -296,6 +299,7 @@ class LinkGraphProjectService(
             },
             onInvalidateAuditRequests = ::invalidateAuditRequests,
             onLogGraphDiagnostics = graphDiagnosticsLogger::log,
+            runtimeTrace = runtimeSupport.runtimeTraceSink(),
             logger = logger,
         )
     }

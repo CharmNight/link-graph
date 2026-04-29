@@ -12,6 +12,7 @@ import com.charmnight.linkgraph.model.GraphPatchOperation
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
+import com.charmnight.linkgraph.services.LinkGraphDebugEnvironment
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 import com.charmnight.linkgraph.workbench.CandidatePatchIntent
@@ -27,7 +28,7 @@ import com.intellij.openapi.diagnostic.Logger
 internal object RemoteGraphPatchResultParser {
     private val logger = Logger.getInstance(RemoteGraphPatchResultParser::class.java)
     private val traceEnabled: Boolean =
-        System.getenv("LINKGRAPH_DEBUG_TRACE")?.trim()?.equals("true", ignoreCase = true) == true
+        LinkGraphDebugEnvironment.isEnabled("LINKGRAPH_DEBUG_TRACE")
 
     /** 把远程响应解析为统一的补丁结果对象。 */
     fun parse(
