@@ -16,6 +16,7 @@ import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.AuditMessageRole
+import com.charmnight.linkgraph.workbench.QaMode
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -93,6 +94,10 @@ class QaRetryWorkflowTest : BasePlatformTestCase() {
 
         assertEquals(2, attemptCount)
         assertEquals("重试后成功返回问答结果。", snapshot.auditResult?.answer)
+        assertEquals(QaMode.AUTO, snapshot.auditResult?.requestedMode)
+        assertEquals(QaMode.ANSWER, snapshot.auditResult?.effectiveMode)
+        assertEquals(QaMode.AUTO, snapshot.auditRequestState.requestedMode)
+        assertEquals(QaMode.ANSWER, snapshot.auditRequestState.effectiveMode)
         assertNotNull(snapshot.auditResult?.auditSession)
         assertEquals(1, snapshot.auditResult?.auditSession?.messages?.count { it.role == AuditMessageRole.USER })
         assertEquals("这里为什么会走兜底分支？", snapshot.auditResult?.auditSession?.messages?.first { it.role == AuditMessageRole.USER }?.content)

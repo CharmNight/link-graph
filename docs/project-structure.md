@@ -39,6 +39,8 @@
   - 语义分析、事实构建与主体定位。
 - `model`
   - 共享图模型定义。
+- `workbench`
+  - 问答会话、草稿确认、风险决策、步骤投影和工作台布局偏好等领域类型与服务。
 - `mermaid`、`diff`、`sync`、`navigation`、`codegen`、`llm`、`investigation`、`settings`
   - 各自聚焦的领域能力模块。
 
@@ -55,7 +57,7 @@
 - `context`
   - 源码片段等上下文收集与去重支撑。
 
-`investigation` 用于风险线程继续取证相关的适配和归一化逻辑。
+`investigation` 用于风险线程继续取证的完整链路，包括领域模型、流水线编排、证据闸门、取证目标规划、结果展示、结果适配和 resolver 实现。
 
 ## 前端结构
 

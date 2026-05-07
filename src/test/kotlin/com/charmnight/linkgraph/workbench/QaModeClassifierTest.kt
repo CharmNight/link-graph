@@ -55,6 +55,18 @@ class QaModeClassifierTest {
     }
 
     @Test
+    fun autoKeepsUnmatchedQuestionsAsAuto() {
+        assertEquals(
+            QaMode.AUTO,
+            classifier.classify(
+                requestedMode = QaMode.AUTO,
+                question = "检查这个方法",
+                sourceThreadId = null,
+            ),
+        )
+    }
+
+    @Test
     fun sourceThreadForcesInvestigateWhenAuto() {
         assertEquals(
             QaMode.INVESTIGATE,

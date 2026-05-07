@@ -62,7 +62,7 @@ class InvestigationGraphPatchAdapter {
             source = LlmResultSource.MOCK,
             question = request.question,
             answer = turnResult.summary,
-            promptPreview = "deterministic-investigation",
+            promptPreview = "",
             findings = findings,
             investigationThreads = listOf(threadUpdate),
             warnings = if (turnResult.status == InvestigationStatus.NEEDS_MORE_EVIDENCE) {

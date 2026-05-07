@@ -41,7 +41,7 @@ class QaModeClassifier {
             answerKeywords.any(normalized::contains) -> QaMode.ANSWER
             reviewKeywords.any(normalized::contains) -> QaMode.REVIEW
             changeKeywords.any(normalized::contains) -> QaMode.CHANGE
-            else -> QaMode.REVIEW
+            else -> QaMode.AUTO
         }
     }
 }

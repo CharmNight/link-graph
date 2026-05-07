@@ -48,6 +48,28 @@ class WorkflowArchitectureRegressionTest {
     }
 
     @Test
+    fun reviewWorkflowUsesQaModeContextInsteadOfNakedEffectiveModePlumbing() {
+        val reviewWorkflow = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/services/ReviewWorkflow.kt"))
+
+        assertFalse(
+            reviewWorkflow.contains("effectiveMode(request)"),
+            "ReviewWorkflow 必须把 ReplayableQaRequest 分类成一次 QaModeContext，不能重复调用 effectiveMode(request)。",
+        )
+        assertFalse(
+            Regex("""private fun \w+\([^)]*effectiveMode: QaMode""").containsMatchIn(reviewWorkflow),
+            "ReviewWorkflow 私有辅助方法应接收 QaModeContext，而不是裸 effectiveMode 参数。",
+        )
+        assertFalse(
+            reviewWorkflow.contains("private fun normalizeAuditResult("),
+            "问答结果归一化应放在 AuditResultNormalizer 中。",
+        )
+        assertFalse(
+            reviewWorkflow.contains("private fun applyModeBoundary("),
+            "模式边界逻辑应放在 AuditResultNormalizer 中。",
+        )
+    }
+
+    @Test
     fun graphEditorCommandRouterDoesNotUseServiceLocatorForwarding() {
         val source = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/services/GraphEditorCommandRouter.kt"))
 

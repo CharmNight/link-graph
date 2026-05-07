@@ -26,9 +26,12 @@ import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.AuditConversationMessage
 import com.charmnight.linkgraph.workbench.AuditConversationSession
 import com.charmnight.linkgraph.workbench.AuditMessageRole
+import com.charmnight.linkgraph.workbench.CandidateDraftChange
+import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 import com.charmnight.linkgraph.workbench.InvestigationThread
 import com.charmnight.linkgraph.workbench.InvestigationThreadStatus
 import com.charmnight.linkgraph.workbench.InvestigationTurnOutcomeStatus
+import com.charmnight.linkgraph.workbench.QaMode
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -110,6 +113,119 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         assertTrue(artifactTitles.contains("图摘要"))
         assertTrue(artifactTitles.contains("问答结论"))
         assertEquals("问答结论", artifactTitles.lastOrNull())
+    }
+
+    fun testRequestAuditAsyncAnswerModeReappliesBoundaryAfterConversationMerge() {
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        stateService.loadGraph(sampleGraph(), "currentMethod")
+        stateService.asyncRequests.markAuditResult(
+            GraphPatchResult(
+                source = LlmResultSource.MOCK,
+                question = "历史问题",
+                answer = "历史回答",
+                promptPreview = "prompt",
+                auditSession = AuditConversationSession(
+                    sessionId = "session-answer-boundary",
+                    scopeKey = "method:upload-file",
+                    candidateChanges = listOf(
+                        CandidateDraftChange(
+                            changeId = "old-change",
+                            status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+                            title = "历史候选",
+                            targetNodeIds = listOf("method:upload-file"),
+                            evidence = listOf(
+                                ResultEvidenceFinding(
+                                    id = "old-change-evidence",
+                                    claim = "历史候选证据。",
+                                    evidenceLevel = ResultEvidenceLevel.DIRECT_SOURCE,
+                                    references = listOf(ResultEvidenceReference(nodeId = "method:upload-file")),
+                                ),
+                            ),
+                        ),
+                    ),
+                    investigationThreads = listOf(
+                        InvestigationThread(
+                            threadId = "old-thread",
+                            status = InvestigationThreadStatus.OPEN,
+                            title = "历史风险",
+                            targetNodeIds = listOf("method:upload-file"),
+                            evidence = listOf(
+                                ResultEvidenceFinding(
+                                    id = "old-thread-evidence",
+                                    claim = "历史风险证据。",
+                                    evidenceLevel = ResultEvidenceLevel.DIRECT_GRAPH,
+                                    references = listOf(ResultEvidenceReference(nodeId = "method:upload-file")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val session = ProjectEditorSession(
+            stateService = stateService,
+            onBrowserSyncRequested = {},
+        )
+        val workflow = ReviewWorkflow(
+            project = project,
+            session = session,
+            planningContextFactory = PlanningContextFactory(
+                graphDiffer = GraphDiffer(),
+                syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
+                graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
+                settingsProvider = { LinkGraphSettingsState() },
+            ),
+            graphAuditPatchService = GraphAuditPatchService(),
+            graphDiffPatchService = GraphDiffPatchService(),
+            graphBeautificationService = object : GraphBeautificationService {
+                override fun beautify(
+                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    settings: LinkGraphSettingsState,
+                    onPreview: ((String, Boolean) -> Unit)?,
+                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                    source = LlmResultSource.MOCK,
+                    promptPreview = "unused",
+                )
+            },
+            graphDiffer = GraphDiffer(),
+            settingsProvider = { LinkGraphSettingsState() },
+            auditExecutorOverrideProvider = { null },
+            asyncRequestLifecycle = AsyncRequestLifecycleSupport(
+                project = project,
+                session = session,
+                timeoutOverrideProvider = { 500L },
+            ),
+            logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
+            qaCapabilityFactory = {
+                QaCapability(
+                    auditExecutor = { input, _, _ ->
+                        GraphPatchResult(
+                            source = LlmResultSource.MOCK,
+                            question = input.question,
+                            answer = "只回答模式不应保留历史候选或风险线程。",
+                            promptPreview = "prompt",
+                        )
+                    },
+                )
+            },
+        )
+
+        workflow.requestAuditAsync(
+            question = "请解释这个方法",
+            selectedNodeIds = listOf("method:upload-file"),
+            mode = QaMode.ANSWER,
+        )
+
+        val snapshot = waitForSnapshot(stateService) { current ->
+            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
+        }
+
+        assertTrue(snapshot.auditResult?.candidateChanges?.isEmpty() == true)
+        assertTrue(snapshot.auditResult?.newCandidateChanges?.isEmpty() == true)
+        assertTrue(snapshot.auditResult?.investigationThreads?.isEmpty() == true)
+        assertTrue(snapshot.auditResult?.auditSession?.candidateChanges?.isEmpty() == true)
+        assertTrue(snapshot.auditResult?.auditSession?.investigationThreads?.isEmpty() == true)
+        assertTrue(snapshot.auditResult?.auditSession?.turnOutcomes?.isEmpty() == true)
     }
 
     fun testRequestAuditAsyncReadsCodeEvidenceBeforeAuditExecutor() {
@@ -201,6 +317,10 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         }
 
         assertEquals("已读取1段代码证据。", snapshot.auditResult?.answer)
+        assertEquals(QaMode.AUTO, snapshot.auditResult?.requestedMode)
+        assertEquals(QaMode.ANSWER, snapshot.auditResult?.effectiveMode)
+        assertEquals(QaMode.AUTO, snapshot.auditRequestState.requestedMode)
+        assertEquals(QaMode.ANSWER, snapshot.auditRequestState.effectiveMode)
         assertTrue(snapshot.runtimeArtifactSummaries["qa"]?.isNotEmpty() == true)
     }
 
@@ -458,6 +578,10 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     reference.filePath?.endsWith("TaskQueueEventType.java") == true
                 }
         } == true)
+        assertEquals(QaMode.AUTO, snapshot.auditResult?.requestedMode)
+        assertEquals(QaMode.INVESTIGATE, snapshot.auditResult?.effectiveMode)
+        assertEquals(QaMode.AUTO, snapshot.auditRequestState.requestedMode)
+        assertEquals(QaMode.INVESTIGATE, snapshot.auditRequestState.effectiveMode)
     }
 
     fun testRequestAuditAsyncDoesNotInvokeQaWhenInvestigationHasNoAcceptedEvidence() {
@@ -492,6 +616,15 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                             targetNodeIds = listOf("method:add-pool"),
                             evidenceGap = "缺少 MissingEventType.ADD 的直接源码证据。",
                             recommendedQuestion = "请继续取证：定位 MissingEventType.ADD。",
+                            claimType = "RISK_HINT",
+                        ),
+                        InvestigationThread(
+                            threadId = "thread-unrelated",
+                            status = InvestigationThreadStatus.OPEN,
+                            title = "不相关风险线程",
+                            targetNodeIds = listOf("method:other"),
+                            evidenceGap = "这条线程不属于本轮继续取证。",
+                            recommendedQuestion = "稍后单独继续取证。",
                             claimType = "RISK_HINT",
                         ),
                     ),
@@ -565,9 +698,105 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         assertTrue(snapshot.auditResult?.warnings?.any { warning ->
             warning.contains("没有拿到可进入 LLM 上下文的直接证据")
         } == true)
-        assertTrue(snapshot.auditResult?.auditSession?.investigationThreads?.single()?.targetNodeIds?.contains("method:add-pool") == true)
-        assertEquals(InvestigationThreadStatus.BLOCKED, snapshot.auditResult?.auditSession?.investigationThreads?.single()?.status)
+        assertEquals(
+            listOf("thread-missing-event-type"),
+            snapshot.auditResult?.investigationThreads?.map(InvestigationThread::threadId),
+        )
+        val sessionThreads = snapshot.auditResult?.auditSession?.investigationThreads.orEmpty()
+        assertEquals(
+            setOf("thread-missing-event-type", "thread-unrelated"),
+            sessionThreads.map(InvestigationThread::threadId).toSet(),
+        )
+        val focusedThread = sessionThreads.single { thread -> thread.threadId == "thread-missing-event-type" }
+        assertTrue(focusedThread.targetNodeIds.contains("method:add-pool"))
+        assertEquals(InvestigationThreadStatus.BLOCKED, focusedThread.status)
         assertEquals(InvestigationTurnOutcomeStatus.BLOCKED, snapshot.auditResult?.latestTurnOutcome?.status)
+    }
+
+    fun testRequestAuditAsyncRecordsFailureWhenInvestigationPipelineThrows() {
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        stateService.loadGraph(
+            GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:add-pool",
+                        type = NodeType.METHOD,
+                        title = "PoolService.addPool",
+                        sourceTag = GraphSourceTag.FACT,
+                    ),
+                ),
+            ),
+            "currentMethod",
+        )
+        val session = ProjectEditorSession(
+            stateService = stateService,
+            onBrowserSyncRequested = {},
+        )
+        var qaExecutorInvoked = false
+        val workflow = ReviewWorkflow(
+            project = project,
+            session = session,
+            planningContextFactory = PlanningContextFactory(
+                graphDiffer = GraphDiffer(),
+                syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
+                graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
+                settingsProvider = { LinkGraphSettingsState() },
+            ),
+            graphAuditPatchService = GraphAuditPatchService(),
+            graphDiffPatchService = GraphDiffPatchService(),
+            graphBeautificationService = object : GraphBeautificationService {
+                override fun beautify(
+                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    settings: LinkGraphSettingsState,
+                    onPreview: ((String, Boolean) -> Unit)?,
+                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                    source = LlmResultSource.MOCK,
+                    promptPreview = "unused",
+                )
+            },
+            graphDiffer = GraphDiffer(),
+            settingsProvider = { LinkGraphSettingsState() },
+            auditExecutorOverrideProvider = { null },
+            asyncRequestLifecycle = AsyncRequestLifecycleSupport(
+                project = project,
+                session = session,
+                timeoutOverrideProvider = { 500L },
+            ),
+            logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
+            qaCapabilityFactory = {
+                QaCapability(
+                    auditExecutor = { input, _, _ ->
+                        qaExecutorInvoked = true
+                        GraphPatchResult(
+                            source = LlmResultSource.MOCK,
+                            question = input.question,
+                            answer = "普通 QA 不应处理继续取证失败用例。",
+                            promptPreview = "prompt",
+                        )
+                    },
+                )
+            },
+            investigationPipelineFactory = {
+                error("pipeline boom")
+            },
+        )
+
+        workflow.requestAuditAsync(
+            question = "请继续取证：定位 MissingEventType.ADD。",
+            selectedNodeIds = listOf("method:add-pool"),
+            sourceThreadId = "thread-missing-event-type",
+        )
+
+        val snapshot = waitForSnapshot(stateService) { current ->
+            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
+        }
+
+        assertFalse(qaExecutorInvoked)
+        assertTrue(snapshot.auditRequestState.errorMessage?.contains("继续取证失败：pipeline boom") == true)
+        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.ERROR, snapshot.operationFeedback?.level)
+        assertTrue(snapshot.operationFeedback?.message?.contains("继续取证失败：pipeline boom") == true)
+        assertEquals("thread-missing-event-type", snapshot.qaRequestRecoveryState.lastFailedRequest?.sourceThreadId)
+        assertEquals(QaMode.AUTO, snapshot.qaRequestRecoveryState.lastFailedRequest?.mode)
     }
 
     fun testRequestAuditAsyncBuildsCandidateChangeFromRuntimeCodeEvidenceInMockMode() {

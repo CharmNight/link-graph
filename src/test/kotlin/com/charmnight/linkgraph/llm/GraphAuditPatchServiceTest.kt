@@ -223,6 +223,129 @@ class GraphAuditPatchServiceTest {
     }
 
     @Test
+    fun changeModeKeepsCandidateChangesAndRiskThreads() {
+        val gateway = object : LlmGateway {
+            override fun generate(request: LlmRequest): LlmResponse {
+                return LlmResponse(
+                    content = """
+                        {
+                          "answer": "代码调整模式保留候选变更，同时保留需要继续核对的风险线程。",
+                          "findings": [
+                            {
+                              "id": "direct-change",
+                              "claim": "当前源码片段直接锚定到可修改方法。",
+                              "evidenceLevel": "DIRECT_SOURCE",
+                              "references": [
+                                {
+                                  "nodeId": "method:change-target",
+                                  "filePath": "src/main/java/com/example/ChangeTarget.java",
+                                  "startLine": 8,
+                                  "endLine": 14
+                                }
+                              ]
+                            },
+                            {
+                              "id": "direct-risk",
+                              "claim": "当前图里仍存在一个需要人工复核的分支。",
+                              "evidenceLevel": "DIRECT_GRAPH",
+                              "references": [
+                                {
+                                  "nodeId": "method:risk-target"
+                                }
+                              ]
+                            }
+                          ],
+                          "candidateChanges": [
+                            {
+                              "changeId": "change-guard",
+                              "status": "PENDING_CONFIRMATION",
+                              "claimType": "CODE_FACT",
+                              "title": "补充空值保护",
+                              "targetNodeIds": ["method:change-target"],
+                              "reason": "CHANGE 模式允许直接证据支撑的候选变更。",
+                              "impactSummary": "避免空指针。",
+                              "supportingFindingIds": ["direct-change"]
+                            }
+                          ],
+                          "investigationThreads": [
+                            {
+                              "threadId": "thread-review-branch",
+                              "status": "OPEN",
+                              "claimType": "RISK_HINT",
+                              "title": "继续核对异常分支",
+                              "targetNodeIds": ["method:risk-target"],
+                              "summary": "该分支仍需要保留为风险线程。",
+                              "evidenceGap": "需要确认真实业务约束。",
+                              "recommendedQuestion": "继续取证异常分支。",
+                              "supportingFindingIds": ["direct-risk"]
+                            }
+                          ],
+                          "warnings": [],
+                          "patch": null
+                        }
+                    """.trimIndent(),
+                    model = request.model,
+                )
+            }
+        }
+
+        val result = GraphAuditPatchService(gateway = gateway).audit(
+            context = GraphAuditContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:change-target",
+                            type = NodeType.METHOD,
+                            title = "ChangeTarget.handle",
+                            signature = "com.example.ChangeTarget.handle():void",
+                            sourceTag = GraphSourceTag.FACT,
+                            metadata = mapOf(
+                                "source.filePath" to "src/main/java/com/example/ChangeTarget.java",
+                                "source.startLine" to "8",
+                                "source.endLine" to "14",
+                            ),
+                        ),
+                        GraphNode(
+                            id = "method:risk-target",
+                            type = NodeType.METHOD,
+                            title = "RiskTarget.handle",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                    ),
+                ),
+                selectedNodeIds = listOf("method:change-target", "method:risk-target"),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:change-target",
+                        filePath = "src/main/java/com/example/ChangeTarget.java",
+                        startLine = 8,
+                        endLine = 14,
+                        snippet = "void handle() { service.call(); }",
+                    ),
+                ),
+            ),
+            question = "请调整这里的空值保护",
+            requestedMode = QaMode.AUTO,
+            effectiveMode = QaMode.CHANGE,
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://localhost:8080/v1",
+                apiKey = "token",
+                model = "gpt-test",
+            ),
+        )
+
+        assertEquals(QaMode.AUTO, result.requestedMode)
+        assertEquals(QaMode.CHANGE, result.effectiveMode)
+        assertEquals(1, result.candidateChanges.size)
+        assertEquals("change-guard", result.candidateChanges.single().changeId)
+        assertEquals(1, result.newCandidateChanges.size)
+        assertEquals(1, result.investigationThreads.size)
+        assertEquals("thread-review-branch", result.investigationThreads.single().threadId)
+    }
+
+    @Test
     fun buildsMockAuditAnswerAndPatchPreview() {
         val result = GraphAuditPatchService().audit(
             context = GraphAuditContext(
