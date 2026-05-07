@@ -12,6 +12,7 @@ import type {
   LlmResultSource,
   MermaidIssueCategory,
   NodeType,
+  QaMode,
   ResultEvidenceLevel,
   ResultEvidenceReference,
   StepGranularity,
@@ -191,6 +192,23 @@ export function asyncRequestExecutionModeLabel(value?: AsyncRequestExecutionMode
       return "远程失败后回退";
     default:
       return "待确认";
+  }
+}
+
+export function qaModeLabel(value?: QaMode | null): string {
+  switch (value) {
+    case "AUTO":
+      return "Auto";
+    case "ANSWER":
+      return "只回答";
+    case "REVIEW":
+      return "审计风险";
+    case "CHANGE":
+      return "代码调整";
+    case "INVESTIGATE":
+      return "继续取证";
+    default:
+      return "待识别";
   }
 }
 

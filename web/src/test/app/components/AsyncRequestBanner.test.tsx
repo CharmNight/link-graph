@@ -55,7 +55,7 @@ describe("AsyncRequestBanner", () => {
     );
 
     expect(screen.getByText("流式预览")).toBeInTheDocument();
-    expect(screen.getByText("结果后可查看")).toBeInTheDocument();
+    expect(screen.queryByText("结果后可查看")).not.toBeInTheDocument();
   });
 
   it("keeps prompt preview marked as viewable after a request has finished", () => {
@@ -80,7 +80,7 @@ describe("AsyncRequestBanner", () => {
     );
 
     expect(screen.getByText("流式预览")).toBeInTheDocument();
-    expect(screen.getByText("可查看")).toBeInTheDocument();
+    expect(screen.queryByText("可查看")).not.toBeInTheDocument();
     expect(screen.queryByText("远程 LLM 已完成流式输出，并已落地最终结构化结果。")).not.toBeInTheDocument();
   });
 
@@ -175,7 +175,7 @@ describe("AsyncRequestBanner", () => {
     expect(document.querySelector(".request-state-banner-details")).not.toBeNull();
     expect(screen.getByText("请求")).toBeInTheDocument();
     expect(screen.getByText("提供方")).toBeInTheDocument();
-    expect(screen.getByText("可查看")).toBeInTheDocument();
+    expect(screen.queryByText("可查看")).not.toBeInTheDocument();
   });
 
   it("keeps the status title in a dedicated layout slot so it does not collide with the expand button", () => {

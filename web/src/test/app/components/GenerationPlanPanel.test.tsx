@@ -123,7 +123,7 @@ describe("GenerationPlanPanel", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "查看生成提示词" }));
+    await user.click(screen.getByRole("button", { name: "查看提示词" }));
 
     expect(events).toEqual(["artifact:artifact:plan-prompt"]);
   });

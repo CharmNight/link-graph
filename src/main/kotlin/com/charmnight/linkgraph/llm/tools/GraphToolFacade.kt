@@ -13,7 +13,9 @@ import java.util.ArrayDeque
  * 图工具统一门面。
  * 第一阶段只提供对当前 snapshot 的只读访问，避免把图读取细节散落到多个 tool 实现中。
  */
-class GraphToolFacade {
+class GraphToolFacade(
+    private val evidenceAnchorResolver: QaEvidenceAnchorResolver = QaEvidenceAnchorResolver(),
+) {
     /** 返回当前最适合问答使用的工作图。 */
     fun currentGraph(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): GraphDocument {
         return currentWorkingGraph(snapshot)
@@ -40,6 +42,15 @@ class GraphToolFacade {
         nodeId: String,
     ): GraphNode? {
         return currentGraph(snapshot).nodes.firstOrNull { it.id == nodeId }
+    }
+
+    /** 解析问答取证锚点，允许投影视图节点回溯到 canonical 源码节点。 */
+    fun evidenceAnchor(
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        nodeId: String? = null,
+        symbolSignature: String? = null,
+    ): QaEvidenceAnchorResolution {
+        return evidenceAnchorResolver.resolve(snapshot, nodeId, symbolSignature)
     }
 
     /**

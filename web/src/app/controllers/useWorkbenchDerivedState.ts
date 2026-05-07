@@ -15,6 +15,7 @@ import type {
   GraphBeautificationResult,
   LinkGraphDocument,
   LinkGraphNode,
+  QaMode,
   QaRequestRecoveryState,
   ResourceRelationViewDocument,
 } from "../types";
@@ -33,6 +34,7 @@ interface UseWorkbenchDerivedStateArgs {
   auditRequestState: AsyncRequestState;
   qaRequestRecoveryState: QaRequestRecoveryState;
   auditQuestionDraft: string;
+  auditQuestionMode: QaMode;
   auditTargetNodeIds: string[];
   auditTargetTitle: string | null;
   selectedAuditChangeId: string | null;
@@ -199,6 +201,7 @@ export function useWorkbenchDerivedState(args: UseWorkbenchDerivedStateArgs) {
     selectedChangeId: args.selectedAuditChangeId,
     selectedThreadId: args.selectedAuditThreadId,
     questionDraft: args.auditQuestionDraft,
+    selectedMode: args.auditQuestionMode,
     scopeLabel: buildAuditScopeLabel(args.auditTargetNodeIds, args.auditTargetTitle),
   };
 

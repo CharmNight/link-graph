@@ -211,7 +211,10 @@ class GraphEditorPageRenderer {
             "auditResult" to snapshot.auditResult?.let {
                 patchResultToMap(it, artifactRefs.auditPromptPreviewArtifactId)
             },
-            "auditRequestState" to requestStateToMap(snapshot.auditRequestState),
+            "auditRequestState" to requestStateToMap(
+                snapshot.auditRequestState,
+                hasPromptPreview = hasPromptPreview(snapshot.auditResult?.promptPreview, artifactRefs.auditPromptPreviewArtifactId),
+            ),
             "qaRequestRecoveryState" to qaRequestRecoveryStateToMap(snapshot.qaRequestRecoveryState),
             "runtimeArtifactSummaries" to snapshot.runtimeArtifactSummaries.mapValues { (_, summaries) ->
                 summaries.map { summary ->
@@ -226,11 +229,17 @@ class GraphEditorPageRenderer {
             "diffReviewResult" to snapshot.diffReviewResult?.let {
                 patchResultToMap(it, artifactRefs.diffReviewPromptPreviewArtifactId)
             },
-            "diffReviewRequestState" to requestStateToMap(snapshot.diffReviewRequestState),
+            "diffReviewRequestState" to requestStateToMap(
+                snapshot.diffReviewRequestState,
+                hasPromptPreview = hasPromptPreview(snapshot.diffReviewResult?.promptPreview, artifactRefs.diffReviewPromptPreviewArtifactId),
+            ),
             "graphBeautificationResult" to snapshot.graphBeautificationResult?.let {
                 beautificationResultToMap(it, artifactRefs.beautificationPromptPreviewArtifactId)
             },
-            "graphBeautificationRequestState" to requestStateToMap(snapshot.graphBeautificationRequestState),
+            "graphBeautificationRequestState" to requestStateToMap(
+                snapshot.graphBeautificationRequestState,
+                hasPromptPreview = hasPromptPreview(snapshot.graphBeautificationResult?.promptPreview, artifactRefs.beautificationPromptPreviewArtifactId),
+            ),
             "mermaidIssues" to snapshot.mermaidIssues.map { issue ->
                 linkedMapOf(
                     "category" to issue.category.name,
@@ -276,10 +285,21 @@ class GraphEditorPageRenderer {
                 )
             },
             "generationPlanDraftVersion" to snapshot.generationPlanDraftVersion,
-            "generationPlanRequestState" to requestStateToMap(snapshot.generationPlanRequestState),
+            "generationPlanRequestState" to requestStateToMap(
+                snapshot.generationPlanRequestState,
+                hasPromptPreview = hasPromptPreview(snapshot.generationPlan?.promptPreview, artifactRefs.generationPlanPromptPreviewArtifactId),
+            ),
             "draftValidationState" to snapshot.draftValidationState?.let(::draftValidationStateToMap),
-            "generationPlanDiscussionSession" to snapshot.generationPlanDiscussionSession?.let(::generationPlanDiscussionSessionToMap),
-            "generationPlanDiscussionRequestState" to requestStateToMap(snapshot.generationPlanDiscussionRequestState),
+            "generationPlanDiscussionSession" to snapshot.generationPlanDiscussionSession?.let { session ->
+                generationPlanDiscussionSessionToMap(session, artifactRefs.generationPlanDiscussionPromptPreviewArtifactId)
+            },
+            "generationPlanDiscussionRequestState" to requestStateToMap(
+                snapshot.generationPlanDiscussionRequestState,
+                hasPromptPreview = hasPromptPreview(
+                    snapshot.generationPlanDiscussionSession?.promptPreview,
+                    artifactRefs.generationPlanDiscussionPromptPreviewArtifactId,
+                ),
+            ),
             "generatedCodeDrafts" to snapshot.generatedCodeDrafts.map { draft ->
                 val contentArtifactId = artifactRefs.generatedCodeDraftContentArtifactIds[draft.id]
                 linkedMapOf<String, Any?>(
@@ -302,7 +322,13 @@ class GraphEditorPageRenderer {
             "generatedCodeDraftWarnings" to snapshot.generatedCodeDraftWarnings,
             "generatedCodeDraftSource" to snapshot.generatedCodeDraftSource?.name,
             "generatedCodeDraftPromptPreviewArtifactId" to artifactRefs.generatedCodeDraftPromptPreviewArtifactId,
-            "codeDraftRequestState" to requestStateToMap(snapshot.codeDraftRequestState),
+            "codeDraftRequestState" to requestStateToMap(
+                snapshot.codeDraftRequestState,
+                hasPromptPreview = hasPromptPreview(
+                    snapshot.generatedCodeDraftPromptPreview,
+                    artifactRefs.generatedCodeDraftPromptPreviewArtifactId,
+                ),
+            ),
             "codeEligibilityDecision" to snapshot.codeEligibilityDecision?.let(::stageEligibilityDecisionToMap),
             "generatedCodeDraftWriteReport" to snapshot.generatedCodeDraftWriteReport?.let { report ->
                 linkedMapOf(
@@ -354,7 +380,10 @@ class GraphEditorPageRenderer {
     )
 
     /** 把异步请求状态转换成前端可消费的映射。 */
-    private fun requestStateToMap(state: com.charmnight.linkgraph.ui.AsyncRequestState): Map<String, Any?> = linkedMapOf(
+    private fun requestStateToMap(
+        state: com.charmnight.linkgraph.ui.AsyncRequestState,
+        hasPromptPreview: Boolean = state.promptPreviewAvailable,
+    ): Map<String, Any?> = linkedMapOf(
         "phase" to state.phase.name,
         "requestId" to state.requestId,
         "scene" to state.scene,
@@ -373,7 +402,9 @@ class GraphEditorPageRenderer {
         "providerLabel" to state.providerLabel,
         "model" to state.model,
         "endpointSummary" to state.endpointSummary,
-        "promptPreviewAvailable" to state.promptPreviewAvailable,
+        "promptPreviewAvailable" to hasPromptPreview,
+        "requestedMode" to state.requestedMode?.name,
+        "effectiveMode" to state.effectiveMode?.name,
     )
 
     private fun qaRequestRecoveryStateToMap(
@@ -389,6 +420,7 @@ class GraphEditorPageRenderer {
         "requestId" to request.requestId,
         "kind" to request.kind.name,
         "question" to request.question,
+        "mode" to request.mode.name,
         "selectedNodeIds" to request.selectedNodeIds,
         "sourceThreadId" to request.sourceThreadId,
         "baseSessionId" to request.baseSession?.sessionId,
@@ -614,6 +646,8 @@ class GraphEditorPageRenderer {
     ): Map<String, Any?> = linkedMapOf(
         "source" to result.source.name,
         "question" to result.question,
+        "requestedMode" to result.requestedMode.name,
+        "effectiveMode" to result.effectiveMode.name,
         "answer" to result.answer,
         "promptPreviewArtifactId" to promptPreviewArtifactId,
         "warnings" to result.warnings,
@@ -748,6 +782,7 @@ class GraphEditorPageRenderer {
 
     private fun generationPlanDiscussionSessionToMap(
         session: com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession,
+        promptPreviewArtifactId: String?,
     ): Map<String, Any?> = linkedMapOf(
         "sessionId" to session.sessionId,
         "messages" to session.messages.map { message ->
@@ -759,7 +794,12 @@ class GraphEditorPageRenderer {
             )
         },
         "focusItemId" to session.focusItemId,
+        "promptPreviewArtifactId" to promptPreviewArtifactId,
     )
+
+    private fun hasPromptPreview(promptPreview: String?, promptPreviewArtifactId: String?): Boolean {
+        return !promptPreview.isNullOrBlank() || !promptPreviewArtifactId.isNullOrBlank()
+    }
 
     private fun draftValidationStateToMap(
         state: com.charmnight.linkgraph.workbench.DraftValidationState,
@@ -844,11 +884,13 @@ class GraphEditorPageRenderer {
         trace: com.charmnight.linkgraph.llm.EvidenceTraceEntry,
     ): Map<String, Any?> = linkedMapOf(
         "nodeId" to trace.nodeId,
+        "resolvedNodeId" to trace.resolvedNodeId,
         "filePath" to trace.filePath,
         "reason" to trace.reason,
         "startLine" to trace.startLine,
         "endLine" to trace.endLine,
         "includedInPrompt" to trace.includedInPrompt,
+        "mappingTrace" to trace.mappingTrace,
     )
 
     private fun editScopeToMap(

@@ -7,6 +7,7 @@ import com.charmnight.linkgraph.llm.runtime.RunBudget
 import com.charmnight.linkgraph.llm.remoteConnectionOrNull
 import com.charmnight.linkgraph.llm.usesRemoteProvider
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
+import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.ui.GraphEditorStateMutationContext
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.intellij.openapi.application.ApplicationManager
@@ -87,7 +88,9 @@ internal class AsyncRequestLifecycleSupport(
         sceneLabel: String,
         settings: LinkGraphSettingsState,
         disabledMode: com.charmnight.linkgraph.ui.AsyncRequestExecutionMode = com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.LOCAL_RULE,
-        promptPreviewAvailable: Boolean = true,
+        promptPreviewAvailable: Boolean = false,
+        requestedMode: QaMode? = null,
+        effectiveMode: QaMode? = null,
     ): AsyncRequestPresentation {
         val sanitized = settings.sanitized()
         val remoteConnection = sanitized.remoteConnectionOrNull()
@@ -143,6 +146,8 @@ internal class AsyncRequestLifecycleSupport(
                 remotePresetSelected,
             ),
             promptPreviewAvailable = promptPreviewAvailable,
+            requestedMode = requestedMode,
+            effectiveMode = effectiveMode,
         )
         return AsyncRequestPresentation(
             requestId = requestId,
@@ -206,6 +211,8 @@ internal class AsyncRequestLifecycleSupport(
             model = presentation.requestState.model,
             endpointSummary = presentation.requestState.endpointSummary,
             promptPreviewAvailable = presentation.requestState.promptPreviewAvailable,
+            requestedMode = presentation.requestState.requestedMode,
+            effectiveMode = presentation.requestState.effectiveMode,
         )
     }
 
@@ -259,6 +266,8 @@ internal class AsyncRequestLifecycleSupport(
             model = presentation.requestState.model,
             endpointSummary = presentation.requestState.endpointSummary,
             promptPreviewAvailable = presentation.requestState.promptPreviewAvailable,
+            requestedMode = presentation.requestState.requestedMode,
+            effectiveMode = presentation.requestState.effectiveMode,
         )
     }
 
@@ -299,6 +308,8 @@ internal class AsyncRequestLifecycleSupport(
             model = presentation.requestState.model,
             endpointSummary = presentation.requestState.endpointSummary,
             promptPreviewAvailable = presentation.requestState.promptPreviewAvailable,
+            requestedMode = presentation.requestState.requestedMode,
+            effectiveMode = presentation.requestState.effectiveMode,
         )
     }
 

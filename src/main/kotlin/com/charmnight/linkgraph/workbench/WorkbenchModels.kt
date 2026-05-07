@@ -224,6 +224,7 @@ data class GenerationPlanDiscussionSession(
     val sessionId: String,
     val messages: List<GenerationPlanDiscussionMessage> = emptyList(),
     val focusItemId: String? = null,
+    val promptPreview: String? = null,
 )
 
 data class GenerationPlanDiscussionResult(
@@ -259,6 +260,7 @@ data class ReplayableQaRequest(
     val requestId: String,
     val kind: QaRequestKind,
     val question: String,
+    val mode: QaMode = QaMode.AUTO,
     val selectedNodeIds: List<String> = emptyList(),
     val sourceThreadId: String? = null,
     val baseSession: AuditConversationSession? = null,

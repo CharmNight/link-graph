@@ -27,6 +27,7 @@ class ReadSymbolTool(
             symbolSignature = symbolSignature,
             fallbackSourceContexts = fallbackSourceContexts,
             projectBasePath = context.project.basePath,
+            project = context.project,
         ) ?: return ToolResult(toolName = name, success = false, errorMessage = "未读取到 symbol 对应源码")
         return ToolResult(
             toolName = name,

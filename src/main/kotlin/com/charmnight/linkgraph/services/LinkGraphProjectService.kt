@@ -62,6 +62,7 @@ import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.DraftWorkbenchService
+import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.RiskResolutionService
 import com.charmnight.linkgraph.workbench.RiskResolutionStatus
 import com.charmnight.linkgraph.workbench.WorkbenchLayoutPreferencesService
@@ -492,8 +493,9 @@ class LinkGraphProjectService(
         question: String,
         selectedNodeIds: List<String> = emptyList(),
         sourceThreadId: String? = null,
+        mode: QaMode = QaMode.AUTO,
     ): GraphPatchResult {
-        return reviewWorkflow.requestAudit(question, selectedNodeIds, sourceThreadId)
+        return reviewWorkflow.requestAudit(question, selectedNodeIds, sourceThreadId, mode)
     }
 
     /** 直接重试最近一次失败的问答请求。 */

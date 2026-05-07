@@ -429,6 +429,36 @@ describe("CodeDraftPanel", () => {
     expect(events).toEqual(["artifact:artifact:draft-1"]);
   });
 
+  it("uses the shared prompt disclosure for generated code prompt artifacts", async () => {
+    const user = userEvent.setup();
+    const events: string[] = [];
+
+    render(
+      <CodeDraftPanel
+        drafts={[]}
+        warnings={[]}
+        source={null}
+        promptPreview={null}
+        promptPreviewArtifactId="artifact:code-prompt"
+        resolveArtifactText={() => null}
+        onRequestArtifact={(artifactId) => events.push(`artifact:${artifactId}`)}
+        writeReport={null}
+        hasPlan={true}
+        eligibilityDecision={eligibilityDecisionFixture()}
+        onOpenDraftWorkbench={() => undefined}
+        onRequestPlan={() => undefined}
+        onRequestDrafts={() => undefined}
+        onWriteDrafts={() => undefined}
+        onWriteSingleDraft={() => undefined}
+        onOpenDraft={() => undefined}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看提示词" }));
+
+    expect(events).toEqual(["artifact:artifact:code-prompt"]);
+  });
+
   it("uses the shared workbench tab scroll instead of a private code-panel scroll", () => {
     const { container } = render(
       <CodeDraftPanel

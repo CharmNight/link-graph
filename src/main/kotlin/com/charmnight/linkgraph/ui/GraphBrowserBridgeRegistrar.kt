@@ -84,6 +84,7 @@ internal class GraphBrowserBridgeRegistrar(
                     question = request.question,
                     selectedNodeIds = request.selectedNodeIds,
                     sourceThreadId = request.sourceThreadId,
+                    mode = request.mode,
                 ),
             )
             JBCefJSQuery.Response("ok")
@@ -345,7 +346,7 @@ internal class GraphBrowserBridgeRegistrar(
               exportMermaid: () => { ${exportMermaidQuery.inject("'exportMermaid'")} },
               showDiffMode: () => { ${showDiffModeQuery.inject("'showDiffMode'")} },
               requestSyncPreview: () => { ${requestSyncPreviewQuery.inject("'requestSyncPreview'")} },
-              requestAudit: (question, selectedNodeIds, sourceThreadId) => { ${requestAuditQuery.inject("[(question ? encodeURIComponent(question) : ''), ((selectedNodeIds || []).map((value) => encodeURIComponent(value)).join(',')), (sourceThreadId ? encodeURIComponent(sourceThreadId) : '')].join('\\u001f')")} },
+              requestAudit: (question, selectedNodeIds, sourceThreadId, mode) => { ${requestAuditQuery.inject("[(question ? encodeURIComponent(question) : ''), ((selectedNodeIds || []).map((value) => encodeURIComponent(value)).join(',')), (sourceThreadId ? encodeURIComponent(sourceThreadId) : ''), (mode ? encodeURIComponent(mode) : 'AUTO')].join('\\u001f')")} },
               retryLastAuditRequest: () => { ${retryLastAuditRequestQuery.inject("'retryLastAuditRequest'")} },
               confirmAuditCandidateChange: (changeId) => { ${confirmAuditCandidateChangeQuery.inject("changeId")} },
               unconfirmAuditCandidateChange: (changeId) => { ${unconfirmAuditCandidateChangeQuery.inject("changeId")} },

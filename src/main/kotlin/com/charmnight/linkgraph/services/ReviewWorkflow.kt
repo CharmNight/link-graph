@@ -1,6 +1,10 @@
 package com.charmnight.linkgraph.services
 
 import com.charmnight.linkgraph.diff.GraphDiffer
+import com.charmnight.linkgraph.investigation.adapter.InvestigationGraphPatchAdapter
+import com.charmnight.linkgraph.investigation.application.InvestigationPipeline
+import com.charmnight.linkgraph.investigation.domain.InvestigationRequest
+import com.charmnight.linkgraph.investigation.domain.InvestigationTargetHint
 import com.charmnight.linkgraph.llm.GraphAuditContext
 import com.charmnight.linkgraph.llm.GraphAuditPatchService
 import com.charmnight.linkgraph.llm.GraphBeautificationResult
@@ -10,6 +14,7 @@ import com.charmnight.linkgraph.llm.GraphDiffContext
 import com.charmnight.linkgraph.llm.GraphDiffPatchService
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.llm.ResultEvidenceFinding
 import com.charmnight.linkgraph.llm.artifact.AgentArtifactStoreService
 import com.charmnight.linkgraph.llm.artifact.ArtifactStore
 import com.charmnight.linkgraph.llm.capability.QaCapability
@@ -27,6 +32,9 @@ import com.charmnight.linkgraph.workbench.AuditConversationService
 import com.charmnight.linkgraph.workbench.AuditConversationSession
 import com.charmnight.linkgraph.workbench.AuditMessageRole
 import com.charmnight.linkgraph.workbench.AuditModelTurn
+import com.charmnight.linkgraph.workbench.InvestigationThreadStatus
+import com.charmnight.linkgraph.workbench.QaMode
+import com.charmnight.linkgraph.workbench.QaModeClassifier
 import com.charmnight.linkgraph.workbench.QaRequestLifecycleService
 import com.charmnight.linkgraph.workbench.ReplayableQaRequest
 import com.charmnight.linkgraph.workbench.RiskResolutionService
@@ -82,6 +90,14 @@ internal class ReviewWorkflow(
     private val auditConversationService: AuditConversationService = AuditConversationService(),
     /** 风险决策与阶段准入服务。 */
     private val riskResolutionService: RiskResolutionService = RiskResolutionService(),
+    /** 继续取证流水线工厂。 */
+    private val investigationPipelineFactory: (Project) -> InvestigationPipeline = { targetProject ->
+        InvestigationPipeline.default(targetProject)
+    },
+    /** 继续取证结果适配器。 */
+    private val investigationGraphPatchAdapter: InvestigationGraphPatchAdapter = InvestigationGraphPatchAdapter(),
+    /** AUTO 模式识别器。 */
+    private val qaModeClassifier: QaModeClassifier = QaModeClassifier(),
 ) {
     /**
      * 基于当前工作图发起同步问答。
@@ -90,6 +106,7 @@ internal class ReviewWorkflow(
         question: String,
         selectedNodeIds: List<String> = emptyList(),
         sourceThreadId: String? = null,
+        mode: QaMode = QaMode.AUTO,
     ): GraphPatchResult {
         val snapshot = session.snapshot()
         val request = qaRequestLifecycleService.buildReplayableRequest(
@@ -97,14 +114,23 @@ internal class ReviewWorkflow(
             question = question,
             selectedNodeIds = selectedNodeIds,
             sourceThreadId = sourceThreadId,
+            mode = mode,
         )
+        val effectiveMode = effectiveMode(request)
+        runInvestigationIfRequested(snapshot, request)?.let { investigationResult ->
+            return investigationResult.copy(
+                requestedMode = request.mode,
+                effectiveMode = effectiveMode,
+            )
+        }
         val result = executeQaRuntime(
             input = buildQaCapabilityInput(
                 snapshot = snapshot,
                 request = request,
+                effectiveMode = effectiveMode,
             ),
         )
-        val output = normalizeAuditResult(requireNotNull(result.output), request)
+        val output = normalizeAuditResult(requireNotNull(result.output), request, effectiveMode)
         val requestState = asyncRequestLifecycle.withRuntimeMetadata(
             requestState = com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(
                 scene = "问答",
@@ -113,6 +139,9 @@ internal class ReviewWorkflow(
                 } else {
                     "问答完成。"
                 },
+                requestedMode = request.mode,
+                effectiveMode = effectiveMode,
+                promptPreviewAvailable = output.promptPreview.isNotBlank(),
             ),
             runtimeState = result.finalState,
         )
@@ -141,6 +170,7 @@ internal class ReviewWorkflow(
         question: String,
         selectedNodeIds: List<String> = emptyList(),
         sourceThreadId: String? = null,
+        mode: QaMode = QaMode.AUTO,
     ) {
         val snapshot = session.snapshot()
         val request = qaRequestLifecycleService.buildReplayableRequest(
@@ -148,7 +178,93 @@ internal class ReviewWorkflow(
             question = question,
             selectedNodeIds = selectedNodeIds,
             sourceThreadId = sourceThreadId,
+            mode = mode,
         )
+        val effectiveMode = effectiveMode(request)
+        if (request.sourceThreadId != null && effectiveMode == QaMode.INVESTIGATE) {
+            val requestId = asyncRequestLifecycle.beginAuditRequest()
+            val presentation = asyncRequestLifecycle.buildAsyncRequestPresentation(
+                requestId = requestId,
+                sceneLabel = "问答",
+                settings = settingsProvider(),
+                requestedMode = request.mode,
+                effectiveMode = effectiveMode,
+            )
+            session.mutateBatch {
+                apply {
+                    asyncRequests.beginAuditRequest(presentation.requestState, submittedRequest = request)
+                }
+                apply {
+                    workbench.markOperationFeedback(
+                        OperationFeedbackLevel.INFO,
+                        "正在执行确定性继续取证，请稍候。",
+                    )
+                }
+            }
+            asyncRequestLifecycle.runBackgroundTask(
+                work = {
+                    runInvestigationResult(snapshot, request)
+                },
+                onCompleted = { result ->
+                    if (project.isDisposed || !asyncRequestLifecycle.completeAuditRequest(requestId)) {
+                        return@runBackgroundTask
+                    }
+                    result.fold(
+                        onSuccess = { output ->
+                            val requestState = asyncRequestLifecycle.buildSucceededRequestState(
+                                presentation = presentation,
+                                successMessage = "继续取证完成。",
+                                completedRemotely = false,
+                                warnings = output.warnings,
+                            )
+                            val (draftValidationState, codeDecision) = evaluateEligibility(snapshot.copy(auditResult = output))
+                            session.mutateBatch {
+                                apply {
+                                    workbench.markRuntimeArtifactSummaries("qa", emptyList())
+                                }
+                                apply {
+                                    asyncRequests.markAuditResult(
+                                        output.copy(requestedMode = request.mode, effectiveMode = effectiveMode),
+                                        requestState.copy(requestedMode = request.mode, effectiveMode = effectiveMode),
+                                        completedRequest = request,
+                                    )
+                                }
+                                apply {
+                                    workbench.markDraftValidationState(draftValidationState)
+                                }
+                                apply {
+                                    workbench.markCodeEligibilityDecision(codeDecision)
+                                }
+                                apply {
+                                    workbench.markOperationFeedback(
+                                        OperationFeedbackLevel.SUCCESS,
+                                        "继续取证完成。",
+                                        preserveLastMessageType = true,
+                                    )
+                                }
+                            }
+                        },
+                        onFailure = { throwable ->
+                            val message = "继续取证失败：${throwable.message ?: throwable.javaClass.simpleName}"
+                            val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
+                            session.mutateBatch {
+                                apply {
+                                    asyncRequests.markAuditRequestFailed(message, requestState, failedRequest = request)
+                                }
+                                apply {
+                                    workbench.markOperationFeedback(
+                                        OperationFeedbackLevel.ERROR,
+                                        message,
+                                        preserveLastMessageType = true,
+                                    )
+                                }
+                            }
+                        },
+                    )
+                },
+            )
+            return
+        }
         executeAuditAsync(
             snapshot = snapshot,
             request = request,
@@ -156,8 +272,81 @@ internal class ReviewWorkflow(
                 remoteRequested = effectiveRemoteRequested(),
                 streamingSupported = effectiveStreamingSupported(),
                 selectedNodeIds = selectedNodeIds,
+                effectiveMode = effectiveMode,
+            ),
+            effectiveMode = effectiveMode,
+        )
+    }
+
+    /**
+     * 同步请求中如果携带风险线程标识，则优先执行确定性继续取证。
+     */
+    private fun runInvestigationIfRequested(
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        request: ReplayableQaRequest,
+    ): GraphPatchResult? {
+        if (request.sourceThreadId == null || effectiveMode(request) != QaMode.INVESTIGATE) {
+            return null
+        }
+        return runInvestigationResult(snapshot, request)
+    }
+
+    /**
+     * 执行继续取证流水线并转换为现有问答结果模型。
+     */
+    private fun runInvestigationResult(
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        request: ReplayableQaRequest,
+    ): GraphPatchResult {
+        val sourceThreadId = requireNotNull(request.sourceThreadId)
+        val sourceThread = request.baseSession?.investigationThreads
+            ?.firstOrNull { thread -> thread.threadId == sourceThreadId }
+        val investigationResult = investigationPipelineFactory(project).run(
+            InvestigationRequest(
+                threadId = sourceThreadId,
+                question = request.question,
+                title = sourceThread?.title.orEmpty(),
+                summary = sourceThread?.summary.orEmpty(),
+                evidenceGap = sourceThread?.evidenceGap.orEmpty(),
+                recommendedQuestion = sourceThread?.recommendedQuestion.orEmpty(),
+                targetNodeIds = request.selectedNodeIds.ifEmpty { sourceThread?.targetNodeIds.orEmpty() },
+                targetHints = investigationTargetHints(snapshot, request),
+                evidenceClaims = sourceThread?.evidence.orEmpty().map(ResultEvidenceFinding::claim),
             ),
         )
+        return normalizeAuditResult(
+            result = investigationGraphPatchAdapter.toGraphPatchResult(
+                request = request,
+                turnResult = investigationResult,
+            ),
+            request = request,
+            effectiveMode = effectiveMode(request),
+        )
+    }
+
+    /**
+     * 从当前图中提取风险线程关联节点的结构化符号提示。
+     */
+    private fun investigationTargetHints(
+        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        request: ReplayableQaRequest,
+    ): List<InvestigationTargetHint> {
+        val sourceThreadId = requireNotNull(request.sourceThreadId)
+        val sourceThread = request.baseSession?.investigationThreads
+            ?.firstOrNull { thread -> thread.threadId == sourceThreadId }
+        val targetNodeIds = (request.selectedNodeIds + sourceThread?.targetNodeIds.orEmpty()).distinct()
+        if (targetNodeIds.isEmpty()) {
+            return emptyList()
+        }
+        val nodesById = currentVisibleGraph(snapshot).nodes.associateBy { node -> node.id }
+        return targetNodeIds.mapNotNull { nodeId ->
+            val node = nodesById[nodeId] ?: return@mapNotNull null
+            InvestigationTargetHint(
+                nodeId = node.id,
+                title = node.title,
+                signature = node.signature,
+            )
+        }
     }
 
     fun retryLastAuditRequestAsync() {
@@ -175,6 +364,7 @@ internal class ReviewWorkflow(
         executeAuditAsync(
             snapshot = snapshot,
             request = request,
+            effectiveMode = effectiveMode(request),
             feedbackMessage = "正在重试上一次失败的问答请求，请稍候。",
         )
     }
@@ -232,6 +422,8 @@ internal class ReviewWorkflow(
                         settings = qaInput.settings,
                         session = qaInput.session,
                         sourceThreadId = qaInput.sourceThreadId,
+                        requestedMode = qaInput.requestedMode,
+                        effectiveMode = qaInput.effectiveMode,
                         onPreview = qaInput.onPreview,
                     )
                 }
@@ -278,6 +470,7 @@ internal class ReviewWorkflow(
     private fun buildQaCapabilityInput(
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         request: ReplayableQaRequest,
+        effectiveMode: QaMode,
         onPreview: ((String, Boolean) -> Unit)? = null,
     ): QaCapabilityInput {
         val auditGraphs = planningContextFactory.buildAuditGraphs(
@@ -295,6 +488,8 @@ internal class ReviewWorkflow(
             settings = settingsProvider(),
             session = request.baseSession ?: snapshot.auditResult?.auditSession,
             sourceThreadId = request.sourceThreadId,
+            requestedMode = request.mode,
+            effectiveMode = effectiveMode,
             onPreview = onPreview,
         )
     }
@@ -302,6 +497,7 @@ internal class ReviewWorkflow(
     private fun executeAuditAsync(
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         request: ReplayableQaRequest,
+        effectiveMode: QaMode,
         feedbackMessage: String,
     ) {
         val requestId = asyncRequestLifecycle.beginAuditRequest()
@@ -310,6 +506,8 @@ internal class ReviewWorkflow(
             requestId = requestId,
             sceneLabel = "问答",
             settings = settings,
+            requestedMode = request.mode,
+            effectiveMode = effectiveMode,
         )
         val previewUpdater = if (presentation.requestState.streaming) {
             asyncRequestLifecycle.createStreamingPreviewUpdater(
@@ -366,6 +564,7 @@ internal class ReviewWorkflow(
                     input = buildQaCapabilityInput(
                         snapshot = snapshot,
                         request = request,
+                        effectiveMode = effectiveMode,
                         onPreview = previewUpdater,
                     ),
                 )
@@ -438,7 +637,12 @@ internal class ReviewWorkflow(
                                 "newCandidateCount=${auditResult.newCandidateChanges.size}, " +
                                 "candidates=$candidateSummary"
                         }
-                        val normalizedAuditResult = normalizeAuditResult(auditResult, request)
+                        val normalizedAuditResult = normalizeAuditResult(auditResult, request, effectiveMode)
+                        val normalizedRequestState = requestState.copy(
+                            requestedMode = request.mode,
+                            effectiveMode = effectiveMode,
+                            promptPreviewAvailable = normalizedAuditResult.promptPreview.isNotBlank(),
+                        )
                         val feedbackLevel = if (requestState.fallbackUsed) {
                             OperationFeedbackLevel.WARNING
                         } else {
@@ -450,7 +654,7 @@ internal class ReviewWorkflow(
                                 workbench.markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(runtimeResult))
                             }
                             apply {
-                                asyncRequests.markAuditResult(normalizedAuditResult, requestState, completedRequest = request)
+                                    asyncRequests.markAuditResult(normalizedAuditResult, normalizedRequestState, completedRequest = request)
                             }
                             apply {
                                 workbench.markDraftValidationState(draftValidationState)
@@ -513,19 +717,29 @@ internal class ReviewWorkflow(
         remoteRequested: Boolean,
         streamingSupported: Boolean,
         selectedNodeIds: List<String>,
+        effectiveMode: QaMode,
     ): String {
+        val modeSuffix = "实际模式：${effectiveMode.name}。"
         if (remoteRequested) {
             return if (streamingSupported) {
-                "已发起远程 LLM 问答请求，当前采用流式输出。"
+                "已发起远程 LLM 问答请求，当前采用流式输出。$modeSuffix"
             } else {
-                "已发起远程 LLM 问答请求，当前采用完整返回。"
+                "已发起远程 LLM 问答请求，当前采用完整返回。$modeSuffix"
             }
         }
         return if (selectedNodeIds.isEmpty()) {
-            "正在对整个链路执行问答，请稍候。"
+            "正在对整个链路执行问答，请稍候。$modeSuffix"
         } else {
-            "正在对当前选中范围执行问答，请稍候。"
+            "正在对当前选中范围执行问答，请稍候。$modeSuffix"
         }
+    }
+
+    private fun effectiveMode(request: ReplayableQaRequest): QaMode {
+        return qaModeClassifier.classify(
+            requestedMode = request.mode,
+            question = request.question,
+            sourceThreadId = request.sourceThreadId,
+        )
     }
 
     private fun resolutionFeedbackMessage(
@@ -550,10 +764,20 @@ internal class ReviewWorkflow(
     private fun normalizeAuditResult(
         result: GraphPatchResult,
         request: ReplayableQaRequest,
+        effectiveMode: QaMode,
     ): GraphPatchResult {
         if (result.auditSession != null) {
-            return result
+            return applyModeBoundary(
+                result = result.copy(requestedMode = request.mode, effectiveMode = effectiveMode),
+                request = request,
+                effectiveMode = effectiveMode,
+            )
         }
+        val modeBoundResult = applyModeBoundary(
+            result = result.copy(requestedMode = request.mode, effectiveMode = effectiveMode),
+            request = request,
+            effectiveMode = effectiveMode,
+        )
         val baseSession = ensureQuestionCaptured(
             session = request.baseSession ?: AuditConversationSession(
                 sessionId = "audit-${request.requestId}",
@@ -564,20 +788,123 @@ internal class ReviewWorkflow(
         val turnResult = auditConversationService.applyModelTurn(
             session = baseSession,
             modelTurn = AuditModelTurn(
-                answer = result.answer,
-                candidateChanges = result.candidateChanges,
-                investigationThreads = result.investigationThreads,
+                answer = modeBoundResult.answer,
+                candidateChanges = modeBoundResult.candidateChanges,
+                investigationThreads = modeBoundResult.investigationThreads,
                 sourceThreadId = request.sourceThreadId,
+                observedNodeIds = observedNodeIds(modeBoundResult),
+                observedFilePaths = observedFilePaths(modeBoundResult),
+                blockedReason = blockedReason(modeBoundResult, request),
             ),
         )
-        return result.copy(
+        val normalized = modeBoundResult.copy(
             candidateChanges = turnResult.session.candidateChanges,
-            newCandidateChanges = result.newCandidateChanges.ifEmpty { turnResult.newCandidateChanges },
-            investigationThreads = result.investigationThreads.ifEmpty { turnResult.session.investigationThreads },
-            latestTurnOutcome = result.latestTurnOutcome ?: turnResult.latestTurnOutcome,
-            recentTurnOutcomes = result.recentTurnOutcomes.ifEmpty { turnResult.recentTurnOutcomes },
+            newCandidateChanges = modeBoundResult.newCandidateChanges.ifEmpty { turnResult.newCandidateChanges },
+            investigationThreads = modeBoundResult.investigationThreads.ifEmpty { turnResult.session.investigationThreads },
+            latestTurnOutcome = turnResult.latestTurnOutcome ?: modeBoundResult.latestTurnOutcome,
+            recentTurnOutcomes = modeBoundResult.recentTurnOutcomes.ifEmpty { turnResult.recentTurnOutcomes },
             auditSession = turnResult.session,
         )
+        return applyModeBoundary(normalized, request, effectiveMode)
+    }
+
+    private fun applyModeBoundary(
+        result: GraphPatchResult,
+        request: ReplayableQaRequest,
+        effectiveMode: QaMode,
+    ): GraphPatchResult {
+        return when (effectiveMode) {
+            QaMode.ANSWER -> result.copy(
+                requestedMode = request.mode,
+                effectiveMode = effectiveMode,
+                patch = null,
+                candidateChanges = emptyList(),
+                newCandidateChanges = emptyList(),
+                investigationThreads = emptyList(),
+                latestTurnOutcome = null,
+                recentTurnOutcomes = emptyList(),
+                auditSession = result.auditSession?.copy(
+                    candidateChanges = emptyList(),
+                    investigationThreads = emptyList(),
+                    turnOutcomes = emptyList(),
+                    focusTargetId = null,
+                ),
+            )
+            QaMode.REVIEW -> result.copy(
+                requestedMode = request.mode,
+                effectiveMode = effectiveMode,
+                patch = null,
+                candidateChanges = emptyList(),
+                newCandidateChanges = emptyList(),
+                auditSession = result.auditSession?.copy(candidateChanges = emptyList()),
+            )
+            QaMode.INVESTIGATE -> result.copy(
+                requestedMode = request.mode,
+                effectiveMode = effectiveMode,
+                patch = null,
+                candidateChanges = emptyList(),
+                newCandidateChanges = emptyList(),
+                investigationThreads = result.investigationThreads
+                    .filter { thread -> request.sourceThreadId == null || thread.threadId == request.sourceThreadId },
+                latestTurnOutcome = result.latestTurnOutcome
+                    ?.takeIf { outcome -> request.sourceThreadId == null || outcome.threadId == request.sourceThreadId },
+                recentTurnOutcomes = result.recentTurnOutcomes
+                    .filter { outcome -> request.sourceThreadId == null || outcome.threadId == request.sourceThreadId },
+                auditSession = result.auditSession?.let { session ->
+                    session.copy(
+                    candidateChanges = emptyList(),
+                    investigationThreads = session.investigationThreads
+                        .filter { thread -> request.sourceThreadId == null || thread.threadId == request.sourceThreadId },
+                    turnOutcomes = session.turnOutcomes
+                        .filter { outcome -> request.sourceThreadId == null || outcome.threadId == request.sourceThreadId },
+                    focusTargetId = request.sourceThreadId,
+                    )
+                },
+            )
+            QaMode.CHANGE,
+            QaMode.AUTO,
+            -> result.copy(
+                requestedMode = request.mode,
+                effectiveMode = effectiveMode,
+            )
+        }
+    }
+
+    /**
+     * 从结构化结果中提取本轮真实观察到的图节点。
+     */
+    private fun observedNodeIds(result: GraphPatchResult): List<String> {
+        return (
+            result.investigationThreads.flatMap { thread -> thread.targetNodeIds } +
+                result.findings.flatMap { finding ->
+                    finding.references.mapNotNull { reference -> reference.nodeId }
+                }
+            ).distinct()
+    }
+
+    /**
+     * 从结构化结果中提取本轮真实观察到的源码文件。
+     */
+    private fun observedFilePaths(result: GraphPatchResult): List<String> {
+        return result.findings
+            .flatMap { finding -> finding.references.mapNotNull { reference -> reference.filePath } }
+            .distinct()
+    }
+
+    /**
+     * 继续取证被证据闸门挡住时，把阻塞原因传给会话服务。
+     */
+    private fun blockedReason(
+        result: GraphPatchResult,
+        request: ReplayableQaRequest,
+    ): String? {
+        val sourceThreadId = request.sourceThreadId ?: return null
+        return result.investigationThreads
+            .firstOrNull { thread ->
+                thread.threadId == sourceThreadId && thread.status == InvestigationThreadStatus.BLOCKED
+            }
+            ?.evidenceGap
+            ?.takeIf(String::isNotBlank)
     }
 
     private fun ensureQuestionCaptured(

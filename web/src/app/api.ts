@@ -13,6 +13,7 @@ import type {
   LinkGraphNode,
   LinkGraphSnapshotEnvelope,
   NodeType,
+  QaMode,
   RiskResolutionStatus,
   StepGranularity,
 } from "./types";
@@ -66,7 +67,7 @@ declare global {
       exportMermaid?: () => void;
       showDiffMode?: () => void;
       requestSyncPreview?: () => void;
-      requestAudit?: (question: string, selectedNodeIds?: string[], sourceThreadId?: string | null) => void;
+      requestAudit?: (question: string, selectedNodeIds?: string[], sourceThreadId?: string | null, mode?: QaMode) => void;
       retryLastAuditRequest?: () => void;
       confirmAuditCandidateChange?: (changeId: string) => void;
       unconfirmAuditCandidateChange?: (changeId: string) => void;
@@ -264,13 +265,15 @@ export function requestAuditAsync(
   question: string,
   selectedNodeIds: string[] = [],
   sourceThreadId: string | null = null,
+  mode: QaMode = "AUTO",
 ): BridgeInvocationResult {
   return invokeBridgeAction("requestAudit", (bridge) => {
-    bridge.requestAudit?.(question, selectedNodeIds, sourceThreadId);
+    bridge.requestAudit?.(question, selectedNodeIds, sourceThreadId, mode);
   }, {
     question,
     selectedNodeIds,
     sourceThreadId,
+    mode,
   });
 }
 

@@ -19,6 +19,7 @@ import com.charmnight.linkgraph.workbench.CandidatePatchIntentMode
 import com.charmnight.linkgraph.workbench.InvestigationThread
 import com.charmnight.linkgraph.workbench.InvestigationThreadStatus
 import com.charmnight.linkgraph.workbench.InvestigationTurnOutcomeStatus
+import com.charmnight.linkgraph.workbench.QaMode
 import java.net.http.HttpTimeoutException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -27,6 +28,200 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GraphAuditPatchServiceTest {
+    @Test
+    fun answerModeDropsRemoteCandidateChangesAndInvestigationThreads() {
+        val gateway = object : LlmGateway {
+            override fun generate(request: LlmRequest): LlmResponse {
+                return LlmResponse(
+                    content = """
+                        {
+                          "answer": "这是直接回答，但远程错误地附带了候选和风险。",
+                          "findings": [
+                            {
+                              "id": "direct-answer",
+                              "claim": "当前源码片段说明了触发入口。",
+                              "evidenceLevel": "DIRECT_SOURCE",
+                              "references": [
+                                {
+                                  "nodeId": "method:scheduled-task",
+                                  "filePath": "src/main/java/com/example/Task.java",
+                                  "startLine": 10,
+                                  "endLine": 14
+                                }
+                              ]
+                            }
+                          ],
+                          "candidateChanges": [
+                            {
+                              "changeId": "remote-change",
+                              "status": "PENDING_CONFIRMATION",
+                              "claimType": "CODE_FACT",
+                              "title": "不应保留的修改",
+                              "targetNodeIds": ["method:scheduled-task"],
+                              "reason": "ANSWER 模式不允许候选变更",
+                              "impactSummary": "不应进入草稿",
+                              "supportingFindingIds": ["direct-answer"]
+                            }
+                          ],
+                          "investigationThreads": [
+                            {
+                              "threadId": "remote-thread",
+                              "status": "OPEN",
+                              "claimType": "RISK_HINT",
+                              "title": "不应保留的风险线程",
+                              "targetNodeIds": ["method:scheduled-task"],
+                              "summary": "ANSWER 模式不允许新风险线程",
+                              "evidenceGap": "无",
+                              "recommendedQuestion": "无",
+                              "supportingFindingIds": ["direct-answer"]
+                            }
+                          ],
+                          "warnings": [],
+                          "patch": null
+                        }
+                    """.trimIndent(),
+                    model = request.model,
+                )
+            }
+        }
+
+        val result = GraphAuditPatchService(gateway = gateway).audit(
+            context = GraphAuditContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:scheduled-task",
+                            type = NodeType.METHOD,
+                            title = "Task.run",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                    ),
+                ),
+                selectedNodeIds = listOf("method:scheduled-task"),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:scheduled-task",
+                        filePath = "src/main/java/com/example/Task.java",
+                        startLine = 10,
+                        endLine = 14,
+                        snippet = "@Scheduled(cron = \"0 * * * * ?\")\nvoid run() {}",
+                    ),
+                ),
+            ),
+            question = "这个方法是如何触发的？",
+            requestedMode = QaMode.AUTO,
+            effectiveMode = QaMode.ANSWER,
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://localhost:8080/v1",
+                apiKey = "token",
+                model = "gpt-test",
+            ),
+        )
+
+        assertEquals(QaMode.AUTO, result.requestedMode)
+        assertEquals(QaMode.ANSWER, result.effectiveMode)
+        assertTrue(result.answer.contains("直接回答"))
+        assertTrue(result.findings.isNotEmpty())
+        assertTrue(result.sourceContext.isNotEmpty())
+        assertTrue(result.evidenceTrace.isNotEmpty())
+        assertTrue(result.candidateChanges.isEmpty())
+        assertTrue(result.newCandidateChanges.isEmpty())
+        assertTrue(result.investigationThreads.isEmpty())
+    }
+
+    @Test
+    fun reviewModeKeepsRiskThreadsButDoesNotPromoteThemToCandidateChanges() {
+        val gateway = object : LlmGateway {
+            override fun generate(request: LlmRequest): LlmResponse {
+                return LlmResponse(
+                    content = """
+                        {
+                          "answer": "审计发现一条风险线程，但不应进入候选变更。",
+                          "findings": [
+                            {
+                              "id": "direct-risk",
+                              "claim": "当前图里能直接观察到待审计分支。",
+                              "evidenceLevel": "DIRECT_GRAPH",
+                              "references": [
+                                {
+                                  "nodeId": "method:review-target"
+                                }
+                              ]
+                            }
+                          ],
+                          "candidateChanges": [
+                            {
+                              "changeId": "remote-review-change",
+                              "status": "PENDING_CONFIRMATION",
+                              "claimType": "CODE_FACT",
+                              "title": "REVIEW 模式不应保留的候选",
+                              "targetNodeIds": ["method:review-target"],
+                              "reason": "REVIEW 模式只审计风险",
+                              "impactSummary": "不应进入草稿",
+                              "supportingFindingIds": ["direct-risk"]
+                            }
+                          ],
+                          "investigationThreads": [
+                            {
+                              "threadId": "thread-direct-risk",
+                              "status": "OPEN",
+                              "claimType": "RISK_HINT",
+                              "title": "待审计风险",
+                              "targetNodeIds": ["method:review-target"],
+                              "summary": "当前有直接图证据，但仍只作为风险线程展示。",
+                              "evidenceGap": "需要用户确认是否调整代码。",
+                              "recommendedQuestion": "需要修改时请切换到代码调整模式。",
+                              "supportingFindingIds": ["direct-risk"]
+                            }
+                          ],
+                          "warnings": [],
+                          "patch": null
+                        }
+                    """.trimIndent(),
+                    model = request.model,
+                )
+            }
+        }
+
+        val result = GraphAuditPatchService(gateway = gateway).audit(
+            context = GraphAuditContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:review-target",
+                            type = NodeType.METHOD,
+                            title = "ReviewTarget.handle",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                    ),
+                ),
+                selectedNodeIds = listOf("method:review-target"),
+            ),
+            question = "这里有没有问题？",
+            requestedMode = QaMode.AUTO,
+            effectiveMode = QaMode.REVIEW,
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://localhost:8080/v1",
+                apiKey = "token",
+                model = "gpt-test",
+            ),
+            session = AuditConversationSession(
+                sessionId = "audit-review",
+                scopeKey = "method:review-target",
+            ),
+            sourceThreadId = null,
+        )
+
+        assertEquals(QaMode.REVIEW, result.effectiveMode)
+        assertTrue(result.investigationThreads.isNotEmpty())
+        assertTrue(result.candidateChanges.isEmpty())
+        assertTrue(result.newCandidateChanges.isEmpty())
+    }
+
     @Test
     fun buildsMockAuditAnswerAndPatchPreview() {
         val result = GraphAuditPatchService().audit(

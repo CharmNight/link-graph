@@ -10,6 +10,9 @@ import com.charmnight.linkgraph.llm.GraphBeautificationService
 import com.charmnight.linkgraph.llm.GraphDiffPatchService
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.llm.ResultEvidenceFinding
+import com.charmnight.linkgraph.llm.ResultEvidenceLevel
+import com.charmnight.linkgraph.llm.ResultEvidenceReference
 import com.charmnight.linkgraph.llm.capability.QaCapability
 import com.charmnight.linkgraph.llm.runtime.RunBudget
 import com.charmnight.linkgraph.model.EdgeType
@@ -23,6 +26,9 @@ import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.AuditConversationMessage
 import com.charmnight.linkgraph.workbench.AuditConversationSession
 import com.charmnight.linkgraph.workbench.AuditMessageRole
+import com.charmnight.linkgraph.workbench.InvestigationThread
+import com.charmnight.linkgraph.workbench.InvestigationThreadStatus
+import com.charmnight.linkgraph.workbench.InvestigationTurnOutcomeStatus
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -100,9 +106,10 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         assertTrue(snapshot.auditRequestState.detailMessage?.contains("step[0]") == true)
         assertTrue(snapshot.auditRequestState.detailMessage?.contains("tool=get_draft_workbench") == true)
         assertTrue(snapshot.auditRequestState.detailMessage?.contains("budget steps=") == true)
-        assertEquals(2, snapshot.runtimeArtifactSummaries["qa"]?.size)
-        assertEquals("图摘要", snapshot.runtimeArtifactSummaries["qa"]?.firstOrNull()?.title)
-        assertEquals("问答结论", snapshot.runtimeArtifactSummaries["qa"]?.lastOrNull()?.title)
+        val artifactTitles = snapshot.runtimeArtifactSummaries["qa"]?.map { it.title }.orEmpty()
+        assertTrue(artifactTitles.contains("图摘要"))
+        assertTrue(artifactTitles.contains("问答结论"))
+        assertEquals("问答结论", artifactTitles.lastOrNull())
     }
 
     fun testRequestAuditAsyncReadsCodeEvidenceBeforeAuditExecutor() {
@@ -322,6 +329,245 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             listOf("method:file-download", "method:get-download-path"),
             capturedNodeIds,
         )
+    }
+
+    fun testRequestAuditAsyncRoutesThreadInvestigationThroughDeterministicPipeline() {
+        myFixture.configureByText(
+            "TaskQueueEventType.java",
+            """
+            package com.example.queue;
+
+            enum TaskQueueEventType {
+                ADD,
+                REMOVE
+            }
+            """.trimIndent(),
+        )
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        stateService.loadGraph(
+            GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:add-pool",
+                        type = NodeType.METHOD,
+                        title = "PoolService.addPool",
+                        sourceTag = GraphSourceTag.FACT,
+                    ),
+                ),
+            ),
+            "currentMethod",
+        )
+        stateService.asyncRequests.markAuditResult(
+            GraphPatchResult(
+                source = LlmResultSource.MOCK,
+                question = "历史问题",
+                answer = "历史回答",
+                promptPreview = "prompt",
+                auditSession = AuditConversationSession(
+                    sessionId = "session-add-pool",
+                    scopeKey = "method:add-pool",
+                    investigationThreads = listOf(
+                        InvestigationThread(
+                            threadId = "thread-add-event-type",
+                            status = InvestigationThreadStatus.OPEN,
+                            title = "TaskQueueEventType ADD 分支待确认",
+                            targetNodeIds = listOf("method:add-pool"),
+                            summary = "当前图里没有 TaskQueueEventType 的定义。",
+                            evidenceGap = "缺少 TaskQueueEventType.ADD 的直接源码证据。",
+                            recommendedQuestion = "请继续取证：定位 TaskQueueEventType.ADD。",
+                            claimType = "RISK_HINT",
+                            evidence = listOf(
+                                ResultEvidenceFinding(
+                                    id = "add-event-type-missing",
+                                    claim = "当前只看到 addPool 调用点。",
+                                    evidenceLevel = ResultEvidenceLevel.CALLSITE_ONLY,
+                                    references = listOf(ResultEvidenceReference(nodeId = "method:add-pool")),
+                                ),
+                            ),
+                        ),
+                    ),
+                    focusTargetId = "thread-add-event-type",
+                ),
+            ),
+        )
+        val session = ProjectEditorSession(
+            stateService = stateService,
+            onBrowserSyncRequested = {},
+        )
+        var qaExecutorInvoked = false
+        val workflow = ReviewWorkflow(
+            project = project,
+            session = session,
+            planningContextFactory = PlanningContextFactory(
+                graphDiffer = GraphDiffer(),
+                syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
+                graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
+                settingsProvider = { LinkGraphSettingsState() },
+            ),
+            graphAuditPatchService = GraphAuditPatchService(),
+            graphDiffPatchService = GraphDiffPatchService(),
+            graphBeautificationService = object : GraphBeautificationService {
+                override fun beautify(
+                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    settings: LinkGraphSettingsState,
+                    onPreview: ((String, Boolean) -> Unit)?,
+                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                    source = LlmResultSource.MOCK,
+                    promptPreview = "unused",
+                )
+            },
+            graphDiffer = GraphDiffer(),
+            settingsProvider = { LinkGraphSettingsState() },
+            auditExecutorOverrideProvider = { null },
+            asyncRequestLifecycle = AsyncRequestLifecycleSupport(
+                project = project,
+                session = session,
+                timeoutOverrideProvider = { 500L },
+            ),
+            logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
+            qaCapabilityFactory = {
+                QaCapability(
+                    auditExecutor = { input, _, _ ->
+                        qaExecutorInvoked = true
+                        GraphPatchResult(
+                            source = LlmResultSource.MOCK,
+                            question = input.question,
+                            answer = "普通 QA 不应处理继续取证。",
+                            promptPreview = "prompt",
+                        )
+                    },
+                )
+            },
+        )
+
+        workflow.requestAuditAsync(
+            question = "请继续取证：定位 TaskQueueEventType.ADD。",
+            selectedNodeIds = listOf("method:add-pool"),
+            sourceThreadId = "thread-add-event-type",
+        )
+
+        val snapshot = waitForSnapshot(stateService) { current ->
+            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
+        }
+
+        assertFalse(qaExecutorInvoked)
+        assertTrue(snapshot.auditResult?.answer?.contains("本轮已确认直接证据") == true)
+        assertTrue(snapshot.auditResult?.findings?.any { finding ->
+            finding.evidenceLevel == ResultEvidenceLevel.DIRECT_SOURCE &&
+                finding.references.any { reference ->
+                    reference.filePath?.endsWith("TaskQueueEventType.java") == true
+                }
+        } == true)
+    }
+
+    fun testRequestAuditAsyncDoesNotInvokeQaWhenInvestigationHasNoAcceptedEvidence() {
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        stateService.loadGraph(
+            GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:add-pool",
+                        type = NodeType.METHOD,
+                        title = "PoolService.addPool",
+                        sourceTag = GraphSourceTag.FACT,
+                    ),
+                ),
+            ),
+            "currentMethod",
+        )
+        stateService.asyncRequests.markAuditResult(
+            GraphPatchResult(
+                source = LlmResultSource.MOCK,
+                question = "历史问题",
+                answer = "历史回答",
+                promptPreview = "prompt",
+                auditSession = AuditConversationSession(
+                    sessionId = "session-missing-event-type",
+                    scopeKey = "method:add-pool",
+                    investigationThreads = listOf(
+                        InvestigationThread(
+                            threadId = "thread-missing-event-type",
+                            status = InvestigationThreadStatus.OPEN,
+                            title = "MissingEventType ADD 分支待确认",
+                            targetNodeIds = listOf("method:add-pool"),
+                            evidenceGap = "缺少 MissingEventType.ADD 的直接源码证据。",
+                            recommendedQuestion = "请继续取证：定位 MissingEventType.ADD。",
+                            claimType = "RISK_HINT",
+                        ),
+                    ),
+                    focusTargetId = "thread-missing-event-type",
+                ),
+            ),
+        )
+        val session = ProjectEditorSession(
+            stateService = stateService,
+            onBrowserSyncRequested = {},
+        )
+        var qaExecutorInvoked = false
+        val workflow = ReviewWorkflow(
+            project = project,
+            session = session,
+            planningContextFactory = PlanningContextFactory(
+                graphDiffer = GraphDiffer(),
+                syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
+                graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
+                settingsProvider = { LinkGraphSettingsState() },
+            ),
+            graphAuditPatchService = GraphAuditPatchService(),
+            graphDiffPatchService = GraphDiffPatchService(),
+            graphBeautificationService = object : GraphBeautificationService {
+                override fun beautify(
+                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    settings: LinkGraphSettingsState,
+                    onPreview: ((String, Boolean) -> Unit)?,
+                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                    source = LlmResultSource.MOCK,
+                    promptPreview = "unused",
+                )
+            },
+            graphDiffer = GraphDiffer(),
+            settingsProvider = { LinkGraphSettingsState() },
+            auditExecutorOverrideProvider = { null },
+            asyncRequestLifecycle = AsyncRequestLifecycleSupport(
+                project = project,
+                session = session,
+                timeoutOverrideProvider = { 500L },
+            ),
+            logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
+            qaCapabilityFactory = {
+                QaCapability(
+                    auditExecutor = { input, _, _ ->
+                        qaExecutorInvoked = true
+                        GraphPatchResult(
+                            source = LlmResultSource.MOCK,
+                            question = input.question,
+                            answer = "普通 QA 不应处理无证据继续取证。",
+                            promptPreview = "prompt",
+                        )
+                    },
+                )
+            },
+        )
+
+        workflow.requestAuditAsync(
+            question = "请继续取证：定位 MissingEventType.ADD。",
+            selectedNodeIds = emptyList(),
+            sourceThreadId = "thread-missing-event-type",
+        )
+
+        val snapshot = waitForSnapshot(stateService) { current ->
+            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
+        }
+
+        assertFalse(qaExecutorInvoked)
+        assertTrue(snapshot.auditResult?.answer?.contains("没有拿到可进入 LLM 上下文的直接证据") == true)
+        assertTrue(snapshot.auditResult?.findings?.isEmpty() == true)
+        assertTrue(snapshot.auditResult?.warnings?.any { warning ->
+            warning.contains("没有拿到可进入 LLM 上下文的直接证据")
+        } == true)
+        assertTrue(snapshot.auditResult?.auditSession?.investigationThreads?.single()?.targetNodeIds?.contains("method:add-pool") == true)
+        assertEquals(InvestigationThreadStatus.BLOCKED, snapshot.auditResult?.auditSession?.investigationThreads?.single()?.status)
+        assertEquals(InvestigationTurnOutcomeStatus.BLOCKED, snapshot.auditResult?.latestTurnOutcome?.status)
     }
 
     fun testRequestAuditAsyncBuildsCandidateChangeFromRuntimeCodeEvidenceInMockMode() {

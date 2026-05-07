@@ -1,7 +1,7 @@
 import { llmResultSourceLabel, patchResultBoundaryDescription } from "../labels";
 import type { GraphPatchResult } from "../types";
-import { ArtifactTextDisclosure } from "./ArtifactTextDisclosure";
 import { EvidenceFindingsSection } from "./EvidenceFindingsSection";
+import { RequestPromptDisclosure } from "./RequestPromptDisclosure";
 
 interface PatchResultSummaryProps {
   title: string;
@@ -240,11 +240,11 @@ export function PatchResultSummary({
             <div className="preview-head">
               <strong>调试用提示词</strong>
             </div>
-            <ArtifactTextDisclosure
-              buttonLabel="查看调试用提示词"
-              expandedLabel="隐藏调试用提示词"
-              artifactId={result.promptPreviewArtifactId ?? null}
-              text={result.promptPreview ?? (result.promptPreviewArtifactId ? resolveArtifactText?.(result.promptPreviewArtifactId) : null)}
+            <RequestPromptDisclosure
+              promptPreview={result.promptPreview ?? null}
+              promptPreviewArtifactId={result.promptPreviewArtifactId ?? null}
+              promptPreviewAvailable={Boolean(result.promptPreview?.trim() || result.promptPreviewArtifactId)}
+              resolveArtifactText={resolveArtifactText}
               onRequestArtifact={onRequestArtifact}
             />
           </section>

@@ -3,6 +3,7 @@ package com.charmnight.linkgraph.llm.capability
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.llm.GraphAuditContext
+import com.charmnight.linkgraph.llm.EvidenceTraceEntry
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.llm.SourceSnippetContext
@@ -22,6 +23,12 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.ui.GraphEditorStateService
+import com.charmnight.linkgraph.ui.GraphSceneId
+import com.charmnight.linkgraph.ui.view.FlowchartSummary
+import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
+import com.charmnight.linkgraph.ui.view.GraphProjectionIndex
+import com.charmnight.linkgraph.ui.view.GraphProjectionMappingKind
+import com.charmnight.linkgraph.ui.view.GraphProjectionNodeMapping
 import com.charmnight.linkgraph.workbench.AuditConversationMessage
 import com.charmnight.linkgraph.workbench.AuditConversationSession
 import com.charmnight.linkgraph.workbench.AuditMessageRole
@@ -278,6 +285,128 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertTrue(result.finalState.artifactRefs.any { it.type == ArtifactType.CODE_EVIDENCE })
         val snippet = requireNotNull(capturedSourceContext.singleOrNull())
         assertTrue(snippet.snippet?.contains("fallback(request)") == true)
+    }
+
+    fun testRecordsFailedCodeEvidenceTraceWhenSelectedNodeCannotReadSource() {
+        var capturedSourceContext: List<SourceSnippetContext> = emptyList()
+        var capturedEvidenceTrace: List<EvidenceTraceEntry> = emptyList()
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            auditExecutor = { input, _, _ ->
+                capturedSourceContext = input.auditContext.sourceContext
+                capturedEvidenceTrace = input.auditContext.evidenceTrace
+                GraphPatchResult(
+                    source = LlmResultSource.MOCK,
+                    question = input.question,
+                    answer = "已按当前上下文回答。",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+
+        val result = AgentRunCoordinator().run(
+            capability = capability,
+            input = QaCapabilityInput(
+                question = "这个方法是基于哪个组件实现的？如果替换组件的改动大概是多少？",
+                auditContext = GraphAuditContext(
+                    selectedNodeIds = listOf("invoke:gender-prompt"),
+                ),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = {
+                    testSnapshot(
+                        workingGraph = GraphDocument(
+                            nodes = listOf(
+                                GraphNode(
+                                    id = "invoke:gender-prompt",
+                                    type = NodeType.FLOW_ACTION,
+                                    title = "调用 AIServiceImpl.genderPrompt",
+                                    signature = "com.example.AIServiceImpl.genderPrompt():java.lang.String",
+                                    metadata = mapOf("flow.kind" to "INVOCATION"),
+                                ),
+                            ),
+                        ),
+                    )
+                },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertTrue(capturedSourceContext.isEmpty())
+        val trace = requireNotNull(capturedEvidenceTrace.singleOrNull())
+        assertEquals("invoke:gender-prompt", trace.nodeId)
+        assertFalse(trace.includedInPrompt)
+        assertTrue(trace.reason.contains("未读取到源码"))
+        assertTrue(result.output?.evidenceTrace?.any { entry ->
+            entry.nodeId == "invoke:gender-prompt" && !entry.includedInPrompt
+        } == true)
+        assertTrue(result.output?.warnings?.any { warning ->
+            warning.contains("没有读取到可送入 prompt")
+        } == true)
+    }
+
+    fun testDoesNotUsePreloadedSourceWhenRuntimeReadAttemptFails() {
+        var capturedSourceContext: List<SourceSnippetContext> = emptyList()
+        var capturedEvidenceTrace: List<EvidenceTraceEntry> = emptyList()
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            auditExecutor = { input, _, _ ->
+                capturedSourceContext = input.auditContext.sourceContext
+                capturedEvidenceTrace = input.auditContext.evidenceTrace
+                GraphPatchResult(
+                    source = LlmResultSource.MOCK,
+                    question = input.question,
+                    answer = "已按当前上下文回答。",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+
+        val result = AgentRunCoordinator().run(
+            capability = capability,
+            input = QaCapabilityInput(
+                question = "这个方法替换组件的影响范围是什么？",
+                auditContext = GraphAuditContext(
+                    selectedNodeIds = listOf("invoke:gender-prompt"),
+                    sourceContext = listOf(
+                        SourceSnippetContext(
+                            nodeId = "method:stale",
+                            filePath = "src/main/java/com/example/Stale.java",
+                            startLine = 1,
+                            endLine = 3,
+                            snippet = "class Stale {}",
+                        ),
+                    ),
+                ),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = {
+                    testSnapshot(
+                        workingGraph = GraphDocument(
+                            nodes = listOf(
+                                GraphNode(
+                                    id = "invoke:gender-prompt",
+                                    type = NodeType.FLOW_ACTION,
+                                    title = "调用 AIServiceImpl.genderPrompt",
+                                    signature = "com.example.AIServiceImpl.genderPrompt():java.lang.String",
+                                    metadata = mapOf("flow.kind" to "INVOCATION"),
+                                ),
+                            ),
+                        ),
+                    )
+                },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertTrue(capturedSourceContext.isEmpty())
+        assertTrue(capturedEvidenceTrace.singleOrNull()?.includedInPrompt == false)
+        assertTrue(result.output?.sourceContext?.isEmpty() == true)
+        assertTrue(result.output?.warnings?.any { warning ->
+            warning.contains("没有读取到可送入 prompt")
+        } == true)
     }
 
     fun testStopsBeforeAuditExecutionWhenCodeReadExceedsBudget() {
@@ -1125,5 +1254,106 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertEquals("未读取项目外代码证据。", result.output?.answer)
         assertTrue(capturedSourceContext.isEmpty())
         assertTrue(result.finalState.artifactRefs.none { it.type == ArtifactType.CODE_EVIDENCE })
+    }
+
+    fun testReadsRealSourceWhenSelectedNodeIsAFlowchartProjection() {
+        val sourceFile = Path.of(requireNotNull(project.basePath))
+            .resolve("src/main/java/com/example/QaProjectedScheduledJob.java")
+        Files.createDirectories(sourceFile.parent)
+        Files.writeString(
+            sourceFile,
+            """
+            package com.example;
+
+            import org.springframework.scheduling.annotation.Scheduled;
+
+            @Component
+            class QaProjectedScheduledJob {
+                @Scheduled(cron = "0 0 * * * ?")
+                void run() {
+                    cleanupExpiredOrders();
+                }
+            }
+            """.trimIndent(),
+        )
+        val projectedNode = GraphNode(
+            id = "flow-action:cleanup-projection",
+            type = NodeType.FLOW_ACTION,
+            title = "cleanupExpiredOrders()",
+            metadata = mapOf("flowchart.kind" to "PROCESS"),
+        )
+        val realNode = GraphNode(
+            id = "method:scheduled-cleanup",
+            type = NodeType.METHOD,
+            title = "QaProjectedScheduledJob.run",
+            signature = "com.example.QaProjectedScheduledJob.run():void",
+            metadata = mapOf(
+                "source.filePath" to sourceFile.toString(),
+                "source.startLine" to "7",
+                "source.endLine" to "10",
+            ),
+        )
+        var capturedSourceContext: List<SourceSnippetContext> = emptyList()
+        var capturedEvidenceTrace: List<EvidenceTraceEntry> = emptyList()
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            auditExecutor = { input, _, _ ->
+                capturedSourceContext = input.auditContext.sourceContext
+                capturedEvidenceTrace = input.auditContext.evidenceTrace
+                GraphPatchResult(
+                    source = LlmResultSource.MOCK,
+                    question = input.question,
+                    answer = "已读取投影节点对应源码。",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+
+        val result = AgentRunCoordinator().run(
+            capability = capability,
+            input = QaCapabilityInput(
+                question = "这个方法是如何触发的？",
+                auditContext = GraphAuditContext(
+                    selectedNodeIds = listOf(projectedNode.id),
+                ),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = {
+                    testSnapshot(
+                        currentSceneId = GraphSceneId.WORKSPACE_FLOWCHART,
+                        workspaceGraph = GraphDocument(nodes = listOf(projectedNode)),
+                        semanticFactGraph = GraphDocument(nodes = listOf(realNode)),
+                        flowchartView = FlowchartViewDocument(
+                            visibleGraph = GraphDocument(nodes = listOf(projectedNode)),
+                            fullGraph = GraphDocument(nodes = listOf(projectedNode)),
+                            anchorNodeId = projectedNode.id,
+                            projectionIndex = GraphProjectionIndex(
+                                nodeMappings = mapOf(
+                                    projectedNode.id to GraphProjectionNodeMapping(
+                                        projectedNodeId = projectedNode.id,
+                                        mappingKind = GraphProjectionMappingKind.PATH_ALIAS,
+                                        canonicalNodeIds = listOf(realNode.id),
+                                    ),
+                                ),
+                            ),
+                            summary = FlowchartSummary(nodeCount = 1, branchCount = 0, exceptionPathCount = 0),
+                        ),
+                    )
+                },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertEquals("已读取投影节点对应源码。", result.output?.answer)
+        val snippet = requireNotNull(capturedSourceContext.singleOrNull())
+        assertEquals(realNode.id, snippet.nodeId)
+        assertTrue(snippet.snippet?.contains("@Scheduled") == true)
+        assertTrue(snippet.snippet?.contains("import org.springframework.scheduling.annotation.Scheduled;") == true)
+        val trace = requireNotNull(capturedEvidenceTrace.singleOrNull())
+        assertEquals(projectedNode.id, trace.nodeId)
+        assertEquals(realNode.id, trace.resolvedNodeId)
+        assertTrue(trace.mappingTrace.any { step -> step.contains("projectionIndex:${projectedNode.id}->${realNode.id}") })
+        assertTrue(trace.includedInPrompt)
     }
 }

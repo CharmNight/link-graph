@@ -14,19 +14,22 @@ class ResolveAnchorTool(
         input: Map<String, Any?>,
         context: ToolExecutionContext,
     ): ToolResult {
-        val anchor = codeReadToolFacade.resolveAnchor(
+        val resolution = codeReadToolFacade.resolveEvidenceAnchor(
             snapshot = context.snapshot,
             nodeId = input["nodeId"]?.toString(),
             symbolSignature = input["symbolSignature"]?.toString(),
-        ) ?: return ToolResult(
+        )
+        val anchor = resolution.node ?: return ToolResult(
             toolName = name,
             success = false,
+            payload = mapOf("resolution" to resolution),
             errorMessage = "未解析到代码锚点",
         )
         return ToolResult(
             toolName = name,
             payload = mapOf(
                 "node" to anchor,
+                "resolution" to resolution,
             ),
         )
     }

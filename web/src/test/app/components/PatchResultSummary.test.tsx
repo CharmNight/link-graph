@@ -75,7 +75,7 @@ describe("PatchResultSummary", () => {
     );
 
     expect(screen.queryByText("system: audit graph\nuser: inspect fallback branch")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "查看调试用提示词" }));
+    await user.click(screen.getByRole("button", { name: "查看提示词" }));
     expect(screen.getByText((_, element) => element?.textContent === "system: audit graph\nuser: inspect fallback branch")).toBeInTheDocument();
   });
 });

@@ -5,7 +5,7 @@ import type {
 } from "../types";
 import { AsyncRequestBanner, resolveEffectiveRequestState } from "./AsyncRequestBanner";
 import { generationSourceLabel, riskLabel } from "../labels";
-import { ArtifactTextDisclosure } from "./ArtifactTextDisclosure";
+import { RequestPromptDisclosure } from "./RequestPromptDisclosure";
 
 interface GenerationPlanPanelProps {
   plan?: GenerationPlan | null;
@@ -53,7 +53,7 @@ export function GenerationPlanPanel({
   const primaryMessage = planning
     ? "正在生成实现建议，请稍候。"
     : planningError
-      ? "当前请求失败，可查看上方状态并按需重试。"
+      ? "当前请求失败，请查看上方状态并按需重试。"
       : "实现建议会基于当前草稿快照生成。";
   const discussionMessages = discussionSession?.messages ?? [];
   const canSubmitDiscussion = Boolean(
@@ -105,11 +105,11 @@ export function GenerationPlanPanel({
                   ))}
                 </div>
               ) : null}
-              <ArtifactTextDisclosure
-                buttonLabel="查看生成提示词"
-                expandedLabel="隐藏生成提示词"
-                artifactId={plan.promptPreviewArtifactId ?? null}
-                text={plan.promptPreview ?? (plan.promptPreviewArtifactId ? resolveArtifactText?.(plan.promptPreviewArtifactId) : null)}
+              <RequestPromptDisclosure
+                promptPreview={plan.promptPreview ?? null}
+                promptPreviewArtifactId={plan.promptPreviewArtifactId ?? null}
+                promptPreviewAvailable={Boolean(plan.promptPreview?.trim() || plan.promptPreviewArtifactId)}
+                resolveArtifactText={resolveArtifactText}
                 onRequestArtifact={onRequestArtifact}
               />
             </article>
@@ -132,6 +132,15 @@ export function GenerationPlanPanel({
               </div>
               <p className="muted">如果你对某条建议有异议或需要展开理由，直接在这里追问，不再跳回问答页。</p>
               <AsyncRequestBanner requestState={effectiveDiscussionRequestState} />
+              <RequestPromptDisclosure
+                promptPreview={discussionSession?.promptPreview ?? null}
+                promptPreviewArtifactId={discussionSession?.promptPreviewArtifactId ?? null}
+                promptPreviewAvailable={Boolean(
+                  discussionSession?.promptPreview?.trim() || discussionSession?.promptPreviewArtifactId,
+                )}
+                resolveArtifactText={resolveArtifactText}
+                onRequestArtifact={onRequestArtifact}
+              />
               {discussionMessages.length > 0 ? (
                 <div className="warning-list">
                   {discussionMessages.map((message) => (

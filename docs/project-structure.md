@@ -39,8 +39,23 @@
   - 语义分析、事实构建与主体定位。
 - `model`
   - 共享图模型定义。
-- `mermaid`、`diff`、`sync`、`navigation`、`codegen`、`llm`、`settings`
+- `mermaid`、`diff`、`sync`、`navigation`、`codegen`、`llm`、`investigation`、`settings`
   - 各自聚焦的领域能力模块。
+
+`llm` 下按运行职责继续拆分：
+
+- `runtime`
+  - 受控 Agent Run、步骤执行、预算和停止策略。
+- `tools`
+  - 图读取、源码读取、锚点解析、草稿访问等 Tool Facade。
+- `artifact`
+  - 跨步骤和跨阶段传递的结构化 Artifact。
+- `capability`
+  - 问答、计划、代码生成等 Agent Capability。
+- `context`
+  - 源码片段等上下文收集与去重支撑。
+
+`investigation` 用于风险线程继续取证相关的适配和归一化逻辑。
 
 ## 前端结构
 

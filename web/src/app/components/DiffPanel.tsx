@@ -92,7 +92,7 @@ export function DiffPanel({
         <strong>3. 差异问答</strong>
         <AsyncRequestBanner requestState={effectiveRequestState} />
         {reviewing ? <p className="muted">正在生成差异解释，请稍候。</p> : null}
-        {reviewError && !result && !reviewing ? <p className="muted">当前请求失败，可查看上方状态并按需重试。</p> : null}
+        {reviewError && !result && !reviewing ? <p className="muted">当前请求失败，请查看上方状态并按需重试。</p> : null}
         <label className="form-stack">
           差异问题
           <textarea

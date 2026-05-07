@@ -6,6 +6,7 @@ import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.ui.GraphEditorMessage
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.GraphLayoutPosition
+import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.charmnight.linkgraph.workbench.WorkbenchLayoutPreferencesService
 import com.intellij.openapi.components.Service
@@ -43,6 +44,7 @@ class GraphEditorCommandRouter(
                 message.question,
                 message.selectedNodeIds,
                 message.sourceThreadId,
+                message.mode,
             )
             GraphEditorMessage.RetryLastAuditRequest -> projectService.retryLastAuditRequestAsync()
             is GraphEditorMessage.ConfirmAuditCandidateChange -> projectService.confirmAuditCandidateChange(message.changeId)
@@ -117,8 +119,9 @@ class GraphEditorCommandRouter(
         question: String,
         selectedNodeIds: List<String> = emptyList(),
         sourceThreadId: String? = null,
+        mode: QaMode = QaMode.AUTO,
     ) {
-        projectService.reviewWorkflow.requestAuditAsync(question, selectedNodeIds, sourceThreadId)
+        projectService.reviewWorkflow.requestAuditAsync(question, selectedNodeIds, sourceThreadId, mode)
     }
 
     fun requestDiffReviewAsync(

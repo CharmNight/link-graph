@@ -308,7 +308,53 @@ class GraphEditorPageRendererTest {
         assertTrue(json.contains("\"providerLabel\":\"OpenAI Compatible\""))
         assertTrue(json.contains("\"model\":\"gpt-test\""))
         assertTrue(json.contains("\"endpointSummary\":\"example.com/v1/chat/completions\""))
-        assertTrue(json.contains("\"promptPreviewAvailable\":true"))
+        assertTrue(json.contains("\"promptPreviewAvailable\":false"))
+    }
+
+    @Test
+    fun promptPreviewAvailableOnlyTrueWhenResultCarriesPromptContentOrArtifact() {
+        val renderer = GraphEditorPageRenderer()
+        val missingPromptSnapshot = testSnapshot(
+            auditRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(
+                scene = "问答",
+                statusMessage = "问答完成。",
+                promptPreviewAvailable = true,
+            ),
+            auditResult = GraphPatchResult(
+                source = LlmResultSource.MOCK,
+                question = "这里是什么？",
+                answer = "当前没有提示词。",
+                promptPreview = "",
+            ),
+        )
+        val missingPromptPayload = renderer.bootstrapPayload(missingPromptSnapshot)
+        @Suppress("UNCHECKED_CAST")
+        val missingPromptState = missingPromptPayload["auditRequestState"] as Map<String, Any?>
+
+        assertFalse(missingPromptState["promptPreviewAvailable"] as Boolean)
+
+        val promptSnapshot = testSnapshot(
+            auditRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(
+                scene = "问答",
+                statusMessage = "问答完成。",
+                promptPreviewAvailable = true,
+            ),
+            auditResult = GraphPatchResult(
+                source = LlmResultSource.MOCK,
+                question = "这里是什么？",
+                answer = "已有提示词。",
+                promptPreview = "system: prompt",
+            ),
+        )
+        val artifactRefs = GraphEditorArtifactRegistry().replaceWith(promptSnapshot)
+        val promptPayload = renderer.bootstrapPayload(promptSnapshot, artifactRefs)
+        @Suppress("UNCHECKED_CAST")
+        val promptState = promptPayload["auditRequestState"] as Map<String, Any?>
+        @Suppress("UNCHECKED_CAST")
+        val promptResult = promptPayload["auditResult"] as Map<String, Any?>
+
+        assertTrue(promptState["promptPreviewAvailable"] as Boolean)
+        assertTrue(promptResult["promptPreviewArtifactId"].toString().startsWith("audit-prompt:audit-result:"))
     }
 
     @Test

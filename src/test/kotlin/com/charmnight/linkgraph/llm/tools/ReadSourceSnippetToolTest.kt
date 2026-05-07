@@ -5,6 +5,8 @@ import com.charmnight.linkgraph.testing.*
 import com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore
 import com.charmnight.linkgraph.llm.runtime.RunBudget
 import com.charmnight.linkgraph.ui.GraphEditorStateService
+import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.nio.file.Files
 import java.nio.file.Path
@@ -83,6 +85,47 @@ class ReadSourceSnippetToolTest : BasePlatformTestCase() {
         val snippet = result.payload["snippet"]?.toString().orEmpty()
         assertTrue(snippet.contains("submit"))
         assertTrue(snippet.contains("fallback(request)"))
+    }
+
+    fun testReadsAbsolutePathFromAdditionalProjectContentRoot() {
+        val contentRoot = Files.createTempDirectory("read-source-snippet-content-root")
+        val sourceFile = contentRoot.resolve("src/main/java/com/example/ScheduledJob.java")
+        Files.createDirectories(sourceFile.parent)
+        Files.writeString(
+            sourceFile,
+            """
+            import org.springframework.scheduling.annotation.Scheduled;
+
+            class ScheduledJob {
+                @Scheduled(cron = "0 15,45 * * * ?")
+                void updateServiceResource() {
+                    resourceService.isPeriodicUpdates();
+                }
+            }
+            """.trimIndent(),
+        )
+        val contentRootFile = requireNotNull(LocalFileSystem.getInstance().refreshAndFindFileByNioFile(contentRoot))
+        PsiTestUtil.addContentRoot(module, contentRootFile)
+        val tool = ReadSourceSnippetTool(CodeReadToolFacade())
+
+        val result = tool.invoke(
+            input = mapOf(
+                "filePath" to sourceFile.toString(),
+                "startLine" to 4,
+                "endLine" to 6,
+            ),
+            context = ToolExecutionContext(
+                project = project,
+                snapshot = testSnapshot(),
+                artifactStore = InMemoryArtifactStore(),
+                runBudget = RunBudget(),
+            ),
+        )
+
+        val snippet = result.payload["snippet"]?.toString().orEmpty()
+        assertTrue(result.success, result.errorMessage ?: "expected source read to succeed")
+        assertTrue(snippet.contains("@Scheduled"))
+        assertTrue(snippet.contains("resourceService.isPeriodicUpdates()"))
     }
 
     fun testRejectsAbsolutePathOutsideProjectRoot() {

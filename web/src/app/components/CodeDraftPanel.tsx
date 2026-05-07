@@ -14,6 +14,7 @@ import type {
 import { draftStatusLabel, normalizeOptionalWorkbenchWording, normalizeWorkbenchWording } from "../labels";
 import { AsyncRequestBanner, resolveEffectiveRequestState } from "./AsyncRequestBanner";
 import { ArtifactTextDisclosure } from "./ArtifactTextDisclosure";
+import { RequestPromptDisclosure } from "./RequestPromptDisclosure";
 import { GenerationPlanPanel } from "./GenerationPlanPanel";
 import { DraftValidationPanel } from "../workbench/DraftValidationPanel";
 
@@ -173,7 +174,7 @@ export function CodeDraftPanel({
   const emptyMessage = normalizeWorkbenchWording(drafting
     ? "正在生成代码 diff，请稍候。"
     : draftError
-      ? "当前请求失败，可查看上方状态并按需重试。"
+      ? "当前请求失败，请查看上方状态并按需重试。"
       : eligibilityDecision?.message
         ?? "代码阶段准入状态尚未就绪。");
   const emptyDetail = normalizeOptionalWorkbenchWording(
@@ -269,11 +270,11 @@ export function CodeDraftPanel({
           </article>
         ) : null}
 
-        <ArtifactTextDisclosure
-          buttonLabel="查看本次生成提示词"
-          expandedLabel="隐藏本次生成提示词"
-          artifactId={promptPreviewArtifactId}
-          text={promptPreview ?? (promptPreviewArtifactId ? resolveArtifactText?.(promptPreviewArtifactId) : null)}
+        <RequestPromptDisclosure
+          promptPreview={promptPreview ?? null}
+          promptPreviewArtifactId={promptPreviewArtifactId ?? null}
+          promptPreviewAvailable={Boolean(promptPreview?.trim() || promptPreviewArtifactId)}
+          resolveArtifactText={resolveArtifactText}
           onRequestArtifact={onRequestArtifact}
         />
 

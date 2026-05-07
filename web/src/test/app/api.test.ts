@@ -342,18 +342,31 @@ describe("publishGraphEditScript", () => {
     };
     window.linkGraphDebugTrace = traceSink;
 
-    requestAuditAsync("请围绕当前链路进行问答", ["method:place-order", "sql:insert-order"], "thread-risk-1");
+    requestAuditAsync("请围绕当前链路进行问答", ["method:place-order", "sql:insert-order"], "thread-risk-1", "INVESTIGATE");
 
     expect(requestAuditBridge).toHaveBeenCalledWith(
       "请围绕当前链路进行问答",
       ["method:place-order", "sql:insert-order"],
       "thread-risk-1",
+      "INVESTIGATE",
     );
     const tracePayload = String(traceSink.mock.calls[0]?.[0] ?? "");
     expect(tracePayload).toContain("\"event\":\"api.requestAudit\"");
     expect(tracePayload).toContain("\"question\":\"请围绕当前链路进行问答\"");
     expect(tracePayload).toContain("\"selectedNodeIds\":[\"method:place-order\",\"sql:insert-order\"]");
     expect(tracePayload).toContain("\"sourceThreadId\":\"thread-risk-1\"");
+    expect(tracePayload).toContain("\"mode\":\"INVESTIGATE\"");
+  });
+
+  it("defaults audit requests to AUTO mode for legacy callers", () => {
+    const requestAuditBridge = vi.fn();
+    window.linkGraphBridge = {
+      requestAudit: requestAuditBridge,
+    };
+
+    requestAuditAsync("这个方法是如何触发的？");
+
+    expect(requestAuditBridge).toHaveBeenCalledWith("这个方法是如何触发的？", [], null, "AUTO");
   });
 
   it("把风险决策请求转发给 IDE bridge", () => {

@@ -277,7 +277,7 @@ internal class GraphEditorAsyncRequestStateSupport(
     ) {
         mutate {
             it.copy(
-                generationPlanDiscussionSession = result.session,
+                generationPlanDiscussionSession = result.session.copy(promptPreview = result.promptPreview),
                 generationPlanDiscussionRequestState = requestState,
                 lastMessageType = "requestGenerationPlanDiscussion",
             )

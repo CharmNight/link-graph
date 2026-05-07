@@ -17,10 +17,55 @@ import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
+import com.charmnight.linkgraph.workbench.QaMode
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
 class LlmPromptFactoryTest {
+    @Test
+    fun auditPromptPackageMakesQaModeBoundariesExplicit() {
+        val promptPackage = LlmPromptFactory().buildAuditPromptPackage(
+            context = GraphAuditContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:scheduled-task",
+                            type = NodeType.METHOD,
+                            title = "Task.run",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                    ),
+                ),
+                selectedNodeIds = listOf("method:scheduled-task"),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:scheduled-task",
+                        filePath = "src/main/java/com/example/Task.java",
+                        startLine = 10,
+                        endLine = 14,
+                        snippet = "@Scheduled(cron = \"0 * * * * ?\")\nvoid run() {}",
+                    ),
+                ),
+            ),
+            question = "这个方法是如何触发的？",
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                model = "gpt-test",
+            ),
+            requestedMode = QaMode.AUTO,
+            effectiveMode = QaMode.ANSWER,
+        )
+
+        assertTrue(promptPackage.userPrompt.contains("请求模式：AUTO"))
+        assertTrue(promptPackage.userPrompt.contains("实际模式：ANSWER"))
+        assertTrue(promptPackage.systemPrompt.contains("ANSWER 模式"))
+        assertTrue(promptPackage.systemPrompt.contains("不要生成 candidateChanges"))
+        assertTrue(promptPackage.systemPrompt.contains("不要生成 investigationThreads"))
+        assertTrue(promptPackage.systemPrompt.contains("图中没有调用边，不等于方法无法触发"))
+        assertTrue(promptPackage.userPrompt.contains("@Scheduled"))
+    }
+
     @Test
     fun buildsPromptFromGraphIssuesDiffAndSyncPreview() {
         val prompt = LlmPromptFactory().buildGenerationPrompt(

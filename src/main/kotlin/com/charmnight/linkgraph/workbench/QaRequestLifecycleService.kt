@@ -9,11 +9,13 @@ class QaRequestLifecycleService {
         question: String,
         selectedNodeIds: List<String>,
         sourceThreadId: String?,
+        mode: QaMode = QaMode.AUTO,
     ): ReplayableQaRequest {
         return ReplayableQaRequest(
             requestId = UUID.randomUUID().toString(),
             kind = if (sourceThreadId.isNullOrBlank()) QaRequestKind.ASK else QaRequestKind.INVESTIGATE_THREAD,
             question = question,
+            mode = mode,
             selectedNodeIds = selectedNodeIds,
             sourceThreadId = sourceThreadId,
             baseSession = snapshot.auditResult?.auditSession,

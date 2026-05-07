@@ -20,6 +20,7 @@ body,
   --shadow: 0 18px 38px rgba(46, 31, 18, 0.08);
   --font-head: "Avenir Next", "PingFang SC", sans-serif;
   --font-body: "IBM Plex Sans", "PingFang SC", sans-serif;
+  --font-mono: "SFMono-Regular", "JetBrains Mono", "Menlo", "Consolas", monospace;
   --radius-xl: 24px;
   --radius-lg: 18px;
   --radius-md: 14px;
@@ -1327,10 +1328,91 @@ button {
 .workbench-chat-input-actions {
   display: flex;
   justify-content: flex-start;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .workbench-chat-input.compact .workbench-chat-input-actions {
   justify-content: flex-end;
+}
+
+.audit-composer-actions {
+  padding-top: 2px;
+}
+
+.audit-mode-select-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  border: 1px solid rgba(14, 139, 114, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 24px rgba(44, 32, 22, 0.06);
+  overflow: hidden;
+}
+
+.audit-mode-select-title {
+  display: inline-flex;
+  align-items: center;
+  align-self: stretch;
+  padding: 0 10px 0 14px;
+  border-right: 1px solid rgba(14, 139, 114, 0.14);
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.audit-mode-select-shell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.audit-mode-select-shell::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid rgba(44, 32, 22, 0.48);
+  border-bottom: 2px solid rgba(44, 32, 22, 0.48);
+  transform: translateY(-2px) rotate(45deg);
+  pointer-events: none;
+}
+
+.audit-mode-select-label select {
+  appearance: none;
+  min-width: 108px;
+  height: 38px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 32px 0 12px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 650;
+  outline: none;
+  cursor: pointer;
+}
+
+.audit-mode-select-label:hover {
+  border-color: rgba(14, 139, 114, 0.34);
+  background: rgba(245, 255, 252, 0.94);
+}
+
+.audit-mode-select-label:focus-within {
+  border-color: rgba(14, 139, 114, 0.58);
+  box-shadow: 0 0 0 3px rgba(14, 139, 114, 0.12);
+}
+
+.audit-send-button {
+  min-height: 40px;
+  padding: 0 18px;
+  font-weight: 800;
+  box-shadow: 0 10px 22px rgba(14, 139, 114, 0.22);
 }
 
 .workbench-chat-input textarea {
@@ -2667,6 +2749,98 @@ button {
   font-size: 0.82rem;
   font-weight: 600;
   word-break: break-word;
+}
+
+.source-evidence-list {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.source-evidence-card {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(14, 139, 114, 0.18);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(249, 252, 250, 0.96));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.source-evidence-card-head {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.source-evidence-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.source-evidence-title strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 0.86rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-evidence-line-chip {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--accent-strong);
+  background: rgba(14, 139, 114, 0.12);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.source-evidence-node {
+  min-width: 72px;
+  max-width: 38%;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-evidence-path {
+  min-width: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.source-evidence-code {
+  min-width: 0;
+  max-width: 100%;
+  max-height: 260px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid rgba(44, 32, 22, 0.08);
+  border-radius: 8px;
+  background: #17201d;
+  color: #edf7f2;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  line-height: 1.6;
+  white-space: pre;
+}
+
+.source-evidence-code code {
+  font: inherit;
 }
 
 .request-state-banner.is-info {

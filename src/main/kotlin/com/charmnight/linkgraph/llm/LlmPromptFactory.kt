@@ -7,6 +7,7 @@ import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.workbench.AuditConversationSession
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession
+import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.WorkbenchStep
 
 /**
@@ -210,6 +211,8 @@ class LlmPromptFactory {
         question: String,
         settings: LinkGraphSettingsState,
         session: AuditConversationSession? = null,
+        requestedMode: QaMode = QaMode.AUTO,
+        effectiveMode: QaMode = QaMode.AUTO,
     ): LlmPromptPackage {
         /** 当前问答范围内的节点。 */
         val scopeNodes = GraphAuditScopeResolver.resolveScopeNodes(context)
@@ -253,17 +256,27 @@ class LlmPromptFactory {
         val evidenceTrace = context.evidenceTrace.joinToString("\n") { trace ->
             buildString {
                 append("- node=").append(trace.nodeId)
+                trace.resolvedNodeId?.let { append(" | resolvedNode=").append(it) }
                 append(" | path=").append(trace.filePath)
                 trace.startLine?.let { append(" | startLine=").append(it) }
                 trace.endLine?.let { append(" | endLine=").append(it) }
                 append(" | reason=").append(trace.reason)
+                if (trace.mappingTrace.isNotEmpty()) {
+                    append(" | mappingTrace=").append(trace.mappingTrace.joinToString(" -> "))
+                }
                 append(" | includedInPrompt=").append(trace.includedInPrompt)
             }
         }.ifBlank { "- 无" }
         /** 面向模型的系统提示词。 */
         val systemPrompt = """
             你是 IDEA Link Graph 的链路问答助手。
-            你的职责是识别业务黑逻辑、默认兜底、运行时边界和设计遗漏，并输出对话回复、待确认候选变更以及风险线索。
+            你的职责必须服从本轮实际模式 effectiveMode，不能默认推进风险复核或草稿。
+            模式边界：
+            - ANSWER 模式：先直接回答用户问题，基于源码、图事实和取证轨迹解释；不要生成 candidateChanges，不要生成 investigationThreads，不要把证据不足转成草稿建议。
+            - REVIEW 模式：找风险和证据缺口，允许 investigationThreads；不要生成 candidateChanges，不要冒充代码修改。
+            - CHANGE 模式：只有存在 DIRECT_SOURCE 或 DIRECT_GRAPH 直接证据时才生成 candidateChanges；候选变更必须可追溯。
+            - INVESTIGATE 模式：只围绕 sourceThreadId 对应风险线程继续取证，不生成无关新线程。
+            图中没有调用边，不等于方法无法触发；必须结合源码注解、配置、框架回调、调用点和取证轨迹判断。
             你的第一优先级是直接回答“用户问题”，不要绕开问题泛化输出通用问答结论。
             如果用户问题是在“介绍 / 解释 / 讲解链路”，answer 必须先解释链路本身，不要输出无关风险建议。
             只有当用户问题明确要求排查问题、找问题、调整逻辑，或者你发现了与用户问题直接相关且证据充分的缺陷时，才允许输出 candidateChanges；否则 candidateChanges 必须返回 []。
@@ -303,6 +316,8 @@ class LlmPromptFactory {
         val userPrompt = """
             你正在做链路图问答。
             目标模型：${settings.sanitized().model}
+            请求模式：${requestedMode.name}
+            实际模式：${effectiveMode.name}
             当前范围：$scopeText
             用户问题：$question
 
@@ -435,8 +450,10 @@ class LlmPromptFactory {
         context: GraphAuditContext,
         question: String,
         settings: LinkGraphSettingsState,
+        requestedMode: QaMode = QaMode.AUTO,
+        effectiveMode: QaMode = QaMode.AUTO,
     ): String {
-        return buildAuditPromptPackage(context, question, settings).userPrompt
+        return buildAuditPromptPackage(context, question, settings, requestedMode = requestedMode, effectiveMode = effectiveMode).userPrompt
     }
 
     /** 构造差异问答场景的提示词包。 */

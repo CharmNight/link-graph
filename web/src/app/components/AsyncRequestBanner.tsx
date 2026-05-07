@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { asyncRequestExecutionModeLabel, normalizeWorkbenchWording } from "../labels";
+import { asyncRequestExecutionModeLabel, normalizeWorkbenchWording, qaModeLabel } from "../labels";
 import type { AsyncRequestState } from "../types";
 import { resolveAsyncRequestPrimaryMessage } from "../asyncRequestStatus";
 
@@ -86,11 +86,6 @@ function collapseDetailMessage(
 }
 
 function bannerTelemetry(requestState: AsyncRequestState): Array<{ label: string; value: string }> {
-  const promptPreviewStatus = requestState.promptPreviewAvailable
-    ? requestState.phase === "SUCCEEDED"
-      ? "可查看"
-      : "结果后可查看"
-    : null;
   const fields: Array<{ label: string; value: string | null }> = [
     {
       label: "请求",
@@ -103,6 +98,14 @@ function bannerTelemetry(requestState: AsyncRequestState): Array<{ label: string
     {
       label: "执行模式",
       value: requestState.executionMode ? asyncRequestExecutionModeLabel(requestState.executionMode) : null,
+    },
+    {
+      label: "请求模式",
+      value: requestState.requestedMode ? qaModeLabel(requestState.requestedMode) : null,
+    },
+    {
+      label: "实际模式",
+      value: requestState.effectiveMode ? qaModeLabel(requestState.effectiveMode) : null,
     },
     {
       label: "提供方",
@@ -119,10 +122,6 @@ function bannerTelemetry(requestState: AsyncRequestState): Array<{ label: string
     {
       label: "返回方式",
       value: requestState.phase !== "IDLE" ? (requestState.streaming ? "流式预览" : "完整返回") : null,
-    },
-    {
-      label: "提示词",
-      value: promptPreviewStatus,
     },
   ];
   return fields.filter((field): field is { label: string; value: string } => Boolean(field.value));

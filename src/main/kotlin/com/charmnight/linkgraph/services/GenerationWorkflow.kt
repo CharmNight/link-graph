@@ -229,7 +229,10 @@ internal class GenerationWorkflow(
                             ),
                             runtimeState = runtimeResult.finalState,
                         )
-                        asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
+                        val completedRequestState = requestState.copy(
+                            promptPreviewAvailable = normalizedPlan.promptPreview.isNotBlank(),
+                        )
+                        asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", completedRequestState)
                         val feedbackLevel = if (requestState.fallbackUsed) {
                             OperationFeedbackLevel.WARNING
                         } else {
@@ -240,7 +243,7 @@ internal class GenerationWorkflow(
                                 workbench.markRuntimeArtifactSummaries("plan", toRuntimeArtifactSummaries(runtimeResult))
                             }
                             apply {
-                                asyncRequests.markGenerationPlan(normalizedPlan, requestState)
+                                asyncRequests.markGenerationPlan(normalizedPlan, completedRequestState)
                             }
                             apply {
                                 workbench.markOperationFeedback(
@@ -405,7 +408,10 @@ internal class GenerationWorkflow(
                             completedRemotely = discussion.source == LlmResultSource.REMOTE,
                             warnings = discussion.warnings,
                         )
-                        asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
+                        val completedRequestState = requestState.copy(
+                            promptPreviewAvailable = discussion.promptPreview.isNotBlank(),
+                        )
+                        asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", completedRequestState)
                         val feedbackLevel = if (requestState.fallbackUsed) {
                             OperationFeedbackLevel.WARNING
                         } else {
@@ -413,12 +419,12 @@ internal class GenerationWorkflow(
                         }
                         session.mutateBatch {
                             apply {
-                                asyncRequests.markGenerationPlanDiscussion(discussion, requestState)
+                                asyncRequests.markGenerationPlanDiscussion(discussion, completedRequestState)
                             }
                             apply {
                                 workbench.markOperationFeedback(
                                     feedbackLevel,
-                                    requestState.statusMessage ?: "实现建议追问已更新。",
+                                    completedRequestState.statusMessage ?: "实现建议追问已更新。",
                                     preserveLastMessageType = true,
                                 )
                             }
@@ -695,7 +701,10 @@ internal class GenerationWorkflow(
                             ),
                             runtimeState = runtimeResult.finalState,
                         )
-                        asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", requestState)
+                        val completedRequestState = requestState.copy(
+                            promptPreviewAvailable = !drafts.promptPreview.isNullOrBlank(),
+                        )
+                        asyncRequestLifecycle.logAsyncRequestEvent(logger, "succeeded", completedRequestState)
                         val feedbackLevel = if (requestState.fallbackUsed) {
                             OperationFeedbackLevel.WARNING
                         } else {
@@ -711,13 +720,13 @@ internal class GenerationWorkflow(
                                     warnings = drafts.warnings,
                                     source = drafts.source,
                                     promptPreview = drafts.promptPreview,
-                                    requestState = requestState,
+                                    requestState = completedRequestState,
                                 )
                             }
                             apply {
                                 workbench.markOperationFeedback(
                                     feedbackLevel,
-                                    requestState.statusMessage ?: "代码草稿已生成。",
+                                    completedRequestState.statusMessage ?: "代码草稿已生成。",
                                     preserveLastMessageType = true,
                                 )
                             }
@@ -1204,6 +1213,7 @@ internal class GenerationWorkflow(
         val requestState = com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(
             scene = "实现建议追问",
             statusMessage = "实现建议追问已更新。",
+            promptPreviewAvailable = result.promptPreview.isNotBlank(),
         )
         session.mutateBatch {
             apply {

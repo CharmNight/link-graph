@@ -11,6 +11,7 @@ import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.InvestigationThread
 import com.charmnight.linkgraph.workbench.InvestigationTurnOutcome
+import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.charmnight.linkgraph.workbench.StepKind
 
@@ -107,6 +108,8 @@ data class SourceSnippetContext(
 data class EvidenceTraceEntry(
     /** 保存关联节点标识。 */
     val nodeId: String,
+    /** 保存解析后的真实节点标识，投影节点取证时用于解释映射结果。 */
+    val resolvedNodeId: String? = null,
     /** 保存源码文件路径。 */
     val filePath: String,
     /** 保存取证原因。 */
@@ -117,6 +120,8 @@ data class EvidenceTraceEntry(
     val endLine: Int? = null,
     /** 标记该片段是否进入本轮 prompt。 */
     val includedInPrompt: Boolean = true,
+    /** 保存投影节点到真实源码节点的映射轨迹。 */
+    val mappingTrace: List<String> = emptyList(),
 )
 
 /**
@@ -288,6 +293,10 @@ data class GraphPatchResult(
     val source: LlmResultSource,
     /** 保存用户问题。 */
     val question: String,
+    /** 保存前端请求的问答模式。 */
+    val requestedMode: QaMode = QaMode.AUTO,
+    /** 保存后端实际执行的问答模式。 */
+    val effectiveMode: QaMode = QaMode.AUTO,
     /** 保存模型回答。 */
     val answer: String,
     /** 保存提示词预览。 */

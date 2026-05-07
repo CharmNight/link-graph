@@ -12,6 +12,7 @@ class GraphEditorArtifactRegistry {
         val diffReviewPromptPreviewArtifactId: String? = null,
         val beautificationPromptPreviewArtifactId: String? = null,
         val generationPlanPromptPreviewArtifactId: String? = null,
+        val generationPlanDiscussionPromptPreviewArtifactId: String? = null,
         val generatedCodeDraftPromptPreviewArtifactId: String? = null,
         val generatedCodeDraftContentArtifactIds: Map<String, String> = emptyMap(),
     ) {
@@ -64,6 +65,11 @@ class GraphEditorArtifactRegistry {
                 kind = "generation-plan-prompt",
                 ownerKey = "generation-plan",
                 content = snapshot.generationPlan?.promptPreview,
+            ),
+            generationPlanDiscussionPromptPreviewArtifactId = register(
+                kind = "generation-plan-discussion-prompt",
+                ownerKey = "generation-plan-discussion",
+                content = snapshot.generationPlanDiscussionSession?.promptPreview,
             ),
             generatedCodeDraftPromptPreviewArtifactId = register(
                 kind = "generated-draft-prompt",

@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.llm.GraphBeautificationResult as GraphBeautificationPayload
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
+import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.RiskResolutionStatus
 import com.charmnight.linkgraph.workbench.StepGranularity
 
@@ -117,6 +118,8 @@ sealed interface GraphEditorMessage {
         val selectedNodeIds: List<String> = emptyList(),
         /** 保存继续取证所追踪的风险线程标识。 */
         val sourceThreadId: String? = null,
+        /** 保存前端请求的问答模式。 */
+        val mode: QaMode = QaMode.AUTO,
     ) : GraphEditorMessage
 
     /** 请求直接重试最近一次失败的问答。 */

@@ -17,6 +17,7 @@ import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 import com.charmnight.linkgraph.workbench.CandidateGraphPatchComposer
 import com.charmnight.linkgraph.workbench.InvestigationThread
 import com.charmnight.linkgraph.workbench.InvestigationThreadStatus
+import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.hasDirectEvidence
 import com.intellij.openapi.diagnostic.Logger
 
@@ -49,12 +50,22 @@ class GraphAuditPatchService(
         settings: LinkGraphSettingsState,
         session: AuditConversationSession? = null,
         sourceThreadId: String? = null,
+        requestedMode: QaMode = QaMode.AUTO,
+        effectiveMode: QaMode = QaMode.AUTO,
         onPreview: ((String, Boolean) -> Unit)? = null,
     ): GraphPatchResult {
         val effectiveContext = context.withDerivedEvidenceTrace()
         val sanitized = settings.sanitized()
         val currentSession = ensureUserQuestion(session ?: emptySession(effectiveContext), question)
-        val promptPackage = promptFactory.buildAuditPromptPackage(effectiveContext, question, sanitized, currentSession)
+        val resolvedEffectiveMode = effectiveMode
+        val promptPackage = promptFactory.buildAuditPromptPackage(
+            effectiveContext,
+            question,
+            sanitized,
+            currentSession,
+            requestedMode = requestedMode,
+            effectiveMode = resolvedEffectiveMode,
+        )
         if (traceEnabled) {
             logger.warn(
                 "问答请求证据快照: question=${question.trim()}, selectedNodeIds=${effectiveContext.selectedNodeIds}, " +
@@ -63,11 +74,27 @@ class GraphAuditPatchService(
             )
         }
         if (!sanitized.usesRemoteProvider()) {
-            return buildMockResult(effectiveContext, question, promptPackage.preview, currentSession, sourceThreadId)
+            return buildMockResult(
+                context = effectiveContext,
+                question = question,
+                prompt = promptPackage.preview,
+                session = currentSession,
+                sourceThreadId = sourceThreadId,
+                requestedMode = requestedMode,
+                effectiveMode = resolvedEffectiveMode,
+            )
         }
         val remoteConnection = sanitized.remoteConnectionOrNull()
         if (remoteConnection == null) {
-            return buildMockResult(effectiveContext, question, promptPackage.preview, currentSession, sourceThreadId).copy(
+            return buildMockResult(
+                context = effectiveContext,
+                question = question,
+                prompt = promptPackage.preview,
+                session = currentSession,
+                sourceThreadId = sourceThreadId,
+                requestedMode = requestedMode,
+                effectiveMode = resolvedEffectiveMode,
+            ).copy(
                 warnings = listOf(sanitized.remoteLlmSetupHint("本地规则问答")),
             )
         }
@@ -99,9 +126,19 @@ class GraphAuditPatchService(
                 context = effectiveContext,
                 session = currentSession,
                 sourceThreadId = sourceThreadId,
+                requestedMode = requestedMode,
+                effectiveMode = resolvedEffectiveMode,
             )
         }.getOrElse { error ->
-            buildMockResult(effectiveContext, question, promptPackage.preview, currentSession, sourceThreadId).copy(
+            buildMockResult(
+                context = effectiveContext,
+                question = question,
+                prompt = promptPackage.preview,
+                session = currentSession,
+                sourceThreadId = sourceThreadId,
+                requestedMode = requestedMode,
+                effectiveMode = resolvedEffectiveMode,
+            ).copy(
                 warnings = listOf(buildRemoteFallbackWarning("问答", error)),
             )
         }
@@ -114,6 +151,8 @@ class GraphAuditPatchService(
         prompt: String,
         session: AuditConversationSession,
         sourceThreadId: String? = null,
+        requestedMode: QaMode = QaMode.AUTO,
+        effectiveMode: QaMode = QaMode.AUTO,
     ): GraphPatchResult {
         val scopeNodes = GraphAuditScopeResolver.resolveScopeNodes(context)
         val analysisGraph = context.editableGraph.takeIf { it.nodes.isNotEmpty() || it.edges.isNotEmpty() } ?: context.factGraph
@@ -135,7 +174,8 @@ class GraphAuditPatchService(
         }
         val directSourceFindings = buildMockDirectSourceFindings(context)
         val directSourceTargets = resolveMockDirectSourceTargets(context, scopeNodes, analysisGraph)
-        val canBuildCandidateChange = questionExplicitlyRequestsChange(question) &&
+        val canBuildCandidateChange = (effectiveMode == QaMode.CHANGE || effectiveMode == QaMode.AUTO) &&
+            questionExplicitlyRequestsChange(question) &&
             directSourceFindings.isNotEmpty() &&
             directSourceTargets.isNotEmpty()
         val explanationAnswer = buildString {
@@ -149,7 +189,11 @@ class GraphAuditPatchService(
                 append("当前看到的调用/连接数量为 ").append(analysisGraph.edges.size).append("。")
             }
         }
-        val answer = if (canBuildCandidateChange) {
+        val answer = if (effectiveMode == QaMode.ANSWER) {
+            explanationAnswer.ifBlank {
+                "当前轮结论：当前证据不足以完整回答该问题；本轮不会生成候选变更或风险线程。"
+            }
+        } else if (canBuildCandidateChange) {
             """
             当前轮结论：$scopeLabel 已直接观察到可落点的源码证据，已生成待确认变更。
             处理建议：下一步应基于当前 edit scope 继续生成精确代码 diff，而不是退回风险线索。
@@ -204,7 +248,11 @@ class GraphAuditPatchService(
         } else {
             emptyList()
         }
-        val investigationThreads = if (canBuildCandidateChange || (explanationIntent && !explicitAuditIntent && !hasFallbackIntent)) {
+        val investigationThreads = if (
+            effectiveMode == QaMode.ANSWER ||
+            canBuildCandidateChange ||
+            (explanationIntent && !explicitAuditIntent && !hasFallbackIntent)
+        ) {
             emptyList()
         } else {
             listOf(
@@ -237,6 +285,8 @@ class GraphAuditPatchService(
             base = GraphPatchResult(
                 source = LlmResultSource.MOCK,
                 question = question,
+                requestedMode = requestedMode,
+                effectiveMode = effectiveMode,
                 answer = answer,
                 promptPreview = prompt,
                 findings = findings,
@@ -248,6 +298,8 @@ class GraphAuditPatchService(
             context = context,
             session = session,
             sourceThreadId = sourceThreadId,
+            requestedMode = requestedMode,
+            effectiveMode = effectiveMode,
         )
     }
 
@@ -312,6 +364,8 @@ class GraphAuditPatchService(
         context: GraphAuditContext,
         session: AuditConversationSession,
         sourceThreadId: String? = null,
+        requestedMode: QaMode = QaMode.AUTO,
+        effectiveMode: QaMode = QaMode.AUTO,
     ): GraphPatchResult {
         val rawCandidateChanges = base.candidateChanges.ifEmpty { deriveCandidateChanges(base.patch, base.findings) }
         val classification = classifyAuditOutputs(
@@ -319,6 +373,8 @@ class GraphAuditPatchService(
             explicitInvestigationThreads = base.investigationThreads,
             context = context,
             question = base.question,
+            effectiveMode = effectiveMode,
+            sourceThreadId = sourceThreadId,
         )
         if (traceEnabled) {
             logger.warn(
@@ -359,16 +415,57 @@ class GraphAuditPatchService(
                     ).distinct(),
             ),
         )
+        val sessionAfterBoundary = when (effectiveMode) {
+            QaMode.ANSWER -> turnResult.session.copy(
+                candidateChanges = emptyList(),
+                investigationThreads = emptyList(),
+                turnOutcomes = emptyList(),
+                focusTargetId = null,
+            )
+            QaMode.REVIEW -> turnResult.session.copy(
+                candidateChanges = emptyList(),
+            )
+            QaMode.INVESTIGATE -> turnResult.session.copy(
+                candidateChanges = emptyList(),
+                investigationThreads = turnResult.session.investigationThreads
+                    .filter { thread -> sourceThreadId == null || thread.threadId == sourceThreadId },
+                turnOutcomes = turnResult.session.turnOutcomes
+                    .filter { outcome -> sourceThreadId == null || outcome.threadId == sourceThreadId },
+                focusTargetId = sourceThreadId,
+            )
+            QaMode.CHANGE,
+            QaMode.AUTO,
+            -> turnResult.session
+        }
         return base.copy(
+            requestedMode = requestedMode,
+            effectiveMode = effectiveMode,
             patch = null,
-            candidateChanges = turnResult.session.candidateChanges,
-            newCandidateChanges = turnResult.newCandidateChanges,
-            investigationThreads = turnResult.session.investigationThreads,
-            latestTurnOutcome = turnResult.latestTurnOutcome,
-            recentTurnOutcomes = turnResult.recentTurnOutcomes,
+            candidateChanges = when (effectiveMode) {
+                QaMode.CHANGE, QaMode.AUTO -> turnResult.session.candidateChanges
+                else -> emptyList()
+            },
+            newCandidateChanges = when (effectiveMode) {
+                QaMode.CHANGE, QaMode.AUTO -> turnResult.newCandidateChanges
+                else -> emptyList()
+            },
+            investigationThreads = when (effectiveMode) {
+                QaMode.ANSWER -> emptyList()
+                QaMode.INVESTIGATE -> sessionAfterBoundary.investigationThreads
+                else -> sessionAfterBoundary.investigationThreads
+            },
+            latestTurnOutcome = if (effectiveMode == QaMode.ANSWER) null else turnResult.latestTurnOutcome
+                ?.takeIf { outcome -> effectiveMode != QaMode.INVESTIGATE || sourceThreadId == null || outcome.threadId == sourceThreadId },
+            recentTurnOutcomes = if (effectiveMode == QaMode.ANSWER) {
+                emptyList()
+            } else if (effectiveMode == QaMode.INVESTIGATE && sourceThreadId != null) {
+                turnResult.recentTurnOutcomes.filter { outcome -> outcome.threadId == sourceThreadId }
+            } else {
+                turnResult.recentTurnOutcomes
+            },
             sourceContext = context.sourceContext,
             evidenceTrace = context.evidenceTrace,
-            auditSession = turnResult.session,
+            auditSession = sessionAfterBoundary,
         )
     }
 
@@ -408,11 +505,18 @@ class GraphAuditPatchService(
         explicitInvestigationThreads: List<InvestigationThread>,
         context: GraphAuditContext,
         question: String,
+        effectiveMode: QaMode,
+        sourceThreadId: String?,
     ): ClassifiedAuditOutputs {
         val promotableChanges = mutableListOf<CandidateDraftChange>()
         val investigationThreads = linkedMapOf<String, InvestigationThread>()
 
-        normalizeCandidateChanges(candidateChanges, context).forEach { change ->
+        val candidateInput = if (effectiveMode == QaMode.CHANGE || effectiveMode == QaMode.AUTO) {
+            candidateChanges
+        } else {
+            emptyList()
+        }
+        normalizeCandidateChanges(candidateInput, context).forEach { change ->
             if (change.hasDirectEvidence()) {
                 if (traceEnabled) {
                     logger.warn("问答候选变更保留为待确认项: ${GenerationDiagnostics.summarizeCandidateChange(change)}")
@@ -430,7 +534,11 @@ class GraphAuditPatchService(
             }
         }
         val normalizedInvestigationThreads = normalizeInvestigationThreads(explicitInvestigationThreads)
-        if (promotableChanges.isEmpty() && questionExplicitlyRequestsChange(question)) {
+        if (
+            (effectiveMode == QaMode.CHANGE || effectiveMode == QaMode.AUTO) &&
+            promotableChanges.isEmpty() &&
+            questionExplicitlyRequestsChange(question)
+        ) {
             promoteThreadsToCandidateChanges(normalizedInvestigationThreads, context).forEach { change ->
                 if (traceEnabled) {
                     logger.warn(
@@ -442,7 +550,10 @@ class GraphAuditPatchService(
                 promotableChanges += change.copy(editScopes = deriveEditScopes(change, context))
             }
         }
-        normalizedInvestigationThreads.forEach { thread ->
+        normalizedInvestigationThreads
+            .filter { thread -> effectiveMode != QaMode.ANSWER }
+            .filter { thread -> effectiveMode != QaMode.INVESTIGATE || sourceThreadId == null || thread.threadId == sourceThreadId }
+            .forEach { thread ->
             investigationThreads[thread.threadId] = thread
         }
 

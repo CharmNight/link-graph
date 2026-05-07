@@ -718,7 +718,7 @@ describe.sequential("App", () => {
     await user.click(screen.getByRole("tab", { name: "代码" }));
 
     const codeTabPanel = screen.getByRole("tabpanel", { name: "代码" });
-    expect(within(codeTabPanel).getByText("当前请求失败，可查看上方状态并按需重试。")).toBeInTheDocument();
+    expect(within(codeTabPanel).getByText("当前请求失败，请查看上方状态并按需重试。")).toBeInTheDocument();
     expect(within(codeTabPanel).getByText("返回内容未通过结构化校验，自动修复重试仍失败。")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "请求状态通知" })).not.toBeInTheDocument();
@@ -962,6 +962,7 @@ describe.sequential("App", () => {
       thread.recommendedQuestion,
       ["method:submit-order"],
       "thread-compensate",
+      "INVESTIGATE",
     );
     expect(
       (
@@ -1059,6 +1060,7 @@ describe.sequential("App", () => {
       thread.recommendedQuestion,
       ["method:submit-order"],
       "thread-compensate",
+      "INVESTIGATE",
     );
     expect(window.linkGraphBridge?.requestAudit).toHaveBeenCalledTimes(1);
   });
@@ -1450,7 +1452,7 @@ describe.sequential("App", () => {
     await setTextboxValue(input, "介绍这里有什么安全问题");
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(window.linkGraphBridge?.requestAudit).toHaveBeenCalledWith("介绍这里有什么安全问题", [], null);
+    expect(window.linkGraphBridge?.requestAudit).toHaveBeenCalledWith("介绍这里有什么安全问题", [], null, "AUTO");
     expect(screen.getByRole("button", { name: "收起当前页面" })).toBeInTheDocument();
     expect(screen.queryByText("已提交问答请求")).not.toBeInTheDocument();
     expect(screen.queryByText("等待后端确认执行方式与执行阶段。")).not.toBeInTheDocument();

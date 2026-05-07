@@ -2,12 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { resolveEffectiveRequestState, AsyncRequestBanner } from "../components/AsyncRequestBanner";
 import { traceLinkGraph } from "../debug";
 import { deriveConversationInvestigationThreads, deriveInvestigationThreads } from "../investigationThreads";
+import { qaModeLabel } from "../labels";
 import type {
   AuditConversationMessage,
   AuditWorkbenchState,
   CandidateDraftChange,
   InvestigationThread,
   InvestigationTurnOutcome,
+  QaMode,
+  SourceSnippetContext,
   WorkbenchSectionId,
   WorkbenchSectionPreferences,
 } from "../types";
@@ -15,6 +18,7 @@ import { AUDIT_WORKBENCH_SECTION_IDS } from "./workbenchSections";
 import { AuditConversation } from "./AuditConversation";
 import { CandidateChangeList } from "./CandidateChangeList";
 import { InvestigationThreadList } from "./InvestigationThreadList";
+import { RequestPromptDisclosure } from "../components/RequestPromptDisclosure";
 
 const DEFAULT_ACTIVE_AUDIT_SECTION: WorkbenchSectionId = "audit.composer";
 
@@ -33,6 +37,7 @@ function auditSectionTitle(sectionId: WorkbenchSectionId): string {
 interface AuditTabProps {
   state: AuditWorkbenchState;
   onQuestionDraftChange: (value: string) => void;
+  onQuestionModeChange?: (value: QaMode) => void;
   onSubmitQuestion: () => void;
   onRetryLastRequest?: () => void;
   onEditFailedRequest?: () => void;
@@ -43,6 +48,8 @@ interface AuditTabProps {
   onDeferRisk?: (threadId: string) => void;
   onAcceptRisk?: (threadId: string) => void;
   onDismissRisk?: (threadId: string) => void;
+  resolveArtifactText?: (artifactId: string) => string | null;
+  onRequestArtifact?: (artifactId: string) => void;
   sectionPreferences?: WorkbenchSectionPreferences | null;
   onSectionPreferenceChange?: (sectionId: WorkbenchSectionId, expanded: boolean) => void;
 }
@@ -103,6 +110,7 @@ function resolveActiveAuditSectionId(args: {
 export function AuditTab({
   state,
   onQuestionDraftChange,
+  onQuestionModeChange = () => undefined,
   onSubmitQuestion,
   onRetryLastRequest = () => undefined,
   onEditFailedRequest = () => undefined,
@@ -113,6 +121,8 @@ export function AuditTab({
   onDeferRisk = () => undefined,
   onAcceptRisk = () => undefined,
   onDismissRisk = () => undefined,
+  resolveArtifactText,
+  onRequestArtifact,
   sectionPreferences,
   onSectionPreferenceChange = () => undefined,
 }: AuditTabProps) {
@@ -265,6 +275,7 @@ export function AuditTab({
             conversationThreads={conversationThreads}
             requestStatus={requestStatus}
             onQuestionDraftChange={onQuestionDraftChange}
+            onQuestionModeChange={onQuestionModeChange}
             onSubmitQuestion={onSubmitQuestion}
             onRetryLastRequest={onRetryLastRequest}
             onEditFailedRequest={onEditFailedRequest}
@@ -275,6 +286,8 @@ export function AuditTab({
             onDeferRisk={onDeferRisk}
             onAcceptRisk={onAcceptRisk}
             onDismissRisk={onDismissRisk}
+            resolveArtifactText={resolveArtifactText}
+            onRequestArtifact={onRequestArtifact}
             onCollapse={handleCollapseActivePage}
             onStopComposerBoundaryPropagation={stopComposerBoundaryPropagation}
           />
@@ -300,6 +313,7 @@ interface AuditPagePanelProps {
   conversationThreads: InvestigationThread[];
   requestStatus: ReturnType<typeof resolveEffectiveRequestState>;
   onQuestionDraftChange: (value: string) => void;
+  onQuestionModeChange: (value: QaMode) => void;
   onSubmitQuestion: () => void;
   onRetryLastRequest: () => void;
   onEditFailedRequest: () => void;
@@ -310,6 +324,8 @@ interface AuditPagePanelProps {
   onDeferRisk: (threadId: string) => void;
   onAcceptRisk: (threadId: string) => void;
   onDismissRisk: (threadId: string) => void;
+  resolveArtifactText?: (artifactId: string) => string | null;
+  onRequestArtifact?: (artifactId: string) => void;
   onCollapse: () => void;
   onStopComposerBoundaryPropagation: (event: { stopPropagation: () => void }) => void;
 }
@@ -326,6 +342,7 @@ function AuditPagePanel({
   conversationThreads,
   requestStatus,
   onQuestionDraftChange,
+  onQuestionModeChange,
   onSubmitQuestion,
   onRetryLastRequest,
   onEditFailedRequest,
@@ -336,14 +353,23 @@ function AuditPagePanel({
   onDeferRisk,
   onAcceptRisk,
   onDismissRisk,
+  resolveArtifactText,
+  onRequestArtifact,
   onCollapse,
   onStopComposerBoundaryPropagation,
 }: AuditPagePanelProps) {
   const pageTitle = auditSectionTitle(activeSectionId);
   const latestQuestion = state.questionDraft.trim() || state.result?.question || "";
   const sourceContext = state.result?.sourceContext ?? [];
+  const sourceSnippets = deduplicateSourceSnippets(sourceContext);
   const evidenceTrace = state.result?.evidenceTrace ?? [];
+  const requestedMode = state.result?.requestedMode ?? requestStatus?.requestedMode ?? state.selectedMode ?? "AUTO";
+  const effectiveMode = state.result?.effectiveMode ?? requestStatus?.effectiveMode ?? null;
   const requestStillRunning = requestStatus?.phase === "RUNNING";
+  const hasPromptDisclosure = Boolean(
+    state.result?.promptPreview?.trim() ||
+      state.result?.promptPreviewArtifactId,
+  );
   const failedRequest = state.qaRequestRecoveryState?.lastFailedRequest ?? null;
   const canRetryFailedRequest = Boolean(
     failedRequest && (requestStatus?.phase === "FAILED" || requestStatus?.phase === "TIMED_OUT"),
@@ -414,16 +440,38 @@ function AuditPagePanel({
             </div>
           </section>
           <section className="workbench-step-section">
+            <h4>模式</h4>
+            <dl className="request-state-meta-grid">
+              <div className="request-state-meta-item">
+                <dt>请求模式</dt>
+                <dd>{qaModeLabel(requestedMode)}</dd>
+              </div>
+              <div className="request-state-meta-item">
+                <dt>实际模式</dt>
+                <dd>{qaModeLabel(effectiveMode)}</dd>
+              </div>
+              <div className="request-state-meta-item">
+                <dt>是否附带源码</dt>
+                <dd>{sourceSnippets.length > 0 ? "是" : "否"}</dd>
+              </div>
+            </dl>
+          </section>
+          {hasPromptDisclosure ? (
+            <section className="workbench-step-section">
+              <h4>提示词</h4>
+              <RequestPromptDisclosure
+                promptPreview={state.result?.promptPreview ?? null}
+                promptPreviewArtifactId={state.result?.promptPreviewArtifactId ?? null}
+                promptPreviewAvailable={hasPromptDisclosure}
+                resolveArtifactText={resolveArtifactText}
+                onRequestArtifact={onRequestArtifact}
+              />
+            </section>
+          ) : null}
+          <section className="workbench-step-section">
             <h4>实际附带源码</h4>
-            {sourceContext.length > 0 ? (
-              <ul className="answer-list">
-                {sourceContext.map((snippet) => (
-                  <li key={`${snippet.nodeId}-${snippet.filePath}-${snippet.startLine ?? "line"}`}>
-                    <strong>{formatSourceSnippetLocation(snippet.filePath, snippet.startLine, snippet.endLine)}</strong>
-                    {snippet.snippet?.trim() ? <span className="muted">{snippet.snippet.trim()}</span> : null}
-                  </li>
-                ))}
-              </ul>
+            {sourceSnippets.length > 0 ? (
+              <SourceSnippetCards snippets={sourceSnippets} />
             ) : (
               <p className="muted">
                 {requestStillRunning
@@ -440,6 +488,12 @@ function AuditPagePanel({
                   <li key={`${trace.nodeId}-${trace.filePath}-${trace.reason}`}>
                     <strong>{formatSourceSnippetLocation(trace.filePath, trace.startLine, trace.endLine)}</strong>
                     <span>{trace.reason}</span>
+                    {trace.resolvedNodeId && trace.resolvedNodeId !== trace.nodeId ? (
+                      <span className="muted">真实节点：{trace.resolvedNodeId}</span>
+                    ) : null}
+                    {(trace.mappingTrace ?? []).length > 0 ? (
+                      <span className="muted">映射轨迹：{(trace.mappingTrace ?? []).join(" / ")}</span>
+                    ) : null}
                     <span className="muted">{trace.includedInPrompt ? "已送入本轮 prompt" : "未送入本轮 prompt"}</span>
                   </li>
                 ))}
@@ -492,8 +546,23 @@ function AuditPagePanel({
               onChange={(event) => onQuestionDraftChange(event.target.value)}
               placeholder="围绕当前方法、链路或待确认变更继续提问"
             />
-            <div className="workbench-chat-input-actions">
-              <button type="button" className="primary-button" onClick={onSubmitQuestion}>
+            <div className="workbench-chat-input-actions audit-composer-actions">
+              <label className="audit-mode-select-label">
+                <span className="audit-mode-select-title">模式</span>
+                <span className="audit-mode-select-shell">
+                  <select
+                    aria-label="问答模式"
+                    value={state.selectedMode ?? "AUTO"}
+                    onChange={(event) => onQuestionModeChange(event.target.value as QaMode)}
+                  >
+                    <option value="AUTO">Auto</option>
+                    <option value="ANSWER">只回答</option>
+                    <option value="REVIEW">审计风险</option>
+                    <option value="CHANGE">代码调整</option>
+                  </select>
+                </span>
+              </label>
+              <button type="button" className="primary-button audit-send-button" onClick={onSubmitQuestion}>
                 发送
               </button>
             </div>
@@ -531,6 +600,86 @@ function AuditPagePanel({
       ) : null}
     </section>
   );
+}
+
+function SourceSnippetCards({ snippets }: { snippets: SourceSnippetContext[] }) {
+  return (
+    <div className="source-evidence-list">
+      {snippets.map((snippet, index) => {
+        const fileName = sourceFileName(snippet.filePath);
+        const lineLabel = sourceLineRangeLabel(snippet.startLine, snippet.endLine);
+        const code = snippet.snippet?.trim();
+        return (
+          <article
+            key={`${snippet.filePath}-${snippet.startLine ?? "line"}-${snippet.endLine ?? "line"}-${index}`}
+            className="source-evidence-card"
+            aria-label={`源码片段 ${index + 1} ${fileName}`}
+          >
+            <div className="source-evidence-card-head">
+              <div className="source-evidence-title">
+                <strong>{fileName}</strong>
+                {lineLabel ? <span className="source-evidence-line-chip">{lineLabel}</span> : null}
+              </div>
+              <span className="source-evidence-node" title={snippet.nodeId}>{snippet.nodeId}</span>
+            </div>
+            <div className="source-evidence-path" title={snippet.filePath}>{snippet.filePath}</div>
+            {code ? (
+              <pre className="source-evidence-code" tabIndex={0}>
+                <code>{code}</code>
+              </pre>
+            ) : (
+              <p className="muted">该源码证据没有回传可展示片段。</p>
+            )}
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function deduplicateSourceSnippets(snippets: SourceSnippetContext[]): SourceSnippetContext[] {
+  const seen = new Set<string>();
+  const result: SourceSnippetContext[] = [];
+  for (const snippet of snippets) {
+    const key = [
+      normalizeEvidencePath(snippet.filePath),
+      snippet.startLine ?? "",
+      snippet.endLine ?? "",
+      normalizeSourceSnippetText(snippet.snippet ?? ""),
+    ].join("\u0000");
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(snippet);
+  }
+  return result;
+}
+
+function normalizeEvidencePath(filePath: string): string {
+  return filePath.trim().replace(/\\/g, "/");
+}
+
+function normalizeSourceSnippetText(snippet: string): string {
+  return snippet.trim().replace(/\s+/g, " ");
+}
+
+function sourceFileName(filePath: string): string {
+  const normalizedPath = normalizeEvidencePath(filePath);
+  return normalizedPath.split("/").filter(Boolean).pop() ?? normalizedPath;
+}
+
+function sourceLineRangeLabel(
+  startLine?: number | null,
+  endLine?: number | null,
+): string | null {
+  if (startLine == null) {
+    return null;
+  }
+  if (endLine != null && endLine !== startLine) {
+    return `L${startLine}-L${endLine}`;
+  }
+  return `L${startLine}`;
 }
 
 function formatSourceSnippetLocation(

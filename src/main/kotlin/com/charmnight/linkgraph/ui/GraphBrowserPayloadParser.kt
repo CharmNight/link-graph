@@ -9,6 +9,7 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
+import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.RiskResolutionStatus
 import com.charmnight.linkgraph.workbench.StepGranularity
 import java.net.URLDecoder
@@ -26,6 +27,7 @@ internal object GraphBrowserPayloadParser {
         val question: String,
         val selectedNodeIds: List<String>,
         val sourceThreadId: String?,
+        val mode: QaMode,
     )
 
     data class ResolveInvestigationThreadPayload(
@@ -77,11 +79,16 @@ internal object GraphBrowserPayloadParser {
     }
 
     fun parseAuditRequestPayload(payload: String): AuditRequestPayload {
-        val parts = payload.split(PAYLOAD_SEPARATOR, limit = 3)
+        val parts = payload.split(PAYLOAD_SEPARATOR, limit = 4)
         return AuditRequestPayload(
             question = decodePayloadValue(parts.firstOrNull().orEmpty()),
             selectedNodeIds = parseEncodedList(parts.getOrNull(1).orEmpty()),
             sourceThreadId = parts.getOrNull(2)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue),
+            mode = parts.getOrNull(3)
+                ?.takeIf { it.isNotBlank() }
+                ?.let(::decodePayloadValue)
+                ?.let { raw -> runCatching { QaMode.valueOf(raw) }.getOrDefault(QaMode.AUTO) }
+                ?: QaMode.AUTO,
         )
     }
 

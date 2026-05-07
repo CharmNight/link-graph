@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.ui
 
+import com.charmnight.linkgraph.workbench.QaMode
+
 enum class AsyncRequestPhase {
     IDLE,
     RUNNING,
@@ -35,6 +37,8 @@ data class AsyncRequestState(
     val model: String? = null,
     val endpointSummary: String? = null,
     val promptPreviewAvailable: Boolean = false,
+    val requestedMode: QaMode? = null,
+    val effectiveMode: QaMode? = null,
 ) {
     companion object {
         fun running(
@@ -53,6 +57,8 @@ data class AsyncRequestState(
             model: String? = null,
             endpointSummary: String? = null,
             promptPreviewAvailable: Boolean = false,
+            requestedMode: QaMode? = null,
+            effectiveMode: QaMode? = null,
         ) = AsyncRequestState(
             phase = AsyncRequestPhase.RUNNING,
             requestId = requestId,
@@ -70,6 +76,8 @@ data class AsyncRequestState(
             model = model,
             endpointSummary = endpointSummary,
             promptPreviewAvailable = promptPreviewAvailable,
+            requestedMode = requestedMode,
+            effectiveMode = effectiveMode,
         )
 
         fun succeeded(
@@ -90,6 +98,8 @@ data class AsyncRequestState(
             model: String? = null,
             endpointSummary: String? = null,
             promptPreviewAvailable: Boolean = false,
+            requestedMode: QaMode? = null,
+            effectiveMode: QaMode? = null,
         ) = AsyncRequestState(
             phase = AsyncRequestPhase.SUCCEEDED,
             requestId = requestId,
@@ -109,6 +119,8 @@ data class AsyncRequestState(
             model = model,
             endpointSummary = endpointSummary,
             promptPreviewAvailable = promptPreviewAvailable,
+            requestedMode = requestedMode,
+            effectiveMode = effectiveMode,
         )
 
         fun failed(
@@ -128,6 +140,8 @@ data class AsyncRequestState(
             model: String? = null,
             endpointSummary: String? = null,
             promptPreviewAvailable: Boolean = false,
+            requestedMode: QaMode? = null,
+            effectiveMode: QaMode? = null,
         ) = terminal(
             phase = AsyncRequestPhase.FAILED,
             message = message,
@@ -146,6 +160,8 @@ data class AsyncRequestState(
             model = model,
             endpointSummary = endpointSummary,
             promptPreviewAvailable = promptPreviewAvailable,
+            requestedMode = requestedMode,
+            effectiveMode = effectiveMode,
         )
 
         fun timedOut(
@@ -165,6 +181,8 @@ data class AsyncRequestState(
             model: String? = null,
             endpointSummary: String? = null,
             promptPreviewAvailable: Boolean = false,
+            requestedMode: QaMode? = null,
+            effectiveMode: QaMode? = null,
         ) = terminal(
             phase = AsyncRequestPhase.TIMED_OUT,
             message = message,
@@ -183,6 +201,8 @@ data class AsyncRequestState(
             model = model,
             endpointSummary = endpointSummary,
             promptPreviewAvailable = promptPreviewAvailable,
+            requestedMode = requestedMode,
+            effectiveMode = effectiveMode,
         )
 
         private fun terminal(
@@ -203,6 +223,8 @@ data class AsyncRequestState(
             model: String?,
             endpointSummary: String?,
             promptPreviewAvailable: Boolean,
+            requestedMode: QaMode?,
+            effectiveMode: QaMode?,
         ) = AsyncRequestState(
             phase = phase,
             requestId = requestId,
@@ -222,6 +244,8 @@ data class AsyncRequestState(
             model = model,
             endpointSummary = endpointSummary,
             promptPreviewAvailable = promptPreviewAvailable,
+            requestedMode = requestedMode,
+            effectiveMode = effectiveMode,
         )
     }
 }
