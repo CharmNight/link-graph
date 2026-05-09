@@ -384,7 +384,7 @@ class GraphAuditPatchServiceTest {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertTrue(result.answer.contains("当前轮结论"))
         assertTrue(result.answer.contains("处理建议"))
         assertTrue(result.answer.contains("默认兜底"))
@@ -447,7 +447,7 @@ class GraphAuditPatchServiceTest {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertTrue(result.answer.contains("当前范围说明"))
         assertTrue(result.answer.contains("CommonController.uploadFile"))
         assertTrue(result.candidateChanges.isEmpty())
@@ -498,7 +498,7 @@ class GraphAuditPatchServiceTest {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertEquals(1, result.candidateChanges.size)
         assertTrue(result.investigationThreads.isEmpty())
         assertTrue(result.answer.contains("待确认变更"))
@@ -556,7 +556,7 @@ class GraphAuditPatchServiceTest {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertTrue(result.candidateChanges.isEmpty())
         assertEquals(1, result.investigationThreads.size)
         assertTrue(result.findings.all { finding -> finding.evidenceLevel == ResultEvidenceLevel.NOT_OBSERVED })
@@ -1720,7 +1720,7 @@ class GraphAuditPatchServiceTest {
         )
 
         assertEquals(2, callCount)
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertTrue(result.warnings.any { it.contains("重试 1 次后仍失败") })
         assertTrue(result.warnings.none { it.contains("请检查请求地址、鉴权和模型配置") })
     }
@@ -1756,7 +1756,7 @@ class GraphAuditPatchServiceTest {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertTrue(result.warnings.any { it.contains("远程 LLM 问答失败") })
         assertTrue(result.warnings.any { it.contains("model_not_found") })
     }
@@ -1786,7 +1786,7 @@ class GraphAuditPatchServiceTest {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertTrue(result.warnings.any { it.contains("请求地址") })
         assertTrue(result.warnings.any { it.contains("API 密钥") })
         assertTrue(result.warnings.any { it.contains("链路图设置") })

@@ -42,7 +42,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
             defaultBudget = RunBudget(),
             planExecutor = { _, _, _ ->
                 GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "plan without confirmed intent",
                 )
             },
@@ -76,7 +76,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
             defaultBudget = RunBudget(),
             planExecutor = { input, _, _ ->
                 GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "生成计划",
                     promptPreview = input.planningPayload.planningGraph.nodes.joinToString { it.title },
                 )
@@ -182,7 +182,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
             planExecutor = { input, _, _ ->
                 capturedPayload = input.planningPayload
                 GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "runtime plan",
                 )
             },
@@ -323,7 +323,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
             planExecutor = { _, _, _ ->
                 executorInvoked = true
                 GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "不应该执行到这里",
                 )
             },
@@ -443,7 +443,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
             planExecutor = { input, _, _ ->
                 capturedPayload = input.planningPayload
                 GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "skip external evidence",
                 )
             },

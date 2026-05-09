@@ -59,7 +59,7 @@ class InvestigationGraphPatchAdapter {
             evidence = findings,
         )
         return GraphPatchResult(
-            source = LlmResultSource.MOCK,
+            source = LlmResultSource.LOCAL_RULE,
             question = request.question,
             answer = turnResult.summary,
             promptPreview = "",

@@ -219,7 +219,7 @@ function bootstrapStateFixture(): TestBootstrapState {
       draftNotes: [],
     },
     auditResult: {
-      source: "MOCK",
+      source: "LOCAL_RULE",
       question: "这个方法是否遗漏补偿链路？",
       answer: "建议补一条失败补偿链路。",
       promptPreview: "audit prompt preview",
@@ -272,7 +272,7 @@ function bootstrapStateFixture(): TestBootstrapState {
     generatedCodeDraftWriteReport: null,
     lastDraftPatchApplyResult: null,
     graphBeautificationResult: {
-      source: "MOCK",
+      source: "LOCAL_RULE",
       granularity: "BUSINESS",
       steps: [step],
       promptPreview: "beautification prompt preview",
@@ -587,7 +587,7 @@ describe.sequential("App", () => {
           warnings: [],
         },
       ],
-      generatedCodeDraftSource: "MOCK",
+      generatedCodeDraftSource: "LOCAL_RULE",
       generatedCodeDraftWarnings: [],
       generatedCodeDraftWriteReport: null,
       codeDraftRequestState: {
@@ -623,7 +623,7 @@ describe.sequential("App", () => {
     window.linkGraphBootstrap = structuredClone({
       ...bootstrapStateFixture(),
       generationPlan: {
-        source: "MOCK",
+        source: "LOCAL_RULE",
         summary: "修改 CommonController.fileDownload 并保留现有正常路径逻辑。",
         warnings: ["当前结果来自本地规则分析。"],
         promptPreview: null,

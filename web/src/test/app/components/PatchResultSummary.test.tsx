@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PatchResultSummary } from "../../../app/components/PatchResultSummary";
 
 describe("PatchResultSummary", () => {
@@ -9,7 +9,7 @@ describe("PatchResultSummary", () => {
       <PatchResultSummary
         title="问答回答"
         result={{
-          source: "MOCK",
+          source: "LOCAL_RULE",
           question: "为什么这段链路可能遗漏默认兜底？",
           answer: [
             "结论：当前链路缺少默认兜底说明。",
@@ -77,5 +77,45 @@ describe("PatchResultSummary", () => {
     expect(screen.queryByText("system: audit graph\nuser: inspect fallback branch")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "查看提示词" }));
     expect(screen.getByText((_, element) => element?.textContent === "system: audit graph\nuser: inspect fallback branch")).toBeInTheDocument();
+  });
+
+  it("renders duplicate answer list entries without React key warnings", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    try {
+      render(
+        <PatchResultSummary
+          title="问答回答"
+          result={{
+            source: "LOCAL_RULE",
+            question: "重复条目应该怎么展示？",
+            answer: [
+              "结论：需要保留重复条目。",
+              "关键影响：",
+              "- 相同影响",
+              "- 相同影响",
+              "建议动作：",
+              "- 相同动作",
+              "- 相同动作",
+              "注意事项：",
+              "- 相同说明",
+              "- 相同说明",
+            ].join("\n"),
+            findings: [],
+            candidateChanges: [],
+            newCandidateChanges: [],
+            promptPreview: "prompt",
+            warnings: [],
+          }}
+        />,
+      );
+
+      const duplicateKeyWarnings = consoleError.mock.calls.filter((call) =>
+        call.some((part) => String(part).includes("Encountered two children with the same key")),
+      );
+      expect(duplicateKeyWarnings).toEqual([]);
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 });

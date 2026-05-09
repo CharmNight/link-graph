@@ -504,4 +504,130 @@ class InvestigationPipelineTest : BasePlatformTestCase() {
             fact.symbolSignature == "com.example.event.SearchIndexListener.onEvent(com.example.event.OrderCreatedEvent):void"
         })
     }
+
+    fun testPipelineDoesNotTreatCustomEventListenerNamedAnnotationAsSpringListener() {
+        myFixture.addFileToProject(
+            "src/main/java/com/example/event/OrderCreatedEvent.java",
+            """
+                package com.example.event;
+
+                public class OrderCreatedEvent {}
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/event/EventPublisher.java",
+            """
+                package com.example.event;
+
+                class EventPublisher {
+                    private final org.springframework.context.ApplicationEventPublisher publisher = null;
+
+                    void publish() {
+                        publisher.publishEvent(new OrderCreatedEvent());
+                    }
+                }
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/event/CustomEventListener.java",
+            """
+                package com.example.event;
+
+                public @interface CustomEventListener {}
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/event/SearchIndexListener.java",
+            """
+                package com.example.event;
+
+                class SearchIndexListener {
+                    @CustomEventListener
+                    public void onEvent(OrderCreatedEvent event) {}
+                }
+            """.trimIndent(),
+        )
+        val pipeline = InvestigationPipeline.default(project)
+
+        val result = pipeline.run(
+            InvestigationRequest(
+                threadId = "thread-custom-event-listener",
+                question = "请继续取证：确认 Event OrderCreatedEvent 的监听器。",
+                targetHints = listOf(
+                    InvestigationTargetHint(
+                        nodeId = "method:event-publish",
+                        signature = "com.example.event.EventPublisher.publish():void",
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(InvestigationStatus.NEEDS_MORE_EVIDENCE, result.status)
+        assertTrue(result.acceptedFacts.none { fact ->
+            fact.symbolSignature == "com.example.event.SearchIndexListener.onEvent(com.example.event.OrderCreatedEvent):void"
+        })
+    }
+
+    fun testPipelineDoesNotTreatLocalEventListenerAnnotationAsSpringListener() {
+        myFixture.addFileToProject(
+            "src/main/java/com/example/event/OrderCreatedEvent.java",
+            """
+                package com.example.event;
+
+                public class OrderCreatedEvent {}
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/event/EventPublisher.java",
+            """
+                package com.example.event;
+
+                class EventPublisher {
+                    private final org.springframework.context.ApplicationEventPublisher publisher = null;
+
+                    void publish() {
+                        publisher.publishEvent(new OrderCreatedEvent());
+                    }
+                }
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/event/EventListener.java",
+            """
+                package com.example.event;
+
+                public @interface EventListener {}
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/event/SearchIndexListener.java",
+            """
+                package com.example.event;
+
+                class SearchIndexListener {
+                    @EventListener
+                    public void onEvent(OrderCreatedEvent event) {}
+                }
+            """.trimIndent(),
+        )
+        val pipeline = InvestigationPipeline.default(project)
+
+        val result = pipeline.run(
+            InvestigationRequest(
+                threadId = "thread-local-event-listener",
+                question = "请继续取证：确认 Event OrderCreatedEvent 的监听器。",
+                targetHints = listOf(
+                    InvestigationTargetHint(
+                        nodeId = "method:event-publish",
+                        signature = "com.example.event.EventPublisher.publish():void",
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(InvestigationStatus.NEEDS_MORE_EVIDENCE, result.status)
+        assertTrue(result.acceptedFacts.none { fact ->
+            fact.symbolSignature == "com.example.event.SearchIndexListener.onEvent(com.example.event.OrderCreatedEvent):void"
+        })
+    }
 }

@@ -68,7 +68,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             input = CodegenCapabilityInput(
                 generationContext = com.charmnight.linkgraph.llm.GenerationContext(),
                 plan = GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "rewrite upload",
                 ),
             ),
@@ -175,7 +175,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
                     ),
                 ),
                 plan = GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "rewrite upload",
                 ),
             ),
@@ -457,7 +457,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
                     ),
                 ),
                 plan = GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "rewrite upload",
                 ),
             ),
@@ -660,7 +660,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             input = CodegenCapabilityInput(
                 generationContext = com.charmnight.linkgraph.llm.GenerationContext(),
                 plan = GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "rewrite upload",
                 ),
             ),
@@ -735,7 +735,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
                     ),
                 ),
                 plan = GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "rewrite upload",
                 ),
             ),

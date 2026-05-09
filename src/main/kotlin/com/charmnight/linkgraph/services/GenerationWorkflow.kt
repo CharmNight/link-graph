@@ -26,6 +26,7 @@ import com.charmnight.linkgraph.llm.runtime.AgentRunCoordinator
 import com.charmnight.linkgraph.llm.runtime.AgentRunResult
 import com.charmnight.linkgraph.llm.runtime.AgentRunState
 import com.charmnight.linkgraph.llm.runtime.AgentRuntimeContext
+import com.charmnight.linkgraph.llm.runtime.withRuntimeDeadlineTimeout
 import com.charmnight.linkgraph.navigation.SourceNavigationService
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorStateService
@@ -1039,7 +1040,7 @@ internal class GenerationWorkflow(
     ): AgentRunResult<GenerationPlan> {
         val runtimeResult = agentRunCoordinator.run(
             capability = planCapabilityFactory(
-                PlanCapability.PlanExecutor { input, _, _ ->
+                PlanCapability.PlanExecutor { input, runtimeContext, _ ->
                     ProjectPathNormalizer.normalizePlan(
                         planningContextFactory.buildPlanSnapshot(
                             planningGraph = input.planningPayload.planningGraph,
@@ -1048,6 +1049,7 @@ internal class GenerationWorkflow(
                             snapshot = input.planningPayload.snapshot,
                             sourceContext = input.planningPayload.sourceContext,
                             onPreview = onPreview,
+                            settingsOverride = settingsProvider().withRuntimeDeadlineTimeout(runtimeContext),
                         ),
                         project.basePath,
                     )
@@ -1073,12 +1075,12 @@ internal class GenerationWorkflow(
     ): AgentRunResult<CodeGenerationResult> {
         val runtimeResult = agentRunCoordinator.run(
             capability = codegenCapabilityFactory(
-                CodegenCapability.CodegenExecutor { input, _, _ ->
+                CodegenCapability.CodegenExecutor { input, runtimeContext, _ ->
                     ProjectPathNormalizer.normalizeDraftResult(
                         codeGenerationService.generateDrafts(
                             context = input.generationContext,
                             plan = input.plan,
-                            settings = settingsProvider(),
+                            settings = settingsProvider().withRuntimeDeadlineTimeout(runtimeContext),
                             onPreview = onPreview,
                         ),
                         project.basePath,

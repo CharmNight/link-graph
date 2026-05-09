@@ -327,7 +327,7 @@ export const SAMPLE_STATE: LinkGraphBootstrapState = {
   syncPreviewItems: sampleSyncPreview(),
   draftVersion: 0,
   generationPlan: {
-    source: "MOCK",
+    source: "LOCAL_RULE",
     summary: "创建 DTO 并补齐服务接线。",
     warnings: ["当前实现建议来自本地规则推断。"],
     promptPreview: "提示词预览",

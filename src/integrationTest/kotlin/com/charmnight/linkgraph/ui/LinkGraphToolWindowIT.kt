@@ -1165,7 +1165,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         bridge.dispatch(GraphEditorMessage.LoadGraph(codeGraph, "bridge-code"))
         stateService.markAuditResultForIntegration(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条已证实的业务变更",
                 answer = "当前源码里直接能看到这条变更需要确认。",
                 promptPreview = "prompt",
@@ -1255,7 +1255,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         bridge.dispatch(GraphEditorMessage.LoadGraph(codeGraph, "bridge-code"))
         stateService.markAuditResultForIntegration(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条已证实的业务变更",
                 answer = "建议收紧删除条件。",
                 promptPreview = "prompt",
@@ -1572,7 +1572,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             ),
         )
 
-        stateService.markGeneratedCodeDraftsForIntegration(listOf(draft), emptyList(), LlmResultSource.MOCK, promptPreview = null)
+        stateService.markGeneratedCodeDraftsForIntegration(listOf(draft), emptyList(), LlmResultSource.LOCAL_RULE, promptPreview = null)
         bridge.dispatch(GraphEditorMessage.ApplySingleCodeDraft(draft.id))
         waitForCodeDraftWriteReport()
 
@@ -1642,7 +1642,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             ),
         )
 
-        stateService.markGeneratedCodeDraftsForIntegration(listOf(draft), emptyList(), LlmResultSource.MOCK, promptPreview = null)
+        stateService.markGeneratedCodeDraftsForIntegration(listOf(draft), emptyList(), LlmResultSource.LOCAL_RULE, promptPreview = null)
         bridge.dispatch(GraphEditorMessage.ApplySingleCodeDraft(draft.id))
         waitForCodeDraftWriteReport()
 
@@ -1709,7 +1709,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             ),
         )
 
-        stateService.markGeneratedCodeDraftsForIntegration(listOf(draft), emptyList(), LlmResultSource.MOCK, promptPreview = null)
+        stateService.markGeneratedCodeDraftsForIntegration(listOf(draft), emptyList(), LlmResultSource.LOCAL_RULE, promptPreview = null)
         bridge.dispatch(GraphEditorMessage.ApplySingleCodeDraft(draft.id))
         waitForCodeDraftWriteReport()
 
@@ -1876,7 +1876,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
 
     private fun buildConfirmedPlanCandidateResult(changeId: String): GraphPatchResult {
         return GraphPatchResult(
-            source = LlmResultSource.MOCK,
+            source = LlmResultSource.LOCAL_RULE,
             question = "请确认这条已证实的业务变更",
             answer = "当前源码里直接能看到这条变更需要确认。",
             promptPreview = "prompt",

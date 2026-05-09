@@ -23,6 +23,8 @@ import com.charmnight.linkgraph.workbench.QaModeContext
 internal class AuditResultNormalizer(
     /** 问答会话合并服务。 */
     private val auditConversationService: AuditConversationService = AuditConversationService(),
+    /** 问答警告过滤策略。 */
+    private val auditWarningPolicy: AuditWarningPolicy = AuditWarningPolicy(),
 ) {
     /**
      * 将一轮 QA 输出写入模式字段、按模式裁剪，并在需要时合并到会话。
@@ -37,7 +39,11 @@ internal class AuditResultNormalizer(
         }
 
         // 入站边界：先裁掉当前模式不允许的新输出，防止它们进入会话合并。
-        val modeBoundResult = applyModeBoundary(result.withMode(modeContext), modeContext)
+        val modeBoundResult = applyModeBoundary(
+            result = result.withMode(modeContext),
+            modeContext = modeContext,
+            filterWarnings = false,
+        )
         val baseSession = ensureQuestionCaptured(
             session = modeContext.baseSession ?: AuditConversationSession(
                 sessionId = "audit-${modeContext.request.requestId}",
@@ -75,6 +81,7 @@ internal class AuditResultNormalizer(
     private fun applyModeBoundary(
         result: GraphPatchResult,
         modeContext: QaModeContext,
+        filterWarnings: Boolean = true,
     ): GraphPatchResult {
         return when (modeContext.effectiveMode) {
             QaMode.ANSWER -> result.withMode(modeContext).copy(
@@ -84,6 +91,11 @@ internal class AuditResultNormalizer(
                 investigationThreads = emptyList(),
                 latestTurnOutcome = null,
                 recentTurnOutcomes = emptyList(),
+                warnings = if (filterWarnings) {
+                    auditWarningPolicy.filterForMode(result.warnings, modeContext.effectiveMode)
+                } else {
+                    result.warnings
+                },
                 auditSession = result.auditSession?.copy(
                     candidateChanges = emptyList(),
                     investigationThreads = emptyList(),

@@ -79,6 +79,7 @@ internal class PlanningContextFactory(
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         sourceContext: List<SourceSnippetContext>,
         onPreview: ((String, Boolean) -> Unit)? = null,
+        settingsOverride: LinkGraphSettingsState? = null,
         ) = graphGenerationService.generatePlan(
         context = GenerationContext(
             graph = planningGraph,
@@ -88,7 +89,7 @@ internal class PlanningContextFactory(
             confirmedChanges = snapshot.draftWorkbenchState.draftChanges,
             sourceContext = sourceContext,
         ),
-        settings = settingsProvider(),
+        settings = settingsOverride ?: settingsProvider(),
         onPreview = onPreview,
     )
 

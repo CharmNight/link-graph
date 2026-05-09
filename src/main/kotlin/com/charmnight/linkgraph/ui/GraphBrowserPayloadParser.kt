@@ -18,6 +18,15 @@ import java.nio.charset.StandardCharsets
 internal object GraphBrowserPayloadParser {
     private const val PAYLOAD_SEPARATOR: String = "\u001F"
 
+    fun validatePayloadSize(
+        payload: String,
+        kind: GraphBrowserPayloadKind,
+    ) {
+        require(payload.length <= kind.maxChars) {
+            "${kind.label} payload 过大：${payload.length} chars，最大允许 ${kind.maxChars} chars。"
+        }
+    }
+
     data class GenerationPlanDiscussionPayload(
         val question: String,
         val focusItemId: String?,
@@ -45,6 +54,7 @@ internal object GraphBrowserPayloadParser {
     )
 
     fun parseGraphEditScript(payload: String): GraphEditScript {
+        validatePayloadSize(payload, GraphBrowserPayloadKind.GRAPH_EDIT_SCRIPT)
         val root = RemoteCodeGenerationJsonParser(payload).parseValue() as? Map<*, *>
             ?: error("graph edit script payload must be a JSON object")
         val sceneId = (root["sceneId"] as? String)
@@ -64,6 +74,7 @@ internal object GraphBrowserPayloadParser {
     }
 
     fun parseQuestionWithIds(payload: String): Pair<String, List<String>> {
+        validatePayloadSize(payload, GraphBrowserPayloadKind.STRUCTURED)
         val parts = payload.split(PAYLOAD_SEPARATOR, limit = 2)
         val question = decodePayloadValue(parts.firstOrNull().orEmpty())
         val selectedNodeIds = parseEncodedList(parts.getOrNull(1).orEmpty())
@@ -71,6 +82,7 @@ internal object GraphBrowserPayloadParser {
     }
 
     fun parseGenerationPlanDiscussionPayload(payload: String): GenerationPlanDiscussionPayload {
+        validatePayloadSize(payload, GraphBrowserPayloadKind.STRUCTURED)
         val parts = payload.split(PAYLOAD_SEPARATOR, limit = 2)
         return GenerationPlanDiscussionPayload(
             question = decodePayloadValue(parts.firstOrNull().orEmpty()),
@@ -79,6 +91,7 @@ internal object GraphBrowserPayloadParser {
     }
 
     fun parseAuditRequestPayload(payload: String): AuditRequestPayload {
+        validatePayloadSize(payload, GraphBrowserPayloadKind.STRUCTURED)
         val parts = payload.split(PAYLOAD_SEPARATOR, limit = 4)
         return AuditRequestPayload(
             question = decodePayloadValue(parts.firstOrNull().orEmpty()),
@@ -93,6 +106,7 @@ internal object GraphBrowserPayloadParser {
     }
 
     fun parseResolveInvestigationThreadPayload(payload: String): ResolveInvestigationThreadPayload {
+        validatePayloadSize(payload, GraphBrowserPayloadKind.STRUCTURED)
         val parts = payload.split(PAYLOAD_SEPARATOR, limit = 3)
         val threadId = decodePayloadValue(parts.firstOrNull().orEmpty()).ifBlank {
             error("风险线程标识不能为空")
@@ -111,6 +125,7 @@ internal object GraphBrowserPayloadParser {
     }
 
     fun parseBeautificationPayload(payload: String): BeautificationPayload {
+        validatePayloadSize(payload, GraphBrowserPayloadKind.STRUCTURED)
         val parts = payload.split(PAYLOAD_SEPARATOR, limit = 7)
         val goal = decodePayloadValue(parts.getOrNull(0).orEmpty())
         val preferredStyle = parts.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
@@ -139,9 +154,13 @@ internal object GraphBrowserPayloadParser {
         return BeautificationPayload(goal, preferredStyle, explanationFocus, followUp, granularity)
     }
 
-    fun parseNullableRevision(payload: String): Long? = payload.trim().takeIf { it.isNotEmpty() }?.toLongOrNull()
+    fun parseNullableRevision(payload: String): Long? {
+        validatePayloadSize(payload, GraphBrowserPayloadKind.IDENTIFIER)
+        return payload.trim().takeIf { it.isNotEmpty() }?.toLongOrNull()
+    }
 
     fun parseEncodedList(payload: String): List<String> {
+        validatePayloadSize(payload, GraphBrowserPayloadKind.STRUCTURED)
         if (payload.isBlank()) {
             return emptyList()
         }
@@ -153,6 +172,7 @@ internal object GraphBrowserPayloadParser {
     }
 
     fun parseLayoutPositions(payload: String): Map<String, GraphLayoutPosition> {
+        validatePayloadSize(payload, GraphBrowserPayloadKind.GRAPH_EDIT_SCRIPT)
         if (payload.isBlank()) {
             return emptyMap()
         }
@@ -278,4 +298,23 @@ internal object GraphBrowserPayloadParser {
         val raw = this[key] as? String ?: return defaultValue
         return enumValues<T>().firstOrNull { it.name == raw } ?: defaultValue
     }
+}
+
+internal enum class GraphBrowserPayloadKind(
+    val maxChars: Int,
+    val label: String,
+) {
+    MERMAID(GraphBrowserPayloadLimits.MERMAID_PAYLOAD_MAX_CHARS, "Mermaid 导入"),
+    GRAPH_EDIT_SCRIPT(GraphBrowserPayloadLimits.GRAPH_EDIT_SCRIPT_MAX_CHARS, "图编辑脚本"),
+    STRUCTURED(GraphBrowserPayloadLimits.STRUCTURED_PAYLOAD_MAX_CHARS, "结构化 bridge"),
+    IDENTIFIER(GraphBrowserPayloadLimits.IDENTIFIER_PAYLOAD_MAX_CHARS, "标识符 bridge"),
+    DEBUG_TRACE(GraphBrowserPayloadLimits.DEBUG_TRACE_PAYLOAD_MAX_CHARS, "前端 trace"),
+}
+
+internal object GraphBrowserPayloadLimits {
+    const val GRAPH_EDIT_SCRIPT_MAX_CHARS: Int = 512 * 1024
+    const val MERMAID_PAYLOAD_MAX_CHARS: Int = 1024 * 1024
+    const val STRUCTURED_PAYLOAD_MAX_CHARS: Int = 64 * 1024
+    const val IDENTIFIER_PAYLOAD_MAX_CHARS: Int = 8 * 1024
+    const val DEBUG_TRACE_PAYLOAD_MAX_CHARS: Int = 64 * 1024
 }

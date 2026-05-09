@@ -142,6 +142,86 @@ class CodeDraftWriterServiceTest {
     }
 
     @Test
+    fun skipsSingleDraftWhenFilesystemWriteFailsAndContinuesBatch() {
+        val projectDir = createTempDirectory("link-graph-writer-fs-failure-test")
+        Files.writeString(projectDir.resolve("src"), "not a directory")
+        val brokenDraft = GeneratedCodeDraft(
+            id = "draft:broken",
+            sourceNodeId = "class:broken",
+            title = "Broken.java",
+            targetPath = "src/main/java/com/example/Broken.java",
+            content = "package com.example; class Broken {}",
+        )
+        val okDraft = GeneratedCodeDraft(
+            id = "draft:ok",
+            sourceNodeId = "class:ok",
+            title = "Ok.java",
+            targetPath = "generated/Ok.java",
+            content = "package generated; class Ok {}",
+        )
+
+        val report = CodeDraftWriterService().writeDrafts(
+            projectBasePath = projectDir.toString(),
+            drafts = listOf(brokenDraft, okDraft),
+        )
+
+        assertTrue(report.skippedFiles.contains(brokenDraft.targetPath))
+        assertTrue(report.writtenFiles.contains(okDraft.targetPath))
+        assertTrue(report.warnings.any { warning -> warning.contains(brokenDraft.targetPath) })
+        assertTrue(Files.exists(projectDir.resolve(okDraft.targetPath)))
+    }
+
+    @Test
+    fun skipsSingleDraftWhenTargetPathCannotBeResolvedAndContinuesBatch() {
+        val projectDir = createTempDirectory("link-graph-writer-invalid-path-test")
+        val brokenDraft = GeneratedCodeDraft(
+            id = "draft:broken-path",
+            sourceNodeId = "class:broken-path",
+            title = "BrokenPath.java",
+            targetPath = "src/main/java/com/example/\u0000/BrokenPath.java",
+            content = "package com.example; class BrokenPath {}",
+        )
+        val okDraft = GeneratedCodeDraft(
+            id = "draft:ok-path",
+            sourceNodeId = "class:ok-path",
+            title = "OkPath.java",
+            targetPath = "generated/OkPath.java",
+            content = "package generated; class OkPath {}",
+        )
+
+        val report = CodeDraftWriterService().writeDrafts(
+            projectBasePath = projectDir.toString(),
+            drafts = listOf(brokenDraft, okDraft),
+        )
+
+        assertTrue(report.skippedFiles.contains(brokenDraft.targetPath))
+        assertTrue(report.writtenFiles.contains(okDraft.targetPath))
+        assertTrue(report.warnings.any { warning -> warning.contains(brokenDraft.targetPath) })
+        assertTrue(Files.exists(projectDir.resolve(okDraft.targetPath)))
+    }
+
+    @Test
+    fun returnsWarningWhenProjectBasePathIsAFile() {
+        val projectBaseFile = createTempDirectory("link-graph-writer-file-root-test").resolve("project-root")
+        Files.writeString(projectBaseFile, "not a directory")
+        val draft = GeneratedCodeDraft(
+            id = "draft:new-file",
+            sourceNodeId = "class:new-file",
+            title = "NewFile.java",
+            targetPath = "src/main/java/com/example/NewFile.java",
+            content = "package com.example; class NewFile {}",
+        )
+
+        val report = CodeDraftWriterService().writeDrafts(
+            projectBasePath = projectBaseFile.toString(),
+            drafts = listOf(draft),
+        )
+
+        assertTrue(report.skippedFiles.contains(draft.targetPath))
+        assertTrue(report.warnings.any { warning -> warning.contains(draft.targetPath) })
+    }
+
+    @Test
     fun blocksExistingMethodReplacementWithoutValidatedScope() {
         val projectDir = createTempDirectory("link-graph-writer-replace-method-test")
         val targetFile = projectDir.resolve("src/main/java/com/example/CommonController.java")

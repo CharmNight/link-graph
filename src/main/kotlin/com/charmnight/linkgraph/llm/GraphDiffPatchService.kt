@@ -143,7 +143,7 @@ class GraphDiffPatchService(
             )
         }
         return GraphPatchResult(
-            source = LlmResultSource.MOCK,
+            source = LlmResultSource.LOCAL_RULE,
             question = question,
             answer = if (question.contains("修订")) "$answer\n建议动作：\n- 当前结果已附带修订草稿，可先预览再写回。" else answer,
             promptPreview = prompt,

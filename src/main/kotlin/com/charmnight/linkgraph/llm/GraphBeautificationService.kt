@@ -195,7 +195,7 @@ class PlaceholderGraphBeautificationService(
             }
         }
         return GraphBeautificationResult(
-            source = LlmResultSource.MOCK,
+            source = LlmResultSource.LOCAL_RULE,
             granularity = context.granularity,
             steps = steps,
             promptPreview = promptPackage.preview,

@@ -20,7 +20,7 @@ export type GraphPatchAction =
   | "DELETE_EDGE"
   | "ADD_ANNOTATION"
   | "MARK_UNCERTAIN";
-export type LlmResultSource = "DISABLED" | "MOCK" | "REMOTE";
+export type LlmResultSource = "DISABLED" | "LOCAL_RULE" | "REMOTE";
 export type ResultEvidenceLevel = "DIRECT_SOURCE" | "DIRECT_GRAPH" | "CALLSITE_ONLY" | "NOT_OBSERVED";
 export type DraftClaimType = "CODE_FACT" | "RISK_HINT" | "EXPLANATION_NOTE" | "STRUCTURAL_SUGGESTION";
 export type DraftPatchPreviewSource = "AUDIT" | "DIFF_REVIEW" | "LAST_APPLIED";
@@ -669,7 +669,7 @@ export interface SyncPreviewItem {
   risk: "LOW" | "MEDIUM" | "HIGH";
 }
 
-export type GenerationPlanSource = "DISABLED" | "MOCK" | "REMOTE";
+export type GenerationPlanSource = "DISABLED" | "LOCAL_RULE" | "REMOTE";
 
 export interface GenerationPlanItem {
   id: string;

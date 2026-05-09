@@ -12,6 +12,7 @@ import com.charmnight.linkgraph.llm.artifact.QaConclusionArtifact
 import com.charmnight.linkgraph.llm.runtime.AgentRunFailureReason
 import com.charmnight.linkgraph.llm.runtime.AgentRunPhase
 import com.charmnight.linkgraph.llm.runtime.AgentRunState
+import com.charmnight.linkgraph.llm.runtime.AgentRuntimeDeadlineExceededException
 import com.charmnight.linkgraph.llm.runtime.AgentRuntimeContext
 import com.charmnight.linkgraph.llm.runtime.AgentStepExecutionResult
 import com.charmnight.linkgraph.llm.runtime.AgentStepRecord
@@ -21,6 +22,7 @@ import com.charmnight.linkgraph.llm.runtime.StopPolicy
 import com.charmnight.linkgraph.llm.runtime.budgetExceededStepResult
 import com.charmnight.linkgraph.llm.runtime.failureReasonBeforeNextFileRead
 import com.charmnight.linkgraph.llm.runtime.failureReasonForBudget
+import com.charmnight.linkgraph.llm.runtime.withRuntimeDeadlineTimeout
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.llm.tools.AgentTool
 import com.charmnight.linkgraph.llm.tools.AgentToolRegistry
@@ -267,12 +269,15 @@ class QaCapability(
         input: QaCapabilityInput,
     ): AgentStepExecutionResult {
         return runCatching {
+            runtimeContext.requireWithinDeadline()
             val augmentedInput = buildAugmentedInput(input, state, runtimeContext)
+            runtimeContext.requireWithinDeadline()
             val result = executeAudit(
-                input = augmentedInput,
+                input = augmentedInput.copy(settings = augmentedInput.settings.withRuntimeDeadlineTimeout(runtimeContext)),
                 runtimeContext = runtimeContext,
                 state = state,
             ).withRuntimeEvidence(augmentedInput.auditContext)
+            runtimeContext.requireWithinDeadline()
             val artifact = QaConclusionArtifact(
                 artifactId = "${state.runId}-qa-conclusion-${state.stepIndex}",
                 result = result,
@@ -314,6 +319,22 @@ class QaCapability(
                 ),
             )
         }.getOrElse { throwable ->
+            if (throwable is AgentRuntimeDeadlineExceededException) {
+                return AgentStepExecutionResult.fail(
+                    state.copy(
+                        phase = AgentRunPhase.FAILED,
+                        budget = state.budget.recordStep(),
+                        stepIndex = state.stepIndex + 1,
+                        stepRecords = state.stepRecords + AgentStepRecord(
+                            stepIndex = state.stepIndex,
+                            phase = AgentRunPhase.FAILED,
+                            summary = "execute-audit-timeout",
+                        ),
+                        lastModelOutput = throwable.message ?: throwable.javaClass.simpleName,
+                        failureReason = AgentRunFailureReason.MAX_RUNTIME_SECONDS_EXCEEDED,
+                    ),
+                )
+            }
             AgentStepExecutionResult.fail(
                 state.copy(
                     phase = AgentRunPhase.FAILED,

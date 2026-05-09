@@ -239,7 +239,7 @@ enum class GenerationPlanSource {
     DISABLED,
 
     /** 使用本地规则和 sync preview 生成计划，不请求远程模型。 */
-    MOCK,
+    LOCAL_RULE,
 
     /** 请求远程 LLM 后解析得到的计划。 */
     REMOTE,
@@ -251,8 +251,8 @@ enum class GenerationPlanSource {
 enum class LlmResultSource {
     /** 表示远程能力已关闭。 */
     DISABLED,
-    /** 表示结果来自本地 Mock 或规则推断。 */
-    MOCK,
+    /** 表示结果来自本地规则、模板或确定性推理。 */
+    LOCAL_RULE,
     /** 表示结果来自远程模型。 */
     REMOTE,
 }

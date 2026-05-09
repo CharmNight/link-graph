@@ -283,7 +283,7 @@ class GraphAuditPatchService(
         }
         return applyConversationTurn(
             base = GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = question,
                 requestedMode = requestedMode,
                 effectiveMode = effectiveMode,

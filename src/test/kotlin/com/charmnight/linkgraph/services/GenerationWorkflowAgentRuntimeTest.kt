@@ -104,7 +104,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
             warnings = emptyList(),
-            source = LlmResultSource.MOCK,
+            source = LlmResultSource.LOCAL_RULE,
             promptPreview = null,
         )
         val mergeRequests = mutableListOf<MergeRequest>()
@@ -239,7 +239,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
             warnings = emptyList(),
-            source = LlmResultSource.MOCK,
+            source = LlmResultSource.LOCAL_RULE,
             promptPreview = null,
         )
         val session = ProjectEditorSession(stateService) {}
@@ -314,7 +314,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 PlanCapability(
                     planExecutor = { _, _, _ ->
                         GenerationPlan(
-                            source = GenerationPlanSource.MOCK,
+                            source = GenerationPlanSource.LOCAL_RULE,
                             summary = "runtime 计划",
                             promptPreview = "prompt",
                         )
@@ -371,7 +371,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
         val session = ProjectEditorSession(stateService) {}
         var capturedPlan: GenerationPlan? = GenerationPlan(
-            source = GenerationPlanSource.MOCK,
+            source = GenerationPlanSource.LOCAL_RULE,
             summary = "unexpected",
         )
         val workflow = GenerationWorkflow(
@@ -398,7 +398,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 PlanCapability(
                     planExecutor = { _, _, _ ->
                         GenerationPlan(
-                            source = GenerationPlanSource.MOCK,
+                            source = GenerationPlanSource.LOCAL_RULE,
                             summary = "runtime 计划",
                             promptPreview = "prompt",
                         )
@@ -1019,7 +1019,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 PlanCapability(
                     planExecutor = { _, _, _ ->
                         GenerationPlan(
-                            source = GenerationPlanSource.MOCK,
+                            source = GenerationPlanSource.LOCAL_RULE,
                             summary = "runtime 计划",
                             promptPreview = "prompt",
                         )
@@ -1082,7 +1082,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
         stateService.asyncRequests.markGenerationPlan(
             GenerationPlan(
-                source = GenerationPlanSource.MOCK,
+                source = GenerationPlanSource.LOCAL_RULE,
                 summary = "orphan plan",
             ),
         )
@@ -1121,7 +1121,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
 
     fun testRequestCodeDraftsAsyncUsesExistingPlanArtifactLineage() {
         val plan = GenerationPlan(
-            source = GenerationPlanSource.MOCK,
+            source = GenerationPlanSource.LOCAL_RULE,
             summary = "runtime 计划",
         )
         val stateService = project.getService(GraphEditorStateService::class.java)

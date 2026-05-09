@@ -23,6 +23,181 @@ import kotlin.test.assertTrue
 
 class LlmPromptFactoryTest {
     @Test
+    fun auditPromptPackageTrimsLargeUserPromptToBudget() {
+        val hugeSnippet = buildString {
+            repeat(600) {
+                append("if (value != null) { value = value.trim(); }\n")
+            }
+        }
+
+        val promptPackage = LlmPromptFactory().buildAuditPromptPackage(
+            context = GraphAuditContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:scheduled-task",
+                            type = NodeType.METHOD,
+                            title = "Task.run",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                    ),
+                ),
+                selectedNodeIds = listOf("method:scheduled-task"),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:scheduled-task",
+                        filePath = "src/main/java/com/example/Task.java",
+                        startLine = 10,
+                        endLine = 14,
+                        snippet = hugeSnippet,
+                    ),
+                ),
+            ),
+            question = "这个方法是如何触发的？",
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                model = "gpt-test",
+            ),
+            requestedMode = QaMode.AUTO,
+            effectiveMode = QaMode.ANSWER,
+        )
+
+        assertTrue(promptPackage.userPrompt.length <= 12_000)
+        assertTrue(promptPackage.userPrompt.contains("目标模型：gpt-test"))
+        assertTrue(promptPackage.userPrompt.contains("用户问题：这个方法是如何触发的？"))
+        assertTrue(promptPackage.userPrompt.contains("当前范围："))
+    }
+
+    @Test
+    fun promptPackageAppliesBudgetAcrossSystemAndUserMessages() {
+        val hugeSnippet = buildString {
+            repeat(600) {
+                append("return callRemoteServiceAndNormalizeResult(request);\n")
+            }
+        }
+
+        val promptPackage = LlmPromptFactory().buildCodeGenerationPromptPackage(
+            context = GenerationContext(
+                graph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:upload",
+                            type = NodeType.METHOD,
+                            title = "UploadService.upload",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                    ),
+                ),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:upload",
+                        filePath = "src/main/java/com/example/UploadService.java",
+                        snippet = hugeSnippet,
+                    ),
+                ),
+            ),
+            plan = null,
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                model = "gpt-test",
+            ),
+        )
+
+        assertTrue(promptPackage.systemPrompt.length + promptPackage.userPrompt.length <= 12_000)
+        assertTrue(promptPackage.userPrompt.contains("目标模型：gpt-test"))
+        assertTrue(promptPackage.userPrompt.contains("相关源码片段"))
+    }
+
+    @Test
+    fun promptPackageKeepsSchemaInstructionWhenSourceContextIsHuge() {
+        val hugeSnippet = buildString {
+            repeat(1_200) {
+                append("return callRemoteServiceAndNormalizeResult(request);\n")
+            }
+        }
+
+        val promptPackage = LlmPromptFactory().buildCodeGenerationPromptPackage(
+            context = GenerationContext(
+                graph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:upload",
+                            type = NodeType.METHOD,
+                            title = "UploadService.upload",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                    ),
+                ),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:upload",
+                        filePath = "src/main/java/com/example/UploadService.java",
+                        snippet = hugeSnippet,
+                    ),
+                ),
+            ),
+            plan = null,
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                model = "gpt-test",
+            ),
+        )
+
+        assertTrue(promptPackage.systemPrompt.length + promptPackage.userPrompt.length <= 12_000)
+        assertTrue(promptPackage.userPrompt.contains("仅返回 JSON，结构如下："))
+        assertTrue(promptPackage.userPrompt.contains("\"drafts\""))
+        assertTrue(promptPackage.userPrompt.contains("\"editOperations\""))
+    }
+
+    @Test
+    fun auditPromptPackageKeepsSchemaInstructionWhenSourceContextIsHuge() {
+        val hugeSnippet = buildString {
+            repeat(1_200) {
+                append("return callRemoteServiceAndNormalizeResult(request);\n")
+            }
+        }
+
+        val promptPackage = LlmPromptFactory().buildAuditPromptPackage(
+            context = GraphAuditContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:upload",
+                            type = NodeType.METHOD,
+                            title = "UploadService.upload",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                    ),
+                ),
+                selectedNodeIds = listOf("method:upload"),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:upload",
+                        filePath = "src/main/java/com/example/UploadService.java",
+                        snippet = hugeSnippet,
+                    ),
+                ),
+            ),
+            question = "解释上传链路",
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                model = "gpt-test",
+            ),
+            requestedMode = QaMode.AUTO,
+            effectiveMode = QaMode.ANSWER,
+        )
+
+        assertTrue(promptPackage.systemPrompt.length + promptPackage.userPrompt.length <= 12_000)
+        assertTrue(promptPackage.userPrompt.contains("仅返回 JSON，结构如下："))
+        assertTrue(promptPackage.userPrompt.contains("\"candidateChanges\""))
+        assertTrue(promptPackage.userPrompt.contains("\"investigationThreads\""))
+    }
+
+    @Test
     fun auditPromptPackageMakesQaModeBoundariesExplicit() {
         val promptPackage = LlmPromptFactory().buildAuditPromptPackage(
             context = GraphAuditContext(

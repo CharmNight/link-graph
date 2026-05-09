@@ -82,6 +82,58 @@ class WorkflowArchitectureRegressionTest {
     }
 
     @Test
+    fun llmResultSourceMockOnlyAppearsInBootstrapMigrationBoundary() {
+        val allowed = setOf(
+            "web/src/app/types.ts",
+            "web/src/app/bootstrapStateMigration.ts",
+            "web/src/test/app/bootstrapStateMigration.test.ts",
+        )
+        val legacyName = "MO" + "CK"
+        val quotedLegacyName = "\"$legacyName\""
+        val deletedResultSourceFragments = listOf(
+            "LlmResultSource.$legacyName",
+            "case $quotedLegacyName",
+            "llmResultSourceLabel($quotedLegacyName",
+            "patchResultBoundaryDescription($quotedLegacyName",
+            "beautificationBoundaryDescription($quotedLegacyName",
+            "generatedCodeDraftSource: $quotedLegacyName",
+        )
+        val sourceFixtureRegex = Regex("""source:\s*"$legacyName"""")
+        val scannedRoots = listOf("src/main/kotlin", "web/src/app", "web/src/test/app")
+        val offenders = scannedRoots.flatMap { root ->
+            Files.walk(Path.of(root))
+                .filter { path ->
+                    path.toString().endsWith(".kt") ||
+                        path.toString().endsWith(".ts") ||
+                        path.toString().endsWith(".tsx")
+                }
+                .use { paths ->
+                    paths.toList().filter { path ->
+                        val normalizedPath = path.toString()
+                        if (normalizedPath in allowed) {
+                            return@filter false
+                        }
+                        val source = Files.readString(path)
+                        deletedResultSourceFragments.any(source::contains) ||
+                            (sourceFixtureRegex.containsMatchIn(source) && !isGenerationPlanMockFixture(path))
+                    }
+                }
+        }
+
+        assertTrue(
+            offenders.isEmpty(),
+            "旧 LLM 结果来源只能存在于 bootstrap 迁移边界：${offenders.joinToString()}",
+        )
+    }
+
+    private fun isGenerationPlanMockFixture(path: Path): Boolean {
+        val source = Files.readString(path)
+        return source.contains("generationPlan:") ||
+            source.contains("implementationSuggestion:") ||
+            source.contains("GenerationPlanSource")
+    }
+
+    @Test
     fun productionCodeAvoidsVerifierWarnedIntellijApis() {
         val productionSources = Files.walk(Path.of("src/main/kotlin"))
             .filter { path -> path.toString().endsWith(".kt") }

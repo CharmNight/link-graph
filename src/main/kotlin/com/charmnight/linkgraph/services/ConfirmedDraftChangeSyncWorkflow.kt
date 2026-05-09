@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.services
 
 import com.charmnight.linkgraph.llm.artifact.ArtifactStore
+import com.charmnight.linkgraph.llm.artifact.ArtifactStorePruner
 import com.charmnight.linkgraph.llm.artifact.ConfirmedIntentArtifact
 import com.charmnight.linkgraph.ui.GraphEditorStateMutationContext
 import com.charmnight.linkgraph.ui.GraphEditorStateService
@@ -20,6 +21,8 @@ internal class ConfirmedDraftChangeSyncWorkflow(
     private val logger: Logger,
     private val runtimeTrace: ((String) -> Unit)?,
 ) {
+    private val artifactStorePruner = ArtifactStorePruner
+
     fun confirm(changeId: String): DraftWorkbenchEntry? {
         val stateService = stateServiceProvider()
         val snapshot = stateService.snapshot()
@@ -153,7 +156,10 @@ internal class ConfirmedDraftChangeSyncWorkflow(
                         )
                     }
                 }
-                artifactStoreProvider().remove("confirmed-${removal.removedEntry.entryId}")
+                artifactStorePruner.removeConfirmedIntent(
+                    artifactStore = artifactStoreProvider(),
+                    entryId = removal.removedEntry.entryId,
+                )
                 removal.removedEntry
             }
         }

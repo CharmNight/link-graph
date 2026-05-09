@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.llm.runtime
 
+import com.charmnight.linkgraph.llm.artifact.ArtifactStorePruner
 import com.charmnight.linkgraph.llm.capability.AgentCapability
 
 /**
@@ -9,6 +10,8 @@ import com.charmnight.linkgraph.llm.capability.AgentCapability
 class AgentRunCoordinator(
     /** 可选的统一 step executor，主要用于测试覆盖 step loop 行为。 */
     private val stepExecutor: StepExecutor? = null,
+    /** 统一收口 runtime 产物生命周期。 */
+    private val artifactStorePruner: ArtifactStorePruner = ArtifactStorePruner,
 ) {
     fun <I, O> run(
         capability: AgentCapability<I, O>,
@@ -23,20 +26,52 @@ class AgentRunCoordinator(
                 initial
             }
         }
+        val runRuntimeContext = runtimeContext.withDeadline(state.budget)
         val executor = stepExecutor ?: capability.createStepExecutor(input)
         while (true) {
             stopPolicy.evaluate(state)?.let { reason ->
                 val failedState = state.copy(
                     phase = AgentRunPhase.FAILED,
                     failureReason = reason,
+                    lastModelOutput = if (reason == AgentRunFailureReason.MAX_RUNTIME_SECONDS_EXCEEDED) {
+                        "runtime deadline exceeded"
+                    } else {
+                        state.lastModelOutput
+                    },
                 )
-                return AgentRunResult(
+                return completeRun(
+                    runtimeContext = runRuntimeContext,
                     finalState = failedState,
-                    artifactSummaries = summarizeArtifacts(failedState, runtimeContext),
                     output = null,
                 )
             }
-            when (val stepResult = executor.executeNextStep(state, runtimeContext)) {
+            try {
+                runRuntimeContext.requireWithinDeadline()
+            } catch (deadlineExceeded: AgentRuntimeDeadlineExceededException) {
+                return completeRun(
+                    runtimeContext = runRuntimeContext,
+                    finalState = state.copy(
+                        phase = AgentRunPhase.FAILED,
+                        failureReason = AgentRunFailureReason.MAX_RUNTIME_SECONDS_EXCEEDED,
+                        lastModelOutput = deadlineExceeded.message ?: deadlineExceeded.javaClass.simpleName,
+                    ),
+                    output = null,
+                )
+            }
+            when (val stepResult = runCatching { executor.executeNextStep(state, runRuntimeContext) }
+                .getOrElse { throwable ->
+                    if (throwable is AgentRuntimeDeadlineExceededException) {
+                        AgentStepExecutionResult.fail(
+                            state.copy(
+                                phase = AgentRunPhase.FAILED,
+                                failureReason = AgentRunFailureReason.MAX_RUNTIME_SECONDS_EXCEEDED,
+                                lastModelOutput = throwable.message ?: throwable.javaClass.simpleName,
+                            ),
+                        )
+                    } else {
+                        throw throwable
+                    }
+                }) {
                 is AgentStepExecutionResult.Continue -> {
                     state = normalizeRunningState(stepResult.state)
                 }
@@ -44,37 +79,56 @@ class AgentRunCoordinator(
                 is AgentStepExecutionResult.Complete -> {
                     val completedState = normalizeCompletedState(stepResult.state)
                     val output = runCatching {
-                        capability.finalize(completedState, runtimeContext)
+                        capability.finalize(completedState, runRuntimeContext)
                     }.getOrElse {
-                        return AgentRunResult(
-                            finalState = completedState.copy(
-                                phase = AgentRunPhase.FAILED,
-                                failureReason = AgentRunFailureReason.FINALIZATION_FAILED,
-                                lastModelOutput = it.message ?: it.javaClass.simpleName,
-                            ),
-                            artifactSummaries = summarizeArtifacts(completedState, runtimeContext),
+                        val failedState = completedState.copy(
+                            phase = AgentRunPhase.FAILED,
+                            failureReason = AgentRunFailureReason.FINALIZATION_FAILED,
+                            lastModelOutput = it.message ?: it.javaClass.simpleName,
+                        )
+                        return completeRun(
+                            runtimeContext = runRuntimeContext,
+                            finalState = failedState,
                             output = null,
                         )
                     }
-                    return AgentRunResult(
+                    return completeRun(
+                        runtimeContext = runRuntimeContext,
                         finalState = completedState,
-                        artifactSummaries = summarizeArtifacts(completedState, runtimeContext),
                         output = output,
                     )
                 }
 
                 is AgentStepExecutionResult.Fail -> {
-                    return AgentRunResult(
-                        finalState = stepResult.state.copy(
-                            phase = AgentRunPhase.FAILED,
-                            failureReason = stepResult.state.failureReason ?: AgentRunFailureReason.CAPABILITY_EXECUTION_FAILED,
-                        ),
-                        artifactSummaries = summarizeArtifacts(stepResult.state, runtimeContext),
+                    val failedState = stepResult.state.copy(
+                        phase = AgentRunPhase.FAILED,
+                        failureReason = stepResult.state.failureReason ?: AgentRunFailureReason.CAPABILITY_EXECUTION_FAILED,
+                    )
+                    return completeRun(
+                        runtimeContext = runRuntimeContext,
+                        finalState = failedState,
                         output = null,
                     )
                 }
             }
         }
+    }
+
+    private fun <O> completeRun(
+        runtimeContext: AgentRuntimeContext,
+        finalState: AgentRunState,
+        output: O?,
+    ): AgentRunResult<O> {
+        val artifactSummaries = summarizeArtifacts(finalState, runtimeContext)
+        artifactStorePruner.pruneAfterRun(
+            artifactStore = runtimeContext.artifactStore,
+            currentArtifactIds = finalState.artifactRefs.mapTo(linkedSetOf()) { ref -> ref.artifactId },
+        )
+        return AgentRunResult(
+            finalState = finalState,
+            artifactSummaries = artifactSummaries,
+            output = output,
+        )
     }
 
     private fun normalizeRunningState(state: AgentRunState): AgentRunState {
@@ -91,6 +145,12 @@ class AgentRunCoordinator(
         } else {
             state.copy(phase = AgentRunPhase.SUCCEEDED)
         }
+    }
+
+    private fun AgentRuntimeContext.withDeadline(budget: RunBudget): AgentRuntimeContext {
+        return copy(
+            deadlineEpochMillis = budget.startedAtEpochMillis + budget.maxRuntimeSeconds.toLong() * 1_000L,
+        )
     }
 
     /**

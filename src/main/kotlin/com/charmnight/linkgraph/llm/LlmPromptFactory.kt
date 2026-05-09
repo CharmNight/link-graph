@@ -1,5 +1,16 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.llm.context.PromptComposer
+import com.charmnight.linkgraph.llm.context.PromptSection
+import com.charmnight.linkgraph.llm.context.PromptSectionPriority.BACKGROUND
+import com.charmnight.linkgraph.llm.context.PromptSectionPriority.BEHAVIOR_RULE
+import com.charmnight.linkgraph.llm.context.PromptSectionPriority.CONFIRMED_CHANGE
+import com.charmnight.linkgraph.llm.context.PromptSectionPriority.EVIDENCE
+import com.charmnight.linkgraph.llm.context.PromptSectionPriority.GRAPH
+import com.charmnight.linkgraph.llm.context.PromptSectionPriority.HISTORY
+import com.charmnight.linkgraph.llm.context.PromptSectionPriority.SCHEMA
+import com.charmnight.linkgraph.llm.context.PromptSectionPriority.SOURCE
+import com.charmnight.linkgraph.llm.context.PromptSectionPriority.USER_GOAL
 import com.charmnight.linkgraph.model.GraphDiffEntry
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
@@ -14,7 +25,9 @@ import com.charmnight.linkgraph.workbench.WorkbenchStep
  * 把当前图上下文整理成可用于问答的提示词。
  * 即便暂时不接远程模型，这里也保留 promptPreview，便于用户确认输入材料。
  */
-class LlmPromptFactory {
+class LlmPromptFactory(
+    private val promptComposer: PromptComposer = PromptComposer(),
+) {
     /** 构造实现计划生成场景的提示词包。 */
     fun buildGenerationPromptPackage(
         snapshot: GenerationContext,
@@ -52,51 +65,67 @@ class LlmPromptFactory {
             即使信息不足，也必须返回合法 JSON；列表字段使用 []，不要输出自然语言兜底。
             计划必须面向真实代码改动，避免空泛建议。
         """.trimIndent()
-        /** 面向模型的用户提示词。 */
-        val userPrompt = """
-            你正在根据链路图设计评审结果生成代码实现计划。
-            目标模型：${settings.sanitized().model}
-            
-            图节点：
-            $nodes
-            
-            图连线：
-            $edges
-            
-            Mermaid 校验问题：
-            $issues
-            
-            图差异：
-            $diff
-            
-            同步预览：
-            $syncPreview
-
-            已确认草稿变更：
-            $confirmedChanges
-
-            相关源码片段：
-            $sourceSnippets
-            
-            仅返回 JSON，结构如下：
-            {
-              "summary": "简短计划摘要",
-              "items": [
-                {
-                  "id": "稳定ID",
-                  "title": "需要变更的内容",
-                  "description": "原因与做法",
-                  "risk": "LOW|MEDIUM|HIGH",
-                  "targetPath": "可选路径"
-                }
-              ],
-              "warnings": ["可选警告"]
-            }
-        """.trimIndent()
-        return LlmPromptPackage(
+        return buildPromptPackage(
             systemPrompt = systemPrompt,
-            userPrompt = userPrompt,
-            preview = promptPreview(systemPrompt, userPrompt),
+            userSections = listOf(
+                PromptSection(
+                    """
+                    你正在根据链路图设计评审结果生成代码实现计划。
+                    目标模型：${settings.sanitized().model}
+                    """.trimIndent(),
+                    priority = USER_GOAL,
+                ),
+                PromptSection(
+                    """
+                    已确认草稿变更：
+                    $confirmedChanges
+                    """.trimIndent(),
+                    priority = CONFIRMED_CHANGE,
+                ),
+                PromptSection(
+                    """
+                    相关源码片段：
+                    $sourceSnippets
+                    """.trimIndent(),
+                    priority = SOURCE,
+                ),
+                PromptSection(
+                    """
+                    图节点：
+                    $nodes
+                    """.trimIndent(),
+                    priority = GRAPH,
+                ),
+                PromptSection(
+                    """
+                    图连线：
+                    $edges
+                    """.trimIndent(),
+                    priority = GRAPH,
+                ),
+                PromptSection(
+                    """
+                    Mermaid 校验问题：
+                    $issues
+                    """.trimIndent(),
+                    priority = EVIDENCE,
+                ),
+                PromptSection(
+                    """
+                    图差异：
+                    $diff
+                    """.trimIndent(),
+                    priority = EVIDENCE,
+                ),
+                PromptSection(
+                    """
+                    同步预览：
+                    $syncPreview
+                    """.trimIndent(),
+                    priority = EVIDENCE,
+                ),
+                PromptSection(generationPlanSchemaInstruction(), priority = SCHEMA),
+            ),
         )
     }
 
@@ -161,47 +190,72 @@ class LlmPromptFactory {
             只允许返回 JSON，不允许输出 Markdown、解释性前言、后缀说明或代码块。
             即使信息不足，也必须返回合法 JSON；warnings 使用 []。
         """.trimIndent()
-        val userPrompt = """
-            你正在回答用户对“当前实现建议”的追问。
-            目标模型：${settings.sanitized().model}
-            用户问题：$question
-            当前聚焦条目：$focusItem
-
-            当前实现建议摘要：
-            ${plan.summary}
-
-            当前实现建议条目：
-            $planItems
-
-            已确认草稿变更：
-            $confirmedChanges
-
-            当前工作图节点：
-            $nodes
-
-            当前工作图连线：
-            $edges
-
-            历史追问：
-            $history
-
-            只回答这份实现建议本身：
-            - 可以解释为什么这样建议
-            - 可以指出更小改法、替代拆法、影响范围
-            - 不要让用户跳回风险问答
-            - 不要输出新的 investigationThreads、candidateChanges 或 patch
-
-            仅返回 JSON，结构如下：
-            {
-              "answer": "对当前实现建议的回答",
-              "focusItemId": "可选，当前聚焦的实现建议条目 ID",
-              "warnings": ["可选警告"]
-            }
-        """.trimIndent()
-        return LlmPromptPackage(
+        return buildPromptPackage(
             systemPrompt = systemPrompt,
-            userPrompt = userPrompt,
-            preview = promptPreview(systemPrompt, userPrompt),
+            userSections = listOf(
+                PromptSection(
+                    """
+                    你正在回答用户对“当前实现建议”的追问。
+                    目标模型：${settings.sanitized().model}
+                    用户问题：$question
+                    当前聚焦条目：$focusItem
+                    """.trimIndent(),
+                    priority = USER_GOAL,
+                ),
+                PromptSection(
+                    """
+                    当前实现建议摘要：
+                    ${plan.summary}
+                    """.trimIndent(),
+                    priority = EVIDENCE,
+                ),
+                PromptSection(
+                    """
+                    当前实现建议条目：
+                    $planItems
+                    """.trimIndent(),
+                    priority = EVIDENCE,
+                ),
+                PromptSection(
+                    """
+                    已确认草稿变更：
+                    $confirmedChanges
+                    """.trimIndent(),
+                    priority = CONFIRMED_CHANGE,
+                ),
+                PromptSection(
+                    """
+                    当前工作图节点：
+                    $nodes
+                    """.trimIndent(),
+                    priority = GRAPH,
+                ),
+                PromptSection(
+                    """
+                    当前工作图连线：
+                    $edges
+                    """.trimIndent(),
+                    priority = GRAPH,
+                ),
+                PromptSection(
+                    """
+                    历史追问：
+                    $history
+                    """.trimIndent(),
+                    priority = HISTORY,
+                ),
+                PromptSection(
+                    """
+                    只回答这份实现建议本身：
+                    - 可以解释为什么这样建议
+                    - 可以指出更小改法、替代拆法、影响范围
+                    - 不要让用户跳回风险问答
+                    - 不要输出新的 investigationThreads、candidateChanges 或 patch
+                    """.trimIndent(),
+                    priority = BEHAVIOR_RULE,
+                ),
+                PromptSection(generationPlanDiscussionSchemaInstruction(), priority = SCHEMA),
+            ),
         )
     }
 
@@ -313,136 +367,100 @@ class LlmPromptFactory {
             只允许返回 JSON，不允许输出 Markdown、解释性前言、后缀说明或代码块。
             即使信息不足，也必须返回合法 JSON；列表字段使用 []，不要输出自然语言兜底。
         """.trimIndent()
-        /** 面向模型的用户提示词。 */
-        val userPrompt = """
-            你正在做链路图问答。
-            目标模型：${settings.sanitized().model}
-            请求模式：${requestedMode.name}
-            实际模式：${effectiveMode.name}
-            当前范围：$scopeText
-            用户问题：$question
-
-            当前范围节点：
-            $selectedNodes
-
-            当前范围边：
-            $selectedEdges
-
-            相关源码片段：
-            $sourceSnippets
-
-            本轮取证轨迹：
-            $evidenceTrace
-
-            事实图节点：
-            $factNodes
-
-            事实图连线：
-            $factEdges
-
-            当前可编辑图节点：
-            $editableNodes
-
-            当前可编辑图连线：
-            $editableEdges
-
-            历史消息：
-            $history
-
-            已有待确认候选变更：
-            $existingChanges
-
-            已有风险线程：
-            $existingInvestigationThreads
-
-            请逐条对照“用户问题”回答。
-            如果当前上下文不足以回答用户问题，answer 必须明确说明“当前证据不足以回答该问题”，不要转而输出无关建议。
-            你的第一优先级是直接回答“用户问题”。
-            禁止输出与用户问题无关的通用安全、性能、规范性建议。
-            candidateChanges 只允许保留与“用户问题”直接相关、且已经有 DIRECT_SOURCE / DIRECT_GRAPH 支撑的修改建议；如果当前轮只是解释链路或回答事实问题，请返回 []。
-            investigationThreads 用来承接证据不足但值得继续追问的线程；它们必须明确写出“已观察到什么、还缺什么、下一轮建议问什么”。
-            请先给出本轮问答回答，再给出 candidateChanges 与 investigationThreads。不要把建议伪装成代码事实，也不要整表重刷已有候选项。
-            仅返回 JSON，结构如下：
-            {
-              "answer": "问答回答",
-              "findings": [
-                {
-                  "id": "稳定ID",
-                  "claim": "一条必须可追溯的关键结论",
-                  "evidenceLevel": "DIRECT_SOURCE|DIRECT_GRAPH|CALLSITE_ONLY|NOT_OBSERVED",
-                  "references": [
-                    {
-                      "nodeId": "可选节点ID",
-                      "filePath": "可选源码路径",
-                      "startLine": 1,
-                      "endLine": 3
-                    }
-                  ]
-                }
-              ],
-              "candidateChanges": [
-                {
-                  "changeId": "稳定ID",
-                  "status": "PENDING_CONFIRMATION|CONFIRMED|REJECTED|SUPERSEDED",
-                  "claimType": "CODE_FACT|RISK_HINT|EXPLANATION_NOTE|STRUCTURAL_SUGGESTION",
-                  "title": "候选变更标题",
-                  "targetStepIds": ["可选步骤ID"],
-                  "targetNodeIds": ["可选节点ID"],
-                  "beforeState": "修改前状态",
-                  "afterState": "修改后状态",
-                  "reason": "为什么建议这样改",
-                  "impactSummary": "影响摘要",
-                  "supportingFindingIds": ["必须对应 findings[*].id"],
-                  "patchIntent": {
-                    "mode": "UPDATE_EXISTING_NODE|INSERT_NEW_DECISION|INSERT_NEW_ACTION|ANNOTATION_ONLY",
-                    "targetNodeId": "UPDATE_EXISTING_NODE|ANNOTATION_ONLY 时必填",
-                    "attachEdgeId": "INSERT_NEW_DECISION|INSERT_NEW_ACTION 时必填，必须指向真实 CONTROL_FLOW 边 ID",
-                    "falseBranchTargetNodeId": "INSERT_NEW_DECISION 时必填，明确 FALSE 分支真实落点"
-                  },
-                  "graphPatch": {
-                    "summary": "可选；当已提供 patchIntent 时允许省略，由后端合成",
-                    "operations": [
-                      {
-                        "id": "稳定ID",
-                        "action": "ADD_NODE|UPDATE_NODE|DELETE_NODE|ADD_EDGE|UPDATE_EDGE|DELETE_EDGE|ADD_ANNOTATION|MARK_UNCERTAIN",
-                        "elementKind": "NODE|EDGE",
-                        "elementId": "元素ID",
-                        "title": "可选标题",
-                        "summary": "可选摘要",
-                        "metadata": {
-                          "draft.claimType": "CODE_FACT|RISK_HINT|EXPLANATION_NOTE|STRUCTURAL_SUGGESTION"
-                        }
-                      }
-                    ],
-                    "addedNodeIds": [],
-                    "removedNodeIds": [],
-                    "addedEdgeIds": [],
-                    "removedEdgeIds": []
-                  }
-                }
-              ],
-              "investigationThreads": [
-                {
-                  "threadId": "稳定ID",
-                  "status": "OPEN|PROMOTED|DISMISSED|BLOCKED|SUPERSEDED",
-                  "claimType": "RISK_HINT|STRUCTURAL_SUGGESTION",
-                  "title": "风险线程标题",
-                  "targetStepIds": ["可选步骤ID"],
-                  "targetNodeIds": ["可选节点ID"],
-                  "summary": "当前已经观察到什么",
-                  "evidenceGap": "还缺什么证据",
-                  "recommendedQuestion": "下一轮建议追问什么",
-                  "supportingFindingIds": ["必须对应 findings[*].id"]
-                }
-              ],
-              "warnings": ["可选警告"],
-              "patch": null
-            }
-        """.trimIndent()
-        return LlmPromptPackage(
+        return buildPromptPackage(
             systemPrompt = systemPrompt,
-            userPrompt = userPrompt,
-            preview = promptPreview(systemPrompt, userPrompt),
+            userSections = listOf(
+                PromptSection(
+                    """
+                    你正在做链路图问答。
+                    目标模型：${settings.sanitized().model}
+                    请求模式：${requestedMode.name}
+                    实际模式：${effectiveMode.name}
+                    当前范围：$scopeText
+                    用户问题：$question
+                    """.trimIndent(),
+                    priority = USER_GOAL,
+                ),
+                PromptSection(
+                    """
+                    当前范围节点：
+                    $selectedNodes
+                    """.trimIndent(),
+                    priority = GRAPH,
+                ),
+                PromptSection(
+                    """
+                    当前范围边：
+                    $selectedEdges
+                    """.trimIndent(),
+                    priority = GRAPH,
+                ),
+                PromptSection(
+                    """
+                    相关源码片段：
+                    $sourceSnippets
+                    """.trimIndent(),
+                    priority = SOURCE,
+                ),
+                PromptSection(
+                    """
+                    本轮取证轨迹：
+                    $evidenceTrace
+                    """.trimIndent(),
+                    priority = EVIDENCE,
+                ),
+                PromptSection(
+                    """
+                    事实图节点：
+                    $factNodes
+                    """.trimIndent(),
+                    priority = GRAPH,
+                ),
+                PromptSection(
+                    """
+                    事实图连线：
+                    $factEdges
+                    """.trimIndent(),
+                    priority = GRAPH,
+                ),
+                PromptSection(
+                    """
+                    当前可编辑图节点：
+                    $editableNodes
+                    """.trimIndent(),
+                    priority = GRAPH,
+                ),
+                PromptSection(
+                    """
+                    当前可编辑图连线：
+                    $editableEdges
+                    """.trimIndent(),
+                    priority = GRAPH,
+                ),
+                PromptSection(
+                    """
+                    历史消息：
+                    $history
+                    """.trimIndent(),
+                    priority = HISTORY,
+                ),
+                PromptSection(
+                    """
+                    已有待确认候选变更：
+                    $existingChanges
+                    """.trimIndent(),
+                    priority = CONFIRMED_CHANGE,
+                ),
+                PromptSection(
+                    """
+                    已有风险线程：
+                    $existingInvestigationThreads
+                    """.trimIndent(),
+                    priority = CONFIRMED_CHANGE,
+                ),
+                PromptSection(auditBehaviorInstruction(), priority = BEHAVIOR_RULE),
+                PromptSection(auditSchemaInstruction(), priority = SCHEMA),
+            ),
         )
     }
 
@@ -494,77 +512,51 @@ class LlmPromptFactory {
             只允许返回 JSON，不允许输出 Markdown、解释性前言、后缀说明或代码块。
             即使信息不足，也必须返回合法 JSON；列表字段使用 []，不要输出自然语言兜底。
         """.trimIndent()
-        /** 面向模型的用户提示词。 */
-        val userPrompt = """
-            你正在做“设计图基线 vs 代码事实图”的差异审查。
-            目标模型：${settings.sanitized().model}
-            用户问题：$question
-
-            当前关注差异：
-            $focusedDiffs
-
-            左侧设计基线节点：
-            $designNodes
-
-            右侧代码事实节点：
-            $factNodes
-
-            当前差异：
-            $diff
-
-            请先解释差异，再给出只写入草稿层的修订 patch 建议。不要直接修改代码事实。
-            仅返回 JSON，结构如下：
-            {
-              "answer": "差异解释",
-              "findings": [
-                {
-                  "id": "稳定ID",
-                  "claim": "一条必须可追溯的关键结论",
-                  "evidenceLevel": "DIRECT_SOURCE|DIRECT_GRAPH|CALLSITE_ONLY|NOT_OBSERVED",
-                  "references": [
-                    {
-                      "nodeId": "可选节点ID",
-                      "filePath": "可选源码路径",
-                      "startLine": 1,
-                      "endLine": 3
-                    }
-                  ]
-                }
-              ],
-              "warnings": ["可选警告"],
-              "patch": {
-                "summary": "patch 摘要",
-                "operations": [
-                  {
-                    "id": "稳定ID",
-                    "action": "ADD_NODE|UPDATE_NODE|DELETE_NODE|ADD_EDGE|UPDATE_EDGE|DELETE_EDGE|ADD_ANNOTATION|MARK_UNCERTAIN",
-                    "elementKind": "NODE|EDGE",
-                    "elementId": "元素ID",
-                    "title": "可选标题",
-                    "summary": "可选摘要",
-                    "metadata": {
-                      "draft.claimType": "CODE_FACT|RISK_HINT|EXPLANATION_NOTE|STRUCTURAL_SUGGESTION"
-                    },
-                    "node": {
-                      "id": "节点ID",
-                      "type": "METHOD|CLASS|SQL|HTTP_ENDPOINT|FEIGN_CLIENT|DUBBO_SERVICE|MQ_TOPIC|MQ_CONSUMER|CONFIG_ITEM|XML_RESOURCE|DOC_PAGE|UNCERTAIN_LINK",
-                      "title": "节点标题",
-                      "doc": "可选说明",
-                      "sourceTag": "DRAFT_AI"
-                    }
-                  }
-                ],
-                "addedNodeIds": [],
-                "removedNodeIds": [],
-                "addedEdgeIds": [],
-                "removedEdgeIds": []
-              }
-            }
-        """.trimIndent()
-        return LlmPromptPackage(
+        return buildPromptPackage(
             systemPrompt = systemPrompt,
-            userPrompt = userPrompt,
-            preview = promptPreview(systemPrompt, userPrompt),
+            userSections = listOf(
+                PromptSection(
+                    """
+                    你正在做“设计图基线 vs 代码事实图”的差异审查。
+                    目标模型：${settings.sanitized().model}
+                    用户问题：$question
+                    """.trimIndent(),
+                    priority = USER_GOAL,
+                ),
+                PromptSection(
+                    """
+                    当前关注差异：
+                    $focusedDiffs
+                    """.trimIndent(),
+                    priority = EVIDENCE,
+                ),
+                PromptSection(
+                    """
+                    左侧设计基线节点：
+                    $designNodes
+                    """.trimIndent(),
+                    priority = GRAPH,
+                ),
+                PromptSection(
+                    """
+                    右侧代码事实节点：
+                    $factNodes
+                    """.trimIndent(),
+                    priority = GRAPH,
+                ),
+                PromptSection(
+                    """
+                    当前差异：
+                    $diff
+                    """.trimIndent(),
+                    priority = EVIDENCE,
+                ),
+                PromptSection(
+                    "请先解释差异，再给出只写入草稿层的修订 patch 建议。不要直接修改代码事实。",
+                    priority = BEHAVIOR_RULE,
+                ),
+                PromptSection(diffReviewSchemaInstruction(), priority = SCHEMA),
+            ),
         )
     }
 
@@ -637,69 +629,75 @@ class LlmPromptFactory {
             新文件 draft 才允许返回完整 content。
             当信息不足时，要在 warnings 中说明，不要编造代码事实。
         """.trimIndent()
-        /** 面向模型的用户提示词。 */
-        val userPrompt = """
-            你正在根据链路图和实现计划生成代码草稿。
-            目标模型：${settings.sanitized().model}
-
-            图节点：
-            $nodes
-
-            图连线：
-            $edges
-
-            图差异：
-            $diff
-
-            已确认草稿变更：
-            $confirmedChanges
-
-            已确认草稿变更附带的 edit scopes：
-            $confirmedChangeScopeDetails
-
-            相关源码片段：
-            $sourceSnippets
-
-            计划项：
-            $planItems
-
-            目标文件：
-            ${plan?.items.orEmpty().mapNotNull { it.targetPath }.ifEmpty { listOf("未指定") }.joinToString("\n")}
-
-            如果目标文件已经明确指向现有源码，请返回结构化 editOperations，而不是整文件内容。
-            operation.kind 必须严格从对应 scope.allowedChangeKinds 中选择；如果 scope 没授权，就不要生成该 operation。
-            保留与本次确认项无关的现有逻辑、成员、注释和 import，不要删除未提及的成员，也不要凭空改名或迁移到别的文件。
-
-            仅返回 JSON，结构如下：
-            {
-              "summary": "本次生成摘要",
-              "warnings": ["可选警告"],
-              "drafts": [
-                {
-                  "id": "稳定ID",
-                  "sourceNodeId": "来源节点ID",
-                  "title": "文件名",
-                  "targetPath": "项目内相对路径",
-                  "content": "仅 CREATE_FILE 时返回完整文件内容",
-                  "editOperations": [
-                    {
-                      "operationId": "稳定ID",
-                      "filePath": "项目内相对路径",
-                      "scopeId": "必须对应既有 edit scope",
-                      "kind": "REPLACE_METHOD_BLOCK|REPLACE_METHOD_BODY|INSERT_METHOD_AFTER|ADD_IMPORT|ADD_FIELD|CREATE_FILE",
-                      "payload": "纯源码片段，不要放 methodSignature/changeType/existingCodeSnippet 等元数据包装",
-                      "warnings": ["可选警告"]
-                    }
-                  ],
-                  "warnings": ["可选警告"]
-                }
-              ]
-            }
-        """.trimIndent()
-        return LlmPromptPackage(
+        return buildPromptPackage(
             systemPrompt = systemPrompt,
-            userPrompt = userPrompt,
-            preview = promptPreview(systemPrompt, userPrompt),
+            userSections = listOf(
+                PromptSection(
+                    """
+                    你正在根据链路图和实现计划生成代码草稿。
+                    目标模型：${settings.sanitized().model}
+                    """.trimIndent(),
+                    priority = USER_GOAL,
+                ),
+                PromptSection(
+                    """
+                    已确认草稿变更：
+                    $confirmedChanges
+                    """.trimIndent(),
+                    priority = CONFIRMED_CHANGE,
+                ),
+                PromptSection(
+                    """
+                    已确认草稿变更附带的 edit scopes：
+                    $confirmedChangeScopeDetails
+                    """.trimIndent(),
+                    priority = CONFIRMED_CHANGE,
+                ),
+                PromptSection(
+                    """
+                    相关源码片段：
+                    $sourceSnippets
+                    """.trimIndent(),
+                    priority = SOURCE,
+                ),
+                PromptSection(
+                    """
+                    计划项：
+                    $planItems
+                    """.trimIndent(),
+                    priority = EVIDENCE,
+                ),
+                PromptSection(
+                    """
+                    目标文件：
+                    ${plan?.items.orEmpty().mapNotNull { it.targetPath }.ifEmpty { listOf("未指定") }.joinToString("\n")}
+                    """.trimIndent(),
+                    priority = EVIDENCE,
+                ),
+                PromptSection(
+                    """
+                    图节点：
+                    $nodes
+                    """.trimIndent(),
+                    priority = GRAPH,
+                ),
+                PromptSection(
+                    """
+                    图连线：
+                    $edges
+                    """.trimIndent(),
+                    priority = GRAPH,
+                ),
+                PromptSection(
+                    """
+                    图差异：
+                    $diff
+                    """.trimIndent(),
+                    priority = GRAPH,
+                ),
+                PromptSection(codeGenerationBehaviorInstruction(), priority = BEHAVIOR_RULE),
+                PromptSection(codeGenerationSchemaInstruction(), priority = SCHEMA),
+            ),
         )
     }
 
@@ -757,63 +755,53 @@ class LlmPromptFactory {
             只允许返回 JSON，不允许输出 Markdown、解释性前言、后缀说明或代码块。
             即使信息不足，也必须返回合法 JSON；列表字段使用 []，不要输出自然语言兜底。
         """.trimIndent()
-        /** 面向模型的用户提示词。 */
-        val userPrompt = """
-            你正在美化并讲解一张链路图。
-            目标模型：${settings.sanitized().model}
-            用户目标：${context.userGoal.ifBlank { "请提高链路图的可读性" }}
-            偏好风格：${context.preferredStyle ?: "未指定"}
-            $followUpBlock
-            当前方法内部折叠节点：${context.presentationContext.hiddenCurrentMethodNodeCount}
-            跨方法扩展折叠节点：${context.presentationContext.hiddenCrossMethodNodeCount}
-            锚点节点：${context.presentationContext.anchorNodeId ?: "未指定"}
-            当前粒度：${context.granularity.name}
-
-            稳定步骤：
-            $steps
-
-            图节点：
-            $nodes
-
-            图连线：
-            $edges
-
-            相关源码片段：
-            $sourceSnippets
-
-            仅返回 JSON，结构如下：
-            {
-              "steps": [
-                {
-                  "stepId": "稳定ID",
-                  "title": "步骤标题",
-                  "description": "说明这一步在做什么",
-                  "followUpQuestions": ["可继续追问的问题"],
-                  "evidence": [
-                    {
-                      "id": "稳定ID",
-                      "claim": "一条必须可追溯的关键结论",
-                      "evidenceLevel": "DIRECT_SOURCE|DIRECT_GRAPH|CALLSITE_ONLY|NOT_OBSERVED",
-                      "references": [
-                        {
-                          "nodeId": "可选节点ID",
-                          "filePath": "可选源码路径",
-                          "startLine": 1,
-                          "endLine": 3
-                        }
-                      ]
-                    }
-                  ],
-                  "downstreamTargets": ["可继续下钻的目标ID"]
-                }
-              ],
-              "warnings": ["可选警告"]
-            }
-        """.trimIndent()
-        return LlmPromptPackage(
+        return buildPromptPackage(
             systemPrompt = systemPrompt,
-            userPrompt = userPrompt,
-            preview = promptPreview(systemPrompt, userPrompt),
+            userSections = listOf(
+                PromptSection(
+                    """
+                    你正在美化并讲解一张链路图。
+                    目标模型：${settings.sanitized().model}
+                    用户目标：${context.userGoal.ifBlank { "请提高链路图的可读性" }}
+                    偏好风格：${context.preferredStyle ?: "未指定"}
+                    当前方法内部折叠节点：${context.presentationContext.hiddenCurrentMethodNodeCount}
+                    跨方法扩展折叠节点：${context.presentationContext.hiddenCrossMethodNodeCount}
+                    锚点节点：${context.presentationContext.anchorNodeId ?: "未指定"}
+                    当前粒度：${context.granularity.name}
+                    """.trimIndent(),
+                    priority = USER_GOAL,
+                ),
+                PromptSection(followUpBlock, priority = BEHAVIOR_RULE),
+                PromptSection(
+                    """
+                    稳定步骤：
+                    $steps
+                    """.trimIndent(),
+                    priority = EVIDENCE,
+                ),
+                PromptSection(
+                    """
+                    相关源码片段：
+                    $sourceSnippets
+                    """.trimIndent(),
+                    priority = SOURCE,
+                ),
+                PromptSection(
+                    """
+                    图节点：
+                    $nodes
+                    """.trimIndent(),
+                    priority = GRAPH,
+                ),
+                PromptSection(
+                    """
+                    图连线：
+                    $edges
+                    """.trimIndent(),
+                    priority = GRAPH,
+                ),
+                PromptSection(beautificationSchemaInstruction(), priority = SCHEMA),
+            ),
         )
     }
 
@@ -910,6 +898,268 @@ class LlmPromptFactory {
 
             [user]
             $userPrompt
+        """.trimIndent()
+    }
+
+    /** 统一收敛 prompt 预算，确保所有场景只走 PromptComposer 一条路径。 */
+    private fun buildPromptPackage(
+        systemPrompt: String,
+        userSections: List<PromptSection>,
+    ): LlmPromptPackage {
+        val composition = promptComposer.composeMessages(
+            systemSections = listOf(PromptSection(systemPrompt, priority = USER_GOAL)),
+            userSections = userSections,
+        )
+        return LlmPromptPackage(
+            systemPrompt = composition.systemPrompt,
+            userPrompt = composition.userPrompt,
+            preview = promptPreview(composition.systemPrompt, composition.userPrompt),
+        )
+    }
+
+    private fun generationPlanSchemaInstruction(): String {
+        return """
+            仅返回 JSON，结构如下：
+            {
+              "summary": "简短计划摘要",
+              "items": [
+                {
+                  "id": "稳定ID",
+                  "title": "需要变更的内容",
+                  "description": "原因与做法",
+                  "risk": "LOW|MEDIUM|HIGH",
+                  "targetPath": "可选路径"
+                }
+              ],
+              "warnings": ["可选警告"]
+            }
+        """.trimIndent()
+    }
+
+    private fun generationPlanDiscussionSchemaInstruction(): String {
+        return """
+            仅返回 JSON，结构如下：
+            {
+              "answer": "对当前实现建议的回答",
+              "focusItemId": "可选，当前聚焦的实现建议条目 ID",
+              "warnings": ["可选警告"]
+            }
+        """.trimIndent()
+    }
+
+    private fun auditBehaviorInstruction(): String {
+        return """
+            请逐条对照“用户问题”回答。
+            如果当前上下文不足以回答用户问题，answer 必须明确说明“当前证据不足以回答该问题”，不要转而输出无关建议。
+            你的第一优先级是直接回答“用户问题”。
+            禁止输出与用户问题无关的通用安全、性能、规范性建议。
+            candidateChanges 只允许保留与“用户问题”直接相关、且已经有 DIRECT_SOURCE / DIRECT_GRAPH 支撑的修改建议；如果当前轮只是解释链路或回答事实问题，请返回 []。
+            investigationThreads 用来承接证据不足但值得继续追问的线程；它们必须明确写出“已观察到什么、还缺什么、下一轮建议问什么”。
+            请先给出本轮问答回答，再给出 candidateChanges 与 investigationThreads。不要把建议伪装成代码事实，也不要整表重刷已有候选项。
+        """.trimIndent()
+    }
+
+    private fun auditSchemaInstruction(): String {
+        return """
+            仅返回 JSON，结构如下：
+            {
+              "answer": "问答回答",
+              "findings": [
+                {
+                  "id": "稳定ID",
+                  "claim": "一条必须可追溯的关键结论",
+                  "evidenceLevel": "DIRECT_SOURCE|DIRECT_GRAPH|CALLSITE_ONLY|NOT_OBSERVED",
+                  "references": [
+                    {
+                      "nodeId": "可选节点ID",
+                      "filePath": "可选源码路径",
+                      "startLine": 1,
+                      "endLine": 3
+                    }
+                  ]
+                }
+              ],
+              "candidateChanges": [
+                {
+                  "changeId": "稳定ID",
+                  "status": "PENDING_CONFIRMATION|CONFIRMED|REJECTED|SUPERSEDED",
+                  "claimType": "CODE_FACT|RISK_HINT|EXPLANATION_NOTE|STRUCTURAL_SUGGESTION",
+                  "title": "候选变更标题",
+                  "targetStepIds": ["可选步骤ID"],
+                  "targetNodeIds": ["可选节点ID"],
+                  "beforeState": "修改前状态",
+                  "afterState": "修改后状态",
+                  "reason": "为什么建议这样改",
+                  "impactSummary": "影响摘要",
+                  "supportingFindingIds": ["必须对应 findings[*].id"],
+                  "patchIntent": {
+                    "mode": "UPDATE_EXISTING_NODE|INSERT_NEW_DECISION|INSERT_NEW_ACTION|ANNOTATION_ONLY",
+                    "targetNodeId": "UPDATE_EXISTING_NODE|ANNOTATION_ONLY 时必填",
+                    "attachEdgeId": "INSERT_NEW_DECISION|INSERT_NEW_ACTION 时必填，必须指向真实 CONTROL_FLOW 边 ID",
+                    "falseBranchTargetNodeId": "INSERT_NEW_DECISION 时必填，明确 FALSE 分支真实落点"
+                  },
+                  "graphPatch": {
+                    "summary": "可选；当已提供 patchIntent 时允许省略，由后端合成",
+                    "operations": [
+                      {
+                        "id": "稳定ID",
+                        "action": "ADD_NODE|UPDATE_NODE|DELETE_NODE|ADD_EDGE|UPDATE_EDGE|DELETE_EDGE|ADD_ANNOTATION|MARK_UNCERTAIN",
+                        "elementKind": "NODE|EDGE",
+                        "elementId": "元素ID",
+                        "title": "可选标题",
+                        "summary": "可选摘要",
+                        "metadata": {
+                          "draft.claimType": "CODE_FACT|RISK_HINT|EXPLANATION_NOTE|STRUCTURAL_SUGGESTION"
+                        }
+                      }
+                    ],
+                    "addedNodeIds": [],
+                    "removedNodeIds": [],
+                    "addedEdgeIds": [],
+                    "removedEdgeIds": []
+                  }
+                }
+              ],
+              "investigationThreads": [
+                {
+                  "threadId": "稳定ID",
+                  "status": "OPEN|PROMOTED|DISMISSED|BLOCKED|SUPERSEDED",
+                  "claimType": "RISK_HINT|STRUCTURAL_SUGGESTION",
+                  "title": "风险线程标题",
+                  "targetStepIds": ["可选步骤ID"],
+                  "targetNodeIds": ["可选节点ID"],
+                  "summary": "当前已经观察到什么",
+                  "evidenceGap": "还缺什么证据",
+                  "recommendedQuestion": "下一轮建议追问什么",
+                  "supportingFindingIds": ["必须对应 findings[*].id"]
+                }
+              ],
+              "warnings": ["可选警告"],
+              "patch": null
+            }
+        """.trimIndent()
+    }
+
+    private fun diffReviewSchemaInstruction(): String {
+        return """
+            仅返回 JSON，结构如下：
+            {
+              "answer": "差异解释",
+              "findings": [
+                {
+                  "id": "稳定ID",
+                  "claim": "一条必须可追溯的关键结论",
+                  "evidenceLevel": "DIRECT_SOURCE|DIRECT_GRAPH|CALLSITE_ONLY|NOT_OBSERVED",
+                  "references": [
+                    {
+                      "nodeId": "可选节点ID",
+                      "filePath": "可选源码路径",
+                      "startLine": 1,
+                      "endLine": 3
+                    }
+                  ]
+                }
+              ],
+              "warnings": ["可选警告"],
+              "patch": {
+                "summary": "patch 摘要",
+                "operations": [
+                  {
+                    "id": "稳定ID",
+                    "action": "ADD_NODE|UPDATE_NODE|DELETE_NODE|ADD_EDGE|UPDATE_EDGE|DELETE_EDGE|ADD_ANNOTATION|MARK_UNCERTAIN",
+                    "elementKind": "NODE|EDGE",
+                    "elementId": "元素ID",
+                    "title": "可选标题",
+                    "summary": "可选摘要",
+                    "metadata": {
+                      "draft.claimType": "CODE_FACT|RISK_HINT|EXPLANATION_NOTE|STRUCTURAL_SUGGESTION"
+                    },
+                    "node": {
+                      "id": "节点ID",
+                      "type": "METHOD|CLASS|SQL|HTTP_ENDPOINT|FEIGN_CLIENT|DUBBO_SERVICE|MQ_TOPIC|MQ_CONSUMER|CONFIG_ITEM|XML_RESOURCE|DOC_PAGE|UNCERTAIN_LINK",
+                      "title": "节点标题",
+                      "doc": "可选说明",
+                      "sourceTag": "DRAFT_AI"
+                    }
+                  }
+                ],
+                "addedNodeIds": [],
+                "removedNodeIds": [],
+                "addedEdgeIds": [],
+                "removedEdgeIds": []
+              }
+            }
+        """.trimIndent()
+    }
+
+    private fun codeGenerationBehaviorInstruction(): String {
+        return """
+            如果目标文件已经明确指向现有源码，请返回结构化 editOperations，而不是整文件内容。
+            operation.kind 必须严格从对应 scope.allowedChangeKinds 中选择；如果 scope 没授权，就不要生成该 operation。
+            保留与本次确认项无关的现有逻辑、成员、注释和 import，不要删除未提及的成员，也不要凭空改名或迁移到别的文件。
+        """.trimIndent()
+    }
+
+    private fun codeGenerationSchemaInstruction(): String {
+        return """
+            仅返回 JSON，结构如下：
+            {
+              "summary": "本次生成摘要",
+              "warnings": ["可选警告"],
+              "drafts": [
+                {
+                  "id": "稳定ID",
+                  "sourceNodeId": "来源节点ID",
+                  "title": "文件名",
+                  "targetPath": "项目内相对路径",
+                  "content": "仅 CREATE_FILE 时返回完整文件内容",
+                  "editOperations": [
+                    {
+                      "operationId": "稳定ID",
+                      "filePath": "项目内相对路径",
+                      "scopeId": "必须对应既有 edit scope",
+                      "kind": "REPLACE_METHOD_BLOCK|REPLACE_METHOD_BODY|INSERT_METHOD_AFTER|ADD_IMPORT|ADD_FIELD|CREATE_FILE",
+                      "payload": "纯源码片段，不要放 methodSignature/changeType/existingCodeSnippet 等元数据包装",
+                      "warnings": ["可选警告"]
+                    }
+                  ],
+                  "warnings": ["可选警告"]
+                }
+              ]
+            }
+        """.trimIndent()
+    }
+
+    private fun beautificationSchemaInstruction(): String {
+        return """
+            仅返回 JSON，结构如下：
+            {
+              "steps": [
+                {
+                  "stepId": "稳定ID",
+                  "title": "步骤标题",
+                  "description": "说明这一步在做什么",
+                  "followUpQuestions": ["可继续追问的问题"],
+                  "evidence": [
+                    {
+                      "id": "稳定ID",
+                      "claim": "一条必须可追溯的关键结论",
+                      "evidenceLevel": "DIRECT_SOURCE|DIRECT_GRAPH|CALLSITE_ONLY|NOT_OBSERVED",
+                      "references": [
+                        {
+                          "nodeId": "可选节点ID",
+                          "filePath": "可选源码路径",
+                          "startLine": 1,
+                          "endLine": 3
+                        }
+                      ]
+                    }
+                  ],
+                  "downstreamTargets": ["可继续下钻的目标ID"]
+                }
+              ],
+              "warnings": ["可选警告"]
+            }
         """.trimIndent()
     }
 }

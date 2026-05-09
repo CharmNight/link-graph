@@ -15,7 +15,7 @@ vi.mock("../../../app/api", () => ({
 
 function auditResultWithThread(): GraphPatchResult {
   return {
-    source: "MOCK",
+    source: "LOCAL_RULE",
     question: "这里有没有风险？",
     requestedMode: "AUTO",
     effectiveMode: "REVIEW",

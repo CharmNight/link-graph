@@ -27,6 +27,8 @@ data class LinkGraphSettingsState(
     var timeoutSeconds: Int = DEFAULT_TIMEOUT_SECONDS,
     /** 保存采样温度。 */
     var temperature: Double = DEFAULT_TEMPERATURE,
+    /** runtime 临时下压的远程请求超时，不持久化到设置页。 */
+    var runtimeTimeoutSecondsOverride: Int? = null,
 ) {
     /**
      * 解析当前 provider 预设。
@@ -60,7 +62,9 @@ data class LinkGraphSettingsState(
      * 返回落在合法范围内的超时时间。
      */
     fun effectiveTimeoutSeconds(): Int {
-        return timeoutSeconds.coerceIn(MIN_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS)
+        return runtimeTimeoutSecondsOverride
+            ?.coerceAtLeast(1)
+            ?: timeoutSeconds.coerceIn(MIN_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS)
     }
 
     /**
@@ -81,6 +85,7 @@ data class LinkGraphSettingsState(
             model = effectiveModel(),
             timeoutSeconds = effectiveTimeoutSeconds(),
             temperature = effectiveTemperature(),
+            runtimeTimeoutSecondsOverride = runtimeTimeoutSecondsOverride?.coerceAtLeast(1),
         )
     }
 
@@ -94,6 +99,19 @@ data class LinkGraphSettingsState(
             timeoutSeconds = sanitized.timeoutSeconds,
             temperature = sanitized.temperature,
         )
+    }
+
+    override fun toString(): String {
+        return "LinkGraphSettingsState(" +
+            "llmEnabled=$llmEnabled, " +
+            "provider=$provider, " +
+            "endpoint=$endpoint, " +
+            "apiKey=${if (apiKey.isBlank()) "<empty>" else "<redacted>"}, " +
+            "model=$model, " +
+            "timeoutSeconds=$timeoutSeconds, " +
+            "runtimeTimeoutSecondsOverride=$runtimeTimeoutSecondsOverride, " +
+            "temperature=$temperature" +
+            ")"
     }
 
     companion object {

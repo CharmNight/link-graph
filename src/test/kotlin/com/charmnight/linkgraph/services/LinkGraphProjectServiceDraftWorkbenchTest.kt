@@ -57,7 +57,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         stateService.loadGraph(baseGraph, "currentMethod")
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
                 answer = "建议修改条件判断。",
                 promptPreview = "prompt",
@@ -149,7 +149,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         stateService.loadGraph(baseGraph, "currentMethod")
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条删除条件调整",
                 answer = "建议只在 delete 显式为 true 时才删除。",
                 promptPreview = "prompt",
@@ -271,7 +271,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         stateService.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
                 answer = "建议在删除前增加文件存在性判断。",
                 promptPreview = "prompt",
@@ -331,7 +331,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         stateService.loadGraph(baseGraph, "currentMethod")
         stateService.asyncRequests.markGenerationPlan(
             GenerationPlan(
-                source = GenerationPlanSource.MOCK,
+                source = GenerationPlanSource.LOCAL_RULE,
                 summary = "旧实现建议",
                 warnings = emptyList(),
                 promptPreview = "plan prompt",
@@ -348,12 +348,12 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
                 ),
             ),
             warnings = listOf("旧代码 diff"),
-            source = LlmResultSource.MOCK,
+            source = LlmResultSource.LOCAL_RULE,
             promptPreview = "code prompt",
         )
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
                 answer = "建议修改条件判断。",
                 promptPreview = "prompt",
@@ -407,7 +407,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         stateService.loadGraph(baseGraph, "currentMethod")
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
                 answer = "建议修改条件判断。",
                 promptPreview = "prompt",
@@ -466,7 +466,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         stateService.loadGraph(baseGraph, "currentMethod")
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
                 answer = "建议修改条件判断。",
                 promptPreview = "prompt",
@@ -557,7 +557,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         stateService.loadGraph(baseGraph, "currentMethod")
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
                 answer = "建议修改条件判断。",
                 promptPreview = "prompt",
@@ -589,7 +589,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         service.confirmAuditCandidateChange("change-upload-condition")
         stateService.asyncRequests.markGenerationPlan(
             GenerationPlan(
-                source = GenerationPlanSource.MOCK,
+                source = GenerationPlanSource.LOCAL_RULE,
                 summary = "确认后的实现建议",
                 warnings = emptyList(),
                 promptPreview = "plan prompt",
@@ -606,7 +606,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
                 ),
             ),
             warnings = listOf("确认后的代码 diff"),
-            source = LlmResultSource.MOCK,
+            source = LlmResultSource.LOCAL_RULE,
             promptPreview = "code prompt",
         )
 
@@ -638,7 +638,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
                 answer = "建议修改条件判断。",
                 promptPreview = "prompt",
@@ -697,7 +697,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         stateService.loadGraph(baseGraph, "currentMethod")
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "这里是否有路径问题？",
                 answer = "当前只能确认调用点，需要继续看上传工具实现。",
                 promptPreview = "prompt",
@@ -766,7 +766,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         stateService.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
                 answer = "建议修改条件判断。",
                 promptPreview = "prompt",
@@ -895,7 +895,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         stateService.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这两条流程调整",
                 answer = "先收紧 delete 判断，再补一个文件存在校验节点。",
                 promptPreview = "prompt",
@@ -1139,7 +1139,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
                 answer = "建议收紧删除条件。",
                 promptPreview = "prompt",
@@ -1244,7 +1244,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         stateService.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
                 answer = "建议收紧删除条件。",
                 promptPreview = "prompt",
@@ -1342,7 +1342,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         stateService.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
                 answer = "建议收紧删除条件。",
                 promptPreview = "prompt",
@@ -1442,7 +1442,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         stateService.pushSelectedMethod(uploadSignature)
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "这里是否需要调整删除逻辑？",
                 answer = "建议先收紧 fileDownload 里的 delete 判断。",
                 promptPreview = "prompt",

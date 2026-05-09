@@ -25,7 +25,7 @@ describe("DiffPanel", () => {
         factGraph={{ nodes: [], edges: [] }}
         designBaseline={{ nodes: [{ id: "class:order-draft-dto", type: "CLASS", title: "OrderDraftDto", inputs: [], outputs: [], certainty: "PROVEN", bindingStatus: "DESIGN_ONLY" }], edges: [] }}
         result={{
-          source: "MOCK",
+          source: "LOCAL_RULE",
           question: "为什么设计节点没有落地？",
           answer: "设计基线里有 DTO，但代码事实层还没有对应实现。",
           findings: [],

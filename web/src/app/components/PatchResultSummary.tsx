@@ -186,8 +186,8 @@ export function PatchResultSummary({
           <section className="answer-section">
             <strong>关键影响</strong>
             <ul className="answer-list">
-              {sections.impacts.map((impact) => (
-                <li key={impact} className="muted">{impact}</li>
+              {sections.impacts.map((impact, index) => (
+                <li key={`${impact}-${index}`} className="muted">{impact}</li>
               ))}
             </ul>
           </section>
@@ -197,8 +197,8 @@ export function PatchResultSummary({
           <section className="answer-section">
             <strong>建议动作</strong>
             <ul className="answer-list">
-              {sections.actions.map((action) => (
-                <li key={action} className="muted">{action}</li>
+              {sections.actions.map((action, index) => (
+                <li key={`${action}-${index}`} className="muted">{action}</li>
               ))}
             </ul>
           </section>
@@ -215,8 +215,8 @@ export function PatchResultSummary({
           <section className="answer-section">
             <strong>补充说明</strong>
             <ul className="answer-list">
-              {sections.notes.map((note) => (
-                <li key={note} className="muted">{note}</li>
+              {sections.notes.map((note, index) => (
+                <li key={`${note}-${index}`} className="muted">{note}</li>
               ))}
             </ul>
           </section>

@@ -14,7 +14,7 @@ function auditStateFixture(): AuditWorkbenchState {
     selectedMode: "AUTO",
     scopeLabel: "当前节点：上传方法",
     result: {
-      source: "MOCK",
+      source: "LOCAL_RULE",
       question: "这里是不是有问题？",
       requestedMode: "AUTO",
       effectiveMode: "REVIEW",

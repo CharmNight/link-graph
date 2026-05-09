@@ -8,6 +8,14 @@ class AgentToolRegistry(
     tools: List<AgentTool>,
 ) {
     private val toolsByName = LinkedHashMap<String, AgentTool>().apply {
+        val duplicateNames = tools
+            .groupBy { it.name }
+            .filterValues { it.size > 1 }
+            .keys
+            .sorted()
+        require(duplicateNames.isEmpty()) {
+            "重复注册的工具名: ${duplicateNames.joinToString()}"
+        }
         tools.forEach { tool -> put(tool.name, tool) }
     }
 

@@ -11,13 +11,10 @@ import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiJavaFile
-import com.intellij.psi.PsiManager
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiType
-import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.PsiShortNamesCache
-import com.intellij.psi.util.PsiTreeUtil
 
 /**
  * 提供 Java PSI 取证 resolver 共享的符号解析与事实构造能力。
@@ -83,15 +80,7 @@ internal object JavaPsiEvidenceSupport {
         if (indexedClasses.isNotEmpty()) {
             return indexedClasses
         }
-        val psiManager = PsiManager.getInstance(context.project)
-        return FilenameIndex.getAllFilesByExt(context.project, "java", scope)
-            .mapNotNull(psiManager::findFile)
-            .filterIsInstance<PsiJavaFile>()
-            .flatMap { file -> PsiTreeUtil.collectElementsOfType(file, PsiClass::class.java) }
-            .filter { psiClass ->
-                psiClass.name == shortName || psiClass.qualifiedName == className
-            }
-            .sortedBy { psiClass -> psiClass.qualifiedName ?: psiClass.name.orEmpty() }
+        return emptyList()
     }
 
     /**

@@ -18,7 +18,7 @@ class RiskResolutionServiceTest {
     @Test
     fun `apply resolution updates both top-level and session investigation threads`() {
         val result = GraphPatchResult(
-            source = LlmResultSource.MOCK,
+            source = LlmResultSource.LOCAL_RULE,
             question = "请继续取证",
             answer = "需要继续下钻",
             promptPreview = "prompt",
@@ -66,7 +66,7 @@ class RiskResolutionServiceTest {
                     ),
                 ),
                 auditResult = GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = "请判断这里是否遗漏默认兜底",
                     answer = "存在待确认风险",
                     promptPreview = "prompt",
@@ -104,7 +104,7 @@ class RiskResolutionServiceTest {
                     ),
                 ),
                 auditResult = GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = "请判断这里是否遗漏默认兜底",
                     answer = "存在待确认风险",
                     promptPreview = "prompt",
@@ -142,7 +142,7 @@ class RiskResolutionServiceTest {
                     ),
                 ),
                 auditResult = GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = "请判断这里是否遗漏默认兜底",
                     answer = "存在待确认风险",
                     promptPreview = "prompt",

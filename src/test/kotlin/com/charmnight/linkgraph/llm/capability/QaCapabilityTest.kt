@@ -5,6 +5,7 @@ import com.charmnight.linkgraph.testing.*
 import com.charmnight.linkgraph.llm.GraphAuditContext
 import com.charmnight.linkgraph.llm.EvidenceTraceEntry
 import com.charmnight.linkgraph.llm.GraphPatchResult
+import com.charmnight.linkgraph.llm.LlmProviderPresets
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.llm.SourceSnippetContext
 import com.charmnight.linkgraph.llm.artifact.ArtifactType
@@ -22,6 +23,7 @@ import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.EdgeType
+import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.GraphSceneId
 import com.charmnight.linkgraph.ui.view.FlowchartSummary
@@ -51,7 +53,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             defaultBudget = RunBudget(),
             auditExecutor = { input, _, _ ->
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "当前证据不足，需要继续读取代码。",
                     promptPreview = "prompt",
@@ -82,7 +84,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             defaultBudget = RunBudget(),
             auditExecutor = { input, _, _ ->
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "已回退到本地规则。",
                     promptPreview = "prompt",
@@ -103,8 +105,62 @@ class QaCapabilityTest : BasePlatformTestCase() {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertTrue(result.warnings.single().contains("已回退"))
+    }
+
+    fun testRuntimeDeadlineCapsAuditExecutorSettingsTimeout() {
+        var capturedTimeoutSeconds: Int? = null
+        val graph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:upload",
+                    type = NodeType.METHOD,
+                    title = "UploadService.upload",
+                ),
+            ),
+        )
+        val coordinator = AgentRunCoordinator()
+        val capability = QaCapability(
+            defaultBudget = RunBudget(maxRuntimeSeconds = 5),
+            auditExecutor = { input, _, _ ->
+                capturedTimeoutSeconds = input.settings.sanitized().timeoutSeconds
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "ok",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+
+        coordinator.run(
+            capability = capability,
+            input = QaCapabilityInput(
+                question = "解释上传链路",
+                auditContext = GraphAuditContext(
+                    factGraph = graph,
+                    editableGraph = graph,
+                    selectedNodeIds = listOf("method:upload"),
+                ),
+                settings = LinkGraphSettingsState(
+                    llmEnabled = true,
+                    provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                    endpoint = "https://example.com",
+                    apiKey = "test-key",
+                    model = "gpt-test",
+                    timeoutSeconds = 300,
+                ),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = { testSnapshot(workingGraph = graph, selectedNodeId = "method:upload") },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertNotNull(capturedTimeoutSeconds)
+        assertTrue(capturedTimeoutSeconds!! <= 5)
     }
 
     fun testUsesGraphToolBeforeRunningAuditExecutor() {
@@ -113,7 +169,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             defaultBudget = RunBudget(),
             auditExecutor = { input, _, _ ->
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "先读图，再执行旧问答。",
                     promptPreview = "prompt",
@@ -238,7 +294,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             auditExecutor = { input, _, _ ->
                 capturedSourceContext = input.auditContext.sourceContext
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "已读取代码证据。",
                     promptPreview = "prompt",
@@ -296,7 +352,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                 capturedSourceContext = input.auditContext.sourceContext
                 capturedEvidenceTrace = input.auditContext.evidenceTrace
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "已按当前上下文回答。",
                     promptPreview = "prompt",
@@ -355,7 +411,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                 capturedSourceContext = input.auditContext.sourceContext
                 capturedEvidenceTrace = input.auditContext.evidenceTrace
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "已按当前上下文回答。",
                     promptPreview = "prompt",
@@ -429,7 +485,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             auditExecutor = { input, _, _ ->
                 executorInvoked = true
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "不应该执行到这里。",
                     promptPreview = "prompt",
@@ -483,7 +539,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             auditExecutor = { input, _, _ ->
                 executorInvoked = true
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "不应该执行到这里。",
                     promptPreview = "prompt",
@@ -658,7 +714,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             auditExecutor = { input, _, _ ->
                 executorInvoked = true
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "不应该执行到这里。",
                     promptPreview = "prompt",
@@ -815,7 +871,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             auditExecutor = { input, _, _ ->
                 executorInvoked = true
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "不应该执行到这里。",
                     promptPreview = "prompt",
@@ -947,7 +1003,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             defaultBudget = RunBudget(),
             auditExecutor = { input, _, _ ->
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "建议形成候选草稿。",
                     promptPreview = "prompt",
@@ -1001,6 +1057,74 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertTrue(result.artifactSummaries.any { it.artifactType == ArtifactType.CANDIDATE_DRAFT.name })
     }
 
+    fun testPrunesStaleCandidateDraftArtifactsWhenNewQaResultCreatesCandidates() {
+        val artifactStore = InMemoryArtifactStore()
+        artifactStore.save(
+            com.charmnight.linkgraph.llm.artifact.CandidateDraftArtifact(
+                artifactId = "candidate-stale-change",
+                candidate = CandidateDraftChange(
+                    changeId = "stale-change",
+                    status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+                    title = "旧候选",
+                ),
+            ),
+        )
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            auditExecutor = { input, _, _ ->
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "建议形成新候选草稿。",
+                    promptPreview = "prompt",
+                    candidateChanges = listOf(
+                        CandidateDraftChange(
+                            changeId = "current-change",
+                            status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+                            title = "新候选",
+                        ),
+                    ),
+                    newCandidateChanges = listOf(
+                        CandidateDraftChange(
+                            changeId = "current-change",
+                            status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+                            title = "新候选",
+                        ),
+                    ),
+                )
+            },
+        )
+
+        val result = AgentRunCoordinator().run(
+            capability = capability,
+            input = QaCapabilityInput(
+                question = "请给出新的候选修改建议",
+                auditContext = GraphAuditContext(),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = {
+                    testSnapshot(
+                        workingGraph = GraphDocument(
+                            nodes = listOf(
+                                GraphNode(
+                                    id = "method:upload-file",
+                                    type = NodeType.METHOD,
+                                    title = "CommonController.uploadFile",
+                                ),
+                            ),
+                        ),
+                    )
+                },
+                artifactStore = artifactStore,
+            ),
+        )
+
+        assertEquals("建议形成新候选草稿。", result.output?.answer)
+        assertNull(artifactStore.get("candidate-stale-change"))
+        assertNotNull(artifactStore.get("candidate-current-change"))
+    }
+
     fun testPreloadedSourceContextStillConsumesRuntimeBudget() {
         var executorInvoked = false
         val capability = QaCapability(
@@ -1008,7 +1132,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             auditExecutor = { input, _, _ ->
                 executorInvoked = true
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "不应该执行到这里。",
                     promptPreview = "prompt",
@@ -1116,7 +1240,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                 capturedAuditContext = input.auditContext
                 capturedSession = input.session
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "runtime qa",
                     promptPreview = "prompt",
@@ -1210,7 +1334,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             auditExecutor = { input, _, _ ->
                 capturedSourceContext = input.auditContext.sourceContext
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "未读取项目外代码证据。",
                     promptPreview = "prompt",
@@ -1301,7 +1425,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                 capturedSourceContext = input.auditContext.sourceContext
                 capturedEvidenceTrace = input.auditContext.evidenceTrace
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "已读取投影节点对应源码。",
                     promptPreview = "prompt",

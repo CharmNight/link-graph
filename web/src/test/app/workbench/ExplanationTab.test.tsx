@@ -16,7 +16,7 @@ function explanationStateFixture(): ExplanationWorkbenchState {
     currentSessionLabel: "当前链路讲解",
     previousSessionLabel: null,
     result: {
-      source: "MOCK",
+      source: "LOCAL_RULE",
       granularity: "BUSINESS",
       promptPreview: "prompt",
       warnings: [],

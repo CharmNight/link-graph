@@ -50,7 +50,7 @@ class QaRetryWorkflowTest : BasePlatformTestCase() {
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
                 ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
@@ -71,7 +71,7 @@ class QaRetryWorkflowTest : BasePlatformTestCase() {
                             error("mock qa failure")
                         }
                         GraphPatchResult(
-                            source = LlmResultSource.MOCK,
+                            source = LlmResultSource.LOCAL_RULE,
                             question = input.question,
                             answer = "重试后成功返回问答结果。",
                             promptPreview = "prompt",

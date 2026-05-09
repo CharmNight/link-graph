@@ -26,6 +26,10 @@ import com.intellij.psi.util.PsiTreeUtil
 class SpringEventResolver : EvidenceResolver {
     /** 保存解析器稳定标识。 */
     override val id: String = "spring-event"
+    private val springEventListenerAnnotations = setOf(
+        "org.springframework.context.event.EventListener",
+        "org.springframework.transaction.event.TransactionalEventListener",
+    )
 
     /**
      * 仅处理 Spring Event 目标。
@@ -148,11 +152,8 @@ class SpringEventResolver : EvidenceResolver {
      */
     private fun isSpringEventListener(method: PsiMethod): Boolean {
         return method.annotations.any { annotation ->
-            val annotationName = annotation.qualifiedName ?: annotation.text
-            annotationName.endsWith(".EventListener") ||
-                annotationName.endsWith(".TransactionalEventListener") ||
-                annotationName.contains("EventListener") ||
-                annotationName.contains("TransactionalEventListener")
+            val annotationName = annotation.qualifiedName ?: annotation.nameReferenceElement?.referenceName ?: return@any false
+            annotationName in springEventListenerAnnotations
         }
     }
 

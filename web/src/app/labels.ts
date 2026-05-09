@@ -85,7 +85,7 @@ export function generationSourceLabel(value: GenerationPlanSource): string {
   switch (value) {
     case "DISABLED":
       return "已禁用";
-    case "MOCK":
+    case "LOCAL_RULE":
       return "规则生成";
     case "REMOTE":
       return "远程 LLM";
@@ -96,7 +96,7 @@ export function llmResultSourceLabel(value: LlmResultSource): string {
   switch (value) {
     case "DISABLED":
       return "已禁用";
-    case "MOCK":
+    case "LOCAL_RULE":
       return "本地规则";
     case "REMOTE":
       return "远程 LLM";
@@ -107,7 +107,7 @@ export function beautificationBoundaryDescription(value: LlmResultSource): strin
   switch (value) {
     case "DISABLED":
       return "当前没有启用讲解结果。";
-    case "MOCK":
+    case "LOCAL_RULE":
       return "当前结果来自本地规则整理，只覆盖当前画布、图关系和已采集源码片段，不等于完整源码真值。";
     case "REMOTE":
       return "当前结果来自远程 LLM 讲解建议，它基于当前图摘要和源码片段生成，不等于源码真值判定。";
@@ -118,7 +118,7 @@ export function patchResultBoundaryDescription(value: LlmResultSource): string {
   switch (value) {
     case "DISABLED":
       return "当前没有可用的分析结果。";
-    case "MOCK":
+    case "LOCAL_RULE":
       return "当前回答属于本地规则分析，用于帮助你定位风险，不是完整源码真值判定。";
     case "REMOTE":
       return "当前回答属于远程 LLM 建议，可用于辅助问答和补图，但不是代码事实结论。";

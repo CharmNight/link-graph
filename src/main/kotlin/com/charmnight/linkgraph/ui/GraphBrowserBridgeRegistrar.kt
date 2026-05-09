@@ -58,23 +58,19 @@ internal class GraphBrowserBridgeRegistrar(
     private val debugTraceQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
 
     fun registerHandlers() {
-        importMermaidQuery.addHandler { mermaid ->
+        importMermaidQuery.addSafePayloadHandler("导入 Mermaid", GraphBrowserPayloadKind.MERMAID) { mermaid ->
             bridge.dispatch(GraphEditorMessage.ImportMermaid(mermaid))
-            JBCefJSQuery.Response("ok")
         }
-        exportMermaidQuery.addHandler {
+        exportMermaidQuery.addSafeHandler("导出 Mermaid") {
             bridge.dispatch(GraphEditorMessage.ExportMermaid)
-            JBCefJSQuery.Response("ok")
         }
-        showDiffModeQuery.addHandler {
+        showDiffModeQuery.addSafeHandler("切换差异模式") {
             bridge.dispatch(GraphEditorMessage.ShowDiffMode)
-            JBCefJSQuery.Response("ok")
         }
-        requestSyncPreviewQuery.addHandler {
+        requestSyncPreviewQuery.addSafeHandler("请求同步预览") {
             bridge.dispatch(GraphEditorMessage.RequestSyncPreview)
-            JBCefJSQuery.Response("ok")
         }
-        requestAuditQuery.addHandler { payload ->
+        requestAuditQuery.addSafePayloadHandler("问答", GraphBrowserPayloadKind.STRUCTURED) { payload ->
             val request = GraphBrowserPayloadParser.parseAuditRequestPayload(payload)
             debugLazy(logger.isDebugEnabled, logger::debug) {
                 "收到前端请求：问答, question=${summarizePayloadText(request.question)}, selectedNodeIds=${request.selectedNodeIds}, sourceThreadId=${request.sourceThreadId}"
@@ -87,36 +83,27 @@ internal class GraphBrowserBridgeRegistrar(
                     mode = request.mode,
                 ),
             )
-            JBCefJSQuery.Response("ok")
         }
-        retryLastAuditRequestQuery.addHandler {
+        retryLastAuditRequestQuery.addSafeHandler("重试问答") {
             bridge.dispatch(GraphEditorMessage.RetryLastAuditRequest)
-            JBCefJSQuery.Response("ok")
         }
-        confirmAuditCandidateChangeQuery.addHandler { payload ->
+        confirmAuditCandidateChangeQuery.addSafePayloadHandler("确认问答候选变更", GraphBrowserPayloadKind.IDENTIFIER) { payload ->
             bridge.dispatch(GraphEditorMessage.ConfirmAuditCandidateChange(changeId = payload))
-            JBCefJSQuery.Response("ok")
         }
-        unconfirmAuditCandidateChangeQuery.addHandler { payload ->
+        unconfirmAuditCandidateChangeQuery.addSafePayloadHandler("取消确认问答候选变更", GraphBrowserPayloadKind.IDENTIFIER) { payload ->
             bridge.dispatch(GraphEditorMessage.UnconfirmAuditCandidateChange(changeId = payload))
-            JBCefJSQuery.Response("ok")
         }
-        resolveInvestigationThreadQuery.addHandler { payload ->
-            runCatching {
-                val request = GraphBrowserPayloadParser.parseResolveInvestigationThreadPayload(payload)
-                bridge.dispatch(
-                    GraphEditorMessage.ResolveInvestigationThread(
-                        threadId = request.threadId,
-                        resolutionStatus = request.resolutionStatus,
-                        note = request.note,
-                    ),
-                )
-                JBCefJSQuery.Response("ok")
-            }.getOrElse { error ->
-                JBCefJSQuery.Response(null, 1, error.message ?: "风险决策提交失败")
-            }
+        resolveInvestigationThreadQuery.addSafePayloadHandler("风险决策提交", GraphBrowserPayloadKind.STRUCTURED) { payload ->
+            val request = GraphBrowserPayloadParser.parseResolveInvestigationThreadPayload(payload)
+            bridge.dispatch(
+                GraphEditorMessage.ResolveInvestigationThread(
+                    threadId = request.threadId,
+                    resolutionStatus = request.resolutionStatus,
+                    note = request.note,
+                ),
+            )
         }
-        requestDiffReviewQuery.addHandler { payload ->
+        requestDiffReviewQuery.addSafePayloadHandler("差异分析", GraphBrowserPayloadKind.STRUCTURED) { payload ->
             val (question, selectedDiffItemIds) = GraphBrowserPayloadParser.parseQuestionWithIds(payload)
             bridge.dispatch(
                 GraphEditorMessage.RequestDiffReview(
@@ -124,9 +111,8 @@ internal class GraphBrowserBridgeRegistrar(
                     selectedDiffItemIds = selectedDiffItemIds,
                 ),
             )
-            JBCefJSQuery.Response("ok")
         }
-        requestGraphBeautificationQuery.addHandler { payload ->
+        requestGraphBeautificationQuery.addSafePayloadHandler("链路讲解", GraphBrowserPayloadKind.STRUCTURED) { payload ->
             val request = GraphBrowserPayloadParser.parseBeautificationPayload(payload)
             debugLazy(logger.isDebugEnabled, logger::debug) {
                 "收到前端请求：链路讲解, goal=${summarizePayloadText(request.goal)}, preferredStyle=${summarizePayloadText(request.preferredStyle)}, " +
@@ -141,37 +127,31 @@ internal class GraphBrowserBridgeRegistrar(
                     granularity = request.granularity,
                 ),
             )
-            JBCefJSQuery.Response("ok")
         }
-        applyDraftPatchPreviewQuery.addHandler { payload ->
+        applyDraftPatchPreviewQuery.addSafePayloadHandler("应用草稿补丁预览", GraphBrowserPayloadKind.STRUCTURED) { payload ->
             val operationIds = GraphBrowserPayloadParser.parseEncodedList(payload).toSet().takeIf { it.isNotEmpty() }
             bridge.dispatch(GraphEditorMessage.ApplyDraftPatchPreview(operationIds))
-            JBCefJSQuery.Response("ok")
         }
-        clearDraftPatchPreviewQuery.addHandler {
+        clearDraftPatchPreviewQuery.addSafeHandler("清空草稿补丁预览") {
             bridge.dispatch(GraphEditorMessage.ClearDraftPatchPreview)
-            JBCefJSQuery.Response("ok")
         }
-        restoreDraftPatchPreviewQuery.addHandler { payload ->
+        restoreDraftPatchPreviewQuery.addSafePayloadHandler("恢复草稿补丁预览", GraphBrowserPayloadKind.IDENTIFIER) { payload ->
             bridge.dispatch(
                 GraphEditorMessage.RestoreDraftPatchPreview(
                     GraphEditorMessage.DraftPatchPreviewSource.valueOf(payload),
                 ),
             )
-            JBCefJSQuery.Response("ok")
         }
-        undoLastDraftPatchApplyQuery.addHandler {
+        undoLastDraftPatchApplyQuery.addSafeHandler("撤销草稿补丁应用") {
             bridge.dispatch(GraphEditorMessage.UndoLastDraftPatchApply)
-            JBCefJSQuery.Response("ok")
         }
-        requestGenerationPlanQuery.addHandler {
+        requestGenerationPlanQuery.addSafeHandler("生成实现计划") {
             debugLazy(logger.isDebugEnabled, logger::debug) {
                 "收到前端请求：生成实现计划, 当前快照=${snapshotSummary(bridge.currentState())}"
             }
             bridge.dispatch(GraphEditorMessage.RequestGenerationPlan)
-            JBCefJSQuery.Response("ok")
         }
-        requestGenerationPlanDiscussionQuery.addHandler { payload ->
+        requestGenerationPlanDiscussionQuery.addSafePayloadHandler("实现建议追问", GraphBrowserPayloadKind.STRUCTURED) { payload ->
             val request = GraphBrowserPayloadParser.parseGenerationPlanDiscussionPayload(payload)
             bridge.dispatch(
                 GraphEditorMessage.RequestGenerationPlanDiscussion(
@@ -179,143 +159,96 @@ internal class GraphBrowserBridgeRegistrar(
                     focusItemId = request.focusItemId,
                 ),
             )
-            JBCefJSQuery.Response("ok")
         }
-        requestCodeDraftsQuery.addHandler {
+        requestCodeDraftsQuery.addSafeHandler("请求代码草稿") {
             bridge.dispatch(GraphEditorMessage.RequestCodeDrafts)
-            JBCefJSQuery.Response("ok")
         }
-        requestCurrentEditorContextGraphQuery.addHandler {
+        requestCurrentEditorContextGraphQuery.addSafeHandler("加载当前编辑器上下文链路") {
             debugLazy(logger.isDebugEnabled, logger::debug) {
                 "收到前端请求：加载当前编辑器上下文链路, 当前快照=${snapshotSummary(bridge.currentState())}"
             }
             bridge.dispatch(GraphEditorMessage.RequestCurrentEditorContextGraph)
-            JBCefJSQuery.Response("ok")
         }
-        requestAnalysisDisplayModeQuery.addHandler { payload ->
-            runCatching {
-                bridge.dispatch(
-                    GraphEditorMessage.RequestAnalysisDisplayMode(
-                        AnalysisDisplayMode.valueOf(payload),
-                    ),
-                )
-                JBCefJSQuery.Response("ok")
-            }.getOrElse { error ->
-                JBCefJSQuery.Response(null, 1, error.message ?: "切换展示模式失败")
-            }
+        requestAnalysisDisplayModeQuery.addSafePayloadHandler("切换展示模式", GraphBrowserPayloadKind.IDENTIFIER) { payload ->
+            bridge.dispatch(
+                GraphEditorMessage.RequestAnalysisDisplayMode(
+                    AnalysisDisplayMode.valueOf(payload),
+                ),
+            )
         }
-        updateWorkbenchSectionPreferenceQuery.addHandler { payload ->
-            runCatching {
-                val parts = payload.split('\u001f')
-                val sectionId = URLDecoder.decode(parts.getOrNull(0).orEmpty(), StandardCharsets.UTF_8)
-                val expanded = parts.getOrNull(1) == "1"
-                bridge.dispatch(
-                    GraphEditorMessage.UpdateWorkbenchSectionPreference(
-                        sectionId = sectionId,
-                        expanded = expanded,
-                    ),
-                )
-                JBCefJSQuery.Response("ok")
-            }.getOrElse { error ->
-                JBCefJSQuery.Response(null, 1, error.message ?: "更新工作台偏好失败")
-            }
+        updateWorkbenchSectionPreferenceQuery.addSafePayloadHandler("更新工作台偏好", GraphBrowserPayloadKind.STRUCTURED) { payload ->
+            val parts = payload.split('\u001f')
+            val sectionId = URLDecoder.decode(parts.getOrNull(0).orEmpty(), StandardCharsets.UTF_8)
+            val expanded = parts.getOrNull(1) == "1"
+            bridge.dispatch(
+                GraphEditorMessage.UpdateWorkbenchSectionPreference(
+                    sectionId = sectionId,
+                    expanded = expanded,
+                ),
+            )
         }
-        requestOpenSettingsQuery.addHandler {
+        requestOpenSettingsQuery.addSafeHandler("打开设置") {
             bridge.dispatch(GraphEditorMessage.OpenSettings)
-            JBCefJSQuery.Response("ok")
         }
-        applyCodeDraftsQuery.addHandler {
+        applyCodeDraftsQuery.addSafeHandler("写入全部代码草稿") {
             dispatchBridgeAsync("写入全部代码草稿") {
                 GraphEditorMessage.ApplyCodeDrafts
             }
-            JBCefJSQuery.Response("ok")
         }
-        applySingleCodeDraftQuery.addHandler { draftId ->
+        applySingleCodeDraftQuery.addSafePayloadHandler("写入单个代码草稿", GraphBrowserPayloadKind.IDENTIFIER) { draftId ->
             dispatchBridgeAsync("写入单个代码草稿") {
                 GraphEditorMessage.ApplySingleCodeDraft(draftId)
             }
-            JBCefJSQuery.Response("ok")
         }
-        openCodeDraftNativeDiffQuery.addHandler { draftId ->
+        openCodeDraftNativeDiffQuery.addSafePayloadHandler("打开代码草稿原生 Diff", GraphBrowserPayloadKind.IDENTIFIER) { draftId ->
             dispatchBridgeAsync("打开代码草稿原生 Diff") {
                 GraphEditorMessage.OpenCodeDraftNativeDiff(draftId)
             }
-            JBCefJSQuery.Response("ok")
         }
-        requestDraftNavigationQuery.addHandler { targetPath ->
+        requestDraftNavigationQuery.addSafePayloadHandler("代码草稿导航", GraphBrowserPayloadKind.STRUCTURED) { targetPath ->
             bridge.dispatch(GraphEditorMessage.RequestDraftNavigation(targetPath))
-            JBCefJSQuery.Response("ok")
         }
-        requestArtifactQuery.addHandler { payload ->
-            runCatching {
-                dispatchArtifactSlice(GraphBrowserPayloadParser.parseEncodedList(payload))
-                JBCefJSQuery.Response("ok")
-            }.getOrElse { error ->
-                JBCefJSQuery.Response(null, 1, error.message ?: "artifact 请求失败")
-            }
+        requestArtifactQuery.addSafePayloadHandler("artifact 请求", GraphBrowserPayloadKind.STRUCTURED) { payload ->
+            dispatchArtifactSlice(GraphBrowserPayloadParser.parseEncodedList(payload))
         }
-        nodeSelectedQuery.addHandler { nodeId ->
+        nodeSelectedQuery.addSafePayloadHandler("节点选择", GraphBrowserPayloadKind.IDENTIFIER) { nodeId ->
             bridge.dispatch(GraphEditorMessage.NodeSelected(nodeId))
-            JBCefJSQuery.Response("ok")
         }
-        requestSourceNavigationQuery.addHandler { nodeId ->
+        requestSourceNavigationQuery.addSafePayloadHandler("源码导航", GraphBrowserPayloadKind.IDENTIFIER) { nodeId ->
             bridge.dispatch(GraphEditorMessage.RequestSourceNavigation(nodeId))
-            JBCefJSQuery.Response("ok")
         }
-        requestExpandOverflowNodeQuery.addHandler { nodeId ->
+        requestExpandOverflowNodeQuery.addSafePayloadHandler("展开溢出节点", GraphBrowserPayloadKind.IDENTIFIER) { nodeId ->
             bridge.dispatch(GraphEditorMessage.RequestExpandOverflowNode(nodeId))
-            JBCefJSQuery.Response("ok")
         }
-        applyGraphEditScriptQuery.addHandler { payload ->
-            runCatching {
-                val script = GraphBrowserPayloadParser.parseGraphEditScript(payload)
-                debugLazy(logger.isDebugEnabled, logger::debug) {
-                    "收到前端 applyGraphEditScript: sceneId=${script.sceneId}, baseWorkspaceRevision=${script.baseWorkspaceRevision}, operationCount=${script.operations.size}"
-                }
-                bridge.dispatch(GraphEditorMessage.ApplyGraphEditScript(script))
-                JBCefJSQuery.Response("ok")
-            }.getOrElse { error ->
-                JBCefJSQuery.Response(null, 1, error.message ?: "链路图编辑脚本同步失败")
+        applyGraphEditScriptQuery.addSafePayloadHandler("链路图编辑脚本同步", GraphBrowserPayloadKind.GRAPH_EDIT_SCRIPT) { payload ->
+            val script = GraphBrowserPayloadParser.parseGraphEditScript(payload)
+            debugLazy(logger.isDebugEnabled, logger::debug) {
+                "收到前端 applyGraphEditScript: sceneId=${script.sceneId}, baseWorkspaceRevision=${script.baseWorkspaceRevision}, operationCount=${script.operations.size}"
             }
+            bridge.dispatch(GraphEditorMessage.ApplyGraphEditScript(script))
         }
-        frontendReadyQuery.addHandler { payload ->
-            runCatching {
-                bridge.dispatch(
-                    GraphEditorMessage.FrontendReady(
-                        lastAppliedRevision = GraphBrowserPayloadParser.parseNullableRevision(payload),
-                    ),
-                )
-                JBCefJSQuery.Response("ok")
-            }.getOrElse { error ->
-                JBCefJSQuery.Response(null, 1, error.message ?: "前端 ready 握手失败")
-            }
+        frontendReadyQuery.addSafePayloadHandler("前端 ready 握手", GraphBrowserPayloadKind.IDENTIFIER) { payload ->
+            bridge.dispatch(
+                GraphEditorMessage.FrontendReady(
+                    lastAppliedRevision = GraphBrowserPayloadParser.parseNullableRevision(payload),
+                ),
+            )
         }
-        snapshotAckQuery.addHandler { payload ->
-            runCatching {
-                bridge.dispatch(
-                    GraphEditorMessage.SnapshotAck(
-                        revision = payload.toLongOrNull() ?: error("无效的 snapshot revision: $payload"),
-                    ),
-                )
-                JBCefJSQuery.Response("ok")
-            }.getOrElse { error ->
-                JBCefJSQuery.Response(null, 1, error.message ?: "快照确认失败")
-            }
+        snapshotAckQuery.addSafePayloadHandler("快照确认", GraphBrowserPayloadKind.IDENTIFIER) { payload ->
+            bridge.dispatch(
+                GraphEditorMessage.SnapshotAck(
+                    revision = payload.toLongOrNull() ?: error("无效的 snapshot revision: $payload"),
+                ),
+            )
         }
-        layoutChangedQuery.addHandler { payload ->
-            runCatching {
-                bridge.dispatch(GraphEditorMessage.LayoutChanged(GraphBrowserPayloadParser.parseLayoutPositions(payload)))
-                JBCefJSQuery.Response("ok")
-            }.getOrElse { error ->
-                JBCefJSQuery.Response(null, 1, error.message ?: "链路图布局同步失败")
-            }
+        layoutChangedQuery.addSafePayloadHandler("链路图布局同步", GraphBrowserPayloadKind.GRAPH_EDIT_SCRIPT) { payload ->
+            bridge.dispatch(GraphEditorMessage.LayoutChanged(GraphBrowserPayloadParser.parseLayoutPositions(payload)))
         }
-        debugTraceQuery.addHandler { payload ->
+        debugTraceQuery.addSafePayloadHandler("前端 trace", GraphBrowserPayloadKind.DEBUG_TRACE) { payload ->
             if (shouldLogFrontendTrace(payload)) {
                 runtimeTrace?.invoke("前端 trace: $payload")
                 debugLazy(logger.isDebugEnabled, logger::debug) { "前端 trace: $payload" }
             }
-            JBCefJSQuery.Response("ok")
         }
     }
 
@@ -399,5 +332,41 @@ internal class GraphBrowserBridgeRegistrar(
 
     private fun snapshotSummary(snapshot: GraphEditorStateSnapshot): String {
         return "revision=${snapshot.snapshotRevision}, lastMessageType=${snapshot.lastMessageType}"
+    }
+
+    private fun JBCefJSQuery.addSafeHandler(
+        actionLabel: String,
+        action: () -> Unit,
+    ) {
+        addHandler {
+            safeBridgeResponse(actionLabel) {
+                action()
+                JBCefJSQuery.Response("ok")
+            }
+        }
+    }
+
+    private fun JBCefJSQuery.addSafePayloadHandler(
+        actionLabel: String,
+        payloadKind: GraphBrowserPayloadKind,
+        action: (String) -> Unit,
+    ) {
+        addHandler { payload ->
+            safeBridgeResponse(actionLabel) {
+                GraphBrowserPayloadParser.validatePayloadSize(payload, payloadKind)
+                action(payload)
+                JBCefJSQuery.Response("ok")
+            }
+        }
+    }
+
+    private fun safeBridgeResponse(
+        actionLabel: String,
+        action: () -> JBCefJSQuery.Response,
+    ): JBCefJSQuery.Response {
+        return runCatching(action).getOrElse { error ->
+            logger.warn("Graph browser bridge handler failed: $actionLabel", error)
+            JBCefJSQuery.Response(null, 1, error.message ?: "$actionLabel 失败")
+        }
     }
 }

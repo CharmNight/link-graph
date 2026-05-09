@@ -102,6 +102,28 @@ describe("CodeDraftPanel", () => {
     expect(events).toEqual(["request-plan"]);
   });
 
+  it("renders disabled code draft source with existing wording", () => {
+    render(
+      <CodeDraftPanel
+        drafts={[]}
+        warnings={[]}
+        source="DISABLED"
+        promptPreview={null}
+        writeReport={null}
+        hasPlan={true}
+        eligibilityDecision={eligibilityDecisionFixture()}
+        onOpenDraftWorkbench={() => undefined}
+        onRequestPlan={() => undefined}
+        onRequestDrafts={() => undefined}
+        onWriteDrafts={() => undefined}
+        onWriteSingleDraft={() => undefined}
+        onOpenDraft={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("来源 未启用")).toBeInTheDocument();
+  });
+
   it("requires confirmed draft changes before draft generation can start", async () => {
     const user = userEvent.setup();
     const events: string[] = [];

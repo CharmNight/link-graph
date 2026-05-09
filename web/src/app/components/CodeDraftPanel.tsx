@@ -11,7 +11,12 @@ import type {
   PreparedCodeEdit,
   StageEligibilityDecision,
 } from "../types";
-import { draftStatusLabel, normalizeOptionalWorkbenchWording, normalizeWorkbenchWording } from "../labels";
+import {
+  draftStatusLabel,
+  llmResultSourceLabel,
+  normalizeOptionalWorkbenchWording,
+  normalizeWorkbenchWording,
+} from "../labels";
 import { AsyncRequestBanner, resolveEffectiveRequestState } from "./AsyncRequestBanner";
 import { ArtifactTextDisclosure } from "./ArtifactTextDisclosure";
 import { RequestPromptDisclosure } from "./RequestPromptDisclosure";
@@ -76,16 +81,10 @@ function statusClassName(status: "READY" | "WRITTEN" | "SKIPPED"): string {
 }
 
 function codeDraftSourceLabel(source?: LlmResultSource | null): string | null {
-  switch (source) {
-    case "REMOTE":
-      return "远程 LLM";
-    case "DISABLED":
-      return "未启用";
-    case "MOCK":
-      return "本地规则";
-    default:
-      return null;
+  if (source == null) {
+    return null;
   }
+  return source === "DISABLED" ? "未启用" : llmResultSourceLabel(source);
 }
 
 function codeEditOperationLabel(kind: CodeEditOperation["kind"]): string {
@@ -194,7 +193,7 @@ export function CodeDraftPanel({
   const selectedDraft = drafts.find((draft) => draft.id === selectedDraftId) ?? drafts[0] ?? null;
   const canWrite = !staleDrafts;
   const implementationPlan = implementationSuggestion?.summary ? {
-    source: implementationSuggestion.source ?? "MOCK",
+    source: implementationSuggestion.source ?? "LOCAL_RULE",
     summary: implementationSuggestion.summary,
     warnings: implementationSuggestion.warnings,
     promptPreview: implementationSuggestion.promptPreview ?? null,

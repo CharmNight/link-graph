@@ -14,6 +14,7 @@ import {
   resetApiBridgeLifecycleStateForTest,
 } from "../../app/api";
 import { resetEditorTransportForTest } from "../../app/editorTransport";
+import { EMPTY_STATE } from "../../app/sampleState";
 import type { LinkGraphEdge, LinkGraphNode, RiskResolutionStatus } from "../../app/types";
 
 function methodNode(id: string, title: string): LinkGraphNode {
@@ -36,6 +37,7 @@ describe("publishGraphEditScript", () => {
     resetApiBridgeLifecycleStateForTest();
     window.linkGraphBridge = undefined;
     window.linkGraphDebugTrace = undefined;
+    window.linkGraphBootstrap = undefined;
   });
 
   it("keeps edge metadata when syncing canonical graph edits back to the IDE bridge", () => {
@@ -299,6 +301,15 @@ describe("publishGraphEditScript", () => {
     };
 
     expect(readBootstrapState()?.analysisDisplayMode).toBe("FACT_GRAPH");
+  });
+
+  it("readBootstrapState keeps bootstrap sources unchanged", () => {
+    window.linkGraphBootstrap = {
+      ...EMPTY_STATE,
+      generatedCodeDraftSource: "LOCAL_RULE",
+    };
+
+    expect(readBootstrapState()?.generatedCodeDraftSource).toBe("LOCAL_RULE");
   });
 
   it("把展示模式切换请求转发给 IDE bridge", () => {

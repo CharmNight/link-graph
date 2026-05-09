@@ -154,4 +154,20 @@ class LinkGraphSettingsServiceTest {
         assertEquals("", secretStore.storedApiKey)
         assertFalse(service.isRemoteGenerationReady())
     }
+
+    @Test
+    fun settingsStateToStringRedactsApiKey() {
+        val state = LinkGraphSettingsState(
+            llmEnabled = true,
+            provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+            endpoint = "https://api.example.com/v1",
+            apiKey = "secret-key",
+            model = "gpt-4.1-mini",
+        )
+
+        val text = state.toString()
+
+        assertFalse(text.contains("secret-key"))
+        assertTrue(text.contains("apiKey=<redacted>"))
+    }
 }

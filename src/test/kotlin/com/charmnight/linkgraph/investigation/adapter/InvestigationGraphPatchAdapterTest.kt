@@ -4,10 +4,12 @@ import com.charmnight.linkgraph.investigation.domain.EvidenceFact
 import com.charmnight.linkgraph.investigation.domain.EvidenceLevel
 import com.charmnight.linkgraph.investigation.domain.InvestigationStatus
 import com.charmnight.linkgraph.investigation.domain.InvestigationTurnResult
+import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.QaRequestKind
 import com.charmnight.linkgraph.workbench.ReplayableQaRequest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class InvestigationGraphPatchAdapterTest {
@@ -45,5 +47,6 @@ class InvestigationGraphPatchAdapterTest {
         )
 
         assertTrue(result.promptPreview.isBlank())
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
     }
 }

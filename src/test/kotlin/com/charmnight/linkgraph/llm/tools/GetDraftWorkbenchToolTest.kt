@@ -24,7 +24,7 @@ class GetDraftWorkbenchToolTest : BasePlatformTestCase() {
                 project = project,
                 snapshot = testSnapshot(
                     auditResult = com.charmnight.linkgraph.llm.GraphPatchResult(
-                        source = com.charmnight.linkgraph.llm.LlmResultSource.MOCK,
+                        source = com.charmnight.linkgraph.llm.LlmResultSource.LOCAL_RULE,
                         question = "Q",
                         answer = "A",
                         promptPreview = "prompt",
@@ -70,7 +70,7 @@ class GetDraftWorkbenchToolTest : BasePlatformTestCase() {
                 project = project,
                 snapshot = testSnapshot(
                     auditResult = com.charmnight.linkgraph.llm.GraphPatchResult(
-                        source = com.charmnight.linkgraph.llm.LlmResultSource.MOCK,
+                        source = com.charmnight.linkgraph.llm.LlmResultSource.LOCAL_RULE,
                         question = "Q",
                         answer = "A",
                         promptPreview = "prompt",

@@ -89,4 +89,16 @@ class QaModeClassifierTest {
             ),
         )
     }
+
+    @Test
+    fun answerIntentWinsWhenQuestionContainsAnswerAndReviewKeywords() {
+        assertEquals(
+            QaMode.ANSWER,
+            classifier.classify(
+                requestedMode = QaMode.AUTO,
+                question = "请解释这个风险有没有问题",
+                sourceThreadId = null,
+            ),
+        )
+    }
 }

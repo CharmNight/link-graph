@@ -133,7 +133,7 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
         )
         stateService.asyncRequests.markAuditResult(
             com.charmnight.linkgraph.llm.GraphPatchResult(
-                source = com.charmnight.linkgraph.llm.LlmResultSource.MOCK,
+                source = com.charmnight.linkgraph.llm.LlmResultSource.LOCAL_RULE,
                 question = "这里是否还有默认兜底分支？",
                 answer = "仍有待验证风险。",
                 promptPreview = "prompt",

@@ -121,7 +121,35 @@ internal class ReviewWorkflow(
                 modeContext = modeContext,
             ),
         )
-        val output = auditResultNormalizer.normalize(requireNotNull(result.output), modeContext)
+        val output = normalizeAuditRuntimeOutput(result, modeContext)
+        if (output == null) {
+            val message = auditRuntimeNullOutputMessage()
+            val requestState = asyncRequestLifecycle.withRuntimeMetadata(
+                requestState = com.charmnight.linkgraph.ui.AsyncRequestState.failed(
+                    message = message,
+                    scene = "问答",
+                    requestedMode = modeContext.requestedMode,
+                    effectiveMode = modeContext.effectiveMode,
+                ),
+                runtimeState = result.finalState,
+            )
+            session.mutateBatch {
+                apply {
+                    workbench.markRuntimeArtifactSummaries("qa", toRuntimeArtifactSummaries(result))
+                }
+                apply {
+                    asyncRequests.markAuditRequestFailed(message, requestState, failedRequest = modeContext.request)
+                }
+                apply {
+                    workbench.markOperationFeedback(
+                        OperationFeedbackLevel.ERROR,
+                        message,
+                        preserveLastMessageType = true,
+                    )
+                }
+            }
+            return buildAuditRuntimeFailureResult(modeContext, result)
+        }
         val requestState = asyncRequestLifecycle.withRuntimeMetadata(
             requestState = com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(
                 scene = "问答",
@@ -450,6 +478,31 @@ internal class ReviewWorkflow(
         return result.artifactSummaries.map(com.charmnight.linkgraph.ui.RuntimeArtifactSummary::from)
     }
 
+    private fun normalizeAuditRuntimeOutput(
+        result: AgentRunResult<GraphPatchResult>,
+        modeContext: QaModeContext,
+    ): GraphPatchResult? {
+        return result.output?.let { output -> auditResultNormalizer.normalize(output, modeContext) }
+    }
+
+    private fun auditRuntimeNullOutputMessage(): String = "问答失败：runtime 未返回结果。"
+
+    private fun buildAuditRuntimeFailureResult(
+        modeContext: QaModeContext,
+        result: AgentRunResult<GraphPatchResult>,
+    ): GraphPatchResult {
+        val failureReason = result.finalState.failureReason?.name ?: "UNKNOWN"
+        return GraphPatchResult(
+            source = LlmResultSource.LOCAL_RULE,
+            question = modeContext.question,
+            requestedMode = modeContext.requestedMode,
+            effectiveMode = modeContext.effectiveMode,
+            answer = auditRuntimeNullOutputMessage(),
+            promptPreview = "",
+            warnings = listOf("runtime 未返回结果，failureReason=$failureReason。"),
+        )
+    }
+
     private fun runtimeTrace(message: () -> String) {
         if (runtimeQaTraceEnabled) {
             logger.warn(message())
@@ -567,9 +620,9 @@ internal class ReviewWorkflow(
                 }
                 result.fold(
                     onSuccess = { runtimeResult ->
-                        val auditResult = runtimeResult.output
-                        if (auditResult == null) {
-                            val message = "问答失败：runtime 未返回结果。"
+                        val normalizedAuditResult = normalizeAuditRuntimeOutput(runtimeResult, modeContext)
+                        if (normalizedAuditResult == null) {
+                            val message = auditRuntimeNullOutputMessage()
                             val requestState = asyncRequestLifecycle.withRuntimeMetadata(
                                 requestState = asyncRequestLifecycle.buildFailedRequestState(
                                     presentation = presentation,
@@ -598,13 +651,13 @@ internal class ReviewWorkflow(
                         val requestState = asyncRequestLifecycle.withRuntimeMetadata(
                             requestState = asyncRequestLifecycle.buildSucceededRequestState(
                                 presentation = presentation,
-                                successMessage = if (auditResult.newCandidateChanges.isNotEmpty()) {
+                                successMessage = if (normalizedAuditResult.newCandidateChanges.isNotEmpty()) {
                                     "问答完成，已生成待确认变更。"
                                 } else {
                                     "问答完成。"
                                 },
-                                completedRemotely = auditResult.source == LlmResultSource.REMOTE,
-                                warnings = auditResult.warnings,
+                                completedRemotely = normalizedAuditResult.source == LlmResultSource.REMOTE,
+                                warnings = normalizedAuditResult.warnings,
                             ),
                             runtimeState = runtimeResult.finalState,
                         )
@@ -616,7 +669,7 @@ internal class ReviewWorkflow(
                                 "failureReason=${runtimeResult.finalState.failureReason}"
                         }
                         runtimeTrace {
-                            val candidates = auditResult.newCandidateChanges.ifEmpty { auditResult.candidateChanges }
+                            val candidates = normalizedAuditResult.newCandidateChanges.ifEmpty { normalizedAuditResult.candidateChanges }
                             val candidateSummary = candidates.take(3).joinToString(
                                 prefix = "[",
                                 postfix = if (candidates.size > 3) ", ...]" else "]",
@@ -624,12 +677,11 @@ internal class ReviewWorkflow(
                                 GenerationDiagnostics.summarizeCandidateChange(candidate) +
                                     ", graphPatch=" + GenerationDiagnostics.summarizeGraphPatch(candidate.graphPatch)
                             }
-                            "问答 runtime 结果: source=${auditResult.source}, " +
-                                "candidateCount=${auditResult.candidateChanges.size}, " +
-                                "newCandidateCount=${auditResult.newCandidateChanges.size}, " +
+                            "问答 runtime 结果: source=${normalizedAuditResult.source}, " +
+                                "candidateCount=${normalizedAuditResult.candidateChanges.size}, " +
+                                "newCandidateCount=${normalizedAuditResult.newCandidateChanges.size}, " +
                                 "candidates=$candidateSummary"
                         }
-                        val normalizedAuditResult = auditResultNormalizer.normalize(auditResult, modeContext)
                         val normalizedRequestState = requestState.copy(
                             requestedMode = modeContext.requestedMode,
                             effectiveMode = modeContext.effectiveMode,

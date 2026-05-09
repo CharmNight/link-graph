@@ -40,9 +40,75 @@ import java.nio.file.Path
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.fail
 
 class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
+    fun testRequestAuditReturnsControlledFailureWhenRuntimeOutputIsNull() {
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        stateService.loadGraph(sampleGraph(), "currentMethod")
+        val session = ProjectEditorSession(
+            stateService = stateService,
+            onBrowserSyncRequested = {},
+        )
+        val workflow = ReviewWorkflow(
+            project = project,
+            session = session,
+            planningContextFactory = PlanningContextFactory(
+                graphDiffer = GraphDiffer(),
+                syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
+                graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
+                settingsProvider = { LinkGraphSettingsState() },
+            ),
+            graphAuditPatchService = GraphAuditPatchService(),
+            graphDiffPatchService = GraphDiffPatchService(),
+            graphBeautificationService = object : GraphBeautificationService {
+                override fun beautify(
+                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    settings: LinkGraphSettingsState,
+                    onPreview: ((String, Boolean) -> Unit)?,
+                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    promptPreview = "unused",
+                )
+            },
+            graphDiffer = GraphDiffer(),
+            settingsProvider = { LinkGraphSettingsState() },
+            auditExecutorOverrideProvider = { null },
+            asyncRequestLifecycle = AsyncRequestLifecycleSupport(
+                project = project,
+                session = session,
+                timeoutOverrideProvider = { 500L },
+            ),
+            logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
+            qaCapabilityFactory = {
+                QaCapability(
+                    defaultBudget = RunBudget(maxSteps = 0).recordStep(),
+                    auditExecutor = { input, _, _ ->
+                        GraphPatchResult(
+                            source = LlmResultSource.LOCAL_RULE,
+                            question = input.question,
+                            answer = "不应该执行到这里。",
+                            promptPreview = "prompt",
+                        )
+                    },
+                )
+            },
+        )
+
+        val result = workflow.requestAudit("请围绕当前链路进行问答")
+        val snapshot = stateService.snapshot()
+
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
+        assertEquals("请围绕当前链路进行问答", result.question)
+        assertTrue(result.answer.contains("runtime 未返回结果"))
+        assertTrue(result.warnings.any { warning -> warning.contains("MAX_STEPS_EXCEEDED") })
+        assertNull(snapshot.auditResult)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED, snapshot.auditRequestState.phase)
+        assertTrue(snapshot.auditRequestState.errorMessage?.contains("runtime 未返回结果") == true)
+        assertTrue(snapshot.auditRequestState.detailMessage?.contains("failureReason=MAX_STEPS_EXCEEDED") == true)
+    }
+
     fun testRequestAuditAsyncRoutesThroughRuntimeAndKeepsAsyncLifecycleState() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraph(sampleGraph(), "currentMethod")
@@ -68,7 +134,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
                 ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
@@ -85,7 +151,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 QaCapability(
                     auditExecutor = { input, _, _ ->
                         GraphPatchResult(
-                            source = LlmResultSource.MOCK,
+                            source = LlmResultSource.LOCAL_RULE,
                             question = input.question,
                             answer = "runtime 已接管问答入口。",
                             promptPreview = "prompt",
@@ -120,7 +186,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         stateService.loadGraph(sampleGraph(), "currentMethod")
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "历史问题",
                 answer = "历史回答",
                 promptPreview = "prompt",
@@ -183,7 +249,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
                 ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
@@ -200,7 +266,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 QaCapability(
                     auditExecutor = { input, _, _ ->
                         GraphPatchResult(
-                            source = LlmResultSource.MOCK,
+                            source = LlmResultSource.LOCAL_RULE,
                             question = input.question,
                             answer = "只回答模式不应保留历史候选或风险线程。",
                             promptPreview = "prompt",
@@ -280,7 +346,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
                 ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
@@ -297,7 +363,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 QaCapability(
                     auditExecutor = { input, _, _ ->
                         GraphPatchResult(
-                            source = LlmResultSource.MOCK,
+                            source = LlmResultSource.LOCAL_RULE,
                             question = input.question,
                             answer = "已读取${input.auditContext.sourceContext.size}段代码证据。",
                             promptPreview = "prompt",
@@ -407,7 +473,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
                 ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
@@ -425,7 +491,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     auditExecutor = { input, _, _ ->
                         capturedNodeIds = input.auditContext.sourceContext.map { it.nodeId }
                         GraphPatchResult(
-                            source = LlmResultSource.MOCK,
+                            source = LlmResultSource.LOCAL_RULE,
                             question = input.question,
                             answer = "已读取${capturedNodeIds.size}段代码证据。",
                             promptPreview = "prompt",
@@ -479,7 +545,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "历史问题",
                 answer = "历史回答",
                 promptPreview = "prompt",
@@ -532,7 +598,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
                 ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
@@ -550,7 +616,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     auditExecutor = { input, _, _ ->
                         qaExecutorInvoked = true
                         GraphPatchResult(
-                            source = LlmResultSource.MOCK,
+                            source = LlmResultSource.LOCAL_RULE,
                             question = input.question,
                             answer = "普通 QA 不应处理继续取证。",
                             promptPreview = "prompt",
@@ -601,7 +667,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "历史问题",
                 answer = "历史回答",
                 promptPreview = "prompt",
@@ -654,7 +720,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
                 ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
@@ -672,7 +738,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     auditExecutor = { input, _, _ ->
                         qaExecutorInvoked = true
                         GraphPatchResult(
-                            source = LlmResultSource.MOCK,
+                            source = LlmResultSource.LOCAL_RULE,
                             question = input.question,
                             answer = "普通 QA 不应处理无证据继续取证。",
                             promptPreview = "prompt",
@@ -750,7 +816,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
                 ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
@@ -768,7 +834,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     auditExecutor = { input, _, _ ->
                         qaExecutorInvoked = true
                         GraphPatchResult(
-                            source = LlmResultSource.MOCK,
+                            source = LlmResultSource.LOCAL_RULE,
                             question = input.question,
                             answer = "普通 QA 不应处理继续取证失败用例。",
                             promptPreview = "prompt",
@@ -858,7 +924,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
                 ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
@@ -887,7 +953,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
 
-        assertEquals(LlmResultSource.MOCK, snapshot.auditResult?.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, snapshot.auditResult?.source)
         assertEquals(1, snapshot.auditResult?.candidateChanges?.size)
         assertTrue(snapshot.auditResult?.investigationThreads?.isEmpty() == true)
         assertEquals("method:file-download", snapshot.auditResult?.candidateChanges?.single()?.targetNodeIds?.single())
@@ -954,7 +1020,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
                 ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
@@ -972,7 +1038,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     auditExecutor = { input, _, _ ->
                         capturedAuditContext = input.auditContext
                         GraphPatchResult(
-                            source = LlmResultSource.MOCK,
+                            source = LlmResultSource.LOCAL_RULE,
                             question = input.question,
                             answer = "已捕获 QA 图上下文。",
                             promptPreview = "prompt",
@@ -1074,7 +1140,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
                 ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
@@ -1091,7 +1157,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 QaCapability(
                     auditExecutor = { input, _, _ ->
                         GraphPatchResult(
-                            source = LlmResultSource.MOCK,
+                            source = LlmResultSource.LOCAL_RULE,
                             question = input.question,
                             answer = "整图读取${input.auditContext.sourceContext.size}段代码证据。",
                             promptPreview = "prompt",
@@ -1148,7 +1214,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
         stateService.asyncRequests.markAuditResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "历史问题",
                 answer = "历史回答",
                 promptPreview = "prompt",
@@ -1192,7 +1258,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
                 ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
@@ -1210,7 +1276,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     auditExecutor = { input, _, _ ->
                         capturedMessages = input.session?.messages.orEmpty()
                         GraphPatchResult(
-                            source = LlmResultSource.MOCK,
+                            source = LlmResultSource.LOCAL_RULE,
                             question = input.question,
                             answer = "follow-up runtime ok",
                             promptPreview = "prompt",
@@ -1288,7 +1354,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
                 ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
@@ -1307,7 +1373,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     auditExecutor = { input, _, _ ->
                         executorInvoked = true
                         GraphPatchResult(
-                            source = LlmResultSource.MOCK,
+                            source = LlmResultSource.LOCAL_RULE,
                             question = input.question,
                             answer = "不应该执行到这里。",
                             promptPreview = "prompt",
@@ -1330,9 +1396,9 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED, snapshot.auditRequestState.phase)
         assertTrue(snapshot.auditRequestState.errorMessage?.contains("runtime 未返回结果") == true)
         assertTrue(snapshot.auditRequestState.detailMessage?.contains("failureReason=MAX_FILES_READ_EXCEEDED") == true)
-        assertTrue(snapshot.auditRequestState.detailMessage?.contains("step[2]") == true)
-        assertTrue(snapshot.auditRequestState.detailMessage?.contains("tool=read_source_snippet") == true)
-        assertTrue(snapshot.auditRequestState.detailMessage?.contains("nodeId=method:submit") == true)
+        assertTrue(snapshot.auditRequestState.detailMessage?.contains("budget steps=0/10") == true)
+        assertTrue(snapshot.auditRequestState.detailMessage?.contains("files=0/0") == true)
+        assertFalse(snapshot.auditRequestState.detailMessage?.contains("tool=read_source_snippet") == true)
     }
 
     private fun projectSourceFile(

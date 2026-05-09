@@ -53,7 +53,7 @@ class GraphGenerationServiceTest {
             ),
         )
 
-        assertEquals(GenerationPlanSource.MOCK, plan.source)
+        assertEquals(GenerationPlanSource.LOCAL_RULE, plan.source)
         assertTrue(plan.summary.contains("Create OrderDraft"))
         assertTrue(plan.items.any { it.title.contains("Create OrderDraft") })
         assertTrue(plan.promptPreview.contains("OrderService.submit"))
@@ -176,7 +176,7 @@ class GraphGenerationServiceTest {
             ),
         )
 
-        assertEquals(GenerationPlanSource.MOCK, plan.source)
+        assertEquals(GenerationPlanSource.LOCAL_RULE, plan.source)
         assertTrue(plan.warnings.any { it.contains("请求地址") })
         assertTrue(plan.warnings.any { it.contains("API 密钥") })
         assertTrue(plan.warnings.any { it.contains("链路图设置") })
@@ -290,7 +290,7 @@ class GraphGenerationServiceTest {
             ),
         )
 
-        assertEquals(GenerationPlanSource.MOCK, plan.source)
+        assertEquals(GenerationPlanSource.LOCAL_RULE, plan.source)
         assertTrue(plan.summary.contains("fileDownload"))
         assertTrue(plan.items.any { it.title.contains("fileDownload") })
         assertEquals(

@@ -61,7 +61,7 @@ class GraphDiffPatchServiceTest {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertTrue(result.answer.contains("结论："))
         assertTrue(result.answer.contains("关键影响："))
         assertTrue(result.answer.contains("建议动作："))
@@ -281,7 +281,7 @@ class GraphDiffPatchServiceTest {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertTrue(result.warnings.any { it.contains("请求地址") })
         assertTrue(result.warnings.any { it.contains("API 密钥") })
         assertTrue(result.warnings.any { it.contains("链路图设置") })
@@ -345,7 +345,7 @@ class GraphDiffPatchServiceTest {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertTrue(result.answer.contains("DefaultChannelFallback"))
         assertEquals("DefaultChannelFallback", result.patch?.operations?.firstNotNullOfOrNull { it.node }?.title)
     }

@@ -63,6 +63,29 @@ import org.junit.Test
 
 class GraphEditorPageRendererTest {
     @Test
+    fun bootstrapJsonEscapesLowControlCharacters() {
+        val renderer = GraphEditorPageRenderer()
+        val snapshot = testSnapshot(
+            visibleGraph = GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:control-char",
+                        type = NodeType.METHOD,
+                        title = "Order\u0001Controller\u0008submit",
+                        sourceTag = GraphSourceTag.FACT,
+                    ),
+                ),
+            ),
+        )
+
+        val json = renderer.bootstrapJson(snapshot)
+
+        assertTrue(json.contains("Order\\u0001Controller\\u0008submit"))
+        assertFalse(json.contains("\u0001"))
+        assertFalse(json.contains("\u0008"))
+    }
+
+    @Test
     fun bootstrapJson输出问答恢复状态草稿验证和建议追问字段() {
         val renderer = GraphEditorPageRenderer()
         val snapshot = testSnapshot(
@@ -321,7 +344,7 @@ class GraphEditorPageRendererTest {
                 promptPreviewAvailable = true,
             ),
             auditResult = GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "这里是什么？",
                 answer = "当前没有提示词。",
                 promptPreview = "",
@@ -340,7 +363,7 @@ class GraphEditorPageRendererTest {
                 promptPreviewAvailable = true,
             ),
             auditResult = GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "这里是什么？",
                 answer = "已有提示词。",
                 promptPreview = "system: prompt",
@@ -473,7 +496,7 @@ class GraphEditorPageRendererTest {
                 ),
             ),
             auditResult = GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条路径调整",
                 answer = "建议补充路径调整说明节点。",
                 promptPreview = "prompt",
@@ -823,7 +846,7 @@ class GraphEditorPageRendererTest {
             ),
             draftVersion = 4,
             generationPlan = GenerationPlan(
-                source = GenerationPlanSource.MOCK,
+                source = GenerationPlanSource.LOCAL_RULE,
                 summary = "Create DTO and align service wiring.",
                 items = listOf(
                     GenerationPlanItem(
@@ -891,7 +914,7 @@ class GraphEditorPageRendererTest {
                 appliedTargets = listOf("DefaultFallback"),
             ),
             graphBeautificationResult = GraphBeautificationResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 granularity = StepGranularity.BUSINESS,
                 steps = listOf(
                     GraphBeautificationStep(
@@ -1237,6 +1260,23 @@ class GraphEditorPageRendererTest {
     }
 
     @Test
+    fun bootstrapJson输出本地规则结果来源() {
+        val renderer = GraphEditorPageRenderer()
+        val snapshot = testSnapshot(
+            auditResult = GraphPatchResult(
+                source = LlmResultSource.LOCAL_RULE,
+                question = "这里为什么会走兜底分支？",
+                answer = "当前回答来自本地规则。",
+                promptPreview = "",
+            ),
+        )
+
+        val json = renderer.bootstrapJson(snapshot)
+
+        assertTrue(json.contains("\"source\":\"LOCAL_RULE\""))
+    }
+
+    @Test
     fun bootstrapJsonIncludesWorkbenchConversationAndDraftState() {
         val renderer = GraphEditorPageRenderer()
         val candidate = CandidateDraftChange(
@@ -1265,7 +1305,7 @@ class GraphEditorPageRendererTest {
         )
         val snapshot = testSnapshot(
             auditResult = com.charmnight.linkgraph.llm.GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "这里是不是有问题？",
                 answer = "建议修改条件判断。",
                 promptPreview = "prompt",

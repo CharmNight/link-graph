@@ -109,7 +109,7 @@ class GenerationPlanDiscussionService(
         prompt: String,
         session: GenerationPlanDiscussionSession?,
         focusItemId: String?,
-        source: LlmResultSource = LlmResultSource.MOCK,
+        source: LlmResultSource = LlmResultSource.LOCAL_RULE,
         extraWarnings: List<String> = emptyList(),
     ): GenerationPlanDiscussionResult {
         val focusedItem = plan.items.firstOrNull { item -> item.id == focusItemId }

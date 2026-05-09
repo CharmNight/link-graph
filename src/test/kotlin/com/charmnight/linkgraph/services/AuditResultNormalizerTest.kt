@@ -58,6 +58,71 @@ class AuditResultNormalizerTest {
     }
 
     @Test
+    fun answerModeDropsCandidateAndRiskWarningsButKeepsRuntimeWarnings() {
+        val context = modeContext(QaMode.ANSWER)
+
+        val normalized = 归一化器.normalize(
+            result = baseResult(
+                candidateChanges = listOf(candidate("answer-change")),
+                investigationThreads = listOf(thread("answer-thread")),
+                warnings = listOf(
+                    "已生成候选变更 answer-change，请先确认。",
+                    "风险线程 answer-thread 仍需继续取证。",
+                    "远程 LLM 问答失败，已回退为本地规则分析：HTTP 503。",
+                    "模型 gpt-test 不可用，请在设置中改成服务端已开通的模型。",
+                    "请求地址或 API 密钥配置不完整，请先验证连接。",
+                    "JSON 修复重试 1 次后仍失败，已使用可解析部分。",
+                ),
+            ),
+            modeContext = context,
+        )
+
+        assertEquals(
+            listOf(
+                "远程 LLM 问答失败，已回退为本地规则分析：HTTP 503。",
+                "模型 gpt-test 不可用，请在设置中改成服务端已开通的模型。",
+                "请求地址或 API 密钥配置不完整，请先验证连接。",
+                "JSON 修复重试 1 次后仍失败，已使用可解析部分。",
+            ),
+            normalized.warnings,
+        )
+    }
+
+    @Test
+    fun answerModeKeepsRuntimeWarningsByStructuredCategory() {
+        val context = modeContext(QaMode.ANSWER)
+
+        val normalized = 归一化器.normalize(
+            result = baseResult(
+                warnings = listOf(
+                    "RUNTIME: transport retry exhausted",
+                    "BUSINESS: risk thread still needs evidence",
+                ),
+            ),
+            modeContext = context,
+        )
+
+        assertEquals(listOf("transport retry exhausted"), normalized.warnings)
+    }
+
+    @Test
+    fun answerModeKeepsLegacyRuntimeWarningsDuringMigration() {
+        val context = modeContext(QaMode.ANSWER)
+
+        val normalized = 归一化器.normalize(
+            result = baseResult(
+                warnings = listOf(
+                    "远程 LLM 问答失败，已回退为本地规则分析：HTTP 503。",
+                    "风险线程 answer-thread 仍需继续取证。",
+                ),
+            ),
+            modeContext = context,
+        )
+
+        assertEquals(listOf("远程 LLM 问答失败，已回退为本地规则分析：HTTP 503。"), normalized.warnings)
+    }
+
+    @Test
     fun reviewModeDropsCandidatesButKeepsRiskThreads() {
         val context = modeContext(QaMode.REVIEW)
 
@@ -200,9 +265,10 @@ class AuditResultNormalizerTest {
         latestTurnOutcome: InvestigationTurnOutcome? = null,
         recentTurnOutcomes: List<InvestigationTurnOutcome> = emptyList(),
         auditSession: AuditConversationSession? = null,
+        warnings: List<String> = emptyList(),
     ): GraphPatchResult {
         return GraphPatchResult(
-            source = LlmResultSource.MOCK,
+            source = LlmResultSource.LOCAL_RULE,
             question = "检查这个方法",
             answer = "answer",
             promptPreview = "prompt",
@@ -212,6 +278,7 @@ class AuditResultNormalizerTest {
             latestTurnOutcome = latestTurnOutcome,
             recentTurnOutcomes = recentTurnOutcomes,
             auditSession = auditSession,
+            warnings = warnings,
         )
     }
 

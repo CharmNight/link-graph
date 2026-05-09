@@ -9,6 +9,7 @@ import com.charmnight.linkgraph.llm.artifact.PlanArtifact
 import com.charmnight.linkgraph.llm.runtime.AgentRunFailureReason
 import com.charmnight.linkgraph.llm.runtime.AgentRunPhase
 import com.charmnight.linkgraph.llm.runtime.AgentRunState
+import com.charmnight.linkgraph.llm.runtime.AgentRuntimeDeadlineExceededException
 import com.charmnight.linkgraph.llm.runtime.AgentRuntimeContext
 import com.charmnight.linkgraph.llm.runtime.AgentStepExecutionResult
 import com.charmnight.linkgraph.llm.runtime.AgentStepRecord
@@ -347,6 +348,7 @@ internal class PlanCapability(
         input: PlanCapabilityInput,
     ): AgentStepExecutionResult {
         return runCatching {
+            runtimeContext.requireWithinDeadline()
             val confirmedChanges = extractConfirmedIntents(state, runtimeContext)
             val runtimeDiff = state.artifactRefs
                 .asSequence()
@@ -382,6 +384,7 @@ internal class PlanCapability(
                     draftChanges = confirmedChanges,
                 ),
             )
+            runtimeContext.requireWithinDeadline()
             val plan = planExecutor.invoke(
                 input.copy(
                     planningPayload = input.planningPayload.copy(
@@ -393,6 +396,7 @@ internal class PlanCapability(
                 runtimeContext,
                 state,
             )
+            runtimeContext.requireWithinDeadline()
             val artifactRef = runtimeContext.artifactStore.save(
                 PlanArtifact(
                     artifactId = "plan-current",
@@ -414,6 +418,17 @@ internal class PlanCapability(
                 ),
             )
         }.getOrElse { throwable ->
+            if (throwable is AgentRuntimeDeadlineExceededException) {
+                return AgentStepExecutionResult.fail(
+                    state.copy(
+                        phase = AgentRunPhase.FAILED,
+                        budget = state.budget.recordStep(),
+                        stepIndex = state.stepIndex + 1,
+                        failureReason = AgentRunFailureReason.MAX_RUNTIME_SECONDS_EXCEEDED,
+                        lastModelOutput = throwable.message ?: throwable.javaClass.simpleName,
+                    ),
+                )
+            }
             AgentStepExecutionResult.fail(
                 state.copy(
                     phase = AgentRunPhase.FAILED,

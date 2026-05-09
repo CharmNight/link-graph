@@ -40,13 +40,13 @@ class GraphGenerationService(
         }
 
         if (!sanitizedSettings.usesRemoteProvider()) {
-            return buildMockPlan(context, promptPackage.preview)
+            return buildLocalRulePlan(context, promptPackage.preview)
         }
         /** 生效的远程连接配置。 */
         val remoteConnection = sanitizedSettings.remoteConnectionOrNull()
         if (remoteConnection == null) {
             /** 远程配置不完整时的规则化回退计划。 */
-            val fallbackPlan = buildMockPlan(context, promptPackage.preview)
+            val fallbackPlan = buildLocalRulePlan(context, promptPackage.preview)
             return fallbackPlan.copy(
                 warnings = listOf(
                     sanitizedSettings.remoteLlmSetupHint("规则化生成计划"),
@@ -70,7 +70,7 @@ class GraphGenerationService(
             remote.value.withPrependedWarnings(remote.warnings)
         }.getOrElse { error ->
             /** 远程失败后的规则化回退计划。 */
-            val fallbackPlan = buildMockPlan(context, promptPackage.preview)
+            val fallbackPlan = buildLocalRulePlan(context, promptPackage.preview)
             fallbackPlan.copy(
                 warnings = listOf(
                     "远程 LLM 生成失败，已回退为规则化生成计划：${LlmUserMessageFormatter.describe(error)}",
@@ -80,7 +80,7 @@ class GraphGenerationService(
     }
 
     /** 用同步预览项生成规则化实现计划。 */
-    private fun buildMockPlan(
+    private fun buildLocalRulePlan(
         context: GenerationContext,
         prompt: String,
     ): GenerationPlan {
@@ -116,7 +116,7 @@ class GraphGenerationService(
             }
         }
         return GenerationPlan(
-            source = GenerationPlanSource.MOCK,
+            source = GenerationPlanSource.LOCAL_RULE,
             summary = summary,
             items = items,
             warnings = warnings,

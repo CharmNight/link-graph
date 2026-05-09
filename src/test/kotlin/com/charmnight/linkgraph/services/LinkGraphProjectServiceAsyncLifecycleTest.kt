@@ -179,7 +179,7 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
         )
         testOverrides.auditExecutor = { _: GraphAuditContext, question: String ->
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = question,
                 answer = "本地规则结果",
                 promptPreview = "prompt",
@@ -217,7 +217,7 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
         testOverrides.effectiveGenerationSettings = remoteSettings()
         testOverrides.auditExecutor = { _: GraphAuditContext, question: String ->
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = question,
                 answer = "已回退到本地规则分析。",
                 promptPreview = "prompt",

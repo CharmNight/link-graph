@@ -93,7 +93,7 @@ class LinkGraphProjectServiceBeautificationTest : BasePlatformTestCase() {
         )
 
         val snapshot = stateService.snapshot()
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertEquals(result, snapshot.graphBeautificationResult)
         assertEquals("graphBeautificationResult", snapshot.lastMessageType)
         assertTrue(result.steps.isNotEmpty())

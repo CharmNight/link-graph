@@ -1003,9 +1003,7 @@ class GraphEditorPageRenderer {
                 when (char) {
                     '\\' -> append("\\\\")
                     '"' -> append("\\\"")
-                    '\n' -> append("\\n")
-                    '\r' -> append("\\r")
-                    '\t' -> append("\\t")
+                    in '\u0000'..'\u001f' -> append("\\u").append(char.code.toString(16).padStart(4, '0'))
                     else -> append(char)
                 }
             }
