@@ -1,49 +1,49 @@
-# Link Graph Architecture Boundary Refactor Design
+# Link Graph 架构边界重构设计
 
-## Goal
+## 目标
 
-Fix the current architecture boundary problems with a destructive, complete-link refactor rather than compatibility wrappers or one-off patches.
+通过一次破坏性、覆盖完整链路的重构，修复当前架构边界问题。这个方案不使用兼容包装层，也不做单点补丁。
 
-The refactor must address these five issues together:
+本次重构必须一起解决以下五类问题：
 
-1. `llm` depends on `services`.
-2. workflows directly mutate UI state.
-3. confirmed-draft workflow split is inconsistent with the rest of the system.
-4. command/router/project-service layers contain legacy forwarding.
-5. semantic code providers are coupled to `CodeSubjectKind` branching and negative matching.
+1. `llm` 反向依赖 `services`。
+2. workflow 直接突变 UI 状态。
+3. confirmed-draft workflow 的拆分模式没有推广到其他流程，职责边界不一致。
+4. command、router、project-service 层存在 legacy 转发链路。
+5. semantic code provider 与 `CodeSubjectKind` 分支和负向匹配耦合。
 
-## Non-Goals
+## 非目标
 
-- No compatibility facade for `LinkGraphProjectService`.
-- No bridge layer that keeps old APIs alive while internally calling new APIs.
-- No temporary duplicate command path for production callers.
-- No broad UI redesign.
-- No change to end-user behavior except where required by cleaner state/error handling.
+- 不保留 `LinkGraphProjectService` 兼容 facade。
+- 不增加一个旧 API 调新 API 的 bridge 兼容层。
+- 不保留生产代码中的临时双入口命令路径。
+- 不做大范围 UI 视觉重设计。
+- 除了更清晰的状态和错误处理需要外，不主动改变用户可见行为。
 
-## Coverage Matrix
+## 覆盖矩阵
 
-| Original issue | Required structural fix | Validation gate |
+| 原问题 | 必须落地的结构性修复 | 验证门禁 |
 | --- | --- | --- |
-| 4.1 `llm -> services` reverse dependency | Move debug/env and layer-neutral helpers to `foundation`; move planning payloads to pure application/LLM input models; split diagnostics by owning layer; remove service graph helpers from LLM tools. | Source scan fails on any `src/main/kotlin/.../llm/**` import of `services` or `ui`; LLM input models must not reference `GraphEditorStateSnapshot`. |
-| 4.2 workflows mutate UI state | Convert workflow behavior into application use cases returning explicit result/event objects; move UI mutation to presenters/reducers. | Source scan fails on `session.mutate`, `session.mutateBatch`, or `GraphEditorStateMutationContext` outside allowed UI presenter/reducer/session internals. |
-| 4.3 confirmed-draft split is inconsistent | Generalize the confirmed-draft pattern to all flows as use case + presenter + named side-effect writer; remove `SyncWorkflow` naming and role mixing. | Tests must exist for pure use-case result and separate presenter mapping for confirmed draft, draft patch, generation, QA, subject/workspace, and navigation flows. |
-| 4.4 router/facade forwarding | Delete `LinkGraphProjectService`; remove thin command stacks unless they provide real IntelliJ service registration or domain boundary value; make router call application APIs directly. | Production source must not contain `LinkGraphProjectService`; router must not depend on legacy command forwarding stacks. |
-| 4.5 provider kind coupling | Replace negative `supports()` checks and hardcoded code-provider `when` branches with exact `supportedKinds` registration. | Tests fail on duplicate/missing `CodeSubjectKind` registration and source scan fails on `kind != CodeSubjectKind.JAVA_METHOD`. |
+| 4.1 `llm -> services` 反向依赖 | 将 debug/env 和跨层中立 helper 下沉到 `foundation`；将 planning payload 迁移为纯 application/LLM 输入模型；按归属层拆分 diagnostics；从 LLM tools 中移除 service graph helper。 | 源码扫描禁止任何 `src/main/kotlin/.../llm/**` import `services` 或 `ui`；LLM 输入模型不得引用 `GraphEditorStateSnapshot`。 |
+| 4.2 workflow 突变 UI 状态 | 将 workflow 行为转换为 application use case，返回明确 result/event；UI mutation 移到 presenter/reducer。 | 源码扫描禁止在允许的 UI presenter/reducer/session internals 之外出现 `session.mutate`、`session.mutateBatch`、`GraphEditorStateMutationContext`。 |
+| 4.3 confirmed-draft 拆分不一致 | 将 confirmed-draft 的模式推广到所有流程：use case + presenter + 命名清晰的副作用 writer；删除 `SyncWorkflow` 这种混合职责命名。 | confirmed draft、draft patch、generation、QA、subject/workspace、navigation 都必须同时具备纯 use-case result 测试和独立 presenter mapping 测试。 |
+| 4.4 router/facade 转发 | 删除 `LinkGraphProjectService`；除非 thin command stack 具备真实 IntelliJ service 注册价值或领域边界价值，否则删除；router 直接调用 application API。 | 生产源码不得包含 `LinkGraphProjectService`；router 不得依赖 legacy command forwarding stack。 |
+| 4.5 provider kind 耦合 | 用精确 `supportedKinds` 注册替代负向 `supports()` 判断和 hardcoded code-provider `when` 分支。 | 重复或缺失 `CodeSubjectKind` 注册时测试失败；源码扫描禁止 `kind != CodeSubjectKind.JAVA_METHOD`。 |
 
-## Current Root Cause
+## 当前根因
 
-The current `services` package acts as a catch-all boundary. It owns application workflows, UI state mutation helpers, debug utilities, planning payloads, project service entrypoints, and shared diagnostics. This causes both upward and downward dependencies:
+当前 `services` 包承担了过多职责。它同时包含 application workflow、UI 状态突变 helper、debug 工具、planning payload、project service 入口以及共享 diagnostics。这导致依赖方向同时向上和向下穿透：
 
-- `services -> llm` for generation, QA, runtime, and parsing.
-- `llm -> services` for debug environment, diagnostics, planning payloads, and graph snapshot helpers.
-- `services -> ui` through `ProjectEditorSession`, `GraphEditorStateMutationContext`, and direct workbench mutation calls.
-- `ui -> services` through bridge/router/command services.
+- `services -> llm`：用于 generation、QA、runtime、parser。
+- `llm -> services`：用于 debug environment、diagnostics、planning payload、graph snapshot helper。
+- `services -> ui`：通过 `ProjectEditorSession`、`GraphEditorStateMutationContext` 和直接 workbench mutation 调用。
+- `ui -> services`：通过 bridge、router、command services。
 
-Because the package boundary is not explicit, fixing a single import would only move the violation. The design must create enforceable dependency direction and make invalid dependencies fail tests.
+因为 package 边界没有明确语义，只修某一个 import 只会把违规移动到另一个文件。这个设计必须建立可执行的依赖方向，并让违规依赖通过测试失败暴露。
 
-## Target Dependency Direction
+## 目标依赖方向
 
-Production code must follow this direction:
+生产代码必须遵守以下依赖方向：
 
 ```text
 actions/toolwindow/ui
@@ -52,42 +52,42 @@ actions/toolwindow/ui
   -> model/foundation
 ```
 
-Allowed dependency rules:
+允许的依赖规则：
 
-- `llm` may depend on `model`, `workbench` domain models, settings runtime state, and `foundation`.
-- `llm` must not depend on `services`, `ui`, `toolwindow`, or `actions`.
-- `application` may orchestrate `llm`, `semantic`, `sync`, `codegen`, `navigation`, `settings`, and domain services.
-- `application` must not mutate `GraphEditorStateService` directly.
-- `ui` owns rendering, bridge payloads, state reducers, and browser sync.
-- `actions` and `toolwindow` enter the system through application command/use-case APIs.
-- `services` as a package is either removed or reduced to IntelliJ service registration adapters only. It must not contain business workflows.
+- `llm` 可以依赖 `model`、`workbench` 领域模型、settings runtime state 和 `foundation`。
+- `llm` 不得依赖 `services`、`ui`、`toolwindow`、`actions`。
+- `application` 可以编排 `llm`、`semantic`、`sync`、`codegen`、`navigation`、`settings` 和领域服务。
+- `application` 不得直接突变 `GraphEditorStateService`。
+- `ui` 拥有渲染、bridge payload、state reducer、browser sync。
+- `actions` 和 `toolwindow` 必须通过 application command/use-case API 进入系统。
+- `services` 包要么删除，要么缩小为 IntelliJ service registration adapter；它不得再包含业务 workflow。
 
-## Package Shape
+## 包结构
 
 ### `foundation`
 
-Purpose: shared infrastructure that is safe for any layer.
+职责：提供任何层都可以安全依赖的共享基础设施。
 
-Move or create:
+迁移或新增：
 
 - `LinkGraphDebugEnvironment`
-- trace flag helpers
-- small diagnostic formatting primitives that do not know about UI state
-- generic `OperationFailure`, `UseCaseError`, and result helpers if needed
+- trace flag helper
+- 不感知 UI state 的小型 diagnostic formatting primitive
+- 必要时提供通用 `OperationFailure`、`UseCaseError`、result helper
 
-Rules:
+规则：
 
-- No dependency on `services`, `ui`, `llm`, `application`, or IntelliJ project services unless the helper is explicitly platform infrastructure.
-- Debug helpers must be injectable where runtime tests need deterministic values.
+- 不依赖 `services`、`ui`、`llm`、`application`，也不依赖 IntelliJ project service，除非该 helper 明确是 platform infrastructure。
+- debug helper 在 runtime 测试需要确定性输入时必须可注入。
 
 ### `application`
 
-Purpose: project-level business orchestration.
+职责：项目级业务编排。
 
-Create:
+新增：
 
 - `GraphEditorApplicationService`
-- use cases:
+- use cases：
   - `RequestSubjectGraphUseCase`
   - `SwitchAnalysisDisplayModeUseCase`
   - `LoadWorkspaceGraphUseCase`
@@ -114,7 +114,7 @@ Create:
   - `NavigateSourceUseCase`
   - `LoadDebugGraphUseCase`
 
-Create application models:
+新增 application model：
 
 - `ApplicationSnapshot`
 - `GraphWorkspaceSnapshot`
@@ -124,27 +124,27 @@ Create application models:
 - `UseCaseResult`
 - `UseCaseEvent`
 
-`ApplicationSnapshot` is not a UI snapshot. It contains only the data required by business orchestration:
+`ApplicationSnapshot` 不是 UI snapshot。它只包含业务编排需要的数据：
 
 - canonical graph states
 - selected subject metadata
-- current draft/workbench domain state
-- current async request metadata when needed for cancellation or replay
+- 当前 draft/workbench 领域状态
+- 取消请求或 replay 需要的当前 async request metadata
 - generation settings snapshot
 - source context/evidence context
 
-Rules:
+规则：
 
-- Use cases return `UseCaseResult` or domain result objects.
-- Use cases may emit `UseCaseEvent`s such as `GraphChanged`, `AuditCompleted`, `DraftChangeRejected`, `FeedbackRequested`, and `NativeDiffRequested`.
-- Use cases must not call `GraphEditorStateService`, `ProjectEditorSession.mutate`, `GraphEditorStateMutationContext`, or browser sync.
-- Background execution and lifecycle tracking live in application-level request coordinators, but UI projection remains outside them.
+- use case 返回 `UseCaseResult` 或领域 result object。
+- use case 可以产生 `UseCaseEvent`，例如 `GraphChanged`、`AuditCompleted`、`DraftChangeRejected`、`FeedbackRequested`、`NativeDiffRequested`。
+- use case 不得调用 `GraphEditorStateService`、`ProjectEditorSession.mutate`、`GraphEditorStateMutationContext` 或 browser sync。
+- 后台执行和生命周期跟踪属于 application-level request coordinator，但 UI projection 不属于它。
 
 ### `ui`
 
-Purpose: state projection, bridge payloads, rendering, browser lifecycle.
+职责：状态投影、bridge payload、渲染、browser lifecycle。
 
-Keep or create:
+保留或新增：
 
 - `GraphEditorCommandRouter`
 - `GraphEditorStateService`
@@ -154,54 +154,54 @@ Keep or create:
 - bridge payload parsing
 - browser transport
 
-`GraphEditorCommandRouter` responsibilities:
+`GraphEditorCommandRouter` 职责：
 
-- parse `GraphEditorMessage`
-- call `GraphEditorApplicationService`
-- pass `UseCaseResult` to presenter/reducer
-- request browser sync through existing UI infrastructure
+- 解析 `GraphEditorMessage`
+- 调用 `GraphEditorApplicationService`
+- 将 `UseCaseResult` 交给 presenter/reducer
+- 通过现有 UI infrastructure 请求 browser sync
 
-`GraphEditorStatePresenter` responsibilities:
+`GraphEditorStatePresenter` 职责：
 
-- translate `UseCaseResult` and `UseCaseEvent` to UI mutations
-- assign `OperationFeedbackLevel`
-- update async request state
-- update graph/workbench state
-- update runtime artifact summaries
-- decide whether browser sync is required
+- 将 `UseCaseResult` 和 `UseCaseEvent` 翻译为 UI mutation
+- 分配 `OperationFeedbackLevel`
+- 更新 async request state
+- 更新 graph/workbench state
+- 更新 runtime artifact summaries
+- 决定是否需要 browser sync
 
-Rules:
+规则：
 
-- UI state mutation is centralized here.
-- UI may depend on application result types.
-- Application must not depend on UI state mutation types.
+- UI state mutation 集中在这里。
+- UI 可以依赖 application result type。
+- application 不得依赖 UI state mutation type。
 
 ### `llm`
 
-Purpose: LLM capability, prompt, gateway, parsing, structured schemas, tools, and agent runtime.
+职责：LLM capability、prompt、gateway、parser、structured schema、tool、agent runtime。
 
-Refactor:
+重构要求：
 
-- Move all `llm -> services` dependencies out.
-- Replace `services.PlanningPayload` with `application.generation.PlanningInput` or an `llm.GenerationContext` input that contains only pure fields.
-- Move debug environment dependency to `foundation`.
-- Split `GenerationDiagnostics`:
-  - LLM-owned summaries move to `llm.diagnostics`.
-  - application/workflow summaries move to `application.diagnostics`.
-  - UI feedback text stays in `ui`.
-- Replace service graph helpers used by LLM tools with domain snapshot accessors or application-supplied tool context.
+- 移除所有 `llm -> services` 依赖。
+- 用 `application.generation.PlanningInput` 或只包含纯字段的 `llm.GenerationContext` 替代 `services.PlanningPayload`。
+- 将 debug environment 依赖迁移到 `foundation`。
+- 拆分 `GenerationDiagnostics`：
+  - LLM 自有 summary 移到 `llm.diagnostics`。
+  - application/workflow summary 移到 `application.diagnostics`。
+  - UI feedback 文案留在 `ui`。
+- LLM tools 不再使用 service graph helper，改为使用 domain snapshot accessor 或 application 提供的 tool context。
 
-Rules:
+规则：
 
-- LLM tools receive all project/snapshot access through `ToolExecutionContext` ports.
-- LLM code must not import `GraphEditorStateSnapshot`.
-- LLM code must not import anything under `services` or `ui`.
+- LLM tools 通过 `ToolExecutionContext` port 获取所有 project/snapshot 访问能力。
+- LLM 代码不得 import `GraphEditorStateSnapshot`。
+- LLM 代码不得 import `services` 或 `ui` 下的任何内容。
 
 ### `semantic`
 
-Purpose: subject analysis and provider dispatch.
+职责：subject analysis 和 provider dispatch。
 
-Refactor code-provider registration:
+重构 code-provider 注册：
 
 ```kotlin
 interface CodeSubjectSemanticProvider : SemanticProvider {
@@ -209,24 +209,24 @@ interface CodeSubjectSemanticProvider : SemanticProvider {
 }
 ```
 
-Registry behavior:
+Registry 行为：
 
-- For `CodeSubjectHandle`, select providers by exact `CodeSubjectKind`.
-- Reject duplicate provider registrations for a kind at startup/test time.
-- Reject missing provider registration with a clear error.
+- 对 `CodeSubjectHandle`，按精确 `CodeSubjectKind` 选择 provider。
+- 启动或测试阶段拒绝重复 provider kind 注册。
+- 缺少 provider 注册时给出明确错误。
 
-Provider behavior:
+Provider 行为：
 
-- `JavaCodeSemanticProvider.supportedKinds = setOf(JAVA_METHOD)`.
-- `KotlinCodeSemanticProvider.supportedKinds = setOf(KOTLIN_FUNCTION, KOTLIN_PROPERTY_ACCESSOR, KOTLIN_PRIMARY_CONSTRUCTOR, KOTLIN_SECONDARY_CONSTRUCTOR)`.
-- No provider may use `kind != JAVA_METHOD` as a support rule.
-- `CodeSemanticProvider` is removed or becomes a thin registry-backed adapter without hardcoded `when` branches.
+- `JavaCodeSemanticProvider.supportedKinds = setOf(JAVA_METHOD)`。
+- `KotlinCodeSemanticProvider.supportedKinds = setOf(KOTLIN_FUNCTION, KOTLIN_PROPERTY_ACCESSOR, KOTLIN_PRIMARY_CONSTRUCTOR, KOTLIN_SECONDARY_CONSTRUCTOR)`。
+- provider 不得使用 `kind != JAVA_METHOD` 作为 support 规则。
+- 删除 `CodeSemanticProvider`，或将它改成不包含 hardcoded `when` 分支的 registry-backed adapter。
 
-## Use Case Result Model
+## Use Case Result 模型
 
-Use cases return explicit results. They do not directly express UI mutations.
+use case 返回明确 result。result 不直接表达 UI mutation。
 
-Examples:
+示例：
 
 ```kotlin
 sealed interface ConfirmDraftChangeResult {
@@ -261,7 +261,7 @@ sealed interface AuditResultEvent {
 }
 ```
 
-The presenter maps those results to:
+presenter 将这些 result 映射为：
 
 - `asyncRequests.markAuditResult`
 - `asyncRequests.markAuditRequestFailed`
@@ -269,13 +269,13 @@ The presenter maps those results to:
 - `workbench.markDraftValidationState`
 - `workbench.markCodeEligibilityDecision`
 - `markGraphChanged`
-- browser sync requests
+- browser sync request
 
-## Complete Link Flow
+## 完整链路
 
-### QA request
+### QA 请求
 
-Target flow:
+目标链路：
 
 ```text
 GraphEditorMessage.RequestAudit
@@ -289,16 +289,16 @@ GraphEditorMessage.RequestAudit
   -> GraphEditorStateService mutation + sync notifier
 ```
 
-Key changes:
+关键变化：
 
-- request lifecycle remains application-owned
-- state projection becomes UI-owned
-- LLM receives pure `AuditInput`
-- no workflow calls `session.mutate`
+- request lifecycle 归 application 所有。
+- state projection 归 UI 所有。
+- LLM 接收纯 `AuditInput`。
+- workflow 不再调用 `session.mutate`。
 
 ### Confirm draft change
 
-Target flow:
+目标链路：
 
 ```text
 GraphEditorMessage.ConfirmAuditCandidateChange
@@ -310,15 +310,15 @@ GraphEditorMessage.ConfirmAuditCandidateChange
   -> GraphEditorStatePresenter
 ```
 
-Key changes:
+关键变化：
 
-- pure confirmation logic becomes the standard pattern for all workflows
-- artifact writing is a named side-effect component, not hidden inside sync workflow
-- UI feedback is assigned by presenter
+- 纯 confirmation logic 成为所有 workflow 的标准模式。
+- artifact writing 是命名明确的副作用组件，不隐藏在 sync workflow 内。
+- UI feedback 由 presenter 分配。
 
-### Generation plan and code drafts
+### Generation plan 和 code drafts
 
-Target flow:
+目标链路：
 
 ```text
 GraphEditorMessage.RequestGenerationPlan
@@ -329,16 +329,16 @@ GraphEditorMessage.RequestGenerationPlan
   -> GraphEditorStatePresenter
 ```
 
-Key changes:
+关键变化：
 
-- `PlanningPayload` is replaced with pure `PlanningInput`
-- `PlanningInput` does not hold `GraphEditorStateSnapshot`
-- generation workflows return `GenerationPlanResult`, `GeneratedCodeDraftsResult`, or `CodeDraftApplyResult`
-- native diff opening is represented as an application event consumed by UI/platform adapter
+- `PlanningPayload` 替换为纯 `PlanningInput`。
+- `PlanningInput` 不持有 `GraphEditorStateSnapshot`。
+- generation workflow 返回 `GenerationPlanResult`、`GeneratedCodeDraftsResult` 或 `CodeDraftApplyResult`。
+- native diff opening 表达为 application event，由 UI/platform adapter 消费。
 
 ### Source navigation
 
-Target flow:
+目标链路：
 
 ```text
 GraphEditorMessage.RequestSourceNavigation
@@ -348,16 +348,16 @@ GraphEditorMessage.RequestSourceNavigation
   -> GraphEditorStatePresenter
 ```
 
-Key changes:
+关键变化：
 
-- navigation success/failure is a result
-- source navigation UI feedback is not emitted from the use case
+- navigation success/failure 是 result。
+- source navigation UI feedback 不由 use case 直接发出。
 
-## Destructive Migration Strategy
+## 破坏性迁移策略
 
-### Phase 1: Add architecture gates first
+### 阶段 1：先加入架构门禁
 
-Add failing or pending architecture tests that define the new boundary:
+新增定义目标边界的 architecture tests。这些测试可以先失败或标记为待迁移阶段门禁：
 
 - `llmDoesNotDependOnServicesOrUi`
 - `applicationDoesNotDependOnUiStateMutation`
@@ -368,26 +368,26 @@ Add failing or pending architecture tests that define the new boundary:
 - `codeSemanticProvidersDeclareSupportedKinds`
 - `kotlinProviderDoesNotUseNegativeJavaMatch`
 
-These tests should initially fail where the current code violates the target. Each phase turns a subset green.
+这些测试在当前违规位置应当失败。每个迁移阶段负责让对应子集转绿。
 
-### Phase 2: Extract foundation and pure inputs
+### 阶段 2：抽取 foundation 和纯输入模型
 
-Move:
+迁移：
 
-- `LinkGraphDebugEnvironment` to `foundation`.
-- diagnostics into layer-owned diagnostic objects.
-- `PlanningPayload` into a pure application/LLM input model with no UI snapshot.
-- graph snapshot helper functions used by LLM tools into domain/application ports.
+- `LinkGraphDebugEnvironment` 到 `foundation`。
+- diagnostics 到各自归属层的 diagnostic object。
+- `PlanningPayload` 到不包含 UI snapshot 的纯 application/LLM input model。
+- LLM tools 使用的 graph snapshot helper 改为 domain/application ports。
 
-Acceptance:
+验收：
 
-- no production file under `llm` imports `services` or `ui`
-- LLM tests pass with pure inputs
-- plan/QA/codegen capabilities no longer need `GraphEditorStateSnapshot`
+- `llm` 下没有生产文件 import `services` 或 `ui`。
+- LLM tests 使用纯输入后通过。
+- plan/QA/codegen capability 不再需要 `GraphEditorStateSnapshot`。
 
-### Phase 3: Introduce application use cases and presenters
+### 阶段 3：引入 application use cases 和 presenters
 
-Create application use cases and result types for the highest-risk flows first:
+按风险从高到低创建 application use cases 和 result types：
 
 1. confirmed draft change
 2. draft patch apply/preview/undo
@@ -395,196 +395,196 @@ Create application use cases and result types for the highest-risk flows first:
 4. QA/review/beautification
 5. subject graph/source navigation/workspace import/export/diff
 
-For each flow:
+每个流程都必须：
 
-- move business decision logic into use case
-- make use case return result/event
-- move `session.mutate` block to presenter/reducer
-- update tests to assert use-case results separately from UI projection
+- 将业务决策逻辑迁入 use case。
+- 让 use case 返回 result/event。
+- 将 `session.mutate` block 迁入 presenter/reducer。
+- 更新测试，分别断言 use-case result 和 UI projection。
 
-Acceptance:
+验收：
 
-- use-case tests do not instantiate `GraphEditorStateMutationContext`
-- UI presenter tests verify state mutation mapping
-- no application workflow calls `session.mutate`
+- use-case tests 不实例化 `GraphEditorStateMutationContext`。
+- UI presenter tests 验证 state mutation mapping。
+- application workflow 不调用 `session.mutate`。
 
-### Phase 4: Delete legacy command/facade layers
+### 阶段 4：删除 legacy command/facade 层
 
-Delete `LinkGraphProjectService` and update all callers:
+删除 `LinkGraphProjectService` 并迁移所有调用方：
 
-- actions call `GraphEditorApplicationService` or domain-specific application services
-- debug automation calls application use cases
-- bridge calls `GraphEditorCommandRouter`
-- tests use application test fixtures instead of legacy service entrypoints
+- actions 调用 `GraphEditorApplicationService` 或领域明确的 application services。
+- debug automation 调用 application use cases。
+- bridge 调用 `GraphEditorCommandRouter`。
+- tests 使用 application test fixtures，不再使用 legacy service entrypoints。
 
-Review `*Commands` services:
+检查 `*Commands` services：
 
-- keep only if they encapsulate a real domain boundary or IntelliJ service registration boundary
-- otherwise delete and route through `GraphEditorApplicationService`
+- 只有在它们封装真实领域边界或 IntelliJ service registration 边界时才保留。
+- 否则删除，并通过 `GraphEditorApplicationService` 路由。
 
-Acceptance:
+验收：
 
-- no production code references `LinkGraphProjectService`
-- no test depends on legacy project-service entrypoints
-- `GraphEditorCommandRouter` depends on application APIs, not command forwarding stacks
+- 生产代码没有 `LinkGraphProjectService` 引用。
+- 测试不依赖 legacy project-service entrypoint。
+- `GraphEditorCommandRouter` 依赖 application APIs，而不是 command forwarding stacks。
 
-### Phase 5: Refactor semantic provider registration
+### 阶段 5：重构 semantic provider 注册
 
-Implement `CodeSubjectSemanticProvider.supportedKinds`.
+实现 `CodeSubjectSemanticProvider.supportedKinds`。
 
-Update registry:
+更新 registry：
 
-- exact kind matching for code subject handles
-- duplicate kind detection
-- missing kind detection
+- 对 code subject handle 做精确 kind matching。
+- 检测 duplicate kind。
+- 检测 missing kind。
 
-Update providers:
+更新 providers：
 
-- Java declares Java kinds
-- Kotlin declares Kotlin kinds
-- no negative support condition
-- remove hardcoded `when` from `CodeSemanticProvider`
+- Java provider 声明 Java kinds。
+- Kotlin provider 声明 Kotlin kinds。
+- 禁止 negative support condition。
+- 从 `CodeSemanticProvider` 删除 hardcoded `when`。
 
-Acceptance:
+验收：
 
-- adding a fake new `CodeSubjectKind` in tests fails until a provider is registered
-- Kotlin provider does not claim unknown/non-Java kinds
-- existing Java/Kotlin semantic tests pass
+- 测试中新增一个 fake `CodeSubjectKind` 时，在 provider 注册前必须失败。
+- Kotlin provider 不认领 unknown/non-Java kinds。
+- 现有 Java/Kotlin semantic tests 通过。
 
-### Phase 6: Remove old workflow/session mutation path
+### 阶段 6：移除旧 workflow/session mutation 路径
 
-After all flows are migrated:
+所有流程迁移后：
 
-- delete or shrink `ProjectEditorSession` to UI-only transaction support
-- remove workflow classes that became empty facades
-- keep reducers/presenters as the only place where UI state mutation is expressed
+- 删除或缩小 `ProjectEditorSession`，让它只作为 UI transaction support。
+- 删除已经变成空 facade 的 workflow classes。
+- reducers/presenters 成为唯一表达 UI state mutation 的位置。
 
-Acceptance:
+验收：
 
-- architecture test confirms zero `session.mutate` calls outside UI presenter/reducer/session internals
-- workflow/application tests use pure result assertions
-- full test suite passes
+- architecture test 确认 UI presenter/reducer/session internals 之外没有 `session.mutate` 调用。
+- workflow/application tests 使用纯 result assertion。
+- 全量测试通过。
 
-## Testing Strategy
+## 测试策略
 
-### Architecture tests
+### 架构测试
 
-Add tests that scan production Kotlin sources:
+新增扫描生产 Kotlin 源码的测试：
 
 - forbidden imports by package
-- forbidden symbols outside allowed directories
+- allowed directories 之外的 forbidden symbols
 - deleted class existence checks
 - semantic provider registration checks
 
-These tests are required because the target architecture must not depend on convention.
+这些测试是必要的，因为目标架构不能只靠约定维持。
 
-### Unit tests
+### 单元测试
 
-For each use case:
+每个 use case 覆盖：
 
 - success result
 - rejected/missing input result
 - failure result
 - side-effect event shape
-- cancellation or stale request behavior where applicable
+- 适用时覆盖 cancellation 或 stale request behavior
 
-For each presenter:
+每个 presenter 覆盖：
 
-- maps success to expected graph/workbench/async state mutations
-- maps rejection to warning/error feedback
-- preserves existing request state rules
-- requests browser sync only when needed
+- success 到 graph/workbench/async state mutation 的映射
+- rejection 到 warning/error feedback 的映射
+- 现有 request state rules 的保持
+- 仅在需要时请求 browser sync
 
-### Integration tests
+### 集成测试
 
-Keep existing toolwindow/bridge tests, but update them to assert:
+保留现有 toolwindow/bridge tests，但更新断言：
 
 - bridge dispatches into application API
 - application result is projected into UI state
 - frontend payload shape remains stable
 
-### Regression tests for the five original issues
+### 五个原问题的回归测试
 
-- `GraphAuditPatchService` and all `llm` sources have no `services` import.
-- production workflows have no direct `session.mutate`.
-- confirmed-draft split pattern is represented as use case + presenter + artifact writer, and the same pattern exists for other flows.
-- no `LinkGraphProjectService` production class exists.
-- semantic providers declare exact supported kind sets.
+- `GraphAuditPatchService` 和所有 `llm` source 没有 `services` import。
+- production workflow 没有直接 `session.mutate`。
+- confirmed-draft split pattern 表达为 use case + presenter + artifact writer，并且其他流程也采用同一模式。
+- 生产代码不存在 `LinkGraphProjectService`。
+- semantic providers 声明精确 supported kind sets。
 
-## Rollout Plan
+## 落地计划
 
-This refactor should not be attempted as one large unreviewable patch. The implementation should land in staged commits:
+这个重构不应作为一个巨大且无法 review 的补丁一次落地。实现应按 staged commits 推进：
 
-1. Boundary tests and package scaffolding.
-2. Foundation extraction and LLM dependency cleanup.
-3. Pure application snapshot/input models.
-4. Confirmed draft flow migration.
-5. Draft patch flow migration.
-6. Generation flow migration.
-7. QA/review/beautification flow migration.
-8. Subject/workspace/navigation flow migration.
-9. Legacy facade deletion and caller migration.
-10. Semantic provider registry refactor.
-11. Dead code removal and final architecture gate.
+1. Boundary tests 和 package scaffolding。
+2. Foundation extraction 和 LLM dependency cleanup。
+3. Pure application snapshot/input models。
+4. Confirmed draft flow migration。
+5. Draft patch flow migration。
+6. Generation flow migration。
+7. QA/review/beautification flow migration。
+8. Subject/workspace/navigation flow migration。
+9. Legacy facade deletion and caller migration。
+10. Semantic provider registry refactor。
+11. Dead code removal and final architecture gate。
 
-Each commit must compile or be part of a short stacked branch where failing tests are expected only until the next checkpoint. Prefer smaller compile-green checkpoints for review.
+每个 commit 应保持可编译，或作为一个短 stacked branch 的一部分，在下一个 checkpoint 前允许短暂失败。优先选择较小的 compile-green checkpoint，便于 review。
 
-## Risks And Mitigations
+## 风险和缓解
 
-### Risk: Result models become too broad
+### 风险：result model 变得过宽
 
-Mitigation:
+缓解：
 
-- keep result types per use case
-- share only small primitives such as `ApplicationRequestState`
-- avoid a single generic mega-result
+- 每个 use case 保留独立 result type。
+- 只共享 `ApplicationRequestState` 这类小 primitive。
+- 避免创建一个通用 mega-result。
 
-### Risk: Presenter becomes the new god object
+### 风险：presenter 变成新的 god object
 
-Mitigation:
+缓解：
 
-- split presenters by domain:
+- 按领域拆分 presenter：
   - `AuditStatePresenter`
   - `DraftPatchStatePresenter`
   - `GenerationStatePresenter`
   - `WorkspaceStatePresenter`
   - `SubjectGraphStatePresenter`
-- keep a small coordinator only for bridge dispatch
+- 只保留一个很小的 coordinator 负责 bridge dispatch。
 
-### Risk: Request lifecycle remains coupled to UI state
+### 风险：request lifecycle 仍然和 UI state 耦合
 
-Mitigation:
+缓解：
 
-- application owns request identity, cancellation, stale response checks, and runtime metadata
-- UI owns only visual state projection of that lifecycle
+- application 拥有 request identity、cancellation、stale response check 和 runtime metadata。
+- UI 只拥有该生命周期的视觉状态投影。
 
-### Risk: LLM tools still need project/snapshot details
+### 风险：LLM tools 仍需要 project/snapshot 细节
 
-Mitigation:
+缓解：
 
-- expose narrow tool ports in `ToolExecutionContext`
-- pass pure graph/draft/source accessors
-- keep IntelliJ `Project` only where a tool genuinely reads project files, and isolate that behind a facade
+- 在 `ToolExecutionContext` 暴露窄 port。
+- 传入纯 graph/draft/source accessor。
+- 仅在 tool 真实读取项目文件时保留 IntelliJ `Project`，并将其隔离到 facade 后。
 
-### Risk: Deleting `LinkGraphProjectService` breaks many tests
+### 风险：删除 `LinkGraphProjectService` 会破坏大量测试
 
-Mitigation:
+缓解：
 
-- update tests to use explicit application test fixtures
-- create test builders, not production compatibility services
-- let compile errors enumerate missed migration sites
+- 更新测试，改用明确的 application test fixtures。
+- 创建 test builders，而不是生产兼容 service。
+- 让编译错误枚举所有遗漏迁移点。
 
-## Definition Of Done
+## 完成定义
 
-The refactor is complete only when all conditions are true:
+只有以下条件全部满足时，本次重构才算完成：
 
-- No `llm` source imports `services` or `ui`.
-- No application workflow/use case calls `session.mutate`, `session.mutateBatch`, or `GraphEditorStateMutationContext`.
-- `LinkGraphProjectService` is deleted from production code.
-- `GraphEditorCommandRouter` depends on application APIs and UI presenter/reducer only.
-- `PlanningInput` or equivalent generation input contains no `GraphEditorStateSnapshot`.
-- UI state mutation is centralized in presenters/reducers.
-- Semantic code providers declare exact supported `CodeSubjectKind` sets.
-- Kotlin provider does not use `kind != JAVA_METHOD`.
-- Architecture tests enforce every rule above.
-- Existing user-facing QA, draft, generation, navigation, import/export, and semantic tests pass after their entrypoints are migrated.
+- 没有 `llm` source import `services` 或 `ui`。
+- 没有 application workflow/use case 调用 `session.mutate`、`session.mutateBatch` 或 `GraphEditorStateMutationContext`。
+- `LinkGraphProjectService` 已从生产代码删除。
+- `GraphEditorCommandRouter` 只依赖 application APIs 和 UI presenter/reducer。
+- `PlanningInput` 或等价 generation input 不包含 `GraphEditorStateSnapshot`。
+- UI state mutation 集中在 presenters/reducers。
+- semantic code providers 声明精确 supported `CodeSubjectKind` sets。
+- Kotlin provider 不使用 `kind != JAVA_METHOD`。
+- architecture tests 强制执行以上所有规则。
+- 用户可见的 QA、draft、generation、navigation、import/export、semantic tests 在入口迁移后全部通过。
