@@ -16,11 +16,6 @@ import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionResult
 internal class GenerationPlanDiscussionWorkflow(
     private val dependencies: GenerationWorkflowDependencies,
 ) {
-    fun requestGenerationPlanDiscussion(
-        question: String,
-        focusItemId: String? = null,
-    ) = runGenerationPlanDiscussion(question = question, focusItemId = focusItemId)
-
     fun requestGenerationPlanDiscussionAsync(
         question: String,
         focusItemId: String? = null,

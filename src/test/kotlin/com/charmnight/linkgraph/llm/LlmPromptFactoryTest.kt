@@ -23,15 +23,15 @@ import kotlin.test.assertTrue
 
 class LlmPromptFactoryTest {
     @Test
-    fun auditPromptPackageTrimsLargeUserPromptToBudget() {
+    fun qaPromptPackageTrimsLargeUserPromptToBudget() {
         val hugeSnippet = buildString {
             repeat(600) {
                 append("if (value != null) { value = value.trim(); }\n")
             }
         }
 
-        val promptPackage = LlmPromptFactory().buildAuditPromptPackage(
-            context = GraphAuditContext(
+        val promptPackage = LlmPromptFactory().buildQaPromptPackage(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -153,15 +153,15 @@ class LlmPromptFactoryTest {
     }
 
     @Test
-    fun auditPromptPackageKeepsSchemaInstructionWhenSourceContextIsHuge() {
+    fun qaPromptPackageKeepsSchemaInstructionWhenSourceContextIsHuge() {
         val hugeSnippet = buildString {
             repeat(1_200) {
                 append("return callRemoteServiceAndNormalizeResult(request);\n")
             }
         }
 
-        val promptPackage = LlmPromptFactory().buildAuditPromptPackage(
-            context = GraphAuditContext(
+        val promptPackage = LlmPromptFactory().buildQaPromptPackage(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -198,9 +198,9 @@ class LlmPromptFactoryTest {
     }
 
     @Test
-    fun auditPromptPackageMakesQaModeBoundariesExplicit() {
-        val promptPackage = LlmPromptFactory().buildAuditPromptPackage(
-            context = GraphAuditContext(
+    fun qaPromptPackageMakesQaModeBoundariesExplicit() {
+        val promptPackage = LlmPromptFactory().buildQaPromptPackage(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -311,10 +311,10 @@ class LlmPromptFactoryTest {
     }
 
     @Test
-    fun buildsAuditAndDiffPromptsFromDualLayerContext() {
+    fun buildsQaAndDiffPromptsFromDualLayerContext() {
         val factory = LlmPromptFactory()
-        val auditPrompt = factory.buildAuditPrompt(
-            context = GraphAuditContext(
+        val qaPrompt = factory.buildQaPrompt(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -396,26 +396,26 @@ class LlmPromptFactoryTest {
             ),
         )
 
-        assertTrue(auditPrompt.contains("这段链路是否遗漏了默认兜底逻辑"))
-        assertTrue(auditPrompt.contains("当前范围"))
-        assertTrue(auditPrompt.contains("OrderService.place"))
-        assertTrue(auditPrompt.contains("相关源码片段"))
-        assertTrue(auditPrompt.contains("defaultChannel"))
-        assertTrue(auditPrompt.contains("你正在做链路图问答"))
-        assertTrue(auditPrompt.contains("本轮问答回答"))
-        assertTrue(auditPrompt.contains("\"answer\": \"问答回答\""))
-        assertTrue(auditPrompt.contains("flowchart.kind=DECISION"))
-        assertTrue(auditPrompt.contains("flow.ownerMethod=com.example.OrderService.place(java.lang.String):void"))
-        assertTrue("本轮审计回答" !in auditPrompt)
-        assertTrue(auditPrompt.contains("你的第一优先级是直接回答“用户问题”"))
-        assertTrue(auditPrompt.contains("禁止输出与用户问题无关的通用安全、性能、规范性建议"))
+        assertTrue(qaPrompt.contains("这段链路是否遗漏了默认兜底逻辑"))
+        assertTrue(qaPrompt.contains("当前范围"))
+        assertTrue(qaPrompt.contains("OrderService.place"))
+        assertTrue(qaPrompt.contains("相关源码片段"))
+        assertTrue(qaPrompt.contains("defaultChannel"))
+        assertTrue(qaPrompt.contains("你正在做链路图问答"))
+        assertTrue(qaPrompt.contains("本轮问答回答"))
+        assertTrue(qaPrompt.contains("\"answer\": \"问答回答\""))
+        assertTrue(qaPrompt.contains("flowchart.kind=DECISION"))
+        assertTrue(qaPrompt.contains("flow.ownerMethod=com.example.OrderService.place(java.lang.String):void"))
+        assertTrue("本轮审计回答" !in qaPrompt)
+        assertTrue(qaPrompt.contains("你的第一优先级是直接回答“用户问题”"))
+        assertTrue(qaPrompt.contains("禁止输出与用户问题无关的通用安全、性能、规范性建议"))
         assertTrue(diffPrompt.contains("这些差异意味着什么"))
         assertTrue(diffPrompt.contains("DefaultChannelFallback"))
         assertTrue(diffPrompt.contains("ONLY_IN_MERMAID"))
     }
 
     @Test
-    fun buildsSceneSpecificPromptPackagesForAuditDiffAndCodeGeneration() {
+    fun buildsSceneSpecificPromptPackagesForQaDiffAndCodeGeneration() {
         val factory = LlmPromptFactory()
         val settings = LinkGraphSettingsState(
             llmEnabled = true,
@@ -423,8 +423,8 @@ class LlmPromptFactoryTest {
             model = "gpt-4.1-mini",
         )
 
-        val auditPackage = factory.buildAuditPromptPackage(
-            context = GraphAuditContext(
+        val qaPackage = factory.buildQaPromptPackage(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -533,21 +533,21 @@ class LlmPromptFactoryTest {
             settings = settings,
         )
 
-        assertTrue(auditPackage.systemPrompt.contains("链路问答"))
-        assertTrue(auditPackage.systemPrompt.contains("不要绕开问题泛化输出通用问答结论"))
-        assertTrue(auditPackage.userPrompt.contains("链路图问答"))
-        assertTrue(auditPackage.userPrompt.contains("\"answer\": \"问答回答\""))
-        assertTrue("链路审计" !in auditPackage.systemPrompt)
-        assertTrue(auditPackage.userPrompt.contains("当前范围边"))
-        assertTrue(auditPackage.userPrompt.contains("相关源码片段"))
-        assertTrue(auditPackage.userPrompt.contains("defaultChannel"))
-        assertTrue(auditPackage.userPrompt.contains("candidateChanges"))
-        assertTrue(auditPackage.userPrompt.contains("\"patchIntent\""))
-        assertTrue(auditPackage.userPrompt.contains("\"graphPatch\""))
-        assertTrue(auditPackage.systemPrompt.contains("必须提供 patchIntent"))
-        assertTrue(auditPackage.systemPrompt.contains("INSERT_NEW_DECISION"))
-        assertTrue(auditPackage.userPrompt.contains("investigationThreads"))
-        assertTrue(auditPackage.userPrompt.contains("\"threadId\""))
+        assertTrue(qaPackage.systemPrompt.contains("链路问答"))
+        assertTrue(qaPackage.systemPrompt.contains("不要绕开问题泛化输出通用问答结论"))
+        assertTrue(qaPackage.userPrompt.contains("链路图问答"))
+        assertTrue(qaPackage.userPrompt.contains("\"answer\": \"问答回答\""))
+        assertTrue("链路审计" !in qaPackage.systemPrompt)
+        assertTrue(qaPackage.userPrompt.contains("当前范围边"))
+        assertTrue(qaPackage.userPrompt.contains("相关源码片段"))
+        assertTrue(qaPackage.userPrompt.contains("defaultChannel"))
+        assertTrue(qaPackage.userPrompt.contains("candidateChanges"))
+        assertTrue(qaPackage.userPrompt.contains("\"patchIntent\""))
+        assertTrue(qaPackage.userPrompt.contains("\"graphPatch\""))
+        assertTrue(qaPackage.systemPrompt.contains("必须提供 patchIntent"))
+        assertTrue(qaPackage.systemPrompt.contains("INSERT_NEW_DECISION"))
+        assertTrue(qaPackage.userPrompt.contains("investigationThreads"))
+        assertTrue(qaPackage.userPrompt.contains("\"threadId\""))
         assertTrue(diffPackage.systemPrompt.contains("差异"))
         assertTrue(diffPackage.userPrompt.contains("当前关注差异"))
         assertTrue(diffPackage.userPrompt.contains("draft.claimType"))
@@ -556,7 +556,7 @@ class LlmPromptFactoryTest {
     }
 
     @Test
-    fun auditPromptPackageSeparatesFactGraphFromEditableGraphSemantics() {
+    fun qaPromptPackageSeparatesFactGraphFromEditableGraphSemantics() {
         val factory = LlmPromptFactory()
         val settings = LinkGraphSettingsState(
             llmEnabled = true,
@@ -577,8 +577,8 @@ class LlmPromptFactoryTest {
             metadata = mapOf("flowchart.kind" to "DECISION"),
         )
 
-        val auditPackage = factory.buildAuditPromptPackage(
-            context = GraphAuditContext(
+        val qaPackage = factory.buildQaPromptPackage(
+            context = GraphQaContext(
                 factGraph = GraphDocument(nodes = listOf(factMethod)),
                 editableGraph = GraphDocument(
                     nodes = listOf(factMethod, editableDecision),
@@ -598,12 +598,12 @@ class LlmPromptFactoryTest {
             settings = settings,
         )
 
-        assertTrue(auditPackage.userPrompt.contains("事实图节点"))
-        assertTrue(auditPackage.userPrompt.contains("当前可编辑图节点"))
-        assertTrue(auditPackage.userPrompt.contains("当前可编辑图连线"))
-        assertTrue(auditPackage.userPrompt.contains("if (delete)"))
-        assertTrue(auditPackage.systemPrompt.contains("不要把当前可编辑图误称为事实图"))
-        assertTrue(auditPackage.systemPrompt.contains("必须明确是来自“事实图”还是“当前可编辑图”"))
+        assertTrue(qaPackage.userPrompt.contains("事实图节点"))
+        assertTrue(qaPackage.userPrompt.contains("当前可编辑图节点"))
+        assertTrue(qaPackage.userPrompt.contains("当前可编辑图连线"))
+        assertTrue(qaPackage.userPrompt.contains("if (delete)"))
+        assertTrue(qaPackage.systemPrompt.contains("不要把当前可编辑图误称为事实图"))
+        assertTrue(qaPackage.systemPrompt.contains("必须明确是来自“事实图”还是“当前可编辑图”"))
     }
 
     @Test

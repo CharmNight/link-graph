@@ -36,9 +36,9 @@ data class WorkflowEditorSnapshot(
     val mermaidIssues: List<MermaidIssue> = emptyList(),
     val diff: GraphDiff? = null,
     val diffGraph: GraphDocument? = null,
-    val auditResult: GraphPatchResult? = null,
+    val qaResult: GraphPatchResult? = null,
     val diffReviewResult: GraphPatchResult? = null,
-    val auditRequestState: AsyncRequestState = AsyncRequestState(),
+    val qaRequestState: AsyncRequestState = AsyncRequestState(),
     val qaRequestRecoveryState: QaRequestRecoveryState = QaRequestRecoveryState(),
     val draftWorkbenchState: DraftWorkbenchState = DraftWorkbenchState(),
     val draftPatchPreview: GraphPatch? = null,
@@ -56,7 +56,7 @@ data class WorkflowEditorSnapshot(
             draftWorkbenchState = draftWorkbenchState,
             draftPatchPreview = draftPatchPreview,
             draftPatchUndo = draftPatchUndo,
-            auditResult = auditResult,
+            qaResult = qaResult,
             diffReviewResult = diffReviewResult,
         )
     }

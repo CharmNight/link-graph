@@ -31,8 +31,8 @@ class RiskResolutionServiceTest {
                     title = "下载路径配置待确认",
                 ),
             ),
-            auditSession = AuditConversationSession(
-                sessionId = "audit-1",
+            qaSession = QaConversationSession(
+                sessionId = "qa-1",
                 scopeKey = "method:fileDownload",
                 investigationThreads = listOf(
                     InvestigationThread(
@@ -51,7 +51,7 @@ class RiskResolutionServiceTest {
         )
 
         assertEquals(RiskResolutionStatus.DEFERRED, updated?.investigationThreads?.single()?.resolution?.status)
-        assertEquals(RiskResolutionStatus.DEFERRED, updated?.auditSession?.investigationThreads?.single()?.resolution?.status)
+        assertEquals(RiskResolutionStatus.DEFERRED, updated?.qaSession?.investigationThreads?.single()?.resolution?.status)
     }
 
     @Test
@@ -67,7 +67,7 @@ class RiskResolutionServiceTest {
                         ),
                     ),
                 ),
-                auditResult = GraphPatchResult(
+                qaResult = GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
                     question = "请判断这里是否遗漏默认兜底",
                     answer = "存在待确认风险",
@@ -105,7 +105,7 @@ class RiskResolutionServiceTest {
                         ),
                     ),
                 ),
-                auditResult = GraphPatchResult(
+                qaResult = GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
                     question = "请判断这里是否遗漏默认兜底",
                     answer = "存在待确认风险",
@@ -143,7 +143,7 @@ class RiskResolutionServiceTest {
                         ),
                     ),
                 ),
-                auditResult = GraphPatchResult(
+                qaResult = GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
                     question = "请判断这里是否遗漏默认兜底",
                     answer = "存在待确认风险",

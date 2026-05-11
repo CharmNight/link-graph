@@ -59,7 +59,7 @@ internal fun GraphEditorStateSnapshot.freeze(): GraphEditorStateSnapshot {
             appliedEdgeIds = lastDraftPatchApplyResult.appliedEdgeIds.toList(),
             appliedTargets = lastDraftPatchApplyResult.appliedTargets.toList(),
         ),
-        auditResult = auditResult?.freeze(),
+        qaResult = qaResult?.freeze(),
         qaRequestRecoveryState = qaRequestRecoveryState.freeze(),
         runtimeArtifactSummaries = runtimeArtifactSummaries.mapValues { (_, summaries) -> summaries.toList() }.toMap(),
         diffReviewResult = diffReviewResult?.freeze(),
@@ -168,7 +168,7 @@ private fun GraphPatchResult.freeze(): GraphPatchResult {
         recentTurnOutcomes = recentTurnOutcomes.map { outcome -> outcome.freeze() },
         sourceContext = sourceContext.map { snippet -> snippet.freeze() },
         evidenceTrace = evidenceTrace.map { trace -> trace.freeze() },
-        auditSession = auditSession?.freeze(),
+        qaSession = qaSession?.freeze(),
         warnings = warnings.toList(),
     )
 }

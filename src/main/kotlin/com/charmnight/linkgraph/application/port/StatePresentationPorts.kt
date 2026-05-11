@@ -107,7 +107,7 @@ enum class GenerationRequestScene {
     CODE_DRAFT,
 }
 
-data class AuditCompletedPresentation(
+data class QaCompletedPresentation(
     val result: GraphPatchResult,
     val requestState: AsyncRequestState,
     val completedRequest: ReplayableQaRequest? = null,
@@ -118,7 +118,7 @@ data class AuditCompletedPresentation(
     val feedbackMessage: String? = null,
 )
 
-data class AuditFailedPresentation(
+data class QaFailedPresentation(
     val message: String,
     val requestState: AsyncRequestState,
     val failedRequest: ReplayableQaRequest? = null,
@@ -156,7 +156,7 @@ data class BeautificationFailedPresentation(
 )
 
 enum class ReviewRequestScene {
-    AUDIT,
+    QA,
     DIFF_REVIEW,
     BEAUTIFICATION,
 }
@@ -262,7 +262,7 @@ sealed interface GraphEditorApplicationEvent {
     data class GeneratedCodeDraftsReady(val presentation: GeneratedCodeDraftsPresentation) : GraphEditorApplicationEvent
     data class CodeDraftRequestFailed(val presentation: GenerationRequestFailurePresentation) : GraphEditorApplicationEvent
 
-    data class AuditCompleted(val presentation: AuditCompletedPresentation) : GraphEditorApplicationEvent
+    data class QaCompleted(val presentation: QaCompletedPresentation) : GraphEditorApplicationEvent
     data class ReviewRequestStarted(val presentation: ReviewRequestStartedPresentation) : GraphEditorApplicationEvent
     data class ReviewStreamingPreview(
         val scene: ReviewRequestScene,
@@ -270,7 +270,7 @@ sealed interface GraphEditorApplicationEvent {
         val previewText: String,
         val finalizingStructuredResult: Boolean,
     ) : GraphEditorApplicationEvent
-    data class AuditFailed(val presentation: AuditFailedPresentation) : GraphEditorApplicationEvent
+    data class QaFailed(val presentation: QaFailedPresentation) : GraphEditorApplicationEvent
     data class DiffReviewCompleted(val presentation: DiffReviewCompletedPresentation) : GraphEditorApplicationEvent
     data class DiffReviewFailed(val presentation: DiffReviewFailedPresentation) : GraphEditorApplicationEvent
     data class BeautificationCompleted(val presentation: BeautificationCompletedPresentation) : GraphEditorApplicationEvent

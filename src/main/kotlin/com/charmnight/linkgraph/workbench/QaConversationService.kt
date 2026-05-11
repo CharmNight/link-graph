@@ -86,7 +86,7 @@ class QaConversationService {
             ?: session.focusTargetId
         val nextMessage = QaConversationMessage(
             messageId = buildMessageId(session, modelTurn),
-            role = AuditMessageRole.ASSISTANT,
+            role = QaMessageRole.ASSISTANT,
             content = modelTurn.answer,
             focusTargetId = focusTargetId,
             turnOutcomeId = latestTurnOutcome?.outcomeId,
@@ -395,7 +395,7 @@ class QaConversationService {
     }
 
     private fun isFollowUpInvestigationQuestion(session: QaConversationSession): Boolean {
-        val lastUserMessage = session.messages.lastOrNull { message -> message.role == AuditMessageRole.USER } ?: return false
+        val lastUserMessage = session.messages.lastOrNull { message -> message.role == QaMessageRole.USER } ?: return false
         return lastUserMessage.content.contains("继续取证")
     }
 }

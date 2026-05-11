@@ -8,17 +8,17 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class AuditConversationServiceTest {
+class QaConversationServiceTest {
     @Test
-    fun `audit turn appends messages and extracts candidate changes without mutating draft`() {
-        val service = AuditConversationService()
+    fun `qa turn appends messages and extracts candidate changes without mutating draft`() {
+        val service = QaConversationService()
 
         val result = service.applyModelTurn(
-            session = AuditConversationSession(
+            session = QaConversationSession(
                 sessionId = "method-upload-file",
                 scopeKey = "method:uploadFile",
             ),
-            modelTurn = AuditModelTurn(
+            modelTurn = QaModelTurn(
                 answer = "建议把上传条件从 a > 10 改成 a < 100。",
                 candidateChanges = listOf(
                     CandidateDraftChange(
@@ -36,7 +36,7 @@ class AuditConversationServiceTest {
         )
 
         assertEquals(1, result.session.messages.size)
-        assertEquals(AuditMessageRole.ASSISTANT, result.session.messages.single().role)
+        assertEquals(QaMessageRole.ASSISTANT, result.session.messages.single().role)
         assertEquals(1, result.newCandidateChanges.size)
         assertEquals(1, result.session.candidateChanges.size)
         assertTrue(result.session.investigationThreads.isEmpty())
@@ -45,8 +45,8 @@ class AuditConversationServiceTest {
     }
 
     @Test
-    fun `audit turn updates matching candidate id incrementally instead of replacing the whole list`() {
-        val service = AuditConversationService()
+    fun `qa turn updates matching candidate id incrementally instead of replacing the whole list`() {
+        val service = QaConversationService()
 
         val existing = CandidateDraftChange(
             changeId = "change-upload-condition",
@@ -56,7 +56,7 @@ class AuditConversationServiceTest {
         )
 
         val result = service.applyModelTurn(
-            session = AuditConversationSession(
+            session = QaConversationSession(
                 sessionId = "method-upload-file",
                 scopeKey = "method:uploadFile",
                 candidateChanges = listOf(
@@ -69,7 +69,7 @@ class AuditConversationServiceTest {
                     ),
                 ),
             ),
-            modelTurn = AuditModelTurn(
+            modelTurn = QaModelTurn(
                 answer = "条件判断建议继续修正为 a < 100。",
                 candidateChanges = listOf(
                     existing.copy(afterState = "if (a < 100)"),
@@ -84,11 +84,11 @@ class AuditConversationServiceTest {
     }
 
     @Test
-    fun `audit turn promotes matching investigation thread when direct-evidence change arrives`() {
-        val service = AuditConversationService()
+    fun `qa turn promotes matching investigation thread when direct-evidence change arrives`() {
+        val service = QaConversationService()
 
         val result = service.applyModelTurn(
-            session = AuditConversationSession(
+            session = QaConversationSession(
                 sessionId = "method-upload-file",
                 scopeKey = "method:uploadFile",
                 investigationThreads = listOf(
@@ -100,7 +100,7 @@ class AuditConversationServiceTest {
                     ),
                 ),
             ),
-            modelTurn = AuditModelTurn(
+            modelTurn = QaModelTurn(
                 answer = "现在已经拿到直接源码证据，可以转成真实变更。",
                 candidateChanges = listOf(
                     CandidateDraftChange(
@@ -122,7 +122,7 @@ class AuditConversationServiceTest {
 
     @Test
     fun `follow-up investigation keeps a single open thread instead of appending semantically overlapping threads`() {
-        val service = AuditConversationService()
+        val service = QaConversationService()
         val originalThread = InvestigationThread(
             threadId = "thread-upload-risk",
             status = InvestigationThreadStatus.OPEN,
@@ -142,20 +142,20 @@ class AuditConversationServiceTest {
         )
 
         val result = service.applyModelTurn(
-            session = AuditConversationSession(
+            session = QaConversationSession(
                 sessionId = "method-upload-file",
                 scopeKey = "method:uploadFile",
                 messages = listOf(
-                    AuditConversationMessage(
-                        messageId = "audit-user-1",
-                        role = AuditMessageRole.USER,
+                    QaConversationMessage(
+                        messageId = "qa-user-1",
+                        role = QaMessageRole.USER,
                         content = "请继续取证：展开上传实现，确认路径校验是否真实存在。",
                     ),
                 ),
                 investigationThreads = listOf(originalThread),
                 focusTargetId = "thread-upload-risk",
             ),
-            modelTurn = AuditModelTurn(
+            modelTurn = QaModelTurn(
                 answer = "继续取证后，仍然只能确认这是同一条上传风险主线，需要补充直接源码证据。",
                 sourceThreadId = "thread-upload-risk",
                 investigationThreads = listOf(
@@ -195,16 +195,16 @@ class AuditConversationServiceTest {
 
     @Test
     fun `follow-up investigation marks no-progress outcome when evidence and thread content do not advance`() {
-        val service = AuditConversationService()
+        val service = QaConversationService()
 
         val result = service.applyModelTurn(
-            session = AuditConversationSession(
+            session = QaConversationSession(
                 sessionId = "method-download",
                 scopeKey = "method:fileDownload",
                 messages = listOf(
-                    AuditConversationMessage(
-                        messageId = "audit-user-1",
-                        role = AuditMessageRole.USER,
+                    QaConversationMessage(
+                        messageId = "qa-user-1",
+                        role = QaMessageRole.USER,
                         content = "请继续取证：确认下载路径配置是如何解析的。",
                     ),
                 ),
@@ -240,7 +240,7 @@ class AuditConversationServiceTest {
                 ),
                 focusTargetId = "thread-download-path",
             ),
-            modelTurn = AuditModelTurn(
+            modelTurn = QaModelTurn(
                 answer = "继续取证后，当前仍然只有原有调用点证据。",
                 sourceThreadId = "thread-download-path",
                 investigationThreads = listOf(

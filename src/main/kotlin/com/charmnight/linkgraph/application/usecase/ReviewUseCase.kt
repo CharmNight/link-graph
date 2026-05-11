@@ -1,8 +1,8 @@
 package com.charmnight.linkgraph.application.usecase
 
 import com.charmnight.linkgraph.application.model.AsyncRequestState
-import com.charmnight.linkgraph.application.port.AuditCompletedPresentation
-import com.charmnight.linkgraph.application.port.AuditFailedPresentation
+import com.charmnight.linkgraph.application.port.QaCompletedPresentation
+import com.charmnight.linkgraph.application.port.QaFailedPresentation
 import com.charmnight.linkgraph.application.port.ApplicationRuntimeArtifactSummary
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.LlmResultSource
@@ -12,17 +12,17 @@ import com.charmnight.linkgraph.workbench.DraftValidationState
 import com.charmnight.linkgraph.workbench.StageEligibilityDecision
 
 sealed interface ReviewUseCaseResult {
-    data class AuditCompleted(val presentation: AuditCompletedPresentation) : ReviewUseCaseResult
-    data class AuditFailed(
-        val presentation: AuditFailedPresentation,
+    data class QaCompleted(val presentation: QaCompletedPresentation) : ReviewUseCaseResult
+    data class QaFailed(
+        val presentation: QaFailedPresentation,
         val fallbackResult: GraphPatchResult,
     ) : ReviewUseCaseResult
 }
 
 internal class ReviewUseCase(
-    private val normalizeAuditResult: (GraphPatchResult, QaModeContext) -> GraphPatchResult,
+    private val normalizeQaResult: (GraphPatchResult, QaModeContext) -> GraphPatchResult,
 ) {
-    fun resolveAuditRuntimeResult(
+    fun resolveQaRuntimeResult(
         runtimeResult: AgentRunResult<GraphPatchResult>,
         modeContext: QaModeContext,
         requestState: AsyncRequestState,
@@ -30,21 +30,21 @@ internal class ReviewUseCase(
         draftValidationState: DraftValidationState?,
         codeEligibilityDecision: StageEligibilityDecision?,
     ): ReviewUseCaseResult {
-        val output = runtimeResult.output?.let { normalizeAuditResult(it, modeContext) }
+        val output = runtimeResult.output?.let { normalizeQaResult(it, modeContext) }
         if (output == null) {
-            val message = auditRuntimeNullOutputMessage()
-            return ReviewUseCaseResult.AuditFailed(
-                presentation = AuditFailedPresentation(
+            val message = qaRuntimeNullOutputMessage()
+            return ReviewUseCaseResult.QaFailed(
+                presentation = QaFailedPresentation(
                     message = message,
                     requestState = requestState.copy(errorMessage = message),
                     failedRequest = modeContext.request,
                     runtimeArtifacts = runtimeArtifacts,
                 ),
-                fallbackResult = buildAuditRuntimeFailureResult(modeContext, runtimeResult),
+                fallbackResult = buildQaRuntimeFailureResult(modeContext, runtimeResult),
             )
         }
-        return ReviewUseCaseResult.AuditCompleted(
-            AuditCompletedPresentation(
+        return ReviewUseCaseResult.QaCompleted(
+            QaCompletedPresentation(
                 result = output,
                 requestState = requestState.copy(promptPreviewAvailable = output.promptPreview.isNotBlank()),
                 completedRequest = modeContext.request,
@@ -55,9 +55,9 @@ internal class ReviewUseCase(
         )
     }
 
-    private fun auditRuntimeNullOutputMessage(): String = "问答失败：runtime 未返回结果。"
+    private fun qaRuntimeNullOutputMessage(): String = "问答失败：runtime 未返回结果。"
 
-    private fun buildAuditRuntimeFailureResult(
+    private fun buildQaRuntimeFailureResult(
         modeContext: QaModeContext,
         result: AgentRunResult<GraphPatchResult>,
     ): GraphPatchResult {
@@ -67,7 +67,7 @@ internal class ReviewUseCase(
             question = modeContext.question,
             requestedMode = modeContext.requestedMode,
             effectiveMode = modeContext.effectiveMode,
-            answer = auditRuntimeNullOutputMessage(),
+            answer = qaRuntimeNullOutputMessage(),
             promptPreview = "",
             warnings = listOf("runtime 未返回结果，failureReason=$failureReason。"),
         )

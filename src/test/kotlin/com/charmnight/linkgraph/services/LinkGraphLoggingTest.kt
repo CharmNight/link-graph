@@ -67,7 +67,7 @@ class LinkGraphLoggingTest {
     }
 
     @Test
-    fun qaRuntimeLogsUseQaWordingInsteadOfAuditWording() {
+    fun qaRuntimeLogsUseQaWordingInsteadOfObsoleteWording() {
         val projectRoot = Path.of(System.getProperty("user.dir"))
         val graphBrowserPanel = Files.readString(
             projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/ui/GraphBrowserPanel.kt"),

@@ -6,11 +6,11 @@ import com.charmnight.linkgraph.model.GraphNode
 /**
  * 负责计算图问答时实际参与分析的节点与边范围。
  */
-internal object GraphAuditScopeResolver {
+internal object GraphQaScopeResolver {
     /**
      * 选择问答时优先使用的图。
      */
-    private fun scopeGraph(context: GraphAuditContext): com.charmnight.linkgraph.model.GraphDocument {
+    private fun scopeGraph(context: GraphQaContext): com.charmnight.linkgraph.model.GraphDocument {
         // 问答范围与 patch 落点一律基于当前可编辑图；缺省时再回退到事实图。
         return context.editableGraph.takeIf { it.nodes.isNotEmpty() || it.edges.isNotEmpty() } ?: context.factGraph
     }
@@ -18,7 +18,7 @@ internal object GraphAuditScopeResolver {
     /**
      * 构建当前作用域内的节点索引。
      */
-    private fun scopeNodeById(context: GraphAuditContext): LinkedHashMap<String, GraphNode> {
+    private fun scopeNodeById(context: GraphQaContext): LinkedHashMap<String, GraphNode> {
         return linkedMapOf<String, GraphNode>().apply {
             // 使用有序映射保存节点，便于后续按加入顺序返回。
             scopeGraph(context).nodes.forEach { node -> put(node.id, node) }
@@ -28,14 +28,14 @@ internal object GraphAuditScopeResolver {
     /**
      * 获取当前作用域图中的全部边。
      */
-    private fun scopeEdges(context: GraphAuditContext): List<GraphEdge> {
+    private fun scopeEdges(context: GraphQaContext): List<GraphEdge> {
         return scopeGraph(context).edges
     }
 
     /**
      * 解析问答范围内的节点集合。
      */
-    fun resolveScopeNodes(context: GraphAuditContext): List<GraphNode> {
+    fun resolveScopeNodes(context: GraphQaContext): List<GraphNode> {
         // 未选中节点时，直接使用整个作用域图。
         val currentScopeGraph = scopeGraph(context)
         if (context.selectedNodeIds.isEmpty()) {
@@ -68,7 +68,7 @@ internal object GraphAuditScopeResolver {
      * 根据节点范围解析对应的边集合。
      */
     fun resolveScopeEdges(
-        context: GraphAuditContext,
+        context: GraphQaContext,
         scopeNodes: List<GraphNode> = resolveScopeNodes(context),
     ): List<GraphEdge> {
         // 先把作用域节点转成集合，后续做边过滤。

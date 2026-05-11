@@ -53,7 +53,7 @@ class LinkGraphBoundaryTest {
             Path.of("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorViewSupport.kt"),
         )
 
-        assertFalse(qaCapability.contains("legacyAuditExecutor"))
+        assertFalse(qaCapability.contains("legacyQaExecutor"))
         assertFalse(qaCapability.contains("delegate-legacy-audit-service"))
         assertFalse(planCapability.contains("legacyPlanExecutor"))
         assertFalse(planCapability.contains("delegate-legacy-plan-service"))
@@ -83,8 +83,8 @@ class LinkGraphBoundaryTest {
         val qaModels = Files.readString(
             Path.of("src/main/kotlin/com/charmnight/linkgraph/workbench/QaModels.kt"),
         )
-        val graphAuditPatchService = Files.readString(
-            Path.of("src/main/kotlin/com/charmnight/linkgraph/llm/GraphAuditPatchService.kt"),
+        val graphQaPatchService = Files.readString(
+            Path.of("src/main/kotlin/com/charmnight/linkgraph/llm/GraphQaPatchService.kt"),
         )
         val promptFactory = Files.readString(
             Path.of("src/main/kotlin/com/charmnight/linkgraph/llm/LlmPromptFactory.kt"),
@@ -107,8 +107,8 @@ class LinkGraphBoundaryTest {
         assertFalse(reviewWorkflow.contains("investigationLeads = turnResult.session.investigationLeads"))
         assertFalse(reviewWorkflow.contains("newInvestigationLeads"))
         assertFalse(qaModels.contains("QaInvestigationLead"))
-        assertFalse(graphAuditPatchService.contains("AuditInvestigationLead"))
-        assertFalse(graphAuditPatchService.contains("investigationLeads"))
+        assertFalse(graphQaPatchService.contains("AuditInvestigationLead"))
+        assertFalse(graphQaPatchService.contains("investigationLeads"))
         assertFalse(promptFactory.contains("investigationLeads"))
         assertFalse(promptFactory.contains("leadId"))
         assertFalse(parser.contains("investigationLeads"))
@@ -134,7 +134,7 @@ class LinkGraphBoundaryTest {
         )
         val apiSource = Files.readString(Path.of("web/src/app/api.ts"))
         val appSource = Files.readString(Path.of("web/src/app/App.tsx"))
-        val auditTabSource = Files.readString(Path.of("web/src/app/workbench/AuditTab.tsx"))
+        val qaTabSource = Files.readString(Path.of("web/src/app/workbench/AuditTab.tsx"))
         val typesSource = Files.readString(Path.of("web/src/app/types.ts"))
         val investigationThreadListSource = Files.readString(Path.of("web/src/app/workbench/InvestigationThreadList.tsx"))
         val workbenchSectionsSource = Files.readString(Path.of("web/src/app/workbench/workbenchSections.ts"))
@@ -152,11 +152,11 @@ class LinkGraphBoundaryTest {
         assertFalse(appSource.contains("handleSelectAuditLead"))
         assertFalse(appSource.contains("handleInvestigateAuditLead"))
         assertFalse(appSource.contains("audit.investigation-leads"))
-        assertFalse(auditTabSource.contains("selectedLeadId"))
-        assertFalse(auditTabSource.contains("InvestigationLeadList"))
-        assertFalse(auditTabSource.contains("onSelectLead"))
-        assertFalse(auditTabSource.contains("onInvestigateLead"))
-        assertFalse(auditTabSource.contains("audit.investigation-leads"))
+        assertFalse(qaTabSource.contains("selectedLeadId"))
+        assertFalse(qaTabSource.contains("InvestigationLeadList"))
+        assertFalse(qaTabSource.contains("onSelectLead"))
+        assertFalse(qaTabSource.contains("onInvestigateLead"))
+        assertFalse(qaTabSource.contains("audit.investigation-leads"))
         assertFalse(typesSource.contains("INVESTIGATE_LEAD"))
         assertFalse(typesSource.contains("sourceLeadId"))
         assertFalse(typesSource.contains("selectedLeadId"))

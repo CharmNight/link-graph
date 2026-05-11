@@ -10,12 +10,18 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.ui.GraphEditorStateService
+import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.nio.file.Files
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class LinkGraphProjectServiceBeautificationTest : BasePlatformTestCase() {
+    override fun setUp() {
+        super.setUp()
+        project.registerLinkGraphProjectCommandServicesForTest()
+    }
+
     fun testRequestGraphBeautificationBuildsPromptFromVisibleGraphFullGraphAndSourceSnippet() {
         val sourceFile = Files.createTempFile("linkgraph-beautification", ".java")
         val sourceCode = """
@@ -86,13 +92,16 @@ class LinkGraphProjectServiceBeautificationTest : BasePlatformTestCase() {
         )
 
         val applicationService = project.linkGraphApplicationServiceForTest()
-        val result = applicationService.requestGraphBeautification(
+        applicationService.requestGraphBeautificationAsync(
             goal = "把当前方法链路讲清楚",
             preferredStyle = "汇报版",
             explanationFocus = "先讲当前方法内部",
         )
 
-        val snapshot = stateService.snapshot()
+        val snapshot = waitForSnapshot(stateService) {
+            it.graphBeautificationRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
+        }
+        val result = requireNotNull(snapshot.graphBeautificationResult)
         assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertEquals(result, snapshot.graphBeautificationResult)
         assertEquals("graphBeautificationResult", snapshot.lastMessageType)
@@ -153,10 +162,15 @@ class LinkGraphProjectServiceBeautificationTest : BasePlatformTestCase() {
             selectedMethodSignature = methodSignature,
         )
 
-        val result = project.linkGraphApplicationServiceForTest().requestGraphBeautification(
+        project.linkGraphApplicationServiceForTest().requestGraphBeautificationAsync(
             goal = "确认源码片段完整性",
             preferredStyle = "审阅版",
             explanationFocus = "只看当前方法签名片段",
+        )
+        val result = requireNotNull(
+            waitForSnapshot(stateService) {
+                it.graphBeautificationRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
+            }.graphBeautificationResult,
         )
 
         assertTrue(result.promptPreview.contains("HttpServletResponse response"))
@@ -210,13 +224,30 @@ class LinkGraphProjectServiceBeautificationTest : BasePlatformTestCase() {
         )
 
         val applicationService = project.linkGraphApplicationServiceForTest()
-        val result = applicationService.requestGraphBeautification(
+        applicationService.requestGraphBeautificationAsync(
             goal = "解释当前工作图",
             preferredStyle = "审阅版",
             explanationFocus = "只解释当前画布内容",
         )
+        val result = requireNotNull(
+            waitForSnapshot(stateService) {
+                it.graphBeautificationRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
+            }.graphBeautificationResult,
+        )
 
         assertTrue(result.promptPreview.contains("人工补充说明"))
         assertTrue(!result.promptPreview.contains("FallbackGuard.handle"))
+    }
+
+    private fun waitForSnapshot(
+        stateService: GraphEditorStateService,
+        predicate: (com.charmnight.linkgraph.ui.GraphEditorStateSnapshot) -> Boolean,
+    ): com.charmnight.linkgraph.ui.GraphEditorStateSnapshot {
+        var latest = stateService.snapshot()
+        PlatformTestUtil.waitWithEventsDispatching("等待链路讲解状态收敛", {
+            latest = stateService.snapshot()
+            predicate(latest)
+        }, 5000)
+        return latest
     }
 }

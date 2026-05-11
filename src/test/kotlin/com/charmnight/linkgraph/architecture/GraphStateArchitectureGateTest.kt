@@ -281,7 +281,6 @@ class GraphStateArchitectureGateTest {
         requiredUseCases.forEach { (workflowName, className) ->
             val workflowPaths = when (workflowName) {
                 "generation" -> listOf(
-                    "src/main/kotlin/com/charmnight/linkgraph/application/workflow/GenerationWorkflow.kt",
                     "src/main/kotlin/com/charmnight/linkgraph/application/workflow/generation/GenerationPlanWorkflow.kt",
                     "src/main/kotlin/com/charmnight/linkgraph/application/workflow/generation/CodeDraftGenerationWorkflow.kt",
                 )

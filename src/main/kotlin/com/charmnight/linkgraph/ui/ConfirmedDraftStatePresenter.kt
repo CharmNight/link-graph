@@ -33,13 +33,13 @@ class ConfirmedDraftStatePresenter(
                     selectedMethodSignature = baseSnapshot.selectedMethodSignature,
                     workingGraphDirty = result.draftState.draftChanges.isNotEmpty(),
                 )
-                stateService.asyncRequests.markAuditResult(
-                    result.updatedAuditResult,
-                    stateService.snapshot().auditRequestState,
+                stateService.asyncRequests.markQaResult(
+                    result.updatedQaResult,
+                    stateService.snapshot().qaRequestState,
                 )
                 val refreshedSnapshot = RiskResolutionSnapshot(
                     draftWorkbenchState = result.draftState,
-                    auditResult = result.updatedAuditResult,
+                    qaResult = result.updatedQaResult,
                 )
                 stateService.workbench.markDraftValidationState(draftValidationEvaluator(refreshedSnapshot))
                 stateService.workbench.markCodeEligibilityDecision(codeEligibilityEvaluator(refreshedSnapshot))
@@ -68,13 +68,13 @@ class ConfirmedDraftStatePresenter(
                     selectedMethodSignature = baseSnapshot.selectedMethodSignature,
                     workingGraphDirty = result.draftState.draftChanges.isNotEmpty(),
                 )
-                stateService.asyncRequests.markAuditResult(
-                    result.updatedAuditResult,
-                    stateService.snapshot().auditRequestState,
+                stateService.asyncRequests.markQaResult(
+                    result.updatedQaResult,
+                    stateService.snapshot().qaRequestState,
                 )
                 val refreshedSnapshot = RiskResolutionSnapshot(
                     draftWorkbenchState = result.draftState,
-                    auditResult = result.updatedAuditResult,
+                    qaResult = result.updatedQaResult,
                 )
                 stateService.workbench.markDraftValidationState(draftValidationEvaluator(refreshedSnapshot))
                 stateService.workbench.markCodeEligibilityDecision(codeEligibilityEvaluator(refreshedSnapshot))

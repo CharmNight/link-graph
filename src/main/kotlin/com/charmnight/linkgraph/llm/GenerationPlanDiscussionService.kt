@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.llm
 
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.workbench.AuditMessageRole
+import com.charmnight.linkgraph.workbench.QaMessageRole
 import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionMessage
 import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionResult
 import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession
@@ -189,13 +189,13 @@ class GenerationPlanDiscussionService(
         val nextMessages = existingMessages + listOf(
             GenerationPlanDiscussionMessage(
                 messageId = "$sessionId-user-${existingMessages.size + 1}",
-                role = AuditMessageRole.USER,
+                role = QaMessageRole.USER,
                 content = question,
                 focusItemId = focusItemId,
             ),
             GenerationPlanDiscussionMessage(
                 messageId = "$sessionId-assistant-${existingMessages.size + 2}",
-                role = AuditMessageRole.ASSISTANT,
+                role = QaMessageRole.ASSISTANT,
                 content = answer,
                 focusItemId = focusItemId,
             ),

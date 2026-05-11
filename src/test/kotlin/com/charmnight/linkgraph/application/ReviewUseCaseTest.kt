@@ -24,7 +24,7 @@ class ReviewUseCaseTest {
     fun mapsMissingRuntimeOutputToFailedResultAndFallbackPatch() {
         val context = modeContext()
 
-        val result = ReviewUseCase { output, _ -> output }.resolveAuditRuntimeResult(
+        val result = ReviewUseCase { output, _ -> output }.resolveQaRuntimeResult(
             runtimeResult = AgentRunResult(
                 finalState = runState(AgentRunFailureReason.EVIDENCE_INSUFFICIENT),
                 output = null,
@@ -36,7 +36,7 @@ class ReviewUseCaseTest {
             codeEligibilityDecision = null,
         )
 
-        val failed = assertIs<ReviewUseCaseResult.AuditFailed>(result)
+        val failed = assertIs<ReviewUseCaseResult.QaFailed>(result)
         assertEquals("问答失败：runtime 未返回结果。", failed.presentation.message)
         assertEquals(context.question, failed.fallbackResult.question)
         assertTrue(failed.fallbackResult.warnings.single().contains("EVIDENCE_INSUFFICIENT"))
@@ -51,7 +51,7 @@ class ReviewUseCaseTest {
             promptPreview = "prompt",
         )
         val result = ReviewUseCase { patch, _ -> patch.copy(answer = patch.answer + " normalized") }
-            .resolveAuditRuntimeResult(
+            .resolveQaRuntimeResult(
                 runtimeResult = AgentRunResult(finalState = runState(), output = output),
                 modeContext = modeContext(),
                 requestState = AsyncRequestState.succeeded(scene = "问答"),
@@ -60,7 +60,7 @@ class ReviewUseCaseTest {
                 codeEligibilityDecision = null,
             )
 
-        val completed = assertIs<ReviewUseCaseResult.AuditCompleted>(result)
+        val completed = assertIs<ReviewUseCaseResult.QaCompleted>(result)
         assertEquals("answer normalized", completed.presentation.result.answer)
         assertEquals(true, completed.presentation.requestState.promptPreviewAvailable)
     }

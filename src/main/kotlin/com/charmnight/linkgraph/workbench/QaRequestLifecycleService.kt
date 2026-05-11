@@ -5,7 +5,7 @@ import java.util.UUID
 
 class QaRequestLifecycleService {
     fun buildReplayableRequest(
-        auditResult: GraphPatchResult?,
+        qaResult: GraphPatchResult?,
         question: String,
         selectedNodeIds: List<String>,
         sourceThreadId: String?,
@@ -18,7 +18,7 @@ class QaRequestLifecycleService {
             mode = mode,
             selectedNodeIds = selectedNodeIds,
             sourceThreadId = sourceThreadId,
-            baseSession = auditResult?.auditSession,
+            baseSession = qaResult?.qaSession,
         )
     }
 

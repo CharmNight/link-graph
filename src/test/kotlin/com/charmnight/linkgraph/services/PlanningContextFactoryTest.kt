@@ -27,7 +27,7 @@ import kotlin.test.assertTrue
 
 class PlanningContextFactoryTest {
     @Test
-    fun buildAuditGraphsPreservesReferenceFactGraphWhileUsingWorkingGraphAsEditableGraph() {
+    fun buildQaGraphsPreservesReferenceFactGraphWhileUsingWorkingGraphAsEditableGraph() {
         val factGraph = GraphDocument(
             nodes = listOf(
                 GraphNode(
@@ -50,19 +50,19 @@ class PlanningContextFactoryTest {
             workingGraph = editableGraph,
         )
 
-        val auditGraphs = PlanningContextFactory(
+        val qaGraphs = PlanningContextFactory(
             graphDiffer = GraphDiffer(),
             syncPreviewPlanner = SyncPreviewPlanner(),
             graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
             settingsProvider = { LinkGraphSettingsState() },
-        ).buildAuditGraphs(
+        ).buildQaGraphs(
             snapshot = snapshot.toWorkflowEditorSnapshot(),
             selectedNodeIds = emptyList(),
             collectSourceEvidence = false,
         )
 
-        assertEquals(factGraph, auditGraphs.factGraph)
-        assertEquals(editableGraph, auditGraphs.editableGraph)
+        assertEquals(factGraph, qaGraphs.factGraph)
+        assertEquals(editableGraph, qaGraphs.editableGraph)
     }
 
     @Test

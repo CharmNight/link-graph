@@ -27,9 +27,9 @@ internal fun GraphEditorStateSnapshot.toWorkflowEditorSnapshot(): WorkflowEditor
         mermaidIssues = mermaidIssues,
         diff = diff,
         diffGraph = diffGraph,
-        auditResult = auditResult,
+        qaResult = qaResult,
         diffReviewResult = diffReviewResult,
-        auditRequestState = auditRequestState,
+        qaRequestState = qaRequestState,
         qaRequestRecoveryState = qaRequestRecoveryState,
         draftWorkbenchState = draftWorkbenchState,
         draftPatchPreview = draftPatchPreview,
@@ -80,7 +80,7 @@ internal fun GraphEditorStateSnapshot.toApplicationSnapshot(): ApplicationSnapsh
                 patchPreview = undoState.patchPreview,
             )
         },
-        auditResult = auditResult,
+        qaResult = qaResult,
         diffReviewResult = diffReviewResult,
     )
 }

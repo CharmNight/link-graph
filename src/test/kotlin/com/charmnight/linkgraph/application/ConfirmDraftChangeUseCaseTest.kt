@@ -38,7 +38,7 @@ class ConfirmDraftChangeUseCaseTest {
             GraphPatchApplyService(),
         ).confirm(
             snapshot = snapshot,
-            auditResult = GraphPatchResult(
+            qaResult = GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "q",
                 answer = "a",
@@ -51,7 +51,7 @@ class ConfirmDraftChangeUseCaseTest {
         val confirmed = assertIs<ConfirmDraftChangeUseCaseResult.Confirmed>(result)
         assertEquals("change-download", confirmed.confirmedEntry?.sourceChangeId)
         assertEquals(1, confirmed.draftState.draftChanges.size)
-        assertEquals(CandidateDraftChangeStatus.CONFIRMED, confirmed.updatedAuditResult.candidateChanges.single().status)
+        assertEquals(CandidateDraftChangeStatus.CONFIRMED, confirmed.updatedQaResult.candidateChanges.single().status)
         assertEquals(0, snapshot.draftWorkbenchState.draftChanges.size)
     }
 
@@ -62,7 +62,7 @@ class ConfirmDraftChangeUseCaseTest {
             GraphPatchApplyService(),
         ).confirm(
             snapshot = ApplicationSnapshot(),
-            auditResult = GraphPatchResult(
+            qaResult = GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "q",
                 answer = "a",

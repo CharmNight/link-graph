@@ -12,9 +12,9 @@ import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.workbench.AuditConversationMessage
-import com.charmnight.linkgraph.workbench.AuditConversationSession
-import com.charmnight.linkgraph.workbench.AuditMessageRole
+import com.charmnight.linkgraph.workbench.QaConversationMessage
+import com.charmnight.linkgraph.workbench.QaConversationSession
+import com.charmnight.linkgraph.workbench.QaMessageRole
 import com.charmnight.linkgraph.workbench.CandidatePatchIntentMode
 import com.charmnight.linkgraph.workbench.InvestigationThread
 import com.charmnight.linkgraph.workbench.InvestigationThreadStatus
@@ -27,7 +27,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class GraphAuditPatchServiceTest {
+class GraphQaPatchServiceTest {
     @Test
     fun answerModeDropsRemoteCandidateChangesAndInvestigationThreads() {
         val gateway = object : LlmGateway {
@@ -85,8 +85,8 @@ class GraphAuditPatchServiceTest {
             }
         }
 
-        val result = GraphAuditPatchService(gateway = gateway).audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService(gateway = gateway).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -185,8 +185,8 @@ class GraphAuditPatchServiceTest {
             }
         }
 
-        val result = GraphAuditPatchService(gateway = gateway).audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService(gateway = gateway).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -209,8 +209,8 @@ class GraphAuditPatchServiceTest {
                 apiKey = "token",
                 model = "gpt-test",
             ),
-            session = AuditConversationSession(
-                sessionId = "audit-review",
+            session = QaConversationSession(
+                sessionId = "qa-review",
                 scopeKey = "method:review-target",
             ),
             sourceThreadId = null,
@@ -289,8 +289,8 @@ class GraphAuditPatchServiceTest {
             }
         }
 
-        val result = GraphAuditPatchService(gateway = gateway).audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService(gateway = gateway).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -346,9 +346,9 @@ class GraphAuditPatchServiceTest {
     }
 
     @Test
-    fun buildsMockAuditAnswerAndPatchPreview() {
-        val result = GraphAuditPatchService().audit(
-            context = GraphAuditContext(
+    fun buildsMockQaAnswerAndPatchPreview() {
+        val result = GraphQaPatchService().answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -404,16 +404,16 @@ class GraphAuditPatchServiceTest {
         assertEquals(1, result.sourceContext.size)
         assertEquals(1, result.evidenceTrace.size)
         assertEquals("本轮问答直接附带的源码片段", result.evidenceTrace.first().reason)
-        assertNotNull(result.auditSession)
-        assertEquals(2, result.auditSession.messages.size)
-        assertEquals(AuditMessageRole.USER, result.auditSession.messages.first().role)
-        assertEquals(AuditMessageRole.ASSISTANT, result.auditSession.messages.last().role)
+        assertNotNull(result.qaSession)
+        assertEquals(2, result.qaSession.messages.size)
+        assertEquals(QaMessageRole.USER, result.qaSession.messages.first().role)
+        assertEquals(QaMessageRole.ASSISTANT, result.qaSession.messages.last().role)
     }
 
     @Test
     fun explanationStyleQuestionReturnsExplanationWithoutGenericCandidateChangesInMockMode() {
-        val result = GraphAuditPatchService().audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService().answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -456,8 +456,8 @@ class GraphAuditPatchServiceTest {
 
     @Test
     fun explicitChangeRequestWithDirectSourceEvidenceBuildsCandidateChangeInMockMode() {
-        val result = GraphAuditPatchService().audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService().answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -514,8 +514,8 @@ class GraphAuditPatchServiceTest {
 
     @Test
     fun analysisStyleQuestionDoesNotPromoteDirectSourceEvidenceToCandidateChangeInMockMode() {
-        val result = GraphAuditPatchService().audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService().answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -564,7 +564,7 @@ class GraphAuditPatchServiceTest {
     }
 
     @Test
-    fun requestsRemoteAuditWhenOpenAiCompatibleProviderIsReady() {
+    fun requestsRemoteQaWhenOpenAiCompatibleProviderIsReady() {
         val gateway = object : LlmGateway {
             override fun generate(request: LlmRequest): LlmResponse {
                 return LlmResponse(
@@ -606,8 +606,8 @@ class GraphAuditPatchServiceTest {
             }
         }
 
-        val result = GraphAuditPatchService(gateway = gateway).audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService(gateway = gateway).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -710,8 +710,8 @@ class GraphAuditPatchServiceTest {
             }
         }
 
-        val result = GraphAuditPatchService(gateway = gateway).audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService(gateway = gateway).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -793,8 +793,8 @@ class GraphAuditPatchServiceTest {
             }
         }
 
-        val result = GraphAuditPatchService(gateway = gateway).audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService(gateway = gateway).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -849,7 +849,7 @@ class GraphAuditPatchServiceTest {
     }
 
     @Test
-    fun `follow-up audit with source thread id merges weak evidence back into the original risk thread`() {
+    fun `follow-up qa with source thread id merges weak evidence back into the original risk thread`() {
         val gateway = object : LlmGateway {
             override fun generate(request: LlmRequest): LlmResponse {
                 return LlmResponse(
@@ -890,8 +890,8 @@ class GraphAuditPatchServiceTest {
             }
         }
 
-        val result = GraphAuditPatchService(gateway = gateway).audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService(gateway = gateway).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -929,13 +929,13 @@ class GraphAuditPatchServiceTest {
                 apiKey = "token",
                 model = "gpt-test",
             ),
-            session = AuditConversationSession(
-                sessionId = "audit-upload",
+            session = QaConversationSession(
+                sessionId = "qa-upload",
                 scopeKey = "flow-action:upload",
                 messages = listOf(
-                    AuditConversationMessage(
-                        messageId = "audit-upload-user-1",
-                        role = AuditMessageRole.USER,
+                    QaConversationMessage(
+                        messageId = "qa-upload-user-1",
+                        role = QaMessageRole.USER,
                         content = "请继续取证：展开 upload 实现。",
                         focusTargetId = "thread-upload-risk",
                     ),
@@ -970,7 +970,7 @@ class GraphAuditPatchServiceTest {
         assertEquals("上传路径校验仍待确认", result.investigationThreads.single().title)
         assertEquals(2, result.investigationThreads.single().evidence.size)
         assertEquals(InvestigationTurnOutcomeStatus.OPEN_WITH_PROGRESS, result.latestTurnOutcome?.status)
-        assertEquals("thread-upload-risk", result.auditSession?.focusTargetId)
+        assertEquals("thread-upload-risk", result.qaSession?.focusTargetId)
     }
 
     @Test
@@ -1017,8 +1017,8 @@ class GraphAuditPatchServiceTest {
             }
         }
 
-        val result = GraphAuditPatchService(gateway = gateway).audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService(gateway = gateway).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -1110,8 +1110,8 @@ class GraphAuditPatchServiceTest {
             }
         }
 
-        val result = GraphAuditPatchService(gateway = gateway).audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService(gateway = gateway).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -1182,8 +1182,8 @@ class GraphAuditPatchServiceTest {
             }
         }
 
-        val result = GraphAuditPatchService(gateway = gateway).audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService(gateway = gateway).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -1276,8 +1276,8 @@ class GraphAuditPatchServiceTest {
             }
         }
 
-        val result = GraphAuditPatchService(gateway = gateway).audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService(gateway = gateway).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -1376,8 +1376,8 @@ class GraphAuditPatchServiceTest {
             }
         }
 
-        val result = GraphAuditPatchService(gateway = gateway).audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService(gateway = gateway).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -1449,7 +1449,7 @@ class GraphAuditPatchServiceTest {
     }
 
     @Test
-    fun retriesOnceWhenRemoteAuditResponseIsNotStructuredJson() {
+    fun retriesOnceWhenRemoteQaResponseIsNotStructuredJson() {
         val requests = mutableListOf<LlmRequest>()
         val gateway = object : LlmGateway {
             private var callCount = 0
@@ -1472,7 +1472,7 @@ class GraphAuditPatchServiceTest {
                                 "summary": "远程问答草稿",
                                 "operations": [
                                   {
-                                    "id": "remote-audit-add-node",
+                                    "id": "remote-qa-add-node",
                                     "action": "ADD_NODE",
                                     "elementKind": "NODE",
                                     "elementId": "doc:remote-fallback",
@@ -1500,8 +1500,8 @@ class GraphAuditPatchServiceTest {
             }
         }
 
-        val result = GraphAuditPatchService(gateway = gateway).audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService(gateway = gateway).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -1585,8 +1585,8 @@ class GraphAuditPatchServiceTest {
             }
         }
 
-        val result = GraphAuditPatchService(gateway = gateway).audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService(gateway = gateway).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -1613,9 +1613,9 @@ class GraphAuditPatchServiceTest {
     }
 
     @Test
-    fun retriesOnceWhenRemoteAuditRequestTimesOut() {
+    fun retriesOnceWhenRemoteQaRequestTimesOut() {
         var callCount = 0
-        val result = GraphAuditPatchService(
+        val result = GraphQaPatchService(
             gateway = object : LlmGateway {
                 override fun generate(request: LlmRequest): LlmResponse {
                     callCount += 1
@@ -1631,7 +1631,7 @@ class GraphAuditPatchServiceTest {
                                 "summary": "远程问答草稿",
                                 "operations": [
                                   {
-                                    "id": "remote-audit-add-node",
+                                    "id": "remote-qa-add-node",
                                     "action": "ADD_NODE",
                                     "elementKind": "NODE",
                                     "elementId": "doc:remote-fallback",
@@ -1657,8 +1657,8 @@ class GraphAuditPatchServiceTest {
                     )
                 }
             },
-        ).audit(
-            context = GraphAuditContext(
+        ).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -1687,17 +1687,17 @@ class GraphAuditPatchServiceTest {
     }
 
     @Test
-    fun reportsRetryAttemptWhenRemoteAuditStillTimesOutAfterRetry() {
+    fun reportsRetryAttemptWhenRemoteQaStillTimesOutAfterRetry() {
         var callCount = 0
-        val result = GraphAuditPatchService(
+        val result = GraphQaPatchService(
             gateway = object : LlmGateway {
                 override fun generate(request: LlmRequest): LlmResponse {
                     callCount += 1
                     throw HttpTimeoutException("request timed out")
                 }
             },
-        ).audit(
-            context = GraphAuditContext(
+        ).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -1726,15 +1726,15 @@ class GraphAuditPatchServiceTest {
     }
 
     @Test
-    fun fallsBackToMockAuditWhenRemoteAuditFails() {
+    fun fallsBackToMockQaWhenRemoteQaFails() {
         val gateway = object : LlmGateway {
             override fun generate(request: LlmRequest): LlmResponse {
                 error("Remote LLM request failed with HTTP 503 (model_not_found): No available channel for model gpt-5.4")
             }
         }
 
-        val result = GraphAuditPatchService(gateway = gateway).audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService(gateway = gateway).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -1762,9 +1762,9 @@ class GraphAuditPatchServiceTest {
     }
 
     @Test
-    fun explainsHowToFixRemoteAuditConfigurationBeforeUse() {
-        val result = GraphAuditPatchService().audit(
-            context = GraphAuditContext(
+    fun explainsHowToFixRemoteQaConfigurationBeforeUse() {
+        val result = GraphQaPatchService().answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -1794,9 +1794,9 @@ class GraphAuditPatchServiceTest {
     }
 
     @Test
-    fun usesDraftOnlySelectedNodeAsAuditScopeWhenManualNodeIsNotInFactGraph() {
+    fun usesDraftOnlySelectedNodeAsQaScopeWhenManualNodeIsNotInFactGraph() {
         val manualNode = GraphNode(
-            id = "doc:manual-audit-note",
+            id = "doc:manual-qa-note",
             type = NodeType.DOC_PAGE,
             title = "人工测试节点",
             doc = "这是只存在于草稿层的手工说明节点。",
@@ -1808,8 +1808,8 @@ class GraphAuditPatchServiceTest {
             title = "OrderService.place",
             sourceTag = GraphSourceTag.FACT,
         )
-        val result = GraphAuditPatchService().audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService().answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(nodes = listOf(factNode)),
                 editableGraph = GraphDocument(
                     nodes = listOf(factNode, manualNode),
@@ -1882,8 +1882,8 @@ class GraphAuditPatchServiceTest {
             }
         }
 
-        val result = GraphAuditPatchService(gateway = gateway).audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService(gateway = gateway).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -1973,8 +1973,8 @@ class GraphAuditPatchServiceTest {
             }
         }
 
-        val result = GraphAuditPatchService(gateway = gateway).audit(
-            context = GraphAuditContext(
+        val result = GraphQaPatchService(gateway = gateway).answer(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(

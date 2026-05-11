@@ -16,7 +16,7 @@ import kotlin.test.assertEquals
 
 class ConfirmedDraftStatePresenterTest {
     @Test
-    fun mapsConfirmedResultToDraftGraphAuditAndFeedbackState() {
+    fun mapsConfirmedResultToDraftGraphQaAndFeedbackState() {
         val stateService = GraphEditorStateService()
         val presenter = ConfirmedDraftStatePresenter(
             stateService = stateService,
@@ -48,7 +48,7 @@ class ConfirmedDraftStatePresenterTest {
                 ),
             ),
             rebuiltGraph = GraphDocument(),
-            updatedAuditResult = com.charmnight.linkgraph.llm.GraphPatchResult(
+            updatedQaResult = com.charmnight.linkgraph.llm.GraphPatchResult(
                 source = com.charmnight.linkgraph.llm.LlmResultSource.LOCAL_RULE,
                 question = "q",
                 answer = "a",
@@ -60,7 +60,7 @@ class ConfirmedDraftStatePresenterTest {
 
         val snapshot = stateService.snapshot()
         assertEquals(1, snapshot.draftWorkbenchState.draftChanges.size)
-        assertEquals("q", snapshot.auditResult?.question)
+        assertEquals("q", snapshot.qaResult?.question)
         assertEquals(DraftValidationStatus.READY, snapshot.draftValidationState?.status)
         assertEquals(true, snapshot.codeEligibilityDecision?.allowed)
         assertEquals(OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)

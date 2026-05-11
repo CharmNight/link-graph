@@ -260,8 +260,8 @@ class LlmPromptFactory(
     }
 
     /** 构造链路问答场景的提示词包。 */
-    fun buildAuditPromptPackage(
-        context: GraphAuditContext,
+    fun buildQaPromptPackage(
+        context: GraphQaContext,
         question: String,
         settings: LinkGraphSettingsState,
         session: QaConversationSession? = null,
@@ -269,9 +269,9 @@ class LlmPromptFactory(
         effectiveMode: QaMode = QaMode.AUTO,
     ): LlmPromptPackage {
         /** 当前问答范围内的节点。 */
-        val scopeNodes = GraphAuditScopeResolver.resolveScopeNodes(context)
+        val scopeNodes = GraphQaScopeResolver.resolveScopeNodes(context)
         /** 当前问答范围内的边。 */
-        val scopeEdges = GraphAuditScopeResolver.resolveScopeEdges(context, scopeNodes)
+        val scopeEdges = GraphQaScopeResolver.resolveScopeEdges(context, scopeNodes)
         /** 当前问答范围标签。 */
         val scopeText = if (context.selectedNodeIds.isEmpty()) {
             "整图"
@@ -458,21 +458,21 @@ class LlmPromptFactory(
                     """.trimIndent(),
                     priority = CONFIRMED_CHANGE,
                 ),
-                PromptSection(auditBehaviorInstruction(), priority = BEHAVIOR_RULE),
-                PromptSection(auditSchemaInstruction(), priority = SCHEMA),
+                PromptSection(qaBehaviorInstruction(), priority = BEHAVIOR_RULE),
+                PromptSection(qaSchemaInstruction(), priority = SCHEMA),
             ),
         )
     }
 
     /** 返回链路问答场景的用户提示词。 */
-    fun buildAuditPrompt(
-        context: GraphAuditContext,
+    fun buildQaPrompt(
+        context: GraphQaContext,
         question: String,
         settings: LinkGraphSettingsState,
         requestedMode: QaMode = QaMode.AUTO,
         effectiveMode: QaMode = QaMode.AUTO,
     ): String {
-        return buildAuditPromptPackage(context, question, settings, requestedMode = requestedMode, effectiveMode = effectiveMode).userPrompt
+        return buildQaPromptPackage(context, question, settings, requestedMode = requestedMode, effectiveMode = effectiveMode).userPrompt
     }
 
     /** 构造差异问答场景的提示词包。 */
@@ -947,7 +947,7 @@ class LlmPromptFactory(
         """.trimIndent()
     }
 
-    private fun auditBehaviorInstruction(): String {
+    private fun qaBehaviorInstruction(): String {
         return """
             请逐条对照“用户问题”回答。
             如果当前上下文不足以回答用户问题，answer 必须明确说明“当前证据不足以回答该问题”，不要转而输出无关建议。
@@ -959,7 +959,7 @@ class LlmPromptFactory(
         """.trimIndent()
     }
 
-    private fun auditSchemaInstruction(): String {
+    private fun qaSchemaInstruction(): String {
         return """
             仅返回 JSON，结构如下：
             {

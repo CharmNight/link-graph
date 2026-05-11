@@ -25,7 +25,7 @@ sealed interface ConfirmDraftChangeUseCaseResult {
         val confirmedEntry: DraftWorkbenchEntry?,
         val draftState: DraftWorkbenchState,
         val rebuiltGraph: GraphDocument,
-        val updatedAuditResult: GraphPatchResult,
+        val updatedQaResult: GraphPatchResult,
     ) : ConfirmDraftChangeUseCaseResult
 }
 
@@ -36,7 +36,7 @@ sealed interface UnconfirmDraftChangeUseCaseResult {
         val removedEntry: DraftWorkbenchEntry,
         val draftState: DraftWorkbenchState,
         val rebuiltGraph: GraphDocument,
-        val updatedAuditResult: GraphPatchResult,
+        val updatedQaResult: GraphPatchResult,
     ) : UnconfirmDraftChangeUseCaseResult
 }
 
@@ -46,10 +46,10 @@ class ConfirmDraftChangeUseCase(
 ) {
     fun confirm(
         snapshot: ApplicationSnapshot,
-        auditResult: GraphPatchResult,
+        qaResult: GraphPatchResult,
         changeId: String,
     ): ConfirmDraftChangeUseCaseResult {
-        val candidate = auditResult.candidateChanges.firstOrNull { it.changeId == changeId }
+        val candidate = qaResult.candidateChanges.firstOrNull { it.changeId == changeId }
             ?: return ConfirmDraftChangeUseCaseResult.MissingCandidate
         val baseGraph = snapshot.workspaceGraph
         if (!candidate.isEligibleForDraftConfirmation()) {
@@ -73,13 +73,13 @@ class ConfirmDraftChangeUseCase(
             confirmedEntry = confirmedEntry,
             draftState = confirmation.draftState,
             rebuiltGraph = rebuildConfirmedDraftGraph(snapshot, confirmation.draftState),
-            updatedAuditResult = updateAuditResultForConfirmation(auditResult, changeId, confirmedEntry),
+            updatedQaResult = updateQaResultForConfirmation(qaResult, changeId, confirmedEntry),
         )
     }
 
     fun unconfirm(
         snapshot: ApplicationSnapshot,
-        auditResult: GraphPatchResult,
+        qaResult: GraphPatchResult,
         changeId: String,
     ): UnconfirmDraftChangeUseCaseResult {
         val removal = draftWorkbenchService.unconfirmCandidateChange(snapshot.draftWorkbenchState, changeId)
@@ -88,7 +88,7 @@ class ConfirmDraftChangeUseCase(
             removedEntry = removedEntry,
             draftState = removal.draftState,
             rebuiltGraph = rebuildConfirmedDraftGraph(snapshot, removal.draftState),
-            updatedAuditResult = updateAuditResultForUnconfirmation(auditResult, changeId),
+            updatedQaResult = updateQaResultForUnconfirmation(qaResult, changeId),
         )
     }
 
@@ -174,39 +174,39 @@ class ConfirmDraftChangeUseCase(
             ?: node.metadata["flow.ownerMethod"]?.trim()?.takeIf(String::isNotEmpty)
     }
 
-    private fun updateAuditResultForConfirmation(
-        auditResult: GraphPatchResult,
+    private fun updateQaResultForConfirmation(
+        qaResult: GraphPatchResult,
         changeId: String,
         confirmedEntry: DraftWorkbenchEntry?,
     ): GraphPatchResult {
-        return auditResult.copy(
-            candidateChanges = auditResult.candidateChanges.map { currentCandidate ->
+        return qaResult.copy(
+            candidateChanges = qaResult.candidateChanges.map { currentCandidate ->
                 currentCandidate.confirmed(changeId, confirmedEntry)
             },
-            newCandidateChanges = auditResult.newCandidateChanges.map { currentCandidate ->
+            newCandidateChanges = qaResult.newCandidateChanges.map { currentCandidate ->
                 currentCandidate.confirmed(changeId, confirmedEntry)
             },
-            auditSession = auditResult.auditSession?.copy(
-                candidateChanges = auditResult.auditSession.candidateChanges.map { currentCandidate ->
+            qaSession = qaResult.qaSession?.copy(
+                candidateChanges = qaResult.qaSession.candidateChanges.map { currentCandidate ->
                     currentCandidate.confirmed(changeId, confirmedEntry)
                 },
             ),
         )
     }
 
-    private fun updateAuditResultForUnconfirmation(
-        auditResult: GraphPatchResult,
+    private fun updateQaResultForUnconfirmation(
+        qaResult: GraphPatchResult,
         changeId: String,
     ): GraphPatchResult {
-        return auditResult.copy(
-            candidateChanges = auditResult.candidateChanges.map { currentCandidate ->
+        return qaResult.copy(
+            candidateChanges = qaResult.candidateChanges.map { currentCandidate ->
                 currentCandidate.unconfirmed(changeId)
             },
-            newCandidateChanges = auditResult.newCandidateChanges.map { currentCandidate ->
+            newCandidateChanges = qaResult.newCandidateChanges.map { currentCandidate ->
                 currentCandidate.unconfirmed(changeId)
             },
-            auditSession = auditResult.auditSession?.copy(
-                candidateChanges = auditResult.auditSession.candidateChanges.map { currentCandidate ->
+            qaSession = qaResult.qaSession?.copy(
+                candidateChanges = qaResult.qaSession.candidateChanges.map { currentCandidate ->
                     currentCandidate.unconfirmed(changeId)
                 },
             ),

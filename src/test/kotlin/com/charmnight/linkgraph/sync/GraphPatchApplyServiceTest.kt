@@ -45,7 +45,7 @@ class GraphPatchApplyServiceTest {
             sourceTag = GraphSourceTag.DRAFT_AI,
         )
         val patch = GraphPatch(
-            summary = "apply audit suggestions",
+            summary = "apply qa suggestions",
             operations = listOf(
                 GraphPatchOperation(
                     id = "add-note",

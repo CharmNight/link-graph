@@ -19,7 +19,7 @@ class TestFixtureWordingCleanupTest {
             "src/test/kotlin/com/charmnight/linkgraph/ui/GraphEditorPageRendererTest.kt",
             "src/test/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectServiceDraftWorkbenchTest.kt",
             "src/test/kotlin/com/charmnight/linkgraph/llm/LlmPromptFactoryTest.kt",
-            "src/test/kotlin/com/charmnight/linkgraph/llm/GraphAuditScopeResolverTest.kt",
+            "src/test/kotlin/com/charmnight/linkgraph/llm/GraphQaScopeResolverTest.kt",
             "src/test/kotlin/com/charmnight/linkgraph/mermaid/MermaidExporterTest.kt",
         )
 

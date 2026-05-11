@@ -8,7 +8,7 @@ import com.charmnight.linkgraph.codegen.CodeDraftWriterService
 import com.charmnight.linkgraph.codegen.CodeGenerationService
 import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.llm.DefaultGraphBeautificationService
-import com.charmnight.linkgraph.llm.GraphAuditPatchService
+import com.charmnight.linkgraph.llm.GraphQaPatchService
 import com.charmnight.linkgraph.llm.GraphBeautificationService
 import com.charmnight.linkgraph.llm.GraphDiffPatchService
 import com.charmnight.linkgraph.llm.GraphGenerationService
@@ -39,7 +39,11 @@ import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
 import com.charmnight.linkgraph.application.workflow.ConfirmedDraftChangeCoordinator
 import com.charmnight.linkgraph.application.debug.DebugGraphFactory
 import com.charmnight.linkgraph.application.workflow.DraftPatchWorkflow
-import com.charmnight.linkgraph.application.workflow.GenerationWorkflow
+import com.charmnight.linkgraph.application.workflow.generation.CodeDraftApplyWorkflow
+import com.charmnight.linkgraph.application.workflow.generation.CodeDraftGenerationWorkflow
+import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanDiscussionWorkflow
+import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanWorkflow
+import com.charmnight.linkgraph.application.workflow.generation.GenerationWorkflowDependencies
 import com.charmnight.linkgraph.application.diagnostics.GraphDiagnosticsLogger
 import com.charmnight.linkgraph.application.workflow.GraphWorkspaceWorkflow
 import com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeSupport
@@ -132,7 +136,7 @@ internal class GraphEditorApplicationService(
     private val syncPreviewPlanner by lazy { SyncPreviewPlanner() }
     private val graphPatchApplyService by lazy { GraphPatchApplyService() }
     private val graphGenerationService by lazy { GraphGenerationService() }
-    private val graphAuditPatchService by lazy { GraphAuditPatchService() }
+    private val graphQaPatchService by lazy { GraphQaPatchService() }
     private val draftWorkbenchService by lazy { DraftWorkbenchService() }
     private val riskResolutionService by lazy { RiskResolutionService() }
     private val graphDiffPatchService by lazy { GraphDiffPatchService() }
@@ -187,7 +191,6 @@ internal class GraphEditorApplicationService(
         SubjectGraphWorkflow(
             project = project,
             snapshotProvider = editorSnapshotProvider,
-            planningContextFactory = planningContextFactory,
             asyncRequestLifecycle = asyncRequestLifecycle,
             subjectLocatorProvider = { subjectLocator },
             semanticAnalyzerProvider = { semanticAnalyzer },
@@ -195,7 +198,7 @@ internal class GraphEditorApplicationService(
             codeSubjectHandleFactory = codeSubjectHandleFactory,
             workspaceGraphCommitter = workspaceGraphCommitter,
             eventSink = presentationProvider.eventSink(),
-            onInvalidateAuditRequests = asyncRequestLifecycle::invalidateRequests,
+            onInvalidateQaRequests = asyncRequestLifecycle::invalidateRequests,
             onLogGraphDiagnostics = graphDiagnosticsLogger::log,
             runtimeTrace = runtimeSupport.runtimeTraceSink(),
             logger = logger,
@@ -237,22 +240,50 @@ internal class GraphEditorApplicationService(
         )
     }
 
-    private val generationFlow: GenerationWorkflow by lazy(LazyThreadSafetyMode.NONE) {
-        GenerationWorkflow(
+    private val generationDependencies: GenerationWorkflowDependencies by lazy(LazyThreadSafetyMode.NONE) {
+        GenerationWorkflowDependencies(
             project = project,
             snapshotProvider = editorSnapshotProvider,
             toolGraphSnapshotProvider = toolGraphSnapshotProvider,
-            eventSink = presentationProvider.eventSink(),
             planningContextFactory = planningContextFactory,
             graphGenerationService = graphGenerationService,
             codeGenerationService = codeGenerationService,
             codeDraftWriterService = codeDraftWriterService,
             sourceNavigationServiceProvider = { project.getService(SourceNavigationService::class.java) },
+            eventSink = presentationProvider.eventSink(),
             settingsProvider = runtimeSupport::effectiveGenerationSettings,
             asyncRequestLifecycle = asyncRequestLifecycle,
             logger = logger,
             artifactStoreProvider = { artifactStore },
+            agentRunCoordinator = com.charmnight.linkgraph.llm.runtime.AgentRunCoordinator(),
+            planCapabilityFactory = { planExecutor ->
+                com.charmnight.linkgraph.llm.capability.PlanCapability(planExecutor = planExecutor)
+            },
+            codegenCapabilityFactory = { codegenExecutor ->
+                com.charmnight.linkgraph.llm.capability.CodegenCapability(project = project, codegenExecutor = codegenExecutor)
+            },
+            riskResolutionService = riskResolutionService,
+            generationPlanDiscussionService = com.charmnight.linkgraph.llm.GenerationPlanDiscussionService(),
+            showCodeDraftMergeRequest = { currentProject, request ->
+                com.intellij.diff.DiffManager.getInstance().showMerge(currentProject, request)
+            },
         )
+    }
+
+    private val generationPlanFlow: GenerationPlanWorkflow by lazy(LazyThreadSafetyMode.NONE) {
+        GenerationPlanWorkflow(generationDependencies)
+    }
+
+    private val generationDiscussionFlow: GenerationPlanDiscussionWorkflow by lazy(LazyThreadSafetyMode.NONE) {
+        GenerationPlanDiscussionWorkflow(generationDependencies)
+    }
+
+    private val codeDraftGenerationFlow: CodeDraftGenerationWorkflow by lazy(LazyThreadSafetyMode.NONE) {
+        CodeDraftGenerationWorkflow(generationDependencies)
+    }
+
+    private val codeDraftApplyFlow: CodeDraftApplyWorkflow by lazy(LazyThreadSafetyMode.NONE) {
+        CodeDraftApplyWorkflow(generationDependencies)
     }
 
     private val reviewFlow: ReviewWorkflow by lazy(LazyThreadSafetyMode.NONE) {
@@ -262,12 +293,12 @@ internal class GraphEditorApplicationService(
             toolGraphSnapshotProvider = toolGraphSnapshotProvider,
             eventSink = presentationProvider.eventSink(),
             planningContextFactory = planningContextFactory,
-            graphAuditPatchService = graphAuditPatchService,
+            graphQaPatchService = graphQaPatchService,
             graphDiffPatchService = graphDiffPatchService,
             graphBeautificationService = graphBeautificationService,
             graphDiffer = graphDiffer,
             settingsProvider = runtimeSupport::effectiveGenerationSettings,
-            auditExecutorOverrideProvider = { testOverrides.auditExecutor },
+            qaExecutorOverrideProvider = { testOverrides.qaExecutor },
             asyncRequestLifecycle = asyncRequestLifecycle,
             logger = logger,
             artifactStoreProvider = { artifactStore },
@@ -294,7 +325,7 @@ internal class GraphEditorApplicationService(
             graphPatchApplyService = graphPatchApplyService,
             graphDiagnosticsLogger = graphDiagnosticsLogger,
             artifactWriter = ConfirmedDraftArtifactWriter { artifactStore },
-            invalidateAuditRequests = asyncRequestLifecycle::invalidateRequests,
+            invalidateQaRequests = asyncRequestLifecycle::invalidateRequests,
             logger = logger,
             runtimeTrace = runtimeSupport.eagerRuntimeTraceSink(),
         )
@@ -305,7 +336,7 @@ internal class GraphEditorApplicationService(
             logger = logger,
             debugGraphFactory = debugGraphFactory,
             subjectGraphWorkflow = subjectFlow,
-            invalidateAuditRequests = asyncRequestLifecycle::invalidateRequests,
+            invalidateQaRequests = asyncRequestLifecycle::invalidateRequests,
             eventSink = presentationProvider.eventSink(),
         )
     }
@@ -361,14 +392,14 @@ internal class GraphEditorApplicationService(
 
     fun openSettings() = sourceNavigationFlow.openSettings()
 
-    fun requestAuditAsync(
+    fun requestQaAsync(
         question: String,
         selectedNodeIds: List<String> = emptyList(),
         sourceThreadId: String? = null,
         mode: QaMode = QaMode.AUTO,
-    ) = reviewFlow.requestAuditAsync(question, selectedNodeIds, sourceThreadId, mode)
+    ) = reviewFlow.requestQaAsync(question, selectedNodeIds, sourceThreadId, mode)
 
-    fun retryLastAuditRequestAsync() = reviewFlow.retryLastAuditRequestAsync()
+    fun retryLastQaRequestAsync() = reviewFlow.retryLastQaRequestAsync()
 
     fun resolveInvestigationThread(
         threadId: String,
@@ -389,17 +420,9 @@ internal class GraphEditorApplicationService(
         granularity: StepGranularity = StepGranularity.BUSINESS,
     ) = reviewFlow.requestGraphBeautificationAsync(goal, preferredStyle, explanationFocus, followUp, granularity)
 
-    fun requestGraphBeautification(
-        goal: String = "",
-        preferredStyle: String? = null,
-        explanationFocus: String? = null,
-        followUp: com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext? = null,
-        granularity: StepGranularity = StepGranularity.BUSINESS,
-    ) = reviewFlow.requestGraphBeautification(goal, preferredStyle, explanationFocus, followUp, granularity)
+    fun confirmQaCandidateChange(changeId: String) = confirmedDraftCoordinator.confirm(changeId)
 
-    fun confirmAuditCandidateChange(changeId: String) = confirmedDraftCoordinator.confirm(changeId)
-
-    fun unconfirmAuditCandidateChange(changeId: String) = confirmedDraftCoordinator.unconfirm(changeId)
+    fun unconfirmQaCandidateChange(changeId: String) = confirmedDraftCoordinator.unconfirm(changeId)
 
     fun applyDraftPatchPreview(operationIds: Set<String>? = null) =
         draftPatchFlow.applyDraftPatchPreview(operationIds)
@@ -411,30 +434,23 @@ internal class GraphEditorApplicationService(
 
     fun undoLastDraftPatchApply() = draftPatchFlow.undoLastDraftPatchApply()
 
-    fun requestGenerationPlan() = generationFlow.requestGenerationPlan()
-
-    fun requestGenerationPlanAsync() = generationFlow.requestGenerationPlanAsync()
-
-    fun requestGenerationPlanDiscussion(question: String, focusItemId: String? = null) =
-        generationFlow.requestGenerationPlanDiscussion(question, focusItemId)
+    fun requestGenerationPlanAsync() = generationPlanFlow.requestGenerationPlanAsync()
 
     fun requestGenerationPlanDiscussionAsync(question: String, focusItemId: String? = null) =
-        generationFlow.requestGenerationPlanDiscussionAsync(question, focusItemId)
+        generationDiscussionFlow.requestGenerationPlanDiscussionAsync(question, focusItemId)
 
-    fun requestCodeDrafts() = generationFlow.requestCodeDrafts()
+    fun requestCodeDraftsAsync() = codeDraftGenerationFlow.requestCodeDraftsAsync()
 
-    fun requestCodeDraftsAsync() = generationFlow.requestCodeDraftsAsync()
+    fun applyCodeDrafts() = codeDraftApplyFlow.applyCodeDrafts()
 
-    fun applyCodeDrafts() = generationFlow.applyCodeDrafts()
-
-    fun applySingleCodeDraft(draftId: String) = generationFlow.applySingleCodeDraft(draftId)
+    fun applySingleCodeDraft(draftId: String) = codeDraftApplyFlow.applySingleCodeDraft(draftId)
 
     fun openCodeDraftNativeDiff(draftId: String) {
         testOverrides.openCodeDraftNativeDiff?.invoke(draftId)
-            ?: generationFlow.openCodeDraftNativeDiff(draftId)
+            ?: codeDraftApplyFlow.openCodeDraftNativeDiff(draftId)
     }
 
-    fun requestDraftNavigation(targetPath: String) = generationFlow.requestDraftNavigation(targetPath)
+    fun requestDraftNavigation(targetPath: String) = codeDraftApplyFlow.requestDraftNavigation(targetPath)
 
     fun prepareDebugRequestedAnalysisDisplayModeIfPresent(envName: String) =
         debugFlow.prepareDebugRequestedAnalysisDisplayModeIfPresent(envName)

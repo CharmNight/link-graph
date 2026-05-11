@@ -16,7 +16,7 @@ class DraftToolFacade {
 
     /** 返回当前候选草稿。 */
     fun candidateDrafts(snapshot: ToolGraphSnapshot): List<CandidateDraftArtifact> {
-        return snapshot.auditResult?.candidateChanges.orEmpty()
+        return snapshot.qaResult?.candidateChanges.orEmpty()
             .filter { change -> change.status == CandidateDraftChangeStatus.PENDING_CONFIRMATION }
             .map { change ->
             CandidateDraftArtifact(

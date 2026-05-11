@@ -38,7 +38,7 @@ data class ToolGraphSnapshot(
     val selectedMethodSignature: String? = null,
     val trustedNavigationNodes: Map<String, GraphNode> = emptyMap(),
     val draftWorkbenchState: DraftWorkbenchState = DraftWorkbenchState(),
-    val auditResult: GraphPatchResult? = null,
+    val qaResult: GraphPatchResult? = null,
 ) {
     fun currentSceneState(): ToolGraphSceneState = sceneStates[currentSceneId] ?: ToolGraphSceneState()
 }

@@ -40,44 +40,6 @@ internal class CodeDraftGenerationWorkflow(
         projectBasePathProvider = { dependencies.project.basePath },
     )
 
-    fun requestCodeDrafts() {
-        val snapshot = dependencies.snapshotProvider.snapshot()
-        val codeDecision = dependencies.refreshDraftAndCodeState(snapshot.toApplicationSnapshot().toRiskResolutionSnapshot())
-        dependencies.rejectStageEligibility(codeDecision, "代码草稿")?.let { return }
-        dependencies.rejectOrphanedGenerationPlan(snapshot, "代码草稿")?.let { return }
-        val result = executeCodegenRuntime(snapshot)
-        val draftResult = result.output
-        if (draftResult != null) {
-            debugLazy(dependencies.logger.isDebugEnabled, dependencies.logger::debug) {
-                "代码草稿生成完成: ${GenerationDiagnostics.summarizeCodeGenerationResult(draftResult)}, " +
-                    "artifactCount=${result.artifactSummaries.size}, filesRead=${result.finalState.budget.filesRead}, " +
-                    "stepsUsed=${result.finalState.budget.usedSteps}"
-            }
-        }
-        val requestState = dependencies.asyncRequestLifecycle.withRuntimeMetadata(
-            requestState = if (draftResult != null && draftResult.drafts.isNotEmpty()) {
-                AsyncRequestState.succeeded(
-                    scene = "代码草稿",
-                    statusMessage = "代码草稿已生成。",
-                )
-            } else {
-                AsyncRequestState.failed(
-                    message = "代码草稿生成失败。",
-                    scene = "代码草稿",
-                )
-            },
-            runtimeState = result.finalState,
-        )
-        emitCodeDraftResult(
-            useCase.resolveCodeDrafts(
-                runtimeResult = result,
-                requestState = requestState,
-                runtimeArtifacts = dependencies.toRuntimeArtifactSummaries(result),
-                preparedDrafts = draftResult?.drafts?.takeIf { drafts -> drafts.isNotEmpty() }?.let(::enrichDraftsWithPreparedEdits),
-            ),
-        )
-    }
-
     fun requestCodeDraftsAsync() {
         val snapshot = dependencies.snapshotProvider.snapshot()
         val codeDecision = dependencies.refreshDraftAndCodeState(snapshot.toApplicationSnapshot().toRiskResolutionSnapshot())

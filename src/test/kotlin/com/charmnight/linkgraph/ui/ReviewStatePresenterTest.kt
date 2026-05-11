@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.application.port.ApplicationRuntimeArtifactSummary
-import com.charmnight.linkgraph.application.port.AuditCompletedPresentation
+import com.charmnight.linkgraph.application.port.QaCompletedPresentation
 import com.charmnight.linkgraph.application.port.BeautificationCompletedPresentation
 import com.charmnight.linkgraph.application.port.DiffReviewCompletedPresentation
 import com.charmnight.linkgraph.application.port.ReviewRequestScene
@@ -20,7 +20,7 @@ import kotlin.test.assertEquals
 
 class ReviewStatePresenterTest {
     @Test
-    fun mapsAuditCompletedToResultEligibilityArtifactsAndFeedback() {
+    fun mapsQaCompletedToResultEligibilityArtifactsAndFeedback() {
         val stateService = GraphEditorStateService()
         val presenter = ReviewStatePresenter(stateService)
         val result = GraphPatchResult(
@@ -30,8 +30,8 @@ class ReviewStatePresenterTest {
             promptPreview = "p",
         )
 
-        presenter.presentAuditCompleted(
-            AuditCompletedPresentation(
+        presenter.presentQaCompleted(
+            QaCompletedPresentation(
                 result = result,
                 requestState = AsyncRequestState.succeeded(scene = "问答", statusMessage = "问答完成。"),
                 draftValidationState = DraftValidationState(DraftValidationStatus.READY, "ready"),
@@ -43,7 +43,7 @@ class ReviewStatePresenterTest {
         )
 
         val snapshot = stateService.snapshot()
-        assertEquals(result, snapshot.auditResult)
+        assertEquals(result, snapshot.qaResult)
         assertEquals("QA", snapshot.runtimeArtifactSummaries["qa"]?.single()?.title)
         assertEquals(DraftValidationStatus.READY, snapshot.draftValidationState?.status)
         assertEquals(true, snapshot.codeEligibilityDecision?.allowed)

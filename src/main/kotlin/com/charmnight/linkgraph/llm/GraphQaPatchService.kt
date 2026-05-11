@@ -11,7 +11,7 @@ import com.charmnight.linkgraph.workbench.CandidateDraftDiagnostics
 import com.charmnight.linkgraph.workbench.QaConversationMessage
 import com.charmnight.linkgraph.workbench.QaConversationService
 import com.charmnight.linkgraph.workbench.QaConversationSession
-import com.charmnight.linkgraph.workbench.AuditMessageRole
+import com.charmnight.linkgraph.workbench.QaMessageRole
 import com.charmnight.linkgraph.workbench.QaModelTurn
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
@@ -26,17 +26,17 @@ import com.intellij.openapi.diagnostic.Logger
  * 基于当前问答范围生成“对话回答 + 待确认候选变更”。
  * 问答不会直接写草稿层，所有修改都先停留在候选变更区。
  */
-class GraphAuditPatchService(
+class GraphQaPatchService(
     /** 负责构造问答提示词。 */
     private val promptFactory: LlmPromptFactory = LlmPromptFactory(),
     /** 负责发起远程 LLM 请求。 */
     private val gateway: LlmGateway = RoutingLlmGateway(),
     /** 负责维护会话与候选变更。 */
-    private val auditConversationService: QaConversationService = QaConversationService(),
+    private val qaConversationService: QaConversationService = QaConversationService(),
     /** 负责从本地可信上下文推导 edit scope 路径。 */
     private val trustedEditScopePathResolver: TrustedEditScopePathResolver = TrustedEditScopePathResolver(),
 ) {
-    private val logger = Logger.getInstance(GraphAuditPatchService::class.java)
+    private val logger = Logger.getInstance(GraphQaPatchService::class.java)
     private val traceEnabled: Boolean =
         LinkGraphDebugEnvironment.isEnabled("LINKGRAPH_DEBUG_TRACE")
     /** 负责处理结构化 JSON 响应与自动修复。 */
@@ -45,8 +45,8 @@ class GraphAuditPatchService(
     private val candidatePatchComposer = CandidateGraphPatchComposer()
 
     /** 执行链路问答，必要时回退到本地规则结果。 */
-    fun audit(
-        context: GraphAuditContext,
+    fun answer(
+        context: GraphQaContext,
         question: String,
         settings: LinkGraphSettingsState,
         session: QaConversationSession? = null,
@@ -59,7 +59,7 @@ class GraphAuditPatchService(
         val sanitized = settings.sanitized()
         val currentSession = ensureUserQuestion(session ?: emptySession(effectiveContext), question)
         val resolvedEffectiveMode = effectiveMode
-        val promptPackage = promptFactory.buildAuditPromptPackage(
+        val promptPackage = promptFactory.buildQaPromptPackage(
             effectiveContext,
             question,
             sanitized,
@@ -147,7 +147,7 @@ class GraphAuditPatchService(
 
     /** 构造不依赖远程模型的本地问答结果。 */
     private fun buildMockResult(
-        context: GraphAuditContext,
+        context: GraphQaContext,
         question: String,
         prompt: String,
         session: QaConversationSession,
@@ -155,11 +155,11 @@ class GraphAuditPatchService(
         requestedMode: QaMode = QaMode.AUTO,
         effectiveMode: QaMode = QaMode.AUTO,
     ): GraphPatchResult {
-        val scopeNodes = GraphAuditScopeResolver.resolveScopeNodes(context)
+        val scopeNodes = GraphQaScopeResolver.resolveScopeNodes(context)
         val analysisGraph = context.editableGraph.takeIf { it.nodes.isNotEmpty() || it.edges.isNotEmpty() } ?: context.factGraph
         val hasFallbackIntent = question.contains("兜底") || question.contains("默认")
         val explanationIntent = question.contains("介绍") || question.contains("解释") || question.contains("讲解")
-        val explicitAuditIntent = question.contains("审计")
+        val explicitQaIntent = question.contains("审计")
             || question.contains("问题")
             || question.contains("风险")
             || question.contains("漏洞")
@@ -199,7 +199,7 @@ class GraphAuditPatchService(
             当前轮结论：$scopeLabel 已直接观察到可落点的源码证据，已生成待确认变更。
             处理建议：下一步应基于当前 edit scope 继续生成精确代码 diff，而不是退回风险线索。
             """.trimIndent()
-        } else if (explanationIntent && !explicitAuditIntent && !hasFallbackIntent) {
+        } else if (explanationIntent && !explicitQaIntent && !hasFallbackIntent) {
             explanationAnswer
         } else if (hasFallbackIntent) {
             """
@@ -215,7 +215,7 @@ class GraphAuditPatchService(
         val findings = if (canBuildCandidateChange) {
             directSourceFindings
         } else {
-            val findingClaim = if (explanationIntent && !explicitAuditIntent && !hasFallbackIntent) {
+            val findingClaim = if (explanationIntent && !explicitQaIntent && !hasFallbackIntent) {
                 "当前图里可以直接观察到该链路范围内的节点与连接关系。"
             } else if (hasFallbackIntent) {
                 "当前上下文没有直接观察到默认兜底分支。"
@@ -226,7 +226,7 @@ class GraphAuditPatchService(
                 .distinctBy(GraphNode::id)
                 .mapIndexed { index, node ->
                     ResultEvidenceFinding(
-                        id = "audit-finding-$index",
+                        id = "qa-finding-$index",
                         claim = findingClaim,
                         evidenceLevel = ResultEvidenceLevel.NOT_OBSERVED,
                         references = listOf(ResultEvidenceReference(nodeId = node.id)),
@@ -252,13 +252,13 @@ class GraphAuditPatchService(
         val investigationThreads = if (
             effectiveMode == QaMode.ANSWER ||
             canBuildCandidateChange ||
-            (explanationIntent && !explicitAuditIntent && !hasFallbackIntent)
+            (explanationIntent && !explicitQaIntent && !hasFallbackIntent)
         ) {
             emptyList()
         } else {
             listOf(
                 InvestigationThread(
-                    threadId = GraphNode.stableId(NodeType.DOC_PAGE, "$scopeKey-audit-change", "audit-thread"),
+                    threadId = GraphNode.stableId(NodeType.DOC_PAGE, "$scopeKey-qa-change", "qa-thread"),
                     status = InvestigationThreadStatus.OPEN,
                     title = if (hasFallbackIntent) "补充默认兜底规则" else "补充业务规则说明",
                     targetNodeIds = scopeNodes.ifEmpty { analysisGraph.nodes.take(1) }.map(GraphNode::id),
@@ -305,13 +305,13 @@ class GraphAuditPatchService(
     }
 
     private fun buildMockDirectSourceFindings(
-        context: GraphAuditContext,
+        context: GraphQaContext,
     ): List<ResultEvidenceFinding> {
         return context.sourceContext
             .distinctBy { snippet -> "${snippet.nodeId}:${snippet.filePath}:${snippet.startLine}:${snippet.endLine}" }
             .mapIndexed { index, snippet ->
                 ResultEvidenceFinding(
-                    id = "audit-direct-source-$index",
+                    id = "qa-direct-source-$index",
                     claim = "当前源码片段里已经直接定位到本轮修改请求涉及的实现位置。",
                     evidenceLevel = ResultEvidenceLevel.DIRECT_SOURCE,
                     references = listOf(
@@ -327,7 +327,7 @@ class GraphAuditPatchService(
     }
 
     private fun resolveMockDirectSourceTargets(
-        context: GraphAuditContext,
+        context: GraphQaContext,
         scopeNodes: List<GraphNode>,
         analysisGraph: GraphDocument,
     ): List<GraphNode> {
@@ -362,14 +362,14 @@ class GraphAuditPatchService(
     /** 把本轮回答和候选变更写入会话。 */
     private fun applyConversationTurn(
         base: GraphPatchResult,
-        context: GraphAuditContext,
+        context: GraphQaContext,
         session: QaConversationSession,
         sourceThreadId: String? = null,
         requestedMode: QaMode = QaMode.AUTO,
         effectiveMode: QaMode = QaMode.AUTO,
     ): GraphPatchResult {
         val rawCandidateChanges = base.candidateChanges.ifEmpty { deriveCandidateChanges(base.patch, base.findings) }
-        val classification = classifyAuditOutputs(
+        val classification = classifyQaOutputs(
             candidateChanges = rawCandidateChanges,
             explicitInvestigationThreads = base.investigationThreads,
             context = context,
@@ -387,7 +387,7 @@ class GraphAuditPatchService(
                     "threadSummaries=${threadSummaries(classification.investigationThreads)}",
             )
         }
-        val turnResult = auditConversationService.applyModelTurn(
+        val turnResult = qaConversationService.applyModelTurn(
             session = session,
             modelTurn = QaModelTurn(
                 answer = base.answer,
@@ -466,7 +466,7 @@ class GraphAuditPatchService(
             },
             sourceContext = context.sourceContext,
             evidenceTrace = context.evidenceTrace,
-            auditSession = sessionAfterBoundary,
+            qaSession = sessionAfterBoundary,
         )
     }
 
@@ -501,14 +501,14 @@ class GraphAuditPatchService(
         }
     }
 
-    private fun classifyAuditOutputs(
+    private fun classifyQaOutputs(
         candidateChanges: List<CandidateDraftChange>,
         explicitInvestigationThreads: List<InvestigationThread>,
-        context: GraphAuditContext,
+        context: GraphQaContext,
         question: String,
         effectiveMode: QaMode,
         sourceThreadId: String?,
-    ): ClassifiedAuditOutputs {
+    ): ClassifiedQaOutputs {
         val promotableChanges = mutableListOf<CandidateDraftChange>()
         val investigationThreads = linkedMapOf<String, InvestigationThread>()
 
@@ -558,7 +558,7 @@ class GraphAuditPatchService(
             investigationThreads[thread.threadId] = thread
         }
 
-        return ClassifiedAuditOutputs(
+        return ClassifiedQaOutputs(
             candidateChanges = promotableChanges,
             investigationThreads = investigationThreads.values.toList(),
         )
@@ -566,7 +566,7 @@ class GraphAuditPatchService(
 
     private fun normalizeCandidateChanges(
         changes: List<CandidateDraftChange>,
-        context: GraphAuditContext,
+        context: GraphQaContext,
     ): List<CandidateDraftChange> {
         val candidateBaseGraph = GraphDocument(
             nodes = (context.editableGraph.nodes + context.factGraph.nodes).distinctBy(GraphNode::id),
@@ -601,7 +601,7 @@ class GraphAuditPatchService(
 
     private fun deriveEditScopes(
         change: CandidateDraftChange,
-        context: GraphAuditContext,
+        context: GraphQaContext,
     ): List<EditScope> {
         val nodeById = (context.editableGraph.nodes + context.factGraph.nodes).distinctBy(GraphNode::id).associateBy(GraphNode::id)
         val sourceSnippetByNodeId = context.sourceContext.associateBy(SourceSnippetContext::nodeId)
@@ -678,7 +678,7 @@ class GraphAuditPatchService(
 
     private fun promoteThreadsToCandidateChanges(
         threads: List<InvestigationThread>,
-        context: GraphAuditContext,
+        context: GraphQaContext,
     ): List<CandidateDraftChange> {
         val promotedCandidates = threads
             .filter(::isEligibleForCandidatePromotion)
@@ -846,13 +846,13 @@ class GraphAuditPatchService(
         session: QaConversationSession,
         question: String,
     ): QaConversationSession {
-        if (session.messages.lastOrNull()?.role == AuditMessageRole.USER && session.messages.lastOrNull()?.content == question) {
+        if (session.messages.lastOrNull()?.role == QaMessageRole.USER && session.messages.lastOrNull()?.content == question) {
             return session
         }
         return session.copy(
             messages = session.messages + QaConversationMessage(
                 messageId = "${session.sessionId}-user-${session.messages.size + 1}",
-                role = AuditMessageRole.USER,
+                role = QaMessageRole.USER,
                 content = question,
                 focusTargetId = session.focusTargetId,
             ),
@@ -860,11 +860,11 @@ class GraphAuditPatchService(
     }
 
     /** 基于当前范围生成默认空会话。 */
-    private fun emptySession(context: GraphAuditContext): QaConversationSession {
+    private fun emptySession(context: GraphQaContext): QaConversationSession {
         val scopeKey = context.selectedNodeIds.sorted().joinToString(",")
             .ifBlank { (context.editableGraph.nodes.firstOrNull() ?: context.factGraph.nodes.firstOrNull())?.id ?: "graph" }
         return QaConversationSession(
-            sessionId = "audit-${GraphNode.stableId(NodeType.DOC_PAGE, scopeKey, "session")}",
+            sessionId = "qa-${GraphNode.stableId(NodeType.DOC_PAGE, scopeKey, "session")}",
             scopeKey = scopeKey,
         )
     }
@@ -885,7 +885,7 @@ class GraphAuditPatchService(
         return copy(warnings = extraWarnings + warnings)
     }
 
-    private fun GraphAuditContext.withDerivedEvidenceTrace(): GraphAuditContext {
+    private fun GraphQaContext.withDerivedEvidenceTrace(): GraphQaContext {
         if (evidenceTrace.isNotEmpty() || sourceContext.isEmpty()) {
             return this
         }
@@ -904,7 +904,7 @@ class GraphAuditPatchService(
         )
     }
 
-    private data class ClassifiedAuditOutputs(
+    private data class ClassifiedQaOutputs(
         val candidateChanges: List<CandidateDraftChange>,
         val investigationThreads: List<InvestigationThread>,
     )

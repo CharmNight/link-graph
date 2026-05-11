@@ -1,6 +1,5 @@
 package com.charmnight.linkgraph.application.workflow.review
 
-import com.charmnight.linkgraph.application.model.AsyncRequestState
 import com.charmnight.linkgraph.application.planning.PlanningContextFactory
 import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.application.port.BeautificationCompletedPresentation
@@ -12,7 +11,6 @@ import com.charmnight.linkgraph.application.port.ReviewRequestScene
 import com.charmnight.linkgraph.application.port.ReviewRequestStartedPresentation
 import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
 import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
-import com.charmnight.linkgraph.llm.GraphBeautificationResult
 import com.charmnight.linkgraph.llm.GraphBeautificationService
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
@@ -30,34 +28,6 @@ internal class GraphBeautificationReviewWorkflow(
     private val asyncRequestLifecycle: AsyncRequestLifecycleSupport,
     private val logger: Logger,
 ) {
-    fun requestGraphBeautification(
-        goal: String = "",
-        preferredStyle: String? = null,
-        explanationFocus: String? = null,
-        followUp: GraphBeautificationFollowUpContext? = null,
-        granularity: StepGranularity = StepGranularity.BUSINESS,
-    ): GraphBeautificationResult {
-        val snapshot = snapshotProvider.snapshot()
-        val result = graphBeautificationService.beautify(
-            context = planningContextFactory.buildGraphBeautificationContext(
-                snapshot = snapshot,
-                goal = goal,
-                preferredStyle = preferredStyle,
-                explanationFocus = explanationFocus,
-                followUp = followUp,
-                granularity = granularity,
-            ),
-            settings = settingsProvider(),
-        )
-        emitBeautificationCompleted(
-            BeautificationCompletedPresentation(
-                result = result,
-                requestState = AsyncRequestState.succeeded(),
-            ),
-        )
-        return result
-    }
-
     fun requestGraphBeautificationAsync(
         goal: String = "",
         preferredStyle: String? = null,

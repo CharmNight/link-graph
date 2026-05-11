@@ -37,7 +37,7 @@ data class GenerationContext(
 /**
  * 封装图问答场景所需的输入上下文。
  */
-data class GraphAuditContext(
+data class GraphQaContext(
     /** 保存事实图。 */
     val factGraph: GraphDocument = GraphDocument(),
     /** 保存可编辑图。 */
@@ -320,7 +320,7 @@ data class GraphPatchResult(
     /** 保存本轮实际使用的取证轨迹。 */
     val evidenceTrace: List<EvidenceTraceEntry> = emptyList(),
     /** 保存当前问答会话状态。 */
-    val auditSession: QaConversationSession? = null,
+    val qaSession: QaConversationSession? = null,
     /** 保存警告列表。 */
     val warnings: List<String> = emptyList(),
 )

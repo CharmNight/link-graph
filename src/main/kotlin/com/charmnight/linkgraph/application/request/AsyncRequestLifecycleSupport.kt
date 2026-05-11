@@ -29,7 +29,7 @@ internal class AsyncRequestLifecycleSupport(
     private val timeoutOverrideProvider: () -> Long?,
 ) {
     /** 图问答请求跟踪器。 */
-    private val auditRequestTracker = AsyncRequestTracker()
+    private val qaRequestTracker = AsyncRequestTracker()
     /** diff 审核请求跟踪器。 */
     private val diffReviewRequestTracker = AsyncRequestTracker()
     /** 生成计划请求跟踪器。 */
@@ -41,9 +41,9 @@ internal class AsyncRequestLifecycleSupport(
     /** 链路讲解请求跟踪器。 */
     private val beautificationRequestTracker = AsyncRequestTracker()
 
-    fun beginAuditRequest(): Long = auditRequestTracker.beginRequest()
+    fun beginQaRequest(): Long = qaRequestTracker.beginRequest()
 
-    fun completeAuditRequest(requestId: Long): Boolean = auditRequestTracker.finishRequest(requestId)
+    fun completeQaRequest(requestId: Long): Boolean = qaRequestTracker.finishRequest(requestId)
 
     fun beginDiffReviewRequest(): Long = diffReviewRequestTracker.beginRequest()
 
@@ -69,7 +69,7 @@ internal class AsyncRequestLifecycleSupport(
      * 使所有异步分析类请求失效。
      */
     fun invalidateRequests() {
-        auditRequestTracker.invalidate()
+        qaRequestTracker.invalidate()
         diffReviewRequestTracker.invalidate()
         generationPlanRequestTracker.invalidate()
         generationPlanDiscussionRequestTracker.invalidate()

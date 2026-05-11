@@ -20,7 +20,7 @@ class CoreShellArchitectureTest {
                 it in setOf(
                     "parseQuestionWithIds(",
                     "parseGenerationPlanDiscussionPayload(",
-                    "parseAuditRequestPayload(",
+                    "parseQaRequestPayload(",
                     "parseResolveInvestigationThreadPayload(",
                     "parseBeautificationPayload(",
                     "parseLayoutPositions(",
@@ -84,9 +84,9 @@ class CoreShellArchitectureTest {
         assertTrue(
             tokenize(source).none {
                 it in setOf(
-                    "fun markAuditResult(",
-                    "fun beginAuditRequest(",
-                    "fun markAuditRequestFailed(",
+                    "fun markQaResult(",
+                    "fun beginQaRequest(",
+                    "fun markQaRequestFailed(",
                     "fun markDiffReviewResult(",
                     "fun beginDiffReviewRequest(",
                     "fun markDiffReviewRequestFailed(",
@@ -327,12 +327,12 @@ class CoreShellArchitectureTest {
 
     @Test
     fun draftNavigationUsesProjectScopedNavigationBoundary() {
-        val generationWorkflow = read("src/main/kotlin/com/charmnight/linkgraph/application/workflow/GenerationWorkflow.kt")
+        val codeDraftApplyWorkflow = read("src/main/kotlin/com/charmnight/linkgraph/application/workflow/generation/CodeDraftApplyWorkflow.kt")
         val sourceNavigation = read("src/main/kotlin/com/charmnight/linkgraph/navigation/SourceNavigationService.kt")
 
         assertTrue(
-            !generationWorkflow.contains("navigateToPath(targetPath)"),
-            "GenerationWorkflow must not forward frontend draft-navigation paths into the generic SourceNavigationService path opener",
+            !codeDraftApplyWorkflow.contains("navigateToPath(targetPath)"),
+            "CodeDraftApplyWorkflow must not forward frontend draft-navigation paths into the generic SourceNavigationService path opener",
         )
         assertTrue(
             sourceNavigation.contains("fun navigateToProjectPath("),
@@ -433,19 +433,19 @@ class CoreShellArchitectureTest {
     }
 
     @Test
-    fun generationWorkflowDelegatesToFocusedSubWorkflows() {
-        val workflow = read("src/main/kotlin/com/charmnight/linkgraph/application/workflow/GenerationWorkflow.kt")
+    fun generationEntrypointsUseFocusedSubWorkflowsWithoutFacade() {
+        val applicationService = read("src/main/kotlin/com/charmnight/linkgraph/application/GraphEditorApplicationService.kt")
 
         assertTrue(
-            workflow.contains("GenerationPlanWorkflow") &&
-                workflow.contains("GenerationPlanDiscussionWorkflow") &&
-                workflow.contains("CodeDraftGenerationWorkflow") &&
-                workflow.contains("CodeDraftApplyWorkflow"),
-            "GenerationWorkflow must be a facade over focused generation sub-workflows",
+            !Files.exists(projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/application/workflow/GenerationWorkflow.kt")),
+            "GenerationWorkflow facade should be physically removed once ApplicationService directly owns focused generation sub-workflows",
         )
         assertTrue(
-            workflow.lineSequence().count() < 260,
-            "GenerationWorkflow facade should stay small after extraction",
+            applicationService.contains("GenerationPlanWorkflow") &&
+                applicationService.contains("GenerationPlanDiscussionWorkflow") &&
+                applicationService.contains("CodeDraftGenerationWorkflow") &&
+                applicationService.contains("CodeDraftApplyWorkflow"),
+            "ApplicationService should compose focused generation sub-workflows directly instead of routing through a facade",
         )
         assertExists("src/main/kotlin/com/charmnight/linkgraph/application/workflow/generation/GenerationPlanWorkflow.kt")
         assertExists("src/main/kotlin/com/charmnight/linkgraph/application/workflow/generation/GenerationPlanDiscussionWorkflow.kt")

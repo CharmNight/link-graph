@@ -36,7 +36,7 @@ internal class PlanningContextFactory(
     /** 图生成服务。 */
     private val graphGenerationService: GraphGenerationService,
     /** 问答源码证据收集器。 */
-    private val auditEvidenceCollector: AuditEvidenceCollector = AuditEvidenceCollector(),
+    private val qaEvidenceCollector: QaEvidenceCollector = QaEvidenceCollector(),
     /** 当前真正生效的生成设置。 */
     private val settingsProvider: () -> LinkGraphSettingsState,
     /** 当前项目根路径提供器。 */
@@ -150,24 +150,24 @@ internal class PlanningContextFactory(
     /**
      * 根据选区决定问答时使用的事实图和可编辑图。
      */
-    fun buildAuditGraphs(
+    fun buildQaGraphs(
         snapshot: WorkflowEditorSnapshot,
         selectedNodeIds: List<String>,
         collectSourceEvidence: Boolean = true,
-    ): AuditGraphs {
+    ): QaGraphs {
         val workingGraph = currentWorkingGraph(snapshot)
         val backgroundFactGraph = snapshot.semanticFactGraph
             .takeIf { graph -> graph.nodes.isNotEmpty() || graph.edges.isNotEmpty() }
             ?: workingGraph
         val evidenceCollection = if (collectSourceEvidence) {
-            auditEvidenceCollector.collect(
-                graph = mergeAuditEvidenceGraph(backgroundFactGraph, workingGraph),
+            qaEvidenceCollector.collect(
+                graph = mergeQaEvidenceGraph(backgroundFactGraph, workingGraph),
                 selectedNodeIds = selectedNodeIds,
             )
         } else {
-            AuditEvidenceCollection()
+            QaEvidenceCollection()
         }
-        return AuditGraphs(
+        return QaGraphs(
             factGraph = backgroundFactGraph,
             editableGraph = workingGraph,
             sourceContext = evidenceCollection.sourceContext,
@@ -175,7 +175,7 @@ internal class PlanningContextFactory(
         )
     }
 
-    private fun mergeAuditEvidenceGraph(
+    private fun mergeQaEvidenceGraph(
         factGraph: GraphDocument,
         editableGraph: GraphDocument,
     ): GraphDocument {
@@ -465,7 +465,7 @@ internal class PlanningContextFactory(
     }
 }
 
-internal data class AuditGraphs(
+internal data class QaGraphs(
     val factGraph: GraphDocument,
     val editableGraph: GraphDocument,
     val sourceContext: List<SourceSnippetContext> = emptyList(),

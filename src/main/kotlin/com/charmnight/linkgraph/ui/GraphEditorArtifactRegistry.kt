@@ -8,7 +8,7 @@ import java.security.MessageDigest
  */
 class GraphEditorArtifactRegistry {
     data class SnapshotArtifacts(
-        val auditPromptPreviewArtifactId: String? = null,
+        val qaPromptPreviewArtifactId: String? = null,
         val diffReviewPromptPreviewArtifactId: String? = null,
         val beautificationPromptPreviewArtifactId: String? = null,
         val generationPlanPromptPreviewArtifactId: String? = null,
@@ -46,10 +46,10 @@ class GraphEditorArtifactRegistry {
         }.toMap()
 
         val snapshotArtifacts = SnapshotArtifacts(
-            auditPromptPreviewArtifactId = register(
-                kind = "audit-prompt",
-                ownerKey = "audit-result",
-                content = snapshot.auditResult?.promptPreview,
+            qaPromptPreviewArtifactId = register(
+                kind = "qa-prompt",
+                ownerKey = "qa-result",
+                content = snapshot.qaResult?.promptPreview,
             ),
             diffReviewPromptPreviewArtifactId = register(
                 kind = "diff-prompt",

@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.services
 
-import com.charmnight.linkgraph.application.workflow.AuditResultNormalizer
+import com.charmnight.linkgraph.application.workflow.QaResultNormalizer
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.llm.ResultEvidenceFinding
@@ -13,7 +13,7 @@ import com.charmnight.linkgraph.model.GraphPatchAction
 import com.charmnight.linkgraph.model.GraphPatchOperation
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
-import com.charmnight.linkgraph.workbench.AuditConversationSession
+import com.charmnight.linkgraph.workbench.QaConversationSession
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 import com.charmnight.linkgraph.workbench.InvestigationThread
@@ -29,8 +29,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class AuditResultNormalizerTest {
-    private val 归一化器 = AuditResultNormalizer()
+class QaResultNormalizerTest {
+    private val 归一化器 = QaResultNormalizer()
 
     @Test
     fun answerModeDropsCandidatesThreadsPatchAndSessionOutcomesAfterMerge() {
@@ -52,10 +52,10 @@ class AuditResultNormalizerTest {
         assertTrue(normalized.investigationThreads.isEmpty())
         assertNull(normalized.latestTurnOutcome)
         assertTrue(normalized.recentTurnOutcomes.isEmpty())
-        assertTrue(normalized.auditSession?.candidateChanges?.isEmpty() == true)
-        assertTrue(normalized.auditSession?.investigationThreads?.isEmpty() == true)
-        assertTrue(normalized.auditSession?.turnOutcomes?.isEmpty() == true)
-        assertNull(normalized.auditSession?.focusTargetId)
+        assertTrue(normalized.qaSession?.candidateChanges?.isEmpty() == true)
+        assertTrue(normalized.qaSession?.investigationThreads?.isEmpty() == true)
+        assertTrue(normalized.qaSession?.turnOutcomes?.isEmpty() == true)
+        assertNull(normalized.qaSession?.focusTargetId)
     }
 
     @Test
@@ -140,8 +140,8 @@ class AuditResultNormalizerTest {
         assertTrue(normalized.candidateChanges.isEmpty())
         assertTrue(normalized.newCandidateChanges.isEmpty())
         assertEquals(listOf("review-thread"), normalized.investigationThreads.map(InvestigationThread::threadId))
-        assertTrue(normalized.auditSession?.candidateChanges?.isEmpty() == true)
-        assertEquals(listOf("review-thread"), normalized.auditSession?.investigationThreads?.map(InvestigationThread::threadId))
+        assertTrue(normalized.qaSession?.candidateChanges?.isEmpty() == true)
+        assertEquals(listOf("review-thread"), normalized.qaSession?.investigationThreads?.map(InvestigationThread::threadId))
     }
 
     @Test
@@ -160,7 +160,7 @@ class AuditResultNormalizerTest {
         assertEquals(listOf("change-1"), normalized.candidateChanges.map(CandidateDraftChange::changeId))
         assertEquals(listOf("change-1"), normalized.newCandidateChanges.map(CandidateDraftChange::changeId))
         assertEquals(listOf("thread-1"), normalized.investigationThreads.map(InvestigationThread::threadId))
-        assertEquals(listOf("thread-1"), normalized.auditSession?.investigationThreads?.map(InvestigationThread::threadId))
+        assertEquals(listOf("thread-1"), normalized.qaSession?.investigationThreads?.map(InvestigationThread::threadId))
     }
 
     @Test
@@ -185,7 +185,7 @@ class AuditResultNormalizerTest {
         val context = modeContext(
             effectiveMode = QaMode.INVESTIGATE,
             sourceThreadId = "thread-a",
-            baseSession = AuditConversationSession(
+            baseSession = QaConversationSession(
                 sessionId = "session-investigate",
                 scopeKey = "scope",
                 investigationThreads = listOf(thread("thread-a"), thread("thread-b")),
@@ -210,9 +210,9 @@ class AuditResultNormalizerTest {
         assertEquals(listOf("thread-a"), normalized.recentTurnOutcomes.map(InvestigationTurnOutcome::threadId))
         assertEquals(
             setOf("thread-a", "thread-b"),
-            normalized.auditSession?.investigationThreads?.map(InvestigationThread::threadId)?.toSet(),
+            normalized.qaSession?.investigationThreads?.map(InvestigationThread::threadId)?.toSet(),
         )
-        assertEquals("thread-a", normalized.auditSession?.focusTargetId)
+        assertEquals("thread-a", normalized.qaSession?.focusTargetId)
     }
 
     @Test
@@ -223,7 +223,7 @@ class AuditResultNormalizerTest {
             result = baseResult(
                 candidateChanges = listOf(candidate("existing-change")),
                 investigationThreads = listOf(thread("existing-thread")),
-                auditSession = AuditConversationSession(
+                qaSession = QaConversationSession(
                     sessionId = "already-normalized",
                     scopeKey = "scope",
                     candidateChanges = listOf(candidate("session-change")),
@@ -237,14 +237,14 @@ class AuditResultNormalizerTest {
         assertEquals(QaMode.REVIEW, normalized.effectiveMode)
         assertTrue(normalized.candidateChanges.isEmpty())
         assertEquals(listOf("existing-thread"), normalized.investigationThreads.map(InvestigationThread::threadId))
-        assertTrue(normalized.auditSession?.candidateChanges?.isEmpty() == true)
-        assertEquals(listOf("session-thread"), normalized.auditSession?.investigationThreads?.map(InvestigationThread::threadId))
+        assertTrue(normalized.qaSession?.candidateChanges?.isEmpty() == true)
+        assertEquals(listOf("session-thread"), normalized.qaSession?.investigationThreads?.map(InvestigationThread::threadId))
     }
 
     private fun modeContext(
         effectiveMode: QaMode,
         sourceThreadId: String? = null,
-        baseSession: AuditConversationSession? = null,
+        baseSession: QaConversationSession? = null,
     ): QaModeContext {
         return QaModeContext(
             request = ReplayableQaRequest(
@@ -265,7 +265,7 @@ class AuditResultNormalizerTest {
         investigationThreads: List<InvestigationThread> = emptyList(),
         latestTurnOutcome: InvestigationTurnOutcome? = null,
         recentTurnOutcomes: List<InvestigationTurnOutcome> = emptyList(),
-        auditSession: AuditConversationSession? = null,
+        qaSession: QaConversationSession? = null,
         warnings: List<String> = emptyList(),
     ): GraphPatchResult {
         return GraphPatchResult(
@@ -278,13 +278,13 @@ class AuditResultNormalizerTest {
             investigationThreads = investigationThreads,
             latestTurnOutcome = latestTurnOutcome,
             recentTurnOutcomes = recentTurnOutcomes,
-            auditSession = auditSession,
+            qaSession = qaSession,
             warnings = warnings,
         )
     }
 
-    private fun sessionWithHistory(): AuditConversationSession {
-        return AuditConversationSession(
+    private fun sessionWithHistory(): QaConversationSession {
+        return QaConversationSession(
             sessionId = "session-history",
             scopeKey = "scope",
             candidateChanges = listOf(candidate("old-change")),

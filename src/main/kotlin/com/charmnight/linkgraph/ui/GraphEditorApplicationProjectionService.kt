@@ -205,8 +205,8 @@ internal class GraphEditorApplicationProjectionService(
                 generationPresenter().presentGeneratedCodeDrafts(event.presentation)
             is GraphEditorApplicationEvent.CodeDraftRequestFailed ->
                 generationPresenter().presentCodeDraftRequestFailure(event.presentation)
-            is GraphEditorApplicationEvent.AuditCompleted ->
-                reviewPresenter().presentAuditCompleted(event.presentation)
+            is GraphEditorApplicationEvent.QaCompleted ->
+                reviewPresenter().presentQaCompleted(event.presentation)
             is GraphEditorApplicationEvent.ReviewRequestStarted ->
                 reviewPresenter().presentRequestStarted(event.presentation)
             is GraphEditorApplicationEvent.ReviewStreamingPreview ->
@@ -216,8 +216,8 @@ internal class GraphEditorApplicationProjectionService(
                     event.previewText,
                     event.finalizingStructuredResult,
                 )
-            is GraphEditorApplicationEvent.AuditFailed ->
-                reviewPresenter().presentAuditFailed(event.presentation)
+            is GraphEditorApplicationEvent.QaFailed ->
+                reviewPresenter().presentQaFailed(event.presentation)
             is GraphEditorApplicationEvent.DiffReviewCompleted ->
                 reviewPresenter().presentDiffReviewCompleted(event.presentation)
             is GraphEditorApplicationEvent.DiffReviewFailed ->

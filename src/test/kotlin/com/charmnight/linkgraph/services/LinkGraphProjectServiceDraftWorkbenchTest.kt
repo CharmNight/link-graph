@@ -42,7 +42,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
-    fun testConfirmAuditCandidateChangeUpdatesExistingDecisionNodeInWorkingGraph() {
+    fun testConfirmQaCandidateChangeUpdatesExistingDecisionNodeInWorkingGraph() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val baseGraph = GraphDocument(
             nodes = listOf(
@@ -56,7 +56,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
         stateService.loadGraph(baseGraph, "currentMethod")
-        stateService.asyncRequests.markAuditResult(
+        stateService.asyncRequests.markQaResult(
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
@@ -100,7 +100,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        val entry = project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-delete-guard")
+        val entry = project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-delete-guard")
 
         assertNotNull(entry)
         val snapshot = stateService.snapshot()
@@ -115,7 +115,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
         assertEquals(
             CandidateDraftChangeStatus.CONFIRMED,
-            snapshot.auditResult?.candidateChanges?.firstOrNull()?.status,
+            snapshot.qaResult?.candidateChanges?.firstOrNull()?.status,
         )
         assertEquals(
             listOf("flow-scope:delete-guard"),
@@ -133,7 +133,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         assertEquals(true, snapshot.workingGraphDirty)
     }
 
-    fun testConfirmAuditCandidateChangeExtractsReadableDecisionTitleFromLongAfterStateExplanation() {
+    fun testConfirmQaCandidateChangeExtractsReadableDecisionTitleFromLongAfterStateExplanation() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val baseGraph = GraphDocument(
             nodes = listOf(
@@ -147,7 +147,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
         stateService.loadGraph(baseGraph, "currentMethod")
-        stateService.asyncRequests.markAuditResult(
+        stateService.asyncRequests.markQaResult(
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条删除条件调整",
@@ -198,7 +198,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        val entry = project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-delete-guard")
+        val entry = project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-delete-guard")
 
         assertNotNull(entry)
         val snapshot = stateService.snapshot()
@@ -212,7 +212,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
     }
 
-    fun testConfirmAuditCandidateChangeInsertsExplicitDecisionNodeInsteadOfRewritingExistingNode() {
+    fun testConfirmQaCandidateChangeInsertsExplicitDecisionNodeInsteadOfRewritingExistingNode() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val downloadSignature = "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void"
         val baseGraph = GraphDocument(
@@ -268,7 +268,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
         stateService.loadGraph(baseGraph, "currentMethod")
         stateService.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
-        stateService.asyncRequests.markAuditResult(
+        stateService.asyncRequests.markQaResult(
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
@@ -303,7 +303,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        val entry = project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-insert-file-exists-guard")
+        val entry = project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-insert-file-exists-guard")
 
         assertNotNull(entry)
         val snapshot = stateService.snapshot()
@@ -314,7 +314,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         assertTrue(workingGraph.edges.any { edge -> edge.label == "FALSE" && edge.toNodeId == "terminal:return" })
     }
 
-    fun testConfirmAuditCandidateChangeAdvancesDraftVersionAndPreservesDerivedArtifacts() {
+    fun testConfirmQaCandidateChangeAdvancesDraftVersionAndPreservesDerivedArtifacts() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val baseGraph = GraphDocument(
             nodes = listOf(
@@ -349,7 +349,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             source = LlmResultSource.LOCAL_RULE,
             promptPreview = "code prompt",
         )
-        stateService.asyncRequests.markAuditResult(
+        stateService.asyncRequests.markQaResult(
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
@@ -379,7 +379,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-upload-condition")
+        project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-upload-condition")
 
         val snapshot = stateService.snapshot()
         assertEquals(1L, snapshot.draftVersion)
@@ -389,7 +389,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         assertEquals(0L, snapshot.generatedCodeDraftVersion)
     }
 
-    fun testConfirmAuditCandidateChangeRequestsFrontendSyncImmediately() {
+    fun testConfirmQaCandidateChangeRequestsFrontendSyncImmediately() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val baseGraph = GraphDocument(
             nodes = listOf(
@@ -402,7 +402,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
         stateService.loadGraph(baseGraph, "currentMethod")
-        stateService.asyncRequests.markAuditResult(
+        stateService.asyncRequests.markQaResult(
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
@@ -442,12 +442,12 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             },
         )
 
-        project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-upload-condition")
+        project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-upload-condition")
 
         assertEquals(1, syncRequestedCount)
     }
 
-    fun testUnconfirmAuditCandidateChangeRebuildsWorkingGraphFromConfirmedEntries() {
+    fun testUnconfirmQaCandidateChangeRebuildsWorkingGraphFromConfirmedEntries() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val baseGraph = GraphDocument(
             nodes = listOf(
@@ -460,7 +460,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
         stateService.loadGraph(baseGraph, "currentMethod")
-        stateService.asyncRequests.markAuditResult(
+        stateService.asyncRequests.markQaResult(
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
@@ -523,22 +523,22 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
         val service = project.linkGraphApplicationServiceForTest()
-        service.confirmAuditCandidateChange("change-upload-condition")
+        service.confirmQaCandidateChange("change-upload-condition")
 
-        val removed = service.unconfirmAuditCandidateChange("change-upload-condition")
+        val removed = service.unconfirmQaCandidateChange("change-upload-condition")
 
         assertNotNull(removed)
         val snapshot = stateService.snapshot()
         assertTrue(snapshot.draftWorkbenchState.draftChanges.isEmpty())
         assertEquals(
             CandidateDraftChangeStatus.PENDING_CONFIRMATION,
-            snapshot.auditResult?.candidateChanges?.firstOrNull()?.status,
+            snapshot.qaResult?.candidateChanges?.firstOrNull()?.status,
         )
         assertEquals(baseGraph, snapshot.workingGraph)
         assertEquals(false, snapshot.workingGraphDirty)
     }
 
-    fun testUnconfirmAuditCandidateChangeAdvancesDraftVersionAndPreservesDerivedArtifacts() {
+    fun testUnconfirmQaCandidateChangeAdvancesDraftVersionAndPreservesDerivedArtifacts() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val baseGraph = GraphDocument(
             nodes = listOf(
@@ -551,7 +551,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
         stateService.loadGraph(baseGraph, "currentMethod")
-        stateService.asyncRequests.markAuditResult(
+        stateService.asyncRequests.markQaResult(
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
@@ -582,7 +582,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
 
         val service = project.linkGraphApplicationServiceForTest()
-        service.confirmAuditCandidateChange("change-upload-condition")
+        service.confirmQaCandidateChange("change-upload-condition")
         stateService.asyncRequests.markGenerationPlan(
             GenerationPlan(
                 source = GenerationPlanSource.LOCAL_RULE,
@@ -606,7 +606,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             promptPreview = "code prompt",
         )
 
-        service.unconfirmAuditCandidateChange("change-upload-condition")
+        service.unconfirmQaCandidateChange("change-upload-condition")
 
         val snapshot = stateService.snapshot()
         assertEquals(2L, snapshot.draftVersion)
@@ -632,7 +632,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
             "currentMethod",
         )
-        stateService.asyncRequests.markAuditResult(
+        stateService.asyncRequests.markQaResult(
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
@@ -663,14 +663,14 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         val service = project.linkGraphApplicationServiceForTest()
         val artifactStore = project.getService(AgentArtifactStoreService::class.java).artifactStore
 
-        service.confirmAuditCandidateChange("change-upload-condition")
+        service.confirmQaCandidateChange("change-upload-condition")
 
         assertTrue(
             artifactStore.byType(ArtifactType.CONFIRMED_INTENT)
                 .any { artifact -> artifact.artifactId == "confirmed-draft-change-upload-condition" },
         )
 
-        service.unconfirmAuditCandidateChange("change-upload-condition")
+        service.unconfirmQaCandidateChange("change-upload-condition")
 
         assertTrue(
             artifactStore.byType(ArtifactType.CONFIRMED_INTENT)
@@ -678,7 +678,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
     }
 
-    fun testConfirmAuditCandidateChangeRejectsWeakEvidenceSuggestions() {
+    fun testConfirmQaCandidateChangeRejectsWeakEvidenceSuggestions() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val baseGraph = GraphDocument(
             nodes = listOf(
@@ -691,7 +691,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
         stateService.loadGraph(baseGraph, "currentMethod")
-        stateService.asyncRequests.markAuditResult(
+        stateService.asyncRequests.markQaResult(
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "这里是否有路径问题？",
@@ -720,20 +720,20 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        val entry = project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-path-risk")
+        val entry = project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-path-risk")
 
         assertNull(entry)
         val snapshot = stateService.snapshot()
         assertTrue(snapshot.draftWorkbenchState.draftChanges.isEmpty())
         assertEquals(
             CandidateDraftChangeStatus.PENDING_CONFIRMATION,
-            snapshot.auditResult?.candidateChanges?.firstOrNull()?.status,
+            snapshot.qaResult?.candidateChanges?.firstOrNull()?.status,
         )
         assertEquals(baseGraph, snapshot.workingGraph)
         assertEquals(false, snapshot.workingGraphDirty)
     }
 
-    fun testConfirmAuditCandidateChangeRebuildsFlowchartViewWithModifiedDecisionNode() {
+    fun testConfirmQaCandidateChangeRebuildsFlowchartViewWithModifiedDecisionNode() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val baseGraph = GraphDocument(
             nodes = listOf(
@@ -759,7 +759,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
         stateService.loadGraph(baseGraph, "currentMethod")
         stateService.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
-        stateService.asyncRequests.markAuditResult(
+        stateService.asyncRequests.markQaResult(
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
@@ -789,7 +789,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-delete-guard")
+        project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-delete-guard")
 
         val snapshot = stateService.snapshot()
         assertEquals(
@@ -806,7 +806,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
     }
 
-    fun testConfirmingMultipleAuditCandidateChangesPreservesFlowchartOrderAndLayout() {
+    fun testConfirmingMultipleQaCandidateChangesPreservesFlowchartOrderAndLayout() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val selectedMethodSignature = "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void"
         val baseGraph = GraphDocument(
@@ -887,7 +887,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
         stateService.loadGraph(baseGraph, selectedMethodSignature)
         stateService.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
-        stateService.asyncRequests.markAuditResult(
+        stateService.asyncRequests.markQaResult(
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这两条流程调整",
@@ -1011,8 +1011,8 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
 
         val service = project.linkGraphApplicationServiceForTest()
-        service.confirmAuditCandidateChange("change-delete-guard")
-        service.confirmAuditCandidateChange("change-file-exists-guard")
+        service.confirmQaCandidateChange("change-delete-guard")
+        service.confirmQaCandidateChange("change-file-exists-guard")
 
         val snapshot = stateService.snapshot()
         val expectedNodeOrder = listOf(
@@ -1038,7 +1038,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         assertEquals(24.0, snapshot.layoutState.positions["scope:delete-file"]?.y)
     }
 
-    fun testConfirmAuditCandidateChangeInFlowchartModeRebuildsFromFlowchartBaseInsteadOfFactGraph() {
+    fun testConfirmQaCandidateChangeInFlowchartModeRebuildsFromFlowchartBaseInsteadOfFactGraph() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val selectedMethodSignature = "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void"
         val factGraph = GraphDocument(
@@ -1131,7 +1131,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
             source = "currentSubject",
         )
-        stateService.asyncRequests.markAuditResult(
+        stateService.asyncRequests.markQaResult(
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
@@ -1179,7 +1179,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-delete-guard")
+        project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-delete-guard")
 
         val snapshot = stateService.snapshot()
         assertEquals(
@@ -1200,7 +1200,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
     }
 
-    fun testConfirmAuditCandidateChangeUsesNormalizedDecisionPatchInsteadOfTryScopePatch() {
+    fun testConfirmQaCandidateChangeUsesNormalizedDecisionPatchInsteadOfTryScopePatch() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val baseGraph = GraphDocument(
             nodes = listOf(
@@ -1235,7 +1235,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
         stateService.loadGraph(baseGraph, "currentMethod")
         stateService.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
-        stateService.asyncRequests.markAuditResult(
+        stateService.asyncRequests.markQaResult(
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
@@ -1286,7 +1286,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-delete-guard")
+        project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-delete-guard")
 
         val snapshot = stateService.snapshot()
         val visibleNodesById = snapshot.flowchartView?.visibleGraph?.nodes?.associateBy { it.id }.orEmpty()
@@ -1297,7 +1297,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
     }
 
-    fun testConfirmAuditCandidateChangeNormalizesStoredCandidateFromTryScopeToDecisionNode() {
+    fun testConfirmQaCandidateChangeNormalizesStoredCandidateFromTryScopeToDecisionNode() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val baseGraph = GraphDocument(
             nodes = listOf(
@@ -1332,7 +1332,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
         stateService.loadGraph(baseGraph, "currentMethod")
         stateService.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
-        stateService.asyncRequests.markAuditResult(
+        stateService.asyncRequests.markQaResult(
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条逻辑调整",
@@ -1383,10 +1383,10 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-delete-guard")
+        project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-delete-guard")
 
         val snapshot = stateService.snapshot()
-        val storedCandidate = snapshot.auditResult?.candidateChanges?.singleOrNull()
+        val storedCandidate = snapshot.qaResult?.candidateChanges?.singleOrNull()
         assertEquals(listOf("scope:file-download-if"), storedCandidate?.targetNodeIds)
         assertEquals("scope:file-download-if", storedCandidate?.graphPatch?.operations?.singleOrNull()?.elementId)
         val visibleNodesById = snapshot.flowchartView?.visibleGraph?.nodes?.associateBy { it.id }.orEmpty()
@@ -1397,7 +1397,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
     }
 
-    fun testConfirmAuditCandidateChangeRejectsCandidateFromAnotherSelectedMethod() {
+    fun testConfirmQaCandidateChangeRejectsCandidateFromAnotherSelectedMethod() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val uploadSignature = "CommonController.uploadFile(org.springframework.web.multipart.MultipartFile):void"
         val downloadSignature = "CommonController.fileDownload(java.lang.String, java.lang.Boolean):void"
@@ -1431,7 +1431,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
         stateService.loadGraph(baseGraph, "currentMethod")
         stateService.pushSelectedMethod(uploadSignature)
-        stateService.asyncRequests.markAuditResult(
+        stateService.asyncRequests.markQaResult(
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "这里是否需要调整删除逻辑？",
@@ -1475,7 +1475,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        val entry = project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-delete-guard")
+        val entry = project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-delete-guard")
 
         assertNull(entry)
         val snapshot = stateService.snapshot()
@@ -1483,7 +1483,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         assertTrue(snapshot.draftWorkbenchState.draftChanges.isEmpty())
         assertEquals(
             CandidateDraftChangeStatus.PENDING_CONFIRMATION,
-            snapshot.auditResult?.candidateChanges?.singleOrNull()?.status,
+            snapshot.qaResult?.candidateChanges?.singleOrNull()?.status,
         )
         assertEquals(baseGraph, snapshot.workingGraph)
         assertEquals(false, snapshot.workingGraphDirty)

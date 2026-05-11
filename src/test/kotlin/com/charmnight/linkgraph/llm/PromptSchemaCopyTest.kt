@@ -9,17 +9,17 @@ import kotlin.test.assertFalse
 
 class PromptSchemaCopyTest {
     @Test
-    fun auditAndDiffSchemaPlaceholdersUseQaOrDiffWording() {
+    fun qaAndDiffSchemaPlaceholdersUseQaOrDiffWording() {
         val projectRoot = Path.of(System.getProperty("user.dir"))
-        val auditService = Files.readString(
-            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/llm/GraphAuditPatchService.kt"),
+        val qaService = Files.readString(
+            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/llm/GraphQaPatchService.kt"),
         )
         val diffService = Files.readString(
             projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/llm/GraphDiffPatchService.kt"),
         )
 
         assertFalse(
-            auditService.contains("\"answer\": \"审计或差异说明\""),
+            qaService.contains("\"answer\": \"审计或差异说明\""),
             "问答链路的 JSON 占位文案不应继续保留“审计”口径。",
         )
         assertFalse(

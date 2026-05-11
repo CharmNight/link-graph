@@ -196,8 +196,8 @@ internal fun GraphEditorStateService.applicationEventSink(
                 GenerationStatePresenter(this, requestBrowserSync).presentGeneratedCodeDrafts(event.presentation)
             is GraphEditorApplicationEvent.CodeDraftRequestFailed ->
                 GenerationStatePresenter(this, requestBrowserSync).presentCodeDraftRequestFailure(event.presentation)
-            is GraphEditorApplicationEvent.AuditCompleted ->
-                ReviewStatePresenter(this, requestBrowserSync).presentAuditCompleted(event.presentation)
+            is GraphEditorApplicationEvent.QaCompleted ->
+                ReviewStatePresenter(this, requestBrowserSync).presentQaCompleted(event.presentation)
             is GraphEditorApplicationEvent.ReviewRequestStarted ->
                 ReviewStatePresenter(this, requestBrowserSync).presentRequestStarted(event.presentation)
             is GraphEditorApplicationEvent.ReviewStreamingPreview ->
@@ -207,8 +207,8 @@ internal fun GraphEditorStateService.applicationEventSink(
                     event.previewText,
                     event.finalizingStructuredResult,
                 )
-            is GraphEditorApplicationEvent.AuditFailed ->
-                ReviewStatePresenter(this, requestBrowserSync).presentAuditFailed(event.presentation)
+            is GraphEditorApplicationEvent.QaFailed ->
+                ReviewStatePresenter(this, requestBrowserSync).presentQaFailed(event.presentation)
             is GraphEditorApplicationEvent.DiffReviewCompleted ->
                 ReviewStatePresenter(this, requestBrowserSync).presentDiffReviewCompleted(event.presentation)
             is GraphEditorApplicationEvent.DiffReviewFailed ->

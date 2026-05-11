@@ -11,7 +11,7 @@ import com.charmnight.linkgraph.model.NodeType
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-class GraphAuditScopeResolverTest {
+class GraphQaScopeResolverTest {
     @Test
     fun wholeChainScopePrefersCurrentDraftGraphOverStaleFactGraph() {
         val staleFactNode = GraphNode(
@@ -26,7 +26,7 @@ class GraphAuditScopeResolverTest {
             title = "人工补充说明",
             sourceTag = GraphSourceTag.DRAFT_MANUAL,
         )
-        val context = GraphAuditContext(
+        val context = GraphQaContext(
             factGraph = GraphDocument(
                 nodes = listOf(staleFactNode),
                 edges = listOf(
@@ -46,8 +46,8 @@ class GraphAuditScopeResolverTest {
             selectedNodeIds = emptyList(),
         )
 
-        val scopeNodes = GraphAuditScopeResolver.resolveScopeNodes(context)
-        val scopeEdges = GraphAuditScopeResolver.resolveScopeEdges(context, scopeNodes)
+        val scopeNodes = GraphQaScopeResolver.resolveScopeNodes(context)
+        val scopeEdges = GraphQaScopeResolver.resolveScopeEdges(context, scopeNodes)
 
         assertEquals(listOf(currentDraftNode.id), scopeNodes.map(GraphNode::id))
         assertEquals(emptyList(), scopeEdges.map(GraphEdge::id))
@@ -79,7 +79,7 @@ class GraphAuditScopeResolverTest {
             title = "OrderService.compensate",
             sourceTag = GraphSourceTag.DRAFT_MANUAL,
         )
-        val context = GraphAuditContext(
+        val context = GraphQaContext(
             factGraph = GraphDocument(nodes = listOf(selectedNode, directNeighbor)),
             editableGraph = GraphDocument(
                 nodes = listOf(selectedNode, directNeighbor, manualNote, secondHopNode),
@@ -110,8 +110,8 @@ class GraphAuditScopeResolverTest {
             selectedNodeIds = listOf(selectedNode.id),
         )
 
-        val scopeNodes = GraphAuditScopeResolver.resolveScopeNodes(context)
-        val scopeEdges = GraphAuditScopeResolver.resolveScopeEdges(context, scopeNodes)
+        val scopeNodes = GraphQaScopeResolver.resolveScopeNodes(context)
+        val scopeEdges = GraphQaScopeResolver.resolveScopeEdges(context, scopeNodes)
 
         assertEquals(
             setOf(selectedNode.id, directNeighbor.id, manualNote.id),

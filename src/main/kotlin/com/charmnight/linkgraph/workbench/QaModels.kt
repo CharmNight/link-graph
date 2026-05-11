@@ -7,9 +7,3 @@ enum class QaMode {
     CHANGE,
     INVESTIGATE,
 }
-
-typealias AuditConversationMessage = QaConversationMessage
-typealias AuditConversationSession = QaConversationSession
-typealias AuditModelTurn = QaModelTurn
-typealias AuditConversationTurnResult = QaConversationTurnResult
-typealias AuditConversationService = QaConversationService

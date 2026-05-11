@@ -2,8 +2,8 @@ package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.application.port.ApplicationRuntimeArtifactSummary
-import com.charmnight.linkgraph.application.port.AuditCompletedPresentation
-import com.charmnight.linkgraph.application.port.AuditFailedPresentation
+import com.charmnight.linkgraph.application.port.QaCompletedPresentation
+import com.charmnight.linkgraph.application.port.QaFailedPresentation
 import com.charmnight.linkgraph.application.port.BeautificationCompletedPresentation
 import com.charmnight.linkgraph.application.port.BeautificationFailedPresentation
 import com.charmnight.linkgraph.application.port.DiffReviewCompletedPresentation
@@ -15,9 +15,9 @@ class ReviewStatePresenter(
     private val stateService: GraphEditorStateService,
     private val requestBrowserSync: () -> Unit = {},
 ) {
-    fun presentAuditCompleted(presentation: AuditCompletedPresentation) {
+    fun presentQaCompleted(presentation: QaCompletedPresentation) {
         stateService.workbench.markRuntimeArtifactSummaries("qa", presentation.runtimeArtifacts.toUiRuntimeArtifacts())
-        stateService.asyncRequests.markAuditResult(
+        stateService.asyncRequests.markQaResult(
             presentation.result,
             presentation.requestState,
             completedRequest = presentation.completedRequest,
@@ -30,8 +30,8 @@ class ReviewStatePresenter(
 
     fun presentRequestStarted(presentation: ReviewRequestStartedPresentation) {
         when (presentation.scene) {
-            ReviewRequestScene.AUDIT -> {
-                stateService.asyncRequests.beginAuditRequest(
+            ReviewRequestScene.QA -> {
+                stateService.asyncRequests.beginQaRequest(
                     presentation.requestState,
                     submittedRequest = presentation.submittedRequest,
                 )
@@ -56,8 +56,8 @@ class ReviewStatePresenter(
         finalizingStructuredResult: Boolean,
     ) {
         when (scene) {
-            ReviewRequestScene.AUDIT -> {
-                stateService.asyncRequests.updateAuditRequestPreview(
+            ReviewRequestScene.QA -> {
+                stateService.asyncRequests.updateQaRequestPreview(
                     requestId,
                     previewText,
                     finalizingStructuredResult,
@@ -81,9 +81,9 @@ class ReviewStatePresenter(
         requestBrowserSync()
     }
 
-    fun presentAuditFailed(presentation: AuditFailedPresentation) {
+    fun presentQaFailed(presentation: QaFailedPresentation) {
         stateService.workbench.markRuntimeArtifactSummaries("qa", presentation.runtimeArtifacts.toUiRuntimeArtifacts())
-        stateService.asyncRequests.markAuditRequestFailed(
+        stateService.asyncRequests.markQaRequestFailed(
             presentation.message,
             presentation.requestState,
             failedRequest = presentation.failedRequest,

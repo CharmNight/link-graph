@@ -40,13 +40,17 @@ class WorkflowArchitectureRegressionTest {
 
     @Test
     fun asyncWorkflowsDelegateThreadHopsToLifecycleSupport() {
-        val generationWorkflow = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/application/workflow/GenerationWorkflow.kt"))
+        val generationWorkflows = listOf(
+            "src/main/kotlin/com/charmnight/linkgraph/application/workflow/generation/GenerationPlanWorkflow.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/workflow/generation/GenerationPlanDiscussionWorkflow.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/workflow/generation/CodeDraftGenerationWorkflow.kt",
+        ).map { path -> Files.readString(Path.of(path)) }
         val reviewWorkflow = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/application/workflow/ReviewWorkflow.kt"))
         val subjectWorkflow = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/application/workflow/SubjectGraphWorkflow.kt"))
 
         assertFalse(
-            generationWorkflow.contains("ApplicationManager.getApplication().executeOnPooledThread"),
-            "GenerationWorkflow 应通过统一生命周期支持调度后台请求，而不是继续手写线程切换模板。",
+            generationWorkflows.any { workflow -> workflow.contains("ApplicationManager.getApplication().executeOnPooledThread") },
+            "Generation sub-workflows 应通过统一生命周期支持调度后台请求，而不是继续手写线程切换模板。",
         )
         assertFalse(
             reviewWorkflow.contains("ApplicationManager.getApplication().executeOnPooledThread"),
@@ -71,12 +75,12 @@ class WorkflowArchitectureRegressionTest {
             "ReviewWorkflow 私有辅助方法应接收 QaModeContext，而不是裸 effectiveMode 参数。",
         )
         assertFalse(
-            reviewWorkflow.contains("private fun normalizeAuditResult("),
-            "问答结果归一化应放在 AuditResultNormalizer 中。",
+            reviewWorkflow.contains("private fun normalizeQaResult("),
+            "问答结果归一化应放在 QaResultNormalizer 中。",
         )
         assertFalse(
             reviewWorkflow.contains("private fun applyModeBoundary("),
-            "模式边界逻辑应放在 AuditResultNormalizer 中。",
+            "模式边界逻辑应放在 QaResultNormalizer 中。",
         )
     }
 

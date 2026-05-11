@@ -12,14 +12,14 @@ data class ApplicationSnapshot(
     val draftWorkbenchState: DraftWorkbenchState = DraftWorkbenchState(),
     val draftPatchPreview: GraphPatch? = null,
     val draftPatchUndo: DraftPatchUndo? = null,
-    val auditResult: GraphPatchResult? = null,
+    val qaResult: GraphPatchResult? = null,
     val diffReviewResult: GraphPatchResult? = null,
 )
 
 fun ApplicationSnapshot.toRiskResolutionSnapshot(): RiskResolutionSnapshot {
     return RiskResolutionSnapshot(
         draftWorkbenchState = draftWorkbenchState,
-        auditResult = auditResult,
+        qaResult = qaResult,
     )
 }
 

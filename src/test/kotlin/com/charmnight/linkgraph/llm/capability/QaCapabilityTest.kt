@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.llm.capability
 
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.llm.GraphAuditContext
+import com.charmnight.linkgraph.llm.GraphQaContext
 import com.charmnight.linkgraph.llm.EvidenceTraceEntry
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.LlmProviderPresets
@@ -31,9 +31,9 @@ import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
 import com.charmnight.linkgraph.ui.view.GraphProjectionIndex
 import com.charmnight.linkgraph.ui.view.GraphProjectionMappingKind
 import com.charmnight.linkgraph.ui.view.GraphProjectionNodeMapping
-import com.charmnight.linkgraph.workbench.AuditConversationMessage
-import com.charmnight.linkgraph.workbench.AuditConversationSession
-import com.charmnight.linkgraph.workbench.AuditMessageRole
+import com.charmnight.linkgraph.workbench.QaConversationMessage
+import com.charmnight.linkgraph.workbench.QaConversationSession
+import com.charmnight.linkgraph.workbench.QaMessageRole
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 import com.charmnight.linkgraph.workbench.InvestigationThread
@@ -51,7 +51,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
     fun testBuildsQaInitialStateFromQuestionAndUsesQaCapabilityId() {
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
@@ -65,7 +65,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         val state = capability.buildInitialState(
             input = QaCapabilityInput(
                 question = "解释上传链路",
-                auditContext = GraphAuditContext(),
+                qaContext = GraphQaContext(),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
@@ -79,10 +79,10 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertEquals("qa", state.capabilityId)
     }
 
-    fun testPreservesFallbackWarningsWhenAuditExecutorFallsBack() {
+    fun testPreservesFallbackWarningsWhenQaExecutorFallsBack() {
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
@@ -93,10 +93,10 @@ class QaCapabilityTest : BasePlatformTestCase() {
             },
         )
 
-        val result = capability.executeAudit(
+        val result = capability.executeQa(
             input = QaCapabilityInput(
                 question = "请围绕当前链路进行问答",
-                auditContext = GraphAuditContext(),
+                qaContext = GraphQaContext(),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
@@ -109,7 +109,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertTrue(result.warnings.single().contains("已回退"))
     }
 
-    fun testRuntimeDeadlineCapsAuditExecutorSettingsTimeout() {
+    fun testRuntimeDeadlineCapsQaExecutorSettingsTimeout() {
         var capturedTimeoutSeconds: Int? = null
         val graph = GraphDocument(
             nodes = listOf(
@@ -123,7 +123,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         val coordinator = AgentRunCoordinator()
         val capability = QaCapability(
             defaultBudget = RunBudget(maxRuntimeSeconds = 5),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 capturedTimeoutSeconds = input.settings.sanitized().timeoutSeconds
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
@@ -138,7 +138,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "解释上传链路",
-                auditContext = GraphAuditContext(
+                qaContext = GraphQaContext(
                     factGraph = graph,
                     editableGraph = graph,
                     selectedNodeIds = listOf("method:upload"),
@@ -163,11 +163,11 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertTrue(capturedTimeoutSeconds!! <= 5)
     }
 
-    fun testUsesGraphToolBeforeRunningAuditExecutor() {
+    fun testUsesGraphToolBeforeRunningQaExecutor() {
         var toolInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
@@ -246,7 +246,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请围绕当前链路进行问答",
-                auditContext = GraphAuditContext(),
+                qaContext = GraphQaContext(),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
@@ -274,7 +274,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertEquals("get_selected_scope", result.finalState.stepRecords[1].toolName)
     }
 
-    fun testReadsCodeEvidenceBeforeRunningAuditExecutorWhenSourceContextIsMissing() {
+    fun testReadsCodeEvidenceBeforeRunningQaExecutorWhenSourceContextIsMissing() {
         val sourceFile = Path.of(requireNotNull(project.basePath))
             .resolve("src/main/java/com/example/QaCapabilityUploadService.java")
         Files.createDirectories(sourceFile.parent)
@@ -291,8 +291,8 @@ class QaCapabilityTest : BasePlatformTestCase() {
         var capturedSourceContext: List<SourceSnippetContext> = emptyList()
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            auditExecutor = { input, _, _ ->
-                capturedSourceContext = input.auditContext.sourceContext
+            qaExecutor = { input, _, _ ->
+                capturedSourceContext = input.qaContext.sourceContext
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
@@ -306,7 +306,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请结合代码解释这里为什么会走 fallback",
-                auditContext = GraphAuditContext(
+                qaContext = GraphQaContext(
                     selectedNodeIds = listOf("method:upload-file"),
                 ),
             ),
@@ -348,9 +348,9 @@ class QaCapabilityTest : BasePlatformTestCase() {
         var capturedEvidenceTrace: List<EvidenceTraceEntry> = emptyList()
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            auditExecutor = { input, _, _ ->
-                capturedSourceContext = input.auditContext.sourceContext
-                capturedEvidenceTrace = input.auditContext.evidenceTrace
+            qaExecutor = { input, _, _ ->
+                capturedSourceContext = input.qaContext.sourceContext
+                capturedEvidenceTrace = input.qaContext.evidenceTrace
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
@@ -364,7 +364,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "这个方法是基于哪个组件实现的？如果替换组件的改动大概是多少？",
-                auditContext = GraphAuditContext(
+                qaContext = GraphQaContext(
                     selectedNodeIds = listOf("invoke:gender-prompt"),
                 ),
             ),
@@ -407,9 +407,9 @@ class QaCapabilityTest : BasePlatformTestCase() {
         var capturedEvidenceTrace: List<EvidenceTraceEntry> = emptyList()
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            auditExecutor = { input, _, _ ->
-                capturedSourceContext = input.auditContext.sourceContext
-                capturedEvidenceTrace = input.auditContext.evidenceTrace
+            qaExecutor = { input, _, _ ->
+                capturedSourceContext = input.qaContext.sourceContext
+                capturedEvidenceTrace = input.qaContext.evidenceTrace
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
@@ -423,7 +423,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "这个方法替换组件的影响范围是什么？",
-                auditContext = GraphAuditContext(
+                qaContext = GraphQaContext(
                     selectedNodeIds = listOf("invoke:gender-prompt"),
                     sourceContext = listOf(
                         SourceSnippetContext(
@@ -465,7 +465,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         } == true)
     }
 
-    fun testStopsBeforeAuditExecutionWhenCodeReadExceedsBudget() {
+    fun testStopsBeforeQaExecutionWhenCodeReadExceedsBudget() {
         val sourceFile = Path.of(requireNotNull(project.basePath))
             .resolve("src/main/java/com/example/QaCapabilityBudgetGuard.java")
         Files.createDirectories(sourceFile.parent)
@@ -482,7 +482,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         var executorInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(maxFilesRead = 0),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 executorInvoked = true
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
@@ -497,7 +497,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请解释这里的字符串处理逻辑",
-                auditContext = GraphAuditContext(
+                qaContext = GraphQaContext(
                     selectedNodeIds = listOf("method:submit"),
                 ),
             ),
@@ -536,7 +536,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         var executorInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(maxFilesRead = 1),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 executorInvoked = true
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
@@ -662,7 +662,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请解释这两个节点",
-                auditContext = GraphAuditContext(
+                qaContext = GraphQaContext(
                     selectedNodeIds = listOf("method:first", "method:second"),
                 ),
             ),
@@ -711,7 +711,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         var executorInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(maxFilesRead = 5, maxSnippets = 1),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 executorInvoked = true
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
@@ -822,7 +822,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请解释这两个节点",
-                auditContext = GraphAuditContext(selectedNodeIds = listOf("method:first", "method:second")),
+                qaContext = GraphQaContext(selectedNodeIds = listOf("method:first", "method:second")),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
@@ -864,11 +864,11 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertEquals(AgentRunFailureReason.MAX_SNIPPETS_EXCEEDED, result.finalState.failureReason)
     }
 
-    fun testStopsBeforeAuditExecutionWhenSingleSnippetExceedsLineBudget() {
+    fun testStopsBeforeQaExecutionWhenSingleSnippetExceedsLineBudget() {
         var executorInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(maxSnippetLines = 1),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 executorInvoked = true
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
@@ -967,7 +967,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请解释这个节点",
-                auditContext = GraphAuditContext(selectedNodeIds = listOf("method:only")),
+                qaContext = GraphQaContext(selectedNodeIds = listOf("method:only")),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
@@ -1001,7 +1001,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
     fun testPersistsCandidateDraftArtifactsFromQaResult() {
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
@@ -1031,7 +1031,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请给出候选修改建议",
-                auditContext = GraphAuditContext(),
+                qaContext = GraphQaContext(),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
@@ -1071,7 +1071,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         )
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
@@ -1099,7 +1099,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请给出新的候选修改建议",
-                auditContext = GraphAuditContext(),
+                qaContext = GraphQaContext(),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
@@ -1129,7 +1129,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         var executorInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(maxFilesRead = 0),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 executorInvoked = true
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
@@ -1144,7 +1144,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请解释预读源码的行为",
-                auditContext = GraphAuditContext(
+                qaContext = GraphQaContext(
                     sourceContext = listOf(
                         SourceSnippetContext(
                             nodeId = "method:upload-file",
@@ -1180,7 +1180,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertEquals(AgentRunFailureReason.MAX_FILES_READ_EXCEEDED, result.finalState.failureReason)
     }
 
-    fun testRebuildsAuditInputFromRuntimeArtifactsWithoutOverwritingGraphContext() {
+    fun testRebuildsQaInputFromRuntimeArtifactsWithoutOverwritingGraphContext() {
         val sourceFile = Path.of(requireNotNull(project.basePath))
             .resolve("src/main/java/com/example/QaRuntimeArtifactsController.java")
         Files.createDirectories(sourceFile.parent)
@@ -1232,12 +1232,12 @@ class QaCapabilityTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        var capturedAuditContext: GraphAuditContext? = null
-        var capturedSession: AuditConversationSession? = null
+        var capturedQaContext: GraphQaContext? = null
+        var capturedSession: QaConversationSession? = null
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            auditExecutor = { input, _, _ ->
-                capturedAuditContext = input.auditContext
+            qaExecutor = { input, _, _ ->
+                capturedQaContext = input.qaContext
                 capturedSession = input.session
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
@@ -1252,7 +1252,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "解释这里为什么会 fallback",
-                auditContext = GraphAuditContext(
+                qaContext = GraphQaContext(
                     factGraph = staleGraph,
                     editableGraph = staleGraph,
                     selectedNodeIds = listOf("method:upload-file"),
@@ -1266,13 +1266,13 @@ class QaCapabilityTest : BasePlatformTestCase() {
                         ),
                     ),
                 ),
-                session = AuditConversationSession(
+                session = QaConversationSession(
                     sessionId = "session-1",
                     scopeKey = "scope-1",
                     messages = listOf(
-                        AuditConversationMessage(
+                        QaConversationMessage(
                             messageId = "message-1",
-                            role = AuditMessageRole.USER,
+                            role = QaMessageRole.USER,
                             content = "历史问题",
                         ),
                     ),
@@ -1305,11 +1305,11 @@ class QaCapabilityTest : BasePlatformTestCase() {
         )
 
         assertEquals("runtime qa", result.output?.answer)
-        assertEquals(listOf("method:upload-file"), capturedAuditContext?.selectedNodeIds)
-        assertEquals(staleGraph.nodes.map { it.id }.toSet(), capturedAuditContext?.factGraph?.nodes?.map { it.id }?.toSet())
-        assertEquals(staleGraph.nodes.map { it.id }.toSet(), capturedAuditContext?.editableGraph?.nodes?.map { it.id }?.toSet())
-        assertEquals(sourceFile.toString(), capturedAuditContext?.sourceContext?.singleOrNull()?.filePath)
-        assertTrue(capturedAuditContext?.sourceContext?.singleOrNull()?.snippet?.contains("fallback") == true)
+        assertEquals(listOf("method:upload-file"), capturedQaContext?.selectedNodeIds)
+        assertEquals(staleGraph.nodes.map { it.id }.toSet(), capturedQaContext?.factGraph?.nodes?.map { it.id }?.toSet())
+        assertEquals(staleGraph.nodes.map { it.id }.toSet(), capturedQaContext?.editableGraph?.nodes?.map { it.id }?.toSet())
+        assertEquals(sourceFile.toString(), capturedQaContext?.sourceContext?.singleOrNull()?.filePath)
+        assertTrue(capturedQaContext?.sourceContext?.singleOrNull()?.snippet?.contains("fallback") == true)
         assertEquals(1, capturedSession?.messages?.size)
         assertEquals("历史问题", capturedSession?.messages?.singleOrNull()?.content)
         assertEquals(1, capturedSession?.candidateChanges?.size)
@@ -1331,8 +1331,8 @@ class QaCapabilityTest : BasePlatformTestCase() {
         var capturedSourceContext: List<SourceSnippetContext> = emptyList()
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            auditExecutor = { input, _, _ ->
-                capturedSourceContext = input.auditContext.sourceContext
+            qaExecutor = { input, _, _ ->
+                capturedSourceContext = input.qaContext.sourceContext
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
@@ -1346,7 +1346,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请结合代码解释这里为什么会走 fallback",
-                auditContext = GraphAuditContext(
+                qaContext = GraphQaContext(
                     selectedNodeIds = listOf("method:upload-file"),
                 ),
             ),
@@ -1421,9 +1421,9 @@ class QaCapabilityTest : BasePlatformTestCase() {
         var capturedEvidenceTrace: List<EvidenceTraceEntry> = emptyList()
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            auditExecutor = { input, _, _ ->
-                capturedSourceContext = input.auditContext.sourceContext
-                capturedEvidenceTrace = input.auditContext.evidenceTrace
+            qaExecutor = { input, _, _ ->
+                capturedSourceContext = input.qaContext.sourceContext
+                capturedEvidenceTrace = input.qaContext.evidenceTrace
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
@@ -1437,7 +1437,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "这个方法是如何触发的？",
-                auditContext = GraphAuditContext(
+                qaContext = GraphQaContext(
                     selectedNodeIds = listOf(projectedNode.id),
                 ),
             ),

@@ -9,7 +9,7 @@ import kotlin.test.assertFalse
 
 class PluginDescriptionWordingTest {
     @Test
-    fun pluginDescriptionDoesNotKeepAuditWording() {
+    fun pluginDescriptionDoesNotKeepObsoleteWording() {
         val buildGradle = Files.readString(
             Path.of(System.getProperty("user.dir")).resolve("build.gradle.kts"),
         )

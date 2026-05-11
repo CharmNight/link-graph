@@ -22,7 +22,7 @@ internal class ConfirmedDraftChangeCoordinator(
     graphPatchApplyService: GraphPatchApplyService,
     private val graphDiagnosticsLogger: GraphDiagnosticsLogger,
     artifactWriter: ConfirmedDraftArtifactWriter,
-    private val invalidateAuditRequests: () -> Unit,
+    private val invalidateQaRequests: () -> Unit,
     private val logger: Logger,
     private val runtimeTrace: ((String) -> Unit)?,
 ) {
@@ -31,8 +31,8 @@ internal class ConfirmedDraftChangeCoordinator(
 
     fun confirm(changeId: String): DraftWorkbenchEntry? {
         val snapshot = snapshotProvider.snapshot()
-        val auditResult = snapshot.auditResult ?: return null
-        return when (val confirmation = useCase.confirm(snapshot, auditResult, changeId)) {
+        val qaResult = snapshot.qaResult ?: return null
+        return when (val confirmation = useCase.confirm(snapshot, qaResult, changeId)) {
             ConfirmDraftChangeUseCaseResult.MissingCandidate -> null
             is ConfirmDraftChangeUseCaseResult.Rejected -> {
                 eventSink.emit(GraphEditorApplicationEvent.DraftChangeConfirmed(confirmation, snapshot))
@@ -53,8 +53,8 @@ internal class ConfirmedDraftChangeCoordinator(
                         "draftCount=${confirmation.draftState.draftChanges.size}, " +
                         "rebuiltTargets=${GenerationDiagnostics.summarizeNodeStates(confirmation.rebuiltGraph, confirmation.observedNodeIds)}",
                 )
-                graphDiagnosticsLogger.log("confirmAuditCandidateChange:$changeId", confirmation.rebuiltGraph)
-                invalidateAuditRequests()
+                graphDiagnosticsLogger.log("confirmQaCandidateChange:$changeId", confirmation.rebuiltGraph)
+                invalidateQaRequests()
                 eventSink.emit(GraphEditorApplicationEvent.DraftChangeConfirmed(confirmation, snapshot))
                 confirmation.confirmedEntry?.let { entry ->
                     artifactWriter.recordConfirmedEntry(entry)
@@ -69,15 +69,15 @@ internal class ConfirmedDraftChangeCoordinator(
 
     fun unconfirm(changeId: String): DraftWorkbenchEntry? {
         val snapshot = snapshotProvider.snapshot()
-        val auditResult = snapshot.auditResult ?: return null
-        return when (val removal = useCase.unconfirm(snapshot, auditResult, changeId)) {
+        val qaResult = snapshot.qaResult ?: return null
+        return when (val removal = useCase.unconfirm(snapshot, qaResult, changeId)) {
             UnconfirmDraftChangeUseCaseResult.MissingEntry -> null
             is UnconfirmDraftChangeUseCaseResult.Unconfirmed -> {
                 debugLazy(logger.isDebugEnabled, logger::debug) {
                     "取消确认问答候选变更: ${GenerationDiagnostics.summarizeDraftEntry(removal.removedEntry)}"
                 }
-                graphDiagnosticsLogger.log("unconfirmAuditCandidateChange:$changeId", removal.rebuiltGraph)
-                invalidateAuditRequests()
+                graphDiagnosticsLogger.log("unconfirmQaCandidateChange:$changeId", removal.rebuiltGraph)
+                invalidateQaRequests()
                 eventSink.emit(GraphEditorApplicationEvent.DraftChangeUnconfirmed(removal, snapshot))
                 artifactWriter.removeConfirmedEntry(removal.removedEntry.entryId)
                 removal.removedEntry

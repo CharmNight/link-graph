@@ -37,7 +37,7 @@ fun GraphEditorStateSnapshot.toToolGraphSnapshot(): ToolGraphSnapshot {
         selectedMethodSignature = selectedMethodSignature,
         trustedNavigationNodes = trustedNavigationNodes,
         draftWorkbenchState = draftWorkbenchState,
-        auditResult = auditResult,
+        qaResult = qaResult,
     )
 }
 

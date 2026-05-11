@@ -38,31 +38,6 @@ internal class GenerationPlanWorkflow(
         projectBasePathProvider = { dependencies.project.basePath },
     )
 
-    fun requestGenerationPlan() {
-        val snapshot = dependencies.snapshotProvider.snapshot()
-        dependencies.refreshDraftAndCodeState(snapshot.toApplicationSnapshot().toRiskResolutionSnapshot())
-        val payload = dependencies.planningContextFactory.computePlanningPayload(snapshot)
-        val runtimeResult = executePlanRuntime(payload)
-        val requestState = dependencies.asyncRequestLifecycle.withRuntimeMetadata(
-            requestState = AsyncRequestState.succeeded(
-                scene = "实现计划",
-                statusMessage = "实现计划已生成。",
-            ),
-            runtimeState = runtimeResult.finalState,
-        )
-        val result = useCase.resolvePlan(
-            payload = payload,
-            runtimeResult = runtimeResult,
-            requestState = requestState,
-            runtimeArtifacts = dependencies.toRuntimeArtifactSummaries(runtimeResult),
-        )
-        dependencies.emit(
-            GraphEditorApplicationEvent.GenerationPlanReady(
-                result.presentation,
-            ),
-        )
-    }
-
     fun requestGenerationPlanAsync() {
         val snapshot = dependencies.snapshotProvider.snapshot()
         dependencies.refreshDraftAndCodeState(snapshot.toApplicationSnapshot().toRiskResolutionSnapshot())

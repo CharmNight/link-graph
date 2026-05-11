@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.application.runtime
 
-import com.charmnight.linkgraph.llm.GraphAuditContext
+import com.charmnight.linkgraph.llm.GraphQaContext
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.navigation.SourceNavigationService
 import com.charmnight.linkgraph.semantic.SemanticAnalyzer
@@ -30,7 +30,7 @@ class LinkGraphProjectTestOverrides {
 
     @Volatile
     @TestOnly
-    var auditExecutor: ((GraphAuditContext, String) -> GraphPatchResult)? = null
+    var qaExecutor: ((GraphQaContext, String) -> GraphPatchResult)? = null
 
     @Volatile
     @TestOnly

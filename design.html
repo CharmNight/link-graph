@@ -1,0 +1,1564 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LinkGraph - 代码调用链可视化</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        /* 主色调 — 深灰蓝底 + 翡翠绿强调 */
+        --bg: #0f1117;
+        --bg-raised: #181a22;
+        --bg-surface: #1e2130;
+        --bg-hover: #262a3a;
+        --border: rgba(255, 255, 255, 0.08);
+        --border-hi: rgba(255, 255, 255, 0.16);
+        --text: #e4e6ed;
+        --text-dim: #8b90a0;
+        --text-muted: #5c6070;
+        --accent: #34d399;
+        --accent-bg: rgba(52, 211, 153, 0.12);
+        --blue: #60a5fa;
+        --blue-bg: rgba(96, 165, 250, 0.1);
+        --orange: #fbbf24;
+        --orange-bg: rgba(251, 191, 36, 0.1);
+        --red: #f87171;
+        --red-bg: rgba(248, 113, 113, 0.1);
+        --purple: #a78bfa;
+        --purple-bg: rgba(167, 139, 250, 0.1);
+        --cyan: #22d3ee;
+        --radius: 8px;
+        --radius-lg: 12px;
+        --font:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        --font-mono: "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+        --shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+      }
+
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        font-family: var(--font);
+        font-size: 13px;
+        color: var(--text);
+        background: var(--bg);
+      }
+      button {
+        font: inherit;
+        cursor: pointer;
+      }
+      ::-webkit-scrollbar {
+        width: 5px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 3px;
+      }
+
+      /* ============ Layout ============ */
+      .app {
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* ---- Top Bar ---- */
+      .topbar {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 16px;
+        height: 44px;
+        background: var(--bg-raised);
+        border-bottom: 1px solid var(--border);
+      }
+      .topbar-brand {
+        font-weight: 700;
+        font-size: 13px;
+        color: var(--accent);
+        letter-spacing: 0.02em;
+      }
+      .topbar-sep {
+        width: 1px;
+        height: 20px;
+        background: var(--border);
+      }
+      .topbar-breadcrumb {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        font-size: 12px;
+        color: var(--text-dim);
+      }
+      .topbar-breadcrumb .current {
+        color: var(--text);
+        font-weight: 500;
+      }
+      .topbar-spacer {
+        flex: 1;
+      }
+      .topbar-actions {
+        display: flex;
+        gap: 6px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 12px;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--text-dim);
+        font-size: 12px;
+        transition: all 0.15s;
+      }
+      .btn:hover {
+        background: var(--bg-hover);
+        color: var(--text);
+        border-color: var(--border-hi);
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: #0f1117;
+        border-color: transparent;
+        font-weight: 600;
+      }
+      .btn-primary:hover {
+        background: #4ade80;
+      }
+
+      /* ---- Main ---- */
+      .main {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      /* ============ Left: Graph Canvas ============ */
+      .canvas-wrap {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+        background:
+          radial-gradient(
+            circle at 50% 50%,
+            rgba(52, 211, 153, 0.03) 0%,
+            transparent 50%
+          ),
+          var(--bg);
+      }
+      .canvas-dots {
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(
+          rgba(255, 255, 255, 0.04) 1px,
+          transparent 1px
+        );
+        background-size: 24px 24px;
+      }
+      .canvas-controls {
+        position: absolute;
+        bottom: 14px;
+        left: 14px;
+        display: flex;
+        gap: 4px;
+        z-index: 10;
+      }
+      .canvas-controls .btn {
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        justify-content: center;
+        font-size: 14px;
+      }
+      .zoom-label {
+        display: flex;
+        align-items: center;
+        padding: 0 8px;
+        font-size: 11px;
+        color: var(--text-muted);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--bg-raised);
+      }
+
+      /* ---- Graph Nodes ---- */
+      .edges-svg {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .edge-path {
+        fill: none;
+        stroke: rgba(255, 255, 255, 0.1);
+        stroke-width: 1.5;
+        marker-end: url(#arrow);
+      }
+      .edge-path.warn {
+        stroke: var(--orange);
+        stroke-dasharray: 5 4;
+      }
+
+      .node {
+        position: absolute;
+        min-width: 200px;
+        max-width: 260px;
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow);
+        cursor: grab;
+        transition:
+          border-color 0.15s,
+          box-shadow 0.15s;
+      }
+      .node:hover {
+        border-color: var(--border-hi);
+      }
+      .node.selected {
+        border-color: var(--accent);
+        box-shadow:
+          0 0 0 2px var(--accent-bg),
+          var(--shadow);
+      }
+      .node-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border);
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .node-head .icon {
+        font-size: 13px;
+      }
+      .node-head.controller {
+        background: var(--blue-bg);
+        color: var(--blue);
+      }
+      .node-head.service {
+        background: var(--accent-bg);
+        color: var(--accent);
+      }
+      .node-head.repository {
+        background: var(--orange-bg);
+        color: var(--orange);
+      }
+      .node-head.config {
+        background: var(--purple-bg);
+        color: var(--purple);
+      }
+      .node-body {
+        padding: 6px 0;
+      }
+      .node-method {
+        display: flex;
+        align-items: baseline;
+        gap: 4px;
+        padding: 3px 12px;
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        color: var(--text-dim);
+      }
+      .node-method:hover {
+        background: var(--bg-hover);
+      }
+      .node-method .name {
+        color: var(--text);
+      }
+      .node-method .ret {
+        color: var(--text-muted);
+        margin-left: auto;
+        font-size: 10px;
+      }
+      .node-method.warn .name {
+        color: var(--orange);
+      }
+
+      .node-badge {
+        position: absolute;
+        top: -6px;
+        right: -6px;
+        min-width: 18px;
+        height: 18px;
+        border-radius: 9px;
+        background: var(--accent);
+        color: #0f1117;
+        font-size: 10px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 5px;
+      }
+
+      /* ============ Resizer ============ */
+      .resizer {
+        width: 8px;
+        cursor: col-resize;
+        background: transparent;
+        position: relative;
+        flex-shrink: 0;
+      }
+      .resizer::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 3px;
+        height: 40px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .resizer:hover::after {
+        background: var(--accent);
+      }
+
+      /* ============ Right: Workbench ============ */
+      .workbench {
+        width: 460px;
+        min-width: 320px;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-raised);
+        border-left: 1px solid var(--border);
+        overflow: hidden;
+      }
+
+      /* -- Tab Bar -- */
+      .tabs {
+        display: flex;
+        flex-shrink: 0;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg);
+      }
+      .tab-btn {
+        flex: 1;
+        padding: 10px 0;
+        text-align: center;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-muted);
+        background: transparent;
+        border: none;
+        border-bottom: 2px solid transparent;
+        transition:
+          color 0.15s,
+          border-color 0.15s;
+      }
+      .tab-btn:hover {
+        color: var(--text-dim);
+      }
+      .tab-btn.active {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+      }
+
+      /* -- Tab Content -- */
+      .tab-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+        display: none;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .tab-body.active {
+        display: flex;
+      }
+
+      /* -- Section -- */
+      .section {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+      }
+      .section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border);
+      }
+      .section-title {
+        font-size: 12px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .section-body {
+        padding: 12px 14px;
+      }
+
+      /* -- Badge / Tag -- */
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        height: 20px;
+        padding: 0 7px;
+        border-radius: 10px;
+        font-size: 10px;
+        font-weight: 600;
+      }
+      .tag-green {
+        background: var(--accent-bg);
+        color: var(--accent);
+      }
+      .tag-blue {
+        background: var(--blue-bg);
+        color: var(--blue);
+      }
+      .tag-orange {
+        background: var(--orange-bg);
+        color: var(--orange);
+      }
+      .tag-red {
+        background: var(--red-bg);
+        color: var(--red);
+      }
+      .tag-muted {
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text-dim);
+      }
+
+      /* -- Evidence level indicator -- */
+      .evidence-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+      .evidence-dot.direct {
+        background: var(--accent);
+      }
+      .evidence-dot.graph {
+        background: var(--blue);
+      }
+      .evidence-dot.callsite {
+        background: var(--orange);
+      }
+      .evidence-dot.none {
+        background: var(--text-muted);
+      }
+
+      /* -- Status Bar -- */
+      .status-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        padding: 8px 14px;
+        font-size: 11px;
+        color: var(--text-dim);
+      }
+      .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+      }
+      .status-dot.ok {
+        background: var(--accent);
+      }
+      .status-dot.run {
+        background: var(--orange);
+        animation: pulse 1.2s infinite;
+      }
+      .status-dot.error {
+        background: var(--red);
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
+
+      /* -- Step Item -- */
+      .step-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .step-item {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        padding: 10px 12px;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        background: var(--bg-raised);
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          background 0.15s;
+      }
+      .step-item:hover {
+        border-color: var(--border-hi);
+        background: var(--bg-hover);
+      }
+      .step-item.active {
+        border-color: var(--accent);
+        background: var(--accent-bg);
+      }
+      .step-num {
+        flex-shrink: 0;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 700;
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text-dim);
+      }
+      .step-item.active .step-num {
+        background: var(--accent);
+        color: #0f1117;
+      }
+      .step-content {
+        flex: 1;
+        min-width: 0;
+      }
+      .step-content strong {
+        font-size: 12px;
+        display: block;
+        margin-bottom: 2px;
+      }
+      .step-content p {
+        font-size: 11px;
+        color: var(--text-dim);
+        line-height: 1.5;
+        margin: 0;
+      }
+      .step-loc {
+        font-size: 10px;
+        color: var(--text-muted);
+        font-family: var(--font-mono);
+        margin-top: 3px;
+      }
+
+      /* -- Chat Message -- */
+      .msg {
+        padding: 10px 12px;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+      }
+      .msg.user {
+        background: var(--accent-bg);
+        border-color: rgba(52, 211, 153, 0.2);
+      }
+      .msg.ai {
+        background: var(--blue-bg);
+        border-color: rgba(96, 165, 250, 0.15);
+      }
+      .msg-role {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--text-muted);
+        margin-bottom: 4px;
+      }
+      .msg p {
+        font-size: 12px;
+        line-height: 1.6;
+      }
+      .msg code {
+        padding: 1px 5px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.08);
+        font-family: var(--font-mono);
+        font-size: 11px;
+      }
+
+      /* -- Candidate Change -- */
+      .change-card {
+        padding: 10px 12px;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        background: var(--bg-raised);
+        cursor: pointer;
+        transition: border-color 0.15s;
+      }
+      .change-card:hover {
+        border-color: var(--border-hi);
+      }
+      .change-card.active {
+        border-color: var(--accent);
+      }
+      .change-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+      .change-head strong {
+        font-size: 12px;
+      }
+      .change-card p {
+        font-size: 11px;
+        color: var(--text-dim);
+        line-height: 1.5;
+      }
+      .change-loc {
+        font-size: 10px;
+        color: var(--text-muted);
+        font-family: var(--font-mono);
+        margin-top: 4px;
+      }
+
+      /* -- Draft Card -- */
+      .draft-card {
+        padding: 10px 12px;
+        border-radius: var(--radius);
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--accent);
+      }
+      .draft-card.note {
+        border-left-color: var(--blue);
+      }
+      .draft-card.warn {
+        border-left-color: var(--orange);
+      }
+
+      /* -- Code Diff -- */
+      .diff-block {
+        border-radius: var(--radius);
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        overflow: hidden;
+      }
+      .diff-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, 0.03);
+        border-bottom: 1px solid var(--border);
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-dim);
+      }
+      .diff-pre {
+        padding: 10px 12px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        color: var(--text-dim);
+      }
+      .diff-add {
+        color: var(--accent);
+        background: var(--accent-bg);
+      }
+
+      /* -- Input Area -- */
+      .input-area {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .input-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .mode-select {
+        height: 32px;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        background: var(--bg-surface);
+        color: var(--text);
+        font-size: 12px;
+        padding: 0 8px;
+      }
+      textarea {
+        width: 100%;
+        min-height: 64px;
+        max-height: 120px;
+        resize: none;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        background: var(--bg-surface);
+        color: var(--text);
+        padding: 8px 10px;
+        font-size: 12px;
+      }
+      textarea:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+      .input-actions {
+        display: flex;
+        gap: 6px;
+      }
+
+      /* -- Property Drawer -- */
+      .drawer {
+        flex-shrink: 0;
+        background: var(--bg-raised);
+        border-top: 1px solid var(--border);
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.25s ease;
+      }
+      .drawer.open {
+        max-height: 200px;
+      }
+      .drawer-inner {
+        padding: 12px 16px;
+      }
+      .drawer-row {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 6px;
+        font-size: 11px;
+      }
+      .drawer-label {
+        color: var(--text-muted);
+        width: 80px;
+        flex-shrink: 0;
+      }
+      .drawer-value {
+        color: var(--text);
+        font-family: var(--font-mono);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <!-- ======== Top Bar ======== -->
+      <div class="topbar">
+        <span class="topbar-brand">LinkGraph</span>
+        <span class="topbar-sep"></span>
+        <div class="topbar-breadcrumb">
+          <span>link_gui</span>
+          <span style="color: var(--text-muted)">›</span>
+          <span>com.example.order</span>
+          <span style="color: var(--text-muted)">›</span>
+          <span class="current">OrderController.createOrder</span>
+        </div>
+        <div class="topbar-spacer"></div>
+        <div class="topbar-actions">
+          <button
+            class="btn"
+            style="border-color: var(--accent-bg); color: var(--accent)"
+          >
+            事实图
+          </button>
+          <button class="btn">流程图</button>
+          <button class="btn">资源关系</button>
+          <span class="topbar-sep"></span>
+          <button class="btn">导入</button>
+          <button class="btn">导出</button>
+          <button class="btn">Diff</button>
+          <button class="btn">同步</button>
+          <button class="btn-primary btn">链路讲解</button>
+        </div>
+      </div>
+
+      <!-- ======== Main ======== -->
+      <div class="main">
+        <!-- ======== Canvas ======== -->
+        <div class="canvas-wrap">
+          <div class="canvas-dots"></div>
+          <svg class="edges-svg" width="100%" height="100%">
+            <defs>
+              <marker
+                id="arrow"
+                markerWidth="7"
+                markerHeight="5"
+                refX="7"
+                refY="2.5"
+                orient="auto"
+              >
+                <polygon points="0 0,7 2.5,0 5" fill="rgba(255,255,255,0.15)" />
+              </marker>
+            </defs>
+            <path class="edge-path" d="M 290 148 C 350 148, 350 80, 410 80" />
+            <path class="edge-path" d="M 290 172 C 370 172, 370 220, 410 220" />
+            <path
+              class="edge-path warn"
+              d="M 290 188 C 410 188, 410 350, 410 350"
+            />
+            <path class="edge-path" d="M 630 92 C 690 92, 690 72, 730 72" />
+            <path class="edge-path" d="M 630 112 C 690 112, 690 210, 730 210" />
+            <path class="edge-path" d="M 630 235 C 690 235, 690 350, 730 350" />
+          </svg>
+
+          <!-- OrderController -->
+          <div class="node selected" style="left: 90px; top: 110px">
+            <span class="node-badge">4</span>
+            <div class="node-head controller">
+              <span class="icon">🌐</span> OrderController
+            </div>
+            <div class="node-body">
+              <div class="node-method">
+                <span class="name">createOrder</span>(OrderDTO)<span class="ret"
+                  >→ Result</span
+                >
+              </div>
+              <div class="node-method">
+                <span class="name">getOrder</span>(Long)<span class="ret"
+                  >→ Result</span
+                >
+              </div>
+              <div class="node-method">
+                <span class="name">cancelOrder</span>(Long)<span class="ret"
+                  >→ Result</span
+                >
+              </div>
+              <div class="node-method warn">
+                <span class="name">deleteOrder</span>(Long)<span class="ret"
+                  >→ Result</span
+                >
+              </div>
+            </div>
+          </div>
+
+          <!-- OrderService -->
+          <div class="node" style="left: 410px; top: 50px">
+            <span class="node-badge">3</span>
+            <div class="node-head service">
+              <span class="icon">⚙</span> OrderService
+            </div>
+            <div class="node-body">
+              <div class="node-method">
+                <span class="name">createOrder</span>(OrderDTO)<span class="ret"
+                  >→ Order</span
+                >
+              </div>
+              <div class="node-method">
+                <span class="name">validateOrder</span>(OrderDTO)<span
+                  class="ret"
+                  >→ void</span
+                >
+              </div>
+              <div class="node-method">
+                <span class="name">getOrderById</span>(Long)<span class="ret"
+                  >→ Order</span
+                >
+              </div>
+            </div>
+          </div>
+
+          <!-- PaymentService -->
+          <div class="node" style="left: 410px; top: 190px">
+            <span class="node-badge" style="background: var(--orange)">!</span>
+            <div class="node-head service">
+              <span class="icon">⚙</span> PaymentService
+            </div>
+            <div class="node-body">
+              <div class="node-method">
+                <span class="name">processPayment</span>(PaymentReq)<span
+                  class="ret"
+                  >→ Payment</span
+                >
+              </div>
+              <div class="node-method warn">
+                <span class="name">verifySignature</span>(String)<span
+                  class="ret"
+                  >→ boolean</span
+                >
+              </div>
+            </div>
+          </div>
+
+          <!-- InventoryService -->
+          <div class="node" style="left: 410px; top: 320px">
+            <span class="node-badge" style="background: var(--orange)">!</span>
+            <div class="node-head service">
+              <span class="icon">⚙</span> InventoryService
+            </div>
+            <div class="node-body">
+              <div class="node-method">
+                <span class="name">checkStock</span>(Long)<span class="ret"
+                  >→ boolean</span
+                >
+              </div>
+              <div class="node-method warn">
+                <span class="name">deductStock</span>(Long, int)<span
+                  class="ret"
+                  >→ void</span
+                >
+              </div>
+            </div>
+          </div>
+
+          <!-- OrderRepository -->
+          <div class="node" style="left: 730px; top: 45px">
+            <div class="node-head repository">
+              <span class="icon">🗄</span> OrderRepository
+            </div>
+            <div class="node-body">
+              <div class="node-method">
+                <span class="name">save</span>(Order)<span class="ret"
+                  >→ Order</span
+                >
+              </div>
+              <div class="node-method">
+                <span class="name">findById</span>(Long)<span class="ret"
+                  >→ Optional</span
+                >
+              </div>
+            </div>
+          </div>
+
+          <!-- UserService -->
+          <div class="node" style="left: 730px; top: 190px">
+            <div class="node-head service">
+              <span class="icon">⚙</span> UserService
+            </div>
+            <div class="node-body">
+              <div class="node-method">
+                <span class="name">getUser</span>(Long)<span class="ret"
+                  >→ User</span
+                >
+              </div>
+              <div class="node-method">
+                <span class="name">checkPermission</span>(Long, String)<span
+                  class="ret"
+                  >→ boolean</span
+                >
+              </div>
+            </div>
+          </div>
+
+          <!-- SecurityConfig -->
+          <div class="node" style="left: 730px; top: 320px">
+            <div class="node-head config">
+              <span class="icon">🔒</span> SecurityConfig
+            </div>
+            <div class="node-body">
+              <div class="node-method">
+                <span class="name">filterChain</span>(HttpSecurity)<span
+                  class="ret"
+                  >→ FilterChain</span
+                >
+              </div>
+            </div>
+          </div>
+
+          <!-- Canvas Controls -->
+          <div class="canvas-controls">
+            <button class="btn">−</button>
+            <span class="zoom-label">100%</span>
+            <button class="btn">+</button>
+            <button class="btn" style="margin-left: 4px">⊞</button>
+          </div>
+        </div>
+
+        <!-- ======== Resizer ======== -->
+        <div class="resizer"></div>
+
+        <!-- ======== Workbench ======== -->
+        <div class="workbench">
+          <div class="tabs">
+            <button class="tab-btn active" data-tab="explain">讲解</button>
+            <button class="tab-btn" data-tab="audit">审计</button>
+            <button class="tab-btn" data-tab="draft">草稿</button>
+            <button class="tab-btn" data-tab="codegen">代码</button>
+          </div>
+
+          <!-- ============ Tab: 讲解 ============ -->
+          <div class="tab-body active" id="tab-explain">
+            <!-- 请求状态 -->
+            <div class="status-row">
+              <span class="status-dot ok"></span>
+              <span>已完成 · 远程 · claude-sonnet-4 · 4.2s</span>
+              <span style="margin-left: auto; display: flex; gap: 4px">
+                <span class="tag tag-green">业务层</span>
+                <span class="tag tag-muted">方法层</span>
+                <span class="tag tag-muted">语义层</span>
+              </span>
+            </div>
+
+            <!-- 步骤列表 -->
+            <div class="section">
+              <div class="section-head">
+                <span class="section-title">📋 调用步骤</span>
+                <span class="tag tag-muted">5 步</span>
+              </div>
+              <div class="section-body" style="padding: 8px">
+                <div class="step-list">
+                  <div class="step-item active">
+                    <span class="step-num">1</span>
+                    <div class="step-content">
+                      <strong>OrderController.createOrder</strong>
+                      <p>接收 HTTP POST，委托 OrderService 执行订单创建流程</p>
+                      <div class="step-loc">
+                        OrderController.java:45 ·
+                        <span class="evidence-dot direct"></span> 直接源码
+                      </div>
+                    </div>
+                  </div>
+                  <div class="step-item">
+                    <span class="step-num">2</span>
+                    <div class="step-content">
+                      <strong>OrderService.createOrder</strong>
+                      <p>校验 → 创建实体 → 持久化 → 发布领域事件</p>
+                      <div class="step-loc">
+                        OrderService.java:28 ·
+                        <span class="evidence-dot direct"></span> 直接源码
+                      </div>
+                    </div>
+                  </div>
+                  <div class="step-item">
+                    <span class="step-num">3</span>
+                    <div class="step-content">
+                      <strong>PaymentService.processPayment</strong>
+                      <p>创建支付单 → 调用第三方 → 验签 → 更新状态</p>
+                      <div class="step-loc">
+                        PaymentService.java:52 ·
+                        <span class="evidence-dot graph"></span> 图推断
+                      </div>
+                    </div>
+                  </div>
+                  <div class="step-item">
+                    <span class="step-num">4</span>
+                    <div class="step-content">
+                      <strong>InventoryService.deductStock</strong>
+                      <p>检查余量 → 扣减库存</p>
+                      <div class="step-loc">
+                        InventoryService.java:30 ·
+                        <span class="evidence-dot callsite"></span> 调用点
+                      </div>
+                    </div>
+                  </div>
+                  <div class="step-item">
+                    <span class="step-num">5</span>
+                    <div class="step-content">
+                      <strong>OrderRepository.save</strong>
+                      <p>JPA 持久化订单实体</p>
+                      <div class="step-loc">
+                        OrderRepository.java:15 ·
+                        <span class="evidence-dot direct"></span> 直接源码
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 步骤详情 -->
+            <div class="section">
+              <div class="section-head">
+                <span class="section-title"
+                  >🔍 OrderController.createOrder</span
+                >
+                <div style="display: flex; gap: 4px">
+                  <button class="btn" style="padding: 3px 8px; font-size: 11px">
+                    定位到图
+                  </button>
+                  <button class="btn" style="padding: 3px 8px; font-size: 11px">
+                    跳转源码
+                  </button>
+                  <button class="btn" style="padding: 3px 8px; font-size: 11px">
+                    下钻
+                  </button>
+                </div>
+              </div>
+              <div class="section-body">
+                <p
+                  style="
+                    font-size: 12px;
+                    color: var(--text-dim);
+                    line-height: 1.65;
+                  "
+                >
+                  通过 <code>@PostMapping("/orders")</code> 暴露 REST 接口，接收
+                  <code>OrderDTO</code> 参数并委托
+                  <code>OrderService</code>
+                  完成业务逻辑。调用链涉及支付、库存、持久化三个下游服务。
+                </p>
+                <div style="display: flex; gap: 6px; margin-top: 8px">
+                  <span class="tag tag-green"
+                    ><span
+                      class="evidence-dot direct"
+                      style="margin-right: 3px"
+                    ></span>
+                    直接源码</span
+                  >
+                  <span class="tag tag-blue">方法入口</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 追问建议 -->
+            <div style="display: flex; gap: 6px; flex-wrap: wrap">
+              <button class="btn" style="font-size: 11px">
+                支付链路有并发风险吗？
+              </button>
+              <button class="btn" style="font-size: 11px">
+                库存扣减是原子的吗？
+              </button>
+              <button class="btn" style="font-size: 11px">展开完整调用</button>
+            </div>
+          </div>
+
+          <!-- ============ Tab: 审计 ============ -->
+          <div class="tab-body" id="tab-audit">
+            <!-- 请求状态 -->
+            <div class="status-row">
+              <span class="status-dot ok"></span>
+              <span>审计完成 · 自AUTO模式 · 5项发现 · 3候选变更</span>
+            </div>
+
+            <!-- 审计对话 -->
+            <div class="section">
+              <div class="section-head">
+                <span class="section-title">💬 审计对话</span>
+              </div>
+              <div
+                class="section-body"
+                style="display: flex; flex-direction: column; gap: 8px"
+              >
+                <div class="msg user">
+                  <div class="msg-role">用户</div>
+                  <p>审查 OrderController.createOrder 链路的安全性</p>
+                </div>
+                <div class="msg ai">
+                  <div class="msg-role">AI 助手</div>
+                  <p>分析链路后，发现 <strong>3 个风险</strong>：</p>
+                  <p>
+                    1️⃣ <strong>缺少事务注解</strong> —
+                    <code>InventoryService.deductStock</code> 未加
+                    <code>@Transactional</code>，库存扣减可能不一致
+                  </p>
+                  <p>
+                    2️⃣ <strong>硬编码密钥</strong> —
+                    <code>PaymentService.verifySignature</code> 中密钥硬编码
+                  </p>
+                  <p>
+                    3️⃣ <strong>缺少权限校验</strong> —
+                    <code>deleteOrder</code> 未调用权限检查
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- 候选变更 -->
+            <div class="section">
+              <div class="section-head">
+                <span class="section-title">✏️ 候选变更</span>
+                <span class="tag tag-orange">3 项待处理</span>
+              </div>
+              <div
+                class="section-body"
+                style="display: flex; flex-direction: column; gap: 6px"
+              >
+                <div class="change-card active">
+                  <div class="change-head">
+                    <strong>添加 @Transactional 注解</strong>
+                    <span class="tag tag-orange">待确认</span>
+                  </div>
+                  <p>为 deductStock 添加事务注解，确保库存扣减原子性</p>
+                  <div class="change-loc">
+                    <span class="evidence-dot direct"></span>
+                    InventoryService.java:45 · 直接源码
+                  </div>
+                </div>
+                <div class="change-card">
+                  <div class="change-head">
+                    <strong>密钥提取至配置</strong>
+                    <span class="tag tag-orange">待确认</span>
+                  </div>
+                  <p>将硬编码密钥提取到 application.yml 配置中心</p>
+                  <div class="change-loc">
+                    <span class="evidence-dot direct"></span>
+                    PaymentService.java:67 · 直接源码
+                  </div>
+                </div>
+                <div class="change-card">
+                  <div class="change-head">
+                    <strong>添加权限校验</strong>
+                    <span class="tag tag-green">已确认</span>
+                  </div>
+                  <p>
+                    在 deleteOrder 添加
+                    <code>@PreAuthorize("hasRole('ADMIN')")</code>
+                  </p>
+                  <div class="change-loc">
+                    <span class="evidence-dot graph"></span>
+                    OrderController.java:58 · 图推断
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 输入 -->
+            <div class="input-area">
+              <div class="input-row">
+                <select class="mode-select">
+                  <option>自动</option>
+                  <option>回答</option>
+                  <option>审查</option>
+                  <option>变更</option>
+                  <option>调查</option>
+                </select>
+                <span style="font-size: 11px; color: var(--text-muted)"
+                  >范围: OrderController.createOrder</span
+                >
+              </div>
+              <textarea
+                placeholder="输入审计问题，例如：这个链路有并发安全问题吗？"
+              ></textarea>
+              <div class="input-actions">
+                <button class="btn-primary btn">发送</button>
+                <button class="btn">重试</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============ Tab: 草稿 ============ -->
+          <div class="tab-body" id="tab-draft">
+            <div class="status-row">
+              <span class="tag tag-blue">v3</span>
+              <span style="color: var(--text-muted)"
+                >变更 2 · 备注 1 · 验证: 待审查</span
+              >
+              <button
+                class="btn"
+                style="margin-left: auto; padding: 3px 8px; font-size: 11px"
+              >
+                验证状态
+              </button>
+            </div>
+
+            <!-- 草稿变更列表 -->
+            <div class="section">
+              <div class="section-head">
+                <span class="section-title">📝 草稿变更</span>
+              </div>
+              <div
+                class="section-body"
+                style="display: flex; flex-direction: column; gap: 8px"
+              >
+                <div class="draft-card">
+                  <div class="change-head">
+                    <strong>添加 @Transactional 注解</strong>
+                    <span class="tag tag-orange">待确认</span>
+                  </div>
+                  <p
+                    style="
+                      font-size: 11px;
+                      color: var(--text-dim);
+                      margin: 4px 0;
+                    "
+                  >
+                    为 InventoryService.deductStock 添加事务注解
+                  </p>
+                  <div class="diff-block" style="margin-top: 6px">
+                    <div class="diff-header">InventoryService.java:45</div>
+                    <pre
+                      class="diff-pre"
+                    ><span class="diff-add">+ @Transactional</span>
+  public void deductStock(Long productId, int qty) {</pre>
+                  </div>
+                  <div style="display: flex; gap: 4px; margin-top: 6px">
+                    <button
+                      class="btn"
+                      style="padding: 3px 8px; font-size: 10px"
+                    >
+                      定位到图
+                    </button>
+                    <button
+                      class="btn"
+                      style="padding: 3px 8px; font-size: 10px"
+                    >
+                      取消确认
+                    </button>
+                  </div>
+                </div>
+                <div class="draft-card note">
+                  <div class="change-head">
+                    <strong>💡 备注: 考虑幂等性</strong>
+                    <span class="tag tag-blue">备注</span>
+                  </div>
+                  <p
+                    style="
+                      font-size: 11px;
+                      color: var(--text-dim);
+                      margin-top: 4px;
+                    "
+                  >
+                    库存扣减应考虑幂等性，建议使用唯一订单号作为幂等键防止重复扣减
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============ Tab: 代码 ============ -->
+          <div class="tab-body" id="tab-code">
+            <div class="status-row">
+              <span class="tag tag-blue">基于草稿 v3</span>
+              <span style="color: var(--text-muted)"
+                >实现建议: 就绪 · 代码 diff: 就绪</span
+              >
+            </div>
+
+            <!-- 实现建议 -->
+            <div class="section">
+              <div class="section-head">
+                <span class="section-title">📐 实现建议</span>
+                <span class="tag tag-green">就绪</span>
+              </div>
+              <div class="section-body">
+                <p
+                  style="
+                    font-size: 12px;
+                    color: var(--text-dim);
+                    line-height: 1.6;
+                  "
+                >
+                  建议进行两处代码变更：1) 为库存扣减添加事务注解（低风险）；2)
+                  将支付密钥外部化到配置文件（低风险）。两处改动可独立应用。
+                </p>
+                <div style="display: flex; gap: 4px; margin-top: 6px">
+                  <button class="btn" style="padding: 3px 8px; font-size: 11px">
+                    讨论
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 代码 Diff -->
+            <div class="section">
+              <div class="section-head">
+                <span class="section-title">📄 代码 Diff</span>
+                <button
+                  class="btn-primary btn"
+                  style="padding: 4px 10px; font-size: 11px"
+                >
+                  写入全部
+                </button>
+              </div>
+              <div
+                class="section-body"
+                style="display: flex; flex-direction: column; gap: 8px"
+              >
+                <div
+                  style="
+                    display: flex;
+                    gap: 6px;
+                    align-items: center;
+                    padding: 6px 10px;
+                    border-radius: var(--radius);
+                    background: var(--bg);
+                    border: 1px solid var(--border);
+                  "
+                >
+                  <span
+                    style="
+                      font-family: var(--font-mono);
+                      font-size: 11px;
+                      color: var(--text);
+                    "
+                    >InventoryService.java</span
+                  >
+                  <span class="tag tag-green">就绪</span>
+                  <span style="flex: 1"></span>
+                  <button class="btn" style="padding: 3px 8px; font-size: 10px">
+                    写入
+                  </button>
+                  <button class="btn" style="padding: 3px 8px; font-size: 10px">
+                    真实 Diff
+                  </button>
+                  <button class="btn" style="padding: 3px 8px; font-size: 10px">
+                    打开文件
+                  </button>
+                </div>
+
+                <div class="diff-block">
+                  <div class="diff-header">
+                    <span>替换方法主体 · InventoryService.java</span>
+                    <span style="color: var(--text-muted)">预计 1 处改动</span>
+                  </div>
+                  <pre
+                    class="diff-pre"
+                  ><span style="color:var(--text-muted)">  // 修改前</span>
+  public void deductStock(Long productId, int qty) {
+      productRepository.deduct(productId, qty);
+  }
+
+<span style="color:var(--accent)">  // 修改后</span>
+<span class="diff-add">+ @Transactional</span>
+  public void deductStock(Long productId, int qty) {
+      productRepository.deduct(productId, qty);
+  }</pre>
+                </div>
+
+                <div
+                  style="
+                    display: flex;
+                    gap: 6px;
+                    align-items: center;
+                    padding: 6px 10px;
+                    border-radius: var(--radius);
+                    background: var(--bg);
+                    border: 1px solid var(--border);
+                  "
+                >
+                  <span
+                    style="
+                      font-family: var(--font-mono);
+                      font-size: 11px;
+                      color: var(--text);
+                    "
+                    >PaymentService.java</span
+                  >
+                  <span class="tag tag-orange">待确认</span>
+                  <span style="flex: 1"></span>
+                  <button class="btn" style="padding: 3px 8px; font-size: 10px">
+                    写入
+                  </button>
+                  <button class="btn" style="padding: 3px 8px; font-size: 10px">
+                    真实 Diff
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======== Property Drawer ======== -->
+      <div class="drawer" id="drawer">
+        <div class="drawer-inner">
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 8px;
+            "
+          >
+            <strong style="font-size: 12px">OrderController.createOrder</strong>
+            <button
+              class="btn"
+              style="padding: 3px 8px; font-size: 10px"
+              onclick="
+                document.getElementById('drawer').classList.remove('open')
+              "
+            >
+              ✕
+            </button>
+          </div>
+          <div class="drawer-row">
+            <span class="drawer-label">类型</span
+            ><span class="drawer-value">METHOD · HTTP_ENDPOINT</span>
+          </div>
+          <div class="drawer-row">
+            <span class="drawer-label">确定性</span
+            ><span class="drawer-value">PROVEN</span>
+          </div>
+          <div class="drawer-row">
+            <span class="drawer-label">绑定状态</span
+            ><span class="drawer-value">BOUND</span>
+          </div>
+          <div class="drawer-row">
+            <span class="drawer-label">来源</span
+            ><span class="drawer-value">FACT</span>
+          </div>
+          <div style="display: flex; gap: 4px; margin-top: 6px">
+            <button class="btn" style="padding: 4px 10px; font-size: 11px">
+              跳转源码
+            </button>
+            <button class="btn" style="padding: 4px 10px; font-size: 11px">
+              审查此节点
+            </button>
+            <button class="btn" style="padding: 4px 10px; font-size: 11px">
+              讲解此节点
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======== Interactions ======== -->
+    <script>
+      // Tab switching
+      document.querySelectorAll(".tab-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document
+            .querySelectorAll(".tab-btn")
+            .forEach((b) => b.classList.remove("active"));
+          document
+            .querySelectorAll(".tab-body")
+            .forEach((t) => t.classList.remove("active"));
+          btn.classList.add("active");
+          document
+            .getElementById("tab-" + btn.dataset.tab)
+            .classList.add("active");
+        });
+      });
+      // Step selection
+      document.querySelectorAll(".step-item").forEach((item) => {
+        item.addEventListener("click", () => {
+          document
+            .querySelectorAll(".step-item")
+            .forEach((i) => i.classList.remove("active"));
+          item.classList.add("active");
+        });
+      });
+      // Change card selection
+      document.querySelectorAll(".change-card").forEach((card) => {
+        card.addEventListener("click", () => {
+          document
+            .querySelectorAll(".change-card")
+            .forEach((c) => c.classList.remove("active"));
+          card.classList.add("active");
+        });
+      });
+      // Node selection → open drawer
+      document.querySelectorAll(".node").forEach((node) => {
+        node.addEventListener("click", (e) => {
+          document
+            .querySelectorAll(".node")
+            .forEach((n) => n.classList.remove("selected"));
+          node.classList.add("selected");
+          document.getElementById("drawer").classList.add("open");
+          e.stopPropagation();
+        });
+      });
+      // Click canvas → close drawer
+      document.querySelector(".canvas-wrap").addEventListener("click", () => {
+        document.getElementById("drawer").classList.remove("open");
+        document
+          .querySelectorAll(".node")
+          .forEach((n) => n.classList.remove("selected"));
+      });
+    </script>
+  </body>
+</html>

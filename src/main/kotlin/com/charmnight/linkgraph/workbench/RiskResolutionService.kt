@@ -25,8 +25,8 @@ class RiskResolutionService {
         }
         return result.copy(
             investigationThreads = result.investigationThreads.map(updateThread),
-            auditSession = result.auditSession?.copy(
-                investigationThreads = result.auditSession.investigationThreads.map(updateThread),
+            qaSession = result.qaSession?.copy(
+                investigationThreads = result.qaSession.investigationThreads.map(updateThread),
             ),
         )
     }
@@ -103,8 +103,8 @@ class RiskResolutionService {
     }
 
     private fun resolveThreads(snapshot: RiskResolutionSnapshot): List<InvestigationThread> {
-        val result = snapshot.auditResult ?: return emptyList()
-        return result.auditSession?.investigationThreads
+        val result = snapshot.qaResult ?: return emptyList()
+        return result.qaSession?.investigationThreads
             ?.takeIf(List<InvestigationThread>::isNotEmpty)
             ?: result.investigationThreads
     }

@@ -11,7 +11,7 @@ internal class ProjectDebugWorkflow(
     private val logger: Logger,
     private val debugGraphFactory: DebugGraphFactory,
     private val subjectGraphWorkflow: SubjectGraphWorkflow,
-    private val invalidateAuditRequests: () -> Unit,
+    private val invalidateQaRequests: () -> Unit,
     private val eventSink: GraphEditorApplicationEventSink,
 ) {
     fun prepareDebugRequestedAnalysisDisplayModeIfPresent(envName: String) {
@@ -33,7 +33,7 @@ internal class ProjectDebugWorkflow(
         debugLazy(logger.isDebugEnabled, logger::debug) {
             "开始注入调试链路图: mode=$mode, summary=${debugGraph.summary}"
         }
-        invalidateAuditRequests()
+        invalidateQaRequests()
         eventSink.emit(
             GraphEditorApplicationEvent.DebugGraphLoaded(
                 graph = debugGraph.graph,

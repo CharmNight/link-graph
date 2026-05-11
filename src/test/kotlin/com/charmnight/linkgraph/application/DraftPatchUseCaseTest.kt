@@ -59,16 +59,16 @@ class DraftPatchUseCaseTest {
 
     @Test
     fun restoreDraftPatchPreviewSelectsRequestedSource() {
-        val auditPatch = GraphPatch(summary = "audit")
+        val qaPatch = GraphPatch(summary = "qa")
         val diffPatch = GraphPatch(summary = "diff")
         val lastPatch = GraphPatch(summary = "last")
         val snapshot = ApplicationSnapshot(
-            auditResult = GraphPatchResult(
+            qaResult = GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "q",
                 answer = "a",
                 promptPreview = "p",
-                patch = auditPatch,
+                patch = qaPatch,
             ),
             diffReviewResult = GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,

@@ -1012,7 +1012,7 @@ class GraphEditorStateServiceTest {
     }
 
     @Test
-    fun beginAuditRequestClearsPreviousAuditResultButKeepsGraphs() {
+    fun beginQaRequestClearsPreviousQaResultButKeepsGraphs() {
         val service = GraphEditorStateService()
         val graph = GraphDocument(
             nodes = listOf(
@@ -1026,7 +1026,7 @@ class GraphEditorStateServiceTest {
         )
 
         service.loadGraph(graph, "currentMethod")
-        service.asyncRequests.markAuditResult(
+        service.asyncRequests.markQaResult(
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "旧问题",
@@ -1035,12 +1035,12 @@ class GraphEditorStateServiceTest {
             ),
         )
 
-        service.asyncRequests.beginAuditRequest()
+        service.asyncRequests.beginQaRequest()
 
         val snapshot = service.snapshot()
         assertEquals(graph, snapshot.visibleGraph)
         assertEquals(graph, snapshot.workingGraph)
-        assertEquals(null, snapshot.auditResult)
+        assertEquals(null, snapshot.qaResult)
         assertEquals("requestAudit", snapshot.lastMessageType)
     }
 
@@ -1084,20 +1084,20 @@ class GraphEditorStateServiceTest {
         val afterBeautificationResult = service.snapshot()
         assertEquals(afterBeginBeautification.snapshotRevision + 1, afterBeautificationResult.snapshotRevision)
 
-        service.asyncRequests.beginAuditRequest()
-        val afterBeginAudit = service.snapshot()
-        assertEquals(afterBeautificationResult.snapshotRevision + 1, afterBeginAudit.snapshotRevision)
+        service.asyncRequests.beginQaRequest()
+        val afterBeginQa = service.snapshot()
+        assertEquals(afterBeautificationResult.snapshotRevision + 1, afterBeginQa.snapshotRevision)
 
-        service.asyncRequests.markAuditResult(
+        service.asyncRequests.markQaResult(
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "请围绕当前链路进行问答",
                 answer = "当前链路缺少兜底说明。",
-                promptPreview = "audit prompt",
+                promptPreview = "qa prompt",
             ),
         )
-        val afterAuditResult = service.snapshot()
-        assertEquals(afterBeginAudit.snapshotRevision + 1, afterAuditResult.snapshotRevision)
+        val afterQaResult = service.snapshot()
+        assertEquals(afterBeginQa.snapshotRevision + 1, afterQaResult.snapshotRevision)
     }
 
     @Test
@@ -1320,7 +1320,7 @@ class GraphEditorStateServiceTest {
     }
 
     @Test
-    fun markGraphChangedClearsDerivedAuditAndPreviewState() {
+    fun markGraphChangedClearsDerivedQaAndPreviewState() {
         val service = GraphEditorStateService()
         val graph = GraphDocument(
             nodes = listOf(
@@ -1334,7 +1334,7 @@ class GraphEditorStateServiceTest {
         )
 
         service.loadGraph(graph, "currentMethod")
-        service.asyncRequests.markAuditResult(
+        service.asyncRequests.markQaResult(
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "旧问题",
@@ -1361,7 +1361,7 @@ class GraphEditorStateServiceTest {
         service.markGraphChanged(graph)
 
         val snapshot = service.snapshot()
-        assertEquals(null, snapshot.auditResult)
+        assertEquals(null, snapshot.qaResult)
         assertEquals(null, snapshot.diffReviewResult)
         assertEquals(null, snapshot.draftPatchPreview)
         assertEquals("workspaceGraphChanged", snapshot.lastMessageType)

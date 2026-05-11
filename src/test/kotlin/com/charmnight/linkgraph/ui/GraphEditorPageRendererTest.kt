@@ -41,9 +41,9 @@ import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.charmnight.linkgraph.workbench.StepKind
-import com.charmnight.linkgraph.workbench.AuditConversationMessage
-import com.charmnight.linkgraph.workbench.AuditConversationSession
-import com.charmnight.linkgraph.workbench.AuditMessageRole
+import com.charmnight.linkgraph.workbench.QaConversationMessage
+import com.charmnight.linkgraph.workbench.QaConversationSession
+import com.charmnight.linkgraph.workbench.QaMessageRole
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 import com.charmnight.linkgraph.workbench.DraftValidationState
@@ -105,8 +105,8 @@ class GraphEditorPageRendererTest {
                     kind = QaRequestKind.ASK,
                     question = "这里为什么会走兜底分支？",
                     selectedNodeIds = listOf("method:submit-order"),
-                    baseSession = AuditConversationSession(
-                        sessionId = "audit-1",
+                    baseSession = QaConversationSession(
+                        sessionId = "qa-1",
                         scopeKey = "method:submit-order",
                     ),
                 ),
@@ -122,7 +122,7 @@ class GraphEditorPageRendererTest {
                 messages = listOf(
                     GenerationPlanDiscussionMessage(
                         messageId = "message-1",
-                        role = AuditMessageRole.USER,
+                        role = QaMessageRole.USER,
                         content = "为什么建议先改这个 service？",
                         focusItemId = "item-1",
                     ),
@@ -307,7 +307,7 @@ class GraphEditorPageRendererTest {
                     ),
                 ),
             ),
-            auditRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.running(
+            qaRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.running(
                 statusMessage = "正在等待远程 LLM 问答响应",
                 detailMessage = "当前采用完整返回，不是流式输出。",
                 startedAtEpochMillis = 1_710_000_000_000,
@@ -338,12 +338,12 @@ class GraphEditorPageRendererTest {
     fun promptPreviewAvailableOnlyTrueWhenResultCarriesPromptContentOrArtifact() {
         val renderer = GraphEditorPageRenderer()
         val missingPromptSnapshot = testSnapshot(
-            auditRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(
+            qaRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(
                 scene = "问答",
                 statusMessage = "问答完成。",
                 promptPreviewAvailable = true,
             ),
-            auditResult = GraphPatchResult(
+            qaResult = GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "这里是什么？",
                 answer = "当前没有提示词。",
@@ -357,12 +357,12 @@ class GraphEditorPageRendererTest {
         assertFalse(missingPromptState["promptPreviewAvailable"] as Boolean)
 
         val promptSnapshot = testSnapshot(
-            auditRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(
+            qaRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(
                 scene = "问答",
                 statusMessage = "问答完成。",
                 promptPreviewAvailable = true,
             ),
-            auditResult = GraphPatchResult(
+            qaResult = GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "这里是什么？",
                 answer = "已有提示词。",
@@ -377,7 +377,7 @@ class GraphEditorPageRendererTest {
         val promptResult = promptPayload["auditResult"] as Map<String, Any?>
 
         assertTrue(promptState["promptPreviewAvailable"] as Boolean)
-        assertTrue(promptResult["promptPreviewArtifactId"].toString().startsWith("audit-prompt:audit-result:"))
+        assertTrue(promptResult["promptPreviewArtifactId"].toString().startsWith("qa-prompt:qa-result:"))
     }
 
     @Test
@@ -495,7 +495,7 @@ class GraphEditorPageRendererTest {
                     ),
                 ),
             ),
-            auditResult = GraphPatchResult(
+            qaResult = GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条路径调整",
                 answer = "建议补充路径调整说明节点。",
@@ -1263,7 +1263,7 @@ class GraphEditorPageRendererTest {
     fun bootstrapJson输出本地规则结果来源() {
         val renderer = GraphEditorPageRenderer()
         val snapshot = testSnapshot(
-            auditResult = GraphPatchResult(
+            qaResult = GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "这里为什么会走兜底分支？",
                 answer = "当前回答来自本地规则。",
@@ -1304,20 +1304,20 @@ class GraphEditorPageRendererTest {
             ),
         )
         val snapshot = testSnapshot(
-            auditResult = com.charmnight.linkgraph.llm.GraphPatchResult(
+            qaResult = com.charmnight.linkgraph.llm.GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "这里是不是有问题？",
                 answer = "建议修改条件判断。",
                 promptPreview = "prompt",
                 candidateChanges = listOf(candidate),
                 newCandidateChanges = listOf(candidate),
-                auditSession = AuditConversationSession(
-                    sessionId = "audit-method-submit",
+                qaSession = QaConversationSession(
+                    sessionId = "qa-method-submit",
                     scopeKey = "method:submit",
                     messages = listOf(
-                        AuditConversationMessage(
+                        QaConversationMessage(
                             messageId = "m-1",
-                            role = AuditMessageRole.USER,
+                            role = QaMessageRole.USER,
                             content = "这里是不是有问题？",
                         ),
                     ),

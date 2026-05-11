@@ -25,10 +25,10 @@ internal class GraphBrowserBridgeRegistrar(
     private val exportMermaidQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val showDiffModeQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val requestSyncPreviewQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
-    private val requestAuditQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
-    private val retryLastAuditRequestQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
-    private val confirmAuditCandidateChangeQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
-    private val unconfirmAuditCandidateChangeQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    private val requestQaQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    private val retryLastQaRequestQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    private val confirmQaCandidateChangeQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    private val unconfirmQaCandidateChangeQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val resolveInvestigationThreadQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val requestDiffReviewQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val requestGraphBeautificationQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
@@ -70,13 +70,13 @@ internal class GraphBrowserBridgeRegistrar(
         requestSyncPreviewQuery.addSafeHandler("请求同步预览") {
             bridge.dispatch(GraphEditorMessage.RequestSyncPreview)
         }
-        requestAuditQuery.addSafePayloadHandler("问答", GraphBrowserPayloadKind.STRUCTURED) { payload ->
-            val request = GraphBrowserPayloadParser.parseAuditRequestPayload(payload)
+        requestQaQuery.addSafePayloadHandler("问答", GraphBrowserPayloadKind.STRUCTURED) { payload ->
+            val request = GraphBrowserPayloadParser.parseQaRequestPayload(payload)
             debugLazy(logger.isDebugEnabled, logger::debug) {
                 "收到前端请求：问答, question=${summarizePayloadText(request.question)}, selectedNodeIds=${request.selectedNodeIds}, sourceThreadId=${request.sourceThreadId}"
             }
             bridge.dispatch(
-                GraphEditorMessage.RequestAudit(
+                GraphEditorMessage.RequestQa(
                     question = request.question,
                     selectedNodeIds = request.selectedNodeIds,
                     sourceThreadId = request.sourceThreadId,
@@ -84,14 +84,14 @@ internal class GraphBrowserBridgeRegistrar(
                 ),
             )
         }
-        retryLastAuditRequestQuery.addSafeHandler("重试问答") {
-            bridge.dispatch(GraphEditorMessage.RetryLastAuditRequest)
+        retryLastQaRequestQuery.addSafeHandler("重试问答") {
+            bridge.dispatch(GraphEditorMessage.RetryLastQaRequest)
         }
-        confirmAuditCandidateChangeQuery.addSafePayloadHandler("确认问答候选变更", GraphBrowserPayloadKind.IDENTIFIER) { payload ->
-            bridge.dispatch(GraphEditorMessage.ConfirmAuditCandidateChange(changeId = payload))
+        confirmQaCandidateChangeQuery.addSafePayloadHandler("确认问答候选变更", GraphBrowserPayloadKind.IDENTIFIER) { payload ->
+            bridge.dispatch(GraphEditorMessage.ConfirmQaCandidateChange(changeId = payload))
         }
-        unconfirmAuditCandidateChangeQuery.addSafePayloadHandler("取消确认问答候选变更", GraphBrowserPayloadKind.IDENTIFIER) { payload ->
-            bridge.dispatch(GraphEditorMessage.UnconfirmAuditCandidateChange(changeId = payload))
+        unconfirmQaCandidateChangeQuery.addSafePayloadHandler("取消确认问答候选变更", GraphBrowserPayloadKind.IDENTIFIER) { payload ->
+            bridge.dispatch(GraphEditorMessage.UnconfirmQaCandidateChange(changeId = payload))
         }
         resolveInvestigationThreadQuery.addSafePayloadHandler("风险决策提交", GraphBrowserPayloadKind.STRUCTURED) { payload ->
             val request = GraphBrowserPayloadParser.parseResolveInvestigationThreadPayload(payload)
@@ -138,7 +138,7 @@ internal class GraphBrowserBridgeRegistrar(
         restoreDraftPatchPreviewQuery.addSafePayloadHandler("恢复草稿补丁预览", GraphBrowserPayloadKind.IDENTIFIER) { payload ->
             bridge.dispatch(
                 GraphEditorMessage.RestoreDraftPatchPreview(
-                    GraphEditorMessage.DraftPatchPreviewSource.valueOf(payload),
+                    GraphBrowserPayloadParser.parseDraftPatchPreviewSource(payload),
                 ),
             )
         }
@@ -279,10 +279,10 @@ internal class GraphBrowserBridgeRegistrar(
               exportMermaid: () => { ${exportMermaidQuery.inject("'exportMermaid'")} },
               showDiffMode: () => { ${showDiffModeQuery.inject("'showDiffMode'")} },
               requestSyncPreview: () => { ${requestSyncPreviewQuery.inject("'requestSyncPreview'")} },
-              requestAudit: (question, selectedNodeIds, sourceThreadId, mode) => { ${requestAuditQuery.inject("[(question ? encodeURIComponent(question) : ''), ((selectedNodeIds || []).map((value) => encodeURIComponent(value)).join(',')), (sourceThreadId ? encodeURIComponent(sourceThreadId) : ''), (mode ? encodeURIComponent(mode) : 'AUTO')].join('\\u001f')")} },
-              retryLastAuditRequest: () => { ${retryLastAuditRequestQuery.inject("'retryLastAuditRequest'")} },
-              confirmAuditCandidateChange: (changeId) => { ${confirmAuditCandidateChangeQuery.inject("changeId")} },
-              unconfirmAuditCandidateChange: (changeId) => { ${unconfirmAuditCandidateChangeQuery.inject("changeId")} },
+              requestAudit: (question, selectedNodeIds, sourceThreadId, mode) => { ${requestQaQuery.inject("[(question ? encodeURIComponent(question) : ''), ((selectedNodeIds || []).map((value) => encodeURIComponent(value)).join(',')), (sourceThreadId ? encodeURIComponent(sourceThreadId) : ''), (mode ? encodeURIComponent(mode) : 'AUTO')].join('\\u001f')")} },
+              retryLastAuditRequest: () => { ${retryLastQaRequestQuery.inject("'retryLastAuditRequest'")} },
+              confirmAuditCandidateChange: (changeId) => { ${confirmQaCandidateChangeQuery.inject("changeId")} },
+              unconfirmAuditCandidateChange: (changeId) => { ${unconfirmQaCandidateChangeQuery.inject("changeId")} },
               resolveInvestigationThread: (threadId, resolutionStatus, note) => { ${resolveInvestigationThreadQuery.inject("[(threadId ? encodeURIComponent(threadId) : ''), (resolutionStatus ? encodeURIComponent(resolutionStatus) : ''), (note ? encodeURIComponent(note) : '')].join('\\u001f')")} },
               requestDiffReview: (question, selectedDiffItemIds) => { ${requestDiffReviewQuery.inject("[(question ? encodeURIComponent(question) : ''), ((selectedDiffItemIds || []).map((value) => encodeURIComponent(value)).join(','))].join('\\u001f')")} },
               requestGraphBeautification: (goal, preferredStyle, explanationFocus, granularity, followUpStepId, followUpStepTitle, followUpQuestion) => { ${requestGraphBeautificationQuery.inject("[(goal ? encodeURIComponent(goal) : ''), (preferredStyle ? encodeURIComponent(preferredStyle) : ''), (explanationFocus ? encodeURIComponent(explanationFocus) : ''), (granularity ? encodeURIComponent(granularity) : ''), (followUpStepId ? encodeURIComponent(followUpStepId) : ''), (followUpStepTitle ? encodeURIComponent(followUpStepTitle) : ''), (followUpQuestion ? encodeURIComponent(followUpQuestion) : '')].join('\\u001f')")} },

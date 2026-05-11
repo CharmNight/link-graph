@@ -31,15 +31,15 @@ class GraphEditorCommandRouter(
             is GraphEditorMessage.RequestSourceNavigation -> applicationService.requestSourceNavigation(message.nodeId)
             is GraphEditorMessage.RequestExpandOverflowNode -> applicationService.requestExpandOverflowNode(message.nodeId)
             GraphEditorMessage.RequestSyncPreview -> applicationService.requestSyncPreview()
-            is GraphEditorMessage.RequestAudit -> applicationService.requestAuditAsync(
+            is GraphEditorMessage.RequestQa -> applicationService.requestQaAsync(
                 message.question,
                 message.selectedNodeIds,
                 message.sourceThreadId,
                 message.mode,
             )
-            GraphEditorMessage.RetryLastAuditRequest -> applicationService.retryLastAuditRequestAsync()
-            is GraphEditorMessage.ConfirmAuditCandidateChange -> applicationService.confirmAuditCandidateChange(message.changeId)
-            is GraphEditorMessage.UnconfirmAuditCandidateChange -> applicationService.unconfirmAuditCandidateChange(message.changeId)
+            GraphEditorMessage.RetryLastQaRequest -> applicationService.retryLastQaRequestAsync()
+            is GraphEditorMessage.ConfirmQaCandidateChange -> applicationService.confirmQaCandidateChange(message.changeId)
+            is GraphEditorMessage.UnconfirmQaCandidateChange -> applicationService.unconfirmQaCandidateChange(message.changeId)
             is GraphEditorMessage.ResolveInvestigationThread -> applicationService.resolveInvestigationThread(
                 threadId = message.threadId,
                 status = message.resolutionStatus,

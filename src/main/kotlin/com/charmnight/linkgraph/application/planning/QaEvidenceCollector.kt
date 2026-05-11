@@ -10,12 +10,12 @@ import java.nio.file.InvalidPathException
 import java.nio.file.Path
 import java.util.ArrayDeque
 
-internal data class AuditEvidenceCollection(
+internal data class QaEvidenceCollection(
     val sourceContext: List<SourceSnippetContext> = emptyList(),
     val evidenceTrace: List<EvidenceTraceEntry> = emptyList(),
 )
 
-internal class AuditEvidenceCollector(
+internal class QaEvidenceCollector(
     private val maxSnippets: Int = 12,
     private val maxTraversalDepth: Int = 2,
     private val preferredSnippetLength: Int = 240,
@@ -24,11 +24,11 @@ internal class AuditEvidenceCollector(
     fun collect(
         graph: GraphDocument,
         selectedNodeIds: List<String>,
-    ): AuditEvidenceCollection {
+    ): QaEvidenceCollection {
         val nodeById = graph.nodes.associateBy(GraphNode::id)
         val seedIds = selectedNodeIds.ifEmpty { graph.nodes.firstOrNull()?.let(GraphNode::id)?.let(::listOf).orEmpty() }
         if (seedIds.isEmpty()) {
-            return AuditEvidenceCollection()
+            return QaEvidenceCollection()
         }
         val visitedNodeIds = linkedSetOf<String>()
         val snippets = mutableListOf<SourceSnippetContext>()
@@ -61,7 +61,7 @@ internal class AuditEvidenceCollector(
                 }
             }
         }
-        return AuditEvidenceCollection(
+        return QaEvidenceCollection(
             sourceContext = snippets,
             evidenceTrace = trace,
         )

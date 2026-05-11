@@ -58,7 +58,7 @@ internal class DraftPatchWorkflow(
 
     private fun DraftPatchPreviewSource.toUseCaseSource(): RestoreDraftPatchPreviewSource {
         return when (this) {
-            DraftPatchPreviewSource.AUDIT -> RestoreDraftPatchPreviewSource.AUDIT
+            DraftPatchPreviewSource.QA -> RestoreDraftPatchPreviewSource.QA
             DraftPatchPreviewSource.DIFF_REVIEW -> RestoreDraftPatchPreviewSource.DIFF_REVIEW
             DraftPatchPreviewSource.LAST_APPLIED -> RestoreDraftPatchPreviewSource.LAST_APPLIED
         }

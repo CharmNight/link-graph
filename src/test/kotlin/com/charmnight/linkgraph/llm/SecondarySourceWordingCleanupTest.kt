@@ -9,7 +9,7 @@ import kotlin.test.assertFalse
 
 class SecondarySourceWordingCleanupTest {
     @Test
-    fun secondaryProductionSourceCommentsDoNotKeepAuditWording() {
+    fun secondaryProductionSourceCommentsDoNotKeepObsoleteWording() {
         val projectRoot = Path.of(System.getProperty("user.dir"))
         val files = listOf(
             "src/main/kotlin/com/charmnight/linkgraph/application/diagnostics/GenerationDiagnostics.kt",

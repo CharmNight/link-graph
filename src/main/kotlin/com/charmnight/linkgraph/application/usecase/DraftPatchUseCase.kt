@@ -38,7 +38,7 @@ sealed interface ClearDraftPatchPreviewUseCaseResult {
 }
 
 enum class RestoreDraftPatchPreviewSource {
-    AUDIT,
+    QA,
     DIFF_REVIEW,
     LAST_APPLIED,
 }
@@ -95,7 +95,7 @@ class DraftPatchUseCase(
         source: RestoreDraftPatchPreviewSource,
     ): RestoreDraftPatchPreviewUseCaseResult {
         val patch = when (source) {
-            RestoreDraftPatchPreviewSource.AUDIT -> snapshot.auditResult?.patch
+            RestoreDraftPatchPreviewSource.QA -> snapshot.qaResult?.patch
             RestoreDraftPatchPreviewSource.DIFF_REVIEW -> snapshot.diffReviewResult?.patch
             RestoreDraftPatchPreviewSource.LAST_APPLIED -> snapshot.draftPatchUndo?.patchPreview
         } ?: return RestoreDraftPatchPreviewUseCaseResult.MissingPreview

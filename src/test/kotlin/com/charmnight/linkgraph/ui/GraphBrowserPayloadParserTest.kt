@@ -15,7 +15,7 @@ class GraphBrowserPayloadParserTest {
             "",
         ).joinToString("\u001F")
 
-        val parsed = GraphBrowserPayloadParser.parseAuditRequestPayload(payload)
+        val parsed = GraphBrowserPayloadParser.parseQaRequestPayload(payload)
 
         assertEquals("这个方法是如何触发的？", parsed.question)
         assertEquals(QaMode.AUTO, parsed.mode)
@@ -30,7 +30,7 @@ class GraphBrowserPayloadParserTest {
             encode("INVESTIGATE"),
         ).joinToString("\u001F")
 
-        val parsed = GraphBrowserPayloadParser.parseAuditRequestPayload(payload)
+        val parsed = GraphBrowserPayloadParser.parseQaRequestPayload(payload)
 
         assertEquals(listOf("method:upload"), parsed.selectedNodeIds)
         assertEquals("thread-risk-1", parsed.sourceThreadId)
@@ -42,7 +42,7 @@ class GraphBrowserPayloadParserTest {
         val payload = "x".repeat(GraphBrowserPayloadLimits.STRUCTURED_PAYLOAD_MAX_CHARS + 1)
 
         val error = assertFailsWith<IllegalArgumentException> {
-            GraphBrowserPayloadParser.parseAuditRequestPayload(payload)
+            GraphBrowserPayloadParser.parseQaRequestPayload(payload)
         }
 
         assertTrue(error.message?.contains("payload 过大") == true)

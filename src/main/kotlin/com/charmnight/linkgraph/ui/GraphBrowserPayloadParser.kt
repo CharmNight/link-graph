@@ -33,7 +33,7 @@ internal object GraphBrowserPayloadParser {
         val focusItemId: String?,
     )
 
-    data class AuditRequestPayload(
+    data class QaRequestPayload(
         val question: String,
         val selectedNodeIds: List<String>,
         val sourceThreadId: String?,
@@ -90,10 +90,10 @@ internal object GraphBrowserPayloadParser {
         )
     }
 
-    fun parseAuditRequestPayload(payload: String): AuditRequestPayload {
+    fun parseQaRequestPayload(payload: String): QaRequestPayload {
         validatePayloadSize(payload, GraphBrowserPayloadKind.STRUCTURED)
         val parts = payload.split(PAYLOAD_SEPARATOR, limit = 4)
-        return AuditRequestPayload(
+        return QaRequestPayload(
             question = decodePayloadValue(parts.firstOrNull().orEmpty()),
             selectedNodeIds = parseEncodedList(parts.getOrNull(1).orEmpty()),
             sourceThreadId = parts.getOrNull(2)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue),
@@ -103,6 +103,14 @@ internal object GraphBrowserPayloadParser {
                 ?.let { raw -> runCatching { QaMode.valueOf(raw) }.getOrDefault(QaMode.AUTO) }
                 ?: QaMode.AUTO,
         )
+    }
+
+    fun parseDraftPatchPreviewSource(payload: String): GraphEditorMessage.DraftPatchPreviewSource {
+        validatePayloadSize(payload, GraphBrowserPayloadKind.IDENTIFIER)
+        return when (payload) {
+            "AUDIT" -> GraphEditorMessage.DraftPatchPreviewSource.QA
+            else -> GraphEditorMessage.DraftPatchPreviewSource.valueOf(payload)
+        }
     }
 
     fun parseResolveInvestigationThreadPayload(payload: String): ResolveInvestigationThreadPayload {

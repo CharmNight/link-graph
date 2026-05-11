@@ -41,16 +41,25 @@ class ArchitectureDebtCleanupTest {
         val qaConversationService = Files.readString(qaConversationServicePath)
         assertTrue(qaConversationService.contains("class QaConversationService"))
         val qaModels = read("src/main/kotlin/com/charmnight/linkgraph/workbench/QaModels.kt")
-        assertFalse(qaModels.contains("typealias QaConversationMessage ="))
-        assertFalse(qaModels.contains("typealias QaConversationSession ="))
-        assertFalse(qaModels.contains("typealias QaModelTurn ="))
+        listOf(
+            "typealias AuditConversationMessage",
+            "typealias AuditConversationSession",
+            "typealias AuditModelTurn",
+            "typealias AuditConversationTurnResult",
+            "typealias AuditConversationService",
+        ).forEach { legacyAlias ->
+            assertFalse(
+                qaModels.contains(legacyAlias),
+                "Internal Audit compatibility alias should be physically removed: $legacyAlias",
+            )
+        }
         assertFalse(
             qaConversationService.contains("AuditConversationService"),
             "QaConversationService must not delegate to the old AuditConversationService shell.",
         )
         assertFalse(
             Files.exists(root.resolve("src/main/kotlin/com/charmnight/linkgraph/workbench/AuditConversationService.kt")),
-            "AuditConversationService should be a compatibility alias, not the implementation file.",
+            "AuditConversationService implementation/wrapper file should be physically removed.",
         )
         val productionQaOffenders = Files.walk(root.resolve("src/main/kotlin/com/charmnight/linkgraph"))
             .filter { path -> Files.isRegularFile(path) && path.toString().endsWith(".kt") }
@@ -102,8 +111,8 @@ class ArchitectureDebtCleanupTest {
             "LLM layer should reuse shared diagnostics instead of keeping a copied LlmGenerationDiagnostics class.",
         )
         assertFalse(
-            read("src/main/kotlin/com/charmnight/linkgraph/llm/GraphAuditPatchService.kt").contains("LlmGenerationDiagnostics"),
-            "GraphAuditPatchService should use shared diagnostics.",
+            read("src/main/kotlin/com/charmnight/linkgraph/llm/GraphQaPatchService.kt").contains("LlmGenerationDiagnostics"),
+            "GraphQaPatchService should use shared diagnostics.",
         )
     }
 
@@ -141,6 +150,20 @@ class ArchitectureDebtCleanupTest {
             Files.exists(root.resolve("src/main/kotlin/com/charmnight/linkgraph/application/workflow/subject/SubjectGraphWorkflowModels.kt")),
             "SubjectGraphWorkflow should move projection/async result models into a subject workflow package.",
         )
+        listOf(
+            "SubjectGraphWorkflowDependencies.kt",
+            "SubjectGraphWorkflowState.kt",
+            "SubjectGraphRequestCoordinator.kt",
+            "SubjectResolutionWorkflow.kt",
+            "SubjectAnalysisWorkflow.kt",
+            "SubjectAnalysisResultApplier.kt",
+            "SubjectNodeAppendWorkflow.kt",
+        ).forEach { fileName ->
+            assertTrue(
+                Files.exists(root.resolve("src/main/kotlin/com/charmnight/linkgraph/application/workflow/subject/$fileName")),
+                "SubjectGraphWorkflow should delegate a focused responsibility to subject/$fileName.",
+            )
+        }
 
         val reviewWorkflow = read("src/main/kotlin/com/charmnight/linkgraph/application/workflow/ReviewWorkflow.kt")
         assertTrue(
@@ -161,8 +184,8 @@ class ArchitectureDebtCleanupTest {
         )
 
         assertTrue(
-            lineCount("src/main/kotlin/com/charmnight/linkgraph/application/workflow/SubjectGraphWorkflow.kt") < 980,
-            "SubjectGraphWorkflow should shrink below the old 1000+ line mixed model/orchestration file.",
+            lineCount("src/main/kotlin/com/charmnight/linkgraph/application/workflow/SubjectGraphWorkflow.kt") < 450,
+            "SubjectGraphWorkflow should stay a facade after subject workflow extraction.",
         )
         val subjectWorkflow = read("src/main/kotlin/com/charmnight/linkgraph/application/workflow/SubjectGraphWorkflow.kt")
         listOf(
@@ -170,10 +193,19 @@ class ArchitectureDebtCleanupTest {
             "data class CurrentMethodNode",
             "data class AnalysisExecutionResult",
             "data class AnalysisOutcomeAsyncResult",
+            "ReadAction.nonBlocking",
+            "ReadAction.compute<",
+            "SemanticCapturePolicy",
+            "fun computeAnalysisResultInReadAction(",
+            "fun resourceNodeForHandle(",
+            "fun computeCurrentMethodNode(",
+            "fun locateCurrentSubject(",
+            "fun resolveCodeSubjectBySignatureAsync(",
+            "fun applyAnalysisResult(",
         ).forEach { model ->
             assertFalse(
                 subjectWorkflow.contains(model),
-                "SubjectGraphWorkflow should not keep workflow support model inline: $model",
+                "SubjectGraphWorkflow should not keep subject implementation detail inline: $model",
             )
         }
     }
@@ -182,12 +214,15 @@ class ArchitectureDebtCleanupTest {
     fun syncMethodsDoNotBlockOnAsyncMethodGetResults() {
         val workflowFiles = listOf(
             "src/main/kotlin/com/charmnight/linkgraph/application/workflow/ReviewWorkflow.kt",
-            "src/main/kotlin/com/charmnight/linkgraph/application/workflow/GenerationWorkflow.kt",
             "src/main/kotlin/com/charmnight/linkgraph/application/workflow/review/DiffReviewWorkflow.kt",
             "src/main/kotlin/com/charmnight/linkgraph/application/workflow/review/GraphBeautificationReviewWorkflow.kt",
             "src/main/kotlin/com/charmnight/linkgraph/application/workflow/generation/GenerationPlanWorkflow.kt",
             "src/main/kotlin/com/charmnight/linkgraph/application/workflow/generation/GenerationPlanDiscussionWorkflow.kt",
             "src/main/kotlin/com/charmnight/linkgraph/application/workflow/generation/CodeDraftGenerationWorkflow.kt",
+        )
+        assertFalse(
+            Files.exists(root.resolve("src/main/kotlin/com/charmnight/linkgraph/application/workflow/GenerationWorkflow.kt")),
+            "GenerationWorkflow facade should be physically removed rather than kept as sync/async forwarding shell.",
         )
         val offenders = workflowFiles.filter { path -> read(path).contains(".get()") }
         assertEquals(

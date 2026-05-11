@@ -5,5 +5,5 @@ import com.charmnight.linkgraph.workbench.DraftWorkbenchState
 
 data class RiskResolutionSnapshot(
     val draftWorkbenchState: DraftWorkbenchState = DraftWorkbenchState(),
-    val auditResult: GraphPatchResult? = null,
+    val qaResult: GraphPatchResult? = null,
 )

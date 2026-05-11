@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.services
 
-import com.charmnight.linkgraph.application.planning.AuditEvidenceCollector
+import com.charmnight.linkgraph.application.planning.QaEvidenceCollector
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.model.EdgeType
@@ -14,10 +14,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class AuditEvidenceCollectorTest {
+class QaEvidenceCollectorTest {
     @Test
     fun `collects source snippets from selected node and direct call target within budget`() {
-        val projectDir = createTempDirectory("audit-evidence")
+        val projectDir = createTempDirectory("qa-evidence")
         val controllerFile = projectDir.resolve("src/main/java/com/example/CommonController.java")
         val fileUtilsFile = projectDir.resolve("src/main/java/com/example/FileUtils.java")
         Files.createDirectories(controllerFile.parent)
@@ -46,7 +46,7 @@ class AuditEvidenceCollectorTest {
             """.trimIndent(),
         )
 
-        val collector = AuditEvidenceCollector(maxSnippets = 4, maxTraversalDepth = 1)
+        val collector = QaEvidenceCollector(maxSnippets = 4, maxTraversalDepth = 1)
         val result = collector.collect(
             graph = GraphDocument(
                 nodes = listOf(

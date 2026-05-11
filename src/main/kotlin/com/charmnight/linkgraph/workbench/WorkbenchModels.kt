@@ -70,7 +70,7 @@ data class CandidatePatchIntent(
     val falseBranchTargetNodeId: String? = null,
 )
 
-enum class AuditMessageRole {
+enum class QaMessageRole {
     USER,
     ASSISTANT,
 }
@@ -197,7 +197,7 @@ data class DraftWorkbenchEntry(
 
 data class QaConversationMessage(
     val messageId: String,
-    val role: AuditMessageRole,
+    val role: QaMessageRole,
     val content: String,
     val focusTargetId: String? = null,
     val turnOutcomeId: String? = null,
@@ -215,7 +215,7 @@ data class QaConversationSession(
 
 data class GenerationPlanDiscussionMessage(
     val messageId: String,
-    val role: AuditMessageRole,
+    val role: QaMessageRole,
     val content: String,
     val focusItemId: String? = null,
 )

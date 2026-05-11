@@ -312,9 +312,9 @@ class GraphDiffPatchServiceTest {
                             sourceTag = GraphSourceTag.DESIGN_BASELINE,
                         ),
                         GraphNode(
-                            id = "design:audit-note",
+                            id = "design:qa-note",
                             type = NodeType.DOC_PAGE,
-                            title = "AuditNote",
+                            title = "QaNote",
                             doc = "另一个设计节点。",
                             sourceTag = GraphSourceTag.DESIGN_BASELINE,
                         ),
@@ -324,7 +324,7 @@ class GraphDiffPatchServiceTest {
                     entries = listOf(
                         GraphDiffEntry(
                             elementKind = GraphDiffElementKind.NODE,
-                            elementId = "design:audit-note",
+                            elementId = "design:qa-note",
                             status = DiffStatus.ONLY_IN_MERMAID,
                             message = "另一个设计节点未落地。",
                         ),

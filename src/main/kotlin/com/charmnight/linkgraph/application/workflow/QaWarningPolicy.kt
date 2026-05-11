@@ -8,7 +8,7 @@ import com.charmnight.linkgraph.workbench.QaMode
  * 当前仍保持前端 `warnings: List<String>` 契约。新 warning 使用稳定分类前缀；
  * 旧 warning 在迁移期继续通过保守关键词兼容。
  */
-internal class AuditWarningPolicy {
+internal class QaWarningPolicy {
     fun filterForMode(
         warnings: List<String>,
         effectiveMode: QaMode,

@@ -208,12 +208,12 @@ class GraphEditorPageRenderer {
             "canUndoDraftPatchApply" to (snapshot.draftPatchUndoState != null),
             "lastAppliedDraftPatchSummary" to snapshot.draftPatchUndoState?.patchPreview?.summary,
             "lastDraftPatchApplyResult" to snapshot.lastDraftPatchApplyResult?.let(::draftPatchApplyResultToMap),
-            "auditResult" to snapshot.auditResult?.let {
-                patchResultToMap(it, artifactRefs.auditPromptPreviewArtifactId)
+            "auditResult" to snapshot.qaResult?.let {
+                patchResultToMap(it, artifactRefs.qaPromptPreviewArtifactId)
             },
             "auditRequestState" to requestStateToMap(
-                snapshot.auditRequestState,
-                hasPromptPreview = hasPromptPreview(snapshot.auditResult?.promptPreview, artifactRefs.auditPromptPreviewArtifactId),
+                snapshot.qaRequestState,
+                hasPromptPreview = hasPromptPreview(snapshot.qaResult?.promptPreview, artifactRefs.qaPromptPreviewArtifactId),
             ),
             "qaRequestRecoveryState" to qaRequestRecoveryStateToMap(snapshot.qaRequestRecoveryState),
             "runtimeArtifactSummaries" to snapshot.runtimeArtifactSummaries.mapValues { (_, summaries) ->
@@ -659,7 +659,7 @@ class GraphEditorPageRenderer {
         "recentTurnOutcomes" to result.recentTurnOutcomes.map(::investigationTurnOutcomeToMap),
         "sourceContext" to result.sourceContext.map(::sourceSnippetContextToMap),
         "evidenceTrace" to result.evidenceTrace.map(::evidenceTraceEntryToMap),
-        "auditSession" to result.auditSession?.let(::auditConversationSessionToMap),
+        "auditSession" to result.qaSession?.let(::qaConversationSessionToMap),
         "patch" to result.patch?.let(::patchToMap),
     )
 
@@ -768,12 +768,12 @@ class GraphEditorPageRenderer {
         "falseBranchTargetNodeId" to intent.falseBranchTargetNodeId,
     )
 
-    private fun auditConversationSessionToMap(
+    private fun qaConversationSessionToMap(
         session: com.charmnight.linkgraph.workbench.QaConversationSession,
     ): Map<String, Any?> = linkedMapOf(
         "sessionId" to session.sessionId,
         "scopeKey" to session.scopeKey,
-        "messages" to session.messages.map(::auditConversationMessageToMap),
+        "messages" to session.messages.map(::qaConversationMessageToMap),
         "candidateChanges" to session.candidateChanges.map(::candidateDraftChangeToMap),
         "investigationThreads" to session.investigationThreads.map(::investigationThreadToMap),
         "turnOutcomes" to session.turnOutcomes.map(::investigationTurnOutcomeToMap),
@@ -858,7 +858,7 @@ class GraphEditorPageRenderer {
         "strongestEvidenceLevel" to outcome.strongestEvidenceLevel?.name,
     )
 
-    private fun auditConversationMessageToMap(
+    private fun qaConversationMessageToMap(
         message: com.charmnight.linkgraph.workbench.QaConversationMessage,
     ): Map<String, Any?> = linkedMapOf(
         "messageId" to message.messageId,

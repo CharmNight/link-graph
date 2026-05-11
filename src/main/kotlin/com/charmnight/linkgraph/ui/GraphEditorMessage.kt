@@ -18,7 +18,7 @@ sealed interface GraphEditorMessage {
      */
     enum class DraftPatchPreviewSource {
         /** 表示预览来自问答结果。 */
-        AUDIT,
+        QA,
         /** 表示预览来自差异评审。 */
         DIFF_REVIEW,
         /** 表示预览来自最近一次应用结果。 */
@@ -111,7 +111,7 @@ sealed interface GraphEditorMessage {
     /**
      * 请求执行图问答。
      */
-    data class RequestAudit(
+    data class RequestQa(
         /** 保存用户问题。 */
         val question: String,
         /** 保存选中的节点标识列表。 */
@@ -123,12 +123,12 @@ sealed interface GraphEditorMessage {
     ) : GraphEditorMessage
 
     /** 请求直接重试最近一次失败的问答。 */
-    data object RetryLastAuditRequest : GraphEditorMessage
+    data object RetryLastQaRequest : GraphEditorMessage
 
     /**
      * 确认一条问答候选变更。
      */
-    data class ConfirmAuditCandidateChange(
+    data class ConfirmQaCandidateChange(
         /** 保存待确认的候选变更标识。 */
         val changeId: String,
     ) : GraphEditorMessage
@@ -136,7 +136,7 @@ sealed interface GraphEditorMessage {
     /**
      * 取消一条已经确认的问答候选变更。
      */
-    data class UnconfirmAuditCandidateChange(
+    data class UnconfirmQaCandidateChange(
         /** 保存待取消确认的候选变更标识。 */
         val changeId: String,
     ) : GraphEditorMessage

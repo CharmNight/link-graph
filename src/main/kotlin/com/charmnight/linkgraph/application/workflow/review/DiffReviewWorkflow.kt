@@ -29,32 +29,6 @@ internal class DiffReviewWorkflow(
     private val asyncRequestLifecycle: AsyncRequestLifecycleSupport,
     private val logger: Logger,
 ) {
-    fun requestDiffReview(
-        question: String,
-        selectedDiffItemIds: List<String> = emptyList(),
-    ): GraphPatchResult? {
-        emitReviewRequestStarted(
-            ReviewRequestStartedPresentation(
-                scene = ReviewRequestScene.DIFF_REVIEW,
-                requestState = AsyncRequestState.running(scene = "差异分析"),
-                feedbackMessage = "正在分析差异，请稍候。",
-            ),
-        )
-        val context = buildDiffReviewContext(selectedDiffItemIds) ?: return null
-        val result = graphDiffPatchService.review(
-            context = context,
-            question = question,
-            settings = settingsProvider(),
-        )
-        emitDiffReviewCompleted(
-            DiffReviewCompletedPresentation(
-                result = result,
-                requestState = AsyncRequestState.succeeded(),
-            ),
-        )
-        return result
-    }
-
     fun requestDiffReviewAsync(
         question: String,
         selectedDiffItemIds: List<String> = emptyList(),
