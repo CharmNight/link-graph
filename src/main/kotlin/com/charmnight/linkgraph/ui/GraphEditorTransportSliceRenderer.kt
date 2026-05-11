@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.services.LinkGraphRenderTrace
+import com.charmnight.linkgraph.foundation.LinkGraphRenderTrace
 
 /**
  * 渲染前后端之间的权威快照 transport。

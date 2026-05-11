@@ -14,14 +14,14 @@ class QaSourceWordingCleanupTest {
     fun qaPrimaryPathSourceCommentsAndCopyDoNotKeepAuditWording() {
         val projectRoot = Path.of(System.getProperty("user.dir"))
         val filesWithoutAuditWording = listOf(
-            "src/main/kotlin/com/charmnight/linkgraph/services/AsyncRequestLifecycleSupport.kt",
-            "src/main/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectService.kt",
-            "src/main/kotlin/com/charmnight/linkgraph/services/ReviewWorkflow.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/request/AsyncRequestLifecycleSupport.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/workflow/ConfirmedDraftChangeCoordinator.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/workflow/ReviewWorkflow.kt",
             "src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorMessage.kt",
             "src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorStateService.kt",
             "src/main/kotlin/com/charmnight/linkgraph/llm/LlmPromptFactory.kt",
             "src/main/kotlin/com/charmnight/linkgraph/llm/LlmTypes.kt",
-            "src/main/kotlin/com/charmnight/linkgraph/services/PlanningContextFactory.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/planning/PlanningContextFactory.kt",
             "src/main/kotlin/com/charmnight/linkgraph/llm/GraphAuditScopeResolver.kt",
         )
 

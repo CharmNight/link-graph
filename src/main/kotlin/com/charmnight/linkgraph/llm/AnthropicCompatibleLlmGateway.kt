@@ -30,25 +30,7 @@ class AnthropicCompatibleLlmGateway(
 
     /** 构造 Anthropic Messages 协议要求的请求 JSON。 */
     internal fun buildPayload(request: LlmRequest): String {
-        return """
-            {
-              "model": "${LlmGatewaySupport.escapeJson(request.model)}",
-              "max_tokens": 4096,
-              "temperature": ${request.temperature},
-              "system": "${LlmGatewaySupport.escapeJson(request.systemPrompt)}",
-              "messages": [
-                {
-                  "role": "user",
-                  "content": [
-                    {
-                      "type": "text",
-                      "text": "${LlmGatewaySupport.escapeJson(request.userPrompt)}"
-                    }
-                  ]
-                }
-              ]
-            }
-        """.trimIndent()
+        return LlmGatewayPayloadBuilder.anthropicMessagesPayload(request)
     }
 
     /** 从远程返回 JSON 中提取文本内容。 */
@@ -69,14 +51,6 @@ class AnthropicCompatibleLlmGateway(
 
             else -> error("Remote LLM response did not contain content blocks.")
         }
-    }
-
-    /** 拼装失败响应的可读错误信息。 */
-    internal fun buildFailureMessage(
-        statusCode: Int,
-        body: String,
-    ): String {
-        return LlmGatewaySupport.buildFailureMessage(statusCode, body, ANTHROPIC_ERROR_CODE_KEYS)
     }
 
     private fun anthropicHeaders(request: LlmRequest): List<Pair<String, String>> {

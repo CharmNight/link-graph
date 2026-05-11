@@ -1,0 +1,94 @@
+package com.charmnight.linkgraph.application
+
+import com.charmnight.linkgraph.application.model.AsyncRequestState
+import com.charmnight.linkgraph.application.usecase.ReviewUseCase
+import com.charmnight.linkgraph.application.usecase.ReviewUseCaseResult
+import com.charmnight.linkgraph.llm.GraphPatchResult
+import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.llm.runtime.AgentRunFailureReason
+import com.charmnight.linkgraph.llm.runtime.AgentRunPhase
+import com.charmnight.linkgraph.llm.runtime.AgentRunResult
+import com.charmnight.linkgraph.llm.runtime.AgentRunState
+import com.charmnight.linkgraph.llm.runtime.RunBudget
+import com.charmnight.linkgraph.workbench.QaMode
+import com.charmnight.linkgraph.workbench.QaModeContext
+import com.charmnight.linkgraph.workbench.QaRequestKind
+import com.charmnight.linkgraph.workbench.ReplayableQaRequest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+
+class ReviewUseCaseTest {
+    @Test
+    fun mapsMissingRuntimeOutputToFailedResultAndFallbackPatch() {
+        val context = modeContext()
+
+        val result = ReviewUseCase { output, _ -> output }.resolveAuditRuntimeResult(
+            runtimeResult = AgentRunResult(
+                finalState = runState(AgentRunFailureReason.EVIDENCE_INSUFFICIENT),
+                output = null,
+            ),
+            modeContext = context,
+            requestState = AsyncRequestState.running(scene = "问答"),
+            runtimeArtifacts = emptyList(),
+            draftValidationState = null,
+            codeEligibilityDecision = null,
+        )
+
+        val failed = assertIs<ReviewUseCaseResult.AuditFailed>(result)
+        assertEquals("问答失败：runtime 未返回结果。", failed.presentation.message)
+        assertEquals(context.question, failed.fallbackResult.question)
+        assertTrue(failed.fallbackResult.warnings.single().contains("EVIDENCE_INSUFFICIENT"))
+    }
+
+    @Test
+    fun mapsRuntimeOutputToCompletedResult() {
+        val output = GraphPatchResult(
+            source = LlmResultSource.REMOTE,
+            question = "解释风险",
+            answer = "answer",
+            promptPreview = "prompt",
+        )
+        val result = ReviewUseCase { patch, _ -> patch.copy(answer = patch.answer + " normalized") }
+            .resolveAuditRuntimeResult(
+                runtimeResult = AgentRunResult(finalState = runState(), output = output),
+                modeContext = modeContext(),
+                requestState = AsyncRequestState.succeeded(scene = "问答"),
+                runtimeArtifacts = emptyList(),
+                draftValidationState = null,
+                codeEligibilityDecision = null,
+            )
+
+        val completed = assertIs<ReviewUseCaseResult.AuditCompleted>(result)
+        assertEquals("answer normalized", completed.presentation.result.answer)
+        assertEquals(true, completed.presentation.requestState.promptPreviewAvailable)
+    }
+
+    private fun modeContext(): QaModeContext {
+        return QaModeContext(
+            request = ReplayableQaRequest(
+                requestId = "qa-1",
+                kind = QaRequestKind.ASK,
+                question = "解释风险",
+                mode = QaMode.AUTO,
+            ),
+            effectiveMode = QaMode.ANSWER,
+        )
+    }
+
+    private fun runState(
+        failureReason: AgentRunFailureReason? = null,
+    ): AgentRunState {
+        return AgentRunState(
+            runId = "run",
+            capabilityId = "qa",
+            phase = if (failureReason == null) AgentRunPhase.SUCCEEDED else AgentRunPhase.FAILED,
+            userGoal = "test",
+            budget = RunBudget(),
+            stepIndex = 0,
+            artifactRefs = emptyList(),
+            failureReason = failureReason,
+        )
+    }
+}

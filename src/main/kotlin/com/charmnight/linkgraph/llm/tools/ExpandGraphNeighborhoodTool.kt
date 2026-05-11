@@ -14,15 +14,8 @@ class ExpandGraphNeighborhoodTool(
         input: Map<String, Any?>,
         context: ToolExecutionContext,
     ): ToolResult {
-        val nodeId = input["nodeId"]?.toString()
-        val depth = (input["depth"] as? Number)?.toInt() ?: 1
-        if (nodeId.isNullOrBlank()) {
-            return ToolResult(
-                toolName = name,
-                success = false,
-                errorMessage = "nodeId 不能为空",
-            )
-        }
+        val nodeId = input.requiredString("nodeId") ?: return missingRequired("nodeId")
+        val depth = input.optionalInt("depth") ?: 1
         val graph = graphToolFacade.expandNeighborhood(
             snapshot = context.snapshot,
             nodeId = nodeId,

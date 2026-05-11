@@ -24,7 +24,7 @@ internal data class QaModeContext(
     val sourceThreadId: String? get() = request.sourceThreadId
 
     /** 保存本轮请求复用的问答会话基线。 */
-    val baseSession: AuditConversationSession? get() = request.baseSession
+    val baseSession: QaConversationSession? get() = request.baseSession
 
     /** 判断本轮是否应走确定性继续取证流水线。 */
     val isDeterministicInvestigation: Boolean

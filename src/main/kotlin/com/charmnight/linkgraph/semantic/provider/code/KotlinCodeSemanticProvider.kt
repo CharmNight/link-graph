@@ -3,7 +3,6 @@ package com.charmnight.linkgraph.semantic.provider.code
 import com.charmnight.linkgraph.semantic.model.SemanticAnalysisResult
 import com.charmnight.linkgraph.semantic.policy.SemanticCapturePolicy
 import com.charmnight.linkgraph.semantic.policy.TraversalBudgetPolicy
-import com.charmnight.linkgraph.semantic.provider.SemanticProvider
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectHandle
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectKind
 import com.charmnight.linkgraph.semantic.subject.SubjectHandle
@@ -16,15 +15,13 @@ class KotlinCodeSemanticProvider(
     private val extractor: CodeFlowSemanticExtractor = CodeFlowSemanticExtractor(),
     /** 保存 Kotlin light method 解码器。 */
     private val lightMethodDecoder: KotlinLightMethodDecoder = KotlinLightMethodDecoder(),
-) : SemanticProvider {
-    /**
-     * 判断当前主题是否属于 Kotlin 代码主题。
-     */
-    override fun supports(handle: SubjectHandle): Boolean {
-        // 只有代码句柄且非 Java 方法时，才交给 Kotlin Provider 处理。
-        val codeHandle = handle as? CodeSubjectHandle ?: return false
-        return codeHandle.kind != CodeSubjectKind.JAVA_METHOD
-    }
+) : CodeSubjectSemanticProvider {
+    override val supportedKinds: Set<CodeSubjectKind> = setOf(
+        CodeSubjectKind.KOTLIN_FUNCTION,
+        CodeSubjectKind.KOTLIN_PROPERTY_ACCESSOR,
+        CodeSubjectKind.KOTLIN_PRIMARY_CONSTRUCTOR,
+        CodeSubjectKind.KOTLIN_SECONDARY_CONSTRUCTOR,
+    )
 
     /**
      * 对 Kotlin 代码主题执行语义分析。

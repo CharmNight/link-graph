@@ -48,7 +48,7 @@ class ReadSymbolToolTest : BasePlatformTestCase() {
                     ),
                 ),
             ),
-        )
+        ).toToolGraphSnapshot()
         val tool = ReadSymbolTool(CodeReadToolFacade())
 
         val result = tool.invoke(
@@ -96,7 +96,7 @@ class ReadSymbolToolTest : BasePlatformTestCase() {
                     ),
                 ),
             ),
-        )
+        ).toToolGraphSnapshot()
         val tool = ReadSymbolTool(CodeReadToolFacade())
 
         val result = tool.invoke(

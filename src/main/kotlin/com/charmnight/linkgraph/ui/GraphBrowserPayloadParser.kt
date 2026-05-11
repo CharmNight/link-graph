@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.codegen.RemoteCodeGenerationJsonParser
+import com.charmnight.linkgraph.llm.LlmJsonSupport
+import com.charmnight.linkgraph.application.model.GraphEditOperation
 import com.charmnight.linkgraph.model.BindingStatus
 import com.charmnight.linkgraph.model.Certainty
 import com.charmnight.linkgraph.model.EdgeType
@@ -55,8 +56,7 @@ internal object GraphBrowserPayloadParser {
 
     fun parseGraphEditScript(payload: String): GraphEditScript {
         validatePayloadSize(payload, GraphBrowserPayloadKind.GRAPH_EDIT_SCRIPT)
-        val root = RemoteCodeGenerationJsonParser(payload).parseValue() as? Map<*, *>
-            ?: error("graph edit script payload must be a JSON object")
+        val root = LlmJsonSupport.parseObject(payload)
         val sceneId = (root["sceneId"] as? String)
             ?.takeIf(String::isNotBlank)
             ?.let(GraphSceneId::valueOf)

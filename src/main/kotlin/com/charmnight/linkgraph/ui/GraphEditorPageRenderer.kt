@@ -769,7 +769,7 @@ class GraphEditorPageRenderer {
     )
 
     private fun auditConversationSessionToMap(
-        session: com.charmnight.linkgraph.workbench.AuditConversationSession,
+        session: com.charmnight.linkgraph.workbench.QaConversationSession,
     ): Map<String, Any?> = linkedMapOf(
         "sessionId" to session.sessionId,
         "scopeKey" to session.scopeKey,
@@ -859,7 +859,7 @@ class GraphEditorPageRenderer {
     )
 
     private fun auditConversationMessageToMap(
-        message: com.charmnight.linkgraph.workbench.AuditConversationMessage,
+        message: com.charmnight.linkgraph.workbench.QaConversationMessage,
     ): Map<String, Any?> = linkedMapOf(
         "messageId" to message.messageId,
         "role" to message.role.name,

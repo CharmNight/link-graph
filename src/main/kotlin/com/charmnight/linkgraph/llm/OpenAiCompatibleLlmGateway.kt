@@ -44,40 +44,7 @@ class OpenAiCompatibleLlmGateway(
 
     /** 构造 OpenAI Chat Completions 风格的请求 JSON。 */
     internal fun buildPayload(request: LlmRequest): String {
-        val streamField = if (request.deliveryMode == LlmDeliveryMode.STREAM) {
-            ",\n  \"stream\": true"
-        } else {
-            ""
-        }
-        val structuredOutputField = request.structuredOutput?.let { structuredOutput ->
-            """
-                ,
-                  "response_format": {
-                    "type": "json_schema",
-                    "json_schema": {
-                      "name": "${LlmGatewaySupport.escapeJson(structuredOutput.name)}",
-                      "strict": ${structuredOutput.strict},
-                      "schema": ${structuredOutput.schema.trim()}
-                    }
-                  }
-            """.trimIndent()
-        }.orEmpty()
-        return """
-            {
-              "model": "${LlmGatewaySupport.escapeJson(request.model)}",
-              "temperature": ${request.temperature},
-              "messages": [
-                {
-                  "role": "system",
-                  "content": "${LlmGatewaySupport.escapeJson(request.systemPrompt)}"
-                },
-                {
-                  "role": "user",
-                  "content": "${LlmGatewaySupport.escapeJson(request.userPrompt)}"
-                }
-              ]$structuredOutputField$streamField
-            }
-        """.trimIndent()
+        return LlmGatewayPayloadBuilder.openAiChatPayload(request)
     }
 
     /** 从远程返回 JSON 中提取最终文本内容。 */
@@ -108,7 +75,7 @@ class OpenAiCompatibleLlmGateway(
 
     /** 从 OpenAI Chat Completions 流事件中提取文本增量。 */
     internal fun extractTextDelta(data: String): String? {
-        val root = runCatching { LlmGatewayJsonParser(data).parseValue() as? Map<*, *> }.getOrNull() ?: return null
+        val root = LlmJsonSupport.parseObjectOrNull(data) ?: return null
         val choices = root["choices"] as? List<*>
         val firstChoice = choices?.firstOrNull() as? Map<*, *>
         val delta = firstChoice?.get("delta") as? Map<*, *>
@@ -125,14 +92,6 @@ class OpenAiCompatibleLlmGateway(
 
             else -> null
         }
-    }
-
-    /** 拼装失败响应的可读错误信息。 */
-    internal fun buildFailureMessage(
-        statusCode: Int,
-        body: String,
-    ): String {
-        return LlmGatewaySupport.buildFailureMessage(statusCode, body)
     }
 
     private fun openAiHeaders(request: LlmRequest): List<Pair<String, String>> {

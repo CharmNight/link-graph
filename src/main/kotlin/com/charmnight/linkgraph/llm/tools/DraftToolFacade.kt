@@ -6,7 +6,6 @@ import com.charmnight.linkgraph.llm.artifact.ArtifactRef
 import com.charmnight.linkgraph.llm.artifact.ArtifactStore
 import com.charmnight.linkgraph.llm.artifact.ArtifactStorePruner
 import com.charmnight.linkgraph.llm.artifact.ArtifactType
-import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 
 /**
@@ -16,7 +15,7 @@ class DraftToolFacade {
     private val artifactStorePruner = ArtifactStorePruner
 
     /** 返回当前候选草稿。 */
-    fun candidateDrafts(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): List<CandidateDraftArtifact> {
+    fun candidateDrafts(snapshot: ToolGraphSnapshot): List<CandidateDraftArtifact> {
         return snapshot.auditResult?.candidateChanges.orEmpty()
             .filter { change -> change.status == CandidateDraftChangeStatus.PENDING_CONFIRMATION }
             .map { change ->
@@ -28,7 +27,7 @@ class DraftToolFacade {
     }
 
     /** 返回当前已确认正式意图。 */
-    fun confirmedIntents(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): List<ConfirmedIntentArtifact> {
+    fun confirmedIntents(snapshot: ToolGraphSnapshot): List<ConfirmedIntentArtifact> {
         return snapshot.draftWorkbenchState.draftChanges.map { entry ->
             ConfirmedIntentArtifact(
                 artifactId = "confirmed-${entry.entryId}",
@@ -39,7 +38,7 @@ class DraftToolFacade {
 
     /** 把当前已确认正式意图同步到 artifact store，并返回对应引用。 */
     fun syncConfirmedIntents(
-        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        snapshot: ToolGraphSnapshot,
         artifactStore: ArtifactStore,
     ): List<ArtifactRef> {
         val currentArtifacts = confirmedIntents(snapshot)
@@ -54,7 +53,7 @@ class DraftToolFacade {
 
     /** 把当前候选草稿同步到 artifact store，并返回对应引用。 */
     fun syncCandidateDrafts(
-        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        snapshot: ToolGraphSnapshot,
         artifactStore: ArtifactStore,
     ): List<ArtifactRef> {
         val currentArtifacts = candidateDrafts(snapshot)

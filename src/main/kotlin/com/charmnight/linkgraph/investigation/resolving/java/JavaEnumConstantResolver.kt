@@ -6,9 +6,8 @@ import com.charmnight.linkgraph.investigation.domain.EvidenceGoal
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoalKind
 import com.charmnight.linkgraph.investigation.domain.EvidenceLevel
 import com.charmnight.linkgraph.investigation.domain.ResolutionOutcome
-import com.charmnight.linkgraph.investigation.resolving.EvidenceResolver
 import com.charmnight.linkgraph.investigation.resolving.InvestigationContext
-import com.intellij.openapi.application.ReadAction
+import com.charmnight.linkgraph.investigation.resolving.ReadActionEvidenceResolver
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiEnumConstant
 import com.intellij.psi.search.GlobalSearchScope
@@ -16,7 +15,7 @@ import com.intellij.psi.search.GlobalSearchScope
 /**
  * 使用 Java PSI 精确解析枚举常量。
  */
-class JavaEnumConstantResolver : EvidenceResolver {
+class JavaEnumConstantResolver : ReadActionEvidenceResolver() {
     /** 保存解析器稳定标识。 */
     override val id: String = "java-enum-constant"
 
@@ -30,19 +29,7 @@ class JavaEnumConstantResolver : EvidenceResolver {
     /**
      * 在 IDEA read action 中解析枚举类和枚举常量，避免文本搜索污染上下文。
      */
-    override fun resolve(
-        goal: EvidenceGoal,
-        context: InvestigationContext,
-    ): ResolutionOutcome {
-        return ReadAction.compute<ResolutionOutcome, RuntimeException> {
-            resolveInReadAction(goal, context)
-        }
-    }
-
-    /**
-     * 执行真正的 PSI 解析逻辑。
-     */
-    private fun resolveInReadAction(
+    override fun resolveInReadAction(
         goal: EvidenceGoal,
         context: InvestigationContext,
     ): ResolutionOutcome {

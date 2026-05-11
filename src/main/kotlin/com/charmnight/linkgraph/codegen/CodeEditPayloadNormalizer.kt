@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.codegen
 
+import com.charmnight.linkgraph.llm.LlmJsonSupport
+
 internal object CodeEditPayloadNormalizer {
     private val candidateKeys = listOf(
         "with",
@@ -47,9 +49,7 @@ internal object CodeEditPayloadNormalizer {
         if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
             return payload
         }
-        val parsed = runCatching {
-            RemoteCodeGenerationJsonParser(trimmed).parseValue() as? Map<*, *>
-        }.getOrNull() ?: return payload
+        val parsed = LlmJsonSupport.parseObjectOrNull(trimmed) ?: return payload
         findReplacementText(parsed)?.let { return it }
         if (containsMetadataKey(parsed)) {
             error("Code edit payload contains metadata JSON but no source replacement field.")

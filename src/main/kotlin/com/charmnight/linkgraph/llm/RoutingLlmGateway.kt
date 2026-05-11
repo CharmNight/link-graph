@@ -5,12 +5,16 @@ package com.charmnight.linkgraph.llm
  */
 class RoutingLlmGateway(
     /** 保存 OpenAI 协议兼容网关。 */
-    private val openAiGateway: LlmGateway = OpenAiCompatibleLlmGateway(),
+    private val openAiGatewayFactory: () -> LlmGateway = { OpenAiCompatibleLlmGateway() },
     /** 保存 OpenAI Responses 协议兼容网关。 */
-    private val openAiResponsesGateway: LlmGateway = OpenAiResponsesLlmGateway(),
+    private val openAiResponsesGatewayFactory: () -> LlmGateway = { OpenAiResponsesLlmGateway() },
     /** 保存 Anthropic 协议兼容网关。 */
-    private val anthropicGateway: LlmGateway = AnthropicCompatibleLlmGateway(),
+    private val anthropicGatewayFactory: () -> LlmGateway = { AnthropicCompatibleLlmGateway() },
 ) : LlmGateway {
+    private val openAiGateway by lazy(LazyThreadSafetyMode.NONE, openAiGatewayFactory)
+    private val openAiResponsesGateway by lazy(LazyThreadSafetyMode.NONE, openAiResponsesGatewayFactory)
+    private val anthropicGateway by lazy(LazyThreadSafetyMode.NONE, anthropicGatewayFactory)
+
     /**
      * 根据请求协议选择对应网关执行生成。
      */

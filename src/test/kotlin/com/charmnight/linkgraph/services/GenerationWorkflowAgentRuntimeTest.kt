@@ -1,5 +1,8 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.planning.PlanningContextFactory
+import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
+import com.charmnight.linkgraph.application.workflow.GenerationWorkflow
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.codegen.CodeDraftWriterService
@@ -108,10 +111,11 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             promptPreview = null,
         )
         val mergeRequests = mutableListOf<MergeRequest>()
-        val session = ProjectEditorSession(stateService) {}
         val workflow = GenerationWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -125,7 +129,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -185,10 +188,11 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             promptPreview = null,
         )
         val mergeRequests = mutableListOf<MergeRequest>()
-        val session = ProjectEditorSession(stateService) {}
         val workflow = GenerationWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -202,7 +206,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -242,10 +245,11 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             source = LlmResultSource.LOCAL_RULE,
             promptPreview = null,
         )
-        val session = ProjectEditorSession(stateService) {}
         val workflow = GenerationWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -259,7 +263,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -289,10 +292,11 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(stateService) {}
         val workflow = GenerationWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -306,7 +310,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 3_000L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -369,14 +372,15 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(stateService) {}
         var capturedPlan: GenerationPlan? = GenerationPlan(
             source = GenerationPlanSource.LOCAL_RULE,
             summary = "unexpected",
         )
         val workflow = GenerationWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -390,7 +394,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -464,10 +467,11 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(stateService) {}
         val workflow = GenerationWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -481,7 +485,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -608,10 +611,11 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(stateService) {}
         val workflow = GenerationWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -625,7 +629,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -711,10 +714,11 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(stateService) {}
         val workflow = GenerationWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -728,7 +732,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -798,11 +801,12 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(stateService) {}
         var executorInvoked = false
         val workflow = GenerationWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -816,7 +820,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -917,10 +920,11 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(stateService) {}
         val workflow = GenerationWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -934,7 +938,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -994,10 +997,11 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(stateService) {}
         val workflow = GenerationWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -1011,7 +1015,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -1087,10 +1090,11 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             ),
         )
         project.getService(AgentArtifactStoreService::class.java).artifactStore.remove("plan-current")
-        val session = ProjectEditorSession(stateService) {}
         val workflow = GenerationWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -1104,7 +1108,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -1140,11 +1143,12 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         stateService.asyncRequests.markGenerationPlan(plan)
         val artifactStore = project.getService(AgentArtifactStoreService::class.java).artifactStore
         artifactStore.save(PlanArtifact("plan-current", plan))
-        val session = ProjectEditorSession(stateService) {}
         var capturedPlan: GenerationPlan? = null
         val workflow = GenerationWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -1158,7 +1162,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),

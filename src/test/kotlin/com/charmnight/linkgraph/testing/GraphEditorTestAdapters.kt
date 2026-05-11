@@ -14,7 +14,6 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
-import com.charmnight.linkgraph.services.currentVisibleGraph
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.ui.AsyncRequestState
 import com.charmnight.linkgraph.ui.DraftPatchApplyResult
@@ -246,7 +245,7 @@ fun testSnapshot(
 }
 
 val GraphEditorStateSnapshot.visibleGraph: GraphDocument
-    get() = currentVisibleGraph(this)
+    get() = com.charmnight.linkgraph.ui.currentVisibleGraph(this)
 
 val GraphEditorStateSnapshot.workingGraph: GraphDocument
     get() = workspaceGraph

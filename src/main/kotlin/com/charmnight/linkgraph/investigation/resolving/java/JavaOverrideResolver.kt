@@ -3,10 +3,9 @@ package com.charmnight.linkgraph.investigation.resolving.java
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoal
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoalKind
 import com.charmnight.linkgraph.investigation.domain.ResolutionOutcome
-import com.charmnight.linkgraph.investigation.resolving.EvidenceResolver
 import com.charmnight.linkgraph.investigation.resolving.InvestigationContext
+import com.charmnight.linkgraph.investigation.resolving.ReadActionEvidenceResolver
 import com.charmnight.linkgraph.semantic.subject.methodSignature
-import com.intellij.openapi.application.ReadAction
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiModifier
@@ -19,7 +18,7 @@ import com.intellij.psi.util.PsiTreeUtil
 /**
  * 使用 PSI 重写搜索解析接口或抽象方法的真实实现。
  */
-class JavaOverrideResolver : EvidenceResolver {
+class JavaOverrideResolver : ReadActionEvidenceResolver() {
     /** 保存解析器稳定标识。 */
     override val id: String = "java-method-override"
 
@@ -33,47 +32,45 @@ class JavaOverrideResolver : EvidenceResolver {
     /**
      * 解析接口/抽象方法对应的项目内具体实现。
      */
-    override fun resolve(
+    override fun resolveInReadAction(
         goal: EvidenceGoal,
         context: InvestigationContext,
     ): ResolutionOutcome {
-        return ReadAction.compute<ResolutionOutcome, RuntimeException> {
-            val baseCandidates = JavaPsiEvidenceSupport.resolveMethodCandidates(goal, context)
-            val baseMethod = baseCandidates.methods.singleOrNull()
-                ?: return@compute unresolvedBase(goal, baseCandidates)
-            val implementations = concreteImplementations(baseMethod)
-            when (implementations.size) {
-                0 -> ResolutionOutcome.Unresolved(
-                    resolverId = id,
-                    reason = "未找到 ${methodSignature(baseMethod)} 的项目内具体实现。",
-                    requiredEvidence = listOf("补充实现类源码、Spring 注入绑定或运行时 receiver 类型。"),
-                )
-                1 -> ResolutionOutcome.Resolved(
-                    resolverId = id,
-                    facts = listOf(
-                        JavaPsiEvidenceSupport.methodFact(
-                            goal = goal,
-                            resolverId = id,
-                            method = implementations.single(),
-                            claim = "已确认 ${methodSignature(baseMethod)} 的唯一项目内实现是 ${methodSignature(implementations.single())}。",
-                            whyResolved = "PSI OverridingMethodsSearch 找到唯一具体实现，未使用文本搜索。",
-                        ),
+        val baseCandidates = JavaPsiEvidenceSupport.resolveMethodCandidates(goal, context)
+        val baseMethod = baseCandidates.methods.singleOrNull()
+            ?: return unresolvedBase(goal, baseCandidates)
+        val implementations = concreteImplementations(baseMethod)
+        return when (implementations.size) {
+            0 -> ResolutionOutcome.Unresolved(
+                resolverId = id,
+                reason = "未找到 ${methodSignature(baseMethod)} 的项目内具体实现。",
+                requiredEvidence = listOf("补充实现类源码、Spring 注入绑定或运行时 receiver 类型。"),
+            )
+            1 -> ResolutionOutcome.Resolved(
+                resolverId = id,
+                facts = listOf(
+                    JavaPsiEvidenceSupport.methodFact(
+                        goal = goal,
+                        resolverId = id,
+                        method = implementations.single(),
+                        claim = "已确认 ${methodSignature(baseMethod)} 的唯一项目内实现是 ${methodSignature(implementations.single())}。",
+                        whyResolved = "PSI OverridingMethodsSearch 找到唯一具体实现，未使用文本搜索。",
                     ),
-                )
-                else -> ResolutionOutcome.MultipleCandidates(
-                    resolverId = id,
-                    candidates = implementations.map { method ->
-                        JavaPsiEvidenceSupport.methodCandidate(
-                            goal = goal,
-                            resolverId = id,
-                            method = method,
-                            reason = "接口或抽象方法存在多个具体实现，无法确认运行时 receiver。",
-                        )
-                    },
-                    reason = "${methodSignature(baseMethod)} 存在多个具体实现。",
-                    requiredEvidence = listOf("补充运行时 receiver 类型、Spring Bean 注入绑定或调用 trace。"),
-                )
-            }
+                ),
+            )
+            else -> ResolutionOutcome.MultipleCandidates(
+                resolverId = id,
+                candidates = implementations.map { method ->
+                    JavaPsiEvidenceSupport.methodCandidate(
+                        goal = goal,
+                        resolverId = id,
+                        method = method,
+                        reason = "接口或抽象方法存在多个具体实现，无法确认运行时 receiver。",
+                    )
+                },
+                reason = "${methodSignature(baseMethod)} 存在多个具体实现。",
+                requiredEvidence = listOf("补充运行时 receiver 类型、Spring Bean 注入绑定或调用 trace。"),
+            )
         }
     }
 

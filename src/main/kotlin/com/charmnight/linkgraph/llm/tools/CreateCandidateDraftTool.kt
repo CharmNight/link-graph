@@ -16,12 +16,7 @@ class CreateCandidateDraftTool : AgentTool {
         input: Map<String, Any?>,
         context: ToolExecutionContext,
     ): ToolResult {
-        val candidate = input["candidate"] as? CandidateDraftChange
-            ?: return ToolResult(
-                toolName = name,
-                success = false,
-                errorMessage = "candidate 不能为空",
-            )
+        val candidate = input.requiredValue<CandidateDraftChange>("candidate") ?: return missingRequired("candidate")
         val artifact = CandidateDraftArtifact(
             artifactId = "candidate-${candidate.changeId}",
             candidate = candidate,

@@ -3,10 +3,9 @@ package com.charmnight.linkgraph.investigation.resolving.java
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoal
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoalKind
 import com.charmnight.linkgraph.investigation.domain.ResolutionOutcome
-import com.charmnight.linkgraph.investigation.resolving.EvidenceResolver
 import com.charmnight.linkgraph.investigation.resolving.InvestigationContext
+import com.charmnight.linkgraph.investigation.resolving.ReadActionEvidenceResolver
 import com.charmnight.linkgraph.semantic.subject.methodSignature
-import com.intellij.openapi.application.ReadAction
 import com.intellij.psi.PsiClassObjectAccessExpression
 import com.intellij.psi.PsiDeclarationStatement
 import com.intellij.psi.PsiExpression
@@ -19,7 +18,7 @@ import com.intellij.psi.util.PsiTreeUtil
 /**
  * 解析可静态证明的 Java 反射调用。
  */
-class JavaReflectionResolver : EvidenceResolver {
+class JavaReflectionResolver : ReadActionEvidenceResolver() {
     /** 保存解析器稳定标识。 */
     override val id: String = "java-reflection-call"
 
@@ -33,34 +32,32 @@ class JavaReflectionResolver : EvidenceResolver {
     /**
      * 只接受编译期常量 class name 和 method name 的反射调用。
      */
-    override fun resolve(
+    override fun resolveInReadAction(
         goal: EvidenceGoal,
         context: InvestigationContext,
     ): ResolutionOutcome {
-        return ReadAction.compute<ResolutionOutcome, RuntimeException> {
-            val callsite = JavaPsiEvidenceSupport.resolveMethodCandidates(goal, context).methods.singleOrNull()
-                ?: return@compute unresolved(goal, "未找到唯一反射调用点方法。")
-            val reflectedMethods = resolveReflectedMethods(goal, context, callsite)
-            when {
-                reflectedMethods.isNotEmpty() -> ResolutionOutcome.Resolved(
-                    resolverId = id,
-                    facts = reflectedMethods.map { method ->
-                        JavaPsiEvidenceSupport.methodFact(
-                            goal = goal,
-                            resolverId = id,
-                            method = method,
-                            claim = "已确认反射调用目标 ${methodSignature(method)}。",
-                            whyResolved = "Class.forName 与 getMethod 参数均为编译期常量，PSI 精确解析到目标方法。",
-                        )
-                    },
-                )
-                hasReflectionCalls(callsite) -> ResolutionOutcome.Unresolved(
-                    resolverId = id,
-                    reason = "反射调用存在，但 className 或 methodName 不是编译期常量。",
-                    requiredEvidence = listOf("补充反射 class/method 实际值、配置绑定或运行时 trace。"),
-                )
-                else -> unresolved(goal, "调用点中没有发现 Class.forName/getMethod 反射调用。")
-            }
+        val callsite = JavaPsiEvidenceSupport.resolveMethodCandidates(goal, context).methods.singleOrNull()
+            ?: return unresolved(goal, "未找到唯一反射调用点方法。")
+        val reflectedMethods = resolveReflectedMethods(goal, context, callsite)
+        return when {
+            reflectedMethods.isNotEmpty() -> ResolutionOutcome.Resolved(
+                resolverId = id,
+                facts = reflectedMethods.map { method ->
+                    JavaPsiEvidenceSupport.methodFact(
+                        goal = goal,
+                        resolverId = id,
+                        method = method,
+                        claim = "已确认反射调用目标 ${methodSignature(method)}。",
+                        whyResolved = "Class.forName 与 getMethod 参数均为编译期常量，PSI 精确解析到目标方法。",
+                    )
+                },
+            )
+            hasReflectionCalls(callsite) -> ResolutionOutcome.Unresolved(
+                resolverId = id,
+                reason = "反射调用存在，但 className 或 methodName 不是编译期常量。",
+                requiredEvidence = listOf("补充反射 class/method 实际值、配置绑定或运行时 trace。"),
+            )
+            else -> unresolved(goal, "调用点中没有发现 Class.forName/getMethod 反射调用。")
         }
     }
 

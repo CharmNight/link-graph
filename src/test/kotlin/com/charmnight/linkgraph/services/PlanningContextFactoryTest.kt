@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.planning.PlanningContextFactory
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.diff.GraphDiffer
@@ -15,6 +16,7 @@ import com.charmnight.linkgraph.sync.SyncPreviewPlanner
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.ui.GraphEditorStateService
+import com.charmnight.linkgraph.ui.toWorkflowEditorSnapshot
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
@@ -54,7 +56,7 @@ class PlanningContextFactoryTest {
             graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
             settingsProvider = { LinkGraphSettingsState() },
         ).buildAuditGraphs(
-            snapshot = snapshot,
+            snapshot = snapshot.toWorkflowEditorSnapshot(),
             selectedNodeIds = emptyList(),
             collectSourceEvidence = false,
         )
@@ -181,7 +183,7 @@ class PlanningContextFactoryTest {
             syncPreviewPlanner = SyncPreviewPlanner(),
             graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
             settingsProvider = { LinkGraphSettingsState() },
-        ).computePlanningPayload(snapshot, generationPlanOverride = generationPlan)
+        ).computePlanningPayload(snapshot.toWorkflowEditorSnapshot(), generationPlanOverride = generationPlan)
 
         assertTrue(payload.sourceContext.isEmpty())
     }
@@ -243,7 +245,7 @@ class PlanningContextFactoryTest {
             graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
             settingsProvider = { LinkGraphSettingsState(llmEnabled = true, provider = "MOCK") },
             projectBasePathProvider = { projectDir.toString() },
-        ).computePlanningPayload(snapshot, generationPlanOverride = generationPlan)
+        ).computePlanningPayload(snapshot.toWorkflowEditorSnapshot(), generationPlanOverride = generationPlan)
 
         assertTrue(payload.sourceContext.isEmpty())
     }

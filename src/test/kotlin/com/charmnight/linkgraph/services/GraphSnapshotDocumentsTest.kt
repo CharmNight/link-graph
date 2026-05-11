@@ -1,5 +1,8 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.model.currentVisibleGraph
+import com.charmnight.linkgraph.application.model.currentWorkingGraph
+import com.charmnight.linkgraph.application.model.currentWorkingGraphSource
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
@@ -8,6 +11,7 @@ import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.ui.GraphEditorStateSnapshot
 import com.charmnight.linkgraph.ui.GraphSceneId
+import com.charmnight.linkgraph.ui.toWorkflowEditorSnapshot
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
 import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
 import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
@@ -43,16 +47,16 @@ class GraphSnapshotDocumentsTest {
             diffGraph = diffGraph,
         )
 
-        assertEquals(factVisible, currentVisibleGraph(baseSnapshot.copy(currentSceneId = GraphSceneId.WORKSPACE_FACT)))
+        assertEquals(factVisible, currentVisibleGraph(baseSnapshot.copy(currentSceneId = GraphSceneId.WORKSPACE_FACT).toWorkflowEditorSnapshot()))
         assertEquals(
             flowchartVisible,
-            currentVisibleGraph(baseSnapshot.copy(currentSceneId = GraphSceneId.WORKSPACE_FLOWCHART)),
+            currentVisibleGraph(baseSnapshot.copy(currentSceneId = GraphSceneId.WORKSPACE_FLOWCHART).toWorkflowEditorSnapshot()),
         )
         assertEquals(
             resourceVisible,
-            currentVisibleGraph(baseSnapshot.copy(currentSceneId = GraphSceneId.WORKSPACE_RESOURCE_RELATION)),
+            currentVisibleGraph(baseSnapshot.copy(currentSceneId = GraphSceneId.WORKSPACE_RESOURCE_RELATION).toWorkflowEditorSnapshot()),
         )
-        assertEquals(diffGraph, currentVisibleGraph(baseSnapshot.copy(currentSceneId = GraphSceneId.DIFF)))
+        assertEquals(diffGraph, currentVisibleGraph(baseSnapshot.copy(currentSceneId = GraphSceneId.DIFF).toWorkflowEditorSnapshot()))
     }
 
     @Test
@@ -96,9 +100,9 @@ class GraphSnapshotDocumentsTest {
             resourceRelationView = ResourceRelationViewDocument(visibleGraph = emptyGraph, fullGraph = workspaceGraph),
         )
 
-        assertEquals(emptyGraph, currentVisibleGraph(factSnapshot))
-        assertEquals(emptyGraph, currentVisibleGraph(flowchartSnapshot))
-        assertEquals(emptyGraph, currentVisibleGraph(resourceSnapshot))
+        assertEquals(emptyGraph, currentVisibleGraph(factSnapshot.toWorkflowEditorSnapshot()))
+        assertEquals(emptyGraph, currentVisibleGraph(flowchartSnapshot.toWorkflowEditorSnapshot()))
+        assertEquals(emptyGraph, currentVisibleGraph(resourceSnapshot.toWorkflowEditorSnapshot()))
     }
 
     @Test
@@ -130,8 +134,8 @@ class GraphSnapshotDocumentsTest {
             workspaceGraph = visibleGraph,
             factGraphView = FactGraphViewDocument(visibleGraph = visibleGraph, fullGraph = visibleGraph),
         )
-        val sanitizedVisible = currentVisibleGraph(snapshot)
-        val sanitizedWorking = currentWorkingGraph(snapshot)
+        val sanitizedVisible = currentVisibleGraph(snapshot.toWorkflowEditorSnapshot())
+        val sanitizedWorking = currentWorkingGraph(snapshot.toWorkflowEditorSnapshot())
 
         assertEquals(visibleGraph.nodes.map(GraphNode::id), sanitizedVisible.nodes.map(GraphNode::id))
         assertEquals(visibleGraph.edges.map(GraphEdge::id), sanitizedVisible.edges.map(GraphEdge::id))
@@ -169,8 +173,8 @@ class GraphSnapshotDocumentsTest {
                 ),
             )
 
-            assertEquals(workspaceGraph, currentWorkingGraph(snapshot))
-            assertEquals("workspaceGraph", currentWorkingGraphSource(snapshot))
+            assertEquals(workspaceGraph, currentWorkingGraph(snapshot.toWorkflowEditorSnapshot()))
+            assertEquals("workspaceGraph", currentWorkingGraphSource(snapshot.toWorkflowEditorSnapshot()))
         }
     }
 
@@ -209,10 +213,10 @@ class GraphSnapshotDocumentsTest {
             resourceRelationView = ResourceRelationViewDocument(visibleGraph = emptyGraph, fullGraph = resourceFullGraph),
         )
 
-        assertEquals(emptyGraph, currentWorkingGraph(flowchartSnapshot))
-        assertEquals("emptyGraph", currentWorkingGraphSource(flowchartSnapshot))
-        assertEquals(emptyGraph, currentWorkingGraph(resourceSnapshot))
-        assertEquals("emptyGraph", currentWorkingGraphSource(resourceSnapshot))
+        assertEquals(emptyGraph, currentWorkingGraph(flowchartSnapshot.toWorkflowEditorSnapshot()))
+        assertEquals("emptyGraph", currentWorkingGraphSource(flowchartSnapshot.toWorkflowEditorSnapshot()))
+        assertEquals(emptyGraph, currentWorkingGraph(resourceSnapshot.toWorkflowEditorSnapshot()))
+        assertEquals("emptyGraph", currentWorkingGraphSource(resourceSnapshot.toWorkflowEditorSnapshot()))
     }
 }
 

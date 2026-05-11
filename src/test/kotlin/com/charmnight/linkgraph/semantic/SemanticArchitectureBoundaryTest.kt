@@ -57,9 +57,9 @@ class SemanticArchitectureBoundaryTest {
     }
 
     @Test
-    fun linkGraphProjectService语义主路径不得直接依赖JavaResolver() {
+    fun subjectWorkflow语义主路径不得直接依赖JavaResolver() {
         val violations = scanForbiddenSourceFragments(
-            relativeFile = "src/main/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectService.kt",
+            relativeFile = "src/main/kotlin/com/charmnight/linkgraph/application/workflow/SubjectGraphWorkflow.kt",
             forbiddenFragments = listOf(
                 "import com.charmnight.linkgraph.extract.JavaResolver",
                 "testJavaResolverOverride",
@@ -69,7 +69,7 @@ class SemanticArchitectureBoundaryTest {
         )
 
         assertNoViolations(
-            title = "LinkGraphProjectService 主路径仍直接依赖 JavaResolver",
+            title = "SubjectGraphWorkflow 主路径仍直接依赖 JavaResolver",
             violations = violations,
         )
     }

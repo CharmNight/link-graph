@@ -10,28 +10,39 @@ import kotlin.test.assertTrue
 
 class WorkflowArchitectureRegressionTest {
     @Test
-    fun linkGraphProjectServiceDoesNotKeepTestOverridesInProductionState() {
-        val source = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectService.kt"))
-
-        assertFalse(source.contains("testOpenSettingsOverride"))
-        assertFalse(source.contains("testSubjectLocatorOverride"))
-        assertFalse(source.contains("testSemanticAnalyzerOverride"))
-        assertFalse(source.contains("testAnalysisOutcomeFactoryOverride"))
-        assertFalse(source.contains("testAuditExecutorOverride"))
-        assertFalse(source.contains("testEffectiveGenerationSettingsOverride"))
-        assertFalse(source.contains("testAsyncRequestTimeoutMillisOverride"))
-        assertFalse(source.contains("testOpenCodeDraftNativeDiffOverride"))
+    fun deletedFacadeDoesNotKeepTestOverridesInProductionState() {
+        assertFalse(
+            Files.exists(Path.of("src/main/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectService.kt")),
+            "Legacy project-service facade must stay deleted instead of carrying test overrides.",
+        )
         assertTrue(
-            Files.exists(Path.of("src/main/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectTestOverrides.kt")),
+            Files.exists(Path.of("src/main/kotlin/com/charmnight/linkgraph/application/runtime/LinkGraphProjectTestOverrides.kt")),
             "测试覆写必须迁移到独立的测试钩子对象，不能继续污染生产 service 状态。",
         )
     }
 
     @Test
+    fun confirmedDraftDoesNotKeepLegacySnapshotWorkflowBesideUseCase() {
+        assertFalse(
+            Files.exists(Path.of("src/main/kotlin/com/charmnight/linkgraph/services/ConfirmedDraftChangeWorkflow.kt")),
+            "Confirmed draft must use ConfirmDraftChangeUseCase; the legacy GraphEditorStateSnapshot workflow must be deleted.",
+        )
+        assertFalse(
+            Files.exists(Path.of("src/main/kotlin/com/charmnight/linkgraph/services/ConfirmedDraftChangeSyncWorkflow.kt")),
+            "Confirmed draft must not keep a SyncWorkflow mixed-responsibility entrypoint.",
+        )
+        val coordinator = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/application/workflow/ConfirmedDraftChangeCoordinator.kt"))
+        assertFalse(
+            coordinator.contains("GraphEditorStateSnapshot"),
+            "Confirmed draft coordinator should adapt through application snapshots/results, not UI snapshots.",
+        )
+    }
+
+    @Test
     fun asyncWorkflowsDelegateThreadHopsToLifecycleSupport() {
-        val generationWorkflow = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/services/GenerationWorkflow.kt"))
-        val reviewWorkflow = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/services/ReviewWorkflow.kt"))
-        val subjectWorkflow = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/services/SubjectGraphWorkflow.kt"))
+        val generationWorkflow = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/application/workflow/GenerationWorkflow.kt"))
+        val reviewWorkflow = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/application/workflow/ReviewWorkflow.kt"))
+        val subjectWorkflow = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/application/workflow/SubjectGraphWorkflow.kt"))
 
         assertFalse(
             generationWorkflow.contains("ApplicationManager.getApplication().executeOnPooledThread"),
@@ -49,7 +60,7 @@ class WorkflowArchitectureRegressionTest {
 
     @Test
     fun reviewWorkflowUsesQaModeContextInsteadOfNakedEffectiveModePlumbing() {
-        val reviewWorkflow = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/services/ReviewWorkflow.kt"))
+        val reviewWorkflow = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/application/workflow/ReviewWorkflow.kt"))
 
         assertFalse(
             reviewWorkflow.contains("effectiveMode(request)"),
@@ -71,7 +82,7 @@ class WorkflowArchitectureRegressionTest {
 
     @Test
     fun graphEditorCommandRouterDoesNotUseServiceLocatorForwarding() {
-        val source = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/services/GraphEditorCommandRouter.kt"))
+        val source = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorCommandRouter.kt"))
 
         assertFalse(source.contains("private fun projectService()"))
         assertFalse(source.contains("projectService()."))

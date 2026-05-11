@@ -1,11 +1,11 @@
 package com.charmnight.linkgraph.workbench
 
-import com.charmnight.linkgraph.ui.GraphEditorStateService
+import com.charmnight.linkgraph.llm.GraphPatchResult
 import java.util.UUID
 
 class QaRequestLifecycleService {
     fun buildReplayableRequest(
-        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        auditResult: GraphPatchResult?,
         question: String,
         selectedNodeIds: List<String>,
         sourceThreadId: String?,
@@ -18,7 +18,7 @@ class QaRequestLifecycleService {
             mode = mode,
             selectedNodeIds = selectedNodeIds,
             sourceThreadId = sourceThreadId,
-            baseSession = snapshot.auditResult?.auditSession,
+            baseSession = auditResult?.auditSession,
         )
     }
 

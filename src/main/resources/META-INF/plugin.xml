@@ -23,6 +23,9 @@
                 id="com.charmnight.linkgraph.settings"
                 displayName="链路图"
                 instance="com.charmnight.linkgraph.settings.LinkGraphSettingsConfigurable"/>
+        <projectService
+                serviceInterface="com.charmnight.linkgraph.application.port.GraphEditorPresentationProvider"
+                serviceImplementation="com.charmnight.linkgraph.ui.GraphEditorApplicationProjectionService"/>
     </extensions>
 
     <extensions defaultExtensionNs="org.jetbrains.kotlin">

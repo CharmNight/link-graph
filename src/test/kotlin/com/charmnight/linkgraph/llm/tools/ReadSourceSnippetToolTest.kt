@@ -39,7 +39,7 @@ class ReadSourceSnippetToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = testSnapshot(),
+                snapshot = testSnapshot().toToolGraphSnapshot(),
                 artifactStore = InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
@@ -76,7 +76,7 @@ class ReadSourceSnippetToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = testSnapshot(),
+                snapshot = testSnapshot().toToolGraphSnapshot(),
                 artifactStore = InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
@@ -116,7 +116,7 @@ class ReadSourceSnippetToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = testSnapshot(),
+                snapshot = testSnapshot().toToolGraphSnapshot(),
                 artifactStore = InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
@@ -150,7 +150,7 @@ class ReadSourceSnippetToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = testSnapshot(),
+                snapshot = testSnapshot().toToolGraphSnapshot(),
                 artifactStore = InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
@@ -183,7 +183,7 @@ class ReadSourceSnippetToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = testSnapshot(),
+                snapshot = testSnapshot().toToolGraphSnapshot(),
                 artifactStore = InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),

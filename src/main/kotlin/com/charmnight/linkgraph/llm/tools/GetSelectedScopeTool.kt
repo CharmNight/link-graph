@@ -14,8 +14,7 @@ class GetSelectedScopeTool(
         input: Map<String, Any?>,
         context: ToolExecutionContext,
     ): ToolResult {
-        @Suppress("UNCHECKED_CAST")
-        val requestedNodeIds = input["selectedNodeIds"] as? List<String> ?: emptyList()
+        val requestedNodeIds = input.optionalList<String>("selectedNodeIds")
         val selectedNodeIds = graphToolFacade.selectedNodeIds(
             snapshot = context.snapshot,
             requestedNodeIds = requestedNodeIds,

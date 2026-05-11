@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.testing.*
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class OpenAiResponsesLlmGatewayTest {
@@ -39,10 +40,16 @@ class OpenAiResponsesLlmGatewayTest {
             ),
         )
 
-        assertTrue(payload.contains("\"model\": \"gpt-5.4\""))
-        assertTrue(payload.contains("\"instructions\": \"system prompt\""))
-        assertTrue(payload.contains("\"text\": \"user prompt\""))
-        assertTrue(payload.contains("\"stream\": true"))
+        val root = LlmJsonSupport.parseJsonObject(payload)
+
+        assertEquals("gpt-5.4", root.get("model").asString)
+        assertEquals("system prompt", root.get("instructions").asString)
+        assertEquals(
+            "user prompt",
+            root.getAsJsonArray("input")[0].asJsonObject
+                .getAsJsonArray("content")[0].asJsonObject.get("text").asString,
+        )
+        assertEquals(true, root.get("stream").asBoolean)
     }
 
     @Test
@@ -75,11 +82,17 @@ class OpenAiResponsesLlmGatewayTest {
             ),
         )
 
-        assertTrue(payload.contains("\"format\":"))
-        assertTrue(payload.contains("\"type\": \"json_schema\""))
-        assertTrue(payload.contains("\"name\": \"code_generation\""))
-        assertTrue(payload.contains("\"strict\": true"))
-        assertTrue(payload.contains("\"required\": [\"payload\"]"))
+        val root = LlmJsonSupport.parseJsonObject(payload)
+        val format = root.getAsJsonObject("text").getAsJsonObject("format")
+
+        assertEquals("json_schema", format.get("type").asString)
+        assertEquals("code_generation", format.get("name").asString)
+        assertEquals(true, format.get("strict").asBoolean)
+        assertNotNull(
+            format.getAsJsonObject("schema")
+                .getAsJsonArray("required")
+                .firstOrNull { it.asString == "payload" },
+        )
     }
 
     @Test

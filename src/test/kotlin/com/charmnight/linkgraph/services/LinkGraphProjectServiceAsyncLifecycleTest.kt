@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.llm.GraphAuditContext
@@ -10,10 +11,11 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
+import com.charmnight.linkgraph.ui.GraphEditorCommandRouter
+import com.charmnight.linkgraph.ui.GraphEditorMessage
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import com.intellij.testFramework.registerServiceInstance
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -22,10 +24,7 @@ import kotlin.test.fail
 class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
     override fun setUp() {
         super.setUp()
-        project.registerServiceInstance(GraphEditorStateService::class.java, GraphEditorStateService())
-        project.registerServiceInstance(LinkGraphProjectTestOverrides::class.java, LinkGraphProjectTestOverrides())
-        project.registerServiceInstance(LinkGraphProjectService::class.java, LinkGraphProjectService(project))
-        project.registerServiceInstance(GraphEditorCommandRouter::class.java, GraphEditorCommandRouter(project))
+        project.registerLinkGraphProjectCommandServicesForTest()
     }
 
     fun testGenerationPlanAsyncAllowsRequestsWhenNoConfirmedDraftChangesExist() {
@@ -44,7 +43,7 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             provider = "MOCK",
             timeoutSeconds = 45,
         )
-        commandRouter.requestGenerationPlanAsync()
+        commandRouter.dispatch(GraphEditorMessage.RequestGenerationPlan)
 
         val snapshot = waitForSnapshot { current ->
             current.generationPlanRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED &&
@@ -71,7 +70,7 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
         )
 
         project.getService(LinkGraphProjectTestOverrides::class.java)
-        project.getService(GraphEditorCommandRouter::class.java).requestCodeDraftsAsync()
+        project.getService(GraphEditorCommandRouter::class.java).dispatch(GraphEditorMessage.RequestCodeDrafts)
 
         val snapshot = waitForSnapshot { current ->
             current.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
@@ -107,7 +106,7 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             )
         }
 
-        commandRouter.requestAuditAsync("请围绕当前链路进行问答")
+        commandRouter.dispatch(GraphEditorMessage.RequestAudit("请围绕当前链路进行问答"))
 
         val succeeded = waitForSnapshot { current ->
             current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED &&
@@ -148,7 +147,7 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             )
         }
 
-        commandRouter.requestAuditAsync("请围绕当前链路进行问答")
+        commandRouter.dispatch(GraphEditorMessage.RequestAudit("请围绕当前链路进行问答"))
 
         val snapshot = waitForSnapshot { current ->
             current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.TIMED_OUT &&
@@ -187,7 +186,7 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             )
         }
 
-        commandRouter.requestAuditAsync("请围绕当前链路进行问答")
+        commandRouter.dispatch(GraphEditorMessage.RequestAudit("请围绕当前链路进行问答"))
 
         val snapshot = waitForSnapshot { current ->
             current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED &&
@@ -225,7 +224,7 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             )
         }
 
-        commandRouter.requestAuditAsync("请围绕当前链路进行问答")
+        commandRouter.dispatch(GraphEditorMessage.RequestAudit("请围绕当前链路进行问答"))
 
         val snapshot = waitForSnapshot { current ->
             current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED &&

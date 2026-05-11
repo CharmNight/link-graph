@@ -15,7 +15,7 @@ import com.charmnight.linkgraph.model.GraphDiffEntry
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.workbench.AuditConversationSession
+import com.charmnight.linkgraph.workbench.QaConversationSession
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession
 import com.charmnight.linkgraph.workbench.QaMode
@@ -264,7 +264,7 @@ class LlmPromptFactory(
         context: GraphAuditContext,
         question: String,
         settings: LinkGraphSettingsState,
-        session: AuditConversationSession? = null,
+        session: QaConversationSession? = null,
         requestedMode: QaMode = QaMode.AUTO,
         effectiveMode: QaMode = QaMode.AUTO,
     ): LlmPromptPackage {

@@ -40,42 +40,7 @@ class OpenAiResponsesLlmGateway(
     }
 
     internal fun buildPayload(request: LlmRequest): String {
-        val streamField = if (request.deliveryMode == LlmDeliveryMode.STREAM) {
-            ",\n  \"stream\": true"
-        } else {
-            ""
-        }
-        val structuredOutputField = request.structuredOutput?.let { structuredOutput ->
-            """
-                ,
-                  "text": {
-                    "format": {
-                      "type": "json_schema",
-                      "name": "${LlmGatewaySupport.escapeJson(structuredOutput.name)}",
-                      "strict": ${structuredOutput.strict},
-                      "schema": ${structuredOutput.schema.trim()}
-                    }
-                  }
-            """.trimIndent()
-        }.orEmpty()
-        return """
-            {
-              "model": "${LlmGatewaySupport.escapeJson(request.model)}",
-              "temperature": ${request.temperature},
-              "instructions": "${LlmGatewaySupport.escapeJson(request.systemPrompt)}",
-              "input": [
-                {
-                  "role": "user",
-                  "content": [
-                    {
-                      "type": "input_text",
-                      "text": "${LlmGatewaySupport.escapeJson(request.userPrompt)}"
-                    }
-                  ]
-                }
-              ]$structuredOutputField$streamField
-            }
-        """.trimIndent()
+        return LlmGatewayPayloadBuilder.openAiResponsesPayload(request)
     }
 
     internal fun extractContent(body: String): String {
@@ -102,19 +67,12 @@ class OpenAiResponsesLlmGateway(
     }
 
     internal fun extractTextDelta(data: String): String? {
-        val root = runCatching { LlmGatewayJsonParser(data).parseValue() as? Map<*, *> }.getOrNull() ?: return null
+        val root = LlmJsonSupport.parseObjectOrNull(data) ?: return null
         return when (root["type"] as? String) {
             "response.output_text.delta" -> root["delta"] as? String
             "response.output_text.done" -> root["text"] as? String
             else -> null
         }
-    }
-
-    internal fun buildFailureMessage(
-        statusCode: Int,
-        body: String,
-    ): String {
-        return LlmGatewaySupport.buildFailureMessage(statusCode, body)
     }
 
     private fun openAiHeaders(request: LlmRequest): List<Pair<String, String>> {

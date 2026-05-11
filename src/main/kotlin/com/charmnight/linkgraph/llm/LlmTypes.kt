@@ -6,7 +6,7 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
-import com.charmnight.linkgraph.workbench.AuditConversationSession
+import com.charmnight.linkgraph.workbench.QaConversationSession
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.InvestigationThread
@@ -320,7 +320,7 @@ data class GraphPatchResult(
     /** 保存本轮实际使用的取证轨迹。 */
     val evidenceTrace: List<EvidenceTraceEntry> = emptyList(),
     /** 保存当前问答会话状态。 */
-    val auditSession: AuditConversationSession? = null,
+    val auditSession: QaConversationSession? = null,
     /** 保存警告列表。 */
     val warnings: List<String> = emptyList(),
 )

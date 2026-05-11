@@ -1,6 +1,8 @@
 package com.charmnight.linkgraph.workbench
 
+import com.charmnight.linkgraph.application.model.toRiskResolutionSnapshot
 import com.charmnight.linkgraph.testing.*
+import com.charmnight.linkgraph.ui.toApplicationSnapshot
 
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.LlmResultSource
@@ -82,7 +84,7 @@ class RiskResolutionServiceTest {
                         ),
                     ),
                 ),
-            ),
+            ).toApplicationSnapshot().toRiskResolutionSnapshot(),
         )
 
         assertEquals(DraftValidationStatus.REVIEW_REQUIRED, decision.status)
@@ -120,7 +122,7 @@ class RiskResolutionServiceTest {
                         ),
                     ),
                 ),
-            ),
+            ).toApplicationSnapshot().toRiskResolutionSnapshot(),
         )
 
         assertFalse(decision.allowed)
@@ -158,7 +160,7 @@ class RiskResolutionServiceTest {
                         ),
                     ),
                 ),
-            ),
+            ).toApplicationSnapshot().toRiskResolutionSnapshot(),
         )
 
         assertTrue(decision.allowed)
@@ -179,7 +181,7 @@ class RiskResolutionServiceTest {
                         ),
                     ),
                 ),
-            ),
+            ).toApplicationSnapshot().toRiskResolutionSnapshot(),
         )
 
         assertEquals(DraftValidationStatus.READY, decision.status)

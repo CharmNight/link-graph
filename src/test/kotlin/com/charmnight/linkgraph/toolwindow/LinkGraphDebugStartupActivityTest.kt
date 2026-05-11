@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.toolwindow
 
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.services.LinkGraphProjectService
+import com.charmnight.linkgraph.services.registerLinkGraphProjectCommandServicesForTest
 import com.charmnight.linkgraph.toolwindow.debug.LinkGraphDebugAutomationCoordinator
 import com.charmnight.linkgraph.toolwindow.debug.LinkGraphDebugAutomationRequest
 import com.charmnight.linkgraph.toolwindow.debug.LinkGraphDebugStartupActivity
@@ -17,14 +17,7 @@ import java.util.concurrent.atomic.AtomicReference
 class LinkGraphDebugStartupActivityTest : BasePlatformTestCase() {
     override fun setUp() {
         super.setUp()
-        project.registerServiceInstance(
-            GraphEditorStateService::class.java,
-            GraphEditorStateService(),
-        )
-        project.registerServiceInstance(
-            LinkGraphProjectService::class.java,
-            LinkGraphProjectService(project),
-        )
+        project.registerLinkGraphProjectCommandServicesForTest()
         project.registerServiceInstance(
             LinkGraphDebugAutomationCoordinator::class.java,
             LinkGraphDebugAutomationCoordinator(project),

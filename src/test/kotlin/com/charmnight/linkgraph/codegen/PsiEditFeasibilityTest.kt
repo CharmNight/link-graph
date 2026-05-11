@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.codegen
 
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.services.DebugMethodSignatureLocator
+import com.charmnight.linkgraph.application.debug.DebugMethodSignatureLocator
 import com.intellij.ide.highlighter.JavaFileType
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.psi.JavaPsiFacade

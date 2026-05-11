@@ -11,16 +11,17 @@ import kotlin.test.assertTrue
 class LinkGraphBoundaryTest {
     @Test
     fun projectServiceDoesNotOwnToolwindowOrBrowserAndAppUsesDedicatedStateHooksAndControllers() {
-        val projectService = Files.readString(
-            Path.of("src/main/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectService.kt"),
+        val components = Files.readString(
+            Path.of("src/main/kotlin/com/charmnight/linkgraph/application/GraphEditorApplicationService.kt"),
         )
         val openAction = Files.readString(
             Path.of("src/main/kotlin/com/charmnight/linkgraph/actions/OpenLinkGraphAction.kt"),
         )
         val appSource = Files.readString(Path.of("web/src/app/App.tsx"))
 
-        assertFalse(projectService.contains("GraphBrowserPanel"))
-        assertFalse(projectService.contains("LinkGraphToolWindowSession"))
+        assertFalse(Files.exists(Path.of("src/main/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectService.kt")))
+        assertFalse(components.contains("GraphBrowserPanel"))
+        assertFalse(components.contains("LinkGraphToolWindowSession"))
 
         assertTrue(openAction.contains("LinkGraphToolWindowSession"))
         assertTrue(appSource.contains("useBridgeCommandController"))
@@ -43,7 +44,7 @@ class LinkGraphBoundaryTest {
             Path.of("src/main/kotlin/com/charmnight/linkgraph/llm/capability/CodegenCapability.kt"),
         )
         val graphSnapshotDocuments = Files.readString(
-            Path.of("src/main/kotlin/com/charmnight/linkgraph/services/GraphSnapshotDocuments.kt"),
+            Path.of("src/main/kotlin/com/charmnight/linkgraph/application/model/GraphSnapshotDocuments.kt"),
         )
         val graphEditorSnapshot = Files.readString(
             Path.of("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorSnapshot.kt"),
@@ -70,14 +71,14 @@ class LinkGraphBoundaryTest {
         val workbenchModels = Files.readString(
             Path.of("src/main/kotlin/com/charmnight/linkgraph/workbench/WorkbenchModels.kt"),
         )
-        val auditConversationService = Files.readString(
-            Path.of("src/main/kotlin/com/charmnight/linkgraph/workbench/AuditConversationService.kt"),
+        val qaConversationService = Files.readString(
+            Path.of("src/main/kotlin/com/charmnight/linkgraph/workbench/QaConversationService.kt"),
         )
         val llmTypes = Files.readString(
             Path.of("src/main/kotlin/com/charmnight/linkgraph/llm/LlmTypes.kt"),
         )
         val reviewWorkflow = Files.readString(
-            Path.of("src/main/kotlin/com/charmnight/linkgraph/services/ReviewWorkflow.kt"),
+            Path.of("src/main/kotlin/com/charmnight/linkgraph/application/workflow/ReviewWorkflow.kt"),
         )
         val qaModels = Files.readString(
             Path.of("src/main/kotlin/com/charmnight/linkgraph/workbench/QaModels.kt"),
@@ -99,9 +100,9 @@ class LinkGraphBoundaryTest {
         assertFalse(workbenchModels.contains("internal fun InvestigationThread.toLeadView()"))
         assertFalse(llmTypes.contains("val investigationLeads: List<AuditInvestigationLead>"))
         assertFalse(llmTypes.contains("val newInvestigationLeads: List<AuditInvestigationLead>"))
-        assertFalse(auditConversationService.contains("session.investigationLeads"))
-        assertFalse(auditConversationService.contains("modelTurn.investigationLeads"))
-        assertFalse(auditConversationService.contains("investigationLeads ="))
+        assertFalse(qaConversationService.contains("session.investigationLeads"))
+        assertFalse(qaConversationService.contains("modelTurn.investigationLeads"))
+        assertFalse(qaConversationService.contains("investigationLeads ="))
         assertFalse(reviewWorkflow.contains("investigationLeads = result.investigationLeads"))
         assertFalse(reviewWorkflow.contains("investigationLeads = turnResult.session.investigationLeads"))
         assertFalse(reviewWorkflow.contains("newInvestigationLeads"))
@@ -123,7 +124,7 @@ class LinkGraphBoundaryTest {
             Path.of("src/main/kotlin/com/charmnight/linkgraph/workbench/QaRequestLifecycleService.kt"),
         )
         val reviewWorkflow = Files.readString(
-            Path.of("src/main/kotlin/com/charmnight/linkgraph/services/ReviewWorkflow.kt"),
+            Path.of("src/main/kotlin/com/charmnight/linkgraph/application/workflow/ReviewWorkflow.kt"),
         )
         val graphEditorMessage = Files.readString(
             Path.of("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorMessage.kt"),

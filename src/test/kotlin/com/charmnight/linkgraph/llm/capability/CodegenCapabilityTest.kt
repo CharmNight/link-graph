@@ -85,7 +85,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -193,7 +193,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -310,7 +310,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -463,7 +463,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { testSnapshot() },
+                snapshotSupplier = { testSnapshot().toToolGraphSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -554,7 +554,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { testSnapshot() },
+                snapshotSupplier = { testSnapshot().toToolGraphSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -666,7 +666,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { testSnapshot() },
+                snapshotSupplier = { testSnapshot().toToolGraphSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -753,7 +753,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),

@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.debug.DebugGraphFactory
 import com.charmnight.linkgraph.testing.*
 
 import kotlin.test.Test

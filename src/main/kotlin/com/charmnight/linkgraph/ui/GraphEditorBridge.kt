@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.model.GraphDocument
-import com.charmnight.linkgraph.services.GraphEditorCommandRouter
+import com.charmnight.linkgraph.ui.GraphEditorCommandRouter
 import com.charmnight.linkgraph.workbench.WorkbenchLayoutPreferencesService
 import com.intellij.openapi.project.Project
 

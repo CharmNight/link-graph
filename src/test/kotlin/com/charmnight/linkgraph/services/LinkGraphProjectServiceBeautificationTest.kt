@@ -85,8 +85,8 @@ class LinkGraphProjectServiceBeautificationTest : BasePlatformTestCase() {
             selectedMethodSignature = methodSignature,
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
-        val result = service.requestGraphBeautification(
+        val applicationService = project.linkGraphApplicationServiceForTest()
+        val result = applicationService.requestGraphBeautification(
             goal = "把当前方法链路讲清楚",
             preferredStyle = "汇报版",
             explanationFocus = "先讲当前方法内部",
@@ -153,7 +153,7 @@ class LinkGraphProjectServiceBeautificationTest : BasePlatformTestCase() {
             selectedMethodSignature = methodSignature,
         )
 
-        val result = project.getService(LinkGraphProjectService::class.java).requestGraphBeautification(
+        val result = project.linkGraphApplicationServiceForTest().requestGraphBeautification(
             goal = "确认源码片段完整性",
             preferredStyle = "审阅版",
             explanationFocus = "只看当前方法签名片段",
@@ -209,8 +209,8 @@ class LinkGraphProjectServiceBeautificationTest : BasePlatformTestCase() {
             selectedMethodSignature = methodSignature,
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
-        val result = service.requestGraphBeautification(
+        val applicationService = project.linkGraphApplicationServiceForTest()
+        val result = applicationService.requestGraphBeautification(
             goal = "解释当前工作图",
             preferredStyle = "审阅版",
             explanationFocus = "只解释当前画布内容",

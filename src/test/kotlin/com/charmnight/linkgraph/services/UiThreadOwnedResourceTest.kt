@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.toolwindow.UiThreadExecutor
+import com.charmnight.linkgraph.toolwindow.UiThreadOwnedResource
 import com.charmnight.linkgraph.testing.*
 
 import kotlin.test.Test

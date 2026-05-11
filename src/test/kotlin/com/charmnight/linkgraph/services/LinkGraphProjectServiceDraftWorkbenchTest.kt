@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.ui.GraphEditorSyncNotifier
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.llm.GraphPatchResult
@@ -99,8 +100,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        val entry = project.getService(LinkGraphProjectService::class.java)
-            .confirmAuditCandidateChange("change-delete-guard")
+        val entry = project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-delete-guard")
 
         assertNotNull(entry)
         val snapshot = stateService.snapshot()
@@ -198,8 +198,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        val entry = project.getService(LinkGraphProjectService::class.java)
-            .confirmAuditCandidateChange("change-delete-guard")
+        val entry = project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-delete-guard")
 
         assertNotNull(entry)
         val snapshot = stateService.snapshot()
@@ -304,8 +303,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        val entry = project.getService(LinkGraphProjectService::class.java)
-            .confirmAuditCandidateChange("change-insert-file-exists-guard")
+        val entry = project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-insert-file-exists-guard")
 
         assertNotNull(entry)
         val snapshot = stateService.snapshot()
@@ -381,8 +379,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        project.getService(LinkGraphProjectService::class.java)
-            .confirmAuditCandidateChange("change-upload-condition")
+        project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-upload-condition")
 
         val snapshot = stateService.snapshot()
         assertEquals(1L, snapshot.draftVersion)
@@ -445,8 +442,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             },
         )
 
-        project.getService(LinkGraphProjectService::class.java)
-            .confirmAuditCandidateChange("change-upload-condition")
+        project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-upload-condition")
 
         assertEquals(1, syncRequestedCount)
     }
@@ -526,7 +522,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val service = project.getService(LinkGraphProjectService::class.java)
+        val service = project.linkGraphApplicationServiceForTest()
         service.confirmAuditCandidateChange("change-upload-condition")
 
         val removed = service.unconfirmAuditCandidateChange("change-upload-condition")
@@ -585,7 +581,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
+        val service = project.linkGraphApplicationServiceForTest()
         service.confirmAuditCandidateChange("change-upload-condition")
         stateService.asyncRequests.markGenerationPlan(
             GenerationPlan(
@@ -664,7 +660,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val service = project.getService(LinkGraphProjectService::class.java)
+        val service = project.linkGraphApplicationServiceForTest()
         val artifactStore = project.getService(AgentArtifactStoreService::class.java).artifactStore
 
         service.confirmAuditCandidateChange("change-upload-condition")
@@ -724,8 +720,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        val entry = project.getService(LinkGraphProjectService::class.java)
-            .confirmAuditCandidateChange("change-path-risk")
+        val entry = project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-path-risk")
 
         assertNull(entry)
         val snapshot = stateService.snapshot()
@@ -794,8 +789,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        project.getService(LinkGraphProjectService::class.java)
-            .confirmAuditCandidateChange("change-delete-guard")
+        project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-delete-guard")
 
         val snapshot = stateService.snapshot()
         assertEquals(
@@ -1016,7 +1010,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
+        val service = project.linkGraphApplicationServiceForTest()
         service.confirmAuditCandidateChange("change-delete-guard")
         service.confirmAuditCandidateChange("change-file-exists-guard")
 
@@ -1185,8 +1179,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        project.getService(LinkGraphProjectService::class.java)
-            .confirmAuditCandidateChange("change-delete-guard")
+        project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-delete-guard")
 
         val snapshot = stateService.snapshot()
         assertEquals(
@@ -1293,8 +1286,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        project.getService(LinkGraphProjectService::class.java)
-            .confirmAuditCandidateChange("change-delete-guard")
+        project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-delete-guard")
 
         val snapshot = stateService.snapshot()
         val visibleNodesById = snapshot.flowchartView?.visibleGraph?.nodes?.associateBy { it.id }.orEmpty()
@@ -1391,8 +1383,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        project.getService(LinkGraphProjectService::class.java)
-            .confirmAuditCandidateChange("change-delete-guard")
+        project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-delete-guard")
 
         val snapshot = stateService.snapshot()
         val storedCandidate = snapshot.auditResult?.candidateChanges?.singleOrNull()
@@ -1484,8 +1475,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        val entry = project.getService(LinkGraphProjectService::class.java)
-            .confirmAuditCandidateChange("change-delete-guard")
+        val entry = project.linkGraphApplicationServiceForTest().confirmAuditCandidateChange("change-delete-guard")
 
         assertNull(entry)
         val snapshot = stateService.snapshot()

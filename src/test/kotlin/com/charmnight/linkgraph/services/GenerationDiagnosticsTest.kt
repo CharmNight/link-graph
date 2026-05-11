@@ -1,7 +1,9 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.diagnostics.GenerationDiagnostics
 import com.charmnight.linkgraph.testing.*
 
+import com.charmnight.linkgraph.application.model.PlanningInput
 import com.charmnight.linkgraph.codegen.CodeGenerationResult
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
@@ -18,7 +20,6 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
-import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import kotlin.test.Test
@@ -27,7 +28,7 @@ import kotlin.test.assertTrue
 class GenerationDiagnosticsTest {
     @Test
     fun summarizesPlanningPayloadWithConfirmedChangesAndPreviewItems() {
-        val payload = PlanningPayload(
+        val payload = PlanningInput(
             planningGraph = GraphDocument(
                 nodes = listOf(
                     GraphNode(
@@ -54,21 +55,17 @@ class GenerationDiagnosticsTest {
                     risk = SyncPreviewRisk.MEDIUM,
                 ),
             ),
-            snapshot = testSnapshot(
-                draftWorkbenchState = com.charmnight.linkgraph.workbench.DraftWorkbenchState(
-                    draftChanges = listOf(
-                        DraftWorkbenchEntry(
-                            entryId = "draft-change-file-download",
-                            kind = DraftEntryKind.CHANGE,
-                            sourceChangeId = "change-file-download",
-                            title = "修改 fileDownload 的路径判定",
-                            targetNodeIds = listOf("method:file-download"),
-                            beforeState = "直接使用 baseUrl 拼接下载路径。",
-                            afterState = "当 /usr 开头时改写到 /tmp；当 C:/ 开头时直接报错。",
-                            reason = "统一处理 Linux 临时目录并阻止 Windows 路径。",
-                            impactSummary = "影响下载路径解析。",
-                        ),
-                    ),
+            confirmedChanges = listOf(
+                DraftWorkbenchEntry(
+                    entryId = "draft-change-file-download",
+                    kind = DraftEntryKind.CHANGE,
+                    sourceChangeId = "change-file-download",
+                    title = "修改 fileDownload 的路径判定",
+                    targetNodeIds = listOf("method:file-download"),
+                    beforeState = "直接使用 baseUrl 拼接下载路径。",
+                    afterState = "当 /usr 开头时改写到 /tmp；当 C:/ 开头时直接报错。",
+                    reason = "统一处理 Linux 临时目录并阻止 Windows 路径。",
+                    impactSummary = "影响下载路径解析。",
                 ),
             ),
         )

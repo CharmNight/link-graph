@@ -4,9 +4,6 @@ import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.services.currentWorkingGraph
-import com.charmnight.linkgraph.services.currentWorkingGraphSource
-import com.charmnight.linkgraph.ui.GraphEditorStateService
 import java.util.ArrayDeque
 
 /**
@@ -17,18 +14,18 @@ class GraphToolFacade(
     private val evidenceAnchorResolver: QaEvidenceAnchorResolver = QaEvidenceAnchorResolver(),
 ) {
     /** 返回当前最适合问答使用的工作图。 */
-    fun currentGraph(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): GraphDocument {
+    fun currentGraph(snapshot: ToolGraphSnapshot): GraphDocument {
         return currentWorkingGraph(snapshot)
     }
 
     /** 返回当前图来源标签，便于调试和日志记录。 */
-    fun currentGraphSource(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): String {
+    fun currentGraphSource(snapshot: ToolGraphSnapshot): String {
         return currentWorkingGraphSource(snapshot)
     }
 
     /** 解析当前选区；若调用方显式给了 nodeIds，则优先使用调用方输入。 */
     fun selectedNodeIds(
-        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        snapshot: ToolGraphSnapshot,
         requestedNodeIds: List<String> = emptyList(),
     ): List<String> {
         return requestedNodeIds.ifEmpty {
@@ -38,7 +35,7 @@ class GraphToolFacade(
 
     /** 返回指定节点详情。 */
     fun nodeDetail(
-        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        snapshot: ToolGraphSnapshot,
         nodeId: String,
     ): GraphNode? {
         return currentGraph(snapshot).nodes.firstOrNull { it.id == nodeId }
@@ -46,7 +43,7 @@ class GraphToolFacade(
 
     /** 解析问答取证锚点，允许投影视图节点回溯到 canonical 源码节点。 */
     fun evidenceAnchor(
-        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        snapshot: ToolGraphSnapshot,
         nodeId: String? = null,
         symbolSignature: String? = null,
     ): QaEvidenceAnchorResolution {
@@ -58,7 +55,7 @@ class GraphToolFacade(
      * 第一阶段仅按无向一跳/多跳近邻展开，足够支撑问答先收缩讨论范围。
      */
     fun expandNeighborhood(
-        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        snapshot: ToolGraphSnapshot,
         nodeId: String,
         depth: Int = 1,
     ): GraphDocument {
@@ -93,5 +90,5 @@ class GraphToolFacade(
     }
 
     /** 返回当前差异对象，没有则返回空 diff。 */
-    fun currentDiff(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): GraphDiff = snapshot.diff ?: GraphDiff()
+    fun currentDiff(snapshot: ToolGraphSnapshot): GraphDiff = snapshot.diff ?: GraphDiff()
 }

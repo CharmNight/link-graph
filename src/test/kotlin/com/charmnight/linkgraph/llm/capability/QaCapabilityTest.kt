@@ -154,7 +154,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { testSnapshot(workingGraph = graph, selectedNodeId = "method:upload") },
+                snapshotSupplier = { testSnapshot(workingGraph = graph, selectedNodeId = "method:upload").toToolGraphSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -261,7 +261,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -329,7 +329,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -383,7 +383,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -451,7 +451,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -520,7 +520,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -619,7 +619,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
 
                         override fun invoke(input: Map<String, Any?>, context: ToolExecutionContext): ToolResult {
                             val nodeId = input["nodeId"]?.toString()
-                            val node = context.snapshot.workingGraph?.nodes?.firstOrNull { it.id == nodeId }
+                            val node = context.snapshot.workspaceGraph.nodes.firstOrNull { it.id == nodeId }
                             return ToolResult(
                                 toolName = name,
                                 payload = mapOf("node" to node),
@@ -694,7 +694,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -784,7 +784,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                             return ToolResult(
                                 toolName = name,
                                 payload = mapOf(
-                                    "node" to context.snapshot.workingGraph?.nodes?.firstOrNull { it.id == nodeId },
+                                    "node" to context.snapshot.workspaceGraph.nodes.firstOrNull { it.id == nodeId },
                                 ),
                             )
                         }
@@ -852,7 +852,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -930,7 +930,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                             return ToolResult(
                                 toolName = name,
                                 payload = mapOf(
-                                    "node" to context.snapshot.workingGraph?.nodes?.firstOrNull { it.id == "method:only" },
+                                    "node" to context.snapshot.workspaceGraph.nodes.firstOrNull { it.id == "method:only" },
                                 ),
                             )
                         }
@@ -987,7 +987,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -1046,7 +1046,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -1114,7 +1114,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = artifactStore,
             ),
@@ -1169,7 +1169,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -1298,7 +1298,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                     testSnapshot(
                         selectedNodeId = "method:upload-file",
                         workingGraph = runtimeGraph,
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -1369,7 +1369,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -1463,7 +1463,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                             ),
                             summary = FlowchartSummary(nodeCount = 1, branchCount = 0, exceptionPathCount = 0),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),

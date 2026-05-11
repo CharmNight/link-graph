@@ -20,6 +20,7 @@ repositories {
 dependencies {
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
+    implementation("com.google.code.gson:gson:2.11.0")
 
     intellijPlatform {
         create(

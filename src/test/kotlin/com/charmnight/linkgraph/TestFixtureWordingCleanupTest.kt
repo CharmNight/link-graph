@@ -49,7 +49,7 @@ class TestFixtureWordingCleanupTest {
             "src/test/kotlin/com/charmnight/linkgraph/services/ReviewWorkflowAgentRuntimeTest.kt",
             "src/test/kotlin/com/charmnight/linkgraph/services/GenerationWorkflowAgentRuntimeTest.kt",
             "src/test/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectServiceSemanticAnalysisTest.kt",
-            "src/main/kotlin/com/charmnight/linkgraph/workbench/AuditConversationService.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/workbench/QaConversationService.kt",
             "src/main/kotlin/com/charmnight/linkgraph/semantic/provider/code/CodeInvocationSemanticResolver.kt",
         )
         val forbiddenFragments = listOf(

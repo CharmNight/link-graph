@@ -1,17 +1,18 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.foundation.LinkGraphDebugEnvironment
+import com.charmnight.linkgraph.model.diagnostics.GraphPatchDiagnostics
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.services.LinkGraphDebugEnvironment
-import com.charmnight.linkgraph.services.GenerationDiagnostics
-import com.charmnight.linkgraph.workbench.AuditConversationMessage
-import com.charmnight.linkgraph.workbench.AuditConversationService
-import com.charmnight.linkgraph.workbench.AuditConversationSession
+import com.charmnight.linkgraph.workbench.CandidateDraftDiagnostics
+import com.charmnight.linkgraph.workbench.QaConversationMessage
+import com.charmnight.linkgraph.workbench.QaConversationService
+import com.charmnight.linkgraph.workbench.QaConversationSession
 import com.charmnight.linkgraph.workbench.AuditMessageRole
-import com.charmnight.linkgraph.workbench.AuditModelTurn
+import com.charmnight.linkgraph.workbench.QaModelTurn
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 import com.charmnight.linkgraph.workbench.CandidateGraphPatchComposer
@@ -31,7 +32,7 @@ class GraphAuditPatchService(
     /** 负责发起远程 LLM 请求。 */
     private val gateway: LlmGateway = RoutingLlmGateway(),
     /** 负责维护会话与候选变更。 */
-    private val auditConversationService: AuditConversationService = AuditConversationService(),
+    private val auditConversationService: QaConversationService = QaConversationService(),
     /** 负责从本地可信上下文推导 edit scope 路径。 */
     private val trustedEditScopePathResolver: TrustedEditScopePathResolver = TrustedEditScopePathResolver(),
 ) {
@@ -48,7 +49,7 @@ class GraphAuditPatchService(
         context: GraphAuditContext,
         question: String,
         settings: LinkGraphSettingsState,
-        session: AuditConversationSession? = null,
+        session: QaConversationSession? = null,
         sourceThreadId: String? = null,
         requestedMode: QaMode = QaMode.AUTO,
         effectiveMode: QaMode = QaMode.AUTO,
@@ -149,7 +150,7 @@ class GraphAuditPatchService(
         context: GraphAuditContext,
         question: String,
         prompt: String,
-        session: AuditConversationSession,
+        session: QaConversationSession,
         sourceThreadId: String? = null,
         requestedMode: QaMode = QaMode.AUTO,
         effectiveMode: QaMode = QaMode.AUTO,
@@ -362,7 +363,7 @@ class GraphAuditPatchService(
     private fun applyConversationTurn(
         base: GraphPatchResult,
         context: GraphAuditContext,
-        session: AuditConversationSession,
+        session: QaConversationSession,
         sourceThreadId: String? = null,
         requestedMode: QaMode = QaMode.AUTO,
         effectiveMode: QaMode = QaMode.AUTO,
@@ -388,7 +389,7 @@ class GraphAuditPatchService(
         }
         val turnResult = auditConversationService.applyModelTurn(
             session = session,
-            modelTurn = AuditModelTurn(
+            modelTurn = QaModelTurn(
                 answer = base.answer,
                 candidateChanges = classification.candidateChanges,
                 investigationThreads = classification.investigationThreads,
@@ -519,14 +520,14 @@ class GraphAuditPatchService(
         normalizeCandidateChanges(candidateInput, context).forEach { change ->
             if (change.hasDirectEvidence()) {
                 if (traceEnabled) {
-                    logger.warn("问答候选变更保留为待确认项: ${GenerationDiagnostics.summarizeCandidateChange(change)}")
+                    logger.warn("问答候选变更保留为待确认项: ${CandidateDraftDiagnostics.summarizeCandidateChange(change)}")
                 }
                 promotableChanges += change.copy(editScopes = deriveEditScopes(change, context))
             } else {
                 val thread = threadFromWeakCandidateChange(change)
                 if (traceEnabled) {
                     logger.warn(
-                        "问答候选变更降级为线索: ${GenerationDiagnostics.summarizeCandidateChange(change)}, " +
+                        "问答候选变更降级为线索: ${CandidateDraftDiagnostics.summarizeCandidateChange(change)}, " +
                             "threadId=${thread.threadId}, strongestEvidence=${change.evidence.maxOfOrNull(ResultEvidenceFinding::evidenceLevel)?.name ?: "NONE"}",
                     )
                 }
@@ -544,7 +545,7 @@ class GraphAuditPatchService(
                     logger.warn(
                         "问答风险线程提升为待确认项: threadBackfill=${change.changeId}, " +
                             "question=${question.trim()}, " +
-                            "candidate=${GenerationDiagnostics.summarizeCandidateChange(change)}",
+                            "candidate=${CandidateDraftDiagnostics.summarizeCandidateChange(change)}",
                     )
                 }
                 promotableChanges += change.copy(editScopes = deriveEditScopes(change, context))
@@ -589,9 +590,9 @@ class GraphAuditPatchService(
             )
             if (traceEnabled) {
                 logger.warn(
-                    "问答候选变更完成归一化: ${GenerationDiagnostics.summarizeCandidateChange(normalizedCandidate)}, " +
+                    "问答候选变更完成归一化: ${CandidateDraftDiagnostics.summarizeCandidateChange(normalizedCandidate)}, " +
                         "directEvidence=${normalizedCandidate.hasDirectEvidence()}, " +
-                        "graphPatch=${GenerationDiagnostics.summarizeGraphPatch(normalizedCandidate.graphPatch)}",
+                        "graphPatch=${GraphPatchDiagnostics.summarizeGraphPatch(normalizedCandidate.graphPatch)}",
                 )
             }
             normalizedCandidate
@@ -842,14 +843,14 @@ class GraphAuditPatchService(
 
     /** 把当前用户问题写入会话。 */
     private fun ensureUserQuestion(
-        session: AuditConversationSession,
+        session: QaConversationSession,
         question: String,
-    ): AuditConversationSession {
+    ): QaConversationSession {
         if (session.messages.lastOrNull()?.role == AuditMessageRole.USER && session.messages.lastOrNull()?.content == question) {
             return session
         }
         return session.copy(
-            messages = session.messages + AuditConversationMessage(
+            messages = session.messages + QaConversationMessage(
                 messageId = "${session.sessionId}-user-${session.messages.size + 1}",
                 role = AuditMessageRole.USER,
                 content = question,
@@ -859,10 +860,10 @@ class GraphAuditPatchService(
     }
 
     /** 基于当前范围生成默认空会话。 */
-    private fun emptySession(context: GraphAuditContext): AuditConversationSession {
+    private fun emptySession(context: GraphAuditContext): QaConversationSession {
         val scopeKey = context.selectedNodeIds.sorted().joinToString(",")
             .ifBlank { (context.editableGraph.nodes.firstOrNull() ?: context.factGraph.nodes.firstOrNull())?.id ?: "graph" }
-        return AuditConversationSession(
+        return QaConversationSession(
             sessionId = "audit-${GraphNode.stableId(NodeType.DOC_PAGE, scopeKey, "session")}",
             scopeKey = scopeKey,
         )

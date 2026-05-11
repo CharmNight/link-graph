@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.llm.capability
 
+import com.charmnight.linkgraph.application.model.PlanningInput
 import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.SourceSnippetContext
 import com.charmnight.linkgraph.llm.artifact.CodeEvidenceArtifact
@@ -28,9 +29,7 @@ import com.charmnight.linkgraph.llm.tools.GetGraphDiffTool
 import com.charmnight.linkgraph.llm.tools.GraphToolFacade
 import com.charmnight.linkgraph.llm.tools.ReadSourceSnippetTool
 import com.charmnight.linkgraph.llm.tools.ToolExecutionContext
-import com.charmnight.linkgraph.services.PlanningPayload
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
-import com.charmnight.linkgraph.workbench.DraftWorkbenchState
 import java.util.UUID
 
 /**
@@ -379,16 +378,11 @@ internal class PlanCapability(
                     )
                 }
                 .toList()
-            val runtimeSnapshot = input.planningPayload.snapshot.copy(
-                draftWorkbenchState = DraftWorkbenchState(
-                    draftChanges = confirmedChanges,
-                ),
-            )
             runtimeContext.requireWithinDeadline()
             val plan = planExecutor.invoke(
                 input.copy(
                     planningPayload = input.planningPayload.copy(
-                        snapshot = runtimeSnapshot,
+                        confirmedChanges = confirmedChanges,
                         diff = runtimeDiff,
                         sourceContext = runtimeSourceContext,
                     ),
@@ -464,5 +458,5 @@ internal class PlanCapability(
 
 internal data class PlanCapabilityInput(
     /** 已准备好的规划载荷。 */
-    val planningPayload: PlanningPayload,
+    val planningPayload: PlanningInput,
 )

@@ -1,9 +1,7 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.services.currentVisibleGraph
-import com.charmnight.linkgraph.services.currentWorkingGraph
-import com.charmnight.linkgraph.services.debugLazy
-import com.charmnight.linkgraph.services.LinkGraphDebugEnvironment
+import com.charmnight.linkgraph.foundation.debugLazy
+import com.charmnight.linkgraph.foundation.LinkGraphDebugEnvironment
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project

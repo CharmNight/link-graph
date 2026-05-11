@@ -33,7 +33,7 @@ class ValidateEditScopeToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = testSnapshot(),
+                snapshot = testSnapshot().toToolGraphSnapshot(),
                 artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
@@ -75,7 +75,7 @@ class ValidateEditScopeToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = testSnapshot(),
+                snapshot = testSnapshot().toToolGraphSnapshot(),
                 artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
@@ -118,7 +118,7 @@ class ValidateEditScopeToolTest : BasePlatformTestCase() {
             ),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = testSnapshot(),
+                snapshot = testSnapshot().toToolGraphSnapshot(),
                 artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),

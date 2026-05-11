@@ -2,9 +2,6 @@ package com.charmnight.linkgraph.llm.tools
 
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.ui.GraphEditorStateSnapshot
-import com.charmnight.linkgraph.ui.GraphSceneId
-import com.charmnight.linkgraph.ui.view.GraphProjectionIndex
 
 data class QaEvidenceAnchorResolution(
     val requestedNodeId: String? = null,
@@ -16,7 +13,7 @@ data class QaEvidenceAnchorResolution(
 
 class QaEvidenceAnchorResolver {
     fun resolve(
-        snapshot: GraphEditorStateSnapshot,
+        snapshot: ToolGraphSnapshot,
         nodeId: String? = null,
         symbolSignature: String? = null,
     ): QaEvidenceAnchorResolution {
@@ -119,27 +116,27 @@ class QaEvidenceAnchorResolver {
         mappingTrace = trace.distinct(),
     )
 
-    private fun currentView(snapshot: GraphEditorStateSnapshot): CurrentView {
+    private fun currentView(snapshot: ToolGraphSnapshot): CurrentView {
         return when (snapshot.currentSceneId) {
-            GraphSceneId.WORKSPACE_FLOWCHART -> CurrentView(
+            ToolGraphSceneId.WORKSPACE_FLOWCHART -> CurrentView(
                 visibleGraph = snapshot.flowchartView.visibleGraph,
                 fullGraph = snapshot.flowchartView.fullGraph,
                 projectionIndex = snapshot.flowchartView.projectionIndex,
             )
-            GraphSceneId.WORKSPACE_RESOURCE_RELATION -> CurrentView(
+            ToolGraphSceneId.WORKSPACE_RESOURCE_RELATION -> CurrentView(
                 visibleGraph = snapshot.resourceRelationView.visibleGraph,
                 fullGraph = snapshot.resourceRelationView.fullGraph,
                 projectionIndex = snapshot.resourceRelationView.projectionIndex,
             )
-            GraphSceneId.WORKSPACE_FACT -> CurrentView(
+            ToolGraphSceneId.WORKSPACE_FACT -> CurrentView(
                 visibleGraph = snapshot.factGraphView.visibleGraph,
                 fullGraph = snapshot.factGraphView.fullGraph,
                 projectionIndex = snapshot.factGraphView.projectionIndex,
             )
-            GraphSceneId.DIFF -> CurrentView(
+            ToolGraphSceneId.DIFF -> CurrentView(
                 visibleGraph = snapshot.diffGraph ?: GraphDocument(),
                 fullGraph = snapshot.diffGraph ?: GraphDocument(),
-                projectionIndex = GraphProjectionIndex.EMPTY,
+                projectionIndex = ToolGraphProjectionIndex.EMPTY,
             )
         }
     }
@@ -157,7 +154,7 @@ class QaEvidenceAnchorResolver {
     }
 
     private fun List<String>.firstReadableTrustedNode(
-        snapshot: GraphEditorStateSnapshot,
+        snapshot: ToolGraphSnapshot,
         readable: (GraphNode?, String) -> GraphNode?,
     ): GraphNode? {
         for (nodeId in this) {
@@ -167,7 +164,7 @@ class QaEvidenceAnchorResolver {
     }
 
     private fun findBySignature(
-        snapshot: GraphEditorStateSnapshot,
+        snapshot: ToolGraphSnapshot,
         currentView: CurrentView,
         signature: String,
         readable: (GraphNode?, String) -> GraphNode?,
@@ -194,6 +191,6 @@ class QaEvidenceAnchorResolver {
     private data class CurrentView(
         val visibleGraph: GraphDocument,
         val fullGraph: GraphDocument,
-        val projectionIndex: GraphProjectionIndex,
+        val projectionIndex: ToolGraphProjectionIndex,
     )
 }

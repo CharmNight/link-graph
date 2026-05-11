@@ -4,11 +4,10 @@ import com.charmnight.linkgraph.investigation.domain.EvidenceGoal
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoalKind
 import com.charmnight.linkgraph.investigation.domain.EvidenceLevel
 import com.charmnight.linkgraph.investigation.domain.ResolutionOutcome
-import com.charmnight.linkgraph.investigation.resolving.EvidenceResolver
 import com.charmnight.linkgraph.investigation.resolving.InvestigationContext
+import com.charmnight.linkgraph.investigation.resolving.ReadActionEvidenceResolver
 import com.charmnight.linkgraph.investigation.resolving.java.JavaPsiEvidenceSupport
 import com.charmnight.linkgraph.semantic.subject.methodSignature
-import com.intellij.openapi.application.ReadAction
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiClassType
 import com.intellij.psi.PsiJavaFile
@@ -23,7 +22,7 @@ import com.intellij.psi.util.PsiTreeUtil
 /**
  * 使用 PSI 和 Spring 注解规则解析事件发布与监听关系。
  */
-class SpringEventResolver : EvidenceResolver {
+class SpringEventResolver : ReadActionEvidenceResolver() {
     /** 保存解析器稳定标识。 */
     override val id: String = "spring-event"
     private val springEventListenerAnnotations = setOf(
@@ -41,35 +40,33 @@ class SpringEventResolver : EvidenceResolver {
     /**
      * 解析发布点中的 event 类型，并查找匹配的监听器。
      */
-    override fun resolve(
+    override fun resolveInReadAction(
         goal: EvidenceGoal,
         context: InvestigationContext,
     ): ResolutionOutcome {
-        return ReadAction.compute<ResolutionOutcome, RuntimeException> {
-            val eventClasses = eventClasses(goal, context)
-            if (eventClasses.isEmpty()) {
-                return@compute unresolved(goal, "未能确认 Spring Event 类型。")
-            }
-            val listenerMethods = eventClasses.flatMap { eventClass ->
-                listenersForEvent(context, eventClass)
-            }.distinctBy(::methodSignature)
-            if (listenerMethods.isEmpty()) {
-                return@compute unresolved(goal, "未找到匹配 Spring Event 监听器。")
-            }
-            ResolutionOutcome.Resolved(
-                resolverId = id,
-                facts = listenerMethods.map { method ->
-                    JavaPsiEvidenceSupport.methodFact(
-                        goal = goal,
-                        resolverId = id,
-                        method = method,
-                        level = EvidenceLevel.DIRECT_FRAMEWORK_RESOLVED,
-                        claim = "已确认 Spring Event 监听器 ${methodSignature(method)}。",
-                        whyResolved = "根据 publishEvent 事件类型与 @EventListener/@TransactionalEventListener 参数类型匹配。",
-                    )
-                },
-            )
+        val eventClasses = eventClasses(goal, context)
+        if (eventClasses.isEmpty()) {
+            return unresolved(goal, "未能确认 Spring Event 类型。")
         }
+        val listenerMethods = eventClasses.flatMap { eventClass ->
+            listenersForEvent(context, eventClass)
+        }.distinctBy(::methodSignature)
+        if (listenerMethods.isEmpty()) {
+            return unresolved(goal, "未找到匹配 Spring Event 监听器。")
+        }
+        return ResolutionOutcome.Resolved(
+            resolverId = id,
+            facts = listenerMethods.map { method ->
+                JavaPsiEvidenceSupport.methodFact(
+                    goal = goal,
+                    resolverId = id,
+                    method = method,
+                    level = EvidenceLevel.DIRECT_FRAMEWORK_RESOLVED,
+                    claim = "已确认 Spring Event 监听器 ${methodSignature(method)}。",
+                    whyResolved = "根据 publishEvent 事件类型与 @EventListener/@TransactionalEventListener 参数类型匹配。",
+                )
+            },
+        )
     }
 
     /**

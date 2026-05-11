@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.planning.AuditEvidenceCollector
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.model.EdgeType

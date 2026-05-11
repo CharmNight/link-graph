@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.workflow.GraphWorkspaceWorkflow
+import com.charmnight.linkgraph.application.model.GraphEditOperation
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.diff.GraphDiffer
@@ -14,7 +16,6 @@ import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
 import com.charmnight.linkgraph.sync.SyncPreviewPlanner
-import com.charmnight.linkgraph.ui.GraphEditOperation
 import com.charmnight.linkgraph.ui.GraphEditScript
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.GraphLayoutPosition
@@ -36,7 +37,7 @@ class GraphWorkspaceWorkflowTest {
     @Test
     fun workflowUsesCommandBasedEditScriptInsteadOfWholeGraphWriteback() {
         val source = Files.readString(
-            root.resolve("src/main/kotlin/com/charmnight/linkgraph/services/GraphWorkspaceWorkflow.kt"),
+            root.resolve("src/main/kotlin/com/charmnight/linkgraph/application/workflow/GraphWorkspaceWorkflow.kt"),
         )
 
         assertTrue(source.contains("handleFrontendEditScript"))
@@ -47,12 +48,10 @@ class GraphWorkspaceWorkflowTest {
     @Test
     fun exportMermaidUsesFullFlowchartGraphWhenVisibleGraphIsTruncated() {
         val stateService = GraphEditorStateService()
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         val workflow = GraphWorkspaceWorkflow(
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            workspaceGraphCommitter = stateService.workspaceGraphCommitter(),
+            eventSink = stateService.applicationEventSink(),
             mermaidImporter = MermaidImporter(),
             mermaidValidator = MermaidValidator(),
             mermaidExporter = MermaidExporter(),
@@ -121,12 +120,10 @@ class GraphWorkspaceWorkflowTest {
     @Test
     fun importExportAndDiffModeUpdateEditorState() {
         val stateService = GraphEditorStateService()
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         val workflow = GraphWorkspaceWorkflow(
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            workspaceGraphCommitter = stateService.workspaceGraphCommitter(),
+            eventSink = stateService.applicationEventSink(),
             mermaidImporter = MermaidImporter(),
             mermaidValidator = MermaidValidator(),
             mermaidExporter = MermaidExporter(),
@@ -174,12 +171,10 @@ class GraphWorkspaceWorkflowTest {
     fun frontendLayoutChangeDoesNotRequestBrowserSync() {
         val stateService = GraphEditorStateService()
         var syncCount = 0
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = { syncCount += 1 },
-        )
         val workflow = GraphWorkspaceWorkflow(
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            workspaceGraphCommitter = stateService.workspaceGraphCommitter(),
+            eventSink = stateService.applicationEventSink(),
             mermaidImporter = MermaidImporter(),
             mermaidValidator = MermaidValidator(),
             mermaidExporter = MermaidExporter(),
@@ -202,12 +197,10 @@ class GraphWorkspaceWorkflowTest {
     @Test
     fun frontendGraphChangePreservesTrustedNavigationFieldsForExistingNodes() {
         val stateService = GraphEditorStateService()
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         val workflow = GraphWorkspaceWorkflow(
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            workspaceGraphCommitter = stateService.workspaceGraphCommitter(),
+            eventSink = stateService.applicationEventSink(),
             mermaidImporter = MermaidImporter(),
             mermaidValidator = MermaidValidator(),
             mermaidExporter = MermaidExporter(),
@@ -260,12 +253,10 @@ class GraphWorkspaceWorkflowTest {
     @Test
     fun frontendGraphChangeStripsNavigationFieldsFromNewManualNodes() {
         val stateService = GraphEditorStateService()
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         val workflow = GraphWorkspaceWorkflow(
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            workspaceGraphCommitter = stateService.workspaceGraphCommitter(),
+            eventSink = stateService.applicationEventSink(),
             mermaidImporter = MermaidImporter(),
             mermaidValidator = MermaidValidator(),
             mermaidExporter = MermaidExporter(),

@@ -93,8 +93,8 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
             ),
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
-        service.requestGenerationPlan()
+        val applicationService = project.linkGraphApplicationServiceForTest()
+        applicationService.requestGenerationPlan()
 
         val snapshot = stateService.snapshot()
         val plan = snapshot.generationPlan
@@ -112,8 +112,8 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
             selectedMethodSignature = "com.example.OrderController.submit():void",
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
-        service.requestGenerationPlan()
+        val applicationService = project.linkGraphApplicationServiceForTest()
+        applicationService.requestGenerationPlan()
 
         val snapshot = stateService.snapshot()
         val plan = snapshot.generationPlan
@@ -148,8 +148,8 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
             com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(scene = "问答"),
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
-        service.requestGenerationPlan()
+        val applicationService = project.linkGraphApplicationServiceForTest()
+        applicationService.requestGenerationPlan()
 
         val snapshot = stateService.snapshot()
         assertTrue(snapshot.generationPlan != null, "实现建议不应再被风险线程阻塞。")
@@ -165,9 +165,9 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
             selectedMethodSignature = "com.example.OrderController.submit():void",
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
-        service.requestGenerationPlan()
-        service.requestGenerationPlanDiscussion("为什么建议先改这里？")
+        val applicationService = project.linkGraphApplicationServiceForTest()
+        applicationService.requestGenerationPlan()
+        applicationService.requestGenerationPlanDiscussion("为什么建议先改这里？")
 
         val snapshot = stateService.snapshot()
         val discussionSession = requireNotNull(snapshot.generationPlanDiscussionSession)
@@ -188,8 +188,8 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
             selectedMethodSignature = "com.example.OrderController.submit():void",
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
-        service.requestCodeDrafts()
+        val applicationService = project.linkGraphApplicationServiceForTest()
+        applicationService.requestCodeDrafts()
 
         val snapshot = stateService.snapshot()
         assertTrue(snapshot.generatedCodeDrafts.isEmpty())

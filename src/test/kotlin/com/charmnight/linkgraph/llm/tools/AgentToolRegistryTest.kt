@@ -31,7 +31,7 @@ class AgentToolRegistryTest : BasePlatformTestCase() {
             input = mapOf("value" to "ok"),
             context = ToolExecutionContext(
                 project = project,
-                snapshot = testSnapshot(),
+                snapshot = testSnapshot().toToolGraphSnapshot(),
                 artifactStore = InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),

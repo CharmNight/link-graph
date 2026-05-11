@@ -1,7 +1,5 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.services.currentVisibleGraph
-import com.charmnight.linkgraph.services.currentWorkingGraph
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.llm.GenerationPlan
 

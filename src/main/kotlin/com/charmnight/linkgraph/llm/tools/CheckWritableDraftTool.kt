@@ -16,8 +16,7 @@ class CheckWritableDraftTool(
         input: Map<String, Any?>,
         context: ToolExecutionContext,
     ): ToolResult {
-        val draft = input["draft"] as? GeneratedCodeDraft
-            ?: return ToolResult(toolName = name, success = false, errorMessage = "draft 不能为空")
+        val draft = input.requiredValue<GeneratedCodeDraft>("draft") ?: return missingRequired("draft")
         return ToolResult(
             toolName = name,
             payload = mapOf(

@@ -3,7 +3,6 @@ package com.charmnight.linkgraph.semantic.provider.code
 import com.charmnight.linkgraph.semantic.model.SemanticAnalysisResult
 import com.charmnight.linkgraph.semantic.policy.SemanticCapturePolicy
 import com.charmnight.linkgraph.semantic.policy.TraversalBudgetPolicy
-import com.charmnight.linkgraph.semantic.provider.SemanticProvider
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectHandle
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectKind
 import com.charmnight.linkgraph.semantic.subject.SubjectHandle
@@ -14,13 +13,8 @@ import com.charmnight.linkgraph.semantic.subject.SubjectHandle
 class JavaCodeSemanticProvider(
     /** 保存真正执行代码流提取的提取器。 */
     private val extractor: CodeFlowSemanticExtractor = CodeFlowSemanticExtractor(),
-) : SemanticProvider {
-    /**
-     * 判断当前主题是否是 Java 方法句柄。
-     */
-    override fun supports(handle: SubjectHandle): Boolean {
-        return handle is CodeSubjectHandle && handle.kind == CodeSubjectKind.JAVA_METHOD
-    }
+) : CodeSubjectSemanticProvider {
+    override val supportedKinds: Set<CodeSubjectKind> = setOf(CodeSubjectKind.JAVA_METHOD)
 
     /**
      * 对 Java 方法句柄执行语义分析。

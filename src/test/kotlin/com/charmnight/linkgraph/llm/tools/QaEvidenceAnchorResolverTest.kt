@@ -5,6 +5,7 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.testing.testSnapshot
+import com.charmnight.linkgraph.testing.toToolGraphSnapshot
 import com.charmnight.linkgraph.ui.GraphSceneId
 import com.charmnight.linkgraph.ui.view.FlowchartSummary
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
@@ -55,7 +56,7 @@ class QaEvidenceAnchorResolverTest {
                 ),
                 summary = FlowchartSummary(nodeCount = 1, branchCount = 0, exceptionPathCount = 0),
             ),
-        )
+        ).toToolGraphSnapshot()
 
         val resolution = QaEvidenceAnchorResolver().resolve(snapshot, nodeId = projectedNode.id)
 

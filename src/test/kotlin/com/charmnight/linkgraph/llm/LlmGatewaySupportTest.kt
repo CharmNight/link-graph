@@ -25,17 +25,18 @@ import kotlin.test.assertTrue
 
 class LlmGatewaySupportTest {
     @Test
-    fun escapesJsonStringsForGatewayPayloads() {
-        val escaped = LlmGatewaySupport.escapeJson("quote=\" slash=\\ line=\n tab=\t control=\u0001")
-
-        assertEquals("quote=\\\" slash=\\\\ line=\\n tab=\\t control=\\u0001", escaped)
-    }
-
-    @Test
     fun extractsModelFromObjectResponseWithoutFailingOnInvalidJson() {
         assertEquals("gpt-5.4", LlmGatewaySupport.extractModel("""{"model":"gpt-5.4"}"""))
         assertEquals(null, LlmGatewaySupport.extractModel("""{"id":"resp_123"}"""))
         assertEquals(null, LlmGatewaySupport.extractModel("not json"))
+    }
+
+    @Test
+    fun parseObjectRejectsInvalidGatewayJson() {
+        assertFailsWith<IllegalStateException> {
+            LlmGatewaySupport.parseObject("""{"model":"gpt"} garbage""")
+        }
+        assertEquals(null, LlmGatewaySupport.parseObjectOrNull("""{"model":"""))
     }
 
     @Test
@@ -77,7 +78,7 @@ class LlmGatewaySupportTest {
             url = "https://api.example.com/v1/messages",
             headers = listOf("x-api-key" to "secret"),
             payload = """{"prompt":"hello"}""",
-            extractContent = { body -> (LlmGatewayJsonParser(body).parseValue() as Map<*, *>)["content"] as String },
+            extractContent = { body -> LlmJsonSupport.parseObject(body)["content"] as String },
         )
 
         assertEquals("hello", response.content)
@@ -137,7 +138,7 @@ class LlmGatewaySupportTest {
             headers = listOf("Authorization" to "Bearer secret"),
             payload = """{"stream":true}""",
             listener = events::add,
-            extractTextDelta = { data -> (LlmGatewayJsonParser(data).parseValue() as Map<*, *>)["delta"] as? String },
+            extractTextDelta = { data -> LlmJsonSupport.parseObject(data)["delta"] as? String },
         )
 
         assertEquals("hello", response.content)

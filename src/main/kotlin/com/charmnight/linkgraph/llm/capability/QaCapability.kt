@@ -36,13 +36,13 @@ import com.charmnight.linkgraph.llm.tools.ReadSourceSnippetTool
 import com.charmnight.linkgraph.llm.tools.ReadSymbolTool
 import com.charmnight.linkgraph.llm.tools.ResolveAnchorTool
 import com.charmnight.linkgraph.llm.tools.ToolExecutionContext
+import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshot
 import com.charmnight.linkgraph.llm.tools.DraftToolFacade
-import com.charmnight.linkgraph.workbench.AuditConversationSession
+import com.charmnight.linkgraph.workbench.QaConversationSession
 import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
-import com.charmnight.linkgraph.ui.GraphEditorStateService
 import java.util.ArrayDeque
 import java.util.UUID
 
@@ -291,7 +291,7 @@ class QaCapability(
                         input = mapOf("candidate" to candidate),
                         context = ToolExecutionContext(
                             project = runtimeContext.project,
-                            snapshot = runtimeContext.snapshotSupplier() ?: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
+                            snapshot = runtimeContext.snapshotSupplier() ?: ToolGraphSnapshot(),
                             artifactStore = runtimeContext.artifactStore,
                             runBudget = state.budget,
                         ),
@@ -815,7 +815,7 @@ data class QaCapabilityInput(
     /** 当前生效设置。 */
     val settings: LinkGraphSettingsState = LinkGraphSettingsState(),
     /** 当前多轮问答会话。 */
-    val session: AuditConversationSession? = null,
+    val session: QaConversationSession? = null,
     /** 如果是追问，则记录上游 threadId。 */
     val sourceThreadId: String? = null,
     /** 前端请求的问答模式。 */

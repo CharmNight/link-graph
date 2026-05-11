@@ -5,7 +5,7 @@ import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
-import com.charmnight.linkgraph.services.LinkGraphDebugEnvironment
+import com.charmnight.linkgraph.foundation.LinkGraphDebugEnvironment
 import com.charmnight.linkgraph.sync.GraphPatchApplyService
 import com.intellij.openapi.components.Service
 

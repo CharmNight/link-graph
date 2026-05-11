@@ -1,5 +1,9 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.planning.AuditEvidenceCollector
+import com.charmnight.linkgraph.application.planning.PlanningContextFactory
+import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
+import com.charmnight.linkgraph.application.workflow.ReviewWorkflow
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.llm.LlmProviderPresets
@@ -47,13 +51,11 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
     fun testRequestAuditReturnsControlledFailureWhenRuntimeOutputIsNull() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraph(sampleGraph(), "currentMethod")
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         val workflow = ReviewWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
@@ -77,7 +79,6 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             auditExecutorOverrideProvider = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
@@ -112,13 +113,11 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
     fun testRequestAuditAsyncRoutesThroughRuntimeAndKeepsAsyncLifecycleState() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraph(sampleGraph(), "currentMethod")
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         val workflow = ReviewWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
@@ -143,7 +142,6 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             auditExecutorOverrideProvider = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
@@ -228,13 +226,11 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         val workflow = ReviewWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
@@ -258,7 +254,6 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             auditExecutorOverrideProvider = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
@@ -325,13 +320,11 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             ),
             "currentMethod",
         )
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         val workflow = ReviewWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
@@ -355,7 +348,6 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             auditExecutorOverrideProvider = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
@@ -451,14 +443,12 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             ),
             "currentMethod",
         )
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         var capturedNodeIds: List<String> = emptyList()
         val workflow = ReviewWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
@@ -482,7 +472,6 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             auditExecutorOverrideProvider = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
@@ -576,14 +565,12 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         var qaExecutorInvoked = false
         val workflow = ReviewWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
@@ -607,7 +594,6 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             auditExecutorOverrideProvider = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
@@ -698,14 +684,12 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         var qaExecutorInvoked = false
         val workflow = ReviewWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
@@ -729,7 +713,6 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             auditExecutorOverrideProvider = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
@@ -794,14 +777,12 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             ),
             "currentMethod",
         )
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         var qaExecutorInvoked = false
         val workflow = ReviewWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
@@ -825,7 +806,6 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             auditExecutorOverrideProvider = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
@@ -898,13 +878,11 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             ),
             "currentMethod",
         )
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         val workflow = ReviewWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
@@ -938,7 +916,6 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             auditExecutorOverrideProvider = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
@@ -998,14 +975,12 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         var capturedAuditContext: GraphAuditContext? = null
         val workflow = ReviewWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
@@ -1029,7 +1004,6 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             auditExecutorOverrideProvider = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
@@ -1119,13 +1093,11 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             ),
             "currentMethod",
         )
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         val workflow = ReviewWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
@@ -1149,7 +1121,6 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             auditExecutorOverrideProvider = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
@@ -1236,14 +1207,12 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         var capturedMessages: List<AuditConversationMessage> = emptyList()
         val workflow = ReviewWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
@@ -1267,7 +1236,6 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             auditExecutorOverrideProvider = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
@@ -1332,14 +1300,12 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             ),
             "currentMethod",
         )
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         var executorInvoked = false
         val workflow = ReviewWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
@@ -1363,7 +1329,6 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             auditExecutorOverrideProvider = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),

@@ -195,7 +195,7 @@ data class DraftWorkbenchEntry(
     val graphPatch: GraphPatch? = null,
 )
 
-data class AuditConversationMessage(
+data class QaConversationMessage(
     val messageId: String,
     val role: AuditMessageRole,
     val content: String,
@@ -203,10 +203,10 @@ data class AuditConversationMessage(
     val turnOutcomeId: String? = null,
 )
 
-data class AuditConversationSession(
+data class QaConversationSession(
     val sessionId: String,
     val scopeKey: String,
-    val messages: List<AuditConversationMessage> = emptyList(),
+    val messages: List<QaConversationMessage> = emptyList(),
     val candidateChanges: List<CandidateDraftChange> = emptyList(),
     val investigationThreads: List<InvestigationThread> = emptyList(),
     val turnOutcomes: List<InvestigationTurnOutcome> = emptyList(),
@@ -237,7 +237,7 @@ data class GenerationPlanDiscussionResult(
     val warnings: List<String> = emptyList(),
 )
 
-data class AuditModelTurn(
+data class QaModelTurn(
     val answer: String,
     val candidateChanges: List<CandidateDraftChange> = emptyList(),
     val investigationThreads: List<InvestigationThread> = emptyList(),
@@ -247,8 +247,8 @@ data class AuditModelTurn(
     val blockedReason: String? = null,
 )
 
-data class AuditConversationTurnResult(
-    val session: AuditConversationSession,
+data class QaConversationTurnResult(
+    val session: QaConversationSession,
     val newCandidateChanges: List<CandidateDraftChange> = emptyList(),
     val newInvestigationThreads: List<InvestigationThread> = emptyList(),
     val latestTurnOutcome: InvestigationTurnOutcome? = null,
@@ -263,7 +263,7 @@ data class ReplayableQaRequest(
     val mode: QaMode = QaMode.AUTO,
     val selectedNodeIds: List<String> = emptyList(),
     val sourceThreadId: String? = null,
-    val baseSession: AuditConversationSession? = null,
+    val baseSession: QaConversationSession? = null,
 )
 
 data class QaRequestRecoveryState(

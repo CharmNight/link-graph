@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.model.GraphJson
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
-import com.charmnight.linkgraph.services.debugLazy
+import com.charmnight.linkgraph.foundation.debugLazy
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase

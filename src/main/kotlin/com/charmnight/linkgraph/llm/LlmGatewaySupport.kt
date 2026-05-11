@@ -11,11 +11,11 @@ import java.time.Duration
 
 internal object LlmGatewaySupport {
     private const val DONE_MARKER = "[DONE]"
+    private const val MAX_RESPONSE_CHARS = 2_000_000
+    private const val MAX_SSE_EVENT_CHARS = 2_000_000
 
     fun defaultHttpClient(request: LlmRequest): HttpClient {
-        return HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(request.timeoutSeconds.toLong()))
-            .build()
+        return SharedLlmHttpClientProvider.clientFor(request)
     }
 
     fun generateJson(
@@ -39,6 +39,9 @@ internal object LlmGatewaySupport {
         }
 
         val body = response.body()
+        if (body.length > MAX_RESPONSE_CHARS) {
+            error("Remote LLM response exceeded maximum supported size.")
+        }
         return LlmResponse(
             content = extractContent(body),
             model = extractModel(body) ?: request.model,
@@ -75,6 +78,9 @@ internal object LlmGatewaySupport {
             BufferedReader(InputStreamReader(input, StandardCharsets.UTF_8)).useLines { lines ->
                 lines.forEach { line ->
                     rawEvents.append(line).append('\n')
+                    if (rawEvents.length > MAX_SSE_EVENT_CHARS) {
+                        error("Remote LLM stream exceeded maximum supported size.")
+                    }
                     extractSseDataPayload(line)?.let { data ->
                         if (data == DONE_MARKER) {
                             return@forEach
@@ -97,12 +103,11 @@ internal object LlmGatewaySupport {
     }
 
     fun parseObject(body: String): Map<*, *> {
-        return LlmGatewayJsonParser(body).parseValue() as? Map<*, *>
-            ?: error("Remote LLM response must be a JSON object.")
+        return LlmJsonSupport.parseObject(body)
     }
 
     fun parseObjectOrNull(body: String): Map<*, *>? {
-        return runCatching { LlmGatewayJsonParser(body).parseValue() as? Map<*, *> }.getOrNull()
+        return LlmJsonSupport.parseObjectOrNull(body)
     }
 
     fun extractModel(body: String): String? {
@@ -143,30 +148,6 @@ internal object LlmGatewaySupport {
             return null
         }
         return trimmed.removePrefix("data:").trim()
-    }
-
-    fun escapeJson(value: String): String {
-        return buildString(value.length + 8) {
-            value.forEach { ch ->
-                when (ch) {
-                    '\\' -> append("\\\\")
-                    '"' -> append("\\\"")
-                    '\b' -> append("\\b")
-                    '\u000c' -> append("\\f")
-                    '\n' -> append("\\n")
-                    '\r' -> append("\\r")
-                    '\t' -> append("\\t")
-                    else -> {
-                        if (ch < ' ') {
-                            append("\\u")
-                            append(ch.code.toString(16).padStart(4, '0'))
-                        } else {
-                            append(ch)
-                        }
-                    }
-                }
-            }
-        }
     }
 
     private fun jsonRequestBuilder(

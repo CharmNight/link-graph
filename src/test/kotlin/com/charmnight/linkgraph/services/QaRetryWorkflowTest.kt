@@ -1,5 +1,8 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.planning.PlanningContextFactory
+import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
+import com.charmnight.linkgraph.application.workflow.ReviewWorkflow
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.diff.GraphDiffer
@@ -28,14 +31,12 @@ class QaRetryWorkflowTest : BasePlatformTestCase() {
     fun testRetryLastAuditRequestAsyncReplaysFailedRequestWithoutDuplicatingUserTurn() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraph(sampleGraph(), "currentMethod")
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         var attemptCount = 0
         val workflow = ReviewWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
@@ -59,7 +60,6 @@ class QaRetryWorkflowTest : BasePlatformTestCase() {
             auditExecutorOverrideProvider = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(QaRetryWorkflowTest::class.java),

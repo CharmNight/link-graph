@@ -32,6 +32,7 @@ import com.charmnight.linkgraph.llm.tools.DraftToolFacade
 import com.charmnight.linkgraph.llm.tools.GetConfirmedIntentTool
 import com.charmnight.linkgraph.llm.tools.ReadSourceSnippetTool
 import com.charmnight.linkgraph.llm.tools.ToolExecutionContext
+import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshot
 import com.charmnight.linkgraph.llm.tools.ValidateEditScopeTool
 import com.charmnight.linkgraph.llm.tools.ValidationToolFacade
 import com.intellij.openapi.project.Project
@@ -346,7 +347,7 @@ internal class CodegenCapability(
                     input = mapOf("draft" to draft),
                     context = ToolExecutionContext(
                         project = runtimeContext.project,
-                        snapshot = runtimeContext.snapshotSupplier() ?: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
+                        snapshot = runtimeContext.snapshotSupplier() ?: ToolGraphSnapshot(),
                         artifactStore = runtimeContext.artifactStore,
                         runBudget = state.budget,
                     ),
@@ -356,7 +357,7 @@ internal class CodegenCapability(
                         input = mapOf("draft" to draft),
                         context = ToolExecutionContext(
                             project = runtimeContext.project,
-                            snapshot = runtimeContext.snapshotSupplier() ?: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
+                            snapshot = runtimeContext.snapshotSupplier() ?: ToolGraphSnapshot(),
                             artifactStore = runtimeContext.artifactStore,
                             runBudget = state.budget,
                         ),
@@ -430,7 +431,7 @@ internal class CodegenCapability(
         confirmedChanges: List<com.charmnight.linkgraph.workbench.DraftWorkbenchEntry>,
         evidenceArtifacts: List<CodeEvidenceArtifact>,
     ): AgentStepExecutionResult.Fail? {
-        val snapshot = runtimeContext.snapshotSupplier() ?: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot()
+        val snapshot = runtimeContext.snapshotSupplier() ?: ToolGraphSnapshot()
         val context = ToolExecutionContext(
             project = runtimeContext.project,
             snapshot = snapshot,

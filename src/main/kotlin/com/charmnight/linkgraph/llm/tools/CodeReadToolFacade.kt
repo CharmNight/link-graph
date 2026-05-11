@@ -2,7 +2,6 @@ package com.charmnight.linkgraph.llm.tools
 
 import com.charmnight.linkgraph.llm.SourceSnippetContext
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.intellij.openapi.project.Project
 import java.nio.file.Files
 
@@ -18,7 +17,7 @@ class CodeReadToolFacade(
 ) {
     /** 根据 nodeId 或 symbol 定位问答证据锚点，并保留投影到真实节点的映射轨迹。 */
     fun resolveEvidenceAnchor(
-        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        snapshot: ToolGraphSnapshot,
         nodeId: String? = null,
         symbolSignature: String? = null,
     ): QaEvidenceAnchorResolution {
@@ -27,7 +26,7 @@ class CodeReadToolFacade(
 
     /** 根据 nodeId 或 symbol 定位代码锚点。 */
     fun resolveAnchor(
-        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        snapshot: ToolGraphSnapshot,
         nodeId: String? = null,
         symbolSignature: String? = null,
     ): GraphNode? {
@@ -66,7 +65,7 @@ class CodeReadToolFacade(
 
     /** 根据 symbol 直接读取关联片段。 */
     fun readSymbol(
-        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        snapshot: ToolGraphSnapshot,
         symbolSignature: String,
         fallbackSourceContexts: List<SourceSnippetContext> = emptyList(),
         projectBasePath: String? = null,
