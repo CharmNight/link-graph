@@ -110,6 +110,30 @@ describe("AuditTab", () => {
     expect(screen.queryByText("这里是不是有问题？")).not.toBeInTheDocument();
   });
 
+  it("uses a flat audit page shell inside the stage workbench instead of nested cards", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <div className="stage-workbench-panel">
+        <AuditTab
+          state={auditStateFixture()}
+          onQuestionDraftChange={vi.fn()}
+          onSubmitQuestion={vi.fn()}
+          onSelectChange={vi.fn()}
+          onConfirmChange={vi.fn()}
+          onSelectThread={vi.fn()}
+          onInvestigateThread={vi.fn()}
+        />
+      </div>,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "问答会话" }));
+
+    expect(container.querySelector(".audit-page-panel.stage-workbench-flat-section")).not.toBeNull();
+    expect(container.querySelector(".workbench-audit-thread.stage-workbench-flat-block")).not.toBeNull();
+    expect(container.querySelector(".workbench-chat-stream.stage-workbench-content-flow")).not.toBeNull();
+    expect(container.querySelector(".workbench-chat-message.assistant.stage-workbench-assistant-block")).not.toBeNull();
+  });
+
   it("lets users choose an explicit QA mode before sending", async () => {
     const user = userEvent.setup();
     const onModeChange = vi.fn();

@@ -967,8 +967,11 @@ class GraphEditorPageRendererTest {
             sessionId = "session-1",
             snapshot = snapshot,
             artifactRefs = artifactRefs,
+            darkTheme = true,
         )
 
+        assertTrue(rendered.contains("document.documentElement.dataset.ideaTheme = \"dark\""))
+        assertTrue(rendered.contains("document.documentElement.style.colorScheme = \"dark\""))
         assertTrue(rendered.contains("window.linkGraphBootstrap"))
         assertTrue(rendered.contains("OrderController.submit"))
         assertTrue(rendered.contains("src/main/java/com/example/OrderController.java:18"))
@@ -1029,6 +1032,21 @@ class GraphEditorPageRendererTest {
         assertTrue(rendered.contains("\"linkGraph.manual\":\"true\""))
         assertTrue(!rendered.contains("\"ui.x\""))
         assertTrue(!rendered.contains("\"ui.y\""))
+    }
+
+    @Test
+    fun render根据Idea明暗主题注入页面ColorScheme() {
+        val renderer = GraphEditorPageRenderer()
+        val html = "<html><head></head><body><div id=\"root\"></div></body></html>"
+        val rendered = renderer.render(
+            entryHtml = html,
+            sessionId = "session-light",
+            snapshot = testSnapshot(),
+            darkTheme = false,
+        )
+
+        assertTrue(rendered.contains("document.documentElement.dataset.ideaTheme = \"light\""))
+        assertTrue(rendered.contains("document.documentElement.style.colorScheme = \"light\""))
     }
 
     @Test

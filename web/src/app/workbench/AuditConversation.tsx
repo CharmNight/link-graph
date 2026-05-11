@@ -348,7 +348,7 @@ export function AuditConversation({
   const threadsById = new Map(investigationThreads.map((thread) => [thread.threadId, thread]));
 
   return (
-    <div className={messages.length === 0 ? "workbench-chat-stream is-empty" : "workbench-chat-stream"}>
+    <div className={messages.length === 0 ? "workbench-chat-stream stage-workbench-content-flow is-empty" : "workbench-chat-stream stage-workbench-content-flow"}>
       {messages.length === 0 ? (
         <div className="workbench-chat-empty">
           {requestRunning ? (
@@ -374,7 +374,9 @@ export function AuditConversation({
             return (
               <article
                 key={message.messageId}
-                className={message.role === "USER" ? "workbench-chat-message user" : "workbench-chat-message assistant"}
+                className={message.role === "USER"
+                  ? "workbench-chat-message user stage-workbench-user-block"
+                  : "workbench-chat-message assistant stage-workbench-assistant-block"}
               >
                 <div className="workbench-chat-message-head">
                   <span className="workbench-chat-role">{message.role === "USER" ? "你" : "问答助手"}</span>

@@ -391,21 +391,6 @@ export function GraphFlowSurface({
     clearScheduledFitView();
     const updateViewport = () => {
       let branch: "flowchartAnchor" | "wideGraphAnchor" | "fitView" = "fitView";
-      if (useFlowchartViewport && anchorNode?.position) {
-        branch = "flowchartAnchor";
-        traceLinkGraph("graphFlowSurface.viewport.apply", {
-          reason,
-          branch,
-          viewportMode,
-          useFlowchartViewport,
-          focusAnchor: shouldFocusAnchorOnLoad,
-          anchorNodeId: anchorNode.id,
-          anchorPosition: anchorNode.position,
-          graphShape: summarizeGraphShapeSignature(graphShapeSignature),
-        });
-        focusNodeInViewport(anchorNode, "flowchartAnchor");
-        return;
-      }
       if (shouldFocusAnchorOnLoad && anchorNode?.position) {
         branch = "wideGraphAnchor";
         traceLinkGraph("graphFlowSurface.viewport.apply", {

@@ -167,7 +167,7 @@ export function ExplanationTab({
           ))}
         </div>
       </div>
-      <div ref={layoutRef} className="workbench-tab-body workbench-page-flow explanation-layout">
+      <div ref={layoutRef} className="workbench-tab-body workbench-page-flow explanation-layout stage-workbench-priority-layout">
         {state.result?.promptPreview?.trim() || state.result?.promptPreviewArtifactId ? (
           <WorkbenchSection
             title="提示词"

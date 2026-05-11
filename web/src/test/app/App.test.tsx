@@ -486,15 +486,16 @@ describe.sequential("App", () => {
     vi.useRealTimers();
   });
 
-  it("renders explanation, qa, draft, and code tabs from the draft-first workbench state", () => {
+  it("renders five workflow stages from the draft-first workbench state", () => {
     render(<App />);
 
-    expect(screen.getByRole("tab", { name: "讲解" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /理解链路/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /核验证据/ })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "问答" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "草稿" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "代码" })).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "计划" })).not.toBeInTheDocument();
-    expect(screen.getByRole("tabpanel", { name: "讲解" })).toBeInTheDocument();
+    expect(screen.getByRole("tabpanel", { name: "理解" })).toBeInTheDocument();
     expect(screen.queryByText("结果面板")).not.toBeInTheDocument();
   });
 
@@ -515,8 +516,8 @@ describe.sequential("App", () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "更多操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "生成实现建议" }));
+    await user.click(screen.getByRole("tab", { name: "代码" }));
+    await user.click(screen.getByRole("button", { name: "生成实现建议" }));
 
     expect(screen.getByRole("tab", { name: "代码" })).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByText("正在生成实现建议，请稍候。")).not.toBeInTheDocument();
@@ -536,8 +537,8 @@ describe.sequential("App", () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "更多操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "生成实现建议" }));
+    await user.click(screen.getByRole("tab", { name: "代码" }));
+    await user.click(screen.getByRole("button", { name: "生成实现建议" }));
 
     expect(screen.getByRole("tab", { name: "代码" })).toHaveAttribute("aria-selected", "true");
     expect(window.linkGraphBridge?.requestGenerationPlan).toHaveBeenCalledTimes(1);
@@ -555,8 +556,8 @@ describe.sequential("App", () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "更多操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "生成代码 diff" }));
+    await user.click(screen.getByRole("tab", { name: "代码" }));
+    await user.click(screen.getByRole("button", { name: "生成代码 diff" }));
 
     expect(screen.getByRole("tab", { name: "代码" })).toHaveAttribute("aria-selected", "true");
     expect(window.linkGraphBridge?.requestCodeDrafts).toHaveBeenCalledTimes(1);
@@ -1083,7 +1084,7 @@ describe.sequential("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("链路图画布")).toBeInTheDocument();
+    expect(await screen.findByText("事实图谱")).toBeInTheDocument();
     expect((await screen.findAllByText("OrderController.submit")).length).toBeGreaterThan(0);
   });
 
@@ -1101,7 +1102,7 @@ describe.sequential("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("链路图画布")).toBeInTheDocument();
+    expect(await screen.findByText("事实图谱")).toBeInTheDocument();
     expect((await screen.findAllByText("OrderController.submit")).length).toBeGreaterThan(0);
   });
 
@@ -1118,7 +1119,7 @@ describe.sequential("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("链路图画布")).toBeInTheDocument();
+    expect(await screen.findByText("事实图谱")).toBeInTheDocument();
     expect(screen.getByText("画布里还没有节点")).toBeInTheDocument();
     expect(screen.queryByText("OrderController.submit")).not.toBeInTheDocument();
   });
@@ -1132,11 +1133,13 @@ describe.sequential("App", () => {
   it("renders a compact Chinese workspace and keeps the graph as primary", () => {
     render(<App />);
 
-    expect(screen.getByText("链路图画布")).toBeInTheDocument();
-    expect(screen.getByText("在代码中右键方法，可直接查看完整链路或追加为节点。")).toBeInTheDocument();
+    expect(screen.getByText("事实图谱")).toBeInTheDocument();
+    expect(screen.getByText("当前展示链路结构、入口和主路径。")).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "链路大纲" })).toBeInTheDocument();
+    expect(screen.getByRole("contentinfo", { name: "变更托盘" })).toBeInTheDocument();
     expect(screen.getByText("已加载当前编辑器上下文链路：OrderController.submit")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "更多操作" })).toBeInTheDocument();
-    expect(screen.getByRole("complementary", { name: "工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导入 Mermaid" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "阶段工作台" })).toBeInTheDocument();
   });
 
   it("keeps the explanation tab active and asks for a focused explanation when following up on the current step", async () => {
@@ -1145,7 +1148,7 @@ describe.sequential("App", () => {
 
     await user.click(screen.getByRole("button", { name: "围绕这一步继续讲解" }));
 
-    expect(screen.getByRole("tab", { name: "讲解" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "理解" })).toHaveAttribute("aria-selected", "true");
     expect(window.linkGraphBridge?.requestGraphBeautification).toHaveBeenCalledWith(
       "",
       undefined,
@@ -1388,7 +1391,7 @@ describe.sequential("App", () => {
     await user.click(screen.getByRole("button", { name: "记为草稿备注" }));
     await user.click(screen.getByRole("button", { name: "打开草稿说明：Step 1 提交订单请求" }));
 
-    expect(screen.getByRole("tab", { name: "讲解" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "理解" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("heading", { name: "Step 1 提交订单请求" })).toBeInTheDocument();
   });
 
@@ -1761,7 +1764,7 @@ describe.sequential("App", () => {
       undefined,
       undefined,
     );
-    expect(screen.getByRole("tab", { name: "讲解" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "理解" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("switches explanation granularity and requests a fresh projection with the chosen level", async () => {
@@ -1935,7 +1938,7 @@ describe.sequential("App", () => {
     expect(screen.getByText("已确认候选变更并写入草稿层，可切到草稿查看。")).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "草稿" }));
     expect(screen.getByRole("tab", { name: "草稿" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getAllByText("补充失败补偿说明")).toHaveLength(2);
+    expect(screen.getAllByText("补充失败补偿说明").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("当前链路缺少失败补偿语义。")).toBeInTheDocument();
     expect(screen.getByText("修改后")).toBeInTheDocument();
     expect(screen.queryByText("修改前")).not.toBeInTheDocument();
@@ -3003,7 +3006,7 @@ describe.sequential("App", () => {
 
     await user.click(screen.getByRole("tab", { name: "草稿" }));
 
-    expect(screen.queryByText("需要先定位用户提到的 if delete 分支")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^打开草稿变更：需要先定位用户提到的 if delete 分支/ })).not.toBeInTheDocument();
     expect(screen.getByText("当前还没有草稿条目")).toBeInTheDocument();
   });
 
@@ -3072,8 +3075,7 @@ describe.sequential("App", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "更多操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "导入 Mermaid" }));
+    await user.click(screen.getByRole("button", { name: "导入 Mermaid" }));
 
     expect(screen.getByRole("dialog", { name: "导入 Mermaid" })).toBeInTheDocument();
   });

@@ -380,7 +380,7 @@ function AuditPagePanel({
       id={`audit-page-panel-${activeSectionId}`}
       role="tabpanel"
       aria-labelledby={`audit-page-tab-${activeSectionId}`}
-      className="audit-page-panel workbench-card-flow"
+      className="audit-page-panel workbench-card-flow stage-workbench-flat-section"
     >
       <div className="audit-page-head">
         <div className="audit-page-title">
@@ -514,6 +514,7 @@ function AuditPagePanel({
           <section
             className={[
               "workbench-audit-thread",
+              "stage-workbench-flat-block",
               !messages.length ? "is-empty" : "",
             ].join(" ").trim()}
             aria-label="问答会话"

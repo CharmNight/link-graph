@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.ui
 
+import com.intellij.util.ui.UIUtil
 import com.charmnight.linkgraph.llm.GraphBeautificationResult
 import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.GraphDocument
@@ -29,6 +30,9 @@ class GraphEditorPageRenderer {
         private const val UI_PREFIX = "ui."
         /** 需要从语义元数据中过滤掉的布局前缀。 */
         private const val LAYOUT_PREFIX = "layout."
+
+        @Suppress("DEPRECATION")
+        private fun isIdeaDarkTheme(): Boolean = UIUtil.isUnderDarcula()
     }
 
     /** 为指定会话生成 bootstrap 脚本和自定义事件。 */
@@ -105,7 +109,15 @@ class GraphEditorPageRenderer {
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
         debugTracingEnabled: Boolean = false,
+        darkTheme: Boolean = isIdeaDarkTheme(),
     ): String {
+        /** JCEF 内联 HTML 不能可靠读取宿主 CSS，先用 IDE Laf 注入标准 color-scheme。 */
+        val themeScript = """
+            <script>
+              document.documentElement.dataset.ideaTheme = "${if (darkTheme) "dark" else "light"}";
+              document.documentElement.style.colorScheme = "${if (darkTheme) "dark" else "light"}";
+            </script>
+        """.trimIndent()
         /** 注入页面的脚本标签内容。 */
         val bootstrapScript = """
             <script>
@@ -118,9 +130,9 @@ class GraphEditorPageRenderer {
             </script>
         """.trimIndent()
         return if (entryHtml.contains("</head>", ignoreCase = true)) {
-            entryHtml.replace("</head>", "$bootstrapScript\n</head>", ignoreCase = true)
+            entryHtml.replace("</head>", "$themeScript\n$bootstrapScript\n</head>", ignoreCase = true)
         } else {
-            "$bootstrapScript\n$entryHtml"
+            "$themeScript\n$bootstrapScript\n$entryHtml"
         }
     }
 

@@ -20,6 +20,7 @@ interface AppWorkbenchPanelsProps {
   auditTabProps: ComponentProps<typeof AuditTab>;
   draftTabProps: ComponentProps<typeof DraftTab>;
   explanationTabProps: ComponentProps<typeof ExplanationTab>;
+  showTabs?: boolean;
 }
 
 export function AppWorkbenchPanels({
@@ -29,6 +30,7 @@ export function AppWorkbenchPanels({
   auditTabProps,
   draftTabProps,
   explanationTabProps,
+  showTabs = true,
 }: AppWorkbenchPanelsProps) {
   const panelBodyRef = useRef<HTMLDivElement | null>(null);
   let panel = <ExplanationTab {...explanationTabProps} />;
@@ -48,27 +50,29 @@ export function AppWorkbenchPanels({
 
   return (
     <section className="workbench-shell">
-      <div className="workbench-tab-nav" role="tablist" aria-label="工作台切换">
-        {WORKBENCH_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            id={`workbench-tab-${tab.id}`}
-            type="button"
-            role="tab"
-            aria-selected={activeWorkbenchTab === tab.id}
-            aria-controls={`workbench-panel-${tab.id}`}
-            className={activeWorkbenchTab === tab.id ? "workbench-tab-button active" : "workbench-tab-button"}
-            onClick={() => onTabChange(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {showTabs ? (
+        <div className="workbench-tab-nav" role="tablist" aria-label="工作台切换">
+          {WORKBENCH_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              id={`workbench-tab-${tab.id}`}
+              type="button"
+              role="tab"
+              aria-selected={activeWorkbenchTab === tab.id}
+              aria-controls={`workbench-panel-${tab.id}`}
+              className={activeWorkbenchTab === tab.id ? "workbench-tab-button active" : "workbench-tab-button"}
+              onClick={() => onTabChange(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div
         ref={panelBodyRef}
         id={`workbench-panel-${activeWorkbenchTab}`}
-        role="tabpanel"
-        aria-labelledby={`workbench-tab-${activeWorkbenchTab}`}
+        role={showTabs ? "tabpanel" : undefined}
+        aria-labelledby={showTabs ? `workbench-tab-${activeWorkbenchTab}` : undefined}
         className="workbench-panel-body m-scrollbar"
       >
         {panel}

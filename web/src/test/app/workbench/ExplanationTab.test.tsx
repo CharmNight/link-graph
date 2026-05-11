@@ -125,6 +125,29 @@ describe("ExplanationTab", () => {
     expect(container.querySelector(".workbench-tab-body.explanation-layout")).not.toBeNull();
   });
 
+  it("uses flat stage-workbench sections for step list and step detail", () => {
+    const { container } = render(
+      <div className="stage-workbench-panel">
+        <ExplanationTab
+          state={explanationStateFixture()}
+          onSelectStep={vi.fn()}
+          onLocateStepNode={vi.fn()}
+          onInspectStepNode={vi.fn()}
+          onGranularityChange={vi.fn()}
+          onAddToDraft={vi.fn()}
+          onDrillDown={vi.fn()}
+          onFollowUp={vi.fn()}
+          onRevealReference={vi.fn()}
+        />
+      </div>,
+    );
+
+    const sections = Array.from(container.querySelectorAll(".workbench-section-card"));
+    expect(sections.length).toBeGreaterThanOrEqual(2);
+    expect(sections.every((section) => section.classList.contains("stage-workbench-flat-section"))).toBe(true);
+    expect(container.querySelector(".explanation-layout.stage-workbench-priority-layout")).not.toBeNull();
+  });
+
   it("shows a return action when the reader is inside a follow-up explanation session", async () => {
     const user = userEvent.setup();
     const onReturnToPrevious = vi.fn();
