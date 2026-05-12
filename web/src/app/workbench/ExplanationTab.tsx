@@ -170,9 +170,11 @@ export function ExplanationTab({
       <div ref={layoutRef} className="workbench-tab-body workbench-page-flow explanation-layout stage-workbench-priority-layout">
         {state.result?.promptPreview?.trim() || state.result?.promptPreviewArtifactId ? (
           <WorkbenchSection
+            sectionId="explanation.prompt"
             title="提示词"
             expanded={promptSectionExpanded}
             onToggle={setPromptSectionExpanded}
+            className="explanation-prompt-section"
           >
             <RequestPromptDisclosure
               promptPreview={state.result?.promptPreview ?? null}
@@ -188,6 +190,7 @@ export function ExplanationTab({
           title="步骤列表"
           expanded={effectiveSectionPreferences["explanation.step-list"] ?? true}
           onToggle={(nextExpanded) => handleSectionToggle("explanation.step-list", nextExpanded)}
+          className="explanation-step-list-section"
           meta={<span className="badge">{steps.length}</span>}
         >
           <StepList
@@ -202,9 +205,11 @@ export function ExplanationTab({
           />
         </WorkbenchSection>
         <WorkbenchSection
+          sectionId="explanation.step-detail"
           title="步骤详情"
           expanded={effectiveSectionPreferences["explanation.step-detail"] ?? true}
           onToggle={(nextExpanded) => handleSectionToggle("explanation.step-detail", nextExpanded)}
+          className="explanation-step-detail-section"
         >
           <StepDetail
             step={selectedStep}

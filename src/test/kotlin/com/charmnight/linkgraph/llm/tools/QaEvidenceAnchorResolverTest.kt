@@ -66,4 +66,83 @@ class QaEvidenceAnchorResolverTest {
         assertTrue(resolution.mappingTrace.any { it.contains("projectionIndex:${projectedNode.id}->${realMethodNode.id}") })
         assertTrue(resolution.mappingTrace.any { it.contains("semanticFactGraph:${realMethodNode.id}") })
     }
+
+    @Test
+    fun resolvesSymbolSignatureToMethodNodeBeforeInvocationCallsiteNode() {
+        val targetSignature = "com.example.UploadServiceImpl.uploadFile():boolean"
+        val invocationNode = GraphNode(
+            id = "invoke:controller-upload-to-service",
+            type = NodeType.FLOW_ACTION,
+            title = "调用 UploadServiceImpl.uploadFile",
+            signature = targetSignature,
+            metadata = mapOf(
+                "flow.kind" to "INVOCATION",
+                "flow.ownerMethod" to "com.example.FileUploadController.uploadFile():void",
+                "source.filePath" to "src/main/java/com/example/FileUploadController.java",
+                "source.startLine" to "40",
+                "source.endLine" to "40",
+            ),
+        )
+        val methodNode = GraphNode(
+            id = "method:upload-service-impl-upload-file",
+            type = NodeType.METHOD,
+            title = "UploadServiceImpl.uploadFile",
+            signature = targetSignature,
+            metadata = mapOf(
+                "source.filePath" to "src/main/java/com/example/UploadServiceImpl.java",
+                "source.startLine" to "12",
+                "source.endLine" to "16",
+            ),
+        )
+        val snapshot = ToolGraphSnapshot(
+            workspaceGraph = GraphDocument(nodes = listOf(invocationNode, methodNode)),
+        )
+
+        val resolution = QaEvidenceAnchorResolver().resolve(snapshot, symbolSignature = targetSignature)
+
+        assertEquals(methodNode.id, resolution.node?.id)
+        assertEquals(methodNode.id, resolution.resolvedNodeId)
+    }
+
+    @Test
+    fun resolvesSymbolSignatureToMethodNodeAcrossDocumentsBeforeCurrentGraphInvocationCallsite() {
+        val targetSignature = "com.example.UploadServiceImpl.uploadFile():boolean"
+        val invocationNode = GraphNode(
+            id = "invoke:controller-upload-to-service",
+            type = NodeType.FLOW_ACTION,
+            title = "调用 UploadServiceImpl.uploadFile",
+            signature = targetSignature,
+            metadata = mapOf(
+                "flow.kind" to "INVOCATION",
+                "flow.ownerMethod" to "com.example.FileUploadController.uploadFile():void",
+                "source.filePath" to "src/main/java/com/example/FileUploadController.java",
+                "source.startLine" to "40",
+                "source.endLine" to "40",
+            ),
+        )
+        val methodNode = GraphNode(
+            id = "method:upload-service-impl-upload-file",
+            type = NodeType.METHOD,
+            title = "UploadServiceImpl.uploadFile",
+            signature = targetSignature,
+            metadata = mapOf(
+                "source.filePath" to "src/main/java/com/example/UploadServiceImpl.java",
+                "source.startLine" to "12",
+                "source.endLine" to "16",
+            ),
+        )
+        val snapshot = ToolGraphSnapshot(
+            factGraphView = ToolGraphView(
+                visibleGraph = GraphDocument(nodes = listOf(invocationNode)),
+                fullGraph = GraphDocument(nodes = listOf(invocationNode)),
+            ),
+            workspaceGraph = GraphDocument(nodes = listOf(methodNode)),
+            semanticFactGraph = GraphDocument(nodes = listOf(methodNode)),
+        )
+
+        val resolution = QaEvidenceAnchorResolver().resolve(snapshot, symbolSignature = targetSignature)
+
+        assertEquals(methodNode.id, resolution.node?.id)
+        assertEquals(methodNode.id, resolution.resolvedNodeId)
+    }
 }

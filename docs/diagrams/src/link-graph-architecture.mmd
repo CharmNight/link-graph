@@ -9,8 +9,8 @@ flowchart LR
   end
 
   subgraph Backend["Kotlin 插件后端"]
-    ProjectService["LinkGraphProjectService\n项目级编排入口"]
-    Workflows["工作流服务\n分析 / 工作区 / 审计 / 实现建议 / 代码"]
+    AppService["GraphEditorApplicationService\n应用服务边界"]
+    Workflows["应用工作流\n分析 / 工作区 / 问答 / 实现建议 / 代码"]
     CommandRouter["GraphEditorCommandRouter\n前端命令路由"]
     StateService["GraphEditorStateService\n后端真值状态"]
     Renderers["GraphEditorPageRenderer\nGraphEditorTransportSliceRenderer\n页面与 Transport 渲染"]
@@ -29,9 +29,9 @@ flowchart LR
   subgraph Agent["可选 LLM 与 Agent Runtime"]
     Gateway["RoutingLlmGateway\n远程 Provider + 本地回退"]
     Runtime["AgentRunCoordinator\nAgentRuntimeContext"]
-    Capability["Qa / Plan / Codegen Capability\n问答 / 实现建议 / 代码"]
+    Capability["Qa / Suggestion / Diff Capability\n问答 / 实现建议 / 代码 diff"]
     Tools["Tool Facade\n图 / 草稿 / 代码 / 校验证据读取"]
-    ArtifactStore["ArtifactStore\nConfirmedIntent / Plan / CodeDraft"]
+    ArtifactStore["ArtifactStore\nConfirmedIntent / Suggestion / CodeDiff"]
   end
 
   subgraph JCEF["JCEF 运行时边界"]
@@ -47,24 +47,24 @@ flowchart LR
     Store["前端状态 Store"]
     Views["views\n事实图 / 流程图 / 资源"]
     ReactFlow["@xyflow/react + elkjs\n图画布 + 自动布局"]
-    Panels["components + workbench\n详情 / 审计 / 讲解 / 草稿 / 代码"]
+    Panels["components + workbench\n证据 / 问答 / 讲解 / 草稿 / 代码"]
   end
 
   Editor --> Actions
-  Actions --> ProjectService
+  Actions --> AppService
   Actions --> ToolWindow
   ToolWindow --> BrowserPanel
-  Settings --> ProjectService
+  Settings --> AppService
 
-  ProjectService --> Subject
-  ProjectService --> Workflows
+  AppService --> Subject
+  AppService --> Workflows
   Workflows --> Semantic
   Semantic --> Outcome
   Outcome --> Projectors
   Projectors --> GraphModel
-  ProjectService --> GraphOps
+  AppService --> GraphOps
   GraphOps --> GraphModel
-  ProjectService --> StateService
+  AppService --> StateService
   StateService --> Renderers
   Renderers --> Dispatcher
 
@@ -81,7 +81,7 @@ flowchart LR
   BrowserPanel --> BridgeRegistrar
   BridgeRegistrar --> Bridge
   Bridge --> CommandRouter
-  CommandRouter --> ProjectService
+  CommandRouter --> AppService
   Dispatcher --> BrowserPanel
   Dispatcher --> Bootstrap
   Dispatcher --> Store

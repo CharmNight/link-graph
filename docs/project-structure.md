@@ -31,10 +31,19 @@
   - 编辑器和菜单动作入口。
 - `toolwindow`
   - 工具窗口生命周期与会话管理。
+- `application`
+  - 项目级应用边界、用例、工作流、状态投影端口、运行时支撑、调试和诊断能力。
+  - `GraphEditorApplicationService` 是 IDE 动作、工具窗口 bridge 和调试自动化进入业务流程的主入口。
+- `application/usecase`
+  - 面向动作和 bridge 的稳定用例入口。
+- `application/workflow`
+  - 主体分析、问答、草稿、实现建议、代码 diff、同步预览和导航等流程编排。
+- `application/port`
+  - 应用层到 UI 投影层的端口。
 - `ui`
   - JCEF 容器、前后端桥接、传输渲染和前端资源加载。
-- `services`
-  - 项目级编排服务与工作流协调。
+- `foundation`
+  - 日志、调试环境和 trace 等基础能力。
 - `semantic`
   - 语义分析、事实构建与主体定位。
 - `model`
@@ -53,7 +62,7 @@
 - `artifact`
   - 跨步骤和跨阶段传递的结构化 Artifact。
 - `capability`
-  - 问答、计划、代码生成等 Agent Capability。
+  - 问答、实现建议、代码 diff 等 Agent Capability。
 - `context`
   - 源码片段等上下文收集与去重支撑。
 
@@ -72,11 +81,11 @@
 - `reactflow`
   - 共享图画布基础设施与布局接线。
 - `components`
-  - 可复用的面板、弹窗、工具栏和图动作组件。
+  - 可复用的面板、弹窗、任务栏、阶段工作台、链路大纲、变更托盘和图动作组件。
 - `controllers`
   - bridge 命令、bootstrap 状态和工作台动作的前端协调逻辑。
 - `workbench`
-  - 工作台外壳与停靠布局。
+  - 讲解、问答、草稿、步骤详情和讨论面板等工作台域界面。
 
 `web/src/test` 承载前端测试代码与测试支撑：
 
@@ -111,6 +120,6 @@
 
 ## 文档边界
 
-`docs/` 目录只保留公开项目文档。内部计划、私有工作记录和机器相关验证日志不进入公开仓库。
+`docs/` 根部文档是公开阅读入口。内部计划、设计记录和执行拆分不作为用户文档导航入口。个人工作记录、机器相关验证日志和本机绝对路径不进入公开阅读入口。
 
 图表源文件可以保留在 `docs/diagrams/src/`，用于维护公开 SVG。公开文档应优先嵌入或链接 SVG，不直接把 Mermaid 源文件作为阅读入口。

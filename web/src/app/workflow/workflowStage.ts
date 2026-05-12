@@ -91,6 +91,6 @@ export function workflowStageStatusLabel(status: WorkflowStageStatus): string {
       return "失败";
     case "idle":
     default:
-      return "待处理";
+      return "未开始";
   }
 }

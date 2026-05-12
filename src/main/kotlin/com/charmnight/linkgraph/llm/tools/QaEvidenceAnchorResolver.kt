@@ -2,6 +2,7 @@ package com.charmnight.linkgraph.llm.tools
 
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.model.NodeType
 
 data class QaEvidenceAnchorResolution(
     val requestedNodeId: String? = null,
@@ -175,22 +176,49 @@ class QaEvidenceAnchorResolver {
             "workspaceGraph" to snapshot.workspaceGraph,
             "semanticFactGraph" to snapshot.semanticFactGraph,
         )
-        for ((stage, graph) in documents) {
-            readable(graph.nodes.firstOrNull { node -> node.signature == signature }, stage)?.let { return it }
+        val graphCandidates = documents.flatMapIndexed { documentIndex, (stage, graph) ->
+            graph.nodes
+                .filter { node -> node.signature == signature }
+                .map { node -> SignatureAnchorCandidate(stage, documentIndex, node) }
         }
-        return readable(
-            snapshot.trustedNavigationNodes.values.firstOrNull { node -> node.signature == signature },
-            "trustedNavigationNodes",
-        )
+        graphCandidates
+            .sortedWith(
+                compareBy<SignatureAnchorCandidate>(
+                    { candidate -> signatureAnchorRank(candidate.node) },
+                    SignatureAnchorCandidate::documentIndex,
+                    { candidate -> candidate.node.id },
+                ),
+            )
+            .firstNotNullOfOrNull { candidate -> readable(candidate.node, candidate.stage) }
+            ?.let { return it }
+        return snapshot.trustedNavigationNodes.values
+            .filter { node -> node.signature == signature }
+            .map { node -> SignatureAnchorCandidate("trustedNavigationNodes", documents.size, node) }
+            .sortedWith(compareBy({ candidate -> signatureAnchorRank(candidate.node) }, { candidate -> candidate.node.id }))
+            .firstNotNullOfOrNull { candidate -> readable(candidate.node, candidate.stage) }
     }
 
     private fun GraphDocument.findNode(nodeId: String): GraphNode? = nodes.firstOrNull { node -> node.id == nodeId }
 
     private fun hasSourceMetadata(node: GraphNode): Boolean = !node.metadata["source.filePath"].isNullOrBlank()
 
+    private fun signatureAnchorRank(node: GraphNode): Int {
+        return when {
+            node.type == NodeType.METHOD -> 0
+            node.metadata["flow.kind"] == "INVOCATION" -> 2
+            else -> 1
+        }
+    }
+
     private data class CurrentView(
         val visibleGraph: GraphDocument,
         val fullGraph: GraphDocument,
         val projectionIndex: ToolGraphProjectionIndex,
+    )
+
+    private data class SignatureAnchorCandidate(
+        val stage: String,
+        val documentIndex: Int,
+        val node: GraphNode,
     )
 }

@@ -5,7 +5,7 @@
 
     <description><![CDATA[
         Link Graph is an IntelliJ Platform plugin for exploring method, flowchart, and resource relationships inside a project.
-        It provides a JCEF-based graph workbench with Mermaid import/export, diff preview, source navigation, local fallback workflows, and optional remote LLM-assisted drafts.
+        It provides a JCEF-based graph workbench with Mermaid import/export, diff preview, source navigation, local fallback workflows, and optional remote LLM-assisted implementation suggestions and code diff workflows.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>

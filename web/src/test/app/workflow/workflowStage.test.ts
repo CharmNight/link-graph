@@ -5,6 +5,7 @@ import {
   type WorkflowStage,
   workbenchTabToWorkflowStage,
   workflowStageToWorkbenchTab,
+  workflowStageStatusLabel,
 } from "../../../app/workflow/workflowStage";
 
 describe("workflowStage", () => {
@@ -38,5 +39,9 @@ describe("workflowStage", () => {
       "草稿确认",
       "代码落地",
     ]);
+  });
+
+  it("labels idle workflow stages as not started instead of pending work", () => {
+    expect(workflowStageStatusLabel("idle")).toBe("未开始");
   });
 });

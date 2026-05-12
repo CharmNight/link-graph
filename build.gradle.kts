@@ -59,7 +59,7 @@ intellijPlatform {
         id = "com.charmnight.linkgraph"
         name = providers.gradleProperty("pluginName")
         version = providers.gradleProperty("pluginVersion")
-        description = "Link Graph is an IntelliJ Platform plugin for exploring method, flowchart, and resource relationships inside a project. It provides a JCEF-based graph workbench with Mermaid import/export, diff preview, source navigation, local fallback workflows, and optional remote LLM-assisted drafts."
+        description = "Link Graph is an IntelliJ Platform plugin for exploring method, flowchart, and resource relationships inside a project. It provides a JCEF-based graph workbench with Mermaid import/export, diff preview, source navigation, local fallback workflows, and optional remote LLM-assisted implementation suggestions and code diff workflows."
         ideaVersion {
             sinceBuild = providers.gradleProperty("platformSinceBuild")
             untilBuild = provider { null }

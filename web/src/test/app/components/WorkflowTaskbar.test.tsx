@@ -45,6 +45,8 @@ describe("WorkflowTaskbar", () => {
     expect(within(stageStrip).getAllByRole("button")).toHaveLength(5);
     expect(screen.getByRole("button", { name: /核验证据/ })).toHaveAttribute("aria-current", "step");
     expect(screen.getByRole("button", { name: /风险问答/ })).toHaveTextContent("进行中");
+    expect(screen.getByRole("button", { name: /草稿确认/ })).toHaveTextContent("未开始");
+    expect(screen.getByRole("button", { name: /草稿确认/ })).not.toHaveTextContent("待处理");
     expect(screen.getByRole("button", { name: /代码落地/ })).toHaveTextContent("失败");
   });
 

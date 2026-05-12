@@ -831,6 +831,18 @@ button {
   align-content: start;
 }
 
+.explanation-prompt-section {
+  grid-column: 1 / -1;
+}
+
+.explanation-step-list-section {
+  grid-column: 1;
+}
+
+.explanation-step-detail-section {
+  grid-column: 2;
+}
+
 .explanation-layout .workbench-section-card-body {
   grid-template-rows: auto;
   overflow: visible;
@@ -3805,6 +3817,12 @@ button {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto;
     align-content: start;
+  }
+
+  .explanation-prompt-section,
+  .explanation-step-list-section,
+  .explanation-step-detail-section {
+    grid-column: 1;
   }
 
   .draft-layout {

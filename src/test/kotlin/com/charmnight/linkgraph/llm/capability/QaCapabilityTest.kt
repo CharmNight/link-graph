@@ -343,6 +343,365 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertTrue(snippet.snippet?.contains("fallback(request)") == true)
     }
 
+    fun testReadsCalleeMethodEvidenceWhenSelectedNodeIsInvocationCallsite() {
+        val basePath = Path.of(requireNotNull(project.basePath))
+        val controllerFile = basePath.resolve("src/main/java/com/example/QaUploadController.java")
+        val serviceFile = basePath.resolve("src/main/java/com/example/QaUploadServiceImpl.java")
+        Files.createDirectories(controllerFile.parent)
+        Files.writeString(
+            controllerFile,
+            """
+            class QaUploadController {
+                boolean upload() {
+                    return fileUploadService.uploadFile();
+                }
+            }
+            """.trimIndent(),
+        )
+        Files.writeString(
+            serviceFile,
+            """
+            class QaUploadServiceImpl {
+                boolean uploadFile() {
+                    return sshFileUploadUtil.uploadFileViaSCP();
+                }
+            }
+            """.trimIndent(),
+        )
+        val targetSignature = "com.example.QaUploadServiceImpl.uploadFile():boolean"
+        val graph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "invoke:controller-to-upload-service",
+                    type = NodeType.FLOW_ACTION,
+                    title = "调用 QaUploadServiceImpl.uploadFile",
+                    signature = targetSignature,
+                    metadata = mapOf(
+                        "flow.kind" to "INVOCATION",
+                        "flow.ownerMethod" to "com.example.QaUploadController.upload():boolean",
+                        "source.filePath" to controllerFile.toString(),
+                        "source.startLine" to "2",
+                        "source.endLine" to "4",
+                    ),
+                ),
+                GraphNode(
+                    id = "method:qa-upload-service-impl-upload-file",
+                    type = NodeType.METHOD,
+                    title = "QaUploadServiceImpl.uploadFile",
+                    signature = targetSignature,
+                    metadata = mapOf(
+                        "source.filePath" to serviceFile.toString(),
+                        "source.startLine" to "1",
+                        "source.endLine" to "5",
+                    ),
+                ),
+            ),
+        )
+        var capturedSourceContext: List<SourceSnippetContext> = emptyList()
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            qaExecutor = { input, _, _ ->
+                capturedSourceContext = input.qaContext.sourceContext
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "已读取被调方法证据。",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+
+        val result = AgentRunCoordinator().run(
+            capability = capability,
+            input = QaCapabilityInput(
+                question = "确认上传调用是否继续进入 SCP sink",
+                qaContext = GraphQaContext(
+                    editableGraph = graph,
+                    selectedNodeIds = listOf("invoke:controller-to-upload-service"),
+                ),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = {
+                    testSnapshot(
+                        workingGraph = graph,
+                        selectedNodeId = "invoke:controller-to-upload-service",
+                    ).toToolGraphSnapshot()
+                },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertEquals("已读取被调方法证据。", result.output?.answer)
+        assertEquals("read_symbol", result.finalState.stepRecords[2].toolName)
+        val snippet = requireNotNull(capturedSourceContext.singleOrNull())
+        assertEquals(serviceFile.toString(), snippet.filePath)
+        assertTrue(snippet.snippet?.contains("sshFileUploadUtil.uploadFileViaSCP()") == true)
+        assertFalse(snippet.snippet?.contains("fileUploadService.uploadFile()") == true)
+    }
+
+    fun testReadsSinkMethodEvidenceWhenSelectedNodeIsSecondHopInvocationCallsite() {
+        val basePath = Path.of(requireNotNull(project.basePath))
+        val serviceFile = basePath.resolve("src/main/java/com/example/QaUploadServiceImpl.java")
+        val utilFile = basePath.resolve("src/main/java/com/example/SshFileUploadUtil.java")
+        Files.createDirectories(serviceFile.parent)
+        Files.writeString(
+            serviceFile,
+            """
+            class QaUploadServiceImpl {
+                boolean uploadFile() {
+                    return sshFileUploadUtil.uploadFileViaSCP();
+                }
+            }
+            """.trimIndent(),
+        )
+        Files.writeString(
+            utilFile,
+            """
+            class SshFileUploadUtil {
+                boolean uploadFileViaSCP() {
+                    session = jsch.getSession(username, host, port);
+                    channel.put(inputStream, finalDestPath);
+                    return true;
+                }
+            }
+            """.trimIndent(),
+        )
+        val sinkSignature = "com.example.SshFileUploadUtil.uploadFileViaSCP():boolean"
+        val graph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "invoke:service-to-scp-util",
+                    type = NodeType.FLOW_ACTION,
+                    title = "调用 SshFileUploadUtil.uploadFileViaSCP",
+                    signature = sinkSignature,
+                    metadata = mapOf(
+                        "flow.kind" to "INVOCATION",
+                        "flow.ownerMethod" to "com.example.QaUploadServiceImpl.uploadFile():boolean",
+                        "source.filePath" to serviceFile.toString(),
+                        "source.startLine" to "2",
+                        "source.endLine" to "4",
+                    ),
+                ),
+                GraphNode(
+                    id = "method:ssh-file-upload-util-upload-file-via-scp",
+                    type = NodeType.METHOD,
+                    title = "SshFileUploadUtil.uploadFileViaSCP",
+                    signature = sinkSignature,
+                    metadata = mapOf(
+                        "source.filePath" to utilFile.toString(),
+                        "source.startLine" to "1",
+                        "source.endLine" to "8",
+                    ),
+                ),
+            ),
+        )
+        var capturedSourceContext: List<SourceSnippetContext> = emptyList()
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            qaExecutor = { input, _, _ ->
+                capturedSourceContext = input.qaContext.sourceContext
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "已读取 sink 证据。",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+
+        val result = AgentRunCoordinator().run(
+            capability = capability,
+            input = QaCapabilityInput(
+                question = "确认上传调用是否进入 SCP sink",
+                qaContext = GraphQaContext(
+                    editableGraph = graph,
+                    selectedNodeIds = listOf("invoke:service-to-scp-util"),
+                ),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = {
+                    testSnapshot(
+                        workingGraph = graph,
+                        selectedNodeId = "invoke:service-to-scp-util",
+                    ).toToolGraphSnapshot()
+                },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertEquals("已读取 sink 证据。", result.output?.answer)
+        assertEquals("read_symbol", result.finalState.stepRecords[2].toolName)
+        val snippet = requireNotNull(capturedSourceContext.singleOrNull())
+        assertEquals(utilFile.toString(), snippet.filePath)
+        assertTrue(snippet.snippet?.contains("jsch.getSession(username, host, port)") == true)
+        assertTrue(snippet.snippet?.contains("channel.put(inputStream, finalDestPath)") == true)
+        assertFalse(snippet.snippet?.contains("sshFileUploadUtil.uploadFileViaSCP()") == true)
+    }
+
+    fun testReadsSecondHopSinkEvidenceFromSelectedControllerToServiceInvocation() {
+        val basePath = Path.of(requireNotNull(project.basePath))
+        val controllerFile = basePath.resolve("src/main/java/com/example/QaControllerEntry.java")
+        val serviceFile = basePath.resolve("src/main/java/com/example/QaServiceImpl.java")
+        val utilFile = basePath.resolve("src/main/java/com/example/QaSshUploadUtil.java")
+        Files.createDirectories(controllerFile.parent)
+        Files.writeString(
+            controllerFile,
+            """
+            class QaControllerEntry {
+                boolean upload() {
+                    return fileUploadService.uploadFile();
+                }
+            }
+            """.trimIndent(),
+        )
+        Files.writeString(
+            serviceFile,
+            """
+            class QaServiceImpl {
+                boolean uploadFile() {
+                    return sshFileUploadUtil.uploadFileViaSCP();
+                }
+            }
+            """.trimIndent(),
+        )
+        Files.writeString(
+            utilFile,
+            """
+            class QaSshUploadUtil {
+                boolean uploadFileViaSCP() {
+                    session = jsch.getSession(username, host, port);
+                    channel.put(inputStream, finalDestPath);
+                    return true;
+                }
+            }
+            """.trimIndent(),
+        )
+        val serviceSignature = "com.example.QaServiceImpl.uploadFile():boolean"
+        val sinkSignature = "com.example.QaSshUploadUtil.uploadFileViaSCP():boolean"
+        val controllerInvocation = GraphNode(
+            id = "invoke:controller-to-service",
+            type = NodeType.FLOW_ACTION,
+            title = "调用 QaServiceImpl.uploadFile",
+            signature = serviceSignature,
+            metadata = mapOf(
+                "flow.kind" to "INVOCATION",
+                "flow.ownerMethod" to "com.example.QaControllerEntry.upload():boolean",
+                "source.filePath" to controllerFile.toString(),
+                "source.startLine" to "2",
+                "source.endLine" to "4",
+            ),
+        )
+        val serviceMethod = GraphNode(
+            id = "method:qa-service-impl-upload-file",
+            type = NodeType.METHOD,
+            title = "QaServiceImpl.uploadFile",
+            signature = serviceSignature,
+            metadata = mapOf(
+                "source.filePath" to serviceFile.toString(),
+                "source.startLine" to "1",
+                "source.endLine" to "5",
+            ),
+        )
+        val serviceInvocation = GraphNode(
+            id = "invoke:service-to-sink",
+            type = NodeType.FLOW_ACTION,
+            title = "调用 QaSshUploadUtil.uploadFileViaSCP",
+            signature = sinkSignature,
+            metadata = mapOf(
+                "flow.kind" to "INVOCATION",
+                "flow.ownerMethod" to serviceSignature,
+                "source.filePath" to serviceFile.toString(),
+                "source.startLine" to "2",
+                "source.endLine" to "4",
+            ),
+        )
+        val sinkMethod = GraphNode(
+            id = "method:qa-ssh-upload-util-upload-file-via-scp",
+            type = NodeType.METHOD,
+            title = "QaSshUploadUtil.uploadFileViaSCP",
+            signature = sinkSignature,
+            metadata = mapOf(
+                "source.filePath" to utilFile.toString(),
+                "source.startLine" to "1",
+                "source.endLine" to "8",
+            ),
+        )
+        val graph = GraphDocument(
+            nodes = listOf(controllerInvocation, serviceMethod, serviceInvocation, sinkMethod),
+            edges = listOf(
+                GraphEdge(
+                    id = "call:controller-to-service",
+                    type = EdgeType.CALL,
+                    fromNodeId = controllerInvocation.id,
+                    toNodeId = serviceMethod.id,
+                ),
+                GraphEdge(
+                    id = "contains:service-to-invocation",
+                    type = EdgeType.CONTAINS_FLOW,
+                    fromNodeId = serviceMethod.id,
+                    toNodeId = serviceInvocation.id,
+                ),
+                GraphEdge(
+                    id = "call:service-to-sink",
+                    type = EdgeType.CALL,
+                    fromNodeId = serviceInvocation.id,
+                    toNodeId = sinkMethod.id,
+                ),
+            ),
+        )
+        var capturedSourceContext: List<SourceSnippetContext> = emptyList()
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            qaExecutor = { input, _, _ ->
+                capturedSourceContext = input.qaContext.sourceContext
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "已读取二跳 sink 证据。",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+
+        val result = AgentRunCoordinator().run(
+            capability = capability,
+            input = QaCapabilityInput(
+                question = "确认上传入口是否通向 SCP sink",
+                qaContext = GraphQaContext(
+                    editableGraph = graph,
+                    selectedNodeIds = listOf(controllerInvocation.id),
+                ),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = {
+                    testSnapshot(
+                        workingGraph = graph,
+                        selectedNodeId = controllerInvocation.id,
+                    ).toToolGraphSnapshot()
+                },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertEquals("已读取二跳 sink 证据。", result.output?.answer)
+        assertTrue(capturedSourceContext.any { context ->
+            context.filePath == serviceFile.toString() &&
+                context.snippet?.contains("sshFileUploadUtil.uploadFileViaSCP()") == true
+        })
+        assertTrue(capturedSourceContext.any { context ->
+            context.filePath == utilFile.toString() &&
+                context.snippet?.contains("jsch.getSession(username, host, port)") == true &&
+                context.snippet?.contains("channel.put(inputStream, finalDestPath)") == true
+        })
+        assertFalse(capturedSourceContext.any { context ->
+            context.filePath == controllerFile.toString() &&
+                context.snippet?.contains("fileUploadService.uploadFile()") == true
+        })
+    }
+
     fun testRecordsFailedCodeEvidenceTraceWhenSelectedNodeCannotReadSource() {
         var capturedSourceContext: List<SourceSnippetContext> = emptyList()
         var capturedEvidenceTrace: List<EvidenceTraceEntry> = emptyList()
