@@ -10,6 +10,27 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 class CodeDraftWriterServiceTest {
     @Test
+    fun rejectsNewDraftWriteThroughSymlinkedProjectDirectory() {
+        val projectDir = createTempDirectory("link-graph-writer-symlink-root-test")
+        val outsideDir = createTempDirectory("link-graph-writer-symlink-outside-test")
+        val linkDir = projectDir.resolve("generated")
+        Files.createSymbolicLink(linkDir, outsideDir)
+        val draft = GeneratedCodeDraft(
+            id = "draft:symlink-escape",
+            sourceNodeId = "class:symlink-escape",
+            title = "Leak.java",
+            targetPath = "generated/Leak.java",
+            content = "package generated; class Leak {}",
+        )
+
+        val report = CodeDraftWriterService().writeDrafts(projectDir.toString(), listOf(draft))
+
+        assertTrue(report.skippedFiles.contains(draft.targetPath))
+        assertTrue(report.warnings.any { warning -> warning.contains("项目目录之外") })
+        assertFalse(Files.exists(outsideDir.resolve("Leak.java")))
+    }
+
+    @Test
     fun rejectsExistingJavaFileWriteWithoutValidatedScope() {
         val projectDir = createTempDirectory("link-graph-writer-test")
         val targetFile = projectDir.resolve("src/main/java/com/example/OrderService.java")

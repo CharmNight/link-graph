@@ -38,21 +38,11 @@ export function useWorkbenchCommandController({
   }
 
   function handleShowDiffMode() {
-    bridgeCommands.runBridgeCommand("代码对比", () => showDiffMode(), {
-      successFeedback: {
-        level: "INFO",
-        message: "已打开代码对比。",
-      },
-    });
+    bridgeCommands.runBridgeCommand("代码对比", () => showDiffMode());
   }
 
   function handleRequestSyncPreview() {
-    bridgeCommands.runBridgeCommand("同步预览", () => requestSyncPreview(), {
-      successFeedback: {
-        level: "INFO",
-        message: "已打开同步预览。",
-      },
-    });
+    bridgeCommands.runBridgeCommand("同步预览", () => requestSyncPreview());
   }
 
   function handleRequestGenerationPlan() {

@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.application.workflow.generation
 
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
+import com.charmnight.linkgraph.codegen.ProjectScopedPathPolicy
 import com.charmnight.linkgraph.codegen.ProjectPathNormalizer
 import com.charmnight.linkgraph.application.diagnostics.GenerationDiagnostics
 import com.charmnight.linkgraph.foundation.debugLazy
@@ -13,11 +14,12 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.vfs.LocalFileSystem
 import java.nio.file.Files
-import java.nio.file.Path
 
 internal class CodeDraftApplyWorkflow(
     private val dependencies: GenerationWorkflowDependencies,
 ) {
+    private val pathPolicy = ProjectScopedPathPolicy()
+
     fun applyCodeDrafts() {
         val snapshot = dependencies.snapshotProvider.snapshot()
         debugLazy(dependencies.logger.isDebugEnabled, dependencies.logger::debug) {
@@ -99,8 +101,16 @@ internal class CodeDraftApplyWorkflow(
             return
         }
         val normalizedDraft = ProjectPathNormalizer.normalizeDraft(draft, projectBasePath)
-        val target = Path.of(projectBasePath).normalize().resolve(normalizedDraft.targetPath).normalize()
-        val targetExists = Files.exists(target)
+        val scopedTarget = pathPolicy.resolveWritableDraftTarget(projectBasePath, normalizedDraft.targetPath)
+        if (scopedTarget == null) {
+            dependencies.emitGenerationFeedback(
+                ApplicationFeedbackLevel.ERROR,
+                "已跳过 '${normalizedDraft.targetPath}'，因为它不存在或解析到了项目目录之外。",
+            )
+            return
+        }
+        val target = scopedTarget.path
+        val targetExists = scopedTarget.existed
         val beforeText = when {
             targetExists -> Files.readString(target)
             normalizedDraft.content != null -> ""

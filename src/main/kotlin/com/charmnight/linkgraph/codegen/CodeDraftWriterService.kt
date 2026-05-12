@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 class CodeDraftWriterService(
     private val project: Project? = null,
+    private val pathPolicy: ProjectScopedPathPolicy = ProjectScopedPathPolicy(),
 ) {
     private val codeEditApplyService = project?.let { CodeEditApplyService(it) }
 
@@ -42,29 +43,13 @@ class CodeDraftWriterService(
                 warnings = listOf("当前草稿不包含 existing-file 局部 patch。"),
             )
         }
-        val basePath = Path.of(projectBasePath).normalize()
-        val target = basePath.resolve(normalizedDraft.targetPath).normalize()
-        if (!target.startsWith(basePath)) {
-            return PreparedCodeEditBatch(
-                canApply = false,
-                previewText = normalizedDraft.content.orEmpty(),
-                warnings = listOf("已跳过 '${normalizedDraft.targetPath}'，因为它解析到了项目目录之外。"),
-            )
-        }
-        val targetExists = safeFileSystemRead(normalizedDraft.targetPath) {
-            Files.exists(target)
-        } ?: return PreparedCodeEditBatch(
+        val target = safeFileSystemRead(normalizedDraft.targetPath) {
+            pathPolicy.resolveExistingFile(projectBasePath, normalizedDraft.targetPath)
+        }?.path ?: return PreparedCodeEditBatch(
             canApply = false,
             previewText = normalizedDraft.content.orEmpty(),
-            warnings = listOf(fileSystemFailureWarning(normalizedDraft.targetPath, lastFileSystemError.get())),
+            warnings = listOf("已跳过 '${normalizedDraft.targetPath}'，因为它不存在或解析到了项目目录之外。"),
         )
-        if (!targetExists) {
-            return PreparedCodeEditBatch(
-                canApply = false,
-                previewText = normalizedDraft.content.orEmpty(),
-                warnings = listOf("目标文件 '${normalizedDraft.targetPath}' 不存在，无法准备 existing-file patch。"),
-            )
-        }
         val beforeText = safeFileSystemRead(normalizedDraft.targetPath) {
             currentFileText(target)
         } ?: return PreparedCodeEditBatch(
@@ -92,25 +77,24 @@ class CodeDraftWriterService(
             )
         }
 
-        val basePath = Path.of(projectBasePath).normalize()
         val writtenFiles = mutableListOf<String>()
         val skippedFiles = mutableListOf<String>()
         val warnings = mutableListOf<String>()
 
         drafts.forEach { draft ->
             val normalizedDraft = ProjectPathNormalizer.normalizeDraft(draft, projectBasePath)
-            val target = runDraftFileSystemOperation(normalizedDraft.targetPath, skippedFiles, warnings) {
-                basePath.resolve(normalizedDraft.targetPath).normalize()
-            } ?: return@forEach
-            if (!target.startsWith(basePath)) {
+            val scopedTarget = safeFileSystemRead(normalizedDraft.targetPath) {
+                pathPolicy.resolveWritableDraftTarget(projectBasePath, normalizedDraft.targetPath)
+            }
+            if (scopedTarget == null) {
                 skippedFiles += normalizedDraft.targetPath
-                warnings += "已跳过 '${normalizedDraft.targetPath}'，因为它解析到了项目目录之外。"
+                warnings += lastFileSystemError.get()?.let { error ->
+                    fileSystemFailureWarning(normalizedDraft.targetPath, error)
+                } ?: "已跳过 '${normalizedDraft.targetPath}'，因为它不存在或解析到了项目目录之外。"
                 return@forEach
             }
-            val targetExists = runDraftFileSystemOperation(normalizedDraft.targetPath, skippedFiles, warnings) {
-                Files.exists(target)
-            } ?: return@forEach
-            if (!targetExists) {
+            val target = scopedTarget.path
+            if (!scopedTarget.existed) {
                 runDraftFileSystemOperation(normalizedDraft.targetPath, skippedFiles, warnings) {
                     target.parent?.let(Files::createDirectories)
                     Files.writeString(target, normalizedDraft.content ?: "")
@@ -129,7 +113,12 @@ class CodeDraftWriterService(
                     return@forEach
                 }
                 val applyWarnings = runDraftFileSystemOperation(normalizedDraft.targetPath, skippedFiles, warnings) {
-                    applyPreparedEdits(target, prepared)
+                    val existingTarget = pathPolicy.resolveExistingFile(projectBasePath, normalizedDraft.targetPath)?.path
+                    if (existingTarget == null) {
+                        listOf("已跳过 '${normalizedDraft.targetPath}'，因为它不存在或解析到了项目目录之外。")
+                    } else {
+                        applyPreparedEdits(existingTarget, prepared)
+                    }
                 } ?: return@forEach
                 warnings += applyWarnings
                 if (applyWarnings.isNotEmpty()) {
@@ -178,16 +167,25 @@ class CodeDraftWriterService(
             val document = FileDocumentManager.getInstance().getDocument(virtualFile)
                 ?: return@computeOnIdeThread listOf("无法获取目标文件 '${target.fileName}' 的 IDE Document。")
             val warnings = mutableListOf<String>()
+            var simulatedText = document.text
+            val verifiedEdits = prepared.preparedEdits.mapNotNull { edit ->
+                val safeStart = edit.startOffset.coerceIn(0, simulatedText.length)
+                val safeEnd = edit.endOffset.coerceIn(safeStart, simulatedText.length)
+                val currentSlice = simulatedText.substring(safeStart, safeEnd)
+                if (currentSlice != edit.beforeText) {
+                    warnings += "操作 '${edit.operationId}' 的 patch 锚点已失效，拒绝写入 '${edit.filePath}'。"
+                    null
+                } else {
+                    simulatedText = simulatedText.replaceRange(safeStart, safeEnd, edit.afterText)
+                    VerifiedPreparedCodeEdit(edit, safeStart, safeEnd)
+                }
+            }
+            if (warnings.isNotEmpty()) {
+                return@computeOnIdeThread warnings
+            }
             WriteCommandAction.runWriteCommandAction(ideProject) {
-                prepared.preparedEdits.forEach { edit ->
-                    val safeStart = edit.startOffset.coerceIn(0, document.textLength)
-                    val safeEnd = edit.endOffset.coerceIn(safeStart, document.textLength)
-                    val currentSlice = document.charsSequence.subSequence(safeStart, safeEnd).toString()
-                    if (currentSlice != edit.beforeText) {
-                        warnings += "操作 '${edit.operationId}' 的 patch 锚点已失效，拒绝写入 '${edit.filePath}'。"
-                        return@runWriteCommandAction
-                    }
-                    document.replaceString(safeStart, safeEnd, edit.afterText)
+                verifiedEdits.forEach { verified ->
+                    document.replaceString(verified.startOffset, verified.endOffset, verified.edit.afterText)
                 }
                 PsiDocumentManager.getInstance(ideProject).commitDocument(document)
                 FileDocumentManager.getInstance().saveDocument(document)
@@ -195,6 +193,12 @@ class CodeDraftWriterService(
             warnings
         }
     }
+
+    private data class VerifiedPreparedCodeEdit(
+        val edit: PreparedCodeEdit,
+        val startOffset: Int,
+        val endOffset: Int,
+    )
 
     private val lastFileSystemError: AtomicReference<Throwable?> = AtomicReference(null)
 

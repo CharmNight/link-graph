@@ -481,7 +481,7 @@ describe("CodeDraftPanel", () => {
     expect(events).toEqual(["artifact:artifact:code-prompt"]);
   });
 
-  it("uses the shared workbench tab scroll instead of a private code-panel scroll", () => {
+  it("uses independent scroll panes for the code file list and diff detail inside the stage workbench", () => {
     const { container } = render(
       <CodeDraftPanel
         drafts={[
@@ -516,13 +516,18 @@ describe("CodeDraftPanel", () => {
       /\.workbench-shell\s*\{[^}]*overflow:\s*hidden;/s,
     );
     expect(themeCss).toMatch(/\.workbench-panel-body\s*\{[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
-    expect(themeCss).toMatch(/\.workbench-tab\s*\{[^}]*height:\s*auto;[^}]*overflow:\s*visible;/s);
-    expect(themeCss).not.toMatch(/\.workbench-tab\s*\{[^}]*overflow-y:\s*auto;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.workbench-panel-body\s*\{[^}]*overflow:\s*hidden;/s);
     expect(themeCss).toMatch(/\.code-draft-panel\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+auto;[^}]*align-content:\s*start;/s);
-    expect(themeCss).not.toMatch(/\.code-draft-panel\s*\{[^}]*overflow-y:\s*auto;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.code-draft-panel\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*0\.42fr\)\s+auto\s+minmax\(0,\s*0\.58fr\);[^}]*overflow:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.code-stage-analysis-stack\s*\{[^}]*min-height:\s*0;[^}]*position:\s*relative;[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
     expect(themeCss).toMatch(
       /\.code-draft-panel\s*>\s*\.side-panel-scroll-body\s*\{[^}]*min-height:\s*auto;[^}]*overflow:\s*visible;/s,
     );
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.code-draft-panel\s*>\s*\.side-panel-scroll-body\s*\{[^}]*min-height:\s*0;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.code-draft-panel\s*>\s*\.code-diff-scroll-region\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*overflow:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.code-diff-scroll-region\s*>\s*\*\s*\{[^}]*flex:\s*0\s+0\s+auto;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.code-diff-layout\s*\{[^}]*flex:\s*1\s+1\s+auto;[^}]*height:\s*auto;[^}]*overflow:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.code-diff-file-list,\s*\.stage-workbench-panel\s+\.code-diff-detail\s*\{[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
     expect(themeCss).toMatch(/\.prompt-preview\s*\{[^}]*white-space:\s*pre-wrap;[^}]*overflow-wrap:\s*anywhere;[^}]*word-break:\s*break-word;/s);
   });
 
@@ -555,14 +560,16 @@ describe("CodeDraftPanel", () => {
     );
   });
 
-  it("lets the shared workbench tab own full-content scrolling instead of nesting prompt-preview scrollbars", () => {
+  it("keeps prompt preview blocks expanded while code diff columns own their own scrolling", () => {
     expect(themeCss).toMatch(/\.workbench-shell\s*\{[^}]*overflow:\s*hidden;/s);
     expect(themeCss).toMatch(/\.workbench-panel-body\s*\{[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
-    expect(themeCss).not.toMatch(/\.workbench-tab\s*\{[^}]*overflow-y:\s*auto;/s);
-    expect(themeCss).not.toMatch(/\.code-draft-panel\s*\{[^}]*overflow-y:\s*auto;/s);
     expect(themeCss).toMatch(
       /\.code-draft-panel\s*>\s*\.side-panel-scroll-body\s*\{[^}]*min-height:\s*auto;[^}]*overflow:\s*visible;/s,
     );
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.code-draft-panel\s*>\s*\.code-diff-scroll-region\s*\{[^}]*overflow:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.code-stage-analysis-stack\s*\{[^}]*overflow-y:\s*auto;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.code-diff-file-list,\s*\.stage-workbench-panel\s+\.code-diff-detail\s*\{[^}]*overflow-y:\s*auto;/s);
+    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.stage-workbench-panel\s+\.code-diff-layout\s*\{[\s\S]*grid-template-rows:\s*minmax\(0,\s*0\.8fr\)\s+minmax\(0,\s*1\.2fr\);/);
     expect(themeCss).toMatch(
       /\.generation-plan-panel\s+\.prompt-preview\s*\{[^}]*overflow-x:\s*hidden;[^}]*\}[\s\S]*\.code-draft-panel\s+\.prompt-preview,\s*\.code-draft-panel\s+\.generation-plan-panel\s+\.prompt-preview,\s*\.code-draft-panel\s+\.code-diff-payload\s*\{[^}]*min-height:\s*auto;[^}]*overflow:\s*visible;/s,
     );

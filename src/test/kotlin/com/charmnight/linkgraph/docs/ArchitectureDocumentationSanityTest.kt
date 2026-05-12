@@ -74,4 +74,22 @@ class ArchitectureDocumentationSanityTest {
         assertTrue(resolvingReadme.contains("Java PSI"))
         assertTrue(resolvingReadme.contains("Spring 语义"))
     }
+
+    @Test
+    fun publicDocsExcludeInternalPlansAndMachineLocalPaths() {
+        val docsRoot = Path.of("docs")
+        val publicDocs = Files.walk(docsRoot)
+            .filter { path -> Files.isRegularFile(path) }
+            .filter { path -> path.toString().endsWith(".md") }
+            .filter { path -> !path.startsWith(docsRoot.resolve("internal")) }
+            .toList()
+
+        assertFalse(Files.exists(docsRoot.resolve("superpowers")), "内部 superpowers 计划不应保留在公开 docs 入口下。")
+        assertTrue(publicDocs.isNotEmpty())
+        publicDocs.forEach { path ->
+            val source = Files.readString(path)
+            assertFalse(source.contains("/Users/"), "公开文档不能包含本机绝对路径: $path")
+            assertFalse(source.contains("docs/superpowers"), "公开文档不能链接内部 superpowers 计划: $path")
+        }
+    }
 }

@@ -188,7 +188,9 @@ internal class GraphBrowserBridgeRegistrar(
             )
         }
         requestOpenSettingsQuery.addSafeHandler("打开设置") {
-            bridge.dispatch(GraphEditorMessage.OpenSettings)
+            dispatchBridgeAsync("打开设置") {
+                GraphEditorMessage.OpenSettings
+            }
         }
         applyCodeDraftsQuery.addSafeHandler("写入全部代码草稿") {
             dispatchBridgeAsync("写入全部代码草稿") {
@@ -206,7 +208,9 @@ internal class GraphBrowserBridgeRegistrar(
             }
         }
         requestDraftNavigationQuery.addSafePayloadHandler("代码草稿导航", GraphBrowserPayloadKind.STRUCTURED) { targetPath ->
-            bridge.dispatch(GraphEditorMessage.RequestDraftNavigation(targetPath))
+            dispatchBridgeAsync("代码草稿导航") {
+                GraphEditorMessage.RequestDraftNavigation(targetPath)
+            }
         }
         requestArtifactQuery.addSafePayloadHandler("artifact 请求", GraphBrowserPayloadKind.STRUCTURED) { payload ->
             dispatchArtifactSlice(GraphBrowserPayloadParser.parseEncodedList(payload))

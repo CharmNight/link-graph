@@ -252,7 +252,7 @@ export function CodeDraftPanel({
         ) : null}
       </div>
 
-      <div className="side-panel-scroll-body workbench-page-flow">
+      <div className={selectedDraft ? "side-panel-scroll-body workbench-page-flow code-diff-scroll-region" : "side-panel-scroll-body workbench-page-flow"}>
         {warnings.length > 0 ? (
           <div className="warning-list">
             {warnings.map((warning) => (

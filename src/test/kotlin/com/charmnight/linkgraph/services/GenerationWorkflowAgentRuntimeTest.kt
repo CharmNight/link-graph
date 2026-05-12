@@ -240,6 +240,96 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         assertTrue(snapshot.operationFeedback?.message?.contains("结构化 editOperations") == true)
     }
 
+    fun testOpenCodeDraftNativeDiffRejectsAbsolutePathOutsideProject() {
+        val outsideDir = kotlin.io.path.createTempDirectory("link-graph-native-diff-outside-test")
+        val outsideFile = outsideDir.resolve("ExternalController.java")
+        Files.writeString(
+            outsideFile,
+            """
+                package outside;
+
+                public class ExternalController {
+                    public String unsafe() {
+                        return "outside";
+                    }
+                }
+            """.trimIndent(),
+        )
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        stateService.loadGraph(sampleGraph(), "currentMethod")
+        stateService.asyncRequests.markGeneratedCodeDrafts(
+            drafts = listOf(
+                GeneratedCodeDraft(
+                    id = "draft-outside-path",
+                    sourceNodeId = "method:file-download",
+                    title = "ExternalController.java",
+                    targetPath = outsideFile.toString(),
+                    editOperations = listOf(
+                        CodeEditOperation(
+                            operationId = "op-outside",
+                            filePath = outsideFile.toString(),
+                            scopeId = "scope-outside",
+                            kind = CodeEditOperationKind.REPLACE_METHOD_BODY,
+                            payload = """{
+                                return "rewritten";
+                            }""".trimIndent(),
+                        ),
+                    ),
+                    editScopes = listOf(
+                        EditScope(
+                            scopeId = "scope-outside",
+                            targetNodeId = "method:outside",
+                            filePath = outsideFile.toString(),
+                            language = "JAVA",
+                            symbolKind = "METHOD",
+                            symbolSignature = "outside.ExternalController.unsafe():java.lang.String",
+                            startLine = 4,
+                            endLine = 6,
+                            allowedChangeKinds = listOf("REPLACE_METHOD_BODY"),
+                        ),
+                    ),
+                ),
+            ),
+            warnings = emptyList(),
+            source = LlmResultSource.REMOTE,
+            promptPreview = null,
+        )
+        val mergeRequests = mutableListOf<MergeRequest>()
+        val flows = generationTestFlows(
+            project = project,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
+            planningContextFactory = PlanningContextFactory(
+                graphDiffer = GraphDiffer(),
+                syncPreviewPlanner = SyncPreviewPlanner(),
+                graphGenerationService = GraphGenerationService(),
+                settingsProvider = { LinkGraphSettingsState() },
+            ),
+            graphGenerationService = GraphGenerationService(),
+            codeGenerationService = CodeGenerationService(),
+            codeDraftWriterService = CodeDraftWriterService(project),
+            sourceNavigationServiceProvider = { project.getService(SourceNavigationService::class.java) },
+            settingsProvider = { LinkGraphSettingsState() },
+            asyncRequestLifecycle = AsyncRequestLifecycleSupport(
+                project = project,
+                timeoutOverrideProvider = { 500L },
+            ),
+            logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
+            showCodeDraftMergeRequest = { _, request ->
+                mergeRequests += request
+            },
+        )
+
+        flows.apply.openCodeDraftNativeDiff("draft-outside-path")
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+
+        val snapshot = stateService.snapshot()
+        assertTrue(mergeRequests.isEmpty(), "project-external draft path must not open a writable merge")
+        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.ERROR, snapshot.operationFeedback?.level)
+        assertTrue(snapshot.operationFeedback?.message?.contains("项目目录之外") == true, snapshot.operationFeedback?.message)
+    }
+
     fun testApplySingleCodeDraftWritesFileAndPublishesFeedback() {
         val projectBasePath = project.basePath?.toString() ?: throw AssertionError("project base path unavailable")
         val targetPath = "build/tests/apply-single-draft/RuntimeChain.java"
