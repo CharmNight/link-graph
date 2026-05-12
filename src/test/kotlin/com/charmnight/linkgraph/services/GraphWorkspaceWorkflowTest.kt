@@ -168,6 +168,52 @@ class GraphWorkspaceWorkflowTest {
     }
 
     @Test
+    fun missingDiffInputsPublishesWarningFeedbackInsteadOfSilentNoop() {
+        val stateService = GraphEditorStateService()
+        val workflow = GraphWorkspaceWorkflow(
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            workspaceGraphCommitter = stateService.workspaceGraphCommitter(),
+            eventSink = stateService.applicationEventSink(),
+            mermaidImporter = MermaidImporter(),
+            mermaidValidator = MermaidValidator(),
+            mermaidExporter = MermaidExporter(),
+            graphDiffer = GraphDiffer(),
+            syncPreviewPlanner = SyncPreviewPlanner(),
+            copyToClipboard = { false },
+        )
+
+        val diffResult = workflow.showDiffMode()
+
+        val snapshot = stateService.snapshot()
+        assertNull(diffResult)
+        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
+        assertTrue(snapshot.operationFeedback?.message?.contains("缺少") == true, snapshot.operationFeedback?.message)
+    }
+
+    @Test
+    fun emptySyncPreviewPublishesNeutralFeedback() {
+        val stateService = GraphEditorStateService()
+        val workflow = GraphWorkspaceWorkflow(
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            workspaceGraphCommitter = stateService.workspaceGraphCommitter(),
+            eventSink = stateService.applicationEventSink(),
+            mermaidImporter = MermaidImporter(),
+            mermaidValidator = MermaidValidator(),
+            mermaidExporter = MermaidExporter(),
+            graphDiffer = GraphDiffer(),
+            syncPreviewPlanner = SyncPreviewPlanner(),
+            copyToClipboard = { false },
+        )
+
+        val items = workflow.requestSyncPreview()
+
+        val snapshot = stateService.snapshot()
+        assertTrue(items.isEmpty())
+        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.INFO, snapshot.operationFeedback?.level)
+        assertTrue(snapshot.operationFeedback?.message?.contains("没有可同步") == true, snapshot.operationFeedback?.message)
+    }
+
+    @Test
     fun frontendLayoutChangeDoesNotRequestBrowserSync() {
         val stateService = GraphEditorStateService()
         var syncCount = 0

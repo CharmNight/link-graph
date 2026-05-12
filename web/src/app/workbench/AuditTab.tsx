@@ -572,7 +572,7 @@ function AuditPagePanel({
       ) : null}
 
       {activeSectionId === "audit.candidate-changes" ? (
-        <div className="audit-page-body candidate-changes-section-body">
+        <div className="audit-page-body audit-split-section-body candidate-changes-section-body">
           <CandidateChangeList
             changes={changes}
             selectedChangeId={state.selectedChangeId ?? null}
@@ -584,7 +584,7 @@ function AuditPagePanel({
       ) : null}
 
       {activeSectionId === "audit.investigation-threads" ? (
-        <div className="audit-page-body">
+        <div className="audit-page-body audit-split-section-body investigation-threads-section-body">
           <InvestigationThreadList
             threads={threads}
             latestTurnOutcome={latestTurnOutcome}

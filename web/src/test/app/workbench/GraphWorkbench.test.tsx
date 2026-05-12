@@ -53,6 +53,29 @@ describe("GraphWorkbench", () => {
     expect(themeCss).not.toMatch(/\.side-panel-scroll-body\s*\{[^}]*overflow:\s*auto;/s);
   });
 
+  it("keeps the stage workbench frame fixed while inner panes own vertical scrolling", () => {
+    expect(themeCss).toMatch(
+      /\.stage-workbench-panel\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\);[^}]*overflow:\s*hidden;/s,
+    );
+    expect(themeCss).toMatch(
+      /\.stage-workbench-panel\s+\.workbench-panel-body\s*\{[^}]*overflow:\s*hidden;/s,
+    );
+    expect(themeCss).toMatch(
+      /\.stage-workbench-panel\s+\.explanation-layout\s*\{[^}]*align-items:\s*stretch;[^}]*overflow:\s*hidden;/s,
+    );
+    expect(themeCss).toMatch(
+      /\.stage-workbench-panel\s+\.explanation-step-list-section\.expanded,\s*\.stage-workbench-panel\s+\.explanation-step-detail-section\.expanded\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);/s,
+    );
+    expect(themeCss).toMatch(
+      /\.stage-workbench-panel\s+\.explanation-step-list-section\s+\.workbench-section-card-body,\s*\.stage-workbench-panel\s+\.explanation-step-detail-section\s+\.workbench-section-card-body\s*\{[^}]*height:\s*auto;[^}]*overflow:\s*hidden;/s,
+    );
+    expect(themeCss).toMatch(
+      /\.stage-workbench-panel\s+\.explanation-step-list-section\s+\.workbench-step-list,\s*\.stage-workbench-panel\s+\.explanation-step-detail-section\s+\.workbench-step-detail\s*\{[^}]*height:\s*auto;[^}]*overflow-y:\s*auto;/s,
+    );
+    expect(themeCss).not.toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*?\.stage-workbench-panel\s+\.workbench-panel-body\s*\{[^}]*overflow-y:\s*auto;/s);
+    expect(themeCss).not.toMatch(/@media\s*\(max-height:\s*760px\)\s+and\s+\(min-width:\s*1061px\)\s*\{[\s\S]*?\.stage-workbench-panel,[\s\S]*?overflow:\s*auto;/s);
+  });
+
   it("lets the active workbench tab fill unused vertical panel space", () => {
     expect(themeCss).toMatch(/\.workbench-shell\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);/s);
     expect(themeCss).toMatch(/\.workbench-panel-body>\*\s*\{[^}]*height:\s*auto;[^}]*align-self:\s*start;[^}]*min-height:\s*0;/s);
@@ -63,7 +86,8 @@ describe("GraphWorkbench", () => {
     expect(themeCss).not.toMatch(/\.audit-tab-panel\s*\{[^}]*height:\s*100%;/s);
     expect(themeCss).toMatch(/\.audit-page-panel\s*\{[^}]*min-height:\s*0;[^}]*grid-template-rows:\s*auto\s+auto;/s);
     expect(themeCss).toMatch(/\.audit-page-panel\s*\{[^}]*overflow:\s*visible;/s);
-    expect(themeCss).not.toMatch(/\.audit-page-panel\s*\{[^}]*height:\s*100%;/s);
+    expect(themeCss).not.toMatch(/(?<!stage-workbench-panel\s)\.audit-page-panel\s*\{[^}]*height:\s*100%;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.audit-page-panel\s*\{[^}]*height:\s*100%;[^}]*overflow:\s*hidden;/s);
   });
 
   it("lets desktop workbench layouts grow vertically instead of being hidden by the stage shell", () => {

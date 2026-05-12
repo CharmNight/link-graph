@@ -96,21 +96,21 @@ describe("DraftTab", () => {
     expect(body).not.toHaveClass("overflow-auto");
   });
 
-  it("lets draft rows expand into the workbench scroll owner instead of clipping generated follow-up sections", () => {
+  it("uses independent scroll panes for draft navigation and draft detail inside the stage workbench", () => {
     expect(themeCss).toMatch(/\.draft-layout\s*\{[^}]*align-content:\s*start;[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/\.workbench-draft-sidebar\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/\.draft-layout\s+\.workbench-section-card\.expanded\s*\{[^}]*flex:\s*0\s+0\s+auto;[^}]*min-height:\s*auto;/s);
-    expect(themeCss).toMatch(/\.workbench-draft-main\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.explanation-tab,\s*\.stage-workbench-panel\s+\.draft-tab\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);[^}]*overflow:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.draft-layout\s*\{[^}]*height:\s*100%;[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\);[^}]*overflow:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.workbench-draft-sidebar,\s*\.stage-workbench-panel\s+\.workbench-draft-main\s*\{[^}]*min-height:\s*0;[^}]*height:\s*100%;[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.draft-layout\s+\.workbench-section-card\.expanded,\s*\.stage-workbench-panel\s+\.draft-layout\s+\.workbench-section-card-body,\s*\.stage-workbench-panel\s+\.draft-layout\s+\.workbench-section-card-body\s*>\s*\.workbench-draft-section\s*\{[^}]*flex:\s*1\s+1\s+auto;[^}]*min-height:\s*0;/s);
   });
 
-  it("keeps draft detail below the tab header instead of letting content be covered", () => {
+  it("keeps draft detail below the tab header without changing mobile stacking behavior", () => {
     expect(themeCss).toMatch(/\.draft-tab\s*\{[^}]*grid-template-rows:\s*auto\s+auto;/s);
     expect(themeCss).toMatch(/\.draft-layout\s*\{[^}]*min-height:\s*0;[^}]*align-content:\s*start;[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.draft-layout\s*\{[\s\S]*grid-template-columns:\s*1fr;[\s\S]*grid-template-rows:\s*auto\s+auto;[\s\S]*align-items:\s*stretch;/);
-    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.workbench-draft-sidebar,\s*\.workbench-draft-main\s*\{[\s\S]*min-height:\s*auto;/);
-    expect(themeCss).toMatch(/\.draft-layout\s+\.workbench-section-card-body\s*\{[^}]*flex:\s*0\s+0\s+auto;[^}]*min-height:\s*auto;/s);
-    expect(themeCss).toMatch(/\.draft-layout\s+\.workbench-section-card-body\s*>\s*\.workbench-draft-section\s*\{[^}]*min-height:\s*auto;/s);
-    expect(themeCss).toMatch(/\.workbench-draft-main\s*\{[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.draft-layout\s*\{[\s\S]*grid-template-columns:\s*1fr;[\s\S]*align-items:\s*stretch;/);
+    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.stage-workbench-panel\s+\.draft-layout\s*\{[\s\S]*grid-template-rows:\s*minmax\(0,\s*0\.9fr\)\s+minmax\(0,\s*1\.1fr\);/);
+    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.stage-workbench-panel\s+\.workbench-draft-sidebar,\s*\.stage-workbench-panel\s+\.workbench-draft-main,[\s\S]*\.workbench-draft-sidebar,[\s\S]*\.workbench-draft-main\s*\{[\s\S]*min-height:\s*0;[\s\S]*\}/);
+    expect(themeCss).not.toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.stage-workbench-panel\s+\.workbench-panel-body\s*\{[^}]*overflow-y:\s*auto;/);
   });
 
   it("expands the selected draft note list so note context is visible", () => {

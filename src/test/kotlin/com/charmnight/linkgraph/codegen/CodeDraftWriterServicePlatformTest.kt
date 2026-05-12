@@ -433,4 +433,76 @@ class CodeDraftWriterServicePlatformTest : BasePlatformTestCase() {
         assertTrue(written.contains("// unsaved change"), written)
         assertTrue(written.contains("return baseUrl.trim();"), written)
     }
+
+    fun testWriteDraftRejectsAllPreparedEditsWhenAnyAnchorIsStale() {
+        val projectDir = Files.createDirectories(
+            java.nio.file.Path.of(project.basePath!!).resolve("build/test-atomic-prepared-edits-${System.nanoTime()}"),
+        )
+        val targetFile = projectDir.resolve("src/main/java/com/example/CommonController.java")
+        Files.createDirectories(targetFile.parent)
+        Files.writeString(
+            targetFile,
+            """
+                package com.example;
+
+                public class CommonController {
+                    public String fileDownload(String baseUrl) {
+                        return baseUrl;
+                    }
+
+                    public String uploadFile(String fileName) {
+                        return fileName;
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(targetFile)
+            ?: error("virtual file not found")
+        val document = FileDocumentManager.getInstance().getDocument(virtualFile)
+            ?: error("document not found")
+        val staleAnchorOffset = document.text.indexOf("return fileName;")
+        val prepared = PreparedCodeEditBatch(
+            canApply = true,
+            previewText = document.text,
+            preparedEdits = listOf(
+                PreparedCodeEdit(
+                    operationId = "op-insert-header",
+                    filePath = "src/main/java/com/example/CommonController.java",
+                    scopeId = "scope-header",
+                    kind = CodeEditOperationKind.ADD_IMPORT,
+                    targetSymbolSignature = null,
+                    startOffset = 0,
+                    endOffset = 0,
+                    beforeText = "",
+                    afterText = "// generated header\n",
+                ),
+                PreparedCodeEdit(
+                    operationId = "op-stale-upload",
+                    filePath = "src/main/java/com/example/CommonController.java",
+                    scopeId = "scope-upload-file",
+                    kind = CodeEditOperationKind.REPLACE_METHOD_BODY,
+                    targetSymbolSignature = "com.example.CommonController.uploadFile(java.lang.String):java.lang.String",
+                    startOffset = staleAnchorOffset,
+                    endOffset = staleAnchorOffset + "return fileName;".length,
+                    beforeText = "return missing;",
+                    afterText = "return fileName.trim();",
+                ),
+            ),
+        )
+        val method = CodeDraftWriterService::class.java.getDeclaredMethod(
+            "applyPreparedEdits",
+            java.nio.file.Path::class.java,
+            PreparedCodeEditBatch::class.java,
+        )
+        method.isAccessible = true
+
+        @Suppress("UNCHECKED_CAST")
+        val warnings = method.invoke(CodeDraftWriterService(project), targetFile, prepared) as List<String>
+        val written = document.text
+
+        assertTrue(warnings.any { it.contains("patch 锚点已失效") }, warnings.joinToString(" | "))
+        kotlin.test.assertFalse(written.contains("// generated header"), written)
+        assertTrue(written.contains("return fileName;"), written)
+    }
 }

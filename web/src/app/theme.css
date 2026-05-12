@@ -3807,72 +3807,6 @@ button {
   }
 }
 
-@container (max-width: 620px) {
-  .workbench-tab-head {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
-
-  .explanation-layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto;
-    align-content: start;
-  }
-
-  .explanation-prompt-section,
-  .explanation-step-list-section,
-  .explanation-step-detail-section {
-    grid-column: 1;
-  }
-
-  .draft-layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto;
-    align-items: stretch;
-  }
-
-  .workbench-before-after {
-    grid-template-columns: 1fr;
-  }
-
-  .workbench-draft-sidebar,
-  .workbench-draft-main {
-    min-height: auto;
-  }
-
-  .workbench-draft-sidebar {
-    grid-template-rows: auto auto;
-  }
-
-  .workbench-candidate-content {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto;
-    align-items: stretch;
-  }
-
-  .workbench-candidate-selector,
-  .workbench-candidate-detail-pane,
-  .workbench-candidate-card {
-    min-height: auto;
-  }
-
-  .workbench-candidate-selector {
-    max-height: none;
-    overflow: visible;
-  }
-
-  .workbench-step-detail-head .panel-actions {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
-
-  .workbench-step-detail-head .ghost-button,
-  .workbench-step-detail-head .primary-button,
-  .workbench-candidate-card .primary-button {
-    width: 100%;
-  }
-}
-
 /* Hybrid workflow workbench */
 body {
   min-width: 0;
@@ -4855,7 +4789,7 @@ button:disabled {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   container-type: inline-size;
-  overflow: auto;
+  overflow: hidden;
   padding: 12px;
 }
 
@@ -4873,10 +4807,299 @@ button:disabled {
 
 .stage-workbench-panel .workbench-panel-body {
   height: 100%;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
   border-color: var(--line);
   background: var(--panel-soft);
   color: var(--text);
   box-shadow: none;
+}
+
+.stage-workbench-panel .workbench-panel-body>* {
+  height: 100%;
+  align-self: stretch;
+}
+
+.stage-workbench-panel .workbench-tab {
+  height: 100%;
+  align-content: stretch;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.stage-workbench-panel .explanation-tab,
+.stage-workbench-panel .draft-tab {
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.stage-workbench-panel .audit-tab {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.stage-workbench-panel .code-draft-panel {
+  grid-template-rows: minmax(0, 0.42fr) auto minmax(0, 0.58fr);
+  overflow: hidden;
+}
+
+.stage-workbench-panel .explanation-layout {
+  height: 100%;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-items: stretch;
+  align-content: stretch;
+  overflow: hidden;
+}
+
+.stage-workbench-panel .explanation-prompt-section {
+  grid-row: 1;
+}
+
+.stage-workbench-panel .explanation-step-list-section,
+.stage-workbench-panel .explanation-step-detail-section {
+  grid-row: 2;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.stage-workbench-panel .explanation-step-list-section.expanded,
+.stage-workbench-panel .explanation-step-detail-section.expanded {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.stage-workbench-panel .explanation-step-list-section .workbench-section-card-body,
+.stage-workbench-panel .explanation-step-detail-section .workbench-section-card-body {
+  min-height: 0;
+  height: auto;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.stage-workbench-panel .explanation-step-list-section .workbench-step-list,
+.stage-workbench-panel .explanation-step-detail-section .workbench-step-detail {
+  height: auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.stage-workbench-panel .draft-layout {
+  height: 100%;
+  grid-template-rows: minmax(0, 1fr);
+  align-content: stretch;
+  overflow: hidden;
+}
+
+.stage-workbench-panel .workbench-draft-sidebar,
+.stage-workbench-panel .workbench-draft-main {
+  min-height: 0;
+  height: 100%;
+  align-content: start;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.stage-workbench-panel .draft-layout .workbench-section-card.expanded,
+.stage-workbench-panel .draft-layout .workbench-section-card-body,
+.stage-workbench-panel .draft-layout .workbench-section-card-body>.workbench-draft-section {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.stage-workbench-panel .audit-tab-panel,
+.stage-workbench-panel .audit-page-panel {
+  min-height: 0;
+  height: 100%;
+  align-content: stretch;
+  overflow: hidden;
+}
+
+.stage-workbench-panel .audit-page-panel {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.stage-workbench-panel .audit-page-body {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.stage-workbench-panel .audit-split-section-body {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.stage-workbench-panel .audit-split-section-body>.workbench-candidate-list {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.stage-workbench-panel .audit-split-section-body .workbench-candidate-content {
+  height: 100%;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.stage-workbench-panel .audit-split-section-body .workbench-candidate-selector,
+.stage-workbench-panel .audit-split-section-body .workbench-candidate-detail-pane {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.stage-workbench-panel .audit-split-section-body .workbench-candidate-card {
+  min-height: 0;
+}
+
+.stage-workbench-panel .code-draft-panel>.side-panel-scroll-body {
+  min-height: 0;
+}
+
+.stage-workbench-panel .code-stage-analysis-stack {
+  min-height: 0;
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.stage-workbench-panel .code-draft-panel>.code-diff-scroll-region {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.stage-workbench-panel .code-diff-scroll-region>* {
+  flex: 0 0 auto;
+}
+
+.stage-workbench-panel .code-diff-layout {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.stage-workbench-panel .code-diff-file-list,
+.stage-workbench-panel .code-diff-detail {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+@container (max-width: 620px) {
+  .workbench-tab-head {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .stage-workbench-panel .explanation-layout,
+  .explanation-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .stage-workbench-panel .explanation-layout {
+    grid-template-rows: auto minmax(0, 0.9fr) minmax(0, 1.1fr);
+  }
+
+  .explanation-layout {
+    grid-template-rows: auto auto;
+    align-content: start;
+  }
+
+  .stage-workbench-panel .explanation-prompt-section,
+  .explanation-prompt-section,
+  .explanation-step-list-section,
+  .explanation-step-detail-section {
+    grid-column: 1;
+  }
+
+  .stage-workbench-panel .explanation-prompt-section {
+    grid-row: 1;
+  }
+
+  .stage-workbench-panel .explanation-step-list-section {
+    grid-row: 2;
+  }
+
+  .stage-workbench-panel .explanation-step-detail-section {
+    grid-row: 3;
+  }
+
+  .explanation-prompt-section,
+  .explanation-step-list-section,
+  .explanation-step-detail-section {
+    grid-row: auto;
+  }
+
+  .stage-workbench-panel .draft-layout,
+  .draft-layout {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .stage-workbench-panel .draft-layout {
+    grid-template-rows: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  }
+
+  .workbench-before-after {
+    grid-template-columns: 1fr;
+  }
+
+  .stage-workbench-panel .workbench-draft-sidebar,
+  .stage-workbench-panel .workbench-draft-main,
+  .workbench-draft-sidebar,
+  .workbench-draft-main {
+    min-height: 0;
+  }
+
+  .workbench-draft-sidebar {
+    grid-template-rows: auto auto;
+  }
+
+  .stage-workbench-panel .workbench-candidate-content,
+  .workbench-candidate-content {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    align-items: stretch;
+  }
+
+  .stage-workbench-panel .code-diff-layout {
+    grid-template-rows: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  }
+
+  .stage-workbench-panel .workbench-candidate-selector,
+  .stage-workbench-panel .workbench-candidate-detail-pane,
+  .stage-workbench-panel .workbench-candidate-card,
+  .workbench-candidate-selector,
+  .workbench-candidate-detail-pane,
+  .workbench-candidate-card {
+    min-height: 0;
+  }
+
+  .workbench-step-detail-head .panel-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .workbench-step-detail-head .ghost-button,
+  .workbench-step-detail-head .primary-button,
+  .workbench-candidate-card .primary-button {
+    width: 100%;
+  }
 }
 
 .stage-workbench-panel .workbench-tab-nav {
@@ -5367,7 +5590,11 @@ button:disabled {
 
   .stage-workbench-panel,
   .link-outline-scroll {
-    overflow: auto;
+    overflow: hidden;
+  }
+
+  .link-outline-scroll {
+    overflow-y: auto;
   }
 }
 

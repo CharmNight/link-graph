@@ -134,6 +134,50 @@ describe("AuditTab", () => {
     expect(container.querySelector(".workbench-chat-message.assistant.stage-workbench-assistant-block")).not.toBeNull();
   });
 
+  it("marks stage audit split pages so both candidate and risk detail views can scroll independently", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <div className="stage-workbench-panel">
+        <AuditTab
+          state={{
+            ...auditStateFixture(),
+            selectedThreadId: "thread-path-risk",
+            result: {
+              ...auditStateFixture().result!,
+              investigationThreads: [
+                {
+                  threadId: "thread-path-risk",
+                  status: "OPEN",
+                  title: "补充路径风险说明",
+                  targetStepIds: [],
+                  targetNodeIds: ["method:upload-file"],
+                  summary: "当前只有调用点证据。",
+                  evidenceGap: "还没有看到上传工具内部路径校验实现。",
+                  recommendedQuestion: "请继续取证。",
+                  claimType: "RISK_HINT",
+                  evidence: [],
+                  latestTurnOutcomeId: null,
+                },
+              ],
+            },
+          }}
+          onQuestionDraftChange={vi.fn()}
+          onSubmitQuestion={vi.fn()}
+          onSelectChange={vi.fn()}
+          onConfirmChange={vi.fn()}
+          onSelectThread={vi.fn()}
+          onInvestigateThread={vi.fn()}
+        />
+      </div>,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "待确认变更" }));
+    expect(container.querySelector(".candidate-changes-section-body.audit-split-section-body")).not.toBeNull();
+
+    await user.click(screen.getByRole("tab", { name: "风险线程" }));
+    expect(container.querySelector(".investigation-threads-section-body.audit-split-section-body")).not.toBeNull();
+  });
+
   it("lets users choose an explicit QA mode before sending", async () => {
     const user = userEvent.setup();
     const onModeChange = vi.fn();
@@ -1150,7 +1194,8 @@ describe("AuditTab", () => {
     expect(themeCss).toMatch(/\.audit-tab-panel\s*\{[^}]*min-height:\s*0;[^}]*display:\s*grid;[^}]*overflow:\s*visible;/s);
     expect(themeCss).not.toMatch(/\.audit-tab-panel\s*\{[^}]*height:\s*100%;/s);
     expect(themeCss).toMatch(/\.audit-page-panel\s*\{[^}]*min-height:\s*0;[^}]*grid-template-rows:\s*auto\s+auto;[^}]*overflow:\s*visible;/s);
-    expect(themeCss).not.toMatch(/\.audit-page-panel\s*\{[^}]*height:\s*100%;/s);
+    expect(themeCss).not.toMatch(/(?<!stage-workbench-panel\s)\.audit-page-panel\s*\{[^}]*height:\s*100%;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.audit-page-panel\s*\{[^}]*height:\s*100%;[^}]*overflow:\s*hidden;/s);
     expect(themeCss).toMatch(/\.audit-page-body\s*\{[^}]*grid-template-rows:\s*auto;[^}]*overflow:\s*visible;/s);
     expect(themeCss).toMatch(/\.audit-page-body\s*>\s*\.workbench-audit-thread,\s*\.audit-page-body\s*>\s*\.workbench-candidate-list\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*auto;/s);
     expect(themeCss).toMatch(/\.workbench-chat-empty\s*\{[^}]*min-height:\s*0;/s);
@@ -1163,14 +1208,14 @@ describe("AuditTab", () => {
     expect(themeCss).toMatch(/\.request-state-banner-details\s*\{[^}]*overflow:\s*visible;/s);
   });
 
-  it("lets pending-change and risk detail pages use the outer workbench scroll instead of nested panes", () => {
+  it("lets audit split-page selectors and details use independent scroll panes inside the stage workbench", () => {
     expect(themeCss).toMatch(/\.audit-page-body\.candidate-changes-section-body\s*\{[^}]*align-content:\s*start;[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/\.candidate-changes-section-body\s*>\s*\.workbench-candidate-list\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*auto;/s);
-    expect(themeCss).toMatch(/\.candidate-changes-section-body\s+\.workbench-candidate-content\s*\{[^}]*height:\s*auto;[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/\.candidate-changes-section-body\s+\.workbench-candidate-detail-pane\s*\{[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/\.workbench-candidate-selector\s*\{[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.audit-split-section-body\s*\{[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.audit-split-section-body\s*>\s*\.workbench-candidate-list\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.audit-split-section-body\s+\.workbench-candidate-content\s*\{[^}]*height:\s*100%;[^}]*overflow:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.audit-split-section-body\s+\.workbench-candidate-selector,\s*\.stage-workbench-panel\s+\.audit-split-section-body\s+\.workbench-candidate-detail-pane\s*\{[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;/s);
     expect(themeCss).toMatch(/\.workbench-candidate-card\s*\{[^}]*min-height:\s*auto;/s);
-    expect(themeCss).not.toMatch(/\.candidate-changes-section-body\s+\.workbench-candidate-content\s*\{[^}]*minmax\(0,\s*1fr\)/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.audit-split-section-body\s+\.workbench-candidate-card\s*\{[^}]*min-height:\s*0;/s);
   });
 
   it("keeps the audit composer anchored instead of stretching the form out of view on short screens", () => {
@@ -1188,9 +1233,9 @@ describe("AuditTab", () => {
   });
 
   it("stacks candidate selector and detail by workbench container width, not only viewport width", () => {
-    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.workbench-candidate-content\s*\{[\s\S]*grid-template-columns:\s*1fr;[\s\S]*grid-template-rows:\s*auto\s+auto;[\s\S]*align-items:\s*stretch;/);
-    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.workbench-candidate-selector,\s*\.workbench-candidate-detail-pane,\s*\.workbench-candidate-card\s*\{[\s\S]*min-height:\s*auto;/);
-    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.workbench-candidate-selector\s*\{[\s\S]*max-height:\s*none;[\s\S]*overflow:\s*visible;/);
+    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.workbench-candidate-content\s*\{[\s\S]*grid-template-columns:\s*1fr;[\s\S]*grid-template-rows:\s*minmax\(0,\s*0\.9fr\)\s+minmax\(0,\s*1\.1fr\);[\s\S]*align-items:\s*stretch;/);
+    expect(themeCss).toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.workbench-candidate-selector,\s*\.stage-workbench-panel\s+\.workbench-candidate-detail-pane,[\s\S]*\.workbench-candidate-card\s*\{[\s\S]*min-height:\s*0;/);
+    expect(themeCss).not.toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*\.stage-workbench-panel\s+\.workbench-candidate-selector\s*\{[\s\S]*overflow:\s*visible;/);
     expect(themeCss).toMatch(/\.workbench-candidate-detail-pane,\s*\.workbench-candidate-card\s*\{[^}]*overflow-wrap:\s*anywhere;[^}]*word-break:\s*break-word;/s);
   });
 

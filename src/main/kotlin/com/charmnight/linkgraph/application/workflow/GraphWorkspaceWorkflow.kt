@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.diff.GraphDifferResult
 import com.charmnight.linkgraph.application.model.GraphEditScript
 import com.charmnight.linkgraph.application.model.GraphLayoutPosition
+import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
 import com.charmnight.linkgraph.application.port.GraphEditorApplicationEvent
 import com.charmnight.linkgraph.application.port.GraphEditorApplicationEventSink
@@ -79,9 +80,23 @@ internal class GraphWorkspaceWorkflow(
 
     fun showDiffMode(): GraphDifferResult? {
         return when (val result = useCase.showDiffMode(snapshotProvider.snapshot())) {
-            WorkspaceGraphUseCaseResult.MissingDiffInputs -> null
+            WorkspaceGraphUseCaseResult.MissingDiffInputs -> {
+                eventSink.emit(
+                    GraphEditorApplicationEvent.Feedback(
+                        level = ApplicationFeedbackLevel.WARNING,
+                        message = "缺少代码图或设计基线，无法打开代码对比。",
+                    ),
+                )
+                null
+            }
             is WorkspaceGraphUseCaseResult.DiffShown -> result.result.also { diffResult ->
                 eventSink.emit(GraphEditorApplicationEvent.DiffModeShown(diffResult.graph, diffResult.diff))
+                eventSink.emit(
+                    GraphEditorApplicationEvent.Feedback(
+                        level = ApplicationFeedbackLevel.INFO,
+                        message = "已打开代码对比。",
+                    ),
+                )
             }
             else -> null
         }
@@ -90,6 +105,16 @@ internal class GraphWorkspaceWorkflow(
     fun requestSyncPreview(): List<SyncPreviewItem> {
         val result = useCase.requestSyncPreview(snapshotProvider.snapshot())
         eventSink.emit(GraphEditorApplicationEvent.SyncPreviewReady(result.items))
+        eventSink.emit(
+            GraphEditorApplicationEvent.Feedback(
+                level = ApplicationFeedbackLevel.INFO,
+                message = if (result.items.isEmpty()) {
+                    "没有可同步的变更。"
+                } else {
+                    "已打开同步预览。"
+                },
+            ),
+        )
         return result.items
     }
 }
