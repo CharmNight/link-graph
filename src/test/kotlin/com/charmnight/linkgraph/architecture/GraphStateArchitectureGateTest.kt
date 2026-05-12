@@ -12,6 +12,15 @@ class GraphStateArchitectureGateTest {
     private val root: Path = Path.of("").toAbsolutePath()
 
     private fun read(relativePath: String): String = Files.readString(root.resolve(relativePath))
+    private fun ktFilesUnder(path: Path): List<Path> {
+        if (!Files.exists(path)) {
+            return emptyList()
+        }
+        return Files.walk(path)
+            .filter { candidate -> candidate.toString().endsWith(".kt") }
+            .use { paths -> paths.toList() }
+    }
+
     private fun sourceBlock(source: String, marker: String): String {
         val start = source.indexOf(marker)
         if (start < 0) {
@@ -80,9 +89,7 @@ class GraphStateArchitectureGateTest {
             "session.mutateBatch",
             "GraphEditorStateMutationContext",
         )
-        val offenders = Files.walk(servicesRoot)
-            .filter { path -> path.toString().endsWith(".kt") }
-            .use { paths -> paths.toList() }
+        val offenders = ktFilesUnder(servicesRoot)
             .flatMap { path ->
                 val source = Files.readString(path)
                 forbiddenFragments.mapNotNull { fragment ->
@@ -116,11 +123,9 @@ class GraphStateArchitectureGateTest {
             "currentStateService",
             "session.snapshot",
         )
-        val offenders = Files.walk(servicesRoot)
-            .filter { path -> path.toString().endsWith(".kt") }
+        val offenders = ktFilesUnder(servicesRoot)
             .filter { path -> workflowNamePattern.containsMatchIn(path.fileName.toString()) }
             .filter { path -> path.normalize() !in allowedFiles }
-            .use { paths -> paths.toList() }
             .flatMap { path ->
                 val source = Files.readString(path)
                 forbiddenFragments.mapNotNull { fragment ->
@@ -315,9 +320,8 @@ class GraphStateArchitectureGateTest {
             "AsyncRequestLifecycleSupport.kt",
             "AsyncRequestTracker.kt",
         )
-        val offenders = Files.walk(servicesRoot)
+        val offenders = ktFilesUnder(servicesRoot)
             .filter { path -> path.toString().endsWith("Workflow.kt") }
-            .use { paths -> paths.toList() }
             .filterNot { path -> path.fileName.toString() in allowedWorkflowFiles }
             .map { path -> root.relativize(path).toString() }
 
