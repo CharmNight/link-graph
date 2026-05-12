@@ -465,7 +465,7 @@ describe("DraftTab", () => {
           codeDiffDraftVersion: 2,
           implementationSuggestion: {
             status: "FRESH",
-            source: "MOCK",
+            source: "LOCAL_RULE",
             summary: "先修改 OrderController.submit，再补上传目录分支。",
             warnings: [],
             promptPreview: null,

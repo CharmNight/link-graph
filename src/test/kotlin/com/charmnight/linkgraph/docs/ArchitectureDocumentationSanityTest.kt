@@ -34,6 +34,11 @@ class ArchitectureDocumentationSanityTest {
         assertTrue(structure.contains("frontendInstall"))
         assertTrue(structure.contains("frontendPackResources"))
         assertTrue(structure.contains("controllers"))
+        assertTrue(structure.contains("`workbench`"))
+        assertTrue(structure.contains("问答会话"))
+        assertTrue(structure.contains("草稿确认"))
+        assertTrue(structure.contains("证据闸门"))
+        assertTrue(structure.contains("resolver 实现"))
 
         assertTrue(readme.contains("IntelliJ Platform 插件"))
         assertTrue(readme.contains("Mermaid"))
@@ -56,5 +61,17 @@ class ArchitectureDocumentationSanityTest {
 
         assertTrue(limitations.contains("远程 LLM"))
         assertTrue(limitations.contains("回退到本地规则"))
+    }
+
+    @Test
+    fun investigationResolvingDocumentsPackageOrganizationRules() {
+        val resolvingReadme = Files.readString(
+            Path.of("src/main/kotlin/com/charmnight/linkgraph/investigation/resolving/README.md"),
+        )
+
+        assertTrue(resolvingReadme.contains("java/"))
+        assertTrue(resolvingReadme.contains("spring/"))
+        assertTrue(resolvingReadme.contains("Java PSI"))
+        assertTrue(resolvingReadme.contains("Spring 语义"))
     }
 }

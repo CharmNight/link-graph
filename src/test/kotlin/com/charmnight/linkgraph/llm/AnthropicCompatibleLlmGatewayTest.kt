@@ -38,11 +38,17 @@ class AnthropicCompatibleLlmGatewayTest {
             ),
         )
 
-        assertTrue(payload.contains("\"model\": \"MiniMax-M2.7\""))
-        assertTrue(payload.contains("\"system\": \"system prompt\""))
-        assertTrue(payload.contains("\"role\": \"user\""))
-        assertTrue(payload.contains("\"text\": \"user prompt\""))
-        assertTrue(payload.contains("\"max_tokens\": 4096"))
+        val root = LlmJsonSupport.parseJsonObject(payload)
+
+        assertEquals("MiniMax-M2.7", root.get("model").asString)
+        assertEquals("system prompt", root.get("system").asString)
+        assertEquals(4096, root.get("max_tokens").asInt)
+        assertEquals("user", root.getAsJsonArray("messages")[0].asJsonObject.get("role").asString)
+        assertEquals(
+            "user prompt",
+            root.getAsJsonArray("messages")[0].asJsonObject
+                .getAsJsonArray("content")[0].asJsonObject.get("text").asString,
+        )
     }
 
     @Test

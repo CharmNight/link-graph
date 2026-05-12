@@ -22,13 +22,13 @@ class GraphEditorStateSyncSessionTest {
     }
 
     @Test
-    fun projectEditorSessionUsesStateStoreCommitFlowInsteadOfDraftSnapshotBatch() {
-        val source = Files.readString(
-            root.resolve("src/main/kotlin/com/charmnight/linkgraph/services/ProjectEditorSession.kt"),
+    fun projectEditorSessionIsDeletedInFavorOfStateStoreAndPresenters() {
+        assertFalse(
+            Files.exists(root.resolve("src/main/kotlin/com/charmnight/linkgraph/services/ProjectEditorSession.kt")),
         )
-
-        assertFalse(source.contains("withGraphEditorStateSyncSession"))
-        assertFalse(source.contains("markViewGraphChanged"))
-        assertTrue(source.contains("tryCommit"))
+        val stateServiceSource = Files.readString(
+            root.resolve("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorStateService.kt"),
+        )
+        assertTrue(stateServiceSource.contains("tryCommit"))
     }
 }

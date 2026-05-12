@@ -20,7 +20,7 @@ export type GraphPatchAction =
   | "DELETE_EDGE"
   | "ADD_ANNOTATION"
   | "MARK_UNCERTAIN";
-export type LlmResultSource = "DISABLED" | "MOCK" | "REMOTE";
+export type LlmResultSource = "DISABLED" | "LOCAL_RULE" | "REMOTE";
 export type ResultEvidenceLevel = "DIRECT_SOURCE" | "DIRECT_GRAPH" | "CALLSITE_ONLY" | "NOT_OBSERVED";
 export type DraftClaimType = "CODE_FACT" | "RISK_HINT" | "EXPLANATION_NOTE" | "STRUCTURAL_SUGGESTION";
 export type DraftPatchPreviewSource = "AUDIT" | "DIFF_REVIEW" | "LAST_APPLIED";
@@ -45,6 +45,7 @@ export type InvestigationTurnOutcomeStatus =
 export type DraftEntryKind = "CHANGE" | "NOTE";
 export type AuditMessageRole = "USER" | "ASSISTANT";
 export type QaRequestKind = "ASK" | "INVESTIGATE_THREAD";
+export type QaMode = "AUTO" | "ANSWER" | "REVIEW" | "CHANGE" | "INVESTIGATE";
 export type StageEligibilityTarget = "PLAN" | "CODE";
 
 export type NodeType =
@@ -308,6 +309,8 @@ export interface ResultEvidenceFinding {
 export interface GraphPatchResult {
   source: LlmResultSource;
   question: string;
+  requestedMode?: QaMode | null;
+  effectiveMode?: QaMode | null;
   answer: string;
   promptPreview: string | null;
   promptPreviewArtifactId?: string | null;
@@ -345,11 +348,13 @@ export interface SourceSnippetContext {
 
 export interface EvidenceTraceEntry {
   nodeId: string;
+  resolvedNodeId?: string | null;
   filePath: string;
   reason: string;
   startLine?: number | null;
   endLine?: number | null;
   includedInPrompt: boolean;
+  mappingTrace?: string[];
 }
 
 export interface EditScope {
@@ -516,6 +521,7 @@ export interface ReplayableQaRequest {
   requestId: string;
   kind: QaRequestKind;
   question: string;
+  mode?: QaMode;
   selectedNodeIds: string[];
   sourceThreadId?: string | null;
   baseSessionId?: string | null;
@@ -588,6 +594,7 @@ export interface AuditWorkbenchState {
   selectedChangeId?: string | null;
   selectedThreadId?: string | null;
   questionDraft: string;
+  selectedMode?: QaMode;
   scopeLabel?: string | null;
 }
 
@@ -608,6 +615,8 @@ export interface GenerationPlanDiscussionSession {
   sessionId: string;
   messages: GenerationPlanDiscussionMessage[];
   focusItemId?: string | null;
+  promptPreview?: string | null;
+  promptPreviewArtifactId?: string | null;
 }
 
 export interface DraftImplementationSuggestionState {
@@ -660,7 +669,7 @@ export interface SyncPreviewItem {
   risk: "LOW" | "MEDIUM" | "HIGH";
 }
 
-export type GenerationPlanSource = "DISABLED" | "MOCK" | "REMOTE";
+export type GenerationPlanSource = "DISABLED" | "LOCAL_RULE" | "REMOTE";
 
 export interface GenerationPlanItem {
   id: string;
@@ -781,6 +790,8 @@ export interface AsyncRequestState {
   model?: string | null;
   endpointSummary?: string | null;
   promptPreviewAvailable?: boolean;
+  requestedMode?: QaMode | null;
+  effectiveMode?: QaMode | null;
 }
 
 export interface GraphSurfaceExperimentFlags {

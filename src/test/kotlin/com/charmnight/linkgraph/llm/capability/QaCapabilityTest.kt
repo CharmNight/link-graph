@@ -2,8 +2,10 @@ package com.charmnight.linkgraph.llm.capability
 
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.llm.GraphAuditContext
+import com.charmnight.linkgraph.llm.GraphQaContext
+import com.charmnight.linkgraph.llm.EvidenceTraceEntry
 import com.charmnight.linkgraph.llm.GraphPatchResult
+import com.charmnight.linkgraph.llm.LlmProviderPresets
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.llm.SourceSnippetContext
 import com.charmnight.linkgraph.llm.artifact.ArtifactType
@@ -21,10 +23,17 @@ import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.EdgeType
+import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorStateService
-import com.charmnight.linkgraph.workbench.AuditConversationMessage
-import com.charmnight.linkgraph.workbench.AuditConversationSession
-import com.charmnight.linkgraph.workbench.AuditMessageRole
+import com.charmnight.linkgraph.ui.GraphSceneId
+import com.charmnight.linkgraph.ui.view.FlowchartSummary
+import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
+import com.charmnight.linkgraph.ui.view.GraphProjectionIndex
+import com.charmnight.linkgraph.ui.view.GraphProjectionMappingKind
+import com.charmnight.linkgraph.ui.view.GraphProjectionNodeMapping
+import com.charmnight.linkgraph.workbench.QaConversationMessage
+import com.charmnight.linkgraph.workbench.QaConversationSession
+import com.charmnight.linkgraph.workbench.QaMessageRole
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 import com.charmnight.linkgraph.workbench.InvestigationThread
@@ -42,9 +51,9 @@ class QaCapabilityTest : BasePlatformTestCase() {
     fun testBuildsQaInitialStateFromQuestionAndUsesQaCapabilityId() {
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "当前证据不足，需要继续读取代码。",
                     promptPreview = "prompt",
@@ -56,7 +65,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         val state = capability.buildInitialState(
             input = QaCapabilityInput(
                 question = "解释上传链路",
-                auditContext = GraphAuditContext(),
+                qaContext = GraphQaContext(),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
@@ -70,12 +79,12 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertEquals("qa", state.capabilityId)
     }
 
-    fun testPreservesFallbackWarningsWhenAuditExecutorFallsBack() {
+    fun testPreservesFallbackWarningsWhenQaExecutorFallsBack() {
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "已回退到本地规则。",
                     promptPreview = "prompt",
@@ -84,10 +93,10 @@ class QaCapabilityTest : BasePlatformTestCase() {
             },
         )
 
-        val result = capability.executeAudit(
+        val result = capability.executeQa(
             input = QaCapabilityInput(
                 question = "请围绕当前链路进行问答",
-                auditContext = GraphAuditContext(),
+                qaContext = GraphQaContext(),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
@@ -96,17 +105,71 @@ class QaCapabilityTest : BasePlatformTestCase() {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertTrue(result.warnings.single().contains("已回退"))
     }
 
-    fun testUsesGraphToolBeforeRunningAuditExecutor() {
+    fun testRuntimeDeadlineCapsQaExecutorSettingsTimeout() {
+        var capturedTimeoutSeconds: Int? = null
+        val graph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:upload",
+                    type = NodeType.METHOD,
+                    title = "UploadService.upload",
+                ),
+            ),
+        )
+        val coordinator = AgentRunCoordinator()
+        val capability = QaCapability(
+            defaultBudget = RunBudget(maxRuntimeSeconds = 5),
+            qaExecutor = { input, _, _ ->
+                capturedTimeoutSeconds = input.settings.sanitized().timeoutSeconds
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "ok",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+
+        coordinator.run(
+            capability = capability,
+            input = QaCapabilityInput(
+                question = "解释上传链路",
+                qaContext = GraphQaContext(
+                    factGraph = graph,
+                    editableGraph = graph,
+                    selectedNodeIds = listOf("method:upload"),
+                ),
+                settings = LinkGraphSettingsState(
+                    llmEnabled = true,
+                    provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                    endpoint = "https://example.com",
+                    apiKey = "test-key",
+                    model = "gpt-test",
+                    timeoutSeconds = 300,
+                ),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = { testSnapshot(workingGraph = graph, selectedNodeId = "method:upload").toToolGraphSnapshot() },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertNotNull(capturedTimeoutSeconds)
+        assertTrue(capturedTimeoutSeconds!! <= 5)
+    }
+
+    fun testUsesGraphToolBeforeRunningQaExecutor() {
         var toolInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "先读图，再执行旧问答。",
                     promptPreview = "prompt",
@@ -183,7 +246,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请围绕当前链路进行问答",
-                auditContext = GraphAuditContext(),
+                qaContext = GraphQaContext(),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
@@ -198,7 +261,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -211,7 +274,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertEquals("get_selected_scope", result.finalState.stepRecords[1].toolName)
     }
 
-    fun testReadsCodeEvidenceBeforeRunningAuditExecutorWhenSourceContextIsMissing() {
+    fun testReadsCodeEvidenceBeforeRunningQaExecutorWhenSourceContextIsMissing() {
         val sourceFile = Path.of(requireNotNull(project.basePath))
             .resolve("src/main/java/com/example/QaCapabilityUploadService.java")
         Files.createDirectories(sourceFile.parent)
@@ -228,10 +291,10 @@ class QaCapabilityTest : BasePlatformTestCase() {
         var capturedSourceContext: List<SourceSnippetContext> = emptyList()
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            auditExecutor = { input, _, _ ->
-                capturedSourceContext = input.auditContext.sourceContext
+            qaExecutor = { input, _, _ ->
+                capturedSourceContext = input.qaContext.sourceContext
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "已读取代码证据。",
                     promptPreview = "prompt",
@@ -243,7 +306,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请结合代码解释这里为什么会走 fallback",
-                auditContext = GraphAuditContext(
+                qaContext = GraphQaContext(
                     selectedNodeIds = listOf("method:upload-file"),
                 ),
             ),
@@ -266,7 +329,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -280,7 +343,488 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertTrue(snippet.snippet?.contains("fallback(request)") == true)
     }
 
-    fun testStopsBeforeAuditExecutionWhenCodeReadExceedsBudget() {
+    fun testReadsCalleeMethodEvidenceWhenSelectedNodeIsInvocationCallsite() {
+        val basePath = Path.of(requireNotNull(project.basePath))
+        val controllerFile = basePath.resolve("src/main/java/com/example/QaUploadController.java")
+        val serviceFile = basePath.resolve("src/main/java/com/example/QaUploadServiceImpl.java")
+        Files.createDirectories(controllerFile.parent)
+        Files.writeString(
+            controllerFile,
+            """
+            class QaUploadController {
+                boolean upload() {
+                    return fileUploadService.uploadFile();
+                }
+            }
+            """.trimIndent(),
+        )
+        Files.writeString(
+            serviceFile,
+            """
+            class QaUploadServiceImpl {
+                boolean uploadFile() {
+                    return sshFileUploadUtil.uploadFileViaSCP();
+                }
+            }
+            """.trimIndent(),
+        )
+        val targetSignature = "com.example.QaUploadServiceImpl.uploadFile():boolean"
+        val graph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "invoke:controller-to-upload-service",
+                    type = NodeType.FLOW_ACTION,
+                    title = "调用 QaUploadServiceImpl.uploadFile",
+                    signature = targetSignature,
+                    metadata = mapOf(
+                        "flow.kind" to "INVOCATION",
+                        "flow.ownerMethod" to "com.example.QaUploadController.upload():boolean",
+                        "source.filePath" to controllerFile.toString(),
+                        "source.startLine" to "2",
+                        "source.endLine" to "4",
+                    ),
+                ),
+                GraphNode(
+                    id = "method:qa-upload-service-impl-upload-file",
+                    type = NodeType.METHOD,
+                    title = "QaUploadServiceImpl.uploadFile",
+                    signature = targetSignature,
+                    metadata = mapOf(
+                        "source.filePath" to serviceFile.toString(),
+                        "source.startLine" to "1",
+                        "source.endLine" to "5",
+                    ),
+                ),
+            ),
+        )
+        var capturedSourceContext: List<SourceSnippetContext> = emptyList()
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            qaExecutor = { input, _, _ ->
+                capturedSourceContext = input.qaContext.sourceContext
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "已读取被调方法证据。",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+
+        val result = AgentRunCoordinator().run(
+            capability = capability,
+            input = QaCapabilityInput(
+                question = "确认上传调用是否继续进入 SCP sink",
+                qaContext = GraphQaContext(
+                    editableGraph = graph,
+                    selectedNodeIds = listOf("invoke:controller-to-upload-service"),
+                ),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = {
+                    testSnapshot(
+                        workingGraph = graph,
+                        selectedNodeId = "invoke:controller-to-upload-service",
+                    ).toToolGraphSnapshot()
+                },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertEquals("已读取被调方法证据。", result.output?.answer)
+        assertEquals("read_symbol", result.finalState.stepRecords[2].toolName)
+        val snippet = requireNotNull(capturedSourceContext.singleOrNull())
+        assertEquals(serviceFile.toString(), snippet.filePath)
+        assertTrue(snippet.snippet?.contains("sshFileUploadUtil.uploadFileViaSCP()") == true)
+        assertFalse(snippet.snippet?.contains("fileUploadService.uploadFile()") == true)
+    }
+
+    fun testReadsSinkMethodEvidenceWhenSelectedNodeIsSecondHopInvocationCallsite() {
+        val basePath = Path.of(requireNotNull(project.basePath))
+        val serviceFile = basePath.resolve("src/main/java/com/example/QaUploadServiceImpl.java")
+        val utilFile = basePath.resolve("src/main/java/com/example/SshFileUploadUtil.java")
+        Files.createDirectories(serviceFile.parent)
+        Files.writeString(
+            serviceFile,
+            """
+            class QaUploadServiceImpl {
+                boolean uploadFile() {
+                    return sshFileUploadUtil.uploadFileViaSCP();
+                }
+            }
+            """.trimIndent(),
+        )
+        Files.writeString(
+            utilFile,
+            """
+            class SshFileUploadUtil {
+                boolean uploadFileViaSCP() {
+                    session = jsch.getSession(username, host, port);
+                    channel.put(inputStream, finalDestPath);
+                    return true;
+                }
+            }
+            """.trimIndent(),
+        )
+        val sinkSignature = "com.example.SshFileUploadUtil.uploadFileViaSCP():boolean"
+        val graph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "invoke:service-to-scp-util",
+                    type = NodeType.FLOW_ACTION,
+                    title = "调用 SshFileUploadUtil.uploadFileViaSCP",
+                    signature = sinkSignature,
+                    metadata = mapOf(
+                        "flow.kind" to "INVOCATION",
+                        "flow.ownerMethod" to "com.example.QaUploadServiceImpl.uploadFile():boolean",
+                        "source.filePath" to serviceFile.toString(),
+                        "source.startLine" to "2",
+                        "source.endLine" to "4",
+                    ),
+                ),
+                GraphNode(
+                    id = "method:ssh-file-upload-util-upload-file-via-scp",
+                    type = NodeType.METHOD,
+                    title = "SshFileUploadUtil.uploadFileViaSCP",
+                    signature = sinkSignature,
+                    metadata = mapOf(
+                        "source.filePath" to utilFile.toString(),
+                        "source.startLine" to "1",
+                        "source.endLine" to "8",
+                    ),
+                ),
+            ),
+        )
+        var capturedSourceContext: List<SourceSnippetContext> = emptyList()
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            qaExecutor = { input, _, _ ->
+                capturedSourceContext = input.qaContext.sourceContext
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "已读取 sink 证据。",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+
+        val result = AgentRunCoordinator().run(
+            capability = capability,
+            input = QaCapabilityInput(
+                question = "确认上传调用是否进入 SCP sink",
+                qaContext = GraphQaContext(
+                    editableGraph = graph,
+                    selectedNodeIds = listOf("invoke:service-to-scp-util"),
+                ),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = {
+                    testSnapshot(
+                        workingGraph = graph,
+                        selectedNodeId = "invoke:service-to-scp-util",
+                    ).toToolGraphSnapshot()
+                },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertEquals("已读取 sink 证据。", result.output?.answer)
+        assertEquals("read_symbol", result.finalState.stepRecords[2].toolName)
+        val snippet = requireNotNull(capturedSourceContext.singleOrNull())
+        assertEquals(utilFile.toString(), snippet.filePath)
+        assertTrue(snippet.snippet?.contains("jsch.getSession(username, host, port)") == true)
+        assertTrue(snippet.snippet?.contains("channel.put(inputStream, finalDestPath)") == true)
+        assertFalse(snippet.snippet?.contains("sshFileUploadUtil.uploadFileViaSCP()") == true)
+    }
+
+    fun testReadsSecondHopSinkEvidenceFromSelectedControllerToServiceInvocation() {
+        val basePath = Path.of(requireNotNull(project.basePath))
+        val controllerFile = basePath.resolve("src/main/java/com/example/QaControllerEntry.java")
+        val serviceFile = basePath.resolve("src/main/java/com/example/QaServiceImpl.java")
+        val utilFile = basePath.resolve("src/main/java/com/example/QaSshUploadUtil.java")
+        Files.createDirectories(controllerFile.parent)
+        Files.writeString(
+            controllerFile,
+            """
+            class QaControllerEntry {
+                boolean upload() {
+                    return fileUploadService.uploadFile();
+                }
+            }
+            """.trimIndent(),
+        )
+        Files.writeString(
+            serviceFile,
+            """
+            class QaServiceImpl {
+                boolean uploadFile() {
+                    return sshFileUploadUtil.uploadFileViaSCP();
+                }
+            }
+            """.trimIndent(),
+        )
+        Files.writeString(
+            utilFile,
+            """
+            class QaSshUploadUtil {
+                boolean uploadFileViaSCP() {
+                    session = jsch.getSession(username, host, port);
+                    channel.put(inputStream, finalDestPath);
+                    return true;
+                }
+            }
+            """.trimIndent(),
+        )
+        val serviceSignature = "com.example.QaServiceImpl.uploadFile():boolean"
+        val sinkSignature = "com.example.QaSshUploadUtil.uploadFileViaSCP():boolean"
+        val controllerInvocation = GraphNode(
+            id = "invoke:controller-to-service",
+            type = NodeType.FLOW_ACTION,
+            title = "调用 QaServiceImpl.uploadFile",
+            signature = serviceSignature,
+            metadata = mapOf(
+                "flow.kind" to "INVOCATION",
+                "flow.ownerMethod" to "com.example.QaControllerEntry.upload():boolean",
+                "source.filePath" to controllerFile.toString(),
+                "source.startLine" to "2",
+                "source.endLine" to "4",
+            ),
+        )
+        val serviceMethod = GraphNode(
+            id = "method:qa-service-impl-upload-file",
+            type = NodeType.METHOD,
+            title = "QaServiceImpl.uploadFile",
+            signature = serviceSignature,
+            metadata = mapOf(
+                "source.filePath" to serviceFile.toString(),
+                "source.startLine" to "1",
+                "source.endLine" to "5",
+            ),
+        )
+        val serviceInvocation = GraphNode(
+            id = "invoke:service-to-sink",
+            type = NodeType.FLOW_ACTION,
+            title = "调用 QaSshUploadUtil.uploadFileViaSCP",
+            signature = sinkSignature,
+            metadata = mapOf(
+                "flow.kind" to "INVOCATION",
+                "flow.ownerMethod" to serviceSignature,
+                "source.filePath" to serviceFile.toString(),
+                "source.startLine" to "2",
+                "source.endLine" to "4",
+            ),
+        )
+        val sinkMethod = GraphNode(
+            id = "method:qa-ssh-upload-util-upload-file-via-scp",
+            type = NodeType.METHOD,
+            title = "QaSshUploadUtil.uploadFileViaSCP",
+            signature = sinkSignature,
+            metadata = mapOf(
+                "source.filePath" to utilFile.toString(),
+                "source.startLine" to "1",
+                "source.endLine" to "8",
+            ),
+        )
+        val graph = GraphDocument(
+            nodes = listOf(controllerInvocation, serviceMethod, serviceInvocation, sinkMethod),
+            edges = listOf(
+                GraphEdge(
+                    id = "call:controller-to-service",
+                    type = EdgeType.CALL,
+                    fromNodeId = controllerInvocation.id,
+                    toNodeId = serviceMethod.id,
+                ),
+                GraphEdge(
+                    id = "contains:service-to-invocation",
+                    type = EdgeType.CONTAINS_FLOW,
+                    fromNodeId = serviceMethod.id,
+                    toNodeId = serviceInvocation.id,
+                ),
+                GraphEdge(
+                    id = "call:service-to-sink",
+                    type = EdgeType.CALL,
+                    fromNodeId = serviceInvocation.id,
+                    toNodeId = sinkMethod.id,
+                ),
+            ),
+        )
+        var capturedSourceContext: List<SourceSnippetContext> = emptyList()
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            qaExecutor = { input, _, _ ->
+                capturedSourceContext = input.qaContext.sourceContext
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "已读取二跳 sink 证据。",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+
+        val result = AgentRunCoordinator().run(
+            capability = capability,
+            input = QaCapabilityInput(
+                question = "确认上传入口是否通向 SCP sink",
+                qaContext = GraphQaContext(
+                    editableGraph = graph,
+                    selectedNodeIds = listOf(controllerInvocation.id),
+                ),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = {
+                    testSnapshot(
+                        workingGraph = graph,
+                        selectedNodeId = controllerInvocation.id,
+                    ).toToolGraphSnapshot()
+                },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertEquals("已读取二跳 sink 证据。", result.output?.answer)
+        assertTrue(capturedSourceContext.any { context ->
+            context.filePath == serviceFile.toString() &&
+                context.snippet?.contains("sshFileUploadUtil.uploadFileViaSCP()") == true
+        })
+        assertTrue(capturedSourceContext.any { context ->
+            context.filePath == utilFile.toString() &&
+                context.snippet?.contains("jsch.getSession(username, host, port)") == true &&
+                context.snippet?.contains("channel.put(inputStream, finalDestPath)") == true
+        })
+        assertFalse(capturedSourceContext.any { context ->
+            context.filePath == controllerFile.toString() &&
+                context.snippet?.contains("fileUploadService.uploadFile()") == true
+        })
+    }
+
+    fun testRecordsFailedCodeEvidenceTraceWhenSelectedNodeCannotReadSource() {
+        var capturedSourceContext: List<SourceSnippetContext> = emptyList()
+        var capturedEvidenceTrace: List<EvidenceTraceEntry> = emptyList()
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            qaExecutor = { input, _, _ ->
+                capturedSourceContext = input.qaContext.sourceContext
+                capturedEvidenceTrace = input.qaContext.evidenceTrace
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "已按当前上下文回答。",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+
+        val result = AgentRunCoordinator().run(
+            capability = capability,
+            input = QaCapabilityInput(
+                question = "这个方法是基于哪个组件实现的？如果替换组件的改动大概是多少？",
+                qaContext = GraphQaContext(
+                    selectedNodeIds = listOf("invoke:gender-prompt"),
+                ),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = {
+                    testSnapshot(
+                        workingGraph = GraphDocument(
+                            nodes = listOf(
+                                GraphNode(
+                                    id = "invoke:gender-prompt",
+                                    type = NodeType.FLOW_ACTION,
+                                    title = "调用 AIServiceImpl.genderPrompt",
+                                    signature = "com.example.AIServiceImpl.genderPrompt():java.lang.String",
+                                    metadata = mapOf("flow.kind" to "INVOCATION"),
+                                ),
+                            ),
+                        ),
+                    ).toToolGraphSnapshot()
+                },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertTrue(capturedSourceContext.isEmpty())
+        val trace = requireNotNull(capturedEvidenceTrace.singleOrNull())
+        assertEquals("invoke:gender-prompt", trace.nodeId)
+        assertFalse(trace.includedInPrompt)
+        assertTrue(trace.reason.contains("未读取到源码"))
+        assertTrue(result.output?.evidenceTrace?.any { entry ->
+            entry.nodeId == "invoke:gender-prompt" && !entry.includedInPrompt
+        } == true)
+        assertTrue(result.output?.warnings?.any { warning ->
+            warning.contains("没有读取到可送入 prompt")
+        } == true)
+    }
+
+    fun testDoesNotUsePreloadedSourceWhenRuntimeReadAttemptFails() {
+        var capturedSourceContext: List<SourceSnippetContext> = emptyList()
+        var capturedEvidenceTrace: List<EvidenceTraceEntry> = emptyList()
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            qaExecutor = { input, _, _ ->
+                capturedSourceContext = input.qaContext.sourceContext
+                capturedEvidenceTrace = input.qaContext.evidenceTrace
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "已按当前上下文回答。",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+
+        val result = AgentRunCoordinator().run(
+            capability = capability,
+            input = QaCapabilityInput(
+                question = "这个方法替换组件的影响范围是什么？",
+                qaContext = GraphQaContext(
+                    selectedNodeIds = listOf("invoke:gender-prompt"),
+                    sourceContext = listOf(
+                        SourceSnippetContext(
+                            nodeId = "method:stale",
+                            filePath = "src/main/java/com/example/Stale.java",
+                            startLine = 1,
+                            endLine = 3,
+                            snippet = "class Stale {}",
+                        ),
+                    ),
+                ),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = {
+                    testSnapshot(
+                        workingGraph = GraphDocument(
+                            nodes = listOf(
+                                GraphNode(
+                                    id = "invoke:gender-prompt",
+                                    type = NodeType.FLOW_ACTION,
+                                    title = "调用 AIServiceImpl.genderPrompt",
+                                    signature = "com.example.AIServiceImpl.genderPrompt():java.lang.String",
+                                    metadata = mapOf("flow.kind" to "INVOCATION"),
+                                ),
+                            ),
+                        ),
+                    ).toToolGraphSnapshot()
+                },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertTrue(capturedSourceContext.isEmpty())
+        assertTrue(capturedEvidenceTrace.singleOrNull()?.includedInPrompt == false)
+        assertTrue(result.output?.sourceContext?.isEmpty() == true)
+        assertTrue(result.output?.warnings?.any { warning ->
+            warning.contains("没有读取到可送入 prompt")
+        } == true)
+    }
+
+    fun testStopsBeforeQaExecutionWhenCodeReadExceedsBudget() {
         val sourceFile = Path.of(requireNotNull(project.basePath))
             .resolve("src/main/java/com/example/QaCapabilityBudgetGuard.java")
         Files.createDirectories(sourceFile.parent)
@@ -297,10 +841,10 @@ class QaCapabilityTest : BasePlatformTestCase() {
         var executorInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(maxFilesRead = 0),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 executorInvoked = true
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "不应该执行到这里。",
                     promptPreview = "prompt",
@@ -312,7 +856,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请解释这里的字符串处理逻辑",
-                auditContext = GraphAuditContext(
+                qaContext = GraphQaContext(
                     selectedNodeIds = listOf("method:submit"),
                 ),
             ),
@@ -335,7 +879,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -351,10 +895,10 @@ class QaCapabilityTest : BasePlatformTestCase() {
         var executorInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(maxFilesRead = 1),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 executorInvoked = true
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "不应该执行到这里。",
                     promptPreview = "prompt",
@@ -434,7 +978,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
 
                         override fun invoke(input: Map<String, Any?>, context: ToolExecutionContext): ToolResult {
                             val nodeId = input["nodeId"]?.toString()
-                            val node = context.snapshot.workingGraph?.nodes?.firstOrNull { it.id == nodeId }
+                            val node = context.snapshot.workspaceGraph.nodes.firstOrNull { it.id == nodeId }
                             return ToolResult(
                                 toolName = name,
                                 payload = mapOf("node" to node),
@@ -477,7 +1021,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请解释这两个节点",
-                auditContext = GraphAuditContext(
+                qaContext = GraphQaContext(
                     selectedNodeIds = listOf("method:first", "method:second"),
                 ),
             ),
@@ -509,7 +1053,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -526,10 +1070,10 @@ class QaCapabilityTest : BasePlatformTestCase() {
         var executorInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(maxFilesRead = 5, maxSnippets = 1),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 executorInvoked = true
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "不应该执行到这里。",
                     promptPreview = "prompt",
@@ -599,7 +1143,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                             return ToolResult(
                                 toolName = name,
                                 payload = mapOf(
-                                    "node" to context.snapshot.workingGraph?.nodes?.firstOrNull { it.id == nodeId },
+                                    "node" to context.snapshot.workspaceGraph.nodes.firstOrNull { it.id == nodeId },
                                 ),
                             )
                         }
@@ -637,7 +1181,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请解释这两个节点",
-                auditContext = GraphAuditContext(selectedNodeIds = listOf("method:first", "method:second")),
+                qaContext = GraphQaContext(selectedNodeIds = listOf("method:first", "method:second")),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
@@ -667,7 +1211,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -679,14 +1223,14 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertEquals(AgentRunFailureReason.MAX_SNIPPETS_EXCEEDED, result.finalState.failureReason)
     }
 
-    fun testStopsBeforeAuditExecutionWhenSingleSnippetExceedsLineBudget() {
+    fun testStopsBeforeQaExecutionWhenSingleSnippetExceedsLineBudget() {
         var executorInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(maxSnippetLines = 1),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 executorInvoked = true
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "不应该执行到这里。",
                     promptPreview = "prompt",
@@ -745,7 +1289,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                             return ToolResult(
                                 toolName = name,
                                 payload = mapOf(
-                                    "node" to context.snapshot.workingGraph?.nodes?.firstOrNull { it.id == "method:only" },
+                                    "node" to context.snapshot.workspaceGraph.nodes.firstOrNull { it.id == "method:only" },
                                 ),
                             )
                         }
@@ -782,7 +1326,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请解释这个节点",
-                auditContext = GraphAuditContext(selectedNodeIds = listOf("method:only")),
+                qaContext = GraphQaContext(selectedNodeIds = listOf("method:only")),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
@@ -802,7 +1346,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -816,9 +1360,9 @@ class QaCapabilityTest : BasePlatformTestCase() {
     fun testPersistsCandidateDraftArtifactsFromQaResult() {
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "建议形成候选草稿。",
                     promptPreview = "prompt",
@@ -846,7 +1390,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请给出候选修改建议",
-                auditContext = GraphAuditContext(),
+                qaContext = GraphQaContext(),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
@@ -861,7 +1405,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -872,14 +1416,82 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertTrue(result.artifactSummaries.any { it.artifactType == ArtifactType.CANDIDATE_DRAFT.name })
     }
 
+    fun testPrunesStaleCandidateDraftArtifactsWhenNewQaResultCreatesCandidates() {
+        val artifactStore = InMemoryArtifactStore()
+        artifactStore.save(
+            com.charmnight.linkgraph.llm.artifact.CandidateDraftArtifact(
+                artifactId = "candidate-stale-change",
+                candidate = CandidateDraftChange(
+                    changeId = "stale-change",
+                    status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+                    title = "旧候选",
+                ),
+            ),
+        )
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            qaExecutor = { input, _, _ ->
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "建议形成新候选草稿。",
+                    promptPreview = "prompt",
+                    candidateChanges = listOf(
+                        CandidateDraftChange(
+                            changeId = "current-change",
+                            status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+                            title = "新候选",
+                        ),
+                    ),
+                    newCandidateChanges = listOf(
+                        CandidateDraftChange(
+                            changeId = "current-change",
+                            status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+                            title = "新候选",
+                        ),
+                    ),
+                )
+            },
+        )
+
+        val result = AgentRunCoordinator().run(
+            capability = capability,
+            input = QaCapabilityInput(
+                question = "请给出新的候选修改建议",
+                qaContext = GraphQaContext(),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = {
+                    testSnapshot(
+                        workingGraph = GraphDocument(
+                            nodes = listOf(
+                                GraphNode(
+                                    id = "method:upload-file",
+                                    type = NodeType.METHOD,
+                                    title = "CommonController.uploadFile",
+                                ),
+                            ),
+                        ),
+                    ).toToolGraphSnapshot()
+                },
+                artifactStore = artifactStore,
+            ),
+        )
+
+        assertEquals("建议形成新候选草稿。", result.output?.answer)
+        assertNull(artifactStore.get("candidate-stale-change"))
+        assertNotNull(artifactStore.get("candidate-current-change"))
+    }
+
     fun testPreloadedSourceContextStillConsumesRuntimeBudget() {
         var executorInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(maxFilesRead = 0),
-            auditExecutor = { input, _, _ ->
+            qaExecutor = { input, _, _ ->
                 executorInvoked = true
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "不应该执行到这里。",
                     promptPreview = "prompt",
@@ -891,7 +1503,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请解释预读源码的行为",
-                auditContext = GraphAuditContext(
+                qaContext = GraphQaContext(
                     sourceContext = listOf(
                         SourceSnippetContext(
                             nodeId = "method:upload-file",
@@ -916,7 +1528,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -927,7 +1539,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertEquals(AgentRunFailureReason.MAX_FILES_READ_EXCEEDED, result.finalState.failureReason)
     }
 
-    fun testRebuildsAuditInputFromRuntimeArtifactsWithoutOverwritingGraphContext() {
+    fun testRebuildsQaInputFromRuntimeArtifactsWithoutOverwritingGraphContext() {
         val sourceFile = Path.of(requireNotNull(project.basePath))
             .resolve("src/main/java/com/example/QaRuntimeArtifactsController.java")
         Files.createDirectories(sourceFile.parent)
@@ -979,15 +1591,15 @@ class QaCapabilityTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        var capturedAuditContext: GraphAuditContext? = null
-        var capturedSession: AuditConversationSession? = null
+        var capturedQaContext: GraphQaContext? = null
+        var capturedSession: QaConversationSession? = null
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            auditExecutor = { input, _, _ ->
-                capturedAuditContext = input.auditContext
+            qaExecutor = { input, _, _ ->
+                capturedQaContext = input.qaContext
                 capturedSession = input.session
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "runtime qa",
                     promptPreview = "prompt",
@@ -999,7 +1611,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "解释这里为什么会 fallback",
-                auditContext = GraphAuditContext(
+                qaContext = GraphQaContext(
                     factGraph = staleGraph,
                     editableGraph = staleGraph,
                     selectedNodeIds = listOf("method:upload-file"),
@@ -1013,13 +1625,13 @@ class QaCapabilityTest : BasePlatformTestCase() {
                         ),
                     ),
                 ),
-                session = AuditConversationSession(
+                session = QaConversationSession(
                     sessionId = "session-1",
                     scopeKey = "scope-1",
                     messages = listOf(
-                        AuditConversationMessage(
+                        QaConversationMessage(
                             messageId = "message-1",
-                            role = AuditMessageRole.USER,
+                            role = QaMessageRole.USER,
                             content = "历史问题",
                         ),
                     ),
@@ -1045,18 +1657,18 @@ class QaCapabilityTest : BasePlatformTestCase() {
                     testSnapshot(
                         selectedNodeId = "method:upload-file",
                         workingGraph = runtimeGraph,
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
 
         assertEquals("runtime qa", result.output?.answer)
-        assertEquals(listOf("method:upload-file"), capturedAuditContext?.selectedNodeIds)
-        assertEquals(staleGraph.nodes.map { it.id }.toSet(), capturedAuditContext?.factGraph?.nodes?.map { it.id }?.toSet())
-        assertEquals(staleGraph.nodes.map { it.id }.toSet(), capturedAuditContext?.editableGraph?.nodes?.map { it.id }?.toSet())
-        assertEquals(sourceFile.toString(), capturedAuditContext?.sourceContext?.singleOrNull()?.filePath)
-        assertTrue(capturedAuditContext?.sourceContext?.singleOrNull()?.snippet?.contains("fallback") == true)
+        assertEquals(listOf("method:upload-file"), capturedQaContext?.selectedNodeIds)
+        assertEquals(staleGraph.nodes.map { it.id }.toSet(), capturedQaContext?.factGraph?.nodes?.map { it.id }?.toSet())
+        assertEquals(staleGraph.nodes.map { it.id }.toSet(), capturedQaContext?.editableGraph?.nodes?.map { it.id }?.toSet())
+        assertEquals(sourceFile.toString(), capturedQaContext?.sourceContext?.singleOrNull()?.filePath)
+        assertTrue(capturedQaContext?.sourceContext?.singleOrNull()?.snippet?.contains("fallback") == true)
         assertEquals(1, capturedSession?.messages?.size)
         assertEquals("历史问题", capturedSession?.messages?.singleOrNull()?.content)
         assertEquals(1, capturedSession?.candidateChanges?.size)
@@ -1078,10 +1690,10 @@ class QaCapabilityTest : BasePlatformTestCase() {
         var capturedSourceContext: List<SourceSnippetContext> = emptyList()
         val capability = QaCapability(
             defaultBudget = RunBudget(),
-            auditExecutor = { input, _, _ ->
-                capturedSourceContext = input.auditContext.sourceContext
+            qaExecutor = { input, _, _ ->
+                capturedSourceContext = input.qaContext.sourceContext
                 GraphPatchResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
                     answer = "未读取项目外代码证据。",
                     promptPreview = "prompt",
@@ -1093,7 +1705,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
             capability = capability,
             input = QaCapabilityInput(
                 question = "请结合代码解释这里为什么会走 fallback",
-                auditContext = GraphAuditContext(
+                qaContext = GraphQaContext(
                     selectedNodeIds = listOf("method:upload-file"),
                 ),
             ),
@@ -1116,7 +1728,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -1125,5 +1737,106 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertEquals("未读取项目外代码证据。", result.output?.answer)
         assertTrue(capturedSourceContext.isEmpty())
         assertTrue(result.finalState.artifactRefs.none { it.type == ArtifactType.CODE_EVIDENCE })
+    }
+
+    fun testReadsRealSourceWhenSelectedNodeIsAFlowchartProjection() {
+        val sourceFile = Path.of(requireNotNull(project.basePath))
+            .resolve("src/main/java/com/example/QaProjectedScheduledJob.java")
+        Files.createDirectories(sourceFile.parent)
+        Files.writeString(
+            sourceFile,
+            """
+            package com.example;
+
+            import org.springframework.scheduling.annotation.Scheduled;
+
+            @Component
+            class QaProjectedScheduledJob {
+                @Scheduled(cron = "0 0 * * * ?")
+                void run() {
+                    cleanupExpiredOrders();
+                }
+            }
+            """.trimIndent(),
+        )
+        val projectedNode = GraphNode(
+            id = "flow-action:cleanup-projection",
+            type = NodeType.FLOW_ACTION,
+            title = "cleanupExpiredOrders()",
+            metadata = mapOf("flowchart.kind" to "PROCESS"),
+        )
+        val realNode = GraphNode(
+            id = "method:scheduled-cleanup",
+            type = NodeType.METHOD,
+            title = "QaProjectedScheduledJob.run",
+            signature = "com.example.QaProjectedScheduledJob.run():void",
+            metadata = mapOf(
+                "source.filePath" to sourceFile.toString(),
+                "source.startLine" to "7",
+                "source.endLine" to "10",
+            ),
+        )
+        var capturedSourceContext: List<SourceSnippetContext> = emptyList()
+        var capturedEvidenceTrace: List<EvidenceTraceEntry> = emptyList()
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            qaExecutor = { input, _, _ ->
+                capturedSourceContext = input.qaContext.sourceContext
+                capturedEvidenceTrace = input.qaContext.evidenceTrace
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "已读取投影节点对应源码。",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+
+        val result = AgentRunCoordinator().run(
+            capability = capability,
+            input = QaCapabilityInput(
+                question = "这个方法是如何触发的？",
+                qaContext = GraphQaContext(
+                    selectedNodeIds = listOf(projectedNode.id),
+                ),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = {
+                    testSnapshot(
+                        currentSceneId = GraphSceneId.WORKSPACE_FLOWCHART,
+                        workspaceGraph = GraphDocument(nodes = listOf(projectedNode)),
+                        semanticFactGraph = GraphDocument(nodes = listOf(realNode)),
+                        flowchartView = FlowchartViewDocument(
+                            visibleGraph = GraphDocument(nodes = listOf(projectedNode)),
+                            fullGraph = GraphDocument(nodes = listOf(projectedNode)),
+                            anchorNodeId = projectedNode.id,
+                            projectionIndex = GraphProjectionIndex(
+                                nodeMappings = mapOf(
+                                    projectedNode.id to GraphProjectionNodeMapping(
+                                        projectedNodeId = projectedNode.id,
+                                        mappingKind = GraphProjectionMappingKind.PATH_ALIAS,
+                                        canonicalNodeIds = listOf(realNode.id),
+                                    ),
+                                ),
+                            ),
+                            summary = FlowchartSummary(nodeCount = 1, branchCount = 0, exceptionPathCount = 0),
+                        ),
+                    ).toToolGraphSnapshot()
+                },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertEquals("已读取投影节点对应源码。", result.output?.answer)
+        val snippet = requireNotNull(capturedSourceContext.singleOrNull())
+        assertEquals(realNode.id, snippet.nodeId)
+        assertTrue(snippet.snippet?.contains("@Scheduled") == true)
+        assertTrue(snippet.snippet?.contains("import org.springframework.scheduling.annotation.Scheduled;") == true)
+        val trace = requireNotNull(capturedEvidenceTrace.singleOrNull())
+        assertEquals(projectedNode.id, trace.nodeId)
+        assertEquals(realNode.id, trace.resolvedNodeId)
+        assertTrue(trace.mappingTrace.any { step -> step.contains("projectionIndex:${projectedNode.id}->${realNode.id}") })
+        assertTrue(trace.includedInPrompt)
     }
 }

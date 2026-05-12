@@ -41,9 +41,9 @@ import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.charmnight.linkgraph.workbench.StepKind
-import com.charmnight.linkgraph.workbench.AuditConversationMessage
-import com.charmnight.linkgraph.workbench.AuditConversationSession
-import com.charmnight.linkgraph.workbench.AuditMessageRole
+import com.charmnight.linkgraph.workbench.QaConversationMessage
+import com.charmnight.linkgraph.workbench.QaConversationSession
+import com.charmnight.linkgraph.workbench.QaMessageRole
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 import com.charmnight.linkgraph.workbench.DraftValidationState
@@ -62,6 +62,29 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GraphEditorPageRendererTest {
+    @Test
+    fun bootstrapJsonEscapesLowControlCharacters() {
+        val renderer = GraphEditorPageRenderer()
+        val snapshot = testSnapshot(
+            visibleGraph = GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:control-char",
+                        type = NodeType.METHOD,
+                        title = "Order\u0001Controller\u0008submit",
+                        sourceTag = GraphSourceTag.FACT,
+                    ),
+                ),
+            ),
+        )
+
+        val json = renderer.bootstrapJson(snapshot)
+
+        assertTrue(json.contains("Order\\u0001Controller\\u0008submit"))
+        assertFalse(json.contains("\u0001"))
+        assertFalse(json.contains("\u0008"))
+    }
+
     @Test
     fun bootstrapJson输出问答恢复状态草稿验证和建议追问字段() {
         val renderer = GraphEditorPageRenderer()
@@ -82,8 +105,8 @@ class GraphEditorPageRendererTest {
                     kind = QaRequestKind.ASK,
                     question = "这里为什么会走兜底分支？",
                     selectedNodeIds = listOf("method:submit-order"),
-                    baseSession = AuditConversationSession(
-                        sessionId = "audit-1",
+                    baseSession = QaConversationSession(
+                        sessionId = "qa-1",
                         scopeKey = "method:submit-order",
                     ),
                 ),
@@ -99,7 +122,7 @@ class GraphEditorPageRendererTest {
                 messages = listOf(
                     GenerationPlanDiscussionMessage(
                         messageId = "message-1",
-                        role = AuditMessageRole.USER,
+                        role = QaMessageRole.USER,
                         content = "为什么建议先改这个 service？",
                         focusItemId = "item-1",
                     ),
@@ -284,7 +307,7 @@ class GraphEditorPageRendererTest {
                     ),
                 ),
             ),
-            auditRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.running(
+            qaRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.running(
                 statusMessage = "正在等待远程 LLM 问答响应",
                 detailMessage = "当前采用完整返回，不是流式输出。",
                 startedAtEpochMillis = 1_710_000_000_000,
@@ -308,7 +331,53 @@ class GraphEditorPageRendererTest {
         assertTrue(json.contains("\"providerLabel\":\"OpenAI Compatible\""))
         assertTrue(json.contains("\"model\":\"gpt-test\""))
         assertTrue(json.contains("\"endpointSummary\":\"example.com/v1/chat/completions\""))
-        assertTrue(json.contains("\"promptPreviewAvailable\":true"))
+        assertTrue(json.contains("\"promptPreviewAvailable\":false"))
+    }
+
+    @Test
+    fun promptPreviewAvailableOnlyTrueWhenResultCarriesPromptContentOrArtifact() {
+        val renderer = GraphEditorPageRenderer()
+        val missingPromptSnapshot = testSnapshot(
+            qaRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(
+                scene = "问答",
+                statusMessage = "问答完成。",
+                promptPreviewAvailable = true,
+            ),
+            qaResult = GraphPatchResult(
+                source = LlmResultSource.LOCAL_RULE,
+                question = "这里是什么？",
+                answer = "当前没有提示词。",
+                promptPreview = "",
+            ),
+        )
+        val missingPromptPayload = renderer.bootstrapPayload(missingPromptSnapshot)
+        @Suppress("UNCHECKED_CAST")
+        val missingPromptState = missingPromptPayload["auditRequestState"] as Map<String, Any?>
+
+        assertFalse(missingPromptState["promptPreviewAvailable"] as Boolean)
+
+        val promptSnapshot = testSnapshot(
+            qaRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(
+                scene = "问答",
+                statusMessage = "问答完成。",
+                promptPreviewAvailable = true,
+            ),
+            qaResult = GraphPatchResult(
+                source = LlmResultSource.LOCAL_RULE,
+                question = "这里是什么？",
+                answer = "已有提示词。",
+                promptPreview = "system: prompt",
+            ),
+        )
+        val artifactRefs = GraphEditorArtifactRegistry().replaceWith(promptSnapshot)
+        val promptPayload = renderer.bootstrapPayload(promptSnapshot, artifactRefs)
+        @Suppress("UNCHECKED_CAST")
+        val promptState = promptPayload["auditRequestState"] as Map<String, Any?>
+        @Suppress("UNCHECKED_CAST")
+        val promptResult = promptPayload["auditResult"] as Map<String, Any?>
+
+        assertTrue(promptState["promptPreviewAvailable"] as Boolean)
+        assertTrue(promptResult["promptPreviewArtifactId"].toString().startsWith("qa-prompt:qa-result:"))
     }
 
     @Test
@@ -426,8 +495,8 @@ class GraphEditorPageRendererTest {
                     ),
                 ),
             ),
-            auditResult = GraphPatchResult(
-                source = LlmResultSource.MOCK,
+            qaResult = GraphPatchResult(
+                source = LlmResultSource.LOCAL_RULE,
                 question = "请确认这条路径调整",
                 answer = "建议补充路径调整说明节点。",
                 promptPreview = "prompt",
@@ -777,7 +846,7 @@ class GraphEditorPageRendererTest {
             ),
             draftVersion = 4,
             generationPlan = GenerationPlan(
-                source = GenerationPlanSource.MOCK,
+                source = GenerationPlanSource.LOCAL_RULE,
                 summary = "Create DTO and align service wiring.",
                 items = listOf(
                     GenerationPlanItem(
@@ -845,7 +914,7 @@ class GraphEditorPageRendererTest {
                 appliedTargets = listOf("DefaultFallback"),
             ),
             graphBeautificationResult = GraphBeautificationResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 granularity = StepGranularity.BUSINESS,
                 steps = listOf(
                     GraphBeautificationStep(
@@ -898,8 +967,11 @@ class GraphEditorPageRendererTest {
             sessionId = "session-1",
             snapshot = snapshot,
             artifactRefs = artifactRefs,
+            darkTheme = true,
         )
 
+        assertTrue(rendered.contains("document.documentElement.dataset.ideaTheme = \"dark\""))
+        assertTrue(rendered.contains("document.documentElement.style.colorScheme = \"dark\""))
         assertTrue(rendered.contains("window.linkGraphBootstrap"))
         assertTrue(rendered.contains("OrderController.submit"))
         assertTrue(rendered.contains("src/main/java/com/example/OrderController.java:18"))
@@ -960,6 +1032,21 @@ class GraphEditorPageRendererTest {
         assertTrue(rendered.contains("\"linkGraph.manual\":\"true\""))
         assertTrue(!rendered.contains("\"ui.x\""))
         assertTrue(!rendered.contains("\"ui.y\""))
+    }
+
+    @Test
+    fun render根据Idea明暗主题注入页面ColorScheme() {
+        val renderer = GraphEditorPageRenderer()
+        val html = "<html><head></head><body><div id=\"root\"></div></body></html>"
+        val rendered = renderer.render(
+            entryHtml = html,
+            sessionId = "session-light",
+            snapshot = testSnapshot(),
+            darkTheme = false,
+        )
+
+        assertTrue(rendered.contains("document.documentElement.dataset.ideaTheme = \"light\""))
+        assertTrue(rendered.contains("document.documentElement.style.colorScheme = \"light\""))
     }
 
     @Test
@@ -1191,6 +1278,23 @@ class GraphEditorPageRendererTest {
     }
 
     @Test
+    fun bootstrapJson输出本地规则结果来源() {
+        val renderer = GraphEditorPageRenderer()
+        val snapshot = testSnapshot(
+            qaResult = GraphPatchResult(
+                source = LlmResultSource.LOCAL_RULE,
+                question = "这里为什么会走兜底分支？",
+                answer = "当前回答来自本地规则。",
+                promptPreview = "",
+            ),
+        )
+
+        val json = renderer.bootstrapJson(snapshot)
+
+        assertTrue(json.contains("\"source\":\"LOCAL_RULE\""))
+    }
+
+    @Test
     fun bootstrapJsonIncludesWorkbenchConversationAndDraftState() {
         val renderer = GraphEditorPageRenderer()
         val candidate = CandidateDraftChange(
@@ -1218,20 +1322,20 @@ class GraphEditorPageRendererTest {
             ),
         )
         val snapshot = testSnapshot(
-            auditResult = com.charmnight.linkgraph.llm.GraphPatchResult(
-                source = LlmResultSource.MOCK,
+            qaResult = com.charmnight.linkgraph.llm.GraphPatchResult(
+                source = LlmResultSource.LOCAL_RULE,
                 question = "这里是不是有问题？",
                 answer = "建议修改条件判断。",
                 promptPreview = "prompt",
                 candidateChanges = listOf(candidate),
                 newCandidateChanges = listOf(candidate),
-                auditSession = AuditConversationSession(
-                    sessionId = "audit-method-submit",
+                qaSession = QaConversationSession(
+                    sessionId = "qa-method-submit",
                     scopeKey = "method:submit",
                     messages = listOf(
-                        AuditConversationMessage(
+                        QaConversationMessage(
                             messageId = "m-1",
-                            role = AuditMessageRole.USER,
+                            role = QaMessageRole.USER,
                             content = "这里是不是有问题？",
                         ),
                     ),

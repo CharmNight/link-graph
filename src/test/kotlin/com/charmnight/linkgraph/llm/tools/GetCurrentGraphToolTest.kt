@@ -1,12 +1,12 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.testing.toToolGraphSnapshot
 import com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore
 import com.charmnight.linkgraph.llm.runtime.RunBudget
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
-import com.charmnight.linkgraph.ui.GraphEditorStateSnapshot
 import com.charmnight.linkgraph.ui.GraphSceneId
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
 import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
@@ -156,7 +156,7 @@ private fun snapshot(
     flowchartView: FlowchartViewDocument = FlowchartViewDocument(),
     resourceRelationView: ResourceRelationViewDocument = ResourceRelationViewDocument(),
     selectedNodeId: String? = null,
-): GraphEditorStateSnapshot {
+): ToolGraphSnapshot {
     val baseSceneStates = mapOf(
         GraphSceneId.WORKSPACE_FACT to com.charmnight.linkgraph.ui.GraphSceneState(),
         GraphSceneId.WORKSPACE_FLOWCHART to com.charmnight.linkgraph.ui.GraphSceneState(),
@@ -164,7 +164,7 @@ private fun snapshot(
         GraphSceneId.DIFF to com.charmnight.linkgraph.ui.GraphSceneState(),
     )
     val nextSceneState = baseSceneStates.getValue(currentSceneId).copy(selectedNodeId = selectedNodeId)
-    return GraphEditorStateSnapshot(
+    return com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
         workspaceGraph = workspaceGraph,
         workspaceBaseGraph = workspaceGraph,
         semanticFactGraph = workspaceGraph,
@@ -175,5 +175,5 @@ private fun snapshot(
         currentSceneId = currentSceneId,
         previousWorkspaceSceneId = GraphSceneId.WORKSPACE_FACT,
         sceneStates = baseSceneStates + (currentSceneId to nextSceneState),
-    )
+    ).toToolGraphSnapshot()
 }

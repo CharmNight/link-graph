@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.planning.InteractiveGraphProjector
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.model.EdgeType
@@ -613,7 +614,7 @@ class InteractiveGraphProjectorTest {
         val directCurrentMethodCall = methodNode("method:direct-current", "BeanUtils.copyBeanProp")
         val crossMethodExpansionA = methodNode("method:cross-a", "PropertyCopier.copyFields")
         val crossMethodExpansionB = methodNode("method:cross-b", "PropertyCopier.copyMeta")
-        val crossMethodExpansionC = methodNode("method:cross-c", "PropertyCopier.copyAudit")
+        val crossMethodExpansionC = methodNode("method:cross-c", "PropertyCopier.copyQaMetadata")
         val graph = GraphDocument(
             nodes = listOf(
                 anchor,
@@ -722,7 +723,7 @@ class InteractiveGraphProjectorTest {
 
     @Test
     fun keepsHundredsOfNodesOutOfInitialInteractiveProjection() {
-        val anchor = methodNode("method:anchor", "AuditAnchor.execute")
+        val anchor = methodNode("method:anchor", "QaAnchor.execute")
         val callers = (1..120).map { index -> methodNode("method:caller-$index", "UpstreamCaller.call$index") }
         val callees = (1..140).map { index -> methodNode("method:callee-$index", "DownstreamHandler.handle$index") }
         val graph = GraphDocument(

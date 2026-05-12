@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.workbench
 
+import com.charmnight.linkgraph.application.model.RiskResolutionSnapshot
 import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.ui.GraphEditorStateService
 
 class RiskResolutionService {
     fun applyResolution(
@@ -25,14 +25,14 @@ class RiskResolutionService {
         }
         return result.copy(
             investigationThreads = result.investigationThreads.map(updateThread),
-            auditSession = result.auditSession?.copy(
-                investigationThreads = result.auditSession.investigationThreads.map(updateThread),
+            qaSession = result.qaSession?.copy(
+                investigationThreads = result.qaSession.investigationThreads.map(updateThread),
             ),
         )
     }
 
     fun evaluateDraftValidation(
-        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        snapshot: RiskResolutionSnapshot,
     ): DraftValidationState {
         val threads = resolveThreads(snapshot)
         val unresolvedThreads = threads.filter(::isDraftValidationBlocking)
@@ -65,7 +65,7 @@ class RiskResolutionService {
     }
 
     fun evaluateCodeEligibility(
-        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        snapshot: RiskResolutionSnapshot,
     ): StageEligibilityDecision {
         val threads = resolveThreads(snapshot)
         if (snapshot.draftWorkbenchState.draftChanges.isEmpty()) {
@@ -102,9 +102,9 @@ class RiskResolutionService {
         )
     }
 
-    private fun resolveThreads(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): List<InvestigationThread> {
-        val result = snapshot.auditResult ?: return emptyList()
-        return result.auditSession?.investigationThreads
+    private fun resolveThreads(snapshot: RiskResolutionSnapshot): List<InvestigationThread> {
+        val result = snapshot.qaResult ?: return emptyList()
+        return result.qaSession?.investigationThreads
             ?.takeIf(List<InvestigationThread>::isNotEmpty)
             ?: result.investigationThreads
     }

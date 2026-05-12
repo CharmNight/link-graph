@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.actions
 
 import com.charmnight.linkgraph.LinkGraphBundle
-import com.charmnight.linkgraph.services.LinkGraphProjectService
+import com.charmnight.linkgraph.application.GraphEditorApplicationService
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -33,7 +33,7 @@ class AddCurrentMethodToGraphAction : DumbAwareAction(
             // 编辑器右键菜单下需要根据当前主题动态调整文案。
             val project = event.project
             val previewKind = if (project != null) {
-                project.getService(LinkGraphProjectService::class.java)
+                project.getService(GraphEditorApplicationService::class.java)
                     .previewCurrentEditorSubjectKind(event.getData(CommonDataKeys.EDITOR))
             } else {
                 null
@@ -59,8 +59,7 @@ class AddCurrentMethodToGraphAction : DumbAwareAction(
         // 无项目时无法执行追加动作。
         val project = event.project ?: return
         // 统一交给项目服务追加当前主题节点。
-        val projectService = project.getService(LinkGraphProjectService::class.java)
-        if (projectService.addCurrentEditorContextNode()) {
+        if (project.getService(GraphEditorApplicationService::class.java).addCurrentEditorContextNode()) {
             project.getService(LinkGraphToolWindowSession::class.java).openToolWindow()
         }
     }

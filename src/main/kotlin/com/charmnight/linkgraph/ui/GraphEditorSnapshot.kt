@@ -1,16 +1,11 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.model.GraphDocument
-import com.charmnight.linkgraph.services.currentVisibleGraph
-import com.charmnight.linkgraph.services.currentWorkspaceGraph
 import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
 import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
 
-data class GraphLayoutPosition(
-    val x: Double,
-    val y: Double,
-)
+typealias GraphLayoutPosition = com.charmnight.linkgraph.application.model.GraphLayoutPosition
 
 data class GraphLayoutState(
     val positions: Map<String, GraphLayoutPosition> = emptyMap(),

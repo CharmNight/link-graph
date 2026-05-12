@@ -8,6 +8,7 @@ import type {
   GenerationPlanDiscussionSession,
   LinkGraphNode,
   OperationFeedback,
+  QaMode,
 } from "../types";
 import { resolveAuditTargetNodeIds } from "../appGraphSupport";
 import type { useAppBridgeController } from "./useAppBridgeController";
@@ -27,6 +28,7 @@ interface UseAppWorkbenchShellControllerArgs {
   generationPlanDiscussionSession: GenerationPlanDiscussionSession | null;
   setAuditTargetNodeIds: Dispatch<SetStateAction<string[]>>;
   setAuditQuestionDraft: Dispatch<SetStateAction<string>>;
+  setAuditQuestionMode: Dispatch<SetStateAction<QaMode>>;
   setAuditSourceThreadId: Dispatch<SetStateAction<string | null>>;
   setActiveWorkbenchTab: Dispatch<SetStateAction<WorkbenchTab>>;
   setOperationFeedback: Dispatch<SetStateAction<OperationFeedback | null>>;
@@ -68,6 +70,7 @@ export function useAppWorkbenchShellController(args: UseAppWorkbenchShellControl
     const scope = resolveAuditScope(targetNodeId);
     args.setAuditTargetNodeIds(scope.nodeIds);
     args.setAuditQuestionDraft(buildDefaultAuditQuestion(scope.nodeIds, scope.title));
+    args.setAuditQuestionMode("AUTO");
     args.setAuditSourceThreadId(null);
     args.setActiveWorkbenchTab("audit");
   }
@@ -114,8 +117,9 @@ export function useAppWorkbenchShellController(args: UseAppWorkbenchShellControl
     const question = buildDefaultAuditQuestion(scope.nodeIds, scope.title);
     args.setAuditTargetNodeIds(scope.nodeIds);
     args.setAuditQuestionDraft(question);
+    args.setAuditQuestionMode("AUTO");
     args.setAuditSourceThreadId(null);
-    args.handleRequestAudit(question, scope.nodeIds);
+    args.handleRequestAudit(question, scope.nodeIds, "AUTO");
   }
 
   function handleConfirmImportMermaidDraft() {

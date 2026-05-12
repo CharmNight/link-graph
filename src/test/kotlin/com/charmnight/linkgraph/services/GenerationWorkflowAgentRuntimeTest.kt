@@ -1,5 +1,14 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.planning.PlanningContextFactory
+import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
+import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
+import com.charmnight.linkgraph.application.port.GraphEditorApplicationEventSink
+import com.charmnight.linkgraph.application.port.ToolGraphSnapshotProvider
+import com.charmnight.linkgraph.application.workflow.generation.CodeDraftApplyWorkflow
+import com.charmnight.linkgraph.application.workflow.generation.CodeDraftGenerationWorkflow
+import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanWorkflow
+import com.charmnight.linkgraph.application.workflow.generation.GenerationWorkflowDependencies
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.codegen.CodeDraftWriterService
@@ -12,12 +21,15 @@ import com.charmnight.linkgraph.llm.EditScope
 import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.GenerationPlanSource
+import com.charmnight.linkgraph.llm.GenerationPlanDiscussionService
 import com.charmnight.linkgraph.llm.GraphGenerationService
 import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.llm.artifact.ArtifactStore
 import com.charmnight.linkgraph.llm.artifact.AgentArtifactStoreService
 import com.charmnight.linkgraph.llm.artifact.PlanArtifact
 import com.charmnight.linkgraph.llm.capability.CodegenCapability
 import com.charmnight.linkgraph.llm.capability.PlanCapability
+import com.charmnight.linkgraph.llm.runtime.AgentRunCoordinator
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
@@ -29,8 +41,10 @@ import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
+import com.charmnight.linkgraph.workbench.RiskResolutionService
 import com.intellij.diff.merge.MergeRequest
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.project.Project
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.nio.file.Files
@@ -43,6 +57,12 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
+    private data class GenerationTestFlows(
+        val plan: GenerationPlanWorkflow,
+        val codegen: CodeDraftGenerationWorkflow,
+        val apply: CodeDraftApplyWorkflow,
+    )
+
     fun testOpenCodeDraftNativeDiffUsesWritableMergeRequest() {
         val projectBasePath = project.basePath?.toString() ?: throw AssertionError("project base path unavailable")
         val targetPath = "build/tests/native-merge/CommonController.java"
@@ -104,14 +124,15 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
             warnings = emptyList(),
-            source = LlmResultSource.MOCK,
+            source = LlmResultSource.LOCAL_RULE,
             promptPreview = null,
         )
         val mergeRequests = mutableListOf<MergeRequest>()
-        val session = ProjectEditorSession(stateService) {}
-        val workflow = GenerationWorkflow(
+        val flows = generationTestFlows(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -125,7 +146,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -134,7 +154,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             },
         )
 
-        workflow.openCodeDraftNativeDiff("draft-1")
+        flows.apply.openCodeDraftNativeDiff("draft-1")
         PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
 
         assertEquals(1, mergeRequests.size)
@@ -185,10 +205,11 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             promptPreview = null,
         )
         val mergeRequests = mutableListOf<MergeRequest>()
-        val session = ProjectEditorSession(stateService) {}
-        val workflow = GenerationWorkflow(
+        val flows = generationTestFlows(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -202,7 +223,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -211,7 +231,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             },
         )
 
-        workflow.openCodeDraftNativeDiff("draft-content-only")
+        flows.apply.openCodeDraftNativeDiff("draft-content-only")
         PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
 
         val snapshot = stateService.snapshot()
@@ -239,13 +259,14 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
             warnings = emptyList(),
-            source = LlmResultSource.MOCK,
+            source = LlmResultSource.LOCAL_RULE,
             promptPreview = null,
         )
-        val session = ProjectEditorSession(stateService) {}
-        val workflow = GenerationWorkflow(
+        val flows = generationTestFlows(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -259,13 +280,12 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
         )
 
-        workflow.applySingleCodeDraft("draft-1")
+        flows.apply.applySingleCodeDraft("draft-1")
 
         val snapshot = stateService.snapshot()
         assertTrue(snapshot.generatedCodeDraftWriteReport?.writtenFiles?.contains(targetPath) == true)
@@ -289,10 +309,11 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(stateService) {}
-        val workflow = GenerationWorkflow(
+        val flows = generationTestFlows(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -306,7 +327,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 3_000L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -314,7 +334,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 PlanCapability(
                     planExecutor = { _, _, _ ->
                         GenerationPlan(
-                            source = GenerationPlanSource.MOCK,
+                            source = GenerationPlanSource.LOCAL_RULE,
                             summary = "runtime 计划",
                             promptPreview = "prompt",
                         )
@@ -341,7 +361,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             },
         )
 
-        workflow.requestGenerationPlanAsync()
+        flows.plan.requestGenerationPlanAsync()
 
         val snapshot = waitForSnapshot(stateService) {
             it.generationPlanRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
@@ -369,14 +389,15 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(stateService) {}
         var capturedPlan: GenerationPlan? = GenerationPlan(
-            source = GenerationPlanSource.MOCK,
+            source = GenerationPlanSource.LOCAL_RULE,
             summary = "unexpected",
         )
-        val workflow = GenerationWorkflow(
+        val flows = generationTestFlows(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -390,7 +411,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -398,7 +418,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 PlanCapability(
                     planExecutor = { _, _, _ ->
                         GenerationPlan(
-                            source = GenerationPlanSource.MOCK,
+                            source = GenerationPlanSource.LOCAL_RULE,
                             summary = "runtime 计划",
                             promptPreview = "prompt",
                         )
@@ -426,7 +446,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             },
         )
 
-        workflow.requestCodeDraftsAsync()
+        flows.codegen.requestCodeDraftsAsync()
 
         val snapshot = waitForSnapshot(stateService) {
             it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
@@ -464,10 +484,11 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(stateService) {}
-        val workflow = GenerationWorkflow(
+        val flows = generationTestFlows(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -481,7 +502,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -514,7 +534,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             },
         )
 
-        workflow.requestCodeDraftsAsync()
+        flows.codegen.requestCodeDraftsAsync()
 
         val snapshot = waitForSnapshot(stateService) {
             it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
@@ -608,10 +628,11 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(stateService) {}
-        val workflow = GenerationWorkflow(
+        val flows = generationTestFlows(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -625,7 +646,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -662,7 +682,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             },
         )
 
-        workflow.requestCodeDraftsAsync()
+        flows.codegen.requestCodeDraftsAsync()
 
         val snapshot = waitForSnapshot(stateService) {
             it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
@@ -711,10 +731,11 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(stateService) {}
-        val workflow = GenerationWorkflow(
+        val flows = generationTestFlows(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -728,7 +749,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -761,7 +781,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             },
         )
 
-        workflow.requestCodeDraftsAsync()
+        flows.codegen.requestCodeDraftsAsync()
 
         val snapshot = waitForSnapshot(stateService) {
             it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
@@ -798,11 +818,12 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(stateService) {}
         var executorInvoked = false
-        val workflow = GenerationWorkflow(
+        val flows = generationTestFlows(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -816,7 +837,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -878,7 +898,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             },
         )
 
-        workflow.requestCodeDraftsAsync()
+        flows.codegen.requestCodeDraftsAsync()
 
         val snapshot = waitForSnapshot(stateService) {
             it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
@@ -917,10 +937,11 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(stateService) {}
-        val workflow = GenerationWorkflow(
+        val flows = generationTestFlows(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -934,7 +955,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -967,7 +987,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             },
         )
 
-        workflow.requestCodeDraftsAsync()
+        flows.codegen.requestCodeDraftsAsync()
 
         val snapshot = waitForSnapshot(stateService) {
             it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
@@ -994,10 +1014,11 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        val session = ProjectEditorSession(stateService) {}
-        val workflow = GenerationWorkflow(
+        val flows = generationTestFlows(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -1011,7 +1032,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -1019,7 +1039,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                 PlanCapability(
                     planExecutor = { _, _, _ ->
                         GenerationPlan(
-                            source = GenerationPlanSource.MOCK,
+                            source = GenerationPlanSource.LOCAL_RULE,
                             summary = "runtime 计划",
                             promptPreview = "prompt",
                         )
@@ -1046,19 +1066,19 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             },
         )
 
-        workflow.requestGenerationPlanAsync()
+        flows.plan.requestGenerationPlanAsync()
         val planSnapshot = waitForSnapshot(stateService) {
             it.generationPlanRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
         assertEquals("runtime 计划", planSnapshot.generationPlan?.summary)
 
-        workflow.requestCodeDraftsAsync()
+        flows.codegen.requestCodeDraftsAsync()
         val codegenSnapshot = waitForSnapshot(stateService) {
             it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
         assertEquals(1, codegenSnapshot.generatedCodeDrafts.size)
 
-        workflow.applyCodeDrafts()
+        flows.apply.applyCodeDrafts()
 
         val finalSnapshot = stateService.snapshot()
         assertTrue(finalSnapshot.generatedCodeDraftWriteReport?.writtenFiles?.contains(relativeTargetPath) == true)
@@ -1082,15 +1102,16 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
         stateService.asyncRequests.markGenerationPlan(
             GenerationPlan(
-                source = GenerationPlanSource.MOCK,
+                source = GenerationPlanSource.LOCAL_RULE,
                 summary = "orphan plan",
             ),
         )
         project.getService(AgentArtifactStoreService::class.java).artifactStore.remove("plan-current")
-        val session = ProjectEditorSession(stateService) {}
-        val workflow = GenerationWorkflow(
+        val flows = generationTestFlows(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -1104,13 +1125,12 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
         )
 
-        workflow.requestCodeDraftsAsync()
+        flows.codegen.requestCodeDraftsAsync()
 
         val snapshot = waitForSnapshot(stateService) {
             it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
@@ -1121,7 +1141,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
 
     fun testRequestCodeDraftsAsyncUsesExistingPlanArtifactLineage() {
         val plan = GenerationPlan(
-            source = GenerationPlanSource.MOCK,
+            source = GenerationPlanSource.LOCAL_RULE,
             summary = "runtime 计划",
         )
         val stateService = project.getService(GraphEditorStateService::class.java)
@@ -1140,11 +1160,12 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         stateService.asyncRequests.markGenerationPlan(plan)
         val artifactStore = project.getService(AgentArtifactStoreService::class.java).artifactStore
         artifactStore.save(PlanArtifact("plan-current", plan))
-        val session = ProjectEditorSession(stateService) {}
         var capturedPlan: GenerationPlan? = null
-        val workflow = GenerationWorkflow(
+        val flows = generationTestFlows(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = SyncPreviewPlanner(),
@@ -1158,7 +1179,6 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
@@ -1183,7 +1203,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             },
         )
 
-        workflow.requestCodeDraftsAsync()
+        flows.codegen.requestCodeDraftsAsync()
 
         val snapshot = waitForSnapshot(stateService) {
             it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
@@ -1207,6 +1227,61 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
     }
 
+    private fun generationTestFlows(
+        project: Project,
+        snapshotProvider: EditorSnapshotProvider,
+        toolGraphSnapshotProvider: ToolGraphSnapshotProvider,
+        eventSink: GraphEditorApplicationEventSink,
+        planningContextFactory: PlanningContextFactory,
+        graphGenerationService: GraphGenerationService,
+        codeGenerationService: CodeGenerationService,
+        codeDraftWriterService: CodeDraftWriterService,
+        sourceNavigationServiceProvider: () -> SourceNavigationService,
+        settingsProvider: () -> LinkGraphSettingsState,
+        asyncRequestLifecycle: AsyncRequestLifecycleSupport,
+        logger: Logger,
+        agentRunCoordinator: AgentRunCoordinator = AgentRunCoordinator(),
+        artifactStoreProvider: () -> ArtifactStore = {
+            project.getService(AgentArtifactStoreService::class.java).artifactStore
+        },
+        planCapabilityFactory: (PlanCapability.PlanExecutor) -> PlanCapability = { planExecutor ->
+            PlanCapability(planExecutor = planExecutor)
+        },
+        codegenCapabilityFactory: (CodegenCapability.CodegenExecutor) -> CodegenCapability = { codegenExecutor ->
+            CodegenCapability(project = project, codegenExecutor = codegenExecutor)
+        },
+        riskResolutionService: RiskResolutionService = RiskResolutionService(),
+        generationPlanDiscussionService: GenerationPlanDiscussionService = GenerationPlanDiscussionService(),
+        showCodeDraftMergeRequest: (Project, MergeRequest) -> Unit = { _, _ -> },
+    ): GenerationTestFlows {
+        val dependencies = GenerationWorkflowDependencies(
+            project = project,
+            snapshotProvider = snapshotProvider,
+            toolGraphSnapshotProvider = toolGraphSnapshotProvider,
+            planningContextFactory = planningContextFactory,
+            graphGenerationService = graphGenerationService,
+            codeGenerationService = codeGenerationService,
+            codeDraftWriterService = codeDraftWriterService,
+            sourceNavigationServiceProvider = sourceNavigationServiceProvider,
+            settingsProvider = settingsProvider,
+            asyncRequestLifecycle = asyncRequestLifecycle,
+            logger = logger,
+            agentRunCoordinator = agentRunCoordinator,
+            artifactStoreProvider = artifactStoreProvider,
+            eventSink = eventSink,
+            planCapabilityFactory = planCapabilityFactory,
+            codegenCapabilityFactory = codegenCapabilityFactory,
+            riskResolutionService = riskResolutionService,
+            generationPlanDiscussionService = generationPlanDiscussionService,
+            showCodeDraftMergeRequest = showCodeDraftMergeRequest,
+        )
+        return GenerationTestFlows(
+            plan = GenerationPlanWorkflow(dependencies),
+            codegen = CodeDraftGenerationWorkflow(dependencies),
+            apply = CodeDraftApplyWorkflow(dependencies),
+        )
+    }
+
     private fun waitForSnapshot(
         stateService: GraphEditorStateService,
         predicate: (com.charmnight.linkgraph.ui.GraphEditorStateSnapshot) -> Boolean,
@@ -1220,7 +1295,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             }
             Thread.sleep(50)
         }
-        fail("等待 GenerationWorkflow runtime 状态收敛超时")
+        fail("等待 generation runtime 状态收敛超时")
         throw IllegalStateException("unreachable")
     }
 }

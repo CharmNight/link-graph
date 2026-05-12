@@ -16,8 +16,7 @@ class ValidateEvidenceTool(
         input: Map<String, Any?>,
         context: ToolExecutionContext,
     ): ToolResult {
-        @Suppress("UNCHECKED_CAST")
-        val findings = input["findings"] as? List<ResultEvidenceFinding> ?: emptyList()
+        val findings = input.optionalList<ResultEvidenceFinding>("findings")
         return ToolResult(
             toolName = name,
             payload = mapOf(

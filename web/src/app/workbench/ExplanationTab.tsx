@@ -11,6 +11,7 @@ import { StepDetail } from "./StepDetail";
 import { StepList } from "./StepList";
 import { WorkbenchSection } from "./WorkbenchSection";
 import { resolveEffectiveWorkbenchSectionPreferences } from "./workbenchSections";
+import { RequestPromptDisclosure } from "../components/RequestPromptDisclosure";
 
 interface ExplanationTabProps {
   state: ExplanationWorkbenchState;
@@ -26,6 +27,8 @@ interface ExplanationTabProps {
   onRevealReference: (reference: ResultEvidenceReference) => void;
   onReturnToPrevious?: () => void;
   onOpenHistory?: (historyIndex: number) => void;
+  resolveArtifactText?: (artifactId: string) => string | null;
+  onRequestArtifact?: (artifactId: string) => void;
   sectionPreferences?: WorkbenchSectionPreferences | null;
   onSectionPreferenceChange?: (sectionId: WorkbenchSectionId, expanded: boolean) => void;
 }
@@ -44,6 +47,8 @@ export function ExplanationTab({
   onRevealReference,
   onReturnToPrevious = () => undefined,
   onOpenHistory = () => undefined,
+  resolveArtifactText,
+  onRequestArtifact,
   sectionPreferences,
   onSectionPreferenceChange = () => undefined,
 }: ExplanationTabProps) {
@@ -52,6 +57,7 @@ export function ExplanationTab({
   const [localSectionPreferences, setLocalSectionPreferences] = useState<WorkbenchSectionPreferences>(
     () => sectionPreferences ?? {},
   );
+  const [promptSectionExpanded, setPromptSectionExpanded] = useState(true);
   const rawSectionPreferences = sectionPreferences ?? localSectionPreferences;
   const steps = state.result?.steps ?? [];
   const selectedStep = steps.find((step) => step.stepId === state.selectedStepId) ?? steps[0] ?? null;
@@ -161,12 +167,30 @@ export function ExplanationTab({
           ))}
         </div>
       </div>
-      <div ref={layoutRef} className="workbench-tab-body workbench-page-flow explanation-layout">
+      <div ref={layoutRef} className="workbench-tab-body workbench-page-flow explanation-layout stage-workbench-priority-layout">
+        {state.result?.promptPreview?.trim() || state.result?.promptPreviewArtifactId ? (
+          <WorkbenchSection
+            sectionId="explanation.prompt"
+            title="提示词"
+            expanded={promptSectionExpanded}
+            onToggle={setPromptSectionExpanded}
+            className="explanation-prompt-section"
+          >
+            <RequestPromptDisclosure
+              promptPreview={state.result?.promptPreview ?? null}
+              promptPreviewArtifactId={state.result?.promptPreviewArtifactId ?? null}
+              promptPreviewAvailable={Boolean(state.result?.promptPreview?.trim() || state.result?.promptPreviewArtifactId)}
+              resolveArtifactText={resolveArtifactText}
+              onRequestArtifact={onRequestArtifact}
+            />
+          </WorkbenchSection>
+        ) : null}
         <WorkbenchSection
           sectionId="explanation.step-list"
           title="步骤列表"
           expanded={effectiveSectionPreferences["explanation.step-list"] ?? true}
           onToggle={(nextExpanded) => handleSectionToggle("explanation.step-list", nextExpanded)}
+          className="explanation-step-list-section"
           meta={<span className="badge">{steps.length}</span>}
         >
           <StepList
@@ -181,9 +205,11 @@ export function ExplanationTab({
           />
         </WorkbenchSection>
         <WorkbenchSection
+          sectionId="explanation.step-detail"
           title="步骤详情"
           expanded={effectiveSectionPreferences["explanation.step-detail"] ?? true}
           onToggle={(nextExpanded) => handleSectionToggle("explanation.step-detail", nextExpanded)}
+          className="explanation-step-detail-section"
         >
           <StepDetail
             step={selectedStep}

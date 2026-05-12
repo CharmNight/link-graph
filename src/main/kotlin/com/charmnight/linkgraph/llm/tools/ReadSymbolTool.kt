@@ -16,18 +16,15 @@ class ReadSymbolTool(
         input: Map<String, Any?>,
         context: ToolExecutionContext,
     ): ToolResult {
-        val symbolSignature = input["symbolSignature"]?.toString()
-        if (symbolSignature.isNullOrBlank()) {
-            return ToolResult(toolName = name, success = false, errorMessage = "symbolSignature 不能为空")
-        }
-        @Suppress("UNCHECKED_CAST")
-        val fallbackSourceContexts = input["fallbackSourceContexts"] as? List<SourceSnippetContext> ?: emptyList()
+        val symbolSignature = input.requiredString("symbolSignature") ?: return missingRequired("symbolSignature")
+        val fallbackSourceContexts = input.optionalList<SourceSnippetContext>("fallbackSourceContexts")
         val snippet = codeReadToolFacade.readSymbol(
             snapshot = context.snapshot,
             symbolSignature = symbolSignature,
             fallbackSourceContexts = fallbackSourceContexts,
             projectBasePath = context.project.basePath,
-        ) ?: return ToolResult(toolName = name, success = false, errorMessage = "未读取到 symbol 对应源码")
+            project = context.project,
+        ) ?: return failure("未读取到 symbol 对应源码")
         return ToolResult(
             toolName = name,
             payload = mapOf(

@@ -14,6 +14,7 @@ import type {
   GraphPatchResult,
   LinkGraphNode,
   OperationFeedback,
+  QaMode,
   QaRequestRecoveryState,
   RiskResolutionStatus,
   WorkbenchSectionId,
@@ -28,6 +29,7 @@ interface UseAuditWorkbenchControllerArgs {
   auditResult: GraphPatchResult | null;
   qaRequestRecoveryState: QaRequestRecoveryState;
   auditSourceThreadId: string | null;
+  auditQuestionMode: QaMode;
   auditTargetNodeIds: string[];
   selectedAuditChangeId: string | null;
   selectedAuditThreadId: string | null;
@@ -38,6 +40,7 @@ interface UseAuditWorkbenchControllerArgs {
     "runBridgeCommand" | "submitAsyncBridgeCommand"
   >;
   setAuditQuestionDraft: Dispatch<SetStateAction<string>>;
+  setAuditQuestionMode: Dispatch<SetStateAction<QaMode>>;
   setAuditTargetNodeIds: Dispatch<SetStateAction<string[]>>;
   setAuditSourceThreadId: Dispatch<SetStateAction<string | null>>;
   setActiveWorkbenchTab: Dispatch<SetStateAction<WorkbenchTab>>;
@@ -77,14 +80,19 @@ export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArg
     });
   }
 
-  function handleRequestAudit(question: string, targetNodeIds: string[] = args.auditTargetNodeIds) {
+  function handleRequestAudit(
+    question: string,
+    targetNodeIds: string[] = args.auditTargetNodeIds,
+    mode: QaMode = args.auditQuestionMode,
+  ) {
     const normalizedQuestion = question.trim();
     if (normalizedQuestion.length === 0) {
       return;
     }
     args.setAuditQuestionDraft(normalizedQuestion);
+    args.setAuditQuestionMode(mode);
     args.setAuditTargetNodeIds(targetNodeIds);
-    args.bridgeCommands.submitAsyncBridgeCommand("问答", () => requestAuditAsync(normalizedQuestion, targetNodeIds, args.auditSourceThreadId), {
+    args.bridgeCommands.submitAsyncBridgeCommand("问答", () => requestAuditAsync(normalizedQuestion, targetNodeIds, args.auditSourceThreadId, mode), {
       onAccepted: () => {
         args.setActiveWorkbenchTab("audit");
       },
@@ -138,6 +146,7 @@ export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArg
       return;
     }
     args.setAuditQuestionDraft(failedRequest.question);
+    args.setAuditQuestionMode(failedRequest.mode ?? "AUTO");
     args.setAuditTargetNodeIds(failedRequest.selectedNodeIds);
     args.setAuditSourceThreadId(failedRequest.sourceThreadId ?? null);
     activateAuditSection("audit.request-status");
@@ -156,6 +165,7 @@ export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArg
       return;
     }
     args.setAuditQuestionDraft(failedRequest.question);
+    args.setAuditQuestionMode(failedRequest.mode ?? "AUTO");
     args.setAuditTargetNodeIds(failedRequest.selectedNodeIds);
     args.setAuditSourceThreadId(failedRequest.sourceThreadId ?? null);
     activateAuditSection("audit.composer");
@@ -210,7 +220,7 @@ export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArg
     }
     activateAuditSection("audit.composer");
     args.setActiveWorkbenchTab("audit");
-    args.bridgeCommands.submitAsyncBridgeCommand("问答", () => requestAuditAsync(nextQuestion, thread.targetNodeIds, threadId), {
+    args.bridgeCommands.submitAsyncBridgeCommand("问答", () => requestAuditAsync(nextQuestion, thread.targetNodeIds, threadId, "INVESTIGATE"), {
       successFeedback: {
         level: "INFO",
         message: `已围绕风险线程“${thread.title}”自动发起继续取证。`,

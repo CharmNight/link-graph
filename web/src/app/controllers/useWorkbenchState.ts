@@ -27,6 +27,7 @@ import type {
   LlmResultSource,
   MermaidIssue,
   OperationFeedback,
+  QaMode,
   QaRequestRecoveryState,
   ResourceRelationViewDocument,
   SourceNavigationState,
@@ -419,6 +420,7 @@ export function useWorkbenchState({
   );
   const [auditTargetNodeIds, setAuditTargetNodeIds] = useState<string[]>([]);
   const [auditQuestionDraft, setAuditQuestionDraft] = useState<string>(() => initialState.auditResult?.question ?? "");
+  const [auditQuestionMode, setAuditQuestionMode] = useState<QaMode>("AUTO");
   const [selectionGroupNodeIds, setSelectionGroupNodeIds] = useState<string[]>([]);
   const [requestFailureNotice, setRequestFailureNotice] = useState<RequestFailureNotice | null>(null);
   const [isImportDialogOpen, setImportDialogOpen] = useState(false);
@@ -500,6 +502,8 @@ export function useWorkbenchState({
     setAuditTargetNodeIds,
     auditQuestionDraft,
     setAuditQuestionDraft,
+    auditQuestionMode,
+    setAuditQuestionMode,
     selectionGroupNodeIds,
     setSelectionGroupNodeIds,
     collapsedNodeIds,

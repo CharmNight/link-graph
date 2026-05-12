@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.actions
 
 import com.charmnight.linkgraph.LinkGraphBundle
-import com.charmnight.linkgraph.services.LinkGraphProjectService
+import com.charmnight.linkgraph.application.GraphEditorApplicationService
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.ui.Messages
@@ -30,6 +30,6 @@ class ImportMermaidAction : DumbAwareAction(
             null,
         ) ?: return
         // Mermaid 文本交给项目服务统一解析与落图。
-        project.getService(LinkGraphProjectService::class.java).importMermaid(mermaid)
+        project.getService(GraphEditorApplicationService::class.java).importMermaid(mermaid)
     }
 }

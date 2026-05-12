@@ -16,7 +16,7 @@ function explanationStateFixture(): ExplanationWorkbenchState {
     currentSessionLabel: "当前链路讲解",
     previousSessionLabel: null,
     result: {
-      source: "MOCK",
+      source: "LOCAL_RULE",
       granularity: "BUSINESS",
       promptPreview: "prompt",
       warnings: [],
@@ -123,6 +123,56 @@ describe("ExplanationTab", () => {
     expect(screen.getByRole("button", { name: "围绕这一步继续讲解" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "定位被调方法" })).toBeInTheDocument();
     expect(container.querySelector(".workbench-tab-body.explanation-layout")).not.toBeNull();
+  });
+
+  it("uses flat stage-workbench sections for step list and step detail", () => {
+    const { container } = render(
+      <div className="stage-workbench-panel">
+        <ExplanationTab
+          state={explanationStateFixture()}
+          onSelectStep={vi.fn()}
+          onLocateStepNode={vi.fn()}
+          onInspectStepNode={vi.fn()}
+          onGranularityChange={vi.fn()}
+          onAddToDraft={vi.fn()}
+          onDrillDown={vi.fn()}
+          onFollowUp={vi.fn()}
+          onRevealReference={vi.fn()}
+        />
+      </div>,
+    );
+
+    const sections = Array.from(container.querySelectorAll(".workbench-section-card"));
+    expect(sections.length).toBeGreaterThanOrEqual(2);
+    expect(sections.every((section) => section.classList.contains("stage-workbench-flat-section"))).toBe(true);
+    expect(container.querySelector(".explanation-layout.stage-workbench-priority-layout")).not.toBeNull();
+  });
+
+  it("keeps prompt preview above the step columns when it is available", () => {
+    const { container } = render(
+      <div className="stage-workbench-panel">
+        <ExplanationTab
+          state={explanationStateFixture()}
+          onSelectStep={vi.fn()}
+          onLocateStepNode={vi.fn()}
+          onInspectStepNode={vi.fn()}
+          onGranularityChange={vi.fn()}
+          onAddToDraft={vi.fn()}
+          onDrillDown={vi.fn()}
+          onFollowUp={vi.fn()}
+          onRevealReference={vi.fn()}
+        />
+      </div>,
+    );
+
+    const promptSection = within(screen.getByText("提示词").closest("section") as HTMLElement);
+    expect(promptSection.getByRole("button", { name: "查看提示词" })).toBeInTheDocument();
+    expect(container.querySelector('.workbench-section-card[data-section-id="explanation.prompt"]')).not.toBeNull();
+    expect(container.querySelector('.workbench-section-card[data-section-id="explanation.step-list"]')).not.toBeNull();
+    expect(container.querySelector('.workbench-section-card[data-section-id="explanation.step-detail"]')).not.toBeNull();
+    expect(themeCss).toMatch(/\.explanation-prompt-section\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;/s);
+    expect(themeCss).toMatch(/\.explanation-step-list-section\s*\{[^}]*grid-column:\s*1;/s);
+    expect(themeCss).toMatch(/\.explanation-step-detail-section\s*\{[^}]*grid-column:\s*2;/s);
   });
 
   it("shows a return action when the reader is inside a follow-up explanation session", async () => {

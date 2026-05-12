@@ -14,7 +14,6 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
-import com.charmnight.linkgraph.services.currentVisibleGraph
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.ui.AsyncRequestState
 import com.charmnight.linkgraph.ui.DraftPatchApplyResult
@@ -56,8 +55,8 @@ fun testSnapshot(
     draftPatchPreview: GraphPatch? = null,
     draftPatchUndoState: DraftPatchUndoState? = null,
     lastDraftPatchApplyResult: DraftPatchApplyResult? = null,
-    auditResult: GraphPatchResult? = null,
-    auditRequestState: AsyncRequestState = AsyncRequestState(),
+    qaResult: GraphPatchResult? = null,
+    qaRequestState: AsyncRequestState = AsyncRequestState(),
     qaRequestRecoveryState: QaRequestRecoveryState = QaRequestRecoveryState(),
     runtimeArtifactSummaries: Map<String, List<com.charmnight.linkgraph.ui.RuntimeArtifactSummary>> = emptyMap(),
     diffReviewResult: GraphPatchResult? = null,
@@ -200,8 +199,8 @@ fun testSnapshot(
         draftPatchPreview = draftPatchPreview,
         draftPatchUndoState = draftPatchUndoState,
         lastDraftPatchApplyResult = lastDraftPatchApplyResult,
-        auditResult = auditResult,
-        auditRequestState = auditRequestState,
+        qaResult = qaResult,
+        qaRequestState = qaRequestState,
         qaRequestRecoveryState = qaRequestRecoveryState,
         runtimeArtifactSummaries = runtimeArtifactSummaries,
         diffReviewResult = diffReviewResult,
@@ -246,7 +245,7 @@ fun testSnapshot(
 }
 
 val GraphEditorStateSnapshot.visibleGraph: GraphDocument
-    get() = currentVisibleGraph(this)
+    get() = com.charmnight.linkgraph.ui.currentVisibleGraph(this)
 
 val GraphEditorStateSnapshot.workingGraph: GraphDocument
     get() = workspaceGraph

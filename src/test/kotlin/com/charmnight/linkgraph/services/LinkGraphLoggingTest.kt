@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.foundation.debugLazy
 import com.charmnight.linkgraph.testing.*
 
 import java.nio.file.Files
@@ -49,9 +50,9 @@ class LinkGraphLoggingTest {
         val projectRoot = Path.of(System.getProperty("user.dir"))
         val files = listOf(
             "src/main/kotlin/com/charmnight/linkgraph/ui/GraphBrowserPanel.kt",
-            "src/main/kotlin/com/charmnight/linkgraph/services/SubjectGraphWorkflow.kt",
-            "src/main/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectService.kt",
-            "src/main/kotlin/com/charmnight/linkgraph/services/SourceNavigationWorkflow.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/workflow/SubjectGraphWorkflow.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/GraphEditorApplicationService.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/workflow/SourceNavigationWorkflow.kt",
             "src/main/kotlin/com/charmnight/linkgraph/toolwindow/LinkGraphToolWindowSession.kt",
             "src/main/kotlin/com/charmnight/linkgraph/semantic/provider/code/CodeInvocationSemanticResolver.kt",
         )
@@ -66,16 +67,16 @@ class LinkGraphLoggingTest {
     }
 
     @Test
-    fun qaRuntimeLogsUseQaWordingInsteadOfAuditWording() {
+    fun qaRuntimeLogsUseQaWordingInsteadOfObsoleteWording() {
         val projectRoot = Path.of(System.getProperty("user.dir"))
         val graphBrowserPanel = Files.readString(
             projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/ui/GraphBrowserPanel.kt"),
         )
-        val projectService = Files.readString(
-            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectService.kt"),
+        val confirmedDraftCoordinator = Files.readString(
+            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/application/workflow/ConfirmedDraftChangeCoordinator.kt"),
         )
         val reviewWorkflow = Files.readString(
-            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/services/ReviewWorkflow.kt"),
+            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/application/workflow/ReviewWorkflow.kt"),
         )
 
         assertFalse(
@@ -83,15 +84,15 @@ class LinkGraphLoggingTest {
             "前端问答请求日志不应继续保留“审计”口径。",
         )
         assertFalse(
-            projectService.contains("确认审计候选变更"),
+            confirmedDraftCoordinator.contains("确认审计候选变更"),
             "候选草稿确认日志不应继续保留“审计”口径。",
         )
         assertFalse(
-            projectService.contains("审计候选变更已写入草稿层"),
+            confirmedDraftCoordinator.contains("审计候选变更已写入草稿层"),
             "草稿写入日志不应继续保留“审计”口径。",
         )
         assertFalse(
-            projectService.contains("取消确认审计候选变更"),
+            confirmedDraftCoordinator.contains("取消确认审计候选变更"),
             "取消确认日志不应继续保留“审计”口径。",
         )
         assertFalse(
@@ -104,10 +105,10 @@ class LinkGraphLoggingTest {
     fun renderTraceCallersUseOptionalTraceSinkSoDisabledTraceDoesNotBuildDetails() {
         val projectRoot = Path.of(System.getProperty("user.dir"))
         val runtimeSupport = Files.readString(
-            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectRuntimeSupport.kt"),
+            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/application/runtime/LinkGraphProjectRuntimeSupport.kt"),
         )
-        val projectService = Files.readString(
-            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectService.kt"),
+        val components = Files.readString(
+            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/application/GraphEditorApplicationService.kt"),
         )
         val graphBrowserPanel = Files.readString(
             projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/ui/GraphBrowserPanel.kt"),
@@ -118,12 +119,12 @@ class LinkGraphLoggingTest {
             "Runtime support should expose a nullable lazy trace sink so callers can skip trace work entirely.",
         )
         assertFalse(
-            projectService.contains("runtimeTrace = { message -> runtimeSupport.runtimeTrace(message) }"),
-            "Project service should not pass always-present render trace lambdas that build details when trace is disabled.",
+            components.contains("runtimeTrace = { message -> runtimeSupport.runtimeTrace(message) }"),
+            "Project components should not pass always-present render trace lambdas that build details when trace is disabled.",
         )
         assertFalse(
-            projectService.contains("runtimeTrace = { message -> runtimeSupport.runtimeTrace { message } }"),
-            "Project service should not wrap string traces in an always-present lazy lambda.",
+            components.contains("runtimeTrace = { message -> runtimeSupport.runtimeTrace { message } }"),
+            "Project components should not wrap string traces in an always-present lazy lambda.",
         )
         assertTrue(
             graphBrowserPanel.contains("private val runtimeTraceSink: (((() -> String) -> Unit))?"),

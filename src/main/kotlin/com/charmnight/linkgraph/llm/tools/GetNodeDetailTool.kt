@@ -14,20 +14,9 @@ class GetNodeDetailTool(
         input: Map<String, Any?>,
         context: ToolExecutionContext,
     ): ToolResult {
-        val nodeId = input["nodeId"]?.toString()
-        if (nodeId.isNullOrBlank()) {
-            return ToolResult(
-                toolName = name,
-                success = false,
-                errorMessage = "nodeId 不能为空",
-            )
-        }
+        val nodeId = input.requiredString("nodeId") ?: return missingRequired("nodeId")
         val node = graphToolFacade.nodeDetail(context.snapshot, nodeId)
-            ?: return ToolResult(
-                toolName = name,
-                success = false,
-                errorMessage = "未找到节点: $nodeId",
-            )
+            ?: return failure("未找到节点: $nodeId")
         return ToolResult(
             toolName = name,
             payload = mapOf(

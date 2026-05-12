@@ -121,7 +121,7 @@ class GraphBeautificationServiceTest {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertEquals(listOf("step-load-subject", "step-run-as", "step-return"), result.steps.map { it.stepId })
         assertTrue(result.steps[1].description.contains("runAs"))
         assertTrue(result.steps[1].evidence.any { finding ->
@@ -151,7 +151,7 @@ class GraphBeautificationServiceTest {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertEquals(listOf("step-run-as"), result.steps.map { it.stepId })
         assertTrue(result.steps[0].description.contains("这里失败时会如何处理"))
         assertTrue(result.promptPreview.contains("用户追问：这里失败时会如何处理？"))
@@ -170,7 +170,7 @@ class GraphBeautificationServiceTest {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertTrue(result.warnings.any { it.contains("远程 LLM 配置未就绪") })
         assertTrue(result.warnings.any { it.contains("本地规则讲解") })
         assertTrue(result.steps.isNotEmpty())

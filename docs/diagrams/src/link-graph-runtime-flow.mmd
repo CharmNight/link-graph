@@ -2,13 +2,13 @@ sequenceDiagram
   autonumber
   actor 用户
   participant IDE as IntelliJ 编辑器 / 工具窗口
-  participant PS as LinkGraphProjectService
+  participant PS as GraphEditorApplicationService
   participant SA as SemanticAnalyzer + Provider
   participant State as GraphEditorStateService
   participant Bridge as JCEF Bridge / Transport 传输
   participant UI as React 工作台
   participant LLM as 可选 LLM Gateway
-  participant Code as 代码草稿 / 补丁服务
+  participant Code as 代码 diff / 写回服务
 
   用户->>IDE: 打开工具窗口或触发编辑器动作
   IDE->>PS: 加载当前编辑器上下文 / 添加主体
@@ -19,7 +19,7 @@ sequenceDiagram
   Bridge-->>UI: 执行 JavaScript 更新
   UI-->>用户: 渲染事实图、流程图、资源关系视图
 
-  用户->>UI: 发起审计 / 讲解 / 实现建议 / 草稿 / 导航
+  用户->>UI: 发起风险问答 / 讲解 / 实现建议 / 草稿 / 导航
   UI->>Bridge: window.linkGraphBridge 请求
   Bridge->>PS: 通过 GraphEditorCommandRouter 路由命令
 

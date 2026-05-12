@@ -20,8 +20,8 @@ class MermaidExporterTest {
                 GraphNode(
                     id = "method:format-order",
                     type = NodeType.METHOD,
-                    title = "AuditService.format",
-                    signature = "com.example.AuditService.format(java.lang.String,java.util.Map):java.lang.String",
+                    title = "QaService.format",
+                    signature = "com.example.QaService.format(java.lang.String,java.util.Map):java.lang.String",
                     inputs = listOf(
                         "java.lang.String",
                         "java.util.Map<java.lang.String,java.lang.Object>",

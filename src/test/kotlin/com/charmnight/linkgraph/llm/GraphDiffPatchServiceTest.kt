@@ -61,7 +61,7 @@ class GraphDiffPatchServiceTest {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertTrue(result.answer.contains("结论："))
         assertTrue(result.answer.contains("关键影响："))
         assertTrue(result.answer.contains("建议动作："))
@@ -281,7 +281,7 @@ class GraphDiffPatchServiceTest {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertTrue(result.warnings.any { it.contains("请求地址") })
         assertTrue(result.warnings.any { it.contains("API 密钥") })
         assertTrue(result.warnings.any { it.contains("链路图设置") })
@@ -312,9 +312,9 @@ class GraphDiffPatchServiceTest {
                             sourceTag = GraphSourceTag.DESIGN_BASELINE,
                         ),
                         GraphNode(
-                            id = "design:audit-note",
+                            id = "design:qa-note",
                             type = NodeType.DOC_PAGE,
-                            title = "AuditNote",
+                            title = "QaNote",
                             doc = "另一个设计节点。",
                             sourceTag = GraphSourceTag.DESIGN_BASELINE,
                         ),
@@ -324,7 +324,7 @@ class GraphDiffPatchServiceTest {
                     entries = listOf(
                         GraphDiffEntry(
                             elementKind = GraphDiffElementKind.NODE,
-                            elementId = "design:audit-note",
+                            elementId = "design:qa-note",
                             status = DiffStatus.ONLY_IN_MERMAID,
                             message = "另一个设计节点未落地。",
                         ),
@@ -345,7 +345,7 @@ class GraphDiffPatchServiceTest {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertTrue(result.answer.contains("DefaultChannelFallback"))
         assertEquals("DefaultChannelFallback", result.patch?.operations?.firstNotNullOfOrNull { it.node }?.title)
     }

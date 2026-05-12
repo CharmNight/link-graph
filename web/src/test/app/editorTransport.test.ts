@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LinkGraphBootstrapState, LinkGraphIncrementalTransportEnvelope, LinkGraphSnapshotEnvelope } from "../../app/types";
+import { EMPTY_STATE } from "../../app/sampleState";
 import {
   acknowledgeSnapshot,
   announceFrontendReady,
@@ -162,5 +163,26 @@ describe("editorTransport", () => {
 
     expect(received).toEqual([]);
     unsubscribe();
+  });
+
+  it("keeps bootstrap result source unchanged", () => {
+    announceFrontendReady();
+    const received: string[] = [];
+    const unsubscribe = subscribeBootstrap((nextEnvelope) => {
+      received.push(nextEnvelope.state.generatedCodeDraftSource ?? "NULL");
+    });
+
+    dispatchBootstrapForTest({
+      sessionId: "session",
+      revision: 1,
+      state: {
+        ...EMPTY_STATE,
+        generatedCodeDraftSource: "LOCAL_RULE",
+      },
+    });
+
+    unsubscribe();
+    expect(received).toEqual(["LOCAL_RULE"]);
+    expect(window.linkGraphBootstrap?.generatedCodeDraftSource).toBe("LOCAL_RULE");
   });
 });

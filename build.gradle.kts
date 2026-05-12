@@ -20,6 +20,7 @@ repositories {
 dependencies {
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
+    implementation("com.google.code.gson:gson:2.11.0")
 
     intellijPlatform {
         create(
@@ -43,6 +44,12 @@ val integrationTestSourceSet = sourceSets.create("integrationTest") {
     runtimeClasspath += output + compileClasspath
 }
 
+kotlin {
+    target.compilations.named(integrationTestSourceSet.name) {
+        associateWith(target.compilations.getByName("main"))
+    }
+}
+
 configurations[integrationTestSourceSet.implementationConfigurationName].extendsFrom(
     configurations["testImplementation"],
 )
@@ -58,7 +65,7 @@ intellijPlatform {
         id = "com.charmnight.linkgraph"
         name = providers.gradleProperty("pluginName")
         version = providers.gradleProperty("pluginVersion")
-        description = "Link Graph is an IntelliJ Platform plugin for exploring method, flowchart, and resource relationships inside a project. It provides a JCEF-based graph workbench with Mermaid import/export, diff preview, source navigation, local fallback workflows, and optional remote LLM-assisted drafts."
+        description = "Link Graph is an IntelliJ Platform plugin for exploring method, flowchart, and resource relationships inside a project. It provides a JCEF-based graph workbench with Mermaid import/export, diff preview, source navigation, local fallback workflows, and optional remote LLM-assisted implementation suggestions and code diff workflows."
         ideaVersion {
             sinceBuild = providers.gradleProperty("platformSinceBuild")
             untilBuild = provider { null }
@@ -192,5 +199,9 @@ tasks {
 
     named("prepareSandbox") {
         dependsOn(frontendPackResources)
+    }
+
+    named("buildSearchableOptions") {
+        enabled = false
     }
 }

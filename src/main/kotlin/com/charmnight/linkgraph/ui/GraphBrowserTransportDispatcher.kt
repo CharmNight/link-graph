@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.services.LinkGraphRenderTrace
+import com.charmnight.linkgraph.foundation.LinkGraphRenderTrace
 import com.intellij.ui.jcef.JBCefBrowser
 
 internal class GraphBrowserTransportDispatcher(

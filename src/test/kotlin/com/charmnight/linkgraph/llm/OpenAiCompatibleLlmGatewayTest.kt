@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.testing.*
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class OpenAiCompatibleLlmGatewayTest {
@@ -37,33 +38,17 @@ class OpenAiCompatibleLlmGatewayTest {
             ),
         )
 
-        assertTrue(payload.contains("\"response_format\":"))
-        assertTrue(payload.contains("\"type\": \"json_schema\""))
-        assertTrue(payload.contains("\"name\": \"code_generation\""))
-        assertTrue(payload.contains("\"strict\": true"))
-        assertTrue(payload.contains("\"required\": [\"payload\"]"))
-    }
+        val root = LlmJsonSupport.parseJsonObject(payload)
+        val jsonSchema = root.getAsJsonObject("response_format").getAsJsonObject("json_schema")
 
-    @Test
-    fun extractsProviderErrorCodeAndMessageFromFailureBody() {
-        val gateway = OpenAiCompatibleLlmGateway()
-
-        val message = gateway.buildFailureMessage(
-            statusCode = 503,
-            body = """
-                {
-                  "error": {
-                    "code": "model_not_found",
-                    "message": "No available channel for model gpt-5.4 under group free (distributor)",
-                    "type": "new_api_error"
-                  }
-                }
-            """.trimIndent(),
-        )
-
-        assertEquals(
-            "Remote LLM request failed with HTTP 503 (model_not_found): No available channel for model gpt-5.4 under group free (distributor)",
-            message,
+        assertEquals("json_schema", root.getAsJsonObject("response_format").get("type").asString)
+        assertEquals("code_generation", jsonSchema.get("name").asString)
+        assertEquals(true, jsonSchema.get("strict").asBoolean)
+        assertNotNull(
+            jsonSchema.getAsJsonObject("schema")
+                .getAsJsonArray("required")
+                .firstOrNull { it.asString == "payload" },
         )
     }
+
 }

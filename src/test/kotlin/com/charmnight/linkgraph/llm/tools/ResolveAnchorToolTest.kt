@@ -26,7 +26,7 @@ class ResolveAnchorToolTest : BasePlatformTestCase() {
                     ),
                 ),
             ),
-        )
+        ).toToolGraphSnapshot()
 
         val result = tool.invoke(
             input = mapOf("nodeId" to "method:submit"),
@@ -55,7 +55,7 @@ class ResolveAnchorToolTest : BasePlatformTestCase() {
                     ),
                 ),
             ),
-        )
+        ).toToolGraphSnapshot()
 
         val result = tool.invoke(
             input = mapOf("symbolSignature" to "com.example.OrderService.submit():void"),

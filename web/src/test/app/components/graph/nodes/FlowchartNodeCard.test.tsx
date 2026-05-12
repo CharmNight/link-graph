@@ -70,7 +70,7 @@ describe("FlowchartNodeCard", () => {
       /\.flowchart-node-card\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;/s,
     );
     expect(themeCss).toMatch(
-      /\.flowchart-node-card\.kind-decision\s*\{[^}]*width:\s*74%;[^}]*min-width:\s*0;/s,
+      /\.flowchart-node-card\.kind-decision\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;/s,
     );
     expect(themeCss).toMatch(
       /\.flowchart-node-title,\s*\.flowchart-node-detail\s*\{[^}]*min-width:\s*0;[^}]*overflow-wrap:\s*anywhere;[^}]*word-break:\s*break-word;/s,

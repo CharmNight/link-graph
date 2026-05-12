@@ -102,6 +102,28 @@ describe("CodeDraftPanel", () => {
     expect(events).toEqual(["request-plan"]);
   });
 
+  it("renders disabled code draft source with existing wording", () => {
+    render(
+      <CodeDraftPanel
+        drafts={[]}
+        warnings={[]}
+        source="DISABLED"
+        promptPreview={null}
+        writeReport={null}
+        hasPlan={true}
+        eligibilityDecision={eligibilityDecisionFixture()}
+        onOpenDraftWorkbench={() => undefined}
+        onRequestPlan={() => undefined}
+        onRequestDrafts={() => undefined}
+        onWriteDrafts={() => undefined}
+        onWriteSingleDraft={() => undefined}
+        onOpenDraft={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("来源 未启用")).toBeInTheDocument();
+  });
+
   it("requires confirmed draft changes before draft generation can start", async () => {
     const user = userEvent.setup();
     const events: string[] = [];
@@ -427,6 +449,36 @@ describe("CodeDraftPanel", () => {
     await user.click(screen.getByRole("button", { name: "查看完整内容" }));
 
     expect(events).toEqual(["artifact:artifact:draft-1"]);
+  });
+
+  it("uses the shared prompt disclosure for generated code prompt artifacts", async () => {
+    const user = userEvent.setup();
+    const events: string[] = [];
+
+    render(
+      <CodeDraftPanel
+        drafts={[]}
+        warnings={[]}
+        source={null}
+        promptPreview={null}
+        promptPreviewArtifactId="artifact:code-prompt"
+        resolveArtifactText={() => null}
+        onRequestArtifact={(artifactId) => events.push(`artifact:${artifactId}`)}
+        writeReport={null}
+        hasPlan={true}
+        eligibilityDecision={eligibilityDecisionFixture()}
+        onOpenDraftWorkbench={() => undefined}
+        onRequestPlan={() => undefined}
+        onRequestDrafts={() => undefined}
+        onWriteDrafts={() => undefined}
+        onWriteSingleDraft={() => undefined}
+        onOpenDraft={() => undefined}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看提示词" }));
+
+    expect(events).toEqual(["artifact:artifact:code-prompt"]);
   });
 
   it("uses the shared workbench tab scroll instead of a private code-panel scroll", () => {

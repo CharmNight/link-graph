@@ -10,6 +10,9 @@ data class StopPolicy(
 ) {
     /**
      * 返回 null 表示可以继续执行，返回 failure reason 表示必须停止。
+     *
+     * 预算上限是包含式语义：当已消耗计数等于 max 值时，coordinator 必须在
+     * 启动下一个 step 或资源读取前停止。
      */
     fun evaluate(
         state: AgentRunState,
@@ -17,16 +20,20 @@ data class StopPolicy(
     ): AgentRunFailureReason? {
         val budget = state.budget
         return when {
-            budget.usedSteps > budget.maxSteps -> AgentRunFailureReason.MAX_STEPS_EXCEEDED
-            budget.filesRead > budget.maxFilesRead -> AgentRunFailureReason.MAX_FILES_READ_EXCEEDED
-            budget.snippetsRead > budget.maxSnippets -> AgentRunFailureReason.MAX_SNIPPETS_EXCEEDED
+            budget.usedSteps >= budget.maxSteps -> AgentRunFailureReason.MAX_STEPS_EXCEEDED
+            resourceBudgetReached(budget.filesRead, budget.maxFilesRead) -> AgentRunFailureReason.MAX_FILES_READ_EXCEEDED
+            resourceBudgetReached(budget.snippetsRead, budget.maxSnippets) -> AgentRunFailureReason.MAX_SNIPPETS_EXCEEDED
             budget.snippetLineLimitExceeded -> AgentRunFailureReason.MAX_SNIPPET_LINES_EXCEEDED
-            budget.totalSnippetLinesRead > budget.maxTotalSnippetLines -> AgentRunFailureReason.MAX_TOTAL_SNIPPET_LINES_EXCEEDED
-            budget.elapsedSeconds(nowEpochMillis) > budget.maxRuntimeSeconds -> AgentRunFailureReason.MAX_RUNTIME_SECONDS_EXCEEDED
+            resourceBudgetReached(budget.totalSnippetLinesRead, budget.maxTotalSnippetLines) -> AgentRunFailureReason.MAX_TOTAL_SNIPPET_LINES_EXCEEDED
+            budget.elapsedSeconds(nowEpochMillis) >= budget.maxRuntimeSeconds -> AgentRunFailureReason.MAX_RUNTIME_SECONDS_EXCEEDED
             stopWhenEvidenceInsufficient && state.failureReason == AgentRunFailureReason.EVIDENCE_INSUFFICIENT ->
                 AgentRunFailureReason.EVIDENCE_INSUFFICIENT
             else -> null
         }
+    }
+
+    private fun resourceBudgetReached(consumed: Int, limit: Int): Boolean {
+        return consumed >= limit
     }
 
     companion object {

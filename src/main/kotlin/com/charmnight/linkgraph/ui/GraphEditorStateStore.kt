@@ -9,17 +9,19 @@ class GraphEditorStateStore(
     initialState: GraphEditorStateSnapshot = GraphEditorStateSnapshot(),
 ) {
     private val lock = Any()
-    private var state: GraphEditorStateSnapshot = initialState
+    private var state: GraphEditorStateSnapshot = initialState.freeze()
 
-    fun snapshot(): GraphEditorStateSnapshot = synchronized(lock) { state.copy() }
+    fun snapshot(): GraphEditorStateSnapshot = synchronized(lock) { state.freeze() }
 
     fun mutate(transform: (GraphEditorStateSnapshot) -> GraphEditorStateSnapshot): GraphEditorStateSnapshot {
         return synchronized(lock) {
             val current = state
             val transformed = transform(current)
-            val next = normalizeRevision(current, transformed)
+            val next = normalizeRevision(current, transformed).freeze()
             state = next
-            next
+            // Return a defensive copy separate from the stored state. The first freeze protects
+            // the store; this second freeze protects the store from callers holding the result.
+            next.freeze()
         }
     }
 
@@ -32,14 +34,16 @@ class GraphEditorStateStore(
             if (current.snapshotRevision != expectedRevision) {
                 return@synchronized GraphEditorStateCommitResult(
                     committed = false,
-                    snapshot = current,
+                    snapshot = current.freeze(),
                 )
             }
-            val next = normalizeRevision(current, transform(current))
+            val next = normalizeRevision(current, transform(current)).freeze()
             state = next
             GraphEditorStateCommitResult(
                 committed = true,
-                snapshot = next,
+                // Return a defensive copy separate from the stored state. The first freeze protects
+                // the store; this second freeze protects the store from callers holding the result.
+                snapshot = next.freeze(),
             )
         }
     }

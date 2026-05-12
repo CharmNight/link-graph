@@ -51,14 +51,27 @@ class CodeDraftWriterService(
                 warnings = listOf("已跳过 '${normalizedDraft.targetPath}'，因为它解析到了项目目录之外。"),
             )
         }
-        if (!Files.exists(target)) {
+        val targetExists = safeFileSystemRead(normalizedDraft.targetPath) {
+            Files.exists(target)
+        } ?: return PreparedCodeEditBatch(
+            canApply = false,
+            previewText = normalizedDraft.content.orEmpty(),
+            warnings = listOf(fileSystemFailureWarning(normalizedDraft.targetPath, lastFileSystemError.get())),
+        )
+        if (!targetExists) {
             return PreparedCodeEditBatch(
                 canApply = false,
                 previewText = normalizedDraft.content.orEmpty(),
                 warnings = listOf("目标文件 '${normalizedDraft.targetPath}' 不存在，无法准备 existing-file patch。"),
             )
         }
-        val beforeText = currentFileText(target)
+        val beforeText = safeFileSystemRead(normalizedDraft.targetPath) {
+            currentFileText(target)
+        } ?: return PreparedCodeEditBatch(
+            canApply = false,
+            previewText = normalizedDraft.content.orEmpty(),
+            warnings = listOf(fileSystemFailureWarning(normalizedDraft.targetPath, lastFileSystemError.get())),
+        )
         return computeOnIdeThread {
             applyService.prepareEdits(
                 filePath = normalizedDraft.targetPath,
@@ -86,27 +99,38 @@ class CodeDraftWriterService(
 
         drafts.forEach { draft ->
             val normalizedDraft = ProjectPathNormalizer.normalizeDraft(draft, projectBasePath)
-            val target = basePath.resolve(normalizedDraft.targetPath).normalize()
+            val target = runDraftFileSystemOperation(normalizedDraft.targetPath, skippedFiles, warnings) {
+                basePath.resolve(normalizedDraft.targetPath).normalize()
+            } ?: return@forEach
             if (!target.startsWith(basePath)) {
                 skippedFiles += normalizedDraft.targetPath
                 warnings += "已跳过 '${normalizedDraft.targetPath}'，因为它解析到了项目目录之外。"
                 return@forEach
             }
-            if (!Files.exists(target)) {
-                target.parent?.let(Files::createDirectories)
-                Files.writeString(target, normalizedDraft.content ?: "")
-                refreshFile(target)
-                writtenFiles += normalizedDraft.targetPath
+            val targetExists = runDraftFileSystemOperation(normalizedDraft.targetPath, skippedFiles, warnings) {
+                Files.exists(target)
+            } ?: return@forEach
+            if (!targetExists) {
+                runDraftFileSystemOperation(normalizedDraft.targetPath, skippedFiles, warnings) {
+                    target.parent?.let(Files::createDirectories)
+                    Files.writeString(target, normalizedDraft.content ?: "")
+                    refreshFile(target)
+                    writtenFiles += normalizedDraft.targetPath
+                }
                 return@forEach
             }
             if (normalizedDraft.editOperations.isNotEmpty()) {
-                val prepared = prepareExistingFileDraft(projectBasePath, normalizedDraft)
+                val prepared = runDraftFileSystemOperation(normalizedDraft.targetPath, skippedFiles, warnings) {
+                    prepareExistingFileDraft(projectBasePath, normalizedDraft)
+                } ?: return@forEach
                 warnings += prepared.warnings
                 if (!prepared.canApply || !prepared.hasPreparedEdits()) {
                     skippedFiles += normalizedDraft.targetPath
                     return@forEach
                 }
-                val applyWarnings = applyPreparedEdits(target, prepared)
+                val applyWarnings = runDraftFileSystemOperation(normalizedDraft.targetPath, skippedFiles, warnings) {
+                    applyPreparedEdits(target, prepared)
+                } ?: return@forEach
                 warnings += applyWarnings
                 if (applyWarnings.isNotEmpty()) {
                     skippedFiles += normalizedDraft.targetPath
@@ -116,7 +140,14 @@ class CodeDraftWriterService(
                 writtenFiles += normalizedDraft.targetPath
                 return@forEach
             }
-            if (normalizedDraft.content != null && Files.isRegularFile(target) && Files.readString(target) == normalizedDraft.content) {
+            val contentMatches = if (normalizedDraft.content != null) {
+                runDraftFileSystemOperation(normalizedDraft.targetPath, skippedFiles, warnings) {
+                    Files.isRegularFile(target) && Files.readString(target) == normalizedDraft.content
+                } ?: return@forEach
+            } else {
+                false
+            }
+            if (contentMatches) {
                 refreshFile(target)
                 writtenFiles += normalizedDraft.targetPath
                 return@forEach
@@ -163,6 +194,41 @@ class CodeDraftWriterService(
             }
             warnings
         }
+    }
+
+    private val lastFileSystemError: AtomicReference<Throwable?> = AtomicReference(null)
+
+    private fun <T> runDraftFileSystemOperation(
+        targetPath: String,
+        skippedFiles: MutableList<String>,
+        warnings: MutableList<String>,
+        operation: () -> T,
+    ): T? {
+        return safeFileSystemRead(targetPath, operation).also { result ->
+            if (result == null) {
+                skippedFiles += targetPath
+                warnings += fileSystemFailureWarning(targetPath, lastFileSystemError.get())
+            }
+        }
+    }
+
+    private fun <T> safeFileSystemRead(
+        targetPath: String,
+        operation: () -> T,
+    ): T? {
+        lastFileSystemError.set(null)
+        return runCatching(operation).getOrElse { error ->
+            lastFileSystemError.set(error)
+            null
+        }
+    }
+
+    private fun fileSystemFailureWarning(
+        targetPath: String,
+        error: Throwable?,
+    ): String {
+        val detail = error?.message?.takeIf(String::isNotBlank) ?: error?.javaClass?.simpleName ?: "未知文件系统错误"
+        return "已跳过 '$targetPath'，文件系统操作失败：$detail。"
     }
 
     private fun refreshFile(target: Path) {

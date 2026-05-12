@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.llm
 
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.workbench.AuditMessageRole
+import com.charmnight.linkgraph.workbench.QaMessageRole
 import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionMessage
 import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionResult
 import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession
@@ -109,7 +109,7 @@ class GenerationPlanDiscussionService(
         prompt: String,
         session: GenerationPlanDiscussionSession?,
         focusItemId: String?,
-        source: LlmResultSource = LlmResultSource.MOCK,
+        source: LlmResultSource = LlmResultSource.LOCAL_RULE,
         extraWarnings: List<String> = emptyList(),
     ): GenerationPlanDiscussionResult {
         val focusedItem = plan.items.firstOrNull { item -> item.id == focusItemId }
@@ -153,8 +153,7 @@ class GenerationPlanDiscussionService(
         plan: GenerationPlan,
         focusItemId: String?,
     ): GenerationPlanDiscussionResult {
-        val root = GenerationPlanDiscussionJsonParser(RemoteStructuredJsonExtractor.extract(content)).parseValue() as? Map<*, *>
-            ?: error("LLM response root must be a JSON object.")
+        val root = LlmJsonSupport.parseObject(RemoteStructuredJsonExtractor.extract(content))
         val remoteFocusItemId = (root["focusItemId"] as? String)
             ?.takeIf(String::isNotBlank)
             ?.takeIf { candidate -> plan.items.any { item -> item.id == candidate } }
@@ -190,13 +189,13 @@ class GenerationPlanDiscussionService(
         val nextMessages = existingMessages + listOf(
             GenerationPlanDiscussionMessage(
                 messageId = "$sessionId-user-${existingMessages.size + 1}",
-                role = AuditMessageRole.USER,
+                role = QaMessageRole.USER,
                 content = question,
                 focusItemId = focusItemId,
             ),
             GenerationPlanDiscussionMessage(
                 messageId = "$sessionId-assistant-${existingMessages.size + 2}",
-                role = AuditMessageRole.ASSISTANT,
+                role = QaMessageRole.ASSISTANT,
                 content = answer,
                 focusItemId = focusItemId,
             ),
@@ -206,148 +205,5 @@ class GenerationPlanDiscussionService(
             messages = nextMessages,
             focusItemId = focusItemId,
         )
-    }
-}
-
-private class GenerationPlanDiscussionJsonParser(
-    private val text: String,
-) {
-    private var index: Int = 0
-
-    fun parseValue(): Any? {
-        skipWhitespace()
-        if (index >= text.length) {
-            error("Unexpected end of input.")
-        }
-        return when (text[index]) {
-            '{' -> parseObject()
-            '[' -> parseArray()
-            '"' -> parseString()
-            't' -> parseLiteral("true", true)
-            'f' -> parseLiteral("false", false)
-            'n' -> parseLiteral("null", null)
-            '-', in '0'..'9' -> parseNumber()
-            else -> error("Unexpected token '${text[index]}' at $index")
-        }
-    }
-
-    private fun parseObject(): Map<String, Any?> {
-        expect('{')
-        skipWhitespace()
-        val result = linkedMapOf<String, Any?>()
-        if (peek('}')) {
-            expect('}')
-            return result
-        }
-        while (true) {
-            val key = parseString()
-            skipWhitespace()
-            expect(':')
-            result[key] = parseValue()
-            skipWhitespace()
-            if (peek('}')) {
-                expect('}')
-                return result
-            }
-            expect(',')
-        }
-    }
-
-    private fun parseArray(): List<Any?> {
-        expect('[')
-        skipWhitespace()
-        val result = mutableListOf<Any?>()
-        if (peek(']')) {
-            expect(']')
-            return result
-        }
-        while (true) {
-            result.add(parseValue())
-            skipWhitespace()
-            if (peek(']')) {
-                expect(']')
-                return result
-            }
-            expect(',')
-        }
-    }
-
-    private fun parseString(): String {
-        expect('"')
-        val builder = StringBuilder()
-        while (index < text.length) {
-            val char = text[index++]
-            when (char) {
-                '"' -> return builder.toString()
-                '\\' -> builder.append(parseEscape())
-                else -> builder.append(char)
-            }
-        }
-        error("Unterminated string literal.")
-    }
-
-    private fun parseEscape(): Char {
-        if (index >= text.length) {
-            error("Unexpected end of input in escape sequence.")
-        }
-        return when (val escaped = text[index++]) {
-            '"', '\\', '/' -> escaped
-            'b' -> '\b'
-            'f' -> '\u000C'
-            'n' -> '\n'
-            'r' -> '\r'
-            't' -> '\t'
-            'u' -> {
-                val hex = text.substring(index, index + 4)
-                index += 4
-                hex.toInt(16).toChar()
-            }
-            else -> error("Unsupported escape sequence: \\$escaped")
-        }
-    }
-
-    private fun parseNumber(): Number {
-        val start = index
-        if (text[index] == '-') {
-            index++
-        }
-        while (index < text.length && text[index].isDigit()) {
-            index++
-        }
-        if (index < text.length && text[index] == '.') {
-            index++
-            while (index < text.length && text[index].isDigit()) {
-                index++
-            }
-            return text.substring(start, index).toDouble()
-        }
-        return text.substring(start, index).toLong()
-    }
-
-    private fun parseLiteral(literal: String, value: Any?): Any? {
-        if (!text.startsWith(literal, index)) {
-            error("Expected literal $literal at $index")
-        }
-        index += literal.length
-        return value
-    }
-
-    private fun skipWhitespace() {
-        while (index < text.length && text[index].isWhitespace()) {
-            index++
-        }
-    }
-
-    private fun expect(expected: Char) {
-        skipWhitespace()
-        if (index >= text.length || text[index] != expected) {
-            error("Expected '$expected' at $index")
-        }
-        index++
-    }
-
-    private fun peek(expected: Char): Boolean {
-        skipWhitespace()
-        return index < text.length && text[index] == expected
     }
 }

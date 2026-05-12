@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.ui.GraphEditorCommandRouter
+import com.charmnight.linkgraph.ui.GraphEditorSyncNotifier
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.ui.GraphEditorStateService

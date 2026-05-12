@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.foundation.LinkGraphRenderTrace
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphEdge

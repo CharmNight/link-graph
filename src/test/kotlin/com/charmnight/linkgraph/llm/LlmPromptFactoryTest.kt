@@ -17,10 +17,230 @@ import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
+import com.charmnight.linkgraph.workbench.QaMode
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
 class LlmPromptFactoryTest {
+    @Test
+    fun qaPromptPackageTrimsLargeUserPromptToBudget() {
+        val hugeSnippet = buildString {
+            repeat(600) {
+                append("if (value != null) { value = value.trim(); }\n")
+            }
+        }
+
+        val promptPackage = LlmPromptFactory().buildQaPromptPackage(
+            context = GraphQaContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:scheduled-task",
+                            type = NodeType.METHOD,
+                            title = "Task.run",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                    ),
+                ),
+                selectedNodeIds = listOf("method:scheduled-task"),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:scheduled-task",
+                        filePath = "src/main/java/com/example/Task.java",
+                        startLine = 10,
+                        endLine = 14,
+                        snippet = hugeSnippet,
+                    ),
+                ),
+            ),
+            question = "这个方法是如何触发的？",
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                model = "gpt-test",
+            ),
+            requestedMode = QaMode.AUTO,
+            effectiveMode = QaMode.ANSWER,
+        )
+
+        assertTrue(promptPackage.userPrompt.length <= 12_000)
+        assertTrue(promptPackage.userPrompt.contains("目标模型：gpt-test"))
+        assertTrue(promptPackage.userPrompt.contains("用户问题：这个方法是如何触发的？"))
+        assertTrue(promptPackage.userPrompt.contains("当前范围："))
+    }
+
+    @Test
+    fun promptPackageAppliesBudgetAcrossSystemAndUserMessages() {
+        val hugeSnippet = buildString {
+            repeat(600) {
+                append("return callRemoteServiceAndNormalizeResult(request);\n")
+            }
+        }
+
+        val promptPackage = LlmPromptFactory().buildCodeGenerationPromptPackage(
+            context = GenerationContext(
+                graph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:upload",
+                            type = NodeType.METHOD,
+                            title = "UploadService.upload",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                    ),
+                ),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:upload",
+                        filePath = "src/main/java/com/example/UploadService.java",
+                        snippet = hugeSnippet,
+                    ),
+                ),
+            ),
+            plan = null,
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                model = "gpt-test",
+            ),
+        )
+
+        assertTrue(promptPackage.systemPrompt.length + promptPackage.userPrompt.length <= 12_000)
+        assertTrue(promptPackage.userPrompt.contains("目标模型：gpt-test"))
+        assertTrue(promptPackage.userPrompt.contains("相关源码片段"))
+    }
+
+    @Test
+    fun promptPackageKeepsSchemaInstructionWhenSourceContextIsHuge() {
+        val hugeSnippet = buildString {
+            repeat(1_200) {
+                append("return callRemoteServiceAndNormalizeResult(request);\n")
+            }
+        }
+
+        val promptPackage = LlmPromptFactory().buildCodeGenerationPromptPackage(
+            context = GenerationContext(
+                graph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:upload",
+                            type = NodeType.METHOD,
+                            title = "UploadService.upload",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                    ),
+                ),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:upload",
+                        filePath = "src/main/java/com/example/UploadService.java",
+                        snippet = hugeSnippet,
+                    ),
+                ),
+            ),
+            plan = null,
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                model = "gpt-test",
+            ),
+        )
+
+        assertTrue(promptPackage.systemPrompt.length + promptPackage.userPrompt.length <= 12_000)
+        assertTrue(promptPackage.userPrompt.contains("仅返回 JSON，结构如下："))
+        assertTrue(promptPackage.userPrompt.contains("\"drafts\""))
+        assertTrue(promptPackage.userPrompt.contains("\"editOperations\""))
+    }
+
+    @Test
+    fun qaPromptPackageKeepsSchemaInstructionWhenSourceContextIsHuge() {
+        val hugeSnippet = buildString {
+            repeat(1_200) {
+                append("return callRemoteServiceAndNormalizeResult(request);\n")
+            }
+        }
+
+        val promptPackage = LlmPromptFactory().buildQaPromptPackage(
+            context = GraphQaContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:upload",
+                            type = NodeType.METHOD,
+                            title = "UploadService.upload",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                    ),
+                ),
+                selectedNodeIds = listOf("method:upload"),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:upload",
+                        filePath = "src/main/java/com/example/UploadService.java",
+                        snippet = hugeSnippet,
+                    ),
+                ),
+            ),
+            question = "解释上传链路",
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                model = "gpt-test",
+            ),
+            requestedMode = QaMode.AUTO,
+            effectiveMode = QaMode.ANSWER,
+        )
+
+        assertTrue(promptPackage.systemPrompt.length + promptPackage.userPrompt.length <= 12_000)
+        assertTrue(promptPackage.userPrompt.contains("仅返回 JSON，结构如下："))
+        assertTrue(promptPackage.userPrompt.contains("\"candidateChanges\""))
+        assertTrue(promptPackage.userPrompt.contains("\"investigationThreads\""))
+    }
+
+    @Test
+    fun qaPromptPackageMakesQaModeBoundariesExplicit() {
+        val promptPackage = LlmPromptFactory().buildQaPromptPackage(
+            context = GraphQaContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:scheduled-task",
+                            type = NodeType.METHOD,
+                            title = "Task.run",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                    ),
+                ),
+                selectedNodeIds = listOf("method:scheduled-task"),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:scheduled-task",
+                        filePath = "src/main/java/com/example/Task.java",
+                        startLine = 10,
+                        endLine = 14,
+                        snippet = "@Scheduled(cron = \"0 * * * * ?\")\nvoid run() {}",
+                    ),
+                ),
+            ),
+            question = "这个方法是如何触发的？",
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                model = "gpt-test",
+            ),
+            requestedMode = QaMode.AUTO,
+            effectiveMode = QaMode.ANSWER,
+        )
+
+        assertTrue(promptPackage.userPrompt.contains("请求模式：AUTO"))
+        assertTrue(promptPackage.userPrompt.contains("实际模式：ANSWER"))
+        assertTrue(promptPackage.systemPrompt.contains("ANSWER 模式"))
+        assertTrue(promptPackage.systemPrompt.contains("不要生成 candidateChanges"))
+        assertTrue(promptPackage.systemPrompt.contains("不要生成 investigationThreads"))
+        assertTrue(promptPackage.systemPrompt.contains("图中没有调用边，不等于方法无法触发"))
+        assertTrue(promptPackage.userPrompt.contains("@Scheduled"))
+    }
+
     @Test
     fun buildsPromptFromGraphIssuesDiffAndSyncPreview() {
         val prompt = LlmPromptFactory().buildGenerationPrompt(
@@ -91,10 +311,10 @@ class LlmPromptFactoryTest {
     }
 
     @Test
-    fun buildsAuditAndDiffPromptsFromDualLayerContext() {
+    fun buildsQaAndDiffPromptsFromDualLayerContext() {
         val factory = LlmPromptFactory()
-        val auditPrompt = factory.buildAuditPrompt(
-            context = GraphAuditContext(
+        val qaPrompt = factory.buildQaPrompt(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -176,26 +396,26 @@ class LlmPromptFactoryTest {
             ),
         )
 
-        assertTrue(auditPrompt.contains("这段链路是否遗漏了默认兜底逻辑"))
-        assertTrue(auditPrompt.contains("当前范围"))
-        assertTrue(auditPrompt.contains("OrderService.place"))
-        assertTrue(auditPrompt.contains("相关源码片段"))
-        assertTrue(auditPrompt.contains("defaultChannel"))
-        assertTrue(auditPrompt.contains("你正在做链路图问答"))
-        assertTrue(auditPrompt.contains("本轮问答回答"))
-        assertTrue(auditPrompt.contains("\"answer\": \"问答回答\""))
-        assertTrue(auditPrompt.contains("flowchart.kind=DECISION"))
-        assertTrue(auditPrompt.contains("flow.ownerMethod=com.example.OrderService.place(java.lang.String):void"))
-        assertTrue("本轮审计回答" !in auditPrompt)
-        assertTrue(auditPrompt.contains("你的第一优先级是直接回答“用户问题”"))
-        assertTrue(auditPrompt.contains("禁止输出与用户问题无关的通用安全、性能、规范性建议"))
+        assertTrue(qaPrompt.contains("这段链路是否遗漏了默认兜底逻辑"))
+        assertTrue(qaPrompt.contains("当前范围"))
+        assertTrue(qaPrompt.contains("OrderService.place"))
+        assertTrue(qaPrompt.contains("相关源码片段"))
+        assertTrue(qaPrompt.contains("defaultChannel"))
+        assertTrue(qaPrompt.contains("你正在做链路图问答"))
+        assertTrue(qaPrompt.contains("本轮问答回答"))
+        assertTrue(qaPrompt.contains("\"answer\": \"问答回答\""))
+        assertTrue(qaPrompt.contains("flowchart.kind=DECISION"))
+        assertTrue(qaPrompt.contains("flow.ownerMethod=com.example.OrderService.place(java.lang.String):void"))
+        assertTrue("本轮审计回答" !in qaPrompt)
+        assertTrue(qaPrompt.contains("你的第一优先级是直接回答“用户问题”"))
+        assertTrue(qaPrompt.contains("禁止输出与用户问题无关的通用安全、性能、规范性建议"))
         assertTrue(diffPrompt.contains("这些差异意味着什么"))
         assertTrue(diffPrompt.contains("DefaultChannelFallback"))
         assertTrue(diffPrompt.contains("ONLY_IN_MERMAID"))
     }
 
     @Test
-    fun buildsSceneSpecificPromptPackagesForAuditDiffAndCodeGeneration() {
+    fun buildsSceneSpecificPromptPackagesForQaDiffAndCodeGeneration() {
         val factory = LlmPromptFactory()
         val settings = LinkGraphSettingsState(
             llmEnabled = true,
@@ -203,8 +423,8 @@ class LlmPromptFactoryTest {
             model = "gpt-4.1-mini",
         )
 
-        val auditPackage = factory.buildAuditPromptPackage(
-            context = GraphAuditContext(
+        val qaPackage = factory.buildQaPromptPackage(
+            context = GraphQaContext(
                 factGraph = GraphDocument(
                     nodes = listOf(
                         GraphNode(
@@ -313,21 +533,21 @@ class LlmPromptFactoryTest {
             settings = settings,
         )
 
-        assertTrue(auditPackage.systemPrompt.contains("链路问答"))
-        assertTrue(auditPackage.systemPrompt.contains("不要绕开问题泛化输出通用问答结论"))
-        assertTrue(auditPackage.userPrompt.contains("链路图问答"))
-        assertTrue(auditPackage.userPrompt.contains("\"answer\": \"问答回答\""))
-        assertTrue("链路审计" !in auditPackage.systemPrompt)
-        assertTrue(auditPackage.userPrompt.contains("当前范围边"))
-        assertTrue(auditPackage.userPrompt.contains("相关源码片段"))
-        assertTrue(auditPackage.userPrompt.contains("defaultChannel"))
-        assertTrue(auditPackage.userPrompt.contains("candidateChanges"))
-        assertTrue(auditPackage.userPrompt.contains("\"patchIntent\""))
-        assertTrue(auditPackage.userPrompt.contains("\"graphPatch\""))
-        assertTrue(auditPackage.systemPrompt.contains("必须提供 patchIntent"))
-        assertTrue(auditPackage.systemPrompt.contains("INSERT_NEW_DECISION"))
-        assertTrue(auditPackage.userPrompt.contains("investigationThreads"))
-        assertTrue(auditPackage.userPrompt.contains("\"threadId\""))
+        assertTrue(qaPackage.systemPrompt.contains("链路问答"))
+        assertTrue(qaPackage.systemPrompt.contains("不要绕开问题泛化输出通用问答结论"))
+        assertTrue(qaPackage.userPrompt.contains("链路图问答"))
+        assertTrue(qaPackage.userPrompt.contains("\"answer\": \"问答回答\""))
+        assertTrue("链路审计" !in qaPackage.systemPrompt)
+        assertTrue(qaPackage.userPrompt.contains("当前范围边"))
+        assertTrue(qaPackage.userPrompt.contains("相关源码片段"))
+        assertTrue(qaPackage.userPrompt.contains("defaultChannel"))
+        assertTrue(qaPackage.userPrompt.contains("candidateChanges"))
+        assertTrue(qaPackage.userPrompt.contains("\"patchIntent\""))
+        assertTrue(qaPackage.userPrompt.contains("\"graphPatch\""))
+        assertTrue(qaPackage.systemPrompt.contains("必须提供 patchIntent"))
+        assertTrue(qaPackage.systemPrompt.contains("INSERT_NEW_DECISION"))
+        assertTrue(qaPackage.userPrompt.contains("investigationThreads"))
+        assertTrue(qaPackage.userPrompt.contains("\"threadId\""))
         assertTrue(diffPackage.systemPrompt.contains("差异"))
         assertTrue(diffPackage.userPrompt.contains("当前关注差异"))
         assertTrue(diffPackage.userPrompt.contains("draft.claimType"))
@@ -336,7 +556,7 @@ class LlmPromptFactoryTest {
     }
 
     @Test
-    fun auditPromptPackageSeparatesFactGraphFromEditableGraphSemantics() {
+    fun qaPromptPackageSeparatesFactGraphFromEditableGraphSemantics() {
         val factory = LlmPromptFactory()
         val settings = LinkGraphSettingsState(
             llmEnabled = true,
@@ -357,8 +577,8 @@ class LlmPromptFactoryTest {
             metadata = mapOf("flowchart.kind" to "DECISION"),
         )
 
-        val auditPackage = factory.buildAuditPromptPackage(
-            context = GraphAuditContext(
+        val qaPackage = factory.buildQaPromptPackage(
+            context = GraphQaContext(
                 factGraph = GraphDocument(nodes = listOf(factMethod)),
                 editableGraph = GraphDocument(
                     nodes = listOf(factMethod, editableDecision),
@@ -378,12 +598,12 @@ class LlmPromptFactoryTest {
             settings = settings,
         )
 
-        assertTrue(auditPackage.userPrompt.contains("事实图节点"))
-        assertTrue(auditPackage.userPrompt.contains("当前可编辑图节点"))
-        assertTrue(auditPackage.userPrompt.contains("当前可编辑图连线"))
-        assertTrue(auditPackage.userPrompt.contains("if (delete)"))
-        assertTrue(auditPackage.systemPrompt.contains("不要把当前可编辑图误称为事实图"))
-        assertTrue(auditPackage.systemPrompt.contains("必须明确是来自“事实图”还是“当前可编辑图”"))
+        assertTrue(qaPackage.userPrompt.contains("事实图节点"))
+        assertTrue(qaPackage.userPrompt.contains("当前可编辑图节点"))
+        assertTrue(qaPackage.userPrompt.contains("当前可编辑图连线"))
+        assertTrue(qaPackage.userPrompt.contains("if (delete)"))
+        assertTrue(qaPackage.systemPrompt.contains("不要把当前可编辑图误称为事实图"))
+        assertTrue(qaPackage.systemPrompt.contains("必须明确是来自“事实图”还是“当前可编辑图”"))
     }
 
     @Test

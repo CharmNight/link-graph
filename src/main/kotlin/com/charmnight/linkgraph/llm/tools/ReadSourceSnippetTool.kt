@@ -14,19 +14,17 @@ class ReadSourceSnippetTool(
         input: Map<String, Any?>,
         context: ToolExecutionContext,
     ): ToolResult {
-        val filePath = input["filePath"]?.toString()
-        if (filePath.isNullOrBlank()) {
-            return ToolResult(toolName = name, success = false, errorMessage = "filePath 不能为空")
-        }
-        val startLine = (input["startLine"] as? Number)?.toInt()
-        val endLine = (input["endLine"] as? Number)?.toInt()
+        val filePath = input.requiredString("filePath") ?: return missingRequired("filePath")
+        val startLine = input.optionalInt("startLine")
+        val endLine = input.optionalInt("endLine")
         val snippet = codeReadToolFacade.readSourceSnippet(
             filePath = filePath,
             startLine = startLine,
             endLine = endLine,
-            fallbackSnippet = input["fallbackSnippet"]?.toString(),
+            fallbackSnippet = input.optionalString("fallbackSnippet"),
             projectBasePath = context.project.basePath,
-        ) ?: return ToolResult(toolName = name, success = false, errorMessage = "未读取到源码片段")
+            project = context.project,
+        ) ?: return failure("未读取到源码片段")
         return ToolResult(
             toolName = name,
             payload = mapOf(

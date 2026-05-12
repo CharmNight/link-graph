@@ -15,6 +15,7 @@ import com.charmnight.linkgraph.llm.artifact.PlanArtifact
 import com.charmnight.linkgraph.llm.runtime.AgentRunFailureReason
 import com.charmnight.linkgraph.llm.runtime.AgentRunPhase
 import com.charmnight.linkgraph.llm.runtime.AgentRunState
+import com.charmnight.linkgraph.llm.runtime.AgentRuntimeDeadlineExceededException
 import com.charmnight.linkgraph.llm.runtime.AgentRuntimeContext
 import com.charmnight.linkgraph.llm.runtime.AgentStepExecutionResult
 import com.charmnight.linkgraph.llm.runtime.AgentStepRecord
@@ -31,6 +32,7 @@ import com.charmnight.linkgraph.llm.tools.DraftToolFacade
 import com.charmnight.linkgraph.llm.tools.GetConfirmedIntentTool
 import com.charmnight.linkgraph.llm.tools.ReadSourceSnippetTool
 import com.charmnight.linkgraph.llm.tools.ToolExecutionContext
+import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshot
 import com.charmnight.linkgraph.llm.tools.ValidateEditScopeTool
 import com.charmnight.linkgraph.llm.tools.ValidationToolFacade
 import com.intellij.openapi.project.Project
@@ -298,6 +300,7 @@ internal class CodegenCapability(
         input: CodegenCapabilityInput,
     ): AgentStepExecutionResult {
         return runCatching {
+            runtimeContext.requireWithinDeadline()
             val confirmedChanges = extractConfirmedIntents(state, runtimeContext)
             val evidenceArtifacts = state.artifactRefs
                 .asSequence()
@@ -327,6 +330,7 @@ internal class CodegenCapability(
                     snippet = artifact.snippet,
                 )
             }
+            runtimeContext.requireWithinDeadline()
             val result = codegenExecutor.invoke(
                 input.copy(
                     generationContext = input.generationContext.copy(
@@ -337,12 +341,13 @@ internal class CodegenCapability(
                 runtimeContext,
                 state,
             )
+            runtimeContext.requireWithinDeadline()
             val invalidDraft = result.drafts.firstOrNull { draft ->
                 !(toolRegistry.require("validate_edit_scope").invoke(
                     input = mapOf("draft" to draft),
                     context = ToolExecutionContext(
                         project = runtimeContext.project,
-                        snapshot = runtimeContext.snapshotSupplier() ?: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
+                        snapshot = runtimeContext.snapshotSupplier() ?: ToolGraphSnapshot(),
                         artifactStore = runtimeContext.artifactStore,
                         runBudget = state.budget,
                     ),
@@ -352,7 +357,7 @@ internal class CodegenCapability(
                         input = mapOf("draft" to draft),
                         context = ToolExecutionContext(
                             project = runtimeContext.project,
-                            snapshot = runtimeContext.snapshotSupplier() ?: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(),
+                            snapshot = runtimeContext.snapshotSupplier() ?: ToolGraphSnapshot(),
                             artifactStore = runtimeContext.artifactStore,
                             runBudget = state.budget,
                         ),
@@ -397,6 +402,17 @@ internal class CodegenCapability(
                 ),
             )
         }.getOrElse { throwable ->
+            if (throwable is AgentRuntimeDeadlineExceededException) {
+                return AgentStepExecutionResult.fail(
+                    state.copy(
+                        phase = AgentRunPhase.FAILED,
+                        budget = state.budget.recordStep(),
+                        stepIndex = state.stepIndex + 1,
+                        failureReason = AgentRunFailureReason.MAX_RUNTIME_SECONDS_EXCEEDED,
+                        lastModelOutput = throwable.message ?: throwable.javaClass.simpleName,
+                    ),
+                )
+            }
             AgentStepExecutionResult.fail(
                 state.copy(
                     phase = AgentRunPhase.FAILED,
@@ -415,7 +431,7 @@ internal class CodegenCapability(
         confirmedChanges: List<com.charmnight.linkgraph.workbench.DraftWorkbenchEntry>,
         evidenceArtifacts: List<CodeEvidenceArtifact>,
     ): AgentStepExecutionResult.Fail? {
-        val snapshot = runtimeContext.snapshotSupplier() ?: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot()
+        val snapshot = runtimeContext.snapshotSupplier() ?: ToolGraphSnapshot()
         val context = ToolExecutionContext(
             project = runtimeContext.project,
             snapshot = snapshot,

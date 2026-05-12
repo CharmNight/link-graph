@@ -1,4 +1,4 @@
-package com.charmnight.linkgraph.services
+package com.charmnight.linkgraph.foundation
 
 import kotlin.test.Test
 import kotlin.test.assertFalse

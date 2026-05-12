@@ -11,34 +11,34 @@ import com.charmnight.linkgraph.workbench.ReplayableQaRequest
 internal class GraphEditorAsyncRequestStateSupport(
     private val mutate: ((GraphEditorStateSnapshot) -> GraphEditorStateSnapshot) -> Unit,
 ) {
-    fun markAuditResult(
+    fun markQaResult(
         result: GraphPatchResult,
         requestState: AsyncRequestState = AsyncRequestState.succeeded(),
         completedRequest: ReplayableQaRequest? = null,
     ) {
         mutate {
             it.copy(
-                auditResult = result,
-                auditRequestState = requestState,
+                qaResult = result,
+                qaRequestState = requestState,
                 qaRequestRecoveryState = completedRequest?.let { request ->
                     it.qaRequestRecoveryState.copy(
                         lastSubmittedRequest = request,
                         lastFailedRequest = null,
                     )
                 } ?: it.qaRequestRecoveryState,
-                lastMessageType = "auditResult",
+                lastMessageType = "qaResult",
             )
         }
     }
 
-    fun beginAuditRequest(
+    fun beginQaRequest(
         requestState: AsyncRequestState = AsyncRequestState.running(),
         submittedRequest: ReplayableQaRequest? = null,
     ) {
         mutate {
             it.copy(
-                auditResult = null,
-                auditRequestState = requestState,
+                qaResult = null,
+                qaRequestState = requestState,
                 qaRequestRecoveryState = submittedRequest?.let { request ->
                     it.qaRequestRecoveryState.copy(
                         lastSubmittedRequest = request,
@@ -50,15 +50,15 @@ internal class GraphEditorAsyncRequestStateSupport(
         }
     }
 
-    fun markAuditRequestFailed(
+    fun markQaRequestFailed(
         message: String,
         requestState: AsyncRequestState = AsyncRequestState.failed(message),
         failedRequest: ReplayableQaRequest? = null,
     ) {
         mutate {
             it.copy(
-                auditResult = null,
-                auditRequestState = requestState,
+                qaResult = null,
+                qaRequestState = requestState,
                 qaRequestRecoveryState = failedRequest?.let { request ->
                     it.qaRequestRecoveryState.copy(
                         lastSubmittedRequest = request,
@@ -70,19 +70,19 @@ internal class GraphEditorAsyncRequestStateSupport(
         }
     }
 
-    fun updateAuditRequestPreview(
+    fun updateQaRequestPreview(
         requestId: Long,
         previewText: String,
         finalizingStructuredResult: Boolean = false,
     ) {
         mutate { currentState ->
-            val nextRequestState = currentState.auditRequestState.updatedPreviewOrNull(
+            val nextRequestState = currentState.qaRequestState.updatedPreviewOrNull(
                 requestId = requestId,
                 previewText = previewText,
                 finalizingStructuredResult = finalizingStructuredResult,
             ) ?: return@mutate currentState
             currentState.copy(
-                auditRequestState = nextRequestState,
+                qaRequestState = nextRequestState,
                 lastMessageType = "requestAudit",
             )
         }
@@ -277,7 +277,7 @@ internal class GraphEditorAsyncRequestStateSupport(
     ) {
         mutate {
             it.copy(
-                generationPlanDiscussionSession = result.session,
+                generationPlanDiscussionSession = result.session.copy(promptPreview = result.promptPreview),
                 generationPlanDiscussionRequestState = requestState,
                 lastMessageType = "requestGenerationPlanDiscussion",
             )

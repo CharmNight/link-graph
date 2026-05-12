@@ -5,7 +5,7 @@
 
     <description><![CDATA[
         Link Graph is an IntelliJ Platform plugin for exploring method, flowchart, and resource relationships inside a project.
-        It provides a JCEF-based graph workbench with Mermaid import/export, diff preview, source navigation, local fallback workflows, and optional remote LLM-assisted drafts.
+        It provides a JCEF-based graph workbench with Mermaid import/export, diff preview, source navigation, local fallback workflows, and optional remote LLM-assisted implementation suggestions and code diff workflows.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
@@ -23,6 +23,9 @@
                 id="com.charmnight.linkgraph.settings"
                 displayName="链路图"
                 instance="com.charmnight.linkgraph.settings.LinkGraphSettingsConfigurable"/>
+        <projectService
+                serviceInterface="com.charmnight.linkgraph.application.port.GraphEditorPresentationProvider"
+                serviceImplementation="com.charmnight.linkgraph.ui.GraphEditorApplicationProjectionService"/>
     </extensions>
 
     <extensions defaultExtensionNs="org.jetbrains.kotlin">

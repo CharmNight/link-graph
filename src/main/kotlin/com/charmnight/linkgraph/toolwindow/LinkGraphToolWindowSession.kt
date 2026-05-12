@@ -1,8 +1,8 @@
 package com.charmnight.linkgraph.toolwindow
 
-import com.charmnight.linkgraph.services.IntelliJUiThreadExecutor
-import com.charmnight.linkgraph.services.GraphEditorSyncNotifier
-import com.charmnight.linkgraph.services.UiThreadOwnedResource
+import com.charmnight.linkgraph.toolwindow.IntelliJUiThreadExecutor
+import com.charmnight.linkgraph.ui.GraphEditorSyncNotifier
+import com.charmnight.linkgraph.toolwindow.UiThreadOwnedResource
 import com.charmnight.linkgraph.ui.GraphBrowserPanel
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.intellij.openapi.Disposable

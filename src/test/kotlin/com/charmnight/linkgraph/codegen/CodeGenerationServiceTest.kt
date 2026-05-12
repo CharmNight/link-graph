@@ -86,7 +86,7 @@ class CodeGenerationServiceTest {
                 ),
             ),
             plan = GenerationPlan(
-                source = GenerationPlanSource.MOCK,
+                source = GenerationPlanSource.LOCAL_RULE,
                 summary = "Create DTO and SQL draft.",
                 items = listOf(
                     GenerationPlanItem(
@@ -147,7 +147,7 @@ class CodeGenerationServiceTest {
                 ),
             ),
             plan = GenerationPlan(
-                source = GenerationPlanSource.MOCK,
+                source = GenerationPlanSource.LOCAL_RULE,
                 summary = "No direct code draft.",
             ),
         )
@@ -395,7 +395,7 @@ class CodeGenerationServiceTest {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertEquals(1, result.drafts.size)
         assertEquals("src/main/java/com/example/OrderDraftDto.java", result.drafts.single().targetPath)
         assertTrue(result.warnings.any { it.contains("未返回任何可用代码草稿") })
@@ -471,7 +471,7 @@ class CodeGenerationServiceTest {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertEquals(1, result.drafts.size)
         assertEquals("src/main/java/com/example/OrderDraftDto.java", result.drafts.single().targetPath)
         assertTrue(result.warnings.any { it.contains("远程 LLM 代码生成失败") })
@@ -581,7 +581,7 @@ class CodeGenerationServiceTest {
         assertTrue(requests[1].userPrompt.contains("\"scopeId\""))
         assertTrue(requests[1].userPrompt.contains("payload is required"))
         assertTrue(requests[1].userPrompt.contains("上一次结构化校验失败的具体原因"))
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertTrue(result.warnings.any { it.contains("返回内容未通过结构化校验") })
         assertTrue(result.warnings.none { it.contains("首次返回片段") })
         assertTrue(result.warnings.none { it.contains("\"summary\"") })
@@ -627,7 +627,7 @@ class CodeGenerationServiceTest {
                 ),
             ),
             plan = GenerationPlan(
-                source = GenerationPlanSource.MOCK,
+                source = GenerationPlanSource.LOCAL_RULE,
                 summary = "修改 CommonController.fileDownload 的路径判定。",
             ),
             settings = LinkGraphSettingsState(
@@ -724,7 +724,7 @@ class CodeGenerationServiceTest {
             ),
         )
 
-        assertEquals(LlmResultSource.MOCK, result.source)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertTrue(result.drafts.isEmpty())
         assertTrue(result.warnings.any { it.contains("existing-file") && it.contains("content") })
     }

@@ -1,9 +1,12 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.planning.PlanningContextFactory
+import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
+import com.charmnight.linkgraph.application.workflow.ReviewWorkflow
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.diff.GraphDiffer
-import com.charmnight.linkgraph.llm.GraphAuditPatchService
+import com.charmnight.linkgraph.llm.GraphQaPatchService
 import com.charmnight.linkgraph.llm.GraphBeautificationService
 import com.charmnight.linkgraph.llm.GraphDiffPatchService
 import com.charmnight.linkgraph.llm.GraphPatchResult
@@ -15,7 +18,8 @@ import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorStateService
-import com.charmnight.linkgraph.workbench.AuditMessageRole
+import com.charmnight.linkgraph.workbench.QaMessageRole
+import com.charmnight.linkgraph.workbench.QaMode
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -24,24 +28,22 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class QaRetryWorkflowTest : BasePlatformTestCase() {
-    fun testRetryLastAuditRequestAsyncReplaysFailedRequestWithoutDuplicatingUserTurn() {
+    fun testRetryLastQaRequestAsyncReplaysFailedRequestWithoutDuplicatingUserTurn() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraph(sampleGraph(), "currentMethod")
-        val session = ProjectEditorSession(
-            stateService = stateService,
-            onBrowserSyncRequested = {},
-        )
         var attemptCount = 0
         val workflow = ReviewWorkflow(
             project = project,
-            session = session,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
             planningContextFactory = PlanningContextFactory(
                 graphDiffer = GraphDiffer(),
                 syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
                 graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
                 settingsProvider = { LinkGraphSettingsState() },
             ),
-            graphAuditPatchService = GraphAuditPatchService(),
+            graphQaPatchService = GraphQaPatchService(),
             graphDiffPatchService = GraphDiffPatchService(),
             graphBeautificationService = object : GraphBeautificationService {
                 override fun beautify(
@@ -49,28 +51,27 @@ class QaRetryWorkflowTest : BasePlatformTestCase() {
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
                 ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
-                    source = LlmResultSource.MOCK,
+                    source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
             graphDiffer = GraphDiffer(),
             settingsProvider = { LinkGraphSettingsState() },
-            auditExecutorOverrideProvider = { null },
+            qaExecutorOverrideProvider = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                session = session,
                 timeoutOverrideProvider = { 500L },
             ),
             logger = Logger.getInstance(QaRetryWorkflowTest::class.java),
             qaCapabilityFactory = {
                 QaCapability(
-                    auditExecutor = { input, _, _ ->
+                    qaExecutor = { input, _, _ ->
                         attemptCount += 1
                         if (attemptCount == 1) {
                             error("mock qa failure")
                         }
                         GraphPatchResult(
-                            source = LlmResultSource.MOCK,
+                            source = LlmResultSource.LOCAL_RULE,
                             question = input.question,
                             answer = "重试后成功返回问答结果。",
                             promptPreview = "prompt",
@@ -80,22 +81,26 @@ class QaRetryWorkflowTest : BasePlatformTestCase() {
             },
         )
 
-        workflow.requestAuditAsync("这里为什么会走兜底分支？")
+        workflow.requestQaAsync("这里为什么会走兜底分支？")
         waitForSnapshot(stateService) { current ->
-            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
+            current.qaRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
         }
 
-        workflow.retryLastAuditRequestAsync()
+        workflow.retryLastQaRequestAsync()
 
         val snapshot = waitForSnapshot(stateService) { current ->
-            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
+            current.qaRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
 
         assertEquals(2, attemptCount)
-        assertEquals("重试后成功返回问答结果。", snapshot.auditResult?.answer)
-        assertNotNull(snapshot.auditResult?.auditSession)
-        assertEquals(1, snapshot.auditResult?.auditSession?.messages?.count { it.role == AuditMessageRole.USER })
-        assertEquals("这里为什么会走兜底分支？", snapshot.auditResult?.auditSession?.messages?.first { it.role == AuditMessageRole.USER }?.content)
+        assertEquals("重试后成功返回问答结果。", snapshot.qaResult?.answer)
+        assertEquals(QaMode.AUTO, snapshot.qaResult?.requestedMode)
+        assertEquals(QaMode.ANSWER, snapshot.qaResult?.effectiveMode)
+        assertEquals(QaMode.AUTO, snapshot.qaRequestState.requestedMode)
+        assertEquals(QaMode.ANSWER, snapshot.qaRequestState.effectiveMode)
+        assertNotNull(snapshot.qaResult?.qaSession)
+        assertEquals(1, snapshot.qaResult?.qaSession?.messages?.count { it.role == QaMessageRole.USER })
+        assertEquals("这里为什么会走兜底分支？", snapshot.qaResult?.qaSession?.messages?.first { it.role == QaMessageRole.USER }?.content)
         assertTrue(snapshot.qaRequestRecoveryState.lastFailedRequest == null)
     }
 

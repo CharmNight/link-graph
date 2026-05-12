@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.llm.runtime
 
 import com.charmnight.linkgraph.llm.artifact.ArtifactStore
-import com.charmnight.linkgraph.ui.GraphEditorStateService
+import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshot
 import com.intellij.openapi.project.Project
 
 /**
@@ -12,7 +12,26 @@ data class AgentRuntimeContext(
     /** 当前项目。 */
     val project: Project,
     /** 只读快照获取器。 */
-    val snapshotSupplier: () -> com.charmnight.linkgraph.ui.GraphEditorStateSnapshot?,
+    val snapshotSupplier: () -> ToolGraphSnapshot?,
     /** 本轮产物仓库。 */
     val artifactStore: ArtifactStore,
-)
+    /** 本轮 runtime 的截止时间，达到后 step 应尽早协作式停止。 */
+    val deadlineEpochMillis: Long? = null,
+) {
+    fun isDeadlineExceeded(nowEpochMillis: Long = System.currentTimeMillis()): Boolean {
+        return deadlineEpochMillis?.let { deadline -> nowEpochMillis >= deadline } ?: false
+    }
+
+    fun remainingRuntimeSeconds(nowEpochMillis: Long = System.currentTimeMillis()): Int? {
+        val deadline = deadlineEpochMillis ?: return null
+        return (((deadline - nowEpochMillis).coerceAtLeast(0L) + 999L) / 1_000L).toInt()
+    }
+
+    fun requireWithinDeadline(nowEpochMillis: Long = System.currentTimeMillis()) {
+        if (isDeadlineExceeded(nowEpochMillis)) {
+            throw AgentRuntimeDeadlineExceededException()
+        }
+    }
+}
+
+class AgentRuntimeDeadlineExceededException : RuntimeException("runtime deadline exceeded")

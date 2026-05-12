@@ -4,7 +4,7 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
-import com.charmnight.linkgraph.services.LinkGraphRenderTrace
+import com.charmnight.linkgraph.foundation.LinkGraphRenderTrace
 import com.charmnight.linkgraph.ui.view.FactGraphSummary
 import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument

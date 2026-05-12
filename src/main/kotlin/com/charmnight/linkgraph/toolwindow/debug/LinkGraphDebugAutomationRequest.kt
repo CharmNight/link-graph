@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.toolwindow.debug
 
-import com.charmnight.linkgraph.services.LinkGraphDebugEnvironment
+import com.charmnight.linkgraph.foundation.LinkGraphDebugEnvironment
 
 /**
  * debug-only 工具窗口自动化请求。

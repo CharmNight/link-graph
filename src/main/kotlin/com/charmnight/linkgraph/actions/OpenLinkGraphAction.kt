@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.actions
 
 import com.charmnight.linkgraph.LinkGraphBundle
-import com.charmnight.linkgraph.services.LinkGraphProjectService
+import com.charmnight.linkgraph.application.GraphEditorApplicationService
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -33,7 +33,7 @@ class OpenLinkGraphAction : DumbAwareAction(
             // 编辑器右键菜单下需要根据当前光标主题动态切换文案。
             val project = event.project
             val previewKind = if (project != null) {
-                project.getService(LinkGraphProjectService::class.java)
+                project.getService(GraphEditorApplicationService::class.java)
                     .previewCurrentEditorSubjectKind(event.getData(CommonDataKeys.EDITOR))
             } else {
                 null
@@ -60,7 +60,6 @@ class OpenLinkGraphAction : DumbAwareAction(
         val project = event.project ?: return
         val editor = event.getData(CommonDataKeys.EDITOR)
         project.getService(LinkGraphToolWindowSession::class.java).openToolWindow()
-        val projectService = project.getService(LinkGraphProjectService::class.java)
-        projectService.loadCurrentEditorContextGraphAsync(editor)
+        project.getService(GraphEditorApplicationService::class.java).loadCurrentEditorContextGraphAsync(editor)
     }
 }

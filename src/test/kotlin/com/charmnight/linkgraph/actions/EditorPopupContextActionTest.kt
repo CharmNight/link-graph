@@ -4,8 +4,8 @@ import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
-import com.charmnight.linkgraph.services.LinkGraphProjectService
-import com.charmnight.linkgraph.services.LinkGraphProjectTestOverrides
+import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
+import com.charmnight.linkgraph.services.registerLinkGraphProjectCommandServicesForTest
 import com.charmnight.linkgraph.semantic.subject.SubjectHandle
 import com.charmnight.linkgraph.semantic.subject.SubjectLocator
 import com.charmnight.linkgraph.semantic.subject.SubjectPreviewKind
@@ -22,15 +22,12 @@ import com.intellij.testFramework.DumbModeTestUtils
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import com.intellij.testFramework.registerServiceInstance
 import java.util.concurrent.TimeUnit
 
 class EditorPopupContextActionTest : BasePlatformTestCase() {
     override fun setUp() {
         super.setUp()
-        project.registerServiceInstance(GraphEditorStateService::class.java, GraphEditorStateService())
-        project.registerServiceInstance(LinkGraphProjectTestOverrides::class.java, LinkGraphProjectTestOverrides())
-        project.registerServiceInstance(LinkGraphProjectService::class.java, LinkGraphProjectService(project))
+        project.registerLinkGraphProjectCommandServicesForTest()
     }
 
     fun testEditorPopupUpdateStaysAvailableForUncommittedJavaDocumentOnBackgroundThread() {
@@ -104,7 +101,7 @@ class EditorPopupContextActionTest : BasePlatformTestCase() {
                 plain <caret>text
             """.trimIndent(),
         )
-        val testOverrides = project.getService(com.charmnight.linkgraph.services.LinkGraphProjectTestOverrides::class.java)
+        val testOverrides = project.getService(com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides::class.java)
         testOverrides.subjectLocator = object : SubjectLocator {
             override fun locate(
                 project: com.intellij.openapi.project.Project,

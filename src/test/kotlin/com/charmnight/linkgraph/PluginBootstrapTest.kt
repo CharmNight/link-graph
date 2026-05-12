@@ -11,7 +11,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.w3c.dom.Element
-import com.charmnight.linkgraph.services.LinkGraphProjectService
+import com.charmnight.linkgraph.application.GraphEditorApplicationService
 import com.intellij.openapi.project.Project
 
 class PluginBootstrapTest {
@@ -156,13 +156,13 @@ class PluginBootstrapTest {
     }
 
     @Test
-    fun projectServiceKeepsSupportedIntellijConstructorSignature() {
-        val constructors = LinkGraphProjectService::class.constructors
+    fun projectComponentsKeepsSupportedIntellijConstructorSignature() {
+        val constructors = GraphEditorApplicationService::class.constructors
             .mapNotNull { it.javaConstructor }
             .map { constructor -> constructor.parameterTypes.toList() }
 
         assertTrue(
-            "Expected LinkGraphProjectService to expose a supported IntelliJ constructor signature",
+            "Expected GraphEditorApplicationService to expose a supported IntelliJ constructor signature",
             constructors.any { parameters ->
                 parameters.size == 1 && parameters[0] == Project::class.java
             },

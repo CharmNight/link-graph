@@ -68,7 +68,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             input = CodegenCapabilityInput(
                 generationContext = com.charmnight.linkgraph.llm.GenerationContext(),
                 plan = GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "rewrite upload",
                 ),
             ),
@@ -85,7 +85,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -175,7 +175,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
                     ),
                 ),
                 plan = GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "rewrite upload",
                 ),
             ),
@@ -193,7 +193,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -310,7 +310,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -457,13 +457,13 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
                     ),
                 ),
                 plan = GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "rewrite upload",
                 ),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { testSnapshot() },
+                snapshotSupplier = { testSnapshot().toToolGraphSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -554,7 +554,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { testSnapshot() },
+                snapshotSupplier = { testSnapshot().toToolGraphSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -660,13 +660,13 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
             input = CodegenCapabilityInput(
                 generationContext = com.charmnight.linkgraph.llm.GenerationContext(),
                 plan = GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "rewrite upload",
                 ),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { testSnapshot() },
+                snapshotSupplier = { testSnapshot().toToolGraphSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -735,7 +735,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
                     ),
                 ),
                 plan = GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "rewrite upload",
                 ),
             ),
@@ -753,7 +753,7 @@ class CodegenCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),

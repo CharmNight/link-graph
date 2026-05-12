@@ -8,10 +8,11 @@ import java.security.MessageDigest
  */
 class GraphEditorArtifactRegistry {
     data class SnapshotArtifacts(
-        val auditPromptPreviewArtifactId: String? = null,
+        val qaPromptPreviewArtifactId: String? = null,
         val diffReviewPromptPreviewArtifactId: String? = null,
         val beautificationPromptPreviewArtifactId: String? = null,
         val generationPlanPromptPreviewArtifactId: String? = null,
+        val generationPlanDiscussionPromptPreviewArtifactId: String? = null,
         val generatedCodeDraftPromptPreviewArtifactId: String? = null,
         val generatedCodeDraftContentArtifactIds: Map<String, String> = emptyMap(),
     ) {
@@ -45,10 +46,10 @@ class GraphEditorArtifactRegistry {
         }.toMap()
 
         val snapshotArtifacts = SnapshotArtifacts(
-            auditPromptPreviewArtifactId = register(
-                kind = "audit-prompt",
-                ownerKey = "audit-result",
-                content = snapshot.auditResult?.promptPreview,
+            qaPromptPreviewArtifactId = register(
+                kind = "qa-prompt",
+                ownerKey = "qa-result",
+                content = snapshot.qaResult?.promptPreview,
             ),
             diffReviewPromptPreviewArtifactId = register(
                 kind = "diff-prompt",
@@ -64,6 +65,11 @@ class GraphEditorArtifactRegistry {
                 kind = "generation-plan-prompt",
                 ownerKey = "generation-plan",
                 content = snapshot.generationPlan?.promptPreview,
+            ),
+            generationPlanDiscussionPromptPreviewArtifactId = register(
+                kind = "generation-plan-discussion-prompt",
+                ownerKey = "generation-plan-discussion",
+                content = snapshot.generationPlanDiscussionSession?.promptPreview,
             ),
             generatedCodeDraftPromptPreviewArtifactId = register(
                 kind = "generated-draft-prompt",

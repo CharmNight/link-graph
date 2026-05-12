@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.ui
 
+import com.intellij.util.ui.UIUtil
 import com.charmnight.linkgraph.llm.GraphBeautificationResult
 import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.GraphDocument
@@ -29,6 +30,9 @@ class GraphEditorPageRenderer {
         private const val UI_PREFIX = "ui."
         /** 需要从语义元数据中过滤掉的布局前缀。 */
         private const val LAYOUT_PREFIX = "layout."
+
+        @Suppress("DEPRECATION")
+        private fun isIdeaDarkTheme(): Boolean = UIUtil.isUnderDarcula()
     }
 
     /** 为指定会话生成 bootstrap 脚本和自定义事件。 */
@@ -105,7 +109,15 @@ class GraphEditorPageRenderer {
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
         debugTracingEnabled: Boolean = false,
+        darkTheme: Boolean = isIdeaDarkTheme(),
     ): String {
+        /** JCEF 内联 HTML 不能可靠读取宿主 CSS，先用 IDE Laf 注入标准 color-scheme。 */
+        val themeScript = """
+            <script>
+              document.documentElement.dataset.ideaTheme = "${if (darkTheme) "dark" else "light"}";
+              document.documentElement.style.colorScheme = "${if (darkTheme) "dark" else "light"}";
+            </script>
+        """.trimIndent()
         /** 注入页面的脚本标签内容。 */
         val bootstrapScript = """
             <script>
@@ -118,9 +130,9 @@ class GraphEditorPageRenderer {
             </script>
         """.trimIndent()
         return if (entryHtml.contains("</head>", ignoreCase = true)) {
-            entryHtml.replace("</head>", "$bootstrapScript\n</head>", ignoreCase = true)
+            entryHtml.replace("</head>", "$themeScript\n$bootstrapScript\n</head>", ignoreCase = true)
         } else {
-            "$bootstrapScript\n$entryHtml"
+            "$themeScript\n$bootstrapScript\n$entryHtml"
         }
     }
 
@@ -208,10 +220,13 @@ class GraphEditorPageRenderer {
             "canUndoDraftPatchApply" to (snapshot.draftPatchUndoState != null),
             "lastAppliedDraftPatchSummary" to snapshot.draftPatchUndoState?.patchPreview?.summary,
             "lastDraftPatchApplyResult" to snapshot.lastDraftPatchApplyResult?.let(::draftPatchApplyResultToMap),
-            "auditResult" to snapshot.auditResult?.let {
-                patchResultToMap(it, artifactRefs.auditPromptPreviewArtifactId)
+            "auditResult" to snapshot.qaResult?.let {
+                patchResultToMap(it, artifactRefs.qaPromptPreviewArtifactId)
             },
-            "auditRequestState" to requestStateToMap(snapshot.auditRequestState),
+            "auditRequestState" to requestStateToMap(
+                snapshot.qaRequestState,
+                hasPromptPreview = hasPromptPreview(snapshot.qaResult?.promptPreview, artifactRefs.qaPromptPreviewArtifactId),
+            ),
             "qaRequestRecoveryState" to qaRequestRecoveryStateToMap(snapshot.qaRequestRecoveryState),
             "runtimeArtifactSummaries" to snapshot.runtimeArtifactSummaries.mapValues { (_, summaries) ->
                 summaries.map { summary ->
@@ -226,11 +241,17 @@ class GraphEditorPageRenderer {
             "diffReviewResult" to snapshot.diffReviewResult?.let {
                 patchResultToMap(it, artifactRefs.diffReviewPromptPreviewArtifactId)
             },
-            "diffReviewRequestState" to requestStateToMap(snapshot.diffReviewRequestState),
+            "diffReviewRequestState" to requestStateToMap(
+                snapshot.diffReviewRequestState,
+                hasPromptPreview = hasPromptPreview(snapshot.diffReviewResult?.promptPreview, artifactRefs.diffReviewPromptPreviewArtifactId),
+            ),
             "graphBeautificationResult" to snapshot.graphBeautificationResult?.let {
                 beautificationResultToMap(it, artifactRefs.beautificationPromptPreviewArtifactId)
             },
-            "graphBeautificationRequestState" to requestStateToMap(snapshot.graphBeautificationRequestState),
+            "graphBeautificationRequestState" to requestStateToMap(
+                snapshot.graphBeautificationRequestState,
+                hasPromptPreview = hasPromptPreview(snapshot.graphBeautificationResult?.promptPreview, artifactRefs.beautificationPromptPreviewArtifactId),
+            ),
             "mermaidIssues" to snapshot.mermaidIssues.map { issue ->
                 linkedMapOf(
                     "category" to issue.category.name,
@@ -276,10 +297,21 @@ class GraphEditorPageRenderer {
                 )
             },
             "generationPlanDraftVersion" to snapshot.generationPlanDraftVersion,
-            "generationPlanRequestState" to requestStateToMap(snapshot.generationPlanRequestState),
+            "generationPlanRequestState" to requestStateToMap(
+                snapshot.generationPlanRequestState,
+                hasPromptPreview = hasPromptPreview(snapshot.generationPlan?.promptPreview, artifactRefs.generationPlanPromptPreviewArtifactId),
+            ),
             "draftValidationState" to snapshot.draftValidationState?.let(::draftValidationStateToMap),
-            "generationPlanDiscussionSession" to snapshot.generationPlanDiscussionSession?.let(::generationPlanDiscussionSessionToMap),
-            "generationPlanDiscussionRequestState" to requestStateToMap(snapshot.generationPlanDiscussionRequestState),
+            "generationPlanDiscussionSession" to snapshot.generationPlanDiscussionSession?.let { session ->
+                generationPlanDiscussionSessionToMap(session, artifactRefs.generationPlanDiscussionPromptPreviewArtifactId)
+            },
+            "generationPlanDiscussionRequestState" to requestStateToMap(
+                snapshot.generationPlanDiscussionRequestState,
+                hasPromptPreview = hasPromptPreview(
+                    snapshot.generationPlanDiscussionSession?.promptPreview,
+                    artifactRefs.generationPlanDiscussionPromptPreviewArtifactId,
+                ),
+            ),
             "generatedCodeDrafts" to snapshot.generatedCodeDrafts.map { draft ->
                 val contentArtifactId = artifactRefs.generatedCodeDraftContentArtifactIds[draft.id]
                 linkedMapOf<String, Any?>(
@@ -302,7 +334,13 @@ class GraphEditorPageRenderer {
             "generatedCodeDraftWarnings" to snapshot.generatedCodeDraftWarnings,
             "generatedCodeDraftSource" to snapshot.generatedCodeDraftSource?.name,
             "generatedCodeDraftPromptPreviewArtifactId" to artifactRefs.generatedCodeDraftPromptPreviewArtifactId,
-            "codeDraftRequestState" to requestStateToMap(snapshot.codeDraftRequestState),
+            "codeDraftRequestState" to requestStateToMap(
+                snapshot.codeDraftRequestState,
+                hasPromptPreview = hasPromptPreview(
+                    snapshot.generatedCodeDraftPromptPreview,
+                    artifactRefs.generatedCodeDraftPromptPreviewArtifactId,
+                ),
+            ),
             "codeEligibilityDecision" to snapshot.codeEligibilityDecision?.let(::stageEligibilityDecisionToMap),
             "generatedCodeDraftWriteReport" to snapshot.generatedCodeDraftWriteReport?.let { report ->
                 linkedMapOf(
@@ -354,7 +392,10 @@ class GraphEditorPageRenderer {
     )
 
     /** 把异步请求状态转换成前端可消费的映射。 */
-    private fun requestStateToMap(state: com.charmnight.linkgraph.ui.AsyncRequestState): Map<String, Any?> = linkedMapOf(
+    private fun requestStateToMap(
+        state: com.charmnight.linkgraph.ui.AsyncRequestState,
+        hasPromptPreview: Boolean = state.promptPreviewAvailable,
+    ): Map<String, Any?> = linkedMapOf(
         "phase" to state.phase.name,
         "requestId" to state.requestId,
         "scene" to state.scene,
@@ -373,7 +414,9 @@ class GraphEditorPageRenderer {
         "providerLabel" to state.providerLabel,
         "model" to state.model,
         "endpointSummary" to state.endpointSummary,
-        "promptPreviewAvailable" to state.promptPreviewAvailable,
+        "promptPreviewAvailable" to hasPromptPreview,
+        "requestedMode" to state.requestedMode?.name,
+        "effectiveMode" to state.effectiveMode?.name,
     )
 
     private fun qaRequestRecoveryStateToMap(
@@ -389,6 +432,7 @@ class GraphEditorPageRenderer {
         "requestId" to request.requestId,
         "kind" to request.kind.name,
         "question" to request.question,
+        "mode" to request.mode.name,
         "selectedNodeIds" to request.selectedNodeIds,
         "sourceThreadId" to request.sourceThreadId,
         "baseSessionId" to request.baseSession?.sessionId,
@@ -614,6 +658,8 @@ class GraphEditorPageRenderer {
     ): Map<String, Any?> = linkedMapOf(
         "source" to result.source.name,
         "question" to result.question,
+        "requestedMode" to result.requestedMode.name,
+        "effectiveMode" to result.effectiveMode.name,
         "answer" to result.answer,
         "promptPreviewArtifactId" to promptPreviewArtifactId,
         "warnings" to result.warnings,
@@ -625,7 +671,7 @@ class GraphEditorPageRenderer {
         "recentTurnOutcomes" to result.recentTurnOutcomes.map(::investigationTurnOutcomeToMap),
         "sourceContext" to result.sourceContext.map(::sourceSnippetContextToMap),
         "evidenceTrace" to result.evidenceTrace.map(::evidenceTraceEntryToMap),
-        "auditSession" to result.auditSession?.let(::auditConversationSessionToMap),
+        "auditSession" to result.qaSession?.let(::qaConversationSessionToMap),
         "patch" to result.patch?.let(::patchToMap),
     )
 
@@ -734,12 +780,12 @@ class GraphEditorPageRenderer {
         "falseBranchTargetNodeId" to intent.falseBranchTargetNodeId,
     )
 
-    private fun auditConversationSessionToMap(
-        session: com.charmnight.linkgraph.workbench.AuditConversationSession,
+    private fun qaConversationSessionToMap(
+        session: com.charmnight.linkgraph.workbench.QaConversationSession,
     ): Map<String, Any?> = linkedMapOf(
         "sessionId" to session.sessionId,
         "scopeKey" to session.scopeKey,
-        "messages" to session.messages.map(::auditConversationMessageToMap),
+        "messages" to session.messages.map(::qaConversationMessageToMap),
         "candidateChanges" to session.candidateChanges.map(::candidateDraftChangeToMap),
         "investigationThreads" to session.investigationThreads.map(::investigationThreadToMap),
         "turnOutcomes" to session.turnOutcomes.map(::investigationTurnOutcomeToMap),
@@ -748,6 +794,7 @@ class GraphEditorPageRenderer {
 
     private fun generationPlanDiscussionSessionToMap(
         session: com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession,
+        promptPreviewArtifactId: String?,
     ): Map<String, Any?> = linkedMapOf(
         "sessionId" to session.sessionId,
         "messages" to session.messages.map { message ->
@@ -759,7 +806,12 @@ class GraphEditorPageRenderer {
             )
         },
         "focusItemId" to session.focusItemId,
+        "promptPreviewArtifactId" to promptPreviewArtifactId,
     )
+
+    private fun hasPromptPreview(promptPreview: String?, promptPreviewArtifactId: String?): Boolean {
+        return !promptPreview.isNullOrBlank() || !promptPreviewArtifactId.isNullOrBlank()
+    }
 
     private fun draftValidationStateToMap(
         state: com.charmnight.linkgraph.workbench.DraftValidationState,
@@ -818,8 +870,8 @@ class GraphEditorPageRenderer {
         "strongestEvidenceLevel" to outcome.strongestEvidenceLevel?.name,
     )
 
-    private fun auditConversationMessageToMap(
-        message: com.charmnight.linkgraph.workbench.AuditConversationMessage,
+    private fun qaConversationMessageToMap(
+        message: com.charmnight.linkgraph.workbench.QaConversationMessage,
     ): Map<String, Any?> = linkedMapOf(
         "messageId" to message.messageId,
         "role" to message.role.name,
@@ -844,11 +896,13 @@ class GraphEditorPageRenderer {
         trace: com.charmnight.linkgraph.llm.EvidenceTraceEntry,
     ): Map<String, Any?> = linkedMapOf(
         "nodeId" to trace.nodeId,
+        "resolvedNodeId" to trace.resolvedNodeId,
         "filePath" to trace.filePath,
         "reason" to trace.reason,
         "startLine" to trace.startLine,
         "endLine" to trace.endLine,
         "includedInPrompt" to trace.includedInPrompt,
+        "mappingTrace" to trace.mappingTrace,
     )
 
     private fun editScopeToMap(
@@ -961,9 +1015,7 @@ class GraphEditorPageRenderer {
                 when (char) {
                     '\\' -> append("\\\\")
                     '"' -> append("\\\"")
-                    '\n' -> append("\\n")
-                    '\r' -> append("\\r")
-                    '\t' -> append("\\t")
+                    in '\u0000'..'\u001f' -> append("\\u").append(char.code.toString(16).padStart(4, '0'))
                     else -> append(char)
                 }
             }

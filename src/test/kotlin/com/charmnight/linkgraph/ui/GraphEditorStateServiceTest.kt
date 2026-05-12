@@ -67,7 +67,7 @@ class GraphEditorStateServiceTest {
     fun markOperationFeedbackCanPreserveExistingLastMessageType() {
         val service = GraphEditorStateService()
 
-        service.asyncRequests.markGraphBeautificationResult(GraphBeautificationResult(source = LlmResultSource.MOCK))
+        service.asyncRequests.markGraphBeautificationResult(GraphBeautificationResult(source = LlmResultSource.LOCAL_RULE))
         service.workbench.markOperationFeedback(
             level = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
             message = "链路讲解完成，已更新步骤列表",
@@ -489,7 +489,7 @@ class GraphEditorStateServiceTest {
             ),
         )
         val plan = GenerationPlan(
-            source = GenerationPlanSource.MOCK,
+            source = GenerationPlanSource.LOCAL_RULE,
             summary = "补一个 DTO 并串起服务调用。",
             items = listOf(
                 GenerationPlanItem(
@@ -931,7 +931,7 @@ class GraphEditorStateServiceTest {
             ),
         )
         val result = GraphBeautificationResult(
-            source = LlmResultSource.MOCK,
+            source = LlmResultSource.LOCAL_RULE,
             granularity = StepGranularity.BUSINESS,
             steps = listOf(
                 GraphBeautificationStep(
@@ -1012,7 +1012,7 @@ class GraphEditorStateServiceTest {
     }
 
     @Test
-    fun beginAuditRequestClearsPreviousAuditResultButKeepsGraphs() {
+    fun beginQaRequestClearsPreviousQaResultButKeepsGraphs() {
         val service = GraphEditorStateService()
         val graph = GraphDocument(
             nodes = listOf(
@@ -1026,21 +1026,21 @@ class GraphEditorStateServiceTest {
         )
 
         service.loadGraph(graph, "currentMethod")
-        service.asyncRequests.markAuditResult(
+        service.asyncRequests.markQaResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "旧问题",
                 answer = "旧答案",
                 promptPreview = "old prompt",
             ),
         )
 
-        service.asyncRequests.beginAuditRequest()
+        service.asyncRequests.beginQaRequest()
 
         val snapshot = service.snapshot()
         assertEquals(graph, snapshot.visibleGraph)
         assertEquals(graph, snapshot.workingGraph)
-        assertEquals(null, snapshot.auditResult)
+        assertEquals(null, snapshot.qaResult)
         assertEquals("requestAudit", snapshot.lastMessageType)
     }
 
@@ -1058,7 +1058,7 @@ class GraphEditorStateServiceTest {
             ),
         )
         val beautificationResult = GraphBeautificationResult(
-            source = LlmResultSource.MOCK,
+            source = LlmResultSource.LOCAL_RULE,
             granularity = StepGranularity.BUSINESS,
             steps = listOf(
                 GraphBeautificationStep(
@@ -1084,20 +1084,20 @@ class GraphEditorStateServiceTest {
         val afterBeautificationResult = service.snapshot()
         assertEquals(afterBeginBeautification.snapshotRevision + 1, afterBeautificationResult.snapshotRevision)
 
-        service.asyncRequests.beginAuditRequest()
-        val afterBeginAudit = service.snapshot()
-        assertEquals(afterBeautificationResult.snapshotRevision + 1, afterBeginAudit.snapshotRevision)
+        service.asyncRequests.beginQaRequest()
+        val afterBeginQa = service.snapshot()
+        assertEquals(afterBeautificationResult.snapshotRevision + 1, afterBeginQa.snapshotRevision)
 
-        service.asyncRequests.markAuditResult(
+        service.asyncRequests.markQaResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "请围绕当前链路进行问答",
                 answer = "当前链路缺少兜底说明。",
-                promptPreview = "audit prompt",
+                promptPreview = "qa prompt",
             ),
         )
-        val afterAuditResult = service.snapshot()
-        assertEquals(afterBeginAudit.snapshotRevision + 1, afterAuditResult.snapshotRevision)
+        val afterQaResult = service.snapshot()
+        assertEquals(afterBeginQa.snapshotRevision + 1, afterQaResult.snapshotRevision)
     }
 
     @Test
@@ -1142,13 +1142,13 @@ class GraphEditorStateServiceTest {
                 ),
             ),
             warnings = listOf("旧草稿"),
-            source = LlmResultSource.MOCK,
+            source = LlmResultSource.LOCAL_RULE,
             promptPreview = "old prompt",
         )
         service.asyncRequests.beginGenerationPlanRequest()
 
         val plan = GenerationPlan(
-            source = GenerationPlanSource.MOCK,
+            source = GenerationPlanSource.LOCAL_RULE,
             summary = "生成新的 DTO 计划。",
             warnings = emptyList(),
             promptPreview = "new prompt",
@@ -1232,7 +1232,7 @@ class GraphEditorStateServiceTest {
         )
         service.asyncRequests.markGenerationPlan(
             GenerationPlan(
-                source = GenerationPlanSource.MOCK,
+                source = GenerationPlanSource.LOCAL_RULE,
                 summary = "先补失败补偿，再补重试分支。",
                 warnings = emptyList(),
                 promptPreview = "plan prompt",
@@ -1249,7 +1249,7 @@ class GraphEditorStateServiceTest {
                 ),
             ),
             warnings = listOf("仅生成主方法草稿"),
-            source = LlmResultSource.MOCK,
+            source = LlmResultSource.LOCAL_RULE,
             promptPreview = "code prompt",
         )
         service.workbench.markDraftWorkbenchState(
@@ -1320,7 +1320,7 @@ class GraphEditorStateServiceTest {
     }
 
     @Test
-    fun markGraphChangedClearsDerivedAuditAndPreviewState() {
+    fun markGraphChangedClearsDerivedQaAndPreviewState() {
         val service = GraphEditorStateService()
         val graph = GraphDocument(
             nodes = listOf(
@@ -1334,9 +1334,9 @@ class GraphEditorStateServiceTest {
         )
 
         service.loadGraph(graph, "currentMethod")
-        service.asyncRequests.markAuditResult(
+        service.asyncRequests.markQaResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "旧问题",
                 answer = "旧答案",
                 promptPreview = "old prompt",
@@ -1344,7 +1344,7 @@ class GraphEditorStateServiceTest {
         )
         service.asyncRequests.markDiffReviewResult(
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = "旧差异问题",
                 answer = "旧差异答案",
                 promptPreview = "old diff prompt",
@@ -1361,7 +1361,7 @@ class GraphEditorStateServiceTest {
         service.markGraphChanged(graph)
 
         val snapshot = service.snapshot()
-        assertEquals(null, snapshot.auditResult)
+        assertEquals(null, snapshot.qaResult)
         assertEquals(null, snapshot.diffReviewResult)
         assertEquals(null, snapshot.draftPatchPreview)
         assertEquals("workspaceGraphChanged", snapshot.lastMessageType)

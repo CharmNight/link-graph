@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.model.findTrustedNavigationNode
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.model.GraphDocument
@@ -8,6 +9,7 @@ import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.ui.view.FlowchartSummary
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
+import com.charmnight.linkgraph.ui.toWorkflowEditorSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -35,8 +37,8 @@ class LinkGraphProjectServiceNavigationTest {
             designBaselineGraph = GraphDocument(nodes = listOf(baselineNode)),
         )
 
-        assertNull(findTrustedNavigationNode(snapshot, draftNode.id))
-        assertNull(findTrustedNavigationNode(snapshot, baselineNode.id))
+        assertNull(findTrustedNavigationNode(snapshot.toWorkflowEditorSnapshot(), draftNode.id))
+        assertNull(findTrustedNavigationNode(snapshot.toWorkflowEditorSnapshot(), baselineNode.id))
     }
 
     @Test
@@ -82,6 +84,6 @@ class LinkGraphProjectServiceNavigationTest {
             ),
         )
 
-        assertEquals(hiddenConditionNode, findTrustedNavigationNode(snapshot, hiddenConditionNode.id))
+        assertEquals(hiddenConditionNode, findTrustedNavigationNode(snapshot.toWorkflowEditorSnapshot(), hiddenConditionNode.id))
     }
 }

@@ -2,64 +2,27 @@ package com.charmnight.linkgraph.services
 
 import com.charmnight.linkgraph.testing.*
 
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class LinkGraphProjectServiceStructureTest {
     @Test
-    fun planningContextHelpersLiveOutsideFacade() {
-        val declaredMethodNames = LinkGraphProjectService::class.java.declaredMethods.map { it.name }.toSet()
-        val nestedTypeNames = LinkGraphProjectService::class.java.declaredClasses.map { it.simpleName }.toSet()
+    fun legacyFacadeIsDeletedAndPlanningHelpersRemainInDedicatedCollaborators() {
+        assertFalse(
+            Files.exists(Path.of("src/main/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectService.kt")),
+            "LinkGraphProjectService production facade must stay deleted.",
+        )
 
-        setOf(
-            "withComputedPlanningContext",
-            "computePlanningPayload",
-            "buildPlanSnapshot",
-            "buildGraphBeautificationContext",
-            "buildAuditGraphs",
-            "currentVisibleGraph",
-            "currentWorkingGraph",
-            "resolveBeautificationAnchorNodeId",
-            "computeBeautificationHiddenCounts",
-            "collectBeautificationCurrentMethodNodeIds",
-            "buildSourceSnippetContexts",
-            "readSourceSnippet",
-            "normalizeSourceSnippetForPrompt",
-            "clipSnippetAtBoundary",
-            "mergeWriteReport",
-            "canNavigateToSource",
-            "computeCurrentMethodNode",
-            "ensureGraphContainsNode",
-            "mergeGraphNode",
-            "clearLastAnalysisCache",
-            "sourceForSubject",
-            "shouldDeferCurrentMethodResolutionUntilSmart",
-            "currentEditorPreviewKind",
-            "locateCurrentSubject",
-            "locateCurrentCodeSubject",
-            "locateCodeSubjectBySignatureInReadAction",
-            "resolveCodeSubjectBySignatureAsync",
-            "computeAnalysisResultInReadAction",
-            "isBenignCurrentSubjectGraphCancellation",
-            "positionNodeForCanvas",
-        ).forEach { helperName ->
-            assertFalse(
-                helperName in declaredMethodNames,
-                "LinkGraphProjectService 不应继续保留 $helperName；该职责应由独立协作者承接。",
-            )
-        }
-
-        setOf(
-            "PlanningPayload",
-            "AuditGraphs",
-            "CurrentMethodNode",
-            "AnalysisExecutionResult",
-            "AnalysisOutcomeAsyncResult",
-        ).forEach { nestedTypeName ->
-            assertFalse(
-                nestedTypeName in nestedTypeNames,
-                "LinkGraphProjectService 不应继续保留内部类型 $nestedTypeName；避免旧新实现并存。",
-            )
-        }
+        assertTrue(
+            Files.exists(Path.of("src/main/kotlin/com/charmnight/linkgraph/application/planning/PlanningContextFactory.kt")),
+            "Planning context construction should live in a dedicated application planning collaborator.",
+        )
+        assertTrue(
+            Files.exists(Path.of("src/main/kotlin/com/charmnight/linkgraph/application/workflow/SubjectGraphWorkflow.kt")),
+            "Subject graph orchestration should live under the application workflow boundary.",
+        )
     }
 }

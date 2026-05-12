@@ -26,10 +26,6 @@ function isIncrementalTransportEnvelope(value: unknown): value is LinkGraphIncre
   return "type" in value && "sessionId" in value && "revision" in value && "state" in value;
 }
 
-function normalizeEnvelope(detail: LinkGraphSnapshotEnvelope): LinkGraphSnapshotEnvelope {
-  return detail;
-}
-
 function flushLatestEnvelope(forceDispatch = false): void {
   const startedAt = measureStart();
   if (!frontendReady || !latestEnvelope) {
@@ -167,5 +163,5 @@ function normalizeTransportEnvelope(
   if (!isSnapshotEnvelope(detail)) {
     return null;
   }
-  return normalizeEnvelope(detail);
+  return detail;
 }

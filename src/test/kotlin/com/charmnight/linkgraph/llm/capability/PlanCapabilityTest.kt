@@ -2,6 +2,7 @@ package com.charmnight.linkgraph.llm.capability
 
 import com.charmnight.linkgraph.testing.*
 
+import com.charmnight.linkgraph.application.model.PlanningInput
 import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.GenerationPlanSource
 import com.charmnight.linkgraph.llm.SourceSnippetContext
@@ -24,14 +25,13 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.llm.EditScope
-import com.charmnight.linkgraph.services.PlanningPayload
-import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.nio.file.Files
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.test.assertNull
@@ -42,7 +42,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
             defaultBudget = RunBudget(),
             planExecutor = { _, _, _ ->
                 GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "plan without confirmed intent",
                 )
             },
@@ -51,17 +51,16 @@ class PlanCapabilityTest : BasePlatformTestCase() {
         val result = AgentRunCoordinator().run(
             capability = capability,
             input = PlanCapabilityInput(
-                planningPayload = PlanningPayload(
+                planningPayload = PlanningInput(
                     planningGraph = GraphDocument(),
                     diff = com.charmnight.linkgraph.model.GraphDiff(),
                     previewItems = emptyList(),
-                    snapshot = testSnapshot(),
                     sourceContext = emptyList(),
                 ),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { testSnapshot() },
+                snapshotSupplier = { testSnapshot().toToolGraphSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -76,7 +75,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
             defaultBudget = RunBudget(),
             planExecutor = { input, _, _ ->
                 GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "生成计划",
                     promptPreview = input.planningPayload.planningGraph.nodes.joinToString { it.title },
                 )
@@ -86,7 +85,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
         val result = AgentRunCoordinator().run(
             capability = capability,
             input = PlanCapabilityInput(
-                planningPayload = PlanningPayload(
+                planningPayload = PlanningInput(
                     planningGraph = GraphDocument(
                         nodes = listOf(
                             GraphNode(
@@ -98,15 +97,11 @@ class PlanCapabilityTest : BasePlatformTestCase() {
                     ),
                     diff = com.charmnight.linkgraph.model.GraphDiff(),
                     previewItems = emptyList(),
-                    snapshot = testSnapshot(
-                        draftWorkbenchState = DraftWorkbenchState(
-                            draftChanges = listOf(
-                                DraftWorkbenchEntry(
-                                    entryId = "draft-1",
-                                    kind = DraftEntryKind.CHANGE,
-                                    title = "修改上传逻辑",
-                                ),
-                            ),
+                    confirmedChanges = listOf(
+                        DraftWorkbenchEntry(
+                            entryId = "draft-1",
+                            kind = DraftEntryKind.CHANGE,
+                            title = "修改上传逻辑",
                         ),
                     ),
                     sourceContext = emptyList(),
@@ -125,7 +120,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),
@@ -176,13 +171,13 @@ class PlanCapabilityTest : BasePlatformTestCase() {
         var sawDraftWorkbench = false
         var sawGraphDiff = false
         var sawReadSourceSnippet = false
-        var capturedPayload: PlanningPayload? = null
+        var capturedPayload: PlanningInput? = null
         val capability = PlanCapability(
             defaultBudget = RunBudget(),
             planExecutor = { input, _, _ ->
                 capturedPayload = input.planningPayload
                 GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "runtime plan",
                 )
             },
@@ -261,15 +256,11 @@ class PlanCapabilityTest : BasePlatformTestCase() {
         val result = AgentRunCoordinator().run(
             capability = capability,
             input = PlanCapabilityInput(
-                planningPayload = PlanningPayload(
+                planningPayload = PlanningInput(
                     planningGraph = GraphDocument(),
                     diff = GraphDiff(),
                     previewItems = emptyList(),
-                    snapshot = testSnapshot(
-                        draftWorkbenchState = DraftWorkbenchState(
-                            draftChanges = listOf(staleEntry),
-                        ),
-                    ),
+                    confirmedChanges = listOf(staleEntry),
                     sourceContext = listOf(
                         SourceSnippetContext(
                             nodeId = "method:upload-file",
@@ -283,7 +274,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { testSnapshot() },
+                snapshotSupplier = { testSnapshot().toToolGraphSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -292,7 +283,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
         assertTrue(sawDraftWorkbench)
         assertTrue(sawGraphDiff)
         assertTrue(sawReadSourceSnippet)
-        assertEquals(listOf(runtimeEntry), capturedPayload?.snapshot?.draftWorkbenchState?.draftChanges)
+        assertEquals(listOf(runtimeEntry), capturedPayload?.confirmedChanges)
         assertEquals(runtimeDiff, capturedPayload?.diff)
         assertEquals("RUNTIME_SNIPPET", capturedPayload?.sourceContext?.singleOrNull()?.snippet)
     }
@@ -323,7 +314,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
             planExecutor = { _, _, _ ->
                 executorInvoked = true
                 GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "不应该执行到这里",
                 )
             },
@@ -392,17 +383,16 @@ class PlanCapabilityTest : BasePlatformTestCase() {
         val result = AgentRunCoordinator().run(
             capability = capability,
             input = PlanCapabilityInput(
-                planningPayload = PlanningPayload(
+                planningPayload = PlanningInput(
                     planningGraph = GraphDocument(),
                     diff = GraphDiff(),
                     previewItems = emptyList(),
-                    snapshot = testSnapshot(),
                     sourceContext = emptyList(),
                 ),
             ),
             runtimeContext = AgentRuntimeContext(
                 project = project,
-                snapshotSupplier = { testSnapshot() },
+                snapshotSupplier = { testSnapshot().toToolGraphSnapshot() },
                 artifactStore = InMemoryArtifactStore(),
             ),
         )
@@ -437,13 +427,13 @@ class PlanCapabilityTest : BasePlatformTestCase() {
             endLine = 4,
             allowedChangeKinds = listOf("REPLACE_METHOD_BODY"),
         )
-        var capturedPayload: PlanningPayload? = null
+        var capturedPayload: PlanningInput? = null
         val capability = PlanCapability(
             defaultBudget = RunBudget(),
             planExecutor = { input, _, _ ->
                 capturedPayload = input.planningPayload
                 GenerationPlan(
-                    source = GenerationPlanSource.MOCK,
+                    source = GenerationPlanSource.LOCAL_RULE,
                     summary = "skip external evidence",
                 )
             },
@@ -452,20 +442,16 @@ class PlanCapabilityTest : BasePlatformTestCase() {
         val result = AgentRunCoordinator().run(
             capability = capability,
             input = PlanCapabilityInput(
-                planningPayload = PlanningPayload(
+                planningPayload = PlanningInput(
                     planningGraph = GraphDocument(),
                     diff = GraphDiff(),
                     previewItems = emptyList(),
-                    snapshot = testSnapshot(
-                        draftWorkbenchState = DraftWorkbenchState(
-                            draftChanges = listOf(
-                                DraftWorkbenchEntry(
-                                    entryId = "draft-runtime",
-                                    kind = DraftEntryKind.CHANGE,
-                                    title = "runtime confirmed",
-                                    editScopes = listOf(externalScope),
-                                ),
-                            ),
+                    confirmedChanges = listOf(
+                        DraftWorkbenchEntry(
+                            entryId = "draft-runtime",
+                            kind = DraftEntryKind.CHANGE,
+                            title = "runtime confirmed",
+                            editScopes = listOf(externalScope),
                         ),
                     ),
                     sourceContext = emptyList(),
@@ -485,7 +471,7 @@ class PlanCapabilityTest : BasePlatformTestCase() {
                                 ),
                             ),
                         ),
-                    )
+                    ).toToolGraphSnapshot()
                 },
                 artifactStore = InMemoryArtifactStore(),
             ),

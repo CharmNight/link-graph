@@ -55,7 +55,7 @@ data class CodeGenerationResult(
     /** 失败或回退时保留的结构化诊断详情。 */
     val diagnosticDetail: String? = null,
     /** 结果来源，标记是远程还是本地模板。 */
-    val source: LlmResultSource = LlmResultSource.MOCK,
+    val source: LlmResultSource = LlmResultSource.LOCAL_RULE,
     /** 本次生成使用的提示词预览。 */
     val promptPreview: String? = null,
 )
@@ -195,7 +195,7 @@ class CodeGenerationService(
             return CodeGenerationResult(
                 drafts = emptyList(),
                 warnings = modificationWarnings,
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 promptPreview = promptPreview,
             )
         }
@@ -225,7 +225,7 @@ class CodeGenerationService(
         return CodeGenerationResult(
             drafts = drafts,
             warnings = modificationWarnings + warnings,
-            source = LlmResultSource.MOCK,
+            source = LlmResultSource.LOCAL_RULE,
             promptPreview = promptPreview,
         )
     }

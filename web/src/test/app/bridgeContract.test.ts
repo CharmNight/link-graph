@@ -31,7 +31,12 @@ function injectedBridgeMethods(source: string): Map<string, string> {
 }
 
 function registeredHandlerQueries(source: string): Set<string> {
-  return new Set(Array.from(source.matchAll(/([A-Za-z0-9_]+Query)\.addHandler/g), (match) => match[1]));
+  return new Set(
+    Array.from(
+      source.matchAll(/([A-Za-z0-9_]+Query)\.add(?:SafePayloadHandler|SafeHandler|Handler)/g),
+      (match) => match[1],
+    ),
+  );
 }
 
 describe("bridge contract", () => {

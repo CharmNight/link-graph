@@ -42,7 +42,7 @@ data class RunBudget(
             filesRead = filesRead + 1,
             snippetsRead = snippetsRead + 1,
             totalSnippetLinesRead = totalSnippetLinesRead + snippetLines.coerceAtLeast(0),
-            snippetLineLimitExceeded = snippetLineLimitExceeded || snippetLines.coerceAtLeast(0) > maxSnippetLines,
+            snippetLineLimitExceeded = snippetLineLimitExceeded || snippetLines.coerceAtLeast(0) >= maxSnippetLines,
         )
     }
 

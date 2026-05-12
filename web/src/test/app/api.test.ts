@@ -14,6 +14,7 @@ import {
   resetApiBridgeLifecycleStateForTest,
 } from "../../app/api";
 import { resetEditorTransportForTest } from "../../app/editorTransport";
+import { EMPTY_STATE } from "../../app/sampleState";
 import type { LinkGraphEdge, LinkGraphNode, RiskResolutionStatus } from "../../app/types";
 
 function methodNode(id: string, title: string): LinkGraphNode {
@@ -36,6 +37,7 @@ describe("publishGraphEditScript", () => {
     resetApiBridgeLifecycleStateForTest();
     window.linkGraphBridge = undefined;
     window.linkGraphDebugTrace = undefined;
+    window.linkGraphBootstrap = undefined;
   });
 
   it("keeps edge metadata when syncing canonical graph edits back to the IDE bridge", () => {
@@ -301,6 +303,15 @@ describe("publishGraphEditScript", () => {
     expect(readBootstrapState()?.analysisDisplayMode).toBe("FACT_GRAPH");
   });
 
+  it("readBootstrapState keeps bootstrap sources unchanged", () => {
+    window.linkGraphBootstrap = {
+      ...EMPTY_STATE,
+      generatedCodeDraftSource: "LOCAL_RULE",
+    };
+
+    expect(readBootstrapState()?.generatedCodeDraftSource).toBe("LOCAL_RULE");
+  });
+
   it("把展示模式切换请求转发给 IDE bridge", () => {
     const requestAnalysisDisplayModeBridge = vi.fn();
     window.linkGraphBridge = {
@@ -342,18 +353,31 @@ describe("publishGraphEditScript", () => {
     };
     window.linkGraphDebugTrace = traceSink;
 
-    requestAuditAsync("请围绕当前链路进行问答", ["method:place-order", "sql:insert-order"], "thread-risk-1");
+    requestAuditAsync("请围绕当前链路进行问答", ["method:place-order", "sql:insert-order"], "thread-risk-1", "INVESTIGATE");
 
     expect(requestAuditBridge).toHaveBeenCalledWith(
       "请围绕当前链路进行问答",
       ["method:place-order", "sql:insert-order"],
       "thread-risk-1",
+      "INVESTIGATE",
     );
     const tracePayload = String(traceSink.mock.calls[0]?.[0] ?? "");
     expect(tracePayload).toContain("\"event\":\"api.requestAudit\"");
     expect(tracePayload).toContain("\"question\":\"请围绕当前链路进行问答\"");
     expect(tracePayload).toContain("\"selectedNodeIds\":[\"method:place-order\",\"sql:insert-order\"]");
     expect(tracePayload).toContain("\"sourceThreadId\":\"thread-risk-1\"");
+    expect(tracePayload).toContain("\"mode\":\"INVESTIGATE\"");
+  });
+
+  it("defaults audit requests to AUTO mode for legacy callers", () => {
+    const requestAuditBridge = vi.fn();
+    window.linkGraphBridge = {
+      requestAudit: requestAuditBridge,
+    };
+
+    requestAuditAsync("这个方法是如何触发的？");
+
+    expect(requestAuditBridge).toHaveBeenCalledWith("这个方法是如何触发的？", [], null, "AUTO");
   });
 
   it("把风险决策请求转发给 IDE bridge", () => {

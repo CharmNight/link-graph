@@ -11,21 +11,21 @@ import kotlin.test.assertTrue
 
 class QaSourceWordingCleanupTest {
     @Test
-    fun qaPrimaryPathSourceCommentsAndCopyDoNotKeepAuditWording() {
+    fun qaPrimaryPathSourceCommentsAndCopyDoNotKeepObsoleteWording() {
         val projectRoot = Path.of(System.getProperty("user.dir"))
-        val filesWithoutAuditWording = listOf(
-            "src/main/kotlin/com/charmnight/linkgraph/services/AsyncRequestLifecycleSupport.kt",
-            "src/main/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectService.kt",
-            "src/main/kotlin/com/charmnight/linkgraph/services/ReviewWorkflow.kt",
+        val filesWithoutObsoleteWording = listOf(
+            "src/main/kotlin/com/charmnight/linkgraph/application/request/AsyncRequestLifecycleSupport.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/workflow/ConfirmedDraftChangeCoordinator.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/workflow/ReviewWorkflow.kt",
             "src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorMessage.kt",
             "src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorStateService.kt",
             "src/main/kotlin/com/charmnight/linkgraph/llm/LlmPromptFactory.kt",
             "src/main/kotlin/com/charmnight/linkgraph/llm/LlmTypes.kt",
-            "src/main/kotlin/com/charmnight/linkgraph/services/PlanningContextFactory.kt",
-            "src/main/kotlin/com/charmnight/linkgraph/llm/GraphAuditScopeResolver.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/planning/PlanningContextFactory.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/llm/GraphQaScopeResolver.kt",
         )
 
-        filesWithoutAuditWording.forEach { relativePath ->
+        filesWithoutObsoleteWording.forEach { relativePath ->
             val content = Files.readString(projectRoot.resolve(relativePath))
             assertFalse(
                 content.contains("审计"),
@@ -33,18 +33,18 @@ class QaSourceWordingCleanupTest {
             )
         }
 
-        val auditPatchService = Files.readString(
-            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/llm/GraphAuditPatchService.kt"),
+        val qaPatchService = Files.readString(
+            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/llm/GraphQaPatchService.kt"),
         )
-        val auditWordingCount = "审计".toRegex().findAll(auditPatchService).count()
+        val legacyWordingCount = "审计".toRegex().findAll(qaPatchService).count()
         assertEquals(
             1,
-            auditWordingCount,
-            "GraphAuditPatchService 只应保留兼容旧提问方式所需的一处“审计”识别。",
+            legacyWordingCount,
+            "GraphQaPatchService 只应保留兼容旧提问方式所需的一处“审计”识别。",
         )
         assertTrue(
-            auditPatchService.contains("question.contains(\"审计\")"),
-            "GraphAuditPatchService 保留的唯一“审计”字样应来自兼容提问识别分支。",
+            qaPatchService.contains("question.contains(\"审计\")"),
+            "GraphQaPatchService 保留的唯一“审计”字样应来自兼容提问识别分支。",
         )
     }
 }

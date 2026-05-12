@@ -1,7 +1,7 @@
 import { llmResultSourceLabel, patchResultBoundaryDescription } from "../labels";
 import type { GraphPatchResult } from "../types";
-import { ArtifactTextDisclosure } from "./ArtifactTextDisclosure";
 import { EvidenceFindingsSection } from "./EvidenceFindingsSection";
+import { RequestPromptDisclosure } from "./RequestPromptDisclosure";
 
 interface PatchResultSummaryProps {
   title: string;
@@ -186,8 +186,8 @@ export function PatchResultSummary({
           <section className="answer-section">
             <strong>关键影响</strong>
             <ul className="answer-list">
-              {sections.impacts.map((impact) => (
-                <li key={impact} className="muted">{impact}</li>
+              {sections.impacts.map((impact, index) => (
+                <li key={`${impact}-${index}`} className="muted">{impact}</li>
               ))}
             </ul>
           </section>
@@ -197,8 +197,8 @@ export function PatchResultSummary({
           <section className="answer-section">
             <strong>建议动作</strong>
             <ul className="answer-list">
-              {sections.actions.map((action) => (
-                <li key={action} className="muted">{action}</li>
+              {sections.actions.map((action, index) => (
+                <li key={`${action}-${index}`} className="muted">{action}</li>
               ))}
             </ul>
           </section>
@@ -215,8 +215,8 @@ export function PatchResultSummary({
           <section className="answer-section">
             <strong>补充说明</strong>
             <ul className="answer-list">
-              {sections.notes.map((note) => (
-                <li key={note} className="muted">{note}</li>
+              {sections.notes.map((note, index) => (
+                <li key={`${note}-${index}`} className="muted">{note}</li>
               ))}
             </ul>
           </section>
@@ -240,11 +240,11 @@ export function PatchResultSummary({
             <div className="preview-head">
               <strong>调试用提示词</strong>
             </div>
-            <ArtifactTextDisclosure
-              buttonLabel="查看调试用提示词"
-              expandedLabel="隐藏调试用提示词"
-              artifactId={result.promptPreviewArtifactId ?? null}
-              text={result.promptPreview ?? (result.promptPreviewArtifactId ? resolveArtifactText?.(result.promptPreviewArtifactId) : null)}
+            <RequestPromptDisclosure
+              promptPreview={result.promptPreview ?? null}
+              promptPreviewArtifactId={result.promptPreviewArtifactId ?? null}
+              promptPreviewAvailable={Boolean(result.promptPreview?.trim() || result.promptPreviewArtifactId)}
+              resolveArtifactText={resolveArtifactText}
               onRequestArtifact={onRequestArtifact}
             />
           </section>

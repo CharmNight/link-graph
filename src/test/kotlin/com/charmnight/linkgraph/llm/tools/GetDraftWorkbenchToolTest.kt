@@ -23,8 +23,8 @@ class GetDraftWorkbenchToolTest : BasePlatformTestCase() {
             context = ToolExecutionContext(
                 project = project,
                 snapshot = testSnapshot(
-                    auditResult = com.charmnight.linkgraph.llm.GraphPatchResult(
-                        source = com.charmnight.linkgraph.llm.LlmResultSource.MOCK,
+                    qaResult = com.charmnight.linkgraph.llm.GraphPatchResult(
+                        source = com.charmnight.linkgraph.llm.LlmResultSource.LOCAL_RULE,
                         question = "Q",
                         answer = "A",
                         promptPreview = "prompt",
@@ -46,7 +46,7 @@ class GetDraftWorkbenchToolTest : BasePlatformTestCase() {
                             ),
                         ),
                     ),
-                ),
+                ).toToolGraphSnapshot(),
                 artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
@@ -69,8 +69,8 @@ class GetDraftWorkbenchToolTest : BasePlatformTestCase() {
             context = ToolExecutionContext(
                 project = project,
                 snapshot = testSnapshot(
-                    auditResult = com.charmnight.linkgraph.llm.GraphPatchResult(
-                        source = com.charmnight.linkgraph.llm.LlmResultSource.MOCK,
+                    qaResult = com.charmnight.linkgraph.llm.GraphPatchResult(
+                        source = com.charmnight.linkgraph.llm.LlmResultSource.LOCAL_RULE,
                         question = "Q",
                         answer = "A",
                         promptPreview = "prompt",
@@ -98,7 +98,7 @@ class GetDraftWorkbenchToolTest : BasePlatformTestCase() {
                             ),
                         ),
                     ),
-                ),
+                ).toToolGraphSnapshot(),
                 artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),

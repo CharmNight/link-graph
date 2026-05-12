@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.debug.DebugMethodSignatureLocator
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.testing.addJavaFixture

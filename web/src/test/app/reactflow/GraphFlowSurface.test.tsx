@@ -690,7 +690,7 @@ describe("GraphFlowSurface", () => {
     expect(reactFlowFitViewMock).toHaveBeenCalledTimes(2);
   });
 
-  it("uses the flowchart viewport mode to center the anchor at a readable zoom instead of fitting the entire tall graph", () => {
+  it("uses fitView for the initial flowchart viewport so branch nodes are not clipped in the hybrid graph stage", () => {
     installResizeObserverStub();
     vi.useFakeTimers();
 
@@ -703,8 +703,13 @@ describe("GraphFlowSurface", () => {
       vi.runAllTimers();
     });
 
-    expect(reactFlowSetCenterMock).toHaveBeenCalledWith(240, 156, { zoom: 0.76, duration: 0 });
-    expect(reactFlowFitViewMock).not.toHaveBeenCalled();
+    expect(reactFlowFitViewMock).toHaveBeenCalledWith({
+      padding: 0.16,
+      duration: 0,
+      maxZoom: 1,
+      includeHiddenNodes: true,
+    });
+    expect(reactFlowSetCenterMock).not.toHaveBeenCalled();
   });
 
   it("publishes node drag updates even when structural editing is disabled", () => {

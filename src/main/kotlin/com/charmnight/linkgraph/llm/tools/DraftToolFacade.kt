@@ -4,17 +4,19 @@ import com.charmnight.linkgraph.llm.artifact.CandidateDraftArtifact
 import com.charmnight.linkgraph.llm.artifact.ConfirmedIntentArtifact
 import com.charmnight.linkgraph.llm.artifact.ArtifactRef
 import com.charmnight.linkgraph.llm.artifact.ArtifactStore
+import com.charmnight.linkgraph.llm.artifact.ArtifactStorePruner
 import com.charmnight.linkgraph.llm.artifact.ArtifactType
-import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 
 /**
  * 统一读取草稿箱相关状态。
  */
 class DraftToolFacade {
+    private val artifactStorePruner = ArtifactStorePruner
+
     /** 返回当前候选草稿。 */
-    fun candidateDrafts(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): List<CandidateDraftArtifact> {
-        return snapshot.auditResult?.candidateChanges.orEmpty()
+    fun candidateDrafts(snapshot: ToolGraphSnapshot): List<CandidateDraftArtifact> {
+        return snapshot.qaResult?.candidateChanges.orEmpty()
             .filter { change -> change.status == CandidateDraftChangeStatus.PENDING_CONFIRMATION }
             .map { change ->
             CandidateDraftArtifact(
@@ -25,7 +27,7 @@ class DraftToolFacade {
     }
 
     /** 返回当前已确认正式意图。 */
-    fun confirmedIntents(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): List<ConfirmedIntentArtifact> {
+    fun confirmedIntents(snapshot: ToolGraphSnapshot): List<ConfirmedIntentArtifact> {
         return snapshot.draftWorkbenchState.draftChanges.map { entry ->
             ConfirmedIntentArtifact(
                 artifactId = "confirmed-${entry.entryId}",
@@ -36,29 +38,31 @@ class DraftToolFacade {
 
     /** 把当前已确认正式意图同步到 artifact store，并返回对应引用。 */
     fun syncConfirmedIntents(
-        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        snapshot: ToolGraphSnapshot,
         artifactStore: ArtifactStore,
     ): List<ArtifactRef> {
         val currentArtifacts = confirmedIntents(snapshot)
         val currentIds = currentArtifacts.mapTo(linkedSetOf()) { artifact -> artifact.artifactId }
-        artifactStore.byType(ArtifactType.CONFIRMED_INTENT)
-            .map { artifact -> artifact.artifactId }
-            .filterNot { artifactId -> artifactId in currentIds }
-            .forEach(artifactStore::remove)
+        artifactStorePruner.syncWorkbenchScopedArtifacts(
+            artifactStore = artifactStore,
+            type = ArtifactType.CONFIRMED_INTENT,
+            currentArtifactIds = currentIds,
+        )
         return currentArtifacts.map(artifactStore::save)
     }
 
     /** 把当前候选草稿同步到 artifact store，并返回对应引用。 */
     fun syncCandidateDrafts(
-        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        snapshot: ToolGraphSnapshot,
         artifactStore: ArtifactStore,
     ): List<ArtifactRef> {
         val currentArtifacts = candidateDrafts(snapshot)
         val currentIds = currentArtifacts.mapTo(linkedSetOf()) { artifact -> artifact.artifactId }
-        artifactStore.byType(ArtifactType.CANDIDATE_DRAFT)
-            .map { artifact -> artifact.artifactId }
-            .filterNot { artifactId -> artifactId in currentIds }
-            .forEach(artifactStore::remove)
+        artifactStorePruner.syncWorkbenchScopedArtifacts(
+            artifactStore = artifactStore,
+            type = ArtifactType.CANDIDATE_DRAFT,
+            currentArtifactIds = currentIds,
+        )
         return currentArtifacts.map(artifactStore::save)
     }
 }

@@ -1,8 +1,9 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.llm.GraphAuditContext
+import com.charmnight.linkgraph.llm.GraphQaContext
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.model.GraphDocument
@@ -10,10 +11,11 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
+import com.charmnight.linkgraph.ui.GraphEditorCommandRouter
+import com.charmnight.linkgraph.ui.GraphEditorMessage
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import com.intellij.testFramework.registerServiceInstance
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -22,10 +24,7 @@ import kotlin.test.fail
 class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
     override fun setUp() {
         super.setUp()
-        project.registerServiceInstance(GraphEditorStateService::class.java, GraphEditorStateService())
-        project.registerServiceInstance(LinkGraphProjectTestOverrides::class.java, LinkGraphProjectTestOverrides())
-        project.registerServiceInstance(LinkGraphProjectService::class.java, LinkGraphProjectService(project))
-        project.registerServiceInstance(GraphEditorCommandRouter::class.java, GraphEditorCommandRouter(project))
+        project.registerLinkGraphProjectCommandServicesForTest()
     }
 
     fun testGenerationPlanAsyncAllowsRequestsWhenNoConfirmedDraftChangesExist() {
@@ -44,7 +43,7 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             provider = "MOCK",
             timeoutSeconds = 45,
         )
-        commandRouter.requestGenerationPlanAsync()
+        commandRouter.dispatch(GraphEditorMessage.RequestGenerationPlan)
 
         val snapshot = waitForSnapshot { current ->
             current.generationPlanRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED &&
@@ -71,7 +70,7 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
         )
 
         project.getService(LinkGraphProjectTestOverrides::class.java)
-        project.getService(GraphEditorCommandRouter::class.java).requestCodeDraftsAsync()
+        project.getService(GraphEditorCommandRouter::class.java).dispatch(GraphEditorMessage.RequestCodeDrafts)
 
         val snapshot = waitForSnapshot { current ->
             current.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
@@ -83,7 +82,7 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
         assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
     }
 
-    fun testAuditAsyncSuccessDoesNotGetOverwrittenByItsOwnTimeout() {
+    fun testQaAsyncSuccessDoesNotGetOverwrittenByItsOwnTimeout() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraphProjection(
             visibleGraph = sampleGraph(),
@@ -96,7 +95,7 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
         val commandRouter = project.getService(GraphEditorCommandRouter::class.java)
         testOverrides.effectiveGenerationSettings = remoteSettings()
         testOverrides.asyncRequestTimeoutMillis = 120
-        testOverrides.auditExecutor = { _: GraphAuditContext, question: String ->
+        testOverrides.qaExecutor = { _: GraphQaContext, question: String ->
             Thread.sleep(20)
             GraphPatchResult(
                 source = LlmResultSource.REMOTE,
@@ -107,24 +106,24 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             )
         }
 
-        commandRouter.requestAuditAsync("请围绕当前链路进行问答")
+        commandRouter.dispatch(GraphEditorMessage.RequestQa("请围绕当前链路进行问答"))
 
         val succeeded = waitForSnapshot { current ->
-            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED &&
-                current.auditRequestState.scene == "问答"
+            current.qaRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED &&
+                current.qaRequestState.scene == "问答"
         }
 
         Thread.sleep(220)
         PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
         val afterTimeoutWindow = stateService.snapshot()
 
-        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, succeeded.auditRequestState.phase)
-        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, afterTimeoutWindow.auditRequestState.phase)
-        assertTrue(afterTimeoutWindow.auditRequestState.errorMessage.isNullOrBlank())
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, succeeded.qaRequestState.phase)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, afterTimeoutWindow.qaRequestState.phase)
+        assertTrue(afterTimeoutWindow.qaRequestState.errorMessage.isNullOrBlank())
         assertTrue(afterTimeoutWindow.operationFeedback?.message?.contains("问答完成") == true)
     }
 
-    fun testAuditAsyncTimesOutAndStopsBlindWaiting() {
+    fun testQaAsyncTimesOutAndStopsBlindWaiting() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraphProjection(
             visibleGraph = sampleGraph(),
@@ -137,7 +136,7 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
         val commandRouter = project.getService(GraphEditorCommandRouter::class.java)
         testOverrides.effectiveGenerationSettings = remoteSettings()
         testOverrides.asyncRequestTimeoutMillis = 120
-        testOverrides.auditExecutor = { _: GraphAuditContext, _: String ->
+        testOverrides.qaExecutor = { _: GraphQaContext, _: String ->
             Thread.sleep(600)
             GraphPatchResult(
                 source = LlmResultSource.REMOTE,
@@ -148,20 +147,20 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             )
         }
 
-        commandRouter.requestAuditAsync("请围绕当前链路进行问答")
+        commandRouter.dispatch(GraphEditorMessage.RequestQa("请围绕当前链路进行问答"))
 
         val snapshot = waitForSnapshot { current ->
-            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.TIMED_OUT &&
-                current.auditRequestState.scene == "问答"
+            current.qaRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.TIMED_OUT &&
+                current.qaRequestState.scene == "问答"
         }
 
-        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.TIMED_OUT, snapshot.auditRequestState.phase)
-        assertTrue(snapshot.auditRequestState.errorMessage?.contains("超时") == true)
-        assertTrue(snapshot.auditRequestState.detailMessage?.contains("流式输出") == true)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.TIMED_OUT, snapshot.qaRequestState.phase)
+        assertTrue(snapshot.qaRequestState.errorMessage?.contains("超时") == true)
+        assertTrue(snapshot.qaRequestState.detailMessage?.contains("流式输出") == true)
         assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.ERROR, snapshot.operationFeedback?.level)
     }
 
-    fun testAuditAsyncTracksLocalRuleExecutionWhenRemoteLlmIsDisabled() {
+    fun testQaAsyncTracksLocalRuleExecutionWhenRemoteLlmIsDisabled() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraphProjection(
             visibleGraph = sampleGraph(),
@@ -177,9 +176,9 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             provider = "MOCK",
             timeoutSeconds = 45,
         )
-        testOverrides.auditExecutor = { _: GraphAuditContext, question: String ->
+        testOverrides.qaExecutor = { _: GraphQaContext, question: String ->
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = question,
                 answer = "本地规则结果",
                 promptPreview = "prompt",
@@ -187,23 +186,23 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             )
         }
 
-        commandRouter.requestAuditAsync("请围绕当前链路进行问答")
+        commandRouter.dispatch(GraphEditorMessage.RequestQa("请围绕当前链路进行问答"))
 
         val snapshot = waitForSnapshot { current ->
-            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED &&
-                current.auditRequestState.scene == "问答"
+            current.qaRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED &&
+                current.qaRequestState.scene == "问答"
         }
 
-        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, snapshot.auditRequestState.phase)
-        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.LOCAL_RULE, snapshot.auditRequestState.executionMode)
-        assertNotNull(snapshot.auditRequestState.requestId)
-        assertEquals("问答", snapshot.auditRequestState.scene)
-        assertTrue(snapshot.auditRequestState.statusMessage?.contains("本地规则") == true)
-        assertTrue(snapshot.auditRequestState.detailMessage?.contains("未启用") == true)
-        assertEquals(false, snapshot.auditRequestState.fallbackUsed)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, snapshot.qaRequestState.phase)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.LOCAL_RULE, snapshot.qaRequestState.executionMode)
+        assertNotNull(snapshot.qaRequestState.requestId)
+        assertEquals("问答", snapshot.qaRequestState.scene)
+        assertTrue(snapshot.qaRequestState.statusMessage?.contains("本地规则") == true)
+        assertTrue(snapshot.qaRequestState.detailMessage?.contains("未启用") == true)
+        assertEquals(false, snapshot.qaRequestState.fallbackUsed)
     }
 
-    fun testAuditAsyncMarksRemoteFallbackInsteadOfPretendingStillRunning() {
+    fun testQaAsyncMarksRemoteFallbackInsteadOfPretendingStillRunning() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         stateService.loadGraphProjection(
             visibleGraph = sampleGraph(),
@@ -215,9 +214,9 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
         val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
         val commandRouter = project.getService(GraphEditorCommandRouter::class.java)
         testOverrides.effectiveGenerationSettings = remoteSettings()
-        testOverrides.auditExecutor = { _: GraphAuditContext, question: String ->
+        testOverrides.qaExecutor = { _: GraphQaContext, question: String ->
             GraphPatchResult(
-                source = LlmResultSource.MOCK,
+                source = LlmResultSource.LOCAL_RULE,
                 question = question,
                 answer = "已回退到本地规则分析。",
                 promptPreview = "prompt",
@@ -225,17 +224,17 @@ class LinkGraphProjectServiceAsyncLifecycleTest : BasePlatformTestCase() {
             )
         }
 
-        commandRouter.requestAuditAsync("请围绕当前链路进行问答")
+        commandRouter.dispatch(GraphEditorMessage.RequestQa("请围绕当前链路进行问答"))
 
         val snapshot = waitForSnapshot { current ->
-            current.auditRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED &&
-                current.auditRequestState.scene == "问答"
+            current.qaRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED &&
+                current.qaRequestState.scene == "问答"
         }
 
-        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, snapshot.auditRequestState.phase)
-        assertTrue(snapshot.auditRequestState.fallbackUsed)
-        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_FALLBACK, snapshot.auditRequestState.executionMode)
-        assertTrue(snapshot.auditRequestState.statusMessage?.contains("已回退") == true)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, snapshot.qaRequestState.phase)
+        assertTrue(snapshot.qaRequestState.fallbackUsed)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_FALLBACK, snapshot.qaRequestState.executionMode)
+        assertTrue(snapshot.qaRequestState.statusMessage?.contains("已回退") == true)
         assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
     }
 

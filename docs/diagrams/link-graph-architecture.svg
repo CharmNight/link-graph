@@ -43,11 +43,11 @@
   <rect class="cluster" x="322" y="116" width="380" height="470" />
   <text class="clusterTitle" x="346" y="151">Kotlin 插件后端</text>
   <rect class="boxBackend" x="346" y="176" width="156" height="76" />
-  <text class="label" x="424" y="204" text-anchor="middle">LinkGraph</text>
-  <text class="label" x="424" y="223" text-anchor="middle">ProjectService</text>
+  <text class="label" x="424" y="204" text-anchor="middle">GraphEditor</text>
+  <text class="label" x="424" y="223" text-anchor="middle">ApplicationService</text>
   <rect class="boxBackend" x="522" y="176" width="156" height="76" />
-  <text class="label" x="600" y="204" text-anchor="middle">工作流服务</text>
-  <text class="small" x="600" y="226" text-anchor="middle">分析 / 审计 / 草稿</text>
+  <text class="label" x="600" y="204" text-anchor="middle">应用工作流</text>
+  <text class="small" x="600" y="226" text-anchor="middle">分析 / 问答 / 草稿</text>
   <rect class="boxBackend" x="346" y="278" width="156" height="76" />
   <text class="label" x="424" y="306" text-anchor="middle">Command Router</text>
   <text class="small" x="424" y="328" text-anchor="middle">前端命令路由</text>
@@ -91,13 +91,13 @@
   <text class="small" x="1441" y="226" text-anchor="middle">RunCoordinator / Context</text>
   <rect class="boxAgent" x="1154" y="280" width="170" height="82" />
   <text class="label" x="1239" y="309" text-anchor="middle">Capability</text>
-  <text class="small" x="1239" y="331" text-anchor="middle">Qa / Plan / Codegen</text>
+  <text class="small" x="1239" y="331" text-anchor="middle">Qa / Suggestion / Diff</text>
   <rect class="boxAgent" x="1356" y="280" width="170" height="82" />
   <text class="label" x="1441" y="309" text-anchor="middle">Tool Facade</text>
   <text class="small" x="1441" y="331" text-anchor="middle">图 / 草稿 / 代码 / 证据</text>
   <rect class="boxAgent" x="1255" y="394" width="170" height="82" />
   <text class="label" x="1340" y="423" text-anchor="middle">ArtifactStore</text>
-  <text class="small" x="1340" y="445" text-anchor="middle">Intent / Plan / CodeDraft</text>
+  <text class="small" x="1340" y="445" text-anchor="middle">Intent / Suggestion / CodeDiff</text>
   <text class="note" x="1154" y="540">远程能力可选；失败或未配置时回退到本地规则/模板。</text>
 
   <rect class="cluster" x="322" y="668" width="380" height="300" />
@@ -135,7 +135,7 @@
   <text class="small" x="1185" y="894" text-anchor="middle">图画布 + 自动布局</text>
   <rect class="boxFrontend" x="1328" y="844" width="204" height="68" />
   <text class="label" x="1430" y="872" text-anchor="middle">workbench 面板</text>
-  <text class="small" x="1430" y="894" text-anchor="middle">审计 / 讲解 / 草稿 / 代码</text>
+  <text class="small" x="1430" y="894" text-anchor="middle">证据 / 问答 / 讲解 / 草稿 / 代码</text>
 
   <path class="edge" d="M257,211 C291,211 310,211 346,211" />
   <path class="edge" d="M257,309 C297,309 313,232 346,223" />

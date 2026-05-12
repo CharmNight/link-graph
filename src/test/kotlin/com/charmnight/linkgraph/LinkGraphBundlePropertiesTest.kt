@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 
 class LinkGraphBundlePropertiesTest {
     @Test
-    fun pluginDescriptionUsesQaWordingInsteadOfAuditWording() {
+    fun pluginDescriptionUsesQaWordingInsteadOfObsoleteWording() {
         val properties = Properties()
         val inputStream = javaClass.classLoader.getResourceAsStream("messages/LinkGraphBundle.properties")
         assertNotNull(inputStream)

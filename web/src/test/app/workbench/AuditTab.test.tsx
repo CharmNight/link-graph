@@ -11,10 +11,13 @@ function auditStateFixture(): AuditWorkbenchState {
     selectedChangeId: "change-condition",
     selectedThreadId: null,
     questionDraft: "",
+    selectedMode: "AUTO",
     scopeLabel: "当前节点：上传方法",
     result: {
-      source: "MOCK",
+      source: "LOCAL_RULE",
       question: "这里是不是有问题？",
+      requestedMode: "AUTO",
+      effectiveMode: "REVIEW",
       answer: "建议修改条件判断。",
       promptPreview: "prompt",
       patch: null,
@@ -103,7 +106,107 @@ describe("AuditTab", () => {
     expect(screen.getByRole("tab", { name: "提问" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("heading", { level: 3, name: "提问" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "问答输入框" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "问答模式" })).toHaveValue("AUTO");
     expect(screen.queryByText("这里是不是有问题？")).not.toBeInTheDocument();
+  });
+
+  it("uses a flat audit page shell inside the stage workbench instead of nested cards", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <div className="stage-workbench-panel">
+        <AuditTab
+          state={auditStateFixture()}
+          onQuestionDraftChange={vi.fn()}
+          onSubmitQuestion={vi.fn()}
+          onSelectChange={vi.fn()}
+          onConfirmChange={vi.fn()}
+          onSelectThread={vi.fn()}
+          onInvestigateThread={vi.fn()}
+        />
+      </div>,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "问答会话" }));
+
+    expect(container.querySelector(".audit-page-panel.stage-workbench-flat-section")).not.toBeNull();
+    expect(container.querySelector(".workbench-audit-thread.stage-workbench-flat-block")).not.toBeNull();
+    expect(container.querySelector(".workbench-chat-stream.stage-workbench-content-flow")).not.toBeNull();
+    expect(container.querySelector(".workbench-chat-message.assistant.stage-workbench-assistant-block")).not.toBeNull();
+  });
+
+  it("lets users choose an explicit QA mode before sending", async () => {
+    const user = userEvent.setup();
+    const onModeChange = vi.fn();
+
+    render(
+      <AuditTab
+        state={auditStateFixture()}
+        onQuestionDraftChange={vi.fn()}
+        onQuestionModeChange={onModeChange}
+        onSubmitQuestion={vi.fn()}
+        onSelectChange={vi.fn()}
+        onConfirmChange={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
+      />,
+    );
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "问答模式" }), "ANSWER");
+
+    expect(onModeChange).toHaveBeenCalledWith("ANSWER");
+  });
+
+  it("uses the styled QA mode selector instead of a raw browser select", () => {
+    const { container } = render(
+      <AuditTab
+        state={auditStateFixture()}
+        onQuestionDraftChange={vi.fn()}
+        onSubmitQuestion={vi.fn()}
+        onSelectChange={vi.fn()}
+        onConfirmChange={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector(".audit-composer-actions")).not.toBeNull();
+    expect(container.querySelector(".audit-mode-select-shell select")).not.toBeNull();
+    expect(container.querySelector(".audit-send-button")).not.toBeNull();
+    expect(themeCss).toMatch(/\.audit-mode-select-label\s*\{[^}]*border-radius:\s*999px;[^}]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.9\);/s);
+    expect(themeCss).toMatch(/\.audit-mode-select-label\s+select\s*\{[^}]*appearance:\s*none;[^}]*height:\s*38px;/s);
+    expect(themeCss).toMatch(/\.audit-send-button\s*\{[^}]*min-height:\s*40px;[^}]*font-weight:\s*800;/s);
+  });
+
+  it("shows requested and effective modes in request status", () => {
+    render(
+      <AuditTab
+        state={{
+          ...auditStateFixture(),
+          requestState: {
+            phase: "SUCCEEDED",
+            requestedMode: "AUTO",
+            effectiveMode: "ANSWER",
+          },
+          result: {
+            ...auditStateFixture().result!,
+            requestedMode: "AUTO",
+            effectiveMode: "ANSWER",
+          },
+        }}
+        onQuestionDraftChange={vi.fn()}
+        onSubmitQuestion={vi.fn()}
+        onSelectChange={vi.fn()}
+        onConfirmChange={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
+        sectionPreferences={{ "audit.request-status": true }}
+      />,
+    );
+
+    expect(screen.getByText("请求模式")).toBeInTheDocument();
+    expect(screen.getByText("Auto")).toBeInTheDocument();
+    expect(screen.getByText("实际模式")).toBeInTheDocument();
+    expect(screen.getByText("只回答")).toBeInTheDocument();
   });
 
   it("renders audit secondary tabs in the requested order", () => {
@@ -340,11 +443,13 @@ describe("AuditTab", () => {
             evidenceTrace: [
               {
                 nodeId: "method:submit-order",
+                resolvedNodeId: "method:submit-order",
                 filePath: "src/main/java/com/example/OrderController.java",
                 reason: "从当前风险线索目标节点取证",
                 startLine: 18,
                 endLine: 30,
                 includedInPrompt: true,
+                mappingTrace: ["currentGraph:method:submit-order"],
               },
             ],
           },
@@ -360,8 +465,144 @@ describe("AuditTab", () => {
 
     expect(screen.getByRole("tab", { name: "请求" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("请继续取证：定位默认兜底分支。")).toBeInTheDocument();
-    expect(screen.getAllByText("src/main/java/com/example/OrderController.java:18-30")).toHaveLength(2);
+    expect(screen.getByRole("article", { name: "源码片段 1 OrderController.java" })).toBeInTheDocument();
+    expect(screen.getByText("L18-L30")).toBeInTheDocument();
+    expect(screen.getByText("src/main/java/com/example/OrderController.java")).toBeInTheDocument();
+    expect(screen.getByText("src/main/java/com/example/OrderController.java:18-30")).toBeInTheDocument();
     expect(screen.getByText("从当前风险线索目标节点取证")).toBeInTheDocument();
+    expect(screen.getByText("映射轨迹：currentGraph:method:submit-order")).toBeInTheDocument();
+  });
+
+  it("deduplicates repeated source snippets and renders them as readable code cards", () => {
+    const duplicateSnippet = [
+      "imports:",
+      "import org.springframework.scheduling.annotation.Scheduled;",
+      "",
+      "class context:",
+      "@Component",
+      "public class ResourceScheduled {",
+      "",
+      "current method:",
+      "@Scheduled(cron = \"0 15,45 * * * ?\")",
+      "public void updateServiceResource(){",
+      "  resourceService.isPeriodicUpdates();",
+      "}",
+    ].join("\n");
+
+    render(
+      <AuditTab
+        state={{
+          ...auditStateFixture(),
+          requestState: {
+            phase: "RUNNING",
+            statusMessage: "正在展示取证结果。",
+          },
+          result: {
+            ...auditStateFixture().result!,
+            sourceContext: [
+              {
+                nodeId: "method:resource-scheduled",
+                filePath: "/Users/night/work/secyun-openscanning/src/main/java/com/secyun/resource/schedule/ResourceScheduled.java",
+                startLine: 20,
+                endLine: 24,
+                snippet: duplicateSnippet,
+              },
+              {
+                nodeId: "flow-action:resource-scheduled-projection",
+                filePath: "/Users/night/work/secyun-openscanning/src/main/java/com/secyun/resource/schedule/ResourceScheduled.java",
+                startLine: 20,
+                endLine: 24,
+                snippet: duplicateSnippet,
+              },
+            ],
+          },
+        }}
+        onQuestionDraftChange={vi.fn()}
+        onSubmitQuestion={vi.fn()}
+        onSelectChange={vi.fn()}
+        onConfirmChange={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("article", { name: "源码片段 1 ResourceScheduled.java" })).toBeInTheDocument();
+    expect(screen.getAllByText("ResourceScheduled.java")).toHaveLength(1);
+    expect(screen.getByText("/Users/night/work/secyun-openscanning/src/main/java/com/secyun/resource/schedule/ResourceScheduled.java")).toBeInTheDocument();
+    expect(screen.getByText((_, element) => (
+      element?.tagName === "CODE" &&
+        element.textContent === duplicateSnippet
+    ))).toBeInTheDocument();
+    expect(screen.queryByRole("article", { name: "源码片段 2 ResourceScheduled.java" })).not.toBeInTheDocument();
+  });
+
+  it("requests the audit prompt artifact from the request status page", async () => {
+    const user = userEvent.setup();
+    const onRequestArtifact = vi.fn();
+
+    render(
+      <AuditTab
+        state={{
+          ...auditStateFixture(),
+          requestState: {
+            phase: "SUCCEEDED",
+            statusMessage: "问答完成。",
+            promptPreviewAvailable: true,
+          },
+          result: {
+            ...auditStateFixture().result!,
+            promptPreview: null,
+            promptPreviewArtifactId: "artifact:audit-prompt",
+          },
+        }}
+        resolveArtifactText={() => null}
+        onRequestArtifact={onRequestArtifact}
+        onQuestionDraftChange={vi.fn()}
+        onSubmitQuestion={vi.fn()}
+        onSelectChange={vi.fn()}
+        onConfirmChange={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "请求" }));
+    await user.click(screen.getByRole("button", { name: "查看提示词" }));
+
+    expect(onRequestArtifact).toHaveBeenCalledWith("artifact:audit-prompt");
+  });
+
+  it("does not show an empty prompt section when no prompt text or artifact id exists", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AuditTab
+        state={{
+          ...auditStateFixture(),
+          requestState: {
+            phase: "SUCCEEDED",
+            statusMessage: "问答完成。",
+            promptPreviewAvailable: true,
+          },
+          result: {
+            ...auditStateFixture().result!,
+            promptPreview: null,
+            promptPreviewArtifactId: null,
+          },
+        }}
+        onQuestionDraftChange={vi.fn()}
+        onSubmitQuestion={vi.fn()}
+        onSelectChange={vi.fn()}
+        onConfirmChange={vi.fn()}
+        onSelectThread={vi.fn()}
+        onInvestigateThread={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "请求" }));
+
+    expect(screen.queryByRole("heading", { name: "提示词" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "查看提示词" })).not.toBeInTheDocument();
   });
 
   it("can collapse the current page and reopen a different page from the tab list", async () => {

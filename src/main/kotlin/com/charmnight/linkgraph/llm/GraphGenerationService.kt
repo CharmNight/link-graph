@@ -40,13 +40,13 @@ class GraphGenerationService(
         }
 
         if (!sanitizedSettings.usesRemoteProvider()) {
-            return buildMockPlan(context, promptPackage.preview)
+            return buildLocalRulePlan(context, promptPackage.preview)
         }
         /** 生效的远程连接配置。 */
         val remoteConnection = sanitizedSettings.remoteConnectionOrNull()
         if (remoteConnection == null) {
             /** 远程配置不完整时的规则化回退计划。 */
-            val fallbackPlan = buildMockPlan(context, promptPackage.preview)
+            val fallbackPlan = buildLocalRulePlan(context, promptPackage.preview)
             return fallbackPlan.copy(
                 warnings = listOf(
                     sanitizedSettings.remoteLlmSetupHint("规则化生成计划"),
@@ -70,7 +70,7 @@ class GraphGenerationService(
             remote.value.withPrependedWarnings(remote.warnings)
         }.getOrElse { error ->
             /** 远程失败后的规则化回退计划。 */
-            val fallbackPlan = buildMockPlan(context, promptPackage.preview)
+            val fallbackPlan = buildLocalRulePlan(context, promptPackage.preview)
             fallbackPlan.copy(
                 warnings = listOf(
                     "远程 LLM 生成失败，已回退为规则化生成计划：${LlmUserMessageFormatter.describe(error)}",
@@ -80,7 +80,7 @@ class GraphGenerationService(
     }
 
     /** 用同步预览项生成规则化实现计划。 */
-    private fun buildMockPlan(
+    private fun buildLocalRulePlan(
         context: GenerationContext,
         prompt: String,
     ): GenerationPlan {
@@ -116,7 +116,7 @@ class GraphGenerationService(
             }
         }
         return GenerationPlan(
-            source = GenerationPlanSource.MOCK,
+            source = GenerationPlanSource.LOCAL_RULE,
             summary = summary,
             items = items,
             warnings = warnings,
@@ -130,8 +130,7 @@ class GraphGenerationService(
         prompt: String,
     ): GenerationPlan {
         /** 解析后的 JSON 根对象。 */
-        val root = LlmJsonParser(RemoteStructuredJsonExtractor.extract(content)).parseValue() as? Map<*, *>
-            ?: error("LLM response root must be a JSON object.")
+        val root = LlmJsonSupport.parseObject(RemoteStructuredJsonExtractor.extract(content))
         /** 远程返回的计划条目列表。 */
         val items = (root["items"] as? List<*>).orEmpty().mapNotNull { raw ->
             val item = raw as? Map<*, *> ?: return@mapNotNull null
@@ -210,168 +209,5 @@ class GraphGenerationService(
             risk = if (targetPath != null) SyncPreviewRisk.MEDIUM else SyncPreviewRisk.HIGH,
             targetPath = targetPath,
         )
-    }
-
-}
-
-/**
- * 只解析生成计划所需的轻量 JSON，避免为测试和最小功能引入额外依赖。
- */
-private class LlmJsonParser(private val text: String) {
-    /** 当前读取游标位置。 */
-    private var index: Int = 0
-
-    /** 解析下一个 JSON 值。 */
-    fun parseValue(): Any? {
-        skipWhitespace()
-        if (index >= text.length) {
-            error("Unexpected end of input.")
-        }
-        return when (text[index]) {
-            '{' -> parseObject()
-            '[' -> parseArray()
-            '"' -> parseString()
-            't' -> parseLiteral("true", true)
-            'f' -> parseLiteral("false", false)
-            'n' -> parseLiteral("null", null)
-            '-', in '0'..'9' -> parseNumber()
-            else -> error("Unexpected token '${text[index]}' at $index")
-        }
-    }
-
-    /** 解析 JSON 对象。 */
-    private fun parseObject(): Map<String, Any?> {
-        expect('{')
-        skipWhitespace()
-        /** 保持原始顺序的对象结果。 */
-        val result = linkedMapOf<String, Any?>()
-        if (peek('}')) {
-            expect('}')
-            return result
-        }
-        while (true) {
-            val key = parseString()
-            skipWhitespace()
-            expect(':')
-            result[key] = parseValue()
-            skipWhitespace()
-            if (peek('}')) {
-                expect('}')
-                return result
-            }
-            expect(',')
-        }
-    }
-
-    /** 解析 JSON 数组。 */
-    private fun parseArray(): List<Any?> {
-        expect('[')
-        skipWhitespace()
-        /** 保持原始顺序的数组结果。 */
-        val result = mutableListOf<Any?>()
-        if (peek(']')) {
-            expect(']')
-            return result
-        }
-        while (true) {
-            result.add(parseValue())
-            skipWhitespace()
-            if (peek(']')) {
-                expect(']')
-                return result
-            }
-            expect(',')
-        }
-    }
-
-    /** 解析 JSON 字符串并处理转义序列。 */
-    private fun parseString(): String {
-        expect('"')
-        /** 累积字符串内容的缓冲区。 */
-        val out = StringBuilder()
-        while (index < text.length) {
-            val ch = text[index++]
-            when (ch) {
-                '"' -> return out.toString()
-                '\\' -> {
-                    if (index >= text.length) {
-                        error("Unterminated escape at $index")
-                    }
-                    /** 当前读取到的转义字符。 */
-                    when (val escaped = text[index++]) {
-                        '"', '\\', '/' -> out.append(escaped)
-                        'b' -> out.append('\b')
-                        'f' -> out.append('\u000c')
-                        'n' -> out.append('\n')
-                        'r' -> out.append('\r')
-                        't' -> out.append('\t')
-                        'u' -> {
-                            val hex = text.substring(index, index + 4)
-                            out.append(hex.toInt(16).toChar())
-                            index += 4
-                        }
-
-                        else -> error("Unsupported escape '\\$escaped'")
-                    }
-                }
-
-                else -> out.append(ch)
-            }
-        }
-        error("Unterminated string.")
-    }
-
-    /** 解析 JSON 数字，按是否含小数位决定返回类型。 */
-    private fun parseNumber(): Number {
-        /** 数字片段的起始下标。 */
-        val start = index
-        if (text[index] == '-') {
-            index++
-        }
-        while (index < text.length && text[index].isDigit()) {
-            index++
-        }
-        var isFloat = false
-        if (index < text.length && text[index] == '.') {
-            isFloat = true
-            index++
-            while (index < text.length && text[index].isDigit()) {
-                index++
-            }
-        }
-        /** 数字的原始文本表示。 */
-        val numberText = text.substring(start, index)
-        return if (isFloat) numberText.toDouble() else numberText.toLong()
-    }
-
-    /** 校验并解析固定字面量。 */
-    private fun parseLiteral(expected: String, value: Any?): Any? {
-        if (!text.regionMatches(index, expected, 0, expected.length)) {
-            error("Expected '$expected' at $index")
-        }
-        index += expected.length
-        return value
-    }
-
-    /** 断言当前字符符合预期，并推进游标。 */
-    private fun expect(ch: Char) {
-        skipWhitespace()
-        if (index >= text.length || text[index] != ch) {
-            error("Expected '$ch' at $index")
-        }
-        index++
-    }
-
-    /** 查看下一个非空白字符是否为目标字符。 */
-    private fun peek(ch: Char): Boolean {
-        skipWhitespace()
-        return index < text.length && text[index] == ch
-    }
-
-    /** 跳过当前游标后的所有空白字符。 */
-    private fun skipWhitespace() {
-        while (index < text.length && text[index].isWhitespace()) {
-            index++
-        }
     }
 }

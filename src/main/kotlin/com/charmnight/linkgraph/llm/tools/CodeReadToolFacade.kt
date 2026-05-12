@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.llm.tools
 
 import com.charmnight.linkgraph.llm.SourceSnippetContext
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.ui.GraphEditorStateService
+import com.intellij.openapi.project.Project
 import java.nio.file.Files
 
 /**
@@ -11,20 +11,26 @@ import java.nio.file.Files
  */
 class CodeReadToolFacade(
     private val graphToolFacade: GraphToolFacade = GraphToolFacade(),
+    private val anchorResolver: QaEvidenceAnchorResolver = QaEvidenceAnchorResolver(),
+    private val sourceContextCollector: SourceContextCollector = SourceContextCollector(),
     private val projectRootFileAccessPolicy: ProjectRootFileAccessPolicy = ProjectRootFileAccessPolicy(),
 ) {
+    /** 根据 nodeId 或 symbol 定位问答证据锚点，并保留投影到真实节点的映射轨迹。 */
+    fun resolveEvidenceAnchor(
+        snapshot: ToolGraphSnapshot,
+        nodeId: String? = null,
+        symbolSignature: String? = null,
+    ): QaEvidenceAnchorResolution {
+        return anchorResolver.resolve(snapshot = snapshot, nodeId = nodeId, symbolSignature = symbolSignature)
+    }
+
     /** 根据 nodeId 或 symbol 定位代码锚点。 */
     fun resolveAnchor(
-        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        snapshot: ToolGraphSnapshot,
         nodeId: String? = null,
         symbolSignature: String? = null,
     ): GraphNode? {
-        val graph = graphToolFacade.currentGraph(snapshot)
-        return when {
-            !nodeId.isNullOrBlank() -> graph.nodes.firstOrNull { it.id == nodeId }
-            !symbolSignature.isNullOrBlank() -> graph.nodes.firstOrNull { it.signature == symbolSignature }
-            else -> null
-        }
+        return resolveEvidenceAnchor(snapshot, nodeId, symbolSignature).node
     }
 
     /** 读取指定代码片段，优先返回显式提供的 fallback snippet。 */
@@ -34,9 +40,10 @@ class CodeReadToolFacade(
         endLine: Int? = null,
         fallbackSnippet: String? = null,
         projectBasePath: String? = null,
+        project: Project? = null,
     ): String? {
         fallbackSnippet?.takeIf { it.isNotBlank() }?.let { return it }
-        val path = projectRootFileAccessPolicy.resolveReadablePath(filePath, projectBasePath)
+        val path = projectRootFileAccessPolicy.resolveReadablePath(filePath, projectBasePath, project)
             ?: return null
         val lines = runCatching { Files.readAllLines(path) }.getOrNull() ?: return null
         if (startLine == null || endLine == null) {
@@ -47,15 +54,22 @@ class CodeReadToolFacade(
         if (fromIndex >= toIndex) {
             return null
         }
-        return lines.subList(fromIndex, toIndex).joinToString("\n")
+        val focusedSnippet = lines.subList(fromIndex, toIndex).joinToString("\n")
+        return sourceContextCollector.collect(
+            lines = lines,
+            startLine = startLine,
+            endLine = endLine,
+            focusedSnippet = focusedSnippet,
+        )
     }
 
     /** 根据 symbol 直接读取关联片段。 */
     fun readSymbol(
-        snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
+        snapshot: ToolGraphSnapshot,
         symbolSignature: String,
         fallbackSourceContexts: List<SourceSnippetContext> = emptyList(),
         projectBasePath: String? = null,
+        project: Project? = null,
     ): SourceSnippetContext? {
         val anchor = resolveAnchor(snapshot = snapshot, symbolSignature = symbolSignature) ?: return null
         val fallback = fallbackSourceContexts.firstOrNull { it.nodeId == anchor.id }
@@ -68,6 +82,7 @@ class CodeReadToolFacade(
             endLine = endLine,
             fallbackSnippet = fallback?.snippet,
             projectBasePath = projectBasePath,
+            project = project,
         ) ?: return null
         return SourceSnippetContext(
             nodeId = anchor.id,

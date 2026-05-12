@@ -12,6 +12,7 @@ import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
+import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -19,6 +20,11 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
+    override fun setUp() {
+        super.setUp()
+        project.registerLinkGraphProjectCommandServicesForTest()
+    }
+
     fun testRequestGenerationPlanUsesCurrentWorkingGraphInsteadOfStaleFactGraph() {
         val methodSignature = "com.example.ShiroUtils.setSysUser(com.example.SysUser):void"
         val visibleMethodNode = GraphNode(
@@ -93,10 +99,12 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
             ),
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
-        service.requestGenerationPlan()
+        val applicationService = project.linkGraphApplicationServiceForTest()
+        applicationService.requestGenerationPlanAsync()
 
-        val snapshot = stateService.snapshot()
+        val snapshot = waitForSnapshot(stateService) {
+            it.generationPlanRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
+        }
         val plan = snapshot.generationPlan
         assertTrue(plan != null, "应生成计划结果")
         assertTrue(plan.promptPreview.contains("人工补充说明"))
@@ -112,14 +120,16 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
             selectedMethodSignature = "com.example.OrderController.submit():void",
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
-        service.requestGenerationPlan()
+        val applicationService = project.linkGraphApplicationServiceForTest()
+        applicationService.requestGenerationPlanAsync()
 
-        val snapshot = stateService.snapshot()
+        val snapshot = waitForSnapshot(stateService) {
+            it.generationPlanRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
+        }
         val plan = snapshot.generationPlan
         assertTrue(plan != null, "即使当前草稿为空，也应该允许生成实现建议。")
         assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, snapshot.generationPlanRequestState.phase)
-        assertEquals("实现计划", snapshot.generationPlanRequestState.scene)
+        assertEquals("实现计划生成", snapshot.generationPlanRequestState.scene)
         assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
     }
 
@@ -131,9 +141,9 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
             source = "currentContext",
             selectedMethodSignature = "com.example.OrderController.submit():void",
         )
-        stateService.asyncRequests.markAuditResult(
+        stateService.asyncRequests.markQaResult(
             com.charmnight.linkgraph.llm.GraphPatchResult(
-                source = com.charmnight.linkgraph.llm.LlmResultSource.MOCK,
+                source = com.charmnight.linkgraph.llm.LlmResultSource.LOCAL_RULE,
                 question = "这里是否还有默认兜底分支？",
                 answer = "仍有待验证风险。",
                 promptPreview = "prompt",
@@ -148,10 +158,12 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
             com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(scene = "问答"),
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
-        service.requestGenerationPlan()
+        val applicationService = project.linkGraphApplicationServiceForTest()
+        applicationService.requestGenerationPlanAsync()
 
-        val snapshot = stateService.snapshot()
+        val snapshot = waitForSnapshot(stateService) {
+            it.generationPlanRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
+        }
         assertTrue(snapshot.generationPlan != null, "实现建议不应再被风险线程阻塞。")
         assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, snapshot.generationPlanRequestState.phase)
     }
@@ -165,18 +177,23 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
             selectedMethodSignature = "com.example.OrderController.submit():void",
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
-        service.requestGenerationPlan()
-        service.requestGenerationPlanDiscussion("为什么建议先改这里？")
+        val applicationService = project.linkGraphApplicationServiceForTest()
+        applicationService.requestGenerationPlanAsync()
+        waitForSnapshot(stateService) {
+            it.generationPlanRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
+        }
+        applicationService.requestGenerationPlanDiscussionAsync("为什么建议先改这里？")
 
-        val snapshot = stateService.snapshot()
+        val snapshot = waitForSnapshot(stateService) {
+            it.generationPlanDiscussionRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
+        }
         val discussionSession = requireNotNull(snapshot.generationPlanDiscussionSession)
         assertEquals(2, discussionSession.messages.size)
         assertEquals("USER", discussionSession.messages[0].role.name)
         assertEquals("ASSISTANT", discussionSession.messages[1].role.name)
         assertTrue(discussionSession.messages[1].content.contains("实现建议"))
         assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, snapshot.generationPlanDiscussionRequestState.phase)
-        assertNull(snapshot.auditResult, "实现建议追问不应把用户重新导向风险问答结果。")
+        assertNull(snapshot.qaResult, "实现建议追问不应把用户重新导向风险问答结果。")
     }
 
     fun testRequestCodeDraftsRejectsWhenNoConfirmedDraftChangesExist() {
@@ -188,10 +205,12 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
             selectedMethodSignature = "com.example.OrderController.submit():void",
         )
 
-        val service = project.getService(LinkGraphProjectService::class.java)
-        service.requestCodeDrafts()
+        val applicationService = project.linkGraphApplicationServiceForTest()
+        applicationService.requestCodeDraftsAsync()
 
-        val snapshot = stateService.snapshot()
+        val snapshot = waitForSnapshot(stateService) {
+            it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
+        }
         assertTrue(snapshot.generatedCodeDrafts.isEmpty())
         assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED, snapshot.codeDraftRequestState.phase)
         assertEquals("代码草稿", snapshot.codeDraftRequestState.scene)
@@ -212,5 +231,17 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
                 ),
             ),
         )
+    }
+
+    private fun waitForSnapshot(
+        stateService: GraphEditorStateService,
+        predicate: (com.charmnight.linkgraph.ui.GraphEditorStateSnapshot) -> Boolean,
+    ): com.charmnight.linkgraph.ui.GraphEditorStateSnapshot {
+        var latest = stateService.snapshot()
+        PlatformTestUtil.waitWithEventsDispatching("等待 generation 状态收敛", {
+            latest = stateService.snapshot()
+            predicate(latest)
+        }, 5000)
+        return latest
     }
 }

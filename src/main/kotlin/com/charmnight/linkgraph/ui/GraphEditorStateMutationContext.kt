@@ -82,8 +82,13 @@ internal interface GraphEditorStateMutationContext {
 }
 
 internal class LiveGraphEditorStateMutationContext(
-    private val stateService: GraphEditorStateService,
+    private val stateServiceProvider: () -> GraphEditorStateService,
 ) : GraphEditorStateMutationContext {
+    constructor(stateService: GraphEditorStateService) : this({ stateService })
+
+    private val stateService: GraphEditorStateService
+        get() = stateServiceProvider()
+
     override val graph: GraphEditorGraphStateSupport
         get() = stateService.graph
     override val asyncRequests: GraphEditorAsyncRequestStateSupport

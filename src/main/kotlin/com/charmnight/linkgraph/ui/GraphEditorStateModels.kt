@@ -12,6 +12,8 @@ import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
+import com.charmnight.linkgraph.application.model.toAnalysisDisplayMode as toApplicationAnalysisDisplayMode
+import com.charmnight.linkgraph.application.model.toWorkspaceSceneId as toApplicationWorkspaceSceneId
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
@@ -28,12 +30,7 @@ data class DraftPatchUndoState(
     val patchPreview: GraphPatch? = null,
 )
 
-enum class GraphSceneId {
-    WORKSPACE_FACT,
-    WORKSPACE_FLOWCHART,
-    WORKSPACE_RESOURCE_RELATION,
-    DIFF,
-}
+typealias GraphSceneId = com.charmnight.linkgraph.application.model.GraphSceneId
 
 data class GraphSceneState(
     val selectedNodeId: String? = null,
@@ -45,18 +42,9 @@ data class GraphSceneState(
 
 internal fun defaultGraphSceneStates(): Map<GraphSceneId, GraphSceneState> = GraphSceneId.entries.associateWith { GraphSceneState() }
 
-fun AnalysisDisplayMode.toWorkspaceSceneId(): GraphSceneId = when (this) {
-    AnalysisDisplayMode.FACT_GRAPH -> GraphSceneId.WORKSPACE_FACT
-    AnalysisDisplayMode.FLOWCHART -> GraphSceneId.WORKSPACE_FLOWCHART
-    AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> GraphSceneId.WORKSPACE_RESOURCE_RELATION
-}
+fun AnalysisDisplayMode.toWorkspaceSceneId(): GraphSceneId = toApplicationWorkspaceSceneId()
 
-fun GraphSceneId.toAnalysisDisplayMode(): AnalysisDisplayMode? = when (this) {
-    GraphSceneId.WORKSPACE_FACT -> AnalysisDisplayMode.FACT_GRAPH
-    GraphSceneId.WORKSPACE_FLOWCHART -> AnalysisDisplayMode.FLOWCHART
-    GraphSceneId.WORKSPACE_RESOURCE_RELATION -> AnalysisDisplayMode.RESOURCE_RELATION_VIEW
-    GraphSceneId.DIFF -> null
-}
+fun GraphSceneId.toAnalysisDisplayMode(): AnalysisDisplayMode? = toApplicationAnalysisDisplayMode()
 
 data class GraphEditorStateSnapshot(
     val semanticFactGraph: GraphDocument = GraphDocument(),
@@ -75,8 +63,8 @@ data class GraphEditorStateSnapshot(
     val draftPatchPreview: GraphPatch? = null,
     val draftPatchUndoState: DraftPatchUndoState? = null,
     val lastDraftPatchApplyResult: DraftPatchApplyResult? = null,
-    val auditResult: GraphPatchResult? = null,
-    val auditRequestState: AsyncRequestState = AsyncRequestState(),
+    val qaResult: GraphPatchResult? = null,
+    val qaRequestState: AsyncRequestState = AsyncRequestState(),
     val qaRequestRecoveryState: QaRequestRecoveryState = QaRequestRecoveryState(),
     val runtimeArtifactSummaries: Map<String, List<RuntimeArtifactSummary>> = emptyMap(),
     val diffReviewResult: GraphPatchResult? = null,

@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.llm.capability
 
+import com.charmnight.linkgraph.application.model.PlanningInput
 import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.SourceSnippetContext
 import com.charmnight.linkgraph.llm.artifact.CodeEvidenceArtifact
@@ -9,6 +10,7 @@ import com.charmnight.linkgraph.llm.artifact.PlanArtifact
 import com.charmnight.linkgraph.llm.runtime.AgentRunFailureReason
 import com.charmnight.linkgraph.llm.runtime.AgentRunPhase
 import com.charmnight.linkgraph.llm.runtime.AgentRunState
+import com.charmnight.linkgraph.llm.runtime.AgentRuntimeDeadlineExceededException
 import com.charmnight.linkgraph.llm.runtime.AgentRuntimeContext
 import com.charmnight.linkgraph.llm.runtime.AgentStepExecutionResult
 import com.charmnight.linkgraph.llm.runtime.AgentStepRecord
@@ -27,9 +29,7 @@ import com.charmnight.linkgraph.llm.tools.GetGraphDiffTool
 import com.charmnight.linkgraph.llm.tools.GraphToolFacade
 import com.charmnight.linkgraph.llm.tools.ReadSourceSnippetTool
 import com.charmnight.linkgraph.llm.tools.ToolExecutionContext
-import com.charmnight.linkgraph.services.PlanningPayload
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
-import com.charmnight.linkgraph.workbench.DraftWorkbenchState
 import java.util.UUID
 
 /**
@@ -347,6 +347,7 @@ internal class PlanCapability(
         input: PlanCapabilityInput,
     ): AgentStepExecutionResult {
         return runCatching {
+            runtimeContext.requireWithinDeadline()
             val confirmedChanges = extractConfirmedIntents(state, runtimeContext)
             val runtimeDiff = state.artifactRefs
                 .asSequence()
@@ -377,15 +378,11 @@ internal class PlanCapability(
                     )
                 }
                 .toList()
-            val runtimeSnapshot = input.planningPayload.snapshot.copy(
-                draftWorkbenchState = DraftWorkbenchState(
-                    draftChanges = confirmedChanges,
-                ),
-            )
+            runtimeContext.requireWithinDeadline()
             val plan = planExecutor.invoke(
                 input.copy(
                     planningPayload = input.planningPayload.copy(
-                        snapshot = runtimeSnapshot,
+                        confirmedChanges = confirmedChanges,
                         diff = runtimeDiff,
                         sourceContext = runtimeSourceContext,
                     ),
@@ -393,6 +390,7 @@ internal class PlanCapability(
                 runtimeContext,
                 state,
             )
+            runtimeContext.requireWithinDeadline()
             val artifactRef = runtimeContext.artifactStore.save(
                 PlanArtifact(
                     artifactId = "plan-current",
@@ -414,6 +412,17 @@ internal class PlanCapability(
                 ),
             )
         }.getOrElse { throwable ->
+            if (throwable is AgentRuntimeDeadlineExceededException) {
+                return AgentStepExecutionResult.fail(
+                    state.copy(
+                        phase = AgentRunPhase.FAILED,
+                        budget = state.budget.recordStep(),
+                        stepIndex = state.stepIndex + 1,
+                        failureReason = AgentRunFailureReason.MAX_RUNTIME_SECONDS_EXCEEDED,
+                        lastModelOutput = throwable.message ?: throwable.javaClass.simpleName,
+                    ),
+                )
+            }
             AgentStepExecutionResult.fail(
                 state.copy(
                     phase = AgentRunPhase.FAILED,
@@ -449,5 +458,5 @@ internal class PlanCapability(
 
 internal data class PlanCapabilityInput(
     /** 已准备好的规划载荷。 */
-    val planningPayload: PlanningPayload,
+    val planningPayload: PlanningInput,
 )
