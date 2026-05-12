@@ -165,5 +165,5 @@ LLM 相关能力当前不是单一路径：
 
 - 后端单元测试与平台测试位于 `src/test/kotlin`
 - 集成测试位于 `src/integrationTest/kotlin`
-- 前端测试位于 `web/src`
+- 前端测试位于 `web/src/test`
 - 文档一致性测试用于校验公开文档和当前代码结构之间的关键约束

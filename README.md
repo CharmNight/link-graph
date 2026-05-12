@@ -39,7 +39,7 @@ Link Graph 是一个 IntelliJ Platform 插件，用于在项目内查看代码�
 ## 仓库结构
 
 - `src/main/kotlin`：插件后端实现
-- `src/main/resources`：插件描述、文案资源与打包后的前端资源
+- `src/main/resources`：插件描述与文案资源；构建时会合入生成的前端资源
 - `src/test/kotlin`：单元测试与平台测试
 - `src/test/resources/fixtures`：后端测试样例
 - `src/integrationTest/kotlin`：集成测试

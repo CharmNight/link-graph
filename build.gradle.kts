@@ -44,6 +44,12 @@ val integrationTestSourceSet = sourceSets.create("integrationTest") {
     runtimeClasspath += output + compileClasspath
 }
 
+kotlin {
+    target.compilations.named(integrationTestSourceSet.name) {
+        associateWith(target.compilations.getByName("main"))
+    }
+}
+
 configurations[integrationTestSourceSet.implementationConfigurationName].extendsFrom(
     configurations["testImplementation"],
 )
@@ -193,5 +199,9 @@ tasks {
 
     named("prepareSandbox") {
         dependsOn(frontendPackResources)
+    }
+
+    named("buildSearchableOptions") {
+        enabled = false
     }
 }
