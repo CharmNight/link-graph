@@ -118,13 +118,21 @@ internal class GraphBrowserBridgeRegistrar(
             val request = GraphBrowserPayloadParser.parseBeautificationPayload(payload)
             debugLazy(logger.isDebugEnabled, logger::debug) {
                 "收到前端请求：链路讲解, goal=${summarizePayloadText(request.goal)}, preferredStyle=${summarizePayloadText(request.preferredStyle)}, " +
-                    "explanationFocus=${summarizePayloadText(request.explanationFocus)}, followUpStepId=${summarizePayloadText(request.followUp?.stepId)}, granularity=${request.granularity}"
+                    "explanationFocus=${summarizePayloadText(request.explanationFocus)}, focusNodeId=${summarizePayloadText(request.focusNodeId)}, " +
+                    "followUpStepId=${summarizePayloadText(request.followUp?.stepId)}, granularity=${request.granularity}"
+            }
+            if (debugTracingEnabled) {
+                runtimeTrace?.invoke(
+                    "收到前端请求：链路讲解, focusNodeId=${request.focusNodeId ?: ""}, " +
+                        "granularity=${request.granularity}, followUpStepId=${request.followUp?.stepId ?: ""}",
+                )
             }
             bridge.dispatch(
                 GraphEditorMessage.RequestGraphBeautification(
                     goal = request.goal,
                     preferredStyle = request.preferredStyle,
                     explanationFocus = request.explanationFocus,
+                    focusNodeId = request.focusNodeId,
                     followUp = request.followUp,
                     granularity = request.granularity,
                 ),
@@ -297,7 +305,7 @@ internal class GraphBrowserBridgeRegistrar(
               unconfirmAuditCandidateChange: (changeId) => { ${unconfirmQaCandidateChangeQuery.inject("changeId")} },
               resolveInvestigationThread: (threadId, resolutionStatus, note) => { ${resolveInvestigationThreadQuery.inject("[(threadId ? encodeURIComponent(threadId) : ''), (resolutionStatus ? encodeURIComponent(resolutionStatus) : ''), (note ? encodeURIComponent(note) : '')].join('\\u001f')")} },
               requestDiffReview: (question, selectedDiffItemIds) => { ${requestDiffReviewQuery.inject("[(question ? encodeURIComponent(question) : ''), ((selectedDiffItemIds || []).map((value) => encodeURIComponent(value)).join(','))].join('\\u001f')")} },
-              requestGraphBeautification: (goal, preferredStyle, explanationFocus, granularity, followUpStepId, followUpStepTitle, followUpQuestion) => { ${requestGraphBeautificationQuery.inject("[(goal ? encodeURIComponent(goal) : ''), (preferredStyle ? encodeURIComponent(preferredStyle) : ''), (explanationFocus ? encodeURIComponent(explanationFocus) : ''), (granularity ? encodeURIComponent(granularity) : ''), (followUpStepId ? encodeURIComponent(followUpStepId) : ''), (followUpStepTitle ? encodeURIComponent(followUpStepTitle) : ''), (followUpQuestion ? encodeURIComponent(followUpQuestion) : '')].join('\\u001f')")} },
+              requestGraphBeautification: (goal, preferredStyle, explanationFocus, granularity, followUpStepId, followUpStepTitle, followUpQuestion, focusNodeId) => { ${requestGraphBeautificationQuery.inject("[(goal ? encodeURIComponent(goal) : ''), (preferredStyle ? encodeURIComponent(preferredStyle) : ''), (explanationFocus ? encodeURIComponent(explanationFocus) : ''), (granularity ? encodeURIComponent(granularity) : ''), (followUpStepId ? encodeURIComponent(followUpStepId) : ''), (followUpStepTitle ? encodeURIComponent(followUpStepTitle) : ''), (followUpQuestion ? encodeURIComponent(followUpQuestion) : ''), (focusNodeId ? encodeURIComponent(focusNodeId) : '')].join('\\u001f')")} },
               applyDraftPatchPreview: (operationIds) => { ${applyDraftPatchPreviewQuery.inject("((operationIds || []).map((value) => encodeURIComponent(value)).join(','))")} },
               clearDraftPatchPreview: () => { ${clearDraftPatchPreviewQuery.inject("'clearDraftPatchPreview'")} },
               restoreDraftPatchPreview: (source) => { ${restoreDraftPatchPreviewQuery.inject("source")} },

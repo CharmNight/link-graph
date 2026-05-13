@@ -1157,6 +1157,7 @@ describe.sequential("App", () => {
       "step-submit-order",
       "Step 1 提交订单请求",
       "订单校验失败时怎么处理？",
+      "method:submit-order",
     );
   });
 
@@ -1763,8 +1764,144 @@ describe.sequential("App", () => {
       undefined,
       undefined,
       undefined,
+      "method:submit-order",
     );
     expect(screen.getByRole("tab", { name: "理解" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("uses the currently selected expanded invocation node when requesting explanation from the workflow action", async () => {
+    const expandedGraph = {
+      nodes: [
+        {
+          id: "method:submit-order",
+          type: "METHOD" as const,
+          title: "OrderController.submit",
+          signature: "com.example.OrderController.submit():void",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN" as const,
+          bindingStatus: "BOUND" as const,
+          metadata: {
+            "flowchart.kind": "ENTRY",
+            "ui.x": "120",
+            "ui.y": "96",
+          },
+        },
+        {
+          id: "invoke:create-info",
+          type: "FLOW_ACTION" as const,
+          title: "systemService.createInfo()",
+          signature: "com.example.SystemService.createInfo():void",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN" as const,
+          bindingStatus: "BOUND" as const,
+          metadata: {
+            "flow.kind": "INVOCATION",
+            "flow.ownerMethod": "com.example.OrderController.submit():void",
+            "flowchart.kind": "SUBROUTINE",
+            "ui.x": "120",
+            "ui.y": "296",
+          },
+        },
+        {
+          id: "method:create-info",
+          type: "METHOD" as const,
+          title: "SystemService.createInfo",
+          signature: "com.example.SystemService.createInfo():void",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN" as const,
+          bindingStatus: "BOUND" as const,
+          metadata: {
+            "flow.ownerMethod": "com.example.SystemService.createInfo():void",
+            "flowchart.kind": "ENTRY",
+            "linkGraph.expansion.id": "invocation:expansion-1",
+            "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+            "ui.x": "520",
+            "ui.y": "296",
+          },
+        },
+        {
+          id: "action:save-info",
+          type: "FLOW_ACTION" as const,
+          title: "saveInfo()",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN" as const,
+          bindingStatus: "BOUND" as const,
+          metadata: {
+            "flow.kind": "ACTION",
+            "flow.ownerMethod": "com.example.SystemService.createInfo():void",
+            "flowchart.kind": "PROCESS",
+            "linkGraph.expansion.id": "invocation:expansion-1",
+            "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+            "ui.x": "520",
+            "ui.y": "496",
+          },
+        },
+      ],
+      edges: [
+        {
+          id: "control:submit-to-invoke",
+          type: "CONTROL_FLOW" as const,
+          source: "method:submit-order",
+          target: "invoke:create-info",
+        },
+        {
+          id: "call:invoke-to-create-info",
+          type: "CALL" as const,
+          source: "invoke:create-info",
+          target: "method:create-info",
+          metadata: {
+            "linkGraph.expansion.id": "invocation:expansion-1",
+            "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+          },
+        },
+        {
+          id: "control:create-info-to-save",
+          type: "CONTROL_FLOW" as const,
+          source: "method:create-info",
+          target: "action:save-info",
+          metadata: {
+            "linkGraph.expansion.id": "invocation:expansion-1",
+            "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+          },
+        },
+      ],
+    };
+    const state = bootstrapStateFixture();
+    window.linkGraphBootstrap = materializeThreeViewDocuments({
+      ...state,
+      analysisDisplayMode: "FLOWCHART",
+      currentSceneId: "WORKSPACE_FLOWCHART",
+      sceneStates: {
+        ...state.sceneStates,
+        WORKSPACE_FLOWCHART: {
+          ...state.sceneStates.WORKSPACE_FLOWCHART,
+          selectedNodeId: "method:create-info",
+          anchorNodeId: "method:submit-order",
+        },
+      },
+      visibleGraph: expandedGraph,
+      workingGraph: expandedGraph,
+      anchorNodeId: "method:submit-order",
+    });
+
+    render(<App />);
+
+    await dispatchClickEvent(screen.getByRole("button", { name: "链路讲解" }));
+
+    expect(window.linkGraphBridge?.requestGraphBeautification).toHaveBeenCalledWith(
+      "",
+      undefined,
+      "请重点讲解节点“SystemService.createInfo”在当前链路中的作用、上下游关系与关键分支。",
+      "BUSINESS",
+      undefined,
+      undefined,
+      undefined,
+      "method:create-info",
+    );
   });
 
   it("switches explanation granularity and requests a fresh projection with the chosen level", async () => {
@@ -1781,6 +1918,7 @@ describe.sequential("App", () => {
       undefined,
       undefined,
       undefined,
+      "method:submit-order",
     );
   });
 

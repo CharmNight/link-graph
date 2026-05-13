@@ -438,9 +438,17 @@ internal class GraphEditorApplicationService(
         goal: String = "",
         preferredStyle: String? = null,
         explanationFocus: String? = null,
+        focusNodeId: String? = null,
         followUp: com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext? = null,
         granularity: StepGranularity = StepGranularity.BUSINESS,
-    ) = reviewFlow.requestGraphBeautificationAsync(goal, preferredStyle, explanationFocus, followUp, granularity)
+    ) = reviewFlow.requestGraphBeautificationAsync(
+        goal = goal,
+        preferredStyle = preferredStyle,
+        explanationFocus = explanationFocus,
+        focusNodeId = focusNodeId,
+        followUp = followUp,
+        granularity = granularity,
+    )
 
     fun confirmQaCandidateChange(changeId: String) = confirmedDraftCoordinator.confirm(changeId)
 

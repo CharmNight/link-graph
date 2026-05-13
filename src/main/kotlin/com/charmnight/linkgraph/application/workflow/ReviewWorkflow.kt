@@ -741,12 +741,14 @@ internal class ReviewWorkflow(
         goal: String = "",
         preferredStyle: String? = null,
         explanationFocus: String? = null,
+        focusNodeId: String? = null,
         followUp: GraphBeautificationFollowUpContext? = null,
         granularity: StepGranularity = StepGranularity.BUSINESS,
     ) = graphBeautificationWorkflow.requestGraphBeautificationAsync(
         goal = goal,
         preferredStyle = preferredStyle,
         explanationFocus = explanationFocus,
+        focusNodeId = focusNodeId,
         followUp = followUp,
         granularity = granularity,
     )

@@ -81,6 +81,7 @@ declare global {
         followUpStepId?: string,
         followUpStepTitle?: string,
         followUpQuestion?: string,
+        focusNodeId?: string | null,
       ) => void;
       applyDraftPatchPreview?: (operationIds?: string[]) => void;
       clearDraftPatchPreview?: () => void;
@@ -328,6 +329,7 @@ export function requestGraphBeautificationAsync(
     goal = "",
     preferredStyle,
     explanationFocus,
+    focusNodeId,
     granularity = "BUSINESS",
     followUp,
   } = request;
@@ -340,11 +342,13 @@ export function requestGraphBeautificationAsync(
       followUp?.stepId,
       followUp?.stepTitle,
       followUp?.question,
+      focusNodeId,
     );
   }, {
     goal,
     preferredStyle: preferredStyle ?? null,
     explanationFocus: explanationFocus ?? null,
+    focusNodeId: focusNodeId ?? null,
     granularity,
     followUp: followUp ?? null,
   });

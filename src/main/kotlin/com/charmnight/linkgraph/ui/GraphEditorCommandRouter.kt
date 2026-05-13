@@ -53,6 +53,7 @@ class GraphEditorCommandRouter(
                 goal = message.goal,
                 preferredStyle = message.preferredStyle,
                 explanationFocus = message.explanationFocus,
+                focusNodeId = message.focusNodeId,
                 followUp = message.followUp,
                 granularity = message.granularity,
             )

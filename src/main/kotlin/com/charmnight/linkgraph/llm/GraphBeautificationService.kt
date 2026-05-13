@@ -122,12 +122,40 @@ class DefaultGraphBeautificationService(
                     kind = localStep?.kind ?: step.kind,
                     primaryNodeId = step.primaryNodeId ?: localStep?.primaryNodeId,
                     codeSnippet = step.codeSnippet ?: localStep?.codeSnippet,
-                    evidence = step.evidence.ifEmpty { localStep?.evidence.orEmpty() },
+                    evidence = mergeStepEvidence(step.evidence, localStep?.evidence.orEmpty()),
                     followUpQuestions = step.followUpQuestions.ifEmpty { localStep?.followUpQuestions.orEmpty() },
                     downstreamTargets = step.downstreamTargets.ifEmpty { localStep?.downstreamTargets.orEmpty() },
                 )
             },
         )
+    }
+
+    /** 保留远程结论，同时把本地解析到的直接源码引用补回展示证据。 */
+    private fun mergeStepEvidence(
+        remoteEvidence: List<ResultEvidenceFinding>,
+        localEvidence: List<ResultEvidenceFinding>,
+    ): List<ResultEvidenceFinding> {
+        if (remoteEvidence.isEmpty()) {
+            return localEvidence
+        }
+        val remoteReferenceKeys = remoteEvidence
+            .flatMap(ResultEvidenceFinding::references)
+            .mapTo(linkedSetOf(), ::evidenceReferenceKey)
+        val supplementalSourceEvidence = localEvidence.filter { finding ->
+            finding.evidenceLevel == ResultEvidenceLevel.DIRECT_SOURCE &&
+                finding.references.any { reference -> evidenceReferenceKey(reference) !in remoteReferenceKeys }
+        }
+        return remoteEvidence + supplementalSourceEvidence
+    }
+
+    /** 为证据引用生成去重键。 */
+    private fun evidenceReferenceKey(reference: ResultEvidenceReference): String {
+        return listOf(
+            reference.nodeId.orEmpty(),
+            reference.filePath.orEmpty(),
+            reference.startLine?.toString().orEmpty(),
+            reference.endLine?.toString().orEmpty(),
+        ).joinToString("|")
     }
 }
 
@@ -221,7 +249,7 @@ class PlaceholderGraphBeautificationService(
         hiddenCrossMethodNodes: List<GraphNode>,
     ): GraphBeautificationStep {
         /** 关联源码片段。 */
-        val snippets = context.sourceContext.filter { snippet -> snippet.nodeId in step.nodeRefs }
+        val snippets = stepSnippets(step, context)
         /** 关联图节点。 */
         val nodes = context.presentationContext.graph.nodes.filter { node -> node.id in step.nodeRefs }
         /** 可下钻目标。 */
@@ -253,6 +281,16 @@ class PlaceholderGraphBeautificationService(
             ),
             downstreamTargets = downstreamTargets,
         )
+    }
+
+    /** 从步骤展示源码优先取数，避免 prompt 源码预算裁掉 UI 代码片段。 */
+    private fun stepSnippets(
+        step: WorkbenchStep,
+        context: GraphBeautificationContext,
+    ): List<SourceSnippetContext> {
+        val displaySourceContext = context.stepSourceContext.takeIf { it.isNotEmpty() }
+            ?: context.sourceContext
+        return displaySourceContext.filter { snippet -> snippet.nodeId in step.nodeRefs }
     }
 
     /** 生成单步说明文本。 */

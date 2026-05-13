@@ -189,6 +189,8 @@ sealed interface GraphEditorMessage {
         val preferredStyle: String? = null,
         /** 保存讲解关注点。 */
         val explanationFocus: String? = null,
+        /** 保存本次讲解显式聚焦的节点。 */
+        val focusNodeId: String? = null,
         /** 保存步骤追问上下文。 */
         val followUp: GraphBeautificationFollowUpContext? = null,
         /** 保存讲解维度。 */

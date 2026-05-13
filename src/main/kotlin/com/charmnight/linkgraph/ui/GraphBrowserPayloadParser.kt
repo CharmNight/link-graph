@@ -50,6 +50,7 @@ internal object GraphBrowserPayloadParser {
         val goal: String,
         val preferredStyle: String?,
         val explanationFocus: String?,
+        val focusNodeId: String?,
         val followUp: GraphBeautificationFollowUpContext?,
         val granularity: StepGranularity,
     )
@@ -134,7 +135,7 @@ internal object GraphBrowserPayloadParser {
 
     fun parseBeautificationPayload(payload: String): BeautificationPayload {
         validatePayloadSize(payload, GraphBrowserPayloadKind.STRUCTURED)
-        val parts = payload.split(PAYLOAD_SEPARATOR, limit = 7)
+        val parts = payload.split(PAYLOAD_SEPARATOR, limit = 8)
         val goal = decodePayloadValue(parts.getOrNull(0).orEmpty())
         val preferredStyle = parts.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
         val explanationFocus = parts.getOrNull(2)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
@@ -146,6 +147,7 @@ internal object GraphBrowserPayloadParser {
         val followUpStepId = parts.getOrNull(4)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
         val followUpStepTitle = parts.getOrNull(5)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
         val followUpQuestion = parts.getOrNull(6)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
+        val focusNodeId = parts.getOrNull(7)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
         val followUp = if (
             followUpStepId != null &&
             followUpStepTitle != null &&
@@ -159,7 +161,7 @@ internal object GraphBrowserPayloadParser {
         } else {
             null
         }
-        return BeautificationPayload(goal, preferredStyle, explanationFocus, followUp, granularity)
+        return BeautificationPayload(goal, preferredStyle, explanationFocus, focusNodeId, followUp, granularity)
     }
 
     fun parseNullableRevision(payload: String): Long? {

@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.workbench.QaMode
+import com.charmnight.linkgraph.workbench.StepGranularity
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -66,6 +67,41 @@ class GraphBrowserPayloadParserTest {
         assertEquals("plan:item/2", discussion.focusItemId)
         assertEquals(12.5, layout["node:一"]?.x)
         assertEquals(9.25, layout["node,two"]?.y)
+    }
+
+    @Test
+    fun beautificationPayloadParsesFocusNodeIdAndKeepsLegacyPayloadCompatible() {
+        val payload = listOf(
+            encode("讲解展开链路"),
+            encode("汇报版"),
+            encode("请重点讲解展开方法"),
+            encode("METHOD_CALL"),
+            encode("step-create-info"),
+            encode("展开 createInfo"),
+            encode("展开方法做了什么？"),
+            encode("method:create-info"),
+        ).joinToString("\u001F")
+        val legacyPayload = listOf(
+            encode("讲解原始链路"),
+            "",
+            "",
+            encode("BUSINESS"),
+            "",
+            "",
+            "",
+        ).joinToString("\u001F")
+
+        val parsed = GraphBrowserPayloadParser.parseBeautificationPayload(payload)
+        val legacy = GraphBrowserPayloadParser.parseBeautificationPayload(legacyPayload)
+
+        assertEquals("讲解展开链路", parsed.goal)
+        assertEquals("汇报版", parsed.preferredStyle)
+        assertEquals("请重点讲解展开方法", parsed.explanationFocus)
+        assertEquals("method:create-info", parsed.focusNodeId)
+        assertEquals(StepGranularity.METHOD_CALL, parsed.granularity)
+        assertEquals("step-create-info", parsed.followUp?.stepId)
+        assertEquals(null, legacy.focusNodeId)
+        assertEquals(StepGranularity.BUSINESS, legacy.granularity)
     }
 
     @Test

@@ -741,6 +741,7 @@ export function App() {
     graphBeautificationRequestState,
     selectedExplanationGranularity,
     selectedExplanationStepId,
+    selectedNodeId,
     currentExplanationSessionLabel,
     explanationHistory,
     explanationLocalOverrideRef,

@@ -174,6 +174,8 @@ data class GraphBeautificationContext(
     val presentationContext: GraphPresentationContext = GraphPresentationContext(),
     /** 保存相关源码片段上下文。 */
     val sourceContext: List<SourceSnippetContext> = emptyList(),
+    /** 保存步骤展示和本地证据补齐使用的源码片段，不受 LLM prompt 预算限制。 */
+    val stepSourceContext: List<SourceSnippetContext> = emptyList(),
     /** 保存用户目标。 */
     val userGoal: String = "",
     /** 保存讲解风格偏好。 */

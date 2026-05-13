@@ -10,6 +10,8 @@ import com.charmnight.linkgraph.application.port.GraphEditorApplicationEventSink
 import com.charmnight.linkgraph.application.port.ReviewRequestScene
 import com.charmnight.linkgraph.application.port.ReviewRequestStartedPresentation
 import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
+import com.charmnight.linkgraph.foundation.LinkGraphDebugEnvironment
+import com.charmnight.linkgraph.foundation.LinkGraphRenderTrace
 import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.llm.GraphBeautificationService
 import com.charmnight.linkgraph.llm.LlmResultSource
@@ -32,6 +34,7 @@ internal class GraphBeautificationReviewWorkflow(
         goal: String = "",
         preferredStyle: String? = null,
         explanationFocus: String? = null,
+        focusNodeId: String? = null,
         followUp: GraphBeautificationFollowUpContext? = null,
         granularity: StepGranularity = StepGranularity.BUSINESS,
     ) {
@@ -91,15 +94,31 @@ internal class GraphBeautificationReviewWorkflow(
         )
         asyncRequestLifecycle.runBackgroundTask(
             work = {
+                val context = planningContextFactory.buildGraphBeautificationContext(
+                    snapshot = snapshot,
+                    goal = goal,
+                    preferredStyle = preferredStyle,
+                    explanationFocus = explanationFocus,
+                    focusNodeId = focusNodeId,
+                    followUp = followUp,
+                    granularity = granularity,
+                )
+                if (LinkGraphDebugEnvironment.isEnabled("LINKGRAPH_DEBUG_TRACE")) {
+                    val requestedFocusNodeId = focusNodeId?.trim()?.takeIf(String::isNotBlank)
+                    logger.warn(
+                        "链路讲解请求上下文: focusNodeId=${requestedFocusNodeId ?: ""}, " +
+                            "snapshotSelected=${snapshot.selectedNodeId ?: ""}, " +
+                            "selectedMethodSignature=${snapshot.selectedMethodSignature ?: ""}, " +
+                            "currentSceneId=${snapshot.currentSceneId}, " +
+                            "anchorNodeId=${context.presentationContext.anchorNodeId ?: ""}, " +
+                            "selectedNodeIds=${context.presentationContext.selectedNodeIds}, " +
+                            "focusInPresentation=${requestedFocusNodeId != null && context.presentationContext.graph.nodes.any { node -> node.id == requestedFocusNodeId }}, " +
+                            "presentation=${LinkGraphRenderTrace.graphSummary(context.presentationContext.graph)}, " +
+                            "full=${LinkGraphRenderTrace.graphSummary(context.presentationContext.fullGraph)}",
+                    )
+                }
                 graphBeautificationService.beautify(
-                    context = planningContextFactory.buildGraphBeautificationContext(
-                        snapshot = snapshot,
-                        goal = goal,
-                        preferredStyle = preferredStyle,
-                        explanationFocus = explanationFocus,
-                        followUp = followUp,
-                        granularity = granularity,
-                    ),
+                    context = context,
                     settings = settings,
                     onPreview = previewUpdater,
                 )

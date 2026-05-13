@@ -29,7 +29,7 @@ import kotlin.test.assertTrue
 
 class PlanningContextFactoryTest {
     @Test
-    fun buildQaGraphsPreservesReferenceFactGraphWhileUsingWorkingGraphAsEditableGraph() {
+    fun buildQaGraphsUsesInteractiveGraphWithExpandedInvocationContent() {
         val factGraph = GraphDocument(
             nodes = listOf(
                 GraphNode(
@@ -44,12 +44,30 @@ class PlanningContextFactoryTest {
                 id = "scope:file-download-if",
                 type = NodeType.FLOW_SCOPE,
                 title = "if (delete)",
+                metadata = mapOf(
+                    "linkGraph.expansion.id" to "invocation:qa-expanded",
+                    "linkGraph.expansion.sourceInvocationNodeId" to "method:file-download",
+                ),
+            ),
+            edges = listOf(
+                GraphEdge(
+                    id = "control:file-download-if",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = "method:file-download",
+                    toNodeId = "scope:file-download-if",
+                    metadata = mapOf(
+                        "linkGraph.expansion.id" to "invocation:qa-expanded",
+                        "linkGraph.expansion.sourceInvocationNodeId" to "method:file-download",
+                    ),
+                ),
             ),
         )
         val snapshot = testSnapshot(
             analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
+            visibleGraph = factGraph,
             referenceFactGraph = factGraph,
             workingGraph = editableGraph,
+            workingGraphDirty = true,
         )
 
         val qaGraphs = PlanningContextFactory(
@@ -63,7 +81,10 @@ class PlanningContextFactoryTest {
             collectSourceEvidence = false,
         )
 
-        assertEquals(factGraph, qaGraphs.factGraph)
+        assertEquals(
+            setOf("method:file-download", "scope:file-download-if"),
+            qaGraphs.factGraph.nodes.map(GraphNode::id).toSet(),
+        )
         assertEquals(editableGraph, qaGraphs.editableGraph)
     }
 
@@ -157,12 +178,13 @@ class PlanningContextFactoryTest {
             workingGraphDirty = true,
         )
 
-        val context = PlanningContextFactory(
+        val factory = PlanningContextFactory(
             graphDiffer = GraphDiffer(),
             syncPreviewPlanner = SyncPreviewPlanner(),
             graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
             settingsProvider = { LinkGraphSettingsState() },
-        ).buildGraphBeautificationContext(
+        )
+        val context = factory.buildGraphBeautificationContext(
             snapshot = snapshot.toWorkflowEditorSnapshot(),
             goal = "解释展开后的调用链",
             preferredStyle = null,
@@ -177,6 +199,98 @@ class PlanningContextFactoryTest {
         )
         assertTrue(context.presentationContext.graph.edges.any { edge ->
             edge.fromNodeId == expandedMethod.id && edge.toNodeId == expandedAction.id
+        })
+
+        val focusedContext = factory.buildGraphBeautificationContext(
+            snapshot = snapshot.toWorkflowEditorSnapshot(),
+            goal = "解释展开后的调用链",
+            preferredStyle = null,
+            explanationFocus = null,
+            focusNodeId = expandedMethod.id,
+            followUp = null,
+            granularity = com.charmnight.linkgraph.workbench.StepGranularity.BUSINESS,
+        )
+
+        assertEquals(expandedMethod.id, focusedContext.presentationContext.anchorNodeId)
+        assertEquals(listOf(expandedMethod.id), focusedContext.presentationContext.selectedNodeIds)
+        assertTrue(focusedContext.presentationContext.graph.nodes.any { node -> node.id == expandedAction.id })
+    }
+
+    @Test
+    fun buildGraphBeautificationContextKeepsAllStepSourceSnippetsBeyondPromptBudget() {
+        val projectDir = Files.createTempDirectory("beautification-step-source-context")
+        val sourceFile = projectDir.resolve("src/main/java/com/example/ExpandedService.java")
+        Files.createDirectories(sourceFile.parent)
+        val sourceLines = (1..15).map { index -> "step$index();" }
+        Files.writeString(
+            sourceFile,
+            """
+                package com.example;
+                class ExpandedService {
+                    void expanded() {
+            ${sourceLines.joinToString("\n") { line -> "            $line" }}
+                    }
+                }
+            """.trimIndent(),
+        )
+        val method = GraphNode(
+            id = "method:expanded",
+            type = NodeType.METHOD,
+            title = "ExpandedService.expanded",
+            signature = "com.example.ExpandedService.expanded():void",
+            metadata = mapOf(
+                "flowchart.kind" to "ENTRY",
+                "source.filePath" to sourceFile.toString(),
+                "source.startLine" to "3",
+                "source.endLine" to "20",
+            ),
+        )
+        val actionNodes = (1..15).map { index ->
+            GraphNode(
+                id = "action:step-$index",
+                type = NodeType.FLOW_ACTION,
+                title = "step$index()",
+                metadata = mapOf(
+                    "flow.kind" to "ACTION",
+                    "flow.ownerMethod" to "com.example.ExpandedService.expanded():void",
+                    "flowchart.kind" to "PROCESS",
+                    "source.filePath" to sourceFile.toString(),
+                    "source.startLine" to (index + 3).toString(),
+                    "source.endLine" to (index + 3).toString(),
+                ),
+            )
+        }
+        val graph = GraphDocument(nodes = listOf(method) + actionNodes)
+        val snapshot = testSnapshot(
+            analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
+            visibleGraph = graph,
+            workingGraph = graph,
+            selectedMethodSignature = "com.example.ExpandedService.expanded():void",
+            selectedNodeId = "action:step-15",
+            workingGraphDirty = true,
+        )
+
+        val context = PlanningContextFactory(
+            graphDiffer = GraphDiffer(),
+            syncPreviewPlanner = SyncPreviewPlanner(),
+            graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
+            settingsProvider = { LinkGraphSettingsState() },
+            projectBasePathProvider = { projectDir.toString() },
+        ).buildGraphBeautificationContext(
+            snapshot = snapshot.toWorkflowEditorSnapshot(),
+            goal = "解释展开后的调用链",
+            preferredStyle = null,
+            explanationFocus = null,
+            focusNodeId = "action:step-15",
+            followUp = null,
+            granularity = com.charmnight.linkgraph.workbench.StepGranularity.BUSINESS,
+        )
+
+        assertEquals(12, context.sourceContext.size)
+        assertTrue(context.sourceContext.any { snippet -> snippet.nodeId == "action:step-15" })
+        assertEquals(16, context.stepSourceContext.size)
+        assertTrue(context.stepSourceContext.any { snippet ->
+            snippet.nodeId == "action:step-15" && snippet.snippet == "step15();"
         })
     }
 

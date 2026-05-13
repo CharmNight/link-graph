@@ -400,6 +400,7 @@ export interface GraphBeautificationRequest {
   goal?: string;
   preferredStyle?: string | null;
   explanationFocus?: string | null;
+  focusNodeId?: string | null;
   granularity?: StepGranularity;
   followUp?: GraphBeautificationFollowUpRequest | null;
 }

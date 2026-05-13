@@ -477,6 +477,7 @@ describe("publishGraphEditScript", () => {
       goal: "",
       preferredStyle: "汇报版",
       explanationFocus: "请重点讲解 placeOrder 节点",
+      focusNodeId: "method:place-order",
       granularity: "METHOD_CALL",
       followUp: {
         stepId: "step-place-order",
@@ -493,11 +494,13 @@ describe("publishGraphEditScript", () => {
       "step-place-order",
       "Step 1 提交订单",
       "订单失败时怎么处理？",
+      "method:place-order",
     );
     const tracePayload = String(traceSink.mock.calls[0]?.[0] ?? "");
     expect(tracePayload).toContain("\"event\":\"api.requestGraphBeautification\"");
     expect(tracePayload).toContain("\"preferredStyle\":\"汇报版\"");
     expect(tracePayload).toContain("\"explanationFocus\":\"请重点讲解 placeOrder 节点\"");
+    expect(tracePayload).toContain("\"focusNodeId\":\"method:place-order\"");
     expect(tracePayload).toContain("\"granularity\":\"METHOD_CALL\"");
     expect(tracePayload).toContain("\"followUp\":{\"stepId\":\"step-place-order\",\"stepTitle\":\"Step 1 提交订单\",\"question\":\"订单失败时怎么处理？\"}");
   });

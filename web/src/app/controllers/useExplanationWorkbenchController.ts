@@ -1,5 +1,6 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { requestGraphBeautificationAsync } from "../api";
+import { traceLinkGraph } from "../debug";
 import type {
   AsyncRequestState,
   GraphBeautificationResult,
@@ -27,6 +28,7 @@ interface UseExplanationWorkbenchControllerArgs {
   graphBeautificationRequestState: AsyncRequestState;
   selectedExplanationGranularity: StepGranularity;
   selectedExplanationStepId: string | null;
+  selectedNodeId: string | null;
   currentExplanationSessionLabel: string;
   explanationHistory: ExplanationHistoryEntry[];
   explanationLocalOverrideRef: MutableRefObject<boolean>;
@@ -64,21 +66,62 @@ export function useExplanationWorkbenchController(args: UseExplanationWorkbenchC
     args.pendingExplanationHistoryEntryRef.current = null;
   }
 
-  function resolveExplanationStepTargetNodeId(stepId: string) {
+  function resolveExplanationStepRawNodeId(stepId: string) {
     const step = args.graphBeautificationResult?.steps.find((item) => item.stepId === stepId);
-    return args.resolveDisplayedNodeId(
-      step?.primaryNodeId
+    return step?.primaryNodeId
       ?? step?.evidence.flatMap((finding) => finding.references).find((reference) => reference.nodeId)?.nodeId
-      ?? null,
+      ?? null;
+  }
+
+  function resolveExplanationStepTargetNodeId(stepId: string) {
+    return args.resolveDisplayedNodeId(
+      resolveExplanationStepRawNodeId(stepId),
       args.nodes,
     );
   }
 
+  function resolveExplanationStepFocusNodeId(stepId: string) {
+    const rawNodeId = resolveExplanationStepRawNodeId(stepId)?.trim();
+    if (!rawNodeId) {
+      return null;
+    }
+    return args.resolveDisplayedNodeId(rawNodeId, args.nodes) ?? rawNodeId;
+  }
+
+  function resolveRequestFocusNodeId(nodeId: string | null | undefined) {
+    const normalizedNodeId = nodeId?.trim();
+    if (!normalizedNodeId) {
+      return null;
+    }
+    return args.resolveDisplayedNodeId(normalizedNodeId, args.nodes) ?? normalizedNodeId;
+  }
+
+  function resolveCurrentExplanationFocusNodeId() {
+    const selectedNodeFocusId = resolveRequestFocusNodeId(args.selectedNodeId);
+    if (selectedNodeFocusId) {
+      return selectedNodeFocusId;
+    }
+    if (args.selectedExplanationStepId) {
+      const stepFocusNodeId = resolveExplanationStepFocusNodeId(args.selectedExplanationStepId);
+      if (stepFocusNodeId) {
+        return stepFocusNodeId;
+      }
+    }
+    return resolveRequestFocusNodeId(args.selectedNodeId);
+  }
+
   function handleRequestGraphBeautification(focusNodeId?: string) {
-    const focusNode = focusNodeId ? args.nodes.find((node) => node.id === focusNodeId) ?? null : null;
+    const requestedFocusNodeId = resolveRequestFocusNodeId(focusNodeId ?? args.selectedNodeId);
+    const focusNode = requestedFocusNodeId ? args.nodes.find((node) => node.id === requestedFocusNodeId) ?? null : null;
     const explanationFocus = focusNode
       ? `请重点讲解节点“${focusNode.title}”在当前链路中的作用、上下游关系与关键分支。`
       : undefined;
+    traceLinkGraph("explanation.requestGraphBeautification.intent", {
+      focusNodeId: requestedFocusNodeId,
+      focusNodeTitle: focusNode?.title ?? null,
+      selectedGranularity: args.selectedExplanationGranularity,
+      nodeCount: args.nodes.length,
+    });
     args.explanationLocalOverrideRef.current = false;
     args.pendingExplanationRequestModeRef.current = "fresh";
     args.bridgeCommands.submitAsyncBridgeCommand(
@@ -87,6 +130,7 @@ export function useExplanationWorkbenchController(args: UseExplanationWorkbenchC
         goal: "",
         preferredStyle: undefined,
         explanationFocus,
+        focusNodeId: requestedFocusNodeId,
         granularity: args.selectedExplanationGranularity,
       }),
       {
@@ -105,6 +149,14 @@ export function useExplanationWorkbenchController(args: UseExplanationWorkbenchC
   }
 
   function handleChangeExplanationGranularity(granularity: StepGranularity) {
+    const requestedFocusNodeId = resolveCurrentExplanationFocusNodeId();
+    traceLinkGraph("explanation.changeGranularity.intent", {
+      focusNodeId: requestedFocusNodeId,
+      selectedStepId: args.selectedExplanationStepId,
+      selectedNodeId: args.selectedNodeId,
+      granularity,
+      nodeCount: args.nodes.length,
+    });
     args.setSelectedExplanationGranularity(granularity);
     args.explanationLocalOverrideRef.current = false;
     args.pendingExplanationRequestModeRef.current = "fresh";
@@ -114,6 +166,7 @@ export function useExplanationWorkbenchController(args: UseExplanationWorkbenchC
         goal: "",
         preferredStyle: undefined,
         explanationFocus: undefined,
+        focusNodeId: requestedFocusNodeId,
         granularity,
       }),
       {
@@ -148,6 +201,15 @@ export function useExplanationWorkbenchController(args: UseExplanationWorkbenchC
     const followUpQuestion = customQuestion?.trim()
       || step.followUpQuestions[0]
       || "请继续解释这一步的关键输入、条件和输出。";
+    const requestedFocusNodeId = resolveExplanationStepFocusNodeId(stepId)
+      ?? resolveRequestFocusNodeId(args.selectedNodeId);
+    traceLinkGraph("explanation.followUp.intent", {
+      focusNodeId: requestedFocusNodeId,
+      stepId,
+      selectedNodeId: args.selectedNodeId,
+      granularity: args.selectedExplanationGranularity,
+      nodeCount: args.nodes.length,
+    });
     const nextSessionLabel = `围绕 ${step.title} 继续讲解`;
     args.explanationLocalOverrideRef.current = false;
     args.pendingExplanationRequestModeRef.current = "follow_up";
@@ -157,6 +219,7 @@ export function useExplanationWorkbenchController(args: UseExplanationWorkbenchC
         goal: "",
         preferredStyle: undefined,
         explanationFocus: undefined,
+        focusNodeId: requestedFocusNodeId,
         granularity: args.selectedExplanationGranularity,
         followUp: {
           stepId: step.stepId,

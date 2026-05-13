@@ -83,6 +83,7 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
         service.requestGraphBeautificationAsync(
             goal = "解释展开后的调用链",
             explanationFocus = "请讲解新展开的被调方法内容",
+            focusNodeId = "method:create-info",
         )
         val explainedSnapshot = waitForSnapshot {
             it.graphBeautificationRequestState.phase == AsyncRequestPhase.SUCCEEDED
@@ -97,6 +98,10 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
         assertTrue(
             result.promptPreview.contains("saveInfo()"),
             "prompt should include expanded target action, prompt=${result.promptPreview}",
+        )
+        assertTrue(
+            result.promptPreview.contains("锚点节点：method:create-info"),
+            "prompt should anchor the explicit expanded method, prompt=${result.promptPreview}",
         )
         assertTrue(result.steps.any { step ->
             step.primaryNodeId == "action:save-info" || step.description.contains("saveInfo()")
@@ -126,6 +131,7 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
         service.requestGraphBeautificationAsync(
             goal = "解释展开后的调用链",
             explanationFocus = "请讲解新展开的被调方法内容",
+            focusNodeId = "method:create-info",
         )
         val explainedSnapshot = waitForSnapshot {
             it.graphBeautificationRequestState.phase == AsyncRequestPhase.SUCCEEDED
@@ -140,6 +146,10 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
         assertTrue(
             result.promptPreview.contains("saveInfo()"),
             "prompt should include expanded target action, prompt=${result.promptPreview}",
+        )
+        assertTrue(
+            result.promptPreview.contains("锚点节点：method:create-info"),
+            "prompt should anchor the explicit expanded method, prompt=${result.promptPreview}",
         )
         assertTrue(result.steps.any { step ->
             step.primaryNodeId == "action:save-info" || step.description.contains("saveInfo()")
