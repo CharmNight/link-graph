@@ -43,7 +43,7 @@ interface UseAuditWorkbenchControllerArgs {
   setAuditQuestionMode: Dispatch<SetStateAction<QaMode>>;
   setAuditTargetNodeIds: Dispatch<SetStateAction<string[]>>;
   setAuditSourceThreadId: Dispatch<SetStateAction<string | null>>;
-  setActiveWorkbenchTab: Dispatch<SetStateAction<WorkbenchTab>>;
+  setActiveWorkbenchTab: (tab: WorkbenchTab) => void;
   setOperationFeedback: Dispatch<SetStateAction<OperationFeedback | null>>;
   setDraftWorkbenchState: Dispatch<SetStateAction<{ draftChanges: DraftWorkbenchEntry[]; draftNotes: DraftWorkbenchEntry[] }>>;
   setSelectedDraftEntryId: Dispatch<SetStateAction<string | null>>;

@@ -316,6 +316,77 @@ class GraphEditorStateServiceTest {
     }
 
     @Test
+    fun loadGraph为可读流程图合并节点建立原始调用节点映射() {
+        val service = GraphEditorStateService()
+        val graph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:submit",
+                    type = NodeType.METHOD,
+                    title = "OrderService.submit",
+                    signature = "com.example.OrderService.submit():void",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf("flowchart.kind" to "ENTRY"),
+                ),
+                GraphNode(
+                    id = "action:write-bytes",
+                    type = NodeType.FLOW_ACTION,
+                    title = "FileUtils.writeBytes(filePath, response.toString())",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf(
+                        "flow.kind" to "ACTION",
+                        "flowchart.kind" to "PROCESS",
+                    ),
+                ),
+                GraphNode(
+                    id = "invoke:write-bytes",
+                    type = NodeType.FLOW_ACTION,
+                    title = "调用 FileUtils.writeBytes",
+                    signature = "com.example.FileUtils.writeBytes(java.lang.String,java.lang.String):void",
+                    sourceTag = GraphSourceTag.FACT,
+                    metadata = mapOf(
+                        "flow.kind" to "INVOCATION",
+                        "flowchart.kind" to "SUBROUTINE",
+                    ),
+                ),
+            ),
+            edges = listOf(
+                com.charmnight.linkgraph.model.GraphEdge(
+                    id = "control:submit-to-action",
+                    type = com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW,
+                    fromNodeId = "method:submit",
+                    toNodeId = "action:write-bytes",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+                com.charmnight.linkgraph.model.GraphEdge(
+                    id = "control:action-to-invoke",
+                    type = com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW,
+                    fromNodeId = "action:write-bytes",
+                    toNodeId = "invoke:write-bytes",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+            ),
+        )
+
+        service.loadGraph(graph, "test")
+
+        val snapshot = service.snapshot()
+        val projectedNode = snapshot.flowchartView.visibleGraph.nodes.single { it.id == "action:write-bytes" }
+        assertEquals("调用 FileUtils.writeBytes", projectedNode.title)
+        assertEquals("invoke:write-bytes", projectedNode.metadata["flowchart.projectedFromNodeIds"])
+        assertEquals(
+            "com.example.FileUtils.writeBytes(java.lang.String,java.lang.String):void",
+            projectedNode.signature,
+        )
+        assertTrue(
+            snapshot.flowchartView.projectionIndex.nodeMapping("action:write-bytes")
+                ?.canonicalNodeIds
+                .orEmpty()
+                .contains("invoke:write-bytes"),
+        )
+    }
+
+    @Test
     fun loadAnalysisOutcome在同方法重载时保留已确认草稿并重新应用到新流程图底图() {
         val service = GraphEditorStateService()
         val selectedMethodSignature = "com.example.CommonController.fileDownload(java.lang.String,java.lang.Boolean):void"

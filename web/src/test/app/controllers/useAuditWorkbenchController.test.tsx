@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { requestAuditAsync } from "../../../app/api";
+import type { BridgeInvocationResult } from "../../../app/api";
 import { useAuditWorkbenchController } from "../../../app/controllers/useAuditWorkbenchController";
 import type { GraphPatchResult, QaMode } from "../../../app/types";
 
@@ -43,8 +44,8 @@ function auditResultWithThread(): GraphPatchResult {
 }
 
 function renderController(overrides: Partial<Parameters<typeof useAuditWorkbenchController>[0]> = {}) {
-  const submitAsyncBridgeCommand = vi.fn((_label: string, command: () => unknown) => command());
-  const runBridgeCommand = vi.fn((_label: string, command: () => unknown) => command());
+  const submitAsyncBridgeCommand = vi.fn((_label: string, command: () => BridgeInvocationResult) => command());
+  const runBridgeCommand = vi.fn((_label: string, command: () => BridgeInvocationResult) => command());
   const setAuditQuestionMode = vi.fn();
   const args: Parameters<typeof useAuditWorkbenchController>[0] = {
     auditResult: null,

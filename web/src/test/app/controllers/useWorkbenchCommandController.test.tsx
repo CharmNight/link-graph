@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { requestSyncPreview, showDiffMode } from "../../../app/api";
+import type { BridgeInvocationResult } from "../../../app/api";
 import { useWorkbenchCommandController } from "../../../app/controllers/useWorkbenchCommandController";
 
 vi.mock("../../../app/api", () => ({
@@ -18,13 +19,13 @@ vi.mock("../../../app/api", () => ({
 }));
 
 function renderController() {
-  const runBridgeCommand = vi.fn((_label: string, command: () => unknown, options?: unknown) => {
+  const runBridgeCommand = vi.fn((_label: string, command: () => BridgeInvocationResult, options?: unknown) => {
     command();
-    return options;
+    return { ok: true } as const;
   });
-  const submitAsyncBridgeCommand = vi.fn((_label: string, command: () => unknown, options?: unknown) => {
+  const submitAsyncBridgeCommand = vi.fn((_label: string, command: () => BridgeInvocationResult, options?: unknown) => {
     command();
-    return options;
+    return { ok: true } as const;
   });
   const hook = renderHook(() =>
     useWorkbenchCommandController({

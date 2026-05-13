@@ -203,6 +203,17 @@ class FlowchartProjectorTest {
             "com.example.FileUtils.writeBytes(java.lang.String,java.lang.String):void",
             visibleNodesById["action:writeBytes"]?.signature,
         )
+        assertEquals(
+            "ACTION",
+            visibleNodesById["action:writeBytes"]?.metadata?.get("flow.kind"),
+        )
+        assertTrue(
+            view.fullGraph.nodes.any { node ->
+                node.id == "invoke:writeBytes" &&
+                    node.metadata["flow.kind"] == "INVOCATION" &&
+                    node.signature == "com.example.FileUtils.writeBytes(java.lang.String,java.lang.String):void"
+            },
+        )
         assertTrue(
             view.visibleGraph.edges.any { edge ->
                 edge.fromNodeId == "method:submit" && edge.toNodeId == "scope:guard"

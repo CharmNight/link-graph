@@ -40,4 +40,6 @@ export interface ViewStageProps {
   onOpenAudit?: (selectedNodeId?: string) => void;
   onImportMermaid: () => void;
   onExpandOverflowNode?: (nodeId: string) => void;
+  onExpandInvocation?: (nodeId: string) => void;
+  onRemoveInvocationExpansion?: (expansionId: string) => void;
 }

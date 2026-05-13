@@ -84,12 +84,33 @@ export function scopeFlowchartGraphToAnchorMethod(
   if (!anchorSignature) {
     return graph;
   }
-  const scopedNodes = graph.nodes.filter((node) => {
+  const ownerScopedNodes = graph.nodes.filter((node) => {
     if (node.id === anchorNodeId) {
       return true;
     }
     return resolveNodeOwnerSignature(node) === anchorSignature;
   });
+  const ownerScopedNodeIds = new Set(ownerScopedNodes.map((node) => node.id));
+  const ownerScopedCanonicalNodeIds = new Set(ownerScopedNodeIds);
+  ownerScopedNodes.forEach((node) => {
+    projectedAliasNodeIds(node).forEach((aliasNodeId) => ownerScopedCanonicalNodeIds.add(aliasNodeId));
+  });
+  const expansionScopedNodes = graph.nodes.filter((node) => {
+    const sourceInvocationNodeId = node.metadata?.["linkGraph.expansion.sourceInvocationNodeId"]?.trim();
+    return Boolean(sourceInvocationNodeId && ownerScopedCanonicalNodeIds.has(sourceInvocationNodeId));
+  });
+  const entryScopedNodes = graph.nodes.filter((node) => {
+    if (ownerScopedNodeIds.has(node.id)) {
+      return false;
+    }
+    if (node.metadata?.["flowchart.kind"] !== "ENTRY" && node.type !== "METHOD") {
+      return false;
+    }
+    return graph.edges.some((edge) => edge.source === node.id && ownerScopedNodeIds.has(edge.target));
+  });
+  const scopedNodes = Array.from(new Map(
+    [...ownerScopedNodes, ...entryScopedNodes, ...expansionScopedNodes].map((node) => [node.id, node]),
+  ).values());
   if (scopedNodes.length === 0 || scopedNodes.length === graph.nodes.length) {
     return graph;
   }

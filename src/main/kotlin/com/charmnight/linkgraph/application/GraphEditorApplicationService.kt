@@ -46,6 +46,7 @@ import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanWo
 import com.charmnight.linkgraph.application.workflow.generation.GenerationWorkflowDependencies
 import com.charmnight.linkgraph.application.diagnostics.GraphDiagnosticsLogger
 import com.charmnight.linkgraph.application.workflow.GraphWorkspaceWorkflow
+import com.charmnight.linkgraph.application.workflow.InvocationExpansionWorkflow
 import com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeSupport
 import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
 import com.charmnight.linkgraph.application.planning.PlanningContextFactory
@@ -317,6 +318,21 @@ internal class GraphEditorApplicationService(
         )
     }
 
+    private val invocationExpansionFlow: InvocationExpansionWorkflow by lazy(LazyThreadSafetyMode.NONE) {
+        InvocationExpansionWorkflow(
+            project = project,
+            snapshotProvider = editorSnapshotProvider,
+            workspaceGraphCommitter = workspaceGraphCommitter,
+            eventSink = presentationProvider.eventSink(),
+            semanticAnalyzerProvider = { semanticAnalyzer },
+            analysisOutcomeFactoryProvider = { analysisOutcomeFactory },
+            codeSubjectHandleFactory = codeSubjectHandleFactory,
+            targetResolverOverrideProvider = { testOverrides.invocationExpansionTargetResolver },
+            subjectResolverOverrideProvider = { testOverrides.invocationExpansionSubjectResolver },
+            logger = logger,
+        )
+    }
+
     private val confirmedDraftCoordinator: ConfirmedDraftChangeCoordinator by lazy(LazyThreadSafetyMode.NONE) {
         ConfirmedDraftChangeCoordinator(
             snapshotProvider = applicationSnapshotProvider,
@@ -389,6 +405,12 @@ internal class GraphEditorApplicationService(
 
     fun requestSourceNavigation(nodeId: String) =
         sourceNavigationFlow.requestSourceNavigation(nodeId)
+
+    fun requestExpandInvocation(nodeId: String) =
+        invocationExpansionFlow.requestExpandInvocation(nodeId)
+
+    fun requestRemoveInvocationExpansion(expansionId: String) =
+        invocationExpansionFlow.requestRemoveInvocationExpansion(expansionId)
 
     fun openSettings() = sourceNavigationFlow.openSettings()
 

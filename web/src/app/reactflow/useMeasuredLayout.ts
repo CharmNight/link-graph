@@ -283,7 +283,13 @@ function isIncrementalPositionedNodeAddition(nextNodes: LinkGraphNode[], current
   }
   const currentNodeIds = new Set(currentNodes.map((node) => node.id));
   const addedNodes = nextNodes.filter((node) => !currentNodeIds.has(node.id));
-  return addedNodes.length > 0 && addedNodes.every((node) => Boolean(resolvePosition(node)));
+  return addedNodes.length > 0
+    && addedNodes.every((node) => Boolean(resolvePosition(node)))
+    && addedNodes.every((node) => !node.metadata?.["linkGraph.expansion.id"]);
+}
+
+function hasInvocationExpansionEdges(edges: LinkGraphEdge[]): boolean {
+  return edges.some((edge) => Boolean(edge.metadata?.["linkGraph.expansion.id"]));
 }
 
 export function useMeasuredLayout({
@@ -373,7 +379,7 @@ export function useMeasuredLayout({
       && areNodeSetsEquivalent(seededNodes, currentLayoutState.nodes)
       && !areEdgeSetsEquivalent(seededEdges, currentLayoutState.edges);
 
-    if (edgeOnlyGraphChange) {
+    if (edgeOnlyGraphChange && !hasInvocationExpansionEdges(nextGraph.edges)) {
       setLayoutState({
         nodes: seededNodes,
         edges: seededEdges,

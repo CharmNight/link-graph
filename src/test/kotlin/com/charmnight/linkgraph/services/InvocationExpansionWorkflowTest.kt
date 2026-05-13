@@ -1,0 +1,424 @@
+package com.charmnight.linkgraph.services
+
+import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
+import com.charmnight.linkgraph.application.usecase.InvocationExpansionTarget
+import com.charmnight.linkgraph.application.usecase.InvocationExpansionTargetKind
+import com.charmnight.linkgraph.model.EdgeType
+import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.model.GraphEdge
+import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.semantic.SemanticAnalyzer
+import com.charmnight.linkgraph.semantic.model.FlowActionUnit
+import com.charmnight.linkgraph.semantic.model.MethodLikeUnit
+import com.charmnight.linkgraph.semantic.model.SemanticAnalysisResult
+import com.charmnight.linkgraph.semantic.model.SemanticAnchor
+import com.charmnight.linkgraph.semantic.model.SemanticRelation
+import com.charmnight.linkgraph.semantic.model.SemanticRelationKind
+import com.charmnight.linkgraph.semantic.policy.SemanticCapturePolicy
+import com.charmnight.linkgraph.semantic.policy.TraversalBudgetPolicy
+import com.charmnight.linkgraph.semantic.provider.code.CodeSubjectSemanticProvider
+import com.charmnight.linkgraph.semantic.provider.SemanticProvider
+import com.charmnight.linkgraph.semantic.provider.SemanticProviderRegistry
+import com.charmnight.linkgraph.semantic.subject.CaretSubjectLocator
+import com.charmnight.linkgraph.semantic.subject.CodeSubjectHandle
+import com.charmnight.linkgraph.semantic.subject.CodeSubjectKind
+import com.charmnight.linkgraph.semantic.subject.SubjectHandle
+import com.charmnight.linkgraph.ui.AsyncRequestPhase
+import com.charmnight.linkgraph.ui.GraphEditorStateService
+import com.intellij.testFramework.PlatformTestUtil
+import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
+    override fun setUp() {
+        super.setUp()
+        project.registerLinkGraphProjectCommandServicesForTest()
+    }
+
+    fun testExpandsProjectSourceInvocationIntoCurrentWorkspaceGraph() {
+        val service = project.linkGraphApplicationServiceForTest()
+        service.loadGraph(callerGraph(), "test")
+        val overrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        overrides.invocationExpansionTargetResolver = { _, signature ->
+            InvocationExpansionTarget(InvocationExpansionTargetKind.PROJECT_SOURCE, signature = signature)
+        }
+        overrides.invocationExpansionSubjectResolver = { signature -> testCodeSubject(signature) }
+        overrides.semanticAnalyzer = SemanticAnalyzer(
+            registry = SemanticProviderRegistry(listOf(targetProvider())),
+        )
+
+        service.requestExpandInvocation("invoke:create-info")
+        val snapshot = waitForSnapshot {
+            it.workspaceGraph.nodes.any { node -> node.id == "action:save-info" }
+        }
+
+        assertTrue(snapshot.workspaceGraph.nodes.any { node -> node.id == "method:create-info" })
+        assertTrue(snapshot.workspaceGraph.nodes.any { node -> node.id == "action:save-info" })
+        assertTrue(snapshot.workspaceGraph.edges.any { edge ->
+            edge.fromNodeId == "invoke:create-info" && edge.toNodeId == "method:create-info"
+        })
+    }
+
+    fun testExplainsExpandedInvocationContentAfterExpansionWorkflow() {
+        val service = project.linkGraphApplicationServiceForTest()
+        service.loadGraph(callerGraph(), "test")
+        val overrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        overrides.invocationExpansionTargetResolver = { _, signature ->
+            InvocationExpansionTarget(InvocationExpansionTargetKind.PROJECT_SOURCE, signature = signature)
+        }
+        overrides.invocationExpansionSubjectResolver = { signature -> testCodeSubject(signature) }
+        overrides.semanticAnalyzer = SemanticAnalyzer(
+            registry = SemanticProviderRegistry(listOf(targetProvider())),
+        )
+
+        service.requestExpandInvocation("invoke:create-info")
+        val expandedSnapshot = waitForSnapshot {
+            it.workspaceGraph.nodes.any { node -> node.id == "action:save-info" }
+        }
+        assertTrue(expandedSnapshot.workspaceGraph.nodes.any { node -> node.id == "action:save-info" })
+
+        service.requestGraphBeautificationAsync(
+            goal = "解释展开后的调用链",
+            explanationFocus = "请讲解新展开的被调方法内容",
+        )
+        val explainedSnapshot = waitForSnapshot {
+            it.graphBeautificationRequestState.phase == AsyncRequestPhase.SUCCEEDED
+        }
+        val result = requireNotNull(explainedSnapshot.graphBeautificationResult)
+
+        assertEquals(AsyncRequestPhase.SUCCEEDED, explainedSnapshot.graphBeautificationRequestState.phase)
+        assertTrue(
+            result.promptPreview.contains("SystemService.createInfo"),
+            "prompt should include expanded target method, prompt=${result.promptPreview}",
+        )
+        assertTrue(
+            result.promptPreview.contains("saveInfo()"),
+            "prompt should include expanded target action, prompt=${result.promptPreview}",
+        )
+        assertTrue(result.steps.any { step ->
+            step.primaryNodeId == "action:save-info" || step.description.contains("saveInfo()")
+        })
+    }
+
+    fun testExplainsExpandedProjectedInvocationAliasInFlowchartMode() {
+        val service = project.linkGraphApplicationServiceForTest()
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        service.loadGraph(projectedCallerGraph(), "test")
+        stateService.switchAnalysisDisplayMode(com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode.FLOWCHART)
+        val overrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        overrides.invocationExpansionTargetResolver = { _, signature ->
+            InvocationExpansionTarget(InvocationExpansionTargetKind.PROJECT_SOURCE, signature = signature)
+        }
+        overrides.invocationExpansionSubjectResolver = { signature -> testCodeSubject(signature) }
+        overrides.semanticAnalyzer = SemanticAnalyzer(
+            registry = SemanticProviderRegistry(listOf(targetProvider())),
+        )
+
+        service.requestExpandInvocation("action:create-info")
+        val expandedSnapshot = waitForSnapshot {
+            it.workspaceGraph.nodes.any { node -> node.id == "action:save-info" }
+        }
+        assertTrue(expandedSnapshot.workspaceGraph.nodes.any { node -> node.id == "action:save-info" })
+
+        service.requestGraphBeautificationAsync(
+            goal = "解释展开后的调用链",
+            explanationFocus = "请讲解新展开的被调方法内容",
+        )
+        val explainedSnapshot = waitForSnapshot {
+            it.graphBeautificationRequestState.phase == AsyncRequestPhase.SUCCEEDED
+        }
+        val result = requireNotNull(explainedSnapshot.graphBeautificationResult)
+
+        assertEquals(AsyncRequestPhase.SUCCEEDED, explainedSnapshot.graphBeautificationRequestState.phase)
+        assertTrue(
+            result.promptPreview.contains("SystemService.createInfo"),
+            "prompt should include expanded target method, prompt=${result.promptPreview}",
+        )
+        assertTrue(
+            result.promptPreview.contains("saveInfo()"),
+            "prompt should include expanded target action, prompt=${result.promptPreview}",
+        )
+        assertTrue(result.steps.any { step ->
+            step.primaryNodeId == "action:save-info" || step.description.contains("saveInfo()")
+        })
+    }
+
+    fun testExpandsReadableProjectedInvocationAliasIntoCurrentWorkspaceGraph() {
+        val service = project.linkGraphApplicationServiceForTest()
+        service.loadGraph(projectedCallerGraph(), "test")
+        val overrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        overrides.invocationExpansionTargetResolver = { _, signature ->
+            InvocationExpansionTarget(InvocationExpansionTargetKind.PROJECT_SOURCE, signature = signature)
+        }
+        overrides.invocationExpansionSubjectResolver = { signature -> testCodeSubject(signature) }
+        overrides.semanticAnalyzer = SemanticAnalyzer(
+            registry = SemanticProviderRegistry(listOf(targetProvider())),
+        )
+
+        service.requestExpandInvocation("action:create-info")
+        val snapshot = waitForSnapshot {
+            it.workspaceGraph.nodes.any { node -> node.id == "action:save-info" }
+        }
+
+        assertTrue(snapshot.workspaceGraph.nodes.any { node -> node.id == "method:create-info" })
+        assertTrue(snapshot.workspaceGraph.nodes.any { node -> node.id == "action:save-info" })
+        assertTrue(snapshot.workspaceGraph.edges.any { edge ->
+            edge.fromNodeId == "invoke:create-info" && edge.toNodeId == "method:create-info"
+        })
+    }
+
+    fun testDoesNotExpandExternalJdkInvocation() {
+        val service = project.linkGraphApplicationServiceForTest()
+        service.loadGraph(
+            GraphDocument(
+                nodes = listOf(
+                    invocationNode(
+                        id = "invoke:trim",
+                        title = "value.trim()",
+                        signature = "java.lang.String.trim():java.lang.String",
+                    ),
+                ),
+            ),
+            "test",
+        )
+        project.getService(LinkGraphProjectTestOverrides::class.java).invocationExpansionTargetResolver = { _, _ ->
+            InvocationExpansionTarget(InvocationExpansionTargetKind.EXTERNAL_JDK)
+        }
+
+        service.requestExpandInvocation("invoke:trim")
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+
+        assertFalse(project.getService(GraphEditorStateService::class.java).snapshot().workspaceGraph.nodes.any { it.id == "action:save-info" })
+    }
+
+    fun testDoesNotAutoExpandMultipleInterfaceImplementations() {
+        val service = project.linkGraphApplicationServiceForTest()
+        service.loadGraph(
+            GraphDocument(
+                nodes = listOf(
+                    invocationNode(
+                        id = "invoke:service",
+                        title = "service.createInfo()",
+                        signature = "com.example.InfoService.createInfo():void",
+                    ),
+                ),
+            ),
+            "test",
+        )
+        project.getService(LinkGraphProjectTestOverrides::class.java).invocationExpansionTargetResolver = { _, _ ->
+            InvocationExpansionTarget(
+                kind = InvocationExpansionTargetKind.MULTIPLE_IMPLEMENTATIONS,
+                candidateSignatures = listOf(
+                    "com.example.AInfoService.createInfo():void",
+                    "com.example.BInfoService.createInfo():void",
+                ),
+            )
+        }
+
+        service.requestExpandInvocation("invoke:service")
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+
+        assertFalse(project.getService(GraphEditorStateService::class.java).snapshot().workspaceGraph.nodes.any { it.id == "action:save-info" })
+    }
+
+    fun testDoesNotExpandThirdPartyLibraryInvocation() {
+        val service = project.linkGraphApplicationServiceForTest()
+        service.loadGraph(
+            GraphDocument(
+                nodes = listOf(
+                    invocationNode(
+                        id = "invoke:json",
+                        title = "objectMapper.writeValueAsString(value)",
+                        signature = "com.fasterxml.jackson.databind.ObjectMapper.writeValueAsString(java.lang.Object):java.lang.String",
+                    ),
+                ),
+            ),
+            "test",
+        )
+        project.getService(LinkGraphProjectTestOverrides::class.java).invocationExpansionTargetResolver = { _, _ ->
+            InvocationExpansionTarget(InvocationExpansionTargetKind.EXTERNAL_LIBRARY)
+        }
+
+        service.requestExpandInvocation("invoke:json")
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+
+        assertFalse(project.getService(GraphEditorStateService::class.java).snapshot().workspaceGraph.nodes.any { it.id == "action:save-info" })
+    }
+
+    fun testRemovesExpansionBatch() {
+        testExpandsProjectSourceInvocationIntoCurrentWorkspaceGraph()
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        val expansionId = stateService.snapshot().workspaceGraph.nodes
+            .first { it.id == "action:save-info" }
+            .metadata["linkGraph.expansion.id"]!!
+
+        project.linkGraphApplicationServiceForTest().requestRemoveInvocationExpansion(expansionId)
+        val snapshot = waitForSnapshot {
+            it.workspaceGraph.nodes.none { node -> node.id == "action:save-info" }
+        }
+
+        assertFalse(snapshot.workspaceGraph.nodes.any { node -> node.id == "action:save-info" })
+    }
+
+    private fun callerGraph(): GraphDocument =
+        GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:caller",
+                    type = NodeType.METHOD,
+                    title = "Caller.run",
+                    signature = "com.example.Caller.run():void",
+                ),
+                invocationNode(
+                    id = "invoke:create-info",
+                    title = "systemService.createInfo()",
+                    signature = CREATE_INFO_SIGNATURE,
+                ),
+            ),
+            edges = listOf(
+                GraphEdge(
+                    id = "control:caller-to-invoke",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = "method:caller",
+                    toNodeId = "invoke:create-info",
+                ),
+            ),
+        )
+
+    private fun projectedCallerGraph(): GraphDocument =
+        GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:caller",
+                    type = NodeType.METHOD,
+                    title = "Caller.run",
+                    signature = "com.example.Caller.run():void",
+                    metadata = mapOf("flowchart.kind" to "ENTRY"),
+                ),
+                GraphNode(
+                    id = "action:create-info",
+                    type = NodeType.FLOW_ACTION,
+                    title = "systemService.createInfo()",
+                    metadata = mapOf(
+                        "flow.kind" to "ACTION",
+                        "flowchart.kind" to "PROCESS",
+                    ),
+                ),
+                invocationNode(
+                    id = "invoke:create-info",
+                    title = "调用 SystemService.createInfo",
+                    signature = CREATE_INFO_SIGNATURE,
+                ).copy(
+                    metadata = mapOf(
+                        "flow.kind" to "INVOCATION",
+                        "flowchart.kind" to "SUBROUTINE",
+                    ),
+                ),
+            ),
+            edges = listOf(
+                GraphEdge(
+                    id = "control:caller-to-action",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = "method:caller",
+                    toNodeId = "action:create-info",
+                ),
+                GraphEdge(
+                    id = "control:action-to-invoke",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = "action:create-info",
+                    toNodeId = "invoke:create-info",
+                ),
+            ),
+        )
+
+    private fun invocationNode(
+        id: String,
+        title: String,
+        signature: String,
+    ): GraphNode =
+        GraphNode(
+            id = id,
+            type = NodeType.FLOW_ACTION,
+            title = title,
+            signature = signature,
+            metadata = mapOf("flow.kind" to "INVOCATION"),
+        )
+
+    private fun testCodeSubject(signature: String): CodeSubjectHandle {
+        myFixture.configureByText(
+            "SystemService.java",
+            """
+                package com.example;
+                class SystemService {
+                    void createInfo() {
+                        <caret>saveInfo();
+                    }
+                    void saveInfo() {}
+                }
+            """.trimIndent(),
+        )
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor) as CodeSubjectHandle
+        return handle.copy(methodSignature = signature)
+    }
+
+    private fun targetProvider(): SemanticProvider =
+        object : CodeSubjectSemanticProvider {
+            override val supportedKinds: Set<CodeSubjectKind> = setOf(CodeSubjectKind.JAVA_METHOD)
+
+            override fun analyze(
+                handle: SubjectHandle,
+                capturePolicy: SemanticCapturePolicy,
+                budgetPolicy: TraversalBudgetPolicy,
+            ): SemanticAnalysisResult {
+                val codeHandle = handle as CodeSubjectHandle
+                return SemanticAnalysisResult(
+                    subject = codeHandle,
+                    anchors = listOf(SemanticAnchor(id = "anchor:create", targetUnitId = "method:create-info")),
+                    semanticUnits = listOf(
+                        MethodLikeUnit(
+                            id = "method:create-info",
+                            title = "SystemService.createInfo",
+                            signature = CREATE_INFO_SIGNATURE,
+                        ),
+                        FlowActionUnit(
+                            id = "action:save-info",
+                            title = "saveInfo()",
+                            actionKind = "ACTION",
+                        ),
+                    ),
+                    relations = listOf(
+                        SemanticRelation(SemanticRelationKind.CONTROL_FLOW, "method:create-info", "action:save-info"),
+                    ),
+                    diagnostics = emptyList(),
+                    boundaries = emptyList(),
+                    sourceMappings = emptyList(),
+                )
+            }
+        }
+
+    private fun waitForSnapshot(
+        predicate: (com.charmnight.linkgraph.ui.GraphEditorStateSnapshot) -> Boolean,
+    ): com.charmnight.linkgraph.ui.GraphEditorStateSnapshot {
+        val deadline = System.currentTimeMillis() + 15_000
+        var latest = project.getService(GraphEditorStateService::class.java).snapshot()
+        while (System.currentTimeMillis() < deadline) {
+            PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+            latest = project.getService(GraphEditorStateService::class.java).snapshot()
+            if (predicate(latest)) {
+                return latest
+            }
+            Thread.sleep(50)
+        }
+        throw AssertionError(
+            "等待调用展开结果超时，latestNodes=${latest.workspaceGraph.nodes.map { it.id }}，" +
+                "latestFeedback=${latest.operationFeedback?.message}",
+        )
+    }
+
+    private companion object {
+        const val CREATE_INFO_SIGNATURE = "com.example.SystemService.createInfo():void"
+    }
+}

@@ -55,6 +55,8 @@ internal class GraphBrowserBridgeRegistrar(
     private val nodeSelectedQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val requestSourceNavigationQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val requestExpandOverflowNodeQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    private val requestExpandInvocationQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    private val requestRemoveInvocationExpansionQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val debugTraceQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
 
     fun registerHandlers() {
@@ -224,6 +226,12 @@ internal class GraphBrowserBridgeRegistrar(
         requestExpandOverflowNodeQuery.addSafePayloadHandler("展开溢出节点", GraphBrowserPayloadKind.IDENTIFIER) { nodeId ->
             bridge.dispatch(GraphEditorMessage.RequestExpandOverflowNode(nodeId))
         }
+        requestExpandInvocationQuery.addSafePayloadHandler("展开调用方法", GraphBrowserPayloadKind.IDENTIFIER) { nodeId ->
+            bridge.dispatch(GraphEditorMessage.RequestExpandInvocation(nodeId))
+        }
+        requestRemoveInvocationExpansionQuery.addSafePayloadHandler("移除调用展开", GraphBrowserPayloadKind.IDENTIFIER) { expansionId ->
+            bridge.dispatch(GraphEditorMessage.RequestRemoveInvocationExpansion(expansionId))
+        }
         applyGraphEditScriptQuery.addSafePayloadHandler("链路图编辑脚本同步", GraphBrowserPayloadKind.GRAPH_EDIT_SCRIPT) { payload ->
             val script = GraphBrowserPayloadParser.parseGraphEditScript(payload)
             debugLazy(logger.isDebugEnabled, logger::debug) {
@@ -312,6 +320,8 @@ internal class GraphBrowserBridgeRegistrar(
               layoutChanged: (payload) => { ${layoutChangedQuery.inject("((payload && Array.isArray(payload.positions) ? payload.positions : []).map((item) => [encodeURIComponent(item.nodeId), item.x, item.y].join('\\u001f')).join('\\u001e'))")} },
               requestSourceNavigation: (nodeId) => { ${requestSourceNavigationQuery.inject("nodeId")} },
               requestExpandOverflowNode: (nodeId) => { ${requestExpandOverflowNodeQuery.inject("nodeId")} },
+              requestExpandInvocation: (nodeId) => { ${requestExpandInvocationQuery.inject("nodeId")} },
+              requestRemoveInvocationExpansion: (expansionId) => { ${requestRemoveInvocationExpansionQuery.inject("expansionId")} },
               applyGraphEditScript: (payload) => { ${applyGraphEditScriptQuery.inject("JSON.stringify(payload)")} }
             };
             window.dispatchEvent(new Event("link-graph-bridge-ready"));

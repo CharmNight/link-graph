@@ -1539,7 +1539,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertEquals(AgentRunFailureReason.MAX_FILES_READ_EXCEEDED, result.finalState.failureReason)
     }
 
-    fun testRebuildsQaInputFromRuntimeArtifactsWithoutOverwritingGraphContext() {
+    fun testRebuildsQaInputFromRuntimeArtifactsAndUsesRuntimeEditableGraph() {
         val sourceFile = Path.of(requireNotNull(project.basePath))
             .resolve("src/main/java/com/example/QaRuntimeArtifactsController.java")
         Files.createDirectories(sourceFile.parent)
@@ -1666,7 +1666,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertEquals("runtime qa", result.output?.answer)
         assertEquals(listOf("method:upload-file"), capturedQaContext?.selectedNodeIds)
         assertEquals(staleGraph.nodes.map { it.id }.toSet(), capturedQaContext?.factGraph?.nodes?.map { it.id }?.toSet())
-        assertEquals(staleGraph.nodes.map { it.id }.toSet(), capturedQaContext?.editableGraph?.nodes?.map { it.id }?.toSet())
+        assertEquals(runtimeGraph.nodes.map { it.id }.toSet(), capturedQaContext?.editableGraph?.nodes?.map { it.id }?.toSet())
         assertEquals(sourceFile.toString(), capturedQaContext?.sourceContext?.singleOrNull()?.filePath)
         assertTrue(capturedQaContext?.sourceContext?.singleOrNull()?.snippet?.contains("fallback") == true)
         assertEquals(1, capturedSession?.messages?.size)

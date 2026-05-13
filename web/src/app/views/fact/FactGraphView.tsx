@@ -11,7 +11,7 @@ import { useMeasuredLayout } from "../../reactflow/useMeasuredLayout";
 import { shouldFocusAnchor } from "../../reactflow/viewportPolicy";
 import { GraphFlowSurface } from "../../reactflow/GraphFlowSurface";
 import { canNavigateToSource } from "../../sourceNavigation";
-import type { FactGraphViewDocument } from "../../types";
+import type { FactGraphViewDocument, LinkGraphNode } from "../../types";
 import { DraftCompareSummary } from "../../components/DraftCompareSummary";
 import type { ViewStageProps } from "../viewStageProps";
 import { factGraphLayoutSizeSignature, layoutFactGraphView } from "./factGraphLayout";
@@ -21,7 +21,7 @@ interface FactGraphViewProps extends ViewStageProps {
   view: FactGraphViewDocument;
 }
 
-function emptyNode() {
+function emptyNode(): LinkGraphNode {
   return {
     id: "",
     type: "DOC_PAGE" as const,
@@ -30,6 +30,7 @@ function emptyNode() {
     outputs: [],
     certainty: "PROVEN" as const,
     bindingStatus: "BOUND" as const,
+    metadata: {},
   };
 }
 
@@ -62,6 +63,8 @@ export function FactGraphView({
   onOpenAudit = () => undefined,
   onImportMermaid,
   onExpandOverflowNode = () => undefined,
+  onExpandInvocation = () => undefined,
+  onRemoveInvocationExpansion = () => undefined,
 }: FactGraphViewProps) {
   const nodeSizeRegistry = useMemo(() => createNodeSizeRegistry(), []);
   const presentedGraph = draftCompareProjection?.compareGraph ?? view.visibleGraph;
@@ -228,25 +231,35 @@ export function FactGraphView({
           })
         }
         buildNodeActions={({ nodeId, close }) =>
-          buildNodeActions({
-            analysisDisplayMode: "FACT_GRAPH",
-            editable: true,
-            nodeId,
-            canNavigateToSource: canNavigateToSource(nodeIndex.get(nodeId) ?? emptyNode()),
-            collapsed: collapsedNodeIdSet.has(nodeId),
-            overflowActionLabel: overflowPresentation(nodeIndex.get(nodeId) ?? emptyNode())?.expandActionLabel ?? null,
-            onInspectNode,
-            onRequestSourceNavigation,
-            onRequestBeautification,
-            onRequestAudit,
-            onOpenAudit,
-            onToggleCollapseNode,
-            onExpandOverflowNode,
-            onFormatLayout: layoutState.requestRelayout,
-            onDeleteNodeSubtree,
-            onDeleteNode,
-            onClose: close,
-          })
+          {
+            const node = nodeIndex.get(nodeId) ?? emptyNode();
+            const isExpandableInvocation = node.type === "FLOW_ACTION" &&
+              node.metadata?.["flow.kind"] === "INVOCATION" &&
+              Boolean(node.signature?.trim());
+            return buildNodeActions({
+              analysisDisplayMode: "FACT_GRAPH",
+              editable: true,
+              nodeId,
+              canNavigateToSource: canNavigateToSource(node),
+              collapsed: collapsedNodeIdSet.has(nodeId),
+              overflowActionLabel: overflowPresentation(node)?.expandActionLabel ?? null,
+              invocationExpansionActionLabel: isExpandableInvocation ? "展开被调方法" : null,
+              expansionId: node.metadata?.["linkGraph.expansion.id"] ?? null,
+              onInspectNode,
+              onRequestSourceNavigation,
+              onRequestBeautification,
+              onRequestAudit,
+              onOpenAudit,
+              onToggleCollapseNode,
+              onExpandOverflowNode,
+              onExpandInvocation,
+              onRemoveInvocationExpansion,
+              onFormatLayout: layoutState.requestRelayout,
+              onDeleteNodeSubtree,
+              onDeleteNode,
+              onClose: close,
+            });
+          }
         }
         buildEdgeActions={({ edgeId, close }) =>
           buildEdgeActions({

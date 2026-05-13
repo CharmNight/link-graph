@@ -30,6 +30,9 @@ class GraphEditorCommandRouter(
             is GraphEditorMessage.LayoutChanged -> applicationService.handleFrontendLayoutChanged(message.positions)
             is GraphEditorMessage.RequestSourceNavigation -> applicationService.requestSourceNavigation(message.nodeId)
             is GraphEditorMessage.RequestExpandOverflowNode -> applicationService.requestExpandOverflowNode(message.nodeId)
+            is GraphEditorMessage.RequestExpandInvocation -> applicationService.requestExpandInvocation(message.nodeId)
+            is GraphEditorMessage.RequestRemoveInvocationExpansion ->
+                applicationService.requestRemoveInvocationExpansion(message.expansionId)
             GraphEditorMessage.RequestSyncPreview -> applicationService.requestSyncPreview()
             is GraphEditorMessage.RequestQa -> applicationService.requestQaAsync(
                 message.question,

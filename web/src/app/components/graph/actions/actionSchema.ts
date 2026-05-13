@@ -26,6 +26,8 @@ interface NodeActionSchemaInput {
   canNavigateToSource: boolean;
   collapsed: boolean;
   overflowActionLabel: string | null;
+  invocationExpansionActionLabel?: string | null;
+  expansionId?: string | null;
   onInspectNode: (nodeId: string) => void;
   onRequestSourceNavigation: (nodeId: string) => void;
   onRequestBeautification: (selectedNodeId?: string) => void;
@@ -33,6 +35,8 @@ interface NodeActionSchemaInput {
   onOpenAudit: (selectedNodeId?: string) => void;
   onToggleCollapseNode: (nodeId: string) => void;
   onExpandOverflowNode: (nodeId: string) => void;
+  onExpandInvocation?: (nodeId: string) => void;
+  onRemoveInvocationExpansion?: (expansionId: string) => void;
   onFormatLayout: () => void;
   onDeleteNodeSubtree: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
@@ -108,6 +112,8 @@ export function buildNodeActions({
   canNavigateToSource,
   collapsed,
   overflowActionLabel,
+  invocationExpansionActionLabel,
+  expansionId,
   onInspectNode,
   onRequestSourceNavigation,
   onRequestBeautification,
@@ -115,6 +121,8 @@ export function buildNodeActions({
   onOpenAudit,
   onToggleCollapseNode,
   onExpandOverflowNode,
+  onExpandInvocation,
+  onRemoveInvocationExpansion,
   onFormatLayout,
   onDeleteNodeSubtree,
   onDeleteNode,
@@ -130,6 +138,14 @@ export function buildNodeActions({
     actions.push(
       makeAction("open-source", "打开源码", () => {
         onRequestSourceNavigation(nodeId);
+        onClose();
+      }),
+    );
+  }
+  if (invocationExpansionActionLabel && onExpandInvocation) {
+    actions.push(
+      makeAction("expand-invocation", invocationExpansionActionLabel, () => {
+        onExpandInvocation(nodeId);
         onClose();
       }),
     );
@@ -156,6 +172,14 @@ export function buildNodeActions({
     actions.push(
       makeAction("expand-overflow", overflowActionLabel, () => {
         onExpandOverflowNode(nodeId);
+        onClose();
+      }),
+    );
+  }
+  if (expansionId && onRemoveInvocationExpansion) {
+    actions.push(
+      makeAction("remove-invocation-expansion", "移除此展开", () => {
+        onRemoveInvocationExpansion(expansionId);
         onClose();
       }),
     );

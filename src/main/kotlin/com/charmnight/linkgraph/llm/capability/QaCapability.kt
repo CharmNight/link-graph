@@ -705,6 +705,9 @@ class QaCapability(
         val selectedNodeIds = graphSummary?.selectedNodeIds
             ?.ifEmpty { input.qaContext.selectedNodeIds }
             ?: input.qaContext.selectedNodeIds
+        val runtimeEditableGraph = graphSummary?.graph
+            ?.takeIf { graph -> graph.nodes.isNotEmpty() || graph.edges.isNotEmpty() }
+            ?: input.qaContext.editableGraph
         val runtimeSourceContext = state.artifactRefs
             .asSequence()
             .mapNotNull(runtimeContext.artifactStore::get)
@@ -735,6 +738,7 @@ class QaCapability(
         val evidenceTrace = runtimeEvidenceTrace.ifEmpty { input.qaContext.evidenceTrace }
         return input.copy(
             qaContext = input.qaContext.copy(
+                editableGraph = runtimeEditableGraph,
                 selectedNodeIds = selectedNodeIds,
                 sourceContext = sourceContext
                     .distinctBy { snippet -> "${snippet.nodeId}:${snippet.filePath}:${snippet.startLine}:${snippet.endLine}" },

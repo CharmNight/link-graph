@@ -116,17 +116,21 @@ internal class PlanningContextFactory(
         } else {
             snapshot.semanticFactGraph.takeIf { graph -> graph.nodes.isNotEmpty() || graph.edges.isNotEmpty() } ?: workingGraph
         }
-        val anchorNodeId = resolveBeautificationAnchorNodeId(snapshot, visibleGraph)
+        val presentationGraph = includeVisibleInvocationExpansions(
+            visibleGraph = visibleGraph,
+            fullGraph = fullGraph,
+        )
+        val anchorNodeId = resolveBeautificationAnchorNodeId(snapshot, presentationGraph)
         val selectedNodeIds = snapshot.selectedNodeId?.let(::listOf).orEmpty()
         val (hiddenCurrentMethodNodeCount, hiddenCrossMethodNodeCount) = computeBeautificationHiddenCounts(
             snapshot = snapshot,
-            visibleGraph = visibleGraph,
+            visibleGraph = presentationGraph,
             fullGraph = fullGraph,
             anchorNodeId = anchorNodeId,
         )
         return GraphBeautificationContext(
             presentationContext = GraphPresentationContext(
-                graph = visibleGraph,
+                graph = presentationGraph,
                 fullGraph = fullGraph,
                 anchorNodeId = anchorNodeId,
                 selectedNodeIds = selectedNodeIds,
@@ -134,7 +138,7 @@ internal class PlanningContextFactory(
                 hiddenCrossMethodNodeCount = hiddenCrossMethodNodeCount,
             ),
             sourceContext = buildSourceSnippetContexts(
-                visibleGraph = visibleGraph,
+                visibleGraph = presentationGraph,
                 fullGraph = fullGraph,
                 anchorNodeId = anchorNodeId,
                 selectedNodeIds = selectedNodeIds,
@@ -145,6 +149,97 @@ internal class PlanningContextFactory(
             followUp = followUp,
             granularity = granularity,
         )
+    }
+
+    /**
+     * 前端流程图会把当前方法的调用展开节点叠加到锚点作用域里；讲解请求没有前端本地作用域，
+     * 因此这里用展开批次元数据把同一批节点和边补回 prompt 图。
+     */
+    private fun includeVisibleInvocationExpansions(
+        visibleGraph: GraphDocument,
+        fullGraph: GraphDocument,
+    ): GraphDocument {
+        if (visibleGraph.nodes.isEmpty() || fullGraph.nodes.isEmpty()) {
+            return visibleGraph
+        }
+        val visibleCanonicalNodeIds = visibleGraph.nodes
+            .flatMapTo(linkedSetOf()) { node -> listOf(node.id) + projectedAliasNodeIds(node) }
+        val expansionIds = linkedSetOf<String>()
+        val expandedNodeIds = linkedSetOf<String>()
+        fullGraph.nodes.forEach { node ->
+            if (isExpansionFromVisibleInvocation(node.metadata, visibleCanonicalNodeIds)) {
+                expandedNodeIds += node.id
+                node.metadata[INVOCATION_EXPANSION_ID_KEY]
+                    ?.trim()
+                    ?.takeIf(String::isNotBlank)
+                    ?.let(expansionIds::add)
+            }
+        }
+        fullGraph.edges.forEach { edge ->
+            if (isExpansionFromVisibleInvocation(edge.metadata, visibleCanonicalNodeIds)) {
+                expandedNodeIds += edge.fromNodeId
+                expandedNodeIds += edge.toNodeId
+                edge.metadata[INVOCATION_EXPANSION_ID_KEY]
+                    ?.trim()
+                    ?.takeIf(String::isNotBlank)
+                    ?.let(expansionIds::add)
+            }
+        }
+        if (expansionIds.isNotEmpty()) {
+            fullGraph.nodes
+                .filter { node -> node.metadata[INVOCATION_EXPANSION_ID_KEY]?.trim() in expansionIds }
+                .mapTo(expandedNodeIds) { node -> node.id }
+            fullGraph.edges
+                .filter { edge -> edge.metadata[INVOCATION_EXPANSION_ID_KEY]?.trim() in expansionIds }
+                .forEach { edge ->
+                    expandedNodeIds += edge.fromNodeId
+                    expandedNodeIds += edge.toNodeId
+                }
+        }
+        expandedNodeIds.removeAll(visibleGraph.nodes.mapTo(linkedSetOf()) { it.id })
+        if (expandedNodeIds.isEmpty()) {
+            return visibleGraph
+        }
+        val visibleNodeIds = visibleGraph.nodes.mapTo(linkedSetOf()) { it.id }
+        val presentationNodeIds = linkedSetOf<String>().apply {
+            addAll(visibleNodeIds)
+            addAll(expandedNodeIds)
+        }
+        val visibleEdgeIds = visibleGraph.edges.mapTo(linkedSetOf()) { it.id }
+        val extraNodes = fullGraph.nodes.filter { node -> node.id in expandedNodeIds }
+        val extraEdges = fullGraph.edges.filter { edge ->
+            edge.id !in visibleEdgeIds &&
+                edge.fromNodeId in presentationNodeIds &&
+                edge.toNodeId in presentationNodeIds &&
+                (
+                    edge.fromNodeId in expandedNodeIds ||
+                        edge.toNodeId in expandedNodeIds ||
+                        edge.metadata[INVOCATION_EXPANSION_ID_KEY]?.trim() in expansionIds ||
+                        isExpansionFromVisibleInvocation(edge.metadata, visibleCanonicalNodeIds)
+                    )
+        }
+        return visibleGraph.copy(
+            nodes = visibleGraph.nodes + extraNodes,
+            edges = visibleGraph.edges + extraEdges,
+        )
+    }
+
+    private fun isExpansionFromVisibleInvocation(
+        metadata: Map<String, String>,
+        visibleCanonicalNodeIds: Set<String>,
+    ): Boolean {
+        val sourceInvocationNodeId = metadata[INVOCATION_EXPANSION_SOURCE_NODE_ID_KEY]
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+            ?: return false
+        return sourceInvocationNodeId in visibleCanonicalNodeIds
+    }
+
+    private fun projectedAliasNodeIds(node: GraphNode): List<String> {
+        return node.metadata[FLOWCHART_ALIAS_NODE_IDS_KEY]
+            ?.split(',')
+            ?.mapNotNull { nodeId -> nodeId.trim().takeIf(String::isNotBlank) }
+            .orEmpty()
     }
 
     /**
@@ -462,6 +557,9 @@ internal class PlanningContextFactory(
         private const val MAX_BEAUTIFICATION_SOURCE_SNIPPETS = 12
         private const val PREFERRED_BEAUTIFICATION_SOURCE_SNIPPET_LENGTH = 240
         private const val MAX_BEAUTIFICATION_SOURCE_SNIPPET_LENGTH = 800
+        private const val FLOWCHART_ALIAS_NODE_IDS_KEY = "flowchart.projectedFromNodeIds"
+        private const val INVOCATION_EXPANSION_ID_KEY = "linkGraph.expansion.id"
+        private const val INVOCATION_EXPANSION_SOURCE_NODE_ID_KEY = "linkGraph.expansion.sourceInvocationNodeId"
     }
 }
 

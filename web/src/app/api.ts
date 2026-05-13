@@ -111,6 +111,8 @@ declare global {
       requestSourceNavigation?: (nodeId: string) => void;
       requestDraftNavigation?: (targetPath: string) => void;
       requestExpandOverflowNode?: (nodeId: string) => void;
+      requestExpandInvocation?: (nodeId: string) => void;
+      requestRemoveInvocationExpansion?: (expansionId: string) => void;
     };
     linkGraphBootstrap?: LinkGraphBootstrapState;
   }
@@ -476,6 +478,22 @@ export function requestDraftNavigation(targetPath: string): BridgeInvocationResu
 export function requestExpandOverflowNode(nodeId: string): BridgeInvocationResult {
   return invokeBridgeAction("requestExpandOverflowNode", (bridge) => {
     bridge.requestExpandOverflowNode?.(nodeId);
+  });
+}
+
+export function requestExpandInvocation(nodeId: string): BridgeInvocationResult {
+  return invokeBridgeAction("requestExpandInvocation", (bridge) => {
+    bridge.requestExpandInvocation?.(nodeId);
+  }, {
+    nodeId,
+  });
+}
+
+export function requestRemoveInvocationExpansion(expansionId: string): BridgeInvocationResult {
+  return invokeBridgeAction("requestRemoveInvocationExpansion", (bridge) => {
+    bridge.requestRemoveInvocationExpansion?.(expansionId);
+  }, {
+    expansionId,
   });
 }
 

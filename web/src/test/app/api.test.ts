@@ -7,6 +7,8 @@ import {
   requestAuditAsync,
   requestAnalysisDisplayMode,
   requestCurrentEditorContextGraph,
+  requestExpandInvocation,
+  requestRemoveInvocationExpansion,
   requestGraphBeautificationAsync,
   resolveInvestigationThread,
   retryLastAuditRequestAsync,
@@ -343,6 +345,28 @@ describe("publishGraphEditScript", () => {
     requestCurrentEditorContextGraph();
 
     expect(requestCurrentEditorContextGraphBridge).toHaveBeenCalledTimes(1);
+  });
+
+  it("把调用方法展开请求转发给 IDE bridge", () => {
+    const requestExpandInvocationBridge = vi.fn();
+    window.linkGraphBridge = {
+      requestExpandInvocation: requestExpandInvocationBridge,
+    };
+
+    requestExpandInvocation("invoke:create-info");
+
+    expect(requestExpandInvocationBridge).toHaveBeenCalledWith("invoke:create-info");
+  });
+
+  it("把移除调用展开请求转发给 IDE bridge", () => {
+    const requestRemoveInvocationExpansionBridge = vi.fn();
+    window.linkGraphBridge = {
+      requestRemoveInvocationExpansion: requestRemoveInvocationExpansionBridge,
+    };
+
+    requestRemoveInvocationExpansion("invocation:expansion-1");
+
+    expect(requestRemoveInvocationExpansionBridge).toHaveBeenCalledWith("invocation:expansion-1");
   });
 
   it("记录问答请求参数到前端调试 trace", () => {

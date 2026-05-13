@@ -353,6 +353,125 @@ describe("useMeasuredLayout", () => {
     expect(layout).toHaveBeenCalledTimes(1);
   });
 
+  it("reruns layout when positioned node additions are invocation expansion batches", async () => {
+    const initialGraph: LinkGraphDocument = {
+      nodes: [methodNode("method:caller", "Caller.run")],
+      edges: [],
+    };
+    const expandedNode: LinkGraphNode = {
+      ...methodNode("method:create-info", "SystemService.createInfo"),
+      position: { x: 640, y: 120 },
+      metadata: {
+        "ui.x": "640",
+        "ui.y": "120",
+        "linkGraph.expansion.id": "invocation:1",
+        "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+      },
+    };
+    const layout = vi.fn(async ({ nodes }: { nodes: LinkGraphNode[] }) => ({
+      nodes: nodes.map((node, index) => ({
+        ...node,
+        position: { x: 120 + index * 320, y: 96 },
+      })),
+      edges: [],
+    }));
+
+    const { rerender } = renderHook(
+      ({ graph }) =>
+        useMeasuredLayout({
+          graph,
+          anchorNodeId: "method:caller",
+          layout,
+        }),
+      {
+        initialProps: {
+          graph: initialGraph,
+        },
+      },
+    );
+
+    await waitFor(() => {
+      expect(layout).toHaveBeenCalledTimes(1);
+    });
+
+    rerender({
+      graph: {
+        nodes: [initialGraph.nodes[0]!, expandedNode],
+        edges: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(layout).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("reruns layout when edge-only changes add invocation expansion routing metadata", async () => {
+    const baseNode = {
+      ...methodNode("method:caller", "Caller.run"),
+      position: { x: 120, y: 96 },
+      metadata: {
+        "ui.x": "120",
+        "ui.y": "96",
+      },
+    };
+    const expandedNode = {
+      ...methodNode("method:create-info", "SystemService.createInfo"),
+      position: { x: 640, y: 96 },
+      metadata: {
+        "ui.x": "640",
+        "ui.y": "96",
+        "linkGraph.expansion.id": "invocation:1",
+        "linkGraph.expansion.sourceInvocationNodeId": "method:caller",
+      },
+    };
+    const initialGraph: LinkGraphDocument = {
+      nodes: [baseNode, expandedNode],
+      edges: [],
+    };
+    const layout = vi.fn(async ({ nodes, edges }: { nodes: LinkGraphNode[]; edges: LinkGraphDocument["edges"] }) => ({
+      nodes,
+      edges,
+    }));
+
+    const { rerender } = renderHook(
+      ({ graph }) =>
+        useMeasuredLayout({
+          graph,
+          anchorNodeId: "method:caller",
+          layout,
+        }),
+      {
+        initialProps: {
+          graph: initialGraph,
+        },
+      },
+    );
+
+    await waitFor(() => {
+      expect(layout).toHaveBeenCalledTimes(1);
+    });
+
+    rerender({
+      graph: {
+        nodes: [baseNode, expandedNode],
+        edges: [{
+          id: "call:create-info",
+          type: "CALL",
+          source: "method:caller",
+          target: "method:create-info",
+          metadata: {
+            "linkGraph.expansion.id": "invocation:1",
+          },
+        }],
+      },
+    });
+
+    await waitFor(() => {
+      expect(layout).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("preserves previous layout metadata when the host refreshes the same semantic graph without layout fields", async () => {
     const graph: LinkGraphDocument = {
       nodes: [methodNode("method:anchor", "OrderService.submit")],

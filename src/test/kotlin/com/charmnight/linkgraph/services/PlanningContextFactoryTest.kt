@@ -4,11 +4,13 @@ import com.charmnight.linkgraph.application.planning.PlanningContextFactory
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.diff.GraphDiffer
+import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.llm.EditScope
 import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.GenerationPlanItem
 import com.charmnight.linkgraph.llm.GenerationPlanSource
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
@@ -63,6 +65,119 @@ class PlanningContextFactoryTest {
 
         assertEquals(factGraph, qaGraphs.factGraph)
         assertEquals(editableGraph, qaGraphs.editableGraph)
+    }
+
+    @Test
+    fun buildGraphBeautificationContextIncludesExpandedInvocationNodesFromWorkingGraph() {
+        val callerSignature = "com.example.Caller.run():void"
+        val targetSignature = "com.example.SystemService.createInfo():void"
+        val expansionId = "invocation:expansion-1"
+        val callerMethod = GraphNode(
+            id = "method:caller",
+            type = NodeType.METHOD,
+            title = "Caller.run",
+            signature = callerSignature,
+            metadata = mapOf("flowchart.kind" to "ENTRY"),
+        )
+        val invocationNode = GraphNode(
+            id = "invoke:create-info",
+            type = NodeType.FLOW_ACTION,
+            title = "systemService.createInfo()",
+            signature = targetSignature,
+            metadata = mapOf(
+                "flow.kind" to "INVOCATION",
+                "flow.ownerMethod" to callerSignature,
+                "flowchart.kind" to "SUBROUTINE",
+            ),
+        )
+        val expandedMethod = GraphNode(
+            id = "method:create-info",
+            type = NodeType.METHOD,
+            title = "SystemService.createInfo",
+            signature = targetSignature,
+            metadata = mapOf(
+                "flow.ownerMethod" to targetSignature,
+                "flowchart.kind" to "ENTRY",
+                "linkGraph.expansion.id" to expansionId,
+                "linkGraph.expansion.sourceInvocationNodeId" to invocationNode.id,
+                "linkGraph.expansion.kind" to "INVOCATION",
+            ),
+        )
+        val expandedAction = GraphNode(
+            id = "action:save-info",
+            type = NodeType.FLOW_ACTION,
+            title = "saveInfo()",
+            metadata = mapOf(
+                "flow.kind" to "ACTION",
+                "flow.ownerMethod" to targetSignature,
+                "flowchart.kind" to "PROCESS",
+                "linkGraph.expansion.id" to expansionId,
+                "linkGraph.expansion.sourceInvocationNodeId" to invocationNode.id,
+                "linkGraph.expansion.kind" to "INVOCATION",
+            ),
+        )
+        val workingGraph = GraphDocument(
+            nodes = listOf(callerMethod, invocationNode, expandedMethod, expandedAction),
+            edges = listOf(
+                GraphEdge(
+                    id = "control:caller-to-invoke",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = callerMethod.id,
+                    toNodeId = invocationNode.id,
+                ),
+                GraphEdge(
+                    id = "call:invoke-to-expanded-method",
+                    type = EdgeType.CALL,
+                    fromNodeId = invocationNode.id,
+                    toNodeId = expandedMethod.id,
+                    metadata = mapOf("linkGraph.expansion.id" to expansionId),
+                ),
+                GraphEdge(
+                    id = "control:expanded-method-to-save",
+                    type = EdgeType.CONTROL_FLOW,
+                    fromNodeId = expandedMethod.id,
+                    toNodeId = expandedAction.id,
+                    metadata = mapOf(
+                        "linkGraph.expansion.id" to expansionId,
+                        "linkGraph.expansion.sourceInvocationNodeId" to invocationNode.id,
+                    ),
+                ),
+            ),
+        )
+        val visibleGraph = GraphDocument(
+            nodes = listOf(callerMethod, invocationNode),
+            edges = listOf(workingGraph.edges.first()),
+        )
+        val snapshot = testSnapshot(
+            analysisDisplayMode = AnalysisDisplayMode.FLOWCHART,
+            visibleGraph = visibleGraph,
+            workingGraph = workingGraph,
+            selectedMethodSignature = callerSignature,
+            selectedNodeId = callerMethod.id,
+            workingGraphDirty = true,
+        )
+
+        val context = PlanningContextFactory(
+            graphDiffer = GraphDiffer(),
+            syncPreviewPlanner = SyncPreviewPlanner(),
+            graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
+            settingsProvider = { LinkGraphSettingsState() },
+        ).buildGraphBeautificationContext(
+            snapshot = snapshot.toWorkflowEditorSnapshot(),
+            goal = "解释展开后的调用链",
+            preferredStyle = null,
+            explanationFocus = null,
+            followUp = null,
+            granularity = com.charmnight.linkgraph.workbench.StepGranularity.BUSINESS,
+        )
+
+        assertEquals(
+            setOf(callerMethod.id, invocationNode.id, expandedMethod.id, expandedAction.id),
+            context.presentationContext.graph.nodes.map(GraphNode::id).toSet(),
+        )
+        assertTrue(context.presentationContext.graph.edges.any { edge ->
+            edge.fromNodeId == expandedMethod.id && edge.toNodeId == expandedAction.id
+        })
     }
 
     @Test

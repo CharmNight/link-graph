@@ -5,8 +5,10 @@ import {
   requestCodeDraftsAsync,
   requestDraftNavigation,
   requestExpandOverflowNode,
+  requestExpandInvocation,
   requestGenerationPlanAsync,
   requestGenerationPlanDiscussionAsync,
+  requestRemoveInvocationExpansion,
   requestOpenSettings,
   requestSyncPreview,
   showDiffMode,
@@ -102,6 +104,24 @@ export function useWorkbenchCommandController({
     });
   }
 
+  function handleExpandInvocation(nodeId: string) {
+    bridgeCommands.runBridgeCommand("展开调用方法", () => requestExpandInvocation(nodeId), {
+      successFeedback: {
+        level: "INFO",
+        message: "已请求展开被调方法。",
+      },
+    });
+  }
+
+  function handleRemoveInvocationExpansion(expansionId: string) {
+    bridgeCommands.runBridgeCommand("移除调用展开", () => requestRemoveInvocationExpansion(expansionId), {
+      successFeedback: {
+        level: "INFO",
+        message: "已请求移除调用展开内容。",
+      },
+    });
+  }
+
   return {
     handleRequestAnalysisDisplayMode,
     handleExportMermaid,
@@ -114,5 +134,7 @@ export function useWorkbenchCommandController({
     handleWriteDrafts,
     handleOpenDraft,
     handleExpandOverflowNode,
+    handleExpandInvocation,
+    handleRemoveInvocationExpansion,
   };
 }

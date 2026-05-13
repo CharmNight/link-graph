@@ -694,6 +694,8 @@ export function App() {
     handleRequestScopedAudit,
     handleConfirmImportMermaidDraft,
     handleExpandOverflowNode,
+    handleExpandInvocation,
+    handleRemoveInvocationExpansion,
   } = useAppWorkbenchShellController({
     nodes,
     selectionGroupNodeIds,
@@ -1087,6 +1089,8 @@ export function App() {
     onOpenAudit: handleOpenAudit,
     onImportMermaid: handleOpenImportMermaid,
     onExpandOverflowNode: handleExpandOverflowNode,
+    onExpandInvocation: handleExpandInvocation,
+    onRemoveInvocationExpansion: handleRemoveInvocationExpansion,
   };
 
   function handleWorkflowStageChange(stage: WorkflowStage) {

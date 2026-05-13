@@ -38,7 +38,7 @@ interface UseExplanationWorkbenchControllerArgs {
     ReturnType<typeof useBridgeCommandController>,
     "submitAsyncBridgeCommand"
   >;
-  setActiveWorkbenchTab: Dispatch<SetStateAction<WorkbenchTab>>;
+  setActiveWorkbenchTab: (tab: WorkbenchTab) => void;
   setSelectedExplanationStepId: Dispatch<SetStateAction<string | null>>;
   setHoveredExplanationStepId: Dispatch<SetStateAction<string | null>>;
   setSelectedExplanationGranularity: Dispatch<SetStateAction<StepGranularity>>;

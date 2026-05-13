@@ -105,6 +105,22 @@ sealed interface GraphEditorMessage {
         val nodeId: String,
     ) : GraphEditorMessage
 
+    /**
+     * 请求展开调用节点对应的目标方法。
+     */
+    data class RequestExpandInvocation(
+        /** 保存调用节点标识。 */
+        val nodeId: String,
+    ) : GraphEditorMessage
+
+    /**
+     * 请求移除某次调用方法展开批次。
+     */
+    data class RequestRemoveInvocationExpansion(
+        /** 保存展开批次标识。 */
+        val expansionId: String,
+    ) : GraphEditorMessage
+
     /** 请求计算同步预览。 */
     data object RequestSyncPreview : GraphEditorMessage
 

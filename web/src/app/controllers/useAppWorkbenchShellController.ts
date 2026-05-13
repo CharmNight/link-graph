@@ -30,7 +30,7 @@ interface UseAppWorkbenchShellControllerArgs {
   setAuditQuestionDraft: Dispatch<SetStateAction<string>>;
   setAuditQuestionMode: Dispatch<SetStateAction<QaMode>>;
   setAuditSourceThreadId: Dispatch<SetStateAction<string | null>>;
-  setActiveWorkbenchTab: Dispatch<SetStateAction<WorkbenchTab>>;
+  setActiveWorkbenchTab: (tab: WorkbenchTab) => void;
   setOperationFeedback: Dispatch<SetStateAction<OperationFeedback | null>>;
   setDiffTargetItemIds: Dispatch<SetStateAction<string[]>>;
   handleRequestAudit: ReturnType<typeof useAuditWorkbenchController>["handleRequestAudit"];
@@ -41,7 +41,12 @@ interface UseAppWorkbenchShellControllerArgs {
   >;
   workbenchCommands: Pick<
     ReturnType<typeof useWorkbenchCommandController>,
-    "handleRequestGenerationPlan" | "handleRequestGenerationPlanDiscussion" | "handleRequestCodeDrafts" | "handleExpandOverflowNode"
+    | "handleRequestGenerationPlan"
+    | "handleRequestGenerationPlanDiscussion"
+    | "handleRequestCodeDrafts"
+    | "handleExpandOverflowNode"
+    | "handleExpandInvocation"
+    | "handleRemoveInvocationExpansion"
   >;
 }
 
@@ -139,6 +144,14 @@ export function useAppWorkbenchShellController(args: UseAppWorkbenchShellControl
     args.workbenchCommands.handleExpandOverflowNode(nodeId, nodeTitle);
   }
 
+  function handleExpandInvocation(nodeId: string) {
+    args.workbenchCommands.handleExpandInvocation(nodeId);
+  }
+
+  function handleRemoveInvocationExpansion(expansionId: string) {
+    args.workbenchCommands.handleRemoveInvocationExpansion(expansionId);
+  }
+
   function handleFocusDiffItem(itemId: string) {
     args.setDiffTargetItemIds([itemId]);
     if (args.nodes.some((node) => node.id === itemId)) {
@@ -160,6 +173,8 @@ export function useAppWorkbenchShellController(args: UseAppWorkbenchShellControl
     handleRequestScopedAudit,
     handleConfirmImportMermaidDraft,
     handleExpandOverflowNode,
+    handleExpandInvocation,
+    handleRemoveInvocationExpansion,
     handleFocusDiffItem,
   };
 }

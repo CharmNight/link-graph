@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { buildEdgeActions as buildSharedEdgeActions, buildPaneActions } from "../../components/graph/actions/actionSchema";
+import { projectedAliasNodeIds } from "../../appGraphSupport";
 import { traceLinkGraph } from "../../debug";
 import { createNodeSizeRegistry } from "../../graph/nodeSizeRegistry";
 import { flowchartNodeCardWidth } from "../../graphNodeSizing";
@@ -27,6 +28,31 @@ function fallbackSourceNode() {
     location: undefined,
     signature: undefined,
   };
+}
+
+function isInvocationExpansionSource(node: LinkGraphDocument["nodes"][number] | null | undefined): boolean {
+  return node?.type === "FLOW_ACTION" &&
+    node.metadata?.["flow.kind"] === "INVOCATION" &&
+    Boolean(node.signature?.trim());
+}
+
+function resolveInvocationExpansionNodeId(
+  node: LinkGraphDocument["nodes"][number] | null | undefined,
+  fullGraphNodeIndex: Map<string, LinkGraphDocument["nodes"][number]>,
+): string | null {
+  if (!node) {
+    return null;
+  }
+  if (isInvocationExpansionSource(node)) {
+    return node.id;
+  }
+  for (const aliasNodeId of projectedAliasNodeIds(node)) {
+    const aliasNode = fullGraphNodeIndex.get(aliasNodeId);
+    if (isInvocationExpansionSource(aliasNode)) {
+      return aliasNodeId;
+    }
+  }
+  return null;
 }
 
 function sanitizeFlowchartGraph(
@@ -97,6 +123,14 @@ function scopeFlowchartGraphToAnchorMethod(
     return resolveNodeOwnerSignature(node) === anchorSignature;
   });
   const ownerScopedNodeIds = new Set(ownerScopedNodes.map((node) => node.id));
+  const ownerScopedCanonicalNodeIds = new Set(ownerScopedNodeIds);
+  ownerScopedNodes.forEach((node) => {
+    projectedAliasNodeIds(node).forEach((aliasNodeId) => ownerScopedCanonicalNodeIds.add(aliasNodeId));
+  });
+  const expansionScopedNodes = graph.nodes.filter((node) => {
+    const sourceInvocationNodeId = node.metadata?.["linkGraph.expansion.sourceInvocationNodeId"]?.trim();
+    return Boolean(sourceInvocationNodeId && ownerScopedCanonicalNodeIds.has(sourceInvocationNodeId));
+  });
   const entryScopedNodes = graph.nodes.filter((node) => {
     if (ownerScopedNodeIds.has(node.id)) {
       return false;
@@ -106,7 +140,9 @@ function scopeFlowchartGraphToAnchorMethod(
     }
     return graph.edges.some((edge) => edge.source === node.id && ownerScopedNodeIds.has(edge.target));
   });
-  const scopedNodes = [...ownerScopedNodes, ...entryScopedNodes];
+  const scopedNodes = Array.from(new Map(
+    [...ownerScopedNodes, ...entryScopedNodes, ...expansionScopedNodes].map((node) => [node.id, node]),
+  ).values());
   if (scopedNodes.length === 0 || scopedNodes.length === graph.nodes.length) {
     return graph;
   }
@@ -146,12 +182,17 @@ function flowchartNodeActions(args: {
   nodeId: string;
   canOpenSource: boolean;
   editable: boolean;
+  invocationExpansionActionLabel?: string | null;
+  invocationExpansionNodeId?: string | null;
+  expansionId?: string | null;
   onInspectNode: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
   onRequestSourceNavigation: (nodeId: string) => void;
   onRequestBeautification: (selectedNodeId?: string) => void;
   onRequestAudit: (selectedNodeId?: string) => void;
   onOpenAudit: (selectedNodeId?: string) => void;
+  onExpandInvocation: (nodeId: string) => void;
+  onRemoveInvocationExpansion: (expansionId: string) => void;
   onFormatLayout: () => void;
   onClose: () => void;
 }) {
@@ -171,6 +212,17 @@ function flowchartNodeActions(args: {
       label: "打开源码",
       onSelect: () => {
         args.onRequestSourceNavigation(args.nodeId);
+        args.onClose();
+      },
+    });
+  }
+  if (args.invocationExpansionActionLabel) {
+    const invocationExpansionNodeId = args.invocationExpansionNodeId ?? args.nodeId;
+    actions.push({
+      id: "expand-invocation",
+      label: args.invocationExpansionActionLabel,
+      onSelect: () => {
+        args.onExpandInvocation(invocationExpansionNodeId);
         args.onClose();
       },
     });
@@ -209,6 +261,17 @@ function flowchartNodeActions(args: {
       },
     },
   );
+  if (args.expansionId) {
+    const expansionId = args.expansionId;
+    actions.push({
+      id: "remove-invocation-expansion",
+      label: "移除此展开",
+      onSelect: () => {
+        args.onRemoveInvocationExpansion(expansionId);
+        args.onClose();
+      },
+    });
+  }
   if (args.editable) {
     actions.push({
       id: "delete-node",
@@ -248,6 +311,8 @@ export function FlowchartView({
   onRequestAudit = () => undefined,
   onOpenAudit = () => undefined,
   onImportMermaid,
+  onExpandInvocation = () => undefined,
+  onRemoveInvocationExpansion = () => undefined,
 }: FlowchartViewProps) {
   const nodeSizeRegistry = useMemo(() => createNodeSizeRegistry(), []);
   const presentedGraph = draftCompareProjection?.compareGraph ?? view.visibleGraph;
@@ -322,6 +387,10 @@ export function FlowchartView({
   const nodeIndex = useMemo(
     () => new Map(visibleNodes.map((node) => [node.id, node])),
     [visibleNodes],
+  );
+  const fullGraphNodeIndex = useMemo(
+    () => new Map(view.fullGraph.nodes.map((node) => [node.id, node])),
+    [view.fullGraph.nodes],
   );
   const anchorNode = useMemo(
     () => visibleNodes.find((node) => node.id === view.anchorNodeId) ?? null,
@@ -499,19 +568,28 @@ export function FlowchartView({
           })
         }
         buildNodeActions={({ nodeId, close }) =>
-          flowchartNodeActions({
-            nodeId,
-            canOpenSource: canNavigateToSource(nodeIndex.get(nodeId) ?? fallbackSourceNode()),
-            editable: true,
-            onInspectNode,
-            onDeleteNode,
-            onRequestSourceNavigation,
-            onRequestBeautification,
-            onRequestAudit,
-            onOpenAudit,
-            onFormatLayout: layoutState.requestRelayout,
-            onClose: close,
-          })
+          {
+            const node = nodeIndex.get(nodeId);
+            const invocationExpansionNodeId = resolveInvocationExpansionNodeId(node, fullGraphNodeIndex);
+            return flowchartNodeActions({
+              nodeId,
+              canOpenSource: canNavigateToSource(node ?? fallbackSourceNode()),
+              editable: true,
+              invocationExpansionActionLabel: invocationExpansionNodeId ? "展开被调方法" : null,
+              invocationExpansionNodeId,
+              expansionId: node?.metadata?.["linkGraph.expansion.id"] ?? null,
+              onInspectNode,
+              onDeleteNode,
+              onRequestSourceNavigation,
+              onRequestBeautification,
+              onRequestAudit,
+              onOpenAudit,
+              onExpandInvocation,
+              onRemoveInvocationExpansion,
+              onFormatLayout: layoutState.requestRelayout,
+              onClose: close,
+            });
+          }
         }
         buildEdgeActions={({ edgeId, close }) =>
           [
