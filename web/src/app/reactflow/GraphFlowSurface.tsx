@@ -124,6 +124,21 @@ function hashText(value: string): string {
   return hash.toString(36);
 }
 
+function locateAnchorButtonLabel(viewportMode: AnalysisDisplayMode): string {
+  switch (viewportMode) {
+    case "CLASS_DIAGRAM":
+      return "定位当前类";
+    case "ARCHITECTURE_GRAPH":
+      return "定位当前架构";
+    case "RESOURCE_RELATION_VIEW":
+      return "定位当前资源";
+    case "FLOWCHART":
+      return "定位当前步骤";
+    default:
+      return "定位当前方法";
+  }
+}
+
 function summarizeGraphShapeSignature(signature: string) {
   return {
     length: signature.length,
@@ -851,7 +866,7 @@ export function GraphFlowSurface({
             className="canvas-locate-anchor-button"
             onClick={() => focusNodeInViewport(anchorNode, "manualAnchor")}
           >
-            定位当前方法
+            {locateAnchorButtonLabel(viewportMode)}
           </button>
         ) : null}
 

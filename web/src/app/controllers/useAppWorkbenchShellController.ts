@@ -10,9 +10,9 @@ import type {
   OperationFeedback,
   QaMode,
 } from "../types";
-import { resolveAuditTargetNodeIds } from "../appGraphSupport";
+import { resolveQaTargetNodeIds } from "../appGraphSupport";
 import type { useAppBridgeController } from "./useAppBridgeController";
-import type { useAuditWorkbenchController } from "./useAuditWorkbenchController";
+import type { useQaWorkbenchController } from "./useQaWorkbenchController";
 import type { useWorkbenchCommandController } from "./useWorkbenchCommandController";
 
 interface UseAppWorkbenchShellControllerArgs {
@@ -26,14 +26,14 @@ interface UseAppWorkbenchShellControllerArgs {
   generationPlanRequestState: AsyncRequestState;
   generationPlanDiscussionQuestionDraft: string;
   generationPlanDiscussionSession: GenerationPlanDiscussionSession | null;
-  setAuditTargetNodeIds: Dispatch<SetStateAction<string[]>>;
-  setAuditQuestionDraft: Dispatch<SetStateAction<string>>;
-  setAuditQuestionMode: Dispatch<SetStateAction<QaMode>>;
-  setAuditSourceThreadId: Dispatch<SetStateAction<string | null>>;
+  setQaTargetNodeIds: Dispatch<SetStateAction<string[]>>;
+  setQaQuestionDraft: Dispatch<SetStateAction<string>>;
+  setQaQuestionMode: Dispatch<SetStateAction<QaMode>>;
+  setQaSourceThreadId: Dispatch<SetStateAction<string | null>>;
   setActiveWorkbenchTab: (tab: WorkbenchTab) => void;
   setOperationFeedback: Dispatch<SetStateAction<OperationFeedback | null>>;
   setDiffTargetItemIds: Dispatch<SetStateAction<string[]>>;
-  handleRequestAudit: ReturnType<typeof useAuditWorkbenchController>["handleRequestAudit"];
+  handleRequestQa: ReturnType<typeof useQaWorkbenchController>["handleRequestQa"];
   handleInspectNode: (nodeId: string) => void;
   bridgeCommands: Pick<
     ReturnType<typeof useAppBridgeController>,
@@ -50,7 +50,7 @@ interface UseAppWorkbenchShellControllerArgs {
   >;
 }
 
-function buildDefaultAuditQuestion(targetNodeIds: string[], targetTitle: string | null): string {
+function buildDefaultQaQuestion(targetNodeIds: string[], targetTitle: string | null): string {
   if (targetNodeIds.length === 0) {
     return "请围绕当前整张链路图进行问答，指出可能遗漏的业务链路、异常分支、资源依赖和数据约束。";
   }
@@ -61,8 +61,8 @@ function buildDefaultAuditQuestion(targetNodeIds: string[], targetTitle: string 
 }
 
 export function useAppWorkbenchShellController(args: UseAppWorkbenchShellControllerArgs) {
-  function resolveAuditScope(targetNodeId?: string) {
-    const nodeIds = resolveAuditTargetNodeIds(targetNodeId, args.selectionGroupNodeIds);
+  function resolveQaScope(targetNodeId?: string) {
+    const nodeIds = resolveQaTargetNodeIds(targetNodeId, args.selectionGroupNodeIds);
     return {
       nodeIds,
       title: nodeIds.length === 1
@@ -71,13 +71,13 @@ export function useAppWorkbenchShellController(args: UseAppWorkbenchShellControl
     };
   }
 
-  function handleOpenAudit(targetNodeId?: string) {
-    const scope = resolveAuditScope(targetNodeId);
-    args.setAuditTargetNodeIds(scope.nodeIds);
-    args.setAuditQuestionDraft(buildDefaultAuditQuestion(scope.nodeIds, scope.title));
-    args.setAuditQuestionMode("AUTO");
-    args.setAuditSourceThreadId(null);
-    args.setActiveWorkbenchTab("audit");
+  function handleOpenQa(targetNodeId?: string) {
+    const scope = resolveQaScope(targetNodeId);
+    args.setQaTargetNodeIds(scope.nodeIds);
+    args.setQaQuestionDraft(buildDefaultQaQuestion(scope.nodeIds, scope.title));
+    args.setQaQuestionMode("AUTO");
+    args.setQaSourceThreadId(null);
+    args.setActiveWorkbenchTab("qa");
   }
 
   function handleOpenDraftValidation() {
@@ -117,14 +117,14 @@ export function useAppWorkbenchShellController(args: UseAppWorkbenchShellControl
     );
   }
 
-  function handleRequestScopedAudit(targetNodeId?: string) {
-    const scope = resolveAuditScope(targetNodeId);
-    const question = buildDefaultAuditQuestion(scope.nodeIds, scope.title);
-    args.setAuditTargetNodeIds(scope.nodeIds);
-    args.setAuditQuestionDraft(question);
-    args.setAuditQuestionMode("AUTO");
-    args.setAuditSourceThreadId(null);
-    args.handleRequestAudit(question, scope.nodeIds, "AUTO");
+  function handleRequestScopedQa(targetNodeId?: string) {
+    const scope = resolveQaScope(targetNodeId);
+    const question = buildDefaultQaQuestion(scope.nodeIds, scope.title);
+    args.setQaTargetNodeIds(scope.nodeIds);
+    args.setQaQuestionDraft(question);
+    args.setQaQuestionMode("AUTO");
+    args.setQaSourceThreadId(null);
+    args.handleRequestQa(question, scope.nodeIds, "AUTO");
   }
 
   function handleConfirmImportMermaidDraft() {
@@ -165,12 +165,12 @@ export function useAppWorkbenchShellController(args: UseAppWorkbenchShellControl
   }
 
   return {
-    handleOpenAudit,
+    handleOpenQa,
     handleOpenDraftValidation,
     handleRequestGenerationPlan,
     handleRequestCodeDrafts,
     handleRequestGenerationPlanDiscussion,
-    handleRequestScopedAudit,
+    handleRequestScopedQa,
     handleConfirmImportMermaidDraft,
     handleExpandOverflowNode,
     handleExpandInvocation,

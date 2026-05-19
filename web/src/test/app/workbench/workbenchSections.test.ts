@@ -7,18 +7,18 @@ import {
 describe("workbenchSections", () => {
   it("includes investigation leads in the default section preferences", () => {
     expect(defaultWorkbenchSectionPreferences()).toMatchObject({
-      "audit.investigation-threads": false,
+      "qa.investigation-threads": false,
     });
   });
 
-  it("preserves explicit investigation lead preferences in the effective audit layout", () => {
+  it("preserves explicit investigation lead preferences in the effective qa layout", () => {
     const effective = resolveEffectiveWorkbenchSectionPreferences({
-      tab: "audit",
+      tab: "qa",
       preferences: {
-        "audit.investigation-threads": true,
+        "qa.investigation-threads": true,
       },
     });
 
-    expect(effective["audit.investigation-threads"]).toBe(true);
+    expect(effective["qa.investigation-threads"]).toBe(true);
   });
 });

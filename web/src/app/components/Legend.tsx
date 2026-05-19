@@ -38,6 +38,30 @@ export function Legend({
           edgeTypeLabel("BINDS_CONFIG"),
           edgeTypeLabel("LINKS_DOC"),
         ];
+      case "ARCHITECTURE_GRAPH":
+        return [
+          nodeTypeLabel("MODULE"),
+          nodeTypeLabel("PACKAGE"),
+          nodeTypeLabel("SERVICE"),
+          nodeTypeLabel("LAYER"),
+          nodeTypeLabel("RESOURCE"),
+        ];
+      case "CLASS_DIAGRAM":
+        return [
+          nodeTypeLabel("CLASS"),
+          nodeTypeLabel("INTERFACE"),
+          edgeTypeLabel("EXTENDS"),
+          edgeTypeLabel("IMPLEMENTS"),
+          edgeTypeLabel("USES_TYPE"),
+        ];
+      case "REVIEW_GRAPH":
+        return [
+          nodeTypeLabel("CLASS"),
+          nodeTypeLabel("METHOD"),
+          edgeTypeLabel("USES_TYPE"),
+          edgeTypeLabel("REFLECTS_TO"),
+          edgeTypeLabel("SPI_RESOLVES_TO"),
+        ];
       case "FACT_GRAPH":
       default:
         return [

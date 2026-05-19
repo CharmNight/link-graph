@@ -40,7 +40,7 @@ describe("GenerationPlanPanel", () => {
     expect(screen.getByText("实现建议会基于当前草稿快照生成。")).toBeInTheDocument();
   });
 
-  it("renders suggestion-scoped follow-up controls instead of redirecting back to audit", async () => {
+  it("renders suggestion-scoped follow-up controls instead of redirecting back to qa", async () => {
     const user = userEvent.setup();
     const events: string[] = [];
 

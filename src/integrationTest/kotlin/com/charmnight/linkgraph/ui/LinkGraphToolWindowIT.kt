@@ -654,7 +654,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             ),
         )
         val patch = GraphPatch(
-            summary = "apply audit note",
+            summary = "apply qa note",
             operations = listOf(
                 GraphPatchOperation(
                     id = "patch-add-note",
@@ -685,7 +685,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         assertEquals(null, snapshot.draftPatchPreview)
     }
 
-    fun testRequestAuditGeneratesAnswerAndInvestigationThreads() {
+    fun testRequestQaGeneratesAnswerAndInvestigationThreads() {
         val projectService = project.getService(GraphEditorApplicationService::class.java)
         project.getService(GraphEditorStateService::class.java).loadGraph(
             GraphDocument(
@@ -762,7 +762,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         assertTrue(snapshot.draftPatchPreview!!.operations.any { it.action == GraphPatchAction.ADD_NODE })
     }
 
-    fun testRestoreDraftPatchPreviewFromAuditResultIsUnavailable() {
+    fun testRestoreDraftPatchPreviewFromQaResultIsUnavailable() {
         val projectService = project.getService(GraphEditorApplicationService::class.java)
         project.getService(GraphEditorStateService::class.java).loadGraph(
             GraphDocument(
@@ -805,7 +805,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             ),
         )
         val patch = GraphPatch(
-            summary = "apply audit note",
+            summary = "apply qa note",
             operations = listOf(
                 GraphPatchOperation(
                     id = "patch-add-note",
@@ -1131,6 +1131,72 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         assertTrue(snapshot.syncPreviewItems.any { it.title.contains("OrderDraftDto") })
     }
 
+    fun testBridgeDispatchRequestsReviewGraphFromDiff() {
+        val sourcePath = "src/main/java/com/example/review/OrderService.java"
+        myFixture.addFileToProject(
+            sourcePath,
+            """
+                package com.example.review;
+
+                class OrderService {
+                    void place() {
+                        new OrderRepository().save();
+                    }
+                }
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/review/OrderRepository.java",
+            """
+                package com.example.review;
+
+                class OrderRepository {
+                    void save() {}
+                }
+            """.trimIndent(),
+        )
+        val bridge = GraphEditorBridge(project)
+        val codeGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "class:/$sourcePath",
+                    type = NodeType.CLASS,
+                    title = "OrderService",
+                    location = "$sourcePath:3:1",
+                    signature = "com.example.review.OrderService",
+                ),
+            ),
+        )
+        val mermaid = """
+            graph TD
+            %% LG_NODE SERVICE|nodeId=class:/$sourcePath|nodeType=CLASS|title=OrderService|signature=com.example.review.OrderService|location=$sourcePath%3A4%3A1
+            SERVICE["OrderService"]
+        """.trimIndent()
+
+        bridge.dispatch(GraphEditorMessage.LoadGraph(codeGraph, "review-graph-code"))
+        bridge.dispatch(GraphEditorMessage.ImportMermaid(mermaid))
+        bridge.dispatch(GraphEditorMessage.ShowDiffMode)
+        bridge.dispatch(GraphEditorMessage.RequestReviewGraph())
+        waitForReviewGraph()
+
+        val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
+        assertEquals(GraphSceneId.WORKSPACE_REVIEW_GRAPH, snapshot.currentSceneId)
+        assertReviewGraphViewDataContract(snapshot.reviewGraphView, "toolwindow.reviewGraph")
+        assertNotNull(snapshot.reviewGraphView.visibleGraph.nodes.singleOrNull { it.signature == "com.example.review.OrderService" })
+        assertTrue(
+            "Review Graph should include indexed blast-radius relations from the shared ArchitectureGraphIndex",
+            snapshot.reviewGraphView.visibleGraph.edges.any { edge ->
+                edge.metadata["review.edgeRole"] in setOf("UPSTREAM", "DOWNSTREAM", "RELATION", "RELATED_TEST")
+            },
+        )
+        assertTrue(snapshot.reviewGraphView.summary.changedSymbolCount > 0)
+        assertEquals(1, snapshot.reviewGraphView.summary.affectedPackageCount)
+        assertEquals("SUCCESS", snapshot.operationFeedback?.level?.name)
+        assertTrue(snapshot.operationFeedback?.message?.contains("已加载 Review Graph") == true)
+        assertNotNull(snapshot.visibleGraph)
+        assertTrue(snapshot.visibleGraph!!.nodes.isNotEmpty())
+    }
+
     fun testBridgeDispatchImportsFlowchartMermaidAndShowsDiffMode() {
         val bridge = GraphEditorBridge(project)
         val codeGraph = GraphDocument(
@@ -1165,7 +1231,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         assertTrue("Unexpected issues: ${snapshot.mermaidIssues}", snapshot.mermaidIssues.isEmpty())
     }
 
-    fun testBridgeDispatchRequestsAuditAndConfirmsCandidateChangeIntoDraftWorkbench() {
+    fun testBridgeDispatchRequestsQaAndConfirmsCandidateChangeIntoDraftWorkbench() {
         val bridge = GraphEditorBridge(project)
         val stateService = project.getService(GraphEditorStateService::class.java)
         val codeGraph = GraphDocument(
@@ -1824,7 +1890,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             }
             Thread.sleep(100)
         }
-        fail("Expected audit result with candidate changes or investigation leads to be available")
+        fail("Expected QA result with candidate changes or investigation threads to be available")
     }
 
     private fun waitForDiffReviewResultAndDraftPreview() {
@@ -1837,6 +1903,22 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             Thread.sleep(100)
         }
         fail("Expected diff review result and draft patch preview to be available")
+    }
+
+    private fun waitForReviewGraph() {
+        repeat(80) {
+            PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+            val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
+            if (
+                snapshot.currentSceneId == GraphSceneId.WORKSPACE_REVIEW_GRAPH &&
+                snapshot.reviewGraphView.visibleGraph.nodes.isNotEmpty()
+            ) {
+                return
+            }
+            Thread.sleep(100)
+        }
+        val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
+        fail("Expected Review Graph to be loaded, last feedback=${snapshot.operationFeedback}")
     }
 
     private fun waitForDraftGraphNodeCount(expectedNodeCount: Int) {
@@ -1862,7 +1944,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             }
             Thread.sleep(100)
         }
-        fail("Expected confirmed audit candidate '$changeId' to be written into draft workbench state")
+        fail("Expected confirmed QA candidate '$changeId' to be written into draft workbench state")
     }
 
     private fun waitForDraftUndoState() {
@@ -2022,6 +2104,9 @@ private val GraphEditorStateSnapshot.visibleGraph: GraphDocument?
         GraphSceneId.WORKSPACE_FACT -> factGraphView.visibleGraph
         GraphSceneId.WORKSPACE_FLOWCHART -> flowchartView.visibleGraph
         GraphSceneId.WORKSPACE_RESOURCE_RELATION -> resourceRelationView.visibleGraph
+        GraphSceneId.WORKSPACE_ARCHITECTURE_GRAPH -> architectureGraphView.visibleGraph
+        GraphSceneId.WORKSPACE_CLASS_DIAGRAM -> classDiagramView.visibleGraph
+        GraphSceneId.WORKSPACE_REVIEW_GRAPH -> reviewGraphView.visibleGraph
         GraphSceneId.DIFF -> diffGraph
     }?.nonEmptyOrNull()
 

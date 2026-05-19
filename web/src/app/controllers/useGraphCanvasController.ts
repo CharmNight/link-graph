@@ -5,6 +5,8 @@ import { extractLayoutState } from "../graphState";
 import { canEditNodeLayout } from "../layoutEditability";
 import type {
   AnalysisDisplayMode,
+  ArchitectureGraphViewDocument,
+  ClassDiagramViewDocument,
   FactGraphViewDocument,
   FlowchartViewDocument,
   GraphPosition,
@@ -14,6 +16,7 @@ import type {
   LinkGraphNode,
   OperationFeedback,
   ResourceRelationViewDocument,
+  ReviewGraphViewDocument,
 } from "../types";
 
 interface UseGraphCanvasControllerArgs {
@@ -31,9 +34,12 @@ interface UseGraphCanvasControllerArgs {
   setFactGraphView: Dispatch<SetStateAction<FactGraphViewDocument>>;
   setFlowchartView: Dispatch<SetStateAction<FlowchartViewDocument>>;
   setResourceRelationView: Dispatch<SetStateAction<ResourceRelationViewDocument>>;
+  setArchitectureGraphView: Dispatch<SetStateAction<ArchitectureGraphViewDocument>>;
+  setClassDiagramView: Dispatch<SetStateAction<ClassDiagramViewDocument>>;
+  setReviewGraphView: Dispatch<SetStateAction<ReviewGraphViewDocument>>;
   setCollapsedNodeIds: Dispatch<SetStateAction<string[]>>;
   setSelectionGroupNodeIds: Dispatch<SetStateAction<string[]>>;
-  setAuditTargetNodeIds: Dispatch<SetStateAction<string[]>>;
+  setQaTargetNodeIds: Dispatch<SetStateAction<string[]>>;
   setSelectedNodeId: Dispatch<SetStateAction<string | null>>;
   setDetailNodeId: Dispatch<SetStateAction<string | null>>;
   setOperationFeedback: Dispatch<SetStateAction<OperationFeedback | null>>;
@@ -64,6 +70,18 @@ interface UseGraphCanvasControllerArgs {
     current: ResourceRelationViewDocument,
     updates: Array<{ id: string; position: GraphPosition }>,
   ) => ResourceRelationViewDocument;
+  syncArchitectureGraphViewLayout: (
+    current: ArchitectureGraphViewDocument,
+    updates: Array<{ id: string; position: GraphPosition }>,
+  ) => ArchitectureGraphViewDocument;
+  syncClassDiagramViewLayout: (
+    current: ClassDiagramViewDocument,
+    updates: Array<{ id: string; position: GraphPosition }>,
+  ) => ClassDiagramViewDocument;
+  syncReviewGraphViewLayout: (
+    current: ReviewGraphViewDocument,
+    updates: Array<{ id: string; position: GraphPosition }>,
+  ) => ReviewGraphViewDocument;
   resolveCollapsedDescendantSummary: (
     nodes: LinkGraphNode[],
     edges: LinkGraphEdge[],
@@ -316,6 +334,12 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
         args.setFlowchartView((current) => args.syncFlowchartViewLayout(current, layoutUpdates));
       } else if (args.analysisDisplayMode === "RESOURCE_RELATION_VIEW") {
         args.setResourceRelationView((current) => args.syncResourceRelationViewLayout(current, layoutUpdates));
+      } else if (args.analysisDisplayMode === "ARCHITECTURE_GRAPH") {
+        args.setArchitectureGraphView((current) => args.syncArchitectureGraphViewLayout(current, layoutUpdates));
+      } else if (args.analysisDisplayMode === "CLASS_DIAGRAM") {
+        args.setClassDiagramView((current) => args.syncClassDiagramViewLayout(current, layoutUpdates));
+      } else if (args.analysisDisplayMode === "REVIEW_GRAPH") {
+        args.setReviewGraphView((current) => args.syncReviewGraphViewLayout(current, layoutUpdates));
       }
       traceLinkGraph("app.layoutPublished", {
         reason: "single-node-drag",
@@ -364,6 +388,12 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
         args.setFlowchartView((current) => args.syncFlowchartViewLayout(current, editableUpdates));
       } else if (args.analysisDisplayMode === "RESOURCE_RELATION_VIEW") {
         args.setResourceRelationView((current) => args.syncResourceRelationViewLayout(current, editableUpdates));
+      } else if (args.analysisDisplayMode === "ARCHITECTURE_GRAPH") {
+        args.setArchitectureGraphView((current) => args.syncArchitectureGraphViewLayout(current, editableUpdates));
+      } else if (args.analysisDisplayMode === "CLASS_DIAGRAM") {
+        args.setClassDiagramView((current) => args.syncClassDiagramViewLayout(current, editableUpdates));
+      } else if (args.analysisDisplayMode === "REVIEW_GRAPH") {
+        args.setReviewGraphView((current) => args.syncReviewGraphViewLayout(current, editableUpdates));
       }
       traceLinkGraph("app.layoutPublished", {
         reason: "group-drag",
@@ -389,7 +419,7 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
 
       args.setCollapsedNodeIds(nextCollapsedNodeIds);
       args.setSelectionGroupNodeIds((current) => current.filter((item) => !nextHiddenNodeIds.has(item)));
-      args.setAuditTargetNodeIds((current) => current.filter((item) => !nextHiddenNodeIds.has(item)));
+      args.setQaTargetNodeIds((current) => current.filter((item) => !nextHiddenNodeIds.has(item)));
       if (args.selectedNodeId && nextHiddenNodeIds.has(args.selectedNodeId)) {
         args.setSelectedNodeId(nodeId);
       }

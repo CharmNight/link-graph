@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.fixtures.aop;
 
 class OrderService {
-    @Audited
+    @TracedBusinessEvent
     public String place(String orderId) {
         return orderId.trim();
     }
@@ -18,8 +18,8 @@ class TracingAspect {
         return null;
     }
 
-    @Before("@annotation(com.charmnight.linkgraph.fixtures.aop.Audited)")
-    void beforeAudited() {
+    @Before("@annotation(com.charmnight.linkgraph.fixtures.aop.TracedBusinessEvent)")
+    void beforeBusinessEvent() {
     }
 }
 
@@ -38,5 +38,5 @@ class TracingAspect {
     String value();
 }
 
-@interface Audited {
+@interface TracedBusinessEvent {
 }

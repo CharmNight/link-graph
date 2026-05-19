@@ -61,7 +61,10 @@ internal class GraphWorkspaceWorkflow(
     }
 
     fun handleFrontendLayoutChanged(positions: Map<String, GraphLayoutPosition>) {
-        val result = useCase.changeLayout(positions)
+        val result = useCase.changeLayout(snapshotProvider.snapshot(), positions)
+        if (result.positions.isEmpty()) {
+            return
+        }
         eventSink.emit(GraphEditorApplicationEvent.WorkspaceLayoutChanged(result.positions))
     }
 

@@ -127,7 +127,7 @@ class GraphEditorStateStoreTest {
             sceneStates = sceneStates,
             trustedNavigationNodes = trustedNavigationNodes,
             runtimeArtifactSummaries = runtimeSummaries,
-            workbenchSectionPreferences = linkedMapOf("audit.request-status" to true),
+            workbenchSectionPreferences = linkedMapOf("qa.request-status" to true),
         )
         val store = GraphEditorStateStore(initial)
 

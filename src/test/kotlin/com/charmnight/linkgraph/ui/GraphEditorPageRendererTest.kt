@@ -352,7 +352,7 @@ class GraphEditorPageRendererTest {
         )
         val missingPromptPayload = renderer.bootstrapPayload(missingPromptSnapshot)
         @Suppress("UNCHECKED_CAST")
-        val missingPromptState = missingPromptPayload["auditRequestState"] as Map<String, Any?>
+        val missingPromptState = missingPromptPayload["qaRequestState"] as Map<String, Any?>
 
         assertFalse(missingPromptState["promptPreviewAvailable"] as Boolean)
 
@@ -372,9 +372,9 @@ class GraphEditorPageRendererTest {
         val artifactRefs = GraphEditorArtifactRegistry().replaceWith(promptSnapshot)
         val promptPayload = renderer.bootstrapPayload(promptSnapshot, artifactRefs)
         @Suppress("UNCHECKED_CAST")
-        val promptState = promptPayload["auditRequestState"] as Map<String, Any?>
+        val promptState = promptPayload["qaRequestState"] as Map<String, Any?>
         @Suppress("UNCHECKED_CAST")
-        val promptResult = promptPayload["auditResult"] as Map<String, Any?>
+        val promptResult = promptPayload["qaResult"] as Map<String, Any?>
 
         assertTrue(promptState["promptPreviewAvailable"] as Boolean)
         assertTrue(promptResult["promptPreviewArtifactId"].toString().startsWith("qa-prompt:qa-result:"))
@@ -435,16 +435,16 @@ class GraphEditorPageRendererTest {
                 ),
             ),
             workbenchSectionPreferences = mapOf(
-                "audit.request-status" to true,
-                "audit.candidate-changes" to false,
+                "qa.request-status" to true,
+                "qa.candidate-changes" to false,
             ),
         )
 
         val json = renderer.bootstrapJson(snapshot)
 
         assertTrue(json.contains("\"workbenchSectionPreferences\""))
-        assertTrue(json.contains("\"audit.request-status\":true"))
-        assertTrue(json.contains("\"audit.candidate-changes\":false"))
+        assertTrue(json.contains("\"qa.request-status\":true"))
+        assertTrue(json.contains("\"qa.candidate-changes\":false"))
     }
 
     @Test
@@ -1374,7 +1374,7 @@ class GraphEditorPageRendererTest {
         assertTrue(bootstrapJson.contains(""""draftWorkbenchState""""))
         assertTrue(bootstrapJson.contains(""""candidateChanges""""))
         assertTrue(bootstrapJson.contains(""""newCandidateChanges""""))
-        assertTrue(bootstrapJson.contains(""""auditSession""""))
+        assertTrue(bootstrapJson.contains(""""qaSession""""))
         assertTrue(bootstrapJson.contains(""""scopeKey":"method:submit""""))
         assertTrue(bootstrapJson.contains(""""claimType":"CODE_FACT""""))
         assertTrue(bootstrapJson.contains(""""evidenceLevel":"DIRECT_SOURCE""""))

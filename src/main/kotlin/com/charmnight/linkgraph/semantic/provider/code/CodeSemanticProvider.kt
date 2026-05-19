@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.semantic.provider.code
 
+import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
 import com.charmnight.linkgraph.semantic.model.SemanticAnalysisResult
 import com.charmnight.linkgraph.semantic.policy.SemanticCapturePolicy
 import com.charmnight.linkgraph.semantic.policy.TraversalBudgetPolicy
@@ -11,9 +12,10 @@ import com.charmnight.linkgraph.semantic.subject.SubjectHandle
  * 按代码主题种类路由到 Java 或 Kotlin 语义 Provider。
  */
 class CodeSemanticProvider(
+    architectureIndexProvider: (() -> ArchitectureGraphIndex?)? = null,
     providers: List<CodeSubjectSemanticProvider> = listOf(
-        JavaCodeSemanticProvider(),
-        KotlinCodeSemanticProvider(),
+        JavaCodeSemanticProvider(CodeFlowSemanticExtractor(architectureIndexProvider = architectureIndexProvider)),
+        KotlinCodeSemanticProvider(CodeFlowSemanticExtractor(architectureIndexProvider = architectureIndexProvider)),
     ),
 ) : CodeSubjectSemanticProvider {
     private val providersByKind: Map<CodeSubjectKind, CodeSubjectSemanticProvider> = providers

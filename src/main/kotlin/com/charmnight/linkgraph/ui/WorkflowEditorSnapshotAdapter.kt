@@ -15,6 +15,9 @@ internal fun GraphEditorStateSnapshot.toWorkflowEditorSnapshot(): WorkflowEditor
         factGraphView = factGraphView.toApplicationGraphView(),
         flowchartView = flowchartView.toApplicationGraphView(),
         resourceRelationView = resourceRelationView.toApplicationGraphView(),
+        architectureGraphView = architectureGraphView.toApplicationGraphView(),
+        classDiagramView = classDiagramView.toApplicationGraphView(),
+        reviewGraphView = reviewGraphView.toApplicationGraphView(),
         analysisDisplayMode = analysisDisplayMode,
         currentSceneId = currentSceneId,
         selectedNodeId = currentSceneState().selectedNodeId,
@@ -61,6 +64,27 @@ private fun com.charmnight.linkgraph.ui.view.FlowchartViewDocument.toApplication
     )
 
 private fun com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument.toApplicationGraphView(): ApplicationGraphView =
+    ApplicationGraphView(
+        visibleGraph = visibleGraph,
+        fullGraph = fullGraph,
+        projectionIndex = projectionIndex,
+    )
+
+private fun com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument.toApplicationGraphView(): ApplicationGraphView =
+    ApplicationGraphView(
+        visibleGraph = visibleGraph,
+        fullGraph = fullGraph,
+        projectionIndex = projectionIndex,
+    )
+
+private fun com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument.toApplicationGraphView(): ApplicationGraphView =
+    ApplicationGraphView(
+        visibleGraph = visibleGraph,
+        fullGraph = fullGraph,
+        projectionIndex = projectionIndex,
+    )
+
+private fun com.charmnight.linkgraph.review.ReviewGraphViewDocument.toApplicationGraphView(): ApplicationGraphView =
     ApplicationGraphView(
         visibleGraph = visibleGraph,
         fullGraph = fullGraph,

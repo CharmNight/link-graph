@@ -71,6 +71,9 @@ class GraphEditorCommandRouter(
             GraphEditorMessage.RequestCodeDrafts -> applicationService.requestCodeDraftsAsync()
             GraphEditorMessage.RequestCurrentEditorContextGraph -> applicationService.loadCurrentEditorContextGraphAsync()
             is GraphEditorMessage.RequestAnalysisDisplayMode -> applicationService.requestAnalysisDisplayMode(message.displayMode)
+            GraphEditorMessage.RequestArchitectureGraph -> applicationService.requestArchitectureGraph()
+            is GraphEditorMessage.RequestClassDiagram -> applicationService.requestClassDiagram(message.scopeNodeId)
+            is GraphEditorMessage.RequestReviewGraph -> applicationService.requestReviewGraph(message.selectedDiffItemIds)
             is GraphEditorMessage.UpdateWorkbenchSectionPreference -> updateWorkbenchSectionPreference(
                 message.sectionId,
                 message.expanded,

@@ -23,8 +23,14 @@ export type GraphPatchAction =
 export type LlmResultSource = "DISABLED" | "LOCAL_RULE" | "REMOTE";
 export type ResultEvidenceLevel = "DIRECT_SOURCE" | "DIRECT_GRAPH" | "CALLSITE_ONLY" | "NOT_OBSERVED";
 export type DraftClaimType = "CODE_FACT" | "RISK_HINT" | "EXPLANATION_NOTE" | "STRUCTURAL_SUGGESTION";
-export type DraftPatchPreviewSource = "AUDIT" | "DIFF_REVIEW" | "LAST_APPLIED";
-export type AnalysisDisplayMode = "FACT_GRAPH" | "FLOWCHART" | "RESOURCE_RELATION_VIEW";
+export type DraftPatchPreviewSource = "QA" | "DIFF_REVIEW" | "LAST_APPLIED";
+export type AnalysisDisplayMode =
+  | "FACT_GRAPH"
+  | "FLOWCHART"
+  | "RESOURCE_RELATION_VIEW"
+  | "ARCHITECTURE_GRAPH"
+  | "CLASS_DIAGRAM"
+  | "REVIEW_GRAPH";
 export type StepGranularity = "BUSINESS" | "METHOD_CALL" | "CODE_SEMANTIC";
 export type StepKind = "BUSINESS_ACTION" | "METHOD_CALL" | "CONDITION" | "RETURN" | "RESOURCE_INTERACTION";
 export type CandidateDraftChangeStatus = "PENDING_CONFIRMATION" | "CONFIRMED" | "REJECTED" | "SUPERSEDED";
@@ -43,7 +49,7 @@ export type InvestigationTurnOutcomeStatus =
   | "DISMISSED"
   | "BLOCKED";
 export type DraftEntryKind = "CHANGE" | "NOTE";
-export type AuditMessageRole = "USER" | "ASSISTANT";
+export type QaMessageRole = "USER" | "ASSISTANT";
 export type QaRequestKind = "ASK" | "INVESTIGATE_THREAD";
 export type QaMode = "AUTO" | "ANSWER" | "REVIEW" | "CHANGE" | "INVESTIGATE";
 export type StageEligibilityTarget = "PLAN" | "CODE";
@@ -55,6 +61,18 @@ export type NodeType =
   | "TERMINAL"
   | "MERGE"
   | "CLASS"
+  | "MODULE"
+  | "PACKAGE"
+  | "INTERFACE"
+  | "ENUM"
+  | "ANNOTATION"
+  | "RECORD"
+  | "OBJECT"
+  | "EXTERNAL_CLASS"
+  | "LIBRARY"
+  | "SERVICE"
+  | "LAYER"
+  | "RESOURCE"
   | "SQL"
   | "HTTP_ENDPOINT"
   | "FEIGN_CLIENT"
@@ -71,6 +89,8 @@ export type EdgeType =
   | "CONTAINS_FLOW"
   | "CONTROL_FLOW"
   | "IMPLEMENTS"
+  | "EXTENDS"
+  | "USES_TYPE"
   | "INJECT"
   | "ROUTES_TO"
   | "MAPS_TO_SQL"
@@ -81,6 +101,7 @@ export type EdgeType =
   | "USES_PROXY"
   | "REFLECTS_TO"
   | "SPI_RESOLVES_TO"
+  | "TESTS"
   | "GENERATES";
 
 export interface GraphPosition {
@@ -111,6 +132,9 @@ export type LinkGraphSceneId =
   | "WORKSPACE_FACT"
   | "WORKSPACE_FLOWCHART"
   | "WORKSPACE_RESOURCE_RELATION"
+  | "WORKSPACE_ARCHITECTURE_GRAPH"
+  | "WORKSPACE_CLASS_DIAGRAM"
+  | "WORKSPACE_REVIEW_GRAPH"
   | "DIFF";
 
 export interface LinkGraphSceneState {
@@ -209,6 +233,130 @@ export interface ResourceRelationViewDocument {
   anchorNodeId?: string | null;
   projectionIndex?: GraphProjectionIndex;
   summary: ResourceRelationSummary;
+}
+
+export interface ArchitectureGraphSummary {
+  moduleCount: number;
+  packageCount: number;
+  serviceCount: number;
+  resourceCount: number;
+  layerCount: number;
+  relationCount: number;
+  classCount: number;
+  truncated?: boolean;
+  hiddenNodeCount?: number;
+  hiddenEdgeCount?: number;
+}
+
+export interface ArchitectureGraphViewDocument {
+  visibleGraph: LinkGraphDocument;
+  fullGraph: LinkGraphDocument;
+  anchorNodeId?: string | null;
+  projectionIndex?: GraphProjectionIndex;
+  summary: ArchitectureGraphSummary;
+}
+
+export interface ClassDiagramSummary {
+  classCount: number;
+  fieldCount?: number;
+  interfaceCount: number;
+  enumCount: number;
+  annotationCount: number;
+  recordCount: number;
+  objectCount: number;
+  relationCount: number;
+  spiProviderCount?: number;
+  reflectionRelationCount?: number;
+  truncated?: boolean;
+  hiddenNodeCount?: number;
+  hiddenEdgeCount?: number;
+}
+
+export interface ClassDiagramViewDocument {
+  visibleGraph: LinkGraphDocument;
+  fullGraph: LinkGraphDocument;
+  anchorNodeId?: string | null;
+  projectionIndex?: GraphProjectionIndex;
+  summary: ClassDiagramSummary;
+}
+
+export interface ReviewGraphSummary {
+  changedSymbolCount: number;
+  upstreamCount: number;
+  downstreamCount: number;
+  relatedTestCount: number;
+  affectedPackageCount: number;
+  affectedModuleCount: number;
+  evidenceRefCount: number;
+  truncated?: boolean;
+  hiddenNodeCount?: number;
+  hiddenEdgeCount?: number;
+}
+
+export interface ReviewGraphChangedFile {
+  oldPath?: string | null;
+  newPath?: string | null;
+  changeKind: string;
+  hunkCount: number;
+  similarity?: number | null;
+}
+
+export interface ReviewGraphChangedHunk {
+  filePath: string;
+  oldFilePath?: string | null;
+  newFilePath?: string | null;
+  changeKind: string;
+  header: string;
+  oldStartLine?: number | null;
+  oldLineCount?: number | null;
+  newStartLine?: number | null;
+  newLineCount?: number | null;
+  matchedSymbolIds: string[];
+}
+
+export interface ReviewGraphChangedSymbolDetail {
+  symbolId: string;
+  qualifiedName: string;
+  filePath?: string | null;
+  startLine?: number | null;
+  endLine?: number | null;
+  changeKind: string;
+  blastRadiusIncomplete: boolean;
+  unavailableReason?: string | null;
+}
+
+export interface ReviewGraphRelatedTestDetail {
+  symbolId: string;
+  qualifiedName: string;
+  reason: string;
+  filePath?: string | null;
+  startLine?: number | null;
+}
+
+export interface ReviewGraphEvidenceSnippet {
+  title: string;
+  kind: string;
+  filePath?: string | null;
+  startLine?: number | null;
+  endLine?: number | null;
+  snippet?: string | null;
+  unavailableReason?: string | null;
+}
+
+export interface ReviewGraphViewDocument {
+  visibleGraph: LinkGraphDocument;
+  fullGraph: LinkGraphDocument;
+  anchorNodeId?: string | null;
+  projectionIndex?: GraphProjectionIndex;
+  summary: ReviewGraphSummary;
+  changedFiles?: ReviewGraphChangedFile[];
+  changedHunks?: ReviewGraphChangedHunk[];
+  unmatchedHunks?: ReviewGraphChangedHunk[];
+  baselineOnlySymbols?: ReviewGraphChangedSymbolDetail[];
+  relatedTests?: ReviewGraphRelatedTestDetail[];
+  affectedPackages?: string[];
+  affectedModules?: string[];
+  evidenceSnippets?: ReviewGraphEvidenceSnippet[];
 }
 
 export type GraphProjectionMappingKind =
@@ -323,7 +471,7 @@ export interface GraphPatchResult {
   recentTurnOutcomes?: InvestigationTurnOutcome[];
   sourceContext?: SourceSnippetContext[];
   evidenceTrace?: EvidenceTraceEntry[];
-  auditSession?: AuditConversationSession | null;
+  qaSession?: QaConversationSession | null;
   warnings: string[];
 }
 
@@ -344,6 +492,9 @@ export interface SourceSnippetContext {
   startLine?: number | null;
   endLine?: number | null;
   snippet?: string | null;
+  origin?: string | null;
+  decompiled?: boolean | null;
+  virtualFileUrl?: string | null;
 }
 
 export interface EvidenceTraceEntry {
@@ -457,18 +608,18 @@ export interface CandidatePatchIntent {
   falseBranchTargetNodeId?: string | null;
 }
 
-export interface AuditConversationMessage {
+export interface QaConversationMessage {
   messageId: string;
-  role: AuditMessageRole;
+  role: QaMessageRole;
   content: string;
   focusTargetId?: string | null;
   turnOutcomeId?: string | null;
 }
 
-export interface AuditConversationSession {
+export interface QaConversationSession {
   sessionId: string;
   scopeKey: string;
-  messages: AuditConversationMessage[];
+  messages: QaConversationMessage[];
   candidateChanges: CandidateDraftChange[];
   investigationThreads?: InvestigationThread[];
   turnOutcomes?: InvestigationTurnOutcome[];
@@ -588,7 +739,7 @@ export interface ExplanationWorkbenchState {
   previousSessionLabel?: string | null;
 }
 
-export interface AuditWorkbenchState {
+export interface QaWorkbenchState {
   result: GraphPatchResult | null;
   requestState: AsyncRequestState;
   qaRequestRecoveryState?: QaRequestRecoveryState | null;
@@ -607,7 +758,7 @@ export interface DraftWorkbenchViewState {
 
 export interface GenerationPlanDiscussionMessage {
   messageId: string;
-  role: AuditMessageRole;
+  role: QaMessageRole;
   content: string;
   focusItemId?: string | null;
 }
@@ -652,11 +803,11 @@ export interface DraftCompareProjection {
 export type WorkbenchSectionId =
   | "explanation.step-list"
   | "explanation.step-detail"
-  | "audit.request-status"
-  | "audit.thread"
-  | "audit.composer"
-  | "audit.candidate-changes"
-  | "audit.investigation-threads"
+  | "qa.request-status"
+  | "qa.thread"
+  | "qa.composer"
+  | "qa.candidate-changes"
+  | "qa.investigation-threads"
   | "draft.change-list"
   | "draft.note-list"
   | "draft.detail";
@@ -811,6 +962,9 @@ export interface LinkGraphBootstrapState {
   factGraphView?: FactGraphViewDocument | null;
   flowchartView?: FlowchartViewDocument | null;
   resourceRelationView?: ResourceRelationViewDocument | null;
+  architectureGraphView?: ArchitectureGraphViewDocument | null;
+  classDiagramView?: ClassDiagramViewDocument | null;
+  reviewGraphView?: ReviewGraphViewDocument | null;
   semanticRevision?: number;
   workspaceRevision?: number;
   snapshotRevision?: number;
@@ -818,8 +972,8 @@ export interface LinkGraphBootstrapState {
   draftWorkbenchState?: DraftWorkbenchState | null;
   canUndoDraftPatchApply?: boolean;
   lastAppliedDraftPatchSummary?: string | null;
-  auditResult?: GraphPatchResult | null;
-  auditRequestState?: AsyncRequestState | null;
+  qaResult?: GraphPatchResult | null;
+  qaRequestState?: AsyncRequestState | null;
   qaRequestRecoveryState?: QaRequestRecoveryState | null;
   diffReviewResult?: GraphPatchResult | null;
   diffReviewRequestState?: AsyncRequestState | null;

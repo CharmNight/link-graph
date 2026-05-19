@@ -59,6 +59,25 @@ class SubjectGraphUseCase {
         cachedResult: SemanticAnalysisResult?,
         lastGraphSource: String?,
     ): SubjectGraphUseCaseResult {
+        if (displayMode == AnalysisDisplayMode.ARCHITECTURE_GRAPH || displayMode == AnalysisDisplayMode.CLASS_DIAGRAM) {
+            val existingView = if (displayMode == AnalysisDisplayMode.ARCHITECTURE_GRAPH) {
+                snapshot.architectureGraphView.visibleGraph
+            } else {
+                snapshot.classDiagramView.visibleGraph
+            }
+            return if (existingView.nodes.isNotEmpty() || existingView.edges.isNotEmpty()) {
+                SubjectGraphUseCaseResult.RequestedDisplayMode(displayMode)
+            } else {
+                SubjectGraphUseCaseResult.DisplayModeRejected(
+                    level = ApplicationFeedbackLevel.INFO,
+                    message = if (displayMode == AnalysisDisplayMode.ARCHITECTURE_GRAPH) {
+                        "架构图尚未加载，请通过架构图入口构建项目级索引。"
+                    } else {
+                        "类图尚未加载，请通过类图入口构建项目级索引。"
+                    },
+                )
+            }
+        }
         if (snapshot.workingGraphDirty) {
             return SubjectGraphUseCaseResult.RequestedDisplayMode(displayMode)
         }

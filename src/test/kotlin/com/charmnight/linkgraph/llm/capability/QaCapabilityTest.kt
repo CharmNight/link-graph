@@ -34,6 +34,7 @@ import com.charmnight.linkgraph.ui.view.GraphProjectionNodeMapping
 import com.charmnight.linkgraph.workbench.QaConversationMessage
 import com.charmnight.linkgraph.workbench.QaConversationSession
 import com.charmnight.linkgraph.workbench.QaMessageRole
+import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 import com.charmnight.linkgraph.workbench.InvestigationThread
@@ -48,6 +49,32 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class QaCapabilityTest : BasePlatformTestCase() {
+    fun testReviewModesAllowReviewGraphTools() {
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            qaExecutor = { input, _, _ ->
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "ok",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+        val baseInput = QaCapabilityInput(
+            question = "解释链路",
+            qaContext = GraphQaContext(),
+        )
+
+        assertFalse("get_blast_radius" in capability.allowedTools(baseInput))
+
+        val reviewTools = capability.allowedTools(baseInput.copy(effectiveMode = QaMode.REVIEW))
+        assertTrue("get_changed_symbols" in reviewTools)
+        assertTrue("get_blast_radius" in reviewTools)
+        assertTrue("find_related_tests" in reviewTools)
+        assertTrue("build_review_evidence_bundle" in reviewTools)
+    }
+
     fun testBuildsQaInitialStateFromQuestionAndUsesQaCapabilityId() {
         val capability = QaCapability(
             defaultBudget = RunBudget(),

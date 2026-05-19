@@ -27,6 +27,10 @@ class FactGraphProjector(
                 visibleNodeCount = visibleGraph.nodes.size,
                 fullNodeCount = fullGraph.nodes.size,
             ),
+            projectionIndex = graphProjectionIndexForVisibleGraph(
+                visibleGraph = visibleGraph,
+                fullGraph = fullGraph,
+            ),
         )
     }
 

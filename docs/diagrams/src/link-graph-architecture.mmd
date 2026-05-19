@@ -10,7 +10,7 @@ flowchart LR
 
   subgraph Backend["Kotlin 插件后端"]
     AppService["GraphEditorApplicationService\n应用服务边界"]
-    Workflows["应用工作流\n分析 / 工作区 / 问答 / 实现建议 / 代码"]
+    Workflows["应用工作流\n分析 / 架构图 / 类图 / Review / 问答 / 代码"]
     CommandRouter["GraphEditorCommandRouter\n前端命令路由"]
     StateService["GraphEditorStateService\n后端真值状态"]
     Renderers["GraphEditorPageRenderer\nGraphEditorTransportSliceRenderer\n页面与 Transport 渲染"]
@@ -20,8 +20,8 @@ flowchart LR
   subgraph Domain["图与分析领域层"]
     Subject["SubjectLocator\n光标 / 代码 / 资源主体"]
     Semantic["SemanticAnalyzer + Provider\nJava/Kotlin, MyBatis XML, SQL, YAML, Markdown"]
-    Outcome["AnalysisOutcomeFactory\n视图投影结果"]
-    Projectors["Fact / Flowchart / Resource Projector\n事实图 / 流程图 / 资源关系"]
+    Outcome["View Documents + Projectors\n六类工作区视图投影"]
+    Projectors["Fact / Flowchart / Resource / Architecture / Class / Review\n事实 / 流程 / 资源 / 架构 / 类图 / Review"]
     GraphModel["共享图模型\nGraphDocument / Node / Edge / Patch / Diff"]
     GraphOps["Mermaid / Diff / Sync / Navigation\n导入导出 / 差异 / 同步 / 源码导航"]
   end
@@ -45,7 +45,7 @@ flowchart LR
     App["App.tsx 工作台外壳"]
     Controllers["controllers\n命令 + 状态转换"]
     Store["前端状态 Store"]
-    Views["views\n事实图 / 流程图 / 资源"]
+    Views["views\n事实 / 流程 / 资源 / 架构 / 类图 / Review"]
     ReactFlow["@xyflow/react + elkjs\n图画布 + 自动布局"]
     Panels["components + workbench\n证据 / 问答 / 讲解 / 草稿 / 代码"]
   end

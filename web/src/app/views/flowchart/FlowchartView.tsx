@@ -189,8 +189,8 @@ function flowchartNodeActions(args: {
   onDeleteNode: (nodeId: string) => void;
   onRequestSourceNavigation: (nodeId: string) => void;
   onRequestBeautification: (selectedNodeId?: string) => void;
-  onRequestAudit: (selectedNodeId?: string) => void;
-  onOpenAudit: (selectedNodeId?: string) => void;
+  onRequestQa: (selectedNodeId?: string) => void;
+  onOpenQa: (selectedNodeId?: string) => void;
   onExpandInvocation: (nodeId: string) => void;
   onRemoveInvocationExpansion: (expansionId: string) => void;
   onFormatLayout: () => void;
@@ -237,18 +237,18 @@ function flowchartNodeActions(args: {
       },
     },
     {
-      id: "audit-node",
+      id: "qa-node",
       label: "问答当前节点",
       onSelect: () => {
-        args.onRequestAudit(args.nodeId);
+        args.onRequestQa(args.nodeId);
         args.onClose();
       },
     },
     {
-      id: "set-audit-anchor",
+      id: "set-qa-anchor",
       label: "设为问答范围起点",
       onSelect: () => {
-        args.onOpenAudit(args.nodeId);
+        args.onOpenQa(args.nodeId);
         args.onClose();
       },
     },
@@ -308,8 +308,8 @@ export function FlowchartView({
   onMoveNodes,
   onRequestSourceNavigation,
   onRequestBeautification = () => undefined,
-  onRequestAudit = () => undefined,
-  onOpenAudit = () => undefined,
+  onRequestQa = () => undefined,
+  onOpenQa = () => undefined,
   onImportMermaid,
   onExpandInvocation = () => undefined,
   onRemoveInvocationExpansion = () => undefined,
@@ -563,7 +563,7 @@ export function FlowchartView({
             onAddNode,
             onImportMermaid,
             onFormatLayout: layoutState.requestRelayout,
-            onOpenAudit,
+            onOpenQa,
             onClose: close,
           })
         }
@@ -582,8 +582,8 @@ export function FlowchartView({
               onDeleteNode,
               onRequestSourceNavigation,
               onRequestBeautification,
-              onRequestAudit,
-              onOpenAudit,
+              onRequestQa,
+              onOpenQa,
               onExpandInvocation,
               onRemoveInvocationExpansion,
               onFormatLayout: layoutState.requestRelayout,

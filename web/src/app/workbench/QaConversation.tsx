@@ -5,14 +5,14 @@ import {
 } from "../labels";
 import type {
   AsyncRequestState,
-  AuditConversationMessage,
+  QaConversationMessage,
   InvestigationThread,
   InvestigationTurnOutcome,
 } from "../types";
 import { parseStructuredRichText } from "../structuredRichText";
 
-interface AuditConversationProps {
-  messages: AuditConversationMessage[];
+interface QaConversationProps {
+  messages: QaConversationMessage[];
   turnOutcomes?: InvestigationTurnOutcome[];
   investigationThreads?: InvestigationThread[];
   requestState?: AsyncRequestState | null;
@@ -52,22 +52,22 @@ function isRiskLine(line: string): boolean {
   return /^(风险|风险点|问题|注意|隐患|异常风险|边界风险)/.test(line);
 }
 
-interface AuditContentBlock {
+interface QaContentBlock {
   type: "paragraph" | "bullet" | "ordered";
   lines: string[];
 }
 
-interface ParsedAuditContent {
+interface ParsedQaContent {
   heading: string | null;
   summaryLines: string[];
   summarySentence: string | null;
-  remainingBlocks: AuditContentBlock[];
+  remainingBlocks: QaContentBlock[];
   shouldCollapse: boolean;
 }
 
-type AuditBulletBlockKind = "risk" | "suggestion" | "generic";
+type QaBulletBlockKind = "risk" | "suggestion" | "generic";
 
-function classifyBulletBlock(lines: string[]): AuditBulletBlockKind {
+function classifyBulletBlock(lines: string[]): QaBulletBlockKind {
   if (lines.length === 0) {
     return "generic";
   }
@@ -80,7 +80,7 @@ function classifyBulletBlock(lines: string[]): AuditBulletBlockKind {
   return "generic";
 }
 
-function classifyBulletLine(line: string): AuditBulletBlockKind {
+function classifyBulletLine(line: string): QaBulletBlockKind {
   if (isSuggestionLine(line)) {
     return "suggestion";
   }
@@ -90,8 +90,8 @@ function classifyBulletLine(line: string): AuditBulletBlockKind {
   return "generic";
 }
 
-function splitBulletLineGroups(lines: string[]): Array<{ kind: AuditBulletBlockKind; lines: string[] }> {
-  const groups: Array<{ kind: AuditBulletBlockKind; lines: string[] }> = [];
+function splitBulletLineGroups(lines: string[]): Array<{ kind: QaBulletBlockKind; lines: string[] }> {
+  const groups: Array<{ kind: QaBulletBlockKind; lines: string[] }> = [];
   lines.forEach((line) => {
     const kind = classifyBulletLine(line);
     const currentGroup = groups[groups.length - 1];
@@ -104,7 +104,7 @@ function splitBulletLineGroups(lines: string[]): Array<{ kind: AuditBulletBlockK
   return groups;
 }
 
-function parseStructuredAssistantContent(content: string): ParsedAuditContent | null {
+function parseStructuredAssistantContent(content: string): ParsedQaContent | null {
   const parsed = parseStructuredRichText(content);
   if (!parsed) {
     return null;
@@ -142,10 +142,10 @@ function renderStructuredAssistantContent(content: string, expanded: boolean, on
     .reduce((count, block) => count + block.lines.filter((line) => classifyBulletLine(line) === "suggestion").length, 0);
 
   const summarySection = (
-    <section className={expanded ? "audit-rich-section audit-rich-section-summary expanded" : "audit-rich-section audit-rich-section-summary"}>
-      <div className="audit-rich-summary-head">
-        <div className="audit-rich-summary-title">
-          <div className="audit-rich-section-label">结论</div>
+    <section className={expanded ? "qa-rich-section qa-rich-section-summary expanded" : "qa-rich-section qa-rich-section-summary"}>
+      <div className="qa-rich-summary-head">
+        <div className="qa-rich-summary-title">
+          <div className="qa-rich-section-label">结论</div>
           {heading ? <h4>{heading}</h4> : null}
         </div>
         {shouldCollapse ? (
@@ -165,7 +165,7 @@ function renderStructuredAssistantContent(content: string, expanded: boolean, on
         </p>
       ) : null}
       {shouldCollapse ? (
-        <div className="audit-rich-summary-stats">
+        <div className="qa-rich-summary-stats">
           {orderedStepCount > 0 ? <span className="badge">{orderedStepCount} 步</span> : null}
           {riskCount > 0 ? <span className="badge">{riskCount} 风险</span> : null}
           {suggestionCount > 0 ? <span className="badge">{suggestionCount} 建议</span> : null}
@@ -175,7 +175,7 @@ function renderStructuredAssistantContent(content: string, expanded: boolean, on
   );
 
   if (shouldCollapse && !expanded) {
-    return <div className="audit-rich-text is-collapsed">{summarySection}</div>;
+    return <div className="qa-rich-text is-collapsed">{summarySection}</div>;
   }
 
   const detailSections: ReactNode[] = [];
@@ -185,9 +185,9 @@ function renderStructuredAssistantContent(content: string, expanded: boolean, on
 
     if (block.type === "ordered") {
       detailSections.push(
-        <section key={`ordered-${blockIndex}`} className="audit-rich-section">
-          <div className="audit-rich-section-label">执行步骤</div>
-          <ol className="audit-rich-list ordered timeline" aria-label="执行步骤">
+        <section key={`ordered-${blockIndex}`} className="qa-rich-section">
+          <div className="qa-rich-section-label">执行步骤</div>
+          <ol className="qa-rich-list ordered timeline" aria-label="执行步骤">
             {block.lines.map((line, lineIndex) => (
               <li key={`ordered-${blockIndex}-${lineIndex}`}>{renderInlineContent(line)}</li>
             ))}
@@ -210,24 +210,24 @@ function renderStructuredAssistantContent(content: string, expanded: boolean, on
             key={`bullet-${blockIndex}-${groupIndex}`}
             className={
               group.kind === "risk"
-                ? "audit-rich-section risk"
+                ? "qa-rich-section risk"
                 : group.kind === "suggestion"
-                  ? "audit-rich-section suggestion"
-                  : "audit-rich-section"
+                  ? "qa-rich-section suggestion"
+                  : "qa-rich-section"
             }
           >
             <div
               className={
                 group.kind === "risk"
-                  ? "audit-rich-section-label risk"
+                  ? "qa-rich-section-label risk"
                   : group.kind === "suggestion"
-                    ? "audit-rich-section-label suggestion"
-                    : "audit-rich-section-label"
+                    ? "qa-rich-section-label suggestion"
+                    : "qa-rich-section-label"
               }
             >
               {sectionLabel}
             </div>
-            <ul className="audit-rich-list">
+            <ul className="qa-rich-list">
               {group.lines.map((line, lineIndex) => (
                 <li key={`bullet-${blockIndex}-${groupIndex}-${lineIndex}`}>{renderInlineContent(line)}</li>
               ))}
@@ -257,8 +257,8 @@ function renderStructuredAssistantContent(content: string, expanded: boolean, on
     }
 
     detailSections.push(
-      <section key={`paragraph-${blockIndex}`} className="audit-rich-section">
-        <div className="audit-rich-section-label">补充说明</div>
+      <section key={`paragraph-${blockIndex}`} className="qa-rich-section">
+        <div className="qa-rich-section-label">补充说明</div>
         {paragraphBlocks.map((paragraphLines, paragraphIndex) => (
           <p key={`paragraph-${blockIndex}-${paragraphIndex}`}>
             {paragraphLines.map((line, lineIndex) => (
@@ -270,7 +270,7 @@ function renderStructuredAssistantContent(content: string, expanded: boolean, on
           </p>
         ))}
         {appendedGenericBulletBlocks.map((lines, genericIndex) => (
-          <ul key={`generic-${blockIndex}-${genericIndex}`} className="audit-rich-list">
+          <ul key={`generic-${blockIndex}-${genericIndex}`} className="qa-rich-list">
             {lines.map((line, lineIndex) => (
               <li key={`generic-${blockIndex}-${genericIndex}-${lineIndex}`}>{renderInlineContent(line)}</li>
             ))}
@@ -281,14 +281,14 @@ function renderStructuredAssistantContent(content: string, expanded: boolean, on
   }
 
   return (
-    <div className="audit-rich-text is-expanded">
+    <div className="qa-rich-text is-expanded">
       {summarySection}
-      <div className="audit-rich-scroll-shell">{detailSections}</div>
+      <div className="qa-rich-scroll-shell">{detailSections}</div>
     </div>
   );
 }
 
-function AssistantAuditMessage({ content }: { content: string }) {
+function AssistantQaMessage({ content }: { content: string }) {
   const parsed = parseStructuredAssistantContent(content);
   const [expanded, setExpanded] = useState(() => !parsed?.shouldCollapse);
 
@@ -318,7 +318,7 @@ function InvestigationOutcomeSummary({
     <section className="workbench-chat-outcome" aria-label={`本轮结果：${title}`}>
       <div className="workbench-chat-outcome-head">
         <div className="workbench-chat-outcome-title">
-          <span className="audit-rich-section-label">本轮结果</span>
+          <span className="qa-rich-section-label">本轮结果</span>
           <strong>{title}</strong>
         </div>
         <span className="workbench-status-pill">{investigationTurnOutcomeStatusLabel(outcome.status)}</span>
@@ -337,12 +337,12 @@ function InvestigationOutcomeSummary({
   );
 }
 
-export function AuditConversation({
+export function QaConversation({
   messages,
   turnOutcomes = [],
   investigationThreads = [],
   requestState = null,
-}: AuditConversationProps) {
+}: QaConversationProps) {
   const requestRunning = requestState?.phase === "RUNNING";
   const outcomesById = new Map(turnOutcomes.map((outcome) => [outcome.outcomeId, outcome]));
   const threadsById = new Map(investigationThreads.map((thread) => [thread.threadId, thread]));
@@ -384,7 +384,7 @@ export function AuditConversation({
                 </div>
                 <div className="workbench-chat-message-body">
                   {message.role === "ASSISTANT"
-                    ? <AssistantAuditMessage content={message.content} />
+                    ? <AssistantQaMessage content={message.content} />
                     : <p>{message.content}</p>}
                   {message.role === "ASSISTANT" && linkedOutcome ? (
                     <InvestigationOutcomeSummary outcome={linkedOutcome} thread={linkedThread} />

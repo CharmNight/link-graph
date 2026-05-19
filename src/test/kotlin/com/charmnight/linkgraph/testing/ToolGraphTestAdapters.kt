@@ -29,6 +29,16 @@ fun GraphEditorStateSnapshot.toToolGraphSnapshot(): ToolGraphSnapshot {
             fullGraph = resourceRelationView.fullGraph,
             projectionIndex = resourceRelationView.projectionIndex.toToolGraphProjectionIndex(),
         ),
+        architectureGraphView = ToolGraphView(
+            visibleGraph = architectureGraphView.visibleGraph,
+            fullGraph = architectureGraphView.fullGraph,
+            projectionIndex = architectureGraphView.projectionIndex.toToolGraphProjectionIndex(),
+        ),
+        classDiagramView = ToolGraphView(
+            visibleGraph = classDiagramView.visibleGraph,
+            fullGraph = classDiagramView.fullGraph,
+            projectionIndex = classDiagramView.projectionIndex.toToolGraphProjectionIndex(),
+        ),
         diffGraph = diffGraph,
         diff = diff,
         currentSceneId = currentSceneId.toToolGraphSceneId(),
@@ -45,6 +55,9 @@ private fun GraphSceneId.toToolGraphSceneId(): ToolGraphSceneId = when (this) {
     GraphSceneId.WORKSPACE_FACT -> ToolGraphSceneId.WORKSPACE_FACT
     GraphSceneId.WORKSPACE_FLOWCHART -> ToolGraphSceneId.WORKSPACE_FLOWCHART
     GraphSceneId.WORKSPACE_RESOURCE_RELATION -> ToolGraphSceneId.WORKSPACE_RESOURCE_RELATION
+    GraphSceneId.WORKSPACE_ARCHITECTURE_GRAPH -> ToolGraphSceneId.WORKSPACE_ARCHITECTURE_GRAPH
+    GraphSceneId.WORKSPACE_CLASS_DIAGRAM -> ToolGraphSceneId.WORKSPACE_CLASS_DIAGRAM
+    GraphSceneId.WORKSPACE_REVIEW_GRAPH -> ToolGraphSceneId.WORKSPACE_REVIEW_GRAPH
     GraphSceneId.DIFF -> ToolGraphSceneId.DIFF
 }
 

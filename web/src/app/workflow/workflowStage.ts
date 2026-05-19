@@ -1,6 +1,6 @@
 export type WorkflowStage = "understand" | "evidence" | "qa" | "draft" | "code";
 
-export type WorkbenchTab = "explanation" | "audit" | "draft" | "code";
+export type WorkbenchTab = "explanation" | "qa" | "draft" | "code";
 
 export type WorkflowStageStatus = "idle" | "active" | "done" | "blocked" | "running" | "failed";
 
@@ -49,7 +49,7 @@ export function workflowStageToWorkbenchTab(stage: WorkflowStage): WorkbenchTab 
     case "understand":
       return "explanation";
     case "qa":
-      return "audit";
+      return "qa";
     case "draft":
       return "draft";
     case "code":
@@ -63,7 +63,7 @@ export function workbenchTabToWorkflowStage(tab: WorkbenchTab): WorkflowStage {
   switch (tab) {
     case "explanation":
       return "understand";
-    case "audit":
+    case "qa":
       return "qa";
     case "draft":
       return "draft";

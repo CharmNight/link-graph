@@ -41,6 +41,9 @@ internal class GraphBrowserBridgeRegistrar(
     private val requestCodeDraftsQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val requestCurrentEditorContextGraphQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val requestAnalysisDisplayModeQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    private val requestArchitectureGraphQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    private val requestClassDiagramQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    private val requestReviewGraphQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val updateWorkbenchSectionPreferenceQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val requestOpenSettingsQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val applyCodeDraftsQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
@@ -77,14 +80,14 @@ internal class GraphBrowserBridgeRegistrar(
             debugLazy(logger.isDebugEnabled, logger::debug) {
                 "收到前端请求：问答, question=${summarizePayloadText(request.question)}, selectedNodeIds=${request.selectedNodeIds}, sourceThreadId=${request.sourceThreadId}"
             }
-            bridge.dispatch(
+            dispatchBridgeAsync("问答") {
                 GraphEditorMessage.RequestQa(
                     question = request.question,
                     selectedNodeIds = request.selectedNodeIds,
                     sourceThreadId = request.sourceThreadId,
                     mode = request.mode,
-                ),
-            )
+                )
+            }
         }
         retryLastQaRequestQuery.addSafeHandler("重试问答") {
             bridge.dispatch(GraphEditorMessage.RetryLastQaRequest)
@@ -127,7 +130,7 @@ internal class GraphBrowserBridgeRegistrar(
                         "granularity=${request.granularity}, followUpStepId=${request.followUp?.stepId ?: ""}",
                 )
             }
-            bridge.dispatch(
+            dispatchBridgeAsync("链路讲解") {
                 GraphEditorMessage.RequestGraphBeautification(
                     goal = request.goal,
                     preferredStyle = request.preferredStyle,
@@ -135,8 +138,8 @@ internal class GraphBrowserBridgeRegistrar(
                     focusNodeId = request.focusNodeId,
                     followUp = request.followUp,
                     granularity = request.granularity,
-                ),
-            )
+                )
+            }
         }
         applyDraftPatchPreviewQuery.addSafePayloadHandler("应用草稿补丁预览", GraphBrowserPayloadKind.STRUCTURED) { payload ->
             val operationIds = GraphBrowserPayloadParser.parseEncodedList(payload).toSet().takeIf { it.isNotEmpty() }
@@ -185,6 +188,21 @@ internal class GraphBrowserBridgeRegistrar(
                     AnalysisDisplayMode.valueOf(payload),
                 ),
             )
+        }
+        requestArchitectureGraphQuery.addSafeHandler("加载架构图") {
+            dispatchBridgeAsync("加载架构图") {
+                GraphEditorMessage.RequestArchitectureGraph
+            }
+        }
+        requestClassDiagramQuery.addSafePayloadHandler("加载类图", GraphBrowserPayloadKind.IDENTIFIER) { payload ->
+            dispatchBridgeAsync("加载类图") {
+                GraphEditorMessage.RequestClassDiagram(payload.trim().takeIf(String::isNotBlank))
+            }
+        }
+        requestReviewGraphQuery.addSafePayloadHandler("加载 Review Graph", GraphBrowserPayloadKind.STRUCTURED) { payload ->
+            dispatchBridgeAsync("加载 Review Graph") {
+                GraphEditorMessage.RequestReviewGraph(GraphBrowserPayloadParser.parseEncodedList(payload))
+            }
         }
         updateWorkbenchSectionPreferenceQuery.addSafePayloadHandler("更新工作台偏好", GraphBrowserPayloadKind.STRUCTURED) { payload ->
             val parts = payload.split('\u001f')
@@ -264,10 +282,14 @@ internal class GraphBrowserBridgeRegistrar(
         layoutChangedQuery.addSafePayloadHandler("链路图布局同步", GraphBrowserPayloadKind.GRAPH_EDIT_SCRIPT) { payload ->
             bridge.dispatch(GraphEditorMessage.LayoutChanged(GraphBrowserPayloadParser.parseLayoutPositions(payload)))
         }
-        debugTraceQuery.addSafePayloadHandler("前端 trace", GraphBrowserPayloadKind.DEBUG_TRACE) { payload ->
-            if (shouldLogFrontendTrace(payload)) {
-                runtimeTrace?.invoke("前端 trace: $payload")
-                debugLazy(logger.isDebugEnabled, logger::debug) { "前端 trace: $payload" }
+        debugTraceQuery.addHandler { payload ->
+            safeBridgeResponse("前端 trace") {
+                if (shouldLogFrontendTrace(payload)) {
+                    GraphBrowserPayloadParser.validatePayloadSize(payload, GraphBrowserPayloadKind.DEBUG_TRACE)
+                    runtimeTrace?.invoke("前端 trace: $payload")
+                    debugLazy(logger.isDebugEnabled, logger::debug) { "前端 trace: $payload" }
+                }
+                JBCefJSQuery.Response("ok")
             }
         }
     }
@@ -299,10 +321,10 @@ internal class GraphBrowserBridgeRegistrar(
               exportMermaid: () => { ${exportMermaidQuery.inject("'exportMermaid'")} },
               showDiffMode: () => { ${showDiffModeQuery.inject("'showDiffMode'")} },
               requestSyncPreview: () => { ${requestSyncPreviewQuery.inject("'requestSyncPreview'")} },
-              requestAudit: (question, selectedNodeIds, sourceThreadId, mode) => { ${requestQaQuery.inject("[(question ? encodeURIComponent(question) : ''), ((selectedNodeIds || []).map((value) => encodeURIComponent(value)).join(',')), (sourceThreadId ? encodeURIComponent(sourceThreadId) : ''), (mode ? encodeURIComponent(mode) : 'AUTO')].join('\\u001f')")} },
-              retryLastAuditRequest: () => { ${retryLastQaRequestQuery.inject("'retryLastAuditRequest'")} },
-              confirmAuditCandidateChange: (changeId) => { ${confirmQaCandidateChangeQuery.inject("changeId")} },
-              unconfirmAuditCandidateChange: (changeId) => { ${unconfirmQaCandidateChangeQuery.inject("changeId")} },
+              requestQa: (question, selectedNodeIds, sourceThreadId, mode) => { ${requestQaQuery.inject("[(question ? encodeURIComponent(question) : ''), ((selectedNodeIds || []).map((value) => encodeURIComponent(value)).join(',')), (sourceThreadId ? encodeURIComponent(sourceThreadId) : ''), (mode ? encodeURIComponent(mode) : 'AUTO')].join('\\u001f')")} },
+              retryLastQaRequest: () => { ${retryLastQaRequestQuery.inject("'retryLastQaRequest'")} },
+              confirmQaCandidateChange: (changeId) => { ${confirmQaCandidateChangeQuery.inject("changeId")} },
+              unconfirmQaCandidateChange: (changeId) => { ${unconfirmQaCandidateChangeQuery.inject("changeId")} },
               resolveInvestigationThread: (threadId, resolutionStatus, note) => { ${resolveInvestigationThreadQuery.inject("[(threadId ? encodeURIComponent(threadId) : ''), (resolutionStatus ? encodeURIComponent(resolutionStatus) : ''), (note ? encodeURIComponent(note) : '')].join('\\u001f')")} },
               requestDiffReview: (question, selectedDiffItemIds) => { ${requestDiffReviewQuery.inject("[(question ? encodeURIComponent(question) : ''), ((selectedDiffItemIds || []).map((value) => encodeURIComponent(value)).join(','))].join('\\u001f')")} },
               requestGraphBeautification: (goal, preferredStyle, explanationFocus, granularity, followUpStepId, followUpStepTitle, followUpQuestion, focusNodeId) => { ${requestGraphBeautificationQuery.inject("[(goal ? encodeURIComponent(goal) : ''), (preferredStyle ? encodeURIComponent(preferredStyle) : ''), (explanationFocus ? encodeURIComponent(explanationFocus) : ''), (granularity ? encodeURIComponent(granularity) : ''), (followUpStepId ? encodeURIComponent(followUpStepId) : ''), (followUpStepTitle ? encodeURIComponent(followUpStepTitle) : ''), (followUpQuestion ? encodeURIComponent(followUpQuestion) : ''), (focusNodeId ? encodeURIComponent(focusNodeId) : '')].join('\\u001f')")} },
@@ -315,6 +337,9 @@ internal class GraphBrowserBridgeRegistrar(
               requestCodeDrafts: () => { ${requestCodeDraftsQuery.inject("'requestCodeDrafts'")} },
               requestCurrentEditorContextGraph: () => { ${requestCurrentEditorContextGraphQuery.inject("'requestCurrentEditorContextGraph'")} },
               requestAnalysisDisplayMode: (displayMode) => { ${requestAnalysisDisplayModeQuery.inject("displayMode")} },
+              requestArchitectureGraph: () => { ${requestArchitectureGraphQuery.inject("'requestArchitectureGraph'")} },
+              requestClassDiagram: (scopeNodeId) => { ${requestClassDiagramQuery.inject("scopeNodeId || ''")} },
+              requestReviewGraph: (selectedDiffItemIds) => { ${requestReviewGraphQuery.inject("((selectedDiffItemIds || []).map((value) => encodeURIComponent(value)).join(','))")} },
               updateWorkbenchSectionPreference: (sectionId, expanded) => { ${updateWorkbenchSectionPreferenceQuery.inject("[(sectionId ? encodeURIComponent(sectionId) : ''), (expanded ? '1' : '0')].join('\\u001f')")} },
               requestOpenSettings: () => { ${requestOpenSettingsQuery.inject("'requestOpenSettings'")} },
               applyCodeDrafts: () => { ${applyCodeDraftsQuery.inject("'applyCodeDrafts'")} },

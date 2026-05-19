@@ -17,7 +17,7 @@ sequenceDiagram
   PS->>State: 更新语义图 / 工作区图状态
   State-->>Bridge: 渲染 Bootstrap 或增量载荷
   Bridge-->>UI: 执行 JavaScript 更新
-  UI-->>用户: 渲染事实图、流程图、资源关系视图
+  UI-->>用户: 渲染事实图、流程图、资源关系、架构图、类图或 Review Graph
 
   用户->>UI: 发起风险问答 / 讲解 / 实现建议 / 草稿 / 导航
   UI->>Bridge: window.linkGraphBridge 请求

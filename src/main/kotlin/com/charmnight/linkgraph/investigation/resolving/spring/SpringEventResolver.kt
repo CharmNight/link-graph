@@ -2,33 +2,22 @@ package com.charmnight.linkgraph.investigation.resolving.spring
 
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoal
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoalKind
+import com.charmnight.linkgraph.investigation.domain.EvidenceFact
 import com.charmnight.linkgraph.investigation.domain.EvidenceLevel
 import com.charmnight.linkgraph.investigation.domain.ResolutionOutcome
 import com.charmnight.linkgraph.investigation.resolving.InvestigationContext
 import com.charmnight.linkgraph.investigation.resolving.ReadActionEvidenceResolver
-import com.charmnight.linkgraph.investigation.resolving.java.JavaPsiEvidenceSupport
-import com.charmnight.linkgraph.semantic.subject.methodSignature
-import com.intellij.psi.PsiClass
-import com.intellij.psi.PsiClassType
-import com.intellij.psi.PsiJavaFile
-import com.intellij.psi.PsiManager
-import com.intellij.psi.PsiMethod
-import com.intellij.psi.PsiMethodCallExpression
-import com.intellij.psi.PsiNewExpression
-import com.intellij.psi.search.FilenameIndex
-import com.intellij.psi.search.GlobalSearchScope
-import com.intellij.psi.util.PsiTreeUtil
+import com.charmnight.linkgraph.investigation.resolving.java.JvmEvidenceIndexAdapter
+import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
 
 /**
- * 使用 PSI 和 Spring 注解规则解析事件发布与监听关系。
+ * 使用共享 JVM relation index 解析 Spring 事件发布与监听关系。
  */
-class SpringEventResolver : ReadActionEvidenceResolver() {
+class SpringEventResolver(
+    private val jvmEvidenceIndexAdapter: JvmEvidenceIndexAdapter = JvmEvidenceIndexAdapter(),
+) : ReadActionEvidenceResolver() {
     /** 保存解析器稳定标识。 */
     override val id: String = "spring-event"
-    private val springEventListenerAnnotations = setOf(
-        "org.springframework.context.event.EventListener",
-        "org.springframework.transaction.event.TransactionalEventListener",
-    )
 
     /**
      * 仅处理 Spring Event 目标。
@@ -44,131 +33,50 @@ class SpringEventResolver : ReadActionEvidenceResolver() {
         goal: EvidenceGoal,
         context: InvestigationContext,
     ): ResolutionOutcome {
-        val eventClasses = eventClasses(goal, context)
-        if (eventClasses.isEmpty()) {
-            return unresolved(goal, "未能确认 Spring Event 类型。")
-        }
-        val listenerMethods = eventClasses.flatMap { eventClass ->
-            listenersForEvent(context, eventClass)
-        }.distinctBy(::methodSignature)
-        if (listenerMethods.isEmpty()) {
-            return unresolved(goal, "未找到匹配 Spring Event 监听器。")
-        }
-        return ResolutionOutcome.Resolved(
-            resolverId = id,
-            facts = listenerMethods.map { method ->
-                JavaPsiEvidenceSupport.methodFact(
-                    goal = goal,
-                    resolverId = id,
-                    method = method,
-                    level = EvidenceLevel.DIRECT_FRAMEWORK_RESOLVED,
-                    claim = "已确认 Spring Event 监听器 ${methodSignature(method)}。",
-                    whyResolved = "根据 publishEvent 事件类型与 @EventListener/@TransactionalEventListener 参数类型匹配。",
-                )
-            },
-        )
+        return resolveFromJvmIndex(goal, context)
+            ?: unresolved(goal, "共享 JvmRelationIndex 中未找到 SPRING_EVENT_LISTENS 关系。")
     }
 
-    /**
-     * 从目标事件名和发布点方法体中收集事件类型。
-     */
-    private fun eventClasses(
+    private fun resolveFromJvmIndex(
         goal: EvidenceGoal,
         context: InvestigationContext,
-    ): List<PsiClass> {
-        val classes = linkedMapOf<String, PsiClass>()
-        goal.eventClassName
-            ?.takeIf(String::isNotBlank)
-            ?.let { className -> JavaPsiEvidenceSupport.resolveClassCandidates(context, className) }
-            .orEmpty()
-            .forEach { psiClass -> classes[psiClass.qualifiedName ?: psiClass.name.orEmpty()] = psiClass }
-        val callsite = JavaPsiEvidenceSupport.resolveMethodCandidates(goal, context).methods.singleOrNull()
-        callsite?.let { method ->
-            publishedEventClasses(method).forEach { psiClass ->
-                classes[psiClass.qualifiedName ?: psiClass.name.orEmpty()] = psiClass
-            }
+    ): ResolutionOutcome.Resolved? {
+        val index = runCatching { jvmEvidenceIndexAdapter.buildIndex(context.project) }.getOrNull()
+            ?: return null
+        val ownerName = goal.ownerClassName?.takeIf(String::isNotBlank)
+        val sourceSymbols = when {
+            ownerName != null -> listOfNotNull(index.findClass(ownerName))
+            else -> index.symbolIndex.classesByQualifiedName.values.toList()
         }
-        return classes.values.toList()
-    }
-
-    /**
-     * 从 `publishEvent(...)` 调用中解析事件类型。
-     */
-    private fun publishedEventClasses(method: PsiMethod): List<PsiClass> {
-        val body = method.body ?: return emptyList()
-        return PsiTreeUtil.collectElementsOfType(body, PsiMethodCallExpression::class.java)
-            .filter { call -> call.methodExpression.referenceName == "publishEvent" }
-            .mapNotNull { call ->
-                val eventExpression = call.argumentList.expressions.firstOrNull() ?: return@mapNotNull null
-                when (eventExpression) {
-                    is PsiNewExpression -> (eventExpression.classReference?.resolve() as? PsiClass)
-                        ?: eventExpression.classReference?.referenceName
-                            ?.let { shortName -> classInCallsitePackage(method, shortName) }
-                    else -> (eventExpression.type as? PsiClassType)?.resolve()
-                }
+        val eventName = goal.eventClassName?.takeIf(String::isNotBlank)
+        val relations = sourceSymbols.flatMap { symbol -> index.relationIndex.outgoing(symbol.id) }
+            .filter { relation -> relation.kind == JvmRelationKind.SPRING_EVENT_LISTENS }
+            .filter { relation ->
+                eventName == null ||
+                    relation.metadata["spring.event"] == eventName ||
+                    relation.metadata["spring.event"]?.substringAfterLast('.') == eventName.substringAfterLast('.')
             }
-            .filter { psiClass -> psiClass.qualifiedName != null }
-    }
-
-    /**
-     * 使用发布点所在 package 补全事件短类名。
-     */
-    private fun classInCallsitePackage(
-        method: PsiMethod,
-        shortName: String,
-    ): PsiClass? {
-        val packageName = (method.containingFile as? PsiJavaFile)?.packageName.orEmpty()
-        if (packageName.isBlank()) {
+            .distinctBy { relation -> relation.id }
+        if (relations.isEmpty()) {
             return null
         }
-        return com.intellij.psi.JavaPsiFacade.getInstance(method.project)
-            .findClass("$packageName.$shortName", GlobalSearchScope.projectScope(method.project))
-    }
-
-    /**
-     * 查找能够接收指定事件类型的监听器方法。
-     */
-    private fun listenersForEvent(
-        context: InvestigationContext,
-        eventClass: PsiClass,
-    ): List<PsiMethod> {
-        val scope = GlobalSearchScope.projectScope(context.project)
-        val psiManager = PsiManager.getInstance(context.project)
-        return FilenameIndex.getAllFilesByExt(context.project, "java", scope)
-            .mapNotNull(psiManager::findFile)
-            .filterIsInstance<PsiJavaFile>()
-            .flatMap { file -> PsiTreeUtil.collectElementsOfType(file, PsiMethod::class.java) }
-            .filter(JavaPsiEvidenceSupport::isProjectSourceMethod)
-            .filter { method -> isSpringEventListener(method) }
-            .filter { method -> acceptsEvent(method, eventClass) }
-            .sortedBy(::methodSignature)
-    }
-
-    /**
-     * 判断方法是否为 Spring 事件监听器。
-     */
-    private fun isSpringEventListener(method: PsiMethod): Boolean {
-        return method.annotations.any { annotation ->
-            val annotationName = annotation.qualifiedName ?: annotation.nameReferenceElement?.referenceName ?: return@any false
-            annotationName in springEventListenerAnnotations
+        val facts = relations.map { relation ->
+            val listenerMethodSignature = relation.metadata["spring.listenerMethod"]
+            val listenerSymbol = listenerMethodSignature?.let(index::findMethod) ?: index.findSymbol(relation.toSymbolId)
+            val sample = relation.samples.firstOrNull()
+            EvidenceFact(
+                factId = "${goal.goalId}-$id-${relation.id}",
+                level = EvidenceLevel.DIRECT_FRAMEWORK_RESOLVED,
+                resolverId = id,
+                symbolSignature = listenerSymbol?.qualifiedName ?: listenerMethodSignature ?: relation.toSymbolId,
+                filePath = listenerSymbol?.source?.displayPath ?: sample?.filePath ?: "",
+                startLine = listenerSymbol?.source?.startLine ?: sample?.startLine,
+                endLine = listenerSymbol?.source?.endLine ?: sample?.endLine,
+                claim = "已确认 Spring Event 监听器 ${listenerSymbol?.qualifiedName ?: listenerMethodSignature ?: relation.toSymbolId}。",
+                whyResolved = "复用 JvmRelationIndex 的 SPRING_EVENT_LISTENS 关系，confidence=${relation.confidence.name}。",
+            )
         }
-    }
-
-    /**
-     * 判断监听器参数是否可以接收指定事件。
-     */
-    private fun acceptsEvent(
-        method: PsiMethod,
-        eventClass: PsiClass,
-    ): Boolean {
-        val parameterType = method.parameterList.parameters.firstOrNull()?.type ?: return false
-        val parameterClass = (parameterType as? PsiClassType)?.resolve()
-        if (parameterClass != null) {
-            return parameterClass == eventClass || eventClass.isInheritor(parameterClass, true)
-        }
-        val parameterText = JavaPsiEvidenceSupport.normalizeType(parameterType)
-        val eventName = eventClass.qualifiedName ?: eventClass.name.orEmpty()
-        return parameterText == eventName || parameterText.substringAfterLast('.') == eventName.substringAfterLast('.')
+        return ResolutionOutcome.Resolved(resolverId = id, facts = facts)
     }
 
     /**

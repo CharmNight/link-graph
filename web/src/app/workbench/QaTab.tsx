@@ -4,8 +4,8 @@ import { traceLinkGraph } from "../debug";
 import { deriveConversationInvestigationThreads, deriveInvestigationThreads } from "../investigationThreads";
 import { qaModeLabel } from "../labels";
 import type {
-  AuditConversationMessage,
-  AuditWorkbenchState,
+  QaConversationMessage,
+  QaWorkbenchState,
   CandidateDraftChange,
   InvestigationThread,
   InvestigationTurnOutcome,
@@ -14,28 +14,28 @@ import type {
   WorkbenchSectionId,
   WorkbenchSectionPreferences,
 } from "../types";
-import { AUDIT_WORKBENCH_SECTION_IDS } from "./workbenchSections";
-import { AuditConversation } from "./AuditConversation";
+import { QA_WORKBENCH_SECTION_IDS } from "./workbenchSections";
+import { QaConversation } from "./QaConversation";
 import { CandidateChangeList } from "./CandidateChangeList";
 import { InvestigationThreadList } from "./InvestigationThreadList";
 import { RequestPromptDisclosure } from "../components/RequestPromptDisclosure";
 
-const DEFAULT_ACTIVE_AUDIT_SECTION: WorkbenchSectionId = "audit.composer";
+const DEFAULT_ACTIVE_QA_SECTION: WorkbenchSectionId = "qa.composer";
 
-const AUDIT_SECTION_META: Partial<Record<WorkbenchSectionId, { title: string }>> = {
-  "audit.request-status": { title: "请求" },
-  "audit.thread": { title: "问答会话" },
-  "audit.composer": { title: "提问" },
-  "audit.candidate-changes": { title: "待确认变更" },
-  "audit.investigation-threads": { title: "风险线程" },
+const QA_SECTION_META: Partial<Record<WorkbenchSectionId, { title: string }>> = {
+  "qa.request-status": { title: "请求" },
+  "qa.thread": { title: "问答会话" },
+  "qa.composer": { title: "提问" },
+  "qa.candidate-changes": { title: "待确认变更" },
+  "qa.investigation-threads": { title: "风险线程" },
 };
 
-function auditSectionTitle(sectionId: WorkbenchSectionId): string {
-  return AUDIT_SECTION_META[sectionId]?.title ?? sectionId;
+function qaSectionTitle(sectionId: WorkbenchSectionId): string {
+  return QA_SECTION_META[sectionId]?.title ?? sectionId;
 }
 
-interface AuditTabProps {
-  state: AuditWorkbenchState;
+interface QaTabProps {
+  state: QaWorkbenchState;
   onQuestionDraftChange: (value: string) => void;
   onQuestionModeChange?: (value: QaMode) => void;
   onSubmitQuestion: () => void;
@@ -63,51 +63,51 @@ function shouldAutoExpandRequestStatus(requestStatus: ReturnType<typeof resolveE
   );
 }
 
-function resolveVisibleAuditSectionIds(hasChanges: boolean, hasThreads: boolean): WorkbenchSectionId[] {
-  return AUDIT_WORKBENCH_SECTION_IDS.filter((sectionId) => {
-    if (sectionId === "audit.candidate-changes") {
+function resolveVisibleQaSectionIds(hasChanges: boolean, hasThreads: boolean): WorkbenchSectionId[] {
+  return QA_WORKBENCH_SECTION_IDS.filter((sectionId) => {
+    if (sectionId === "qa.candidate-changes") {
       return hasChanges;
     }
-    if (sectionId === "audit.investigation-threads") {
+    if (sectionId === "qa.investigation-threads") {
       return hasThreads;
     }
     return true;
   });
 }
 
-function resolveActiveAuditSectionId(args: {
+function resolveActiveQaSectionId(args: {
   preferences: WorkbenchSectionPreferences;
   requestStatus: ReturnType<typeof resolveEffectiveRequestState>;
   hasChanges: boolean;
   hasThreads: boolean;
 }): WorkbenchSectionId | null {
   const { preferences, requestStatus, hasChanges, hasThreads } = args;
-  const visibleSectionIds = resolveVisibleAuditSectionIds(hasChanges, hasThreads);
+  const visibleSectionIds = resolveVisibleQaSectionIds(hasChanges, hasThreads);
   const explicitExpandedSectionId = visibleSectionIds.find((sectionId) => preferences[sectionId] === true) ?? null;
   if (shouldAutoExpandRequestStatus(requestStatus) && (
     explicitExpandedSectionId == null
-    || explicitExpandedSectionId === "audit.composer"
+    || explicitExpandedSectionId === "qa.composer"
   )) {
-    return "audit.request-status";
+    return "qa.request-status";
   }
 
   if (explicitExpandedSectionId) {
     return explicitExpandedSectionId;
   }
 
-  const hasExplicitAuditPreference = visibleSectionIds.some((sectionId) => preferences[sectionId] != null);
-  if (hasExplicitAuditPreference) {
+  const hasExplicitQaPreference = visibleSectionIds.some((sectionId) => preferences[sectionId] != null);
+  if (hasExplicitQaPreference) {
     return null;
   }
 
   if (shouldAutoExpandRequestStatus(requestStatus)) {
-    return "audit.request-status";
+    return "qa.request-status";
   }
 
-  return DEFAULT_ACTIVE_AUDIT_SECTION;
+  return DEFAULT_ACTIVE_QA_SECTION;
 }
 
-export function AuditTab({
+export function QaTab({
   state,
   onQuestionDraftChange,
   onQuestionModeChange = () => undefined,
@@ -125,9 +125,10 @@ export function AuditTab({
   onRequestArtifact,
   sectionPreferences,
   onSectionPreferenceChange = () => undefined,
-}: AuditTabProps) {
+}: QaTabProps) {
   const tabRef = useRef<HTMLElement | null>(null);
-  const messages = state.result?.auditSession?.messages ?? [];
+  const qaSession = state.result?.qaSession ?? null;
+  const messages = qaSession?.messages ?? [];
   const changes = (state.result?.candidateChanges ?? []).filter((change) => change.status === "PENDING_CONFIRMATION");
   const threads = deriveInvestigationThreads(state.result).filter(
     (thread) => thread.status === "OPEN" || thread.status === "BLOCKED",
@@ -136,12 +137,12 @@ export function AuditTab({
     ?? state.result?.recentTurnOutcomes?.[state.result.recentTurnOutcomes.length - 1]
     ?? null;
   const recentTurnOutcomes = state.result?.recentTurnOutcomes
-    ?? state.result?.auditSession?.turnOutcomes
+    ?? qaSession?.turnOutcomes
     ?? [];
-  const conversationTurnOutcomes = state.result?.auditSession?.turnOutcomes
+  const conversationTurnOutcomes = qaSession?.turnOutcomes
     ?? state.result?.recentTurnOutcomes
     ?? [];
-  const conversationThreads = deriveConversationInvestigationThreads(state.result, state.result?.auditSession);
+  const conversationThreads = deriveConversationInvestigationThreads(state.result, qaSession);
   const scopeLabel = state.scopeLabel ?? "当前链路会话";
   const hasChanges = changes.length > 0;
   const hasThreads = threads.length > 0;
@@ -151,13 +152,13 @@ export function AuditTab({
   );
   const rawSectionPreferences = sectionPreferences ?? localSectionPreferences;
   const requestStatus = resolveEffectiveRequestState(state.requestState);
-  const activeSectionId = resolveActiveAuditSectionId({
+  const activeSectionId = resolveActiveQaSectionId({
     preferences: rawSectionPreferences,
     requestStatus,
     hasChanges,
     hasThreads,
   });
-  const visibleSectionIds = resolveVisibleAuditSectionIds(hasChanges, hasThreads);
+  const visibleSectionIds = resolveVisibleQaSectionIds(hasChanges, hasThreads);
 
   useEffect(() => {
     if (sectionPreferences == null) {
@@ -167,7 +168,7 @@ export function AuditTab({
   }, [sectionPreferences]);
 
   useEffect(() => {
-    traceLinkGraph("workbench.audit.layoutResolved", {
+    traceLinkGraph("workbench.qa.layoutResolved", {
       hasChanges,
       hasThreads,
       hasMessages,
@@ -183,8 +184,8 @@ export function AuditTab({
     event.stopPropagation();
   }
 
-  function syncAuditSectionPreferences(nextActiveSectionId: WorkbenchSectionId | null) {
-    const nextAuditPreferences = AUDIT_WORKBENCH_SECTION_IDS.reduce<WorkbenchSectionPreferences>((accumulator, sectionId) => {
+  function syncQaSectionPreferences(nextActiveSectionId: WorkbenchSectionId | null) {
+    const nextQaPreferences = QA_WORKBENCH_SECTION_IDS.reduce<WorkbenchSectionPreferences>((accumulator, sectionId) => {
       accumulator[sectionId] = nextActiveSectionId === sectionId;
       return accumulator;
     }, {});
@@ -192,12 +193,12 @@ export function AuditTab({
     if (sectionPreferences == null) {
       setLocalSectionPreferences((current) => ({
         ...current,
-        ...nextAuditPreferences,
+        ...nextQaPreferences,
       }));
     }
 
-    for (const sectionId of AUDIT_WORKBENCH_SECTION_IDS) {
-      const nextExpanded = nextAuditPreferences[sectionId] ?? false;
+    for (const sectionId of QA_WORKBENCH_SECTION_IDS) {
+      const nextExpanded = nextQaPreferences[sectionId] ?? false;
       const currentExpanded = rawSectionPreferences[sectionId] ?? false;
       if (currentExpanded !== nextExpanded) {
         onSectionPreferenceChange(sectionId, nextExpanded);
@@ -206,21 +207,21 @@ export function AuditTab({
   }
 
   function handleTabSelect(sectionId: WorkbenchSectionId) {
-    traceLinkGraph("workbench.audit.tabSelected", {
+    traceLinkGraph("workbench.qa.tabSelected", {
       sectionId,
       hasChanges,
       activeSectionId,
     });
-    syncAuditSectionPreferences(sectionId);
+    syncQaSectionPreferences(sectionId);
     resetSharedWorkbenchScroll();
   }
 
   function handleCollapseActivePage() {
-    traceLinkGraph("workbench.audit.pageCollapsed", {
+    traceLinkGraph("workbench.qa.pageCollapsed", {
       activeSectionId,
       hasChanges,
     });
-    syncAuditSectionPreferences(null);
+    syncQaSectionPreferences(null);
     resetSharedWorkbenchScroll();
   }
 
@@ -232,38 +233,38 @@ export function AuditTab({
   }
 
   return (
-    <section ref={tabRef} className="workbench-tab audit-tab">
-      <div className="workbench-tab-head audit-tab-head">
-        <div className="audit-tab-title">
+    <section ref={tabRef} className="workbench-tab qa-tab">
+      <div className="workbench-tab-head qa-tab-head">
+        <div className="qa-tab-title">
           <p className="eyebrow">问答</p>
           <h2>链路问答</h2>
         </div>
-        <span className="workbench-session-label audit-scope-label" title={scopeLabel}>{scopeLabel}</span>
+        <span className="workbench-session-label qa-scope-label" title={scopeLabel}>{scopeLabel}</span>
       </div>
 
-      <div className="audit-tab-nav" role="tablist" aria-label="问答页面切换">
+      <div className="qa-tab-nav" role="tablist" aria-label="问答页面切换">
         {visibleSectionIds.map((sectionId) => (
           <button
             key={sectionId}
-            id={`audit-page-tab-${sectionId}`}
+            id={`qa-page-tab-${sectionId}`}
             type="button"
             role="tab"
-            aria-label={auditSectionTitle(sectionId)}
+            aria-label={qaSectionTitle(sectionId)}
             aria-selected={activeSectionId === sectionId}
-            aria-controls={`audit-page-panel-${sectionId}`}
-            className={activeSectionId === sectionId ? "audit-tab-button active" : "audit-tab-button"}
+            aria-controls={`qa-page-panel-${sectionId}`}
+            className={activeSectionId === sectionId ? "qa-tab-button active" : "qa-tab-button"}
             onClick={() => handleTabSelect(sectionId)}
           >
-            <span>{auditSectionTitle(sectionId)}</span>
-            {sectionId === "audit.candidate-changes" ? <span className="badge">{changes.length}</span> : null}
-            {sectionId === "audit.investigation-threads" ? <span className="badge">{threads.length}</span> : null}
+            <span>{qaSectionTitle(sectionId)}</span>
+            {sectionId === "qa.candidate-changes" ? <span className="badge">{changes.length}</span> : null}
+            {sectionId === "qa.investigation-threads" ? <span className="badge">{threads.length}</span> : null}
           </button>
         ))}
       </div>
 
-      <div className="audit-tab-panel workbench-page-flow">
+      <div className="qa-tab-panel workbench-page-flow">
         {activeSectionId ? (
-          <AuditPagePanel
+          <QaPagePanel
             activeSectionId={activeSectionId}
             state={state}
             messages={messages}
@@ -292,7 +293,7 @@ export function AuditTab({
             onStopComposerBoundaryPropagation={stopComposerBoundaryPropagation}
           />
         ) : (
-          <div className="audit-page-collapsed-state">
+          <div className="qa-page-collapsed-state">
             <p className="muted">当前页面已收起，点击上方标签继续查看。</p>
           </div>
         )}
@@ -301,10 +302,10 @@ export function AuditTab({
   );
 }
 
-interface AuditPagePanelProps {
+interface QaPagePanelProps {
   activeSectionId: WorkbenchSectionId;
-  state: AuditWorkbenchState;
-  messages: AuditConversationMessage[];
+  state: QaWorkbenchState;
+  messages: QaConversationMessage[];
   changes: CandidateDraftChange[];
   threads: InvestigationThread[];
   latestTurnOutcome: InvestigationTurnOutcome | null;
@@ -330,7 +331,7 @@ interface AuditPagePanelProps {
   onStopComposerBoundaryPropagation: (event: { stopPropagation: () => void }) => void;
 }
 
-function AuditPagePanel({
+function QaPagePanel({
   activeSectionId,
   state,
   messages,
@@ -357,8 +358,8 @@ function AuditPagePanel({
   onRequestArtifact,
   onCollapse,
   onStopComposerBoundaryPropagation,
-}: AuditPagePanelProps) {
-  const pageTitle = auditSectionTitle(activeSectionId);
+}: QaPagePanelProps) {
+  const pageTitle = qaSectionTitle(activeSectionId);
   const latestQuestion = state.questionDraft.trim() || state.result?.question || "";
   const sourceContext = state.result?.sourceContext ?? [];
   const sourceSnippets = deduplicateSourceSnippets(sourceContext);
@@ -377,13 +378,13 @@ function AuditPagePanel({
 
   return (
     <section
-      id={`audit-page-panel-${activeSectionId}`}
+      id={`qa-page-panel-${activeSectionId}`}
       role="tabpanel"
-      aria-labelledby={`audit-page-tab-${activeSectionId}`}
-      className="audit-page-panel workbench-card-flow stage-workbench-flat-section"
+      aria-labelledby={`qa-page-tab-${activeSectionId}`}
+      className="qa-page-panel workbench-card-flow stage-workbench-flat-section"
     >
-      <div className="audit-page-head">
-        <div className="audit-page-title">
+      <div className="qa-page-head">
+        <div className="qa-page-title">
           <p className="eyebrow">问答</p>
           <h3>{pageTitle}</h3>
         </div>
@@ -392,8 +393,8 @@ function AuditPagePanel({
         </button>
       </div>
 
-      {activeSectionId === "audit.request-status" ? (
-        <div className="audit-page-body request-status-section-body">
+      {activeSectionId === "qa.request-status" ? (
+        <div className="qa-page-body request-status-section-body">
           {requestStatus ? (
             <AsyncRequestBanner requestState={state.requestState} telemetryCollapsedByDefault />
           ) : (
@@ -407,7 +408,7 @@ function AuditPagePanel({
                 type="button"
                 className="primary-button"
                 onClick={() => {
-                  traceLinkGraph("workbench.audit.retryLastRequest.clicked", {
+                  traceLinkGraph("workbench.qa.retryLastRequest.clicked", {
                     activeSectionId,
                     requestPhase: requestStatus?.phase ?? null,
                     hasFailedRequest: failedRequest != null,
@@ -421,7 +422,7 @@ function AuditPagePanel({
                 type="button"
                 className="ghost-button"
                 onClick={() => {
-                  traceLinkGraph("workbench.audit.editFailedRequest.clicked", {
+                  traceLinkGraph("workbench.qa.editFailedRequest.clicked", {
                     activeSectionId,
                     requestPhase: requestStatus?.phase ?? null,
                     hasFailedRequest: failedRequest != null,
@@ -509,18 +510,18 @@ function AuditPagePanel({
         </div>
       ) : null}
 
-      {activeSectionId === "audit.thread" ? (
-        <div className="audit-page-body">
+      {activeSectionId === "qa.thread" ? (
+        <div className="qa-page-body">
           <section
             className={[
-              "workbench-audit-thread",
+              "workbench-qa-thread",
               "stage-workbench-flat-block",
               !messages.length ? "is-empty" : "",
             ].join(" ").trim()}
             aria-label="问答会话"
           >
-            <div className="workbench-audit-thread-body">
-              <AuditConversation
+            <div className="workbench-qa-thread-body">
+              <QaConversation
                 messages={messages}
                 turnOutcomes={conversationTurnOutcomes}
                 investigationThreads={conversationThreads}
@@ -531,26 +532,26 @@ function AuditPagePanel({
         </div>
       ) : null}
 
-      {activeSectionId === "audit.composer" ? (
-        <div className="audit-page-body composer-section-body">
+      {activeSectionId === "qa.composer" ? (
+        <div className="qa-page-body composer-section-body">
           <div
             className="workbench-chat-input p-0 border-0"
             onPointerDownCapture={onStopComposerBoundaryPropagation}
             onMouseDownCapture={onStopComposerBoundaryPropagation}
             onDoubleClickCapture={onStopComposerBoundaryPropagation}
           >
-            <label htmlFor="audit-input" className="sr-only">问答输入框</label>
+            <label htmlFor="qa-input" className="sr-only">问答输入框</label>
             <textarea
-              id="audit-input"
+              id="qa-input"
               aria-label="问答输入框"
               value={state.questionDraft}
               onChange={(event) => onQuestionDraftChange(event.target.value)}
               placeholder="围绕当前方法、链路或待确认变更继续提问"
             />
-            <div className="workbench-chat-input-actions audit-composer-actions">
-              <label className="audit-mode-select-label">
-                <span className="audit-mode-select-title">模式</span>
-                <span className="audit-mode-select-shell">
+            <div className="workbench-chat-input-actions qa-composer-actions">
+              <label className="qa-mode-select-label">
+                <span className="qa-mode-select-title">模式</span>
+                <span className="qa-mode-select-shell">
                   <select
                     aria-label="问答模式"
                     value={state.selectedMode ?? "AUTO"}
@@ -558,12 +559,12 @@ function AuditPagePanel({
                   >
                     <option value="AUTO">Auto</option>
                     <option value="ANSWER">只回答</option>
-                    <option value="REVIEW">审计风险</option>
+                    <option value="REVIEW">风险复核</option>
                     <option value="CHANGE">代码调整</option>
                   </select>
                 </span>
               </label>
-              <button type="button" className="primary-button audit-send-button" onClick={onSubmitQuestion}>
+              <button type="button" className="primary-button qa-send-button" onClick={onSubmitQuestion}>
                 发送
               </button>
             </div>
@@ -571,8 +572,8 @@ function AuditPagePanel({
         </div>
       ) : null}
 
-      {activeSectionId === "audit.candidate-changes" ? (
-        <div className="audit-page-body audit-split-section-body candidate-changes-section-body">
+      {activeSectionId === "qa.candidate-changes" ? (
+        <div className="qa-page-body qa-split-section-body candidate-changes-section-body">
           <CandidateChangeList
             changes={changes}
             selectedChangeId={state.selectedChangeId ?? null}
@@ -583,8 +584,8 @@ function AuditPagePanel({
         </div>
       ) : null}
 
-      {activeSectionId === "audit.investigation-threads" ? (
-        <div className="audit-page-body audit-split-section-body investigation-threads-section-body">
+      {activeSectionId === "qa.investigation-threads" ? (
+        <div className="qa-page-body qa-split-section-body investigation-threads-section-body">
           <InvestigationThreadList
             threads={threads}
             latestTurnOutcome={latestTurnOutcome}

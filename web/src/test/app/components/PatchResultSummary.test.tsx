@@ -68,15 +68,15 @@ describe("PatchResultSummary", () => {
           findings: [],
           candidateChanges: [],
           newCandidateChanges: [],
-          promptPreview: "system: audit graph\nuser: inspect fallback branch",
+          promptPreview: "system: qa graph\nuser: inspect fallback branch",
           warnings: [],
         }}
       />,
     );
 
-    expect(screen.queryByText("system: audit graph\nuser: inspect fallback branch")).not.toBeInTheDocument();
+    expect(screen.queryByText("system: qa graph\nuser: inspect fallback branch")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "查看提示词" }));
-    expect(screen.getByText((_, element) => element?.textContent === "system: audit graph\nuser: inspect fallback branch")).toBeInTheDocument();
+    expect(screen.getByText((_, element) => element?.textContent === "system: qa graph\nuser: inspect fallback branch")).toBeInTheDocument();
   });
 
   it("renders duplicate answer list entries without React key warnings", () => {

@@ -1,14 +1,14 @@
 import { useEffect, useRef, type ComponentProps } from "react";
 import { CodeDraftPanel } from "./CodeDraftPanel";
-import { AuditTab } from "../workbench/AuditTab";
+import { QaTab } from "../workbench/QaTab";
 import { DraftTab } from "../workbench/DraftTab";
 import { ExplanationTab } from "../workbench/ExplanationTab";
 
-export type WorkbenchTab = "explanation" | "audit" | "draft" | "code";
+export type WorkbenchTab = "explanation" | "qa" | "draft" | "code";
 
 const WORKBENCH_TABS: Array<{ id: WorkbenchTab; label: string }> = [
   { id: "explanation", label: "讲解" },
-  { id: "audit", label: "问答" },
+  { id: "qa", label: "问答" },
   { id: "draft", label: "草稿" },
   { id: "code", label: "代码" },
 ];
@@ -17,7 +17,7 @@ interface AppWorkbenchPanelsProps {
   activeWorkbenchTab: WorkbenchTab;
   onTabChange: (tab: WorkbenchTab) => void;
   codePanelProps: ComponentProps<typeof CodeDraftPanel>;
-  auditTabProps: ComponentProps<typeof AuditTab>;
+  qaTabProps: ComponentProps<typeof QaTab>;
   draftTabProps: ComponentProps<typeof DraftTab>;
   explanationTabProps: ComponentProps<typeof ExplanationTab>;
   showTabs?: boolean;
@@ -27,7 +27,7 @@ export function AppWorkbenchPanels({
   activeWorkbenchTab,
   onTabChange,
   codePanelProps,
-  auditTabProps,
+  qaTabProps,
   draftTabProps,
   explanationTabProps,
   showTabs = true,
@@ -36,8 +36,8 @@ export function AppWorkbenchPanels({
   let panel = <ExplanationTab {...explanationTabProps} />;
   if (activeWorkbenchTab === "code") {
     panel = <CodeDraftPanel {...codePanelProps} />;
-  } else if (activeWorkbenchTab === "audit") {
-    panel = <AuditTab {...auditTabProps} />;
+  } else if (activeWorkbenchTab === "qa") {
+    panel = <QaTab {...qaTabProps} />;
   } else if (activeWorkbenchTab === "draft") {
     panel = <DraftTab {...draftTabProps} />;
   }

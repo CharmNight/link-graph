@@ -30,6 +30,24 @@ vi.mock("../../../app/views/resource/ResourceRelationView", () => ({
   ),
 }));
 
+vi.mock("../../../app/views/architecture/ArchitectureGraphView", () => ({
+  ArchitectureGraphView: ({ view }: { view: { visibleGraph: { nodes: Array<{ id: string }> } } }) => (
+    <div data-testid="architecture-stage">{view.visibleGraph.nodes.map((node) => node.id).join(",")}</div>
+  ),
+}));
+
+vi.mock("../../../app/views/class-diagram/ClassDiagramView", () => ({
+  ClassDiagramView: ({ view }: { view: { visibleGraph: { nodes: Array<{ id: string }> } } }) => (
+    <div data-testid="class-diagram-stage">{view.visibleGraph.nodes.map((node) => node.id).join(",")}</div>
+  ),
+}));
+
+vi.mock("../../../app/views/review/ReviewGraphView", () => ({
+  ReviewGraphView: ({ view }: { view: { visibleGraph: { nodes: Array<{ id: string }> } } }) => (
+    <div data-testid="review-stage">{view.visibleGraph.nodes.map((node) => node.id).join(",")}</div>
+  ),
+}));
+
 function stageProps(): ViewStageProps {
   return {
     selectedNodeId: null,
@@ -55,6 +73,9 @@ describe("AppGraphStage", () => {
         presentedFlowchartView={{ visibleGraph: { nodes: [{ id: "presented-node" }], edges: [] } } as never}
         flowchartView={{ visibleGraph: { nodes: [{ id: "layout-node" }], edges: [] } } as never}
         resourceRelationView={{ visibleGraph: { nodes: [{ id: "resource-node" }], edges: [] } } as never}
+        architectureGraphView={{ visibleGraph: { nodes: [{ id: "architecture-node" }], edges: [] } } as never}
+        classDiagramView={{ visibleGraph: { nodes: [{ id: "class-node" }], edges: [] } } as never}
+        reviewGraphView={{ visibleGraph: { nodes: [{ id: "review-node" }], edges: [] } } as never}
       />,
     );
 
@@ -70,6 +91,9 @@ describe("AppGraphStage", () => {
       presentedFlowchartView: { visibleGraph: { nodes: [{ id: "presented-node" }], edges: [] } } as never,
       flowchartView: { visibleGraph: { nodes: [{ id: "layout-node" }], edges: [] } } as never,
       resourceRelationView: { visibleGraph: { nodes: [{ id: "resource-node" }], edges: [] } } as never,
+      architectureGraphView: { visibleGraph: { nodes: [{ id: "architecture-node" }], edges: [] } } as never,
+      classDiagramView: { visibleGraph: { nodes: [{ id: "class-node" }], edges: [] } } as never,
+      reviewGraphView: { visibleGraph: { nodes: [{ id: "review-node" }], edges: [] } } as never,
     };
     const { rerender } = render(
       <AppGraphStage
@@ -88,5 +112,14 @@ describe("AppGraphStage", () => {
     );
 
     expect(screen.getByTestId("resource-stage")).toHaveTextContent("resource-node");
+
+    rerender(
+      <AppGraphStage
+        analysisDisplayMode="REVIEW_GRAPH"
+        {...props}
+      />,
+    );
+
+    expect(screen.getByTestId("review-stage")).toHaveTextContent("review-node");
   });
 });

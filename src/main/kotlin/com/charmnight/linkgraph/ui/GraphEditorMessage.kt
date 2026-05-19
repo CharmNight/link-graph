@@ -254,6 +254,25 @@ sealed interface GraphEditorMessage {
         val displayMode: AnalysisDisplayMode,
     ) : GraphEditorMessage
 
+    /** 请求加载项目级架构图。 */
+    data object RequestArchitectureGraph : GraphEditorMessage
+
+    /**
+     * 请求加载项目级类图，可选从架构节点下钻。
+     */
+    data class RequestClassDiagram(
+        /** 保存可选架构图节点范围。 */
+        val scopeNodeId: String? = null,
+    ) : GraphEditorMessage
+
+    /**
+     * 请求加载变更评审影响面图。
+     */
+    data class RequestReviewGraph(
+        /** 保存可选差异条目标识列表。 */
+        val selectedDiffItemIds: List<String> = emptyList(),
+    ) : GraphEditorMessage
+
     /**
      * 更新工作台分区折叠偏好。
      */

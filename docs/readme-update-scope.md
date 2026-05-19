@@ -37,6 +37,7 @@
 - 增加 Agent Runtime 相关表述。
 - 增加 Tool Facade 相关表述。
 - 增加 Artifact 跨阶段传递相关表述。
+- 增加架构图、类图和 Review Graph 的当前能力口径。
 
 目的：
 

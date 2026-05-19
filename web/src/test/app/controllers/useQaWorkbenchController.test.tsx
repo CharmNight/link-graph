@@ -1,20 +1,20 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { requestAuditAsync } from "../../../app/api";
+import { requestQaAsync } from "../../../app/api";
 import type { BridgeInvocationResult } from "../../../app/api";
-import { useAuditWorkbenchController } from "../../../app/controllers/useAuditWorkbenchController";
+import { useQaWorkbenchController } from "../../../app/controllers/useQaWorkbenchController";
 import type { GraphPatchResult, QaMode } from "../../../app/types";
 
 vi.mock("../../../app/api", () => ({
-  confirmAuditCandidateChange: vi.fn(),
-  requestAuditAsync: vi.fn(),
+  confirmQaCandidateChange: vi.fn(),
+  requestQaAsync: vi.fn(),
   resolveInvestigationThread: vi.fn(),
-  retryLastAuditRequestAsync: vi.fn(),
-  unconfirmAuditCandidateChange: vi.fn(),
+  retryLastQaRequestAsync: vi.fn(),
+  unconfirmQaCandidateChange: vi.fn(),
   updateWorkbenchSectionPreference: vi.fn(),
 }));
 
-function auditResultWithThread(): GraphPatchResult {
+function qaResultWithThread(): GraphPatchResult {
   return {
     source: "LOCAL_RULE",
     question: "这里有没有风险？",
@@ -43,35 +43,35 @@ function auditResultWithThread(): GraphPatchResult {
   };
 }
 
-function renderController(overrides: Partial<Parameters<typeof useAuditWorkbenchController>[0]> = {}) {
+function renderController(overrides: Partial<Parameters<typeof useQaWorkbenchController>[0]> = {}) {
   const submitAsyncBridgeCommand = vi.fn((_label: string, command: () => BridgeInvocationResult) => command());
   const runBridgeCommand = vi.fn((_label: string, command: () => BridgeInvocationResult) => command());
-  const setAuditQuestionMode = vi.fn();
-  const args: Parameters<typeof useAuditWorkbenchController>[0] = {
-    auditResult: null,
+  const setQaQuestionMode = vi.fn();
+  const args: Parameters<typeof useQaWorkbenchController>[0] = {
+    qaResult: null,
     qaRequestRecoveryState: {},
-    auditSourceThreadId: null,
-    auditQuestionMode: "AUTO",
-    auditTargetNodeIds: [],
-    selectedAuditChangeId: null,
-    selectedAuditThreadId: null,
+    qaSourceThreadId: null,
+    qaQuestionMode: "AUTO",
+    qaTargetNodeIds: [],
+    selectedQaChangeId: null,
+    selectedQaThreadId: null,
     nodes: [],
     draftWorkbenchState: { draftChanges: [], draftNotes: [] },
     bridgeCommands: {
       runBridgeCommand,
       submitAsyncBridgeCommand,
     },
-    setAuditQuestionDraft: vi.fn(),
-    setAuditQuestionMode,
-    setAuditTargetNodeIds: vi.fn(),
-    setAuditSourceThreadId: vi.fn(),
+    setQaQuestionDraft: vi.fn(),
+    setQaQuestionMode,
+    setQaTargetNodeIds: vi.fn(),
+    setQaSourceThreadId: vi.fn(),
     setActiveWorkbenchTab: vi.fn(),
     setOperationFeedback: vi.fn(),
     setDraftWorkbenchState: vi.fn(),
     setSelectedDraftEntryId: vi.fn(),
-    setAuditResult: vi.fn(),
-    setSelectedAuditChangeId: vi.fn(),
-    setSelectedAuditThreadId: vi.fn(),
+    setQaResult: vi.fn(),
+    setSelectedQaChangeId: vi.fn(),
+    setSelectedQaThreadId: vi.fn(),
     selectExplanationTargetNode: vi.fn(),
     toDraftWorkbenchEntry: vi.fn(),
     updateGraphPatchResultCandidateStatus: vi.fn(),
@@ -81,25 +81,25 @@ function renderController(overrides: Partial<Parameters<typeof useAuditWorkbench
     resolveEvidenceTargetNodeId: vi.fn(() => null),
     ...overrides,
   };
-  const hook = renderHook(() => useAuditWorkbenchController(args));
+  const hook = renderHook(() => useQaWorkbenchController(args));
   return {
     ...hook,
     args,
     runBridgeCommand,
     submitAsyncBridgeCommand,
-    setAuditQuestionMode,
+    setQaQuestionMode,
   };
 }
 
-describe("useAuditWorkbenchController", () => {
-  it("passes the selected QA mode to the audit bridge command", () => {
-    const { result } = renderController({ auditQuestionMode: "ANSWER" as QaMode });
+describe("useQaWorkbenchController", () => {
+  it("passes the selected QA mode to the qa bridge command", () => {
+    const { result } = renderController({ qaQuestionMode: "ANSWER" as QaMode });
 
     act(() => {
-      result.current.handleRequestAudit(" 这个方法是如何触发的？ ", ["method:upload-file"]);
+      result.current.handleRequestQa(" 这个方法是如何触发的？ ", ["method:upload-file"]);
     });
 
-    expect(requestAuditAsync).toHaveBeenCalledWith(
+    expect(requestQaAsync).toHaveBeenCalledWith(
       "这个方法是如何触发的？",
       ["method:upload-file"],
       null,
@@ -109,15 +109,15 @@ describe("useAuditWorkbenchController", () => {
 
   it("uses INVESTIGATE for risk-thread continuation regardless of composer mode", () => {
     const { result } = renderController({
-      auditResult: auditResultWithThread(),
-      auditQuestionMode: "CHANGE" as QaMode,
+      qaResult: qaResultWithThread(),
+      qaQuestionMode: "CHANGE" as QaMode,
     });
 
     act(() => {
-      result.current.handleInvestigateAuditThread("thread-path-risk");
+      result.current.handleInvestigateQaThread("thread-path-risk");
     });
 
-    expect(requestAuditAsync).toHaveBeenCalledWith(
+    expect(requestQaAsync).toHaveBeenCalledWith(
       "请继续取证：展开 FileUploadUtils.upload，确认是否存在路径规范化或目录校验。",
       ["method:upload-file"],
       "thread-path-risk",

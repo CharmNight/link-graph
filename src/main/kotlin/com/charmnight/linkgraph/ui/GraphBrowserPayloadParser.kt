@@ -108,10 +108,7 @@ internal object GraphBrowserPayloadParser {
 
     fun parseDraftPatchPreviewSource(payload: String): GraphEditorMessage.DraftPatchPreviewSource {
         validatePayloadSize(payload, GraphBrowserPayloadKind.IDENTIFIER)
-        return when (payload) {
-            "AUDIT" -> GraphEditorMessage.DraftPatchPreviewSource.QA
-            else -> GraphEditorMessage.DraftPatchPreviewSource.valueOf(payload)
-        }
+        return GraphEditorMessage.DraftPatchPreviewSource.valueOf(payload)
     }
 
     fun parseResolveInvestigationThreadPayload(payload: String): ResolveInvestigationThreadPayload {

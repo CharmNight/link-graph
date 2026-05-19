@@ -15,7 +15,7 @@ interface PaneActionSchemaInput {
   onAddNode: (kind: "METHOD" | "DOC_PAGE", position?: GraphPosition) => void;
   onImportMermaid: () => void;
   onFormatLayout: () => void;
-  onOpenAudit: () => void;
+  onOpenQa: () => void;
   onClose: () => void;
 }
 
@@ -31,8 +31,8 @@ interface NodeActionSchemaInput {
   onInspectNode: (nodeId: string) => void;
   onRequestSourceNavigation: (nodeId: string) => void;
   onRequestBeautification: (selectedNodeId?: string) => void;
-  onRequestAudit: (selectedNodeId?: string) => void;
-  onOpenAudit: (selectedNodeId?: string) => void;
+  onRequestQa: (selectedNodeId?: string) => void;
+  onOpenQa: (selectedNodeId?: string) => void;
   onToggleCollapseNode: (nodeId: string) => void;
   onExpandOverflowNode: (nodeId: string) => void;
   onExpandInvocation?: (nodeId: string) => void;
@@ -68,7 +68,7 @@ export function buildPaneActions({
   onAddNode,
   onImportMermaid,
   onFormatLayout,
-  onOpenAudit,
+  onOpenQa,
   onClose,
 }: PaneActionSchemaInput): GraphContextMenuAction[] {
   const actions: GraphContextMenuAction[] = [];
@@ -96,8 +96,8 @@ export function buildPaneActions({
         onFormatLayout();
         onClose();
       }),
-      makeAction("open-audit", hasGroupedSelection ? "问答已框选范围" : "问答当前范围", () => {
-        onOpenAudit();
+      makeAction("open-qa", hasGroupedSelection ? "问答已框选范围" : "问答当前范围", () => {
+        onOpenQa();
         onClose();
       }),
     );
@@ -117,8 +117,8 @@ export function buildNodeActions({
   onInspectNode,
   onRequestSourceNavigation,
   onRequestBeautification,
-  onRequestAudit,
-  onOpenAudit,
+  onRequestQa,
+  onOpenQa,
   onToggleCollapseNode,
   onExpandOverflowNode,
   onExpandInvocation,
@@ -155,12 +155,12 @@ export function buildNodeActions({
       onRequestBeautification(nodeId);
       onClose();
     }),
-    makeAction("audit-node", "问答当前节点", () => {
-      onRequestAudit(nodeId);
+    makeAction("qa-node", "问答当前节点", () => {
+      onRequestQa(nodeId);
       onClose();
     }),
-    makeAction("set-audit-anchor", "设为问答范围起点", () => {
-      onOpenAudit(nodeId);
+    makeAction("set-qa-anchor", "设为问答范围起点", () => {
+      onOpenQa(nodeId);
       onClose();
     }),
     makeAction("toggle-collapse", collapsed ? "展开整个下游子树" : "折叠整个下游子树", () => {

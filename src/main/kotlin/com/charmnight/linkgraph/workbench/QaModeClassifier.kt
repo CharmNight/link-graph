@@ -22,7 +22,7 @@ class QaModeClassifier {
                 "有没有问题",
                 "风险",
                 "遗漏",
-                "审计",
+                "复核",
             ),
         ),
         ModeRule(

@@ -37,6 +37,10 @@ class GraphAssembler {
             AnalysisDisplayMode.FACT_GRAPH -> assembleFactGraph(context)
             AnalysisDisplayMode.FLOWCHART -> assembleFlowchartGraph(context)
             AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> assembleResourceRelationGraph(context)
+            AnalysisDisplayMode.ARCHITECTURE_GRAPH,
+            AnalysisDisplayMode.CLASS_DIAGRAM,
+            AnalysisDisplayMode.REVIEW_GRAPH,
+            -> assembleFactGraph(context)
         }
     }
 
@@ -393,6 +397,13 @@ class GraphAssembler {
             AnalysisDisplayMode.FACT_GRAPH -> {
                 projectionMetadata["fact.kind"] = type.name
             }
+
+            AnalysisDisplayMode.ARCHITECTURE_GRAPH,
+            AnalysisDisplayMode.CLASS_DIAGRAM,
+            AnalysisDisplayMode.REVIEW_GRAPH,
+            -> {
+                projectionMetadata["fact.kind"] = type.name
+            }
         }
         return copy(metadata = metadata + projectionMetadata)
     }
@@ -437,6 +448,7 @@ class GraphAssembler {
                 put("flow.incomplete", relation.incomplete.toString())
                 put("flow.synthetic", relation.synthetic.toString())
                 put("flow.provenance", relation.provenance.name)
+                putAll(relation.metadata)
             },
         )
     }

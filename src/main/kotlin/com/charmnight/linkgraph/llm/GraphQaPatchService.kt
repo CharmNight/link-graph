@@ -159,7 +159,7 @@ class GraphQaPatchService(
         val analysisGraph = context.editableGraph.takeIf { it.nodes.isNotEmpty() || it.edges.isNotEmpty() } ?: context.factGraph
         val hasFallbackIntent = question.contains("兜底") || question.contains("默认")
         val explanationIntent = question.contains("介绍") || question.contains("解释") || question.contains("讲解")
-        val explicitQaIntent = question.contains("审计")
+        val explicitQaIntent = question.contains("复核")
             || question.contains("问题")
             || question.contains("风险")
             || question.contains("漏洞")

@@ -17,21 +17,36 @@ class ReadSourceSnippetTool(
         val filePath = input.requiredString("filePath") ?: return missingRequired("filePath")
         val startLine = input.optionalInt("startLine")
         val endLine = input.optionalInt("endLine")
-        val snippet = codeReadToolFacade.readSourceSnippet(
+        val snippet = codeReadToolFacade.readSourceSnippetRich(
             filePath = filePath,
             startLine = startLine,
             endLine = endLine,
             fallbackSnippet = input.optionalString("fallbackSnippet"),
             projectBasePath = context.project.basePath,
             project = context.project,
-        ) ?: return failure("未读取到源码片段")
+        ) ?: return failure(
+            "未读取到源码片段",
+            payload = mapOf(
+                "sourceUnavailableReason" to codeReadToolFacade.readSourceSnippetFailureReason(
+                    filePath = filePath,
+                    startLine = startLine,
+                    endLine = endLine,
+                    projectBasePath = context.project.basePath,
+                    project = context.project,
+                ),
+            ),
+        )
         return ToolResult(
             toolName = name,
             payload = mapOf(
                 "filePath" to filePath,
                 "startLine" to startLine,
                 "endLine" to endLine,
-                "snippet" to snippet,
+                "snippet" to snippet.snippet,
+                "origin" to snippet.origin,
+                "decompiled" to snippet.decompiled,
+                "virtualFileUrl" to snippet.virtualFileUrl,
+                "sourceDiagnostic" to snippet.sourceDiagnostic,
             ),
         )
     }

@@ -10,6 +10,8 @@ import com.charmnight.linkgraph.application.usecase.PreviewDraftPatchUseCaseResu
 import com.charmnight.linkgraph.application.usecase.RestoreDraftPatchPreviewUseCaseResult
 import com.charmnight.linkgraph.application.usecase.UndoDraftPatchApplyUseCaseResult
 import com.charmnight.linkgraph.application.usecase.UnconfirmDraftChangeUseCaseResult
+import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
+import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
 import com.charmnight.linkgraph.llm.GenerationPlan
@@ -20,6 +22,7 @@ import com.charmnight.linkgraph.llm.runtime.AgentRunArtifactSummary
 import com.charmnight.linkgraph.mermaid.MermaidIssue
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.review.ReviewGraphViewDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
 import com.charmnight.linkgraph.sync.SyncPreviewItem
@@ -192,6 +195,9 @@ sealed interface GraphEditorApplicationEvent {
     data class AnalysisDisplayModeChanged(val displayMode: AnalysisDisplayMode) : GraphEditorApplicationEvent
     data class SelectedMethodChanged(val signature: String) : GraphEditorApplicationEvent
     data class AnalysisOutcomeLoaded(val outcome: AnalysisOutcome, val source: String) : GraphEditorApplicationEvent
+    data class ArchitectureGraphLoaded(val view: ArchitectureGraphViewDocument) : GraphEditorApplicationEvent
+    data class ClassDiagramLoaded(val view: ClassDiagramViewDocument) : GraphEditorApplicationEvent
+    data class ReviewGraphLoaded(val view: ReviewGraphViewDocument) : GraphEditorApplicationEvent
     data class DebugGraphLoaded(
         val graph: GraphDocument,
         val source: String,

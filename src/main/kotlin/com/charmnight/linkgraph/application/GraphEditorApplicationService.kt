@@ -55,6 +55,10 @@ import com.charmnight.linkgraph.application.workflow.ReviewWorkflow
 import com.charmnight.linkgraph.application.workflow.SourceNavigationWorkflow
 import com.charmnight.linkgraph.application.workflow.SubjectGraphWorkflow
 import com.charmnight.linkgraph.application.workflow.WorkspaceChangeCoordinator
+import com.charmnight.linkgraph.application.workflow.architecture.ArchitectureGraphWorkflow
+import com.charmnight.linkgraph.application.workflow.architecture.ArchitectureIndexWorkflowSupport
+import com.charmnight.linkgraph.application.workflow.architecture.ClassDiagramWorkflow
+import com.charmnight.linkgraph.application.workflow.review.ReviewGraphWorkflow
 import com.charmnight.linkgraph.sync.GraphPatchApplyService
 import com.charmnight.linkgraph.sync.SyncPreviewPlanner
 import com.charmnight.linkgraph.workbench.QaMode
@@ -94,7 +98,11 @@ internal class GraphEditorApplicationService(
         SemanticAnalyzer(
             registry = SemanticProviderRegistry(
                 listOf(
-                    CodeSemanticProvider(),
+                    CodeSemanticProvider(
+                        architectureIndexProvider = {
+                            runCatching { architectureIndexSupport.currentIndex() }.getOrNull()
+                        },
+                    ),
                     MyBatisXmlSemanticProvider(),
                     XmlResourceSemanticProvider(),
                     YamlPropertiesSemanticProvider(),
@@ -146,6 +154,9 @@ internal class GraphEditorApplicationService(
     private val codeDraftWriterService by lazy { CodeDraftWriterService(project) }
     private val graphDiagnosticsLogger by lazy { GraphDiagnosticsLogger(logger) }
     private val debugGraphFactory by lazy { DebugGraphFactory() }
+    private val architectureIndexSupport by lazy(LazyThreadSafetyMode.NONE) {
+        ArchitectureIndexWorkflowSupport(project)
+    }
 
     private val presentationProvider by lazy(LazyThreadSafetyMode.NONE) {
         project.getService(GraphEditorPresentationProvider::class.java)
@@ -333,6 +344,35 @@ internal class GraphEditorApplicationService(
         )
     }
 
+    private val architectureGraphFlow: ArchitectureGraphWorkflow by lazy(LazyThreadSafetyMode.NONE) {
+        ArchitectureGraphWorkflow(
+            project = project,
+            indexSupport = architectureIndexSupport,
+            eventSink = presentationProvider.eventSink(),
+            logger = logger,
+        )
+    }
+
+    private val classDiagramFlow: ClassDiagramWorkflow by lazy(LazyThreadSafetyMode.NONE) {
+        ClassDiagramWorkflow(
+            project = project,
+            indexSupport = architectureIndexSupport,
+            eventSink = presentationProvider.eventSink(),
+            logger = logger,
+        )
+    }
+
+    private val reviewGraphFlow: ReviewGraphWorkflow by lazy(LazyThreadSafetyMode.NONE) {
+        ReviewGraphWorkflow(
+            project = project,
+            snapshotProvider = editorSnapshotProvider,
+            indexSupport = architectureIndexSupport,
+            graphDiffer = graphDiffer,
+            eventSink = presentationProvider.eventSink(),
+            logger = logger,
+        )
+    }
+
     private val confirmedDraftCoordinator: ConfirmedDraftChangeCoordinator by lazy(LazyThreadSafetyMode.NONE) {
         ConfirmedDraftChangeCoordinator(
             snapshotProvider = applicationSnapshotProvider,
@@ -369,8 +409,23 @@ internal class GraphEditorApplicationService(
     fun requestExpandOverflowNode(nodeId: String) =
         subjectFlow.requestExpandOverflowNode(nodeId)
 
-    fun requestAnalysisDisplayMode(displayMode: AnalysisDisplayMode) =
-        subjectFlow.requestAnalysisDisplayMode(displayMode)
+    fun requestAnalysisDisplayMode(displayMode: AnalysisDisplayMode) {
+        when (displayMode) {
+            AnalysisDisplayMode.ARCHITECTURE_GRAPH -> requestArchitectureGraph()
+            AnalysisDisplayMode.CLASS_DIAGRAM -> requestClassDiagram()
+            AnalysisDisplayMode.REVIEW_GRAPH -> requestReviewGraph()
+            else -> subjectFlow.requestAnalysisDisplayMode(displayMode)
+        }
+    }
+
+    fun requestArchitectureGraph() =
+        architectureGraphFlow.requestArchitectureGraph()
+
+    fun requestClassDiagram(scopeNodeId: String? = null) =
+        classDiagramFlow.requestClassDiagram(scopeNodeId)
+
+    fun requestReviewGraph(selectedDiffItemIds: List<String> = emptyList()) =
+        reviewGraphFlow.requestReviewGraph(selectedDiffItemIds)
 
     fun loadGraph(graph: GraphDocument, source: String) {
         workspaceChangeCoordinator.resetWorkspaceGraphContext()

@@ -21,7 +21,7 @@ class DebugGraphFactoryTest {
         assertEquals(18, definition.graph.edges.size)
         assertTrue(definition.summary.contains("wide19"))
         assertEquals(
-            "com.example.audit.DataSourceAspect.around(org.aspectj.lang.ProceedingJoinPoint):java.lang.Object",
+            "com.example.order.DataSourceAspect.around(org.aspectj.lang.ProceedingJoinPoint):java.lang.Object",
             definition.anchorSignature,
         )
         assertTrue(definition.graph.nodes.any { node -> node.doc?.contains("重点核对") == true })
@@ -37,7 +37,7 @@ class DebugGraphFactoryTest {
         assertEquals(11, definition.graph.edges.size)
         assertTrue(definition.summary.contains("dense7"))
         assertEquals(
-            "com.example.audit.DenseAnchor.execute(com.example.audit.DenseRequest):void",
+            "com.example.order.DenseAnchor.execute(com.example.order.DenseRequest):void",
             definition.anchorSignature,
         )
     }

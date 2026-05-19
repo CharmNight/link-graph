@@ -2,7 +2,9 @@ import { readBootstrapState } from "./api";
 import { resolveFlowchartKind } from "./flowchartKind";
 import type {
   AnalysisDisplayMode,
+  ArchitectureGraphViewDocument,
   AsyncRequestState,
+  ClassDiagramViewDocument,
   FactGraphViewDocument,
   FlowchartViewDocument,
   LinkGraphBootstrapState,
@@ -14,6 +16,7 @@ import type {
   LinkGraphSceneState,
   QaRequestRecoveryState,
   ResourceRelationViewDocument,
+  ReviewGraphViewDocument,
   SourceNavigationState,
 } from "./types";
 
@@ -113,6 +116,9 @@ function createDefaultSceneStates(
     WORKSPACE_FACT: createSceneState(selectedNodeId, selectedNodeId, layoutState),
     WORKSPACE_FLOWCHART: createSceneState(selectedNodeId, selectedNodeId, layoutState),
     WORKSPACE_RESOURCE_RELATION: createSceneState(selectedNodeId, selectedNodeId, layoutState),
+    WORKSPACE_ARCHITECTURE_GRAPH: createSceneState(selectedNodeId, selectedNodeId, layoutState),
+    WORKSPACE_CLASS_DIAGRAM: createSceneState(selectedNodeId, selectedNodeId, layoutState),
+    WORKSPACE_REVIEW_GRAPH: createSceneState(selectedNodeId, selectedNodeId, layoutState),
     DIFF: createSceneState(null, null, EMPTY_LAYOUT_STATE),
   };
 }
@@ -178,6 +184,66 @@ function deriveResourceRelationSummary(visibleGraph: LinkGraphDocument) {
       counts[lane] = (counts[lane] ?? 0) + 1;
       return counts;
     }, {}),
+  };
+}
+
+function deriveArchitectureGraphSummary(visibleGraph: LinkGraphDocument) {
+  return {
+    moduleCount: visibleGraph.nodes.filter((node) => node.type === "MODULE").length,
+    packageCount: visibleGraph.nodes.filter((node) => node.type === "PACKAGE").length,
+    serviceCount: visibleGraph.nodes.filter((node) => node.type === "SERVICE").length,
+    resourceCount: visibleGraph.nodes.filter((node) => node.type === "RESOURCE").length,
+    layerCount: visibleGraph.nodes.filter((node) => node.type === "LAYER").length,
+    relationCount: visibleGraph.edges.length,
+    classCount: visibleGraph.nodes.filter((node) => node.metadata?.["architecture.classCount"] != null)
+      .reduce((sum, node) => sum + (Number(node.metadata?.["architecture.classCount"]) || 0), 0),
+    truncated: visibleGraph.truncated === true,
+  };
+}
+
+function deriveClassDiagramSummary(visibleGraph: LinkGraphDocument) {
+  return {
+    classCount: visibleGraph.nodes.filter((node) => node.type === "CLASS").length,
+    fieldCount: visibleGraph.nodes
+      .map((node) => Number(node.metadata?.["uml.field.count"] ?? "0"))
+      .filter(Number.isFinite)
+      .reduce((sum, count) => sum + count, 0),
+    interfaceCount: visibleGraph.nodes.filter((node) => node.type === "INTERFACE").length,
+    enumCount: visibleGraph.nodes.filter((node) => node.type === "ENUM").length,
+    annotationCount: visibleGraph.nodes.filter((node) => node.type === "ANNOTATION").length,
+    recordCount: visibleGraph.nodes.filter((node) => node.type === "RECORD").length,
+    objectCount: visibleGraph.nodes.filter((node) => node.type === "OBJECT").length,
+    relationCount: visibleGraph.edges.length,
+    spiProviderCount: 0,
+    reflectionRelationCount: 0,
+  };
+}
+
+function packageFromSignature(signature?: string | null): string | null {
+  if (!signature) {
+    return null;
+  }
+  const owner = signature.split("(")[0] ?? signature;
+  const index = owner.lastIndexOf(".");
+  return index > 0 ? owner.slice(0, index) : null;
+}
+
+function deriveReviewGraphSummary(visibleGraph: LinkGraphDocument) {
+  return {
+    changedSymbolCount: visibleGraph.nodes.filter((node) => node.metadata?.["review.role"] === "CHANGED").length,
+    upstreamCount: visibleGraph.nodes.filter((node) => node.metadata?.["review.role"] === "UPSTREAM").length,
+    downstreamCount: visibleGraph.nodes.filter((node) => node.metadata?.["review.role"] === "DOWNSTREAM").length,
+    relatedTestCount: visibleGraph.nodes.filter((node) => node.metadata?.["review.role"] === "RELATED_TEST").length,
+    affectedPackageCount: Array.from(new Set(visibleGraph.nodes
+      .map((node) => node.metadata?.["architecture.package"] ?? packageFromSignature(node.signature))
+      .filter(Boolean))).length,
+    affectedModuleCount: Array.from(new Set(visibleGraph.nodes
+      .map((node) => node.metadata?.["architecture.module"])
+      .filter(Boolean))).length,
+    evidenceRefCount: visibleGraph.edges.filter((edge) => edge.metadata?.["review.edgeRole"] === "RELATION").length,
+    truncated: Boolean(visibleGraph.truncated),
+    hiddenNodeCount: 0,
+    hiddenEdgeCount: 0,
   };
 }
 
@@ -287,6 +353,48 @@ function buildResourceRelationView(
   };
 }
 
+function buildArchitectureGraphView(
+  visibleGraph: LinkGraphDocument,
+  fullGraph: LinkGraphDocument,
+  anchorNodeId: string | null,
+): ArchitectureGraphViewDocument {
+  return {
+    visibleGraph,
+    fullGraph,
+    anchorNodeId,
+    projectionIndex: EMPTY_PROJECTION_INDEX,
+    summary: deriveArchitectureGraphSummary(visibleGraph),
+  };
+}
+
+function buildClassDiagramView(
+  visibleGraph: LinkGraphDocument,
+  fullGraph: LinkGraphDocument,
+  anchorNodeId: string | null,
+): ClassDiagramViewDocument {
+  return {
+    visibleGraph,
+    fullGraph,
+    anchorNodeId,
+    projectionIndex: EMPTY_PROJECTION_INDEX,
+    summary: deriveClassDiagramSummary(visibleGraph),
+  };
+}
+
+function buildReviewGraphView(
+  visibleGraph: LinkGraphDocument,
+  fullGraph: LinkGraphDocument,
+  anchorNodeId: string | null,
+): ReviewGraphViewDocument {
+  return {
+    visibleGraph,
+    fullGraph,
+    anchorNodeId,
+    projectionIndex: EMPTY_PROJECTION_INDEX,
+    summary: deriveReviewGraphSummary(visibleGraph),
+  };
+}
+
 export const SAMPLE_STATE: LinkGraphBootstrapState = {
   analysisDisplayMode: DEFAULT_ANALYSIS_DISPLAY_MODE,
   currentSceneId: DEFAULT_SCENE_ID,
@@ -297,13 +405,16 @@ export const SAMPLE_STATE: LinkGraphBootstrapState = {
   factGraphView: buildFactGraphView(INITIAL_GRAPH, INITIAL_GRAPH, INITIAL_SELECTED_NODE_ID),
   flowchartView: buildFlowchartView(INITIAL_GRAPH, INITIAL_GRAPH, INITIAL_SELECTED_NODE_ID),
   resourceRelationView: buildResourceRelationView(INITIAL_GRAPH, INITIAL_GRAPH, INITIAL_SELECTED_NODE_ID),
+  architectureGraphView: buildArchitectureGraphView(EMPTY_DOCUMENT, EMPTY_DOCUMENT, null),
+  classDiagramView: buildClassDiagramView(EMPTY_DOCUMENT, EMPTY_DOCUMENT, null),
+  reviewGraphView: buildReviewGraphView(EMPTY_DOCUMENT, EMPTY_DOCUMENT, null),
   designBaselineGraph: null,
   draftPatchPreview: null,
   draftWorkbenchState: { draftChanges: [], draftNotes: [] },
   canUndoDraftPatchApply: false,
   lastAppliedDraftPatchSummary: null,
-  auditResult: null,
-  auditRequestState: IDLE_REQUEST_STATE,
+  qaResult: null,
+  qaRequestState: IDLE_REQUEST_STATE,
   qaRequestRecoveryState: EMPTY_QA_REQUEST_RECOVERY_STATE,
   diffReviewResult: null,
   diffReviewRequestState: IDLE_REQUEST_STATE,
@@ -380,13 +491,16 @@ export const EMPTY_STATE: LinkGraphBootstrapState = {
   factGraphView: buildFactGraphView(EMPTY_DOCUMENT, EMPTY_DOCUMENT, null),
   flowchartView: buildFlowchartView(EMPTY_DOCUMENT, EMPTY_DOCUMENT, null),
   resourceRelationView: buildResourceRelationView(EMPTY_DOCUMENT, EMPTY_DOCUMENT, null),
+  architectureGraphView: buildArchitectureGraphView(EMPTY_DOCUMENT, EMPTY_DOCUMENT, null),
+  classDiagramView: buildClassDiagramView(EMPTY_DOCUMENT, EMPTY_DOCUMENT, null),
+  reviewGraphView: buildReviewGraphView(EMPTY_DOCUMENT, EMPTY_DOCUMENT, null),
   designBaselineGraph: null,
   draftPatchPreview: null,
   draftWorkbenchState: { draftChanges: [], draftNotes: [] },
   canUndoDraftPatchApply: false,
   lastAppliedDraftPatchSummary: null,
-  auditResult: null,
-  auditRequestState: IDLE_REQUEST_STATE,
+  qaResult: null,
+  qaRequestState: IDLE_REQUEST_STATE,
   qaRequestRecoveryState: EMPTY_QA_REQUEST_RECOVERY_STATE,
   diffReviewResult: null,
   diffReviewRequestState: IDLE_REQUEST_STATE,
@@ -466,6 +580,27 @@ export function resolveResourceRelationView(
   return state.resourceRelationView ?? emptyState.resourceRelationView!;
 }
 
+export function resolveArchitectureGraphView(
+  state: LinkGraphBootstrapState,
+  emptyState: LinkGraphBootstrapState = EMPTY_STATE,
+): ArchitectureGraphViewDocument {
+  return state.architectureGraphView ?? emptyState.architectureGraphView!;
+}
+
+export function resolveClassDiagramView(
+  state: LinkGraphBootstrapState,
+  emptyState: LinkGraphBootstrapState = EMPTY_STATE,
+): ClassDiagramViewDocument {
+  return state.classDiagramView ?? emptyState.classDiagramView!;
+}
+
+export function resolveReviewGraphView(
+  state: LinkGraphBootstrapState,
+  emptyState: LinkGraphBootstrapState = EMPTY_STATE,
+): ReviewGraphViewDocument {
+  return state.reviewGraphView ?? emptyState.reviewGraphView!;
+}
+
 export function resolveDesignBaselineGraph(state: LinkGraphBootstrapState): LinkGraphDocument | null {
   return state.designBaselineGraph ?? null;
 }
@@ -493,12 +628,18 @@ export function resolveCurrentSceneState(
 export function resolveActiveViewDocument(
   state: LinkGraphBootstrapState,
   displayMode: AnalysisDisplayMode = state.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE,
-): FactGraphViewDocument | FlowchartViewDocument | ResourceRelationViewDocument {
+): FactGraphViewDocument | FlowchartViewDocument | ResourceRelationViewDocument | ArchitectureGraphViewDocument | ClassDiagramViewDocument | ReviewGraphViewDocument {
   switch (displayMode) {
     case "FLOWCHART":
       return resolveFlowchartView(state, EMPTY_STATE);
     case "RESOURCE_RELATION_VIEW":
       return resolveResourceRelationView(state, EMPTY_STATE);
+    case "ARCHITECTURE_GRAPH":
+      return resolveArchitectureGraphView(state, EMPTY_STATE);
+    case "CLASS_DIAGRAM":
+      return resolveClassDiagramView(state, EMPTY_STATE);
+    case "REVIEW_GRAPH":
+      return resolveReviewGraphView(state, EMPTY_STATE);
     case "FACT_GRAPH":
     default:
       return resolveFactGraphView(state, EMPTY_STATE);

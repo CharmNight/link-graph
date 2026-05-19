@@ -171,6 +171,13 @@ function resolvePosition(node?: LinkGraphNode | null): GraphPosition | null {
   return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
 }
 
+function fallbackLayoutPosition(index: number): GraphPosition {
+  return {
+    x: 120 + (index % 4) * 360,
+    y: 96 + Math.floor(index / 4) * 220,
+  };
+}
+
 function hasResolvedLayoutPositions(nodes: LinkGraphNode[]): boolean {
   return nodes.length > 0 && nodes.every((node) => resolvePosition(node) !== null);
 }
@@ -248,6 +255,10 @@ function seedLayoutNodes(nextNodes: LinkGraphNode[], previousNodes: LinkGraphNod
       metadata: mergedMetadata,
     };
   });
+}
+
+function ensureResolvedLayoutPositions(nodes: LinkGraphNode[]): LinkGraphNode[] {
+  return nodes.map((node, index) => syncNodePosition(node, resolvePosition(node) ?? fallbackLayoutPosition(index)));
 }
 
 function canReuseSeededRoute(nextEdge: LinkGraphEdge, previousEdge: LinkGraphEdge): boolean {
@@ -474,8 +485,10 @@ export function useMeasuredLayout({
         if (requestVersionRef.current !== requestVersion) {
           return;
         }
+        const fallbackNodes = ensureResolvedLayoutPositions(seededNodes);
         setLayoutState((current) => ({
           ...current,
+          nodes: fallbackNodes,
           edges: seedLayoutEdges(nextGraph.edges, current.edges),
           layoutPending: false,
         }));

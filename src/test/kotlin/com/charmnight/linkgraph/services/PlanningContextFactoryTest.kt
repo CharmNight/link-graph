@@ -1,5 +1,10 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
+import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
+import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
+import com.charmnight.linkgraph.review.ReviewGraphSummary
+import com.charmnight.linkgraph.review.ReviewGraphViewDocument
 import com.charmnight.linkgraph.application.planning.PlanningContextFactory
 import com.charmnight.linkgraph.testing.*
 
@@ -28,6 +33,544 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class PlanningContextFactoryTest {
+    @Test
+    fun buildGraphBeautificationContextUsesArchitectureGraphFullGraph() {
+        val projectDir = Files.createTempDirectory("architecture-beautification-source")
+        val sourceFile = projectDir.resolve("src/main/java/com/example/orders/OrderService.java")
+        Files.createDirectories(sourceFile.parent)
+        Files.writeString(
+            sourceFile,
+            """
+                package com.example.orders;
+
+                public class OrderService {
+                    public void submit() {
+                        validateOrder();
+                    }
+                }
+            """.trimIndent(),
+        )
+        val staleMethod = GraphNode(
+            id = "method:legacy-flow",
+            type = NodeType.METHOD,
+            title = "LegacyFlow.run",
+        )
+        val moduleNode = GraphNode(
+            id = "module:app",
+            type = NodeType.MODULE,
+            title = "app",
+            metadata = mapOf("architecture.kind" to "MODULE"),
+        )
+        val packageNode = GraphNode(
+            id = "package:orders",
+            type = NodeType.PACKAGE,
+            title = "com.example.orders",
+            metadata = mapOf(
+                "architecture.kind" to "PACKAGE",
+                "architecture.sourceSample.count" to "1",
+                "architecture.sourceSample.0.nodeId" to "class:com.example.orders.OrderService",
+                "architecture.sourceSample.0.filePath" to sourceFile.toString(),
+                "architecture.sourceSample.0.startLine" to "1",
+                "architecture.sourceSample.0.endLine" to "7",
+                "architecture.sourceSample.0.reason" to "architecture-member-class:package:orders",
+            ),
+        )
+        val resourceNode = GraphNode(
+            id = "resource:orders-db",
+            type = NodeType.RESOURCE,
+            title = "orders-db",
+            metadata = mapOf("architecture.kind" to "RESOURCE"),
+        )
+        val visibleGraph = GraphDocument(
+            nodes = listOf(moduleNode, packageNode),
+            edges = listOf(
+                GraphEdge(
+                    id = "contains:app-orders",
+                    type = EdgeType.USES_TYPE,
+                    fromNodeId = moduleNode.id,
+                    toNodeId = packageNode.id,
+                    metadata = mapOf("architecture.relation.kind" to "CONTAINS"),
+                ),
+            ),
+        )
+        val fullGraph = visibleGraph.copy(
+            nodes = visibleGraph.nodes + resourceNode,
+            edges = visibleGraph.edges + GraphEdge(
+                id = "uses:orders-db",
+                type = EdgeType.MAPS_TO_SQL,
+                fromNodeId = packageNode.id,
+                toNodeId = resourceNode.id,
+                metadata = mapOf("architecture.relation.kind" to "USES_RESOURCE"),
+            ),
+        )
+        val stateService = GraphEditorStateService()
+        stateService.loadGraph(GraphDocument(nodes = listOf(staleMethod)), "currentMethod")
+        stateService.loadArchitectureGraphView(
+            ArchitectureGraphViewDocument(
+                visibleGraph = visibleGraph,
+                fullGraph = fullGraph,
+                anchorNodeId = moduleNode.id,
+            ),
+        )
+
+        val context = planningContextFactory().buildGraphBeautificationContext(
+            snapshot = stateService.snapshot().toWorkflowEditorSnapshot(),
+            goal = "解释架构关系",
+            preferredStyle = null,
+            explanationFocus = "架构图",
+            focusNodeId = packageNode.id,
+            followUp = null,
+            granularity = com.charmnight.linkgraph.workbench.StepGranularity.BUSINESS,
+        )
+
+        assertEquals(packageNode.id, context.presentationContext.anchorNodeId)
+        assertEquals(listOf(packageNode.id), context.presentationContext.selectedNodeIds)
+        assertEquals(
+            setOf(moduleNode.id, packageNode.id),
+            context.presentationContext.graph.nodes.map(GraphNode::id).toSet(),
+        )
+        assertEquals(
+            setOf(moduleNode.id, packageNode.id, resourceNode.id),
+            context.presentationContext.fullGraph.nodes.map(GraphNode::id).toSet(),
+        )
+        assertEquals("class:com.example.orders.OrderService", context.sourceContext.single().nodeId)
+        assertTrue(context.sourceContext.single().snippet?.contains("validateOrder") == true)
+        assertTrue(context.presentationContext.fullGraph.nodes.none { node -> node.id == staleMethod.id })
+    }
+
+    @Test
+    fun buildQaGraphsUsesArchitectureGraphViewForFactAndEditableGraphs() {
+        val staleMethod = GraphNode(
+            id = "method:stale-flow",
+            type = NodeType.METHOD,
+            title = "StaleFlow.run",
+        )
+        val layerNode = GraphNode(
+            id = "layer:application",
+            type = NodeType.LAYER,
+            title = "application",
+            metadata = mapOf("architecture.kind" to "LAYER"),
+        )
+        val serviceNode = GraphNode(
+            id = "service:order-service",
+            type = NodeType.SERVICE,
+            title = "OrderService",
+            metadata = mapOf("architecture.kind" to "SERVICE"),
+        )
+        val packageNode = GraphNode(
+            id = "package:orders",
+            type = NodeType.PACKAGE,
+            title = "com.example.orders",
+            metadata = mapOf("architecture.kind" to "PACKAGE"),
+        )
+        val visibleGraph = GraphDocument(
+            nodes = listOf(layerNode, serviceNode),
+            edges = listOf(
+                GraphEdge(
+                    id = "contains:layer-service",
+                    type = EdgeType.USES_TYPE,
+                    fromNodeId = layerNode.id,
+                    toNodeId = serviceNode.id,
+                    metadata = mapOf("architecture.relation.kind" to "CONTAINS"),
+                ),
+            ),
+        )
+        val fullGraph = visibleGraph.copy(
+            nodes = listOf(layerNode, serviceNode, packageNode),
+            edges = visibleGraph.edges + GraphEdge(
+                id = "contains:service-package",
+                type = EdgeType.USES_TYPE,
+                fromNodeId = serviceNode.id,
+                toNodeId = packageNode.id,
+                metadata = mapOf("architecture.relation.kind" to "CONTAINS"),
+            ),
+        )
+        val stateService = GraphEditorStateService()
+        stateService.loadGraph(GraphDocument(nodes = listOf(staleMethod)), "currentMethod")
+        stateService.loadArchitectureGraphView(
+            ArchitectureGraphViewDocument(
+                visibleGraph = visibleGraph,
+                fullGraph = fullGraph,
+                anchorNodeId = layerNode.id,
+            ),
+        )
+
+        val qaGraphs = planningContextFactory().buildQaGraphs(
+            snapshot = stateService.snapshot().toWorkflowEditorSnapshot(),
+            selectedNodeIds = listOf(serviceNode.id),
+            collectSourceEvidence = false,
+        )
+
+        assertEquals(
+            setOf(layerNode.id, serviceNode.id, packageNode.id),
+            qaGraphs.factGraph.nodes.map(GraphNode::id).toSet(),
+        )
+        assertEquals(
+            setOf(layerNode.id, serviceNode.id),
+            qaGraphs.editableGraph.nodes.map(GraphNode::id).toSet(),
+        )
+        assertTrue(qaGraphs.factGraph.nodes.none { node -> node.id == staleMethod.id })
+        assertTrue(qaGraphs.editableGraph.nodes.none { node -> node.id == staleMethod.id })
+    }
+
+    @Test
+    fun buildGraphBeautificationContextUsesClassDiagramFullGraph() {
+        val staleMethod = GraphNode(
+            id = "method:legacy-flow",
+            type = NodeType.METHOD,
+            title = "LegacyFlow.run",
+        )
+        val controller = GraphNode(
+            id = "class:order-controller",
+            type = NodeType.CLASS,
+            title = "OrderController",
+            signature = "com.example.OrderController",
+            doc = "订单入口控制器。",
+            metadata = mapOf(
+                "uml.kind" to "CLASS_DIAGRAM",
+                "jvm.class.kind" to "CLASS",
+                "uml.comment" to "订单入口控制器。",
+            ),
+        )
+        val service = GraphNode(
+            id = "interface:order-service",
+            type = NodeType.INTERFACE,
+            title = "OrderService",
+            signature = "com.example.OrderService",
+            metadata = mapOf(
+                "uml.kind" to "CLASS_DIAGRAM",
+                "jvm.class.kind" to "INTERFACE",
+            ),
+        )
+        val statusEnum = GraphNode(
+            id = "enum:order-status",
+            type = NodeType.ENUM,
+            title = "OrderStatus",
+            signature = "com.example.OrderStatus",
+            metadata = mapOf(
+                "uml.kind" to "CLASS_DIAGRAM",
+                "jvm.class.kind" to "ENUM",
+            ),
+        )
+        val visibleGraph = GraphDocument(
+            nodes = listOf(controller, service),
+            edges = listOf(
+                GraphEdge(
+                    id = "uses:controller-service",
+                    type = EdgeType.USES_TYPE,
+                    fromNodeId = controller.id,
+                    toNodeId = service.id,
+                    metadata = mapOf("jvm.relation.kind" to "USES_TYPE"),
+                ),
+            ),
+        )
+        val fullGraph = visibleGraph.copy(
+            nodes = visibleGraph.nodes + statusEnum,
+            edges = visibleGraph.edges + GraphEdge(
+                id = "uses:controller-status",
+                type = EdgeType.USES_TYPE,
+                fromNodeId = controller.id,
+                toNodeId = statusEnum.id,
+                metadata = mapOf("jvm.relation.kind" to "USES_TYPE"),
+            ),
+        )
+        val stateService = GraphEditorStateService()
+        stateService.loadGraph(GraphDocument(nodes = listOf(staleMethod)), "currentMethod")
+        stateService.loadClassDiagramView(
+            ClassDiagramViewDocument(
+                visibleGraph = visibleGraph,
+                fullGraph = fullGraph,
+                anchorNodeId = controller.id,
+            ),
+        )
+
+        val context = planningContextFactory().buildGraphBeautificationContext(
+            snapshot = stateService.snapshot().toWorkflowEditorSnapshot(),
+            goal = "解释类关系",
+            preferredStyle = null,
+            explanationFocus = "类图",
+            focusNodeId = service.id,
+            followUp = null,
+            granularity = com.charmnight.linkgraph.workbench.StepGranularity.BUSINESS,
+        )
+
+        assertEquals(service.id, context.presentationContext.anchorNodeId)
+        assertEquals(listOf(service.id), context.presentationContext.selectedNodeIds)
+        assertEquals(
+            setOf(controller.id, service.id),
+            context.presentationContext.graph.nodes.map(GraphNode::id).toSet(),
+        )
+        assertEquals(
+            setOf(controller.id, service.id, statusEnum.id),
+            context.presentationContext.fullGraph.nodes.map(GraphNode::id).toSet(),
+        )
+        assertTrue(context.presentationContext.fullGraph.nodes.none { node -> node.id == staleMethod.id })
+    }
+
+    @Test
+    fun buildQaGraphsUsesClassDiagramViewForFactAndEditableGraphs() {
+        val staleMethod = GraphNode(
+            id = "method:stale-flow",
+            type = NodeType.METHOD,
+            title = "StaleFlow.run",
+        )
+        val baseClass = GraphNode(
+            id = "class:base-handler",
+            type = NodeType.CLASS,
+            title = "BaseHandler",
+            signature = "com.example.BaseHandler",
+            metadata = mapOf("uml.kind" to "CLASS_DIAGRAM", "jvm.class.kind" to "CLASS"),
+        )
+        val handler = GraphNode(
+            id = "class:order-handler",
+            type = NodeType.CLASS,
+            title = "OrderHandler",
+            signature = "com.example.OrderHandler",
+            metadata = mapOf("uml.kind" to "CLASS_DIAGRAM", "jvm.class.kind" to "CLASS"),
+        )
+        val service = GraphNode(
+            id = "interface:order-service",
+            type = NodeType.INTERFACE,
+            title = "OrderService",
+            signature = "com.example.OrderService",
+            metadata = mapOf("uml.kind" to "CLASS_DIAGRAM", "jvm.class.kind" to "INTERFACE"),
+        )
+        val visibleGraph = GraphDocument(
+            nodes = listOf(handler, service),
+            edges = listOf(
+                GraphEdge(
+                    id = "implements:handler-service",
+                    type = EdgeType.IMPLEMENTS,
+                    fromNodeId = handler.id,
+                    toNodeId = service.id,
+                    metadata = mapOf("jvm.relation.kind" to "IMPLEMENTS"),
+                ),
+            ),
+        )
+        val fullGraph = visibleGraph.copy(
+            nodes = listOf(baseClass, handler, service),
+            edges = visibleGraph.edges + GraphEdge(
+                id = "extends:handler-base",
+                type = EdgeType.EXTENDS,
+                fromNodeId = handler.id,
+                toNodeId = baseClass.id,
+                metadata = mapOf("jvm.relation.kind" to "EXTENDS"),
+            ),
+        )
+        val stateService = GraphEditorStateService()
+        stateService.loadGraph(GraphDocument(nodes = listOf(staleMethod)), "currentMethod")
+        stateService.loadClassDiagramView(
+            ClassDiagramViewDocument(
+                visibleGraph = visibleGraph,
+                fullGraph = fullGraph,
+                anchorNodeId = handler.id,
+            ),
+        )
+
+        val qaGraphs = planningContextFactory().buildQaGraphs(
+            snapshot = stateService.snapshot().toWorkflowEditorSnapshot(),
+            selectedNodeIds = listOf(handler.id),
+            collectSourceEvidence = false,
+        )
+
+        assertEquals(
+            setOf(baseClass.id, handler.id, service.id),
+            qaGraphs.factGraph.nodes.map(GraphNode::id).toSet(),
+        )
+        assertEquals(
+            setOf(handler.id, service.id),
+            qaGraphs.editableGraph.nodes.map(GraphNode::id).toSet(),
+        )
+        assertTrue(qaGraphs.factGraph.nodes.none { node -> node.id == staleMethod.id })
+        assertTrue(qaGraphs.editableGraph.nodes.none { node -> node.id == staleMethod.id })
+    }
+
+    @Test
+    fun buildQaGraphsUsesReviewGraphViewForFactAndEditableGraphs() {
+        val staleMethod = GraphNode(
+            id = "method:stale-flow",
+            type = NodeType.METHOD,
+            title = "StaleFlow.run",
+        )
+        val changed = GraphNode(
+            id = "class:order-service",
+            type = NodeType.CLASS,
+            title = "OrderService",
+            signature = "com.example.review.OrderService",
+            metadata = mapOf(
+                "review.role" to "CHANGED",
+                "source.filePath" to "src/main/java/com/example/review/OrderService.java",
+                "source.startLine" to "3",
+                "source.endLine" to "8",
+            ),
+        )
+        val upstream = GraphNode(
+            id = "class:order-controller",
+            type = NodeType.CLASS,
+            title = "OrderController",
+            signature = "com.example.review.OrderController",
+            metadata = mapOf("review.role" to "UPSTREAM"),
+        )
+        val downstream = GraphNode(
+            id = "class:order-repository",
+            type = NodeType.CLASS,
+            title = "OrderRepository",
+            signature = "com.example.review.OrderRepository",
+            metadata = mapOf("review.role" to "DOWNSTREAM"),
+        )
+        val visibleGraph = GraphDocument(
+            nodes = listOf(changed, upstream),
+            edges = listOf(
+                GraphEdge(
+                    id = "review:upstream:${upstream.id}->${changed.id}",
+                    type = EdgeType.USES_TYPE,
+                    fromNodeId = upstream.id,
+                    toNodeId = changed.id,
+                    metadata = mapOf("review.edgeRole" to "UPSTREAM"),
+                ),
+            ),
+        )
+        val fullGraph = visibleGraph.copy(
+            nodes = listOf(changed, upstream, downstream),
+            edges = visibleGraph.edges + GraphEdge(
+                id = "review:downstream:${changed.id}->${downstream.id}",
+                type = EdgeType.USES_TYPE,
+                fromNodeId = changed.id,
+                toNodeId = downstream.id,
+                metadata = mapOf("review.edgeRole" to "DOWNSTREAM"),
+            ),
+        )
+        val stateService = GraphEditorStateService()
+        stateService.loadGraph(GraphDocument(nodes = listOf(staleMethod)), "currentMethod")
+        stateService.loadReviewGraphView(
+            ReviewGraphViewDocument(
+                visibleGraph = visibleGraph,
+                fullGraph = fullGraph,
+                anchorNodeId = changed.id,
+                summary = ReviewGraphSummary(
+                    changedSymbolCount = 1,
+                    upstreamCount = 1,
+                    downstreamCount = 1,
+                ),
+                projectionIndex = com.charmnight.linkgraph.ui.view.graphProjectionIndexForVisibleGraph(
+                    visibleGraph = visibleGraph,
+                    fullGraph = fullGraph,
+                ),
+            ),
+        )
+
+        val qaGraphs = planningContextFactory().buildQaGraphs(
+            snapshot = stateService.snapshot().toWorkflowEditorSnapshot(),
+            selectedNodeIds = listOf(changed.id),
+            collectSourceEvidence = false,
+        )
+
+        assertEquals(
+            setOf(changed.id, upstream.id, downstream.id),
+            qaGraphs.factGraph.nodes.map(GraphNode::id).toSet(),
+        )
+        assertEquals(
+            setOf(changed.id, upstream.id),
+            qaGraphs.editableGraph.nodes.map(GraphNode::id).toSet(),
+        )
+        assertTrue(qaGraphs.factGraph.nodes.none { node -> node.id == staleMethod.id })
+        assertTrue(qaGraphs.editableGraph.nodes.none { node -> node.id == staleMethod.id })
+    }
+
+    @Test
+    fun buildGraphBeautificationContextUsesReviewGraphFullGraph() {
+        val staleMethod = GraphNode(
+            id = "method:legacy-flow",
+            type = NodeType.METHOD,
+            title = "LegacyFlow.run",
+        )
+        val changed = GraphNode(
+            id = "class:order-service",
+            type = NodeType.CLASS,
+            title = "OrderService",
+            signature = "com.example.review.OrderService",
+            metadata = mapOf("review.role" to "CHANGED"),
+        )
+        val upstream = GraphNode(
+            id = "class:order-controller",
+            type = NodeType.CLASS,
+            title = "OrderController",
+            signature = "com.example.review.OrderController",
+            metadata = mapOf("review.role" to "UPSTREAM"),
+        )
+        val downstream = GraphNode(
+            id = "class:order-repository",
+            type = NodeType.CLASS,
+            title = "OrderRepository",
+            signature = "com.example.review.OrderRepository",
+            metadata = mapOf("review.role" to "DOWNSTREAM"),
+        )
+        val visibleGraph = GraphDocument(
+            nodes = listOf(changed, upstream),
+            edges = listOf(
+                GraphEdge(
+                    id = "review:upstream:${upstream.id}->${changed.id}",
+                    type = EdgeType.USES_TYPE,
+                    fromNodeId = upstream.id,
+                    toNodeId = changed.id,
+                    metadata = mapOf("review.edgeRole" to "UPSTREAM"),
+                ),
+            ),
+        )
+        val fullGraph = visibleGraph.copy(
+            nodes = listOf(changed, upstream, downstream),
+            edges = visibleGraph.edges + GraphEdge(
+                id = "review:downstream:${changed.id}->${downstream.id}",
+                type = EdgeType.USES_TYPE,
+                fromNodeId = changed.id,
+                toNodeId = downstream.id,
+                metadata = mapOf("review.edgeRole" to "DOWNSTREAM"),
+            ),
+        )
+        val snapshot = testSnapshot(
+            workspaceGraph = GraphDocument(nodes = listOf(staleMethod)),
+            analysisDisplayMode = AnalysisDisplayMode.REVIEW_GRAPH,
+            currentSceneId = com.charmnight.linkgraph.application.model.GraphSceneId.WORKSPACE_REVIEW_GRAPH,
+            selectedNodeId = changed.id,
+            reviewGraphView = ReviewGraphViewDocument(
+                visibleGraph = visibleGraph,
+                fullGraph = fullGraph,
+                anchorNodeId = changed.id,
+                summary = ReviewGraphSummary(
+                    changedSymbolCount = 1,
+                    upstreamCount = 1,
+                    downstreamCount = 1,
+                ),
+                projectionIndex = com.charmnight.linkgraph.ui.view.graphProjectionIndexForVisibleGraph(
+                    visibleGraph = visibleGraph,
+                    fullGraph = fullGraph,
+                ),
+            ),
+        )
+
+        val context = planningContextFactory().buildGraphBeautificationContext(
+            snapshot = snapshot.toWorkflowEditorSnapshot(),
+            goal = "解释 Review Graph 影响范围",
+            preferredStyle = null,
+            explanationFocus = "Review Graph",
+            focusNodeId = changed.id,
+            followUp = null as GraphBeautificationFollowUpContext?,
+            granularity = com.charmnight.linkgraph.workbench.StepGranularity.BUSINESS,
+        )
+
+        assertEquals(changed.id, context.presentationContext.anchorNodeId)
+        assertEquals(listOf(changed.id), context.presentationContext.selectedNodeIds)
+        assertEquals(
+            setOf(changed.id, upstream.id),
+            context.presentationContext.graph.nodes.map(GraphNode::id).toSet(),
+        )
+        assertEquals(
+            setOf(changed.id, upstream.id, downstream.id),
+            context.presentationContext.fullGraph.nodes.map(GraphNode::id).toSet(),
+        )
+        assertTrue(context.presentationContext.fullGraph.nodes.none { node -> node.id == staleMethod.id })
+    }
+
     @Test
     fun buildQaGraphsUsesInteractiveGraphWithExpandedInvocationContent() {
         val factGraph = GraphDocument(
@@ -81,10 +624,7 @@ class PlanningContextFactoryTest {
             collectSourceEvidence = false,
         )
 
-        assertEquals(
-            setOf("method:file-download", "scope:file-download-if"),
-            qaGraphs.factGraph.nodes.map(GraphNode::id).toSet(),
-        )
+        assertEquals(setOf("method:file-download"), qaGraphs.factGraph.nodes.map(GraphNode::id).toSet())
         assertEquals(editableGraph, qaGraphs.editableGraph)
     }
 
@@ -478,4 +1018,12 @@ class PlanningContextFactoryTest {
 
         assertTrue(payload.sourceContext.isEmpty())
     }
+
+    private fun planningContextFactory(): PlanningContextFactory =
+        PlanningContextFactory(
+            graphDiffer = GraphDiffer(),
+            syncPreviewPlanner = SyncPreviewPlanner(),
+            graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
+            settingsProvider = { LinkGraphSettingsState() },
+        )
 }

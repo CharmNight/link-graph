@@ -2,9 +2,13 @@ package com.charmnight.linkgraph.semantic.provider.code
 
 import com.charmnight.linkgraph.testing.*
 
+import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
 import com.charmnight.linkgraph.testing.addResourceFixture
 import com.charmnight.linkgraph.testing.fixtureFileName
 import com.charmnight.linkgraph.testing.readJavaFixture
+import com.charmnight.linkgraph.jvm.index.JvmSymbolIndexBuilder
+import com.charmnight.linkgraph.jvm.relation.JvmRelationResolverRegistry
+import com.charmnight.linkgraph.jvm.relation.JvmResolutionContext
 import com.charmnight.linkgraph.semantic.graph.GraphAssembler
 import com.charmnight.linkgraph.semantic.model.FlowActionUnit
 import com.charmnight.linkgraph.semantic.model.FlowEdgeRole
@@ -21,10 +25,66 @@ import com.charmnight.linkgraph.semantic.policy.SemanticCapturePolicy
 import com.charmnight.linkgraph.semantic.policy.TraversalBudgetPolicy
 import com.charmnight.linkgraph.semantic.subject.CaretSubjectLocator
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectHandle
+import com.charmnight.linkgraph.source.IdeSourceContentResolver
 import com.charmnight.linkgraph.ui.view.FlowchartProjector
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class JavaCodeSemanticProviderTest : BasePlatformTestCase() {
+    fun testAnalyzeJavaMethodUsesArchitectureIndexForReflectionEvidence() {
+        myFixture.addFileToProject(
+            "src/main/java/com/example/ReflectiveCaller.java",
+            """
+            package com.example;
+
+            class ReflectiveCaller {
+                void call() throws Exception {
+                    Class<?> type = Class.forName("com.example.TargetService");
+                    type.getMethod("execute", String.class);
+                }
+            }
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/TargetService.java",
+            """
+            package com.example;
+
+            class TargetService {
+                public void execute(String value) {}
+            }
+            """.trimIndent(),
+        )
+        myFixture.configureFromExistingVirtualFile(
+            requireNotNull(myFixture.findFileInTempDir("src/main/java/com/example/ReflectiveCaller.java")),
+        )
+        myFixture.editor.caretModel.moveToOffset(myFixture.file.text.indexOf("type.getMethod"))
+
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor)
+        val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
+        val provider = JavaCodeSemanticProvider(
+            CodeFlowSemanticExtractor(architectureIndexProvider = { buildArchitectureIndex() }),
+        )
+
+        val result = provider.analyze(
+            handle = codeHandle,
+            capturePolicy = SemanticCapturePolicy(),
+            budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 0, maxUpstreamDepth = 0),
+        )
+
+        val target = result.semanticUnits.filterIsInstance<MethodLikeUnit>()
+            .firstOrNull { unit -> unit.signature == "com.example.TargetService.execute(java.lang.String):void" }
+        assertTrue("链路图应从 ArchitectureGraphIndex 补出静态反射目标方法", target != null)
+        assertTrue(
+            result.relations.any { relation ->
+                relation.kind == SemanticRelationKind.REFERENCES &&
+                    relation.toUnitId == target!!.id &&
+                    relation.label == com.charmnight.linkgraph.model.EdgeType.REFLECTS_TO.name &&
+                    relation.metadata["jvm.relation.kind"] == "REFLECTS_TO" &&
+                    relation.metadata["relation.confidence"] == "PROVEN"
+            },
+        )
+    }
+
     fun testAnalyzeJavaMethodBuildsUnifiedSemanticResourceBinding() {
         loadProjectFixture("mybatis/UserMapper.xml")
         loadFixtureWithCaret("mybatis/UserMapper.java", "loadUser")
@@ -67,7 +127,9 @@ class JavaCodeSemanticProviderTest : BasePlatformTestCase() {
         val handle = CaretSubjectLocator().locate(project, myFixture.editor)
         val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
 
-        val result = JavaCodeSemanticProvider().analyze(
+        val result = JavaCodeSemanticProvider(
+            CodeFlowSemanticExtractor(architectureIndexProvider = { buildArchitectureIndex() }),
+        ).analyze(
             handle = codeHandle,
             capturePolicy = SemanticCapturePolicy(),
             budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 1, maxInvocationsPerUnit = 8),
@@ -78,37 +140,42 @@ class JavaCodeSemanticProviderTest : BasePlatformTestCase() {
         } as? MethodLikeUnit
         val feignClient = result.semanticUnits.firstOrNull { unit ->
             unit is ResourceUnit &&
-                unit.resourceKind == "FEIGN_CLIENT" &&
-                unit.metadata["clientClass"] == "com.charmnight.linkgraph.fixtures.http.FeignOrderClient" &&
-                unit.metadata["httpMethod"] == "GET" &&
-                unit.metadata["path"] == "/orders/{id}"
+                unit.resourceKind == "CONFIG_ITEM" &&
+                unit.metadata["jvm.relation.kind"] == "FEIGN_CLIENT_CALLS" &&
+                unit.metadata["feign.clientClass"] == "com.charmnight.linkgraph.fixtures.http.FeignOrderClient" &&
+                unit.metadata["http.method"] == "GET" &&
+                unit.metadata["http.path"] == "/orders/{id}"
         } as? ResourceUnit
         val endpoint = result.semanticUnits.firstOrNull { unit ->
             unit is ResourceUnit &&
-                unit.resourceKind == "HTTP_ENDPOINT" &&
-                unit.metadata["httpMethod"] == "GET" &&
-                unit.metadata["path"] == "/orders/{id}"
+                unit.resourceKind == "CONFIG_ITEM" &&
+                unit.metadata["jvm.relation.kind"] == "FEIGN_ROUTES_TO" &&
+                unit.metadata["http.method"] == "GET" &&
+                unit.metadata["http.path"] == "/orders/{id}" &&
+                unit.metadata["http.providerMethod"] == "com.charmnight.linkgraph.fixtures.http.OrderProviderController.getOrder(java.lang.String):java.lang.String"
         } as? ResourceUnit
 
         assertTrue("应当识别服务方法语义单元", serviceMethod != null)
-        assertTrue("应当识别 Feign 客户端资源单元", feignClient != null)
-        assertTrue("应当识别 HTTP 端点资源单元", endpoint != null)
+        assertTrue("应当从 JVM relation index 识别 Feign 客户端候选", feignClient != null)
+        assertTrue("应当从 JVM relation index 识别 Feign 到 provider 端点的路由", endpoint != null)
         assertTrue(
             "应当通过统一 REFERENCES 关系表达服务方法到 Feign 客户端的代理调用",
             result.relations.any { relation ->
                 relation.kind == SemanticRelationKind.REFERENCES &&
                     relation.fromUnitId == serviceMethod!!.id &&
                     relation.toUnitId == feignClient!!.id &&
-                    relation.label == com.charmnight.linkgraph.model.EdgeType.USES_PROXY.name
+                    relation.label == com.charmnight.linkgraph.model.EdgeType.USES_PROXY.name &&
+                    relation.metadata["jvm.relation.kind"] == "FEIGN_CLIENT_CALLS"
             },
         )
         assertTrue(
-            "应当通过统一 REFERENCES 关系表达 Feign 客户端到 HTTP 端点的路由",
+            "应当通过统一 REFERENCES 关系表达服务方法到 Feign 路由候选",
             result.relations.any { relation ->
                 relation.kind == SemanticRelationKind.REFERENCES &&
-                    relation.fromUnitId == feignClient!!.id &&
+                    relation.fromUnitId == serviceMethod!!.id &&
                     relation.toUnitId == endpoint!!.id &&
-                    relation.label == com.charmnight.linkgraph.model.EdgeType.ROUTES_TO.name
+                    relation.label == com.charmnight.linkgraph.model.EdgeType.ROUTES_TO.name &&
+                    relation.metadata["jvm.relation.kind"] == "FEIGN_ROUTES_TO"
             },
         )
         assertTrue(
@@ -153,6 +220,143 @@ class JavaCodeSemanticProviderTest : BasePlatformTestCase() {
         assertTrue(result.relations.any { relation -> relation.kind == SemanticRelationKind.CONTROL_FLOW })
         assertTrue(result.relations.any { relation -> relation.kind == SemanticRelationKind.INVOKES })
         assertTrue(result.sourceMappings.any { mapping -> mapping.targetUnitId == result.anchors.single().targetUnitId })
+    }
+
+    fun testInterfaceDispatchDoesNotExpandAllImplementationsWithoutReceiverProof() {
+        myFixture.configureByText(
+            "InterfaceDispatchService.java",
+            """
+                package com.example;
+
+                class InterfaceDispatchService {
+                    String <caret>load(PaymentGateway gateway, String id) {
+                        return gateway.fetch(id);
+                    }
+                }
+
+                interface PaymentGateway {
+                    String fetch(String id);
+                }
+
+                class StripeGateway implements PaymentGateway {
+                    public String fetch(String id) {
+                        return stripeOnly(id);
+                    }
+
+                    private String stripeOnly(String id) {
+                        return id;
+                    }
+                }
+
+                class PaypalGateway implements PaymentGateway {
+                    public String fetch(String id) {
+                        return paypalOnly(id);
+                    }
+
+                    private String paypalOnly(String id) {
+                        return id;
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor)
+        val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
+        val result = JavaCodeSemanticProvider().analyze(
+            handle = codeHandle,
+            capturePolicy = SemanticCapturePolicy(),
+            budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 1, maxInvocationsPerUnit = 16),
+        )
+        val interfaceFetch = result.semanticUnits.filterIsInstance<MethodLikeUnit>()
+            .firstOrNull { unit -> unit.signature == "com.example.PaymentGateway.fetch(java.lang.String):java.lang.String" }
+        val implementationFetches = result.semanticUnits.filterIsInstance<MethodLikeUnit>()
+            .filter { unit ->
+                unit.signature == "com.example.StripeGateway.fetch(java.lang.String):java.lang.String" ||
+                    unit.signature == "com.example.PaypalGateway.fetch(java.lang.String):java.lang.String"
+            }
+        val invokes = result.relations.filter { relation -> relation.kind == SemanticRelationKind.INVOKES }
+
+        assertTrue("接口调用应保留接口方法作为可证静态目标", interfaceFetch != null)
+        assertEquals(emptyList<String>(), implementationFetches.map(MethodLikeUnit::signature))
+        assertTrue(
+            "接口调用必须显式标记为运行时绑定，不能伪装成确定实现",
+            invokes.any { relation ->
+                relation.toUnitId == interfaceFetch!!.id &&
+                    relation.metadata["relation.confidence"] == "RUNTIME_REQUIRED" &&
+                    relation.metadata["jvm.dispatch.kind"] == "INTERFACE_DISPATCH"
+            },
+        )
+    }
+
+    fun testInterfaceDispatchUsesConcreteReceiverInitializerAndParameterTypes() {
+        myFixture.configureByText(
+            "ConcreteReceiverDispatchService.java",
+            """
+                package com.example;
+
+                class ConcreteReceiverDispatchService {
+                    String <caret>load(String id) {
+                        PaymentGateway gateway = new StripeGateway();
+                        return gateway.fetch(id);
+                    }
+                }
+
+                interface PaymentGateway {
+                    String fetch(String id);
+                }
+
+                class StripeGateway implements PaymentGateway {
+                    public String fetch(String id) {
+                        return stripeOnly(id);
+                    }
+
+                    public String fetch(Integer id) {
+                        return "wrong";
+                    }
+
+                    private String stripeOnly(String id) {
+                        return id;
+                    }
+                }
+
+                class PaypalGateway implements PaymentGateway {
+                    public String fetch(String id) {
+                        return paypalOnly(id);
+                    }
+
+                    private String paypalOnly(String id) {
+                        return id;
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor)
+        val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
+        val result = JavaCodeSemanticProvider().analyze(
+            handle = codeHandle,
+            capturePolicy = SemanticCapturePolicy(),
+            budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 1, maxInvocationsPerUnit = 16),
+        )
+        val stripeStringFetch = result.semanticUnits.filterIsInstance<MethodLikeUnit>()
+            .firstOrNull { unit -> unit.signature == "com.example.StripeGateway.fetch(java.lang.String):java.lang.String" }
+        val wrongOverload = result.semanticUnits.filterIsInstance<MethodLikeUnit>()
+            .firstOrNull { unit -> unit.signature == "com.example.StripeGateway.fetch(java.lang.Integer):java.lang.String" }
+        val paypalFetch = result.semanticUnits.filterIsInstance<MethodLikeUnit>()
+            .firstOrNull { unit -> unit.signature == "com.example.PaypalGateway.fetch(java.lang.String):java.lang.String" }
+
+        assertTrue("具体接收者初始化式可证明时，应解析到对应实现", stripeStringFetch != null)
+        assertEquals(null, wrongOverload)
+        assertEquals(null, paypalFetch)
+        assertTrue(
+            "具体实现调用必须保持确定置信度",
+            result.relations.any { relation ->
+                relation.kind == SemanticRelationKind.INVOKES &&
+                    relation.toUnitId == stripeStringFetch!!.id &&
+                    relation.metadata["relation.confidence"] == "PROVEN" &&
+                    relation.metadata["jvm.dispatch.kind"] == "CONCRETE_RECEIVER"
+            },
+        )
     }
 
     fun testAnalyzeJavaMethodCapturesMethodDocComment() {
@@ -864,5 +1068,17 @@ class JavaCodeSemanticProviderTest : BasePlatformTestCase() {
 
     private fun loadProjectFixture(relativePath: String) {
         myFixture.addResourceFixture(relativePath)
+    }
+
+    private fun buildArchitectureIndex(): ArchitectureGraphIndex {
+        val symbolIndex = JvmSymbolIndexBuilder(project).build()
+        val relationIndex = JvmRelationResolverRegistry().resolveAll(
+            JvmResolutionContext(
+                project = project,
+                symbolIndex = symbolIndex,
+                sourceResolver = IdeSourceContentResolver(project),
+            ),
+        )
+        return ArchitectureGraphIndex.from(symbolIndex, relationIndex)
     }
 }

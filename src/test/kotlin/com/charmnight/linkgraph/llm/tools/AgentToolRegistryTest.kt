@@ -78,4 +78,28 @@ class AgentToolRegistryTest : BasePlatformTestCase() {
 
         assertEquals("重复注册的工具名: duplicate_tool", error.message)
     }
+
+    fun testArchitectureAndReviewToolsHaveUniqueNames() {
+        val registry = AgentToolRegistry(
+            listOf(
+                GetArchitectureIndexSummaryTool(),
+                FindJvmSymbolTool(),
+                FindJvmRelationsTool(),
+                QueryArchitectureRelationsTool(),
+                FindServiceProvidersTool(),
+                FindReflectionTargetsTool(),
+                FindProxyTargetsTool(),
+                GetChangedSymbolsTool(),
+                GetBlastRadiusTool(),
+                FindRelatedTestsTool(),
+                BuildReviewEvidenceBundleTool(),
+            ),
+        )
+
+        assertEquals(11, registry.all().size)
+        assertEquals("find_jvm_symbol", registry.require("find_jvm_symbol").name)
+        assertEquals("query_architecture_relations", registry.require("query_architecture_relations").name)
+        assertEquals("find_proxy_targets", registry.require("find_proxy_targets").name)
+        assertEquals("build_review_evidence_bundle", registry.require("build_review_evidence_bundle").name)
+    }
 }

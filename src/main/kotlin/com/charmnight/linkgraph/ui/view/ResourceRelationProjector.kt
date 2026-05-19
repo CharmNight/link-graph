@@ -29,6 +29,10 @@ class ResourceRelationProjector(
                     .eachCount()
                     .toSortedMap(),
             ),
+            projectionIndex = graphProjectionIndexForVisibleGraph(
+                visibleGraph = visibleGraph,
+                fullGraph = fullGraph,
+            ),
         )
     }
 

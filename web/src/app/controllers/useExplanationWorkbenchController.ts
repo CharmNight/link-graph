@@ -11,7 +11,7 @@ import type {
 } from "../types";
 import type { useBridgeCommandController } from "./useBridgeCommandController";
 
-type WorkbenchTab = "explanation" | "audit" | "draft" | "code";
+type WorkbenchTab = "explanation" | "qa" | "draft" | "code";
 type ExplanationRequestMode = "fresh" | "follow_up";
 
 interface ExplanationHistoryEntry {

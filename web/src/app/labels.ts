@@ -30,6 +30,21 @@ export function certaintyLabel(value: Certainty): string {
   }
 }
 
+export function relationConfidenceLabel(value?: string | null): string | null {
+  switch (value) {
+    case "PROVEN":
+      return "静态确认";
+    case "RULE_INFERRED":
+      return "规则推断";
+    case "AMBIGUOUS":
+      return "多候选";
+    case "RUNTIME_REQUIRED":
+      return "需运行时确认";
+    default:
+      return value?.trim() ? value : null;
+  }
+}
+
 export function bindingStatusLabel(value: BindingStatus): string {
   switch (value) {
     case "BOUND":
@@ -202,7 +217,7 @@ export function qaModeLabel(value?: QaMode | null): string {
     case "ANSWER":
       return "只回答";
     case "REVIEW":
-      return "审计风险";
+      return "风险复核";
     case "CHANGE":
       return "代码调整";
     case "INVESTIGATE":
@@ -273,6 +288,30 @@ export function nodeTypeLabel(value: NodeType): string {
       return "流程汇合";
     case "CLASS":
       return "类";
+    case "MODULE":
+      return "模块";
+    case "PACKAGE":
+      return "包";
+    case "INTERFACE":
+      return "接口";
+    case "ENUM":
+      return "枚举";
+    case "ANNOTATION":
+      return "注解";
+    case "RECORD":
+      return "Record";
+    case "OBJECT":
+      return "Object";
+    case "EXTERNAL_CLASS":
+      return "外部类";
+    case "LIBRARY":
+      return "依赖库";
+    case "SERVICE":
+      return "服务";
+    case "LAYER":
+      return "架构层";
+    case "RESOURCE":
+      return "资源";
     case "SQL":
       return "SQL";
     case "HTTP_ENDPOINT":
@@ -306,6 +345,10 @@ export function edgeTypeLabel(value: EdgeType): string {
       return "控制流";
     case "IMPLEMENTS":
       return "实现";
+    case "EXTENDS":
+      return "继承";
+    case "USES_TYPE":
+      return "类型依赖";
     case "INJECT":
       return "注入";
     case "ROUTES_TO":
@@ -326,6 +369,8 @@ export function edgeTypeLabel(value: EdgeType): string {
       return "反射到";
     case "SPI_RESOLVES_TO":
       return "SPI 解析到";
+    case "TESTS":
+      return "测试";
     case "GENERATES":
       return "生成";
   }
@@ -339,6 +384,12 @@ export function analysisDisplayModeLabel(value: AnalysisDisplayMode): string {
       return "流程图";
     case "RESOURCE_RELATION_VIEW":
       return "资源关系";
+    case "ARCHITECTURE_GRAPH":
+      return "架构图";
+    case "CLASS_DIAGRAM":
+      return "类图";
+    case "REVIEW_GRAPH":
+      return "Review Graph";
   }
 }
 

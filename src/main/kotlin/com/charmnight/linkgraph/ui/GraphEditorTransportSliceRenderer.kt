@@ -170,11 +170,15 @@ class GraphEditorTransportSliceRenderer(
         "factVisible=${LinkGraphRenderTrace.graphSummary(snapshot.factGraphView.visibleGraph)}",
         "flowVisible=${LinkGraphRenderTrace.graphSummary(snapshot.flowchartView.visibleGraph)}",
         "resourceVisible=${LinkGraphRenderTrace.graphSummary(snapshot.resourceRelationView.visibleGraph)}",
+        "architectureVisible=${LinkGraphRenderTrace.graphSummary(snapshot.architectureGraphView.visibleGraph)}",
+        "classDiagramVisible=${LinkGraphRenderTrace.graphSummary(snapshot.classDiagramView.visibleGraph)}",
     )
 
     private fun payloadDetails(payload: Map<String, Any?>): List<String> = listOf(
         "payloadKeys=${payload.size}",
         "hasWorkspaceGraph=${payload.containsKey("workspaceGraph")}",
         "hasFlowchartView=${payload.containsKey("flowchartView")}",
+        "hasArchitectureGraphView=${payload.containsKey("architectureGraphView")}",
+        "hasClassDiagramView=${payload.containsKey("classDiagramView")}",
     )
 }

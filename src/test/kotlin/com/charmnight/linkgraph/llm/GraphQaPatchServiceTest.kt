@@ -138,11 +138,11 @@ class GraphQaPatchServiceTest {
                 return LlmResponse(
                     content = """
                         {
-                          "answer": "审计发现一条风险线程，但不应进入候选变更。",
+                          "answer": "风险复核发现一条风险线程，但不应进入候选变更。",
                           "findings": [
                             {
                               "id": "direct-risk",
-                              "claim": "当前图里能直接观察到待审计分支。",
+                              "claim": "当前图里能直接观察到待复核分支。",
                               "evidenceLevel": "DIRECT_GRAPH",
                               "references": [
                                 {
@@ -158,7 +158,7 @@ class GraphQaPatchServiceTest {
                               "claimType": "CODE_FACT",
                               "title": "REVIEW 模式不应保留的候选",
                               "targetNodeIds": ["method:review-target"],
-                              "reason": "REVIEW 模式只审计风险",
+                              "reason": "REVIEW 模式只复核风险",
                               "impactSummary": "不应进入草稿",
                               "supportingFindingIds": ["direct-risk"]
                             }
@@ -168,7 +168,7 @@ class GraphQaPatchServiceTest {
                               "threadId": "thread-direct-risk",
                               "status": "OPEN",
                               "claimType": "RISK_HINT",
-                              "title": "待审计风险",
+                              "title": "待复核风险",
                               "targetNodeIds": ["method:review-target"],
                               "summary": "当前有直接图证据，但仍只作为风险线程展示。",
                               "evidenceGap": "需要用户确认是否调整代码。",
@@ -619,7 +619,7 @@ class GraphQaPatchServiceTest {
                     ),
                 ),
             ),
-            question = "请审计整图是否遗漏默认兜底逻辑？",
+            question = "请复核整图是否遗漏默认兜底逻辑？",
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,

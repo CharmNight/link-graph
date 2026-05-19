@@ -183,7 +183,7 @@ describe("CodeDraftPanel", () => {
     expect(events).toEqual(["open-draft"]);
   });
 
-  it("routes blocked code generation back to draft validation instead of audit risk", async () => {
+  it("routes blocked code generation back to draft validation instead of qa risk", async () => {
     const user = userEvent.setup();
     const events: string[] = [];
 

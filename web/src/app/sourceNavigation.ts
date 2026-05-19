@@ -8,5 +8,14 @@ export function canNavigateToSource(node: Pick<LinkGraphNode, "type" | "location
   if (Boolean(node.location?.trim())) {
     return true;
   }
-  return (node.type === "METHOD" || node.type === "CLASS") && Boolean(node.signature?.trim());
+  return (
+    node.type === "METHOD" ||
+    node.type === "CLASS" ||
+    node.type === "INTERFACE" ||
+    node.type === "ENUM" ||
+    node.type === "ANNOTATION" ||
+    node.type === "RECORD" ||
+    node.type === "OBJECT" ||
+    node.type === "EXTERNAL_CLASS"
+  ) && Boolean(node.signature?.trim());
 }

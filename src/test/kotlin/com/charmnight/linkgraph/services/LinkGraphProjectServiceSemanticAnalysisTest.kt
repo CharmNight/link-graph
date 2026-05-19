@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.services
 
 import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
+import com.charmnight.linkgraph.architecture.architectureIndexRuntime
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.model.Certainty
@@ -46,6 +47,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
@@ -239,6 +241,36 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
             snapshot.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART &&
                 snapshot.visibleGraph?.nodes?.any { node -> node.id == "action:trim" } == true
         }
+    }
+
+    fun testLoadCurrentMethodGraphDoesNotBuildArchitectureIndexImplicitly() {
+        project.architectureIndexRuntime().invalidate()
+        myFixture.configureByText(
+            "DemoService.java",
+            """
+                package com.example;
+
+                class DemoService {
+                    String run(String value) {
+                        return <caret>value.trim();
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        val service = project.linkGraphApplicationServiceForTest()
+        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
+
+        waitForSnapshot { snapshot ->
+            snapshot.lastGraphSource == "currentMethod" &&
+                snapshot.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART &&
+                snapshot.visibleGraph?.nodes?.any { node -> node.title.contains("DemoService.run") } == true
+        }
+
+        assertNull(
+            project.architectureIndexRuntime().currentIndex(),
+            "普通当前方法链路不能隐式构建项目级架构索引；架构图、类图入口才应显式构建。",
+        )
     }
 
     fun testRequestAnalysisDisplayModeRebuildsFromCachedSemanticResult() {

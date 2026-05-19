@@ -10,6 +10,7 @@ import com.charmnight.linkgraph.application.port.WorkspaceGraphCommitter
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionTarget
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionTargetKind
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionUseCase
+import com.charmnight.linkgraph.architecture.architectureIndexRuntime
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.semantic.SemanticAnalyzer
@@ -37,6 +38,7 @@ internal class InvocationExpansionWorkflow(
     private val subjectResolverOverrideProvider: () -> ((String) -> CodeSubjectHandle?)?,
     private val logger: Logger,
     private val useCase: InvocationExpansionUseCase = InvocationExpansionUseCase(),
+    private val targetResolver: InvocationExpansionTargetResolver = InvocationExpansionTargetResolver(),
 ) {
     fun requestExpandInvocation(nodeId: String) {
         val snapshot = snapshotProvider.snapshot()
@@ -152,14 +154,9 @@ internal class InvocationExpansionWorkflow(
 
     private fun resolveTarget(signature: String): InvocationExpansionTarget {
         targetResolverOverrideProvider()?.invoke(project, signature)?.let { target -> return target }
-        val ownerName = signature.substringBefore('(', signature).substringBeforeLast('.', missingDelimiterValue = signature)
-        return when {
-            ownerName.startsWith("java.") || ownerName.startsWith("javax.") || ownerName.startsWith("jdk.") ->
-                InvocationExpansionTarget(InvocationExpansionTargetKind.EXTERNAL_JDK)
-            THIRD_PARTY_PREFIXES.any(ownerName::startsWith) ->
-                InvocationExpansionTarget(InvocationExpansionTargetKind.EXTERNAL_LIBRARY)
-            else -> InvocationExpansionTarget(InvocationExpansionTargetKind.PROJECT_SOURCE, signature = signature)
-        }
+        val index = runCatching { project.architectureIndexRuntime().index() }.getOrNull()
+            ?: return InvocationExpansionTarget(InvocationExpansionTargetKind.NOT_FOUND)
+        return targetResolver.resolve(signature, index)
     }
 
     private fun resolveSubject(signature: String): CodeSubjectHandle? {
@@ -245,14 +242,4 @@ internal class InvocationExpansionWorkflow(
         eventSink.emit(GraphEditorApplicationEvent.Feedback(level, message))
     }
 
-    private companion object {
-        val THIRD_PARTY_PREFIXES = listOf(
-            "org.",
-            "com.fasterxml.",
-            "com.google.",
-            "io.",
-            "reactor.",
-            "kotlin.",
-        )
-    }
 }

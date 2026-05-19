@@ -22,7 +22,7 @@ class LinkGraphBundlePropertiesTest {
 
         val description = properties.getProperty("plugin.description")
         assertNotNull(description)
-        assertFalse(description.contains("可审计"))
+        assertFalse(description.contains("可复核"))
         assertTrue(description.contains("可追溯") || description.contains("可核对"))
     }
 }

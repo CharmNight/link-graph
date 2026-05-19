@@ -1,6 +1,9 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
+import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
+import com.charmnight.linkgraph.review.ReviewGraphViewDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
 import com.charmnight.linkgraph.sync.GraphPatchApplyService
@@ -55,6 +58,18 @@ internal class GraphEditorGraphStateSupport(
                 runtimeTrace = runtimeTrace,
             )
         }
+    }
+
+    fun loadArchitectureGraphView(view: ArchitectureGraphViewDocument) {
+        mutate { currentState -> currentState.withLoadedArchitectureGraphView(view) }
+    }
+
+    fun loadClassDiagramView(view: ClassDiagramViewDocument) {
+        mutate { currentState -> currentState.withLoadedClassDiagramView(view) }
+    }
+
+    fun loadReviewGraphView(view: ReviewGraphViewDocument) {
+        mutate { currentState -> currentState.withLoadedReviewGraphView(view) }
     }
 
     fun importMermaid(

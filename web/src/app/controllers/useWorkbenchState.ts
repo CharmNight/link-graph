@@ -2,7 +2,9 @@ import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type {
   AnalysisDisplayMode,
+  ArchitectureGraphViewDocument,
   AsyncRequestState,
+  ClassDiagramViewDocument,
   DiffItem,
   DraftPatchApplyResult,
   DraftValidationState,
@@ -30,6 +32,7 @@ import type {
   QaMode,
   QaRequestRecoveryState,
   ResourceRelationViewDocument,
+  ReviewGraphViewDocument,
   SourceNavigationState,
   StageEligibilityDecision,
   SyncPreviewItem,
@@ -54,6 +57,9 @@ export interface WorkbenchCanvasState {
   factGraphView: FactGraphViewDocument;
   flowchartView: FlowchartViewDocument;
   resourceRelationView: ResourceRelationViewDocument;
+  architectureGraphView: ArchitectureGraphViewDocument;
+  classDiagramView: ClassDiagramViewDocument;
+  reviewGraphView: ReviewGraphViewDocument;
   draftGraph: LinkGraphDocument | null;
 }
 
@@ -65,8 +71,8 @@ export interface WorkbenchProjectionState {
   lastAppliedDraftPatchPreview: GraphPatch | null;
   canUndoDraftPatchApply: boolean;
   lastAppliedDraftPatchSummary: string | null;
-  auditResult: GraphPatchResult | null;
-  auditRequestState: AsyncRequestState;
+  qaResult: GraphPatchResult | null;
+  qaRequestState: AsyncRequestState;
   qaRequestRecoveryState: QaRequestRecoveryState;
   diffReviewResult: GraphPatchResult | null;
   diffReviewRequestState: AsyncRequestState;
@@ -110,6 +116,9 @@ interface UseWorkbenchStateArgs {
   resolveFactGraphView: (state: LinkGraphBootstrapState) => FactGraphViewDocument;
   resolveFlowchartView: (state: LinkGraphBootstrapState) => FlowchartViewDocument;
   resolveResourceRelationView: (state: LinkGraphBootstrapState) => ResourceRelationViewDocument;
+  resolveArchitectureGraphView: (state: LinkGraphBootstrapState) => ArchitectureGraphViewDocument;
+  resolveClassDiagramView: (state: LinkGraphBootstrapState) => ClassDiagramViewDocument;
+  resolveReviewGraphView: (state: LinkGraphBootstrapState) => ReviewGraphViewDocument;
   resolveCurrentSceneState: (state: LinkGraphBootstrapState) => LinkGraphSceneState;
   resolveWorkingGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
   resolveDesignBaselineGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument | null;
@@ -286,6 +295,9 @@ function buildInitialCanvasState({
   resolveFactGraphView,
   resolveFlowchartView,
   resolveResourceRelationView,
+  resolveArchitectureGraphView,
+  resolveClassDiagramView,
+  resolveReviewGraphView,
   resolveCurrentSceneState,
   resolveWorkingGraph,
   normalizeGraphNodes,
@@ -299,6 +311,9 @@ function buildInitialCanvasState({
   | "resolveFactGraphView"
   | "resolveFlowchartView"
   | "resolveResourceRelationView"
+  | "resolveArchitectureGraphView"
+  | "resolveClassDiagramView"
+  | "resolveReviewGraphView"
   | "resolveCurrentSceneState"
   | "resolveWorkingGraph"
   | "normalizeGraphNodes"
@@ -325,6 +340,9 @@ function buildInitialCanvasState({
     factGraphView: resolveFactGraphView(initialState),
     flowchartView: resolveFlowchartView(initialState),
     resourceRelationView: resolveResourceRelationView(initialState),
+    architectureGraphView: resolveArchitectureGraphView(initialState),
+    classDiagramView: resolveClassDiagramView(initialState),
+    reviewGraphView: resolveReviewGraphView(initialState),
     draftGraph: resolveWorkingGraph(initialState),
   };
 }
@@ -343,8 +361,8 @@ function buildInitialProjectionState(
     lastAppliedDraftPatchPreview: null,
     canUndoDraftPatchApply: initialState.canUndoDraftPatchApply ?? false,
     lastAppliedDraftPatchSummary: initialState.lastAppliedDraftPatchSummary ?? null,
-    auditResult: initialState.auditResult ?? null,
-    auditRequestState: resolveRequestState(initialState.auditRequestState),
+    qaResult: initialState.qaResult ?? null,
+    qaRequestState: resolveRequestState(initialState.qaRequestState),
     qaRequestRecoveryState: initialState.qaRequestRecoveryState ?? { lastSubmittedRequest: null, lastFailedRequest: null },
     diffReviewResult: initialState.diffReviewResult ?? null,
     diffReviewRequestState: resolveRequestState(initialState.diffReviewRequestState),
@@ -389,6 +407,9 @@ export function useWorkbenchState({
   resolveFactGraphView,
   resolveFlowchartView,
   resolveResourceRelationView,
+  resolveArchitectureGraphView,
+  resolveClassDiagramView,
+  resolveReviewGraphView,
   resolveCurrentSceneState,
   resolveWorkingGraph,
   resolveDesignBaselineGraph,
@@ -405,6 +426,9 @@ export function useWorkbenchState({
       resolveFactGraphView,
       resolveFlowchartView,
       resolveResourceRelationView,
+      resolveArchitectureGraphView,
+      resolveClassDiagramView,
+      resolveReviewGraphView,
       resolveCurrentSceneState,
       resolveWorkingGraph,
       normalizeGraphNodes,
@@ -418,9 +442,9 @@ export function useWorkbenchState({
       resolveSourceNavigationState,
     ),
   );
-  const [auditTargetNodeIds, setAuditTargetNodeIds] = useState<string[]>([]);
-  const [auditQuestionDraft, setAuditQuestionDraft] = useState<string>(() => initialState.auditResult?.question ?? "");
-  const [auditQuestionMode, setAuditQuestionMode] = useState<QaMode>("AUTO");
+  const [qaTargetNodeIds, setQaTargetNodeIds] = useState<string[]>([]);
+  const [qaQuestionDraft, setQaQuestionDraft] = useState<string>(() => initialState.qaResult?.question ?? "");
+  const [qaQuestionMode, setQaQuestionMode] = useState<QaMode>("AUTO");
   const [selectionGroupNodeIds, setSelectionGroupNodeIds] = useState<string[]>([]);
   const [requestFailureNotice, setRequestFailureNotice] = useState<RequestFailureNotice | null>(null);
   const [isImportDialogOpen, setImportDialogOpen] = useState(false);
@@ -444,6 +468,9 @@ export function useWorkbenchState({
     setFactGraphView: updateStateField(setCanvasState, "factGraphView"),
     setFlowchartView: updateStateField(setCanvasState, "flowchartView"),
     setResourceRelationView: updateStateField(setCanvasState, "resourceRelationView"),
+    setArchitectureGraphView: updateStateField(setCanvasState, "architectureGraphView"),
+    setClassDiagramView: updateStateField(setCanvasState, "classDiagramView"),
+    setReviewGraphView: updateStateField(setCanvasState, "reviewGraphView"),
     setDraftGraph: updateStateField(setCanvasState, "draftGraph"),
     setSceneLayoutState: updateCurrentSceneStateField(setCanvasState, "layoutState"),
   };
@@ -456,8 +483,8 @@ export function useWorkbenchState({
     setLastAppliedDraftPatchPreview: updateStateField(setProjectionState, "lastAppliedDraftPatchPreview"),
     setCanUndoDraftPatchApply: updateStateField(setProjectionState, "canUndoDraftPatchApply"),
     setLastAppliedDraftPatchSummary: updateStateField(setProjectionState, "lastAppliedDraftPatchSummary"),
-    setAuditResult: updateStateField(setProjectionState, "auditResult"),
-    setAuditRequestState: updateStateField(setProjectionState, "auditRequestState"),
+    setQaResult: updateStateField(setProjectionState, "qaResult"),
+    setQaRequestState: updateStateField(setProjectionState, "qaRequestState"),
     setQaRequestRecoveryState: updateStateField(setProjectionState, "qaRequestRecoveryState"),
     setDiffReviewResult: updateStateField(setProjectionState, "diffReviewResult"),
     setDiffReviewRequestState: updateStateField(setProjectionState, "diffReviewRequestState"),
@@ -498,12 +525,12 @@ export function useWorkbenchState({
     projectionState,
     setProjectionState,
     projectionSetters,
-    auditTargetNodeIds,
-    setAuditTargetNodeIds,
-    auditQuestionDraft,
-    setAuditQuestionDraft,
-    auditQuestionMode,
-    setAuditQuestionMode,
+    qaTargetNodeIds,
+    setQaTargetNodeIds,
+    qaQuestionDraft,
+    setQaQuestionDraft,
+    qaQuestionMode,
+    setQaQuestionMode,
     selectionGroupNodeIds,
     setSelectionGroupNodeIds,
     collapsedNodeIds,

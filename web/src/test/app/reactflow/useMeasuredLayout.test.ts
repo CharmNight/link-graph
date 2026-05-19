@@ -599,6 +599,43 @@ describe("useMeasuredLayout", () => {
     expect(result.current.edges[0]?.route?.sections[0]?.endPoint).toEqual({ x: 440, y: 126 });
   });
 
+  it("falls back to deterministic positions when the first layout request fails", async () => {
+    const graph: LinkGraphDocument = {
+      nodes: [
+        methodNode("method:anchor", "OrderService.submit"),
+        methodNode("method:callee", "OrderMapper.insert"),
+      ],
+      edges: [
+        {
+          id: "edge:anchor->callee",
+          type: "CALL",
+          source: "method:anchor",
+          target: "method:callee",
+        },
+      ],
+    };
+    const layout = vi.fn(async () => {
+      throw new Error("layout failed");
+    });
+
+    const { result } = renderHook(() =>
+      useMeasuredLayout({
+        graph,
+        anchorNodeId: "method:anchor",
+        layout,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.layoutPending).toBe(false);
+    });
+
+    expect(result.current.nodes).toHaveLength(2);
+    expect(result.current.nodes[0]?.position).toEqual({ x: 120, y: 96 });
+    expect(result.current.nodes[1]?.position).toEqual({ x: 480, y: 96 });
+    expect(result.current.edges).toEqual(graph.edges);
+  });
+
   it("treats edge handle changes as semantic layout input changes", async () => {
     const layout = vi.fn(async ({
       nodes,

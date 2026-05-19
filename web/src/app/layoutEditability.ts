@@ -7,6 +7,9 @@ export function canEditNodeLayout(
   if (analysisDisplayMode === "FLOWCHART") {
     return true;
   }
+  if (analysisDisplayMode === "ARCHITECTURE_GRAPH" || analysisDisplayMode === "CLASS_DIAGRAM" || analysisDisplayMode === "REVIEW_GRAPH") {
+    return true;
+  }
   if (node.metadata?.["linkGraph.manual"] === "true") {
     return true;
   }

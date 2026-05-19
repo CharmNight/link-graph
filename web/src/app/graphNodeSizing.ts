@@ -2,6 +2,7 @@ import { resolveFlowchartKind } from "./flowchartKind";
 import type { LinkGraphNode } from "./types";
 
 export const DEFAULT_NODE_CARD_WIDTH = 408;
+export const CLASS_DIAGRAM_NODE_CARD_WIDTH = 360;
 export const FLOW_ACTION_NODE_CARD_WIDTH = 324;
 export const FLOW_DECISION_NODE_CARD_WIDTH = 368;
 
@@ -46,6 +47,10 @@ export function nodeCardWidth(node: Pick<LinkGraphNode, "type" | "metadata" | "t
     return FLOW_DECISION_NODE_CARD_WIDTH;
   }
   return DEFAULT_NODE_CARD_WIDTH;
+}
+
+export function classDiagramNodeCardWidth(): number {
+  return CLASS_DIAGRAM_NODE_CARD_WIDTH;
 }
 
 export function flowchartNodeCardWidth(node: Pick<LinkGraphNode, "type" | "metadata" | "title">): number {

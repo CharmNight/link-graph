@@ -69,4 +69,34 @@ class LinkGraphDebugStartupActivityTest : BasePlatformTestCase() {
         assertNotNull("Expected debug startup to dispatch non-open automation requests", request)
         assertTrue(request!!.autoRequestPlan)
     }
+
+    fun testTriggersDebugOnlyStartupActionForArchitectureGraphRequest() {
+        val capturedRequest = AtomicReference<LinkGraphDebugAutomationRequest?>()
+        val activity = LinkGraphDebugStartupActivity(
+            requestProvider = { LinkGraphDebugAutomationRequest(autoRequestArchitectureGraph = true) },
+            startupAction = { _, request -> capturedRequest.set(request) },
+        )
+
+        activity.runActivity(project)
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+
+        val request = capturedRequest.get()
+        assertNotNull("Expected debug startup to dispatch architecture graph automation requests", request)
+        assertTrue(request!!.autoRequestArchitectureGraph)
+    }
+
+    fun testTriggersDebugOnlyStartupActionForClassDiagramRequest() {
+        val capturedRequest = AtomicReference<LinkGraphDebugAutomationRequest?>()
+        val activity = LinkGraphDebugStartupActivity(
+            requestProvider = { LinkGraphDebugAutomationRequest(autoRequestClassDiagram = true) },
+            startupAction = { _, request -> capturedRequest.set(request) },
+        )
+
+        activity.runActivity(project)
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+
+        val request = capturedRequest.get()
+        assertNotNull("Expected debug startup to dispatch class diagram automation requests", request)
+        assertTrue(request!!.autoRequestClassDiagram)
+    }
 }

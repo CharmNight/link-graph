@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 
 class GraphBrowserPayloadParserTest {
     @Test
-    fun auditPayloadDefaultsModeToAutoForLegacyBridgeCalls() {
+    fun qaPayloadDefaultsModeToAuto() {
         val payload = listOf(
             encode("这个方法是如何触发的？"),
             "",
@@ -23,7 +23,7 @@ class GraphBrowserPayloadParserTest {
     }
 
     @Test
-    fun auditPayloadParsesExplicitMode() {
+    fun qaPayloadParsesExplicitMode() {
         val payload = listOf(
             encode("请继续取证"),
             encode("method:upload"),

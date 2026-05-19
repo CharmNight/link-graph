@@ -62,6 +62,8 @@ data class GraphDiffContext(
     val diff: GraphDiff = GraphDiff(),
     /** 保存当前选中的差异条目标识列表。 */
     val selectedDiffItemIds: List<String> = emptyList(),
+    /** 保存 review graph 查询得到的最小证据包摘要。 */
+    val reviewEvidenceBundle: String = "",
 )
 
 /**
@@ -100,6 +102,12 @@ data class SourceSnippetContext(
     val endLine: Int? = null,
     /** 保存可直接展示的代码片段。 */
     val snippet: String? = null,
+    /** 保存源码来源。 */
+    val origin: String? = null,
+    /** 标记是否来自反编译内容。 */
+    val decompiled: Boolean = false,
+    /** 保存 IDEA VFS URL。 */
+    val virtualFileUrl: String? = null,
 )
 
 /**

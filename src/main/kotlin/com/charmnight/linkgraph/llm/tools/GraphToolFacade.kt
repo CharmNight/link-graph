@@ -174,6 +174,9 @@ private fun currentVisibleGraph(snapshot: ToolGraphSnapshot): GraphDocument {
         ToolGraphSceneId.WORKSPACE_FLOWCHART -> snapshot.flowchartView.visibleGraph
         ToolGraphSceneId.WORKSPACE_RESOURCE_RELATION -> snapshot.resourceRelationView.visibleGraph
         ToolGraphSceneId.WORKSPACE_FACT -> snapshot.factGraphView.visibleGraph
+        ToolGraphSceneId.WORKSPACE_ARCHITECTURE_GRAPH -> snapshot.architectureGraphView.visibleGraph
+        ToolGraphSceneId.WORKSPACE_CLASS_DIAGRAM -> snapshot.classDiagramView.visibleGraph
+        ToolGraphSceneId.WORKSPACE_REVIEW_GRAPH -> snapshot.reviewGraphView.visibleGraph
         ToolGraphSceneId.DIFF -> snapshot.diffGraph ?: GraphDocument()
     }
 }

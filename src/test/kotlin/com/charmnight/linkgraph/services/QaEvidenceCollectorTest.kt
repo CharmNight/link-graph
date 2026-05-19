@@ -95,4 +95,52 @@ class QaEvidenceCollectorTest {
         assertTrue(result.sourceContext.any { it.filePath == fileUtilsFile.toString() })
         assertTrue(result.sourceContext.any { it.snippet?.contains("checkAllowDownload") == true })
     }
+
+    @Test
+    fun `collects architecture source samples from selected aggregate node`() {
+        val projectDir = createTempDirectory("qa-architecture-evidence")
+        val serviceFile = projectDir.resolve("src/main/java/com/example/api/OrderController.java")
+        Files.createDirectories(serviceFile.parent)
+        Files.writeString(
+            serviceFile,
+            """
+                package com.example.api;
+
+                public class OrderController {
+                    public void createOrder() {
+                        submitOrder();
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        val collector = QaEvidenceCollector(maxSnippets = 4, maxTraversalDepth = 0)
+        val result = collector.collect(
+            graph = GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "arch:layer:api",
+                        type = NodeType.LAYER,
+                        title = "API",
+                        metadata = mapOf(
+                            "architecture.sourceSample.count" to "1",
+                            "architecture.sourceSample.0.nodeId" to "class:com.example.api.OrderController",
+                            "architecture.sourceSample.0.filePath" to serviceFile.toString(),
+                            "architecture.sourceSample.0.startLine" to "1",
+                            "architecture.sourceSample.0.endLine" to "7",
+                            "architecture.sourceSample.0.reason" to "architecture-member-class:arch:layer:api",
+                        ),
+                    ),
+                ),
+            ),
+            selectedNodeIds = listOf("arch:layer:api"),
+        )
+
+        assertEquals(1, result.sourceContext.size)
+        assertEquals("class:com.example.api.OrderController", result.sourceContext.single().nodeId)
+        assertTrue(result.sourceContext.single().snippet?.contains("createOrder") == true)
+        assertEquals("arch:layer:api", result.evidenceTrace.single().nodeId)
+        assertEquals("class:com.example.api.OrderController", result.evidenceTrace.single().resolvedNodeId)
+        assertTrue(result.evidenceTrace.single().mappingTrace.any { trace -> trace.contains("architectureSourceSample") })
+    }
 }

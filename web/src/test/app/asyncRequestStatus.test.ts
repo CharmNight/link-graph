@@ -31,7 +31,7 @@ describe("resolveToolbarFeedback", () => {
 
     const result = resolveToolbarFeedback({
       operationFeedback,
-      lastMessageType: "auditResult",
+      lastMessageType: "qaResult",
       requestStates: [
         succeededRequest({
           scene: "讲解",
@@ -58,7 +58,7 @@ describe("resolveToolbarFeedback", () => {
         level: "SUCCESS",
         message: "已加载当前编辑器上下文链路：OrderController.submit",
       },
-      lastMessageType: "auditResult",
+      lastMessageType: "qaResult",
       requestStates: [
         succeededRequest({
           scene: "讲解",

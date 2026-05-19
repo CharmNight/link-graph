@@ -61,4 +61,6 @@ data class SemanticRelation(
     val synthetic: Boolean = false,
     /** 保存当前边的来源。 */
     val provenance: FlowEdgeProvenance = FlowEdgeProvenance.SEMANTIC_ANALYSIS,
+    /** 保存来自底层索引或解析器的证据元数据。 */
+    val metadata: Map<String, String> = emptyMap(),
 )

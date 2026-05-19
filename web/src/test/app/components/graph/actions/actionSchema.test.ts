@@ -6,7 +6,7 @@ describe("actionSchema", () => {
     const onAddNode = vi.fn();
     const onImportMermaid = vi.fn();
     const onFormatLayout = vi.fn();
-    const onOpenAudit = vi.fn();
+    const onOpenQa = vi.fn();
     const onClose = vi.fn();
 
     const factActions = buildPaneActions({
@@ -18,7 +18,7 @@ describe("actionSchema", () => {
       onAddNode,
       onImportMermaid,
       onFormatLayout,
-      onOpenAudit,
+      onOpenQa,
       onClose,
     });
 
@@ -43,7 +43,7 @@ describe("actionSchema", () => {
       onAddNode,
       onImportMermaid,
       onFormatLayout,
-      onOpenAudit,
+      onOpenQa,
       onClose,
     });
 
@@ -60,8 +60,8 @@ describe("actionSchema", () => {
     const onInspectNode = vi.fn();
     const onRequestSourceNavigation = vi.fn();
     const onRequestBeautification = vi.fn();
-    const onRequestAudit = vi.fn();
-    const onOpenAudit = vi.fn();
+    const onRequestQa = vi.fn();
+    const onOpenQa = vi.fn();
     const onToggleCollapseNode = vi.fn();
     const onExpandOverflowNode = vi.fn();
     const onFormatLayout = vi.fn();
@@ -79,8 +79,8 @@ describe("actionSchema", () => {
       onInspectNode,
       onRequestSourceNavigation,
       onRequestBeautification,
-      onRequestAudit,
-      onOpenAudit,
+      onRequestQa,
+      onOpenQa,
       onToggleCollapseNode,
       onExpandOverflowNode,
       onFormatLayout,
@@ -117,8 +117,8 @@ describe("actionSchema", () => {
       onInspectNode,
       onRequestSourceNavigation,
       onRequestBeautification,
-      onRequestAudit,
-      onOpenAudit,
+      onRequestQa,
+      onOpenQa,
       onToggleCollapseNode,
       onExpandOverflowNode,
       onFormatLayout,
@@ -143,8 +143,8 @@ describe("actionSchema", () => {
     const onInspectNode = vi.fn();
     const onRequestSourceNavigation = vi.fn();
     const onRequestBeautification = vi.fn();
-    const onRequestAudit = vi.fn();
-    const onOpenAudit = vi.fn();
+    const onRequestQa = vi.fn();
+    const onOpenQa = vi.fn();
     const onToggleCollapseNode = vi.fn();
     const onExpandOverflowNode = vi.fn();
     const onExpandInvocation = vi.fn();
@@ -166,8 +166,8 @@ describe("actionSchema", () => {
       onInspectNode,
       onRequestSourceNavigation,
       onRequestBeautification,
-      onRequestAudit,
-      onOpenAudit,
+      onRequestQa,
+      onOpenQa,
       onToggleCollapseNode,
       onExpandOverflowNode,
       onExpandInvocation,

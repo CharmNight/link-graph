@@ -1,7 +1,17 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.architecture.architectureIndexRuntime
+import com.charmnight.linkgraph.jvm.index.JvmClassSymbol
+import com.charmnight.linkgraph.jvm.index.JvmFieldSymbol
+import com.charmnight.linkgraph.jvm.index.JvmMethodSymbol
+import com.charmnight.linkgraph.jvm.index.JvmResourceSymbol
+import com.charmnight.linkgraph.jvm.index.JvmSymbol
 import com.charmnight.linkgraph.llm.SourceSnippetContext
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.source.AttachedJarContentResolver
+import com.charmnight.linkgraph.source.CompositeSourceContentResolver
+import com.charmnight.linkgraph.source.IdeSourceContentResolver
+import com.charmnight.linkgraph.source.SourceContentResolver
 import com.intellij.openapi.project.Project
 import java.nio.file.Files
 
@@ -42,12 +52,70 @@ class CodeReadToolFacade(
         projectBasePath: String? = null,
         project: Project? = null,
     ): String? {
-        fallbackSnippet?.takeIf { it.isNotBlank() }?.let { return it }
+        return readSourceSnippetRich(
+            filePath = filePath,
+            startLine = startLine,
+            endLine = endLine,
+            fallbackSnippet = fallbackSnippet,
+            projectBasePath = projectBasePath,
+            project = project,
+        )?.snippet
+    }
+
+    fun readSourceSnippetRich(
+        filePath: String,
+        startLine: Int? = null,
+        endLine: Int? = null,
+        fallbackSnippet: String? = null,
+        projectBasePath: String? = null,
+        project: Project? = null,
+        resolver: SourceContentResolver? = project?.let(::defaultResolver),
+    ): RichSourceSnippet? {
+        fallbackSnippet?.takeIf { it.isNotBlank() }?.let {
+            return RichSourceSnippet(
+                filePath = filePath,
+                startLine = startLine,
+                endLine = endLine,
+                snippet = it,
+            )
+        }
+        if (filePath.contains("://") || filePath.contains("!/")) {
+            resolver?.readSnippetByPath(filePath, startLine, endLine)?.let { content ->
+                return RichSourceSnippet(
+                    filePath = content.displayPath,
+                    startLine = content.startLine ?: startLine,
+                    endLine = content.endLine ?: endLine,
+                    snippet = content.text,
+                    origin = content.origin.name,
+                    decompiled = content.decompiled,
+                    virtualFileUrl = content.virtualFileUrl,
+                    sourceDiagnostic = content.diagnostic,
+                )
+            }
+            return null
+        }
         val path = projectRootFileAccessPolicy.resolveReadablePath(filePath, projectBasePath, project)
             ?: return null
+        runCatching { resolver?.readSnippetByPath(path.toString(), startLine, endLine) }.getOrNull()?.let { content ->
+            return RichSourceSnippet(
+                filePath = content.displayPath,
+                startLine = content.startLine ?: startLine,
+                endLine = content.endLine ?: endLine,
+                snippet = content.text,
+                origin = content.origin.name,
+                decompiled = content.decompiled,
+                virtualFileUrl = content.virtualFileUrl,
+                sourceDiagnostic = content.diagnostic,
+            )
+        }
         val lines = runCatching { Files.readAllLines(path) }.getOrNull() ?: return null
         if (startLine == null || endLine == null) {
-            return lines.joinToString("\n")
+            return RichSourceSnippet(
+                filePath = filePath,
+                startLine = startLine,
+                endLine = endLine,
+                snippet = lines.joinToString("\n"),
+            )
         }
         val fromIndex = (startLine - 1).coerceAtLeast(0)
         val toIndex = endLine.coerceAtMost(lines.size)
@@ -55,12 +123,36 @@ class CodeReadToolFacade(
             return null
         }
         val focusedSnippet = lines.subList(fromIndex, toIndex).joinToString("\n")
-        return sourceContextCollector.collect(
-            lines = lines,
+        return RichSourceSnippet(
+            filePath = filePath,
             startLine = startLine,
             endLine = endLine,
-            focusedSnippet = focusedSnippet,
+            snippet = sourceContextCollector.collect(
+                lines = lines,
+                startLine = startLine,
+                endLine = endLine,
+                focusedSnippet = focusedSnippet,
+            ),
         )
+    }
+
+    fun readSourceSnippetFailureReason(
+        filePath: String,
+        startLine: Int? = null,
+        endLine: Int? = null,
+        projectBasePath: String? = null,
+        project: Project? = null,
+        resolver: SourceContentResolver? = project?.let(::defaultResolver),
+    ): String? {
+        readSourceSnippetRich(
+            filePath = filePath,
+            startLine = startLine,
+            endLine = endLine,
+            projectBasePath = projectBasePath,
+            project = project,
+            resolver = resolver,
+        )?.let { return null }
+        return resolver.sourceUnavailableReason()
     }
 
     /** 根据 symbol 直接读取关联片段。 */
@@ -71,12 +163,24 @@ class CodeReadToolFacade(
         projectBasePath: String? = null,
         project: Project? = null,
     ): SourceSnippetContext? {
+        return readSymbolRich(snapshot, symbolSignature, fallbackSourceContexts, projectBasePath, project)
+            ?.toSourceSnippetContext()
+    }
+
+    fun readSymbolRich(
+        snapshot: ToolGraphSnapshot,
+        symbolSignature: String,
+        fallbackSourceContexts: List<SourceSnippetContext> = emptyList(),
+        projectBasePath: String? = null,
+        project: Project? = null,
+    ): RichSourceSnippet? {
+        readSymbolFromIndex(symbolSignature, project, projectBasePath)?.let { return it }
         val anchor = resolveAnchor(snapshot = snapshot, symbolSignature = symbolSignature) ?: return null
         val fallback = fallbackSourceContexts.firstOrNull { it.nodeId == anchor.id }
         val filePath = anchor.metadata["source.filePath"] ?: fallback?.filePath ?: return null
         val startLine = anchor.metadata["source.startLine"]?.toIntOrNull() ?: fallback?.startLine
         val endLine = anchor.metadata["source.endLine"]?.toIntOrNull() ?: fallback?.endLine
-        val snippet = readSourceSnippet(
+        val snippet = readSourceSnippetRich(
             filePath = filePath,
             startLine = startLine,
             endLine = endLine,
@@ -84,12 +188,186 @@ class CodeReadToolFacade(
             projectBasePath = projectBasePath,
             project = project,
         ) ?: return null
-        return SourceSnippetContext(
+        return snippet.copy(
             nodeId = anchor.id,
+            filePath = snippet.filePath,
+            startLine = snippet.startLine ?: startLine,
+            endLine = snippet.endLine ?: endLine,
+            origin = snippet.origin ?: fallback?.origin,
+            decompiled = snippet.decompiled || fallback?.decompiled == true,
+            virtualFileUrl = snippet.virtualFileUrl ?: anchor.metadata["source.virtualFileUrl"] ?: fallback?.virtualFileUrl,
+            sourceDiagnostic = snippet.sourceDiagnostic,
+        )
+    }
+
+    private fun readSymbolFromIndex(
+        symbolSignature: String,
+        project: Project?,
+        projectBasePath: String?,
+    ): RichSourceSnippet? {
+        project ?: return null
+        val query = symbolSignature.trim().takeIf(String::isNotBlank) ?: return null
+        val index = runCatching { project.architectureIndexRuntime().index() }.getOrNull()
+            ?: return null
+        val symbol = findIndexedSymbol(index, query)
+            ?: return null
+        return readIndexedSymbol(symbol, project, projectBasePath)
+    }
+
+    fun readSymbolFailureReason(
+        symbolSignature: String,
+        project: Project?,
+        projectBasePath: String?,
+    ): String? {
+        project ?: return null
+        val query = symbolSignature.trim().takeIf(String::isNotBlank) ?: return null
+        val index = runCatching { project.architectureIndexRuntime().index() }.getOrNull()
+        val symbol = index?.let { findIndexedSymbol(it, query) }
+        val source = symbol?.source
+        if (source != null) {
+            return readSourceSnippetFailureReason(
+                filePath = source.virtualFileUrl ?: source.displayPath,
+                startLine = source.startLine,
+                endLine = source.endLine,
+                projectBasePath = projectBasePath,
+                project = project,
+            )
+        }
+        return readSymbolByQualifiedNameFailureReason(query, project)
+    }
+
+    private fun findIndexedSymbol(
+        index: com.charmnight.linkgraph.architecture.ArchitectureGraphIndex,
+        query: String,
+    ): JvmSymbol? =
+        index.findSymbol(query)
+            ?: index.findMethod(query)
+            ?: index.findField(query)
+            ?: index.findClass(query)
+            ?: index.symbolIndex.resourcesByPath[query]
+            ?: query.substringBefore('(').takeIf { candidate -> candidate != query }?.let(index::findMethod)
+            ?: query.substringBefore('#').takeIf { candidate -> candidate != query }?.let(index::findClass)
+
+    private fun readIndexedSymbol(
+        symbol: JvmSymbol,
+        project: Project,
+        projectBasePath: String?,
+    ): RichSourceSnippet? {
+        val source = symbol.source ?: return null
+        val path = source.virtualFileUrl ?: source.displayPath
+        val snippet = readSourceSnippetRich(
+            filePath = path,
+            startLine = source.startLine,
+            endLine = source.endLine,
+            projectBasePath = projectBasePath,
+            project = project,
+        ) ?: return null
+        return snippet.copy(
+            nodeId = symbol.id,
+            filePath = snippet.filePath,
+            startLine = snippet.startLine ?: source.startLine,
+            endLine = snippet.endLine ?: source.endLine,
+            origin = snippet.origin ?: symbol.origin.name,
+            decompiled = snippet.decompiled || source.decompiled,
+            virtualFileUrl = snippet.virtualFileUrl ?: source.virtualFileUrl,
+            sourceDiagnostic = snippet.sourceDiagnostic,
+            symbolId = symbol.id,
+            symbolKind = when (symbol) {
+                is JvmClassSymbol -> "class"
+                is JvmMethodSymbol -> "method"
+                is JvmFieldSymbol -> "field"
+                is JvmResourceSymbol -> "resource"
+                else -> "symbol"
+            },
+        )
+    }
+
+    fun readSymbolByQualifiedNameRich(
+        symbolSignature: String,
+        project: Project,
+        projectBasePath: String? = project.basePath,
+        resolver: SourceContentResolver = defaultResolver(project),
+    ): RichSourceSnippet? {
+        val query = symbolSignature.trim()
+        if (isJdkSymbolName(query) && !allowJdkLibraryExpansion(project)) {
+            return null
+        }
+        val content = resolver.readClassByQualifiedName(query)
+            ?: resolver.readResourceByPath(query)
+            ?: return null
+        return RichSourceSnippet(
+            nodeId = null,
+            filePath = content.displayPath,
+            startLine = content.startLine,
+            endLine = content.endLine,
+            snippet = content.text,
+            origin = content.origin.name,
+            decompiled = content.decompiled,
+            virtualFileUrl = content.virtualFileUrl,
+            sourceDiagnostic = content.diagnostic,
+        )
+    }
+
+    fun readSymbolByQualifiedNameFailureReason(
+        symbolSignature: String,
+        project: Project,
+        resolver: SourceContentResolver = defaultResolver(project),
+    ): String? {
+        val query = symbolSignature.trim()
+        if (isJdkSymbolName(query) && !allowJdkLibraryExpansion(project)) {
+            return "JDK_SOURCE_ACCESS_DISABLED"
+        }
+        resolver.readClassByQualifiedName(query)?.let { return null }
+        resolver.readResourceByPath(query)?.let { return null }
+        return resolver.sourceUnavailableReason()
+    }
+
+    private fun defaultResolver(project: Project): SourceContentResolver {
+        return project.architectureIndexRuntime().sourceQuery()
+    }
+
+    private fun allowJdkLibraryExpansion(project: Project): Boolean =
+        runCatching { project.architectureIndexRuntime().settingsSnapshot().allowJdkLibraryExpansion }
+            .getOrDefault(false)
+
+    private fun isJdkSymbolName(value: String): Boolean =
+        value.startsWith("java.") ||
+            value.startsWith("javax.") ||
+            value.startsWith("jdk.") ||
+            value.startsWith("sun.") ||
+            value.startsWith("com.sun.")
+}
+
+data class RichSourceSnippet(
+    val nodeId: String? = null,
+    val filePath: String,
+    val startLine: Int? = null,
+    val endLine: Int? = null,
+    val snippet: String,
+    val origin: String? = null,
+    val decompiled: Boolean = false,
+    val virtualFileUrl: String? = null,
+    val sourceDiagnostic: String? = null,
+    val symbolId: String? = null,
+    val symbolKind: String? = null,
+) {
+    fun toSourceSnippetContext(): SourceSnippetContext =
+        SourceSnippetContext(
+            nodeId = nodeId.orEmpty(),
             filePath = filePath,
             startLine = startLine,
             endLine = endLine,
             snippet = snippet,
+            origin = origin,
+            decompiled = decompiled,
+            virtualFileUrl = virtualFileUrl,
         )
-    }
 }
+
+private fun SourceContentResolver?.sourceUnavailableReason(): String? =
+    when (this) {
+        is CompositeSourceContentResolver -> lastUnavailableReason()
+        is AttachedJarContentResolver -> lastUnavailableReason
+        is IdeSourceContentResolver -> lastUnavailableReason
+        else -> null
+    }

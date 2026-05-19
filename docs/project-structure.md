@@ -37,7 +37,7 @@
 - `application/usecase`
   - 面向动作和 bridge 的稳定用例入口。
 - `application/workflow`
-  - 主体分析、问答、草稿、实现建议、代码 diff、同步预览和导航等流程编排。
+  - 主体分析、架构图、类图、Review Graph、问答、草稿、实现建议、代码 diff、同步预览和导航等流程编排。
 - `application/port`
   - 应用层到 UI 投影层的端口。
 - `ui`
@@ -46,6 +46,10 @@
   - 日志、调试环境和 trace 等基础能力。
 - `semantic`
   - 语义分析、事实构建与主体定位。
+- `architecture`、`jvm`、`source`
+  - 项目级 JVM 符号/关系索引、架构图/类图投影和源码内容解析支撑。
+- `review`
+  - Review Graph 查询、diff 到符号映射、影响面和相关测试证据。
 - `model`
   - 共享图模型定义。
 - `workbench`
@@ -78,6 +82,12 @@
   - 流程图视图模块。
 - `views/resource`
   - 资源关系视图模块。
+- `views/architecture`
+  - 架构图视图模块。
+- `views/class-diagram`
+  - 类图视图模块。
+- `views/review`
+  - Review Graph 视图模块。
 - `reactflow`
   - 共享图画布基础设施与布局接线。
 - `components`

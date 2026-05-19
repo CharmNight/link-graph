@@ -12,8 +12,8 @@ interface ResolveToolbarFeedbackArgs {
 }
 
 const ASYNC_LAST_MESSAGE_TYPES = new Set([
-  "requestAudit",
-  "auditResult",
+  "requestQa",
+  "qaResult",
   "requestDiffReview",
   "diffReviewResult",
   "requestGraphBeautification",

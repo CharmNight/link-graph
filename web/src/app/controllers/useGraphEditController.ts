@@ -4,6 +4,8 @@ import { measureDuration, measureStart, summarizeGraph, traceLinkGraph } from ".
 import { clearStoredNodePosition, extractLayoutPayload, extractLayoutState, normalizeGraphNodes } from "../graphState";
 import type {
   AnalysisDisplayMode,
+  ArchitectureGraphViewDocument,
+  ClassDiagramViewDocument,
   FactGraphViewDocument,
   GraphEditOperation,
   GraphEditScript,
@@ -14,6 +16,7 @@ import type {
   LinkGraphLayoutState,
   LinkGraphNode,
   ResourceRelationViewDocument,
+  ReviewGraphViewDocument,
 } from "../types";
 
 interface UseGraphEditControllerArgs {
@@ -36,7 +39,10 @@ interface UseGraphEditControllerArgs {
   setFactGraphView: Dispatch<SetStateAction<FactGraphViewDocument>>;
   setFlowchartView: Dispatch<SetStateAction<FlowchartViewDocument>>;
   setResourceRelationView: Dispatch<SetStateAction<ResourceRelationViewDocument>>;
-  setAuditTargetNodeIds: Dispatch<SetStateAction<string[]>>;
+  setArchitectureGraphView: Dispatch<SetStateAction<ArchitectureGraphViewDocument>>;
+  setClassDiagramView: Dispatch<SetStateAction<ClassDiagramViewDocument>>;
+  setReviewGraphView: Dispatch<SetStateAction<ReviewGraphViewDocument>>;
+  setQaTargetNodeIds: Dispatch<SetStateAction<string[]>>;
   clearLocalDerivedGraphState: () => void;
   syncManualNodeIdCounters: (nextNodes: Array<{ id: string }>) => void;
   resolveAnchorNodeId: (nodes: LinkGraphNode[], preferredNodeId: string | null) => string | null;
@@ -47,6 +53,9 @@ interface UseGraphEditControllerArgs {
   ) => FactGraphViewDocument;
   deriveFlowchartSummary: (visibleGraph: LinkGraphDocument, fullGraph: LinkGraphDocument) => FlowchartViewDocument["summary"];
   deriveResourceRelationSummary: (visibleGraph: LinkGraphDocument) => ResourceRelationViewDocument["summary"];
+  deriveArchitectureGraphSummary: (visibleGraph: LinkGraphDocument) => ArchitectureGraphViewDocument["summary"];
+  deriveClassDiagramSummary: (visibleGraph: LinkGraphDocument) => ClassDiagramViewDocument["summary"];
+  deriveReviewGraphSummary: (visibleGraph: LinkGraphDocument) => ReviewGraphViewDocument["summary"];
 }
 
 export function useGraphEditController(args: UseGraphEditControllerArgs) {
@@ -166,8 +175,35 @@ export function useGraphEditController(args: UseGraphEditControllerArgs) {
         anchorNodeId: nextAnchorNodeId,
         summary: args.deriveResourceRelationSummary(nextGraph),
       }));
+    } else if (args.analysisDisplayMode === "ARCHITECTURE_GRAPH") {
+      const nextGraph = { nodes: laidOutNodes, edges: nextEdges };
+      args.setArchitectureGraphView((current) => ({
+        ...current,
+        visibleGraph: nextGraph,
+        fullGraph: nextGraph,
+        anchorNodeId: nextAnchorNodeId,
+        summary: args.deriveArchitectureGraphSummary(nextGraph),
+      }));
+    } else if (args.analysisDisplayMode === "CLASS_DIAGRAM") {
+      const nextGraph = { nodes: laidOutNodes, edges: nextEdges };
+      args.setClassDiagramView((current) => ({
+        ...current,
+        visibleGraph: nextGraph,
+        fullGraph: nextGraph,
+        anchorNodeId: nextAnchorNodeId,
+        summary: args.deriveClassDiagramSummary(nextGraph),
+      }));
+    } else if (args.analysisDisplayMode === "REVIEW_GRAPH") {
+      const nextGraph = { nodes: laidOutNodes, edges: nextEdges };
+      args.setReviewGraphView((current) => ({
+        ...current,
+        visibleGraph: nextGraph,
+        fullGraph: nextGraph,
+        anchorNodeId: nextAnchorNodeId,
+        summary: args.deriveReviewGraphSummary(nextGraph),
+      }));
     }
-    args.setAuditTargetNodeIds((current) => current.filter((nodeId) => laidOutNodes.some((node) => node.id === nodeId)));
+    args.setQaTargetNodeIds((current) => current.filter((nodeId) => laidOutNodes.some((node) => node.id === nodeId)));
     args.clearLocalDerivedGraphState();
     publishGraphEditScript(
       buildGraphEditScript(

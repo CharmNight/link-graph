@@ -11,8 +11,8 @@ vi.mock("../../../app/components/CodeDraftPanel", () => ({
   CodeDraftPanel: () => <div data-testid="code-panel">code-panel</div>,
 }));
 
-vi.mock("../../../app/workbench/AuditTab", () => ({
-  AuditTab: () => <div data-testid="audit-panel">audit-panel</div>,
+vi.mock("../../../app/workbench/QaTab", () => ({
+  QaTab: () => <div data-testid="qa-panel">qa-panel</div>,
 }));
 
 vi.mock("../../../app/workbench/DraftTab", () => ({
@@ -28,7 +28,7 @@ function buildProps(activeWorkbenchTab: WorkbenchTab = "explanation") {
     activeWorkbenchTab,
     onTabChange: vi.fn(),
     codePanelProps: {} as never,
-    auditTabProps: {} as never,
+    qaTabProps: {} as never,
     draftTabProps: {} as never,
     explanationTabProps: {} as never,
   };
@@ -69,7 +69,7 @@ describe("AppWorkbenchPanels", () => {
   });
 
   it("resets the shared right-side scroll when switching workbench tabs", async () => {
-    const { container, rerender } = render(<AppWorkbenchPanels {...buildProps("audit")} />);
+    const { container, rerender } = render(<AppWorkbenchPanels {...buildProps("qa")} />);
     const shell = container.querySelector(".workbench-shell") as HTMLElement;
     const panelBody = container.querySelector(".workbench-panel-body") as HTMLElement;
     shell.scrollTop = 120;

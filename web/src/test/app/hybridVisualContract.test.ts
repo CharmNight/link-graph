@@ -23,10 +23,10 @@ describe("hybrid visual contract", () => {
       /\.stage-workbench-panel\s+\.workbench-panel-body\s*\{[^}]*background:\s*var\(--panel-soft\);[^}]*color:\s*var\(--text\);/s,
     );
     expect(themeCss).toMatch(
-      /\.stage-workbench-panel\s+\.workbench-section-card,\s*\.stage-workbench-panel\s+\.audit-page-panel\s*\{(?=[^}]*background:\s*transparent;)(?=[^}]*box-shadow:\s*none;)[^}]*\}/s,
+      /\.stage-workbench-panel\s+\.workbench-section-card,\s*\.stage-workbench-panel\s+\.qa-page-panel\s*\{(?=[^}]*background:\s*transparent;)(?=[^}]*box-shadow:\s*none;)[^}]*\}/s,
     );
     expect(themeCss).toMatch(
-      /\.stage-workbench-panel\s+:is\([^)]*\.workbench-step-list[^)]*\.workbench-step-detail[^)]*\.workbench-candidate-list[^)]*\.workbench-draft-section[^)]*\.workbench-audit-thread[^)]*\)\s*\{(?=[^}]*background:\s*transparent;)(?=[^}]*color:\s*var\(--text\);)[^}]*\}/s,
+      /\.stage-workbench-panel\s+:is\([^)]*\.workbench-step-list[^)]*\.workbench-step-detail[^)]*\.workbench-candidate-list[^)]*\.workbench-draft-section[^)]*\.workbench-qa-thread[^)]*\)\s*\{(?=[^}]*background:\s*transparent;)(?=[^}]*color:\s*var\(--text\);)[^}]*\}/s,
     );
     expect(themeCss).toMatch(
       /\.stage-workbench-panel\s+:is\([^)]*\.workbench-step-item[^)]*\.workbench-candidate-card[^)]*\.workbench-draft-card[^)]*\.workbench-empty-card[^)]*\)\s*\{[^}]*background:\s*var\(--panel-soft\);[^}]*color:\s*var\(--text\);/s,
@@ -38,7 +38,7 @@ describe("hybrid visual contract", () => {
       /\.stage-workbench-panel\s+\.workbench-chat-message\.assistant\s*\{[^}]*background:\s*transparent;[^}]*color:\s*var\(--text\);/s,
     );
     expect(themeCss).toMatch(
-      /\.stage-workbench-panel\s+:is\([^)]*\.audit-rich-section[^)]*\.audit-rich-section-summary\.expanded[^)]*\.audit-rich-section\.risk[^)]*\.audit-rich-section\.suggestion[^)]*\)\s*\{(?=[^}]*background:\s*transparent;)(?=[^}]*color:\s*var\(--text\);)[^}]*\}/s,
+      /\.stage-workbench-panel\s+:is\([^)]*\.qa-rich-section[^)]*\.qa-rich-section-summary\.expanded[^)]*\.qa-rich-section\.risk[^)]*\.qa-rich-section\.suggestion[^)]*\)\s*\{(?=[^}]*background:\s*transparent;)(?=[^}]*color:\s*var\(--text\);)[^}]*\}/s,
     );
     expect(themeCss).toMatch(
       /\.stage-workbench-panel\s+:is\([^)]*\.side-panel[^)]*\.generation-plan-panel[^)]*\.workbench-section-card-body[^)]*\.workbench-chat-empty[^)]*\.warning-list[^)]*\)\s*\{[^}]*color:\s*var\(--text\);/s,
@@ -170,7 +170,7 @@ describe("hybrid visual contract", () => {
 
   it("keeps the right workbench to three visual layers without nested card shells", () => {
     expect(themeCss).toMatch(
-      /\.stage-workbench-panel\s+\.workbench-section-card,\s*\.stage-workbench-panel\s+\.audit-page-panel\s*\{(?=[^}]*border-width:\s*0;)(?=[^}]*border-radius:\s*0;)(?=[^}]*background:\s*transparent;)(?=[^}]*box-shadow:\s*none;)[^}]*\}/s,
+      /\.stage-workbench-panel\s+\.workbench-section-card,\s*\.stage-workbench-panel\s+\.qa-page-panel\s*\{(?=[^}]*border-width:\s*0;)(?=[^}]*border-radius:\s*0;)(?=[^}]*background:\s*transparent;)(?=[^}]*box-shadow:\s*none;)[^}]*\}/s,
     );
     expect(themeCss).toMatch(
       /\.stage-workbench-panel\s+\.workbench-chat-stream\s*\{[^}]*border-width:\s*0;[^}]*background:\s*transparent;/s,
@@ -179,7 +179,7 @@ describe("hybrid visual contract", () => {
       /\.stage-workbench-panel\s+\.workbench-chat-message\.assistant\s*\{[^}]*border-width:\s*0;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s,
     );
     expect(themeCss).not.toMatch(
-      /\.stage-workbench-panel\s+:is\([^)]*\.workbench-section-card[^)]*\.audit-page-panel[^)]*\.workbench-step-list[^)]*\.workbench-step-detail[^)]*\.workbench-candidate-list[^)]*\)\s*\{[^}]*background:\s*var\(--panel\);/s,
+      /\.stage-workbench-panel\s+:is\([^)]*\.workbench-section-card[^)]*\.qa-page-panel[^)]*\.workbench-step-list[^)]*\.workbench-step-detail[^)]*\.workbench-candidate-list[^)]*\)\s*\{[^}]*background:\s*var\(--panel\);/s,
     );
   });
 

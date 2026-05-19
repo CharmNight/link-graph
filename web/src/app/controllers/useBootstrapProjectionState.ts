@@ -3,7 +3,9 @@ import { measureDuration, measureStart, summarizeBootstrapState, summarizeGraph,
 import { applyLayoutOnlyNodePositions, resolveNodePosition, syncNodePosition } from "../graphState";
 import type {
   AnalysisDisplayMode,
+  ArchitectureGraphViewDocument,
   AsyncRequestState,
+  ClassDiagramViewDocument,
   FactGraphViewDocument,
   FlowchartViewDocument,
   LinkGraphBootstrapState,
@@ -13,6 +15,7 @@ import type {
   LinkGraphSceneId,
   LinkGraphSceneState,
   ResourceRelationViewDocument,
+  ReviewGraphViewDocument,
   SourceNavigationState,
 } from "../types";
 import type {
@@ -48,12 +51,18 @@ interface UseBootstrapProjectionStateArgs {
   resolveFactGraphView: (state: LinkGraphBootstrapState) => FactGraphViewDocument;
   resolveFlowchartView: (state: LinkGraphBootstrapState) => FlowchartViewDocument;
   resolveResourceRelationView: (state: LinkGraphBootstrapState) => ResourceRelationViewDocument;
+  resolveArchitectureGraphView: (state: LinkGraphBootstrapState) => ArchitectureGraphViewDocument;
+  resolveClassDiagramView: (state: LinkGraphBootstrapState) => ClassDiagramViewDocument;
+  resolveReviewGraphView: (state: LinkGraphBootstrapState) => ReviewGraphViewDocument;
   resolveWorkingGraph: (state: LinkGraphBootstrapState) => LinkGraphDocument;
   resolveActiveViewDocument: (
     state: LinkGraphBootstrapState & {
       factGraphView: FactGraphViewDocument;
       flowchartView: FlowchartViewDocument;
       resourceRelationView: ResourceRelationViewDocument;
+      architectureGraphView: ArchitectureGraphViewDocument;
+      classDiagramView: ClassDiagramViewDocument;
+      reviewGraphView: ReviewGraphViewDocument;
     },
     displayMode: AnalysisDisplayMode,
   ) => { visibleGraph: LinkGraphDocument };
@@ -226,6 +235,9 @@ function resolveSceneNodes(
   factGraphView: FactGraphViewDocument,
   flowchartView: FlowchartViewDocument,
   resourceRelationView: ResourceRelationViewDocument,
+  architectureGraphView: ArchitectureGraphViewDocument,
+  classDiagramView: ClassDiagramViewDocument,
+  reviewGraphView: ReviewGraphViewDocument,
   fallbackVisibleGraph: LinkGraphDocument,
   currentSceneId: LinkGraphSceneId,
 ): LinkGraphNode[] {
@@ -236,6 +248,12 @@ function resolveSceneNodes(
       return flowchartView.visibleGraph.nodes;
     case "WORKSPACE_RESOURCE_RELATION":
       return resourceRelationView.visibleGraph.nodes;
+    case "WORKSPACE_ARCHITECTURE_GRAPH":
+      return architectureGraphView.visibleGraph.nodes;
+    case "WORKSPACE_CLASS_DIAGRAM":
+      return classDiagramView.visibleGraph.nodes;
+    case "WORKSPACE_REVIEW_GRAPH":
+      return reviewGraphView.visibleGraph.nodes;
     case "DIFF":
       return currentSceneId === "DIFF" ? fallbackVisibleGraph.nodes : [];
     default:
@@ -293,6 +311,18 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       args.resolveResourceRelationView(nextState),
       args.canvasState.resourceRelationView,
     );
+    const bootstrapArchitectureGraphView = args.applyBootstrapRoutesToViewDocument(
+      args.resolveArchitectureGraphView(nextState),
+      args.canvasState.architectureGraphView,
+    );
+    const bootstrapClassDiagramView = args.applyBootstrapRoutesToViewDocument(
+      args.resolveClassDiagramView(nextState),
+      args.canvasState.classDiagramView,
+    );
+    const bootstrapReviewGraphView = args.applyBootstrapRoutesToViewDocument(
+      args.resolveReviewGraphView(nextState),
+      args.canvasState.reviewGraphView,
+    );
 
     const projectedFactGraphView = applyBootstrapLayoutToViewDocument(
       args.reuseCurrentViewGraphs(
@@ -318,12 +348,39 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       ),
       bootstrapResourceRelationView,
     );
+    const projectedArchitectureGraphView = applyBootstrapLayoutToViewDocument(
+      args.reuseCurrentViewGraphs(
+        bootstrapArchitectureGraphView,
+        args.canvasState.architectureGraphView,
+        reuseCurrentProjectionGraphs,
+      ),
+      bootstrapArchitectureGraphView,
+    );
+    const projectedClassDiagramView = applyBootstrapLayoutToViewDocument(
+      args.reuseCurrentViewGraphs(
+        bootstrapClassDiagramView,
+        args.canvasState.classDiagramView,
+        reuseCurrentProjectionGraphs,
+      ),
+      bootstrapClassDiagramView,
+    );
+    const projectedReviewGraphView = applyBootstrapLayoutToViewDocument(
+      args.reuseCurrentViewGraphs(
+        bootstrapReviewGraphView,
+        args.canvasState.reviewGraphView,
+        reuseCurrentProjectionGraphs,
+      ),
+      bootstrapReviewGraphView,
+    );
 
     const provisionalVisibleGraph = args.resolveActiveViewDocument({
       ...nextState,
       factGraphView: projectedFactGraphView,
       flowchartView: projectedFlowchartView,
       resourceRelationView: projectedResourceRelationView,
+      architectureGraphView: projectedArchitectureGraphView,
+      classDiagramView: projectedClassDiagramView,
+      reviewGraphView: projectedReviewGraphView,
     }, nextAnalysisDisplayMode).visibleGraph;
 
     const sceneIds = Array.from(new Set([
@@ -338,6 +395,9 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
           projectedFactGraphView,
           projectedFlowchartView,
           projectedResourceRelationView,
+          projectedArchitectureGraphView,
+          projectedClassDiagramView,
+          projectedReviewGraphView,
           provisionalVisibleGraph,
           nextState.currentSceneId,
         );
@@ -369,12 +429,30 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       args.canvasState.resourceRelationView,
       mergedSceneStates.WORKSPACE_RESOURCE_RELATION ?? createEmptySceneState(),
     );
+    let nextArchitectureGraphView = applySceneStateToViewDocument(
+      projectedArchitectureGraphView,
+      args.canvasState.architectureGraphView,
+      mergedSceneStates.WORKSPACE_ARCHITECTURE_GRAPH ?? createEmptySceneState(),
+    );
+    let nextClassDiagramView = applySceneStateToViewDocument(
+      projectedClassDiagramView,
+      args.canvasState.classDiagramView,
+      mergedSceneStates.WORKSPACE_CLASS_DIAGRAM ?? createEmptySceneState(),
+    );
+    let nextReviewGraphView = applySceneStateToViewDocument(
+      projectedReviewGraphView,
+      args.canvasState.reviewGraphView,
+      mergedSceneStates.WORKSPACE_REVIEW_GRAPH ?? createEmptySceneState(),
+    );
 
     const resolvedVisibleGraph = args.resolveActiveViewDocument({
       ...nextState,
       factGraphView: nextFactGraphView,
       flowchartView: nextFlowchartView,
       resourceRelationView: nextResourceRelationView,
+      architectureGraphView: nextArchitectureGraphView,
+      classDiagramView: nextClassDiagramView,
+      reviewGraphView: nextReviewGraphView,
       sceneStates: mergedSceneStates,
     }, nextAnalysisDisplayMode).visibleGraph;
     const visibleGraph = resolvedVisibleGraph;
@@ -419,6 +497,9 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       factGraphView: nextFactGraphView,
       flowchartView: nextFlowchartView,
       resourceRelationView: nextResourceRelationView,
+      architectureGraphView: nextArchitectureGraphView,
+      classDiagramView: nextClassDiagramView,
+      reviewGraphView: nextReviewGraphView,
       draftGraph: nextDraftGraph,
     }));
 
@@ -430,8 +511,8 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       canUndoDraftPatchApply: nextState.canUndoDraftPatchApply ?? false,
       lastAppliedDraftPatchSummary: nextState.lastAppliedDraftPatchSummary ?? null,
       lastDraftPatchApplyResult: nextState.lastDraftPatchApplyResult ?? null,
-      auditResult: nextState.auditResult ?? null,
-      auditRequestState: args.resolveRequestState(nextState.auditRequestState),
+      qaResult: nextState.qaResult ?? null,
+      qaRequestState: args.resolveRequestState(nextState.qaRequestState),
       qaRequestRecoveryState: nextState.qaRequestRecoveryState ?? { lastSubmittedRequest: null, lastFailedRequest: null },
       diffReviewResult: nextState.diffReviewResult ?? null,
       diffReviewRequestState: args.resolveRequestState(nextState.diffReviewRequestState),

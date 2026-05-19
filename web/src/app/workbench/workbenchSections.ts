@@ -1,36 +1,36 @@
 import type { WorkbenchSectionId, WorkbenchSectionPreferences } from "../types";
 
-export type WorkbenchTabId = "explanation" | "audit" | "draft";
+export type WorkbenchTabId = "explanation" | "qa" | "draft";
 
 interface WorkbenchSectionConstraint {
   id: WorkbenchSectionId;
   threshold: number;
 }
 
-export const AUDIT_WORKBENCH_SECTION_IDS: WorkbenchSectionId[] = [
-  "audit.composer",
-  "audit.request-status",
-  "audit.thread",
-  "audit.candidate-changes",
-  "audit.investigation-threads",
+export const QA_WORKBENCH_SECTION_IDS: WorkbenchSectionId[] = [
+  "qa.composer",
+  "qa.request-status",
+  "qa.thread",
+  "qa.candidate-changes",
+  "qa.investigation-threads",
 ];
 
 const DEFAULT_SECTION_PREFERENCES: Record<WorkbenchSectionId, boolean> = {
   "explanation.step-list": true,
   "explanation.step-detail": true,
-  "audit.request-status": false,
-  "audit.thread": true,
-  "audit.composer": false,
-  "audit.candidate-changes": false,
-  "audit.investigation-threads": false,
+  "qa.request-status": false,
+  "qa.thread": true,
+  "qa.composer": false,
+  "qa.candidate-changes": false,
+  "qa.investigation-threads": false,
   "draft.change-list": true,
   "draft.note-list": false,
   "draft.detail": true,
 };
 
-const AUDIT_COLLAPSE_PRIORITY: WorkbenchSectionConstraint[] = [
-  { id: "audit.request-status", threshold: 760 },
-  { id: "audit.candidate-changes", threshold: 920 },
+const QA_COLLAPSE_PRIORITY: WorkbenchSectionConstraint[] = [
+  { id: "qa.request-status", threshold: 760 },
+  { id: "qa.candidate-changes", threshold: 920 },
 ];
 
 const DRAFT_COLLAPSE_PRIORITY: WorkbenchSectionConstraint[] = [
@@ -52,30 +52,30 @@ interface ResolveEffectiveWorkbenchSectionPreferencesArgs {
   tab: WorkbenchTabId;
   preferences: WorkbenchSectionPreferences | null | undefined;
   layoutHeight?: number | null;
-  hasAuditChanges?: boolean;
+  hasQaChanges?: boolean;
 }
 
 export function resolveEffectiveWorkbenchSectionPreferences({
   tab,
   preferences,
   layoutHeight,
-  hasAuditChanges = false,
+  hasQaChanges = false,
 }: ResolveEffectiveWorkbenchSectionPreferencesArgs): WorkbenchSectionPreferences {
   const effective = defaultWorkbenchSectionPreferences();
   for (const sectionId of Object.keys(DEFAULT_SECTION_PREFERENCES) as WorkbenchSectionId[]) {
     effective[sectionId] = resolveWorkbenchSectionPreference(preferences, sectionId);
   }
 
-  if (!hasAuditChanges) {
-    effective["audit.candidate-changes"] = false;
+  if (!hasQaChanges) {
+    effective["qa.candidate-changes"] = false;
   }
 
   if (!layoutHeight || layoutHeight <= 0) {
     return effective;
   }
 
-  const constrainedSections = tab === "audit"
-    ? AUDIT_COLLAPSE_PRIORITY
+  const constrainedSections = tab === "qa"
+    ? QA_COLLAPSE_PRIORITY
     : tab === "draft"
       ? DRAFT_COLLAPSE_PRIORITY
       : [];

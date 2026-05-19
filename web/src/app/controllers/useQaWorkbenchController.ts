@@ -1,10 +1,10 @@
 import { useEffect, type Dispatch, type SetStateAction } from "react";
 import {
-  confirmAuditCandidateChange,
-  requestAuditAsync,
+  confirmQaCandidateChange,
+  requestQaAsync,
   resolveInvestigationThread,
-  retryLastAuditRequestAsync,
-  unconfirmAuditCandidateChange,
+  retryLastQaRequestAsync,
+  unconfirmQaCandidateChange,
   updateWorkbenchSectionPreference,
 } from "../api";
 import { deriveInvestigationThreads } from "../investigationThreads";
@@ -20,36 +20,36 @@ import type {
   WorkbenchSectionId,
 } from "../types";
 import { candidateCanConfirm } from "../workbench/candidateChangeSupport";
-import { AUDIT_WORKBENCH_SECTION_IDS } from "../workbench/workbenchSections";
+import { QA_WORKBENCH_SECTION_IDS } from "../workbench/workbenchSections";
 import type { useBridgeCommandController } from "./useBridgeCommandController";
 
-type WorkbenchTab = "explanation" | "audit" | "draft" | "code";
+type WorkbenchTab = "explanation" | "qa" | "draft" | "code";
 
-interface UseAuditWorkbenchControllerArgs {
-  auditResult: GraphPatchResult | null;
+interface UseQaWorkbenchControllerArgs {
+  qaResult: GraphPatchResult | null;
   qaRequestRecoveryState: QaRequestRecoveryState;
-  auditSourceThreadId: string | null;
-  auditQuestionMode: QaMode;
-  auditTargetNodeIds: string[];
-  selectedAuditChangeId: string | null;
-  selectedAuditThreadId: string | null;
+  qaSourceThreadId: string | null;
+  qaQuestionMode: QaMode;
+  qaTargetNodeIds: string[];
+  selectedQaChangeId: string | null;
+  selectedQaThreadId: string | null;
   nodes: LinkGraphNode[];
   draftWorkbenchState: { draftChanges: DraftWorkbenchEntry[]; draftNotes: DraftWorkbenchEntry[] };
   bridgeCommands: Pick<
     ReturnType<typeof useBridgeCommandController>,
     "runBridgeCommand" | "submitAsyncBridgeCommand"
   >;
-  setAuditQuestionDraft: Dispatch<SetStateAction<string>>;
-  setAuditQuestionMode: Dispatch<SetStateAction<QaMode>>;
-  setAuditTargetNodeIds: Dispatch<SetStateAction<string[]>>;
-  setAuditSourceThreadId: Dispatch<SetStateAction<string | null>>;
+  setQaQuestionDraft: Dispatch<SetStateAction<string>>;
+  setQaQuestionMode: Dispatch<SetStateAction<QaMode>>;
+  setQaTargetNodeIds: Dispatch<SetStateAction<string[]>>;
+  setQaSourceThreadId: Dispatch<SetStateAction<string | null>>;
   setActiveWorkbenchTab: (tab: WorkbenchTab) => void;
   setOperationFeedback: Dispatch<SetStateAction<OperationFeedback | null>>;
   setDraftWorkbenchState: Dispatch<SetStateAction<{ draftChanges: DraftWorkbenchEntry[]; draftNotes: DraftWorkbenchEntry[] }>>;
   setSelectedDraftEntryId: Dispatch<SetStateAction<string | null>>;
-  setAuditResult: Dispatch<SetStateAction<GraphPatchResult | null>>;
-  setSelectedAuditChangeId: Dispatch<SetStateAction<string | null>>;
-  setSelectedAuditThreadId: Dispatch<SetStateAction<string | null>>;
+  setQaResult: Dispatch<SetStateAction<GraphPatchResult | null>>;
+  setSelectedQaChangeId: Dispatch<SetStateAction<string | null>>;
+  setSelectedQaThreadId: Dispatch<SetStateAction<string | null>>;
   selectExplanationTargetNode: (nodeId: string, options?: { focusViewport?: boolean }) => void;
   toDraftWorkbenchEntry: (change: CandidateDraftChange) => DraftWorkbenchEntry;
   updateGraphPatchResultCandidateStatus: (
@@ -70,31 +70,31 @@ interface UseAuditWorkbenchControllerArgs {
   ) => string | null;
 }
 
-export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArgs) {
-  function activateAuditSection(sectionId: WorkbenchSectionId) {
-    if (!AUDIT_WORKBENCH_SECTION_IDS.includes(sectionId)) {
+export function useQaWorkbenchController(args: UseQaWorkbenchControllerArgs) {
+  function activateQaSection(sectionId: WorkbenchSectionId) {
+    if (!QA_WORKBENCH_SECTION_IDS.includes(sectionId)) {
       return;
     }
-    AUDIT_WORKBENCH_SECTION_IDS.forEach((auditSectionId) => {
-      updateWorkbenchSectionPreference(auditSectionId, auditSectionId === sectionId);
+    QA_WORKBENCH_SECTION_IDS.forEach((qaSectionId) => {
+      updateWorkbenchSectionPreference(qaSectionId, qaSectionId === sectionId);
     });
   }
 
-  function handleRequestAudit(
+  function handleRequestQa(
     question: string,
-    targetNodeIds: string[] = args.auditTargetNodeIds,
-    mode: QaMode = args.auditQuestionMode,
+    targetNodeIds: string[] = args.qaTargetNodeIds,
+    mode: QaMode = args.qaQuestionMode,
   ) {
     const normalizedQuestion = question.trim();
     if (normalizedQuestion.length === 0) {
       return;
     }
-    args.setAuditQuestionDraft(normalizedQuestion);
-    args.setAuditQuestionMode(mode);
-    args.setAuditTargetNodeIds(targetNodeIds);
-    args.bridgeCommands.submitAsyncBridgeCommand("问答", () => requestAuditAsync(normalizedQuestion, targetNodeIds, args.auditSourceThreadId, mode), {
+    args.setQaQuestionDraft(normalizedQuestion);
+    args.setQaQuestionMode(mode);
+    args.setQaTargetNodeIds(targetNodeIds);
+    args.bridgeCommands.submitAsyncBridgeCommand("问答", () => requestQaAsync(normalizedQuestion, targetNodeIds, args.qaSourceThreadId, mode), {
       onAccepted: () => {
-        args.setActiveWorkbenchTab("audit");
+        args.setActiveWorkbenchTab("qa");
       },
       successFeedback: {
         level: "INFO",
@@ -104,7 +104,7 @@ export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArg
   }
 
   function handleConfirmCandidateChange(changeId: string) {
-    const candidate = args.auditResult?.candidateChanges.find((item) => item.changeId === changeId) ?? null;
+    const candidate = args.qaResult?.candidateChanges.find((item) => item.changeId === changeId) ?? null;
     if (candidate && !candidateCanConfirm(candidate)) {
       args.setOperationFeedback({
         level: "WARNING",
@@ -112,7 +112,7 @@ export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArg
       });
       return;
     }
-    args.bridgeCommands.runBridgeCommand("确认候选变更", () => confirmAuditCandidateChange(changeId), {
+    args.bridgeCommands.runBridgeCommand("确认候选变更", () => confirmQaCandidateChange(changeId), {
       onAccepted: () => {
         if (candidate) {
           const nextEntry = args.toDraftWorkbenchEntry(candidate);
@@ -123,7 +123,7 @@ export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArg
               .concat(nextEntry),
           }));
           args.setSelectedDraftEntryId(nextEntry.entryId);
-          args.setAuditResult((current) => args.updateGraphPatchResultCandidateStatus(current, changeId, "CONFIRMED"));
+          args.setQaResult((current) => args.updateGraphPatchResultCandidateStatus(current, changeId, "CONFIRMED"));
           const targetNodeId = args.resolveDraftEntryTargetNodeIds(nextEntry)
             .map((nodeId) => args.resolveDisplayedNodeId(nodeId, args.nodes))
             .find(Boolean)
@@ -140,18 +140,18 @@ export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArg
     });
   }
 
-  function handleRetryLastAuditRequest() {
+  function handleRetryLastQaRequest() {
     const failedRequest = args.qaRequestRecoveryState.lastFailedRequest;
     if (!failedRequest) {
       return;
     }
-    args.setAuditQuestionDraft(failedRequest.question);
-    args.setAuditQuestionMode(failedRequest.mode ?? "AUTO");
-    args.setAuditTargetNodeIds(failedRequest.selectedNodeIds);
-    args.setAuditSourceThreadId(failedRequest.sourceThreadId ?? null);
-    activateAuditSection("audit.request-status");
-    args.setActiveWorkbenchTab("audit");
-    args.bridgeCommands.submitAsyncBridgeCommand("问答", () => retryLastAuditRequestAsync(), {
+    args.setQaQuestionDraft(failedRequest.question);
+    args.setQaQuestionMode(failedRequest.mode ?? "AUTO");
+    args.setQaTargetNodeIds(failedRequest.selectedNodeIds);
+    args.setQaSourceThreadId(failedRequest.sourceThreadId ?? null);
+    activateQaSection("qa.request-status");
+    args.setActiveWorkbenchTab("qa");
+    args.bridgeCommands.submitAsyncBridgeCommand("问答", () => retryLastQaRequestAsync(), {
       successFeedback: {
         level: "INFO",
         message: "已提交失败问答的直接重试请求。",
@@ -159,26 +159,26 @@ export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArg
     });
   }
 
-  function handleEditFailedAuditRequest() {
+  function handleEditFailedQaRequest() {
     const failedRequest = args.qaRequestRecoveryState.lastFailedRequest;
     if (!failedRequest) {
       return;
     }
-    args.setAuditQuestionDraft(failedRequest.question);
-    args.setAuditQuestionMode(failedRequest.mode ?? "AUTO");
-    args.setAuditTargetNodeIds(failedRequest.selectedNodeIds);
-    args.setAuditSourceThreadId(failedRequest.sourceThreadId ?? null);
-    activateAuditSection("audit.composer");
-    args.setActiveWorkbenchTab("audit");
+    args.setQaQuestionDraft(failedRequest.question);
+    args.setQaQuestionMode(failedRequest.mode ?? "AUTO");
+    args.setQaTargetNodeIds(failedRequest.selectedNodeIds);
+    args.setQaSourceThreadId(failedRequest.sourceThreadId ?? null);
+    activateQaSection("qa.composer");
+    args.setActiveWorkbenchTab("qa");
     args.setOperationFeedback({
       level: "INFO",
       message: "已把失败问答回填到输入区，可修改后重新提交。",
     });
   }
 
-  function handleSelectAuditChange(changeId: string) {
-    args.setSelectedAuditChangeId(changeId);
-    const change = args.auditResult?.candidateChanges.find((item) => item.changeId === changeId) ?? null;
+  function handleSelectQaChange(changeId: string) {
+    args.setSelectedQaChangeId(changeId);
+    const change = args.qaResult?.candidateChanges.find((item) => item.changeId === changeId) ?? null;
     const targetNodeId = change
       ? args.resolveDisplayedNodeId(args.resolveEvidenceTargetNodeId(change.targetNodeIds, change.evidence), args.nodes)
       : null;
@@ -188,9 +188,9 @@ export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArg
     args.selectExplanationTargetNode(targetNodeId, { focusViewport: true });
   }
 
-  function handleSelectAuditThread(threadId: string) {
-    args.setSelectedAuditThreadId(threadId);
-    const thread = deriveInvestigationThreads(args.auditResult).find((item) => item.threadId === threadId) ?? null;
+  function handleSelectQaThread(threadId: string) {
+    args.setSelectedQaThreadId(threadId);
+    const thread = deriveInvestigationThreads(args.qaResult).find((item) => item.threadId === threadId) ?? null;
     const targetNodeId = thread
       ? args.resolveDisplayedNodeId(args.resolveEvidenceTargetNodeId(thread.targetNodeIds, thread.evidence), args.nodes)
       : null;
@@ -200,17 +200,17 @@ export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArg
     args.selectExplanationTargetNode(targetNodeId, { focusViewport: true });
   }
 
-  function handleInvestigateAuditThread(threadId: string) {
-    const thread = deriveInvestigationThreads(args.auditResult).find((item) => item.threadId === threadId) ?? null;
+  function handleInvestigateQaThread(threadId: string) {
+    const thread = deriveInvestigationThreads(args.qaResult).find((item) => item.threadId === threadId) ?? null;
     if (!thread) {
       return;
     }
-    args.setSelectedAuditThreadId(threadId);
-    args.setAuditSourceThreadId(threadId);
+    args.setSelectedQaThreadId(threadId);
+    args.setQaSourceThreadId(threadId);
     const nextQuestion = thread.recommendedQuestion.trim()
       || `请继续取证：核对“${thread.title}”对应的直接源码证据。`;
-    args.setAuditQuestionDraft(nextQuestion);
-    args.setAuditTargetNodeIds(thread.targetNodeIds);
+    args.setQaQuestionDraft(nextQuestion);
+    args.setQaTargetNodeIds(thread.targetNodeIds);
     const targetNodeId = args.resolveDisplayedNodeId(
       args.resolveEvidenceTargetNodeId(thread.targetNodeIds, thread.evidence),
       args.nodes,
@@ -218,9 +218,9 @@ export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArg
     if (targetNodeId) {
       args.selectExplanationTargetNode(targetNodeId, { focusViewport: true });
     }
-    activateAuditSection("audit.composer");
-    args.setActiveWorkbenchTab("audit");
-    args.bridgeCommands.submitAsyncBridgeCommand("问答", () => requestAuditAsync(nextQuestion, thread.targetNodeIds, threadId, "INVESTIGATE"), {
+    activateQaSection("qa.composer");
+    args.setActiveWorkbenchTab("qa");
+    args.bridgeCommands.submitAsyncBridgeCommand("问答", () => requestQaAsync(nextQuestion, thread.targetNodeIds, threadId, "INVESTIGATE"), {
       successFeedback: {
         level: "INFO",
         message: `已围绕风险线程“${thread.title}”自动发起继续取证。`,
@@ -228,16 +228,16 @@ export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArg
     });
   }
 
-  function handleResolveAuditThread(
+  function handleResolveQaThread(
     threadId: string,
     resolutionStatus: "DEFERRED" | "ACCEPTED_RISK" | "DISMISSED",
   ) {
-    args.setSelectedAuditThreadId(threadId);
-    activateAuditSection("audit.investigation-threads");
-    args.setActiveWorkbenchTab("audit");
+    args.setSelectedQaThreadId(threadId);
+    activateQaSection("qa.investigation-threads");
+    args.setActiveWorkbenchTab("qa");
     args.bridgeCommands.runBridgeCommand("风险决策", () => resolveInvestigationThread(threadId, resolutionStatus), {
       onAccepted: () => {
-        args.setAuditResult((current) => args.updateGraphPatchResultThreadResolution(current, threadId, resolutionStatus));
+        args.setQaResult((current) => args.updateGraphPatchResultThreadResolution(current, threadId, resolutionStatus));
       },
       successFeedback: {
         level: "INFO",
@@ -257,13 +257,13 @@ export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArg
     if (!entry || !changeId) {
       return;
     }
-    args.bridgeCommands.runBridgeCommand("取消确认候选变更", () => unconfirmAuditCandidateChange(changeId), {
+    args.bridgeCommands.runBridgeCommand("取消确认候选变更", () => unconfirmQaCandidateChange(changeId), {
       onAccepted: () => {
         args.setDraftWorkbenchState((current) => ({
           ...current,
           draftChanges: current.draftChanges.filter((item) => item.entryId !== entryId),
         }));
-        args.setAuditResult((current) => args.updateGraphPatchResultCandidateStatus(current, changeId, "PENDING_CONFIRMATION"));
+        args.setQaResult((current) => args.updateGraphPatchResultCandidateStatus(current, changeId, "PENDING_CONFIRMATION"));
       },
       successFeedback: {
         level: "INFO",
@@ -273,36 +273,36 @@ export function useAuditWorkbenchController(args: UseAuditWorkbenchControllerArg
   }
 
   useEffect(() => {
-    const pendingChanges = args.auditResult?.candidateChanges.filter((change) => change.status === "PENDING_CONFIRMATION") ?? [];
+    const pendingChanges = args.qaResult?.candidateChanges.filter((change) => change.status === "PENDING_CONFIRMATION") ?? [];
     const firstChangeId = pendingChanges[0]?.changeId ?? null;
-    args.setSelectedAuditChangeId((current) => {
+    args.setSelectedQaChangeId((current) => {
       if (!pendingChanges.length) {
         return null;
       }
       return pendingChanges.some((change) => change.changeId === current) ? current : firstChangeId;
     });
-  }, [args.auditResult, args.setSelectedAuditChangeId]);
+  }, [args.qaResult, args.setSelectedQaChangeId]);
 
   useEffect(() => {
-    const investigationThreads = deriveInvestigationThreads(args.auditResult);
+    const investigationThreads = deriveInvestigationThreads(args.qaResult);
     const firstLeadId = investigationThreads[0]?.threadId ?? null;
-    args.setSelectedAuditThreadId((current) => {
+    args.setSelectedQaThreadId((current) => {
       if (!investigationThreads.length) {
         return null;
       }
       return investigationThreads.some((thread) => thread.threadId === current) ? current : firstLeadId;
     });
-  }, [args.auditResult, args.setSelectedAuditThreadId]);
+  }, [args.qaResult, args.setSelectedQaThreadId]);
 
   return {
-    handleRequestAudit,
+    handleRequestQa,
     handleConfirmCandidateChange,
-    handleRetryLastAuditRequest,
-    handleEditFailedAuditRequest,
-    handleSelectAuditChange,
-    handleSelectAuditThread,
-    handleInvestigateAuditThread,
-    handleResolveAuditThread,
+    handleRetryLastQaRequest,
+    handleEditFailedQaRequest,
+    handleSelectQaChange,
+    handleSelectQaThread,
+    handleInvestigateQaThread,
+    handleResolveQaThread,
     handleUnconfirmDraftChange,
   };
 }

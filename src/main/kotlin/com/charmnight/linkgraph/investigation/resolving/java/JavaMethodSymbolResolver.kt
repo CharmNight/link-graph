@@ -7,9 +7,11 @@ import com.charmnight.linkgraph.investigation.resolving.InvestigationContext
 import com.charmnight.linkgraph.investigation.resolving.ReadActionEvidenceResolver
 
 /**
- * 使用 Java PSI 精确解析普通方法符号，负责处理重载方法边界。
+ * 使用统一 ArchitectureGraphIndex 解析普通方法符号，负责处理重载方法边界。
  */
-class JavaMethodSymbolResolver : ReadActionEvidenceResolver() {
+class JavaMethodSymbolResolver(
+    private val jvmEvidenceIndexAdapter: JvmEvidenceIndexAdapter = JvmEvidenceIndexAdapter(),
+) : ReadActionEvidenceResolver() {
     /** 保存解析器稳定标识。 */
     override val id: String = "java-method-symbol"
 
@@ -27,23 +29,29 @@ class JavaMethodSymbolResolver : ReadActionEvidenceResolver() {
         goal: EvidenceGoal,
         context: InvestigationContext,
     ): ResolutionOutcome {
-        val candidates = JavaPsiEvidenceSupport.resolveMethodCandidates(goal, context)
+        val index = runCatching { jvmEvidenceIndexAdapter.buildIndex(context.project) }.getOrNull()
+            ?: return ResolutionOutcome.Unresolved(
+                resolverId = id,
+                reason = "无法构建共享 ArchitectureGraphIndex。",
+                requiredEvidence = listOf("等待项目索引完成，或补充完整方法签名后重试。"),
+            )
+        val candidates = JvmInvestigationEvidenceSupport.resolveMethodCandidates(goal, index)
         return when {
             candidates.methods.size == 1 -> ResolutionOutcome.Resolved(
                 resolverId = id,
                 facts = listOf(
-                    JavaPsiEvidenceSupport.methodFact(
+                    JvmInvestigationEvidenceSupport.methodFact(
                         goal = goal,
                         resolverId = id,
                         method = candidates.methods.single(),
-                        whyResolved = "Java PSI 按类名、方法名、参数和返回值解析到唯一 PsiMethod。",
+                        whyResolved = "ArchitectureGraphIndex 按类名、方法名、参数和返回值解析到唯一 JvmMethodSymbol。",
                     ),
                 ),
             )
             candidates.methods.size > 1 -> ResolutionOutcome.MultipleCandidates(
                 resolverId = id,
                 candidates = candidates.methods.map { method ->
-                    JavaPsiEvidenceSupport.methodCandidate(
+                    JvmInvestigationEvidenceSupport.methodCandidate(
                         goal = goal,
                         resolverId = id,
                         method = method,

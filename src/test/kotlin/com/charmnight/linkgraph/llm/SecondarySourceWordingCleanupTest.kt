@@ -21,8 +21,8 @@ class SecondarySourceWordingCleanupTest {
         files.forEach { relativePath ->
             val content = Files.readString(projectRoot.resolve(relativePath))
             assertFalse(
-                content.contains("审计"),
-                "二级生产源码说明不应继续保留“审计”口径：$relativePath",
+                content.contains("复核"),
+                "二级生产源码说明不应继续保留“复核”口径：$relativePath",
             )
         }
     }

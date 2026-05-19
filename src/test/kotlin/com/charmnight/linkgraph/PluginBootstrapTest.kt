@@ -110,9 +110,9 @@ class PluginBootstrapTest {
             "implementation",
             "com.charmnight.linkgraph.toolwindow.debug.LinkGraphDebugStartupActivity",
         )
-        assertTrue(
-            "Did not expect default published plugin.xml to register debug-package startup activity",
-            debugPackageStartupActivity == null,
+        assertNotNull(
+            "Expected debug startup activity registration; it is inert unless LINKGRAPH_DEBUG_* is set",
+            debugPackageStartupActivity,
         )
 
         val classLoader = javaClass.classLoader

@@ -4,14 +4,14 @@ import {
   announceFrontendReady,
   publishGraphEditScript,
   readBootstrapState,
-  requestAuditAsync,
+  requestQaAsync,
   requestAnalysisDisplayMode,
   requestCurrentEditorContextGraph,
   requestExpandInvocation,
   requestRemoveInvocationExpansion,
   requestGraphBeautificationAsync,
   resolveInvestigationThread,
-  retryLastAuditRequestAsync,
+  retryLastQaRequestAsync,
   updateWorkbenchSectionPreference,
   resetApiBridgeLifecycleStateForTest,
 } from "../../app/api";
@@ -277,6 +277,27 @@ describe("publishGraphEditScript", () => {
           layoutRevision: 0,
           collapsedNodeIds: [],
         },
+        WORKSPACE_ARCHITECTURE_GRAPH: {
+          selectedNodeId: null,
+          anchorNodeId: null,
+          layoutState: { positions: {} },
+          layoutRevision: 0,
+          collapsedNodeIds: [],
+        },
+        WORKSPACE_CLASS_DIAGRAM: {
+          selectedNodeId: null,
+          anchorNodeId: null,
+          layoutState: { positions: {} },
+          layoutRevision: 0,
+          collapsedNodeIds: [],
+        },
+        WORKSPACE_REVIEW_GRAPH: {
+          selectedNodeId: null,
+          anchorNodeId: null,
+          layoutState: { positions: {} },
+          layoutRevision: 0,
+          collapsedNodeIds: [],
+        },
         DIFF: {
           selectedNodeId: null,
           anchorNodeId: null,
@@ -331,9 +352,9 @@ describe("publishGraphEditScript", () => {
       updateWorkbenchSectionPreference: updateWorkbenchSectionPreferenceBridge,
     };
 
-    updateWorkbenchSectionPreference("audit.candidate-changes", true);
+    updateWorkbenchSectionPreference("qa.candidate-changes", true);
 
-    expect(updateWorkbenchSectionPreferenceBridge).toHaveBeenCalledWith("audit.candidate-changes", true);
+    expect(updateWorkbenchSectionPreferenceBridge).toHaveBeenCalledWith("qa.candidate-changes", true);
   });
 
   it("把当前编辑器上下文加载请求转发给 IDE bridge", () => {
@@ -370,38 +391,38 @@ describe("publishGraphEditScript", () => {
   });
 
   it("记录问答请求参数到前端调试 trace", () => {
-    const requestAuditBridge = vi.fn();
+    const requestQaBridge = vi.fn();
     const traceSink = vi.fn();
     window.linkGraphBridge = {
-      requestAudit: requestAuditBridge,
+      requestQa: requestQaBridge,
     };
     window.linkGraphDebugTrace = traceSink;
 
-    requestAuditAsync("请围绕当前链路进行问答", ["method:place-order", "sql:insert-order"], "thread-risk-1", "INVESTIGATE");
+    requestQaAsync("请围绕当前链路进行问答", ["method:place-order", "sql:insert-order"], "thread-risk-1", "INVESTIGATE");
 
-    expect(requestAuditBridge).toHaveBeenCalledWith(
+    expect(requestQaBridge).toHaveBeenCalledWith(
       "请围绕当前链路进行问答",
       ["method:place-order", "sql:insert-order"],
       "thread-risk-1",
       "INVESTIGATE",
     );
     const tracePayload = String(traceSink.mock.calls[0]?.[0] ?? "");
-    expect(tracePayload).toContain("\"event\":\"api.requestAudit\"");
+    expect(tracePayload).toContain("\"event\":\"api.requestQa\"");
     expect(tracePayload).toContain("\"question\":\"请围绕当前链路进行问答\"");
     expect(tracePayload).toContain("\"selectedNodeIds\":[\"method:place-order\",\"sql:insert-order\"]");
     expect(tracePayload).toContain("\"sourceThreadId\":\"thread-risk-1\"");
     expect(tracePayload).toContain("\"mode\":\"INVESTIGATE\"");
   });
 
-  it("defaults audit requests to AUTO mode for legacy callers", () => {
-    const requestAuditBridge = vi.fn();
+  it("defaults qa requests to AUTO mode for legacy callers", () => {
+    const requestQaBridge = vi.fn();
     window.linkGraphBridge = {
-      requestAudit: requestAuditBridge,
+      requestQa: requestQaBridge,
     };
 
-    requestAuditAsync("这个方法是如何触发的？");
+    requestQaAsync("这个方法是如何触发的？");
 
-    expect(requestAuditBridge).toHaveBeenCalledWith("这个方法是如何触发的？", [], null, "AUTO");
+    expect(requestQaBridge).toHaveBeenCalledWith("这个方法是如何触发的？", [], null, "AUTO");
   });
 
   it("把风险决策请求转发给 IDE bridge", () => {
@@ -416,19 +437,19 @@ describe("publishGraphEditScript", () => {
   });
 
   it("把问答重试请求转发给 IDE bridge", () => {
-    const retryLastAuditRequestBridge = vi.fn();
+    const retryLastQaRequestBridge = vi.fn();
     window.linkGraphBridge = {
-      retryLastAuditRequest: retryLastAuditRequestBridge,
+      retryLastQaRequest: retryLastQaRequestBridge,
     };
 
-    retryLastAuditRequestAsync();
+    retryLastQaRequestAsync();
 
-    expect(retryLastAuditRequestBridge).toHaveBeenCalledTimes(1);
+    expect(retryLastQaRequestBridge).toHaveBeenCalledTimes(1);
   });
 
   it("在 bridge 已注入但缺少方法时返回协议未对齐错误", () => {
     window.linkGraphBridge = {
-      requestAudit: vi.fn(),
+      requestQa: vi.fn(),
     };
 
     const result = resolveInvestigationThread("thread-risk-1", "DEFERRED" satisfies RiskResolutionStatus);
@@ -441,10 +462,10 @@ describe("publishGraphEditScript", () => {
   });
 
   it("在 bridge 未注入时直接返回失败，而不是把用户命令伪装成已接受", () => {
-    const requestAuditBridge = vi.fn();
+    const requestQaBridge = vi.fn();
     window.linkGraphBridge = undefined;
 
-    const result = requestAuditAsync(
+    const result = requestQaAsync(
       "请围绕当前链路进行问答",
       ["method:place-order", "sql:insert-order"],
       "thread-risk-1",
@@ -455,14 +476,14 @@ describe("publishGraphEditScript", () => {
       message: "IDE bridge 尚未就绪，本次请求没有发出。",
       detailMessage: "JCEF 页面与 IDEA 后端连接尚未建立，请等待页面初始化完成后重试。",
     });
-    expect(requestAuditBridge).not.toHaveBeenCalled();
+    expect(requestQaBridge).not.toHaveBeenCalled();
 
     window.linkGraphBridge = {
-      requestAudit: requestAuditBridge,
+      requestQa: requestQaBridge,
     };
     window.dispatchEvent(new Event("link-graph-bridge-ready"));
 
-    expect(requestAuditBridge).not.toHaveBeenCalled();
+    expect(requestQaBridge).not.toHaveBeenCalled();
   });
 
   it("记录链路讲解请求参数到前端调试 trace", () => {

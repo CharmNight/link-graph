@@ -7,6 +7,15 @@ import com.intellij.psi.PsiClassType
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiType
+import com.intellij.psi.util.PsiTreeUtil
+import org.jetbrains.kotlin.psi.KtClass
+import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.psi.KtParameter
+import org.jetbrains.kotlin.psi.KtPrimaryConstructor
+import org.jetbrains.kotlin.psi.KtProperty
+import org.jetbrains.kotlin.psi.KtPropertyAccessor
+import org.jetbrains.kotlin.psi.KtSecondaryConstructor
 
 /** 匹配主题标识中的非字母数字字符。 */
 private val NON_ALNUM = Regex("[^a-z0-9]+")
@@ -93,6 +102,7 @@ internal fun sourceRangeOf(
  * 生成人类可读的方法展示名。
  */
 internal fun methodDisplayName(method: PsiMethod): String {
+    kotlinMethodDisplayName(method)?.let { return it }
     val ownerName = method.containingClass?.name
         ?: method.containingClass?.qualifiedName
         ?: method.name
@@ -103,14 +113,16 @@ internal fun methodDisplayName(method: PsiMethod): String {
  * 生成稳定且可比较的方法签名。
  */
 internal fun methodSignature(method: PsiMethod): String {
+    kotlinMethodSignature(method)?.let { return it }
     val ownerName = method.containingClass?.qualifiedName
         ?: method.containingClass?.name
         ?: method.name
     // 参数类型统一标准化，保证跨 Java/Kotlin 场景也能稳定比较。
     val parameters = method.parameterList.parameters.joinToString(",") { parameter ->
-        normalizedTypeText(parameter.type) ?: parameter.type.canonicalText
+        runCatching { normalizedTypeText(parameter.type) ?: parameter.type.canonicalText }
+            .getOrElse { "unknown" }
     }
-    val returnType = normalizedTypeText(method.returnType)
+    val returnType = runCatching { normalizedTypeText(method.returnType) }.getOrNull()
         ?: if (method.isConstructor) ownerName else "void"
     return "$ownerName.${method.name}($parameters):$returnType"
 }
@@ -119,7 +131,11 @@ internal fun methodSignature(method: PsiMethod): String {
  * 获取类型的规范化文本。
  */
 internal fun canonicalTypeText(type: PsiType?): String {
-    return normalizedTypeText(type) ?: "void"
+    return runCatching { normalizedTypeText(type) }
+        .getOrNull()
+        ?: runCatching { type?.canonicalText?.let(::normalizeImplicitJavaLangType) }
+            .getOrNull()
+        ?: "void"
 }
 
 /**
@@ -136,8 +152,149 @@ internal fun formatResourceAnchor(anchor: ResourceAnchor): String {
  */
 private fun normalizedTypeText(type: PsiType?): String? {
     val psiType = type ?: return null
-    val resolvedClass = (psiType as? PsiClassType)?.resolve()
+    val resolvedClass = runCatching { (psiType as? PsiClassType)?.resolve() }.getOrNull()
     return resolvedClass?.qualifiedName ?: normalizeImplicitJavaLangType(psiType.canonicalText)
+}
+
+private fun kotlinMethodDisplayName(method: PsiMethod): String? {
+    val navigationElement = method.navigationElement
+    val ownerSimpleName = when (navigationElement) {
+        is KtNamedFunction -> kotlinOwnerSimpleName(navigationElement)
+        is KtPropertyAccessor -> kotlinOwnerSimpleName(navigationElement.property)
+        is KtProperty -> kotlinOwnerSimpleName(navigationElement)
+        is KtPrimaryConstructor -> kotlinOwnerSimpleName(navigationElement)
+        is KtSecondaryConstructor -> kotlinOwnerSimpleName(navigationElement)
+        else -> null
+    } ?: return null
+    val methodName = when (navigationElement) {
+        is KtPrimaryConstructor -> ownerSimpleName
+        is KtSecondaryConstructor -> ownerSimpleName
+        else -> method.name
+    }
+    return "$ownerSimpleName.$methodName"
+}
+
+private fun kotlinMethodSignature(method: PsiMethod): String? {
+    val navigationElement = method.navigationElement
+    val signatureParts = when (navigationElement) {
+        is KtNamedFunction -> {
+            val ownerName = kotlinOwnerQualifiedName(navigationElement, method) ?: return null
+            KotlinSignatureParts(
+                ownerName = ownerName,
+                methodName = navigationElement.name ?: method.name,
+                parameters = navigationElement.valueParameters.map { parameter -> kotlinParameterTypeText(parameter) },
+                returnType = kotlinReturnTypeText(navigationElement.typeReference?.text, default = "void"),
+            )
+        }
+
+        is KtPropertyAccessor -> {
+            val ownerName = kotlinOwnerQualifiedName(navigationElement.property, method) ?: return null
+            KotlinSignatureParts(
+                ownerName = ownerName,
+                methodName = method.name,
+                parameters = emptyList(),
+                returnType = "unknown",
+            )
+        }
+
+        is KtProperty -> {
+            val ownerName = kotlinOwnerQualifiedName(navigationElement, method) ?: return null
+            KotlinSignatureParts(
+                ownerName = ownerName,
+                methodName = method.name,
+                parameters = emptyList(),
+                returnType = kotlinReturnTypeText(navigationElement.typeReference?.text, default = "unknown"),
+            )
+        }
+
+        is KtPrimaryConstructor -> kotlinConstructorSignatureParts(method, navigationElement)
+        is KtSecondaryConstructor -> kotlinConstructorSignatureParts(method, navigationElement)
+        else -> null
+    } ?: return null
+    return "${signatureParts.ownerName}.${signatureParts.methodName}(${signatureParts.parameters.joinToString(",")}):${signatureParts.returnType}"
+}
+
+private fun kotlinConstructorSignatureParts(
+    method: PsiMethod,
+    constructor: org.jetbrains.kotlin.psi.KtConstructor<*>,
+): KotlinSignatureParts? {
+    val ownerClass = PsiTreeUtil.getParentOfType(constructor, KtClass::class.java, false)
+        ?: return null
+    val ownerName = kotlinQualifiedClassName(ownerClass)
+        ?: method.containingClass?.qualifiedName
+        ?: return null
+    val methodName = ownerClass.name ?: method.name
+    return KotlinSignatureParts(
+        ownerName = ownerName,
+        methodName = methodName,
+        parameters = constructor.valueParameters.map { parameter -> kotlinParameterTypeText(parameter) },
+        returnType = ownerName,
+    )
+}
+
+private data class KotlinSignatureParts(
+    val ownerName: String,
+    val methodName: String,
+    val parameters: List<String>,
+    val returnType: String,
+)
+
+private fun kotlinOwnerSimpleName(element: com.intellij.psi.PsiElement): String? =
+    PsiTreeUtil.getParentOfType(element, KtClass::class.java, false)?.name
+
+private fun kotlinOwnerQualifiedName(
+    element: com.intellij.psi.PsiElement,
+    method: PsiMethod,
+): String? =
+    PsiTreeUtil.getParentOfType(element, KtClass::class.java, false)
+        ?.let(::kotlinQualifiedClassName)
+        ?: method.containingClass?.qualifiedName
+        ?: method.containingClass?.name
+
+private fun kotlinQualifiedClassName(klass: KtClass): String? {
+    val classNames = generateSequence(klass) { current: KtClass ->
+        PsiTreeUtil.getParentOfType(current.parent, KtClass::class.java, false)
+    }
+        .mapNotNull { current -> current.name }
+        .toList()
+        .asReversed()
+    val className = classNames.joinToString(".").takeIf { it.isNotBlank() } ?: return null
+    val packageName = (klass.containingFile as? KtFile)
+        ?.packageFqName
+        ?.asString()
+        ?.takeIf { it.isNotBlank() }
+    return listOfNotNull(packageName, className).joinToString(".")
+}
+
+private fun kotlinParameterTypeText(parameter: KtParameter): String =
+    kotlinTypeText(parameter.typeReference?.text, default = "unknown")
+
+private fun kotlinReturnTypeText(typeText: String?, default: String): String =
+    kotlinTypeText(typeText, default = default).let { normalized ->
+        if (normalized == "kotlin.Unit") "void" else normalized
+    }
+
+private fun kotlinTypeText(typeText: String?, default: String): String {
+    val normalized = typeText
+        ?.trim()
+        ?.removeSuffix("?")
+        ?.replace(Regex("\\s+"), "")
+        ?.takeIf { it.isNotBlank() }
+        ?: return default
+    return when (normalized) {
+        "String" -> "kotlin.String"
+        "Boolean" -> "kotlin.Boolean"
+        "Int" -> "kotlin.Int"
+        "Long" -> "kotlin.Long"
+        "Double" -> "kotlin.Double"
+        "Float" -> "kotlin.Float"
+        "Short" -> "kotlin.Short"
+        "Byte" -> "kotlin.Byte"
+        "Char" -> "kotlin.Char"
+        "Unit" -> "kotlin.Unit"
+        "Any" -> "kotlin.Any"
+        else -> normalized
+    }
 }
 
 /**

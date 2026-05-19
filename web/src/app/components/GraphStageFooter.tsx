@@ -42,6 +42,8 @@ export function GraphStageFooter({
       ...Object.values(draftCompareProjection.nodeStatuses),
       ...Object.values(draftCompareProjection.edgeStatuses),
     ]));
+  const visibleNodeCount = activeViewGraph.nodeCount ?? activeViewGraph.nodes.length;
+  const resolvedFullNodeCount = Math.max(fullNodeCount, visibleNodeCount);
 
   return (
     <footer className="graph-stage-footer" aria-label="图谱图例">
@@ -57,8 +59,24 @@ export function GraphStageFooter({
       {compareStatuses.map((status) => (
         <span key={status} className="app-pill">{draftCompareStatusLabel(status)}</span>
       ))}
-      <span className="status-pill">节点 {activeViewGraph.nodes.length} / {fullNodeCount}</span>
-      <span className="status-pill">Diff {codeDiffStatus}</span>
+      <span className="status-pill">节点 {visibleNodeCount} / {resolvedFullNodeCount}</span>
+      <span className="status-pill">代码 diff {codeDiffStatusLabel(codeDiffStatus)}</span>
     </footer>
   );
+}
+
+function codeDiffStatusLabel(status: CodeDiffStatus): string {
+  switch (status) {
+    case "RUNNING":
+      return "生成中";
+    case "FRESH":
+      return "已生成";
+    case "STALE":
+      return "已过期";
+    case "FAILED":
+      return "失败";
+    case "MISSING":
+    default:
+      return "未生成";
+  }
 }

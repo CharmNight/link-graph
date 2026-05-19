@@ -33,6 +33,15 @@ class SourceNavigationUseCase(
         if (!node.location.isNullOrBlank()) {
             return true
         }
-        return (node.type == NodeType.METHOD || node.type == NodeType.CLASS) && !node.signature.isNullOrBlank()
+        return (
+            node.type == NodeType.METHOD ||
+                node.type == NodeType.CLASS ||
+                node.type == NodeType.INTERFACE ||
+                node.type == NodeType.ENUM ||
+                node.type == NodeType.ANNOTATION ||
+                node.type == NodeType.RECORD ||
+                node.type == NodeType.OBJECT ||
+                node.type == NodeType.EXTERNAL_CLASS
+            ) && !node.signature.isNullOrBlank()
     }
 }

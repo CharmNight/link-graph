@@ -50,6 +50,17 @@ class SourceNavigationService(
         if (locationTarget != null) {
             return locationTarget
         }
+        node.metadata["source.virtualFileUrl"]
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+            ?.let { url ->
+                return NavigationTarget(
+                    filePath = node.metadata["source.filePath"] ?: node.location.orEmpty(),
+                    line = node.metadata["source.startLine"]?.toIntOrNull() ?: 1,
+                    column = node.metadata["source.column"]?.toIntOrNull() ?: 1,
+                    virtualFileUrl = url,
+                )
+            }
         // 对 bridge 入口来说，位置串优先于签名推导，避免同名符号导致跳错文件。
         return resolveNavigationTargetFromSignature(node)?.let { target ->
             NavigationTarget(

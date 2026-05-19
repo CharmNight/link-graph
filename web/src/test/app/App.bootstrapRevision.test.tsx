@@ -59,6 +59,25 @@ vi.mock("../../app/views/flowchart/FlowchartView", () => ({
   ),
 }));
 
+vi.mock("../../app/views/architecture/ArchitectureGraphView", () => ({
+  ArchitectureGraphView: ({
+    view,
+  }: {
+    view: {
+      visibleGraph: {
+        nodes: Array<{ id: string }>;
+        edges: Array<{ id: string }>;
+      };
+    };
+  }) => (
+    <div>
+      <div data-testid="architecture-node-count">{view.visibleGraph.nodes.length}</div>
+      <div data-testid="architecture-node-ids">{view.visibleGraph.nodes.map((node) => node.id).join("|")}</div>
+      <div data-testid="architecture-edge-count">{view.visibleGraph.edges.length}</div>
+    </div>
+  ),
+}));
+
 const bootstrapState = materializeThreeViewDocuments({
   analysisDisplayMode: "FACT_GRAPH",
   visibleGraph: {
@@ -313,5 +332,100 @@ describe("App bootstrap revisions", () => {
     });
 
     expect(await screen.findByText("edge:entry->decision:route")).toBeInTheDocument();
+  });
+
+  it("does not reuse an empty current architecture graph when a same-revision architecture result arrives", async () => {
+    window.linkGraphBootstrap = {
+      ...structuredClone(bootstrapState),
+      analysisDisplayMode: "FACT_GRAPH",
+      currentSceneId: "WORKSPACE_FACT",
+      architectureGraphView: {
+        visibleGraph: { nodes: [], edges: [] },
+        fullGraph: { nodes: [], edges: [] },
+        anchorNodeId: null,
+        summary: {
+          moduleCount: 0,
+          packageCount: 0,
+          serviceCount: 0,
+          resourceCount: 0,
+          layerCount: 0,
+          relationCount: 0,
+          classCount: 0,
+        },
+      },
+    };
+    window.linkGraphBridge = {
+      nodeSelected: vi.fn(),
+    };
+
+    render(<App />);
+
+    act(() => {
+      dispatchBootstrapState({
+        ...structuredClone(window.linkGraphBootstrap!),
+        analysisDisplayMode: "ARCHITECTURE_GRAPH",
+        currentSceneId: "WORKSPACE_ARCHITECTURE_GRAPH",
+        sceneStates: {
+          ...structuredClone(window.linkGraphBootstrap!.sceneStates),
+          WORKSPACE_ARCHITECTURE_GRAPH: {
+            selectedNodeId: null,
+            anchorNodeId: null,
+            layoutState: { positions: {} },
+            layoutRevision: 0,
+            collapsedNodeIds: [],
+          },
+        },
+        architectureGraphView: {
+          visibleGraph: {
+            nodes: [
+              {
+                id: "module:app",
+                type: "MODULE",
+                title: "app",
+                inputs: [],
+                outputs: [],
+                certainty: "PROVEN",
+                bindingStatus: "BOUND",
+              },
+            ],
+            edges: [],
+          },
+          fullGraph: {
+            nodes: [
+              {
+                id: "module:app",
+                type: "MODULE",
+                title: "app",
+                inputs: [],
+                outputs: [],
+                certainty: "PROVEN",
+                bindingStatus: "BOUND",
+              },
+            ],
+            edges: [],
+          },
+          anchorNodeId: "module:app",
+          summary: {
+            moduleCount: 1,
+            packageCount: 0,
+            serviceCount: 0,
+            resourceCount: 0,
+            layerCount: 0,
+            relationCount: 0,
+            classCount: 0,
+          },
+        },
+        operationFeedback: {
+          level: "SUCCESS",
+          message: "已加载架构图。",
+        },
+        semanticRevision: 3,
+        workspaceRevision: bootstrapState.workspaceRevision,
+        snapshotRevision: 5,
+      });
+    });
+
+    expect(await screen.findByTestId("architecture-node-count")).toHaveTextContent("1");
+    expect(screen.getByTestId("architecture-node-ids")).toHaveTextContent("module:app");
   });
 });

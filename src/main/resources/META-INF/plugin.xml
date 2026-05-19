@@ -26,6 +26,8 @@
         <projectService
                 serviceInterface="com.charmnight.linkgraph.application.port.GraphEditorPresentationProvider"
                 serviceImplementation="com.charmnight.linkgraph.ui.GraphEditorApplicationProjectionService"/>
+        <postStartupActivity
+                implementation="com.charmnight.linkgraph.toolwindow.debug.LinkGraphDebugStartupActivity"/>
     </extensions>
 
     <extensions defaultExtensionNs="org.jetbrains.kotlin">

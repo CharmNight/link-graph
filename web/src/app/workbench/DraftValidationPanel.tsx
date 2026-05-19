@@ -2,12 +2,12 @@ import type { DraftValidationState } from "../types";
 
 interface DraftValidationPanelProps {
   validationState?: DraftValidationState | null;
-  onOpenAuditWorkbench?: () => void;
+  onOpenQaWorkbench?: () => void;
 }
 
 export function DraftValidationPanel({
   validationState,
-  onOpenAuditWorkbench,
+  onOpenQaWorkbench,
 }: DraftValidationPanelProps) {
   if (!validationState) {
     return (
@@ -19,7 +19,7 @@ export function DraftValidationPanel({
   }
 
   const needsReview = validationState.status === "REVIEW_REQUIRED";
-  const canContinueAudit = needsReview && typeof onOpenAuditWorkbench === "function";
+  const canContinueQa = needsReview && typeof onOpenQaWorkbench === "function";
 
   return (
     <article className="preview-card">
@@ -44,9 +44,9 @@ export function DraftValidationPanel({
         </div>
       ) : null}
 
-      {canContinueAudit ? (
+      {canContinueQa ? (
         <div className="panel-actions">
-          <button type="button" className="primary-button" onClick={onOpenAuditWorkbench}>
+          <button type="button" className="primary-button" onClick={onOpenQaWorkbench}>
             继续风险取证
           </button>
         </div>

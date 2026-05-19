@@ -8,6 +8,7 @@ import type {
   EvidenceTraceEntry,
   GraphBeautificationResult,
   GraphPatchResult,
+  LinkGraphEdge,
   LinkGraphDocument,
   LinkGraphNode,
   ResultEvidenceFinding,
@@ -53,9 +54,21 @@ export interface EvidenceGapItem {
   severity: "warning" | "danger";
 }
 
+export interface RelationEvidenceItem {
+  id: string;
+  label: string;
+  kind: string;
+  confidence: string | null;
+  source: string | null;
+  resolverId: string | null;
+  count: string | null;
+  references: ResultEvidenceReference[];
+}
+
 export interface EvidencePanelState {
   selectedNode: LinkGraphNode | null;
   selectedNodeEvidence: EvidenceSummaryItem[];
+  relationEvidence: RelationEvidenceItem[];
   evidenceGaps: EvidenceGapItem[];
   sourceSnippets: SourceSnippetContext[];
   evidenceTrace: EvidenceTraceEntry[];
@@ -102,20 +115,20 @@ export function deriveCurrentTarget(args: {
 export function deriveWorkflowStageStates(args: {
   graphBeautificationResult: GraphBeautificationResult | null;
   graphBeautificationRequestState: AsyncRequestState;
-  auditResult: GraphPatchResult | null;
-  auditRequestState: AsyncRequestState;
+  qaResult: GraphPatchResult | null;
+  qaRequestState: AsyncRequestState;
   draftWorkbenchState: DraftWorkbenchState;
   draftValidationState: DraftValidationState | null;
   codeDiffStatus: CodeDiffStatus;
   codeDraftRequestState: AsyncRequestState;
 }): Record<WorkflowStage, WorkflowStageStatus> {
-  const threads = deriveInvestigationThreads(args.auditResult);
+  const threads = deriveInvestigationThreads(args.qaResult);
   const unresolvedThreads = threads.filter(isOpenRiskThread);
-  const pendingCandidates = args.auditResult?.candidateChanges.filter((change) => change.status === "PENDING_CONFIRMATION") ?? [];
+  const pendingCandidates = args.qaResult?.candidateChanges.filter((change) => change.status === "PENDING_CONFIRMATION") ?? [];
   const hasEvidence =
-    (args.auditResult?.findings.length ?? 0) > 0
-    || (args.auditResult?.sourceContext?.length ?? 0) > 0
-    || (args.auditResult?.evidenceTrace?.length ?? 0) > 0
+    (args.qaResult?.findings.length ?? 0) > 0
+    || (args.qaResult?.sourceContext?.length ?? 0) > 0
+    || (args.qaResult?.evidenceTrace?.length ?? 0) > 0
     || (args.graphBeautificationResult?.steps.some((step) => step.evidence.length > 0) ?? false);
   const hasDraft = args.draftWorkbenchState.draftChanges.length > 0 || args.draftWorkbenchState.draftNotes.length > 0;
 
@@ -124,9 +137,9 @@ export function deriveWorkflowStageStates(args: {
     args.graphBeautificationRequestState,
     (args.graphBeautificationResult?.steps.length ?? 0) > 0,
   );
-  next.evidence = args.auditRequestState.phase === "RUNNING" || args.graphBeautificationRequestState.phase === "RUNNING"
+  next.evidence = args.qaRequestState.phase === "RUNNING" || args.graphBeautificationRequestState.phase === "RUNNING"
     ? "running"
-    : requestFailed(args.auditRequestState) || requestFailed(args.graphBeautificationRequestState)
+    : requestFailed(args.qaRequestState) || requestFailed(args.graphBeautificationRequestState)
       ? "failed"
       : unresolvedThreads.length > 0 || pendingCandidates.some(hasWeakEvidence)
         ? "blocked"
@@ -134,8 +147,8 @@ export function deriveWorkflowStageStates(args: {
           ? "done"
           : "idle";
   next.qa = statusFromRequest(
-    args.auditRequestState,
-    args.auditResult != null && unresolvedThreads.length === 0,
+    args.qaRequestState,
+    args.qaResult != null && unresolvedThreads.length === 0,
     unresolvedThreads.length > 0,
   );
   next.draft = args.draftValidationState?.status === "REVIEW_REQUIRED"
@@ -160,7 +173,7 @@ export function deriveLinkGraphOutline(args: {
   fullGraph?: LinkGraphDocument | null;
   anchorNodeId?: string | null;
   selectedNodeId?: string | null;
-  auditResult: GraphPatchResult | null;
+  qaResult: GraphPatchResult | null;
   draftWorkbenchState: DraftWorkbenchState;
   draftChangedNodeIds: string[];
 }): {
@@ -170,7 +183,7 @@ export function deriveLinkGraphOutline(args: {
   const visibleNodes = args.activeViewGraph.nodes;
   const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
   const fullNodeCount = args.fullGraph?.nodes.length ?? args.activeViewGraph.nodeCount ?? visibleNodes.length;
-  const threads = deriveInvestigationThreads(args.auditResult);
+  const threads = deriveInvestigationThreads(args.qaResult);
   const blockingThreads = threads.filter(isOpenRiskThread);
   const draftChangedSet = new Set(args.draftChangedNodeIds);
   const items: LinkGraphOutlineItem[] = [];
@@ -248,13 +261,14 @@ export function deriveLinkGraphOutline(args: {
 
 export function deriveEvidencePanelState(args: {
   selectedNode: LinkGraphNode | null;
-  auditResult: GraphPatchResult | null;
+  activeViewGraph?: LinkGraphDocument | null;
+  qaResult: GraphPatchResult | null;
   graphBeautificationResult: GraphBeautificationResult | null;
 }): EvidencePanelState {
   const selectedNodeId = args.selectedNode?.id ?? null;
-  const threads = deriveInvestigationThreads(args.auditResult);
+  const threads = deriveInvestigationThreads(args.qaResult);
   const selectedFindings = [
-    ...(args.auditResult?.findings ?? []),
+    ...(args.qaResult?.findings ?? []),
     ...(args.graphBeautificationResult?.steps.flatMap((step) => step.evidence) ?? []),
   ].filter((finding) => selectedNodeId == null || findingTargetsNode(finding, selectedNodeId));
   const evidenceMap = new Map<string, EvidenceSummaryItem>();
@@ -270,6 +284,7 @@ export function deriveEvidencePanelState(args: {
   return {
     selectedNode: args.selectedNode,
     selectedNodeEvidence: Array.from(evidenceMap.values()),
+    relationEvidence: deriveRelationEvidence(args.activeViewGraph, selectedNodeId),
     evidenceGaps: threads
       .filter((thread) => isOpenRiskThread(thread) && (selectedNodeId == null || thread.targetNodeIds.includes(selectedNodeId) || thread.evidence.some((finding) => findingTargetsNode(finding, selectedNodeId))))
       .map((thread) => ({
@@ -279,19 +294,19 @@ export function deriveEvidencePanelState(args: {
         targetNodeIds: thread.targetNodeIds,
         severity: thread.status === "BLOCKED" ? "danger" : "warning",
       })),
-    sourceSnippets: (args.auditResult?.sourceContext ?? [])
+    sourceSnippets: (args.qaResult?.sourceContext ?? [])
       .filter((snippet) => selectedNodeId == null || snippet.nodeId === selectedNodeId),
-    evidenceTrace: (args.auditResult?.evidenceTrace ?? [])
+    evidenceTrace: (args.qaResult?.evidenceTrace ?? [])
       .filter((trace) => selectedNodeId == null || trace.nodeId === selectedNodeId || trace.resolvedNodeId === selectedNodeId),
     openRiskThreads: threads.filter((thread) => isOpenRiskThread(thread) && (selectedNodeId == null || thread.targetNodeIds.includes(selectedNodeId))),
-    pendingCandidateChanges: (args.auditResult?.candidateChanges ?? [])
+    pendingCandidateChanges: (args.qaResult?.candidateChanges ?? [])
       .filter((change) => change.status === "PENDING_CONFIRMATION")
       .filter((change) => selectedNodeId == null || change.targetNodeIds.includes(selectedNodeId) || (change.evidence ?? []).some((finding) => findingTargetsNode(finding, selectedNodeId))),
   };
 }
 
 export function deriveChangeTrayState(args: {
-  auditResult: GraphPatchResult | null;
+  qaResult: GraphPatchResult | null;
   draftWorkbenchState: DraftWorkbenchState;
   draftValidationState: DraftValidationState | null;
   codeDiffStatus: CodeDiffStatus;
@@ -299,10 +314,10 @@ export function deriveChangeTrayState(args: {
   lastAppliedDraftPatchSummary: string | null;
   lastDraftPatchApplyResult: DraftPatchApplyResult | null;
 }): ChangeTrayState {
-  const pendingCandidateCount = args.auditResult?.candidateChanges.filter((change) => change.status === "PENDING_CONFIRMATION").length ?? 0;
+  const pendingCandidateCount = args.qaResult?.candidateChanges.filter((change) => change.status === "PENDING_CONFIRMATION").length ?? 0;
   const confirmedDraftCount = args.draftWorkbenchState.draftChanges.length;
   const blockingRiskCount = args.draftValidationState?.unresolvedThreadIds.length
-    ?? deriveInvestigationThreads(args.auditResult).filter(isOpenRiskThread).length;
+    ?? deriveInvestigationThreads(args.qaResult).filter(isOpenRiskThread).length;
   const syncStatusLabel = args.lastDraftPatchApplyResult?.summary
     ?? args.lastAppliedDraftPatchSummary
     ?? (pendingCandidateCount === 0 && confirmedDraftCount === 0 && args.codeDiffStatus === "MISSING"
@@ -358,4 +373,141 @@ function hasWeakEvidence(change: CandidateDraftChange): boolean {
 
 function findingTargetsNode(finding: ResultEvidenceFinding, nodeId: string): boolean {
   return finding.references.some((reference) => reference.nodeId === nodeId);
+}
+
+const ARCHITECTURE_RELATION_KINDS = new Set([
+  "INJECTS",
+  "SPI_PROVIDES",
+  "SERVICE_LOADER_LOADS",
+  "REFLECTS_TO",
+  "USES_PROXY",
+  "SPRING_EVENT_PUBLISHES",
+  "SPRING_EVENT_LISTENS",
+]);
+
+function deriveRelationEvidence(
+  graph: LinkGraphDocument | null | undefined,
+  selectedNodeId: string | null,
+): RelationEvidenceItem[] {
+  if (!graph || !selectedNodeId) {
+    return [];
+  }
+  const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const selectedNode = nodesById.get(selectedNodeId) ?? null;
+  const items = new Map<string, RelationEvidenceItem>();
+  graph.edges
+    .filter((edge) => edge.source === selectedNodeId || edge.target === selectedNodeId)
+    .forEach((edge) => {
+      const item = relationEvidenceFromEdge(edge, nodesById);
+      if (item) {
+        items.set(item.id, item);
+      }
+    });
+  const selectedNodeItem = relationEvidenceFromNode(selectedNode);
+  if (selectedNodeItem) {
+    items.set(selectedNodeItem.id, selectedNodeItem);
+  }
+  return Array.from(items.values()).sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function relationEvidenceFromEdge(
+  edge: LinkGraphEdge,
+  nodesById: Map<string, LinkGraphNode>,
+): RelationEvidenceItem | null {
+  const kind = relationKind(edge.metadata);
+  if (!kind) {
+    return null;
+  }
+  const sourceNode = nodesById.get(edge.source) ?? null;
+  const targetNode = nodesById.get(edge.target) ?? null;
+  return {
+    id: edge.id,
+    label: `${relationKindLabel(kind)}：${sourceNode?.title ?? edge.source} -> ${targetNode?.title ?? edge.target}`,
+    kind,
+    confidence: relationConfidence(edge.metadata),
+    source: metadataValue(edge.metadata, "jvm.relation.source", "relation.source"),
+    resolverId: metadataValue(edge.metadata, "relation.resolverId", "jvm.relation.resolverId"),
+    count: metadataValue(edge.metadata, "jvm.relation.count", "architecture.count", "call.count", "usage.count"),
+    references: [sourceNode, targetNode].flatMap((node) => nodeReference(node)),
+  };
+}
+
+function relationEvidenceFromNode(node: LinkGraphNode | null): RelationEvidenceItem | null {
+  const kind = relationKind(node?.metadata);
+  if (!node || !kind) {
+    return null;
+  }
+  return {
+    id: `node:${node.id}:${kind}`,
+    label: `${relationKindLabel(kind)}：${node.title}`,
+    kind,
+    confidence: relationConfidence(node.metadata),
+    source: metadataValue(node.metadata, "jvm.relation.source", "relation.source"),
+    resolverId: metadataValue(node.metadata, "relation.resolverId", "jvm.relation.resolverId"),
+    count: metadataValue(node.metadata, "jvm.relation.count", "architecture.count", "call.count", "usage.count"),
+    references: nodeReference(node),
+  };
+}
+
+function relationKind(metadata?: Record<string, string>): string | null {
+  const kind = metadataValue(metadata, "jvm.relation.kind", "relation.kind");
+  if (!kind || !ARCHITECTURE_RELATION_KINDS.has(kind)) {
+    return null;
+  }
+  return kind;
+}
+
+function relationConfidence(metadata?: Record<string, string>): string | null {
+  return metadataValue(metadata, "jvm.relation.confidence", "relation.confidence");
+}
+
+function metadataValue(metadata: Record<string, string> | undefined, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = metadata?.[key]?.trim();
+    if (value) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function relationKindLabel(kind: string): string {
+  switch (kind) {
+    case "INJECTS":
+      return "注入";
+    case "SPI_PROVIDES":
+    case "SERVICE_LOADER_LOADS":
+      return "SPI";
+    case "REFLECTS_TO":
+      return "反射";
+    case "USES_PROXY":
+      return "代理";
+    case "SPRING_EVENT_PUBLISHES":
+      return "事件发布";
+    case "SPRING_EVENT_LISTENS":
+      return "事件监听";
+    default:
+      return kind;
+  }
+}
+
+function nodeReference(node: LinkGraphNode | null): ResultEvidenceReference[] {
+  if (!node) {
+    return [];
+  }
+  const metadataPath = metadataValue(node.metadata, "source.filePath");
+  const filePath = metadataPath ?? node.location?.split(":")[0] ?? null;
+  if (!filePath) {
+    return [{ nodeId: node.id }];
+  }
+  return [{
+    nodeId: node.id,
+    filePath,
+    startLine: metadataValue(node.metadata, "source.startLine") != null
+      ? Number(metadataValue(node.metadata, "source.startLine"))
+      : undefined,
+    endLine: metadataValue(node.metadata, "source.endLine") != null
+      ? Number(metadataValue(node.metadata, "source.endLine"))
+      : undefined,
+  }];
 }

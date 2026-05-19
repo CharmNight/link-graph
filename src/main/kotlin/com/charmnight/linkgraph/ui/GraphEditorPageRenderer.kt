@@ -9,6 +9,8 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.model.GraphPatchOperation
 import com.charmnight.linkgraph.llm.GraphPatchResult
+import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
+import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
 import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
 import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
@@ -195,6 +197,9 @@ class GraphEditorPageRenderer {
         val factSceneState = snapshot.sceneState(GraphSceneId.WORKSPACE_FACT)
         val flowchartSceneState = snapshot.sceneState(GraphSceneId.WORKSPACE_FLOWCHART)
         val resourceSceneState = snapshot.sceneState(GraphSceneId.WORKSPACE_RESOURCE_RELATION)
+        val architectureSceneState = snapshot.sceneState(GraphSceneId.WORKSPACE_ARCHITECTURE_GRAPH)
+        val classDiagramSceneState = snapshot.sceneState(GraphSceneId.WORKSPACE_CLASS_DIAGRAM)
+        val reviewGraphSceneState = snapshot.sceneState(GraphSceneId.WORKSPACE_REVIEW_GRAPH)
         val currentSceneState = snapshot.currentSceneState()
         val payload = linkedMapOf<String, Any?>(
             "analysisDisplayMode" to snapshot.analysisDisplayMode.name,
@@ -215,15 +220,27 @@ class GraphEditorPageRenderer {
             "resourceRelationView" to editorSnapshot.resourceRelationView?.let {
                 resourceRelationViewToMap(it, resourceSceneState.layoutState)
             },
+            "architectureGraphView" to architectureGraphViewToMap(
+                editorSnapshot.architectureGraphView,
+                architectureSceneState.layoutState,
+            ),
+            "classDiagramView" to classDiagramViewToMap(
+                editorSnapshot.classDiagramView,
+                classDiagramSceneState.layoutState,
+            ),
+            "reviewGraphView" to reviewGraphViewToMap(
+                editorSnapshot.reviewGraphView,
+                reviewGraphSceneState.layoutState,
+            ),
             "draftPatchPreview" to snapshot.draftPatchPreview?.let(::patchToMap),
             "draftWorkbenchState" to draftWorkbenchStateToMap(snapshot.draftWorkbenchState),
             "canUndoDraftPatchApply" to (snapshot.draftPatchUndoState != null),
             "lastAppliedDraftPatchSummary" to snapshot.draftPatchUndoState?.patchPreview?.summary,
             "lastDraftPatchApplyResult" to snapshot.lastDraftPatchApplyResult?.let(::draftPatchApplyResultToMap),
-            "auditResult" to snapshot.qaResult?.let {
+            "qaResult" to snapshot.qaResult?.let {
                 patchResultToMap(it, artifactRefs.qaPromptPreviewArtifactId)
             },
-            "auditRequestState" to requestStateToMap(
+            "qaRequestState" to requestStateToMap(
                 snapshot.qaRequestState,
                 hasPromptPreview = hasPromptPreview(snapshot.qaResult?.promptPreview, artifactRefs.qaPromptPreviewArtifactId),
             ),
@@ -590,6 +607,140 @@ class GraphEditorPageRenderer {
         layoutState = layoutState,
     )
 
+    private fun architectureGraphViewToMap(
+        document: ArchitectureGraphViewDocument,
+        layoutState: GraphLayoutState? = null,
+    ): Map<String, Any?> = viewDocumentToMap(
+        visibleGraph = document.visibleGraph,
+        fullGraph = document.fullGraph,
+        anchorNodeId = document.anchorNodeId,
+        projectionIndex = document.projectionIndex,
+        summary = linkedMapOf(
+            "moduleCount" to document.summary.moduleCount,
+            "packageCount" to document.summary.packageCount,
+            "serviceCount" to document.summary.serviceCount,
+            "resourceCount" to document.summary.resourceCount,
+            "layerCount" to document.summary.layerCount,
+            "relationCount" to document.summary.relationCount,
+            "classCount" to document.summary.classCount,
+            "truncated" to document.summary.truncated,
+            "hiddenNodeCount" to document.summary.hiddenNodeCount,
+            "hiddenEdgeCount" to document.summary.hiddenEdgeCount,
+        ),
+        layoutState = layoutState,
+    )
+
+    private fun classDiagramViewToMap(
+        document: ClassDiagramViewDocument,
+        layoutState: GraphLayoutState? = null,
+    ): Map<String, Any?> = viewDocumentToMap(
+        visibleGraph = document.visibleGraph,
+        fullGraph = document.fullGraph,
+        anchorNodeId = document.anchorNodeId,
+        projectionIndex = document.projectionIndex,
+        summary = linkedMapOf(
+            "classCount" to document.summary.classCount,
+            "fieldCount" to document.summary.fieldCount,
+            "interfaceCount" to document.summary.interfaceCount,
+            "enumCount" to document.summary.enumCount,
+            "annotationCount" to document.summary.annotationCount,
+            "recordCount" to document.summary.recordCount,
+            "objectCount" to document.summary.objectCount,
+            "relationCount" to document.summary.relationCount,
+            "spiProviderCount" to document.summary.spiProviderCount,
+            "reflectionRelationCount" to document.summary.reflectionRelationCount,
+            "truncated" to document.summary.truncated,
+            "hiddenNodeCount" to document.summary.hiddenNodeCount,
+            "hiddenEdgeCount" to document.summary.hiddenEdgeCount,
+        ),
+        layoutState = layoutState,
+    )
+
+    private fun reviewGraphViewToMap(
+        document: com.charmnight.linkgraph.review.ReviewGraphViewDocument,
+        layoutState: GraphLayoutState? = null,
+    ): Map<String, Any?> =
+        viewDocumentToMap(
+            visibleGraph = document.visibleGraph,
+            fullGraph = document.fullGraph,
+            anchorNodeId = document.anchorNodeId,
+            projectionIndex = document.projectionIndex,
+            summary = linkedMapOf(
+                "changedSymbolCount" to document.summary.changedSymbolCount,
+                "upstreamCount" to document.summary.upstreamCount,
+                "downstreamCount" to document.summary.downstreamCount,
+                "relatedTestCount" to document.summary.relatedTestCount,
+                "affectedPackageCount" to document.summary.affectedPackageCount,
+                "affectedModuleCount" to document.summary.affectedModuleCount,
+                "evidenceRefCount" to document.summary.evidenceRefCount,
+                "truncated" to document.summary.truncated,
+                "hiddenNodeCount" to document.summary.hiddenNodeCount,
+                "hiddenEdgeCount" to document.summary.hiddenEdgeCount,
+            ),
+            layoutState = layoutState,
+        ).toMutableMap().apply {
+            put("changedFiles", document.changedFiles.map { file ->
+                linkedMapOf(
+                    "oldPath" to file.oldPath,
+                    "newPath" to file.newPath,
+                    "changeKind" to file.changeKind,
+                    "hunkCount" to file.hunkCount,
+                    "similarity" to file.similarity,
+                )
+            })
+            put("changedHunks", document.changedHunks.map { hunk -> reviewHunkToMap(hunk) })
+            put("unmatchedHunks", document.unmatchedHunks.map { hunk -> reviewHunkToMap(hunk) })
+            put("baselineOnlySymbols", document.baselineOnlySymbols.map { symbol ->
+                linkedMapOf(
+                    "symbolId" to symbol.symbolId,
+                    "qualifiedName" to symbol.qualifiedName,
+                    "filePath" to symbol.filePath,
+                    "startLine" to symbol.startLine,
+                    "endLine" to symbol.endLine,
+                    "changeKind" to symbol.changeKind,
+                    "blastRadiusIncomplete" to symbol.blastRadiusIncomplete,
+                    "unavailableReason" to symbol.unavailableReason,
+                )
+            })
+            put("relatedTests", document.relatedTests.map { test ->
+                linkedMapOf(
+                    "symbolId" to test.symbolId,
+                    "qualifiedName" to test.qualifiedName,
+                    "reason" to test.reason,
+                    "filePath" to test.filePath,
+                    "startLine" to test.startLine,
+                )
+            })
+            put("affectedPackages", document.affectedPackages)
+            put("affectedModules", document.affectedModules)
+            put("evidenceSnippets", document.evidenceSnippets.map { evidence ->
+                linkedMapOf(
+                    "title" to evidence.title,
+                    "kind" to evidence.kind,
+                    "filePath" to evidence.filePath,
+                    "startLine" to evidence.startLine,
+                    "endLine" to evidence.endLine,
+                    "snippet" to evidence.snippet,
+                    "unavailableReason" to evidence.unavailableReason,
+                )
+            })
+        }
+
+    private fun reviewHunkToMap(
+        hunk: com.charmnight.linkgraph.review.ReviewGraphChangedHunk,
+    ): Map<String, Any?> = linkedMapOf(
+        "filePath" to hunk.filePath,
+        "oldFilePath" to hunk.oldFilePath,
+        "newFilePath" to hunk.newFilePath,
+        "changeKind" to hunk.changeKind,
+        "header" to hunk.header,
+        "oldStartLine" to hunk.oldStartLine,
+        "oldLineCount" to hunk.oldLineCount,
+        "newStartLine" to hunk.newStartLine,
+        "newLineCount" to hunk.newLineCount,
+        "matchedSymbolIds" to hunk.matchedSymbolIds,
+    )
+
     /** 把三视图通用视图文档转换为前端使用的 Map。 */
     private fun viewDocumentToMap(
         visibleGraph: GraphDocument,
@@ -671,7 +822,7 @@ class GraphEditorPageRenderer {
         "recentTurnOutcomes" to result.recentTurnOutcomes.map(::investigationTurnOutcomeToMap),
         "sourceContext" to result.sourceContext.map(::sourceSnippetContextToMap),
         "evidenceTrace" to result.evidenceTrace.map(::evidenceTraceEntryToMap),
-        "auditSession" to result.qaSession?.let(::qaConversationSessionToMap),
+        "qaSession" to result.qaSession?.let(::qaConversationSessionToMap),
         "patch" to result.patch?.let(::patchToMap),
     )
 
@@ -890,6 +1041,9 @@ class GraphEditorPageRenderer {
         "startLine" to snippet.startLine,
         "endLine" to snippet.endLine,
         "snippet" to snippet.snippet,
+        "origin" to snippet.origin,
+        "decompiled" to snippet.decompiled,
+        "virtualFileUrl" to snippet.virtualFileUrl,
     )
 
     private fun evidenceTraceEntryToMap(

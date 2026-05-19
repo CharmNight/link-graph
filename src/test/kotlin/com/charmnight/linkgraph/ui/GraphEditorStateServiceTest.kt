@@ -1112,7 +1112,7 @@ class GraphEditorStateServiceTest {
         assertEquals(graph, snapshot.visibleGraph)
         assertEquals(graph, snapshot.workingGraph)
         assertEquals(null, snapshot.qaResult)
-        assertEquals("requestAudit", snapshot.lastMessageType)
+        assertEquals("requestQa", snapshot.lastMessageType)
     }
 
     @Test

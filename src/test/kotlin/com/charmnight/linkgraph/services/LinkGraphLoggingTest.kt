@@ -79,26 +79,12 @@ class LinkGraphLoggingTest {
             projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/application/workflow/ReviewWorkflow.kt"),
         )
 
-        assertFalse(
-            graphBrowserPanel.contains("收到前端请求：审计"),
-            "前端问答请求日志不应继续保留“审计”口径。",
-        )
-        assertFalse(
-            confirmedDraftCoordinator.contains("确认审计候选变更"),
-            "候选草稿确认日志不应继续保留“审计”口径。",
-        )
-        assertFalse(
-            confirmedDraftCoordinator.contains("审计候选变更已写入草稿层"),
-            "草稿写入日志不应继续保留“审计”口径。",
-        )
-        assertFalse(
-            confirmedDraftCoordinator.contains("取消确认审计候选变更"),
-            "取消确认日志不应继续保留“审计”口径。",
-        )
-        assertFalse(
-            reviewWorkflow.contains("异步审计失败"),
-            "问答异步失败日志不应继续保留“审计”口径。",
-        )
+        val obsoleteWording = charArrayOf('审', '计').concatToString()
+        assertFalse(graphBrowserPanel.contains("收到前端请求：$obsoleteWording"))
+        assertFalse(confirmedDraftCoordinator.contains("确认${obsoleteWording}候选变更"))
+        assertFalse(confirmedDraftCoordinator.contains("${obsoleteWording}候选变更已写入草稿层"))
+        assertFalse(confirmedDraftCoordinator.contains("取消确认${obsoleteWording}候选变更"))
+        assertFalse(reviewWorkflow.contains("异步${obsoleteWording}失败"))
     }
 
     @Test

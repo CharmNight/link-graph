@@ -35,9 +35,10 @@ export interface ViewStageProps {
   onFormatLayout?: () => void;
   onRequestBeautification?: (selectedNodeId?: string) => void;
   onRequestSourceNavigation: (nodeId: string) => void;
-  onRequestAudit?: (selectedNodeId?: string) => void;
+  onRequestQa?: (selectedNodeId?: string) => void;
+  onRequestClassDiagram?: (scopeNodeId?: string | null) => void;
   onToggleCollapseNode?: (nodeId: string) => void;
-  onOpenAudit?: (selectedNodeId?: string) => void;
+  onOpenQa?: (selectedNodeId?: string) => void;
   onImportMermaid: () => void;
   onExpandOverflowNode?: (nodeId: string) => void;
   onExpandInvocation?: (nodeId: string) => void;

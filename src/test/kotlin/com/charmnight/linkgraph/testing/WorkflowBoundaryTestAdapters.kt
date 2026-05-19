@@ -9,6 +9,7 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.ui.ConfirmedDraftStatePresenter
 import com.charmnight.linkgraph.ui.DraftPatchStatePresenter
 import com.charmnight.linkgraph.ui.GenerationStatePresenter
+import com.charmnight.linkgraph.ui.ArchitectureGraphStatePresenter
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.ReviewStatePresenter
 import com.charmnight.linkgraph.ui.SourceNavigationStatePresenter
@@ -106,6 +107,12 @@ internal fun GraphEditorStateService.applicationEventSink(
                 SubjectGraphStatePresenter(this, requestBrowserSync).presentSelectedMethod(event.signature)
             is GraphEditorApplicationEvent.AnalysisOutcomeLoaded ->
                 SubjectGraphStatePresenter(this, requestBrowserSync).presentAnalysisOutcome(event.outcome, event.source)
+            is GraphEditorApplicationEvent.ArchitectureGraphLoaded ->
+                ArchitectureGraphStatePresenter(this, requestBrowserSync).presentArchitectureGraph(event.view)
+            is GraphEditorApplicationEvent.ClassDiagramLoaded ->
+                ArchitectureGraphStatePresenter(this, requestBrowserSync).presentClassDiagram(event.view)
+            is GraphEditorApplicationEvent.ReviewGraphLoaded ->
+                ArchitectureGraphStatePresenter(this, requestBrowserSync).presentReviewGraph(event.view)
             is GraphEditorApplicationEvent.DebugGraphLoaded ->
                 SubjectGraphStatePresenter(this, requestBrowserSync).presentDebugGraphLoaded(
                     graph = event.graph,

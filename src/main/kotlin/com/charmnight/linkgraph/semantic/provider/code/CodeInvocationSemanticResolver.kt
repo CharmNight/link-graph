@@ -3,6 +3,7 @@ package com.charmnight.linkgraph.semantic.provider.code
 import com.charmnight.linkgraph.semantic.model.SemanticRelation
 import com.charmnight.linkgraph.semantic.model.SemanticUnit
 import com.charmnight.linkgraph.semantic.model.SourceMapping
+import com.charmnight.linkgraph.semantic.provider.code.relation.ArchitectureIndexSemanticResolver
 import com.charmnight.linkgraph.semantic.provider.code.relation.CodeRelationSemanticResolver
 import com.charmnight.linkgraph.semantic.provider.code.relation.RelationExtractionContext
 import com.charmnight.linkgraph.semantic.provider.code.relation.ResourceBindingSemanticResolver
@@ -32,6 +33,7 @@ class CodeInvocationSemanticResolver(
     /** 保存当前启用的关系解析器列表。 */
     private val relationResolvers: List<CodeRelationSemanticResolver> = listOf(
         ResourceBindingSemanticResolver(),
+        ArchitectureIndexSemanticResolver(),
     ),
 ) {
     /**
@@ -53,7 +55,13 @@ class CodeInvocationSemanticResolver(
             extraction.semanticUnits.forEach { unit -> units.putIfAbsent(unit.id, unit) }
             extraction.relations.forEach { relation ->
                 // 用关系关键字段拼出唯一键，避免同一关系被多次加入。
-                val key = listOf(relation.kind.name, relation.fromUnitId, relation.toUnitId, relation.label.orEmpty()).joinToString("|")
+                val key = listOf(
+                    relation.kind.name,
+                    relation.fromUnitId,
+                    relation.toUnitId,
+                    relation.label.orEmpty(),
+                    relation.metadata["jvm.relation.id"].orEmpty(),
+                ).joinToString("|")
                 relations.putIfAbsent(key, relation)
             }
             extraction.additionalMethods.forEach { additionalMethod ->

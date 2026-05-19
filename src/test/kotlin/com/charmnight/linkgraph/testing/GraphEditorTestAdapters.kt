@@ -4,6 +4,8 @@ import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
+import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
+import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
 import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.GraphBeautificationResult
 import com.charmnight.linkgraph.llm.GraphPatchResult
@@ -13,6 +15,7 @@ import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
+import com.charmnight.linkgraph.review.ReviewGraphViewDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.ui.AsyncRequestState
@@ -47,6 +50,9 @@ fun testSnapshot(
     factGraphView: FactGraphViewDocument = FactGraphViewDocument(),
     flowchartView: FlowchartViewDocument = FlowchartViewDocument(),
     resourceRelationView: ResourceRelationViewDocument = ResourceRelationViewDocument(),
+    architectureGraphView: ArchitectureGraphViewDocument = ArchitectureGraphViewDocument(),
+    classDiagramView: ClassDiagramViewDocument = ClassDiagramViewDocument(),
+    reviewGraphView: ReviewGraphViewDocument = ReviewGraphViewDocument(),
     analysisDisplayMode: AnalysisDisplayMode = AnalysisDisplayMode.FACT_GRAPH,
     currentSceneId: GraphSceneId? = null,
     previousWorkspaceSceneId: GraphSceneId? = null,
@@ -190,6 +196,9 @@ fun testSnapshot(
         factGraphView = resolvedFactGraphView,
         flowchartView = resolvedFlowchartView,
         resourceRelationView = resolvedResourceRelationView,
+        architectureGraphView = architectureGraphView,
+        classDiagramView = classDiagramView,
+        reviewGraphView = reviewGraphView,
         analysisDisplayMode = analysisDisplayMode,
         currentSceneId = resolvedCurrentSceneId,
         previousWorkspaceSceneId = previousWorkspaceSceneId ?: resolvedCurrentSceneId.takeUnless { it == GraphSceneId.DIFF }
@@ -304,4 +313,7 @@ private fun AnalysisDisplayMode.toSceneId(): GraphSceneId = when (this) {
     AnalysisDisplayMode.FACT_GRAPH -> GraphSceneId.WORKSPACE_FACT
     AnalysisDisplayMode.FLOWCHART -> GraphSceneId.WORKSPACE_FLOWCHART
     AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> GraphSceneId.WORKSPACE_RESOURCE_RELATION
+    AnalysisDisplayMode.ARCHITECTURE_GRAPH -> GraphSceneId.WORKSPACE_ARCHITECTURE_GRAPH
+    AnalysisDisplayMode.CLASS_DIAGRAM -> GraphSceneId.WORKSPACE_CLASS_DIAGRAM
+    AnalysisDisplayMode.REVIEW_GRAPH -> GraphSceneId.WORKSPACE_REVIEW_GRAPH
 }

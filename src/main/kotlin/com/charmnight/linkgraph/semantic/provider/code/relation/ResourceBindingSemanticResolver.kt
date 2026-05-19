@@ -18,14 +18,13 @@ import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiLiteralExpression
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiModifierListOwner
-import com.intellij.psi.PsiMethodCallExpression
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiClass
-import com.intellij.psi.util.PsiTreeUtil
 
 /**
  * 解析代码方法与资源单元之间的绑定关系。
- * 当前覆盖 MyBatis 语句映射、Feign 调用和 Spring 控制器 endpoint 绑定。
+ * 当前覆盖 MyBatis 语句映射和 Spring 控制器 endpoint 绑定。
+ * Feign 代理和路由事实由 JVM framework relation index 统一产出。
  */
 class ResourceBindingSemanticResolver : CodeRelationSemanticResolver {
     /** 从 MyBatis XML 中提取 namespace 的正则表达式。 */
@@ -51,7 +50,6 @@ class ResourceBindingSemanticResolver : CodeRelationSemanticResolver {
     ): RelationExtraction {
         return mergeExtractions(
             resolveMyBatisBinding(method, context),
-            resolveFeignBinding(method, context),
             resolveControllerEndpointBinding(method),
         )
     }
@@ -114,107 +112,6 @@ class ResourceBindingSemanticResolver : CodeRelationSemanticResolver {
             semanticUnits = listOf(resourceUnit),
             relations = listOf(relation),
             sourceMappings = listOf(sourceMapping),
-        )
-    }
-
-    /** 解析方法体内发起的 Feign 调用以及其最终路由的 endpoint。 */
-    private fun resolveFeignBinding(
-        method: PsiMethod,
-        context: RelationExtractionContext,
-    ): RelationExtraction {
-        /** 方法体，为空时不可能存在调用关系。 */
-        val body = method.body ?: return RelationExtraction()
-        /** 当前方法对应的语义单元 ID。 */
-        val methodUnitId = SemanticIdFactory.methodUnitId(methodSignature(method))
-        /** 收集到的资源单元，按 ID 去重。 */
-        val semanticUnits = linkedMapOf<String, ResourceUnit>()
-        /** 收集到的关系边，按组合键去重。 */
-        val relations = linkedMapOf<String, SemanticRelation>()
-        /** 为后续扩展分析补充的 provider 方法集合。 */
-        val additionalMethods = linkedMapOf<String, PsiMethod>()
-        /** 资源单元到源码的映射集合。 */
-        val sourceMappings = linkedMapOf<String, SourceMapping>()
-
-        PsiTreeUtil.collectElementsOfType(body, PsiMethodCallExpression::class.java)
-            .forEach { callExpression ->
-                /** 调用表达式最终解析到的方法。 */
-                val targetMethod = callExpression.resolveMethod() ?: return@forEach
-                /** 目标方法所属类。 */
-                val ownerClass = targetMethod.containingClass ?: return@forEach
-                /** Feign 客户端注解。 */
-                val feignAnnotation = findAnnotation(
-                    ownerClass,
-                    setOf("org.springframework.cloud.openfeign.FeignClient"),
-                ) ?: return@forEach
-                /** 目标方法声明的 HTTP 动词。 */
-                val httpMethod = requestMethod(targetMethod) ?: return@forEach
-                /** 组合 Feign 前缀与方法路径后的 endpoint。 */
-                val path = combinePaths(
-                    annotationString(feignAnnotation, "path", "value"),
-                    requestPath(targetMethod),
-                ) ?: return@forEach
-                /** Feign 接口全限定类名。 */
-                val clientClass = ownerClass.qualifiedName ?: return@forEach
-                /** 表示 Feign 客户端方法的资源单元。 */
-                val feignUnit = ResourceUnit(
-                    id = SemanticIdFactory.resourceUnitId(
-                        resourceKind = "feign-client",
-                        subjectId = "$clientClass.${targetMethod.name}:$httpMethod:$path",
-                    ),
-                    title = "${ownerClass.name}.${targetMethod.name}",
-                    resourceKind = "FEIGN_CLIENT",
-                    metadata = mapOf(
-                        "clientClass" to clientClass,
-                        "httpMethod" to httpMethod,
-                        "path" to path,
-                    ),
-                )
-                /** Feign 最终指向的 HTTP endpoint 资源单元。 */
-                val endpointUnit = httpEndpointUnit(httpMethod, path)
-                semanticUnits.putIfAbsent(feignUnit.id, feignUnit)
-                semanticUnits.putIfAbsent(endpointUnit.id, endpointUnit)
-                sourceMappingOf(feignUnit.id, targetMethod.navigationElement ?: targetMethod)?.let { mapping ->
-                    sourceMappings.putIfAbsent(mapping.targetUnitId, mapping)
-                }
-
-                /** 项目中真正实现该 endpoint 的 provider 方法集合。 */
-                val providerMethods = context.allProjectMethods()
-                    .filter { candidate -> endpointSignature(candidate) == httpMethod to path }
-                    .sortedBy(::methodSignature)
-                /** endpoint 对应的源码定位优先使用 provider，其次使用 Feign 声明。 */
-                val endpointMappingElement = providerMethods.firstOrNull()?.navigationElement ?: targetMethod.navigationElement ?: targetMethod
-                sourceMappingOf(endpointUnit.id, endpointMappingElement)?.let { mapping ->
-                    sourceMappings.putIfAbsent(mapping.targetUnitId, mapping)
-                }
-
-                relations.putIfAbsent(
-                    relationKey(SemanticRelationKind.REFERENCES, methodUnitId, feignUnit.id, EdgeType.USES_PROXY.name),
-                    SemanticRelation(
-                        kind = SemanticRelationKind.REFERENCES,
-                        fromUnitId = methodUnitId,
-                        toUnitId = feignUnit.id,
-                        label = EdgeType.USES_PROXY.name,
-                    ),
-                )
-                relations.putIfAbsent(
-                    relationKey(SemanticRelationKind.REFERENCES, feignUnit.id, endpointUnit.id, EdgeType.ROUTES_TO.name),
-                    SemanticRelation(
-                        kind = SemanticRelationKind.REFERENCES,
-                        fromUnitId = feignUnit.id,
-                        toUnitId = endpointUnit.id,
-                        label = EdgeType.ROUTES_TO.name,
-                    ),
-                )
-                providerMethods.forEach { providerMethod ->
-                    additionalMethods.putIfAbsent(methodSignature(providerMethod), providerMethod)
-                }
-            }
-
-        return RelationExtraction(
-            semanticUnits = semanticUnits.values.toList(),
-            relations = relations.values.toList(),
-            additionalMethods = additionalMethods.values.toList(),
-            sourceMappings = sourceMappings.values.toList(),
         )
     }
 

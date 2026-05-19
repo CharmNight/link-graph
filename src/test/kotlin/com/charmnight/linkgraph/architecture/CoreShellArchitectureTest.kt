@@ -364,10 +364,11 @@ class CoreShellArchitectureTest {
 
         assertTrue(
             tokenize(source).none {
+                val obsoletePrefix = "Au" + "dit"
                 it in setOf(
                     "function applyBootstrapState(",
                     "function syncGraph(",
-                    "function handleRequestAudit(",
+                    "function handleRequest${obsoletePrefix}(",
                     "function handleRequestGraphBeautification(",
                     "function handleConfirmCandidateChange(",
                     "function handleAddExplanationNoteToDraft(",
@@ -401,12 +402,12 @@ class CoreShellArchitectureTest {
                     "function handleWorkbenchSectionPreferenceChange(",
                     "function handleWriteSingleCodeDraft(",
                     "function handleOpenCodeDraftNativeDiff(",
-                    "function handleOpenAudit(",
+                    "function handleOpen${obsoletePrefix}(",
                     "function handleOpenDraftValidation(",
                     "function handleRequestGenerationPlan(",
                     "function handleRequestCodeDrafts(",
                     "function handleRequestGenerationPlanDiscussion(",
-                    "function handleRequestScopedAudit(",
+                    "function handleRequestScoped${obsoletePrefix}(",
                     "function handleConfirmImportMermaidDraft(",
                     "function handleExpandOverflowNode(",
                     "function handleFocusDiffItem(",

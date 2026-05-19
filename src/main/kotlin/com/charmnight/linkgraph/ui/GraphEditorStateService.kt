@@ -3,6 +3,9 @@ package com.charmnight.linkgraph.ui
 import com.charmnight.linkgraph.mermaid.MermaidIssue
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
+import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
+import com.charmnight.linkgraph.review.ReviewGraphViewDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
 import com.charmnight.linkgraph.foundation.LinkGraphDebugEnvironment
@@ -48,6 +51,12 @@ class GraphEditorStateService {
         outcome: AnalysisOutcome,
         source: String,
     ) = this.graph.loadAnalysisOutcome(outcome, source)
+
+    fun loadArchitectureGraphView(view: ArchitectureGraphViewDocument) = graph.loadArchitectureGraphView(view)
+
+    fun loadClassDiagramView(view: ClassDiagramViewDocument) = graph.loadClassDiagramView(view)
+
+    fun loadReviewGraphView(view: ReviewGraphViewDocument) = graph.loadReviewGraphView(view)
 
     fun importMermaid(
         mermaid: String,

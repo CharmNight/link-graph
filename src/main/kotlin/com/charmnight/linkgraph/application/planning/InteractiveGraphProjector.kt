@@ -838,6 +838,18 @@ class InteractiveGraphProjector(
             NodeType.MQ_TOPIC,
             NodeType.MQ_CONSUMER -> 2
             NodeType.CLASS,
+            NodeType.MODULE,
+            NodeType.PACKAGE,
+            NodeType.INTERFACE,
+            NodeType.ENUM,
+            NodeType.ANNOTATION,
+            NodeType.RECORD,
+            NodeType.OBJECT,
+            NodeType.EXTERNAL_CLASS,
+            NodeType.LIBRARY,
+            NodeType.SERVICE,
+            NodeType.LAYER,
+            NodeType.RESOURCE,
             NodeType.CONFIG_ITEM,
             NodeType.XML_RESOURCE,
             NodeType.DOC_PAGE -> 3

@@ -1,11 +1,13 @@
 package com.charmnight.linkgraph.semantic.provider.code
 
+import com.charmnight.linkgraph.jvm.relation.JvmRelationConfidence
 import com.charmnight.linkgraph.semantic.model.SemanticBoundary
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectKind
 import com.charmnight.linkgraph.semantic.subject.methodSignature
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.psi.PsiBlockStatement
 import com.intellij.psi.PsiClass
+import com.intellij.psi.PsiExpression
 import com.intellij.psi.PsiCodeBlock
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiLambdaExpression
@@ -13,10 +15,17 @@ import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiModifier
 import com.intellij.psi.PsiMethodCallExpression
 import com.intellij.psi.PsiNewExpression
+import com.intellij.psi.PsiParenthesizedExpression
+import com.intellij.psi.PsiReferenceExpression
+import com.intellij.psi.PsiType
+import com.intellij.psi.PsiTypeCastExpression
+import com.intellij.psi.PsiVariable
+import com.intellij.psi.search.searches.ClassInheritorsSearch
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.searches.OverridingMethodsSearch
 import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.psi.util.TypeConversionUtil
 import com.intellij.util.Processor
 import org.jetbrains.kotlin.asJava.getAccessorLightMethods
 import org.jetbrains.kotlin.asJava.getRepresentativeLightMethod
@@ -47,6 +56,12 @@ internal data class CodeExecutionPlan(
 internal data class KotlinPropertyAccessorSource(
     val owner: KtNamedDeclaration,
     val accessor: KtPropertyAccessor?,
+)
+
+internal data class ResolvedDownstreamTargetMethod(
+    val method: PsiMethod,
+    val confidence: JvmRelationConfidence = JvmRelationConfidence.PROVEN,
+    val dispatchKind: String = "STATIC",
 )
 
 internal fun classifyCodeSubject(method: PsiMethod): CodeSubjectKind {
@@ -208,9 +223,16 @@ internal fun resolveKotlinPropertyAccessorSource(method: PsiMethod): KotlinPrope
 internal fun resolveDownstreamTargetMethods(
     root: PsiElement,
     includeNestedLambdas: Boolean = true,
-): List<PsiMethod> {
+): List<PsiMethod> =
+    resolveDownstreamTargets(root, includeNestedLambdas).map(ResolvedDownstreamTargetMethod::method)
+
+internal fun resolveDownstreamTargets(
+    root: PsiElement,
+    includeNestedLambdas: Boolean = true,
+): List<ResolvedDownstreamTargetMethod> {
     return when (root) {
         is KtElement -> resolveKotlinTargetMethods(root)
+            .map { method -> ResolvedDownstreamTargetMethod(method) }
         else -> resolveJavaTargetMethods(root, includeNestedLambdas)
     }
 }
@@ -292,7 +314,7 @@ internal fun isProjectSourceMethod(method: PsiMethod): Boolean {
 private fun resolveJavaTargetMethods(
     root: PsiElement,
     includeNestedLambdas: Boolean,
-): List<PsiMethod> {
+): List<ResolvedDownstreamTargetMethod> {
     val callExpressions = buildList<PsiElement> {
         if (root is PsiMethodCallExpression || root is PsiNewExpression) {
             add(root)
@@ -302,17 +324,176 @@ private fun resolveJavaTargetMethods(
     }
     return callExpressions
         .filter { expression -> includeNestedLambdas || !isNestedInsideJavaLambda(expression, root) }
-        .mapNotNull { expression ->
+        .flatMap { expression ->
             when (expression) {
-                is PsiMethodCallExpression -> expression.resolveMethod()
-                is PsiNewExpression -> expression.resolveMethod()
+                is PsiMethodCallExpression -> methodCallTargets(expression)
+                is PsiNewExpression -> listOfNotNull(expression.resolveMethod())
+                else -> emptyList()
+            }
+        }
+        .map { target ->
+            when (target) {
+                is ResolvedDownstreamTargetMethod -> target
+                is PsiMethod -> ResolvedDownstreamTargetMethod(target)
                 else -> null
             }
         }
-        .flatMap(::concreteTargetMethods)
-        .filter(::isProjectSourceMethod)
-        .distinctBy(::methodSignature)
+        .filterNotNull()
+        .filter { target -> isProjectSourceMethod(target.method) }
+        .preferStrongestTargets()
 }
+
+private fun methodCallTargets(expression: PsiMethodCallExpression): List<ResolvedDownstreamTargetMethod> {
+    val resolved = expression.resolveMethod()
+    if (resolved != null) {
+        val owner = resolved.containingClass
+        if (owner != null && needsImplementationResolution(resolved)) {
+            val concreteReceiverClass = concreteReceiverClass(expression)
+            val concreteTargets = concreteReceiverClass
+                ?.let { receiverClass ->
+                    implementationMethods(
+                        qualifierClass = receiverClass,
+                        methodName = resolved.name,
+                        argumentTypes = expression.argumentList.expressions.map(PsiExpression::getType),
+                        project = expression.project,
+                        referenceMethod = resolved,
+                    )
+                }
+                .orEmpty()
+            if (concreteTargets.size == 1) {
+                return concreteTargets.map { method ->
+                    ResolvedDownstreamTargetMethod(
+                        method = method,
+                        confidence = JvmRelationConfidence.PROVEN,
+                        dispatchKind = "CONCRETE_RECEIVER",
+                    )
+                }
+            }
+            return listOf(
+                ResolvedDownstreamTargetMethod(
+                    method = resolved,
+                    confidence = JvmRelationConfidence.RUNTIME_REQUIRED,
+                    dispatchKind = if (owner.isInterface) "INTERFACE_DISPATCH" else "ABSTRACT_DISPATCH",
+                ),
+            )
+        }
+        return listOf(ResolvedDownstreamTargetMethod(resolved))
+    }
+    val methodName = expression.methodExpression.referenceName ?: return emptyList()
+    val qualifierClass = concreteReceiverClass(expression)
+        ?: (expression.methodExpression.qualifierExpression?.type as? com.intellij.psi.PsiClassType)
+            ?.resolve()
+            ?.takeUnless { owner -> needsImplementationResolution(owner) }
+        ?: return emptyList()
+    return implementationMethods(
+        qualifierClass = qualifierClass,
+        methodName = methodName,
+        argumentTypes = expression.argumentList.expressions.map(PsiExpression::getType),
+        project = expression.project,
+    ).map { method ->
+        ResolvedDownstreamTargetMethod(
+            method = method,
+            confidence = JvmRelationConfidence.PROVEN,
+            dispatchKind = "CONCRETE_RECEIVER",
+        )
+    }
+}
+
+private fun implementationMethods(
+    qualifierClass: PsiClass,
+    methodName: String,
+    argumentTypes: List<PsiType?>,
+    project: com.intellij.openapi.project.Project,
+    referenceMethod: PsiMethod? = null,
+): List<PsiMethod> {
+    val scope = GlobalSearchScope.projectScope(project)
+    val classes = if (qualifierClass.isInterface || qualifierClass.hasModifierProperty(PsiModifier.ABSTRACT)) {
+        ClassInheritorsSearch.search(qualifierClass, scope, true)
+            .findAll()
+            .filter(::isConcreteClass)
+    } else {
+        listOf(qualifierClass)
+    }
+    return classes
+        .flatMap { candidate ->
+            candidate.methods.filter { method ->
+                method.name == methodName &&
+                    method.parameterList.parametersCount == argumentTypes.size &&
+                    (referenceMethod == null || overridesReferenceMethod(method, referenceMethod)) &&
+                    parametersAcceptArguments(method, argumentTypes)
+            }
+        }
+        .sortedBy(::methodSignature)
+}
+
+private fun concreteReceiverClass(expression: PsiMethodCallExpression): PsiClass? {
+    val qualifier = expression.methodExpression.qualifierExpression ?: return null
+    val qualifierClass = (qualifier.type as? com.intellij.psi.PsiClassType)
+        ?.resolve()
+        ?.takeUnless { candidate -> needsImplementationResolution(candidate) }
+    if (qualifierClass != null) {
+        return qualifierClass
+    }
+    val resolvedVariable = (qualifier as? PsiReferenceExpression)?.resolve() as? PsiVariable
+        ?: return null
+    return concreteClassFromInitializer(resolvedVariable.initializer)
+}
+
+private fun concreteClassFromInitializer(expression: PsiExpression?): PsiClass? {
+    val unwrapped = expression?.unwrapExpression() ?: return null
+    val newExpression = unwrapped as? PsiNewExpression ?: return null
+    val candidate = newExpression.classReference?.resolve() as? PsiClass ?: return null
+    return candidate.takeUnless { owner -> needsImplementationResolution(owner) }
+}
+
+private fun PsiExpression.unwrapExpression(): PsiExpression {
+    var current = this
+    while (true) {
+        current = when (current) {
+            is PsiParenthesizedExpression -> current.expression ?: return current
+            is PsiTypeCastExpression -> current.operand ?: return current
+            else -> return current
+        }
+    }
+}
+
+private fun needsImplementationResolution(owner: PsiClass): Boolean =
+    owner.isInterface || owner.hasModifierProperty(PsiModifier.ABSTRACT)
+
+private fun overridesReferenceMethod(
+    method: PsiMethod,
+    referenceMethod: PsiMethod,
+): Boolean {
+    if (method == referenceMethod) {
+        return true
+    }
+    val superMethods = method.findSuperMethods().asSequence() + method.findDeepestSuperMethods().asSequence()
+    return superMethods.any { superMethod -> superMethod == referenceMethod }
+}
+
+private fun parametersAcceptArguments(
+    method: PsiMethod,
+    argumentTypes: List<PsiType?>,
+): Boolean {
+    val parameters = method.parameterList.parameters
+    if (parameters.size != argumentTypes.size) {
+        return false
+    }
+    return parameters.zip(argumentTypes).all { (parameter, argumentType) ->
+        argumentType == null || TypeConversionUtil.isAssignable(parameter.type, argumentType)
+    }
+}
+
+private fun List<ResolvedDownstreamTargetMethod>.preferStrongestTargets(): List<ResolvedDownstreamTargetMethod> =
+    groupBy { target -> methodSignature(target.method) }
+        .values
+        .map { targets ->
+            targets.minWith(
+                compareBy<ResolvedDownstreamTargetMethod> { target -> target.confidence.ordinal }
+                    .thenBy { target -> methodSignature(target.method) },
+            )
+        }
+        .sortedBy { target -> methodSignature(target.method) }
 
 private fun isNestedInsideJavaLambda(
     element: PsiElement,

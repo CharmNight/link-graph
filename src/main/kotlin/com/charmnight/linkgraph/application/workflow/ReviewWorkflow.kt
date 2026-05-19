@@ -455,7 +455,6 @@ internal class ReviewWorkflow(
         val qaGraphs = planningContextFactory.buildQaGraphs(
             snapshot = snapshot,
             selectedNodeIds = modeContext.selectedNodeIds,
-            collectSourceEvidence = false,
         )
         return QaCapabilityInput(
             question = modeContext.question,
@@ -463,6 +462,8 @@ internal class ReviewWorkflow(
                 factGraph = qaGraphs.factGraph,
                 editableGraph = qaGraphs.editableGraph,
                 selectedNodeIds = modeContext.selectedNodeIds,
+                sourceContext = qaGraphs.sourceContext,
+                evidenceTrace = qaGraphs.evidenceTrace,
             ),
             settings = settingsProvider(),
             session = request.baseSession ?: snapshot.qaResult?.qaSession,

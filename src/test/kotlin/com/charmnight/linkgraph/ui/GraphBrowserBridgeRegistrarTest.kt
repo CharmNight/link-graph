@@ -68,6 +68,24 @@ class GraphBrowserBridgeRegistrarTest {
                 message = "GraphEditorMessage.RequestDraftNavigation(targetPath)",
                 reason = "代码草稿导航会切回 IDE 线程打开编辑器。",
             ),
+            HandlerExpectation(
+                query = "requestArchitectureGraphQuery",
+                label = "加载架构图",
+                message = "GraphEditorMessage.RequestArchitectureGraph",
+                reason = "架构图会构建项目级 JVM 索引，不能占住 JCEF query handler。",
+            ),
+            HandlerExpectation(
+                query = "requestClassDiagramQuery",
+                label = "加载类图",
+                message = "GraphEditorMessage.RequestClassDiagram(payload.trim().takeIf(String::isNotBlank))",
+                reason = "类图会复用或构建项目级 JVM 索引，不能占住 JCEF query handler。",
+            ),
+            HandlerExpectation(
+                query = "requestReviewGraphQuery",
+                label = "加载 Review Graph",
+                message = "GraphEditorMessage.RequestReviewGraph(GraphBrowserPayloadParser.parseEncodedList(payload))",
+                reason = "Review Graph 会构建项目级索引并读取 Git diff，不能占住 JCEF query handler。",
+            ),
         )
 
         asynchronousHandlers.forEach { expectation ->

@@ -42,13 +42,13 @@ class GraphEditorBridgeTest : BasePlatformTestCase() {
     fun testCurrentStateHydratesPersistentWorkbenchPreferencesIntoRuntimeSnapshot() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val preferencesService = project.getService(WorkbenchLayoutPreferencesService::class.java)
-        preferencesService.update("audit.request-status", true)
+        preferencesService.update("qa.request-status", true)
         stateService.workbench.markWorkbenchSectionPreferences(emptyMap())
 
         val snapshot = GraphEditorBridge(project).currentState()
 
-        assertEquals(true, snapshot.workbenchSectionPreferences["audit.request-status"])
-        assertEquals(true, stateService.snapshot().workbenchSectionPreferences["audit.request-status"])
+        assertEquals(true, snapshot.workbenchSectionPreferences["qa.request-status"])
+        assertEquals(true, stateService.snapshot().workbenchSectionPreferences["qa.request-status"])
     }
 
     fun testDispatchCurrentEditorContextGraphUsesEditorContextWorkflow() {

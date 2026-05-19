@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { deriveFlowchartSummary, scopeFlowchartGraphToAnchorMethod } from "../../app/appGraphSupport";
-import type { LinkGraphDocument } from "../../app/types";
+import {
+  deriveFlowchartSummary,
+  scopeFlowchartGraphToAnchorMethod,
+  syncClassDiagramViewLayout,
+  syncReviewGraphViewLayout,
+} from "../../app/appGraphSupport";
+import type { ClassDiagramViewDocument, LinkGraphDocument, ReviewGraphViewDocument } from "../../app/types";
 
 describe("deriveFlowchartSummary", () => {
   it("counts flow-scope IF nodes as branches even when stale metadata says process", () => {
@@ -141,3 +146,81 @@ describe("scopeFlowchartGraphToAnchorMethod", () => {
     ]);
   });
 });
+
+describe("view layout summary sync", () => {
+  it("keeps backend review graph summary when only positions change", () => {
+    const view: ReviewGraphViewDocument = {
+      visibleGraph: {
+        nodes: [node("changed", "METHOD", { "review.role": "CHANGED" })],
+        edges: [],
+      },
+      fullGraph: {
+        nodes: [node("changed", "METHOD", { "review.role": "CHANGED" })],
+        edges: [],
+      },
+      summary: {
+        changedSymbolCount: 1,
+        upstreamCount: 0,
+        downstreamCount: 0,
+        relatedTestCount: 0,
+        affectedPackageCount: 0,
+        affectedModuleCount: 0,
+        evidenceRefCount: 7,
+      },
+    };
+
+    const next = syncReviewGraphViewLayout(view, [{ id: "changed", position: { x: 20, y: 30 } }]);
+
+    expect(next.summary).toBe(view.summary);
+    expect(next.visibleGraph.nodes[0]?.position).toEqual({ x: 20, y: 30 });
+    expect(next.summary.evidenceRefCount).toBe(7);
+  });
+
+  it("keeps backend class diagram summary when only positions change", () => {
+    const view: ClassDiagramViewDocument = {
+      visibleGraph: {
+        nodes: [node("service", "CLASS")],
+        edges: [],
+      },
+      fullGraph: {
+        nodes: [node("service", "CLASS")],
+        edges: [],
+      },
+      summary: {
+        classCount: 1,
+        interfaceCount: 0,
+        enumCount: 0,
+        annotationCount: 0,
+        recordCount: 0,
+        objectCount: 0,
+        relationCount: 0,
+        spiProviderCount: 3,
+        reflectionRelationCount: 2,
+      },
+    };
+
+    const next = syncClassDiagramViewLayout(view, [{ id: "service", position: { x: 4, y: 8 } }]);
+
+    expect(next.summary).toBe(view.summary);
+    expect(next.visibleGraph.nodes[0]?.position).toEqual({ x: 4, y: 8 });
+    expect(next.summary.spiProviderCount).toBe(3);
+    expect(next.summary.reflectionRelationCount).toBe(2);
+  });
+});
+
+function node(
+  id: string,
+  type: LinkGraphDocument["nodes"][number]["type"],
+  metadata?: Record<string, string>,
+): LinkGraphDocument["nodes"][number] {
+  return {
+    id,
+    type,
+    title: id,
+    inputs: [],
+    outputs: [],
+    certainty: "PROVEN",
+    bindingStatus: "BOUND",
+    metadata,
+  };
+}

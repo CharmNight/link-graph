@@ -7,16 +7,14 @@ import com.charmnight.linkgraph.investigation.domain.EvidenceLevel
 import com.charmnight.linkgraph.investigation.domain.ResolutionOutcome
 import com.charmnight.linkgraph.investigation.resolving.InvestigationContext
 import com.charmnight.linkgraph.investigation.resolving.ReadActionEvidenceResolver
-import com.intellij.openapi.fileEditor.FileDocumentManager
-import com.intellij.openapi.roots.ProjectRootManager
-import com.intellij.openapi.vfs.VfsUtilCore
-import com.intellij.openapi.vfs.VirtualFile
-import java.nio.charset.StandardCharsets
+import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
 
 /**
  * 解析 Java SPI 的 `META-INF/services/<接口全限定名>` 配置绑定。
  */
-class JavaSpiResolver : ReadActionEvidenceResolver() {
+class JavaSpiResolver(
+    private val jvmEvidenceIndexAdapter: JvmEvidenceIndexAdapter = JvmEvidenceIndexAdapter(),
+) : ReadActionEvidenceResolver() {
     /** 保存解析器稳定标识。 */
     override val id: String = "java-spi-binding"
 
@@ -28,7 +26,7 @@ class JavaSpiResolver : ReadActionEvidenceResolver() {
     }
 
     /**
-     * 读取 SPI 配置并验证 provider 类实现接口。
+     * 从共享 JVM 关系索引读取 SPI provider 证据。
      */
     override fun resolveInReadAction(
         goal: EvidenceGoal,
@@ -36,126 +34,52 @@ class JavaSpiResolver : ReadActionEvidenceResolver() {
     ): ResolutionOutcome {
         val interfaceName = goal.interfaceName?.takeIf(String::isNotBlank)
             ?: return unresolved(goal, "缺少 SPI 接口全限定名。")
-        val serviceFiles = serviceFiles(context, interfaceName)
-        if (serviceFiles.isEmpty()) {
-            return unresolved(goal, "未找到 META-INF/services/$interfaceName。")
-        }
-        val interfaceClass = JavaPsiEvidenceSupport.resolveClassCandidates(context, interfaceName).singleOrNull()
-            ?: return unresolved(goal, "未找到 SPI 接口源码 $interfaceName。")
-        val providerNames = serviceFiles.flatMap(::providerNames)
-            .distinct()
-        if (providerNames.isEmpty()) {
-            return unresolved(goal, "SPI 配置文件存在但没有 provider 条目。")
-        }
-        val providerFacts = providerNames.mapNotNull { providerName ->
-            val providerClass = JavaPsiEvidenceSupport.resolveClassCandidates(context, providerName).singleOrNull()
-                ?: return@mapNotNull null
-            if (!implementsInterface(providerClass, interfaceClass, interfaceName)) {
-                return@mapNotNull null
-            }
-            JavaPsiEvidenceSupport.classFact(
-                goal = goal,
-                resolverId = id,
-                psiClass = providerClass,
-                claim = "已确认 SPI provider $providerName 实现 $interfaceName。",
-                whyResolved = "META-INF/services 配置指向 provider，PSI 验证 provider 实现目标接口。",
-            )
-        }
-        if (providerFacts.isEmpty()) {
-            return unresolved(goal, "SPI provider 未能解析为实现 $interfaceName 的项目源码类。")
-        }
-        return ResolutionOutcome.Resolved(
-            resolverId = id,
-            facts = serviceFiles.map { file ->
-                configFact(goal, interfaceName, file.path)
-            } + providerFacts,
-        )
+        return resolveFromJvmIndex(goal, context, interfaceName)
+            ?: unresolved(goal, "未从共享 JVM 关系索引找到 META-INF/services/$interfaceName 的 provider。")
     }
 
-    /**
-     * 验证 provider 是否实现 SPI 接口。
-     */
-    private fun implementsInterface(
-        providerClass: com.intellij.psi.PsiClass,
-        interfaceClass: com.intellij.psi.PsiClass,
-        interfaceName: String,
-    ): Boolean {
-        return providerClass.isInheritor(interfaceClass, true) ||
-            providerClass.implementsListTypes.any { type ->
-                val canonicalText = type.canonicalText
-                canonicalText == interfaceName ||
-                    canonicalText.substringAfterLast('.') == interfaceName.substringAfterLast('.') ||
-                    type.resolve()?.qualifiedName == interfaceName
-            }
-    }
-
-    /**
-     * 在项目内容根下精确定位 Java SPI 服务文件。
-     */
-    private fun serviceFiles(
+    private fun resolveFromJvmIndex(
+        goal: EvidenceGoal,
         context: InvestigationContext,
         interfaceName: String,
-    ): List<VirtualFile> {
-        val matches = mutableListOf<VirtualFile>()
-        ProjectRootManager.getInstance(context.project).contentRoots.forEach { root ->
-            VfsUtilCore.iterateChildrenRecursively(
-                root,
-                null,
-            ) { file ->
-                if (!file.isDirectory && file.path.endsWith("META-INF/services/$interfaceName")) {
-                    matches += file
-                }
-                true
-            }
+    ): ResolutionOutcome.Resolved? {
+        val index = runCatching { jvmEvidenceIndexAdapter.buildIndex(context.project) }.getOrNull()
+            ?: return null
+        val interfaceSymbol = index.findClass(interfaceName) ?: return null
+        val relations = index.relationIndex.incoming(interfaceSymbol.id)
+            .filter { relation -> relation.kind == JvmRelationKind.SPI_PROVIDES }
+        if (relations.isEmpty()) {
+            return null
         }
-        return matches.distinctBy(VirtualFile::getPath).sortedBy(VirtualFile::getPath)
-    }
-
-    /**
-     * 从 SPI 配置文件读取 provider 类名。
-     */
-    private fun providerNames(file: VirtualFile): List<String> {
-        val content = String(file.contentsToByteArray(), StandardCharsets.UTF_8)
-        return content.lineSequence()
-            .map { line -> line.substringBefore('#').trim() }
-            .filter(String::isNotBlank)
-            .toList()
-    }
-
-    /**
-     * 构造 SPI 配置文件事实。
-     */
-    private fun configFact(
-        goal: EvidenceGoal,
-        interfaceName: String,
-        filePath: String,
-    ): EvidenceFact {
-        val document = FileDocumentManager.getInstance().getDocument(
-            com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(filePath)
-                ?: return EvidenceFact(
-                    factId = "${goal.goalId}-$id-config",
+        val facts = relations.flatMap { relation ->
+            val provider = index.findSymbol(relation.fromSymbolId)
+            val providerFact = EvidenceFact(
+                factId = "${goal.goalId}-$id-${relation.id}",
+                level = EvidenceLevel.DIRECT_FRAMEWORK_RESOLVED,
+                resolverId = id,
+                symbolSignature = provider?.qualifiedName ?: relation.fromSymbolId,
+                filePath = provider?.source?.displayPath ?: relation.samples.firstOrNull()?.filePath ?: "",
+                startLine = provider?.source?.startLine ?: relation.samples.firstOrNull()?.startLine,
+                endLine = provider?.source?.endLine ?: relation.samples.firstOrNull()?.endLine,
+                claim = "已确认 SPI provider ${provider?.qualifiedName ?: relation.fromSymbolId} 绑定 $interfaceName。",
+                whyResolved = "复用 JvmRelationIndex 的 SPI_PROVIDES 关系，confidence=${relation.confidence.name}。",
+            )
+            val configFacts = relation.samples.mapIndexed { indexInRelation, sample ->
+                EvidenceFact(
+                    factId = "${goal.goalId}-$id-${relation.id}-config-$indexInRelation",
                     level = EvidenceLevel.CONFIG_RESOLVED,
                     resolverId = id,
                     symbolSignature = "META-INF/services/$interfaceName",
-                    filePath = filePath,
-                    startLine = null,
-                    endLine = null,
-                    claim = "已确认 SPI 配置文件 META-INF/services/$interfaceName 存在。",
-                    whyResolved = "按 Java SPI 规范精确读取服务文件。",
-                ),
-        )
-        val endLine = document?.lineCount?.coerceAtLeast(1)
-        return EvidenceFact(
-            factId = "${goal.goalId}-$id-config",
-            level = EvidenceLevel.CONFIG_RESOLVED,
-            resolverId = id,
-            symbolSignature = "META-INF/services/$interfaceName",
-            filePath = filePath,
-            startLine = 1,
-            endLine = endLine,
-            claim = "已确认 SPI 配置文件 META-INF/services/$interfaceName 存在。",
-            whyResolved = "按 Java SPI 规范精确读取服务文件。",
-        )
+                    filePath = sample.filePath ?: "",
+                    startLine = sample.startLine,
+                    endLine = sample.endLine,
+                    claim = sample.claim,
+                    whyResolved = "SPI 配置来源于共享 JVM 关系索引。",
+                )
+            }
+            listOf(providerFact) + configFacts
+        }.distinctBy(EvidenceFact::factId)
+        return ResolutionOutcome.Resolved(resolverId = id, facts = facts)
     }
 
     /**

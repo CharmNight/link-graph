@@ -10,6 +10,9 @@ enum class ToolGraphSceneId {
     WORKSPACE_FACT,
     WORKSPACE_FLOWCHART,
     WORKSPACE_RESOURCE_RELATION,
+    WORKSPACE_ARCHITECTURE_GRAPH,
+    WORKSPACE_CLASS_DIAGRAM,
+    WORKSPACE_REVIEW_GRAPH,
     DIFF,
 }
 
@@ -29,6 +32,9 @@ data class ToolGraphSnapshot(
     val factGraphView: ToolGraphView = ToolGraphView(),
     val flowchartView: ToolGraphView = ToolGraphView(),
     val resourceRelationView: ToolGraphView = ToolGraphView(),
+    val architectureGraphView: ToolGraphView = ToolGraphView(),
+    val classDiagramView: ToolGraphView = ToolGraphView(),
+    val reviewGraphView: ToolGraphView = ToolGraphView(),
     val diffGraph: GraphDocument? = null,
     val diff: GraphDiff? = null,
     val currentSceneId: ToolGraphSceneId = ToolGraphSceneId.WORKSPACE_FACT,

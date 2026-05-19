@@ -26,14 +26,25 @@ import com.charmnight.linkgraph.llm.runtime.withRuntimeDeadlineTimeout
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.llm.tools.AgentTool
 import com.charmnight.linkgraph.llm.tools.AgentToolRegistry
+import com.charmnight.linkgraph.llm.tools.BuildReviewEvidenceBundleTool
 import com.charmnight.linkgraph.llm.tools.CodeReadToolFacade
 import com.charmnight.linkgraph.llm.tools.CreateCandidateDraftTool
+import com.charmnight.linkgraph.llm.tools.FindRelatedTestsTool
+import com.charmnight.linkgraph.llm.tools.FindJvmRelationsTool
+import com.charmnight.linkgraph.llm.tools.FindJvmSymbolTool
+import com.charmnight.linkgraph.llm.tools.FindProxyTargetsTool
+import com.charmnight.linkgraph.llm.tools.FindReflectionTargetsTool
+import com.charmnight.linkgraph.llm.tools.FindServiceProvidersTool
+import com.charmnight.linkgraph.llm.tools.GetBlastRadiusTool
+import com.charmnight.linkgraph.llm.tools.GetArchitectureIndexSummaryTool
+import com.charmnight.linkgraph.llm.tools.GetChangedSymbolsTool
 import com.charmnight.linkgraph.llm.tools.GetCurrentGraphTool
 import com.charmnight.linkgraph.llm.tools.GetDraftWorkbenchTool
 import com.charmnight.linkgraph.llm.tools.GetSelectedScopeTool
 import com.charmnight.linkgraph.llm.tools.GraphToolFacade
 import com.charmnight.linkgraph.llm.tools.ReadSourceSnippetTool
 import com.charmnight.linkgraph.llm.tools.ReadSymbolTool
+import com.charmnight.linkgraph.llm.tools.QueryArchitectureRelationsTool
 import com.charmnight.linkgraph.llm.tools.ResolveAnchorTool
 import com.charmnight.linkgraph.llm.tools.ToolExecutionContext
 import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshot
@@ -64,6 +75,17 @@ class QaCapability(
             ResolveAnchorTool(CodeReadToolFacade()),
             ReadSourceSnippetTool(CodeReadToolFacade()),
             ReadSymbolTool(CodeReadToolFacade()),
+            GetArchitectureIndexSummaryTool(),
+            FindJvmSymbolTool(),
+            FindJvmRelationsTool(),
+            QueryArchitectureRelationsTool(),
+            FindServiceProvidersTool(),
+            FindReflectionTargetsTool(),
+            FindProxyTargetsTool(),
+            GetChangedSymbolsTool(),
+            GetBlastRadiusTool(),
+            FindRelatedTestsTool(),
+            BuildReviewEvidenceBundleTool(),
             CreateCandidateDraftTool(),
         ),
     ),
@@ -89,15 +111,30 @@ class QaCapability(
     }
 
     override fun allowedTools(input: QaCapabilityInput): Set<String> {
-        return setOf(
+        val tools = linkedSetOf(
             "get_draft_workbench",
             "get_current_graph",
             "get_selected_scope",
             "resolve_anchor",
             "read_source_snippet",
             "read_symbol",
+            "get_architecture_index_summary",
+            "find_jvm_symbol",
+            "find_jvm_relations",
+            "find_service_providers",
+            "find_reflection_targets",
+            "find_proxy_targets",
             "create_candidate_draft",
         )
+        if (input.effectiveMode in REVIEW_TOOL_MODES || input.requestedMode in REVIEW_TOOL_MODES) {
+            tools += listOf(
+                "get_changed_symbols",
+                "get_blast_radius",
+                "find_related_tests",
+                "build_review_evidence_bundle",
+            )
+        }
+        return tools
     }
 
     override fun stopPolicy(input: QaCapabilityInput): StopPolicy = StopPolicy.default()
@@ -354,7 +391,7 @@ class QaCapability(
 
     /**
      * 第二步根据当前图选区按需读取代码。
-     * 只有当当前上下文没有现成源码证据时，runtime 才补充读取，避免继续依赖一次性大上下文。
+     * 预加载源码只参与预算约束，不能作为本轮 QA prompt 的源码证据；prompt 只能使用 runtime 实际读取成功的 artifact。
      */
     private fun collectCodeEvidenceIfNeeded(
         state: AgentRunState,
@@ -372,9 +409,9 @@ class QaCapability(
                     stepRecords = state.stepRecords + AgentStepRecord(
                         stepIndex = state.stepIndex,
                         phase = AgentRunPhase.FAILED,
-                    summary = "reject-preloaded-code-evidence-over-budget",
-                    nodeId = input.qaContext.selectedNodeIds.firstOrNull(),
-                ),
+                        summary = "reject-preloaded-code-evidence-over-budget",
+                        nodeId = input.qaContext.selectedNodeIds.firstOrNull(),
+                    ),
                     failureReason = preloadedFailureReason,
                     lastModelOutput = "预加载源码证据超出 runtime 预算，已拒绝继续问答。",
                 ),
@@ -414,6 +451,7 @@ class QaCapability(
         var nextBudget = preloadedBudget.recordStep()
         val nextArtifacts = state.artifactRefs.toMutableList()
         val evidenceTraces = mutableListOf<EvidenceTraceEntry>()
+        var promptEvidenceCount = 0
         var usedToolName: String? = null
         targetNodeIds.forEachIndexed { index, nodeId ->
             nextBudget.failureReasonBeforeNextFileRead()?.let { reason ->
@@ -478,6 +516,7 @@ class QaCapability(
                 ),
             )
             nextArtifacts += artifactRef
+            promptEvidenceCount += 1
             evidenceTraces += EvidenceTraceEntry(
                 nodeId = nodeId,
                 resolvedNodeId = anchor.id.takeIf { resolvedNodeId -> resolvedNodeId != nodeId },
@@ -521,7 +560,7 @@ class QaCapability(
                 stepRecords = state.stepRecords + AgentStepRecord(
                     stepIndex = state.stepIndex,
                     phase = AgentRunPhase.RUNNING,
-                    summary = if (nextArtifacts.size > state.artifactRefs.size) {
+                    summary = if (promptEvidenceCount > 0) {
                         "read-code-evidence"
                     } else {
                         "skip-code-evidence-read"
@@ -529,7 +568,7 @@ class QaCapability(
                     toolName = usedToolName,
                     nodeId = targetNodeIds.firstOrNull(),
                 ),
-                lastModelOutput = if (nextArtifacts.size > state.artifactRefs.size) {
+                lastModelOutput = if (promptEvidenceCount > 0) {
                     "已按需读取代码证据，准备继续问答。"
                 } else {
                     "未定位到可读取的代码锚点，先按图证据继续问答。"
@@ -730,12 +769,8 @@ class QaCapability(
             .flatMap { artifact -> artifact.traces.asSequence() }
             .toList()
             .distinctBy { trace -> "${trace.nodeId}:${trace.filePath}:${trace.startLine}:${trace.endLine}:${trace.reason}" }
-        val sourceContext = when {
-            runtimeSourceContext.isNotEmpty() -> runtimeSourceContext
-            runtimeEvidenceTrace.isNotEmpty() -> emptyList()
-            else -> input.qaContext.sourceContext
-        }
-        val evidenceTrace = runtimeEvidenceTrace.ifEmpty { input.qaContext.evidenceTrace }
+        val sourceContext = runtimeSourceContext
+        val evidenceTrace = runtimeEvidenceTrace
         return input.copy(
             qaContext = input.qaContext.copy(
                 editableGraph = runtimeEditableGraph,
@@ -806,6 +841,12 @@ class QaCapability(
         val failureReason: String = "未知原因。",
     )
 }
+
+private val REVIEW_TOOL_MODES = setOf(
+    QaMode.REVIEW,
+    QaMode.CHANGE,
+    QaMode.INVESTIGATE,
+)
 
 /**
  * 问答 capability 的输入结构。

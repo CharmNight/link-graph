@@ -67,10 +67,10 @@ declare global {
       exportMermaid?: () => void;
       showDiffMode?: () => void;
       requestSyncPreview?: () => void;
-      requestAudit?: (question: string, selectedNodeIds?: string[], sourceThreadId?: string | null, mode?: QaMode) => void;
-      retryLastAuditRequest?: () => void;
-      confirmAuditCandidateChange?: (changeId: string) => void;
-      unconfirmAuditCandidateChange?: (changeId: string) => void;
+      requestQa?: (question: string, selectedNodeIds?: string[], sourceThreadId?: string | null, mode?: QaMode) => void;
+      retryLastQaRequest?: () => void;
+      confirmQaCandidateChange?: (changeId: string) => void;
+      unconfirmQaCandidateChange?: (changeId: string) => void;
       resolveInvestigationThread?: (threadId: string, resolutionStatus: RiskResolutionStatus, note?: string) => void;
       requestDiffReview?: (question: string, selectedDiffItemIds?: string[]) => void;
       requestGraphBeautification?: (
@@ -92,6 +92,9 @@ declare global {
       requestCodeDrafts?: () => void;
       requestCurrentEditorContextGraph?: () => void;
       requestAnalysisDisplayMode?: (displayMode: AnalysisDisplayMode) => void;
+      requestArchitectureGraph?: () => void;
+      requestClassDiagram?: (scopeNodeId?: string | null) => void;
+      requestReviewGraph?: (selectedDiffItemIds?: string[]) => void;
       updateWorkbenchSectionPreference?: (sectionId: string, expanded: boolean) => void;
       requestOpenSettings?: () => void;
       applyCodeDrafts?: () => void;
@@ -264,14 +267,14 @@ export function requestSyncPreview(): BridgeInvocationResult {
   });
 }
 
-export function requestAuditAsync(
+export function requestQaAsync(
   question: string,
   selectedNodeIds: string[] = [],
   sourceThreadId: string | null = null,
   mode: QaMode = "AUTO",
 ): BridgeInvocationResult {
-  return invokeBridgeAction("requestAudit", (bridge) => {
-    bridge.requestAudit?.(question, selectedNodeIds, sourceThreadId, mode);
+  return invokeBridgeAction("requestQa", (bridge) => {
+    bridge.requestQa?.(question, selectedNodeIds, sourceThreadId, mode);
   }, {
     question,
     selectedNodeIds,
@@ -280,23 +283,23 @@ export function requestAuditAsync(
   });
 }
 
-export function retryLastAuditRequestAsync(): BridgeInvocationResult {
-  return invokeBridgeAction("retryLastAuditRequest", (bridge) => {
-    bridge.retryLastAuditRequest?.();
+export function retryLastQaRequestAsync(): BridgeInvocationResult {
+  return invokeBridgeAction("retryLastQaRequest", (bridge) => {
+    bridge.retryLastQaRequest?.();
   });
 }
 
-export function confirmAuditCandidateChange(changeId: string): BridgeInvocationResult {
-  return invokeBridgeAction("confirmAuditCandidateChange", (bridge) => {
-    bridge.confirmAuditCandidateChange?.(changeId);
+export function confirmQaCandidateChange(changeId: string): BridgeInvocationResult {
+  return invokeBridgeAction("confirmQaCandidateChange", (bridge) => {
+    bridge.confirmQaCandidateChange?.(changeId);
   }, {
     changeId,
   });
 }
 
-export function unconfirmAuditCandidateChange(changeId: string): BridgeInvocationResult {
-  return invokeBridgeAction("unconfirmAuditCandidateChange", (bridge) => {
-    bridge.unconfirmAuditCandidateChange?.(changeId);
+export function unconfirmQaCandidateChange(changeId: string): BridgeInvocationResult {
+  return invokeBridgeAction("unconfirmQaCandidateChange", (bridge) => {
+    bridge.unconfirmQaCandidateChange?.(changeId);
   }, {
     changeId,
   });
@@ -405,8 +408,8 @@ export function requestCodeDraftsAsync(): BridgeInvocationResult {
   });
 }
 
-export const requestAudit = requestAuditAsync;
-export const retryLastAuditRequest = retryLastAuditRequestAsync;
+export const requestQa = requestQaAsync;
+export const retryLastQaRequest = retryLastQaRequestAsync;
 export const requestDiffReview = requestDiffReviewAsync;
 export const requestGraphBeautification = requestGraphBeautificationAsync;
 export const requestGenerationPlan = requestGenerationPlanAsync;
@@ -423,6 +426,28 @@ export function requestCurrentEditorContextGraph(): BridgeInvocationResult {
 export function requestAnalysisDisplayMode(displayMode: AnalysisDisplayMode): BridgeInvocationResult {
   return invokeBridgeAction("requestAnalysisDisplayMode", (bridge) => {
     bridge.requestAnalysisDisplayMode?.(displayMode);
+  });
+}
+
+export function requestArchitectureGraph(): BridgeInvocationResult {
+  return invokeBridgeAction("requestArchitectureGraph", (bridge) => {
+    bridge.requestArchitectureGraph?.();
+  });
+}
+
+export function requestClassDiagram(scopeNodeId?: string | null): BridgeInvocationResult {
+  return invokeBridgeAction("requestClassDiagram", (bridge) => {
+    bridge.requestClassDiagram?.(scopeNodeId ?? null);
+  }, {
+    scopeNodeId: scopeNodeId ?? null,
+  });
+}
+
+export function requestReviewGraph(selectedDiffItemIds: string[] = []): BridgeInvocationResult {
+  return invokeBridgeAction("requestReviewGraph", (bridge) => {
+    bridge.requestReviewGraph?.(selectedDiffItemIds);
+  }, {
+    selectedDiffItemIds,
   });
 }
 

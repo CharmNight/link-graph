@@ -404,9 +404,11 @@ class LlmPromptFactoryTest {
         assertTrue(qaPrompt.contains("你正在做链路图问答"))
         assertTrue(qaPrompt.contains("本轮问答回答"))
         assertTrue(qaPrompt.contains("\"answer\": \"问答回答\""))
-        assertTrue(qaPrompt.contains("flowchart.kind=DECISION"))
-        assertTrue(qaPrompt.contains("flow.ownerMethod=com.example.OrderService.place(java.lang.String):void"))
-        assertTrue("本轮审计回答" !in qaPrompt)
+        assertTrue(!qaPrompt.contains("事实图节点"))
+        assertTrue(!qaPrompt.contains("当前可编辑图节点"))
+        assertTrue(qaPrompt.contains("图上下文边界"))
+        assertTrue(qaPrompt.contains("必须按用户问题调用工具查询最小必要上下文"))
+        assertTrue("本轮复核回答" !in qaPrompt)
         assertTrue(qaPrompt.contains("你的第一优先级是直接回答“用户问题”"))
         assertTrue(qaPrompt.contains("禁止输出与用户问题无关的通用安全、性能、规范性建议"))
         assertTrue(diffPrompt.contains("这些差异意味着什么"))
@@ -537,7 +539,7 @@ class LlmPromptFactoryTest {
         assertTrue(qaPackage.systemPrompt.contains("不要绕开问题泛化输出通用问答结论"))
         assertTrue(qaPackage.userPrompt.contains("链路图问答"))
         assertTrue(qaPackage.userPrompt.contains("\"answer\": \"问答回答\""))
-        assertTrue("链路审计" !in qaPackage.systemPrompt)
+        assertTrue("链路复核" !in qaPackage.systemPrompt)
         assertTrue(qaPackage.userPrompt.contains("当前范围边"))
         assertTrue(qaPackage.userPrompt.contains("相关源码片段"))
         assertTrue(qaPackage.userPrompt.contains("defaultChannel"))
@@ -556,7 +558,7 @@ class LlmPromptFactoryTest {
     }
 
     @Test
-    fun qaPromptPackageSeparatesFactGraphFromEditableGraphSemantics() {
+    fun qaPromptPackageUsesMinimalQuestionScopedGraphContext() {
         val factory = LlmPromptFactory()
         val settings = LinkGraphSettingsState(
             llmEnabled = true,
@@ -598,10 +600,13 @@ class LlmPromptFactoryTest {
             settings = settings,
         )
 
-        assertTrue(qaPackage.userPrompt.contains("事实图节点"))
-        assertTrue(qaPackage.userPrompt.contains("当前可编辑图节点"))
-        assertTrue(qaPackage.userPrompt.contains("当前可编辑图连线"))
+        assertTrue(!qaPackage.userPrompt.contains("事实图节点"))
+        assertTrue(!qaPackage.userPrompt.contains("当前可编辑图节点"))
+        assertTrue(!qaPackage.userPrompt.contains("当前可编辑图连线"))
+        assertTrue(qaPackage.userPrompt.contains("当前范围节点"))
+        assertTrue(qaPackage.userPrompt.contains("当前范围边"))
         assertTrue(qaPackage.userPrompt.contains("if (delete)"))
+        assertTrue(qaPackage.userPrompt.contains("如需整图、邻接节点、架构索引、Review Graph 或源码细节，必须按用户问题调用工具查询最小必要上下文"))
         assertTrue(qaPackage.systemPrompt.contains("不要把当前可编辑图误称为事实图"))
         assertTrue(qaPackage.systemPrompt.contains("必须明确是来自“事实图”还是“当前可编辑图”"))
     }

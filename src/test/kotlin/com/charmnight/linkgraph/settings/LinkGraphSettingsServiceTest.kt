@@ -3,6 +3,8 @@ package com.charmnight.linkgraph.settings
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.llm.LlmProviderPresets
+import com.charmnight.linkgraph.source.AttachedJarEntry
+import com.intellij.openapi.application.ApplicationManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -13,8 +15,12 @@ class LinkGraphSettingsServiceTest {
         initialApiKey: String = "",
     ) : LinkGraphSecretStore {
         var storedApiKey: String = initialApiKey
+        var loadCount: Int = 0
 
-        override fun loadApiKey(): String = storedApiKey
+        override fun loadApiKey(): String {
+            loadCount += 1
+            return storedApiKey
+        }
 
         override fun saveApiKey(apiKey: String) {
             storedApiKey = apiKey
@@ -37,6 +43,22 @@ class LinkGraphSettingsServiceTest {
         assertEquals(LinkGraphSettingsState.DEFAULT_MODEL, snapshot.model)
         assertEquals(LinkGraphSettingsState.DEFAULT_TIMEOUT_SECONDS, snapshot.effectiveTimeoutSeconds())
         assertEquals(LinkGraphSettingsState.DEFAULT_TEMPERATURE, snapshot.effectiveTemperature())
+        assertTrue(snapshot.allowClassJarDecompile)
+        assertTrue(snapshot.allowExternalLibraryExpansion)
+        assertFalse(snapshot.allowJdkLibraryExpansion)
+        assertEquals(LinkGraphSettingsState.DEFAULT_MAX_EXTERNAL_CLASS_NODES, snapshot.maxExternalClassNodes)
+        assertEquals(emptyList(), snapshot.attachedJars)
+    }
+
+    @Test
+    fun nonSecretSnapshotDoesNotLoadApiKey() {
+        val secretStore = FakeSecretStore(initialApiKey = "secret-key")
+        val service = LinkGraphSettingsService(secretStore)
+
+        val snapshot = service.nonSecretSnapshot()
+
+        assertEquals("", snapshot.apiKey)
+        assertEquals(0, secretStore.loadCount)
     }
 
     @Test
@@ -169,5 +191,70 @@ class LinkGraphSettingsServiceTest {
 
         assertFalse(text.contains("secret-key"))
         assertTrue(text.contains("apiKey=<redacted>"))
+    }
+
+    @Test
+    fun persistsAttachedJarSettingsWithNonSecretState() {
+        val service = LinkGraphSettingsService(FakeSecretStore())
+
+        service.update(
+            LinkGraphSettingsState(
+                attachedJars = listOf(
+                    AttachedJarEntry(
+                        path = " /tmp/external.jar ",
+                        sourceJarPath = " /tmp/external-sources.jar ",
+                        enabled = true,
+                    ),
+                ),
+                allowClassJarDecompile = false,
+                allowExternalLibraryExpansion = false,
+                allowJdkLibraryExpansion = true,
+                maxExternalClassNodes = 42,
+            ),
+        )
+
+        val snapshot = service.snapshot()
+        assertEquals(1, snapshot.attachedJars.size)
+        assertEquals("/tmp/external.jar", snapshot.attachedJars.single().path)
+        assertEquals("/tmp/external-sources.jar", snapshot.attachedJars.single().sourceJarPath)
+        assertFalse(snapshot.allowClassJarDecompile)
+        assertFalse(snapshot.allowExternalLibraryExpansion)
+        assertTrue(snapshot.allowJdkLibraryExpansion)
+        assertEquals(42, snapshot.maxExternalClassNodes)
+        assertEquals(snapshot.attachedJars, service.state.attachedJars)
+    }
+
+    @Test
+    fun publishesArchitectureIndexSettingsChangedWhenIndexRelevantSettingsChange() {
+        val service = LinkGraphSettingsService(FakeSecretStore())
+        val events = mutableListOf<Pair<LinkGraphSettingsState, LinkGraphSettingsState>>()
+        val connection = ApplicationManager.getApplication().messageBus.connect()
+        try {
+            connection.subscribe(
+                LinkGraphSettingsChangedNotifier.TOPIC,
+                object : LinkGraphSettingsChangedNotifier {
+                    override fun onArchitectureIndexSettingsChanged(
+                        before: LinkGraphSettingsState,
+                        after: LinkGraphSettingsState,
+                    ) {
+                        events += before to after
+                    }
+                },
+            )
+
+            service.update(LinkGraphSettingsState(model = "gpt-no-index-change"))
+            service.update(
+                service.snapshot().copy(
+                    allowJdkLibraryExpansion = true,
+                    attachedJars = listOf(AttachedJarEntry(path = "/tmp/external.jar")),
+                ),
+            )
+
+            assertEquals(1, events.size)
+            assertFalse(events.single().first.allowJdkLibraryExpansion)
+            assertTrue(events.single().second.allowJdkLibraryExpansion)
+        } finally {
+            connection.disconnect()
+        }
     }
 }

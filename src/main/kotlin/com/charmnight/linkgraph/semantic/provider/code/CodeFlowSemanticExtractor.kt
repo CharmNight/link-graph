@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.semantic.provider.code
 
+import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
 import com.charmnight.linkgraph.semantic.model.FlowActionUnit
 import com.charmnight.linkgraph.semantic.model.FlowEdgeRole
 import com.charmnight.linkgraph.semantic.model.FlowScopeCategory
@@ -67,9 +68,11 @@ import org.jetbrains.kotlin.psi.KtWhenEntry
 import org.jetbrains.kotlin.psi.KtWhenExpression
 import org.jetbrains.kotlin.psi.KtWhileExpression
 import java.util.ArrayDeque
+import java.util.concurrent.atomic.AtomicBoolean
 
 class CodeFlowSemanticExtractor(
     private val invocationResolver: CodeInvocationSemanticResolver = CodeInvocationSemanticResolver(),
+    private val architectureIndexProvider: (() -> ArchitectureGraphIndex?)? = null,
 ) {
     fun extract(
         handle: CodeSubjectHandle,
@@ -100,7 +103,7 @@ class CodeFlowSemanticExtractor(
             val subjectMethodUnit = accumulator.addMethod(subjectMethod)
             accumulator.addAnchor(subjectMethodUnit.id, "当前主体")
             val relationContext = if (capturePolicy.includeResourceReferences) {
-                RelationExtractionContext(subjectMethod.project)
+                RelationExtractionContext(subjectMethod.project, architectureIndexProvider)
             } else {
                 null
             }
@@ -223,6 +226,7 @@ private abstract class BaseFlowSemanticBuilder(
 ) {
     protected val discoveredMethods = linkedSetOf<PsiMethod>()
     protected val ownerSignature: String = methodSignature(method)
+    private val invocationResolutionIncomplete = AtomicBoolean(false)
 
     fun build(): FlowBuildResult {
         val executionPlan = resolveExecutionPlan(method)
@@ -250,6 +254,7 @@ private abstract class BaseFlowSemanticBuilder(
         return FlowBuildResult(
             discoveredMethods = discoveredMethods.toList(),
             boundary = boundary,
+            diagnostics = invocationResolutionDiagnostics(),
         )
     }
 
@@ -266,6 +271,30 @@ private abstract class BaseFlowSemanticBuilder(
     }
 
     protected abstract fun buildRoots(roots: List<PsiElement>): FlowFragment
+
+    protected fun resolveDownstreamTargetsSafely(
+        element: PsiElement,
+        includeNestedLambdas: Boolean = true,
+    ): List<ResolvedDownstreamTargetMethod> {
+        return runCatching { resolveDownstreamTargets(element, includeNestedLambdas) }
+            .getOrElse {
+                invocationResolutionIncomplete.set(true)
+                emptyList()
+            }
+    }
+
+    private fun invocationResolutionDiagnostics(): List<SemanticDiagnostic> {
+        if (!invocationResolutionIncomplete.get()) {
+            return emptyList()
+        }
+        return listOf(
+            SemanticDiagnostic(
+                severity = SemanticDiagnosticSeverity.WARNING,
+                code = "invocation-resolution-incomplete",
+                message = "${methodDisplayName(method)} 的部分调用目标解析失败，当前图谱保留已确认的源码流程节点。",
+            ),
+        )
+    }
 
     protected fun sequenceFragments(fragments: List<FlowFragment>): FlowFragment {
         var entryUnitId: String? = null
@@ -332,7 +361,7 @@ private abstract class BaseFlowSemanticBuilder(
         element: PsiElement,
         title: String,
         actionKind: String = "ACTION",
-        targetMethodsOverride: List<PsiMethod>? = null,
+        targetMethodsOverride: List<ResolvedDownstreamTargetMethod>? = null,
     ): FlowFragment {
         val actionUnit = accumulator.addAction(
             ownerSignature = ownerSignature,
@@ -349,22 +378,22 @@ private abstract class BaseFlowSemanticBuilder(
             )
         }
 
-        val targetMethods = targetMethodsOverride ?: resolveDownstreamTargetMethods(element)
-        val visibleTargets = targetMethods.take(budgetPolicy.maxInvocationsPerUnit.coerceAtLeast(0))
-        if (targetMethods.size > visibleTargets.size) {
+        val targets = targetMethodsOverride ?: resolveDownstreamTargetsSafely(element)
+        val visibleTargets = targets.take(budgetPolicy.maxInvocationsPerUnit.coerceAtLeast(0))
+        if (targets.size > visibleTargets.size) {
             accumulator.addDiagnostic(
                 SemanticDiagnostic(
                     severity = SemanticDiagnosticSeverity.WARNING,
                     code = "downstream-invocation-truncated",
-                    message = "$title 的调用点已按预算裁剪，未继续保留 ${targetMethods.size - visibleTargets.size} 个目标。",
+                    message = "$title 的调用点已按预算裁剪，未继续保留 ${targets.size - visibleTargets.size} 个目标。",
                 ),
             )
         }
 
         var previousVisibleUnitId = actionUnit.id
-        visibleTargets.forEach { targetMethod ->
-            discoveredMethods += targetMethod
-            val targetUnit = accumulator.addMethod(targetMethod)
+        visibleTargets.forEach { target ->
+            discoveredMethods += target.method
+            val targetUnit = accumulator.addMethod(target.method)
             val invocationUnit = accumulator.addInvocation(
                 ownerSignature = ownerSignature,
                 sourceUnitId = previousVisibleUnitId,
@@ -387,6 +416,10 @@ private abstract class BaseFlowSemanticBuilder(
                     kind = SemanticRelationKind.INVOKES,
                     fromUnitId = invocationUnit.id,
                     toUnitId = targetUnit.id,
+                    metadata = mapOf(
+                        "relation.confidence" to target.confidence.name,
+                        "jvm.dispatch.kind" to target.dispatchKind,
+                    ),
                 ),
             )
             previousVisibleUnitId = invocationUnit.id
@@ -408,7 +441,7 @@ private abstract class BaseFlowSemanticBuilder(
         actionKind: String,
     ): FlowFragment? {
         element ?: return null
-        if (resolveDownstreamTargetMethods(element).isEmpty()) {
+        if (resolveDownstreamTargetsSafely(element).isEmpty()) {
             return null
         }
         return actionFragment(
@@ -727,7 +760,7 @@ private class JavaFlowSemanticBuilder(
         val actionFragment = actionFragment(
             element = expression,
             title = summarize(expression.text),
-            targetMethodsOverride = resolveDownstreamTargetMethods(expression, includeNestedLambdas = false),
+            targetMethodsOverride = resolveDownstreamTargetsSafely(expression, includeNestedLambdas = false),
         )
         val lambdaFragments = expression.argumentList.expressions
             .filterIsInstance<PsiLambdaExpression>()
@@ -949,7 +982,7 @@ private class JavaFlowSemanticBuilder(
 
     private fun buildReturnStatement(statement: PsiReturnStatement): FlowFragment {
         val action = statement.returnValue
-            ?.takeIf { expression -> resolveDownstreamTargetMethods(expression).isNotEmpty() || expression.text != null }
+            ?.takeIf { expression -> resolveDownstreamTargetsSafely(expression).isNotEmpty() || expression.text != null }
             ?.let { expression -> actionFragment(expression, summarize(expression.text)) }
         val terminal = terminalFragment(statement, summarize(statement.text), "RETURN")
         return if (action == null || action.entryUnitId == null) {

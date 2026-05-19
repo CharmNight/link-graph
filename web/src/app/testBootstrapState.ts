@@ -2,11 +2,14 @@ import { resolveFlowchartKind } from "./flowchartKind";
 import type {
   FactGraphViewDocument,
   FlowchartViewDocument,
+  ArchitectureGraphViewDocument,
+  ClassDiagramViewDocument,
   LinkGraphBootstrapState,
   LinkGraphDocument,
   LinkGraphLayoutState,
   LinkGraphNode,
   ResourceRelationViewDocument,
+  ReviewGraphViewDocument,
 } from "./types";
 import {
   EMPTY_STATE,
@@ -54,6 +57,12 @@ function resolveSceneId(
       return "WORKSPACE_FACT";
     case "RESOURCE_RELATION_VIEW":
       return "WORKSPACE_RESOURCE_RELATION";
+    case "ARCHITECTURE_GRAPH":
+      return "WORKSPACE_ARCHITECTURE_GRAPH";
+    case "CLASS_DIAGRAM":
+      return "WORKSPACE_CLASS_DIAGRAM";
+    case "REVIEW_GRAPH":
+      return "WORKSPACE_REVIEW_GRAPH";
     case "FLOWCHART":
     default:
       return "WORKSPACE_FLOWCHART";
@@ -138,6 +147,76 @@ function buildResourceRelationViewDocument(
   };
 }
 
+function buildArchitectureGraphViewDocument(
+  visibleGraph: LinkGraphDocument,
+  anchorNodeId: string | null,
+): ArchitectureGraphViewDocument {
+  return {
+    visibleGraph,
+    fullGraph: visibleGraph,
+    anchorNodeId,
+    summary: {
+      moduleCount: visibleGraph.nodes.filter((node) => node.type === "MODULE").length,
+      packageCount: visibleGraph.nodes.filter((node) => node.type === "PACKAGE").length,
+      serviceCount: visibleGraph.nodes.filter((node) => node.type === "SERVICE").length,
+      resourceCount: visibleGraph.nodes.filter((node) => node.type === "RESOURCE").length,
+      layerCount: visibleGraph.nodes.filter((node) => node.type === "LAYER").length,
+      relationCount: visibleGraph.edges.length,
+      classCount: visibleGraph.nodes
+        .map((node) => Number(node.metadata?.["architecture.classCount"] ?? node.metadata?.["architecture.package.classCount"] ?? "0"))
+        .filter(Number.isFinite)
+        .reduce((sum, count) => sum + count, 0),
+      truncated: visibleGraph.truncated === true,
+    },
+  };
+}
+
+function buildClassDiagramViewDocument(
+  visibleGraph: LinkGraphDocument,
+  anchorNodeId: string | null,
+): ClassDiagramViewDocument {
+  return {
+    visibleGraph,
+    fullGraph: visibleGraph,
+    anchorNodeId,
+    summary: {
+      classCount: visibleGraph.nodes.filter((node) => node.type === "CLASS").length,
+      fieldCount: visibleGraph.nodes
+        .map((node) => Number(node.metadata?.["uml.field.count"] ?? "0"))
+        .filter(Number.isFinite)
+        .reduce((sum, count) => sum + count, 0),
+      interfaceCount: visibleGraph.nodes.filter((node) => node.type === "INTERFACE").length,
+      enumCount: visibleGraph.nodes.filter((node) => node.type === "ENUM").length,
+      annotationCount: visibleGraph.nodes.filter((node) => node.type === "ANNOTATION").length,
+      recordCount: visibleGraph.nodes.filter((node) => node.type === "RECORD").length,
+      objectCount: visibleGraph.nodes.filter((node) => node.type === "OBJECT").length,
+      relationCount: visibleGraph.edges.length,
+      spiProviderCount: 0,
+      reflectionRelationCount: 0,
+    },
+  };
+}
+
+function buildReviewGraphViewDocument(
+  visibleGraph: LinkGraphDocument,
+  anchorNodeId: string | null,
+): ReviewGraphViewDocument {
+  return {
+    visibleGraph,
+    fullGraph: visibleGraph,
+    anchorNodeId,
+    summary: {
+      changedSymbolCount: visibleGraph.nodes.filter((node) => node.metadata?.["review.role"] === "CHANGED").length,
+      upstreamCount: visibleGraph.nodes.filter((node) => node.metadata?.["review.role"] === "UPSTREAM").length,
+      downstreamCount: visibleGraph.nodes.filter((node) => node.metadata?.["review.role"] === "DOWNSTREAM").length,
+      relatedTestCount: visibleGraph.nodes.filter((node) => node.metadata?.["review.role"] === "RELATED_TEST").length,
+      affectedPackageCount: 0,
+      affectedModuleCount: 0,
+      evidenceRefCount: visibleGraph.edges.filter((edge) => edge.metadata?.["review.edgeRole"] === "RELATION").length,
+    },
+  };
+}
+
 export function materializeThreeViewDocuments(
   state: TestBootstrapStateInput,
 ): TestBootstrapState {
@@ -181,6 +260,9 @@ export function materializeThreeViewDocuments(
     factGraphView: buildFactGraphViewDocument(visibleGraph, factFullGraph, anchorNodeId),
     flowchartView: buildFlowchartViewDocument(visibleGraph, anchorNodeId),
     resourceRelationView: buildResourceRelationViewDocument(visibleGraph, anchorNodeId),
+    architectureGraphView: buildArchitectureGraphViewDocument(visibleGraph, anchorNodeId),
+    classDiagramView: buildClassDiagramViewDocument(visibleGraph, anchorNodeId),
+    reviewGraphView: buildReviewGraphViewDocument(visibleGraph, anchorNodeId),
     sceneStates,
     visibleGraph,
     workingGraph,

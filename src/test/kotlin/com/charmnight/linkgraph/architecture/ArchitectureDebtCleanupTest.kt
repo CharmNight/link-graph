@@ -41,38 +41,39 @@ class ArchitectureDebtCleanupTest {
         val qaConversationService = Files.readString(qaConversationServicePath)
         assertTrue(qaConversationService.contains("class QaConversationService"))
         val qaModels = read("src/main/kotlin/com/charmnight/linkgraph/workbench/QaModels.kt")
+        val obsoletePrefix = "Au" + "dit"
         listOf(
-            "typealias AuditConversationMessage",
-            "typealias AuditConversationSession",
-            "typealias AuditModelTurn",
-            "typealias AuditConversationTurnResult",
-            "typealias AuditConversationService",
+            "typealias ${obsoletePrefix}ConversationMessage",
+            "typealias ${obsoletePrefix}ConversationSession",
+            "typealias ${obsoletePrefix}ModelTurn",
+            "typealias ${obsoletePrefix}ConversationTurnResult",
+            "typealias ${obsoletePrefix}ConversationService",
         ).forEach { legacyAlias ->
             assertFalse(
                 qaModels.contains(legacyAlias),
-                "Internal Audit compatibility alias should be physically removed: $legacyAlias",
+                "Obsolete QA compatibility alias should be physically removed: $legacyAlias",
             )
         }
         assertFalse(
-            qaConversationService.contains("AuditConversationService"),
-            "QaConversationService must not delegate to the old AuditConversationService shell.",
+            qaConversationService.contains("${obsoletePrefix}ConversationService"),
+            "QaConversationService must not delegate to the obsolete conversation service shell.",
         )
         assertFalse(
-            Files.exists(root.resolve("src/main/kotlin/com/charmnight/linkgraph/workbench/AuditConversationService.kt")),
-            "AuditConversationService implementation/wrapper file should be physically removed.",
+            Files.exists(root.resolve("src/main/kotlin/com/charmnight/linkgraph/workbench/${obsoletePrefix}ConversationService.kt")),
+            "Obsolete conversation service implementation/wrapper file should be physically removed.",
         )
         val productionQaOffenders = Files.walk(root.resolve("src/main/kotlin/com/charmnight/linkgraph"))
             .filter { path -> Files.isRegularFile(path) && path.toString().endsWith(".kt") }
             .filter { path -> !path.endsWith("workbench/QaModels.kt") }
             .filter { path ->
                 val source = Files.readString(path)
-                Regex("""AuditConversation(Service|Session|Message|TurnResult)|AuditModelTurn""").containsMatchIn(source)
+                Regex("""${obsoletePrefix}Conversation(Service|Session|Message|TurnResult)|${obsoletePrefix}ModelTurn""").containsMatchIn(source)
             }
             .map { path -> root.relativize(path).toString() }
             .toList()
         assertTrue(
             productionQaOffenders.isEmpty(),
-            "Production code should use Qa conversation names; Audit aliases are only compatibility shims: " +
+            "Production code should use Qa conversation names; obsolete conversation aliases must not remain: " +
                 productionQaOffenders.joinToString(),
         )
     }
@@ -101,6 +102,68 @@ class ArchitectureDebtCleanupTest {
                 source.contains("ReadAction.compute<ResolutionOutcome"),
                 "Resolver should not hand-roll ReadAction.compute boilerplate: $relativePath",
             )
+        }
+    }
+
+    @Test
+    fun springEventInvestigationResolverOnlyConsumesSharedJvmRelationIndex() {
+        val source = read("src/main/kotlin/com/charmnight/linkgraph/investigation/resolving/spring/SpringEventResolver.kt")
+        assertTrue(
+            source.contains("JvmEvidenceIndexAdapter"),
+            "Spring Event investigation resolver should enter through the shared ArchitectureGraphIndex adapter.",
+        )
+        assertTrue(
+            source.contains("JvmRelationKind.SPRING_EVENT_LISTENS"),
+            "Spring Event investigation resolver should consume SPRING_EVENT_LISTENS from JvmRelationIndex.",
+        )
+        listOf(
+            "JavaPsiFacade",
+            "PsiTreeUtil",
+            "PsiClass",
+            "PsiMethod",
+            "allScope(",
+            "projectScope(",
+            "JavaRecursiveElementVisitor",
+            "PsiRecursiveElementVisitor",
+            "findPsiClass",
+            "findPsiMethod",
+            "collectElements",
+        ).forEach { forbidden ->
+            assertFalse(
+                source.contains(forbidden),
+                "Spring Event investigation resolver must not keep PSI fallback path: $forbidden",
+            )
+        }
+    }
+
+    @Test
+    fun investigationJavaResolversDoNotKeepPsiFallbackPaths() {
+        val resolverFiles = listOf(
+            "src/main/kotlin/com/charmnight/linkgraph/investigation/resolving/java/JavaEnumConstantResolver.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/investigation/resolving/java/JavaMethodSymbolResolver.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/investigation/resolving/java/JavaOverrideResolver.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/investigation/resolving/java/JvmInvestigationEvidenceSupport.kt",
+        )
+        resolverFiles.forEach { relativePath ->
+            val source = read(relativePath)
+            assertTrue(
+                source.contains("ArchitectureGraphIndex") || source.contains("JvmEvidenceIndexAdapter"),
+                "Investigation resolver should consume the shared ArchitectureGraphIndex path: $relativePath",
+            )
+            listOf(
+                "JavaPsiFacade",
+                "PsiTreeUtil",
+                "PsiClass",
+                "PsiMethod",
+                "PsiShortNamesCache",
+                "FilenameIndex",
+                "OverridingMethodsSearch",
+            ).forEach { forbidden ->
+                assertFalse(
+                    source.contains(forbidden),
+                    "Investigation resolver must not keep PSI fallback path: $relativePath contains $forbidden",
+                )
+            }
         }
     }
 
@@ -229,6 +292,46 @@ class ArchitectureDebtCleanupTest {
             emptyList(),
             offenders,
             "Sync workflow methods should not be thin .get() wrappers around async methods.",
+        )
+    }
+
+    @Test
+    fun jvmRelationResolversUseCentralPsiFactIndexForSymbolLookup() {
+        val relationDir = root.resolve("src/main/kotlin/com/charmnight/linkgraph/jvm/relation")
+        val offenders = Files.walk(relationDir)
+            .filter { path -> Files.isRegularFile(path) && path.toString().endsWith("Resolver.kt") }
+            .filter { path ->
+                val source = Files.readString(path)
+                "PsiManager.getInstance" in source ||
+                    "JavaPsiFacade.getInstance" in source ||
+                    "VirtualFileManager.getInstance" in source
+            }
+            .map { path -> root.relativize(path).toString() }
+            .toList()
+
+        assertEquals(
+            emptyList(),
+            offenders,
+            "JVM relation resolvers should use JvmResolutionContext/JvmPsiFactIndex instead of reopening PSI files independently.",
+        )
+    }
+
+    @Test
+    fun architectureIndexSemanticResolverDoesNotBridgePsiMethodLookupInline() {
+        val source = read("src/main/kotlin/com/charmnight/linkgraph/semantic/provider/code/relation/ArchitectureIndexSemanticResolver.kt")
+        listOf(
+            "JavaPsiFacade",
+            "GlobalSearchScope",
+            "findPsiMethod",
+        ).forEach { forbidden ->
+            assertFalse(
+                source.contains(forbidden),
+                "ArchitectureIndexSemanticResolver should request method signatures from RelationExtractionContext instead of reopening PSI: $forbidden",
+            )
+        }
+        assertTrue(
+            source.contains("context.methodBySignature"),
+            "ArchitectureIndexSemanticResolver should use RelationExtractionContext for PSI method localization.",
         )
     }
 

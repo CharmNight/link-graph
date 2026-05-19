@@ -1,12 +1,18 @@
 import type {
   AnalysisDisplayMode,
+  ArchitectureGraphViewDocument,
+  ClassDiagramViewDocument,
   FactGraphViewDocument,
   FlowchartViewDocument,
   ResourceRelationViewDocument,
+  ReviewGraphViewDocument,
 } from "../types";
 import { FactGraphView } from "../views/fact/FactGraphView";
 import { FlowchartView } from "../views/flowchart/FlowchartView";
 import { ResourceRelationView } from "../views/resource/ResourceRelationView";
+import { ArchitectureGraphView } from "../views/architecture/ArchitectureGraphView";
+import { ClassDiagramView } from "../views/class-diagram/ClassDiagramView";
+import { ReviewGraphView } from "../views/review/ReviewGraphView";
 import type { ViewStageProps } from "../views/viewStageProps";
 
 interface AppGraphStageProps {
@@ -16,6 +22,9 @@ interface AppGraphStageProps {
   presentedFlowchartView: FlowchartViewDocument;
   flowchartView: FlowchartViewDocument;
   resourceRelationView: ResourceRelationViewDocument;
+  architectureGraphView: ArchitectureGraphViewDocument;
+  classDiagramView: ClassDiagramViewDocument;
+  reviewGraphView: ReviewGraphViewDocument;
 }
 
 export function AppGraphStage({
@@ -25,6 +34,9 @@ export function AppGraphStage({
   presentedFlowchartView,
   flowchartView,
   resourceRelationView,
+  architectureGraphView,
+  classDiagramView,
+  reviewGraphView,
 }: AppGraphStageProps) {
   if (analysisDisplayMode === "FLOWCHART") {
     return (
@@ -40,6 +52,30 @@ export function AppGraphStage({
       <ResourceRelationView
         {...stageProps}
         view={resourceRelationView}
+      />
+    );
+  }
+  if (analysisDisplayMode === "ARCHITECTURE_GRAPH") {
+    return (
+      <ArchitectureGraphView
+        {...stageProps}
+        view={architectureGraphView}
+      />
+    );
+  }
+  if (analysisDisplayMode === "CLASS_DIAGRAM") {
+    return (
+      <ClassDiagramView
+        {...stageProps}
+        view={classDiagramView}
+      />
+    );
+  }
+  if (analysisDisplayMode === "REVIEW_GRAPH") {
+    return (
+      <ReviewGraphView
+        {...stageProps}
+        view={reviewGraphView}
       />
     );
   }

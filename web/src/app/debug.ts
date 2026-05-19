@@ -13,6 +13,7 @@ declare global {
 }
 
 const TRACE_HISTORY_LIMIT = 24;
+const TRACE_BRIDGE_PAYLOAD_MAX_CHARS = 60 * 1024;
 const NOISY_FRONTEND_TRACE_EVENTS = new Set([
   "routedEdge.render",
 ]);
@@ -96,7 +97,7 @@ export function traceLinkGraph(event: string, payload?: unknown): void {
     payload: payload ?? null,
   };
   try {
-    const serialized = JSON.stringify(message);
+    const serialized = serializeTraceMessage(message);
     window.__linkGraphLastTrace = serialized;
     window.__linkGraphTraceHistory = window.__linkGraphTraceHistory ?? [];
     window.__linkGraphTraceHistory.push(serialized);
@@ -131,6 +132,21 @@ export function traceLinkGraph(event: string, payload?: unknown): void {
     window.__linkGraphTraceBuffer = window.__linkGraphTraceBuffer ?? [];
     window.__linkGraphTraceBuffer.push(fallbackMessage);
   }
+}
+
+function serializeTraceMessage(message: { time: string; event: string; payload: unknown }): string {
+  const serialized = JSON.stringify(message);
+  if (serialized.length <= TRACE_BRIDGE_PAYLOAD_MAX_CHARS) {
+    return serialized;
+  }
+  return JSON.stringify({
+    time: message.time,
+    event: message.event,
+    payload: {
+      truncated: true,
+      originalLength: serialized.length,
+    },
+  });
 }
 
 export function traceLinkGraphStartup(event: string, payload?: unknown): void {

@@ -83,6 +83,9 @@ internal class GraphEditorApplicationProjectionService(
     private fun sourceNavigationPresenter(): SourceNavigationStatePresenter =
         SourceNavigationStatePresenter(stateService, syncNotifier::requestSync)
 
+    private fun architecturePresenter(): ArchitectureGraphStatePresenter =
+        ArchitectureGraphStatePresenter(stateService, syncNotifier::requestSync)
+
     private fun draftPatchPresenter(): DraftPatchStatePresenter =
         DraftPatchStatePresenter(stateService, syncNotifier::requestSync)
 
@@ -125,6 +128,12 @@ internal class GraphEditorApplicationProjectionService(
                 subjectPresenter().presentSelectedMethod(event.signature)
             is GraphEditorApplicationEvent.AnalysisOutcomeLoaded ->
                 subjectPresenter().presentAnalysisOutcome(event.outcome, event.source)
+            is GraphEditorApplicationEvent.ArchitectureGraphLoaded ->
+                architecturePresenter().presentArchitectureGraph(event.view)
+            is GraphEditorApplicationEvent.ClassDiagramLoaded ->
+                architecturePresenter().presentClassDiagram(event.view)
+            is GraphEditorApplicationEvent.ReviewGraphLoaded ->
+                architecturePresenter().presentReviewGraph(event.view)
             is GraphEditorApplicationEvent.DebugGraphLoaded ->
                 subjectPresenter().presentDebugGraphLoaded(
                     graph = event.graph,

@@ -42,6 +42,20 @@ internal object LinkGraphRenderTrace {
         if (graph == null) {
             return "nodes=0, edges=0"
         }
-        return "nodes=${graph.nodes.size}, edges=${graph.edges.size}"
+        val nodeTypes = graph.nodes
+            .groupingBy { node -> node.type.name }
+            .eachCount()
+            .toSortedMap()
+            .entries
+            .joinToString(separator = "|") { (type, count) -> "$type:$count" }
+            .ifBlank { "none" }
+        val sampleNodeIds = graph.nodes
+            .asSequence()
+            .map { node -> node.id }
+            .sorted()
+            .take(6)
+            .joinToString(separator = "|")
+            .ifBlank { "none" }
+        return "nodes=${graph.nodes.size}, edges=${graph.edges.size}, nodeTypes=$nodeTypes, sampleNodeIds=$sampleNodeIds"
     }
 }

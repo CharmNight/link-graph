@@ -2,7 +2,9 @@ import {
   applyCodeDrafts,
   exportMermaid,
   requestAnalysisDisplayMode,
+  requestArchitectureGraph,
   requestCodeDraftsAsync,
+  requestClassDiagram,
   requestDraftNavigation,
   requestExpandOverflowNode,
   requestExpandInvocation,
@@ -10,6 +12,7 @@ import {
   requestGenerationPlanDiscussionAsync,
   requestRemoveInvocationExpansion,
   requestOpenSettings,
+  requestReviewGraph,
   requestSyncPreview,
   showDiffMode,
 } from "../api";
@@ -26,8 +29,24 @@ interface UseWorkbenchCommandControllerArgs {
 export function useWorkbenchCommandController({
   bridgeCommands,
 }: UseWorkbenchCommandControllerArgs) {
-  function handleRequestAnalysisDisplayMode(displayMode: AnalysisDisplayMode) {
+  function handleRequestAnalysisDisplayMode(displayMode: AnalysisDisplayMode, selectedDiffItemIds: string[] = []) {
+    if (displayMode === "ARCHITECTURE_GRAPH") {
+      bridgeCommands.runBridgeCommand("加载架构图", () => requestArchitectureGraph());
+      return;
+    }
+    if (displayMode === "CLASS_DIAGRAM") {
+      bridgeCommands.runBridgeCommand("加载类图", () => requestClassDiagram());
+      return;
+    }
+    if (displayMode === "REVIEW_GRAPH") {
+      bridgeCommands.runBridgeCommand("加载 Review Graph", () => requestReviewGraph(selectedDiffItemIds));
+      return;
+    }
     bridgeCommands.runBridgeCommand("切换展示模式", () => requestAnalysisDisplayMode(displayMode));
+  }
+
+  function handleRequestClassDiagram(scopeNodeId?: string | null) {
+    bridgeCommands.runBridgeCommand("加载类图", () => requestClassDiagram(scopeNodeId ?? null));
   }
 
   function handleExportMermaid() {
@@ -124,6 +143,7 @@ export function useWorkbenchCommandController({
 
   return {
     handleRequestAnalysisDisplayMode,
+    handleRequestClassDiagram,
     handleExportMermaid,
     handleShowDiffMode,
     handleRequestSyncPreview,

@@ -3,6 +3,8 @@ package com.charmnight.linkgraph.ui
 import com.charmnight.linkgraph.mermaid.MermaidIssue
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
+import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
 
@@ -31,6 +33,10 @@ internal interface GraphEditorStateMutationContext {
         outcome: AnalysisOutcome,
         source: String,
     )
+
+    fun loadArchitectureGraphView(view: ArchitectureGraphViewDocument)
+
+    fun loadClassDiagramView(view: ClassDiagramViewDocument)
 
     fun importMermaid(
         mermaid: String,
@@ -116,6 +122,12 @@ internal class LiveGraphEditorStateMutationContext(
         outcome: AnalysisOutcome,
         source: String,
     ) = graph.loadAnalysisOutcome(outcome, source)
+
+    override fun loadArchitectureGraphView(view: ArchitectureGraphViewDocument) =
+        graph.loadArchitectureGraphView(view)
+
+    override fun loadClassDiagramView(view: ClassDiagramViewDocument) =
+        graph.loadClassDiagramView(view)
 
     override fun importMermaid(
         mermaid: String,

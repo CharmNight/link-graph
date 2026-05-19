@@ -134,6 +134,21 @@ class QaEvidenceAnchorResolver {
                 fullGraph = snapshot.factGraphView.fullGraph,
                 projectionIndex = snapshot.factGraphView.projectionIndex,
             )
+            ToolGraphSceneId.WORKSPACE_ARCHITECTURE_GRAPH -> CurrentView(
+                visibleGraph = snapshot.architectureGraphView.visibleGraph,
+                fullGraph = snapshot.architectureGraphView.fullGraph,
+                projectionIndex = snapshot.architectureGraphView.projectionIndex,
+            )
+            ToolGraphSceneId.WORKSPACE_CLASS_DIAGRAM -> CurrentView(
+                visibleGraph = snapshot.classDiagramView.visibleGraph,
+                fullGraph = snapshot.classDiagramView.fullGraph,
+                projectionIndex = snapshot.classDiagramView.projectionIndex,
+            )
+            ToolGraphSceneId.WORKSPACE_REVIEW_GRAPH -> CurrentView(
+                visibleGraph = snapshot.reviewGraphView.visibleGraph,
+                fullGraph = snapshot.reviewGraphView.fullGraph,
+                projectionIndex = snapshot.reviewGraphView.projectionIndex,
+            )
             ToolGraphSceneId.DIFF -> CurrentView(
                 visibleGraph = snapshot.diffGraph ?: GraphDocument(),
                 fullGraph = snapshot.diffGraph ?: GraphDocument(),

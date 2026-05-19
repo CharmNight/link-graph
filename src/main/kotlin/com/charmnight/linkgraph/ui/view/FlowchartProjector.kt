@@ -36,6 +36,10 @@ class FlowchartProjector(
                 visibleGraph = visibleGraph,
                 fullGraph = fullGraph,
             ),
+            projectionIndex = graphProjectionIndexForVisibleGraph(
+                visibleGraph = visibleGraph,
+                fullGraph = fullGraph,
+            ),
         )
     }
 

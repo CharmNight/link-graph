@@ -15,6 +15,9 @@ internal fun currentVisibleGraph(snapshot: WorkflowEditorSnapshot): GraphDocumen
             com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode.FACT_GRAPH -> snapshot.factGraphView.visibleGraph
             com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode.FLOWCHART -> snapshot.flowchartView.visibleGraph
             com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> snapshot.resourceRelationView.visibleGraph
+            com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode.ARCHITECTURE_GRAPH -> snapshot.architectureGraphView.visibleGraph
+            com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode.CLASS_DIAGRAM -> snapshot.classDiagramView.visibleGraph
+            com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode.REVIEW_GRAPH -> snapshot.reviewGraphView.visibleGraph
             null -> GraphDocument()
         }
     }

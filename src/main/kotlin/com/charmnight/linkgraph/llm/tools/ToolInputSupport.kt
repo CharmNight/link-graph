@@ -20,6 +20,14 @@ internal inline fun <reified T> Map<String, Any?>.optionalList(key: String): Lis
     return (this[key] as? List<*>).orEmpty().filterIsInstance<T>()
 }
 
+internal fun Map<String, Any?>.optionalStringList(key: String): List<String> {
+    return when (val value = this[key]) {
+        is List<*> -> value.mapNotNull { item -> item?.toString()?.trim()?.takeIf(String::isNotEmpty) }
+        is String -> value.split(',', '\n').map(String::trim).filter(String::isNotEmpty)
+        else -> emptyList()
+    }
+}
+
 internal fun AgentTool.missingRequired(key: String): ToolResult {
     return failure("$key 不能为空")
 }
