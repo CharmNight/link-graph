@@ -1,12 +1,12 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
-import com.charmnight.linkgraph.application.port.ApplicationRuntimeArtifactSummary
-import com.charmnight.linkgraph.application.port.CodeDraftWritePresentation
-import com.charmnight.linkgraph.application.port.GeneratedCodeDraftsPresentation
-import com.charmnight.linkgraph.application.port.GenerationPlanPresentation
-import com.charmnight.linkgraph.application.port.GenerationRequestScene
-import com.charmnight.linkgraph.application.port.GenerationRequestStartedPresentation
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.ApplicationRuntimeArtifactSummary
+import com.charmnight.linkgraph.application.result.CodeDraftWriteResult
+import com.charmnight.linkgraph.application.result.GeneratedCodeDraftsResult
+import com.charmnight.linkgraph.application.result.GenerationPlanResult
+import com.charmnight.linkgraph.application.result.GenerationRequestScene
+import com.charmnight.linkgraph.application.result.GenerationRequestStartedResult
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.llm.GenerationPlan
@@ -26,12 +26,12 @@ class GenerationStatePresenterTest {
         )
 
         presenter.presentGenerationPlan(
-            GenerationPlanPresentation(
+            GenerationPlanResult(
                 plan = plan,
                 requestState = AsyncRequestState.succeeded(scene = "实现计划", statusMessage = "实现计划已生成。"),
                 runtimeArtifacts = listOf(ApplicationRuntimeArtifactSummary("artifact-1", "plan", "Plan")),
                 feedbackLevel = ApplicationFeedbackLevel.SUCCESS,
-                feedbackMessage = "实现计划已生成。",
+                statusMessage = "实现计划已生成。",
             ),
         )
 
@@ -48,10 +48,10 @@ class GenerationStatePresenterTest {
         val presenter = GenerationStatePresenter(stateService)
 
         presenter.presentCodeDraftWriteReport(
-            CodeDraftWritePresentation(
+            CodeDraftWriteResult(
                 report = GeneratedCodeDraftWriteReport(writtenFiles = listOf("src/App.kt")),
                 feedbackLevel = ApplicationFeedbackLevel.SUCCESS,
-                feedbackMessage = "代码草稿已写入当前文件。",
+                statusMessage = "代码草稿已写入当前文件。",
             ),
         )
 
@@ -67,7 +67,7 @@ class GenerationStatePresenterTest {
         val presenter = GenerationStatePresenter(stateService)
 
         presenter.presentGeneratedCodeDrafts(
-            GeneratedCodeDraftsPresentation(
+            GeneratedCodeDraftsResult(
                 drafts = listOf(
                     GeneratedCodeDraft(
                         id = "draft-1",
@@ -82,7 +82,7 @@ class GenerationStatePresenterTest {
                 requestState = AsyncRequestState.succeeded(scene = "代码草稿", statusMessage = "代码草稿已生成。"),
                 runtimeArtifacts = listOf(ApplicationRuntimeArtifactSummary("artifact-1", "codegen", "Codegen")),
                 feedbackLevel = ApplicationFeedbackLevel.SUCCESS,
-                feedbackMessage = "代码草稿已生成。",
+                statusMessage = "代码草稿已生成。",
             ),
         )
 
@@ -102,10 +102,10 @@ class GenerationStatePresenterTest {
         }
 
         presenter.presentRequestStarted(
-            GenerationRequestStartedPresentation(
+            GenerationRequestStartedResult(
                 scene = GenerationRequestScene.PLAN,
                 requestState = AsyncRequestState.running(requestId = 42L, scene = "实现计划", streaming = true),
-                feedbackMessage = "正在生成实现计划。",
+                statusMessage = "正在生成实现计划。",
             ),
         )
 

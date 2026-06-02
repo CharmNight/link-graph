@@ -1,20 +1,20 @@
 package com.charmnight.linkgraph.investigation.resolving.java
 
+import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
 import com.charmnight.linkgraph.investigation.domain.EvidenceFact
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoal
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoalKind
 import com.charmnight.linkgraph.investigation.domain.EvidenceLevel
 import com.charmnight.linkgraph.investigation.domain.ResolutionOutcome
 import com.charmnight.linkgraph.investigation.resolving.InvestigationContext
-import com.charmnight.linkgraph.investigation.resolving.ReadActionEvidenceResolver
 import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
 
 /**
  * 解析 Java SPI 的 `META-INF/services/<接口全限定名>` 配置绑定。
  */
 class JavaSpiResolver(
-    private val jvmEvidenceIndexAdapter: JvmEvidenceIndexAdapter = JvmEvidenceIndexAdapter(),
-) : ReadActionEvidenceResolver() {
+    jvmEvidenceIndexAdapter: JvmEvidenceIndexAdapter = JvmEvidenceIndexAdapter(),
+) : JvmIndexReadActionEvidenceResolver(jvmEvidenceIndexAdapter) {
     /** 保存解析器稳定标识。 */
     override val id: String = "java-spi-binding"
 
@@ -31,20 +31,19 @@ class JavaSpiResolver(
     override fun resolveInReadAction(
         goal: EvidenceGoal,
         context: InvestigationContext,
+        index: ArchitectureGraphIndex,
     ): ResolutionOutcome {
         val interfaceName = goal.interfaceName?.takeIf(String::isNotBlank)
             ?: return unresolved(goal, "缺少 SPI 接口全限定名。")
-        return resolveFromJvmIndex(goal, context, interfaceName)
+        return resolveFromJvmIndex(goal, index, interfaceName)
             ?: unresolved(goal, "未从共享 JVM 关系索引找到 META-INF/services/$interfaceName 的 provider。")
     }
 
     private fun resolveFromJvmIndex(
         goal: EvidenceGoal,
-        context: InvestigationContext,
+        index: ArchitectureGraphIndex,
         interfaceName: String,
     ): ResolutionOutcome.Resolved? {
-        val index = runCatching { jvmEvidenceIndexAdapter.buildIndex(context.project) }.getOrNull()
-            ?: return null
         val interfaceSymbol = index.findClass(interfaceName) ?: return null
         val relations = index.relationIndex.incoming(interfaceSymbol.id)
             .filter { relation -> relation.kind == JvmRelationKind.SPI_PROVIDES }

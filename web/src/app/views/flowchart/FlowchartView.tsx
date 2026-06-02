@@ -2,6 +2,7 @@ import { useEffect, useMemo } from "react";
 import { buildEdgeActions as buildSharedEdgeActions, buildPaneActions } from "../../components/graph/actions/actionSchema";
 import { projectedAliasNodeIds } from "../../appGraphSupport";
 import { traceLinkGraph } from "../../debug";
+import { canEditProjectedEdge, canEditProjectedNode } from "../../graphProjectionPermissions";
 import { createNodeSizeRegistry } from "../../graph/nodeSizeRegistry";
 import { flowchartNodeCardWidth } from "../../graphNodeSizing";
 import { useMeasuredLayout } from "../../reactflow/useMeasuredLayout";
@@ -9,7 +10,7 @@ import { GraphFlowSurface } from "../../reactflow/GraphFlowSurface";
 import { canNavigateToSource } from "../../sourceNavigation";
 import type { FlowchartViewDocument, LinkGraphDocument, LinkGraphEdge } from "../../types";
 import { DraftCompareSummary } from "../../components/DraftCompareSummary";
-import type { ViewStageProps } from "../viewStageProps";
+import type { EditableStageProps } from "../viewStageProps";
 import { layoutFlowchartView } from "./flowchartLayout";
 import {
   buildFlowchartEdges,
@@ -17,7 +18,7 @@ import {
   FLOWCHART_NODE_TYPES,
 } from "./flowchartNodes";
 
-interface FlowchartViewProps extends ViewStageProps {
+interface FlowchartViewProps extends EditableStageProps {
   view: FlowchartViewDocument;
   layoutView?: FlowchartViewDocument;
 }
@@ -185,6 +186,7 @@ function flowchartNodeActions(args: {
   invocationExpansionActionLabel?: string | null;
   invocationExpansionNodeId?: string | null;
   expansionId?: string | null;
+  canDeleteNode: boolean;
   onInspectNode: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
   onRequestSourceNavigation: (nodeId: string) => void;
@@ -246,7 +248,7 @@ function flowchartNodeActions(args: {
     },
     {
       id: "set-qa-anchor",
-      label: "设为问答范围起点",
+      label: "设为问答目标",
       onSelect: () => {
         args.onOpenQa(args.nodeId);
         args.onClose();
@@ -272,7 +274,7 @@ function flowchartNodeActions(args: {
       },
     });
   }
-  if (args.editable) {
+  if (args.editable && args.canDeleteNode) {
     actions.push({
       id: "delete-node",
       label: "删除节点",
@@ -416,6 +418,7 @@ export function FlowchartView({
       explanationFocusNodeId,
       draftChangedNodeIds,
       draftCompareNodeStatuses: draftCompareProjection?.nodeStatuses,
+      projectionIndex: view.projectionIndex ?? null,
       nodeSizeRegistry,
     }),
     [
@@ -425,6 +428,7 @@ export function FlowchartView({
       explanationFocusNodeId,
       draftChangedNodeIds,
       draftCompareProjection?.nodeStatuses,
+      view.projectionIndex,
       nodeSizeRegistry,
     ],
   );
@@ -575,6 +579,7 @@ export function FlowchartView({
               nodeId,
               canOpenSource: canNavigateToSource(node ?? fallbackSourceNode()),
               editable: true,
+              canDeleteNode: canEditProjectedNode(view.projectionIndex, nodeId, "DELETE_NODE"),
               invocationExpansionActionLabel: invocationExpansionNodeId ? "展开被调方法" : null,
               invocationExpansionNodeId,
               expansionId: node?.metadata?.["linkGraph.expansion.id"] ?? null,
@@ -592,31 +597,39 @@ export function FlowchartView({
           }
         }
         buildEdgeActions={({ edgeId, close }) =>
-          [
-            {
-              id: "insert-method",
-              label: "在线路中插入方法节点",
-              onSelect: () => {
-                onInsertNodeIntoEdge(edgeId, "METHOD");
-                close();
-              },
-            },
-            {
-              id: "insert-doc",
-              label: "在线路中插入说明节点",
-              onSelect: () => {
-                onInsertNodeIntoEdge(edgeId, "DOC_PAGE");
-                close();
-              },
-            },
-            ...buildSharedEdgeActions({
-              analysisDisplayMode: "FLOWCHART",
-              editable: true,
-              edgeId,
-              onDeleteEdge,
-              onClose: close,
-            }),
-          ]
+          {
+            const canInsertNode = canEditProjectedEdge(view.projectionIndex, edgeId, "INSERT_NODE_INTO_EDGE");
+            return [
+              ...(canInsertNode
+                ? [
+                    {
+                      id: "insert-method",
+                      label: "在线路中插入方法节点",
+                      onSelect: () => {
+                        onInsertNodeIntoEdge(edgeId, "METHOD");
+                        close();
+                      },
+                    },
+                    {
+                      id: "insert-doc",
+                      label: "在线路中插入说明节点",
+                      onSelect: () => {
+                        onInsertNodeIntoEdge(edgeId, "DOC_PAGE");
+                        close();
+                      },
+                    },
+                  ]
+                : []),
+              ...buildSharedEdgeActions({
+                analysisDisplayMode: "FLOWCHART",
+                editable: true,
+                edgeId,
+                canEditEdge: (command) => canEditProjectedEdge(view.projectionIndex, edgeId, command),
+                onDeleteEdge,
+                onClose: close,
+              }),
+            ];
+          }
         }
         onSelectNode={onSelectNode}
         onSelectionGroupChange={onSelectionGroupChange}

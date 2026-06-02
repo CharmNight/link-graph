@@ -308,6 +308,8 @@ export function nodeTypeLabel(value: NodeType): string {
       return "依赖库";
     case "SERVICE":
       return "服务";
+    case "COMPONENT":
+      return "组件";
     case "LAYER":
       return "架构层";
     case "RESOURCE":
@@ -385,7 +387,7 @@ export function analysisDisplayModeLabel(value: AnalysisDisplayMode): string {
     case "RESOURCE_RELATION_VIEW":
       return "资源关系";
     case "ARCHITECTURE_GRAPH":
-      return "架构图";
+      return "项目结构";
     case "CLASS_DIAGRAM":
       return "类图";
     case "REVIEW_GRAPH":

@@ -546,14 +546,14 @@ describe("QaTab", () => {
             sourceContext: [
               {
                 nodeId: "method:resource-scheduled",
-                filePath: "/Users/night/work/secyun-openscanning/src/main/java/com/secyun/resource/schedule/ResourceScheduled.java",
+                filePath: "/workspace/example/src/main/java/com/example/resource/schedule/ResourceScheduled.java",
                 startLine: 20,
                 endLine: 24,
                 snippet: duplicateSnippet,
               },
               {
                 nodeId: "flow-action:resource-scheduled-projection",
-                filePath: "/Users/night/work/secyun-openscanning/src/main/java/com/secyun/resource/schedule/ResourceScheduled.java",
+                filePath: "/workspace/example/src/main/java/com/example/resource/schedule/ResourceScheduled.java",
                 startLine: 20,
                 endLine: 24,
                 snippet: duplicateSnippet,
@@ -572,7 +572,7 @@ describe("QaTab", () => {
 
     expect(screen.getByRole("article", { name: "源码片段 1 ResourceScheduled.java" })).toBeInTheDocument();
     expect(screen.getAllByText("ResourceScheduled.java")).toHaveLength(1);
-    expect(screen.getByText("/Users/night/work/secyun-openscanning/src/main/java/com/secyun/resource/schedule/ResourceScheduled.java")).toBeInTheDocument();
+    expect(screen.getByText("/workspace/example/src/main/java/com/example/resource/schedule/ResourceScheduled.java")).toBeInTheDocument();
     expect(screen.getByText((_, element) => (
       element?.tagName === "CODE" &&
         element.textContent === duplicateSnippet

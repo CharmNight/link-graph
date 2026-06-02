@@ -1,5 +1,12 @@
 package com.charmnight.linkgraph.ui
 
+import com.charmnight.linkgraph.application.indexed.IndexedClassDiagramOptions
+import com.charmnight.linkgraph.application.indexed.IndexedGraphPreset
+import com.charmnight.linkgraph.application.indexed.IndexedGraphPresetRequest
+import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
+import com.charmnight.linkgraph.application.indexed.IndexedGraphRequestFactory
+import com.charmnight.linkgraph.application.indexed.IndexedGraphViewportOptions
+import com.charmnight.linkgraph.application.indexed.IndexedReviewGraphOptions
 import com.charmnight.linkgraph.llm.LlmJsonSupport
 import com.charmnight.linkgraph.application.model.GraphEditOperation
 import com.charmnight.linkgraph.model.BindingStatus
@@ -9,16 +16,8 @@ import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
-import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
-import com.charmnight.linkgraph.workbench.QaMode
-import com.charmnight.linkgraph.workbench.RiskResolutionStatus
-import com.charmnight.linkgraph.workbench.StepGranularity
-import java.net.URLDecoder
-import java.nio.charset.StandardCharsets
 
 internal object GraphBrowserPayloadParser {
-    private const val PAYLOAD_SEPARATOR: String = "\u001F"
-
     fun validatePayloadSize(
         payload: String,
         kind: GraphBrowserPayloadKind,
@@ -27,33 +26,6 @@ internal object GraphBrowserPayloadParser {
             "${kind.label} payload 过大：${payload.length} chars，最大允许 ${kind.maxChars} chars。"
         }
     }
-
-    data class GenerationPlanDiscussionPayload(
-        val question: String,
-        val focusItemId: String?,
-    )
-
-    data class QaRequestPayload(
-        val question: String,
-        val selectedNodeIds: List<String>,
-        val sourceThreadId: String?,
-        val mode: QaMode,
-    )
-
-    data class ResolveInvestigationThreadPayload(
-        val threadId: String,
-        val resolutionStatus: RiskResolutionStatus,
-        val note: String,
-    )
-
-    data class BeautificationPayload(
-        val goal: String,
-        val preferredStyle: String?,
-        val explanationFocus: String?,
-        val focusNodeId: String?,
-        val followUp: GraphBeautificationFollowUpContext?,
-        val granularity: StepGranularity,
-    )
 
     fun parseGraphEditScript(payload: String): GraphEditScript {
         validatePayloadSize(payload, GraphBrowserPayloadKind.GRAPH_EDIT_SCRIPT)
@@ -74,131 +46,46 @@ internal object GraphBrowserPayloadParser {
         )
     }
 
-    fun parseQuestionWithIds(payload: String): Pair<String, List<String>> {
+    fun parseIndexedGraphRequest(payload: String): IndexedGraphRequest {
         validatePayloadSize(payload, GraphBrowserPayloadKind.STRUCTURED)
-        val parts = payload.split(PAYLOAD_SEPARATOR, limit = 2)
-        val question = decodePayloadValue(parts.firstOrNull().orEmpty())
-        val selectedNodeIds = parseEncodedList(parts.getOrNull(1).orEmpty())
-        return question to selectedNodeIds
-    }
-
-    fun parseGenerationPlanDiscussionPayload(payload: String): GenerationPlanDiscussionPayload {
-        validatePayloadSize(payload, GraphBrowserPayloadKind.STRUCTURED)
-        val parts = payload.split(PAYLOAD_SEPARATOR, limit = 2)
-        return GenerationPlanDiscussionPayload(
-            question = decodePayloadValue(parts.firstOrNull().orEmpty()),
-            focusItemId = parts.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue),
+        val root = LlmJsonSupport.parseObject(payload)
+        val preset = root.enumValue<IndexedGraphPreset>("preset")
+            ?: error("indexed graph request preset is required")
+        return IndexedGraphRequestFactory.fromPreset(
+            IndexedGraphPresetRequest(
+                preset = preset,
+                packageName = root["packageName"] as? String,
+                scopeNodeId = root["scopeNodeId"] as? String,
+                selectedDiffItemIds = root.stringList("selectedDiffItemIds"),
+                includeExternalLibraries = root.booleanOrNull("includeExternalLibraries"),
+                includeJdk = root.booleanOrNull("includeJdk"),
+                viewport = parseIndexedViewport(root["viewport"] as? Map<*, *>),
+                classDiagram = (root["classDiagram"] as? Map<*, *>)?.let(::parseIndexedClassDiagramOptions),
+                review = (root["review"] as? Map<*, *>)?.let(::parseIndexedReviewOptions),
+            ),
         )
     }
 
-    fun parseQaRequestPayload(payload: String): QaRequestPayload {
-        validatePayloadSize(payload, GraphBrowserPayloadKind.STRUCTURED)
-        val parts = payload.split(PAYLOAD_SEPARATOR, limit = 4)
-        return QaRequestPayload(
-            question = decodePayloadValue(parts.firstOrNull().orEmpty()),
-            selectedNodeIds = parseEncodedList(parts.getOrNull(1).orEmpty()),
-            sourceThreadId = parts.getOrNull(2)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue),
-            mode = parts.getOrNull(3)
-                ?.takeIf { it.isNotBlank() }
-                ?.let(::decodePayloadValue)
-                ?.let { raw -> runCatching { QaMode.valueOf(raw) }.getOrDefault(QaMode.AUTO) }
-                ?: QaMode.AUTO,
+    private fun parseIndexedViewport(raw: Map<*, *>?): IndexedGraphViewportOptions =
+        IndexedGraphViewportOptions(
+            maxVisibleNodes = raw?.intOrNull("maxVisibleNodes"),
+            maxVisibleEdges = raw?.intOrNull("maxVisibleEdges"),
         )
-    }
 
-    fun parseDraftPatchPreviewSource(payload: String): GraphEditorMessage.DraftPatchPreviewSource {
-        validatePayloadSize(payload, GraphBrowserPayloadKind.IDENTIFIER)
-        return GraphEditorMessage.DraftPatchPreviewSource.valueOf(payload)
-    }
-
-    fun parseResolveInvestigationThreadPayload(payload: String): ResolveInvestigationThreadPayload {
-        validatePayloadSize(payload, GraphBrowserPayloadKind.STRUCTURED)
-        val parts = payload.split(PAYLOAD_SEPARATOR, limit = 3)
-        val threadId = decodePayloadValue(parts.firstOrNull().orEmpty()).ifBlank {
-            error("风险线程标识不能为空")
-        }
-        val resolutionStatus = parts.getOrNull(1)
-            ?.takeIf { it.isNotBlank() }
-            ?.let(::decodePayloadValue)
-            ?.let(RiskResolutionStatus::valueOf)
-            ?: error("风险决策状态不能为空")
-        val note = parts.getOrNull(2)?.let(::decodePayloadValue).orEmpty()
-        return ResolveInvestigationThreadPayload(
-            threadId = threadId,
-            resolutionStatus = resolutionStatus,
-            note = note,
+    private fun parseIndexedClassDiagramOptions(raw: Map<*, *>?): IndexedClassDiagramOptions =
+        IndexedClassDiagramOptions(
+            neighborhoodLimit = raw?.intOrNull("neighborhoodLimit") ?: 24,
+            memberLimit = raw?.intOrNull("memberLimit") ?: 5,
         )
-    }
 
-    fun parseBeautificationPayload(payload: String): BeautificationPayload {
-        validatePayloadSize(payload, GraphBrowserPayloadKind.STRUCTURED)
-        val parts = payload.split(PAYLOAD_SEPARATOR, limit = 8)
-        val goal = decodePayloadValue(parts.getOrNull(0).orEmpty())
-        val preferredStyle = parts.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
-        val explanationFocus = parts.getOrNull(2)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
-        val granularity = parts.getOrNull(3)
-            ?.takeIf { it.isNotBlank() }
-            ?.let(::decodePayloadValue)
-            ?.let { raw -> runCatching { StepGranularity.valueOf(raw) }.getOrDefault(StepGranularity.BUSINESS) }
-            ?: StepGranularity.BUSINESS
-        val followUpStepId = parts.getOrNull(4)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
-        val followUpStepTitle = parts.getOrNull(5)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
-        val followUpQuestion = parts.getOrNull(6)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
-        val focusNodeId = parts.getOrNull(7)?.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
-        val followUp = if (
-            followUpStepId != null &&
-            followUpStepTitle != null &&
-            followUpQuestion != null
-        ) {
-            GraphBeautificationFollowUpContext(
-                stepId = followUpStepId,
-                stepTitle = followUpStepTitle,
-                question = followUpQuestion,
-            )
-        } else {
-            null
-        }
-        return BeautificationPayload(goal, preferredStyle, explanationFocus, focusNodeId, followUp, granularity)
-    }
+    private fun parseIndexedReviewOptions(raw: Map<*, *>?): IndexedReviewGraphOptions =
+        IndexedReviewGraphOptions(
+            maxChangedNodes = raw?.intOrNull("maxChangedNodes") ?: 120,
+            maxRelatedTestNodes = raw?.intOrNull("maxRelatedTestNodes") ?: 40,
+            maxUpstreamNodes = raw?.intOrNull("maxUpstreamNodes") ?: 40,
+            maxDownstreamNodes = raw?.intOrNull("maxDownstreamNodes") ?: 40,
+        )
 
-    fun parseNullableRevision(payload: String): Long? {
-        validatePayloadSize(payload, GraphBrowserPayloadKind.IDENTIFIER)
-        return payload.trim().takeIf { it.isNotEmpty() }?.toLongOrNull()
-    }
-
-    fun parseEncodedList(payload: String): List<String> {
-        validatePayloadSize(payload, GraphBrowserPayloadKind.STRUCTURED)
-        if (payload.isBlank()) {
-            return emptyList()
-        }
-        return payload
-            .split(',')
-            .mapNotNull { raw ->
-                raw.takeIf { it.isNotBlank() }?.let(::decodePayloadValue)
-            }
-    }
-
-    fun parseLayoutPositions(payload: String): Map<String, GraphLayoutPosition> {
-        validatePayloadSize(payload, GraphBrowserPayloadKind.GRAPH_EDIT_SCRIPT)
-        if (payload.isBlank()) {
-            return emptyMap()
-        }
-        return payload
-            .split('\u001e')
-            .mapNotNull { entry ->
-                val parts = entry.split(PAYLOAD_SEPARATOR)
-                if (parts.size != 3) {
-                    return@mapNotNull null
-                }
-                val nodeId = decodePayloadValue(parts[0])
-                val x = parts[1].toDoubleOrNull() ?: return@mapNotNull null
-                val y = parts[2].toDoubleOrNull() ?: return@mapNotNull null
-                nodeId to GraphLayoutPosition(x = x, y = y)
-            }
-            .toMap()
-    }
-
-    private fun decodePayloadValue(value: String): String = URLDecoder.decode(value, StandardCharsets.UTF_8)
 
     private fun parseGraphEditOperation(
         raw: Map<*, *>?,
@@ -297,6 +184,20 @@ internal object GraphBrowserPayloadParser {
             mapKey to mapValue
         }.toMap()
     }
+
+    private inline fun <reified T : Enum<T>> Map<*, *>.enumValue(key: String): T? {
+        val raw = this[key] as? String ?: return null
+        return enumValues<T>().firstOrNull { it.name == raw }
+    }
+
+    private fun Map<*, *>.booleanOrDefault(
+        key: String,
+        defaultValue: Boolean,
+    ): Boolean = (this[key] as? Boolean) ?: defaultValue
+
+    private fun Map<*, *>.booleanOrNull(key: String): Boolean? = this[key] as? Boolean
+
+    private fun Map<*, *>.intOrNull(key: String): Int? = (this[key] as? Number)?.toInt()
 
     private inline fun <reified T : Enum<T>> Map<*, *>.enumOrDefault(
         key: String,

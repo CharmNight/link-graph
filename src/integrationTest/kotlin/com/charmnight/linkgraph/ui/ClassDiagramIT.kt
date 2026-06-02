@@ -1,13 +1,16 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.application.GraphEditorApplicationService
+import com.charmnight.linkgraph.application.indexed.requestClassDiagramRequest
 import com.charmnight.linkgraph.application.model.GraphSceneId
 import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
+import com.charmnight.linkgraph.jvm.index.stableJvmId
 import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.testFramework.registerServiceInstance
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
@@ -50,7 +53,14 @@ class ClassDiagramIT : BasePlatformTestCase() {
                 import java.util.ServiceLoader;
 
                 public class TaskRunner {
+                    private final TaskProvider provider;
+
+                    public TaskRunner(TaskProvider provider) {
+                        this.provider = provider;
+                    }
+
                     public void run() {
+                        provider.provide();
                         ServiceLoader.load(TaskProvider.class).forEach(TaskProvider::provide);
                     }
                 }
@@ -61,7 +71,12 @@ class ClassDiagramIT : BasePlatformTestCase() {
             "com.example.classdiagram.DefaultTaskProvider\n",
         )
 
-        GraphEditorBridge(project).dispatch(GraphEditorMessage.RequestClassDiagram())
+        val taskRunnerNodeId = stableJvmId("class", "com.example.classdiagram.TaskRunner")
+        val taskProviderNodeId = stableJvmId("class", "com.example.classdiagram.TaskProvider")
+
+        GraphEditorBridge(project).dispatch(
+            GraphEditorMessage.RequestIndexedGraph(requestClassDiagramRequest(taskRunnerNodeId)),
+        )
         waitForClassDiagram()
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
@@ -70,11 +85,29 @@ class ClassDiagramIT : BasePlatformTestCase() {
         assertClassDiagramViewDataContract(snapshot.classDiagramView, "bridge.classDiagram")
         assertNotNull(graph.nodes.singleOrNull { node -> node.signature == "com.example.classdiagram.TaskProvider" })
         assertNotNull(graph.nodes.singleOrNull { node -> node.signature == "com.example.classdiagram.TaskRunner" })
+        val actualEdges = graph.edges.joinToString("\n") { edge ->
+            listOf(
+                edge.fromNodeId,
+                "->",
+                edge.toNodeId,
+                "jvm=${edge.metadata["jvm.relation.kind"]}",
+                "uml=${edge.metadata["uml.relation.kind"]}",
+                "role=${edge.metadata["classDiagram.relation.role"]}",
+                "label=${edge.label}",
+            ).joinToString(" ")
+        }
         assertTrue(
             graph.edges.any { edge ->
-                edge.metadata["jvm.relation.kind"] == JvmRelationKind.SERVICE_LOADER_LOADS.name
+                edge.fromNodeId == taskRunnerNodeId &&
+                    edge.toNodeId == taskProviderNodeId &&
+                    edge.metadata["jvm.relation.kind"] == JvmRelationKind.USES_TYPE.name &&
+                    edge.metadata["uml.relation.kind"] == "ASSOCIATION"
             },
-            "ClassDiagramIT must prove the bridge path projects ServiceLoader relations from ArchitectureGraphIndex.",
+            "ClassDiagramIT must prove the bridge path projects real UML type associations from ArchitectureGraphIndex. Actual edges:\n$actualEdges",
+        )
+        assertFalse(
+            graph.edges.any { edge -> edge.metadata["jvm.relation.kind"] == JvmRelationKind.SERVICE_LOADER_LOADS.name },
+            "Class diagrams must not mix runtime ServiceLoader relations into UML class structure.",
         )
         assertEquals("SUCCESS", snapshot.operationFeedback?.level?.name)
     }
@@ -85,7 +118,8 @@ class ClassDiagramIT : BasePlatformTestCase() {
             val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
             if (
                 snapshot.currentSceneId == GraphSceneId.WORKSPACE_CLASS_DIAGRAM &&
-                snapshot.classDiagramView.visibleGraph.nodes.isNotEmpty()
+                snapshot.classDiagramView.visibleGraph.nodes.isNotEmpty() &&
+                snapshot.classDiagramView.summary.relationCompleteness == "COMPLETE"
             ) {
                 return
             }

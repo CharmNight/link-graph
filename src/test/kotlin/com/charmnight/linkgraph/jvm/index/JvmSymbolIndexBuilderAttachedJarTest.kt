@@ -16,7 +16,9 @@ import java.nio.file.Files
 import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class JvmSymbolIndexBuilderAttachedJarTest : BasePlatformTestCase() {
     fun testProjectClassJavadocIsIndexedForUmlDisplay() {
@@ -39,6 +41,121 @@ class JvmSymbolIndexBuilderAttachedJarTest : BasePlatformTestCase() {
 
         assertEquals("Coordinates documented task execution.", service.docComment)
         assertEquals(true, service.abstract)
+    }
+
+    fun testJavaInnerClassKeepsDeclaredPackageName() {
+        myFixture.addFileToProject(
+            "src/main/java/com/example/nested/OuterService.java",
+            """
+            package com.example.nested;
+
+            public class OuterService {
+                public static class InnerWorker {}
+            }
+            """.trimIndent(),
+        )
+
+        val symbolIndex = JvmSymbolIndexBuilder(project).build()
+        val inner = requireNotNull(symbolIndex.findClass("com.example.nested.OuterService.InnerWorker"))
+
+        assertEquals("com.example.nested", inner.packageName)
+        assertEquals(null, symbolIndex.packagesByName["com.example.nested.OuterService"])
+    }
+
+    fun testKotlinNestedClassKeepsDeclaredPackageName() {
+        myFixture.addFileToProject(
+            "src/main/kotlin/com/example/nested/KotlinOuter.kt",
+            """
+            package com.example.nested
+
+            class KotlinOuter {
+                class InnerWorker
+            }
+            """.trimIndent(),
+        )
+
+        val symbolIndex = JvmSymbolIndexBuilder(project).build()
+        val inner = requireNotNull(symbolIndex.findClass("com.example.nested.KotlinOuter.InnerWorker"))
+
+        assertEquals("com.example.nested", inner.packageName)
+        assertEquals(null, symbolIndex.packagesByName["com.example.nested.KotlinOuter"])
+    }
+
+    fun testProjectFieldTypeReferencesDistinguishDirectCollectionAndSupplierRoles() {
+        myFixture.addFileToProject(
+            "src/main/java/com/example/types/FieldTypeRoles.java",
+            """
+            package com.example.types;
+
+            import java.util.List;
+            import java.util.function.Supplier;
+
+            class ArtifactStore {}
+            class DraftWorkbenchEntry {}
+            class ArtifactWriter {
+                private final ArtifactStore directStore = null;
+                private final List<DraftWorkbenchEntry> entries = List.of();
+                private final Supplier<ArtifactStore> storeProvider = () -> directStore;
+            }
+            """.trimIndent(),
+        )
+
+        val symbolIndex = JvmSymbolIndexBuilder(project).build()
+        val directStore = requireNotNull(symbolIndex.findField("com.example.types.ArtifactWriter.directStore"))
+        val entries = requireNotNull(symbolIndex.findField("com.example.types.ArtifactWriter.entries"))
+        val storeProvider = requireNotNull(symbolIndex.findField("com.example.types.ArtifactWriter.storeProvider"))
+
+        assertTrue(
+            directStore.typeReferences.any { reference ->
+                reference.typeName == "com.example.types.ArtifactStore" &&
+                    reference.role == JvmFieldTypeRole.DIRECT_VALUE
+            },
+            "Direct field type should be recorded as a direct value. Actual: ${directStore.typeReferences}",
+        )
+        assertTrue(
+            entries.typeReferences.any { reference ->
+                reference.typeName == "com.example.types.DraftWorkbenchEntry" &&
+                    reference.role == JvmFieldTypeRole.COLLECTION_ELEMENT
+            },
+            "Collection element type should be recorded as an owned element association candidate. Actual: ${entries.typeReferences}",
+        )
+        assertTrue(
+            storeProvider.typeReferences.any { reference ->
+                reference.typeName == "com.example.types.ArtifactStore" &&
+                    reference.role == JvmFieldTypeRole.PROVIDER_RETURN
+            },
+            "Supplier return type should be recorded as a provider return dependency candidate. Actual: ${storeProvider.typeReferences}",
+        )
+    }
+
+    fun testProjectResourceIndexSkipsDependencyAndGeneratedDocumentation() {
+        myFixture.addFileToProject("src/main/resources/application.yml", "app:\n  name: demo\n")
+        myFixture.addFileToProject(
+            "src/main/resources/META-INF/services/com.example.Plugin",
+            "com.example.PluginImpl\n",
+        )
+        myFixture.addFileToProject("web/node_modules/pkg/CHANGELOG.md", "# dependency changelog\n")
+        myFixture.addFileToProject("web/node_modules/pkg/LICENSE.md", "dependency license\n")
+        myFixture.addFileToProject("build/tmp/CHANGELOG.md", "# generated changelog\n")
+
+        val symbolIndex = JvmSymbolIndexBuilder(project).build()
+        val resourcePaths = symbolIndex.resourcesByPath.keys
+
+        assertTrue("src/main/resources/application.yml" in resourcePaths, resourcePaths.joinToString("\n"))
+        assertTrue("src/main/resources/META-INF/services/com.example.Plugin" in resourcePaths, resourcePaths.joinToString("\n"))
+        assertTrue(
+            symbolIndex.serviceProviderIndex.providersFor("com.example.Plugin").isNotEmpty(),
+            "SPI service files under src/main/resources should still be indexed.",
+        )
+        assertFalse(
+            resourcePaths.any { path ->
+                path.contains("/node_modules/") ||
+                    path.startsWith("build/") ||
+                    path.endsWith("/CHANGELOG.md") ||
+                    path.endsWith("/LICENSE.md")
+            },
+            resourcePaths.joinToString("\n"),
+        )
     }
 
     fun testAttachedSpiProviderIsIndexedWithoutExternalLibraryExpansion() {

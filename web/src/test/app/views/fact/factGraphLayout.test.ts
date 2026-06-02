@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LinkGraphEdge, LinkGraphNode } from "../../../../app/types";
+import { nodeCardWidth } from "../../../../app/graphNodeSizing";
 import {
   factGraphLayoutSizeSignature,
   FACT_GRAPH_LAYOUT_OPTIONS,
@@ -35,6 +36,22 @@ function routeIsOrthogonal(edge: LinkGraphEdge): boolean {
       return previous != null && (previous.x === point.x || previous.y === point.y);
     });
   });
+}
+
+function factNodeRect(node: LinkGraphNode) {
+  return {
+    left: node.position?.x ?? 0,
+    right: (node.position?.x ?? 0) + nodeCardWidth(node),
+    top: node.position?.y ?? 0,
+    bottom: (node.position?.y ?? 0) + 156,
+  };
+}
+
+function rectsOverlap(left: ReturnType<typeof factNodeRect>, right: ReturnType<typeof factNodeRect>): boolean {
+  return left.left < right.right
+    && left.right > right.left
+    && left.top < right.bottom
+    && left.bottom > right.top;
 }
 
 describe("layoutFactGraphView", () => {
@@ -101,6 +118,9 @@ describe("layoutFactGraphView", () => {
     expect(index.get("method:caller")?.metadata?.["layout.direction"]).toBe("UPSTREAM");
     expect(index.get("method:anchor")?.metadata?.["layout.direction"]).toBe("CURRENT");
     expect(index.get("method:callee")?.metadata?.["layout.direction"]).toBe("DOWNSTREAM");
+    expect(index.get("method:caller")?.metadata?.["presentation.laneId"]).toBe("upstream");
+    expect(index.get("method:anchor")?.metadata?.["presentation.role"]).toBe("ANCHOR");
+    expect(index.get("method:callee")?.metadata?.["presentation.laneId"]).toBe("downstream");
     expect(laidOut.edges[0]?.route?.sections[0]?.startPoint.x).toBeTypeOf("number");
   });
 
@@ -154,6 +174,53 @@ describe("layoutFactGraphView", () => {
     expect(downstreamNode?.metadata?.["layout.direction"]).toBe("DOWNSTREAM");
     expect(upstreamNode?.position?.x ?? Number.POSITIVE_INFINITY).toBeLessThan(anchorNode?.position?.x ?? 0);
     expect(downstreamNode?.position?.x ?? 0).toBeGreaterThan(anchorNode?.position?.x ?? Number.POSITIVE_INFINITY);
+    expect(laidOut.edges.every(routeIsOrthogonal)).toBe(true);
+  });
+
+  it("keeps upstream current and downstream fact partitions separated without node overlap", async () => {
+    const nodes: LinkGraphNode[] = [
+      methodNode("method:caller-a", "OrderController.submit"),
+      methodNode("method:caller-b", "BatchOrderController.submit"),
+      methodNode("method:anchor", "OrderService.place"),
+      { ...methodNode("flow:if", "if (order != null)"), type: "FLOW_SCOPE", metadata: { "flow.kind": "IF" } },
+      { ...methodNode("flow:action", "validate(order)"), type: "FLOW_ACTION" },
+      methodNode("method:mapper", "OrderMapper.insert"),
+      methodNode("method:publisher", "OrderEventPublisher.publish"),
+    ];
+    const edges: LinkGraphEdge[] = [
+      { id: "edge:caller-a->anchor", type: "CALL", source: "method:caller-a", target: "method:anchor" },
+      { id: "edge:caller-b->anchor", type: "CALL", source: "method:caller-b", target: "method:anchor" },
+      { id: "edge:anchor->if", type: "CONTROL_FLOW", source: "method:anchor", target: "flow:if" },
+      { id: "edge:if->action", type: "CONTROL_FLOW", source: "flow:if", target: "flow:action" },
+      { id: "edge:action->mapper", type: "CALL", source: "flow:action", target: "method:mapper" },
+      { id: "edge:action->publisher", type: "CALL", source: "flow:action", target: "method:publisher" },
+    ];
+
+    const laidOut = await layoutFactGraphView({
+      graph: { nodes, edges },
+      nodes,
+      edges,
+      anchorNodeId: "method:anchor",
+      sizeSnapshot: new Map(),
+      reason: "graph",
+    });
+    const byId = new Map(laidOut.nodes.map((node) => [node.id, node]));
+    const anchorX = byId.get("method:anchor")?.position?.x ?? 0;
+    const upstreamNodes = laidOut.nodes.filter((node) => node.metadata?.["layout.direction"] === "UPSTREAM");
+    const currentNodes = laidOut.nodes.filter((node) => node.metadata?.["layout.direction"] === "CURRENT");
+    const downstreamNodes = laidOut.nodes.filter((node) => node.metadata?.["layout.direction"] === "DOWNSTREAM");
+    const rects = laidOut.nodes.map(factNodeRect);
+
+    expect(upstreamNodes).toHaveLength(2);
+    expect(currentNodes.map((node) => node.id).sort()).toEqual(["flow:action", "flow:if", "method:anchor"]);
+    expect(downstreamNodes.map((node) => node.id).sort()).toEqual(["method:mapper", "method:publisher"]);
+    expect(Math.max(...upstreamNodes.map((node) => factNodeRect(node).right))).toBeLessThan(anchorX);
+    expect(Math.min(...downstreamNodes.map((node) => node.position?.x ?? 0))).toBeGreaterThan(factNodeRect(byId.get("flow:action")!).right);
+    rects.forEach((rect, index) => {
+      rects.slice(index + 1).forEach((other) => {
+        expect(rectsOverlap(rect, other), `${laidOut.nodes[index]?.id} overlaps ${laidOut.nodes[rects.indexOf(other)]?.id}`).toBe(false);
+      });
+    });
     expect(laidOut.edges.every(routeIsOrthogonal)).toBe(true);
   });
 

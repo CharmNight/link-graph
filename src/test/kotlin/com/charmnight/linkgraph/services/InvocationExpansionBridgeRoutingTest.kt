@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.command.ApplicationCommand
 import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionTarget
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionTargetKind
@@ -24,7 +25,7 @@ class InvocationExpansionBridgeRoutingTest : BasePlatformTestCase() {
 
     fun testRoutesRequestExpandInvocationMessageToApplicationService() {
         val service = project.linkGraphApplicationServiceForTest()
-        service.loadGraph(invocationOnlyGraph(), "test")
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadGraph(invocationOnlyGraph(), "test"))
         project.getService(LinkGraphProjectTestOverrides::class.java).invocationExpansionTargetResolver = { _, signature ->
             InvocationExpansionTarget(InvocationExpansionTargetKind.EXTERNAL_JDK, signature = signature)
         }
@@ -44,7 +45,7 @@ class InvocationExpansionBridgeRoutingTest : BasePlatformTestCase() {
     fun testRoutesRequestRemoveInvocationExpansionMessageToApplicationService() {
         val expansionId = "expansion-1"
         val service = project.linkGraphApplicationServiceForTest()
-        service.loadGraph(expandedGraph(expansionId), "test")
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadGraph(expandedGraph(expansionId), "test"))
 
         project.getService(GraphEditorCommandRouter::class.java)
             .dispatch(GraphEditorMessage.RequestRemoveInvocationExpansion(expansionId))

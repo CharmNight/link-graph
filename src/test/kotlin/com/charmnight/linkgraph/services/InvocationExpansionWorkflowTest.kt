@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.command.ApplicationCommand
 import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionTarget
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionTargetKind
@@ -40,7 +41,7 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
 
     fun testExpandsProjectSourceInvocationIntoCurrentWorkspaceGraph() {
         val service = project.linkGraphApplicationServiceForTest()
-        service.loadGraph(callerGraph(), "test")
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadGraph(callerGraph(), "test"))
         val overrides = project.getService(LinkGraphProjectTestOverrides::class.java)
         overrides.invocationExpansionTargetResolver = { _, signature ->
             InvocationExpansionTarget(InvocationExpansionTargetKind.PROJECT_SOURCE, signature = signature)
@@ -50,7 +51,7 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
             registry = SemanticProviderRegistry(listOf(targetProvider())),
         )
 
-        service.requestExpandInvocation("invoke:create-info")
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestExpandInvocation("invoke:create-info"))
         val snapshot = waitForSnapshot {
             it.workspaceGraph.nodes.any { node -> node.id == "action:save-info" }
         }
@@ -64,7 +65,7 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
 
     fun testExplainsExpandedInvocationContentAfterExpansionWorkflow() {
         val service = project.linkGraphApplicationServiceForTest()
-        service.loadGraph(callerGraph(), "test")
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadGraph(callerGraph(), "test"))
         val overrides = project.getService(LinkGraphProjectTestOverrides::class.java)
         overrides.invocationExpansionTargetResolver = { _, signature ->
             InvocationExpansionTarget(InvocationExpansionTargetKind.PROJECT_SOURCE, signature = signature)
@@ -74,16 +75,18 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
             registry = SemanticProviderRegistry(listOf(targetProvider())),
         )
 
-        service.requestExpandInvocation("invoke:create-info")
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestExpandInvocation("invoke:create-info"))
         val expandedSnapshot = waitForSnapshot {
             it.workspaceGraph.nodes.any { node -> node.id == "action:save-info" }
         }
         assertTrue(expandedSnapshot.workspaceGraph.nodes.any { node -> node.id == "action:save-info" })
 
-        service.requestGraphBeautificationAsync(
-            goal = "解释展开后的调用链",
-            explanationFocus = "请讲解新展开的被调方法内容",
-            focusNodeId = "method:create-info",
+        service.commandDispatcher.dispatch(
+            ApplicationCommand.RequestGraphBeautification(
+                goal = "解释展开后的调用链",
+                explanationFocus = "请讲解新展开的被调方法内容",
+                focusNodeId = "method:create-info",
+            ),
         )
         val explainedSnapshot = waitForSnapshot {
             it.graphBeautificationRequestState.phase == AsyncRequestPhase.SUCCEEDED
@@ -111,7 +114,7 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
     fun testExplainsExpandedProjectedInvocationAliasInFlowchartMode() {
         val service = project.linkGraphApplicationServiceForTest()
         val stateService = project.getService(GraphEditorStateService::class.java)
-        service.loadGraph(projectedCallerGraph(), "test")
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadGraph(projectedCallerGraph(), "test"))
         stateService.switchAnalysisDisplayMode(com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode.FLOWCHART)
         val overrides = project.getService(LinkGraphProjectTestOverrides::class.java)
         overrides.invocationExpansionTargetResolver = { _, signature ->
@@ -122,16 +125,18 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
             registry = SemanticProviderRegistry(listOf(targetProvider())),
         )
 
-        service.requestExpandInvocation("action:create-info")
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestExpandInvocation("action:create-info"))
         val expandedSnapshot = waitForSnapshot {
             it.workspaceGraph.nodes.any { node -> node.id == "action:save-info" }
         }
         assertTrue(expandedSnapshot.workspaceGraph.nodes.any { node -> node.id == "action:save-info" })
 
-        service.requestGraphBeautificationAsync(
-            goal = "解释展开后的调用链",
-            explanationFocus = "请讲解新展开的被调方法内容",
-            focusNodeId = "method:create-info",
+        service.commandDispatcher.dispatch(
+            ApplicationCommand.RequestGraphBeautification(
+                goal = "解释展开后的调用链",
+                explanationFocus = "请讲解新展开的被调方法内容",
+                focusNodeId = "method:create-info",
+            ),
         )
         val explainedSnapshot = waitForSnapshot {
             it.graphBeautificationRequestState.phase == AsyncRequestPhase.SUCCEEDED
@@ -158,7 +163,7 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
 
     fun testExpandsReadableProjectedInvocationAliasIntoCurrentWorkspaceGraph() {
         val service = project.linkGraphApplicationServiceForTest()
-        service.loadGraph(projectedCallerGraph(), "test")
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadGraph(projectedCallerGraph(), "test"))
         val overrides = project.getService(LinkGraphProjectTestOverrides::class.java)
         overrides.invocationExpansionTargetResolver = { _, signature ->
             InvocationExpansionTarget(InvocationExpansionTargetKind.PROJECT_SOURCE, signature = signature)
@@ -168,7 +173,7 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
             registry = SemanticProviderRegistry(listOf(targetProvider())),
         )
 
-        service.requestExpandInvocation("action:create-info")
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestExpandInvocation("action:create-info"))
         val snapshot = waitForSnapshot {
             it.workspaceGraph.nodes.any { node -> node.id == "action:save-info" }
         }
@@ -182,23 +187,25 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
 
     fun testDoesNotExpandExternalJdkInvocation() {
         val service = project.linkGraphApplicationServiceForTest()
-        service.loadGraph(
-            GraphDocument(
-                nodes = listOf(
-                    invocationNode(
-                        id = "invoke:trim",
-                        title = "value.trim()",
-                        signature = "java.lang.String.trim():java.lang.String",
+        service.commandDispatcher.dispatch(
+            ApplicationCommand.LoadGraph(
+                GraphDocument(
+                    nodes = listOf(
+                        invocationNode(
+                            id = "invoke:trim",
+                            title = "value.trim()",
+                            signature = "java.lang.String.trim():java.lang.String",
+                        ),
                     ),
                 ),
+                "test",
             ),
-            "test",
         )
         project.getService(LinkGraphProjectTestOverrides::class.java).invocationExpansionTargetResolver = { _, _ ->
             InvocationExpansionTarget(InvocationExpansionTargetKind.EXTERNAL_JDK)
         }
 
-        service.requestExpandInvocation("invoke:trim")
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestExpandInvocation("invoke:trim"))
         PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
 
         assertFalse(project.getService(GraphEditorStateService::class.java).snapshot().workspaceGraph.nodes.any { it.id == "action:save-info" })
@@ -206,17 +213,19 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
 
     fun testDoesNotAutoExpandMultipleInterfaceImplementations() {
         val service = project.linkGraphApplicationServiceForTest()
-        service.loadGraph(
-            GraphDocument(
-                nodes = listOf(
-                    invocationNode(
-                        id = "invoke:service",
-                        title = "service.createInfo()",
-                        signature = "com.example.InfoService.createInfo():void",
+        service.commandDispatcher.dispatch(
+            ApplicationCommand.LoadGraph(
+                GraphDocument(
+                    nodes = listOf(
+                        invocationNode(
+                            id = "invoke:service",
+                            title = "service.createInfo()",
+                            signature = "com.example.InfoService.createInfo():void",
+                        ),
                     ),
                 ),
+                "test",
             ),
-            "test",
         )
         project.getService(LinkGraphProjectTestOverrides::class.java).invocationExpansionTargetResolver = { _, _ ->
             InvocationExpansionTarget(
@@ -228,7 +237,7 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
             )
         }
 
-        service.requestExpandInvocation("invoke:service")
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestExpandInvocation("invoke:service"))
         PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
 
         assertFalse(project.getService(GraphEditorStateService::class.java).snapshot().workspaceGraph.nodes.any { it.id == "action:save-info" })
@@ -236,23 +245,25 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
 
     fun testDoesNotExpandThirdPartyLibraryInvocation() {
         val service = project.linkGraphApplicationServiceForTest()
-        service.loadGraph(
-            GraphDocument(
-                nodes = listOf(
-                    invocationNode(
-                        id = "invoke:json",
-                        title = "objectMapper.writeValueAsString(value)",
-                        signature = "com.fasterxml.jackson.databind.ObjectMapper.writeValueAsString(java.lang.Object):java.lang.String",
+        service.commandDispatcher.dispatch(
+            ApplicationCommand.LoadGraph(
+                GraphDocument(
+                    nodes = listOf(
+                        invocationNode(
+                            id = "invoke:json",
+                            title = "objectMapper.writeValueAsString(value)",
+                            signature = "com.fasterxml.jackson.databind.ObjectMapper.writeValueAsString(java.lang.Object):java.lang.String",
+                        ),
                     ),
                 ),
+                "test",
             ),
-            "test",
         )
         project.getService(LinkGraphProjectTestOverrides::class.java).invocationExpansionTargetResolver = { _, _ ->
             InvocationExpansionTarget(InvocationExpansionTargetKind.EXTERNAL_LIBRARY)
         }
 
-        service.requestExpandInvocation("invoke:json")
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestExpandInvocation("invoke:json"))
         PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
 
         assertFalse(project.getService(GraphEditorStateService::class.java).snapshot().workspaceGraph.nodes.any { it.id == "action:save-info" })
@@ -265,7 +276,9 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
             .first { it.id == "action:save-info" }
             .metadata["linkGraph.expansion.id"]!!
 
-        project.linkGraphApplicationServiceForTest().requestRemoveInvocationExpansion(expansionId)
+        project.linkGraphApplicationServiceForTest()
+            .commandDispatcher
+            .dispatch(ApplicationCommand.RequestRemoveInvocationExpansion(expansionId))
         val snapshot = waitForSnapshot {
             it.workspaceGraph.nodes.none { node -> node.id == "action:save-info" }
         }

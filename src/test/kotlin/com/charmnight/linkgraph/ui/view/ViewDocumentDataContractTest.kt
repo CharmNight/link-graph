@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.ui.view
 
+import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
+import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
 import com.charmnight.linkgraph.semantic.model.FlowActionUnit
 import com.charmnight.linkgraph.semantic.model.FlowScopeCategory
 import com.charmnight.linkgraph.semantic.model.FlowScopeUnit
@@ -20,9 +22,25 @@ import com.charmnight.linkgraph.testing.assertFactGraphViewDataContract
 import com.charmnight.linkgraph.testing.assertFlowchartViewDataContract
 import com.charmnight.linkgraph.testing.assertResourceRelationViewDataContract
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class ViewDocumentDataContractTest {
+    @Test
+    fun graphViewDocumentsExposePresentationContract() {
+        val fact = FactGraphViewDocument()
+        val architecture = ArchitectureGraphViewDocument()
+        val classDiagram = ClassDiagramViewDocument()
+
+        assertNotNull(fact.presentation.target)
+        assertNotNull(architecture.presentation.target)
+        assertNotNull(classDiagram.presentation.target)
+        assertTrue(fact.presentation.lanes.isEmpty())
+        assertTrue(architecture.presentation.hiddenBuckets.isEmpty())
+        assertTrue(classDiagram.presentation.controls.searchable)
+    }
+
     @Test
     fun projectorsReturnSelfContainedViewDocumentsWithResolvableData() {
         val analysisResult = semanticAnalysisResult()
@@ -47,6 +65,27 @@ class ViewDocumentDataContractTest {
             resourceRelationView.visibleGraph.edges.any { edge -> edge.toNodeId == "sql:orders-insert" },
             "Resource relation view must expose real resource relationships, not just an empty operation shell.",
         )
+    }
+
+    @Test
+    fun factGraphProjectorPopulatesPresentationLanesAndHiddenBuckets() {
+        val view = FactGraphProjector().project(
+            analysisResult = semanticAnalysisResult(),
+            projectionPolicy = ProjectionPolicy(maxVisibleNodes = 2, maxVisibleEdges = 2),
+        )
+
+        assertEquals(listOf("upstream", "current", "downstream"), view.presentation.lanes.map { it.id })
+        assertEquals("method:submit", view.presentation.target.nodeId)
+        assertEquals("OrderService.submit", view.presentation.target.title)
+        assertTrue(view.presentation.hiddenBuckets.isNotEmpty())
+        assertEquals(
+            view.fullGraph.nodes.map { it.id }.toSet() - view.visibleGraph.nodes.map { it.id }.toSet(),
+            view.presentation.hiddenBuckets.flatMap { it.nodeIds }.toSet(),
+        )
+        assertTrue(view.visibleGraph.nodes.all { node -> node.metadata["presentation.role"] != null })
+        assertTrue(view.visibleGraph.nodes.all { node -> node.metadata["presentation.laneId"] != null })
+        assertTrue(view.visibleGraph.nodes.all { node -> node.metadata["presentation.priority"] != null })
+        assertTrue(view.visibleGraph.nodes.all { node -> node.metadata["presentation.compact"] != null })
     }
 
     private fun semanticAnalysisResult(): SemanticAnalysisResult =

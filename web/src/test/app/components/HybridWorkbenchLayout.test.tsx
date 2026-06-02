@@ -99,4 +99,23 @@ describe("HybridWorkbenchLayout", () => {
 
     expect(onWorkbenchWidthChange).toHaveBeenCalledWith(520);
   });
+
+  it("always keeps the right stage workbench mounted while the outline may collapse for graph-focused views", () => {
+    render(
+      <HybridWorkbenchLayout
+        outline={<div data-testid="outline-slot">outline</div>}
+        graphStage={<div data-testid="graph-stage-slot">graph stage</div>}
+        workbench={<div data-testid="stage-workbench-slot">workbench</div>}
+        outlineCollapsed
+      />,
+    );
+
+    const layout = screen.getByTestId("hybrid-workbench-layout");
+    expect(layout).toHaveClass("outline-collapsed");
+    expect(layout).not.toHaveClass("workbench-collapsed");
+    expect(layout).toHaveStyle({ "--workbench-width": "420px" });
+    expect(screen.getByTestId("graph-stage-slot")).toBeInTheDocument();
+    expect(screen.getByTestId("stage-workbench-slot")).toBeInTheDocument();
+    expect(screen.getByRole("separator", { name: "调整阶段工作台宽度" })).toBeInTheDocument();
+  });
 });

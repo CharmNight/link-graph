@@ -1,4 +1,4 @@
-package com.charmnight.linkgraph.application.planning
+package com.charmnight.linkgraph.projection
 
 import com.charmnight.linkgraph.model.BindingStatus
 import com.charmnight.linkgraph.model.Certainty
@@ -15,7 +15,7 @@ import java.util.PriorityQueue
  * 当前策略优先保留锚点、直接上游和直接下游；超出部分不会丢失，
  * 而是折叠成上游/下游摘要节点，完整图仍交给后台用于问答分析和导出。
  */
-class InteractiveGraphProjector(
+class GraphProjectionKernel(
     /** 可见图允许展示的最大节点数。 */
     private val maxVisibleNodes: Int = 26,
     /** 可见图允许展示的最大边数。 */
@@ -27,8 +27,152 @@ class InteractiveGraphProjector(
     /** 每个方向单层最多保留的邻居数。 */
     private val maxNeighborsPerDirection: Int = 5,
 ) {
+    fun projectWindow(
+        graph: GraphDocument,
+        policy: GraphProjectionPolicy,
+    ): GraphProjectionResult {
+        if (graph.nodes.isEmpty()) {
+            return GraphProjectionResult(
+                visibleGraph = graph,
+                fullGraph = graph,
+                hiddenNodeCount = 0,
+                hiddenEdgeCount = 0,
+            )
+        }
+
+        val maxWindowNodes = policy.maxVisibleNodes.coerceAtLeast(1)
+        val maxWindowEdges = policy.maxVisibleEdges.coerceAtLeast(0)
+        if (graph.nodes.size <= maxWindowNodes && graph.edges.size <= maxWindowEdges) {
+            return GraphProjectionResult(
+                visibleGraph = graph,
+                fullGraph = graph,
+                hiddenNodeCount = 0,
+                hiddenEdgeCount = 0,
+            )
+        }
+
+        val reservesOverflowNode = policy.enableOverflowSummary && maxWindowNodes >= 2 && graph.nodes.size > maxWindowNodes
+        val nodeBudget = if (reservesOverflowNode) (maxWindowNodes - 1).coerceAtLeast(1) else maxWindowNodes
+        val edgeBudget = if (reservesOverflowNode && maxWindowEdges > 0) (maxWindowEdges - 1).coerceAtLeast(0) else maxWindowEdges
+        val nodeById = graph.nodes.associateBy(GraphNode::id)
+        val incomingByTarget = graph.edges.groupBy(GraphEdge::toNodeId)
+        val outgoingBySource = graph.edges.groupBy(GraphEdge::fromNodeId)
+        val nodeComparator = compareBy<GraphNode>({ policy.nodePriority(it) }, { it.title }, { it.id })
+        val edgeComparator = compareBy<GraphEdge>({ policy.edgePriority(it) }, GraphEdge::id)
+        val visibleNodeIds = linkedSetOf<String>()
+        val queue = ArrayDeque<String>()
+
+        fun addNode(nodeId: String?) {
+            if (nodeId == null || visibleNodeIds.size >= nodeBudget || nodeId in visibleNodeIds || nodeById[nodeId] == null) {
+                return
+            }
+            visibleNodeIds += nodeId
+            queue.addLast(nodeId)
+        }
+
+        addNode(policy.anchorNodeId)
+        addWindowRoleQuotaNodes(graph, policy.roleMetadataKey, policy.roleQuotas, nodeComparator, ::addNode)
+        graph.nodes
+            .filter { node -> node.type in policy.seedNodeTypes }
+            .sortedWith(nodeComparator)
+            .forEach { node -> addNode(node.id) }
+        if (visibleNodeIds.isEmpty()) {
+            graph.nodes.minWithOrNull(nodeComparator)?.let { node -> addNode(node.id) }
+        }
+
+        while (queue.isNotEmpty() && visibleNodeIds.size < nodeBudget) {
+            val currentNodeId = queue.removeFirst()
+            val candidateEdges = (outgoingBySource[currentNodeId].orEmpty() + incomingByTarget[currentNodeId].orEmpty())
+                .sortedWith(
+                    compareBy<GraphEdge>(
+                        { edge -> policy.edgePriority(edge) },
+                        { edge -> policy.nodePriority(nodeById[edge.neighborOf(currentNodeId)] ?: nodeById[currentNodeId]!!) },
+                        GraphEdge::id,
+                    ),
+                )
+            for (edge in candidateEdges) {
+                if (visibleNodeIds.size >= nodeBudget) {
+                    break
+                }
+                addNode(edge.neighborOf(currentNodeId))
+            }
+        }
+
+        if (policy.fillDisconnectedNodes && visibleNodeIds.size < nodeBudget) {
+            graph.nodes
+                .sortedWith(nodeComparator)
+                .forEach { node -> addNode(node.id) }
+        }
+
+        val visibleEdgeIds = graph.edges
+            .asSequence()
+            .filter { edge -> edge.fromNodeId in visibleNodeIds && edge.toNodeId in visibleNodeIds }
+            .sortedWith(edgeComparator)
+            .take(edgeBudget)
+            .mapTo(linkedSetOf(), GraphEdge::id)
+        val visibleNodes = graph.nodes.filter { node -> node.id in visibleNodeIds }.toMutableList()
+        val visibleEdges = graph.edges.filter { edge -> edge.id in visibleEdgeIds }.toMutableList()
+        val hiddenNodeIds = graph.nodes.mapTo(linkedSetOf(), GraphNode::id).also { it.removeAll(visibleNodeIds) }
+        val hiddenEdgeIds = graph.edges.mapTo(linkedSetOf(), GraphEdge::id).also { it.removeAll(visibleEdgeIds) }
+
+        if (policy.enableOverflowSummary && hiddenNodeIds.isNotEmpty() && visibleNodes.size < maxWindowNodes) {
+            val overflowAnchorId = policy.anchorNodeId?.takeIf { it in visibleNodeIds }
+                ?: visibleNodes.firstOrNull()?.id
+            val overflowNode = windowOverflowNode(
+                anchorNodeId = overflowAnchorId ?: "graph",
+                hiddenNodeCount = hiddenNodeIds.size,
+                hiddenEdgeCount = hiddenEdgeIds.size,
+                ownerContext = policy.overflowOwnerContext,
+            )
+            visibleNodes += overflowNode
+            if (overflowAnchorId != null && visibleEdges.size < maxWindowEdges) {
+                visibleEdges += GraphEdge(
+                    id = GraphEdge.stableId(
+                        policy.overflowEdgeType,
+                        overflowAnchorId,
+                        overflowNode.id,
+                        "${policy.overflowOwnerContext}-overflow",
+                    ),
+                    type = policy.overflowEdgeType,
+                    fromNodeId = overflowAnchorId,
+                    toNodeId = overflowNode.id,
+                    label = "还有 ${hiddenNodeIds.size} 个节点未显示",
+                    certainty = Certainty.RULE_INFERRED,
+                    bindingStatus = BindingStatus.PARTIALLY_SYNCED,
+                    sourceTag = GraphSourceTag.UNCERTAIN_FACT,
+                )
+            }
+        }
+
+        val visibleGraph = GraphDocument(
+            nodes = visibleNodes,
+            edges = visibleEdges,
+            patch = graph.patch,
+        )
+        val visibleOriginalNodeIds = visibleGraph.nodes
+            .asSequence()
+            .map(GraphNode::id)
+            .filter(nodeById::containsKey)
+            .toSet()
+        val originalEdgeIds = graph.edges.mapTo(linkedSetOf(), GraphEdge::id)
+        val visibleOriginalEdgeIds = visibleGraph.edges
+            .asSequence()
+            .map(GraphEdge::id)
+            .filter(originalEdgeIds::contains)
+            .toSet()
+        val hiddenNodeCount = (graph.nodes.map(GraphNode::id).toSet() - visibleOriginalNodeIds).size
+        val hiddenEdgeCount = (graph.edges.map(GraphEdge::id).toSet() - visibleOriginalEdgeIds).size
+        return GraphProjectionResult(
+            visibleGraph = visibleGraph,
+            fullGraph = graph,
+            hiddenNodeCount = hiddenNodeCount,
+            hiddenEdgeCount = hiddenEdgeCount,
+            truncated = hiddenNodeCount > 0 || hiddenEdgeCount > 0,
+        )
+    }
+
     /** 把完整事实图投影成适合交互画布展示的精简视图。 */
-    fun project(
+    fun projectInteractive(
         graph: GraphDocument,
         anchorNodeId: String? = null,
     ): InteractiveGraphProjection {
@@ -341,6 +485,61 @@ class InteractiveGraphProjector(
             hiddenCrossMethodNodeCount = hiddenCrossMethodNodeCount,
         )
     }
+
+    private fun addWindowRoleQuotaNodes(
+        graph: GraphDocument,
+        roleMetadataKey: String?,
+        roleQuotas: List<GraphWindowRoleQuota>,
+        nodeComparator: Comparator<GraphNode>,
+        addNode: (String?) -> Unit,
+    ) {
+        if (roleMetadataKey == null || roleQuotas.isEmpty()) {
+            return
+        }
+        val nodesByRole = graph.nodes.groupBy { node -> node.metadata[roleMetadataKey].orEmpty() }
+        roleQuotas.forEach { quota ->
+            nodesByRole[quota.role].orEmpty()
+                .sortedWith(nodeComparator)
+                .take(quota.maxNodes.coerceAtLeast(0))
+                .forEach { node -> addNode(node.id) }
+        }
+    }
+
+    private fun windowOverflowNode(
+        anchorNodeId: String,
+        hiddenNodeCount: Int,
+        hiddenEdgeCount: Int,
+        ownerContext: String,
+    ): GraphNode =
+        GraphNode(
+            id = GraphNode.stableId(
+                NodeType.UNCERTAIN_LINK,
+                "$anchorNodeId-window-overflow",
+                ownerContext,
+            ),
+            type = NodeType.UNCERTAIN_LINK,
+            title = "已折叠 $hiddenNodeCount 个节点",
+            signature = "另有 $hiddenEdgeCount 条链路未在当前窗口展开",
+            doc = "完整图仍保留在后台，可继续展开或调整范围。",
+            certainty = Certainty.RULE_INFERRED,
+            bindingStatus = BindingStatus.PARTIALLY_SYNCED,
+            sourceTag = GraphSourceTag.UNCERTAIN_FACT,
+            metadata = mapOf(
+                GraphProjectionMetadata.Overflow.DIRECTION to "DOWNSTREAM",
+                GraphProjectionMetadata.Hidden.NODE_COUNT to hiddenNodeCount.toString(),
+                GraphProjectionMetadata.Hidden.EDGE_COUNT to hiddenEdgeCount.toString(),
+                GraphProjectionMetadata.Hidden.CURRENT_METHOD_NODE_COUNT to "0",
+                GraphProjectionMetadata.Hidden.CROSS_METHOD_NODE_COUNT to hiddenNodeCount.toString(),
+                GraphProjectionMetadata.Overflow.BOUNDARY_NODE_COUNT to "0",
+                GraphProjectionMetadata.Overflow.EXPANDABLE_NODE_COUNT to hiddenNodeCount.toString(),
+                GraphProjectionMetadata.Overflow.PRESENTATION to "EXPANDABLE",
+                GraphProjectionMetadata.Overflow.KIND to "GRAPH_WINDOW",
+                GraphProjectionMetadata.Overflow.ANCHOR_NODE_ID to anchorNodeId,
+            ),
+        )
+
+    private fun GraphEdge.neighborOf(nodeId: String): String =
+        if (fromNodeId == nodeId) toNodeId else fromNodeId
 
     /** 先为锚点挑选最重要的一圈邻居，作为后续展开种子。 */
     private fun collectAnchorNeighbors(
@@ -754,14 +953,14 @@ class InteractiveGraphProjector(
         bindingStatus = BindingStatus.PARTIALLY_SYNCED,
         sourceTag = GraphSourceTag.UNCERTAIN_FACT,
         metadata = mapOf(
-            "linkGraph.overflow.direction" to direction.name,
-            "linkGraph.hiddenNodeCount" to hiddenNodeCount.toString(),
-            "linkGraph.hiddenEdgeCount" to hiddenEdgeCount.toString(),
-            "linkGraph.hidden.currentMethodNodeCount" to hiddenCurrentMethodNodeCount.toString(),
-            "linkGraph.hidden.crossMethodNodeCount" to hiddenCrossMethodNodeCount.toString(),
-            "linkGraph.overflow.boundaryNodeCount" to boundaryNodeCount.toString(),
-            "linkGraph.overflow.expandableNodeCount" to expandableNodeCount.toString(),
-            "linkGraph.overflow.presentation" to if (expandableNodeCount == 0 && boundaryNodeCount > 0) {
+            GraphProjectionMetadata.Overflow.DIRECTION to direction.name,
+            GraphProjectionMetadata.Hidden.NODE_COUNT to hiddenNodeCount.toString(),
+            GraphProjectionMetadata.Hidden.EDGE_COUNT to hiddenEdgeCount.toString(),
+            GraphProjectionMetadata.Hidden.CURRENT_METHOD_NODE_COUNT to hiddenCurrentMethodNodeCount.toString(),
+            GraphProjectionMetadata.Hidden.CROSS_METHOD_NODE_COUNT to hiddenCrossMethodNodeCount.toString(),
+            GraphProjectionMetadata.Overflow.BOUNDARY_NODE_COUNT to boundaryNodeCount.toString(),
+            GraphProjectionMetadata.Overflow.EXPANDABLE_NODE_COUNT to expandableNodeCount.toString(),
+            GraphProjectionMetadata.Overflow.PRESENTATION to if (expandableNodeCount == 0 && boundaryNodeCount > 0) {
                 "METHOD_BOUNDARY"
             } else {
                 "EXPANDABLE"
@@ -813,8 +1012,8 @@ class InteractiveGraphProjector(
 
     /** 判断节点是否已经是提取阶段生成的溢出摘要节点。 */
     private fun isExtractionOverflowNode(node: GraphNode?): Boolean {
-        return node?.metadata?.containsKey("linkGraph.overflow.hiddenMethodCount") == true &&
-            node.metadata.containsKey("linkGraph.overflow.titlePrefix")
+        return node?.metadata?.containsKey(GraphProjectionMetadata.Overflow.HIDDEN_METHOD_COUNT) == true &&
+            node.metadata.containsKey(GraphProjectionMetadata.Overflow.TITLE_PREFIX)
     }
 
     /** 计算节点在展示中的优先级。 */
@@ -848,6 +1047,7 @@ class InteractiveGraphProjector(
             NodeType.EXTERNAL_CLASS,
             NodeType.LIBRARY,
             NodeType.SERVICE,
+            NodeType.COMPONENT,
             NodeType.LAYER,
             NodeType.RESOURCE,
             NodeType.CONFIG_ITEM,

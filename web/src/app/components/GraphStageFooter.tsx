@@ -8,6 +8,7 @@ import type {
   AnalysisDisplayMode,
   DraftCompareProjection,
   GraphSourceTag,
+  IndexedGraphSummary,
   LinkGraphDocument,
 } from "../types";
 import type { CodeDiffStatus } from "./hybridDerivations";
@@ -19,6 +20,7 @@ interface GraphStageFooterProps {
   hasExplanationFocus: boolean;
   draftChangedNodeCount: number;
   draftCompareProjection?: DraftCompareProjection | null;
+  indexedSummary?: IndexedGraphSummary | null;
   codeDiffStatus: CodeDiffStatus;
 }
 
@@ -29,6 +31,7 @@ export function GraphStageFooter({
   hasExplanationFocus,
   draftChangedNodeCount,
   draftCompareProjection = null,
+  indexedSummary = null,
   codeDiffStatus,
 }: GraphStageFooterProps) {
   const sourceTags = Array.from(new Set(
@@ -43,7 +46,11 @@ export function GraphStageFooter({
       ...Object.values(draftCompareProjection.edgeStatuses),
     ]));
   const visibleNodeCount = activeViewGraph.nodeCount ?? activeViewGraph.nodes.length;
+  const renderedNodeCount = activeViewGraph.nodes.length;
   const resolvedFullNodeCount = Math.max(fullNodeCount, visibleNodeCount);
+  const nodeCountLabel = isIndexedGraphDisplayMode(analysisDisplayMode)
+    ? indexedGraphNodeCountLabel(indexedSummary)
+    : `节点 ${visibleNodeCount} / ${resolvedFullNodeCount}`;
 
   return (
     <footer className="graph-stage-footer" aria-label="图谱图例">
@@ -59,10 +66,44 @@ export function GraphStageFooter({
       {compareStatuses.map((status) => (
         <span key={status} className="app-pill">{draftCompareStatusLabel(status)}</span>
       ))}
-      <span className="status-pill">节点 {visibleNodeCount} / {resolvedFullNodeCount}</span>
+      <span className="status-pill">{nodeCountLabel}</span>
       <span className="status-pill">代码 diff {codeDiffStatusLabel(codeDiffStatus)}</span>
     </footer>
   );
+}
+
+function isIndexedGraphDisplayMode(mode: AnalysisDisplayMode): boolean {
+  return mode === "ARCHITECTURE_GRAPH" || mode === "CLASS_DIAGRAM" || mode === "REVIEW_GRAPH";
+}
+
+function indexedGraphNodeCountLabel(summary: IndexedGraphSummary | null): string {
+  if (summary == null) {
+    return "indexed 统计未返回";
+  }
+  return [
+    `窗口节点 ${summary.visibleNodeCount}`,
+    `候选节点 ${summary.candidateNodeCount}`,
+    `窗口外 ${summary.hiddenNodeCount}`,
+    `窗口来源 ${indexedVisibleLayerSummary(summary)}`,
+  ].join(" / ");
+}
+
+function indexedVisibleLayerSummary(summary: IndexedGraphSummary): string {
+  const counts = summary.visibleLayerCounts;
+  if (counts == null) {
+    return "未统计";
+  }
+  const entries: Array<[string, number | undefined]> = [
+    ["项目", counts.projectSource],
+    ["三方", counts.externalLibrary],
+    ["JDK", counts.jdk],
+    ["资源", counts.resource],
+    ["聚合", counts.aggregate],
+  ];
+  return entries
+    .filter(([, value]) => value != null && value > 0)
+    .map(([label, value]) => `${label} ${value}`)
+    .join(" · ") || "0";
 }
 
 function codeDiffStatusLabel(status: CodeDiffStatus): string {

@@ -4,9 +4,6 @@ import {
   applyLayoutUpdatesToGraphDocument,
   applyBootstrapRoutesToViewDocument,
   deriveFlowchartSummary,
-  deriveArchitectureGraphSummary,
-  deriveClassDiagramSummary,
-  deriveReviewGraphSummary,
   deriveLatestTurnOutcome,
   deriveResourceRelationSummary,
   overlayDraftEntryOntoFlowchartView,
@@ -70,7 +67,9 @@ import type {
   ClassDiagramViewDocument,
   FactGraphViewDocument,
   FlowchartViewDocument,
+  GraphProjectionIndex,
   GraphSurfaceExperimentFlags,
+  IndexedGraphSummary,
   LinkGraphDocument,
   LinkGraphBootstrapState,
   LinkGraphEdge,
@@ -79,6 +78,7 @@ import type {
   ReviewGraphViewDocument,
   StepGranularity,
 } from "./types";
+import type { EditableStageProps, IndexedReadonlyStageProps } from "./views/viewStageProps";
 import { GraphWorkbench } from "./workbench/GraphWorkbench";
 import { WorkbenchPropertyDrawer } from "./workbench/WorkbenchPropertyDrawer";
 import type { RequestFailureNotice } from "./controllers/bridgeCommandTypes";
@@ -130,6 +130,50 @@ import {
 
 type ExplanationRequestMode = "fresh" | "follow_up";
 
+function activeIndexedGraphSummary(
+  analysisDisplayMode: AnalysisDisplayMode,
+  architectureSummary: IndexedGraphSummary | null,
+  classDiagramSummary: IndexedGraphSummary | null,
+  reviewSummary: IndexedGraphSummary | null,
+): IndexedGraphSummary | null {
+  switch (analysisDisplayMode) {
+    case "ARCHITECTURE_GRAPH":
+      return architectureSummary;
+    case "CLASS_DIAGRAM":
+      return classDiagramSummary;
+    case "REVIEW_GRAPH":
+      return reviewSummary;
+    default:
+      return null;
+  }
+}
+
+function activeProjectionIndex(
+  analysisDisplayMode: AnalysisDisplayMode,
+  factProjectionIndex: GraphProjectionIndex | null | undefined,
+  flowchartProjectionIndex: GraphProjectionIndex | null | undefined,
+  resourceProjectionIndex: GraphProjectionIndex | null | undefined,
+  architectureProjectionIndex: GraphProjectionIndex | null | undefined,
+  classDiagramProjectionIndex: GraphProjectionIndex | null | undefined,
+  reviewProjectionIndex: GraphProjectionIndex | null | undefined,
+): GraphProjectionIndex | null {
+  switch (analysisDisplayMode) {
+    case "FLOWCHART":
+      return flowchartProjectionIndex ?? null;
+    case "RESOURCE_RELATION_VIEW":
+      return resourceProjectionIndex ?? null;
+    case "ARCHITECTURE_GRAPH":
+      return architectureProjectionIndex ?? null;
+    case "CLASS_DIAGRAM":
+      return classDiagramProjectionIndex ?? null;
+    case "REVIEW_GRAPH":
+      return reviewProjectionIndex ?? null;
+    case "FACT_GRAPH":
+    default:
+      return factProjectionIndex ?? null;
+  }
+}
+
 interface ExplanationHistoryEntry {
   result: GraphBeautificationResult;
   requestState: AsyncRequestState;
@@ -144,6 +188,13 @@ const DEFAULT_STAGE_WORKBENCH_WIDTH = 420;
 const MIN_STAGE_WORKBENCH_WIDTH = 320;
 const MAX_STAGE_WORKBENCH_WIDTH = 720;
 export { resolveQaTargetNodeIds } from "./appGraphSupport";
+
+function isProjectStructureDisplay(
+  analysisDisplayMode: AnalysisDisplayMode,
+  architectureSummary: IndexedGraphSummary | null | undefined,
+): boolean {
+  return analysisDisplayMode === "ARCHITECTURE_GRAPH" && architectureSummary?.scopeKind === "PROJECT";
+}
 
 function clampStageWorkbenchWidth(width: number): number {
   return Math.max(MIN_STAGE_WORKBENCH_WIDTH, Math.min(MAX_STAGE_WORKBENCH_WIDTH, Math.round(width)));
@@ -301,6 +352,7 @@ export function App() {
     lastDraftPatchApplyResult,
     codeDraftRequestState,
     codeEligibilityDecision,
+    indexedGraphRequestStates,
     sourceNavigationState: _sourceNavigationState,
     operationFeedback,
     workbenchSectionPreferences,
@@ -390,6 +442,9 @@ export function App() {
       graphBeautificationRequestState,
       generationPlanRequestState,
       codeDraftRequestState,
+      indexedGraphRequestStates.ARCHITECTURE ?? IDLE_REQUEST_STATE,
+      indexedGraphRequestStates.CLASS_DIAGRAM ?? IDLE_REQUEST_STATE,
+      indexedGraphRequestStates.REVIEW ?? IDLE_REQUEST_STATE,
     ],
   }), [
     qaRequestState,
@@ -397,6 +452,7 @@ export function App() {
     diffReviewRequestState,
     generationPlanRequestState,
     graphBeautificationRequestState,
+    indexedGraphRequestStates,
     lastMessageType,
     operationFeedback,
   ]);
@@ -560,9 +616,6 @@ export function App() {
     syncFactGraphViewDocument,
     deriveFlowchartSummary,
     deriveResourceRelationSummary,
-    deriveArchitectureGraphSummary,
-    deriveClassDiagramSummary,
-    deriveReviewGraphSummary,
   });
 
   const {
@@ -605,6 +658,15 @@ export function App() {
     selectedNodeId,
     detailNodeId,
     analysisDisplayMode,
+    projectionIndex: activeProjectionIndex(
+      analysisDisplayMode,
+      factGraphView.projectionIndex,
+      flowchartView.projectionIndex,
+      resourceRelationView.projectionIndex,
+      architectureGraphView.projectionIndex,
+      classDiagramView.projectionIndex,
+      reviewGraphView.projectionIndex,
+    ),
     collapsedNodeIds,
     nextManualNodeIdRef,
     anchorNodeIdRef,
@@ -1123,7 +1185,7 @@ export function App() {
     onSectionPreferenceChange: handleWorkbenchSectionPreferenceChange,
   };
 
-  const stageProps = {
+  const baseStageProps = {
     selectedNodeId,
     focusNodeRequest,
     explanationFocusNodeId,
@@ -1134,28 +1196,41 @@ export function App() {
     collapsedNodeIds,
     collapsedDescendantCountByNodeId: collapsedSummary.descendantCountByNodeId,
     experiments: graphSurfaceExperiments,
-    onAddNode: handleAddNode,
     onSelectNode: handleSelectNode,
     onSelectionGroupChange: handleSelectionGroupChange,
     onInspectNode: handleInspectNode,
-    onDeleteNode: handleDeleteNode,
-    onDeleteNodeSubtree: handleDeleteNodeSubtree,
-    onCreateEdge: handleCreateEdge,
-    onDeleteEdge: handleDeleteEdge,
-    onInsertNodeIntoEdge: handleInsertNodeIntoEdge,
     onMoveNode: handleMoveNode,
     onMoveNodes: handleMoveNodes,
     onFormatLayout: handleFormatLayout,
     onRequestBeautification: handleRequestGraphBeautification,
     onRequestSourceNavigation: handleRequestSourceNavigation,
     onRequestQa: handleRequestScopedQa,
-    onRequestClassDiagram: workbenchCommands.handleRequestClassDiagram,
     onToggleCollapseNode: handleToggleCollapseNode,
     onOpenQa: handleOpenQa,
-    onImportMermaid: handleOpenImportMermaid,
     onExpandOverflowNode: handleExpandOverflowNode,
     onExpandInvocation: handleExpandInvocation,
     onRemoveInvocationExpansion: handleRemoveInvocationExpansion,
+  };
+
+  const editableStageProps: EditableStageProps = {
+    ...baseStageProps,
+    onAddNode: handleAddNode,
+    onDeleteNode: handleDeleteNode,
+    onDeleteNodeSubtree: handleDeleteNodeSubtree,
+    onCreateEdge: handleCreateEdge,
+    onDeleteEdge: handleDeleteEdge,
+    onInsertNodeIntoEdge: handleInsertNodeIntoEdge,
+    onImportMermaid: handleOpenImportMermaid,
+  };
+
+  const indexedReadonlyStageProps: IndexedReadonlyStageProps = {
+    ...baseStageProps,
+    indexedGraphRequestStates,
+    onRequestArchitectureGraph: workbenchCommands.handleRequestArchitectureGraph,
+    onRequestClassDiagram: workbenchCommands.handleRequestClassDiagram,
+    onRequestClassDiagramWithOptions: workbenchCommands.handleRequestClassDiagramWithOptions,
+    onRequestPackageDependencyGraph: workbenchCommands.handleRequestPackageDependencyGraph,
+    onRequestReviewGraphWithOptions: workbenchCommands.handleRequestReviewGraphWithOptions,
   };
 
   function handleWorkflowStageChange(stage: WorkflowStage) {
@@ -1288,6 +1363,10 @@ export function App() {
         showTabs={false}
       />
     );
+  const graphFocusedLayout = analysisDisplayMode === "CLASS_DIAGRAM" || isProjectStructureDisplay(
+    analysisDisplayMode,
+    architectureGraphView.summary.indexed ?? null,
+  );
   const graphStage = (
     <section className="graph-stage" aria-label="图谱舞台">
       <GraphStageHeader
@@ -1296,17 +1375,33 @@ export function App() {
         onRequestAnalysisDisplayMode={handleRequestAnalysisDisplayMode}
       />
       <div className="graph-stage-canvas">
-        <AppGraphStage
-          analysisDisplayMode={analysisDisplayMode}
-          stageProps={stageProps}
-          factGraphView={factGraphView}
-          presentedFlowchartView={presentedFlowchartView}
-          flowchartView={flowchartView}
-          resourceRelationView={resourceRelationView}
-          architectureGraphView={architectureGraphView}
-          classDiagramView={classDiagramView}
-          reviewGraphView={reviewGraphView}
-        />
+        {analysisDisplayMode === "ARCHITECTURE_GRAPH" ||
+        analysisDisplayMode === "CLASS_DIAGRAM" ||
+        analysisDisplayMode === "REVIEW_GRAPH" ? (
+          <AppGraphStage
+            analysisDisplayMode={analysisDisplayMode}
+            stageProps={indexedReadonlyStageProps}
+            factGraphView={factGraphView}
+            presentedFlowchartView={presentedFlowchartView}
+            flowchartView={flowchartView}
+            resourceRelationView={resourceRelationView}
+            architectureGraphView={architectureGraphView}
+            classDiagramView={classDiagramView}
+            reviewGraphView={reviewGraphView}
+          />
+        ) : (
+          <AppGraphStage
+            analysisDisplayMode={analysisDisplayMode}
+            stageProps={editableStageProps}
+            factGraphView={factGraphView}
+            presentedFlowchartView={presentedFlowchartView}
+            flowchartView={flowchartView}
+            resourceRelationView={resourceRelationView}
+            architectureGraphView={architectureGraphView}
+            classDiagramView={classDiagramView}
+            reviewGraphView={reviewGraphView}
+          />
+        )}
       </div>
       <GraphStageFooter
         analysisDisplayMode={analysisDisplayMode}
@@ -1315,6 +1410,12 @@ export function App() {
         hasExplanationFocus={explanationFocusNodeId != null}
         draftChangedNodeCount={draftChangedNodeIds.length}
         draftCompareProjection={draftCompareProjection}
+        indexedSummary={activeIndexedGraphSummary(
+          analysisDisplayMode,
+          architectureGraphView.summary.indexed ?? null,
+          classDiagramView.summary.indexed ?? null,
+          reviewGraphView.summary.indexed ?? null,
+        )}
         codeDiffStatus={codeDiffStatus}
       />
     </section>
@@ -1363,7 +1464,7 @@ export function App() {
       )}
       body={(
         <HybridWorkbenchLayout
-          outlineCollapsed={hybridLayoutPreference.outlineCollapsed}
+          outlineCollapsed={graphFocusedLayout ? true : hybridLayoutPreference.outlineCollapsed}
           onOutlineCollapsedChange={handleOutlineCollapsedChange}
           workbenchWidth={hybridLayoutPreference.workbenchWidth}
           onWorkbenchWidthChange={handleWorkbenchWidthChange}

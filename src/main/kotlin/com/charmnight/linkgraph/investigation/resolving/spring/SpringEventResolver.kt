@@ -1,21 +1,22 @@
 package com.charmnight.linkgraph.investigation.resolving.spring
 
+import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoal
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoalKind
 import com.charmnight.linkgraph.investigation.domain.EvidenceFact
 import com.charmnight.linkgraph.investigation.domain.EvidenceLevel
 import com.charmnight.linkgraph.investigation.domain.ResolutionOutcome
 import com.charmnight.linkgraph.investigation.resolving.InvestigationContext
-import com.charmnight.linkgraph.investigation.resolving.ReadActionEvidenceResolver
 import com.charmnight.linkgraph.investigation.resolving.java.JvmEvidenceIndexAdapter
+import com.charmnight.linkgraph.investigation.resolving.java.JvmIndexReadActionEvidenceResolver
 import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
 
 /**
  * 使用共享 JVM relation index 解析 Spring 事件发布与监听关系。
  */
 class SpringEventResolver(
-    private val jvmEvidenceIndexAdapter: JvmEvidenceIndexAdapter = JvmEvidenceIndexAdapter(),
-) : ReadActionEvidenceResolver() {
+    jvmEvidenceIndexAdapter: JvmEvidenceIndexAdapter = JvmEvidenceIndexAdapter(),
+) : JvmIndexReadActionEvidenceResolver(jvmEvidenceIndexAdapter) {
     /** 保存解析器稳定标识。 */
     override val id: String = "spring-event"
 
@@ -32,17 +33,16 @@ class SpringEventResolver(
     override fun resolveInReadAction(
         goal: EvidenceGoal,
         context: InvestigationContext,
+        index: ArchitectureGraphIndex,
     ): ResolutionOutcome {
-        return resolveFromJvmIndex(goal, context)
+        return resolveFromJvmIndex(goal, index)
             ?: unresolved(goal, "共享 JvmRelationIndex 中未找到 SPRING_EVENT_LISTENS 关系。")
     }
 
     private fun resolveFromJvmIndex(
         goal: EvidenceGoal,
-        context: InvestigationContext,
+        index: ArchitectureGraphIndex,
     ): ResolutionOutcome.Resolved? {
-        val index = runCatching { jvmEvidenceIndexAdapter.buildIndex(context.project) }.getOrNull()
-            ?: return null
         val ownerName = goal.ownerClassName?.takeIf(String::isNotBlank)
         val sourceSymbols = when {
             ownerName != null -> listOfNotNull(index.findClass(ownerName))

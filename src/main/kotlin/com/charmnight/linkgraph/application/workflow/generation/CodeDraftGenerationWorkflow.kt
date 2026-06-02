@@ -16,12 +16,13 @@ import com.charmnight.linkgraph.llm.runtime.withRuntimeDeadlineTimeout
 import com.charmnight.linkgraph.application.diagnostics.GenerationDiagnostics
 import com.charmnight.linkgraph.foundation.debugLazy
 import com.charmnight.linkgraph.application.model.AsyncRequestState
-import com.charmnight.linkgraph.application.port.GenerationRequestFailurePresentation
-import com.charmnight.linkgraph.application.port.GenerationRequestScene
-import com.charmnight.linkgraph.application.port.GenerationRequestStartedPresentation
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEvent
+import com.charmnight.linkgraph.application.result.GenerationRequestFailureResult
+import com.charmnight.linkgraph.application.result.GenerationRequestScene
+import com.charmnight.linkgraph.application.result.GenerationRequestStartedResult
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
 import com.charmnight.linkgraph.application.usecase.GenerationUseCase
 import com.charmnight.linkgraph.application.usecase.GenerationUseCaseResult
+import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 
 internal class CodeDraftGenerationWorkflow(
     private val dependencies: GenerationWorkflowDependencies,
@@ -47,7 +48,7 @@ internal class CodeDraftGenerationWorkflow(
         dependencies.rejectOrphanedGenerationPlan(snapshot, "代码草稿")?.let { return }
         val requestId = dependencies.asyncRequestLifecycle.beginCodeDraftRequest()
         val settings = dependencies.settingsProvider()
-        val presentation = dependencies.asyncRequestLifecycle.buildAsyncRequestPresentation(
+        val presentation = dependencies.asyncRequestLifecycle.buildAsyncRequestLifecycleResult(
             requestId = requestId,
             sceneLabel = "代码草稿生成",
             settings = settings,
@@ -69,11 +70,11 @@ internal class CodeDraftGenerationWorkflow(
         }
         dependencies.emit(
             GraphEditorApplicationEvent.GenerationRequestStarted(
-                GenerationRequestStartedPresentation(
+                GenerationRequestStartedResult(
                     scene = GenerationRequestScene.CODE_DRAFT,
                     requestState = presentation.requestState,
                     clearRuntimeArtifactScene = "codegen",
-                    feedbackMessage = if (presentation.remoteRequested) {
+                    statusMessage = if (presentation.remoteRequested) {
                         if (presentation.streamingSupported) {
                             "已发起远程 LLM 代码草稿请求，当前采用流式输出。"
                         } else {
@@ -95,7 +96,7 @@ internal class CodeDraftGenerationWorkflow(
                 dependencies.asyncRequestLifecycle.logAsyncRequestEvent(dependencies.logger, "timedOut", timedOutState)
                 dependencies.emit(
                     GraphEditorApplicationEvent.CodeDraftRequestFailed(
-                        GenerationRequestFailurePresentation(
+                        GenerationRequestFailureResult(
                             scene = "代码草稿生成",
                             message = timedOutState.errorMessage ?: "代码草稿生成超时",
                             requestState = timedOutState,
@@ -106,7 +107,11 @@ internal class CodeDraftGenerationWorkflow(
         )
         dependencies.asyncRequestLifecycle.runBackgroundTask(
             work = {
-                val runtimeResult = executeCodegenRuntime(snapshot, previewUpdater)
+                val runtimeResult = executeCodegenRuntime(
+                    snapshot = snapshot,
+                    settings = settings,
+                    onPreview = previewUpdater,
+                )
                 val preparedDrafts = runtimeResult.output
                     ?.drafts
                     ?.takeIf { drafts -> drafts.isNotEmpty() }
@@ -184,7 +189,7 @@ internal class CodeDraftGenerationWorkflow(
                         dependencies.asyncRequestLifecycle.logAsyncRequestEvent(dependencies.logger, "failed", requestState)
                         dependencies.emit(
                             GraphEditorApplicationEvent.CodeDraftRequestFailed(
-                                GenerationRequestFailurePresentation(
+                                GenerationRequestFailureResult(
                                     scene = "代码草稿",
                                     message = message,
                                     requestState = requestState,
@@ -226,6 +231,7 @@ internal class CodeDraftGenerationWorkflow(
 
     private fun executeCodegenRuntime(
         snapshot: WorkflowEditorSnapshot,
+        settings: LinkGraphSettingsState,
         onPreview: ((String, Boolean) -> Unit)? = null,
     ): AgentRunResult<CodeGenerationResult> {
         val runtimeResult = dependencies.agentRunCoordinator.run(
@@ -235,14 +241,14 @@ internal class CodeDraftGenerationWorkflow(
                         dependencies.codeGenerationService.generateDrafts(
                             context = input.generationContext,
                             plan = input.plan,
-                            settings = dependencies.settingsProvider().withRuntimeDeadlineTimeout(runtimeContext),
+                            settings = settings.withRuntimeDeadlineTimeout(runtimeContext),
                             onPreview = onPreview,
                         ),
                         dependencies.project.basePath,
                     )
                 },
             ),
-            input = buildCodegenCapabilityInput(snapshot),
+            input = buildCodegenCapabilityInput(snapshot, settings),
             runtimeContext = AgentRuntimeContext(
                 project = dependencies.project,
                 snapshotSupplier = dependencies.toolGraphSnapshotProvider::snapshot,
@@ -255,6 +261,7 @@ internal class CodeDraftGenerationWorkflow(
 
     private fun buildCodegenCapabilityInput(
         snapshot: WorkflowEditorSnapshot,
+        settings: LinkGraphSettingsState,
     ): CodegenCapabilityInput {
         val snapshotPlan = snapshot.generationPlan?.let { rawPlan ->
             ProjectPathNormalizer.normalizePlan(rawPlan, dependencies.project.basePath)
@@ -274,6 +281,7 @@ internal class CodeDraftGenerationWorkflow(
         return CodegenCapabilityInput(
             generationContext = dependencies.buildGenerationContext(generationPayload),
             plan = plan,
+            settings = settings,
         )
     }
 

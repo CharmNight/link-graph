@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.application.usecase
 
 import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
 import com.charmnight.linkgraph.application.model.currentVisibleGraph
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
@@ -26,12 +26,12 @@ sealed interface SubjectGraphUseCaseResult {
     data class CurrentMethodNodeApplied(
         val graph: GraphDocument,
         val selectedMethodSignature: String,
-        val feedbackMessage: String,
+        val statusMessage: String,
     ) : SubjectGraphUseCaseResult
     data class ResourceNodeApplied(
         val graph: GraphDocument,
         val selectedNodeId: String,
-        val feedbackMessage: String,
+        val statusMessage: String,
     ) : SubjectGraphUseCaseResult
 }
 
@@ -59,22 +59,19 @@ class SubjectGraphUseCase {
         cachedResult: SemanticAnalysisResult?,
         lastGraphSource: String?,
     ): SubjectGraphUseCaseResult {
-        if (displayMode == AnalysisDisplayMode.ARCHITECTURE_GRAPH || displayMode == AnalysisDisplayMode.CLASS_DIAGRAM) {
-            val existingView = if (displayMode == AnalysisDisplayMode.ARCHITECTURE_GRAPH) {
-                snapshot.architectureGraphView.visibleGraph
-            } else {
-                snapshot.classDiagramView.visibleGraph
+        if (displayMode in PROJECT_LEVEL_DISPLAY_MODES) {
+            val existingView = when (displayMode) {
+                AnalysisDisplayMode.ARCHITECTURE_GRAPH -> snapshot.architectureGraphView.visibleGraph
+                AnalysisDisplayMode.CLASS_DIAGRAM -> snapshot.classDiagramView.visibleGraph
+                AnalysisDisplayMode.REVIEW_GRAPH -> snapshot.reviewGraphView.visibleGraph
+                else -> GraphDocument()
             }
             return if (existingView.nodes.isNotEmpty() || existingView.edges.isNotEmpty()) {
                 SubjectGraphUseCaseResult.RequestedDisplayMode(displayMode)
             } else {
                 SubjectGraphUseCaseResult.DisplayModeRejected(
                     level = ApplicationFeedbackLevel.INFO,
-                    message = if (displayMode == AnalysisDisplayMode.ARCHITECTURE_GRAPH) {
-                        "架构图尚未加载，请通过架构图入口构建项目级索引。"
-                    } else {
-                        "类图尚未加载，请通过类图入口构建项目级索引。"
-                    },
+                    message = projectLevelDisplayModeMissingMessage(displayMode),
                 )
             }
         }
@@ -112,7 +109,7 @@ class SubjectGraphUseCase {
         return SubjectGraphUseCaseResult.CurrentMethodNodeApplied(
             graph = currentGraph.copy(nodes = nextNodes),
             selectedMethodSignature = currentMethodNode.methodSignature,
-            feedbackMessage = if (existingNode == null) {
+            statusMessage = if (existingNode == null) {
                 "已追加当前方法节点：${currentMethodNode.methodDisplayName}"
             } else {
                 "已刷新当前方法节点：${currentMethodNode.methodDisplayName}"
@@ -138,7 +135,7 @@ class SubjectGraphUseCase {
         return SubjectGraphUseCaseResult.ResourceNodeApplied(
             graph = currentGraph.copy(nodes = nextNodes),
             selectedNodeId = mergedNode.id,
-            feedbackMessage = if (existingNode == null) {
+            statusMessage = if (existingNode == null) {
                 "已追加当前${kindLabel}节点：${node.title}"
             } else {
                 "已刷新当前${kindLabel}节点：${node.title}"
@@ -198,8 +195,21 @@ class SubjectGraphUseCase {
         private const val DEFAULT_CANVAS_START_Y = 96
         private const val DEFAULT_CANVAS_GAP_X = 260
         private const val DEFAULT_CANVAS_GAP_Y = 170
+        private val PROJECT_LEVEL_DISPLAY_MODES = setOf(
+            AnalysisDisplayMode.ARCHITECTURE_GRAPH,
+            AnalysisDisplayMode.CLASS_DIAGRAM,
+            AnalysisDisplayMode.REVIEW_GRAPH,
+        )
     }
 }
+
+private fun projectLevelDisplayModeMissingMessage(displayMode: AnalysisDisplayMode): String =
+    when (displayMode) {
+        AnalysisDisplayMode.ARCHITECTURE_GRAPH -> "架构图尚未加载，请通过架构图入口构建项目级索引。"
+        AnalysisDisplayMode.CLASS_DIAGRAM -> "类图尚未加载，请通过类图入口构建项目级索引。"
+        AnalysisDisplayMode.REVIEW_GRAPH -> "Review Graph 尚未加载，请通过 Review Graph 入口构建项目级索引。"
+        else -> "目标视图尚未加载。"
+    }
 
 data class CurrentMethodNodeInput(
     val node: GraphNode,

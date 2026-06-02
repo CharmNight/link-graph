@@ -2,6 +2,7 @@ package com.charmnight.linkgraph.actions
 
 import com.charmnight.linkgraph.LinkGraphBundle
 import com.charmnight.linkgraph.application.GraphEditorApplicationService
+import com.charmnight.linkgraph.application.command.ApplicationCommand
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -34,7 +35,8 @@ class OpenLinkGraphAction : DumbAwareAction(
             val project = event.project
             val previewKind = if (project != null) {
                 project.getService(GraphEditorApplicationService::class.java)
-                    .previewCurrentEditorSubjectKind(event.getData(CommonDataKeys.EDITOR))
+                    .commandDispatcher
+                    .dispatch(ApplicationCommand.PreviewCurrentEditorSubjectKind(event.getData(CommonDataKeys.EDITOR)))
             } else {
                 null
             }
@@ -60,6 +62,8 @@ class OpenLinkGraphAction : DumbAwareAction(
         val project = event.project ?: return
         val editor = event.getData(CommonDataKeys.EDITOR)
         project.getService(LinkGraphToolWindowSession::class.java).openToolWindow()
-        project.getService(GraphEditorApplicationService::class.java).loadCurrentEditorContextGraphAsync(editor)
+        project.getService(GraphEditorApplicationService::class.java)
+            .commandDispatcher
+            .dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(editor))
     }
 }

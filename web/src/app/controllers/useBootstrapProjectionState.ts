@@ -1,4 +1,4 @@
-import type { Dispatch, MutableRefObject, SetStateAction } from "react";
+import { useRef, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { measureDuration, measureStart, summarizeBootstrapState, summarizeGraph, traceLinkGraph } from "../debug";
 import { applyLayoutOnlyNodePositions, resolveNodePosition, syncNodePosition } from "../graphState";
 import type {
@@ -22,6 +22,7 @@ import type {
   WorkbenchCanvasState,
   WorkbenchProjectionState,
 } from "./useWorkbenchState";
+import { resolveIndexedGraphRequestStates } from "./useWorkbenchState";
 
 const DEFAULT_ANALYSIS_DISPLAY_MODE: AnalysisDisplayMode = "FLOWCHART";
 
@@ -29,6 +30,15 @@ type GraphViewDocumentLike = {
   visibleGraph: LinkGraphDocument;
   fullGraph: LinkGraphDocument;
   anchorNodeId?: string | null;
+};
+
+type SceneGraphViews = {
+  factGraphView: FactGraphViewDocument;
+  flowchartView: FlowchartViewDocument;
+  resourceRelationView: ResourceRelationViewDocument;
+  architectureGraphView: ArchitectureGraphViewDocument;
+  classDiagramView: ClassDiagramViewDocument;
+  reviewGraphView: ReviewGraphViewDocument;
 };
 
 interface UseBootstrapProjectionStateArgs {
@@ -113,15 +123,29 @@ function normalizeSceneState(
   sceneState: LinkGraphSceneState | null | undefined,
   nodes: LinkGraphNode[],
   resolveAnchorNodeId: (nodes: LinkGraphNode[], preferredNodeId: string | null) => string | null,
+  authoritativeAnchorNodeId?: string | null,
 ): LinkGraphSceneState {
   const baseSceneState = sceneState ?? createEmptySceneState();
   const nodeIds = new Set(nodes.map((node) => node.id));
-  const selectedNodeId = baseSceneState.selectedNodeId && nodeIds.has(baseSceneState.selectedNodeId)
-    ? baseSceneState.selectedNodeId
-    : nodes[0]?.id ?? null;
-  const preferredAnchorNodeId = baseSceneState.anchorNodeId && nodeIds.has(baseSceneState.anchorNodeId)
+  const resolvedAuthoritativeAnchorNodeId = authoritativeAnchorNodeId && nodeIds.has(authoritativeAnchorNodeId)
+    ? authoritativeAnchorNodeId
+    : null;
+  const sceneAnchorNodeId = baseSceneState.anchorNodeId && nodeIds.has(baseSceneState.anchorNodeId)
     ? baseSceneState.anchorNodeId
-    : selectedNodeId;
+    : null;
+  const sceneSelectedNodeId = baseSceneState.selectedNodeId && nodeIds.has(baseSceneState.selectedNodeId)
+    ? baseSceneState.selectedNodeId
+    : null;
+  const sceneSelectionMirrorsStaleAnchor = resolvedAuthoritativeAnchorNodeId != null
+    && sceneAnchorNodeId != null
+    && sceneAnchorNodeId !== resolvedAuthoritativeAnchorNodeId
+    && sceneSelectedNodeId === sceneAnchorNodeId;
+  const selectedNodeId = sceneSelectionMirrorsStaleAnchor
+    ? resolvedAuthoritativeAnchorNodeId
+    : sceneSelectedNodeId ?? resolvedAuthoritativeAnchorNodeId ?? nodes[0]?.id ?? null;
+  const preferredAnchorNodeId = resolvedAuthoritativeAnchorNodeId
+    ?? sceneAnchorNodeId
+    ?? selectedNodeId;
 
   return {
     ...baseSceneState,
@@ -232,28 +256,23 @@ function applySceneStateToViewDocument<T extends GraphViewDocumentLike>(
 
 function resolveSceneNodes(
   sceneId: LinkGraphSceneId,
-  factGraphView: FactGraphViewDocument,
-  flowchartView: FlowchartViewDocument,
-  resourceRelationView: ResourceRelationViewDocument,
-  architectureGraphView: ArchitectureGraphViewDocument,
-  classDiagramView: ClassDiagramViewDocument,
-  reviewGraphView: ReviewGraphViewDocument,
+  views: SceneGraphViews,
   fallbackVisibleGraph: LinkGraphDocument,
   currentSceneId: LinkGraphSceneId,
 ): LinkGraphNode[] {
   switch (sceneId) {
     case "WORKSPACE_FACT":
-      return factGraphView.visibleGraph.nodes;
+      return views.factGraphView.visibleGraph.nodes;
     case "WORKSPACE_FLOWCHART":
-      return flowchartView.visibleGraph.nodes;
+      return views.flowchartView.visibleGraph.nodes;
     case "WORKSPACE_RESOURCE_RELATION":
-      return resourceRelationView.visibleGraph.nodes;
+      return views.resourceRelationView.visibleGraph.nodes;
     case "WORKSPACE_ARCHITECTURE_GRAPH":
-      return architectureGraphView.visibleGraph.nodes;
+      return views.architectureGraphView.visibleGraph.nodes;
     case "WORKSPACE_CLASS_DIAGRAM":
-      return classDiagramView.visibleGraph.nodes;
+      return views.classDiagramView.visibleGraph.nodes;
     case "WORKSPACE_REVIEW_GRAPH":
-      return reviewGraphView.visibleGraph.nodes;
+      return views.reviewGraphView.visibleGraph.nodes;
     case "DIFF":
       return currentSceneId === "DIFF" ? fallbackVisibleGraph.nodes : [];
     default:
@@ -261,19 +280,55 @@ function resolveSceneNodes(
   }
 }
 
+function resolveSceneViewAnchorNodeId(
+  sceneId: LinkGraphSceneId,
+  views: SceneGraphViews,
+): string | null {
+  switch (sceneId) {
+    case "WORKSPACE_FACT":
+      return views.factGraphView.anchorNodeId ?? null;
+    case "WORKSPACE_FLOWCHART":
+      return views.flowchartView.anchorNodeId ?? null;
+    case "WORKSPACE_RESOURCE_RELATION":
+      return views.resourceRelationView.anchorNodeId ?? null;
+    case "WORKSPACE_ARCHITECTURE_GRAPH":
+      return views.architectureGraphView.anchorNodeId ?? null;
+    case "WORKSPACE_CLASS_DIAGRAM":
+      return views.classDiagramView.anchorNodeId ?? null;
+    case "WORKSPACE_REVIEW_GRAPH":
+      return views.reviewGraphView.anchorNodeId ?? null;
+    case "DIFF":
+    default:
+      return null;
+  }
+}
+
 function mergeSceneState(args: {
   nextSceneState: LinkGraphSceneState | undefined;
   currentSceneState: LinkGraphSceneState | undefined;
   nodes: LinkGraphNode[];
+  authoritativeAnchorNodeId?: string | null;
   preserveLocalSceneUi: boolean;
   resolveAnchorNodeId: (nodes: LinkGraphNode[], preferredNodeId: string | null) => string | null;
 }): LinkGraphSceneState {
   const bootstrapSceneState = args.nextSceneState ?? createEmptySceneState();
   const currentSceneState = args.currentSceneState ?? bootstrapSceneState;
-  const preserveLocalLayout = args.preserveLocalSceneUi
+  const nodeIds = new Set(args.nodes.map((node) => node.id));
+  const authoritativeAnchorNodeId = args.authoritativeAnchorNodeId && nodeIds.has(args.authoritativeAnchorNodeId)
+    ? args.authoritativeAnchorNodeId
+    : null;
+  const incomingAnchorChanged = Boolean(
+    authoritativeAnchorNodeId
+      ? currentSceneState.anchorNodeId && authoritativeAnchorNodeId !== currentSceneState.anchorNodeId
+      : bootstrapSceneState.anchorNodeId
+        && currentSceneState.anchorNodeId
+        && bootstrapSceneState.anchorNodeId !== currentSceneState.anchorNodeId,
+  );
+  const preserveLocalSceneUi = args.preserveLocalSceneUi && !incomingAnchorChanged;
+  const preserveLocalLayout = preserveLocalSceneUi
     && currentSceneState.layoutRevision >= bootstrapSceneState.layoutRevision;
 
-  const mergedSceneState = args.preserveLocalSceneUi
+  const mergedSceneState = preserveLocalSceneUi
     ? {
         ...bootstrapSceneState,
         selectedNodeId: currentSceneState.selectedNodeId,
@@ -281,53 +336,62 @@ function mergeSceneState(args: {
         collapsedNodeIds: currentSceneState.collapsedNodeIds,
         layoutState: preserveLocalLayout ? currentSceneState.layoutState : bootstrapSceneState.layoutState,
         layoutRevision: preserveLocalLayout ? currentSceneState.layoutRevision : bootstrapSceneState.layoutRevision,
-      }
+    }
     : bootstrapSceneState;
 
-  return normalizeSceneState(mergedSceneState, args.nodes, args.resolveAnchorNodeId);
+  return normalizeSceneState(
+    mergedSceneState,
+    args.nodes,
+    args.resolveAnchorNodeId,
+    authoritativeAnchorNodeId,
+  );
 }
 
 export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArgs) {
+  const canvasStateRef = useRef(args.canvasState);
+  canvasStateRef.current = args.canvasState;
+
   function applyBootstrapState(nextState: LinkGraphBootstrapState) {
     const startedAt = measureStart();
+    const currentCanvasState = canvasStateRef.current;
     const nextAnalysisDisplayMode = nextState.analysisDisplayMode
       ?? args.analysisDisplayModeRef.current
-      ?? args.canvasState.analysisDisplayMode
+      ?? currentCanvasState.analysisDisplayMode
       ?? DEFAULT_ANALYSIS_DISPLAY_MODE;
     const currentSemanticRevision = args.semanticRevisionRef.current;
-    const reuseCurrentProjectionGraphs = nextState.workspaceRevision === args.canvasState.workspaceRevision
+    const reuseCurrentProjectionGraphs = nextState.workspaceRevision === currentCanvasState.workspaceRevision
       && nextState.semanticRevision === currentSemanticRevision;
     const nextSourceNavigationState = args.resolveSourceNavigationState(nextState);
 
     const bootstrapFactGraphView = args.applyBootstrapRoutesToViewDocument(
       args.resolveFactGraphView(nextState),
-      args.canvasState.factGraphView,
+      currentCanvasState.factGraphView,
     );
     const bootstrapFlowchartView = args.applyBootstrapRoutesToViewDocument(
       args.resolveFlowchartView(nextState),
-      args.canvasState.flowchartView,
+      currentCanvasState.flowchartView,
     );
     const bootstrapResourceRelationView = args.applyBootstrapRoutesToViewDocument(
       args.resolveResourceRelationView(nextState),
-      args.canvasState.resourceRelationView,
+      currentCanvasState.resourceRelationView,
     );
     const bootstrapArchitectureGraphView = args.applyBootstrapRoutesToViewDocument(
       args.resolveArchitectureGraphView(nextState),
-      args.canvasState.architectureGraphView,
+      currentCanvasState.architectureGraphView,
     );
     const bootstrapClassDiagramView = args.applyBootstrapRoutesToViewDocument(
       args.resolveClassDiagramView(nextState),
-      args.canvasState.classDiagramView,
+      currentCanvasState.classDiagramView,
     );
     const bootstrapReviewGraphView = args.applyBootstrapRoutesToViewDocument(
       args.resolveReviewGraphView(nextState),
-      args.canvasState.reviewGraphView,
+      currentCanvasState.reviewGraphView,
     );
 
     const projectedFactGraphView = applyBootstrapLayoutToViewDocument(
       args.reuseCurrentViewGraphs(
         bootstrapFactGraphView,
-        args.canvasState.factGraphView,
+        currentCanvasState.factGraphView,
         reuseCurrentProjectionGraphs,
       ),
       bootstrapFactGraphView,
@@ -335,7 +399,7 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
     const projectedFlowchartView = applyBootstrapLayoutToViewDocument(
       args.reuseCurrentViewGraphs(
         bootstrapFlowchartView,
-        args.canvasState.flowchartView,
+        currentCanvasState.flowchartView,
         reuseCurrentProjectionGraphs,
       ),
       bootstrapFlowchartView,
@@ -343,7 +407,7 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
     const projectedResourceRelationView = applyBootstrapLayoutToViewDocument(
       args.reuseCurrentViewGraphs(
         bootstrapResourceRelationView,
-        args.canvasState.resourceRelationView,
+        currentCanvasState.resourceRelationView,
         reuseCurrentProjectionGraphs,
       ),
       bootstrapResourceRelationView,
@@ -351,7 +415,7 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
     const projectedArchitectureGraphView = applyBootstrapLayoutToViewDocument(
       args.reuseCurrentViewGraphs(
         bootstrapArchitectureGraphView,
-        args.canvasState.architectureGraphView,
+        currentCanvasState.architectureGraphView,
         reuseCurrentProjectionGraphs,
       ),
       bootstrapArchitectureGraphView,
@@ -359,7 +423,7 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
     const projectedClassDiagramView = applyBootstrapLayoutToViewDocument(
       args.reuseCurrentViewGraphs(
         bootstrapClassDiagramView,
-        args.canvasState.classDiagramView,
+        currentCanvasState.classDiagramView,
         reuseCurrentProjectionGraphs,
       ),
       bootstrapClassDiagramView,
@@ -367,7 +431,7 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
     const projectedReviewGraphView = applyBootstrapLayoutToViewDocument(
       args.reuseCurrentViewGraphs(
         bootstrapReviewGraphView,
-        args.canvasState.reviewGraphView,
+        currentCanvasState.reviewGraphView,
         reuseCurrentProjectionGraphs,
       ),
       bootstrapReviewGraphView,
@@ -385,19 +449,22 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
 
     const sceneIds = Array.from(new Set([
       ...Object.keys(nextState.sceneStates),
-      ...Object.keys(args.canvasState.sceneStates),
+      ...Object.keys(currentCanvasState.sceneStates),
     ])) as LinkGraphSceneId[];
 
     const mergedSceneStates = Object.fromEntries(
       sceneIds.map((sceneId) => {
+        const projectedViews = {
+          factGraphView: projectedFactGraphView,
+          flowchartView: projectedFlowchartView,
+          resourceRelationView: projectedResourceRelationView,
+          architectureGraphView: projectedArchitectureGraphView,
+          classDiagramView: projectedClassDiagramView,
+          reviewGraphView: projectedReviewGraphView,
+        };
         const nodes = resolveSceneNodes(
           sceneId,
-          projectedFactGraphView,
-          projectedFlowchartView,
-          projectedResourceRelationView,
-          projectedArchitectureGraphView,
-          projectedClassDiagramView,
-          projectedReviewGraphView,
+          projectedViews,
           provisionalVisibleGraph,
           nextState.currentSceneId,
         );
@@ -405,8 +472,9 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
           sceneId,
           mergeSceneState({
             nextSceneState: nextState.sceneStates[sceneId],
-            currentSceneState: args.canvasState.sceneStates[sceneId],
+            currentSceneState: currentCanvasState.sceneStates[sceneId],
             nodes,
+            authoritativeAnchorNodeId: resolveSceneViewAnchorNodeId(sceneId, projectedViews),
             preserveLocalSceneUi: reuseCurrentProjectionGraphs,
             resolveAnchorNodeId: args.resolveAnchorNodeId,
           }),
@@ -416,32 +484,32 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
 
     let nextFactGraphView = applySceneStateToViewDocument(
       projectedFactGraphView,
-      args.canvasState.factGraphView,
+      currentCanvasState.factGraphView,
       mergedSceneStates.WORKSPACE_FACT ?? createEmptySceneState(),
     );
     let nextFlowchartView = applySceneStateToViewDocument(
       projectedFlowchartView,
-      args.canvasState.flowchartView,
+      currentCanvasState.flowchartView,
       mergedSceneStates.WORKSPACE_FLOWCHART ?? createEmptySceneState(),
     );
     let nextResourceRelationView = applySceneStateToViewDocument(
       projectedResourceRelationView,
-      args.canvasState.resourceRelationView,
+      currentCanvasState.resourceRelationView,
       mergedSceneStates.WORKSPACE_RESOURCE_RELATION ?? createEmptySceneState(),
     );
     let nextArchitectureGraphView = applySceneStateToViewDocument(
       projectedArchitectureGraphView,
-      args.canvasState.architectureGraphView,
+      currentCanvasState.architectureGraphView,
       mergedSceneStates.WORKSPACE_ARCHITECTURE_GRAPH ?? createEmptySceneState(),
     );
     let nextClassDiagramView = applySceneStateToViewDocument(
       projectedClassDiagramView,
-      args.canvasState.classDiagramView,
+      currentCanvasState.classDiagramView,
       mergedSceneStates.WORKSPACE_CLASS_DIAGRAM ?? createEmptySceneState(),
     );
     let nextReviewGraphView = applySceneStateToViewDocument(
       projectedReviewGraphView,
-      args.canvasState.reviewGraphView,
+      currentCanvasState.reviewGraphView,
       mergedSceneStates.WORKSPACE_REVIEW_GRAPH ?? createEmptySceneState(),
     );
 
@@ -480,9 +548,8 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
     args.analysisDisplayModeRef.current = nextAnalysisDisplayMode;
     args.semanticRevisionRef.current = nextState.semanticRevision ?? args.semanticRevisionRef.current;
     args.layoutRevisionRef.current = nextSceneState.layoutRevision ?? null;
-
-    args.setCanvasState((current) => ({
-      ...current,
+    const nextCanvasState: WorkbenchCanvasState = {
+      ...currentCanvasState,
       nodes: nextNodes,
       edges: nextEdges,
       selectedNodeId: nextSelectedNodeId,
@@ -493,7 +560,7 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       workspaceGraph: nextWorkspaceGraph,
       workspaceBaseGraph: args.resolveWorkspaceBaseGraph(nextState),
       semanticFactGraph: args.resolveSemanticFactGraph(nextState),
-      workspaceRevision: nextState.workspaceRevision ?? current.workspaceRevision,
+      workspaceRevision: nextState.workspaceRevision ?? currentCanvasState.workspaceRevision,
       factGraphView: nextFactGraphView,
       flowchartView: nextFlowchartView,
       resourceRelationView: nextResourceRelationView,
@@ -501,7 +568,10 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       classDiagramView: nextClassDiagramView,
       reviewGraphView: nextReviewGraphView,
       draftGraph: nextDraftGraph,
-    }));
+    };
+    canvasStateRef.current = nextCanvasState;
+
+    args.setCanvasState(() => nextCanvasState);
 
     args.setProjectionState((current) => ({
       ...current,
@@ -541,6 +611,10 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       generatedCodeDraftWriteReport: nextState.generatedCodeDraftWriteReport ?? null,
       codeDraftRequestState: args.resolveRequestState(nextState.codeDraftRequestState),
       codeEligibilityDecision: nextState.codeEligibilityDecision ?? null,
+      indexedGraphRequestStates: resolveIndexedGraphRequestStates(
+        nextState.indexedGraphRequestStates,
+        args.resolveRequestState,
+      ),
       sourceNavigationState: nextSourceNavigationState,
       operationFeedback: nextState.operationFeedback ?? null,
       workbenchSectionPreferences: nextState.workbenchSectionPreferences ?? {},

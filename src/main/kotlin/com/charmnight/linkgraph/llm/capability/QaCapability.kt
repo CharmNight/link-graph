@@ -19,9 +19,8 @@ import com.charmnight.linkgraph.llm.runtime.AgentStepRecord
 import com.charmnight.linkgraph.llm.runtime.RunBudget
 import com.charmnight.linkgraph.llm.runtime.StepExecutor
 import com.charmnight.linkgraph.llm.runtime.StopPolicy
-import com.charmnight.linkgraph.llm.runtime.budgetExceededStepResult
 import com.charmnight.linkgraph.llm.runtime.failureReasonBeforeNextFileRead
-import com.charmnight.linkgraph.llm.runtime.failureReasonForBudget
+import com.charmnight.linkgraph.llm.runtime.withConfiguredRuntimeTimeout
 import com.charmnight.linkgraph.llm.runtime.withRuntimeDeadlineTimeout
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.llm.tools.AgentTool
@@ -104,7 +103,7 @@ class QaCapability(
             capabilityId = capabilityId,
             phase = AgentRunPhase.CREATED,
             userGoal = input.question,
-            budget = defaultBudget,
+            budget = defaultBudget.withConfiguredRuntimeTimeout(input.settings),
             stepIndex = 0,
             artifactRefs = emptyList(),
         )
@@ -137,7 +136,8 @@ class QaCapability(
         return tools
     }
 
-    override fun stopPolicy(input: QaCapabilityInput): StopPolicy = StopPolicy.default()
+    override fun stopPolicy(input: QaCapabilityInput): StopPolicy =
+        StopPolicy.default().copy(stopWhenEvidenceReadBudgetReached = false)
 
     override fun finalize(
         runState: AgentRunState,
@@ -399,24 +399,6 @@ class QaCapability(
         input: QaCapabilityInput,
     ): AgentStepExecutionResult {
         val preloadedBudget = recordPreloadedCodeEvidenceBudget(state.budget, input.qaContext.sourceContext)
-        val preloadedFailureReason = StopPolicy.default().evaluate(state.copy(budget = preloadedBudget))
-        if (preloadedFailureReason != null) {
-            return AgentStepExecutionResult.fail(
-                state.copy(
-                    phase = AgentRunPhase.FAILED,
-                    budget = preloadedBudget.recordStep(),
-                    stepIndex = state.stepIndex + 1,
-                    stepRecords = state.stepRecords + AgentStepRecord(
-                        stepIndex = state.stepIndex,
-                        phase = AgentRunPhase.FAILED,
-                        summary = "reject-preloaded-code-evidence-over-budget",
-                        nodeId = input.qaContext.selectedNodeIds.firstOrNull(),
-                    ),
-                    failureReason = preloadedFailureReason,
-                    lastModelOutput = "预加载源码证据超出 runtime 预算，已拒绝继续问答。",
-                ),
-            )
-        }
         val snapshot = runtimeContext.snapshotSupplier() ?: return AgentStepExecutionResult.fail(
             state.copy(
                 phase = AgentRunPhase.FAILED,
@@ -453,18 +435,16 @@ class QaCapability(
         val evidenceTraces = mutableListOf<EvidenceTraceEntry>()
         var promptEvidenceCount = 0
         var usedToolName: String? = null
-        targetNodeIds.forEachIndexed { index, nodeId ->
-            nextBudget.failureReasonBeforeNextFileRead()?.let { reason ->
-                return budgetExceededStepResult(
-                    state = state,
-                    budget = nextBudget,
-                    failureReason = reason,
-                    summary = "read-code-evidence",
-                    toolName = usedToolName ?: "read_source_snippet",
+        for ((index, nodeId) in targetNodeIds.withIndex()) {
+            val reasonBeforeNextFileRead = nextBudget.failureReasonBeforeNextFileRead()
+            if (reasonBeforeNextFileRead != null) {
+                evidenceTraces += EvidenceTraceEntry(
                     nodeId = nodeId,
-                    artifactRefs = nextArtifacts,
-                    lastModelOutput = "runtime 预算已耗尽，停止继续读取问答代码证据。",
+                    filePath = nodeId,
+                    reason = "未继续读取源码：问答证据读取预算已用尽（$reasonBeforeNextFileRead）。",
+                    includedInPrompt = false,
                 )
+                break
             }
             val toolContext = ToolExecutionContext(
                 project = runtimeContext.project,
@@ -487,7 +467,7 @@ class QaCapability(
                     includedInPrompt = false,
                     mappingTrace = resolution?.mappingTrace.orEmpty(),
                 )
-                return@forEachIndexed
+                continue
             }
             val snippetRead = readSnippetForAnchor(anchor, toolContext)
             val snippetContext = snippetRead.sourceContext
@@ -503,7 +483,38 @@ class QaCapability(
                     includedInPrompt = false,
                     mappingTrace = resolution?.mappingTrace.orEmpty(),
                 )
-                return@forEachIndexed
+                continue
+            }
+            val snippetLineCount = snippet.lineSequence().count()
+            val budgetAfterRead = nextBudget.recordFileRead(snippetLineCount)
+            usedToolName = usedToolName ?: if (!anchor.signature.isNullOrBlank()) "read_symbol" else "read_source_snippet"
+            if (snippetLineCount > nextBudget.maxSnippetLines) {
+                nextBudget = budgetAfterRead
+                evidenceTraces += EvidenceTraceEntry(
+                    nodeId = nodeId,
+                    resolvedNodeId = anchor.id.takeIf { resolvedNodeId -> resolvedNodeId != nodeId },
+                    filePath = snippetContext.filePath,
+                    reason = "跳过源码片段：单段 $snippetLineCount 行超过预算 ${nextBudget.maxSnippetLines} 行。",
+                    startLine = snippetContext.startLine,
+                    endLine = snippetContext.endLine,
+                    includedInPrompt = false,
+                    mappingTrace = resolution?.mappingTrace.orEmpty(),
+                )
+                continue
+            }
+            if (budgetAfterRead.totalSnippetLinesRead > nextBudget.maxTotalSnippetLines) {
+                nextBudget = budgetAfterRead
+                evidenceTraces += EvidenceTraceEntry(
+                    nodeId = nodeId,
+                    resolvedNodeId = anchor.id.takeIf { resolvedNodeId -> resolvedNodeId != nodeId },
+                    filePath = snippetContext.filePath,
+                    reason = "跳过源码片段：累计源码行数 ${budgetAfterRead.totalSnippetLinesRead} 超过预算 ${nextBudget.maxTotalSnippetLines} 行。",
+                    startLine = snippetContext.startLine,
+                    endLine = snippetContext.endLine,
+                    includedInPrompt = false,
+                    mappingTrace = resolution?.mappingTrace.orEmpty(),
+                )
+                continue
             }
             val artifactRef = runtimeContext.artifactStore.save(
                 CodeEvidenceArtifact(
@@ -527,20 +538,7 @@ class QaCapability(
                 includedInPrompt = true,
                 mappingTrace = resolution?.mappingTrace.orEmpty(),
             )
-            nextBudget = nextBudget.recordFileRead(snippet.lineSequence().count())
-            usedToolName = usedToolName ?: if (!anchor.signature.isNullOrBlank()) "read_symbol" else "read_source_snippet"
-            StopPolicy.default().failureReasonForBudget(state, nextBudget)?.let { reason ->
-                return budgetExceededStepResult(
-                    state = state,
-                    budget = nextBudget,
-                    failureReason = reason,
-                    summary = "read-code-evidence",
-                    toolName = usedToolName,
-                    nodeId = nodeId,
-                    artifactRefs = nextArtifacts,
-                    lastModelOutput = "读取问答代码证据后触发 runtime 预算上限。",
-                )
-            }
+            nextBudget = budgetAfterRead
         }
         if (evidenceTraces.isNotEmpty()) {
             nextArtifacts += runtimeContext.artifactStore.save(
@@ -636,7 +634,7 @@ class QaCapability(
     ): List<String> {
         return graph.nodes
             .asSequence()
-            .filter(::hasReadableSourceAnchor)
+            .filter(::isWholeGraphCodeEvidenceTarget)
             .sortedWith(
                 compareBy<GraphNode>(
                     ::wholeGraphEvidencePriority,
@@ -664,6 +662,24 @@ class QaCapability(
 
     private fun hasReadableSourceAnchor(node: GraphNode): Boolean {
         return !node.signature.isNullOrBlank() || !node.metadata["source.filePath"].isNullOrBlank()
+    }
+
+    private fun isWholeGraphCodeEvidenceTarget(node: GraphNode): Boolean {
+        if (!hasReadableSourceAnchor(node)) {
+            return false
+        }
+        return node.type in setOf(
+            NodeType.METHOD,
+            NodeType.FLOW_ACTION,
+            NodeType.FLOW_SCOPE,
+            NodeType.TERMINAL,
+            NodeType.CLASS,
+            NodeType.INTERFACE,
+            NodeType.ENUM,
+            NodeType.ANNOTATION,
+            NodeType.RECORD,
+            NodeType.OBJECT,
+        )
     }
 
     private fun wholeGraphEvidencePriority(node: GraphNode): Int {
@@ -796,12 +812,19 @@ class QaCapability(
         } else {
             emptyList()
         }
+        val budgetLimitedEvidenceWarning = if (runtimeTrace.any { trace ->
+                !trace.includedInPrompt && trace.reason.contains("预算")
+            }) {
+            listOf("本轮源码证据读取受预算限制，回答可能只覆盖已读取片段。")
+        } else {
+            emptyList()
+        }
         return copy(
             sourceContext = (sourceContext + runtimeSourceContext)
                 .distinctBy { snippet -> "${snippet.nodeId}:${snippet.filePath}:${snippet.startLine}:${snippet.endLine}" },
             evidenceTrace = (evidenceTrace + runtimeTrace)
                 .distinctBy { trace -> "${trace.nodeId}:${trace.filePath}:${trace.startLine}:${trace.endLine}:${trace.reason}" },
-            warnings = (missingPromptEvidenceWarning + warnings).distinct(),
+            warnings = (missingPromptEvidenceWarning + budgetLimitedEvidenceWarning + warnings).distinct(),
         )
     }
 

@@ -115,12 +115,12 @@ internal class GraphEditorWorkbenchStateSupport(
     fun markOperationFeedback(
         level: OperationFeedbackLevel,
         message: String,
-        preserveLastMessageType: Boolean = false,
+        preservePreviousStatusKind: Boolean = false,
     ) {
         mutate {
             it.copy(
                 operationFeedback = OperationFeedback(level = level, message = message),
-                lastMessageType = if (preserveLastMessageType) {
+                lastMessageType = if (preservePreviousStatusKind) {
                     it.lastMessageType
                 } else {
                     "operationFeedback"

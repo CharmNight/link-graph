@@ -6,6 +6,9 @@ import type {
   DiffStatus,
   GraphEditScript,
   GraphBeautificationRequest,
+  IndexedClassDiagramOptions,
+  IndexedReviewGraphOptions,
+  IndexedGraphViewportOptions,
   GraphPosition,
   GraphSourceTag,
   LinkGraphBootstrapState,
@@ -26,6 +29,60 @@ import {
 
 type FrontendReadyPayload = { lastAppliedRevision: number | null };
 type SnapshotAckPayload = { revision: number };
+type IndexedGraphPresetRequest = {
+  preset: "ARCHITECTURE" | "PACKAGE_DEPENDENCY" | "CLASS_DIAGRAM" | "REVIEW";
+  packageName?: string;
+  scopeNodeId?: string | null;
+  selectedDiffItemIds?: string[];
+  includeExternalLibraries?: boolean;
+  includeJdk?: boolean;
+  viewport?: IndexedGraphViewportOptions | null;
+  classDiagram?: Partial<IndexedClassDiagramOptions> | null;
+  review?: Partial<IndexedReviewGraphOptions> | null;
+};
+export type BridgeCommandType =
+  | "importMermaid"
+  | "exportMermaid"
+  | "showDiffMode"
+  | "requestSyncPreview"
+  | "requestQa"
+  | "retryLastQaRequest"
+  | "confirmQaCandidateChange"
+  | "unconfirmQaCandidateChange"
+  | "resolveInvestigationThread"
+  | "requestDiffReview"
+  | "requestGraphBeautification"
+  | "applyDraftPatchPreview"
+  | "clearDraftPatchPreview"
+  | "restoreDraftPatchPreview"
+  | "undoLastDraftPatchApply"
+  | "requestGenerationPlan"
+  | "requestGenerationPlanDiscussion"
+  | "requestCodeDrafts"
+  | "requestCurrentEditorContextGraph"
+  | "requestAnalysisDisplayMode"
+  | "requestIndexedGraph"
+  | "updateWorkbenchSectionPreference"
+  | "requestOpenSettings"
+  | "applyCodeDrafts"
+  | "applySingleCodeDraft"
+  | "openCodeDraftNativeDiff"
+  | "requestDraftNavigation"
+  | "requestArtifact"
+  | "frontendReady"
+  | "snapshotAck"
+  | "nodeSelected"
+  | "layoutChanged"
+  | "requestSourceNavigation"
+  | "requestExpandOverflowNode"
+  | "requestExpandInvocation"
+  | "requestRemoveInvocationExpansion"
+  | "applyGraphEditScript";
+export type BridgeCommandEnvelope = {
+  schemaVersion: 1;
+  type: BridgeCommandType;
+  payload: Record<string, unknown>;
+};
 type Bridge = NonNullable<Window["linkGraphBridge"]>;
 type BridgeMethodName = keyof Bridge;
 
@@ -63,6 +120,7 @@ declare global {
 
   interface Window {
     linkGraphBridge?: {
+      sendCommand?: (command: BridgeCommandEnvelope) => void;
       importMermaid?: (mermaid: string) => void;
       exportMermaid?: () => void;
       showDiffMode?: () => void;
@@ -92,9 +150,7 @@ declare global {
       requestCodeDrafts?: () => void;
       requestCurrentEditorContextGraph?: () => void;
       requestAnalysisDisplayMode?: (displayMode: AnalysisDisplayMode) => void;
-      requestArchitectureGraph?: () => void;
-      requestClassDiagram?: (scopeNodeId?: string | null) => void;
-      requestReviewGraph?: (selectedDiffItemIds?: string[]) => void;
+      requestIndexedGraph?: (request: IndexedGraphPresetRequest) => void;
       updateWorkbenchSectionPreference?: (sectionId: string, expanded: boolean) => void;
       requestOpenSettings?: () => void;
       applyCodeDrafts?: () => void;
@@ -429,26 +485,72 @@ export function requestAnalysisDisplayMode(displayMode: AnalysisDisplayMode): Br
   });
 }
 
-export function requestArchitectureGraph(): BridgeInvocationResult {
-  return invokeBridgeAction("requestArchitectureGraph", (bridge) => {
-    bridge.requestArchitectureGraph?.();
+export function requestIndexedGraph(request: IndexedGraphPresetRequest): BridgeInvocationResult {
+  return invokeBridgeAction("requestIndexedGraph", (bridge) => {
+    bridge.requestIndexedGraph?.(request);
+  }, {
+    request,
   });
 }
 
-export function requestClassDiagram(scopeNodeId?: string | null): BridgeInvocationResult {
-  return invokeBridgeAction("requestClassDiagram", (bridge) => {
-    bridge.requestClassDiagram?.(scopeNodeId ?? null);
-  }, {
-    scopeNodeId: scopeNodeId ?? null,
-  });
+export function requestArchitectureGraph(options: {
+  includeExternalLibraries?: boolean;
+  includeJdk?: boolean;
+  viewport?: IndexedGraphViewportOptions | null;
+} = {}): BridgeInvocationResult {
+  return requestIndexedGraph(definedPayload({
+    preset: "ARCHITECTURE",
+    includeExternalLibraries: options.includeExternalLibraries,
+    includeJdk: options.includeJdk,
+    viewport: options.viewport ?? undefined,
+  }));
 }
 
-export function requestReviewGraph(selectedDiffItemIds: string[] = []): BridgeInvocationResult {
-  return invokeBridgeAction("requestReviewGraph", (bridge) => {
-    bridge.requestReviewGraph?.(selectedDiffItemIds);
-  }, {
+export function requestPackageDependencyGraph(packageName?: string | null, options: {
+  includeExternalLibraries?: boolean;
+  includeJdk?: boolean;
+  viewport?: IndexedGraphViewportOptions | null;
+} = {}): BridgeInvocationResult {
+  return requestIndexedGraph(definedPayload({
+    preset: "PACKAGE_DEPENDENCY",
+    packageName: (packageName ?? "").trim(),
+    includeExternalLibraries: options.includeExternalLibraries,
+    includeJdk: options.includeJdk,
+    viewport: options.viewport ?? undefined,
+  }));
+}
+
+export function requestClassDiagram(scopeNodeId?: string | null, options: {
+  classDiagram?: Partial<IndexedClassDiagramOptions> | null;
+  viewport?: IndexedGraphViewportOptions | null;
+} = {}): BridgeInvocationResult {
+  const normalizedScopeNodeId = scopeNodeId?.trim() || null;
+  return requestIndexedGraph(definedPayload({
+    preset: "CLASS_DIAGRAM",
+    scopeNodeId: normalizedScopeNodeId,
+    viewport: options.viewport ?? undefined,
+    classDiagram: definedPayload({
+      neighborhoodLimit: options.classDiagram?.neighborhoodLimit,
+      memberLimit: options.classDiagram?.memberLimit,
+    }),
+  }));
+}
+
+export function requestReviewGraph(selectedDiffItemIds: string[] = [], options: {
+  review?: Partial<IndexedReviewGraphOptions> | null;
+  viewport?: IndexedGraphViewportOptions | null;
+} = {}): BridgeInvocationResult {
+  return requestIndexedGraph(definedPayload({
+    preset: "REVIEW",
     selectedDiffItemIds,
-  });
+    viewport: options.viewport ?? undefined,
+    review: definedPayload({
+      maxChangedNodes: options.review?.maxChangedNodes,
+      maxRelatedTestNodes: options.review?.maxRelatedTestNodes,
+      maxUpstreamNodes: options.review?.maxUpstreamNodes,
+      maxDownstreamNodes: options.review?.maxDownstreamNodes,
+    }),
+  }));
 }
 
 export function updateWorkbenchSectionPreference(sectionId: string, expanded: boolean): BridgeInvocationResult {
@@ -607,4 +709,15 @@ function buildNodeMetadata(node: LinkGraphNode): Record<string, string> {
   return Object.fromEntries(
     Object.entries(node.metadata ?? {}).filter(([key]) => !key.startsWith("ui.") && !key.startsWith("layout.")),
   );
+}
+
+function definedPayload<T extends Record<string, unknown>>(payload: T): T {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => {
+      if (value === undefined || value === null) {
+        return false;
+      }
+      return !(typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0);
+    }),
+  ) as T;
 }

@@ -12,7 +12,7 @@ const DISPLAY_MODES: Array<{ id: AnalysisDisplayMode; label: string }> = [
   { id: "FACT_GRAPH", label: "事实" },
   { id: "FLOWCHART", label: "流程" },
   { id: "RESOURCE_RELATION_VIEW", label: "资源" },
-  { id: "ARCHITECTURE_GRAPH", label: "架构" },
+  { id: "ARCHITECTURE_GRAPH", label: "项目结构" },
   { id: "CLASS_DIAGRAM", label: "类图" },
   { id: "REVIEW_GRAPH", label: "Review" },
 ];
@@ -54,7 +54,7 @@ function graphStageTitle(mode: AnalysisDisplayMode): string {
     case "RESOURCE_RELATION_VIEW":
       return "资源关系";
     case "ARCHITECTURE_GRAPH":
-      return "架构图谱";
+      return "项目结构";
     case "CLASS_DIAGRAM":
       return "类图";
     case "REVIEW_GRAPH":

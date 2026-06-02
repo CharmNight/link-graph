@@ -160,7 +160,7 @@ data class LinkGraphSettingsState(
         /** 定义最小超时时间。 */
         const val MIN_TIMEOUT_SECONDS: Int = 30
         /** 定义最大超时时间。 */
-        const val MAX_TIMEOUT_SECONDS: Int = 300
+        const val MAX_TIMEOUT_SECONDS: Int = 3_600
         /** 定义默认温度。 */
         const val DEFAULT_TEMPERATURE: Double = 0.2
         const val DEFAULT_ALLOW_CLASS_JAR_DECOMPILE: Boolean = true
@@ -259,14 +259,17 @@ class LinkGraphSettingsService : PersistentStateComponent<LinkGraphPersistentSet
     /**
      * 更新设置状态。
      */
-    fun update(nextState: LinkGraphSettingsState) {
-        val before = snapshot()
+    fun update(
+        nextState: LinkGraphSettingsState,
+        preserveBlankApiKey: Boolean = false,
+    ) {
+        val before = nonSecretSnapshot()
         val sanitized = nextState.sanitized()
         state = sanitized.toPersistentState()
-        if (sanitized.apiKey.isBlank()) {
-            secretStore.clearApiKey()
-        } else {
-            secretStore.saveApiKey(sanitized.apiKey)
+        when {
+            sanitized.apiKey.isBlank() && preserveBlankApiKey -> Unit
+            sanitized.apiKey.isBlank() -> secretStore.clearApiKey()
+            else -> secretStore.saveApiKey(sanitized.apiKey)
         }
         if (before.architectureIndexSettingsKey() != sanitized.architectureIndexSettingsKey()) {
             ApplicationManager.getApplication()

@@ -2,6 +2,7 @@ package com.charmnight.linkgraph.services
 
 import com.charmnight.linkgraph.testing.*
 
+import com.charmnight.linkgraph.application.command.ApplicationCommand
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphEdge
@@ -92,10 +93,12 @@ class LinkGraphProjectServiceBeautificationTest : BasePlatformTestCase() {
         )
 
         val applicationService = project.linkGraphApplicationServiceForTest()
-        applicationService.requestGraphBeautificationAsync(
-            goal = "把当前方法链路讲清楚",
-            preferredStyle = "汇报版",
-            explanationFocus = "先讲当前方法内部",
+        applicationService.commandDispatcher.dispatch(
+            ApplicationCommand.RequestGraphBeautification(
+                goal = "把当前方法链路讲清楚",
+                preferredStyle = "汇报版",
+                explanationFocus = "先讲当前方法内部",
+            ),
         )
 
         val snapshot = waitForSnapshot(stateService) {
@@ -162,10 +165,12 @@ class LinkGraphProjectServiceBeautificationTest : BasePlatformTestCase() {
             selectedMethodSignature = methodSignature,
         )
 
-        project.linkGraphApplicationServiceForTest().requestGraphBeautificationAsync(
-            goal = "确认源码片段完整性",
-            preferredStyle = "审阅版",
-            explanationFocus = "只看当前方法签名片段",
+        project.linkGraphApplicationServiceForTest().commandDispatcher.dispatch(
+            ApplicationCommand.RequestGraphBeautification(
+                goal = "确认源码片段完整性",
+                preferredStyle = "审阅版",
+                explanationFocus = "只看当前方法签名片段",
+            ),
         )
         val result = requireNotNull(
             waitForSnapshot(stateService) {
@@ -224,10 +229,12 @@ class LinkGraphProjectServiceBeautificationTest : BasePlatformTestCase() {
         )
 
         val applicationService = project.linkGraphApplicationServiceForTest()
-        applicationService.requestGraphBeautificationAsync(
-            goal = "解释当前工作图",
-            preferredStyle = "审阅版",
-            explanationFocus = "只解释当前画布内容",
+        applicationService.commandDispatcher.dispatch(
+            ApplicationCommand.RequestGraphBeautification(
+                goal = "解释当前工作图",
+                preferredStyle = "审阅版",
+                explanationFocus = "只解释当前画布内容",
+            ),
         )
         val result = requireNotNull(
             waitForSnapshot(stateService) {

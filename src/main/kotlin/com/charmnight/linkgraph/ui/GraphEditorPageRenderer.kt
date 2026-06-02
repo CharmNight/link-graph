@@ -1,6 +1,13 @@
 package com.charmnight.linkgraph.ui
 
-import com.intellij.util.ui.UIUtil
+import com.intellij.ui.JBColor
+import com.charmnight.linkgraph.application.indexed.IndexedGraphSummary
+import com.charmnight.linkgraph.presentation.GraphHiddenBucket
+import com.charmnight.linkgraph.presentation.GraphPresentationControls
+import com.charmnight.linkgraph.presentation.GraphPresentationLane
+import com.charmnight.linkgraph.presentation.GraphPresentationTarget
+import com.charmnight.linkgraph.presentation.GraphViewPresentation
+import com.charmnight.linkgraph.json.JsonCodec
 import com.charmnight.linkgraph.llm.GraphBeautificationResult
 import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.GraphDocument
@@ -33,8 +40,7 @@ class GraphEditorPageRenderer {
         /** 需要从语义元数据中过滤掉的布局前缀。 */
         private const val LAYOUT_PREFIX = "layout."
 
-        @Suppress("DEPRECATION")
-        private fun isIdeaDarkTheme(): Boolean = UIUtil.isUnderDarcula()
+        private fun isIdeaDarkTheme(): Boolean = !JBColor.isBright()
     }
 
     /** 为指定会话生成 bootstrap 脚本和自定义事件。 */
@@ -164,12 +170,9 @@ class GraphEditorPageRenderer {
         val payload = linkedMapOf<String, Any?>(
             "sessionId" to sessionId,
             "revision" to snapshot.snapshotRevision,
-            "state" to JsonRawValue(stateJson),
+            "state" to JsonCodec.parseValue(stateJson),
         )
-        return toJson(payload)
-            .replace("<", "\\u003C")
-            .replace(">", "\\u003E")
-            .replace("&", "\\u0026")
+        return JsonCodec.toScriptSafeJson(payload)
     }
 
     /** 将完整编辑器快照编码成前端 bootstrap JSON。 */
@@ -177,7 +180,7 @@ class GraphEditorPageRenderer {
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts,
     ): String {
-        return sanitizeJson(toJson(bootstrapPayload(snapshot, artifactRefs)))
+        return JsonCodec.toScriptSafeJson(bootstrapPayload(snapshot, artifactRefs))
     }
 
     /** 构建完整 bootstrap 状态载荷，供 init 与增量 slice 复用。 */
@@ -232,6 +235,9 @@ class GraphEditorPageRenderer {
                 editorSnapshot.reviewGraphView,
                 reviewGraphSceneState.layoutState,
             ),
+            "indexedGraphRequestStates" to snapshot.indexedGraphRequestStates.entries.associate { (view, requestState) ->
+                view.name to requestStateToMap(requestState)
+            },
             "draftPatchPreview" to snapshot.draftPatchPreview?.let(::patchToMap),
             "draftWorkbenchState" to draftWorkbenchStateToMap(snapshot.draftWorkbenchState),
             "canUndoDraftPatchApply" to (snapshot.draftPatchUndoState != null),
@@ -563,8 +569,12 @@ class GraphEditorPageRenderer {
             "anchorTitle" to document.summary.anchorTitle,
             "visibleNodeCount" to document.summary.visibleNodeCount,
             "fullNodeCount" to document.summary.fullNodeCount,
+            "hiddenNodeCount" to document.summary.hiddenNodeCount,
+            "hiddenEdgeCount" to document.summary.hiddenEdgeCount,
+            "truncated" to document.summary.truncated,
         ),
         layoutState = layoutState,
+        presentation = document.presentation,
     )
 
     /** 把流程图视图文档转换为前端使用的 Map。 */
@@ -602,6 +612,9 @@ class GraphEditorPageRenderer {
         projectionIndex = document.projectionIndex,
         summary = linkedMapOf(
             "visibleNodeCount" to document.summary.visibleNodeCount,
+            "relationCount" to document.summary.relationCount,
+            "resourceCount" to document.summary.resourceCount,
+            "fallbackReason" to document.summary.fallbackReason,
             "laneCounts" to document.summary.laneCounts,
         ),
         layoutState = layoutState,
@@ -619,15 +632,28 @@ class GraphEditorPageRenderer {
             "moduleCount" to document.summary.moduleCount,
             "packageCount" to document.summary.packageCount,
             "serviceCount" to document.summary.serviceCount,
+            "componentCount" to document.summary.componentCount,
             "resourceCount" to document.summary.resourceCount,
             "layerCount" to document.summary.layerCount,
+            "libraryCount" to document.summary.libraryCount,
+            "jdkCount" to document.summary.jdkCount,
             "relationCount" to document.summary.relationCount,
             "classCount" to document.summary.classCount,
+            "relationshipNodeCount" to document.summary.relationshipNodeCount,
+            "inventoryOnlyNodeCount" to document.summary.inventoryOnlyNodeCount,
+            "unconnectedPackageCount" to document.summary.unconnectedPackageCount,
             "truncated" to document.summary.truncated,
             "hiddenNodeCount" to document.summary.hiddenNodeCount,
             "hiddenEdgeCount" to document.summary.hiddenEdgeCount,
+            "unconnectedComponentCount" to document.summary.unconnectedComponentCount,
+            "unconnectedServiceBoundaryCount" to document.summary.unconnectedServiceBoundaryCount,
+            "unconnectedResourceCount" to document.summary.unconnectedResourceCount,
+            "externalDependencyGroupCount" to document.summary.externalDependencyGroupCount,
+            "jdkGroupCount" to document.summary.jdkGroupCount,
+            "indexed" to document.summary.indexed?.toMap(),
         ),
         layoutState = layoutState,
+        presentation = document.presentation,
     )
 
     private fun classDiagramViewToMap(
@@ -649,11 +675,25 @@ class GraphEditorPageRenderer {
             "relationCount" to document.summary.relationCount,
             "spiProviderCount" to document.summary.spiProviderCount,
             "reflectionRelationCount" to document.summary.reflectionRelationCount,
+            "relationCompleteness" to document.summary.relationCompleteness,
+            "scopeTypeCount" to document.summary.scopeTypeCount,
+            "projectTypeCount" to document.summary.projectTypeCount,
+            "projectClassCount" to document.summary.projectClassCount,
+            "scopeBasis" to document.summary.scopeBasis,
+            "anchorTypeNodeId" to document.summary.anchorTypeNodeId,
+            "anchorTypeTitle" to document.summary.anchorTypeTitle,
+            "anchorTypeQualifiedName" to document.summary.anchorTypeQualifiedName,
+            "neighborhoodLimit" to document.summary.neighborhoodLimit,
+            "memberLimit" to document.summary.memberLimit,
+            "neighborhoodCandidateTypeCount" to document.summary.neighborhoodCandidateTypeCount,
+            "neighborhoodTruncated" to document.summary.neighborhoodTruncated,
             "truncated" to document.summary.truncated,
             "hiddenNodeCount" to document.summary.hiddenNodeCount,
             "hiddenEdgeCount" to document.summary.hiddenEdgeCount,
+            "indexed" to document.summary.indexed?.toMap(),
         ),
         layoutState = layoutState,
+        presentation = document.presentation,
     )
 
     private fun reviewGraphViewToMap(
@@ -676,6 +716,12 @@ class GraphEditorPageRenderer {
                 "truncated" to document.summary.truncated,
                 "hiddenNodeCount" to document.summary.hiddenNodeCount,
                 "hiddenEdgeCount" to document.summary.hiddenEdgeCount,
+                "selectedDiffItemIds" to document.summary.selectedDiffItemIds,
+                "maxChangedNodes" to document.summary.maxChangedNodes,
+                "maxUpstreamNodes" to document.summary.maxUpstreamNodes,
+                "maxDownstreamNodes" to document.summary.maxDownstreamNodes,
+                "maxRelatedTestNodes" to document.summary.maxRelatedTestNodes,
+                "indexed" to document.summary.indexed?.toMap(),
             ),
             layoutState = layoutState,
         ).toMutableMap().apply {
@@ -749,13 +795,19 @@ class GraphEditorPageRenderer {
         projectionIndex: com.charmnight.linkgraph.ui.view.GraphProjectionIndex,
         summary: Map<String, Any?>,
         layoutState: GraphLayoutState? = null,
-    ): Map<String, Any?> = linkedMapOf(
-        "visibleGraph" to documentToMap(visibleGraph, includeFullContent = true, layoutState = layoutState),
-        "fullGraph" to documentToMap(fullGraph, includeFullContent = false, layoutState = layoutState),
-        "anchorNodeId" to anchorNodeId,
-        "projectionIndex" to projectionIndexToMap(projectionIndex),
-        "summary" to summary,
-    )
+        presentation: GraphViewPresentation? = null,
+    ): Map<String, Any?> =
+        linkedMapOf(
+            "visibleGraph" to documentToMap(visibleGraph, includeFullContent = true, layoutState = layoutState),
+            "fullGraph" to documentToMap(fullGraph, includeFullContent = false, layoutState = layoutState),
+            "anchorNodeId" to anchorNodeId,
+            "projectionIndex" to projectionIndexToMap(projectionIndex),
+            "summary" to summary,
+        ).apply {
+            if (presentation != null) {
+                put("presentation", presentation.toMap())
+            }
+        }
 
     private fun projectionIndexToMap(
         projectionIndex: com.charmnight.linkgraph.ui.view.GraphProjectionIndex,
@@ -1102,91 +1154,6 @@ class GraphEditorPageRenderer {
         "warnings" to edit.warnings,
     )
 
-    /** 表示已经编码好的原始 JSON 片段，写出时不再做字符串转义。 */
-    private data class JsonRawValue(
-        /** 已经编码好的 JSON 文本。 */
-        val encoded: String,
-    )
-
-    /** 将任意支持的数据结构编码成 JSON 文本。 */
-    internal fun toJson(value: Any?): String {
-        return buildString {
-            appendJsonValue(this, value)
-        }
-    }
-
-    internal fun sanitizeJson(encoded: String): String {
-        return encoded
-            .replace("<", "\\u003C")
-            .replace(">", "\\u003E")
-            .replace("&", "\\u0026")
-    }
-
-    /** 递归把单个值写入 JSON 构建器。 */
-    private fun appendJsonValue(
-        builder: StringBuilder,
-        value: Any?,
-    ) {
-        when (value) {
-            null -> builder.append("null")
-            is JsonRawValue -> builder.append(value.encoded)
-            is String -> builder.append('"').append(escape(value)).append('"')
-            is Boolean, is Int, is Long -> builder.append(value.toString())
-            is Float -> builder.append(formatNumber(value.toDouble()))
-            is Double -> builder.append(formatNumber(value))
-            is Number -> builder.append(formatNumber(value.toDouble()))
-            is Map<*, *> -> {
-                builder.append('{')
-                value.entries.forEachIndexed { index, entry ->
-                    if (index > 0) {
-                        builder.append(',')
-                    }
-                    builder.append('"').append(escape(entry.key.toString())).append('"').append(':')
-                    appendJsonValue(builder, entry.value)
-                }
-                builder.append('}')
-            }
-
-            is Iterable<*> -> {
-                builder.append('[')
-                value.forEachIndexed { index, item ->
-                    if (index > 0) {
-                        builder.append(',')
-                    }
-                    appendJsonValue(builder, item)
-                }
-                builder.append(']')
-            }
-
-            else -> builder.append('"').append(escape(value.toString())).append('"')
-        }
-    }
-
-    /** 对字符串做 JSON 转义。 */
-    private fun escape(value: String): String {
-        return buildString(value.length + 8) {
-            value.forEach { char ->
-                when (char) {
-                    '\\' -> append("\\\\")
-                    '"' -> append("\\\"")
-                    in '\u0000'..'\u001f' -> append("\\u").append(char.code.toString(16).padStart(4, '0'))
-                    else -> append(char)
-                }
-            }
-        }
-    }
-
-    /** 以尽量紧凑的形式格式化数值。 */
-    private fun formatNumber(value: Double): String {
-        if (value.isNaN() || value.isInfinite()) {
-            return "null"
-        }
-        if (value % 1.0 == 0.0) {
-            return value.toLong().toString()
-        }
-        return value.toString()
-    }
-
     /** 从节点元数据中提取 UI 坐标。 */
     private fun Map<String, String>.uiPosition(): Pair<Double, Double>? {
         /** 节点 x 坐标。 */
@@ -1207,4 +1174,93 @@ class GraphEditorPageRenderer {
         }
         return filtered.ifEmpty { null }
     }
+
+    private fun GraphViewPresentation.toMap(): Map<String, Any?> =
+        linkedMapOf(
+            "target" to target.toMap(),
+            "lanes" to lanes.map { lane -> lane.toMap() },
+            "hiddenBuckets" to hiddenBuckets.map { bucket -> bucket.toMap() },
+            "controls" to controls.toMap(),
+        )
+
+    private fun GraphPresentationTarget.toMap(): Map<String, Any?> =
+        linkedMapOf(
+            "nodeId" to nodeId,
+            "title" to title,
+            "subtitle" to subtitle,
+            "location" to location,
+        )
+
+    private fun GraphPresentationLane.toMap(): Map<String, Any?> =
+        linkedMapOf(
+            "id" to id,
+            "label" to label,
+            "axis" to axis.name,
+            "order" to order,
+            "role" to role,
+        )
+
+    private fun GraphHiddenBucket.toMap(): Map<String, Any?> =
+        linkedMapOf(
+            "id" to id,
+            "label" to label,
+            "count" to count,
+            "nodeIds" to nodeIds,
+            "edgeIds" to edgeIds,
+        )
+
+    private fun GraphPresentationControls.toMap(): Map<String, Any?> =
+        linkedMapOf(
+            "primaryScope" to primaryScope,
+            "availableScopes" to availableScopes,
+            "searchable" to searchable,
+            "expandable" to expandable,
+        )
+
+    private fun IndexedGraphSummary.toMap(): Map<String, Any?> =
+        linkedMapOf(
+            "view" to view,
+            "anchorKind" to anchorKind,
+            "anchorNodeId" to anchorNodeId,
+            "anchorTitle" to anchorTitle,
+            "anchorQualifiedName" to anchorQualifiedName,
+            "scopeKind" to scopeKind,
+            "scopeLabel" to scopeLabel,
+            "relationKinds" to relationKinds,
+            "depth" to depth,
+            "projectNodeCount" to projectNodeCount,
+            "projectClassCount" to projectClassCount,
+            "externalNodeCount" to externalNodeCount,
+            "jdkNodeCount" to jdkNodeCount,
+            "scopedNodeCount" to scopedNodeCount,
+            "visibleNodeCount" to visibleNodeCount,
+            "hiddenNodeCount" to hiddenNodeCount,
+            "hiddenEdgeCount" to hiddenEdgeCount,
+            "candidateNodeCount" to candidateNodeCount,
+            "candidateEdgeCount" to candidateEdgeCount,
+            "truncated" to truncated,
+            "completeness" to completeness,
+            "cacheState" to cacheState,
+            "includeExternalLibraries" to includeExternalLibraries,
+            "includeJdk" to includeJdk,
+            "projectSourceNodeCount" to projectSourceNodeCount,
+            "externalLibraryNodeCount" to externalLibraryNodeCount,
+            "resourceNodeCount" to resourceNodeCount,
+            "aggregateNodeCount" to aggregateNodeCount,
+            "projectLayerCounts" to projectLayerCounts.toMap(),
+            "visibleLayerCounts" to visibleLayerCounts.toMap(),
+            "scopedLayerCounts" to scopedLayerCounts.toMap(),
+            "candidateLayerCounts" to candidateLayerCounts.toMap(),
+            "hiddenLayerCounts" to hiddenLayerCounts.toMap(),
+            "collapsedLayerCounts" to collapsedLayerCounts.toMap(),
+        )
+
+    private fun com.charmnight.linkgraph.application.indexed.IndexedGraphLayerCounts.toMap(): Map<String, Int> =
+        linkedMapOf(
+            "projectSource" to projectSource,
+            "externalLibrary" to externalLibrary,
+            "jdk" to jdk,
+            "resource" to resource,
+            "aggregate" to aggregate,
+        )
 }

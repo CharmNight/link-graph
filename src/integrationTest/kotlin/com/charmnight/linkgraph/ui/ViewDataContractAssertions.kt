@@ -16,6 +16,8 @@ import com.charmnight.linkgraph.review.ReviewGraphChangedFile
 import com.charmnight.linkgraph.review.ReviewGraphChangedHunk
 import com.charmnight.linkgraph.review.ReviewGraphSummary
 import com.charmnight.linkgraph.review.ReviewGraphViewDocument
+import com.charmnight.linkgraph.projection.graphProjectionHiddenCounts
+import com.charmnight.linkgraph.projection.projectedSourceEdgeIds
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -84,7 +86,12 @@ private fun assertVisibleGraphBackedByFullGraph(
         assertTrue(node.id in fullNodeIds, "$label visible node ${node.id} is not present in full graph.")
     }
     visibleGraph.edges.forEach { edge ->
-        assertTrue(edge.id in fullEdgeIds, "$label visible edge ${edge.id} is not present in full graph.")
+        if (edge.id !in fullEdgeIds) {
+            assertTrue(
+                edge.projectedSourceEdgeIds().all { sourceEdgeId -> sourceEdgeId in fullEdgeIds },
+                "$label visible edge ${edge.id} is not present in full graph and has no projection metadata.",
+            )
+        }
     }
 }
 
@@ -140,6 +147,7 @@ private fun assertArchitectureGraphSummary(
     assertEquals(visibleGraph.nodes.count { it.type == NodeType.MODULE }, summary.moduleCount, "$label moduleCount mismatch.")
     assertEquals(visibleGraph.nodes.count { it.type == NodeType.PACKAGE }, summary.packageCount, "$label packageCount mismatch.")
     assertEquals(visibleGraph.nodes.count { it.type == NodeType.SERVICE }, summary.serviceCount, "$label serviceCount mismatch.")
+    assertEquals(visibleGraph.nodes.count { it.type == NodeType.COMPONENT }, summary.componentCount, "$label componentCount mismatch.")
     assertEquals(visibleGraph.nodes.count { it.type == NodeType.RESOURCE }, summary.resourceCount, "$label resourceCount mismatch.")
     assertEquals(visibleGraph.nodes.count { it.type == NodeType.LAYER }, summary.layerCount, "$label layerCount mismatch.")
     assertEquals(visibleGraph.edges.size, summary.relationCount, "$label relationCount mismatch.")
@@ -175,6 +183,7 @@ private fun assertClassDiagramSummary(
         summary.reflectionRelationCount,
         "$label reflectionRelationCount mismatch.",
     )
+    assertTrue(summary.memberLimit >= 0, "$label memberLimit must be non-negative.")
     assertHiddenCounts(summary.hiddenNodeCount, summary.hiddenEdgeCount, summary.truncated, visibleGraph, fullGraph, label)
 }
 
@@ -190,6 +199,10 @@ private fun assertReviewGraphSummary(
     assertTrue(summary.affectedPackageCount >= 0, "$label affectedPackageCount must be non-negative.")
     assertTrue(summary.affectedModuleCount >= 0, "$label affectedModuleCount must be non-negative.")
     assertTrue(summary.evidenceRefCount >= 0, "$label evidenceRefCount must be non-negative.")
+    assertTrue(summary.maxChangedNodes >= 0, "$label maxChangedNodes must be non-negative.")
+    assertTrue(summary.maxUpstreamNodes >= 0, "$label maxUpstreamNodes must be non-negative.")
+    assertTrue(summary.maxDownstreamNodes >= 0, "$label maxDownstreamNodes must be non-negative.")
+    assertTrue(summary.maxRelatedTestNodes >= 0, "$label maxRelatedTestNodes must be non-negative.")
 }
 
 private fun assertReviewGraphDiffDetails(
@@ -237,8 +250,9 @@ private fun assertHiddenCounts(
     fullGraph: GraphDocument,
     label: String,
 ) {
-    val minimumHiddenNodeCount = (fullGraph.nodes.map(GraphNode::id).toSet() - visibleGraph.nodes.map(GraphNode::id).toSet()).size
-    val minimumHiddenEdgeCount = (fullGraph.edges.map(GraphEdge::id).toSet() - visibleGraph.edges.map(GraphEdge::id).toSet()).size
+    val hiddenCounts = graphProjectionHiddenCounts(visibleGraph = visibleGraph, fullGraph = fullGraph)
+    val minimumHiddenNodeCount = hiddenCounts.hiddenNodeCount
+    val minimumHiddenEdgeCount = hiddenCounts.hiddenEdgeCount
     assertTrue(hiddenNodeCount >= minimumHiddenNodeCount, "$label hiddenNodeCount is lower than actual hidden nodes.")
     assertTrue(hiddenEdgeCount >= minimumHiddenEdgeCount, "$label hiddenEdgeCount is lower than actual hidden edges.")
     if (hiddenNodeCount > 0 || hiddenEdgeCount > 0) {

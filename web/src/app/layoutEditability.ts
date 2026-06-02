@@ -1,9 +1,14 @@
-import type { AnalysisDisplayMode, LinkGraphNode } from "./types";
+import { canEditProjectedNodeLayout } from "./graphProjectionPermissions";
+import type { AnalysisDisplayMode, GraphProjectionIndex, LinkGraphNode } from "./types";
 
 export function canEditNodeLayout(
   node: LinkGraphNode,
   analysisDisplayMode?: AnalysisDisplayMode,
+  projectionIndex?: GraphProjectionIndex | null,
 ): boolean {
+  if (projectionIndex) {
+    return canEditProjectedNodeLayout(projectionIndex, node);
+  }
   if (analysisDisplayMode === "FLOWCHART") {
     return true;
   }

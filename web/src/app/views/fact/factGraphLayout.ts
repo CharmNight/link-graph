@@ -101,6 +101,20 @@ function factDirectionLabel(direction: FactDirection, depth: number): string {
   return `${direction === "UPSTREAM" ? "上游" : "下游"} ${Math.max(depth, 1)} 层`;
 }
 
+function factPresentationLaneId(direction: FactDirection): string {
+  if (direction === "UPSTREAM") {
+    return "upstream";
+  }
+  if (direction === "DOWNSTREAM") {
+    return "downstream";
+  }
+  return "current";
+}
+
+function factPresentationRole(direction: FactDirection): string {
+  return direction === "CURRENT" ? "ANCHOR" : direction;
+}
+
 function resolveFactDirection(
   node: MeasuredLayoutRequest["nodes"][number],
   anchorId: string,
@@ -259,6 +273,10 @@ export async function layoutFactGraphView({
       metadata: {
         "layout.direction": direction.direction,
         "layout.levelLabel": factDirectionLabel(direction.direction, direction.depth),
+        "presentation.laneId": factPresentationLaneId(direction.direction),
+        "presentation.role": factPresentationRole(direction.direction),
+        "presentation.priority": String(PARTITION_INDEX[direction.direction] * 10 + 10),
+        "presentation.compact": String(direction.direction !== "CURRENT"),
       },
       layoutOptions: {
         "org.eclipse.elk.partitioning.partition": String(PARTITION_INDEX[direction.direction]),

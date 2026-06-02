@@ -2,6 +2,12 @@ package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.testing.*
 
+import com.charmnight.linkgraph.presentation.GraphHiddenBucket
+import com.charmnight.linkgraph.presentation.GraphPresentationControls
+import com.charmnight.linkgraph.presentation.GraphPresentationLane
+import com.charmnight.linkgraph.presentation.GraphPresentationLaneAxis
+import com.charmnight.linkgraph.presentation.GraphPresentationTarget
+import com.charmnight.linkgraph.presentation.GraphViewPresentation
 import com.charmnight.linkgraph.codegen.CodeEditOperation
 import com.charmnight.linkgraph.codegen.CodeEditOperationKind
 import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
@@ -63,6 +69,82 @@ import org.junit.Test
 
 class GraphEditorPageRendererTest {
     @Test
+    fun bootstrapJson序列化事实图展示语义() {
+        val renderer = GraphEditorPageRenderer()
+        val graph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:submit-order",
+                    type = NodeType.METHOD,
+                    title = "OrderController.submit",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+            ),
+        )
+        val snapshot = testSnapshot(
+            visibleGraph = graph,
+            factGraphView = FactGraphViewDocument(
+                visibleGraph = graph,
+                fullGraph = graph,
+                anchorNodeId = "method:submit-order",
+                summary = FactGraphSummary(
+                    anchorTitle = "OrderController.submit",
+                    visibleNodeCount = 1,
+                    fullNodeCount = 1,
+                ),
+                presentation = GraphViewPresentation(
+                    target = GraphPresentationTarget(
+                        nodeId = "method:submit-order",
+                        title = "Submit Order target",
+                        subtitle = "Controller entrypoint",
+                        location = "src/OrderController.kt:42",
+                    ),
+                    lanes = listOf(
+                        GraphPresentationLane(
+                            id = "lane-controller",
+                            label = "Controller Lane",
+                            axis = GraphPresentationLaneAxis.COLUMN,
+                            order = 1,
+                            role = "entry",
+                        ),
+                    ),
+                    hiddenBuckets = listOf(
+                        GraphHiddenBucket(
+                            id = "hidden-callees",
+                            label = "Hidden Callees",
+                            count = 3,
+                            nodeIds = listOf("method:reserve-stock"),
+                            edgeIds = listOf("edge:submit-reserve"),
+                        ),
+                    ),
+                    controls = GraphPresentationControls(
+                        primaryScope = "method-neighborhood",
+                        availableScopes = listOf("method-neighborhood", "full-call-chain"),
+                        searchable = false,
+                        expandable = true,
+                    ),
+                ),
+            ),
+        )
+
+        val json = renderer.bootstrapJson(snapshot)
+
+        assertTrue(json.contains("\"presentation\""))
+        assertTrue(json.contains("\"target\""))
+        assertTrue(json.contains("\"title\":\"Submit Order target\""))
+        assertTrue(json.contains("\"lanes\""))
+        assertTrue(json.contains("\"label\":\"Controller Lane\""))
+        assertTrue(json.contains("\"hiddenBuckets\""))
+        assertTrue(json.contains("\"count\":3"))
+        assertTrue(json.contains("\"label\":\"Hidden Callees\""))
+        assertTrue(json.contains("\"controls\""))
+        assertTrue(json.contains("\"primaryScope\":\"method-neighborhood\""))
+        assertTrue(json.contains("\"availableScopes\":[\"method-neighborhood\",\"full-call-chain\"]"))
+        assertTrue(json.contains("\"searchable\":false"))
+        assertTrue(json.contains("\"expandable\":true"))
+    }
+
+    @Test
     fun bootstrapJsonEscapesLowControlCharacters() {
         val renderer = GraphEditorPageRenderer()
         val snapshot = testSnapshot(
@@ -83,6 +165,29 @@ class GraphEditorPageRendererTest {
         assertTrue(json.contains("Order\\u0001Controller\\u0008submit"))
         assertFalse(json.contains("\u0001"))
         assertFalse(json.contains("\u0008"))
+    }
+
+    @Test
+    fun bootstrapJsonEscapesScriptBreakingCharacters() {
+        val renderer = GraphEditorPageRenderer()
+        val snapshot = testSnapshot(
+            visibleGraph = GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:script-safe",
+                        type = NodeType.METHOD,
+                        title = "</script>&next",
+                        sourceTag = GraphSourceTag.FACT,
+                    ),
+                ),
+            ),
+        )
+
+        val json = renderer.bootstrapJson(snapshot)
+
+        assertTrue(json.contains("\\u003C/script\\u003E\\u0026next"))
+        assertFalse(json.contains("</script>"))
+        assertFalse(json.contains("&next"))
     }
 
     @Test

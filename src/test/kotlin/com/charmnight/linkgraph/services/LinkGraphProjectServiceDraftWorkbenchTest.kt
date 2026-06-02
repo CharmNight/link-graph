@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.command.ApplicationCommand
 import com.charmnight.linkgraph.ui.GraphEditorSyncNotifier
 import com.charmnight.linkgraph.testing.*
 
@@ -100,7 +101,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        val entry = project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-delete-guard")
+        val entry = project.linkGraphApplicationServiceForTest().commandDispatcher.dispatch(ApplicationCommand.ConfirmQaCandidateChange("change-delete-guard"))
 
         assertNotNull(entry)
         val snapshot = stateService.snapshot()
@@ -119,17 +120,17 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
         assertEquals(
             listOf("flow-scope:delete-guard"),
-            snapshot.workingGraph?.nodes?.map { it.id },
+            snapshot.workspaceGraph.nodes?.map { it.id },
         )
         assertEquals(
             "if (delete == true)",
-            snapshot.workingGraph?.nodes?.singleOrNull()?.title,
+            snapshot.workspaceGraph.nodes?.singleOrNull()?.title,
         )
         assertEquals(
             GraphPatchAction.UPDATE_NODE,
             snapshot.draftWorkbenchState.draftChanges.first().graphPatch?.operations?.singleOrNull()?.action,
         )
-        assertTrue(snapshot.workingGraph?.edges?.isEmpty() == true)
+        assertTrue(snapshot.workspaceGraph.edges?.isEmpty() == true)
         assertEquals(true, snapshot.workingGraphDirty)
     }
 
@@ -198,7 +199,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        val entry = project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-delete-guard")
+        val entry = project.linkGraphApplicationServiceForTest().commandDispatcher.dispatch(ApplicationCommand.ConfirmQaCandidateChange("change-delete-guard"))
 
         assertNotNull(entry)
         val snapshot = stateService.snapshot()
@@ -208,7 +209,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
         assertEquals(
             "if (Boolean.TRUE.equals(delete))",
-            snapshot.workingGraph?.nodes?.singleOrNull()?.title,
+            snapshot.workspaceGraph.nodes?.singleOrNull()?.title,
         )
     }
 
@@ -303,11 +304,11 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        val entry = project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-insert-file-exists-guard")
+        val entry = project.linkGraphApplicationServiceForTest().commandDispatcher.dispatch(ApplicationCommand.ConfirmQaCandidateChange("change-insert-file-exists-guard"))
 
         assertNotNull(entry)
         val snapshot = stateService.snapshot()
-        val workingGraph = requireNotNull(snapshot.workingGraph)
+        val workingGraph = requireNotNull(snapshot.workspaceGraph)
         assertTrue(workingGraph.nodes.any { node -> node.id != "method:file-download" && node.id != "action:delete-file" && node.id != "terminal:return" && node.title == "if (fileExists(filePath))" })
         assertTrue(workingGraph.edges.none { edge -> edge.id == "edge:entry-delete" })
         assertTrue(workingGraph.edges.any { edge -> edge.label == "TRUE" && edge.toNodeId == "action:delete-file" })
@@ -379,7 +380,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-upload-condition")
+        project.linkGraphApplicationServiceForTest().commandDispatcher.dispatch(ApplicationCommand.ConfirmQaCandidateChange("change-upload-condition"))
 
         val snapshot = stateService.snapshot()
         assertEquals(1L, snapshot.draftVersion)
@@ -442,7 +443,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             },
         )
 
-        project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-upload-condition")
+        project.linkGraphApplicationServiceForTest().commandDispatcher.dispatch(ApplicationCommand.ConfirmQaCandidateChange("change-upload-condition"))
 
         assertEquals(1, syncRequestedCount)
     }
@@ -523,9 +524,9 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
         val service = project.linkGraphApplicationServiceForTest()
-        service.confirmQaCandidateChange("change-upload-condition")
+        service.commandDispatcher.dispatch(ApplicationCommand.ConfirmQaCandidateChange("change-upload-condition"))
 
-        val removed = service.unconfirmQaCandidateChange("change-upload-condition")
+        val removed = service.commandDispatcher.dispatch(ApplicationCommand.UnconfirmQaCandidateChange("change-upload-condition"))
 
         assertNotNull(removed)
         val snapshot = stateService.snapshot()
@@ -534,7 +535,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             CandidateDraftChangeStatus.PENDING_CONFIRMATION,
             snapshot.qaResult?.candidateChanges?.firstOrNull()?.status,
         )
-        assertEquals(baseGraph, snapshot.workingGraph)
+        assertEquals(baseGraph, snapshot.workspaceGraph)
         assertEquals(false, snapshot.workingGraphDirty)
     }
 
@@ -582,7 +583,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
 
         val service = project.linkGraphApplicationServiceForTest()
-        service.confirmQaCandidateChange("change-upload-condition")
+        service.commandDispatcher.dispatch(ApplicationCommand.ConfirmQaCandidateChange("change-upload-condition"))
         stateService.asyncRequests.markGenerationPlan(
             GenerationPlan(
                 source = GenerationPlanSource.LOCAL_RULE,
@@ -606,7 +607,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             promptPreview = "code prompt",
         )
 
-        service.unconfirmQaCandidateChange("change-upload-condition")
+        service.commandDispatcher.dispatch(ApplicationCommand.UnconfirmQaCandidateChange("change-upload-condition"))
 
         val snapshot = stateService.snapshot()
         assertEquals(2L, snapshot.draftVersion)
@@ -663,14 +664,14 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         val service = project.linkGraphApplicationServiceForTest()
         val artifactStore = project.getService(AgentArtifactStoreService::class.java).artifactStore
 
-        service.confirmQaCandidateChange("change-upload-condition")
+        service.commandDispatcher.dispatch(ApplicationCommand.ConfirmQaCandidateChange("change-upload-condition"))
 
         assertTrue(
             artifactStore.byType(ArtifactType.CONFIRMED_INTENT)
                 .any { artifact -> artifact.artifactId == "confirmed-draft-change-upload-condition" },
         )
 
-        service.unconfirmQaCandidateChange("change-upload-condition")
+        service.commandDispatcher.dispatch(ApplicationCommand.UnconfirmQaCandidateChange("change-upload-condition"))
 
         assertTrue(
             artifactStore.byType(ArtifactType.CONFIRMED_INTENT)
@@ -720,7 +721,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        val entry = project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-path-risk")
+        val entry = project.linkGraphApplicationServiceForTest().commandDispatcher.dispatch(ApplicationCommand.ConfirmQaCandidateChange("change-path-risk"))
 
         assertNull(entry)
         val snapshot = stateService.snapshot()
@@ -729,7 +730,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             CandidateDraftChangeStatus.PENDING_CONFIRMATION,
             snapshot.qaResult?.candidateChanges?.firstOrNull()?.status,
         )
-        assertEquals(baseGraph, snapshot.workingGraph)
+        assertEquals(baseGraph, snapshot.workspaceGraph)
         assertEquals(false, snapshot.workingGraphDirty)
     }
 
@@ -789,20 +790,20 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-delete-guard")
+        project.linkGraphApplicationServiceForTest().commandDispatcher.dispatch(ApplicationCommand.ConfirmQaCandidateChange("change-delete-guard"))
 
         val snapshot = stateService.snapshot()
         assertEquals(
             listOf("flow-scope:delete-guard"),
-            snapshot.flowchartView?.visibleGraph?.nodes?.map { it.id },
+            snapshot.flowchartView.visibleGraph?.nodes?.map { it.id },
         )
         assertEquals(
             "if (delete == true)",
-            snapshot.flowchartView?.visibleGraph?.nodes?.singleOrNull()?.title,
+            snapshot.flowchartView.visibleGraph?.nodes?.singleOrNull()?.title,
         )
         assertEquals(
             listOf("flow-edge:delete-guard->delete-guard"),
-            snapshot.flowchartView?.visibleGraph?.edges?.map { it.id },
+            snapshot.flowchartView.visibleGraph?.edges?.map { it.id },
         )
     }
 
@@ -1011,8 +1012,8 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
         )
 
         val service = project.linkGraphApplicationServiceForTest()
-        service.confirmQaCandidateChange("change-delete-guard")
-        service.confirmQaCandidateChange("change-file-exists-guard")
+        service.commandDispatcher.dispatch(ApplicationCommand.ConfirmQaCandidateChange("change-delete-guard"))
+        service.commandDispatcher.dispatch(ApplicationCommand.ConfirmQaCandidateChange("change-file-exists-guard"))
 
         val snapshot = stateService.snapshot()
         val expectedNodeOrder = listOf(
@@ -1022,15 +1023,15 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             "terminal:return",
             "draft:aaa-file-exists",
         )
-        assertEquals(expectedNodeOrder, snapshot.workingGraph?.nodes?.map { it.id })
-        assertEquals(expectedNodeOrder, snapshot.flowchartView?.visibleGraph?.nodes?.map { it.id })
+        assertEquals(expectedNodeOrder, snapshot.workspaceGraph.nodes?.map { it.id })
+        assertEquals(expectedNodeOrder, snapshot.flowchartView.visibleGraph?.nodes?.map { it.id })
         assertEquals(
             "if (Boolean.TRUE.equals(delete))",
-            snapshot.flowchartView?.visibleGraph?.nodes?.firstOrNull { it.id == "scope:delete-file" }?.title,
+            snapshot.flowchartView.visibleGraph?.nodes?.firstOrNull { it.id == "scope:delete-file" }?.title,
         )
         assertEquals(
             listOf("edge:entry-allow", "edge:allow-delete", "edge:delete-exists", "edge:exists-return"),
-            snapshot.flowchartView?.visibleGraph?.edges?.map { it.id },
+            snapshot.flowchartView.visibleGraph?.edges?.map { it.id },
         )
         assertEquals(32.0, snapshot.layoutState.positions["method:file-download"]?.x)
         assertEquals(24.0, snapshot.layoutState.positions["method:file-download"]?.y)
@@ -1115,7 +1116,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
                 selectedMethodSignature = selectedMethodSignature,
                 displayName = "CommonController.fileDownload",
                 feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
-                feedbackMessage = "已加载流程图",
+                statusMessage = "已加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
                     visibleGraph = factGraph,
@@ -1179,24 +1180,24 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-delete-guard")
+        project.linkGraphApplicationServiceForTest().commandDispatcher.dispatch(ApplicationCommand.ConfirmQaCandidateChange("change-delete-guard"))
 
         val snapshot = stateService.snapshot()
         assertEquals(
             listOf("method:file-download", "scope:file-download-if"),
-            snapshot.workingGraph?.nodes?.map { it.id }?.sorted(),
+            snapshot.workspaceGraph.nodes?.map { it.id }?.sorted(),
         )
         assertEquals(
             "if (Boolean.TRUE.equals(delete))",
-            snapshot.workingGraph?.nodes?.firstOrNull { it.id == "scope:file-download-if" }?.title,
+            snapshot.workspaceGraph.nodes?.firstOrNull { it.id == "scope:file-download-if" }?.title,
         )
         assertEquals(
             listOf("flow-edge:entry->delete-guard"),
-            snapshot.workingGraph?.edges?.map { it.id },
+            snapshot.workspaceGraph.edges?.map { it.id },
         )
         assertEquals(
             listOf("flow-edge:entry->delete-guard"),
-            snapshot.flowchartView?.visibleGraph?.edges?.map { it.id },
+            snapshot.flowchartView.visibleGraph?.edges?.map { it.id },
         )
     }
 
@@ -1286,10 +1287,10 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-delete-guard")
+        project.linkGraphApplicationServiceForTest().commandDispatcher.dispatch(ApplicationCommand.ConfirmQaCandidateChange("change-delete-guard"))
 
         val snapshot = stateService.snapshot()
-        val visibleNodesById = snapshot.flowchartView?.visibleGraph?.nodes?.associateBy { it.id }.orEmpty()
+        val visibleNodesById = snapshot.flowchartView.visibleGraph?.nodes?.associateBy { it.id }.orEmpty()
         assertEquals("try", visibleNodesById["scope:file-download-try"]?.title)
         assertEquals(
             "if (Boolean.TRUE.equals(delete) && fileExists(filePath))",
@@ -1383,13 +1384,13 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-delete-guard")
+        project.linkGraphApplicationServiceForTest().commandDispatcher.dispatch(ApplicationCommand.ConfirmQaCandidateChange("change-delete-guard"))
 
         val snapshot = stateService.snapshot()
         val storedCandidate = snapshot.qaResult?.candidateChanges?.singleOrNull()
         assertEquals(listOf("scope:file-download-if"), storedCandidate?.targetNodeIds)
         assertEquals("scope:file-download-if", storedCandidate?.graphPatch?.operations?.singleOrNull()?.elementId)
-        val visibleNodesById = snapshot.flowchartView?.visibleGraph?.nodes?.associateBy { it.id }.orEmpty()
+        val visibleNodesById = snapshot.flowchartView.visibleGraph?.nodes?.associateBy { it.id }.orEmpty()
         assertEquals("try", visibleNodesById["scope:file-download-try"]?.title)
         assertEquals(
             "if (Boolean.TRUE.equals(delete) && fileExists(filePath))",
@@ -1475,7 +1476,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             ),
         )
 
-        val entry = project.linkGraphApplicationServiceForTest().confirmQaCandidateChange("change-delete-guard")
+        val entry = project.linkGraphApplicationServiceForTest().commandDispatcher.dispatch(ApplicationCommand.ConfirmQaCandidateChange("change-delete-guard"))
 
         assertNull(entry)
         val snapshot = stateService.snapshot()
@@ -1485,7 +1486,7 @@ class LinkGraphProjectServiceDraftWorkbenchTest : BasePlatformTestCase() {
             CandidateDraftChangeStatus.PENDING_CONFIRMATION,
             snapshot.qaResult?.candidateChanges?.singleOrNull()?.status,
         )
-        assertEquals(baseGraph, snapshot.workingGraph)
+        assertEquals(baseGraph, snapshot.workspaceGraph)
         assertEquals(false, snapshot.workingGraphDirty)
     }
 }

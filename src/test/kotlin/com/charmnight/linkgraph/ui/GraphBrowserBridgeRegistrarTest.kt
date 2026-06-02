@@ -3,6 +3,7 @@ package com.charmnight.linkgraph.ui
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -10,115 +11,60 @@ class GraphBrowserBridgeRegistrarTest {
     private val projectRoot: Path = Path.of("").toAbsolutePath()
 
     @Test
-    fun openSettingsBridgeHandlerReturnsBeforeShowingModalSettingsDialog() {
-        val source = Files.readString(
-            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/ui/GraphBrowserBridgeRegistrar.kt"),
-        )
-        val compactSource = source.replace(Regex("\\s+"), " ")
+    fun browserBridgeUsesSingleCommandQueryForFrontendActions() {
+        val source = readRegistrar()
+        val commandQueries = Regex("""private val ([A-Za-z0-9_]+Query): JBCefJSQuery""")
+            .findAll(source)
+            .map { it.groupValues[1] }
+            .filterNot { it == "debugTraceQuery" }
+            .toList()
 
-        assertTrue(
-            compactSource.contains(
-                """requestOpenSettingsQuery.addSafeHandler("打开设置") { dispatchBridgeAsync("打开设置") { GraphEditorMessage.OpenSettings } }""",
-            ),
-            "打开设置来自 JCEF query handler；必须异步派发，避免设置模态框阻塞 handler 返回并卡住前端页面。",
+        assertEquals(
+            listOf("bridgeCommandQuery"),
+            commandQueries,
+            "frontend actions must enter through one bridgeCommandQuery; debug trace may keep a separate low-risk query",
         )
-        assertFalse(
-            compactSource.contains(
-                """requestOpenSettingsQuery.addSafeHandler("打开设置") { bridge.dispatch(GraphEditorMessage.OpenSettings) }""",
-            ),
-            "打开设置不能在 JCEF query handler 中同步执行。",
-        )
+        assertFalse(source.contains("PAYLOAD_SEPARATOR"))
+        assertFalse(source.contains("\\u001f"))
+        assertFalse(source.contains("URLDecoder"))
     }
 
     @Test
-    fun bridgeHandlersThatOpenIdeUiOrWriteFilesReturnBeforeBackendWorkRuns() {
-        val source = Files.readString(
-            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/ui/GraphBrowserBridgeRegistrar.kt"),
-        )
-        val compactSource = source.replace(Regex("\\s+"), " ")
+    fun injectedBridgeConvenienceMethodsSendJsonCommandEnvelopes() {
+        val source = readRegistrar()
 
-        val asynchronousHandlers = listOf(
-            HandlerExpectation(
-                query = "requestOpenSettingsQuery",
-                label = "打开设置",
-                message = "GraphEditorMessage.OpenSettings",
-                reason = "打开设置会显示 IDE 模态设置窗口。",
-            ),
-            HandlerExpectation(
-                query = "applyCodeDraftsQuery",
-                label = "写入全部代码草稿",
-                message = "GraphEditorMessage.ApplyCodeDrafts",
-                reason = "写入全部代码草稿会写文件并打开写入后的目标文件。",
-            ),
-            HandlerExpectation(
-                query = "applySingleCodeDraftQuery",
-                label = "写入单个代码草稿",
-                message = "GraphEditorMessage.ApplySingleCodeDraft(draftId)",
-                reason = "写入单个代码草稿会写文件并打开写入后的目标文件。",
-            ),
-            HandlerExpectation(
-                query = "openCodeDraftNativeDiffQuery",
-                label = "打开代码草稿原生 Diff",
-                message = "GraphEditorMessage.OpenCodeDraftNativeDiff(draftId)",
-                reason = "原生 Diff 会打开 IDE merge UI。",
-            ),
-            HandlerExpectation(
-                query = "requestDraftNavigationQuery",
-                label = "代码草稿导航",
-                message = "GraphEditorMessage.RequestDraftNavigation(targetPath)",
-                reason = "代码草稿导航会切回 IDE 线程打开编辑器。",
-            ),
-            HandlerExpectation(
-                query = "requestArchitectureGraphQuery",
-                label = "加载架构图",
-                message = "GraphEditorMessage.RequestArchitectureGraph",
-                reason = "架构图会构建项目级 JVM 索引，不能占住 JCEF query handler。",
-            ),
-            HandlerExpectation(
-                query = "requestClassDiagramQuery",
-                label = "加载类图",
-                message = "GraphEditorMessage.RequestClassDiagram(payload.trim().takeIf(String::isNotBlank))",
-                reason = "类图会复用或构建项目级 JVM 索引，不能占住 JCEF query handler。",
-            ),
-            HandlerExpectation(
-                query = "requestReviewGraphQuery",
-                label = "加载 Review Graph",
-                message = "GraphEditorMessage.RequestReviewGraph(GraphBrowserPayloadParser.parseEncodedList(payload))",
-                reason = "Review Graph 会构建项目级索引并读取 Git diff，不能占住 JCEF query handler。",
-            ),
-        )
+        assertTrue(source.contains("sendCommand: (command)"))
+        assertTrue(source.contains("schemaVersion: 1"))
+        assertTrue(source.contains("type: type"))
+        assertTrue(source.contains("payload: payload"))
+        assertTrue(source.contains("requestQa: (question, selectedNodeIds, sourceThreadId, mode) => sendCommand(\"requestQa\""))
+        assertTrue(source.contains("requestGraphBeautification: (goal, preferredStyle, explanationFocus, granularity"))
+        assertTrue(source.contains("requestIndexedGraph: (request) => sendCommand(\"requestIndexedGraph\""))
+        assertTrue(source.contains("applyGraphEditScript: (payload) => sendCommand(\"applyGraphEditScript\""))
+    }
 
-        asynchronousHandlers.forEach { expectation ->
+    @Test
+    fun ideUiAndIndexingCommandsRemainAsynchronouslyDispatched() {
+        val source = readRegistrar()
+
+        listOf(
+            "requestQa",
+            "requestGraphBeautification",
+            "requestIndexedGraph",
+            "requestOpenSettings",
+            "applyCodeDrafts",
+            "applySingleCodeDraft",
+            "openCodeDraftNativeDiff",
+            "requestDraftNavigation",
+        ).forEach { commandType ->
             assertTrue(
-                compactSource.contains(
-                    """${expectation.query}.addSafe""",
-                ) && compactSource.contains(
-                    """dispatchBridgeAsync("${expectation.label}") { ${expectation.message} }""",
-                ),
-                "${expectation.label} 必须异步派发，避免 JCEF query handler 等待后端 UI/文件操作返回：${expectation.reason}",
-            )
-            assertFalse(
-                expectation.synchronousDispatchPattern().containsMatchIn(compactSource),
-                "${expectation.label} 不能在 JCEF query handler 中同步 bridge.dispatch。",
+                source.contains(""""$commandType""""),
+                "$commandType must be represented in the async command set",
             )
         }
+        assertTrue(source.contains("dispatchBridgeAsync(parsed.actionLabel)"))
     }
 
-    private data class HandlerExpectation(
-        val query: String,
-        val label: String,
-        val message: String,
-        val reason: String,
-    ) {
-        fun synchronousDispatchPattern(): Regex {
-            return Regex(
-                Regex.escape(query) +
-                    """\.addSafe(?:Payload)?Handler\("""" +
-                    Regex.escape(label) +
-                    """"[^{}]*\{[^{}]*bridge\.dispatch\(""" +
-                    Regex.escape(message) +
-                    """\)[^{}]*\}""",
-            )
-        }
-    }
+    private fun readRegistrar(): String =
+        Files.readString(projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/ui/GraphBrowserBridgeRegistrar.kt"))
 }

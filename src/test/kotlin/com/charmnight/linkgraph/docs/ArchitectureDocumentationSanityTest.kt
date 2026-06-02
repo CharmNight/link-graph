@@ -31,7 +31,7 @@ class ArchitectureDocumentationSanityTest {
         assertTrue(overview.contains("Review Graph"))
         assertTrue(overview.contains("diagrams/link-graph-architecture.svg"))
         assertFalse(overview.contains(".mmd"))
-        assertFalse(overview.contains("/Users/"))
+        assertFalse(overview.contains(machineLocalPathMarker()))
 
         assertFalse(structure.contains(removedInternalPlanPath))
         assertFalse(structure.contains("docs/archive"))
@@ -130,8 +130,38 @@ class ArchitectureDocumentationSanityTest {
         assertTrue(publicDocs.isNotEmpty())
         publicDocs.forEach { path ->
             val source = Files.readString(path)
-            assertFalse(source.contains("/Users/"), "公开文档不能包含本机绝对路径: $path")
+            assertFalse(source.contains(machineLocalPathMarker()), "公开文档不能包含本机绝对路径: $path")
             assertFalse(source.contains(removedInternalPlanPath), "公开文档不能链接内部计划: $path")
+        }
+    }
+
+    @Test
+    fun publicRepositoryFilesExcludeProcessPlansAndMachineLocalPaths() {
+        val docsRoot = Path.of("docs")
+        listOf(
+            docsRoot.resolve("readme-update-scope.md"),
+            docsRoot.resolve("link-graph-graph-readability-implementation.md"),
+            docsRoot.resolve("link-graph-target-graph-layout.html"),
+        ).forEach { path ->
+            assertFalse(Files.exists(path), "过程/原型文档不应保留在公开 docs 根目录: $path")
+        }
+
+        val marker = machineLocalPathMarker()
+        val publicRoots = listOf(
+            Path.of("README.md"),
+            docsRoot,
+            Path.of("src/main"),
+            Path.of("src/test"),
+            Path.of("src/integrationTest"),
+            Path.of("web/src/app"),
+            Path.of("web/src/test"),
+            Path.of("build.gradle.kts"),
+            Path.of("gradle.properties"),
+        )
+        val publicFiles = publicRoots.flatMap(::repositoryFilesForPublicScan)
+
+        publicFiles.forEach { path ->
+            assertFalse(Files.readString(path).contains(marker), "公开源码/测试不能包含本机绝对路径: $path")
         }
     }
 }
@@ -141,6 +171,37 @@ private fun removedInternalDocsDirName(): String =
 
 private fun removedInternalDocsPath(): String =
     listOf("docs", removedInternalDocsDirName()).joinToString("/")
+
+private fun machineLocalPathMarker(): String =
+    listOf("", "Users", "").joinToString("/")
+
+private fun repositoryFilesForPublicScan(root: Path): List<Path> {
+    if (!Files.exists(root)) {
+        return emptyList()
+    }
+    if (Files.isRegularFile(root)) {
+        return listOf(root).filter(::isPublicTextFile)
+    }
+    return Files.walk(root)
+        .filter { path -> Files.isRegularFile(path) }
+        .filter { path -> !path.startsWith(Path.of("docs").resolve("internal")) }
+        .filter(::isPublicTextFile)
+        .toList()
+}
+
+private fun isPublicTextFile(path: Path): Boolean {
+    val name = path.fileName.toString()
+    return name.endsWith(".kt") ||
+        name.endsWith(".kts") ||
+        name.endsWith(".java") ||
+        name.endsWith(".ts") ||
+        name.endsWith(".tsx") ||
+        name.endsWith(".md") ||
+        name.endsWith(".html") ||
+        name.endsWith(".xml") ||
+        name.endsWith(".properties") ||
+        name.endsWith(".json")
+}
 
 private fun AnalysisDisplayMode.documentationLabel(): String = when (this) {
     AnalysisDisplayMode.FACT_GRAPH -> "事实图"

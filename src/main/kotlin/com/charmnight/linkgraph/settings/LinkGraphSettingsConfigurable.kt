@@ -6,6 +6,7 @@ import com.charmnight.linkgraph.llm.LlmProviderPresets
 import com.charmnight.linkgraph.source.AttachedJarEntry
 import com.charmnight.linkgraph.source.AttachedJarSettingsValidator
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.options.SearchableConfigurable
 import com.intellij.openapi.progress.ProgressManager
@@ -32,11 +33,34 @@ import javax.swing.SpinnerNumberModel
  * 这里提供真正可用的配置入口，避免把 LLM 配置埋在代码或环境变量里。
  */
 class LinkGraphSettingsConfigurable : SearchableConfigurable {
+    constructor() : this(
+        serviceProvider = {
+            ApplicationManager.getApplication().getService(LinkGraphSettingsService::class.java)
+        },
+        loadSecretSnapshotAsync = ::loadSecretSnapshotOnPooledThread,
+    )
+
+    internal constructor(
+        serviceProvider: () -> LinkGraphSettingsService,
+        loadSecretSnapshotAsync: (LinkGraphSettingsService, (LinkGraphSettingsState) -> Unit) -> Unit,
+    ) {
+        this.serviceProvider = serviceProvider
+        this.loadSecretSnapshotAsync = loadSecretSnapshotAsync
+    }
+
+    private val serviceProvider: () -> LinkGraphSettingsService
+    private val loadSecretSnapshotAsync: (LinkGraphSettingsService, (LinkGraphSettingsState) -> Unit) -> Unit
     /** 设置持久化服务，负责读取和写回配置快照。 */
     private val service: LinkGraphSettingsService
-        get() = ApplicationManager.getApplication().getService(LinkGraphSettingsService::class.java)
+        get() = serviceProvider()
     /** 远程 LLM 设置校验器。 */
     private val validator = RemoteLlmSettingsValidator()
+    /** 当前 UI 对比用的持久化基线；默认不含 API key，避免 EDT 读取 PasswordSafe。 */
+    private var baselineState: LinkGraphSettingsState = LinkGraphSettingsState()
+    /** 当前基线是否已经包含真实 API key。 */
+    private var baselineApiKeyLoaded: Boolean = false
+    /** 异步 API key 回填版本号，防止旧 reset 的回调覆盖新 UI。 */
+    private var secretLoadGeneration: Int = 0
 
     /** 配置页根面板。 */
     private var panel: JPanel? = null
@@ -228,33 +252,48 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
 
     /** 判断当前 UI 内容是否与持久化配置不同。 */
     override fun isModified(): Boolean {
-        /** 已持久化的配置快照。 */
-        val snapshot = service.snapshot()
-        return currentState() != snapshot
+        return currentState() != baselineState
     }
 
     /** 校验并保存当前 UI 中的配置。 */
     override fun apply() {
         /** 当前 UI 整理出的新配置。 */
         val nextState = currentState()
+        val preserveBlankApiKey = shouldPreserveBlankApiKey(nextState)
+        val validationState = if (preserveBlankApiKey) {
+            nextState.copy(apiKey = service.snapshot().apiKey).sanitized()
+        } else {
+            nextState
+        }
         /** 保存前先执行一次同步校验。 */
-        val result = runValidation(nextState)
+        val result = runValidation(validationState)
         if (!result.ok) {
             updateValidationStatus(result)
             throw ConfigurationException(result.message)
         }
-        service.update(nextState)
+        service.update(nextState, preserveBlankApiKey = preserveBlankApiKey)
+        baselineState = if (preserveBlankApiKey) {
+            service.nonSecretSnapshot()
+        } else {
+            nextState.sanitized()
+        }
+        baselineApiKeyLoaded = !preserveBlankApiKey
+        if (preserveBlankApiKey) {
+            scheduleApiKeyLoad()
+        }
         updateValidationStatus(result)
     }
 
     /** 用持久化配置重置当前 UI。 */
     override fun reset() {
         /** 已持久化的配置快照。 */
-        val snapshot = service.snapshot()
+        val snapshot = service.nonSecretSnapshot()
+        baselineState = snapshot
+        baselineApiKeyLoaded = false
         llmEnabledCheckBox?.isSelected = snapshot.llmEnabled
         providerComboBox?.selectedItem = snapshot.providerPreset()
         endpointField?.text = snapshot.normalizedEndpoint()
-        apiKeyField?.text = snapshot.apiKey
+        apiKeyField?.text = ""
         modelField?.text = snapshot.model
         timeoutSpinner?.value = snapshot.effectiveTimeoutSeconds()
         temperatureSpinner?.value = snapshot.effectiveTemperature()
@@ -269,6 +308,7 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
         maxExternalClassNodesSpinner?.value = snapshot.maxExternalClassNodes
         validationStatusLabel?.text = LinkGraphBundle.message("settings.link-graph.validate.idle")
         refreshFieldEnabledStates()
+        scheduleApiKeyLoad()
     }
 
     /** 释放配置页创建的 UI 资源。 */
@@ -288,6 +328,28 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
         maxExternalClassNodesSpinner = null
         validateButton = null
         validationStatusLabel = null
+    }
+
+    private fun scheduleApiKeyLoad() {
+        val currentGeneration = ++secretLoadGeneration
+        val currentService = service
+        loadSecretSnapshotAsync(currentService) { snapshot ->
+            if (currentGeneration != secretLoadGeneration || panel == null) {
+                return@loadSecretSnapshotAsync
+            }
+            val field = apiKeyField ?: return@loadSecretSnapshotAsync
+            if (field.password.concatToString().isNotBlank()) {
+                return@loadSecretSnapshotAsync
+            }
+            val secretSnapshot = snapshot.sanitized()
+            baselineState = secretSnapshot
+            baselineApiKeyLoaded = true
+            field.text = secretSnapshot.apiKey
+        }
+    }
+
+    private fun shouldPreserveBlankApiKey(nextState: LinkGraphSettingsState): Boolean {
+        return nextState.apiKey.isBlank() && !baselineApiKeyLoaded
     }
 
     /** 从当前 UI 控件收集并构造一份标准化设置快照。 */
@@ -402,5 +464,21 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
             }
             append("</html>")
         }
+    }
+}
+
+private fun loadSecretSnapshotOnPooledThread(
+    service: LinkGraphSettingsService,
+    onLoaded: (LinkGraphSettingsState) -> Unit,
+) {
+    val application = ApplicationManager.getApplication()
+    application.executeOnPooledThread {
+        runCatching { service.snapshot() }
+            .onSuccess { snapshot ->
+                application.invokeLater(
+                    { onLoaded(snapshot) },
+                    ModalityState.any(),
+                )
+            }
     }
 }

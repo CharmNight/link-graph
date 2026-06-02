@@ -4,10 +4,10 @@ import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.diff.GraphDifferResult
 import com.charmnight.linkgraph.application.model.GraphEditScript
 import com.charmnight.linkgraph.application.model.GraphLayoutPosition
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEvent
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEventSink
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
 import com.charmnight.linkgraph.application.port.WorkspaceGraphCommitter
 import com.charmnight.linkgraph.application.usecase.WorkspaceGraphUseCase
 import com.charmnight.linkgraph.application.usecase.WorkspaceGraphUseCaseResult

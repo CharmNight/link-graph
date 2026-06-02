@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.testing.*
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class StopPolicyTest {
     @Test
@@ -117,14 +118,25 @@ class StopPolicyTest {
     }
 
     @Test
-    fun stopsWhenSingleSnippetReachesMaxSnippetLines() {
+    fun allowsEvidenceReadBudgetToBeSoftLimit() {
+        val state = runningState(
+            RunBudget(maxFilesRead = 0).recordFileRead(snippetLines = 12),
+        )
+
+        val reason = StopPolicy(stopWhenEvidenceReadBudgetReached = false).evaluate(state, nowEpochMillis = 5_000)
+
+        assertNull(reason)
+    }
+
+    @Test
+    fun allowsSingleSnippetAtMaxSnippetLines() {
         val state = runningState(
             RunBudget(maxSnippetLines = 10).recordFileRead(snippetLines = 10),
         )
 
         val reason = StopPolicy.default().evaluate(state, nowEpochMillis = 5_000)
 
-        assertEquals(AgentRunFailureReason.MAX_SNIPPET_LINES_EXCEEDED, reason)
+        assertNull(reason)
     }
 
     @Test

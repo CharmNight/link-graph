@@ -41,10 +41,15 @@
 .claude/
 .kotlin/
 .vite/
+.env
+.env.*
+*.local
+*.log
 hs_err_pid*
 .worktrees/
 .superpowers/
 docs/superpowers/
+docs/internal/
 web/node_modules/
 web/dist/
 .idea/

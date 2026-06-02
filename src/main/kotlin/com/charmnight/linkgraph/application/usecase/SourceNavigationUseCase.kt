@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.application.usecase
 
 import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.model.SourceNavigationAnchors
 
 sealed interface SourceNavigationUseCaseResult {
     data class MissingTrustedNode(val nodeId: String) : SourceNavigationUseCaseResult
@@ -30,18 +30,6 @@ class SourceNavigationUseCase(
         SourceNavigationUseCaseResult.SettingsOpenRequested
 
     private fun canNavigateToSource(node: GraphNode): Boolean {
-        if (!node.location.isNullOrBlank()) {
-            return true
-        }
-        return (
-            node.type == NodeType.METHOD ||
-                node.type == NodeType.CLASS ||
-                node.type == NodeType.INTERFACE ||
-                node.type == NodeType.ENUM ||
-                node.type == NodeType.ANNOTATION ||
-                node.type == NodeType.RECORD ||
-                node.type == NodeType.OBJECT ||
-                node.type == NodeType.EXTERNAL_CLASS
-            ) && !node.signature.isNullOrBlank()
+        return SourceNavigationAnchors.canNavigate(node)
     }
 }

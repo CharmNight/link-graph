@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.review
 
+import com.charmnight.linkgraph.application.indexed.IndexedGraphSummary
 import com.charmnight.linkgraph.application.model.GraphProjectionIndex
 import com.charmnight.linkgraph.model.GraphDocument
 
@@ -14,6 +15,12 @@ data class ReviewGraphSummary(
     val truncated: Boolean = false,
     val hiddenNodeCount: Int = 0,
     val hiddenEdgeCount: Int = 0,
+    val selectedDiffItemIds: List<String> = emptyList(),
+    val maxChangedNodes: Int = 120,
+    val maxUpstreamNodes: Int = 40,
+    val maxDownstreamNodes: Int = 40,
+    val maxRelatedTestNodes: Int = 40,
+    val indexed: IndexedGraphSummary? = null,
 )
 
 data class ReviewGraphChangedFile(
@@ -81,3 +88,5 @@ data class ReviewGraphViewDocument(
     val affectedModules: List<String> = emptyList(),
     val evidenceSnippets: List<ReviewGraphEvidenceSnippet> = emptyList(),
 )
+
+typealias ReviewGraphResult = ReviewGraphViewDocument

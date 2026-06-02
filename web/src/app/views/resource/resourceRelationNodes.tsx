@@ -11,7 +11,7 @@ import {
 } from "@xyflow/react";
 import { nodeCardWidth } from "../../graphNodeSizing";
 import type { NodeMeasuredSize, NodeSizeRegistry } from "../../graph/nodeSizeRegistry";
-import type { DraftCompareStatus, LinkGraphEdge, LinkGraphNode } from "../../types";
+import type { DraftCompareStatus, GraphProjectionIndex, LinkGraphEdge, LinkGraphNode } from "../../types";
 import { edgeTypeLabel } from "../../labels";
 import { ResourceRelationNodeCard } from "../../components/graph/nodes/ResourceRelationNodeCard";
 import { canEditNodeLayout } from "../../layoutEditability";
@@ -37,6 +37,7 @@ interface BuildResourceRelationNodesOptions {
   explanationFocusNodeId?: string | null;
   draftChangedNodeIds?: string[];
   draftCompareNodeStatuses?: Record<string, DraftCompareStatus>;
+  projectionIndex?: GraphProjectionIndex | null;
   nodeSizeRegistry: NodeSizeRegistry;
 }
 
@@ -130,6 +131,7 @@ export function buildResourceRelationNodes({
   explanationFocusNodeId = null,
   draftChangedNodeIds = [],
   draftCompareNodeStatuses = {},
+  projectionIndex = null,
   nodeSizeRegistry,
 }: BuildResourceRelationNodesOptions): ResourceRelationFlowNode[] {
   const draftChangedNodeIdSet = new Set(draftChangedNodeIds);
@@ -143,7 +145,7 @@ export function buildResourceRelationNodes({
       draftCompareStatus: draftCompareNodeStatuses[node.id],
     }) || undefined,
     selected: selectedNodeId === node.id,
-    draggable: canEditNodeLayout(node),
+    draggable: canEditNodeLayout(node, "RESOURCE_RELATION_VIEW", projectionIndex),
     position: node.position ?? { x: 80, y: 88 },
     sourcePosition: Position.Right,
     targetPosition: Position.Left,

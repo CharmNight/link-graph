@@ -23,11 +23,11 @@ import com.charmnight.linkgraph.navigation.SourceNavigationService
 import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
 import com.charmnight.linkgraph.application.planning.PlanningContextFactory
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.application.port.GenerationRequestFailurePresentation
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEvent
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEventSink
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
-import com.charmnight.linkgraph.application.port.ApplicationRuntimeArtifactSummary
+import com.charmnight.linkgraph.application.result.GenerationRequestFailureResult
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.ApplicationRuntimeArtifactSummary
 import com.charmnight.linkgraph.workbench.RiskResolutionService
 import com.charmnight.linkgraph.workbench.StageEligibilityDecision
 import com.intellij.diff.merge.MergeRequest
@@ -62,7 +62,7 @@ internal data class GenerationPrerequisiteFailure(
     val detailMessage: String?,
 )
 
-internal data class RuntimeFailurePresentation(
+internal data class RuntimeFailureResult(
     val message: String,
     val detailMessage: String?,
 )
@@ -87,7 +87,7 @@ internal fun GenerationWorkflowDependencies.toRuntimeArtifactSummaries(
 internal fun GenerationWorkflowDependencies.emit(event: GraphEditorApplicationEvent) = eventSink.emit(event)
 
 internal fun GenerationWorkflowDependencies.emitGenerationStreamingPreview(
-    scene: com.charmnight.linkgraph.application.port.GenerationRequestScene,
+    scene: com.charmnight.linkgraph.application.result.GenerationRequestScene,
     requestId: Long,
     previewText: String,
     finalizingStructuredResult: Boolean,
@@ -105,9 +105,9 @@ internal fun GenerationWorkflowDependencies.emitGenerationStreamingPreview(
 internal fun GenerationWorkflowDependencies.emitGenerationFeedback(
     level: ApplicationFeedbackLevel,
     message: String,
-    preserveLastMessageType: Boolean = false,
+    preservePreviousStatusKind: Boolean = false,
 ) {
-    emit(GraphEditorApplicationEvent.GenerationFeedback(level, message, preserveLastMessageType))
+    emit(GraphEditorApplicationEvent.GenerationFeedback(level, message, preservePreviousStatusKind))
 }
 
 internal fun GenerationWorkflowDependencies.emitMergeWriteReport(
@@ -141,7 +141,7 @@ internal fun GenerationWorkflowDependencies.rejectStageEligibility(
     )
     emit(
         GraphEditorApplicationEvent.CodeDraftRequestFailed(
-            GenerationRequestFailurePresentation(
+            GenerationRequestFailureResult(
             scene = failure.scene,
             message = failure.message,
             requestState = AsyncRequestState.failed(
@@ -177,7 +177,7 @@ internal fun GenerationWorkflowDependencies.rejectOrphanedGenerationPlan(
     )
     emit(
         GraphEditorApplicationEvent.CodeDraftRequestFailed(
-            GenerationRequestFailurePresentation(
+            GenerationRequestFailureResult(
             scene = failure.scene,
             message = failure.message,
             requestState = AsyncRequestState.failed(

@@ -19,6 +19,14 @@ enum class ArchitectureNodeKind {
     SERVICE,
     RESOURCE,
     LAYER,
+    LIBRARY,
+    JDK,
+    COMPONENT,
+}
+
+enum class ArchitectureAggregationLevel {
+    OVERVIEW,
+    PACKAGE,
 }
 
 data class ArchitectureNode(

@@ -9,3 +9,12 @@ fun LinkGraphSettingsState.withRuntimeDeadlineTimeout(
     runtimeContext.requireWithinDeadline()
     return copy(runtimeTimeoutSecondsOverride = effectiveTimeoutSeconds().coerceAtMost(remainingSeconds.coerceAtLeast(1)))
 }
+
+fun RunBudget.withConfiguredRuntimeTimeout(
+    settings: LinkGraphSettingsState,
+): RunBudget {
+    return copy(
+        maxRuntimeSeconds = settings.effectiveTimeoutSeconds(),
+        startedAtEpochMillis = System.currentTimeMillis(),
+    )
+}

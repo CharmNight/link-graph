@@ -3,6 +3,7 @@ package com.charmnight.linkgraph.ui.view
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.projection.GraphProjectionMetadata
 
 private const val FLOWCHART_ALIAS_IDS_KEY = "flowchart.projectedFromNodeIds"
 
@@ -100,7 +101,7 @@ private fun edgeMappingKind(
     }
 
 private fun isOverflowNode(node: GraphNode): Boolean =
-    node.metadata.keys.any { key -> key.startsWith("linkGraph.overflow.") }
+    node.metadata.keys.any { key -> key.startsWith(GraphProjectionMetadata.Overflow.PREFIX) }
 
 private fun editableNodeCommands(node: GraphNode): Set<GraphEditCommandKind> {
     if (isOverflowNode(node)) {

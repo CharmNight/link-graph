@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { buildEdgeActions as buildSharedEdgeActions, buildPaneActions } from "../../components/graph/actions/actionSchema";
+import { canEditProjectedEdge, canEditProjectedNode } from "../../graphProjectionPermissions";
 import { createNodeSizeRegistry } from "../../graph/nodeSizeRegistry";
 import { nodeCardWidth } from "../../graphNodeSizing";
 import { useMeasuredLayout } from "../../reactflow/useMeasuredLayout";
@@ -7,7 +8,7 @@ import { GraphFlowSurface } from "../../reactflow/GraphFlowSurface";
 import { canNavigateToSource } from "../../sourceNavigation";
 import type { ResourceRelationViewDocument } from "../../types";
 import { DraftCompareSummary } from "../../components/DraftCompareSummary";
-import type { ViewStageProps } from "../viewStageProps";
+import type { EditableStageProps } from "../viewStageProps";
 import { layoutResourceRelationView } from "./resourceRelationLayout";
 import {
   buildResourceRelationEdges,
@@ -15,7 +16,7 @@ import {
   RESOURCE_RELATION_NODE_TYPES,
 } from "./resourceRelationNodes";
 
-interface ResourceRelationViewProps extends ViewStageProps {
+interface ResourceRelationViewProps extends EditableStageProps {
   view: ResourceRelationViewDocument;
 }
 
@@ -79,7 +80,7 @@ function resourceNodeActions(args: {
     },
     {
       id: "set-qa-anchor",
-      label: "设为问答范围起点",
+      label: "设为问答目标",
       onSelect: () => {
         args.onOpenQa(args.nodeId);
         args.onClose();
@@ -115,6 +116,17 @@ function resourceSummaryText(laneCounts: Record<string, number>) {
   return items
     .map(([lane, count]) => `${lane} ${count}`)
     .join(" · ");
+}
+
+function resourceFallbackText(summary: ResourceRelationViewDocument["summary"]): string | null {
+  switch (summary.fallbackReason) {
+    case "NO_RESOURCE_UNITS":
+      return "当前分析范围没有识别到资源单元。";
+    case "NO_BINDING_RELATIONS":
+      return `识别到 ${summary.resourceCount} 个资源单元，但没有发现代码与资源之间的绑定关系。`;
+    default:
+      return null;
+  }
 }
 
 export function ResourceRelationView({
@@ -178,6 +190,7 @@ export function ResourceRelationView({
       explanationFocusNodeId,
       draftChangedNodeIds,
       draftCompareNodeStatuses: draftCompareProjection?.nodeStatuses,
+      projectionIndex: view.projectionIndex ?? null,
       nodeSizeRegistry,
     }),
     [
@@ -186,6 +199,7 @@ export function ResourceRelationView({
       explanationFocusNodeId,
       draftChangedNodeIds,
       draftCompareProjection?.nodeStatuses,
+      view.projectionIndex,
       nodeSizeRegistry,
     ],
   );
@@ -196,6 +210,7 @@ export function ResourceRelationView({
     }),
     [draftCompareProjection?.edgeStatuses, visibleEdges],
   );
+  const fallbackText = resourceFallbackText(view.summary);
 
   const header = (
     <section className="canvas-reading-summary" aria-label="资源关系摘要">
@@ -206,7 +221,11 @@ export function ResourceRelationView({
           <strong className="canvas-reading-title">{selectedNode?.title ?? "资源关系图"}</strong>
           <span className="canvas-reading-detail">
             当前可见 {view.summary.visibleNodeCount} 个节点。
+            {view.summary.relationCount != null ? ` 关系 ${view.summary.relationCount} 条。` : ""}
           </span>
+          {fallbackText ? (
+            <span className="canvas-reading-detail">{fallbackText}</span>
+          ) : null}
         </article>
         <article className="canvas-reading-card">
           <span className="canvas-reading-label">Lane 分布</span>
@@ -265,7 +284,7 @@ export function ResourceRelationView({
           resourceNodeActions({
             nodeId,
             canOpenSource: canNavigateToSource(nodeIndex.get(nodeId) ?? fallbackSourceNode()),
-            editable: true,
+            editable: canEditProjectedNode(view.projectionIndex, nodeId, "DELETE_NODE"),
             onInspectNode,
             onDeleteNode,
             onRequestSourceNavigation,
@@ -277,31 +296,39 @@ export function ResourceRelationView({
           })
         }
         buildEdgeActions={({ edgeId, close }) =>
-          [
-            {
-              id: "insert-method",
-              label: "在线路中插入方法节点",
-              onSelect: () => {
-                onInsertNodeIntoEdge(edgeId, "METHOD");
-                close();
-              },
-            },
-            {
-              id: "insert-doc",
-              label: "在线路中插入说明节点",
-              onSelect: () => {
-                onInsertNodeIntoEdge(edgeId, "DOC_PAGE");
-                close();
-              },
-            },
-            ...buildSharedEdgeActions({
-              analysisDisplayMode: "RESOURCE_RELATION_VIEW",
-              editable: true,
-              edgeId,
-              onDeleteEdge,
-              onClose: close,
-            }),
-          ]
+          {
+            const canInsertNode = canEditProjectedEdge(view.projectionIndex, edgeId, "INSERT_NODE_INTO_EDGE");
+            return [
+              ...(canInsertNode
+                ? [
+                    {
+                      id: "insert-method",
+                      label: "在线路中插入方法节点",
+                      onSelect: () => {
+                        onInsertNodeIntoEdge(edgeId, "METHOD");
+                        close();
+                      },
+                    },
+                    {
+                      id: "insert-doc",
+                      label: "在线路中插入说明节点",
+                      onSelect: () => {
+                        onInsertNodeIntoEdge(edgeId, "DOC_PAGE");
+                        close();
+                      },
+                    },
+                  ]
+                : []),
+              ...buildSharedEdgeActions({
+                analysisDisplayMode: "RESOURCE_RELATION_VIEW",
+                editable: true,
+                edgeId,
+                canEditEdge: (command) => canEditProjectedEdge(view.projectionIndex, edgeId, command),
+                onDeleteEdge,
+                onClose: close,
+              }),
+            ];
+          }
         }
         onSelectNode={onSelectNode}
         onSelectionGroupChange={onSelectionGroupChange}

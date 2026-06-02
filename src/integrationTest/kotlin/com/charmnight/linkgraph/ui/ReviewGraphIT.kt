@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.application.GraphEditorApplicationService
+import com.charmnight.linkgraph.application.indexed.requestReviewGraphRequest
 import com.charmnight.linkgraph.application.model.GraphSceneId
 import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
 import com.charmnight.linkgraph.model.GraphDocument
@@ -68,7 +69,7 @@ class ReviewGraphIT : BasePlatformTestCase() {
         bridge.dispatch(GraphEditorMessage.LoadGraph(codeGraph, "review-graph-it-code"))
         bridge.dispatch(GraphEditorMessage.ImportMermaid(mermaid))
         bridge.dispatch(GraphEditorMessage.ShowDiffMode)
-        bridge.dispatch(GraphEditorMessage.RequestReviewGraph())
+        bridge.dispatch(GraphEditorMessage.RequestIndexedGraph(requestReviewGraphRequest()))
         waitForReviewGraph()
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()

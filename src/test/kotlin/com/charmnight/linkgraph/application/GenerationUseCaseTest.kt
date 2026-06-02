@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.application
 
 import com.charmnight.linkgraph.application.model.AsyncRequestState
 import com.charmnight.linkgraph.application.model.PlanningInput
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.application.usecase.GenerationUseCase
 import com.charmnight.linkgraph.application.usecase.GenerationUseCaseResult
 import com.charmnight.linkgraph.codegen.CodeGenerationResult

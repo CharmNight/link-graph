@@ -9,6 +9,7 @@ import kotlin.test.assertTrue
 
 class ArchitectureDebtCleanupTest {
     private val root: Path = Path.of("").toAbsolutePath()
+    private val canonicalProjectionPath = "src/main/kotlin/com/charmnight/linkgraph/projection/"
 
     @Test
     fun llmGatewaysDoNotKeepTestOnlyFailureMessageDelegatesOrDeadJsonEscaper() {
@@ -335,7 +336,181 @@ class ArchitectureDebtCleanupTest {
         )
     }
 
+    @Test
+    fun graphProjectionTraversalStateOnlyLivesInCanonicalProjectionPackage() {
+        val traversalMarkers = listOf(
+            "hiddenNodeIds",
+            "hiddenEdgeIds",
+            "private fun overflowNode(",
+        )
+        val offenders = productionKotlinSources()
+            .filterNot { path -> root.relativize(path).toString().startsWith(canonicalProjectionPath) }
+            .filter { path ->
+                val source = Files.readString(path)
+                traversalMarkers.any(source::contains)
+            }
+            .map { path -> root.relativize(path).toString() }
+            .toList()
+
+        assertEquals(
+            emptyList(),
+            offenders,
+            "Graph-window traversal state and overflow node factories belong in the canonical projection package.",
+        )
+    }
+
+    @Test
+    fun graphHiddenCountsComeFromSharedProjectionApi() {
+        val forbiddenHiddenCountImplementations = listOf(
+            "data class GraphViewHiddenCounts(",
+            "fun graphViewHiddenCounts(",
+            "private fun hiddenLayerCounts(",
+            "private fun hiddenNodeCount(",
+            "private fun hiddenEdgeCount(",
+            "fullGraph.nodes.size - visibleGraph.nodes.size",
+            "fullGraph.edges.size - visibleGraph.edges.size",
+            "graph.nodes.size - visibleGraph.nodes.size",
+            "graph.edges.size - visibleGraph.edges.size",
+        )
+        val offenders = productionKotlinSources()
+            .filterNot { path -> root.relativize(path).toString().startsWith(canonicalProjectionPath) }
+            .filter { path ->
+                val source = Files.readString(path)
+                forbiddenHiddenCountImplementations.any(source::contains)
+            }
+            .map { path -> root.relativize(path).toString() }
+            .toList()
+
+        assertEquals(
+            emptyList(),
+            offenders,
+            "Hidden node/edge/layer counts should be calculated through the shared projection API.",
+        )
+    }
+
+    @Test
+    fun graphProjectionMetadataKeysAreDefinedOnce() {
+        val metadataKeyPattern = Regex(""""(linkGraph\.overflow\.[^"]+|linkGraph\.hidden[^"]*|indexed\.collapsed[^"]*)"""")
+        val offenders = productionKotlinSources()
+            .filterNot { path -> root.relativize(path).toString() == "${canonicalProjectionPath}GraphProjectionMetadata.kt" }
+            .mapNotNull { path ->
+                val relativePath = root.relativize(path).toString()
+                val keys = metadataKeyPattern.findAll(Files.readString(path))
+                    .map { match -> match.groupValues[1] }
+                    .distinct()
+                    .toList()
+                relativePath.takeIf { keys.isNotEmpty() }?.let { it to keys }
+            }
+            .toList()
+
+        assertEquals(
+            emptyList(),
+            offenders,
+            "Projection overflow/hidden/collapsed metadata keys should be defined in GraphProjectionMetadata only.",
+        )
+    }
+
+    @Test
+    fun graphProjectionKernelOwnsTraversalAndLegacyProjectorsStayThin() {
+        listOf(
+            "GraphProjectionPolicy.kt",
+            "GraphProjectionResult.kt",
+            "GraphProjectionKernel.kt",
+        ).forEach { fileName ->
+            assertTrue(
+                Files.exists(root.resolve("$canonicalProjectionPath$fileName")),
+                "Canonical projection API must include $fileName.",
+            )
+        }
+
+        val legacyProjectors = listOf(
+            "src/main/kotlin/com/charmnight/linkgraph/projection/GraphWindowProjector.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/projection/InteractiveGraphProjector.kt",
+        )
+        val traversalMarkers = listOf(
+            "val visibleNodeIds",
+            "val visibleEdgeIds",
+            "hiddenNodeIds",
+            "hiddenEdgeIds",
+            "private fun overflowNode(",
+            "ArrayDeque",
+            "PriorityQueue",
+        )
+        val offenders = legacyProjectors.flatMap { relativePath ->
+            val source = read(relativePath)
+            traversalMarkers.mapNotNull { marker ->
+                if (source.contains(marker)) "$relativePath contains $marker" else null
+            }
+        }
+
+        assertEquals(
+            emptyList(),
+            offenders,
+            "Legacy projector entrypoints should delegate to GraphProjectionKernel instead of owning traversal state.",
+        )
+    }
+
+    @Test
+    fun frontendProductionDoesNotDeriveBackendHiddenCounts() {
+        val productionFrontendSources = Files.walk(root.resolve("web/src/app")).use { paths ->
+            paths
+                .filter { path ->
+                    Files.isRegularFile(path) && Regex("""\.(ts|tsx)$""").containsMatchIn(path.fileName.toString())
+                }
+                .filter { path ->
+                    val relative = root.relativize(path).toString()
+                    relative != "web/src/app/sampleState.ts" &&
+                        relative != "web/src/app/testBootstrapState.ts" &&
+                        relative != "web/src/app/draftCompareProjection.ts"
+                }
+                .toList()
+            }
+
+        val forbiddenFragments = listOf(
+            "function graphHiddenCounts(",
+            "const hiddenCounts = graphHiddenCounts(",
+            "hiddenNodeCount: hiddenCounts.hiddenNodeCount",
+            "hiddenEdgeCount: hiddenCounts.hiddenEdgeCount",
+        )
+        val offenders = productionFrontendSources.flatMap { path ->
+            val source = Files.readString(path)
+            forbiddenFragments.mapNotNull { fragment ->
+                if (source.contains(fragment)) "${root.relativize(path)} contains $fragment" else null
+            }
+        }
+
+        assertEquals(
+            emptyList(),
+            offenders,
+            "Frontend production code must preserve backend projection summaries instead of recomputing hidden counts.",
+        )
+    }
+
+    @Test
+    fun indexedGraphBridgeAcceptsPresetRequestsOnly() {
+        val parserSource = read("src/main/kotlin/com/charmnight/linkgraph/ui/GraphBrowserPayloadParser.kt")
+        assertTrue(
+            parserSource.contains("IndexedGraphRequestFactory.fromPreset"),
+            "Indexed graph bridge parser should expand backend-owned presets.",
+        )
+        listOf(
+            "root.enumValue<IndexedGraphView>(\"view\")",
+            "includeProjectSources = root.booleanOrDefault",
+            "refreshPolicy = root.enumValue<IndexedGraphRefreshPolicy>",
+        ).forEach { legacyFragment ->
+            assertFalse(
+                parserSource.contains(legacyFragment),
+                "Indexed graph bridge parser must not keep legacy full-request fallback: $legacyFragment",
+            )
+        }
+    }
+
     private fun read(relativePath: String): String = Files.readString(root.resolve(relativePath))
 
     private fun lineCount(relativePath: String): Int = Files.readAllLines(root.resolve(relativePath)).size
+
+    private fun productionKotlinSources(): List<Path> =
+        Files.walk(root.resolve("src/main/kotlin/com/charmnight/linkgraph"))
+            .filter { path -> Files.isRegularFile(path) && path.toString().endsWith(".kt") }
+            .toList()
 }

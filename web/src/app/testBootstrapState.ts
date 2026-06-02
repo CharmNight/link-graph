@@ -4,6 +4,7 @@ import type {
   FlowchartViewDocument,
   ArchitectureGraphViewDocument,
   ClassDiagramViewDocument,
+  GraphViewPresentation,
   LinkGraphBootstrapState,
   LinkGraphDocument,
   LinkGraphLayoutState,
@@ -20,6 +21,23 @@ import {
 const EMPTY_DOCUMENT: LinkGraphDocument = {
   nodes: [],
   edges: [],
+};
+
+const EMPTY_GRAPH_VIEW_PRESENTATION: GraphViewPresentation = {
+  target: {
+    nodeId: null,
+    title: "",
+    subtitle: "",
+    location: null,
+  },
+  lanes: [],
+  hiddenBuckets: [],
+  controls: {
+    primaryScope: "",
+    availableScopes: [],
+    searchable: true,
+    expandable: true,
+  },
 };
 
 export interface LegacyTestBootstrapState {
@@ -84,6 +102,7 @@ function buildFactGraphViewDocument(
   fullGraph: LinkGraphDocument,
   anchorNodeId: string | null,
 ): FactGraphViewDocument {
+  const hiddenCounts = deriveSampleOnlyHiddenCounts(visibleGraph, fullGraph);
   return {
     visibleGraph,
     fullGraph,
@@ -94,7 +113,29 @@ function buildFactGraphViewDocument(
         ?? null,
       visibleNodeCount: visibleGraph.nodes.length,
       fullNodeCount: fullGraph.nodes.length,
+      hiddenNodeCount: hiddenCounts.hiddenNodeCount,
+      hiddenEdgeCount: hiddenCounts.hiddenEdgeCount,
+      truncated: hiddenCounts.hiddenNodeCount > 0 || hiddenCounts.hiddenEdgeCount > 0,
     },
+    presentation: EMPTY_GRAPH_VIEW_PRESENTATION,
+  };
+}
+
+function deriveSampleOnlyHiddenCounts(
+  visibleGraph: LinkGraphDocument,
+  fullGraph: LinkGraphDocument,
+): { hiddenNodeCount: number; hiddenEdgeCount: number } {
+  const fullNodeIds = new Set(fullGraph.nodes.map((node) => node.id));
+  const fullEdgeIds = new Set(fullGraph.edges.map((edge) => edge.id));
+  const visibleOriginalNodeIds = new Set(visibleGraph.nodes
+    .map((node) => node.id)
+    .filter((nodeId) => fullNodeIds.has(nodeId)));
+  const visibleOriginalEdgeIds = new Set(visibleGraph.edges
+    .map((edge) => edge.id)
+    .filter((edgeId) => fullEdgeIds.has(edgeId)));
+  return {
+    hiddenNodeCount: Math.max(0, fullNodeIds.size - visibleOriginalNodeIds.size),
+    hiddenEdgeCount: Math.max(0, fullEdgeIds.size - visibleOriginalEdgeIds.size),
   };
 }
 
@@ -131,6 +172,7 @@ function buildResourceRelationViewDocument(
   visibleGraph: LinkGraphDocument,
   anchorNodeId: string | null,
 ): ResourceRelationViewDocument {
+  const resourceCount = visibleGraph.nodes.filter(isResourceRelationNode).length;
   const laneCounts = visibleGraph.nodes.reduce<Record<string, number>>((counts, node) => {
     const lane = node.metadata?.["resource.lane"] ?? "CODE";
     counts[lane] = (counts[lane] ?? 0) + 1;
@@ -142,9 +184,22 @@ function buildResourceRelationViewDocument(
     anchorNodeId,
     summary: {
       visibleNodeCount: visibleGraph.nodes.length,
+      relationCount: visibleGraph.edges.length,
+      resourceCount,
+      fallbackReason: visibleGraph.edges.length > 0
+        ? "NONE"
+        : resourceCount === 0
+          ? "NO_RESOURCE_UNITS"
+          : "NO_BINDING_RELATIONS",
       laneCounts,
     },
   };
+}
+
+function isResourceRelationNode(node: LinkGraphNode): boolean {
+  return node.metadata?.["resource.lane"] != null ||
+    node.type.includes("RESOURCE") ||
+    ["SQL", "HTTP_ENDPOINT", "MQ_TOPIC", "CONFIG_ITEM"].includes(node.type);
 }
 
 function buildArchitectureGraphViewDocument(
@@ -159,6 +214,7 @@ function buildArchitectureGraphViewDocument(
       moduleCount: visibleGraph.nodes.filter((node) => node.type === "MODULE").length,
       packageCount: visibleGraph.nodes.filter((node) => node.type === "PACKAGE").length,
       serviceCount: visibleGraph.nodes.filter((node) => node.type === "SERVICE").length,
+      componentCount: visibleGraph.nodes.filter((node) => node.type === "COMPONENT").length,
       resourceCount: visibleGraph.nodes.filter((node) => node.type === "RESOURCE").length,
       layerCount: visibleGraph.nodes.filter((node) => node.type === "LAYER").length,
       relationCount: visibleGraph.edges.length,
@@ -168,6 +224,7 @@ function buildArchitectureGraphViewDocument(
         .reduce((sum, count) => sum + count, 0),
       truncated: visibleGraph.truncated === true,
     },
+    presentation: EMPTY_GRAPH_VIEW_PRESENTATION,
   };
 }
 
@@ -193,7 +250,20 @@ function buildClassDiagramViewDocument(
       relationCount: visibleGraph.edges.length,
       spiProviderCount: 0,
       reflectionRelationCount: 0,
+      relationCompleteness: "COMPLETE",
+      scopeTypeCount: visibleGraph.nodes.length,
+      projectTypeCount: visibleGraph.nodes.length,
+      projectClassCount: visibleGraph.nodes.filter((node) => node.type === "CLASS").length,
+      scopeBasis: "CLASS_NEIGHBORHOOD",
+      anchorTypeNodeId: visibleGraph.nodes[0]?.id ?? null,
+      anchorTypeTitle: visibleGraph.nodes[0]?.title ?? null,
+      anchorTypeQualifiedName: visibleGraph.nodes[0]?.signature ?? null,
+      neighborhoodLimit: visibleGraph.nodes.length,
+      memberLimit: 5,
+      neighborhoodCandidateTypeCount: visibleGraph.nodes.length,
+      neighborhoodTruncated: false,
     },
+    presentation: EMPTY_GRAPH_VIEW_PRESENTATION,
   };
 }
 
@@ -213,6 +283,11 @@ function buildReviewGraphViewDocument(
       affectedPackageCount: 0,
       affectedModuleCount: 0,
       evidenceRefCount: visibleGraph.edges.filter((edge) => edge.metadata?.["review.edgeRole"] === "RELATION").length,
+      selectedDiffItemIds: [],
+      maxChangedNodes: 120,
+      maxUpstreamNodes: 40,
+      maxDownstreamNodes: 40,
+      maxRelatedTestNodes: 40,
     },
   };
 }

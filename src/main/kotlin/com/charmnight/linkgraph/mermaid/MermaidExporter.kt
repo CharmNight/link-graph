@@ -331,6 +331,7 @@ class MermaidExporter {
             NodeType.EXTERNAL_CLASS -> "外部类"
             NodeType.LIBRARY -> "依赖库"
             NodeType.SERVICE -> "服务"
+            NodeType.COMPONENT -> "组件"
             NodeType.LAYER -> "架构层"
             NodeType.RESOURCE -> "资源"
             NodeType.SQL -> "SQL"

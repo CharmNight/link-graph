@@ -1,5 +1,4 @@
 import type {
-  AnalysisDisplayMode,
   ArchitectureGraphViewDocument,
   ClassDiagramViewDocument,
   FactGraphViewDocument,
@@ -13,11 +12,9 @@ import { ResourceRelationView } from "../views/resource/ResourceRelationView";
 import { ArchitectureGraphView } from "../views/architecture/ArchitectureGraphView";
 import { ClassDiagramView } from "../views/class-diagram/ClassDiagramView";
 import { ReviewGraphView } from "../views/review/ReviewGraphView";
-import type { ViewStageProps } from "../views/viewStageProps";
+import type { EditableStageProps, IndexedReadonlyStageProps } from "../views/viewStageProps";
 
-interface AppGraphStageProps {
-  analysisDisplayMode: AnalysisDisplayMode;
-  stageProps: ViewStageProps;
+type AppGraphStageCommonProps = {
   factGraphView: FactGraphViewDocument;
   presentedFlowchartView: FlowchartViewDocument;
   flowchartView: FlowchartViewDocument;
@@ -25,64 +22,62 @@ interface AppGraphStageProps {
   architectureGraphView: ArchitectureGraphViewDocument;
   classDiagramView: ClassDiagramViewDocument;
   reviewGraphView: ReviewGraphViewDocument;
-}
+};
 
-export function AppGraphStage({
-  analysisDisplayMode,
-  stageProps,
-  factGraphView,
-  presentedFlowchartView,
-  flowchartView,
-  resourceRelationView,
-  architectureGraphView,
-  classDiagramView,
-  reviewGraphView,
-}: AppGraphStageProps) {
-  if (analysisDisplayMode === "FLOWCHART") {
+type AppGraphStageProps =
+  | (AppGraphStageCommonProps & { analysisDisplayMode: "FACT_GRAPH"; stageProps: EditableStageProps })
+  | (AppGraphStageCommonProps & { analysisDisplayMode: "FLOWCHART"; stageProps: EditableStageProps })
+  | (AppGraphStageCommonProps & { analysisDisplayMode: "RESOURCE_RELATION_VIEW"; stageProps: EditableStageProps })
+  | (AppGraphStageCommonProps & { analysisDisplayMode: "ARCHITECTURE_GRAPH"; stageProps: IndexedReadonlyStageProps })
+  | (AppGraphStageCommonProps & { analysisDisplayMode: "CLASS_DIAGRAM"; stageProps: IndexedReadonlyStageProps })
+  | (AppGraphStageCommonProps & { analysisDisplayMode: "REVIEW_GRAPH"; stageProps: IndexedReadonlyStageProps });
+
+export function AppGraphStage(props: AppGraphStageProps) {
+  if (props.analysisDisplayMode === "FLOWCHART") {
     return (
       <FlowchartView
-        {...stageProps}
-        view={presentedFlowchartView}
-        layoutView={flowchartView}
+        {...props.stageProps}
+        view={props.presentedFlowchartView}
+        layoutView={props.flowchartView}
       />
     );
   }
-  if (analysisDisplayMode === "RESOURCE_RELATION_VIEW") {
+  if (props.analysisDisplayMode === "RESOURCE_RELATION_VIEW") {
     return (
       <ResourceRelationView
-        {...stageProps}
-        view={resourceRelationView}
+        {...props.stageProps}
+        view={props.resourceRelationView}
       />
     );
   }
-  if (analysisDisplayMode === "ARCHITECTURE_GRAPH") {
+  if (props.analysisDisplayMode === "ARCHITECTURE_GRAPH") {
     return (
       <ArchitectureGraphView
-        {...stageProps}
-        view={architectureGraphView}
+        {...props.stageProps}
+        view={props.architectureGraphView}
       />
     );
   }
-  if (analysisDisplayMode === "CLASS_DIAGRAM") {
+  if (props.analysisDisplayMode === "CLASS_DIAGRAM") {
     return (
       <ClassDiagramView
-        {...stageProps}
-        view={classDiagramView}
+        {...props.stageProps}
+        view={props.classDiagramView}
       />
     );
   }
-  if (analysisDisplayMode === "REVIEW_GRAPH") {
+  if (props.analysisDisplayMode === "REVIEW_GRAPH") {
     return (
       <ReviewGraphView
-        {...stageProps}
-        view={reviewGraphView}
+        {...props.stageProps}
+        view={props.reviewGraphView}
       />
     );
   }
   return (
     <FactGraphView
-      {...stageProps}
-      view={factGraphView}
+      {...props.stageProps}
+      view={props.factGraphView}
     />
   );
 }

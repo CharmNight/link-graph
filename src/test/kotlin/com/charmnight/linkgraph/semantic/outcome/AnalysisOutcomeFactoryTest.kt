@@ -69,9 +69,9 @@ class AnalysisOutcomeFactoryTest {
         assertEquals("method:submit", outcome.anchorNodeId)
         assertTrue(outcome.fullGraph.nodes.size > outcome.visibleGraph.nodes.size)
         assertTrue(outcome.projectionStats.truncated)
-        assertEquals(1, outcome.projectionStats.hiddenNodeCount)
-        assertEquals(1, outcome.projectionStats.hiddenEdgeCount)
-        assertTrue(outcome.feedbackMessage.contains("order-flow.md"))
+        assertEquals(2, outcome.projectionStats.hiddenNodeCount)
+        assertEquals(2, outcome.projectionStats.hiddenEdgeCount)
+        assertTrue(outcome.statusMessage.contains("order-flow.md"))
     }
 
     @Test

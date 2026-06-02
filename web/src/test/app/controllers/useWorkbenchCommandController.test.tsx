@@ -1,8 +1,10 @@
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  requestAnalysisDisplayMode,
   requestArchitectureGraph,
   requestClassDiagram,
+  requestPackageDependencyGraph,
   requestReviewGraph,
   requestSyncPreview,
   showDiffMode,
@@ -22,6 +24,7 @@ vi.mock("../../../app/api", () => ({
   requestGenerationPlanAsync: vi.fn(),
   requestGenerationPlanDiscussionAsync: vi.fn(),
   requestOpenSettings: vi.fn(),
+  requestPackageDependencyGraph: vi.fn(),
   requestReviewGraph: vi.fn(),
   requestSyncPreview: vi.fn(),
   showDiffMode: vi.fn(),
@@ -51,6 +54,10 @@ function renderController() {
 }
 
 describe("useWorkbenchCommandController", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("does not show optimistic success for backend-driven diff and sync commands", () => {
     const { result, runBridgeCommand } = renderController();
 
@@ -80,5 +87,58 @@ describe("useWorkbenchCommandController", () => {
     expect(runBridgeCommand).toHaveBeenCalledWith("加载架构图", expect.any(Function));
     expect(runBridgeCommand).toHaveBeenCalledWith("加载类图", expect.any(Function));
     expect(runBridgeCommand).toHaveBeenCalledWith("加载 Review Graph", expect.any(Function));
+  });
+
+  it("always routes project-level indexed graph entries through the indexed graph lifecycle", () => {
+    const { result, runBridgeCommand } = renderController();
+
+    act(() => {
+      result.current.handleRequestAnalysisDisplayMode("ARCHITECTURE_GRAPH");
+      result.current.handleRequestAnalysisDisplayMode("CLASS_DIAGRAM");
+      result.current.handleRequestAnalysisDisplayMode("REVIEW_GRAPH", ["diff:docs"]);
+    });
+
+    expect(requestArchitectureGraph).toHaveBeenCalledTimes(1);
+    expect(requestClassDiagram).toHaveBeenCalledTimes(1);
+    expect(requestReviewGraph).toHaveBeenCalledWith(["diff:docs"]);
+    expect(requestAnalysisDisplayMode).not.toHaveBeenCalledWith("ARCHITECTURE_GRAPH");
+    expect(requestAnalysisDisplayMode).not.toHaveBeenCalledWith("CLASS_DIAGRAM");
+    expect(requestAnalysisDisplayMode).not.toHaveBeenCalledWith("REVIEW_GRAPH");
+    expect(runBridgeCommand).toHaveBeenCalledWith("加载架构图", expect.any(Function));
+    expect(runBridgeCommand).toHaveBeenCalledWith("加载类图", expect.any(Function));
+    expect(runBridgeCommand).toHaveBeenCalledWith("加载 Review Graph", expect.any(Function));
+  });
+
+  it("shows immediate feedback and preserves dependency options when requesting package dependencies", () => {
+    const { result, runBridgeCommand } = renderController();
+
+    act(() => {
+      result.current.handleRequestPackageDependencyGraph(null, {
+        includeExternalLibraries: false,
+        includeJdk: false,
+      });
+    });
+
+    expect(requestPackageDependencyGraph).toHaveBeenCalledWith(null, {
+      includeExternalLibraries: false,
+      includeJdk: false,
+    });
+    expect(runBridgeCommand).toHaveBeenCalledWith("加载包依赖", expect.any(Function), {
+      successFeedback: {
+        level: "INFO",
+        message: "正在加载包依赖视图。",
+      },
+    });
+  });
+
+  it("requests class diagrams scoped to architecture nodes", () => {
+    const { result, runBridgeCommand } = renderController();
+
+    act(() => {
+      result.current.handleRequestClassDiagram("component:orders");
+    });
+
+    expect(requestClassDiagram).toHaveBeenCalledWith("component:orders");
+    expect(runBridgeCommand).toHaveBeenCalledWith("加载类图", expect.any(Function));
   });
 });

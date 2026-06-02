@@ -1,74 +1,15 @@
 package com.charmnight.linkgraph.jvm.relation
 
-import com.charmnight.linkgraph.jvm.index.canonicalTypeText
-import com.intellij.psi.JavaRecursiveElementVisitor
-import com.intellij.psi.PsiClass
+import com.charmnight.linkgraph.jvm.index.JvmClassSymbol
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiField
-import com.intellij.psi.PsiJavaCodeReferenceElement
 import com.intellij.psi.PsiMethod
-import com.intellij.psi.PsiTypeElement
 
 class TypeUsageRelationResolver : JvmRelationResolver {
     override val id: String = "jvm.type-usage"
 
     override fun resolve(context: JvmResolutionContext): List<JvmRelation> {
-        val relations = mutableListOf<JvmRelation>()
-        projectClasses(context.symbolIndex).forEach { classSymbol ->
-            val psiClass = context.findPsiClass(classSymbol) ?: return@forEach
-            val targets = linkedMapOf<String, MutableList<PsiElement>>()
-            fun addTarget(targetName: String?, evidenceElement: PsiElement) {
-                val target = context.symbolIndex.classByQualifiedName(targetName) ?: return
-                if (target.id == classSymbol.id) {
-                    return
-                }
-                targets.getOrPut(target.id) { mutableListOf() } += evidenceElement
-            }
-
-            psiClass.fields.forEach { field ->
-                addTarget(canonicalTypeText(field.type), field)
-            }
-            psiClass.methods.forEach { method ->
-                addTarget(canonicalTypeText(method.returnType), method)
-                method.parameterList.parameters.forEach { parameter ->
-                    addTarget(canonicalTypeText(parameter.type), parameter)
-                }
-                method.throwsList.referencedTypes.forEach { thrownType ->
-                    addTarget(canonicalTypeText(thrownType), method.throwsList)
-                }
-            }
-            psiClass.accept(
-                object : JavaRecursiveElementVisitor() {
-                    override fun visitTypeElement(type: PsiTypeElement) {
-                        addTarget(canonicalTypeText(type.type), type)
-                        super.visitTypeElement(type)
-                    }
-
-                    override fun visitReferenceElement(reference: PsiJavaCodeReferenceElement) {
-                        val resolvedClass = reference.resolve() as? PsiClass
-                        addTarget(resolvedClass?.qualifiedName, reference)
-                        super.visitReferenceElement(reference)
-                    }
-                },
-            )
-
-            targets.forEach { (targetId, evidenceElements) ->
-                val target = context.symbolIndex.findSymbol(targetId) ?: return@forEach
-                relations += relation(
-                    kind = JvmRelationKind.USES_TYPE,
-                    from = classSymbol,
-                    to = target,
-                    confidence = JvmRelationConfidence.PROVEN,
-                    source = JvmRelationSource.PSI,
-                    evidence = evidenceElements.firstOrNull()
-                        ?.evidence("uses type ${target.qualifiedName}", classSymbol.source)
-                        ?: classSymbol.evidence("uses type ${target.qualifiedName}"),
-                    count = evidenceElements.size,
-                    metadata = mapOf("usage.count" to evidenceElements.size.toString()),
-                )
-            }
-        }
-        return relations
+        return ClassDiagramRelationExtractor.extractPsiTypeRelations(context)
     }
 }
 
@@ -80,16 +21,18 @@ class InjectionRelationResolver : JvmRelationResolver {
         val relations = mutableListOf<JvmRelation>()
         projectClasses(context.symbolIndex).forEach { classSymbol ->
             val psiClass = context.findPsiClass(classSymbol) ?: return@forEach
-            val candidates = mutableListOf<Pair<PsiElement, String>>()
+            val candidates = mutableListOf<Pair<PsiElement, JvmClassSymbol>>()
             psiClass.fields.forEach { field ->
                 if (field.hasInjectionAnnotation(injectionAnnotations)) {
-                    canonicalTypeText(field.type)?.let { typeName -> candidates += field to typeName }
+                    context.symbolIndex.classByTypeNear(field.type, classSymbol.packageName)
+                        ?.let { target -> candidates += field to target }
                 }
             }
             psiClass.methods.forEach { method ->
                 if (method.hasInjectionAnnotation(injectionAnnotations)) {
                     method.parameterList.parameters.forEach { parameter ->
-                        canonicalTypeText(parameter.type)?.let { typeName -> candidates += parameter to typeName }
+                        context.symbolIndex.classByTypeNear(parameter.type, classSymbol.packageName)
+                            ?.let { target -> candidates += parameter to target }
                     }
                 }
             }
@@ -97,13 +40,13 @@ class InjectionRelationResolver : JvmRelationResolver {
                 val annotated = constructor.hasInjectionAnnotation(injectionAnnotations)
                 if (annotated || psiClass.constructors.size == 1) {
                     constructor.parameterList.parameters.forEach { parameter ->
-                        canonicalTypeText(parameter.type)?.let { typeName -> candidates += parameter to typeName }
+                        context.symbolIndex.classByTypeNear(parameter.type, classSymbol.packageName)
+                            ?.let { target -> candidates += parameter to target }
                     }
                 }
             }
             candidates
-                .mapNotNull { (element, typeName) ->
-                    val target = context.symbolIndex.classByQualifiedName(typeName) ?: return@mapNotNull null
+                .mapNotNull { (element, target) ->
                     if (target.id == classSymbol.id) return@mapNotNull null
                     target to element
                 }

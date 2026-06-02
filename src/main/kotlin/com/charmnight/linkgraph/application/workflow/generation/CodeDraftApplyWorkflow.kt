@@ -5,9 +5,9 @@ import com.charmnight.linkgraph.codegen.ProjectScopedPathPolicy
 import com.charmnight.linkgraph.codegen.ProjectPathNormalizer
 import com.charmnight.linkgraph.application.diagnostics.GenerationDiagnostics
 import com.charmnight.linkgraph.foundation.debugLazy
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
-import com.charmnight.linkgraph.application.port.CodeDraftWritePresentation
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEvent
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.CodeDraftWriteResult
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
 import com.intellij.diff.DiffRequestFactory
 import com.intellij.diff.merge.MergeResult
 import com.intellij.openapi.application.ApplicationManager
@@ -34,7 +34,7 @@ internal class CodeDraftApplyWorkflow(
         }
         dependencies.emit(
             GraphEditorApplicationEvent.CodeDraftWriteReported(
-                CodeDraftWritePresentation(report = report),
+                CodeDraftWriteResult(report = report),
             ),
         )
         report.writtenFiles.firstOrNull()?.let(dependencies.sourceNavigationServiceProvider()::navigateToPath)
@@ -72,10 +72,10 @@ internal class CodeDraftApplyWorkflow(
         }
         dependencies.emit(
             GraphEditorApplicationEvent.CodeDraftWriteReported(
-                CodeDraftWritePresentation(
+                CodeDraftWriteResult(
                     report = mergeWriteReport(snapshot.generatedCodeDraftWriteReport, report),
                     feedbackLevel = level,
-                    feedbackMessage = message,
+                    statusMessage = message,
                 ),
             ),
         )
@@ -179,7 +179,7 @@ internal class CodeDraftApplyWorkflow(
                             -> dependencies.emitGenerationFeedback(
                                 ApplicationFeedbackLevel.INFO,
                                 "已取消代码草稿 merge，当前文件未写入。",
-                                preserveLastMessageType = true,
+                                preservePreviousStatusKind = true,
                             )
 
                             MergeResult.RIGHT,

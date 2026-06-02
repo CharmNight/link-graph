@@ -167,6 +167,34 @@ class CoreShellArchitectureTest {
     }
 
     @Test
+    fun applicationDoesNotDependOnViewDocumentsOrViewPackages() {
+        val applicationPackage = projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/application")
+        val offenders = Files.walk(applicationPackage)
+            .filter { path -> path.toString().endsWith(".kt") }
+            .use { paths -> paths.toList() }
+            .flatMap { path ->
+                val source = Files.readString(path)
+                buildList {
+                    source.lineSequence().forEachIndexed { index, line ->
+                        val trimmed = line.trim()
+                        if (trimmed.startsWith("import ") && Regex("""\.view\.""").containsMatchIn(trimmed)) {
+                            add("${projectRoot.relativize(path)}:${index + 1}: $trimmed")
+                        }
+                    }
+                    if (source.contains("ViewDocument")) {
+                        add("${projectRoot.relativize(path)} contains ViewDocument")
+                    }
+                }
+            }
+
+        assertTrue(
+            offenders.isEmpty(),
+            "application code should depend on application result models rather than UI/view documents: " +
+                offenders.joinToString(),
+        )
+    }
+
+    @Test
     fun linkGraphProjectServiceMustBeDeletedFromProductionCode() {
         assertFalse(
             Files.exists(projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectService.kt")),
@@ -285,6 +313,70 @@ class CoreShellArchitectureTest {
             "GraphEditorApplicationService must be an application boundary, not a UI projection or command/workflow forwarding facade: " +
                 offenders.joinToString(),
         )
+    }
+
+    @Test
+    fun applicationCommandsUseExplicitDispatcherAndHandlers() {
+        listOf(
+            "src/main/kotlin/com/charmnight/linkgraph/application/command/ApplicationCommand.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/command/ApplicationCommandHandler.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/command/ApplicationCommandDispatcher.kt",
+        ).forEach(::assertExists)
+
+        val router = read("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorCommandRouter.kt")
+        assertTrue(
+            router.contains("ApplicationCommand") && router.contains("commandDispatcher.dispatch"),
+            "GraphEditorCommandRouter should map bridge messages to ApplicationCommand and dispatch through ApplicationCommandDispatcher.",
+        )
+
+        val service = read("src/main/kotlin/com/charmnight/linkgraph/application/GraphEditorApplicationService.kt")
+        assertTrue(
+            service.contains("val commandDispatcher") || service.contains("fun commandDispatcher("),
+            "GraphEditorApplicationService should expose an ApplicationCommandDispatcher boundary.",
+        )
+        val forwardingEntrypoints = listOf(
+            "fun loadGraph(",
+            "fun importMermaid(",
+            "fun exportMermaid(",
+            "fun showDiffMode(",
+            "fun requestQaAsync(",
+            "fun retryLastQaRequestAsync(",
+            "fun requestDiffReviewAsync(",
+            "fun requestGraphBeautificationAsync(",
+            "fun requestGenerationPlanAsync(",
+            "fun requestCodeDraftsAsync(",
+            "fun applyCodeDrafts(",
+            "fun requestIndexedGraph(",
+        )
+        val offenders = forwardingEntrypoints.filter(service::contains)
+        assertTrue(
+            offenders.isEmpty(),
+            "GraphEditorApplicationService must not remain a broad public command-forwarding facade: " +
+                offenders.joinToString(),
+        )
+    }
+
+    @Test
+    fun applicationEventsAndResultsLiveOutsidePortProviderFile() {
+        listOf(
+            "src/main/kotlin/com/charmnight/linkgraph/application/event/GraphEditorApplicationEvent.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/result/GenerationResults.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/result/ReviewResults.kt",
+        ).forEach(::assertExists)
+
+        val portSource = read("src/main/kotlin/com/charmnight/linkgraph/application/port/StatePresentationPorts.kt")
+        listOf(
+            "sealed interface GraphEditorApplicationEvent",
+            "data class GenerationPlanResult",
+            "data class QaCompletedResult",
+            "data class DiffReviewCompletedResult",
+            "data class BeautificationCompletedResult",
+        ).forEach { fragment ->
+            assertFalse(
+                portSource.contains(fragment),
+                "application/port should define ports only; event/result models belong in application/event and application/result: $fragment",
+            )
+        }
     }
 
     @Test
@@ -452,6 +544,38 @@ class CoreShellArchitectureTest {
         assertExists("src/main/kotlin/com/charmnight/linkgraph/application/workflow/generation/GenerationPlanDiscussionWorkflow.kt")
         assertExists("src/main/kotlin/com/charmnight/linkgraph/application/workflow/generation/CodeDraftGenerationWorkflow.kt")
         assertExists("src/main/kotlin/com/charmnight/linkgraph/application/workflow/generation/CodeDraftApplyWorkflow.kt")
+    }
+
+    @Test
+    fun productionJsonSerializationUsesCanonicalCodec() {
+        val allowed = setOf(
+            projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph/json/JsonCodec.kt").normalize(),
+        )
+        val forbiddenFragments = listOf(
+            "private class JsonParser",
+            "private fun appendJsonValue",
+            "private fun escape(",
+            "internal fun toJson(value: Any?)",
+        )
+        val offenders = Files.walk(projectRoot.resolve("src/main/kotlin/com/charmnight/linkgraph"))
+            .filter { path -> path.toString().endsWith(".kt") }
+            .use { paths -> paths.toList() }
+            .filterNot { path -> path.normalize() in allowed }
+            .flatMap { path ->
+                val source = Files.readString(path)
+                forbiddenFragments.mapNotNull { fragment ->
+                    if (source.contains(fragment)) {
+                        "${projectRoot.relativize(path)} contains $fragment"
+                    } else {
+                        null
+                    }
+                }
+            }
+
+        assertTrue(
+            offenders.isEmpty(),
+            "production JSON serialization/parsing must go through JsonCodec instead of hand-written codecs: ${offenders.joinToString()}",
+        )
     }
 
     private fun read(relativePath: String): String = Files.readString(projectRoot.resolve(relativePath))

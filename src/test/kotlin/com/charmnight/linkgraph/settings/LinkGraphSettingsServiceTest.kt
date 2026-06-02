@@ -103,6 +103,21 @@ class LinkGraphSettingsServiceTest {
     }
 
     @Test
+    fun allowsOneHourTimeoutAndClampsHigherValues() {
+        val service = LinkGraphSettingsService(FakeSecretStore())
+
+        service.update(LinkGraphSettingsState(timeoutSeconds = 3_600))
+
+        assertEquals(3_600, service.snapshot().effectiveTimeoutSeconds())
+        assertEquals(3_600, service.state.timeoutSeconds)
+
+        service.update(LinkGraphSettingsState(timeoutSeconds = 7_200))
+
+        assertEquals(3_600, service.snapshot().effectiveTimeoutSeconds())
+        assertEquals(3_600, service.state.timeoutSeconds)
+    }
+
+    @Test
     fun remoteGenerationRequiresCompleteConnectionInfo() {
         val service = LinkGraphSettingsService(FakeSecretStore())
 
@@ -175,6 +190,54 @@ class LinkGraphSettingsServiceTest {
 
         assertEquals("", secretStore.storedApiKey)
         assertFalse(service.isRemoteGenerationReady())
+    }
+
+    @Test
+    fun canPreserveStoredApiKeyWhenApplyingNonSecretSettings() {
+        val secretStore = FakeSecretStore(initialApiKey = "secret-key")
+        val service = LinkGraphSettingsService(secretStore)
+        service.loadState(
+            LinkGraphPersistentSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://api.example.com/v1",
+                model = "gpt-4.1-mini",
+            ),
+        )
+
+        service.update(
+            LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://api.example.com/v1",
+                apiKey = "",
+                model = "gpt-4.1",
+            ),
+            preserveBlankApiKey = true,
+        )
+
+        assertEquals("secret-key", secretStore.storedApiKey)
+        assertEquals(0, secretStore.loadCount)
+        assertEquals("gpt-4.1", service.state.model)
+    }
+
+    @Test
+    fun updateDoesNotLoadApiKeyWhenOnlyNonSecretComparisonIsNeeded() {
+        val secretStore = FakeSecretStore(initialApiKey = "secret-key")
+        val service = LinkGraphSettingsService(secretStore)
+
+        service.update(
+            LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://api.example.com/v1",
+                apiKey = "next-secret",
+                model = "gpt-4.1-mini",
+            ),
+        )
+
+        assertEquals(0, secretStore.loadCount)
+        assertEquals("next-secret", secretStore.storedApiKey)
     }
 
     @Test

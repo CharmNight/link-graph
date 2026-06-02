@@ -253,18 +253,6 @@ fun testSnapshot(
     )
 }
 
-val GraphEditorStateSnapshot.visibleGraph: GraphDocument
-    get() = com.charmnight.linkgraph.ui.currentVisibleGraph(this)
-
-val GraphEditorStateSnapshot.workingGraph: GraphDocument
-    get() = workspaceGraph
-
-val GraphEditorStateSnapshot.referenceWorkingGraph: GraphDocument
-    get() = workspaceBaseGraph
-
-val GraphEditorStateSnapshot.referenceFactGraph: GraphDocument
-    get() = semanticFactGraph
-
 val GraphEditorStateSnapshot.selectedNodeId: String?
     get() = currentSceneState().selectedNodeId
 
@@ -276,38 +264,6 @@ val GraphEditorStateSnapshot.layoutRevision: Long
 
 val GraphEditorStateSnapshot.diffMode: Boolean
     get() = currentSceneId == GraphSceneId.DIFF
-
-fun GraphEditorStateService.markWorkingGraphChanged(
-    graph: GraphDocument,
-    selectedMethodSignature: String? = null,
-    workingGraphDirty: Boolean = true,
-    preserveDraftPatchUndo: Boolean = false,
-) {
-    markGraphChanged(
-        graph = graph,
-        selectedMethodSignature = selectedMethodSignature,
-        preserveDraftPatchUndo = preserveDraftPatchUndo,
-        workingGraphDirty = workingGraphDirty,
-    )
-}
-
-fun GraphEditorStateService.markViewGraphChanged(
-    graph: GraphDocument,
-    displayMode: AnalysisDisplayMode = snapshot().analysisDisplayMode,
-    selectedMethodSignature: String? = null,
-    workingGraphDirty: Boolean = true,
-    preserveDraftPatchUndo: Boolean = false,
-) {
-    if (snapshot().analysisDisplayMode != displayMode) {
-        switchAnalysisDisplayMode(displayMode)
-    }
-    markGraphChanged(
-        graph = graph,
-        selectedMethodSignature = selectedMethodSignature,
-        preserveDraftPatchUndo = preserveDraftPatchUndo,
-        workingGraphDirty = workingGraphDirty,
-    )
-}
 
 private fun AnalysisDisplayMode.toSceneId(): GraphSceneId = when (this) {
     AnalysisDisplayMode.FACT_GRAPH -> GraphSceneId.WORKSPACE_FACT

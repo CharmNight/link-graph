@@ -39,7 +39,7 @@ vi.mock("@xyflow/react", () => ({
 }));
 
 describe("CLASS_DIAGRAM_NODE_TYPES", () => {
-  it("renders a UML class box with member compartments and four side handles", () => {
+  it("renders a UML class box with member compartments and distributed side handles", () => {
     const ClassDiagramNode = CLASS_DIAGRAM_NODE_TYPES.classDiagramNode as (props: Record<string, unknown>) => JSX.Element;
 
     const { container } = render(
@@ -58,6 +58,7 @@ describe("CLASS_DIAGRAM_NODE_TYPES", () => {
             metadata: {
               "architecture.package": "com.example",
               "jvm.class.abstract": "true",
+              "layout.direction": "ANCHOR",
               "uml.field.items": "provider: TaskProvider",
               "uml.method.items": "run(): void",
             },
@@ -71,20 +72,110 @@ describe("CLASS_DIAGRAM_NODE_TYPES", () => {
     expect(updateNodeInternalsMock).toHaveBeenCalledWith("class:ApplicationFeedbackLevel");
     expect(screen.getByText("ApplicationFeedbackLevel")).toBeInTheDocument();
     expect(screen.getByText("<<abstract>>")).toBeInTheDocument();
+    expect(screen.getByText("当前类")).toBeInTheDocument();
     expect(screen.getByText("Coordinates the generated feedback level shown in the editor.")).toBeInTheDocument();
+    expect(screen.getByText("字段")).toBeInTheDocument();
     expect(screen.getByText("provider: TaskProvider")).toBeInTheDocument();
+    expect(screen.getByText("方法")).toBeInTheDocument();
     expect(screen.getByText("run(): void")).toBeInTheDocument();
-    expect(screen.getAllByTestId("react-flow-handle")).toHaveLength(4);
+    expect(screen.getAllByTestId("react-flow-handle")).toHaveLength(50);
+    expect(container.querySelector('[data-handle-id="source-top"]')).toBeInTheDocument();
     expect(container.querySelector('[data-handle-id="target-top"]')).toBeInTheDocument();
     expect(container.querySelector('[data-handle-id="target-left"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-handle-id="source-left"]')).toBeInTheDocument();
     expect(container.querySelector('[data-handle-id="source-right"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-handle-id="target-right"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-handle-id="source-right-0"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-handle-id="source-right-6"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-handle-id="target-right-0"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-handle-id="target-right-6"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-handle-id="source-left-0"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-handle-id="source-left-6"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-handle-id="target-left-0"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-handle-id="target-left-6"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-handle-id="source-top-0"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-handle-id="source-top-6"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-handle-id="source-bottom-0"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-handle-id="source-bottom-6"]')).toBeInTheDocument();
     expect(container.querySelector('[data-handle-id="source-bottom"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-handle-id="target-bottom"]')).toBeInTheDocument();
+  });
+
+  it("renders peripheral class nodes as compact relationship summaries", () => {
+    const ClassDiagramNode = CLASS_DIAGRAM_NODE_TYPES.classDiagramNode as (props: Record<string, unknown>) => JSX.Element;
+
+    render(
+      <ClassDiagramNode
+        id="class:OrderRepository"
+        data={{
+          compact: true,
+          node: {
+            id: "class:OrderRepository",
+            type: "CLASS",
+            title: "OrderRepository",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            metadata: {
+              "architecture.package": "infra",
+              "presentation.role": "COLLABORATOR",
+              "presentation.laneId": "collaborator",
+              "uml.field.items": "jdbcTemplate: JdbcTemplate",
+              "uml.method.items": "save(order): OrderId",
+            },
+          },
+        }}
+        selected={false}
+        isConnectable={false}
+      />,
+    );
+
+    expect(screen.getByText("OrderRepository")).toBeInTheDocument();
+    expect(screen.getByText("协作对象")).toBeInTheDocument();
+    expect(screen.getByText("infra")).toBeInTheDocument();
+    expect(screen.getByText("save(order): OrderId")).toBeInTheDocument();
+    expect(screen.queryByText("字段")).not.toBeInTheDocument();
+    expect(screen.queryByText("方法")).not.toBeInTheDocument();
+    expect(screen.queryByText("jdbcTemplate: JdbcTemplate")).not.toBeInTheDocument();
+    expect(screen.queryByText("无")).not.toBeInTheDocument();
+  });
+
+  it("shortens peripheral method-qualified reasons while preserving the full reason as title text", () => {
+    const ClassDiagramNode = CLASS_DIAGRAM_NODE_TYPES.classDiagramNode as (props: Record<string, unknown>) => JSX.Element;
+
+    render(
+      <ClassDiagramNode
+        id="class:MetadataDelta"
+        data={{
+          compact: true,
+          node: {
+            id: "class:MetadataDelta",
+            type: "CLASS",
+            title: "MetadataDelta",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            metadata: {
+              "presentation.role": "OUTPUT",
+              "classDiagram.node.reason": "param onMetadataUpdate.delta",
+            },
+          },
+        }}
+        selected={false}
+        isConnectable={false}
+      />,
+    );
+
+    expect(screen.getByText("param delta")).toHaveAttribute("title", "param onMetadataUpdate.delta");
+    expect(screen.queryByText("param onMetadataUpdate.delta")).not.toBeInTheDocument();
   });
 });
 
 describe("buildClassDiagramNodes", () => {
-  it("uses compact class-card width and highlights the anchor lane", () => {
-    const builtNodes = buildClassDiagramNodes({
+  it("uses compact class-card width and highlights the anchor presentation role", () => {
+    const [anchorNode, collaboratorNode] = buildClassDiagramNodes({
       nodes: [
         {
           id: "class:anchor",
@@ -95,7 +186,22 @@ describe("buildClassDiagramNodes", () => {
           certainty: "PROVEN",
           bindingStatus: "BOUND",
           metadata: {
+            "presentation.role": "ANCHOR",
+            "presentation.compact": "false",
+          },
+        },
+        {
+          id: "class:collaborator",
+          type: "CLASS",
+          title: "OrderRepository",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN",
+          bindingStatus: "BOUND",
+          metadata: {
             "layout.direction": "ANCHOR",
+            "presentation.role": "COLLABORATOR",
+            "presentation.compact": "true",
           },
         },
       ],
@@ -103,10 +209,16 @@ describe("buildClassDiagramNodes", () => {
       nodeSizeRegistry: createNodeSizeRegistry(),
     });
 
-    expect(builtNodes[0]?.style).toMatchObject({
+    expect(anchorNode?.style).toMatchObject({
       width: 360,
     });
-    expect(String(builtNodes[0]?.style?.border)).toContain("25, 90, 153");
+    expect(String(anchorNode?.style?.border)).toContain("52, 180, 255");
+    expect(anchorNode?.data.compact).toBe(false);
+    expect(String(collaboratorNode?.style?.border)).not.toContain("52, 180, 255");
+    expect(collaboratorNode?.style).toMatchObject({
+      width: 248,
+    });
+    expect(collaboratorNode?.data.compact).toBe(true);
   });
 
   it("marks UML node kind classes for visual differences", () => {
@@ -160,6 +272,9 @@ describe("buildClassDiagramEdges", () => {
               },
             ],
           },
+          metadata: {
+            "layout.route": "class-diagram-lane",
+          },
         },
       ],
     })[0];
@@ -170,6 +285,8 @@ describe("buildClassDiagramEdges", () => {
       targetHandle: "target-left",
     });
     expect(builtEdge?.data).toMatchObject({
+      labelVisibility: "always",
+      routeMode: "stored",
       route: {
         sections: [
           expect.objectContaining({
@@ -178,6 +295,37 @@ describe("buildClassDiagramEdges", () => {
         ],
       },
     });
+  });
+
+  it("preserves globally repaired class diagram routes even when they were not produced by the manual lane router", () => {
+    const builtEdge = buildClassDiagramEdges({
+      edges: [
+        {
+          id: "edge:elk-repaired",
+          type: "USES_TYPE",
+          source: "class:source",
+          target: "class:target",
+          route: {
+            sections: [
+              {
+                startPoint: { x: 100, y: 80 },
+                bendPoints: [
+                  { x: 260, y: 80 },
+                  { x: 260, y: 220 },
+                ],
+                endPoint: { x: 420, y: 220 },
+              },
+            ],
+          },
+          metadata: {
+            "layout.route": "class-diagram-elk",
+            "layout.routeMode": "stored",
+          },
+        },
+      ],
+    })[0];
+
+    expect(builtEdge?.data?.routeMode).toBe("stored");
   });
 
   it("uses an open UML inheritance marker for extends and dashed style for implements", () => {
@@ -202,6 +350,131 @@ describe("buildClassDiagramEdges", () => {
 
     expect(extendsEdge?.markerEnd).toMatchObject({ type: "arrow" });
     expect(implementsEdge?.markerEnd).toMatchObject({ type: "arrow" });
-    expect(String(implementsEdge?.style?.strokeDasharray)).toBe("7 5");
+    expect(String(implementsEdge?.style?.strokeDasharray)).toBe("8 5");
+    expect(extendsEdge?.markerEnd).toMatchObject({ color: "#b58c55" });
+  });
+
+  it("uses UML class-diagram edge roles for color and labels", () => {
+    const [realizationEdge, associationEdge, dependencyEdge] = buildClassDiagramEdges({
+      edges: [
+        {
+          id: "edge:child->contract",
+          type: "IMPLEMENTS",
+          source: "class:child",
+          target: "class:contract",
+          metadata: {
+            "jvm.relation.kind": "IMPLEMENTS",
+            "uml.relation.kind": "REALIZATION",
+            "uml.relation.label": "implements",
+          },
+        },
+        {
+          id: "edge:anchor->store",
+          type: "USES_TYPE",
+          source: "class:anchor",
+          target: "class:store",
+          metadata: {
+            "jvm.relation.kind": "USES_TYPE",
+            "uml.relation.kind": "ASSOCIATION",
+            "uml.relation.label": "field repository",
+          },
+        },
+        {
+          id: "edge:anchor->entry",
+          type: "USES_TYPE",
+          source: "class:anchor",
+          target: "class:entry",
+          metadata: {
+            "jvm.relation.kind": "USES_TYPE",
+            "uml.relation.kind": "DEPENDENCY",
+            "uml.relation.label": "param load.request",
+          },
+        },
+      ],
+    });
+
+    expect(realizationEdge?.className).toContain("class-diagram-edge-realization");
+    expect(realizationEdge?.style?.stroke).toBe("#b58c55");
+    expect(realizationEdge?.style?.strokeDasharray).toBe("8 5");
+    expect(associationEdge?.className).toContain("class-diagram-edge-association");
+    expect(associationEdge?.style?.stroke).toBe("#4f8f72");
+    expect(dependencyEdge?.className).toContain("class-diagram-edge-dependency");
+    expect(dependencyEdge?.style?.stroke).toBe("#6f8fbc");
+    expect(dependencyEdge?.style?.strokeDasharray).toBe("6 5");
+    expect(associationEdge?.markerEnd).toMatchObject({ color: "#4f8f72" });
+    expect(realizationEdge?.label).toBe("implements");
+    expect(associationEdge?.label).toBe("field repository");
+    expect(dependencyEdge?.label).toBe("param request");
+    expect(dependencyEdge?.data?.labelTitle).toBe("param load.request");
+  });
+
+  it("de-emphasizes secondary candidate relations without changing anchor relations", () => {
+    const [anchorEdge, sameLaneEdge] = buildClassDiagramEdges({
+      edges: [
+        {
+          id: "edge:anchor->store",
+          type: "USES_TYPE",
+          source: "class:anchor",
+          target: "class:store",
+          metadata: {
+            "jvm.relation.kind": "USES_TYPE",
+            "layout.anchorRelation": "true",
+            "layout.sameLaneRelation": "false",
+          },
+        },
+        {
+          id: "edge:store->pruner",
+          type: "USES_TYPE",
+          source: "class:store",
+          target: "class:pruner",
+          metadata: {
+            "jvm.relation.kind": "USES_TYPE",
+            "layout.anchorRelation": "false",
+            "layout.sameLaneRelation": "true",
+          },
+        },
+      ],
+    });
+
+    expect(anchorEdge?.style?.opacity).toBe(0.96);
+    expect(anchorEdge?.style?.strokeWidth).toBe(2.8);
+    expect(anchorEdge?.data?.labelVisibility).toBe("always");
+    expect(sameLaneEdge?.data?.labelVisibility).toBe("focus");
+    expect(sameLaneEdge?.style?.opacity).toBe(0.5);
+    expect(Number(sameLaneEdge?.style?.strokeWidth)).toBeLessThan(2.8);
+  });
+
+  it("passes UML endpoint adornment and label placement data to routed edges", () => {
+    const [compositionEdge, aggregationEdge] = buildClassDiagramEdges({
+      edges: [
+        {
+          id: "edge:whole->part",
+          type: "USES_TYPE",
+          source: "class:whole",
+          target: "class:part",
+          metadata: {
+            "uml.relation.kind": "COMPOSITION",
+            "layout.labelPlacement": "target-stub",
+          },
+        },
+        {
+          id: "edge:owner->member",
+          type: "USES_TYPE",
+          source: "class:owner",
+          target: "class:member",
+          metadata: {
+            "uml.relation.kind": "AGGREGATION",
+          },
+        },
+      ],
+    });
+
+    expect(compositionEdge?.data).toMatchObject({
+      labelPlacement: "target-stub",
+      sourceAdornment: "dot",
+      targetAdornment: "filled-diamond",
+    });
+    expect(compositionEdge?.markerEnd).toBeUndefined();
+    expect(aggregationEdge?.data?.targetAdornment).toBe("diamond");
   });
 });

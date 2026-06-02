@@ -1,10 +1,29 @@
 package com.charmnight.linkgraph.review
 
+import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
+import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
+import com.charmnight.linkgraph.application.indexed.IndexedGraphLayerKind
+import com.charmnight.linkgraph.application.indexed.IndexedGraphNodeRole
+import com.charmnight.linkgraph.application.indexed.IndexedGraphRelationLayer
+import com.charmnight.linkgraph.application.indexed.IndexedGraphSourceKind
+import com.charmnight.linkgraph.application.indexed.indexedLayerKind
+import com.charmnight.linkgraph.application.indexed.indexedNodeRole
+import com.charmnight.linkgraph.application.indexed.indexedSourceKind
+import com.charmnight.linkgraph.application.indexed.relationLayerTo
+import com.charmnight.linkgraph.application.indexed.requestReviewGraphRequest
+import com.charmnight.linkgraph.application.indexed.reviewSelectedDiffItemIds
+import com.charmnight.linkgraph.application.indexed.scopeKind
+import com.charmnight.linkgraph.application.indexed.toSummary
 import com.charmnight.linkgraph.application.model.GraphEditCommandKind
 import com.charmnight.linkgraph.application.model.GraphProjectionEdgeMapping
 import com.charmnight.linkgraph.application.model.GraphProjectionIndex
 import com.charmnight.linkgraph.application.model.GraphProjectionMappingKind
 import com.charmnight.linkgraph.application.model.GraphProjectionNodeMapping
+import com.charmnight.linkgraph.projection.GraphProjectionMetadata
+import com.charmnight.linkgraph.projection.GraphWindowPolicy
+import com.charmnight.linkgraph.projection.GraphWindowProjector
+import com.charmnight.linkgraph.projection.GraphWindowRoleQuota
+import com.charmnight.linkgraph.projection.graphProjectionHiddenCounts
 import com.charmnight.linkgraph.jvm.index.JvmClassSymbol
 import com.charmnight.linkgraph.jvm.index.JvmFieldSymbol
 import com.charmnight.linkgraph.jvm.index.JvmMethodSymbol
@@ -22,18 +41,25 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.review.git.GitChangedFile
 
-class ReviewGraphProjector {
-    fun project(bundle: ReviewEvidenceBundle): ReviewGraphViewDocument {
+class ReviewGraphProjector(
+    private val windowProjector: GraphWindowProjector = GraphWindowProjector(),
+) {
+    fun project(
+        bundle: ReviewEvidenceBundle,
+        index: ArchitectureGraphIndex? = null,
+        request: IndexedGraphRequest = requestReviewGraphRequest(),
+        cacheState: String = "UNKNOWN",
+    ): ReviewGraphViewDocument {
         val nodes = linkedMapOf<String, GraphNode>()
         val edges = linkedMapOf<String, GraphEdge>()
         val changedById = bundle.changedSymbols.associateBy(ChangedSymbol::symbolId)
         val changedHunks = reviewChangedHunks(bundle)
 
         bundle.blastRadius.changedSymbols.forEach { changed ->
-            nodes[changed.symbolId] = changed.toGraphNode()
+            nodes[changed.symbolId] = changed.toGraphNode(request)
         }
         fun addSymbolNode(symbol: JvmSymbol, role: String) {
-            nodes.putIfAbsent(symbol.id, symbol.toGraphNode(role, changedById[symbol.id]))
+            nodes.putIfAbsent(symbol.id, symbol.toGraphNode(role, changedById[symbol.id], request))
         }
         bundle.blastRadius.upstream.forEach { addSymbolNode(it, "UPSTREAM") }
         bundle.blastRadius.downstream.forEach { addSymbolNode(it, "DOWNSTREAM") }
@@ -45,14 +71,21 @@ class ReviewGraphProjector {
             bundle.blastRadius.proxyTargets +
             bundle.blastRadius.testRelations)
             .distinctBy(JvmRelation::id)
-            .mapNotNull { relation -> relation.toGraphEdge(nodes.keys) }
+            .mapNotNull { relation -> relation.toGraphEdge(nodes) }
         relationEdges.forEach { edge -> edges.putIfAbsent(edge.id, edge) }
 
         bundle.blastRadius.changedSymbols.forEach { changed ->
             bundle.blastRadius.upstreamByChangedSymbolId[changed.symbolId].orEmpty().forEach { symbol ->
                 edges.putIfAbsent(
                     "review:upstream:${symbol.id}->${changed.symbolId}",
-                    reviewEdge("review:upstream:${symbol.id}->${changed.symbolId}", symbol.id, changed.symbolId, "上游影响", "UPSTREAM"),
+                    reviewEdge(
+                        id = "review:upstream:${symbol.id}->${changed.symbolId}",
+                        from = symbol.id,
+                        to = changed.symbolId,
+                        label = "上游影响",
+                        role = "UPSTREAM",
+                        nodes = nodes,
+                    ),
                 )
             }
         }
@@ -60,7 +93,14 @@ class ReviewGraphProjector {
             bundle.blastRadius.downstreamByChangedSymbolId[changed.symbolId].orEmpty().forEach { symbol ->
                 edges.putIfAbsent(
                     "review:downstream:${changed.symbolId}->${symbol.id}",
-                    reviewEdge("review:downstream:${changed.symbolId}->${symbol.id}", changed.symbolId, symbol.id, "下游影响", "DOWNSTREAM"),
+                    reviewEdge(
+                        id = "review:downstream:${changed.symbolId}->${symbol.id}",
+                        from = changed.symbolId,
+                        to = symbol.id,
+                        label = "下游影响",
+                        role = "DOWNSTREAM",
+                        nodes = nodes,
+                    ),
                 )
             }
         }
@@ -76,6 +116,7 @@ class ReviewGraphProjector {
                         to = symbol.id,
                         label = "相关测试",
                         role = "RELATED_TEST",
+                        nodes = nodes,
                         metadata = mapOf("review.relatedTest.reason" to reason),
                     ),
                 )
@@ -88,15 +129,17 @@ class ReviewGraphProjector {
                 .filter { edge -> nodes.containsKey(edge.fromNodeId) && nodes.containsKey(edge.toNodeId) }
                 .sortedBy(GraphEdge::id),
         )
-        val visibleGraph = graph.toReviewVisibleGraph()
-        val hiddenNodeCount = (graph.nodes.size - visibleGraph.nodes.size).coerceAtLeast(0)
-        val hiddenEdgeCount = (graph.edges.size - visibleGraph.edges.size).coerceAtLeast(0)
+        val visibleGraph = graph.toReviewVisibleGraph(request)
+        val hiddenCounts = graphProjectionHiddenCounts(visibleGraph = visibleGraph, fullGraph = graph)
+        val hiddenNodeCount = hiddenCounts.hiddenNodeCount
+        val hiddenEdgeCount = hiddenCounts.hiddenEdgeCount
+        val anchorNodeId = bundle.blastRadius.changedSymbols.firstOrNull { symbol ->
+            visibleGraph.nodes.any { node -> node.id == symbol.symbolId }
+        }?.symbolId ?: visibleGraph.nodes.firstOrNull()?.id
         return ReviewGraphViewDocument(
             visibleGraph = visibleGraph,
             fullGraph = graph,
-            anchorNodeId = bundle.blastRadius.changedSymbols.firstOrNull { symbol ->
-                visibleGraph.nodes.any { node -> node.id == symbol.symbolId }
-            }?.symbolId ?: visibleGraph.nodes.firstOrNull()?.id,
+            anchorNodeId = anchorNodeId,
             summary = ReviewGraphSummary(
                 changedSymbolCount = bundle.blastRadius.changedSymbols.size,
                 upstreamCount = bundle.blastRadius.upstream.size,
@@ -108,6 +151,26 @@ class ReviewGraphProjector {
                 truncated = hiddenNodeCount > 0 || hiddenEdgeCount > 0,
                 hiddenNodeCount = hiddenNodeCount,
                 hiddenEdgeCount = hiddenEdgeCount,
+                selectedDiffItemIds = request.reviewSelectedDiffItemIds(),
+                maxChangedNodes = request.review.maxChangedNodes,
+                maxUpstreamNodes = request.review.maxUpstreamNodes,
+                maxDownstreamNodes = request.review.maxDownstreamNodes,
+                maxRelatedTestNodes = request.review.maxRelatedTestNodes,
+                indexed = index?.let { architectureIndex ->
+                    request.toSummary(
+                        index = architectureIndex,
+                        visibleGraph = visibleGraph,
+                        fullGraph = graph,
+                        anchorNodeId = anchorNodeId,
+                        scopedNodeCount = graph.nodes.size,
+                        candidateNodeCount = graph.nodes.size,
+                        candidateEdgeCount = graph.edges.size,
+                        hiddenNodeCount = hiddenNodeCount,
+                        hiddenEdgeCount = hiddenEdgeCount,
+                        truncated = hiddenNodeCount > 0 || hiddenEdgeCount > 0,
+                        cacheState = cacheState,
+                    )
+                },
             ),
             projectionIndex = readonlyProjectionIndex(visibleGraph),
             changedFiles = reviewChangedFiles(bundle),
@@ -256,7 +319,7 @@ class ReviewGraphProjector {
         listOf(hunk.filePath, hunk.oldFilePath.orEmpty(), hunk.newFilePath.orEmpty(), hunk.header, hunk.oldStartLine, hunk.newStartLine)
             .joinToString("|")
 
-    private fun ChangedSymbol.toGraphNode(): GraphNode =
+    private fun ChangedSymbol.toGraphNode(request: IndexedGraphRequest): GraphNode =
         GraphNode(
             id = symbolId,
             type = NodeType.CLASS,
@@ -276,6 +339,7 @@ class ReviewGraphProjector {
                 startLine?.let { put("source.startLine", it.toString()) }
                 endLine?.let { put("source.endLine", it.toString()) }
                 hunk?.header?.let { put("review.hunkHeader", it) }
+                putAll(reviewChangedSymbolIndexedMetadata(request))
             },
         )
 
@@ -289,6 +353,7 @@ class ReviewGraphProjector {
     private fun JvmSymbol.toGraphNode(
         role: String,
         changed: ChangedSymbol?,
+        request: IndexedGraphRequest,
     ): GraphNode =
         GraphNode(
             id = id,
@@ -296,6 +361,8 @@ class ReviewGraphProjector {
             title = simpleName.ifBlank { qualifiedName.substringAfterLast('.') },
             location = source?.displayPath?.let { path -> source?.startLine?.let { line -> "$path:$line" } ?: path },
             signature = qualifiedName,
+            inputs = (this as? JvmMethodSymbol)?.parameterTypes.orEmpty(),
+            outputs = (this as? JvmMethodSymbol)?.returnType?.let(::listOf).orEmpty(),
             bindingStatus = BindingStatus.BOUND,
             certainty = Certainty.PROVEN,
             metadata = buildMap {
@@ -307,6 +374,7 @@ class ReviewGraphProjector {
                 source?.startLine?.let { put("source.startLine", it.toString()) }
                 source?.endLine?.let { put("source.endLine", it.toString()) }
                 put("source.decompiled", (source?.decompiled ?: false).toString())
+                putAll(indexedNodeMetadata(role = changed?.let { "CHANGED" } ?: role, request = request))
             },
         )
 
@@ -330,8 +398,8 @@ class ReviewGraphProjector {
             else -> NodeType.RESOURCE
         }
 
-    private fun JvmRelation.toGraphEdge(nodeIds: Set<String>): GraphEdge? {
-        if (fromSymbolId !in nodeIds || toSymbolId !in nodeIds) {
+    private fun JvmRelation.toGraphEdge(nodes: Map<String, GraphNode>): GraphEdge? {
+        if (fromSymbolId !in nodes || toSymbolId !in nodes) {
             return null
         }
         return GraphEdge(
@@ -347,7 +415,7 @@ class ReviewGraphProjector {
                 "jvm.relation.kind" to kind.name,
                 "jvm.relation.confidence" to confidence.name,
                 "jvm.relation.source" to source.name,
-            ),
+            ) + indexedEdgeMetadata(nodes[fromSymbolId], nodes[toSymbolId]),
         )
     }
 
@@ -357,6 +425,7 @@ class ReviewGraphProjector {
         to: String,
         label: String,
         role: String,
+        nodes: Map<String, GraphNode>,
         metadata: Map<String, String> = emptyMap(),
     ): GraphEdge =
         GraphEdge(
@@ -367,8 +436,86 @@ class ReviewGraphProjector {
             label = label,
             certainty = Certainty.RULE_INFERRED,
             bindingStatus = BindingStatus.BOUND,
-            metadata = mapOf("review.edgeRole" to role) + metadata,
+            metadata = mapOf(
+                "review.edgeRole" to role,
+                "indexed.relationKind" to role,
+                "indexed.relationLayer" to reviewRelationLayer(nodes[from], nodes[to]).name,
+                "indexed.sourceCount" to "1",
+                "indexed.sampleCount" to "0",
+                "indexed.sourceRelationIds" to "",
+                "indexed.aggregate" to "false",
+                "indexed.confidence" to "RULE_INFERRED",
+            ) + metadata,
         )
+
+    private fun ChangedSymbol.reviewChangedSymbolIndexedMetadata(request: IndexedGraphRequest): Map<String, String> =
+        mapOf(
+            "indexed.layerKind" to IndexedGraphLayerKind.PROJECT_SOURCE.name,
+            "indexed.nodeRole" to IndexedGraphNodeRole.UNKNOWN.name,
+            "indexed.scopeKind" to request.scopeKind(),
+            "indexed.sourceKind" to IndexedGraphSourceKind.SOURCE_CLASS.name,
+            "indexed.memberClassCount" to "1",
+            "indexed.memberResourceCount" to "0",
+            GraphProjectionMetadata.Indexed.COLLAPSED_COUNT to "0",
+            "indexed.expandable" to "false",
+        )
+
+    private fun JvmSymbol.indexedNodeMetadata(
+        role: String,
+        request: IndexedGraphRequest,
+    ): Map<String, String> {
+        val layerKind = indexedLayerKind()
+        val sourceKind = indexedSourceKind()
+        val nodeRole = when (role) {
+            "RELATED_TEST" -> IndexedGraphNodeRole.TEST
+            else -> indexedNodeRole()
+        }
+        return mapOf(
+            "indexed.layerKind" to layerKind.name,
+            "indexed.nodeRole" to nodeRole.name,
+            "indexed.scopeKind" to request.scopeKind(),
+            "indexed.sourceKind" to sourceKind.name,
+            "indexed.memberClassCount" to if (this is JvmClassSymbol) "1" else "0",
+            "indexed.memberResourceCount" to if (this is JvmResourceSymbol) "1" else "0",
+            GraphProjectionMetadata.Indexed.COLLAPSED_COUNT to "0",
+            "indexed.expandable" to "false",
+        )
+    }
+
+    private fun JvmRelation.indexedEdgeMetadata(
+        fromNode: GraphNode?,
+        toNode: GraphNode?,
+    ): Map<String, String> =
+        mapOf(
+            "indexed.relationKind" to kind.name,
+            "indexed.relationLayer" to reviewRelationLayer(fromNode, toNode).name,
+            "indexed.sourceCount" to count.toString(),
+            "indexed.sampleCount" to samples.size.toString(),
+            "indexed.sourceRelationIds" to id,
+            "indexed.aggregate" to (count > 1).toString(),
+            "indexed.confidence" to confidence.indexedConfidence(),
+        )
+
+    private fun reviewRelationLayer(
+        fromNode: GraphNode?,
+        toNode: GraphNode?,
+    ): IndexedGraphRelationLayer {
+        val fromLayer = fromNode?.metadata?.get("indexed.layerKind")
+            ?.let { raw -> IndexedGraphLayerKind.entries.firstOrNull { it.name == raw } }
+            ?: IndexedGraphLayerKind.PROJECT_SOURCE
+        val toLayer = toNode?.metadata?.get("indexed.layerKind")
+            ?.let { raw -> IndexedGraphLayerKind.entries.firstOrNull { it.name == raw } }
+            ?: IndexedGraphLayerKind.PROJECT_SOURCE
+        return fromLayer.relationLayerTo(toLayer)
+    }
+
+    private fun JvmRelationConfidence.indexedConfidence(): String =
+        when (this) {
+            JvmRelationConfidence.PROVEN -> "STATIC"
+            JvmRelationConfidence.RULE_INFERRED -> "RULE_INFERRED"
+            JvmRelationConfidence.RUNTIME_REQUIRED -> "RUNTIME_REQUIRED"
+            JvmRelationConfidence.AMBIGUOUS -> "AMBIGUOUS"
+        }
 
     private fun JvmRelationKind.toReviewEdgeType(): EdgeType =
         when (this) {
@@ -406,7 +553,7 @@ class ReviewGraphProjector {
             nodeMappings = graph.nodes.associate { node ->
                 node.id to GraphProjectionNodeMapping(
                     projectedNodeId = node.id,
-                    mappingKind = GraphProjectionMappingKind.SYNTHETIC_READONLY,
+                    mappingKind = GraphProjectionMappingKind.INDEXED_READONLY,
                     canonicalNodeIds = listOf(node.id),
                     editableCommandKinds = emptySet<GraphEditCommandKind>(),
                 )
@@ -414,70 +561,33 @@ class ReviewGraphProjector {
             edgeMappings = graph.edges.associate { edge ->
                 edge.id to GraphProjectionEdgeMapping(
                     projectedEdgeId = edge.id,
-                    mappingKind = GraphProjectionMappingKind.SYNTHETIC_READONLY,
+                    mappingKind = GraphProjectionMappingKind.INDEXED_READONLY,
                     canonicalEdgeIds = listOf(edge.id),
                     editableCommandKinds = emptySet<GraphEditCommandKind>(),
                 )
             },
         )
 
-    private fun GraphDocument.toReviewVisibleGraph(): GraphDocument {
-        if (nodes.size <= MAX_VISIBLE_NODES && edges.size <= MAX_VISIBLE_EDGES) {
-            return this
-        }
-        val nodeById = nodes.associateBy(GraphNode::id)
-        val nodesByRole = nodes.groupBy { node -> node.metadata["review.role"] ?: "" }
-        val visibleNodeIds = linkedSetOf<String>()
-
-        fun addNode(nodeId: String?) {
-            if (nodeId == null || visibleNodeIds.size >= MAX_VISIBLE_NODES || nodeId !in nodeById) {
-                return
-            }
-            visibleNodeIds += nodeId
-        }
-
-        fun addRole(role: String, limit: Int) {
-            nodesByRole[role].orEmpty()
-                .sortedWith(compareBy(GraphNode::title, GraphNode::id))
-                .take(limit)
-                .forEach { node -> addNode(node.id) }
-        }
-
-        addRole("CHANGED", MAX_VISIBLE_CHANGED_NODES)
-        addRole("RELATED_TEST", MAX_VISIBLE_RELATED_TEST_NODES)
-        addRole("UPSTREAM", MAX_VISIBLE_UPSTREAM_NODES)
-        addRole("DOWNSTREAM", MAX_VISIBLE_DOWNSTREAM_NODES)
-
-        if (visibleNodeIds.size < MAX_VISIBLE_NODES) {
-            edges
-                .asSequence()
-                .filter { edge -> edge.fromNodeId in visibleNodeIds || edge.toNodeId in visibleNodeIds }
-                .sortedWith(compareBy({ edge -> reviewEdgePriority(edge) }, GraphEdge::id))
-                .forEach { edge ->
-                    addNode(edge.fromNodeId)
-                    addNode(edge.toNodeId)
-                }
-        }
-
-        if (visibleNodeIds.size < MAX_VISIBLE_NODES) {
-            nodes
-                .sortedWith(compareBy({ node -> reviewNodePriority(node) }, GraphNode::title, GraphNode::id))
-                .forEach { node -> addNode(node.id) }
-        }
-
-        val visibleEdgeIds = edges
-            .asSequence()
-            .filter { edge -> edge.fromNodeId in visibleNodeIds && edge.toNodeId in visibleNodeIds }
-            .sortedWith(compareBy({ edge -> reviewEdgePriority(edge) }, GraphEdge::id))
-            .take(MAX_VISIBLE_EDGES)
-            .mapTo(linkedSetOf(), GraphEdge::id)
-
-        return GraphDocument(
-            nodes = nodes.filter { node -> node.id in visibleNodeIds },
-            edges = edges.filter { edge -> edge.id in visibleEdgeIds },
-            patch = patch,
-        )
-    }
+    private fun GraphDocument.toReviewVisibleGraph(request: IndexedGraphRequest): GraphDocument =
+        windowProjector.project(
+            graph = this,
+            policy = GraphWindowPolicy(
+                maxVisibleNodes = request.viewport.maxVisibleNodes ?: MAX_VISIBLE_NODES,
+                maxVisibleEdges = request.viewport.maxVisibleEdges ?: MAX_VISIBLE_EDGES,
+                enableOverflowSummary = false,
+                fillDisconnectedNodes = true,
+            ),
+            roleMetadataKey = "review.role",
+            roleQuotas = listOf(
+                GraphWindowRoleQuota("CHANGED", request.review.maxChangedNodes),
+                GraphWindowRoleQuota("RELATED_TEST", request.review.maxRelatedTestNodes),
+                GraphWindowRoleQuota("UPSTREAM", request.review.maxUpstreamNodes),
+                GraphWindowRoleQuota("DOWNSTREAM", request.review.maxDownstreamNodes),
+            ),
+            nodePriority = ::reviewNodePriority,
+            edgePriority = ::reviewEdgePriority,
+            overflowOwnerContext = "review-graph",
+        ).graph
 
     private fun reviewNodePriority(node: GraphNode): Int =
         when (node.metadata["review.role"]) {
@@ -500,9 +610,5 @@ class ReviewGraphProjector {
     private companion object {
         const val MAX_VISIBLE_NODES = 240
         const val MAX_VISIBLE_EDGES = 360
-        const val MAX_VISIBLE_CHANGED_NODES = 120
-        const val MAX_VISIBLE_RELATED_TEST_NODES = 40
-        const val MAX_VISIBLE_UPSTREAM_NODES = 40
-        const val MAX_VISIBLE_DOWNSTREAM_NODES = 40
     }
 }

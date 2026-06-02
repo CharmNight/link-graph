@@ -32,6 +32,23 @@ describe("viewportPolicy", () => {
     )).toBe(true);
   });
 
+  it("does not preserve viewport when the caller changes the reset key", () => {
+    expect(shouldPreserveViewportForIncrementalUpdate(
+      {
+        anchorNodeId: "method:anchor",
+        nodeIds: new Set(["method:anchor", "method:callee"]),
+        edgeIds: new Set(["edge:anchor->callee"]),
+        resetKey: "layer:ALL",
+      },
+      {
+        anchorNodeId: "method:anchor",
+        nodeIds: new Set(["method:anchor", "method:callee", "method:tail"]),
+        edgeIds: new Set(["edge:anchor->callee", "edge:callee->tail"]),
+        resetKey: "layer:JDK",
+      },
+    )).toBe(false);
+  });
+
   it("does not preserve viewport when the anchor changes", () => {
     expect(shouldPreserveViewportForIncrementalUpdate(
       {

@@ -2,6 +2,7 @@ package com.charmnight.linkgraph.services
 
 import com.charmnight.linkgraph.testing.*
 
+import com.charmnight.linkgraph.application.command.ApplicationCommand
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
@@ -100,7 +101,7 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
         )
 
         val applicationService = project.linkGraphApplicationServiceForTest()
-        applicationService.requestGenerationPlanAsync()
+        applicationService.commandDispatcher.dispatch(ApplicationCommand.RequestGenerationPlan)
 
         val snapshot = waitForSnapshot(stateService) {
             it.generationPlanRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
@@ -121,7 +122,7 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
         )
 
         val applicationService = project.linkGraphApplicationServiceForTest()
-        applicationService.requestGenerationPlanAsync()
+        applicationService.commandDispatcher.dispatch(ApplicationCommand.RequestGenerationPlan)
 
         val snapshot = waitForSnapshot(stateService) {
             it.generationPlanRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
@@ -159,7 +160,7 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
         )
 
         val applicationService = project.linkGraphApplicationServiceForTest()
-        applicationService.requestGenerationPlanAsync()
+        applicationService.commandDispatcher.dispatch(ApplicationCommand.RequestGenerationPlan)
 
         val snapshot = waitForSnapshot(stateService) {
             it.generationPlanRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
@@ -178,11 +179,13 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
         )
 
         val applicationService = project.linkGraphApplicationServiceForTest()
-        applicationService.requestGenerationPlanAsync()
+        applicationService.commandDispatcher.dispatch(ApplicationCommand.RequestGenerationPlan)
         waitForSnapshot(stateService) {
             it.generationPlanRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
-        applicationService.requestGenerationPlanDiscussionAsync("为什么建议先改这里？")
+        applicationService.commandDispatcher.dispatch(
+            ApplicationCommand.RequestGenerationPlanDiscussion("为什么建议先改这里？"),
+        )
 
         val snapshot = waitForSnapshot(stateService) {
             it.generationPlanDiscussionRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
@@ -206,7 +209,7 @@ class LinkGraphProjectServicePlanningTest : BasePlatformTestCase() {
         )
 
         val applicationService = project.linkGraphApplicationServiceForTest()
-        applicationService.requestCodeDraftsAsync()
+        applicationService.commandDispatcher.dispatch(ApplicationCommand.RequestCodeDrafts)
 
         val snapshot = waitForSnapshot(stateService) {
             it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED

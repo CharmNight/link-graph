@@ -1,9 +1,9 @@
 package com.charmnight.linkgraph.ui.view
 
 import com.charmnight.linkgraph.model.GraphDocument
-import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.projection.graphProjectionHiddenCounts
 
 data class FlowchartSummary(
     val nodeCount: Int = 0,
@@ -51,17 +51,16 @@ internal fun deriveFlowchartSummary(
     val syntheticEntryEdgeCount = visibleGraph.edges.count { edge ->
         edge.metadata["flow.synthetic"] == "true" && edge.metadata["flow.provenance"] == "SYNTHETIC_PROJECTION"
     }
-    val hiddenNodeCount = (fullGraph.nodes.map(GraphNode::id).toSet() - visibleGraph.nodes.map(GraphNode::id).toSet()).size
-    val hiddenEdgeCount = (fullGraph.edges.map(GraphEdge::id).toSet() - visibleGraph.edges.map(GraphEdge::id).toSet()).size
+    val hiddenCounts = graphProjectionHiddenCounts(visibleGraph = visibleGraph, fullGraph = fullGraph)
     return FlowchartSummary(
         nodeCount = visibleGraph.nodes.size,
         branchCount = visibleGraph.nodes.count { resolveFlowchartKind(it) == "DECISION" },
         exceptionPathCount = visibleGraph.edges.count { it.label?.trim()?.uppercase() == "EXCEPTION" },
         fullNodeCount = fullGraph.nodes.size,
         fullEdgeCount = fullGraph.edges.size,
-        hiddenNodeCount = hiddenNodeCount,
-        hiddenEdgeCount = hiddenEdgeCount,
-        truncated = hiddenNodeCount > 0 || hiddenEdgeCount > 0,
+        hiddenNodeCount = hiddenCounts.hiddenNodeCount,
+        hiddenEdgeCount = hiddenCounts.hiddenEdgeCount,
+        truncated = hiddenCounts.truncated,
         incompleteNodeCount = incompleteNodeCount,
         incompleteEdgeCount = incompleteEdgeCount,
         semanticallyIncomplete = incompleteNodeCount > 0 || incompleteEdgeCount > 0,

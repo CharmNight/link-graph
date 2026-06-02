@@ -1,18 +1,18 @@
 package com.charmnight.linkgraph.investigation.resolving.java
 
+import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoal
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoalKind
 import com.charmnight.linkgraph.investigation.domain.ResolutionOutcome
 import com.charmnight.linkgraph.investigation.resolving.InvestigationContext
-import com.charmnight.linkgraph.investigation.resolving.ReadActionEvidenceResolver
 import com.charmnight.linkgraph.jvm.index.JvmClassKind
 
 /**
  * 使用统一 ArchitectureGraphIndex 精确解析枚举常量。
  */
 class JavaEnumConstantResolver(
-    private val jvmEvidenceIndexAdapter: JvmEvidenceIndexAdapter = JvmEvidenceIndexAdapter(),
-) : ReadActionEvidenceResolver() {
+    jvmEvidenceIndexAdapter: JvmEvidenceIndexAdapter = JvmEvidenceIndexAdapter(),
+) : JvmIndexReadActionEvidenceResolver(jvmEvidenceIndexAdapter) {
     /** 保存解析器稳定标识。 */
     override val id: String = "java-enum-constant"
 
@@ -29,13 +29,12 @@ class JavaEnumConstantResolver(
     override fun resolveInReadAction(
         goal: EvidenceGoal,
         context: InvestigationContext,
+        index: ArchitectureGraphIndex,
     ): ResolutionOutcome {
         val enumName = goal.symbolName?.takeIf(String::isNotBlank)
             ?: return unresolved(goal, "缺少枚举类名。")
         val constantName = goal.memberName?.takeIf(String::isNotBlank)
             ?: return unresolved(goal, "缺少枚举常量名。")
-        val index = runCatching { jvmEvidenceIndexAdapter.buildIndex(context.project) }.getOrNull()
-            ?: return unresolved(goal, "无法构建共享 ArchitectureGraphIndex。")
         val classCandidates = JvmInvestigationEvidenceSupport.resolveClassCandidates(index, enumName, JvmClassKind.ENUM)
         return when (classCandidates.size) {
             0 -> unresolved(goal, "未找到枚举类 $enumName。")
@@ -62,7 +61,7 @@ class JavaEnumConstantResolver(
      */
     private fun resolveConstantInSingleClass(
         goal: EvidenceGoal,
-        index: com.charmnight.linkgraph.architecture.ArchitectureGraphIndex,
+        index: ArchitectureGraphIndex,
         enumName: String,
         constantName: String,
     ): ResolutionOutcome {

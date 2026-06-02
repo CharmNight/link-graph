@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.ui
 
+import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
 import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.llm.GraphBeautificationResult as GraphBeautificationPayload
 import com.charmnight.linkgraph.model.GraphDocument
@@ -254,23 +255,12 @@ sealed interface GraphEditorMessage {
         val displayMode: AnalysisDisplayMode,
     ) : GraphEditorMessage
 
-    /** 请求加载项目级架构图。 */
-    data object RequestArchitectureGraph : GraphEditorMessage
-
     /**
-     * 请求加载项目级类图，可选从架构节点下钻。
+     * 请求加载 indexed 图视图。
      */
-    data class RequestClassDiagram(
-        /** 保存可选架构图节点范围。 */
-        val scopeNodeId: String? = null,
-    ) : GraphEditorMessage
-
-    /**
-     * 请求加载变更评审影响面图。
-     */
-    data class RequestReviewGraph(
-        /** 保存可选差异条目标识列表。 */
-        val selectedDiffItemIds: List<String> = emptyList(),
+    data class RequestIndexedGraph(
+        /** 保存完整 indexed 图请求。 */
+        val request: IndexedGraphRequest,
     ) : GraphEditorMessage
 
     /**

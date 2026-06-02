@@ -11,7 +11,7 @@ import {
 } from "@xyflow/react";
 import { nodeCardWidth } from "../../graphNodeSizing";
 import type { NodeMeasuredSize, NodeSizeRegistry } from "../../graph/nodeSizeRegistry";
-import type { DraftCompareStatus, LinkGraphEdge, LinkGraphNode } from "../../types";
+import type { DraftCompareStatus, GraphProjectionIndex, LinkGraphEdge, LinkGraphNode } from "../../types";
 import { edgeTypeLabel } from "../../labels";
 import { FactGraphNodeCard } from "../../components/graph/nodes/FactGraphNodeCard";
 import { isDecisionFlowScope, isFlowActionNode } from "../../components/graph/nodes/nodePresentation";
@@ -26,6 +26,7 @@ import {
 
 interface FactGraphNodeData extends Record<string, unknown> {
   node: LinkGraphNode;
+  selected?: boolean;
   collapsed: boolean;
   collapsedCount?: number;
   explanationFocused?: boolean;
@@ -43,6 +44,7 @@ interface BuildFactGraphNodesOptions {
   draftCompareNodeStatuses?: Record<string, DraftCompareStatus>;
   collapsedNodeIds?: Iterable<string>;
   collapsedDescendantCountByNodeId?: Record<string, number>;
+  projectionIndex?: GraphProjectionIndex | null;
   onExpandOverflowNode: (nodeId: string) => void;
   nodeSizeRegistry: NodeSizeRegistry;
 }
@@ -77,10 +79,11 @@ function factGraphHandleStyle(isConnectable: boolean): CSSProperties {
 function FactGraphReactNode({ id, data, selected, isConnectable }: FactGraphFlowNodeProps) {
   const updateNodeInternals = useUpdateNodeInternals();
   const handleStyle = factGraphHandleStyle(isConnectable);
+  const appSelected = data.selected === true || selected;
 
   useLayoutEffect(() => {
     updateNodeInternals(id);
-  }, [data.collapsed, data.collapsedCount, data.node, id, isConnectable, selected, updateNodeInternals]);
+  }, [appSelected, data.collapsed, data.collapsedCount, data.node, id, isConnectable, selected, updateNodeInternals]);
 
   return (
     <div className={["fact-graph-react-node", isConnectable ? "is-connectable" : ""].join(" ").trim()}>
@@ -88,7 +91,7 @@ function FactGraphReactNode({ id, data, selected, isConnectable }: FactGraphFlow
       <Handle id="source-right" type="source" position={Position.Right} style={handleStyle} />
       <FactGraphNodeCard
         node={data.node}
-        selected={selected}
+        selected={appSelected}
         collapsed={data.collapsed}
         collapsedCount={data.collapsedCount}
         explanationFocused={data.explanationFocused}
@@ -106,9 +109,40 @@ export const FACT_GRAPH_NODE_TYPES: NodeTypes = {
 };
 
 function factGraphNodeStyle(node: LinkGraphNode) {
+  const presentationRole = node.metadata?.["presentation.role"];
   const isFlowScope = node.type === "FLOW_SCOPE";
   const isFlowAction = isFlowActionNode(node);
   const isFlowDecision = isDecisionFlowScope(node);
+  if (presentationRole === "ANCHOR") {
+    return {
+      width: nodeCardWidth(node),
+      borderRadius: 18,
+      border: "2px solid rgba(14, 139, 114, 0.48)",
+      background: "linear-gradient(145deg, rgba(14, 139, 114, 0.14), rgba(255, 255, 255, 0.99))",
+      boxShadow: "0 14px 30px rgba(14, 139, 114, 0.18)",
+      padding: 0,
+    };
+  }
+  if (presentationRole === "UPSTREAM" && !isFlowScope && !isFlowAction) {
+    return {
+      width: nodeCardWidth(node),
+      borderRadius: 18,
+      border: "1px solid rgba(25, 90, 153, 0.28)",
+      background: "linear-gradient(180deg, rgba(25, 90, 153, 0.07), rgba(255, 255, 255, 0.98))",
+      boxShadow: "0 6px 18px rgba(25, 90, 153, 0.08)",
+      padding: 0,
+    };
+  }
+  if (presentationRole === "DOWNSTREAM" && !isFlowScope && !isFlowAction) {
+    return {
+      width: nodeCardWidth(node),
+      borderRadius: 18,
+      border: "1px solid rgba(143, 79, 35, 0.26)",
+      background: "linear-gradient(180deg, rgba(143, 79, 35, 0.08), rgba(255, 255, 255, 0.98))",
+      boxShadow: "0 6px 18px rgba(143, 79, 35, 0.08)",
+      padding: 0,
+    };
+  }
   return {
     width: nodeCardWidth(node),
     borderRadius: 18,
@@ -198,6 +232,7 @@ export function buildFactGraphNodes({
   draftCompareNodeStatuses = {},
   collapsedNodeIds = [],
   collapsedDescendantCountByNodeId = {},
+  projectionIndex = null,
   onExpandOverflowNode,
   nodeSizeRegistry,
 }: BuildFactGraphNodesOptions): FactGraphFlowNode[] {
@@ -213,12 +248,13 @@ export function buildFactGraphNodes({
       draftCompareStatus: draftCompareNodeStatuses[node.id],
     }) || undefined,
     selected: selectedNodeId === node.id,
-    draggable: canEditNodeLayout(node),
+    draggable: canEditNodeLayout(node, "FACT_GRAPH", projectionIndex),
     position: node.position ?? { x: 80, y: 88 },
     sourcePosition: Position.Right,
     targetPosition: Position.Left,
     data: {
       node,
+      selected: selectedNodeId === node.id,
       collapsed: collapsedNodeIdSet.has(node.id),
       collapsedCount: collapsedDescendantCountByNodeId[node.id],
       explanationFocused: explanationFocusNodeId === node.id,

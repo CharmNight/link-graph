@@ -1,107 +1,194 @@
 package com.charmnight.linkgraph.ui
 
+import com.charmnight.linkgraph.application.indexed.IndexedGraphAnchor
+import com.charmnight.linkgraph.application.indexed.IndexedGraphScope
+import com.charmnight.linkgraph.application.indexed.IndexedGraphView
+import com.charmnight.linkgraph.json.JsonCodec
+import com.charmnight.linkgraph.ui.bridge.BridgeCommandParser
 import com.charmnight.linkgraph.workbench.QaMode
+import com.charmnight.linkgraph.workbench.RiskResolutionStatus
 import com.charmnight.linkgraph.workbench.StepGranularity
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class GraphBrowserPayloadParserTest {
     @Test
-    fun qaPayloadDefaultsModeToAuto() {
-        val payload = listOf(
-            encode("这个方法是如何触发的？"),
-            "",
-            "",
-        ).joinToString("\u001F")
+    fun bridgeCommandEnvelopeDefaultsQaModeToAuto() {
+        val parsed = BridgeCommandParser.parse(
+            command("requestQa", mapOf("question" to "这个方法是如何触发的？")),
+        )
 
-        val parsed = GraphBrowserPayloadParser.parseQaRequestPayload(payload)
-
-        assertEquals("这个方法是如何触发的？", parsed.question)
-        assertEquals(QaMode.AUTO, parsed.mode)
+        val message = assertIs<GraphEditorMessage.RequestQa>(parsed.message)
+        assertEquals("这个方法是如何触发的？", message.question)
+        assertEquals(emptyList(), message.selectedNodeIds)
+        assertEquals(null, message.sourceThreadId)
+        assertEquals(QaMode.AUTO, message.mode)
+        assertTrue(parsed.async)
     }
 
     @Test
-    fun qaPayloadParsesExplicitMode() {
-        val payload = listOf(
-            encode("请继续取证"),
-            encode("method:upload"),
-            encode("thread-risk-1"),
-            encode("INVESTIGATE"),
-        ).joinToString("\u001F")
+    fun bridgeCommandEnvelopeParsesStructuredCommandsWithoutDelimiters() {
+        val qa = BridgeCommandParser.parse(
+            command(
+                "requestQa",
+                mapOf(
+                    "question" to "风险 & 证据?",
+                    "selectedNodeIds" to listOf("method:upload,file", "node/二"),
+                    "sourceThreadId" to "thread:1",
+                    "mode" to "INVESTIGATE",
+                ),
+            ),
+        )
+        val discussion = BridgeCommandParser.parse(
+            command(
+                "requestGenerationPlanDiscussion",
+                mapOf(
+                    "question" to "继续解释第 2 步",
+                    "focusItemId" to "plan:item/2",
+                ),
+            ),
+        )
+        val layout = BridgeCommandParser.parse(
+            command(
+                "layoutChanged",
+                mapOf(
+                    "positions" to listOf(
+                        mapOf("nodeId" to "node:一", "x" to 12.5, "y" to -4.0),
+                        mapOf("nodeId" to "node,two", "x" to 0.0, "y" to 9.25),
+                    ),
+                ),
+            ),
+        )
 
-        val parsed = GraphBrowserPayloadParser.parseQaRequestPayload(payload)
-
-        assertEquals(listOf("method:upload"), parsed.selectedNodeIds)
-        assertEquals("thread-risk-1", parsed.sourceThreadId)
-        assertEquals(QaMode.INVESTIGATE, parsed.mode)
+        val qaMessage = assertIs<GraphEditorMessage.RequestQa>(qa.message)
+        val discussionMessage = assertIs<GraphEditorMessage.RequestGenerationPlanDiscussion>(discussion.message)
+        val layoutMessage = assertIs<GraphEditorMessage.LayoutChanged>(layout.message)
+        assertEquals("风险 & 证据?", qaMessage.question)
+        assertEquals(listOf("method:upload,file", "node/二"), qaMessage.selectedNodeIds)
+        assertEquals("thread:1", qaMessage.sourceThreadId)
+        assertEquals(QaMode.INVESTIGATE, qaMessage.mode)
+        assertEquals("继续解释第 2 步", discussionMessage.question)
+        assertEquals("plan:item/2", discussionMessage.focusItemId)
+        assertEquals(12.5, layoutMessage.positions["node:一"]?.x)
+        assertEquals(9.25, layoutMessage.positions["node,two"]?.y)
     }
 
     @Test
-    fun parsesFrontendEncodedBridgePayloadExamples() {
-        val qaPayload = listOf(
-            encode("风险 & 证据?"),
-            listOf("method:upload,file", "node/二").joinToString(",") { encode(it) },
-            encode("thread:1"),
-            encode("INVESTIGATE"),
-        ).joinToString("\u001F")
-        val discussionPayload = listOf(
-            encode("继续解释第 2 步"),
-            encode("plan:item/2"),
-        ).joinToString("\u001F")
-        val layoutPayload = listOf(
-            listOf(encode("node:一"), "12.5", "-4.0").joinToString("\u001F"),
-            listOf(encode("node,two"), "0.0", "9.25").joinToString("\u001F"),
-        ).joinToString("\u001E")
+    fun bridgeCommandEnvelopeParsesBeautificationFollowUpAndFocus() {
+        val parsed = BridgeCommandParser.parse(
+            command(
+                "requestGraphBeautification",
+                mapOf(
+                    "goal" to "讲解展开链路",
+                    "preferredStyle" to "汇报版",
+                    "explanationFocus" to "请重点讲解展开方法",
+                    "focusNodeId" to "method:create-info",
+                    "granularity" to "METHOD_CALL",
+                    "followUp" to mapOf(
+                        "stepId" to "step-create-info",
+                        "stepTitle" to "展开 createInfo",
+                        "question" to "展开方法做了什么？",
+                    ),
+                ),
+            ),
+        )
 
-        val qa = GraphBrowserPayloadParser.parseQaRequestPayload(qaPayload)
-        val discussion = GraphBrowserPayloadParser.parseGenerationPlanDiscussionPayload(discussionPayload)
-        val layout = GraphBrowserPayloadParser.parseLayoutPositions(layoutPayload)
-
-        assertEquals("风险 & 证据?", qa.question)
-        assertEquals(listOf("method:upload,file", "node/二"), qa.selectedNodeIds)
-        assertEquals("thread:1", qa.sourceThreadId)
-        assertEquals(QaMode.INVESTIGATE, qa.mode)
-        assertEquals("继续解释第 2 步", discussion.question)
-        assertEquals("plan:item/2", discussion.focusItemId)
-        assertEquals(12.5, layout["node:一"]?.x)
-        assertEquals(9.25, layout["node,two"]?.y)
+        val message = assertIs<GraphEditorMessage.RequestGraphBeautification>(parsed.message)
+        assertEquals("讲解展开链路", message.goal)
+        assertEquals("汇报版", message.preferredStyle)
+        assertEquals("请重点讲解展开方法", message.explanationFocus)
+        assertEquals("method:create-info", message.focusNodeId)
+        assertEquals(StepGranularity.METHOD_CALL, message.granularity)
+        assertEquals("step-create-info", message.followUp?.stepId)
+        assertTrue(parsed.async)
     }
 
     @Test
-    fun beautificationPayloadParsesFocusNodeIdAndKeepsLegacyPayloadCompatible() {
-        val payload = listOf(
-            encode("讲解展开链路"),
-            encode("汇报版"),
-            encode("请重点讲解展开方法"),
-            encode("METHOD_CALL"),
-            encode("step-create-info"),
-            encode("展开 createInfo"),
-            encode("展开方法做了什么？"),
-            encode("method:create-info"),
-        ).joinToString("\u001F")
-        val legacyPayload = listOf(
-            encode("讲解原始链路"),
-            "",
-            "",
-            encode("BUSINESS"),
-            "",
-            "",
-            "",
-        ).joinToString("\u001F")
+    fun bridgeCommandEnvelopeRejectsIndexedFullRequestsWithoutPreset() {
+        val error = assertFailsWith<IllegalStateException> {
+            BridgeCommandParser.parse(
+                command(
+                    "requestIndexedGraph",
+                    mapOf(
+                        "view" to "CLASS_DIAGRAM",
+                        "anchor" to mapOf("kind" to "ARCHITECTURE_NODE", "nodeId" to "component:orders"),
+                        "scope" to mapOf("kind" to "ARCHITECTURE_NODE", "nodeId" to "component:orders"),
+                        "depth" to 1,
+                        "includeExternalLibraries" to false,
+                        "includeJdk" to false,
+                        "classDiagram" to mapOf("neighborhoodLimit" to 18, "memberLimit" to 7),
+                    ),
+                ),
+            )
+        }
 
-        val parsed = GraphBrowserPayloadParser.parseBeautificationPayload(payload)
-        val legacy = GraphBrowserPayloadParser.parseBeautificationPayload(legacyPayload)
+        assertTrue(error.message?.contains("preset") == true)
+    }
 
-        assertEquals("讲解展开链路", parsed.goal)
-        assertEquals("汇报版", parsed.preferredStyle)
-        assertEquals("请重点讲解展开方法", parsed.explanationFocus)
-        assertEquals("method:create-info", parsed.focusNodeId)
-        assertEquals(StepGranularity.METHOD_CALL, parsed.granularity)
-        assertEquals("step-create-info", parsed.followUp?.stepId)
-        assertEquals(null, legacy.focusNodeId)
-        assertEquals(StepGranularity.BUSINESS, legacy.granularity)
+    @Test
+    fun bridgeCommandEnvelopeExpandsIndexedPresetRequestsOnBackend() {
+        val parsed = BridgeCommandParser.parse(
+            command(
+                "requestIndexedGraph",
+                mapOf(
+                    "preset" to "CLASS_DIAGRAM",
+                    "scopeNodeId" to "component:orders",
+                    "classDiagram" to mapOf("neighborhoodLimit" to 36),
+                    "viewport" to mapOf("maxVisibleNodes" to 72),
+                ),
+            ),
+        )
+
+        val message = assertIs<GraphEditorMessage.RequestIndexedGraph>(parsed.message)
+        assertEquals(IndexedGraphView.CLASS_DIAGRAM, message.request.view)
+        assertEquals("component:orders", assertIs<IndexedGraphAnchor.ArchitectureNode>(message.request.anchor).nodeId)
+        assertEquals("component:orders", assertIs<IndexedGraphScope.ArchitectureNode>(message.request.scope).nodeId)
+        assertEquals(false, message.request.includeExternalLibraries)
+        assertEquals(false, message.request.includeJdk)
+        assertEquals(36, message.request.classDiagram.neighborhoodLimit)
+        assertEquals(5, message.request.classDiagram.memberLimit)
+        assertEquals(72, message.request.viewport.maxVisibleNodes)
+    }
+
+    @Test
+    fun bridgeCommandEnvelopeParsesArtifactRequestsSeparatelyFromEditorMessages() {
+        val parsed = BridgeCommandParser.parse(
+            command("requestArtifact", mapOf("artifactIds" to listOf("artifact:1", "artifact:2"))),
+        )
+
+        assertEquals(null, parsed.message)
+        assertEquals(listOf("artifact:1", "artifact:2"), parsed.artifactIds)
+    }
+
+    @Test
+    fun bridgeCommandEnvelopeParsesRiskResolution() {
+        val parsed = BridgeCommandParser.parse(
+            command(
+                "resolveInvestigationThread",
+                mapOf(
+                    "threadId" to "thread-risk-1",
+                    "resolutionStatus" to "ACCEPTED_RISK",
+                    "note" to "已确认",
+                ),
+            ),
+        )
+
+        val message = assertIs<GraphEditorMessage.ResolveInvestigationThread>(parsed.message)
+        assertEquals("thread-risk-1", message.threadId)
+        assertEquals(RiskResolutionStatus.ACCEPTED_RISK, message.resolutionStatus)
+        assertEquals("已确认", message.note)
+    }
+
+    @Test
+    fun rejectsBridgeCommandWithoutSupportedSchemaVersion() {
+        val error = assertFailsWith<IllegalArgumentException> {
+            BridgeCommandParser.parse("""{"schemaVersion":2,"type":"requestQa","payload":{}}""")
+        }
+
+        assertTrue(error.message?.contains("schemaVersion") == true)
     }
 
     @Test
@@ -109,7 +196,7 @@ class GraphBrowserPayloadParserTest {
         val payload = "x".repeat(GraphBrowserPayloadLimits.STRUCTURED_PAYLOAD_MAX_CHARS + 1)
 
         val error = assertFailsWith<IllegalArgumentException> {
-            GraphBrowserPayloadParser.parseQaRequestPayload(payload)
+            BridgeCommandParser.parse(payload)
         }
 
         assertTrue(error.message?.contains("payload 过大") == true)
@@ -137,5 +224,14 @@ class GraphBrowserPayloadParserTest {
         assertTrue(error.message?.contains("payload 过大") == true)
     }
 
-    private fun encode(value: String): String = java.net.URLEncoder.encode(value, Charsets.UTF_8)
+    private fun command(
+        type: String,
+        payload: Map<String, Any?> = emptyMap(),
+    ): String = JsonCodec.toJson(
+        linkedMapOf(
+            "schemaVersion" to 1,
+            "type" to type,
+            "payload" to payload,
+        ),
+    )
 }

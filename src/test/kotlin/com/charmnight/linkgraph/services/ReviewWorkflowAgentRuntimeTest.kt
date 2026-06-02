@@ -6,6 +6,7 @@ import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
 import com.charmnight.linkgraph.application.workflow.ReviewWorkflow
 import com.charmnight.linkgraph.testing.*
 
+import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
 import com.charmnight.linkgraph.llm.LlmProviderPresets
 import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.llm.GraphQaContext
@@ -106,6 +107,81 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED, snapshot.qaRequestState.phase)
         assertTrue(snapshot.qaRequestState.errorMessage?.contains("runtime 未返回结果") == true)
         assertTrue(snapshot.qaRequestState.detailMessage?.contains("failureReason=MAX_STEPS_EXCEEDED") == true)
+    }
+
+    fun testRequestQaUsesArchitectureVisibleGraphWhenWorkspaceGraphIsEmpty() {
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        val architectureGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "arch:component:com.example.application",
+                    type = NodeType.COMPONENT,
+                    title = "com.example.application",
+                ),
+            ),
+        )
+        stateService.loadArchitectureGraphView(
+            ArchitectureGraphViewDocument(
+                visibleGraph = architectureGraph,
+                fullGraph = architectureGraph,
+                anchorNodeId = "arch:component:com.example.application",
+            ),
+        )
+        var executorGraphNodeCount = -1
+        val workflow = ReviewWorkflow(
+            project = project,
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            toolGraphSnapshotProvider = stateService.toolGraphSnapshotProvider(),
+            eventSink = stateService.applicationEventSink(),
+            planningContextFactory = PlanningContextFactory(
+                graphDiffer = GraphDiffer(),
+                syncPreviewPlanner = com.charmnight.linkgraph.sync.SyncPreviewPlanner(),
+                graphGenerationService = com.charmnight.linkgraph.llm.GraphGenerationService(),
+                settingsProvider = { LinkGraphSettingsState() },
+            ),
+            graphQaPatchService = GraphQaPatchService(),
+            graphDiffPatchService = GraphDiffPatchService(),
+            graphBeautificationService = object : GraphBeautificationService {
+                override fun beautify(
+                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    settings: LinkGraphSettingsState,
+                    onPreview: ((String, Boolean) -> Unit)?,
+                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    promptPreview = "unused",
+                )
+            },
+            graphDiffer = GraphDiffer(),
+            settingsProvider = { LinkGraphSettingsState() },
+            qaExecutorOverrideProvider = { null },
+            asyncRequestLifecycle = AsyncRequestLifecycleSupport(
+                project = project,
+                timeoutOverrideProvider = { 500L },
+            ),
+            logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
+            qaCapabilityFactory = {
+                QaCapability(
+                    qaExecutor = { input, _, _ ->
+                        executorGraphNodeCount = input.qaContext.editableGraph.nodes.size
+                        GraphPatchResult(
+                            source = LlmResultSource.LOCAL_RULE,
+                            question = input.question,
+                            answer = "architecture qa ok",
+                            promptPreview = "prompt",
+                        )
+                    },
+                )
+            },
+        )
+
+        workflow.requestQaAsync("请介绍下这个项目结构和作用")
+
+        val snapshot = waitForSnapshot(stateService) { current ->
+            current.qaRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
+        }
+
+        assertEquals("architecture qa ok", snapshot.qaResult?.answer)
+        assertEquals(1, executorGraphNodeCount)
     }
 
     fun testRequestQaAsyncRoutesThroughRuntimeAndKeepsAsyncLifecycleState() {
@@ -1267,7 +1343,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         assertEquals("历史回答", capturedMessages.getOrNull(1)?.content)
     }
 
-    fun testRequestQaAsyncStopsWhenRuntimeCodeReadExceedsBudget() {
+    fun testRequestQaAsyncContinuesWhenRuntimeCodeReadBudgetIsUnavailable() {
         val sourceFile = projectSourceFile(
             "src/main/java/com/example/ReviewWorkflowBudgetGuard.java",
             """
@@ -1338,7 +1414,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                         GraphPatchResult(
                             source = LlmResultSource.LOCAL_RULE,
                             question = input.question,
-                            answer = "不应该执行到这里。",
+                            answer = "源码证据预算不足，按图继续问答。",
                             promptPreview = "prompt",
                         )
                     },
@@ -1352,15 +1428,14 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
         )
 
         val snapshot = waitForSnapshot(stateService) { current ->
-            current.qaRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED
+            current.qaRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
         }
 
-        assertFalse(executorInvoked)
-        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED, snapshot.qaRequestState.phase)
-        assertTrue(snapshot.qaRequestState.errorMessage?.contains("runtime 未返回结果") == true)
-        assertTrue(snapshot.qaRequestState.detailMessage?.contains("failureReason=MAX_FILES_READ_EXCEEDED") == true)
-        assertTrue(snapshot.qaRequestState.detailMessage?.contains("budget steps=0/10") == true)
-        assertTrue(snapshot.qaRequestState.detailMessage?.contains("files=0/0") == true)
+        assertTrue(executorInvoked)
+        assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, snapshot.qaRequestState.phase)
+        assertEquals("源码证据预算不足，按图继续问答。", snapshot.qaResult?.answer)
+        assertTrue(snapshot.qaRequestState.detailMessage?.contains("budget steps=") == true)
+        assertTrue(snapshot.qaRequestState.detailMessage?.contains("files=1/0") == true)
         assertFalse(snapshot.qaRequestState.detailMessage?.contains("tool=read_source_snippet") == true)
     }
 

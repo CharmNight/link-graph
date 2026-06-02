@@ -7,6 +7,7 @@ import com.charmnight.linkgraph.toolwindow.debug.LinkGraphDebugAutomationCoordin
 import com.charmnight.linkgraph.toolwindow.debug.LinkGraphDebugAutomationRequest
 import com.charmnight.linkgraph.toolwindow.debug.LinkGraphDebugStartupActivity
 import com.charmnight.linkgraph.ui.GraphEditorStateService
+import com.intellij.openapi.wm.RegisterToolWindowTask
 import com.intellij.openapi.wm.ToolWindowAnchor
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.testFramework.PlatformTestUtil
@@ -26,10 +27,10 @@ class LinkGraphDebugStartupActivityTest : BasePlatformTestCase() {
         val toolWindowManager = ToolWindowManager.getInstance(project)
         if (toolWindowManager.getToolWindow(LinkGraphToolWindowFactory.TOOL_WINDOW_ID) == null) {
             val toolWindow = toolWindowManager.registerToolWindow(
-                LinkGraphToolWindowFactory.TOOL_WINDOW_ID,
-                false,
-                ToolWindowAnchor.RIGHT,
-                testRootDisposable,
+                RegisterToolWindowTask.notClosable(
+                    LinkGraphToolWindowFactory.TOOL_WINDOW_ID,
+                    ToolWindowAnchor.RIGHT,
+                ),
             )
             LinkGraphToolWindowFactory().createToolWindowContent(project, toolWindow)
         }
@@ -98,5 +99,20 @@ class LinkGraphDebugStartupActivityTest : BasePlatformTestCase() {
         val request = capturedRequest.get()
         assertNotNull("Expected debug startup to dispatch class diagram automation requests", request)
         assertTrue(request!!.autoRequestClassDiagram)
+    }
+
+    fun testTriggersDebugOnlyStartupActionForSourceNavigationRequest() {
+        val capturedRequest = AtomicReference<LinkGraphDebugAutomationRequest?>()
+        val activity = LinkGraphDebugStartupActivity(
+            requestProvider = { LinkGraphDebugAutomationRequest(autoRequestSourceNavigation = true) },
+            startupAction = { _, request -> capturedRequest.set(request) },
+        )
+
+        activity.runActivity(project)
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+
+        val request = capturedRequest.get()
+        assertNotNull("Expected debug startup to dispatch source navigation automation requests", request)
+        assertTrue(request!!.autoRequestSourceNavigation)
     }
 }

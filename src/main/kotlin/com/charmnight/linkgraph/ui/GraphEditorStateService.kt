@@ -29,6 +29,7 @@ class GraphEditorStateService {
         },
     )
     internal val asyncRequests: GraphEditorAsyncRequestStateSupport = GraphEditorAsyncRequestStateSupport(::mutate)
+    internal val indexedGraphs: GraphEditorIndexedGraphStateSupport = GraphEditorIndexedGraphStateSupport(::mutate)
     internal val workbench: GraphEditorWorkbenchStateSupport = GraphEditorWorkbenchStateSupport(::mutate)
 
     fun snapshot(): GraphEditorStateSnapshot = store.snapshot()

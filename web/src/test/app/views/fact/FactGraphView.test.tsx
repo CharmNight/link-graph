@@ -3,7 +3,13 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FactGraphView } from "../../../../app/views/fact/FactGraphView";
-import type { DraftCompareProjection, FactGraphViewDocument } from "../../../../app/types";
+import type {
+  DraftCompareProjection,
+  FactGraphViewDocument,
+  GraphViewPresentation,
+  LinkGraphEdge,
+  LinkGraphNode,
+} from "../../../../app/types";
 import { defaultNodeSizeRegistry } from "../../../../app/graph/nodeSizeRegistry";
 
 const { useMeasuredLayoutMock } = vi.hoisted(() => ({
@@ -19,9 +25,10 @@ vi.mock("../../../../app/reactflow/GraphFlowSurface", () => ({
     anchorNodeId?: string | null;
     editable?: boolean;
     header?: ReactNode;
+    viewportOverlay?: (context: { nodes: LinkGraphNode[]; edges: LinkGraphEdge[] }) => ReactNode;
     emptyState?: ReactNode;
-    nodes: Array<{ position?: { x: number; y: number } }>;
-    edges: Array<unknown>;
+    nodes: LinkGraphNode[];
+    edges: LinkGraphEdge[];
     buildPaneActions: (context: {
       position?: { x: number; y: number };
       hasGroupedSelection: boolean;
@@ -35,14 +42,20 @@ vi.mock("../../../../app/reactflow/GraphFlowSurface", () => ({
       visibleNodeCount: props.nodes.length,
       close: () => undefined,
     }).find((action) => action.id === "format-layout");
+    const viewportOverlay = props.viewportOverlay?.({
+      nodes: props.nodes,
+      edges: props.edges,
+    });
     return (
       <div
         data-testid="graph-flow-surface"
         data-anchor={props.anchorNodeId ?? ""}
         data-editable={String(props.editable)}
         data-node-position={props.nodes[0]?.position ? `${props.nodes[0].position.x}:${props.nodes[0].position.y}` : ""}
+        data-has-viewport-overlay={String(Boolean(viewportOverlay))}
       >
         {props.header}
+        {viewportOverlay}
         {props.nodes.length === 0 ? props.emptyState : null}
         {props.nodes.length}:{props.edges.length}
         <button type="button" onClick={() => formatAction?.onSelect()}>
@@ -52,6 +65,29 @@ vi.mock("../../../../app/reactflow/GraphFlowSurface", () => ({
     );
   },
 }));
+
+const factPresentation: GraphViewPresentation = {
+  target: {
+    nodeId: "method:submit-order",
+    title: "OrderController.submit",
+    subtitle: "当前方法",
+    location: null,
+  },
+  lanes: [
+    { id: "upstream", label: "上游事实", axis: "COLUMN", order: 10, role: "UPSTREAM" },
+    { id: "current", label: "当前方法", axis: "COLUMN", order: 20, role: "ANCHOR" },
+    { id: "downstream", label: "下游事实", axis: "COLUMN", order: 30, role: "DOWNSTREAM" },
+  ],
+  hiddenBuckets: [
+    { id: "downstream", label: "下游事实", count: 3, nodeIds: ["method:tail"], edgeIds: [] },
+  ],
+  controls: {
+    primaryScope: "主链",
+    availableScopes: ["主链", "全部"],
+    searchable: true,
+    expandable: true,
+  },
+};
 
 const view: FactGraphViewDocument = {
   visibleGraph: {
@@ -78,6 +114,7 @@ const view: FactGraphViewDocument = {
     visibleNodeCount: 1,
     fullNodeCount: 1,
   },
+  presentation: factPresentation,
 };
 
 const noop = () => undefined;
@@ -101,6 +138,10 @@ const laidOutNodes = [
   {
     ...view.visibleGraph.nodes[0]!,
     position: { x: 480, y: 144 },
+    metadata: {
+      "presentation.laneId": "current",
+      "presentation.role": "ANCHOR",
+    },
   },
 ];
 
@@ -137,7 +178,13 @@ describe("FactGraphView", () => {
     expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute("data-editable", "true");
     expect(screen.getByTestId("graph-flow-surface")).toHaveTextContent("1:0");
     expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute("data-node-position", "480:144");
-    expect(screen.getByText("当前方法")).toBeInTheDocument();
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute("data-has-viewport-overlay", "true");
+    expect(screen.getByText("OrderController.submit")).toBeInTheDocument();
+    expect(screen.getByText("1 / 1")).toBeInTheDocument();
+    expect(screen.getByText("下游事实 3")).toBeInTheDocument();
+    expect(screen.getByTestId("graph-canvas-lanes")).toBeInTheDocument();
+    expect(screen.queryByLabelText("图阅读摘要")).not.toBeInTheDocument();
+    expect(document.querySelector(".canvas-reading-summary")).not.toBeInTheDocument();
     const measuredLayoutArgs = useMeasuredLayoutMock.mock.calls.at(-1)?.[0];
     expect(useMeasuredLayoutMock).toHaveBeenCalledWith(expect.objectContaining({
       anchorNodeId: "method:submit-order",

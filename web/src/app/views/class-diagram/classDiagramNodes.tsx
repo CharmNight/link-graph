@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type CSSProperties } from "react";
+import { useLayoutEffect, useRef, type CSSProperties, type Ref } from "react";
 import {
   Handle,
   MarkerType,
@@ -10,12 +10,12 @@ import {
   type NodeProps,
   type NodeTypes,
 } from "@xyflow/react";
-import { edgeTypeLabel, nodeTypeLabel, relationConfidenceLabel } from "../../labels";
+import { nodeTypeLabel, relationConfidenceLabel } from "../../labels";
 import type { NodeMeasuredSize, NodeSizeRegistry } from "../../graph/nodeSizeRegistry";
 import { classDiagramNodeCardWidth } from "../../graphNodeSizing";
 import { measureNodeContentBox } from "../../components/graph/nodes/measureNodeContentBox";
 import { GraphNodeStateBadges } from "../../components/graph/nodes/GraphNodeStateBadges";
-import type { DraftCompareStatus, LinkGraphEdge, LinkGraphNode } from "../../types";
+import type { DraftCompareStatus, GraphProjectionIndex, LinkGraphEdge, LinkGraphNode } from "../../types";
 import { canEditNodeLayout } from "../../layoutEditability";
 import type { RoutedEdgeData } from "../../reactflow/RoutedEdge";
 import { resolveGraphNodeHighlightClassName } from "../graphNodeHighlights";
@@ -24,9 +24,17 @@ import {
   draftCompareEdgeStyle,
   draftCompareMarkerColor,
 } from "../draftComparePresentation";
+import {
+  classDiagramCompactRelationLabel,
+  classDiagramRelationDetailLabel,
+  classDiagramRelationDisplayLabel,
+  classDiagramRelationKind,
+  classDiagramRelationPresentation,
+} from "./classDiagramRelations";
 
 interface ClassDiagramNodeData extends Record<string, unknown> {
   node: LinkGraphNode;
+  compact?: boolean;
   explanationFocused?: boolean;
   draftChanged?: boolean;
   draftCompareStatus?: DraftCompareStatus;
@@ -39,6 +47,7 @@ interface BuildClassDiagramNodesOptions {
   explanationFocusNodeId?: string | null;
   draftChangedNodeIds?: string[];
   draftCompareNodeStatuses?: Record<string, DraftCompareStatus>;
+  projectionIndex?: GraphProjectionIndex | null;
   nodeSizeRegistry: NodeSizeRegistry;
 }
 
@@ -51,25 +60,41 @@ type ClassDiagramFlowNode = Node<ClassDiagramNodeData, "classDiagramNode">;
 type ClassDiagramFlowNodeProps = NodeProps<ClassDiagramFlowNode>;
 
 const HANDLE_STYLE: CSSProperties = {
-  width: 16,
-  height: 16,
+  width: 14,
+  height: 14,
   opacity: 0,
-  background: "rgba(70, 71, 108, 0.62)",
-  border: "2px solid rgba(255, 255, 255, 0.9)",
+  background: "rgba(52, 180, 255, 0.72)",
+  border: "2px solid rgba(248, 252, 255, 0.96)",
   borderRadius: "50%",
+  boxShadow: "0 0 0 3px rgba(52, 180, 255, 0.16)",
 };
-const EMPTY_MEMBER_TEXT = " ";
+const SIDE_FANOUT_SLOT_COUNT = 7;
 
 function handleStyle(isConnectable: boolean): CSSProperties {
   return {
     ...HANDLE_STYLE,
-    opacity: isConnectable ? 0.26 : 0,
+    opacity: isConnectable ? 0.52 : 0,
     pointerEvents: isConnectable ? "all" : "none",
+  };
+}
+
+function sideFanoutHandleStyle(isConnectable: boolean, index: number): CSSProperties {
+  return {
+    ...handleStyle(isConnectable),
+    top: `${((index + 1) / (SIDE_FANOUT_SLOT_COUNT + 1)) * 100}%`,
+  };
+}
+
+function verticalFanoutHandleStyle(isConnectable: boolean, index: number): CSSProperties {
+  return {
+    ...handleStyle(isConnectable),
+    left: `${((index + 1) / (SIDE_FANOUT_SLOT_COUNT + 1)) * 100}%`,
   };
 }
 
 function ClassDiagramNodeCard({
   node,
+  compact = false,
   selected,
   explanationFocused = false,
   draftChanged = false,
@@ -77,6 +102,7 @@ function ClassDiagramNodeCard({
   onMeasure,
 }: {
   node: LinkGraphNode;
+  compact?: boolean;
   selected: boolean;
   explanationFocused?: boolean;
   draftChanged?: boolean;
@@ -91,6 +117,11 @@ function ClassDiagramNodeCard({
   const hiddenMethodCount = numericMetadata(node.metadata?.["uml.method.hiddenCount"]);
   const stereotype = umlStereotype(node);
   const comment = umlComment(node);
+  const anchor = isAnchorNode(node);
+  const visibleFields = compact ? fields.slice(0, 2) : fields;
+  const visibleMethods = compact ? methods.slice(0, 3) : methods;
+  const compactHiddenFieldCount = compact ? hiddenFieldCount + Math.max(0, fields.length - visibleFields.length) : hiddenFieldCount;
+  const compactHiddenMethodCount = compact ? hiddenMethodCount + Math.max(0, methods.length - visibleMethods.length) : hiddenMethodCount;
 
   useLayoutEffect(() => {
     const size = measureNodeContentBox(rootRef.current);
@@ -99,31 +130,82 @@ function ClassDiagramNodeCard({
     }
   }, [node, onMeasure]);
 
+  if (compact && !anchor) {
+    return (
+      <CompactClassDiagramNodeCard
+        rootRef={rootRef}
+        node={node}
+        selected={selected}
+        explanationFocused={explanationFocused}
+        draftChanged={draftChanged}
+        draftCompareStatus={draftCompareStatus}
+      />
+    );
+  }
+
   return (
     <div
       ref={rootRef}
-      className={["uml-class-card", umlCardKindClassName(node), selected ? "is-selected" : ""].join(" ").trim()}
+      className={["uml-class-card", umlCardKindClassName(node), anchor ? "is-anchor" : "", selected ? "is-selected" : ""].join(" ").trim()}
       data-node-id={node.id}
     >
       <GraphNodeStateBadges selected={selected} explanationFocused={explanationFocused} draftChanged={draftChanged} />
       <div className="uml-class-header">
+        {anchor ? <span className="uml-anchor-badge">当前类</span> : null}
         <span className="uml-class-stereotype">{stereotype}</span>
         <strong className="uml-class-name" title={node.title}>{node.title}</strong>
         <span className="uml-class-package" title={node.signature ?? node.location ?? node.id}>
           {packageName ?? node.signature ?? node.id}
         </span>
       </div>
-      {comment ? <UmlCommentCompartment text={comment} /> : null}
+      {comment && !compact ? <UmlCommentCompartment text={comment} /> : null}
       <UmlMemberCompartment
         kind="field"
-        items={fields}
-        hiddenCount={hiddenFieldCount}
+        items={visibleFields}
+        hiddenCount={compactHiddenFieldCount}
       />
       <UmlMemberCompartment
         kind="method"
-        items={methods}
-        hiddenCount={hiddenMethodCount}
+        items={visibleMethods}
+        hiddenCount={compactHiddenMethodCount}
       />
+      {draftCompareStatus ? <span className={`uml-draft-badge draft-compare-${draftCompareStatus.toLowerCase()}`}>{draftCompareStatus}</span> : null}
+    </div>
+  );
+}
+
+function CompactClassDiagramNodeCard({
+  rootRef,
+  node,
+  selected,
+  explanationFocused,
+  draftChanged,
+  draftCompareStatus,
+}: {
+  rootRef: Ref<HTMLDivElement>;
+  node: LinkGraphNode;
+  selected: boolean;
+  explanationFocused: boolean;
+  draftChanged: boolean;
+  draftCompareStatus?: DraftCompareStatus;
+}) {
+  const roleLabel = compactRoleLabel(node);
+  const meta = compactNodeMeta(node);
+  const detail = compactNodeDetail(node);
+  const detailTitle = compactNodeDetailTitle(node);
+  return (
+    <div
+      ref={rootRef}
+      className={["uml-class-card", "is-compact", umlCardKindClassName(node), selected ? "is-selected" : ""].join(" ").trim()}
+      data-node-id={node.id}
+    >
+      <GraphNodeStateBadges selected={selected} explanationFocused={explanationFocused} draftChanged={draftChanged} />
+      <div className="uml-compact-header">
+        <span className="uml-compact-kind">{roleLabel}</span>
+        <strong className="uml-compact-title" title={node.title}>{node.title}</strong>
+        {meta ? <span className="uml-compact-meta" title={meta}>{meta}</span> : null}
+      </div>
+      {detail ? <span className="uml-compact-detail" title={detailTitle ?? detail}>{detail}</span> : null}
       {draftCompareStatus ? <span className={`uml-draft-badge draft-compare-${draftCompareStatus.toLowerCase()}`}>{draftCompareStatus}</span> : null}
     </div>
   );
@@ -141,14 +223,79 @@ function numericMetadata(value?: string | null): number {
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
 }
 
+function compactRoleLabel(node: LinkGraphNode): string {
+  const role = node.metadata?.["presentation.role"];
+  const lane = node.metadata?.["presentation.laneId"];
+  if (role === "CALLER" || lane === "caller" || node.metadata?.["layout.direction"] === "INCOMING") {
+    return "调用方";
+  }
+  if (role === "INTERFACE" || lane === "abstraction" || node.metadata?.["layout.direction"] === "PARENT") {
+    return "抽象与接口";
+  }
+  if (role === "OUTPUT" || lane === "output" || node.metadata?.["layout.direction"] === "DATA") {
+    return "输出类型";
+  }
+  if (role === "ANCHOR" || lane === "anchor" || node.metadata?.["layout.direction"] === "ANCHOR") {
+    return "当前类";
+  }
+  return "协作对象";
+}
+
+function compactNodeMeta(node: LinkGraphNode): string | null {
+  return node.metadata?.["architecture.package"]
+    ?? node.signature
+    ?? node.location
+    ?? null;
+}
+
+function compactNodeDetail(node: LinkGraphNode): string | null {
+  const relationReason = node.metadata?.["classDiagram.node.reason"]?.trim();
+  if (relationReason) {
+    return classDiagramCompactRelationLabel(relationReason);
+  }
+  const method = memberLines(node.metadata?.["uml.method.items"])[0];
+  if (method) {
+    return method;
+  }
+  const field = memberLines(node.metadata?.["uml.field.items"])[0];
+  if (field) {
+    return field;
+  }
+  return node.doc?.trim() || null;
+}
+
+function compactNodeDetailTitle(node: LinkGraphNode): string | null {
+  return node.metadata?.["classDiagram.node.reason"]?.trim() || compactNodeDetail(node);
+}
+
 function isAbstractClass(node: LinkGraphNode): boolean {
   return node.type === "CLASS" && node.metadata?.["jvm.class.abstract"] === "true";
+}
+
+function isAnchorNode(node: LinkGraphNode): boolean {
+  if (node.metadata?.["presentation.role"]) {
+    return node.metadata["presentation.role"] === "ANCHOR";
+  }
+  return node.metadata?.["presentation.role"] === "ANCHOR"
+    || node.metadata?.["layout.direction"] === "ANCHOR";
+}
+
+function isDataTypeNode(node: LinkGraphNode): boolean {
+  return node.metadata?.["presentation.role"] === "OUTPUT"
+    || node.metadata?.["layout.direction"] === "DATA"
+    || node.type === "ENUM"
+    || node.type === "RECORD"
+    || node.type === "OBJECT"
+    || node.metadata?.["jvm.class.kind"] === "ENUM"
+    || node.metadata?.["jvm.class.kind"] === "RECORD"
+    || node.metadata?.["jvm.class.kind"] === "OBJECT";
 }
 
 function umlCardKindClassName(node: LinkGraphNode): string {
   return [
     `uml-kind-${node.type.toLowerCase()}`,
     isAbstractClass(node) ? "uml-kind-abstract" : "",
+    isDataTypeNode(node) ? "uml-kind-data" : "",
   ].filter(Boolean).join(" ");
 }
 
@@ -199,8 +346,9 @@ function UmlMemberCompartment({
   const label = kind === "field" ? "字段" : "方法";
   return (
     <div className={`uml-member-compartment uml-member-compartment-${kind}`} aria-label={label}>
+      <span className="uml-member-title">{label}</span>
       {items.length === 0 ? (
-        <span className="uml-member-line is-empty">{EMPTY_MEMBER_TEXT}</span>
+        <span className="uml-member-line is-empty">无</span>
       ) : items.map((item) => (
         <span key={item} className="uml-member-line" title={item}>{item}</span>
       ))}
@@ -219,12 +367,71 @@ function ClassDiagramReactNode({ id, data, selected, isConnectable }: ClassDiagr
 
   return (
     <div className={["class-diagram-react-node", isConnectable ? "is-connectable" : ""].join(" ").trim()}>
+      <Handle id="source-top" type="source" position={Position.Top} style={style} />
       <Handle id="target-top" type="target" position={Position.Top} style={style} />
+      {Array.from({ length: SIDE_FANOUT_SLOT_COUNT }, (_, index) => (
+        <Handle
+          key={`source-top-${index}`}
+          id={`source-top-${index}`}
+          type="source"
+          position={Position.Top}
+          style={verticalFanoutHandleStyle(isConnectable, index)}
+        />
+      ))}
       <Handle id="target-left" type="target" position={Position.Left} style={style} />
+      <Handle id="source-left" type="source" position={Position.Left} style={style} />
       <Handle id="source-right" type="source" position={Position.Right} style={style} />
+      <Handle id="target-right" type="target" position={Position.Right} style={style} />
+      {Array.from({ length: SIDE_FANOUT_SLOT_COUNT }, (_, index) => (
+        <Handle
+          key={`source-right-${index}`}
+          id={`source-right-${index}`}
+          type="source"
+          position={Position.Right}
+          style={sideFanoutHandleStyle(isConnectable, index)}
+        />
+      ))}
+      {Array.from({ length: SIDE_FANOUT_SLOT_COUNT }, (_, index) => (
+        <Handle
+          key={`target-right-${index}`}
+          id={`target-right-${index}`}
+          type="target"
+          position={Position.Right}
+          style={sideFanoutHandleStyle(isConnectable, index)}
+        />
+      ))}
+      {Array.from({ length: SIDE_FANOUT_SLOT_COUNT }, (_, index) => (
+        <Handle
+          key={`source-left-${index}`}
+          id={`source-left-${index}`}
+          type="source"
+          position={Position.Left}
+          style={sideFanoutHandleStyle(isConnectable, index)}
+        />
+      ))}
+      {Array.from({ length: SIDE_FANOUT_SLOT_COUNT }, (_, index) => (
+        <Handle
+          key={`target-left-${index}`}
+          id={`target-left-${index}`}
+          type="target"
+          position={Position.Left}
+          style={sideFanoutHandleStyle(isConnectable, index)}
+        />
+      ))}
       <Handle id="source-bottom" type="source" position={Position.Bottom} style={style} />
+      {Array.from({ length: SIDE_FANOUT_SLOT_COUNT }, (_, index) => (
+        <Handle
+          key={`source-bottom-${index}`}
+          id={`source-bottom-${index}`}
+          type="source"
+          position={Position.Bottom}
+          style={verticalFanoutHandleStyle(isConnectable, index)}
+        />
+      ))}
+      <Handle id="target-bottom" type="target" position={Position.Bottom} style={style} />
       <ClassDiagramNodeCard
         node={data.node}
+        compact={data.compact}
         selected={selected}
         explanationFocused={data.explanationFocused}
         draftChanged={data.draftChanged}
@@ -241,71 +448,98 @@ export const CLASS_DIAGRAM_NODE_TYPES: NodeTypes = {
 
 function classNodeStyle(node: LinkGraphNode) {
   const isTypeNode = ["CLASS", "INTERFACE", "ENUM", "ANNOTATION", "RECORD", "OBJECT"].includes(node.type);
-  const isAnchor = node.metadata?.["layout.direction"] === "ANCHOR";
+  const presentationRole = node.metadata?.["presentation.role"];
+  const isAnchor = presentationRole === "ANCHOR" || isAnchorNode(node);
   return {
-    width: classDiagramNodeCardWidth(),
-    borderRadius: 8,
+    width: classDiagramNodeCardWidth(node),
+    borderRadius: 7,
     border: isAnchor
-      ? "2px solid rgba(25, 90, 153, 0.72)"
+      ? "3px solid rgba(52, 180, 255, 0.92)"
       : isTypeNode ? "1.5px solid rgba(38, 38, 38, 0.62)" : "1px solid rgba(44, 32, 22, 0.16)",
-    background: "#fffefb",
+    background: "#f8f8f4",
     boxShadow: isAnchor
-      ? "0 8px 18px rgba(25, 90, 153, 0.14)"
-      : "0 4px 10px rgba(20, 24, 32, 0.08)",
+      ? "0 0 0 3px rgba(52, 180, 255, 0.18), 0 20px 38px rgba(0, 0, 0, 0.34)"
+      : "0 12px 26px rgba(0, 0, 0, 0.22)",
     padding: 0,
   };
 }
 
-function relationKind(edge: LinkGraphEdge): string {
-  return edge.metadata?.["jvm.relation.kind"] ?? edge.type;
+function compactClassCard(node: LinkGraphNode): boolean {
+  if (node.metadata?.["presentation.compact"] === "false") {
+    return false;
+  }
+  if (node.metadata?.["presentation.compact"] === "true") {
+    return true;
+  }
+  if (node.metadata?.["presentation.role"]) {
+    return node.metadata["presentation.role"] !== "ANCHOR";
+  }
+  return node.metadata?.["layout.direction"] !== "ANCHOR";
 }
 
-function classEdgeStyle(edge: LinkGraphEdge): CSSProperties {
-  switch (relationKind(edge)) {
-    case "EXTENDS":
-      return { stroke: "#262626", strokeWidth: 2, opacity: 0.95 };
-    case "IMPLEMENTS":
-      return { stroke: "#262626", strokeWidth: 2, strokeDasharray: "7 5", opacity: 0.95 };
-    case "INJECTS":
-      return { stroke: "#195a99", strokeWidth: 1.8, opacity: 0.9 };
-    case "CALLS":
-      return { stroke: "#2d6a4f", strokeWidth: 1.8, opacity: 0.9 };
-    case "SPI_PROVIDES":
-    case "SERVICE_LOADER_LOADS":
-      return { stroke: "#8a4f00", strokeWidth: 1.8, strokeDasharray: "6 4", opacity: 0.9 };
-    case "REFLECTS_TO":
-      return { stroke: "#7b2cbf", strokeWidth: 1.7, strokeDasharray: "3 5", opacity: 0.9 };
-    case "USES_PROXY":
-    case "DUBBO_REFERENCES":
-    case "FEIGN_CLIENT_CALLS":
-      return { stroke: "#0f766e", strokeWidth: 1.7, strokeDasharray: "8 4", opacity: 0.88 };
-    case "FEIGN_ROUTES_TO":
-    case "SPRING_EVENT_PUBLISHES":
-    case "SPRING_EVENT_LISTENS":
-    case "MQ_PUBLISHES":
-    case "MQ_CONSUMES":
-      return { stroke: "#9a3412", strokeWidth: 1.7, opacity: 0.88 };
-    case "USES_TYPE":
-      return { stroke: "#5f5a53", strokeWidth: 1.6, strokeDasharray: "5 5", opacity: 0.82 };
-    default:
-      return { stroke: "#5f5a53", strokeWidth: 1.5, opacity: 0.86 };
+function classEdgeStyle(edge: LinkGraphEdge): Record<string, string | number> {
+  const presentation = classDiagramRelationPresentation(edge);
+  const sameLaneRelation = edge.metadata?.["layout.sameLaneRelation"] === "true";
+  const anchorRelation = edge.metadata?.["layout.anchorRelation"] === "true";
+  const secondaryRelation = edge.metadata?.["layout.anchorRelation"] === "false";
+  const style: Record<string, string | number> = {
+    stroke: presentation.color,
+    strokeWidth: secondaryRelation
+      ? Math.max(1.6, presentation.strokeWidth - 0.9)
+      : sameLaneRelation && !anchorRelation
+      ? Math.max(1.8, presentation.strokeWidth - 0.7)
+      : presentation.strokeWidth,
+    opacity: secondaryRelation ? 0.5 : sameLaneRelation && !anchorRelation ? 0.58 : presentation.opacity ?? 0.96,
+  };
+  if (presentation.strokeDasharray) {
+    style.strokeDasharray = presentation.strokeDasharray;
   }
+  return style;
 }
 
 function classEdgeLabel(edge: LinkGraphEdge): string {
-  const base = edge.label?.trim() || edgeTypeLabel(edge.type);
+  const base = classDiagramRelationDisplayLabel(edge);
   const confidence = relationConfidenceLabel(edge.metadata?.["jvm.relation.confidence"]);
   return confidence && confidence !== "静态确认" ? `${base} · ${confidence}` : base;
 }
 
+function classEdgeLabelTitle(edge: LinkGraphEdge): string {
+  const detail = classDiagramRelationDetailLabel(edge);
+  const confidence = relationConfidenceLabel(edge.metadata?.["jvm.relation.confidence"]);
+  return confidence && confidence !== "静态确认" ? `${detail}\n${confidence}` : detail;
+}
+
+function classEdgeLabelVisibility(edge: LinkGraphEdge): RoutedEdgeData["labelVisibility"] {
+  return edge.metadata?.["layout.anchorRelation"] === "false" ? "focus" : "always";
+}
+
 function classEdgeMarker(edge: LinkGraphEdge): EdgeMarker {
-  const kind = relationKind(edge);
+  const kind = classDiagramRelationKind(edge);
+  const presentation = classDiagramRelationPresentation(edge);
   return {
-    type: kind === "EXTENDS" || kind === "IMPLEMENTS" ? MarkerType.Arrow : MarkerType.ArrowClosed,
-    width: kind === "EXTENDS" || kind === "IMPLEMENTS" ? 24 : 18,
-    height: kind === "EXTENDS" || kind === "IMPLEMENTS" ? 24 : 18,
-    color: "#262626",
+    type: kind === "GENERALIZATION" || kind === "REALIZATION" || kind === "EXTENDS" || kind === "IMPLEMENTS" ? MarkerType.Arrow : MarkerType.ArrowClosed,
+    width: kind === "GENERALIZATION" || kind === "REALIZATION" || kind === "EXTENDS" || kind === "IMPLEMENTS" ? 24 : 18,
+    height: kind === "GENERALIZATION" || kind === "REALIZATION" || kind === "EXTENDS" || kind === "IMPLEMENTS" ? 24 : 18,
+    color: presentation.color,
   };
+}
+
+function classEdgeTargetAdornment(edge: LinkGraphEdge): RoutedEdgeData["targetAdornment"] | undefined {
+  switch (classDiagramRelationKind(edge)) {
+    case "COMPOSITION":
+      return "filled-diamond";
+    case "AGGREGATION":
+      return "diamond";
+    default:
+      return undefined;
+  }
+}
+
+function classEdgeLabelPlacement(edge: LinkGraphEdge): RoutedEdgeData["labelPlacement"] {
+  const placement = edge.metadata?.["layout.labelPlacement"];
+  return placement === "source-stub" || placement === "target-stub" || placement === "center"
+    ? placement
+    : "target-stub";
 }
 
 export function buildClassDiagramNodes({
@@ -314,6 +548,7 @@ export function buildClassDiagramNodes({
   explanationFocusNodeId = null,
   draftChangedNodeIds = [],
   draftCompareNodeStatuses = {},
+  projectionIndex = null,
   nodeSizeRegistry,
 }: BuildClassDiagramNodesOptions): ClassDiagramFlowNode[] {
   const draftChangedNodeIdSet = new Set(draftChangedNodeIds);
@@ -330,12 +565,13 @@ export function buildClassDiagramNodes({
       }),
     ].filter(Boolean).join(" ") || undefined,
     selected: selectedNodeId === node.id,
-    draggable: canEditNodeLayout(node, "CLASS_DIAGRAM"),
+    draggable: canEditNodeLayout(node, "CLASS_DIAGRAM", projectionIndex),
     position: node.position ?? { x: 80, y: 88 },
     sourcePosition: Position.Right,
     targetPosition: Position.Left,
     data: {
       node,
+      compact: compactClassCard(node),
       explanationFocused: explanationFocusNodeId === node.id,
       draftChanged: draftChangedNodeIdSet.has(node.id),
       draftCompareStatus: draftCompareNodeStatuses[node.id],
@@ -349,20 +585,35 @@ export function buildClassDiagramEdges({
   edges,
   draftCompareEdgeStatuses = {},
 }: BuildClassDiagramEdgesOptions): Array<Edge<RoutedEdgeData, "routedEdge">> {
-  return edges.map((edge) => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    sourceHandle: edge.sourceHandle ?? undefined,
-    targetHandle: edge.targetHandle ?? undefined,
-    label: classEdgeLabel(edge),
-    type: "routedEdge",
-    className: draftCompareEdgeClassName("edge-domain", draftCompareEdgeStatuses[edge.id]),
-    data: { route: edge.route },
-    style: draftCompareEdgeStyle(classEdgeStyle(edge), draftCompareEdgeStatuses[edge.id]),
-    markerEnd: {
-      ...classEdgeMarker(edge),
-      color: draftCompareMarkerColor("#262626", draftCompareEdgeStatuses[edge.id]),
-    },
-  }));
+  return edges.map((edge) => {
+    const presentation = classDiagramRelationPresentation(edge);
+    const preserveStoredRoute = edge.metadata?.["layout.routeMode"] === "stored"
+      || edge.metadata?.["layout.route"] === "class-diagram-lane";
+    const targetAdornment = classEdgeTargetAdornment(edge);
+    return {
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      sourceHandle: edge.sourceHandle ?? undefined,
+      targetHandle: edge.targetHandle ?? undefined,
+      label: classEdgeLabel(edge),
+      type: "routedEdge",
+      className: draftCompareEdgeClassName(`edge-domain class-diagram-edge class-diagram-edge-${presentation.role}`, draftCompareEdgeStatuses[edge.id]),
+      data: {
+        route: edge.route,
+        labelVisibility: classEdgeLabelVisibility(edge),
+        labelTitle: classEdgeLabelTitle(edge),
+        labelPlacement: classEdgeLabelPlacement(edge),
+        routeMode: preserveStoredRoute ? "stored" : undefined,
+        sourceAdornment: "dot",
+        targetAdornment,
+      },
+      style: draftCompareEdgeStyle(classEdgeStyle(edge), draftCompareEdgeStatuses[edge.id]),
+      markerEnd: targetAdornment ? undefined : {
+        ...classEdgeMarker(edge),
+        color: draftCompareMarkerColor(presentation.color, draftCompareEdgeStatuses[edge.id]),
+      },
+      zIndex: presentation.zIndex,
+    };
+  });
 }

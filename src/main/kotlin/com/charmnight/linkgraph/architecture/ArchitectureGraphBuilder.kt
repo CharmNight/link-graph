@@ -4,20 +4,25 @@ import com.charmnight.linkgraph.jvm.index.JvmClassKind
 import com.charmnight.linkgraph.jvm.index.JvmClassSymbol
 import com.charmnight.linkgraph.jvm.index.JvmFieldSymbol
 import com.charmnight.linkgraph.jvm.index.JvmMethodSymbol
-import com.charmnight.linkgraph.jvm.index.JvmStereotype
 import com.charmnight.linkgraph.jvm.index.JvmSymbolIndex
 import com.charmnight.linkgraph.jvm.relation.JvmRelation
 import com.charmnight.linkgraph.jvm.relation.JvmRelationConfidence
 import com.charmnight.linkgraph.jvm.relation.JvmRelationIndex
 import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
+import com.charmnight.linkgraph.source.SourceOrigin
 
-class ArchitectureGraphBuilder {
+class ArchitectureGraphBuilder(
+    private val classifier: ArchitectureBoundaryClassifier = ArchitectureBoundaryClassifier(),
+) {
     fun build(
         symbolIndex: JvmSymbolIndex,
         relationIndex: JvmRelationIndex,
         budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget? = null,
     ): ArchitectureGraph {
         val nodes = linkedMapOf<String, ArchitectureNode>()
+        val projectClasses = symbolIndex.classesByQualifiedName.values
+        val serviceBoundaryNames = ArchitectureBoundaryClassifier.trustedServiceBoundaryNames(projectClasses)
+        val projectionTargets = ArchitectureProjectionTargetCache(symbolIndex, classifier, serviceBoundaryNames)
         symbolIndex.modulesByName.values.sortedBy { it.qualifiedName }.forEach { module ->
             nodes[module.id] = ArchitectureNode(
                 id = module.id,
@@ -88,14 +93,23 @@ class ArchitectureGraphBuilder {
             nodes[pkg.id] = nodes.getValue(pkg.id).copy(memberResourceIds = resourceIds)
         }
 
-        serviceNodes(symbolIndex).forEach { serviceNode ->
+        serviceNodes(symbolIndex, serviceBoundaryNames).forEach { serviceNode ->
             nodes[serviceNode.id] = serviceNode
+        }
+        componentNodes(symbolIndex, serviceBoundaryNames, projectionTargets).forEach { componentNode ->
+            nodes[componentNode.id] = componentNode
+        }
+        resourceGroupNodes(symbolIndex).forEach { resourceNode ->
+            nodes[resourceNode.id] = resourceNode
+        }
+        dependencyGroupNodes(symbolIndex, serviceBoundaryNames).forEach { dependencyNode ->
+            nodes[dependencyNode.id] = dependencyNode
         }
         layerNodes(symbolIndex).forEach { layerNode ->
             nodes[layerNode.id] = layerNode
         }
 
-        val edges = buildEdges(symbolIndex, relationIndex, nodes)
+        val edges = buildEdges(symbolIndex, relationIndex, nodes, serviceBoundaryNames, projectionTargets)
         val incoming = edges.mapTo(linkedSetOf()) { edge -> edge.toNodeId }
         val roots = nodes.values
             .filter { node -> node.kind == ArchitectureNodeKind.MODULE || node.id !in incoming }
@@ -131,6 +145,8 @@ class ArchitectureGraphBuilder {
         symbolIndex: JvmSymbolIndex,
         relationIndex: JvmRelationIndex,
         nodes: Map<String, ArchitectureNode>,
+        serviceBoundaryNames: Map<String, String>,
+        projectionTargets: ArchitectureProjectionTargetCache,
     ): List<ArchitectureEdge> {
         val directEdges = relationIndex.relations.mapNotNull { relation ->
             val fromNodeId = relation.projectedFromNodeId(symbolIndex)
@@ -153,11 +169,23 @@ class ArchitectureGraphBuilder {
                 metadata = relation.architectureMetadata(),
             )
         }
-        val packageEdges = aggregateClassRelationsToPackages(symbolIndex, relationIndex)
-        val serviceEdges = aggregateClassRelationsToServices(symbolIndex, relationIndex, nodes)
+        val projectionEdges = aggregateRelationsToProjectionTargets(
+            symbolIndex = symbolIndex,
+            relationIndex = relationIndex,
+            nodes = nodes,
+            level = ArchitectureAggregationLevel.OVERVIEW,
+            serviceBoundaryNames = serviceBoundaryNames,
+            projectionTargets = projectionTargets,
+        ) + aggregateRelationsToProjectionTargets(
+            symbolIndex = symbolIndex,
+            relationIndex = relationIndex,
+            nodes = nodes,
+            level = ArchitectureAggregationLevel.PACKAGE,
+            serviceBoundaryNames = serviceBoundaryNames,
+            projectionTargets = projectionTargets,
+        )
         val layerEdges = aggregateClassRelationsToLayers(symbolIndex, relationIndex, nodes)
-        val resourceEdges = aggregateResourceRelations(symbolIndex, relationIndex, nodes)
-        return (directEdges + packageEdges + serviceEdges + layerEdges + resourceEdges)
+        return (directEdges + projectionEdges + layerEdges)
             .groupBy(ArchitectureEdge::id)
             .values
             .map(::mergeArchitectureEdges)
@@ -183,48 +211,35 @@ class ArchitectureGraphBuilder {
         }
     }
 
-    private fun aggregateClassRelationsToPackages(
-        symbolIndex: JvmSymbolIndex,
-        relationIndex: JvmRelationIndex,
-    ): List<ArchitectureEdge> {
-        return relationIndex.relations
-            .mapNotNull { relation ->
-                val fromClass = ownerClassForRelation(symbolIndex, relation.fromSymbolId) ?: return@mapNotNull null
-                val toClass = ownerClassForRelation(symbolIndex, relation.toSymbolId) ?: return@mapNotNull null
-                if (fromClass.packageName == toClass.packageName) return@mapNotNull null
-                val fromPackage = symbolIndex.packagesByName[fromClass.packageName] ?: return@mapNotNull null
-                val toPackage = symbolIndex.packagesByName[toClass.packageName] ?: return@mapNotNull null
-                relation.toAggregateEdge(
-                    prefix = "arch:package",
-                    fromNodeId = fromPackage.id,
-                    toNodeId = toPackage.id,
-                    metadata = mapOf(
-                        "architecture.aggregate" to "PACKAGE",
-                        "source.class" to fromClass.qualifiedName,
-                        "target.class" to toClass.qualifiedName,
-                    ),
-                )
-            }
-    }
-
-    private fun aggregateClassRelationsToServices(
+    private fun aggregateRelationsToProjectionTargets(
         symbolIndex: JvmSymbolIndex,
         relationIndex: JvmRelationIndex,
         nodes: Map<String, ArchitectureNode>,
+        level: ArchitectureAggregationLevel,
+        serviceBoundaryNames: Map<String, String>,
+        projectionTargets: ArchitectureProjectionTargetCache,
     ): List<ArchitectureEdge> {
         return relationIndex.relations.mapNotNull { relation ->
-            val fromClass = ownerClassForRelation(symbolIndex, relation.fromSymbolId) ?: return@mapNotNull null
-            val toClass = ownerClassForRelation(symbolIndex, relation.toSymbolId) ?: return@mapNotNull null
-            val fromService = serviceNodeIdFor(fromClass)
-            val toService = serviceNodeIdFor(toClass)
-            if (fromService == toService || !nodes.containsKey(fromService) || !nodes.containsKey(toService)) {
+            if (relation.kind !in architectureAggregateRelationKinds) {
+                return@mapNotNull null
+            }
+            val fromTarget = projectionTargetFor(symbolIndex, relation.fromSymbolId, level, projectionTargets) ?: return@mapNotNull null
+            val toTarget = projectionTargetFor(symbolIndex, relation.toSymbolId, level, projectionTargets) ?: return@mapNotNull null
+            if (fromTarget.nodeId == toTarget.nodeId || !nodes.containsKey(fromTarget.nodeId) || !nodes.containsKey(toTarget.nodeId)) {
                 return@mapNotNull null
             }
             relation.toAggregateEdge(
-                prefix = "arch:service",
-                fromNodeId = fromService,
-                toNodeId = toService,
-                metadata = mapOf("architecture.aggregate" to "SERVICE"),
+                prefix = "arch:${level.name.lowercase()}",
+                fromNodeId = fromTarget.nodeId,
+                toNodeId = toTarget.nodeId,
+                metadata = mapOf(
+                    "architecture.aggregate" to aggregateName(fromTarget, toTarget),
+                    "architecture.aggregate.level" to level.name,
+                    "architecture.fromTargetKind" to fromTarget.kind.name,
+                    "architecture.toTargetKind" to toTarget.kind.name,
+                    "architecture.fromTarget" to fromTarget.qualifiedName,
+                    "architecture.toTarget" to toTarget.qualifiedName,
+                ),
             )
         }
     }
@@ -237,8 +252,11 @@ class ArchitectureGraphBuilder {
         return relationIndex.relations.mapNotNull { relation ->
             val fromClass = ownerClassForRelation(symbolIndex, relation.fromSymbolId) ?: return@mapNotNull null
             val toClass = ownerClassForRelation(symbolIndex, relation.toSymbolId) ?: return@mapNotNull null
-            val fromLayer = layerNodeIdFor(fromClass)
-            val toLayer = layerNodeIdFor(toClass)
+            if (!classifier.isProjectSourceClass(fromClass) || !classifier.isProjectSourceClass(toClass)) {
+                return@mapNotNull null
+            }
+            val fromLayer = classifier.layerFor(fromClass).nodeId
+            val toLayer = classifier.layerFor(toClass).nodeId
             if (fromLayer == toLayer || !nodes.containsKey(fromLayer) || !nodes.containsKey(toLayer)) {
                 return@mapNotNull null
             }
@@ -246,42 +264,75 @@ class ArchitectureGraphBuilder {
                 prefix = "arch:layer",
                 fromNodeId = fromLayer,
                 toNodeId = toLayer,
-                metadata = mapOf("architecture.aggregate" to "LAYER"),
+                metadata = mapOf(
+                    "architecture.aggregate" to "LAYER",
+                    "architecture.aggregate.level" to ArchitectureAggregationLevel.OVERVIEW.name,
+                ),
             )
         }
     }
 
-    private fun aggregateResourceRelations(
+    private fun projectionTargetFor(
         symbolIndex: JvmSymbolIndex,
-        relationIndex: JvmRelationIndex,
-        nodes: Map<String, ArchitectureNode>,
-    ): List<ArchitectureEdge> {
-        return relationIndex.relations.mapNotNull { relation ->
-            val fromClass = ownerClassForRelation(symbolIndex, relation.fromSymbolId)
-            val toClass = ownerClassForRelation(symbolIndex, relation.toSymbolId)
-            val fromResource = symbolIndex.resourcesByPath.values.firstOrNull { resource -> resource.id == relation.fromSymbolId }
-            val toResource = symbolIndex.resourcesByPath.values.firstOrNull { resource -> resource.id == relation.toSymbolId }
-            val fromNodeId = when {
-                fromClass != null -> serviceNodeIdFor(fromClass)
-                fromResource != null -> fromResource.id
-                else -> return@mapNotNull null
-            }
-            val toNodeId = when {
-                toClass != null -> serviceNodeIdFor(toClass)
-                toResource != null -> toResource.id
-                else -> return@mapNotNull null
-            }
-            if (fromNodeId == toNodeId || !nodes.containsKey(fromNodeId) || !nodes.containsKey(toNodeId)) {
-                return@mapNotNull null
-            }
-            relation.toAggregateEdge(
-                prefix = "arch:resource",
-                fromNodeId = fromNodeId,
-                toNodeId = toNodeId,
-                metadata = mapOf("architecture.aggregate" to "RESOURCE"),
-            )
+        symbolId: String,
+        level: ArchitectureAggregationLevel,
+        projectionTargets: ArchitectureProjectionTargetCache,
+    ): ArchitectureProjectionTarget? {
+        val symbol = symbolIndex.symbolsById[symbolId] ?: return null
+        return when (symbol) {
+            is JvmClassSymbol -> projectionTargetForClass(symbolIndex, symbol, level, projectionTargets)
+            is JvmMethodSymbol -> symbolIndex.findClass(symbol.ownerClassName)
+                ?.let { cls -> projectionTargetForClass(symbolIndex, cls, level, projectionTargets) }
+            is JvmFieldSymbol -> symbolIndex.findClass(symbol.ownerClassName)
+                ?.let { cls -> projectionTargetForClass(symbolIndex, cls, level, projectionTargets) }
+            is com.charmnight.linkgraph.jvm.index.JvmResourceSymbol -> projectionTargetForResource(symbol)
+            else -> null
         }
     }
+
+    private fun projectionTargetForClass(
+        symbolIndex: JvmSymbolIndex,
+        cls: JvmClassSymbol,
+        level: ArchitectureAggregationLevel,
+        projectionTargets: ArchitectureProjectionTargetCache,
+    ): ArchitectureProjectionTarget {
+        val target = when (level) {
+            ArchitectureAggregationLevel.OVERVIEW -> projectionTargets.overviewFor(cls)
+            ArchitectureAggregationLevel.PACKAGE -> when {
+                cls.jdk || cls.external || cls.library -> projectionTargets.overviewFor(cls)
+                else -> classifier.packageGroupFor(cls)
+            }
+        }
+        if (target.kind != ArchitectureProjectionTargetKind.PROJECT_PACKAGE) {
+            return target
+        }
+        val pkg = symbolIndex.packagesByName[cls.packageName] ?: return target
+        return target.copy(
+            nodeId = pkg.id,
+            qualifiedName = pkg.qualifiedName,
+            title = pkg.qualifiedName.ifBlank { "(default package)" },
+        )
+    }
+
+    private fun projectionTargetForResource(
+        resource: com.charmnight.linkgraph.jvm.index.JvmResourceSymbol,
+    ): ArchitectureProjectionTarget {
+        return classifier.resourceGroupFor(resource.path, resource.simpleName)
+    }
+
+    private fun aggregateName(
+        fromTarget: ArchitectureProjectionTarget,
+        toTarget: ArchitectureProjectionTarget,
+    ): String =
+        when {
+            fromTarget.kind == ArchitectureProjectionTargetKind.JDK_GROUP || toTarget.kind == ArchitectureProjectionTargetKind.JDK_GROUP -> "JDK"
+            fromTarget.kind == ArchitectureProjectionTargetKind.EXTERNAL_LIBRARY_GROUP || toTarget.kind == ArchitectureProjectionTargetKind.EXTERNAL_LIBRARY_GROUP -> "LIBRARY"
+            fromTarget.kind == ArchitectureProjectionTargetKind.PROJECT_SERVICE_BOUNDARY || toTarget.kind == ArchitectureProjectionTargetKind.PROJECT_SERVICE_BOUNDARY -> "SERVICE"
+            fromTarget.kind == ArchitectureProjectionTargetKind.PROJECT_COMPONENT || toTarget.kind == ArchitectureProjectionTargetKind.PROJECT_COMPONENT -> "COMPONENT"
+            fromTarget.kind == ArchitectureProjectionTargetKind.PROJECT_RESOURCE || toTarget.kind == ArchitectureProjectionTargetKind.PROJECT_RESOURCE -> "RESOURCE"
+            fromTarget.kind == ArchitectureProjectionTargetKind.PROJECT_LAYER || toTarget.kind == ArchitectureProjectionTargetKind.PROJECT_LAYER -> "LAYER"
+            else -> "PACKAGE"
+        }
 
     private fun ownerClassForRelation(
         symbolIndex: JvmSymbolIndex,
@@ -333,31 +384,143 @@ class ArchitectureGraphBuilder {
         )
     }
 
-    private fun serviceNodes(symbolIndex: JvmSymbolIndex): List<ArchitectureNode> {
+    private fun serviceNodes(
+        symbolIndex: JvmSymbolIndex,
+        serviceBoundaryNames: Map<String, String>,
+    ): List<ArchitectureNode> {
         return symbolIndex.classesByQualifiedName.values
-            .groupBy { cls -> serviceNodeIdFor(cls) }
+            .mapNotNull { cls -> classifier.serviceBoundaryFor(cls, serviceBoundaryNames)?.let { target -> target to cls } }
+            .groupBy({ (target, _) -> target }, { (_, cls) -> cls })
             .map { (nodeId, classes) ->
-                val packageName = serviceNameFor(classes.first())
+                val packageName = nodeId.qualifiedName
                 ArchitectureNode(
-                    id = nodeId,
+                    id = nodeId.nodeId,
                     kind = ArchitectureNodeKind.SERVICE,
                     qualifiedName = packageName,
-                    title = packageName.substringAfterLast('.').ifBlank { packageName },
+                    title = nodeId.title,
                     moduleName = classes.mapNotNull(JvmClassSymbol::moduleName).distinct().singleOrNull(),
                     packageName = packageName,
                     memberClassIds = classes.mapTo(linkedSetOf(), JvmClassSymbol::id),
-                    metadata = mapOf("service.package" to packageName),
+                    metadata = mapOf(
+                        "service.package" to packageName,
+                        "architecture.boundary.kind" to nodeId.kind.name,
+                        "architecture.inferred" to "true",
+                        "architecture.inference.reason" to "PROJECT_SERVICE_BOUNDARY",
+                    ),
+                )
+            }
+    }
+
+    private fun componentNodes(
+        symbolIndex: JvmSymbolIndex,
+        serviceBoundaryNames: Map<String, String>,
+        projectionTargets: ArchitectureProjectionTargetCache,
+    ): List<ArchitectureNode> {
+        return symbolIndex.classesByQualifiedName.values
+            .filter(classifier::isProjectSourceClass)
+            .filter { cls -> classifier.serviceBoundaryFor(cls, serviceBoundaryNames) == null }
+            .mapNotNull { cls ->
+                val target = projectionTargets.overviewFor(cls)
+                if (target.kind == ArchitectureProjectionTargetKind.PROJECT_COMPONENT) {
+                    target to cls
+                } else {
+                    null
+                }
+            }
+            .groupBy({ (target, _) -> target }, { (_, cls) -> cls })
+            .map { (target, classes) ->
+                ArchitectureNode(
+                    id = target.nodeId,
+                    kind = ArchitectureNodeKind.COMPONENT,
+                    qualifiedName = target.qualifiedName,
+                    title = target.title,
+                    moduleName = classes.mapNotNull(JvmClassSymbol::moduleName).distinct().singleOrNull(),
+                    packageName = target.qualifiedName,
+                    memberClassIds = classes.mapTo(linkedSetOf(), JvmClassSymbol::id),
+                    metadata = mapOf(
+                        "architecture.boundary.kind" to target.kind.name,
+                        "component.package" to target.qualifiedName,
+                    ),
+                )
+            }
+    }
+
+    private fun resourceGroupNodes(symbolIndex: JvmSymbolIndex): List<ArchitectureNode> {
+        return symbolIndex.resourcesByPath.values
+            .map { resource -> classifier.resourceGroupFor(resource.path, resource.simpleName) to resource }
+            .groupBy({ (target, _) -> target }, { (_, resource) -> resource })
+            .map { (target, resources) ->
+                ArchitectureNode(
+                    id = target.nodeId,
+                    kind = ArchitectureNodeKind.RESOURCE,
+                    qualifiedName = target.qualifiedName,
+                    title = target.title,
+                    memberResourceIds = resources.mapTo(linkedSetOf()) { resource -> resource.id },
+                    metadata = mapOf(
+                        "architecture.boundary.kind" to target.kind.name,
+                        "resource.group" to target.qualifiedName,
+                    ),
+                )
+            }
+    }
+
+    private fun dependencyGroupNodes(
+        symbolIndex: JvmSymbolIndex,
+        serviceBoundaryNames: Map<String, String>,
+    ): List<ArchitectureNode> {
+        return symbolIndex.classesByQualifiedName.values
+            .filterNot(classifier::isProjectSourceClass)
+            .filter { cls ->
+                cls.external ||
+                    cls.library ||
+                    cls.jdk ||
+                    cls.origin != SourceOrigin.PROJECT_SOURCE
+            }
+            .mapNotNull { cls ->
+                val target = classifier.projectNodeForClass(
+                    cls = cls,
+                    sourceClasses = symbolIndex.classesByQualifiedName.values,
+                    serviceBoundaryNames = serviceBoundaryNames,
+                )
+                if (target.kind in setOf(
+                        ArchitectureProjectionTargetKind.EXTERNAL_LIBRARY_GROUP,
+                        ArchitectureProjectionTargetKind.JDK_GROUP,
+                    )
+                ) {
+                    target to cls
+                } else {
+                    null
+                }
+            }
+            .groupBy({ (target, _) -> target }, { (_, cls) -> cls })
+            .map { (target, classes) ->
+                ArchitectureNode(
+                    id = target.nodeId,
+                    kind = when (target.kind) {
+                        ArchitectureProjectionTargetKind.JDK_GROUP -> ArchitectureNodeKind.JDK
+                        else -> ArchitectureNodeKind.LIBRARY
+                    },
+                    qualifiedName = target.qualifiedName,
+                    title = target.title,
+                    moduleName = classes.mapNotNull(JvmClassSymbol::moduleName).distinct().singleOrNull(),
+                    packageName = target.qualifiedName,
+                    memberClassIds = classes.mapTo(linkedSetOf(), JvmClassSymbol::id),
+                    metadata = mapOf(
+                        "architecture.boundary.kind" to target.kind.name,
+                        "dependency.group" to target.qualifiedName,
+                    ),
                 )
             }
     }
 
     private fun layerNodes(symbolIndex: JvmSymbolIndex): List<ArchitectureNode> {
         return symbolIndex.classesByQualifiedName.values
-            .groupBy { cls -> layerNodeIdFor(cls) }
-            .map { (nodeId, classes) ->
-                val layer = layerNameFor(classes.first())
+            .filter(classifier::isProjectSourceClass)
+            .groupBy { cls -> classifier.layerFor(cls) }
+            .map { (target, classes) ->
+                val layer = target.qualifiedName
                 ArchitectureNode(
-                    id = nodeId,
+                    id = target.nodeId,
                     kind = ArchitectureNodeKind.LAYER,
                     qualifiedName = layer,
                     title = layer,
@@ -375,35 +538,61 @@ class ArchitectureGraphBuilder {
             JvmClassKind.ANNOTATION -> ArchitectureNodeKind.ANNOTATION
             JvmClassKind.RECORD -> ArchitectureNodeKind.RECORD
             JvmClassKind.OBJECT -> ArchitectureNodeKind.OBJECT
+    }
+}
+
+private class ArchitectureProjectionTargetCache(
+    private val symbolIndex: JvmSymbolIndex,
+    private val classifier: ArchitectureBoundaryClassifier,
+    private val serviceBoundaryNames: Map<String, String>,
+) {
+    private val overviewTargetsByClassName = HashMap<String, ArchitectureProjectionTarget>()
+    private val componentTargetsByClassName = classifier.componentTargetsForProjectClasses(
+        symbolIndex.classesByQualifiedName.values.filter(classifier::isProjectSourceClass),
+    )
+
+    fun overviewFor(cls: JvmClassSymbol): ArchitectureProjectionTarget =
+        overviewTargetsByClassName.getOrPut(cls.qualifiedName) {
+            classifier.serviceBoundaryFor(cls, serviceBoundaryNames)
+                ?: if (classifier.isProjectSourceClass(cls)) {
+                    componentTargetsByClassName[cls.qualifiedName] ?: fallbackComponentTargetFor(cls)
+                } else {
+                    classifier.projectNodeForClass(
+                        cls = cls,
+                        sourceClasses = symbolIndex.classesByQualifiedName.values,
+                        serviceBoundaryNames = serviceBoundaryNames,
+                    )
+                }
         }
-}
 
-private fun serviceNodeIdFor(cls: JvmClassSymbol): String = "arch:service:${serviceNameFor(cls)}"
-
-private fun layerNodeIdFor(cls: JvmClassSymbol): String = "arch:layer:${layerNameFor(cls).lowercase()}"
-
-private fun serviceNameFor(cls: JvmClassSymbol): String {
-    val parts = cls.packageName.split('.').filter(String::isNotBlank)
-    if (parts.size <= 3) {
-        return cls.packageName.ifBlank { "(default)" }
-    }
-    val markerIndex = parts.indexOfFirst { part ->
-        part in setOf("controller", "web", "api", "service", "domain", "repository", "dao", "mapper", "infra", "infrastructure", "config")
-    }
-    val serviceParts = if (markerIndex > 1) parts.take(markerIndex) else parts.take((parts.size - 1).coerceAtLeast(1))
-    return serviceParts.joinToString(".").ifBlank { cls.packageName.ifBlank { "(default)" } }
-}
-
-private fun layerNameFor(cls: JvmClassSymbol): String {
-    val packageText = cls.packageName.lowercase()
-    val simpleText = cls.simpleName.lowercase()
-    return when {
-        cls.stereotype == JvmStereotype.CONTROLLER || ".controller" in packageText || ".web" in packageText || ".api" in packageText -> "API"
-        cls.stereotype == JvmStereotype.SERVICE || ".service" in packageText || simpleText.endsWith("service") -> "SERVICE"
-        cls.stereotype == JvmStereotype.REPOSITORY || ".repository" in packageText || ".dao" in packageText || ".mapper" in packageText -> "DATA"
-        cls.stereotype == JvmStereotype.CONFIGURATION || ".config" in packageText -> "CONFIG"
-        ".domain" in packageText || ".model" in packageText -> "DOMAIN"
-        ".infra" in packageText || ".infrastructure" in packageText -> "INFRA"
-        else -> "CORE"
+    private fun fallbackComponentTargetFor(cls: JvmClassSymbol): ArchitectureProjectionTarget {
+        val componentName = cls.packageName.ifBlank { cls.moduleName ?: "(default)" }
+        return ArchitectureProjectionTarget(
+            nodeId = ArchitectureBoundaryClassifier.componentNodeId(componentName),
+            qualifiedName = componentName,
+            title = componentName.substringAfterLast('.').ifBlank { componentName },
+            kind = ArchitectureProjectionTargetKind.PROJECT_COMPONENT,
+        )
     }
 }
+
+private val architectureAggregateRelationKinds = setOf(
+    JvmRelationKind.CALLS,
+    JvmRelationKind.USES_TYPE,
+    JvmRelationKind.INJECTS,
+    JvmRelationKind.EXTENDS,
+    JvmRelationKind.IMPLEMENTS,
+    JvmRelationKind.SPI_PROVIDES,
+    JvmRelationKind.SERVICE_LOADER_LOADS,
+    JvmRelationKind.REFLECTS_TO,
+    JvmRelationKind.USES_PROXY,
+    JvmRelationKind.SPRING_EVENT_PUBLISHES,
+    JvmRelationKind.SPRING_EVENT_LISTENS,
+    JvmRelationKind.DUBBO_PROVIDES,
+    JvmRelationKind.DUBBO_REFERENCES,
+    JvmRelationKind.FEIGN_CLIENT_CALLS,
+    JvmRelationKind.FEIGN_ROUTES_TO,
+    JvmRelationKind.MQ_PUBLISHES,
+    JvmRelationKind.MQ_CONSUMES,
+    JvmRelationKind.RESOURCE_BINDS,
+)

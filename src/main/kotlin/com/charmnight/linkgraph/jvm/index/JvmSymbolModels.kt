@@ -87,6 +87,23 @@ data class JvmMethodSymbol(
     override val origin: SourceOrigin,
 ) : JvmSymbol
 
+enum class JvmFieldTypeRole {
+    DIRECT_VALUE,
+    COLLECTION_ELEMENT,
+    MAP_KEY,
+    MAP_VALUE,
+    WRAPPER_VALUE,
+    TYPE_ARGUMENT,
+    PROVIDER_RETURN,
+    FUNCTION_PARAMETER,
+    FUNCTION_RETURN,
+}
+
+data class JvmFieldTypeReference(
+    val typeName: String,
+    val role: JvmFieldTypeRole,
+)
+
 data class JvmFieldSymbol(
     override val id: String,
     override val qualifiedName: String,
@@ -95,7 +112,15 @@ data class JvmFieldSymbol(
     val typeName: String?,
     override val source: JvmSourceRef?,
     override val origin: SourceOrigin,
+    val typeReferences: List<JvmFieldTypeReference> = typeName
+        ?.let { type -> listOf(JvmFieldTypeReference(type, JvmFieldTypeRole.DIRECT_VALUE)) }
+        .orEmpty(),
 ) : JvmSymbol
+
+fun JvmFieldSymbol.effectiveTypeReferences(): List<JvmFieldTypeReference> =
+    typeReferences.takeIf(List<JvmFieldTypeReference>::isNotEmpty)
+        ?: typeName?.let { type -> listOf(JvmFieldTypeReference(type, JvmFieldTypeRole.DIRECT_VALUE)) }
+        ?: emptyList()
 
 enum class JvmResourceKind {
     SPI_SERVICE_FILE,

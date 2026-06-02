@@ -71,6 +71,7 @@ export type NodeType =
   | "EXTERNAL_CLASS"
   | "LIBRARY"
   | "SERVICE"
+  | "COMPONENT"
   | "LAYER"
   | "RESOURCE"
   | "SQL"
@@ -184,10 +185,50 @@ export interface LinkGraphDocument {
   truncated?: boolean;
 }
 
+export interface GraphViewPresentation {
+  target: GraphPresentationTarget;
+  lanes: GraphPresentationLane[];
+  hiddenBuckets: GraphHiddenBucket[];
+  controls: GraphPresentationControls;
+}
+
+export interface GraphPresentationTarget {
+  nodeId: string | null;
+  title: string;
+  subtitle: string;
+  location?: string | null;
+}
+
+export interface GraphPresentationLane {
+  id: string;
+  label: string;
+  axis: "COLUMN" | "ROW" | "ZONE";
+  order: number;
+  role: string;
+}
+
+export interface GraphHiddenBucket {
+  id: string;
+  label: string;
+  count: number;
+  nodeIds: string[];
+  edgeIds: string[];
+}
+
+export interface GraphPresentationControls {
+  primaryScope: string;
+  availableScopes: string[];
+  searchable: boolean;
+  expandable: boolean;
+}
+
 export interface FactGraphSummary {
   anchorTitle?: string | null;
   visibleNodeCount: number;
   fullNodeCount: number;
+  hiddenNodeCount?: number;
+  hiddenEdgeCount?: number;
+  truncated?: boolean;
 }
 
 export interface FactGraphViewDocument {
@@ -196,6 +237,7 @@ export interface FactGraphViewDocument {
   anchorNodeId?: string | null;
   projectionIndex?: GraphProjectionIndex;
   summary: FactGraphSummary;
+  presentation: GraphViewPresentation;
 }
 
 export interface FlowchartSummary {
@@ -224,6 +266,9 @@ export interface FlowchartViewDocument {
 
 export interface ResourceRelationSummary {
   visibleNodeCount: number;
+  relationCount: number;
+  resourceCount: number;
+  fallbackReason: "NONE" | "NO_RESOURCE_UNITS" | "NO_BINDING_RELATIONS" | string;
   laneCounts: Record<string, number>;
 }
 
@@ -235,17 +280,94 @@ export interface ResourceRelationViewDocument {
   summary: ResourceRelationSummary;
 }
 
+export interface IndexedGraphSummary {
+  view: "ARCHITECTURE" | "CLASS_DIAGRAM" | "REVIEW" | string;
+  anchorKind?: string | null;
+  anchorNodeId?: string | null;
+  anchorTitle?: string | null;
+  anchorQualifiedName?: string | null;
+  scopeKind: string;
+  scopeLabel: string;
+  relationKinds: string[];
+  depth: number;
+  projectNodeCount: number;
+  projectClassCount: number;
+  externalNodeCount: number;
+  jdkNodeCount: number;
+  scopedNodeCount: number;
+  visibleNodeCount: number;
+  hiddenNodeCount: number;
+  hiddenEdgeCount: number;
+  candidateNodeCount: number;
+  candidateEdgeCount: number;
+  truncated: boolean;
+  completeness: string;
+  cacheState: string;
+  includeExternalLibraries?: boolean;
+  includeJdk?: boolean;
+  projectSourceNodeCount?: number;
+  externalLibraryNodeCount?: number;
+  resourceNodeCount?: number;
+  aggregateNodeCount?: number;
+  projectLayerCounts?: IndexedGraphLayerCounts | null;
+  visibleLayerCounts?: IndexedGraphLayerCounts | null;
+  scopedLayerCounts?: IndexedGraphLayerCounts | null;
+  candidateLayerCounts?: IndexedGraphLayerCounts | null;
+  hiddenLayerCounts?: IndexedGraphLayerCounts | null;
+  collapsedLayerCounts?: IndexedGraphLayerCounts | null;
+}
+
+export interface IndexedGraphLayerCounts {
+  projectSource?: number;
+  externalLibrary?: number;
+  jdk?: number;
+  resource?: number;
+  aggregate?: number;
+}
+
+export type IndexedGraphView = "ARCHITECTURE" | "CLASS_DIAGRAM" | "REVIEW";
+export type IndexedGraphRequestStates = Partial<Record<IndexedGraphView, AsyncRequestState>>;
+
+export interface IndexedGraphViewportOptions {
+  maxVisibleNodes?: number | null;
+  maxVisibleEdges?: number | null;
+}
+
+export interface IndexedClassDiagramOptions {
+  neighborhoodLimit: number;
+  memberLimit: number;
+}
+
+export interface IndexedReviewGraphOptions {
+  maxChangedNodes: number;
+  maxRelatedTestNodes: number;
+  maxUpstreamNodes: number;
+  maxDownstreamNodes: number;
+}
+
 export interface ArchitectureGraphSummary {
   moduleCount: number;
   packageCount: number;
   serviceCount: number;
+  componentCount?: number;
   resourceCount: number;
   layerCount: number;
+  libraryCount?: number;
+  jdkCount?: number;
   relationCount: number;
   classCount: number;
+  relationshipNodeCount?: number;
+  inventoryOnlyNodeCount?: number;
+  unconnectedPackageCount?: number;
+  unconnectedComponentCount?: number;
+  unconnectedServiceBoundaryCount?: number;
+  unconnectedResourceCount?: number;
+  externalDependencyGroupCount?: number;
+  jdkGroupCount?: number;
   truncated?: boolean;
   hiddenNodeCount?: number;
   hiddenEdgeCount?: number;
+  indexed?: IndexedGraphSummary | null;
 }
 
 export interface ArchitectureGraphViewDocument {
@@ -254,6 +376,7 @@ export interface ArchitectureGraphViewDocument {
   anchorNodeId?: string | null;
   projectionIndex?: GraphProjectionIndex;
   summary: ArchitectureGraphSummary;
+  presentation: GraphViewPresentation;
 }
 
 export interface ClassDiagramSummary {
@@ -267,9 +390,22 @@ export interface ClassDiagramSummary {
   relationCount: number;
   spiProviderCount?: number;
   reflectionRelationCount?: number;
+  relationCompleteness?: "COMPLETE" | "STRUCTURE_ONLY" | string;
+  scopeTypeCount?: number;
+  projectTypeCount?: number;
+  projectClassCount?: number;
+  scopeBasis?: "CLASS_NEIGHBORHOOD" | "EXPLICIT_SCOPE" | string;
+  anchorTypeNodeId?: string | null;
+  anchorTypeTitle?: string | null;
+  anchorTypeQualifiedName?: string | null;
+  neighborhoodLimit?: number;
+  memberLimit?: number;
+  neighborhoodCandidateTypeCount?: number;
+  neighborhoodTruncated?: boolean;
   truncated?: boolean;
   hiddenNodeCount?: number;
   hiddenEdgeCount?: number;
+  indexed?: IndexedGraphSummary | null;
 }
 
 export interface ClassDiagramViewDocument {
@@ -278,6 +414,7 @@ export interface ClassDiagramViewDocument {
   anchorNodeId?: string | null;
   projectionIndex?: GraphProjectionIndex;
   summary: ClassDiagramSummary;
+  presentation: GraphViewPresentation;
 }
 
 export interface ReviewGraphSummary {
@@ -291,6 +428,12 @@ export interface ReviewGraphSummary {
   truncated?: boolean;
   hiddenNodeCount?: number;
   hiddenEdgeCount?: number;
+  selectedDiffItemIds?: string[];
+  maxChangedNodes?: number;
+  maxUpstreamNodes?: number;
+  maxDownstreamNodes?: number;
+  maxRelatedTestNodes?: number;
+  indexed?: IndexedGraphSummary | null;
 }
 
 export interface ReviewGraphChangedFile {
@@ -363,6 +506,7 @@ export type GraphProjectionMappingKind =
   | "EXACT"
   | "MERGED_ALIAS"
   | "PATH_ALIAS"
+  | "INDEXED_READONLY"
   | "SYNTHETIC_READONLY"
   | "OVERFLOW_READONLY";
 
@@ -965,6 +1109,7 @@ export interface LinkGraphBootstrapState {
   architectureGraphView?: ArchitectureGraphViewDocument | null;
   classDiagramView?: ClassDiagramViewDocument | null;
   reviewGraphView?: ReviewGraphViewDocument | null;
+  indexedGraphRequestStates?: IndexedGraphRequestStates | null;
   semanticRevision?: number;
   workspaceRevision?: number;
   snapshotRevision?: number;

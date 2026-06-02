@@ -1,14 +1,14 @@
 package com.charmnight.linkgraph.application.workflow.review
 
 import com.charmnight.linkgraph.application.model.AsyncRequestState
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
-import com.charmnight.linkgraph.application.port.DiffReviewCompletedPresentation
-import com.charmnight.linkgraph.application.port.DiffReviewFailedPresentation
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.DiffReviewCompletedResult
+import com.charmnight.linkgraph.application.result.DiffReviewFailedResult
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEvent
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEventSink
-import com.charmnight.linkgraph.application.port.ReviewRequestScene
-import com.charmnight.linkgraph.application.port.ReviewRequestStartedPresentation
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
+import com.charmnight.linkgraph.application.result.ReviewRequestScene
+import com.charmnight.linkgraph.application.result.ReviewRequestStartedResult
 import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
 import com.charmnight.linkgraph.architecture.architectureIndexRuntime
 import com.charmnight.linkgraph.diff.GraphDiffer
@@ -40,7 +40,7 @@ internal class DiffReviewWorkflow(
     ) {
         val requestId = asyncRequestLifecycle.beginDiffReviewRequest()
         val settings = settingsProvider()
-        val presentation = asyncRequestLifecycle.buildAsyncRequestPresentation(
+        val presentation = asyncRequestLifecycle.buildAsyncRequestLifecycleResult(
             requestId = requestId,
             sceneLabel = "差异分析",
             settings = settings,
@@ -61,10 +61,10 @@ internal class DiffReviewWorkflow(
             null
         }
         emitReviewRequestStarted(
-            ReviewRequestStartedPresentation(
+            ReviewRequestStartedResult(
                 scene = ReviewRequestScene.DIFF_REVIEW,
                 requestState = presentation.requestState,
-                feedbackMessage = if (presentation.remoteRequested) {
+                statusMessage = if (presentation.remoteRequested) {
                     if (presentation.streamingSupported) {
                         "已发起远程 LLM 差异分析请求，当前采用流式输出。"
                     } else {
@@ -88,7 +88,7 @@ internal class DiffReviewWorkflow(
                 val timedOutState = asyncRequestLifecycle.buildTimedOutRequestState(presentation)
                 asyncRequestLifecycle.logAsyncRequestEvent(logger, "timedOut", timedOutState)
                 emitDiffReviewFailed(
-                    DiffReviewFailedPresentation(
+                    DiffReviewFailedResult(
                         message = timedOutState.errorMessage ?: "差异分析超时",
                         requestState = timedOutState,
                     ),
@@ -116,7 +116,7 @@ internal class DiffReviewWorkflow(
                             return@invokeLater
                         }
                         emitDiffReviewFailed(
-                            DiffReviewFailedPresentation(
+                            DiffReviewFailedResult(
                                 message = contextResult.message,
                                 requestState = AsyncRequestState.failed(
                                     requestId = requestId,
@@ -144,7 +144,7 @@ internal class DiffReviewWorkflow(
 
     private fun runDiffReviewBackground(
         requestId: Long,
-        presentation: com.charmnight.linkgraph.application.request.AsyncRequestPresentation,
+        presentation: com.charmnight.linkgraph.application.request.AsyncRequestLifecycleResult,
         contextResult: DiffReviewContextBuildResult.Ready,
         question: String,
         settings: LinkGraphSettingsState,
@@ -185,11 +185,11 @@ internal class DiffReviewWorkflow(
                             ApplicationFeedbackLevel.SUCCESS
                         }
                         emitDiffReviewCompleted(
-                            DiffReviewCompletedPresentation(
+                            DiffReviewCompletedResult(
                                 result = resultWithContextWarnings,
                                 requestState = requestState,
                                 feedbackLevel = feedbackLevel,
-                                feedbackMessage = requestState.statusMessage
+                                statusMessage = requestState.statusMessage
                                     ?: if (resultWithContextWarnings.patch != null) {
                                         "差异分析完成，已生成可预览的修订草稿。"
                                     } else {
@@ -204,7 +204,7 @@ internal class DiffReviewWorkflow(
                         val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
                         asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
                         emitDiffReviewFailed(
-                            DiffReviewFailedPresentation(
+                            DiffReviewFailedResult(
                                 message = message,
                                 requestState = requestState,
                             ),
@@ -297,7 +297,7 @@ internal class DiffReviewWorkflow(
 
     private fun emit(event: GraphEditorApplicationEvent) = eventSink.emit(event)
 
-    private fun emitReviewRequestStarted(presentation: ReviewRequestStartedPresentation) =
+    private fun emitReviewRequestStarted(presentation: ReviewRequestStartedResult) =
         emit(GraphEditorApplicationEvent.ReviewRequestStarted(presentation))
 
     private fun emitReviewStreamingPreview(
@@ -314,10 +314,10 @@ internal class DiffReviewWorkflow(
         ),
     )
 
-    private fun emitDiffReviewCompleted(presentation: DiffReviewCompletedPresentation) =
+    private fun emitDiffReviewCompleted(presentation: DiffReviewCompletedResult) =
         emit(GraphEditorApplicationEvent.DiffReviewCompleted(presentation))
 
-    private fun emitDiffReviewFailed(presentation: DiffReviewFailedPresentation) =
+    private fun emitDiffReviewFailed(presentation: DiffReviewFailedResult) =
         emit(GraphEditorApplicationEvent.DiffReviewFailed(presentation))
 }
 

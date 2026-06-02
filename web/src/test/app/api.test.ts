@@ -10,6 +10,10 @@ import {
   requestExpandInvocation,
   requestRemoveInvocationExpansion,
   requestGraphBeautificationAsync,
+  requestArchitectureGraph,
+  requestClassDiagram,
+  requestPackageDependencyGraph,
+  requestReviewGraph,
   resolveInvestigationThread,
   retryLastQaRequestAsync,
   updateWorkbenchSectionPreference,
@@ -344,6 +348,38 @@ describe("publishGraphEditScript", () => {
     requestAnalysisDisplayMode("FLOWCHART");
 
     expect(requestAnalysisDisplayModeBridge).toHaveBeenCalledWith("FLOWCHART");
+  });
+
+  it("indexed graph wrappers send backend-owned presets instead of duplicated defaults", () => {
+    const requestIndexedGraphBridge = vi.fn();
+    window.linkGraphBridge = {
+      requestIndexedGraph: requestIndexedGraphBridge,
+    };
+
+    requestArchitectureGraph({ viewport: { maxVisibleNodes: 80 } });
+    requestPackageDependencyGraph("com.example.orders", { includeJdk: false });
+    requestClassDiagram("component:orders", { classDiagram: { neighborhoodLimit: 48 } });
+    requestReviewGraph(["diff:1"], { review: { maxChangedNodes: 160 } });
+
+    expect(requestIndexedGraphBridge).toHaveBeenNthCalledWith(1, {
+      preset: "ARCHITECTURE",
+      viewport: { maxVisibleNodes: 80 },
+    });
+    expect(requestIndexedGraphBridge).toHaveBeenNthCalledWith(2, {
+      preset: "PACKAGE_DEPENDENCY",
+      packageName: "com.example.orders",
+      includeJdk: false,
+    });
+    expect(requestIndexedGraphBridge).toHaveBeenNthCalledWith(3, {
+      preset: "CLASS_DIAGRAM",
+      scopeNodeId: "component:orders",
+      classDiagram: { neighborhoodLimit: 48 },
+    });
+    expect(requestIndexedGraphBridge).toHaveBeenNthCalledWith(4, {
+      preset: "REVIEW",
+      selectedDiffItemIds: ["diff:1"],
+      review: { maxChangedNodes: 160 },
+    });
   });
 
   it("把工作台折叠偏好更新转发给 IDE bridge", () => {

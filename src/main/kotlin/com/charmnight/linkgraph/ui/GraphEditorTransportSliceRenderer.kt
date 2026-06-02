@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.foundation.LinkGraphRenderTrace
+import com.charmnight.linkgraph.json.JsonCodec
 
 /**
  * 渲染前后端之间的权威快照 transport。
@@ -124,7 +125,7 @@ class GraphEditorTransportSliceRenderer(
                     "state" to envelope.state,
                 )
             }
-            val envelopeJson = pageRenderer.sanitizeJson(pageRenderer.toJson(payload))
+            val envelopeJson = JsonCodec.toScriptSafeJson(payload)
             """window.dispatchEvent(new CustomEvent("link-graph-bootstrap", { detail: $envelopeJson }));"""
         }
         traceStage(

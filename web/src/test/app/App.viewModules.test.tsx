@@ -7,6 +7,7 @@ import {
   type TestBootstrapState,
   type TestBootstrapStateInput,
 } from "../../app/testBootstrapState";
+import type { GraphViewPresentation } from "../../app/types";
 
 vi.mock("../../app/views/fact/FactGraphView", () => ({
   FactGraphView: ({
@@ -170,6 +171,55 @@ vi.mock("../../app/views/resource/ResourceRelationView", () => ({
   ),
 }));
 
+vi.mock("../../app/views/class-diagram/ClassDiagramView", () => ({
+  ClassDiagramView: ({
+    view,
+  }: {
+    view: {
+      visibleGraph: {
+        nodes: Array<{ id: string }>;
+      };
+    };
+  }) => (
+    <div data-testid="class-diagram-view">
+      <span data-testid="class-diagram-node-count">{view.visibleGraph.nodes.length}</span>
+    </div>
+  ),
+}));
+
+vi.mock("../../app/views/architecture/ArchitectureGraphView", () => ({
+  ArchitectureGraphView: ({
+    view,
+  }: {
+    view: {
+      visibleGraph: {
+        nodes: Array<{ id: string }>;
+      };
+    };
+  }) => (
+    <div data-testid="architecture-graph-view">
+      <span data-testid="architecture-graph-node-count">{view.visibleGraph.nodes.length}</span>
+    </div>
+  ),
+}));
+
+const EMPTY_PRESENTATION: GraphViewPresentation = {
+  target: {
+    nodeId: null,
+    title: "",
+    subtitle: "",
+    location: null,
+  },
+  lanes: [],
+  hiddenBuckets: [],
+  controls: {
+    primaryScope: "",
+    availableScopes: [],
+    searchable: true,
+    expandable: true,
+  },
+};
+
 function bootstrapState(
   analysisDisplayMode: TestBootstrapState["analysisDisplayMode"],
   overrides: Partial<TestBootstrapStateInput> = {},
@@ -197,6 +247,7 @@ function bootstrapState(
       fullGraph: { nodes: [], edges: [] },
       anchorNodeId: null,
       summary: { anchorTitle: null, visibleNodeCount: 0, fullNodeCount: 0 },
+      presentation: EMPTY_PRESENTATION,
     },
     flowchartView: {
       visibleGraph: { nodes: [], edges: [] },
@@ -208,7 +259,7 @@ function bootstrapState(
       visibleGraph: { nodes: [], edges: [] },
       fullGraph: { nodes: [], edges: [] },
       anchorNodeId: null,
-      summary: { visibleNodeCount: 0, laneCounts: {} },
+      summary: { visibleNodeCount: 0, relationCount: 0, resourceCount: 0, fallbackReason: "NO_RESOURCE_UNITS", laneCounts: {} },
     },
   };
   const materializedState = materializeThreeViewDocuments({
@@ -248,6 +299,92 @@ describe("App view modules", () => {
     render(<App />);
 
     expect(screen.getByTestId("resource-relation-view")).toBeInTheDocument();
+  });
+
+  it("keeps the right workflow workbench available when opening class diagrams", () => {
+    window.linkGraphBootstrap = bootstrapState("CLASS_DIAGRAM", {
+      visibleGraph: {
+        nodes: [
+          {
+            id: "class:writer",
+            type: "CLASS",
+            title: "ConfirmedDraftArtifactWriter",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+          },
+        ],
+        edges: [],
+      },
+    });
+
+    render(<App />);
+
+    expect(screen.getByTestId("class-diagram-view")).toBeInTheDocument();
+    expect(screen.getByTestId("hybrid-workbench-layout")).toHaveClass("outline-collapsed");
+    expect(screen.getByTestId("hybrid-workbench-layout")).not.toHaveClass("workbench-collapsed");
+    expect(screen.getByRole("complementary", { name: "阶段工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "问答" })).toBeInTheDocument();
+  });
+
+  it("keeps the right workflow workbench available when opening the project structure graph", () => {
+    const state = bootstrapState("ARCHITECTURE_GRAPH", {
+      visibleGraph: {
+        nodes: [
+          {
+            id: "component:entry",
+            type: "COMPONENT",
+            title: "entry",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+          },
+        ],
+        edges: [],
+      },
+    });
+    window.linkGraphBootstrap = {
+      ...state,
+      architectureGraphView: {
+        ...state.architectureGraphView!,
+        anchorNodeId: "component:entry",
+        summary: {
+          ...state.architectureGraphView!.summary,
+          indexed: {
+            view: "ARCHITECTURE",
+            anchorNodeId: "component:entry",
+            anchorTitle: "entry",
+            scopeKind: "PROJECT",
+            scopeLabel: "整个项目",
+            relationKinds: [],
+            depth: 2,
+            projectNodeCount: 1,
+            projectClassCount: 1,
+            externalNodeCount: 0,
+            jdkNodeCount: 0,
+            scopedNodeCount: 1,
+            visibleNodeCount: 1,
+            hiddenNodeCount: 0,
+            hiddenEdgeCount: 0,
+            candidateNodeCount: 1,
+            candidateEdgeCount: 0,
+            truncated: false,
+            completeness: "COMPLETE",
+            cacheState: "HIT",
+          },
+        },
+      },
+    };
+
+    render(<App />);
+
+    expect(screen.getByTestId("architecture-graph-view")).toBeInTheDocument();
+    expect(screen.getByTestId("hybrid-workbench-layout")).toHaveClass("outline-collapsed");
+    expect(screen.getByTestId("hybrid-workbench-layout")).not.toHaveClass("workbench-collapsed");
+    expect(screen.getByRole("complementary", { name: "阶段工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "问答" })).toBeInTheDocument();
   });
 
   it("keeps the fact view document in sync after local fact-graph edits instead of relying on a render-time graph override", async () => {
@@ -297,6 +434,7 @@ describe("App view modules", () => {
           },
           anchorNodeId: "method:submit-order",
           summary: { anchorTitle: "OrderController.submit", visibleNodeCount: 1, fullNodeCount: 1 },
+          presentation: EMPTY_PRESENTATION,
         },
         workingGraph: {
           nodes: [
@@ -844,7 +982,7 @@ describe("App view modules", () => {
             edges: [],
           },
           anchorNodeId: "method:submit-order",
-          summary: { visibleNodeCount: 1, laneCounts: { CODE: 1 } },
+          summary: { visibleNodeCount: 1, relationCount: 0, resourceCount: 1, fallbackReason: "NO_BINDING_RELATIONS", laneCounts: { CODE: 1 } },
         },
         referenceWorkingGraph: {
           nodes: [
@@ -994,6 +1132,7 @@ describe("App view modules", () => {
         },
         anchorNodeId: "method:submit-order",
         summary: { anchorTitle: "OrderController.submit", visibleNodeCount: 1, fullNodeCount: 1 },
+        presentation: EMPTY_PRESENTATION,
       },
       workingGraph: {
         nodes: [
@@ -1660,7 +1799,7 @@ describe("App view modules", () => {
           edges: [],
         },
         anchorNodeId: "resource:sql",
-        summary: { visibleNodeCount: 1, laneCounts: { DATA: 1 } },
+        summary: { visibleNodeCount: 1, relationCount: 0, resourceCount: 1, fallbackReason: "NO_BINDING_RELATIONS", laneCounts: { DATA: 1 } },
       },
     });
 

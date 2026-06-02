@@ -4,7 +4,9 @@ import com.charmnight.linkgraph.testing.*
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class GraphModelTest {
@@ -234,6 +236,38 @@ class GraphModelTest {
     }
 
     @Test
+    fun graphJsonRejectsTrailingGarbageAfterRootObject() {
+        assertFailsWith<IllegalStateException> {
+            GraphJson.fromJson("""{"nodes":[],"edges":[]} trailing""")
+        }
+    }
+
+    @Test
+    fun graphJsonEscapesAllLowControlCharacters() {
+        val controlCharacters = (0..0x1f)
+            .map(Int::toChar)
+            .joinToString("")
+        val json = GraphJson.toJson(
+            GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:control-characters",
+                        type = NodeType.METHOD,
+                        title = "prefix${controlCharacters}suffix",
+                    ),
+                ),
+            ),
+        )
+
+        (0..0x1f).map(Int::toChar).forEach { char ->
+            assertFalse(json.contains(char), "JSON output must escape control char U+${char.code.toString(16).padStart(4, '0')}")
+        }
+        assertTrue(json.contains("\\u0000"))
+        assertTrue(json.contains("\\u0008"))
+        assertTrue(json.contains("\\u001f"))
+    }
+
+    @Test
     fun flowchartMetadataRoundTripPreservesExplicitControlFlowRoles() {
         val loopNode = GraphNode(
             id = "scope:foreach",
@@ -296,6 +330,7 @@ class GraphModelTest {
                 "EXTERNAL_CLASS",
                 "LIBRARY",
                 "SERVICE",
+                "COMPONENT",
                 "LAYER",
                 "RESOURCE",
                 "SQL",

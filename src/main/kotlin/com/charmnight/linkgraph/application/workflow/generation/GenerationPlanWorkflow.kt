@@ -13,13 +13,14 @@ import com.charmnight.linkgraph.application.diagnostics.GenerationDiagnostics
 import com.charmnight.linkgraph.foundation.debugLazy
 import com.charmnight.linkgraph.application.model.AsyncRequestExecutionMode
 import com.charmnight.linkgraph.application.model.AsyncRequestState
-import com.charmnight.linkgraph.application.port.GenerationRequestFailurePresentation
-import com.charmnight.linkgraph.application.port.GenerationRequestScene
-import com.charmnight.linkgraph.application.port.GenerationRequestStartedPresentation
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEvent
+import com.charmnight.linkgraph.application.result.GenerationRequestFailureResult
+import com.charmnight.linkgraph.application.result.GenerationRequestScene
+import com.charmnight.linkgraph.application.result.GenerationRequestStartedResult
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
 import com.charmnight.linkgraph.application.usecase.GenerationUseCase
 import com.charmnight.linkgraph.application.usecase.GenerationUseCaseResult
 import com.charmnight.linkgraph.codegen.ProjectPathNormalizer
+import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 
 internal class GenerationPlanWorkflow(
     private val dependencies: GenerationWorkflowDependencies,
@@ -43,7 +44,7 @@ internal class GenerationPlanWorkflow(
         dependencies.refreshDraftAndCodeState(snapshot.toApplicationSnapshot().toRiskResolutionSnapshot())
         val requestId = dependencies.asyncRequestLifecycle.beginGenerationPlanRequest()
         val effectiveSettings = dependencies.settingsProvider()
-        val presentation = dependencies.asyncRequestLifecycle.buildAsyncRequestPresentation(
+        val presentation = dependencies.asyncRequestLifecycle.buildAsyncRequestLifecycleResult(
             requestId = requestId,
             sceneLabel = "实现计划生成",
             settings = effectiveSettings,
@@ -66,11 +67,11 @@ internal class GenerationPlanWorkflow(
         }
         dependencies.emit(
             GraphEditorApplicationEvent.GenerationRequestStarted(
-                GenerationRequestStartedPresentation(
+                GenerationRequestStartedResult(
                     scene = GenerationRequestScene.PLAN,
                     requestState = presentation.requestState,
                     clearRuntimeArtifactScene = "plan",
-                    feedbackMessage = if (presentation.remoteRequested) {
+                    statusMessage = if (presentation.remoteRequested) {
                         if (presentation.streamingSupported) {
                             "已发起远程 LLM 实现计划请求，当前采用流式输出。"
                         } else {
@@ -93,7 +94,7 @@ internal class GenerationPlanWorkflow(
                 dependencies.asyncRequestLifecycle.logAsyncRequestEvent(dependencies.logger, "timedOut", timedOutState)
                 dependencies.emit(
                     GraphEditorApplicationEvent.GenerationPlanRequestFailed(
-                        GenerationRequestFailurePresentation(
+                        GenerationRequestFailureResult(
                             scene = "实现计划生成",
                             message = timedOutState.errorMessage ?: "实现计划生成超时",
                             requestState = timedOutState,
@@ -106,6 +107,7 @@ internal class GenerationPlanWorkflow(
             work = {
                 executePlanRuntime(
                     payload = payload,
+                    settings = effectiveSettings,
                     onPreview = previewUpdater,
                 )
             },
@@ -155,7 +157,7 @@ internal class GenerationPlanWorkflow(
                         dependencies.asyncRequestLifecycle.logAsyncRequestEvent(dependencies.logger, "failed", requestState)
                         dependencies.emit(
                             GraphEditorApplicationEvent.GenerationPlanRequestFailed(
-                                GenerationRequestFailurePresentation(
+                                GenerationRequestFailureResult(
                                     scene = "实现计划生成",
                                     message = message,
                                     requestState = requestState,
@@ -170,6 +172,7 @@ internal class GenerationPlanWorkflow(
 
     private fun executePlanRuntime(
         payload: PlanningInput,
+        settings: LinkGraphSettingsState,
         onPreview: ((String, Boolean) -> Unit)? = null,
     ): AgentRunResult<GenerationPlan> {
         val runtimeResult = dependencies.agentRunCoordinator.run(
@@ -184,13 +187,16 @@ internal class GenerationPlanWorkflow(
                             confirmedChanges = input.planningPayload.confirmedChanges,
                             sourceContext = input.planningPayload.sourceContext,
                             onPreview = onPreview,
-                            settingsOverride = dependencies.settingsProvider().withRuntimeDeadlineTimeout(runtimeContext),
+                            settingsOverride = settings.withRuntimeDeadlineTimeout(runtimeContext),
                         ),
                         dependencies.project.basePath,
                     )
                 },
             ),
-            input = PlanCapabilityInput(payload),
+            input = PlanCapabilityInput(
+                planningPayload = payload,
+                settings = settings,
+            ),
             runtimeContext = AgentRuntimeContext(
                 project = dependencies.project,
                 snapshotSupplier = dependencies.toolGraphSnapshotProvider::snapshot,

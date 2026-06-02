@@ -2,10 +2,10 @@ package com.charmnight.linkgraph.application.usecase
 
 import com.charmnight.linkgraph.application.model.AsyncRequestState
 import com.charmnight.linkgraph.application.model.PlanningInput
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
-import com.charmnight.linkgraph.application.port.GeneratedCodeDraftsPresentation
-import com.charmnight.linkgraph.application.port.GenerationPlanPresentation
-import com.charmnight.linkgraph.application.port.GenerationRequestFailurePresentation
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.GeneratedCodeDraftsResult
+import com.charmnight.linkgraph.application.result.GenerationPlanResult
+import com.charmnight.linkgraph.application.result.GenerationRequestFailureResult
 import com.charmnight.linkgraph.codegen.CodeGenerationResult
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.codegen.ProjectPathNormalizer
@@ -19,9 +19,9 @@ import com.charmnight.linkgraph.llm.runtime.AgentRunResult
 import com.charmnight.linkgraph.llm.runtime.AgentRunState
 
 sealed interface GenerationUseCaseResult {
-    data class PlanReady(val presentation: GenerationPlanPresentation) : GenerationUseCaseResult
-    data class CodeDraftsReady(val presentation: GeneratedCodeDraftsPresentation) : GenerationUseCaseResult
-    data class CodeDraftFailed(val presentation: GenerationRequestFailurePresentation) : GenerationUseCaseResult
+    data class PlanReady(val presentation: GenerationPlanResult) : GenerationUseCaseResult
+    data class CodeDraftsReady(val presentation: GeneratedCodeDraftsResult) : GenerationUseCaseResult
+    data class CodeDraftFailed(val presentation: GenerationRequestFailureResult) : GenerationUseCaseResult
 }
 
 class GenerationUseCase(
@@ -39,17 +39,17 @@ class GenerationUseCase(
         payload: PlanningInput,
         runtimeResult: AgentRunResult<GenerationPlan>,
         requestState: AsyncRequestState,
-        runtimeArtifacts: List<com.charmnight.linkgraph.application.port.ApplicationRuntimeArtifactSummary>,
+        runtimeArtifacts: List<com.charmnight.linkgraph.application.result.ApplicationRuntimeArtifactSummary>,
     ): GenerationUseCaseResult.PlanReady {
         val plan = runtimeResult.output ?: fallbackPlan(payload)
         val completedRequestState = requestState.copy(promptPreviewAvailable = plan.promptPreview.isNotBlank())
         return GenerationUseCaseResult.PlanReady(
-            GenerationPlanPresentation(
+            GenerationPlanResult(
                 plan = plan,
                 requestState = completedRequestState,
                 runtimeArtifacts = runtimeArtifacts,
                 feedbackLevel = if (requestState.fallbackUsed) ApplicationFeedbackLevel.WARNING else ApplicationFeedbackLevel.SUCCESS,
-                feedbackMessage = requestState.statusMessage ?: "实现计划已生成。",
+                statusMessage = requestState.statusMessage ?: "实现计划已生成。",
             ),
         )
     }
@@ -57,14 +57,14 @@ class GenerationUseCase(
     fun resolveCodeDrafts(
         runtimeResult: AgentRunResult<CodeGenerationResult>,
         requestState: AsyncRequestState,
-        runtimeArtifacts: List<com.charmnight.linkgraph.application.port.ApplicationRuntimeArtifactSummary>,
+        runtimeArtifacts: List<com.charmnight.linkgraph.application.result.ApplicationRuntimeArtifactSummary>,
         preparedDrafts: List<GeneratedCodeDraft>? = null,
     ): GenerationUseCaseResult {
         val draftResult = runtimeResult.output
         if (draftResult == null) {
             val failure = resolveCodegenRuntimeFailure(runtimeResult.finalState)
             return GenerationUseCaseResult.CodeDraftFailed(
-                GenerationRequestFailurePresentation(
+                GenerationRequestFailureResult(
                     scene = "代码草稿",
                     message = failure.message,
                     requestState = requestState.copy(
@@ -78,7 +78,7 @@ class GenerationUseCase(
         if (draftResult.drafts.isEmpty()) {
             val message = draftResult.emptyResultMessage()
             return GenerationUseCaseResult.CodeDraftFailed(
-                GenerationRequestFailurePresentation(
+                GenerationRequestFailureResult(
                     scene = "代码草稿",
                     message = message,
                     requestState = requestState.copy(
@@ -91,7 +91,7 @@ class GenerationUseCase(
         }
         val completedRequestState = requestState.copy(promptPreviewAvailable = !draftResult.promptPreview.isNullOrBlank())
         return GenerationUseCaseResult.CodeDraftsReady(
-            GeneratedCodeDraftsPresentation(
+            GeneratedCodeDraftsResult(
                 drafts = preparedDrafts ?: draftResult.drafts,
                 warnings = draftResult.warnings,
                 source = draftResult.source,
@@ -99,7 +99,7 @@ class GenerationUseCase(
                 requestState = completedRequestState,
                 runtimeArtifacts = runtimeArtifacts,
                 feedbackLevel = if (requestState.fallbackUsed) ApplicationFeedbackLevel.WARNING else ApplicationFeedbackLevel.SUCCESS,
-                feedbackMessage = completedRequestState.statusMessage ?: "代码草稿已生成。",
+                statusMessage = completedRequestState.statusMessage ?: "代码草稿已生成。",
             ),
         )
     }
@@ -123,7 +123,7 @@ class GenerationUseCase(
         )
     }
 
-    private fun resolveCodegenRuntimeFailure(runtimeState: AgentRunState): RuntimeFailurePresentation {
+    private fun resolveCodegenRuntimeFailure(runtimeState: AgentRunState): RuntimeFailureResult {
         val lastStepSummary = runtimeState.stepRecords.lastOrNull()?.summary
         val message = when (lastStepSummary) {
             "validate-generated-drafts" ->
@@ -148,10 +148,10 @@ class GenerationUseCase(
             ?.trim()
             ?.takeIf { detail -> detail.isNotEmpty() && detail != message }
             ?: failureReasonDetail
-        return RuntimeFailurePresentation(message, detailMessage)
+        return RuntimeFailureResult(message, detailMessage)
     }
 
-    private data class RuntimeFailurePresentation(
+    private data class RuntimeFailureResult(
         val message: String,
         val detailMessage: String?,
     )

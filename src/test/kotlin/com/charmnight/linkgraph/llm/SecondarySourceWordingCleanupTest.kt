@@ -13,7 +13,7 @@ class SecondarySourceWordingCleanupTest {
         val projectRoot = Path.of(System.getProperty("user.dir"))
         val files = listOf(
             "src/main/kotlin/com/charmnight/linkgraph/application/diagnostics/GenerationDiagnostics.kt",
-            "src/main/kotlin/com/charmnight/linkgraph/application/planning/InteractiveGraphProjector.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/projection/InteractiveGraphProjector.kt",
             "src/main/kotlin/com/charmnight/linkgraph/application/debug/DebugGraphFactory.kt",
             "src/main/kotlin/com/charmnight/linkgraph/codegen/CodeGenerationService.kt",
         )

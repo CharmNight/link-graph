@@ -36,6 +36,8 @@ enum class NodeType {
     LIBRARY,
     /** 表示服务聚合节点。 */
     SERVICE,
+    /** 表示项目组件聚合节点。 */
+    COMPONENT,
     /** 表示架构层节点。 */
     LAYER,
     /** 表示泛化资源节点。 */

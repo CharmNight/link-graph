@@ -406,8 +406,10 @@ export function deriveFactGraphSummary(
   visibleGraph: LinkGraphDocument,
   fullGraph: LinkGraphDocument,
   anchorNodeId?: string | null,
+  currentSummary?: FactGraphViewDocument["summary"],
 ) {
   return {
+    ...currentSummary,
     anchorTitle: fullGraph.nodes.find((node) => node.id === anchorNodeId)?.title
       ?? visibleGraph.nodes.find((node) => node.id === anchorNodeId)?.title
       ?? null,
@@ -419,9 +421,8 @@ export function deriveFactGraphSummary(
 export function deriveFlowchartSummary(
   visibleGraph: LinkGraphDocument,
   fullGraph: LinkGraphDocument = visibleGraph,
+  currentSummary?: FlowchartViewDocument["summary"],
 ) {
-  const hiddenNodeCount = (fullGraph.nodes?.length ?? 0) - visibleGraph.nodes.length;
-  const hiddenEdgeCount = (fullGraph.edges?.length ?? 0) - visibleGraph.edges.length;
   const incompleteNodeCount = visibleGraph.nodes.filter((node) => node.metadata?.["flow.incomplete"] === "true").length;
   const incompleteEdgeCount = visibleGraph.edges.filter((edge) => edge.metadata?.["flow.incomplete"] === "true").length;
   const syntheticEdgeCount = visibleGraph.edges.filter((edge) => edge.metadata?.["flow.synthetic"] === "true").length;
@@ -429,14 +430,12 @@ export function deriveFlowchartSummary(
     (edge) => edge.metadata?.["flow.synthetic"] === "true" && edge.metadata?.["flow.provenance"] === "SYNTHETIC_PROJECTION",
   ).length;
   return {
+    ...currentSummary,
     nodeCount: visibleGraph.nodes.length,
     branchCount: visibleGraph.nodes.filter((node) => resolveFlowchartKind(node) === "DECISION").length,
     exceptionPathCount: visibleGraph.edges.filter((edge) => edge.label?.trim().toUpperCase() === "EXCEPTION").length,
     fullNodeCount: fullGraph.nodes.length,
     fullEdgeCount: fullGraph.edges.length,
-    hiddenNodeCount: Math.max(0, hiddenNodeCount),
-    hiddenEdgeCount: Math.max(0, hiddenEdgeCount),
-    truncated: hiddenNodeCount > 0 || hiddenEdgeCount > 0,
     incompleteNodeCount,
     incompleteEdgeCount,
     semanticallyIncomplete: incompleteNodeCount > 0 || incompleteEdgeCount > 0,
@@ -446,8 +445,16 @@ export function deriveFlowchartSummary(
 }
 
 export function deriveResourceRelationSummary(visibleGraph: LinkGraphDocument) {
+  const resourceCount = visibleGraph.nodes.filter(isResourceRelationNode).length;
   return {
     visibleNodeCount: visibleGraph.nodes.length,
+    relationCount: visibleGraph.edges.length,
+    resourceCount,
+    fallbackReason: visibleGraph.edges.length > 0
+      ? "NONE"
+      : resourceCount === 0
+        ? "NO_RESOURCE_UNITS"
+        : "NO_BINDING_RELATIONS",
     laneCounts: visibleGraph.nodes.reduce<Record<string, number>>((counts, node) => {
       const lane = node.metadata?.["resource.lane"] ?? "CODE";
       counts[lane] = (counts[lane] ?? 0) + 1;
@@ -456,13 +463,22 @@ export function deriveResourceRelationSummary(visibleGraph: LinkGraphDocument) {
   };
 }
 
+function isResourceRelationNode(node: LinkGraphNode): boolean {
+  return node.metadata?.["resource.lane"] != null ||
+    node.type.includes("RESOURCE") ||
+    ["SQL", "HTTP_ENDPOINT", "MQ_TOPIC", "CONFIG_ITEM"].includes(node.type);
+}
+
 export function deriveArchitectureGraphSummary(visibleGraph: LinkGraphDocument) {
   return {
     moduleCount: visibleGraph.nodes.filter((node) => node.type === "MODULE").length,
     packageCount: visibleGraph.nodes.filter((node) => node.type === "PACKAGE").length,
     serviceCount: visibleGraph.nodes.filter((node) => node.type === "SERVICE").length,
+    componentCount: visibleGraph.nodes.filter((node) => node.type === "COMPONENT").length,
     resourceCount: visibleGraph.nodes.filter((node) => node.type === "RESOURCE").length,
     layerCount: visibleGraph.nodes.filter((node) => node.type === "LAYER").length,
+    libraryCount: visibleGraph.nodes.filter((node) => node.type === "LIBRARY").length,
+    jdkCount: visibleGraph.nodes.filter((node) => node.metadata?.["architecture.node.kind"] === "JDK").length,
     relationCount: visibleGraph.edges.length,
     classCount: visibleGraph.nodes
       .map((node) => Number(node.metadata?.["architecture.classCount"] ?? "0"))
@@ -487,6 +503,18 @@ export function deriveClassDiagramSummary(visibleGraph: LinkGraphDocument) {
     relationCount: visibleGraph.edges.length,
     spiProviderCount: 0,
     reflectionRelationCount: 0,
+    relationCompleteness: "COMPLETE",
+    scopeTypeCount: visibleGraph.nodes.length,
+    projectTypeCount: visibleGraph.nodes.length,
+    projectClassCount: visibleGraph.nodes.filter((node) => node.type === "CLASS").length,
+    scopeBasis: "CLASS_NEIGHBORHOOD",
+    anchorTypeNodeId: visibleGraph.nodes[0]?.id ?? null,
+    anchorTypeTitle: visibleGraph.nodes[0]?.title ?? null,
+    anchorTypeQualifiedName: visibleGraph.nodes[0]?.signature ?? null,
+    neighborhoodLimit: visibleGraph.nodes.length,
+    memberLimit: 5,
+    neighborhoodCandidateTypeCount: visibleGraph.nodes.length,
+    neighborhoodTruncated: false,
   };
 }
 
@@ -515,6 +543,11 @@ export function deriveReviewGraphSummary(visibleGraph: LinkGraphDocument) {
     truncated: Boolean(visibleGraph.truncated),
     hiddenNodeCount: 0,
     hiddenEdgeCount: 0,
+    selectedDiffItemIds: [],
+    maxChangedNodes: 120,
+    maxUpstreamNodes: 40,
+    maxDownstreamNodes: 40,
+    maxRelatedTestNodes: 40,
   };
 }
 
@@ -598,7 +631,7 @@ export function syncFactGraphViewDocument(
     visibleGraph: nextVisibleGraph,
     fullGraph,
     anchorNodeId: nextAnchorNodeId,
-    summary: deriveFactGraphSummary(nextVisibleGraph, fullGraph, nextAnchorNodeId),
+    summary: deriveFactGraphSummary(nextVisibleGraph, fullGraph, nextAnchorNodeId, currentView.summary),
   };
 }
 
@@ -711,7 +744,7 @@ export function syncFlowchartViewLayout(
     ...currentView,
     visibleGraph,
     fullGraph,
-    summary: deriveFlowchartSummary(visibleGraph, fullGraph),
+    summary: deriveFlowchartSummary(visibleGraph, fullGraph, currentView.summary),
   };
 }
 
@@ -739,7 +772,7 @@ export function syncArchitectureGraphViewLayout(
     ...currentView,
     visibleGraph,
     fullGraph,
-    summary: deriveArchitectureGraphSummary(visibleGraph),
+    summary: currentView.summary,
   };
 }
 

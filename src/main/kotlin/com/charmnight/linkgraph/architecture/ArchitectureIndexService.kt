@@ -6,9 +6,8 @@ import com.charmnight.linkgraph.settings.LinkGraphSettingsChangedNotifier
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
-import com.intellij.platform.backend.workspace.WorkspaceModelChangeListener
-import com.intellij.platform.backend.workspace.WorkspaceModelTopics
-import com.intellij.platform.workspace.storage.VersionedStorageChange
+import com.intellij.openapi.roots.ModuleRootEvent
+import com.intellij.openapi.roots.ModuleRootListener
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.newvfs.BulkFileListener
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent
@@ -35,9 +34,9 @@ class ArchitectureIndexService(
             },
         )
         connection.subscribe(
-            WorkspaceModelTopics.CHANGED,
-            object : WorkspaceModelChangeListener {
-                override fun changed(event: VersionedStorageChange) {
+            ModuleRootListener.TOPIC,
+            object : ModuleRootListener {
+                override fun rootsChanged(event: ModuleRootEvent) {
                     invalidate()
                 }
             },
@@ -63,17 +62,61 @@ class ArchitectureIndexService(
 
     fun getOrBuildCachedIndex(
         cacheKey: ArchitectureGraphCacheKey,
+        recordAsCurrent: Boolean = true,
+        forceRebuild: Boolean = false,
         builder: () -> ArchitectureGraphIndex,
     ): ArchitectureGraphIndex {
-        cache.get(cacheKey)?.index?.let { index ->
-            lastIndex = index
-            return index
+        if (!forceRebuild) {
+            cache.get(cacheKey)?.index?.let { index ->
+                if (recordAsCurrent) {
+                    lastIndex = index
+                }
+                return index
+            }
         }
-        return builder().also { index ->
-            cache.put(cacheKey, index)
-            lastIndex = index
+        val cached = cache.getOrBuild(
+            key = cacheKey,
+            forceRebuild = forceRebuild,
+            builder = builder,
+        )
+        return cached.index.also { index ->
+            if (recordAsCurrent) {
+                lastIndex = index
+            }
         }
     }
+
+    fun getCachedIndex(cacheKey: ArchitectureGraphCacheKey): ArchitectureGraphIndex? =
+        cache.get(cacheKey)?.index
+
+    fun recordCurrentIndex(index: ArchitectureGraphIndex, recordAsCurrent: Boolean = true): ArchitectureGraphIndex =
+        index.also {
+            if (recordAsCurrent) {
+                lastIndex = it
+            }
+        }
+
+    fun putCachedIndex(
+        cacheKey: ArchitectureGraphCacheKey,
+        index: ArchitectureGraphIndex,
+        recordAsCurrent: Boolean = true,
+    ): ArchitectureGraphIndex =
+        cache.put(cacheKey, index).index.also {
+            if (recordAsCurrent) {
+                lastIndex = it
+            }
+        }
+
+    fun getOrBuildAuxiliaryCachedIndex(
+        cacheKey: ArchitectureGraphCacheKey,
+        forceRebuild: Boolean = false,
+        builder: () -> ArchitectureGraphIndex,
+    ): ArchitectureGraphIndex =
+        cache.getOrBuild(
+            key = cacheKey,
+            forceRebuild = forceRebuild,
+            builder = builder,
+        ).index
 
     fun invalidate() {
         cache.invalidate()

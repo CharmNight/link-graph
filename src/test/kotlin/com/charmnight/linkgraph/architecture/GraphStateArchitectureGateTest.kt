@@ -77,7 +77,8 @@ class GraphStateArchitectureGateTest {
         assertFalse(bridgeSource.contains("GraphEditorMessage.GraphChanged"))
         assertFalse(routerSource.contains("handleFrontendGraphChanged"))
         assertTrue(messageSource.contains("data class ApplyGraphEditScript"))
-        assertTrue(bridgeSource.contains("applyGraphEditScriptQuery"))
+        assertTrue(bridgeSource.contains("private val bridgeCommandQuery: JBCefJSQuery"))
+        assertTrue(bridgeSource.contains("applyGraphEditScript: (payload) => sendCommand(\"applyGraphEditScript\""))
         assertTrue(routerSource.contains("ApplyGraphEditScript"))
     }
 
@@ -259,6 +260,47 @@ class GraphStateArchitectureGateTest {
     }
 
     @Test
+    fun applicationPortsDoNotDefinePresentationDtos() {
+        val portRoot = root.resolve("src/main/kotlin/com/charmnight/linkgraph/application/port")
+        val offenders = Files.walk(portRoot)
+            .filter { path -> path.toString().endsWith(".kt") }
+            .use { paths -> paths.toList() }
+            .flatMap { path ->
+                Files.readString(path).lineSequence().mapIndexedNotNull { index, line ->
+                    if (Regex("""\b(data\s+class|class|interface)\s+\w*Presentation\b""").containsMatchIn(line)) {
+                        "${root.relativize(path)}:${index + 1}: ${line.trim()}"
+                    } else {
+                        null
+                    }
+                }.toList()
+            }
+
+        assertTrue(
+            offenders.isEmpty(),
+            "application/port should expose application result DTOs, not UI presentation DTOs: " +
+                offenders.joinToString(),
+        )
+    }
+
+    @Test
+    fun applicationEventsDoNotCarryUiPresentationState() {
+        val eventSource = read("src/main/kotlin/com/charmnight/linkgraph/application/event/GraphEditorApplicationEvent.kt")
+        val eventBlock = sourceBlock(eventSource, "sealed interface GraphEditorApplicationEvent")
+        val forbiddenFragments = listOf(
+            "feedbackMessage",
+            "preserveLastMessageType",
+            "ViewDocument",
+        )
+        val offenders = forbiddenFragments.filter(eventBlock::contains)
+
+        assertTrue(
+            offenders.isEmpty(),
+            "GraphEditorApplicationEvent should carry application results/status only, not UI presentation state: " +
+                offenders.joinToString(),
+        )
+    }
+
+    @Test
     fun allBusinessChainsUseUseCaseResultPattern() {
         val requiredUseCases = mapOf(
             "generation" to "GenerationUseCase",
@@ -328,6 +370,37 @@ class GraphStateArchitectureGateTest {
         assertTrue(
             offenders.isEmpty(),
             "services must not own business workflow classes after application extraction: ${offenders.joinToString()}",
+        )
+    }
+
+    @Test
+    fun testsDoNotKeepLegacySnapshotCompatibilityAccessors() {
+        val testAdapterSources = listOf(
+            "src/test/kotlin/com/charmnight/linkgraph/testing/GraphEditorTestAdapters.kt",
+            "src/integrationTest/kotlin/com/charmnight/linkgraph/ui/LinkGraphToolWindowIT.kt",
+        ).associateWith(::read)
+
+        val forbiddenFragments = listOf(
+            "val GraphEditorStateSnapshot.visibleGraph",
+            "private val GraphEditorStateSnapshot.visibleGraph",
+            "val GraphEditorStateSnapshot.workingGraph",
+            "private val GraphEditorStateSnapshot.workingGraph",
+            "val GraphEditorStateSnapshot.referenceWorkingGraph",
+            "val GraphEditorStateSnapshot.referenceFactGraph",
+            "private val GraphEditorStateSnapshot.referenceFactGraph",
+            "fun GraphEditorStateService.markWorkingGraphChanged",
+            "fun GraphEditorStateService.markViewGraphChanged",
+        )
+        val offenders = testAdapterSources.flatMap { (relativePath, source) ->
+            forbiddenFragments.mapNotNull { fragment ->
+                if (source.contains(fragment)) "$relativePath contains $fragment" else null
+            }
+        }
+
+        assertTrue(
+            offenders.isEmpty(),
+            "Tests should use scene/view documents and production projection adapters instead of legacy snapshot compatibility helpers: " +
+                offenders.joinToString(),
         )
     }
 }

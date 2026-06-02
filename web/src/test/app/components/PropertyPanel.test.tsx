@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
+import themeCss from "../../../app/theme.css?raw";
 import { PropertyPanel } from "../../../app/components/PropertyPanel";
 import type { LinkGraphNode } from "../../../app/types";
 
@@ -261,5 +262,20 @@ describe("PropertyPanel", () => {
 
     expect(onBackgroundWheel).not.toHaveBeenCalled();
     expect(onBackgroundPointerDown).not.toHaveBeenCalled();
+  });
+
+  it("keeps the edit-node modal on theme surfaces instead of white form blocks", () => {
+    expect(themeCss).toMatch(
+      /\.property-drawer\s+\.panel-section\s*\{(?=[^}]*border-color:\s*var\(--line\);)(?=[^}]*background:\s*var\(--panel-soft\);)[^}]*\}/s,
+    );
+    expect(themeCss).toMatch(
+      /\.property-drawer\s+input,\s*\.property-drawer\s+textarea\s*\{(?=[^}]*border-color:\s*var\(--line\);)(?=[^}]*background:\s*var\(--panel-soft\);)(?=[^}]*color:\s*var\(--text\);)[^}]*\}/s,
+    );
+    expect(themeCss).toMatch(
+      /\.property-drawer\s+input::placeholder,\s*\.property-drawer\s+textarea::placeholder\s*\{[^}]*color:\s*var\(--muted\);[^}]*\}/s,
+    );
+    expect(themeCss).not.toMatch(
+      /\.property-drawer\s+input,\s*\.property-drawer\s+textarea(?:,\s*\.prompt-preview)?\s*\{[^}]*background:\s*rgba\(255,\s*255,\s*255/s,
+    );
   });
 });

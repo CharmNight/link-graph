@@ -158,7 +158,7 @@ class SemanticAnalyzerResourceAnchorIntegrationTest : BasePlatformTestCase() {
         )
 
         assertEquals(OperationFeedbackLevel.WARNING, outcome.feedbackLevel)
-        assertTrue(outcome.feedbackMessage.contains("候选"))
+        assertTrue(outcome.statusMessage.contains("候选"))
         assertEquals(1, outcome.visibleGraph.nodes.size)
         val docNode = outcome.visibleGraph.nodes.single()
         assertEquals(NodeType.DOC_PAGE, docNode.type)

@@ -8,6 +8,7 @@ import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.projection.graphProjectionHiddenCounts
 import com.charmnight.linkgraph.semantic.model.FlowActionUnit
 import com.charmnight.linkgraph.semantic.model.FlowScopeCategory
 import com.charmnight.linkgraph.semantic.model.FlowScopeUnit
@@ -291,6 +292,9 @@ class FlowchartProjectorTest {
         assertTrue(view.visibleGraph.nodes.size <= 6)
         assertTrue(view.visibleGraph.edges.size <= 5)
         assertTrue(view.summary.truncated)
-        assertEquals(view.fullGraph.nodes.size - view.visibleGraph.nodes.size, view.summary.hiddenNodeCount)
+        assertEquals(
+            graphProjectionHiddenCounts(visibleGraph = view.visibleGraph, fullGraph = view.fullGraph).hiddenNodeCount,
+            view.summary.hiddenNodeCount,
+        )
     }
 }

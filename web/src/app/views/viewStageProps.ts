@@ -2,10 +2,11 @@ import type {
   DraftCompareProjection,
   GraphFocusRequest,
   GraphSurfaceExperimentFlags,
+  IndexedGraphRequestStates,
   GraphPosition,
 } from "../types";
 
-export interface ViewStageProps {
+export interface BaseStageProps {
   selectedNodeId: string | null;
   focusNodeRequest?: GraphFocusRequest | null;
   explanationFocusNodeId?: string | null;
@@ -16,10 +17,24 @@ export interface ViewStageProps {
   collapsedNodeIds?: string[];
   collapsedDescendantCountByNodeId?: Record<string, number>;
   experiments?: GraphSurfaceExperimentFlags | null;
-  onAddNode: (kind: "METHOD" | "DOC_PAGE", position?: GraphPosition) => void;
   onSelectNode: (nodeId: string) => void;
   onSelectionGroupChange?: (nodeIds: string[]) => void;
   onInspectNode: (nodeId: string) => void;
+  onMoveNode: (nodeId: string, position: GraphPosition) => void;
+  onMoveNodes?: (updates: Array<{ id: string; position: GraphPosition }>) => void;
+  onFormatLayout?: () => void;
+  onRequestBeautification?: (selectedNodeId?: string) => void;
+  onRequestSourceNavigation: (nodeId: string) => void;
+  onRequestQa?: (selectedNodeId?: string) => void;
+  onToggleCollapseNode?: (nodeId: string) => void;
+  onOpenQa?: (selectedNodeId?: string) => void;
+  onExpandOverflowNode?: (nodeId: string) => void;
+  onExpandInvocation?: (nodeId: string) => void;
+  onRemoveInvocationExpansion?: (expansionId: string) => void;
+}
+
+export interface EditableStageProps extends BaseStageProps {
+  onAddNode: (kind: "METHOD" | "DOC_PAGE", position?: GraphPosition) => void;
   onDeleteNode: (nodeId: string) => void;
   onDeleteNodeSubtree?: (nodeId: string) => void;
   onCreateEdge: (
@@ -30,17 +45,34 @@ export interface ViewStageProps {
   ) => void;
   onDeleteEdge: (edgeId: string) => void;
   onInsertNodeIntoEdge?: (edgeId: string, kind: "METHOD" | "DOC_PAGE") => void;
-  onMoveNode: (nodeId: string, position: GraphPosition) => void;
-  onMoveNodes?: (updates: Array<{ id: string; position: GraphPosition }>) => void;
-  onFormatLayout?: () => void;
-  onRequestBeautification?: (selectedNodeId?: string) => void;
-  onRequestSourceNavigation: (nodeId: string) => void;
-  onRequestQa?: (selectedNodeId?: string) => void;
-  onRequestClassDiagram?: (scopeNodeId?: string | null) => void;
-  onToggleCollapseNode?: (nodeId: string) => void;
-  onOpenQa?: (selectedNodeId?: string) => void;
   onImportMermaid: () => void;
-  onExpandOverflowNode?: (nodeId: string) => void;
-  onExpandInvocation?: (nodeId: string) => void;
-  onRemoveInvocationExpansion?: (expansionId: string) => void;
 }
+
+export interface IndexedReadonlyStageProps extends BaseStageProps {
+  indexedGraphRequestStates?: IndexedGraphRequestStates | null;
+  onRequestClassDiagram?: (scopeNodeId?: string | null) => void;
+  onRequestClassDiagramWithOptions?: (
+    scopeNodeId: string | null | undefined,
+    options: { neighborhoodLimit?: number; memberLimit?: number },
+  ) => void;
+  onRequestPackageDependencyGraph?: (
+    packageName?: string | null,
+    options?: { includeExternalLibraries?: boolean; includeJdk?: boolean },
+  ) => void;
+  onRequestArchitectureGraph?: (options?: { includeExternalLibraries?: boolean; includeJdk?: boolean }) => void;
+  onRequestReviewGraphWithOptions?: (
+    selectedDiffItemIds: string[],
+    options: {
+      maxChangedNodes?: number;
+      maxRelatedTestNodes?: number;
+      maxUpstreamNodes?: number;
+      maxDownstreamNodes?: number;
+    },
+  ) => void;
+}
+
+export type EditableDisplayMode = "FACT_GRAPH" | "FLOWCHART" | "RESOURCE_RELATION_VIEW";
+export type IndexedReadonlyDisplayMode = "ARCHITECTURE_GRAPH" | "CLASS_DIAGRAM" | "REVIEW_GRAPH";
+export type AppGraphStagePropsByMode =
+  | { analysisDisplayMode: EditableDisplayMode; stageProps: EditableStageProps }
+  | { analysisDisplayMode: IndexedReadonlyDisplayMode; stageProps: IndexedReadonlyStageProps };

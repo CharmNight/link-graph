@@ -8,15 +8,16 @@ import { GraphFlowSurface } from "../../reactflow/GraphFlowSurface";
 import { useMeasuredLayout } from "../../reactflow/useMeasuredLayout";
 import { canNavigateToSource } from "../../sourceNavigation";
 import type { LinkGraphNode, NodeType, ReviewGraphViewDocument } from "../../types";
+import { resolveIndexedGraphEmptyState } from "../indexedGraphEmptyState";
 import {
   ARCHITECTURE_GRAPH_NODE_TYPES,
   buildArchitectureGraphEdges,
   buildArchitectureGraphNodes,
 } from "../architecture/architectureGraphNodes";
-import type { ViewStageProps } from "../viewStageProps";
+import type { IndexedReadonlyStageProps } from "../viewStageProps";
 import { layoutReviewGraphView } from "./reviewGraphLayout";
 
-interface ReviewGraphViewProps extends ViewStageProps {
+interface ReviewGraphViewProps extends IndexedReadonlyStageProps {
   view: ReviewGraphViewDocument;
 }
 
@@ -131,6 +132,7 @@ function reviewScopeDetail(view: ReviewGraphViewDocument): string {
 }
 
 function ReviewGraphDetailPanels({ view }: { view: ReviewGraphViewDocument }) {
+  const [expandedPanels, setExpandedPanels] = useState<Record<string, boolean>>({});
   const changedFiles = view.changedFiles ?? [];
   const unmatchedHunks = view.unmatchedHunks ?? [];
   const baselineOnlySymbols = view.baselineOnlySymbols ?? [];
@@ -150,6 +152,23 @@ function ReviewGraphDetailPanels({ view }: { view: ReviewGraphViewDocument }) {
   if (!hasDetails) {
     return null;
   }
+  const showAllChangedFiles = expandedPanels.changedFiles === true;
+  const showAllBaselineSymbols = expandedPanels.baselineOnlySymbols === true;
+  const showAllAffectedScopes = expandedPanels.affectedScopes === true;
+  const showAllEvidence = expandedPanels.evidence === true;
+  const visibleChangedFiles = showAllChangedFiles ? changedFiles : changedFiles.slice(0, 6);
+  const visibleUnmatchedHunks = showAllChangedFiles ? unmatchedHunks : unmatchedHunks.slice(0, 4);
+  const visibleBaselineSymbols = showAllBaselineSymbols ? baselineOnlySymbols : baselineOnlySymbols.slice(0, 5);
+  const visibleAffectedPackages = showAllAffectedScopes ? affectedPackages : affectedPackages.slice(0, 6);
+  const visibleAffectedModules = showAllAffectedScopes ? affectedModules : affectedModules.slice(0, 4);
+  const visibleRelatedTests = showAllAffectedScopes ? relatedTests : relatedTests.slice(0, 5);
+  const visibleEvidenceSnippets = showAllEvidence ? evidenceSnippets : evidenceSnippets.slice(0, 3);
+  const togglePanel = (panelId: string) => {
+    setExpandedPanels((current) => ({
+      ...current,
+      [panelId]: current[panelId] !== true,
+    }));
+  };
 
   return (
     <div className="review-detail-grid">
@@ -159,19 +178,23 @@ function ReviewGraphDetailPanels({ view }: { view: ReviewGraphViewDocument }) {
           <span className="review-detail-count">{formatCount(changedFiles.length)}</span>
         </div>
         <div className="review-detail-list">
-          {changedFiles.slice(0, 6).map((file, index) => (
+          {visibleChangedFiles.map((file, index) => (
             <div className="review-detail-row" key={`${file.oldPath ?? ""}:${file.newPath ?? ""}:${index}`}>
               <strong>{displayPath(file.newPath, file.oldPath)}</strong>
               <span>{changeKindLabel(file.changeKind)} · hunk {file.hunkCount}{file.similarity != null ? ` · ${file.similarity}%` : ""}</span>
             </div>
           ))}
           {changedFiles.length === 0 ? <span className="muted">无结构化文件变更</span> : null}
-          {changedFiles.length > 6 ? <span className="muted">另有 {formatCount(changedFiles.length - 6)} 个文件已收起</span> : null}
+          {changedFiles.length > 6 ? (
+            <button type="button" className="inline-link-button" onClick={() => togglePanel("changedFiles")}>
+              {showAllChangedFiles ? "收起文件" : `展开全部 ${formatCount(changedFiles.length)} 个文件`}
+            </button>
+          ) : null}
         </div>
         {unmatchedHunks.length > 0 ? (
           <div className="review-unmatched-list">
             <span className="canvas-reading-label">未匹配 hunk</span>
-            {unmatchedHunks.slice(0, 4).map((hunk, index) => (
+            {visibleUnmatchedHunks.map((hunk, index) => (
               <code key={`${hunk.filePath}:${hunk.header}:${index}`}>
                 {displayPath(hunk.newFilePath, hunk.oldFilePath)}{lineRange(hunk.newStartLine ?? hunk.oldStartLine, null)}
               </code>
@@ -186,14 +209,18 @@ function ReviewGraphDetailPanels({ view }: { view: ReviewGraphViewDocument }) {
           <span className="review-detail-count">{formatCount(baselineOnlySymbols.length)}</span>
         </div>
         <div className="review-detail-list">
-          {baselineOnlySymbols.slice(0, 5).map((symbol) => (
+          {visibleBaselineSymbols.map((symbol) => (
             <div className="review-detail-row" key={symbol.symbolId}>
               <strong>{symbol.qualifiedName}</strong>
               <span>{changeKindLabel(symbol.changeKind)}{symbol.unavailableReason ? ` · ${symbol.unavailableReason}` : ""}</span>
             </div>
           ))}
           {baselineOnlySymbols.length === 0 ? <span className="muted">无仅基线符号</span> : null}
-          {baselineOnlySymbols.length > 5 ? <span className="muted">另有 {formatCount(baselineOnlySymbols.length - 5)} 个基线符号已收起</span> : null}
+          {baselineOnlySymbols.length > 5 ? (
+            <button type="button" className="inline-link-button" onClick={() => togglePanel("baselineOnlySymbols")}>
+              {showAllBaselineSymbols ? "收起基线符号" : `展开全部 ${formatCount(baselineOnlySymbols.length)} 个基线符号`}
+            </button>
+          ) : null}
         </div>
       </section>
 
@@ -203,18 +230,22 @@ function ReviewGraphDetailPanels({ view }: { view: ReviewGraphViewDocument }) {
           <span className="review-detail-count">{formatCount(affectedScopeCount)}</span>
         </div>
         <div className="review-chip-row">
-          {affectedPackages.slice(0, 6).map((name) => <span className="review-chip" key={`pkg:${name}`}>{name}</span>)}
-          {affectedModules.slice(0, 4).map((name) => <span className="review-chip" key={`mod:${name}`}>{name}</span>)}
+          {visibleAffectedPackages.map((name) => <span className="review-chip" key={`pkg:${name}`}>{name}</span>)}
+          {visibleAffectedModules.map((name) => <span className="review-chip" key={`mod:${name}`}>{name}</span>)}
         </div>
         <div className="review-detail-list">
-          {relatedTests.slice(0, 5).map((test) => (
+          {visibleRelatedTests.map((test) => (
             <div className="review-detail-row" key={test.symbolId}>
               <strong>{simpleName(test.qualifiedName)}</strong>
               <span>{reasonLabel(test.reason)}{test.startLine != null ? ` · ${displayPath(test.filePath, null)}:${test.startLine}` : ""}</span>
             </div>
           ))}
           {relatedTests.length === 0 ? <span className="muted">无 relation 可追溯的相关测试</span> : null}
-          {relatedTests.length > 5 ? <span className="muted">另有 {formatCount(relatedTests.length - 5)} 个相关测试已收起</span> : null}
+          {affectedScopeCount > 15 ? (
+            <button type="button" className="inline-link-button" onClick={() => togglePanel("affectedScopes")}>
+              {showAllAffectedScopes ? "收起影响范围" : "展开全部影响范围"}
+            </button>
+          ) : null}
         </div>
       </section>
 
@@ -224,7 +255,7 @@ function ReviewGraphDetailPanels({ view }: { view: ReviewGraphViewDocument }) {
           <span className="review-detail-count">{formatCount(evidenceSnippets.length)}</span>
         </div>
         <div className="review-evidence-list">
-          {evidenceSnippets.slice(0, 3).map((evidence, index) => (
+          {visibleEvidenceSnippets.map((evidence, index) => (
             <div className="review-evidence-item" key={`${evidence.title}:${evidence.filePath ?? ""}:${index}`}>
               <strong>{evidence.title}</strong>
               <span>{displayPath(evidence.filePath, null)}{lineRange(evidence.startLine, evidence.endLine)}</span>
@@ -232,7 +263,11 @@ function ReviewGraphDetailPanels({ view }: { view: ReviewGraphViewDocument }) {
             </div>
           ))}
           {evidenceSnippets.length === 0 ? <span className="muted">无证据片段</span> : null}
-          {evidenceSnippets.length > 3 ? <span className="muted">另有 {formatCount(evidenceSnippets.length - 3)} 个证据片段已收起</span> : null}
+          {evidenceSnippets.length > 3 ? (
+            <button type="button" className="inline-link-button" onClick={() => togglePanel("evidence")}>
+              {showAllEvidence ? "收起证据片段" : `展开全部 ${formatCount(evidenceSnippets.length)} 个证据片段`}
+            </button>
+          ) : null}
         </div>
       </section>
     </div>
@@ -300,7 +335,7 @@ function reviewNodeActions(args: {
     },
     {
       id: "set-qa-anchor",
-      label: "设为问答范围起点",
+      label: "设为问答目标",
       onSelect: () => {
         args.onOpenQa(args.nodeId);
         args.onClose();
@@ -329,16 +364,16 @@ export function ReviewGraphView({
   hiddenNodeIds = [],
   collapsedNodeIds = [],
   experiments = null,
+  indexedGraphRequestStates = null,
   onSelectNode,
   onSelectionGroupChange = () => undefined,
   onInspectNode,
-  onCreateEdge,
-  onDeleteEdge,
   onMoveNode,
   onMoveNodes,
   onRequestSourceNavigation,
   onRequestBeautification = () => undefined,
   onRequestQa = () => undefined,
+  onRequestReviewGraphWithOptions = () => undefined,
   onToggleCollapseNode = () => undefined,
   onOpenQa = () => undefined,
 }: ReviewGraphViewProps) {
@@ -384,9 +419,10 @@ export function ReviewGraphView({
       explanationFocusNodeId,
       draftChangedNodeIds,
       draftCompareNodeStatuses: draftCompareProjection?.nodeStatuses,
+      projectionIndex: view.projectionIndex ?? null,
       nodeSizeRegistry,
     }),
-    [draftChangedNodeIds, draftCompareProjection?.nodeStatuses, explanationFocusNodeId, nodeSizeRegistry, selectedNodeId, visibleNodes],
+    [draftChangedNodeIds, draftCompareProjection?.nodeStatuses, explanationFocusNodeId, nodeSizeRegistry, selectedNodeId, view.projectionIndex, visibleNodes],
   );
   const flowEdges = useMemo(
     () => buildArchitectureGraphEdges({
@@ -401,6 +437,32 @@ export function ReviewGraphView({
     { label: "下游", value: view.summary.downstreamCount },
     { label: "相关测试", value: view.summary.relatedTestCount },
   ];
+  const selectedDiffItemIds = view.summary.selectedDiffItemIds ?? [];
+  const reviewQuotas = {
+    maxChangedNodes: view.summary.maxChangedNodes ?? 120,
+    maxUpstreamNodes: view.summary.maxUpstreamNodes ?? 40,
+    maxDownstreamNodes: view.summary.maxDownstreamNodes ?? 40,
+    maxRelatedTestNodes: view.summary.maxRelatedTestNodes ?? 40,
+  };
+  const emptyStateCopy = resolveIndexedGraphEmptyState(indexedGraphRequestStates?.REVIEW, {
+    idleTitle: "尚未加载 Review Graph",
+    idleDetail: "点击 Review 入口会构建项目级索引。",
+    runningTitle: "正在构建 Review Graph",
+    runningDetail: "正在构建 Review Graph。",
+    failedTitle: "Review Graph 加载失败",
+    failedDetail: "请重新点击 Review 入口构建项目级索引。",
+    succeededTitle: "索引完成，但当前变更范围没有可展示的影响关系",
+    succeededDetail: "当前索引没有找到满足变更范围的符号影响关系。",
+  });
+  const requestMoreReviewNodes = (
+    key: "maxChangedNodes" | "maxUpstreamNodes" | "maxDownstreamNodes" | "maxRelatedTestNodes",
+    increment: number,
+  ) => {
+    onRequestReviewGraphWithOptions(selectedDiffItemIds, {
+      ...reviewQuotas,
+      [key]: reviewQuotas[key] + increment,
+    });
+  };
 
   const header = (
     <section className="canvas-reading-summary" aria-label="Review Graph 摘要">
@@ -428,6 +490,36 @@ export function ReviewGraphView({
                 <span>{metric.label}</span>
               </span>
             ))}
+          </div>
+          <div className="architecture-reading-mode" role="group" aria-label="Review Graph 配额控制">
+            <button
+              type="button"
+              aria-pressed={false}
+              onClick={() => requestMoreReviewNodes("maxChangedNodes", 40)}
+            >
+              更多变更
+            </button>
+            <button
+              type="button"
+              aria-pressed={false}
+              onClick={() => requestMoreReviewNodes("maxUpstreamNodes", 40)}
+            >
+              更多上游
+            </button>
+            <button
+              type="button"
+              aria-pressed={false}
+              onClick={() => requestMoreReviewNodes("maxDownstreamNodes", 40)}
+            >
+              更多下游
+            </button>
+            <button
+              type="button"
+              aria-pressed={false}
+              onClick={() => requestMoreReviewNodes("maxRelatedTestNodes", 40)}
+            >
+              更多测试
+            </button>
           </div>
         </article>
         <article className="canvas-reading-card review-filter-card">
@@ -487,8 +579,8 @@ export function ReviewGraphView({
             </div>
           ) : (
             <div className="canvas-empty-state">
-              <strong>当前没有 Review Graph 结果</strong>
-              <p className="muted">请从视图切换加载 Review Graph。</p>
+              <strong>{emptyStateCopy.title}</strong>
+              <p className="muted">{emptyStateCopy.detail}</p>
             </div>
           )
         )}
@@ -537,14 +629,14 @@ export function ReviewGraphView({
             analysisDisplayMode: "REVIEW_GRAPH",
             editable: false,
             edgeId,
-            onDeleteEdge,
+            onDeleteEdge: () => undefined,
             onClose: close,
           })
         }
         onSelectNode={onSelectNode}
         onSelectionGroupChange={onSelectionGroupChange}
         onInspectNode={onInspectNode}
-        onCreateEdge={onCreateEdge}
+        onCreateEdge={() => undefined}
         onMoveNode={onMoveNode}
         onMoveNodes={onMoveNodes}
         shouldFocusAnchorOnLoad={false}

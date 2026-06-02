@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.ui
 
+import com.charmnight.linkgraph.application.indexed.IndexedGraphView
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
 import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
@@ -61,15 +62,42 @@ internal class GraphEditorGraphStateSupport(
     }
 
     fun loadArchitectureGraphView(view: ArchitectureGraphViewDocument) {
-        mutate { currentState -> currentState.withLoadedArchitectureGraphView(view) }
+        mutate { currentState ->
+            currentState.withLoadedArchitectureGraphView(
+                view = view,
+                requestState = AsyncRequestState.succeeded(
+                    scene = IndexedGraphView.ARCHITECTURE.name,
+                    statusMessage = "已加载项目结构。",
+                ),
+                statusMessage = "已加载项目结构。",
+            )
+        }
     }
 
     fun loadClassDiagramView(view: ClassDiagramViewDocument) {
-        mutate { currentState -> currentState.withLoadedClassDiagramView(view) }
+        mutate { currentState ->
+            currentState.withLoadedClassDiagramView(
+                view = view,
+                requestState = AsyncRequestState.succeeded(
+                    scene = IndexedGraphView.CLASS_DIAGRAM.name,
+                    statusMessage = "已加载类图。",
+                ),
+                statusMessage = "已加载类图。",
+            )
+        }
     }
 
     fun loadReviewGraphView(view: ReviewGraphViewDocument) {
-        mutate { currentState -> currentState.withLoadedReviewGraphView(view) }
+        mutate { currentState ->
+            currentState.withLoadedReviewGraphView(
+                view = view,
+                requestState = AsyncRequestState.succeeded(
+                    scene = IndexedGraphView.REVIEW.name,
+                    statusMessage = "已加载 Review Graph。",
+                ),
+                statusMessage = "已加载 Review Graph。",
+            )
+        }
     }
 
     fun importMermaid(

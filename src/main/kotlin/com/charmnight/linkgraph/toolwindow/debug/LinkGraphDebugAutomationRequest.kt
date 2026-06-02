@@ -16,6 +16,7 @@ data class LinkGraphDebugAutomationRequest(
     val autoRequestClassDiagram: Boolean = false,
     val autoRequestClassDiagramBeautification: Boolean = false,
     val autoRequestClassDiagramQa: Boolean = false,
+    val autoRequestSourceNavigation: Boolean = false,
     val autoRequestPlan: Boolean = false,
     val autoRequestCodeDrafts: Boolean = false,
 ) {
@@ -29,6 +30,7 @@ data class LinkGraphDebugAutomationRequest(
             autoRequestClassDiagram ||
             autoRequestClassDiagramBeautification ||
             autoRequestClassDiagramQa ||
+            autoRequestSourceNavigation ||
             autoRequestPlan ||
             autoRequestCodeDrafts
 
@@ -47,6 +49,7 @@ data class LinkGraphDebugAutomationRequest(
         private const val DEBUG_AUTO_REQUEST_CLASS_DIAGRAM_BEAUTIFICATION_ENV =
             "LINKGRAPH_DEBUG_AUTO_REQUEST_CLASS_DIAGRAM_BEAUTIFICATION"
         private const val DEBUG_AUTO_REQUEST_CLASS_DIAGRAM_QA_ENV = "LINKGRAPH_DEBUG_AUTO_REQUEST_CLASS_DIAGRAM_QA"
+        private const val DEBUG_AUTO_REQUEST_SOURCE_NAVIGATION_ENV = "LINKGRAPH_DEBUG_AUTO_REQUEST_SOURCE_NAVIGATION"
         private const val DEBUG_AUTO_REQUEST_PLAN_ENV = "LINKGRAPH_DEBUG_AUTO_REQUEST_PLAN"
         private const val DEBUG_AUTO_REQUEST_CODE_DRAFTS_ENV = "LINKGRAPH_DEBUG_AUTO_REQUEST_CODE_DRAFTS"
 
@@ -67,6 +70,7 @@ data class LinkGraphDebugAutomationRequest(
                 autoRequestClassDiagram = debugFlag(DEBUG_AUTO_REQUEST_CLASS_DIAGRAM_ENV),
                 autoRequestClassDiagramBeautification = debugFlag(DEBUG_AUTO_REQUEST_CLASS_DIAGRAM_BEAUTIFICATION_ENV),
                 autoRequestClassDiagramQa = debugFlag(DEBUG_AUTO_REQUEST_CLASS_DIAGRAM_QA_ENV),
+                autoRequestSourceNavigation = debugFlag(DEBUG_AUTO_REQUEST_SOURCE_NAVIGATION_ENV),
                 autoRequestPlan = debugFlag(DEBUG_AUTO_REQUEST_PLAN_ENV),
                 autoRequestCodeDrafts = debugFlag(DEBUG_AUTO_REQUEST_CODE_DRAFTS_ENV),
             )

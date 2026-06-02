@@ -14,6 +14,7 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.application.model.toAnalysisDisplayMode as toApplicationAnalysisDisplayMode
 import com.charmnight.linkgraph.application.model.toWorkspaceSceneId as toApplicationWorkspaceSceneId
+import com.charmnight.linkgraph.application.indexed.IndexedGraphView
 import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
 import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
 import com.charmnight.linkgraph.review.ReviewGraphViewDocument
@@ -45,6 +46,9 @@ data class GraphSceneState(
 
 internal fun defaultGraphSceneStates(): Map<GraphSceneId, GraphSceneState> = GraphSceneId.entries.associateWith { GraphSceneState() }
 
+internal fun defaultIndexedGraphRequestStates(): Map<IndexedGraphView, AsyncRequestState> =
+    IndexedGraphView.entries.associateWith { AsyncRequestState() }
+
 fun AnalysisDisplayMode.toWorkspaceSceneId(): GraphSceneId = toApplicationWorkspaceSceneId()
 
 fun GraphSceneId.toAnalysisDisplayMode(): AnalysisDisplayMode? = toApplicationAnalysisDisplayMode()
@@ -61,6 +65,7 @@ data class GraphEditorStateSnapshot(
     val architectureGraphView: ArchitectureGraphViewDocument = ArchitectureGraphViewDocument(),
     val classDiagramView: ClassDiagramViewDocument = ClassDiagramViewDocument(),
     val reviewGraphView: ReviewGraphViewDocument = ReviewGraphViewDocument(),
+    val indexedGraphRequestStates: Map<IndexedGraphView, AsyncRequestState> = defaultIndexedGraphRequestStates(),
     val analysisDisplayMode: AnalysisDisplayMode = AnalysisDisplayMode.FACT_GRAPH,
     val currentSceneId: GraphSceneId = GraphSceneId.WORKSPACE_FACT,
     val previousWorkspaceSceneId: GraphSceneId = GraphSceneId.WORKSPACE_FACT,

@@ -202,6 +202,53 @@ describe("useMeasuredLayout", () => {
     expect(layout).toHaveBeenCalledTimes(2);
   });
 
+  it("coalesces same-turn node measurement updates into one layout rerun", async () => {
+    const registry = createNodeSizeRegistry();
+    const graph: LinkGraphDocument = {
+      nodes: [
+        methodNode("method:anchor", "OrderService.submit"),
+        methodNode("method:callee", "OrderMapper.insert"),
+        methodNode("method:tail", "OrderAudit.write"),
+      ],
+      edges: [],
+    };
+    const layout = vi.fn(async ({ nodes }: { nodes: LinkGraphNode[] }) => ({
+      nodes: nodes.map((node, index) => ({
+        ...node,
+        position: {
+          x: 120 + index * 320,
+          y: 96,
+        },
+      })),
+      edges: graph.edges,
+    }));
+
+    const { result } = renderHook(() =>
+      useMeasuredLayout({
+        graph,
+        anchorNodeId: "method:anchor",
+        nodeSizeRegistry: registry,
+        layout,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.nodes[2]?.position).toEqual({ x: 760, y: 96 });
+    });
+    expect(layout).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      registry.set("method:anchor", { width: 412, height: 156 });
+      registry.set("method:callee", { width: 428, height: 172 });
+      registry.set("method:tail", { width: 436, height: 164 });
+    });
+
+    await waitFor(() => {
+      expect(layout).toHaveBeenCalledTimes(2);
+    });
+    expect(layout).toHaveBeenCalledTimes(2);
+  });
+
   it("does not rerun layout when the effective layout size signature is unchanged", async () => {
     const registry = createNodeSizeRegistry();
     const graph: LinkGraphDocument = {

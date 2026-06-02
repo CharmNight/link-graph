@@ -8,6 +8,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectRootModificationTracker
 import com.intellij.psi.util.PsiModificationTracker
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 data class ArchitectureGraphCacheKey(
     val projectLocationHash: Int,
@@ -22,15 +23,21 @@ data class ArchitectureGraphCacheKey(
     val maxMethods: Int,
     val maxRelations: Int,
     val attachedJars: List<String>,
+    val purpose: String = PURPOSE_FULL,
 ) {
     companion object {
+        const val PURPOSE_FULL = "FULL"
+        const val PURPOSE_ARCHITECTURE_OVERVIEW = "ARCHITECTURE_OVERVIEW"
+        const val PURPOSE_CLASS_DIAGRAM_STRUCTURE = "CLASS_DIAGRAM_STRUCTURE"
+
         fun from(
             project: Project,
             budget: JvmResolutionBudget,
             attachedJars: List<AttachedJarEntry>,
+            purpose: String = PURPOSE_FULL,
         ): ArchitectureGraphCacheKey {
             val attachedJarIndex = AttachedJarIndex.build(attachedJars)
-            return from(project, budget, attachedJars, attachedJarIndex)
+            return from(project, budget, attachedJars, attachedJarIndex, purpose)
         }
 
         fun from(
@@ -38,6 +45,7 @@ data class ArchitectureGraphCacheKey(
             budget: JvmResolutionBudget,
             attachedJars: List<AttachedJarEntry>,
             attachedJarIndex: AttachedJarIndex,
+            purpose: String = PURPOSE_FULL,
         ): ArchitectureGraphCacheKey =
             ArchitectureGraphCacheKey(
                 projectLocationHash = (project.basePath ?: project.name).hashCode(),
@@ -70,6 +78,7 @@ data class ArchitectureGraphCacheKey(
                             .map { entry -> "${entry.path}|${entry.sourceJarPath.orEmpty()}" }
                     }
                     .sorted(),
+                purpose = purpose,
             )
     }
 }
@@ -85,7 +94,10 @@ data class CachedArchitectureGraph(
 class ArchitectureGraphCache(
     private val clockMillis: () -> Long = System::currentTimeMillis,
 ) {
-    private val cached = ConcurrentHashMap<ArchitectureGraphCacheKey, CachedArchitectureGraph>()
+    @Volatile
+    private var cached = ConcurrentHashMap<ArchitectureGraphCacheKey, CachedArchitectureGraph>()
+    private val buildLocks = ConcurrentHashMap<ArchitectureGraphCacheKey, Any>()
+    private val generation = AtomicLong()
 
     fun get(key: ArchitectureGraphCacheKey): CachedArchitectureGraph? =
         cached[key]
@@ -107,9 +119,53 @@ class ArchitectureGraphCache(
         return value
     }
 
+    fun getOrBuild(
+        key: ArchitectureGraphCacheKey,
+        graphDocument: GraphDocument? = null,
+        sourceModificationStamp: Long = 0L,
+        forceRebuild: Boolean = false,
+        builder: () -> ArchitectureGraphIndex,
+    ): CachedArchitectureGraph {
+        if (forceRebuild) {
+            val index = builder()
+            return put(
+                key = key,
+                index = index,
+                graphDocument = graphDocument,
+                sourceModificationStamp = sourceModificationStamp,
+            )
+        }
+        val lock = buildLocks.computeIfAbsent(key) { Any() }
+        return try {
+            synchronized(lock) {
+                if (!forceRebuild) {
+                    cached[key]?.let { cachedGraph ->
+                        return@synchronized cachedGraph
+                    }
+                }
+                val generationAtStart = generation.get()
+                val index = builder()
+                val cachedGraph = CachedArchitectureGraph(
+                    architectureGraph = index.graph,
+                    graphDocument = graphDocument,
+                    index = index,
+                    createdAtMillis = clockMillis(),
+                    sourceModificationStamp = sourceModificationStamp,
+                )
+                if (generation.get() == generationAtStart) {
+                    cached[key] = cachedGraph
+                }
+                cachedGraph
+            }
+        } finally {
+            buildLocks.remove(key, lock)
+        }
+    }
+
     fun invalidate(key: ArchitectureGraphCacheKey? = null) {
         if (key == null) {
-            cached.clear()
+            cached = ConcurrentHashMap()
+            generation.incrementAndGet()
         } else {
             cached.remove(key)
         }

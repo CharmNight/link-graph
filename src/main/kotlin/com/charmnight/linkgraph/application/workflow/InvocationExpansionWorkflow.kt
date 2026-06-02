@@ -2,10 +2,10 @@ package com.charmnight.linkgraph.application.workflow
 
 import com.charmnight.linkgraph.application.debug.DebugMethodSignatureLocator
 import com.charmnight.linkgraph.application.model.currentVisibleGraph
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEvent
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEventSink
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
 import com.charmnight.linkgraph.application.port.WorkspaceGraphCommitter
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionTarget
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionTargetKind

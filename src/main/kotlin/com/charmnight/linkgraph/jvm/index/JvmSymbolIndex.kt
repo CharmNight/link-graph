@@ -20,6 +20,24 @@ class JvmSymbolIndex(
 
     fun findClass(qualifiedName: String): JvmClassSymbol? = classesByQualifiedName[qualifiedName]
 
+    fun findClassByTypeName(
+        typeName: String?,
+        ownerPackageName: String? = null,
+    ): JvmClassSymbol? {
+        val normalized = normalizeTypeName(typeName) ?: return null
+        classesByQualifiedName[normalized]?.let { return it }
+        if (normalized.contains('.')) {
+            return null
+        }
+        ownerPackageName
+            ?.takeIf(String::isNotBlank)
+            ?.let { packageName -> classesByQualifiedName["$packageName.$normalized"] }
+            ?.let { return it }
+        return classesByQualifiedName.values
+            .filter { symbol -> symbol.simpleName == normalized }
+            .singleOrNull()
+    }
+
     fun findMethod(signature: String): JvmMethodSymbol? = methodsBySignature[signature]
 
     fun findField(qualifiedName: String): JvmFieldSymbol? = fieldsByQualifiedName[qualifiedName]
@@ -27,4 +45,17 @@ class JvmSymbolIndex(
     fun findResource(path: String): JvmResourceSymbol? = resourcesByPath[path]
 
     fun findSymbol(symbolId: String): JvmSymbol? = symbolsById[symbolId]
+
+    private fun normalizeTypeName(typeName: String?): String? {
+        var normalized = typeName
+            ?.trim()
+            ?.substringBefore('<')
+            ?.removeSuffix("?")
+            ?.takeIf(String::isNotBlank)
+            ?: return null
+        while (normalized.endsWith("[]")) {
+            normalized = normalized.removeSuffix("[]")
+        }
+        return normalized.takeIf(String::isNotBlank)
+    }
 }

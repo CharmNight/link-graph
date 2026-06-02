@@ -19,6 +19,8 @@ import type {
   GraphPatch,
   GraphPatchResult,
   GraphSurfaceExperimentFlags,
+  IndexedGraphRequestStates,
+  IndexedGraphView,
   LinkGraphBootstrapState,
   LinkGraphDocument,
   LinkGraphEdge,
@@ -41,6 +43,7 @@ import type {
 import type { RequestFailureNotice } from "./bridgeCommandTypes";
 
 const DEFAULT_ANALYSIS_DISPLAY_MODE: AnalysisDisplayMode = "FLOWCHART";
+const INDEXED_GRAPH_VIEWS: IndexedGraphView[] = ["ARCHITECTURE", "CLASS_DIAGRAM", "REVIEW"];
 
 export interface WorkbenchCanvasState {
   nodes: LinkGraphNode[];
@@ -98,6 +101,7 @@ export interface WorkbenchProjectionState {
   lastDraftPatchApplyResult: DraftPatchApplyResult | null;
   codeDraftRequestState: AsyncRequestState;
   codeEligibilityDecision: StageEligibilityDecision | null;
+  indexedGraphRequestStates: IndexedGraphRequestStates;
   sourceNavigationState: SourceNavigationState;
   operationFeedback: OperationFeedback | null;
   workbenchSectionPreferences: WorkbenchSectionPreferences;
@@ -167,6 +171,15 @@ function createEmptySceneState(): LinkGraphSceneState {
     layoutRevision: 0,
     collapsedNodeIds: [],
   };
+}
+
+export function resolveIndexedGraphRequestStates(
+  state: IndexedGraphRequestStates | null | undefined,
+  resolveRequestState: (requestState?: AsyncRequestState | null) => AsyncRequestState,
+): IndexedGraphRequestStates {
+  return Object.fromEntries(
+    INDEXED_GRAPH_VIEWS.map((view) => [view, resolveRequestState(state?.[view])]),
+  ) as IndexedGraphRequestStates;
 }
 
 function sameNodeIdList(left: string[] | undefined, right: string[] | undefined): boolean {
@@ -388,6 +401,10 @@ function buildInitialProjectionState(
     lastDraftPatchApplyResult: initialState.lastDraftPatchApplyResult ?? null,
     codeDraftRequestState: resolveRequestState(initialState.codeDraftRequestState),
     codeEligibilityDecision: initialState.codeEligibilityDecision ?? null,
+    indexedGraphRequestStates: resolveIndexedGraphRequestStates(
+      initialState.indexedGraphRequestStates,
+      resolveRequestState,
+    ),
     sourceNavigationState: resolveSourceNavigationState(initialState),
     operationFeedback: initialState.operationFeedback ?? null,
     workbenchSectionPreferences: initialState.workbenchSectionPreferences ?? {},
@@ -510,6 +527,7 @@ export function useWorkbenchState({
     setLastDraftPatchApplyResult: updateStateField(setProjectionState, "lastDraftPatchApplyResult"),
     setCodeDraftRequestState: updateStateField(setProjectionState, "codeDraftRequestState"),
     setCodeEligibilityDecision: updateStateField(setProjectionState, "codeEligibilityDecision"),
+    setIndexedGraphRequestStates: updateStateField(setProjectionState, "indexedGraphRequestStates"),
     setSourceNavigationState: updateStateField(setProjectionState, "sourceNavigationState"),
     setOperationFeedback: updateStateField(setProjectionState, "operationFeedback"),
     setWorkbenchSectionPreferences: updateStateField(setProjectionState, "workbenchSectionPreferences"),

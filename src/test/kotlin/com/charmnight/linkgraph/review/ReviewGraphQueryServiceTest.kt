@@ -282,9 +282,14 @@ class ReviewGraphQueryServiceTest {
                     "src/main/java/com/example/SecondService.java",
                 ),
             ),
+            index = index,
         )
         val edgeIds = view.visibleGraph.edges.map { edge -> edge.id }.toSet()
 
+        assertEquals("REVIEW", view.summary.indexed?.view)
+        assertEquals(view.visibleGraph.nodes.size, view.summary.indexed?.visibleNodeCount)
+        assertEquals(view.fullGraph.nodes.size, view.summary.indexed?.scopedNodeCount)
+        assertEquals(view.fullGraph.nodes.size, view.summary.indexed?.candidateNodeCount)
         assertTrue("first caller must remain tied to first changed symbol") {
             "review:upstream:${firstCaller.id}->${firstChanged.id}" in edgeIds
         }
@@ -309,6 +314,46 @@ class ReviewGraphQueryServiceTest {
         assertTrue("second test must not be projected as related to first changed symbol") {
             "review:test:${firstChanged.id}->${secondTest.id}" !in edgeIds
         }
+    }
+
+    @Test
+    fun projectorCarriesMethodInputsAndOutputsFromJvmSymbols() {
+        val changed = classSymbol("com.example.OrderService", "src/main/java/com/example/OrderService.java")
+        val downstream = methodSymbol(
+            owner = changed,
+            name = "submit",
+            startLine = 12,
+            endLine = 18,
+            parameterTypes = listOf("java.lang.String", "com.example.SubmitCommand"),
+            returnType = "com.example.SubmitResult",
+        )
+        val changedSymbol = ChangedSymbol(
+            symbolId = changed.id,
+            qualifiedName = changed.qualifiedName,
+            filePath = changed.source?.displayPath,
+            startLine = changed.source?.startLine,
+            endLine = changed.source?.endLine,
+        )
+        val bundle = ReviewEvidenceBundle(
+            changedSymbols = listOf(changedSymbol),
+            blastRadius = BlastRadius(
+                changedSymbols = listOf(changedSymbol),
+                upstream = emptyList(),
+                downstream = listOf(downstream),
+                downstreamByChangedSymbolId = mapOf(changed.id to listOf(downstream)),
+                spiProviders = emptyList(),
+                reflectionTargets = emptyList(),
+                serviceLoaderLoads = emptyList(),
+                proxyTargets = emptyList(),
+                relatedTests = emptyList(),
+            ),
+            evidenceRefs = emptyList(),
+        )
+
+        val methodNode = ReviewGraphProjector().project(bundle).fullGraph.nodes.first { node -> node.id == downstream.id }
+
+        assertEquals(listOf("java.lang.String", "com.example.SubmitCommand"), methodNode.inputs)
+        assertEquals(listOf("com.example.SubmitResult"), methodNode.outputs)
     }
 
     @Test
@@ -453,12 +498,13 @@ class ReviewGraphQueryServiceTest {
                 ),
             ),
         )
+        val index = ArchitectureGraphIndex.from(JvmSymbolIndex(), JvmRelationIndex())
         val service = ReviewGraphQueryService(
-            index = ArchitectureGraphIndex.from(JvmSymbolIndex(), JvmRelationIndex()),
+            index = index,
             baselineSymbolMapper = baselineMapper,
         )
 
-        val view = ReviewGraphProjector().project(service.buildEvidenceBundleForChangeSet(changeSet))
+        val view = ReviewGraphProjector().project(service.buildEvidenceBundleForChangeSet(changeSet), index = index)
 
         assertReviewGraphViewDataContract(view, "review.projector.structuredDiff")
         assertEquals(2, view.changedFiles.size)
@@ -494,7 +540,8 @@ class ReviewGraphQueryServiceTest {
             evidenceRefs = emptyList(),
         )
 
-        val view = ReviewGraphProjector().project(bundle)
+        val index = ArchitectureGraphIndex.from(JvmSymbolIndex(), JvmRelationIndex())
+        val view = ReviewGraphProjector().project(bundle, index = index)
 
         assertReviewGraphViewDataContract(view, "review.projector.large")
         assertEquals(260, view.fullGraph.nodes.size)
@@ -690,16 +737,18 @@ class ReviewGraphQueryServiceTest {
         name: String,
         startLine: Int,
         endLine: Int,
+        parameterTypes: List<String> = emptyList(),
+        returnType: String = "void",
     ): JvmMethodSymbol {
-        val signature = "${owner.qualifiedName}.$name():void"
+        val signature = "${owner.qualifiedName}.$name(${parameterTypes.joinToString(",")}):$returnType"
         return JvmMethodSymbol(
             id = stableJvmId("method", signature),
             qualifiedName = signature,
             simpleName = name,
             ownerClassName = owner.qualifiedName,
             signature = signature,
-            parameterTypes = emptyList(),
-            returnType = "void",
+            parameterTypes = parameterTypes,
+            returnType = returnType,
             source = JvmSourceRef(
                 displayPath = owner.source?.displayPath.orEmpty(),
                 virtualFileUrl = null,

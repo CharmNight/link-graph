@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.application.workflow.subject
 
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.projection.GraphProjectionMetadata
 import com.charmnight.linkgraph.semantic.model.SemanticAnalysisResult
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
 import com.charmnight.linkgraph.semantic.policy.ProjectionPolicy
@@ -22,7 +23,7 @@ internal data class InteractiveProjectionSettings(
      * 针对摘要节点放宽当前投影预算。
      */
     fun expandFor(node: GraphNode): InteractiveProjectionSettings {
-        val direction = node.metadata["linkGraph.overflow.direction"]
+        val direction = node.metadata[GraphProjectionMetadata.Overflow.DIRECTION]
         return copy(
             maxVisibleNodes = (maxVisibleNodes + 18).coerceAtMost(180),
             maxVisibleEdges = (maxVisibleEdges + 28).coerceAtMost(260),

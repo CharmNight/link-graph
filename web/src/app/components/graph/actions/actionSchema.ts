@@ -1,4 +1,4 @@
-import type { AnalysisDisplayMode, GraphPosition } from "../../../types";
+import type { AnalysisDisplayMode, GraphEditCommandKind, GraphPosition } from "../../../types";
 
 export interface GraphContextMenuAction {
   id: string;
@@ -23,6 +23,7 @@ interface NodeActionSchemaInput {
   analysisDisplayMode: AnalysisDisplayMode;
   editable: boolean;
   nodeId: string;
+  canEditNode?: (command: GraphEditCommandKind) => boolean;
   canNavigateToSource: boolean;
   collapsed: boolean;
   overflowActionLabel: string | null;
@@ -47,12 +48,29 @@ interface EdgeActionSchemaInput {
   analysisDisplayMode: AnalysisDisplayMode;
   editable: boolean;
   edgeId: string;
+  canEditEdge?: (command: GraphEditCommandKind) => boolean;
   onDeleteEdge: (edgeId: string) => void;
   onClose: () => void;
 }
 
 function allowMutatingActions(analysisDisplayMode: AnalysisDisplayMode, editable: boolean): boolean {
   return editable;
+}
+
+function canRunNodeCommand(
+  editable: boolean,
+  canEditNode: ((command: GraphEditCommandKind) => boolean) | undefined,
+  command: GraphEditCommandKind,
+): boolean {
+  return editable && (canEditNode?.(command) ?? true);
+}
+
+function canRunEdgeCommand(
+  editable: boolean,
+  canEditEdge: ((command: GraphEditCommandKind) => boolean) | undefined,
+  command: GraphEditCommandKind,
+): boolean {
+  return editable && (canEditEdge?.(command) ?? true);
 }
 
 function makeAction(id: string, label: string, onSelect: () => void): GraphContextMenuAction {
@@ -109,6 +127,7 @@ export function buildNodeActions({
   analysisDisplayMode,
   editable,
   nodeId,
+  canEditNode,
   canNavigateToSource,
   collapsed,
   overflowActionLabel,
@@ -159,7 +178,7 @@ export function buildNodeActions({
       onRequestQa(nodeId);
       onClose();
     }),
-    makeAction("set-qa-anchor", "设为问答范围起点", () => {
+    makeAction("set-qa-anchor", "设为问答目标", () => {
       onOpenQa(nodeId);
       onClose();
     }),
@@ -192,14 +211,22 @@ export function buildNodeActions({
   );
   if (allowMutatingActions(analysisDisplayMode, editable)) {
     actions.push(
-      makeAction("delete-node-subtree", "删除节点及子节点", () => {
-        onDeleteNodeSubtree(nodeId);
-        onClose();
-      }),
-      makeAction("delete-node", "删除节点", () => {
-        onDeleteNode(nodeId);
-        onClose();
-      }),
+      ...(canRunNodeCommand(editable, canEditNode, "DELETE_NODE_SUBTREE")
+        ? [
+            makeAction("delete-node-subtree", "删除节点及子节点", () => {
+              onDeleteNodeSubtree(nodeId);
+              onClose();
+            }),
+          ]
+        : []),
+      ...(canRunNodeCommand(editable, canEditNode, "DELETE_NODE")
+        ? [
+            makeAction("delete-node", "删除节点", () => {
+              onDeleteNode(nodeId);
+              onClose();
+            }),
+          ]
+        : []),
     );
   }
   return actions;
@@ -209,10 +236,11 @@ export function buildEdgeActions({
   analysisDisplayMode,
   editable,
   edgeId,
+  canEditEdge,
   onDeleteEdge,
   onClose,
 }: EdgeActionSchemaInput): GraphContextMenuAction[] {
-  if (!allowMutatingActions(analysisDisplayMode, editable)) {
+  if (!allowMutatingActions(analysisDisplayMode, editable) || !canRunEdgeCommand(editable, canEditEdge, "DELETE_EDGE")) {
     return [];
   }
   return [

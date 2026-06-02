@@ -3,6 +3,7 @@ import {
   exportMermaid,
   requestAnalysisDisplayMode,
   requestArchitectureGraph,
+  requestPackageDependencyGraph,
   requestCodeDraftsAsync,
   requestClassDiagram,
   requestDraftNavigation,
@@ -16,7 +17,7 @@ import {
   requestSyncPreview,
   showDiffMode,
 } from "../api";
-import type { AnalysisDisplayMode } from "../types";
+import type { AnalysisDisplayMode, IndexedClassDiagramOptions, IndexedReviewGraphOptions } from "../types";
 import type { useBridgeCommandController } from "./useBridgeCommandController";
 
 interface UseWorkbenchCommandControllerArgs {
@@ -47,6 +48,36 @@ export function useWorkbenchCommandController({
 
   function handleRequestClassDiagram(scopeNodeId?: string | null) {
     bridgeCommands.runBridgeCommand("加载类图", () => requestClassDiagram(scopeNodeId ?? null));
+  }
+
+  function handleRequestClassDiagramWithOptions(
+    scopeNodeId: string | null | undefined,
+    classDiagram: Partial<IndexedClassDiagramOptions>,
+  ) {
+    bridgeCommands.runBridgeCommand("加载类图", () => requestClassDiagram(scopeNodeId ?? null, { classDiagram }));
+  }
+
+  function handleRequestPackageDependencyGraph(
+    packageName?: string | null,
+    options: { includeExternalLibraries?: boolean; includeJdk?: boolean } = {},
+  ) {
+    bridgeCommands.runBridgeCommand("加载包依赖", () => requestPackageDependencyGraph(packageName ?? null, options), {
+      successFeedback: {
+        level: "INFO",
+        message: "正在加载包依赖视图。",
+      },
+    });
+  }
+
+  function handleRequestArchitectureGraph(options: { includeExternalLibraries?: boolean; includeJdk?: boolean } = {}) {
+    bridgeCommands.runBridgeCommand("加载架构图", () => requestArchitectureGraph(options));
+  }
+
+  function handleRequestReviewGraphWithOptions(
+    selectedDiffItemIds: string[] = [],
+    review: Partial<IndexedReviewGraphOptions>,
+  ) {
+    bridgeCommands.runBridgeCommand("加载 Review Graph", () => requestReviewGraph(selectedDiffItemIds, { review }));
   }
 
   function handleExportMermaid() {
@@ -143,7 +174,11 @@ export function useWorkbenchCommandController({
 
   return {
     handleRequestAnalysisDisplayMode,
+    handleRequestArchitectureGraph,
     handleRequestClassDiagram,
+    handleRequestClassDiagramWithOptions,
+    handleRequestPackageDependencyGraph,
+    handleRequestReviewGraphWithOptions,
     handleExportMermaid,
     handleShowDiffMode,
     handleRequestSyncPreview,

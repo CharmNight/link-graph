@@ -1,8 +1,15 @@
 package com.charmnight.linkgraph.application
 
 import com.charmnight.linkgraph.application.artifact.ConfirmedDraftArtifactWriter
-import com.charmnight.linkgraph.application.model.GraphEditScript
-import com.charmnight.linkgraph.application.model.GraphLayoutPosition
+import com.charmnight.linkgraph.application.command.ApplicationCommandDispatcher
+import com.charmnight.linkgraph.application.command.DebugApplicationCommandHandler
+import com.charmnight.linkgraph.application.command.DraftApplicationCommandHandler
+import com.charmnight.linkgraph.application.command.GenerationApplicationCommandHandler
+import com.charmnight.linkgraph.application.command.IndexedGraphApplicationCommandHandler
+import com.charmnight.linkgraph.application.command.ReviewApplicationCommandHandler
+import com.charmnight.linkgraph.application.command.SourceNavigationApplicationCommandHandler
+import com.charmnight.linkgraph.application.command.SubjectApplicationCommandHandler
+import com.charmnight.linkgraph.application.command.WorkspaceApplicationCommandHandler
 import com.charmnight.linkgraph.application.port.GraphEditorPresentationProvider
 import com.charmnight.linkgraph.codegen.CodeDraftWriterService
 import com.charmnight.linkgraph.codegen.CodeGenerationService
@@ -16,17 +23,13 @@ import com.charmnight.linkgraph.llm.artifact.AgentArtifactStoreService
 import com.charmnight.linkgraph.mermaid.MermaidExporter
 import com.charmnight.linkgraph.mermaid.MermaidImporter
 import com.charmnight.linkgraph.mermaid.MermaidValidator
-import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
-import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.navigation.SourceNavigationService
 import com.charmnight.linkgraph.semantic.SemanticAnalyzer
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcomeFactory
-import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.provider.SemanticProviderRegistry
 import com.charmnight.linkgraph.semantic.provider.code.CodeSemanticProvider
-import com.charmnight.linkgraph.semantic.subject.SubjectPreviewKind
 import com.charmnight.linkgraph.semantic.provider.resource.MarkdownSemanticProvider
 import com.charmnight.linkgraph.semantic.provider.resource.MyBatisXmlSemanticProvider
 import com.charmnight.linkgraph.semantic.provider.resource.SqlSemanticProvider
@@ -61,15 +64,12 @@ import com.charmnight.linkgraph.application.workflow.architecture.ClassDiagramWo
 import com.charmnight.linkgraph.application.workflow.review.ReviewGraphWorkflow
 import com.charmnight.linkgraph.sync.GraphPatchApplyService
 import com.charmnight.linkgraph.sync.SyncPreviewPlanner
-import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.DraftWorkbenchService
 import com.charmnight.linkgraph.workbench.RiskResolutionService
-import com.charmnight.linkgraph.workbench.StepGranularity
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.ide.CopyPasteManager
-import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import java.awt.datatransfer.StringSelection
 
@@ -350,6 +350,7 @@ internal class GraphEditorApplicationService(
             indexSupport = architectureIndexSupport,
             eventSink = presentationProvider.eventSink(),
             logger = logger,
+            runtimeTrace = runtimeSupport.runtimeTraceSink(),
         )
     }
 
@@ -358,7 +359,9 @@ internal class GraphEditorApplicationService(
             project = project,
             indexSupport = architectureIndexSupport,
             eventSink = presentationProvider.eventSink(),
+            snapshotProvider = editorSnapshotProvider,
             logger = logger,
+            runtimeTrace = runtimeSupport.runtimeTraceSink(),
         )
     }
 
@@ -370,6 +373,7 @@ internal class GraphEditorApplicationService(
             graphDiffer = graphDiffer,
             eventSink = presentationProvider.eventSink(),
             logger = logger,
+            runtimeTrace = runtimeSupport.runtimeTraceSink(),
         )
     }
 
@@ -397,153 +401,40 @@ internal class GraphEditorApplicationService(
         )
     }
 
-    fun previewCurrentEditorSubjectKind(editor: Editor? = null): SubjectPreviewKind? =
-        subjectFlow.previewCurrentEditorSubjectKind(editor)
-
-    fun addCurrentEditorContextNode(): Boolean =
-        subjectFlow.addCurrentEditorContextNode()
-
-    fun loadCurrentEditorContextGraphAsync(editor: Editor? = null) =
-        subjectFlow.loadCurrentEditorContextGraphAsync(editor)
-
-    fun requestExpandOverflowNode(nodeId: String) =
-        subjectFlow.requestExpandOverflowNode(nodeId)
-
-    fun requestAnalysisDisplayMode(displayMode: AnalysisDisplayMode) {
-        when (displayMode) {
-            AnalysisDisplayMode.ARCHITECTURE_GRAPH -> requestArchitectureGraph()
-            AnalysisDisplayMode.CLASS_DIAGRAM -> requestClassDiagram()
-            AnalysisDisplayMode.REVIEW_GRAPH -> requestReviewGraph()
-            else -> subjectFlow.requestAnalysisDisplayMode(displayMode)
-        }
-    }
-
-    fun requestArchitectureGraph() =
-        architectureGraphFlow.requestArchitectureGraph()
-
-    fun requestClassDiagram(scopeNodeId: String? = null) =
-        classDiagramFlow.requestClassDiagram(scopeNodeId)
-
-    fun requestReviewGraph(selectedDiffItemIds: List<String> = emptyList()) =
-        reviewGraphFlow.requestReviewGraph(selectedDiffItemIds)
-
-    fun loadGraph(graph: GraphDocument, source: String) {
-        workspaceChangeCoordinator.resetWorkspaceGraphContext()
-        workspaceFlow.loadGraph(graph, source)
-    }
-
-    fun importMermaid(mermaid: String): GraphDocument {
-        workspaceChangeCoordinator.resetWorkspaceGraphContext()
-        return workspaceFlow.importMermaid(mermaid)
-    }
-
-    fun exportMermaid(): String = workspaceFlow.exportMermaid()
-
-    fun showDiffMode() =
-        workspaceChangeCoordinator.invalidateRequests().let { workspaceFlow.showDiffMode() }
-
-    fun handleFrontendEditScript(script: GraphEditScript) {
-        workspaceChangeCoordinator.resetWorkspaceGraphContext()
-        workspaceFlow.handleFrontendEditScript(script)
-    }
-
-    fun handleFrontendLayoutChanged(positions: Map<String, GraphLayoutPosition>) =
-        workspaceFlow.handleFrontendLayoutChanged(positions)
-
-    fun updateWorkbenchSectionPreference(preferences: Map<String, Boolean>) {
-        presentationProvider.eventSink().emit(
-            com.charmnight.linkgraph.application.port.GraphEditorApplicationEvent.WorkbenchSectionPreferencesChanged(preferences),
+    val commandDispatcher: ApplicationCommandDispatcher by lazy(LazyThreadSafetyMode.NONE) {
+        ApplicationCommandDispatcher(
+            listOf(
+                SubjectApplicationCommandHandler(subjectFlow),
+                IndexedGraphApplicationCommandHandler(
+                    architectureGraphFlow = architectureGraphFlow,
+                    classDiagramFlow = classDiagramFlow,
+                    reviewGraphFlow = reviewGraphFlow,
+                ),
+                WorkspaceApplicationCommandHandler(
+                    workspaceFlow = workspaceFlow,
+                    workspaceChangeCoordinator = workspaceChangeCoordinator,
+                    eventSink = presentationProvider.eventSink(),
+                ),
+                SourceNavigationApplicationCommandHandler(
+                    sourceNavigationFlow = sourceNavigationFlow,
+                    invocationExpansionFlow = invocationExpansionFlow,
+                ),
+                ReviewApplicationCommandHandler(reviewFlow),
+                DraftApplicationCommandHandler(
+                    confirmedDraftCoordinator = confirmedDraftCoordinator,
+                    draftPatchFlow = draftPatchFlow,
+                ),
+                GenerationApplicationCommandHandler(
+                    generationPlanFlow = generationPlanFlow,
+                    generationDiscussionFlow = generationDiscussionFlow,
+                    codeDraftGenerationFlow = codeDraftGenerationFlow,
+                    codeDraftApplyFlow = codeDraftApplyFlow,
+                    openCodeDraftNativeDiffOverrideProvider = { testOverrides.openCodeDraftNativeDiff },
+                ),
+                DebugApplicationCommandHandler(debugFlow),
+            ),
         )
     }
-
-    fun requestSyncPreview(): List<SyncPreviewItem> = workspaceFlow.requestSyncPreview()
-
-    fun requestSourceNavigation(nodeId: String) =
-        sourceNavigationFlow.requestSourceNavigation(nodeId)
-
-    fun requestExpandInvocation(nodeId: String) =
-        invocationExpansionFlow.requestExpandInvocation(nodeId)
-
-    fun requestRemoveInvocationExpansion(expansionId: String) =
-        invocationExpansionFlow.requestRemoveInvocationExpansion(expansionId)
-
-    fun openSettings() = sourceNavigationFlow.openSettings()
-
-    fun requestQaAsync(
-        question: String,
-        selectedNodeIds: List<String> = emptyList(),
-        sourceThreadId: String? = null,
-        mode: QaMode = QaMode.AUTO,
-    ) = reviewFlow.requestQaAsync(question, selectedNodeIds, sourceThreadId, mode)
-
-    fun retryLastQaRequestAsync() = reviewFlow.retryLastQaRequestAsync()
-
-    fun resolveInvestigationThread(
-        threadId: String,
-        status: com.charmnight.linkgraph.workbench.RiskResolutionStatus,
-        note: String? = null,
-    ) = reviewFlow.resolveInvestigationThread(threadId, status, note.orEmpty())
-
-    fun requestDiffReviewAsync(
-        question: String,
-        selectedDiffItemIds: List<String> = emptyList(),
-    ) = reviewFlow.requestDiffReviewAsync(question, selectedDiffItemIds)
-
-    fun requestGraphBeautificationAsync(
-        goal: String = "",
-        preferredStyle: String? = null,
-        explanationFocus: String? = null,
-        focusNodeId: String? = null,
-        followUp: com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext? = null,
-        granularity: StepGranularity = StepGranularity.BUSINESS,
-    ) = reviewFlow.requestGraphBeautificationAsync(
-        goal = goal,
-        preferredStyle = preferredStyle,
-        explanationFocus = explanationFocus,
-        focusNodeId = focusNodeId,
-        followUp = followUp,
-        granularity = granularity,
-    )
-
-    fun confirmQaCandidateChange(changeId: String) = confirmedDraftCoordinator.confirm(changeId)
-
-    fun unconfirmQaCandidateChange(changeId: String) = confirmedDraftCoordinator.unconfirm(changeId)
-
-    fun applyDraftPatchPreview(operationIds: Set<String>? = null) =
-        draftPatchFlow.applyDraftPatchPreview(operationIds)
-
-    fun clearDraftPatchPreview() = draftPatchFlow.clearDraftPatchPreview()
-
-    fun restoreDraftPatchPreview(source: com.charmnight.linkgraph.application.model.DraftPatchPreviewSource) =
-        draftPatchFlow.restoreDraftPatchPreview(source)
-
-    fun undoLastDraftPatchApply() = draftPatchFlow.undoLastDraftPatchApply()
-
-    fun requestGenerationPlanAsync() = generationPlanFlow.requestGenerationPlanAsync()
-
-    fun requestGenerationPlanDiscussionAsync(question: String, focusItemId: String? = null) =
-        generationDiscussionFlow.requestGenerationPlanDiscussionAsync(question, focusItemId)
-
-    fun requestCodeDraftsAsync() = codeDraftGenerationFlow.requestCodeDraftsAsync()
-
-    fun applyCodeDrafts() = codeDraftApplyFlow.applyCodeDrafts()
-
-    fun applySingleCodeDraft(draftId: String) = codeDraftApplyFlow.applySingleCodeDraft(draftId)
-
-    fun openCodeDraftNativeDiff(draftId: String) {
-        testOverrides.openCodeDraftNativeDiff?.invoke(draftId)
-            ?: codeDraftApplyFlow.openCodeDraftNativeDiff(draftId)
-    }
-
-    fun requestDraftNavigation(targetPath: String) = codeDraftApplyFlow.requestDraftNavigation(targetPath)
-
-    fun prepareDebugRequestedAnalysisDisplayModeIfPresent(envName: String) =
-        debugFlow.prepareDebugRequestedAnalysisDisplayModeIfPresent(envName)
-
-    fun loadDebugMethodGraphBySignatureAsync(signature: String) =
-        debugFlow.loadDebugMethodGraphBySignatureAsync(signature)
-
-    fun loadDebugGraph(mode: String) = debugFlow.loadDebugGraph(mode)
 
     override fun dispose() {
         subjectFlow.dispose()

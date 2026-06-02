@@ -70,14 +70,27 @@ class JvmRelationResolverRegistry(
         }
     }
 
-    fun resolveAll(context: JvmResolutionContext): JvmRelationIndex {
+    fun resolveAll(
+        context: JvmResolutionContext,
+        traceStage: ((stage: String, startedAtNanos: Long, details: () -> List<String>) -> Unit)? = null,
+    ): JvmRelationIndex {
         val relations = mutableListOf<JvmRelation>()
         resolvers.forEach { resolver ->
             ProgressManager.checkCanceled()
             if (relations.size >= context.budget.maxRelations) {
                 return@forEach
             }
-            resolver.resolve(context)
+            val startedAt = System.nanoTime()
+            val resolvedRelations = resolver.resolve(context)
+            traceStage?.invoke("architectureIndex.relation.${resolver.id}", startedAt) {
+                listOf(
+                    "resolver=${resolver.id}",
+                    "relations=${resolvedRelations.size}",
+                    "totalBefore=${relations.size}",
+                    "budgetRemaining=${(context.budget.maxRelations - relations.size).coerceAtLeast(0)}",
+                )
+            }
+            resolvedRelations
                 .asSequence()
                 .take((context.budget.maxRelations - relations.size).coerceAtLeast(0))
                 .forEach { relation ->

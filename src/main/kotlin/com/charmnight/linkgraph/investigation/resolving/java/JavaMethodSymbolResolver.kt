@@ -1,17 +1,17 @@
 package com.charmnight.linkgraph.investigation.resolving.java
 
+import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoal
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoalKind
 import com.charmnight.linkgraph.investigation.domain.ResolutionOutcome
 import com.charmnight.linkgraph.investigation.resolving.InvestigationContext
-import com.charmnight.linkgraph.investigation.resolving.ReadActionEvidenceResolver
 
 /**
  * 使用统一 ArchitectureGraphIndex 解析普通方法符号，负责处理重载方法边界。
  */
 class JavaMethodSymbolResolver(
-    private val jvmEvidenceIndexAdapter: JvmEvidenceIndexAdapter = JvmEvidenceIndexAdapter(),
-) : ReadActionEvidenceResolver() {
+    jvmEvidenceIndexAdapter: JvmEvidenceIndexAdapter = JvmEvidenceIndexAdapter(),
+) : JvmIndexReadActionEvidenceResolver(jvmEvidenceIndexAdapter) {
     /** 保存解析器稳定标识。 */
     override val id: String = "java-method-symbol"
 
@@ -28,13 +28,8 @@ class JavaMethodSymbolResolver(
     override fun resolveInReadAction(
         goal: EvidenceGoal,
         context: InvestigationContext,
+        index: ArchitectureGraphIndex,
     ): ResolutionOutcome {
-        val index = runCatching { jvmEvidenceIndexAdapter.buildIndex(context.project) }.getOrNull()
-            ?: return ResolutionOutcome.Unresolved(
-                resolverId = id,
-                reason = "无法构建共享 ArchitectureGraphIndex。",
-                requiredEvidence = listOf("等待项目索引完成，或补充完整方法签名后重试。"),
-            )
         val candidates = JvmInvestigationEvidenceSupport.resolveMethodCandidates(goal, index)
         return when {
             candidates.methods.size == 1 -> ResolutionOutcome.Resolved(

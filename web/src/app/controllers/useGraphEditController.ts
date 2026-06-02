@@ -51,11 +51,12 @@ interface UseGraphEditControllerArgs {
     graph: LinkGraphDocument,
     anchorNodeId: string | null,
   ) => FactGraphViewDocument;
-  deriveFlowchartSummary: (visibleGraph: LinkGraphDocument, fullGraph: LinkGraphDocument) => FlowchartViewDocument["summary"];
+  deriveFlowchartSummary: (
+    visibleGraph: LinkGraphDocument,
+    fullGraph: LinkGraphDocument,
+    currentSummary?: FlowchartViewDocument["summary"],
+  ) => FlowchartViewDocument["summary"];
   deriveResourceRelationSummary: (visibleGraph: LinkGraphDocument) => ResourceRelationViewDocument["summary"];
-  deriveArchitectureGraphSummary: (visibleGraph: LinkGraphDocument) => ArchitectureGraphViewDocument["summary"];
-  deriveClassDiagramSummary: (visibleGraph: LinkGraphDocument) => ClassDiagramViewDocument["summary"];
-  deriveReviewGraphSummary: (visibleGraph: LinkGraphDocument) => ReviewGraphViewDocument["summary"];
 }
 
 export function useGraphEditController(args: UseGraphEditControllerArgs) {
@@ -164,7 +165,7 @@ export function useGraphEditController(args: UseGraphEditControllerArgs) {
         visibleGraph: nextGraph,
         fullGraph: nextGraph,
         anchorNodeId: nextAnchorNodeId,
-        summary: args.deriveFlowchartSummary(nextGraph, nextGraph),
+        summary: args.deriveFlowchartSummary(nextGraph, nextGraph, current.summary),
       }));
     } else if (args.analysisDisplayMode === "RESOURCE_RELATION_VIEW") {
       const nextGraph = { nodes: laidOutNodes, edges: nextEdges };
@@ -182,7 +183,7 @@ export function useGraphEditController(args: UseGraphEditControllerArgs) {
         visibleGraph: nextGraph,
         fullGraph: nextGraph,
         anchorNodeId: nextAnchorNodeId,
-        summary: args.deriveArchitectureGraphSummary(nextGraph),
+        summary: current.summary,
       }));
     } else if (args.analysisDisplayMode === "CLASS_DIAGRAM") {
       const nextGraph = { nodes: laidOutNodes, edges: nextEdges };
@@ -191,7 +192,7 @@ export function useGraphEditController(args: UseGraphEditControllerArgs) {
         visibleGraph: nextGraph,
         fullGraph: nextGraph,
         anchorNodeId: nextAnchorNodeId,
-        summary: args.deriveClassDiagramSummary(nextGraph),
+        summary: current.summary,
       }));
     } else if (args.analysisDisplayMode === "REVIEW_GRAPH") {
       const nextGraph = { nodes: laidOutNodes, edges: nextEdges };
@@ -200,7 +201,7 @@ export function useGraphEditController(args: UseGraphEditControllerArgs) {
         visibleGraph: nextGraph,
         fullGraph: nextGraph,
         anchorNodeId: nextAnchorNodeId,
-        summary: args.deriveReviewGraphSummary(nextGraph),
+        summary: current.summary,
       }));
     }
     args.setQaTargetNodeIds((current) => current.filter((nodeId) => laidOutNodes.some((node) => node.id === nodeId)));

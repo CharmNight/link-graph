@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.services
 
+import com.charmnight.linkgraph.application.command.ApplicationCommand
 import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
 import com.charmnight.linkgraph.architecture.architectureIndexRuntime
 import com.charmnight.linkgraph.testing.*
@@ -37,9 +38,11 @@ import com.charmnight.linkgraph.semantic.subject.ResourceSubjectHandle
 import com.charmnight.linkgraph.semantic.subject.ResourceSubjectKind
 import com.charmnight.linkgraph.semantic.subject.SourceRange
 import com.charmnight.linkgraph.semantic.subject.SubjectHandle
+import com.charmnight.linkgraph.ui.currentVisibleGraph
 import com.charmnight.linkgraph.semantic.subject.SubjectLocator
 import com.charmnight.linkgraph.semantic.subject.SubjectPreviewKind
 import com.charmnight.linkgraph.ui.GraphEditorStateService
+import com.charmnight.linkgraph.projection.graphProjectionHiddenCounts
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.testFramework.PlatformTestUtil
@@ -138,19 +141,19 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
         waitForSnapshot { snapshot ->
             snapshot.lastGraphSource == "currentContext" &&
                 snapshot.analysisDisplayMode == AnalysisDisplayMode.RESOURCE_RELATION_VIEW &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.DOC_PAGE && node.title == "order-flow.md" } == true &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.METHOD && node.title == "OrderService.submit" } == true
+                currentVisibleGraph(snapshot).nodes.any { node -> node.type == NodeType.DOC_PAGE && node.title == "order-flow.md" } == true &&
+                currentVisibleGraph(snapshot).nodes.any { node -> node.type == NodeType.METHOD && node.title == "OrderService.submit" } == true
         }
 
-        service.requestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART))
         waitForSnapshot { snapshot ->
             snapshot.analysisDisplayMode == AnalysisDisplayMode.RESOURCE_RELATION_VIEW &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.DOC_PAGE && node.title == "order-flow.md" } == true &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.METHOD && node.title == "OrderService.submit" } == true
+                currentVisibleGraph(snapshot).nodes.any { node -> node.type == NodeType.DOC_PAGE && node.title == "order-flow.md" } == true &&
+                currentVisibleGraph(snapshot).nodes.any { node -> node.type == NodeType.METHOD && node.title == "OrderService.submit" } == true
         }
     }
 
@@ -236,10 +239,10 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
             registry = SemanticProviderRegistry(listOf(provider)),
         )
 
-        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
         waitForSnapshot { snapshot ->
             snapshot.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.id == "action:trim" } == true
+                currentVisibleGraph(snapshot).nodes.any { node -> node.id == "action:trim" } == true
         }
     }
 
@@ -259,12 +262,12 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         )
 
         val service = project.linkGraphApplicationServiceForTest()
-        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
 
         waitForSnapshot { snapshot ->
             snapshot.lastGraphSource == "currentMethod" &&
                 snapshot.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.title.contains("DemoService.run") } == true
+                currentVisibleGraph(snapshot).nodes.any { node -> node.title.contains("DemoService.run") } == true
         }
 
         assertNull(
@@ -351,36 +354,38 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
-        service.requestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH)
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH))
 
-        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
         waitForSnapshot { snapshot ->
             analyzerCallCount.get() == 1 &&
                 snapshot.analysisDisplayMode == AnalysisDisplayMode.FACT_GRAPH &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.id == "action:trim" } == true &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.DOC_PAGE } == true
+                currentVisibleGraph(snapshot).nodes.any { node -> node.id == "action:trim" } == true &&
+                currentVisibleGraph(snapshot).nodes.any { node -> node.type == NodeType.DOC_PAGE } == true
         }
 
         val stateService = project.getService(GraphEditorStateService::class.java)
         val factSnapshot = stateService.snapshot()
         assertEquals(1, analyzerCallCount.get())
-        assertTrue(factSnapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.FLOW_ACTION } == true)
-        assertTrue(factSnapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.DOC_PAGE } == true)
+        assertTrue(currentVisibleGraph(factSnapshot).nodes.any { node -> node.type == NodeType.FLOW_ACTION } == true)
+        assertTrue(currentVisibleGraph(factSnapshot).nodes.any { node -> node.type == NodeType.DOC_PAGE } == true)
 
-        service.requestAnalysisDisplayMode(AnalysisDisplayMode.RESOURCE_RELATION_VIEW)
+        service.commandDispatcher.dispatch(
+            ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.RESOURCE_RELATION_VIEW),
+        )
         waitForSnapshot { snapshot ->
             analyzerCallCount.get() == 1 &&
                 snapshot.analysisDisplayMode == AnalysisDisplayMode.RESOURCE_RELATION_VIEW &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.METHOD } == true &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.DOC_PAGE } == true &&
-                snapshot.visibleGraph?.nodes?.none { node -> node.type == NodeType.FLOW_ACTION } == true
+                currentVisibleGraph(snapshot).nodes.any { node -> node.type == NodeType.METHOD } == true &&
+                currentVisibleGraph(snapshot).nodes.any { node -> node.type == NodeType.DOC_PAGE } == true &&
+                currentVisibleGraph(snapshot).nodes.none { node -> node.type == NodeType.FLOW_ACTION } == true
         }
 
         val resourceSnapshot = stateService.snapshot()
         assertEquals(1, analyzerCallCount.get())
-        assertTrue(resourceSnapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.METHOD } == true)
-        assertTrue(resourceSnapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.DOC_PAGE } == true)
-        assertFalse(resourceSnapshot.visibleGraph?.nodes?.any { node -> node.type == NodeType.FLOW_ACTION } == true)
+        assertTrue(currentVisibleGraph(resourceSnapshot).nodes.any { node -> node.type == NodeType.METHOD } == true)
+        assertTrue(currentVisibleGraph(resourceSnapshot).nodes.any { node -> node.type == NodeType.DOC_PAGE } == true)
+        assertFalse(currentVisibleGraph(resourceSnapshot).nodes.any { node -> node.type == NodeType.FLOW_ACTION } == true)
     }
 
     fun testRequestAnalysisDisplayMode在脏编辑态下复用当前视图文档() {
@@ -449,20 +454,20 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
-        service.requestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART))
 
-        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
         waitForSnapshot { snapshot ->
             analyzerCallCount.get() == 1 &&
                 snapshot.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.id == "action:trim" } == true
+                currentVisibleGraph(snapshot).nodes.any { node -> node.id == "action:trim" } == true
         }
 
         val stateService = project.getService(GraphEditorStateService::class.java)
         val flowchartSnapshot = stateService.snapshot()
         stateService.markGraphChanged(
-            graph = flowchartSnapshot.visibleGraph!!.copy(
-                nodes = flowchartSnapshot.visibleGraph!!.nodes + GraphNode(
+            graph = currentVisibleGraph(flowchartSnapshot).copy(
+                nodes = currentVisibleGraph(flowchartSnapshot).nodes + GraphNode(
                     id = "design:manual-step",
                     type = NodeType.METHOD,
                     title = "ManualFlowStep",
@@ -471,16 +476,16 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
             ),
         )
 
-        service.requestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH)
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH))
         waitForSnapshot { snapshot ->
             snapshot.analysisDisplayMode == AnalysisDisplayMode.FACT_GRAPH &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.id == "design:manual-step" } == true
+                currentVisibleGraph(snapshot).nodes.any { node -> node.id == "design:manual-step" } == true
         }
 
-        service.requestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART))
         waitForSnapshot { snapshot ->
             snapshot.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.id == "design:manual-step" } == true
+                currentVisibleGraph(snapshot).nodes.any { node -> node.id == "design:manual-step" } == true
         }
 
         assertEquals(1, analyzerCallCount.get())
@@ -564,18 +569,18 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
-        service.requestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH)
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH))
 
-        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
         waitForSnapshot { snapshot ->
             snapshot.analysisDisplayMode == AnalysisDisplayMode.FACT_GRAPH &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.id == "action:write" } == true
+                currentVisibleGraph(snapshot).nodes.any { node -> node.id == "action:write" } == true
         }
 
-        service.requestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART))
         waitForSnapshot { snapshot ->
             snapshot.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART &&
-                snapshot.visibleGraph?.edges?.any { edge ->
+                currentVisibleGraph(snapshot).edges.any { edge ->
                     edge.type == EdgeType.CONTROL_FLOW &&
                         edge.fromNodeId == "action:validate" &&
                         edge.toNodeId == "action:normalize"
@@ -584,28 +589,28 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
 
         val flowchartSnapshot = project.getService(GraphEditorStateService::class.java).snapshot()
         assertTrue(
-            flowchartSnapshot.visibleGraph?.edges?.any { edge ->
+            currentVisibleGraph(flowchartSnapshot).edges.any { edge ->
                 edge.type == EdgeType.CONTROL_FLOW &&
                     edge.fromNodeId == "method:demo-run" &&
                     edge.toNodeId == "action:validate"
             } == true,
         )
         assertTrue(
-            flowchartSnapshot.visibleGraph?.edges?.any { edge ->
+            currentVisibleGraph(flowchartSnapshot).edges.any { edge ->
                 edge.type == EdgeType.CONTROL_FLOW &&
                     edge.fromNodeId == "action:validate" &&
                     edge.toNodeId == "action:normalize"
             } == true,
         )
         assertTrue(
-            flowchartSnapshot.visibleGraph?.edges?.any { edge ->
+            currentVisibleGraph(flowchartSnapshot).edges.any { edge ->
                 edge.type == EdgeType.CONTROL_FLOW &&
                     edge.fromNodeId == "action:normalize" &&
                     edge.toNodeId == "action:write"
             } == true,
         )
         assertTrue(
-            flowchartSnapshot.visibleGraph?.edges?.none { edge ->
+            currentVisibleGraph(flowchartSnapshot).edges.none { edge ->
                 edge.type == EdgeType.CONTROL_FLOW &&
                     edge.fromNodeId == "method:demo-run" &&
                     edge.toNodeId == "action:normalize"
@@ -692,25 +697,22 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
         testOverrides.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
-        service.requestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART))
 
-        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
         waitForSnapshot { snapshot ->
             snapshot.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART &&
                 snapshot.flowchartView?.summary?.semanticallyIncomplete == true
         }
 
         val flowchartView = project.getService(GraphEditorStateService::class.java).snapshot().flowchartView
-        assertTrue(flowchartView != null)
-        val summary = flowchartView!!.summary
-        assertEquals(
-            flowchartView.fullGraph.nodes.size - flowchartView.visibleGraph.nodes.size,
-            summary.hiddenNodeCount,
+        val summary = flowchartView.summary
+        val hiddenCounts = graphProjectionHiddenCounts(
+            visibleGraph = flowchartView.visibleGraph,
+            fullGraph = flowchartView.fullGraph,
         )
-        assertEquals(
-            flowchartView.fullGraph.edges.size - flowchartView.visibleGraph.edges.size,
-            summary.hiddenEdgeCount,
-        )
+        assertEquals(hiddenCounts.hiddenNodeCount, summary.hiddenNodeCount)
+        assertEquals(hiddenCounts.hiddenEdgeCount, summary.hiddenEdgeCount)
         assertEquals(summary.hiddenNodeCount > 0 || summary.hiddenEdgeCount > 0, summary.truncated)
         assertEquals(1, summary.incompleteNodeCount)
         assertTrue(summary.semanticallyIncomplete)
@@ -751,12 +753,12 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
             ): SubjectHandle = codeHandle
         }
 
-        val appended = service.addCurrentEditorContextNode()
+        val appended = service.commandDispatcher.dispatch(ApplicationCommand.AddCurrentEditorContextNode)
 
         assertTrue(appended)
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
         assertTrue(
-            snapshot.visibleGraph?.nodes?.any { node ->
+            currentVisibleGraph(snapshot).nodes.any { node ->
                 node.type == NodeType.METHOD && node.title == "OrderService.place"
             } == true,
         )
@@ -812,11 +814,11 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
                 }),
             ),
         )
-        service.requestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH)
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH))
 
-        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
         waitForSnapshot { snapshot ->
-            snapshot.visibleGraph?.nodes?.any { node -> node.id == "action:trim" } == true
+            currentVisibleGraph(snapshot).nodes.any { node -> node.id == "action:trim" } == true
         }
 
         val stateService = project.getService(GraphEditorStateService::class.java)
@@ -831,21 +833,21 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
             ),
         )
         stateService.loadGraphProjection(
-            visibleGraph = loadedSnapshot.visibleGraph!!.copy(nodes = loadedSnapshot.visibleGraph!!.nodes + overflowNode),
-            fullGraph = loadedSnapshot.referenceFactGraph!!,
+            visibleGraph = currentVisibleGraph(loadedSnapshot).copy(nodes = currentVisibleGraph(loadedSnapshot).nodes + overflowNode),
+            fullGraph = loadedSnapshot.semanticFactGraph,
             source = loadedSnapshot.lastGraphSource ?: "currentMethod",
             selectedMethodSignature = loadedSnapshot.selectedMethodSignature,
         )
 
-        service.requestExpandOverflowNode(overflowNode.id)
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestExpandOverflowNode(overflowNode.id))
         waitForSnapshot { snapshot ->
-            snapshot.visibleGraph?.nodes?.any { node -> node.id == "action:normalize" } == true
+            currentVisibleGraph(snapshot).nodes.any { node -> node.id == "action:normalize" } == true
         }
 
         val expandedSnapshot = stateService.snapshot()
         assertEquals(2, analyzerCallCount.get())
-        assertTrue(expandedSnapshot.visibleGraph?.nodes?.any { node -> node.id == "action:normalize" } == true)
-        assertEquals("DemoService.run", expandedSnapshot.visibleGraph?.nodes?.firstOrNull { it.id == "method:demo-run" }?.title)
+        assertTrue(currentVisibleGraph(expandedSnapshot).nodes.any { node -> node.id == "action:normalize" } == true)
+        assertEquals("DemoService.run", currentVisibleGraph(expandedSnapshot).nodes.firstOrNull { it.id == "method:demo-run" }?.title)
     }
 
     fun testDebugSignatureAutoloadRerunsSemanticAnalysisWithSemanticPipelineOnly() {
@@ -895,20 +897,20 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
                 }),
             ),
         )
-        service.requestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH)
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH))
 
-        service.loadDebugMethodGraphBySignatureAsync(codeHandle.methodSignature)
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadDebugMethodGraphBySignature(codeHandle.methodSignature))
 
         waitForSnapshot { snapshot ->
             analyzerCallCount.get() == 1 &&
                 snapshot.lastGraphSource == "currentMethod" &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.id == "action:trim" } == true
+                currentVisibleGraph(snapshot).nodes.any { node -> node.id == "action:trim" } == true
         }
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
         assertEquals(1, analyzerCallCount.get())
         assertEquals("currentMethod", snapshot.lastGraphSource)
-        assertTrue(snapshot.visibleGraph?.nodes?.any { node -> node.id == "method:demo-run" } == true)
+        assertTrue(currentVisibleGraph(snapshot).nodes.any { node -> node.id == "method:demo-run" } == true)
     }
 
     fun testLoadCurrentEditorContextGraphKeepsExternalInvocationForKotlinAccessor() {
@@ -934,11 +936,11 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
 
         val service = project.linkGraphApplicationServiceForTest()
         val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
-        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
 
         waitForSnapshot { snapshot ->
             snapshot.lastGraphSource == "currentMethod" &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.title.contains("Formatter.normalize") } == true
+                currentVisibleGraph(snapshot).nodes.any { node -> node.title.contains("Formatter.normalize") } == true
         }
     }
 
@@ -965,11 +967,11 @@ class LinkGraphProjectServiceSemanticAnalysisTest : BasePlatformTestCase() {
 
         val service = project.linkGraphApplicationServiceForTest()
         val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
-        service.loadCurrentEditorContextGraphAsync(myFixture.editor)
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
 
         waitForSnapshot { snapshot ->
             snapshot.lastGraphSource == "currentMethod" &&
-                snapshot.visibleGraph?.nodes?.any { node -> node.title.contains("Formatter.normalize") } == true
+                currentVisibleGraph(snapshot).nodes.any { node -> node.title.contains("Formatter.normalize") } == true
         }
     }
 

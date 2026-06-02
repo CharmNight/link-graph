@@ -71,7 +71,7 @@ class GraphEditorStateServiceTest {
         service.workbench.markOperationFeedback(
             level = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
             message = "链路讲解完成，已更新步骤列表",
-            preserveLastMessageType = true,
+            preservePreviousStatusKind = true,
         )
 
         val snapshot = service.snapshot()
@@ -175,7 +175,7 @@ class GraphEditorStateServiceTest {
                 selectedMethodSignature = "com.example.OrderService.place(java.lang.String):void",
                 displayName = "OrderService.place",
                 feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
-                feedbackMessage = "已加载当前主体分析：OrderService.place",
+                statusMessage = "已加载当前主体分析：OrderService.place",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
                     visibleGraph = visibleGraph,
@@ -219,9 +219,9 @@ class GraphEditorStateServiceTest {
         val snapshot = service.snapshot()
         assertEquals(AnalysisDisplayMode.FACT_GRAPH, snapshot.analysisDisplayMode)
         assertEquals("currentSubject", snapshot.lastGraphSource)
-        assertEquals(fullGraph, snapshot.visibleGraph)
-        assertEquals(fullGraph, snapshot.workingGraph)
-        assertEquals(fullGraph, snapshot.referenceFactGraph)
+        assertEquals(fullGraph, currentVisibleGraph(snapshot))
+        assertEquals(fullGraph, snapshot.workspaceGraph)
+        assertEquals(fullGraph, snapshot.semanticFactGraph)
         assertEquals(GraphSceneId.WORKSPACE_FACT, snapshot.currentSceneId)
         assertEquals("method:order-service-place", snapshot.selectedNodeId)
         assertEquals("com.example.OrderService.place(java.lang.String):void", snapshot.selectedMethodSignature)
@@ -229,9 +229,9 @@ class GraphEditorStateServiceTest {
         assertNotNull(snapshot.factGraphView)
         assertNotNull(snapshot.flowchartView)
         assertNotNull(snapshot.resourceRelationView)
-        assertEquals("method:order-service-place", snapshot.factGraphView?.anchorNodeId)
-        assertEquals("method:order-service-place", snapshot.flowchartView?.anchorNodeId)
-        assertEquals("method:order-service-place", snapshot.resourceRelationView?.anchorNodeId)
+        assertEquals("method:order-service-place", snapshot.factGraphView.anchorNodeId)
+        assertEquals("method:order-service-place", snapshot.flowchartView.anchorNodeId)
+        assertEquals("method:order-service-place", snapshot.resourceRelationView.anchorNodeId)
     }
 
     @Test
@@ -289,7 +289,7 @@ class GraphEditorStateServiceTest {
                 selectedMethodSignature = "com.example.OrderService.place():void",
                 displayName = "OrderService.place",
                 feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
-                feedbackMessage = "已加载流程图",
+                statusMessage = "已加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
                     visibleGraph = factGraph,
@@ -308,10 +308,10 @@ class GraphEditorStateServiceTest {
 
         val snapshot = service.snapshot()
         assertEquals(GraphSceneId.WORKSPACE_FLOWCHART, snapshot.currentSceneId)
-        assertEquals(factGraph, snapshot.referenceFactGraph)
+        assertEquals(factGraph, snapshot.semanticFactGraph)
         assertEquals(flowchartFullGraph, snapshot.factGraphView.fullGraph)
-        assertEquals(flowchartFullGraph, snapshot.workingGraph)
-        assertEquals(flowchartFullGraph, snapshot.referenceWorkingGraph)
+        assertEquals(flowchartFullGraph, snapshot.workspaceGraph)
+        assertEquals(flowchartFullGraph, snapshot.workspaceBaseGraph)
         assertEquals(flowchartFullGraph, snapshot.flowchartView.fullGraph)
     }
 
@@ -471,7 +471,7 @@ class GraphEditorStateServiceTest {
                 selectedMethodSignature = selectedMethodSignature,
                 displayName = "CommonController.fileDownload",
                 feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
-                feedbackMessage = "已加载流程图",
+                statusMessage = "已加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
                     visibleGraph = factGraph,
@@ -488,7 +488,7 @@ class GraphEditorStateServiceTest {
             source = "currentSubject",
         )
         service.workbench.markDraftWorkbenchState(confirmedDraftState, advanceDraftVersion = true)
-        service.markWorkingGraphChanged(
+        service.markGraphChanged(
             graph = flowchartFullGraph.copy(
                 nodes = flowchartFullGraph.nodes.map { node ->
                     if (node.id == "scope:file-download-if") {
@@ -511,7 +511,7 @@ class GraphEditorStateServiceTest {
                 selectedMethodSignature = selectedMethodSignature,
                 displayName = "CommonController.fileDownload",
                 feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
-                feedbackMessage = "已重新加载流程图",
+                statusMessage = "已重新加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
                     visibleGraph = factGraph,
@@ -534,15 +534,15 @@ class GraphEditorStateServiceTest {
         assertEquals(true, snapshot.workingGraphDirty)
         assertEquals(
             "if (delete == true)",
-            snapshot.workingGraph?.nodes?.firstOrNull { it.id == "scope:file-download-if" }?.title,
+            snapshot.workspaceGraph.nodes.firstOrNull { it.id == "scope:file-download-if" }?.title,
         )
         assertEquals(
             "if (delete == true)",
-            snapshot.flowchartView?.visibleGraph?.nodes?.firstOrNull { it.id == "scope:file-download-if" }?.title,
+            snapshot.flowchartView.visibleGraph?.nodes?.firstOrNull { it.id == "scope:file-download-if" }?.title,
         )
         assertEquals(
             factGraph,
-            snapshot.referenceFactGraph,
+            snapshot.semanticFactGraph,
         )
     }
 
@@ -616,9 +616,9 @@ class GraphEditorStateServiceTest {
         assertNotNull(snapshot.factGraphView)
         assertNotNull(snapshot.flowchartView)
         assertNotNull(snapshot.resourceRelationView)
-        assertEquals(graph, snapshot.factGraphView?.visibleGraph)
-        assertEquals(graph, snapshot.flowchartView?.visibleGraph)
-        assertEquals(graph, snapshot.resourceRelationView?.visibleGraph)
+        assertEquals(graph, snapshot.factGraphView.visibleGraph)
+        assertEquals(graph, snapshot.flowchartView.visibleGraph)
+        assertEquals(graph, snapshot.resourceRelationView.visibleGraph)
     }
 
     @Test
@@ -649,10 +649,10 @@ class GraphEditorStateServiceTest {
         service.importMermaid("graph TD\nA-->B", importedBaseline)
 
         val snapshot = service.snapshot()
-        assertEquals(factGraph, snapshot.workingGraph)
-        assertEquals(factGraph, snapshot.referenceFactGraph)
+        assertEquals(factGraph, snapshot.workspaceGraph)
+        assertEquals(factGraph, snapshot.semanticFactGraph)
         assertEquals(importedBaseline, snapshot.designBaselineGraph)
-        assertEquals(factGraph, snapshot.visibleGraph)
+        assertEquals(factGraph, currentVisibleGraph(snapshot))
         assertEquals("graph TD\nA-->B", snapshot.importedMermaid)
         assertNotNull(snapshot.factGraphView)
         assertNotNull(snapshot.flowchartView)
@@ -725,15 +725,15 @@ class GraphEditorStateServiceTest {
         service.markGraphChanged(draftGraph)
 
         val snapshot = service.snapshot()
-        assertEquals(draftGraph, snapshot.workingGraph)
-        assertEquals(factGraph, snapshot.referenceFactGraph)
-        assertEquals(draftGraph, snapshot.visibleGraph)
-        assertNotNull(snapshot.referenceFactGraph)
+        assertEquals(draftGraph, snapshot.workspaceGraph)
+        assertEquals(factGraph, snapshot.semanticFactGraph)
+        assertEquals(draftGraph, currentVisibleGraph(snapshot))
+        assertNotNull(snapshot.semanticFactGraph)
         assertNotNull(snapshot.factGraphView)
         assertNotNull(snapshot.flowchartView)
         assertNotNull(snapshot.resourceRelationView)
-        assertEquals(1, snapshot.referenceFactGraph!!.nodes.size)
-        assertEquals(2, snapshot.workingGraph!!.nodes.size)
+        assertEquals(1, snapshot.semanticFactGraph.nodes.size)
+        assertEquals(2, snapshot.workspaceGraph.nodes.size)
     }
 
     @Test
@@ -781,7 +781,7 @@ class GraphEditorStateServiceTest {
                 selectedMethodSignature = "com.example.OrderService.place():void",
                 displayName = "OrderService.place",
                 feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
-                feedbackMessage = "已加载流程图",
+                statusMessage = "已加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
                     visibleGraph = factGraph,
@@ -814,12 +814,12 @@ class GraphEditorStateServiceTest {
         service.markGraphChanged(editedFlowchartGraph)
 
         val snapshot = service.snapshot()
-        assertEquals(listOf("method:flow-entry", "design-note:1"), snapshot.visibleGraph?.nodes?.map { it.id })
-        assertEquals("READABLE", snapshot.visibleGraph?.nodes?.firstOrNull { it.id == "method:flow-entry" }?.metadata?.get("flowchart.projection.mode"))
-        assertEquals(listOf("method:flow-entry", "design-note:1"), snapshot.flowchartView?.visibleGraph?.nodes?.map { it.id })
-        assertEquals(editedFlowchartGraph, snapshot.workingGraph)
-        assertEquals(editedFlowchartGraph, snapshot.factGraphView?.visibleGraph)
-        assertEquals(editedFlowchartGraph, snapshot.resourceRelationView?.visibleGraph)
+        assertEquals(listOf("method:flow-entry", "design-note:1"), currentVisibleGraph(snapshot).nodes.map { it.id })
+        assertEquals("READABLE", currentVisibleGraph(snapshot).nodes.firstOrNull { it.id == "method:flow-entry" }?.metadata?.get("flowchart.projection.mode"))
+        assertEquals(listOf("method:flow-entry", "design-note:1"), snapshot.flowchartView.visibleGraph?.nodes?.map { it.id })
+        assertEquals(editedFlowchartGraph, snapshot.workspaceGraph)
+        assertEquals(editedFlowchartGraph, snapshot.factGraphView.visibleGraph)
+        assertEquals(editedFlowchartGraph, snapshot.resourceRelationView.visibleGraph)
         assertEquals(true, snapshot.workingGraphDirty)
     }
 
@@ -857,7 +857,7 @@ class GraphEditorStateServiceTest {
                 selectedMethodSignature = "com.example.OrderService.place():void",
                 displayName = "OrderService.place",
                 feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
-                feedbackMessage = "已加载流程图",
+                statusMessage = "已加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
                     visibleGraph = factGraph,
@@ -887,15 +887,15 @@ class GraphEditorStateServiceTest {
         service.switchAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH)
         var snapshot = service.snapshot()
         assertEquals(AnalysisDisplayMode.FACT_GRAPH, snapshot.analysisDisplayMode)
-        assertEquals(editedFlowchartGraph, snapshot.visibleGraph)
-        assertTrue(snapshot.visibleGraph?.nodes?.any { it.id == "design:1" } == true)
+        assertEquals(editedFlowchartGraph, currentVisibleGraph(snapshot))
+        assertTrue(currentVisibleGraph(snapshot).nodes.any { it.id == "design:1" } == true)
 
         service.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
         snapshot = service.snapshot()
         assertEquals(AnalysisDisplayMode.FLOWCHART, snapshot.analysisDisplayMode)
-        assertEquals(listOf("method:flow-entry", "design:1"), snapshot.visibleGraph?.nodes?.map { it.id })
-        assertEquals("READABLE", snapshot.visibleGraph?.nodes?.firstOrNull { it.id == "method:flow-entry" }?.metadata?.get("flowchart.projection.mode"))
-        assertTrue(snapshot.visibleGraph?.nodes?.any { it.id == "design:1" } == true)
+        assertEquals(listOf("method:flow-entry", "design:1"), currentVisibleGraph(snapshot).nodes.map { it.id })
+        assertEquals("READABLE", currentVisibleGraph(snapshot).nodes.firstOrNull { it.id == "method:flow-entry" }?.metadata?.get("flowchart.projection.mode"))
+        assertTrue(currentVisibleGraph(snapshot).nodes.any { it.id == "design:1" } == true)
     }
 
     @Test
@@ -943,7 +943,7 @@ class GraphEditorStateServiceTest {
                 selectedMethodSignature = "com.example.OrderService.place():void",
                 displayName = "OrderService.place",
                 feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
-                feedbackMessage = "已加载流程图",
+                statusMessage = "已加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
                     visibleGraph = factGraph,
@@ -974,18 +974,16 @@ class GraphEditorStateServiceTest {
             ),
         )
 
-        service.markViewGraphChanged(
-            graph = editedFlowchartGraph,
-            displayMode = AnalysisDisplayMode.FLOWCHART,
-        )
+        service.switchAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART)
+        service.markGraphChanged(graph = editedFlowchartGraph)
 
         val snapshot = service.snapshot()
-        assertEquals(listOf("method:flow-entry", "design:1"), snapshot.visibleGraph?.nodes?.map { it.id })
-        assertEquals("READABLE", snapshot.visibleGraph?.nodes?.firstOrNull { it.id == "method:flow-entry" }?.metadata?.get("flowchart.projection.mode"))
-        assertEquals(listOf("method:flow-entry", "design:1"), snapshot.flowchartView?.visibleGraph?.nodes?.map { it.id })
-        assertEquals(editedFlowchartGraph, snapshot.workingGraph)
-        assertEquals(editedFlowchartGraph, snapshot.factGraphView?.visibleGraph)
-        assertEquals(editedFlowchartGraph, snapshot.resourceRelationView?.visibleGraph)
+        assertEquals(listOf("method:flow-entry", "design:1"), currentVisibleGraph(snapshot).nodes.map { it.id })
+        assertEquals("READABLE", currentVisibleGraph(snapshot).nodes.firstOrNull { it.id == "method:flow-entry" }?.metadata?.get("flowchart.projection.mode"))
+        assertEquals(listOf("method:flow-entry", "design:1"), snapshot.flowchartView.visibleGraph?.nodes?.map { it.id })
+        assertEquals(editedFlowchartGraph, snapshot.workspaceGraph)
+        assertEquals(editedFlowchartGraph, snapshot.factGraphView.visibleGraph)
+        assertEquals(editedFlowchartGraph, snapshot.resourceRelationView.visibleGraph)
     }
 
     @Test
@@ -1109,8 +1107,8 @@ class GraphEditorStateServiceTest {
         service.asyncRequests.beginQaRequest()
 
         val snapshot = service.snapshot()
-        assertEquals(graph, snapshot.visibleGraph)
-        assertEquals(graph, snapshot.workingGraph)
+        assertEquals(graph, currentVisibleGraph(snapshot))
+        assertEquals(graph, snapshot.workspaceGraph)
         assertEquals(null, snapshot.qaResult)
         assertEquals("requestQa", snapshot.lastMessageType)
     }
@@ -1337,7 +1335,7 @@ class GraphEditorStateServiceTest {
             ),
             advanceDraftVersion = true,
         )
-        service.markWorkingGraphChanged(
+        service.markGraphChanged(
             graph = GraphDocument(
                 nodes = listOf(
                     GraphNode(

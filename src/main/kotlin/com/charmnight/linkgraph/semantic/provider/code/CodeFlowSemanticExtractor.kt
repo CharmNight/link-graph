@@ -45,6 +45,7 @@ import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiLambdaExpression
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiMethodCallExpression
+import com.intellij.psi.PsiNewExpression
 import com.intellij.psi.PsiReturnStatement
 import com.intellij.psi.PsiStatement
 import com.intellij.psi.PsiSwitchLabelStatementBase
@@ -55,12 +56,14 @@ import com.intellij.psi.PsiVariable
 import com.intellij.psi.PsiWhileStatement
 import org.jetbrains.kotlin.psi.KtBinaryExpression
 import org.jetbrains.kotlin.psi.KtBlockExpression
+import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtDoWhileExpression
 import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.psi.KtForExpression
 import org.jetbrains.kotlin.psi.KtIfExpression
 import org.jetbrains.kotlin.psi.KtLoopExpression
 import org.jetbrains.kotlin.psi.KtParenthesizedExpression
+import org.jetbrains.kotlin.psi.KtQualifiedExpression
 import org.jetbrains.kotlin.psi.KtReturnExpression
 import org.jetbrains.kotlin.psi.KtThrowExpression
 import org.jetbrains.kotlin.psi.KtTryExpression
@@ -190,7 +193,7 @@ class CodeFlowSemanticExtractor(
                         SemanticDiagnostic(
                             severity = SemanticDiagnosticSeverity.WARNING,
                             code = "upstream-caller-truncated",
-                            message = "${methodDisplayName(method)} 的上游调用方已按预算裁剪，未继续保留 ${callers.size - visibleCallers.size} 个方法。",
+                            message = "上游调用方已按预算裁剪，未继续保留 ${callers.size - visibleCallers.size} 个方法。",
                         ),
                     )
                 }
@@ -291,7 +294,7 @@ private abstract class BaseFlowSemanticBuilder(
             SemanticDiagnostic(
                 severity = SemanticDiagnosticSeverity.WARNING,
                 code = "invocation-resolution-incomplete",
-                message = "${methodDisplayName(method)} 的部分调用目标解析失败，当前图谱保留已确认的源码流程节点。",
+                message = "部分调用目标解析失败，当前图谱保留已确认的源码流程节点。",
             ),
         )
     }
@@ -385,7 +388,7 @@ private abstract class BaseFlowSemanticBuilder(
                 SemanticDiagnostic(
                     severity = SemanticDiagnosticSeverity.WARNING,
                     code = "downstream-invocation-truncated",
-                    message = "$title 的调用点已按预算裁剪，未继续保留 ${targets.size - visibleTargets.size} 个目标。",
+                    message = "调用目标已按预算裁剪，未继续保留 ${targets.size - visibleTargets.size} 个目标。",
                 ),
             )
         }
@@ -446,7 +449,7 @@ private abstract class BaseFlowSemanticBuilder(
         }
         return actionFragment(
             element = element,
-            title = summarize(element.text),
+            title = summarizeExecutable(element),
             actionKind = actionKind,
         )
     }
@@ -665,7 +668,7 @@ private class JavaFlowSemanticBuilder(
             when (root) {
                 is PsiCodeBlock -> buildCodeBlock(root)
                 is PsiStatement -> buildStatement(root)
-                is PsiExpression -> actionFragment(root, summarize(root.text))
+                is PsiExpression -> actionFragment(root, summarizeExecutable(root))
                 else -> null
             }
         }
@@ -731,7 +734,11 @@ private class JavaFlowSemanticBuilder(
             is PsiSwitchStatement -> buildSwitchStatement(statement)
             is PsiTryStatement -> buildTryStatement(statement)
             is PsiReturnStatement -> buildReturnStatement(statement)
-            is PsiThrowStatement -> terminalFragment(statement, summarize(statement.text), "THROW")
+            is PsiThrowStatement -> terminalFragment(
+                statement,
+                buildThrowTitle(statement.exception),
+                "THROW",
+            )
             is PsiExpressionStatement -> buildExpressionStatement(statement)
             is PsiDeclarationStatement -> buildDeclarationStatement(statement)
             else -> FlowFragment(null, linkedSetOf())
@@ -743,14 +750,14 @@ private class JavaFlowSemanticBuilder(
         return if (methodCall != null && methodCall.argumentList.expressions.any { argument -> argument is PsiLambdaExpression }) {
             buildMethodCallWithLambdaBodies(methodCall)
         } else {
-            actionFragment(statement.expression, summarize(statement.expression.text))
+            actionFragment(statement.expression, summarizeExecutable(statement.expression))
         }
     }
 
     private fun buildStatementOrExpression(element: PsiElement): FlowFragment {
         return when (element) {
             is PsiStatement -> buildStatement(element)
-            is PsiExpression -> actionFragment(element, summarize(element.text))
+            is PsiExpression -> actionFragment(element, summarizeExecutable(element))
             else -> FlowFragment(null, linkedSetOf())
         }
     }
@@ -759,7 +766,7 @@ private class JavaFlowSemanticBuilder(
         val resolvedMethod = expression.resolveMethod()
         val actionFragment = actionFragment(
             element = expression,
-            title = summarize(expression.text),
+            title = summarizeExecutable(expression),
             targetMethodsOverride = resolveDownstreamTargetsSafely(expression, includeNestedLambdas = false),
         )
         val lambdaFragments = expression.argumentList.expressions
@@ -983,8 +990,8 @@ private class JavaFlowSemanticBuilder(
     private fun buildReturnStatement(statement: PsiReturnStatement): FlowFragment {
         val action = statement.returnValue
             ?.takeIf { expression -> resolveDownstreamTargetsSafely(expression).isNotEmpty() || expression.text != null }
-            ?.let { expression -> actionFragment(expression, summarize(expression.text)) }
-        val terminal = terminalFragment(statement, summarize(statement.text), "RETURN")
+            ?.let { expression -> actionFragment(expression, summarizeExecutable(expression)) }
+        val terminal = terminalFragment(statement, "返回", "RETURN")
         return if (action == null || action.entryUnitId == null) {
             terminal
         } else {
@@ -1012,7 +1019,7 @@ private class JavaFlowSemanticBuilder(
         val fragments = statement.declaredElements.mapNotNull { element ->
             when (element) {
                 is PsiVariable -> element.initializer?.let {
-                    actionFragment(statement, summarize(statement.text))
+                    actionFragment(statement, summarizeExecutable(statement))
                 }
 
                 else -> null
@@ -1048,7 +1055,11 @@ private class KotlinFlowSemanticBuilder(
             )
 
             is KtReturnExpression -> buildReturnExpression(expression)
-            is KtThrowExpression -> terminalFragment(expression, summarize(expression.text), "THROW")
+            is KtThrowExpression -> terminalFragment(
+                expression,
+                buildThrowTitle(expression.thrownExpression),
+                "THROW",
+            )
             is KtTryExpression -> buildTryExpression(expression)
             is KtForExpression -> {
                 val iterationSourceFragment = executableHeaderFragment(expression.loopRange, actionKind = "ITERATION_SOURCE")
@@ -1082,9 +1093,9 @@ private class KotlinFlowSemanticBuilder(
             )
 
             is KtWhenExpression -> buildWhenExpression(expression)
-            is KtBinaryExpression -> actionFragment(expression, summarize(expression.text))
+            is KtBinaryExpression -> actionFragment(expression, summarizeExecutable(expression))
             is KtLoopExpression -> expression.body?.let(::buildExpression) ?: FlowFragment(null, linkedSetOf())
-            else -> actionFragment(expression, summarize(expression.text))
+            else -> actionFragment(expression, summarizeExecutable(expression))
         }
     }
 
@@ -1152,7 +1163,7 @@ private class KotlinFlowSemanticBuilder(
 
     private fun buildReturnExpression(expression: KtReturnExpression): FlowFragment {
         val action = expression.returnedExpression?.let(::buildExpression)
-        val terminal = terminalFragment(expression, summarize(expression.text), "RETURN")
+        val terminal = terminalFragment(expression, "返回", "RETURN")
         return if (action == null || action.entryUnitId == null) {
             terminal
         } else {
@@ -1509,12 +1520,104 @@ private data class FlowBuildResult(
 )
 
 private fun summarize(text: String?): String {
-    val normalized = text
+    val normalized = normalizedSummaryText(text)
+        ?: return "unknown"
+    return if (normalized.length <= 96) normalized else normalized.take(93).trimEnd() + "..."
+}
+
+private fun summarizeExecutable(element: PsiElement?): String {
+    return when (element) {
+        is PsiMethodCallExpression -> summarizeJavaMethodCall(element)
+        is PsiNewExpression -> summarizeJavaConstructorCall(element)
+        is KtQualifiedExpression -> summarizeKotlinQualifiedCall(element) ?: summarize(element.text)
+        is KtCallExpression -> summarizeKotlinCall(element)
+        else -> summarize(element?.text)
+    }
+}
+
+private fun buildThrowTitle(expression: PsiElement?): String {
+    val thrown = summarizeExecutable(expression)
+    return if (thrown == "unknown") {
+        "抛出"
+    } else {
+        "抛出 $thrown"
+    }
+}
+
+private fun summarizeJavaMethodCall(expression: PsiMethodCallExpression): String {
+    val methodName = expression.methodExpression.referenceName
+        ?: expression.methodExpression.text.substringAfterLast('.').takeIf { it.isNotBlank() }
+        ?: "call"
+    val qualifier = compactReceiver(expression.methodExpression.qualifierExpression?.text)
+    val callee = listOfNotNull(qualifier, methodName).joinToString(".")
+    return "$callee(${compactCallArguments(expression.argumentList.expressions.map { argument -> argument.text })})"
+}
+
+private fun summarizeJavaConstructorCall(expression: PsiNewExpression): String {
+    val className = expression.classOrAnonymousClassReference
+        ?.referenceName
+        ?.takeIf { it.isNotBlank() }
+        ?: "object"
+    val arguments = expression.argumentList?.expressions.orEmpty().map { argument -> argument.text }
+    return "new $className(${compactCallArguments(arguments)})"
+}
+
+private fun summarizeKotlinQualifiedCall(expression: KtQualifiedExpression): String? {
+    val selectorCall = expression.selectorExpression as? KtCallExpression ?: return null
+    val receiver = compactReceiver(expression.receiverExpression.text)
+    val call = summarizeKotlinCall(selectorCall)
+    return listOfNotNull(receiver, call).joinToString(".").takeIf { it.isNotBlank() }
+}
+
+private fun summarizeKotlinCall(expression: KtCallExpression): String {
+    val callee = normalizedSummaryText(expression.calleeExpression?.text)
+        ?: "call"
+    val arguments = expression.valueArguments.map { argument ->
+        argument.getArgumentExpression()?.text ?: argument.text
+    }
+    return "$callee(${compactCallArguments(arguments)})"
+}
+
+private fun compactCallArguments(arguments: List<String>): String {
+    if (arguments.isEmpty()) {
+        return ""
+    }
+    val compactArguments = arguments.map(::compactCallArgument)
+    return if (compactArguments.any { argument -> argument == "..." }) {
+        "..."
+    } else {
+        compactArguments.joinToString(", ")
+    }
+}
+
+private fun compactCallArgument(argument: String?): String {
+    val normalized = normalizedSummaryText(argument) ?: return "..."
+    return if (isNoisyCallArgument(normalized)) {
+        "..."
+    } else {
+        normalized
+    }
+}
+
+private fun compactReceiver(receiver: String?): String? {
+    val normalized = normalizedSummaryText(receiver) ?: return null
+    return if (normalized.length <= 40 && !normalized.any { char -> char == '{' || char == '}' || char == '=' }) {
+        normalized
+    } else {
+        null
+    }
+}
+
+private fun isNoisyCallArgument(argument: String): Boolean {
+    return argument.length > 32 ||
+        argument.any { char -> char == '{' || char == '}' || char == '=' || char == ';' }
+}
+
+private fun normalizedSummaryText(text: String?): String? {
+    return text
         ?.replace(Regex("\\s+"), " ")
         ?.trim()
         ?.takeIf { it.isNotBlank() }
-        ?: return "unknown"
-    return if (normalized.length <= 96) normalized else normalized.take(93).trimEnd() + "..."
 }
 
 private fun buildJavaLambdaTitle(

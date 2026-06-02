@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ReviewGraphView } from "../../../../app/views/review/ReviewGraphView";
-import type { ReviewGraphViewDocument } from "../../../../app/types";
+import type { AsyncRequestState, ReviewGraphViewDocument } from "../../../../app/types";
 
 const { useMeasuredLayoutMock } = vi.hoisted(() => ({
   useMeasuredLayoutMock: vi.fn(),
@@ -156,19 +156,16 @@ describe("ReviewGraphView", () => {
   });
 
   it("renders structured diff, baseline, related test, package, and evidence details", () => {
+    const onRequestReviewGraphWithOptions = vi.fn();
     render(
       <ReviewGraphView
         view={view}
         selectedNodeId="method:new"
-        onAddNode={noop}
         onSelectNode={noop}
         onInspectNode={noop}
-        onDeleteNode={noop}
-        onCreateEdge={noop}
-        onDeleteEdge={noop}
         onMoveNode={noop}
         onRequestSourceNavigation={noop}
-        onImportMermaid={noop}
+        onRequestReviewGraphWithOptions={onRequestReviewGraphWithOptions}
       />,
     );
 
@@ -181,5 +178,90 @@ describe("ReviewGraphView", () => {
     expect(screen.getByLabelText("Review Graph 影响范围")).toHaveTextContent("com.example");
     expect(screen.getByLabelText("Review Graph 影响范围")).toHaveTextContent("调用路径");
     expect(screen.getByLabelText("Review Graph 证据片段")).toHaveTextContent("void moved() {}");
+
+    fireEvent.click(screen.getByRole("button", { name: "更多变更" }));
+
+    expect(onRequestReviewGraphWithOptions).toHaveBeenCalledWith([], {
+      maxChangedNodes: 160,
+      maxUpstreamNodes: 40,
+      maxDownstreamNodes: 40,
+      maxRelatedTestNodes: 40,
+    });
+  });
+
+  it("uses the indexed request lifecycle for empty review graph states", () => {
+    useMeasuredLayoutMock.mockReturnValue({
+      nodes: [],
+      edges: [],
+      layoutPending: false,
+      requestRelayout: vi.fn(),
+    });
+    const emptyView: ReviewGraphViewDocument = {
+      ...view,
+      visibleGraph: { nodes: [], edges: [] },
+      fullGraph: { nodes: [], edges: [] },
+      anchorNodeId: null,
+    };
+    const { rerender } = render(
+      <ReviewGraphView
+        view={emptyView}
+        selectedNodeId={null}
+        indexedGraphRequestStates={{
+          REVIEW: requestState("RUNNING", "正在构建 Review Graph。"),
+        }}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+      />,
+    );
+
+    expect(screen.getByText("正在构建 Review Graph")).toBeInTheDocument();
+    expect(screen.getByText("正在构建 Review Graph。")).toBeInTheDocument();
+
+    rerender(
+      <ReviewGraphView
+        view={emptyView}
+        selectedNodeId={null}
+        indexedGraphRequestStates={{
+          REVIEW: requestState("FAILED", null, "Review Graph 索引失败"),
+        }}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+      />,
+    );
+
+    expect(screen.getByText("Review Graph 加载失败")).toBeInTheDocument();
+    expect(screen.getByText("Review Graph 索引失败")).toBeInTheDocument();
+
+    rerender(
+      <ReviewGraphView
+        view={emptyView}
+        selectedNodeId={null}
+        indexedGraphRequestStates={{
+          REVIEW: requestState("SUCCEEDED"),
+        }}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+      />,
+    );
+
+    expect(screen.getByText("索引完成，但当前变更范围没有可展示的影响关系")).toBeInTheDocument();
   });
 });
+
+function requestState(
+  phase: AsyncRequestState["phase"],
+  statusMessage: string | null = null,
+  errorMessage: string | null = null,
+): AsyncRequestState {
+  return {
+    phase,
+    statusMessage,
+    errorMessage,
+  };
+}

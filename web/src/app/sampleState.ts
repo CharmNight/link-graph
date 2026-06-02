@@ -7,6 +7,7 @@ import type {
   ClassDiagramViewDocument,
   FactGraphViewDocument,
   FlowchartViewDocument,
+  GraphViewPresentation,
   LinkGraphBootstrapState,
   LinkGraphDocument,
   LinkGraphEdge,
@@ -54,6 +55,12 @@ export const IDLE_SOURCE_NAVIGATION_STATE: SourceNavigationState = {
 export const EMPTY_QA_REQUEST_RECOVERY_STATE: QaRequestRecoveryState = {
   lastSubmittedRequest: null,
   lastFailedRequest: null,
+};
+
+const DEFAULT_INDEXED_GRAPH_REQUEST_STATES = {
+  ARCHITECTURE: IDLE_REQUEST_STATE,
+  CLASS_DIAGRAM: IDLE_REQUEST_STATE,
+  REVIEW: IDLE_REQUEST_STATE,
 };
 
 const EMPTY_DOCUMENT: LinkGraphDocument = {
@@ -138,12 +145,16 @@ function deriveFactGraphSummary(
   fullGraph: LinkGraphDocument,
   anchorNodeId?: string | null,
 ) {
+  const hiddenCounts = deriveSampleOnlyHiddenCounts(visibleGraph, fullGraph);
   return {
     anchorTitle: fullGraph.nodes.find((node) => node.id === anchorNodeId)?.title
       ?? visibleGraph.nodes.find((node) => node.id === anchorNodeId)?.title
       ?? null,
     visibleNodeCount: visibleGraph.nodes.length,
     fullNodeCount: fullGraph.nodes.length,
+    hiddenNodeCount: hiddenCounts.hiddenNodeCount,
+    hiddenEdgeCount: hiddenCounts.hiddenEdgeCount,
+    truncated: hiddenCounts.hiddenNodeCount > 0 || hiddenCounts.hiddenEdgeCount > 0,
   };
 }
 
@@ -151,8 +162,7 @@ function deriveFlowchartSummary(
   visibleGraph: LinkGraphDocument,
   fullGraph: LinkGraphDocument = visibleGraph,
 ) {
-  const hiddenNodeCount = Math.max(0, fullGraph.nodes.length - visibleGraph.nodes.length);
-  const hiddenEdgeCount = Math.max(0, fullGraph.edges.length - visibleGraph.edges.length);
+  const hiddenCounts = deriveSampleOnlyHiddenCounts(visibleGraph, fullGraph);
   const incompleteNodeCount = visibleGraph.nodes.filter((node) => node.metadata?.["flow.incomplete"] === "true").length;
   const incompleteEdgeCount = visibleGraph.edges.filter((edge) => edge.metadata?.["flow.incomplete"] === "true").length;
   const syntheticEdgeCount = visibleGraph.edges.filter((edge) => edge.metadata?.["flow.synthetic"] === "true").length;
@@ -165,9 +175,9 @@ function deriveFlowchartSummary(
     exceptionPathCount: visibleGraph.edges.filter((edge) => edge.label?.trim().toUpperCase() === "EXCEPTION").length,
     fullNodeCount: fullGraph.nodes.length,
     fullEdgeCount: fullGraph.edges.length,
-    hiddenNodeCount,
-    hiddenEdgeCount,
-    truncated: hiddenNodeCount > 0 || hiddenEdgeCount > 0,
+    hiddenNodeCount: hiddenCounts.hiddenNodeCount,
+    hiddenEdgeCount: hiddenCounts.hiddenEdgeCount,
+    truncated: hiddenCounts.hiddenNodeCount > 0 || hiddenCounts.hiddenEdgeCount > 0,
     incompleteNodeCount,
     incompleteEdgeCount,
     semanticallyIncomplete: incompleteNodeCount > 0 || incompleteEdgeCount > 0,
@@ -176,9 +186,35 @@ function deriveFlowchartSummary(
   };
 }
 
+function deriveSampleOnlyHiddenCounts(
+  visibleGraph: LinkGraphDocument,
+  fullGraph: LinkGraphDocument,
+): { hiddenNodeCount: number; hiddenEdgeCount: number } {
+  const fullNodeIds = new Set(fullGraph.nodes.map((node) => node.id));
+  const fullEdgeIds = new Set(fullGraph.edges.map((edge) => edge.id));
+  const visibleOriginalNodeIds = new Set(visibleGraph.nodes
+    .map((node) => node.id)
+    .filter((nodeId) => fullNodeIds.has(nodeId)));
+  const visibleOriginalEdgeIds = new Set(visibleGraph.edges
+    .map((edge) => edge.id)
+    .filter((edgeId) => fullEdgeIds.has(edgeId)));
+  return {
+    hiddenNodeCount: Math.max(0, fullNodeIds.size - visibleOriginalNodeIds.size),
+    hiddenEdgeCount: Math.max(0, fullEdgeIds.size - visibleOriginalEdgeIds.size),
+  };
+}
+
 function deriveResourceRelationSummary(visibleGraph: LinkGraphDocument) {
+  const resourceCount = visibleGraph.nodes.filter(isResourceRelationNode).length;
   return {
     visibleNodeCount: visibleGraph.nodes.length,
+    relationCount: visibleGraph.edges.length,
+    resourceCount,
+    fallbackReason: visibleGraph.edges.length > 0
+      ? "NONE"
+      : resourceCount === 0
+        ? "NO_RESOURCE_UNITS"
+        : "NO_BINDING_RELATIONS",
     laneCounts: visibleGraph.nodes.reduce<Record<string, number>>((counts, node) => {
       const lane = node.metadata?.["resource.lane"] ?? "CODE";
       counts[lane] = (counts[lane] ?? 0) + 1;
@@ -187,13 +223,22 @@ function deriveResourceRelationSummary(visibleGraph: LinkGraphDocument) {
   };
 }
 
+function isResourceRelationNode(node: LinkGraphNode): boolean {
+  return node.metadata?.["resource.lane"] != null ||
+    node.type.includes("RESOURCE") ||
+    ["SQL", "HTTP_ENDPOINT", "MQ_TOPIC", "CONFIG_ITEM"].includes(node.type);
+}
+
 function deriveArchitectureGraphSummary(visibleGraph: LinkGraphDocument) {
   return {
     moduleCount: visibleGraph.nodes.filter((node) => node.type === "MODULE").length,
     packageCount: visibleGraph.nodes.filter((node) => node.type === "PACKAGE").length,
     serviceCount: visibleGraph.nodes.filter((node) => node.type === "SERVICE").length,
+    componentCount: visibleGraph.nodes.filter((node) => node.type === "COMPONENT").length,
     resourceCount: visibleGraph.nodes.filter((node) => node.type === "RESOURCE").length,
     layerCount: visibleGraph.nodes.filter((node) => node.type === "LAYER").length,
+    libraryCount: visibleGraph.nodes.filter((node) => node.type === "LIBRARY").length,
+    jdkCount: visibleGraph.nodes.filter((node) => node.metadata?.["architecture.node.kind"] === "JDK").length,
     relationCount: visibleGraph.edges.length,
     classCount: visibleGraph.nodes.filter((node) => node.metadata?.["architecture.classCount"] != null)
       .reduce((sum, node) => sum + (Number(node.metadata?.["architecture.classCount"]) || 0), 0),
@@ -216,6 +261,18 @@ function deriveClassDiagramSummary(visibleGraph: LinkGraphDocument) {
     relationCount: visibleGraph.edges.length,
     spiProviderCount: 0,
     reflectionRelationCount: 0,
+    relationCompleteness: "COMPLETE",
+    scopeTypeCount: visibleGraph.nodes.length,
+    projectTypeCount: visibleGraph.nodes.length,
+    projectClassCount: visibleGraph.nodes.filter((node) => node.type === "CLASS").length,
+    scopeBasis: "CLASS_NEIGHBORHOOD",
+    anchorTypeNodeId: visibleGraph.nodes[0]?.id ?? null,
+    anchorTypeTitle: visibleGraph.nodes[0]?.title ?? null,
+    anchorTypeQualifiedName: visibleGraph.nodes[0]?.signature ?? null,
+    neighborhoodLimit: visibleGraph.nodes.length,
+    memberLimit: 5,
+    neighborhoodCandidateTypeCount: visibleGraph.nodes.length,
+    neighborhoodTruncated: false,
   };
 }
 
@@ -244,6 +301,11 @@ function deriveReviewGraphSummary(visibleGraph: LinkGraphDocument) {
     truncated: Boolean(visibleGraph.truncated),
     hiddenNodeCount: 0,
     hiddenEdgeCount: 0,
+    selectedDiffItemIds: [],
+    maxChangedNodes: 120,
+    maxUpstreamNodes: 40,
+    maxDownstreamNodes: 40,
+    maxRelatedTestNodes: 40,
   };
 }
 
@@ -311,6 +373,23 @@ const EMPTY_PROJECTION_INDEX = {
   edgeMappings: {},
 };
 
+const EMPTY_GRAPH_VIEW_PRESENTATION: GraphViewPresentation = {
+  target: {
+    nodeId: null,
+    title: "",
+    subtitle: "",
+    location: null,
+  },
+  lanes: [],
+  hiddenBuckets: [],
+  controls: {
+    primaryScope: "",
+    availableScopes: [],
+    searchable: true,
+    expandable: true,
+  },
+};
+
 function buildFactGraphView(
   visibleGraph: LinkGraphDocument,
   fullGraph: LinkGraphDocument,
@@ -322,6 +401,7 @@ function buildFactGraphView(
     anchorNodeId,
     projectionIndex: EMPTY_PROJECTION_INDEX,
     summary: deriveFactGraphSummary(visibleGraph, fullGraph, anchorNodeId),
+    presentation: EMPTY_GRAPH_VIEW_PRESENTATION,
   };
 }
 
@@ -364,6 +444,7 @@ function buildArchitectureGraphView(
     anchorNodeId,
     projectionIndex: EMPTY_PROJECTION_INDEX,
     summary: deriveArchitectureGraphSummary(visibleGraph),
+    presentation: EMPTY_GRAPH_VIEW_PRESENTATION,
   };
 }
 
@@ -378,6 +459,7 @@ function buildClassDiagramView(
     anchorNodeId,
     projectionIndex: EMPTY_PROJECTION_INDEX,
     summary: deriveClassDiagramSummary(visibleGraph),
+    presentation: EMPTY_GRAPH_VIEW_PRESENTATION,
   };
 }
 
@@ -408,6 +490,7 @@ export const SAMPLE_STATE: LinkGraphBootstrapState = {
   architectureGraphView: buildArchitectureGraphView(EMPTY_DOCUMENT, EMPTY_DOCUMENT, null),
   classDiagramView: buildClassDiagramView(EMPTY_DOCUMENT, EMPTY_DOCUMENT, null),
   reviewGraphView: buildReviewGraphView(EMPTY_DOCUMENT, EMPTY_DOCUMENT, null),
+  indexedGraphRequestStates: DEFAULT_INDEXED_GRAPH_REQUEST_STATES,
   designBaselineGraph: null,
   draftPatchPreview: null,
   draftWorkbenchState: { draftChanges: [], draftNotes: [] },
@@ -494,6 +577,7 @@ export const EMPTY_STATE: LinkGraphBootstrapState = {
   architectureGraphView: buildArchitectureGraphView(EMPTY_DOCUMENT, EMPTY_DOCUMENT, null),
   classDiagramView: buildClassDiagramView(EMPTY_DOCUMENT, EMPTY_DOCUMENT, null),
   reviewGraphView: buildReviewGraphView(EMPTY_DOCUMENT, EMPTY_DOCUMENT, null),
+  indexedGraphRequestStates: DEFAULT_INDEXED_GRAPH_REQUEST_STATES,
   designBaselineGraph: null,
   draftPatchPreview: null,
   draftWorkbenchState: { draftChanges: [], draftNotes: [] },

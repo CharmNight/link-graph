@@ -269,6 +269,7 @@ class WorkspaceGraphUseCase internal constructor(
             GraphProjectionMappingKind.MERGED_ALIAS,
             -> mapping.canonicalNodeIds.toSet()
             GraphProjectionMappingKind.PATH_ALIAS,
+            GraphProjectionMappingKind.INDEXED_READONLY,
             GraphProjectionMappingKind.SYNTHETIC_READONLY,
             GraphProjectionMappingKind.OVERFLOW_READONLY,
             -> emptySet()
@@ -299,6 +300,7 @@ class WorkspaceGraphUseCase internal constructor(
             GraphProjectionMappingKind.EXACT -> mapping.canonicalEdgeIds.toSet()
             GraphProjectionMappingKind.MERGED_ALIAS,
             GraphProjectionMappingKind.PATH_ALIAS,
+            GraphProjectionMappingKind.INDEXED_READONLY,
             GraphProjectionMappingKind.SYNTHETIC_READONLY,
             GraphProjectionMappingKind.OVERFLOW_READONLY,
             -> emptySet()

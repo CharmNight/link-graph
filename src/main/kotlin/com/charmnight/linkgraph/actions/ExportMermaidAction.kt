@@ -2,6 +2,7 @@ package com.charmnight.linkgraph.actions
 
 import com.charmnight.linkgraph.LinkGraphBundle
 import com.charmnight.linkgraph.application.GraphEditorApplicationService
+import com.charmnight.linkgraph.application.command.ApplicationCommand
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.DumbAwareAction
@@ -23,7 +24,9 @@ class ExportMermaidAction : DumbAwareAction(
         // 没有关联项目时无法访问项目级服务，直接结束。
         val project = event.project ?: return
         // 从项目服务中读取当前图对应的 Mermaid 文本。
-        val mermaid = project.getService(GraphEditorApplicationService::class.java).exportMermaid()
+        val mermaid = project.getService(GraphEditorApplicationService::class.java)
+            .commandDispatcher
+            .dispatch(ApplicationCommand.ExportMermaid)
         // 导出结果直接写入剪贴板，便于用户粘贴到外部文档或工具中。
         CopyPasteManager.getInstance().setContents(StringSelection(mermaid))
         Messages.showInfoMessage(

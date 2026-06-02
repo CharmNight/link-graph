@@ -5,12 +5,12 @@ import com.charmnight.linkgraph.application.model.toRiskResolutionSnapshot
 import com.charmnight.linkgraph.llm.GenerationContext
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.application.model.AsyncRequestState
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
-import com.charmnight.linkgraph.application.port.GenerationDiscussionPresentation
-import com.charmnight.linkgraph.application.port.GenerationRequestFailurePresentation
-import com.charmnight.linkgraph.application.port.GenerationRequestScene
-import com.charmnight.linkgraph.application.port.GenerationRequestStartedPresentation
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEvent
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.GenerationDiscussionResult
+import com.charmnight.linkgraph.application.result.GenerationRequestFailureResult
+import com.charmnight.linkgraph.application.result.GenerationRequestScene
+import com.charmnight.linkgraph.application.result.GenerationRequestStartedResult
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
 import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionResult
 
 internal class GenerationPlanDiscussionWorkflow(
@@ -40,7 +40,7 @@ internal class GenerationPlanDiscussionWorkflow(
         }
         val requestId = dependencies.asyncRequestLifecycle.beginGenerationPlanDiscussionRequest()
         val settings = dependencies.settingsProvider()
-        val presentation = dependencies.asyncRequestLifecycle.buildAsyncRequestPresentation(
+        val presentation = dependencies.asyncRequestLifecycle.buildAsyncRequestLifecycleResult(
             requestId = requestId,
             sceneLabel = "实现建议追问",
             settings = settings,
@@ -62,10 +62,10 @@ internal class GenerationPlanDiscussionWorkflow(
         }
         dependencies.emit(
             GraphEditorApplicationEvent.GenerationRequestStarted(
-                GenerationRequestStartedPresentation(
+                GenerationRequestStartedResult(
                     scene = GenerationRequestScene.PLAN_DISCUSSION,
                     requestState = presentation.requestState,
-                    feedbackMessage = if (presentation.remoteRequested) {
+                    statusMessage = if (presentation.remoteRequested) {
                         if (presentation.streamingSupported) {
                             "已发起远程 LLM 实现建议追问请求，当前采用流式输出。"
                         } else {
@@ -87,7 +87,7 @@ internal class GenerationPlanDiscussionWorkflow(
                 dependencies.asyncRequestLifecycle.logAsyncRequestEvent(dependencies.logger, "timedOut", timedOutState)
                 dependencies.emit(
                     GraphEditorApplicationEvent.GenerationDiscussionFailed(
-                        GenerationRequestFailurePresentation(
+                        GenerationRequestFailureResult(
                             scene = "实现建议追问",
                             message = timedOutState.errorMessage ?: "实现建议追问超时",
                             requestState = timedOutState,
@@ -136,11 +136,11 @@ internal class GenerationPlanDiscussionWorkflow(
                         }
                         dependencies.emit(
                             GraphEditorApplicationEvent.GenerationDiscussionReady(
-                                GenerationDiscussionPresentation(
+                                GenerationDiscussionResult(
                                     result = discussion,
                                     requestState = completedRequestState,
                                     feedbackLevel = feedbackLevel,
-                                    feedbackMessage = completedRequestState.statusMessage ?: "实现建议追问已更新。",
+                                    statusMessage = completedRequestState.statusMessage ?: "实现建议追问已更新。",
                                 ),
                             ),
                         )
@@ -152,7 +152,7 @@ internal class GenerationPlanDiscussionWorkflow(
                         dependencies.asyncRequestLifecycle.logAsyncRequestEvent(dependencies.logger, "failed", requestState)
                         dependencies.emit(
                             GraphEditorApplicationEvent.GenerationDiscussionFailed(
-                                GenerationRequestFailurePresentation(
+                                GenerationRequestFailureResult(
                                     scene = "实现建议追问",
                                     message = message,
                                     requestState = requestState,
@@ -207,11 +207,11 @@ internal class GenerationPlanDiscussionWorkflow(
         )
         dependencies.emit(
             GraphEditorApplicationEvent.GenerationDiscussionReady(
-                GenerationDiscussionPresentation(
+                GenerationDiscussionResult(
                     result = result,
                     requestState = requestState,
                     feedbackLevel = if (result.warnings.isNotEmpty()) ApplicationFeedbackLevel.WARNING else ApplicationFeedbackLevel.SUCCESS,
-                    feedbackMessage = if (result.warnings.isNotEmpty()) {
+                    statusMessage = if (result.warnings.isNotEmpty()) {
                         result.warnings.first()
                     } else {
                         "实现建议追问已更新。"
@@ -233,7 +233,7 @@ internal class GenerationPlanDiscussionWorkflow(
         )
         dependencies.emit(
             GraphEditorApplicationEvent.GenerationDiscussionFailed(
-                GenerationRequestFailurePresentation(
+                GenerationRequestFailureResult(
                     scene = "实现建议追问",
                     message = message,
                     requestState = requestState,

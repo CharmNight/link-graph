@@ -5,6 +5,7 @@ import com.charmnight.linkgraph.application.usecase.SourceNavigationUseCase
 import com.charmnight.linkgraph.application.usecase.SourceNavigationUseCaseResult
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.model.SourceNavigationAnchors
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -45,5 +46,26 @@ class SourceNavigationUseCaseTest {
 
         val notNavigable = assertIs<SourceNavigationUseCaseResult.NotNavigable>(result)
         assertSame(node, notNavigable.node)
+    }
+
+    @Test
+    fun returnsReadyForAggregateNodeWithSourceNavigationAnchor() {
+        val node = GraphNode(
+            id = "component:orders",
+            type = NodeType.COMPONENT,
+            title = "orders",
+            metadata = SourceNavigationAnchors.metadata(
+                nodeId = "class:com.example.orders.OrderService",
+                filePath = "src/main/java/com/example/orders/OrderService.java",
+                startLine = 12,
+                reason = "architecture-member-class:component:orders",
+            ),
+        )
+
+        val result = SourceNavigationUseCase { _, _ -> node }
+            .requestSourceNavigation(WorkflowEditorSnapshot(), node.id)
+
+        val ready = assertIs<SourceNavigationUseCaseResult.Ready>(result)
+        assertSame(node, ready.node)
     }
 }

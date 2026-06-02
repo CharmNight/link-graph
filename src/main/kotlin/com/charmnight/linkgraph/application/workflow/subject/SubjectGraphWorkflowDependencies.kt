@@ -1,9 +1,9 @@
 package com.charmnight.linkgraph.application.workflow.subject
 
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEvent
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEventSink
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
 import com.charmnight.linkgraph.application.port.WorkspaceGraphCommitter
 import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
 import com.charmnight.linkgraph.model.GraphDocument
@@ -36,8 +36,8 @@ internal data class SubjectGraphWorkflowDependencies(
     fun emitFeedback(
         level: ApplicationFeedbackLevel,
         message: String,
-        preserveLastMessageType: Boolean = false,
+        preservePreviousStatusKind: Boolean = false,
     ) {
-        emit(GraphEditorApplicationEvent.Feedback(level, message, preserveLastMessageType))
+        emit(GraphEditorApplicationEvent.Feedback(level, message, preservePreviousStatusKind))
     }
 }

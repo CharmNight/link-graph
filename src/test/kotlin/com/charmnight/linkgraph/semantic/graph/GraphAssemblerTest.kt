@@ -83,6 +83,30 @@ class GraphAssemblerTest {
     }
 
     @Test
+    fun factGraphShouldDeriveMethodInputsAndOutputsFromSignature() {
+        val entryMethod = MethodLikeUnit(
+            id = "method:submit-order",
+            title = "OrderService.submit",
+            signature = "com.example.OrderService.submit(java.lang.String,java.util.Map<java.lang.String,java.lang.Integer>):com.example.OrderResult",
+        )
+        val analysisResult = sampleAnalysisResult().copy(
+            anchors = listOf(SemanticAnchor(id = "anchor-submit", targetUnitId = entryMethod.id, label = "入口")),
+            semanticUnits = listOf(entryMethod),
+            relations = emptyList(),
+            sourceMappings = emptyList(),
+        )
+
+        val factGraph = GraphAssembler().assemble(analysisResult, AnalysisDisplayMode.FACT_GRAPH)
+        val projectedNode = factGraph.nodes.single()
+
+        assertEquals(
+            listOf("java.lang.String", "java.util.Map<java.lang.String,java.lang.Integer>"),
+            projectedNode.inputs,
+        )
+        assertEquals(listOf("com.example.OrderResult"), projectedNode.outputs)
+    }
+
+    @Test
     fun flowchartShouldRespectExplicitControlFlowEdges() {
         val entryMethod = MethodLikeUnit(
             id = "method:file-download",

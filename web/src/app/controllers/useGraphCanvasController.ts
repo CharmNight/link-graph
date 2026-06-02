@@ -2,6 +2,7 @@ import { startTransition, type Dispatch, type MutableRefObject, type SetStateAct
 import { publishLayoutChange } from "../api";
 import { measureDuration, measureStart, traceLinkGraph } from "../debug";
 import { extractLayoutState } from "../graphState";
+import { canEditProjectedEdge, canEditProjectedNode } from "../graphProjectionPermissions";
 import { canEditNodeLayout } from "../layoutEditability";
 import type {
   AnalysisDisplayMode,
@@ -15,6 +16,7 @@ import type {
   LinkGraphLayoutState,
   LinkGraphNode,
   OperationFeedback,
+  GraphProjectionIndex,
   ResourceRelationViewDocument,
   ReviewGraphViewDocument,
 } from "../types";
@@ -25,6 +27,7 @@ interface UseGraphCanvasControllerArgs {
   selectedNodeId: string | null;
   detailNodeId: string | null;
   analysisDisplayMode: AnalysisDisplayMode;
+  projectionIndex?: GraphProjectionIndex | null;
   collapsedNodeIds: string[];
   nextManualNodeIdRef: MutableRefObject<number>;
   anchorNodeIdRef: MutableRefObject<string | null>;
@@ -90,6 +93,17 @@ interface UseGraphCanvasControllerArgs {
 }
 
 export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
+  function canRunNodeCommand(
+    nodeId: string,
+    command: "ADD_NODE" | "UPDATE_NODE" | "DELETE_NODE" | "DELETE_NODE_SUBTREE" | "CONNECT_NODES",
+  ) {
+    return args.projectionIndex ? canEditProjectedNode(args.projectionIndex, nodeId, command) : true;
+  }
+
+  function canRunEdgeCommand(edgeId: string, command: "DELETE_EDGE" | "INSERT_NODE_INTO_EDGE") {
+    return args.projectionIndex ? canEditProjectedEdge(args.projectionIndex, edgeId, command) : true;
+  }
+
   function buildManualNode(
     kind: "METHOD" | "DOC_PAGE",
     nextIndex: number,
@@ -188,6 +202,9 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
   }
 
   function handleAddNode(kind: "METHOD" | "DOC_PAGE", position?: GraphPosition) {
+    if (!canRunNodeCommand("", "ADD_NODE")) {
+      return;
+    }
     startTransition(() => {
       const nextPosition = position ?? args.fallbackDesignPosition(args.nodes.length);
       const nextIndex = args.nextManualNodeIdRef.current++;
@@ -198,6 +215,9 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
   }
 
   function handleDeleteNode(nodeId: string) {
+    if (!canRunNodeCommand(nodeId, "DELETE_NODE")) {
+      return;
+    }
     startTransition(() => {
       const nextNodes = args.nodes.filter((node) => node.id !== nodeId);
       const nextEdges = args.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId);
@@ -206,6 +226,9 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
   }
 
   function handleDeleteNodeSubtree(nodeId: string) {
+    if (!canRunNodeCommand(nodeId, "DELETE_NODE_SUBTREE")) {
+      return;
+    }
     startTransition(() => {
       const deletedNodeIds = args.collectDownstreamSubtreeNodeIds(nodeId, args.nodes, args.edges);
       if (deletedNodeIds.size === 0) {
@@ -219,6 +242,9 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
   }
 
   function handleUpdateNode(nextNode: LinkGraphNode) {
+    if (!canRunNodeCommand(nextNode.id, "UPDATE_NODE")) {
+      return;
+    }
     startTransition(() => {
       const previousNode = args.nodes.find((node) => node.id === nextNode.id);
       const mergedNode = previousNode?.position ? args.syncNodePosition(nextNode, previousNode.position) : nextNode;
@@ -237,6 +263,9 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
     sourceHandle?: string | null,
     targetHandle?: string | null,
   ) {
+    if (!canRunNodeCommand(sourceId, "CONNECT_NODES") || !canRunNodeCommand(targetId, "CONNECT_NODES")) {
+      return;
+    }
     startTransition(() => {
       const nextEdgeId = `design-link:${sourceId}->${targetId}`;
       if (args.edges.some((edge) =>
@@ -267,6 +296,9 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
   }
 
   function handleDeleteEdge(edgeId: string) {
+    if (!canRunEdgeCommand(edgeId, "DELETE_EDGE")) {
+      return;
+    }
     startTransition(() => {
       args.syncGraph(
         args.nodes,
@@ -276,6 +308,9 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
   }
 
   function handleInsertNodeIntoEdge(edgeId: string, kind: "METHOD" | "DOC_PAGE") {
+    if (!canRunEdgeCommand(edgeId, "INSERT_NODE_INTO_EDGE") || !canRunNodeCommand("", "ADD_NODE")) {
+      return;
+    }
     startTransition(() => {
       const targetEdge = args.edges.find((edge) => edge.id === edgeId);
       if (!targetEdge) {
@@ -311,7 +346,7 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
 
   function handleMoveNode(nodeId: string, position: GraphPosition) {
     const currentNode = args.nodes.find((node) => node.id === nodeId);
-    if (!currentNode || !canEditNodeLayout(currentNode, args.analysisDisplayMode)) {
+    if (!currentNode || !canEditNodeLayout(currentNode, args.analysisDisplayMode, args.projectionIndex)) {
       return;
     }
     startTransition(() => {
@@ -360,7 +395,7 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
   function handleMoveNodes(updates: Array<{ id: string; position: GraphPosition }>) {
     const editableUpdates = updates.filter((update) => {
       const currentNode = args.nodes.find((node) => node.id === update.id);
-      return Boolean(currentNode && canEditNodeLayout(currentNode, args.analysisDisplayMode));
+      return Boolean(currentNode && canEditNodeLayout(currentNode, args.analysisDisplayMode, args.projectionIndex));
     });
     if (editableUpdates.length === 0) {
       return;
