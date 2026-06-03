@@ -45,7 +45,7 @@ internal class GraphEditorAsyncRequestStateSupport(
                         lastFailedRequest = null,
                     )
                 } ?: it.qaRequestRecoveryState,
-                lastMessageType = "requestAudit",
+                lastMessageType = "requestQa",
             )
         }
     }
@@ -65,7 +65,7 @@ internal class GraphEditorAsyncRequestStateSupport(
                         lastFailedRequest = request,
                     )
                 } ?: it.qaRequestRecoveryState,
-                lastMessageType = "requestAudit",
+                lastMessageType = "requestQa",
             )
         }
     }
@@ -83,7 +83,7 @@ internal class GraphEditorAsyncRequestStateSupport(
             ) ?: return@mutate currentState
             currentState.copy(
                 qaRequestState = nextRequestState,
-                lastMessageType = "requestAudit",
+                lastMessageType = "requestQa",
             )
         }
     }

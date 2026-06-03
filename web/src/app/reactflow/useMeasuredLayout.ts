@@ -171,6 +171,13 @@ function resolvePosition(node?: LinkGraphNode | null): GraphPosition | null {
   return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
 }
 
+function fallbackLayoutPosition(index: number): GraphPosition {
+  return {
+    x: 120 + (index % 4) * 360,
+    y: 96 + Math.floor(index / 4) * 220,
+  };
+}
+
 function hasResolvedLayoutPositions(nodes: LinkGraphNode[]): boolean {
   return nodes.length > 0 && nodes.every((node) => resolvePosition(node) !== null);
 }
@@ -250,6 +257,10 @@ function seedLayoutNodes(nextNodes: LinkGraphNode[], previousNodes: LinkGraphNod
   });
 }
 
+function ensureResolvedLayoutPositions(nodes: LinkGraphNode[]): LinkGraphNode[] {
+  return nodes.map((node, index) => syncNodePosition(node, resolvePosition(node) ?? fallbackLayoutPosition(index)));
+}
+
 function canReuseSeededRoute(nextEdge: LinkGraphEdge, previousEdge: LinkGraphEdge): boolean {
   return nextEdge.id === previousEdge.id
     && nextEdge.type === previousEdge.type
@@ -283,7 +294,13 @@ function isIncrementalPositionedNodeAddition(nextNodes: LinkGraphNode[], current
   }
   const currentNodeIds = new Set(currentNodes.map((node) => node.id));
   const addedNodes = nextNodes.filter((node) => !currentNodeIds.has(node.id));
-  return addedNodes.length > 0 && addedNodes.every((node) => Boolean(resolvePosition(node)));
+  return addedNodes.length > 0
+    && addedNodes.every((node) => Boolean(resolvePosition(node)))
+    && addedNodes.every((node) => !node.metadata?.["linkGraph.expansion.id"]);
+}
+
+function hasInvocationExpansionEdges(edges: LinkGraphEdge[]): boolean {
+  return edges.some((edge) => Boolean(edge.metadata?.["linkGraph.expansion.id"]));
 }
 
 export function useMeasuredLayout({
@@ -373,7 +390,7 @@ export function useMeasuredLayout({
       && areNodeSetsEquivalent(seededNodes, currentLayoutState.nodes)
       && !areEdgeSetsEquivalent(seededEdges, currentLayoutState.edges);
 
-    if (edgeOnlyGraphChange) {
+    if (edgeOnlyGraphChange && !hasInvocationExpansionEdges(nextGraph.edges)) {
       setLayoutState({
         nodes: seededNodes,
         edges: seededEdges,
@@ -468,8 +485,10 @@ export function useMeasuredLayout({
         if (requestVersionRef.current !== requestVersion) {
           return;
         }
+        const fallbackNodes = ensureResolvedLayoutPositions(seededNodes);
         setLayoutState((current) => ({
           ...current,
+          nodes: fallbackNodes,
           edges: seedLayoutEdges(nextGraph.edges, current.edges),
           layoutPending: false,
         }));

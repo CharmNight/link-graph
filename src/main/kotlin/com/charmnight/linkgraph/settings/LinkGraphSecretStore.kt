@@ -4,6 +4,9 @@ import com.intellij.credentialStore.CredentialAttributes
 import com.intellij.credentialStore.Credentials
 import com.intellij.credentialStore.generateServiceName
 import com.intellij.ide.passwordSafe.PasswordSafe
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.util.concurrency.AppExecutorUtil
+import java.util.concurrent.ExecutionException
 
 /**
  * 负责将 Link Graph 的远程 LLM API Key 存入 IDE 安全存储。
@@ -22,14 +25,35 @@ class PasswordSafeLinkGraphSecretStore : LinkGraphSecretStore {
     )
 
     override fun loadApiKey(): String {
-        return PasswordSafe.instance.get(attributes)?.getPasswordAsString().orEmpty()
+        return runPasswordSafeOperation {
+            PasswordSafe.instance.get(attributes)?.getPasswordAsString().orEmpty()
+        }
     }
 
     override fun saveApiKey(apiKey: String) {
-        PasswordSafe.instance.set(attributes, Credentials("LinkGraph Remote LLM", apiKey))
+        runPasswordSafeOperation {
+            PasswordSafe.instance.set(attributes, Credentials("LinkGraph Remote LLM", apiKey))
+        }
     }
 
     override fun clearApiKey() {
-        PasswordSafe.instance.set(attributes, null)
+        runPasswordSafeOperation {
+            PasswordSafe.instance.set(attributes, null)
+        }
+    }
+
+    private fun <T> runPasswordSafeOperation(action: () -> T): T {
+        val application = ApplicationManager.getApplication()
+        if (!application.isDispatchThread) {
+            return action()
+        }
+        val future = AppExecutorUtil.getAppExecutorService().submit<T> {
+            action()
+        }
+        return try {
+            future.get()
+        } catch (error: ExecutionException) {
+            throw error.cause ?: error
+        }
     }
 }

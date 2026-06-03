@@ -42,13 +42,13 @@ class GraphEditorBridgeTest : BasePlatformTestCase() {
     fun testCurrentStateHydratesPersistentWorkbenchPreferencesIntoRuntimeSnapshot() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         val preferencesService = project.getService(WorkbenchLayoutPreferencesService::class.java)
-        preferencesService.update("audit.request-status", true)
+        preferencesService.update("qa.request-status", true)
         stateService.workbench.markWorkbenchSectionPreferences(emptyMap())
 
         val snapshot = GraphEditorBridge(project).currentState()
 
-        assertEquals(true, snapshot.workbenchSectionPreferences["audit.request-status"])
-        assertEquals(true, stateService.snapshot().workbenchSectionPreferences["audit.request-status"])
+        assertEquals(true, snapshot.workbenchSectionPreferences["qa.request-status"])
+        assertEquals(true, stateService.snapshot().workbenchSectionPreferences["qa.request-status"])
     }
 
     fun testDispatchCurrentEditorContextGraphUsesEditorContextWorkflow() {
@@ -137,16 +137,16 @@ class GraphEditorBridgeTest : BasePlatformTestCase() {
         val snapshot = waitForSnapshot { current ->
             current.lastGraphSource == "currentContext" &&
                 current.analysisDisplayMode == AnalysisDisplayMode.RESOURCE_RELATION_VIEW &&
-                current.visibleGraph?.nodes?.any { node ->
+                currentVisibleGraph(current).nodes.any { node ->
                     node.type == NodeType.DOC_PAGE && node.title == "order-flow.md"
                 } == true &&
-                current.visibleGraph?.nodes?.any { node ->
+                currentVisibleGraph(current).nodes.any { node ->
                     node.title == "OrderService.submit"
                 } == true
         }
 
         assertEquals("currentContext", snapshot.lastGraphSource)
-        assertTrue(snapshot.visibleGraph?.nodes?.any { it.title == "OrderService.submit" } == true)
+        assertTrue(currentVisibleGraph(snapshot).nodes.any { it.title == "OrderService.submit" } == true)
     }
 
     fun testDispatchOpenCodeDraftNativeDiffRoutesToProjectService() {

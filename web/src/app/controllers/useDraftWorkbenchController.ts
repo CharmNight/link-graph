@@ -13,7 +13,7 @@ interface UseDraftWorkbenchControllerArgs {
   nodes: LinkGraphNode[];
   setDraftWorkbenchState: Dispatch<SetStateAction<DraftWorkbenchState>>;
   setSelectedDraftEntryId: Dispatch<SetStateAction<string | null>>;
-  setActiveWorkbenchTab: Dispatch<SetStateAction<"explanation" | "audit" | "draft" | "code">>;
+  setActiveWorkbenchTab: (tab: "explanation" | "qa" | "draft" | "code") => void;
   setOperationFeedback: Dispatch<SetStateAction<OperationFeedback | null>>;
   selectExplanationTargetNode: (nodeId: string, options?: { focusViewport?: boolean }) => void;
   handleSelectExplanationStep: (stepId: string) => void;

@@ -1,27 +1,27 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
-import com.charmnight.linkgraph.application.port.ApplicationRuntimeArtifactSummary
-import com.charmnight.linkgraph.application.port.CodeDraftWritePresentation
-import com.charmnight.linkgraph.application.port.GeneratedCodeDraftsPresentation
-import com.charmnight.linkgraph.application.port.GenerationDiscussionPresentation
-import com.charmnight.linkgraph.application.port.GenerationPlanPresentation
-import com.charmnight.linkgraph.application.port.GenerationRequestFailurePresentation
-import com.charmnight.linkgraph.application.port.GenerationRequestScene
-import com.charmnight.linkgraph.application.port.GenerationRequestStartedPresentation
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.ApplicationRuntimeArtifactSummary
+import com.charmnight.linkgraph.application.result.CodeDraftWriteResult
+import com.charmnight.linkgraph.application.result.GeneratedCodeDraftsResult
+import com.charmnight.linkgraph.application.result.GenerationDiscussionResult
+import com.charmnight.linkgraph.application.result.GenerationPlanResult
+import com.charmnight.linkgraph.application.result.GenerationRequestFailureResult
+import com.charmnight.linkgraph.application.result.GenerationRequestScene
+import com.charmnight.linkgraph.application.result.GenerationRequestStartedResult
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
 
 class GenerationStatePresenter(
     private val stateService: GraphEditorStateService,
     private val requestBrowserSync: () -> Unit = {},
 ) {
-    fun presentGenerationPlan(presentation: GenerationPlanPresentation) {
+    fun presentGenerationPlan(presentation: GenerationPlanResult) {
         stateService.workbench.markRuntimeArtifactSummaries("plan", presentation.runtimeArtifacts.toUiRuntimeArtifacts())
         stateService.asyncRequests.markGenerationPlan(presentation.plan, presentation.requestState)
         stateService.workbench.markOperationFeedback(
             presentation.feedbackLevel.toOperationFeedbackLevel(),
-            presentation.feedbackMessage,
-            preserveLastMessageType = true,
+            presentation.statusMessage,
+            preservePreviousStatusKind = true,
         )
         requestBrowserSync()
     }
@@ -35,7 +35,7 @@ class GenerationStatePresenter(
         requestBrowserSync()
     }
 
-    fun presentRequestStarted(presentation: GenerationRequestStartedPresentation) {
+    fun presentRequestStarted(presentation: GenerationRequestStartedResult) {
         when (presentation.scene) {
             GenerationRequestScene.PLAN -> stateService.asyncRequests.beginGenerationPlanRequest(presentation.requestState)
             GenerationRequestScene.PLAN_DISCUSSION -> {
@@ -48,7 +48,7 @@ class GenerationStatePresenter(
         }
         stateService.workbench.markOperationFeedback(
             OperationFeedbackLevel.INFO,
-            presentation.feedbackMessage,
+            presentation.statusMessage,
         )
         requestBrowserSync()
     }
@@ -85,41 +85,41 @@ class GenerationStatePresenter(
         requestBrowserSync()
     }
 
-    fun presentGenerationPlanRequestFailure(presentation: GenerationRequestFailurePresentation) {
+    fun presentGenerationPlanRequestFailure(presentation: GenerationRequestFailureResult) {
         stateService.workbench.markRuntimeArtifactSummaries("plan", presentation.runtimeArtifacts.toUiRuntimeArtifacts())
         stateService.asyncRequests.markGenerationPlanRequestFailed(presentation.message, presentation.requestState)
         stateService.workbench.markOperationFeedback(
             presentation.feedbackLevel.toOperationFeedbackLevel(),
             presentation.message,
-            preserveLastMessageType = presentation.preserveLastMessageType,
+            preservePreviousStatusKind = presentation.preservePreviousStatusKind,
         )
         requestBrowserSync()
     }
 
-    fun presentGenerationPlanDiscussion(presentation: GenerationDiscussionPresentation) {
+    fun presentGenerationPlanDiscussion(presentation: GenerationDiscussionResult) {
         stateService.asyncRequests.markGenerationPlanDiscussion(presentation.result, presentation.requestState)
         stateService.workbench.markOperationFeedback(
             presentation.feedbackLevel.toOperationFeedbackLevel(),
-            presentation.feedbackMessage,
-            preserveLastMessageType = true,
+            presentation.statusMessage,
+            preservePreviousStatusKind = true,
         )
         requestBrowserSync()
     }
 
-    fun presentGenerationPlanDiscussionFailure(presentation: GenerationRequestFailurePresentation) {
+    fun presentGenerationPlanDiscussionFailure(presentation: GenerationRequestFailureResult) {
         stateService.asyncRequests.markGenerationPlanDiscussionRequestFailed(presentation.message, presentation.requestState)
         stateService.workbench.markOperationFeedback(
             presentation.feedbackLevel.toOperationFeedbackLevel(),
             presentation.message,
-            preserveLastMessageType = presentation.preserveLastMessageType,
+            preservePreviousStatusKind = presentation.preservePreviousStatusKind,
         )
         requestBrowserSync()
     }
 
-    fun presentCodeDraftWriteReport(presentation: CodeDraftWritePresentation) {
+    fun presentCodeDraftWriteReport(presentation: CodeDraftWriteResult) {
         stateService.workbench.markGeneratedCodeDraftWriteReport(presentation.report)
         val level = presentation.feedbackLevel
-        val message = presentation.feedbackMessage
+        val message = presentation.statusMessage
         if (level != null && message != null) {
             stateService.workbench.markOperationFeedback(level.toOperationFeedbackLevel(), message)
         }
@@ -129,12 +129,12 @@ class GenerationStatePresenter(
     fun presentFeedback(
         level: ApplicationFeedbackLevel,
         message: String,
-        preserveLastMessageType: Boolean,
+        preservePreviousStatusKind: Boolean,
     ) {
         stateService.workbench.markOperationFeedback(
             level.toOperationFeedbackLevel(),
             message,
-            preserveLastMessageType = preserveLastMessageType,
+            preservePreviousStatusKind = preservePreviousStatusKind,
         )
         requestBrowserSync()
     }
@@ -148,12 +148,12 @@ class GenerationStatePresenter(
         stateService.workbench.markOperationFeedback(
             level.toOperationFeedbackLevel(),
             message,
-            preserveLastMessageType = true,
+            preservePreviousStatusKind = true,
         )
         requestBrowserSync()
     }
 
-    fun presentGeneratedCodeDrafts(presentation: GeneratedCodeDraftsPresentation) {
+    fun presentGeneratedCodeDrafts(presentation: GeneratedCodeDraftsResult) {
         stateService.workbench.markRuntimeArtifactSummaries("codegen", presentation.runtimeArtifacts.toUiRuntimeArtifacts())
         stateService.asyncRequests.markGeneratedCodeDrafts(
             drafts = presentation.drafts,
@@ -163,20 +163,20 @@ class GenerationStatePresenter(
             requestState = presentation.requestState,
         )
         val level = presentation.feedbackLevel
-        val message = presentation.feedbackMessage
+        val message = presentation.statusMessage
         if (level != null && message != null) {
-            stateService.workbench.markOperationFeedback(level.toOperationFeedbackLevel(), message, preserveLastMessageType = true)
+            stateService.workbench.markOperationFeedback(level.toOperationFeedbackLevel(), message, preservePreviousStatusKind = true)
         }
         requestBrowserSync()
     }
 
-    fun presentCodeDraftRequestFailure(presentation: GenerationRequestFailurePresentation) {
+    fun presentCodeDraftRequestFailure(presentation: GenerationRequestFailureResult) {
         stateService.workbench.markRuntimeArtifactSummaries("codegen", presentation.runtimeArtifacts.toUiRuntimeArtifacts())
         stateService.asyncRequests.markCodeDraftRequestFailed(presentation.message, presentation.requestState)
         stateService.workbench.markOperationFeedback(
             presentation.feedbackLevel.toOperationFeedbackLevel(),
             presentation.message,
-            preserveLastMessageType = presentation.preserveLastMessageType,
+            preservePreviousStatusKind = presentation.preservePreviousStatusKind,
         )
         requestBrowserSync()
     }

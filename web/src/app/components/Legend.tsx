@@ -7,6 +7,7 @@ import {
   nodeTypeLabel,
 } from "../labels";
 import type { AnalysisDisplayMode, DraftCompareProjection } from "../types";
+import { CLASS_DIAGRAM_RELATION_LEGEND_ITEMS } from "../views/class-diagram/classDiagramRelations";
 
 interface LegendProps {
   analysisDisplayMode: AnalysisDisplayMode;
@@ -38,6 +39,29 @@ export function Legend({
           edgeTypeLabel("BINDS_CONFIG"),
           edgeTypeLabel("LINKS_DOC"),
         ];
+      case "ARCHITECTURE_GRAPH":
+        return [
+          nodeTypeLabel("MODULE"),
+          nodeTypeLabel("COMPONENT"),
+          nodeTypeLabel("SERVICE"),
+          nodeTypeLabel("LAYER"),
+          nodeTypeLabel("RESOURCE"),
+        ];
+      case "CLASS_DIAGRAM":
+        return [
+          nodeTypeLabel("CLASS"),
+          nodeTypeLabel("INTERFACE"),
+          nodeTypeLabel("ENUM"),
+          "抽象类",
+        ];
+      case "REVIEW_GRAPH":
+        return [
+          nodeTypeLabel("CLASS"),
+          nodeTypeLabel("METHOD"),
+          edgeTypeLabel("USES_TYPE"),
+          edgeTypeLabel("REFLECTS_TO"),
+          edgeTypeLabel("SPI_RESOLVES_TO"),
+        ];
       case "FACT_GRAPH":
       default:
         return [
@@ -54,6 +78,9 @@ export function Legend({
       ...Object.values(draftCompareProjection.nodeStatuses),
       ...Object.values(draftCompareProjection.edgeStatuses),
     ]));
+  const relationBadges = analysisDisplayMode === "CLASS_DIAGRAM"
+    ? CLASS_DIAGRAM_RELATION_LEGEND_ITEMS
+    : [];
 
   return (
     <section className="legend-panel" aria-label="图例">
@@ -70,6 +97,9 @@ export function Legend({
       ))}
       {modeBadges.map((badge) => (
         <span key={badge} className="badge legend-structure-badge">{badge}</span>
+      ))}
+      {relationBadges.map((item) => (
+        <span key={item.id} className={`badge legend-relation-badge legend-relation-${item.role}`}>{item.label}</span>
       ))}
     </section>
   );

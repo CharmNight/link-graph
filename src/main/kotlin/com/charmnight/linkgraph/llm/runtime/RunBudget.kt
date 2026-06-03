@@ -16,7 +16,7 @@ data class RunBudget(
     /** 所有 snippet 的累计最大行数。 */
     val maxTotalSnippetLines: Int = 1_200,
     /** 运行最大时长，单位秒。 */
-    val maxRuntimeSeconds: Int = 90,
+    val maxRuntimeSeconds: Int = 60,
     /** 当前已执行 step 数。 */
     val usedSteps: Int = 0,
     /** 当前已读取文件数。 */
@@ -42,7 +42,7 @@ data class RunBudget(
             filesRead = filesRead + 1,
             snippetsRead = snippetsRead + 1,
             totalSnippetLinesRead = totalSnippetLinesRead + snippetLines.coerceAtLeast(0),
-            snippetLineLimitExceeded = snippetLineLimitExceeded || snippetLines.coerceAtLeast(0) >= maxSnippetLines,
+            snippetLineLimitExceeded = snippetLineLimitExceeded || snippetLines.coerceAtLeast(0) > maxSnippetLines,
         )
     }
 

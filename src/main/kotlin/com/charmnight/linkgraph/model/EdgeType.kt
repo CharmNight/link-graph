@@ -12,6 +12,10 @@ enum class EdgeType {
     CONTROL_FLOW,
     /** 表示类型实现关系。 */
     IMPLEMENTS,
+    /** 表示类型继承关系。 */
+    EXTENDS,
+    /** 表示类型使用关系。 */
+    USES_TYPE,
     /** 表示依赖注入关系。 */
     INJECT,
     /** 表示 HTTP 或网关路由指向关系。 */
@@ -32,6 +36,8 @@ enum class EdgeType {
     REFLECTS_TO,
     /** 表示 SPI 解析后的实际落点关系。 */
     SPI_RESOLVES_TO,
+    /** 表示测试方法覆盖生产符号。 */
+    TESTS,
     /** 表示根据图信息生成代码或产物。 */
     GENERATES,
 }

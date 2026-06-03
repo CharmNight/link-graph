@@ -345,8 +345,79 @@ function routeBounds(edge: LinkGraphEdge) {
   };
 }
 
+function nodeBounds(node: LinkGraphNode) {
+  if (!node.position) {
+    throw new Error(`missing node position for ${node.id}`);
+  }
+  return {
+    left: node.position.x,
+    right: node.position.x + flowchartNodeCardWidth(node),
+    top: node.position.y,
+    bottom: node.position.y + (node.metadata?.["flowchart.kind"] === "DECISION" ? FLOWCHART_DECISION_MIN_HEIGHT : 156),
+  };
+}
+
+function segmentIntersectsNode(
+  segment: { startPoint: GraphPosition; endPoint: GraphPosition },
+  node: LinkGraphNode,
+): boolean {
+  const bounds = nodeBounds(node);
+  if (Math.abs(segment.startPoint.x - segment.endPoint.x) <= 0.5) {
+    const x = segment.startPoint.x;
+    if (x <= bounds.left + 1 || x >= bounds.right - 1) {
+      return false;
+    }
+    const top = Math.min(segment.startPoint.y, segment.endPoint.y);
+    const bottom = Math.max(segment.startPoint.y, segment.endPoint.y);
+    return Math.max(top, bounds.top) < Math.min(bottom, bounds.bottom);
+  }
+  if (Math.abs(segment.startPoint.y - segment.endPoint.y) <= 0.5) {
+    const y = segment.startPoint.y;
+    if (y <= bounds.top + 1 || y >= bounds.bottom - 1) {
+      return false;
+    }
+    const left = Math.min(segment.startPoint.x, segment.endPoint.x);
+    const right = Math.max(segment.startPoint.x, segment.endPoint.x);
+    return Math.max(left, bounds.left) < Math.min(right, bounds.right);
+  }
+  return true;
+}
+
+function routeIntersectsAnyNode(edge: LinkGraphEdge, nodes: LinkGraphNode[]): boolean {
+  return routeSegments(edge).some((segment) => nodes.some((node) => segmentIntersectsNode(segment, node)));
+}
+
 function isVerticalSegment(segment: { startPoint: GraphPosition; endPoint: GraphPosition }) {
   return Math.abs(segment.startPoint.x - segment.endPoint.x) <= 0.5;
+}
+
+function isHorizontalSegment(segment: { startPoint: GraphPosition; endPoint: GraphPosition }) {
+  return Math.abs(segment.startPoint.y - segment.endPoint.y) <= 0.5;
+}
+
+function routeSegmentsIntersect(
+  left: { startPoint: GraphPosition; endPoint: GraphPosition },
+  right: { startPoint: GraphPosition; endPoint: GraphPosition },
+): boolean {
+  if (isVerticalSegment(left) && isHorizontalSegment(right)) {
+    const x = left.startPoint.x;
+    const y = right.startPoint.y;
+    const verticalTop = Math.min(left.startPoint.y, left.endPoint.y);
+    const verticalBottom = Math.max(left.startPoint.y, left.endPoint.y);
+    const horizontalLeft = Math.min(right.startPoint.x, right.endPoint.x);
+    const horizontalRight = Math.max(right.startPoint.x, right.endPoint.x);
+    return x > horizontalLeft + 1 && x < horizontalRight - 1 && y > verticalTop + 1 && y < verticalBottom - 1;
+  }
+  if (isHorizontalSegment(left) && isVerticalSegment(right)) {
+    return routeSegmentsIntersect(right, left);
+  }
+  return false;
+}
+
+function routesIntersect(left: LinkGraphEdge, right: LinkGraphEdge): boolean {
+  return routeSegments(left).some((leftSegment) =>
+    routeSegments(right).some((rightSegment) => routeSegmentsIntersect(leftSegment, rightSegment)),
+  );
 }
 
 function verticalOverlapLength(
@@ -1191,5 +1262,275 @@ describe("layoutFlowchartView", () => {
     expect(bounds.maxY - bounds.minY).toBeLessThan(
       (bodyTail.position?.y ?? 0) - (loop.position?.y ?? 0) + 220,
     );
+  });
+
+  it("places invocation expansion batches in a right-side lane and routes CALL edges away from the main flow", async () => {
+    const nodes: LinkGraphNode[] = [
+      {
+        ...methodNode("method:caller", "Caller.run"),
+        metadata: {
+          "flowchart.kind": "ENTRY",
+          "flow.ownerMethod": "com.example.Caller.run():void",
+        },
+      },
+      {
+        ...methodNode("invoke:create-info", "调用 SystemService.createInfo"),
+        type: "FLOW_ACTION",
+        signature: "com.example.SystemService.createInfo():void",
+        metadata: {
+          "flow.kind": "INVOCATION",
+          "flowchart.kind": "SUBROUTINE",
+          "flow.ownerMethod": "com.example.Caller.run():void",
+        },
+      },
+      {
+        ...methodNode("scope:after-call", "if (ok)"),
+        type: "FLOW_SCOPE",
+        metadata: {
+          "flow.kind": "IF",
+          "flowchart.kind": "DECISION",
+          "flow.ownerMethod": "com.example.Caller.run():void",
+        },
+      },
+      {
+        ...methodNode("method:create-info", "SystemService.createInfo"),
+        signature: "com.example.SystemService.createInfo():void",
+        metadata: {
+          "flowchart.kind": "ENTRY",
+          "flow.ownerMethod": "com.example.SystemService.createInfo():void",
+          "linkGraph.expansion.id": "invocation:1",
+          "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+          "linkGraph.expansion.rootNodeId": "method:create-info",
+        },
+      },
+      {
+        ...methodNode("action:save-info", "saveInfo()"),
+        type: "FLOW_ACTION",
+        metadata: {
+          "flow.kind": "ACTION",
+          "flowchart.kind": "PROCESS",
+          "flow.ownerMethod": "com.example.SystemService.createInfo():void",
+          "linkGraph.expansion.id": "invocation:1",
+          "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+          "linkGraph.expansion.rootNodeId": "method:create-info",
+        },
+      },
+    ];
+    const edges: LinkGraphEdge[] = [
+      { id: "caller-invoke", type: "CONTROL_FLOW", source: "method:caller", target: "invoke:create-info" },
+      { id: "invoke-after", type: "CONTROL_FLOW", source: "invoke:create-info", target: "scope:after-call" },
+      {
+        id: "invoke-expanded",
+        type: "CALL",
+        source: "invoke:create-info",
+        target: "method:create-info",
+        metadata: {
+          "linkGraph.expansion.id": "invocation:1",
+          "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+        },
+      },
+      {
+        id: "expanded-save",
+        type: "CONTROL_FLOW",
+        source: "method:create-info",
+        target: "action:save-info",
+        metadata: {
+          "linkGraph.expansion.id": "invocation:1",
+          "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+        },
+      },
+    ];
+
+    const laidOut = await layoutFlowchartView({
+      graph: { nodes, edges },
+      nodes,
+      edges,
+      anchorNodeId: "method:caller",
+      sizeSnapshot: new Map(),
+      reason: "graph",
+    });
+    const index = new Map(laidOut.nodes.map((node) => [node.id, node]));
+    const invocation = index.get("invoke:create-info")!;
+    const afterCall = index.get("scope:after-call")!;
+    const expandedRoot = index.get("method:create-info")!;
+    const expandedAction = index.get("action:save-info")!;
+    const callEdge = laidOut.edges.find((edge) => edge.id === "invoke-expanded")!;
+    const mainFlowRight = Math.max(
+      nodeBounds(index.get("method:caller")!).right,
+      nodeBounds(invocation).right,
+      nodeBounds(afterCall).right,
+    );
+
+    expect(expandedRoot.position?.x).toBeGreaterThan(mainFlowRight + 40);
+    expect(expandedAction.position?.x).toBeGreaterThan(mainFlowRight + 40);
+    expect(expandedAction.position?.y).toBeGreaterThan(expandedRoot.position?.y ?? 0);
+    expect(routeIntersectsAnyNode(callEdge, [index.get("method:caller")!, invocation, afterCall, expandedRoot, expandedAction])).toBe(false);
+  });
+
+  it("routes CALL edges around same-layer branch nodes between the source invocation and expansion lane", async () => {
+    const expansionMetadata = {
+      "linkGraph.expansion.id": "invocation:branch",
+      "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+      "linkGraph.expansion.rootNodeId": "method:create-info",
+    };
+    const nodes: LinkGraphNode[] = [
+      { ...methodNode("method:caller", "Caller.run"), metadata: { "flowchart.kind": "ENTRY" } },
+      {
+        ...methodNode("scope:choose", "if (createInfo)"),
+        type: "FLOW_SCOPE",
+        metadata: { "flow.kind": "IF", "flowchart.kind": "DECISION" },
+      },
+      {
+        ...methodNode("invoke:create-info", "调用 SystemService.createInfo"),
+        type: "FLOW_ACTION",
+        metadata: { "flow.kind": "INVOCATION", "flowchart.kind": "SUBROUTINE" },
+      },
+      {
+        ...methodNode("action:peer-branch", "peerBranchWork()"),
+        type: "FLOW_ACTION",
+        metadata: { "flowchart.kind": "PROCESS" },
+      },
+      { ...methodNode("merge:after", "汇合"), type: "MERGE", metadata: { "flowchart.kind": "MERGE" } },
+      { ...methodNode("method:create-info", "SystemService.createInfo"), metadata: { "flowchart.kind": "ENTRY", ...expansionMetadata } },
+      {
+        ...methodNode("action:save-info", "saveInfo()"),
+        type: "FLOW_ACTION",
+        metadata: { "flowchart.kind": "PROCESS", ...expansionMetadata },
+      },
+    ];
+    const edges: LinkGraphEdge[] = [
+      { id: "caller-choose", type: "CONTROL_FLOW", source: "method:caller", target: "scope:choose" },
+      { id: "choose-create", type: "CONTROL_FLOW", source: "scope:choose", target: "invoke:create-info", label: "FALSE" },
+      { id: "choose-peer", type: "CONTROL_FLOW", source: "scope:choose", target: "action:peer-branch", label: "TRUE" },
+      { id: "create-merge", type: "CONTROL_FLOW", source: "invoke:create-info", target: "merge:after" },
+      { id: "peer-merge", type: "CONTROL_FLOW", source: "action:peer-branch", target: "merge:after" },
+      { id: "call-create", type: "CALL", source: "invoke:create-info", target: "method:create-info", metadata: expansionMetadata },
+      { id: "create-internal", type: "CONTROL_FLOW", source: "method:create-info", target: "action:save-info", metadata: expansionMetadata },
+    ];
+
+    const laidOut = await layoutFlowchartView({
+      graph: { nodes, edges },
+      nodes,
+      edges,
+      anchorNodeId: "method:caller",
+      sizeSnapshot: new Map(),
+      reason: "graph",
+    });
+    const index = new Map(laidOut.nodes.map((node) => [node.id, node]));
+    const invocation = index.get("invoke:create-info")!;
+    const peerBranch = index.get("action:peer-branch")!;
+    const callEdge = laidOut.edges.find((edge) => edge.id === "call-create")!;
+
+    expect(peerBranch.position?.x).toBeGreaterThan(invocation.position?.x ?? Number.POSITIVE_INFINITY);
+    expect(routeIntersectsAnyNode(callEdge, [peerBranch])).toBe(false);
+  });
+
+  it("keeps expansion CALL edges out of the main control-flow corridor in a wide method graph", async () => {
+    const expansionMetadata = {
+      "linkGraph.expansion.id": "invocation:file-check",
+      "linkGraph.expansion.sourceInvocationNodeId": "invoke:check-allow-download",
+      "linkGraph.expansion.rootNodeId": "method:check-allow-download",
+    };
+    const { nodes: baseNodes, edges: baseEdges } = runtimeFileDownloadTopology();
+    const nodes: LinkGraphNode[] = [
+      ...baseNodes,
+      {
+        ...methodNode("method:check-allow-download", "FileUtils.checkAllowDownload"),
+        metadata: { "flowchart.kind": "ENTRY", ...expansionMetadata },
+      },
+      {
+        ...methodNode("action:check-extension", "check extension allowlist"),
+        type: "FLOW_ACTION",
+        metadata: { "flowchart.kind": "PROCESS", ...expansionMetadata },
+      },
+    ];
+    const edges: LinkGraphEdge[] = [
+      ...baseEdges,
+      {
+        id: "call:check-allow-download",
+        type: "CALL",
+        source: "invoke:check-allow-download",
+        target: "method:check-allow-download",
+        metadata: expansionMetadata,
+      },
+      {
+        id: "expanded:check-extension",
+        type: "CONTROL_FLOW",
+        source: "method:check-allow-download",
+        target: "action:check-extension",
+        metadata: expansionMetadata,
+      },
+    ];
+
+    const laidOut = await layoutFlowchartView({
+      graph: { nodes, edges },
+      nodes,
+      edges,
+      anchorNodeId: "method:anchor",
+      sizeSnapshot: new Map(),
+      reason: "graph",
+    });
+    const index = new Map(laidOut.nodes.map((node) => [node.id, node]));
+    const callEdge = laidOut.edges.find((edge) => edge.id === "call:check-allow-download")!;
+    const mainNodes = laidOut.nodes.filter((node) => !node.metadata?.["linkGraph.expansion.id"]);
+    const mainControlEdges = laidOut.edges.filter((edge) => edge.type === "CONTROL_FLOW" && !edge.metadata?.["linkGraph.expansion.id"]);
+    const intersectingNodeIds = mainNodes
+      .filter((node) => routeIntersectsAnyNode(callEdge, [node]))
+      .map((node) => node.id);
+    const intersectingEdgeIds = mainControlEdges
+      .filter((edge) => routesIntersect(callEdge, edge))
+      .map((edge) => edge.id);
+
+    expect(intersectingNodeIds).toEqual([]);
+    expect(intersectingEdgeIds).toEqual([]);
+    expect(index.get("method:check-allow-download")?.position?.x).toBeGreaterThan(
+      Math.max(...mainNodes.map((node) => nodeBounds(node).right)) + 40,
+    );
+  });
+
+  it("stacks multiple invocation expansion batches by their source call order without overlapping", async () => {
+    const expansionMetadata = (expansionId: string, sourceInvocationNodeId: string, rootNodeId: string) => ({
+      "linkGraph.expansion.id": expansionId,
+      "linkGraph.expansion.sourceInvocationNodeId": sourceInvocationNodeId,
+      "linkGraph.expansion.rootNodeId": rootNodeId,
+    });
+    const nodes: LinkGraphNode[] = [
+      { ...methodNode("method:caller", "Caller.run"), metadata: { "flowchart.kind": "ENTRY" } },
+      { ...methodNode("invoke:first", "调用 first"), type: "FLOW_ACTION", metadata: { "flow.kind": "INVOCATION", "flowchart.kind": "SUBROUTINE" } },
+      { ...methodNode("invoke:second", "调用 second"), type: "FLOW_ACTION", metadata: { "flow.kind": "INVOCATION", "flowchart.kind": "SUBROUTINE" } },
+      { ...methodNode("method:first", "Target.first"), metadata: { "flowchart.kind": "ENTRY", ...expansionMetadata("invocation:1", "invoke:first", "method:first") } },
+      { ...methodNode("action:first", "firstAction()"), type: "FLOW_ACTION", metadata: { "flowchart.kind": "PROCESS", ...expansionMetadata("invocation:1", "invoke:first", "method:first") } },
+      { ...methodNode("method:second", "Target.second"), metadata: { "flowchart.kind": "ENTRY", ...expansionMetadata("invocation:2", "invoke:second", "method:second") } },
+      { ...methodNode("action:second", "secondAction()"), type: "FLOW_ACTION", metadata: { "flowchart.kind": "PROCESS", ...expansionMetadata("invocation:2", "invoke:second", "method:second") } },
+    ];
+    const edges: LinkGraphEdge[] = [
+      { id: "caller-first", type: "CONTROL_FLOW", source: "method:caller", target: "invoke:first" },
+      { id: "first-second", type: "CONTROL_FLOW", source: "invoke:first", target: "invoke:second" },
+      { id: "call-first", type: "CALL", source: "invoke:first", target: "method:first", metadata: expansionMetadata("invocation:1", "invoke:first", "method:first") },
+      { id: "first-internal", type: "CONTROL_FLOW", source: "method:first", target: "action:first", metadata: expansionMetadata("invocation:1", "invoke:first", "method:first") },
+      { id: "call-second", type: "CALL", source: "invoke:second", target: "method:second", metadata: expansionMetadata("invocation:2", "invoke:second", "method:second") },
+      { id: "second-internal", type: "CONTROL_FLOW", source: "method:second", target: "action:second", metadata: expansionMetadata("invocation:2", "invoke:second", "method:second") },
+    ];
+
+    const laidOut = await layoutFlowchartView({
+      graph: { nodes, edges },
+      nodes,
+      edges,
+      anchorNodeId: "method:caller",
+      sizeSnapshot: new Map(),
+      reason: "graph",
+    });
+    const index = new Map(laidOut.nodes.map((node) => [node.id, node]));
+    const firstRoot = index.get("method:first")!;
+    const firstAction = index.get("action:first")!;
+    const secondRoot = index.get("method:second")!;
+    const secondAction = index.get("action:second")!;
+    const firstBottom = Math.max(nodeBounds(firstRoot).bottom, nodeBounds(firstAction).bottom);
+    const secondTop = Math.min(nodeBounds(secondRoot).top, nodeBounds(secondAction).top);
+
+    expect(firstRoot.position?.x).toBeCloseTo(secondRoot.position?.x ?? 0, -1);
+    expect(secondTop).toBeGreaterThan(firstBottom + 40);
+    expect(firstAction.position?.y).toBeGreaterThan(firstRoot.position?.y ?? 0);
+    expect(secondAction.position?.y).toBeGreaterThan(secondRoot.position?.y ?? 0);
   });
 });

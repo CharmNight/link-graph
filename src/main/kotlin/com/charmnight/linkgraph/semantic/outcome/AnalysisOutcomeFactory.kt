@@ -8,10 +8,10 @@ import com.charmnight.linkgraph.semantic.model.SemanticDiagnostic
 import com.charmnight.linkgraph.semantic.model.SemanticDiagnosticSeverity
 import com.charmnight.linkgraph.semantic.policy.ProjectionPolicy
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectHandle
-import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.view.FactGraphProjector
 import com.charmnight.linkgraph.ui.view.FlowchartProjector
 import com.charmnight.linkgraph.ui.view.ResourceRelationProjector
+import com.charmnight.linkgraph.projection.graphProjectionHiddenCounts
 import java.util.Locale
 
 class AnalysisOutcomeFactory(
@@ -77,6 +77,14 @@ class AnalysisOutcomeFactory(
                 resourceRelationView.visibleGraph,
                 resourceRelationView.anchorNodeId,
             )
+            AnalysisDisplayMode.ARCHITECTURE_GRAPH,
+            AnalysisDisplayMode.CLASS_DIAGRAM,
+            AnalysisDisplayMode.REVIEW_GRAPH,
+            -> Triple(
+                factGraphView.fullGraph,
+                factGraphView.visibleGraph,
+                factGraphView.anchorNodeId,
+            )
         }
         val (hiddenNodeCount, hiddenEdgeCount, truncated) = when (displayMode) {
             AnalysisDisplayMode.FLOWCHART -> Triple(
@@ -84,10 +92,16 @@ class AnalysisOutcomeFactory(
                 flowchartView.summary.hiddenEdgeCount,
                 flowchartView.summary.truncated,
             )
+            AnalysisDisplayMode.FACT_GRAPH -> Triple(
+                factGraphView.summary.hiddenNodeCount,
+                factGraphView.summary.hiddenEdgeCount,
+                factGraphView.summary.truncated,
+            )
             else -> {
-                val hiddenNodes = (fullGraph.nodes.map { it.id }.toSet() - visibleGraph.nodes.map { it.id }.toSet()).size
-                val hiddenEdges = (fullGraph.edges.map { it.id }.toSet() - visibleGraph.edges.map { it.id }.toSet()).size
-                Triple(hiddenNodes, hiddenEdges, hiddenNodes > 0 || hiddenEdges > 0)
+                val hiddenCounts = graphProjectionHiddenCounts(visibleGraph = visibleGraph, fullGraph = fullGraph)
+                val hiddenNodes = hiddenCounts.hiddenNodeCount
+                val hiddenEdges = hiddenCounts.hiddenEdgeCount
+                Triple(hiddenNodes, hiddenEdges, hiddenCounts.truncated)
             }
         }
         val primaryDiagnostic = selectPrimaryFeedbackDiagnostic(analysisResult.diagnostics)
@@ -100,7 +114,7 @@ class AnalysisOutcomeFactory(
                 ?: resolveAnchoredMethodSignature(analysisResult),
             displayName = analysisResult.subject.displayName,
             feedbackLevel = resolveFeedbackLevel(primaryDiagnostic, truncated),
-            feedbackMessage = primaryDiagnostic?.message
+            statusMessage = primaryDiagnostic?.message
                 ?: buildFeedbackMessage(analysisResult.subject.displayName, displayMode, fullGraph, visibleGraph, truncated),
             projectionStats = AnalysisProjectionStats(
                 hiddenNodeCount = hiddenNodeCount,
@@ -198,6 +212,9 @@ class AnalysisOutcomeFactory(
             AnalysisDisplayMode.FACT_GRAPH -> "已加载事实链路"
             AnalysisDisplayMode.FLOWCHART -> "已加载流程图"
             AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> "已加载资源关系图"
+            AnalysisDisplayMode.ARCHITECTURE_GRAPH -> "已加载项目结构"
+            AnalysisDisplayMode.CLASS_DIAGRAM -> "已加载类图"
+            AnalysisDisplayMode.REVIEW_GRAPH -> "已加载 Review Graph"
         }
         return if (truncated) {
             "$prefix：$displayName（画布展示 ${visibleGraph.nodes.size} 个节点，完整结果 ${fullGraph.nodes.size} 个节点）"

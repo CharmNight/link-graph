@@ -1,21 +1,20 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.model.GraphDocument
-import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
+import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.foundation.LinkGraphRenderTrace
 import com.charmnight.linkgraph.ui.view.FactGraphSummary
 import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
-import com.charmnight.linkgraph.ui.view.GraphEditCommandKind
-import com.charmnight.linkgraph.ui.view.GraphProjectionEdgeMapping
 import com.charmnight.linkgraph.ui.view.GraphProjectionIndex
-import com.charmnight.linkgraph.ui.view.GraphProjectionMappingKind
-import com.charmnight.linkgraph.ui.view.GraphProjectionNodeMapping
 import com.charmnight.linkgraph.ui.view.ResourceRelationSummary
 import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
 import com.charmnight.linkgraph.ui.view.deriveFlowchartSummary
+import com.charmnight.linkgraph.ui.view.exactGraphProjectionIndex
+import com.charmnight.linkgraph.ui.view.graphProjectionIndexForVisibleGraph
 import com.charmnight.linkgraph.ui.view.projectReadableFlowchartView
 import com.charmnight.linkgraph.ui.view.resolveProjectedFlowchartNodeId
 
@@ -81,7 +80,7 @@ internal fun buildViewDocuments(
             fullGraph = workspaceGraph,
             anchorNodeId = anchorNodeId,
         ).toSummary(),
-        projectionIndex = exactProjectionIndex(workspaceGraph),
+        projectionIndex = exactGraphProjectionIndex(workspaceGraph),
     )
     traceViewStage(
         runtimeTrace = runtimeTrace,
@@ -109,7 +108,7 @@ internal fun buildViewDocuments(
         )
     }
     val flowIndexStartedAt = System.nanoTime()
-    val flowchartProjectionIndex = buildProjectionIndex(
+    val flowchartProjectionIndex = graphProjectionIndexForVisibleGraph(
         visibleGraph = flowchartView.visibleGraph,
         fullGraph = workspaceGraph,
     )
@@ -134,7 +133,7 @@ internal fun buildViewDocuments(
         summary = ResourceRelationViewSummary(
             visibleGraph = workspaceGraph,
         ).toSummary(),
-        projectionIndex = exactProjectionIndex(workspaceGraph),
+        projectionIndex = exactGraphProjectionIndex(workspaceGraph),
     )
     traceViewStage(
         runtimeTrace = runtimeTrace,
@@ -194,6 +193,9 @@ internal fun resolveVisibleGraphForDisplayMode(
         AnalysisDisplayMode.FACT_GRAPH -> snapshot.factGraphView.visibleGraph
         AnalysisDisplayMode.FLOWCHART -> snapshot.flowchartView.visibleGraph
         AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> snapshot.resourceRelationView.visibleGraph
+        AnalysisDisplayMode.ARCHITECTURE_GRAPH -> snapshot.architectureGraphView.visibleGraph
+        AnalysisDisplayMode.CLASS_DIAGRAM -> snapshot.classDiagramView.visibleGraph
+        AnalysisDisplayMode.REVIEW_GRAPH -> snapshot.reviewGraphView.visibleGraph
     }
 }
 
@@ -237,6 +239,8 @@ internal data class GraphEditorViewDocuments(
     val factGraphView: FactGraphViewDocument,
     val flowchartView: FlowchartViewDocument,
     val resourceRelationView: ResourceRelationViewDocument,
+    val architectureGraphView: ArchitectureGraphViewDocument = ArchitectureGraphViewDocument(),
+    val classDiagramView: ClassDiagramViewDocument = ClassDiagramViewDocument(),
 )
 
 private data class FactGraphViewDocumentSummary(
@@ -261,125 +265,5 @@ private data class ResourceRelationViewSummary(
             .groupingBy { it.metadata["resource.lane"] ?: "CODE" }
             .eachCount()
             .toSortedMap(),
-    )
-}
-
-private fun exactProjectionIndex(graph: GraphDocument): GraphProjectionIndex {
-    return GraphProjectionIndex(
-        nodeMappings = graph.nodes.associate { node ->
-            node.id to GraphProjectionNodeMapping(
-                projectedNodeId = node.id,
-                mappingKind = nodeMappingKind(node, listOf(node.id)),
-                canonicalNodeIds = listOf(node.id),
-                editableCommandKinds = editableNodeCommands(node),
-            )
-        },
-        edgeMappings = graph.edges.associate { edge ->
-            edge.id to GraphProjectionEdgeMapping(
-                projectedEdgeId = edge.id,
-                mappingKind = GraphProjectionMappingKind.EXACT,
-                canonicalEdgeIds = listOf(edge.id),
-                editableCommandKinds = editableEdgeCommands(edge),
-            )
-        },
-    )
-}
-
-private fun buildProjectionIndex(
-    visibleGraph: GraphDocument? = null,
-    itVisibleGraph: GraphDocument? = null,
-    fullGraph: GraphDocument,
-): GraphProjectionIndex {
-    val effectiveVisibleGraph = visibleGraph ?: itVisibleGraph ?: fullGraph
-    val fullEdgeIds = fullGraph.edges.mapTo(linkedSetOf()) { it.id }
-    val overflowNodeIds = effectiveVisibleGraph.nodes
-        .filter(::isOverflowNode)
-        .mapTo(linkedSetOf()) { it.id }
-    return GraphProjectionIndex(
-        nodeMappings = effectiveVisibleGraph.nodes.associate { node ->
-            val aliasIds = projectedAliasNodeIds(node)
-            val canonicalIds = listOf(node.id) + aliasIds
-            val mappingKind = nodeMappingKind(node, canonicalIds)
-            node.id to GraphProjectionNodeMapping(
-                projectedNodeId = node.id,
-                mappingKind = mappingKind,
-                canonicalNodeIds = if (mappingKind == GraphProjectionMappingKind.OVERFLOW_READONLY) emptyList() else canonicalIds,
-                editableCommandKinds = if (mappingKind == GraphProjectionMappingKind.EXACT) {
-                    editableNodeCommands(node)
-                } else {
-                    emptySet()
-                },
-            )
-        },
-        edgeMappings = effectiveVisibleGraph.edges.associate { edge ->
-            val mappingKind = edgeMappingKind(edge, fullEdgeIds, overflowNodeIds)
-            edge.id to GraphProjectionEdgeMapping(
-                projectedEdgeId = edge.id,
-                mappingKind = mappingKind,
-                canonicalEdgeIds = if (mappingKind == GraphProjectionMappingKind.EXACT) listOf(edge.id) else emptyList(),
-                editableCommandKinds = if (mappingKind == GraphProjectionMappingKind.EXACT) {
-                    editableEdgeCommands(edge)
-                } else {
-                    emptySet()
-                },
-            )
-        },
-    )
-}
-
-private fun projectedAliasNodeIds(node: GraphNode): List<String> {
-    return node.metadata["flowchart.projectedFromNodeIds"]
-        ?.split(',')
-        ?.mapNotNull { it.trim().takeIf(String::isNotBlank) }
-        .orEmpty()
-}
-
-private fun nodeMappingKind(
-    node: GraphNode,
-    canonicalIds: List<String>,
-): GraphProjectionMappingKind {
-    return when {
-        isOverflowNode(node) -> GraphProjectionMappingKind.OVERFLOW_READONLY
-        canonicalIds.distinct().size > 1 -> GraphProjectionMappingKind.MERGED_ALIAS
-        else -> GraphProjectionMappingKind.EXACT
-    }
-}
-
-private fun edgeMappingKind(
-    edge: GraphEdge,
-    fullEdgeIds: Set<String>,
-    overflowNodeIds: Set<String>,
-): GraphProjectionMappingKind {
-    return when {
-        edge.fromNodeId in overflowNodeIds || edge.toNodeId in overflowNodeIds -> GraphProjectionMappingKind.OVERFLOW_READONLY
-        edge.metadata["flow.synthetic"] == "true" || edge.metadata["flowchart.synthetic"] != null -> {
-            GraphProjectionMappingKind.SYNTHETIC_READONLY
-        }
-        edge.id in fullEdgeIds -> GraphProjectionMappingKind.EXACT
-        else -> GraphProjectionMappingKind.PATH_ALIAS
-    }
-}
-
-private fun isOverflowNode(node: GraphNode): Boolean = node.metadata.keys.any { it.startsWith("linkGraph.overflow.") }
-
-private fun editableNodeCommands(node: GraphNode): Set<GraphEditCommandKind> {
-    if (isOverflowNode(node)) {
-        return emptySet()
-    }
-    return setOf(
-        GraphEditCommandKind.UPDATE_NODE,
-        GraphEditCommandKind.DELETE_NODE,
-        GraphEditCommandKind.DELETE_NODE_SUBTREE,
-        GraphEditCommandKind.CONNECT_NODES,
-    )
-}
-
-private fun editableEdgeCommands(edge: GraphEdge): Set<GraphEditCommandKind> {
-    if (edge.metadata["flow.synthetic"] == "true" || edge.metadata["flowchart.synthetic"] != null) {
-        return emptySet()
-    }
-    return setOf(
-        GraphEditCommandKind.DELETE_EDGE,
-        GraphEditCommandKind.INSERT_NODE_INTO_EDGE,
     )
 }

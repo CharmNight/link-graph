@@ -6,6 +6,9 @@ import type {
   DiffStatus,
   GraphEditScript,
   GraphBeautificationRequest,
+  IndexedClassDiagramOptions,
+  IndexedReviewGraphOptions,
+  IndexedGraphViewportOptions,
   GraphPosition,
   GraphSourceTag,
   LinkGraphBootstrapState,
@@ -26,6 +29,60 @@ import {
 
 type FrontendReadyPayload = { lastAppliedRevision: number | null };
 type SnapshotAckPayload = { revision: number };
+type IndexedGraphPresetRequest = {
+  preset: "ARCHITECTURE" | "PACKAGE_DEPENDENCY" | "CLASS_DIAGRAM" | "REVIEW";
+  packageName?: string;
+  scopeNodeId?: string | null;
+  selectedDiffItemIds?: string[];
+  includeExternalLibraries?: boolean;
+  includeJdk?: boolean;
+  viewport?: IndexedGraphViewportOptions | null;
+  classDiagram?: Partial<IndexedClassDiagramOptions> | null;
+  review?: Partial<IndexedReviewGraphOptions> | null;
+};
+export type BridgeCommandType =
+  | "importMermaid"
+  | "exportMermaid"
+  | "showDiffMode"
+  | "requestSyncPreview"
+  | "requestQa"
+  | "retryLastQaRequest"
+  | "confirmQaCandidateChange"
+  | "unconfirmQaCandidateChange"
+  | "resolveInvestigationThread"
+  | "requestDiffReview"
+  | "requestGraphBeautification"
+  | "applyDraftPatchPreview"
+  | "clearDraftPatchPreview"
+  | "restoreDraftPatchPreview"
+  | "undoLastDraftPatchApply"
+  | "requestGenerationPlan"
+  | "requestGenerationPlanDiscussion"
+  | "requestCodeDrafts"
+  | "requestCurrentEditorContextGraph"
+  | "requestAnalysisDisplayMode"
+  | "requestIndexedGraph"
+  | "updateWorkbenchSectionPreference"
+  | "requestOpenSettings"
+  | "applyCodeDrafts"
+  | "applySingleCodeDraft"
+  | "openCodeDraftNativeDiff"
+  | "requestDraftNavigation"
+  | "requestArtifact"
+  | "frontendReady"
+  | "snapshotAck"
+  | "nodeSelected"
+  | "layoutChanged"
+  | "requestSourceNavigation"
+  | "requestExpandOverflowNode"
+  | "requestExpandInvocation"
+  | "requestRemoveInvocationExpansion"
+  | "applyGraphEditScript";
+export type BridgeCommandEnvelope = {
+  schemaVersion: 1;
+  type: BridgeCommandType;
+  payload: Record<string, unknown>;
+};
 type Bridge = NonNullable<Window["linkGraphBridge"]>;
 type BridgeMethodName = keyof Bridge;
 
@@ -63,14 +120,15 @@ declare global {
 
   interface Window {
     linkGraphBridge?: {
+      sendCommand?: (command: BridgeCommandEnvelope) => void;
       importMermaid?: (mermaid: string) => void;
       exportMermaid?: () => void;
       showDiffMode?: () => void;
       requestSyncPreview?: () => void;
-      requestAudit?: (question: string, selectedNodeIds?: string[], sourceThreadId?: string | null, mode?: QaMode) => void;
-      retryLastAuditRequest?: () => void;
-      confirmAuditCandidateChange?: (changeId: string) => void;
-      unconfirmAuditCandidateChange?: (changeId: string) => void;
+      requestQa?: (question: string, selectedNodeIds?: string[], sourceThreadId?: string | null, mode?: QaMode) => void;
+      retryLastQaRequest?: () => void;
+      confirmQaCandidateChange?: (changeId: string) => void;
+      unconfirmQaCandidateChange?: (changeId: string) => void;
       resolveInvestigationThread?: (threadId: string, resolutionStatus: RiskResolutionStatus, note?: string) => void;
       requestDiffReview?: (question: string, selectedDiffItemIds?: string[]) => void;
       requestGraphBeautification?: (
@@ -81,6 +139,7 @@ declare global {
         followUpStepId?: string,
         followUpStepTitle?: string,
         followUpQuestion?: string,
+        focusNodeId?: string | null,
       ) => void;
       applyDraftPatchPreview?: (operationIds?: string[]) => void;
       clearDraftPatchPreview?: () => void;
@@ -91,6 +150,7 @@ declare global {
       requestCodeDrafts?: () => void;
       requestCurrentEditorContextGraph?: () => void;
       requestAnalysisDisplayMode?: (displayMode: AnalysisDisplayMode) => void;
+      requestIndexedGraph?: (request: IndexedGraphPresetRequest) => void;
       updateWorkbenchSectionPreference?: (sectionId: string, expanded: boolean) => void;
       requestOpenSettings?: () => void;
       applyCodeDrafts?: () => void;
@@ -111,6 +171,8 @@ declare global {
       requestSourceNavigation?: (nodeId: string) => void;
       requestDraftNavigation?: (targetPath: string) => void;
       requestExpandOverflowNode?: (nodeId: string) => void;
+      requestExpandInvocation?: (nodeId: string) => void;
+      requestRemoveInvocationExpansion?: (expansionId: string) => void;
     };
     linkGraphBootstrap?: LinkGraphBootstrapState;
   }
@@ -261,14 +323,14 @@ export function requestSyncPreview(): BridgeInvocationResult {
   });
 }
 
-export function requestAuditAsync(
+export function requestQaAsync(
   question: string,
   selectedNodeIds: string[] = [],
   sourceThreadId: string | null = null,
   mode: QaMode = "AUTO",
 ): BridgeInvocationResult {
-  return invokeBridgeAction("requestAudit", (bridge) => {
-    bridge.requestAudit?.(question, selectedNodeIds, sourceThreadId, mode);
+  return invokeBridgeAction("requestQa", (bridge) => {
+    bridge.requestQa?.(question, selectedNodeIds, sourceThreadId, mode);
   }, {
     question,
     selectedNodeIds,
@@ -277,23 +339,23 @@ export function requestAuditAsync(
   });
 }
 
-export function retryLastAuditRequestAsync(): BridgeInvocationResult {
-  return invokeBridgeAction("retryLastAuditRequest", (bridge) => {
-    bridge.retryLastAuditRequest?.();
+export function retryLastQaRequestAsync(): BridgeInvocationResult {
+  return invokeBridgeAction("retryLastQaRequest", (bridge) => {
+    bridge.retryLastQaRequest?.();
   });
 }
 
-export function confirmAuditCandidateChange(changeId: string): BridgeInvocationResult {
-  return invokeBridgeAction("confirmAuditCandidateChange", (bridge) => {
-    bridge.confirmAuditCandidateChange?.(changeId);
+export function confirmQaCandidateChange(changeId: string): BridgeInvocationResult {
+  return invokeBridgeAction("confirmQaCandidateChange", (bridge) => {
+    bridge.confirmQaCandidateChange?.(changeId);
   }, {
     changeId,
   });
 }
 
-export function unconfirmAuditCandidateChange(changeId: string): BridgeInvocationResult {
-  return invokeBridgeAction("unconfirmAuditCandidateChange", (bridge) => {
-    bridge.unconfirmAuditCandidateChange?.(changeId);
+export function unconfirmQaCandidateChange(changeId: string): BridgeInvocationResult {
+  return invokeBridgeAction("unconfirmQaCandidateChange", (bridge) => {
+    bridge.unconfirmQaCandidateChange?.(changeId);
   }, {
     changeId,
   });
@@ -326,6 +388,7 @@ export function requestGraphBeautificationAsync(
     goal = "",
     preferredStyle,
     explanationFocus,
+    focusNodeId,
     granularity = "BUSINESS",
     followUp,
   } = request;
@@ -338,11 +401,13 @@ export function requestGraphBeautificationAsync(
       followUp?.stepId,
       followUp?.stepTitle,
       followUp?.question,
+      focusNodeId,
     );
   }, {
     goal,
     preferredStyle: preferredStyle ?? null,
     explanationFocus: explanationFocus ?? null,
+    focusNodeId: focusNodeId ?? null,
     granularity,
     followUp: followUp ?? null,
   });
@@ -399,8 +464,8 @@ export function requestCodeDraftsAsync(): BridgeInvocationResult {
   });
 }
 
-export const requestAudit = requestAuditAsync;
-export const retryLastAuditRequest = retryLastAuditRequestAsync;
+export const requestQa = requestQaAsync;
+export const retryLastQaRequest = retryLastQaRequestAsync;
 export const requestDiffReview = requestDiffReviewAsync;
 export const requestGraphBeautification = requestGraphBeautificationAsync;
 export const requestGenerationPlan = requestGenerationPlanAsync;
@@ -418,6 +483,74 @@ export function requestAnalysisDisplayMode(displayMode: AnalysisDisplayMode): Br
   return invokeBridgeAction("requestAnalysisDisplayMode", (bridge) => {
     bridge.requestAnalysisDisplayMode?.(displayMode);
   });
+}
+
+export function requestIndexedGraph(request: IndexedGraphPresetRequest): BridgeInvocationResult {
+  return invokeBridgeAction("requestIndexedGraph", (bridge) => {
+    bridge.requestIndexedGraph?.(request);
+  }, {
+    request,
+  });
+}
+
+export function requestArchitectureGraph(options: {
+  includeExternalLibraries?: boolean;
+  includeJdk?: boolean;
+  viewport?: IndexedGraphViewportOptions | null;
+} = {}): BridgeInvocationResult {
+  return requestIndexedGraph(definedPayload({
+    preset: "ARCHITECTURE",
+    includeExternalLibraries: options.includeExternalLibraries,
+    includeJdk: options.includeJdk,
+    viewport: options.viewport ?? undefined,
+  }));
+}
+
+export function requestPackageDependencyGraph(packageName?: string | null, options: {
+  includeExternalLibraries?: boolean;
+  includeJdk?: boolean;
+  viewport?: IndexedGraphViewportOptions | null;
+} = {}): BridgeInvocationResult {
+  return requestIndexedGraph(definedPayload({
+    preset: "PACKAGE_DEPENDENCY",
+    packageName: (packageName ?? "").trim(),
+    includeExternalLibraries: options.includeExternalLibraries,
+    includeJdk: options.includeJdk,
+    viewport: options.viewport ?? undefined,
+  }));
+}
+
+export function requestClassDiagram(scopeNodeId?: string | null, options: {
+  classDiagram?: Partial<IndexedClassDiagramOptions> | null;
+  viewport?: IndexedGraphViewportOptions | null;
+} = {}): BridgeInvocationResult {
+  const normalizedScopeNodeId = scopeNodeId?.trim() || null;
+  return requestIndexedGraph(definedPayload({
+    preset: "CLASS_DIAGRAM",
+    scopeNodeId: normalizedScopeNodeId,
+    viewport: options.viewport ?? undefined,
+    classDiagram: definedPayload({
+      neighborhoodLimit: options.classDiagram?.neighborhoodLimit,
+      memberLimit: options.classDiagram?.memberLimit,
+    }),
+  }));
+}
+
+export function requestReviewGraph(selectedDiffItemIds: string[] = [], options: {
+  review?: Partial<IndexedReviewGraphOptions> | null;
+  viewport?: IndexedGraphViewportOptions | null;
+} = {}): BridgeInvocationResult {
+  return requestIndexedGraph(definedPayload({
+    preset: "REVIEW",
+    selectedDiffItemIds,
+    viewport: options.viewport ?? undefined,
+    review: definedPayload({
+      maxChangedNodes: options.review?.maxChangedNodes,
+      maxRelatedTestNodes: options.review?.maxRelatedTestNodes,
+      maxUpstreamNodes: options.review?.maxUpstreamNodes,
+      maxDownstreamNodes: options.review?.maxDownstreamNodes,
+    }),
+  }));
 }
 
 export function updateWorkbenchSectionPreference(sectionId: string, expanded: boolean): BridgeInvocationResult {
@@ -476,6 +609,22 @@ export function requestDraftNavigation(targetPath: string): BridgeInvocationResu
 export function requestExpandOverflowNode(nodeId: string): BridgeInvocationResult {
   return invokeBridgeAction("requestExpandOverflowNode", (bridge) => {
     bridge.requestExpandOverflowNode?.(nodeId);
+  });
+}
+
+export function requestExpandInvocation(nodeId: string): BridgeInvocationResult {
+  return invokeBridgeAction("requestExpandInvocation", (bridge) => {
+    bridge.requestExpandInvocation?.(nodeId);
+  }, {
+    nodeId,
+  });
+}
+
+export function requestRemoveInvocationExpansion(expansionId: string): BridgeInvocationResult {
+  return invokeBridgeAction("requestRemoveInvocationExpansion", (bridge) => {
+    bridge.requestRemoveInvocationExpansion?.(expansionId);
+  }, {
+    expansionId,
   });
 }
 
@@ -560,4 +709,15 @@ function buildNodeMetadata(node: LinkGraphNode): Record<string, string> {
   return Object.fromEntries(
     Object.entries(node.metadata ?? {}).filter(([key]) => !key.startsWith("ui.") && !key.startsWith("layout.")),
   );
+}
+
+function definedPayload<T extends Record<string, unknown>>(payload: T): T {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => {
+      if (value === undefined || value === null) {
+        return false;
+      }
+      return !(typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0);
+    }),
+  ) as T;
 }

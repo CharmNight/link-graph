@@ -202,6 +202,48 @@ describe("FACT_GRAPH_NODE_TYPES", () => {
     expect(initialNodes[1]?.data.onMeasure).toBe(hoveredNodes[1]?.data.onMeasure);
   });
 
+  it("emphasizes the anchor role even when neighboring fact nodes share the same node type", () => {
+    const builtNodes = buildFactGraphNodes({
+      nodes: [
+        {
+          id: "method:caller",
+          type: "METHOD",
+          title: "OrderController.submit",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN",
+          bindingStatus: "BOUND",
+          metadata: {
+            "presentation.role": "UPSTREAM",
+          },
+        },
+        {
+          id: "method:anchor",
+          type: "METHOD",
+          title: "OrderService.place",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN",
+          bindingStatus: "BOUND",
+          metadata: {
+            "presentation.role": "ANCHOR",
+          },
+        },
+      ],
+      selectedNodeId: "method:anchor",
+      onExpandOverflowNode: vi.fn(),
+      nodeSizeRegistry: createNodeSizeRegistry(),
+    });
+    const callerStyle = builtNodes.find((node) => node.id === "method:caller")?.style;
+    const anchorStyle = builtNodes.find((node) => node.id === "method:anchor")?.style;
+
+    expect(anchorStyle).toMatchObject({
+      border: expect.stringContaining("14, 139, 114"),
+      boxShadow: expect.stringContaining("14, 139, 114"),
+    });
+    expect(anchorStyle?.boxShadow).not.toBe(callerStyle?.boxShadow);
+  });
+
   it("switches fact edges to the shared routed edge renderer when ELK route data is present", () => {
     const builtEdge = buildFactGraphEdges({
       edges: [

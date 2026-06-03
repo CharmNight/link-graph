@@ -4,7 +4,9 @@ import com.charmnight.linkgraph.testing.*
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class GraphModelTest {
@@ -234,6 +236,38 @@ class GraphModelTest {
     }
 
     @Test
+    fun graphJsonRejectsTrailingGarbageAfterRootObject() {
+        assertFailsWith<IllegalStateException> {
+            GraphJson.fromJson("""{"nodes":[],"edges":[]} trailing""")
+        }
+    }
+
+    @Test
+    fun graphJsonEscapesAllLowControlCharacters() {
+        val controlCharacters = (0..0x1f)
+            .map(Int::toChar)
+            .joinToString("")
+        val json = GraphJson.toJson(
+            GraphDocument(
+                nodes = listOf(
+                    GraphNode(
+                        id = "method:control-characters",
+                        type = NodeType.METHOD,
+                        title = "prefix${controlCharacters}suffix",
+                    ),
+                ),
+            ),
+        )
+
+        (0..0x1f).map(Int::toChar).forEach { char ->
+            assertFalse(json.contains(char), "JSON output must escape control char U+${char.code.toString(16).padStart(4, '0')}")
+        }
+        assertTrue(json.contains("\\u0000"))
+        assertTrue(json.contains("\\u0008"))
+        assertTrue(json.contains("\\u001f"))
+    }
+
+    @Test
     fun flowchartMetadataRoundTripPreservesExplicitControlFlowRoles() {
         val loopNode = GraphNode(
             id = "scope:foreach",
@@ -286,6 +320,19 @@ class GraphModelTest {
                 "TERMINAL",
                 "MERGE",
                 "CLASS",
+                "MODULE",
+                "PACKAGE",
+                "INTERFACE",
+                "ENUM",
+                "ANNOTATION",
+                "RECORD",
+                "OBJECT",
+                "EXTERNAL_CLASS",
+                "LIBRARY",
+                "SERVICE",
+                "COMPONENT",
+                "LAYER",
+                "RESOURCE",
                 "SQL",
                 "HTTP_ENDPOINT",
                 "FEIGN_CLIENT",
@@ -303,8 +350,11 @@ class GraphModelTest {
         assertEquals(
             setOf(
                 "CALL",
+                "CONTAINS_FLOW",
                 "CONTROL_FLOW",
                 "IMPLEMENTS",
+                "EXTENDS",
+                "USES_TYPE",
                 "INJECT",
                 "ROUTES_TO",
                 "MAPS_TO_SQL",
@@ -315,8 +365,8 @@ class GraphModelTest {
                 "USES_PROXY",
                 "REFLECTS_TO",
                 "SPI_RESOLVES_TO",
+                "TESTS",
                 "GENERATES",
-                "CONTAINS_FLOW",
             ),
             EdgeType.entries.map { it.name }.toSet(),
         )

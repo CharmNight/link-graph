@@ -18,6 +18,13 @@ import { reanchorRouteToEndpoints } from "./orthogonalRoute";
 
 export interface RoutedEdgeData extends Record<string, unknown> {
   route?: LinkGraphEdgeRoute;
+  labelVisibility?: "always" | "selected" | "focus" | "hidden";
+  labelTitle?: string;
+  labelPlacement?: "center" | "source-stub" | "target-stub";
+  routeMode?: "stored";
+  focusedEdge?: boolean;
+  sourceAdornment?: "dot" | "stub";
+  targetAdornment?: "diamond" | "filled-diamond";
 }
 
 export type RoutedGraphEdge = Edge<RoutedEdgeData, "routedEdge">;
@@ -368,7 +375,28 @@ function segmentLength(startPoint: GraphPosition, endPoint: GraphPosition): numb
   return Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
 }
 
-function routeLabelPosition(route: LinkGraphEdgeRoute | undefined): GraphPosition | null {
+function pointAlongSegments(
+  segments: Array<{ startPoint: GraphPosition; endPoint: GraphPosition; length: number }>,
+  offset: number,
+): GraphPosition | null {
+  let traversed = 0;
+  for (const segment of segments) {
+    if (traversed + segment.length >= offset) {
+      const ratio = (offset - traversed) / segment.length;
+      return {
+        x: segment.startPoint.x + (segment.endPoint.x - segment.startPoint.x) * ratio,
+        y: segment.startPoint.y + (segment.endPoint.y - segment.startPoint.y) * ratio,
+      };
+    }
+    traversed += segment.length;
+  }
+  return segments[segments.length - 1]?.endPoint ?? null;
+}
+
+function routeLabelPosition(
+  route: LinkGraphEdgeRoute | undefined,
+  placement: RoutedEdgeData["labelPlacement"],
+): GraphPosition | null {
   if (!route || route.sections.length === 0) {
     return null;
   }
@@ -387,19 +415,62 @@ function routeLabelPosition(route: LinkGraphEdgeRoute | undefined): GraphPositio
     return firstSectionPoints[Math.floor((firstSectionPoints.length - 1) / 2)] ?? null;
   }
   const totalLength = segments.reduce((sum, segment) => sum + segment.length, 0);
-  const targetOffset = totalLength / 2;
-  let traversed = 0;
-  for (const segment of segments) {
-    if (traversed + segment.length >= targetOffset) {
-      const ratio = (targetOffset - traversed) / segment.length;
-      return {
-        x: segment.startPoint.x + (segment.endPoint.x - segment.startPoint.x) * ratio,
-        y: segment.startPoint.y + (segment.endPoint.y - segment.startPoint.y) * ratio,
-      };
-    }
-    traversed += segment.length;
+  if (placement === "source-stub") {
+    return pointAlongSegments(segments, Math.min(88, totalLength / 2));
   }
-  return segments[segments.length - 1]?.endPoint ?? null;
+  if (placement === "target-stub") {
+    return pointAlongSegments([...segments].reverse().map((segment) => ({
+      startPoint: segment.endPoint,
+      endPoint: segment.startPoint,
+      length: segment.length,
+    })), Math.min(88, totalLength / 2));
+  }
+  const targetOffset = totalLength / 2;
+  return pointAlongSegments(segments, targetOffset);
+}
+
+function unitVector(startPoint: GraphPosition, endPoint: GraphPosition): GraphPosition {
+  const dx = endPoint.x - startPoint.x;
+  const dy = endPoint.y - startPoint.y;
+  const length = Math.hypot(dx, dy);
+  if (length <= 0.5) {
+    return { x: 1, y: 0 };
+  }
+  return { x: dx / length, y: dy / length };
+}
+
+function endpointVector(points: GraphPosition[], endpoint: "source" | "target"): { point: GraphPosition; vector: GraphPosition } | null {
+  if (points.length < 2) {
+    return null;
+  }
+  if (endpoint === "source") {
+    const point = points[0]!;
+    return { point, vector: unitVector(points[1]!, point) };
+  }
+  const point = points[points.length - 1]!;
+  return { point, vector: unitVector(points[points.length - 2]!, point) };
+}
+
+function diamondPoints(endpoint: GraphPosition, vector: GraphPosition): string {
+  const perpendicular = { x: -vector.y, y: vector.x };
+  const tip = endpoint;
+  const center = {
+    x: endpoint.x - vector.x * 9,
+    y: endpoint.y - vector.y * 9,
+  };
+  const back = {
+    x: endpoint.x - vector.x * 18,
+    y: endpoint.y - vector.y * 18,
+  };
+  const left = {
+    x: center.x + perpendicular.x * 6,
+    y: center.y + perpendicular.y * 6,
+  };
+  const right = {
+    x: center.x - perpendicular.x * 6,
+    y: center.y - perpendicular.y * 6,
+  };
+  return [tip, left, back, right].map((point) => `${point.x},${point.y}`).join(" ");
 }
 
 export function RoutedEdge({
@@ -418,11 +489,13 @@ export function RoutedEdge({
   targetPosition,
   source,
   target,
+  selected,
 }: EdgeProps<RoutedGraphEdge>) {
   const nodeLookup = useStore((state) => state.nodeLookup);
   const currentStartPoint = { x: sourceX, y: sourceY };
   const currentEndPoint = { x: targetX, y: targetY };
   const fallback = fallbackPath(sourceX, sourceY, targetX, targetY);
+  const preserveStoredRoute = data?.routeMode === "stored";
   const adjustedRoute = useMemo(
     () => reanchorRouteToEndpoints(
       data?.route,
@@ -451,7 +524,7 @@ export function RoutedEdge({
       startSide,
       endSide,
     );
-    if (!needsLocalRepair && nodeLookup.size > LOCAL_OBSTACLE_ROUTING_NODE_LIMIT) {
+    if (!preserveStoredRoute && !needsLocalRepair && nodeLookup.size > LOCAL_OBSTACLE_ROUTING_NODE_LIMIT) {
       return null;
     }
     const sourceRect = nodeRect(nodeLookup.get(source));
@@ -465,8 +538,13 @@ export function RoutedEdge({
     const routeObstacleRects = nodeLookup.size > LOCAL_OBSTACLE_ROUTING_NODE_LIMIT
       ? denseRoutingObstacles(obstacleRects, adjustedRoute, currentStartPoint, currentEndPoint)
       : obstacleRects;
+    const routeCrossesObstacle = routeIntersectsObstacles(adjustedRoute, routeObstacleRects);
+    if (preserveStoredRoute && !needsLocalRepair && !routeCrossesObstacle) {
+      return null;
+    }
     if (
       !needsLocalRepair
+      && !routeCrossesObstacle
       && !shouldUseLocalRoute(adjustedRoute, currentStartPoint, currentEndPoint, startSide, endSide, routeObstacleRects)
     ) {
       return null;
@@ -487,6 +565,7 @@ export function RoutedEdge({
     currentStartPoint.x,
     currentStartPoint.y,
     nodeLookup,
+    preserveStoredRoute,
     source,
     sourcePosition,
     target,
@@ -494,7 +573,18 @@ export function RoutedEdge({
   ]);
   const renderedRoute = localRoute ?? adjustedRoute ?? fallbackOrthogonalRoute(currentStartPoint, currentEndPoint);
   const path = buildRoutePath(renderedRoute) ?? fallback.path;
-  const labelPosition = routeLabelPosition(renderedRoute) ?? fallback.labelPosition;
+  const labelPosition = routeLabelPosition(renderedRoute, data?.labelPlacement ?? "center") ?? fallback.labelPosition;
+  const labelVisibility = data?.labelVisibility ?? "always";
+  const focused = selected || data?.focusedEdge === true;
+  const renderedLabel = labelVisibility === "hidden"
+    || (labelVisibility === "selected" && !selected)
+    || (labelVisibility === "focus" && !focused)
+    ? undefined
+    : label;
+  const renderedPoints = routePoints(renderedRoute);
+  const sourceEndpoint = endpointVector(renderedPoints, "source");
+  const targetEndpoint = endpointVector(renderedPoints, "target");
+  const adornmentColor = typeof style?.stroke === "string" ? style.stroke : "#61717f";
   const originalRouteStart = routeStartPoint(data?.route);
   const originalRouteEnd = routeEndPoint(data?.route);
   const adjustedRouteStart = routeStartPoint(renderedRoute);
@@ -504,6 +594,7 @@ export function RoutedEdge({
     traceLinkGraph("routedEdge.render", {
       id,
       mode: localRoute ? "local-orthogonal" : adjustedRoute ? "stored-route" : "fallback",
+      routeMode: data?.routeMode ?? null,
       sourcePosition: sourcePosition ?? null,
       targetPosition: targetPosition ?? null,
       liveEndpoints: {
@@ -546,17 +637,53 @@ export function RoutedEdge({
   ]);
 
   return (
-    <BaseEdge
-      id={id}
-      path={path}
-      label={label}
-      labelX={labelPosition.x}
-      labelY={labelPosition.y}
-      markerStart={markerStart}
-      markerEnd={markerEnd}
-      interactionWidth={interactionWidth}
-      style={style}
-    />
+    <>
+      {data?.labelTitle ? <title>{data.labelTitle}</title> : null}
+      <BaseEdge
+        id={id}
+        path={path}
+        label={renderedLabel}
+        labelX={labelPosition.x}
+        labelY={labelPosition.y}
+        markerStart={markerStart}
+        markerEnd={markerEnd}
+        interactionWidth={interactionWidth}
+        style={style}
+      />
+      {data?.sourceAdornment === "dot" && sourceEndpoint ? (
+        <circle
+          className="routed-edge-source-dot"
+          cx={sourceEndpoint.point.x}
+          cy={sourceEndpoint.point.y}
+          r={4.2}
+          fill={adornmentColor}
+          stroke="#fff8ea"
+          strokeWidth={1.4}
+        />
+      ) : null}
+      {data?.sourceAdornment === "stub" && sourceEndpoint ? (
+        <line
+          className="routed-edge-source-stub"
+          x1={sourceEndpoint.point.x}
+          y1={sourceEndpoint.point.y}
+          x2={sourceEndpoint.point.x + sourceEndpoint.vector.x * 14}
+          y2={sourceEndpoint.point.y + sourceEndpoint.vector.y * 14}
+          stroke={adornmentColor}
+          strokeWidth={3}
+          strokeLinecap="round"
+        />
+      ) : null}
+      {data?.targetAdornment && targetEndpoint ? (
+        <polygon
+          className={`routed-edge-target-${data.targetAdornment}`}
+          points={diamondPoints(targetEndpoint.point, targetEndpoint.vector)}
+          fill={data.targetAdornment === "filled-diamond" ? adornmentColor : "#fff8ea"}
+          stroke={adornmentColor}
+          strokeWidth={2.2}
+          strokeLinejoin="round"
+        />
+      ) : null}
+    </>
   );
 }
 

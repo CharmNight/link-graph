@@ -25,6 +25,7 @@ import com.charmnight.linkgraph.llm.runtime.StopPolicy
 import com.charmnight.linkgraph.llm.runtime.budgetExceededStepResult
 import com.charmnight.linkgraph.llm.runtime.failureReasonBeforeNextFileRead
 import com.charmnight.linkgraph.llm.runtime.failureReasonForBudget
+import com.charmnight.linkgraph.llm.runtime.withConfiguredRuntimeTimeout
 import com.charmnight.linkgraph.llm.tools.AgentToolRegistry
 import com.charmnight.linkgraph.llm.tools.CheckWritableDraftTool
 import com.charmnight.linkgraph.llm.tools.CodeReadToolFacade
@@ -35,6 +36,7 @@ import com.charmnight.linkgraph.llm.tools.ToolExecutionContext
 import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshot
 import com.charmnight.linkgraph.llm.tools.ValidateEditScopeTool
 import com.charmnight.linkgraph.llm.tools.ValidationToolFacade
+import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.intellij.openapi.project.Project
 import java.util.UUID
 
@@ -64,7 +66,7 @@ internal class CodegenCapability(
             capabilityId = capabilityId,
             phase = AgentRunPhase.CREATED,
             userGoal = "生成代码草稿",
-            budget = defaultBudget,
+            budget = defaultBudget.withConfiguredRuntimeTimeout(input.settings),
             stepIndex = 0,
             artifactRefs = emptyList(),
         )
@@ -547,4 +549,6 @@ internal data class CodegenCapabilityInput(
     val generationContext: GenerationContext,
     /** 生成计划。 */
     val plan: GenerationPlan?,
+    /** 当前 LLM 设置，用于统一 runtime 与远程请求超时。 */
+    val settings: LinkGraphSettingsState = LinkGraphSettingsState(),
 )

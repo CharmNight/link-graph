@@ -11,6 +11,7 @@ import com.charmnight.linkgraph.semantic.subject.SubjectLocator
 import com.charmnight.linkgraph.semantic.subject.SubjectPreviewKind
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.OperationFeedbackLevel
+import com.charmnight.linkgraph.ui.currentVisibleGraph
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -53,15 +54,18 @@ class EditorPopupContextActionTest : BasePlatformTestCase() {
 
         val addEvent = editorPopupEvent()
         val openEvent = editorPopupEvent()
+        val classDiagramEvent = editorPopupEvent()
 
         AppExecutorUtil.getAppExecutorService().submit<Unit> {
             AddCurrentMethodToGraphAction().update(addEvent)
             OpenLinkGraphAction().update(openEvent)
+            OpenCurrentClassDiagramAction().update(classDiagramEvent)
         }.get(5, TimeUnit.SECONDS)
 
         assertFalse(psiDocumentManager.isCommitted(document))
         assertTrue(addEvent.presentation.isEnabledAndVisible)
         assertTrue(openEvent.presentation.isEnabledAndVisible)
+        assertTrue(classDiagramEvent.presentation.isEnabledAndVisible)
     }
 
     fun testEditorPopupUpdateStaysAvailableForKotlinMethodDuringDumbMode() {
@@ -92,6 +96,27 @@ class EditorPopupContextActionTest : BasePlatformTestCase() {
         assertTrue(openEvent.presentation.isEnabledAndVisible)
         assertEquals("添加当前方法到链路图", addEvent.presentation.text)
         assertEquals("查看当前方法完整链路", openEvent.presentation.text)
+    }
+
+    fun testEditorPopupCurrentClassDiagramVisibleWhenCaretIsInClassButOutsideMethod() {
+        myFixture.configureByText(
+            "OrderService.java",
+            """
+                package com.example;
+
+                class OrderService {
+                    private String sta<caret>tus;
+                }
+            """.trimIndent(),
+        )
+
+        val action = OpenCurrentClassDiagramAction()
+        val event = editorPopupEvent()
+
+        action.update(event)
+
+        assertTrue(event.presentation.isEnabledAndVisible)
+        assertEquals("打开当前类图", event.presentation.text)
     }
 
     fun testEditorPopupUpdateUsesProjectServiceSubjectLocatorPreview() {
@@ -161,8 +186,8 @@ class EditorPopupContextActionTest : BasePlatformTestCase() {
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
         assertEquals("currentMethod", snapshot.lastGraphSource)
-        assertNotNull(snapshot.visibleGraph)
-        assertTrue(snapshot.visibleGraph!!.nodes.any { node -> node.type == NodeType.METHOD && node.title == "OrderService.place" })
+        assertNotNull(currentVisibleGraph(snapshot))
+        assertTrue(currentVisibleGraph(snapshot).nodes.any { node -> node.type == NodeType.METHOD && node.title == "OrderService.place" })
     }
 
     fun testAddActionVisibleAndAppendsConfigItemNodeFromPropertiesEditor() {
@@ -194,9 +219,9 @@ class EditorPopupContextActionTest : BasePlatformTestCase() {
         action.actionPerformed(event)
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
-        assertNotNull(snapshot.visibleGraph)
+        assertNotNull(currentVisibleGraph(snapshot))
         assertTrue(
-            snapshot.visibleGraph!!.nodes.any { node ->
+            currentVisibleGraph(snapshot).nodes.any { node ->
                 node.type == NodeType.CONFIG_ITEM && node.title == "order.submit.handler"
             },
         )
@@ -238,9 +263,9 @@ class EditorPopupContextActionTest : BasePlatformTestCase() {
         waitForGraphNode(NodeType.SQL, "selectUser")
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
-        assertNotNull(snapshot.visibleGraph)
+        assertNotNull(currentVisibleGraph(snapshot))
         assertTrue(
-            snapshot.visibleGraph!!.nodes.any { node ->
+            currentVisibleGraph(snapshot).nodes.any { node ->
                 node.type == NodeType.SQL && node.metadata["statementId"] == "selectUser"
             },
         )
@@ -280,9 +305,9 @@ class EditorPopupContextActionTest : BasePlatformTestCase() {
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
         assertEquals("currentContext", snapshot.lastGraphSource)
-        assertNotNull(snapshot.visibleGraph)
-        assertTrue(snapshot.visibleGraph!!.nodes.any { node -> node.type == NodeType.DOC_PAGE && node.title == "order-flow.md" })
-        assertTrue(snapshot.visibleGraph!!.nodes.any { node -> node.type == NodeType.METHOD && node.title == "OrderService.submit" })
+        assertNotNull(currentVisibleGraph(snapshot))
+        assertTrue(currentVisibleGraph(snapshot).nodes.any { node -> node.type == NodeType.DOC_PAGE && node.title == "order-flow.md" })
+        assertTrue(currentVisibleGraph(snapshot).nodes.any { node -> node.type == NodeType.METHOD && node.title == "OrderService.submit" })
     }
 
     fun testOpenActionResolvesExactOverloadedMethodFromMarkdownMethodSignatureReference() {
@@ -333,8 +358,8 @@ class EditorPopupContextActionTest : BasePlatformTestCase() {
         assertEquals("currentContext", snapshot.lastGraphSource)
         assertEquals(AnalysisDisplayMode.RESOURCE_RELATION_VIEW, snapshot.analysisDisplayMode)
         assertEquals("com.example.OrderService.submit(java.lang.Long):java.lang.String", snapshot.selectedMethodSignature)
-        assertNotNull(snapshot.visibleGraph)
-        val methodNodes = snapshot.visibleGraph!!.nodes.filter { node -> node.type == NodeType.METHOD }
+        assertNotNull(currentVisibleGraph(snapshot))
+        val methodNodes = currentVisibleGraph(snapshot).nodes.filter { node -> node.type == NodeType.METHOD }
         assertTrue(methodNodes.any { node -> node.signature == "com.example.OrderService.submit(java.lang.Long):java.lang.String" })
         assertFalse(methodNodes.any { node -> node.signature == "com.example.OrderService.submit(java.lang.String):java.lang.String" })
         assertFalse(methodNodes.any { node -> node.title == "OrderService.normalize" })
@@ -387,11 +412,11 @@ class EditorPopupContextActionTest : BasePlatformTestCase() {
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
         assertEquals("currentContext", snapshot.lastGraphSource)
-        assertNotNull(snapshot.visibleGraph)
-        assertEquals(listOf(NodeType.DOC_PAGE), snapshot.visibleGraph!!.nodes.map { node -> node.type })
+        assertNotNull(currentVisibleGraph(snapshot))
+        assertEquals(listOf(NodeType.DOC_PAGE), currentVisibleGraph(snapshot).nodes.map { node -> node.type })
         assertEquals(OperationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
         assertTrue(snapshot.operationFeedback?.message.orEmpty().contains("候选"))
-        val docNode = snapshot.visibleGraph!!.nodes.single()
+        val docNode = currentVisibleGraph(snapshot).nodes.single()
         assertEquals("AMBIGUOUS", docNode.metadata["linkGraph.anchorResolutionState"])
         assertTrue(docNode.metadata["linkGraph.anchorResolutionHint"].orEmpty().contains("候选"))
         assertTrue(docNode.metadata["linkGraph.anchorCandidates"].orEmpty().contains("com.example.OrderService.submit(java.lang.String):java.lang.String"))
@@ -403,7 +428,7 @@ class EditorPopupContextActionTest : BasePlatformTestCase() {
         while (System.currentTimeMillis() < deadline) {
             PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
             val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
-            if (snapshot.visibleGraph?.nodes?.any { node ->
+            if (currentVisibleGraph(snapshot).nodes.any { node ->
                     node.type == type && (
                         node.title.contains(marker) ||
                             node.metadata.values.any { value -> value.contains(marker) }

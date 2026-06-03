@@ -1,12 +1,12 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
-import com.charmnight.linkgraph.application.port.ApplicationRuntimeArtifactSummary
-import com.charmnight.linkgraph.application.port.QaCompletedPresentation
-import com.charmnight.linkgraph.application.port.BeautificationCompletedPresentation
-import com.charmnight.linkgraph.application.port.DiffReviewCompletedPresentation
-import com.charmnight.linkgraph.application.port.ReviewRequestScene
-import com.charmnight.linkgraph.application.port.ReviewRequestStartedPresentation
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.ApplicationRuntimeArtifactSummary
+import com.charmnight.linkgraph.application.result.QaCompletedResult
+import com.charmnight.linkgraph.application.result.BeautificationCompletedResult
+import com.charmnight.linkgraph.application.result.DiffReviewCompletedResult
+import com.charmnight.linkgraph.application.result.ReviewRequestScene
+import com.charmnight.linkgraph.application.result.ReviewRequestStartedResult
 import com.charmnight.linkgraph.llm.GraphBeautificationResult
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.LlmResultSource
@@ -31,14 +31,14 @@ class ReviewStatePresenterTest {
         )
 
         presenter.presentQaCompleted(
-            QaCompletedPresentation(
+            QaCompletedResult(
                 result = result,
                 requestState = AsyncRequestState.succeeded(scene = "问答", statusMessage = "问答完成。"),
                 draftValidationState = DraftValidationState(DraftValidationStatus.READY, "ready"),
                 codeEligibilityDecision = StageEligibilityDecision(StageEligibilityTarget.CODE, allowed = true, message = "allowed"),
                 runtimeArtifacts = listOf(ApplicationRuntimeArtifactSummary("artifact-1", "qa", "QA")),
                 feedbackLevel = ApplicationFeedbackLevel.SUCCESS,
-                feedbackMessage = "问答完成。",
+                statusMessage = "问答完成。",
             ),
         )
 
@@ -64,11 +64,11 @@ class ReviewStatePresenterTest {
         )
 
         presenter.presentDiffReviewCompleted(
-            DiffReviewCompletedPresentation(
+            DiffReviewCompletedResult(
                 result = result,
                 requestState = AsyncRequestState.succeeded(scene = "差异分析", statusMessage = "差异分析完成。"),
                 feedbackLevel = ApplicationFeedbackLevel.SUCCESS,
-                feedbackMessage = "差异分析完成。",
+                statusMessage = "差异分析完成。",
             ),
         )
 
@@ -85,11 +85,11 @@ class ReviewStatePresenterTest {
         val result = GraphBeautificationResult(source = LlmResultSource.LOCAL_RULE)
 
         presenter.presentBeautificationCompleted(
-            BeautificationCompletedPresentation(
+            BeautificationCompletedResult(
                 result = result,
                 requestState = AsyncRequestState.succeeded(scene = "链路讲解", statusMessage = "链路讲解完成。"),
                 feedbackLevel = ApplicationFeedbackLevel.SUCCESS,
-                feedbackMessage = "链路讲解完成。",
+                statusMessage = "链路讲解完成。",
             ),
         )
 
@@ -107,10 +107,10 @@ class ReviewStatePresenterTest {
         }
 
         presenter.presentRequestStarted(
-            ReviewRequestStartedPresentation(
+            ReviewRequestStartedResult(
                 scene = ReviewRequestScene.DIFF_REVIEW,
                 requestState = AsyncRequestState.running(requestId = 77L, scene = "差异分析", streaming = true),
-                feedbackMessage = "正在分析差异。",
+                statusMessage = "正在分析差异。",
             ),
         )
 

@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.application.workflow.subject
 
 import com.charmnight.linkgraph.application.debug.DebugMethodSignatureLocator
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.foundation.debugLazy
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectHandle
 import com.charmnight.linkgraph.semantic.subject.SubjectHandle

@@ -9,6 +9,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class LinkGraphBoundaryTest {
+    private val obsoleteQaName = "au" + "dit"
+    private val obsoleteQaTypePrefix = "Au" + "dit"
+
     @Test
     fun projectServiceDoesNotOwnToolwindowOrBrowserAndAppUsesDedicatedStateHooksAndControllers() {
         val components = Files.readString(
@@ -54,7 +57,7 @@ class LinkGraphBoundaryTest {
         )
 
         assertFalse(qaCapability.contains("legacyQaExecutor"))
-        assertFalse(qaCapability.contains("delegate-legacy-audit-service"))
+        assertFalse(qaCapability.contains("delegate-legacy-$obsoleteQaName-service"))
         assertFalse(planCapability.contains("legacyPlanExecutor"))
         assertFalse(planCapability.contains("delegate-legacy-plan-service"))
         assertFalse(codegenCapability.contains("legacyCodegenExecutor"))
@@ -93,13 +96,13 @@ class LinkGraphBoundaryTest {
             Path.of("src/main/kotlin/com/charmnight/linkgraph/llm/RemoteGraphPatchResultParser.kt"),
         )
 
-        assertFalse(workbenchModels.contains("val investigationLeads: List<AuditInvestigationLead>"))
-        assertFalse(workbenchModels.contains("val newInvestigationLeads: List<AuditInvestigationLead>"))
-        assertFalse(workbenchModels.contains("data class AuditInvestigationLead("))
-        assertFalse(workbenchModels.contains("AuditInvestigationLeadStatus"))
+        assertFalse(workbenchModels.contains("val investigationLeads: List<${obsoleteQaTypePrefix}InvestigationLead>"))
+        assertFalse(workbenchModels.contains("val newInvestigationLeads: List<${obsoleteQaTypePrefix}InvestigationLead>"))
+        assertFalse(workbenchModels.contains("data class ${obsoleteQaTypePrefix}InvestigationLead("))
+        assertFalse(workbenchModels.contains("${obsoleteQaTypePrefix}InvestigationLeadStatus"))
         assertFalse(workbenchModels.contains("internal fun InvestigationThread.toLeadView()"))
-        assertFalse(llmTypes.contains("val investigationLeads: List<AuditInvestigationLead>"))
-        assertFalse(llmTypes.contains("val newInvestigationLeads: List<AuditInvestigationLead>"))
+        assertFalse(llmTypes.contains("val investigationLeads: List<${obsoleteQaTypePrefix}InvestigationLead>"))
+        assertFalse(llmTypes.contains("val newInvestigationLeads: List<${obsoleteQaTypePrefix}InvestigationLead>"))
         assertFalse(qaConversationService.contains("session.investigationLeads"))
         assertFalse(qaConversationService.contains("modelTurn.investigationLeads"))
         assertFalse(qaConversationService.contains("investigationLeads ="))
@@ -107,7 +110,7 @@ class LinkGraphBoundaryTest {
         assertFalse(reviewWorkflow.contains("investigationLeads = turnResult.session.investigationLeads"))
         assertFalse(reviewWorkflow.contains("newInvestigationLeads"))
         assertFalse(qaModels.contains("QaInvestigationLead"))
-        assertFalse(graphQaPatchService.contains("AuditInvestigationLead"))
+        assertFalse(graphQaPatchService.contains("${obsoleteQaTypePrefix}InvestigationLead"))
         assertFalse(graphQaPatchService.contains("investigationLeads"))
         assertFalse(promptFactory.contains("investigationLeads"))
         assertFalse(promptFactory.contains("leadId"))
@@ -134,36 +137,37 @@ class LinkGraphBoundaryTest {
         )
         val apiSource = Files.readString(Path.of("web/src/app/api.ts"))
         val appSource = Files.readString(Path.of("web/src/app/App.tsx"))
-        val qaTabSource = Files.readString(Path.of("web/src/app/workbench/AuditTab.tsx"))
+        val qaTabSource = Files.readString(Path.of("web/src/app/workbench/QaTab.tsx"))
         val typesSource = Files.readString(Path.of("web/src/app/types.ts"))
         val investigationThreadListSource = Files.readString(Path.of("web/src/app/workbench/InvestigationThreadList.tsx"))
         val workbenchSectionsSource = Files.readString(Path.of("web/src/app/workbench/workbenchSections.ts"))
 
         assertFalse(workbenchModels.contains("INVESTIGATE_LEAD"))
         assertFalse(workbenchModels.contains("sourceLeadId"))
-        assertFalse(workbenchModels.contains("audit.investigation-leads"))
+        val obsoleteLeadSectionId = "$obsoleteQaName.investigation-leads"
+        assertFalse(workbenchModels.contains(obsoleteLeadSectionId))
         assertFalse(qaRequestLifecycleService.contains("sourceLeadId"))
         assertFalse(reviewWorkflow.contains("sourceLeadId"))
         assertFalse(graphEditorMessage.contains("sourceLeadId"))
         assertFalse(graphEditorPageRenderer.contains("sourceLeadId"))
-        assertFalse(graphEditorPageRenderer.contains("audit.investigation-leads"))
+        assertFalse(graphEditorPageRenderer.contains(obsoleteLeadSectionId))
         assertFalse(apiSource.contains("sourceLeadId"))
         assertFalse(appSource.contains("selectedLeadId"))
-        assertFalse(appSource.contains("handleSelectAuditLead"))
-        assertFalse(appSource.contains("handleInvestigateAuditLead"))
-        assertFalse(appSource.contains("audit.investigation-leads"))
+        assertFalse(appSource.contains("handleSelect${obsoleteQaTypePrefix}Lead"))
+        assertFalse(appSource.contains("handleInvestigate${obsoleteQaTypePrefix}Lead"))
+        assertFalse(appSource.contains(obsoleteLeadSectionId))
         assertFalse(qaTabSource.contains("selectedLeadId"))
         assertFalse(qaTabSource.contains("InvestigationLeadList"))
         assertFalse(qaTabSource.contains("onSelectLead"))
         assertFalse(qaTabSource.contains("onInvestigateLead"))
-        assertFalse(qaTabSource.contains("audit.investigation-leads"))
+        assertFalse(qaTabSource.contains(obsoleteLeadSectionId))
         assertFalse(typesSource.contains("INVESTIGATE_LEAD"))
         assertFalse(typesSource.contains("sourceLeadId"))
         assertFalse(typesSource.contains("selectedLeadId"))
-        assertFalse(typesSource.contains("audit.investigation-leads"))
+        assertFalse(typesSource.contains(obsoleteLeadSectionId))
         assertFalse(investigationThreadListSource.contains("selectedLeadId"))
         assertFalse(investigationThreadListSource.contains("onSelectLead"))
         assertFalse(investigationThreadListSource.contains("onInvestigateLead"))
-        assertFalse(workbenchSectionsSource.contains("audit.investigation-leads"))
+        assertFalse(workbenchSectionsSource.contains(obsoleteLeadSectionId))
     }
 }

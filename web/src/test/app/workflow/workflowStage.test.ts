@@ -11,7 +11,7 @@ import {
 describe("workflowStage", () => {
   it("maps legacy workbench tabs to workflow stages", () => {
     expect(workbenchTabToWorkflowStage("explanation")).toBe("understand");
-    expect(workbenchTabToWorkflowStage("audit")).toBe("qa");
+    expect(workbenchTabToWorkflowStage("qa")).toBe("qa");
     expect(workbenchTabToWorkflowStage("draft")).toBe("draft");
     expect(workbenchTabToWorkflowStage("code")).toBe("code");
   });
@@ -19,7 +19,7 @@ describe("workflowStage", () => {
   it("maps workflow stages back to legacy tabs when a tab exists", () => {
     expect(workflowStageToWorkbenchTab("understand")).toBe("explanation");
     expect(workflowStageToWorkbenchTab("evidence")).toBeNull();
-    expect(workflowStageToWorkbenchTab("qa")).toBe("audit");
+    expect(workflowStageToWorkbenchTab("qa")).toBe("qa");
     expect(workflowStageToWorkbenchTab("draft")).toBe("draft");
     expect(workflowStageToWorkbenchTab("code")).toBe("code");
   });
@@ -31,7 +31,7 @@ describe("workflowStage", () => {
       .filter((tab): tab is WorkbenchTab => tab != null);
 
     expect(orderedStages).toEqual(["understand", "evidence", "qa", "draft", "code"]);
-    expect(legacyTabs).toEqual(["explanation", "audit", "draft", "code"]);
+    expect(legacyTabs).toEqual(["explanation", "qa", "draft", "code"]);
     expect(WORKFLOW_STAGE_DEFINITIONS.map((stage) => stage.label)).toEqual([
       "理解链路",
       "核验证据",

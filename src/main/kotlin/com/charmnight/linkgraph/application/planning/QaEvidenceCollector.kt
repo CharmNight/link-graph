@@ -52,6 +52,21 @@ internal class QaEvidenceCollector(
                     includedInPrompt = true,
                 )
             }
+            architectureSourceSampleSnippets(node)
+                .take(maxSnippets - snippets.size)
+                .forEach { sampleSnippet ->
+                    snippets += sampleSnippet
+                    trace += EvidenceTraceEntry(
+                        nodeId = current.nodeId,
+                        resolvedNodeId = sampleSnippet.nodeId,
+                        filePath = sampleSnippet.filePath,
+                        reason = "architecture-source-sample:${current.nodeId}",
+                        startLine = sampleSnippet.startLine,
+                        endLine = sampleSnippet.endLine,
+                        includedInPrompt = true,
+                        mappingTrace = listOf("architectureSourceSample:${current.nodeId}->${sampleSnippet.nodeId}"),
+                    )
+                }
             if (current.depth >= maxTraversalDepth) {
                 continue
             }
@@ -94,6 +109,25 @@ internal class QaEvidenceCollector(
             endLine = node.metadata["source.endLine"]?.toIntOrNull(),
             snippet = loadSnippet(filePath, startOffset, endOffset),
         )
+    }
+
+    private fun architectureSourceSampleSnippets(node: GraphNode): List<SourceSnippetContext> {
+        val sampleCount = node.metadata["architecture.sourceSample.count"]?.toIntOrNull()?.coerceAtLeast(0) ?: return emptyList()
+        return (0 until sampleCount).mapNotNull { sampleIndex ->
+            val prefix = "architecture.sourceSample.$sampleIndex"
+            val filePath = node.metadata["$prefix.filePath"]?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+            val nodeId = node.metadata["$prefix.nodeId"]?.takeIf(String::isNotBlank) ?: node.id
+            SourceSnippetContext(
+                nodeId = nodeId,
+                filePath = filePath,
+                startLine = node.metadata["$prefix.startLine"]?.toIntOrNull(),
+                endLine = node.metadata["$prefix.endLine"]?.toIntOrNull(),
+                snippet = loadSnippet(filePath, startOffset = null, endOffset = null),
+                origin = node.metadata["$prefix.reason"],
+                decompiled = node.metadata["$prefix.decompiled"]?.toBooleanStrictOrNull() ?: false,
+                virtualFileUrl = node.metadata["$prefix.virtualFileUrl"],
+            )
+        }
     }
 
     private fun loadSnippet(

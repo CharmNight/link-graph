@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.services
 
-import com.charmnight.linkgraph.application.planning.InteractiveGraphProjector
+import com.charmnight.linkgraph.projection.InteractiveGraphProjector
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.model.EdgeType

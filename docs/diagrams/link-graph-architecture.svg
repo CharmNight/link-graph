@@ -74,7 +74,7 @@
   <text class="small" x="916" y="309" text-anchor="middle">Java/Kotlin, MyBatis XML, SQL, YAML, Markdown</text>
   <rect class="boxDomain" x="768" y="352" width="296" height="76" />
   <text class="label" x="916" y="381" text-anchor="middle">AnalysisOutcomeFactory</text>
-  <text class="small" x="916" y="403" text-anchor="middle">三视图投影结果</text>
+  <text class="small" x="916" y="403" text-anchor="middle">六类视图投影结果</text>
   <rect class="boxDomain" x="768" y="446" width="296" height="64" />
   <text class="label" x="916" y="474" text-anchor="middle">GraphDocument / Patch / Diff</text>
   <text class="small" x="916" y="494" text-anchor="middle">共享图模型</text>
@@ -129,7 +129,7 @@
   <text class="small" x="1446" y="786" text-anchor="middle">工作台状态</text>
   <rect class="boxFrontend" x="832" y="844" width="210" height="68" />
   <text class="label" x="937" y="872" text-anchor="middle">views</text>
-  <text class="small" x="937" y="894" text-anchor="middle">事实图 / 流程图 / 资源</text>
+  <text class="small" x="937" y="894" text-anchor="middle">事实 / 流程 / 资源 / 架构 / 类图 / Review</text>
   <rect class="boxFrontend" x="1080" y="844" width="210" height="68" />
   <text class="label" x="1185" y="872" text-anchor="middle">React Flow + ELK</text>
   <text class="small" x="1185" y="894" text-anchor="middle">图画布 + 自动布局</text>

@@ -78,6 +78,9 @@ const view: ResourceRelationViewDocument = {
   anchorNodeId: "sql:insert-order",
   summary: {
     visibleNodeCount: 1,
+    relationCount: 0,
+    resourceCount: 1,
+    fallbackReason: "NO_BINDING_RELATIONS",
     laneCounts: {
       DATA: 1,
     },

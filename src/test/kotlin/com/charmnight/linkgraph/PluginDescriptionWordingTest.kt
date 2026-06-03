@@ -15,8 +15,8 @@ class PluginDescriptionWordingTest {
         )
 
         assertFalse(
-            buildGradle.contains("可审计"),
-            "插件描述不应继续保留“可审计”口径。",
+            buildGradle.contains("可复核"),
+            "插件描述不应继续保留“可复核”口径。",
         )
     }
 }

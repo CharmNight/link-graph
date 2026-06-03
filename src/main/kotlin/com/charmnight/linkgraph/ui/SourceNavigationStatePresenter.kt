@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 class SourceNavigationStatePresenter(
     private val stateService: GraphEditorStateService,
@@ -48,11 +48,11 @@ class SourceNavigationStatePresenter(
     fun presentNavigationFailed(
         nodeId: String,
         message: String,
-        feedbackMessage: String = "打开源码失败：$message",
+        statusMessage: String = "打开源码失败：$message",
         level: ApplicationFeedbackLevel = ApplicationFeedbackLevel.ERROR,
     ) {
         stateService.graph.markSourceNavigationFailed(nodeId, message)
-        stateService.workbench.markOperationFeedback(level.toOperationFeedbackLevel(), feedbackMessage)
+        stateService.workbench.markOperationFeedback(level.toOperationFeedbackLevel(), statusMessage)
         requestBrowserSync()
     }
 

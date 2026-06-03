@@ -2,8 +2,10 @@ import { useMemo } from "react";
 import { buildDraftCompareProjection } from "../draftCompareProjection";
 import type {
   AnalysisDisplayMode,
-  AuditWorkbenchState,
+  ArchitectureGraphViewDocument,
+  QaWorkbenchState,
   AsyncRequestState,
+  ClassDiagramViewDocument,
   DraftImplementationSuggestionState,
   DraftWorkbenchEntry,
   DraftWorkbenchState,
@@ -18,9 +20,10 @@ import type {
   QaMode,
   QaRequestRecoveryState,
   ResourceRelationViewDocument,
+  ReviewGraphViewDocument,
 } from "../types";
 
-type WorkbenchTab = "explanation" | "audit" | "draft" | "code";
+type WorkbenchTab = "explanation" | "qa" | "draft" | "code";
 type CodeDiffStatus = "MISSING" | "RUNNING" | "FRESH" | "STALE" | "FAILED";
 
 interface ExplanationHistoryEntry {
@@ -30,15 +33,15 @@ interface ExplanationHistoryEntry {
 interface UseWorkbenchDerivedStateArgs {
   analysisDisplayMode: AnalysisDisplayMode;
   activeWorkbenchTab: WorkbenchTab;
-  auditResult: AuditWorkbenchState["result"];
-  auditRequestState: AsyncRequestState;
+  qaResult: QaWorkbenchState["result"];
+  qaRequestState: AsyncRequestState;
   qaRequestRecoveryState: QaRequestRecoveryState;
-  auditQuestionDraft: string;
-  auditQuestionMode: QaMode;
-  auditTargetNodeIds: string[];
-  auditTargetTitle: string | null;
-  selectedAuditChangeId: string | null;
-  selectedAuditThreadId: string | null;
+  qaQuestionDraft: string;
+  qaQuestionMode: QaMode;
+  qaTargetNodeIds: string[];
+  qaTargetTitle: string | null;
+  selectedQaChangeId: string | null;
+  selectedQaThreadId: string | null;
   graphBeautificationResult: GraphBeautificationResult | null;
   graphBeautificationRequestState: AsyncRequestState;
   selectedExplanationStepId: string | null;
@@ -55,6 +58,9 @@ interface UseWorkbenchDerivedStateArgs {
   factGraphView: { visibleGraph: LinkGraphDocument; anchorNodeId?: string | null };
   flowchartView: FlowchartViewDocument;
   resourceRelationView: ResourceRelationViewDocument;
+  architectureGraphView: ArchitectureGraphViewDocument;
+  classDiagramView: ClassDiagramViewDocument;
+  reviewGraphView: ReviewGraphViewDocument;
   generationPlan: GenerationPlan | null;
   generationPlanRequestState: AsyncRequestState;
   generationPlanDraftVersion: number | null;
@@ -83,13 +89,25 @@ export function useWorkbenchDerivedState(args: UseWorkbenchDerivedStateArgs) {
     ? args.flowchartView.visibleGraph
     : args.analysisDisplayMode === "RESOURCE_RELATION_VIEW"
       ? args.resourceRelationView.visibleGraph
-      : args.factGraphView.visibleGraph;
+      : args.analysisDisplayMode === "ARCHITECTURE_GRAPH"
+        ? args.architectureGraphView.visibleGraph
+        : args.analysisDisplayMode === "CLASS_DIAGRAM"
+          ? args.classDiagramView.visibleGraph
+          : args.analysisDisplayMode === "REVIEW_GRAPH"
+            ? args.reviewGraphView.visibleGraph
+            : args.factGraphView.visibleGraph;
 
   const activeAnchorNodeId = args.analysisDisplayMode === "FLOWCHART"
     ? args.flowchartView.anchorNodeId ?? null
     : args.analysisDisplayMode === "RESOURCE_RELATION_VIEW"
       ? args.resourceRelationView.anchorNodeId ?? null
-      : args.factGraphView.anchorNodeId ?? null;
+      : args.analysisDisplayMode === "ARCHITECTURE_GRAPH"
+        ? args.architectureGraphView.anchorNodeId ?? null
+        : args.analysisDisplayMode === "CLASS_DIAGRAM"
+          ? args.classDiagramView.anchorNodeId ?? null
+          : args.analysisDisplayMode === "REVIEW_GRAPH"
+            ? args.reviewGraphView.anchorNodeId ?? null
+            : args.factGraphView.anchorNodeId ?? null;
 
   const activeMethodSignature = useMemo(() => {
     const activeAnchorNode = activeViewGraph.nodes.find((node) => node.id === activeAnchorNodeId) ?? null;
@@ -194,15 +212,15 @@ export function useWorkbenchDerivedState(args: UseWorkbenchDerivedStateArgs) {
     previousSessionLabel: args.explanationHistory[args.explanationHistory.length - 1]?.sessionLabel ?? null,
   };
 
-  const auditState: AuditWorkbenchState = {
-    result: args.auditResult,
-    requestState: args.auditRequestState,
+  const qaState: QaWorkbenchState = {
+    result: args.qaResult,
+    requestState: args.qaRequestState,
     qaRequestRecoveryState: args.qaRequestRecoveryState,
-    selectedChangeId: args.selectedAuditChangeId,
-    selectedThreadId: args.selectedAuditThreadId,
-    questionDraft: args.auditQuestionDraft,
-    selectedMode: args.auditQuestionMode,
-    scopeLabel: buildAuditScopeLabel(args.auditTargetNodeIds, args.auditTargetTitle),
+    selectedChangeId: args.selectedQaChangeId,
+    selectedThreadId: args.selectedQaThreadId,
+    questionDraft: args.qaQuestionDraft,
+    selectedMode: args.qaQuestionMode,
+    scopeLabel: buildQaScopeLabel(args.qaTargetNodeIds, args.qaTargetTitle),
   };
 
   const draftImplementationSuggestionState: DraftImplementationSuggestionState = {
@@ -245,7 +263,7 @@ export function useWorkbenchDerivedState(args: UseWorkbenchDerivedStateArgs) {
 
   return {
     explanationState,
-    auditState,
+    qaState,
     draftImplementationSuggestionState,
     codeDiffStatus,
     activeViewGraph,
@@ -258,7 +276,7 @@ export function useWorkbenchDerivedState(args: UseWorkbenchDerivedStateArgs) {
   };
 }
 
-function buildAuditScopeLabel(targetNodeIds: string[], targetTitle: string | null): string {
+function buildQaScopeLabel(targetNodeIds: string[], targetTitle: string | null): string {
   if (targetNodeIds.length === 0) {
     return "当前范围：整张链路";
   }

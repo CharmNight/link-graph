@@ -33,19 +33,39 @@
   - 工具窗口生命周期与会话管理。
 - `application`
   - 项目级应用边界、用例、工作流、状态投影端口、运行时支撑、调试和诊断能力。
-  - `GraphEditorApplicationService` 是 IDE 动作、工具窗口 bridge 和调试自动化进入业务流程的主入口。
+  - `GraphEditorApplicationService` 是 IDE 动作、工具窗口 bridge 和调试自动化进入业务流程的组合根，主要暴露命令分发器。
+- `application/command`
+  - `ApplicationCommand`、命令分发器和命令处理器，统一承接动作、bridge 和调试请求。
+- `application/event`
+  - 应用事件边界，只表达应用层结果，不携带 UI view document 或展示状态。
+- `application/result`
+  - 问答、实现建议、代码 diff、Review 等应用结果模型。
+- `application/indexed`
+  - 架构图、类图和 Review Graph 的 indexed graph 请求、默认参数和请求归一化。
 - `application/usecase`
   - 面向动作和 bridge 的稳定用例入口。
 - `application/workflow`
-  - 主体分析、问答、草稿、实现建议、代码 diff、同步预览和导航等流程编排。
+  - 主体分析、架构图、类图、Review Graph、问答、草稿、实现建议、代码 diff、同步预览和导航等流程编排。
 - `application/port`
-  - 应用层到 UI 投影层的端口。
+  - 应用层对外依赖端口，例如状态快照、工作区提交和 UI 投影提供者。
 - `ui`
   - JCEF 容器、前后端桥接、传输渲染和前端资源加载。
+- `ui/bridge`
+  - 前端命令 envelope 的解析和后端消息构造。
+- `json`
+  - 生产代码共享 JSON codec 和脚本安全序列化支撑。
+- `projection`
+  - 统一图投影内核、窗口裁剪、隐藏计数、overflow 元数据和交互式图投影。
+- `presentation`
+  - 图展示目标、lane、hidden bucket 等展示契约模型。
 - `foundation`
   - 日志、调试环境和 trace 等基础能力。
 - `semantic`
   - 语义分析、事实构建与主体定位。
+- `architecture`、`jvm`、`source`
+  - 项目级 JVM 符号/关系索引、架构图/类图投影和源码内容解析支撑。
+- `review`
+  - Review Graph 查询、diff 到符号映射、影响面和相关测试证据。
 - `model`
   - 共享图模型定义。
 - `workbench`
@@ -78,12 +98,24 @@
   - 流程图视图模块。
 - `views/resource`
   - 资源关系视图模块。
+- `views/architecture`
+  - 架构图视图模块。
+- `views/class-diagram`
+  - 类图视图模块。
+- `views/review`
+  - Review Graph 视图模块。
 - `reactflow`
   - 共享图画布基础设施与布局接线。
 - `components`
   - 可复用的面板、弹窗、任务栏、阶段工作台、链路大纲、变更托盘和图动作组件。
 - `controllers`
   - bridge 命令、bootstrap 状态和工作台动作的前端协调逻辑。
+- `presentation`
+  - 三类目标图复用的展示 shell、lane 覆盖层和 presentation 辅助逻辑。
+- `graph`
+  - 图节点尺寸、节点类型和共享图渲染注册等基础定义。
+- `workflow`
+  - 工作流阶段、任务栏和阶段状态相关的前端模型。
 - `workbench`
   - 讲解、问答、草稿、步骤详情和讨论面板等工作台域界面。
 
@@ -121,5 +153,7 @@
 ## 文档边界
 
 `docs/` 根部文档是公开阅读入口。内部计划、设计记录和执行拆分不作为用户文档导航入口。个人工作记录、机器相关验证日志和本机绝对路径不进入公开阅读入口。
+
+本地内部资料可以放在 `docs/internal/`，该目录由 `.gitignore` 忽略，不作为公开仓库内容。
 
 图表源文件可以保留在 `docs/diagrams/src/`，用于维护公开 SVG。公开文档应优先嵌入或链接 SVG，不直接把 Mermaid 源文件作为阅读入口。

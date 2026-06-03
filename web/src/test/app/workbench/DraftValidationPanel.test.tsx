@@ -29,7 +29,7 @@ describe("DraftValidationPanel", () => {
             },
           ],
         } as any}
-        onOpenAuditWorkbench={() => events.push("open-audit")}
+        onOpenQaWorkbench={() => events.push("open-qa")}
       />,
     );
 
@@ -37,7 +37,7 @@ describe("DraftValidationPanel", () => {
     expect(screen.getByText("默认兜底路径待确认")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "继续风险取证" }));
 
-    expect(events).toEqual(["open-audit"]);
+    expect(events).toEqual(["open-qa"]);
   });
 
   it("shows a ready state once the draft has no unresolved risk", () => {
@@ -50,7 +50,7 @@ describe("DraftValidationPanel", () => {
           unresolvedThreadIds: [],
           unresolvedThreads: [],
         } as any}
-        onOpenAuditWorkbench={() => undefined}
+        onOpenQaWorkbench={() => undefined}
       />,
     );
 

@@ -64,6 +64,18 @@ class PluginBootstrapTest {
             appendAction!!.getAttribute("class"),
         )
 
+        val classDiagramAction = firstElementByTagNameAndAttribute(
+            document,
+            "action",
+            "id",
+            "com.charmnight.linkgraph.OpenCurrentClassDiagramAction",
+        )
+        assertNotNull("Expected open-current-class-diagram action registration", classDiagramAction)
+        assertEquals(
+            "com.charmnight.linkgraph.actions.OpenCurrentClassDiagramAction",
+            classDiagramAction!!.getAttribute("class"),
+        )
+
         val settingsAction = firstElementByTagNameAndAttribute(
             document,
             "action",
@@ -110,9 +122,9 @@ class PluginBootstrapTest {
             "implementation",
             "com.charmnight.linkgraph.toolwindow.debug.LinkGraphDebugStartupActivity",
         )
-        assertTrue(
-            "Did not expect default published plugin.xml to register debug-package startup activity",
-            debugPackageStartupActivity == null,
+        assertNotNull(
+            "Expected debug startup activity registration; it is inert unless LINKGRAPH_DEBUG_* is set",
+            debugPackageStartupActivity,
         )
 
         val classLoader = javaClass.classLoader
@@ -131,6 +143,10 @@ class PluginBootstrapTest {
         assertNotNull(
             "Expected append action class on the classpath",
             classLoader.loadClass("com.charmnight.linkgraph.actions.AddCurrentMethodToGraphAction"),
+        )
+        assertNotNull(
+            "Expected class diagram action class on the classpath",
+            classLoader.loadClass("com.charmnight.linkgraph.actions.OpenCurrentClassDiagramAction"),
         )
         assertNotNull(
             "Expected settings configurable class on the classpath",

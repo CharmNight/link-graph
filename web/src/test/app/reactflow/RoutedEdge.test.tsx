@@ -10,11 +10,13 @@ vi.mock("@xyflow/react", () => ({
   BaseEdge: ({
     id,
     path,
+    label,
     labelX,
     labelY,
   }: {
     id: string;
     path: string;
+    label?: string;
     labelX: number;
     labelY: number;
   }) => (
@@ -22,6 +24,7 @@ vi.mock("@xyflow/react", () => ({
       data-testid="base-edge"
       data-edge-id={id}
       data-path={path}
+      data-label={label ?? ""}
       data-label-x={String(labelX)}
       data-label-y={String(labelY)}
     />
@@ -111,6 +114,30 @@ function segmentIntersectsRect(
 }
 
 describe("RoutedEdge", () => {
+  it("renders a title for full relation details when edge data provides one", () => {
+    installNodeLookup(
+      createInternalNode("source", 0, 0, 200, 120),
+      createInternalNode("target", 320, 0, 200, 120),
+    );
+
+    render(
+      <RoutedEdge
+        id="edge:details"
+        source="source"
+        target="target"
+        sourceX={200}
+        sourceY={60}
+        targetX={320}
+        targetY={60}
+        data={{
+          labelTitle: "field image\nctor image\nreturn apply",
+        }}
+      />,
+    );
+
+    expect(document.querySelector("title")?.textContent).toBe("field image\nctor image\nreturn apply");
+  });
+
   it("moves the leading horizontal corridor with a left or right source endpoint when the node shifts horizontally", () => {
     installNodeLookup(
       createInternalNode("source", 0, 0, 200, 120),
@@ -344,6 +371,101 @@ describe("RoutedEdge", () => {
     ).toBe(false);
   });
 
+  it("preserves explicit stored routes when a view owns its lane routing", () => {
+    installNodeLookup(
+      createInternalNode("source", 100, 60, 240, 120),
+      createInternalNode("target", 520, 320, 240, 120),
+      createInternalNode("obstacle", 360, 180, 180, 140),
+    );
+
+    render(
+      <RoutedEdge
+        id="edge:stored"
+        source="source"
+        target="target"
+        sourceX={220}
+        sourceY={180}
+        targetX={640}
+        targetY={320}
+        sourcePosition={"bottom" as never}
+        targetPosition={"top" as never}
+        data={{
+          routeMode: "stored",
+          route: {
+            sections: [
+              {
+                startPoint: { x: 220, y: 180 },
+                bendPoints: [
+                  { x: 220, y: 340 },
+                  { x: 700, y: 340 },
+                  { x: 700, y: 280 },
+                  { x: 640, y: 280 },
+                ],
+                endPoint: { x: 640, y: 320 },
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("base-edge")).toHaveAttribute(
+      "data-path",
+      "M 220 180 L 220 340 L 700 340 L 700 280 L 640 280 L 640 320",
+    );
+  });
+
+  it("repairs stored routes when live node bounds show that the lane crosses an obstacle", () => {
+    installNodeLookup(
+      createInternalNode("source", 100, 60, 240, 120),
+      createInternalNode("target", 520, 320, 240, 120),
+      createInternalNode("obstacle", 360, 180, 180, 140),
+    );
+
+    render(
+      <RoutedEdge
+        id="edge:stored-obstacle"
+        source="source"
+        target="target"
+        sourceX={220}
+        sourceY={180}
+        targetX={640}
+        targetY={320}
+        sourcePosition={"bottom" as never}
+        targetPosition={"top" as never}
+        data={{
+          routeMode: "stored",
+          route: {
+            sections: [
+              {
+                startPoint: { x: 220, y: 180 },
+                bendPoints: [
+                  { x: 220, y: 240 },
+                  { x: 640, y: 240 },
+                ],
+                endPoint: { x: 640, y: 320 },
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    const path = screen.getByTestId("base-edge").getAttribute("data-path") ?? "";
+    const obstacleRect = {
+      left: 360,
+      right: 540,
+      top: 180,
+      bottom: 320,
+    };
+
+    expect(path).not.toBe("M 220 180 L 220 240 L 640 240 L 640 320");
+    expectOrthogonalPath(path);
+    expect(
+      segments(path).some((segment) => segmentIntersectsRect(segment, obstacleRect)),
+    ).toBe(false);
+  });
+
   it("keeps stored routes on dense graphs instead of rebuilding an obstacle grid per edge", () => {
     const obstacles = Array.from({ length: 56 }, (_, index) =>
       createInternalNode(
@@ -448,5 +570,138 @@ describe("RoutedEdge", () => {
     expect(
       segments(path).some((segment) => segmentIntersectsRect(segment, nearObstacleRect)),
     ).toBe(false);
+  });
+
+  it("hides selected-only labels until the edge is selected", () => {
+    installNodeLookup(
+      createInternalNode("source", 100, 60, 240, 120),
+      createInternalNode("target", 360, 280, 240, 120),
+    );
+
+    const { rerender } = render(
+      <RoutedEdge
+        id="edge:labeled"
+        source="source"
+        target="target"
+        sourceX={220}
+        sourceY={180}
+        targetX={480}
+        targetY={280}
+        sourcePosition={"bottom" as never}
+        targetPosition={"top" as never}
+        label="调用 / 反射"
+        data={{ labelVisibility: "selected" }}
+        selected={false}
+      />,
+    );
+
+    expect(screen.getByTestId("base-edge")).toHaveAttribute("data-label", "");
+
+    rerender(
+      <RoutedEdge
+        id="edge:labeled"
+        source="source"
+        target="target"
+        sourceX={220}
+        sourceY={180}
+        targetX={480}
+        targetY={280}
+        sourcePosition={"bottom" as never}
+        targetPosition={"top" as never}
+        label="调用 / 反射"
+        data={{ labelVisibility: "selected" }}
+        selected
+      />,
+    );
+
+    expect(screen.getByTestId("base-edge")).toHaveAttribute("data-label", "调用 / 反射");
+  });
+
+  it("shows focus labels only for focused edges", () => {
+    installNodeLookup(
+      createInternalNode("source", 100, 60, 240, 120),
+      createInternalNode("target", 360, 280, 240, 120),
+    );
+
+    const { rerender } = render(
+      <RoutedEdge
+        id="edge:focus-label"
+        source="source"
+        target="target"
+        sourceX={220}
+        sourceY={180}
+        targetX={480}
+        targetY={280}
+        sourcePosition={"bottom" as never}
+        targetPosition={"top" as never}
+        label="调用"
+        data={{ labelVisibility: "focus" }}
+        selected={false}
+      />,
+    );
+
+    expect(screen.getByTestId("base-edge")).toHaveAttribute("data-label", "");
+
+    rerender(
+      <RoutedEdge
+        id="edge:focus-label"
+        source="source"
+        target="target"
+        sourceX={220}
+        sourceY={180}
+        targetX={480}
+        targetY={280}
+        sourcePosition={"bottom" as never}
+        targetPosition={"top" as never}
+        label="调用"
+        data={{ labelVisibility: "focus", focusedEdge: true }}
+        selected={false}
+      />,
+    );
+
+    expect(screen.getByTestId("base-edge")).toHaveAttribute("data-label", "调用");
+  });
+
+  it("places class diagram labels near the target stub", () => {
+    installNodeLookup(
+      createInternalNode("source", 100, 60, 240, 120),
+      createInternalNode("target", 520, 320, 240, 120),
+    );
+
+    render(
+      <RoutedEdge
+        id="edge:uml"
+        source="source"
+        target="target"
+        sourceX={340}
+        sourceY={120}
+        targetX={520}
+        targetY={360}
+        sourcePosition={"right" as never}
+        targetPosition={"left" as never}
+        label="字段关联"
+        style={{ stroke: "#4f8f72" }}
+        data={{
+          labelPlacement: "target-stub",
+          route: {
+            sections: [
+              {
+                startPoint: { x: 340, y: 120 },
+                bendPoints: [
+                  { x: 460, y: 120 },
+                  { x: 460, y: 360 },
+                ],
+                endPoint: { x: 520, y: 360 },
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    const edge = screen.getByTestId("base-edge");
+    expect(edge).toHaveAttribute("data-label", "字段关联");
+    expect(Number(edge.getAttribute("data-label-x"))).toBe(460);
+    expect(Number(edge.getAttribute("data-label-y"))).toBe(332);
   });
 });

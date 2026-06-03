@@ -6,6 +6,7 @@ enum class GraphProjectionMappingKind {
     EXACT,
     MERGED_ALIAS,
     PATH_ALIAS,
+    INDEXED_READONLY,
     SYNTHETIC_READONLY,
     OVERFLOW_READONLY,
 }

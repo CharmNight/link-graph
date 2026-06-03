@@ -19,21 +19,31 @@ import com.charmnight.linkgraph.llm.runtime.AgentStepRecord
 import com.charmnight.linkgraph.llm.runtime.RunBudget
 import com.charmnight.linkgraph.llm.runtime.StepExecutor
 import com.charmnight.linkgraph.llm.runtime.StopPolicy
-import com.charmnight.linkgraph.llm.runtime.budgetExceededStepResult
 import com.charmnight.linkgraph.llm.runtime.failureReasonBeforeNextFileRead
-import com.charmnight.linkgraph.llm.runtime.failureReasonForBudget
+import com.charmnight.linkgraph.llm.runtime.withConfiguredRuntimeTimeout
 import com.charmnight.linkgraph.llm.runtime.withRuntimeDeadlineTimeout
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.llm.tools.AgentTool
 import com.charmnight.linkgraph.llm.tools.AgentToolRegistry
+import com.charmnight.linkgraph.llm.tools.BuildReviewEvidenceBundleTool
 import com.charmnight.linkgraph.llm.tools.CodeReadToolFacade
 import com.charmnight.linkgraph.llm.tools.CreateCandidateDraftTool
+import com.charmnight.linkgraph.llm.tools.FindRelatedTestsTool
+import com.charmnight.linkgraph.llm.tools.FindJvmRelationsTool
+import com.charmnight.linkgraph.llm.tools.FindJvmSymbolTool
+import com.charmnight.linkgraph.llm.tools.FindProxyTargetsTool
+import com.charmnight.linkgraph.llm.tools.FindReflectionTargetsTool
+import com.charmnight.linkgraph.llm.tools.FindServiceProvidersTool
+import com.charmnight.linkgraph.llm.tools.GetBlastRadiusTool
+import com.charmnight.linkgraph.llm.tools.GetArchitectureIndexSummaryTool
+import com.charmnight.linkgraph.llm.tools.GetChangedSymbolsTool
 import com.charmnight.linkgraph.llm.tools.GetCurrentGraphTool
 import com.charmnight.linkgraph.llm.tools.GetDraftWorkbenchTool
 import com.charmnight.linkgraph.llm.tools.GetSelectedScopeTool
 import com.charmnight.linkgraph.llm.tools.GraphToolFacade
 import com.charmnight.linkgraph.llm.tools.ReadSourceSnippetTool
 import com.charmnight.linkgraph.llm.tools.ReadSymbolTool
+import com.charmnight.linkgraph.llm.tools.QueryArchitectureRelationsTool
 import com.charmnight.linkgraph.llm.tools.ResolveAnchorTool
 import com.charmnight.linkgraph.llm.tools.ToolExecutionContext
 import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshot
@@ -64,6 +74,17 @@ class QaCapability(
             ResolveAnchorTool(CodeReadToolFacade()),
             ReadSourceSnippetTool(CodeReadToolFacade()),
             ReadSymbolTool(CodeReadToolFacade()),
+            GetArchitectureIndexSummaryTool(),
+            FindJvmSymbolTool(),
+            FindJvmRelationsTool(),
+            QueryArchitectureRelationsTool(),
+            FindServiceProvidersTool(),
+            FindReflectionTargetsTool(),
+            FindProxyTargetsTool(),
+            GetChangedSymbolsTool(),
+            GetBlastRadiusTool(),
+            FindRelatedTestsTool(),
+            BuildReviewEvidenceBundleTool(),
             CreateCandidateDraftTool(),
         ),
     ),
@@ -82,25 +103,41 @@ class QaCapability(
             capabilityId = capabilityId,
             phase = AgentRunPhase.CREATED,
             userGoal = input.question,
-            budget = defaultBudget,
+            budget = defaultBudget.withConfiguredRuntimeTimeout(input.settings),
             stepIndex = 0,
             artifactRefs = emptyList(),
         )
     }
 
     override fun allowedTools(input: QaCapabilityInput): Set<String> {
-        return setOf(
+        val tools = linkedSetOf(
             "get_draft_workbench",
             "get_current_graph",
             "get_selected_scope",
             "resolve_anchor",
             "read_source_snippet",
             "read_symbol",
+            "get_architecture_index_summary",
+            "find_jvm_symbol",
+            "find_jvm_relations",
+            "find_service_providers",
+            "find_reflection_targets",
+            "find_proxy_targets",
             "create_candidate_draft",
         )
+        if (input.effectiveMode in REVIEW_TOOL_MODES || input.requestedMode in REVIEW_TOOL_MODES) {
+            tools += listOf(
+                "get_changed_symbols",
+                "get_blast_radius",
+                "find_related_tests",
+                "build_review_evidence_bundle",
+            )
+        }
+        return tools
     }
 
-    override fun stopPolicy(input: QaCapabilityInput): StopPolicy = StopPolicy.default()
+    override fun stopPolicy(input: QaCapabilityInput): StopPolicy =
+        StopPolicy.default().copy(stopWhenEvidenceReadBudgetReached = false)
 
     override fun finalize(
         runState: AgentRunState,
@@ -354,7 +391,7 @@ class QaCapability(
 
     /**
      * 第二步根据当前图选区按需读取代码。
-     * 只有当当前上下文没有现成源码证据时，runtime 才补充读取，避免继续依赖一次性大上下文。
+     * 预加载源码只参与预算约束，不能作为本轮 QA prompt 的源码证据；prompt 只能使用 runtime 实际读取成功的 artifact。
      */
     private fun collectCodeEvidenceIfNeeded(
         state: AgentRunState,
@@ -362,24 +399,6 @@ class QaCapability(
         input: QaCapabilityInput,
     ): AgentStepExecutionResult {
         val preloadedBudget = recordPreloadedCodeEvidenceBudget(state.budget, input.qaContext.sourceContext)
-        val preloadedFailureReason = StopPolicy.default().evaluate(state.copy(budget = preloadedBudget))
-        if (preloadedFailureReason != null) {
-            return AgentStepExecutionResult.fail(
-                state.copy(
-                    phase = AgentRunPhase.FAILED,
-                    budget = preloadedBudget.recordStep(),
-                    stepIndex = state.stepIndex + 1,
-                    stepRecords = state.stepRecords + AgentStepRecord(
-                        stepIndex = state.stepIndex,
-                        phase = AgentRunPhase.FAILED,
-                    summary = "reject-preloaded-code-evidence-over-budget",
-                    nodeId = input.qaContext.selectedNodeIds.firstOrNull(),
-                ),
-                    failureReason = preloadedFailureReason,
-                    lastModelOutput = "预加载源码证据超出 runtime 预算，已拒绝继续问答。",
-                ),
-            )
-        }
         val snapshot = runtimeContext.snapshotSupplier() ?: return AgentStepExecutionResult.fail(
             state.copy(
                 phase = AgentRunPhase.FAILED,
@@ -414,19 +433,18 @@ class QaCapability(
         var nextBudget = preloadedBudget.recordStep()
         val nextArtifacts = state.artifactRefs.toMutableList()
         val evidenceTraces = mutableListOf<EvidenceTraceEntry>()
+        var promptEvidenceCount = 0
         var usedToolName: String? = null
-        targetNodeIds.forEachIndexed { index, nodeId ->
-            nextBudget.failureReasonBeforeNextFileRead()?.let { reason ->
-                return budgetExceededStepResult(
-                    state = state,
-                    budget = nextBudget,
-                    failureReason = reason,
-                    summary = "read-code-evidence",
-                    toolName = usedToolName ?: "read_source_snippet",
+        for ((index, nodeId) in targetNodeIds.withIndex()) {
+            val reasonBeforeNextFileRead = nextBudget.failureReasonBeforeNextFileRead()
+            if (reasonBeforeNextFileRead != null) {
+                evidenceTraces += EvidenceTraceEntry(
                     nodeId = nodeId,
-                    artifactRefs = nextArtifacts,
-                    lastModelOutput = "runtime 预算已耗尽，停止继续读取问答代码证据。",
+                    filePath = nodeId,
+                    reason = "未继续读取源码：问答证据读取预算已用尽（$reasonBeforeNextFileRead）。",
+                    includedInPrompt = false,
                 )
+                break
             }
             val toolContext = ToolExecutionContext(
                 project = runtimeContext.project,
@@ -449,7 +467,7 @@ class QaCapability(
                     includedInPrompt = false,
                     mappingTrace = resolution?.mappingTrace.orEmpty(),
                 )
-                return@forEachIndexed
+                continue
             }
             val snippetRead = readSnippetForAnchor(anchor, toolContext)
             val snippetContext = snippetRead.sourceContext
@@ -465,7 +483,38 @@ class QaCapability(
                     includedInPrompt = false,
                     mappingTrace = resolution?.mappingTrace.orEmpty(),
                 )
-                return@forEachIndexed
+                continue
+            }
+            val snippetLineCount = snippet.lineSequence().count()
+            val budgetAfterRead = nextBudget.recordFileRead(snippetLineCount)
+            usedToolName = usedToolName ?: if (!anchor.signature.isNullOrBlank()) "read_symbol" else "read_source_snippet"
+            if (snippetLineCount > nextBudget.maxSnippetLines) {
+                nextBudget = budgetAfterRead
+                evidenceTraces += EvidenceTraceEntry(
+                    nodeId = nodeId,
+                    resolvedNodeId = anchor.id.takeIf { resolvedNodeId -> resolvedNodeId != nodeId },
+                    filePath = snippetContext.filePath,
+                    reason = "跳过源码片段：单段 $snippetLineCount 行超过预算 ${nextBudget.maxSnippetLines} 行。",
+                    startLine = snippetContext.startLine,
+                    endLine = snippetContext.endLine,
+                    includedInPrompt = false,
+                    mappingTrace = resolution?.mappingTrace.orEmpty(),
+                )
+                continue
+            }
+            if (budgetAfterRead.totalSnippetLinesRead > nextBudget.maxTotalSnippetLines) {
+                nextBudget = budgetAfterRead
+                evidenceTraces += EvidenceTraceEntry(
+                    nodeId = nodeId,
+                    resolvedNodeId = anchor.id.takeIf { resolvedNodeId -> resolvedNodeId != nodeId },
+                    filePath = snippetContext.filePath,
+                    reason = "跳过源码片段：累计源码行数 ${budgetAfterRead.totalSnippetLinesRead} 超过预算 ${nextBudget.maxTotalSnippetLines} 行。",
+                    startLine = snippetContext.startLine,
+                    endLine = snippetContext.endLine,
+                    includedInPrompt = false,
+                    mappingTrace = resolution?.mappingTrace.orEmpty(),
+                )
+                continue
             }
             val artifactRef = runtimeContext.artifactStore.save(
                 CodeEvidenceArtifact(
@@ -478,6 +527,7 @@ class QaCapability(
                 ),
             )
             nextArtifacts += artifactRef
+            promptEvidenceCount += 1
             evidenceTraces += EvidenceTraceEntry(
                 nodeId = nodeId,
                 resolvedNodeId = anchor.id.takeIf { resolvedNodeId -> resolvedNodeId != nodeId },
@@ -488,20 +538,7 @@ class QaCapability(
                 includedInPrompt = true,
                 mappingTrace = resolution?.mappingTrace.orEmpty(),
             )
-            nextBudget = nextBudget.recordFileRead(snippet.lineSequence().count())
-            usedToolName = usedToolName ?: if (!anchor.signature.isNullOrBlank()) "read_symbol" else "read_source_snippet"
-            StopPolicy.default().failureReasonForBudget(state, nextBudget)?.let { reason ->
-                return budgetExceededStepResult(
-                    state = state,
-                    budget = nextBudget,
-                    failureReason = reason,
-                    summary = "read-code-evidence",
-                    toolName = usedToolName,
-                    nodeId = nodeId,
-                    artifactRefs = nextArtifacts,
-                    lastModelOutput = "读取问答代码证据后触发 runtime 预算上限。",
-                )
-            }
+            nextBudget = budgetAfterRead
         }
         if (evidenceTraces.isNotEmpty()) {
             nextArtifacts += runtimeContext.artifactStore.save(
@@ -521,7 +558,7 @@ class QaCapability(
                 stepRecords = state.stepRecords + AgentStepRecord(
                     stepIndex = state.stepIndex,
                     phase = AgentRunPhase.RUNNING,
-                    summary = if (nextArtifacts.size > state.artifactRefs.size) {
+                    summary = if (promptEvidenceCount > 0) {
                         "read-code-evidence"
                     } else {
                         "skip-code-evidence-read"
@@ -529,7 +566,7 @@ class QaCapability(
                     toolName = usedToolName,
                     nodeId = targetNodeIds.firstOrNull(),
                 ),
-                lastModelOutput = if (nextArtifacts.size > state.artifactRefs.size) {
+                lastModelOutput = if (promptEvidenceCount > 0) {
                     "已按需读取代码证据，准备继续问答。"
                 } else {
                     "未定位到可读取的代码锚点，先按图证据继续问答。"
@@ -597,7 +634,7 @@ class QaCapability(
     ): List<String> {
         return graph.nodes
             .asSequence()
-            .filter(::hasReadableSourceAnchor)
+            .filter(::isWholeGraphCodeEvidenceTarget)
             .sortedWith(
                 compareBy<GraphNode>(
                     ::wholeGraphEvidencePriority,
@@ -625,6 +662,24 @@ class QaCapability(
 
     private fun hasReadableSourceAnchor(node: GraphNode): Boolean {
         return !node.signature.isNullOrBlank() || !node.metadata["source.filePath"].isNullOrBlank()
+    }
+
+    private fun isWholeGraphCodeEvidenceTarget(node: GraphNode): Boolean {
+        if (!hasReadableSourceAnchor(node)) {
+            return false
+        }
+        return node.type in setOf(
+            NodeType.METHOD,
+            NodeType.FLOW_ACTION,
+            NodeType.FLOW_SCOPE,
+            NodeType.TERMINAL,
+            NodeType.CLASS,
+            NodeType.INTERFACE,
+            NodeType.ENUM,
+            NodeType.ANNOTATION,
+            NodeType.RECORD,
+            NodeType.OBJECT,
+        )
     }
 
     private fun wholeGraphEvidencePriority(node: GraphNode): Int {
@@ -705,6 +760,9 @@ class QaCapability(
         val selectedNodeIds = graphSummary?.selectedNodeIds
             ?.ifEmpty { input.qaContext.selectedNodeIds }
             ?: input.qaContext.selectedNodeIds
+        val runtimeEditableGraph = graphSummary?.graph
+            ?.takeIf { graph -> graph.nodes.isNotEmpty() || graph.edges.isNotEmpty() }
+            ?: input.qaContext.editableGraph
         val runtimeSourceContext = state.artifactRefs
             .asSequence()
             .mapNotNull(runtimeContext.artifactStore::get)
@@ -727,14 +785,11 @@ class QaCapability(
             .flatMap { artifact -> artifact.traces.asSequence() }
             .toList()
             .distinctBy { trace -> "${trace.nodeId}:${trace.filePath}:${trace.startLine}:${trace.endLine}:${trace.reason}" }
-        val sourceContext = when {
-            runtimeSourceContext.isNotEmpty() -> runtimeSourceContext
-            runtimeEvidenceTrace.isNotEmpty() -> emptyList()
-            else -> input.qaContext.sourceContext
-        }
-        val evidenceTrace = runtimeEvidenceTrace.ifEmpty { input.qaContext.evidenceTrace }
+        val sourceContext = runtimeSourceContext
+        val evidenceTrace = runtimeEvidenceTrace
         return input.copy(
             qaContext = input.qaContext.copy(
+                editableGraph = runtimeEditableGraph,
                 selectedNodeIds = selectedNodeIds,
                 sourceContext = sourceContext
                     .distinctBy { snippet -> "${snippet.nodeId}:${snippet.filePath}:${snippet.startLine}:${snippet.endLine}" },
@@ -757,12 +812,19 @@ class QaCapability(
         } else {
             emptyList()
         }
+        val budgetLimitedEvidenceWarning = if (runtimeTrace.any { trace ->
+                !trace.includedInPrompt && trace.reason.contains("预算")
+            }) {
+            listOf("本轮源码证据读取受预算限制，回答可能只覆盖已读取片段。")
+        } else {
+            emptyList()
+        }
         return copy(
             sourceContext = (sourceContext + runtimeSourceContext)
                 .distinctBy { snippet -> "${snippet.nodeId}:${snippet.filePath}:${snippet.startLine}:${snippet.endLine}" },
             evidenceTrace = (evidenceTrace + runtimeTrace)
                 .distinctBy { trace -> "${trace.nodeId}:${trace.filePath}:${trace.startLine}:${trace.endLine}:${trace.reason}" },
-            warnings = (missingPromptEvidenceWarning + warnings).distinct(),
+            warnings = (missingPromptEvidenceWarning + budgetLimitedEvidenceWarning + warnings).distinct(),
         )
     }
 
@@ -802,6 +864,12 @@ class QaCapability(
         val failureReason: String = "未知原因。",
     )
 }
+
+private val REVIEW_TOOL_MODES = setOf(
+    QaMode.REVIEW,
+    QaMode.CHANGE,
+    QaMode.INVESTIGATE,
+)
 
 /**
  * 问答 capability 的输入结构。

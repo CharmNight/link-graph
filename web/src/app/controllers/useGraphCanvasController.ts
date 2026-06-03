@@ -2,9 +2,12 @@ import { startTransition, type Dispatch, type MutableRefObject, type SetStateAct
 import { publishLayoutChange } from "../api";
 import { measureDuration, measureStart, traceLinkGraph } from "../debug";
 import { extractLayoutState } from "../graphState";
+import { canEditProjectedEdge, canEditProjectedNode } from "../graphProjectionPermissions";
 import { canEditNodeLayout } from "../layoutEditability";
 import type {
   AnalysisDisplayMode,
+  ArchitectureGraphViewDocument,
+  ClassDiagramViewDocument,
   FactGraphViewDocument,
   FlowchartViewDocument,
   GraphPosition,
@@ -13,7 +16,9 @@ import type {
   LinkGraphLayoutState,
   LinkGraphNode,
   OperationFeedback,
+  GraphProjectionIndex,
   ResourceRelationViewDocument,
+  ReviewGraphViewDocument,
 } from "../types";
 
 interface UseGraphCanvasControllerArgs {
@@ -22,6 +27,7 @@ interface UseGraphCanvasControllerArgs {
   selectedNodeId: string | null;
   detailNodeId: string | null;
   analysisDisplayMode: AnalysisDisplayMode;
+  projectionIndex?: GraphProjectionIndex | null;
   collapsedNodeIds: string[];
   nextManualNodeIdRef: MutableRefObject<number>;
   anchorNodeIdRef: MutableRefObject<string | null>;
@@ -31,9 +37,12 @@ interface UseGraphCanvasControllerArgs {
   setFactGraphView: Dispatch<SetStateAction<FactGraphViewDocument>>;
   setFlowchartView: Dispatch<SetStateAction<FlowchartViewDocument>>;
   setResourceRelationView: Dispatch<SetStateAction<ResourceRelationViewDocument>>;
+  setArchitectureGraphView: Dispatch<SetStateAction<ArchitectureGraphViewDocument>>;
+  setClassDiagramView: Dispatch<SetStateAction<ClassDiagramViewDocument>>;
+  setReviewGraphView: Dispatch<SetStateAction<ReviewGraphViewDocument>>;
   setCollapsedNodeIds: Dispatch<SetStateAction<string[]>>;
   setSelectionGroupNodeIds: Dispatch<SetStateAction<string[]>>;
-  setAuditTargetNodeIds: Dispatch<SetStateAction<string[]>>;
+  setQaTargetNodeIds: Dispatch<SetStateAction<string[]>>;
   setSelectedNodeId: Dispatch<SetStateAction<string | null>>;
   setDetailNodeId: Dispatch<SetStateAction<string | null>>;
   setOperationFeedback: Dispatch<SetStateAction<OperationFeedback | null>>;
@@ -64,6 +73,18 @@ interface UseGraphCanvasControllerArgs {
     current: ResourceRelationViewDocument,
     updates: Array<{ id: string; position: GraphPosition }>,
   ) => ResourceRelationViewDocument;
+  syncArchitectureGraphViewLayout: (
+    current: ArchitectureGraphViewDocument,
+    updates: Array<{ id: string; position: GraphPosition }>,
+  ) => ArchitectureGraphViewDocument;
+  syncClassDiagramViewLayout: (
+    current: ClassDiagramViewDocument,
+    updates: Array<{ id: string; position: GraphPosition }>,
+  ) => ClassDiagramViewDocument;
+  syncReviewGraphViewLayout: (
+    current: ReviewGraphViewDocument,
+    updates: Array<{ id: string; position: GraphPosition }>,
+  ) => ReviewGraphViewDocument;
   resolveCollapsedDescendantSummary: (
     nodes: LinkGraphNode[],
     edges: LinkGraphEdge[],
@@ -72,6 +93,17 @@ interface UseGraphCanvasControllerArgs {
 }
 
 export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
+  function canRunNodeCommand(
+    nodeId: string,
+    command: "ADD_NODE" | "UPDATE_NODE" | "DELETE_NODE" | "DELETE_NODE_SUBTREE" | "CONNECT_NODES",
+  ) {
+    return args.projectionIndex ? canEditProjectedNode(args.projectionIndex, nodeId, command) : true;
+  }
+
+  function canRunEdgeCommand(edgeId: string, command: "DELETE_EDGE" | "INSERT_NODE_INTO_EDGE") {
+    return args.projectionIndex ? canEditProjectedEdge(args.projectionIndex, edgeId, command) : true;
+  }
+
   function buildManualNode(
     kind: "METHOD" | "DOC_PAGE",
     nextIndex: number,
@@ -170,6 +202,9 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
   }
 
   function handleAddNode(kind: "METHOD" | "DOC_PAGE", position?: GraphPosition) {
+    if (!canRunNodeCommand("", "ADD_NODE")) {
+      return;
+    }
     startTransition(() => {
       const nextPosition = position ?? args.fallbackDesignPosition(args.nodes.length);
       const nextIndex = args.nextManualNodeIdRef.current++;
@@ -180,6 +215,9 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
   }
 
   function handleDeleteNode(nodeId: string) {
+    if (!canRunNodeCommand(nodeId, "DELETE_NODE")) {
+      return;
+    }
     startTransition(() => {
       const nextNodes = args.nodes.filter((node) => node.id !== nodeId);
       const nextEdges = args.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId);
@@ -188,6 +226,9 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
   }
 
   function handleDeleteNodeSubtree(nodeId: string) {
+    if (!canRunNodeCommand(nodeId, "DELETE_NODE_SUBTREE")) {
+      return;
+    }
     startTransition(() => {
       const deletedNodeIds = args.collectDownstreamSubtreeNodeIds(nodeId, args.nodes, args.edges);
       if (deletedNodeIds.size === 0) {
@@ -201,6 +242,9 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
   }
 
   function handleUpdateNode(nextNode: LinkGraphNode) {
+    if (!canRunNodeCommand(nextNode.id, "UPDATE_NODE")) {
+      return;
+    }
     startTransition(() => {
       const previousNode = args.nodes.find((node) => node.id === nextNode.id);
       const mergedNode = previousNode?.position ? args.syncNodePosition(nextNode, previousNode.position) : nextNode;
@@ -219,6 +263,9 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
     sourceHandle?: string | null,
     targetHandle?: string | null,
   ) {
+    if (!canRunNodeCommand(sourceId, "CONNECT_NODES") || !canRunNodeCommand(targetId, "CONNECT_NODES")) {
+      return;
+    }
     startTransition(() => {
       const nextEdgeId = `design-link:${sourceId}->${targetId}`;
       if (args.edges.some((edge) =>
@@ -249,6 +296,9 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
   }
 
   function handleDeleteEdge(edgeId: string) {
+    if (!canRunEdgeCommand(edgeId, "DELETE_EDGE")) {
+      return;
+    }
     startTransition(() => {
       args.syncGraph(
         args.nodes,
@@ -258,6 +308,9 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
   }
 
   function handleInsertNodeIntoEdge(edgeId: string, kind: "METHOD" | "DOC_PAGE") {
+    if (!canRunEdgeCommand(edgeId, "INSERT_NODE_INTO_EDGE") || !canRunNodeCommand("", "ADD_NODE")) {
+      return;
+    }
     startTransition(() => {
       const targetEdge = args.edges.find((edge) => edge.id === edgeId);
       if (!targetEdge) {
@@ -293,7 +346,7 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
 
   function handleMoveNode(nodeId: string, position: GraphPosition) {
     const currentNode = args.nodes.find((node) => node.id === nodeId);
-    if (!currentNode || !canEditNodeLayout(currentNode, args.analysisDisplayMode)) {
+    if (!currentNode || !canEditNodeLayout(currentNode, args.analysisDisplayMode, args.projectionIndex)) {
       return;
     }
     startTransition(() => {
@@ -316,6 +369,12 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
         args.setFlowchartView((current) => args.syncFlowchartViewLayout(current, layoutUpdates));
       } else if (args.analysisDisplayMode === "RESOURCE_RELATION_VIEW") {
         args.setResourceRelationView((current) => args.syncResourceRelationViewLayout(current, layoutUpdates));
+      } else if (args.analysisDisplayMode === "ARCHITECTURE_GRAPH") {
+        args.setArchitectureGraphView((current) => args.syncArchitectureGraphViewLayout(current, layoutUpdates));
+      } else if (args.analysisDisplayMode === "CLASS_DIAGRAM") {
+        args.setClassDiagramView((current) => args.syncClassDiagramViewLayout(current, layoutUpdates));
+      } else if (args.analysisDisplayMode === "REVIEW_GRAPH") {
+        args.setReviewGraphView((current) => args.syncReviewGraphViewLayout(current, layoutUpdates));
       }
       traceLinkGraph("app.layoutPublished", {
         reason: "single-node-drag",
@@ -336,7 +395,7 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
   function handleMoveNodes(updates: Array<{ id: string; position: GraphPosition }>) {
     const editableUpdates = updates.filter((update) => {
       const currentNode = args.nodes.find((node) => node.id === update.id);
-      return Boolean(currentNode && canEditNodeLayout(currentNode, args.analysisDisplayMode));
+      return Boolean(currentNode && canEditNodeLayout(currentNode, args.analysisDisplayMode, args.projectionIndex));
     });
     if (editableUpdates.length === 0) {
       return;
@@ -364,6 +423,12 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
         args.setFlowchartView((current) => args.syncFlowchartViewLayout(current, editableUpdates));
       } else if (args.analysisDisplayMode === "RESOURCE_RELATION_VIEW") {
         args.setResourceRelationView((current) => args.syncResourceRelationViewLayout(current, editableUpdates));
+      } else if (args.analysisDisplayMode === "ARCHITECTURE_GRAPH") {
+        args.setArchitectureGraphView((current) => args.syncArchitectureGraphViewLayout(current, editableUpdates));
+      } else if (args.analysisDisplayMode === "CLASS_DIAGRAM") {
+        args.setClassDiagramView((current) => args.syncClassDiagramViewLayout(current, editableUpdates));
+      } else if (args.analysisDisplayMode === "REVIEW_GRAPH") {
+        args.setReviewGraphView((current) => args.syncReviewGraphViewLayout(current, editableUpdates));
       }
       traceLinkGraph("app.layoutPublished", {
         reason: "group-drag",
@@ -389,7 +454,7 @@ export function useGraphCanvasController(args: UseGraphCanvasControllerArgs) {
 
       args.setCollapsedNodeIds(nextCollapsedNodeIds);
       args.setSelectionGroupNodeIds((current) => current.filter((item) => !nextHiddenNodeIds.has(item)));
-      args.setAuditTargetNodeIds((current) => current.filter((item) => !nextHiddenNodeIds.has(item)));
+      args.setQaTargetNodeIds((current) => current.filter((item) => !nextHiddenNodeIds.has(item)));
       if (args.selectedNodeId && nextHiddenNodeIds.has(args.selectedNodeId)) {
         args.setSelectedNodeId(nodeId);
       }

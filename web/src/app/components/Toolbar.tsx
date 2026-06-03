@@ -2,7 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { analysisDisplayModeLabel } from "../labels";
 import type { AnalysisDisplayMode, OperationFeedback } from "../types";
 
-const DISPLAY_MODES: AnalysisDisplayMode[] = ["FACT_GRAPH", "FLOWCHART", "RESOURCE_RELATION_VIEW"];
+const DISPLAY_MODES: AnalysisDisplayMode[] = [
+  "FACT_GRAPH",
+  "FLOWCHART",
+  "RESOURCE_RELATION_VIEW",
+  "ARCHITECTURE_GRAPH",
+  "CLASS_DIAGRAM",
+  "REVIEW_GRAPH",
+];
 
 interface ToolbarProps {
   analysisDisplayMode: AnalysisDisplayMode;

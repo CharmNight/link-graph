@@ -1,6 +1,10 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.application.indexed.IndexedGraphView
+import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
+import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
+import com.charmnight.linkgraph.review.ReviewGraphViewDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
 import com.charmnight.linkgraph.sync.GraphPatchApplyService
@@ -120,6 +124,10 @@ internal fun GraphEditorStateSnapshot.withLoadedAnalysisOutcome(
         AnalysisDisplayMode.FACT_GRAPH -> nextSemanticFactGraph
         AnalysisDisplayMode.FLOWCHART -> outcome.flowchartView?.fullGraph ?: outcome.fullGraph
         AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> outcome.resourceRelationView?.fullGraph ?: outcome.fullGraph
+        AnalysisDisplayMode.ARCHITECTURE_GRAPH,
+        AnalysisDisplayMode.CLASS_DIAGRAM,
+        AnalysisDisplayMode.REVIEW_GRAPH,
+        -> nextSemanticFactGraph
     }
     val preservedDraftState = preservedConfirmedDraftState(this, outcome.selectedMethodSignature)
     val hasPreservedDrafts = preservedDraftState.draftChanges.isNotEmpty()
@@ -139,6 +147,9 @@ internal fun GraphEditorStateSnapshot.withLoadedAnalysisOutcome(
         AnalysisDisplayMode.FACT_GRAPH -> nextViewDocuments.factGraphView.visibleGraph
         AnalysisDisplayMode.FLOWCHART -> nextViewDocuments.flowchartView.visibleGraph
         AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> nextViewDocuments.resourceRelationView.visibleGraph
+        AnalysisDisplayMode.ARCHITECTURE_GRAPH -> architectureGraphView.visibleGraph
+        AnalysisDisplayMode.CLASS_DIAGRAM -> classDiagramView.visibleGraph
+        AnalysisDisplayMode.REVIEW_GRAPH -> reviewGraphView.visibleGraph
     }
     val nextSelectedNodeId = resolveSelectedNodeId(
         graph = nextVisibleGraph,
@@ -158,6 +169,12 @@ internal fun GraphEditorStateSnapshot.withLoadedAnalysisOutcome(
             nextSemanticFactGraph,
             outcome.flowchartView?.fullGraph,
             outcome.resourceRelationView?.fullGraph,
+            architectureGraphView.visibleGraph,
+            architectureGraphView.fullGraph,
+            classDiagramView.visibleGraph,
+            classDiagramView.fullGraph,
+            reviewGraphView.visibleGraph,
+            reviewGraphView.fullGraph,
         ),
         factGraphView = nextViewDocuments.factGraphView,
         flowchartView = nextViewDocuments.flowchartView,
@@ -183,7 +200,7 @@ internal fun GraphEditorStateSnapshot.withLoadedAnalysisOutcome(
         lastGraphSource = source,
         operationFeedback = OperationFeedback(
             level = outcome.feedbackLevel,
-            message = outcome.feedbackMessage,
+            message = outcome.statusMessage,
         ),
         lastMessageType = "loadAnalysisOutcome",
     )
@@ -217,6 +234,62 @@ internal fun GraphEditorStateSnapshot.withSwitchedAnalysisDisplayMode(
     )
 }
 
+internal fun GraphEditorStateSnapshot.withIndexedGraphRequestStarted(
+    view: IndexedGraphView,
+    requestState: AsyncRequestState,
+    statusMessage: String,
+): GraphEditorStateSnapshot {
+    val displayMode = view.toAnalysisDisplayMode()
+    val nextScene = displayMode.toWorkspaceSceneId()
+    val clearedState = clearIndexedGraphView(view)
+    val nextVisibleGraph = resolveVisibleGraphForDisplayMode(clearedState, displayMode)
+    val currentSceneState = sceneState(nextScene)
+    val nextSelectedNodeId = resolveSelectedNodeId(
+        graph = nextVisibleGraph,
+        selectedNodeId = currentSceneState.selectedNodeId,
+        selectedMethodSignature = selectedMethodSignature,
+    )
+    val nextSceneState = currentSceneState.copy(
+        selectedNodeId = nextSelectedNodeId,
+        anchorNodeId = currentSceneState.anchorNodeId
+            ?.takeIf { anchorNodeId -> nextVisibleGraph.nodes.any { it.id == anchorNodeId } }
+            ?: nextSelectedNodeId
+            ?: nextVisibleGraph.nodes.firstOrNull()?.id,
+    )
+    return clearedState.copy(
+        indexedGraphRequestStates = clearedState.indexedGraphRequestStates + (view to requestState),
+        analysisDisplayMode = displayMode,
+        currentSceneId = nextScene,
+        previousWorkspaceSceneId = nextScene,
+        sceneStates = clearedState.sceneStates.withSceneState(nextScene, nextSceneState),
+        operationFeedback = OperationFeedback(
+            level = OperationFeedbackLevel.INFO,
+            message = statusMessage,
+        ),
+        snapshotRevision = clearedState.snapshotRevision + 1,
+        lastMessageType = "indexedGraphRequestStarted",
+    )
+}
+
+internal fun GraphEditorStateSnapshot.withIndexedGraphRequestFailed(
+    view: IndexedGraphView,
+    requestState: AsyncRequestState,
+    statusMessage: String,
+): GraphEditorStateSnapshot {
+    if (!shouldApplyIndexedGraphRequestState(view, requestState)) {
+        return this
+    }
+    return copy(
+        indexedGraphRequestStates = indexedGraphRequestStates + (view to requestState),
+        operationFeedback = OperationFeedback(
+            level = OperationFeedbackLevel.ERROR,
+            message = statusMessage,
+        ),
+        snapshotRevision = snapshotRevision + 1,
+        lastMessageType = "indexedGraphRequestFailed",
+    )
+}
+
 internal fun GraphEditorStateSnapshot.withWorkspaceGraphChanged(
     graph: GraphDocument,
     selectedMethodSignatureOverride: String? = null,
@@ -233,6 +306,9 @@ internal fun GraphEditorStateSnapshot.withWorkspaceGraphChanged(
         AnalysisDisplayMode.FLOWCHART -> nextViewDocuments.flowchartView.visibleGraph
         AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> nextViewDocuments.resourceRelationView.visibleGraph
         AnalysisDisplayMode.FACT_GRAPH -> nextViewDocuments.factGraphView.visibleGraph
+        AnalysisDisplayMode.ARCHITECTURE_GRAPH -> architectureGraphView.visibleGraph
+        AnalysisDisplayMode.CLASS_DIAGRAM -> classDiagramView.visibleGraph
+        AnalysisDisplayMode.REVIEW_GRAPH -> reviewGraphView.visibleGraph
     }
     val sceneState = currentSceneState()
     val nextSelectedNodeId = resolveSelectedNodeId(
@@ -255,7 +331,16 @@ internal fun GraphEditorStateSnapshot.withWorkspaceGraphChanged(
         preserveWorkbenchPlan = true,
     ).copy(
         workspaceGraph = graph,
-        trustedNavigationNodes = buildTrustedNavigationNodeIndex(graph, semanticFactGraph),
+        trustedNavigationNodes = buildTrustedNavigationNodeIndex(
+            graph,
+            semanticFactGraph,
+            architectureGraphView.visibleGraph,
+            architectureGraphView.fullGraph,
+            classDiagramView.visibleGraph,
+            classDiagramView.fullGraph,
+            reviewGraphView.visibleGraph,
+            reviewGraphView.fullGraph,
+        ),
         factGraphView = nextViewDocuments.factGraphView,
         flowchartView = nextViewDocuments.flowchartView,
         resourceRelationView = nextViewDocuments.resourceRelationView,
@@ -269,6 +354,182 @@ internal fun GraphEditorStateSnapshot.withWorkspaceGraphChanged(
         lastMessageType = "workspaceGraphChanged",
     )
 }
+
+internal fun GraphEditorStateSnapshot.withLoadedArchitectureGraphView(
+    view: ArchitectureGraphViewDocument,
+    requestState: AsyncRequestState,
+    statusMessage: String,
+): GraphEditorStateSnapshot {
+    if (!shouldApplyIndexedGraphRequestState(IndexedGraphView.ARCHITECTURE, requestState)) {
+        return this
+    }
+    val nextScene = AnalysisDisplayMode.ARCHITECTURE_GRAPH.toWorkspaceSceneId()
+    val currentSceneState = sceneState(nextScene)
+    val authoritativeAnchorNodeId = view.anchorNodeId
+        ?.takeIf { anchorNodeId -> view.visibleGraph.nodes.any { it.id == anchorNodeId } }
+    val selectedNodeId = resolveSelectedNodeId(
+        graph = view.visibleGraph,
+        selectedNodeId = authoritativeAnchorNodeId ?: currentSceneState.selectedNodeId,
+        selectedMethodSignature = selectedMethodSignature,
+    )
+    val nextSceneState = currentSceneState.copy(
+        selectedNodeId = selectedNodeId,
+        anchorNodeId = authoritativeAnchorNodeId ?: selectedNodeId ?: view.visibleGraph.nodes.firstOrNull()?.id,
+        layoutState = extractLayoutState(view.visibleGraph),
+    )
+    return copy(
+        architectureGraphView = view,
+        trustedNavigationNodes = buildTrustedNavigationNodeIndex(
+            workspaceGraph,
+            semanticFactGraph,
+            view.visibleGraph,
+            view.fullGraph,
+            classDiagramView.visibleGraph,
+            classDiagramView.fullGraph,
+            reviewGraphView.visibleGraph,
+            reviewGraphView.fullGraph,
+        ),
+        analysisDisplayMode = AnalysisDisplayMode.ARCHITECTURE_GRAPH,
+        indexedGraphRequestStates = indexedGraphRequestStates + (IndexedGraphView.ARCHITECTURE to requestState),
+        currentSceneId = nextScene,
+        previousWorkspaceSceneId = nextScene,
+        sceneStates = sceneStates.withSceneState(nextScene, nextSceneState),
+        operationFeedback = OperationFeedback(
+            level = requestState.toOperationFeedbackLevel(),
+            message = statusMessage,
+        ),
+        snapshotRevision = snapshotRevision + 1,
+        lastMessageType = "loadArchitectureGraph",
+    )
+}
+
+internal fun GraphEditorStateSnapshot.withLoadedClassDiagramView(
+    view: ClassDiagramViewDocument,
+    requestState: AsyncRequestState,
+    statusMessage: String,
+): GraphEditorStateSnapshot {
+    if (!shouldApplyIndexedGraphRequestState(IndexedGraphView.CLASS_DIAGRAM, requestState)) {
+        return this
+    }
+    val nextScene = AnalysisDisplayMode.CLASS_DIAGRAM.toWorkspaceSceneId()
+    val currentSceneState = sceneState(nextScene)
+    val authoritativeAnchorNodeId = view.anchorNodeId
+        ?.takeIf { anchorNodeId -> view.visibleGraph.nodes.any { it.id == anchorNodeId } }
+    val selectedNodeId = resolveSelectedNodeId(
+        graph = view.visibleGraph,
+        selectedNodeId = authoritativeAnchorNodeId ?: currentSceneState.selectedNodeId,
+        selectedMethodSignature = selectedMethodSignature,
+    )
+    val nextSceneState = currentSceneState.copy(
+        selectedNodeId = selectedNodeId,
+        anchorNodeId = authoritativeAnchorNodeId ?: selectedNodeId ?: view.visibleGraph.nodes.firstOrNull()?.id,
+        layoutState = extractLayoutState(view.visibleGraph),
+    )
+    return copy(
+        classDiagramView = view,
+        trustedNavigationNodes = buildTrustedNavigationNodeIndex(
+            workspaceGraph,
+            semanticFactGraph,
+            architectureGraphView.visibleGraph,
+            architectureGraphView.fullGraph,
+            view.visibleGraph,
+            view.fullGraph,
+            reviewGraphView.visibleGraph,
+            reviewGraphView.fullGraph,
+        ),
+        analysisDisplayMode = AnalysisDisplayMode.CLASS_DIAGRAM,
+        indexedGraphRequestStates = indexedGraphRequestStates + (IndexedGraphView.CLASS_DIAGRAM to requestState),
+        currentSceneId = nextScene,
+        previousWorkspaceSceneId = nextScene,
+        sceneStates = sceneStates.withSceneState(nextScene, nextSceneState),
+        operationFeedback = OperationFeedback(
+            level = requestState.toOperationFeedbackLevel(),
+            message = statusMessage,
+        ),
+        snapshotRevision = snapshotRevision + 1,
+        lastMessageType = "loadClassDiagram",
+    )
+}
+
+internal fun GraphEditorStateSnapshot.withLoadedReviewGraphView(
+    view: ReviewGraphViewDocument,
+    requestState: AsyncRequestState,
+    statusMessage: String,
+): GraphEditorStateSnapshot {
+    if (!shouldApplyIndexedGraphRequestState(IndexedGraphView.REVIEW, requestState)) {
+        return this
+    }
+    val nextScene = AnalysisDisplayMode.REVIEW_GRAPH.toWorkspaceSceneId()
+    val currentSceneState = sceneState(nextScene)
+    val authoritativeAnchorNodeId = view.anchorNodeId
+        ?.takeIf { anchorNodeId -> view.visibleGraph.nodes.any { it.id == anchorNodeId } }
+    val selectedNodeId = resolveSelectedNodeId(
+        graph = view.visibleGraph,
+        selectedNodeId = authoritativeAnchorNodeId ?: currentSceneState.selectedNodeId,
+        selectedMethodSignature = selectedMethodSignature,
+    )
+    val nextSceneState = currentSceneState.copy(
+        selectedNodeId = selectedNodeId,
+        anchorNodeId = authoritativeAnchorNodeId ?: selectedNodeId ?: view.visibleGraph.nodes.firstOrNull()?.id,
+        layoutState = extractLayoutState(view.visibleGraph),
+    )
+    return copy(
+        reviewGraphView = view,
+        trustedNavigationNodes = buildTrustedNavigationNodeIndex(
+            workspaceGraph,
+            semanticFactGraph,
+            architectureGraphView.visibleGraph,
+            architectureGraphView.fullGraph,
+            classDiagramView.visibleGraph,
+            classDiagramView.fullGraph,
+            view.visibleGraph,
+            view.fullGraph,
+        ),
+        analysisDisplayMode = AnalysisDisplayMode.REVIEW_GRAPH,
+        indexedGraphRequestStates = indexedGraphRequestStates + (IndexedGraphView.REVIEW to requestState),
+        currentSceneId = nextScene,
+        previousWorkspaceSceneId = nextScene,
+        sceneStates = sceneStates.withSceneState(nextScene, nextSceneState),
+        operationFeedback = OperationFeedback(
+            level = requestState.toOperationFeedbackLevel(),
+            message = statusMessage,
+        ),
+        snapshotRevision = snapshotRevision + 1,
+        lastMessageType = "loadReviewGraph",
+    )
+}
+
+private fun GraphEditorStateSnapshot.shouldApplyIndexedGraphRequestState(
+    view: IndexedGraphView,
+    requestState: AsyncRequestState,
+): Boolean {
+    val incomingRequestId = requestState.requestId ?: return true
+    val currentRequestId = indexedGraphRequestStates[view]?.requestId ?: return true
+    return incomingRequestId == currentRequestId
+}
+
+private fun IndexedGraphView.toAnalysisDisplayMode(): AnalysisDisplayMode =
+    when (this) {
+        IndexedGraphView.ARCHITECTURE -> AnalysisDisplayMode.ARCHITECTURE_GRAPH
+        IndexedGraphView.CLASS_DIAGRAM -> AnalysisDisplayMode.CLASS_DIAGRAM
+        IndexedGraphView.REVIEW -> AnalysisDisplayMode.REVIEW_GRAPH
+    }
+
+private fun GraphEditorStateSnapshot.clearIndexedGraphView(view: IndexedGraphView): GraphEditorStateSnapshot =
+    when (view) {
+        IndexedGraphView.ARCHITECTURE -> copy(architectureGraphView = ArchitectureGraphViewDocument())
+        IndexedGraphView.CLASS_DIAGRAM -> copy(classDiagramView = ClassDiagramViewDocument())
+        IndexedGraphView.REVIEW -> copy(reviewGraphView = ReviewGraphViewDocument())
+    }
+
+private fun AsyncRequestState.toOperationFeedbackLevel(): OperationFeedbackLevel =
+    when (phase) {
+        com.charmnight.linkgraph.application.model.AsyncRequestPhase.SUCCEEDED -> OperationFeedbackLevel.SUCCESS
+        com.charmnight.linkgraph.application.model.AsyncRequestPhase.FAILED,
+        com.charmnight.linkgraph.application.model.AsyncRequestPhase.TIMED_OUT,
+        -> OperationFeedbackLevel.ERROR
+        else -> OperationFeedbackLevel.INFO
+    }
 
 private fun GraphEditorStateSnapshot.resetDerivedGraphState(
     preserveDrafts: Boolean,

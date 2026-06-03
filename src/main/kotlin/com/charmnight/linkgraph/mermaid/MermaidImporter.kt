@@ -391,6 +391,8 @@ class MermaidImporter(
             EdgeType.CONTAINS_FLOW -> "包含流程"
             EdgeType.CONTROL_FLOW -> "控制流"
             EdgeType.IMPLEMENTS -> "实现"
+            EdgeType.EXTENDS -> "继承"
+            EdgeType.USES_TYPE -> "类型依赖"
             EdgeType.INJECT -> "注入"
             EdgeType.ROUTES_TO -> "路由"
             EdgeType.MAPS_TO_SQL -> "映射到 SQL"
@@ -401,6 +403,7 @@ class MermaidImporter(
             EdgeType.USES_PROXY -> "使用代理"
             EdgeType.REFLECTS_TO -> "反射到"
             EdgeType.SPI_RESOLVES_TO -> "SPI 解析到"
+            EdgeType.TESTS -> "测试"
             EdgeType.GENERATES -> "生成"
         }
     }

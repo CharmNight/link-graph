@@ -2,6 +2,7 @@ package com.charmnight.linkgraph.actions
 
 import com.charmnight.linkgraph.LinkGraphBundle
 import com.charmnight.linkgraph.application.GraphEditorApplicationService
+import com.charmnight.linkgraph.application.command.ApplicationCommand
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -34,7 +35,8 @@ class AddCurrentMethodToGraphAction : DumbAwareAction(
             val project = event.project
             val previewKind = if (project != null) {
                 project.getService(GraphEditorApplicationService::class.java)
-                    .previewCurrentEditorSubjectKind(event.getData(CommonDataKeys.EDITOR))
+                    .commandDispatcher
+                    .dispatch(ApplicationCommand.PreviewCurrentEditorSubjectKind(event.getData(CommonDataKeys.EDITOR)))
             } else {
                 null
             }
@@ -59,7 +61,10 @@ class AddCurrentMethodToGraphAction : DumbAwareAction(
         // 无项目时无法执行追加动作。
         val project = event.project ?: return
         // 统一交给项目服务追加当前主题节点。
-        if (project.getService(GraphEditorApplicationService::class.java).addCurrentEditorContextNode()) {
+        val appended = project.getService(GraphEditorApplicationService::class.java)
+            .commandDispatcher
+            .dispatch(ApplicationCommand.AddCurrentEditorContextNode)
+        if (appended) {
             project.getService(LinkGraphToolWindowSession::class.java).openToolWindow()
         }
     }

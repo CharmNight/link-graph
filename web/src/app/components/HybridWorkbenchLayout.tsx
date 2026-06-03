@@ -95,7 +95,10 @@ export function HybridWorkbenchLayout({
 
   return (
     <div
-      className={outlineCollapsed ? "hybrid-workbench-layout outline-collapsed" : "hybrid-workbench-layout"}
+      className={[
+        "hybrid-workbench-layout",
+        outlineCollapsed ? "outline-collapsed" : "",
+      ].filter(Boolean).join(" ")}
       data-testid="hybrid-workbench-layout"
       style={layoutStyle}
     >

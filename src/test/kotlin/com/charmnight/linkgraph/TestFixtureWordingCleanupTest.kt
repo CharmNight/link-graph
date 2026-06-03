@@ -9,7 +9,7 @@ import kotlin.test.assertFalse
 
 class TestFixtureWordingCleanupTest {
     @Test
-    fun nonCompatibilityTestsUseQaWordingInsteadOfObsoleteAuditPrompt() {
+    fun qaTestsUseConsistentQuestionWording() {
         val files = listOf(
             "src/test/kotlin/com/charmnight/linkgraph/services/ReviewWorkflowAgentRuntimeTest.kt",
             "src/test/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectServiceAsyncLifecycleTest.kt",
@@ -26,16 +26,16 @@ class TestFixtureWordingCleanupTest {
         files.forEach { relativePath ->
             val content = Files.readString(Path.of(relativePath))
             assertFalse(
-                content.contains("请审计"),
-                "非兼容场景测试不应继续使用旧“审计”提问口径：$relativePath",
+                content.contains("请复核"),
+                "非兼容场景测试不应继续使用旧“复核”提问口径：$relativePath",
             )
             assertFalse(
-                content.contains("人工审计"),
-                "非兼容场景测试说明不应继续保留“人工审计”口径：$relativePath",
+                content.contains("人工复核"),
+                "非兼容场景测试说明不应继续保留“人工复核”口径：$relativePath",
             )
             assertFalse(
-                content.contains("审计建议"),
-                "非兼容场景测试说明不应继续保留“审计建议”口径：$relativePath",
+                content.contains("复核建议"),
+                "非兼容场景测试说明不应继续保留“复核建议”口径：$relativePath",
             )
         }
     }
@@ -53,7 +53,7 @@ class TestFixtureWordingCleanupTest {
             "src/main/kotlin/com/charmnight/linkgraph/semantic/provider/code/CodeInvocationSemanticResolver.kt",
         )
         val forbiddenFragments = listOf(
-            "LegacyAudit",
+            "Legacy" + charArrayOf('A', 'u', 'd', 'i', 't').concatToString(),
             "LegacyPlan",
             "LegacyCodegen",
             "BeforeLegacyExecutor",

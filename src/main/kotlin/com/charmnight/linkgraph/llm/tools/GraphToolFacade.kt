@@ -15,12 +15,64 @@ class GraphToolFacade(
 ) {
     /** 返回当前最适合问答使用的工作图。 */
     fun currentGraph(snapshot: ToolGraphSnapshot): GraphDocument {
-        return currentWorkingGraph(snapshot)
+        val workspaceGraph = currentWorkingGraph(snapshot)
+        val visibleGraph = currentVisibleGraph(snapshot)
+            .takeIf { graph -> graph.nodes.isNotEmpty() || graph.edges.isNotEmpty() }
+            ?: workspaceGraph
+        if (workspaceGraph.nodes.isEmpty() && workspaceGraph.edges.isEmpty()) {
+            return visibleGraph
+        }
+        val visibleNodeIds = visibleGraph.nodes.mapTo(linkedSetOf()) { node -> node.id }
+        val nodeIds = linkedSetOf<String>().apply {
+            addAll(visibleNodeIds)
+            addAll(snapshot.currentSceneState().selectedNodeId?.let(::listOf).orEmpty())
+        }
+        val nodeById = (workspaceGraph.nodes + visibleGraph.nodes)
+            .associateBy(GraphNode::id)
+        val edgeIds = visibleGraph.edges.mapTo(linkedSetOf()) { edge -> edge.id }
+        workspaceGraph.edges.forEach { edge ->
+            if (edge.fromNodeId in nodeIds || edge.toNodeId in nodeIds) {
+                nodeIds += edge.fromNodeId
+                nodeIds += edge.toNodeId
+                edgeIds += edge.id
+            }
+        }
+        val expansionIds = collectVisibleExpansionIds(workspaceGraph, nodeIds)
+        if (expansionIds.isNotEmpty()) {
+            workspaceGraph.nodes.forEach { node ->
+                if (node.metadata[INVOCATION_EXPANSION_ID_KEY]?.trim() in expansionIds) {
+                    nodeIds += node.id
+                }
+            }
+            workspaceGraph.edges.forEach { edge ->
+                if (edge.metadata[INVOCATION_EXPANSION_ID_KEY]?.trim() in expansionIds) {
+                    nodeIds += edge.fromNodeId
+                    nodeIds += edge.toNodeId
+                    edgeIds += edge.id
+                }
+            }
+        }
+        return GraphDocument(
+            nodes = nodeIds.mapNotNull(nodeById::get),
+            edges = (visibleGraph.edges + workspaceGraph.edges)
+                .filter { edge ->
+                    edge.id in edgeIds &&
+                        edge.fromNodeId in nodeIds &&
+                        edge.toNodeId in nodeIds
+                }
+                .distinctBy(GraphEdge::id),
+        )
     }
 
     /** 返回当前图来源标签，便于调试和日志记录。 */
     fun currentGraphSource(snapshot: ToolGraphSnapshot): String {
-        return currentWorkingGraphSource(snapshot)
+        val visibleGraph = currentVisibleGraph(snapshot)
+        val workspaceGraph = currentWorkingGraph(snapshot)
+        return when {
+            visibleGraph.nodes.isNotEmpty() || visibleGraph.edges.isNotEmpty() -> "interactiveGraph"
+            workspaceGraph.nodes.isNotEmpty() || workspaceGraph.edges.isNotEmpty() -> "interactiveGraph"
+            else -> "emptyGraph"
+        }
     }
 
     /** 解析当前选区；若调用方显式给了 nodeIds，则优先使用调用方输入。 */
@@ -92,3 +144,41 @@ class GraphToolFacade(
     /** 返回当前差异对象，没有则返回空 diff。 */
     fun currentDiff(snapshot: ToolGraphSnapshot): GraphDiff = snapshot.diff ?: GraphDiff()
 }
+
+private fun collectVisibleExpansionIds(
+    graph: GraphDocument,
+    nodeIds: Set<String>,
+): Set<String> {
+    val expansionIds = linkedSetOf<String>()
+    graph.nodes.forEach { node ->
+        if (node.id in nodeIds) {
+            node.metadata[INVOCATION_EXPANSION_ID_KEY]
+                ?.trim()
+                ?.takeIf(String::isNotBlank)
+                ?.let(expansionIds::add)
+        }
+    }
+    graph.edges.forEach { edge ->
+        if (edge.fromNodeId in nodeIds || edge.toNodeId in nodeIds) {
+            edge.metadata[INVOCATION_EXPANSION_ID_KEY]
+                ?.trim()
+                ?.takeIf(String::isNotBlank)
+                ?.let(expansionIds::add)
+        }
+    }
+    return expansionIds
+}
+
+private fun currentVisibleGraph(snapshot: ToolGraphSnapshot): GraphDocument {
+    return when (snapshot.currentSceneId) {
+        ToolGraphSceneId.WORKSPACE_FLOWCHART -> snapshot.flowchartView.visibleGraph
+        ToolGraphSceneId.WORKSPACE_RESOURCE_RELATION -> snapshot.resourceRelationView.visibleGraph
+        ToolGraphSceneId.WORKSPACE_FACT -> snapshot.factGraphView.visibleGraph
+        ToolGraphSceneId.WORKSPACE_ARCHITECTURE_GRAPH -> snapshot.architectureGraphView.visibleGraph
+        ToolGraphSceneId.WORKSPACE_CLASS_DIAGRAM -> snapshot.classDiagramView.visibleGraph
+        ToolGraphSceneId.WORKSPACE_REVIEW_GRAPH -> snapshot.reviewGraphView.visibleGraph
+        ToolGraphSceneId.DIFF -> snapshot.diffGraph ?: GraphDocument()
+    }
+}
+
+private const val INVOCATION_EXPANSION_ID_KEY = "linkGraph.expansion.id"

@@ -25,7 +25,7 @@ data class AnalysisOutcome(
     /** 保存操作反馈等级。 */
     val feedbackLevel: com.charmnight.linkgraph.ui.OperationFeedbackLevel,
     /** 保存反馈消息。 */
-    val feedbackMessage: String,
+    val statusMessage: String,
     /** 保存投影阶段的统计信息。 */
     val projectionStats: AnalysisProjectionStats = AnalysisProjectionStats(),
     /** 保存事实链路视图专用文档。 */

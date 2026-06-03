@@ -4,8 +4,8 @@
     <vendor>CharmNight</vendor>
 
     <description><![CDATA[
-        Link Graph is an IntelliJ Platform plugin for exploring method, flowchart, and resource relationships inside a project.
-        It provides a JCEF-based graph workbench with Mermaid import/export, diff preview, source navigation, local fallback workflows, and optional remote LLM-assisted implementation suggestions and code diff workflows.
+        Link Graph is an IntelliJ Platform plugin for exploring source relationships, project architecture, class diagrams, and review impact graphs inside a project.
+        It provides a JCEF-based graph workbench with Mermaid import/export, source navigation, local fallback workflows, and optional remote LLM-assisted question answering, implementation suggestions, and code diff workflows.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
@@ -26,6 +26,8 @@
         <projectService
                 serviceInterface="com.charmnight.linkgraph.application.port.GraphEditorPresentationProvider"
                 serviceImplementation="com.charmnight.linkgraph.ui.GraphEditorApplicationProjectionService"/>
+        <postStartupActivity
+                implementation="com.charmnight.linkgraph.toolwindow.debug.LinkGraphDebugStartupActivity"/>
     </extensions>
 
     <extensions defaultExtensionNs="org.jetbrains.kotlin">
@@ -48,6 +50,12 @@
                     id="com.charmnight.linkgraph.AddCurrentMethodToGraphAction"
                     class="com.charmnight.linkgraph.actions.AddCurrentMethodToGraphAction"
                     text="添加当前方法到链路图">
+                <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            </action>
+            <action
+                    id="com.charmnight.linkgraph.OpenCurrentClassDiagramAction"
+                    class="com.charmnight.linkgraph.actions.OpenCurrentClassDiagramAction"
+                    text="打开当前类图">
                 <add-to-group group-id="EditorPopupMenu" anchor="last"/>
             </action>
             <action

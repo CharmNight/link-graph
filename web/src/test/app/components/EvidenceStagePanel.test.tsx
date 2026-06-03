@@ -41,6 +41,25 @@ const state: EvidencePanelState = {
       references: [{ nodeId: "method:submit" }],
     },
   ],
+  relationEvidence: [
+    {
+      id: "edge-reflect",
+      label: "反射：OrderController.submit -> PaymentProvider",
+      kind: "REFLECTS_TO",
+      confidence: "PROVEN",
+      source: "PSI",
+      resolverId: "jvm.reflection",
+      count: "1",
+      references: [
+        {
+          nodeId: "method:submit",
+          filePath: "src/main/java/OrderController.java",
+          startLine: 10,
+          endLine: 10,
+        },
+      ],
+    },
+  ],
   evidenceGaps: [
     {
       id: "gap-compensation",
@@ -101,7 +120,7 @@ describe("EvidenceStagePanel", () => {
   it("shows an empty state when no node is selected", () => {
     render(
       <EvidenceStagePanel
-        state={{ ...state, selectedNode: null, selectedNodeEvidence: [], evidenceGaps: [], sourceSnippets: [], evidenceTrace: [] }}
+        state={{ ...state, selectedNode: null, selectedNodeEvidence: [], relationEvidence: [], evidenceGaps: [], sourceSnippets: [], evidenceTrace: [] }}
         isLoading={false}
         errorMessage={null}
         onOpenQa={vi.fn()}
@@ -134,6 +153,9 @@ describe("EvidenceStagePanel", () => {
     expect(screen.getByText("直接源码 1")).toBeInTheDocument();
     expect(screen.getByText("仅调用点 1")).toBeInTheDocument();
     expect(screen.getByText("提交订单入口直接来自源码。")).toBeInTheDocument();
+    expect(screen.getByText("反射：OrderController.submit -> PaymentProvider")).toBeInTheDocument();
+    expect(screen.getByText("静态确认")).toBeInTheDocument();
+    expect(screen.getByText("jvm.reflection")).toBeInTheDocument();
     expect(screen.getAllByText("失败补偿可能缺失").length).toBeGreaterThan(0);
     expect(screen.getByText("orderService.submit(request);")).toBeInTheDocument();
     expect(screen.getByText("作为当前问答范围加入 prompt。")).toBeInTheDocument();

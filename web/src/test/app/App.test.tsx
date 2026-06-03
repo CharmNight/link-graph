@@ -16,12 +16,13 @@ vi.unmock("../../app/components/graph/nodes/FactGraphNodeCard");
 vi.unmock("../../app/components/graph/nodes/FlowchartNodeCard");
 vi.unmock("../../app/components/graph/nodes/ResourceRelationNodeCard");
 
-import { App, resolveAuditTargetNodeIds } from "../../app/App";
+import { App, resolveQaTargetNodeIds } from "../../app/App";
 import { dispatchBootstrapForTest, resetEditorTransportForTest } from "../../app/editorTransport";
 import { materializeThreeViewDocuments, type TestBootstrapState } from "../../app/testBootstrapState";
 import type {
   CandidateDraftChange,
   GraphBeautificationStep,
+  LinkGraphDocument,
 } from "../../app/types";
 
 const userEvent = {
@@ -218,29 +219,29 @@ function bootstrapStateFixture(): TestBootstrapState {
       ],
       draftNotes: [],
     },
-    auditResult: {
+    qaResult: {
       source: "LOCAL_RULE",
       question: "这个方法是否遗漏补偿链路？",
       answer: "建议补一条失败补偿链路。",
-      promptPreview: "audit prompt preview",
+      promptPreview: "qa prompt preview",
       patch: null,
       findings: [],
       candidateChanges: [candidate],
       newCandidateChanges: [candidate],
       investigationThreads: [],
-      auditSession: {
-        sessionId: "audit-method-submit",
+      qaSession: {
+        sessionId: "qa-method-submit",
         scopeKey: "method:submit-order",
         focusTargetId: candidate.changeId,
         candidateChanges: [candidate],
         messages: [
           {
-            messageId: "audit-user-1",
+            messageId: "qa-user-1",
             role: "USER",
             content: "这个方法是否遗漏补偿链路？",
           },
           {
-            messageId: "audit-assistant-1",
+            messageId: "qa-assistant-1",
             role: "ASSISTANT",
             content: "建议补一条失败补偿链路。",
           },
@@ -293,7 +294,7 @@ function bootstrapStateFixture(): TestBootstrapState {
       message: "已加载当前编辑器上下文链路：OrderController.submit",
     },
     analysisDisplayMode: "FACT_GRAPH",
-    auditRequestState: {
+    qaRequestState: {
       phase: "SUCCEEDED",
       errorMessage: null,
     },
@@ -450,10 +451,10 @@ describe.sequential("App", () => {
       importMermaid: vi.fn(),
       showDiffMode: vi.fn(),
       requestSyncPreview: vi.fn(),
-      requestAudit: vi.fn(),
-      retryLastAuditRequest: vi.fn(),
-      confirmAuditCandidateChange: vi.fn(),
-      unconfirmAuditCandidateChange: vi.fn(),
+      requestQa: vi.fn(),
+      retryLastQaRequest: vi.fn(),
+      confirmQaCandidateChange: vi.fn(),
+      unconfirmQaCandidateChange: vi.fn(),
       resolveInvestigationThread: vi.fn(),
       requestDiffReview: vi.fn(),
       requestGraphBeautification: vi.fn(),
@@ -680,14 +681,14 @@ describe.sequential("App", () => {
         level: "INFO",
         message: "已发起远程 LLM 问答请求，当前采用流式输出。",
       },
-      auditRequestState: {
+      qaRequestState: {
         phase: "SUCCEEDED",
         scene: "问答",
         statusMessage: "问答完成，已生成待确认变更。",
         detailMessage: "远程 LLM 已完成流式输出，并已落地最终结构化结果。",
         finishedAtEpochMillis: 300,
       },
-      lastMessageType: "auditResult",
+      lastMessageType: "qaResult",
     });
 
     render(<App />);
@@ -752,7 +753,7 @@ describe.sequential("App", () => {
     window.linkGraphBootstrap = structuredClone({
       ...bootstrapStateFixture(),
       workbenchSectionPreferences: {
-        "audit.request-status": true,
+        "qa.request-status": true,
       },
     });
 
@@ -771,14 +772,14 @@ describe.sequential("App", () => {
           updateWorkbenchSectionPreference: ReturnType<typeof vi.fn>;
         }
       )?.updateWorkbenchSectionPreference,
-    ).toHaveBeenCalledWith("audit.candidate-changes", true);
+    ).toHaveBeenCalledWith("qa.candidate-changes", true);
     expect(
       (
         window.linkGraphBridge as typeof window.linkGraphBridge & {
           updateWorkbenchSectionPreference: ReturnType<typeof vi.fn>;
         }
       )?.updateWorkbenchSectionPreference,
-    ).toHaveBeenCalledWith("audit.request-status", false);
+    ).toHaveBeenCalledWith("qa.request-status", false);
   });
 
   it("applies newer workbench section preferences from bootstrap envelopes after local interactions", async () => {
@@ -786,7 +787,7 @@ describe.sequential("App", () => {
     window.linkGraphBootstrap = structuredClone({
       ...bootstrapStateFixture(),
       workbenchSectionPreferences: {
-        "audit.request-status": true,
+        "qa.request-status": true,
       },
     });
 
@@ -802,7 +803,7 @@ describe.sequential("App", () => {
         ...structuredClone(bootstrapStateFixture()),
         snapshotRevision: 2,
         workbenchSectionPreferences: {
-          "audit.thread": true,
+          "qa.thread": true,
         },
       },
     });
@@ -881,8 +882,8 @@ describe.sequential("App", () => {
     };
     window.linkGraphBootstrap = structuredClone({
       ...bootstrapStateFixture(),
-      auditResult: {
-        ...bootstrapStateFixture().auditResult!,
+      qaResult: {
+        ...bootstrapStateFixture().qaResult!,
         candidateChanges: [candidate],
         newCandidateChanges: [candidate],
         investigationThreads: [
@@ -900,8 +901,8 @@ describe.sequential("App", () => {
             latestTurnOutcomeId: null,
           },
         ],
-        auditSession: {
-          ...bootstrapStateFixture().auditResult!.auditSession!,
+        qaSession: {
+          ...bootstrapStateFixture().qaResult!.qaSession!,
           investigationThreads: [
             {
               threadId: "thread-compensate",
@@ -932,7 +933,7 @@ describe.sequential("App", () => {
         ...structuredClone(window.linkGraphBootstrap!),
         snapshotRevision: 2,
         workbenchSectionPreferences: {
-          "audit.investigation-threads": true,
+          "qa.investigation-threads": true,
         },
       },
     });
@@ -947,19 +948,19 @@ describe.sequential("App", () => {
         ...structuredClone(window.linkGraphBootstrap!),
         snapshotRevision: 3,
         workbenchSectionPreferences: {
-          "audit.composer": true,
+          "qa.composer": true,
         },
-        auditRequestState: {
+        qaRequestState: {
           phase: "RUNNING",
           requestId: 1,
           scene: "问答",
           statusMessage: "已提交继续取证请求",
         },
-        auditResult: null,
+        qaResult: null,
       },
     });
 
-    expect(window.linkGraphBridge?.requestAudit).toHaveBeenCalledWith(
+    expect(window.linkGraphBridge?.requestQa).toHaveBeenCalledWith(
       thread.recommendedQuestion,
       ["method:submit-order"],
       "thread-compensate",
@@ -971,7 +972,7 @@ describe.sequential("App", () => {
           updateWorkbenchSectionPreference: ReturnType<typeof vi.fn>;
         }
       )?.updateWorkbenchSectionPreference,
-    ).toHaveBeenCalledWith("audit.composer", true);
+    ).toHaveBeenCalledWith("qa.composer", true);
     expect(screen.getByRole("tab", { name: "请求" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText(thread.recommendedQuestion)).toBeInTheDocument();
   });
@@ -999,8 +1000,8 @@ describe.sequential("App", () => {
     };
     window.linkGraphBootstrap = structuredClone({
       ...bootstrapStateFixture(),
-      auditResult: {
-        ...bootstrapStateFixture().auditResult!,
+      qaResult: {
+        ...bootstrapStateFixture().qaResult!,
         investigationThreads: [
           {
             threadId: "thread-compensate",
@@ -1016,8 +1017,8 @@ describe.sequential("App", () => {
             latestTurnOutcomeId: null,
           },
         ],
-        auditSession: {
-          ...bootstrapStateFixture().auditResult!.auditSession!,
+        qaSession: {
+          ...bootstrapStateFixture().qaResult!.qaSession!,
           investigationThreads: [
             {
               threadId: "thread-compensate",
@@ -1048,7 +1049,7 @@ describe.sequential("App", () => {
         ...structuredClone(window.linkGraphBootstrap!),
         snapshotRevision: 2,
         workbenchSectionPreferences: {
-          "audit.investigation-threads": true,
+          "qa.investigation-threads": true,
         },
       },
     });
@@ -1057,13 +1058,13 @@ describe.sequential("App", () => {
     });
     await dispatchClickEvent(await screen.findByRole("button", { name: "继续取证" }));
 
-    expect(window.linkGraphBridge?.requestAudit).toHaveBeenCalledWith(
+    expect(window.linkGraphBridge?.requestQa).toHaveBeenCalledWith(
       thread.recommendedQuestion,
       ["method:submit-order"],
       "thread-compensate",
       "INVESTIGATE",
     );
-    expect(window.linkGraphBridge?.requestAudit).toHaveBeenCalledTimes(1);
+    expect(window.linkGraphBridge?.requestQa).toHaveBeenCalledTimes(1);
   });
 
   it("replays a DOM bootstrap event that fires before the app renders", async () => {
@@ -1124,10 +1125,10 @@ describe.sequential("App", () => {
     expect(screen.queryByText("OrderController.submit")).not.toBeInTheDocument();
   });
 
-  it("prefers grouped selection for audit scope and falls back to whole graph when there is no group", () => {
-    expect(resolveAuditTargetNodeIds(undefined, ["node-a", "node-b"])).toEqual(["node-a", "node-b"]);
-    expect(resolveAuditTargetNodeIds(undefined, ["node-a"])).toEqual([]);
-    expect(resolveAuditTargetNodeIds("node-z", ["node-a", "node-b"])).toEqual(["node-z"]);
+  it("prefers grouped selection for qa scope and falls back to whole graph when there is no group", () => {
+    expect(resolveQaTargetNodeIds(undefined, ["node-a", "node-b"])).toEqual(["node-a", "node-b"]);
+    expect(resolveQaTargetNodeIds(undefined, ["node-a"])).toEqual([]);
+    expect(resolveQaTargetNodeIds("node-z", ["node-a", "node-b"])).toEqual(["node-z"]);
   });
 
   it("renders a compact Chinese workspace and keeps the graph as primary", () => {
@@ -1157,6 +1158,7 @@ describe.sequential("App", () => {
       "step-submit-order",
       "Step 1 提交订单请求",
       "订单校验失败时怎么处理？",
+      "method:submit-order",
     );
   });
 
@@ -1423,7 +1425,7 @@ describe.sequential("App", () => {
     });
 
     expect(screen.getByRole("tab", { name: "问答" })).toHaveAttribute("aria-selected", "true");
-    expect(window.linkGraphBridge?.requestAudit).not.toHaveBeenCalled();
+    expect(window.linkGraphBridge?.requestQa).not.toHaveBeenCalled();
     expect(screen.getByRole("textbox", { name: "问答输入框" })).toHaveValue(
       "请围绕当前整张链路图进行问答，指出可能遗漏的业务链路、异常分支、资源依赖和数据约束。",
     );
@@ -1455,7 +1457,7 @@ describe.sequential("App", () => {
     await setTextboxValue(input, "介绍这里有什么安全问题");
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(window.linkGraphBridge?.requestAudit).toHaveBeenCalledWith("介绍这里有什么安全问题", [], null, "AUTO");
+    expect(window.linkGraphBridge?.requestQa).toHaveBeenCalledWith("介绍这里有什么安全问题", [], null, "AUTO");
     expect(screen.getByRole("button", { name: "收起当前页面" })).toBeInTheDocument();
     expect(screen.queryByText("已提交问答请求")).not.toBeInTheDocument();
     expect(screen.queryByText("等待后端确认执行方式与执行阶段。")).not.toBeInTheDocument();
@@ -1466,7 +1468,7 @@ describe.sequential("App", () => {
     const user = userEvent.setup();
     window.linkGraphBootstrap = structuredClone({
       ...bootstrapStateFixture(),
-      auditRequestState: {
+      qaRequestState: {
         phase: "FAILED",
         scene: "问答",
         statusMessage: "问答失败",
@@ -1480,7 +1482,7 @@ describe.sequential("App", () => {
           question: "这个方法是否遗漏补偿链路？",
           selectedNodeIds: ["method:submit-order"],
           sourceThreadId: null,
-          baseSessionId: "audit-method-submit",
+          baseSessionId: "qa-method-submit",
         },
         lastFailedRequest: {
           requestId: "qa-1",
@@ -1488,11 +1490,11 @@ describe.sequential("App", () => {
           question: "这个方法是否遗漏补偿链路？",
           selectedNodeIds: ["method:submit-order"],
           sourceThreadId: null,
-          baseSessionId: "audit-method-submit",
+          baseSessionId: "qa-method-submit",
         },
       },
       workbenchSectionPreferences: {
-        "audit.request-status": true,
+        "qa.request-status": true,
       },
     });
     render(<App />);
@@ -1500,15 +1502,15 @@ describe.sequential("App", () => {
     await user.click(screen.getByRole("tab", { name: "问答" }));
     await user.click(screen.getByRole("button", { name: "直接重试" }));
 
-    expect(window.linkGraphBridge?.retryLastAuditRequest).toHaveBeenCalledTimes(1);
+    expect(window.linkGraphBridge?.retryLastQaRequest).toHaveBeenCalledTimes(1);
   });
 
-  it("submits deferred risk resolution from the audit risk page", async () => {
+  it("submits deferred risk resolution from the qa risk page", async () => {
     const user = userEvent.setup();
     window.linkGraphBootstrap = structuredClone({
       ...bootstrapStateFixture(),
-      auditResult: {
-        ...bootstrapStateFixture().auditResult!,
+      qaResult: {
+        ...bootstrapStateFixture().qaResult!,
         investigationThreads: [
           {
             threadId: "thread-path-risk",
@@ -1531,7 +1533,7 @@ describe.sequential("App", () => {
         ],
       },
       workbenchSectionPreferences: {
-        "audit.investigation-threads": true,
+        "qa.investigation-threads": true,
       },
     });
     render(<App />);
@@ -1550,8 +1552,8 @@ describe.sequential("App", () => {
     const user = userEvent.setup();
     window.linkGraphBootstrap = structuredClone({
       ...bootstrapStateFixture(),
-      auditResult: {
-        ...bootstrapStateFixture().auditResult!,
+      qaResult: {
+        ...bootstrapStateFixture().qaResult!,
         investigationThreads: [
           {
             threadId: "thread-path-risk",
@@ -1574,7 +1576,7 @@ describe.sequential("App", () => {
         ],
       },
       workbenchSectionPreferences: {
-        "audit.investigation-threads": true,
+        "qa.investigation-threads": true,
       },
     });
     render(<App />);
@@ -1622,17 +1624,17 @@ describe.sequential("App", () => {
     };
     window.linkGraphBootstrap = structuredClone({
       ...bootstrapStateFixture(),
-      auditResult: {
-        ...bootstrapStateFixture().auditResult!,
+      qaResult: {
+        ...bootstrapStateFixture().qaResult!,
         candidateChanges: [firstCandidate, secondCandidate],
         newCandidateChanges: [firstCandidate, secondCandidate],
-        auditSession: {
-          ...bootstrapStateFixture().auditResult!.auditSession!,
+        qaSession: {
+          ...bootstrapStateFixture().qaResult!.qaSession!,
           candidateChanges: [firstCandidate, secondCandidate],
         },
       },
       workbenchSectionPreferences: {
-        "audit.candidate-changes": true,
+        "qa.candidate-changes": true,
       },
     });
     render(<App />);
@@ -1641,7 +1643,7 @@ describe.sequential("App", () => {
     await user.click(screen.getByRole("button", { name: "待确认变更：补充路径规范化校验" }));
     await user.click(screen.getByRole("button", { name: "确认这条变更" }));
 
-    expect(window.linkGraphBridge?.confirmAuditCandidateChange).toHaveBeenCalledWith("change-path-guard");
+    expect(window.linkGraphBridge?.confirmQaCandidateChange).toHaveBeenCalledWith("change-path-guard");
     expect(screen.getByRole("tab", { name: "问答" })).toHaveAttribute("aria-selected", "true");
     await user.click(screen.getByRole("tab", { name: "草稿" }));
     expect(screen.getByRole("tab", { name: "草稿" })).toHaveAttribute("aria-selected", "true");
@@ -1652,7 +1654,7 @@ describe.sequential("App", () => {
 
   it("surfaces a bridge-unavailable failure instead of pretending the qa request was accepted", async () => {
     const user = userEvent.setup();
-    const requestAudit = vi.fn();
+    const requestQa = vi.fn();
     window.linkGraphBridge = undefined;
     render(<App />);
 
@@ -1667,14 +1669,14 @@ describe.sequential("App", () => {
     expect(failureDialog).toBeInTheDocument();
     expect(screen.queryByText("问答：已提交问答请求")).not.toBeInTheDocument();
     expect(failureDialog).toHaveTextContent("IDE bridge 尚未就绪，本次请求没有发出。");
-    expect(requestAudit).not.toHaveBeenCalled();
+    expect(requestQa).not.toHaveBeenCalled();
 
     window.linkGraphBridge = {
-      requestAudit,
+      requestQa,
     };
     window.dispatchEvent(new Event("link-graph-bridge-ready"));
 
-    expect(requestAudit).not.toHaveBeenCalled();
+    expect(requestQa).not.toHaveBeenCalled();
   });
 
   it("preserves the current selected node while qa request state updates stream back", async () => {
@@ -1729,8 +1731,8 @@ describe.sequential("App", () => {
       state: {
         ...structuredClone(state),
         snapshotRevision: 2,
-        lastMessageType: "requestAudit",
-        auditRequestState: {
+        lastMessageType: "requestQa",
+        qaRequestState: {
           phase: "RUNNING",
           requestId: 2,
           scene: "问答",
@@ -1763,8 +1765,144 @@ describe.sequential("App", () => {
       undefined,
       undefined,
       undefined,
+      "method:submit-order",
     );
     expect(screen.getByRole("tab", { name: "理解" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("uses the currently selected expanded invocation node when requesting explanation from the workflow action", async () => {
+    const expandedGraph: LinkGraphDocument = {
+      nodes: [
+        {
+          id: "method:submit-order",
+          type: "METHOD" as const,
+          title: "OrderController.submit",
+          signature: "com.example.OrderController.submit():void",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN" as const,
+          bindingStatus: "BOUND" as const,
+          metadata: {
+            "flowchart.kind": "ENTRY",
+            "ui.x": "120",
+            "ui.y": "96",
+          },
+        },
+        {
+          id: "invoke:create-info",
+          type: "FLOW_ACTION" as const,
+          title: "systemService.createInfo()",
+          signature: "com.example.SystemService.createInfo():void",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN" as const,
+          bindingStatus: "BOUND" as const,
+          metadata: {
+            "flow.kind": "INVOCATION",
+            "flow.ownerMethod": "com.example.OrderController.submit():void",
+            "flowchart.kind": "SUBROUTINE",
+            "ui.x": "120",
+            "ui.y": "296",
+          },
+        },
+        {
+          id: "method:create-info",
+          type: "METHOD" as const,
+          title: "SystemService.createInfo",
+          signature: "com.example.SystemService.createInfo():void",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN" as const,
+          bindingStatus: "BOUND" as const,
+          metadata: {
+            "flow.ownerMethod": "com.example.SystemService.createInfo():void",
+            "flowchart.kind": "ENTRY",
+            "linkGraph.expansion.id": "invocation:expansion-1",
+            "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+            "ui.x": "520",
+            "ui.y": "296",
+          },
+        },
+        {
+          id: "action:save-info",
+          type: "FLOW_ACTION" as const,
+          title: "saveInfo()",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN" as const,
+          bindingStatus: "BOUND" as const,
+          metadata: {
+            "flow.kind": "ACTION",
+            "flow.ownerMethod": "com.example.SystemService.createInfo():void",
+            "flowchart.kind": "PROCESS",
+            "linkGraph.expansion.id": "invocation:expansion-1",
+            "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+            "ui.x": "520",
+            "ui.y": "496",
+          },
+        },
+      ],
+      edges: [
+        {
+          id: "control:submit-to-invoke",
+          type: "CONTROL_FLOW" as const,
+          source: "method:submit-order",
+          target: "invoke:create-info",
+        },
+        {
+          id: "call:invoke-to-create-info",
+          type: "CALL" as const,
+          source: "invoke:create-info",
+          target: "method:create-info",
+          metadata: {
+            "linkGraph.expansion.id": "invocation:expansion-1",
+            "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+          },
+        },
+        {
+          id: "control:create-info-to-save",
+          type: "CONTROL_FLOW" as const,
+          source: "method:create-info",
+          target: "action:save-info",
+          metadata: {
+            "linkGraph.expansion.id": "invocation:expansion-1",
+            "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+          },
+        },
+      ],
+    };
+    const state = bootstrapStateFixture();
+    window.linkGraphBootstrap = materializeThreeViewDocuments({
+      ...state,
+      analysisDisplayMode: "FLOWCHART",
+      currentSceneId: "WORKSPACE_FLOWCHART",
+      sceneStates: {
+        ...state.sceneStates,
+        WORKSPACE_FLOWCHART: {
+          ...state.sceneStates.WORKSPACE_FLOWCHART,
+          selectedNodeId: "method:create-info",
+          anchorNodeId: "method:submit-order",
+        },
+      },
+      visibleGraph: expandedGraph,
+      workingGraph: expandedGraph,
+      anchorNodeId: "method:submit-order",
+    });
+
+    render(<App />);
+
+    await dispatchClickEvent(screen.getByRole("button", { name: "链路讲解" }));
+
+    expect(window.linkGraphBridge?.requestGraphBeautification).toHaveBeenCalledWith(
+      "",
+      undefined,
+      "请重点讲解节点“SystemService.createInfo”在当前链路中的作用、上下游关系与关键分支。",
+      "BUSINESS",
+      undefined,
+      undefined,
+      undefined,
+      "method:create-info",
+    );
   });
 
   it("switches explanation granularity and requests a fresh projection with the chosen level", async () => {
@@ -1781,6 +1919,7 @@ describe.sequential("App", () => {
       undefined,
       undefined,
       undefined,
+      "method:submit-order",
     );
   });
 
@@ -1927,13 +2066,13 @@ describe.sequential("App", () => {
         ...structuredClone(window.linkGraphBootstrap!),
         snapshotRevision: 2,
         workbenchSectionPreferences: {
-          "audit.candidate-changes": true,
+          "qa.candidate-changes": true,
         },
       },
     });
     await user.click(screen.getByRole("button", { name: "确认这条变更" }));
 
-    expect(window.linkGraphBridge?.confirmAuditCandidateChange).toHaveBeenCalledWith("change-compensate");
+    expect(window.linkGraphBridge?.confirmQaCandidateChange).toHaveBeenCalledWith("change-compensate");
     expect(screen.getByRole("tab", { name: "问答" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("已确认候选变更并写入草稿层，可切到草稿查看。")).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "草稿" }));
@@ -3023,7 +3162,7 @@ describe.sequential("App", () => {
         ...structuredClone(window.linkGraphBootstrap!),
         snapshotRevision: 2,
         workbenchSectionPreferences: {
-          "audit.candidate-changes": true,
+          "qa.candidate-changes": true,
         },
       },
     });
@@ -3033,7 +3172,7 @@ describe.sequential("App", () => {
     await user.click(screen.getByRole("tab", { name: "草稿" }));
     await user.click(screen.getByRole("button", { name: "取消确认：补充失败补偿说明" }));
 
-    expect(window.linkGraphBridge?.unconfirmAuditCandidateChange).toHaveBeenCalledWith("change-compensate");
+    expect(window.linkGraphBridge?.unconfirmQaCandidateChange).toHaveBeenCalledWith("change-compensate");
     expect(screen.getByRole("tab", { name: "草稿" })).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByText("补充失败补偿逻辑说明")).not.toBeInTheDocument();
 
@@ -3048,7 +3187,7 @@ describe.sequential("App", () => {
         ...structuredClone(window.linkGraphBootstrap!),
         snapshotRevision: 3,
         workbenchSectionPreferences: {
-          "audit.candidate-changes": true,
+          "qa.candidate-changes": true,
         },
       },
     });

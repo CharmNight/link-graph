@@ -30,12 +30,39 @@ vi.mock("../../../../app/reactflow/GraphFlowSurface", () => ({
       visibleNodeCount: number;
       close: () => void;
     }) => Array<{ id: string; onSelect: () => void }>;
+    buildNodeActions: (context: {
+      nodeId: string;
+      close: () => void;
+    }) => Array<{ id: string; onSelect: () => void }>;
   }) => {
     const paneActions = props.buildPaneActions({
       position: undefined,
       hasGroupedSelection: false,
       visibleNodeCount: props.nodes.length,
       close: () => undefined,
+    });
+    const nodeActionEntries = props.nodes.map((node) => {
+      const actions = props.buildNodeActions({
+        nodeId: (node as { id: string }).id,
+        close: () => undefined,
+      });
+      return `${(node as { id: string }).id}:${actions.map((action) => action.id).join(",")}`;
+    });
+    const nodeActionButtons = props.nodes.flatMap((node) => {
+      const nodeId = (node as { id: string }).id;
+      return props.buildNodeActions({
+        nodeId,
+        close: () => undefined,
+      }).map((action) => (
+        <button
+          key={`${nodeId}:${action.id}`}
+          type="button"
+          data-testid={`node-action-${nodeId}-${action.id}`}
+          onClick={() => action.onSelect()}
+        >
+          {action.id}
+        </button>
+      ));
     });
     const formatAction = paneActions.find((action) => action.id === "format-layout");
     return (
@@ -46,12 +73,14 @@ vi.mock("../../../../app/reactflow/GraphFlowSurface", () => ({
         data-viewport-mode={props.viewportMode ?? ""}
         data-node-position={props.nodes[0]?.position ? `${props.nodes[0].position.x}:${props.nodes[0].position.y}` : ""}
         data-pane-action-ids={paneActions.map((action) => action.id).join("|")}
+        data-node-action-ids={nodeActionEntries.join("|")}
         data-edge-ids={props.edges.map((edge) => edge.id).join("|")}
         data-flow-edge-ids={props.flowEdges.map((edge) => edge.id).join("|")}
       >
         {props.header}
         {props.nodes.length === 0 ? props.emptyState : null}
         {props.nodes.length}:{props.edges.length}
+        {nodeActionButtons}
         <button type="button" onClick={() => formatAction?.onSelect()}>
           format
         </button>
@@ -674,6 +703,342 @@ describe("FlowchartView", () => {
       "flowchart-entry:method:submit-order->scope:guard",
     );
     expect(screen.getByText("含合成入口")).toBeInTheDocument();
+  });
+
+  it("offers invocation expansion and removal actions for invocation nodes and expanded batches", () => {
+    const invocationView: FlowchartViewDocument = {
+      ...view,
+      visibleGraph: {
+        nodes: [
+          view.visibleGraph.nodes[0]!,
+          {
+            id: "invoke:create-info",
+            type: "FLOW_ACTION",
+            title: "systemService.createInfo()",
+            signature: "com.example.SystemService.createInfo():void",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            metadata: {
+              "flow.kind": "INVOCATION",
+              "flowchart.kind": "SUBROUTINE",
+            },
+          },
+          {
+            id: "action:expanded-save",
+            type: "FLOW_ACTION",
+            title: "saveInfo()",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            metadata: {
+              "flow.kind": "ACTION",
+              "flowchart.kind": "PROCESS",
+              "linkGraph.expansion.id": "invocation:expansion-1",
+            },
+          },
+        ],
+        edges: [
+          {
+            id: "control-invoke",
+            type: "CONTROL_FLOW",
+            source: "method:submit-order",
+            target: "invoke:create-info",
+          },
+          {
+            id: "control-expanded",
+            type: "CONTROL_FLOW",
+            source: "invoke:create-info",
+            target: "action:expanded-save",
+          },
+        ],
+      },
+      anchorNodeId: "method:submit-order",
+    };
+    useMeasuredLayoutMock.mockImplementation(({ graph }: { graph: FlowchartViewDocument["visibleGraph"] }) => ({
+      nodes: graph.nodes.map((node, index) => ({
+        ...node,
+        position: { x: 640, y: 144 + index * 200 },
+      })),
+      edges: graph.edges,
+      layoutPending: false,
+      requestRelayout: vi.fn(),
+    }));
+
+    render(
+      <FlowchartView
+        view={invocationView}
+        selectedNodeId="invoke:create-info"
+        onAddNode={noop}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onDeleteNode={noop}
+        onCreateEdge={noop}
+        onDeleteEdge={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onImportMermaid={noop}
+        onExpandInvocation={noop}
+        onRemoveInvocationExpansion={noop}
+      />,
+    );
+
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
+      "data-node-action-ids",
+      expect.stringContaining("invoke:create-info:"),
+    );
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
+      "data-node-action-ids",
+      expect.stringContaining("expand-invocation"),
+    );
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
+      "data-node-action-ids",
+      expect.stringContaining("action:expanded-save:"),
+    );
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
+      "data-node-action-ids",
+      expect.stringContaining("remove-invocation-expansion"),
+    );
+  });
+
+  it("offers invocation expansion for readable projected invocation nodes and expands the original invocation", async () => {
+    const user = userEvent.setup();
+    const onExpandInvocation = vi.fn();
+    const readableProjectionView: FlowchartViewDocument = {
+      ...view,
+      visibleGraph: {
+        nodes: [
+          view.visibleGraph.nodes[0]!,
+          {
+            id: "action:write-bytes",
+            type: "FLOW_ACTION",
+            title: "调用 FileUtils.writeBytes",
+            signature: "com.example.FileUtils.writeBytes(java.lang.String,java.lang.String):void",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            metadata: {
+              "flow.kind": "ACTION",
+              "flowchart.kind": "PROCESS",
+              "flowchart.projectedFromNodeIds": "invoke:write-bytes",
+            },
+          },
+        ],
+        edges: [
+          {
+            id: "control-write",
+            type: "CONTROL_FLOW",
+            source: "method:submit-order",
+            target: "action:write-bytes",
+          },
+        ],
+      },
+      fullGraph: {
+        nodes: [
+          view.visibleGraph.nodes[0]!,
+          {
+            id: "action:write-bytes",
+            type: "FLOW_ACTION",
+            title: "FileUtils.writeBytes(filePath, response.toString())",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            metadata: {
+              "flow.kind": "ACTION",
+              "flowchart.kind": "PROCESS",
+            },
+          },
+          {
+            id: "invoke:write-bytes",
+            type: "FLOW_ACTION",
+            title: "调用 FileUtils.writeBytes",
+            signature: "com.example.FileUtils.writeBytes(java.lang.String,java.lang.String):void",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            metadata: {
+              "flow.kind": "INVOCATION",
+              "flowchart.kind": "SUBROUTINE",
+            },
+          },
+        ],
+        edges: [],
+      },
+      anchorNodeId: "method:submit-order",
+    };
+    useMeasuredLayoutMock.mockImplementation(({ graph }: { graph: FlowchartViewDocument["visibleGraph"] }) => ({
+      nodes: graph.nodes.map((node, index) => ({
+        ...node,
+        position: { x: 640, y: 144 + index * 200 },
+      })),
+      edges: graph.edges,
+      layoutPending: false,
+      requestRelayout: vi.fn(),
+    }));
+
+    render(
+      <FlowchartView
+        view={readableProjectionView}
+        selectedNodeId="action:write-bytes"
+        onAddNode={noop}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onDeleteNode={noop}
+        onCreateEdge={noop}
+        onDeleteEdge={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onImportMermaid={noop}
+        onExpandInvocation={onExpandInvocation}
+        onRemoveInvocationExpansion={noop}
+      />,
+    );
+
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
+      "data-node-action-ids",
+      expect.stringContaining("action:write-bytes:"),
+    );
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
+      "data-node-action-ids",
+      expect.stringContaining("expand-invocation"),
+    );
+
+    await user.click(screen.getByTestId("node-action-action:write-bytes-expand-invocation"));
+
+    expect(onExpandInvocation).toHaveBeenCalledWith("invoke:write-bytes");
+  });
+
+  it("keeps expanded invocation batches visible even when they belong to a different owner method", () => {
+    const expandedView: FlowchartViewDocument = {
+      ...view,
+      visibleGraph: {
+        nodes: [
+          {
+            ...view.visibleGraph.nodes[0]!,
+            signature: "com.example.OrderController.submit(java.lang.String):void",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+              "flow.ownerMethod": "com.example.OrderController.submit(java.lang.String):void",
+            },
+          },
+          {
+            id: "invoke:create-info",
+            type: "FLOW_ACTION",
+            title: "调用 SystemService.createInfo",
+            signature: "com.example.SystemService.createInfo():void",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            metadata: {
+              "flow.kind": "INVOCATION",
+              "flowchart.kind": "SUBROUTINE",
+              "flow.ownerMethod": "com.example.OrderController.submit(java.lang.String):void",
+            },
+          },
+          {
+            id: "method:create-info",
+            type: "METHOD",
+            title: "SystemService.createInfo",
+            signature: "com.example.SystemService.createInfo():void",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            metadata: {
+              "flowchart.kind": "ENTRY",
+              "flow.ownerMethod": "com.example.SystemService.createInfo():void",
+              "linkGraph.expansion.id": "invocation:expansion-1",
+              "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+            },
+          },
+          {
+            id: "action:save-info",
+            type: "FLOW_ACTION",
+            title: "saveInfo()",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+            metadata: {
+              "flow.kind": "ACTION",
+              "flowchart.kind": "PROCESS",
+              "flow.ownerMethod": "com.example.SystemService.createInfo():void",
+              "linkGraph.expansion.id": "invocation:expansion-1",
+              "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+            },
+          },
+        ],
+        edges: [
+          {
+            id: "control-current",
+            type: "CONTROL_FLOW",
+            source: "method:submit-order",
+            target: "invoke:create-info",
+          },
+          {
+            id: "call-expanded",
+            type: "CALL",
+            source: "invoke:create-info",
+            target: "method:create-info",
+            metadata: {
+              "linkGraph.expansion.id": "invocation:expansion-1",
+              "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+            },
+          },
+          {
+            id: "control-expanded",
+            type: "CONTROL_FLOW",
+            source: "method:create-info",
+            target: "action:save-info",
+            metadata: {
+              "linkGraph.expansion.id": "invocation:expansion-1",
+              "linkGraph.expansion.sourceInvocationNodeId": "invoke:create-info",
+            },
+          },
+        ],
+      },
+      anchorNodeId: "method:submit-order",
+    };
+    useMeasuredLayoutMock.mockImplementation(({ graph }: { graph: FlowchartViewDocument["visibleGraph"] }) => ({
+      nodes: graph.nodes.map((node, index) => ({
+        ...node,
+        position: { x: 640, y: 144 + index * 200 },
+      })),
+      edges: graph.edges,
+      layoutPending: false,
+      requestRelayout: vi.fn(),
+    }));
+
+    render(
+      <FlowchartView
+        view={expandedView}
+        selectedNodeId="invoke:create-info"
+        onAddNode={noop}
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onDeleteNode={noop}
+        onCreateEdge={noop}
+        onDeleteEdge={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onImportMermaid={noop}
+      />,
+    );
+
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
+      "data-node-action-ids",
+      expect.stringContaining("method:create-info:"),
+    );
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
+      "data-node-action-ids",
+      expect.stringContaining("action:save-info:"),
+    );
   });
 
   it("shows a loading empty state while a non-empty flowchart is still waiting for stable layout coordinates", () => {

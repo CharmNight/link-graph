@@ -1,5 +1,8 @@
 package com.charmnight.linkgraph.investigation.application
 
+import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
+import com.charmnight.linkgraph.investigation.domain.EvidenceGoal
+import com.charmnight.linkgraph.investigation.domain.EvidenceGoalKind
 import com.charmnight.linkgraph.investigation.domain.EvidenceCandidate
 import com.charmnight.linkgraph.investigation.domain.GateDecision
 import com.charmnight.linkgraph.investigation.domain.InvestigationRequest
@@ -18,6 +21,7 @@ import com.charmnight.linkgraph.investigation.resolving.java.JavaMethodSymbolRes
 import com.charmnight.linkgraph.investigation.resolving.java.JavaOverrideResolver
 import com.charmnight.linkgraph.investigation.resolving.java.JavaReflectionResolver
 import com.charmnight.linkgraph.investigation.resolving.java.JavaSpiResolver
+import com.charmnight.linkgraph.investigation.resolving.java.JvmEvidenceIndexAdapter
 import com.charmnight.linkgraph.investigation.resolving.spring.SpringEventResolver
 import com.intellij.openapi.project.Project
 
@@ -37,13 +41,18 @@ class InvestigationPipeline(
     private val noEvidencePresenter: InvestigationNoEvidencePresenter,
     /** 保存当前项目。 */
     private val project: Project,
+    /** 负责在 resolver 进入 read action 前准备共享 JVM index。 */
+    private val jvmEvidenceIndexAdapter: JvmEvidenceIndexAdapter = JvmEvidenceIndexAdapter(),
 ) {
     /**
      * 执行一次继续取证。
      */
     fun run(request: InvestigationRequest): InvestigationTurnResult {
-        val context = InvestigationContext(project)
         val goals = planner.plan(request)
+        val context = InvestigationContext(
+            project = project,
+            jvmEvidenceIndex = prepareJvmEvidenceIndex(goals),
+        )
         val outcomes = goals.flatMap { goal ->
             // 核心约束：resolver 只能产出结构化证据或候选，不能直接把弱相关源码塞进 LLM 上下文。
             resolverChain.resolve(goal, context)
@@ -87,7 +96,23 @@ class InvestigationPipeline(
         }.distinctBy(EvidenceCandidate::candidateId)
     }
 
+    private fun prepareJvmEvidenceIndex(goals: List<EvidenceGoal>): ArchitectureGraphIndex? {
+        if (goals.none { goal -> goal.kind in jvmEvidenceGoalKinds }) {
+            return null
+        }
+        return jvmEvidenceIndexAdapter.buildIndexOutsideReadAction(project)
+    }
+
     companion object {
+        private val jvmEvidenceGoalKinds = setOf(
+            EvidenceGoalKind.ENUM_CONSTANT,
+            EvidenceGoalKind.METHOD_SYMBOL,
+            EvidenceGoalKind.METHOD_OVERRIDE,
+            EvidenceGoalKind.SPI_BINDING,
+            EvidenceGoalKind.REFLECTION_CALL,
+            EvidenceGoalKind.SPRING_EVENT,
+        )
+
         /**
          * 创建默认继续取证流水线。
          */

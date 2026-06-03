@@ -21,6 +21,8 @@ import com.charmnight.linkgraph.semantic.model.TerminalUnit
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import java.util.ArrayDeque
 
+private val METHOD_SIGNATURE_PATTERN = Regex("""^(.*)\.([^.]+)\((.*)\):(.+)$""")
+
 /**
  * 把语义分析结果装配为前端可消费的图结构。
  * 会根据展示模式选择不同的节点可见性规则和边映射规则。
@@ -37,6 +39,10 @@ class GraphAssembler {
             AnalysisDisplayMode.FACT_GRAPH -> assembleFactGraph(context)
             AnalysisDisplayMode.FLOWCHART -> assembleFlowchartGraph(context)
             AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> assembleResourceRelationGraph(context)
+            AnalysisDisplayMode.ARCHITECTURE_GRAPH,
+            AnalysisDisplayMode.CLASS_DIAGRAM,
+            AnalysisDisplayMode.REVIEW_GRAPH,
+            -> assembleFactGraph(context)
         }
     }
 
@@ -257,14 +263,19 @@ class GraphAssembler {
         } ?: sourceMapping?.sourcePath
         /** 语义单元转换后的基础节点。 */
         val node = when (unit) {
-            is MethodLikeUnit -> GraphNode(
-                id = unit.id,
-                type = NodeType.METHOD,
-                title = unit.title,
-                location = location,
-                signature = unit.signature,
-                doc = unit.doc,
-            )
+            is MethodLikeUnit -> {
+                val methodSignature = parseMethodSignature(unit.signature)
+                GraphNode(
+                    id = unit.id,
+                    type = NodeType.METHOD,
+                    title = unit.title,
+                    location = location,
+                    signature = unit.signature,
+                    inputs = methodSignature?.parameterTypes.orEmpty(),
+                    outputs = methodSignature?.returnType?.let(::listOf).orEmpty(),
+                    doc = unit.doc,
+                )
+            }
 
             is FlowScopeUnit -> GraphNode(
                 id = unit.id,
@@ -393,6 +404,13 @@ class GraphAssembler {
             AnalysisDisplayMode.FACT_GRAPH -> {
                 projectionMetadata["fact.kind"] = type.name
             }
+
+            AnalysisDisplayMode.ARCHITECTURE_GRAPH,
+            AnalysisDisplayMode.CLASS_DIAGRAM,
+            AnalysisDisplayMode.REVIEW_GRAPH,
+            -> {
+                projectionMetadata["fact.kind"] = type.name
+            }
         }
         return copy(metadata = metadata + projectionMetadata)
     }
@@ -414,6 +432,39 @@ class GraphAssembler {
             else -> "AUXILIARY"
         }
     }
+
+    private fun parseMethodSignature(signature: String): MethodSignatureParts? {
+        val match = METHOD_SIGNATURE_PATTERN.matchEntire(signature.trim()) ?: return null
+        val rawParameters = match.groupValues[3]
+        val returnType = match.groupValues[4].trim().takeIf(String::isNotBlank)
+        return MethodSignatureParts(
+            parameterTypes = splitParameterTypes(rawParameters),
+            returnType = returnType,
+        )
+    }
+
+    private fun splitParameterTypes(rawParameters: String): List<String> {
+        val parameters = mutableListOf<String>()
+        var genericDepth = 0
+        var segmentStart = 0
+        rawParameters.forEachIndexed { index, char ->
+            when (char) {
+                '<' -> genericDepth += 1
+                '>' -> genericDepth = (genericDepth - 1).coerceAtLeast(0)
+                ',' -> if (genericDepth == 0) {
+                    rawParameters.slice(segmentStart until index).trim().takeIf(String::isNotBlank)?.let(parameters::add)
+                    segmentStart = index + 1
+                }
+            }
+        }
+        rawParameters.slice(segmentStart until rawParameters.length).trim().takeIf(String::isNotBlank)?.let(parameters::add)
+        return parameters
+    }
+
+    private data class MethodSignatureParts(
+        val parameterTypes: List<String>,
+        val returnType: String?,
+    )
 
     /** 把语义关系映射成图边。 */
     private fun toGraphEdge(
@@ -437,6 +488,7 @@ class GraphAssembler {
                 put("flow.incomplete", relation.incomplete.toString())
                 put("flow.synthetic", relation.synthetic.toString())
                 put("flow.provenance", relation.provenance.name)
+                putAll(relation.metadata)
             },
         )
     }

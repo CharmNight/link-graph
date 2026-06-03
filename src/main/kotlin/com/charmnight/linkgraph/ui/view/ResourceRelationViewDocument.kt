@@ -4,6 +4,9 @@ import com.charmnight.linkgraph.model.GraphDocument
 
 data class ResourceRelationSummary(
     val visibleNodeCount: Int = 0,
+    val relationCount: Int = 0,
+    val resourceCount: Int = 0,
+    val fallbackReason: String = "NONE",
     val laneCounts: Map<String, Int> = emptyMap(),
 )
 

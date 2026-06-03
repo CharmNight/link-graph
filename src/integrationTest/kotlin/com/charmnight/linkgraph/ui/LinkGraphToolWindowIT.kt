@@ -38,6 +38,8 @@ import com.charmnight.linkgraph.semantic.subject.SubjectHandle
 import com.charmnight.linkgraph.semantic.subject.SubjectLocator
 import com.charmnight.linkgraph.semantic.subject.SubjectPreviewKind
 import com.charmnight.linkgraph.application.GraphEditorApplicationService
+import com.charmnight.linkgraph.application.command.ApplicationCommand
+import com.charmnight.linkgraph.application.indexed.requestReviewGraphRequest
 import com.charmnight.linkgraph.application.model.DraftPatchPreviewSource
 import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
 import com.intellij.openapi.application.ApplicationManager
@@ -46,6 +48,7 @@ import com.charmnight.linkgraph.toolwindow.LinkGraphToolWindowFactory
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.wm.RegisterToolWindowTask
 import com.intellij.openapi.wm.ToolWindowAnchor
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.serviceContainer.AlreadyDisposedException
@@ -84,10 +87,10 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         val toolWindowManager = ToolWindowManager.getInstance(project)
         if (toolWindowManager.getToolWindow(LinkGraphToolWindowFactory.TOOL_WINDOW_ID) == null) {
             val toolWindow = toolWindowManager.registerToolWindow(
-                LinkGraphToolWindowFactory.TOOL_WINDOW_ID,
-                false,
-                ToolWindowAnchor.RIGHT,
-                testRootDisposable,
+                RegisterToolWindowTask.notClosable(
+                    LinkGraphToolWindowFactory.TOOL_WINDOW_ID,
+                    ToolWindowAnchor.RIGHT,
+                ),
             )
             LinkGraphToolWindowFactory().createToolWindowContent(project, toolWindow)
         }
@@ -179,10 +182,10 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
         assertEquals("currentMethod", snapshot.lastGraphSource)
-        assertNotNull(snapshot.visibleGraph)
-        assertTrue(snapshot.visibleGraph!!.nodes.isNotEmpty())
+        assertNotNull(currentVisibleGraph(snapshot))
+        assertTrue(currentVisibleGraph(snapshot).nodes.isNotEmpty())
         assertNotNull(snapshot.selectedNodeId)
-        val selectedNode = snapshot.visibleGraph!!.nodes.firstOrNull { it.id == snapshot.selectedNodeId }
+        val selectedNode = currentVisibleGraph(snapshot).nodes.firstOrNull { it.id == snapshot.selectedNodeId }
         assertNotNull(selectedNode)
         assertEquals("OrderService.place", selectedNode!!.title)
         assertTrue(selectedNode.location!!.contains("OrderService.java"))
@@ -212,10 +215,10 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
         assertEquals("currentMethod", snapshot.lastGraphSource)
-        assertNotNull(snapshot.visibleGraph)
-        assertTrue(snapshot.visibleGraph!!.nodes.isNotEmpty())
+        assertNotNull(currentVisibleGraph(snapshot))
+        assertTrue(currentVisibleGraph(snapshot).nodes.isNotEmpty())
         assertNotNull(snapshot.selectedNodeId)
-        val selectedNode = snapshot.visibleGraph!!.nodes.firstOrNull { it.id == snapshot.selectedNodeId }
+        val selectedNode = currentVisibleGraph(snapshot).nodes.firstOrNull { it.id == snapshot.selectedNodeId }
         assertNotNull(selectedNode)
         assertEquals("OrderService.place", selectedNode!!.title)
         assertTrue(selectedNode.location!!.contains("OrderService.kt"))
@@ -244,7 +247,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         waitForGraphSource("currentMethod")
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
-        val visibleGraph = snapshot.visibleGraph
+        val visibleGraph = currentVisibleGraph(snapshot)
         assertEquals("currentMethod", snapshot.lastGraphSource)
         assertNotNull(visibleGraph)
         assertTrue(
@@ -287,7 +290,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         waitForGraphSource("currentMethod")
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
-        val visibleGraph = snapshot.visibleGraph
+        val visibleGraph = currentVisibleGraph(snapshot)
         assertEquals("currentMethod", snapshot.lastGraphSource)
         assertNotNull(visibleGraph)
         assertTrue(
@@ -334,7 +337,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         waitForGraphSource("currentMethod")
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
-        val visibleGraph = snapshot.visibleGraph
+        val visibleGraph = currentVisibleGraph(snapshot)
         assertEquals("currentMethod", snapshot.lastGraphSource)
         assertNotNull(visibleGraph)
         assertTrue(
@@ -383,8 +386,8 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
         assertEquals("currentMethod", snapshot.lastGraphSource)
-        assertNotNull(snapshot.visibleGraph)
-        assertTrue(snapshot.visibleGraph!!.nodes.isNotEmpty())
+        assertNotNull(currentVisibleGraph(snapshot))
+        assertTrue(currentVisibleGraph(snapshot).nodes.isNotEmpty())
     }
 
     fun testBridgeDispatchCanOpenSettingsThroughProjectService() {
@@ -418,7 +421,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             """.trimIndent(),
         )
 
-        project.getService(GraphEditorApplicationService::class.java).loadCurrentEditorContextGraphAsync(myFixture.editor)
+        project.getService(GraphEditorApplicationService::class.java).commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
         drainIdeQueue()
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
@@ -459,7 +462,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             )
 
         ApplicationManager.getApplication().invokeAndWait {
-            projectService.loadCurrentEditorContextGraphAsync(myFixture.editor)
+            projectService.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
         }
         waitForGraphSource("currentContext")
 
@@ -498,7 +501,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             )
 
         ApplicationManager.getApplication().invokeAndWait {
-            projectService.loadCurrentEditorContextGraphAsync(myFixture.editor)
+            projectService.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
         }
 
         waitForLatch(started, "expected background extraction to start")
@@ -539,7 +542,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             )
 
         ApplicationManager.getApplication().invokeAndWait {
-            projectService.loadCurrentEditorContextGraphAsync(myFixture.editor)
+            projectService.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
         }
 
         waitForLatch(started, "expected background extraction to start")
@@ -549,7 +552,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         assertNotNull(snapshot.operationFeedback)
         assertEquals("INFO", snapshot.operationFeedback!!.level.name)
         assertEquals("正在分析当前节点关联图：OrderService.place", snapshot.operationFeedback!!.message)
-        assertEquals(null, snapshot.visibleGraph)
+        assertTrue(currentVisibleGraph(snapshot).nodes.isEmpty())
     }
 
     fun testAsyncCurrentEditorContextGraphDisposedFailureDoesNotSurfaceAsError() {
@@ -581,7 +584,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             )
 
         ApplicationManager.getApplication().invokeAndWait {
-            projectService.loadCurrentEditorContextGraphAsync(myFixture.editor)
+            projectService.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
         }
 
         waitForLatch(started, "expected background extraction to start")
@@ -591,7 +594,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         assertNotNull(snapshot.operationFeedback)
         assertEquals("INFO", snapshot.operationFeedback!!.level.name)
         assertEquals("正在分析当前节点关联图：OrderService.place", snapshot.operationFeedback!!.message)
-        assertEquals(null, snapshot.visibleGraph)
+        assertTrue(currentVisibleGraph(snapshot).nodes.isEmpty())
     }
 
     fun testAddCurrentMethodNodeAppendsMethodNodeWithoutReplacingExistingGraph() {
@@ -624,14 +627,14 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             "seed-graph",
         )
 
-        val appended = project.getService(GraphEditorApplicationService::class.java).addCurrentEditorContextNode()
+        val appended = project.getService(GraphEditorApplicationService::class.java).commandDispatcher.dispatch(ApplicationCommand.AddCurrentEditorContextNode)
 
         assertTrue(appended)
         val snapshot = stateService.snapshot()
         assertEquals("workspaceGraphChanged", snapshot.lastMessageType)
-        assertNotNull(snapshot.visibleGraph)
-        assertEquals(2, snapshot.visibleGraph!!.nodes.size)
-        val methodNode = snapshot.visibleGraph!!.nodes.firstOrNull { it.type == NodeType.METHOD }
+        assertNotNull(currentVisibleGraph(snapshot))
+        assertEquals(2, currentVisibleGraph(snapshot).nodes.size)
+        val methodNode = currentVisibleGraph(snapshot).nodes.firstOrNull { it.type == NodeType.METHOD }
         assertNotNull(methodNode)
         assertEquals("OrderService.place", methodNode!!.title)
         assertTrue(methodNode.location!!.contains("OrderService.java"))
@@ -654,7 +657,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             ),
         )
         val patch = GraphPatch(
-            summary = "apply audit note",
+            summary = "apply qa note",
             operations = listOf(
                 GraphPatchOperation(
                     id = "patch-add-note",
@@ -675,17 +678,17 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
 
         stateService.loadGraph(factGraph, "code-graph")
         stateService.markDraftPatchPreviewForIntegration(patch)
-        projectService.applyDraftPatchPreview()
+        projectService.commandDispatcher.dispatch(ApplicationCommand.ApplyDraftPatchPreview())
 
         val snapshot = stateService.snapshot()
-        assertEquals(1, snapshot.referenceFactGraph?.nodes?.size)
-        assertEquals(2, snapshot.workingGraph?.nodes?.size)
-        assertEquals(2, snapshot.visibleGraph?.nodes?.size)
-        assertTrue(snapshot.workingGraph!!.nodes.any { it.id == "doc:default-fallback-note" && it.sourceTag == GraphSourceTag.DRAFT_AI })
+        assertEquals(1, snapshot.semanticFactGraph.nodes.size)
+        assertEquals(2, snapshot.workspaceGraph.nodes.size)
+        assertEquals(2, currentVisibleGraph(snapshot).nodes.size)
+        assertTrue(snapshot.workspaceGraph.nodes.any { it.id == "doc:default-fallback-note" && it.sourceTag == GraphSourceTag.DRAFT_AI })
         assertEquals(null, snapshot.draftPatchPreview)
     }
 
-    fun testRequestAuditGeneratesAnswerAndInvestigationThreads() {
+    fun testRequestQaGeneratesAnswerAndInvestigationThreads() {
         val projectService = project.getService(GraphEditorApplicationService::class.java)
         project.getService(GraphEditorStateService::class.java).loadGraph(
             GraphDocument(
@@ -707,9 +710,11 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             "code-graph",
         )
 
-        projectService.requestQaAsync(
-            question = "请围绕当前范围进行问答：这段链路是否遗漏了默认兜底逻辑？",
-            selectedNodeIds = listOf("uncertain:channel-router"),
+        projectService.commandDispatcher.dispatch(
+            ApplicationCommand.RequestQa(
+                question = "请围绕当前范围进行问答：这段链路是否遗漏了默认兜底逻辑？",
+                selectedNodeIds = listOf("uncertain:channel-router"),
+            ),
         )
         waitForQaResultAndFollowUps()
 
@@ -748,9 +753,11 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         """.trimIndent()
 
         project.getService(GraphEditorStateService::class.java).loadGraph(codeGraph, "code-graph")
-        projectService.importMermaid(mermaid)
-        projectService.showDiffMode()
-        projectService.requestDiffReviewAsync("这些差异意味着什么？请给出修订草稿。")
+        projectService.commandDispatcher.dispatch(ApplicationCommand.ImportMermaid(mermaid))
+        projectService.commandDispatcher.dispatch(ApplicationCommand.ShowDiffMode)
+        projectService.commandDispatcher.dispatch(
+            ApplicationCommand.RequestDiffReview("这些差异意味着什么？请给出修订草稿。"),
+        )
         waitForDiffReviewResultAndDraftPreview()
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
@@ -762,7 +769,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         assertTrue(snapshot.draftPatchPreview!!.operations.any { it.action == GraphPatchAction.ADD_NODE })
     }
 
-    fun testRestoreDraftPatchPreviewFromAuditResultIsUnavailable() {
+    fun testRestoreDraftPatchPreviewFromQaResultIsUnavailable() {
         val projectService = project.getService(GraphEditorApplicationService::class.java)
         project.getService(GraphEditorStateService::class.java).loadGraph(
             GraphDocument(
@@ -778,12 +785,14 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             "code-graph",
         )
 
-        projectService.requestQaAsync(
-            question = "请围绕当前范围进行问答：这段链路是否遗漏了默认兜底逻辑？",
-            selectedNodeIds = listOf("uncertain:channel-router"),
+        projectService.commandDispatcher.dispatch(
+            ApplicationCommand.RequestQa(
+                question = "请围绕当前范围进行问答：这段链路是否遗漏了默认兜底逻辑？",
+                selectedNodeIds = listOf("uncertain:channel-router"),
+            ),
         )
         waitForQaResultAndFollowUps()
-        val restored = projectService.restoreDraftPatchPreview(DraftPatchPreviewSource.QA)
+        val restored = projectService.commandDispatcher.dispatch(ApplicationCommand.RestoreDraftPatchPreview(DraftPatchPreviewSource.QA))
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
         assertNotNull(snapshot.qaResult)
@@ -805,7 +814,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             ),
         )
         val patch = GraphPatch(
-            summary = "apply audit note",
+            summary = "apply qa note",
             operations = listOf(
                 GraphPatchOperation(
                     id = "patch-add-note",
@@ -826,13 +835,13 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
 
         stateService.loadGraph(factGraph, "code-graph")
         stateService.markDraftPatchPreviewForIntegration(patch)
-        projectService.applyDraftPatchPreview()
-        projectService.undoLastDraftPatchApply()
+        projectService.commandDispatcher.dispatch(ApplicationCommand.ApplyDraftPatchPreview())
+        projectService.commandDispatcher.dispatch(ApplicationCommand.UndoLastDraftPatchApply)
 
         val snapshot = stateService.snapshot()
-        assertEquals(1, snapshot.referenceFactGraph?.nodes?.size)
-        assertEquals(1, snapshot.workingGraph?.nodes?.size)
-        assertEquals(1, snapshot.visibleGraph?.nodes?.size)
+        assertEquals(1, snapshot.semanticFactGraph.nodes.size)
+        assertEquals(1, snapshot.workspaceGraph.nodes.size)
+        assertEquals(1, currentVisibleGraph(snapshot).nodes.size)
         assertNotNull(snapshot.draftPatchPreview)
         assertTrue(snapshot.draftPatchPreview!!.operations.any { it.id == "patch-add-note" })
     }
@@ -860,7 +869,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             snapshot.selectedMethodSignature,
         )
         assertEquals("method:order-service-place", snapshot.selectedNodeId)
-        assertEquals(1, snapshot.visibleGraph?.nodes?.size)
+        assertEquals(1, currentVisibleGraph(snapshot).nodes.size)
     }
 
     fun testImportExportAndDiffModeFlowUpdatesEditorState() {
@@ -887,9 +896,9 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         """.trimIndent()
 
         project.getService(GraphEditorStateService::class.java).loadGraph(codeGraph, "code-graph")
-        projectService.importMermaid(mermaid)
-        val exported = projectService.exportMermaid()
-        val diffResult = projectService.showDiffMode()
+        projectService.commandDispatcher.dispatch(ApplicationCommand.ImportMermaid(mermaid))
+        val exported = projectService.commandDispatcher.dispatch(ApplicationCommand.ExportMermaid)
+        val diffResult = projectService.commandDispatcher.dispatch(ApplicationCommand.ShowDiffMode)
 
         val snapshot = stateService.snapshot()
         assertEquals(mermaid, snapshot.importedMermaid)
@@ -908,7 +917,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             snapshot.diff!!.entries.any { it.status == DiffStatus.ONLY_IN_MERMAID && it.elementId.contains("class:orderdraftdto") },
         )
         assertTrue(
-            snapshot.visibleGraph?.nodes?.any { it.diff.status == DiffStatus.ONLY_IN_MERMAID } == true,
+            currentVisibleGraph(snapshot).nodes.any { it.diff.status == DiffStatus.ONLY_IN_MERMAID } == true,
         )
     }
 
@@ -927,7 +936,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         )
 
         project.getService(GraphEditorStateService::class.java).loadGraph(graph, "code-graph")
-        val exported = projectService.exportMermaid()
+        val exported = projectService.commandDispatcher.dispatch(ApplicationCommand.ExportMermaid)
 
         val snapshot = stateService.snapshot()
         assertEquals(exported, snapshot.exportedMermaid)
@@ -1096,7 +1105,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         assertEquals(mermaid, snapshot.importedMermaid)
         assertTrue(snapshot.diffMode)
         assertNotNull(snapshot.diff)
-        assertTrue(snapshot.visibleGraph?.nodes?.any { it.diff.status == DiffStatus.ONLY_IN_MERMAID } == true)
+        assertTrue(currentVisibleGraph(snapshot).nodes.any { it.diff.status == DiffStatus.ONLY_IN_MERMAID } == true)
     }
 
     fun testBridgeDispatchBuildsSyncPreviewFromImportedMermaid() {
@@ -1131,6 +1140,72 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         assertTrue(snapshot.syncPreviewItems.any { it.title.contains("OrderDraftDto") })
     }
 
+    fun testBridgeDispatchRequestsReviewGraphFromDiff() {
+        val sourcePath = "src/main/java/com/example/review/OrderService.java"
+        myFixture.addFileToProject(
+            sourcePath,
+            """
+                package com.example.review;
+
+                class OrderService {
+                    void place() {
+                        new OrderRepository().save();
+                    }
+                }
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/review/OrderRepository.java",
+            """
+                package com.example.review;
+
+                class OrderRepository {
+                    void save() {}
+                }
+            """.trimIndent(),
+        )
+        val bridge = GraphEditorBridge(project)
+        val codeGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "class:/$sourcePath",
+                    type = NodeType.CLASS,
+                    title = "OrderService",
+                    location = "$sourcePath:3:1",
+                    signature = "com.example.review.OrderService",
+                ),
+            ),
+        )
+        val mermaid = """
+            graph TD
+            %% LG_NODE SERVICE|nodeId=class:/$sourcePath|nodeType=CLASS|title=OrderService|signature=com.example.review.OrderService|location=$sourcePath%3A4%3A1
+            SERVICE["OrderService"]
+        """.trimIndent()
+
+        bridge.dispatch(GraphEditorMessage.LoadGraph(codeGraph, "review-graph-code"))
+        bridge.dispatch(GraphEditorMessage.ImportMermaid(mermaid))
+        bridge.dispatch(GraphEditorMessage.ShowDiffMode)
+        bridge.dispatch(GraphEditorMessage.RequestIndexedGraph(requestReviewGraphRequest()))
+        waitForReviewGraph()
+
+        val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
+        assertEquals(GraphSceneId.WORKSPACE_REVIEW_GRAPH, snapshot.currentSceneId)
+        assertReviewGraphViewDataContract(snapshot.reviewGraphView, "toolwindow.reviewGraph")
+        assertNotNull(snapshot.reviewGraphView.visibleGraph.nodes.singleOrNull { it.signature == "com.example.review.OrderService" })
+        assertTrue(
+            "Review Graph should include indexed blast-radius relations from the shared ArchitectureGraphIndex",
+            snapshot.reviewGraphView.visibleGraph.edges.any { edge ->
+                edge.metadata["review.edgeRole"] in setOf("UPSTREAM", "DOWNSTREAM", "RELATION", "RELATED_TEST")
+            },
+        )
+        assertTrue(snapshot.reviewGraphView.summary.changedSymbolCount > 0)
+        assertEquals(1, snapshot.reviewGraphView.summary.affectedPackageCount)
+        assertEquals("SUCCESS", snapshot.operationFeedback?.level?.name)
+        assertTrue(snapshot.operationFeedback?.message?.contains("已加载 Review Graph") == true)
+        assertNotNull(currentVisibleGraph(snapshot))
+        assertTrue(currentVisibleGraph(snapshot).nodes.isNotEmpty())
+    }
+
     fun testBridgeDispatchImportsFlowchartMermaidAndShowsDiffMode() {
         val bridge = GraphEditorBridge(project)
         val codeGraph = GraphDocument(
@@ -1161,11 +1236,11 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         assertEquals(mermaid, snapshot.importedMermaid)
         assertTrue(snapshot.diffMode)
         assertNotNull(snapshot.diff)
-        assertTrue(snapshot.visibleGraph?.nodes?.any { it.diff.status == DiffStatus.ONLY_IN_MERMAID } == true)
+        assertTrue(currentVisibleGraph(snapshot).nodes.any { it.diff.status == DiffStatus.ONLY_IN_MERMAID } == true)
         assertTrue("Unexpected issues: ${snapshot.mermaidIssues}", snapshot.mermaidIssues.isEmpty())
     }
 
-    fun testBridgeDispatchRequestsAuditAndConfirmsCandidateChangeIntoDraftWorkbench() {
+    fun testBridgeDispatchRequestsQaAndConfirmsCandidateChangeIntoDraftWorkbench() {
         val bridge = GraphEditorBridge(project)
         val stateService = project.getService(GraphEditorStateService::class.java)
         val codeGraph = GraphDocument(
@@ -1224,13 +1299,13 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         assertEquals(confirmedChangeId, snapshot.draftWorkbenchState.draftChanges.first().sourceChangeId)
         assertEquals(
             listOf("flow-scope:order-service-place-guard"),
-            snapshot.workingGraph?.nodes?.map { it.id },
+            snapshot.workspaceGraph.nodes.map { it.id },
         )
         assertEquals(
             "if (a < 100)",
-            snapshot.workingGraph?.nodes?.singleOrNull()?.title,
+            snapshot.workspaceGraph.nodes.singleOrNull()?.title,
         )
-        assertTrue(snapshot.workingGraph?.edges?.isEmpty() == true)
+        assertTrue(snapshot.workspaceGraph.edges.isEmpty() == true)
         assertNotNull(snapshot.draftWorkbenchState.draftChanges.first().graphPatch)
         assertEquals(true, snapshot.workingGraphDirty)
     }
@@ -1329,7 +1404,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         val confirmedCandidate = snapshot.qaResult?.candidateChanges?.singleOrNull()
         assertEquals(listOf("scope:file-download-if"), confirmedCandidate?.targetNodeIds)
         assertEquals("scope:file-download-if", confirmedCandidate?.graphPatch?.operations?.singleOrNull()?.elementId)
-        val nodesById = snapshot.workingGraph?.nodes?.associateBy { it.id }.orEmpty()
+        val nodesById = snapshot.workspaceGraph.nodes.associateBy { it.id }.orEmpty()
         assertEquals("try", nodesById["scope:file-download-try"]?.title)
         assertEquals(
             "if (Boolean.TRUE.equals(delete) && fileExists(filePath))",
@@ -1379,7 +1454,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
         assertEquals(null, snapshot.diffReviewResult)
         assertNotNull(snapshot.draftPatchPreview)
-        assertEquals(1, snapshot.workingGraph?.nodes?.size)
+        assertEquals(1, snapshot.workspaceGraph.nodes.size)
         assertEquals("undoDraftPatchApply", snapshot.lastMessageType)
     }
 
@@ -1824,7 +1899,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             }
             Thread.sleep(100)
         }
-        fail("Expected audit result with candidate changes or investigation leads to be available")
+        fail("Expected QA result with candidate changes or investigation threads to be available")
     }
 
     private fun waitForDiffReviewResultAndDraftPreview() {
@@ -1839,11 +1914,27 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         fail("Expected diff review result and draft patch preview to be available")
     }
 
+    private fun waitForReviewGraph() {
+        repeat(80) {
+            PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+            val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
+            if (
+                snapshot.currentSceneId == GraphSceneId.WORKSPACE_REVIEW_GRAPH &&
+                snapshot.reviewGraphView.visibleGraph.nodes.isNotEmpty()
+            ) {
+                return
+            }
+            Thread.sleep(100)
+        }
+        val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
+        fail("Expected Review Graph to be loaded, last feedback=${snapshot.operationFeedback}")
+    }
+
     private fun waitForDraftGraphNodeCount(expectedNodeCount: Int) {
         repeat(50) {
             PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
             val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
-            if (snapshot.workingGraph?.nodes?.size == expectedNodeCount) {
+            if (snapshot.workspaceGraph.nodes.size == expectedNodeCount) {
                 return
             }
             Thread.sleep(100)
@@ -1862,7 +1953,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             }
             Thread.sleep(100)
         }
-        fail("Expected confirmed audit candidate '$changeId' to be written into draft workbench state")
+        fail("Expected confirmed QA candidate '$changeId' to be written into draft workbench state")
     }
 
     private fun waitForDraftUndoState() {
@@ -1871,7 +1962,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
             if (
                 snapshot.lastMessageType == "undoDraftPatchApply" &&
-                snapshot.workingGraph?.nodes?.size == 1 &&
+                snapshot.workspaceGraph.nodes.size == 1 &&
                 snapshot.draftPatchPreview != null
             ) {
                 return
@@ -2016,20 +2107,6 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
 private fun GraphDocument.nonEmptyOrNull(): GraphDocument? {
     return takeIf { graph -> graph.nodes.isNotEmpty() || graph.edges.isNotEmpty() || graph.patch != null }
 }
-
-private val GraphEditorStateSnapshot.visibleGraph: GraphDocument?
-    get() = when (currentSceneId) {
-        GraphSceneId.WORKSPACE_FACT -> factGraphView.visibleGraph
-        GraphSceneId.WORKSPACE_FLOWCHART -> flowchartView.visibleGraph
-        GraphSceneId.WORKSPACE_RESOURCE_RELATION -> resourceRelationView.visibleGraph
-        GraphSceneId.DIFF -> diffGraph
-    }?.nonEmptyOrNull()
-
-private val GraphEditorStateSnapshot.workingGraph: GraphDocument?
-    get() = workspaceGraph.nonEmptyOrNull()
-
-private val GraphEditorStateSnapshot.referenceFactGraph: GraphDocument?
-    get() = semanticFactGraph.nonEmptyOrNull()
 
 private val GraphEditorStateSnapshot.selectedNodeId: String?
     get() = currentSceneState().selectedNodeId

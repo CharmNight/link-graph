@@ -10,7 +10,6 @@ import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.llm.SourceSnippetContext
 import com.charmnight.linkgraph.llm.artifact.ArtifactType
 import com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore
-import com.charmnight.linkgraph.llm.runtime.AgentRunFailureReason
 import com.charmnight.linkgraph.llm.runtime.AgentRunCoordinator
 import com.charmnight.linkgraph.llm.runtime.AgentRuntimeContext
 import com.charmnight.linkgraph.llm.runtime.RunBudget
@@ -34,6 +33,7 @@ import com.charmnight.linkgraph.ui.view.GraphProjectionNodeMapping
 import com.charmnight.linkgraph.workbench.QaConversationMessage
 import com.charmnight.linkgraph.workbench.QaConversationSession
 import com.charmnight.linkgraph.workbench.QaMessageRole
+import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 import com.charmnight.linkgraph.workbench.InvestigationThread
@@ -48,6 +48,32 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class QaCapabilityTest : BasePlatformTestCase() {
+    fun testReviewModesAllowReviewGraphTools() {
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            qaExecutor = { input, _, _ ->
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "ok",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+        val baseInput = QaCapabilityInput(
+            question = "解释链路",
+            qaContext = GraphQaContext(),
+        )
+
+        assertFalse("get_blast_radius" in capability.allowedTools(baseInput))
+
+        val reviewTools = capability.allowedTools(baseInput.copy(effectiveMode = QaMode.REVIEW))
+        assertTrue("get_changed_symbols" in reviewTools)
+        assertTrue("get_blast_radius" in reviewTools)
+        assertTrue("find_related_tests" in reviewTools)
+        assertTrue("build_review_evidence_bundle" in reviewTools)
+    }
+
     fun testBuildsQaInitialStateFromQuestionAndUsesQaCapabilityId() {
         val capability = QaCapability(
             defaultBudget = RunBudget(),
@@ -77,6 +103,36 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertEquals("qa", capability.capabilityId)
         assertEquals("解释上传链路", state.userGoal)
         assertEquals("qa", state.capabilityId)
+    }
+
+    fun testRuntimeBudgetUsesConfiguredQaTimeout() {
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            qaExecutor = { input, _, _ ->
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "ok",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+
+        val state = capability.buildInitialState(
+            input = QaCapabilityInput(
+                question = "解释链路",
+                qaContext = GraphQaContext(),
+                settings = LinkGraphSettingsState(timeoutSeconds = 3_600),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = { testSnapshot().toToolGraphSnapshot() },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertEquals(3_600, state.budget.maxRuntimeSeconds)
+        assertEquals(10, state.budget.maxSteps)
     }
 
     fun testPreservesFallbackWarningsWhenQaExecutorFallsBack() {
@@ -109,7 +165,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertTrue(result.warnings.single().contains("已回退"))
     }
 
-    fun testRuntimeDeadlineCapsQaExecutorSettingsTimeout() {
+    fun testConfiguredRuntimeTimeoutFlowsToQaExecutorSettings() {
         var capturedTimeoutSeconds: Int? = null
         val graph = GraphDocument(
             nodes = listOf(
@@ -122,7 +178,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         )
         val coordinator = AgentRunCoordinator()
         val capability = QaCapability(
-            defaultBudget = RunBudget(maxRuntimeSeconds = 5),
+            defaultBudget = RunBudget(),
             qaExecutor = { input, _, _ ->
                 capturedTimeoutSeconds = input.settings.sanitized().timeoutSeconds
                 GraphPatchResult(
@@ -160,7 +216,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         )
 
         assertNotNull(capturedTimeoutSeconds)
-        assertTrue(capturedTimeoutSeconds!! <= 5)
+        assertEquals(300, capturedTimeoutSeconds)
     }
 
     fun testUsesGraphToolBeforeRunningQaExecutor() {
@@ -824,7 +880,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         } == true)
     }
 
-    fun testStopsBeforeQaExecutionWhenCodeReadExceedsBudget() {
+    fun testContinuesQaWhenCodeReadBudgetIsUnavailable() {
         val sourceFile = Path.of(requireNotNull(project.basePath))
             .resolve("src/main/java/com/example/QaCapabilityBudgetGuard.java")
         Files.createDirectories(sourceFile.parent)
@@ -846,7 +902,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
-                    answer = "不应该执行到这里。",
+                    answer = "按图证据继续问答。",
                     promptPreview = "prompt",
                 )
             },
@@ -885,22 +941,23 @@ class QaCapabilityTest : BasePlatformTestCase() {
             ),
         )
 
-        assertFalse(executorInvoked)
-        assertNull(result.output)
-        assertEquals(AgentRunFailureReason.MAX_FILES_READ_EXCEEDED, result.finalState.failureReason)
+        assertTrue(executorInvoked)
+        assertEquals("按图证据继续问答。", result.output?.answer)
+        assertTrue(result.output?.sourceContext?.isEmpty() == true)
+        assertNull(result.finalState.failureReason)
     }
 
-    fun testStopsReadingAdditionalFilesWithinSameQaStepAfterBudgetIsExhausted() {
+    fun testContinuesQaWithPartialEvidenceAfterFileBudgetIsExhausted() {
         var readCount = 0
-        var executorInvoked = false
+        var capturedSourceContext: List<SourceSnippetContext> = emptyList()
         val capability = QaCapability(
             defaultBudget = RunBudget(maxFilesRead = 1),
             qaExecutor = { input, _, _ ->
-                executorInvoked = true
+                capturedSourceContext = input.qaContext.sourceContext
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
-                    answer = "不应该执行到这里。",
+                    answer = "已使用部分源码证据继续问答。",
                     promptPreview = "prompt",
                 )
             },
@@ -1059,23 +1116,23 @@ class QaCapabilityTest : BasePlatformTestCase() {
             ),
         )
 
-        assertFalse(executorInvoked)
         assertEquals(1, readCount)
-        assertNull(result.output)
-        assertEquals(AgentRunFailureReason.MAX_FILES_READ_EXCEEDED, result.finalState.failureReason)
+        assertEquals("已使用部分源码证据继续问答。", result.output?.answer)
+        assertEquals(1, capturedSourceContext.size)
+        assertNull(result.finalState.failureReason)
     }
 
-    fun testStopsReadingAdditionalSnippetsWithinSameQaStepAfterSnippetBudgetIsExhausted() {
+    fun testContinuesQaWithPartialEvidenceAfterSnippetBudgetIsExhausted() {
         var readCount = 0
-        var executorInvoked = false
+        var capturedSourceContext: List<SourceSnippetContext> = emptyList()
         val capability = QaCapability(
             defaultBudget = RunBudget(maxFilesRead = 5, maxSnippets = 1),
             qaExecutor = { input, _, _ ->
-                executorInvoked = true
+                capturedSourceContext = input.qaContext.sourceContext
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
-                    answer = "不应该执行到这里。",
+                    answer = "已使用部分片段继续问答。",
                     promptPreview = "prompt",
                 )
             },
@@ -1217,22 +1274,22 @@ class QaCapabilityTest : BasePlatformTestCase() {
             ),
         )
 
-        assertFalse(executorInvoked)
         assertEquals(1, readCount)
-        assertNull(result.output)
-        assertEquals(AgentRunFailureReason.MAX_SNIPPETS_EXCEEDED, result.finalState.failureReason)
+        assertEquals("已使用部分片段继续问答。", result.output?.answer)
+        assertEquals(1, capturedSourceContext.size)
+        assertNull(result.finalState.failureReason)
     }
 
-    fun testStopsBeforeQaExecutionWhenSingleSnippetExceedsLineBudget() {
-        var executorInvoked = false
+    fun testContinuesQaWhenSingleSnippetExceedsLineBudget() {
+        var capturedSourceContext: List<SourceSnippetContext> = emptyList()
         val capability = QaCapability(
             defaultBudget = RunBudget(maxSnippetLines = 1),
             qaExecutor = { input, _, _ ->
-                executorInvoked = true
+                capturedSourceContext = input.qaContext.sourceContext
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
-                    answer = "不应该执行到这里。",
+                    answer = "源码片段过大，按图证据继续问答。",
                     promptPreview = "prompt",
                 )
             },
@@ -1352,9 +1409,131 @@ class QaCapabilityTest : BasePlatformTestCase() {
             ),
         )
 
-        assertFalse(executorInvoked)
-        assertNull(result.output)
-        assertEquals(AgentRunFailureReason.MAX_SNIPPET_LINES_EXCEEDED, result.finalState.failureReason)
+        assertEquals("源码片段过大，按图证据继续问答。", result.output?.answer)
+        assertTrue(capturedSourceContext.isEmpty())
+        assertTrue(result.output?.warnings?.any { warning ->
+            warning.contains("没有读取到可送入 prompt")
+        } == true)
+        assertNull(result.finalState.failureReason)
+    }
+
+    fun testWholeGraphQaSkipsAutomaticResourceEvidenceTargets() {
+        var capturedSourceContext: List<SourceSnippetContext>? = null
+        var readInvoked = false
+        val resourceGraph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "resource:linkgraph-xml",
+                    type = NodeType.RESOURCE,
+                    title = "linkgraph.xml",
+                    metadata = mapOf(
+                        "source.filePath" to "build/idea-sandbox/config/workspace/linkgraph.xml",
+                        "source.startLine" to "1",
+                        "source.endLine" to "120",
+                    ),
+                ),
+            ),
+        )
+        val capability = QaCapability(
+            defaultBudget = RunBudget(maxSnippetLines = 200),
+            qaExecutor = { input, _, _ ->
+                capturedSourceContext = input.qaContext.sourceContext
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "按图摘要解释项目结构。",
+                    promptPreview = "prompt",
+                )
+            },
+            toolRegistry = AgentToolRegistry(
+                listOf(
+                    object : AgentTool {
+                        override val name: String = "get_draft_workbench"
+                        override val description: String = "fake draft workbench reader"
+
+                        override fun invoke(input: Map<String, Any?>, context: ToolExecutionContext): ToolResult {
+                            return ToolResult(toolName = name, payload = mapOf("candidateCount" to 0, "confirmedCount" to 0))
+                        }
+                    },
+                    object : AgentTool {
+                        override val name: String = "get_selected_scope"
+                        override val description: String = "fake selected scope reader"
+
+                        override fun invoke(input: Map<String, Any?>, context: ToolExecutionContext): ToolResult {
+                            return ToolResult(
+                                toolName = name,
+                                payload = mapOf("selectedNodeIds" to emptyList<String>()),
+                            )
+                        }
+                    },
+                    object : AgentTool {
+                        override val name: String = "get_current_graph"
+                        override val description: String = "fake graph reader"
+
+                        override fun invoke(input: Map<String, Any?>, context: ToolExecutionContext): ToolResult {
+                            return ToolResult(
+                                toolName = name,
+                                payload = mapOf(
+                                    "graph" to resourceGraph,
+                                    "selectedNodeIds" to emptyList<String>(),
+                                ),
+                            )
+                        }
+                    },
+                    object : AgentTool {
+                        override val name: String = "resolve_anchor"
+                        override val description: String = "fake anchor resolver"
+
+                        override fun invoke(input: Map<String, Any?>, context: ToolExecutionContext): ToolResult {
+                            val nodeId = input["nodeId"]?.toString()
+                            return ToolResult(
+                                toolName = name,
+                                payload = mapOf(
+                                    "node" to resourceGraph.nodes.firstOrNull { node -> node.id == nodeId },
+                                ),
+                            )
+                        }
+                    },
+                    object : AgentTool {
+                        override val name: String = "read_source_snippet"
+                        override val description: String = "fake source snippet reader"
+
+                        override fun invoke(input: Map<String, Any?>, context: ToolExecutionContext): ToolResult {
+                            readInvoked = true
+                            return ToolResult(toolName = name, payload = mapOf("snippet" to "<component name=\"LinkGraph\" />"))
+                        }
+                    },
+                    object : AgentTool {
+                        override val name: String = "read_symbol"
+                        override val description: String = "unused fake symbol reader"
+
+                        override fun invoke(input: Map<String, Any?>, context: ToolExecutionContext): ToolResult {
+                            return ToolResult(toolName = name, payload = emptyMap())
+                        }
+                    },
+                ),
+            ),
+        )
+
+        val result = AgentRunCoordinator().run(
+            capability = capability,
+            input = QaCapabilityInput(
+                question = "介绍下这个项目结构",
+                qaContext = GraphQaContext(),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = {
+                    testSnapshot(workingGraph = resourceGraph).toToolGraphSnapshot()
+                },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertEquals("按图摘要解释项目结构。", result.output?.answer)
+        assertFalse(readInvoked)
+        assertEquals(emptyList<SourceSnippetContext>(), capturedSourceContext)
+        assertEquals("skip-code-evidence-read", result.finalState.stepRecords[2].summary)
     }
 
     fun testPersistsCandidateDraftArtifactsFromQaResult() {
@@ -1484,7 +1663,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertNotNull(artifactStore.get("candidate-current-change"))
     }
 
-    fun testPreloadedSourceContextStillConsumesRuntimeBudget() {
+    fun testPreloadedSourceContextBudgetDoesNotFailQa() {
         var executorInvoked = false
         val capability = QaCapability(
             defaultBudget = RunBudget(maxFilesRead = 0),
@@ -1493,7 +1672,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
                 GraphPatchResult(
                     source = LlmResultSource.LOCAL_RULE,
                     question = input.question,
-                    answer = "不应该执行到这里。",
+                    answer = "预读证据预算不足，仍继续问答。",
                     promptPreview = "prompt",
                 )
             },
@@ -1534,12 +1713,12 @@ class QaCapabilityTest : BasePlatformTestCase() {
             ),
         )
 
-        assertFalse(executorInvoked)
-        assertNull(result.output)
-        assertEquals(AgentRunFailureReason.MAX_FILES_READ_EXCEEDED, result.finalState.failureReason)
+        assertTrue(executorInvoked)
+        assertEquals("预读证据预算不足，仍继续问答。", result.output?.answer)
+        assertNull(result.finalState.failureReason)
     }
 
-    fun testRebuildsQaInputFromRuntimeArtifactsWithoutOverwritingGraphContext() {
+    fun testRebuildsQaInputFromRuntimeArtifactsAndUsesRuntimeEditableGraph() {
         val sourceFile = Path.of(requireNotNull(project.basePath))
             .resolve("src/main/java/com/example/QaRuntimeArtifactsController.java")
         Files.createDirectories(sourceFile.parent)
@@ -1666,7 +1845,7 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertEquals("runtime qa", result.output?.answer)
         assertEquals(listOf("method:upload-file"), capturedQaContext?.selectedNodeIds)
         assertEquals(staleGraph.nodes.map { it.id }.toSet(), capturedQaContext?.factGraph?.nodes?.map { it.id }?.toSet())
-        assertEquals(staleGraph.nodes.map { it.id }.toSet(), capturedQaContext?.editableGraph?.nodes?.map { it.id }?.toSet())
+        assertEquals(runtimeGraph.nodes.map { it.id }.toSet(), capturedQaContext?.editableGraph?.nodes?.map { it.id }?.toSet())
         assertEquals(sourceFile.toString(), capturedQaContext?.sourceContext?.singleOrNull()?.filePath)
         assertTrue(capturedQaContext?.sourceContext?.singleOrNull()?.snippet?.contains("fallback") == true)
         assertEquals(1, capturedSession?.messages?.size)

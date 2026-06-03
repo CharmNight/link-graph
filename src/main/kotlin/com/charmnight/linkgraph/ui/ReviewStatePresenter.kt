@@ -1,21 +1,21 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
-import com.charmnight.linkgraph.application.port.ApplicationRuntimeArtifactSummary
-import com.charmnight.linkgraph.application.port.QaCompletedPresentation
-import com.charmnight.linkgraph.application.port.QaFailedPresentation
-import com.charmnight.linkgraph.application.port.BeautificationCompletedPresentation
-import com.charmnight.linkgraph.application.port.BeautificationFailedPresentation
-import com.charmnight.linkgraph.application.port.DiffReviewCompletedPresentation
-import com.charmnight.linkgraph.application.port.DiffReviewFailedPresentation
-import com.charmnight.linkgraph.application.port.ReviewRequestScene
-import com.charmnight.linkgraph.application.port.ReviewRequestStartedPresentation
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.ApplicationRuntimeArtifactSummary
+import com.charmnight.linkgraph.application.result.QaCompletedResult
+import com.charmnight.linkgraph.application.result.QaFailedResult
+import com.charmnight.linkgraph.application.result.BeautificationCompletedResult
+import com.charmnight.linkgraph.application.result.BeautificationFailedResult
+import com.charmnight.linkgraph.application.result.DiffReviewCompletedResult
+import com.charmnight.linkgraph.application.result.DiffReviewFailedResult
+import com.charmnight.linkgraph.application.result.ReviewRequestScene
+import com.charmnight.linkgraph.application.result.ReviewRequestStartedResult
 
 class ReviewStatePresenter(
     private val stateService: GraphEditorStateService,
     private val requestBrowserSync: () -> Unit = {},
 ) {
-    fun presentQaCompleted(presentation: QaCompletedPresentation) {
+    fun presentQaCompleted(presentation: QaCompletedResult) {
         stateService.workbench.markRuntimeArtifactSummaries("qa", presentation.runtimeArtifacts.toUiRuntimeArtifacts())
         stateService.asyncRequests.markQaResult(
             presentation.result,
@@ -24,11 +24,11 @@ class ReviewStatePresenter(
         )
         stateService.workbench.markDraftValidationState(presentation.draftValidationState)
         stateService.workbench.markCodeEligibilityDecision(presentation.codeEligibilityDecision)
-        markOptionalFeedback(presentation.feedbackLevel, presentation.feedbackMessage)
+        markOptionalFeedback(presentation.feedbackLevel, presentation.statusMessage)
         requestBrowserSync()
     }
 
-    fun presentRequestStarted(presentation: ReviewRequestStartedPresentation) {
+    fun presentRequestStarted(presentation: ReviewRequestStartedResult) {
         when (presentation.scene) {
             ReviewRequestScene.QA -> {
                 stateService.asyncRequests.beginQaRequest(
@@ -44,7 +44,7 @@ class ReviewStatePresenter(
         }
         stateService.workbench.markOperationFeedback(
             OperationFeedbackLevel.INFO,
-            presentation.feedbackMessage,
+            presentation.statusMessage,
         )
         requestBrowserSync()
     }
@@ -81,7 +81,7 @@ class ReviewStatePresenter(
         requestBrowserSync()
     }
 
-    fun presentQaFailed(presentation: QaFailedPresentation) {
+    fun presentQaFailed(presentation: QaFailedResult) {
         stateService.workbench.markRuntimeArtifactSummaries("qa", presentation.runtimeArtifacts.toUiRuntimeArtifacts())
         stateService.asyncRequests.markQaRequestFailed(
             presentation.message,
@@ -91,40 +91,40 @@ class ReviewStatePresenter(
         stateService.workbench.markOperationFeedback(
             presentation.feedbackLevel.toOperationFeedbackLevel(),
             presentation.message,
-            preserveLastMessageType = presentation.preserveLastMessageType,
+            preservePreviousStatusKind = presentation.preservePreviousStatusKind,
         )
         requestBrowserSync()
     }
 
-    fun presentDiffReviewCompleted(presentation: DiffReviewCompletedPresentation) {
+    fun presentDiffReviewCompleted(presentation: DiffReviewCompletedResult) {
         stateService.asyncRequests.markDiffReviewResult(presentation.result, presentation.requestState)
         presentation.result.patch?.let(stateService.workbench::markDraftPatchPreview)
-        markOptionalFeedback(presentation.feedbackLevel, presentation.feedbackMessage)
+        markOptionalFeedback(presentation.feedbackLevel, presentation.statusMessage)
         requestBrowserSync()
     }
 
-    fun presentDiffReviewFailed(presentation: DiffReviewFailedPresentation) {
+    fun presentDiffReviewFailed(presentation: DiffReviewFailedResult) {
         stateService.asyncRequests.markDiffReviewRequestFailed(presentation.message, presentation.requestState)
         stateService.workbench.markOperationFeedback(
             presentation.feedbackLevel.toOperationFeedbackLevel(),
             presentation.message,
-            preserveLastMessageType = presentation.preserveLastMessageType,
+            preservePreviousStatusKind = presentation.preservePreviousStatusKind,
         )
         requestBrowserSync()
     }
 
-    fun presentBeautificationCompleted(presentation: BeautificationCompletedPresentation) {
+    fun presentBeautificationCompleted(presentation: BeautificationCompletedResult) {
         stateService.asyncRequests.markGraphBeautificationResult(presentation.result, presentation.requestState)
-        markOptionalFeedback(presentation.feedbackLevel, presentation.feedbackMessage)
+        markOptionalFeedback(presentation.feedbackLevel, presentation.statusMessage)
         requestBrowserSync()
     }
 
-    fun presentBeautificationFailed(presentation: BeautificationFailedPresentation) {
+    fun presentBeautificationFailed(presentation: BeautificationFailedResult) {
         stateService.asyncRequests.markGraphBeautificationRequestFailed(presentation.message, presentation.requestState)
         stateService.workbench.markOperationFeedback(
             presentation.feedbackLevel.toOperationFeedbackLevel(),
             presentation.message,
-            preserveLastMessageType = presentation.preserveLastMessageType,
+            preservePreviousStatusKind = presentation.preservePreviousStatusKind,
         )
         requestBrowserSync()
     }
@@ -134,7 +134,7 @@ class ReviewStatePresenter(
         message: String?,
     ) {
         if (level != null && message != null) {
-            stateService.workbench.markOperationFeedback(level.toOperationFeedbackLevel(), message, preserveLastMessageType = true)
+            stateService.workbench.markOperationFeedback(level.toOperationFeedbackLevel(), message, preservePreviousStatusKind = true)
         }
     }
 }

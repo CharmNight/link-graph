@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.application.model.PlanningInput
 import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
 import com.charmnight.linkgraph.application.model.currentVisibleGraph
 import com.charmnight.linkgraph.application.model.currentWorkingGraph
+import com.charmnight.linkgraph.application.model.toAnalysisDisplayMode
 import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.codegen.ProjectPathNormalizer
 import com.charmnight.linkgraph.llm.GenerationContext
@@ -17,6 +18,7 @@ import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewPlanner
@@ -106,38 +108,53 @@ internal class PlanningContextFactory(
         goal: String,
         preferredStyle: String?,
         explanationFocus: String?,
+        focusNodeId: String? = null,
         followUp: GraphBeautificationFollowUpContext?,
         granularity: StepGranularity,
     ): GraphBeautificationContext {
-        val visibleGraph = currentVisibleGraph(snapshot)
-        val workingGraph = currentWorkingGraph(snapshot)
-        val fullGraph = if (snapshot.workingGraphDirty) {
-            workingGraph
-        } else {
-            snapshot.semanticFactGraph.takeIf { graph -> graph.nodes.isNotEmpty() || graph.edges.isNotEmpty() } ?: workingGraph
+        val requestedFocusNodeId = focusNodeId?.trim()?.takeIf(String::isNotBlank)
+        val graphContext = buildInteractiveGraphContext(
+            snapshot = snapshot,
+            focusNodeIds = requestedFocusNodeId?.let(::listOf).orEmpty(),
+        )
+        val anchorNodeId = resolveBeautificationAnchorNodeId(
+            snapshot = snapshot,
+            visibleGraph = graphContext.presentationGraph,
+            requestedFocusNodeId = requestedFocusNodeId,
+        )
+        val selectedNodeIds = when {
+            requestedFocusNodeId != null && graphContext.presentationGraph.nodes.any { node -> node.id == requestedFocusNodeId } ->
+                listOf(requestedFocusNodeId)
+            else -> snapshot.selectedNodeId?.let(::listOf).orEmpty()
         }
-        val anchorNodeId = resolveBeautificationAnchorNodeId(snapshot, visibleGraph)
-        val selectedNodeIds = snapshot.selectedNodeId?.let(::listOf).orEmpty()
         val (hiddenCurrentMethodNodeCount, hiddenCrossMethodNodeCount) = computeBeautificationHiddenCounts(
             snapshot = snapshot,
-            visibleGraph = visibleGraph,
-            fullGraph = fullGraph,
+            visibleGraph = graphContext.presentationGraph,
+            fullGraph = graphContext.fullGraph,
             anchorNodeId = anchorNodeId,
         )
         return GraphBeautificationContext(
             presentationContext = GraphPresentationContext(
-                graph = visibleGraph,
-                fullGraph = fullGraph,
+                graph = graphContext.presentationGraph,
+                fullGraph = graphContext.fullGraph,
                 anchorNodeId = anchorNodeId,
                 selectedNodeIds = selectedNodeIds,
                 hiddenCurrentMethodNodeCount = hiddenCurrentMethodNodeCount,
                 hiddenCrossMethodNodeCount = hiddenCrossMethodNodeCount,
             ),
             sourceContext = buildSourceSnippetContexts(
-                visibleGraph = visibleGraph,
-                fullGraph = fullGraph,
+                visibleGraph = graphContext.presentationGraph,
+                fullGraph = graphContext.fullGraph,
                 anchorNodeId = anchorNodeId,
                 selectedNodeIds = selectedNodeIds,
+                limit = MAX_BEAUTIFICATION_SOURCE_SNIPPETS,
+            ),
+            stepSourceContext = buildSourceSnippetContexts(
+                visibleGraph = graphContext.presentationGraph,
+                fullGraph = graphContext.fullGraph,
+                anchorNodeId = anchorNodeId,
+                selectedNodeIds = selectedNodeIds,
+                limit = null,
             ),
             userGoal = goal,
             preferredStyle = preferredStyle,
@@ -145,6 +162,185 @@ internal class PlanningContextFactory(
             followUp = followUp,
             granularity = granularity,
         )
+    }
+
+    private fun buildInteractiveGraphContext(
+        snapshot: WorkflowEditorSnapshot,
+        focusNodeIds: List<String> = emptyList(),
+    ): InteractiveGraphContext {
+        val workingGraph = currentWorkingGraph(snapshot)
+        val currentSceneFullGraph = currentSceneFullGraph(snapshot)
+        val fullGraph = if (snapshot.workingGraphDirty) {
+            workingGraph
+        } else {
+            currentSceneFullGraph
+                ?: snapshot.semanticFactGraph.takeIf(GraphDocument::hasGraphContent)
+                ?: workingGraph
+        }
+        val normalizedFocusNodeIds = focusNodeIds
+            .mapNotNull { nodeId -> nodeId.trim().takeIf(String::isNotBlank) }
+            .distinct()
+        val visibleGraph = currentVisibleGraph(snapshot)
+            .takeIf(GraphDocument::hasGraphContent)
+            ?: workingGraph
+        val presentationGraph = includeVisibleInvocationExpansions(
+            visibleGraph = visibleGraph,
+            fullGraph = fullGraph,
+        ).includeRequestedFocusNodes(
+            fullGraph = fullGraph,
+            focusNodeIds = normalizedFocusNodeIds,
+        )
+        return InteractiveGraphContext(
+            presentationGraph = presentationGraph,
+            fullGraph = fullGraph,
+            workingGraph = workingGraph,
+        )
+    }
+
+    /**
+     * 前端流程图会把当前方法的调用展开节点叠加到锚点作用域里；讲解请求没有前端本地作用域，
+     * 因此这里用展开批次元数据把同一批节点和边补回 prompt 图。
+     */
+    private fun includeVisibleInvocationExpansions(
+        visibleGraph: GraphDocument,
+        fullGraph: GraphDocument,
+    ): GraphDocument {
+        if (visibleGraph.nodes.isEmpty() || fullGraph.nodes.isEmpty()) {
+            return visibleGraph
+        }
+        val visibleCanonicalNodeIds = visibleGraph.nodes
+            .flatMapTo(linkedSetOf()) { node -> listOf(node.id) + projectedAliasNodeIds(node) }
+        val expansionIds = linkedSetOf<String>()
+        val expandedNodeIds = linkedSetOf<String>()
+        fullGraph.nodes.forEach { node ->
+            if (isExpansionFromVisibleInvocation(node.metadata, visibleCanonicalNodeIds)) {
+                expandedNodeIds += node.id
+                node.metadata[INVOCATION_EXPANSION_ID_KEY]
+                    ?.trim()
+                    ?.takeIf(String::isNotBlank)
+                    ?.let(expansionIds::add)
+            }
+        }
+        fullGraph.edges.forEach { edge ->
+            if (isExpansionFromVisibleInvocation(edge.metadata, visibleCanonicalNodeIds)) {
+                expandedNodeIds += edge.fromNodeId
+                expandedNodeIds += edge.toNodeId
+                edge.metadata[INVOCATION_EXPANSION_ID_KEY]
+                    ?.trim()
+                    ?.takeIf(String::isNotBlank)
+                    ?.let(expansionIds::add)
+            }
+        }
+        if (expansionIds.isNotEmpty()) {
+            fullGraph.nodes
+                .filter { node -> node.metadata[INVOCATION_EXPANSION_ID_KEY]?.trim() in expansionIds }
+                .mapTo(expandedNodeIds) { node -> node.id }
+            fullGraph.edges
+                .filter { edge -> edge.metadata[INVOCATION_EXPANSION_ID_KEY]?.trim() in expansionIds }
+                .forEach { edge ->
+                    expandedNodeIds += edge.fromNodeId
+                    expandedNodeIds += edge.toNodeId
+                }
+        }
+        expandedNodeIds.removeAll(visibleGraph.nodes.mapTo(linkedSetOf()) { it.id })
+        if (expandedNodeIds.isEmpty()) {
+            return visibleGraph
+        }
+        val visibleNodeIds = visibleGraph.nodes.mapTo(linkedSetOf()) { it.id }
+        val presentationNodeIds = linkedSetOf<String>().apply {
+            addAll(visibleNodeIds)
+            addAll(expandedNodeIds)
+        }
+        val visibleEdgeIds = visibleGraph.edges.mapTo(linkedSetOf()) { it.id }
+        val extraNodes = fullGraph.nodes.filter { node -> node.id in expandedNodeIds }
+        val extraEdges = fullGraph.edges.filter { edge ->
+            edge.id !in visibleEdgeIds &&
+                edge.fromNodeId in presentationNodeIds &&
+                edge.toNodeId in presentationNodeIds &&
+                (
+                    edge.fromNodeId in expandedNodeIds ||
+                        edge.toNodeId in expandedNodeIds ||
+                        edge.metadata[INVOCATION_EXPANSION_ID_KEY]?.trim() in expansionIds ||
+                        isExpansionFromVisibleInvocation(edge.metadata, visibleCanonicalNodeIds)
+                    )
+        }
+        return visibleGraph.copy(
+            nodes = visibleGraph.nodes + extraNodes,
+            edges = visibleGraph.edges + extraEdges,
+        )
+    }
+
+    private fun GraphDocument.includeRequestedFocusNodes(
+        fullGraph: GraphDocument,
+        focusNodeIds: List<String>,
+    ): GraphDocument {
+        if (focusNodeIds.isEmpty()) {
+            return this
+        }
+        val visibleNodeIds = nodes.mapTo(linkedSetOf()) { node -> node.id }
+        val missingFocusNodes = focusNodeIds
+            .filterNot { nodeId -> nodeId in visibleNodeIds }
+            .mapNotNull { nodeId -> fullGraph.nodes.firstOrNull { node -> node.id == nodeId } }
+        if (missingFocusNodes.isEmpty()) {
+            return this
+        }
+        val expansionIds = missingFocusNodes
+            .mapNotNull { node -> node.metadata[INVOCATION_EXPANSION_ID_KEY]?.trim()?.takeIf(String::isNotBlank) }
+            .toCollection(linkedSetOf())
+        val extraNodeIds = missingFocusNodes.mapTo(linkedSetOf()) { node -> node.id }
+        if (expansionIds.isNotEmpty()) {
+            fullGraph.nodes
+                .filter { node -> node.metadata[INVOCATION_EXPANSION_ID_KEY]?.trim() in expansionIds }
+                .mapTo(extraNodeIds) { node -> node.id }
+            fullGraph.edges
+                .filter { edge -> edge.metadata[INVOCATION_EXPANSION_ID_KEY]?.trim() in expansionIds }
+                .forEach { edge ->
+                    extraNodeIds += edge.fromNodeId
+                    extraNodeIds += edge.toNodeId
+                }
+        }
+        extraNodeIds.removeAll(visibleNodeIds)
+        if (extraNodeIds.isEmpty()) {
+            return this
+        }
+        val presentationNodeIds = linkedSetOf<String>().apply {
+            addAll(visibleNodeIds)
+            addAll(extraNodeIds)
+        }
+        val visibleEdgeIds = edges.mapTo(linkedSetOf()) { edge -> edge.id }
+        val extraNodes = fullGraph.nodes.filter { node -> node.id in extraNodeIds }
+        val extraEdges = fullGraph.edges.filter { edge ->
+            edge.id !in visibleEdgeIds &&
+                edge.fromNodeId in presentationNodeIds &&
+                edge.toNodeId in presentationNodeIds &&
+                (
+                    edge.fromNodeId in extraNodeIds ||
+                        edge.toNodeId in extraNodeIds ||
+                        edge.metadata[INVOCATION_EXPANSION_ID_KEY]?.trim() in expansionIds
+                    )
+        }
+        return copy(
+            nodes = nodes + extraNodes,
+            edges = edges + extraEdges,
+        )
+    }
+
+    private fun isExpansionFromVisibleInvocation(
+        metadata: Map<String, String>,
+        visibleCanonicalNodeIds: Set<String>,
+    ): Boolean {
+        val sourceInvocationNodeId = metadata[INVOCATION_EXPANSION_SOURCE_NODE_ID_KEY]
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+            ?: return false
+        return sourceInvocationNodeId in visibleCanonicalNodeIds
+    }
+
+    private fun projectedAliasNodeIds(node: GraphNode): List<String> {
+        return node.metadata[FLOWCHART_ALIAS_NODE_IDS_KEY]
+            ?.split(',')
+            ?.mapNotNull { nodeId -> nodeId.trim().takeIf(String::isNotBlank) }
+            .orEmpty()
     }
 
     /**
@@ -155,24 +351,75 @@ internal class PlanningContextFactory(
         selectedNodeIds: List<String>,
         collectSourceEvidence: Boolean = true,
     ): QaGraphs {
-        val workingGraph = currentWorkingGraph(snapshot)
-        val backgroundFactGraph = snapshot.semanticFactGraph
-            .takeIf { graph -> graph.nodes.isNotEmpty() || graph.edges.isNotEmpty() }
-            ?: workingGraph
+        val graphContext = buildInteractiveGraphContext(
+            snapshot = snapshot,
+            focusNodeIds = selectedNodeIds,
+        )
+        val factGraph = qaFactGraph(snapshot, graphContext)
+        val editableGraph = qaEditableGraph(snapshot, graphContext)
         val evidenceCollection = if (collectSourceEvidence) {
             qaEvidenceCollector.collect(
-                graph = mergeQaEvidenceGraph(backgroundFactGraph, workingGraph),
+                graph = mergeQaEvidenceGraph(graphContext.presentationGraph, editableGraph),
                 selectedNodeIds = selectedNodeIds,
             )
         } else {
             QaEvidenceCollection()
         }
         return QaGraphs(
-            factGraph = backgroundFactGraph,
-            editableGraph = workingGraph,
+            factGraph = factGraph,
+            editableGraph = editableGraph,
             sourceContext = evidenceCollection.sourceContext,
             evidenceTrace = evidenceCollection.evidenceTrace,
         )
+    }
+
+    private fun currentSceneFullGraph(snapshot: WorkflowEditorSnapshot): GraphDocument? {
+        val graph = when (snapshot.currentSceneId.toAnalysisDisplayMode()) {
+            AnalysisDisplayMode.FACT_GRAPH -> snapshot.factGraphView.fullGraph
+            AnalysisDisplayMode.FLOWCHART -> snapshot.flowchartView.fullGraph
+            AnalysisDisplayMode.RESOURCE_RELATION_VIEW -> snapshot.resourceRelationView.fullGraph
+            AnalysisDisplayMode.ARCHITECTURE_GRAPH -> snapshot.architectureGraphView.fullGraph
+            AnalysisDisplayMode.CLASS_DIAGRAM -> snapshot.classDiagramView.fullGraph
+            AnalysisDisplayMode.REVIEW_GRAPH -> snapshot.reviewGraphView.fullGraph
+            null -> snapshot.diffGraph ?: GraphDocument()
+        }
+        return graph.takeIf(GraphDocument::hasGraphContent)
+    }
+
+    private fun usesCurrentSceneGraphForReview(snapshot: WorkflowEditorSnapshot): Boolean =
+        when (snapshot.currentSceneId.toAnalysisDisplayMode()) {
+            AnalysisDisplayMode.ARCHITECTURE_GRAPH,
+            AnalysisDisplayMode.CLASS_DIAGRAM,
+            AnalysisDisplayMode.REVIEW_GRAPH,
+            -> true
+            else -> false
+        }
+
+    private fun qaEditableGraph(
+        snapshot: WorkflowEditorSnapshot,
+        graphContext: InteractiveGraphContext,
+    ): GraphDocument {
+        return if (usesCurrentSceneGraphForReview(snapshot)) {
+            graphContext.presentationGraph.takeIf(GraphDocument::hasGraphContent)
+                ?: graphContext.fullGraph
+        } else {
+            graphContext.workingGraph
+        }
+    }
+
+    private fun qaFactGraph(
+        snapshot: WorkflowEditorSnapshot,
+        graphContext: InteractiveGraphContext,
+    ): GraphDocument {
+        if (usesCurrentSceneGraphForReview(snapshot)) {
+            return graphContext.fullGraph.takeIf(GraphDocument::hasGraphContent)
+                ?: graphContext.presentationGraph
+        }
+        return snapshot.semanticFactGraph
+            .takeIf(GraphDocument::hasGraphContent)
+            ?: snapshot.factGraphView.fullGraph
+                .takeIf(GraphDocument::hasGraphContent)
+            ?: graphContext.presentationGraph
     }
 
     private fun mergeQaEvidenceGraph(
@@ -191,14 +438,18 @@ internal class PlanningContextFactory(
     private fun resolveBeautificationAnchorNodeId(
         snapshot: WorkflowEditorSnapshot,
         visibleGraph: GraphDocument,
+        requestedFocusNodeId: String?,
     ): String? {
         val currentSceneSelection = snapshot.selectedNodeId
-        snapshot.selectedMethodSignature
+        requestedFocusNodeId
+            ?.takeIf { nodeId -> visibleGraph.nodes.any { it.id == nodeId } }
+            ?.let { return it }
+        currentSceneSelection
+            ?.takeIf { nodeId -> visibleGraph.nodes.any { it.id == nodeId } }
+            ?.let { return it }
+        return snapshot.selectedMethodSignature
             ?.let { GraphNode.stableId(NodeType.METHOD, it) }
             ?.takeIf { anchorId -> visibleGraph.nodes.any { it.id == anchorId } }
-            ?.let { return it }
-        return currentSceneSelection
-            ?.takeIf { nodeId -> visibleGraph.nodes.any { it.id == nodeId } }
             ?: visibleGraph.nodes.firstOrNull { it.type == NodeType.METHOD }?.id
             ?: visibleGraph.nodes.firstOrNull()?.id
     }
@@ -232,15 +483,20 @@ internal class PlanningContextFactory(
         selectedMethodSignature: String?,
         anchorNodeId: String?,
     ): Set<String> {
+        val anchorSignature = anchorNodeId
+            ?.let { nodeId -> fullGraph.nodes.firstOrNull { it.id == nodeId } }
+            ?.signature
+            ?.takeIf(String::isNotBlank)
+        val currentMethodSignature = anchorSignature ?: selectedMethodSignature
         val methodNodeIds = fullGraph.nodes
             .asSequence()
             .filter { node ->
                 when {
                     anchorNodeId != null && node.id == anchorNodeId -> true
-                    selectedMethodSignature.isNullOrBlank() -> false
-                    node.signature == selectedMethodSignature -> true
-                    node.metadata["flow.anchorMethod"] == selectedMethodSignature -> true
-                    node.metadata["flow.ownerMethod"] == selectedMethodSignature -> true
+                    currentMethodSignature.isNullOrBlank() -> false
+                    node.signature == currentMethodSignature -> true
+                    node.metadata["flow.anchorMethod"] == currentMethodSignature -> true
+                    node.metadata["flow.ownerMethod"] == currentMethodSignature -> true
                     else -> false
                 }
             }
@@ -259,39 +515,27 @@ internal class PlanningContextFactory(
         fullGraph: GraphDocument,
         anchorNodeId: String?,
         selectedNodeIds: List<String>,
+        limit: Int?,
     ): List<SourceSnippetContext> {
         val fullNodeById = fullGraph.nodes.associateBy { it.id }
-        return visibleGraph.nodes
+        val sequence = visibleGraph.nodes
             .asSequence()
             .map { visibleNode -> fullNodeById[visibleNode.id] ?: visibleNode }
-            .filter { node -> !node.metadata["source.filePath"].isNullOrBlank() }
             .sortedWith(
                 compareByDescending<GraphNode> { it.id in selectedNodeIds }
                     .thenByDescending { it.id == anchorNodeId }
                     .thenBy { it.metadata["source.startOffset"]?.toIntOrNull() ?: Int.MAX_VALUE }
                     .thenBy { it.id },
             )
-            .take(MAX_BEAUTIFICATION_SOURCE_SNIPPETS)
-            .mapNotNull { node ->
-                val filePath = node.metadata["source.filePath"] ?: return@mapNotNull null
-                val startOffset = node.metadata["source.startOffset"]?.toIntOrNull()
-                val endOffset = node.metadata["source.endOffset"]?.toIntOrNull()
-                SourceSnippetContext(
-                    nodeId = node.id,
-                    filePath = filePath,
-                    startOffset = startOffset,
-                    endOffset = endOffset,
-                    startLine = node.metadata["source.startLine"]?.toIntOrNull(),
-                    endLine = node.metadata["source.endLine"]?.toIntOrNull(),
-                    snippet = readSourceSnippet(
-                        filePath = filePath,
-                        startOffset = startOffset,
-                        endOffset = endOffset,
-                        startLine = node.metadata["source.startLine"]?.toIntOrNull(),
-                        endLine = node.metadata["source.endLine"]?.toIntOrNull(),
-                    ),
-                )
+        val snippets = sequence
+            .flatMap { node ->
+                sequence {
+                    sourceSnippetFromNode(node)?.let { yield(it) }
+                    architectureSourceSampleSnippets(node).forEach { yield(it) }
+                }
             }
+            .distinctBy(::snippetKey)
+        return (limit?.let { maxItems -> snippets.take(maxItems) } ?: snippets)
             .toList()
     }
 
@@ -324,6 +568,32 @@ internal class PlanningContextFactory(
                 endLine = endLine,
             ),
         )
+    }
+
+    private fun architectureSourceSampleSnippets(node: GraphNode): List<SourceSnippetContext> {
+        val sampleCount = node.metadata["architecture.sourceSample.count"]?.toIntOrNull()?.coerceAtLeast(0) ?: return emptyList()
+        return (0 until sampleCount).mapNotNull { sampleIndex ->
+            val prefix = "architecture.sourceSample.$sampleIndex"
+            val filePath = node.metadata["$prefix.filePath"]?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+            val startLine = node.metadata["$prefix.startLine"]?.toIntOrNull()
+            val endLine = node.metadata["$prefix.endLine"]?.toIntOrNull()
+            SourceSnippetContext(
+                nodeId = node.metadata["$prefix.nodeId"]?.takeIf(String::isNotBlank) ?: node.id,
+                filePath = filePath,
+                startLine = startLine,
+                endLine = endLine,
+                snippet = readSourceSnippet(
+                    filePath = filePath,
+                    startOffset = null,
+                    endOffset = null,
+                    startLine = startLine,
+                    endLine = endLine,
+                ),
+                origin = node.metadata["$prefix.reason"],
+                decompiled = node.metadata["$prefix.decompiled"]?.toBooleanStrictOrNull() ?: false,
+                virtualFileUrl = node.metadata["$prefix.virtualFileUrl"],
+            )
+        }
     }
 
     /**
@@ -462,12 +732,23 @@ internal class PlanningContextFactory(
         private const val MAX_BEAUTIFICATION_SOURCE_SNIPPETS = 12
         private const val PREFERRED_BEAUTIFICATION_SOURCE_SNIPPET_LENGTH = 240
         private const val MAX_BEAUTIFICATION_SOURCE_SNIPPET_LENGTH = 800
+        private const val FLOWCHART_ALIAS_NODE_IDS_KEY = "flowchart.projectedFromNodeIds"
+        private const val INVOCATION_EXPANSION_ID_KEY = "linkGraph.expansion.id"
+        private const val INVOCATION_EXPANSION_SOURCE_NODE_ID_KEY = "linkGraph.expansion.sourceInvocationNodeId"
     }
 }
+
+private fun GraphDocument.hasGraphContent(): Boolean = nodes.isNotEmpty() || edges.isNotEmpty() || patch != null
 
 internal data class QaGraphs(
     val factGraph: GraphDocument,
     val editableGraph: GraphDocument,
     val sourceContext: List<SourceSnippetContext> = emptyList(),
     val evidenceTrace: List<com.charmnight.linkgraph.llm.EvidenceTraceEntry> = emptyList(),
+)
+
+private data class InteractiveGraphContext(
+    val presentationGraph: GraphDocument,
+    val fullGraph: GraphDocument,
+    val workingGraph: GraphDocument,
 )

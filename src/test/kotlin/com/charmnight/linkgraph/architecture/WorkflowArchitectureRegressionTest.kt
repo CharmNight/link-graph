@@ -63,6 +63,153 @@ class WorkflowArchitectureRegressionTest {
     }
 
     @Test
+    fun architectureWorkflowDoesNotHoldReadActionAcrossCompleteIndexBuild() {
+        val workflow = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/application/workflow/architecture/ArchitectureGraphWorkflow.kt"))
+
+        assertFalse(
+            workflow.contains("ReadAction\n            .nonBlocking<ArchitectureGraphViewResult>"),
+            "Architecture graph workflow must not keep the full symbol, relation and graph build inside one non-blocking read action.",
+        )
+        assertFalse(
+            workflow.contains(".inSmartMode(project)"),
+            "Architecture graph workflow should let the runtime bound its PSI read sections instead of wrapping the whole request in smart-mode read action plumbing.",
+        )
+    }
+
+    @Test
+    fun architectureRuntimeUsesWritePriorityReadActionsForPsiIndexing() {
+        val runtime = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/architecture/ArchitectureIndexRuntime.kt"))
+
+        assertFalse(
+            runtime.contains("ReadAction.compute<T, RuntimeException>"),
+            "Architecture index runtime must not hold a synchronous read action across large project PSI scans.",
+        )
+        assertTrue(
+            runtime.contains("ReadAction.nonBlocking<T>"),
+            "Architecture index runtime should run PSI reads through non-blocking read actions so pending IDE writes can interrupt and resume indexing.",
+        )
+        assertTrue(
+            runtime.contains(".executeSynchronously()"),
+            "Synchronous runtime callers may wait on the background thread, but the read action itself must remain write-priority cancellable.",
+        )
+    }
+
+    @Test
+    fun evidenceResolversDoNotBuildFullIndexInsideSynchronousReadActions() {
+        val resolvingRoot = Path.of("src/main/kotlin/com/charmnight/linkgraph/investigation/resolving")
+        val readActionIndexBuild = Regex(
+            """override\s+fun\s+resolveInReadAction[\s\S]*?buildIndex\(context\.project\)""",
+        )
+        val offenders = Files.walk(resolvingRoot)
+            .filter { path -> path.toString().endsWith(".kt") }
+            .toList()
+            .filter { path -> readActionIndexBuild.containsMatchIn(Files.readString(path)) }
+        val adapter = Files.readString(
+            Path.of("src/main/kotlin/com/charmnight/linkgraph/investigation/resolving/java/JvmEvidenceIndexAdapter.kt"),
+        )
+
+        assertTrue(
+            offenders.isEmpty(),
+            "Evidence resolvers must acquire/build ArchitectureGraphIndex before entering synchronous read actions: $offenders",
+        )
+        assertTrue(
+            adapter.contains("isReadAccessAllowed") && adapter.contains("currentIndexProvider"),
+            "JvmEvidenceIndexAdapter must reuse an existing index during read access instead of starting a full build.",
+        )
+    }
+
+    @Test
+    fun typeUsageResolverDoesNotRescanEveryIndexedFieldForEveryClass() {
+        val resolver = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/jvm/relation/TypeUsageRelationResolver.kt"))
+        val extractor = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/jvm/relation/ClassDiagramRelationExtractor.kt"))
+        val repeatedGlobalFieldScan = Regex(
+            """context\.symbolIndex\.fieldsByQualifiedName\.values\s*\.asSequence\(\)\s*\.filter\s*\{\s*field -> field\.ownerClassName == classSymbol\.qualifiedName""",
+        )
+
+        assertFalse(
+            repeatedGlobalFieldScan.containsMatchIn(resolver),
+            "Type usage resolution must pre-group indexed fields by owner; rescanning all fields for every class makes large project graphs take minutes.",
+        )
+        assertTrue(
+            resolver.contains("ClassDiagramRelationExtractor.extractPsiTypeRelations(context)"),
+            "Type usage resolver should delegate class-diagram type semantics to the unified extractor.",
+        )
+        assertTrue(
+            extractor.contains("fieldsByOwnerClassName"),
+            "Unified class diagram extraction should keep an owner -> fields index for per-class lookup.",
+        )
+    }
+
+    @Test
+    fun typeUsageResolverDoesNotResolveEveryJavaReferenceExpression() {
+        val resolver = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/jvm/relation/TypeUsageRelationResolver.kt"))
+
+        assertFalse(
+            resolver.contains("visitReferenceElement"),
+            "Type usage resolution should not walk every Java reference expression; that duplicates call aggregation and makes large project graphs take minutes.",
+        )
+        assertFalse(
+            resolver.contains("reference.resolve()"),
+            "Type usage resolution should rely on structural type evidence instead of resolving every reference expression.",
+        )
+    }
+
+    @Test
+    fun architectureWorkflowSupportUsesOverviewIndexForProjectStructureRequests() {
+        val support = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/application/workflow/architecture/ArchitectureIndexWorkflowSupport.kt"))
+
+        assertTrue(
+            support.contains("buildArchitectureOverviewIndex(request)"),
+            "Default project-structure requests must use a bounded overview index instead of waiting for complete method-call relation indexing.",
+        )
+        assertTrue(
+            support.contains("IndexedGraphView.ARCHITECTURE"),
+            "The overview index decision must be scoped to architecture graph requests, not class diagram or review requests.",
+        )
+    }
+
+    @Test
+    fun architectureGraphBuilderDoesNotClassifyProjectClassesAsDependencyGroups() {
+        val builder = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/architecture/ArchitectureGraphBuilder.kt"))
+        val dependencyGroupMethod = builder.substringAfter("private fun dependencyGroupNodes(")
+            .substringBefore("private fun layerNodes(")
+
+        assertTrue(
+            dependencyGroupMethod.contains(".filterNot(classifier::isProjectSourceClass)"),
+            "Dependency grouping should skip project source classes before calling projectNodeForClass; otherwise graph build repeats expensive component classification for every source class.",
+        )
+    }
+
+    @Test
+    fun architectureGraphBuilderPrecomputesProjectComponentTargetsForOverviewProjection() {
+        val builder = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/architecture/ArchitectureGraphBuilder.kt"))
+        val targetCache = builder.substringAfter("private class ArchitectureProjectionTargetCache(")
+
+        assertTrue(
+            targetCache.contains("componentTargetsByClassName"),
+            "Overview projection should precompute source class -> component targets once; per-relation component classification makes large project structure graphs slow.",
+        )
+        assertFalse(
+            targetCache.contains("classifier.componentGroupFor("),
+            "Overview projection cache must not call componentGroupFor from the hot lookup path.",
+        )
+    }
+
+    @Test
+    fun architectureOverviewTextIndexerUsesClassNameNotKeywordAsJavaSymbolName() {
+        val builder = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/architecture/ArchitectureOverviewSymbolIndexBuilder.kt"))
+
+        assertFalse(
+            builder.contains("val simpleName = match.groupValues[3]"),
+            "Overview text indexing must read the Java class name group, not the keyword/header group; otherwise project structure opens with no component nodes.",
+        )
+        assertTrue(
+            builder.contains("val simpleName = match.groupValues[2]"),
+            "Overview text indexing should use the Java class-name capture group for JvmClassSymbol.simpleName.",
+        )
+    }
+
+    @Test
     fun reviewWorkflowUsesQaModeContextInsteadOfNakedEffectiveModePlumbing() {
         val reviewWorkflow = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/application/workflow/ReviewWorkflow.kt"))
 
@@ -93,6 +240,20 @@ class WorkflowArchitectureRegressionTest {
         assertTrue(
             source.contains("private val"),
             "GraphEditorCommandRouter 应持有明确的协作者边界，而不是每个分支动态拉取 project service。",
+        )
+    }
+
+    @Test
+    fun workflowTestsUseProductionApplicationEventProjection() {
+        val adapters = Files.readString(Path.of("src/test/kotlin/com/charmnight/linkgraph/testing/WorkflowBoundaryTestAdapters.kt"))
+
+        assertTrue(
+            adapters.contains("GraphEditorApplicationEventProjector"),
+            "Workflow tests should reuse production application-event projection instead of shadowing event handling.",
+        )
+        assertFalse(
+            adapters.contains("when (event)"),
+            "Workflow test adapters must not duplicate production event-to-state projection logic.",
         )
     }
 

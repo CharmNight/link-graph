@@ -56,97 +56,97 @@ internal class DebugGraphFactory {
         val methodNodes = buildMethodNodes(
             specs = listOf(
                 DebugMethodSpec(
-                    signature = "com.example.audit.OrderEntryController.submit(com.example.audit.SubmitRequest):com.example.audit.SubmitResult",
+                    signature = "com.example.order.OrderEntryController.submit(com.example.order.SubmitRequest):com.example.order.SubmitResult",
                     title = "OrderEntryController.submit",
                     doc = "入口控制器，负责接收提交请求。",
                 ),
                 DebugMethodSpec(
-                    signature = "com.example.audit.OrderFacade.place(com.example.audit.SubmitRequest):com.example.audit.SubmitResult",
+                    signature = "com.example.order.OrderFacade.place(com.example.order.SubmitRequest):com.example.order.SubmitResult",
                     title = "OrderFacade.place",
                     doc = "Facade 层，补齐前置校验。",
                 ),
                 DebugMethodSpec(
-                    signature = "com.example.audit.OrderApplicationService.execute(com.example.audit.SubmitRequest):com.example.audit.SubmitResult",
+                    signature = "com.example.order.OrderApplicationService.execute(com.example.order.SubmitRequest):com.example.order.SubmitResult",
                     title = "OrderApplicationService.execute",
                     doc = "应用服务，编排领域与基础设施调用。",
                 ),
                 DebugMethodSpec(
-                    signature = "com.example.audit.DataSourceAspect.around(org.aspectj.lang.ProceedingJoinPoint):java.lang.Object",
+                    signature = "com.example.order.DataSourceAspect.around(org.aspectj.lang.ProceedingJoinPoint):java.lang.Object",
                     title = "DataSourceAspect.around",
                     doc = "切面切换数据源，属于需要重点核对的黑逻辑。",
                 ),
                 DebugMethodSpec(
-                    signature = "com.example.audit.OrderDomainService.prepare(com.example.audit.SubmitRequest):com.example.audit.OrderAggregate",
+                    signature = "com.example.order.OrderDomainService.prepare(com.example.order.SubmitRequest):com.example.order.OrderAggregate",
                     title = "OrderDomainService.prepare",
                     doc = "组装订单聚合并补全业务字段。",
                 ),
                 DebugMethodSpec(
-                    signature = "com.example.audit.InventoryPolicy.check(com.example.audit.OrderAggregate):void",
+                    signature = "com.example.order.InventoryPolicy.check(com.example.order.OrderAggregate):void",
                     title = "InventoryPolicy.check",
                     doc = "库存校验策略。",
                 ),
                 DebugMethodSpec(
-                    signature = "com.example.audit.RiskPolicy.check(com.example.audit.OrderAggregate):void",
+                    signature = "com.example.order.RiskPolicy.check(com.example.order.OrderAggregate):void",
                     title = "RiskPolicy.check",
                     doc = "风控校验策略。",
                 ),
                 DebugMethodSpec(
-                    signature = "com.example.audit.OrderRepository.save(com.example.audit.OrderAggregate):java.lang.Long",
+                    signature = "com.example.order.OrderRepository.save(com.example.order.OrderAggregate):java.lang.Long",
                     title = "OrderRepository.save",
                     doc = "持久化订单聚合。",
                 ),
                 DebugMethodSpec(
-                    signature = "com.example.audit.OrderMapper.insert(com.example.audit.OrderAggregate):int",
+                    signature = "com.example.order.OrderMapper.insert(com.example.order.OrderAggregate):int",
                     title = "OrderMapper.insert",
                     doc = "写入主订单记录。",
                 ),
                 DebugMethodSpec(
-                    signature = "com.example.audit.OutboxPublisher.publishOrderCreated(java.lang.Long):void",
+                    signature = "com.example.order.OutboxPublisher.publishOrderCreated(java.lang.Long):void",
                     title = "OutboxPublisher.publishOrderCreated",
                     doc = "写入事件表，等待异步投递。",
                 ),
                 DebugMethodSpec(
-                    signature = "com.example.audit.SpringEventBridge.publish(java.lang.Long):void",
+                    signature = "com.example.order.SpringEventBridge.publish(java.lang.Long):void",
                     title = "SpringEventBridge.publish",
                     doc = "向 Spring Event 桥接领域事件。",
                 ),
                 DebugMethodSpec(
-                    signature = "com.example.audit.OrderCreatedListener.onEvent(com.example.audit.OrderCreatedEvent):void",
+                    signature = "com.example.order.OrderCreatedListener.onEvent(com.example.order.OrderCreatedEvent):void",
                     title = "OrderCreatedListener.onEvent",
                     doc = "监听订单创建事件，刷新搜索索引。",
                 ),
                 DebugMethodSpec(
-                    signature = "com.example.audit.SearchIndexSyncService.sync(java.lang.Long):void",
+                    signature = "com.example.order.SearchIndexSyncService.sync(java.lang.Long):void",
                     title = "SearchIndexSyncService.sync",
                     doc = "搜索索引同步。",
                 ),
                 DebugMethodSpec(
-                    signature = "com.example.audit.AuditTrailService.record(java.lang.Long):void",
-                    title = "AuditTrailService.record",
+                    signature = "com.example.order.OrderTraceService.record(java.lang.Long):void",
+                    title = "OrderTraceService.record",
                     doc = "记录问答流水。",
                 ),
                 DebugMethodSpec(
-                    signature = "com.example.audit.Notifier.send(java.lang.Long):void",
+                    signature = "com.example.order.Notifier.send(java.lang.Long):void",
                     title = "Notifier.send",
                     doc = "触发通知链路。",
                 ),
                 DebugMethodSpec(
-                    signature = "com.example.audit.CallbackRouter.route(java.lang.Long):void",
+                    signature = "com.example.order.CallbackRouter.route(java.lang.Long):void",
                     title = "CallbackRouter.route",
                     doc = "分发下游回调。",
                 ),
                 DebugMethodSpec(
-                    signature = "com.example.audit.CallbackWorker.execute(java.lang.Long):void",
+                    signature = "com.example.order.CallbackWorker.execute(java.lang.Long):void",
                     title = "CallbackWorker.execute",
                     doc = "执行最终回调动作。",
                 ),
                 DebugMethodSpec(
-                    signature = "com.example.audit.MetricsCollector.markSuccess(java.lang.Long):void",
+                    signature = "com.example.order.MetricsCollector.markSuccess(java.lang.Long):void",
                     title = "MetricsCollector.markSuccess",
                     doc = "记录成功指标。",
                 ),
                 DebugMethodSpec(
-                    signature = "com.example.audit.TraceLogger.finish(java.lang.Long):void",
+                    signature = "com.example.order.TraceLogger.finish(java.lang.Long):void",
                     title = "TraceLogger.finish",
                     doc = "补写最终 trace 日志。",
                 ),
@@ -180,7 +180,7 @@ internal class DebugGraphFactory {
         val boundedNodeCount = nodeCount.coerceIn(2, 400)
         val anchor = buildMethodNode(
             spec = DebugMethodSpec(
-                signature = "com.example.audit.DenseAnchor.execute(com.example.audit.DenseRequest):void",
+                signature = "com.example.order.DenseAnchor.execute(com.example.order.DenseRequest):void",
                 title = "DenseAnchor.execute",
                 doc = "高扇出锚点，用于压测大图渲染。",
             ),
@@ -189,7 +189,7 @@ internal class DebugGraphFactory {
         val neighborNodes = (1 until boundedNodeCount).map { index ->
             buildMethodNode(
                 spec = DebugMethodSpec(
-                    signature = "com.example.audit.DenseNode$index.handle(java.lang.String):void",
+                    signature = "com.example.order.DenseNode$index.handle(java.lang.String):void",
                     title = "DenseNode$index.handle",
                     doc = "压测节点 $index。",
                 ),
@@ -253,7 +253,7 @@ internal class DebugGraphFactory {
             // 调试压测图需要命中真实可打开文件，才能验证源码跳转是否会卡住 EDT。
             location = "src/main/kotlin/com/charmnight/linkgraph/services/DebugGraphFactory.kt:${120 + index}:1",
             signature = spec.signature,
-            inputs = listOf("com.example.audit.Payload$index", "java.lang.String"),
+            inputs = listOf("com.example.order.Payload$index", "java.lang.String"),
             outputs = listOf(spec.signature.substringAfterLast(':')),
             doc = spec.doc,
             bindingStatus = BindingStatus.BOUND,

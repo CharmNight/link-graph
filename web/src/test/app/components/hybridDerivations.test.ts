@@ -43,7 +43,7 @@ const graph: LinkGraphDocument = {
   edges: [{ id: "edge-1", type: "CALL", source: methodNode.id, target: resourceNode.id }],
 };
 
-const auditResult: GraphPatchResult = {
+const qaResult: GraphPatchResult = {
   source: "LOCAL_RULE",
   question: "是否有风险？",
   answer: "有补偿风险。",
@@ -167,8 +167,8 @@ describe("hybridDerivations", () => {
       deriveWorkflowStageStates({
         graphBeautificationResult: explanation,
         graphBeautificationRequestState: { phase: "SUCCEEDED" },
-        auditResult,
-        auditRequestState: { phase: "RUNNING" },
+        qaResult,
+        qaRequestState: { phase: "RUNNING" },
         draftWorkbenchState: draftState,
         draftValidationState: { status: "REVIEW_REQUIRED", message: "blocked", unresolvedThreadIds: ["thread-1"], unresolvedThreads: [] },
         codeDiffStatus: "FAILED",
@@ -183,13 +183,13 @@ describe("hybridDerivations", () => {
     });
   });
 
-  it("derives outline metrics and grouped items from graph, audit and draft state", () => {
+  it("derives outline metrics and grouped items from graph, qa and draft state", () => {
     const outline = deriveLinkGraphOutline({
       activeViewGraph: graph,
       fullGraph: { nodes: [methodNode, resourceNode, { ...resourceNode, id: "sql:insert", type: "SQL", title: "insert order" }], edges: [] },
       anchorNodeId: methodNode.id,
       selectedNodeId: methodNode.id,
-      auditResult,
+      qaResult,
       draftWorkbenchState: draftState,
       draftChangedNodeIds: [methodNode.id],
     });
@@ -223,7 +223,7 @@ describe("hybridDerivations", () => {
       fullGraph: null,
       anchorNodeId: criticalNodes[0]!.id,
       selectedNodeId: null,
-      auditResult: null,
+      qaResult: null,
       draftWorkbenchState: { draftChanges: [], draftNotes: [] },
       draftChangedNodeIds: [],
     });
@@ -234,15 +234,35 @@ describe("hybridDerivations", () => {
     expect(outline.items.map((item) => item.label)).toContain("EvidenceResource15");
   });
 
-  it("derives evidence state from audit result and graph explanation evidence", () => {
+  it("derives evidence state from qa result and graph explanation evidence", () => {
     const evidence = deriveEvidencePanelState({
       selectedNode: methodNode,
-      auditResult,
+      activeViewGraph: {
+        nodes: [methodNode, resourceNode],
+        edges: [
+          {
+            id: "edge-reflect",
+            type: "REFLECTS_TO",
+            source: methodNode.id,
+            target: resourceNode.id,
+            metadata: {
+              "jvm.relation.kind": "REFLECTS_TO",
+              "jvm.relation.confidence": "PROVEN",
+              "jvm.relation.source": "PSI",
+              "relation.resolverId": "jvm.reflection",
+            },
+          },
+        ],
+      },
+      qaResult,
       graphBeautificationResult: explanation,
     });
 
     expect(evidence.selectedNodeEvidence.map((item) => item.label)).toContain("源码直接命中入口。");
     expect(evidence.selectedNodeEvidence.map((item) => item.label)).toContain("讲解也命中入口源码。");
+    expect(evidence.relationEvidence.map((item) => item.label)).toContain("反射：OrderController.submit -> OrderMapper.xml");
+    expect(evidence.relationEvidence[0]?.confidence).toBe("PROVEN");
+    expect(evidence.relationEvidence[0]?.resolverId).toBe("jvm.reflection");
     expect(evidence.evidenceGaps).toHaveLength(1);
     expect(evidence.sourceSnippets).toHaveLength(1);
     expect(evidence.evidenceTrace).toHaveLength(1);
@@ -253,7 +273,7 @@ describe("hybridDerivations", () => {
   it("derives tray counts and sync label without making up data", () => {
     expect(
       deriveChangeTrayState({
-        auditResult,
+        qaResult,
         draftWorkbenchState: draftState,
         draftValidationState: { status: "REVIEW_REQUIRED", message: "blocked", unresolvedThreadIds: ["thread-1"], unresolvedThreads: [] },
         codeDiffStatus: "FRESH",

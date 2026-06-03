@@ -3,10 +3,14 @@ package com.charmnight.linkgraph.settings
 import com.charmnight.linkgraph.llm.LlmProviderPreset
 import com.charmnight.linkgraph.llm.LlmProviderPresets
 import com.charmnight.linkgraph.llm.remoteConnectionOrNull
+import com.charmnight.linkgraph.source.AttachedJarEntry
+import com.charmnight.linkgraph.source.AttachedJarSettingsValidator
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.util.messages.Topic
 
 /**
  * Link Graph 持久化设置快照。
@@ -27,6 +31,16 @@ data class LinkGraphSettingsState(
     var timeoutSeconds: Int = DEFAULT_TIMEOUT_SECONDS,
     /** 保存采样温度。 */
     var temperature: Double = DEFAULT_TEMPERATURE,
+    /** 用户显式附加的外部 class/source JAR。 */
+    var attachedJars: List<AttachedJarEntry> = emptyList(),
+    /** 是否允许对 class JAR 返回反编译来源标记。 */
+    var allowClassJarDecompile: Boolean = DEFAULT_ALLOW_CLASS_JAR_DECOMPILE,
+    /** 是否允许架构索引展开外部库类。 */
+    var allowExternalLibraryExpansion: Boolean = DEFAULT_ALLOW_EXTERNAL_LIBRARY_EXPANSION,
+    /** 是否允许架构索引展开 JDK 类。 */
+    var allowJdkLibraryExpansion: Boolean = DEFAULT_ALLOW_JDK_LIBRARY_EXPANSION,
+    /** 外部类节点预算。 */
+    var maxExternalClassNodes: Int = DEFAULT_MAX_EXTERNAL_CLASS_NODES,
     /** runtime 临时下压的远程请求超时，不持久化到设置页。 */
     var runtimeTimeoutSecondsOverride: Int? = null,
 ) {
@@ -85,9 +99,19 @@ data class LinkGraphSettingsState(
             model = effectiveModel(),
             timeoutSeconds = effectiveTimeoutSeconds(),
             temperature = effectiveTemperature(),
+            attachedJars = attachedJars
+                .map(AttachedJarEntry::normalized)
+                .filter { entry -> entry.path.isNotBlank() }
+                .distinctBy { entry -> entry.path to entry.sourceJarPath },
+            allowClassJarDecompile = allowClassJarDecompile,
+            allowExternalLibraryExpansion = allowExternalLibraryExpansion,
+            allowJdkLibraryExpansion = allowJdkLibraryExpansion,
+            maxExternalClassNodes = maxExternalClassNodes.coerceIn(MIN_EXTERNAL_CLASS_NODES, MAX_EXTERNAL_CLASS_NODES),
             runtimeTimeoutSecondsOverride = runtimeTimeoutSecondsOverride?.coerceAtLeast(1),
         )
     }
+
+    fun attachedJarValidation() = AttachedJarSettingsValidator.validate(attachedJars)
 
     fun toPersistentState(): LinkGraphPersistentSettingsState {
         val sanitized = sanitized()
@@ -98,6 +122,11 @@ data class LinkGraphSettingsState(
             model = sanitized.model,
             timeoutSeconds = sanitized.timeoutSeconds,
             temperature = sanitized.temperature,
+            attachedJars = sanitized.attachedJars.map(AttachedJarEntry::normalized).toMutableList(),
+            allowClassJarDecompile = sanitized.allowClassJarDecompile,
+            allowExternalLibraryExpansion = sanitized.allowExternalLibraryExpansion,
+            allowJdkLibraryExpansion = sanitized.allowJdkLibraryExpansion,
+            maxExternalClassNodes = sanitized.maxExternalClassNodes,
         )
     }
 
@@ -110,7 +139,12 @@ data class LinkGraphSettingsState(
             "model=$model, " +
             "timeoutSeconds=$timeoutSeconds, " +
             "runtimeTimeoutSecondsOverride=$runtimeTimeoutSecondsOverride, " +
-            "temperature=$temperature" +
+            "temperature=$temperature, " +
+            "attachedJars=${attachedJars.size}, " +
+            "allowClassJarDecompile=$allowClassJarDecompile, " +
+            "allowExternalLibraryExpansion=$allowExternalLibraryExpansion, " +
+            "allowJdkLibraryExpansion=$allowJdkLibraryExpansion, " +
+            "maxExternalClassNodes=$maxExternalClassNodes" +
             ")"
     }
 
@@ -126,9 +160,15 @@ data class LinkGraphSettingsState(
         /** 定义最小超时时间。 */
         const val MIN_TIMEOUT_SECONDS: Int = 30
         /** 定义最大超时时间。 */
-        const val MAX_TIMEOUT_SECONDS: Int = 300
+        const val MAX_TIMEOUT_SECONDS: Int = 3_600
         /** 定义默认温度。 */
         const val DEFAULT_TEMPERATURE: Double = 0.2
+        const val DEFAULT_ALLOW_CLASS_JAR_DECOMPILE: Boolean = true
+        const val DEFAULT_ALLOW_EXTERNAL_LIBRARY_EXPANSION: Boolean = true
+        const val DEFAULT_ALLOW_JDK_LIBRARY_EXPANSION: Boolean = false
+        const val DEFAULT_MAX_EXTERNAL_CLASS_NODES: Int = 3000
+        const val MIN_EXTERNAL_CLASS_NODES: Int = 0
+        const val MAX_EXTERNAL_CLASS_NODES: Int = 50_000
     }
 }
 
@@ -143,6 +183,11 @@ data class LinkGraphPersistentSettingsState(
     var model: String = LinkGraphSettingsState.DEFAULT_MODEL,
     var timeoutSeconds: Int = LinkGraphSettingsState.DEFAULT_TIMEOUT_SECONDS,
     var temperature: Double = LinkGraphSettingsState.DEFAULT_TEMPERATURE,
+    var attachedJars: MutableList<AttachedJarEntry> = mutableListOf(),
+    var allowClassJarDecompile: Boolean = LinkGraphSettingsState.DEFAULT_ALLOW_CLASS_JAR_DECOMPILE,
+    var allowExternalLibraryExpansion: Boolean = LinkGraphSettingsState.DEFAULT_ALLOW_EXTERNAL_LIBRARY_EXPANSION,
+    var allowJdkLibraryExpansion: Boolean = LinkGraphSettingsState.DEFAULT_ALLOW_JDK_LIBRARY_EXPANSION,
+    var maxExternalClassNodes: Int = LinkGraphSettingsState.DEFAULT_MAX_EXTERNAL_CLASS_NODES,
 ) {
     fun sanitized(): LinkGraphPersistentSettingsState {
         return toRuntimeState().toPersistentState()
@@ -157,6 +202,11 @@ data class LinkGraphPersistentSettingsState(
             model = model,
             timeoutSeconds = timeoutSeconds,
             temperature = temperature,
+            attachedJars = attachedJars,
+            allowClassJarDecompile = allowClassJarDecompile,
+            allowExternalLibraryExpansion = allowExternalLibraryExpansion,
+            allowJdkLibraryExpansion = allowJdkLibraryExpansion,
+            maxExternalClassNodes = maxExternalClassNodes,
         ).sanitized()
     }
 }
@@ -201,15 +251,31 @@ class LinkGraphSettingsService : PersistentStateComponent<LinkGraphPersistentSet
     fun snapshot(): LinkGraphSettingsState = state.toRuntimeState(apiKey = secretStore.loadApiKey())
 
     /**
+     * 返回不包含敏感信息的设置快照。
+     * 架构索引和源码解析只需要非敏感字段，不能在 read action 中触碰 PasswordSafe。
+     */
+    fun nonSecretSnapshot(): LinkGraphSettingsState = state.toRuntimeState(apiKey = "")
+
+    /**
      * 更新设置状态。
      */
-    fun update(nextState: LinkGraphSettingsState) {
+    fun update(
+        nextState: LinkGraphSettingsState,
+        preserveBlankApiKey: Boolean = false,
+    ) {
+        val before = nonSecretSnapshot()
         val sanitized = nextState.sanitized()
         state = sanitized.toPersistentState()
-        if (sanitized.apiKey.isBlank()) {
-            secretStore.clearApiKey()
-        } else {
-            secretStore.saveApiKey(sanitized.apiKey)
+        when {
+            sanitized.apiKey.isBlank() && preserveBlankApiKey -> Unit
+            sanitized.apiKey.isBlank() -> secretStore.clearApiKey()
+            else -> secretStore.saveApiKey(sanitized.apiKey)
+        }
+        if (before.architectureIndexSettingsKey() != sanitized.architectureIndexSettingsKey()) {
+            ApplicationManager.getApplication()
+                .messageBus
+                .syncPublisher(LinkGraphSettingsChangedNotifier.TOPIC)
+                .onArchitectureIndexSettingsChanged(before, sanitized)
         }
     }
 
@@ -220,3 +286,27 @@ class LinkGraphSettingsService : PersistentStateComponent<LinkGraphPersistentSet
         return snapshot().remoteConnectionOrNull() != null
     }
 }
+
+interface LinkGraphSettingsChangedNotifier {
+    fun onArchitectureIndexSettingsChanged(
+        before: LinkGraphSettingsState,
+        after: LinkGraphSettingsState,
+    )
+
+    companion object {
+        @JvmField
+        val TOPIC: Topic<LinkGraphSettingsChangedNotifier> = Topic.create(
+            "linkGraphSettingsChanged",
+            LinkGraphSettingsChangedNotifier::class.java,
+        )
+    }
+}
+
+private fun LinkGraphSettingsState.architectureIndexSettingsKey(): List<Any?> =
+    listOf(
+        attachedJars,
+        allowClassJarDecompile,
+        allowExternalLibraryExpansion,
+        allowJdkLibraryExpansion,
+        maxExternalClassNodes,
+    )

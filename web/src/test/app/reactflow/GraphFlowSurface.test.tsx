@@ -36,10 +36,11 @@ vi.mock("@xyflow/react", async () => {
     onNodeDragStop,
     onSelectionDrag,
     onSelectionDragStop,
+    nodesDraggable,
     children,
   }: {
     nodes: Array<{ id: string; data: { label: ReactNode }; position?: { x: number; y: number } }>;
-    edges: Array<{ id: string; label?: string }>;
+    edges: Array<{ id: string; label?: string; selected?: boolean }>;
     edgeTypes?: Record<string, unknown>;
     minZoom?: number;
     onInit?: (instance: typeof reactFlowInstanceMock) => void;
@@ -72,6 +73,7 @@ vi.mock("@xyflow/react", async () => {
       event: React.MouseEvent<HTMLDivElement>,
       nodes: Array<{ id: string; position: { x: number; y: number } }>,
     ) => void;
+    nodesDraggable?: boolean;
     children?: ReactNode;
   }) {
     React.useEffect(() => {
@@ -83,6 +85,7 @@ vi.mock("@xyflow/react", async () => {
         data-testid="reactflow"
         data-edge-types={Object.keys(edgeTypes ?? {}).join(",")}
         data-min-zoom={String(minZoom ?? "")}
+        data-nodes-draggable={String(nodesDraggable)}
         onClick={() => onPaneClick?.()}
         onContextMenu={(event) => onPaneContextMenu?.(event)}
       >
@@ -105,6 +108,7 @@ vi.mock("@xyflow/react", async () => {
             <div
               key={edge.id}
               data-testid={`reactflow-edge-${edge.id}`}
+              data-selected={String(edge.selected === true)}
               onClick={(event) => onEdgeClick?.(event, { id: edge.id })}
               onContextMenu={(event) => onEdgeContextMenu?.(event, { id: edge.id })}
             >
@@ -187,9 +191,14 @@ vi.mock("@xyflow/react", async () => {
     );
   }
 
+  function MockViewportPortal({ children }: { children?: ReactNode }) {
+    return <div className="react-flow__viewport-portal" data-testid="reactflow-viewport-portal">{children}</div>;
+  }
+
   return {
     __esModule: true,
     ReactFlow: MockReactFlow,
+    ViewportPortal: MockViewportPortal,
     Background: () => <div data-testid="reactflow-background" />,
     Controls: () => <div data-testid="reactflow-controls" />,
     SelectionMode: {
@@ -335,6 +344,72 @@ describe("GraphFlowSurface", () => {
     expect(screen.getByTestId("reactflow")).toHaveAttribute("data-edge-types", expect.stringContaining("routedEdge"));
   });
 
+  it("renders viewport overlays inside the React Flow viewport instead of the outer canvas shell", () => {
+    installResizeObserverStub();
+
+    const { container } = renderSurface({
+      viewportOverlay: () => <div data-testid="viewport-layer-overlay" />,
+    });
+
+    const shellChildren = Array.from(container.querySelector("[data-testid='graph-canvas-shell']")?.children ?? []);
+    expect(screen.getByTestId("viewport-layer-overlay")).toBeInTheDocument();
+    expect(within(screen.getByTestId("reactflow-viewport-portal")).getByTestId("viewport-layer-overlay")).toBeInTheDocument();
+    expect(shellChildren).not.toContain(screen.getByTestId("viewport-layer-overlay"));
+  });
+
+  it("builds viewport overlays from the same live positions used to render dragged nodes", () => {
+    installResizeObserverStub();
+
+    renderSurface({
+      viewportOverlay: ({ nodes }) => {
+        const position = nodes[0]?.position;
+        return (
+          <div data-testid="viewport-overlay-position">
+            {position ? `${position.x},${position.y}` : ""}
+          </div>
+        );
+      },
+    });
+
+    expect(screen.getByTestId("viewport-overlay-position")).toHaveTextContent("120,96");
+
+    fireEvent.click(screen.getByTestId("reactflow-drag-progress-node"));
+
+    expect(screen.getByTestId("viewport-overlay-position")).toHaveTextContent("420,240");
+  });
+
+  it("does not include removed architecture layer overlays in the debug DOM probe", () => {
+    installResizeObserverStub();
+    vi.useFakeTimers();
+    const traceSink = vi.fn();
+    window.__linkGraphDebugEnabled = true;
+    window.linkGraphDebugTrace = traceSink;
+
+    renderSurface({
+      viewportMode: "ARCHITECTURE_GRAPH",
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+
+    const domProbeTrace = traceSink.mock.calls
+      .map(([payload]) => JSON.parse(String(payload)))
+      .find((trace) => trace.event === "graphFlowSurface.domProbe");
+
+    expect(domProbeTrace?.payload.selectors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ selector: "[data-testid='graph-canvas-shell']" }),
+      ]),
+    );
+    expect(domProbeTrace?.payload.selectors).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ selector: ".architecture-layer-overlay" }),
+        expect.objectContaining({ selector: ".architecture-layer-frame" }),
+      ]),
+    );
+  });
+
   it("lowers the React Flow minimum zoom so very tall graphs can still fit inside the canvas", () => {
     installResizeObserverStub();
 
@@ -428,6 +503,18 @@ describe("GraphFlowSurface", () => {
     expect(onDeleteEdge).toHaveBeenCalledWith("edge:anchor->tail");
   });
 
+  it("marks the selected edge in the controlled edge list so custom edges can reveal contextual labels", () => {
+    installResizeObserverStub();
+
+    renderSurface();
+
+    expect(screen.getByTestId("reactflow-edge-edge:anchor->tail")).toHaveAttribute("data-selected", "false");
+
+    fireEvent.click(screen.getByTestId("reactflow-edge-edge:anchor->tail"));
+
+    expect(screen.getByTestId("reactflow-edge-edge:anchor->tail")).toHaveAttribute("data-selected", "true");
+  });
+
   it("does not schedule another fitView when only the selection changes", () => {
     installResizeObserverStub();
     vi.useFakeTimers();
@@ -501,6 +588,95 @@ describe("GraphFlowSurface", () => {
       vi.runAllTimers();
     });
     expect(reactFlowFitViewMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("schedules a new viewport fit when the caller changes the viewport reset key", () => {
+    installResizeObserverStub();
+    vi.useFakeTimers();
+
+    const anchorNode = baseNode();
+    const tailNode = {
+      ...baseNode("method:tail"),
+      position: { x: 440, y: 96 },
+    };
+
+    const { rerender } = render(
+      <GraphFlowSurface
+        nodes={[anchorNode]}
+        edges={[]}
+        flowNodes={[
+          {
+            id: anchorNode.id,
+            data: { label: anchorNode.title },
+            position: anchorNode.position ?? { x: 0, y: 0 },
+          },
+        ]}
+        flowEdges={[]}
+        viewportResetKey="layer:ALL"
+        anchorNodeId={anchorNode.id}
+        selectedNodeId={anchorNode.id}
+        selectedGroupNodeIds={[]}
+        editable
+        emptyState={<div>empty</div>}
+        buildPaneActions={() => []}
+        buildNodeActions={() => []}
+        buildEdgeActions={() => []}
+        onSelectNode={() => undefined}
+        onSelectionGroupChange={() => undefined}
+        onInspectNode={() => undefined}
+        onCreateEdge={() => undefined}
+        onMoveNode={() => undefined}
+        onMoveNodes={() => undefined}
+        nodeViewportSize={() => ({ width: 240, height: 120 })}
+      />,
+    );
+
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(reactFlowFitViewMock).toHaveBeenCalledTimes(2);
+
+    rerender(
+      <GraphFlowSurface
+        nodes={[anchorNode, tailNode]}
+        edges={[]}
+        flowNodes={[
+          {
+            id: anchorNode.id,
+            data: { label: anchorNode.title },
+            position: anchorNode.position ?? { x: 0, y: 0 },
+          },
+          {
+            id: tailNode.id,
+            data: { label: tailNode.title },
+            position: tailNode.position ?? { x: 0, y: 0 },
+          },
+        ]}
+        flowEdges={[]}
+        viewportResetKey="layer:JDK"
+        anchorNodeId={anchorNode.id}
+        selectedNodeId={anchorNode.id}
+        selectedGroupNodeIds={[]}
+        editable
+        emptyState={<div>empty</div>}
+        buildPaneActions={() => []}
+        buildNodeActions={() => []}
+        buildEdgeActions={() => []}
+        onSelectNode={() => undefined}
+        onSelectionGroupChange={() => undefined}
+        onInspectNode={() => undefined}
+        onCreateEdge={() => undefined}
+        onMoveNode={() => undefined}
+        onMoveNodes={() => undefined}
+        nodeViewportSize={() => ({ width: 240, height: 120 })}
+      />,
+    );
+
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(reactFlowFitViewMock).toHaveBeenCalledTimes(4);
   });
 
   it("centers an explicitly requested node even when the graph shape and selection policy stay unchanged", () => {
@@ -688,6 +864,358 @@ describe("GraphFlowSurface", () => {
 
     expect(reactFlowSetCenterMock).toHaveBeenCalledWith(560, 156, { zoom: 0.76, duration: 0 });
     expect(reactFlowFitViewMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("opens class diagrams with readable-fit instead of shrinking labels to fit the whole UML window", () => {
+    installResizeObserverStub();
+    vi.useFakeTimers();
+    const traceSink = vi.fn();
+    window.__linkGraphDebugEnabled = true;
+    window.linkGraphDebugTrace = traceSink;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function getBoundingClientRect(this: HTMLElement) {
+      if ((this as HTMLElement).dataset.testid === "graph-canvas-shell") {
+        return {
+          left: 0,
+          top: 0,
+          right: 1280,
+          bottom: 720,
+          width: 1280,
+          height: 720,
+          x: 0,
+          y: 0,
+          toJSON: () => undefined,
+        };
+      }
+      return {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 0,
+        height: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => undefined,
+      };
+    });
+
+    renderSurface({
+      viewportMode: "CLASS_DIAGRAM",
+      viewportPolicy: "readable-fit",
+      shouldFocusAnchorOnLoad: true,
+      fitViewPadding: 0.12,
+      fitViewMaxZoom: 0.9,
+      nodeViewportSize: () => ({ width: 240, height: 120 }),
+    });
+
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(screen.getByTestId("reactflow")).toHaveAttribute("data-min-zoom", "0.54");
+    expect(reactFlowSetCenterMock).toHaveBeenCalledWith(240, 156, { zoom: 0.82, duration: 0 });
+    expect(reactFlowFitViewMock).not.toHaveBeenCalled();
+    const viewportApplyTrace = traceSink.mock.calls
+      .map(([payload]) => JSON.parse(String(payload)))
+      .find((trace) => trace.event === "graphFlowSurface.viewport.apply");
+    expect(viewportApplyTrace?.payload.branch).toBe("readableFit");
+  });
+
+  it("does not crop dense current-class diagrams to only the current class on first open", () => {
+    installResizeObserverStub();
+    vi.useFakeTimers();
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function getBoundingClientRect(this: HTMLElement) {
+      if ((this as HTMLElement).dataset.testid === "graph-canvas-shell") {
+        return {
+          left: 0,
+          top: 0,
+          right: 1280,
+          bottom: 720,
+          width: 1280,
+          height: 720,
+          x: 0,
+          y: 0,
+          toJSON: () => undefined,
+        };
+      }
+      return {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 0,
+        height: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => undefined,
+      };
+    });
+    const nodes: LinkGraphNode[] = [
+      { ...baseNode("class:validator"), type: "CLASS", position: { x: 1120, y: 420 } },
+      { ...baseNode("class:publisher"), type: "INTERFACE", position: { x: 1120, y: 120 } },
+      { ...baseNode("class:config"), type: "CLASS", position: { x: 1880, y: 360 } },
+      { ...baseNode("class:fault"), type: "CLASS", position: { x: 1880, y: 580 } },
+      { ...baseNode("class:delta"), type: "CLASS", position: { x: 2460, y: 120 } },
+      { ...baseNode("class:image"), type: "CLASS", position: { x: 2460, y: 340 } },
+      { ...baseNode("class:version"), type: "CLASS", position: { x: 3040, y: 340 } },
+    ];
+    const edges: LinkGraphEdge[] = [
+      {
+        id: "edge:validator->publisher",
+        type: "IMPLEMENTS",
+        source: "class:validator",
+        target: "class:publisher",
+      },
+      {
+        id: "edge:validator->config",
+        type: "USES_TYPE",
+        source: "class:validator",
+        target: "class:config",
+      },
+      {
+        id: "edge:validator->fault",
+        type: "USES_TYPE",
+        source: "class:validator",
+        target: "class:fault",
+      },
+      {
+        id: "edge:image->version",
+        type: "USES_TYPE",
+        source: "class:image",
+        target: "class:version",
+        route: {
+          sections: [
+            {
+              startPoint: { x: 2820, y: 400 },
+              bendPoints: [{ x: 2960, y: 400 }],
+              endPoint: { x: 3040, y: 400 },
+            },
+          ],
+        },
+      },
+    ];
+
+    renderSurface({
+      nodes,
+      edges,
+      flowNodes: nodes.map((node) => ({
+        id: node.id,
+        data: { label: node.title },
+        position: node.position ?? { x: 0, y: 0 },
+      })),
+      flowEdges: edges.map((edge) => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+      })),
+      anchorNodeId: "class:validator",
+      viewportMode: "CLASS_DIAGRAM",
+      shouldFocusAnchorOnLoad: true,
+      fitViewPadding: 0.12,
+      fitViewMaxZoom: 0.9,
+      nodeViewportSize: () => ({ width: 360, height: 160 }),
+    });
+
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(reactFlowFitViewMock).toHaveBeenCalledWith({
+      padding: 0.12,
+      duration: 0,
+      maxZoom: 0.9,
+      includeHiddenNodes: true,
+    });
+    expect(reactFlowFitViewMock).toHaveBeenCalledTimes(1);
+    expect(reactFlowSetCenterMock).not.toHaveBeenCalled();
+  });
+
+  it("opens large class diagrams by fitting the backend-visible relation cluster", () => {
+    installResizeObserverStub();
+    vi.useFakeTimers();
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function getBoundingClientRect(this: HTMLElement) {
+      if ((this as HTMLElement).dataset.testid === "graph-canvas-shell") {
+        return {
+          left: 0,
+          top: 0,
+          right: 1280,
+          bottom: 720,
+          width: 1280,
+          height: 720,
+          x: 0,
+          y: 0,
+          toJSON: () => undefined,
+        };
+      }
+      return {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 0,
+        height: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => undefined,
+      };
+    });
+    const nodes: LinkGraphNode[] = [
+      { ...baseNode("class:anchor"), type: "CLASS", position: { x: 120, y: 96 } },
+      { ...baseNode("class:caller"), type: "CLASS", position: { x: -1320, y: 96 } },
+      { ...baseNode("class:callee"), type: "CLASS", position: { x: 2040, y: 96 } },
+      { ...baseNode("class:data-left"), type: "CLASS", position: { x: -1080, y: 1280 } },
+      { ...baseNode("class:data-right"), type: "CLASS", position: { x: 2600, y: 1480 } },
+    ];
+    const edges: LinkGraphEdge[] = [
+      {
+        id: "edge:caller->anchor",
+        type: "USES_TYPE",
+        source: "class:caller",
+        target: "class:anchor",
+        metadata: {
+          "classDiagram.relation.role": "FIELD",
+          "classDiagram.relation.weight": "90",
+        },
+      },
+      {
+        id: "edge:anchor->callee",
+        type: "USES_TYPE",
+        source: "class:anchor",
+        target: "class:callee",
+        metadata: {
+          "classDiagram.relation.role": "METHOD_PARAMETER",
+          "classDiagram.relation.weight": "10",
+        },
+        route: {
+          sections: [
+            {
+              startPoint: { x: 480, y: 226 },
+              bendPoints: [{ x: 3180, y: 226 }],
+              endPoint: { x: 3180, y: 226 },
+            },
+          ],
+        },
+      },
+      {
+        id: "edge:anchor->data-left",
+        type: "USES_TYPE",
+        source: "class:anchor",
+        target: "class:data-left",
+        metadata: {
+          "classDiagram.relation.role": "METHOD_PARAMETER",
+          "classDiagram.relation.weight": "10",
+        },
+      },
+      {
+        id: "edge:anchor->data-right",
+        type: "USES_TYPE",
+        source: "class:anchor",
+        target: "class:data-right",
+        metadata: {
+          "classDiagram.relation.role": "METHOD_PARAMETER",
+          "classDiagram.relation.weight": "10",
+        },
+      },
+    ];
+
+    renderSurface({
+      nodes,
+      edges,
+      flowNodes: nodes.map((node) => ({
+        id: node.id,
+        data: { label: node.title },
+        position: node.position ?? { x: 0, y: 0 },
+      })),
+      flowEdges: edges.map((edge) => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+      })),
+      anchorNodeId: "class:anchor",
+      viewportMode: "CLASS_DIAGRAM",
+      shouldFocusAnchorOnLoad: false,
+      fitViewPadding: 0.12,
+      fitViewMaxZoom: 0.9,
+      nodeViewportSize: () => ({ width: 360, height: 260 }),
+    });
+
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(reactFlowFitViewMock).toHaveBeenCalledWith({
+      padding: 0.12,
+      duration: 0,
+      maxZoom: 0.9,
+      includeHiddenNodes: true,
+    });
+    expect(reactFlowSetCenterMock).not.toHaveBeenCalled();
+  });
+
+  it("opens project structure architecture graphs by fitting the real structure bounds without dropping below readable zoom", () => {
+    installResizeObserverStub();
+    vi.useFakeTimers();
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function getBoundingClientRect(this: HTMLElement) {
+      if ((this as HTMLElement).dataset.testid === "graph-canvas-shell") {
+        return {
+          left: 0,
+          top: 0,
+          right: 1280,
+          bottom: 720,
+          width: 1280,
+          height: 720,
+          x: 0,
+          y: 0,
+          toJSON: () => undefined,
+        };
+      }
+      return {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 0,
+        height: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => undefined,
+      };
+    });
+    const structureNodes: LinkGraphNode[] = [
+      { ...baseNode("entry:rest"), position: { x: 168, y: 170 } },
+      { ...baseNode("app:orders"), position: { x: 168, y: 454 } },
+      { ...baseNode("app:billing"), position: { x: 576, y: 454 } },
+      { ...baseNode("app:shipping"), position: { x: 984, y: 454 } },
+      { ...baseNode("app:invoice"), position: { x: 168, y: 620 } },
+      { ...baseNode("app:notify"), position: { x: 576, y: 620 } },
+      { ...baseNode("app:report"), position: { x: 984, y: 620 } },
+    ];
+
+    renderSurface({
+      nodes: structureNodes,
+      flowNodes: structureNodes.map((node) => ({
+        id: node.id,
+        data: { label: node.title },
+        position: node.position ?? { x: 0, y: 0 },
+      })),
+      edges: [],
+      flowEdges: [],
+      anchorNodeId: "entry:rest",
+      viewportMode: "ARCHITECTURE_GRAPH",
+      viewportPolicy: "readable-fit",
+      shouldFocusAnchorOnLoad: true,
+      layoutEditable: false,
+      nodeViewportSize: () => ({ width: 340, height: 116 }),
+    });
+
+    expect(screen.getByTestId("reactflow")).toHaveAttribute("data-min-zoom", "0.54");
+
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(reactFlowSetCenterMock).toHaveBeenCalledWith(746, 453, { zoom: 0.82, duration: 0 });
+    expect(reactFlowFitViewMock).not.toHaveBeenCalled();
   });
 
   it("uses fitView for the initial flowchart viewport so branch nodes are not clipped in the hybrid graph stage", () => {

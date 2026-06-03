@@ -2,6 +2,7 @@ package com.charmnight.linkgraph.navigation
 
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.model.SourceNavigationAnchors
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.components.Service
@@ -49,6 +50,42 @@ class SourceNavigationService(
             ?.let(::parseLocation)
         if (locationTarget != null) {
             return locationTarget
+        }
+        node.metadata["source.virtualFileUrl"]
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+            ?.let { url ->
+                return NavigationTarget(
+                    filePath = node.metadata["source.filePath"] ?: node.location.orEmpty(),
+                    line = node.metadata["source.startLine"]?.toIntOrNull() ?: 1,
+                    column = node.metadata["source.column"]?.toIntOrNull() ?: 1,
+                    virtualFileUrl = url,
+                )
+            }
+        SourceNavigationAnchors.fromMetadata(node.metadata)?.let { anchor ->
+            if (anchor.filePath != null || anchor.virtualFileUrl != null) {
+                return NavigationTarget(
+                    filePath = anchor.filePath ?: anchor.virtualFileUrl.orEmpty(),
+                    line = anchor.line,
+                    column = anchor.column,
+                    virtualFileUrl = anchor.virtualFileUrl,
+                )
+            }
+            if (anchor.signature != null && SourceNavigationAnchors.isSignatureNavigableType(anchor.nodeType ?: node.type)) {
+                return resolveNavigationTargetFromSignature(
+                    node.copy(
+                        type = anchor.nodeType ?: node.type,
+                        signature = anchor.signature,
+                    ),
+                )?.let { target ->
+                    NavigationTarget(
+                        filePath = target.virtualFile.path,
+                        line = target.line,
+                        column = target.column,
+                        virtualFileUrl = target.virtualFile.url,
+                    )
+                }
+            }
         }
         // 对 bridge 入口来说，位置串优先于签名推导，避免同名符号导致跳错文件。
         return resolveNavigationTargetFromSignature(node)?.let { target ->
@@ -344,7 +381,14 @@ class SourceNavigationService(
         val signature = node.signature?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         return when (node.type) {
             NodeType.METHOD -> resolveMethodTarget(signature)
-            NodeType.CLASS -> resolveClassTarget(signature)
+            NodeType.CLASS,
+            NodeType.INTERFACE,
+            NodeType.ENUM,
+            NodeType.ANNOTATION,
+            NodeType.RECORD,
+            NodeType.OBJECT,
+            NodeType.EXTERNAL_CLASS,
+            -> resolveClassTarget(signature)
             else -> null
         }
     }

@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.investigation.resolving
 
+import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoal
 import com.charmnight.linkgraph.investigation.domain.ResolutionOutcome
 import com.intellij.openapi.project.Project
@@ -10,6 +11,8 @@ import com.intellij.openapi.project.Project
 data class InvestigationContext(
     /** 保存当前 IDEA 项目。 */
     val project: Project,
+    /** 保存 resolver 链路进入 read action 前准备好的 JVM 架构索引。 */
+    val jvmEvidenceIndex: ArchitectureGraphIndex? = null,
 )
 
 /**

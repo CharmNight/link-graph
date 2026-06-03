@@ -4,12 +4,17 @@ import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore
 import com.charmnight.linkgraph.llm.runtime.RunBudget
+import com.charmnight.linkgraph.settings.LinkGraphSettingsService
+import com.charmnight.linkgraph.source.AttachedJarEntry
 import com.charmnight.linkgraph.ui.GraphEditorStateService
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.jar.JarEntry
+import java.util.jar.JarOutputStream
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -191,5 +196,104 @@ class ReadSourceSnippetToolTest : BasePlatformTestCase() {
 
         assertFalse(result.success)
         assertEquals("未读取到源码片段", result.errorMessage)
+    }
+
+    fun testReadsAttachedJarBangPathThroughResolverWithoutScheme() {
+        val settings = ApplicationManager.getApplication().getService(LinkGraphSettingsService::class.java)
+        val before = settings.snapshot()
+        val jarDir = Files.createTempDirectory("read-source-snippet-attached-jar")
+        val sourceJar = jarDir.resolve("external-sources.jar")
+        writeJar(
+            sourceJar,
+            mapOf(
+                "com/example/ExternalService.java" to
+                    """
+                    package com.example;
+                    public class ExternalService {
+                        public String name() {
+                            return "attached";
+                        }
+                    }
+                    """.trimIndent().toByteArray(),
+            ),
+        )
+        settings.update(
+            before.copy(
+                attachedJars = listOf(
+                    AttachedJarEntry(path = sourceJar.toString(), sourceJarPath = sourceJar.toString()),
+                ),
+            ),
+        )
+        val tool = ReadSourceSnippetTool(CodeReadToolFacade())
+
+        try {
+            val result = tool.invoke(
+                input = mapOf(
+                    "filePath" to "$sourceJar!/com/example/ExternalService.java",
+                    "startLine" to 2,
+                    "endLine" to 4,
+                ),
+                context = ToolExecutionContext(
+                    project = project,
+                    snapshot = testSnapshot().toToolGraphSnapshot(),
+                    artifactStore = InMemoryArtifactStore(),
+                    runBudget = RunBudget(),
+                ),
+            )
+
+            assertTrue(result.success, result.errorMessage ?: "expected attached jar snippet")
+            assertEquals("USER_ATTACHED_SOURCE_JAR", result.payload["origin"])
+            assertTrue(result.payload["snippet"].toString().contains("ExternalService"))
+            assertTrue(result.payload["virtualFileUrl"].toString().startsWith("jar://"))
+        } finally {
+            settings.update(before)
+        }
+    }
+
+    fun testReportsAttachedClassJarDecompileDisabledForSnippetRead() {
+        val settings = ApplicationManager.getApplication().getService(LinkGraphSettingsService::class.java)
+        val before = settings.snapshot()
+        val jarDir = Files.createTempDirectory("read-source-snippet-attached-class-jar")
+        val classJar = jarDir.resolve("external.jar")
+        writeJar(classJar, mapOf("com/example/ExternalService.class" to byteArrayOf(0)))
+        settings.update(
+            before.copy(
+                attachedJars = listOf(AttachedJarEntry(path = classJar.toString())),
+                allowClassJarDecompile = false,
+            ),
+        )
+        val tool = ReadSourceSnippetTool(CodeReadToolFacade())
+
+        try {
+            val result = tool.invoke(
+                input = mapOf(
+                    "filePath" to "$classJar!/com/example/ExternalService.class",
+                    "startLine" to 1,
+                    "endLine" to 3,
+                ),
+                context = ToolExecutionContext(
+                    project = project,
+                    snapshot = testSnapshot().toToolGraphSnapshot(),
+                    artifactStore = InMemoryArtifactStore(),
+                    runBudget = RunBudget(),
+                ),
+            )
+
+            assertFalse(result.success)
+            assertEquals("未读取到源码片段", result.errorMessage)
+            assertEquals("CLASS_JAR_DECOMPILE_DISABLED", result.payload["sourceUnavailableReason"])
+        } finally {
+            settings.update(before)
+        }
+    }
+
+    private fun writeJar(path: Path, entries: Map<String, ByteArray>) {
+        JarOutputStream(Files.newOutputStream(path)).use { jar ->
+            entries.forEach { (name, bytes) ->
+                jar.putNextEntry(JarEntry(name))
+                jar.write(bytes)
+                jar.closeEntry()
+            }
+        }
     }
 }

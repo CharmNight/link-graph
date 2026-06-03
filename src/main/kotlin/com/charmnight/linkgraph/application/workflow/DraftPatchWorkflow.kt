@@ -1,8 +1,8 @@
 package com.charmnight.linkgraph.application.workflow
 
 import com.charmnight.linkgraph.application.port.ApplicationSnapshotProvider
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEvent
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEventSink
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
 import com.charmnight.linkgraph.application.usecase.ApplyDraftPatchUseCaseResult
 import com.charmnight.linkgraph.application.usecase.DraftPatchUseCase
 import com.charmnight.linkgraph.application.usecase.RestoreDraftPatchPreviewSource

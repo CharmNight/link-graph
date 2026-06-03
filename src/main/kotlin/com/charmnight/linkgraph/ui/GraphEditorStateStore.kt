@@ -66,10 +66,10 @@ class GraphEditorStateStore(
 internal fun GraphEditorStateSnapshot.withOperationFeedback(
     level: OperationFeedbackLevel,
     message: String,
-    preserveLastMessageType: Boolean = false,
+    preservePreviousStatusKind: Boolean = false,
 ): GraphEditorStateSnapshot {
     return copy(
         operationFeedback = OperationFeedback(level = level, message = message),
-        lastMessageType = if (preserveLastMessageType) lastMessageType else "operationFeedback",
+        lastMessageType = if (preservePreviousStatusKind) lastMessageType else "operationFeedback",
     )
 }

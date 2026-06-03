@@ -3,7 +3,7 @@ package com.charmnight.linkgraph.services
 import com.charmnight.linkgraph.application.planning.PlanningContextFactory
 import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEventSink
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
 import com.charmnight.linkgraph.application.port.ToolGraphSnapshotProvider
 import com.charmnight.linkgraph.application.workflow.generation.CodeDraftApplyWorkflow
 import com.charmnight.linkgraph.application.workflow.generation.CodeDraftGenerationWorkflow
@@ -1164,13 +1164,17 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
 
         flows.codegen.requestCodeDraftsAsync()
         val codegenSnapshot = waitForSnapshot(stateService) {
-            it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED
+            it.codeDraftRequestState.phase == com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED &&
+                it.generatedCodeDrafts.any { draft -> draft.targetPath == relativeTargetPath }
         }
         assertEquals(1, codegenSnapshot.generatedCodeDrafts.size)
 
+        Files.createDirectories(absoluteTargetPath.parent)
         flows.apply.applyCodeDrafts()
 
-        val finalSnapshot = stateService.snapshot()
+        val finalSnapshot = waitForSnapshot(stateService) {
+            it.generatedCodeDraftWriteReport?.writtenFiles?.contains(relativeTargetPath) == true
+        }
         assertTrue(finalSnapshot.generatedCodeDraftWriteReport?.writtenFiles?.contains(relativeTargetPath) == true)
         assertTrue(Files.exists(absoluteTargetPath))
         assertTrue(Files.readString(absoluteTargetPath).contains("class RuntimeChain {}"))
@@ -1385,7 +1389,14 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             }
             Thread.sleep(50)
         }
-        fail("等待 generation runtime 状态收敛超时")
+        val snapshot = stateService.snapshot()
+        fail(
+            "等待 generation runtime 状态收敛超时: " +
+                "lastMessageType=${snapshot.lastMessageType}, " +
+                "codeDraftPhase=${snapshot.codeDraftRequestState.phase}, " +
+                "draftTargets=${snapshot.generatedCodeDrafts.map { it.targetPath }}, " +
+                "writeReport=${snapshot.generatedCodeDraftWriteReport}",
+        )
         throw IllegalStateException("unreachable")
     }
 }

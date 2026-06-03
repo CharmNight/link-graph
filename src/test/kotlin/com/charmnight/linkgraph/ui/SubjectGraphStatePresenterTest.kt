@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
@@ -51,13 +51,13 @@ class SubjectGraphStatePresenterTest {
             selectedMethodSignature = "com.example.Foo.bar()",
             displayName = "Foo.bar",
             feedbackLevel = OperationFeedbackLevel.SUCCESS,
-            feedbackMessage = "分析完成",
+            statusMessage = "分析完成",
         )
 
         presenter.presentAnalysisOutcome(outcome, "currentMethod")
         presenter.presentResourceNodeAdded(
             selectedNodeId = "node-1",
-            feedbackMessage = "已追加当前资源节点：Foo.bar",
+            statusMessage = "已追加当前资源节点：Foo.bar",
         )
 
         val snapshot = stateService.snapshot()

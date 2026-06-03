@@ -179,6 +179,9 @@ private fun GraphEditorStateSnapshot.currentVisibleGraphForMutation(): GraphDocu
         GraphSceneId.WORKSPACE_FACT -> factGraphView.visibleGraph
         GraphSceneId.WORKSPACE_FLOWCHART -> flowchartView.visibleGraph
         GraphSceneId.WORKSPACE_RESOURCE_RELATION -> resourceRelationView.visibleGraph
+        GraphSceneId.WORKSPACE_ARCHITECTURE_GRAPH -> architectureGraphView.visibleGraph
+        GraphSceneId.WORKSPACE_CLASS_DIAGRAM -> classDiagramView.visibleGraph
+        GraphSceneId.WORKSPACE_REVIEW_GRAPH -> reviewGraphView.visibleGraph
         GraphSceneId.DIFF -> diffGraph ?: GraphDocument()
     }
 }

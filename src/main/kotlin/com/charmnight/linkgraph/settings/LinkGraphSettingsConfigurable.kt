@@ -3,7 +3,10 @@ package com.charmnight.linkgraph.settings
 import com.charmnight.linkgraph.LinkGraphBundle
 import com.charmnight.linkgraph.llm.LlmProviderPreset
 import com.charmnight.linkgraph.llm.LlmProviderPresets
+import com.charmnight.linkgraph.source.AttachedJarEntry
+import com.charmnight.linkgraph.source.AttachedJarSettingsValidator
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.options.SearchableConfigurable
 import com.intellij.openapi.progress.ProgressManager
@@ -16,6 +19,7 @@ import com.intellij.util.ui.FormBuilder
 import com.intellij.util.ui.UIUtil
 import java.awt.BorderLayout
 import java.awt.FlowLayout
+import javax.swing.JTextArea
 import javax.swing.BorderFactory
 import javax.swing.JButton
 import javax.swing.JComboBox
@@ -29,11 +33,34 @@ import javax.swing.SpinnerNumberModel
  * 这里提供真正可用的配置入口，避免把 LLM 配置埋在代码或环境变量里。
  */
 class LinkGraphSettingsConfigurable : SearchableConfigurable {
+    constructor() : this(
+        serviceProvider = {
+            ApplicationManager.getApplication().getService(LinkGraphSettingsService::class.java)
+        },
+        loadSecretSnapshotAsync = ::loadSecretSnapshotOnPooledThread,
+    )
+
+    internal constructor(
+        serviceProvider: () -> LinkGraphSettingsService,
+        loadSecretSnapshotAsync: (LinkGraphSettingsService, (LinkGraphSettingsState) -> Unit) -> Unit,
+    ) {
+        this.serviceProvider = serviceProvider
+        this.loadSecretSnapshotAsync = loadSecretSnapshotAsync
+    }
+
+    private val serviceProvider: () -> LinkGraphSettingsService
+    private val loadSecretSnapshotAsync: (LinkGraphSettingsService, (LinkGraphSettingsState) -> Unit) -> Unit
     /** 设置持久化服务，负责读取和写回配置快照。 */
     private val service: LinkGraphSettingsService
-        get() = ApplicationManager.getApplication().getService(LinkGraphSettingsService::class.java)
+        get() = serviceProvider()
     /** 远程 LLM 设置校验器。 */
     private val validator = RemoteLlmSettingsValidator()
+    /** 当前 UI 对比用的持久化基线；默认不含 API key，避免 EDT 读取 PasswordSafe。 */
+    private var baselineState: LinkGraphSettingsState = LinkGraphSettingsState()
+    /** 当前基线是否已经包含真实 API key。 */
+    private var baselineApiKeyLoaded: Boolean = false
+    /** 异步 API key 回填版本号，防止旧 reset 的回调覆盖新 UI。 */
+    private var secretLoadGeneration: Int = 0
 
     /** 配置页根面板。 */
     private var panel: JPanel? = null
@@ -51,6 +78,16 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
     private var timeoutSpinner: JSpinner? = null
     /** 温度参数输入控件。 */
     private var temperatureSpinner: JSpinner? = null
+    /** 附加 JAR 列表输入框，每行一个 classJar|sourceJar。 */
+    private var attachedJarsArea: JTextArea? = null
+    /** 是否允许 class jar 反编译。 */
+    private var allowClassJarDecompileCheckBox: JBCheckBox? = null
+    /** 是否允许展开外部库。 */
+    private var allowExternalLibraryExpansionCheckBox: JBCheckBox? = null
+    /** 是否允许展开 JDK 类。 */
+    private var allowJdkLibraryExpansionCheckBox: JBCheckBox? = null
+    /** 外部类预算。 */
+    private var maxExternalClassNodesSpinner: JSpinner? = null
     /** 立即校验按钮。 */
     private var validateButton: JButton? = null
     /** 校验结果提示标签。 */
@@ -91,6 +128,20 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
         )
         /** 温度设置控件。 */
         temperatureSpinner = JSpinner(SpinnerNumberModel(LinkGraphSettingsState.DEFAULT_TEMPERATURE, 0.0, 1.0, 0.1))
+        attachedJarsArea = JTextArea(5, 64).apply {
+            lineWrap = false
+        }
+        allowClassJarDecompileCheckBox = JBCheckBox(LinkGraphBundle.message("settings.link-graph.attached-jars.allow-decompile"))
+        allowExternalLibraryExpansionCheckBox = JBCheckBox(LinkGraphBundle.message("settings.link-graph.attached-jars.allow-expansion"))
+        allowJdkLibraryExpansionCheckBox = JBCheckBox(LinkGraphBundle.message("settings.link-graph.attached-jars.allow-jdk-expansion"))
+        maxExternalClassNodesSpinner = JSpinner(
+            SpinnerNumberModel(
+                LinkGraphSettingsState.DEFAULT_MAX_EXTERNAL_CLASS_NODES,
+                LinkGraphSettingsState.MIN_EXTERNAL_CLASS_NODES,
+                LinkGraphSettingsState.MAX_EXTERNAL_CLASS_NODES,
+                100,
+            ),
+        )
         /** 手动触发校验的按钮。 */
         validateButton = JButton(LinkGraphBundle.message("settings.link-graph.validate"))
         /** 校验状态提示标签。 */
@@ -122,6 +173,8 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
             "settings.link-graph.temperature.hint",
             LinkGraphSettingsState.DEFAULT_TEMPERATURE,
         )
+        attachedJarsArea?.toolTipText = LinkGraphBundle.message("settings.link-graph.attached-jars.hint")
+        maxExternalClassNodesSpinner?.toolTipText = LinkGraphBundle.message("settings.link-graph.attached-jars.max-external.hint")
 
         /** 由 FormBuilder 组装出的主表单面板。 */
         val formPanel = FormBuilder.createFormBuilder()
@@ -172,6 +225,15 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
                     ),
                 ),
             )
+            .addSeparator()
+            .addComponent(JBLabel(LinkGraphBundle.message("settings.link-graph.attached-jars.title")))
+            .addLabeledComponent(LinkGraphBundle.message("settings.link-graph.attached-jars.entries"), attachedJarsArea!!)
+            .addComponent(createHintLabel(LinkGraphBundle.message("settings.link-graph.attached-jars.hint")))
+            .addComponent(allowClassJarDecompileCheckBox!!)
+            .addComponent(allowExternalLibraryExpansionCheckBox!!)
+            .addComponent(allowJdkLibraryExpansionCheckBox!!)
+            .addLabeledComponent(LinkGraphBundle.message("settings.link-graph.attached-jars.max-external"), maxExternalClassNodesSpinner!!)
+            .addComponent(createHintLabel(LinkGraphBundle.message("settings.link-graph.attached-jars.max-external.hint")))
             .addComponent(
                 JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
                     validateButton?.let(::add)
@@ -190,38 +252,63 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
 
     /** 判断当前 UI 内容是否与持久化配置不同。 */
     override fun isModified(): Boolean {
-        /** 已持久化的配置快照。 */
-        val snapshot = service.snapshot()
-        return currentState() != snapshot
+        return currentState() != baselineState
     }
 
     /** 校验并保存当前 UI 中的配置。 */
     override fun apply() {
         /** 当前 UI 整理出的新配置。 */
         val nextState = currentState()
+        val preserveBlankApiKey = shouldPreserveBlankApiKey(nextState)
+        val validationState = if (preserveBlankApiKey) {
+            nextState.copy(apiKey = service.snapshot().apiKey).sanitized()
+        } else {
+            nextState
+        }
         /** 保存前先执行一次同步校验。 */
-        val result = runValidation(nextState)
+        val result = runValidation(validationState)
         if (!result.ok) {
             updateValidationStatus(result)
             throw ConfigurationException(result.message)
         }
-        service.update(nextState)
+        service.update(nextState, preserveBlankApiKey = preserveBlankApiKey)
+        baselineState = if (preserveBlankApiKey) {
+            service.nonSecretSnapshot()
+        } else {
+            nextState.sanitized()
+        }
+        baselineApiKeyLoaded = !preserveBlankApiKey
+        if (preserveBlankApiKey) {
+            scheduleApiKeyLoad()
+        }
         updateValidationStatus(result)
     }
 
     /** 用持久化配置重置当前 UI。 */
     override fun reset() {
         /** 已持久化的配置快照。 */
-        val snapshot = service.snapshot()
+        val snapshot = service.nonSecretSnapshot()
+        baselineState = snapshot
+        baselineApiKeyLoaded = false
         llmEnabledCheckBox?.isSelected = snapshot.llmEnabled
         providerComboBox?.selectedItem = snapshot.providerPreset()
         endpointField?.text = snapshot.normalizedEndpoint()
-        apiKeyField?.text = snapshot.apiKey
+        apiKeyField?.text = ""
         modelField?.text = snapshot.model
         timeoutSpinner?.value = snapshot.effectiveTimeoutSeconds()
         temperatureSpinner?.value = snapshot.effectiveTemperature()
+        attachedJarsArea?.text = snapshot.attachedJars.joinToString("\n") { entry ->
+            listOf(entry.path, entry.sourceJarPath.orEmpty(), if (entry.enabled) "enabled" else "disabled")
+                .joinToString("|")
+                .trimEnd('|')
+        }
+        allowClassJarDecompileCheckBox?.isSelected = snapshot.allowClassJarDecompile
+        allowExternalLibraryExpansionCheckBox?.isSelected = snapshot.allowExternalLibraryExpansion
+        allowJdkLibraryExpansionCheckBox?.isSelected = snapshot.allowJdkLibraryExpansion
+        maxExternalClassNodesSpinner?.value = snapshot.maxExternalClassNodes
         validationStatusLabel?.text = LinkGraphBundle.message("settings.link-graph.validate.idle")
         refreshFieldEnabledStates()
+        scheduleApiKeyLoad()
     }
 
     /** 释放配置页创建的 UI 资源。 */
@@ -234,8 +321,35 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
         modelField = null
         timeoutSpinner = null
         temperatureSpinner = null
+        attachedJarsArea = null
+        allowClassJarDecompileCheckBox = null
+        allowExternalLibraryExpansionCheckBox = null
+        allowJdkLibraryExpansionCheckBox = null
+        maxExternalClassNodesSpinner = null
         validateButton = null
         validationStatusLabel = null
+    }
+
+    private fun scheduleApiKeyLoad() {
+        val currentGeneration = ++secretLoadGeneration
+        val currentService = service
+        loadSecretSnapshotAsync(currentService) { snapshot ->
+            if (currentGeneration != secretLoadGeneration || panel == null) {
+                return@loadSecretSnapshotAsync
+            }
+            val field = apiKeyField ?: return@loadSecretSnapshotAsync
+            if (field.password.concatToString().isNotBlank()) {
+                return@loadSecretSnapshotAsync
+            }
+            val secretSnapshot = snapshot.sanitized()
+            baselineState = secretSnapshot
+            baselineApiKeyLoaded = true
+            field.text = secretSnapshot.apiKey
+        }
+    }
+
+    private fun shouldPreserveBlankApiKey(nextState: LinkGraphSettingsState): Boolean {
+        return nextState.apiKey.isBlank() && !baselineApiKeyLoaded
     }
 
     /** 从当前 UI 控件收集并构造一份标准化设置快照。 */
@@ -248,6 +362,12 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
             model = modelField?.text.orEmpty(),
             timeoutSeconds = (timeoutSpinner?.value as? Number)?.toInt() ?: LinkGraphSettingsState.DEFAULT_TIMEOUT_SECONDS,
             temperature = (temperatureSpinner?.value as? Number)?.toDouble() ?: LinkGraphSettingsState.DEFAULT_TEMPERATURE,
+            attachedJars = parseAttachedJarEntries(attachedJarsArea?.text.orEmpty()),
+            allowClassJarDecompile = allowClassJarDecompileCheckBox?.isSelected ?: LinkGraphSettingsState.DEFAULT_ALLOW_CLASS_JAR_DECOMPILE,
+            allowExternalLibraryExpansion = allowExternalLibraryExpansionCheckBox?.isSelected ?: LinkGraphSettingsState.DEFAULT_ALLOW_EXTERNAL_LIBRARY_EXPANSION,
+            allowJdkLibraryExpansion = allowJdkLibraryExpansionCheckBox?.isSelected ?: LinkGraphSettingsState.DEFAULT_ALLOW_JDK_LIBRARY_EXPANSION,
+            maxExternalClassNodes = (maxExternalClassNodesSpinner?.value as? Number)?.toInt()
+                ?: LinkGraphSettingsState.DEFAULT_MAX_EXTERNAL_CLASS_NODES,
         ).sanitized()
     }
 
@@ -280,6 +400,13 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
 
     /** 在带进度条的同步任务中执行设置校验。 */
     private fun runValidation(state: LinkGraphSettingsState): RemoteLlmSettingsValidationResult {
+        val attachedJarValidation = AttachedJarSettingsValidator.validate(state.attachedJars)
+        if (!attachedJarValidation.ok) {
+            return RemoteLlmSettingsValidationResult(
+                ok = false,
+                message = attachedJarValidation.message ?: "附加 JAR 配置无效。",
+            )
+        }
         /** 默认展示的校验结果。 */
         var result = RemoteLlmSettingsValidationResult(
             ok = false,
@@ -295,6 +422,21 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
         )
         return result
     }
+
+    private fun parseAttachedJarEntries(text: String): List<AttachedJarEntry> =
+        text.lineSequence()
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .filterNot { line -> line.startsWith("#") }
+            .map { line ->
+                val parts = line.split('|').map(String::trim)
+                AttachedJarEntry(
+                    path = parts.getOrNull(0).orEmpty(),
+                    sourceJarPath = parts.getOrNull(1)?.takeIf(String::isNotBlank),
+                    enabled = parts.getOrNull(2)?.equals("disabled", ignoreCase = true) != true,
+                )
+            }
+            .toList()
 
     /** 把校验结果渲染到状态标签上。 */
     private fun updateValidationStatus(result: RemoteLlmSettingsValidationResult) {
@@ -322,5 +464,21 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
             }
             append("</html>")
         }
+    }
+}
+
+private fun loadSecretSnapshotOnPooledThread(
+    service: LinkGraphSettingsService,
+    onLoaded: (LinkGraphSettingsState) -> Unit,
+) {
+    val application = ApplicationManager.getApplication()
+    application.executeOnPooledThread {
+        runCatching { service.snapshot() }
+            .onSuccess { snapshot ->
+                application.invokeLater(
+                    { onLoaded(snapshot) },
+                    ModalityState.any(),
+                )
+            }
     }
 }

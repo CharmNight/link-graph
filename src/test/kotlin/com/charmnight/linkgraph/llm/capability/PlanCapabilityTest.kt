@@ -24,6 +24,7 @@ import com.charmnight.linkgraph.model.GraphDiffEntry
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.llm.EditScope
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
@@ -68,6 +69,38 @@ class PlanCapabilityTest : BasePlatformTestCase() {
         assertEquals("plan without confirmed intent", result.output?.summary)
         assertNull(result.finalState.failureReason)
         assertEquals(5, result.finalState.stepIndex)
+    }
+
+    fun testRuntimeBudgetUsesConfiguredPlanTimeout() {
+        val capability = PlanCapability(
+            defaultBudget = RunBudget(),
+            planExecutor = { _, _, _ ->
+                GenerationPlan(
+                    source = GenerationPlanSource.LOCAL_RULE,
+                    summary = "ok",
+                )
+            },
+        )
+
+        val state = capability.buildInitialState(
+            input = PlanCapabilityInput(
+                planningPayload = PlanningInput(
+                    planningGraph = GraphDocument(),
+                    diff = GraphDiff(),
+                    previewItems = emptyList(),
+                    sourceContext = emptyList(),
+                ),
+                settings = LinkGraphSettingsState(timeoutSeconds = 3_600),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = { testSnapshot().toToolGraphSnapshot() },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertEquals(3_600, state.budget.maxRuntimeSeconds)
+        assertEquals(10, state.budget.maxSteps)
     }
 
     fun testGeneratesPlanAfterReadingConfirmedIntent() {

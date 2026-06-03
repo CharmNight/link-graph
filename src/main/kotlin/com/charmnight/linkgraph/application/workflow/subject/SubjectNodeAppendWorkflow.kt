@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.application.workflow.subject
 
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEvent
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
 import com.charmnight.linkgraph.application.usecase.CurrentMethodNodeInput
 import com.charmnight.linkgraph.application.usecase.SubjectGraphUseCase
 import com.charmnight.linkgraph.foundation.debugLazy
@@ -44,7 +44,7 @@ internal class SubjectNodeAppendWorkflow(
                 methodDisplayName = currentMethodNode.methodDisplayName,
             ),
         )
-        dependencies.emitFeedback(ApplicationFeedbackLevel.SUCCESS, result.feedbackMessage)
+        dependencies.emitFeedback(ApplicationFeedbackLevel.SUCCESS, result.statusMessage)
         dependencies.workspaceGraphCommitter.commitWorkspaceGraph(
             graph = result.graph,
             selectedMethodSignature = result.selectedMethodSignature,
@@ -72,7 +72,7 @@ internal class SubjectNodeAppendWorkflow(
         dependencies.emit(
             GraphEditorApplicationEvent.ResourceNodeAdded(
                 selectedNodeId = result.selectedNodeId,
-                feedbackMessage = result.feedbackMessage,
+                statusMessage = result.statusMessage,
             ),
         )
         debugLazy(dependencies.logger.isDebugEnabled, dependencies.logger::debug) { "当前节点追加完成: nodeId=${node.id}" }

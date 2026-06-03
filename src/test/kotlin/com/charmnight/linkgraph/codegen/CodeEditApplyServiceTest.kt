@@ -844,7 +844,7 @@ class CodeEditApplyServiceTest : BasePlatformTestCase() {
                     kind = CodeEditOperationKind.REPLACE_METHOD_BODY,
                     payload = """
                         if (!FileUtils.checkAllowDownload(fileName)) {
-                            audit.warn("reject {}", fileName);
+                            logger.warn("reject {}", fileName);
                             throw new Exception("bad file name");
                         }
                     """.trimIndent(),
@@ -890,7 +890,7 @@ class CodeEditApplyServiceTest : BasePlatformTestCase() {
         )
 
         assertTrue(result.canApply, result.warnings.joinToString(" | "))
-        assertTrue(result.previewText.contains("""audit.warn("reject {}", fileName);"""))
+        assertTrue(result.previewText.contains("""logger.warn("reject {}", fileName);"""))
         assertTrue(result.previewText.contains("Boolean.TRUE.equals(delete) && Files.exists(Path.of(filePath))"))
         assertTrue(result.previewText.contains("public String uploadFile(String fileName)"))
         assertTrue(result.previewText.contains("public String resourceDownload(String resource)"))

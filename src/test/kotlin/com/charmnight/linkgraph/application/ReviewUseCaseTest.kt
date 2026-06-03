@@ -26,7 +26,10 @@ class ReviewUseCaseTest {
 
         val result = ReviewUseCase { output, _ -> output }.resolveQaRuntimeResult(
             runtimeResult = AgentRunResult(
-                finalState = runState(AgentRunFailureReason.EVIDENCE_INSUFFICIENT),
+                finalState = runState(
+                    failureReason = AgentRunFailureReason.EVIDENCE_INSUFFICIENT,
+                    lastModelOutput = "当前工作台没有可供问答的图节点，无法继续执行。",
+                ),
                 output = null,
             ),
             modeContext = context,
@@ -37,7 +40,11 @@ class ReviewUseCaseTest {
         )
 
         val failed = assertIs<ReviewUseCaseResult.QaFailed>(result)
-        assertEquals("问答失败：runtime 未返回结果。", failed.presentation.message)
+        assertEquals(
+            "问答失败：runtime 未返回结果（EVIDENCE_INSUFFICIENT：当前工作台没有可供问答的图节点，无法继续执行。）。",
+            failed.presentation.message,
+        )
+        assertEquals(failed.presentation.message, failed.fallbackResult.answer)
         assertEquals(context.question, failed.fallbackResult.question)
         assertTrue(failed.fallbackResult.warnings.single().contains("EVIDENCE_INSUFFICIENT"))
     }
@@ -79,6 +86,7 @@ class ReviewUseCaseTest {
 
     private fun runState(
         failureReason: AgentRunFailureReason? = null,
+        lastModelOutput: String? = null,
     ): AgentRunState {
         return AgentRunState(
             runId = "run",
@@ -89,6 +97,7 @@ class ReviewUseCaseTest {
             stepIndex = 0,
             artifactRefs = emptyList(),
             failureReason = failureReason,
+            lastModelOutput = lastModelOutput,
         )
     }
 }

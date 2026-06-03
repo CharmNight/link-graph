@@ -15,6 +15,51 @@ function shortTypeName(value: string): string {
     .replace(/\b(?:[a-z_]\w*\.)+([A-Z]\w*)/g, "$1");
 }
 
+interface ParsedMethodSignature {
+  parameters: string[];
+  returnType: string | null;
+}
+
+function splitMethodParameters(parametersText: string): string[] {
+  const parameters: string[] = [];
+  let genericDepth = 0;
+  let segmentStart = 0;
+  for (let index = 0; index < parametersText.length; index += 1) {
+    const char = parametersText[index];
+    if (char === "<") {
+      genericDepth += 1;
+    } else if (char === ">") {
+      genericDepth = Math.max(0, genericDepth - 1);
+    } else if (char === "," && genericDepth === 0) {
+      const segment = parametersText.slice(segmentStart, index).trim();
+      if (segment) {
+        parameters.push(segment);
+      }
+      segmentStart = index + 1;
+    }
+  }
+  const tailSegment = parametersText.slice(segmentStart).trim();
+  if (tailSegment) {
+    parameters.push(tailSegment);
+  }
+  return parameters;
+}
+
+function parseMethodSignature(signature?: string): ParsedMethodSignature | null {
+  const normalized = signature?.trim();
+  if (!normalized) {
+    return null;
+  }
+  const match = normalized.match(/^(.*)\.([^.]+)\((.*)\)(?::(.+))?$/);
+  if (!match) {
+    return null;
+  }
+  return {
+    parameters: splitMethodParameters(match[3] ?? ""),
+    returnType: match[4]?.trim() || null,
+  };
+}
+
 export function flowScopeKindLabel(node: LinkGraphNode): string | null {
   if (node.type !== "FLOW_SCOPE") {
     return null;
@@ -124,19 +169,29 @@ export function signaturePreview(node: LinkGraphNode): string | null {
     return anchorMethod ? `所属方法 · ${anchorMethod}` : "所属方法 · 当前方法";
   }
   if (node.type === "METHOD") {
-    const outputText = node.outputs.length > 0 ? node.outputs.map(shortTypeName).join(", ") : "void";
-    const previewInputs = node.inputs.map(shortTypeName);
+    const parsedSignature = parseMethodSignature(node.signature);
+    const outputText = node.outputs.length > 0
+      ? node.outputs.map(shortTypeName).join(", ")
+      : parsedSignature?.returnType
+        ? shortTypeName(parsedSignature.returnType)
+        : null;
+    const previewInputs = (node.inputs.length > 0 ? node.inputs : parsedSignature?.parameters ?? [])
+      .map(shortTypeName);
     if (previewInputs.length === 0) {
-      return `${outputText} ${methodNameFromTitle(node.title)}()`;
+      return outputText
+        ? `${outputText} ${methodNameFromTitle(node.title)}()`
+        : `${methodNameFromTitle(node.title)}()`;
     }
     const compactInputText = previewInputs.length <= 2
       ? previewInputs.join(", ")
       : `${previewInputs.slice(0, 2).join(", ")}, +${previewInputs.length - 2}`;
-    const compactInline = `${outputText} ${methodNameFromTitle(node.title)}(${compactInputText})`;
+    const methodText = `${methodNameFromTitle(node.title)}(${compactInputText})`;
+    const compactInline = outputText ? `${outputText} ${methodText}` : methodText;
     if (previewInputs.length <= 2 || compactInline.length <= 76) {
       return compactInline;
     }
-    return `${outputText} ${methodNameFromTitle(node.title)}(${previewInputs.length}参)`;
+    const compactMethodText = `${methodNameFromTitle(node.title)}(${previewInputs.length}参)`;
+    return outputText ? `${outputText} ${compactMethodText}` : compactMethodText;
   }
   if (node.signature?.trim()) {
     return shortTypeName(node.signature);
@@ -190,6 +245,9 @@ export function hasHierarchyDirections(nodes: LinkGraphNode[]): boolean {
 }
 
 export function nodeTooltip(node: LinkGraphNode): string {
+  const parsedSignature = node.type === "METHOD" ? parseMethodSignature(node.signature) : null;
+  const derivedInputs = node.inputs.length === 0 ? parsedSignature?.parameters ?? [] : [];
+  const derivedOutput = node.outputs.length === 0 && parsedSignature?.returnType ? parsedSignature.returnType : null;
   return [
     `类型: ${nodeTypeLabel(node.type)}`,
     node.title,
@@ -197,6 +255,8 @@ export function nodeTooltip(node: LinkGraphNode): string {
     node.doc,
     node.inputs.length > 0 ? `输入: ${node.inputs.join(", ")}` : null,
     node.outputs.length > 0 ? `输出: ${node.outputs.join(", ")}` : null,
+    derivedInputs.length > 0 ? `签名参数: ${derivedInputs.join(", ")}` : null,
+    derivedOutput ? `签名返回: ${derivedOutput}` : null,
     node.location,
   ]
     .filter((item) => Boolean(item?.trim()))

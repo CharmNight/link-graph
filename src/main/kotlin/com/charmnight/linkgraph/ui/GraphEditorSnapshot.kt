@@ -1,6 +1,9 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
+import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
+import com.charmnight.linkgraph.review.ReviewGraphViewDocument
 import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
 import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
@@ -20,6 +23,9 @@ data class GraphEditorSnapshot(
     val factGraphView: FactGraphViewDocument = FactGraphViewDocument(),
     val flowchartView: FlowchartViewDocument = FlowchartViewDocument(),
     val resourceRelationView: ResourceRelationViewDocument = ResourceRelationViewDocument(),
+    val architectureGraphView: ArchitectureGraphViewDocument = ArchitectureGraphViewDocument(),
+    val classDiagramView: ClassDiagramViewDocument = ClassDiagramViewDocument(),
+    val reviewGraphView: ReviewGraphViewDocument = ReviewGraphViewDocument(),
     val analysisDisplayMode: com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode =
         com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode.FACT_GRAPH,
     val currentSceneId: GraphSceneId = GraphSceneId.WORKSPACE_FACT,
@@ -39,6 +45,9 @@ fun GraphEditorStateSnapshot.editorSnapshot(): GraphEditorSnapshot {
         factGraphView = factGraphView,
         flowchartView = flowchartView,
         resourceRelationView = resourceRelationView,
+        architectureGraphView = architectureGraphView,
+        classDiagramView = classDiagramView,
+        reviewGraphView = reviewGraphView,
         analysisDisplayMode = analysisDisplayMode,
         currentSceneId = currentSceneId,
         sceneStates = sceneStates,

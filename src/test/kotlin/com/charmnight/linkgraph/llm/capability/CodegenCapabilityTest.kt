@@ -23,6 +23,7 @@ import com.charmnight.linkgraph.llm.tools.ToolResult
 import com.charmnight.linkgraph.llm.tools.ValidateEditScopeTool
 import com.charmnight.linkgraph.llm.tools.ValidationToolFacade
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
@@ -36,6 +37,32 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class CodegenCapabilityTest : BasePlatformTestCase() {
+    fun testRuntimeBudgetUsesConfiguredCodegenTimeout() {
+        val capability = CodegenCapability(
+            project = project,
+            defaultBudget = RunBudget(),
+            codegenExecutor = { _, _, _ ->
+                CodeGenerationResult(drafts = emptyList())
+            },
+        )
+
+        val state = capability.buildInitialState(
+            input = CodegenCapabilityInput(
+                generationContext = com.charmnight.linkgraph.llm.GenerationContext(),
+                plan = null,
+                settings = LinkGraphSettingsState(timeoutSeconds = 3_600),
+            ),
+            runtimeContext = AgentRuntimeContext(
+                project = project,
+                snapshotSupplier = { testSnapshot().toToolGraphSnapshot() },
+                artifactStore = InMemoryArtifactStore(),
+            ),
+        )
+
+        assertEquals(3_600, state.budget.maxRuntimeSeconds)
+        assertEquals(10, state.budget.maxSteps)
+    }
+
     fun testRejectsExistingFileDraftWhenNoValidatedScopeExists() {
         val capability = CodegenCapability(
             project = project,

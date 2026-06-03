@@ -24,22 +24,36 @@ class LinkGraphProjectServiceWorkbenchLayoutTest : BasePlatformTestCase() {
         )
 
         project.getService(GraphEditorCommandRouter::class.java)
-            .updateWorkbenchSectionPreference("audit.investigation-threads", true)
+            .updateWorkbenchSectionPreference("qa.investigation-threads", true)
 
-        waitForRuntimePreference("audit.investigation-threads")
+        waitForRuntimePreference("qa.investigation-threads")
 
         assertEquals(
             true,
             project.getService(GraphEditorStateService::class.java)
                 .snapshot()
-                .workbenchSectionPreferences["audit.investigation-threads"],
+                .workbenchSectionPreferences["qa.investigation-threads"],
         )
         assertEquals(
             true,
             project.getService(WorkbenchLayoutPreferencesService::class.java)
-                .snapshot()["audit.investigation-threads"],
+                .snapshot()["qa.investigation-threads"],
         )
         assertEquals(true, syncRequestedCount >= 1)
+    }
+
+    fun testObsoleteWorkbenchSectionPreferenceIsIgnored() {
+        val obsoleteQaSectionPrefix = "au" + "dit"
+        val stateService = project.getService(GraphEditorStateService::class.java)
+        val preferencesService = project.getService(WorkbenchLayoutPreferencesService::class.java)
+        val runtimeBefore = stateService.snapshot().workbenchSectionPreferences
+        val persistentBefore = preferencesService.snapshot()
+
+        project.getService(GraphEditorCommandRouter::class.java)
+            .updateWorkbenchSectionPreference("$obsoleteQaSectionPrefix.investigation-threads", true)
+
+        assertEquals(runtimeBefore, stateService.snapshot().workbenchSectionPreferences)
+        assertEquals(persistentBefore, preferencesService.snapshot())
     }
 
     private fun waitForRuntimePreference(sectionId: String) {

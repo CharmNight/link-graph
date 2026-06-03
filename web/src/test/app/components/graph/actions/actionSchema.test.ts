@@ -6,7 +6,7 @@ describe("actionSchema", () => {
     const onAddNode = vi.fn();
     const onImportMermaid = vi.fn();
     const onFormatLayout = vi.fn();
-    const onOpenAudit = vi.fn();
+    const onOpenQa = vi.fn();
     const onClose = vi.fn();
 
     const factActions = buildPaneActions({
@@ -18,7 +18,7 @@ describe("actionSchema", () => {
       onAddNode,
       onImportMermaid,
       onFormatLayout,
-      onOpenAudit,
+      onOpenQa,
       onClose,
     });
 
@@ -43,7 +43,7 @@ describe("actionSchema", () => {
       onAddNode,
       onImportMermaid,
       onFormatLayout,
-      onOpenAudit,
+      onOpenQa,
       onClose,
     });
 
@@ -60,8 +60,8 @@ describe("actionSchema", () => {
     const onInspectNode = vi.fn();
     const onRequestSourceNavigation = vi.fn();
     const onRequestBeautification = vi.fn();
-    const onRequestAudit = vi.fn();
-    const onOpenAudit = vi.fn();
+    const onRequestQa = vi.fn();
+    const onOpenQa = vi.fn();
     const onToggleCollapseNode = vi.fn();
     const onExpandOverflowNode = vi.fn();
     const onFormatLayout = vi.fn();
@@ -79,8 +79,8 @@ describe("actionSchema", () => {
       onInspectNode,
       onRequestSourceNavigation,
       onRequestBeautification,
-      onRequestAudit,
-      onOpenAudit,
+      onRequestQa,
+      onOpenQa,
       onToggleCollapseNode,
       onExpandOverflowNode,
       onFormatLayout,
@@ -94,7 +94,7 @@ describe("actionSchema", () => {
       "打开源码",
       "讲解当前链路",
       "问答当前节点",
-      "设为问答范围起点",
+      "设为问答目标",
       "折叠整个下游子树",
       "继续展开此分支",
       "一键格式化布局",
@@ -117,8 +117,8 @@ describe("actionSchema", () => {
       onInspectNode,
       onRequestSourceNavigation,
       onRequestBeautification,
-      onRequestAudit,
-      onOpenAudit,
+      onRequestQa,
+      onOpenQa,
       onToggleCollapseNode,
       onExpandOverflowNode,
       onFormatLayout,
@@ -131,12 +131,62 @@ describe("actionSchema", () => {
       "编辑节点",
       "讲解当前链路",
       "问答当前节点",
-      "设为问答范围起点",
+      "设为问答目标",
       "展开整个下游子树",
       "一键格式化布局",
       "删除节点及子节点",
       "删除节点",
     ]);
+  });
+
+  it("offers invocation expansion and removal actions when available", () => {
+    const onInspectNode = vi.fn();
+    const onRequestSourceNavigation = vi.fn();
+    const onRequestBeautification = vi.fn();
+    const onRequestQa = vi.fn();
+    const onOpenQa = vi.fn();
+    const onToggleCollapseNode = vi.fn();
+    const onExpandOverflowNode = vi.fn();
+    const onExpandInvocation = vi.fn();
+    const onRemoveInvocationExpansion = vi.fn();
+    const onFormatLayout = vi.fn();
+    const onDeleteNodeSubtree = vi.fn();
+    const onDeleteNode = vi.fn();
+    const onClose = vi.fn();
+
+    const actions = buildNodeActions({
+      analysisDisplayMode: "FLOWCHART",
+      editable: true,
+      nodeId: "invoke:create-info",
+      canNavigateToSource: true,
+      collapsed: false,
+      overflowActionLabel: null,
+      invocationExpansionActionLabel: "展开被调方法",
+      expansionId: "invocation:expansion-1",
+      onInspectNode,
+      onRequestSourceNavigation,
+      onRequestBeautification,
+      onRequestQa,
+      onOpenQa,
+      onToggleCollapseNode,
+      onExpandOverflowNode,
+      onExpandInvocation,
+      onRemoveInvocationExpansion,
+      onFormatLayout,
+      onDeleteNodeSubtree,
+      onDeleteNode,
+      onClose,
+    });
+
+    expect(actions.map((action) => action.id)).toContain("expand-invocation");
+    expect(actions.map((action) => action.id)).toContain("remove-invocation-expansion");
+
+    actions.find((action) => action.id === "expand-invocation")?.onSelect();
+    actions.find((action) => action.id === "remove-invocation-expansion")?.onSelect();
+
+    expect(onExpandInvocation).toHaveBeenCalledWith("invoke:create-info");
+    expect(onRemoveInvocationExpansion).toHaveBeenCalledWith("invocation:expansion-1");
+    expect(onClose).toHaveBeenCalledTimes(2);
   });
 
   it("offers edge deletion for any editable view", () => {

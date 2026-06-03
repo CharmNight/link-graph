@@ -7,9 +7,9 @@ import com.charmnight.linkgraph.application.usecase.SourceNavigationUseCaseResul
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.navigation.SourceNavigationService
 import com.charmnight.linkgraph.foundation.debugLazy
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEvent
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEventSink
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
@@ -48,7 +48,7 @@ internal class SourceNavigationWorkflow(
                     GraphEditorApplicationEvent.NavigationFailed(
                         nodeId = nodeId,
                         message = "当前节点没有可信源码锚点，无法打开源码。",
-                        feedbackMessage = "当前节点没有可信源码锚点，无法打开源码。",
+                        statusMessage = "当前节点没有可信源码锚点，无法打开源码。",
                         level = ApplicationFeedbackLevel.WARNING,
                     ),
                 )
@@ -59,7 +59,7 @@ internal class SourceNavigationWorkflow(
                     GraphEditorApplicationEvent.NavigationFailed(
                         nodeId = nodeId,
                         message = "节点 ${result.node.title} 暂无可跳转的源码位置。",
-                        feedbackMessage = "节点 ${result.node.title} 暂无可跳转的源码位置。",
+                        statusMessage = "节点 ${result.node.title} 暂无可跳转的源码位置。",
                         level = ApplicationFeedbackLevel.WARNING,
                     ),
                 )

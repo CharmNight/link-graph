@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.application.workflow.subject
 
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.application.usecase.SubjectGraphUseCase
 import com.charmnight.linkgraph.foundation.LinkGraphRenderTrace
 import com.charmnight.linkgraph.foundation.debugLazy

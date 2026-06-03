@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
 
@@ -11,12 +11,12 @@ class SubjectGraphStatePresenter(
     fun presentFeedback(
         level: ApplicationFeedbackLevel,
         message: String,
-        preserveLastMessageType: Boolean = false,
+        preservePreviousStatusKind: Boolean = false,
     ) {
         stateService.workbench.markOperationFeedback(
             level.toOperationFeedbackLevel(),
             message,
-            preserveLastMessageType = preserveLastMessageType,
+            preservePreviousStatusKind = preservePreviousStatusKind,
         )
         requestBrowserSync()
     }
@@ -60,9 +60,9 @@ class SubjectGraphStatePresenter(
 
     fun presentResourceNodeAdded(
         selectedNodeId: String,
-        feedbackMessage: String,
+        statusMessage: String,
     ) {
-        stateService.workbench.markOperationFeedback(OperationFeedbackLevel.SUCCESS, feedbackMessage)
+        stateService.workbench.markOperationFeedback(OperationFeedbackLevel.SUCCESS, statusMessage)
         stateService.graph.selectNode(selectedNodeId)
         requestBrowserSync()
     }

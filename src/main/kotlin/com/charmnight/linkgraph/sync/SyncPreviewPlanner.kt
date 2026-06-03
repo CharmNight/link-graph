@@ -152,6 +152,19 @@ class SyncPreviewPlanner {
             NodeType.TERMINAL -> "终止节点"
             NodeType.MERGE -> "汇合节点"
             NodeType.CLASS -> "类"
+            NodeType.MODULE -> "模块"
+            NodeType.PACKAGE -> "包"
+            NodeType.INTERFACE -> "接口"
+            NodeType.ENUM -> "枚举"
+            NodeType.ANNOTATION -> "注解"
+            NodeType.RECORD -> "Record"
+            NodeType.OBJECT -> "Object"
+            NodeType.EXTERNAL_CLASS -> "外部类"
+            NodeType.LIBRARY -> "依赖库"
+            NodeType.SERVICE -> "服务"
+            NodeType.COMPONENT -> "组件"
+            NodeType.LAYER -> "架构层"
+            NodeType.RESOURCE -> "资源"
             NodeType.SQL -> "SQL"
             NodeType.HTTP_ENDPOINT -> "HTTP 接口"
             NodeType.FEIGN_CLIENT -> "Feign 客户端"
@@ -174,6 +187,8 @@ class SyncPreviewPlanner {
             com.charmnight.linkgraph.model.EdgeType.CONTAINS_FLOW -> "流程包含连线"
             com.charmnight.linkgraph.model.EdgeType.CONTROL_FLOW -> "控制流连线"
             com.charmnight.linkgraph.model.EdgeType.IMPLEMENTS -> "实现连线"
+            com.charmnight.linkgraph.model.EdgeType.EXTENDS -> "继承连线"
+            com.charmnight.linkgraph.model.EdgeType.USES_TYPE -> "类型依赖连线"
             com.charmnight.linkgraph.model.EdgeType.INJECT -> "注入连线"
             com.charmnight.linkgraph.model.EdgeType.ROUTES_TO -> "路由连线"
             com.charmnight.linkgraph.model.EdgeType.MAPS_TO_SQL -> "SQL 映射连线"
@@ -184,6 +199,7 @@ class SyncPreviewPlanner {
             com.charmnight.linkgraph.model.EdgeType.USES_PROXY -> "代理连线"
             com.charmnight.linkgraph.model.EdgeType.REFLECTS_TO -> "反射连线"
             com.charmnight.linkgraph.model.EdgeType.SPI_RESOLVES_TO -> "SPI 解析连线"
+            com.charmnight.linkgraph.model.EdgeType.TESTS -> "测试连线"
             com.charmnight.linkgraph.model.EdgeType.GENERATES -> "生成连线"
         }
     }
@@ -194,6 +210,19 @@ class SyncPreviewPlanner {
     private fun riskForMissingNode(type: NodeType): SyncPreviewRisk {
         return when (type) {
             NodeType.CLASS,
+            NodeType.MODULE,
+            NodeType.PACKAGE,
+            NodeType.INTERFACE,
+            NodeType.ENUM,
+            NodeType.ANNOTATION,
+            NodeType.RECORD,
+            NodeType.OBJECT,
+            NodeType.EXTERNAL_CLASS,
+            NodeType.LIBRARY,
+            NodeType.SERVICE,
+            NodeType.COMPONENT,
+            NodeType.LAYER,
+            NodeType.RESOURCE,
             NodeType.FLOW_SCOPE,
             NodeType.FLOW_ACTION,
             NodeType.TERMINAL,

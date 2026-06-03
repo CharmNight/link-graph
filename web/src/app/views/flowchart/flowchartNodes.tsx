@@ -16,7 +16,7 @@ import {
   flowchartNodeCardWidth,
 } from "../../graphNodeSizing";
 import type { NodeMeasuredSize, NodeSizeRegistry } from "../../graph/nodeSizeRegistry";
-import type { DraftCompareStatus, LinkGraphEdge, LinkGraphNode } from "../../types";
+import type { DraftCompareStatus, GraphProjectionIndex, LinkGraphEdge, LinkGraphNode } from "../../types";
 import { edgeTypeLabel } from "../../labels";
 import { FlowchartNodeCard } from "../../components/graph/nodes/FlowchartNodeCard";
 import { flowchartKind } from "../../components/graph/nodes/nodePresentation";
@@ -43,6 +43,7 @@ import {
 
 interface FlowchartNodeData extends Record<string, unknown> {
   node: LinkGraphNode;
+  selected?: boolean;
   hasExceptionSource: boolean;
   mergeLeftTargetCount: number;
   mergeRightTargetCount: number;
@@ -59,6 +60,7 @@ interface BuildFlowchartNodesOptions {
   explanationFocusNodeId?: string | null;
   draftChangedNodeIds?: string[];
   draftCompareNodeStatuses?: Record<string, DraftCompareStatus>;
+  projectionIndex?: GraphProjectionIndex | null;
   nodeSizeRegistry: NodeSizeRegistry;
 }
 
@@ -200,6 +202,7 @@ function flowchartNodeShellStyle(kind: string): CSSProperties | undefined {
 function FlowchartReactNode({ id, data, isConnectable, selected }: FlowchartFlowNodeProps) {
   const kind = flowchartKind(data.node);
   const updateNodeInternals = useUpdateNodeInternals();
+  const appSelected = data.selected === true || selected;
   const visibleTargetHandleStyle = flowchartHandleStyle(isConnectable, "target");
   const visibleSourceHandleStyle = flowchartHandleStyle(isConnectable, "source");
   const auxiliaryHandleStyle = flowchartAuxiliaryHandleStyle(visibleTargetHandleStyle);
@@ -208,14 +211,14 @@ function FlowchartReactNode({ id, data, isConnectable, selected }: FlowchartFlow
 
   useLayoutEffect(() => {
     updateNodeInternals(id);
-  }, [data.node, id, isConnectable, selected, updateNodeInternals]);
+  }, [appSelected, data.node, id, isConnectable, selected, updateNodeInternals]);
 
   return (
     <div
       className={[
         "flowchart-react-node",
         `kind-${kind.toLowerCase()}`,
-        selected ? "is-selected" : "",
+        appSelected ? "is-selected" : "",
         isConnectable ? "is-connectable" : "",
       ].join(" ").trim()}
       style={flowchartNodeShellStyle(kind)}
@@ -270,7 +273,7 @@ function FlowchartReactNode({ id, data, isConnectable, selected }: FlowchartFlow
       ))}
       <FlowchartNodeCard
         node={data.node}
-        selected={selected}
+        selected={appSelected}
         explanationFocused={data.explanationFocused}
         draftChanged={data.draftChanged}
         draftCompareStatus={data.draftCompareStatus}
@@ -443,6 +446,7 @@ export function buildFlowchartNodes({
   explanationFocusNodeId = null,
   draftChangedNodeIds = [],
   draftCompareNodeStatuses = {},
+  projectionIndex = null,
   nodeSizeRegistry,
 }: BuildFlowchartNodesOptions): FlowchartFlowNode[] {
   const nodeIndex = new Map(nodes.map((node) => [node.id, node]));
@@ -472,12 +476,13 @@ export function buildFlowchartNodes({
         draftCompareStatus: projectedDraftCompareStatus,
       }),
       selected: selectedNodeId === node.id,
-      draggable: canEditNodeLayout(node, "FLOWCHART"),
+      draggable: canEditNodeLayout(node, "FLOWCHART", projectionIndex),
       position: node.position ?? { x: 80, y: 88 },
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top,
       data: {
         node,
+        selected: selectedNodeId === node.id,
         hasExceptionSource: hasExceptionControlFlowOutlet(node, outgoingControlFlowBySource.get(node.id)),
         mergeLeftTargetCount: mergeTargetPortCounts?.leftCount ?? 0,
         mergeRightTargetCount: mergeTargetPortCounts?.rightCount ?? 0,

@@ -1,15 +1,17 @@
 package com.charmnight.linkgraph.application.workflow.review
 
 import com.charmnight.linkgraph.application.planning.PlanningContextFactory
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
-import com.charmnight.linkgraph.application.port.BeautificationCompletedPresentation
-import com.charmnight.linkgraph.application.port.BeautificationFailedPresentation
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.result.BeautificationCompletedResult
+import com.charmnight.linkgraph.application.result.BeautificationFailedResult
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEvent
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEventSink
-import com.charmnight.linkgraph.application.port.ReviewRequestScene
-import com.charmnight.linkgraph.application.port.ReviewRequestStartedPresentation
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
+import com.charmnight.linkgraph.application.result.ReviewRequestScene
+import com.charmnight.linkgraph.application.result.ReviewRequestStartedResult
 import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
+import com.charmnight.linkgraph.foundation.LinkGraphDebugEnvironment
+import com.charmnight.linkgraph.foundation.LinkGraphRenderTrace
 import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.llm.GraphBeautificationService
 import com.charmnight.linkgraph.llm.LlmResultSource
@@ -32,13 +34,14 @@ internal class GraphBeautificationReviewWorkflow(
         goal: String = "",
         preferredStyle: String? = null,
         explanationFocus: String? = null,
+        focusNodeId: String? = null,
         followUp: GraphBeautificationFollowUpContext? = null,
         granularity: StepGranularity = StepGranularity.BUSINESS,
     ) {
         val requestId = asyncRequestLifecycle.beginBeautificationRequest()
         val snapshot = snapshotProvider.snapshot()
         val settings = settingsProvider()
-        val presentation = asyncRequestLifecycle.buildAsyncRequestPresentation(
+        val presentation = asyncRequestLifecycle.buildAsyncRequestLifecycleResult(
             requestId = requestId,
             sceneLabel = "链路讲解",
             settings = settings,
@@ -59,10 +62,10 @@ internal class GraphBeautificationReviewWorkflow(
             null
         }
         emitReviewRequestStarted(
-            ReviewRequestStartedPresentation(
+            ReviewRequestStartedResult(
                 scene = ReviewRequestScene.BEAUTIFICATION,
                 requestState = presentation.requestState,
-                feedbackMessage = if (presentation.remoteRequested) {
+                statusMessage = if (presentation.remoteRequested) {
                     if (presentation.streamingSupported) {
                         "已发起远程 LLM 链路讲解请求，当前采用流式输出。"
                     } else {
@@ -82,7 +85,7 @@ internal class GraphBeautificationReviewWorkflow(
                 val timedOutState = asyncRequestLifecycle.buildTimedOutRequestState(presentation)
                 asyncRequestLifecycle.logAsyncRequestEvent(logger, "timedOut", timedOutState)
                 emitBeautificationFailed(
-                    BeautificationFailedPresentation(
+                    BeautificationFailedResult(
                         message = timedOutState.errorMessage ?: "链路讲解超时",
                         requestState = timedOutState,
                     ),
@@ -91,15 +94,31 @@ internal class GraphBeautificationReviewWorkflow(
         )
         asyncRequestLifecycle.runBackgroundTask(
             work = {
+                val context = planningContextFactory.buildGraphBeautificationContext(
+                    snapshot = snapshot,
+                    goal = goal,
+                    preferredStyle = preferredStyle,
+                    explanationFocus = explanationFocus,
+                    focusNodeId = focusNodeId,
+                    followUp = followUp,
+                    granularity = granularity,
+                )
+                if (LinkGraphDebugEnvironment.isEnabled("LINKGRAPH_DEBUG_TRACE")) {
+                    val requestedFocusNodeId = focusNodeId?.trim()?.takeIf(String::isNotBlank)
+                    logger.warn(
+                        "链路讲解请求上下文: focusNodeId=${requestedFocusNodeId ?: ""}, " +
+                            "snapshotSelected=${snapshot.selectedNodeId ?: ""}, " +
+                            "selectedMethodSignature=${snapshot.selectedMethodSignature ?: ""}, " +
+                            "currentSceneId=${snapshot.currentSceneId}, " +
+                            "anchorNodeId=${context.presentationContext.anchorNodeId ?: ""}, " +
+                            "selectedNodeIds=${context.presentationContext.selectedNodeIds}, " +
+                            "focusInProjection=${requestedFocusNodeId != null && context.presentationContext.graph.nodes.any { node -> node.id == requestedFocusNodeId }}, " +
+                            "presentation=${LinkGraphRenderTrace.graphSummary(context.presentationContext.graph)}, " +
+                            "full=${LinkGraphRenderTrace.graphSummary(context.presentationContext.fullGraph)}",
+                    )
+                }
                 graphBeautificationService.beautify(
-                    context = planningContextFactory.buildGraphBeautificationContext(
-                        snapshot = snapshot,
-                        goal = goal,
-                        preferredStyle = preferredStyle,
-                        explanationFocus = explanationFocus,
-                        followUp = followUp,
-                        granularity = granularity,
-                    ),
+                    context = context,
                     settings = settings,
                     onPreview = previewUpdater,
                 )
@@ -123,11 +142,11 @@ internal class GraphBeautificationReviewWorkflow(
                             ApplicationFeedbackLevel.SUCCESS
                         }
                         emitBeautificationCompleted(
-                            BeautificationCompletedPresentation(
+                            BeautificationCompletedResult(
                                 result = beautification,
                                 requestState = requestState,
                                 feedbackLevel = feedbackLevel,
-                                feedbackMessage = requestState.statusMessage ?: "链路讲解完成，已更新步骤列表",
+                                statusMessage = requestState.statusMessage ?: "链路讲解完成，已更新步骤列表",
                             ),
                         )
                     },
@@ -137,7 +156,7 @@ internal class GraphBeautificationReviewWorkflow(
                         val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
                         asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
                         emitBeautificationFailed(
-                            BeautificationFailedPresentation(
+                            BeautificationFailedResult(
                                 message = message,
                                 requestState = requestState,
                             ),
@@ -150,7 +169,7 @@ internal class GraphBeautificationReviewWorkflow(
 
     private fun emit(event: GraphEditorApplicationEvent) = eventSink.emit(event)
 
-    private fun emitReviewRequestStarted(presentation: ReviewRequestStartedPresentation) =
+    private fun emitReviewRequestStarted(presentation: ReviewRequestStartedResult) =
         emit(GraphEditorApplicationEvent.ReviewRequestStarted(presentation))
 
     private fun emitReviewStreamingPreview(
@@ -167,9 +186,9 @@ internal class GraphBeautificationReviewWorkflow(
         ),
     )
 
-    private fun emitBeautificationCompleted(presentation: BeautificationCompletedPresentation) =
+    private fun emitBeautificationCompleted(presentation: BeautificationCompletedResult) =
         emit(GraphEditorApplicationEvent.BeautificationCompleted(presentation))
 
-    private fun emitBeautificationFailed(presentation: BeautificationFailedPresentation) =
+    private fun emitBeautificationFailed(presentation: BeautificationFailedResult) =
         emit(GraphEditorApplicationEvent.BeautificationFailed(presentation))
 }

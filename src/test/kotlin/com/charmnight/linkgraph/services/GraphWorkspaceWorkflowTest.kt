@@ -20,6 +20,7 @@ import com.charmnight.linkgraph.ui.GraphEditScript
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.GraphLayoutPosition
 import com.charmnight.linkgraph.ui.GraphSceneId
+import com.charmnight.linkgraph.ui.currentVisibleGraph
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
 import com.charmnight.linkgraph.ui.view.deriveFlowchartSummary
 import java.nio.file.Files
@@ -99,7 +100,7 @@ class GraphWorkspaceWorkflowTest {
                 selectedMethodSignature = entryNode.signature,
                 displayName = "uploadFiles",
                 feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.INFO,
-                feedbackMessage = "loaded",
+                statusMessage = "loaded",
                 flowchartView = FlowchartViewDocument(
                     visibleGraph = visibleGraph,
                     fullGraph = fullGraph,
@@ -164,7 +165,7 @@ class GraphWorkspaceWorkflowTest {
         assertTrue(snapshot.diffMode)
         assertNotNull(snapshot.diff)
         assertNotNull(diffResult)
-        assertTrue(snapshot.visibleGraph?.nodes?.isNotEmpty() == true)
+        assertTrue(currentVisibleGraph(snapshot).nodes.isNotEmpty())
     }
 
     @Test
@@ -285,7 +286,7 @@ class GraphWorkspaceWorkflowTest {
             ),
         )
 
-        val persistedNode = stateService.snapshot().workingGraph?.nodes?.single()
+        val persistedNode = stateService.snapshot().workspaceGraph.nodes.single()
         assertNotNull(persistedNode)
         assertEquals("OrderService.placeDraft", persistedNode.title)
         assertEquals(listOf("java.lang.String", "com.example.OrderDraft"), persistedNode.inputs)
@@ -330,7 +331,7 @@ class GraphWorkspaceWorkflowTest {
             ),
         )
 
-        val persistedNode = stateService.snapshot().workingGraph?.nodes?.single()
+        val persistedNode = stateService.snapshot().workspaceGraph.nodes.single()
         assertNotNull(persistedNode)
         assertEquals("Manual draft node", persistedNode.title)
         assertEquals("User-authored draft node", persistedNode.doc)

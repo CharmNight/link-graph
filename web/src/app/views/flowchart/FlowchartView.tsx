@@ -1,6 +1,8 @@
 import { useEffect, useMemo } from "react";
 import { buildEdgeActions as buildSharedEdgeActions, buildPaneActions } from "../../components/graph/actions/actionSchema";
+import { projectedAliasNodeIds } from "../../appGraphSupport";
 import { traceLinkGraph } from "../../debug";
+import { canEditProjectedEdge, canEditProjectedNode } from "../../graphProjectionPermissions";
 import { createNodeSizeRegistry } from "../../graph/nodeSizeRegistry";
 import { flowchartNodeCardWidth } from "../../graphNodeSizing";
 import { useMeasuredLayout } from "../../reactflow/useMeasuredLayout";
@@ -8,7 +10,7 @@ import { GraphFlowSurface } from "../../reactflow/GraphFlowSurface";
 import { canNavigateToSource } from "../../sourceNavigation";
 import type { FlowchartViewDocument, LinkGraphDocument, LinkGraphEdge } from "../../types";
 import { DraftCompareSummary } from "../../components/DraftCompareSummary";
-import type { ViewStageProps } from "../viewStageProps";
+import type { EditableStageProps } from "../viewStageProps";
 import { layoutFlowchartView } from "./flowchartLayout";
 import {
   buildFlowchartEdges,
@@ -16,7 +18,7 @@ import {
   FLOWCHART_NODE_TYPES,
 } from "./flowchartNodes";
 
-interface FlowchartViewProps extends ViewStageProps {
+interface FlowchartViewProps extends EditableStageProps {
   view: FlowchartViewDocument;
   layoutView?: FlowchartViewDocument;
 }
@@ -27,6 +29,31 @@ function fallbackSourceNode() {
     location: undefined,
     signature: undefined,
   };
+}
+
+function isInvocationExpansionSource(node: LinkGraphDocument["nodes"][number] | null | undefined): boolean {
+  return node?.type === "FLOW_ACTION" &&
+    node.metadata?.["flow.kind"] === "INVOCATION" &&
+    Boolean(node.signature?.trim());
+}
+
+function resolveInvocationExpansionNodeId(
+  node: LinkGraphDocument["nodes"][number] | null | undefined,
+  fullGraphNodeIndex: Map<string, LinkGraphDocument["nodes"][number]>,
+): string | null {
+  if (!node) {
+    return null;
+  }
+  if (isInvocationExpansionSource(node)) {
+    return node.id;
+  }
+  for (const aliasNodeId of projectedAliasNodeIds(node)) {
+    const aliasNode = fullGraphNodeIndex.get(aliasNodeId);
+    if (isInvocationExpansionSource(aliasNode)) {
+      return aliasNodeId;
+    }
+  }
+  return null;
 }
 
 function sanitizeFlowchartGraph(
@@ -97,6 +124,14 @@ function scopeFlowchartGraphToAnchorMethod(
     return resolveNodeOwnerSignature(node) === anchorSignature;
   });
   const ownerScopedNodeIds = new Set(ownerScopedNodes.map((node) => node.id));
+  const ownerScopedCanonicalNodeIds = new Set(ownerScopedNodeIds);
+  ownerScopedNodes.forEach((node) => {
+    projectedAliasNodeIds(node).forEach((aliasNodeId) => ownerScopedCanonicalNodeIds.add(aliasNodeId));
+  });
+  const expansionScopedNodes = graph.nodes.filter((node) => {
+    const sourceInvocationNodeId = node.metadata?.["linkGraph.expansion.sourceInvocationNodeId"]?.trim();
+    return Boolean(sourceInvocationNodeId && ownerScopedCanonicalNodeIds.has(sourceInvocationNodeId));
+  });
   const entryScopedNodes = graph.nodes.filter((node) => {
     if (ownerScopedNodeIds.has(node.id)) {
       return false;
@@ -106,7 +141,9 @@ function scopeFlowchartGraphToAnchorMethod(
     }
     return graph.edges.some((edge) => edge.source === node.id && ownerScopedNodeIds.has(edge.target));
   });
-  const scopedNodes = [...ownerScopedNodes, ...entryScopedNodes];
+  const scopedNodes = Array.from(new Map(
+    [...ownerScopedNodes, ...entryScopedNodes, ...expansionScopedNodes].map((node) => [node.id, node]),
+  ).values());
   if (scopedNodes.length === 0 || scopedNodes.length === graph.nodes.length) {
     return graph;
   }
@@ -146,12 +183,18 @@ function flowchartNodeActions(args: {
   nodeId: string;
   canOpenSource: boolean;
   editable: boolean;
+  invocationExpansionActionLabel?: string | null;
+  invocationExpansionNodeId?: string | null;
+  expansionId?: string | null;
+  canDeleteNode: boolean;
   onInspectNode: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
   onRequestSourceNavigation: (nodeId: string) => void;
   onRequestBeautification: (selectedNodeId?: string) => void;
-  onRequestAudit: (selectedNodeId?: string) => void;
-  onOpenAudit: (selectedNodeId?: string) => void;
+  onRequestQa: (selectedNodeId?: string) => void;
+  onOpenQa: (selectedNodeId?: string) => void;
+  onExpandInvocation: (nodeId: string) => void;
+  onRemoveInvocationExpansion: (expansionId: string) => void;
   onFormatLayout: () => void;
   onClose: () => void;
 }) {
@@ -175,6 +218,17 @@ function flowchartNodeActions(args: {
       },
     });
   }
+  if (args.invocationExpansionActionLabel) {
+    const invocationExpansionNodeId = args.invocationExpansionNodeId ?? args.nodeId;
+    actions.push({
+      id: "expand-invocation",
+      label: args.invocationExpansionActionLabel,
+      onSelect: () => {
+        args.onExpandInvocation(invocationExpansionNodeId);
+        args.onClose();
+      },
+    });
+  }
   actions.push(
     {
       id: "beautify-node",
@@ -185,18 +239,18 @@ function flowchartNodeActions(args: {
       },
     },
     {
-      id: "audit-node",
+      id: "qa-node",
       label: "问答当前节点",
       onSelect: () => {
-        args.onRequestAudit(args.nodeId);
+        args.onRequestQa(args.nodeId);
         args.onClose();
       },
     },
     {
-      id: "set-audit-anchor",
-      label: "设为问答范围起点",
+      id: "set-qa-anchor",
+      label: "设为问答目标",
       onSelect: () => {
-        args.onOpenAudit(args.nodeId);
+        args.onOpenQa(args.nodeId);
         args.onClose();
       },
     },
@@ -209,7 +263,18 @@ function flowchartNodeActions(args: {
       },
     },
   );
-  if (args.editable) {
+  if (args.expansionId) {
+    const expansionId = args.expansionId;
+    actions.push({
+      id: "remove-invocation-expansion",
+      label: "移除此展开",
+      onSelect: () => {
+        args.onRemoveInvocationExpansion(expansionId);
+        args.onClose();
+      },
+    });
+  }
+  if (args.editable && args.canDeleteNode) {
     actions.push({
       id: "delete-node",
       label: "删除节点",
@@ -245,9 +310,11 @@ export function FlowchartView({
   onMoveNodes,
   onRequestSourceNavigation,
   onRequestBeautification = () => undefined,
-  onRequestAudit = () => undefined,
-  onOpenAudit = () => undefined,
+  onRequestQa = () => undefined,
+  onOpenQa = () => undefined,
   onImportMermaid,
+  onExpandInvocation = () => undefined,
+  onRemoveInvocationExpansion = () => undefined,
 }: FlowchartViewProps) {
   const nodeSizeRegistry = useMemo(() => createNodeSizeRegistry(), []);
   const presentedGraph = draftCompareProjection?.compareGraph ?? view.visibleGraph;
@@ -323,6 +390,10 @@ export function FlowchartView({
     () => new Map(visibleNodes.map((node) => [node.id, node])),
     [visibleNodes],
   );
+  const fullGraphNodeIndex = useMemo(
+    () => new Map(view.fullGraph.nodes.map((node) => [node.id, node])),
+    [view.fullGraph.nodes],
+  );
   const anchorNode = useMemo(
     () => visibleNodes.find((node) => node.id === view.anchorNodeId) ?? null,
     [view.anchorNodeId, visibleNodes],
@@ -347,6 +418,7 @@ export function FlowchartView({
       explanationFocusNodeId,
       draftChangedNodeIds,
       draftCompareNodeStatuses: draftCompareProjection?.nodeStatuses,
+      projectionIndex: view.projectionIndex ?? null,
       nodeSizeRegistry,
     }),
     [
@@ -356,6 +428,7 @@ export function FlowchartView({
       explanationFocusNodeId,
       draftChangedNodeIds,
       draftCompareProjection?.nodeStatuses,
+      view.projectionIndex,
       nodeSizeRegistry,
     ],
   );
@@ -494,51 +567,69 @@ export function FlowchartView({
             onAddNode,
             onImportMermaid,
             onFormatLayout: layoutState.requestRelayout,
-            onOpenAudit,
+            onOpenQa,
             onClose: close,
           })
         }
         buildNodeActions={({ nodeId, close }) =>
-          flowchartNodeActions({
-            nodeId,
-            canOpenSource: canNavigateToSource(nodeIndex.get(nodeId) ?? fallbackSourceNode()),
-            editable: true,
-            onInspectNode,
-            onDeleteNode,
-            onRequestSourceNavigation,
-            onRequestBeautification,
-            onRequestAudit,
-            onOpenAudit,
-            onFormatLayout: layoutState.requestRelayout,
-            onClose: close,
-          })
+          {
+            const node = nodeIndex.get(nodeId);
+            const invocationExpansionNodeId = resolveInvocationExpansionNodeId(node, fullGraphNodeIndex);
+            return flowchartNodeActions({
+              nodeId,
+              canOpenSource: canNavigateToSource(node ?? fallbackSourceNode()),
+              editable: true,
+              canDeleteNode: canEditProjectedNode(view.projectionIndex, nodeId, "DELETE_NODE"),
+              invocationExpansionActionLabel: invocationExpansionNodeId ? "展开被调方法" : null,
+              invocationExpansionNodeId,
+              expansionId: node?.metadata?.["linkGraph.expansion.id"] ?? null,
+              onInspectNode,
+              onDeleteNode,
+              onRequestSourceNavigation,
+              onRequestBeautification,
+              onRequestQa,
+              onOpenQa,
+              onExpandInvocation,
+              onRemoveInvocationExpansion,
+              onFormatLayout: layoutState.requestRelayout,
+              onClose: close,
+            });
+          }
         }
         buildEdgeActions={({ edgeId, close }) =>
-          [
-            {
-              id: "insert-method",
-              label: "在线路中插入方法节点",
-              onSelect: () => {
-                onInsertNodeIntoEdge(edgeId, "METHOD");
-                close();
-              },
-            },
-            {
-              id: "insert-doc",
-              label: "在线路中插入说明节点",
-              onSelect: () => {
-                onInsertNodeIntoEdge(edgeId, "DOC_PAGE");
-                close();
-              },
-            },
-            ...buildSharedEdgeActions({
-              analysisDisplayMode: "FLOWCHART",
-              editable: true,
-              edgeId,
-              onDeleteEdge,
-              onClose: close,
-            }),
-          ]
+          {
+            const canInsertNode = canEditProjectedEdge(view.projectionIndex, edgeId, "INSERT_NODE_INTO_EDGE");
+            return [
+              ...(canInsertNode
+                ? [
+                    {
+                      id: "insert-method",
+                      label: "在线路中插入方法节点",
+                      onSelect: () => {
+                        onInsertNodeIntoEdge(edgeId, "METHOD");
+                        close();
+                      },
+                    },
+                    {
+                      id: "insert-doc",
+                      label: "在线路中插入说明节点",
+                      onSelect: () => {
+                        onInsertNodeIntoEdge(edgeId, "DOC_PAGE");
+                        close();
+                      },
+                    },
+                  ]
+                : []),
+              ...buildSharedEdgeActions({
+                analysisDisplayMode: "FLOWCHART",
+                editable: true,
+                edgeId,
+                canEditEdge: (command) => canEditProjectedEdge(view.projectionIndex, edgeId, command),
+                onDeleteEdge,
+                onClose: close,
+              }),
+            ];
+          }
         }
         onSelectNode={onSelectNode}
         onSelectionGroupChange={onSelectionGroupChange}

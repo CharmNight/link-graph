@@ -7,6 +7,8 @@ package com.charmnight.linkgraph.llm.runtime
 data class StopPolicy(
     /** 证据不足时是否直接停止。 */
     val stopWhenEvidenceInsufficient: Boolean = false,
+    /** 证据读取预算命中时是否直接停止整个 run。 */
+    val stopWhenEvidenceReadBudgetReached: Boolean = true,
 ) {
     /**
      * 返回 null 表示可以继续执行，返回 failure reason 表示必须停止。
@@ -21,10 +23,15 @@ data class StopPolicy(
         val budget = state.budget
         return when {
             budget.usedSteps >= budget.maxSteps -> AgentRunFailureReason.MAX_STEPS_EXCEEDED
-            resourceBudgetReached(budget.filesRead, budget.maxFilesRead) -> AgentRunFailureReason.MAX_FILES_READ_EXCEEDED
-            resourceBudgetReached(budget.snippetsRead, budget.maxSnippets) -> AgentRunFailureReason.MAX_SNIPPETS_EXCEEDED
-            budget.snippetLineLimitExceeded -> AgentRunFailureReason.MAX_SNIPPET_LINES_EXCEEDED
-            resourceBudgetReached(budget.totalSnippetLinesRead, budget.maxTotalSnippetLines) -> AgentRunFailureReason.MAX_TOTAL_SNIPPET_LINES_EXCEEDED
+            stopWhenEvidenceReadBudgetReached &&
+                resourceBudgetReached(budget.filesRead, budget.maxFilesRead) -> AgentRunFailureReason.MAX_FILES_READ_EXCEEDED
+            stopWhenEvidenceReadBudgetReached &&
+                resourceBudgetReached(budget.snippetsRead, budget.maxSnippets) -> AgentRunFailureReason.MAX_SNIPPETS_EXCEEDED
+            stopWhenEvidenceReadBudgetReached &&
+                budget.snippetLineLimitExceeded -> AgentRunFailureReason.MAX_SNIPPET_LINES_EXCEEDED
+            stopWhenEvidenceReadBudgetReached &&
+                resourceBudgetReached(budget.totalSnippetLinesRead, budget.maxTotalSnippetLines) ->
+                AgentRunFailureReason.MAX_TOTAL_SNIPPET_LINES_EXCEEDED
             budget.elapsedSeconds(nowEpochMillis) >= budget.maxRuntimeSeconds -> AgentRunFailureReason.MAX_RUNTIME_SECONDS_EXCEEDED
             stopWhenEvidenceInsufficient && state.failureReason == AgentRunFailureReason.EVIDENCE_INSUFFICIENT ->
                 AgentRunFailureReason.EVIDENCE_INSUFFICIENT

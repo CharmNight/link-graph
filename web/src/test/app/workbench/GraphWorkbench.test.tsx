@@ -80,14 +80,14 @@ describe("GraphWorkbench", () => {
     expect(themeCss).toMatch(/\.workbench-shell\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);/s);
     expect(themeCss).toMatch(/\.workbench-panel-body>\*\s*\{[^}]*height:\s*auto;[^}]*align-self:\s*start;[^}]*min-height:\s*0;/s);
     expect(themeCss).toMatch(/\.workbench-tab\s*\{[^}]*height:\s*auto;[^}]*align-content:\s*start;/s);
-    expect(themeCss).toMatch(/\.audit-tab\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+auto;[^}]*align-content:\s*start;/s);
-    expect(themeCss).toMatch(/\.audit-tab-nav\s*\{[^}]*position:\s*sticky;[^}]*top:\s*0;/s);
-    expect(themeCss).toMatch(/\.audit-tab-panel\s*\{[^}]*min-height:\s*0;/s);
-    expect(themeCss).not.toMatch(/\.audit-tab-panel\s*\{[^}]*height:\s*100%;/s);
-    expect(themeCss).toMatch(/\.audit-page-panel\s*\{[^}]*min-height:\s*0;[^}]*grid-template-rows:\s*auto\s+auto;/s);
-    expect(themeCss).toMatch(/\.audit-page-panel\s*\{[^}]*overflow:\s*visible;/s);
-    expect(themeCss).not.toMatch(/(?<!stage-workbench-panel\s)\.audit-page-panel\s*\{[^}]*height:\s*100%;/s);
-    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.audit-page-panel\s*\{[^}]*height:\s*100%;[^}]*overflow:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.qa-tab\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+auto;[^}]*align-content:\s*start;/s);
+    expect(themeCss).toMatch(/\.qa-tab-nav\s*\{[^}]*position:\s*sticky;[^}]*top:\s*0;/s);
+    expect(themeCss).toMatch(/\.qa-tab-panel\s*\{[^}]*min-height:\s*0;/s);
+    expect(themeCss).not.toMatch(/\.qa-tab-panel\s*\{[^}]*height:\s*100%;/s);
+    expect(themeCss).toMatch(/\.qa-page-panel\s*\{[^}]*min-height:\s*0;[^}]*grid-template-rows:\s*auto\s+auto;/s);
+    expect(themeCss).toMatch(/\.qa-page-panel\s*\{[^}]*overflow:\s*visible;/s);
+    expect(themeCss).not.toMatch(/(?<!stage-workbench-panel\s)\.qa-page-panel\s*\{[^}]*height:\s*100%;/s);
+    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.qa-page-panel\s*\{[^}]*height:\s*100%;[^}]*overflow:\s*hidden;/s);
   });
 
   it("lets desktop workbench layouts grow vertically instead of being hidden by the stage shell", () => {

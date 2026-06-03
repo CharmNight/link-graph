@@ -80,7 +80,7 @@ internal class AsyncRequestLifecycleSupport(
     /**
      * 为异步请求构造前端展示状态和执行元数据。
      */
-    fun buildAsyncRequestPresentation(
+    fun buildAsyncRequestLifecycleResult(
         requestId: Long,
         sceneLabel: String,
         settings: LinkGraphSettingsState,
@@ -88,7 +88,7 @@ internal class AsyncRequestLifecycleSupport(
         promptPreviewAvailable: Boolean = false,
         requestedMode: QaMode? = null,
         effectiveMode: QaMode? = null,
-    ): AsyncRequestPresentation {
+    ): AsyncRequestLifecycleResult {
         val sanitized = settings.sanitized()
         val remoteConnection = sanitized.remoteConnectionOrNull()
         val remotePresetSelected = sanitized.usesRemoteProvider()
@@ -146,7 +146,7 @@ internal class AsyncRequestLifecycleSupport(
             requestedMode = requestedMode,
             effectiveMode = effectiveMode,
         )
-        return AsyncRequestPresentation(
+        return AsyncRequestLifecycleResult(
             requestId = requestId,
             sceneLabel = sceneLabel,
             executionMode = executionMode,
@@ -163,7 +163,7 @@ internal class AsyncRequestLifecycleSupport(
      * 根据请求展示信息构造超时终态。
      */
     fun buildTimedOutRequestState(
-        presentation: AsyncRequestPresentation,
+        presentation: AsyncRequestLifecycleResult,
     ): com.charmnight.linkgraph.application.model.AsyncRequestState {
         val timeoutSecondsText = ((presentation.timeoutMillis + 999L) / 1_000L).toString()
         return com.charmnight.linkgraph.application.model.AsyncRequestState.timedOut(
@@ -217,7 +217,7 @@ internal class AsyncRequestLifecycleSupport(
      * 根据请求展示信息构造成功终态。
      */
     fun buildSucceededRequestState(
-        presentation: AsyncRequestPresentation,
+        presentation: AsyncRequestLifecycleResult,
         successMessage: String,
         completedRemotely: Boolean,
         warnings: List<String>,
@@ -272,7 +272,7 @@ internal class AsyncRequestLifecycleSupport(
      * 根据请求展示信息构造失败终态。
      */
     fun buildFailedRequestState(
-        presentation: AsyncRequestPresentation,
+        presentation: AsyncRequestLifecycleResult,
         message: String,
         detailMessageOverride: String? = null,
     ): com.charmnight.linkgraph.application.model.AsyncRequestState {
@@ -515,7 +515,7 @@ internal class AsyncRequestLifecycleSupport(
 /**
  * 异步请求在前端展示所需的包装信息。
  */
-internal data class AsyncRequestPresentation(
+internal data class AsyncRequestLifecycleResult(
     /** 请求编号。 */
     val requestId: Long,
     /** 场景展示名称。 */

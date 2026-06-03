@@ -234,6 +234,9 @@ private fun snapshot(
         GraphSceneId.WORKSPACE_FACT -> AnalysisDisplayMode.FACT_GRAPH
         GraphSceneId.WORKSPACE_FLOWCHART -> AnalysisDisplayMode.FLOWCHART
         GraphSceneId.WORKSPACE_RESOURCE_RELATION -> AnalysisDisplayMode.RESOURCE_RELATION_VIEW
+        GraphSceneId.WORKSPACE_ARCHITECTURE_GRAPH -> AnalysisDisplayMode.ARCHITECTURE_GRAPH
+        GraphSceneId.WORKSPACE_CLASS_DIAGRAM -> AnalysisDisplayMode.CLASS_DIAGRAM
+        GraphSceneId.WORKSPACE_REVIEW_GRAPH -> AnalysisDisplayMode.REVIEW_GRAPH
         GraphSceneId.DIFF -> AnalysisDisplayMode.FACT_GRAPH
     }
     return GraphEditorStateSnapshot(

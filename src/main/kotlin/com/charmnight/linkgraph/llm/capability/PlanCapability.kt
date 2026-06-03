@@ -20,6 +20,7 @@ import com.charmnight.linkgraph.llm.runtime.StopPolicy
 import com.charmnight.linkgraph.llm.runtime.budgetExceededStepResult
 import com.charmnight.linkgraph.llm.runtime.failureReasonBeforeNextFileRead
 import com.charmnight.linkgraph.llm.runtime.failureReasonForBudget
+import com.charmnight.linkgraph.llm.runtime.withConfiguredRuntimeTimeout
 import com.charmnight.linkgraph.llm.tools.AgentToolRegistry
 import com.charmnight.linkgraph.llm.tools.CodeReadToolFacade
 import com.charmnight.linkgraph.llm.tools.DraftToolFacade
@@ -29,6 +30,7 @@ import com.charmnight.linkgraph.llm.tools.GetGraphDiffTool
 import com.charmnight.linkgraph.llm.tools.GraphToolFacade
 import com.charmnight.linkgraph.llm.tools.ReadSourceSnippetTool
 import com.charmnight.linkgraph.llm.tools.ToolExecutionContext
+import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import java.util.UUID
 
@@ -56,7 +58,7 @@ internal class PlanCapability(
             capabilityId = capabilityId,
             phase = AgentRunPhase.CREATED,
             userGoal = "生成实现计划",
-            budget = defaultBudget,
+            budget = defaultBudget.withConfiguredRuntimeTimeout(input.settings),
             stepIndex = 0,
             artifactRefs = emptyList(),
         )
@@ -459,4 +461,6 @@ internal class PlanCapability(
 internal data class PlanCapabilityInput(
     /** 已准备好的规划载荷。 */
     val planningPayload: PlanningInput,
+    /** 当前 LLM 设置，用于统一 runtime 与远程请求超时。 */
+    val settings: LinkGraphSettingsState = LinkGraphSettingsState(),
 )

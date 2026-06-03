@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.foundation.LinkGraphRenderTrace
+import com.charmnight.linkgraph.json.JsonCodec
 
 /**
  * 渲染前后端之间的权威快照 transport。
@@ -124,7 +125,7 @@ class GraphEditorTransportSliceRenderer(
                     "state" to envelope.state,
                 )
             }
-            val envelopeJson = pageRenderer.sanitizeJson(pageRenderer.toJson(payload))
+            val envelopeJson = JsonCodec.toScriptSafeJson(payload)
             """window.dispatchEvent(new CustomEvent("link-graph-bootstrap", { detail: $envelopeJson }));"""
         }
         traceStage(
@@ -170,11 +171,15 @@ class GraphEditorTransportSliceRenderer(
         "factVisible=${LinkGraphRenderTrace.graphSummary(snapshot.factGraphView.visibleGraph)}",
         "flowVisible=${LinkGraphRenderTrace.graphSummary(snapshot.flowchartView.visibleGraph)}",
         "resourceVisible=${LinkGraphRenderTrace.graphSummary(snapshot.resourceRelationView.visibleGraph)}",
+        "architectureVisible=${LinkGraphRenderTrace.graphSummary(snapshot.architectureGraphView.visibleGraph)}",
+        "classDiagramVisible=${LinkGraphRenderTrace.graphSummary(snapshot.classDiagramView.visibleGraph)}",
     )
 
     private fun payloadDetails(payload: Map<String, Any?>): List<String> = listOf(
         "payloadKeys=${payload.size}",
         "hasWorkspaceGraph=${payload.containsKey("workspaceGraph")}",
         "hasFlowchartView=${payload.containsKey("flowchartView")}",
+        "hasArchitectureGraphView=${payload.containsKey("architectureGraphView")}",
+        "hasClassDiagramView=${payload.containsKey("classDiagramView")}",
     )
 }

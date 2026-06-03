@@ -16,6 +16,32 @@ enum class NodeType {
     MERGE,
     /** 表示类节点。 */
     CLASS,
+    /** 表示 JVM 模块节点。 */
+    MODULE,
+    /** 表示包节点。 */
+    PACKAGE,
+    /** 表示接口节点。 */
+    INTERFACE,
+    /** 表示枚举节点。 */
+    ENUM,
+    /** 表示注解节点。 */
+    ANNOTATION,
+    /** 表示 record 节点。 */
+    RECORD,
+    /** 表示 Kotlin object 节点。 */
+    OBJECT,
+    /** 表示外部类节点。 */
+    EXTERNAL_CLASS,
+    /** 表示依赖库节点。 */
+    LIBRARY,
+    /** 表示服务聚合节点。 */
+    SERVICE,
+    /** 表示项目组件聚合节点。 */
+    COMPONENT,
+    /** 表示架构层节点。 */
+    LAYER,
+    /** 表示泛化资源节点。 */
+    RESOURCE,
     /** 表示 SQL 资源节点。 */
     SQL,
     /** 表示 HTTP 接口节点。 */

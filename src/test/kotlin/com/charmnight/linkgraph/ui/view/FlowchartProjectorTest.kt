@@ -8,6 +8,7 @@ import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.projection.graphProjectionHiddenCounts
 import com.charmnight.linkgraph.semantic.model.FlowActionUnit
 import com.charmnight.linkgraph.semantic.model.FlowScopeCategory
 import com.charmnight.linkgraph.semantic.model.FlowScopeUnit
@@ -203,6 +204,17 @@ class FlowchartProjectorTest {
             "com.example.FileUtils.writeBytes(java.lang.String,java.lang.String):void",
             visibleNodesById["action:writeBytes"]?.signature,
         )
+        assertEquals(
+            "ACTION",
+            visibleNodesById["action:writeBytes"]?.metadata?.get("flow.kind"),
+        )
+        assertTrue(
+            view.fullGraph.nodes.any { node ->
+                node.id == "invoke:writeBytes" &&
+                    node.metadata["flow.kind"] == "INVOCATION" &&
+                    node.signature == "com.example.FileUtils.writeBytes(java.lang.String,java.lang.String):void"
+            },
+        )
         assertTrue(
             view.visibleGraph.edges.any { edge ->
                 edge.fromNodeId == "method:submit" && edge.toNodeId == "scope:guard"
@@ -280,6 +292,9 @@ class FlowchartProjectorTest {
         assertTrue(view.visibleGraph.nodes.size <= 6)
         assertTrue(view.visibleGraph.edges.size <= 5)
         assertTrue(view.summary.truncated)
-        assertEquals(view.fullGraph.nodes.size - view.visibleGraph.nodes.size, view.summary.hiddenNodeCount)
+        assertEquals(
+            graphProjectionHiddenCounts(visibleGraph = view.visibleGraph, fullGraph = view.fullGraph).hiddenNodeCount,
+            view.summary.hiddenNodeCount,
+        )
     }
 }

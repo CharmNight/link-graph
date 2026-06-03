@@ -17,6 +17,7 @@ export interface GraphViewportSnapshot {
   anchorNodeId: string | null;
   nodeIds: Set<string>;
   edgeIds: Set<string>;
+  resetKey?: string | null;
 }
 
 function resolveNodePosition(node: ViewportPositionedNode) {
@@ -64,6 +65,9 @@ export function shouldPreserveViewportForIncrementalUpdate(
   previous: GraphViewportSnapshot | null,
   next: GraphViewportSnapshot,
 ): boolean {
+  if (previous?.resetKey !== next.resetKey) {
+    return false;
+  }
   if (!previous || !next.anchorNodeId || previous.anchorNodeId !== next.anchorNodeId) {
     return false;
   }

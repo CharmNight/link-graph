@@ -1,6 +1,11 @@
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.Sync
+import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.transform.OutputKeys
+import javax.xml.transform.TransformerFactory
+import javax.xml.transform.dom.DOMSource
+import javax.xml.transform.stream.StreamResult
 
 plugins {
     kotlin("jvm") version "2.1.20"
@@ -29,6 +34,7 @@ dependencies {
         )
         bundledPlugin("com.intellij.java")
         bundledPlugin("org.jetbrains.kotlin")
+        javaCompiler(providers.gradleProperty("platformBuildNumber"))
         testFramework(TestFrameworkType.Platform)
     }
 }
@@ -65,7 +71,7 @@ intellijPlatform {
         id = "com.charmnight.linkgraph"
         name = providers.gradleProperty("pluginName")
         version = providers.gradleProperty("pluginVersion")
-        description = "Link Graph is an IntelliJ Platform plugin for exploring method, flowchart, and resource relationships inside a project. It provides a JCEF-based graph workbench with Mermaid import/export, diff preview, source navigation, local fallback workflows, and optional remote LLM-assisted implementation suggestions and code diff workflows."
+        description = "Link Graph is an IntelliJ Platform plugin for exploring source relationships, project architecture, class diagrams, and review impact graphs inside a project. It provides a JCEF-based graph workbench with Mermaid import/export, source navigation, local fallback workflows, and optional remote LLM-assisted question answering, implementation suggestions, and code diff workflows."
         ideaVersion {
             sinceBuild = providers.gradleProperty("platformSinceBuild")
             untilBuild = provider { null }
@@ -178,9 +184,61 @@ val frontendPackResources by tasks.registering(Sync::class) {
     into(generatedFrontendResourcesDir.map { it.dir("linkgraph") })
 }
 
+val runIdeSandboxOptionsFile = layout.buildDirectory.file(
+    providers.zip(
+        providers.gradleProperty("platformType"),
+        providers.gradleProperty("platformVersion"),
+    ) { platformType, platformVersion ->
+        "idea-sandbox/$platformType-$platformVersion/config/options/other.xml"
+    },
+)
+
+val sanitizeRunIdeSandbox by tasks.registering {
+    group = "intellij platform"
+    description = "Removes stale IDE compatibility metadata that can break the runIde sandbox."
+    mustRunAfter(tasks.named("prepareSandbox"))
+
+    doLast {
+        val optionsFile = runIdeSandboxOptionsFile.get().asFile
+        if (!optionsFile.isFile) {
+            return@doLast
+        }
+
+        val document = DocumentBuilderFactory.newInstance()
+            .newDocumentBuilder()
+            .parse(optionsFile)
+        val components = document.getElementsByTagName("component")
+        val staleComponents = (0 until components.length)
+            .map { components.item(it) }
+            .filter { node ->
+                node.attributes?.getNamedItem("name")?.nodeValue == "GradleJvmSupportMatrix"
+            }
+
+        if (staleComponents.isEmpty()) {
+            return@doLast
+        }
+
+        staleComponents.forEach { node ->
+            node.parentNode.removeChild(node)
+        }
+        TransformerFactory.newInstance()
+            .newTransformer()
+            .apply {
+                setOutputProperty(OutputKeys.INDENT, "yes")
+            }
+            .transform(DOMSource(document), StreamResult(optionsFile))
+    }
+}
+
 tasks {
     runIde {
-        jvmArgs("-Didea.auto.reload.plugins=false")
+        dependsOn(sanitizeRunIdeSandbox)
+        jvmArgs(
+            "-Didea.auto.reload.plugins=false",
+            "-Dide.no.platform.update=true",
+            "-Dgradle.compatibility.update.interval=0",
+            "-Dexternal.system.auto.import.disabled=true",
+        )
     }
 
     test {

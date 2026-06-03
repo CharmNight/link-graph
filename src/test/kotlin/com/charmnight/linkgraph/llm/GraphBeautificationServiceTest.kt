@@ -133,6 +133,76 @@ class GraphBeautificationServiceTest {
     }
 
     @Test
+    fun hydratesRemoteStepsFromStepSourceContextWhenPromptSourceIsCapped() {
+        val service = DefaultGraphBeautificationService(
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    return LlmResponse(
+                        content = """
+                            {
+                              "steps": [
+                                {
+                                  "stepId": "step-run-as",
+                                  "title": "切换 principal",
+                                  "description": "调用 runAs 切换 principal。",
+                                  "evidence": [
+                                    {
+                                      "id": "remote-graph",
+                                      "claim": "远程只返回了图节点证据。",
+                                      "evidenceLevel": "DIRECT_GRAPH",
+                                      "references": [
+                                        { "nodeId": "flow-action:run-as" }
+                                      ]
+                                    }
+                                  ],
+                                  "followUpQuestions": [],
+                                  "downstreamTargets": []
+                                }
+                              ],
+                              "warnings": []
+                            }
+                        """.trimIndent(),
+                        model = request.model,
+                    )
+                }
+            },
+        )
+
+        val context = beautificationContext().copy(
+            sourceContext = emptyList(),
+            stepSourceContext = listOf(
+                SourceSnippetContext(
+                    nodeId = "flow-action:run-as",
+                    filePath = "/tmp/ShiroUtils.java",
+                    startLine = 12,
+                    endLine = 12,
+                    snippet = "subject.runAs(newPrincipalCollection);",
+                ),
+            ),
+        )
+
+        val result = service.beautify(
+            context = context,
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://localhost:8080/v1",
+                apiKey = "token",
+                model = "gpt-test",
+            ),
+        )
+
+        assertEquals(LlmResultSource.REMOTE, result.source)
+        val step = result.steps.single()
+        assertEquals("subject.runAs(newPrincipalCollection);", step.codeSnippet)
+        assertTrue(step.evidence.any { finding ->
+            finding.evidenceLevel == ResultEvidenceLevel.DIRECT_SOURCE &&
+                finding.references.any { reference -> reference.filePath == "/tmp/ShiroUtils.java" }
+        })
+        assertTrue(step.evidence.any { finding -> finding.id == "remote-graph" })
+    }
+
+    @Test
     fun followUpQuestionChangesLocalBeautificationResultInsteadOfBeingIgnored() {
         val result = DefaultGraphBeautificationService().beautify(
             context = beautificationContext().copy(

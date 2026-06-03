@@ -1,5 +1,5 @@
 import type {
-  AuditConversationSession,
+  QaConversationSession,
   GraphPatchResult,
   InvestigationThread,
 } from "./types";
@@ -10,7 +10,7 @@ export function deriveInvestigationThreads(result: GraphPatchResult | null): Inv
 
 export function deriveConversationInvestigationThreads(
   result: GraphPatchResult | null,
-  session: AuditConversationSession | null | undefined,
+  session: QaConversationSession | null | undefined,
 ): InvestigationThread[] {
   if ((session?.investigationThreads ?? []).length > 0) {
     return session?.investigationThreads ?? [];

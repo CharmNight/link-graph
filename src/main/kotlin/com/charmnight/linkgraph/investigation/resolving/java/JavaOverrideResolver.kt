@@ -1,24 +1,22 @@
 package com.charmnight.linkgraph.investigation.resolving.java
 
+import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoal
 import com.charmnight.linkgraph.investigation.domain.EvidenceGoalKind
 import com.charmnight.linkgraph.investigation.domain.ResolutionOutcome
 import com.charmnight.linkgraph.investigation.resolving.InvestigationContext
-import com.charmnight.linkgraph.investigation.resolving.ReadActionEvidenceResolver
-import com.charmnight.linkgraph.semantic.subject.methodSignature
-import com.intellij.psi.PsiClass
-import com.intellij.psi.PsiMethod
-import com.intellij.psi.PsiModifier
-import com.intellij.psi.PsiManager
-import com.intellij.psi.search.FilenameIndex
-import com.intellij.psi.search.GlobalSearchScope
-import com.intellij.psi.search.searches.OverridingMethodsSearch
-import com.intellij.psi.util.PsiTreeUtil
+import com.charmnight.linkgraph.jvm.index.JvmClassKind
+import com.charmnight.linkgraph.jvm.index.JvmClassSymbol
+import com.charmnight.linkgraph.jvm.index.JvmMethodSymbol
+import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
+import com.charmnight.linkgraph.source.SourceOrigin
 
 /**
- * 使用 PSI 重写搜索解析接口或抽象方法的真实实现。
+ * 使用统一 ArchitectureGraphIndex 解析接口或抽象方法的真实实现。
  */
-class JavaOverrideResolver : ReadActionEvidenceResolver() {
+class JavaOverrideResolver(
+    jvmEvidenceIndexAdapter: JvmEvidenceIndexAdapter = JvmEvidenceIndexAdapter(),
+) : JvmIndexReadActionEvidenceResolver(jvmEvidenceIndexAdapter) {
     /** 保存解析器稳定标识。 */
     override val id: String = "java-method-override"
 
@@ -35,40 +33,41 @@ class JavaOverrideResolver : ReadActionEvidenceResolver() {
     override fun resolveInReadAction(
         goal: EvidenceGoal,
         context: InvestigationContext,
+        index: ArchitectureGraphIndex,
     ): ResolutionOutcome {
-        val baseCandidates = JavaPsiEvidenceSupport.resolveMethodCandidates(goal, context)
+        val baseCandidates = JvmInvestigationEvidenceSupport.resolveMethodCandidates(goal, index)
         val baseMethod = baseCandidates.methods.singleOrNull()
             ?: return unresolvedBase(goal, baseCandidates)
-        val implementations = concreteImplementations(baseMethod)
+        val implementations = concreteImplementations(baseMethod, index)
         return when (implementations.size) {
             0 -> ResolutionOutcome.Unresolved(
                 resolverId = id,
-                reason = "未找到 ${methodSignature(baseMethod)} 的项目内具体实现。",
+                reason = "未找到 ${baseMethod.signature} 的项目内具体实现。",
                 requiredEvidence = listOf("补充实现类源码、Spring 注入绑定或运行时 receiver 类型。"),
             )
             1 -> ResolutionOutcome.Resolved(
                 resolverId = id,
                 facts = listOf(
-                    JavaPsiEvidenceSupport.methodFact(
+                    JvmInvestigationEvidenceSupport.methodFact(
                         goal = goal,
                         resolverId = id,
                         method = implementations.single(),
-                        claim = "已确认 ${methodSignature(baseMethod)} 的唯一项目内实现是 ${methodSignature(implementations.single())}。",
-                        whyResolved = "PSI OverridingMethodsSearch 找到唯一具体实现，未使用文本搜索。",
+                        claim = "已确认 ${baseMethod.signature} 的唯一项目内实现是 ${implementations.single().signature}。",
+                        whyResolved = "复用 ArchitectureGraphIndex 的 IMPLEMENTS/EXTENDS 关系找到唯一具体实现。",
                     ),
                 ),
             )
             else -> ResolutionOutcome.MultipleCandidates(
                 resolverId = id,
                 candidates = implementations.map { method ->
-                    JavaPsiEvidenceSupport.methodCandidate(
+                    JvmInvestigationEvidenceSupport.methodCandidate(
                         goal = goal,
                         resolverId = id,
                         method = method,
                         reason = "接口或抽象方法存在多个具体实现，无法确认运行时 receiver。",
                     )
                 },
-                reason = "${methodSignature(baseMethod)} 存在多个具体实现。",
+                reason = "${baseMethod.signature} 存在多个具体实现。",
                 requiredEvidence = listOf("补充运行时 receiver 类型、Spring Bean 注入绑定或调用 trace。"),
             )
         }
@@ -79,13 +78,13 @@ class JavaOverrideResolver : ReadActionEvidenceResolver() {
      */
     private fun unresolvedBase(
         goal: EvidenceGoal,
-        baseCandidates: MethodCandidates,
+        baseCandidates: MethodSymbolCandidates,
     ): ResolutionOutcome {
         if (baseCandidates.methods.size > 1) {
             return ResolutionOutcome.MultipleCandidates(
                 resolverId = id,
                 candidates = baseCandidates.methods.map { method ->
-                    JavaPsiEvidenceSupport.methodCandidate(
+                    JvmInvestigationEvidenceSupport.methodCandidate(
                         goal = goal,
                         resolverId = id,
                         method = method,
@@ -106,41 +105,57 @@ class JavaOverrideResolver : ReadActionEvidenceResolver() {
     /**
      * 查询项目内具体实现方法。
      */
-    private fun concreteImplementations(baseMethod: PsiMethod): List<PsiMethod> {
-        val scope = GlobalSearchScope.projectScope(baseMethod.project)
-        val indexed = OverridingMethodsSearch.search(baseMethod, scope, true)
-            .findAll()
-            .filter { method -> method.containingClass?.let(::isConcreteClass) == true }
-            .filter(JavaPsiEvidenceSupport::isProjectSourceMethod)
-            .sortedBy(::methodSignature)
-        if (indexed.isNotEmpty()) {
-            return indexed
-        }
-        val ownerClass = baseMethod.containingClass ?: return emptyList()
-        val psiManager = PsiManager.getInstance(baseMethod.project)
-        return FilenameIndex.getAllFilesByExt(baseMethod.project, "java", scope)
-            .mapNotNull(psiManager::findFile)
-            .flatMap { file -> PsiTreeUtil.collectElementsOfType(file, PsiClass::class.java) }
+    private fun concreteImplementations(
+        baseMethod: JvmMethodSymbol,
+        index: ArchitectureGraphIndex,
+    ): List<JvmMethodSymbol> {
+        val ownerClass = index.findClass(baseMethod.ownerClassName) ?: return emptyList()
+        val implementingClassIds = implementationClassIds(ownerClass, index)
+        return implementingClassIds
+            .asSequence()
+            .mapNotNull(index::findSymbol)
+            .filterIsInstance<JvmClassSymbol>()
             .filter(::isConcreteClass)
-            .filter { psiClass -> psiClass.isInheritor(ownerClass, true) }
-            .flatMap { psiClass -> psiClass.findMethodsByName(baseMethod.name, false).toList() }
-            .filter { method ->
-                JavaPsiEvidenceSupport.matchesRequestedSignature(
-                    method = method,
-                    parameterTypes = baseMethod.parameterList.parameters.map { parameter ->
-                        JavaPsiEvidenceSupport.normalizeType(parameter.type)
-                    },
-                    returnType = JavaPsiEvidenceSupport.normalizeType(baseMethod.returnType),
-                )
+            .flatMap { classSymbol ->
+                index.symbolIndex.methodsBySignature.values.asSequence()
+                    .filter { method ->
+                        method.ownerClassName == classSymbol.qualifiedName &&
+                            method.simpleName == baseMethod.simpleName &&
+                            method.parameterTypes == baseMethod.parameterTypes
+                    }
             }
-            .filter(JavaPsiEvidenceSupport::isProjectSourceMethod)
-            .sortedBy(::methodSignature)
+            .distinctBy(JvmMethodSymbol::id)
+            .sortedBy(JvmMethodSymbol::signature)
+            .toList()
     }
 
     /**
      * 判断类是否为可实例化的具体类。
      */
-    private fun isConcreteClass(psiClass: PsiClass): Boolean {
-        return !psiClass.isInterface && !psiClass.hasModifierProperty(PsiModifier.ABSTRACT)
+    private fun isConcreteClass(classSymbol: JvmClassSymbol): Boolean {
+        return classSymbol.origin == SourceOrigin.PROJECT_SOURCE &&
+            classSymbol.kind != JvmClassKind.INTERFACE &&
+            !classSymbol.abstract
+    }
+
+    private fun implementationClassIds(
+        ownerClass: JvmClassSymbol,
+        index: ArchitectureGraphIndex,
+    ): Set<String> {
+        val result = linkedSetOf<String>()
+        val queue = java.util.ArrayDeque<String>()
+        queue.add(ownerClass.id)
+        while (queue.isNotEmpty()) {
+            val currentId = queue.removeFirst()
+            index.relationIndex.incoming(currentId)
+                .filter { relation -> relation.kind == JvmRelationKind.IMPLEMENTS || relation.kind == JvmRelationKind.EXTENDS }
+                .forEach { relation ->
+                    if (result.add(relation.fromSymbolId)) {
+                        queue.add(relation.fromSymbolId)
+                    }
+                }
+        }
+        result.remove(ownerClass.id)
+        return result
     }
 }

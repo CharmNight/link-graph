@@ -1,4 +1,4 @@
-import type { AnalysisDisplayMode, GraphPosition } from "../../../types";
+import type { AnalysisDisplayMode, GraphEditCommandKind, GraphPosition } from "../../../types";
 
 export interface GraphContextMenuAction {
   id: string;
@@ -15,7 +15,7 @@ interface PaneActionSchemaInput {
   onAddNode: (kind: "METHOD" | "DOC_PAGE", position?: GraphPosition) => void;
   onImportMermaid: () => void;
   onFormatLayout: () => void;
-  onOpenAudit: () => void;
+  onOpenQa: () => void;
   onClose: () => void;
 }
 
@@ -23,16 +23,21 @@ interface NodeActionSchemaInput {
   analysisDisplayMode: AnalysisDisplayMode;
   editable: boolean;
   nodeId: string;
+  canEditNode?: (command: GraphEditCommandKind) => boolean;
   canNavigateToSource: boolean;
   collapsed: boolean;
   overflowActionLabel: string | null;
+  invocationExpansionActionLabel?: string | null;
+  expansionId?: string | null;
   onInspectNode: (nodeId: string) => void;
   onRequestSourceNavigation: (nodeId: string) => void;
   onRequestBeautification: (selectedNodeId?: string) => void;
-  onRequestAudit: (selectedNodeId?: string) => void;
-  onOpenAudit: (selectedNodeId?: string) => void;
+  onRequestQa: (selectedNodeId?: string) => void;
+  onOpenQa: (selectedNodeId?: string) => void;
   onToggleCollapseNode: (nodeId: string) => void;
   onExpandOverflowNode: (nodeId: string) => void;
+  onExpandInvocation?: (nodeId: string) => void;
+  onRemoveInvocationExpansion?: (expansionId: string) => void;
   onFormatLayout: () => void;
   onDeleteNodeSubtree: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
@@ -43,12 +48,29 @@ interface EdgeActionSchemaInput {
   analysisDisplayMode: AnalysisDisplayMode;
   editable: boolean;
   edgeId: string;
+  canEditEdge?: (command: GraphEditCommandKind) => boolean;
   onDeleteEdge: (edgeId: string) => void;
   onClose: () => void;
 }
 
 function allowMutatingActions(analysisDisplayMode: AnalysisDisplayMode, editable: boolean): boolean {
   return editable;
+}
+
+function canRunNodeCommand(
+  editable: boolean,
+  canEditNode: ((command: GraphEditCommandKind) => boolean) | undefined,
+  command: GraphEditCommandKind,
+): boolean {
+  return editable && (canEditNode?.(command) ?? true);
+}
+
+function canRunEdgeCommand(
+  editable: boolean,
+  canEditEdge: ((command: GraphEditCommandKind) => boolean) | undefined,
+  command: GraphEditCommandKind,
+): boolean {
+  return editable && (canEditEdge?.(command) ?? true);
 }
 
 function makeAction(id: string, label: string, onSelect: () => void): GraphContextMenuAction {
@@ -64,7 +86,7 @@ export function buildPaneActions({
   onAddNode,
   onImportMermaid,
   onFormatLayout,
-  onOpenAudit,
+  onOpenQa,
   onClose,
 }: PaneActionSchemaInput): GraphContextMenuAction[] {
   const actions: GraphContextMenuAction[] = [];
@@ -92,8 +114,8 @@ export function buildPaneActions({
         onFormatLayout();
         onClose();
       }),
-      makeAction("open-audit", hasGroupedSelection ? "问答已框选范围" : "问答当前范围", () => {
-        onOpenAudit();
+      makeAction("open-qa", hasGroupedSelection ? "问答已框选范围" : "问答当前范围", () => {
+        onOpenQa();
         onClose();
       }),
     );
@@ -105,16 +127,21 @@ export function buildNodeActions({
   analysisDisplayMode,
   editable,
   nodeId,
+  canEditNode,
   canNavigateToSource,
   collapsed,
   overflowActionLabel,
+  invocationExpansionActionLabel,
+  expansionId,
   onInspectNode,
   onRequestSourceNavigation,
   onRequestBeautification,
-  onRequestAudit,
-  onOpenAudit,
+  onRequestQa,
+  onOpenQa,
   onToggleCollapseNode,
   onExpandOverflowNode,
+  onExpandInvocation,
+  onRemoveInvocationExpansion,
   onFormatLayout,
   onDeleteNodeSubtree,
   onDeleteNode,
@@ -134,17 +161,25 @@ export function buildNodeActions({
       }),
     );
   }
+  if (invocationExpansionActionLabel && onExpandInvocation) {
+    actions.push(
+      makeAction("expand-invocation", invocationExpansionActionLabel, () => {
+        onExpandInvocation(nodeId);
+        onClose();
+      }),
+    );
+  }
   actions.push(
     makeAction("beautify-node", "讲解当前链路", () => {
       onRequestBeautification(nodeId);
       onClose();
     }),
-    makeAction("audit-node", "问答当前节点", () => {
-      onRequestAudit(nodeId);
+    makeAction("qa-node", "问答当前节点", () => {
+      onRequestQa(nodeId);
       onClose();
     }),
-    makeAction("set-audit-anchor", "设为问答范围起点", () => {
-      onOpenAudit(nodeId);
+    makeAction("set-qa-anchor", "设为问答目标", () => {
+      onOpenQa(nodeId);
       onClose();
     }),
     makeAction("toggle-collapse", collapsed ? "展开整个下游子树" : "折叠整个下游子树", () => {
@@ -160,6 +195,14 @@ export function buildNodeActions({
       }),
     );
   }
+  if (expansionId && onRemoveInvocationExpansion) {
+    actions.push(
+      makeAction("remove-invocation-expansion", "移除此展开", () => {
+        onRemoveInvocationExpansion(expansionId);
+        onClose();
+      }),
+    );
+  }
   actions.push(
     makeAction("format-layout", "一键格式化布局", () => {
       onFormatLayout();
@@ -168,14 +211,22 @@ export function buildNodeActions({
   );
   if (allowMutatingActions(analysisDisplayMode, editable)) {
     actions.push(
-      makeAction("delete-node-subtree", "删除节点及子节点", () => {
-        onDeleteNodeSubtree(nodeId);
-        onClose();
-      }),
-      makeAction("delete-node", "删除节点", () => {
-        onDeleteNode(nodeId);
-        onClose();
-      }),
+      ...(canRunNodeCommand(editable, canEditNode, "DELETE_NODE_SUBTREE")
+        ? [
+            makeAction("delete-node-subtree", "删除节点及子节点", () => {
+              onDeleteNodeSubtree(nodeId);
+              onClose();
+            }),
+          ]
+        : []),
+      ...(canRunNodeCommand(editable, canEditNode, "DELETE_NODE")
+        ? [
+            makeAction("delete-node", "删除节点", () => {
+              onDeleteNode(nodeId);
+              onClose();
+            }),
+          ]
+        : []),
     );
   }
   return actions;
@@ -185,10 +236,11 @@ export function buildEdgeActions({
   analysisDisplayMode,
   editable,
   edgeId,
+  canEditEdge,
   onDeleteEdge,
   onClose,
 }: EdgeActionSchemaInput): GraphContextMenuAction[] {
-  if (!allowMutatingActions(analysisDisplayMode, editable)) {
+  if (!allowMutatingActions(analysisDisplayMode, editable) || !canRunEdgeCommand(editable, canEditEdge, "DELETE_EDGE")) {
     return [];
   }
   return [

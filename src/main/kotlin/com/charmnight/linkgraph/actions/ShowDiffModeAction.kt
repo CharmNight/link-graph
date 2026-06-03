@@ -2,6 +2,7 @@ package com.charmnight.linkgraph.actions
 
 import com.charmnight.linkgraph.LinkGraphBundle
 import com.charmnight.linkgraph.application.GraphEditorApplicationService
+import com.charmnight.linkgraph.application.command.ApplicationCommand
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.ui.Messages
@@ -21,7 +22,9 @@ class ShowDiffModeAction : DumbAwareAction(
         // 无项目时无法读取图状态，直接返回。
         val project = event.project ?: return
         // 如果已经成功切到差异模式，则不再弹出额外提示。
-        val diff = project.getService(GraphEditorApplicationService::class.java).showDiffMode()
+        val diff = project.getService(GraphEditorApplicationService::class.java)
+            .commandDispatcher
+            .dispatch(ApplicationCommand.ShowDiffMode)
         if (diff != null) {
             return
         }

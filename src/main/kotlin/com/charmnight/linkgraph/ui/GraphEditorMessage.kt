@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.ui
 
+import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
 import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.llm.GraphBeautificationResult as GraphBeautificationPayload
 import com.charmnight.linkgraph.model.GraphDocument
@@ -105,6 +106,22 @@ sealed interface GraphEditorMessage {
         val nodeId: String,
     ) : GraphEditorMessage
 
+    /**
+     * 请求展开调用节点对应的目标方法。
+     */
+    data class RequestExpandInvocation(
+        /** 保存调用节点标识。 */
+        val nodeId: String,
+    ) : GraphEditorMessage
+
+    /**
+     * 请求移除某次调用方法展开批次。
+     */
+    data class RequestRemoveInvocationExpansion(
+        /** 保存展开批次标识。 */
+        val expansionId: String,
+    ) : GraphEditorMessage
+
     /** 请求计算同步预览。 */
     data object RequestSyncPreview : GraphEditorMessage
 
@@ -173,6 +190,8 @@ sealed interface GraphEditorMessage {
         val preferredStyle: String? = null,
         /** 保存讲解关注点。 */
         val explanationFocus: String? = null,
+        /** 保存本次讲解显式聚焦的节点。 */
+        val focusNodeId: String? = null,
         /** 保存步骤追问上下文。 */
         val followUp: GraphBeautificationFollowUpContext? = null,
         /** 保存讲解维度。 */
@@ -234,6 +253,14 @@ sealed interface GraphEditorMessage {
     data class RequestAnalysisDisplayMode(
         /** 保存目标展示模式。 */
         val displayMode: AnalysisDisplayMode,
+    ) : GraphEditorMessage
+
+    /**
+     * 请求加载 indexed 图视图。
+     */
+    data class RequestIndexedGraph(
+        /** 保存完整 indexed 图请求。 */
+        val request: IndexedGraphRequest,
     ) : GraphEditorMessage
 
     /**

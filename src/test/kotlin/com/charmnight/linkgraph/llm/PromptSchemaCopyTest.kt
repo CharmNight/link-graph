@@ -19,12 +19,12 @@ class PromptSchemaCopyTest {
         )
 
         assertFalse(
-            qaService.contains("\"answer\": \"审计或差异说明\""),
-            "问答链路的 JSON 占位文案不应继续保留“审计”口径。",
+            qaService.contains("\"answer\": \"问答或差异说明\""),
+            "问答链路的 JSON 占位文案不应继续保留“复核”口径。",
         )
         assertFalse(
-            diffService.contains("\"answer\": \"审计或差异说明\""),
-            "差异链路的 JSON 占位文案不应继续混入“审计”口径。",
+            diffService.contains("\"answer\": \"问答或差异说明\""),
+            "差异链路的 JSON 占位文案不应继续混入“复核”口径。",
         )
     }
 }

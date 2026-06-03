@@ -26,6 +26,10 @@ internal fun projectReadableFlowchartView(
             visibleGraph = simplifiedVisibleGraph,
             fullGraph = graph,
         ),
+        projectionIndex = graphProjectionIndexForVisibleGraph(
+            visibleGraph = simplifiedVisibleGraph,
+            fullGraph = graph,
+        ),
     )
 }
 

@@ -3,6 +3,7 @@ import {
   certaintyLabel,
   formatResultEvidenceReference,
   investigationThreadStatusLabel,
+  relationConfidenceLabel,
   resultEvidenceLevelLabel,
 } from "../labels";
 import type { ResultEvidenceLevel } from "../types";
@@ -126,6 +127,39 @@ export function EvidenceStagePanel({
               </ul>
             ) : (
               <p className="muted">当前没有可展示证据。可以先运行链路讲解或发起风险问答。</p>
+            )}
+          </section>
+
+          <section className="evidence-stage-card">
+            <div className="evidence-stage-card-head">
+              <h3>架构索引关系</h3>
+              <span className="app-pill">{state.relationEvidence.length}</span>
+            </div>
+            {state.relationEvidence.length > 0 ? (
+              <ul className="evidence-stage-list">
+                {state.relationEvidence.map((item) => (
+                  <li key={item.id}>
+                    <strong>{item.label}</strong>
+                    <div className="evidence-stage-relation-meta">
+                      {item.confidence ? (
+                        <span className={`status-pill confidence-${item.confidence.toLowerCase()}`}>
+                          {relationConfidenceLabel(item.confidence)}
+                        </span>
+                      ) : null}
+                      {item.source ? <span className="status-pill">{item.source}</span> : null}
+                      {item.resolverId ? <span className="status-pill">{item.resolverId}</span> : null}
+                      {item.count ? <span className="app-pill">count {item.count}</span> : null}
+                    </div>
+                    {item.references.length > 0 ? (
+                      <span className="muted">
+                        {item.references.map((reference) => formatResultEvidenceReference(reference)).join(" · ")}
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">当前选中节点没有架构索引关系证据。</p>
             )}
           </section>
         </>

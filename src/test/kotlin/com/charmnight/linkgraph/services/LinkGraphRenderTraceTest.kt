@@ -54,7 +54,7 @@ class LinkGraphRenderTraceTest {
 
         val message = requireNotNull(loggedMessage)
         assertTrue(message.startsWith("渲染链路 trace: stage=transport.payload.current, durationMs=2.50"))
-        assertTrue(message.contains("workspace=nodes=2, edges=1"))
+        assertTrue(message.contains("workspace=nodes=2, edges=1, nodeTypes=METHOD:2, sampleNodeIds=method:a|method:b"))
         assertTrue(message.contains("scriptChars=512"))
     }
 }

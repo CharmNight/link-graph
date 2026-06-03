@@ -5,6 +5,7 @@ import {
   Controls,
   ReactFlow,
   SelectionMode,
+  ViewportPortal,
   type Connection,
   type Edge,
   type Node,
@@ -49,6 +50,11 @@ interface EdgeActionContext {
   close: () => void;
 }
 
+interface ViewportOverlayContext {
+  nodes: LinkGraphNode[];
+  edges: LinkGraphEdge[];
+}
+
 interface GraphFlowSurfaceProps {
   nodes: LinkGraphNode[];
   edges: LinkGraphEdge[];
@@ -56,6 +62,8 @@ interface GraphFlowSurfaceProps {
   flowEdges: Edge[];
   nodeTypes?: NodeTypes;
   viewportMode?: AnalysisDisplayMode;
+  viewportPolicy?: "fit" | "readable-fit";
+  viewportResetKey?: string | null;
   anchorNodeId?: string | null;
   selectedNodeId: string | null;
   focusNodeRequest?: GraphFocusRequest | null;
@@ -64,7 +72,7 @@ interface GraphFlowSurfaceProps {
   editable?: boolean;
   layoutEditable?: boolean;
   header?: ReactNode;
-  canvasMarkers?: ReactNode;
+  viewportOverlay?: (context: ViewportOverlayContext) => ReactNode;
   emptyState: ReactNode;
   buildPaneActions: (context: PaneActionContext) => GraphContextMenuAction[];
   buildNodeActions: (context: NodeActionContext) => GraphContextMenuAction[];
@@ -82,6 +90,10 @@ interface GraphFlowSurfaceProps {
   onMoveNodes?: (updates: Array<{ id: string; position: GraphPosition }>) => void;
   shouldFocusAnchorOnLoad?: boolean;
   nodeViewportSize?: (node: LinkGraphNode) => { width: number; height: number };
+  fitViewPadding?: number;
+  fitViewMaxZoom?: number;
+  showViewportControls?: boolean;
+  showLocateAnchorButton?: boolean;
 }
 
 type ContextMenuState =
@@ -110,6 +122,10 @@ const FIT_VIEW_DELAY_MS = 96;
 const FIT_VIEW_RETRY_DELAY_MS = 220;
 const RESIZE_SETTLE_DELAY_MS = 140;
 const WIDE_GRAPH_FOCUS_ZOOM = 0.76;
+const READABLE_FIT_MIN_ZOOM = 0.54;
+const READABLE_FIT_MAX_ZOOM = 0.82;
+const READABLE_FIT_MIN_PADDING = 42;
+const READABLE_FIT_MAX_PADDING = 96;
 const CONTEXT_MENU_SAFE_MARGIN = 16;
 const CONTEXT_MENU_ESTIMATED_WIDTH = 240;
 const CONTEXT_MENU_ESTIMATED_HEIGHT = 360;
@@ -122,6 +138,21 @@ function hashText(value: string): string {
     hash = ((hash * 31) + value.charCodeAt(index)) >>> 0;
   }
   return hash.toString(36);
+}
+
+function locateAnchorButtonLabel(viewportMode: AnalysisDisplayMode): string {
+  switch (viewportMode) {
+    case "CLASS_DIAGRAM":
+      return "定位当前类";
+    case "ARCHITECTURE_GRAPH":
+      return "定位当前架构";
+    case "RESOURCE_RELATION_VIEW":
+      return "定位当前资源";
+    case "FLOWCHART":
+      return "定位当前步骤";
+    default:
+      return "定位当前方法";
+  }
 }
 
 function summarizeGraphShapeSignature(signature: string) {
@@ -165,6 +196,133 @@ function resolveAnchorNode(
     ?? null;
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function rounded(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+function roundedRect(element: Element | null) {
+  if (!element) {
+    return null;
+  }
+  const rect = element.getBoundingClientRect();
+  return {
+    left: Math.round(rect.left),
+    top: Math.round(rect.top),
+    width: Math.round(rect.width),
+    height: Math.round(rect.height),
+  };
+}
+
+interface GraphContentBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  width: number;
+  height: number;
+}
+
+function graphContentBounds(
+  nodes: LinkGraphNode[],
+  edges: LinkGraphEdge[],
+  nodeViewportSize: (node: LinkGraphNode) => { width: number; height: number },
+): GraphContentBounds | null {
+  if (nodes.length === 0) {
+    return null;
+  }
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  const includePoint = (point: GraphPosition) => {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  };
+  nodes.forEach((node) => {
+    const position = node.position ?? { x: 0, y: 0 };
+    const size = nodeViewportSize(node);
+    includePoint(position);
+    includePoint({
+      x: position.x + size.width,
+      y: position.y + size.height,
+    });
+  });
+  edges.forEach((edge) => {
+    edge.route?.sections.forEach((section) => {
+      includePoint(section.startPoint);
+      section.bendPoints?.forEach(includePoint);
+      includePoint(section.endPoint);
+    });
+  });
+  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+    return null;
+  }
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: Math.max(1, maxX - minX),
+    height: Math.max(1, maxY - minY),
+  };
+}
+
+function graphViewportContentSignature(
+  nodes: LinkGraphNode[],
+  edges: LinkGraphEdge[],
+  nodeViewportSize: (node: LinkGraphNode) => { width: number; height: number },
+): string {
+  return [
+    ...nodes.map((node) => {
+      const position = node.position ?? { x: 0, y: 0 };
+      const size = nodeViewportSize(node);
+      return `${node.id}:${rounded(position.x)},${rounded(position.y)},${rounded(size.width)}x${rounded(size.height)}`;
+    }),
+    ...edges.map((edge) => {
+      const routePointSignature = edge.route?.sections
+        .flatMap((section) => [section.startPoint, ...(section.bendPoints ?? []), section.endPoint])
+        .map((point) => `${rounded(point.x)},${rounded(point.y)}`)
+        .join(";") ?? "";
+      return `${edge.id}:${edge.source}->${edge.target}:${routePointSignature}`;
+    }),
+  ].join("|");
+}
+
+function reactFlowPaddingPixels(size: number, padding: number): number {
+  if (padding <= 0) {
+    return 0;
+  }
+  return Math.floor((size - size / (1 + padding)) / 2);
+}
+
+function summarizeElement(selector: string) {
+  if (typeof document === "undefined" || typeof window === "undefined") {
+    return null;
+  }
+  const element = document.querySelector(selector);
+  if (!element) {
+    return null;
+  }
+  const style = window.getComputedStyle(element);
+  return {
+    selector,
+    rect: roundedRect(element),
+    display: style.display,
+    visibility: style.visibility,
+    opacity: style.opacity,
+    position: style.position,
+    overflow: style.overflow,
+    zIndex: style.zIndex,
+    transform: style.transform,
+  };
+}
+
 export function GraphFlowSurface({
   nodes,
   edges,
@@ -172,6 +330,8 @@ export function GraphFlowSurface({
   flowEdges,
   nodeTypes,
   viewportMode,
+  viewportPolicy = "fit",
+  viewportResetKey = null,
   anchorNodeId = null,
   selectedNodeId,
   focusNodeRequest = null,
@@ -180,7 +340,7 @@ export function GraphFlowSurface({
   editable = false,
   layoutEditable = true,
   header = null,
-  canvasMarkers = null,
+  viewportOverlay,
   emptyState,
   buildPaneActions,
   buildNodeActions,
@@ -193,6 +353,10 @@ export function GraphFlowSurface({
   onMoveNodes,
   shouldFocusAnchorOnLoad = false,
   nodeViewportSize = () => ({ width: DEFAULT_NODE_CARD_WIDTH, height: 156 }),
+  fitViewPadding = 0.16,
+  fitViewMaxZoom = 1,
+  showViewportControls = true,
+  showLocateAnchorButton = true,
 }: GraphFlowSurfaceProps) {
   const renderStartedAt = measureStart();
   const supportsResizeObserver = typeof ResizeObserver !== "undefined";
@@ -278,6 +442,36 @@ export function GraphFlowSurface({
       };
     });
   }, [flowNodes, liveDragPositions]);
+  const viewportOverlayNodes = useMemo(() => {
+    const liveDragNodeIds = Object.keys(liveDragPositions);
+    if (liveDragNodeIds.length === 0) {
+      return positionedNodes;
+    }
+    return positionedNodes.map((node) => {
+      const livePosition = liveDragPositions[node.id];
+      if (!livePosition || positionsMatch(node.position, livePosition)) {
+        return node;
+      }
+      return {
+        ...node,
+        position: livePosition,
+      };
+    });
+  }, [positionedNodes, liveDragPositions]);
+  const renderedViewportOverlay = viewportOverlay?.({
+    nodes: viewportOverlayNodes,
+    edges,
+  }) ?? null;
+  const renderedFlowEdges = useMemo(() => {
+    if (!selectedEdgeId) {
+      return flowEdges;
+    }
+    return flowEdges.map((edge) => (
+      edge.id === selectedEdgeId
+        ? { ...edge, selected: true }
+        : edge
+    ));
+  }, [flowEdges, selectedEdgeId]);
 
   const graphShapeSignature = useMemo(
     () =>
@@ -287,6 +481,25 @@ export function GraphFlowSurface({
         .join("|"),
     [positionedNodes, edges],
   );
+  const classDiagramViewportContentSignature = useMemo(
+    () =>
+      viewportMode === "CLASS_DIAGRAM"
+        ? graphViewportContentSignature(positionedNodes, edges, nodeViewportSize)
+        : "",
+    [positionedNodes, edges, nodeViewportSize, viewportMode],
+  );
+  const readableFitViewportContentSignature = useMemo(
+    () =>
+      viewportPolicy === "readable-fit"
+        ? graphViewportContentSignature(positionedNodes, edges, nodeViewportSize)
+        : "",
+    [positionedNodes, edges, nodeViewportSize, viewportPolicy],
+  );
+  const effectiveViewportResetKey = viewportMode === "CLASS_DIAGRAM"
+    ? `${viewportResetKey ?? ""}:${hashText(classDiagramViewportContentSignature)}`
+    : viewportPolicy === "readable-fit"
+      ? `${viewportResetKey ?? ""}:${hashText(readableFitViewportContentSignature)}`
+    : viewportResetKey;
 
   useEffect(() => {
     const liveDragNodeIds = Object.keys(liveDragPositions);
@@ -330,6 +543,51 @@ export function GraphFlowSurface({
     renderStartedAt,
   ]);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || window.__linkGraphDebugEnabled !== true) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const shell = canvasShellRef.current;
+      const nodeElements = Array.from(document.querySelectorAll(".react-flow__node"));
+      const cardElements = Array.from(document.querySelectorAll(".uml-class-card"));
+      const shellRect = shell?.getBoundingClientRect() ?? null;
+      const visibleNodeCountInShell = shellRect
+        ? nodeElements.filter((element) => {
+            const rect = element.getBoundingClientRect();
+            return rect.width > 0
+              && rect.height > 0
+              && rect.right >= shellRect.left
+              && rect.left <= shellRect.right
+              && rect.bottom >= shellRect.top
+              && rect.top <= shellRect.bottom;
+          }).length
+        : 0;
+      traceLinkGraph("graphFlowSurface.domProbe", {
+        viewportMode,
+        graph: summarizeGraph({ nodes: positionedNodes, edges }),
+        flowNodes: renderedFlowNodes.length,
+        flowEdges: renderedFlowEdges.length,
+        selectors: [
+          summarizeElement("[data-testid='graph-canvas-shell']"),
+          summarizeElement(".class-diagram-overlay"),
+          summarizeElement(".graph-flow-surface"),
+          summarizeElement(".react-flow__renderer"),
+          summarizeElement(".react-flow__viewport"),
+          summarizeElement(".react-flow__viewport-portal"),
+          summarizeElement(".react-flow__controls"),
+          summarizeElement(".canvas-locate-anchor-button"),
+        ],
+        reactFlowNodeCount: nodeElements.length,
+        umlClassCardCount: cardElements.length,
+        visibleNodeCountInShell,
+        firstNodeRect: roundedRect(nodeElements[0] ?? null),
+        firstCardRect: roundedRect(cardElements[0] ?? null),
+      });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [edges, positionedNodes, renderedFlowEdges.length, renderedFlowNodes.length, viewportMode]);
+
   function focusNodeInViewport(node: LinkGraphNode, reason: string) {
     if (!flowInstance || !node.position) {
       return;
@@ -337,7 +595,10 @@ export function GraphFlowSurface({
     const size = nodeViewportSize(node);
     const zoomOptions = reason === "manualAnchor" || reason === "explicitNodeFocus"
       ? { duration: 0 }
-      : { zoom: WIDE_GRAPH_FOCUS_ZOOM, duration: 0 };
+      : {
+          zoom: WIDE_GRAPH_FOCUS_ZOOM,
+          duration: 0,
+        };
     traceLinkGraph("graphFlowSurface.viewport.focusNode", {
       reason,
       nodeId: node.id,
@@ -345,10 +606,75 @@ export function GraphFlowSurface({
       zoomOptions,
     });
     flowInstance.setCenter(
-      node.position.x + size.width / 2,
-      node.position.y + size.height / 2,
+      Math.round((node.position.x + size.width / 2) * 10) / 10,
+      Math.round((node.position.y + size.height / 2) * 10) / 10,
       zoomOptions,
     );
+  }
+
+  function fitReadableContentInViewport(reason: ViewportScheduleReason): boolean {
+    if (!flowInstance) {
+      return false;
+    }
+    const shellRect = canvasShellRef.current?.getBoundingClientRect();
+    const shellWidth = shellRect?.width ?? 0;
+    const shellHeight = shellRect?.height ?? 0;
+    const bounds = graphContentBounds(positionedNodes, edges, nodeViewportSize);
+    if (!bounds || shellWidth <= 0 || shellHeight <= 0) {
+      traceLinkGraph("graphFlowSurface.viewport.readableFit.skipped", {
+        reason,
+        hasBounds: Boolean(bounds),
+        shell: shellRect ? roundedRect(canvasShellRef.current) : null,
+      });
+      return false;
+    }
+    const horizontalPadding = clamp(
+      reactFlowPaddingPixels(shellWidth, fitViewPadding),
+      READABLE_FIT_MIN_PADDING,
+      Math.min(READABLE_FIT_MAX_PADDING, Math.max(0, shellWidth / 3)),
+    );
+    const verticalPadding = clamp(
+      reactFlowPaddingPixels(shellHeight, fitViewPadding),
+      READABLE_FIT_MIN_PADDING,
+      Math.min(READABLE_FIT_MAX_PADDING, Math.max(0, shellHeight / 3)),
+    );
+    const availableWidth = Math.max(1, shellWidth - horizontalPadding * 2);
+    const availableHeight = Math.max(1, shellHeight - verticalPadding * 2);
+    const zoom = Math.min(
+      Math.min(fitViewMaxZoom, READABLE_FIT_MAX_ZOOM),
+      Math.max(
+        READABLE_FIT_MIN_ZOOM,
+        Math.min(availableWidth / bounds.width, availableHeight / bounds.height),
+      ),
+    );
+    const centerX = bounds.minX + bounds.width / 2;
+    const centerY = bounds.minY + bounds.height / 2;
+    traceLinkGraph("graphFlowSurface.viewport.readableFit.apply", {
+      reason,
+      bounds: {
+        minX: rounded(bounds.minX),
+        minY: rounded(bounds.minY),
+        maxX: rounded(bounds.maxX),
+        maxY: rounded(bounds.maxY),
+        width: rounded(bounds.width),
+        height: rounded(bounds.height),
+      },
+      shell: {
+        width: rounded(shellWidth),
+        height: rounded(shellHeight),
+      },
+      padding: {
+        x: rounded(horizontalPadding),
+        y: rounded(verticalPadding),
+      },
+      zoom: rounded(zoom),
+      center: {
+        x: rounded(centerX),
+        y: rounded(centerY),
+      },
+    });
+    flowInstance.setCenter(centerX, centerY, { zoom, duration: 0 });
+    return true;
   }
 
   function clearScheduledFitView() {
@@ -390,8 +716,25 @@ export function GraphFlowSurface({
     }
     clearScheduledFitView();
     const updateViewport = () => {
-      let branch: "flowchartAnchor" | "wideGraphAnchor" | "fitView" = "fitView";
-      if (shouldFocusAnchorOnLoad && anchorNode?.position) {
+      let branch: "flowchartAnchor" | "wideGraphAnchor" | "readableFit" | "fitView" = "fitView";
+      if (viewportPolicy === "readable-fit") {
+        branch = "readableFit";
+        traceLinkGraph("graphFlowSurface.viewport.apply", {
+          reason,
+          branch,
+          viewportMode,
+          useFlowchartViewport,
+          focusAnchor: shouldFocusAnchorOnLoad,
+          anchorNodeId: anchorNode?.id ?? null,
+          anchorPosition: anchorNode?.position ?? null,
+          graphShape: summarizeGraphShapeSignature(graphShapeSignature),
+        });
+        if (fitReadableContentInViewport(reason)) {
+          return;
+        }
+        branch = "fitView";
+      }
+      if (shouldFocusAnchorOnLoad && anchorNode?.position && viewportMode !== "ARCHITECTURE_GRAPH" && viewportMode !== "CLASS_DIAGRAM") {
         branch = "wideGraphAnchor";
         traceLinkGraph("graphFlowSurface.viewport.apply", {
           reason,
@@ -417,17 +760,24 @@ export function GraphFlowSurface({
         graphShape: summarizeGraphShapeSignature(graphShapeSignature),
       });
       flowInstance.fitView({
-        padding: 0.16,
+        padding: fitViewPadding,
         duration: 0,
-        maxZoom: 1,
+        maxZoom: fitViewMaxZoom,
         includeHiddenNodes: true,
       });
     };
+    if (
+      (viewportMode === "CLASS_DIAGRAM" && reason === "graph")
+      || (viewportPolicy === "readable-fit" && reason === "graph")
+    ) {
+      updateViewport();
+      return;
+    }
     primaryFitViewTimerRef.current = window.setTimeout(() => {
       updateViewport();
       primaryFitViewTimerRef.current = null;
     }, FIT_VIEW_DELAY_MS);
-    if (!shouldFocusAnchorOnLoad && !useFlowchartViewport && reason === "graph") {
+    if (!shouldFocusAnchorOnLoad && !useFlowchartViewport && viewportPolicy !== "readable-fit" && reason === "graph") {
       retryFitViewTimerRef.current = window.setTimeout(() => {
         updateViewport();
         retryFitViewTimerRef.current = null;
@@ -474,6 +824,7 @@ export function GraphFlowSurface({
       anchorNodeId: anchorNode?.id ?? null,
       nodeIds: new Set(positionedNodes.map((node) => node.id)),
       edgeIds: new Set(edges.map((edge) => edge.id)),
+      resetKey: effectiveViewportResetKey,
     };
     const preserveViewport = shouldPreserveViewportForIncrementalUpdate(
       previousViewportGraphRef.current,
@@ -484,6 +835,9 @@ export function GraphFlowSurface({
       graph: summarizeGraph({ nodes: positionedNodes, edges }),
       anchorNodeId: anchorNode?.id ?? null,
       previousAnchorNodeId: previousViewportGraphRef.current?.anchorNodeId ?? null,
+      previousResetKey: previousViewportGraphRef.current?.resetKey ?? null,
+      resetKey: viewportResetKey,
+      effectiveResetKey: effectiveViewportResetKey,
       preserveViewport,
       shouldFocusAnchorOnLoad,
       graphShape: summarizeGraphShapeSignature(graphShapeSignature),
@@ -496,7 +850,17 @@ export function GraphFlowSurface({
     lastResizeShellSizeRef.current = null;
     scheduleViewport("graph");
     return clearScheduledFitView;
-  }, [flowInstance, graphShapeSignature, anchorNode?.id, shouldFocusAnchorOnLoad, viewportMode]);
+  }, [
+    flowInstance,
+    graphShapeSignature,
+    anchorNode?.id,
+    shouldFocusAnchorOnLoad,
+    viewportMode,
+    viewportPolicy,
+    effectiveViewportResetKey,
+    fitViewPadding,
+    fitViewMaxZoom,
+  ]);
 
   useEffect(() => {
     if (!supportsResizeObserver || !flowInstance || positionedNodes.length === 0 || !canvasShellRef.current) {
@@ -527,7 +891,7 @@ export function GraphFlowSurface({
     });
     observer.observe(canvasShellRef.current);
     return () => observer.disconnect();
-  }, [supportsResizeObserver, flowInstance, positionedNodes.length > 0, shouldFocusAnchorOnLoad, viewportMode]);
+  }, [supportsResizeObserver, flowInstance, positionedNodes.length > 0, shouldFocusAnchorOnLoad, viewportMode, viewportPolicy]);
 
   function resolveContextMenuPoint(x: number, y: number): { x: number; y: number } {
     if (typeof window === "undefined") {
@@ -660,6 +1024,7 @@ export function GraphFlowSurface({
         close: () => setSelectedEdgeId(null),
       })
     : [];
+  const hasHeader = header !== null && header !== undefined && header !== false;
 
   function runSelectedEdgeDeleteAction() {
     if (!selectedEdgeId) {
@@ -693,7 +1058,7 @@ export function GraphFlowSurface({
           : [];
 
   return (
-    <section className="graph-canvas-panel">
+    <section className={hasHeader ? "graph-canvas-panel has-header" : "graph-canvas-panel without-header"}>
       {header}
       <div
         ref={canvasShellRef}
@@ -724,15 +1089,13 @@ export function GraphFlowSurface({
           }
         }}
       >
-        {canvasMarkers}
-
         <ReactFlow
           className="graph-flow-surface"
           nodes={renderedFlowNodes}
-          edges={flowEdges}
+          edges={renderedFlowEdges}
           nodeTypes={nodeTypes}
           edgeTypes={ROUTED_EDGE_TYPES}
-          minZoom={GRAPH_SURFACE_MIN_ZOOM}
+          minZoom={viewportPolicy === "readable-fit" ? READABLE_FIT_MIN_ZOOM : GRAPH_SURFACE_MIN_ZOOM}
           onlyRenderVisibleElements={onlyRenderVisibleElements}
           zoomOnDoubleClick={false}
           selectionOnDrag={false}
@@ -841,17 +1204,18 @@ export function GraphFlowSurface({
             ]);
           }}
         >
-          <Controls showInteractive={false} position="bottom-left" />
+          {renderedViewportOverlay ? <ViewportPortal>{renderedViewportOverlay}</ViewportPortal> : null}
+          {showViewportControls ? <Controls showInteractive={false} position="bottom-left" /> : null}
           <Background gap={20} size={1} />
         </ReactFlow>
 
-        {anchorNode ? (
+        {anchorNode && showLocateAnchorButton ? (
           <button
             type="button"
             className="canvas-locate-anchor-button"
             onClick={() => focusNodeInViewport(anchorNode, "manualAnchor")}
           >
-            定位当前方法
+            {locateAnchorButtonLabel(viewportMode ?? "FACT_GRAPH")}
           </button>
         ) : null}
 

@@ -10,7 +10,7 @@ import {
   resolveAnchorNodeId,
   resolveCollapsedDescendantSummary,
   resolveDisplayedNodeId,
-  resolveAuditTargetNodeIds,
+  resolveQaTargetNodeIds,
   resolveDraftEntryPrimaryNodeId,
   resolveDraftEntryTargetNodeIds,
   resolveEntryOwnerSignatures,
@@ -19,6 +19,9 @@ import {
   reuseCurrentViewGraphs,
   scopeFlowchartGraphToAnchorMethod,
   syncFactGraphViewDocument,
+  syncArchitectureGraphViewLayout,
+  syncClassDiagramViewLayout,
+  syncReviewGraphViewLayout,
   syncFlowchartViewLayout,
   syncResourceRelationViewLayout,
   toDraftWorkbenchEntry,
@@ -60,20 +63,26 @@ import type {
   GeneratedCodeDraft,
   GraphBeautificationResult,
   GraphPatchResult,
+  ArchitectureGraphViewDocument,
+  ClassDiagramViewDocument,
   FactGraphViewDocument,
   FlowchartViewDocument,
+  GraphProjectionIndex,
   GraphSurfaceExperimentFlags,
+  IndexedGraphSummary,
   LinkGraphDocument,
   LinkGraphBootstrapState,
   LinkGraphEdge,
   LinkGraphNode,
   QaRequestRecoveryState,
+  ReviewGraphViewDocument,
   StepGranularity,
 } from "./types";
+import type { EditableStageProps, IndexedReadonlyStageProps } from "./views/viewStageProps";
 import { GraphWorkbench } from "./workbench/GraphWorkbench";
 import { WorkbenchPropertyDrawer } from "./workbench/WorkbenchPropertyDrawer";
 import type { RequestFailureNotice } from "./controllers/bridgeCommandTypes";
-import { useAuditWorkbenchController } from "./controllers/useAuditWorkbenchController";
+import { useQaWorkbenchController } from "./controllers/useQaWorkbenchController";
 import { useAppWorkbenchShellController } from "./controllers/useAppWorkbenchShellController";
 import { useBootstrapProjectionState } from "./controllers/useBootstrapProjectionState";
 import { useBootstrapStateController } from "./controllers/useBootstrapStateController";
@@ -106,6 +115,9 @@ import {
   resolveDesignBaselineGraph,
   resolveFactGraphView,
   resolveFlowchartView,
+  resolveArchitectureGraphView,
+  resolveClassDiagramView,
+  resolveReviewGraphView,
   resolveInitialAnchorNodeId,
   resolveInitialState,
   resolveRequestState,
@@ -117,6 +129,50 @@ import {
 } from "./sampleState";
 
 type ExplanationRequestMode = "fresh" | "follow_up";
+
+function activeIndexedGraphSummary(
+  analysisDisplayMode: AnalysisDisplayMode,
+  architectureSummary: IndexedGraphSummary | null,
+  classDiagramSummary: IndexedGraphSummary | null,
+  reviewSummary: IndexedGraphSummary | null,
+): IndexedGraphSummary | null {
+  switch (analysisDisplayMode) {
+    case "ARCHITECTURE_GRAPH":
+      return architectureSummary;
+    case "CLASS_DIAGRAM":
+      return classDiagramSummary;
+    case "REVIEW_GRAPH":
+      return reviewSummary;
+    default:
+      return null;
+  }
+}
+
+function activeProjectionIndex(
+  analysisDisplayMode: AnalysisDisplayMode,
+  factProjectionIndex: GraphProjectionIndex | null | undefined,
+  flowchartProjectionIndex: GraphProjectionIndex | null | undefined,
+  resourceProjectionIndex: GraphProjectionIndex | null | undefined,
+  architectureProjectionIndex: GraphProjectionIndex | null | undefined,
+  classDiagramProjectionIndex: GraphProjectionIndex | null | undefined,
+  reviewProjectionIndex: GraphProjectionIndex | null | undefined,
+): GraphProjectionIndex | null {
+  switch (analysisDisplayMode) {
+    case "FLOWCHART":
+      return flowchartProjectionIndex ?? null;
+    case "RESOURCE_RELATION_VIEW":
+      return resourceProjectionIndex ?? null;
+    case "ARCHITECTURE_GRAPH":
+      return architectureProjectionIndex ?? null;
+    case "CLASS_DIAGRAM":
+      return classDiagramProjectionIndex ?? null;
+    case "REVIEW_GRAPH":
+      return reviewProjectionIndex ?? null;
+    case "FACT_GRAPH":
+    default:
+      return factProjectionIndex ?? null;
+  }
+}
 
 interface ExplanationHistoryEntry {
   result: GraphBeautificationResult;
@@ -131,7 +187,14 @@ const WORKBENCH_LAYOUT_STORAGE_KEY = "linkGraph.hybridWorkbenchLayout";
 const DEFAULT_STAGE_WORKBENCH_WIDTH = 420;
 const MIN_STAGE_WORKBENCH_WIDTH = 320;
 const MAX_STAGE_WORKBENCH_WIDTH = 720;
-export { resolveAuditTargetNodeIds } from "./appGraphSupport";
+export { resolveQaTargetNodeIds } from "./appGraphSupport";
+
+function isProjectStructureDisplay(
+  analysisDisplayMode: AnalysisDisplayMode,
+  architectureSummary: IndexedGraphSummary | null | undefined,
+): boolean {
+  return analysisDisplayMode === "ARCHITECTURE_GRAPH" && architectureSummary?.scopeKind === "PROJECT";
+}
 
 function clampStageWorkbenchWidth(width: number): number {
   return Math.max(MIN_STAGE_WORKBENCH_WIDTH, Math.min(MAX_STAGE_WORKBENCH_WIDTH, Math.round(width)));
@@ -185,12 +248,12 @@ export function App() {
     projectionState,
     setProjectionState,
     projectionSetters,
-    auditTargetNodeIds,
-    setAuditTargetNodeIds,
-    auditQuestionDraft,
-    setAuditQuestionDraft,
-    auditQuestionMode,
-    setAuditQuestionMode,
+    qaTargetNodeIds,
+    setQaTargetNodeIds,
+    qaQuestionDraft,
+    setQaQuestionDraft,
+    qaQuestionMode,
+    setQaQuestionMode,
     selectionGroupNodeIds,
     setSelectionGroupNodeIds,
     collapsedNodeIds,
@@ -213,6 +276,9 @@ export function App() {
     resolveFactGraphView,
     resolveFlowchartView,
     resolveResourceRelationView,
+    resolveArchitectureGraphView,
+    resolveClassDiagramView,
+    resolveReviewGraphView,
     resolveCurrentSceneState,
     resolveWorkingGraph,
     resolveDesignBaselineGraph,
@@ -232,6 +298,9 @@ export function App() {
     factGraphView,
     flowchartView,
     resourceRelationView,
+    architectureGraphView,
+    classDiagramView,
+    reviewGraphView,
     draftGraph,
   } = canvasState;
   const {
@@ -243,6 +312,9 @@ export function App() {
     setFactGraphView,
     setFlowchartView,
     setResourceRelationView,
+    setArchitectureGraphView,
+    setClassDiagramView,
+    setReviewGraphView,
     setDraftGraph,
   } = canvasSetters;
   const {
@@ -253,8 +325,8 @@ export function App() {
     lastAppliedDraftPatchPreview,
     canUndoDraftPatchApply,
     lastAppliedDraftPatchSummary,
-    auditResult,
-    auditRequestState,
+    qaResult,
+    qaRequestState,
     qaRequestRecoveryState,
     diffReviewResult,
     diffReviewRequestState,
@@ -280,6 +352,7 @@ export function App() {
     lastDraftPatchApplyResult,
     codeDraftRequestState,
     codeEligibilityDecision,
+    indexedGraphRequestStates,
     sourceNavigationState: _sourceNavigationState,
     operationFeedback,
     workbenchSectionPreferences,
@@ -295,8 +368,8 @@ export function App() {
     setLastAppliedDraftPatchPreview,
     setCanUndoDraftPatchApply,
     setLastAppliedDraftPatchSummary,
-    setAuditResult,
-    setAuditRequestState,
+    setQaResult,
+    setQaRequestState,
     setQaRequestRecoveryState,
     setDiffReviewResult,
     setDiffReviewRequestState,
@@ -364,27 +437,42 @@ export function App() {
     operationFeedback,
     lastMessageType,
     requestStates: [
-      auditRequestState,
+      qaRequestState,
       diffReviewRequestState,
       graphBeautificationRequestState,
       generationPlanRequestState,
       codeDraftRequestState,
+      indexedGraphRequestStates.ARCHITECTURE ?? IDLE_REQUEST_STATE,
+      indexedGraphRequestStates.CLASS_DIAGRAM ?? IDLE_REQUEST_STATE,
+      indexedGraphRequestStates.REVIEW ?? IDLE_REQUEST_STATE,
     ],
   }), [
-    auditRequestState,
+    qaRequestState,
     codeDraftRequestState,
     diffReviewRequestState,
     generationPlanRequestState,
     graphBeautificationRequestState,
+    indexedGraphRequestStates,
     lastMessageType,
     operationFeedback,
   ]);
   const [activeWorkflowStage, setActiveWorkflowStage] = useState<WorkflowStage>("understand");
   const [hybridLayoutPreference, setHybridLayoutPreference] = useState(readHybridWorkbenchLayoutPreference);
   const activeWorkbenchTab = workflowStageToWorkbenchTab(activeWorkflowStage) ?? "explanation";
-  const activeWorkbenchTabForDerived = workflowStageToWorkbenchTab(activeWorkflowStage) ?? "audit";
+  const activeWorkbenchTabForDerived = workflowStageToWorkbenchTab(activeWorkflowStage) ?? "qa";
   function setActiveWorkbenchTabCompat(tab: WorkbenchTab) {
     setActiveWorkflowStage(workbenchTabToWorkflowStage(tab));
+  }
+  function handleRequestAnalysisDisplayMode(displayMode: AnalysisDisplayMode) {
+    if (displayMode === "REVIEW_GRAPH") {
+      setActiveWorkflowStage("qa");
+    }
+    const reviewGraphDiffItemIds = diffTargetItemIds.length > 0
+      ? diffTargetItemIds
+      : selectedNodeId && diffItems.some((item) => item.id === selectedNodeId)
+        ? [selectedNodeId]
+        : [];
+    workbenchCommands.handleRequestAnalysisDisplayMode(displayMode, reviewGraphDiffItemIds);
   }
   const [selectedExplanationStepId, setSelectedExplanationStepId] = useState<string | null>(
     () => graphBeautificationResult?.steps?.[0]?.stepId ?? null,
@@ -395,9 +483,9 @@ export function App() {
   const [explanationHistory, setExplanationHistory] = useState<ExplanationHistoryEntry[]>([]);
   const [currentExplanationSessionLabel, setCurrentExplanationSessionLabel] = useState(DEFAULT_EXPLANATION_SESSION_LABEL);
   const [hoveredExplanationStepId, setHoveredExplanationStepId] = useState<string | null>(null);
-  const [selectedAuditChangeId, setSelectedAuditChangeId] = useState<string | null>(null);
-  const [selectedAuditThreadId, setSelectedAuditThreadId] = useState<string | null>(null);
-  const [auditSourceThreadId, setAuditSourceThreadId] = useState<string | null>(null);
+  const [selectedQaChangeId, setSelectedQaChangeId] = useState<string | null>(null);
+  const [selectedQaThreadId, setSelectedQaThreadId] = useState<string | null>(null);
+  const [qaSourceThreadId, setQaSourceThreadId] = useState<string | null>(null);
   const [selectedDraftEntryId, setSelectedDraftEntryId] = useState<string | null>(
     () => initialState.draftWorkbenchState?.draftChanges[0]?.entryId
       ?? initialState.draftWorkbenchState?.draftNotes[0]?.entryId
@@ -454,8 +542,8 @@ export function App() {
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null;
   const detailNode = nodes.find((node) => node.id === detailNodeId) ?? null;
-  const auditTargetTitle = auditTargetNodeIds.length === 1
-    ? nodes.find((node) => node.id === auditTargetNodeIds[0])?.title ?? null
+  const qaTargetTitle = qaTargetNodeIds.length === 1
+    ? nodes.find((node) => node.id === qaTargetNodeIds[0])?.title ?? null
     : null;
 
   const collapsedSummary = useMemo(
@@ -473,8 +561,8 @@ export function App() {
     setLastAppliedDraftPatchPreview(null);
     setCanUndoDraftPatchApply(false);
     setLastAppliedDraftPatchSummary(null);
-    setAuditResult(null);
-    setAuditRequestState(IDLE_REQUEST_STATE);
+    setQaResult(null);
+    setQaRequestState(IDLE_REQUEST_STATE);
     setQaRequestRecoveryState(EMPTY_QA_REQUEST_RECOVERY_STATE);
     setDiffReviewResult(null);
     setDiffReviewRequestState(IDLE_REQUEST_STATE);
@@ -518,7 +606,10 @@ export function App() {
     setFactGraphView,
     setFlowchartView,
     setResourceRelationView,
-    setAuditTargetNodeIds,
+    setArchitectureGraphView,
+    setClassDiagramView,
+    setReviewGraphView,
+    setQaTargetNodeIds,
     clearLocalDerivedGraphState,
     syncManualNodeIdCounters,
     resolveAnchorNodeId,
@@ -567,6 +658,15 @@ export function App() {
     selectedNodeId,
     detailNodeId,
     analysisDisplayMode,
+    projectionIndex: activeProjectionIndex(
+      analysisDisplayMode,
+      factGraphView.projectionIndex,
+      flowchartView.projectionIndex,
+      resourceRelationView.projectionIndex,
+      architectureGraphView.projectionIndex,
+      classDiagramView.projectionIndex,
+      reviewGraphView.projectionIndex,
+    ),
     collapsedNodeIds,
     nextManualNodeIdRef,
     anchorNodeIdRef,
@@ -576,9 +676,12 @@ export function App() {
     setFactGraphView,
     setFlowchartView,
     setResourceRelationView,
+    setArchitectureGraphView,
+    setClassDiagramView,
+    setReviewGraphView,
     setCollapsedNodeIds,
     setSelectionGroupNodeIds,
-    setAuditTargetNodeIds,
+    setQaTargetNodeIds,
     setSelectedNodeId,
     setDetailNodeId,
     setOperationFeedback,
@@ -591,41 +694,44 @@ export function App() {
     syncFactGraphViewDocument,
     syncFlowchartViewLayout,
     syncResourceRelationViewLayout,
+    syncArchitectureGraphViewLayout,
+    syncClassDiagramViewLayout,
+    syncReviewGraphViewLayout,
     resolveCollapsedDescendantSummary,
   });
 
   const {
-    handleRequestAudit,
+    handleRequestQa,
     handleConfirmCandidateChange,
-    handleRetryLastAuditRequest,
-    handleEditFailedAuditRequest,
-    handleSelectAuditChange,
-    handleSelectAuditThread,
-    handleInvestigateAuditThread,
-    handleResolveAuditThread,
+    handleRetryLastQaRequest,
+    handleEditFailedQaRequest,
+    handleSelectQaChange,
+    handleSelectQaThread,
+    handleInvestigateQaThread,
+    handleResolveQaThread,
     handleUnconfirmDraftChange,
-  } = useAuditWorkbenchController({
+  } = useQaWorkbenchController({
     qaRequestRecoveryState,
-    auditResult,
-    auditSourceThreadId,
-    auditQuestionMode,
-    auditTargetNodeIds,
-    selectedAuditChangeId,
-    selectedAuditThreadId,
+    qaResult,
+    qaSourceThreadId,
+    qaQuestionMode,
+    qaTargetNodeIds,
+    selectedQaChangeId,
+    selectedQaThreadId,
     nodes,
     draftWorkbenchState,
     bridgeCommands,
-    setAuditQuestionDraft,
-    setAuditQuestionMode,
-    setAuditTargetNodeIds,
-    setAuditSourceThreadId,
+    setQaQuestionDraft,
+    setQaQuestionMode,
+    setQaTargetNodeIds,
+    setQaSourceThreadId,
     setActiveWorkbenchTab: setActiveWorkbenchTabCompat,
     setOperationFeedback,
     setDraftWorkbenchState,
     setSelectedDraftEntryId,
-    setAuditResult,
-    setSelectedAuditChangeId,
-    setSelectedAuditThreadId,
+    setQaResult,
+    setSelectedQaChangeId,
+    setSelectedQaThreadId,
     selectExplanationTargetNode,
     toDraftWorkbenchEntry,
     updateGraphPatchResultCandidateStatus,
@@ -654,6 +760,9 @@ export function App() {
     resolveFactGraphView,
     resolveFlowchartView,
     resolveResourceRelationView,
+    resolveArchitectureGraphView,
+    resolveClassDiagramView,
+    resolveReviewGraphView,
     resolveWorkingGraph,
     resolveActiveViewDocument,
     applyBootstrapRoutesToViewDocument,
@@ -686,14 +795,16 @@ export function App() {
   });
 
   const {
-    handleOpenAudit,
+    handleOpenQa,
     handleOpenDraftValidation,
     handleRequestGenerationPlan,
     handleRequestCodeDrafts,
     handleRequestGenerationPlanDiscussion,
-    handleRequestScopedAudit,
+    handleRequestScopedQa,
     handleConfirmImportMermaidDraft,
     handleExpandOverflowNode,
+    handleExpandInvocation,
+    handleRemoveInvocationExpansion,
   } = useAppWorkbenchShellController({
     nodes,
     selectionGroupNodeIds,
@@ -705,14 +816,14 @@ export function App() {
     generationPlanRequestState,
     generationPlanDiscussionQuestionDraft,
     generationPlanDiscussionSession,
-    setAuditTargetNodeIds,
-    setAuditQuestionDraft,
-    setAuditQuestionMode,
-    setAuditSourceThreadId,
+    setQaTargetNodeIds,
+    setQaQuestionDraft,
+    setQaQuestionMode,
+    setQaSourceThreadId,
     setActiveWorkbenchTab: setActiveWorkbenchTabCompat,
     setOperationFeedback,
     setDiffTargetItemIds,
-    handleRequestAudit,
+    handleRequestQa,
     handleInspectNode,
     bridgeCommands: {
       handleConfirmImportMermaid,
@@ -739,6 +850,7 @@ export function App() {
     graphBeautificationRequestState,
     selectedExplanationGranularity,
     selectedExplanationStepId,
+    selectedNodeId,
     currentExplanationSessionLabel,
     explanationHistory,
     explanationLocalOverrideRef,
@@ -778,7 +890,7 @@ export function App() {
 
   const {
     explanationState,
-    auditState,
+    qaState,
     draftImplementationSuggestionState,
     codeDiffStatus,
     activeViewGraph,
@@ -791,15 +903,15 @@ export function App() {
   } = useWorkbenchDerivedState({
     analysisDisplayMode,
     activeWorkbenchTab: activeWorkbenchTabForDerived,
-    auditResult,
-    auditRequestState,
+    qaResult,
+    qaRequestState,
     qaRequestRecoveryState,
-    auditQuestionDraft,
-    auditQuestionMode,
-    auditTargetNodeIds,
-    auditTargetTitle,
-    selectedAuditChangeId,
-    selectedAuditThreadId,
+    qaQuestionDraft,
+    qaQuestionMode,
+    qaTargetNodeIds,
+    qaTargetTitle,
+    selectedQaChangeId,
+    selectedQaThreadId,
     graphBeautificationResult,
     graphBeautificationRequestState,
     selectedExplanationStepId,
@@ -816,6 +928,9 @@ export function App() {
     factGraphView,
     flowchartView,
     resourceRelationView,
+    architectureGraphView,
+    classDiagramView,
+    reviewGraphView,
     generationPlan,
     generationPlanRequestState,
     generationPlanDraftVersion,
@@ -833,25 +948,37 @@ export function App() {
     ? flowchartView.fullGraph
     : analysisDisplayMode === "RESOURCE_RELATION_VIEW"
       ? resourceRelationView.fullGraph
-      : factGraphView.fullGraph;
+      : analysisDisplayMode === "ARCHITECTURE_GRAPH"
+        ? architectureGraphView.fullGraph
+        : analysisDisplayMode === "CLASS_DIAGRAM"
+          ? classDiagramView.fullGraph
+          : analysisDisplayMode === "REVIEW_GRAPH"
+            ? reviewGraphView.fullGraph
+            : factGraphView.fullGraph;
   const activeAnchorNodeId = analysisDisplayMode === "FLOWCHART"
     ? flowchartView.anchorNodeId ?? null
     : analysisDisplayMode === "RESOURCE_RELATION_VIEW"
       ? resourceRelationView.anchorNodeId ?? null
-      : factGraphView.anchorNodeId ?? null;
+      : analysisDisplayMode === "ARCHITECTURE_GRAPH"
+        ? architectureGraphView.anchorNodeId ?? null
+        : analysisDisplayMode === "CLASS_DIAGRAM"
+          ? classDiagramView.anchorNodeId ?? null
+          : analysisDisplayMode === "REVIEW_GRAPH"
+            ? reviewGraphView.anchorNodeId ?? null
+            : factGraphView.anchorNodeId ?? null;
   const activeAnchorNode = activeViewGraph.nodes.find((node) => node.id === activeAnchorNodeId) ?? null;
   const workflowStageStates = useMemo(() => deriveWorkflowStageStates({
     graphBeautificationResult,
     graphBeautificationRequestState,
-    auditResult,
-    auditRequestState,
+    qaResult,
+    qaRequestState,
     draftWorkbenchState,
     draftValidationState,
     codeDiffStatus,
     codeDraftRequestState,
   }), [
-    auditRequestState,
-    auditResult,
+    qaRequestState,
+    qaResult,
     codeDiffStatus,
     codeDraftRequestState,
     draftValidationState,
@@ -869,25 +996,26 @@ export function App() {
     fullGraph: activeFullGraph,
     anchorNodeId: activeAnchorNodeId,
     selectedNodeId,
-    auditResult,
+    qaResult,
     draftWorkbenchState,
     draftChangedNodeIds,
   }), [
     activeAnchorNodeId,
     activeFullGraph,
     activeViewGraph,
-    auditResult,
+    qaResult,
     draftChangedNodeIds,
     draftWorkbenchState,
     selectedNodeId,
   ]);
   const evidencePanelState = useMemo(() => deriveEvidencePanelState({
     selectedNode,
-    auditResult,
+    activeViewGraph,
+    qaResult,
     graphBeautificationResult,
-  }), [auditResult, graphBeautificationResult, selectedNode]);
+  }), [activeViewGraph, qaResult, graphBeautificationResult, selectedNode]);
   const changeTrayState = useMemo(() => deriveChangeTrayState({
-    auditResult,
+    qaResult,
     draftWorkbenchState,
     draftValidationState,
     codeDiffStatus,
@@ -895,7 +1023,7 @@ export function App() {
     lastAppliedDraftPatchSummary,
     lastDraftPatchApplyResult,
   }), [
-    auditResult,
+    qaResult,
     canUndoDraftPatchApply,
     codeDiffStatus,
     draftValidationState,
@@ -982,7 +1110,7 @@ export function App() {
     generatedCodeDraftVersion,
     onOpenDraftWorkbench: () => setActiveWorkbenchTabCompat("draft"),
     onOpenDraftValidation: handleOpenDraftValidation,
-    onOpenAuditWorkbench: () => setActiveWorkbenchTabCompat("audit"),
+    onOpenQaWorkbench: () => setActiveWorkbenchTabCompat("qa"),
     draftValidationState,
     implementationSuggestion: draftImplementationSuggestionState,
     implementationSuggestionRequestState: generationPlanRequestState,
@@ -999,20 +1127,20 @@ export function App() {
     onOpenDraft: workbenchCommands.handleOpenDraft,
   };
 
-  const auditTabProps = {
-    state: auditState,
-    onQuestionDraftChange: setAuditQuestionDraft,
-    onQuestionModeChange: setAuditQuestionMode,
-    onSubmitQuestion: () => handleRequestAudit(auditQuestionDraft),
-    onRetryLastRequest: handleRetryLastAuditRequest,
-    onEditFailedRequest: handleEditFailedAuditRequest,
-    onSelectChange: handleSelectAuditChange,
+  const qaTabProps = {
+    state: qaState,
+    onQuestionDraftChange: setQaQuestionDraft,
+    onQuestionModeChange: setQaQuestionMode,
+    onSubmitQuestion: () => handleRequestQa(qaQuestionDraft),
+    onRetryLastRequest: handleRetryLastQaRequest,
+    onEditFailedRequest: handleEditFailedQaRequest,
+    onSelectChange: handleSelectQaChange,
     onConfirmChange: handleConfirmCandidateChange,
-    onSelectThread: handleSelectAuditThread,
-    onInvestigateThread: handleInvestigateAuditThread,
-    onDeferRisk: (threadId: string) => handleResolveAuditThread(threadId, "DEFERRED"),
-    onAcceptRisk: (threadId: string) => handleResolveAuditThread(threadId, "ACCEPTED_RISK"),
-    onDismissRisk: (threadId: string) => handleResolveAuditThread(threadId, "DISMISSED"),
+    onSelectThread: handleSelectQaThread,
+    onInvestigateThread: handleInvestigateQaThread,
+    onDeferRisk: (threadId: string) => handleResolveQaThread(threadId, "DEFERRED"),
+    onAcceptRisk: (threadId: string) => handleResolveQaThread(threadId, "ACCEPTED_RISK"),
+    onDismissRisk: (threadId: string) => handleResolveQaThread(threadId, "DISMISSED"),
     resolveArtifactText,
     onRequestArtifact: handleRequestArtifact,
     sectionPreferences: workbenchSectionPreferences,
@@ -1057,7 +1185,7 @@ export function App() {
     onSectionPreferenceChange: handleWorkbenchSectionPreferenceChange,
   };
 
-  const stageProps = {
+  const baseStageProps = {
     selectedNodeId,
     focusNodeRequest,
     explanationFocusNodeId,
@@ -1068,25 +1196,41 @@ export function App() {
     collapsedNodeIds,
     collapsedDescendantCountByNodeId: collapsedSummary.descendantCountByNodeId,
     experiments: graphSurfaceExperiments,
-    onAddNode: handleAddNode,
     onSelectNode: handleSelectNode,
     onSelectionGroupChange: handleSelectionGroupChange,
     onInspectNode: handleInspectNode,
-    onDeleteNode: handleDeleteNode,
-    onDeleteNodeSubtree: handleDeleteNodeSubtree,
-    onCreateEdge: handleCreateEdge,
-    onDeleteEdge: handleDeleteEdge,
-    onInsertNodeIntoEdge: handleInsertNodeIntoEdge,
     onMoveNode: handleMoveNode,
     onMoveNodes: handleMoveNodes,
     onFormatLayout: handleFormatLayout,
     onRequestBeautification: handleRequestGraphBeautification,
     onRequestSourceNavigation: handleRequestSourceNavigation,
-    onRequestAudit: handleRequestScopedAudit,
+    onRequestQa: handleRequestScopedQa,
     onToggleCollapseNode: handleToggleCollapseNode,
-    onOpenAudit: handleOpenAudit,
-    onImportMermaid: handleOpenImportMermaid,
+    onOpenQa: handleOpenQa,
     onExpandOverflowNode: handleExpandOverflowNode,
+    onExpandInvocation: handleExpandInvocation,
+    onRemoveInvocationExpansion: handleRemoveInvocationExpansion,
+  };
+
+  const editableStageProps: EditableStageProps = {
+    ...baseStageProps,
+    onAddNode: handleAddNode,
+    onDeleteNode: handleDeleteNode,
+    onDeleteNodeSubtree: handleDeleteNodeSubtree,
+    onCreateEdge: handleCreateEdge,
+    onDeleteEdge: handleDeleteEdge,
+    onInsertNodeIntoEdge: handleInsertNodeIntoEdge,
+    onImportMermaid: handleOpenImportMermaid,
+  };
+
+  const indexedReadonlyStageProps: IndexedReadonlyStageProps = {
+    ...baseStageProps,
+    indexedGraphRequestStates,
+    onRequestArchitectureGraph: workbenchCommands.handleRequestArchitectureGraph,
+    onRequestClassDiagram: workbenchCommands.handleRequestClassDiagram,
+    onRequestClassDiagramWithOptions: workbenchCommands.handleRequestClassDiagramWithOptions,
+    onRequestPackageDependencyGraph: workbenchCommands.handleRequestPackageDependencyGraph,
+    onRequestReviewGraphWithOptions: workbenchCommands.handleRequestReviewGraphWithOptions,
   };
 
   function handleWorkflowStageChange(stage: WorkflowStage) {
@@ -1099,10 +1243,10 @@ export function App() {
         handleRequestGraphBeautification();
         return;
       case "evidence":
-        handleOpenAudit(selectedNodeId ?? undefined);
+        handleOpenQa(selectedNodeId ?? undefined);
         return;
       case "qa":
-        handleRequestAudit(auditQuestionDraft);
+        handleRequestQa(qaQuestionDraft);
         return;
       case "draft":
         handleRequestGenerationPlan();
@@ -1123,7 +1267,7 @@ export function App() {
       case "evidence":
         return "去问答";
       case "qa":
-        return auditRequestState.phase === "RUNNING" ? "问答中" : "提交问答";
+        return qaRequestState.phase === "RUNNING" ? "问答中" : "提交问答";
       case "draft":
         return generationPlanRequestState.phase === "RUNNING" ? "生成中" : "生成实现建议";
       case "code":
@@ -1136,7 +1280,7 @@ export function App() {
       case "understand":
         return graphBeautificationRequestState.phase === "RUNNING";
       case "qa":
-        return auditRequestState.phase === "RUNNING" || auditQuestionDraft.trim().length === 0;
+        return qaRequestState.phase === "RUNNING" || qaQuestionDraft.trim().length === 0;
       case "draft":
         return generationPlanRequestState.phase === "RUNNING" || draftWorkbenchState.draftChanges.length === 0;
       case "code":
@@ -1151,7 +1295,7 @@ export function App() {
     if (itemId.startsWith("thread:")) {
       const threadId = itemId.slice("thread:".length);
       setActiveWorkflowStage("qa");
-      handleSelectAuditThread(threadId);
+      handleSelectQaThread(threadId);
       return;
     }
     if (itemId.startsWith("draft:")) {
@@ -1166,25 +1310,25 @@ export function App() {
   function handleOpenEvidenceQa() {
     const scopeIds = selectedNodeId ? [selectedNodeId] : [];
     const targetTitle = selectedNode?.title ?? null;
-    setAuditTargetNodeIds(scopeIds);
-    setAuditQuestionDraft(
+    setQaTargetNodeIds(scopeIds);
+    setQaQuestionDraft(
       scopeIds.length === 1
         ? `请围绕节点“${targetTitle ?? scopeIds[0]}”及其直接关联链路进行问答，指出可能遗漏的业务链路、异常分支、资源依赖和数据约束。`
         : "请围绕当前整张链路图进行问答，指出可能遗漏的业务链路、异常分支、资源依赖和数据约束。",
     );
-    setAuditQuestionMode("AUTO");
-    setAuditSourceThreadId(null);
+    setQaQuestionMode("AUTO");
+    setQaSourceThreadId(null);
     setActiveWorkflowStage("qa");
   }
 
   function handleEvidenceThreadSelect(threadId: string) {
     setActiveWorkflowStage("qa");
-    handleSelectAuditThread(threadId);
+    handleSelectQaThread(threadId);
   }
 
   function handleEvidenceCandidateSelect(changeId: string) {
     setActiveWorkflowStage("qa");
-    handleSelectAuditChange(changeId);
+    handleSelectQaChange(changeId);
   }
 
   function handleUndoDraftPatchApply() {
@@ -1200,8 +1344,8 @@ export function App() {
     ? (
       <EvidenceStagePanel
         state={evidencePanelState}
-        isLoading={auditRequestState.phase === "RUNNING" || graphBeautificationRequestState.phase === "RUNNING"}
-        errorMessage={auditRequestState.errorMessage ?? graphBeautificationRequestState.errorMessage ?? null}
+        isLoading={qaRequestState.phase === "RUNNING" || graphBeautificationRequestState.phase === "RUNNING"}
+        errorMessage={qaRequestState.errorMessage ?? graphBeautificationRequestState.errorMessage ?? null}
         onOpenQa={handleOpenEvidenceQa}
         onSelectThread={handleEvidenceThreadSelect}
         onSelectCandidateChange={handleEvidenceCandidateSelect}
@@ -1213,36 +1357,65 @@ export function App() {
         activeWorkbenchTab={activeWorkbenchTab}
         onTabChange={setActiveWorkbenchTabCompat}
         codePanelProps={codePanelProps}
-        auditTabProps={auditTabProps}
+        qaTabProps={qaTabProps}
         draftTabProps={draftTabProps}
         explanationTabProps={explanationTabProps}
         showTabs={false}
       />
     );
+  const graphFocusedLayout = analysisDisplayMode === "CLASS_DIAGRAM" || isProjectStructureDisplay(
+    analysisDisplayMode,
+    architectureGraphView.summary.indexed ?? null,
+  );
   const graphStage = (
     <section className="graph-stage" aria-label="图谱舞台">
       <GraphStageHeader
         analysisDisplayMode={analysisDisplayMode}
         activeStage={activeWorkflowStage}
-        onRequestAnalysisDisplayMode={workbenchCommands.handleRequestAnalysisDisplayMode}
+        onRequestAnalysisDisplayMode={handleRequestAnalysisDisplayMode}
       />
       <div className="graph-stage-canvas">
-        <AppGraphStage
-          analysisDisplayMode={analysisDisplayMode}
-          stageProps={stageProps}
-          factGraphView={factGraphView}
-          presentedFlowchartView={presentedFlowchartView}
-          flowchartView={flowchartView}
-          resourceRelationView={resourceRelationView}
-        />
+        {analysisDisplayMode === "ARCHITECTURE_GRAPH" ||
+        analysisDisplayMode === "CLASS_DIAGRAM" ||
+        analysisDisplayMode === "REVIEW_GRAPH" ? (
+          <AppGraphStage
+            analysisDisplayMode={analysisDisplayMode}
+            stageProps={indexedReadonlyStageProps}
+            factGraphView={factGraphView}
+            presentedFlowchartView={presentedFlowchartView}
+            flowchartView={flowchartView}
+            resourceRelationView={resourceRelationView}
+            architectureGraphView={architectureGraphView}
+            classDiagramView={classDiagramView}
+            reviewGraphView={reviewGraphView}
+          />
+        ) : (
+          <AppGraphStage
+            analysisDisplayMode={analysisDisplayMode}
+            stageProps={editableStageProps}
+            factGraphView={factGraphView}
+            presentedFlowchartView={presentedFlowchartView}
+            flowchartView={flowchartView}
+            resourceRelationView={resourceRelationView}
+            architectureGraphView={architectureGraphView}
+            classDiagramView={classDiagramView}
+            reviewGraphView={reviewGraphView}
+          />
+        )}
       </div>
       <GraphStageFooter
         analysisDisplayMode={analysisDisplayMode}
         activeViewGraph={activeViewGraph}
-        fullNodeCount={activeFullGraph.nodes.length}
+        fullNodeCount={activeFullGraph.nodeCount ?? activeFullGraph.nodes.length}
         hasExplanationFocus={explanationFocusNodeId != null}
         draftChangedNodeCount={draftChangedNodeIds.length}
         draftCompareProjection={draftCompareProjection}
+        indexedSummary={activeIndexedGraphSummary(
+          analysisDisplayMode,
+          architectureGraphView.summary.indexed ?? null,
+          classDiagramView.summary.indexed ?? null,
+          reviewGraphView.summary.indexed ?? null,
+        )}
         codeDiffStatus={codeDiffStatus}
       />
     </section>
@@ -1291,7 +1464,7 @@ export function App() {
       )}
       body={(
         <HybridWorkbenchLayout
-          outlineCollapsed={hybridLayoutPreference.outlineCollapsed}
+          outlineCollapsed={graphFocusedLayout ? true : hybridLayoutPreference.outlineCollapsed}
           onOutlineCollapsedChange={handleOutlineCollapsedChange}
           workbenchWidth={hybridLayoutPreference.workbenchWidth}
           onWorkbenchWidthChange={handleWorkbenchWidthChange}

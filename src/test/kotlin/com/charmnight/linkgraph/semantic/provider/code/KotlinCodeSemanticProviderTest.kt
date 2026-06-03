@@ -167,6 +167,90 @@ class KotlinCodeSemanticProviderTest : BasePlatformTestCase() {
         })
     }
 
+    fun testAnalyzeKotlinConstructorCallDoesNotLeakRawArgumentBodyIntoTitlesOrDiagnostics() {
+        myFixture.configureByText(
+            "ArtifactWriter.kt",
+            """
+                package com.example
+
+                data class ArtifactSummary(
+                    val title: String,
+                    val description: String? = null,
+                )
+
+                class Entry(
+                    val title: String,
+                    val reason: String,
+                )
+
+                class ArtifactWriter {
+                    fun write(entry: Entry): ArtifactSummary {
+                        return <caret>ArtifactSummary(
+                            title = entry.title.ifBlank { "已确认意图图" },
+                            description = entry.reason.takeIf { it.isNotBlank() },
+                        )
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor)
+        val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
+
+        val result = KotlinCodeSemanticProvider().analyze(
+            handle = codeHandle,
+            capturePolicy = SemanticCapturePolicy(),
+            budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 0, maxInvocationsPerUnit = 1),
+        )
+
+        val actionTitles = result.semanticUnits
+            .filterIsInstance<FlowActionUnit>()
+            .map { unit -> unit.title }
+        val diagnostics = result.diagnostics.map { diagnostic -> diagnostic.message }
+
+        assertTrue(actionTitles.any { title -> title == "ArtifactSummary(...)" })
+        assertFalse(actionTitles.any { title -> title.contains("title =") || title.contains("description =") })
+        assertFalse(diagnostics.any { message -> message.contains("ArtifactSummary(") || message.contains("title =") })
+    }
+
+    fun testAnalyzeKotlinInvocationTruncationDiagnosticDoesNotEchoSourceTitle() {
+        myFixture.configureByText(
+            "ArtifactWriter.kt",
+            """
+                package com.example
+
+                data class ArtifactSummary(
+                    val title: String,
+                    val description: String,
+                )
+
+                class ArtifactWriter {
+                    fun write(): ArtifactSummary {
+                        return <caret>ArtifactSummary(localTitle(), localDescription())
+                    }
+
+                    private fun localTitle(): String = "title"
+
+                    private fun localDescription(): String = "description"
+                }
+            """.trimIndent(),
+        )
+
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor)
+        val codeHandle = assertInstanceOf(handle, CodeSubjectHandle::class.java)
+
+        val result = KotlinCodeSemanticProvider().analyze(
+            handle = codeHandle,
+            capturePolicy = SemanticCapturePolicy(),
+            budgetPolicy = TraversalBudgetPolicy(maxDownstreamDepth = 0, maxInvocationsPerUnit = 1),
+        )
+
+        val diagnostics = result.diagnostics.map { diagnostic -> diagnostic.message }
+
+        assertTrue(diagnostics.any { message -> message == "调用目标已按预算裁剪，未继续保留 2 个目标。" })
+        assertFalse(diagnostics.any { message -> message.contains("ArtifactSummary(") || message.contains("localTitle") })
+    }
+
     fun testAnalyzeKotlinPrimaryConstructorResolvesExternalMethodInvocation() {
         myFixture.configureByText(
             "PrimaryCtorFlow.kt",

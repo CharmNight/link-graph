@@ -37,13 +37,13 @@ import com.charmnight.linkgraph.application.planning.PlanningContextFactory
 import com.charmnight.linkgraph.application.model.currentVisibleGraph
 import com.charmnight.linkgraph.foundation.debugLazy
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.charmnight.linkgraph.application.port.QaCompletedPresentation
-import com.charmnight.linkgraph.application.port.QaFailedPresentation
-import com.charmnight.linkgraph.application.port.ApplicationFeedbackLevel
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEvent
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEventSink
-import com.charmnight.linkgraph.application.port.ReviewRequestScene
-import com.charmnight.linkgraph.application.port.ReviewRequestStartedPresentation
+import com.charmnight.linkgraph.application.result.QaCompletedResult
+import com.charmnight.linkgraph.application.result.QaFailedResult
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
+import com.charmnight.linkgraph.application.result.ReviewRequestScene
+import com.charmnight.linkgraph.application.result.ReviewRequestStartedResult
 import com.charmnight.linkgraph.application.usecase.ReviewUseCase
 import com.charmnight.linkgraph.application.usecase.ReviewUseCaseResult
 import com.charmnight.linkgraph.workbench.QaConversationService
@@ -139,13 +139,13 @@ internal class ReviewWorkflow(
 
     private fun emit(event: GraphEditorApplicationEvent) = eventSink.emit(event)
 
-    private fun emitQaCompleted(presentation: QaCompletedPresentation) =
+    private fun emitQaCompleted(presentation: QaCompletedResult) =
         emit(GraphEditorApplicationEvent.QaCompleted(presentation))
 
-    private fun emitQaFailed(presentation: QaFailedPresentation) =
+    private fun emitQaFailed(presentation: QaFailedResult) =
         emit(GraphEditorApplicationEvent.QaFailed(presentation))
 
-    private fun emitReviewRequestStarted(presentation: ReviewRequestStartedPresentation) =
+    private fun emitReviewRequestStarted(presentation: ReviewRequestStartedResult) =
         emit(GraphEditorApplicationEvent.ReviewRequestStarted(presentation))
 
     private fun emitReviewStreamingPreview(
@@ -182,7 +182,7 @@ internal class ReviewWorkflow(
         val modeContext = modeContext(request)
         if (modeContext.isDeterministicInvestigation) {
             val requestId = asyncRequestLifecycle.beginQaRequest()
-            val presentation = asyncRequestLifecycle.buildAsyncRequestPresentation(
+            val presentation = asyncRequestLifecycle.buildAsyncRequestLifecycleResult(
                 requestId = requestId,
                 sceneLabel = "问答",
                 settings = settingsProvider(),
@@ -190,11 +190,11 @@ internal class ReviewWorkflow(
                 effectiveMode = modeContext.effectiveMode,
             )
             emitReviewRequestStarted(
-                ReviewRequestStartedPresentation(
+                ReviewRequestStartedResult(
                     scene = ReviewRequestScene.QA,
                     requestState = presentation.requestState,
                     submittedRequest = modeContext.request,
-                    feedbackMessage = "正在执行确定性继续取证，请稍候。",
+                    statusMessage = "正在执行确定性继续取证，请稍候。",
                 ),
             )
             asyncRequestLifecycle.runBackgroundTask(
@@ -215,7 +215,7 @@ internal class ReviewWorkflow(
                             )
                             val (draftValidationState, codeDecision) = evaluateEligibility(workflowSnapshot.copy(qaResult = output))
                             emitQaCompleted(
-                                QaCompletedPresentation(
+                                QaCompletedResult(
                                     result = output,
                                     requestState = requestState.copy(
                                         requestedMode = modeContext.requestedMode,
@@ -226,7 +226,7 @@ internal class ReviewWorkflow(
                                     codeEligibilityDecision = codeDecision,
                                     runtimeArtifacts = emptyList(),
                                     feedbackLevel = ApplicationFeedbackLevel.SUCCESS,
-                                    feedbackMessage = "继续取证完成。",
+                                    statusMessage = "继续取证完成。",
                                 ),
                             )
                         },
@@ -234,7 +234,7 @@ internal class ReviewWorkflow(
                             val message = "继续取证失败：${throwable.message ?: throwable.javaClass.simpleName}"
                             val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
                             emitQaFailed(
-                                QaFailedPresentation(
+                                QaFailedResult(
                                     message = message,
                                     requestState = requestState,
                                     failedRequest = modeContext.request,
@@ -249,7 +249,7 @@ internal class ReviewWorkflow(
         executeQaAsync(
             snapshot = workflowSnapshot,
             modeContext = modeContext,
-            feedbackMessage = buildQaStartMessage(
+            statusMessage = buildQaStartMessage(
                 remoteRequested = effectiveRemoteRequested(),
                 streamingSupported = effectiveStreamingSupported(),
                 modeContext = modeContext,
@@ -334,7 +334,7 @@ internal class ReviewWorkflow(
         val request = snapshot.qaRequestRecoveryState.lastFailedRequest
         if (request == null) {
             emitQaFailed(
-                QaFailedPresentation(
+                QaFailedResult(
                     message = "当前没有可直接重试的失败问答请求。",
                     requestState = com.charmnight.linkgraph.application.model.AsyncRequestState.failed(
                         message = "当前没有可直接重试的失败问答请求。",
@@ -349,7 +349,7 @@ internal class ReviewWorkflow(
         executeQaAsync(
             snapshot = snapshot,
             modeContext = modeContext,
-            feedbackMessage = "正在重试上一次失败的问答请求，请稍候。",
+            statusMessage = "正在重试上一次失败的问答请求，请稍候。",
         )
     }
 
@@ -370,14 +370,14 @@ internal class ReviewWorkflow(
             snapshot.copy(qaResult = updatedResult),
         )
         emitQaCompleted(
-            QaCompletedPresentation(
+            QaCompletedResult(
                 result = updatedResult,
                 requestState = snapshot.qaRequestState,
                 draftValidationState = draftValidationState,
                 codeEligibilityDecision = codeDecision,
                 runtimeArtifacts = emptyList(),
                 feedbackLevel = ApplicationFeedbackLevel.SUCCESS,
-                feedbackMessage = resolutionFeedbackMessage(status, codeDecision.allowed),
+                statusMessage = resolutionFeedbackMessage(status, codeDecision.allowed),
             ),
         )
     }
@@ -432,8 +432,8 @@ internal class ReviewWorkflow(
      */
     private fun toRuntimeArtifactSummaries(
         result: AgentRunResult<*>,
-    ): List<com.charmnight.linkgraph.application.port.ApplicationRuntimeArtifactSummary> {
-        return result.artifactSummaries.map(com.charmnight.linkgraph.application.port.ApplicationRuntimeArtifactSummary::from)
+    ): List<com.charmnight.linkgraph.application.result.ApplicationRuntimeArtifactSummary> {
+        return result.artifactSummaries.map(com.charmnight.linkgraph.application.result.ApplicationRuntimeArtifactSummary::from)
     }
 
     private fun runtimeTrace(message: () -> String) {
@@ -449,13 +449,13 @@ internal class ReviewWorkflow(
     private fun buildQaCapabilityInput(
         snapshot: WorkflowEditorSnapshot,
         modeContext: QaModeContext,
+        settings: LinkGraphSettingsState,
         onPreview: ((String, Boolean) -> Unit)? = null,
     ): QaCapabilityInput {
         val request = modeContext.request
         val qaGraphs = planningContextFactory.buildQaGraphs(
             snapshot = snapshot,
             selectedNodeIds = modeContext.selectedNodeIds,
-            collectSourceEvidence = false,
         )
         return QaCapabilityInput(
             question = modeContext.question,
@@ -463,8 +463,10 @@ internal class ReviewWorkflow(
                 factGraph = qaGraphs.factGraph,
                 editableGraph = qaGraphs.editableGraph,
                 selectedNodeIds = modeContext.selectedNodeIds,
+                sourceContext = qaGraphs.sourceContext,
+                evidenceTrace = qaGraphs.evidenceTrace,
             ),
-            settings = settingsProvider(),
+            settings = settings,
             session = request.baseSession ?: snapshot.qaResult?.qaSession,
             sourceThreadId = modeContext.sourceThreadId,
             requestedMode = modeContext.requestedMode,
@@ -476,12 +478,12 @@ internal class ReviewWorkflow(
     private fun executeQaAsync(
         snapshot: WorkflowEditorSnapshot,
         modeContext: QaModeContext,
-        feedbackMessage: String,
+        statusMessage: String,
     ) {
         val request = modeContext.request
         val requestId = asyncRequestLifecycle.beginQaRequest()
         val settings = settingsProvider()
-        val presentation = asyncRequestLifecycle.buildAsyncRequestPresentation(
+        val presentation = asyncRequestLifecycle.buildAsyncRequestLifecycleResult(
             requestId = requestId,
             sceneLabel = "问答",
             settings = settings,
@@ -504,12 +506,12 @@ internal class ReviewWorkflow(
             null
         }
         emitReviewRequestStarted(
-            ReviewRequestStartedPresentation(
+            ReviewRequestStartedResult(
                 scene = ReviewRequestScene.QA,
                 requestState = presentation.requestState,
                 submittedRequest = request,
                 clearRuntimeArtifactScene = "qa",
-                feedbackMessage = feedbackMessage,
+                statusMessage = statusMessage,
             ),
         )
         asyncRequestLifecycle.logAsyncRequestEvent(logger, "started", presentation.requestState)
@@ -521,7 +523,7 @@ internal class ReviewWorkflow(
                 val timedOutState = asyncRequestLifecycle.buildTimedOutRequestState(presentation)
                 asyncRequestLifecycle.logAsyncRequestEvent(logger, "timedOut", timedOutState)
                 emitQaFailed(
-                    QaFailedPresentation(
+                    QaFailedResult(
                         message = timedOutState.errorMessage ?: "问答超时",
                         requestState = timedOutState,
                         failedRequest = request,
@@ -535,6 +537,7 @@ internal class ReviewWorkflow(
                     input = buildQaCapabilityInput(
                         snapshot = snapshot,
                         modeContext = modeContext,
+                        settings = settings,
                         onPreview = previewUpdater,
                     ),
                 )
@@ -550,6 +553,14 @@ internal class ReviewWorkflow(
                         }
                         val requestState = asyncRequestLifecycle.withRuntimeMetadata(
                             requestState = if (normalizedQaResult == null) {
+                                logger.warn(
+                                    "问答 runtime 未返回结果: runId=${runtimeResult.finalState.runId}, " +
+                                        "capabilityId=${runtimeResult.finalState.capabilityId}, " +
+                                        "phase=${runtimeResult.finalState.phase}, " +
+                                        "stepIndex=${runtimeResult.finalState.stepIndex}, " +
+                                        "failureReason=${runtimeResult.finalState.failureReason}, " +
+                                        "lastModelOutput=${runtimeResult.finalState.lastModelOutput}",
+                                )
                                 val failurePreview = reviewUseCase.resolveQaRuntimeResult(
                                     runtimeResult = runtimeResult,
                                     modeContext = modeContext,
@@ -627,7 +638,7 @@ internal class ReviewWorkflow(
                                     } else {
                                         ApplicationFeedbackLevel.SUCCESS
                                     },
-                                    feedbackMessage = requestState.statusMessage
+                                    statusMessage = requestState.statusMessage
                                         ?: if (reviewResult.presentation.result.newCandidateChanges.isNotEmpty()) {
                                             "问答完成，已生成待确认变更。"
                                         } else {
@@ -644,7 +655,7 @@ internal class ReviewWorkflow(
                         val requestState = asyncRequestLifecycle.buildFailedRequestState(presentation, message)
                         asyncRequestLifecycle.logAsyncRequestEvent(logger, "failed", requestState)
                         emitQaFailed(
-                            QaFailedPresentation(
+                            QaFailedResult(
                                 message = message,
                                 requestState = requestState,
                                 failedRequest = request,
@@ -741,12 +752,14 @@ internal class ReviewWorkflow(
         goal: String = "",
         preferredStyle: String? = null,
         explanationFocus: String? = null,
+        focusNodeId: String? = null,
         followUp: GraphBeautificationFollowUpContext? = null,
         granularity: StepGranularity = StepGranularity.BUSINESS,
     ) = graphBeautificationWorkflow.requestGraphBeautificationAsync(
         goal = goal,
         preferredStyle = preferredStyle,
         explanationFocus = explanationFocus,
+        focusNodeId = focusNodeId,
         followUp = followUp,
         granularity = granularity,
     )

@@ -3,8 +3,8 @@ package com.charmnight.linkgraph.application.workflow
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.application.debug.DebugGraphFactory
 import com.charmnight.linkgraph.foundation.debugLazy
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEvent
-import com.charmnight.linkgraph.application.port.GraphEditorApplicationEventSink
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
+import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
 import com.intellij.openapi.diagnostic.Logger
 
 internal class ProjectDebugWorkflow(

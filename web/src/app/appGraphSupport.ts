@@ -7,7 +7,9 @@ import {
 } from "./graphState";
 import type {
   AnalysisDisplayMode,
+  ArchitectureGraphViewDocument,
   CandidateDraftChange,
+  ClassDiagramViewDocument,
   DiffItem,
   DraftWorkbenchEntry,
   FactGraphViewDocument,
@@ -22,6 +24,7 @@ import type {
   LinkGraphEdge,
   LinkGraphNode,
   ResourceRelationViewDocument,
+  ReviewGraphViewDocument,
   RiskResolutionStatus,
 } from "./types";
 
@@ -84,12 +87,33 @@ export function scopeFlowchartGraphToAnchorMethod(
   if (!anchorSignature) {
     return graph;
   }
-  const scopedNodes = graph.nodes.filter((node) => {
+  const ownerScopedNodes = graph.nodes.filter((node) => {
     if (node.id === anchorNodeId) {
       return true;
     }
     return resolveNodeOwnerSignature(node) === anchorSignature;
   });
+  const ownerScopedNodeIds = new Set(ownerScopedNodes.map((node) => node.id));
+  const ownerScopedCanonicalNodeIds = new Set(ownerScopedNodeIds);
+  ownerScopedNodes.forEach((node) => {
+    projectedAliasNodeIds(node).forEach((aliasNodeId) => ownerScopedCanonicalNodeIds.add(aliasNodeId));
+  });
+  const expansionScopedNodes = graph.nodes.filter((node) => {
+    const sourceInvocationNodeId = node.metadata?.["linkGraph.expansion.sourceInvocationNodeId"]?.trim();
+    return Boolean(sourceInvocationNodeId && ownerScopedCanonicalNodeIds.has(sourceInvocationNodeId));
+  });
+  const entryScopedNodes = graph.nodes.filter((node) => {
+    if (ownerScopedNodeIds.has(node.id)) {
+      return false;
+    }
+    if (node.metadata?.["flowchart.kind"] !== "ENTRY" && node.type !== "METHOD") {
+      return false;
+    }
+    return graph.edges.some((edge) => edge.source === node.id && ownerScopedNodeIds.has(edge.target));
+  });
+  const scopedNodes = Array.from(new Map(
+    [...ownerScopedNodes, ...entryScopedNodes, ...expansionScopedNodes].map((node) => [node.id, node]),
+  ).values());
   if (scopedNodes.length === 0 || scopedNodes.length === graph.nodes.length) {
     return graph;
   }
@@ -189,7 +213,7 @@ export function overlayDraftEntryOntoFlowchartView(args: {
   view: FlowchartViewDocument;
   workingGraph: LinkGraphDocument | null;
   entry: DraftWorkbenchEntry | null;
-  activeWorkbenchTab: "explanation" | "audit" | "draft" | "code";
+  activeWorkbenchTab: "explanation" | "qa" | "draft" | "code";
   compareMode: "after" | "compare";
 }): FlowchartViewDocument {
   const {
@@ -311,9 +335,10 @@ export function deriveLatestTurnOutcome(result: GraphPatchResult | null): Invest
     return null;
   }
   const recentTurnOutcomes = result.recentTurnOutcomes ?? [];
+  const sessionTurnOutcomes = result.qaSession?.turnOutcomes ?? [];
   return result.latestTurnOutcome
     ?? recentTurnOutcomes[recentTurnOutcomes.length - 1]
-    ?? result.auditSession?.turnOutcomes?.[result.auditSession.turnOutcomes.length - 1]
+    ?? sessionTurnOutcomes[sessionTurnOutcomes.length - 1]
     ?? null;
 }
 
@@ -331,10 +356,10 @@ export function updateGraphPatchResultCandidateStatus(
       candidate.changeId === changeId ? { ...candidate, status } : candidate),
     newCandidateChanges: result.newCandidateChanges.map((candidate) =>
       candidate.changeId === changeId ? { ...candidate, status } : candidate),
-    auditSession: result.auditSession
+    qaSession: result.qaSession
       ? {
-          ...result.auditSession,
-          candidateChanges: result.auditSession.candidateChanges.map((candidate) =>
+          ...result.qaSession,
+          candidateChanges: result.qaSession.candidateChanges.map((candidate) =>
             candidate.changeId === changeId ? { ...candidate, status } : candidate),
         }
       : null,
@@ -368,10 +393,10 @@ export function updateGraphPatchResultThreadResolution(
   return {
     ...result,
     investigationThreads: result.investigationThreads?.map(updateThread),
-    auditSession: result.auditSession
+    qaSession: result.qaSession
       ? {
-          ...result.auditSession,
-          investigationThreads: (result.auditSession.investigationThreads ?? []).map(updateThread),
+          ...result.qaSession,
+          investigationThreads: (result.qaSession.investigationThreads ?? []).map(updateThread),
         }
       : null,
   };
@@ -381,8 +406,10 @@ export function deriveFactGraphSummary(
   visibleGraph: LinkGraphDocument,
   fullGraph: LinkGraphDocument,
   anchorNodeId?: string | null,
+  currentSummary?: FactGraphViewDocument["summary"],
 ) {
   return {
+    ...currentSummary,
     anchorTitle: fullGraph.nodes.find((node) => node.id === anchorNodeId)?.title
       ?? visibleGraph.nodes.find((node) => node.id === anchorNodeId)?.title
       ?? null,
@@ -394,9 +421,8 @@ export function deriveFactGraphSummary(
 export function deriveFlowchartSummary(
   visibleGraph: LinkGraphDocument,
   fullGraph: LinkGraphDocument = visibleGraph,
+  currentSummary?: FlowchartViewDocument["summary"],
 ) {
-  const hiddenNodeCount = (fullGraph.nodes?.length ?? 0) - visibleGraph.nodes.length;
-  const hiddenEdgeCount = (fullGraph.edges?.length ?? 0) - visibleGraph.edges.length;
   const incompleteNodeCount = visibleGraph.nodes.filter((node) => node.metadata?.["flow.incomplete"] === "true").length;
   const incompleteEdgeCount = visibleGraph.edges.filter((edge) => edge.metadata?.["flow.incomplete"] === "true").length;
   const syntheticEdgeCount = visibleGraph.edges.filter((edge) => edge.metadata?.["flow.synthetic"] === "true").length;
@@ -404,14 +430,12 @@ export function deriveFlowchartSummary(
     (edge) => edge.metadata?.["flow.synthetic"] === "true" && edge.metadata?.["flow.provenance"] === "SYNTHETIC_PROJECTION",
   ).length;
   return {
+    ...currentSummary,
     nodeCount: visibleGraph.nodes.length,
     branchCount: visibleGraph.nodes.filter((node) => resolveFlowchartKind(node) === "DECISION").length,
     exceptionPathCount: visibleGraph.edges.filter((edge) => edge.label?.trim().toUpperCase() === "EXCEPTION").length,
     fullNodeCount: fullGraph.nodes.length,
     fullEdgeCount: fullGraph.edges.length,
-    hiddenNodeCount: Math.max(0, hiddenNodeCount),
-    hiddenEdgeCount: Math.max(0, hiddenEdgeCount),
-    truncated: hiddenNodeCount > 0 || hiddenEdgeCount > 0,
     incompleteNodeCount,
     incompleteEdgeCount,
     semanticallyIncomplete: incompleteNodeCount > 0 || incompleteEdgeCount > 0,
@@ -421,13 +445,109 @@ export function deriveFlowchartSummary(
 }
 
 export function deriveResourceRelationSummary(visibleGraph: LinkGraphDocument) {
+  const resourceCount = visibleGraph.nodes.filter(isResourceRelationNode).length;
   return {
     visibleNodeCount: visibleGraph.nodes.length,
+    relationCount: visibleGraph.edges.length,
+    resourceCount,
+    fallbackReason: visibleGraph.edges.length > 0
+      ? "NONE"
+      : resourceCount === 0
+        ? "NO_RESOURCE_UNITS"
+        : "NO_BINDING_RELATIONS",
     laneCounts: visibleGraph.nodes.reduce<Record<string, number>>((counts, node) => {
       const lane = node.metadata?.["resource.lane"] ?? "CODE";
       counts[lane] = (counts[lane] ?? 0) + 1;
       return counts;
     }, {}),
+  };
+}
+
+function isResourceRelationNode(node: LinkGraphNode): boolean {
+  return node.metadata?.["resource.lane"] != null ||
+    node.type.includes("RESOURCE") ||
+    ["SQL", "HTTP_ENDPOINT", "MQ_TOPIC", "CONFIG_ITEM"].includes(node.type);
+}
+
+export function deriveArchitectureGraphSummary(visibleGraph: LinkGraphDocument) {
+  return {
+    moduleCount: visibleGraph.nodes.filter((node) => node.type === "MODULE").length,
+    packageCount: visibleGraph.nodes.filter((node) => node.type === "PACKAGE").length,
+    serviceCount: visibleGraph.nodes.filter((node) => node.type === "SERVICE").length,
+    componentCount: visibleGraph.nodes.filter((node) => node.type === "COMPONENT").length,
+    resourceCount: visibleGraph.nodes.filter((node) => node.type === "RESOURCE").length,
+    layerCount: visibleGraph.nodes.filter((node) => node.type === "LAYER").length,
+    libraryCount: visibleGraph.nodes.filter((node) => node.type === "LIBRARY").length,
+    jdkCount: visibleGraph.nodes.filter((node) => node.metadata?.["architecture.node.kind"] === "JDK").length,
+    relationCount: visibleGraph.edges.length,
+    classCount: visibleGraph.nodes
+      .map((node) => Number(node.metadata?.["architecture.classCount"] ?? "0"))
+      .filter(Number.isFinite)
+      .reduce((sum, count) => sum + count, 0),
+    truncated: visibleGraph.truncated === true,
+  };
+}
+
+export function deriveClassDiagramSummary(visibleGraph: LinkGraphDocument) {
+  return {
+    classCount: visibleGraph.nodes.filter((node) => node.type === "CLASS").length,
+    fieldCount: visibleGraph.nodes
+      .map((node) => Number(node.metadata?.["uml.field.count"] ?? "0"))
+      .filter(Number.isFinite)
+      .reduce((sum, count) => sum + count, 0),
+    interfaceCount: visibleGraph.nodes.filter((node) => node.type === "INTERFACE").length,
+    enumCount: visibleGraph.nodes.filter((node) => node.type === "ENUM").length,
+    annotationCount: visibleGraph.nodes.filter((node) => node.type === "ANNOTATION").length,
+    recordCount: visibleGraph.nodes.filter((node) => node.type === "RECORD").length,
+    objectCount: visibleGraph.nodes.filter((node) => node.type === "OBJECT").length,
+    relationCount: visibleGraph.edges.length,
+    spiProviderCount: 0,
+    reflectionRelationCount: 0,
+    relationCompleteness: "COMPLETE",
+    scopeTypeCount: visibleGraph.nodes.length,
+    projectTypeCount: visibleGraph.nodes.length,
+    projectClassCount: visibleGraph.nodes.filter((node) => node.type === "CLASS").length,
+    scopeBasis: "CLASS_NEIGHBORHOOD",
+    anchorTypeNodeId: visibleGraph.nodes[0]?.id ?? null,
+    anchorTypeTitle: visibleGraph.nodes[0]?.title ?? null,
+    anchorTypeQualifiedName: visibleGraph.nodes[0]?.signature ?? null,
+    neighborhoodLimit: visibleGraph.nodes.length,
+    memberLimit: 5,
+    neighborhoodCandidateTypeCount: visibleGraph.nodes.length,
+    neighborhoodTruncated: false,
+  };
+}
+
+function packageFromSignature(signature?: string | null): string | null {
+  if (!signature) {
+    return null;
+  }
+  const owner = signature.split("(")[0] ?? signature;
+  const index = owner.lastIndexOf(".");
+  return index > 0 ? owner.slice(0, index) : null;
+}
+
+export function deriveReviewGraphSummary(visibleGraph: LinkGraphDocument) {
+  return {
+    changedSymbolCount: visibleGraph.nodes.filter((node) => node.metadata?.["review.role"] === "CHANGED").length,
+    upstreamCount: visibleGraph.nodes.filter((node) => node.metadata?.["review.role"] === "UPSTREAM").length,
+    downstreamCount: visibleGraph.nodes.filter((node) => node.metadata?.["review.role"] === "DOWNSTREAM").length,
+    relatedTestCount: visibleGraph.nodes.filter((node) => node.metadata?.["review.role"] === "RELATED_TEST").length,
+    affectedPackageCount: Array.from(new Set(visibleGraph.nodes
+      .map((node) => node.metadata?.["architecture.package"] ?? packageFromSignature(node.signature))
+      .filter(Boolean))).length,
+    affectedModuleCount: Array.from(new Set(visibleGraph.nodes
+      .map((node) => node.metadata?.["architecture.module"])
+      .filter(Boolean))).length,
+    evidenceRefCount: visibleGraph.edges.filter((edge) => edge.metadata?.["review.edgeRole"] === "RELATION").length,
+    truncated: Boolean(visibleGraph.truncated),
+    hiddenNodeCount: 0,
+    hiddenEdgeCount: 0,
+    selectedDiffItemIds: [],
+    maxChangedNodes: 120,
+    maxUpstreamNodes: 40,
+    maxDownstreamNodes: 40,
+    maxRelatedTestNodes: 40,
   };
 }
 
@@ -511,7 +631,7 @@ export function syncFactGraphViewDocument(
     visibleGraph: nextVisibleGraph,
     fullGraph,
     anchorNodeId: nextAnchorNodeId,
-    summary: deriveFactGraphSummary(nextVisibleGraph, fullGraph, nextAnchorNodeId),
+    summary: deriveFactGraphSummary(nextVisibleGraph, fullGraph, nextAnchorNodeId, currentView.summary),
   };
 }
 
@@ -554,7 +674,11 @@ export function reuseCurrentViewGraphs<
   currentView: T,
   reuseCurrentGraphs: boolean,
 ): T {
-  if (!reuseCurrentGraphs) {
+  if (
+    !reuseCurrentGraphs ||
+    !haveSameGraphElementIds(nextView.visibleGraph, currentView.visibleGraph) ||
+    !haveSameGraphElementIds(nextView.fullGraph, currentView.fullGraph)
+  ) {
     return nextView;
   }
   if (nextView.visibleGraph === currentView.visibleGraph && nextView.fullGraph === currentView.fullGraph) {
@@ -565,6 +689,19 @@ export function reuseCurrentViewGraphs<
     visibleGraph: currentView.visibleGraph,
     fullGraph: currentView.fullGraph,
   };
+}
+
+function haveSameGraphElementIds(left: LinkGraphDocument, right: LinkGraphDocument): boolean {
+  return haveSameIds(left.nodes.map((node) => node.id), right.nodes.map((node) => node.id))
+    && haveSameIds(left.edges.map((edge) => edge.id), right.edges.map((edge) => edge.id));
+}
+
+function haveSameIds(leftIds: string[], rightIds: string[]): boolean {
+  if (leftIds.length !== rightIds.length) {
+    return false;
+  }
+  const rightIdSet = new Set(rightIds);
+  return leftIds.every((id) => rightIdSet.has(id));
 }
 
 export function applyLayoutUpdatesToGraphDocument(
@@ -607,7 +744,7 @@ export function syncFlowchartViewLayout(
     ...currentView,
     visibleGraph,
     fullGraph,
-    summary: deriveFlowchartSummary(visibleGraph, fullGraph),
+    summary: deriveFlowchartSummary(visibleGraph, fullGraph, currentView.summary),
   };
 }
 
@@ -622,6 +759,48 @@ export function syncResourceRelationViewLayout(
     visibleGraph,
     fullGraph,
     summary: deriveResourceRelationSummary(visibleGraph),
+  };
+}
+
+export function syncArchitectureGraphViewLayout(
+  currentView: ArchitectureGraphViewDocument,
+  updates: Array<{ id: string; position: GraphPosition }>,
+): ArchitectureGraphViewDocument {
+  const visibleGraph = applyLayoutUpdatesToGraphDocument(currentView.visibleGraph, updates);
+  const fullGraph = applyLayoutUpdatesToGraphDocument(currentView.fullGraph, updates);
+  return {
+    ...currentView,
+    visibleGraph,
+    fullGraph,
+    summary: currentView.summary,
+  };
+}
+
+export function syncClassDiagramViewLayout(
+  currentView: ClassDiagramViewDocument,
+  updates: Array<{ id: string; position: GraphPosition }>,
+): ClassDiagramViewDocument {
+  const visibleGraph = applyLayoutUpdatesToGraphDocument(currentView.visibleGraph, updates);
+  const fullGraph = applyLayoutUpdatesToGraphDocument(currentView.fullGraph, updates);
+  return {
+    ...currentView,
+    visibleGraph,
+    fullGraph,
+    summary: currentView.summary,
+  };
+}
+
+export function syncReviewGraphViewLayout(
+  currentView: ReviewGraphViewDocument,
+  updates: Array<{ id: string; position: GraphPosition }>,
+): ReviewGraphViewDocument {
+  const visibleGraph = applyLayoutUpdatesToGraphDocument(currentView.visibleGraph, updates);
+  const fullGraph = applyLayoutUpdatesToGraphDocument(currentView.fullGraph, updates);
+  return {
+    ...currentView,
+    visibleGraph,
+    fullGraph,
+    summary: currentView.summary,
   };
 }
 
@@ -680,7 +859,7 @@ export function resolveCollapsedDescendantSummary(
   };
 }
 
-export function resolveAuditTargetNodeIds(
+export function resolveQaTargetNodeIds(
   targetNodeId: string | undefined,
   selectionGroupNodeIds: string[],
 ): string[] {

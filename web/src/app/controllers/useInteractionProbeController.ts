@@ -120,7 +120,7 @@ export function useInteractionProbeController(args: UseInteractionProbeControlle
     if (typeof window === "undefined" || window.__linkGraphInteractionProbe !== true) {
       return;
     }
-    if (interactionProbeRef.current.scheduled || args.nodes.length < 100) {
+    if (interactionProbeRef.current.scheduled || args.nodes.length === 0) {
       return;
     }
     const targetNode = args.nodes.find((node) => canNavigateToSource(node)) ?? args.nodes[0];

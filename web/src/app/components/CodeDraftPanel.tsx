@@ -45,7 +45,7 @@ interface CodeDraftPanelProps {
   generatedCodeDraftVersion?: number | null;
   onOpenDraftWorkbench: () => void;
   onOpenDraftValidation?: () => void;
-  onOpenAuditWorkbench?: () => void;
+  onOpenQaWorkbench?: () => void;
   onRequestPlan: () => void;
   onRequestDrafts: () => void;
   onImplementationSuggestionDiscussionQuestionDraftChange?: (value: string) => void;
@@ -150,7 +150,7 @@ export function CodeDraftPanel({
   generatedCodeDraftVersion = null,
   onOpenDraftWorkbench,
   onOpenDraftValidation,
-  onOpenAuditWorkbench,
+  onOpenQaWorkbench,
   onRequestPlan,
   onRequestDrafts,
   onImplementationSuggestionDiscussionQuestionDraftChange,
@@ -214,7 +214,7 @@ export function CodeDraftPanel({
       <div className="code-stage-analysis-stack">
         <DraftValidationPanel
           validationState={draftValidationState}
-          onOpenAuditWorkbench={onOpenAuditWorkbench}
+          onOpenQaWorkbench={onOpenQaWorkbench}
         />
         <GenerationPlanPanel
           plan={implementationPlan}

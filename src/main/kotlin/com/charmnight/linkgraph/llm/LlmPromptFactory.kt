@@ -278,18 +278,10 @@ class LlmPromptFactory(
         } else {
             "框选组（${context.selectedNodeIds.size} 个节点）"
         }
-        /** 事实图节点摘要。 */
-        val factNodes = context.factGraph.nodes.joinToString("\n") { nodeSummary(it) }.ifBlank { "- 无" }
-        /** 事实图边摘要。 */
-        val factEdges = context.factGraph.edges.joinToString("\n") { edgeSummary(it) }.ifBlank { "- 无" }
         /** 当前范围节点摘要。 */
         val selectedNodes = scopeNodes.joinToString("\n") { nodeSummary(it) }.ifBlank { "- 无" }
         /** 当前范围边摘要。 */
         val selectedEdges = scopeEdges.joinToString("\n") { edgeSummary(it) }.ifBlank { "- 无" }
-        /** 当前可编辑图节点摘要。 */
-        val editableNodes = context.editableGraph.nodes.joinToString("\n") { nodeSummary(it) }.ifBlank { "- 无" }
-        /** 当前可编辑图边摘要。 */
-        val editableEdges = context.editableGraph.edges.joinToString("\n") { edgeSummary(it) }.ifBlank { "- 无" }
         /** 历史消息摘要。 */
         val history = session?.messages?.joinToString("\n") { message ->
             "- [${message.role.name}] ${message.content}"
@@ -411,31 +403,12 @@ class LlmPromptFactory(
                 ),
                 PromptSection(
                     """
-                    事实图节点：
-                    $factNodes
+                    图上下文边界：
+                    - 本轮 prompt 只包含“当前范围节点/边”、真实源码片段、取证轨迹、历史消息和工作台状态。
+                    - 如需整图、邻接节点、架构索引、Review Graph 或源码细节，必须按用户问题调用工具查询最小必要上下文。
+                    - 不要依据未进入本轮 prompt 的事实图或当前可编辑图内容下结论。
                     """.trimIndent(),
-                    priority = GRAPH,
-                ),
-                PromptSection(
-                    """
-                    事实图连线：
-                    $factEdges
-                    """.trimIndent(),
-                    priority = GRAPH,
-                ),
-                PromptSection(
-                    """
-                    当前可编辑图节点：
-                    $editableNodes
-                    """.trimIndent(),
-                    priority = GRAPH,
-                ),
-                PromptSection(
-                    """
-                    当前可编辑图连线：
-                    $editableEdges
-                    """.trimIndent(),
-                    priority = GRAPH,
+                    priority = BEHAVIOR_RULE,
                 ),
                 PromptSection(
                     """
@@ -492,6 +465,7 @@ class LlmPromptFactory(
             .filter { entry -> entry.elementId in context.selectedDiffItemIds }
             .joinToString("\n") { entry -> diffSummary(entry) }
             .ifBlank { "- 无" }
+        val reviewEvidence = context.reviewEvidenceBundle.ifBlank { "- 无" }
         /** 面向模型的系统提示词。 */
         val systemPrompt = """
             你是 IDEA Link Graph 的设计差异审查助手。
@@ -548,6 +522,13 @@ class LlmPromptFactory(
                     """
                     当前差异：
                     $diff
+                    """.trimIndent(),
+                    priority = EVIDENCE,
+                ),
+                PromptSection(
+                    """
+                    Review Graph 最小证据包：
+                    $reviewEvidence
                     """.trimIndent(),
                     priority = EVIDENCE,
                 ),

@@ -2,16 +2,22 @@ import {
   applyCodeDrafts,
   exportMermaid,
   requestAnalysisDisplayMode,
+  requestArchitectureGraph,
+  requestPackageDependencyGraph,
   requestCodeDraftsAsync,
+  requestClassDiagram,
   requestDraftNavigation,
   requestExpandOverflowNode,
+  requestExpandInvocation,
   requestGenerationPlanAsync,
   requestGenerationPlanDiscussionAsync,
+  requestRemoveInvocationExpansion,
   requestOpenSettings,
+  requestReviewGraph,
   requestSyncPreview,
   showDiffMode,
 } from "../api";
-import type { AnalysisDisplayMode } from "../types";
+import type { AnalysisDisplayMode, IndexedClassDiagramOptions, IndexedReviewGraphOptions } from "../types";
 import type { useBridgeCommandController } from "./useBridgeCommandController";
 
 interface UseWorkbenchCommandControllerArgs {
@@ -24,8 +30,54 @@ interface UseWorkbenchCommandControllerArgs {
 export function useWorkbenchCommandController({
   bridgeCommands,
 }: UseWorkbenchCommandControllerArgs) {
-  function handleRequestAnalysisDisplayMode(displayMode: AnalysisDisplayMode) {
+  function handleRequestAnalysisDisplayMode(displayMode: AnalysisDisplayMode, selectedDiffItemIds: string[] = []) {
+    if (displayMode === "ARCHITECTURE_GRAPH") {
+      bridgeCommands.runBridgeCommand("加载架构图", () => requestArchitectureGraph());
+      return;
+    }
+    if (displayMode === "CLASS_DIAGRAM") {
+      bridgeCommands.runBridgeCommand("加载类图", () => requestClassDiagram());
+      return;
+    }
+    if (displayMode === "REVIEW_GRAPH") {
+      bridgeCommands.runBridgeCommand("加载 Review Graph", () => requestReviewGraph(selectedDiffItemIds));
+      return;
+    }
     bridgeCommands.runBridgeCommand("切换展示模式", () => requestAnalysisDisplayMode(displayMode));
+  }
+
+  function handleRequestClassDiagram(scopeNodeId?: string | null) {
+    bridgeCommands.runBridgeCommand("加载类图", () => requestClassDiagram(scopeNodeId ?? null));
+  }
+
+  function handleRequestClassDiagramWithOptions(
+    scopeNodeId: string | null | undefined,
+    classDiagram: Partial<IndexedClassDiagramOptions>,
+  ) {
+    bridgeCommands.runBridgeCommand("加载类图", () => requestClassDiagram(scopeNodeId ?? null, { classDiagram }));
+  }
+
+  function handleRequestPackageDependencyGraph(
+    packageName?: string | null,
+    options: { includeExternalLibraries?: boolean; includeJdk?: boolean } = {},
+  ) {
+    bridgeCommands.runBridgeCommand("加载包依赖", () => requestPackageDependencyGraph(packageName ?? null, options), {
+      successFeedback: {
+        level: "INFO",
+        message: "正在加载包依赖视图。",
+      },
+    });
+  }
+
+  function handleRequestArchitectureGraph(options: { includeExternalLibraries?: boolean; includeJdk?: boolean } = {}) {
+    bridgeCommands.runBridgeCommand("加载架构图", () => requestArchitectureGraph(options));
+  }
+
+  function handleRequestReviewGraphWithOptions(
+    selectedDiffItemIds: string[] = [],
+    review: Partial<IndexedReviewGraphOptions>,
+  ) {
+    bridgeCommands.runBridgeCommand("加载 Review Graph", () => requestReviewGraph(selectedDiffItemIds, { review }));
   }
 
   function handleExportMermaid() {
@@ -102,8 +154,31 @@ export function useWorkbenchCommandController({
     });
   }
 
+  function handleExpandInvocation(nodeId: string) {
+    bridgeCommands.runBridgeCommand("展开调用方法", () => requestExpandInvocation(nodeId), {
+      successFeedback: {
+        level: "INFO",
+        message: "已请求展开被调方法。",
+      },
+    });
+  }
+
+  function handleRemoveInvocationExpansion(expansionId: string) {
+    bridgeCommands.runBridgeCommand("移除调用展开", () => requestRemoveInvocationExpansion(expansionId), {
+      successFeedback: {
+        level: "INFO",
+        message: "已请求移除调用展开内容。",
+      },
+    });
+  }
+
   return {
     handleRequestAnalysisDisplayMode,
+    handleRequestArchitectureGraph,
+    handleRequestClassDiagram,
+    handleRequestClassDiagramWithOptions,
+    handleRequestPackageDependencyGraph,
+    handleRequestReviewGraphWithOptions,
     handleExportMermaid,
     handleShowDiffMode,
     handleRequestSyncPreview,
@@ -114,5 +189,7 @@ export function useWorkbenchCommandController({
     handleWriteDrafts,
     handleOpenDraft,
     handleExpandOverflowNode,
+    handleExpandInvocation,
+    handleRemoveInvocationExpansion,
   };
 }

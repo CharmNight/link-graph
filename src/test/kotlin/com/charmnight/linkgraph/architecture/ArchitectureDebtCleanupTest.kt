@@ -9,6 +9,7 @@ import kotlin.test.assertTrue
 
 class ArchitectureDebtCleanupTest {
     private val root: Path = Path.of("").toAbsolutePath()
+    private val canonicalProjectionPath = "src/main/kotlin/com/charmnight/linkgraph/projection/"
 
     @Test
     fun llmGatewaysDoNotKeepTestOnlyFailureMessageDelegatesOrDeadJsonEscaper() {
@@ -41,38 +42,39 @@ class ArchitectureDebtCleanupTest {
         val qaConversationService = Files.readString(qaConversationServicePath)
         assertTrue(qaConversationService.contains("class QaConversationService"))
         val qaModels = read("src/main/kotlin/com/charmnight/linkgraph/workbench/QaModels.kt")
+        val obsoletePrefix = "Au" + "dit"
         listOf(
-            "typealias AuditConversationMessage",
-            "typealias AuditConversationSession",
-            "typealias AuditModelTurn",
-            "typealias AuditConversationTurnResult",
-            "typealias AuditConversationService",
+            "typealias ${obsoletePrefix}ConversationMessage",
+            "typealias ${obsoletePrefix}ConversationSession",
+            "typealias ${obsoletePrefix}ModelTurn",
+            "typealias ${obsoletePrefix}ConversationTurnResult",
+            "typealias ${obsoletePrefix}ConversationService",
         ).forEach { legacyAlias ->
             assertFalse(
                 qaModels.contains(legacyAlias),
-                "Internal Audit compatibility alias should be physically removed: $legacyAlias",
+                "Obsolete QA compatibility alias should be physically removed: $legacyAlias",
             )
         }
         assertFalse(
-            qaConversationService.contains("AuditConversationService"),
-            "QaConversationService must not delegate to the old AuditConversationService shell.",
+            qaConversationService.contains("${obsoletePrefix}ConversationService"),
+            "QaConversationService must not delegate to the obsolete conversation service shell.",
         )
         assertFalse(
-            Files.exists(root.resolve("src/main/kotlin/com/charmnight/linkgraph/workbench/AuditConversationService.kt")),
-            "AuditConversationService implementation/wrapper file should be physically removed.",
+            Files.exists(root.resolve("src/main/kotlin/com/charmnight/linkgraph/workbench/${obsoletePrefix}ConversationService.kt")),
+            "Obsolete conversation service implementation/wrapper file should be physically removed.",
         )
         val productionQaOffenders = Files.walk(root.resolve("src/main/kotlin/com/charmnight/linkgraph"))
             .filter { path -> Files.isRegularFile(path) && path.toString().endsWith(".kt") }
             .filter { path -> !path.endsWith("workbench/QaModels.kt") }
             .filter { path ->
                 val source = Files.readString(path)
-                Regex("""AuditConversation(Service|Session|Message|TurnResult)|AuditModelTurn""").containsMatchIn(source)
+                Regex("""${obsoletePrefix}Conversation(Service|Session|Message|TurnResult)|${obsoletePrefix}ModelTurn""").containsMatchIn(source)
             }
             .map { path -> root.relativize(path).toString() }
             .toList()
         assertTrue(
             productionQaOffenders.isEmpty(),
-            "Production code should use Qa conversation names; Audit aliases are only compatibility shims: " +
+            "Production code should use Qa conversation names; obsolete conversation aliases must not remain: " +
                 productionQaOffenders.joinToString(),
         )
     }
@@ -101,6 +103,68 @@ class ArchitectureDebtCleanupTest {
                 source.contains("ReadAction.compute<ResolutionOutcome"),
                 "Resolver should not hand-roll ReadAction.compute boilerplate: $relativePath",
             )
+        }
+    }
+
+    @Test
+    fun springEventInvestigationResolverOnlyConsumesSharedJvmRelationIndex() {
+        val source = read("src/main/kotlin/com/charmnight/linkgraph/investigation/resolving/spring/SpringEventResolver.kt")
+        assertTrue(
+            source.contains("JvmEvidenceIndexAdapter"),
+            "Spring Event investigation resolver should enter through the shared ArchitectureGraphIndex adapter.",
+        )
+        assertTrue(
+            source.contains("JvmRelationKind.SPRING_EVENT_LISTENS"),
+            "Spring Event investigation resolver should consume SPRING_EVENT_LISTENS from JvmRelationIndex.",
+        )
+        listOf(
+            "JavaPsiFacade",
+            "PsiTreeUtil",
+            "PsiClass",
+            "PsiMethod",
+            "allScope(",
+            "projectScope(",
+            "JavaRecursiveElementVisitor",
+            "PsiRecursiveElementVisitor",
+            "findPsiClass",
+            "findPsiMethod",
+            "collectElements",
+        ).forEach { forbidden ->
+            assertFalse(
+                source.contains(forbidden),
+                "Spring Event investigation resolver must not keep PSI fallback path: $forbidden",
+            )
+        }
+    }
+
+    @Test
+    fun investigationJavaResolversDoNotKeepPsiFallbackPaths() {
+        val resolverFiles = listOf(
+            "src/main/kotlin/com/charmnight/linkgraph/investigation/resolving/java/JavaEnumConstantResolver.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/investigation/resolving/java/JavaMethodSymbolResolver.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/investigation/resolving/java/JavaOverrideResolver.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/investigation/resolving/java/JvmInvestigationEvidenceSupport.kt",
+        )
+        resolverFiles.forEach { relativePath ->
+            val source = read(relativePath)
+            assertTrue(
+                source.contains("ArchitectureGraphIndex") || source.contains("JvmEvidenceIndexAdapter"),
+                "Investigation resolver should consume the shared ArchitectureGraphIndex path: $relativePath",
+            )
+            listOf(
+                "JavaPsiFacade",
+                "PsiTreeUtil",
+                "PsiClass",
+                "PsiMethod",
+                "PsiShortNamesCache",
+                "FilenameIndex",
+                "OverridingMethodsSearch",
+            ).forEach { forbidden ->
+                assertFalse(
+                    source.contains(forbidden),
+                    "Investigation resolver must not keep PSI fallback path: $relativePath contains $forbidden",
+                )
+            }
         }
     }
 
@@ -232,7 +296,221 @@ class ArchitectureDebtCleanupTest {
         )
     }
 
+    @Test
+    fun jvmRelationResolversUseCentralPsiFactIndexForSymbolLookup() {
+        val relationDir = root.resolve("src/main/kotlin/com/charmnight/linkgraph/jvm/relation")
+        val offenders = Files.walk(relationDir)
+            .filter { path -> Files.isRegularFile(path) && path.toString().endsWith("Resolver.kt") }
+            .filter { path ->
+                val source = Files.readString(path)
+                "PsiManager.getInstance" in source ||
+                    "JavaPsiFacade.getInstance" in source ||
+                    "VirtualFileManager.getInstance" in source
+            }
+            .map { path -> root.relativize(path).toString() }
+            .toList()
+
+        assertEquals(
+            emptyList(),
+            offenders,
+            "JVM relation resolvers should use JvmResolutionContext/JvmPsiFactIndex instead of reopening PSI files independently.",
+        )
+    }
+
+    @Test
+    fun architectureIndexSemanticResolverDoesNotBridgePsiMethodLookupInline() {
+        val source = read("src/main/kotlin/com/charmnight/linkgraph/semantic/provider/code/relation/ArchitectureIndexSemanticResolver.kt")
+        listOf(
+            "JavaPsiFacade",
+            "GlobalSearchScope",
+            "findPsiMethod",
+        ).forEach { forbidden ->
+            assertFalse(
+                source.contains(forbidden),
+                "ArchitectureIndexSemanticResolver should request method signatures from RelationExtractionContext instead of reopening PSI: $forbidden",
+            )
+        }
+        assertTrue(
+            source.contains("context.methodBySignature"),
+            "ArchitectureIndexSemanticResolver should use RelationExtractionContext for PSI method localization.",
+        )
+    }
+
+    @Test
+    fun graphProjectionTraversalStateOnlyLivesInCanonicalProjectionPackage() {
+        val traversalMarkers = listOf(
+            "hiddenNodeIds",
+            "hiddenEdgeIds",
+            "private fun overflowNode(",
+        )
+        val offenders = productionKotlinSources()
+            .filterNot { path -> root.relativize(path).toString().startsWith(canonicalProjectionPath) }
+            .filter { path ->
+                val source = Files.readString(path)
+                traversalMarkers.any(source::contains)
+            }
+            .map { path -> root.relativize(path).toString() }
+            .toList()
+
+        assertEquals(
+            emptyList(),
+            offenders,
+            "Graph-window traversal state and overflow node factories belong in the canonical projection package.",
+        )
+    }
+
+    @Test
+    fun graphHiddenCountsComeFromSharedProjectionApi() {
+        val forbiddenHiddenCountImplementations = listOf(
+            "data class GraphViewHiddenCounts(",
+            "fun graphViewHiddenCounts(",
+            "private fun hiddenLayerCounts(",
+            "private fun hiddenNodeCount(",
+            "private fun hiddenEdgeCount(",
+            "fullGraph.nodes.size - visibleGraph.nodes.size",
+            "fullGraph.edges.size - visibleGraph.edges.size",
+            "graph.nodes.size - visibleGraph.nodes.size",
+            "graph.edges.size - visibleGraph.edges.size",
+        )
+        val offenders = productionKotlinSources()
+            .filterNot { path -> root.relativize(path).toString().startsWith(canonicalProjectionPath) }
+            .filter { path ->
+                val source = Files.readString(path)
+                forbiddenHiddenCountImplementations.any(source::contains)
+            }
+            .map { path -> root.relativize(path).toString() }
+            .toList()
+
+        assertEquals(
+            emptyList(),
+            offenders,
+            "Hidden node/edge/layer counts should be calculated through the shared projection API.",
+        )
+    }
+
+    @Test
+    fun graphProjectionMetadataKeysAreDefinedOnce() {
+        val metadataKeyPattern = Regex(""""(linkGraph\.overflow\.[^"]+|linkGraph\.hidden[^"]*|indexed\.collapsed[^"]*)"""")
+        val offenders = productionKotlinSources()
+            .filterNot { path -> root.relativize(path).toString() == "${canonicalProjectionPath}GraphProjectionMetadata.kt" }
+            .mapNotNull { path ->
+                val relativePath = root.relativize(path).toString()
+                val keys = metadataKeyPattern.findAll(Files.readString(path))
+                    .map { match -> match.groupValues[1] }
+                    .distinct()
+                    .toList()
+                relativePath.takeIf { keys.isNotEmpty() }?.let { it to keys }
+            }
+            .toList()
+
+        assertEquals(
+            emptyList(),
+            offenders,
+            "Projection overflow/hidden/collapsed metadata keys should be defined in GraphProjectionMetadata only.",
+        )
+    }
+
+    @Test
+    fun graphProjectionKernelOwnsTraversalAndLegacyProjectorsStayThin() {
+        listOf(
+            "GraphProjectionPolicy.kt",
+            "GraphProjectionResult.kt",
+            "GraphProjectionKernel.kt",
+        ).forEach { fileName ->
+            assertTrue(
+                Files.exists(root.resolve("$canonicalProjectionPath$fileName")),
+                "Canonical projection API must include $fileName.",
+            )
+        }
+
+        val legacyProjectors = listOf(
+            "src/main/kotlin/com/charmnight/linkgraph/projection/GraphWindowProjector.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/projection/InteractiveGraphProjector.kt",
+        )
+        val traversalMarkers = listOf(
+            "val visibleNodeIds",
+            "val visibleEdgeIds",
+            "hiddenNodeIds",
+            "hiddenEdgeIds",
+            "private fun overflowNode(",
+            "ArrayDeque",
+            "PriorityQueue",
+        )
+        val offenders = legacyProjectors.flatMap { relativePath ->
+            val source = read(relativePath)
+            traversalMarkers.mapNotNull { marker ->
+                if (source.contains(marker)) "$relativePath contains $marker" else null
+            }
+        }
+
+        assertEquals(
+            emptyList(),
+            offenders,
+            "Legacy projector entrypoints should delegate to GraphProjectionKernel instead of owning traversal state.",
+        )
+    }
+
+    @Test
+    fun frontendProductionDoesNotDeriveBackendHiddenCounts() {
+        val productionFrontendSources = Files.walk(root.resolve("web/src/app")).use { paths ->
+            paths
+                .filter { path ->
+                    Files.isRegularFile(path) && Regex("""\.(ts|tsx)$""").containsMatchIn(path.fileName.toString())
+                }
+                .filter { path ->
+                    val relative = root.relativize(path).toString()
+                    relative != "web/src/app/sampleState.ts" &&
+                        relative != "web/src/app/testBootstrapState.ts" &&
+                        relative != "web/src/app/draftCompareProjection.ts"
+                }
+                .toList()
+            }
+
+        val forbiddenFragments = listOf(
+            "function graphHiddenCounts(",
+            "const hiddenCounts = graphHiddenCounts(",
+            "hiddenNodeCount: hiddenCounts.hiddenNodeCount",
+            "hiddenEdgeCount: hiddenCounts.hiddenEdgeCount",
+        )
+        val offenders = productionFrontendSources.flatMap { path ->
+            val source = Files.readString(path)
+            forbiddenFragments.mapNotNull { fragment ->
+                if (source.contains(fragment)) "${root.relativize(path)} contains $fragment" else null
+            }
+        }
+
+        assertEquals(
+            emptyList(),
+            offenders,
+            "Frontend production code must preserve backend projection summaries instead of recomputing hidden counts.",
+        )
+    }
+
+    @Test
+    fun indexedGraphBridgeAcceptsPresetRequestsOnly() {
+        val parserSource = read("src/main/kotlin/com/charmnight/linkgraph/ui/GraphBrowserPayloadParser.kt")
+        assertTrue(
+            parserSource.contains("IndexedGraphRequestFactory.fromPreset"),
+            "Indexed graph bridge parser should expand backend-owned presets.",
+        )
+        listOf(
+            "root.enumValue<IndexedGraphView>(\"view\")",
+            "includeProjectSources = root.booleanOrDefault",
+            "refreshPolicy = root.enumValue<IndexedGraphRefreshPolicy>",
+        ).forEach { legacyFragment ->
+            assertFalse(
+                parserSource.contains(legacyFragment),
+                "Indexed graph bridge parser must not keep legacy full-request fallback: $legacyFragment",
+            )
+        }
+    }
+
     private fun read(relativePath: String): String = Files.readString(root.resolve(relativePath))
 
     private fun lineCount(relativePath: String): Int = Files.readAllLines(root.resolve(relativePath)).size
+
+    private fun productionKotlinSources(): List<Path> =
+        Files.walk(root.resolve("src/main/kotlin/com/charmnight/linkgraph"))
+            .filter { path -> Files.isRegularFile(path) && path.toString().endsWith(".kt") }
+            .toList()
 }

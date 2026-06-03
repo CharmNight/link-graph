@@ -1,14 +1,16 @@
 package com.charmnight.linkgraph.ui.view
 
+import com.charmnight.linkgraph.projection.GraphWindowPolicy
+import com.charmnight.linkgraph.projection.GraphWindowProjector
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.semantic.graph.GraphAssembler
 import com.charmnight.linkgraph.semantic.model.SemanticAnalysisResult
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.policy.ProjectionPolicy
-import java.util.ArrayDeque
 
 class ResourceRelationProjector(
     private val graphAssembler: GraphAssembler = GraphAssembler(),
+    private val windowProjector: GraphWindowProjector = GraphWindowProjector(),
 ) {
     fun project(
         analysisResult: SemanticAnalysisResult,
@@ -24,10 +26,19 @@ class ResourceRelationProjector(
             anchorNodeId = anchorNodeId,
             summary = ResourceRelationSummary(
                 visibleNodeCount = visibleGraph.nodes.size,
+                relationCount = visibleGraph.edges.size,
+                resourceCount = fullGraph.nodes.count { node ->
+                    node.metadata["resource.lane"] != null || node.type.name.contains("RESOURCE") || node.type.name in setOf("SQL", "HTTP_ENDPOINT", "MQ_TOPIC", "CONFIG_ITEM")
+                },
+                fallbackReason = resourceFallbackReason(fullGraph),
                 laneCounts = visibleGraph.nodes
                     .groupingBy { it.metadata?.get("resource.lane") ?: "CODE" }
                     .eachCount()
                     .toSortedMap(),
+            ),
+            projectionIndex = graphProjectionIndexForVisibleGraph(
+                visibleGraph = visibleGraph,
+                fullGraph = fullGraph,
             ),
         )
     }
@@ -36,45 +47,26 @@ class ResourceRelationProjector(
         graph: GraphDocument,
         anchorNodeId: String?,
         projectionPolicy: ProjectionPolicy,
-    ): GraphDocument {
-        if (graph.nodes.size <= projectionPolicy.maxVisibleNodes && graph.edges.size <= projectionPolicy.maxVisibleEdges) {
-            return graph
-        }
-        val nodeById = graph.nodes.associateBy { it.id }
-        val outgoingBySource = graph.edges.groupBy { it.fromNodeId }
-        val incomingByTarget = graph.edges.groupBy { it.toNodeId }
-        val seed = anchorNodeId?.takeIf(nodeById::containsKey) ?: graph.nodes.firstOrNull()?.id ?: return graph
-        val queue = ArrayDeque<String>()
-        val visibleNodeIds = linkedSetOf<String>()
-        val visibleEdgeIds = linkedSetOf<String>()
-        queue.add(seed)
-        visibleNodeIds += seed
+    ): GraphDocument =
+        windowProjector.project(
+            graph = graph,
+            policy = GraphWindowPolicy(
+                maxVisibleNodes = projectionPolicy.maxVisibleNodes,
+                maxVisibleEdges = projectionPolicy.maxVisibleEdges,
+                enableOverflowSummary = projectionPolicy.enableOverflowSummary,
+                fillDisconnectedNodes = false,
+            ),
+            anchorNodeId = anchorNodeId,
+            overflowOwnerContext = "resource-relation",
+        ).graph
 
-        while (queue.isNotEmpty() && visibleNodeIds.size < projectionPolicy.maxVisibleNodes) {
-            val current = queue.removeFirst()
-            val candidateEdges = (outgoingBySource[current].orEmpty() + incomingByTarget[current].orEmpty())
-                .sortedBy { it.id }
-            for (edge in candidateEdges) {
-                if (visibleEdgeIds.size >= projectionPolicy.maxVisibleEdges) {
-                    break
-                }
-                val neighborId = if (edge.fromNodeId == current) edge.toNodeId else edge.fromNodeId
-                if (neighborId !in visibleNodeIds && visibleNodeIds.size >= projectionPolicy.maxVisibleNodes) {
-                    continue
-                }
-                if (neighborId !in visibleNodeIds) {
-                    visibleNodeIds += neighborId
-                    queue.addLast(neighborId)
-                }
-                if (edge.fromNodeId in visibleNodeIds && edge.toNodeId in visibleNodeIds) {
-                    visibleEdgeIds += edge.id
-                }
-            }
+    private fun resourceFallbackReason(graph: GraphDocument): String {
+        if (graph.edges.isNotEmpty()) {
+            return "NONE"
         }
-
-        return GraphDocument(
-            nodes = graph.nodes.filter { it.id in visibleNodeIds },
-            edges = graph.edges.filter { it.id in visibleEdgeIds && it.fromNodeId in visibleNodeIds && it.toNodeId in visibleNodeIds },
-        )
+        val resourceCount = graph.nodes.count { node ->
+            node.metadata["resource.lane"] != null || node.type.name.contains("RESOURCE") || node.type.name in setOf("SQL", "HTTP_ENDPOINT", "MQ_TOPIC", "CONFIG_ITEM")
+        }
+        return if (resourceCount == 0) "NO_RESOURCE_UNITS" else "NO_BINDING_RELATIONS"
     }
 }
