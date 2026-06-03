@@ -14,4 +14,5 @@ data class PlanningInput(
     val confirmedChanges: List<DraftWorkbenchEntry> = emptyList(),
     val mermaidIssues: List<MermaidIssue> = emptyList(),
     val sourceContext: List<SourceSnippetContext> = emptyList(),
+    val userGoal: String = "",
 )

@@ -26,7 +26,7 @@ internal class GenerationPlanWorkflow(
     private val dependencies: GenerationWorkflowDependencies,
 ) {
     private val useCase = GenerationUseCase(
-        planSnapshotBuilder = { planningGraph, diff, previewItems, mermaidIssues, confirmedChanges, sourceContext ->
+        planSnapshotBuilder = { planningGraph, diff, previewItems, mermaidIssues, confirmedChanges, sourceContext, userGoal ->
             dependencies.planningContextFactory.buildPlanSnapshot(
                 planningGraph = planningGraph,
                 diff = diff,
@@ -34,12 +34,13 @@ internal class GenerationPlanWorkflow(
                 mermaidIssues = mermaidIssues,
                 confirmedChanges = confirmedChanges,
                 sourceContext = sourceContext,
+                userGoal = userGoal,
             )
         },
         projectBasePathProvider = { dependencies.project.basePath },
     )
 
-    fun requestGenerationPlanAsync() {
+    fun requestGenerationPlanAsync(userGoal: String = "") {
         val snapshot = dependencies.snapshotProvider.snapshot()
         dependencies.refreshDraftAndCodeState(snapshot.toApplicationSnapshot().toRiskResolutionSnapshot())
         val requestId = dependencies.asyncRequestLifecycle.beginGenerationPlanRequest()
@@ -84,7 +85,10 @@ internal class GenerationPlanWorkflow(
             ),
         )
         dependencies.asyncRequestLifecycle.logAsyncRequestEvent(dependencies.logger, "started", presentation.requestState)
-        val payload = dependencies.planningContextFactory.computePlanningPayload(snapshot)
+        val payload = dependencies.planningContextFactory.computePlanningPayload(
+            snapshot = snapshot,
+            userGoal = userGoal,
+        )
         dependencies.asyncRequestLifecycle.scheduleAsyncRequestTimeout(
             requestId = requestId,
             timeoutMillis = presentation.timeoutMillis,
@@ -186,6 +190,7 @@ internal class GenerationPlanWorkflow(
                             mermaidIssues = input.planningPayload.mermaidIssues,
                             confirmedChanges = input.planningPayload.confirmedChanges,
                             sourceContext = input.planningPayload.sourceContext,
+                            userGoal = input.planningPayload.userGoal,
                             onPreview = onPreview,
                             settingsOverride = settings.withRuntimeDeadlineTimeout(runtimeContext),
                         ),

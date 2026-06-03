@@ -2,6 +2,7 @@ package com.charmnight.linkgraph.application
 
 import com.charmnight.linkgraph.application.artifact.ConfirmedDraftArtifactWriter
 import com.charmnight.linkgraph.application.command.ApplicationCommandDispatcher
+import com.charmnight.linkgraph.application.command.AssistantApplicationCommandHandler
 import com.charmnight.linkgraph.application.command.DebugApplicationCommandHandler
 import com.charmnight.linkgraph.application.command.DraftApplicationCommandHandler
 import com.charmnight.linkgraph.application.command.GenerationApplicationCommandHandler
@@ -9,6 +10,7 @@ import com.charmnight.linkgraph.application.command.IndexedGraphApplicationComma
 import com.charmnight.linkgraph.application.command.ReviewApplicationCommandHandler
 import com.charmnight.linkgraph.application.command.SourceNavigationApplicationCommandHandler
 import com.charmnight.linkgraph.application.command.SubjectApplicationCommandHandler
+import com.charmnight.linkgraph.application.command.WorkflowAssistantTaskExecutor
 import com.charmnight.linkgraph.application.command.WorkspaceApplicationCommandHandler
 import com.charmnight.linkgraph.application.port.GraphEditorPresentationProvider
 import com.charmnight.linkgraph.codegen.CodeDraftWriterService
@@ -418,6 +420,13 @@ internal class GraphEditorApplicationService(
                 SourceNavigationApplicationCommandHandler(
                     sourceNavigationFlow = sourceNavigationFlow,
                     invocationExpansionFlow = invocationExpansionFlow,
+                ),
+                AssistantApplicationCommandHandler(
+                    WorkflowAssistantTaskExecutor(
+                        reviewFlow = reviewFlow,
+                        reviewGraphFlow = reviewGraphFlow,
+                        generationPlanFlow = generationPlanFlow,
+                    ),
                 ),
                 ReviewApplicationCommandHandler(reviewFlow),
                 DraftApplicationCommandHandler(

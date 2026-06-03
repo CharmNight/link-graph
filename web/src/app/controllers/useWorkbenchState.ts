@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type {
   AnalysisDisplayMode,
   ArchitectureGraphViewDocument,
+  AssistantSessionState,
   AsyncRequestState,
   ClassDiagramViewDocument,
   DiffItem,
@@ -108,6 +109,7 @@ export interface WorkbenchProjectionState {
   lastMessageType: string | null;
   graphSurfaceExperiments: GraphSurfaceExperimentFlags | null;
   artifactContents: Record<string, string>;
+  assistantSessionState: AssistantSessionState;
 }
 
 interface UseWorkbenchStateArgs {
@@ -170,6 +172,23 @@ function createEmptySceneState(): LinkGraphSceneState {
     },
     layoutRevision: 0,
     collapsedNodeIds: [],
+  };
+}
+
+function createDefaultAssistantSessionState(): AssistantSessionState {
+  return {
+    sessionId: "assistant-session",
+    activeIntent: "EXPLAIN_CODE",
+    contextLocked: false,
+    context: {
+      selectedNodeIds: [],
+      selectedDiffItemIds: [],
+      analysisDisplayMode: null,
+      currentSceneId: null,
+      selectedMethodSignature: null,
+      scopeLabel: "",
+    },
+    turns: [],
   };
 }
 
@@ -411,6 +430,7 @@ function buildInitialProjectionState(
     lastMessageType: initialState.lastMessageType ?? null,
     graphSurfaceExperiments: initialState.graphSurfaceExperiments ?? null,
     artifactContents: initialState.artifactContents ?? {},
+    assistantSessionState: initialState.assistantSessionState ?? createDefaultAssistantSessionState(),
   };
 }
 
@@ -534,6 +554,7 @@ export function useWorkbenchState({
     setLastMessageType: updateStateField(setProjectionState, "lastMessageType"),
     setGraphSurfaceExperiments: updateStateField(setProjectionState, "graphSurfaceExperiments"),
     setArtifactContents: updateStateField(setProjectionState, "artifactContents"),
+    setAssistantSessionState: updateStateField(setProjectionState, "assistantSessionState"),
   };
 
   return {

@@ -6,6 +6,9 @@ import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionResult
+import com.charmnight.linkgraph.workbench.AssistantIntent
+import com.charmnight.linkgraph.workbench.AssistantTurnKind
+import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.ReplayableQaRequest
 
 internal class GraphEditorAsyncRequestStateSupport(
@@ -15,9 +18,10 @@ internal class GraphEditorAsyncRequestStateSupport(
         result: GraphPatchResult,
         requestState: AsyncRequestState = AsyncRequestState.succeeded(),
         completedRequest: ReplayableQaRequest? = null,
+        appendAssistantTurn: Boolean = true,
     ) {
         mutate {
-            it.copy(
+            val nextState = it.copy(
                 qaResult = result,
                 qaRequestState = requestState,
                 qaRequestRecoveryState = completedRequest?.let { request ->
@@ -28,6 +32,17 @@ internal class GraphEditorAsyncRequestStateSupport(
                 } ?: it.qaRequestRecoveryState,
                 lastMessageType = "qaResult",
             )
+            if (appendAssistantTurn) {
+                nextState.withAssistantTurnRef(
+                    kind = AssistantTurnKind.QA,
+                    activeIntent = result.toAssistantIntent(),
+                    sourceMessageType = "qaResult",
+                    resultId = result.assistantResultId("qa"),
+                    createdAtEpochMillis = requestState.finishedAtEpochMillis ?: System.currentTimeMillis(),
+                )
+            } else {
+                nextState.withAssistantContextFromCurrentState(result.toAssistantIntent())
+            }
         }
     }
 
@@ -46,7 +61,7 @@ internal class GraphEditorAsyncRequestStateSupport(
                     )
                 } ?: it.qaRequestRecoveryState,
                 lastMessageType = "requestQa",
-            )
+            ).withAssistantContextFromCurrentState(requestState.toQaAssistantIntent())
         }
     }
 
@@ -66,6 +81,12 @@ internal class GraphEditorAsyncRequestStateSupport(
                     )
                 } ?: it.qaRequestRecoveryState,
                 lastMessageType = "requestQa",
+            ).withAssistantTurnRef(
+                kind = AssistantTurnKind.QA,
+                activeIntent = requestState.toQaAssistantIntent(),
+                sourceMessageType = "requestQa",
+                resultId = requestState.assistantFailureResultId("qa", message),
+                createdAtEpochMillis = requestState.finishedAtEpochMillis ?: System.currentTimeMillis(),
             )
         }
     }
@@ -91,35 +112,53 @@ internal class GraphEditorAsyncRequestStateSupport(
     fun markDiffReviewResult(
         result: GraphPatchResult,
         requestState: AsyncRequestState = AsyncRequestState.succeeded(),
+        selectedDiffItemIds: List<String> = emptyList(),
     ) {
         mutate {
             it.copy(
                 diffReviewResult = result,
                 diffReviewRequestState = requestState,
                 lastMessageType = "requestDiffReview",
+            ).withAssistantSelectedDiffItemIds(selectedDiffItemIds).withAssistantTurnRef(
+                kind = AssistantTurnKind.CHECK_RESULT,
+                activeIntent = AssistantIntent.CHECK_CHANGE,
+                sourceMessageType = "requestDiffReview",
+                resultId = result.assistantResultId("diff-review"),
+                createdAtEpochMillis = requestState.finishedAtEpochMillis ?: System.currentTimeMillis(),
             )
         }
     }
 
-    fun beginDiffReviewRequest(requestState: AsyncRequestState = AsyncRequestState.running()) {
-        mutate {
-            it.copy(
-                diffReviewResult = null,
-                diffReviewRequestState = requestState,
-                lastMessageType = "requestDiffReview",
-            )
-        }
-    }
-
-    fun markDiffReviewRequestFailed(
-        message: String,
-        requestState: AsyncRequestState = AsyncRequestState.failed(message),
+    fun beginDiffReviewRequest(
+        requestState: AsyncRequestState = AsyncRequestState.running(),
+        selectedDiffItemIds: List<String> = emptyList(),
     ) {
         mutate {
             it.copy(
                 diffReviewResult = null,
                 diffReviewRequestState = requestState,
                 lastMessageType = "requestDiffReview",
+            ).withAssistantSelectedDiffItemIds(selectedDiffItemIds)
+                .withAssistantContextFromCurrentState(AssistantIntent.CHECK_CHANGE)
+        }
+    }
+
+    fun markDiffReviewRequestFailed(
+        message: String,
+        requestState: AsyncRequestState = AsyncRequestState.failed(message),
+        selectedDiffItemIds: List<String> = emptyList(),
+    ) {
+        mutate {
+            it.copy(
+                diffReviewResult = null,
+                diffReviewRequestState = requestState,
+                lastMessageType = "requestDiffReview",
+            ).withAssistantSelectedDiffItemIds(selectedDiffItemIds).withAssistantTurnRef(
+                kind = AssistantTurnKind.CHECK_RESULT,
+                activeIntent = AssistantIntent.CHECK_CHANGE,
+                sourceMessageType = "requestDiffReview",
+                resultId = requestState.assistantFailureResultId("diff-review", message),
+                createdAtEpochMillis = requestState.finishedAtEpochMillis ?: System.currentTimeMillis(),
             )
         }
     }
@@ -151,6 +190,12 @@ internal class GraphEditorAsyncRequestStateSupport(
                 graphBeautificationResult = result,
                 graphBeautificationRequestState = requestState,
                 lastMessageType = "graphBeautificationResult",
+            ).withAssistantTurnRef(
+                kind = AssistantTurnKind.EXPLANATION,
+                activeIntent = AssistantIntent.EXPLAIN_CODE,
+                sourceMessageType = "graphBeautificationResult",
+                resultId = result.assistantResultId(),
+                createdAtEpochMillis = requestState.finishedAtEpochMillis ?: System.currentTimeMillis(),
             )
         }
     }
@@ -161,7 +206,7 @@ internal class GraphEditorAsyncRequestStateSupport(
                 graphBeautificationResult = null,
                 graphBeautificationRequestState = requestState,
                 lastMessageType = "requestGraphBeautification",
-            )
+            ).withAssistantContextFromCurrentState(AssistantIntent.EXPLAIN_CODE)
         }
     }
 
@@ -174,6 +219,12 @@ internal class GraphEditorAsyncRequestStateSupport(
                 graphBeautificationResult = null,
                 graphBeautificationRequestState = requestState,
                 lastMessageType = "requestGraphBeautification",
+            ).withAssistantTurnRef(
+                kind = AssistantTurnKind.EXPLANATION,
+                activeIntent = AssistantIntent.EXPLAIN_CODE,
+                sourceMessageType = "requestGraphBeautification",
+                resultId = requestState.assistantFailureResultId("explanation", message),
+                createdAtEpochMillis = requestState.finishedAtEpochMillis ?: System.currentTimeMillis(),
             )
         }
     }
@@ -214,6 +265,12 @@ internal class GraphEditorAsyncRequestStateSupport(
                 generatedCodeDraftPromptPreview = null,
                 generatedCodeDraftWriteReport = null,
                 lastMessageType = "requestGenerationPlan",
+            ).withAssistantTurnRef(
+                kind = AssistantTurnKind.GENERATION_PLAN,
+                activeIntent = AssistantIntent.GENERATE_CODE,
+                sourceMessageType = "requestGenerationPlan",
+                resultId = plan.assistantResultId(),
+                createdAtEpochMillis = requestState.finishedAtEpochMillis ?: System.currentTimeMillis(),
             )
         }
     }
@@ -233,7 +290,7 @@ internal class GraphEditorAsyncRequestStateSupport(
                 generatedCodeDraftPromptPreview = null,
                 generatedCodeDraftWriteReport = null,
                 lastMessageType = "requestGenerationPlan",
-            )
+            ).withAssistantContextFromCurrentState(AssistantIntent.GENERATE_CODE)
         }
     }
 
@@ -249,6 +306,12 @@ internal class GraphEditorAsyncRequestStateSupport(
                 generationPlanDiscussionSession = null,
                 generationPlanDiscussionRequestState = AsyncRequestState(),
                 lastMessageType = "requestGenerationPlan",
+            ).withAssistantTurnRef(
+                kind = AssistantTurnKind.GENERATION_PLAN,
+                activeIntent = AssistantIntent.GENERATE_CODE,
+                sourceMessageType = "requestGenerationPlan",
+                resultId = requestState.assistantFailureResultId("generation-plan", message),
+                createdAtEpochMillis = requestState.finishedAtEpochMillis ?: System.currentTimeMillis(),
             )
         }
     }
@@ -280,6 +343,12 @@ internal class GraphEditorAsyncRequestStateSupport(
                 generationPlanDiscussionSession = result.session.copy(promptPreview = result.promptPreview),
                 generationPlanDiscussionRequestState = requestState,
                 lastMessageType = "requestGenerationPlanDiscussion",
+            ).withAssistantTurnRef(
+                kind = AssistantTurnKind.GENERATION_PLAN,
+                activeIntent = AssistantIntent.GENERATE_CODE,
+                sourceMessageType = "requestGenerationPlanDiscussion",
+                resultId = result.session.sessionId,
+                createdAtEpochMillis = requestState.finishedAtEpochMillis ?: System.currentTimeMillis(),
             )
         }
     }
@@ -291,7 +360,7 @@ internal class GraphEditorAsyncRequestStateSupport(
             it.copy(
                 generationPlanDiscussionRequestState = requestState,
                 lastMessageType = "requestGenerationPlanDiscussion",
-            )
+            ).withAssistantContextFromCurrentState(AssistantIntent.GENERATE_CODE)
         }
     }
 
@@ -303,6 +372,12 @@ internal class GraphEditorAsyncRequestStateSupport(
             it.copy(
                 generationPlanDiscussionRequestState = requestState,
                 lastMessageType = "requestGenerationPlanDiscussion",
+            ).withAssistantTurnRef(
+                kind = AssistantTurnKind.GENERATION_PLAN,
+                activeIntent = AssistantIntent.GENERATE_CODE,
+                sourceMessageType = "requestGenerationPlanDiscussion",
+                resultId = requestState.assistantFailureResultId("generation-discussion", message),
+                createdAtEpochMillis = requestState.finishedAtEpochMillis ?: System.currentTimeMillis(),
             )
         }
     }
@@ -342,6 +417,12 @@ internal class GraphEditorAsyncRequestStateSupport(
                 codeDraftRequestState = requestState,
                 generatedCodeDraftWriteReport = null,
                 lastMessageType = "requestCodeDrafts",
+            ).withAssistantTurnRef(
+                kind = AssistantTurnKind.CODE_DRAFT,
+                activeIntent = AssistantIntent.GENERATE_CODE,
+                sourceMessageType = "requestCodeDrafts",
+                resultId = drafts.firstOrNull()?.id,
+                createdAtEpochMillis = requestState.finishedAtEpochMillis ?: System.currentTimeMillis(),
             )
         }
     }
@@ -357,7 +438,7 @@ internal class GraphEditorAsyncRequestStateSupport(
                 generatedCodeDraftWriteReport = null,
                 codeDraftRequestState = requestState,
                 lastMessageType = "requestCodeDrafts",
-            )
+            ).withAssistantContextFromCurrentState(AssistantIntent.GENERATE_CODE)
         }
     }
 
@@ -375,6 +456,12 @@ internal class GraphEditorAsyncRequestStateSupport(
                 generatedCodeDraftWriteReport = null,
                 codeDraftRequestState = requestState,
                 lastMessageType = "requestCodeDrafts",
+            ).withAssistantTurnRef(
+                kind = AssistantTurnKind.CODE_DRAFT,
+                activeIntent = AssistantIntent.GENERATE_CODE,
+                sourceMessageType = "requestCodeDrafts",
+                resultId = requestState.assistantFailureResultId("code-draft", message),
+                createdAtEpochMillis = requestState.finishedAtEpochMillis ?: System.currentTimeMillis(),
             )
         }
     }
@@ -396,4 +483,45 @@ internal class GraphEditorAsyncRequestStateSupport(
             )
         }
     }
+}
+
+private fun GraphPatchResult.toAssistantIntent(): AssistantIntent =
+    if (requestedMode == QaMode.REVIEW || effectiveMode == QaMode.REVIEW) {
+        AssistantIntent.CHECK_CHANGE
+    } else {
+        AssistantIntent.ASK_CODE
+    }
+
+private fun AsyncRequestState.toQaAssistantIntent(): AssistantIntent =
+    if (requestedMode == QaMode.REVIEW || effectiveMode == QaMode.REVIEW) {
+        AssistantIntent.CHECK_CHANGE
+    } else {
+        AssistantIntent.ASK_CODE
+    }
+
+private fun GraphPatchResult.assistantResultId(prefix: String): String =
+    "$prefix:${assistantStableHash(question.trim() + ASSISTANT_RESULT_HASH_SEPARATOR + answer.trim())}"
+
+private fun GraphBeautificationResult.assistantResultId(): String =
+    "explanation:${assistantStableHash(granularity.name + ASSISTANT_RESULT_HASH_SEPARATOR + steps.joinToString("|") { it.stepId })}"
+
+private fun GenerationPlan.assistantResultId(): String =
+    "generation-plan:${assistantStableHash(summary.trim() + ASSISTANT_RESULT_HASH_SEPARATOR + items.joinToString("|") { it.id })}"
+
+private fun AsyncRequestState.assistantFailureResultId(prefix: String, message: String): String =
+    requestId?.let { "$prefix-failure:$it" }
+        ?: "$prefix-failure:${assistantStableHash(message.trim())}"
+
+private const val ASSISTANT_RESULT_HASH_SEPARATOR = "\u001F"
+private const val FNV_32_OFFSET_BASIS = 0x811c9dc5L
+private const val FNV_32_PRIME = 0x01000193L
+private const val UINT_32_MASK = 0xffffffffL
+
+private fun assistantStableHash(input: String): String {
+    var hash = FNV_32_OFFSET_BASIS
+    input.forEach { char ->
+        hash = hash xor char.code.toLong()
+        hash = (hash * FNV_32_PRIME) and UINT_32_MASK
+    }
+    return hash.toString(16).padStart(8, '0')
 }

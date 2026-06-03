@@ -11,6 +11,7 @@ import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.subject.SubjectPreviewKind
 import com.charmnight.linkgraph.sync.SyncPreviewItem
+import com.charmnight.linkgraph.workbench.AssistantIntent
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.RiskResolutionStatus
@@ -86,6 +87,13 @@ internal sealed interface ApplicationCommand<out R> {
         val selectedNodeIds: List<String> = emptyList(),
         val sourceThreadId: String? = null,
         val mode: QaMode = QaMode.AUTO,
+    ) : ApplicationCommand<Unit>
+
+    data class RequestAssistantTask(
+        val intent: AssistantIntent,
+        val prompt: String,
+        val selectedNodeIds: List<String> = emptyList(),
+        val selectedDiffItemIds: List<String> = emptyList(),
     ) : ApplicationCommand<Unit>
 
     data object RetryLastQaRequest : ApplicationCommand<Unit>

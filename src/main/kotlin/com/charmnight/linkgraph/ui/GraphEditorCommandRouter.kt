@@ -49,6 +49,12 @@ class GraphEditorCommandRouter(
                 sourceThreadId = current.sourceThreadId,
                 mode = current.mode,
             )
+            is GraphEditorMessage.RequestAssistantTask -> ApplicationCommand.RequestAssistantTask(
+                intent = current.intent,
+                prompt = current.prompt,
+                selectedNodeIds = current.selectedNodeIds,
+                selectedDiffItemIds = current.selectedDiffItemIds,
+            )
             GraphEditorMessage.RetryLastQaRequest -> ApplicationCommand.RetryLastQaRequest
             is GraphEditorMessage.ConfirmQaCandidateChange -> ApplicationCommand.ConfirmQaCandidateChange(current.changeId)
             is GraphEditorMessage.UnconfirmQaCandidateChange -> ApplicationCommand.UnconfirmQaCandidateChange(current.changeId)

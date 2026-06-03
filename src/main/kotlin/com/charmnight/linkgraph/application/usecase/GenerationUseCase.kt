@@ -32,6 +32,7 @@ class GenerationUseCase(
         mermaidIssues: List<com.charmnight.linkgraph.mermaid.MermaidIssue>,
         confirmedChanges: List<com.charmnight.linkgraph.workbench.DraftWorkbenchEntry>,
         sourceContext: List<com.charmnight.linkgraph.llm.SourceSnippetContext>,
+        userGoal: String,
     ) -> GenerationPlan,
     private val projectBasePathProvider: () -> String?,
 ) {
@@ -113,6 +114,7 @@ class GenerationUseCase(
                 payload.mermaidIssues,
                 payload.confirmedChanges,
                 payload.sourceContext,
+                payload.userGoal,
             ),
             projectBasePathProvider(),
         )

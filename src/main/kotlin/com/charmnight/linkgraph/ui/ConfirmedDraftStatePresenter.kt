@@ -36,6 +36,7 @@ class ConfirmedDraftStatePresenter(
                 stateService.asyncRequests.markQaResult(
                     result.updatedQaResult,
                     stateService.snapshot().qaRequestState,
+                    appendAssistantTurn = false,
                 )
                 val refreshedSnapshot = RiskResolutionSnapshot(
                     draftWorkbenchState = result.draftState,
@@ -71,6 +72,7 @@ class ConfirmedDraftStatePresenter(
                 stateService.asyncRequests.markQaResult(
                     result.updatedQaResult,
                     stateService.snapshot().qaRequestState,
+                    appendAssistantTurn = false,
                 )
                 val refreshedSnapshot = RiskResolutionSnapshot(
                     draftWorkbenchState = result.draftState,

@@ -50,6 +50,7 @@ internal class PlanningContextFactory(
     fun computePlanningPayload(
         snapshot: WorkflowEditorSnapshot,
         generationPlanOverride: GenerationPlan? = snapshot.generationPlan,
+        userGoal: String = "",
     ): PlanningInput {
         val workingGraph = currentWorkingGraph(snapshot)
         val diffResult = when {
@@ -72,6 +73,7 @@ internal class PlanningContextFactory(
             confirmedChanges = snapshot.draftWorkbenchState.draftChanges,
             mermaidIssues = snapshot.mermaidIssues,
             sourceContext = emptyList(),
+            userGoal = userGoal,
         )
     }
 
@@ -85,6 +87,7 @@ internal class PlanningContextFactory(
         mermaidIssues: List<com.charmnight.linkgraph.mermaid.MermaidIssue>,
         confirmedChanges: List<com.charmnight.linkgraph.workbench.DraftWorkbenchEntry>,
         sourceContext: List<SourceSnippetContext>,
+        userGoal: String = "",
         onPreview: ((String, Boolean) -> Unit)? = null,
         settingsOverride: LinkGraphSettingsState? = null,
         ) = graphGenerationService.generatePlan(
@@ -95,6 +98,7 @@ internal class PlanningContextFactory(
             syncPreviewItems = previewItems,
             confirmedChanges = confirmedChanges,
             sourceContext = sourceContext,
+            userGoal = userGoal,
         ),
         settings = settingsOverride ?: settingsProvider(),
         onPreview = onPreview,

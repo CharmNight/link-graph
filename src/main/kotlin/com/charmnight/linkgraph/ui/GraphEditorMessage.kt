@@ -7,6 +7,7 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.RiskResolutionStatus
+import com.charmnight.linkgraph.workbench.AssistantIntent
 import com.charmnight.linkgraph.workbench.StepGranularity
 
 /**
@@ -137,6 +138,20 @@ sealed interface GraphEditorMessage {
         val sourceThreadId: String? = null,
         /** 保存前端请求的问答模式。 */
         val mode: QaMode = QaMode.AUTO,
+    ) : GraphEditorMessage
+
+    /**
+     * 请求执行统一 AI 工作台任务。
+     */
+    data class RequestAssistantTask(
+        /** 保存一级任务意图。 */
+        val intent: AssistantIntent,
+        /** 保存用户输入。 */
+        val prompt: String,
+        /** 保存选中的节点标识列表。 */
+        val selectedNodeIds: List<String> = emptyList(),
+        /** 保存选中的差异条目标识列表。 */
+        val selectedDiffItemIds: List<String> = emptyList(),
     ) : GraphEditorMessage
 
     /** 请求直接重试最近一次失败的问答。 */

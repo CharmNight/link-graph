@@ -28,7 +28,7 @@ internal class CodeDraftGenerationWorkflow(
     private val dependencies: GenerationWorkflowDependencies,
 ) {
     private val useCase = GenerationUseCase(
-        planSnapshotBuilder = { planningGraph, diff, previewItems, mermaidIssues, confirmedChanges, sourceContext ->
+        planSnapshotBuilder = { planningGraph, diff, previewItems, mermaidIssues, confirmedChanges, sourceContext, userGoal ->
             dependencies.planningContextFactory.buildPlanSnapshot(
                 planningGraph = planningGraph,
                 diff = diff,
@@ -36,6 +36,7 @@ internal class CodeDraftGenerationWorkflow(
                 mermaidIssues = mermaidIssues,
                 confirmedChanges = confirmedChanges,
                 sourceContext = sourceContext,
+                userGoal = userGoal,
             )
         },
         projectBasePathProvider = { dependencies.project.basePath },

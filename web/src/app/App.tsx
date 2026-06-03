@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { undoLastDraftPatchApply } from "./api";
+import { requestAssistantTask, undoLastDraftPatchApply } from "./api";
+import { AssistantWorkbenchShell } from "./assistant/AssistantWorkbenchShell";
+import { buildAssistantTurns } from "./assistant/assistantResultAdapters";
 import {
   applyLayoutUpdatesToGraphDocument,
   applyBootstrapRoutesToViewDocument,
@@ -58,6 +60,7 @@ import { canEditNodeLayout } from "./layoutEditability";
 import type {
   AsyncRequestState,
   AnalysisDisplayMode,
+  AssistantIntent,
   CandidateDraftChange,
   DraftWorkbenchEntry,
   GeneratedCodeDraft,
@@ -75,7 +78,9 @@ import type {
   LinkGraphEdge,
   LinkGraphNode,
   QaRequestRecoveryState,
+  ResultEvidenceReference,
   ReviewGraphViewDocument,
+  RiskResolutionStatus,
   StepGranularity,
 } from "./types";
 import type { EditableStageProps, IndexedReadonlyStageProps } from "./views/viewStageProps";
@@ -359,6 +364,7 @@ export function App() {
     lastMessageType,
     graphSurfaceExperiments,
     artifactContents,
+    assistantSessionState,
   } = projectionState;
   const {
     setDetailNodeId,
@@ -401,8 +407,10 @@ export function App() {
     setLastMessageType,
     setGraphSurfaceExperiments,
     setArtifactContents,
+    setAssistantSessionState,
   } = projectionSetters;
   const [generationPlanDiscussionQuestionDraft, setGenerationPlanDiscussionQuestionDraft] = useState("");
+  const [assistantComposerDraft, setAssistantComposerDraft] = useState("");
   const bridgeCommands = useBridgeCommandController({
     setOperationFeedback,
     setRequestFailureNotice,
@@ -467,6 +475,89 @@ export function App() {
   const activeWorkbenchTabForDerived = workflowStageToWorkbenchTab(activeWorkflowStage) ?? "qa";
   function setActiveWorkbenchTabCompat(tab: WorkbenchTab) {
     setActiveWorkflowStage(workbenchTabToWorkflowStage(tab));
+  }
+  function updateAssistantIntent(intent: AssistantIntent) {
+    setAssistantSessionState((current) => ({
+      ...current,
+      activeIntent: intent,
+    }));
+  }
+
+  function selectedAssistantNodeIds() {
+    if (selectionGroupNodeIds.length > 0) {
+      return selectionGroupNodeIds;
+    }
+    return selectedNodeId ? [selectedNodeId] : [];
+  }
+
+  function selectedAssistantDiffItemIds() {
+    if (diffTargetItemIds.length > 0) {
+      return diffTargetItemIds;
+    }
+    return selectedNodeId && diffItems.some((item) => item.id === selectedNodeId) ? [selectedNodeId] : [];
+  }
+
+  function handleAssistantIntentChange(intent: AssistantIntent) {
+    updateAssistantIntent(intent);
+  }
+
+  function handleAssistantSubmit(intent: AssistantIntent, prompt: string) {
+    const normalizedPrompt = prompt.trim();
+    if (!normalizedPrompt && intent !== "CHECK_CHANGE") {
+      return;
+    }
+    updateAssistantIntent(intent);
+    switch (intent) {
+      case "EXPLAIN_CODE":
+        setActiveWorkflowStage("understand");
+        break;
+      case "ASK_CODE":
+        setActiveWorkflowStage("qa");
+        break;
+      case "GENERATE_CODE":
+        setActiveWorkflowStage("code");
+        break;
+      case "CHECK_CHANGE":
+        setActiveWorkflowStage("qa");
+        break;
+    }
+    bridgeCommands.submitAsyncBridgeCommand(
+      "AI 代码工作台",
+      () => requestAssistantTask({
+        intent,
+        prompt: normalizedPrompt,
+        selectedNodeIds: selectedAssistantNodeIds(),
+        selectedDiffItemIds: selectedAssistantDiffItemIds(),
+      }),
+      {
+        successFeedback: {
+          level: "INFO",
+          message: "已提交 AI 代码工作台请求。",
+        },
+      },
+    );
+  }
+
+  function handleAssistantRevealReference(reference: ResultEvidenceReference) {
+    if (reference.nodeId) {
+      const displayedNodeId = resolveDisplayedNodeId(reference.nodeId, nodes) ?? reference.nodeId;
+      setSelectedNodeId(displayedNodeId);
+      requestViewportFocus(displayedNodeId);
+      setDetailNodeId(displayedNodeId);
+      return;
+    }
+    setOperationFeedback({
+      level: "WARNING",
+      message: reference.filePath
+        ? `当前引用来自源码文件：${reference.filePath}`
+        : "当前引用没有可直接定位的图节点。",
+    });
+  }
+
+  function handleAssistantResolveThread(threadId: string, status: RiskResolutionStatus) {
+    if (status === "DEFERRED" || status === "ACCEPTED_RISK" || status === "DISMISSED") {
+      handleResolveQaThread(threadId, status);
+    }
   }
   function handleRequestAnalysisDisplayMode(displayMode: AnalysisDisplayMode) {
     if (displayMode === "REVIEW_GRAPH") {
@@ -745,6 +836,16 @@ export function App() {
     resolveDisplayedNodeId,
     resolveEvidenceTargetNodeId,
   });
+
+  function handleEditFailedQaRequestFromAssistantWorkbench() {
+    const failedRequest = qaRequestRecoveryState.lastFailedRequest;
+    handleEditFailedQaRequest();
+    if (!failedRequest) {
+      return;
+    }
+    setAssistantComposerDraft(failedRequest.question);
+    updateAssistantIntent("ASK_CODE");
+  }
   const { applyBootstrapState } = useBootstrapProjectionState({
     nodesRef,
     edgesRef,
@@ -1138,7 +1239,7 @@ export function App() {
     onQuestionModeChange: setQaQuestionMode,
     onSubmitQuestion: () => handleRequestQa(qaQuestionDraft),
     onRetryLastRequest: handleRetryLastQaRequest,
-    onEditFailedRequest: handleEditFailedQaRequest,
+    onEditFailedRequest: handleEditFailedQaRequestFromAssistantWorkbench,
     onSelectChange: handleSelectQaChange,
     onConfirmChange: handleConfirmCandidateChange,
     onSelectThread: handleSelectQaThread,
@@ -1345,7 +1446,33 @@ export function App() {
     });
   }
 
-  const stageWorkbenchContent = activeWorkflowStage === "evidence"
+  const assistantTurns = useMemo(() => buildAssistantTurns({
+    assistantSessionState,
+    qaResult,
+    graphBeautificationResult,
+    generationPlan,
+    generationPlanDiscussionSession,
+    generatedCodeDrafts,
+    diffReviewResult,
+  }), [
+    assistantSessionState,
+    diffReviewResult,
+    generatedCodeDrafts,
+    generationPlan,
+    generationPlanDiscussionSession,
+    graphBeautificationResult,
+    qaResult,
+  ]);
+  const visibleAssistantTurns = assistantSessionState.turns.length > 0 ? assistantTurns : [];
+  const assistantRequestRunning = [
+    qaRequestState,
+    diffReviewRequestState,
+    graphBeautificationRequestState,
+    generationPlanRequestState,
+    generationPlanDiscussionRequestState,
+    codeDraftRequestState,
+  ].some((state) => state.phase === "RUNNING");
+  const legacyWorkbenchContent = activeWorkflowStage === "evidence"
     ? (
       <EvidenceStagePanel
         state={evidencePanelState}
@@ -1368,6 +1495,38 @@ export function App() {
         showTabs={false}
       />
     );
+  const assistantWorkbenchContent = (
+    <AssistantWorkbenchShell
+      assistantSessionState={assistantSessionState}
+      turns={visibleAssistantTurns}
+      activeIntent={assistantSessionState.activeIntent}
+      requestRunning={assistantRequestRunning}
+      qaRequestRecoveryState={qaRequestRecoveryState}
+      composerDraft={assistantComposerDraft}
+      onComposerDraftChange={setAssistantComposerDraft}
+      generationDiscussionQuestionDraft={generationPlanDiscussionQuestionDraft}
+      onGenerationDiscussionQuestionDraftChange={setGenerationPlanDiscussionQuestionDraft}
+      onSubmitGenerationDiscussion={handleRequestGenerationPlanDiscussion}
+      onIntentChange={handleAssistantIntentChange}
+      onSubmit={handleAssistantSubmit}
+      onRetryLastQaRequest={handleRetryLastQaRequest}
+      onEditFailedQaRequest={handleEditFailedQaRequestFromAssistantWorkbench}
+      onRequestGenerationPlan={handleRequestGenerationPlan}
+      onRequestCodeDrafts={handleRequestCodeDrafts}
+      onWriteCodeDrafts={workbenchCommands.handleWriteDrafts}
+      onWriteSingleCodeDraft={handleWriteSingleCodeDraft}
+      onOpenNativeDiff={handleOpenCodeDraftNativeDiff}
+      onOpenDraft={workbenchCommands.handleOpenDraft}
+      onRevealReference={handleAssistantRevealReference}
+      onFollowUpExplanationStep={handleFollowUpExplanationStep}
+      onReturnToPreviousExplanation={handleReturnToPreviousExplanation}
+      canReturnToPreviousExplanation={explanationHistory.length > 0}
+      onConfirmCandidateChange={handleConfirmCandidateChange}
+      onInvestigateThread={handleInvestigateQaThread}
+      onResolveThread={handleAssistantResolveThread}
+      legacyWorkbenchContent={legacyWorkbenchContent}
+    />
+  );
   const graphFocusedLayout = analysisDisplayMode === "CLASS_DIAGRAM" || isProjectStructureDisplay(
     analysisDisplayMode,
     architectureGraphView.summary.indexed ?? null,
@@ -1489,7 +1648,7 @@ export function App() {
               activeStage={activeWorkflowStage}
               stageStates={workflowStageStates}
               onStageChange={handleWorkflowStageChange}
-              content={stageWorkbenchContent}
+              content={assistantWorkbenchContent}
             />
           )}
         />

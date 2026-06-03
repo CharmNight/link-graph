@@ -4,6 +4,7 @@ import {
   announceFrontendReady,
   publishGraphEditScript,
   readBootstrapState,
+  requestAssistantTask,
   requestQaAsync,
   requestAnalysisDisplayMode,
   requestCurrentEditorContextGraph,
@@ -379,6 +380,28 @@ describe("publishGraphEditScript", () => {
       preset: "REVIEW",
       selectedDiffItemIds: ["diff:1"],
       review: { maxChangedNodes: 160 },
+    });
+  });
+
+  it("sends assistant tasks through the unified bridge command", () => {
+    const requestAssistantTaskBridge = vi.fn();
+    window.linkGraphBridge = {
+      requestAssistantTask: requestAssistantTaskBridge,
+    };
+
+    const result = requestAssistantTask({
+      intent: "CHECK_CHANGE",
+      prompt: "检查这次改动",
+      selectedNodeIds: ["method:submit-order"],
+      selectedDiffItemIds: ["diff:OrderController.kt"],
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(requestAssistantTaskBridge).toHaveBeenCalledWith({
+      intent: "CHECK_CHANGE",
+      prompt: "检查这次改动",
+      selectedNodeIds: ["method:submit-order"],
+      selectedDiffItemIds: ["diff:OrderController.kt"],
     });
   });
 

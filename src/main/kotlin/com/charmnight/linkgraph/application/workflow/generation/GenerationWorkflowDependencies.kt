@@ -75,6 +75,7 @@ internal fun GenerationWorkflowDependencies.buildGenerationContext(payload: Plan
         syncPreviewItems = payload.previewItems,
         confirmedChanges = payload.confirmedChanges,
         sourceContext = payload.sourceContext,
+        userGoal = payload.userGoal,
     )
 }
 

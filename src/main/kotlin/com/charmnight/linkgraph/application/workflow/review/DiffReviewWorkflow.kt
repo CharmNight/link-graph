@@ -64,6 +64,7 @@ internal class DiffReviewWorkflow(
             ReviewRequestStartedResult(
                 scene = ReviewRequestScene.DIFF_REVIEW,
                 requestState = presentation.requestState,
+                selectedDiffItemIds = selectedDiffItemIds,
                 statusMessage = if (presentation.remoteRequested) {
                     if (presentation.streamingSupported) {
                         "已发起远程 LLM 差异分析请求，当前采用流式输出。"
@@ -91,6 +92,7 @@ internal class DiffReviewWorkflow(
                     DiffReviewFailedResult(
                         message = timedOutState.errorMessage ?: "差异分析超时",
                         requestState = timedOutState,
+                        selectedDiffItemIds = selectedDiffItemIds,
                     ),
                 )
             },
@@ -123,6 +125,7 @@ internal class DiffReviewWorkflow(
                                     message = contextResult.message,
                                     scene = "差异分析",
                                 ),
+                                selectedDiffItemIds = selectedDiffItemIds,
                                 feedbackLevel = ApplicationFeedbackLevel.WARNING,
                             ),
                         )
@@ -135,6 +138,7 @@ internal class DiffReviewWorkflow(
                             question = question,
                             settings = settings,
                             previewUpdater = previewUpdater,
+                            selectedDiffItemIds = selectedDiffItemIds,
                         )
                     }
                 }
@@ -149,6 +153,7 @@ internal class DiffReviewWorkflow(
         question: String,
         settings: LinkGraphSettingsState,
         previewUpdater: ((String, Boolean) -> Unit)?,
+        selectedDiffItemIds: List<String>,
     ) {
         asyncRequestLifecycle.runBackgroundTask(
             work = {
@@ -188,6 +193,7 @@ internal class DiffReviewWorkflow(
                             DiffReviewCompletedResult(
                                 result = resultWithContextWarnings,
                                 requestState = requestState,
+                                selectedDiffItemIds = selectedDiffItemIds,
                                 feedbackLevel = feedbackLevel,
                                 statusMessage = requestState.statusMessage
                                     ?: if (resultWithContextWarnings.patch != null) {
@@ -207,6 +213,7 @@ internal class DiffReviewWorkflow(
                             DiffReviewFailedResult(
                                 message = message,
                                 requestState = requestState,
+                                selectedDiffItemIds = selectedDiffItemIds,
                             ),
                         )
                     },

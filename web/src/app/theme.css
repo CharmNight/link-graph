@@ -6216,6 +6216,213 @@ button:disabled {
   scrollbar-gutter: stable;
 }
 
+.assistant-workbench-shell {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto auto minmax(96px, 0.36fr) minmax(0, 0.64fr) auto;
+  border-left: 1px solid var(--line);
+  background: var(--shell);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.assistant-context-bar {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-soft);
+}
+
+.assistant-context-bar h2 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.28;
+  overflow-wrap: anywhere;
+}
+
+.assistant-context-meta {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.assistant-context-meta .toolbar-chip {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-intent-selector {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--shell);
+}
+
+.assistant-intent-button {
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.assistant-intent-button.active {
+  border-color: rgba(45, 212, 191, 0.38);
+  background: rgba(45, 212, 191, 0.12);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.assistant-thread {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.assistant-thread-empty,
+.assistant-turn-card {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.assistant-thread-empty p,
+.assistant-turn-card p {
+  margin: 0;
+  line-height: 1.58;
+  overflow-wrap: anywhere;
+}
+
+.assistant-turn-head,
+.assistant-composer-actions,
+.assistant-recovery-actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.assistant-turn-kind {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.assistant-card-flow,
+.assistant-evidence-block,
+.assistant-evidence-list,
+.assistant-evidence-item {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.assistant-evidence-block {
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.assistant-evidence-item {
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.assistant-question {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--canvas);
+  color: var(--text);
+}
+
+.assistant-turn-card textarea,
+.assistant-composer textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--text);
+  padding: 10px;
+  font: inherit;
+  line-height: 1.5;
+}
+
+.assistant-turn-card textarea::placeholder,
+.assistant-composer textarea::placeholder {
+  color: var(--dim);
+}
+
+.assistant-composer {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+  background: var(--panel-soft);
+}
+
+.assistant-composer-sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+}
+
+.assistant-legacy-workbench {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+  background: var(--shell);
+}
+
+.assistant-legacy-workbench > * {
+  min-height: 0;
+  height: 100%;
+}
+
+.stage-workbench-panel .assistant-workbench-shell {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
 @container (max-width: 620px) {
   .workbench-tab-head {
     display: grid;

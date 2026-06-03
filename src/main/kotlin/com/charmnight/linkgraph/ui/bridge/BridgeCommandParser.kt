@@ -6,6 +6,7 @@ import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.ui.GraphBrowserPayloadKind
 import com.charmnight.linkgraph.ui.GraphBrowserPayloadParser
 import com.charmnight.linkgraph.ui.GraphEditorMessage
+import com.charmnight.linkgraph.workbench.AssistantIntent
 import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.RiskResolutionStatus
 import com.charmnight.linkgraph.workbench.StepGranularity
@@ -23,6 +24,7 @@ internal object BridgeCommandParser {
 
     private val asyncCommandTypes = setOf(
         "requestQa",
+        "requestAssistantTask",
         "requestGraphBeautification",
         "requestIndexedGraph",
         "requestOpenSettings",
@@ -65,6 +67,12 @@ internal object BridgeCommandParser {
                 selectedNodeIds = payload.stringList("selectedNodeIds"),
                 sourceThreadId = payload.string("sourceThreadId")?.takeIf(String::isNotBlank),
                 mode = payload.enumOrDefault("mode", QaMode.AUTO),
+            )
+            "requestAssistantTask" -> GraphEditorMessage.RequestAssistantTask(
+                intent = payload.enum<AssistantIntent>("intent"),
+                prompt = payload.string("prompt").orEmpty(),
+                selectedNodeIds = payload.stringList("selectedNodeIds"),
+                selectedDiffItemIds = payload.stringList("selectedDiffItemIds"),
             )
             "retryLastQaRequest" -> GraphEditorMessage.RetryLastQaRequest
             "confirmQaCandidateChange" -> GraphEditorMessage.ConfirmQaCandidateChange(
@@ -183,6 +191,7 @@ internal object BridgeCommandParser {
             "showDiffMode" -> "切换差异模式"
             "requestSyncPreview" -> "请求同步预览"
             "requestQa" -> "问答"
+            "requestAssistantTask" -> "AI 代码工作台"
             "retryLastQaRequest" -> "重试问答"
             "confirmQaCandidateChange" -> "确认问答候选变更"
             "unconfirmQaCandidateChange" -> "取消确认问答候选变更"

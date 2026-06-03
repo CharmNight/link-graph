@@ -63,11 +63,60 @@ import com.charmnight.linkgraph.workbench.QaRequestKind
 import com.charmnight.linkgraph.workbench.QaRequestRecoveryState
 import com.charmnight.linkgraph.workbench.ReplayableQaRequest
 import com.charmnight.linkgraph.workbench.StageEligibilityDecision
+import com.charmnight.linkgraph.workbench.AssistantContextSnapshot
+import com.charmnight.linkgraph.workbench.AssistantIntent
+import com.charmnight.linkgraph.workbench.AssistantSessionState
+import com.charmnight.linkgraph.workbench.AssistantTurnKind
+import com.charmnight.linkgraph.workbench.AssistantTurnRef
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GraphEditorPageRendererTest {
+    @Test
+    fun bootstrapJsonIncludesAssistantSessionState() {
+        val renderer = GraphEditorPageRenderer()
+        val snapshot = testSnapshot().copy(
+            assistantSessionState = AssistantSessionState(
+                sessionId = "assistant-session-test",
+                activeIntent = AssistantIntent.CHECK_CHANGE,
+                contextLocked = true,
+                context = AssistantContextSnapshot(
+                    selectedNodeIds = listOf("method:submit-order"),
+                    selectedDiffItemIds = listOf("diff:OrderController.kt"),
+                    analysisDisplayMode = "REVIEW_GRAPH",
+                    currentSceneId = "WORKSPACE_REVIEW_GRAPH",
+                    selectedMethodSignature = "com.example.OrderController.submit():void",
+                    scopeLabel = "当前改动",
+                ),
+                turns = listOf(
+                    AssistantTurnRef(
+                        turnId = "turn-check-1",
+                        kind = AssistantTurnKind.CHECK_RESULT,
+                        sourceMessageType = "requestDiffReview",
+                        resultId = "diff-review:1",
+                        createdAtEpochMillis = 42,
+                        context = AssistantContextSnapshot(
+                            selectedNodeIds = listOf("method:submit-order"),
+                            selectedDiffItemIds = listOf("diff:OrderController.kt"),
+                            scopeLabel = "当前改动",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val json = renderer.bootstrapJson(snapshot)
+
+        assertTrue(json.contains(""""assistantSessionState""""))
+        assertTrue(json.contains(""""activeIntent":"CHECK_CHANGE""""))
+        assertTrue(json.contains(""""contextLocked":true"""))
+        assertTrue(json.contains(""""selectedNodeIds":["method:submit-order"]"""))
+        assertTrue(json.contains(""""selectedDiffItemIds":["diff:OrderController.kt"]"""))
+        assertTrue(json.contains(""""kind":"CHECK_RESULT""""))
+        assertFalse(json.contains(""""assistantSessionState":{"qaResult""""))
+    }
+
     @Test
     fun bootstrapJson序列化事实图展示语义() {
         val renderer = GraphEditorPageRenderer()

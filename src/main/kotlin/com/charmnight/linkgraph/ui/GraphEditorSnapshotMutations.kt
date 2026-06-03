@@ -56,7 +56,7 @@ internal fun GraphEditorStateSnapshot.withLoadedGraph(
         selectedMethodSignature = selectedMethodSignature,
         lastGraphSource = source,
         lastMessageType = "loadGraph",
-    )
+    ).withAssistantContextFromCurrentState()
 }
 
 internal fun GraphEditorStateSnapshot.withLoadedGraphProjection(
@@ -110,7 +110,7 @@ internal fun GraphEditorStateSnapshot.withLoadedGraphProjection(
         selectedMethodSignature = effectiveSignature,
         lastGraphSource = source,
         lastMessageType = "loadGraph",
-    )
+    ).withAssistantContextFromCurrentState()
 }
 
 internal fun GraphEditorStateSnapshot.withLoadedAnalysisOutcome(
@@ -203,7 +203,7 @@ internal fun GraphEditorStateSnapshot.withLoadedAnalysisOutcome(
             message = outcome.statusMessage,
         ),
         lastMessageType = "loadAnalysisOutcome",
-    )
+    ).withAssistantContextFromCurrentState()
 }
 
 internal fun GraphEditorStateSnapshot.withSwitchedAnalysisDisplayMode(
@@ -231,7 +231,7 @@ internal fun GraphEditorStateSnapshot.withSwitchedAnalysisDisplayMode(
         sceneStates = sceneStates.withSceneState(nextScene, nextSceneState),
         snapshotRevision = snapshotRevision + 1,
         lastMessageType = "displayModeSwitch",
-    )
+    ).withAssistantContextFromCurrentState()
 }
 
 internal fun GraphEditorStateSnapshot.withIndexedGraphRequestStarted(

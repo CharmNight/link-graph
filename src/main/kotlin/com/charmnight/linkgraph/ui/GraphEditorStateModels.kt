@@ -28,6 +28,7 @@ import com.charmnight.linkgraph.workbench.DraftWorkbenchState
 import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession
 import com.charmnight.linkgraph.workbench.QaRequestRecoveryState
 import com.charmnight.linkgraph.workbench.StageEligibilityDecision
+import com.charmnight.linkgraph.workbench.AssistantSessionState
 
 data class DraftPatchUndoState(
     val graphBeforeApply: GraphDocument,
@@ -115,6 +116,7 @@ data class GraphEditorStateSnapshot(
     val snapshotRevision: Long = 0,
     val operationFeedback: OperationFeedback? = null,
     val workbenchSectionPreferences: Map<String, Boolean> = emptyMap(),
+    val assistantSessionState: AssistantSessionState = AssistantSessionState(sessionId = "assistant-session"),
     val lastMessageType: String? = null,
 ) {
     fun sceneState(sceneId: GraphSceneId): GraphSceneState = sceneStates[sceneId] ?: GraphSceneState()

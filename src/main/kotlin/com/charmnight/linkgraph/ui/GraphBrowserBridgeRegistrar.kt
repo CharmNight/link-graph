@@ -93,6 +93,12 @@ internal class GraphBrowserBridgeRegistrar(
                   sourceThreadId: sourceThreadId || null,
                   mode: mode || "AUTO"
                 }),
+                requestAssistantTask: (request) => sendCommand("requestAssistantTask", {
+                  intent: request && request.intent ? request.intent : "EXPLAIN_CODE",
+                  prompt: request && request.prompt ? request.prompt : "",
+                  selectedNodeIds: request && Array.isArray(request.selectedNodeIds) ? request.selectedNodeIds : [],
+                  selectedDiffItemIds: request && Array.isArray(request.selectedDiffItemIds) ? request.selectedDiffItemIds : []
+                }),
                 retryLastQaRequest: () => sendCommand("retryLastQaRequest"),
                 confirmQaCandidateChange: (changeId) => sendCommand("confirmQaCandidateChange", { changeId }),
                 unconfirmQaCandidateChange: (changeId) => sendCommand("unconfirmQaCandidateChange", { changeId }),

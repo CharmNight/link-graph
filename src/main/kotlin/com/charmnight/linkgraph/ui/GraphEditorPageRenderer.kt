@@ -377,6 +377,7 @@ class GraphEditorPageRenderer {
             "snapshotRevision" to editorSnapshot.snapshotRevision,
             "sourceNavigationState" to sourceNavigationStateToMap(snapshot.sourceNavigationState),
             "workbenchSectionPreferences" to LinkedHashMap(snapshot.workbenchSectionPreferences),
+            "assistantSessionState" to assistantSessionStateToMap(snapshot.assistantSessionState),
             "lastMessageType" to snapshot.lastMessageType,
             "lastGraphSource" to snapshot.lastGraphSource,
             "operationFeedback" to snapshot.operationFeedback?.let { feedback ->
@@ -459,6 +460,36 @@ class GraphEditorPageRenderer {
         "selectedNodeIds" to request.selectedNodeIds,
         "sourceThreadId" to request.sourceThreadId,
         "baseSessionId" to request.baseSession?.sessionId,
+    )
+
+    private fun assistantSessionStateToMap(
+        state: com.charmnight.linkgraph.workbench.AssistantSessionState,
+    ): Map<String, Any?> = linkedMapOf(
+        "sessionId" to state.sessionId,
+        "activeIntent" to state.activeIntent.name,
+        "contextLocked" to state.contextLocked,
+        "context" to assistantContextSnapshotToMap(state.context),
+        "turns" to state.turns.map { turn ->
+            linkedMapOf(
+                "turnId" to turn.turnId,
+                "kind" to turn.kind.name,
+                "sourceMessageType" to turn.sourceMessageType,
+                "resultId" to turn.resultId,
+                "createdAtEpochMillis" to turn.createdAtEpochMillis,
+                "context" to assistantContextSnapshotToMap(turn.context),
+            )
+        },
+    )
+
+    private fun assistantContextSnapshotToMap(
+        context: com.charmnight.linkgraph.workbench.AssistantContextSnapshot,
+    ): Map<String, Any?> = linkedMapOf(
+        "selectedNodeIds" to context.selectedNodeIds,
+        "selectedDiffItemIds" to context.selectedDiffItemIds,
+        "analysisDisplayMode" to context.analysisDisplayMode,
+        "currentSceneId" to context.currentSceneId,
+        "selectedMethodSignature" to context.selectedMethodSignature,
+        "scopeLabel" to context.scopeLabel,
     )
 
     private fun stageEligibilityDecisionToMap(

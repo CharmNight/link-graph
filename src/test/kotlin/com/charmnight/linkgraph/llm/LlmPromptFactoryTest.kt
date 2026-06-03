@@ -23,6 +23,32 @@ import kotlin.test.assertTrue
 
 class LlmPromptFactoryTest {
     @Test
+    fun generationPromptIncludesAssistantUserGoal() {
+        val promptPackage = LlmPromptFactory().buildGenerationPromptPackage(
+            snapshot = GenerationContext(
+                graph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:submit-order",
+                            type = NodeType.METHOD,
+                            title = "OrderController.submit",
+                            sourceTag = GraphSourceTag.FACT,
+                        ),
+                    ),
+                ),
+                userGoal = "补充订单提交失败时的兜底处理",
+            ),
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                model = "gpt-test",
+            ),
+        )
+
+        assertTrue(promptPackage.userPrompt.contains("用户目标：补充订单提交失败时的兜底处理"))
+    }
+
+    @Test
     fun qaPromptPackageTrimsLargeUserPromptToBudget() {
         val hugeSnippet = buildString {
             repeat(600) {

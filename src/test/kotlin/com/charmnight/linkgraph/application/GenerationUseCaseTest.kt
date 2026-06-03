@@ -91,7 +91,7 @@ class GenerationUseCaseTest {
 
     private fun useCase(): GenerationUseCase {
         return GenerationUseCase(
-            planSnapshotBuilder = { _, _, _, _, _, _ ->
+            planSnapshotBuilder = { _, _, _, _, _, _, _ ->
                 GenerationPlan(
                     source = GenerationPlanSource.LOCAL_RULE,
                     summary = "fallback",

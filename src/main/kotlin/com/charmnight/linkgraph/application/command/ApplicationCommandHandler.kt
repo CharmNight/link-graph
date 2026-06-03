@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.application.command
 
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
+import com.charmnight.linkgraph.application.indexed.requestReviewGraphRequest
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
 import com.charmnight.linkgraph.application.workflow.ConfirmedDraftChangeCoordinator
@@ -19,10 +20,117 @@ import com.charmnight.linkgraph.application.workflow.generation.CodeDraftGenerat
 import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanDiscussionWorkflow
 import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanWorkflow
 import com.charmnight.linkgraph.application.workflow.review.ReviewGraphWorkflow
+import com.charmnight.linkgraph.workbench.AssistantIntent
+import com.charmnight.linkgraph.workbench.QaMode
 
 internal interface ApplicationCommandHandler {
     fun canHandle(command: ApplicationCommand<*>): Boolean
     fun handle(command: ApplicationCommand<*>): Any?
+}
+
+internal interface AssistantTaskExecutor {
+    fun requestGraphBeautification(
+        goal: String,
+        focusNodeId: String?,
+    )
+
+    fun requestQa(
+        question: String,
+        selectedNodeIds: List<String>,
+        mode: QaMode,
+    )
+
+    fun requestGenerationPlan(userGoal: String)
+
+    fun requestReviewGraph(selectedDiffItemIds: List<String>)
+
+    fun requestDiffReview(
+        question: String,
+        selectedDiffItemIds: List<String>,
+    )
+}
+
+internal class WorkflowAssistantTaskExecutor(
+    private val reviewFlow: ReviewWorkflow,
+    private val reviewGraphFlow: ReviewGraphWorkflow,
+    private val generationPlanFlow: GenerationPlanWorkflow,
+) : AssistantTaskExecutor {
+    override fun requestGraphBeautification(
+        goal: String,
+        focusNodeId: String?,
+    ) {
+        reviewFlow.requestGraphBeautificationAsync(
+            goal = goal,
+            focusNodeId = focusNodeId,
+        )
+    }
+
+    override fun requestQa(
+        question: String,
+        selectedNodeIds: List<String>,
+        mode: QaMode,
+    ) {
+        reviewFlow.requestQaAsync(
+            question = question,
+            selectedNodeIds = selectedNodeIds,
+            mode = mode,
+        )
+    }
+
+    override fun requestGenerationPlan(userGoal: String) {
+        generationPlanFlow.requestGenerationPlanAsync(userGoal)
+    }
+
+    override fun requestReviewGraph(selectedDiffItemIds: List<String>) {
+        reviewGraphFlow.requestIndexedGraph(requestReviewGraphRequest(selectedDiffItemIds))
+    }
+
+    override fun requestDiffReview(
+        question: String,
+        selectedDiffItemIds: List<String>,
+    ) {
+        reviewFlow.requestDiffReviewAsync(question, selectedDiffItemIds)
+    }
+}
+
+internal class AssistantApplicationCommandHandler(
+    private val executor: AssistantTaskExecutor,
+) : ApplicationCommandHandler {
+    override fun canHandle(command: ApplicationCommand<*>): Boolean =
+        command is ApplicationCommand.RequestAssistantTask
+
+    override fun handle(command: ApplicationCommand<*>): Any? =
+        when (command) {
+            is ApplicationCommand.RequestAssistantTask -> handleAssistantTask(command)
+            else -> unhandled(command)
+        }
+
+    private fun handleAssistantTask(command: ApplicationCommand.RequestAssistantTask) {
+        val prompt = command.prompt.trim()
+        when (command.intent) {
+            AssistantIntent.EXPLAIN_CODE -> executor.requestGraphBeautification(
+                goal = prompt,
+                focusNodeId = command.selectedNodeIds.firstOrNull(),
+            )
+            AssistantIntent.ASK_CODE -> executor.requestQa(
+                question = prompt,
+                selectedNodeIds = command.selectedNodeIds,
+                mode = QaMode.AUTO,
+            )
+            AssistantIntent.GENERATE_CODE -> executor.requestGenerationPlan(prompt)
+            AssistantIntent.CHECK_CHANGE -> {
+                executor.requestReviewGraph(command.selectedDiffItemIds)
+                executor.requestDiffReview(
+                    question = prompt.ifBlank { DEFAULT_CHECK_CHANGE_PROMPT },
+                    selectedDiffItemIds = command.selectedDiffItemIds,
+                )
+            }
+        }
+    }
+
+    private companion object {
+        const val DEFAULT_CHECK_CHANGE_PROMPT: String = "请检查当前改动的风险、影响范围和相关测试。"
+    }
 }
 
 internal class SubjectApplicationCommandHandler(

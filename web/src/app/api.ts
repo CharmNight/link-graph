@@ -1,5 +1,6 @@
 import type {
   AnalysisDisplayMode,
+  AssistantIntent,
   BindingStatus,
   Certainty,
   DraftPatchPreviewSource,
@@ -46,6 +47,7 @@ export type BridgeCommandType =
   | "showDiffMode"
   | "requestSyncPreview"
   | "requestQa"
+  | "requestAssistantTask"
   | "retryLastQaRequest"
   | "confirmQaCandidateChange"
   | "unconfirmQaCandidateChange"
@@ -85,6 +87,13 @@ export type BridgeCommandEnvelope = {
 };
 type Bridge = NonNullable<Window["linkGraphBridge"]>;
 type BridgeMethodName = keyof Bridge;
+
+export interface AssistantTaskRequest {
+  intent: AssistantIntent;
+  prompt: string;
+  selectedNodeIds?: string[];
+  selectedDiffItemIds?: string[];
+}
 
 export type BridgeInvocationResult =
   | { ok: true }
@@ -126,6 +135,7 @@ declare global {
       showDiffMode?: () => void;
       requestSyncPreview?: () => void;
       requestQa?: (question: string, selectedNodeIds?: string[], sourceThreadId?: string | null, mode?: QaMode) => void;
+      requestAssistantTask?: (request: AssistantTaskRequest) => void;
       retryLastQaRequest?: () => void;
       confirmQaCandidateChange?: (changeId: string) => void;
       unconfirmQaCandidateChange?: (changeId: string) => void;
@@ -337,6 +347,18 @@ export function requestQaAsync(
     sourceThreadId,
     mode,
   });
+}
+
+export function requestAssistantTask(request: AssistantTaskRequest): BridgeInvocationResult {
+  const payload = {
+    intent: request.intent,
+    prompt: request.prompt,
+    selectedNodeIds: request.selectedNodeIds ?? [],
+    selectedDiffItemIds: request.selectedDiffItemIds ?? [],
+  };
+  return invokeBridgeAction("requestAssistantTask", (bridge) => {
+    bridge.requestAssistantTask?.(payload);
+  }, payload);
 }
 
 export function retryLastQaRequestAsync(): BridgeInvocationResult {

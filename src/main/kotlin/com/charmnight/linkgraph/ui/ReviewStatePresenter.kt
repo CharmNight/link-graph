@@ -36,7 +36,10 @@ class ReviewStatePresenter(
                     submittedRequest = presentation.submittedRequest,
                 )
             }
-            ReviewRequestScene.DIFF_REVIEW -> stateService.asyncRequests.beginDiffReviewRequest(presentation.requestState)
+            ReviewRequestScene.DIFF_REVIEW -> stateService.asyncRequests.beginDiffReviewRequest(
+                presentation.requestState,
+                selectedDiffItemIds = presentation.selectedDiffItemIds,
+            )
             ReviewRequestScene.BEAUTIFICATION -> stateService.asyncRequests.beginGraphBeautificationRequest(presentation.requestState)
         }
         presentation.clearRuntimeArtifactScene?.let { scene ->
@@ -97,14 +100,22 @@ class ReviewStatePresenter(
     }
 
     fun presentDiffReviewCompleted(presentation: DiffReviewCompletedResult) {
-        stateService.asyncRequests.markDiffReviewResult(presentation.result, presentation.requestState)
+        stateService.asyncRequests.markDiffReviewResult(
+            presentation.result,
+            presentation.requestState,
+            selectedDiffItemIds = presentation.selectedDiffItemIds,
+        )
         presentation.result.patch?.let(stateService.workbench::markDraftPatchPreview)
         markOptionalFeedback(presentation.feedbackLevel, presentation.statusMessage)
         requestBrowserSync()
     }
 
     fun presentDiffReviewFailed(presentation: DiffReviewFailedResult) {
-        stateService.asyncRequests.markDiffReviewRequestFailed(presentation.message, presentation.requestState)
+        stateService.asyncRequests.markDiffReviewRequestFailed(
+            presentation.message,
+            presentation.requestState,
+            selectedDiffItemIds = presentation.selectedDiffItemIds,
+        )
         stateService.workbench.markOperationFeedback(
             presentation.feedbackLevel.toOperationFeedbackLevel(),
             presentation.message,

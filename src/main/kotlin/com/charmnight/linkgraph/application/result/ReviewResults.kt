@@ -32,6 +32,7 @@ data class DiffReviewCompletedResult(
     val requestState: AsyncRequestState,
     val feedbackLevel: ApplicationFeedbackLevel? = null,
     val statusMessage: String? = null,
+    val selectedDiffItemIds: List<String> = emptyList(),
 )
 
 data class DiffReviewFailedResult(
@@ -39,6 +40,7 @@ data class DiffReviewFailedResult(
     val requestState: AsyncRequestState,
     val feedbackLevel: ApplicationFeedbackLevel = ApplicationFeedbackLevel.ERROR,
     val preservePreviousStatusKind: Boolean = true,
+    val selectedDiffItemIds: List<String> = emptyList(),
 )
 
 data class BeautificationCompletedResult(
@@ -67,4 +69,5 @@ data class ReviewRequestStartedResult(
     val statusMessage: String,
     val submittedRequest: ReplayableQaRequest? = null,
     val clearRuntimeArtifactScene: String? = null,
+    val selectedDiffItemIds: List<String> = emptyList(),
 )

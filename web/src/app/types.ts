@@ -59,6 +59,8 @@ export type QaMessageRole = "USER" | "ASSISTANT";
 export type QaRequestKind = "ASK" | "INVESTIGATE_THREAD";
 export type QaMode = "AUTO" | "ANSWER" | "REVIEW" | "CHANGE" | "INVESTIGATE";
 export type StageEligibilityTarget = "PLAN" | "CODE";
+export type AssistantIntent = "EXPLAIN_CODE" | "ASK_CODE" | "GENERATE_CODE" | "CHECK_CHANGE";
+export type AssistantTurnKind = "EXPLANATION" | "QA" | "GENERATION_PLAN" | "CODE_DRAFT" | "CHECK_RESULT";
 
 export type NodeType =
   | "METHOD"
@@ -934,6 +936,45 @@ export interface QaWorkbenchState {
   scopeLabel?: string | null;
 }
 
+export interface AssistantContextSnapshot {
+  selectedNodeIds: string[];
+  selectedDiffItemIds: string[];
+  analysisDisplayMode?: string | null;
+  currentSceneId?: string | null;
+  selectedMethodSignature?: string | null;
+  scopeLabel: string;
+}
+
+export interface AssistantTurnRef {
+  turnId: string;
+  kind: AssistantTurnKind;
+  sourceMessageType: string;
+  resultId?: string | null;
+  createdAtEpochMillis: number;
+  context: AssistantContextSnapshot;
+}
+
+export interface AssistantSessionState {
+  sessionId: string;
+  activeIntent: AssistantIntent;
+  contextLocked: boolean;
+  context: AssistantContextSnapshot;
+  turns: AssistantTurnRef[];
+}
+
+export interface AssistantTurn {
+  turnId: string;
+  kind: AssistantTurnKind;
+  createdAtEpochMillis: number;
+  context: AssistantContextSnapshot;
+  qa?: GraphPatchResult | null;
+  explanation?: GraphBeautificationResult | null;
+  generationPlan?: GenerationPlan | null;
+  generationDiscussionSession?: GenerationPlanDiscussionSession | null;
+  codeDrafts?: GeneratedCodeDraft[];
+  check?: GraphPatchResult | null;
+}
+
 export interface DraftWorkbenchViewState {
   draftState: DraftWorkbenchState;
   compareMode: "after" | "compare";
@@ -1188,6 +1229,7 @@ export interface LinkGraphBootstrapState {
   operationFeedback?: OperationFeedback | null;
   graphSurfaceExperiments?: GraphSurfaceExperimentFlags | null;
   workbenchSectionPreferences?: WorkbenchSectionPreferences | null;
+  assistantSessionState?: AssistantSessionState | null;
   artifactContents?: Record<string, string>;
   lastMessageType?: string | null;
   lastGraphSource?: string | null;

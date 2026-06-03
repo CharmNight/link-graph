@@ -67,7 +67,7 @@ internal fun GraphEditorStateSnapshot.withSelectedMethod(
         ),
         lastMessageType = "selectedMethod",
         snapshotRevision = snapshotRevision + 1,
-    )
+    ).withAssistantContextFromCurrentState()
 }
 
 internal fun GraphEditorStateSnapshot.withSelectedNode(
@@ -81,7 +81,7 @@ internal fun GraphEditorStateSnapshot.withSelectedNode(
         ),
         lastMessageType = "nodeSelected",
         snapshotRevision = snapshotRevision + 1,
-    )
+    ).withAssistantContextFromCurrentState()
 }
 
 internal fun GraphEditorStateSnapshot.withLayoutChanged(

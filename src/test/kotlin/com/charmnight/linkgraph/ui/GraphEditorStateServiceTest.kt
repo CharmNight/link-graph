@@ -2,6 +2,7 @@ package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.testing.*
 
+import com.charmnight.linkgraph.application.model.AsyncRequestState
 import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
 import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
 import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
@@ -31,6 +32,9 @@ import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
+import com.charmnight.linkgraph.workbench.AssistantIntent
+import com.charmnight.linkgraph.workbench.AssistantTurnKind
+import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.charmnight.linkgraph.workbench.StepKind
 import java.nio.file.Files
@@ -1111,6 +1115,100 @@ class GraphEditorStateServiceTest {
         assertEquals(graph, snapshot.workspaceGraph)
         assertEquals(null, snapshot.qaResult)
         assertEquals("requestQa", snapshot.lastMessageType)
+    }
+
+    @Test
+    fun assistantSessionTracksThinTurnRefsWithoutCopyingQaResult() {
+        val service = GraphEditorStateService()
+        val graph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:order-service-place",
+                    type = NodeType.METHOD,
+                    title = "OrderService.place",
+                    sourceTag = GraphSourceTag.FACT,
+                ),
+            ),
+        )
+
+        service.loadGraph(graph, "currentMethod")
+        service.selectNode("method:order-service-place")
+        service.asyncRequests.markQaResult(
+            GraphPatchResult(
+                source = LlmResultSource.LOCAL_RULE,
+                question = "这个方法会影响哪里？",
+                answer = "会影响订单提交流程。",
+                promptPreview = "qa prompt",
+            ),
+        )
+
+        val snapshot = service.snapshot()
+        val assistantSession = snapshot.assistantSessionState
+        assertEquals(AssistantIntent.ASK_CODE, assistantSession.activeIntent)
+        assertEquals(listOf("method:order-service-place"), assistantSession.context.selectedNodeIds)
+        assertEquals(1, assistantSession.turns.size)
+        assertEquals(AssistantTurnKind.QA, assistantSession.turns.single().kind)
+        assertEquals("qaResult", assistantSession.turns.single().sourceMessageType)
+        assertEquals("qa:850385e5", assistantSession.turns.single().resultId)
+        assertTrue(assistantSession.turns.single().resultId.orEmpty().length <= 12)
+        assertEquals("会影响订单提交流程。", snapshot.qaResult?.answer)
+    }
+
+    @Test
+    fun assistantSessionGivesFailedTurnsExplicitThinResultIds() {
+        val service = GraphEditorStateService()
+
+        service.asyncRequests.markQaRequestFailed(
+            message = "上游超时",
+            requestState = AsyncRequestState.failed(
+                message = "上游超时",
+                requestId = 41,
+                finishedAtEpochMillis = 1000,
+            ),
+        )
+        service.asyncRequests.markQaResult(
+            GraphPatchResult(
+                source = LlmResultSource.LOCAL_RULE,
+                question = "这个方法会影响哪里？",
+                answer = "会影响订单提交流程。",
+                promptPreview = "qa prompt",
+            ),
+            requestState = AsyncRequestState.succeeded(
+                requestId = 42,
+                finishedAtEpochMillis = 2000,
+            ),
+        )
+
+        val turns = service.snapshot().assistantSessionState.turns
+        assertEquals(2, turns.size)
+        assertEquals("qa-failure:41", turns[0].resultId)
+        assertEquals("qa:850385e5", turns[1].resultId)
+    }
+
+    @Test
+    fun assistantSessionTracksSelectedDiffItemsForCheckChangeContext() {
+        val service = GraphEditorStateService()
+        val selectedDiffItemIds = listOf("diff:OrderController.kt")
+
+        service.asyncRequests.beginDiffReviewRequest(
+            selectedDiffItemIds = selectedDiffItemIds,
+        )
+        service.asyncRequests.markDiffReviewResult(
+            GraphPatchResult(
+                source = LlmResultSource.LOCAL_RULE,
+                question = "检查当前改动",
+                answer = "当前改动需要补相关测试。",
+                requestedMode = QaMode.REVIEW,
+                effectiveMode = QaMode.REVIEW,
+                promptPreview = "diff review prompt",
+            ),
+            selectedDiffItemIds = selectedDiffItemIds,
+        )
+
+        val assistantSession = service.snapshot().assistantSessionState
+        assertEquals(AssistantIntent.CHECK_CHANGE, assistantSession.activeIntent)
+        assertEquals(selectedDiffItemIds, assistantSession.context.selectedDiffItemIds)
+        assertEquals(selectedDiffItemIds, assistantSession.turns.single().context.selectedDiffItemIds)
     }
 
     @Test

@@ -452,6 +452,7 @@ describe.sequential("App", () => {
       showDiffMode: vi.fn(),
       requestSyncPreview: vi.fn(),
       requestQa: vi.fn(),
+      requestAssistantTask: vi.fn(),
       retryLastQaRequest: vi.fn(),
       confirmQaCandidateChange: vi.fn(),
       unconfirmQaCandidateChange: vi.fn(),
@@ -1503,6 +1504,62 @@ describe.sequential("App", () => {
     await user.click(screen.getByRole("button", { name: "直接重试" }));
 
     expect(window.linkGraphBridge?.retryLastQaRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("fills the assistant composer when editing a failed qa request", async () => {
+    const user = userEvent.setup();
+    window.linkGraphBootstrap = structuredClone({
+      ...bootstrapStateFixture(),
+      qaRequestState: {
+        phase: "FAILED",
+        scene: "问答",
+        statusMessage: "问答失败",
+        errorMessage: "上游超时",
+        detailMessage: "连接上游超时",
+      },
+      qaRequestRecoveryState: {
+        lastSubmittedRequest: {
+          requestId: "qa-1",
+          kind: "ASK",
+          question: "这个方法是否遗漏补偿链路？",
+          selectedNodeIds: ["method:submit-order"],
+          sourceThreadId: null,
+          baseSessionId: "qa-method-submit",
+        },
+        lastFailedRequest: {
+          requestId: "qa-1",
+          kind: "ASK",
+          question: "这个方法是否遗漏补偿链路？",
+          selectedNodeIds: ["method:submit-order"],
+          sourceThreadId: null,
+          baseSessionId: "qa-method-submit",
+        },
+      },
+      workbenchSectionPreferences: {
+        "qa.request-status": true,
+      },
+    });
+    render(<App />);
+
+    await user.click(screen.getByRole("tab", { name: "问答" }));
+    await user.click(screen.getByRole("button", { name: "修改后重试" }));
+
+    expect(screen.getByRole("textbox", { name: "AI 工作台输入框" })).toHaveValue("这个方法是否遗漏补偿链路？");
+  });
+
+  it("allows check-change assistant tasks to use the backend default prompt", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "检查改动" }));
+    await user.click(screen.getByRole("button", { name: "发送到 AI 代码工作台" }));
+
+    expect(window.linkGraphBridge?.requestAssistantTask).toHaveBeenCalledWith({
+      intent: "CHECK_CHANGE",
+      prompt: "",
+      selectedNodeIds: ["method:submit-order"],
+      selectedDiffItemIds: [],
+    });
   });
 
   it("submits deferred risk resolution from the qa risk page", async () => {

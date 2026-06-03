@@ -629,6 +629,7 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       sourceNavigationState: nextSourceNavigationState,
       operationFeedback: nextState.operationFeedback ?? null,
       workbenchSectionPreferences: nextState.workbenchSectionPreferences ?? {},
+      assistantSessionState: nextState.assistantSessionState ?? current.assistantSessionState,
       lastMessageType: nextState.lastMessageType ?? null,
       graphSurfaceExperiments: nextState.graphSurfaceExperiments ?? null,
       artifactContents: nextState.artifactContents

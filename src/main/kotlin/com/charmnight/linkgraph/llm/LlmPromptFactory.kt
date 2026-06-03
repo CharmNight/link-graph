@@ -72,6 +72,7 @@ class LlmPromptFactory(
                     """
                     你正在根据链路图设计评审结果生成代码实现计划。
                     目标模型：${settings.sanitized().model}
+                    用户目标：${snapshot.userGoal.ifBlank { "请根据当前草稿、图差异和同步预览生成实现建议。" }}
                     """.trimIndent(),
                     priority = USER_GOAL,
                 ),

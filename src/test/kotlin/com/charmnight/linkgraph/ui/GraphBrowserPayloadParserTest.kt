@@ -5,6 +5,7 @@ import com.charmnight.linkgraph.application.indexed.IndexedGraphScope
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
 import com.charmnight.linkgraph.json.JsonCodec
 import com.charmnight.linkgraph.ui.bridge.BridgeCommandParser
+import com.charmnight.linkgraph.workbench.AssistantIntent
 import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.RiskResolutionStatus
 import com.charmnight.linkgraph.workbench.StepGranularity
@@ -26,6 +27,28 @@ class GraphBrowserPayloadParserTest {
         assertEquals(emptyList(), message.selectedNodeIds)
         assertEquals(null, message.sourceThreadId)
         assertEquals(QaMode.AUTO, message.mode)
+        assertTrue(parsed.async)
+    }
+
+    @Test
+    fun bridgeCommandEnvelopeParsesAssistantTask() {
+        val parsed = BridgeCommandParser.parse(
+            command(
+                "requestAssistantTask",
+                mapOf(
+                    "intent" to "CHECK_CHANGE",
+                    "prompt" to "检查这次改动影响哪些调用方",
+                    "selectedNodeIds" to listOf("method:submit-order"),
+                    "selectedDiffItemIds" to listOf("diff:OrderController.kt"),
+                ),
+            ),
+        )
+
+        val message = assertIs<GraphEditorMessage.RequestAssistantTask>(parsed.message)
+        assertEquals(AssistantIntent.CHECK_CHANGE, message.intent)
+        assertEquals("检查这次改动影响哪些调用方", message.prompt)
+        assertEquals(listOf("method:submit-order"), message.selectedNodeIds)
+        assertEquals(listOf("diff:OrderController.kt"), message.selectedDiffItemIds)
         assertTrue(parsed.async)
     }
 

@@ -2,6 +2,7 @@ import { readBootstrapState } from "./api";
 import { resolveFlowchartKind } from "./flowchartKind";
 import type {
   AnalysisDisplayMode,
+  AssistantSessionState,
   ArchitectureGraphViewDocument,
   AsyncRequestState,
   ClassDiagramViewDocument,
@@ -61,6 +62,21 @@ const DEFAULT_INDEXED_GRAPH_REQUEST_STATES = {
   ARCHITECTURE: IDLE_REQUEST_STATE,
   CLASS_DIAGRAM: IDLE_REQUEST_STATE,
   REVIEW: IDLE_REQUEST_STATE,
+};
+
+const DEFAULT_ASSISTANT_SESSION_STATE: AssistantSessionState = {
+  sessionId: "assistant-session",
+  activeIntent: "EXPLAIN_CODE",
+  contextLocked: false,
+  context: {
+    selectedNodeIds: [],
+    selectedDiffItemIds: [],
+    analysisDisplayMode: DEFAULT_ANALYSIS_DISPLAY_MODE,
+    currentSceneId: DEFAULT_SCENE_ID,
+    selectedMethodSignature: null,
+    scopeLabel: "",
+  },
+  turns: [],
 };
 
 const EMPTY_DOCUMENT: LinkGraphDocument = {
@@ -559,6 +575,15 @@ export const SAMPLE_STATE: LinkGraphBootstrapState = {
   },
   sourceNavigationState: IDLE_SOURCE_NAVIGATION_STATE,
   operationFeedback: null,
+  assistantSessionState: {
+    ...DEFAULT_ASSISTANT_SESSION_STATE,
+    context: {
+      ...DEFAULT_ASSISTANT_SESSION_STATE.context,
+      selectedNodeIds: [INITIAL_SELECTED_NODE_ID],
+      selectedMethodSignature: "com.example.OrderService.place(OrderDraft):Order",
+      scopeLabel: "OrderService.place",
+    },
+  },
   workspaceRevision: 0,
   semanticRevision: 0,
   snapshotRevision: 0,
@@ -605,6 +630,7 @@ export const EMPTY_STATE: LinkGraphBootstrapState = {
   codeEligibilityDecision: null,
   sourceNavigationState: IDLE_SOURCE_NAVIGATION_STATE,
   operationFeedback: null,
+  assistantSessionState: DEFAULT_ASSISTANT_SESSION_STATE,
   workspaceRevision: 0,
   semanticRevision: 0,
   snapshotRevision: 0,

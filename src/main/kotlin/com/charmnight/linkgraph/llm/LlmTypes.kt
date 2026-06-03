@@ -33,6 +33,8 @@ data class GenerationContext(
     val confirmedChanges: List<DraftWorkbenchEntry> = emptyList(),
     /** 保存当前生成场景可直接使用的真实源码片段。 */
     val sourceContext: List<SourceSnippetContext> = emptyList(),
+    /** 保存用户通过生成 intent 输入的目标。 */
+    val userGoal: String = "",
 )
 
 /**

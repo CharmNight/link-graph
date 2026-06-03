@@ -25,6 +25,9 @@ import com.charmnight.linkgraph.workbench.InvestigationTurnOutcome
 import com.charmnight.linkgraph.workbench.QaConversationSession
 import com.charmnight.linkgraph.workbench.QaRequestRecoveryState
 import com.charmnight.linkgraph.workbench.ReplayableQaRequest
+import com.charmnight.linkgraph.workbench.AssistantContextSnapshot
+import com.charmnight.linkgraph.workbench.AssistantSessionState
+import com.charmnight.linkgraph.workbench.AssistantTurnRef
 
 internal fun GraphEditorStateSnapshot.freeze(): GraphEditorStateSnapshot {
     return copy(
@@ -79,6 +82,7 @@ internal fun GraphEditorStateSnapshot.freeze(): GraphEditorStateSnapshot {
             unresolvedThreadIds = codeEligibilityDecision.unresolvedThreadIds.toList(),
         ),
         workbenchSectionPreferences = workbenchSectionPreferences.toMap(),
+        assistantSessionState = assistantSessionState.freeze(),
     )
 }
 
@@ -230,6 +234,24 @@ private fun ReplayableQaRequest.freeze(): ReplayableQaRequest {
     return copy(
         selectedNodeIds = selectedNodeIds.toList(),
         baseSession = baseSession?.freeze(),
+    )
+}
+
+private fun AssistantSessionState.freeze(): AssistantSessionState {
+    return copy(
+        context = context.freeze(),
+        turns = turns.map { turn -> turn.freeze() },
+    )
+}
+
+private fun AssistantTurnRef.freeze(): AssistantTurnRef {
+    return copy(context = context.freeze())
+}
+
+private fun AssistantContextSnapshot.freeze(): AssistantContextSnapshot {
+    return copy(
+        selectedNodeIds = selectedNodeIds.toList(),
+        selectedDiffItemIds = selectedDiffItemIds.toList(),
     )
 }
 
