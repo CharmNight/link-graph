@@ -313,16 +313,28 @@ export function useExplanationWorkbenchController(args: UseExplanationWorkbenchC
     args.handleInspectNode(targetNodeId);
   }
 
+  function isMethodLikeNodeId(nodeId: string | null | undefined): boolean {
+    return Boolean(
+      nodeId?.startsWith("method:") ||
+      nodeId?.startsWith("invoke:"),
+    );
+  }
+
+  function drillTargetLabel(nodeId: string | null | undefined): string {
+    return isMethodLikeNodeId(nodeId) ? "被调方法" : "下钻节点";
+  }
+
   function handleDrillDownExplanationStep(stepId: string) {
     const step = args.graphBeautificationResult?.steps.find((item) => item.stepId === stepId);
     const targetNodeId = step?.downstreamTargets[0] ?? null;
     if (!targetNodeId) {
       args.setOperationFeedback({
         level: "WARNING",
-        message: "当前步骤没有可继续下钻的被调方法。",
+        message: "当前步骤没有可继续下钻的图节点。",
       });
       return;
     }
+    const targetLabel = drillTargetLabel(targetNodeId);
     const targetNode = args.nodes.find((node) => node.id === targetNodeId) ?? null;
     if (!targetNode) {
       const downstreamOverflowNode = args.nodes.find(
@@ -331,7 +343,7 @@ export function useExplanationWorkbenchController(args: UseExplanationWorkbenchC
       if (!downstreamOverflowNode) {
         args.setOperationFeedback({
           level: "WARNING",
-          message: "当前图中还没有展示这个被调方法，请先扩展链路范围。",
+          message: `当前图中还没有展示这个${targetLabel}，请先扩展链路范围。`,
         });
         return;
       }
@@ -339,7 +351,7 @@ export function useExplanationWorkbenchController(args: UseExplanationWorkbenchC
       args.handleExpandOverflowNode(downstreamOverflowNode.id);
       args.setOperationFeedback({
         level: "INFO",
-        message: "当前图中未展示该被调方法，已尝试自动展开下游链路。",
+        message: `当前图中未展示该${targetLabel}，已尝试自动展开下游链路。`,
       });
       return;
     }
@@ -348,7 +360,7 @@ export function useExplanationWorkbenchController(args: UseExplanationWorkbenchC
     args.setDetailNodeId(targetNodeId);
     args.setOperationFeedback({
       level: "INFO",
-      message: `已定位到被调方法：${targetNode.title}`,
+      message: `已定位到${targetLabel}：${targetNode.title}`,
     });
   }
 
@@ -426,7 +438,7 @@ export function useExplanationWorkbenchController(args: UseExplanationWorkbenchC
     args.setDetailNodeId(targetNode.id);
     args.setOperationFeedback({
       level: "INFO",
-      message: `已自动定位到展开后的被调方法：${targetNode.title}`,
+      message: `已自动定位到展开后的${drillTargetLabel(targetNode.id)}：${targetNode.title}`,
     });
   }, [args.nodes]);
 

@@ -110,7 +110,14 @@ internal class ClassDiagramWorkflow(
                         )
                     }
                     val projectStartedAt = System.nanoTime()
-                    projector.project(index, resolvedScopeNodeId, relationCompleteness, request, cacheState).also { view ->
+                    projector.project(
+                        index = index,
+                        scopeNodeId = resolvedScopeNodeId,
+                        relationCompleteness = relationCompleteness,
+                        request = request,
+                        cacheState = cacheState,
+                        freshness = indexSupport.freshness(),
+                    ).also { view ->
                         traceStage("classDiagram.project", projectStartedAt) {
                             listOf(
                                 "view=${request.view}",
@@ -239,7 +246,14 @@ internal class ClassDiagramWorkflow(
                         )
                     }
                     val projectStartedAt = System.nanoTime()
-                    projector.project(index, scopeNodeId, "COMPLETE", request, cacheState).also { view ->
+                    projector.project(
+                        index = index,
+                        scopeNodeId = scopeNodeId,
+                        relationCompleteness = "COMPLETE",
+                        request = request,
+                        cacheState = cacheState,
+                        freshness = indexSupport.freshness(),
+                    ).also { view ->
                         traceStage("classDiagram.completeProject", projectStartedAt) {
                             listOf(
                                 "view=${request.view}",

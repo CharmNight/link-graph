@@ -14,4 +14,20 @@ class ContextBudgetControllerTest {
 
         assertEquals(listOf("12345", "67890"), result)
     }
+
+    @Test
+    fun trimsSectionsWithinTokenBudgetAsWellAsCharacterBudget() {
+        val controller = ContextBudgetController(maxCharacters = 1_000, maxTokens = 5)
+
+        val result = controller.trimSections(listOf("alpha beta gamma", "delta epsilon", "zeta"))
+
+        assertEquals(listOf("alpha beta gamma", "delta epsilon"), result)
+    }
+
+    @Test
+    fun estimatesAsciiWordsNonAsciiAndPunctuation() {
+        val controller = ContextBudgetController(maxCharacters = 1_000, maxTokens = 100)
+
+        assertEquals(5, controller.estimateTokens("hello world, 你好!!!"))
+    }
 }

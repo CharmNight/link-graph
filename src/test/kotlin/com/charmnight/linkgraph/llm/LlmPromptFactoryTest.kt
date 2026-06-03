@@ -780,4 +780,73 @@ class LlmPromptFactoryTest {
         assertTrue(promptPackage.userPrompt.contains("本轮回答必须先直接回答用户追问"))
         assertTrue(promptPackage.userPrompt.contains("如果当前证据不足，必须明确写出“不足以确认”"))
     }
+
+    @Test
+    fun beautificationPromptForPackageAnchorCarriesEvidenceGateInsteadOfMethodChainAssumptions() {
+        val factory = LlmPromptFactory()
+        val settings = LinkGraphSettingsState(
+            llmEnabled = true,
+            provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+            model = "gpt-4.1-mini",
+        )
+
+        val promptPackage = factory.buildBeautificationPromptPackage(
+            context = GraphBeautificationContext(
+                presentationContext = GraphPresentationContext(
+                    graph = GraphDocument(
+                        nodes = listOf(
+                            GraphNode(
+                                id = "jvm:package:kafka-cluster",
+                                type = NodeType.PACKAGE,
+                                title = "kafka.cluster",
+                                metadata = mapOf(
+                                    "architecture.node.kind" to "PACKAGE",
+                                    "indexed.memberClassCount" to "19",
+                                ),
+                            ),
+                        ),
+                    ),
+                    anchorNodeId = "jvm:package:kafka-cluster",
+                ),
+                userGoal = "讲解当前视图",
+            ),
+            settings = settings,
+        )
+
+        assertTrue(promptPackage.userPrompt.contains("锚点类型：PACKAGE"))
+        assertTrue(promptPackage.userPrompt.contains("允许讲解模式：PACKAGE_OVERVIEW, DRILLDOWN_SUGGESTION"))
+        assertTrue(promptPackage.userPrompt.contains("禁止声明：不要把当前锚点称为方法或当前方法"))
+        assertTrue(promptPackage.userPrompt.contains("证据缺口：缺少方法级调用边"))
+        assertTrue(promptPackage.userPrompt.contains("讲解模式：证据受限讲解"))
+        assertTrue(promptPackage.userPrompt.contains("不能输出“定位被调方法”"))
+    }
+
+    @Test
+    fun qaPromptForPackageSelectionCarriesEvidenceGateBeforeAnsweringMethodQuestions() {
+        val factory = LlmPromptFactory()
+        val promptPackage = factory.buildQaPromptPackage(
+            context = GraphQaContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "jvm:package:kafka-cluster",
+                            type = NodeType.PACKAGE,
+                            title = "kafka.cluster",
+                            metadata = mapOf("indexed.memberClassCount" to "19"),
+                        ),
+                    ),
+                ),
+                selectedNodeIds = listOf("jvm:package:kafka-cluster"),
+            ),
+            question = "这个方法的被调方法是什么？",
+            settings = LinkGraphSettingsState(),
+        )
+
+        assertTrue(promptPackage.userPrompt.contains("图证据边界"))
+        assertTrue(promptPackage.userPrompt.contains("锚点类型：PACKAGE"))
+        assertTrue(promptPackage.userPrompt.contains("允许讲解模式：PACKAGE_OVERVIEW, DRILLDOWN_SUGGESTION"))
+        assertTrue(promptPackage.userPrompt.contains("禁止声明：不要把当前锚点称为方法或当前方法"))
+        assertTrue(promptPackage.userPrompt.contains("证据缺口：缺少方法级调用边"))
+        assertTrue(promptPackage.systemPrompt.contains("必须遵守图证据边界"))
+    }
 }

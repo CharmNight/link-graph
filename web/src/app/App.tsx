@@ -432,6 +432,11 @@ export function App() {
   });
   const workbenchCommands = useWorkbenchCommandController({
     bridgeCommands,
+    availability: {
+      architectureGraphLoaded: architectureGraphView.summary.indexed != null,
+      classDiagramLoaded: classDiagramView.summary.indexed != null,
+      reviewGraphLoaded: reviewGraphView.summary.indexed != null,
+    },
   });
   const toolbarFeedback = useMemo(() => resolveToolbarFeedback({
     operationFeedback,

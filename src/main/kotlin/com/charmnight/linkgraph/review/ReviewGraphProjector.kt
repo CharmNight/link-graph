@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.review
 
 import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
+import com.charmnight.linkgraph.application.indexed.IndexedGraphFreshness
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
 import com.charmnight.linkgraph.application.indexed.IndexedGraphLayerKind
 import com.charmnight.linkgraph.application.indexed.IndexedGraphNodeRole
@@ -49,6 +50,7 @@ class ReviewGraphProjector(
         index: ArchitectureGraphIndex? = null,
         request: IndexedGraphRequest = requestReviewGraphRequest(),
         cacheState: String = "UNKNOWN",
+        freshness: IndexedGraphFreshness = IndexedGraphFreshness(),
     ): ReviewGraphViewDocument {
         val nodes = linkedMapOf<String, GraphNode>()
         val edges = linkedMapOf<String, GraphEdge>()
@@ -169,6 +171,7 @@ class ReviewGraphProjector(
                         hiddenEdgeCount = hiddenEdgeCount,
                         truncated = hiddenNodeCount > 0 || hiddenEdgeCount > 0,
                         cacheState = cacheState,
+                        freshness = freshness,
                     )
                 },
             ),
@@ -234,7 +237,10 @@ class ReviewGraphProjector(
                     .filter { symbol -> symbol.hunk?.let { symbolHunk -> hunkKey(symbolHunk) == reviewHunkKey(hunk) } == true }
                     .map(ChangedSymbol::symbolId)
                     .distinct()
-                hunk.copy(matchedSymbolIds = matchedSymbolIds)
+                hunk.copy(
+                    matchedSymbolIds = matchedSymbolIds,
+                    reason = if (matchedSymbolIds.isEmpty()) "UNMATCHED_HUNK_NO_SYMBOL_RANGE" else null,
+                )
             }
             .distinctBy(::reviewHunkKey)
             .sortedWith(compareBy<ReviewGraphChangedHunk> { it.newFilePath ?: it.oldFilePath ?: it.filePath }.thenBy { it.newStartLine ?: it.oldStartLine ?: 0 })
@@ -331,6 +337,7 @@ class ReviewGraphProjector(
             metadata = buildMap {
                 put("review.role", "CHANGED")
                 put("review.changeKind", changeKind)
+                put("review.changed.reason", reason)
                 put("review.qualifiedName", qualifiedName)
                 put("review.baselineOnly", baselineOnly.toString())
                 put("review.blastRadiusIncomplete", blastRadiusIncomplete.toString())

@@ -214,6 +214,7 @@ export function ExplanationTab({
           <StepDetail
             step={selectedStep}
             onAddToDraft={onAddToDraft}
+            onLocateStepNode={onLocateStepNode}
             onDrillDown={onDrillDown}
             onFollowUp={onFollowUp}
             onRevealReference={onRevealReference}

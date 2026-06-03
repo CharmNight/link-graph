@@ -32,7 +32,13 @@ export type AnalysisDisplayMode =
   | "CLASS_DIAGRAM"
   | "REVIEW_GRAPH";
 export type StepGranularity = "BUSINESS" | "METHOD_CALL" | "CODE_SEMANTIC";
-export type StepKind = "BUSINESS_ACTION" | "METHOD_CALL" | "CONDITION" | "RETURN" | "RESOURCE_INTERACTION";
+export type StepKind =
+  | "BUSINESS_ACTION"
+  | "METHOD_CALL"
+  | "CONDITION"
+  | "RETURN"
+  | "RESOURCE_INTERACTION"
+  | "STRUCTURE_OVERVIEW";
 export type CandidateDraftChangeStatus = "PENDING_CONFIRMATION" | "CONFIRMED" | "REJECTED" | "SUPERSEDED";
 export type InvestigationThreadStatus = "OPEN" | "PROMOTED" | "DISMISSED" | "BLOCKED" | "SUPERSEDED";
 export type RiskResolutionStatus =
@@ -315,6 +321,8 @@ export interface IndexedGraphSummary {
   candidateLayerCounts?: IndexedGraphLayerCounts | null;
   hiddenLayerCounts?: IndexedGraphLayerCounts | null;
   collapsedLayerCounts?: IndexedGraphLayerCounts | null;
+  freshness?: IndexedGraphFreshness | null;
+  visibilityReasons?: IndexedGraphVisibilityReason[] | null;
 }
 
 export interface IndexedGraphLayerCounts {
@@ -323,6 +331,22 @@ export interface IndexedGraphLayerCounts {
   jdk?: number;
   resource?: number;
   aggregate?: number;
+}
+
+export interface IndexedGraphFreshness {
+  state: "FRESH" | "STALE" | "BUILDING" | string;
+  dirtyReason?: string | null;
+  pendingFileCount: number;
+  pendingFileSamples: string[];
+  lastIndexedAtEpochMillis?: number | null;
+  staleSinceEpochMillis?: number | null;
+}
+
+export interface IndexedGraphVisibilityReason {
+  code: string;
+  label: string;
+  nodeCount?: number;
+  edgeCount?: number;
 }
 
 export type IndexedGraphView = "ARCHITECTURE" | "CLASS_DIAGRAM" | "REVIEW";
@@ -368,6 +392,22 @@ export interface ArchitectureGraphSummary {
   hiddenNodeCount?: number;
   hiddenEdgeCount?: number;
   indexed?: IndexedGraphSummary | null;
+  projectStructureRelationGroups?: ProjectStructureRelationGroup[];
+}
+
+export interface ProjectStructureRelationGroup {
+  id: string;
+  fromNodeId: string;
+  toNodeId: string;
+  displayRelationKind: string;
+  displayRelation: string;
+  relationKinds: string[];
+  count: number;
+  confidence: string;
+  sourceRelationIds: string[];
+  sampleEvidenceRefs: string[];
+  defaultVisible: boolean;
+  hiddenReason?: string | null;
 }
 
 export interface ArchitectureGraphViewDocument {

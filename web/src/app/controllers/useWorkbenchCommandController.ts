@@ -25,21 +25,45 @@ interface UseWorkbenchCommandControllerArgs {
     ReturnType<typeof useBridgeCommandController>,
     "runBridgeCommand" | "submitAsyncBridgeCommand"
   >;
+  availability?: IndexedGraphAvailability;
+}
+
+interface IndexedGraphAvailability {
+  architectureGraphLoaded: boolean;
+  classDiagramLoaded: boolean;
+  reviewGraphLoaded: boolean;
 }
 
 export function useWorkbenchCommandController({
   bridgeCommands,
+  availability = {
+    architectureGraphLoaded: false,
+    classDiagramLoaded: false,
+    reviewGraphLoaded: false,
+  },
 }: UseWorkbenchCommandControllerArgs) {
   function handleRequestAnalysisDisplayMode(displayMode: AnalysisDisplayMode, selectedDiffItemIds: string[] = []) {
     if (displayMode === "ARCHITECTURE_GRAPH") {
+      if (availability.architectureGraphLoaded) {
+        bridgeCommands.runBridgeCommand("切换展示模式", () => requestAnalysisDisplayMode(displayMode));
+        return;
+      }
       bridgeCommands.runBridgeCommand("加载架构图", () => requestArchitectureGraph());
       return;
     }
     if (displayMode === "CLASS_DIAGRAM") {
+      if (availability.classDiagramLoaded) {
+        bridgeCommands.runBridgeCommand("切换展示模式", () => requestAnalysisDisplayMode(displayMode));
+        return;
+      }
       bridgeCommands.runBridgeCommand("加载类图", () => requestClassDiagram());
       return;
     }
     if (displayMode === "REVIEW_GRAPH") {
+      if (availability.reviewGraphLoaded && selectedDiffItemIds.length === 0) {
+        bridgeCommands.runBridgeCommand("切换展示模式", () => requestAnalysisDisplayMode(displayMode));
+        return;
+      }
       bridgeCommands.runBridgeCommand("加载 Review Graph", () => requestReviewGraph(selectedDiffItemIds));
       return;
     }

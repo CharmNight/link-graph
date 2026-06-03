@@ -176,6 +176,8 @@ export function stepKindLabel(value: StepKind): string {
       return "返回结果";
     case "RESOURCE_INTERACTION":
       return "资源交互";
+    case "STRUCTURE_OVERVIEW":
+      return "结构概览";
   }
 }
 

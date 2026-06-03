@@ -42,6 +42,32 @@ function stepFixture(): GraphBeautificationStep {
   };
 }
 
+function structureStepFixture(): GraphBeautificationStep {
+  return {
+    stepId: "structure-application",
+    title: "结构概览：application",
+    granularity: "BUSINESS",
+    kind: "STRUCTURE_OVERVIEW",
+    description: "结构概览：application 是 COMPONENT 节点。",
+    primaryNodeId: "arch:component:com.example.application",
+    codeSnippet: null,
+    evidence: [
+      {
+        id: "structure-graph",
+        claim: "当前结构概览直接关联图节点。",
+        evidenceLevel: "DIRECT_GRAPH",
+        references: [
+          {
+            nodeId: "arch:component:com.example.application",
+          },
+        ],
+      },
+    ],
+    followUpQuestions: [],
+    downstreamTargets: [],
+  };
+}
+
 describe("StepDetail", () => {
   it("collapses long code snippets by default and lets the reader expand them on demand", async () => {
     const user = userEvent.setup();
@@ -50,6 +76,7 @@ describe("StepDetail", () => {
       <StepDetail
         step={stepFixture()}
         onAddToDraft={vi.fn()}
+        onLocateStepNode={vi.fn()}
         onDrillDown={vi.fn()}
         onFollowUp={vi.fn()}
         onRevealReference={vi.fn()}
@@ -73,6 +100,7 @@ describe("StepDetail", () => {
       <StepDetail
         step={stepFixture()}
         onAddToDraft={vi.fn()}
+        onLocateStepNode={vi.fn()}
         onDrillDown={vi.fn()}
         onFollowUp={vi.fn()}
         onRevealReference={vi.fn()}
@@ -95,6 +123,7 @@ describe("StepDetail", () => {
           followUpQuestions: ["金额为空时会走哪条分支？"],
         }}
         onAddToDraft={vi.fn()}
+        onLocateStepNode={vi.fn()}
         onDrillDown={vi.fn()}
         onFollowUp={onFollowUp}
         onRevealReference={vi.fn()}
@@ -108,5 +137,55 @@ describe("StepDetail", () => {
     await user.click(screen.getByRole("button", { name: "围绕这一步继续讲解" }));
 
     expect(onFollowUp).toHaveBeenCalledWith("step-validate-order", "这里为什么直接抛 IllegalArgumentException？");
+  });
+
+  it("uses structure wording and locates the current graph node for structure overview steps", async () => {
+    const user = userEvent.setup();
+    const onLocateStepNode = vi.fn();
+    const onDrillDown = vi.fn();
+
+    render(
+      <StepDetail
+        step={structureStepFixture()}
+        onAddToDraft={vi.fn()}
+        onLocateStepNode={onLocateStepNode}
+        onDrillDown={onDrillDown}
+        onFollowUp={vi.fn()}
+        onRevealReference={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("结构概览")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "定位被调方法" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "定位图节点" }));
+
+    expect(onLocateStepNode).toHaveBeenCalledWith("structure-application");
+    expect(onDrillDown).not.toHaveBeenCalled();
+  });
+
+  it("keeps method-call drilldown wording only when a method-like downstream target exists", async () => {
+    const user = userEvent.setup();
+    const onLocateStepNode = vi.fn();
+    const onDrillDown = vi.fn();
+
+    render(
+      <StepDetail
+        step={{
+          ...stepFixture(),
+          downstreamTargets: ["method:charge-order"],
+        }}
+        onAddToDraft={vi.fn()}
+        onLocateStepNode={onLocateStepNode}
+        onDrillDown={onDrillDown}
+        onFollowUp={vi.fn()}
+        onRevealReference={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "定位被调方法" }));
+
+    expect(onDrillDown).toHaveBeenCalledWith("step-validate-order");
+    expect(onLocateStepNode).not.toHaveBeenCalled();
   });
 });

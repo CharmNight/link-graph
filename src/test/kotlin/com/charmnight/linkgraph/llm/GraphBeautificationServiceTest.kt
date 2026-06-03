@@ -10,6 +10,7 @@ import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.workbench.StepGranularity
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class GraphBeautificationServiceTest {
@@ -244,6 +245,89 @@ class GraphBeautificationServiceTest {
         assertTrue(result.warnings.any { it.contains("远程 LLM 配置未就绪") })
         assertTrue(result.warnings.any { it.contains("本地规则讲解") })
         assertTrue(result.steps.isNotEmpty())
+    }
+
+    @Test
+    fun localBeautificationForPackageAnchorFallsBackToStructureOverviewWithoutCalleeQuestions() {
+        val service = PlaceholderGraphBeautificationService()
+        val packageNode = GraphNode(
+            id = "jvm:package:kafka-cluster",
+            type = NodeType.PACKAGE,
+            title = "kafka.cluster",
+            metadata = mapOf(
+                "architecture.node.kind" to "PACKAGE",
+                "indexed.memberClassCount" to "19",
+            ),
+            sourceTag = GraphSourceTag.FACT,
+        )
+        val componentNode = GraphNode(
+            id = "arch:component:kafka-server",
+            type = NodeType.COMPONENT,
+            title = "kafka.server",
+            metadata = mapOf("architecture.node.kind" to "COMPONENT"),
+            sourceTag = GraphSourceTag.FACT,
+        )
+        val context = GraphBeautificationContext(
+            presentationContext = GraphPresentationContext(
+                graph = GraphDocument(nodes = listOf(packageNode, componentNode)),
+                fullGraph = GraphDocument(nodes = listOf(packageNode, componentNode)),
+                anchorNodeId = packageNode.id,
+            ),
+            userGoal = "讲解当前项目结构视图",
+        )
+
+        val result = service.beautify(context, LinkGraphSettingsState())
+
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
+        assertTrue(result.steps.isNotEmpty())
+        assertTrue(result.steps.all { step -> step.primaryNodeId in setOf(packageNode.id, componentNode.id) })
+        val renderedText = (result.steps.flatMap { step ->
+            listOf(step.title, step.description) + step.followUpQuestions + step.evidence.map { it.claim }
+        } + result.warnings).joinToString("\n")
+        assertTrue(renderedText.contains("结构概览") || renderedText.contains("结构"))
+        assertFalse(renderedText.contains("被调方法"))
+        assertFalse(renderedText.contains("当前方法"))
+    }
+
+    @Test
+    fun remoteBeautificationIsBypassedForPackageAnchorEvidenceGate() {
+        var remoteCalled = false
+        val service = DefaultGraphBeautificationService(
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    remoteCalled = true
+                    return LlmResponse(content = """{"steps":[],"warnings":[]}""", model = request.model)
+                }
+            },
+        )
+        val packageNode = GraphNode(
+            id = "jvm:package:kafka-cluster",
+            type = NodeType.PACKAGE,
+            title = "kafka.cluster",
+            metadata = mapOf("indexed.memberClassCount" to "19"),
+            sourceTag = GraphSourceTag.FACT,
+        )
+        val result = service.beautify(
+            context = GraphBeautificationContext(
+                presentationContext = GraphPresentationContext(
+                    graph = GraphDocument(nodes = listOf(packageNode)),
+                    fullGraph = GraphDocument(nodes = listOf(packageNode)),
+                    anchorNodeId = packageNode.id,
+                ),
+                userGoal = "讲解当前项目结构视图",
+            ),
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://localhost:8080/v1",
+                apiKey = "token",
+                model = "gpt-test",
+            ),
+        )
+
+        assertFalse(remoteCalled)
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
+        assertTrue(result.steps.any { step -> step.description.contains("结构概览") })
     }
 
     private fun beautificationContext(): GraphBeautificationContext {

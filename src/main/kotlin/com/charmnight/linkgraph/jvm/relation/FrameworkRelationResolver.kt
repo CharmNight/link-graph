@@ -214,70 +214,33 @@ class FrameworkRelationResolver : JvmRelationResolver {
     }
 
     private fun controllerEndpoint(method: com.intellij.psi.PsiMethod): HttpEndpoint? {
-        val owner = method.containingClass ?: return null
-        if (!owner.annotations.any { annotation -> annotation.simpleName() in CONTROLLER_ANNOTATIONS }) {
-            return null
-        }
-        val httpMethod = requestMethod(method) ?: return null
-        val classMapping = owner.annotations.firstOrNull { annotation -> annotation.simpleName() == "RequestMapping" }
-        val path = combinePaths(
-            classMapping?.annotationStringValue("value") ?: classMapping?.annotationStringValue("path"),
-            requestPath(method),
-        ) ?: return null
-        return HttpEndpoint(httpMethod, path)
+        return HttpEndpointRelationSupport.controllerEndpoint(method)
     }
 
     private fun feignEndpoint(
         classPath: String?,
         method: com.intellij.psi.PsiMethod,
     ): HttpEndpoint? {
-        val httpMethod = requestMethod(method) ?: return null
-        val path = combinePaths(classPath, requestPath(method)) ?: return null
-        return HttpEndpoint(httpMethod, path)
+        return HttpEndpointRelationSupport.feignEndpoint(classPath, method)
     }
 
     private fun requestMethod(method: com.intellij.psi.PsiMethod): String? {
-        method.annotations.forEach { annotation ->
-            when (annotation.simpleName()) {
-                "GetMapping" -> return "GET"
-                "PostMapping" -> return "POST"
-                "PutMapping" -> return "PUT"
-                "DeleteMapping" -> return "DELETE"
-                "PatchMapping" -> return "PATCH"
-                "RequestMapping" -> {
-                    val methodValue = annotation.findDeclaredAttributeValue("method")?.text.orEmpty().uppercase()
-                    HTTP_METHODS.firstOrNull { value -> methodValue.contains(value) }?.let { return it }
-                }
-            }
-        }
-        return null
+        return HttpEndpointRelationSupport.requestMethod(method)
     }
 
     private fun requestPath(method: com.intellij.psi.PsiMethod): String? {
-        return method.annotations
-            .firstOrNull { annotation -> annotation.simpleName() in REQUEST_MAPPING_ANNOTATIONS }
-            ?.let { annotation -> annotation.annotationStringValue("value") ?: annotation.annotationStringValue("path") }
+        return HttpEndpointRelationSupport.requestPath(method)
     }
 
     private fun combinePaths(
         classPath: String?,
         methodPath: String?,
     ): String? {
-        val methodPart = methodPath ?: return null
-        val parts = listOfNotNull(classPath, methodPart)
-            .map { part -> part.trim().trim('/') }
-            .filter(String::isNotBlank)
-        return "/" + parts.joinToString("/")
+        return HttpEndpointRelationSupport.combinePaths(classPath, methodPath)
     }
 
     private fun endpointResourceSymbol(endpoint: HttpEndpoint): JvmResourceSymbol =
-        JvmResourceSymbol(
-            id = stableJvmId("resource", "http:${endpoint.method} ${endpoint.path}"),
-            path = "http:${endpoint.method} ${endpoint.path}",
-            kind = JvmResourceKind.OTHER,
-            source = null,
-            origin = com.charmnight.linkgraph.source.SourceOrigin.PROJECT_SOURCE,
-        )
+        HttpEndpointRelationSupport.endpointResourceSymbol(endpoint)
 
     private fun mqRelations(context: JvmResolutionContext): List<JvmRelation> {
         val consumers = mutableListOf<JvmRelation>()
@@ -489,9 +452,4 @@ class FrameworkRelationResolver : JvmRelationResolver {
 
 private data class FeignClientInfo(
     val classPath: String?,
-)
-
-private data class HttpEndpoint(
-    val method: String,
-    val path: String,
 )

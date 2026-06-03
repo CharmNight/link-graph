@@ -69,6 +69,7 @@ class PromptComposer(
 
     private fun trimPrioritized(sections: List<IndexedPromptSection>): List<IndexedPromptSection> {
         var remaining = budgetController.maxCharacters
+        var remainingTokens = budgetController.maxTokens
         var emittedCount = 0
         return sections
             .sortedWith(
@@ -76,18 +77,29 @@ class PromptComposer(
                     .thenBy { section -> section.index },
             )
             .mapNotNull { section ->
-                if (remaining <= 0) {
+                if (remaining <= 0 || remainingTokens <= 0) {
                     return@mapNotNull null
                 }
                 val separatorCost = if (emittedCount == 0) 0 else 2
-                if (remaining <= separatorCost) {
+                val separatorTokenCost = if (emittedCount == 0) 0 else budgetController.estimateTokens("\n\n")
+                if (remaining <= separatorCost || remainingTokens <= separatorTokenCost) {
                     return@mapNotNull null
                 }
-                val trimmedText = section.section.text.take(remaining - separatorCost)
+                val trimmedText = budgetController.trimSections(listOf(section.section.text.take(remaining - separatorCost)))
+                    .firstOrNull()
+                    ?.takeIf { text -> budgetController.estimateTokens(text) <= remainingTokens - separatorTokenCost }
+                    ?: section.section.text
+                        .asSequence()
+                        .runningFold("") { acc, ch -> acc + ch }
+                        .drop(1)
+                        .takeWhile { text -> text.length <= remaining - separatorCost && budgetController.estimateTokens(text) <= remainingTokens - separatorTokenCost }
+                        .lastOrNull()
+                    ?: ""
                 if (trimmedText.isBlank()) {
                     return@mapNotNull null
                 }
                 remaining -= trimmedText.length + separatorCost
+                remainingTokens -= budgetController.estimateTokens(trimmedText) + separatorTokenCost
                 emittedCount += 1
                 section.copy(section = section.section.copy(text = trimmedText))
             }

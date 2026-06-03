@@ -456,6 +456,12 @@ private fun assertIndexedGraphSummary(
     assertTrue(indexed.scopeLabel.isNotBlank(), "$label indexed scopeLabel must be present.")
     assertTrue(indexed.completeness.isNotBlank(), "$label indexed completeness must be present.")
     assertTrue(indexed.cacheState.isNotBlank(), "$label indexed cacheState must be present.")
+    assertTrue(indexed.freshness.state in setOf("FRESH", "STALE", "BUILDING"), "$label indexed freshness state must be explicit.")
+    assertTrue(indexed.freshness.pendingFileCount >= 0, "$label indexed freshness pendingFileCount must be non-negative.")
+    assertTrue(
+        indexed.freshness.pendingFileSamples.size <= indexed.freshness.pendingFileCount,
+        "$label indexed freshness samples cannot exceed pending file count.",
+    )
     assertTrue(
         indexed.hiddenNodeCount >= (fullGraph.nodes.size - indexed.visibleNodeCount).coerceAtLeast(0) ||
             indexed.truncated,

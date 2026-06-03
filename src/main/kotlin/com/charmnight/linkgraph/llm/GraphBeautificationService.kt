@@ -51,6 +51,9 @@ class DefaultGraphBeautificationService(
         ).steps
         /** 链路讲解提示词包。 */
         val promptPackage = promptFactory.buildBeautificationPromptPackage(context, sanitized, projectedSteps)
+        if (!context.effectiveEvidenceProfile().methodChainAllowed) {
+            return fallbackService.beautify(context, sanitized, onPreview)
+        }
         if (!sanitized.usesRemoteProvider()) {
             return fallbackService.beautify(context, sanitized, onPreview)
         }
@@ -187,12 +190,22 @@ class PlaceholderGraphBeautificationService(
                 node.type == NodeType.METHOD &&
                 node.signature != anchorNode?.signature
         }
+        val evidenceProfile = context.effectiveEvidenceProfile()
         /** 当前投影出的稳定步骤。 */
         val projectedSteps = stepProjectionService.buildSteps(
             factGraph = visibleGraph,
             draftEntries = emptyList(),
             granularity = context.granularity,
         )
+        if (!evidenceProfile.methodChainAllowed) {
+            return structureOverviewResult(
+                context = context,
+                settings = settings,
+                evidenceProfile = evidenceProfile,
+                projectedSteps = projectedSteps.steps,
+                onPreview = onPreview,
+            )
+        }
         /** 追问场景下优先聚焦当前步骤。 */
         val focusedSteps = context.followUp?.let { followUp ->
             projectedSteps.steps.filter { step -> step.stepId == followUp.stepId }
@@ -230,6 +243,86 @@ class PlaceholderGraphBeautificationService(
             warnings = warnings,
         )
     }
+
+    private fun structureOverviewResult(
+        context: GraphBeautificationContext,
+        settings: LinkGraphSettingsState,
+        evidenceProfile: GraphEvidenceProfile,
+        projectedSteps: List<WorkbenchStep>,
+        onPreview: ((String, Boolean) -> Unit)?,
+    ): GraphBeautificationResult {
+        val promptPackage = promptFactory.buildBeautificationPromptPackage(context, settings, projectedSteps)
+        onPreview?.invoke(promptPackage.preview, true)
+        val graph = context.presentationContext.graph
+        val anchorNodeId = evidenceProfile.anchorNodeId ?: context.presentationContext.anchorNodeId
+        val overviewNodes = graph.nodes
+            .sortedWith(compareByDescending<GraphNode> { node -> node.id == anchorNodeId }.thenBy { node -> node.title })
+            .take(8)
+        val steps = overviewNodes.mapIndexed { index, node ->
+            val relationSummary = relationSummaryFor(node, graph)
+            GraphBeautificationStep(
+                stepId = "structure-${node.id.replace(Regex("[^A-Za-z0-9]+"), "-").trim('-').ifBlank { index.toString() }}",
+                title = "结构概览：${node.title}",
+                granularity = context.granularity,
+                kind = StepKind.STRUCTURE_OVERVIEW,
+                description = buildStructureDescription(node, evidenceProfile, relationSummary),
+                primaryNodeId = node.id,
+                evidence = listOf(
+                    ResultEvidenceFinding(
+                        id = "structure-${index}-graph",
+                        claim = "当前结构概览直接关联图节点“${node.title}”，节点类型为 ${node.type.name}。",
+                        evidenceLevel = ResultEvidenceLevel.DIRECT_GRAPH,
+                        references = listOf(ResultEvidenceReference(nodeId = node.id)),
+                    ),
+                ),
+                followUpQuestions = structureFollowUpQuestions(evidenceProfile),
+                downstreamTargets = evidenceProfile.recommendedDrilldowns,
+            )
+        }
+        val warnings = buildList {
+            add("当前锚点类型为 ${evidenceProfile.anchorNodeType?.name ?: "UNKNOWN"}，本轮按结构概览讲解，不生成方法调用链。")
+            evidenceProfile.evidenceGaps.takeIf { it.isNotEmpty() }?.let { gaps ->
+                add("当前证据缺口：${gaps.joinToString("；")}。")
+            }
+        }
+        return GraphBeautificationResult(
+            source = LlmResultSource.LOCAL_RULE,
+            granularity = context.granularity,
+            steps = steps,
+            promptPreview = promptPackage.preview,
+            warnings = warnings,
+        )
+    }
+
+    private fun relationSummaryFor(node: GraphNode, graph: com.charmnight.linkgraph.model.GraphDocument): String {
+        val incoming = graph.edges.count { edge -> edge.toNodeId == node.id }
+        val outgoing = graph.edges.count { edge -> edge.fromNodeId == node.id }
+        return "入边 $incoming 条，出边 $outgoing 条"
+    }
+
+    private fun buildStructureDescription(
+        node: GraphNode,
+        evidenceProfile: GraphEvidenceProfile,
+        relationSummary: String,
+    ): String {
+        val memberClassCount = node.metadata["indexed.memberClassCount"]?.toIntOrNull()
+        val memberText = memberClassCount?.let { "包含 $it 个类。" } ?: ""
+        val relationText = if (evidenceProfile.availableRelationKinds.isEmpty()) {
+            "当前没有足够关系证据确认上下游。"
+        } else {
+            "当前可用关系类型：${evidenceProfile.availableRelationKinds.joinToString("、")}。"
+        }
+        return "结构概览：${node.title} 是 ${node.type.name} 节点。$memberText$relationSummary。$relationText"
+    }
+
+    private fun structureFollowUpQuestions(evidenceProfile: GraphEvidenceProfile): List<String> =
+        buildList {
+            add("这个结构节点的核心职责由哪些源码证据支撑？")
+            add("它有哪些已证实的入边和出边关系？")
+            if (evidenceProfile.recommendedDrilldowns.isNotEmpty()) {
+                add("下一步应该下钻到哪个类或资源节点？")
+            }
+        }.distinct()
 
     /** 在当前展示图和完整图里解析讲解锚点节点。 */
     private fun resolveAnchorNode(context: GraphBeautificationContext): GraphNode? {

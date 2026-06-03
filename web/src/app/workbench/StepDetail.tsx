@@ -5,6 +5,7 @@ import type { GraphBeautificationStep, ResultEvidenceReference } from "../types"
 interface StepDetailProps {
   step: GraphBeautificationStep | null;
   onAddToDraft: (stepId: string) => void;
+  onLocateStepNode: (stepId: string) => void;
   onDrillDown: (stepId: string) => void;
   onFollowUp: (stepId: string, question?: string) => void;
   onRevealReference: (reference: ResultEvidenceReference) => void;
@@ -48,9 +49,30 @@ function describeReferenceNode(reference: ResultEvidenceReference) {
   return reference.nodeId ? "关联图节点" : null;
 }
 
+function isMethodLikeNodeId(nodeId: string | null | undefined): boolean {
+  return Boolean(
+    nodeId?.startsWith("method:") ||
+    nodeId?.startsWith("invoke:"),
+  );
+}
+
+function resolvePrimaryAction(step: GraphBeautificationStep): {
+  label: string;
+  action: "locate" | "drillDown";
+} {
+  if (step.downstreamTargets.some(isMethodLikeNodeId)) {
+    return { label: "定位被调方法", action: "drillDown" };
+  }
+  if (step.downstreamTargets.length > 0) {
+    return { label: "定位下钻节点", action: "drillDown" };
+  }
+  return { label: "定位图节点", action: "locate" };
+}
+
 export function StepDetail({
   step,
   onAddToDraft,
+  onLocateStepNode,
   onDrillDown,
   onFollowUp,
   onRevealReference,
@@ -82,6 +104,8 @@ export function StepDetail({
     );
   }
 
+  const primaryAction = resolvePrimaryAction(step);
+
   return (
     <section className="workbench-step-detail">
       <div className="workbench-step-detail-head">
@@ -91,8 +115,18 @@ export function StepDetail({
           <p className="workbench-step-meta">{stepKindLabel(step.kind)}</p>
         </div>
         <div className="panel-actions">
-          <button type="button" className="ghost-button" onClick={() => onDrillDown(step.stepId)}>
-            定位被调方法
+          <button
+            type="button"
+            className="ghost-button"
+            onClick={() => {
+              if (primaryAction.action === "drillDown") {
+                onDrillDown(step.stepId);
+                return;
+              }
+              onLocateStepNode(step.stepId);
+            }}
+          >
+            {primaryAction.label}
           </button>
         </div>
       </div>

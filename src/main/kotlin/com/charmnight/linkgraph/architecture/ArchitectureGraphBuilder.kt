@@ -592,6 +592,7 @@ private val architectureAggregateRelationKinds = setOf(
     JvmRelationKind.DUBBO_REFERENCES,
     JvmRelationKind.FEIGN_CLIENT_CALLS,
     JvmRelationKind.FEIGN_ROUTES_TO,
+    JvmRelationKind.SPRING_ROUTES_TO,
     JvmRelationKind.MQ_PUBLISHES,
     JvmRelationKind.MQ_CONSUMES,
     JvmRelationKind.RESOURCE_BINDS,

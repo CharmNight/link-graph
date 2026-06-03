@@ -39,6 +39,7 @@ data class ChangedSymbol(
     val baselineOnly: Boolean = false,
     val blastRadiusIncomplete: Boolean = false,
     val unavailableReason: String? = null,
+    val reason: String = "PATH_MATCHED_SYMBOL_FILE",
 )
 
 data class BlastRadius(
@@ -113,6 +114,7 @@ class GitDiffSymbolMapper(
                     endLine = symbol.source?.endLine,
                     hunk = matchingHunk,
                     changeKind = matchingHunk?.changeKind ?: "MODIFIED",
+                    reason = if (matchingHunk != null) "HUNK_TOUCHES_SYMBOL_LINES" else "PATH_MATCHED_SYMBOL_FILE",
                 )
             }
             .distinctBy(ChangedSymbol::symbolId)
@@ -155,6 +157,7 @@ class GitDiffSymbolMapper(
                     endLine = symbol.source?.endLine,
                     hunk = matchingHunk,
                     changeKind = changeKind,
+                    reason = if (matchingHunk != null) "HUNK_TOUCHES_SYMBOL_LINES" else "PATH_MATCHED_SYMBOL_FILE",
                 )
             }
             .distinctBy(ChangedSymbol::symbolId)

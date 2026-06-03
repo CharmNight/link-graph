@@ -48,6 +48,7 @@ data class JvmSymbolIndexBuildTraceEvent(
 class JvmSymbolIndexBuilder(
     private val project: Project,
     private val trace: ((JvmSymbolIndexBuildTraceEvent) -> Unit)? = null,
+    private val fileFilter: (VirtualFile) -> Boolean = { true },
     private val attachedJarIndexProvider: () -> AttachedJarIndex = { AttachedJarIndex() },
 ) {
     fun build(budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget = com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget()): JvmSymbolIndex {
@@ -75,6 +76,9 @@ class JvmSymbolIndexBuilder(
                     return@iterateChildrenRecursively shouldDescendContentRootDirectory(root, file)
                 }
                 if (!shouldIndexContentRootFile(root, file)) {
+                    return@iterateChildrenRecursively true
+                }
+                if (!fileFilter(file)) {
                     return@iterateChildrenRecursively true
                 }
                 if (!budget.includeTests && fileIndex.isInTestSourceContent(file)) {
@@ -1083,6 +1087,9 @@ class JvmSymbolIndexBuilder(
                 return
             }
             val file = psiClass.containingFile?.virtualFile ?: return
+            if (!fileFilter(file)) {
+                return
+            }
             if (!budget.includeTests && ProjectFileIndex.getInstance(project).isInTestSourceContent(file)) {
                 return
             }

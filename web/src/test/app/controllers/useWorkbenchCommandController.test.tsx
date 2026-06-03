@@ -30,7 +30,11 @@ vi.mock("../../../app/api", () => ({
   showDiffMode: vi.fn(),
 }));
 
-function renderController() {
+function renderController(availability = {
+  architectureGraphLoaded: false,
+  classDiagramLoaded: false,
+  reviewGraphLoaded: false,
+}) {
   const runBridgeCommand = vi.fn((_label: string, command: () => BridgeInvocationResult, options?: unknown) => {
     command();
     return { ok: true } as const;
@@ -45,6 +49,7 @@ function renderController() {
         runBridgeCommand,
         submitAsyncBridgeCommand,
       },
+      availability,
     }),
   );
   return {
@@ -107,6 +112,43 @@ describe("useWorkbenchCommandController", () => {
     expect(runBridgeCommand).toHaveBeenCalledWith("加载架构图", expect.any(Function));
     expect(runBridgeCommand).toHaveBeenCalledWith("加载类图", expect.any(Function));
     expect(runBridgeCommand).toHaveBeenCalledWith("加载 Review Graph", expect.any(Function));
+  });
+
+  it("switches to already-loaded indexed graph views without requesting reloads", () => {
+    const { result, runBridgeCommand } = renderController({
+      architectureGraphLoaded: true,
+      classDiagramLoaded: true,
+      reviewGraphLoaded: true,
+    });
+
+    act(() => {
+      result.current.handleRequestAnalysisDisplayMode("ARCHITECTURE_GRAPH");
+      result.current.handleRequestAnalysisDisplayMode("CLASS_DIAGRAM");
+      result.current.handleRequestAnalysisDisplayMode("REVIEW_GRAPH");
+    });
+
+    expect(requestArchitectureGraph).not.toHaveBeenCalled();
+    expect(requestClassDiagram).not.toHaveBeenCalled();
+    expect(requestReviewGraph).not.toHaveBeenCalled();
+    expect(requestAnalysisDisplayMode).toHaveBeenCalledWith("ARCHITECTURE_GRAPH");
+    expect(requestAnalysisDisplayMode).toHaveBeenCalledWith("CLASS_DIAGRAM");
+    expect(requestAnalysisDisplayMode).toHaveBeenCalledWith("REVIEW_GRAPH");
+    expect(runBridgeCommand).toHaveBeenCalledWith("切换展示模式", expect.any(Function));
+  });
+
+  it("reloads Review Graph when a non-empty selection changes the review scope", () => {
+    const { result } = renderController({
+      architectureGraphLoaded: true,
+      classDiagramLoaded: true,
+      reviewGraphLoaded: true,
+    });
+
+    act(() => {
+      result.current.handleRequestAnalysisDisplayMode("REVIEW_GRAPH", ["diff:docs"]);
+    });
+
+    expect(requestReviewGraph).toHaveBeenCalledWith(["diff:docs"]);
+    expect(requestAnalysisDisplayMode).not.toHaveBeenCalledWith("REVIEW_GRAPH");
   });
 
   it("shows immediate feedback and preserves dependency options when requesting package dependencies", () => {

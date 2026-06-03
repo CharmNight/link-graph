@@ -1,5 +1,9 @@
 package com.charmnight.linkgraph.architecture
 
+import com.charmnight.linkgraph.architecture.memory.ArchitectureIndexInvalidationPlanner
+import com.charmnight.linkgraph.architecture.memory.ArchitectureIndexMemorySnapshot
+import com.charmnight.linkgraph.architecture.memory.ProjectFileChange
+import com.charmnight.linkgraph.architecture.memory.ProjectSlice
 import com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.settings.LinkGraphSettingsChangedNotifier
@@ -17,6 +21,11 @@ class ArchitectureIndexService(
     private val project: Project,
 ) {
     private val cache = ArchitectureGraphCache()
+    private val freshnessTracker = ArchitectureIndexFreshnessTracker()
+    private val memoryLock = Any()
+
+    @Volatile
+    private var memorySnapshot: ArchitectureIndexMemorySnapshot = ArchitectureIndexMemorySnapshot()
 
     @Volatile
     private var lastIndex: ArchitectureGraphIndex? = null
@@ -27,8 +36,9 @@ class ArchitectureIndexService(
             VirtualFileManager.VFS_CHANGES,
             object : BulkFileListener {
                 override fun after(events: List<VFileEvent>) {
-                    if (events.any(::isIndexAffectingEvent)) {
-                        invalidate()
+                    val affectingPaths = events.mapNotNull(::indexAffectingPath)
+                    if (affectingPaths.isNotEmpty()) {
+                        invalidate("VFS_CHANGE", affectingPaths)
                     }
                 }
             },
@@ -37,7 +47,7 @@ class ArchitectureIndexService(
             ModuleRootListener.TOPIC,
             object : ModuleRootListener {
                 override fun rootsChanged(event: ModuleRootEvent) {
-                    invalidate()
+                    invalidate("MODULE_ROOTS_CHANGED")
                 }
             },
         )
@@ -48,13 +58,17 @@ class ArchitectureIndexService(
                     before: LinkGraphSettingsState,
                     after: LinkGraphSettingsState,
                 ) {
-                    invalidate()
+                    invalidate("SETTINGS_CHANGED")
                 }
             },
         )
     }
 
     fun currentIndex(): ArchitectureGraphIndex? = lastIndex
+
+    fun freshness(): ArchitectureIndexFreshnessSnapshot = freshnessTracker.snapshot()
+
+    fun memorySnapshot(): ArchitectureIndexMemorySnapshot = memorySnapshot
 
     fun getOrBuildIndex(budget: JvmResolutionBudget = defaultBudget()): ArchitectureGraphIndex {
         return project.architectureIndexRuntime().index(budget)
@@ -70,6 +84,7 @@ class ArchitectureIndexService(
             cache.get(cacheKey)?.index?.let { index ->
                 if (recordAsCurrent) {
                     lastIndex = index
+                    freshnessTracker.markIndexed()
                 }
                 return index
             }
@@ -82,6 +97,7 @@ class ArchitectureIndexService(
         return cached.index.also { index ->
             if (recordAsCurrent) {
                 lastIndex = index
+                freshnessTracker.markIndexed()
             }
         }
     }
@@ -93,6 +109,7 @@ class ArchitectureIndexService(
         index.also {
             if (recordAsCurrent) {
                 lastIndex = it
+                freshnessTracker.markIndexed()
             }
         }
 
@@ -104,6 +121,7 @@ class ArchitectureIndexService(
         cache.put(cacheKey, index).index.also {
             if (recordAsCurrent) {
                 lastIndex = it
+                freshnessTracker.markIndexed()
             }
         }
 
@@ -118,19 +136,36 @@ class ArchitectureIndexService(
             builder = builder,
         ).index
 
-    fun invalidate() {
+    internal fun clearHotCacheForTesting() {
         cache.invalidate()
         lastIndex = null
+    }
+
+    fun invalidate() {
+        invalidate("EXPLICIT_INVALIDATE")
+    }
+
+    fun invalidate(dirtyReason: String, paths: List<String> = emptyList()) {
+        freshnessTracker.markDirty(dirtyReason, paths)
+        markMemoryStale(paths)
+        cache.invalidate()
+        lastIndex = null
+    }
+
+    fun recordMemorySnapshot(snapshot: ArchitectureIndexMemorySnapshot) {
+        synchronized(memoryLock) {
+            memorySnapshot = snapshot
+        }
     }
 
     fun defaultBudget(): JvmResolutionBudget {
         return project.architectureIndexRuntime().defaultBudget()
     }
 
-    private fun isIndexAffectingEvent(event: VFileEvent): Boolean {
+    private fun indexAffectingPath(event: VFileEvent): String? {
         val path = (event.file?.path ?: event.path).replace('\\', '/')
         if (path.isBlank()) {
-            return false
+            return null
         }
         val basePath = project.basePath?.replace('\\', '/')
         val underProject = basePath == null || path == basePath || path.startsWith("$basePath/")
@@ -148,7 +183,32 @@ class ArchitectureIndexService(
             "jar",
             "class",
         )
-        return underProject && (sourceLike || path.contains("/META-INF/services/"))
+        return path.takeIf { underProject && (sourceLike || path.contains("/META-INF/services/")) }
+    }
+
+    private fun markMemoryStale(paths: List<String>) {
+        val current = memorySnapshot
+        val manifest = current.manifest ?: return
+        val relativeChanges = paths
+            .map(::toProjectRelativePath)
+            .filter(String::isNotBlank)
+            .map(::ProjectFileChange)
+        if (relativeChanges.isEmpty()) {
+            synchronized(memoryLock) {
+                memorySnapshot = current.copy(staleSliceIds = manifest.slices.map(ProjectSlice::id).sorted())
+            }
+            return
+        }
+        val plan = ArchitectureIndexInvalidationPlanner().plan(manifest, relativeChanges)
+        synchronized(memoryLock) {
+            memorySnapshot = current.copy(staleSliceIds = plan.staleSliceIds.sorted())
+        }
+    }
+
+    private fun toProjectRelativePath(path: String): String {
+        val normalized = path.replace('\\', '/')
+        val basePath = project.basePath?.replace('\\', '/') ?: return normalized
+        return normalized.removePrefix("$basePath/")
     }
 }
 

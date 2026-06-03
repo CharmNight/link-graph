@@ -42,6 +42,7 @@ data class ReviewGraphChangedHunk(
     val newStartLine: Int? = null,
     val newLineCount: Int? = null,
     val matchedSymbolIds: List<String> = emptyList(),
+    val reason: String? = null,
 )
 
 data class ReviewGraphChangedSymbolDetail(
@@ -53,6 +54,7 @@ data class ReviewGraphChangedSymbolDetail(
     val changeKind: String = "MODIFIED",
     val blastRadiusIncomplete: Boolean = false,
     val unavailableReason: String? = null,
+    val reason: String = "PATH_MATCHED_SYMBOL_FILE",
 )
 
 data class ReviewGraphRelatedTestDetail(

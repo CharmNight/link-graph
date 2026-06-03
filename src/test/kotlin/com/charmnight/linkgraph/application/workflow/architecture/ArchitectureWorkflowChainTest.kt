@@ -6,8 +6,27 @@ import com.charmnight.linkgraph.application.indexed.IndexedGraphRefreshPolicy
 import com.charmnight.linkgraph.application.indexed.requestArchitectureGraphRequest
 import com.charmnight.linkgraph.application.indexed.requestClassDiagramRequest
 import com.charmnight.linkgraph.application.model.AsyncRequestPhase
+import com.charmnight.linkgraph.architecture.ArchitectureGraph
+import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
+import com.charmnight.linkgraph.architecture.memory.ArchitectureIndexSliceFragment
+import com.charmnight.linkgraph.architecture.memory.ProjectFileFingerprint
+import com.charmnight.linkgraph.architecture.memory.ProjectSlice
+import com.charmnight.linkgraph.architecture.memory.ProjectSliceKind
+import com.charmnight.linkgraph.architecture.architectureIndexService
 import com.charmnight.linkgraph.architecture.architectureIndexRuntime
+import com.charmnight.linkgraph.jvm.index.JvmClassKind
+import com.charmnight.linkgraph.jvm.index.JvmClassSymbol
+import com.charmnight.linkgraph.jvm.index.JvmFieldTypeRole
+import com.charmnight.linkgraph.jvm.index.JvmResourceKind
+import com.charmnight.linkgraph.jvm.index.JvmResourceSymbol
+import com.charmnight.linkgraph.jvm.index.JvmServiceProviderFile
+import com.charmnight.linkgraph.jvm.index.JvmServiceProviderIndex
+import com.charmnight.linkgraph.jvm.index.JvmSourceRef
+import com.charmnight.linkgraph.jvm.index.JvmSymbolIndex
+import com.charmnight.linkgraph.jvm.index.effectiveTypeReferences
+import com.charmnight.linkgraph.jvm.relation.JvmRelationIndex
 import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
+import com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.source.SourceOrigin
 import com.charmnight.linkgraph.testing.assertArchitectureGraphViewDataContract
@@ -230,6 +249,201 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
         assertTrue(fullIndex.relationIndex.byKind(JvmRelationKind.SERVICE_LOADER_LOADS).isNotEmpty())
     }
 
+    fun testFullIndexCanBeRestoredFromPersistentSliceCacheAfterHotCacheIsDropped() {
+        addArchitectureFixture()
+        val budget = JvmResolutionBudget(includeExternalLibraries = false)
+
+        val firstIndex = project.architectureIndexRuntime().index(budget = budget, forceRebuild = true)
+        assertTrue(firstIndex.symbolIndex.findField("com.example.service.TaskRunner.provider") != null)
+        assertTrue(
+            firstIndex.symbolIndex.serviceProviderIndex.filesByInterfaceName.isNotEmpty(),
+            "Baseline full build must discover SPI provider files.",
+        )
+        assertTrue(
+            firstIndex.symbolIndex.findClass("com.example.service.DefaultTaskProvider")
+                ?.interfaceNames
+                ?.contains("com.example.spi.service.TaskProvider") == true,
+            "Baseline full build must keep provider implements metadata.",
+        )
+        assertTrue(
+            firstIndex.symbolIndex.findField("com.example.service.TaskRunner.providers")
+                ?.effectiveTypeReferences()
+                ?.any { reference ->
+                    reference.typeName == "com.example.spi.service.TaskProvider" &&
+                        reference.role == JvmFieldTypeRole.COLLECTION_ELEMENT
+                } == true,
+            "Baseline full build must preserve generic field element type references.",
+        )
+        assertTrue(firstIndex.relationIndex.byKind(JvmRelationKind.SERVICE_LOADER_LOADS).isNotEmpty())
+
+        project.architectureIndexService().clearHotCacheForTesting()
+
+        val restoredIndex = project.architectureIndexRuntime().index(budget = budget)
+        val memory = project.architectureIndexService().memorySnapshot()
+
+        assertTrue(memory.persistentCacheHits > 0)
+        assertEquals(0, memory.persistentCacheMisses)
+        assertEquals(1.0, memory.cacheHitRate)
+        assertEquals("PERSISTENT_FULL_HIT", memory.indexSource)
+        assertPersistentRestoredIndexKeepsFullJvmSemantics(restoredIndex)
+    }
+
+    fun testStaleSliceRebuildReusesPersistentFragmentsForUnchangedSlices() {
+        addArchitectureFixture()
+        val budget = JvmResolutionBudget(includeExternalLibraries = false)
+
+        project.architectureIndexRuntime().index(budget = budget, forceRebuild = true)
+        val spiInterfacePath = "com/example/spi/TaskProvider.java"
+        val spiInterfaceSlice = requireNotNull(
+            project.architectureIndexService().memorySnapshot().manifest?.slices?.firstOrNull { slice ->
+                slice.files.any { file -> file.relativePath.endsWith(spiInterfacePath) }
+            },
+        ) {
+            "Fixture must create a persistent slice for $spiInterfacePath."
+        }
+        assertTrue(
+            spiInterfaceSlice.packagePrefix != "com.example.service",
+            "Partial rebuild must leave com.example.service restored from persistent fragments.",
+        )
+        val changedPath = requireNotNull(
+            spiInterfaceSlice.files.firstOrNull { file -> file.relativePath.endsWith(spiInterfacePath) },
+        ) {
+            "Changed path must come from the SPI interface slice."
+        }
+
+        project.architectureIndexService().invalidate("VFS_CHANGE", listOf(changedPath.relativePath))
+
+        val rebuiltIndex = project.architectureIndexRuntime().index(budget = budget)
+        val memory = project.architectureIndexService().memorySnapshot()
+
+        assertEquals("PERSISTENT_PARTIAL", memory.indexSource)
+        assertTrue(memory.persistentCacheHits > 0)
+        assertTrue(memory.persistentCacheMisses > 0)
+        assertTrue(rebuiltIndex.symbolIndex.findField("com.example.service.TaskRunner.provider") != null)
+        assertPersistentRestoredIndexKeepsFullJvmSemantics(rebuiltIndex)
+    }
+
+    fun testRuntimeFragmentsPreserveJarEntryDisplayPathsForPersistence() {
+        val jarPath = "/tmp/external.jar"
+        val classEntryPath = "$jarPath!/com/external/ExternalPlugin.class"
+        val resourceEntryPath = "$jarPath!/META-INF/services/com.external.Plugin"
+        val classSource = JvmSourceRef(
+            displayPath = classEntryPath,
+            virtualFileUrl = "jar://$classEntryPath",
+            startLine = 1,
+            endLine = 12,
+            decompiled = true,
+        )
+        val resourceSource = JvmSourceRef(
+            displayPath = resourceEntryPath,
+            virtualFileUrl = "jar://$resourceEntryPath",
+            startLine = 1,
+            endLine = 1,
+            decompiled = false,
+        )
+        val providerClass = JvmClassSymbol(
+            id = "class:external-plugin",
+            qualifiedName = "com.external.ExternalPlugin",
+            simpleName = "ExternalPlugin",
+            packageName = "com.external",
+            moduleName = null,
+            kind = JvmClassKind.CLASS,
+            library = true,
+            source = classSource,
+            origin = SourceOrigin.USER_ATTACHED_CLASS_JAR,
+        )
+        val providerResource = JvmResourceSymbol(
+            id = "resource:external-spi",
+            path = resourceEntryPath,
+            kind = JvmResourceKind.SPI_SERVICE_FILE,
+            source = resourceSource,
+            origin = SourceOrigin.USER_ATTACHED_CLASS_JAR,
+        )
+        val symbolIndex = JvmSymbolIndex(
+            classesByQualifiedName = mapOf(providerClass.qualifiedName to providerClass),
+            resourcesByPath = mapOf(providerResource.path to providerResource),
+            serviceProviderIndex = JvmServiceProviderIndex(
+                mapOf(
+                    "com.external.Plugin" to listOf(
+                        JvmServiceProviderFile(
+                            serviceInterfaceName = "com.external.Plugin",
+                            providerClassNames = listOf(providerClass.qualifiedName),
+                            resource = providerResource,
+                            origin = SourceOrigin.USER_ATTACHED_CLASS_JAR,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val index = ArchitectureGraphIndex(
+            symbolIndex = symbolIndex,
+            relationIndex = JvmRelationIndex(),
+            graph = ArchitectureGraph(),
+        )
+        val slice = ProjectSlice(
+            id = "slice:attached-jar",
+            moduleName = null,
+            contentRoot = "attached-jars",
+            sourceSet = "attached-jars",
+            packagePrefix = null,
+            kind = ProjectSliceKind.ATTACHED_JAR.name,
+            files = listOf(
+                ProjectFileFingerprint(
+                    relativePath = jarPath,
+                    size = 10,
+                    modifiedAtMillis = 20,
+                    contentSha256 = "external-sha",
+                ),
+            ),
+        )
+
+        val fragmentMethod = project.architectureIndexRuntime().javaClass.getDeclaredMethod(
+            "fragmentForSlice",
+            ProjectSlice::class.java,
+            ArchitectureGraphIndex::class.java,
+        )
+        fragmentMethod.isAccessible = true
+        val fragment = fragmentMethod.invoke(project.architectureIndexRuntime(), slice, index) as ArchitectureIndexSliceFragment
+
+        assertEquals(classEntryPath, fragment.symbols.single().sourcePath)
+        assertEquals(resourceEntryPath, fragment.resources.single().path)
+        assertEquals(resourceEntryPath, fragment.serviceProviders.single().resourcePath)
+    }
+
+    fun testPersistentSliceCacheIsSkippedWhenBudgetExpandsJdkSymbols() {
+        addArchitectureFixture()
+        val budget = JvmResolutionBudget(includeJdk = true)
+        val serviceInterfaceName = "java.nio.file.spi.FileSystemProvider"
+
+        val firstIndex = project.architectureIndexRuntime().index(
+            budget = budget,
+            forceRebuild = true,
+        )
+        val firstProviders = firstIndex.symbolIndex.serviceProviderIndex.providersFor(serviceInterfaceName)
+        assertTrue(
+            firstProviders.isNotEmpty(),
+            "Baseline JDK-expanded full build must include JDK SPI providers.",
+        )
+
+        project.architectureIndexService().clearHotCacheForTesting()
+
+        val rebuiltIndex = project.architectureIndexRuntime().index(budget = budget)
+        val memory = project.architectureIndexService().memorySnapshot()
+
+        assertEquals(
+            "Persistent slice cache must not restore partial project slices for JDK-expanded budgets.",
+            "FULL_REBUILD",
+            memory.indexSource,
+        )
+        assertEquals(
+            "JDK SPI providers must remain equivalent after the hot cache is dropped.",
+            firstProviders.flatMap { file -> file.providerClassNames }.toSet(),
+            rebuiltIndex.symbolIndex.serviceProviderIndex.providersFor(serviceInterfaceName)
+                .flatMap { file -> file.providerClassNames }
+                .toSet(),
+        )
+    }
+
     fun testUnscopedClassDiagramAnchorsCurrentEditorClass() {
         addClassDiagramAnchorFixture()
         val events = mutableListOf<GraphEditorApplicationEvent>()
@@ -302,10 +516,12 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
                 package com.example.service;
 
                 import com.example.spi.service.TaskProvider;
+                import java.util.List;
                 import java.util.ServiceLoader;
 
                 public class TaskRunner {
                     private TaskProvider provider;
+                    private List<TaskProvider> providers;
 
                     public void run() {
                         for (TaskProvider candidate : ServiceLoader.load(TaskProvider.class)) {
@@ -345,6 +561,52 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
                     }
                 }
             """.trimIndent(),
+        )
+    }
+
+    private fun assertPersistentRestoredIndexKeepsFullJvmSemantics(index: ArchitectureGraphIndex) {
+        assertTrue(
+            index.relationIndex.byKind(JvmRelationKind.IMPLEMENTS).isNotEmpty(),
+            "Persistent restore must keep IMPLEMENTS relations.",
+        )
+        assertTrue(
+            index.relationIndex.byKind(JvmRelationKind.SPI_PROVIDES).isNotEmpty(),
+            "Persistent restore must keep SPI provider relations.",
+        )
+        assertTrue(
+            index.relationIndex.byKind(JvmRelationKind.SERVICE_LOADER_LOADS).isNotEmpty(),
+            "Persistent restore must keep ServiceLoader relations.",
+        )
+
+        val provider = assertNotNull(
+            index.symbolIndex.findClass("com.example.service.DefaultTaskProvider"),
+            "Restored provider class must exist.",
+        )
+        assertTrue(
+            provider.interfaceNames.contains("com.example.spi.service.TaskProvider"),
+            "Persistent restore must keep provider implements metadata.",
+        )
+
+        val field = assertNotNull(
+            index.symbolIndex.findField("com.example.service.TaskRunner.providers"),
+            "Restored providers field must exist.",
+        )
+        assertTrue(
+            field.effectiveTypeReferences().any { reference ->
+                reference.typeName == "com.example.spi.service.TaskProvider" &&
+                    reference.role == JvmFieldTypeRole.COLLECTION_ELEMENT
+            },
+            "Restored field must keep rich generic type references.",
+        )
+
+        val providerFiles = index.symbolIndex.serviceProviderIndex.providersFor("com.example.spi.service.TaskProvider")
+        assertTrue(providerFiles.isNotEmpty(), "Restored index must keep serviceProviderIndex.")
+        assertTrue(
+            providerFiles.any { file ->
+                file.providerClassNames.contains("com.example.service.DefaultTaskProvider") &&
+                    file.resource.path.endsWith("META-INF/services/com.example.spi.service.TaskProvider")
+            },
+            "Restored serviceProviderIndex must keep SPI interface, provider class, and resource path.",
         )
     }
 

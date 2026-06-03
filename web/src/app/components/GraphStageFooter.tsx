@@ -51,6 +51,12 @@ export function GraphStageFooter({
   const nodeCountLabel = isIndexedGraphDisplayMode(analysisDisplayMode)
     ? indexedGraphNodeCountLabel(indexedSummary)
     : `节点 ${visibleNodeCount} / ${resolvedFullNodeCount}`;
+  const indexedFreshnessLabel = isIndexedGraphDisplayMode(analysisDisplayMode)
+    ? indexedGraphFreshnessLabel(indexedSummary)
+    : null;
+  const indexedCacheLabel = isIndexedGraphDisplayMode(analysisDisplayMode)
+    ? indexedGraphCacheLabel(indexedSummary)
+    : null;
 
   return (
     <footer className="graph-stage-footer" aria-label="图谱图例">
@@ -67,6 +73,13 @@ export function GraphStageFooter({
         <span key={status} className="app-pill">{draftCompareStatusLabel(status)}</span>
       ))}
       <span className="status-pill">{nodeCountLabel}</span>
+      {indexedFreshnessLabel ? <span className="status-pill">{indexedFreshnessLabel}</span> : null}
+      {indexedCacheLabel ? <span className="status-pill">{indexedCacheLabel}</span> : null}
+      {indexedSummary?.visibilityReasons?.map((reason) => (
+        <span key={reason.code} className="status-pill">
+          {indexedVisibilityReasonLabel(reason)}
+        </span>
+      ))}
       <span className="status-pill">代码 diff {codeDiffStatusLabel(codeDiffStatus)}</span>
     </footer>
   );
@@ -104,6 +117,53 @@ function indexedVisibleLayerSummary(summary: IndexedGraphSummary): string {
     .filter(([, value]) => value != null && value > 0)
     .map(([label, value]) => `${label} ${value}`)
     .join(" · ") || "0";
+}
+
+function indexedVisibilityReasonLabel(reason: NonNullable<IndexedGraphSummary["visibilityReasons"]>[number]): string {
+  const counts = [
+    reason.nodeCount != null && reason.nodeCount > 0 ? `节点 ${reason.nodeCount}` : null,
+    reason.edgeCount != null && reason.edgeCount > 0 ? `关系 ${reason.edgeCount}` : null,
+  ].filter((entry): entry is string => entry != null);
+  return counts.length > 0 ? `${reason.label}（${counts.join(" / ")}）` : reason.label;
+}
+
+function indexedGraphFreshnessLabel(summary: IndexedGraphSummary | null): string | null {
+  const freshness = summary?.freshness;
+  if (freshness == null) {
+    return null;
+  }
+  if (freshness.state === "STALE") {
+    const pending = freshness.pendingFileCount > 0
+      ? `待刷新 ${freshness.pendingFileCount} 个文件`
+      : freshness.dirtyReason
+        ? freshness.dirtyReason
+        : "等待刷新";
+    return `索引 STALE：${pending}`;
+  }
+  if (freshness.state === "BUILDING") {
+    return "索引 BUILDING：正在构建";
+  }
+  return `索引 ${freshness.state}`;
+}
+
+function indexedGraphCacheLabel(summary: IndexedGraphSummary | null): string | null {
+  const cacheState = summary?.cacheState?.trim();
+  if (!cacheState) {
+    return null;
+  }
+  switch (cacheState) {
+    case "REUSED_FULL_INDEX":
+    case "HIT":
+      return "索引缓存：复用完整索引";
+    case "REPROJECT_CACHED":
+      return "索引缓存：复用索引重新投影";
+    case "CACHE_MISS":
+      return "索引缓存：重新构建";
+    case "FORCE_REBUILD":
+      return "索引缓存：强制重建";
+    default:
+      return `索引缓存：${cacheState}`;
+  }
 }
 
 function codeDiffStatusLabel(status: CodeDiffStatus): string {

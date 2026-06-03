@@ -1747,6 +1747,51 @@ describe.sequential("App", () => {
     });
   });
 
+  it("keeps the current explanation result when an indexed graph view update does not include explanation fields", async () => {
+    const user = userEvent.setup();
+    const state = bootstrapStateFixture();
+    state.graphBeautificationResult = {
+      ...state.graphBeautificationResult!,
+      steps: [
+        explanationStepFixture(),
+        {
+          stepId: "step-validate-order",
+          title: "Step 2 校验订单参数",
+          granularity: "BUSINESS",
+          kind: "BUSINESS_ACTION",
+          description: "这里校验订单请求参数。",
+          primaryNodeId: "class:order-draft-dto",
+          codeSnippet: "validator.validate(request);",
+          evidence: [],
+          followUpQuestions: ["校验失败会怎么处理？"],
+          downstreamTargets: [],
+        },
+      ],
+    };
+    window.linkGraphBootstrap = state;
+
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /Step 2 校验订单参数/ }));
+    expect(screen.getByRole("heading", { name: "Step 2 校验订单参数" })).toBeInTheDocument();
+
+    const nextState = structuredClone(state);
+    nextState.snapshotRevision = 2;
+    nextState.analysisDisplayMode = "CLASS_DIAGRAM";
+    nextState.lastMessageType = "classDiagram";
+    delete nextState.graphBeautificationResult;
+    delete nextState.graphBeautificationRequestState;
+
+    await applyBootstrapEnvelope({
+      sessionId: "session-1",
+      revision: 2,
+      state: nextState,
+    });
+
+    expect(screen.getByRole("heading", { name: "Step 2 校验订单参数" })).toBeInTheDocument();
+    expect(screen.getByText("这里校验订单请求参数。")).toBeInTheDocument();
+  });
+
   it("routes explanation requests through the node context menu action", async () => {
     const { container } = render(<App />);
     await waitForGraphNode(container, "method:submit-order");

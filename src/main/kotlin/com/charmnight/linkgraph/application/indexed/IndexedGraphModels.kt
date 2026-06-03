@@ -84,6 +84,22 @@ data class IndexedGraphLayerCounts(
     }
 }
 
+data class IndexedGraphFreshness(
+    val state: String = "FRESH",
+    val dirtyReason: String? = null,
+    val pendingFileCount: Int = 0,
+    val pendingFileSamples: List<String> = emptyList(),
+    val lastIndexedAtEpochMillis: Long? = null,
+    val staleSinceEpochMillis: Long? = null,
+)
+
+data class IndexedGraphVisibilityReason(
+    val code: String,
+    val label: String,
+    val nodeCount: Int = 0,
+    val edgeCount: Int = 0,
+)
+
 data class IndexedGraphRequest(
     val view: IndexedGraphView,
     val anchor: IndexedGraphAnchor? = null,
@@ -186,6 +202,8 @@ data class IndexedGraphSummary(
     val candidateLayerCounts: IndexedGraphLayerCounts = IndexedGraphLayerCounts(),
     val hiddenLayerCounts: IndexedGraphLayerCounts = IndexedGraphLayerCounts(),
     val collapsedLayerCounts: IndexedGraphLayerCounts = IndexedGraphLayerCounts(),
+    val freshness: IndexedGraphFreshness = IndexedGraphFreshness(),
+    val visibilityReasons: List<IndexedGraphVisibilityReason> = emptyList(),
 )
 
 fun IndexedGraphRequest.classDiagramScopeNodeId(): String? =
@@ -257,6 +275,7 @@ fun IndexedGraphRequest.toSummary(
     truncated: Boolean = hiddenNodeCount > 0 || hiddenEdgeCount > 0,
     candidateLayerCounts: IndexedGraphLayerCounts? = null,
     cacheState: String,
+    freshness: IndexedGraphFreshness = IndexedGraphFreshness(),
 ): IndexedGraphSummary {
     val projectLayerCounts = index.graph.nodes
         .fold(IndexedGraphLayerCounts()) { counts, node ->
@@ -308,7 +327,46 @@ fun IndexedGraphRequest.toSummary(
         candidateLayerCounts = candidateLayerCounts ?: scopedLayerCounts,
         hiddenLayerCounts = hiddenLayerCounts,
         collapsedLayerCounts = collapsedLayerCounts,
+        freshness = freshness,
+        visibilityReasons = indexedVisibilityReasons(
+            hiddenNodeCount = hiddenNodeCount,
+            hiddenEdgeCount = hiddenEdgeCount,
+            truncated = truncated,
+            includeExternalLibraries = includeExternalLibraries,
+            includeJdk = includeJdk,
+            collapsedLayerCounts = collapsedLayerCounts,
+        ),
     )
+}
+
+private fun indexedVisibilityReasons(
+    hiddenNodeCount: Int,
+    hiddenEdgeCount: Int,
+    truncated: Boolean,
+    includeExternalLibraries: Boolean,
+    includeJdk: Boolean,
+    collapsedLayerCounts: IndexedGraphLayerCounts,
+): List<IndexedGraphVisibilityReason> = buildList {
+    if (hiddenNodeCount > 0 || hiddenEdgeCount > 0 || truncated) {
+        add(
+            IndexedGraphVisibilityReason(
+                code = "VIEWPORT_NODE_LIMIT",
+                label = "窗口限制隐藏了部分节点或关系",
+                nodeCount = hiddenNodeCount,
+                edgeCount = hiddenEdgeCount,
+            ),
+        )
+    }
+    if (!includeExternalLibraries) {
+        add(IndexedGraphVisibilityReason(code = "EXTERNAL_LAYER_DISABLED", label = "三方库层未启用"))
+    }
+    if (!includeJdk) {
+        add(IndexedGraphVisibilityReason(code = "JDK_LAYER_DISABLED", label = "JDK 层未启用"))
+    }
+    val collapsed = collapsedLayerCounts.total()
+    if (collapsed > 0) {
+        add(IndexedGraphVisibilityReason(code = "COLLAPSED_BUCKET", label = "部分节点折叠为桶", nodeCount = collapsed))
+    }
 }
 
 fun Iterable<GraphNode>.indexedLayerCounts(): IndexedGraphLayerCounts =

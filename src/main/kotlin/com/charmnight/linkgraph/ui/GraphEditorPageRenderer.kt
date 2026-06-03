@@ -651,6 +651,22 @@ class GraphEditorPageRenderer {
             "externalDependencyGroupCount" to document.summary.externalDependencyGroupCount,
             "jdkGroupCount" to document.summary.jdkGroupCount,
             "indexed" to document.summary.indexed?.toMap(),
+            "projectStructureRelationGroups" to document.summary.projectStructureRelationGroups.map { group ->
+                linkedMapOf(
+                    "id" to group.id,
+                    "fromNodeId" to group.fromNodeId,
+                    "toNodeId" to group.toNodeId,
+                    "displayRelationKind" to group.displayRelationKind,
+                    "displayRelation" to group.displayRelation,
+                    "relationKinds" to group.relationKinds,
+                    "count" to group.count,
+                    "confidence" to group.confidence,
+                    "sourceRelationIds" to group.sourceRelationIds,
+                    "sampleEvidenceRefs" to group.sampleEvidenceRefs,
+                    "defaultVisible" to group.defaultVisible,
+                    "hiddenReason" to group.hiddenReason,
+                )
+            },
         ),
         layoutState = layoutState,
         presentation = document.presentation,
@@ -746,6 +762,7 @@ class GraphEditorPageRenderer {
                     "changeKind" to symbol.changeKind,
                     "blastRadiusIncomplete" to symbol.blastRadiusIncomplete,
                     "unavailableReason" to symbol.unavailableReason,
+                    "reason" to symbol.reason,
                 )
             })
             put("relatedTests", document.relatedTests.map { test ->
@@ -782,10 +799,11 @@ class GraphEditorPageRenderer {
         "header" to hunk.header,
         "oldStartLine" to hunk.oldStartLine,
         "oldLineCount" to hunk.oldLineCount,
-        "newStartLine" to hunk.newStartLine,
-        "newLineCount" to hunk.newLineCount,
-        "matchedSymbolIds" to hunk.matchedSymbolIds,
-    )
+            "newStartLine" to hunk.newStartLine,
+            "newLineCount" to hunk.newLineCount,
+            "matchedSymbolIds" to hunk.matchedSymbolIds,
+            "reason" to hunk.reason,
+        )
 
     /** 把三视图通用视图文档转换为前端使用的 Map。 */
     private fun viewDocumentToMap(
@@ -1253,6 +1271,26 @@ class GraphEditorPageRenderer {
             "candidateLayerCounts" to candidateLayerCounts.toMap(),
             "hiddenLayerCounts" to hiddenLayerCounts.toMap(),
             "collapsedLayerCounts" to collapsedLayerCounts.toMap(),
+            "freshness" to freshness.toMap(),
+            "visibilityReasons" to visibilityReasons.map { reason -> reason.toMap() },
+        )
+
+    private fun com.charmnight.linkgraph.application.indexed.IndexedGraphVisibilityReason.toMap(): Map<String, Any?> =
+        linkedMapOf(
+            "code" to code,
+            "label" to label,
+            "nodeCount" to nodeCount,
+            "edgeCount" to edgeCount,
+        )
+
+    private fun com.charmnight.linkgraph.application.indexed.IndexedGraphFreshness.toMap(): Map<String, Any?> =
+        linkedMapOf(
+            "state" to state,
+            "dirtyReason" to dirtyReason,
+            "pendingFileCount" to pendingFileCount,
+            "pendingFileSamples" to pendingFileSamples,
+            "lastIndexedAtEpochMillis" to lastIndexedAtEpochMillis,
+            "staleSinceEpochMillis" to staleSinceEpochMillis,
         )
 
     private fun com.charmnight.linkgraph.application.indexed.IndexedGraphLayerCounts.toMap(): Map<String, Int> =

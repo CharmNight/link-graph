@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
 import com.charmnight.linkgraph.architecture.ArchitectureNodeKind
 import com.charmnight.linkgraph.architecture.ClassDiagramFastIndex
 import com.charmnight.linkgraph.application.indexed.IndexedGraphCompleteness
+import com.charmnight.linkgraph.application.indexed.IndexedGraphFreshness
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
 import com.charmnight.linkgraph.application.indexed.requestClassDiagramRequest
 import com.charmnight.linkgraph.application.indexed.toSummary
@@ -43,6 +44,7 @@ class ClassDiagramProjector(
         relationCompleteness: String = "COMPLETE",
         request: IndexedGraphRequest = requestClassDiagramRequest(scopeNodeId),
         cacheState: String = "UNKNOWN",
+        freshness: IndexedGraphFreshness = IndexedGraphFreshness(),
     ): ClassDiagramViewDocument {
         val scopeIsClassLike = scopeNodeId?.let { nodeId -> index.node(nodeId)?.kind in classLikeKinds } == true
         val explicitScopedClassIds = scopeNodeId
@@ -165,6 +167,7 @@ class ClassDiagramProjector(
                     hiddenEdgeCount = hiddenEdgeCount,
                     truncated = truncated,
                     cacheState = cacheState,
+                    freshness = freshness,
                 ),
             ),
             projectionIndex = classDiagramProjectionIndex(visibleGraphWithPresentation),

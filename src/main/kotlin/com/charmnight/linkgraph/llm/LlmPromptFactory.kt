@@ -282,6 +282,8 @@ class LlmPromptFactory(
         val selectedNodes = scopeNodes.joinToString("\n") { nodeSummary(it) }.ifBlank { "- 无" }
         /** 当前范围边摘要。 */
         val selectedEdges = scopeEdges.joinToString("\n") { edgeSummary(it) }.ifBlank { "- 无" }
+        val evidenceProfile = context.effectiveEvidenceProfile()
+        val evidenceProfileText = buildEvidenceProfileText(evidenceProfile)
         /** 历史消息摘要。 */
         val history = session?.messages?.joinToString("\n") { message ->
             "- [${message.role.name}] ${message.content}"
@@ -325,6 +327,8 @@ class LlmPromptFactory(
             - INVESTIGATE 模式：只围绕 sourceThreadId 对应风险线程继续取证，不生成无关新线程。
             图中没有调用边，不等于方法无法触发；必须结合源码注解、配置、框架回调、调用点和取证轨迹判断。
             你的第一优先级是直接回答“用户问题”，不要绕开问题泛化输出通用问答结论。
+            必须遵守图证据边界；如果图证据边界禁止某类声明，即使用户问题要求，也只能说明证据不足和可下钻方向，不能补造事实。
+            如果锚点不是 METHOD/FLOW_ACTION/FLOW_SCOPE/TERMINAL，不能把它称为当前方法，不能输出“定位被调方法”或方法调用链，除非图证据边界明确允许 METHOD_CHAIN。
             如果用户问题是在“介绍 / 解释 / 讲解链路”，answer 必须先解释链路本身，不要输出无关风险建议。
             只有当用户问题明确要求排查问题、找问题、调整逻辑，或者你发现了与用户问题直接相关且证据充分的缺陷时，才允许输出 candidateChanges；否则 candidateChanges 必须返回 []。
             candidateChanges[*] 必须绑定到 findings 中的 supportingFindingIds；如果没有可追溯 findings，就不要输出这条 candidateChange。
@@ -386,6 +390,13 @@ class LlmPromptFactory(
                     $selectedEdges
                     """.trimIndent(),
                     priority = GRAPH,
+                ),
+                PromptSection(
+                    """
+                    图证据边界：
+                    $evidenceProfileText
+                    """.trimIndent(),
+                    priority = BEHAVIOR_RULE,
                 ),
                 PromptSection(
                     """
@@ -702,6 +713,8 @@ class LlmPromptFactory(
         val steps = projectedSteps.joinToString("\n") { step ->
             "- ${step.stepId} | ${step.kind.name} | ${step.title} | nodeRefs=${step.nodeRefs.joinToString()}"
         }.ifBlank { "- 无" }
+        val evidenceProfile = context.effectiveEvidenceProfile()
+        val evidenceProfileText = buildEvidenceProfileText(evidenceProfile)
         /** 当前追问上下文。 */
         val followUp = context.followUp
         /** 面向模型的追问说明块。 */
@@ -716,10 +729,19 @@ class LlmPromptFactory(
             steps[0] 必须优先对应当前步骤；description 的首句必须先回答用户追问。
             如果当前证据不足，必须明确写出“不足以确认”，不要编造隐藏逻辑。
             """.trimIndent()
-        } ?: """
+        } ?: if (!evidenceProfile.methodChainAllowed) {
+            """
+            讲解模式：证据受限讲解
+            当前锚点不是可直接解释为方法调用链的节点，必须按允许讲解模式输出。
+            如果缺少方法级调用边，不能输出“定位被调方法”、调用链、当前方法内部流程或隐藏业务步骤。
+            必须先说明当前能确认的结构事实，再说明当前不能确认的关系和可下钻方向。
+            """.trimIndent()
+        } else {
+            """
             讲解模式：常规讲解
             讲解重点：${context.explanationFocus ?: "先讲当前方法内部，再讲跨方法扩展"}
             """.trimIndent()
+        }
         /** 面向模型的系统提示词。 */
         val systemPrompt = """
             你是 IDEA Link Graph 的步骤化链路讲解助手。
@@ -751,6 +773,13 @@ class LlmPromptFactory(
                     当前粒度：${context.granularity.name}
                     """.trimIndent(),
                     priority = USER_GOAL,
+                ),
+                PromptSection(
+                    """
+                    图证据边界：
+                    $evidenceProfileText
+                    """.trimIndent(),
+                    priority = BEHAVIOR_RULE,
                 ),
                 PromptSection(followUpBlock, priority = BEHAVIOR_RULE),
                 PromptSection(
@@ -784,6 +813,35 @@ class LlmPromptFactory(
                 PromptSection(beautificationSchemaInstruction(), priority = SCHEMA),
             ),
         )
+    }
+
+    private fun buildEvidenceProfileText(profile: GraphEvidenceProfile): String {
+        val modes = profile.allowedExplanationModes.joinToString(", ") { mode -> mode.name }.ifBlank { "无" }
+        val forbiddenSummary = profile.forbiddenClaims.joinToString("；").ifBlank { "无" }
+        val forbidden = profile.forbiddenClaims.joinToString("\n") { claim -> "- $claim" }.ifBlank { "- 无" }
+        val gapsSummary = profile.evidenceGaps.joinToString("；").ifBlank { "无" }
+        val gaps = profile.evidenceGaps.joinToString("\n") { gap -> "- $gap" }.ifBlank { "- 无" }
+        val relations = profile.availableRelationKinds.joinToString(", ").ifBlank { "无" }
+        val drilldowns = profile.recommendedDrilldowns.joinToString(", ").ifBlank { "无" }
+        return """
+            锚点类型：${profile.anchorNodeType?.name ?: "UNKNOWN"}
+            架构类型：${profile.anchorArchitectureKind ?: "UNKNOWN"}
+            允许讲解模式：$modes
+            可用关系类型：$relations
+            入边数量：${profile.incomingRelationCount}
+            出边数量：${profile.outgoingRelationCount}
+            具备方法调用证据：${profile.hasMethodCallEvidence}
+            具备源码证据：${profile.hasSourceEvidence}
+            具备包成员证据：${profile.hasPackageMemberEvidence}
+            禁止声明：$forbiddenSummary
+            禁止声明：
+            $forbidden
+            证据缺口：$gapsSummary
+            证据缺口：
+            $gaps
+            推荐下钻：
+            $drilldowns
+        """.trimIndent()
     }
 
     /** 返回链路讲解场景的用户提示词。 */

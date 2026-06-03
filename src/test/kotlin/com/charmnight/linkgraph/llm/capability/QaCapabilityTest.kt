@@ -74,6 +74,33 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertTrue("build_review_evidence_bundle" in reviewTools)
     }
 
+    fun testQaModeAllowsProjectExploreAndQueryTools() {
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            qaExecutor = { input, _, _ ->
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "ok",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+        val tools = capability.allowedTools(
+            QaCapabilityInput(
+                question = "解释项目结构",
+                qaContext = GraphQaContext(),
+            ),
+        )
+
+        assertTrue("explore_project_context" in tools)
+        assertTrue("query_project_graph" in tools)
+        assertTrue("find_project_path" in tools)
+        assertTrue("explain_project_node" in tools)
+        assertTrue("affected_project_nodes" in tools)
+        assertTrue("get_project_index_digest" in tools)
+    }
+
     fun testBuildsQaInitialStateFromQuestionAndUsesQaCapabilityId() {
         val capability = QaCapability(
             defaultBudget = RunBudget(),

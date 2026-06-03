@@ -17,6 +17,7 @@ enum class StepKind {
     CONDITION,
     RETURN,
     RESOURCE_INTERACTION,
+    STRUCTURE_OVERVIEW,
 }
 
 enum class CandidateDraftChangeStatus {

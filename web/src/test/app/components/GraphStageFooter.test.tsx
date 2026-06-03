@@ -51,6 +51,65 @@ describe("GraphStageFooter", () => {
 
     expect(screen.getByText("indexed 统计未返回")).toBeInTheDocument();
   });
+
+  it("renders backend indexed visibility reasons", () => {
+    render(
+      <GraphStageFooter
+        analysisDisplayMode="CLASS_DIAGRAM"
+        activeViewGraph={{ nodes: [], edges: [], nodeCount: 12 }}
+        fullNodeCount={100}
+        hasExplanationFocus={false}
+        draftChangedNodeCount={0}
+        indexedSummary={{
+          ...indexedSummary(),
+          visibilityReasons: [
+            {
+              code: "VIEWPORT_NODE_LIMIT",
+              label: "窗口限制隐藏了部分节点或关系",
+              nodeCount: 88,
+              edgeCount: 9,
+            },
+            {
+              code: "JDK_LAYER_DISABLED",
+              label: "JDK 层未启用",
+            },
+          ],
+        }}
+        codeDiffStatus="MISSING"
+      />,
+    );
+
+    expect(screen.getByText("窗口限制隐藏了部分节点或关系（节点 88 / 关系 9）")).toBeInTheDocument();
+    expect(screen.getByText("JDK 层未启用")).toBeInTheDocument();
+  });
+
+  it("surfaces indexed graph freshness and cache state so backend reuse is visible", () => {
+    render(
+      <GraphStageFooter
+        analysisDisplayMode="ARCHITECTURE_GRAPH"
+        activeViewGraph={{ nodes: [], edges: [], nodeCount: 12 }}
+        fullNodeCount={100}
+        hasExplanationFocus={false}
+        draftChangedNodeCount={0}
+        indexedSummary={{
+          ...indexedSummary(),
+          cacheState: "REUSED_FULL_INDEX",
+          freshness: {
+            state: "STALE",
+            dirtyReason: "VFS_CHANGE",
+            pendingFileCount: 3,
+            pendingFileSamples: ["src/main/java/com/example/OrderService.java"],
+            lastIndexedAtEpochMillis: 1710000000000,
+            staleSinceEpochMillis: 1710000100000,
+          },
+        }}
+        codeDiffStatus="MISSING"
+      />,
+    );
+
+    expect(screen.getByText("索引 STALE：待刷新 3 个文件")).toBeInTheDocument();
+    expect(screen.getByText("索引缓存：复用完整索引")).toBeInTheDocument();
+  });
 });
 
 function indexedSummary(): IndexedGraphSummary {

@@ -93,7 +93,8 @@ class ReviewGraphQueryServiceTest {
         assertTrue(changedSymbols.any { symbol ->
             symbol.symbolId == changedMethod.id &&
                 symbol.changeKind == "HUNK_MODIFIED" &&
-                symbol.hunk?.newStartLine == 22
+                symbol.hunk?.newStartLine == 22 &&
+                symbol.reason == "HUNK_TOUCHES_SYMBOL_LINES"
         })
         assertTrue(changedSymbols.none { symbol -> symbol.symbolId == changed.id && symbol.changeKind == "HUNK_MODIFIED" })
     }
@@ -509,7 +510,10 @@ class ReviewGraphQueryServiceTest {
         assertReviewGraphViewDataContract(view, "review.projector.structuredDiff")
         assertEquals(2, view.changedFiles.size)
         assertTrue(view.changedHunks.any { hunk -> hunk.changeKind == "HUNK_ADDED" })
-        assertTrue(view.unmatchedHunks.any { hunk -> hunk.newFilePath == "src/main/java/com/example/NewService.java" })
+        assertTrue(view.unmatchedHunks.any { hunk ->
+            hunk.newFilePath == "src/main/java/com/example/NewService.java" &&
+                hunk.reason == "UNMATCHED_HUNK_NO_SYMBOL_RANGE"
+        })
         assertTrue(view.baselineOnlySymbols.any { symbol -> symbol.qualifiedName == "com.example.LegacyService" })
         assertTrue(view.evidenceSnippets.any { evidence -> evidence.unavailableReason == "SOURCE_RESOLVER_UNAVAILABLE" })
     }

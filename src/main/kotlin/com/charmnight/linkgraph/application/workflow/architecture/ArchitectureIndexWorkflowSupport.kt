@@ -2,6 +2,9 @@ package com.charmnight.linkgraph.application.workflow.architecture
 
 import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
 import com.charmnight.linkgraph.architecture.architectureIndexRuntime
+import com.charmnight.linkgraph.architecture.architectureIndexService
+import com.charmnight.linkgraph.architecture.toIndexedFreshness
+import com.charmnight.linkgraph.application.indexed.IndexedGraphFreshness
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRefreshPolicy
 import com.charmnight.linkgraph.application.indexed.IndexedGraphScope
@@ -21,6 +24,10 @@ internal class ArchitectureIndexWorkflowSupport(
 
     fun currentIndex(): ArchitectureGraphIndex? = cachedIndex
         ?: runCatching { project.architectureIndexRuntime().currentIndex() }.getOrNull()
+
+    fun freshness(): IndexedGraphFreshness =
+        runCatching { project.architectureIndexService().freshness().toIndexedFreshness() }
+            .getOrDefault(IndexedGraphFreshness())
 
     fun buildIndex(budget: JvmResolutionBudget = defaultBudget()): ArchitectureGraphIndex {
         return project.architectureIndexRuntime().index(budget).also { index ->

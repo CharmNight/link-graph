@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class IndexedGraphModelsTest {
@@ -54,5 +55,35 @@ class IndexedGraphModelsTest {
         assertEquals(listOf("diff:a", "diff:b"), request.reviewSelectedDiffItemIds())
         assertFalse(request.includeExternalLibraries)
         assertFalse(request.includeJdk)
+    }
+
+    @Test
+    fun indexedGraphSummaryCarriesDefaultFreshnessContract() {
+        val summary = IndexedGraphSummary(
+            view = "ARCHITECTURE",
+            scopeKind = "PROJECT",
+            scopeLabel = "Project",
+            depth = 1,
+            projectNodeCount = 0,
+            projectClassCount = 0,
+            externalNodeCount = 0,
+            jdkNodeCount = 0,
+            scopedNodeCount = 0,
+            visibleNodeCount = 0,
+            hiddenNodeCount = 0,
+            hiddenEdgeCount = 0,
+            candidateNodeCount = 0,
+            candidateEdgeCount = 0,
+            truncated = false,
+            completeness = "Interactive",
+            cacheState = "CACHE_MISS",
+        )
+
+        assertEquals("FRESH", summary.freshness.state)
+        assertNull(summary.freshness.dirtyReason)
+        assertEquals(0, summary.freshness.pendingFileCount)
+        assertEquals(emptyList(), summary.freshness.pendingFileSamples)
+        assertNull(summary.freshness.lastIndexedAtEpochMillis)
+        assertNull(summary.freshness.staleSinceEpochMillis)
     }
 }

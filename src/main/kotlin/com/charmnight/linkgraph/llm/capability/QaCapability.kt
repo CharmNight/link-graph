@@ -28,9 +28,13 @@ import com.charmnight.linkgraph.llm.tools.AgentToolRegistry
 import com.charmnight.linkgraph.llm.tools.BuildReviewEvidenceBundleTool
 import com.charmnight.linkgraph.llm.tools.CodeReadToolFacade
 import com.charmnight.linkgraph.llm.tools.CreateCandidateDraftTool
+import com.charmnight.linkgraph.llm.tools.AffectedProjectNodesTool
+import com.charmnight.linkgraph.llm.tools.ExplainProjectNodeTool
+import com.charmnight.linkgraph.llm.tools.ExploreProjectContextTool
 import com.charmnight.linkgraph.llm.tools.FindRelatedTestsTool
 import com.charmnight.linkgraph.llm.tools.FindJvmRelationsTool
 import com.charmnight.linkgraph.llm.tools.FindJvmSymbolTool
+import com.charmnight.linkgraph.llm.tools.FindProjectPathTool
 import com.charmnight.linkgraph.llm.tools.FindProxyTargetsTool
 import com.charmnight.linkgraph.llm.tools.FindReflectionTargetsTool
 import com.charmnight.linkgraph.llm.tools.FindServiceProvidersTool
@@ -39,8 +43,10 @@ import com.charmnight.linkgraph.llm.tools.GetArchitectureIndexSummaryTool
 import com.charmnight.linkgraph.llm.tools.GetChangedSymbolsTool
 import com.charmnight.linkgraph.llm.tools.GetCurrentGraphTool
 import com.charmnight.linkgraph.llm.tools.GetDraftWorkbenchTool
+import com.charmnight.linkgraph.llm.tools.GetProjectIndexDigestTool
 import com.charmnight.linkgraph.llm.tools.GetSelectedScopeTool
 import com.charmnight.linkgraph.llm.tools.GraphToolFacade
+import com.charmnight.linkgraph.llm.tools.QueryProjectGraphTool
 import com.charmnight.linkgraph.llm.tools.ReadSourceSnippetTool
 import com.charmnight.linkgraph.llm.tools.ReadSymbolTool
 import com.charmnight.linkgraph.llm.tools.QueryArchitectureRelationsTool
@@ -76,6 +82,12 @@ class QaCapability(
             ReadSymbolTool(CodeReadToolFacade()),
             GetArchitectureIndexSummaryTool(),
             FindJvmSymbolTool(),
+            ExploreProjectContextTool(),
+            QueryProjectGraphTool(),
+            FindProjectPathTool(),
+            ExplainProjectNodeTool(),
+            AffectedProjectNodesTool(),
+            GetProjectIndexDigestTool(),
             FindJvmRelationsTool(),
             QueryArchitectureRelationsTool(),
             FindServiceProvidersTool(),
@@ -119,6 +131,12 @@ class QaCapability(
             "read_symbol",
             "get_architecture_index_summary",
             "find_jvm_symbol",
+            "explore_project_context",
+            "query_project_graph",
+            "find_project_path",
+            "explain_project_node",
+            "affected_project_nodes",
+            "get_project_index_digest",
             "find_jvm_relations",
             "find_service_providers",
             "find_reflection_targets",

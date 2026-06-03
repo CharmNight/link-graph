@@ -57,6 +57,8 @@ class JvmRelationResolverRegistry(
         TestRelationResolver(),
         ProxyRelationResolver(),
         SpringEventRelationResolver(),
+        SpringEndpointRelationResolver(),
+        SpringConfigBindingRelationResolver(),
         FrameworkRelationResolver(),
     ),
 ) {

@@ -5,6 +5,21 @@ import com.charmnight.linkgraph.application.model.GraphProjectionIndex
 import com.charmnight.linkgraph.presentation.GraphViewPresentation
 import com.charmnight.linkgraph.model.GraphDocument
 
+data class ProjectStructureRelationGroup(
+    val id: String,
+    val fromNodeId: String,
+    val toNodeId: String,
+    val displayRelationKind: String,
+    val displayRelation: String,
+    val relationKinds: List<String> = emptyList(),
+    val count: Int = 0,
+    val confidence: String = "UNKNOWN",
+    val sourceRelationIds: List<String> = emptyList(),
+    val sampleEvidenceRefs: List<String> = emptyList(),
+    val defaultVisible: Boolean = false,
+    val hiddenReason: String? = null,
+)
+
 data class ArchitectureGraphSummary(
     val moduleCount: Int = 0,
     val packageCount: Int = 0,
@@ -28,6 +43,7 @@ data class ArchitectureGraphSummary(
     val hiddenNodeCount: Int = 0,
     val hiddenEdgeCount: Int = 0,
     val indexed: IndexedGraphSummary? = null,
+    val projectStructureRelationGroups: List<ProjectStructureRelationGroup> = emptyList(),
 )
 
 data class ArchitectureGraphResult(

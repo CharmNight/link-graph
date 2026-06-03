@@ -62,7 +62,7 @@ internal class ArchitectureGraphWorkflow(
                             )
                         }
                         val projectStartedAt = System.nanoTime()
-                        projector.project(index, request, cacheState).also { view ->
+                        projector.project(index, request, cacheState, indexSupport.freshness()).also { view ->
                             traceStage("architectureGraph.project", projectStartedAt) {
                                 listOf(
                                     "view=${request.view}",

@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { GraphContextMenuAction } from "./actionSchema";
 
 interface GraphContextMenuProps {
@@ -52,7 +53,7 @@ export function GraphContextMenu({
     top: clampMenuCoordinate(y, menuSize.height, window.innerHeight),
   }), [menuSize.height, menuSize.width, x, y]);
 
-  return (
+  const menu = (
     <div
       ref={menuRef}
       role="menu"
@@ -74,4 +75,6 @@ export function GraphContextMenu({
       ))}
     </div>
   );
+
+  return typeof document === "undefined" ? menu : createPortal(menu, document.body);
 }

@@ -102,7 +102,7 @@ internal class ReviewGraphWorkflow(
                         )
                     }
                     val projectStartedAt = System.nanoTime()
-                    projector.project(evidence.bundle, index, request, cacheState).also { view ->
+                    projector.project(evidence.bundle, index, request, cacheState, indexSupport.freshness()).also { view ->
                         traceStage("reviewGraph.project", projectStartedAt) {
                             listOf(
                                 "view=${request.view}",

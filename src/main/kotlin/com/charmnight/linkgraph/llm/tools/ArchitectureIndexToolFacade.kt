@@ -4,6 +4,8 @@ import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
 import com.charmnight.linkgraph.architecture.architectureIndexRuntime
 import com.charmnight.linkgraph.architecture.query.ArchitectureGraphQueryService
 import com.charmnight.linkgraph.architecture.query.RelationDirection
+import com.charmnight.linkgraph.architecture.query.ProjectSemanticSeedIndex
+import com.charmnight.linkgraph.architecture.query.ProjectSemanticSeedResult
 import com.charmnight.linkgraph.jvm.index.JvmSymbol
 import com.charmnight.linkgraph.jvm.relation.JvmRelation
 import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
@@ -11,6 +13,9 @@ import com.charmnight.linkgraph.review.ReviewGraphQueryService
 import com.intellij.openapi.project.Project
 
 class ArchitectureIndexToolFacade(
+    private val semanticSeedIndexProvider: (Project) -> ProjectSemanticSeedIndex = {
+        ProjectSemanticSeedIndex(enabled = false)
+    },
     private val indexProvider: (Project) -> ArchitectureGraphIndex = { project ->
         project.architectureIndexRuntime().index()
     },
@@ -21,6 +26,9 @@ class ArchitectureIndexToolFacade(
 
     fun query(project: Project): ArchitectureGraphQueryService =
         ArchitectureGraphQueryService(buildIndex(project))
+
+    fun semanticSeeds(project: Project, query: String, topK: Int): List<ProjectSemanticSeedResult> =
+        semanticSeedIndexProvider(project).search(query, topK)
 
     fun review(project: Project): ReviewGraphQueryService =
         project.architectureIndexRuntime().reviewQuery(index = buildIndex(project))

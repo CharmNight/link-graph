@@ -589,6 +589,12 @@ class ArchitectureViewProjectorTest {
             edge.metadata["jvm.relation.kind"] == JvmRelationKind.RESOURCE_BINDS.name &&
                 edge.metadata["architecture.displayRelationKind"] == "RESOURCE_BINDING"
         })
+        assertTrue(view.summary.projectStructureRelationGroups.isNotEmpty())
+        assertTrue(view.summary.projectStructureRelationGroups.all { group -> group.sourceRelationIds.isNotEmpty() })
+        assertTrue(view.summary.projectStructureRelationGroups.any { group ->
+            group.displayRelationKind == "RUNTIME_CALL" &&
+                JvmRelationKind.CALLS.name in group.relationKinds
+        })
     }
 
     @Test

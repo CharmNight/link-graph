@@ -4,8 +4,10 @@ import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
 import com.charmnight.linkgraph.architecture.ArchitectureEdge
 import com.charmnight.linkgraph.architecture.ArchitectureNode
 import com.charmnight.linkgraph.architecture.ArchitectureNodeKind
+import com.charmnight.linkgraph.architecture.ProjectStructureRelationGroup
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
 import com.charmnight.linkgraph.application.indexed.IndexedGraphScope
+import com.charmnight.linkgraph.application.indexed.IndexedGraphFreshness
 import com.charmnight.linkgraph.application.indexed.indexedEdgeMetadata
 import com.charmnight.linkgraph.application.indexed.indexedNodeMetadata
 import com.charmnight.linkgraph.application.indexed.requestArchitectureGraphRequest
@@ -48,9 +50,10 @@ class ArchitectureGraphProjector(
         index: ArchitectureGraphIndex,
         request: IndexedGraphRequest = requestArchitectureGraphRequest(),
         cacheState: String = "UNKNOWN",
+        freshness: IndexedGraphFreshness = IndexedGraphFreshness(),
     ): ArchitectureGraphViewDocument {
         if (request.scope is IndexedGraphScope.Package) {
-            return projectPackageGraph(index, request, cacheState)
+            return projectPackageGraph(index, request, cacheState, freshness)
         }
         val structureKinds = request.projectStructureKinds()
         val structureNodes = index.graph.nodes.filter { node ->
@@ -116,7 +119,9 @@ class ArchitectureGraphProjector(
                     hiddenEdgeCount = hiddenEdgeCount,
                     truncated = index.graph.truncated || visibleWindow.truncated || hiddenNodeCount > 0 || hiddenEdgeCount > 0,
                     cacheState = cacheState,
+                    freshness = freshness,
                 ),
+                projectStructureRelationGroups = fullGraph.projectStructureRelationGroups(visibleGraph),
             ),
             projectionIndex = readonlyProjectionIndex(visibleGraph),
             presentation = architecturePresentation(
@@ -131,6 +136,7 @@ class ArchitectureGraphProjector(
         index: ArchitectureGraphIndex,
         request: IndexedGraphRequest,
         cacheState: String,
+        freshness: IndexedGraphFreshness,
     ): ArchitectureGraphViewDocument {
         val packageViewKinds = setOf(
             ArchitectureNodeKind.PACKAGE,
@@ -228,6 +234,7 @@ class ArchitectureGraphProjector(
                     hiddenEdgeCount = hiddenEdgeCount,
                     truncated = index.graph.truncated || visibleWindow.truncated || hiddenNodeCount > 0 || hiddenEdgeCount > 0,
                     cacheState = cacheState,
+                    freshness = freshness,
                 ),
             ),
             projectionIndex = readonlyProjectionIndex(visibleGraph),
@@ -326,6 +333,57 @@ class ArchitectureGraphProjector(
                 }
                 .sortedBy(GraphEdge::id),
         )
+    }
+
+    private fun GraphDocument.projectStructureRelationGroups(visibleGraph: GraphDocument): List<ProjectStructureRelationGroup> {
+        val visibleEdgeIds = visibleGraph.edges.mapTo(linkedSetOf(), GraphEdge::id)
+        return edges
+            .filter { edge -> edge.metadata["architecture.aggregate.level"] == "OVERVIEW" }
+            .groupBy { edge ->
+                listOf(
+                    edge.fromNodeId,
+                    edge.toNodeId,
+                    edge.metadata["architecture.displayRelationKind"] ?: edge.metadata["jvm.relation.kind"] ?: edge.type.name,
+                ).joinToString("|")
+            }
+            .values
+            .map { groupEdges ->
+                val sortedEdges = groupEdges.sortedBy(GraphEdge::id)
+                val first = sortedEdges.first()
+                val sourceRelationIds = sortedEdges
+                    .flatMap { edge ->
+                        listOf(
+                            edge.metadata["architecture.sourceRelationIds"],
+                            edge.metadata["indexed.sourceRelationIds"],
+                        )
+                    }
+                    .flatMap { raw -> raw.orEmpty().split(',') }
+                    .map(String::trim)
+                    .filter(String::isNotBlank)
+                    .distinct()
+                val count = sortedEdges.sumOf { edge -> edge.metadata["jvm.relation.count"]?.toIntOrNull() ?: 1 }
+                val defaultVisible = sortedEdges.any { edge -> edge.id in visibleEdgeIds }
+                ProjectStructureRelationGroup(
+                    id = "project-structure:${first.fromNodeId}->${first.toNodeId}:${first.metadata["architecture.displayRelationKind"] ?: first.type.name}",
+                    fromNodeId = first.fromNodeId,
+                    toNodeId = first.toNodeId,
+                    displayRelationKind = first.metadata["architecture.displayRelationKind"] ?: first.metadata["jvm.relation.kind"] ?: first.type.name,
+                    displayRelation = first.metadata["architecture.displayRelation"] ?: first.label ?: first.type.name,
+                    relationKinds = sortedEdges.map { edge -> edge.metadata["jvm.relation.kind"] ?: edge.type.name }.distinct(),
+                    count = count,
+                    confidence = sortedEdges.map { edge -> edge.metadata["jvm.relation.confidence"] ?: edge.certainty.name }.distinct().joinToString(","),
+                    sourceRelationIds = sourceRelationIds,
+                    sampleEvidenceRefs = sourceRelationIds.take(5),
+                    defaultVisible = defaultVisible,
+                    hiddenReason = if (defaultVisible) null else "OUTSIDE_DEFAULT_PROJECT_STRUCTURE_WINDOW",
+                )
+            }
+            .sortedWith(
+                compareByDescending<ProjectStructureRelationGroup> { group -> group.defaultVisible }
+                    .thenByDescending { group -> group.count }
+                    .thenBy { group -> group.displayRelationKind }
+                    .thenBy { group -> group.id },
+            )
     }
 
     internal fun readonlyProjectionIndex(graph: GraphDocument): GraphProjectionIndex =
@@ -886,6 +944,7 @@ class ArchitectureGraphProjector(
             JvmRelationKind.CALLS,
             JvmRelationKind.INJECTS,
             JvmRelationKind.FEIGN_ROUTES_TO,
+            JvmRelationKind.SPRING_ROUTES_TO,
             JvmRelationKind.FEIGN_CLIENT_CALLS,
             JvmRelationKind.MQ_PUBLISHES,
             JvmRelationKind.MQ_CONSUMES,
@@ -1153,7 +1212,9 @@ internal fun JvmRelationKind.toEdgeType(): EdgeType =
         JvmRelationKind.DUBBO_REFERENCES -> EdgeType.USES_PROXY
         JvmRelationKind.DUBBO_PROVIDES -> EdgeType.SPI_RESOLVES_TO
         JvmRelationKind.FEIGN_CLIENT_CALLS -> EdgeType.USES_PROXY
-        JvmRelationKind.FEIGN_ROUTES_TO -> EdgeType.ROUTES_TO
+        JvmRelationKind.FEIGN_ROUTES_TO,
+        JvmRelationKind.SPRING_ROUTES_TO,
+        -> EdgeType.ROUTES_TO
         JvmRelationKind.MQ_PUBLISHES -> EdgeType.PUBLISHES_TO
         JvmRelationKind.MQ_CONSUMES -> EdgeType.CONSUMES_FROM
         JvmRelationKind.ANNOTATED_BY,
@@ -1191,7 +1252,9 @@ internal fun edgeLabel(kind: JvmRelationKind): String =
         JvmRelationKind.DUBBO_PROVIDES -> "dubbo provides"
         JvmRelationKind.DUBBO_REFERENCES -> "dubbo references"
         JvmRelationKind.FEIGN_CLIENT_CALLS -> "feign client"
-        JvmRelationKind.FEIGN_ROUTES_TO -> "routes"
+        JvmRelationKind.FEIGN_ROUTES_TO,
+        JvmRelationKind.SPRING_ROUTES_TO,
+        -> "routes"
         JvmRelationKind.MQ_PUBLISHES -> "publishes"
         JvmRelationKind.MQ_CONSUMES -> "consumes"
         JvmRelationKind.RESOURCE_BINDS -> "binds"

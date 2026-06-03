@@ -226,6 +226,36 @@ const view: ArchitectureGraphViewDocument = {
         resource: 0,
       },
     },
+    projectStructureRelationGroups: [
+      {
+        id: "project-structure:layer:api->service:order:RUNTIME_CALL",
+        fromNodeId: "layer:api",
+        toNodeId: "service:order",
+        displayRelationKind: "RUNTIME_CALL",
+        displayRelation: "运行时调用",
+        relationKinds: ["CALLS"],
+        count: 3,
+        confidence: "HIGH",
+        sourceRelationIds: ["rel:api-service"],
+        sampleEvidenceRefs: ["rel:api-service"],
+        defaultVisible: true,
+        hiddenReason: null,
+      },
+      {
+        id: "project-structure:component:domain->resource:application.yml:RESOURCE_BINDING",
+        fromNodeId: "component:domain",
+        toNodeId: "resource:application.yml",
+        displayRelationKind: "RESOURCE_BINDING",
+        displayRelation: "资源绑定",
+        relationKinds: ["RESOURCE_BINDS"],
+        count: 1,
+        confidence: "HIGH",
+        sourceRelationIds: ["rel:domain-resource"],
+        sampleEvidenceRefs: ["rel:domain-resource"],
+        defaultVisible: true,
+        hiddenReason: null,
+      },
+    ],
   },
   presentation: emptyPresentation,
 };
@@ -274,7 +304,7 @@ describe("ArchitectureGraphView", () => {
     expect(surface).toHaveAttribute("data-flow-node-types", expect.not.stringContaining("architecture-band:"));
     expect(screen.queryByText("详情")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("当前架构图说明")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("当前关键关系")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("项目结构关系摘要")).not.toBeInTheDocument();
   });
 
   it("renders project structure as a readable layer canvas without selected-node dimming", () => {

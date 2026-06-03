@@ -58,6 +58,7 @@ class GitBaselineSymbolMapper(
             baselineOnly = true,
             blastRadiusIncomplete = true,
             unavailableReason = null,
+            reason = "BASELINE_DELETED_SYMBOL",
         )
     }
 
@@ -109,6 +110,7 @@ class GitBaselineSymbolMapper(
                 baselineOnly = true,
                 blastRadiusIncomplete = true,
                 unavailableReason = reason,
+                reason = "BASELINE_DELETED_SYMBOL",
             ),
         )
 

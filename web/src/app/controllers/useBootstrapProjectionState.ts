@@ -104,6 +104,13 @@ function createEmptySceneState(): LinkGraphSceneState {
   };
 }
 
+function hasOwnBootstrapField(
+  state: LinkGraphBootstrapState,
+  field: keyof LinkGraphBootstrapState,
+): boolean {
+  return Object.prototype.hasOwnProperty.call(state, field);
+}
+
 function filterLayoutState(
   layoutState: LinkGraphLayoutState | null | undefined,
   nodes: LinkGraphNode[],
@@ -598,10 +605,14 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       generationPlanDiscussionRequestState: args.resolveRequestState(nextState.generationPlanDiscussionRequestState),
       graphBeautificationResult: args.explanationLocalOverrideRef.current
         ? current.graphBeautificationResult
-        : nextState.graphBeautificationResult ?? null,
+        : hasOwnBootstrapField(nextState, "graphBeautificationResult")
+          ? nextState.graphBeautificationResult ?? null
+          : current.graphBeautificationResult,
       graphBeautificationRequestState: args.explanationLocalOverrideRef.current
         ? current.graphBeautificationRequestState
-        : args.resolveRequestState(nextState.graphBeautificationRequestState),
+        : hasOwnBootstrapField(nextState, "graphBeautificationRequestState")
+          ? args.resolveRequestState(nextState.graphBeautificationRequestState)
+          : current.graphBeautificationRequestState,
       generatedCodeDrafts: nextState.generatedCodeDrafts ?? [],
       generatedCodeDraftVersion: nextState.generatedCodeDraftVersion ?? null,
       generatedCodeDraftWarnings: nextState.generatedCodeDraftWarnings ?? [],

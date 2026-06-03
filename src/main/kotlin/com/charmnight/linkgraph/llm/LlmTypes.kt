@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.mermaid.MermaidIssue
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphPatch
+import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.QaConversationSession
@@ -48,6 +49,8 @@ data class GraphQaContext(
     val sourceContext: List<SourceSnippetContext> = emptyList(),
     /** 保存本轮实际收集到的源码证据轨迹。 */
     val evidenceTrace: List<EvidenceTraceEntry> = emptyList(),
+    /** 保存当前问答证据允许的回答边界。 */
+    val evidenceProfile: GraphEvidenceProfile = GraphEvidenceProfile(),
 )
 
 /**
@@ -83,6 +86,35 @@ data class GraphPresentationContext(
     /** 记录跨方法被隐藏的节点数量。 */
     val hiddenCrossMethodNodeCount: Int = 0,
 )
+
+enum class GraphExplanationMode {
+    METHOD_CHAIN,
+    PACKAGE_OVERVIEW,
+    COMPONENT_OVERVIEW,
+    STRUCTURE_OVERVIEW,
+    DRILLDOWN_SUGGESTION,
+    RELATION_SUMMARY,
+    RESOURCE_BINDING,
+}
+
+data class GraphEvidenceProfile(
+    val anchorNodeId: String? = null,
+    val anchorNodeType: NodeType? = null,
+    val anchorArchitectureKind: String? = null,
+    val availableRelationKinds: List<String> = emptyList(),
+    val incomingRelationCount: Int = 0,
+    val outgoingRelationCount: Int = 0,
+    val hasMethodCallEvidence: Boolean = false,
+    val hasSourceEvidence: Boolean = false,
+    val hasPackageMemberEvidence: Boolean = false,
+    val allowedExplanationModes: List<GraphExplanationMode> = emptyList(),
+    val forbiddenClaims: List<String> = emptyList(),
+    val evidenceGaps: List<String> = emptyList(),
+    val recommendedDrilldowns: List<String> = emptyList(),
+) {
+    val methodChainAllowed: Boolean
+        get() = GraphExplanationMode.METHOD_CHAIN in allowedExplanationModes
+}
 
 /**
  * 描述与图节点关联的源码片段。
@@ -194,6 +226,8 @@ data class GraphBeautificationContext(
     val followUp: GraphBeautificationFollowUpContext? = null,
     /** 保存当前讲解粒度。 */
     val granularity: StepGranularity = StepGranularity.BUSINESS,
+    /** 保存当前图证据允许的讲解边界。 */
+    val evidenceProfile: GraphEvidenceProfile = GraphEvidenceProfile(),
 )
 
 /**

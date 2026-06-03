@@ -2673,7 +2673,7 @@ button {
 
 .canvas-context-menu {
   position: fixed;
-  z-index: 40;
+  z-index: 80;
   display: grid;
   gap: 6px;
   min-width: 176px;
@@ -2689,7 +2689,9 @@ button {
 }
 
 .canvas-context-menu button {
+  min-height: 34px;
   border-color: var(--line);
+  border-radius: var(--radius-md);
   background: var(--panel-soft);
   color: var(--text);
   text-align: left;

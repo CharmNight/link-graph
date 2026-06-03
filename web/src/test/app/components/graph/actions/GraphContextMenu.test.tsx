@@ -29,4 +29,23 @@ describe("GraphContextMenu", () => {
       expect(parseFloat(menu.style.top)).toBeLessThan(780);
     });
   });
+
+  it("renders in a document-level portal so canvas overflow and footer chrome cannot cover it", () => {
+    const { container } = render(
+      <div className="graph-canvas-shell">
+        <GraphContextMenu
+          x={320}
+          y={240}
+          actions={[
+            { id: "locate", label: "定位到图中节点", onSelect: vi.fn() },
+          ]}
+        />
+      </div>,
+    );
+
+    const menu = screen.getByRole("menu");
+
+    expect(container.querySelector(".canvas-context-menu")).toBeNull();
+    expect(menu.parentElement).toBe(document.body);
+  });
 });
