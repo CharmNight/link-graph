@@ -1,6 +1,8 @@
 package com.charmnight.linkgraph.llm
 
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.model.sourceFilePathOrLocationPath
+import com.charmnight.linkgraph.model.sourceLocation
 
 /**
  * 统一从本地可信上下文推导 edit scope 的文件与范围。
@@ -12,16 +14,16 @@ class TrustedEditScopePathResolver {
         snippet: SourceSnippetContext?,
         reference: ResultEvidenceReference?,
     ): TrustedEditScopeLocation? {
+        val sourceLocation = node.sourceLocation()
         val filePath = snippet?.filePath
-            ?: node.metadata["source.filePath"]
-            ?: node.location?.substringBefore(':')
+            ?: node.sourceFilePathOrLocationPath()
             ?: return null
         return TrustedEditScopeLocation(
             filePath = filePath,
-            startOffset = snippet?.startOffset ?: node.metadata["source.startOffset"]?.toIntOrNull(),
-            endOffset = snippet?.endOffset ?: node.metadata["source.endOffset"]?.toIntOrNull(),
-            startLine = reference?.startLine ?: snippet?.startLine ?: node.metadata["source.startLine"]?.toIntOrNull(),
-            endLine = reference?.endLine ?: snippet?.endLine ?: node.metadata["source.endLine"]?.toIntOrNull(),
+            startOffset = snippet?.startOffset ?: sourceLocation.startOffset,
+            endOffset = snippet?.endOffset ?: sourceLocation.endOffset,
+            startLine = reference?.startLine ?: snippet?.startLine ?: sourceLocation.startLine,
+            endLine = reference?.endLine ?: snippet?.endLine ?: sourceLocation.endLine,
         )
     }
 }

@@ -1,13 +1,15 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../app/App";
+import { dispatchBootstrapForTest, resetEditorTransportForTest } from "../../app/editorTransport";
 import {
   materializeThreeViewDocuments,
   type TestBootstrapState,
   type TestBootstrapStateInput,
 } from "../../app/testBootstrapState";
 import type { GraphViewPresentation } from "../../app/types";
+import { expectBridgeCommand, installBridgeCommandSpy } from "./bridgeTestUtils";
 
 vi.mock("../../app/views/fact/FactGraphView", () => ({
   FactGraphView: ({
@@ -174,15 +176,28 @@ vi.mock("../../app/views/resource/ResourceRelationView", () => ({
 vi.mock("../../app/views/class-diagram/ClassDiagramView", () => ({
   ClassDiagramView: ({
     view,
+    focusNodeRequest,
+    onOpenQa,
+    onRequestBeautification,
   }: {
     view: {
       visibleGraph: {
         nodes: Array<{ id: string }>;
       };
     };
+    focusNodeRequest?: { nodeId: string; nonce: number } | null;
+    onOpenQa: (selectedNodeId?: string) => void;
+    onRequestBeautification: (selectedNodeId?: string) => void;
   }) => (
     <div data-testid="class-diagram-view">
       <span data-testid="class-diagram-node-count">{view.visibleGraph.nodes.length}</span>
+      <span data-testid="class-diagram-focus-request">{focusNodeRequest?.nodeId ?? ""}</span>
+      <button type="button" onClick={() => onOpenQa()}>
+        class-diagram-open-qa
+      </button>
+      <button type="button" onClick={() => onRequestBeautification(view.visibleGraph.nodes[0]?.id)}>
+        class-diagram-explain-node
+      </button>
     </div>
   ),
 }));
@@ -283,6 +298,8 @@ function bootstrapState(
 describe("App view modules", () => {
   afterEach(() => {
     window.linkGraphBootstrap = undefined;
+    window.linkGraphBridge = undefined;
+    resetEditorTransportForTest();
   });
 
   it("renders the flowchart view module when the current mode is FLOWCHART", () => {
@@ -301,7 +318,7 @@ describe("App view modules", () => {
     expect(screen.getByTestId("resource-relation-view")).toBeInTheDocument();
   });
 
-  it("keeps the right workflow workbench available when opening class diagrams", () => {
+  it("keeps the final assistant workbench available when opening class diagrams", () => {
     window.linkGraphBootstrap = bootstrapState("CLASS_DIAGRAM", {
       visibleGraph: {
         nodes: [
@@ -324,11 +341,270 @@ describe("App view modules", () => {
     expect(screen.getByTestId("class-diagram-view")).toBeInTheDocument();
     expect(screen.getByTestId("hybrid-workbench-layout")).toHaveClass("outline-collapsed");
     expect(screen.getByTestId("hybrid-workbench-layout")).not.toHaveClass("workbench-collapsed");
-    expect(screen.getByRole("complementary", { name: "阶段工作台" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "问答" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "AI 类图工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "介绍这个类" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "解释关系" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "追问类图" })).toBeInTheDocument();
+    expect(screen.getByText("当前展示类、字段、构造参数、返回值和类型依赖关系。")).toBeInTheDocument();
+    expect(within(screen.getByRole("banner", { name: "链路任务栏" })).getByRole("button", { name: "解释类关系" })).toBeInTheDocument();
+    expect(within(screen.getByRole("banner", { name: "链路任务栏" })).queryByRole("button", { name: "链路讲解" })).not.toBeInTheDocument();
+    const assistantStatus = screen.getByRole("group", { name: "AI 工作状态" });
+    expect(within(assistantStatus).getByText("理解类图")).toBeInTheDocument();
+    expect(within(assistantStatus).getByText("类图问答")).toBeInTheDocument();
+    expect(within(assistantStatus).queryByText("理解代码")).not.toBeInTheDocument();
+    expect(within(assistantStatus).queryByText("代码问答")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
   });
 
-  it("keeps the right workflow workbench available when opening the project structure graph", () => {
+  it("submits class descriptions separately from class relationship explanations", async () => {
+    const user = userEvent.setup();
+    installBridgeCommandSpy();
+    window.linkGraphBootstrap = bootstrapState("CLASS_DIAGRAM", {
+      visibleGraph: {
+        nodes: [
+          {
+            id: "class:quota-manager",
+            type: "CLASS",
+            title: "ClientRequestQuotaManager",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+          },
+        ],
+        edges: [],
+      },
+    });
+
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "介绍这个类" }));
+
+    const composer = screen.getByRole("textbox", { name: "AI 类图工作台输入框" });
+    expect(composer).toHaveValue(
+      "请介绍类图节点“ClientRequestQuotaManager”：说明这个类的职责、核心字段/构造依赖、对外协作关系、典型使用场景，以及建议继续下钻的位置。",
+    );
+
+    await user.click(screen.getByRole("button", { name: "发送到 AI 类图工作台" }));
+
+    expectBridgeCommand("requestAssistantTask", expect.objectContaining({
+      actionId: "DESCRIBE_CLASS",
+      sceneId: "WORKSPACE_CLASS_DIAGRAM",
+      intent: "DESCRIBE_CLASS",
+      prompt: "请介绍类图节点“ClientRequestQuotaManager”：说明这个类的职责、核心字段/构造依赖、对外协作关系、典型使用场景，以及建议继续下钻的位置。",
+      selectedNodeIds: ["class:quota-manager"],
+      selectedDiffItemIds: [],
+      target: { kind: "NewTask" },
+      explanationGranularity: "BUSINESS",
+    }));
+
+    await user.click(screen.getByRole("button", { name: "解释关系" }));
+    await user.click(screen.getByRole("button", { name: "发送到 AI 类图工作台" }));
+
+    expectBridgeCommand("requestAssistantTask", expect.objectContaining({
+      actionId: "EXPLAIN_STRUCTURE",
+      sceneId: "WORKSPACE_CLASS_DIAGRAM",
+      intent: "EXPLAIN_CODE",
+      prompt: "请解释类图节点“ClientRequestQuotaManager”的字段关联、构造参数、返回值、参数和类型依赖关系；只解释图上的结构关系，不要介绍类职责，也不要按方法调用顺序讲解。",
+      selectedNodeIds: ["class:quota-manager"],
+      selectedDiffItemIds: [],
+      target: { kind: "NewTask" },
+      explanationGranularity: "BUSINESS",
+    }));
+  });
+
+  it("primes class diagram qa with structural relation wording", async () => {
+    const user = userEvent.setup();
+    installBridgeCommandSpy();
+    window.linkGraphBootstrap = bootstrapState("CLASS_DIAGRAM", {
+      visibleGraph: {
+        nodes: [
+          {
+            id: "class:quota-manager",
+            type: "CLASS",
+            title: "ClientRequestQuotaManager",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+          },
+        ],
+        edges: [],
+      },
+    });
+
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "class-diagram-open-qa" }));
+
+    const composer = screen.getByRole("textbox", { name: "AI 类图工作台输入框" });
+    expect(composer).toHaveValue(
+      "请围绕当前类图的类、字段、构造参数、返回值和类型依赖关系进行问答，重点确认结构关系是否完整、是否存在遗漏的字段关联或类型依赖。",
+    );
+    expect(composer).not.toHaveValue(expect.stringContaining("业务链路"));
+    expect(composer).not.toHaveValue(expect.stringContaining("异常分支"));
+
+    await user.click(screen.getByRole("button", { name: "发送到 AI 类图工作台" }));
+
+    expectBridgeCommand("requestAssistantTask", expect.objectContaining({
+      actionId: "ASK_CONTEXT",
+      sceneId: "WORKSPACE_CLASS_DIAGRAM",
+      intent: "ASK_CODE",
+      prompt: "请围绕当前类图的类、字段、构造参数、返回值和类型依赖关系进行问答，重点确认结构关系是否完整、是否存在遗漏的字段关联或类型依赖。",
+    }));
+    expect(screen.getByText("已提交 AI 类图工作台请求。")).toBeInTheDocument();
+    expect(screen.queryByText("已提交 AI 代码工作台请求。")).not.toBeInTheDocument();
+  });
+
+  it("submits class diagram node explanations without focusing the viewport", async () => {
+    const user = userEvent.setup();
+    installBridgeCommandSpy();
+    window.linkGraphBootstrap = bootstrapState("CLASS_DIAGRAM", {
+      visibleGraph: {
+        nodes: [
+          {
+            id: "class:quota-manager",
+            type: "CLASS",
+            title: "ClientRequestQuotaManager",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+          },
+        ],
+        edges: [],
+      },
+    });
+
+    render(<App />);
+
+    expect(screen.getByTestId("class-diagram-focus-request")).toHaveTextContent("");
+
+    await user.click(screen.getByRole("button", { name: "class-diagram-explain-node" }));
+
+    expectBridgeCommand("requestAssistantTask", expect.objectContaining({
+      actionId: "EXPLAIN_STRUCTURE",
+      sceneId: "WORKSPACE_CLASS_DIAGRAM",
+      intent: "EXPLAIN_CODE",
+      prompt: "请解释类图节点“ClientRequestQuotaManager”的字段关联、构造参数、返回值、参数和类型依赖关系；只解释图上的结构关系，不要介绍类职责，也不要按方法调用顺序讲解。",
+      selectedNodeIds: ["class:quota-manager"],
+      selectedDiffItemIds: [],
+      target: { kind: "NewTask" },
+      explanationGranularity: "BUSINESS",
+    }));
+    expect(screen.getByText("已提交 AI 类图工作台请求。")).toBeInTheDocument();
+    expect(screen.getByTestId("class-diagram-focus-request")).toHaveTextContent("");
+  });
+
+  it("resets stale assistant action and selected nodes when switching from class diagrams to flowcharts", async () => {
+    const user = userEvent.setup();
+    installBridgeCommandSpy();
+    const classPrompt = "请介绍类图节点“ClientRequestQuotaManager”：说明这个类的职责、核心字段/构造依赖、对外协作关系、典型使用场景，以及建议继续下钻的位置。";
+    const flowGraph = {
+      nodes: [
+        {
+          id: "flow:entry",
+          type: "METHOD" as const,
+          title: "SubmitOrderFlow",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN" as const,
+          bindingStatus: "BOUND" as const,
+        },
+      ],
+      edges: [],
+    };
+    window.linkGraphBootstrap = bootstrapState("CLASS_DIAGRAM", {
+      selectedNodeId: "class:quota-manager",
+      visibleGraph: {
+        nodes: [
+          {
+            id: "class:quota-manager",
+            type: "CLASS",
+            title: "ClientRequestQuotaManager",
+            inputs: [],
+            outputs: [],
+            certainty: "PROVEN",
+            bindingStatus: "BOUND",
+          },
+        ],
+        edges: [],
+      },
+      flowchartView: {
+        visibleGraph: flowGraph,
+        fullGraph: flowGraph,
+        anchorNodeId: "flow:entry",
+        summary: { nodeCount: 1, branchCount: 0, exceptionPathCount: 0 },
+      },
+    });
+
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "介绍这个类" }));
+    expect(screen.getByRole("textbox", { name: "AI 类图工作台输入框" })).toHaveValue(classPrompt);
+
+    const flowState = bootstrapState("FLOWCHART", {
+      selectedNodeId: "flow:entry",
+      visibleGraph: flowGraph,
+      workingGraph: flowGraph,
+      referenceFactGraph: flowGraph,
+      flowchartView: {
+        visibleGraph: flowGraph,
+        fullGraph: flowGraph,
+        anchorNodeId: "flow:entry",
+        summary: { nodeCount: 1, branchCount: 0, exceptionPathCount: 0 },
+      },
+      assistantSessionState: {
+        sessionId: "assistant-session-test",
+        activeIntent: "DESCRIBE_CLASS",
+        activeActionId: "DESCRIBE_CLASS",
+        contextLocked: false,
+        context: {
+          selectedNodeIds: ["class:quota-manager"],
+          selectedDiffItemIds: [],
+          analysisDisplayMode: "CLASS_DIAGRAM",
+          currentSceneId: "WORKSPACE_CLASS_DIAGRAM",
+          selectedMethodSignature: null,
+          scopeLabel: "ClientRequestQuotaManager",
+        },
+        composer: {
+          draft: classPrompt,
+          target: { kind: "NewTask" },
+          draftSource: "AUTO",
+          actionId: "DESCRIBE_CLASS",
+          sceneId: "WORKSPACE_CLASS_DIAGRAM",
+        },
+        turns: [],
+      },
+    });
+    dispatchBootstrapForTest({
+      sessionId: "assistant-session-test",
+      revision: 2,
+      state: flowState,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("complementary", { name: "AI 代码工作台" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "介绍这个类" })).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("button", { name: "解释当前节点" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("textbox", { name: "AI 工作台输入框" })).toHaveValue(
+      "请讲解节点“SubmitOrderFlow”在当前代码链路中的作用、上下游关系和关键分支。",
+    );
+
+    await user.click(screen.getByRole("button", { name: "发送到 AI 代码工作台" }));
+
+    expectBridgeCommand("requestAssistantTask", expect.objectContaining({
+      actionId: "EXPLAIN_FLOW",
+      sceneId: "WORKSPACE_FLOWCHART",
+      intent: "EXPLAIN_CODE",
+      prompt: "请讲解节点“SubmitOrderFlow”在当前代码链路中的作用、上下游关系和关键分支。",
+      selectedNodeIds: ["flow:entry"],
+    }));
+  });
+
+  it("keeps the final assistant workbench available when opening the project structure graph", () => {
     const state = bootstrapState("ARCHITECTURE_GRAPH", {
       visibleGraph: {
         nodes: [
@@ -383,8 +659,9 @@ describe("App view modules", () => {
     expect(screen.getByTestId("architecture-graph-view")).toBeInTheDocument();
     expect(screen.getByTestId("hybrid-workbench-layout")).toHaveClass("outline-collapsed");
     expect(screen.getByTestId("hybrid-workbench-layout")).not.toHaveClass("workbench-collapsed");
-    expect(screen.getByRole("complementary", { name: "阶段工作台" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "问答" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "AI 代码工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "追问代码" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
   });
 
   it("keeps the fact view document in sync after local fact-graph edits instead of relying on a render-time graph override", async () => {
@@ -490,7 +767,6 @@ describe("App view modules", () => {
 
     expect(screen.getByTestId("fact-compare-node-count")).toHaveTextContent("0");
 
-    await user.click(screen.getByRole("tab", { name: "草稿" }));
     await user.click(screen.getByRole("button", { name: "查看流程变化" }));
 
     expect(screen.getByTestId("fact-compare-title")).toHaveTextContent("补充失败补偿说明");
@@ -652,7 +928,7 @@ describe("App view modules", () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole("tab", { name: "草稿" }));
+    await user.click(screen.getByRole("button", { name: "查看草稿" }));
 
     expect(screen.getByTestId("flowchart-node-titles")).toHaveTextContent("scope:file-download-if:if (delete == true)");
   });
@@ -800,7 +1076,7 @@ describe("App view modules", () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole("tab", { name: "草稿" }));
+    await user.click(screen.getByRole("button", { name: "查看草稿" }));
 
     expect(screen.getByTestId("flowchart-node-titles")).toHaveTextContent("method:file-download:CommonController.fileDownload");
     expect(screen.getByTestId("flowchart-node-titles")).toHaveTextContent(
@@ -1091,7 +1367,6 @@ describe("App view modules", () => {
 
     expect(screen.getByTestId(countTestId)).toHaveTextContent("0");
 
-    await user.click(screen.getByRole("tab", { name: "草稿" }));
     await user.click(screen.getByRole("button", { name: "查看流程变化" }));
 
     expect(screen.getByTestId(titleTestId)).toHaveTextContent("补充失败补偿说明");
@@ -1185,7 +1460,6 @@ describe("App view modules", () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole("tab", { name: "草稿" }));
     await user.click(screen.getByRole("button", { name: "查看流程变化" }));
 
     expect(screen.getByTestId("fact-compare-title")).toBeEmptyDOMElement();

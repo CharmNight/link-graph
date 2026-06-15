@@ -129,6 +129,8 @@ describe("RoutedEdge", () => {
         sourceY={60}
         targetX={320}
         targetY={60}
+        sourcePosition={"right" as never}
+        targetPosition={"left" as never}
         data={{
           labelTitle: "field image\nctor image\nreturn apply",
         }}

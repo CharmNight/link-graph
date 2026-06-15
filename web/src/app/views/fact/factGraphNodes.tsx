@@ -1,9 +1,8 @@
-import { useLayoutEffect, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 import {
   Handle,
   MarkerType,
   Position,
-  useUpdateNodeInternals,
   type Edge,
   type Node,
   type NodeProps,
@@ -16,7 +15,9 @@ import { edgeTypeLabel } from "../../labels";
 import { FactGraphNodeCard } from "../../components/graph/nodes/FactGraphNodeCard";
 import { isDecisionFlowScope, isFlowActionNode } from "../../components/graph/nodes/nodePresentation";
 import { canEditNodeLayout } from "../../layoutEditability";
+import { reactFlowNodeInternalsSignature } from "../../reactflow/nodeInternalsSignature";
 import type { RoutedEdgeData } from "../../reactflow/RoutedEdge";
+import { useStableNodeInternalsUpdate } from "../../reactflow/useStableNodeInternalsUpdate";
 import { resolveGraphNodeHighlightClassName } from "../graphNodeHighlights";
 import {
   draftCompareEdgeClassName,
@@ -77,13 +78,15 @@ function factGraphHandleStyle(isConnectable: boolean): CSSProperties {
 }
 
 function FactGraphReactNode({ id, data, selected, isConnectable }: FactGraphFlowNodeProps) {
-  const updateNodeInternals = useUpdateNodeInternals();
   const handleStyle = factGraphHandleStyle(isConnectable);
   const appSelected = data.selected === true || selected;
-
-  useLayoutEffect(() => {
-    updateNodeInternals(id);
-  }, [appSelected, data.collapsed, data.collapsedCount, data.node, id, isConnectable, selected, updateNodeInternals]);
+  const nodeInternalsSignature = [
+    reactFlowNodeInternalsSignature(data.node),
+    String(isConnectable),
+    data.collapsed,
+    String(data.collapsedCount ?? ""),
+  ].join("\u0001");
+  useStableNodeInternalsUpdate(id, nodeInternalsSignature);
 
   return (
     <div className={["fact-graph-react-node", isConnectable ? "is-connectable" : ""].join(" ").trim()}>
@@ -118,7 +121,7 @@ function factGraphNodeStyle(node: LinkGraphNode) {
       width: nodeCardWidth(node),
       borderRadius: 18,
       border: "2px solid rgba(14, 139, 114, 0.48)",
-      background: "linear-gradient(145deg, rgba(14, 139, 114, 0.14), rgba(255, 255, 255, 0.99))",
+      background: "linear-gradient(145deg, rgba(14, 139, 114, 0.18), var(--panel))",
       boxShadow: "0 14px 30px rgba(14, 139, 114, 0.18)",
       padding: 0,
     };
@@ -128,7 +131,7 @@ function factGraphNodeStyle(node: LinkGraphNode) {
       width: nodeCardWidth(node),
       borderRadius: 18,
       border: "1px solid rgba(25, 90, 153, 0.28)",
-      background: "linear-gradient(180deg, rgba(25, 90, 153, 0.07), rgba(255, 255, 255, 0.98))",
+      background: "linear-gradient(180deg, rgba(25, 90, 153, 0.12), var(--panel))",
       boxShadow: "0 6px 18px rgba(25, 90, 153, 0.08)",
       padding: 0,
     };
@@ -138,7 +141,7 @@ function factGraphNodeStyle(node: LinkGraphNode) {
       width: nodeCardWidth(node),
       borderRadius: 18,
       border: "1px solid rgba(143, 79, 35, 0.26)",
-      background: "linear-gradient(180deg, rgba(143, 79, 35, 0.08), rgba(255, 255, 255, 0.98))",
+      background: "linear-gradient(180deg, rgba(143, 79, 35, 0.12), var(--panel))",
       boxShadow: "0 6px 18px rgba(143, 79, 35, 0.08)",
       padding: 0,
     };
@@ -154,12 +157,12 @@ function factGraphNodeStyle(node: LinkGraphNode) {
           ? "1px solid rgba(14, 139, 114, 0.24)"
           : "1px solid rgba(44, 32, 22, 0.18)",
     background: isFlowDecision
-      ? "linear-gradient(145deg, rgba(185, 104, 47, 0.12), rgba(255, 255, 255, 0.98))"
+      ? "linear-gradient(145deg, rgba(185, 104, 47, 0.16), var(--panel))"
       : isFlowScope
-        ? "linear-gradient(180deg, rgba(25, 90, 153, 0.08), rgba(255, 255, 255, 0.96))"
+        ? "linear-gradient(180deg, rgba(25, 90, 153, 0.12), var(--panel))"
         : isFlowAction
-          ? "linear-gradient(135deg, rgba(14, 139, 114, 0.12), rgba(255, 255, 255, 0.98))"
-          : "#fffdfa",
+          ? "linear-gradient(135deg, rgba(14, 139, 114, 0.16), var(--panel))"
+          : "var(--panel)",
     boxShadow: isFlowDecision
       ? "0 10px 24px rgba(185, 104, 47, 0.12)"
       : isFlowScope

@@ -59,6 +59,8 @@ import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.model.sourceFilePathOrLocationPath
+import com.charmnight.linkgraph.model.sourceLocation
 import java.util.ArrayDeque
 import java.util.UUID
 
@@ -122,34 +124,11 @@ class QaCapability(
     }
 
     override fun allowedTools(input: QaCapabilityInput): Set<String> {
-        val tools = linkedSetOf(
-            "get_draft_workbench",
-            "get_current_graph",
-            "get_selected_scope",
-            "resolve_anchor",
-            "read_source_snippet",
-            "read_symbol",
-            "get_architecture_index_summary",
-            "find_jvm_symbol",
-            "explore_project_context",
-            "query_project_graph",
-            "find_project_path",
-            "explain_project_node",
-            "affected_project_nodes",
-            "get_project_index_digest",
-            "find_jvm_relations",
-            "find_service_providers",
-            "find_reflection_targets",
-            "find_proxy_targets",
-            "create_candidate_draft",
-        )
+        val registeredTools = toolRegistry.names()
+        val tools = registeredTools
+            .filterTo(linkedSetOf()) { toolName -> toolName !in REVIEW_TOOL_NAMES }
         if (input.effectiveMode in REVIEW_TOOL_MODES || input.requestedMode in REVIEW_TOOL_MODES) {
-            tools += listOf(
-                "get_changed_symbols",
-                "get_blast_radius",
-                "find_related_tests",
-                "build_review_evidence_bundle",
-            )
+            tools += registeredTools.filter { toolName -> toolName in REVIEW_TOOL_NAMES }
         }
         return tools
     }
@@ -202,10 +181,8 @@ class QaCapability(
         )
         val result = toolRegistry.require("get_draft_workbench").invoke(
             input = emptyMap(),
-            context = ToolExecutionContext(
-                project = runtimeContext.project,
+            context = runtimeContext.toolExecutionContext(
                 snapshot = snapshot,
-                artifactStore = runtimeContext.artifactStore,
                 runBudget = state.budget,
             ),
         )
@@ -259,10 +236,8 @@ class QaCapability(
                 lastModelOutput = "缺少图快照，无法继续问答。",
             ),
         )
-        val toolContext = ToolExecutionContext(
-            project = runtimeContext.project,
+        val toolContext = runtimeContext.toolExecutionContext(
             snapshot = snapshot,
-            artifactStore = runtimeContext.artifactStore,
             runBudget = state.budget,
         )
         val selectedScopeResult = toolRegistry.require("get_selected_scope").invoke(
@@ -325,13 +300,14 @@ class QaCapability(
     ): AgentStepExecutionResult {
         return runCatching {
             runtimeContext.requireWithinDeadline()
-            val augmentedInput = buildAugmentedInput(input, state, runtimeContext)
+            val runtimeEvidenceInput = buildRuntimeEvidenceInput(input, state, runtimeContext)
+            val executorInput = runtimeEvidenceInput.toExecutorInput(input)
             runtimeContext.requireWithinDeadline()
             val result = executeQa(
-                input = augmentedInput.copy(settings = augmentedInput.settings.withRuntimeDeadlineTimeout(runtimeContext)),
+                input = executorInput.copy(settings = executorInput.settings.withRuntimeDeadlineTimeout(runtimeContext)),
                 runtimeContext = runtimeContext,
                 state = state,
-            ).withRuntimeEvidence(augmentedInput.qaContext)
+            ).withRuntimeEvidence(runtimeEvidenceInput)
             runtimeContext.requireWithinDeadline()
             val artifact = QaConclusionArtifact(
                 artifactId = "${state.runId}-qa-conclusion-${state.stepIndex}",
@@ -344,10 +320,8 @@ class QaCapability(
                 .map { candidate ->
                     val toolResult = toolRegistry.require("create_candidate_draft").invoke(
                         input = mapOf("candidate" to candidate),
-                        context = ToolExecutionContext(
-                            project = runtimeContext.project,
+                        context = runtimeContext.toolExecutionContext(
                             snapshot = runtimeContext.snapshotSupplier() ?: ToolGraphSnapshot(),
-                            artifactStore = runtimeContext.artifactStore,
                             runBudget = state.budget,
                         ),
                     )
@@ -464,10 +438,8 @@ class QaCapability(
                 )
                 break
             }
-            val toolContext = ToolExecutionContext(
-                project = runtimeContext.project,
+            val toolContext = runtimeContext.toolExecutionContext(
                 snapshot = snapshot,
-                artifactStore = runtimeContext.artifactStore,
                 runBudget = nextBudget,
             )
             val anchorResult = toolRegistry.require("resolve_anchor").invoke(
@@ -496,8 +468,8 @@ class QaCapability(
                     resolvedNodeId = anchor.id.takeIf { resolvedNodeId -> resolvedNodeId != nodeId },
                     filePath = traceLocation(anchor),
                     reason = "未读取到源码：${snippetRead.failureReason}",
-                    startLine = anchor.metadata["source.startLine"]?.toIntOrNull(),
-                    endLine = anchor.metadata["source.endLine"]?.toIntOrNull(),
+                    startLine = anchor.sourceLocation().startLine,
+                    endLine = anchor.sourceLocation().endLine,
                     includedInPrompt = false,
                     mappingTrace = resolution?.mappingTrace.orEmpty(),
                 )
@@ -679,7 +651,7 @@ class QaCapability(
     }
 
     private fun hasReadableSourceAnchor(node: GraphNode): Boolean {
-        return !node.signature.isNullOrBlank() || !node.metadata["source.filePath"].isNullOrBlank()
+        return !node.signature.isNullOrBlank() || !node.sourceLocation().filePath.isNullOrBlank()
     }
 
     private fun isWholeGraphCodeEvidenceTarget(node: GraphNode): Boolean {
@@ -739,11 +711,12 @@ class QaCapability(
                 return SnippetReadResult(sourceContext = snippet)
             }
         }
-        val filePath = anchor.metadata["source.filePath"] ?: return SnippetReadResult(
-            failureReason = "节点缺少 source.filePath，且 symbol 未解析到源码。",
+        val sourceLocation = anchor.sourceLocation()
+        val filePath = sourceLocation.filePath ?: return SnippetReadResult(
+            failureReason = "节点缺少源码文件路径，且 symbol 未解析到源码。",
         )
-        val startLine = anchor.metadata["source.startLine"]?.toIntOrNull()
-        val endLine = anchor.metadata["source.endLine"]?.toIntOrNull()
+        val startLine = sourceLocation.startLine
+        val endLine = sourceLocation.endLine
         val snippetResult = toolRegistry.require("read_source_snippet").invoke(
             input = mapOf(
                 "filePath" to filePath,
@@ -766,14 +739,11 @@ class QaCapability(
         )
     }
 
-    /**
-     * 旧问答执行器仍吃 GraphQaContext，因此这里把 runtime 实际读取到的代码证据回填进去。
-     */
-    private fun buildAugmentedInput(
+    private fun buildRuntimeEvidenceInput(
         input: QaCapabilityInput,
         state: AgentRunState,
         runtimeContext: AgentRuntimeContext,
-    ): QaCapabilityInput {
+    ): QaRuntimeEvidenceInput {
         val graphSummary = extractGraphSummary(state, runtimeContext)
         val selectedNodeIds = graphSummary?.selectedNodeIds
             ?.ifEmpty { input.qaContext.selectedNodeIds }
@@ -803,27 +773,36 @@ class QaCapability(
             .flatMap { artifact -> artifact.traces.asSequence() }
             .toList()
             .distinctBy { trace -> "${trace.nodeId}:${trace.filePath}:${trace.startLine}:${trace.endLine}:${trace.reason}" }
-        val sourceContext = runtimeSourceContext
-        val evidenceTrace = runtimeEvidenceTrace
+        return QaRuntimeEvidenceInput(
+            editableGraph = runtimeEditableGraph,
+            selectedNodeIds = selectedNodeIds,
+            sourceContext = runtimeSourceContext
+                .distinctBy { snippet -> "${snippet.nodeId}:${snippet.filePath}:${snippet.startLine}:${snippet.endLine}" },
+            evidenceTrace = runtimeEvidenceTrace
+                .distinctBy { trace -> "${trace.nodeId}:${trace.filePath}:${trace.startLine}:${trace.endLine}:${trace.reason}" },
+        )
+    }
+
+    private fun QaRuntimeEvidenceInput.toExecutorInput(
+        input: QaCapabilityInput,
+    ): QaCapabilityInput {
         return input.copy(
             qaContext = input.qaContext.copy(
-                editableGraph = runtimeEditableGraph,
+                editableGraph = editableGraph,
                 selectedNodeIds = selectedNodeIds,
-                sourceContext = sourceContext
-                    .distinctBy { snippet -> "${snippet.nodeId}:${snippet.filePath}:${snippet.startLine}:${snippet.endLine}" },
-                evidenceTrace = evidenceTrace
-                    .distinctBy { trace -> "${trace.nodeId}:${trace.filePath}:${trace.startLine}:${trace.endLine}:${trace.reason}" },
+                sourceContext = sourceContext,
+                evidenceTrace = evidenceTrace,
             ),
             session = input.session,
         )
     }
 
     private fun GraphPatchResult.withRuntimeEvidence(
-        context: GraphQaContext,
+        runtimeEvidenceInput: QaRuntimeEvidenceInput,
     ): GraphPatchResult {
-        val runtimeSourceContext = context.sourceContext
+        val runtimeSourceContext = runtimeEvidenceInput.sourceContext
             .distinctBy { snippet -> "${snippet.nodeId}:${snippet.filePath}:${snippet.startLine}:${snippet.endLine}" }
-        val runtimeTrace = context.evidenceTrace
+        val runtimeTrace = runtimeEvidenceInput.evidenceTrace
             .distinctBy { trace -> "${trace.nodeId}:${trace.filePath}:${trace.startLine}:${trace.endLine}:${trace.reason}" }
         val missingPromptEvidenceWarning = if (runtimeTrace.isNotEmpty() && runtimeTrace.none(EvidenceTraceEntry::includedInPrompt)) {
             listOf("本轮没有读取到可送入 prompt 的真实源码片段；回答只能基于当前图和历史会话，不能视为完整代码上下文分析。")
@@ -847,7 +826,7 @@ class QaCapability(
     }
 
     private fun traceLocation(anchor: GraphNode): String {
-        return anchor.metadata["source.filePath"]
+        return anchor.sourceFilePathOrLocationPath()
             ?: anchor.location
             ?: anchor.signature
             ?: anchor.id
@@ -889,10 +868,24 @@ private val REVIEW_TOOL_MODES = setOf(
     QaMode.INVESTIGATE,
 )
 
+private val REVIEW_TOOL_NAMES = setOf(
+    "get_changed_symbols",
+    "get_blast_radius",
+    "find_related_tests",
+    "build_review_evidence_bundle",
+)
+
 /**
  * 问答 capability 的输入结构。
  * 当前包装问答执行器所需的上下文，后续可继续扩展 tool 决策与 artifact 依赖。
  */
+data class QaRuntimeEvidenceInput(
+    val editableGraph: GraphDocument,
+    val selectedNodeIds: List<String>,
+    val sourceContext: List<SourceSnippetContext> = emptyList(),
+    val evidenceTrace: List<EvidenceTraceEntry> = emptyList(),
+)
+
 data class QaCapabilityInput(
     /** 用户问题。 */
     val question: String,

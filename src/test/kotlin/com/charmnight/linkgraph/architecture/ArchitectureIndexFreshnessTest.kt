@@ -57,4 +57,68 @@ class ArchitectureIndexFreshnessTest {
         assertNull(fresh.staleSinceEpochMillis)
         assertTrue(fresh.lastIndexedAtEpochMillis!! >= stale.staleSinceEpochMillis!!)
     }
+
+    @Test
+    fun trackerReportsBuildingThenReturnsToStaleWhenBuildFails() {
+        var now = 1_000L
+        val tracker = ArchitectureIndexFreshnessTracker(clockMillis = { now })
+        tracker.markDirty(
+            dirtyReason = "VFS_CHANGE",
+            paths = listOf("/project/src/main/kotlin/com/example/OrderService.kt"),
+        )
+
+        now = 1_100L
+        val buildToken = tracker.markBuilding()
+
+        val building = tracker.snapshot()
+        assertEquals("BUILDING", building.state)
+        assertEquals("VFS_CHANGE", building.dirtyReason)
+        assertEquals(1, building.pendingFileCount)
+        assertEquals(1_000L, building.staleSinceEpochMillis)
+        assertNull(building.lastIndexedAtEpochMillis)
+
+        now = 1_200L
+        tracker.markBuildFailed(buildToken)
+
+        val stale = tracker.snapshot()
+        assertEquals("STALE", stale.state)
+        assertEquals("VFS_CHANGE", stale.dirtyReason)
+        assertEquals(1, stale.pendingFileCount)
+        assertEquals(1_000L, stale.staleSinceEpochMillis)
+        assertNull(stale.lastIndexedAtEpochMillis)
+    }
+
+    @Test
+    fun trackerDoesNotMarkFreshWhenDirtyFilesArriveDuringBuild() {
+        var now = 2_000L
+        val tracker = ArchitectureIndexFreshnessTracker(clockMillis = { now })
+
+        val buildToken = tracker.markBuilding()
+        val buildingFromFresh = tracker.snapshot()
+        assertEquals("BUILDING", buildingFromFresh.state)
+        assertNull(buildingFromFresh.dirtyReason)
+        assertEquals(0, buildingFromFresh.pendingFileCount)
+
+        now = 2_100L
+        tracker.markDirty(
+            dirtyReason = "VFS_CHANGE",
+            paths = listOf("/project/src/main/kotlin/com/example/OrderController.kt"),
+        )
+
+        val dirtyDuringBuild = tracker.snapshot()
+        assertEquals("BUILDING", dirtyDuringBuild.state)
+        assertEquals("VFS_CHANGE", dirtyDuringBuild.dirtyReason)
+        assertEquals(1, dirtyDuringBuild.pendingFileCount)
+        assertEquals(2_100L, dirtyDuringBuild.staleSinceEpochMillis)
+
+        now = 2_200L
+        tracker.markIndexed(buildToken)
+
+        val stale = tracker.snapshot()
+        assertEquals("STALE", stale.state)
+        assertEquals("VFS_CHANGE", stale.dirtyReason)
+        assertEquals(1, stale.pendingFileCount)
+        assertEquals(2_100L, stale.staleSinceEpochMillis)
+        assertEquals(2_200L, stale.lastIndexedAtEpochMillis)
+    }
 }

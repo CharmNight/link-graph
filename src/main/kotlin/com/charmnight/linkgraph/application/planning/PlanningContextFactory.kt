@@ -18,10 +18,12 @@ import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.model.sourceLocation
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewPlanner
+import com.charmnight.linkgraph.workbench.AssistantActionId
 import com.charmnight.linkgraph.workbench.StepGranularity
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
@@ -115,6 +117,7 @@ internal class PlanningContextFactory(
         focusNodeId: String? = null,
         followUp: GraphBeautificationFollowUpContext?,
         granularity: StepGranularity,
+        assistantActionId: AssistantActionId? = null,
     ): GraphBeautificationContext {
         val requestedFocusNodeId = focusNodeId?.trim()?.takeIf(String::isNotBlank)
         val graphContext = buildInteractiveGraphContext(
@@ -165,6 +168,7 @@ internal class PlanningContextFactory(
             explanationFocus = explanationFocus,
             followUp = followUp,
             granularity = granularity,
+            assistantActionId = assistantActionId,
         )
     }
 
@@ -528,7 +532,7 @@ internal class PlanningContextFactory(
             .sortedWith(
                 compareByDescending<GraphNode> { it.id in selectedNodeIds }
                     .thenByDescending { it.id == anchorNodeId }
-                    .thenBy { it.metadata["source.startOffset"]?.toIntOrNull() ?: Int.MAX_VALUE }
+                    .thenBy { it.sourceLocation().startOffset ?: Int.MAX_VALUE }
                     .thenBy { it.id },
             )
         val snippets = sequence
@@ -548,15 +552,16 @@ internal class PlanningContextFactory(
      */
     private fun sourceSnippetFromNode(node: GraphNode?): SourceSnippetContext? {
         node ?: return null
-        val filePath = node.metadata["source.filePath"] ?: return null
+        val sourceLocation = node.sourceLocation()
+        val filePath = sourceLocation.filePath ?: return null
         val normalizedOffsets = normalizeSnippetOffsets(
-            startOffset = node.metadata["source.startOffset"]?.toIntOrNull(),
-            endOffset = node.metadata["source.endOffset"]?.toIntOrNull(),
+            startOffset = sourceLocation.startOffset,
+            endOffset = sourceLocation.endOffset,
         )
         val startOffset = normalizedOffsets.first
         val endOffset = normalizedOffsets.second
-        val startLine = node.metadata["source.startLine"]?.toIntOrNull()
-        val endLine = node.metadata["source.endLine"]?.toIntOrNull()
+        val startLine = sourceLocation.startLine
+        val endLine = sourceLocation.endLine
         return SourceSnippetContext(
             nodeId = node.id,
             filePath = filePath,

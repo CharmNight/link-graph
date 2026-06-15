@@ -4,7 +4,9 @@ import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.model.GraphSourceLocation
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.model.putSourceLocation
 import com.charmnight.linkgraph.semantic.model.FlowActionUnit
 import com.charmnight.linkgraph.semantic.model.FlowScopeCategory
 import com.charmnight.linkgraph.semantic.model.FlowScopeUnit
@@ -352,11 +354,15 @@ class GraphAssembler {
         val projectionMetadata = mutableMapOf<String, String>()
         projectionMetadata["linkGraph.view.mode"] = displayMode.name
         sourceMapping?.let { mapping ->
-            projectionMetadata["source.filePath"] = mapping.sourcePath
-            projectionMetadata["source.startOffset"] = mapping.sourceRange.startOffset.toString()
-            projectionMetadata["source.endOffset"] = mapping.sourceRange.endOffset.toString()
-            projectionMetadata["source.startLine"] = mapping.sourceRange.startLine.toString()
-            projectionMetadata["source.endLine"] = mapping.sourceRange.endLine.toString()
+            projectionMetadata.putSourceLocation(
+                GraphSourceLocation(
+                    filePath = mapping.sourcePath,
+                    startOffset = mapping.sourceRange.startOffset,
+                    endOffset = mapping.sourceRange.endOffset,
+                    startLine = mapping.sourceRange.startLine,
+                    endLine = mapping.sourceRange.endLine,
+                ),
+            )
         }
         /** 当前单元所属的方法单元，流程视图会使用它标记 owner。 */
         val ownerMethod = context.ownerMethodByUnitId[unit.id] ?: (unit as? MethodLikeUnit)

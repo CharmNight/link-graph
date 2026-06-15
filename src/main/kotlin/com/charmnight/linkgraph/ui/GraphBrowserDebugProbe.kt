@@ -574,9 +574,10 @@ object GraphBrowserDebugProbe {
                   const flowNodesLayer = document.querySelector(".react-flow__nodes");
                   const flowEdgesLayer = document.querySelector(".react-flow__edges");
                   const flowEdgesSvg = flowEdgesLayer?.querySelector("svg") ?? null;
-                  const workbenchShell = document.querySelector(".workbench-shell");
-                  const workbenchPanel = document.querySelector(".workbench-panel-body");
-                  const activeWorkbenchTab = document.querySelector(".workbench-tab-button.active");
+                  const assistantWorkbenchShell = document.querySelector(".assistant-workbench-shell");
+                  const assistantThread = document.querySelector(".assistant-thread");
+                  const assistantComposer = document.querySelector("[data-testid='assistant-composer']");
+                  const activeAssistantIntent = document.querySelector(".assistant-intent-button.active");
                   const requestBanner = document.querySelector(".async-request-banner");
                   const viewport = document.querySelector(".react-flow__viewport");
                   const viewportState = parseViewportState(viewport);
@@ -656,8 +657,10 @@ object GraphBrowserDebugProbe {
                       flowNodesLayerRect: summarizeRect(flowNodesLayer),
                       flowEdgesLayerRect: summarizeRect(flowEdgesLayer),
                       flowEdgesSvgRect: summarizeRect(flowEdgesSvg),
-                      workbenchShellRect: summarizeRect(workbenchShell),
-                      workbenchPanelRect: summarizeRect(workbenchPanel),
+                      assistantWorkbenchShellRect: summarizeRect(assistantWorkbenchShell),
+                      assistantThreadRect: summarizeRect(assistantThread),
+                      assistantComposerRect: summarizeRect(assistantComposer),
+                      assistantComposerPresent: assistantComposer !== null,
                       htmlBox: summarizeBoxMetrics(html),
                       bodyBox: summarizeBoxMetrics(body),
                       rootBox: summarizeBoxMetrics(root),
@@ -665,8 +668,8 @@ object GraphBrowserDebugProbe {
                       flowHostBox: summarizeBoxMetrics(flowHost),
                       flowPaneBox: summarizeBoxMetrics(flowPane),
                       flowEdgesSvgBox: summarizeBoxMetrics(flowEdgesSvg),
-                      activeWorkbenchTab: activeWorkbenchTab?.textContent?.trim() ?? null,
-                      activeWorkbenchTabId: activeWorkbenchTab?.id ?? null,
+                      activeAssistantIntent: activeAssistantIntent?.textContent?.trim() ?? null,
+                      activeAssistantIntentPressed: activeAssistantIntent?.getAttribute("aria-pressed") ?? null,
                       requestBannerText: requestBanner?.textContent?.trim()?.slice(0, 200) ?? null,
                       debugTraceState: summarizeTraceDiagnostics(),
                       anchorTitle: document.querySelector(".canvas-reading-card.is-anchor .canvas-reading-title")?.textContent?.trim() ?? null,

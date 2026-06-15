@@ -63,10 +63,13 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
+import com.charmnight.linkgraph.workbench.AssistantActionId
+import com.charmnight.linkgraph.workbench.AssistantIntent
 
 class LinkGraphToolWindowIT : BasePlatformTestCase() {
     override fun setUp() {
         super.setUp()
+        deleteGeneratedIntegrationFiles()
         project.registerServiceInstance(
             GraphEditorStateService::class.java,
             GraphEditorStateService(),
@@ -93,6 +96,15 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
                 ),
             )
             LinkGraphToolWindowFactory().createToolWindowContent(project, toolWindow)
+        }
+    }
+
+    private fun deleteGeneratedIntegrationFiles() {
+        val basePath = project.basePath ?: return
+        listOf(
+            "src/main/java/com/example/OrderDraftDto.java",
+        ).forEach { relativePath ->
+            Files.deleteIfExists(Path.of(basePath).resolve(relativePath))
         }
     }
 
@@ -711,8 +723,8 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         )
 
         projectService.commandDispatcher.dispatch(
-            ApplicationCommand.RequestQa(
-                question = "请围绕当前范围进行问答：这段链路是否遗漏了默认兜底逻辑？",
+            requestQaCommand(
+                prompt = "请围绕当前范围进行问答：这段链路是否遗漏了默认兜底逻辑？",
                 selectedNodeIds = listOf("uncertain:channel-router"),
             ),
         )
@@ -756,7 +768,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         projectService.commandDispatcher.dispatch(ApplicationCommand.ImportMermaid(mermaid))
         projectService.commandDispatcher.dispatch(ApplicationCommand.ShowDiffMode)
         projectService.commandDispatcher.dispatch(
-            ApplicationCommand.RequestDiffReview("这些差异意味着什么？请给出修订草稿。"),
+            requestDiffReviewCommand("这些差异意味着什么？请给出修订草稿。"),
         )
         waitForDiffReviewResultAndDraftPreview()
 
@@ -786,8 +798,8 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         )
 
         projectService.commandDispatcher.dispatch(
-            ApplicationCommand.RequestQa(
-                question = "请围绕当前范围进行问答：这段链路是否遗漏了默认兜底逻辑？",
+            requestQaCommand(
+                prompt = "请围绕当前范围进行问答：这段链路是否遗漏了默认兜底逻辑？",
                 selectedNodeIds = listOf("uncertain:channel-router"),
             ),
         )
@@ -1438,8 +1450,8 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         bridge.dispatch(GraphEditorMessage.ImportMermaid(mermaid))
         bridge.dispatch(GraphEditorMessage.ShowDiffMode)
         bridge.dispatch(
-            GraphEditorMessage.RequestDiffReview(
-                question = "这些差异意味着什么？请给出修订草稿。",
+            requestDiffReviewMessage(
+                prompt = "这些差异意味着什么？请给出修订草稿。",
                 selectedDiffItemIds = listOf("uncertain:channel-router"),
             ),
         )
@@ -1492,7 +1504,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         bridge.dispatch(GraphEditorMessage.ImportMermaid(mermaid))
         stateService.markQaResultForIntegration(buildConfirmedPlanCandidateResult(changeId = "change-order-service-place"))
         bridge.dispatch(GraphEditorMessage.ConfirmQaCandidateChange("change-order-service-place"))
-        bridge.dispatch(GraphEditorMessage.RequestGenerationPlan)
+        bridge.dispatch(requestGenerationPlanMessage())
         waitForGenerationPlan()
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
@@ -1530,7 +1542,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         bridge.dispatch(GraphEditorMessage.ImportMermaid(mermaid))
         stateService.markQaResultForIntegration(buildConfirmedPlanCandidateResult(changeId = "change-order-service-place"))
         bridge.dispatch(GraphEditorMessage.ConfirmQaCandidateChange("change-order-service-place"))
-        bridge.dispatch(GraphEditorMessage.RequestGenerationPlan)
+        bridge.dispatch(requestGenerationPlanMessage())
         waitForGenerationPlan()
         bridge.dispatch(GraphEditorMessage.RequestCodeDrafts)
         waitForCodeDrafts()
@@ -1542,7 +1554,10 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         val draft = snapshot.generatedCodeDrafts.single()
         assertEquals("src/main/java/com/example/OrderDraftDto.java", draft.targetPath)
         assertNotNull(snapshot.generatedCodeDraftWriteReport)
-        assertTrue(snapshot.generatedCodeDraftWriteReport!!.writtenFiles.contains(draft.targetPath))
+        assertTrue(
+            snapshot.generatedCodeDraftWriteReport.toString(),
+            snapshot.generatedCodeDraftWriteReport!!.writtenFiles.contains(draft.targetPath),
+        )
 
         val writtenPath = Path.of(project.basePath!!).resolve(draft.targetPath)
         assertTrue(Files.exists(writtenPath))
@@ -1583,7 +1598,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         bridge.dispatch(GraphEditorMessage.ImportMermaid(mermaid))
         stateService.markQaResultForIntegration(buildConfirmedPlanCandidateResult(changeId = "change-order-service-place"))
         bridge.dispatch(GraphEditorMessage.ConfirmQaCandidateChange("change-order-service-place"))
-        bridge.dispatch(GraphEditorMessage.RequestGenerationPlan)
+        bridge.dispatch(requestGenerationPlanMessage())
         waitForGenerationPlan()
         bridge.dispatch(GraphEditorMessage.RequestCodeDrafts)
         waitForCodeDrafts()
@@ -1595,7 +1610,10 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
         assertNotNull(snapshot.generatedCodeDraftWriteReport)
-        assertTrue(snapshot.generatedCodeDraftWriteReport!!.writtenFiles.contains(generatedDraft.targetPath))
+        assertTrue(
+            snapshot.generatedCodeDraftWriteReport.toString(),
+            snapshot.generatedCodeDraftWriteReport!!.writtenFiles.contains(generatedDraft.targetPath),
+        )
 
         val writtenPath = Path.of(project.basePath!!).resolve(generatedDraft.targetPath)
         assertTrue(Files.exists(writtenPath))
@@ -1885,6 +1903,46 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         fail("Expected generation plan to be available")
     }
 
+    private fun requestQaCommand(
+        prompt: String,
+        selectedNodeIds: List<String> = emptyList(),
+    ): ApplicationCommand.RequestAssistantTask =
+        ApplicationCommand.RequestAssistantTask(
+            actionId = AssistantActionId.ASK_CONTEXT,
+            intent = AssistantIntent.ASK_CODE,
+            prompt = prompt,
+            selectedNodeIds = selectedNodeIds,
+        )
+
+    private fun requestDiffReviewCommand(
+        prompt: String,
+        selectedDiffItemIds: List<String> = emptyList(),
+    ): ApplicationCommand.RequestAssistantTask =
+        ApplicationCommand.RequestAssistantTask(
+            actionId = AssistantActionId.CHECK_CHANGE,
+            intent = AssistantIntent.CHECK_CHANGE,
+            prompt = prompt,
+            selectedDiffItemIds = selectedDiffItemIds,
+        )
+
+    private fun requestDiffReviewMessage(
+        prompt: String,
+        selectedDiffItemIds: List<String> = emptyList(),
+    ): GraphEditorMessage.RequestAssistantTask =
+        GraphEditorMessage.RequestAssistantTask(
+            actionId = AssistantActionId.CHECK_CHANGE,
+            intent = AssistantIntent.CHECK_CHANGE,
+            prompt = prompt,
+            selectedDiffItemIds = selectedDiffItemIds,
+        )
+
+    private fun requestGenerationPlanMessage(): GraphEditorMessage.RequestAssistantTask =
+        GraphEditorMessage.RequestAssistantTask(
+            actionId = AssistantActionId.GENERATE_IMPLEMENTATION,
+            intent = AssistantIntent.GENERATE_CODE,
+            prompt = "",
+        )
+
     private fun waitForQaResultAndFollowUps() {
         repeat(50) {
             PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
@@ -2120,6 +2178,7 @@ private fun GraphEditorStateService.markQaResultForIntegration(result: GraphPatc
         result,
         AsyncRequestState.succeeded(),
         null,
+        true,
     )
 }
 

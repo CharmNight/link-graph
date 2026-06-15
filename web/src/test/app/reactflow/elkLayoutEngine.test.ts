@@ -2,17 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createElkWorkerFactory } from "../../../app/reactflow/elkLayoutEngine";
 
 describe("createElkWorkerFactory", () => {
-  it("creates a blob-backed worker factory when the browser supports workers", () => {
-    const createObjectURL = vi.fn(() => "blob:elk-worker");
-    const revokeObjectURL = vi.fn();
-    const createdBlobs: Array<{ parts: BlobPart[]; options?: BlobPropertyBag }> = [];
-
-    class FakeBlob {
-      constructor(parts: BlobPart[], options?: BlobPropertyBag) {
-        createdBlobs.push({ parts, options });
-      }
-    }
-
+  it("creates a URL-backed worker without inlining the ELK worker source into the entry chunk", () => {
     class FakeWorker {
       readonly url: string;
 
@@ -23,38 +13,20 @@ describe("createElkWorkerFactory", () => {
 
     const factory = createElkWorkerFactory(
       {
-        Blob: FakeBlob as never,
         Worker: FakeWorker as never,
-        URL: {
-          createObjectURL,
-          revokeObjectURL,
-        },
       },
-      "self.onmessage = () => undefined;",
+      "./assets/elk-worker-test.js",
     );
 
     const worker = factory?.();
 
     expect(worker).toBeInstanceOf(FakeWorker);
-    expect((worker as unknown as InstanceType<typeof FakeWorker>).url).toBe("blob:elk-worker");
-    expect(createdBlobs).toEqual([
-      {
-        parts: ["self.onmessage = () => undefined;"],
-        options: { type: "text/javascript" },
-      },
-    ]);
-    expect(createObjectURL).toHaveBeenCalledTimes(1);
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:elk-worker");
+    expect((worker as unknown as InstanceType<typeof FakeWorker>).url).toBe("./assets/elk-worker-test.js");
   });
 
   it("returns null when a real browser worker cannot be constructed", () => {
     const factory = createElkWorkerFactory({
-      Blob,
       Worker: undefined,
-      URL: {
-        createObjectURL: () => "blob:elk-worker",
-        revokeObjectURL: vi.fn(),
-      },
     });
 
     expect(factory).toBeNull();

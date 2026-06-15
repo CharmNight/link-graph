@@ -3,6 +3,7 @@ package com.charmnight.linkgraph.llm.tools
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.model.sourceLocation
 
 data class QaEvidenceAnchorResolution(
     val requestedNodeId: String? = null,
@@ -35,7 +36,7 @@ class QaEvidenceAnchorResolver {
                 return null
             }
             if (hasSourceMetadata(node)) {
-                trace += "$stage:${node.id}:${node.metadata["source.filePath"].orEmpty()}"
+                trace += "$stage:${node.id}:${node.sourceLocation().filePath.orEmpty()}"
                 return node
             }
             rememberFallback(node, stage)
@@ -215,7 +216,7 @@ class QaEvidenceAnchorResolver {
 
     private fun GraphDocument.findNode(nodeId: String): GraphNode? = nodes.firstOrNull { node -> node.id == nodeId }
 
-    private fun hasSourceMetadata(node: GraphNode): Boolean = !node.metadata["source.filePath"].isNullOrBlank()
+    private fun hasSourceMetadata(node: GraphNode): Boolean = !node.sourceLocation().filePath.isNullOrBlank()
 
     private fun signatureAnchorRank(node: GraphNode): Int {
         return when {

@@ -2,16 +2,9 @@ package com.charmnight.linkgraph.application
 
 import com.charmnight.linkgraph.application.artifact.ConfirmedDraftArtifactWriter
 import com.charmnight.linkgraph.application.command.ApplicationCommandDispatcher
-import com.charmnight.linkgraph.application.command.AssistantApplicationCommandHandler
-import com.charmnight.linkgraph.application.command.DebugApplicationCommandHandler
-import com.charmnight.linkgraph.application.command.DraftApplicationCommandHandler
-import com.charmnight.linkgraph.application.command.GenerationApplicationCommandHandler
-import com.charmnight.linkgraph.application.command.IndexedGraphApplicationCommandHandler
-import com.charmnight.linkgraph.application.command.ReviewApplicationCommandHandler
-import com.charmnight.linkgraph.application.command.SourceNavigationApplicationCommandHandler
-import com.charmnight.linkgraph.application.command.SubjectApplicationCommandHandler
-import com.charmnight.linkgraph.application.command.WorkflowAssistantTaskExecutor
-import com.charmnight.linkgraph.application.command.WorkspaceApplicationCommandHandler
+import com.charmnight.linkgraph.application.composition.ApplicationCommandComposition
+import com.charmnight.linkgraph.application.composition.ApplicationWorkflowComposition
+import com.charmnight.linkgraph.application.composition.ApplicationWorkflows
 import com.charmnight.linkgraph.application.port.GraphEditorPresentationProvider
 import com.charmnight.linkgraph.codegen.CodeDraftWriterService
 import com.charmnight.linkgraph.codegen.CodeGenerationService
@@ -79,7 +72,7 @@ import java.awt.datatransfer.StringSelection
  * Project-level composition root for Link Graph workflows and shared collaborators.
  *
  * This service owns object assembly only. Production entrypoints should depend on the focused command
- * services that wrap these workflows, not on the legacy project-service facade.
+ * services that wrap these workflows, not on a broad project-service facade.
  */
 @Service(Service.Level.PROJECT)
 internal class GraphEditorApplicationService(
@@ -403,46 +396,36 @@ internal class GraphEditorApplicationService(
         )
     }
 
-    val commandDispatcher: ApplicationCommandDispatcher by lazy(LazyThreadSafetyMode.NONE) {
-        ApplicationCommandDispatcher(
-            listOf(
-                SubjectApplicationCommandHandler(subjectFlow),
-                IndexedGraphApplicationCommandHandler(
-                    architectureGraphFlow = architectureGraphFlow,
-                    classDiagramFlow = classDiagramFlow,
-                    reviewGraphFlow = reviewGraphFlow,
-                ),
-                WorkspaceApplicationCommandHandler(
-                    workspaceFlow = workspaceFlow,
+    private val workflowComposition by lazy(LazyThreadSafetyMode.NONE) {
+        ApplicationWorkflowComposition(
+            workflowsProvider = {
+                ApplicationWorkflows(
+                    subjectFlow = subjectFlow,
                     workspaceChangeCoordinator = workspaceChangeCoordinator,
-                    eventSink = presentationProvider.eventSink(),
-                ),
-                SourceNavigationApplicationCommandHandler(
-                    sourceNavigationFlow = sourceNavigationFlow,
-                    invocationExpansionFlow = invocationExpansionFlow,
-                ),
-                AssistantApplicationCommandHandler(
-                    WorkflowAssistantTaskExecutor(
-                        reviewFlow = reviewFlow,
-                        reviewGraphFlow = reviewGraphFlow,
-                        generationPlanFlow = generationPlanFlow,
-                    ),
-                ),
-                ReviewApplicationCommandHandler(reviewFlow),
-                DraftApplicationCommandHandler(
-                    confirmedDraftCoordinator = confirmedDraftCoordinator,
+                    workspaceFlow = workspaceFlow,
                     draftPatchFlow = draftPatchFlow,
-                ),
-                GenerationApplicationCommandHandler(
                     generationPlanFlow = generationPlanFlow,
                     generationDiscussionFlow = generationDiscussionFlow,
                     codeDraftGenerationFlow = codeDraftGenerationFlow,
                     codeDraftApplyFlow = codeDraftApplyFlow,
-                    openCodeDraftNativeDiffOverrideProvider = { testOverrides.openCodeDraftNativeDiff },
-                ),
-                DebugApplicationCommandHandler(debugFlow),
-            ),
+                    reviewFlow = reviewFlow,
+                    sourceNavigationFlow = sourceNavigationFlow,
+                    invocationExpansionFlow = invocationExpansionFlow,
+                    architectureGraphFlow = architectureGraphFlow,
+                    classDiagramFlow = classDiagramFlow,
+                    reviewGraphFlow = reviewGraphFlow,
+                    confirmedDraftCoordinator = confirmedDraftCoordinator,
+                    debugFlow = debugFlow,
+                )
+            },
         )
+    }
+
+    val commandDispatcher: ApplicationCommandDispatcher by lazy(LazyThreadSafetyMode.NONE) {
+        ApplicationCommandComposition(
+            workflows = workflowComposition.workflows(),
+            openCodeDraftNativeDiffOverrideProvider = { testOverrides.openCodeDraftNativeDiff },
+        ).dispatcher()
     }
 
     override fun dispose() {

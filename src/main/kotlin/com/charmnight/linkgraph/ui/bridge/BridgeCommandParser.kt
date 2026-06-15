@@ -2,10 +2,11 @@ package com.charmnight.linkgraph.ui.bridge
 
 import com.charmnight.linkgraph.application.model.GraphLayoutPosition
 import com.charmnight.linkgraph.json.JsonCodec
-import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.ui.GraphBrowserPayloadKind
 import com.charmnight.linkgraph.ui.GraphBrowserPayloadParser
 import com.charmnight.linkgraph.ui.GraphEditorMessage
+import com.charmnight.linkgraph.workbench.AssistantComposerTarget
+import com.charmnight.linkgraph.workbench.AssistantActionId
 import com.charmnight.linkgraph.workbench.AssistantIntent
 import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.RiskResolutionStatus
@@ -23,9 +24,7 @@ internal object BridgeCommandParser {
     private const val SCHEMA_VERSION = 1
 
     private val asyncCommandTypes = setOf(
-        "requestQa",
         "requestAssistantTask",
-        "requestGraphBeautification",
         "requestIndexedGraph",
         "requestOpenSettings",
         "applyCodeDrafts",
@@ -62,18 +61,7 @@ internal object BridgeCommandParser {
             "exportMermaid" -> GraphEditorMessage.ExportMermaid
             "showDiffMode" -> GraphEditorMessage.ShowDiffMode
             "requestSyncPreview" -> GraphEditorMessage.RequestSyncPreview
-            "requestQa" -> GraphEditorMessage.RequestQa(
-                question = payload.string("question").orEmpty(),
-                selectedNodeIds = payload.stringList("selectedNodeIds"),
-                sourceThreadId = payload.string("sourceThreadId")?.takeIf(String::isNotBlank),
-                mode = payload.enumOrDefault("mode", QaMode.AUTO),
-            )
-            "requestAssistantTask" -> GraphEditorMessage.RequestAssistantTask(
-                intent = payload.enum<AssistantIntent>("intent"),
-                prompt = payload.string("prompt").orEmpty(),
-                selectedNodeIds = payload.stringList("selectedNodeIds"),
-                selectedDiffItemIds = payload.stringList("selectedDiffItemIds"),
-            )
+            "requestAssistantTask" -> parseAssistantTask(payload)
             "retryLastQaRequest" -> GraphEditorMessage.RetryLastQaRequest
             "confirmQaCandidateChange" -> GraphEditorMessage.ConfirmQaCandidateChange(
                 changeId = payload.requiredString("changeId", "changeId"),
@@ -86,18 +74,6 @@ internal object BridgeCommandParser {
                 resolutionStatus = payload.enum("resolutionStatus"),
                 note = payload.string("note").orEmpty(),
             )
-            "requestDiffReview" -> GraphEditorMessage.RequestDiffReview(
-                question = payload.string("question").orEmpty(),
-                selectedDiffItemIds = payload.stringList("selectedDiffItemIds"),
-            )
-            "requestGraphBeautification" -> GraphEditorMessage.RequestGraphBeautification(
-                goal = payload.string("goal").orEmpty(),
-                preferredStyle = payload.string("preferredStyle")?.takeIf(String::isNotBlank),
-                explanationFocus = payload.string("explanationFocus")?.takeIf(String::isNotBlank),
-                focusNodeId = payload.string("focusNodeId")?.takeIf(String::isNotBlank),
-                followUp = parseBeautificationFollowUp(payload["followUp"] as? Map<*, *>),
-                granularity = payload.enumOrDefault("granularity", StepGranularity.BUSINESS),
-            )
             "applyDraftPatchPreview" -> GraphEditorMessage.ApplyDraftPatchPreview(
                 operationIds = payload.stringList("operationIds").toSet().takeIf(Set<String>::isNotEmpty),
             )
@@ -106,11 +82,6 @@ internal object BridgeCommandParser {
                 GraphEditorMessage.DraftPatchPreviewSource.valueOf(payload.requiredString("source", "source")),
             )
             "undoLastDraftPatchApply" -> GraphEditorMessage.UndoLastDraftPatchApply
-            "requestGenerationPlan" -> GraphEditorMessage.RequestGenerationPlan
-            "requestGenerationPlanDiscussion" -> GraphEditorMessage.RequestGenerationPlanDiscussion(
-                question = payload.string("question").orEmpty(),
-                focusItemId = payload.string("focusItemId")?.takeIf(String::isNotBlank),
-            )
             "requestCodeDrafts" -> GraphEditorMessage.RequestCodeDrafts
             "requestCurrentEditorContextGraph" -> GraphEditorMessage.RequestCurrentEditorContextGraph
             "requestAnalysisDisplayMode" -> GraphEditorMessage.RequestAnalysisDisplayMode(
@@ -118,10 +89,6 @@ internal object BridgeCommandParser {
             )
             "requestIndexedGraph" -> GraphEditorMessage.RequestIndexedGraph(
                 GraphBrowserPayloadParser.parseIndexedGraphRequest(JsonCodec.toJson(payload)),
-            )
-            "updateWorkbenchSectionPreference" -> GraphEditorMessage.UpdateWorkbenchSectionPreference(
-                sectionId = payload.requiredString("sectionId", "sectionId"),
-                expanded = payload.booleanOrDefault("expanded", false),
             )
             "requestOpenSettings" -> GraphEditorMessage.OpenSettings
             "applyCodeDrafts" -> GraphEditorMessage.ApplyCodeDrafts
@@ -164,12 +131,49 @@ internal object BridgeCommandParser {
             else -> error("unsupported bridge command type: $type")
         }
 
-    private fun parseBeautificationFollowUp(raw: Map<*, *>?): GraphBeautificationFollowUpContext? {
-        raw ?: return null
-        val stepId = raw.string("stepId")?.takeIf(String::isNotBlank) ?: return null
-        val stepTitle = raw.string("stepTitle")?.takeIf(String::isNotBlank) ?: return null
-        val question = raw.string("question")?.takeIf(String::isNotBlank) ?: return null
-        return GraphBeautificationFollowUpContext(stepId, stepTitle, question)
+    private fun parseAssistantTask(payload: Map<*, *>): GraphEditorMessage.RequestAssistantTask {
+        val actionId = payload.enum<AssistantActionId>("actionId")
+        val routedIntent = actionId.toIntent()
+        val declaredIntent = payload.enumOrNull<AssistantIntent>("intent")
+        if (declaredIntent != null && declaredIntent != routedIntent) {
+            error("intent ${declaredIntent.name} does not match actionId ${actionId.name}")
+        }
+        return GraphEditorMessage.RequestAssistantTask(
+            intent = routedIntent,
+            actionId = actionId,
+            sceneId = payload.string("sceneId")?.takeIf(String::isNotBlank),
+            prompt = payload.string("prompt").orEmpty(),
+            selectedNodeIds = payload.stringList("selectedNodeIds"),
+            selectedDiffItemIds = payload.stringList("selectedDiffItemIds"),
+            target = parseAssistantComposerTarget(payload["target"] as? Map<*, *>),
+            explanationGranularity = payload.enumOrDefault("explanationGranularity", StepGranularity.BUSINESS),
+        )
+    }
+
+    private fun parseAssistantComposerTarget(raw: Map<*, *>?): AssistantComposerTarget {
+        raw ?: return AssistantComposerTarget.NewTask
+        return when (val kind = raw.requiredString("kind", "assistant target kind")) {
+            "NewTask" -> AssistantComposerTarget.NewTask
+            "QaRecovery" -> AssistantComposerTarget.QaRecovery(
+                requestId = raw.requiredString("requestId", "requestId"),
+                selectedNodeIds = raw.stringList("selectedNodeIds"),
+                sourceThreadId = raw.string("sourceThreadId")?.takeIf(String::isNotBlank),
+                mode = raw.enumOrNull<QaMode>("mode"),
+            )
+            "ExplanationFollowUp" -> AssistantComposerTarget.ExplanationFollowUp(
+                stepId = raw.requiredString("stepId", "stepId"),
+                stepTitle = raw.string("stepTitle")?.takeIf(String::isNotBlank),
+                focusNodeId = raw.string("focusNodeId")?.takeIf(String::isNotBlank),
+            )
+            "GenerationDiscussion" -> AssistantComposerTarget.GenerationDiscussion(
+                planItemId = raw.string("planItemId")?.takeIf(String::isNotBlank),
+            )
+            "RiskInvestigation" -> AssistantComposerTarget.RiskInvestigation(
+                threadId = raw.requiredString("threadId", "threadId"),
+                targetNodeIds = raw.stringList("targetNodeIds"),
+            )
+            else -> error("unsupported assistant target kind: $kind")
+        }
     }
 
     private fun parseLayoutPositions(payload: Map<*, *>): Map<String, GraphLayoutPosition> =
@@ -190,25 +194,19 @@ internal object BridgeCommandParser {
             "exportMermaid" -> "导出 Mermaid"
             "showDiffMode" -> "切换差异模式"
             "requestSyncPreview" -> "请求同步预览"
-            "requestQa" -> "问答"
             "requestAssistantTask" -> "AI 代码工作台"
             "retryLastQaRequest" -> "重试问答"
             "confirmQaCandidateChange" -> "确认问答候选变更"
             "unconfirmQaCandidateChange" -> "取消确认问答候选变更"
             "resolveInvestigationThread" -> "风险决策提交"
-            "requestDiffReview" -> "差异分析"
-            "requestGraphBeautification" -> "链路讲解"
             "applyDraftPatchPreview" -> "应用草稿补丁预览"
             "clearDraftPatchPreview" -> "清空草稿补丁预览"
             "restoreDraftPatchPreview" -> "恢复草稿补丁预览"
             "undoLastDraftPatchApply" -> "撤销草稿补丁应用"
-            "requestGenerationPlan" -> "生成实现计划"
-            "requestGenerationPlanDiscussion" -> "实现建议追问"
             "requestCodeDrafts" -> "请求代码草稿"
             "requestCurrentEditorContextGraph" -> "加载当前编辑器上下文链路"
             "requestAnalysisDisplayMode" -> "切换展示模式"
             "requestIndexedGraph" -> "加载 indexed 图"
-            "updateWorkbenchSectionPreference" -> "更新工作台偏好"
             "requestOpenSettings" -> "打开设置"
             "applyCodeDrafts" -> "写入全部代码草稿"
             "applySingleCodeDraft" -> "写入单个代码草稿"
@@ -236,9 +234,6 @@ internal object BridgeCommandParser {
         (this[key] as? List<*>).orEmpty().mapNotNull { value ->
             (value as? String)?.takeIf(String::isNotBlank)
         }
-
-    private fun Map<*, *>.booleanOrDefault(key: String, defaultValue: Boolean): Boolean =
-        (this[key] as? Boolean) ?: defaultValue
 
     private inline fun <reified T : Enum<T>> Map<*, *>.enum(key: String): T =
         enumOrNull<T>(key) ?: error("$key is required")

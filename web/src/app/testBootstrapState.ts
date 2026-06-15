@@ -1,5 +1,10 @@
 import { resolveFlowchartKind } from "./flowchartKind";
 import type {
+  AssistantContextSnapshot,
+  AssistantResultStore,
+  AssistantSessionState,
+  AssistantTurnKind,
+  AssistantTurnRef,
   FactGraphViewDocument,
   FlowchartViewDocument,
   ArchitectureGraphViewDocument,
@@ -63,6 +68,13 @@ export type TestBootstrapState = LinkGraphBootstrapState & {
   layoutState: LinkGraphLayoutState;
   layoutRevision: number;
 };
+
+function hasOwnInputField(
+  state: TestBootstrapStateInput,
+  field: keyof LinkGraphBootstrapState,
+): boolean {
+  return Object.prototype.hasOwnProperty.call(state, field);
+}
 
 function resolveSceneId(
   state: Partial<LinkGraphBootstrapState>,
@@ -292,6 +304,117 @@ function buildReviewGraphViewDocument(
   };
 }
 
+function assistantContextFromState(
+  state: LinkGraphBootstrapState,
+  selectedNodeId: string | null,
+): AssistantContextSnapshot {
+  return {
+    selectedNodeIds: selectedNodeId ? [selectedNodeId] : [],
+    selectedDiffItemIds: state.diffItems?.map((item) => item.id) ?? [],
+    analysisDisplayMode: state.analysisDisplayMode ?? null,
+    currentSceneId: state.currentSceneId ?? null,
+    selectedMethodSignature: selectedNodeId
+      ? state.workspaceGraph.nodes.find((node) => node.id === selectedNodeId)?.signature ?? null
+      : null,
+    scopeLabel: selectedNodeId
+      ? state.workspaceGraph.nodes.find((node) => node.id === selectedNodeId)?.title ?? ""
+      : "",
+  };
+}
+
+function assistantTurnRef(
+  kind: AssistantTurnKind,
+  resultId: string,
+  sourceMessageType: string,
+  sequence: number,
+  context: AssistantContextSnapshot,
+): AssistantTurnRef {
+  return {
+    turnId: `${sourceMessageType}:${kind.toLowerCase()}:${sequence}`,
+    kind,
+    sourceMessageType,
+    resultId,
+    createdAtEpochMillis: sequence,
+    context,
+  };
+}
+
+function materializeAssistantHistory(
+  state: LinkGraphBootstrapState,
+  selectedNodeId: string | null,
+): {
+  assistantSessionState: AssistantSessionState;
+  assistantResultStore: AssistantResultStore;
+} {
+  const context = assistantContextFromState(state, selectedNodeId);
+  const turns: AssistantTurnRef[] = [];
+  const assistantResultStore: AssistantResultStore = {};
+  let sequence = 1;
+
+  if (state.graphBeautificationResult) {
+    const resultId = "test-explanation:current";
+    assistantResultStore[resultId] = {
+      kind: "EXPLANATION",
+      explanation: state.graphBeautificationResult,
+    };
+    turns.push(assistantTurnRef("EXPLANATION", resultId, "graphBeautificationResult", sequence++, context));
+  }
+  if (state.qaResult) {
+    const resultId = "test-qa:current";
+    assistantResultStore[resultId] = {
+      kind: "QA",
+      qa: state.qaResult,
+    };
+    turns.push(assistantTurnRef("QA", resultId, "qaResult", sequence++, context));
+  }
+  if (state.diffReviewResult) {
+    const resultId = "test-check:current";
+    assistantResultStore[resultId] = {
+      kind: "CHECK_RESULT",
+      check: state.diffReviewResult,
+    };
+    turns.push(assistantTurnRef("CHECK_RESULT", resultId, "diffReviewResult", sequence++, context));
+  }
+  if (state.generationPlan || state.generationPlanDiscussionSession) {
+    const resultId = "test-generation-plan:current";
+    assistantResultStore[resultId] = {
+      kind: "GENERATION_PLAN",
+      generationPlan: state.generationPlan ?? null,
+      generationDiscussionSession: state.generationPlanDiscussionSession ?? null,
+    };
+    turns.push(assistantTurnRef("GENERATION_PLAN", resultId, "generationPlanResult", sequence++, context));
+  }
+  if ((state.generatedCodeDrafts ?? []).length > 0) {
+    const resultId = "test-code-draft:current";
+    assistantResultStore[resultId] = {
+      kind: "CODE_DRAFT",
+      generationPlan: state.generationPlan ?? null,
+      generationDiscussionSession: state.generationPlanDiscussionSession ?? null,
+      codeDrafts: state.generatedCodeDrafts ?? [],
+      codeDraftWarnings: state.generatedCodeDraftWarnings ?? [],
+    };
+    turns.push(assistantTurnRef("CODE_DRAFT", resultId, "codeDraftResult", sequence++, context));
+  }
+
+  return {
+    assistantSessionState: {
+      sessionId: "assistant-session-test",
+      activeIntent: state.assistantSessionState?.activeIntent ?? "EXPLAIN_CODE",
+      contextLocked: false,
+      context,
+      composer: state.assistantSessionState?.composer ?? {
+        draft: "",
+        target: {
+          kind: "NewTask",
+        },
+      },
+      nextResultSequence: state.assistantSessionState?.nextResultSequence ?? 1,
+      turns,
+    },
+    assistantResultStore,
+  };
+}
+
 export function materializeThreeViewDocuments(
   state: TestBootstrapStateInput,
 ): TestBootstrapState {
@@ -326,9 +449,18 @@ export function materializeThreeViewDocuments(
     visibleGraph.nodes,
     sceneState.anchorNodeId ?? sceneState.selectedNodeId ?? null,
   );
+  const selectedNodeId = sceneState.selectedNodeId ?? null;
+  const assistantHistory = hasOwnInputField(state, "assistantSessionState") || hasOwnInputField(state, "assistantResultStore")
+    ? {
+        assistantSessionState: normalizedState.assistantSessionState,
+        assistantResultStore: normalizedState.assistantResultStore,
+      }
+    : materializeAssistantHistory(normalizedState, selectedNodeId);
 
   return {
     ...normalizedState,
+    assistantSessionState: assistantHistory.assistantSessionState,
+    assistantResultStore: assistantHistory.assistantResultStore,
     workspaceGraph: workingGraph,
     workspaceBaseGraph,
     semanticFactGraph,
@@ -343,7 +475,7 @@ export function materializeThreeViewDocuments(
     workingGraph,
     referenceWorkingGraph: workspaceBaseGraph,
     referenceFactGraph: semanticFactGraph,
-    selectedNodeId: sceneState.selectedNodeId ?? null,
+    selectedNodeId,
     anchorNodeId,
     layoutState: sceneState.layoutState,
     layoutRevision: sceneState.layoutRevision,

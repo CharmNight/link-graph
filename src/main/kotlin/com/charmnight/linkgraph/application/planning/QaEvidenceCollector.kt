@@ -5,6 +5,7 @@ import com.charmnight.linkgraph.llm.SourceSnippetContext
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.model.sourceLocation
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
@@ -97,16 +98,17 @@ internal class QaEvidenceCollector(
     }
 
     private fun readSourceSnippet(node: GraphNode): SourceSnippetContext? {
-        val filePath = node.metadata["source.filePath"] ?: return null
-        val startOffset = node.metadata["source.startOffset"]?.toIntOrNull()
-        val endOffset = node.metadata["source.endOffset"]?.toIntOrNull()
+        val sourceLocation = node.sourceLocation()
+        val filePath = sourceLocation.filePath ?: return null
+        val startOffset = sourceLocation.startOffset
+        val endOffset = sourceLocation.endOffset
         return SourceSnippetContext(
             nodeId = node.id,
             filePath = filePath,
             startOffset = startOffset,
             endOffset = endOffset,
-            startLine = node.metadata["source.startLine"]?.toIntOrNull(),
-            endLine = node.metadata["source.endLine"]?.toIntOrNull(),
+            startLine = sourceLocation.startLine,
+            endLine = sourceLocation.endLine,
             snippet = loadSnippet(filePath, startOffset, endOffset),
         )
     }

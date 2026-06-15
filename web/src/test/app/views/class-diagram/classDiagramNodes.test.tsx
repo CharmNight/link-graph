@@ -41,35 +41,36 @@ vi.mock("@xyflow/react", () => ({
 describe("CLASS_DIAGRAM_NODE_TYPES", () => {
   it("renders a UML class box with member compartments and distributed side handles", () => {
     const ClassDiagramNode = CLASS_DIAGRAM_NODE_TYPES.classDiagramNode as (props: Record<string, unknown>) => JSX.Element;
+    const node = {
+      id: "class:ApplicationFeedbackLevel",
+      type: "CLASS" as const,
+      title: "ApplicationFeedbackLevel",
+      doc: "Coordinates the generated feedback level shown in the editor.",
+      inputs: [],
+      outputs: [],
+      certainty: "PROVEN" as const,
+      bindingStatus: "BOUND" as const,
+      metadata: {
+        "architecture.package": "com.example",
+        "jvm.class.abstract": "true",
+        "layout.direction": "ANCHOR",
+        "uml.field.items": "provider: TaskProvider",
+        "uml.method.items": "run(): void",
+      },
+    };
 
-    const { container } = render(
+    const { container, rerender } = render(
       <ClassDiagramNode
         id="class:ApplicationFeedbackLevel"
         data={{
-          node: {
-            id: "class:ApplicationFeedbackLevel",
-            type: "CLASS",
-            title: "ApplicationFeedbackLevel",
-            doc: "Coordinates the generated feedback level shown in the editor.",
-            inputs: [],
-            outputs: [],
-            certainty: "PROVEN",
-            bindingStatus: "BOUND",
-            metadata: {
-              "architecture.package": "com.example",
-              "jvm.class.abstract": "true",
-              "layout.direction": "ANCHOR",
-              "uml.field.items": "provider: TaskProvider",
-              "uml.method.items": "run(): void",
-            },
-          },
+          node,
         }}
         selected={false}
         isConnectable={false}
       />,
     );
 
-    expect(updateNodeInternalsMock).toHaveBeenCalledWith("class:ApplicationFeedbackLevel");
+    expect(updateNodeInternalsMock).not.toHaveBeenCalled();
     expect(screen.getByText("ApplicationFeedbackLevel")).toBeInTheDocument();
     expect(screen.getByText("<<abstract>>")).toBeInTheDocument();
     expect(screen.getByText("当前类")).toBeInTheDocument();
@@ -99,6 +100,25 @@ describe("CLASS_DIAGRAM_NODE_TYPES", () => {
     expect(container.querySelector('[data-handle-id="source-bottom-6"]')).toBeInTheDocument();
     expect(container.querySelector('[data-handle-id="source-bottom"]')).toBeInTheDocument();
     expect(container.querySelector('[data-handle-id="target-bottom"]')).toBeInTheDocument();
+
+    rerender(
+      <ClassDiagramNode
+        id="class:ApplicationFeedbackLevel"
+        data={{
+          node: {
+            ...node,
+            metadata: {
+              ...node.metadata,
+              "uml.method.items": "run(): void\ncancel(): void",
+            },
+          },
+        }}
+        selected={false}
+        isConnectable={false}
+      />,
+    );
+
+    expect(updateNodeInternalsMock).toHaveBeenCalledWith("class:ApplicationFeedbackLevel");
   });
 
   it("renders peripheral class nodes as compact relationship summaries", () => {
@@ -168,7 +188,7 @@ describe("CLASS_DIAGRAM_NODE_TYPES", () => {
       />,
     );
 
-    expect(screen.getByText("param delta")).toHaveAttribute("title", "param onMetadataUpdate.delta");
+    expect(screen.getByText("参数 delta")).toHaveAttribute("title", "参数 onMetadataUpdate.delta");
     expect(screen.queryByText("param onMetadataUpdate.delta")).not.toBeInTheDocument();
   });
 });
@@ -219,6 +239,47 @@ describe("buildClassDiagramNodes", () => {
       width: 248,
     });
     expect(collaboratorNode?.data.compact).toBe(true);
+  });
+
+  it("uses theme-aware node backgrounds in the dark graph stage instead of hardcoded light cards", () => {
+    const builtNodes = buildClassDiagramNodes({
+      nodes: [
+        {
+          id: "class:anchor",
+          type: "CLASS",
+          title: "OrderService",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN",
+          bindingStatus: "BOUND",
+          metadata: {
+            "presentation.role": "ANCHOR",
+            "presentation.compact": "false",
+          },
+        },
+        {
+          id: "class:collaborator",
+          type: "INTERFACE",
+          title: "OrderRepository",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN",
+          bindingStatus: "BOUND",
+          metadata: {
+            "presentation.role": "COLLABORATOR",
+            "presentation.compact": "true",
+          },
+        },
+      ],
+      selectedNodeId: null,
+      nodeSizeRegistry: createNodeSizeRegistry(),
+    });
+
+    for (const node of builtNodes) {
+      const background = String(node.style?.background ?? "");
+      expect(background).toContain("var(--panel");
+      expect(background).not.toMatch(/#(?:f|fff)|rgba\(255/i);
+    }
   });
 
   it("marks UML node kind classes for visual differences", () => {
@@ -402,10 +463,142 @@ describe("buildClassDiagramEdges", () => {
     expect(dependencyEdge?.style?.stroke).toBe("#6f8fbc");
     expect(dependencyEdge?.style?.strokeDasharray).toBe("6 5");
     expect(associationEdge?.markerEnd).toMatchObject({ color: "#4f8f72" });
-    expect(realizationEdge?.label).toBe("implements");
-    expect(associationEdge?.label).toBe("field repository");
-    expect(dependencyEdge?.label).toBe("param request");
-    expect(dependencyEdge?.data?.labelTitle).toBe("param load.request");
+    expect(realizationEdge?.label).toBe("实现");
+    expect(associationEdge?.label).toBe("字段 repository");
+    expect(dependencyEdge?.label).toBe("参数 request");
+    expect(dependencyEdge?.data?.labelTitle).toBe("参数 load.request");
+  });
+
+  it("localizes every class-diagram relation label source including aggregate detail labels", () => {
+    const flowEdges = buildClassDiagramEdges({
+      edges: [
+        {
+          id: "edge:extends",
+          type: "EXTENDS",
+          source: "class:child",
+          target: "class:base",
+          metadata: {
+            "uml.relation.kind": "GENERALIZATION",
+            "uml.relation.label": "extends",
+          },
+        },
+        {
+          id: "edge:implements",
+          type: "IMPLEMENTS",
+          source: "class:child",
+          target: "class:contract",
+          metadata: {
+            "uml.relation.kind": "REALIZATION",
+            "uml.relation.label": "implements",
+          },
+        },
+        {
+          id: "edge:field",
+          type: "USES_TYPE",
+          source: "class:owner",
+          target: "class:repository",
+          metadata: {
+            "uml.relation.kind": "ASSOCIATION",
+            "uml.relation.label": "field repository",
+          },
+        },
+        {
+          id: "edge:ctor",
+          type: "USES_TYPE",
+          source: "class:owner",
+          target: "class:config",
+          metadata: {
+            "uml.relation.kind": "ASSOCIATION",
+            "uml.relation.label": "ctor config",
+          },
+        },
+        {
+          id: "edge:call",
+          type: "CALL",
+          source: "class:owner",
+          target: "class:gateway",
+          metadata: {
+            "uml.relation.kind": "DEPENDENCY",
+            "uml.relation.label": "call send",
+          },
+        },
+        {
+          id: "edge:param",
+          type: "USES_TYPE",
+          source: "class:owner",
+          target: "class:request",
+          metadata: {
+            "uml.relation.kind": "DEPENDENCY",
+            "uml.relation.label": "param load.request",
+          },
+        },
+        {
+          id: "edge:local",
+          type: "USES_TYPE",
+          source: "class:owner",
+          target: "class:timer",
+          metadata: {
+            "uml.relation.kind": "DEPENDENCY",
+            "uml.relation.label": "local load.timer",
+          },
+        },
+        {
+          id: "edge:return",
+          type: "USES_TYPE",
+          source: "class:owner",
+          target: "class:result",
+          metadata: {
+            "uml.relation.kind": "DEPENDENCY",
+            "uml.relation.label": "return load",
+          },
+        },
+        {
+          id: "edge:throws",
+          type: "USES_TYPE",
+          source: "class:owner",
+          target: "class:error",
+          metadata: {
+            "uml.relation.kind": "DEPENDENCY",
+            "uml.relation.label": "throws load",
+          },
+        },
+        {
+          id: "edge:fallback",
+          type: "USES_TYPE",
+          source: "class:owner",
+          target: "class:dependency",
+          metadata: {
+            "uml.relation.kind": "DEPENDENCY",
+          },
+        },
+        {
+          id: "edge:aggregate",
+          type: "USES_TYPE",
+          source: "class:owner",
+          target: "class:metrics",
+          metadata: {
+            "uml.relation.kind": "ASSOCIATION",
+            "uml.relation.aggregate.primaryLabel": "field metrics",
+            "uml.relation.aggregate.secondaryLabels": "ctor metrics;return loadMetrics",
+          },
+        },
+      ],
+    });
+
+    expect(flowEdges.map((edge) => edge.label)).toEqual([
+      "继承",
+      "实现",
+      "字段 repository",
+      "构造参数 config",
+      "调用 send",
+      "参数 request",
+      "局部类型 timer",
+      "返回 load",
+      "抛出 load",
+      "依赖",
+      "字段 metrics +2",
+    ]);
+    expect(flowEdges.at(-1)?.data?.labelTitle).toBe("字段 metrics\n构造参数 metrics\n返回 loadMetrics");
   });
 
   it("de-emphasizes secondary candidate relations without changing anchor relations", () => {

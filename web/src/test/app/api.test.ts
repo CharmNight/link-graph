@@ -5,24 +5,22 @@ import {
   publishGraphEditScript,
   readBootstrapState,
   requestAssistantTask,
-  requestQaAsync,
   requestAnalysisDisplayMode,
   requestCurrentEditorContextGraph,
   requestExpandInvocation,
   requestRemoveInvocationExpansion,
-  requestGraphBeautificationAsync,
   requestArchitectureGraph,
   requestClassDiagram,
+  requestClassUsages,
   requestPackageDependencyGraph,
   requestReviewGraph,
   resolveInvestigationThread,
   retryLastQaRequestAsync,
-  updateWorkbenchSectionPreference,
   resetApiBridgeLifecycleStateForTest,
 } from "../../app/api";
 import { resetEditorTransportForTest } from "../../app/editorTransport";
 import { EMPTY_STATE } from "../../app/sampleState";
-import type { LinkGraphEdge, LinkGraphNode, RiskResolutionStatus } from "../../app/types";
+import type { LinkGraphEdge, LinkGraphNode } from "../../app/types";
 
 function methodNode(id: string, title: string): LinkGraphNode {
   return {
@@ -38,6 +36,34 @@ function methodNode(id: string, title: string): LinkGraphNode {
   };
 }
 
+function installBridgeCommandSpy() {
+  const sendCommand = vi.fn();
+  window.linkGraphBridge = {
+    sendCommand,
+  };
+  return sendCommand;
+}
+
+function commandPayload<TPayload extends Record<string, unknown> = Record<string, unknown>>(
+  sendCommand: ReturnType<typeof installBridgeCommandSpy>,
+  callIndex = 0,
+): TPayload | undefined {
+  return sendCommand.mock.calls[callIndex]?.[0]?.payload as TPayload | undefined;
+}
+
+function expectCommand(
+  sendCommand: ReturnType<typeof installBridgeCommandSpy>,
+  callIndex: number,
+  type: string,
+  payload: Record<string, unknown>,
+) {
+  expect(sendCommand).toHaveBeenNthCalledWith(callIndex + 1, {
+    schemaVersion: 1,
+    type,
+    payload,
+  });
+}
+
 describe("publishGraphEditScript", () => {
   afterEach(() => {
     resetEditorTransportForTest();
@@ -48,10 +74,7 @@ describe("publishGraphEditScript", () => {
   });
 
   it("keeps edge metadata when syncing canonical graph edits back to the IDE bridge", () => {
-    const applyGraphEditScript = vi.fn();
-    window.linkGraphBridge = {
-      applyGraphEditScript,
-    };
+    const sendCommand = installBridgeCommandSpy();
 
     const nodes: LinkGraphNode[] = [
       methodNode("anchor", "OrderService.place"),
@@ -88,7 +111,7 @@ describe("publishGraphEditScript", () => {
       ],
     });
 
-    expect(applyGraphEditScript).toHaveBeenCalledWith({
+    expectCommand(sendCommand, 0, "applyGraphEditScript", {
       sceneId: "WORKSPACE_FLOWCHART",
       baseWorkspaceRevision: 7,
       operations: [
@@ -120,10 +143,7 @@ describe("publishGraphEditScript", () => {
   });
 
   it("does not copy canvas positions into semantic node metadata", () => {
-    const applyGraphEditScript = vi.fn();
-    window.linkGraphBridge = {
-      applyGraphEditScript,
-    };
+    const sendCommand = installBridgeCommandSpy();
 
     const nodes: LinkGraphNode[] = [
       {
@@ -146,16 +166,13 @@ describe("publishGraphEditScript", () => {
       ],
     });
 
-    expect(applyGraphEditScript.mock.calls[0]?.[0]?.operations?.[0]?.node?.metadata).toEqual({
+    expect(commandPayload<{ operations?: Array<{ node?: LinkGraphNode }> }>(sendCommand)?.operations?.[0]?.node?.metadata).toEqual({
       "linkGraph.manual": "true",
     });
   });
 
   it("strips legacy ui position keys from semantic node metadata", () => {
-    const applyGraphEditScript = vi.fn();
-    window.linkGraphBridge = {
-      applyGraphEditScript,
-    };
+    const sendCommand = installBridgeCommandSpy();
 
     const nodes: LinkGraphNode[] = [
       {
@@ -181,77 +198,101 @@ describe("publishGraphEditScript", () => {
       ],
     });
 
-    expect(applyGraphEditScript.mock.calls[0]?.[0]?.operations?.[0]?.node?.metadata).toEqual({
+    expect(commandPayload<{ operations?: Array<{ node?: LinkGraphNode }> }>(sendCommand)?.operations?.[0]?.node?.metadata).toEqual({
       "linkGraph.manual": "true",
     });
   });
 
   it("notifies the IDE bridge when the frontend transport becomes ready", () => {
-    const frontendReady = vi.fn();
-    window.linkGraphBridge = {
-      frontendReady,
-    };
+    const sendCommand = installBridgeCommandSpy();
 
     announceFrontendReady(7);
 
-    expect(frontendReady).toHaveBeenCalledWith({
+    expectCommand(sendCommand, 0, "frontendReady", {
       lastAppliedRevision: 7,
     });
   });
 
   it("acknowledges only newer snapshot revisions back to the IDE bridge", () => {
-    const snapshotAck = vi.fn();
-    window.linkGraphBridge = {
-      snapshotAck,
-    };
+    const sendCommand = installBridgeCommandSpy();
 
     acknowledgeSnapshot(3);
     acknowledgeSnapshot(3);
     acknowledgeSnapshot(4);
 
-    expect(snapshotAck).toHaveBeenCalledTimes(2);
-    expect(snapshotAck).toHaveBeenNthCalledWith(1, {
+    expect(sendCommand).toHaveBeenCalledTimes(2);
+    expectCommand(sendCommand, 0, "snapshotAck", {
       revision: 3,
     });
-    expect(snapshotAck).toHaveBeenNthCalledWith(2, {
+    expectCommand(sendCommand, 1, "snapshotAck", {
       revision: 4,
     });
   });
 
   it("replays frontend ready once the IDE bridge is injected after app mount", () => {
-    const frontendReady = vi.fn();
+    const sendCommand = vi.fn();
     window.linkGraphBridge = undefined;
 
     announceFrontendReady(7);
 
-    expect(frontendReady).not.toHaveBeenCalled();
+    expect(sendCommand).not.toHaveBeenCalled();
 
     window.linkGraphBridge = {
-      frontendReady,
+      sendCommand,
     };
     window.dispatchEvent(new Event("link-graph-bridge-ready"));
 
-    expect(frontendReady).toHaveBeenCalledWith({
+    expectCommand(sendCommand, 0, "frontendReady", {
       lastAppliedRevision: 7,
     });
   });
 
+  it("replays pending lifecycle commands through sendCommand once the unified IDE bridge is injected", () => {
+    const sendCommand = vi.fn();
+    window.linkGraphBridge = undefined;
+
+    announceFrontendReady(7);
+    acknowledgeSnapshot(8);
+
+    expect(sendCommand).not.toHaveBeenCalled();
+
+    window.linkGraphBridge = {
+      sendCommand,
+    };
+    window.dispatchEvent(new Event("link-graph-bridge-ready"));
+
+    expect(sendCommand).toHaveBeenNthCalledWith(1, {
+      schemaVersion: 1,
+      type: "frontendReady",
+      payload: {
+        lastAppliedRevision: 7,
+      },
+    });
+    expect(sendCommand).toHaveBeenNthCalledWith(2, {
+      schemaVersion: 1,
+      type: "snapshotAck",
+      payload: {
+        revision: 8,
+      },
+    });
+  });
+
   it("replays the latest pending snapshot acknowledgement after the IDE bridge is injected", () => {
-    const snapshotAck = vi.fn();
+    const sendCommand = vi.fn();
     window.linkGraphBridge = undefined;
 
     acknowledgeSnapshot(3);
     acknowledgeSnapshot(4);
 
-    expect(snapshotAck).not.toHaveBeenCalled();
+    expect(sendCommand).not.toHaveBeenCalled();
 
     window.linkGraphBridge = {
-      snapshotAck,
+      sendCommand,
     };
     window.dispatchEvent(new Event("link-graph-bridge-ready"));
 
-    expect(snapshotAck).toHaveBeenCalledTimes(1);
-    expect(snapshotAck).toHaveBeenCalledWith({
+    expect(sendCommand).toHaveBeenCalledTimes(1);
+    expectCommand(sendCommand, 0, "snapshotAck", {
       revision: 4,
     });
   });
@@ -341,247 +382,278 @@ describe("publishGraphEditScript", () => {
   });
 
   it("把展示模式切换请求转发给 IDE bridge", () => {
-    const requestAnalysisDisplayModeBridge = vi.fn();
-    window.linkGraphBridge = {
-      requestAnalysisDisplayMode: requestAnalysisDisplayModeBridge,
-    };
+    const sendCommand = installBridgeCommandSpy();
 
     requestAnalysisDisplayMode("FLOWCHART");
 
-    expect(requestAnalysisDisplayModeBridge).toHaveBeenCalledWith("FLOWCHART");
+    expectCommand(sendCommand, 0, "requestAnalysisDisplayMode", {
+      displayMode: "FLOWCHART",
+    });
   });
 
   it("indexed graph wrappers send backend-owned presets instead of duplicated defaults", () => {
-    const requestIndexedGraphBridge = vi.fn();
-    window.linkGraphBridge = {
-      requestIndexedGraph: requestIndexedGraphBridge,
-    };
+    const sendCommand = installBridgeCommandSpy();
 
     requestArchitectureGraph({ viewport: { maxVisibleNodes: 80 } });
     requestPackageDependencyGraph("com.example.orders", { includeJdk: false });
     requestClassDiagram("component:orders", { classDiagram: { neighborhoodLimit: 48 } });
     requestReviewGraph(["diff:1"], { review: { maxChangedNodes: 160 } });
 
-    expect(requestIndexedGraphBridge).toHaveBeenNthCalledWith(1, {
+    expectCommand(sendCommand, 0, "requestIndexedGraph", {
       preset: "ARCHITECTURE",
       viewport: { maxVisibleNodes: 80 },
     });
-    expect(requestIndexedGraphBridge).toHaveBeenNthCalledWith(2, {
+    expectCommand(sendCommand, 1, "requestIndexedGraph", {
       preset: "PACKAGE_DEPENDENCY",
       packageName: "com.example.orders",
       includeJdk: false,
     });
-    expect(requestIndexedGraphBridge).toHaveBeenNthCalledWith(3, {
+    expectCommand(sendCommand, 2, "requestIndexedGraph", {
       preset: "CLASS_DIAGRAM",
       scopeNodeId: "component:orders",
       classDiagram: { neighborhoodLimit: 48 },
     });
-    expect(requestIndexedGraphBridge).toHaveBeenNthCalledWith(4, {
+    expectCommand(sendCommand, 3, "requestIndexedGraph", {
       preset: "REVIEW",
       selectedDiffItemIds: ["diff:1"],
       review: { maxChangedNodes: 160 },
     });
   });
 
-  it("sends assistant tasks through the unified bridge command", () => {
-    const requestAssistantTaskBridge = vi.fn();
-    window.linkGraphBridge = {
-      requestAssistantTask: requestAssistantTaskBridge,
-    };
+  it("sends class usage requests as standalone class diagram usage lookups", () => {
+    const sendCommand = installBridgeCommandSpy();
+
+    requestClassUsages("jvm:class:com-example-order-service", {
+      targetQualifiedName: "com.example.OrderService",
+      sourceVirtualFileUrl: "file:///project/src/main/java/com/example/OrderService.java",
+      sourcePath: "src/main/java/com/example/OrderService.java",
+      maxUsageGroups: 12,
+      maxUsageEntries: 40,
+      includeImports: true,
+    });
+
+    expectCommand(sendCommand, 0, "requestIndexedGraph", {
+      preset: "CLASS_DIAGRAM",
+      usage: {
+        enabled: true,
+        targetNodeId: "jvm:class:com-example-order-service",
+        targetQualifiedName: "com.example.OrderService",
+        sourceVirtualFileUrl: "file:///project/src/main/java/com/example/OrderService.java",
+        sourcePath: "src/main/java/com/example/OrderService.java",
+        maxUsageGroups: 12,
+        maxUsageEntries: 40,
+        includeImports: true,
+      },
+    });
+  });
+
+  it("rejects injected bridges that do not expose the unified command entrypoint", () => {
+    window.linkGraphBridge = {};
 
     const result = requestAssistantTask({
+      actionId: "CHECK_CHANGE",
+      sceneId: "WORKSPACE_REVIEW_GRAPH",
       intent: "CHECK_CHANGE",
       prompt: "检查这次改动",
       selectedNodeIds: ["method:submit-order"],
       selectedDiffItemIds: ["diff:OrderController.kt"],
+      target: {
+        kind: "RiskInvestigation",
+        threadId: "risk-thread:1",
+        targetNodeIds: ["method:submit-order"],
+      },
+      explanationGranularity: "CODE_SEMANTIC",
     });
-
-    expect(result).toEqual({ ok: true });
-    expect(requestAssistantTaskBridge).toHaveBeenCalledWith({
-      intent: "CHECK_CHANGE",
-      prompt: "检查这次改动",
-      selectedNodeIds: ["method:submit-order"],
-      selectedDiffItemIds: ["diff:OrderController.kt"],
-    });
-  });
-
-  it("把工作台折叠偏好更新转发给 IDE bridge", () => {
-    const updateWorkbenchSectionPreferenceBridge = vi.fn();
-    window.linkGraphBridge = {
-      updateWorkbenchSectionPreference: updateWorkbenchSectionPreferenceBridge,
-    };
-
-    updateWorkbenchSectionPreference("qa.candidate-changes", true);
-
-    expect(updateWorkbenchSectionPreferenceBridge).toHaveBeenCalledWith("qa.candidate-changes", true);
-  });
-
-  it("把当前编辑器上下文加载请求转发给 IDE bridge", () => {
-    const requestCurrentEditorContextGraphBridge = vi.fn();
-    window.linkGraphBridge = {
-      requestCurrentEditorContextGraph: requestCurrentEditorContextGraphBridge,
-    };
-
-    requestCurrentEditorContextGraph();
-
-    expect(requestCurrentEditorContextGraphBridge).toHaveBeenCalledTimes(1);
-  });
-
-  it("把调用方法展开请求转发给 IDE bridge", () => {
-    const requestExpandInvocationBridge = vi.fn();
-    window.linkGraphBridge = {
-      requestExpandInvocation: requestExpandInvocationBridge,
-    };
-
-    requestExpandInvocation("invoke:create-info");
-
-    expect(requestExpandInvocationBridge).toHaveBeenCalledWith("invoke:create-info");
-  });
-
-  it("把移除调用展开请求转发给 IDE bridge", () => {
-    const requestRemoveInvocationExpansionBridge = vi.fn();
-    window.linkGraphBridge = {
-      requestRemoveInvocationExpansion: requestRemoveInvocationExpansionBridge,
-    };
-
-    requestRemoveInvocationExpansion("invocation:expansion-1");
-
-    expect(requestRemoveInvocationExpansionBridge).toHaveBeenCalledWith("invocation:expansion-1");
-  });
-
-  it("记录问答请求参数到前端调试 trace", () => {
-    const requestQaBridge = vi.fn();
-    const traceSink = vi.fn();
-    window.linkGraphBridge = {
-      requestQa: requestQaBridge,
-    };
-    window.linkGraphDebugTrace = traceSink;
-
-    requestQaAsync("请围绕当前链路进行问答", ["method:place-order", "sql:insert-order"], "thread-risk-1", "INVESTIGATE");
-
-    expect(requestQaBridge).toHaveBeenCalledWith(
-      "请围绕当前链路进行问答",
-      ["method:place-order", "sql:insert-order"],
-      "thread-risk-1",
-      "INVESTIGATE",
-    );
-    const tracePayload = String(traceSink.mock.calls[0]?.[0] ?? "");
-    expect(tracePayload).toContain("\"event\":\"api.requestQa\"");
-    expect(tracePayload).toContain("\"question\":\"请围绕当前链路进行问答\"");
-    expect(tracePayload).toContain("\"selectedNodeIds\":[\"method:place-order\",\"sql:insert-order\"]");
-    expect(tracePayload).toContain("\"sourceThreadId\":\"thread-risk-1\"");
-    expect(tracePayload).toContain("\"mode\":\"INVESTIGATE\"");
-  });
-
-  it("defaults qa requests to AUTO mode for legacy callers", () => {
-    const requestQaBridge = vi.fn();
-    window.linkGraphBridge = {
-      requestQa: requestQaBridge,
-    };
-
-    requestQaAsync("这个方法是如何触发的？");
-
-    expect(requestQaBridge).toHaveBeenCalledWith("这个方法是如何触发的？", [], null, "AUTO");
-  });
-
-  it("把风险决策请求转发给 IDE bridge", () => {
-    const resolveInvestigationThreadBridge = vi.fn();
-    window.linkGraphBridge = {
-      resolveInvestigationThread: resolveInvestigationThreadBridge,
-    };
-
-    resolveInvestigationThread("thread-risk-1", "ACCEPTED_RISK");
-
-    expect(resolveInvestigationThreadBridge).toHaveBeenCalledWith("thread-risk-1", "ACCEPTED_RISK", "");
-  });
-
-  it("把问答重试请求转发给 IDE bridge", () => {
-    const retryLastQaRequestBridge = vi.fn();
-    window.linkGraphBridge = {
-      retryLastQaRequest: retryLastQaRequestBridge,
-    };
-
-    retryLastQaRequestAsync();
-
-    expect(retryLastQaRequestBridge).toHaveBeenCalledTimes(1);
-  });
-
-  it("在 bridge 已注入但缺少方法时返回协议未对齐错误", () => {
-    window.linkGraphBridge = {
-      requestQa: vi.fn(),
-    };
-
-    const result = resolveInvestigationThread("thread-risk-1", "DEFERRED" satisfies RiskResolutionStatus);
 
     expect(result).toEqual({
       ok: false,
       message: "IDE bridge 协议未对齐，本次请求没有发出。",
-      detailMessage: "IDE bridge 已注入，但当前未暴露 resolveInvestigationThread 方法，本次请求没有发出。",
+      detailMessage: "IDE bridge 已注入，但当前未暴露统一 sendCommand 方法，本次请求没有发出。",
+    });
+  });
+
+  it("uses sendCommand when the injected IDE bridge only exposes the unified envelope entrypoint", () => {
+    const sendCommand = vi.fn();
+    window.linkGraphBridge = {
+      sendCommand,
+    };
+
+    const result = requestAssistantTask({
+      actionId: "CHECK_CHANGE",
+      sceneId: "WORKSPACE_REVIEW_GRAPH",
+      intent: "CHECK_CHANGE",
+      prompt: "检查这次改动",
+      selectedNodeIds: ["method:submit-order"],
+      selectedDiffItemIds: ["diff:OrderController.kt"],
+      target: {
+        kind: "RiskInvestigation",
+        threadId: "risk-thread:1",
+        targetNodeIds: ["method:submit-order"],
+      },
+      explanationGranularity: "CODE_SEMANTIC",
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(sendCommand).toHaveBeenCalledWith({
+      schemaVersion: 1,
+      type: "requestAssistantTask",
+      payload: {
+        actionId: "CHECK_CHANGE",
+        sceneId: "WORKSPACE_REVIEW_GRAPH",
+        intent: "CHECK_CHANGE",
+        prompt: "检查这次改动",
+        selectedNodeIds: ["method:submit-order"],
+        selectedDiffItemIds: ["diff:OrderController.kt"],
+        target: {
+          kind: "RiskInvestigation",
+          threadId: "risk-thread:1",
+          targetNodeIds: ["method:submit-order"],
+        },
+        explanationGranularity: "CODE_SEMANTIC",
+      },
+    });
+  });
+
+  it("uses sendCommand envelopes for lifecycle and graph-edit commands across the bridge", () => {
+    const sendCommand = vi.fn();
+    window.linkGraphBridge = {
+      sendCommand,
+    };
+
+    announceFrontendReady(12);
+    acknowledgeSnapshot(13);
+    publishGraphEditScript({
+      sceneId: "WORKSPACE_FLOWCHART",
+      baseWorkspaceRevision: 7,
+      operations: [
+        {
+          type: "UPSERT_NODE",
+          node: methodNode("anchor", "OrderService.place"),
+        },
+      ],
+    });
+
+    expect(sendCommand).toHaveBeenNthCalledWith(1, {
+      schemaVersion: 1,
+      type: "frontendReady",
+      payload: {
+        lastAppliedRevision: 12,
+      },
+    });
+    expect(sendCommand).toHaveBeenNthCalledWith(2, {
+      schemaVersion: 1,
+      type: "snapshotAck",
+      payload: {
+        revision: 13,
+      },
+    });
+    expect(sendCommand).toHaveBeenNthCalledWith(3, {
+      schemaVersion: 1,
+      type: "applyGraphEditScript",
+      payload: {
+        sceneId: "WORKSPACE_FLOWCHART",
+        baseWorkspaceRevision: 7,
+        operations: [
+          expect.objectContaining({
+            type: "UPSERT_NODE",
+            node: expect.objectContaining({
+              id: "anchor",
+            }),
+          }),
+        ],
+      },
+    });
+  });
+
+  it("把当前编辑器上下文加载请求转发给 IDE bridge", () => {
+    const sendCommand = installBridgeCommandSpy();
+
+    requestCurrentEditorContextGraph();
+
+    expectCommand(sendCommand, 0, "requestCurrentEditorContextGraph", {});
+  });
+
+  it("把调用方法展开请求转发给 IDE bridge", () => {
+    const sendCommand = installBridgeCommandSpy();
+
+    requestExpandInvocation("invoke:create-info");
+
+    expectCommand(sendCommand, 0, "requestExpandInvocation", {
+      nodeId: "invoke:create-info",
+    });
+  });
+
+  it("把移除调用展开请求转发给 IDE bridge", () => {
+    const sendCommand = installBridgeCommandSpy();
+
+    requestRemoveInvocationExpansion("invocation:expansion-1");
+
+    expectCommand(sendCommand, 0, "requestRemoveInvocationExpansion", {
+      expansionId: "invocation:expansion-1",
+    });
+  });
+
+  it("把风险决策请求转发给 IDE bridge", () => {
+    const sendCommand = installBridgeCommandSpy();
+
+    resolveInvestigationThread("thread-risk-1", "ACCEPTED_RISK");
+
+    expectCommand(sendCommand, 0, "resolveInvestigationThread", {
+      threadId: "thread-risk-1",
+      resolutionStatus: "ACCEPTED_RISK",
+      note: "",
+    });
+  });
+
+  it("把问答重试请求转发给 IDE bridge", () => {
+    const sendCommand = installBridgeCommandSpy();
+
+    retryLastQaRequestAsync();
+
+    expectCommand(sendCommand, 0, "retryLastQaRequest", {});
+  });
+
+  it("在 bridge 已注入但缺少方法时返回协议未对齐错误", () => {
+    window.linkGraphBridge = {};
+
+    const result = resolveInvestigationThread("thread-risk-1", "DEFERRED");
+
+    expect(result).toEqual({
+      ok: false,
+      message: "IDE bridge 协议未对齐，本次请求没有发出。",
+      detailMessage: "IDE bridge 已注入，但当前未暴露统一 sendCommand 方法，本次请求没有发出。",
     });
   });
 
   it("在 bridge 未注入时直接返回失败，而不是把用户命令伪装成已接受", () => {
-    const requestQaBridge = vi.fn();
+    const sendCommand = vi.fn();
     window.linkGraphBridge = undefined;
 
-    const result = requestQaAsync(
-      "请围绕当前链路进行问答",
-      ["method:place-order", "sql:insert-order"],
-      "thread-risk-1",
-    );
+    const result = requestAssistantTask({
+      actionId: "ASK_CONTEXT",
+      sceneId: "WORKSPACE_FLOWCHART",
+      intent: "ASK_CODE",
+      prompt: "请围绕当前链路进行问答",
+      selectedNodeIds: ["method:place-order", "sql:insert-order"],
+      target: {
+        kind: "RiskInvestigation",
+        threadId: "thread-risk-1",
+        targetNodeIds: ["method:place-order", "sql:insert-order"],
+      },
+    });
 
     expect(result).toEqual({
       ok: false,
       message: "IDE bridge 尚未就绪，本次请求没有发出。",
       detailMessage: "JCEF 页面与 IDEA 后端连接尚未建立，请等待页面初始化完成后重试。",
     });
-    expect(requestQaBridge).not.toHaveBeenCalled();
+    expect(sendCommand).not.toHaveBeenCalled();
 
     window.linkGraphBridge = {
-      requestQa: requestQaBridge,
+      sendCommand,
     };
     window.dispatchEvent(new Event("link-graph-bridge-ready"));
 
-    expect(requestQaBridge).not.toHaveBeenCalled();
-  });
-
-  it("记录链路讲解请求参数到前端调试 trace", () => {
-    const requestBeautificationBridge = vi.fn();
-    const traceSink = vi.fn();
-    window.linkGraphBridge = {
-      requestGraphBeautification: requestBeautificationBridge,
-    };
-    window.linkGraphDebugTrace = traceSink;
-
-    requestGraphBeautificationAsync({
-      goal: "",
-      preferredStyle: "汇报版",
-      explanationFocus: "请重点讲解 placeOrder 节点",
-      focusNodeId: "method:place-order",
-      granularity: "METHOD_CALL",
-      followUp: {
-        stepId: "step-place-order",
-        stepTitle: "Step 1 提交订单",
-        question: "订单失败时怎么处理？",
-      },
-    });
-
-    expect(requestBeautificationBridge).toHaveBeenCalledWith(
-      "",
-      "汇报版",
-      "请重点讲解 placeOrder 节点",
-      "METHOD_CALL",
-      "step-place-order",
-      "Step 1 提交订单",
-      "订单失败时怎么处理？",
-      "method:place-order",
-    );
-    const tracePayload = String(traceSink.mock.calls[0]?.[0] ?? "");
-    expect(tracePayload).toContain("\"event\":\"api.requestGraphBeautification\"");
-    expect(tracePayload).toContain("\"preferredStyle\":\"汇报版\"");
-    expect(tracePayload).toContain("\"explanationFocus\":\"请重点讲解 placeOrder 节点\"");
-    expect(tracePayload).toContain("\"focusNodeId\":\"method:place-order\"");
-    expect(tracePayload).toContain("\"granularity\":\"METHOD_CALL\"");
-    expect(tracePayload).toContain("\"followUp\":{\"stepId\":\"step-place-order\",\"stepTitle\":\"Step 1 提交订单\",\"question\":\"订单失败时怎么处理？\"}");
+    expect(sendCommand).not.toHaveBeenCalled();
   });
 });

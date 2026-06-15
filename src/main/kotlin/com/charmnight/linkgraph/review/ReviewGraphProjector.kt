@@ -39,7 +39,9 @@ import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.model.GraphSourceLocation
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.model.putSourceLocation
 import com.charmnight.linkgraph.review.git.GitChangedFile
 
 class ReviewGraphProjector(
@@ -342,9 +344,13 @@ class ReviewGraphProjector(
                 put("review.baselineOnly", baselineOnly.toString())
                 put("review.blastRadiusIncomplete", blastRadiusIncomplete.toString())
                 unavailableReason?.let { put("review.unavailableReason", it) }
-                filePath?.let { put("source.filePath", it) }
-                startLine?.let { put("source.startLine", it.toString()) }
-                endLine?.let { put("source.endLine", it.toString()) }
+                putSourceLocation(
+                    GraphSourceLocation(
+                        filePath = filePath,
+                        startLine = startLine,
+                        endLine = endLine,
+                    ),
+                )
                 hunk?.header?.let { put("review.hunkHeader", it) }
                 putAll(reviewChangedSymbolIndexedMetadata(request))
             },
@@ -375,12 +381,16 @@ class ReviewGraphProjector(
             metadata = buildMap {
                 put("review.role", changed?.let { "CHANGED" } ?: role)
                 put("review.qualifiedName", qualifiedName)
-                put("source.origin", origin.name)
-                source?.displayPath?.let { put("source.filePath", it) }
-                source?.virtualFileUrl?.let { put("source.virtualFileUrl", it) }
-                source?.startLine?.let { put("source.startLine", it.toString()) }
-                source?.endLine?.let { put("source.endLine", it.toString()) }
-                put("source.decompiled", (source?.decompiled ?: false).toString())
+                putSourceLocation(
+                    GraphSourceLocation(
+                        filePath = source?.displayPath,
+                        virtualFileUrl = source?.virtualFileUrl,
+                        startLine = source?.startLine,
+                        endLine = source?.endLine,
+                        origin = origin.name,
+                        decompiled = source?.decompiled ?: false,
+                    ),
+                )
                 putAll(indexedNodeMetadata(role = changed?.let { "CHANGED" } ?: role, request = request))
             },
         )

@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.jvm.index
 
+import com.intellij.ide.highlighter.JavaFileType
 import com.charmnight.linkgraph.source.SourceOrigin
 import com.charmnight.linkgraph.source.AttachedJarClassKind
 import com.charmnight.linkgraph.source.AttachedJarClassEntry
@@ -11,6 +12,7 @@ import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.roots.ProjectRootManager
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiAnonymousClass
@@ -27,6 +29,7 @@ import com.intellij.psi.PsiWildcardType
 import com.intellij.psi.javadoc.PsiDocComment
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.psi.PsiFileFactory
 import com.intellij.psi.PsiManager
 import com.intellij.psi.search.PsiShortNamesCache
 import com.intellij.psi.search.searches.AllClassesSearch
@@ -140,7 +143,37 @@ class JvmSymbolIndexBuilder(
             )
         }
         checkCanceled()
-        indexProjectScopeClasses(modules, packages, classes, methods, fields, budget)
+        if (classes.size < budget.maxProjectClasses) {
+            indexProjectScopeClasses(modules, packages, classes, methods, fields, budget)
+        }
+        if (classes.isEmpty() && budget.maxProjectClasses > 0) {
+            val fallbackStartedAt = System.nanoTime()
+            val fallbackStats = indexProjectBaseSourcesFallback(
+                psiManager = psiManager,
+                modules = modules,
+                packages = packages,
+                classes = classes,
+                methods = methods,
+                fields = fields,
+                resources = resources,
+                serviceFiles = serviceFiles,
+                budget = budget,
+            )
+            traceStage("jvmSymbolIndex.projectBaseFallback") {
+                fallbackStartedAt to listOf(
+                    "files=${fallbackStats.files}",
+                    "javaFiles=${fallbackStats.javaFiles}",
+                    "kotlinFiles=${fallbackStats.kotlinFiles}",
+                    "scalaFiles=${fallbackStats.scalaFiles}",
+                    "resourceFiles=${fallbackStats.resourceFiles}",
+                    "classes=${classes.size}",
+                    "methods=${methods.size}",
+                    "fields=${fields.size}",
+                    "resources=${resources.size}",
+                    "serviceFiles=${serviceFiles.values.sumOf { it.size }}",
+                )
+            }
+        }
 
         if (budget.includeUserAttachedJars) {
             checkCanceled()
@@ -207,6 +240,238 @@ class JvmSymbolIndexBuilder(
             resourcesByPath = resources,
             serviceProviderIndex = JvmServiceProviderIndex(serviceFiles),
         )
+    }
+
+    private data class ProjectBaseFallbackStats(
+        var files: Int = 0,
+        var javaFiles: Int = 0,
+        var kotlinFiles: Int = 0,
+        var scalaFiles: Int = 0,
+        var resourceFiles: Int = 0,
+    )
+
+    private fun indexProjectBaseSourcesFallback(
+        psiManager: PsiManager,
+        modules: MutableMap<String, JvmModuleSymbol>,
+        packages: MutableMap<String, JvmPackageSymbol>,
+        classes: MutableMap<String, JvmClassSymbol>,
+        methods: MutableMap<String, JvmMethodSymbol>,
+        fields: MutableMap<String, JvmFieldSymbol>,
+        resources: MutableMap<String, JvmResourceSymbol>,
+        serviceFiles: MutableMap<String, MutableList<JvmServiceProviderFile>>,
+        budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget,
+    ): ProjectBaseFallbackStats {
+        val basePath = project.basePath
+            ?.takeIf(String::isNotBlank)
+            ?.let { path -> runCatching { java.nio.file.Path.of(path).normalize() }.getOrNull() }
+            ?: return ProjectBaseFallbackStats()
+        if (!Files.isDirectory(basePath)) {
+            return ProjectBaseFallbackStats()
+        }
+        val localFileSystem = LocalFileSystem.getInstance()
+        val stats = ProjectBaseFallbackStats()
+        Files.walk(basePath).use { paths ->
+            paths
+                .filter(Files::isRegularFile)
+                .forEach { path ->
+                    checkCanceled()
+                    if (classes.size >= budget.maxProjectClasses && !path.isProjectResourcePath()) {
+                        return@forEach
+                    }
+                    val relativePath = runCatching {
+                        basePath.relativize(path.normalize()).toString().replace('\\', '/')
+                    }.getOrNull()?.takeIf(String::isNotBlank) ?: return@forEach
+                    if (!shouldIndexProjectBaseFallbackPath(relativePath, budget)) {
+                        return@forEach
+                    }
+                    val file = localFileSystem.refreshAndFindFileByNioFile(path) ?: return@forEach
+                    if (file.isDirectory || !fileFilter(file)) {
+                        return@forEach
+                    }
+                    stats.files += 1
+                    when (file.extension?.lowercase()) {
+                        "java" -> {
+                            stats.javaFiles += 1
+                            indexFallbackJavaFile(
+                                file = file,
+                                relativePath = relativePath,
+                                psiManager = psiManager,
+                                modules = modules,
+                                packages = packages,
+                                classes = classes,
+                                methods = methods,
+                                fields = fields,
+                                resources = resources,
+                                budget = budget,
+                            )
+                        }
+                        "kt", "kts" -> {
+                            stats.kotlinFiles += 1
+                            indexFallbackKotlinFile(file, psiManager, modules, packages, classes, methods, fields, budget)
+                        }
+                        "scala" -> {
+                            stats.scalaFiles += 1
+                            indexScalaSourceFile(file, modules, packages, classes, budget)
+                        }
+                        else -> {
+                            val resource = indexResource(file, resources) ?: return@forEach
+                            stats.resourceFiles += 1
+                            if (resource.kind == JvmResourceKind.SPI_SERVICE_FILE) {
+                                val providers = providerClassNames(file)
+                                serviceFiles.getOrPut(resource.path.substringAfter("META-INF/services/")) { mutableListOf() } +=
+                                    JvmServiceProviderFile(
+                                        serviceInterfaceName = resource.path.substringAfter("META-INF/services/"),
+                                        providerClassNames = providers,
+                                        resource = resource,
+                                        origin = resource.origin,
+                                    )
+                            }
+                        }
+                    }
+                }
+        }
+        return stats
+    }
+
+    private fun java.nio.file.Path.isProjectResourcePath(): Boolean =
+        fileName?.toString()?.substringAfterLast('.', missingDelimiterValue = "")?.lowercase() in setOf(
+            "xml",
+            "yml",
+            "yaml",
+            "properties",
+            "sql",
+            "md",
+        )
+
+    private fun shouldIndexProjectBaseFallbackPath(
+        relativePath: String,
+        budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget,
+    ): Boolean {
+        val normalized = relativePath.replace('\\', '/').trim('/').takeIf(String::isNotBlank) ?: return false
+        if (normalized.hasExcludedContentRootSegment()) {
+            return false
+        }
+        if (!budget.includeTests && normalized.contains("/src/test/")) {
+            return false
+        }
+        return normalized.substringAfterLast('.', missingDelimiterValue = "").lowercase() in setOf(
+            "java",
+            "kt",
+            "kts",
+            "scala",
+            "xml",
+            "yml",
+            "yaml",
+            "properties",
+            "sql",
+            "md",
+        )
+    }
+
+    private fun indexFallbackJavaFile(
+        file: VirtualFile,
+        relativePath: String,
+        psiManager: PsiManager,
+        modules: MutableMap<String, JvmModuleSymbol>,
+        packages: MutableMap<String, JvmPackageSymbol>,
+        classes: MutableMap<String, JvmClassSymbol>,
+        methods: MutableMap<String, JvmMethodSymbol>,
+        fields: MutableMap<String, JvmFieldSymbol>,
+        resources: MutableMap<String, JvmResourceSymbol>,
+        budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget,
+    ) {
+        if (classes.size >= budget.maxProjectClasses) {
+            return
+        }
+        val sourceText = readVirtualFileText(file)
+        val psiJavaFile = (psiManager.findFile(file) as? PsiJavaFile)
+            ?: fallbackPsiJavaFile(relativePath, file.name, sourceText)
+            ?: return
+        val fallbackClassInfo = sourceText
+            ?.let { text -> FallbackJavaClassInfoExtractor.extract(relativePath, text) }
+            .orEmpty()
+        psiJavaFile.classes.forEach { psiClass ->
+            if (classes.size >= budget.maxProjectClasses) {
+                return@forEach
+            }
+            indexPsiClass(file, psiClass, modules, packages, classes, methods, fields, budget)
+            applyFallbackJavaClassInfo(psiJavaFile, psiClass, classes, fallbackClassInfo)
+            indexFrameworkResources(file, psiClass, resources)
+        }
+    }
+
+    private fun readVirtualFileText(file: VirtualFile): String? =
+        runCatching { String(file.contentsToByteArray(), file.charset) }.getOrNull()
+
+    private fun fallbackPsiJavaFile(
+        relativePath: String,
+        fallbackFileName: String,
+        text: String?,
+    ): PsiJavaFile? {
+        val sourceText = text ?: return null
+        val fileName = relativePath.substringAfterLast('/').ifBlank { fallbackFileName }
+        return PsiFileFactory.getInstance(project)
+            .createFileFromText(fileName, JavaFileType.INSTANCE, sourceText) as? PsiJavaFile
+    }
+
+    private fun applyFallbackJavaClassInfo(
+        psiJavaFile: PsiJavaFile,
+        psiClass: PsiClass,
+        classes: MutableMap<String, JvmClassSymbol>,
+        fallbackClassInfo: Map<String, FallbackJavaClassInfo>,
+    ) {
+        val qualifiedName = psiClass.qualifiedName?.takeIf(String::isNotBlank)
+            ?: psiClass.name
+                ?.takeIf(String::isNotBlank)
+                ?.let { simpleName ->
+                    listOf(psiJavaFile.packageName, simpleName)
+                        .filter(String::isNotBlank)
+                        .joinToString(".")
+                }
+            ?: return
+        val fallback = fallbackClassInfo[qualifiedName] ?: return
+        val current = classes[qualifiedName] ?: return
+        val fallbackSuperClassName = fallback.extendsNames
+            .firstOrNull()
+            ?.takeIf { current.kind != JvmClassKind.INTERFACE }
+            ?.takeUnless { name -> name == "java.lang.Object" }
+        val fallbackInterfaceNames = if (current.kind == JvmClassKind.INTERFACE) {
+            fallback.extendsNames + fallback.implementsNames
+        } else {
+            fallback.implementsNames
+        }
+        classes[qualifiedName] = current.copy(
+            superClassName = current.superClassName ?: fallbackSuperClassName,
+            interfaceNames = (current.interfaceNames + fallbackInterfaceNames)
+                .filter(String::isNotBlank)
+                .distinct(),
+        )
+    }
+
+    private fun indexFallbackKotlinFile(
+        file: VirtualFile,
+        psiManager: PsiManager,
+        modules: MutableMap<String, JvmModuleSymbol>,
+        packages: MutableMap<String, JvmPackageSymbol>,
+        classes: MutableMap<String, JvmClassSymbol>,
+        methods: MutableMap<String, JvmMethodSymbol>,
+        fields: MutableMap<String, JvmFieldSymbol>,
+        budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget,
+    ) {
+        if (classes.size >= budget.maxProjectClasses) {
+            return
+        }
+        val ktFile = psiManager.findFile(file) as? KtFile ?: return
+        ktFile.collectDescendantsOfType<KtClass>()
+            .filter { ktClass -> PsiTreeUtil.getParentOfType(ktClass, KtClass::class.java, true) == null }
+            .forEach { ktClass ->
+                if (classes.size >= budget.maxProjectClasses) {
+                    return@forEach
+                }
+                ktClass.toLightClass()?.let { psiClass ->
+                    indexPsiClass(file, psiClass, modules, packages, classes, methods, fields, budget)
+                }
+            }
     }
 
     private fun shouldDescendContentRootDirectory(
@@ -1076,6 +1341,9 @@ class JvmSymbolIndexBuilder(
         fields: MutableMap<String, JvmFieldSymbol>,
         budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget,
     ) {
+        if (classes.size >= budget.maxProjectClasses) {
+            return
+        }
         val scope = GlobalSearchScope.projectScope(project)
         fun indexIfNeeded(psiClass: PsiClass) {
             checkCanceled()
@@ -1095,29 +1363,41 @@ class JvmSymbolIndexBuilder(
             }
             indexPsiClass(file, psiClass, modules, packages, classes, methods, fields, budget)
         }
-        val allClassesStartedAt = System.nanoTime()
-        AllClassesSearch.search(scope, project).forEach(::indexIfNeeded)
-        traceStage("jvmSymbolIndex.allClassesSearch") {
-            allClassesStartedAt to listOf(
-                "classes=${classes.size}",
-                "methods=${methods.size}",
-                "fields=${fields.size}",
-            )
+        if (classes.size < budget.maxProjectClasses) {
+            val allClassesStartedAt = System.nanoTime()
+            for (psiClass in AllClassesSearch.search(scope, project)) {
+                if (classes.size >= budget.maxProjectClasses) {
+                    break
+                }
+                indexIfNeeded(psiClass)
+            }
+            traceStage("jvmSymbolIndex.allClassesSearch") {
+                allClassesStartedAt to listOf(
+                    "classes=${classes.size}",
+                    "methods=${methods.size}",
+                    "fields=${fields.size}",
+                )
+            }
         }
-        val shortNamesCache = PsiShortNamesCache.getInstance(project)
-        val shortNamesStartedAt = System.nanoTime()
-        val allClassNames = shortNamesCache.allClassNames
-        allClassNames.forEach { className ->
-            checkCanceled()
-            shortNamesCache.getClassesByName(className, scope).forEach(::indexIfNeeded)
-        }
-        traceStage("jvmSymbolIndex.shortNamesCache") {
-            shortNamesStartedAt to listOf(
-                "classNames=${allClassNames.size}",
-                "classes=${classes.size}",
-                "methods=${methods.size}",
-                "fields=${fields.size}",
-            )
+        if (classes.size < budget.maxProjectClasses) {
+            val shortNamesCache = PsiShortNamesCache.getInstance(project)
+            val shortNamesStartedAt = System.nanoTime()
+            val allClassNames = shortNamesCache.allClassNames
+            allClassNames.forEach { className ->
+                checkCanceled()
+                if (classes.size >= budget.maxProjectClasses) {
+                    return@forEach
+                }
+                shortNamesCache.getClassesByName(className, scope).forEach(::indexIfNeeded)
+            }
+            traceStage("jvmSymbolIndex.shortNamesCache") {
+                shortNamesStartedAt to listOf(
+                    "classNames=${allClassNames.size}",
+                    "classes=${classes.size}",
+                    "methods=${methods.size}",
+                    "fields=${fields.size}",
+                )
+            }
         }
     }
 

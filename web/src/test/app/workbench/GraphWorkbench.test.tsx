@@ -25,7 +25,7 @@ describe("GraphWorkbench", () => {
     expect(within(shell).getByTestId("body-slot").closest(".hybrid-workbench-body-slot")).not.toBeNull();
   });
 
-  it("renders the new shell without the legacy resize separator", () => {
+  it("renders the new shell without the removed resize separator", () => {
     render(
       <GraphWorkbench
         taskbar={<div>taskbar</div>}
@@ -37,83 +37,53 @@ describe("GraphWorkbench", () => {
     expect(screen.getByTestId("body-slot").closest(".hybrid-workbench-body-slot")).not.toBeNull();
   });
 
-  it("uses one reusable outer scroll contract for all right workbench content", () => {
-    expect(themeCss).toMatch(/\.workbench-shell\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);[^}]*overflow:\s*hidden;/s);
-    expect(themeCss).toMatch(/\.workbench-tab-nav\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/s);
-    expect(themeCss).toMatch(/\.workbench-panel-body\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto;[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;[^}]*scrollbar-gutter:\s*stable;[^}]*overscroll-behavior:\s*contain;/s);
-    expect(themeCss).toMatch(/\.workbench-panel-body>\*\s*\{[^}]*height:\s*auto;[^}]*align-self:\s*start;[^}]*min-height:\s*0;/s);
-    expect(themeCss).toMatch(/\.workbench-tab\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*0;[^}]*grid-template-rows:\s*auto\s+auto;[^}]*align-content:\s*start;[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/\.workbench-page-flow\s*\{[^}]*height:\s*auto;[^}]*align-content:\s*start;[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/\.workbench-card-flow\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*0;[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/\.workbench-section-card\s*\{[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/\.workbench-section-card\.expanded\s*\{[^}]*flex:\s*0\s+0\s+auto;[^}]*min-height:\s*auto;/s);
-    expect(themeCss).toMatch(/\.side-panel-scroll-body\s*\{[^}]*overflow:\s*visible;/s);
-    expect(themeCss).not.toMatch(/\.workbench-tab\s*\{[^}]*overflow-y:\s*auto;/s);
-    expect(themeCss).not.toMatch(/\.workbench-section-card\s*\{[^}]*overflow:\s*hidden;/s);
-    expect(themeCss).not.toMatch(/\.side-panel-scroll-body\s*\{[^}]*overflow:\s*auto;/s);
+  it("uses one assistant right-rail scroll contract with a fixed bottom composer", () => {
+    const removedOuterShellClass = ["workbench", "shell"].join("-");
+    expect(themeCss).not.toContain(`.${removedOuterShellClass}`);
+    expect(themeCss).toMatch(/\.assistant-workbench-shell\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)\s+auto;[^}]*overflow:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.assistant-thread\s*\{[^}]*overflow-y:\s*auto;[^}]*scrollbar-gutter:\s*stable;[^}]*overscroll-behavior:\s*contain;/s);
+    expect(themeCss).toMatch(/\.assistant-composer-sticky\s*\{[^}]*position:\s*sticky;[^}]*bottom:\s*0;/s);
+    expect(themeCss).toMatch(/\.assistant-composer\s+\.assistant-send-type-selector\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/s);
+    expect(themeCss).toMatch(/\.assistant-composer\s+textarea\s*\{(?=[^}]*min-height:\s*96px;)(?=[^}]*max-height:\s*132px;)(?=[^}]*resize:\s*none;)[^}]*\}/s);
   });
 
-  it("keeps the stage workbench frame fixed while inner panes own vertical scrolling", () => {
-    expect(themeCss).toMatch(
-      /\.stage-workbench-panel\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\);[^}]*overflow:\s*hidden;/s,
-    );
-    expect(themeCss).toMatch(
-      /\.stage-workbench-panel\s+\.workbench-panel-body\s*\{[^}]*overflow:\s*hidden;/s,
-    );
-    expect(themeCss).toMatch(
-      /\.stage-workbench-panel\s+\.explanation-layout\s*\{[^}]*align-items:\s*stretch;[^}]*overflow:\s*hidden;/s,
-    );
-    expect(themeCss).toMatch(
-      /\.stage-workbench-panel\s+\.explanation-step-list-section\.expanded,\s*\.stage-workbench-panel\s+\.explanation-step-detail-section\.expanded\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);/s,
-    );
-    expect(themeCss).toMatch(
-      /\.stage-workbench-panel\s+\.explanation-step-list-section\s+\.workbench-section-card-body,\s*\.stage-workbench-panel\s+\.explanation-step-detail-section\s+\.workbench-section-card-body\s*\{[^}]*height:\s*auto;[^}]*overflow:\s*hidden;/s,
-    );
-    expect(themeCss).toMatch(
-      /\.stage-workbench-panel\s+\.explanation-step-list-section\s+\.workbench-step-list,\s*\.stage-workbench-panel\s+\.explanation-step-detail-section\s+\.workbench-step-detail\s*\{[^}]*height:\s*auto;[^}]*overflow-y:\s*auto;/s,
-    );
-    expect(themeCss).not.toMatch(/@container\s*\(max-width:\s*620px\)\s*\{[\s\S]*?\.stage-workbench-panel\s+\.workbench-panel-body\s*\{[^}]*overflow-y:\s*auto;/s);
-    expect(themeCss).not.toMatch(/@media\s*\(max-height:\s*760px\)\s+and\s+\(min-width:\s*1061px\)\s*\{[\s\S]*?\.stage-workbench-panel,[\s\S]*?overflow:\s*auto;/s);
+  it("keeps assistant card groups self-contained inside the thread", () => {
+    const removedStagePanelClass = ["stage", "workbench", "panel"].join("-");
+    expect(themeCss).not.toContain(`.${removedStagePanelClass}`);
+    expect(themeCss).toMatch(/\.assistant-turn-group\s*\{[^}]*display:\s*grid;[^}]*gap:\s*12px;/s);
+    expect(themeCss).toMatch(/\.assistant-explanation-tools\s*\{[^}]*display:\s*flex;[^}]*flex-wrap:\s*wrap;/s);
+    expect(themeCss).toMatch(/\.assistant-step-selector\s*\{[^}]*display:\s*flex;[^}]*background:\s*transparent;/s);
   });
 
-  it("lets the active workbench tab fill unused vertical panel space", () => {
-    expect(themeCss).toMatch(/\.workbench-shell\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);/s);
-    expect(themeCss).toMatch(/\.workbench-panel-body>\*\s*\{[^}]*height:\s*auto;[^}]*align-self:\s*start;[^}]*min-height:\s*0;/s);
-    expect(themeCss).toMatch(/\.workbench-tab\s*\{[^}]*height:\s*auto;[^}]*align-content:\s*start;/s);
-    expect(themeCss).toMatch(/\.qa-tab\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+auto;[^}]*align-content:\s*start;/s);
-    expect(themeCss).toMatch(/\.qa-tab-nav\s*\{[^}]*position:\s*sticky;[^}]*top:\s*0;/s);
-    expect(themeCss).toMatch(/\.qa-tab-panel\s*\{[^}]*min-height:\s*0;/s);
-    expect(themeCss).not.toMatch(/\.qa-tab-panel\s*\{[^}]*height:\s*100%;/s);
-    expect(themeCss).toMatch(/\.qa-page-panel\s*\{[^}]*min-height:\s*0;[^}]*grid-template-rows:\s*auto\s+auto;/s);
-    expect(themeCss).toMatch(/\.qa-page-panel\s*\{[^}]*overflow:\s*visible;/s);
-    expect(themeCss).not.toMatch(/(?<!stage-workbench-panel\s)\.qa-page-panel\s*\{[^}]*height:\s*100%;/s);
-    expect(themeCss).toMatch(/\.stage-workbench-panel\s+\.qa-page-panel\s*\{[^}]*height:\s*100%;[^}]*overflow:\s*hidden;/s);
+  it("lets assistant send type buttons and composer actions wrap on narrow right rails", () => {
+    expect(themeCss).toMatch(/@container\s*\(max-width:\s*520px\)\s*\{[\s\S]*?\.assistant-send-type-selector\s*\{[\s\S]*?grid-template-columns:\s*1fr\s+1fr;[\s\S]*?\}/s);
+    expect(themeCss).toMatch(/@container\s*\(max-width:\s*520px\)\s*\{[\s\S]*?\.assistant-composer-actions\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-columns:\s*1fr;[\s\S]*?\}/s);
   });
 
-  it("lets desktop workbench layouts grow vertically instead of being hidden by the stage shell", () => {
+  it("keeps the graph workbench shell vertically bounded on desktop", () => {
     expect(themeCss).toMatch(/(?:^|\n)\.app-shell\s*\{[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;/s);
-    expect(themeCss).toMatch(/(?:^|\n)\.workspace-stage\s*\{[^}]*overflow:\s*visible;/s);
-    expect(themeCss).toMatch(/(?:^|\n)\.workbench-layout\s*\{[^}]*overflow:\s*visible;/s);
+    expect(themeCss).toMatch(/\.graph-workbench\s*\{[^}]*height:\s*100dvh;[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)\s+auto;[^}]*overflow:\s*hidden;/s);
+    expect(themeCss).toMatch(/\.hybrid-workbench-body-slot\s*\{[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/s);
   });
 
-  it("lets narrow screens scroll vertically instead of clipping the stage header", () => {
+  it("lets narrow screens stack the graph and assistant rail without horizontal overflow", () => {
     expect(themeCss).toMatch(
-      /@media\s*\(max-width:\s*780px\)\s*\{[\s\S]*?\.app-shell\s*\{[\s\S]*?height:\s*auto;[\s\S]*?overflow-y:\s*auto;[\s\S]*?\}[\s\S]*?\.workspace-stage\s*\{[\s\S]*?overflow:\s*visible;[\s\S]*?\}[\s\S]*?\.graph-canvas-panel\s*\{[\s\S]*?min-height:\s*420px;[\s\S]*?\}[\s\S]*?\}/s,
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*?\.app-shell\.graph-workbench\s*\{[\s\S]*?width:\s*100%;[\s\S]*?overflow-x:\s*hidden;[\s\S]*?\}/s,
+    );
+    expect(themeCss).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*?\.hybrid-workbench-layout,\s*\.hybrid-workbench-outline-slot,\s*\.hybrid-workbench-graph-slot,\s*\.hybrid-workbench-assistant-slot\s*\{[\s\S]*?width:\s*100%;[\s\S]*?max-width:\s*100%;[\s\S]*?\}/s,
     );
   });
 
-  it("keeps the workbench constrained to the visible height on short desktop windows", () => {
+  it("keeps the graph workbench constrained to the visible height on short desktop windows", () => {
     expect(themeCss).toMatch(
       /@media\s*\(max-height:\s*820px\)\s*\{[\s\S]*?\.app-shell\s*\{[\s\S]*?height:\s*100dvh;[\s\S]*?min-height:\s*0;[\s\S]*?overflow:\s*hidden;[\s\S]*?\}/s,
     );
     expect(themeCss).toMatch(
-      /@media\s*\(max-height:\s*820px\)\s*\{[\s\S]*?\.workspace-stage\s*\{[\s\S]*?overflow:\s*hidden;[\s\S]*?\}/s,
+      /@media\s*\(max-height:\s*820px\)\s*\{[\s\S]*?\.graph-workbench\s*\{[\s\S]*?height:\s*100dvh;[\s\S]*?min-height:\s*0;[\s\S]*?\}/s,
     );
     expect(themeCss).toMatch(
       /@media\s*\(max-height:\s*820px\)\s*\{[\s\S]*?\.graph-canvas-panel\s*\{[\s\S]*?min-height:\s*0;[\s\S]*?\}/s,
-    );
-    expect(themeCss).toMatch(
-      /@media\s*\(max-height:\s*820px\)\s*\{[\s\S]*?\.workbench-panel\s*\{[\s\S]*?overflow:\s*hidden;[\s\S]*?\}/s,
     );
   });
 });

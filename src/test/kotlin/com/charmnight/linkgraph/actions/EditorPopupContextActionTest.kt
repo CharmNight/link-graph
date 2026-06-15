@@ -5,7 +5,7 @@ import com.charmnight.linkgraph.testing.*
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
-import com.charmnight.linkgraph.services.registerLinkGraphProjectCommandServicesForTest
+import com.charmnight.linkgraph.testing.registerGraphEditorApplicationServicesForTest
 import com.charmnight.linkgraph.semantic.subject.SubjectHandle
 import com.charmnight.linkgraph.semantic.subject.SubjectLocator
 import com.charmnight.linkgraph.semantic.subject.SubjectPreviewKind
@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit
 class EditorPopupContextActionTest : BasePlatformTestCase() {
     override fun setUp() {
         super.setUp()
-        project.registerLinkGraphProjectCommandServicesForTest()
+        project.registerGraphEditorApplicationServicesForTest()
     }
 
     fun testEditorPopupUpdateStaysAvailableForUncommittedJavaDocumentOnBackgroundThread() {

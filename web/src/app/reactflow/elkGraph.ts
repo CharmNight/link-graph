@@ -20,7 +20,7 @@ import type {
   LinkGraphNode,
 } from "../types";
 
-const elk = createElkLayoutEngine();
+let elkEnginePromise: ReturnType<typeof createElkLayoutEngine> | null = null;
 const DEFAULT_NODE_HEIGHT = 156;
 const DEFAULT_ORIGIN: GraphPosition = { x: 120, y: 96 };
 
@@ -161,6 +161,11 @@ function summarizeRouteComplexity(edges: LinkGraphEdge[]) {
   );
 }
 
+function getElkLayoutEngine(): ReturnType<typeof createElkLayoutEngine> {
+  elkEnginePromise ??= createElkLayoutEngine();
+  return elkEnginePromise;
+}
+
 export async function executeElkLayout({
   mode,
   layoutOptions,
@@ -194,6 +199,7 @@ export async function executeElkLayout({
   const buildGraphDurationMs = measureDuration(startedAt);
 
   const elkStartedAt = measureStart();
+  const elk = await getElkLayoutEngine();
   const laidOutGraph = await elk.layout(graph);
   const elkDurationMs = measureDuration(elkStartedAt);
   const postProcessStartedAt = measureStart();

@@ -23,8 +23,7 @@ import com.charmnight.linkgraph.semantic.subject.SubjectHandle
 import com.charmnight.linkgraph.semantic.subject.SubjectLocator
 import com.charmnight.linkgraph.semantic.subject.SubjectPreviewKind
 import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
-import com.charmnight.linkgraph.services.registerLinkGraphProjectCommandServicesForTest
-import com.charmnight.linkgraph.workbench.WorkbenchLayoutPreferencesService
+import com.charmnight.linkgraph.testing.registerGraphEditorApplicationServicesForTest
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.testFramework.PlatformTestUtil
@@ -36,19 +35,7 @@ import kotlin.test.fail
 class GraphEditorBridgeTest : BasePlatformTestCase() {
     override fun setUp() {
         super.setUp()
-        project.registerLinkGraphProjectCommandServicesForTest()
-    }
-
-    fun testCurrentStateHydratesPersistentWorkbenchPreferencesIntoRuntimeSnapshot() {
-        val stateService = project.getService(GraphEditorStateService::class.java)
-        val preferencesService = project.getService(WorkbenchLayoutPreferencesService::class.java)
-        preferencesService.update("qa.request-status", true)
-        stateService.workbench.markWorkbenchSectionPreferences(emptyMap())
-
-        val snapshot = GraphEditorBridge(project).currentState()
-
-        assertEquals(true, snapshot.workbenchSectionPreferences["qa.request-status"])
-        assertEquals(true, stateService.snapshot().workbenchSectionPreferences["qa.request-status"])
+        project.registerGraphEditorApplicationServicesForTest()
     }
 
     fun testDispatchCurrentEditorContextGraphUsesEditorContextWorkflow() {

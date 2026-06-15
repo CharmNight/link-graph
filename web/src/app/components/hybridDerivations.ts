@@ -1,4 +1,5 @@
 import { deriveInvestigationThreads } from "../investigationThreads";
+import type { CodeDiffStatus } from "../workbenchStatusModel";
 import type {
   AsyncRequestState,
   CandidateDraftChange,
@@ -18,7 +19,7 @@ import type {
 } from "../types";
 import type { WorkflowStage, WorkflowStageStatus } from "../workflow/workflowStage";
 
-export type CodeDiffStatus = "MISSING" | "RUNNING" | "FRESH" | "STALE" | "FAILED";
+export type { CodeDiffStatus };
 
 export interface LinkGraphOutlineMetrics {
   visibleNodeCount: number;

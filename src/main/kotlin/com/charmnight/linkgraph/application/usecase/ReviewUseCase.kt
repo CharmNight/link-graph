@@ -85,7 +85,7 @@ internal class ReviewUseCase(
             promptPreview = "",
             warnings = listOf(
                 buildString {
-                    append("runtime 未返回结果，failureReason=").append(failureReason)
+                    append("RUNTIME: runtime 未返回结果，failureReason=").append(failureReason)
                     if (lastOutput != null) {
                         append("，lastModelOutput=").append(lastOutput)
                     }

@@ -57,7 +57,7 @@ npm --prefix web ci
 
 - `npm --prefix web ci` 已执行
 - `./gradlew runIde` 启动前没有前端构建失败
-- `web/dist` 或打包后的 `linkgraph/` 资源存在
+- 打包后的 `linkgraph/` 资源存在；只有显式设置 `LINKGRAPH_FRONTEND_DEV_DIST` 或 `-Dlinkgraph.frontend.devDist=...` 时才会读取 `web/dist`
 
 ### 插件动作没有出现
 

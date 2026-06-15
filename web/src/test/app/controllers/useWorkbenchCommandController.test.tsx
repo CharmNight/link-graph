@@ -4,6 +4,7 @@ import {
   requestAnalysisDisplayMode,
   requestArchitectureGraph,
   requestClassDiagram,
+  requestClassUsages,
   requestPackageDependencyGraph,
   requestReviewGraph,
   requestSyncPreview,
@@ -19,10 +20,9 @@ vi.mock("../../../app/api", () => ({
   requestArchitectureGraph: vi.fn(),
   requestCodeDraftsAsync: vi.fn(),
   requestClassDiagram: vi.fn(),
+  requestClassUsages: vi.fn(),
   requestDraftNavigation: vi.fn(),
   requestExpandOverflowNode: vi.fn(),
-  requestGenerationPlanAsync: vi.fn(),
-  requestGenerationPlanDiscussionAsync: vi.fn(),
   requestOpenSettings: vi.fn(),
   requestPackageDependencyGraph: vi.fn(),
   requestReviewGraph: vi.fn(),
@@ -182,5 +182,24 @@ describe("useWorkbenchCommandController", () => {
 
     expect(requestClassDiagram).toHaveBeenCalledWith("component:orders");
     expect(runBridgeCommand).toHaveBeenCalledWith("加载类图", expect.any(Function));
+  });
+
+  it("requests class usages through the indexed class diagram lifecycle", () => {
+    const { result, runBridgeCommand } = renderController();
+
+    act(() => {
+      result.current.handleRequestClassUsages("jvm:class:com-example-order-service", {
+        maxUsageGroups: 12,
+        maxUsageEntries: 40,
+        includeImports: true,
+      });
+    });
+
+    expect(requestClassUsages).toHaveBeenCalledWith("jvm:class:com-example-order-service", {
+      maxUsageGroups: 12,
+      maxUsageEntries: 40,
+      includeImports: true,
+    });
+    expect(runBridgeCommand).toHaveBeenCalledWith("查找类使用处", expect.any(Function));
   });
 });

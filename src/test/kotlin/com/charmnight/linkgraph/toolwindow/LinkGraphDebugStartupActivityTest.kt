@@ -1,8 +1,9 @@
 package com.charmnight.linkgraph.toolwindow
 
+import com.charmnight.linkgraph.jvm.index.stableJvmId
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.services.registerLinkGraphProjectCommandServicesForTest
+import com.charmnight.linkgraph.testing.registerGraphEditorApplicationServicesForTest
 import com.charmnight.linkgraph.toolwindow.debug.LinkGraphDebugAutomationCoordinator
 import com.charmnight.linkgraph.toolwindow.debug.LinkGraphDebugAutomationRequest
 import com.charmnight.linkgraph.toolwindow.debug.LinkGraphDebugStartupActivity
@@ -18,7 +19,7 @@ import java.util.concurrent.atomic.AtomicReference
 class LinkGraphDebugStartupActivityTest : BasePlatformTestCase() {
     override fun setUp() {
         super.setUp()
-        project.registerLinkGraphProjectCommandServicesForTest()
+        project.registerGraphEditorApplicationServicesForTest()
         project.registerServiceInstance(
             LinkGraphDebugAutomationCoordinator::class.java,
             LinkGraphDebugAutomationCoordinator(project),
@@ -99,6 +100,72 @@ class LinkGraphDebugStartupActivityTest : BasePlatformTestCase() {
         val request = capturedRequest.get()
         assertNotNull("Expected debug startup to dispatch class diagram automation requests", request)
         assertTrue(request!!.autoRequestClassDiagram)
+    }
+
+    fun testTriggersDebugOnlyStartupActionForScopedClassDiagramRequest() {
+        val classNodeId = stableJvmId("class", "org.springframework.beans.BeanInstantiationException")
+        val capturedRequest = AtomicReference<LinkGraphDebugAutomationRequest?>()
+        val activity = LinkGraphDebugStartupActivity(
+            requestProvider = { LinkGraphDebugAutomationRequest(autoRequestClassDiagramScopeNodeId = classNodeId) },
+            startupAction = { _, request -> capturedRequest.set(request) },
+        )
+
+        activity.runActivity(project)
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+
+        val request = capturedRequest.get()
+        assertNotNull("Expected debug startup to dispatch scoped class diagram automation requests", request)
+        assertEquals(classNodeId, request!!.autoRequestClassDiagramScopeNodeId)
+    }
+
+    fun testParsesScopedClassDiagramRequestFromEnvironment() {
+        val className = "org.springframework.beans.BeanInstantiationException"
+        val classNodeId = stableJvmId("class", className)
+
+        val fromQualifiedName = LinkGraphDebugAutomationRequest.fromEnvironment(
+            mapOf(LinkGraphDebugAutomationRequest.DEBUG_AUTO_REQUEST_CLASS_DIAGRAM_SCOPE_ENV to className),
+        )
+        val fromNodeId = LinkGraphDebugAutomationRequest.fromEnvironment(
+            mapOf(LinkGraphDebugAutomationRequest.DEBUG_AUTO_REQUEST_CLASS_DIAGRAM_SCOPE_ENV to classNodeId),
+        )
+
+        assertEquals(classNodeId, fromQualifiedName.autoRequestClassDiagramScopeNodeId)
+        assertTrue(fromQualifiedName.autoRequestClassDiagram)
+        assertEquals(classNodeId, fromNodeId.autoRequestClassDiagramScopeNodeId)
+        assertTrue(fromNodeId.autoRequestClassDiagram)
+    }
+
+    fun testTriggersDebugOnlyStartupActionForClassUsageRequest() {
+        val classNodeId = stableJvmId("class", "org.springframework.beans.AbstractNestablePropertyAccessor")
+        val capturedRequest = AtomicReference<LinkGraphDebugAutomationRequest?>()
+        val activity = LinkGraphDebugStartupActivity(
+            requestProvider = { LinkGraphDebugAutomationRequest(autoRequestClassUsageTargetNodeId = classNodeId) },
+            startupAction = { _, request -> capturedRequest.set(request) },
+        )
+
+        activity.runActivity(project)
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+
+        val request = capturedRequest.get()
+        assertNotNull("Expected debug startup to dispatch class usage automation requests", request)
+        assertEquals(classNodeId, request!!.autoRequestClassUsageTargetNodeId)
+    }
+
+    fun testParsesClassUsageRequestFromEnvironment() {
+        val className = "org.springframework.beans.AbstractNestablePropertyAccessor"
+        val classNodeId = stableJvmId("class", className)
+
+        val fromQualifiedName = LinkGraphDebugAutomationRequest.fromEnvironment(
+            mapOf(LinkGraphDebugAutomationRequest.DEBUG_AUTO_REQUEST_CLASS_USAGE_TARGET_ENV to className),
+        )
+        val fromNodeId = LinkGraphDebugAutomationRequest.fromEnvironment(
+            mapOf(LinkGraphDebugAutomationRequest.DEBUG_AUTO_REQUEST_CLASS_USAGE_TARGET_ENV to classNodeId),
+        )
+
+        assertEquals(classNodeId, fromQualifiedName.autoRequestClassUsageTargetNodeId)
+        assertEquals(className, fromQualifiedName.autoRequestClassUsageTargetQualifiedName)
+        assertEquals(classNodeId, fromNodeId.autoRequestClassUsageTargetNodeId)
+        assertEquals(null, fromNodeId.autoRequestClassUsageTargetQualifiedName)
     }
 
     fun testTriggersDebugOnlyStartupActionForSourceNavigationRequest() {

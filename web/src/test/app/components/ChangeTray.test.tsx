@@ -15,6 +15,7 @@ describe("ChangeTray", () => {
         canApply={false}
         canRevert={false}
         onOpenDraft={vi.fn()}
+        onOpenDraftCompare={vi.fn()}
         onOpenCode={vi.fn()}
         onApply={vi.fn()}
         onRevert={vi.fn()}
@@ -31,6 +32,7 @@ describe("ChangeTray", () => {
   it("renders status counts and delegates tray actions", async () => {
     const user = userEvent.setup();
     const onOpenDraft = vi.fn();
+    const onOpenDraftCompare = vi.fn();
     const onOpenCode = vi.fn();
     const onApply = vi.fn();
     const onRevert = vi.fn();
@@ -45,6 +47,7 @@ describe("ChangeTray", () => {
         canApply
         canRevert
         onOpenDraft={onOpenDraft}
+        onOpenDraftCompare={onOpenDraftCompare}
         onOpenCode={onOpenCode}
         onApply={onApply}
         onRevert={onRevert}
@@ -57,11 +60,13 @@ describe("ChangeTray", () => {
     expect(screen.getByText("Diff 已就绪")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "查看草稿" }));
+    await user.click(screen.getByRole("button", { name: "查看流程变化" }));
     await user.click(screen.getByRole("button", { name: "进入代码" }));
     await user.click(screen.getByRole("button", { name: "应用全部" }));
     await user.click(screen.getByRole("button", { name: "回退" }));
 
     expect(onOpenDraft).toHaveBeenCalledTimes(1);
+    expect(onOpenDraftCompare).toHaveBeenCalledTimes(1);
     expect(onOpenCode).toHaveBeenCalledTimes(1);
     expect(onApply).toHaveBeenCalledTimes(1);
     expect(onRevert).toHaveBeenCalledTimes(1);

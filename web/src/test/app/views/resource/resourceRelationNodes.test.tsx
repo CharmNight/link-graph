@@ -44,22 +44,39 @@ vi.mock("../../../../app/components/graph/nodes/ResourceRelationNodeCard", () =>
 }));
 
 describe("RESOURCE_RELATION_NODE_TYPES", () => {
-  it("refreshes React Flow internals after rendering a custom resource node", () => {
+  it("refreshes React Flow internals only after a custom resource node structure changes", () => {
     updateNodeInternalsMock.mockClear();
     const ResourceRelationNode = RESOURCE_RELATION_NODE_TYPES.resourceRelationNode as (props: Record<string, unknown>) => JSX.Element;
+    const node = {
+      id: "resource:sql",
+      type: "SQL" as const,
+      title: "order_mapper.xml#insertOrder",
+      inputs: [],
+      outputs: [],
+      certainty: "PROVEN" as const,
+      bindingStatus: "BOUND" as const,
+    };
 
-    render(
+    const { rerender } = render(
+      <ResourceRelationNode
+        id="resource:sql"
+        data={{
+          node,
+        }}
+        selected={false}
+        isConnectable={false}
+      />,
+    );
+
+    expect(updateNodeInternalsMock).not.toHaveBeenCalled();
+
+    rerender(
       <ResourceRelationNode
         id="resource:sql"
         data={{
           node: {
-            id: "resource:sql",
-            type: "SQL",
-            title: "order_mapper.xml#insertOrder",
-            inputs: [],
-            outputs: [],
-            certainty: "PROVEN",
-            bindingStatus: "BOUND",
+            ...node,
+            title: "order_mapper.xml#updateOrder",
           },
         }}
         selected={false}
@@ -152,6 +169,39 @@ describe("RESOURCE_RELATION_NODE_TYPES", () => {
 
     expect(builtNodes.find((node) => node.id === "resource:http")?.className ?? "").toContain("is-explanation-focus");
     expect(builtNodes.find((node) => node.id === "resource:sql")?.className ?? "").toContain("is-draft-change");
+  });
+
+  it("uses theme-aware node backgrounds in the dark graph stage instead of hardcoded light cards", () => {
+    const builtNodes = buildResourceRelationNodes({
+      nodes: [
+        {
+          id: "resource:http",
+          type: "HTTP_ENDPOINT",
+          title: "GET /common/download",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN",
+          bindingStatus: "BOUND",
+        },
+        {
+          id: "resource:sql",
+          type: "SQL",
+          title: "order_mapper.xml#insertOrder",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN",
+          bindingStatus: "BOUND",
+        },
+      ],
+      selectedNodeId: null,
+      nodeSizeRegistry: createNodeSizeRegistry(),
+    });
+
+    for (const node of builtNodes) {
+      const background = String(node.style?.background ?? "");
+      expect(background).toContain("var(--panel");
+      expect(background).not.toMatch(/#(?:f|fff)|rgba\(255/i);
+    }
   });
 
   it("reuses resource node measurement reporters when only explanation focus changes", () => {

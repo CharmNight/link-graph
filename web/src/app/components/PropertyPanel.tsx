@@ -212,7 +212,7 @@ export function PropertyPanel({
       onTouchMoveCapture={stopBoundaryPropagation}
     >
       <aside
-        className="property-drawer"
+        className="property-drawer modal-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -221,7 +221,7 @@ export function PropertyPanel({
         onWheelCapture={stopBoundaryPropagation}
         onTouchMoveCapture={stopBoundaryPropagation}
       >
-        <div className="drawer-header">
+        <div className="drawer-header modal-header">
           <div>
             <p className="eyebrow">编辑节点</p>
             <h2 id={titleId}>编辑节点</h2>
@@ -231,123 +231,125 @@ export function PropertyPanel({
           </button>
         </div>
 
-        <div className="drawer-meta">
-          <span className="node-type-chip">类型：{nodeTypeLabel(draft.type)}</span>
-          <span className="node-type-chip">代码状态：{bindingStatusLabel(draft.bindingStatus)}</span>
-          <span className="node-type-chip">证据：{certaintyLabel(draft.certainty)}</span>
+        <div className="modal-body">
+          <div className="drawer-meta">
+            <span className="status-pill">类型：{nodeTypeLabel(draft.type)}</span>
+            <span className="status-pill">代码状态：{bindingStatusLabel(draft.bindingStatus)}</span>
+            <span className="status-pill">证据：{certaintyLabel(draft.certainty)}</span>
+          </div>
+
+          <label>
+            标题
+            <input
+              ref={titleInputRef}
+              aria-label="标题"
+              value={draft.title}
+              onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+            />
+          </label>
+
+          <section className="panel-section" aria-label="源码锚点">
+            <p className="eyebrow">源码锚点</p>
+            <ReadOnlyField label="源码位置" value={draft.location} code />
+            <ReadOnlyField label={sourceFieldLabel} value={draft.signature} code />
+          </section>
+
+          {!canOpenSource ? <p className="muted">该节点当前没有可跳转的源码位置。</p> : null}
+          {usesSignatureFallback ? <p className="muted">当前将按方法/类签名在 IDEA 中定位源码。</p> : null}
+
+          {anchorResolutionStateText || anchorResolutionHint || anchorCandidates.length > 0 ? (
+            <section className="panel-section" aria-label="解析提示">
+              <p className="eyebrow">解析提示</p>
+              {anchorResolutionStateText ? <p className="muted">{anchorResolutionStateText}</p> : null}
+              {anchorResolutionHint ? <p>{anchorResolutionHint}</p> : null}
+              {anchorCandidates.length > 0 ? (
+                <div className="form-stack">
+                  <p className="eyebrow">候选方法</p>
+                  <ul className="selected-summary-list">
+                    {anchorCandidates.map((candidate) => (
+                      <li key={candidate} className="selected-summary-code">
+                        {candidate}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          {isFlowScope ? (
+            <section className="panel-section" aria-label="流程说明">
+              <p className="eyebrow">流程说明</p>
+              <p className="muted">该节点不是独立方法，而是当前方法里的流程作用域容器。</p>
+              <div className="form-stack">
+                <p className="eyebrow">作用域类型</p>
+                <p>{flowKindLabel}</p>
+              </div>
+            </section>
+          ) : null}
+
+          {isFlowAction ? (
+            <section className="panel-section" aria-label="动作说明">
+              <p className="eyebrow">动作说明</p>
+              <p className="muted">该节点表示当前方法中的内部执行动作，用来补齐代码阅读顺序，不等同于独立方法定义。</p>
+              {actionAnchorMethod ? (
+                <div className="form-stack">
+                  <p className="eyebrow">所属方法</p>
+                  <p className="selected-summary-code">{actionAnchorMethod}</p>
+                </div>
+              ) : null}
+              {actionStartOffset || actionEndOffset ? (
+                <div className="form-stack">
+                  <p className="eyebrow">源码偏移</p>
+                  <p className="selected-summary-code">
+                    {actionStartOffset || "?"} - {actionEndOffset || "?"}
+                  </p>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          {!isFlowScope && !isFlowAction ? (
+            <label>
+              输入
+              <textarea
+                aria-label="输入"
+                value={inputText}
+                onChange={(event) => {
+                  const nextValue = event.target.value;
+                  setInputText(nextValue);
+                  setDraft({ ...draft, inputs: parseLines(nextValue) });
+                }}
+              />
+            </label>
+          ) : null}
+
+          {!isFlowScope && !isFlowAction ? (
+            <label>
+              输出
+              <textarea
+                aria-label="输出"
+                value={outputText}
+                onChange={(event) => {
+                  const nextValue = event.target.value;
+                  setOutputText(nextValue);
+                  setDraft({ ...draft, outputs: parseLines(nextValue) });
+                }}
+              />
+            </label>
+          ) : null}
+
+          <label>
+            注释
+            <textarea
+              aria-label="注释"
+              value={draft.doc ?? ""}
+              onChange={(event) => setDraft({ ...draft, doc: event.target.value })}
+            />
+          </label>
         </div>
 
-        <label>
-          标题
-          <input
-            ref={titleInputRef}
-            aria-label="标题"
-            value={draft.title}
-            onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-          />
-        </label>
-
-        <section className="panel-section" aria-label="源码锚点">
-          <p className="eyebrow">源码锚点</p>
-          <ReadOnlyField label="源码位置" value={draft.location} code />
-          <ReadOnlyField label={sourceFieldLabel} value={draft.signature} code />
-        </section>
-
-        {!canOpenSource ? <p className="muted">该节点当前没有可跳转的源码位置。</p> : null}
-        {usesSignatureFallback ? <p className="muted">当前将按方法/类签名在 IDEA 中定位源码。</p> : null}
-
-        {anchorResolutionStateText || anchorResolutionHint || anchorCandidates.length > 0 ? (
-          <section className="panel-section" aria-label="解析提示">
-            <p className="eyebrow">解析提示</p>
-            {anchorResolutionStateText ? <p className="muted">{anchorResolutionStateText}</p> : null}
-            {anchorResolutionHint ? <p>{anchorResolutionHint}</p> : null}
-            {anchorCandidates.length > 0 ? (
-              <div className="form-stack">
-                <p className="eyebrow">候选方法</p>
-                <ul className="selected-summary-list">
-                  {anchorCandidates.map((candidate) => (
-                    <li key={candidate} className="selected-summary-code">
-                      {candidate}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </section>
-        ) : null}
-
-        {isFlowScope ? (
-          <section className="panel-section" aria-label="流程说明">
-            <p className="eyebrow">流程说明</p>
-            <p className="muted">该节点不是独立方法，而是当前方法里的流程作用域容器。</p>
-            <div className="form-stack">
-              <p className="eyebrow">作用域类型</p>
-              <p>{flowKindLabel}</p>
-            </div>
-          </section>
-        ) : null}
-
-        {isFlowAction ? (
-          <section className="panel-section" aria-label="动作说明">
-            <p className="eyebrow">动作说明</p>
-            <p className="muted">该节点表示当前方法中的内部执行动作，用来补齐代码阅读顺序，不等同于独立方法定义。</p>
-            {actionAnchorMethod ? (
-              <div className="form-stack">
-                <p className="eyebrow">所属方法</p>
-                <p className="selected-summary-code">{actionAnchorMethod}</p>
-              </div>
-            ) : null}
-            {actionStartOffset || actionEndOffset ? (
-              <div className="form-stack">
-                <p className="eyebrow">源码偏移</p>
-                <p className="selected-summary-code">
-                  {actionStartOffset || "?"} - {actionEndOffset || "?"}
-                </p>
-              </div>
-            ) : null}
-          </section>
-        ) : null}
-
-        {!isFlowScope && !isFlowAction ? (
-          <label>
-            输入
-            <textarea
-              aria-label="输入"
-              value={inputText}
-              onChange={(event) => {
-                const nextValue = event.target.value;
-                setInputText(nextValue);
-                setDraft({ ...draft, inputs: parseLines(nextValue) });
-              }}
-            />
-          </label>
-        ) : null}
-
-        {!isFlowScope && !isFlowAction ? (
-          <label>
-            输出
-            <textarea
-              aria-label="输出"
-              value={outputText}
-              onChange={(event) => {
-                const nextValue = event.target.value;
-                setOutputText(nextValue);
-                setDraft({ ...draft, outputs: parseLines(nextValue) });
-              }}
-            />
-          </label>
-        ) : null}
-
-        <label>
-          注释
-          <textarea
-            aria-label="注释"
-            value={draft.doc ?? ""}
-            onChange={(event) => setDraft({ ...draft, doc: event.target.value })}
-          />
-        </label>
-
-        <div className="panel-actions">
+        <div className="panel-actions modal-footer">
           <button type="button" className="primary-button" onClick={() => onUpdateNode(draft)}>
             保存修改
           </button>

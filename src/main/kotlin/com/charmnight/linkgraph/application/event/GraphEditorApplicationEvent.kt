@@ -53,7 +53,6 @@ sealed interface GraphEditorApplicationEvent {
     data class MermaidExported(val exported: String, val copiedToClipboard: Boolean) : GraphEditorApplicationEvent
     data class DiffModeShown(val graph: GraphDocument, val diff: GraphDiff) : GraphEditorApplicationEvent
     data class SyncPreviewReady(val items: List<SyncPreviewItem>) : GraphEditorApplicationEvent
-    data class WorkbenchSectionPreferencesChanged(val preferences: Map<String, Boolean>) : GraphEditorApplicationEvent
 
     data class Feedback(
         val level: ApplicationFeedbackLevel,

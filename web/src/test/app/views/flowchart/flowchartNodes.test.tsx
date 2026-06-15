@@ -345,15 +345,32 @@ describe("buildFlowchartNodes", () => {
     expectTargetHandlesRenderedAfterSources();
   });
 
-  it("refreshes React Flow internals after rendering a custom flowchart node", () => {
+  it("refreshes React Flow internals only after a custom flowchart node structure changes", () => {
     updateNodeInternalsMock.mockClear();
     const FlowchartNode = FLOWCHART_NODE_TYPES.flowchartNode as (props: Record<string, unknown>) => JSX.Element;
+    const node = decisionNode();
 
-    render(
+    const { rerender } = render(
       <FlowchartNode
         id="scope:if"
         data={{
-          node: decisionNode(),
+          node,
+        }}
+        selected={false}
+        isConnectable
+      />,
+    );
+
+    expect(updateNodeInternalsMock).not.toHaveBeenCalled();
+
+    rerender(
+      <FlowchartNode
+        id="scope:if"
+        data={{
+          node: {
+            ...node,
+            title: "if (order.ready)",
+          },
         }}
         selected={false}
         isConnectable
@@ -1276,6 +1293,33 @@ describe("buildFlowchartNodes", () => {
 
     expect(builtNodes.find((node) => node.id === "method:anchor")?.className ?? "").toContain("is-explanation-focus");
     expect(builtNodes.find((node) => node.id === "action:guard")?.className ?? "").toContain("is-draft-change");
+  });
+
+  it("uses theme-aware node backgrounds in the dark graph stage instead of hardcoded light cards", () => {
+    const builtNodes = buildFlowchartNodes({
+      nodes: [
+        {
+          ...methodNode("method:entry", "CommonController.fileDownload"),
+          metadata: { "flowchart.kind": "ENTRY" },
+        },
+        {
+          ...methodNode("action:guard", "validate()"),
+          type: "FLOW_ACTION",
+          metadata: { "flowchart.kind": "PROCESS" },
+        },
+        terminalNode(),
+        mergeNode(),
+      ],
+      edges: [],
+      selectedNodeId: null,
+      nodeSizeRegistry: createNodeSizeRegistry(),
+    });
+
+    for (const node of builtNodes) {
+      const background = String(node.style?.background ?? "");
+      expect(background).toContain("var(--panel");
+      expect(background).not.toMatch(/#(?:f|fff)|rgba\(255/i);
+    }
   });
 
   it("reuses flowchart node measurement reporters when only explanation focus changes", () => {

@@ -10,7 +10,7 @@ import {
 interface HybridWorkbenchLayoutProps {
   outline: ReactNode;
   graphStage: ReactNode;
-  workbench: ReactNode;
+  assistantWorkbench: ReactNode;
   outlineCollapsed?: boolean;
   onOutlineCollapsedChange?: (collapsed: boolean) => void;
   workbenchWidth?: number;
@@ -34,7 +34,7 @@ function readClientX(event: PointerEvent | ReactPointerEvent<HTMLButtonElement>)
 export function HybridWorkbenchLayout({
   outline,
   graphStage,
-  workbench,
+  assistantWorkbench,
   outlineCollapsed = false,
   onOutlineCollapsedChange = () => undefined,
   workbenchWidth = DEFAULT_WORKBENCH_WIDTH,
@@ -132,7 +132,7 @@ export function HybridWorkbenchLayout({
       <button
         type="button"
         role="separator"
-        aria-label="调整阶段工作台宽度"
+        aria-label="调整 AI 工作台宽度"
         aria-orientation="vertical"
         aria-valuemin={MIN_WORKBENCH_WIDTH}
         aria-valuemax={MAX_WORKBENCH_WIDTH}
@@ -140,7 +140,7 @@ export function HybridWorkbenchLayout({
         className={dragging ? "hybrid-workbench-resizer dragging" : "hybrid-workbench-resizer"}
         onPointerDown={handleResizePointerDown}
       />
-      <div className="hybrid-workbench-stage-slot">{workbench}</div>
+      <div className="hybrid-workbench-assistant-slot">{assistantWorkbench}</div>
     </div>
   );
 }

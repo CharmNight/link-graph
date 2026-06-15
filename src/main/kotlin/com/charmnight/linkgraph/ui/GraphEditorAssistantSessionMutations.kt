@@ -1,12 +1,14 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.workbench.AssistantContextSnapshot
+import com.charmnight.linkgraph.workbench.AssistantActionId
 import com.charmnight.linkgraph.workbench.AssistantIntent
 import com.charmnight.linkgraph.workbench.AssistantTurnKind
 import com.charmnight.linkgraph.workbench.AssistantTurnRef
 
 internal fun GraphEditorStateSnapshot.withAssistantContextFromCurrentState(
     activeIntent: AssistantIntent = assistantSessionState.activeIntent,
+    activeActionId: AssistantActionId? = assistantSessionState.activeActionId,
 ): GraphEditorStateSnapshot {
     val nextContext = if (assistantSessionState.contextLocked) {
         assistantSessionState.context
@@ -16,6 +18,7 @@ internal fun GraphEditorStateSnapshot.withAssistantContextFromCurrentState(
     return copy(
         assistantSessionState = assistantSessionState.copy(
             activeIntent = activeIntent,
+            activeActionId = activeActionId,
             context = nextContext,
         ),
     )
@@ -39,8 +42,9 @@ internal fun GraphEditorStateSnapshot.withAssistantSelectedDiffItemIds(
 internal fun GraphEditorStateSnapshot.withAssistantTurnRef(
     kind: AssistantTurnKind,
     activeIntent: AssistantIntent,
+    activeActionId: AssistantActionId?,
     sourceMessageType: String,
-    resultId: String? = null,
+    resultId: String,
     createdAtEpochMillis: Long = System.currentTimeMillis(),
 ): GraphEditorStateSnapshot {
     val nextContext = if (assistantSessionState.contextLocked) {
@@ -51,6 +55,8 @@ internal fun GraphEditorStateSnapshot.withAssistantTurnRef(
     val nextTurn = AssistantTurnRef(
         turnId = buildAssistantTurnId(kind, sourceMessageType, assistantSessionState.turns.size + 1, createdAtEpochMillis),
         kind = kind,
+        intent = activeIntent,
+        actionId = activeActionId,
         sourceMessageType = sourceMessageType,
         resultId = resultId,
         createdAtEpochMillis = createdAtEpochMillis,
@@ -59,6 +65,7 @@ internal fun GraphEditorStateSnapshot.withAssistantTurnRef(
     return copy(
         assistantSessionState = assistantSessionState.copy(
             activeIntent = activeIntent,
+            activeActionId = activeActionId,
             context = nextContext,
             turns = assistantSessionState.turns + nextTurn,
         ),

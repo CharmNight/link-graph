@@ -1,8 +1,5 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.model.GraphDocument
-import com.charmnight.linkgraph.ui.GraphEditorCommandRouter
-import com.charmnight.linkgraph.workbench.WorkbenchLayoutPreferencesService
 import com.intellij.openapi.project.Project
 
 /**
@@ -21,11 +18,6 @@ class GraphEditorBridge(
     private val stateService: GraphEditorStateService = project.getService(GraphEditorStateService::class.java)
     /** 图编辑器 bridge 命令路由。 */
     private val commandRouter: GraphEditorCommandRouter = project.getService(GraphEditorCommandRouter::class.java)
-    /** 工作台布局偏好服务。 */
-    private val workbenchLayoutPreferencesService: WorkbenchLayoutPreferencesService = project.getService(WorkbenchLayoutPreferencesService::class.java)
-    private val workbenchPreferencesHydrationLock = Any()
-    @Volatile
-    private var workbenchPreferencesHydrated: Boolean = false
 
     /** 前端页面加载完成后登记入口地址。 */
     fun onFrontendLoaded(entryUrl: String) {
@@ -46,36 +38,8 @@ class GraphEditorBridge(
         }
     }
 
-    /** 兼容旧接口，直接触发加载图消息。 */
-    fun loadGraph(
-        graph: GraphDocument,
-        source: String,
-    ) {
-        dispatch(GraphEditorMessage.LoadGraph(graph, source))
-    }
-
     /** 返回当前桥接器观察到的最新状态快照。 */
     fun currentState(): com.charmnight.linkgraph.ui.GraphEditorStateSnapshot {
-        ensureWorkbenchPreferencesHydrated()
         return stateService.snapshot()
-    }
-
-    private fun ensureWorkbenchPreferencesHydrated() {
-        if (workbenchPreferencesHydrated) {
-            return
-        }
-        synchronized(workbenchPreferencesHydrationLock) {
-            if (workbenchPreferencesHydrated) {
-                return
-            }
-            val currentSnapshot = stateService.snapshot()
-            if (currentSnapshot.workbenchSectionPreferences.isEmpty()) {
-                val persistedPreferences = workbenchLayoutPreferencesService.snapshot()
-                if (persistedPreferences.isNotEmpty()) {
-                    stateService.workbench.markWorkbenchSectionPreferences(persistedPreferences)
-                }
-            }
-            workbenchPreferencesHydrated = true
-        }
     }
 }

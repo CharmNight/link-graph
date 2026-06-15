@@ -186,9 +186,20 @@ class ArchitectureIndexFragmentMerger {
                 origin = SourceOrigin.PROJECT_SOURCE,
             )
         }
+        val validSymbolIds = buildSet {
+            addAll(modules.values.map(JvmModuleSymbol::id))
+            addAll(packages.values.map(JvmPackageSymbol::id))
+            addAll(classes.values.map(JvmClassSymbol::id))
+            addAll(methods.values.map(JvmMethodSymbol::id))
+            addAll(fields.values.map(JvmFieldSymbol::id))
+            addAll(resources.values.map(JvmResourceSymbol::id))
+        }
         val relations = fragments
             .flatMap(ArchitectureIndexSliceFragment::relations)
             .distinctBy(RelationSliceFragment::id)
+            .filter { relation ->
+                relation.fromSymbolId in validSymbolIds && relation.toSymbolId in validSymbolIds
+            }
             .mapNotNull { relation ->
                 JvmRelation(
                     id = relation.id,

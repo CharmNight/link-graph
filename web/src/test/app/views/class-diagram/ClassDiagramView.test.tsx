@@ -25,6 +25,11 @@ vi.mock("../../../../app/reactflow/GraphFlowSurface", () => ({
     emptyState?: ReactNode;
     nodes: LinkGraphNode[];
     edges: LinkGraphEdge[];
+    buildPaneActions?: (context: {
+      visibleNodeCount: number;
+      hasGroupedSelection: boolean;
+      close: () => void;
+    }) => Array<{ id: string; onSelect: () => void }>;
     buildNodeActions: (context: {
       nodeId: string;
       close: () => void;
@@ -45,6 +50,20 @@ vi.mock("../../../../app/reactflow/GraphFlowSurface", () => ({
       });
       return `${node.id}:${actions.map((action) => action.id).join(",")}`;
     });
+    const paneActionButtons = (props.buildPaneActions?.({
+      visibleNodeCount: props.nodes.length,
+      hasGroupedSelection: false,
+      close: () => undefined,
+    }) ?? []).map((action) => (
+      <button
+        key={action.id}
+        type="button"
+        data-testid={`pane-action-${action.id}`}
+        onClick={() => action.onSelect()}
+      >
+        {action.id}
+      </button>
+    ));
     const nodeActionButtons = props.nodes.flatMap((node) =>
       props.buildNodeActions({
         nodeId: node.id,
@@ -79,6 +98,7 @@ vi.mock("../../../../app/reactflow/GraphFlowSurface", () => ({
         {props.header}
         {viewportOverlay}
         {props.nodes.length === 0 ? props.emptyState : null}
+        {paneActionButtons}
         {nodeActionButtons}
       </div>
     );
@@ -154,6 +174,75 @@ const view: ClassDiagramViewDocument = {
   presentation: emptyPresentation,
 };
 
+function viewWithUsage(summaryOverrides: {
+  truncated?: boolean;
+  maxUsageGroups?: number;
+  maxUsageEntries?: number;
+  includeImports?: boolean;
+  canRequestMore?: boolean;
+} = {}): ClassDiagramViewDocument {
+  return {
+    ...view,
+    usage: {
+      target: {
+        nodeId: "class:OrderService",
+        qualifiedName: "com.example.OrderService",
+        displayName: "OrderService",
+      },
+      summary: {
+        targetNodeId: "class:OrderService",
+        targetQualifiedName: "com.example.OrderService",
+        groupCount: 1,
+        usageCount: 2,
+        visibleGroupCount: 1,
+        visibleUsageCount: 2,
+        truncated: summaryOverrides.truncated ?? false,
+        maxUsageGroups: summaryOverrides.maxUsageGroups ?? 50,
+        maxUsageEntries: summaryOverrides.maxUsageEntries ?? 200,
+        includeImports: summaryOverrides.includeImports ?? false,
+        canRequestMore: summaryOverrides.canRequestMore ?? true,
+      },
+      groups: [
+        {
+          id: "usage-group:OrderController",
+          ownerNodeId: "class:OrderController",
+          ownerKind: "CLASS",
+          title: "OrderController",
+          qualifiedName: "com.example.OrderController",
+          filePath: "src/main/java/com/example/OrderController.java",
+          virtualFileUrl: "file:///project/src/main/java/com/example/OrderController.java",
+          usages: [
+            {
+              id: "usage:OrderController:42",
+              ownerId: "class:OrderController",
+              kind: "METHOD_PARAMETER",
+              filePath: "src/main/java/com/example/OrderController.java",
+              line: 42,
+              column: 17,
+              text: "public OrderResponse create(OrderService service)",
+              virtualFileUrl: "file:///project/src/main/java/com/example/OrderController.java",
+              ownerQualifiedName: "com.example.OrderController",
+              ownerMethodSignature: "create(OrderRequest)",
+            },
+            {
+              id: "usage:OrderController:58",
+              ownerId: "class:OrderController",
+              kind: "CONSTRUCTOR_CALL",
+              filePath: "src/main/java/com/example/OrderController.java",
+              line: 58,
+              column: 12,
+              text: "return new OrderService(repository);",
+              virtualFileUrl: "file:///project/src/main/java/com/example/OrderController.java",
+              ownerQualifiedName: "com.example.OrderController",
+              ownerMethodSignature: "createFallback()",
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
 const noop = () => undefined;
 
 describe("ClassDiagramView", () => {
@@ -190,6 +279,147 @@ describe("ClassDiagramView", () => {
     await userEvent.click(screen.getByTestId("node-action-class:OrderService-open-class-diagram-anchor"));
 
     expect(onRequestClassDiagram).toHaveBeenCalledWith("class:OrderService");
+  });
+
+  it("adds a node context action for finding class usages from the selected class", async () => {
+    const onRequestClassUsages = vi.fn();
+
+    render(
+      <ClassDiagramView
+        view={view}
+        selectedNodeId="class:OrderService"
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        {...{ onRequestClassUsages }}
+      />,
+    );
+
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
+      "data-node-action-ids",
+      expect.stringContaining("find-class-usages"),
+    );
+
+    await userEvent.click(screen.getByTestId("node-action-class:OrderService-find-class-usages"));
+
+    expect(onRequestClassUsages).toHaveBeenCalledWith("class:OrderService", {
+      targetQualifiedName: "com.example.OrderService",
+      sourceVirtualFileUrl: null,
+      sourcePath: null,
+    });
+  });
+
+  it("shows a visible class usage action for the selected class", async () => {
+    const onRequestClassUsages = vi.fn();
+
+    render(
+      <ClassDiagramView
+        view={view}
+        selectedNodeId="class:OrderService"
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        {...{ onRequestClassUsages }}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "查找使用处" }));
+
+    expect(onRequestClassUsages).toHaveBeenCalledWith("class:OrderService", {
+      targetQualifiedName: "com.example.OrderService",
+      sourceVirtualFileUrl: null,
+      sourcePath: null,
+    });
+  });
+
+  it("renders grouped class usage search results in a bottom dock after the class diagram canvas", () => {
+    render(
+      <ClassDiagramView
+        view={viewWithUsage({
+          truncated: true,
+          maxUsageGroups: 1,
+          maxUsageEntries: 2,
+          includeImports: false,
+        })}
+        selectedNodeId="class:OrderService"
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+      />,
+    );
+
+    const usagePanel = screen.getByLabelText("类使用处");
+    const usageDock = usagePanel.closest(".class-diagram-usage-dock");
+    expect(usagePanel).toBeInTheDocument();
+    expect(usageDock).not.toBeNull();
+    expect(usageDock?.previousElementSibling).toBe(screen.getByTestId("graph-flow-surface"));
+    expect(screen.getByText("OrderService 使用处")).toBeInTheDocument();
+    expect(screen.getByText("1 / 1 分组 · 2 / 2 处")).toBeInTheDocument();
+    expect(screen.getByText("结果已截断")).toBeInTheDocument();
+    expect(screen.getByText("OrderController")).toBeInTheDocument();
+    expect(screen.getByText("com.example.OrderController")).toBeInTheDocument();
+    expect(screen.getByText("src/main/java/com/example/OrderController.java")).toBeInTheDocument();
+    expect(screen.getByText("参数")).toBeInTheDocument();
+    expect(screen.getByText("42:17")).toBeInTheDocument();
+    expect(screen.getByText("public OrderResponse create(OrderService service)")).toBeInTheDocument();
+  });
+
+  it("requests a larger class usage window from the class diagram pane actions", async () => {
+    const onRequestClassUsages = vi.fn();
+
+    render(
+      <ClassDiagramView
+        view={viewWithUsage({
+          truncated: true,
+          maxUsageGroups: 5,
+          maxUsageEntries: 20,
+          includeImports: true,
+        })}
+        selectedNodeId="class:OrderService"
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        {...{ onRequestClassUsages }}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId("pane-action-class-diagram-more-usages"));
+
+    expect(onRequestClassUsages).toHaveBeenCalledWith("class:OrderService", {
+      targetQualifiedName: "com.example.OrderService",
+      maxUsageGroups: 55,
+      maxUsageEntries: 220,
+      includeImports: true,
+    });
+  });
+
+  it("does not offer more class usages after the backend hard cap is reached", () => {
+    const onRequestClassUsages = vi.fn();
+
+    render(
+      <ClassDiagramView
+        view={viewWithUsage({
+          truncated: true,
+          maxUsageGroups: 200,
+          maxUsageEntries: 1000,
+          canRequestMore: false,
+        })}
+        selectedNodeId="class:OrderService"
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        {...{ onRequestClassUsages }}
+      />,
+    );
+
+    expect(screen.queryByTestId("pane-action-class-diagram-more-usages")).not.toBeInTheDocument();
+    expect(screen.getByText("已达上限")).toBeInTheDocument();
+    expect(onRequestClassUsages).not.toHaveBeenCalled();
   });
 
   it("opens class diagrams around the anchor without adding in-canvas summary chrome", () => {
@@ -411,7 +641,7 @@ describe("ClassDiagramView", () => {
       />,
     );
 
-    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute("data-edge-labels", "field config");
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute("data-edge-labels", "字段 config");
   });
 
   it("renders class diagram through the shared graph shell toolbar without canvas zone backgrounds", async () => {
@@ -659,7 +889,7 @@ describe("ClassDiagramView", () => {
       "data-edge-ids",
       "edge:OrderService->OrderRepository:field,edge:OrderService->OrderRepository:method",
     );
-    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute("data-edge-labels", "field repository|param request");
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute("data-edge-labels", "字段 repository|参数 request");
     expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
       "data-viewport-reset-key",
       "COMPLETE:2:2:class:OrderService",

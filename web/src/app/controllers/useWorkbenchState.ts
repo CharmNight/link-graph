@@ -4,6 +4,7 @@ import type {
   AnalysisDisplayMode,
   ArchitectureGraphViewDocument,
   AssistantSessionState,
+  AssistantResultStore,
   AsyncRequestState,
   ClassDiagramViewDocument,
   DiffItem,
@@ -32,14 +33,12 @@ import type {
   LlmResultSource,
   MermaidIssue,
   OperationFeedback,
-  QaMode,
   QaRequestRecoveryState,
   ResourceRelationViewDocument,
   ReviewGraphViewDocument,
   SourceNavigationState,
   StageEligibilityDecision,
   SyncPreviewItem,
-  WorkbenchSectionPreferences,
 } from "../types";
 import type { RequestFailureNotice } from "./bridgeCommandTypes";
 
@@ -105,11 +104,11 @@ export interface WorkbenchProjectionState {
   indexedGraphRequestStates: IndexedGraphRequestStates;
   sourceNavigationState: SourceNavigationState;
   operationFeedback: OperationFeedback | null;
-  workbenchSectionPreferences: WorkbenchSectionPreferences;
   lastMessageType: string | null;
   graphSurfaceExperiments: GraphSurfaceExperimentFlags | null;
   artifactContents: Record<string, string>;
   assistantSessionState: AssistantSessionState;
+  assistantResultStore: AssistantResultStore;
 }
 
 interface UseWorkbenchStateArgs {
@@ -188,6 +187,13 @@ function createDefaultAssistantSessionState(): AssistantSessionState {
       selectedMethodSignature: null,
       scopeLabel: "",
     },
+    composer: {
+      draft: "",
+      target: {
+        kind: "NewTask",
+      },
+    },
+    nextResultSequence: 1,
     turns: [],
   };
 }
@@ -426,11 +432,11 @@ function buildInitialProjectionState(
     ),
     sourceNavigationState: resolveSourceNavigationState(initialState),
     operationFeedback: initialState.operationFeedback ?? null,
-    workbenchSectionPreferences: initialState.workbenchSectionPreferences ?? {},
     lastMessageType: initialState.lastMessageType ?? null,
     graphSurfaceExperiments: initialState.graphSurfaceExperiments ?? null,
     artifactContents: initialState.artifactContents ?? {},
     assistantSessionState: initialState.assistantSessionState ?? createDefaultAssistantSessionState(),
+    assistantResultStore: initialState.assistantResultStore ?? {},
   };
 }
 
@@ -480,8 +486,6 @@ export function useWorkbenchState({
     ),
   );
   const [qaTargetNodeIds, setQaTargetNodeIds] = useState<string[]>([]);
-  const [qaQuestionDraft, setQaQuestionDraft] = useState<string>(() => initialState.qaResult?.question ?? "");
-  const [qaQuestionMode, setQaQuestionMode] = useState<QaMode>("AUTO");
   const [selectionGroupNodeIds, setSelectionGroupNodeIds] = useState<string[]>([]);
   const [requestFailureNotice, setRequestFailureNotice] = useState<RequestFailureNotice | null>(null);
   const [isImportDialogOpen, setImportDialogOpen] = useState(false);
@@ -550,11 +554,11 @@ export function useWorkbenchState({
     setIndexedGraphRequestStates: updateStateField(setProjectionState, "indexedGraphRequestStates"),
     setSourceNavigationState: updateStateField(setProjectionState, "sourceNavigationState"),
     setOperationFeedback: updateStateField(setProjectionState, "operationFeedback"),
-    setWorkbenchSectionPreferences: updateStateField(setProjectionState, "workbenchSectionPreferences"),
     setLastMessageType: updateStateField(setProjectionState, "lastMessageType"),
     setGraphSurfaceExperiments: updateStateField(setProjectionState, "graphSurfaceExperiments"),
     setArtifactContents: updateStateField(setProjectionState, "artifactContents"),
     setAssistantSessionState: updateStateField(setProjectionState, "assistantSessionState"),
+    setAssistantResultStore: updateStateField(setProjectionState, "assistantResultStore"),
   };
 
   return {
@@ -566,10 +570,6 @@ export function useWorkbenchState({
     projectionSetters,
     qaTargetNodeIds,
     setQaTargetNodeIds,
-    qaQuestionDraft,
-    setQaQuestionDraft,
-    qaQuestionMode,
-    setQaQuestionMode,
     selectionGroupNodeIds,
     setSelectionGroupNodeIds,
     collapsedNodeIds,

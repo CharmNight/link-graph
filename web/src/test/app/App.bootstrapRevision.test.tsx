@@ -4,6 +4,7 @@ import { App } from "../../app/App";
 import { resetEditorTransportForTest } from "../../app/editorTransport";
 import { materializeThreeViewDocuments, type TestBootstrapState } from "../../app/testBootstrapState";
 import type { GraphViewPresentation, LinkGraphBootstrapState } from "../../app/types";
+import { installBridgeCommandSpy } from "./bridgeTestUtils";
 
 vi.mock("../../app/views/fact/FactGraphView", () => ({
   FactGraphView: ({
@@ -289,9 +290,7 @@ describe("App bootstrap revisions", () => {
 
   it("applies layout-only bootstrap updates without needing a semantic graph refresh", async () => {
     window.linkGraphBootstrap = structuredClone(bootstrapState);
-    window.linkGraphBridge = {
-      nodeSelected: vi.fn(),
-    };
+    installBridgeCommandSpy();
 
     render(<App />);
 
@@ -334,9 +333,7 @@ describe("App bootstrap revisions", () => {
 
   it("keeps the existing flowchart edge route when a semantic bootstrap refresh re-sends the same edge without route geometry", async () => {
     window.linkGraphBootstrap = structuredClone(flowchartBootstrapState);
-    window.linkGraphBridge = {
-      nodeSelected: vi.fn(),
-    };
+    installBridgeCommandSpy();
 
     render(<App />);
 
@@ -397,9 +394,7 @@ describe("App bootstrap revisions", () => {
         presentation: EMPTY_PRESENTATION,
       },
     };
-    window.linkGraphBridge = {
-      nodeSelected: vi.fn(),
-    };
+    installBridgeCommandSpy();
 
     render(<App />);
 
@@ -554,9 +549,7 @@ describe("App bootstrap revisions", () => {
       snapshotRevision: 4,
     });
     window.linkGraphBootstrap = initialState;
-    window.linkGraphBridge = {
-      nodeSelected: vi.fn(),
-    };
+    installBridgeCommandSpy();
 
     render(<App />);
 
@@ -640,6 +633,165 @@ describe("App bootstrap revisions", () => {
     expect(screen.getByTestId("class-diagram-node-ids")).toHaveTextContent("class:validator|class:config|class:metadata");
   });
 
+  it("keeps the current class diagram visible while a same-revision class usage request is running", async () => {
+    const anchorNode = {
+      id: "class:accessor",
+      type: "CLASS" as const,
+      title: "AbstractNestablePropertyAccessor",
+      inputs: [],
+      outputs: [],
+      certainty: "PROVEN" as const,
+      bindingStatus: "BOUND" as const,
+    };
+    const callerNode = {
+      id: "class:bean-wrapper",
+      type: "CLASS" as const,
+      title: "BeanWrapperImpl",
+      inputs: [],
+      outputs: [],
+      certainty: "PROVEN" as const,
+      bindingStatus: "BOUND" as const,
+    };
+    const initialState = materializeThreeViewDocuments({
+      ...structuredClone(bootstrapState),
+      analysisDisplayMode: "CLASS_DIAGRAM",
+      currentSceneId: "WORKSPACE_CLASS_DIAGRAM",
+      visibleGraph: {
+        nodes: [anchorNode, callerNode],
+        edges: [
+          {
+            id: "edge:caller->anchor",
+            type: "USES_TYPE",
+            source: callerNode.id,
+            target: anchorNode.id,
+          },
+        ],
+      },
+      classDiagramView: {
+        visibleGraph: {
+          nodes: [anchorNode, callerNode],
+          edges: [
+            {
+              id: "edge:caller->anchor",
+              type: "USES_TYPE",
+              source: callerNode.id,
+              target: anchorNode.id,
+            },
+          ],
+        },
+        fullGraph: {
+          nodes: [anchorNode, callerNode],
+          edges: [
+            {
+              id: "edge:caller->anchor",
+              type: "USES_TYPE",
+              source: callerNode.id,
+              target: anchorNode.id,
+            },
+          ],
+        },
+        anchorNodeId: anchorNode.id,
+        summary: {
+          classCount: 2,
+          fieldCount: 0,
+          interfaceCount: 0,
+          enumCount: 0,
+          annotationCount: 0,
+          recordCount: 0,
+          objectCount: 0,
+          relationCount: 1,
+          spiProviderCount: 0,
+          reflectionRelationCount: 0,
+          relationCompleteness: "STRUCTURE_ONLY",
+          scopeTypeCount: 2,
+          projectTypeCount: 2,
+          projectClassCount: 2,
+          scopeBasis: "CLASS_NEIGHBORHOOD",
+          anchorTypeNodeId: anchorNode.id,
+          anchorTypeTitle: anchorNode.title,
+          anchorTypeQualifiedName: anchorNode.title,
+          neighborhoodLimit: 24,
+          memberLimit: 5,
+          neighborhoodCandidateTypeCount: 2,
+          neighborhoodTruncated: false,
+        },
+        presentation: EMPTY_PRESENTATION,
+      },
+      sceneStates: {
+        ...structuredClone(bootstrapState.sceneStates),
+        WORKSPACE_CLASS_DIAGRAM: {
+          selectedNodeId: anchorNode.id,
+          anchorNodeId: anchorNode.id,
+          layoutState: { positions: {} },
+          layoutRevision: 0,
+          collapsedNodeIds: [],
+        },
+      },
+      semanticRevision: 3,
+      workspaceRevision: bootstrapState.workspaceRevision,
+      snapshotRevision: 4,
+    });
+    window.linkGraphBootstrap = initialState;
+    installBridgeCommandSpy();
+
+    render(<App />);
+
+    expect(await screen.findByTestId("class-diagram-node-ids")).toHaveTextContent("class:accessor|class:bean-wrapper");
+
+    act(() => {
+      dispatchBootstrapState({
+        ...structuredClone(initialState),
+        classDiagramView: {
+          visibleGraph: { nodes: [], edges: [] },
+          fullGraph: { nodes: [], edges: [] },
+          anchorNodeId: null,
+          summary: {
+            classCount: 0,
+            fieldCount: 0,
+            interfaceCount: 0,
+            enumCount: 0,
+            annotationCount: 0,
+            recordCount: 0,
+            objectCount: 0,
+            relationCount: 0,
+            spiProviderCount: 0,
+            reflectionRelationCount: 0,
+            relationCompleteness: "STRUCTURE_ONLY",
+            scopeTypeCount: 0,
+            projectTypeCount: 0,
+            projectClassCount: 0,
+            scopeBasis: "CLASS_NEIGHBORHOOD",
+            anchorTypeNodeId: null,
+            anchorTypeTitle: null,
+            anchorTypeQualifiedName: null,
+            neighborhoodLimit: 24,
+            memberLimit: 5,
+            neighborhoodCandidateTypeCount: 0,
+            neighborhoodTruncated: false,
+          },
+          presentation: EMPTY_PRESENTATION,
+        },
+        indexedGraphRequestStates: {
+          CLASS_DIAGRAM: {
+            phase: "RUNNING",
+            statusMessage: "正在查找类使用处。",
+          },
+        },
+        operationFeedback: {
+          level: "INFO",
+          message: "正在查找类使用处。",
+        },
+        semanticRevision: 3,
+        workspaceRevision: bootstrapState.workspaceRevision,
+        snapshotRevision: 5,
+      });
+    });
+
+    expect(screen.getByTestId("class-diagram-anchor")).toHaveTextContent(anchorNode.id);
+    expect(screen.getByTestId("class-diagram-node-count")).toHaveTextContent("2");
+    expect(screen.getByTestId("class-diagram-node-ids")).toHaveTextContent("class:accessor|class:bean-wrapper");
+  });
+
   it("does not let a stale class diagram scene anchor override the incoming view anchor", async () => {
     const staleAnchorNode = {
       id: "class:config",
@@ -712,9 +864,7 @@ describe("App bootstrap revisions", () => {
       snapshotRevision: 4,
     });
     window.linkGraphBootstrap = initialState;
-    window.linkGraphBridge = {
-      nodeSelected: vi.fn(),
-    };
+    installBridgeCommandSpy();
 
     render(<App />);
 

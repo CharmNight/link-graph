@@ -5,8 +5,9 @@ import com.charmnight.linkgraph.application.indexed.IndexedGraphScope
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
 import com.charmnight.linkgraph.json.JsonCodec
 import com.charmnight.linkgraph.ui.bridge.BridgeCommandParser
+import com.charmnight.linkgraph.workbench.AssistantComposerTarget
+import com.charmnight.linkgraph.workbench.AssistantActionId
 import com.charmnight.linkgraph.workbench.AssistantIntent
-import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.RiskResolutionStatus
 import com.charmnight.linkgraph.workbench.StepGranularity
 import kotlin.test.Test
@@ -17,60 +18,115 @@ import kotlin.test.assertTrue
 
 class GraphBrowserPayloadParserTest {
     @Test
-    fun bridgeCommandEnvelopeDefaultsQaModeToAuto() {
-        val parsed = BridgeCommandParser.parse(
-            command("requestQa", mapOf("question" to "这个方法是如何触发的？")),
-        )
-
-        val message = assertIs<GraphEditorMessage.RequestQa>(parsed.message)
-        assertEquals("这个方法是如何触发的？", message.question)
-        assertEquals(emptyList(), message.selectedNodeIds)
-        assertEquals(null, message.sourceThreadId)
-        assertEquals(QaMode.AUTO, message.mode)
-        assertTrue(parsed.async)
-    }
-
-    @Test
     fun bridgeCommandEnvelopeParsesAssistantTask() {
         val parsed = BridgeCommandParser.parse(
             command(
                 "requestAssistantTask",
                 mapOf(
                     "intent" to "CHECK_CHANGE",
+                    "actionId" to "CHECK_CHANGE",
+                    "sceneId" to "WORKSPACE_REVIEW_GRAPH",
                     "prompt" to "检查这次改动影响哪些调用方",
                     "selectedNodeIds" to listOf("method:submit-order"),
                     "selectedDiffItemIds" to listOf("diff:OrderController.kt"),
+                    "target" to mapOf(
+                        "kind" to "RiskInvestigation",
+                        "threadId" to "risk-thread:1",
+                        "targetNodeIds" to listOf("method:validate-order"),
+                    ),
+                    "explanationGranularity" to "CODE_SEMANTIC",
                 ),
             ),
         )
 
         val message = assertIs<GraphEditorMessage.RequestAssistantTask>(parsed.message)
         assertEquals(AssistantIntent.CHECK_CHANGE, message.intent)
+        assertEquals(AssistantActionId.CHECK_CHANGE, message.actionId)
+        assertEquals("WORKSPACE_REVIEW_GRAPH", message.sceneId)
         assertEquals("检查这次改动影响哪些调用方", message.prompt)
         assertEquals(listOf("method:submit-order"), message.selectedNodeIds)
         assertEquals(listOf("diff:OrderController.kt"), message.selectedDiffItemIds)
+        val target = assertIs<AssistantComposerTarget.RiskInvestigation>(message.target)
+        assertEquals("risk-thread:1", target.threadId)
+        assertEquals(listOf("method:validate-order"), target.targetNodeIds)
+        assertEquals(StepGranularity.CODE_SEMANTIC, message.explanationGranularity)
         assertTrue(parsed.async)
     }
 
     @Test
-    fun bridgeCommandEnvelopeParsesStructuredCommandsWithoutDelimiters() {
-        val qa = BridgeCommandParser.parse(
+    fun bridgeCommandEnvelopeParsesClassDescriptionAssistantIntent() {
+        val parsed = BridgeCommandParser.parse(
             command(
-                "requestQa",
+                "requestAssistantTask",
                 mapOf(
-                    "question" to "风险 & 证据?",
+                    "intent" to "DESCRIBE_CLASS",
+                    "actionId" to "DESCRIBE_CLASS",
+                    "sceneId" to "WORKSPACE_CLASS_DIAGRAM",
+                    "prompt" to "请介绍类图节点“ClientRequestQuotaManager”",
+                    "selectedNodeIds" to listOf("class:quota-manager"),
+                    "target" to mapOf("kind" to "NewTask"),
+                    "explanationGranularity" to "BUSINESS",
+                ),
+            ),
+        )
+
+        val message = assertIs<GraphEditorMessage.RequestAssistantTask>(parsed.message)
+        assertEquals(AssistantIntent.DESCRIBE_CLASS, message.intent)
+        assertEquals(AssistantActionId.DESCRIBE_CLASS, message.actionId)
+        assertEquals("WORKSPACE_CLASS_DIAGRAM", message.sceneId)
+        assertEquals("请介绍类图节点“ClientRequestQuotaManager”", message.prompt)
+        assertEquals(listOf("class:quota-manager"), message.selectedNodeIds)
+        assertIs<AssistantComposerTarget.NewTask>(message.target)
+        assertEquals(StepGranularity.BUSINESS, message.explanationGranularity)
+    }
+
+    @Test
+    fun bridgeCommandEnvelopeParsesAssistantTaskTargets() {
+        val qaRecovery = BridgeCommandParser.parse(
+            command(
+                "requestAssistantTask",
+                mapOf(
+                    "intent" to "ASK_CODE",
+                    "actionId" to "ASK_CONTEXT",
+                    "prompt" to "风险 & 证据?",
                     "selectedNodeIds" to listOf("method:upload,file", "node/二"),
-                    "sourceThreadId" to "thread:1",
-                    "mode" to "INVESTIGATE",
+                    "target" to mapOf(
+                        "kind" to "QaRecovery",
+                        "requestId" to "qa-1",
+                        "selectedNodeIds" to listOf("method:upload,file", "node/二"),
+                        "sourceThreadId" to "thread:1",
+                        "mode" to "INVESTIGATE",
+                    ),
+                ),
+            ),
+        )
+        val explanation = BridgeCommandParser.parse(
+            command(
+                "requestAssistantTask",
+                mapOf(
+                    "intent" to "EXPLAIN_CODE",
+                    "actionId" to "EXPLAIN_STRUCTURE",
+                    "prompt" to "继续解释第 2 步",
+                    "target" to mapOf(
+                        "kind" to "ExplanationFollowUp",
+                        "stepId" to "step:validate",
+                        "stepTitle" to "校验订单",
+                        "focusNodeId" to "method:validate-order",
+                    ),
                 ),
             ),
         )
         val discussion = BridgeCommandParser.parse(
             command(
-                "requestGenerationPlanDiscussion",
+                "requestAssistantTask",
                 mapOf(
-                    "question" to "继续解释第 2 步",
-                    "focusItemId" to "plan:item/2",
+                    "intent" to "GENERATE_CODE",
+                    "actionId" to "GENERATE_IMPLEMENTATION",
+                    "prompt" to "继续解释第 2 步",
+                    "target" to mapOf(
+                        "kind" to "GenerationDiscussion",
+                        "planItemId" to "plan:item/2",
+                    ),
                 ),
             ),
         )
@@ -86,47 +142,77 @@ class GraphBrowserPayloadParserTest {
             ),
         )
 
-        val qaMessage = assertIs<GraphEditorMessage.RequestQa>(qa.message)
-        val discussionMessage = assertIs<GraphEditorMessage.RequestGenerationPlanDiscussion>(discussion.message)
+        val qaMessage = assertIs<GraphEditorMessage.RequestAssistantTask>(qaRecovery.message)
+        val qaTarget = assertIs<AssistantComposerTarget.QaRecovery>(qaMessage.target)
+        val explanationMessage = assertIs<GraphEditorMessage.RequestAssistantTask>(explanation.message)
+        val explanationTarget = assertIs<AssistantComposerTarget.ExplanationFollowUp>(explanationMessage.target)
+        val discussionMessage = assertIs<GraphEditorMessage.RequestAssistantTask>(discussion.message)
+        val discussionTarget = assertIs<AssistantComposerTarget.GenerationDiscussion>(discussionMessage.target)
         val layoutMessage = assertIs<GraphEditorMessage.LayoutChanged>(layout.message)
-        assertEquals("风险 & 证据?", qaMessage.question)
-        assertEquals(listOf("method:upload,file", "node/二"), qaMessage.selectedNodeIds)
-        assertEquals("thread:1", qaMessage.sourceThreadId)
-        assertEquals(QaMode.INVESTIGATE, qaMessage.mode)
-        assertEquals("继续解释第 2 步", discussionMessage.question)
-        assertEquals("plan:item/2", discussionMessage.focusItemId)
+        assertEquals("风险 & 证据?", qaMessage.prompt)
+        assertEquals("qa-1", qaTarget.requestId)
+        assertEquals(listOf("method:upload,file", "node/二"), qaTarget.selectedNodeIds)
+        assertEquals("thread:1", qaTarget.sourceThreadId)
+        assertEquals("INVESTIGATE", qaTarget.mode?.name)
+        assertEquals("step:validate", explanationTarget.stepId)
+        assertEquals("校验订单", explanationTarget.stepTitle)
+        assertEquals("method:validate-order", explanationTarget.focusNodeId)
+        assertEquals("继续解释第 2 步", discussionMessage.prompt)
+        assertEquals("plan:item/2", discussionTarget.planItemId)
         assertEquals(12.5, layoutMessage.positions["node:一"]?.x)
         assertEquals(9.25, layoutMessage.positions["node,two"]?.y)
     }
 
     @Test
-    fun bridgeCommandEnvelopeParsesBeautificationFollowUpAndFocus() {
-        val parsed = BridgeCommandParser.parse(
-            command(
-                "requestGraphBeautification",
-                mapOf(
-                    "goal" to "讲解展开链路",
-                    "preferredStyle" to "汇报版",
-                    "explanationFocus" to "请重点讲解展开方法",
-                    "focusNodeId" to "method:create-info",
-                    "granularity" to "METHOD_CALL",
-                    "followUp" to mapOf(
-                        "stepId" to "step-create-info",
-                        "stepTitle" to "展开 createInfo",
-                        "question" to "展开方法做了什么？",
+    fun bridgeCommandEnvelopeRequiresConcreteAssistantActionId() {
+        val error = assertFailsWith<IllegalStateException> {
+            BridgeCommandParser.parse(
+                command(
+                    "requestAssistantTask",
+                    mapOf(
+                        "intent" to "EXPLAIN_CODE",
+                        "prompt" to "解释当前结构",
                     ),
                 ),
-            ),
-        )
+            )
+        }
 
-        val message = assertIs<GraphEditorMessage.RequestGraphBeautification>(parsed.message)
-        assertEquals("讲解展开链路", message.goal)
-        assertEquals("汇报版", message.preferredStyle)
-        assertEquals("请重点讲解展开方法", message.explanationFocus)
-        assertEquals("method:create-info", message.focusNodeId)
-        assertEquals(StepGranularity.METHOD_CALL, message.granularity)
-        assertEquals("step-create-info", message.followUp?.stepId)
-        assertTrue(parsed.async)
+        assertTrue(error.message?.contains("actionId is required") == true)
+    }
+
+    @Test
+    fun bridgeCommandEnvelopeRejectsAssistantIntentAndActionMismatch() {
+        val error = assertFailsWith<IllegalStateException> {
+            BridgeCommandParser.parse(
+                command(
+                    "requestAssistantTask",
+                    mapOf(
+                        "intent" to "ASK_CODE",
+                        "actionId" to "DESCRIBE_CLASS",
+                        "prompt" to "解释当前结构",
+                    ),
+                ),
+            )
+        }
+
+        assertTrue(error.message?.contains("does not match actionId") == true)
+    }
+
+    @Test
+    fun bridgeCommandEnvelopeRejectsOldNaturalLanguageMainTaskCommands() {
+        listOf(
+            "requestQa",
+            "requestDiffReview",
+            "requestGraphBeautification",
+            "requestGenerationPlan",
+            "requestGenerationPlanDiscussion",
+        ).forEach { type ->
+            val error = assertFailsWith<IllegalStateException> {
+                BridgeCommandParser.parse(command(type, mapOf("question" to "旧入口不应保留")))
+            }
+
+            assertTrue(error.message?.contains("unsupported bridge command type") == true)
+        }
     }
 
     @Test
@@ -177,6 +263,65 @@ class GraphBrowserPayloadParserTest {
     }
 
     @Test
+    fun bridgeCommandEnvelopeParsesClassUsageRequestsAsClassDiagramPreset() {
+        val parsed = BridgeCommandParser.parse(
+            command(
+                "requestIndexedGraph",
+                mapOf(
+                    "preset" to "CLASS_DIAGRAM",
+                    "scopeNodeId" to "jvm:class:com-example-order-service",
+                    "usage" to mapOf(
+                        "enabled" to true,
+                        "targetNodeId" to "jvm:class:com-example-order-service",
+                        "targetQualifiedName" to "com.example.OrderService",
+                        "sourceVirtualFileUrl" to "file:///project/src/main/java/com/example/OrderService.java",
+                        "sourcePath" to "src/main/java/com/example/OrderService.java",
+                        "maxUsageGroups" to 12,
+                        "maxUsageEntries" to 40,
+                        "includeImports" to true,
+                    ),
+                ),
+            ),
+        )
+
+        val message = assertIs<GraphEditorMessage.RequestIndexedGraph>(parsed.message)
+        assertEquals(IndexedGraphView.CLASS_DIAGRAM, message.request.view)
+        assertEquals("jvm:class:com-example-order-service", assertIs<IndexedGraphAnchor.ArchitectureNode>(message.request.anchor).nodeId)
+        assertEquals(true, message.request.usage.enabled)
+        assertEquals("jvm:class:com-example-order-service", message.request.usage.targetNodeId)
+        assertEquals("com.example.OrderService", message.request.usage.targetQualifiedName)
+        assertEquals("file:///project/src/main/java/com/example/OrderService.java", message.request.usage.sourceVirtualFileUrl)
+        assertEquals("src/main/java/com/example/OrderService.java", message.request.usage.sourcePath)
+        assertEquals(12, message.request.usage.maxUsageGroups)
+        assertEquals(40, message.request.usage.maxUsageEntries)
+        assertEquals(true, message.request.usage.includeImports)
+    }
+
+    @Test
+    fun bridgeCommandEnvelopeClampsOversizedClassUsageLimits() {
+        val parsed = BridgeCommandParser.parse(
+            command(
+                "requestIndexedGraph",
+                mapOf(
+                    "preset" to "CLASS_DIAGRAM",
+                    "scopeNodeId" to "jvm:class:com-example-order-service",
+                    "usage" to mapOf(
+                        "enabled" to true,
+                        "targetNodeId" to "jvm:class:com-example-order-service",
+                        "targetQualifiedName" to "com.example.OrderService",
+                        "maxUsageGroups" to 9999,
+                        "maxUsageEntries" to 99999,
+                    ),
+                ),
+            ),
+        )
+
+        val message = assertIs<GraphEditorMessage.RequestIndexedGraph>(parsed.message)
+        assertEquals(200, message.request.usage.maxUsageGroups)
+        assertEquals(1000, message.request.usage.maxUsageEntries)
+    }
+
+    @Test
     fun bridgeCommandEnvelopeParsesArtifactRequestsSeparatelyFromEditorMessages() {
         val parsed = BridgeCommandParser.parse(
             command("requestArtifact", mapOf("artifactIds" to listOf("artifact:1", "artifact:2"))),
@@ -208,7 +353,7 @@ class GraphBrowserPayloadParserTest {
     @Test
     fun rejectsBridgeCommandWithoutSupportedSchemaVersion() {
         val error = assertFailsWith<IllegalArgumentException> {
-            BridgeCommandParser.parse("""{"schemaVersion":2,"type":"requestQa","payload":{}}""")
+            BridgeCommandParser.parse("""{"schemaVersion":2,"type":"requestAssistantTask","payload":{}}""")
         }
 
         assertTrue(error.message?.contains("schemaVersion") == true)

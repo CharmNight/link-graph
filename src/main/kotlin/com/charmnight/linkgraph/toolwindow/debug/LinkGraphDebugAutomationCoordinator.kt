@@ -2,8 +2,10 @@ package com.charmnight.linkgraph.toolwindow.debug
 
 import com.charmnight.linkgraph.application.GraphEditorApplicationService
 import com.charmnight.linkgraph.application.command.ApplicationCommand
+import com.charmnight.linkgraph.application.indexed.IndexedClassUsageOptions
 import com.charmnight.linkgraph.application.indexed.requestArchitectureGraphRequest
 import com.charmnight.linkgraph.application.indexed.requestClassDiagramRequest
+import com.charmnight.linkgraph.application.indexed.requestClassUsageOverlayRequest
 import com.charmnight.linkgraph.foundation.debugLazy
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
@@ -11,7 +13,8 @@ import com.charmnight.linkgraph.model.SourceNavigationAnchors
 import com.charmnight.linkgraph.toolwindow.LinkGraphToolWindowSession
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.SourceNavigationPhase
-import com.charmnight.linkgraph.workbench.QaMode
+import com.charmnight.linkgraph.workbench.AssistantActionId
+import com.charmnight.linkgraph.workbench.AssistantIntent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.DumbService
@@ -86,12 +89,14 @@ internal class LinkGraphDebugAutomationCoordinator(
                     val focusNodeId = currentArchitectureGraphFocusNodeId()
                     logger.warn("debug 自动触发架构图讲解: focusNodeId=${focusNodeId.orEmpty()}")
                     runBackground("架构图讲解") {
-                        commandDispatcher.dispatch(ApplicationCommand.RequestGraphBeautification(
-                            goal = "验证架构图讲解上下文",
-                            preferredStyle = "调试验证",
-                            explanationFocus = "请只围绕当前架构图中的模块、包、层和资源关系解释。",
-                            focusNodeId = focusNodeId,
-                        ))
+                        commandDispatcher.dispatch(
+                            ApplicationCommand.RequestAssistantTask(
+                                intent = AssistantIntent.EXPLAIN_CODE,
+                                actionId = AssistantActionId.EXPLAIN_STRUCTURE,
+                                prompt = "验证架构图讲解上下文。请只围绕当前架构图中的模块、包、层和资源关系解释。",
+                                selectedNodeIds = focusNodeId?.let(::listOf).orEmpty(),
+                            ),
+                        )
                     }
                 }
             }
@@ -104,20 +109,52 @@ internal class LinkGraphDebugAutomationCoordinator(
                     val focusNodeId = currentArchitectureGraphFocusNodeId()
                     logger.warn("debug 自动触发架构图问答: focusNodeId=${focusNodeId.orEmpty()}")
                     runBackground("架构图问答") {
-                        commandDispatcher.dispatch(ApplicationCommand.RequestQa(
-                            question = "请说明当前架构图里这个节点和相邻模块/包/资源是什么关系。",
-                            selectedNodeIds = focusNodeId?.let(::listOf).orEmpty(),
-                            mode = QaMode.ANSWER,
-                        ))
+                        commandDispatcher.dispatch(
+                            ApplicationCommand.RequestAssistantTask(
+                                intent = AssistantIntent.ASK_CODE,
+                                actionId = AssistantActionId.ASK_CONTEXT,
+                                prompt = "请说明当前架构图里这个节点和相邻模块/包/资源是什么关系。",
+                                selectedNodeIds = focusNodeId?.let(::listOf).orEmpty(),
+                            ),
+                        )
                     }
                 }
             }
         }
 
         if (request.autoRequestClassDiagram) {
-            debugLazy(logger.isDebugEnabled, logger::debug) { "检测到调试自动请求：类图" }
+            debugLazy(logger.isDebugEnabled, logger::debug) {
+                "检测到调试自动请求：类图，scopeNodeId=${request.autoRequestClassDiagramScopeNodeId.orEmpty()}"
+            }
             schedule(DEBUG_AUTO_REQUEST_CLASS_DIAGRAM_DELAY_MS) {
-                commandDispatcher.dispatch(ApplicationCommand.RequestIndexedGraph(requestClassDiagramRequest()))
+                logger.warn(
+                    "debug 自动触发类图请求: scopeNodeId=${request.autoRequestClassDiagramScopeNodeId.orEmpty()}",
+                )
+                commandDispatcher.dispatch(
+                    ApplicationCommand.RequestIndexedGraph(
+                        requestClassDiagramRequest(request.autoRequestClassDiagramScopeNodeId),
+                    ),
+                )
+            }
+        }
+
+        request.autoRequestClassUsageTargetNodeId?.let { targetNodeId ->
+            debugLazy(logger.isDebugEnabled, logger::debug) {
+                "检测到调试自动请求：类使用处，targetNodeId=$targetNodeId"
+            }
+            schedule(DEBUG_AUTO_REQUEST_CLASS_USAGE_DELAY_MS) {
+                logger.warn("debug 自动触发类使用处请求: targetNodeId=$targetNodeId")
+                commandDispatcher.dispatch(
+                    ApplicationCommand.RequestIndexedGraph(
+                        requestClassUsageOverlayRequest(targetNodeId).copy(
+                            usage = IndexedClassUsageOptions(
+                                enabled = true,
+                                targetNodeId = targetNodeId,
+                                targetQualifiedName = request.autoRequestClassUsageTargetQualifiedName,
+                            ),
+                        ),
+                    ),
+                )
             }
         }
 
@@ -128,12 +165,14 @@ internal class LinkGraphDebugAutomationCoordinator(
                     val focusNodeId = currentClassDiagramFocusNodeId()
                     logger.warn("debug 自动触发类图讲解: focusNodeId=${focusNodeId.orEmpty()}")
                     runBackground("类图讲解") {
-                        commandDispatcher.dispatch(ApplicationCommand.RequestGraphBeautification(
-                            goal = "验证类图讲解上下文",
-                            preferredStyle = "调试验证",
-                            explanationFocus = "请只围绕当前类图中的类、接口、枚举和它们的关系解释。",
-                            focusNodeId = focusNodeId,
-                        ))
+                        commandDispatcher.dispatch(
+                            ApplicationCommand.RequestAssistantTask(
+                                intent = AssistantIntent.EXPLAIN_CODE,
+                                actionId = AssistantActionId.EXPLAIN_STRUCTURE,
+                                prompt = "验证类图讲解上下文。请只围绕当前类图中的类、接口、枚举和它们的关系解释。",
+                                selectedNodeIds = focusNodeId?.let(::listOf).orEmpty(),
+                            ),
+                        )
                     }
                 }
             }
@@ -146,11 +185,14 @@ internal class LinkGraphDebugAutomationCoordinator(
                     val focusNodeId = currentClassDiagramFocusNodeId()
                     logger.warn("debug 自动触发类图问答: focusNodeId=${focusNodeId.orEmpty()}")
                     runBackground("类图问答") {
-                        commandDispatcher.dispatch(ApplicationCommand.RequestQa(
-                            question = "请说明当前类图里这个节点和相邻类/接口是什么关系。",
-                            selectedNodeIds = focusNodeId?.let(::listOf).orEmpty(),
-                            mode = QaMode.ANSWER,
-                        ))
+                        commandDispatcher.dispatch(
+                            ApplicationCommand.RequestAssistantTask(
+                                intent = AssistantIntent.ASK_CODE,
+                                actionId = AssistantActionId.ASK_CONTEXT,
+                                prompt = "请说明当前类图里这个节点和相邻类/接口是什么关系。",
+                                selectedNodeIds = focusNodeId?.let(::listOf).orEmpty(),
+                            ),
+                        )
                     }
                 }
             }
@@ -177,7 +219,13 @@ internal class LinkGraphDebugAutomationCoordinator(
         if (request.autoRequestPlan) {
             debugLazy(logger.isDebugEnabled, logger::debug) { "检测到调试自动请求：生成计划" }
             schedule(DEBUG_AUTO_REQUEST_PLAN_DELAY_MS) {
-                commandDispatcher.dispatch(ApplicationCommand.RequestGenerationPlan)
+                commandDispatcher.dispatch(
+                    ApplicationCommand.RequestAssistantTask(
+                        intent = AssistantIntent.GENERATE_CODE,
+                        actionId = AssistantActionId.GENERATE_IMPLEMENTATION,
+                        prompt = "",
+                    ),
+                )
             }
         }
 
@@ -339,6 +387,7 @@ internal class LinkGraphDebugAutomationCoordinator(
         private const val DEBUG_AUTO_REQUEST_ARCHITECTURE_GRAPH_BEAUTIFICATION_DELAY_MS = 7000L
         private const val DEBUG_AUTO_REQUEST_ARCHITECTURE_GRAPH_QA_DELAY_MS = 9000L
         private const val DEBUG_AUTO_REQUEST_CLASS_DIAGRAM_DELAY_MS = 5000L
+        private const val DEBUG_AUTO_REQUEST_CLASS_USAGE_DELAY_MS = 5000L
         private const val DEBUG_AUTO_REQUEST_CLASS_DIAGRAM_BEAUTIFICATION_DELAY_MS = 9000L
         private const val DEBUG_AUTO_REQUEST_CLASS_DIAGRAM_QA_DELAY_MS = 12000L
         private const val DEBUG_AUTO_REQUEST_SOURCE_NAVIGATION_DELAY_MS = 7000L

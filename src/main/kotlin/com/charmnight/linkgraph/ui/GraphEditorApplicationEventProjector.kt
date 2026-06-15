@@ -62,8 +62,6 @@ internal class GraphEditorApplicationEventProjector(
                 workspacePresenter().presentDiffMode(event.graph, event.diff)
             is GraphEditorApplicationEvent.SyncPreviewReady ->
                 workspacePresenter().presentSyncPreview(event.items)
-            is GraphEditorApplicationEvent.WorkbenchSectionPreferencesChanged ->
-                workspacePresenter().presentWorkbenchSectionPreferences(event.preferences)
             is GraphEditorApplicationEvent.Feedback ->
                 subjectPresenter().presentFeedback(event.level, event.message, event.preservePreviousStatusKind)
             is GraphEditorApplicationEvent.AnalysisDisplayModeChanged ->

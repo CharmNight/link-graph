@@ -1,13 +1,12 @@
 import type {
   AnalysisDisplayMode,
-  AssistantIntent,
   BindingStatus,
   Certainty,
   DraftPatchPreviewSource,
   DiffStatus,
   GraphEditScript,
-  GraphBeautificationRequest,
   IndexedClassDiagramOptions,
+  IndexedClassUsageOptions,
   IndexedReviewGraphOptions,
   IndexedGraphViewportOptions,
   GraphPosition,
@@ -17,16 +16,16 @@ import type {
   LinkGraphNode,
   LinkGraphSnapshotEnvelope,
   NodeType,
-  QaMode,
   RiskResolutionStatus,
-  StepGranularity,
 } from "./types";
+import { assistantTaskPayload, type AssistantTaskRequest } from "./assistant/assistantBridgeApi";
 import { summarizeGraph, traceLinkGraph } from "./debug";
 import {
   acknowledgeSnapshot as acknowledgeSnapshotTransport,
   announceFrontendReady as announceFrontendReadyTransport,
   subscribeBootstrap as subscribeBootstrapTransport,
 } from "./editorTransport";
+export type { AssistantTaskRequest } from "./assistant/assistantBridgeApi";
 
 type FrontendReadyPayload = { lastAppliedRevision: number | null };
 type SnapshotAckPayload = { revision: number };
@@ -39,6 +38,7 @@ type IndexedGraphPresetRequest = {
   includeJdk?: boolean;
   viewport?: IndexedGraphViewportOptions | null;
   classDiagram?: Partial<IndexedClassDiagramOptions> | null;
+  usage?: Partial<IndexedClassUsageOptions> | null;
   review?: Partial<IndexedReviewGraphOptions> | null;
 };
 export type BridgeCommandType =
@@ -46,25 +46,19 @@ export type BridgeCommandType =
   | "exportMermaid"
   | "showDiffMode"
   | "requestSyncPreview"
-  | "requestQa"
   | "requestAssistantTask"
   | "retryLastQaRequest"
   | "confirmQaCandidateChange"
   | "unconfirmQaCandidateChange"
   | "resolveInvestigationThread"
-  | "requestDiffReview"
-  | "requestGraphBeautification"
   | "applyDraftPatchPreview"
   | "clearDraftPatchPreview"
   | "restoreDraftPatchPreview"
   | "undoLastDraftPatchApply"
-  | "requestGenerationPlan"
-  | "requestGenerationPlanDiscussion"
   | "requestCodeDrafts"
   | "requestCurrentEditorContextGraph"
   | "requestAnalysisDisplayMode"
   | "requestIndexedGraph"
-  | "updateWorkbenchSectionPreference"
   | "requestOpenSettings"
   | "applyCodeDrafts"
   | "applySingleCodeDraft"
@@ -85,15 +79,6 @@ export type BridgeCommandEnvelope = {
   type: BridgeCommandType;
   payload: Record<string, unknown>;
 };
-type Bridge = NonNullable<Window["linkGraphBridge"]>;
-type BridgeMethodName = keyof Bridge;
-
-export interface AssistantTaskRequest {
-  intent: AssistantIntent;
-  prompt: string;
-  selectedNodeIds?: string[];
-  selectedDiffItemIds?: string[];
-}
 
 export type BridgeInvocationResult =
   | { ok: true }
@@ -130,59 +115,6 @@ declare global {
   interface Window {
     linkGraphBridge?: {
       sendCommand?: (command: BridgeCommandEnvelope) => void;
-      importMermaid?: (mermaid: string) => void;
-      exportMermaid?: () => void;
-      showDiffMode?: () => void;
-      requestSyncPreview?: () => void;
-      requestQa?: (question: string, selectedNodeIds?: string[], sourceThreadId?: string | null, mode?: QaMode) => void;
-      requestAssistantTask?: (request: AssistantTaskRequest) => void;
-      retryLastQaRequest?: () => void;
-      confirmQaCandidateChange?: (changeId: string) => void;
-      unconfirmQaCandidateChange?: (changeId: string) => void;
-      resolveInvestigationThread?: (threadId: string, resolutionStatus: RiskResolutionStatus, note?: string) => void;
-      requestDiffReview?: (question: string, selectedDiffItemIds?: string[]) => void;
-      requestGraphBeautification?: (
-        goal?: string,
-        preferredStyle?: string | null,
-        explanationFocus?: string | null,
-        granularity?: StepGranularity,
-        followUpStepId?: string,
-        followUpStepTitle?: string,
-        followUpQuestion?: string,
-        focusNodeId?: string | null,
-      ) => void;
-      applyDraftPatchPreview?: (operationIds?: string[]) => void;
-      clearDraftPatchPreview?: () => void;
-      restoreDraftPatchPreview?: (source: DraftPatchPreviewSource) => void;
-      undoLastDraftPatchApply?: () => void;
-      requestGenerationPlan?: () => void;
-      requestGenerationPlanDiscussion?: (question: string, focusItemId?: string | null) => void;
-      requestCodeDrafts?: () => void;
-      requestCurrentEditorContextGraph?: () => void;
-      requestAnalysisDisplayMode?: (displayMode: AnalysisDisplayMode) => void;
-      requestIndexedGraph?: (request: IndexedGraphPresetRequest) => void;
-      updateWorkbenchSectionPreference?: (sectionId: string, expanded: boolean) => void;
-      requestOpenSettings?: () => void;
-      applyCodeDrafts?: () => void;
-      applySingleCodeDraft?: (draftId: string) => void;
-      openCodeDraftNativeDiff?: (draftId: string) => void;
-      requestArtifact?: (artifactIds: string[]) => void;
-      applyGraphEditScript?: (payload: unknown) => void;
-      frontendReady?: (payload: { lastAppliedRevision: number | null }) => void;
-      snapshotAck?: (payload: { revision: number }) => void;
-      layoutChanged?: (payload: {
-        positions: Array<{
-          nodeId: string;
-          x: number;
-          y: number;
-        }>;
-      }) => void;
-      nodeSelected?: (nodeId: string) => void;
-      requestSourceNavigation?: (nodeId: string) => void;
-      requestDraftNavigation?: (targetPath: string) => void;
-      requestExpandOverflowNode?: (nodeId: string) => void;
-      requestExpandInvocation?: (nodeId: string) => void;
-      requestRemoveInvocationExpansion?: (expansionId: string) => void;
     };
     linkGraphBootstrap?: LinkGraphBootstrapState;
   }
@@ -201,24 +133,28 @@ function flushPendingBridgeState(): void {
 }
 
 function flushPendingBridgeLifecycleState(): void {
-  const bridge = window.linkGraphBridge;
-  if (!bridge) {
+  if (!window.linkGraphBridge) {
     return;
   }
-  if (pendingBridgeLifecycleState.frontendReady) {
-    bridge.frontendReady?.(pendingBridgeLifecycleState.frontendReady);
+  const frontendReadyPayload = pendingBridgeLifecycleState.frontendReady;
+  if (
+    frontendReadyPayload &&
+    dispatchBridgeCommandIfAvailable("frontendReady", frontendReadyPayload)
+  ) {
     pendingBridgeLifecycleState.frontendReady = null;
   }
-  if (pendingBridgeLifecycleState.snapshotAck) {
-    bridge.snapshotAck?.(pendingBridgeLifecycleState.snapshotAck);
+  const snapshotAckPayload = pendingBridgeLifecycleState.snapshotAck;
+  if (
+    snapshotAckPayload &&
+    dispatchBridgeCommandIfAvailable("snapshotAck", snapshotAckPayload)
+  ) {
     pendingBridgeLifecycleState.snapshotAck = null;
   }
 }
 
 function dispatchFrontendReady(payload: FrontendReadyPayload): void {
   ensureBridgeReadyListener();
-  if (window.linkGraphBridge?.frontendReady) {
-    window.linkGraphBridge.frontendReady(payload);
+  if (dispatchBridgeCommandIfAvailable("frontendReady", payload)) {
     pendingBridgeLifecycleState.frontendReady = null;
     return;
   }
@@ -227,23 +163,37 @@ function dispatchFrontendReady(payload: FrontendReadyPayload): void {
 
 function dispatchSnapshotAck(payload: SnapshotAckPayload): void {
   ensureBridgeReadyListener();
-  if (window.linkGraphBridge?.snapshotAck) {
-    window.linkGraphBridge.snapshotAck(payload);
+  if (dispatchBridgeCommandIfAvailable("snapshotAck", payload)) {
     pendingBridgeLifecycleState.snapshotAck = null;
     return;
   }
   pendingBridgeLifecycleState.snapshotAck = payload;
 }
 
-function invokeBridgeAction(
-  actionName: BridgeMethodName,
-  invoke: (bridge: Bridge) => void,
-  tracePayload?: unknown,
-): BridgeInvocationResult {
+function dispatchBridgeCommandIfAvailable(
+  commandType: BridgeCommandType,
+  commandPayload: Record<string, unknown>,
+): boolean {
   const bridge = window.linkGraphBridge;
-  if (!bridge) {
+  if (typeof bridge?.sendCommand !== "function") {
+    return false;
+  }
+  bridge.sendCommand({
+    schemaVersion: 1,
+    type: commandType,
+    payload: commandPayload,
+  });
+  return true;
+}
+
+function invokeBridgeAction(
+  commandType: BridgeCommandType,
+  tracePayload?: unknown,
+  commandPayload: Record<string, unknown> = {},
+): BridgeInvocationResult {
+  if (!window.linkGraphBridge) {
     traceLinkGraph("api.bridgePending", {
-      actionName,
+      actionName: commandType,
       hasBridge: false,
     });
     return {
@@ -252,24 +202,22 @@ function invokeBridgeAction(
       detailMessage: BRIDGE_UNAVAILABLE_DETAIL_MESSAGE,
     };
   }
-  const bridgeAction = bridge[actionName];
-  if (typeof bridgeAction !== "function") {
-    const detailMessage = `IDE bridge 已注入，但当前未暴露 ${String(actionName)} 方法，本次请求没有发出。`;
-    traceLinkGraph("api.bridgeProtocolMismatch", {
-      actionName,
-      hasBridge: true,
-    });
-    return {
-      ok: false,
-      message: BRIDGE_PROTOCOL_MISMATCH_MESSAGE,
-      detailMessage,
-    };
-  }
   if (tracePayload !== undefined) {
-    traceLinkGraph(`api.${String(actionName)}`, tracePayload);
+    traceLinkGraph(`api.${commandType}`, tracePayload);
   }
-  invoke(bridge);
-  return { ok: true };
+  if (dispatchBridgeCommandIfAvailable(commandType, commandPayload)) {
+    return { ok: true };
+  }
+  const detailMessage = "IDE bridge 已注入，但当前未暴露统一 sendCommand 方法，本次请求没有发出。";
+  traceLinkGraph("api.bridgeProtocolMismatch", {
+    actionName: commandType,
+    hasBridge: true,
+  });
+  return {
+    ok: false,
+    message: BRIDGE_PROTOCOL_MISMATCH_MESSAGE,
+    detailMessage,
+  };
 }
 
 export function readBootstrapState(): LinkGraphBootstrapState | null {
@@ -302,85 +250,40 @@ export function resetApiBridgeLifecycleStateForTest(): void {
 }
 
 export function importMermaid(mermaid: string): BridgeInvocationResult {
-  return invokeBridgeAction("importMermaid", (bridge) => {
-    bridge.importMermaid?.(mermaid);
-  });
+  return invokeBridgeAction("importMermaid", undefined, { mermaid });
 }
 
 export function exportMermaid(): BridgeInvocationResult {
-  return invokeBridgeAction("exportMermaid", (bridge) => {
-    bridge.exportMermaid?.();
-  });
+  return invokeBridgeAction("exportMermaid");
 }
 
 export function showDiffMode(): BridgeInvocationResult {
-  return invokeBridgeAction("showDiffMode", (bridge) => {
-    bridge.showDiffMode?.();
-  });
+  return invokeBridgeAction("showDiffMode");
 }
 
 export function requestArtifactContent(artifactIds: string[]): BridgeInvocationResult {
-  return invokeBridgeAction("requestArtifact", (bridge) => {
-    bridge.requestArtifact?.(artifactIds);
-  }, {
-    artifactIds,
-  });
+  return invokeBridgeAction("requestArtifact", { artifactIds }, { artifactIds });
 }
 
 export function requestSyncPreview(): BridgeInvocationResult {
-  return invokeBridgeAction("requestSyncPreview", (bridge) => {
-    bridge.requestSyncPreview?.();
-  });
-}
-
-export function requestQaAsync(
-  question: string,
-  selectedNodeIds: string[] = [],
-  sourceThreadId: string | null = null,
-  mode: QaMode = "AUTO",
-): BridgeInvocationResult {
-  return invokeBridgeAction("requestQa", (bridge) => {
-    bridge.requestQa?.(question, selectedNodeIds, sourceThreadId, mode);
-  }, {
-    question,
-    selectedNodeIds,
-    sourceThreadId,
-    mode,
-  });
+  return invokeBridgeAction("requestSyncPreview");
 }
 
 export function requestAssistantTask(request: AssistantTaskRequest): BridgeInvocationResult {
-  const payload = {
-    intent: request.intent,
-    prompt: request.prompt,
-    selectedNodeIds: request.selectedNodeIds ?? [],
-    selectedDiffItemIds: request.selectedDiffItemIds ?? [],
-  };
-  return invokeBridgeAction("requestAssistantTask", (bridge) => {
-    bridge.requestAssistantTask?.(payload);
-  }, payload);
+  const payload = assistantTaskPayload(request);
+  return invokeBridgeAction("requestAssistantTask", payload, payload);
 }
 
 export function retryLastQaRequestAsync(): BridgeInvocationResult {
-  return invokeBridgeAction("retryLastQaRequest", (bridge) => {
-    bridge.retryLastQaRequest?.();
-  });
+  return invokeBridgeAction("retryLastQaRequest");
 }
 
 export function confirmQaCandidateChange(changeId: string): BridgeInvocationResult {
-  return invokeBridgeAction("confirmQaCandidateChange", (bridge) => {
-    bridge.confirmQaCandidateChange?.(changeId);
-  }, {
-    changeId,
-  });
+  return invokeBridgeAction("confirmQaCandidateChange", { changeId }, { changeId });
 }
 
 export function unconfirmQaCandidateChange(changeId: string): BridgeInvocationResult {
-  return invokeBridgeAction("unconfirmQaCandidateChange", (bridge) => {
-    bridge.unconfirmQaCandidateChange?.(changeId);
-  }, {
-    changeId,
-  });
+  return invokeBridgeAction("unconfirmQaCandidateChange", { changeId }, { changeId });
 }
 
 export function resolveInvestigationThread(
@@ -388,8 +291,10 @@ export function resolveInvestigationThread(
   resolutionStatus: RiskResolutionStatus,
   note = "",
 ): BridgeInvocationResult {
-  return invokeBridgeAction("resolveInvestigationThread", (bridge) => {
-    bridge.resolveInvestigationThread?.(threadId, resolutionStatus, note);
+  return invokeBridgeAction("resolveInvestigationThread", {
+    threadId,
+    resolutionStatus,
+    note,
   }, {
     threadId,
     resolutionStatus,
@@ -397,122 +302,40 @@ export function resolveInvestigationThread(
   });
 }
 
-export function requestDiffReviewAsync(question: string, selectedDiffItemIds: string[] = []): BridgeInvocationResult {
-  return invokeBridgeAction("requestDiffReview", (bridge) => {
-    bridge.requestDiffReview?.(question, selectedDiffItemIds);
-  });
-}
-
-export function requestGraphBeautificationAsync(
-  request: GraphBeautificationRequest = {},
-): BridgeInvocationResult {
-  const {
-    goal = "",
-    preferredStyle,
-    explanationFocus,
-    focusNodeId,
-    granularity = "BUSINESS",
-    followUp,
-  } = request;
-  return invokeBridgeAction("requestGraphBeautification", (bridge) => {
-    bridge.requestGraphBeautification?.(
-      goal,
-      preferredStyle,
-      explanationFocus,
-      granularity,
-      followUp?.stepId,
-      followUp?.stepTitle,
-      followUp?.question,
-      focusNodeId,
-    );
-  }, {
-    goal,
-    preferredStyle: preferredStyle ?? null,
-    explanationFocus: explanationFocus ?? null,
-    focusNodeId: focusNodeId ?? null,
-    granularity,
-    followUp: followUp ?? null,
-  });
-}
-
 export function applyDraftPatchPreview(operationIds?: string[]): BridgeInvocationResult {
-  return invokeBridgeAction("applyDraftPatchPreview", (bridge) => {
-    bridge.applyDraftPatchPreview?.(operationIds);
-  });
+  return invokeBridgeAction("applyDraftPatchPreview", undefined, { operationIds: operationIds ?? [] });
 }
 
 export function clearDraftPatchPreview(): BridgeInvocationResult {
-  return invokeBridgeAction("clearDraftPatchPreview", (bridge) => {
-    bridge.clearDraftPatchPreview?.();
-  });
+  return invokeBridgeAction("clearDraftPatchPreview");
 }
 
 export function restoreDraftPatchPreview(source: DraftPatchPreviewSource): BridgeInvocationResult {
-  return invokeBridgeAction("restoreDraftPatchPreview", (bridge) => {
-    bridge.restoreDraftPatchPreview?.(source);
-  });
+  return invokeBridgeAction("restoreDraftPatchPreview", undefined, { source });
 }
 
 export function undoLastDraftPatchApply(): BridgeInvocationResult {
-  return invokeBridgeAction("undoLastDraftPatchApply", (bridge) => {
-    bridge.undoLastDraftPatchApply?.();
-  });
-}
-
-export function requestGenerationPlanAsync(): BridgeInvocationResult {
-  return invokeBridgeAction("requestGenerationPlan", (bridge) => {
-    bridge.requestGenerationPlan?.();
-  }, {
-    action: "requestGenerationPlan",
-  });
-}
-
-export function requestGenerationPlanDiscussionAsync(
-  question: string,
-  focusItemId: string | null = null,
-): BridgeInvocationResult {
-  return invokeBridgeAction("requestGenerationPlanDiscussion", (bridge) => {
-    bridge.requestGenerationPlanDiscussion?.(question, focusItemId);
-  }, {
-    action: "requestGenerationPlanDiscussion",
-    question,
-    focusItemId,
-  });
+  return invokeBridgeAction("undoLastDraftPatchApply");
 }
 
 export function requestCodeDraftsAsync(): BridgeInvocationResult {
-  return invokeBridgeAction("requestCodeDrafts", (bridge) => {
-    bridge.requestCodeDrafts?.();
-  });
+  return invokeBridgeAction("requestCodeDrafts");
 }
 
-export const requestQa = requestQaAsync;
 export const retryLastQaRequest = retryLastQaRequestAsync;
-export const requestDiffReview = requestDiffReviewAsync;
-export const requestGraphBeautification = requestGraphBeautificationAsync;
-export const requestGenerationPlan = requestGenerationPlanAsync;
-export const requestGenerationPlanDiscussion = requestGenerationPlanDiscussionAsync;
 export const requestCodeDrafts = requestCodeDraftsAsync;
 
 export function requestCurrentEditorContextGraph(): BridgeInvocationResult {
   traceLinkGraph("api.requestCurrentEditorContextGraph");
-  return invokeBridgeAction("requestCurrentEditorContextGraph", (bridge) => {
-    bridge.requestCurrentEditorContextGraph?.();
-  });
+  return invokeBridgeAction("requestCurrentEditorContextGraph");
 }
 
 export function requestAnalysisDisplayMode(displayMode: AnalysisDisplayMode): BridgeInvocationResult {
-  return invokeBridgeAction("requestAnalysisDisplayMode", (bridge) => {
-    bridge.requestAnalysisDisplayMode?.(displayMode);
-  });
+  return invokeBridgeAction("requestAnalysisDisplayMode", undefined, { displayMode });
 }
 
 export function requestIndexedGraph(request: IndexedGraphPresetRequest): BridgeInvocationResult {
-  return invokeBridgeAction("requestIndexedGraph", (bridge) => {
-    bridge.requestIndexedGraph?.(request);
-  }, {
-    request,
-  });
+  return invokeBridgeAction("requestIndexedGraph", { request }, request);
 }
 
 export function requestArchitectureGraph(options: {
@@ -558,6 +381,32 @@ export function requestClassDiagram(scopeNodeId?: string | null, options: {
   }));
 }
 
+export function requestClassUsages(targetNodeId: string, options: {
+  targetQualifiedName?: string | null;
+  sourceVirtualFileUrl?: string | null;
+  sourcePath?: string | null;
+  maxUsageGroups?: number | null;
+  maxUsageEntries?: number | null;
+  includeImports?: boolean | null;
+  viewport?: IndexedGraphViewportOptions | null;
+} = {}): BridgeInvocationResult {
+  const normalizedTargetNodeId = targetNodeId.trim();
+  return requestIndexedGraph(definedPayload({
+    preset: "CLASS_DIAGRAM",
+    viewport: options.viewport ?? undefined,
+    usage: definedPayload({
+      enabled: true,
+      targetNodeId: normalizedTargetNodeId,
+      targetQualifiedName: options.targetQualifiedName ?? undefined,
+      sourceVirtualFileUrl: options.sourceVirtualFileUrl ?? undefined,
+      sourcePath: options.sourcePath ?? undefined,
+      maxUsageGroups: options.maxUsageGroups ?? undefined,
+      maxUsageEntries: options.maxUsageEntries ?? undefined,
+      includeImports: options.includeImports ?? undefined,
+    }),
+  }));
+}
+
 export function requestReviewGraph(selectedDiffItemIds: string[] = [], options: {
   review?: Partial<IndexedReviewGraphOptions> | null;
   viewport?: IndexedGraphViewportOptions | null;
@@ -575,79 +424,46 @@ export function requestReviewGraph(selectedDiffItemIds: string[] = [], options: 
   }));
 }
 
-export function updateWorkbenchSectionPreference(sectionId: string, expanded: boolean): BridgeInvocationResult {
-  return invokeBridgeAction("updateWorkbenchSectionPreference", (bridge) => {
-    bridge.updateWorkbenchSectionPreference?.(sectionId, expanded);
-  }, {
-    sectionId,
-    expanded,
-  });
-}
-
 export function requestOpenSettings(): BridgeInvocationResult {
-  return invokeBridgeAction("requestOpenSettings", (bridge) => {
-    bridge.requestOpenSettings?.();
-  });
+  return invokeBridgeAction("requestOpenSettings");
 }
 
 export function applyCodeDrafts(): BridgeInvocationResult {
-  return invokeBridgeAction("applyCodeDrafts", (bridge) => {
-    bridge.applyCodeDrafts?.();
-  });
+  return invokeBridgeAction("applyCodeDrafts");
 }
 
 export function applySingleCodeDraft(draftId: string): BridgeInvocationResult {
-  return invokeBridgeAction("applySingleCodeDraft", (bridge) => {
-    bridge.applySingleCodeDraft?.(draftId);
-  });
+  return invokeBridgeAction("applySingleCodeDraft", undefined, { draftId });
 }
 
 export function openCodeDraftNativeDiff(draftId: string): BridgeInvocationResult {
-  return invokeBridgeAction("openCodeDraftNativeDiff", (bridge) => {
-    bridge.openCodeDraftNativeDiff?.(draftId);
-  });
+  return invokeBridgeAction("openCodeDraftNativeDiff", undefined, { draftId });
 }
 
 export function publishNodeSelected(nodeId: string): BridgeInvocationResult {
   traceLinkGraph("api.publishNodeSelected", { nodeId });
-  return invokeBridgeAction("nodeSelected", (bridge) => {
-    bridge.nodeSelected?.(nodeId);
-  });
+  return invokeBridgeAction("nodeSelected", undefined, { nodeId });
 }
 
 export function requestSourceNavigation(nodeId: string): BridgeInvocationResult {
   traceLinkGraph("api.requestSourceNavigation", { nodeId });
-  return invokeBridgeAction("requestSourceNavigation", (bridge) => {
-    bridge.requestSourceNavigation?.(nodeId);
-  });
+  return invokeBridgeAction("requestSourceNavigation", undefined, { nodeId });
 }
 
 export function requestDraftNavigation(targetPath: string): BridgeInvocationResult {
-  return invokeBridgeAction("requestDraftNavigation", (bridge) => {
-    bridge.requestDraftNavigation?.(targetPath);
-  });
+  return invokeBridgeAction("requestDraftNavigation", undefined, { targetPath });
 }
 
 export function requestExpandOverflowNode(nodeId: string): BridgeInvocationResult {
-  return invokeBridgeAction("requestExpandOverflowNode", (bridge) => {
-    bridge.requestExpandOverflowNode?.(nodeId);
-  });
+  return invokeBridgeAction("requestExpandOverflowNode", undefined, { nodeId });
 }
 
 export function requestExpandInvocation(nodeId: string): BridgeInvocationResult {
-  return invokeBridgeAction("requestExpandInvocation", (bridge) => {
-    bridge.requestExpandInvocation?.(nodeId);
-  }, {
-    nodeId,
-  });
+  return invokeBridgeAction("requestExpandInvocation", { nodeId }, { nodeId });
 }
 
 export function requestRemoveInvocationExpansion(expansionId: string): BridgeInvocationResult {
-  return invokeBridgeAction("requestRemoveInvocationExpansion", (bridge) => {
-    bridge.requestRemoveInvocationExpansion?.(expansionId);
-  }, {
-    expansionId,
-  });
+  return invokeBridgeAction("requestRemoveInvocationExpansion", { expansionId }, { expansionId });
 }
 
 export function publishGraphEditScript(script: GraphEditScript): BridgeInvocationResult {
@@ -705,9 +521,7 @@ export function publishGraphEditScript(script: GraphEditScript): BridgeInvocatio
     baseWorkspaceRevision: script.baseWorkspaceRevision,
     operationCount: script.operations.length,
   });
-  return invokeBridgeAction("applyGraphEditScript", (bridge) => {
-    bridge.applyGraphEditScript?.(payload);
-  }, payload);
+  return invokeBridgeAction("applyGraphEditScript", payload, payload);
 }
 
 export function publishLayoutChange(
@@ -720,11 +534,7 @@ export function publishLayoutChange(
   traceLinkGraph("api.publishLayoutChange", {
     nodeIds: positions.map((position) => position.nodeId),
   });
-  invokeBridgeAction("layoutChanged", (bridge) => {
-    bridge.layoutChanged?.({
-      positions,
-    });
-  });
+  invokeBridgeAction("layoutChanged", undefined, { positions });
 }
 
 function buildNodeMetadata(node: LinkGraphNode): Record<string, string> {

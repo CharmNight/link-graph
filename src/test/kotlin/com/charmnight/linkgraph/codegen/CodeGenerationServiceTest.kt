@@ -29,6 +29,7 @@ import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -118,8 +119,82 @@ class CodeGenerationServiceTest {
         val sqlDraft = result.drafts.single { it.targetPath.endsWith("order-draft.sql") }
         assertEquals("sql:insert-order-draft", sqlDraft.sourceNodeId)
         assertNotNull(sqlDraft.content)
-        assertTrue(sqlDraft.content!!.contains("TODO"))
-        assertTrue(sqlDraft.content!!.contains("insert_order_draft"))
+        assertFalse(sqlDraft.content!!.contains("TODO"))
+        assertTrue(sqlDraft.content!!.contains("INSERT INTO order_draft"))
+        assertTrue(sqlDraft.content!!.contains("VALUES"))
+    }
+
+    @Test
+    fun generatesConcreteSqlStatementsForCommonLocalSqlOperations() {
+        val sqlNodes = listOf(
+            GraphNode(
+                id = "sql:insert-order-draft",
+                type = NodeType.SQL,
+                title = "insert_order_draft",
+                inputs = listOf("order_id", "draft_status"),
+                doc = "插入订单草稿记录。",
+            ),
+            GraphNode(
+                id = "sql:select-active-orders",
+                type = NodeType.SQL,
+                title = "select_active_orders",
+                inputs = listOf("status"),
+                doc = "查询可处理订单。",
+            ),
+            GraphNode(
+                id = "sql:update-order-status",
+                type = NodeType.SQL,
+                title = "update_order_status",
+                inputs = listOf("status"),
+                doc = "更新订单状态。",
+            ),
+            GraphNode(
+                id = "sql:delete-expired-session",
+                type = NodeType.SQL,
+                title = "delete_expired_session",
+                doc = "删除过期会话。",
+            ),
+            GraphNode(
+                id = "sql:create-order-audit",
+                type = NodeType.SQL,
+                title = "create_order_audit",
+                doc = "创建订单审计表。",
+            ),
+        )
+        val result = CodeGenerationService().generateDrafts(
+            context = GenerationContext(
+                graph = GraphDocument(nodes = sqlNodes),
+                diff = GraphDiff(
+                    entries = sqlNodes.map { node ->
+                        GraphDiffEntry(
+                            elementKind = GraphDiffElementKind.NODE,
+                            elementId = node.id,
+                            status = DiffStatus.ONLY_IN_MERMAID,
+                        )
+                    },
+                ),
+            ),
+            plan = GenerationPlan(
+                source = GenerationPlanSource.LOCAL_RULE,
+                summary = "Generate concrete SQL statements.",
+            ),
+        )
+
+        val draftByNodeId = result.drafts.associateBy(GeneratedCodeDraft::sourceNodeId)
+        assertEquals(5, draftByNodeId.size)
+        assertTrue(draftByNodeId.getValue("sql:insert-order-draft").content!!.contains("INSERT INTO order_draft (order_id, draft_status)"))
+        assertTrue(draftByNodeId.getValue("sql:insert-order-draft").content!!.contains("VALUES (:order_id, :draft_status);"))
+        assertTrue(draftByNodeId.getValue("sql:select-active-orders").content!!.contains("SELECT *"))
+        assertTrue(draftByNodeId.getValue("sql:select-active-orders").content!!.contains("FROM active_orders"))
+        assertTrue(draftByNodeId.getValue("sql:select-active-orders").content!!.contains("WHERE status = :status;"))
+        assertTrue(draftByNodeId.getValue("sql:update-order-status").content!!.contains("UPDATE order_status"))
+        assertTrue(draftByNodeId.getValue("sql:update-order-status").content!!.contains("SET status = :status"))
+        assertTrue(draftByNodeId.getValue("sql:delete-expired-session").content!!.contains("DELETE FROM expired_session"))
+        assertTrue(draftByNodeId.getValue("sql:create-order-audit").content!!.contains("CREATE TABLE order_audit"))
+        result.drafts.forEach { draft ->
+            assertFalse(draft.content!!.contains("TODO"))
+            assertFalse(draft.content!!.contains("补充"))
+        }
     }
 
     @Test

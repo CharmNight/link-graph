@@ -31,6 +31,11 @@ class ArchitectureIndexPersistentFragmentCache(
                 missing += slice.id
                 return@forEach
             }
+            if (!slice.hasCompleteContentFingerprints()) {
+                misses += 1
+                missing += slice.id
+                return@forEach
+            }
             val fragment = store.read(cacheKeyForSlice(slice))
             if (fragment == null) {
                 misses += 1
@@ -58,4 +63,7 @@ class ArchitectureIndexPersistentFragmentCache(
             missingSliceIds = missing,
         )
     }
+
+    private fun ProjectSlice.hasCompleteContentFingerprints(): Boolean =
+        files.isNotEmpty() && files.all { file -> !file.contentSha256.isNullOrBlank() }
 }

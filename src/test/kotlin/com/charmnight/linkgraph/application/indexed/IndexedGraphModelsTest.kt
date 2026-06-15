@@ -46,6 +46,26 @@ class IndexedGraphModelsTest {
     }
 
     @Test
+    fun usagePresetWithoutScopeMapsTargetToClassAnchor() {
+        val request = IndexedGraphRequestFactory.fromPreset(
+            IndexedGraphPresetRequest(
+                preset = IndexedGraphPreset.CLASS_DIAGRAM,
+                usage = IndexedClassUsageOptions(
+                    enabled = true,
+                    targetNodeId = "jvm:class:com-example-order-service",
+                ),
+            ),
+        )
+
+        assertEquals(IndexedGraphView.CLASS_DIAGRAM, request.view)
+        assertEquals("jvm:class:com-example-order-service", assertIs<IndexedGraphAnchor.ClassId>(request.anchor).nodeId)
+        assertEquals(1, assertIs<IndexedGraphScope.ClassNeighborhood>(request.scope).depth)
+        assertEquals("jvm:class:com-example-order-service", request.classDiagramScopeNodeId())
+        assertTrue(request.usage.enabled)
+        assertEquals("jvm:class:com-example-order-service", request.usage.targetNodeId)
+    }
+
+    @Test
     fun reviewGraphFactoryMapsSelectedDiffItemsToReviewSelection() {
         val request = requestReviewGraphRequest(listOf("diff:a", "diff:b"))
 

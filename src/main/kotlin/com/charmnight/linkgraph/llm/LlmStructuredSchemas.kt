@@ -557,6 +557,7 @@ internal object LlmStructuredSchemas {
         "properties": {
           "stepId": { "type": "string" },
           "title": { "type": "string" },
+          "kind": { "type": "string" },
           "description": { "type": "string" },
           "followUpQuestions": $STRING_ARRAY_SCHEMA,
           "evidence": {
@@ -568,6 +569,7 @@ internal object LlmStructuredSchemas {
         "required": [
           "stepId",
           "title",
+          "kind",
           "description",
           "followUpQuestions",
           "evidence",

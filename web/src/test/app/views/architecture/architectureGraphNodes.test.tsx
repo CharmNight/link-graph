@@ -1,8 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { createNodeSizeRegistry } from "../../../../app/graph/nodeSizeRegistry";
 import {
   ArchitectureNodeCard,
   buildArchitectureGraphEdges,
+  buildArchitectureGraphNodes,
 } from "../../../../app/views/architecture/architectureGraphNodes";
 import type { LinkGraphEdge, LinkGraphNode } from "../../../../app/types";
 
@@ -116,6 +118,30 @@ describe("buildArchitectureGraphEdges", () => {
 });
 
 describe("ArchitectureNodeCard", () => {
+  it("uses theme-aware node backgrounds in the dark graph stage instead of hardcoded light cards", () => {
+    const builtNodes = buildArchitectureGraphNodes({
+      nodes: [
+        architectureNode({ title: "API", nodeType: "LAYER", layerKind: "PROJECT_SOURCE" }),
+        {
+          ...architectureNode({ title: "OrderService", nodeType: "SERVICE", nodeRole: "SERVICE" }),
+          id: "arch:service:order",
+          metadata: {
+            ...architectureNode().metadata,
+            "presentation.role": "ANCHOR",
+          },
+        },
+      ],
+      selectedNodeId: null,
+      nodeSizeRegistry: createNodeSizeRegistry(),
+    });
+
+    for (const node of builtNodes) {
+      const background = String(node.style?.background ?? "");
+      expect(background).toContain("var(--panel");
+      expect(background).not.toMatch(/#(?:f|fff)|rgba\(255/i);
+    }
+  });
+
   it("renders architecture nodes as compact graph marks instead of detail cards", () => {
     render(
       <ArchitectureNodeCard node={architectureNode()} selected={false} />,

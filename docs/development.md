@@ -44,7 +44,7 @@ npm --prefix web run build
 - `frontendBuild`
 - `frontendPackResources`
 
-正常打包链路会把 `web/` 构建产物复制到生成资源目录，再进入插件资源。运行时优先读取打包资源，在开发或测试场景下可以回退到 `web/dist`。
+正常打包链路会把 `web/` 构建产物复制到生成资源目录，再进入插件资源。运行时默认只读取打包后的 `linkgraph/` 资源，不会因为当前工作目录下存在 `web/dist` 而覆盖插件资源。需要调试未打包前端产物时，显式设置 `LINKGRAPH_FRONTEND_DEV_DIST=true` 使用默认 `web/dist`，或把该变量设置为具体 dist 路径；也可以用 JVM 属性 `-Dlinkgraph.frontend.devDist=/path/to/web/dist` 指定目录。
 
 ## 调试建议
 

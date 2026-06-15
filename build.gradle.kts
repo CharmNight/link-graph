@@ -1,6 +1,8 @@
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.Sync
+import java.io.ByteArrayOutputStream
+import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 import javax.xml.transform.OutputKeys
 import javax.xml.transform.TransformerFactory
@@ -117,12 +119,14 @@ val integrationTest by tasks.registering(Test::class) {
 val webDir = layout.projectDirectory.dir("web")
 val webPackageJson = webDir.file("package.json")
 val webPackageLock = webDir.file("package-lock.json")
+val frontendTransportContract = layout.projectDirectory.file("protocol/graph-editor-transport-contract.json")
 val frontendTestMarker = layout.buildDirectory.file("frontend/test/last-success.txt")
 val generatedFrontendResourcesDir = layout.buildDirectory.dir("generated/frontend-resources/main")
 
 val frontendInputs = files(
     webPackageJson,
     webPackageLock,
+    frontendTransportContract,
     webDir.file("vite.config.ts"),
     webDir.file("tsconfig.json"),
     webDir.file("index.html"),
@@ -192,13 +196,284 @@ val runIdeSandboxOptionsFile = layout.buildDirectory.file(
         "idea-sandbox/$platformType-$platformVersion/config/options/other.xml"
     },
 )
+val runIdeSandboxJdkTableFile = layout.buildDirectory.file(
+    providers.zip(
+        providers.gradleProperty("platformType"),
+        providers.gradleProperty("platformVersion"),
+    ) { platformType, platformVersion ->
+        "idea-sandbox/$platformType-$platformVersion/config/options/jdk.table.xml"
+    },
+)
+val runIdeProjectJdkName = providers.gradleProperty("javaVersion").map { "zulu-$it" }
+val runIdeSandboxJavaVersions = providers.gradleProperty("runIdeSandboxJavaVersions")
+    .orElse("11,17,21")
+    .map { versions ->
+        versions
+            .split(',', ';', ' ', '\n', '\t')
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+val runIdeSandboxRootDir = layout.buildDirectory.dir(
+    providers.zip(
+        providers.gradleProperty("platformType"),
+        providers.gradleProperty("platformVersion"),
+    ) { platformType, platformVersion ->
+        "idea-sandbox/$platformType-$platformVersion"
+    },
+)
+
+fun File.toIdeaUrlPath(): String = absolutePath.replace(File.separatorChar, '/')
+
+fun majorJavaVersion(javaVersion: String): String {
+    val normalized = javaVersion.trim().trim('"')
+    return if (normalized.startsWith("1.")) {
+        normalized.substringAfter("1.").substringBefore('.').substringBefore('_')
+    } else {
+        normalized.substringBefore('.').substringBefore('_')
+    }
+}
+
+fun javaVersionFromReleaseFile(jdkHome: File): String {
+    val releaseFile = jdkHome.resolve("release")
+    val releaseVersion = releaseFile
+        .takeIf { it.isFile }
+        ?.readLines()
+        ?.firstOrNull { it.startsWith("JAVA_VERSION=") }
+        ?.substringAfter('=')
+        ?.trim('"')
+        ?.takeIf { it.isNotBlank() }
+
+    return releaseVersion ?: providers.gradleProperty("javaVersion").get()
+}
+
+fun installedJdkHomes(): List<File> {
+    val homes = linkedSetOf<File>()
+
+    listOf(
+        System.getenv("JAVA_HOME").orEmpty(),
+        System.getProperty("java.home").orEmpty(),
+    ).filter { it.isNotBlank() }
+        .map { file(it) }
+        .forEach { homes.add(it) }
+
+    if (System.getProperty("os.name").contains("Mac", ignoreCase = true)) {
+        file("/Library/Java/JavaVirtualMachines")
+            .listFiles()
+            .orEmpty()
+            .map { it.resolve("Contents/Home") }
+            .forEach { homes.add(it) }
+    }
+
+    return homes.filter { it.isDirectory && it.resolve("release").isFile }
+}
+
+fun resolveInstalledJdkHome(javaVersion: String): File? {
+    if (System.getProperty("os.name").contains("Mac", ignoreCase = true)) {
+        val output = ByteArrayOutputStream()
+        val result = exec {
+            commandLine("/usr/libexec/java_home", "-v", javaVersion)
+            standardOutput = output
+            isIgnoreExitValue = true
+        }
+        val detectedHome = output.toString().trim()
+        if (result.exitValue == 0 && detectedHome.isNotBlank()) {
+            return file(detectedHome)
+        }
+    }
+
+    val requestedMajor = majorJavaVersion(javaVersion)
+    return installedJdkHomes().firstOrNull { jdkHome ->
+        majorJavaVersion(javaVersionFromReleaseFile(jdkHome)) == requestedMajor
+    }
+}
+
+fun resolveRunIdeJdkHome(javaVersion: String): File {
+    val configuredHome = providers.gradleProperty("runIdeJdkHome").orNull
+        ?: providers.environmentVariable("RUNIDE_JDK_HOME").orNull
+    if (!configuredHome.isNullOrBlank()) {
+        return file(configuredHome)
+    }
+
+    if (System.getProperty("os.name").contains("Mac", ignoreCase = true)) {
+        val output = ByteArrayOutputStream()
+        val result = exec {
+            commandLine("/usr/libexec/java_home", "-v", javaVersion)
+            standardOutput = output
+            isIgnoreExitValue = true
+        }
+        val detectedHome = output.toString().trim()
+        if (result.exitValue == 0 && detectedHome.isNotBlank()) {
+            return file(detectedHome)
+        }
+    }
+
+    val javaHome = System.getenv("JAVA_HOME").orEmpty()
+    if (javaHome.isNotBlank()) {
+        return file(javaHome)
+    }
+
+    return file(System.getProperty("java.home"))
+}
+
+fun jdkInstallationName(jdkHome: File): String? =
+    jdkHome.parentFile?.parentFile?.name
+        ?.removeSuffix(".jdk")
+        ?.takeIf { it.isNotBlank() && it != "Contents" }
+
+fun runIdeSandboxJdkEntries(): Map<String, File> {
+    val entries = linkedMapOf<String, File>()
+    val pluginJavaVersion = providers.gradleProperty("javaVersion").get()
+    val pluginJdkHome = resolveRunIdeJdkHome(pluginJavaVersion)
+    val requestedMajorVersions = runIdeSandboxJavaVersions.get()
+        .map { majorJavaVersion(it) }
+        .toSet()
+
+    fun addAlias(name: String?, jdkHome: File) {
+        if (!name.isNullOrBlank() && jdkHome.isDirectory) {
+            entries.putIfAbsent(name, jdkHome)
+        }
+    }
+
+    addAlias(runIdeProjectJdkName.get(), pluginJdkHome)
+    addAlias(majorJavaVersion(javaVersionFromReleaseFile(pluginJdkHome)), pluginJdkHome)
+    addAlias(jdkInstallationName(pluginJdkHome), pluginJdkHome)
+
+    runIdeSandboxJavaVersions.get().forEach { javaVersion ->
+        val jdkHome = if (majorJavaVersion(javaVersion) == majorJavaVersion(javaVersionFromReleaseFile(pluginJdkHome))) {
+            pluginJdkHome
+        } else {
+            resolveInstalledJdkHome(javaVersion)
+        }
+
+        if (jdkHome == null) {
+            logger.warn("No installed JDK $javaVersion found for the runIde sandbox SDK table.")
+            return@forEach
+        }
+
+        addAlias(javaVersion, jdkHome)
+        addAlias(majorJavaVersion(javaVersionFromReleaseFile(jdkHome)), jdkHome)
+        addAlias(jdkInstallationName(jdkHome), jdkHome)
+    }
+
+    installedJdkHomes()
+        .filter { jdkHome ->
+            majorJavaVersion(javaVersionFromReleaseFile(jdkHome)) in requestedMajorVersions
+        }
+        .forEach { jdkHome ->
+            addAlias(jdkInstallationName(jdkHome), jdkHome)
+        }
+
+    return entries
+}
+
+fun writeRunIdeJdkTable(jdkTableFile: File, jdkEntries: Map<String, File>) {
+    require(jdkEntries.isNotEmpty()) {
+        "No runIde JDK entries were resolved."
+    }
+
+    val document = DocumentBuilderFactory.newInstance()
+        .newDocumentBuilder()
+        .newDocument()
+    val application = document.createElement("application")
+    val table = document.createElement("component").apply {
+        setAttribute("name", "ProjectJdkTable")
+    }
+
+    fun appendOption(parent: org.w3c.dom.Element, name: String, value: String) {
+        parent.appendChild(document.createElement(name).apply {
+            setAttribute("value", value)
+        })
+    }
+
+    fun appendCompositeRoot(parent: org.w3c.dom.Element, pathElementName: String, urls: Iterable<String>) {
+        val pathElement = document.createElement(pathElementName)
+        val composite = document.createElement("root").apply {
+            setAttribute("type", "composite")
+        }
+        urls.forEach { url ->
+            composite.appendChild(document.createElement("root").apply {
+                setAttribute("url", url)
+                setAttribute("type", "simple")
+            })
+        }
+        pathElement.appendChild(composite)
+        parent.appendChild(pathElement)
+    }
+
+    fun appendJdk(jdkName: String, jdkHome: File) {
+        require(jdkHome.isDirectory) {
+            "runIde JDK home does not exist: ${jdkHome.absolutePath}"
+        }
+
+        val javaVersion = javaVersionFromReleaseFile(jdkHome)
+        val jdk = document.createElement("jdk").apply {
+            setAttribute("version", "2")
+        }
+
+        appendOption(jdk, "name", jdkName)
+        appendOption(jdk, "type", "JavaSDK")
+        appendOption(jdk, "version", "java version \"$javaVersion\"")
+        appendOption(jdk, "homePath", jdkHome.toIdeaUrlPath())
+
+        val roots = document.createElement("roots")
+        appendCompositeRoot(
+            roots,
+            "annotationsPath",
+            listOf("jar://\$APPLICATION_HOME_DIR\$/plugins/java/lib/resources/jdkAnnotations.jar!/")
+        )
+
+        val jmods = jdkHome.resolve("jmods")
+            .listFiles { file -> file.isFile && file.extension == "jmod" }
+            .orEmpty()
+            .map { it.nameWithoutExtension }
+            .sorted()
+        appendCompositeRoot(
+            roots,
+            "classPath",
+            jmods.map { moduleName -> "jrt://${jdkHome.toIdeaUrlPath()}!/$moduleName" }
+        )
+        appendCompositeRoot(roots, "javadocPath", emptyList())
+
+        val sourceZip = jdkHome.resolve("lib/src.zip")
+        val sourceRoots = if (sourceZip.isFile) {
+            jmods.map { moduleName -> "jar://${sourceZip.toIdeaUrlPath()}!/$moduleName" }
+        } else {
+            emptyList()
+        }
+        appendCompositeRoot(roots, "sourcePath", sourceRoots)
+
+        jdk.appendChild(roots)
+        table.appendChild(jdk)
+    }
+
+    jdkEntries.forEach { (jdkName, jdkHome) ->
+        appendJdk(jdkName, jdkHome)
+    }
+    application.appendChild(table)
+    document.appendChild(application)
+
+    jdkTableFile.parentFile.mkdirs()
+    TransformerFactory.newInstance()
+        .newTransformer()
+        .apply {
+            setOutputProperty(OutputKeys.INDENT, "yes")
+        }
+        .transform(DOMSource(document), StreamResult(jdkTableFile))
+}
 
 val sanitizeRunIdeSandbox by tasks.registering {
     group = "intellij platform"
-    description = "Removes stale IDE compatibility metadata that can break the runIde sandbox."
+    description = "Removes stale IDE compatibility and project state that can break the runIde sandbox."
     mustRunAfter(tasks.named("prepareSandbox"))
 
     doLast {
+        val sandboxRoot = runIdeSandboxRootDir.get().asFile
+        delete(
+            sandboxRoot.resolve("config/workspace"),
+            sandboxRoot.resolve("system/projects"),
+        )
+
         val optionsFile = runIdeSandboxOptionsFile.get().asFile
         if (!optionsFile.isFile) {
             return@doLast
@@ -230,10 +505,36 @@ val sanitizeRunIdeSandbox by tasks.registering {
     }
 }
 
+val prepareRunIdeSandboxSdk by tasks.registering {
+    group = "intellij platform"
+    description = "Preconfigures the runIde sandbox with the project Java SDK."
+    dependsOn(tasks.named("prepareSandbox"))
+    dependsOn(sanitizeRunIdeSandbox)
+
+    inputs.property("javaVersion", providers.gradleProperty("javaVersion"))
+    inputs.property("jdkName", runIdeProjectJdkName)
+    inputs.property("sandboxJavaVersions", runIdeSandboxJavaVersions.map { it.joinToString(",") })
+    outputs.file(runIdeSandboxJdkTableFile)
+
+    doLast {
+        val jdkEntries = runIdeSandboxJdkEntries()
+        writeRunIdeJdkTable(
+            jdkTableFile = runIdeSandboxJdkTableFile.get().asFile,
+            jdkEntries = jdkEntries,
+        )
+        logger.lifecycle(
+            "Preconfigured runIde sandbox SDKs: " +
+                jdkEntries.entries.joinToString { (jdkName, jdkHome) -> "$jdkName=${jdkHome.absolutePath}" },
+        )
+    }
+}
+
 tasks {
     runIde {
-        dependsOn(sanitizeRunIdeSandbox)
+        dependsOn(prepareRunIdeSandboxSdk)
         jvmArgs(
+            "-Xms512m",
+            "-Xmx3072m",
             "-Didea.auto.reload.plugins=false",
             "-Dide.no.platform.update=true",
             "-Dgradle.compatibility.update.interval=0",

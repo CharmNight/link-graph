@@ -1,8 +1,13 @@
-import { act, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react/pure";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetEditorTransportForTest } from "../../app/editorTransport";
 import { materializeThreeViewDocuments, type TestBootstrapState } from "../../app/testBootstrapState";
 import type { LinkGraphEdge, LinkGraphNode } from "../../app/types";
+import {
+  expectBridgeCommand,
+  expectNoBridgeCommand,
+  installBridgeCommandSpy,
+} from "./bridgeTestUtils";
 
 vi.mock("../../app/views/fact/FactGraphView", () => ({
   FactGraphView: () => <div data-testid="graph-canvas" />,
@@ -176,33 +181,12 @@ describe("App bootstrap performance", () => {
     window.__linkGraphTraceBuffer = [];
     window.__linkGraphInteractionProbe = false;
     window.linkGraphBootstrap = structuredClone(bootstrapState);
-    window.linkGraphBridge = {
-      importMermaid: vi.fn(),
-      exportMermaid: vi.fn(),
-      showDiffMode: vi.fn(),
-      requestSyncPreview: vi.fn(),
-      requestQa: vi.fn(),
-      requestDiffReview: vi.fn(),
-      applyDraftPatchPreview: vi.fn(),
-      clearDraftPatchPreview: vi.fn(),
-      restoreDraftPatchPreview: vi.fn(),
-      undoLastDraftPatchApply: vi.fn(),
-      requestGenerationPlan: vi.fn(),
-      requestCodeDrafts: vi.fn(),
-      requestCurrentEditorContextGraph: vi.fn(),
-      requestOpenSettings: vi.fn(),
-      applyCodeDrafts: vi.fn(),
-      applySingleCodeDraft: vi.fn(),
-      applyGraphEditScript: vi.fn(),
-      layoutChanged: vi.fn(),
-      nodeSelected: vi.fn(),
-      requestSourceNavigation: vi.fn(),
-      requestDraftNavigation: vi.fn(),
-    };
+    installBridgeCommandSpy();
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    cleanup();
     window.__linkGraphDebugEnabled = false;
     window.__linkGraphTraceBuffer = [];
     window.__linkGraphInteractionProbe = false;
@@ -221,7 +205,7 @@ describe("App bootstrap performance", () => {
       });
     });
 
-    expect(window.linkGraphBridge?.applyGraphEditScript).not.toHaveBeenCalled();
+    expectNoBridgeCommand("applyGraphEditScript");
   });
 
   it("does not treat working-graph-only semantic revisions as visible graph rebuilds", () => {
@@ -263,8 +247,8 @@ describe("App bootstrap performance", () => {
       }));
     });
 
-    expect(window.linkGraphBridge?.applyGraphEditScript).not.toHaveBeenCalled();
-    expect(window.linkGraphBridge?.layoutChanged).not.toHaveBeenCalled();
+    expectNoBridgeCommand("applyGraphEditScript");
+    expectNoBridgeCommand("layoutChanged");
   });
 
   it("does not re-run semantic normalization when bootstrap only advances layout revision", () => {
@@ -312,7 +296,7 @@ describe("App bootstrap performance", () => {
       }));
     });
 
-    expect(window.linkGraphBridge?.applyGraphEditScript).not.toHaveBeenCalled();
+    expectNoBridgeCommand("applyGraphEditScript");
   });
 
   it("does not read semantic metadata when revisions show only a feedback refresh", () => {
@@ -376,10 +360,12 @@ describe("App bootstrap performance", () => {
     act(() => {
       vi.advanceTimersByTime(260);
     });
-
-    expect(window.linkGraphBridge?.requestSourceNavigation).toHaveBeenCalledWith("method:dense-0");
-
     vi.useRealTimers();
+
+    expectBridgeCommand("requestSourceNavigation", {
+      nodeId: "method:dense-0",
+    });
+
     window.__linkGraphInteractionProbe = false;
   }, 15000);
 
@@ -421,6 +407,7 @@ describe("App bootstrap performance", () => {
     act(() => {
       vi.runAllTimers();
     });
+    vi.useRealTimers();
 
     expect(
       window.__linkGraphTraceBuffer?.some((entry) => entry.includes("probe.app.sourceNavigation.completed")),

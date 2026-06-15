@@ -69,6 +69,20 @@ function graphStageDescription(mode: AnalysisDisplayMode, stage: WorkflowStage):
   if (mode === "REVIEW_GRAPH") {
     return "当前用于核对变更影响、上下游证据和可追溯测试。";
   }
+  if (mode === "CLASS_DIAGRAM") {
+    switch (stage) {
+      case "understand":
+        return "当前展示类、字段、构造参数、返回值和类型依赖关系。";
+      case "evidence":
+        return "当前用于核对类图结构证据和关系缺口。";
+      case "qa":
+        return "当前问答范围会绑定选中类图节点和相关结构关系。";
+      case "draft":
+        return "当前突出显示结构建议影响节点和差异。";
+      case "code":
+        return "当前用于核对实现 diff 对类结构的影响。";
+    }
+  }
   switch (stage) {
     case "understand":
       return "当前展示链路结构、入口和主路径。";

@@ -2,8 +2,6 @@ package com.charmnight.linkgraph.application.command
 
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
 import com.charmnight.linkgraph.application.indexed.requestReviewGraphRequest
-import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
-import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
 import com.charmnight.linkgraph.application.workflow.ConfirmedDraftChangeCoordinator
 import com.charmnight.linkgraph.application.workflow.DraftPatchWorkflow
 import com.charmnight.linkgraph.application.workflow.GraphWorkspaceWorkflow
@@ -20,8 +18,11 @@ import com.charmnight.linkgraph.application.workflow.generation.CodeDraftGenerat
 import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanDiscussionWorkflow
 import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanWorkflow
 import com.charmnight.linkgraph.application.workflow.review.ReviewGraphWorkflow
+import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
+import com.charmnight.linkgraph.workbench.AssistantActionId
 import com.charmnight.linkgraph.workbench.AssistantIntent
 import com.charmnight.linkgraph.workbench.QaMode
+import com.charmnight.linkgraph.workbench.StepGranularity
 
 internal interface ApplicationCommandHandler {
     fun canHandle(command: ApplicationCommand<*>): Boolean
@@ -29,22 +30,32 @@ internal interface ApplicationCommandHandler {
 }
 
 internal interface AssistantTaskExecutor {
-    fun requestGraphBeautification(
+    fun executeExplanation(
         goal: String,
         focusNodeId: String?,
+        followUp: GraphBeautificationFollowUpContext?,
+        granularity: StepGranularity,
+        intent: AssistantIntent,
+        actionId: AssistantActionId,
     )
 
-    fun requestQa(
+    fun executeQa(
         question: String,
         selectedNodeIds: List<String>,
+        sourceThreadId: String?,
         mode: QaMode,
     )
 
-    fun requestGenerationPlan(userGoal: String)
+    fun executeGenerationPlan(userGoal: String)
 
-    fun requestReviewGraph(selectedDiffItemIds: List<String>)
+    fun executeGenerationDiscussion(
+        question: String,
+        focusItemId: String?,
+    )
 
-    fun requestDiffReview(
+    fun executeReviewGraph(selectedDiffItemIds: List<String>)
+
+    fun executeDiffReview(
         question: String,
         selectedDiffItemIds: List<String>,
     )
@@ -54,38 +65,56 @@ internal class WorkflowAssistantTaskExecutor(
     private val reviewFlow: ReviewWorkflow,
     private val reviewGraphFlow: ReviewGraphWorkflow,
     private val generationPlanFlow: GenerationPlanWorkflow,
+    private val generationDiscussionFlow: GenerationPlanDiscussionWorkflow,
 ) : AssistantTaskExecutor {
-    override fun requestGraphBeautification(
+    override fun executeExplanation(
         goal: String,
         focusNodeId: String?,
+        followUp: GraphBeautificationFollowUpContext?,
+        granularity: StepGranularity,
+        intent: AssistantIntent,
+        actionId: AssistantActionId,
     ) {
         reviewFlow.requestGraphBeautificationAsync(
             goal = goal,
             focusNodeId = focusNodeId,
+            followUp = followUp,
+            granularity = granularity,
+            assistantIntent = intent,
+            assistantActionId = actionId,
         )
     }
 
-    override fun requestQa(
+    override fun executeQa(
         question: String,
         selectedNodeIds: List<String>,
+        sourceThreadId: String?,
         mode: QaMode,
     ) {
         reviewFlow.requestQaAsync(
             question = question,
             selectedNodeIds = selectedNodeIds,
+            sourceThreadId = sourceThreadId,
             mode = mode,
         )
     }
 
-    override fun requestGenerationPlan(userGoal: String) {
+    override fun executeGenerationPlan(userGoal: String) {
         generationPlanFlow.requestGenerationPlanAsync(userGoal)
     }
 
-    override fun requestReviewGraph(selectedDiffItemIds: List<String>) {
+    override fun executeGenerationDiscussion(
+        question: String,
+        focusItemId: String?,
+    ) {
+        generationDiscussionFlow.requestGenerationPlanDiscussionAsync(question, focusItemId)
+    }
+
+    override fun executeReviewGraph(selectedDiffItemIds: List<String>) {
         reviewGraphFlow.requestIndexedGraph(requestReviewGraphRequest(selectedDiffItemIds))
     }
 
-    override fun requestDiffReview(
+    override fun executeDiffReview(
         question: String,
         selectedDiffItemIds: List<String>,
     ) {
@@ -94,43 +123,18 @@ internal class WorkflowAssistantTaskExecutor(
 }
 
 internal class AssistantApplicationCommandHandler(
-    private val executor: AssistantTaskExecutor,
+    private val router: AssistantWorkflowRouter,
 ) : ApplicationCommandHandler {
+    constructor(executor: AssistantTaskExecutor) : this(AssistantWorkflowRouter(executor))
+
     override fun canHandle(command: ApplicationCommand<*>): Boolean =
         command is ApplicationCommand.RequestAssistantTask
 
     override fun handle(command: ApplicationCommand<*>): Any? =
         when (command) {
-            is ApplicationCommand.RequestAssistantTask -> handleAssistantTask(command)
+            is ApplicationCommand.RequestAssistantTask -> router.route(command)
             else -> unhandled(command)
         }
-
-    private fun handleAssistantTask(command: ApplicationCommand.RequestAssistantTask) {
-        val prompt = command.prompt.trim()
-        when (command.intent) {
-            AssistantIntent.EXPLAIN_CODE -> executor.requestGraphBeautification(
-                goal = prompt,
-                focusNodeId = command.selectedNodeIds.firstOrNull(),
-            )
-            AssistantIntent.ASK_CODE -> executor.requestQa(
-                question = prompt,
-                selectedNodeIds = command.selectedNodeIds,
-                mode = QaMode.AUTO,
-            )
-            AssistantIntent.GENERATE_CODE -> executor.requestGenerationPlan(prompt)
-            AssistantIntent.CHECK_CHANGE -> {
-                executor.requestReviewGraph(command.selectedDiffItemIds)
-                executor.requestDiffReview(
-                    question = prompt.ifBlank { DEFAULT_CHECK_CHANGE_PROMPT },
-                    selectedDiffItemIds = command.selectedDiffItemIds,
-                )
-            }
-        }
-    }
-
-    private companion object {
-        const val DEFAULT_CHECK_CHANGE_PROMPT: String = "请检查当前改动的风险、影响范围和相关测试。"
-    }
 }
 
 internal class SubjectApplicationCommandHandler(
@@ -183,7 +187,6 @@ internal class IndexedGraphApplicationCommandHandler(
 internal class WorkspaceApplicationCommandHandler(
     private val workspaceFlow: GraphWorkspaceWorkflow,
     private val workspaceChangeCoordinator: WorkspaceChangeCoordinator,
-    private val eventSink: GraphEditorApplicationEventSink,
 ) : ApplicationCommandHandler {
     override fun canHandle(command: ApplicationCommand<*>): Boolean =
         command is ApplicationCommand.LoadGraph ||
@@ -192,7 +195,6 @@ internal class WorkspaceApplicationCommandHandler(
             command is ApplicationCommand.ShowDiffMode ||
             command is ApplicationCommand.ApplyGraphEditScript ||
             command is ApplicationCommand.LayoutChanged ||
-            command is ApplicationCommand.UpdateWorkbenchSectionPreference ||
             command is ApplicationCommand.RequestSyncPreview
 
     override fun handle(command: ApplicationCommand<*>): Any? =
@@ -214,8 +216,6 @@ internal class WorkspaceApplicationCommandHandler(
             }
             is ApplicationCommand.LayoutChanged ->
                 workspaceFlow.handleFrontendLayoutChanged(command.positions)
-            is ApplicationCommand.UpdateWorkbenchSectionPreference ->
-                eventSink.emit(GraphEditorApplicationEvent.WorkbenchSectionPreferencesChanged(command.preferences))
             ApplicationCommand.RequestSyncPreview -> workspaceFlow.requestSyncPreview()
             else -> unhandled(command)
         }
@@ -248,37 +248,16 @@ internal class ReviewApplicationCommandHandler(
     private val reviewFlow: ReviewWorkflow,
 ) : ApplicationCommandHandler {
     override fun canHandle(command: ApplicationCommand<*>): Boolean =
-        command is ApplicationCommand.RequestQa ||
-            command is ApplicationCommand.RetryLastQaRequest ||
-            command is ApplicationCommand.ResolveInvestigationThread ||
-            command is ApplicationCommand.RequestDiffReview ||
-            command is ApplicationCommand.RequestGraphBeautification
+        command is ApplicationCommand.RetryLastQaRequest ||
+            command is ApplicationCommand.ResolveInvestigationThread
 
     override fun handle(command: ApplicationCommand<*>): Any? =
         when (command) {
-            is ApplicationCommand.RequestQa -> reviewFlow.requestQaAsync(
-                question = command.question,
-                selectedNodeIds = command.selectedNodeIds,
-                sourceThreadId = command.sourceThreadId,
-                mode = command.mode,
-            )
             ApplicationCommand.RetryLastQaRequest -> reviewFlow.retryLastQaRequestAsync()
             is ApplicationCommand.ResolveInvestigationThread -> reviewFlow.resolveInvestigationThread(
                 threadId = command.threadId,
                 status = command.status,
                 note = command.note,
-            )
-            is ApplicationCommand.RequestDiffReview -> reviewFlow.requestDiffReviewAsync(
-                question = command.question,
-                selectedDiffItemIds = command.selectedDiffItemIds,
-            )
-            is ApplicationCommand.RequestGraphBeautification -> reviewFlow.requestGraphBeautificationAsync(
-                goal = command.goal,
-                preferredStyle = command.preferredStyle,
-                explanationFocus = command.explanationFocus,
-                focusNodeId = command.focusNodeId,
-                followUp = command.followUp,
-                granularity = command.granularity,
             )
             else -> unhandled(command)
         }
@@ -322,9 +301,7 @@ internal class GenerationApplicationCommandHandler(
     private val openCodeDraftNativeDiffOverrideProvider: () -> ((String) -> Unit)? = { null },
 ) : ApplicationCommandHandler {
     override fun canHandle(command: ApplicationCommand<*>): Boolean =
-        command is ApplicationCommand.RequestGenerationPlan ||
-            command is ApplicationCommand.RequestGenerationPlanDiscussion ||
-            command is ApplicationCommand.RequestCodeDrafts ||
+        command is ApplicationCommand.RequestCodeDrafts ||
             command is ApplicationCommand.ApplyCodeDrafts ||
             command is ApplicationCommand.ApplySingleCodeDraft ||
             command is ApplicationCommand.OpenCodeDraftNativeDiff ||
@@ -332,10 +309,6 @@ internal class GenerationApplicationCommandHandler(
 
     override fun handle(command: ApplicationCommand<*>): Any? =
         when (command) {
-            ApplicationCommand.RequestGenerationPlan ->
-                generationPlanFlow.requestGenerationPlanAsync()
-            is ApplicationCommand.RequestGenerationPlanDiscussion ->
-                generationDiscussionFlow.requestGenerationPlanDiscussionAsync(command.question, command.focusItemId)
             ApplicationCommand.RequestCodeDrafts ->
                 codeDraftGenerationFlow.requestCodeDraftsAsync()
             ApplicationCommand.ApplyCodeDrafts ->

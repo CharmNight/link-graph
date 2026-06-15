@@ -5,15 +5,15 @@ import com.charmnight.linkgraph.application.model.DraftPatchPreviewSource
 import com.charmnight.linkgraph.application.model.GraphEditScript
 import com.charmnight.linkgraph.application.model.GraphLayoutPosition
 import com.charmnight.linkgraph.diff.GraphDifferResult
-import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.subject.SubjectPreviewKind
 import com.charmnight.linkgraph.sync.SyncPreviewItem
+import com.charmnight.linkgraph.workbench.AssistantComposerTarget
+import com.charmnight.linkgraph.workbench.AssistantActionId
 import com.charmnight.linkgraph.workbench.AssistantIntent
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
-import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.RiskResolutionStatus
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.intellij.openapi.editor.Editor
@@ -62,10 +62,6 @@ internal sealed interface ApplicationCommand<out R> {
         val positions: Map<String, GraphLayoutPosition>,
     ) : ApplicationCommand<Unit>
 
-    data class UpdateWorkbenchSectionPreference(
-        val preferences: Map<String, Boolean>,
-    ) : ApplicationCommand<Unit>
-
     data object RequestSyncPreview : ApplicationCommand<List<SyncPreviewItem>>
 
     data class RequestSourceNavigation(
@@ -82,18 +78,15 @@ internal sealed interface ApplicationCommand<out R> {
 
     data object OpenSettings : ApplicationCommand<Unit>
 
-    data class RequestQa(
-        val question: String,
-        val selectedNodeIds: List<String> = emptyList(),
-        val sourceThreadId: String? = null,
-        val mode: QaMode = QaMode.AUTO,
-    ) : ApplicationCommand<Unit>
-
     data class RequestAssistantTask(
-        val intent: AssistantIntent,
+        val actionId: AssistantActionId,
+        val intent: AssistantIntent = actionId.toIntent(),
+        val sceneId: String? = null,
         val prompt: String,
         val selectedNodeIds: List<String> = emptyList(),
         val selectedDiffItemIds: List<String> = emptyList(),
+        val target: AssistantComposerTarget = AssistantComposerTarget.NewTask,
+        val explanationGranularity: StepGranularity = StepGranularity.BUSINESS,
     ) : ApplicationCommand<Unit>
 
     data object RetryLastQaRequest : ApplicationCommand<Unit>
@@ -102,20 +95,6 @@ internal sealed interface ApplicationCommand<out R> {
         val threadId: String,
         val status: RiskResolutionStatus,
         val note: String = "",
-    ) : ApplicationCommand<Unit>
-
-    data class RequestDiffReview(
-        val question: String,
-        val selectedDiffItemIds: List<String> = emptyList(),
-    ) : ApplicationCommand<Unit>
-
-    data class RequestGraphBeautification(
-        val goal: String = "",
-        val preferredStyle: String? = null,
-        val explanationFocus: String? = null,
-        val focusNodeId: String? = null,
-        val followUp: GraphBeautificationFollowUpContext? = null,
-        val granularity: StepGranularity = StepGranularity.BUSINESS,
     ) : ApplicationCommand<Unit>
 
     data class ConfirmQaCandidateChange(
@@ -137,13 +116,6 @@ internal sealed interface ApplicationCommand<out R> {
     ) : ApplicationCommand<GraphPatch?>
 
     data object UndoLastDraftPatchApply : ApplicationCommand<GraphDocument?>
-
-    data object RequestGenerationPlan : ApplicationCommand<Unit>
-
-    data class RequestGenerationPlanDiscussion(
-        val question: String,
-        val focusItemId: String? = null,
-    ) : ApplicationCommand<Unit>
 
     data object RequestCodeDrafts : ApplicationCommand<Unit>
 

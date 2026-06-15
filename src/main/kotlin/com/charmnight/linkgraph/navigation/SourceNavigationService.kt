@@ -3,6 +3,7 @@ package com.charmnight.linkgraph.navigation
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.SourceNavigationAnchors
+import com.charmnight.linkgraph.model.sourceLocation
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.components.Service
@@ -51,14 +52,15 @@ class SourceNavigationService(
         if (locationTarget != null) {
             return locationTarget
         }
-        node.metadata["source.virtualFileUrl"]
+        val sourceLocation = node.sourceLocation()
+        sourceLocation.virtualFileUrl
             ?.trim()
             ?.takeIf(String::isNotEmpty)
             ?.let { url ->
                 return NavigationTarget(
-                    filePath = node.metadata["source.filePath"] ?: node.location.orEmpty(),
-                    line = node.metadata["source.startLine"]?.toIntOrNull() ?: 1,
-                    column = node.metadata["source.column"]?.toIntOrNull() ?: 1,
+                    filePath = sourceLocation.filePath ?: node.location.orEmpty(),
+                    line = sourceLocation.startLine ?: 1,
+                    column = sourceLocation.column ?: 1,
                     virtualFileUrl = url,
                 )
             }

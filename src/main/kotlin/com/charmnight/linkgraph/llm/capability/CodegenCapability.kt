@@ -32,7 +32,6 @@ import com.charmnight.linkgraph.llm.tools.CodeReadToolFacade
 import com.charmnight.linkgraph.llm.tools.DraftToolFacade
 import com.charmnight.linkgraph.llm.tools.GetConfirmedIntentTool
 import com.charmnight.linkgraph.llm.tools.ReadSourceSnippetTool
-import com.charmnight.linkgraph.llm.tools.ToolExecutionContext
 import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshot
 import com.charmnight.linkgraph.llm.tools.ValidateEditScopeTool
 import com.charmnight.linkgraph.llm.tools.ValidationToolFacade
@@ -114,10 +113,8 @@ internal class CodegenCapability(
         )
         val result = toolRegistry.require("get_confirmed_intent").invoke(
             input = emptyMap(),
-            context = ToolExecutionContext(
-                project = runtimeContext.project,
+            context = runtimeContext.toolExecutionContext(
                 snapshot = snapshot,
-                artifactStore = runtimeContext.artifactStore,
                 runBudget = state.budget,
             ),
         )
@@ -240,10 +237,8 @@ internal class CodegenCapability(
                         "startLine" to scope.startLine,
                         "endLine" to scope.endLine,
                     ),
-                    context = ToolExecutionContext(
-                        project = runtimeContext.project,
+                    context = runtimeContext.toolExecutionContext(
                         snapshot = snapshot,
-                        artifactStore = runtimeContext.artifactStore,
                         runBudget = nextBudget,
                     ),
                 )
@@ -347,20 +342,16 @@ internal class CodegenCapability(
             val invalidDraft = result.drafts.firstOrNull { draft ->
                 !(toolRegistry.require("validate_edit_scope").invoke(
                     input = mapOf("draft" to draft),
-                    context = ToolExecutionContext(
-                        project = runtimeContext.project,
+                    context = runtimeContext.toolExecutionContext(
                         snapshot = runtimeContext.snapshotSupplier() ?: ToolGraphSnapshot(),
-                        artifactStore = runtimeContext.artifactStore,
                         runBudget = state.budget,
                     ),
                 ).payload["valid"] as? Boolean ?: false) ||
                     !validationToolFacade.hasReadEvidence(draft, evidenceArtifacts, runtimeContext.project.basePath) ||
                     !(toolRegistry.require("check_writable_draft").invoke(
                         input = mapOf("draft" to draft),
-                        context = ToolExecutionContext(
-                            project = runtimeContext.project,
+                        context = runtimeContext.toolExecutionContext(
                             snapshot = runtimeContext.snapshotSupplier() ?: ToolGraphSnapshot(),
-                            artifactStore = runtimeContext.artifactStore,
                             runBudget = state.budget,
                         ),
                     ).payload["writable"] as? Boolean ?: false)
@@ -434,10 +425,8 @@ internal class CodegenCapability(
         evidenceArtifacts: List<CodeEvidenceArtifact>,
     ): AgentStepExecutionResult.Fail? {
         val snapshot = runtimeContext.snapshotSupplier() ?: ToolGraphSnapshot()
-        val context = ToolExecutionContext(
-            project = runtimeContext.project,
+        val context = runtimeContext.toolExecutionContext(
             snapshot = snapshot,
-            artifactStore = runtimeContext.artifactStore,
             runBudget = state.budget,
         )
         confirmedChanges

@@ -36,8 +36,10 @@ import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.model.GraphSourceLocation
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.SourceNavigationAnchors
+import com.charmnight.linkgraph.model.putSourceLocation
 import com.charmnight.linkgraph.projection.graphProjectionHiddenCounts
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 
@@ -462,12 +464,16 @@ class ArchitectureGraphProjector(
                 if (memberResourceIds.isNotEmpty()) {
                     put("architecture.memberResourceIds", memberResourceIds.joinToString(","))
                 }
-                source?.displayPath?.let { put("source.filePath", it) }
-                source?.virtualFileUrl?.let { put("source.virtualFileUrl", it) }
-                source?.startLine?.let { put("source.startLine", it.toString()) }
-                source?.endLine?.let { put("source.endLine", it.toString()) }
-                index.symbolIndex.symbolsById[id]?.origin?.let { origin -> put("source.origin", origin.name) }
-                put("source.decompiled", (source?.decompiled ?: false).toString())
+                putSourceLocation(
+                    GraphSourceLocation(
+                        filePath = source?.displayPath,
+                        virtualFileUrl = source?.virtualFileUrl,
+                        startLine = source?.startLine,
+                        endLine = source?.endLine,
+                        origin = index.symbolIndex.symbolsById[id]?.origin?.name,
+                        decompiled = source?.decompiled ?: false,
+                    ),
+                )
                 putAll(structureDisplayMetadata(index, displayLayer, displayContext, id in supportNodeIds, id in relationBackedNodeIds))
                 putAll(architectureSourceSampleMetadata(index))
                 putAll(indexedNodeMetadata(index, request.scopeKind()))

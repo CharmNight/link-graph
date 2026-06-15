@@ -6,11 +6,10 @@ import {
   requestPackageDependencyGraph,
   requestCodeDraftsAsync,
   requestClassDiagram,
+  requestClassUsages,
   requestDraftNavigation,
   requestExpandOverflowNode,
   requestExpandInvocation,
-  requestGenerationPlanAsync,
-  requestGenerationPlanDiscussionAsync,
   requestRemoveInvocationExpansion,
   requestOpenSettings,
   requestReviewGraph,
@@ -81,6 +80,20 @@ export function useWorkbenchCommandController({
     bridgeCommands.runBridgeCommand("加载类图", () => requestClassDiagram(scopeNodeId ?? null, { classDiagram }));
   }
 
+  function handleRequestClassUsages(
+    targetNodeId: string,
+    options: {
+      targetQualifiedName?: string | null;
+      sourceVirtualFileUrl?: string | null;
+      sourcePath?: string | null;
+      maxUsageGroups?: number | null;
+      maxUsageEntries?: number | null;
+      includeImports?: boolean | null;
+    } = {},
+  ) {
+    bridgeCommands.runBridgeCommand("查找类使用处", () => requestClassUsages(targetNodeId, options));
+  }
+
   function handleRequestPackageDependencyGraph(
     packageName?: string | null,
     options: { includeExternalLibraries?: boolean; includeJdk?: boolean } = {},
@@ -121,15 +134,6 @@ export function useWorkbenchCommandController({
     bridgeCommands.runBridgeCommand("同步预览", () => requestSyncPreview());
   }
 
-  function handleRequestGenerationPlan() {
-    bridgeCommands.submitAsyncBridgeCommand("实现计划", () => requestGenerationPlanAsync(), {
-      successFeedback: {
-        level: "INFO",
-        message: "已请求生成实现建议。",
-      },
-    });
-  }
-
   function handleRequestCodeDrafts() {
     bridgeCommands.submitAsyncBridgeCommand("代码草稿", () => requestCodeDraftsAsync(), {
       successFeedback: {
@@ -137,19 +141,6 @@ export function useWorkbenchCommandController({
         message: "已请求生成代码 diff。",
       },
     });
-  }
-
-  function handleRequestGenerationPlanDiscussion(question: string, focusItemId?: string | null) {
-    bridgeCommands.submitAsyncBridgeCommand(
-      "实现建议追问",
-      () => requestGenerationPlanDiscussionAsync(question, focusItemId),
-      {
-        successFeedback: {
-          level: "INFO",
-          message: "已提交实现建议追问。",
-        },
-      },
-    );
   }
 
   function handleOpenSettings() {
@@ -201,13 +192,12 @@ export function useWorkbenchCommandController({
     handleRequestArchitectureGraph,
     handleRequestClassDiagram,
     handleRequestClassDiagramWithOptions,
+    handleRequestClassUsages,
     handleRequestPackageDependencyGraph,
     handleRequestReviewGraphWithOptions,
     handleExportMermaid,
     handleShowDiffMode,
     handleRequestSyncPreview,
-    handleRequestGenerationPlan,
-    handleRequestGenerationPlanDiscussion,
     handleRequestCodeDrafts,
     handleOpenSettings,
     handleWriteDrafts,

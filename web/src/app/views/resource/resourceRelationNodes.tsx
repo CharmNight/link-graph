@@ -1,9 +1,8 @@
-import { useLayoutEffect, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 import {
   Handle,
   MarkerType,
   Position,
-  useUpdateNodeInternals,
   type Edge,
   type Node,
   type NodeProps,
@@ -15,7 +14,9 @@ import type { DraftCompareStatus, GraphProjectionIndex, LinkGraphEdge, LinkGraph
 import { edgeTypeLabel } from "../../labels";
 import { ResourceRelationNodeCard } from "../../components/graph/nodes/ResourceRelationNodeCard";
 import { canEditNodeLayout } from "../../layoutEditability";
+import { reactFlowNodeInternalsSignature } from "../../reactflow/nodeInternalsSignature";
 import type { RoutedEdgeData } from "../../reactflow/RoutedEdge";
+import { useStableNodeInternalsUpdate } from "../../reactflow/useStableNodeInternalsUpdate";
 import { resolveGraphNodeHighlightClassName } from "../graphNodeHighlights";
 import {
   draftCompareEdgeClassName,
@@ -69,12 +70,12 @@ function resourceHandleStyle(isConnectable: boolean): CSSProperties {
 }
 
 function ResourceRelationReactNode({ id, data, selected, isConnectable }: ResourceRelationFlowNodeProps) {
-  const updateNodeInternals = useUpdateNodeInternals();
   const handleStyle = resourceHandleStyle(isConnectable);
-
-  useLayoutEffect(() => {
-    updateNodeInternals(id);
-  }, [data.node, id, isConnectable, selected, updateNodeInternals]);
+  const nodeInternalsSignature = [
+    reactFlowNodeInternalsSignature(data.node),
+    String(isConnectable),
+  ].join("\u0001");
+  useStableNodeInternalsUpdate(id, nodeInternalsSignature);
 
   return (
     <div className={["resource-relation-react-node", isConnectable ? "is-connectable" : ""].join(" ").trim()}>
@@ -101,7 +102,7 @@ function resourceNodeStyle(node: LinkGraphNode) {
     width: nodeCardWidth(node),
     borderRadius: 18,
     border: "1px solid rgba(44, 32, 22, 0.18)",
-    background: "#fffdf8",
+    background: "var(--panel)",
     boxShadow: "0 4px 14px rgba(49, 33, 20, 0.06)",
     padding: 0,
   };

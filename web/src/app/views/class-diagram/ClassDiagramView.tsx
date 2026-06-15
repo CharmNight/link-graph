@@ -20,9 +20,19 @@ import {
 import {
   classDiagramRelationDisplayLabel,
 } from "./classDiagramRelations";
+import { ClassUsagePanel } from "./ClassUsagePanel";
 
 interface ClassDiagramViewProps extends IndexedReadonlyStageProps {
   view: ClassDiagramViewDocument;
+}
+
+interface ClassUsageRequestOptions {
+  targetQualifiedName?: string | null;
+  sourceVirtualFileUrl?: string | null;
+  sourcePath?: string | null;
+  maxUsageGroups?: number | null;
+  maxUsageEntries?: number | null;
+  includeImports?: boolean | null;
 }
 
 function filterVisibleClassDiagramEdges(
@@ -68,16 +78,39 @@ function nodeMatchesClassDiagramQuery(node: LinkGraphNode, query: string): boole
   ].some((value) => value?.toLowerCase().includes(normalized));
 }
 
+function canRequestClassUsagesForNode(node: LinkGraphNode | null): boolean {
+  if (!node) {
+    return false;
+  }
+  return ["CLASS", "INTERFACE", "ENUM", "ANNOTATION", "RECORD", "OBJECT"].includes(node.type);
+}
+
+function classUsageRequestOptionsForNode(node: LinkGraphNode | null): ClassUsageRequestOptions {
+  if (!node) {
+    return {};
+  }
+  return {
+    targetQualifiedName: node.metadata?.["architecture.qualifiedName"]
+      ?? node.metadata?.["class.qualifiedName"]
+      ?? node.signature
+      ?? null,
+    sourceVirtualFileUrl: node.metadata?.["source.virtualFileUrl"] ?? null,
+    sourcePath: node.metadata?.["source.filePath"] ?? node.location ?? null,
+  };
+}
+
 function classDiagramNodeActions(args: {
   nodeId: string;
   node: LinkGraphNode | null;
   canOpenSource: boolean;
+  canRequestClassUsages: boolean;
   collapsed: boolean;
   onInspectNode: (nodeId: string) => void;
   onRequestSourceNavigation: (nodeId: string) => void;
   onRequestBeautification: (selectedNodeId?: string) => void;
-  onRequestQa: (selectedNodeId?: string) => void;
+  onPrimeQuestionComposer: (selectedNodeId?: string) => void;
   onRequestClassDiagram: (scopeNodeId?: string | null) => void;
+  onRequestClassUsages: (targetNodeId: string, options?: ClassUsageRequestOptions) => void;
   onOpenQa: (selectedNodeId?: string) => void;
   onToggleCollapseNode: (nodeId: string) => void;
   onFormatLayout: () => void;
@@ -111,6 +144,16 @@ function classDiagramNodeActions(args: {
       },
     });
   }
+  if (args.canRequestClassUsages) {
+    actions.push({
+      id: "find-class-usages",
+      label: "查找使用处",
+      onSelect: () => {
+        args.onRequestClassUsages(args.nodeId, classUsageRequestOptionsForNode(args.node));
+        args.onClose();
+      },
+    });
+  }
   actions.push(
     {
       id: "open-class-diagram-anchor",
@@ -132,7 +175,7 @@ function classDiagramNodeActions(args: {
       id: "qa-node",
       label: "问答当前节点",
       onSelect: () => {
-        args.onRequestQa(args.nodeId);
+        args.onPrimeQuestionComposer(args.nodeId);
         args.onClose();
       },
     },
@@ -175,9 +218,10 @@ export function ClassDiagramView({
   onMoveNodes,
   onRequestSourceNavigation,
   onRequestBeautification = () => undefined,
-  onRequestQa = () => undefined,
+  onPrimeQuestionComposer = () => undefined,
   onRequestClassDiagram = () => undefined,
   onRequestClassDiagramWithOptions = () => undefined,
+  onRequestClassUsages = () => undefined,
   onToggleCollapseNode = () => undefined,
   onOpenQa = () => undefined,
 }: ClassDiagramViewProps) {
@@ -236,6 +280,11 @@ export function ClassDiagramView({
   );
   const isLayoutLoading = layoutState.layoutPending && layoutGraph.nodes.length > 0 && layoutState.nodes.length === 0;
   const nodeIndex = useMemo(() => new Map(visibleNodes.map((node) => [node.id, node])), [visibleNodes]);
+  const selectedUsageNodeId = useMemo(() => {
+    const selectedNode = selectedNodeId ? nodeIndex.get(selectedNodeId) ?? null : null;
+    return canRequestClassUsagesForNode(selectedNode) ? selectedNode?.id ?? null : null;
+  }, [nodeIndex, selectedNodeId]);
+  const selectedUsageNode = selectedUsageNodeId ? nodeIndex.get(selectedUsageNodeId) ?? null : null;
   const visibleTypeCount = baseGraph.nodes.length;
   const neighborhoodLimit = view.summary.neighborhoodLimit;
   const memberLimit = view.summary.memberLimit ?? 5;
@@ -285,6 +334,19 @@ export function ClassDiagramView({
     });
   }
 
+  function requestMoreClassUsages() {
+    const summary = view.usage?.summary;
+    if (!summary || !summary.canRequestMore) {
+      return;
+    }
+    onRequestClassUsages(summary.targetNodeId, {
+      targetQualifiedName: summary.targetQualifiedName,
+      maxUsageGroups: summary.maxUsageGroups + 50,
+      maxUsageEntries: summary.maxUsageEntries + 200,
+      includeImports: summary.includeImports,
+    });
+  }
+
   return (
     <section className="graph-stage-view class-diagram-view" data-testid="class-diagram-view">
       <GraphViewShell
@@ -306,116 +368,147 @@ export function ClassDiagramView({
           }
         }}
       >
-      <GraphFlowSurface
-        nodes={visibleNodes}
-        edges={visibleEdges}
-        flowNodes={flowNodes}
-        flowEdges={flowEdges}
-        nodeTypes={CLASS_DIAGRAM_NODE_TYPES}
-        viewportMode="CLASS_DIAGRAM"
-        viewportPolicy="readable-fit"
-        viewportResetKey={viewportResetKey}
-        anchorNodeId={view.anchorNodeId ?? null}
-        selectedNodeId={selectedNodeId}
-        focusNodeRequest={focusNodeRequest}
-        selectedGroupNodeIds={selectedGroupNodeIds}
-        experiments={experiments}
-        editable={false}
-        layoutEditable={false}
-        emptyState={(
-          isLayoutLoading ? (
-            <div className="canvas-empty-state">
-              <strong>正在整理类图</strong>
-            </div>
-          ) : (
-            <div className="canvas-empty-state">
-              <strong>{emptyStateCopy.title}</strong>
-            </div>
-          )
-        )}
-        buildPaneActions={({ visibleNodeCount, hasGroupedSelection, close }) => {
-          const actions: GraphContextMenuAction[] = [];
-          if (visibleNodeCount > 0) {
-            const anchorTypeNodeId = view.summary.anchorTypeNodeId ?? view.anchorNodeId ?? null;
-            actions.push(
-              {
-                id: "format-layout",
-                label: "重新整理布局",
-                onSelect: () => {
-                  layoutState.requestRelayout();
-                  close();
+      {selectedUsageNodeId ? (
+        <div className="class-diagram-action-strip" aria-label="类图操作">
+          <button
+            type="button"
+            className="ghost-button compact"
+            onClick={() => onRequestClassUsages(selectedUsageNodeId, classUsageRequestOptionsForNode(selectedUsageNode))}
+          >
+            查找使用处
+          </button>
+        </div>
+      ) : null}
+      <div className={view.usage ? "class-diagram-workspace has-usage-panel" : "class-diagram-workspace"}>
+        <GraphFlowSurface
+          nodes={visibleNodes}
+          edges={visibleEdges}
+          flowNodes={flowNodes}
+          flowEdges={flowEdges}
+          nodeTypes={CLASS_DIAGRAM_NODE_TYPES}
+          viewportMode="CLASS_DIAGRAM"
+          viewportPolicy="readable-fit"
+          viewportResetKey={viewportResetKey}
+          anchorNodeId={view.anchorNodeId ?? null}
+          selectedNodeId={selectedNodeId}
+          focusNodeRequest={focusNodeRequest}
+          selectedGroupNodeIds={selectedGroupNodeIds}
+          experiments={experiments}
+          editable={false}
+          layoutEditable={false}
+          emptyState={(
+            isLayoutLoading ? (
+              <div className="canvas-empty-state">
+                <strong>正在整理类图</strong>
+              </div>
+            ) : (
+              <div className="canvas-empty-state">
+                <strong>{emptyStateCopy.title}</strong>
+              </div>
+            )
+          )}
+          buildPaneActions={({ visibleNodeCount, hasGroupedSelection, close }) => {
+            const actions: GraphContextMenuAction[] = [];
+            if (visibleNodeCount > 0) {
+              const anchorTypeNodeId = view.summary.anchorTypeNodeId ?? view.anchorNodeId ?? null;
+              actions.push(
+                {
+                  id: "format-layout",
+                  label: "重新整理布局",
+                  onSelect: () => {
+                    layoutState.requestRelayout();
+                    close();
+                  },
                 },
-              },
-              {
-                id: "class-diagram-more-types",
-                label: "显示更多类型",
-                onSelect: () => {
-                  requestExpandedClassDiagram();
-                  close();
+                {
+                  id: "class-diagram-more-types",
+                  label: "显示更多类型",
+                  onSelect: () => {
+                    requestExpandedClassDiagram();
+                    close();
+                  },
                 },
-              },
-              {
-                id: "class-diagram-more-members",
-                label: "显示更多成员",
-                onSelect: () => {
-                  onRequestClassDiagramWithOptions(anchorTypeNodeId, {
-                    neighborhoodLimit: neighborhoodLimit ?? 24,
-                    memberLimit: memberLimit + 5,
-                  });
-                  close();
+                {
+                  id: "class-diagram-more-members",
+                  label: "显示更多成员",
+                  onSelect: () => {
+                    onRequestClassDiagramWithOptions(anchorTypeNodeId, {
+                      neighborhoodLimit: neighborhoodLimit ?? 24,
+                      memberLimit: memberLimit + 5,
+                    });
+                    close();
+                  },
                 },
-              },
-              {
-                id: "open-qa",
-                label: hasGroupedSelection ? "问答已框选范围" : "问答当前范围",
-                onSelect: () => {
-                  onOpenQa();
-                  close();
+                {
+                  id: "open-qa",
+                  label: hasGroupedSelection ? "问答已框选范围" : "问答当前范围",
+                  onSelect: () => {
+                    onOpenQa();
+                    close();
+                  },
                 },
-              },
-            );
+              );
+              if (view.usage?.summary.canRequestMore) {
+                actions.push({
+                  id: "class-diagram-more-usages",
+                  label: "显示更多使用处",
+                  onSelect: () => {
+                    requestMoreClassUsages();
+                    close();
+                  },
+                });
+              }
+            }
+            return actions;
+          }}
+          buildNodeActions={({ nodeId, close }) => {
+            const node = nodeIndex.get(nodeId) ?? null;
+            return classDiagramNodeActions({
+              nodeId,
+              node,
+              canOpenSource: canNavigateToSource(node ?? { type: "CLASS", location: undefined, signature: undefined }),
+              canRequestClassUsages: canRequestClassUsagesForNode(node),
+              collapsed: collapsedNodeIdSet.has(nodeId),
+              onInspectNode,
+              onRequestSourceNavigation,
+              onRequestBeautification,
+              onPrimeQuestionComposer,
+              onRequestClassDiagram,
+              onRequestClassUsages,
+              onOpenQa,
+              onToggleCollapseNode,
+              onFormatLayout: layoutState.requestRelayout,
+              onClose: close,
+            });
+          }}
+          buildEdgeActions={({ edgeId, close }) =>
+            buildSharedEdgeActions({
+              analysisDisplayMode: "CLASS_DIAGRAM",
+              editable: false,
+              edgeId,
+              onDeleteEdge: () => undefined,
+              onClose: close,
+            })
           }
-          return actions;
-        }}
-        buildNodeActions={({ nodeId, close }) =>
-          classDiagramNodeActions({
-            nodeId,
-            node: nodeIndex.get(nodeId) ?? null,
-            canOpenSource: canNavigateToSource(nodeIndex.get(nodeId) ?? { type: "CLASS", location: undefined, signature: undefined }),
-            collapsed: collapsedNodeIdSet.has(nodeId),
-            onInspectNode,
-            onRequestSourceNavigation,
-            onRequestBeautification,
-            onRequestQa,
-            onRequestClassDiagram,
-            onOpenQa,
-            onToggleCollapseNode,
-            onFormatLayout: layoutState.requestRelayout,
-            onClose: close,
-          })
-        }
-        buildEdgeActions={({ edgeId, close }) =>
-          buildSharedEdgeActions({
-            analysisDisplayMode: "CLASS_DIAGRAM",
-            editable: false,
-            edgeId,
-            onDeleteEdge: () => undefined,
-            onClose: close,
-          })
-        }
-        onSelectNode={onSelectNode}
-        onSelectionGroupChange={onSelectionGroupChange}
-        onInspectNode={onInspectNode}
-        onCreateEdge={() => undefined}
-        onMoveNode={onMoveNode}
-        onMoveNodes={onMoveNodes}
-        shouldFocusAnchorOnLoad={true}
-        fitViewPadding={0.12}
-        fitViewMaxZoom={0.9}
-        showViewportControls={false}
-        showLocateAnchorButton={false}
-        nodeViewportSize={classDiagramViewportNodeSize}
-      />
+          onSelectNode={onSelectNode}
+          onSelectionGroupChange={onSelectionGroupChange}
+          onInspectNode={onInspectNode}
+          onCreateEdge={() => undefined}
+          onMoveNode={onMoveNode}
+          onMoveNodes={onMoveNodes}
+          shouldFocusAnchorOnLoad={true}
+          fitViewPadding={0.12}
+          fitViewMaxZoom={0.9}
+          showViewportControls={false}
+          showLocateAnchorButton={false}
+          nodeViewportSize={classDiagramViewportNodeSize}
+        />
+        {view.usage ? (
+          <div className="class-diagram-usage-dock">
+            <ClassUsagePanel usage={view.usage} />
+          </div>
+        ) : null}
+      </div>
       </GraphViewShell>
     </section>
   );

@@ -53,6 +53,49 @@ class GraphStateArchitectureGateTest {
     }
 
     @Test
+    fun stateModelExposesConcernSpecificDomainStatesForRenderingAndTransport() {
+        val source = read("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorStateModels.kt")
+        val renderer = read("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorPageRenderer.kt")
+        val freezer = read("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorStateFreezer.kt")
+        val snapshotSource = sourceBlock(source, "data class GraphEditorStateSnapshot(")
+
+        listOf(
+            "data class WorkspaceState(",
+            "data class GraphViewsState(",
+            "data class AssistantState(",
+            "data class ReviewState(",
+            "data class GenerationState(",
+            "data class NavigationState(",
+            "data class TransportState(",
+            "data class GraphEditorDomainStates(",
+            "fun GraphEditorStateSnapshot.domainStates(): GraphEditorDomainStates",
+        ).forEach { fragment ->
+            assertTrue(source.contains(fragment), "Graph editor state model must expose domain state: $fragment")
+        }
+
+        assertTrue(
+            renderer.contains("val domainStates = snapshot.domainStates()"),
+            "Page renderer should read state through domainStates() instead of depending only on the flat snapshot.",
+        )
+        assertTrue(
+            freezer.contains("val domainStates = domainStates()"),
+            "Freezer should freeze via domain state boundaries so copied state stays grouped by concern.",
+        )
+        listOf(
+            "val visibleGraph: GraphDocument?",
+            "val workingGraph: GraphDocument?",
+            "val referenceWorkingGraph: GraphDocument?",
+            "val selectedNodeId: String?",
+            "val layoutState: GraphLayoutState",
+        ).forEach { forbidden ->
+            assertFalse(
+                snapshotSource.contains(forbidden),
+                "Domain state split must not reintroduce old flat compatibility fields: $forbidden",
+            )
+        }
+    }
+
+    @Test
     fun legacyWholeSnapshotAndViewGraphMutationPathsAreRemoved() {
         val stateServiceSource = read("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorStateService.kt")
         val graphSupportSource = read("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorGraphStateSupport.kt")

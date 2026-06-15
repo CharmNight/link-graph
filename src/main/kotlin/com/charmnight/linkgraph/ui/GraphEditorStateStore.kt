@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.ui
 
+import com.charmnight.linkgraph.workbench.AssistantResultStore
+
 data class GraphEditorStateCommitResult(
     val committed: Boolean,
     val snapshot: GraphEditorStateSnapshot,
@@ -52,15 +54,29 @@ class GraphEditorStateStore(
         current: GraphEditorStateSnapshot,
         next: GraphEditorStateSnapshot,
     ): GraphEditorStateSnapshot {
-        if (next == current) {
+        val normalizedNext = next.normalizeAssistantHistory()
+        if (normalizedNext == current) {
             return current
         }
-        return if (next.snapshotRevision > current.snapshotRevision) {
-            next
+        return if (normalizedNext.snapshotRevision > current.snapshotRevision) {
+            normalizedNext
         } else {
-            next.copy(snapshotRevision = current.snapshotRevision + 1)
+            normalizedNext.copy(snapshotRevision = current.snapshotRevision + 1)
         }
     }
+}
+
+private fun GraphEditorStateSnapshot.normalizeAssistantHistory(): GraphEditorStateSnapshot {
+    val retainedTurns = assistantSessionState.turns.takeLast(AssistantResultStore.HISTORY_RETENTION_LIMIT)
+    val retainedResultIds = retainedTurns.map { turn -> turn.resultId }
+    val retainedResultStore = assistantResultStore.retainOnly(retainedResultIds)
+    if (retainedTurns == assistantSessionState.turns && retainedResultStore == assistantResultStore) {
+        return this
+    }
+    return copy(
+        assistantSessionState = assistantSessionState.copy(turns = retainedTurns),
+        assistantResultStore = retainedResultStore,
+    )
 }
 
 internal fun GraphEditorStateSnapshot.withOperationFeedback(

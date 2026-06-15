@@ -19,7 +19,7 @@ export interface ClassDiagramRelationLegendItem {
 
 const TYPE_HIERARCHY_RELATIONS = new Set(["GENERALIZATION", "REALIZATION", "EXTENDS", "IMPLEMENTS"]);
 const STRUCTURAL_ASSOCIATION_RELATIONS = new Set(["COMPOSITION", "AGGREGATION", "ASSOCIATION", "FIELD", "CONSTRUCTOR_PARAMETER"]);
-const DEPENDENCY_RELATIONS = new Set(["DEPENDENCY", "USES_TYPE", "INJECTS", "METHOD_CALL", "METHOD_PARAMETER", "METHOD_RETURN", "THROWS", "LOCAL_TYPE"]);
+const DEPENDENCY_RELATIONS = new Set(["DEPENDENCY", "USES_TYPE", "INJECTS", "METHOD_CALL", "METHOD_PARAMETER", "METHOD_RETURN", "THROWS", "LOCAL_TYPE", "CLASS_USAGE"]);
 
 export const CLASS_DIAGRAM_RELATION_LEGEND_ITEMS: ClassDiagramRelationLegendItem[] = [
   { id: "generalization", label: "继承", role: "hierarchy" },
@@ -43,12 +43,92 @@ export function classDiagramRelationLabel(edge: LinkGraphEdge): string {
 }
 
 export function classDiagramCompactRelationLabel(label: string): string {
+  return localizeClassDiagramRelationLabel(label, { compact: true });
+}
+
+export function classDiagramRelationDetailText(label: string): string {
+  return localizeClassDiagramRelationLabel(label, { compact: false });
+}
+
+function localizeClassDiagramRelationLabel(label: string, { compact }: { compact: boolean }): string {
   const trimmed = label.trim();
-  const methodQualified = /^(param|local)\s+([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)$/.exec(trimmed);
-  if (methodQualified) {
-    return `${methodQualified[1]} ${methodQualified[3]}`;
+  const exact = classDiagramRelationExactLabel(trimmed);
+  if (exact) {
+    return exact;
   }
-  return trimmed;
+  const prefixed = /^(extends|implements|field|ctor|call|param|local|return|throws)\s+(.+)$/.exec(trimmed);
+  if (!prefixed) {
+    return trimmed;
+  }
+  const [, prefix, rawTarget] = prefixed;
+  const target = rawTarget.trim();
+  const localizedPrefix = classDiagramRelationExactLabel(prefix) ?? prefix;
+  if (!compact || (prefix !== "param" && prefix !== "local")) {
+    return `${localizedPrefix} ${target}`;
+  }
+  const methodQualified = /^([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)$/.exec(target);
+  if (methodQualified) {
+    return `${localizedPrefix} ${methodQualified[2]}`;
+  }
+  return `${localizedPrefix} ${target}`;
+}
+
+function classDiagramRelationExactLabel(label: string): string | null {
+  switch (label) {
+    case "extends":
+    case "EXTENDS":
+    case "GENERALIZATION":
+      return "继承";
+    case "implements":
+    case "IMPLEMENTS":
+    case "REALIZATION":
+      return "实现";
+    case "field":
+    case "FIELD":
+      return "字段";
+    case "ctor":
+    case "CONSTRUCTOR_PARAMETER":
+      return "构造参数";
+    case "call":
+    case "CALL":
+    case "CALLS":
+    case "METHOD_CALL":
+      return "调用";
+    case "param":
+    case "METHOD_PARAMETER":
+      return "参数";
+    case "local":
+    case "LOCAL_TYPE":
+      return "局部类型";
+    case "return":
+    case "METHOD_RETURN":
+      return "返回";
+    case "throws":
+    case "THROWS":
+      return "抛出";
+    case "composition":
+    case "COMPOSITION":
+      return "组合";
+    case "aggregation":
+    case "AGGREGATION":
+      return "聚合";
+    case "association":
+    case "ASSOCIATION":
+      return "关联";
+    case "dependency":
+    case "DEPENDENCY":
+      return "依赖";
+    case "usage":
+    case "CLASS_USAGE":
+      return "使用";
+    case "USES_TYPE":
+      return "类型依赖";
+    case "INJECT":
+    case "INJECTS":
+      return "注入";
+    default:
+      return null;
+  }
 }
 
 export function classDiagramRelationDisplayLabel(edge: LinkGraphEdge): string {
@@ -76,9 +156,9 @@ export function classDiagramRelationDetailLabel(edge: LinkGraphEdge): string {
     ...classDiagramAggregateSecondaryLabels(edge),
   ].filter((label): label is string => Boolean(label));
   if (labels.length > 0) {
-    return Array.from(new Set(labels)).join("\n");
+    return Array.from(new Set(labels.map(classDiagramRelationDetailText))).join("\n");
   }
-  return classDiagramRelationLabel(edge);
+  return classDiagramRelationDetailText(classDiagramRelationLabel(edge));
 }
 
 function classDiagramAggregateSecondaryLabels(edge: LinkGraphEdge): string[] {
@@ -108,6 +188,7 @@ export function classDiagramRelationSortRank(edge: LinkGraphEdge): number {
     case "CONSTRUCTOR_PARAMETER":
       return edge.metadata?.["classDiagram.relation.assignedToField"] === "true" ? 3 : 6;
     case "METHOD_CALL":
+    case "CLASS_USAGE":
       return 4;
     case "METHOD_RETURN":
     case "LOCAL_TYPE":
@@ -134,6 +215,7 @@ export function classDiagramRenderedRelationRank(edge: LinkGraphEdge): number {
     case "CONSTRUCTOR_PARAMETER":
       return 0;
     case "METHOD_CALL":
+    case "CLASS_USAGE":
       return 1;
     case "METHOD_RETURN":
     case "METHOD_PARAMETER":
@@ -205,6 +287,8 @@ export function classDiagramRelationPresentation(edge: LinkGraphEdge): ClassDiag
       return { role: "association", color: "#4f8f72", strokeWidth: 2.8, zIndex: 12 };
     case "METHOD_CALL":
       return { role: "dependency", color: "#527f9e", strokeWidth: 2.6, zIndex: 10, opacity: 0.92 };
+    case "CLASS_USAGE":
+      return { role: "dependency", color: "#527f9e", strokeWidth: 2.5, strokeDasharray: "7 5", zIndex: 10, opacity: 0.9 };
     case "DEPENDENCY":
     case "INJECTS":
     case "METHOD_RETURN":

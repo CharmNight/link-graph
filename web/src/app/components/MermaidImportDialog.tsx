@@ -23,13 +23,13 @@ export function MermaidImportDialog({
   return (
     <div className="modal-backdrop" role="presentation" onClick={onCancel}>
       <section
-        className="mermaid-import-dialog"
+        className="mermaid-import-dialog modal-dialog"
         role="dialog"
         aria-modal="true"
         aria-label="导入 Mermaid"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="drawer-header">
+        <div className="drawer-header modal-header">
           <div>
             <p className="eyebrow">Mermaid</p>
             <h2>导入 Mermaid</h2>
@@ -39,18 +39,20 @@ export function MermaidImportDialog({
           </button>
         </div>
 
-        <label>
-          Mermaid 内容
-          <textarea
-            aria-label="Mermaid 内容"
-            className="prompt-preview"
-            value={value}
-            placeholder={"graph TD\nA[Controller] --> B[Service]"}
-            onChange={(event) => onChange(event.target.value)}
-          />
-        </label>
+        <div className="modal-body">
+          <label>
+            Mermaid 内容
+            <textarea
+              aria-label="Mermaid 内容"
+              className="prompt-preview"
+              value={value}
+              placeholder={"graph TD\nA[Controller] --> B[Service]"}
+              onChange={(event) => onChange(event.target.value)}
+            />
+          </label>
+        </div>
 
-        <div className="panel-actions">
+        <div className="panel-actions modal-footer">
           <button type="button" className="primary-button" onClick={onConfirm}>
             确认导入
           </button>

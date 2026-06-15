@@ -1,7 +1,5 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.testing.*
-
 import com.charmnight.linkgraph.codegen.CodeEditOperation
 import com.charmnight.linkgraph.codegen.CodeEditOperationKind
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
@@ -21,7 +19,7 @@ import kotlin.test.assertTrue
 
 class GraphEditorTransportSliceRendererTest {
     @Test
-    fun anyStateUpdateIsRenderedAsSingleFullSnapshotEnvelope() {
+    fun operationFeedbackUpdateIsRenderedAsFeedbackSliceInsteadOfFullSnapshot() {
         val renderer = GraphEditorTransportSliceRenderer()
         val previous = snapshot(
             snapshotRevision = 1,
@@ -41,7 +39,7 @@ class GraphEditorTransportSliceRendererTest {
             snapshotRevision = 2,
             operationFeedback = com.charmnight.linkgraph.ui.OperationFeedback(
                 level = com.charmnight.linkgraph.ui.OperationFeedbackLevel.INFO,
-                message = "只更新提示文案，也要通过完整权威快照下发。",
+                message = "只更新提示文案，不应通过完整权威快照下发。",
             ),
             lastMessageType = "operationFeedback",
         )
@@ -53,11 +51,19 @@ class GraphEditorTransportSliceRendererTest {
         )
 
         assertEquals(1, envelopes.size)
+        val feedbackEnvelope = envelopes.single()
+        assertEquals("FEEDBACK_SLICE", feedbackEnvelope.transportType)
+        assertEquals(
+            "只更新提示文案，不应通过完整权威快照下发。",
+            (feedbackEnvelope.state["operationFeedback"] as Map<*, *>)["message"],
+        )
+        assertFalse(feedbackEnvelope.state.containsKey("workspaceGraph"))
+        assertFalse(feedbackEnvelope.state.containsKey("generatedCodeDrafts"))
         val script = renderer.renderScript(envelopes)
-        assertTrue(script.contains("只更新提示文案，也要通过完整权威快照下发。"))
-        assertTrue(script.contains("OrderController.submit"))
-        assertTrue(script.contains("contentArtifactId"))
-        assertFalse(script.contains("\"type\":\"FEEDBACK_SLICE\""))
+        assertTrue(script.contains("只更新提示文案，不应通过完整权威快照下发。"))
+        assertFalse(script.contains("OrderController.submit"))
+        assertFalse(script.contains("contentArtifactId"))
+        assertTrue(script.contains("\"type\":\"FEEDBACK_SLICE\""))
     }
 
     @Test
@@ -75,7 +81,7 @@ class GraphEditorTransportSliceRendererTest {
     }
 
     @Test
-    fun renderIncrementalScriptEmitsDebugTraceForPayloadAndScriptStages() {
+    fun feedbackSliceIncrementalScriptDoesNotRebuildFullPayload() {
         val traceMessages = mutableListOf<String>()
         val renderer = GraphEditorTransportSliceRenderer(
             runtimeTrace = { message -> traceMessages += message() },
@@ -97,10 +103,42 @@ class GraphEditorTransportSliceRendererTest {
         )
 
         assertNotNull(script)
-        assertTrue(traceMessages.any { it.contains("stage=transport.payload.previous") })
-        assertTrue(traceMessages.any { it.contains("stage=transport.payload.current") })
+        assertFalse(traceMessages.any { it.contains("stage=transport.payload.current") })
+        assertFalse(traceMessages.any { it.contains("stage=transport.payload.previous") })
         assertTrue(traceMessages.any { it.contains("stage=transport.renderScript") })
         assertTrue(traceMessages.any { it.contains("scriptChars=") })
+        assertTrue(script.contains("\"type\":\"FEEDBACK_SLICE\""))
+    }
+
+    @Test
+    fun feedbackSliceCommitDoesNotReplaceCommittedFullPayloadHash() {
+        val renderer = GraphEditorTransportSliceRenderer()
+        val previous = snapshot(snapshotRevision = 40)
+        renderer.renderBootstrapInitScript(
+            sessionId = "session-1",
+            snapshot = previous,
+        )
+        val committedFullPayloadHash = renderer.lastRenderedPayloadHashForTest()
+        assertNotNull(committedFullPayloadHash)
+        val current = previous.copy(
+            snapshotRevision = 41,
+            operationFeedback = com.charmnight.linkgraph.ui.OperationFeedback(
+                level = com.charmnight.linkgraph.ui.OperationFeedbackLevel.INFO,
+                message = "只更新反馈 slice。",
+            ),
+            lastMessageType = "operationFeedback",
+        )
+
+        val rendered = renderer.renderIncrementalSnapshotScript(
+            sessionId = "session-1",
+            previousSnapshot = previous,
+            snapshot = current,
+        )
+        assertNotNull(rendered)
+        assertEquals("FEEDBACK_SLICE", rendered.envelopes.single().transportType)
+        renderer.commitRenderedSnapshot(rendered)
+
+        assertEquals(committedFullPayloadHash, renderer.lastRenderedPayloadHashForTest())
     }
 
     @Test
@@ -167,6 +205,241 @@ class GraphEditorTransportSliceRendererTest {
     }
 
     @Test
+    fun snapshotArtifactsCanBePreparedWithoutRenderingDiscardedBootstrapScript() {
+        val renderer = GraphEditorTransportSliceRenderer()
+        val pageRenderer = GraphEditorPageRenderer()
+        val current = snapshot(
+            snapshotRevision = 12,
+            generatedCodeDrafts = listOf(
+                GeneratedCodeDraft(
+                    id = "draft-1",
+                    sourceNodeId = "class:order-draft-dto",
+                    title = "OrderDraftDto.java",
+                    targetPath = "src/main/java/com/example/OrderDraftDto.java",
+                    content = "package com.example;\npublic class OrderDraftDto {}",
+                ),
+            ),
+        )
+
+        val artifactRefs = renderer.prepareSnapshotArtifacts(current)
+        val artifactId = assertNotNull(artifactRefs.generatedCodeDraftContentArtifactIds["draft-1"])
+        val rendered = pageRenderer.render(
+            entryHtml = "<html><head></head><body><div id=\"root\"></div></body></html>",
+            sessionId = "session-1",
+            snapshot = current,
+            artifactRefs = artifactRefs,
+            darkTheme = true,
+        )
+
+        assertFalse(rendered.contains("public class OrderDraftDto"))
+        assertTrue(rendered.contains(artifactId))
+        assertEquals(
+            "package com.example;\npublic class OrderDraftDto {}",
+            renderer.artifactContents(listOf(artifactId))[artifactId],
+        )
+    }
+
+    @Test
+    fun incrementalRenderDoesNotReplaceCommittedArtifactsBeforeDispatchCommit() {
+        val renderer = GraphEditorTransportSliceRenderer()
+        val previous = snapshot(
+            snapshotRevision = 30,
+            generatedCodeDrafts = listOf(
+                GeneratedCodeDraft(
+                    id = "draft-1",
+                    sourceNodeId = "class:order-draft-dto",
+                    title = "OrderDraftDto.java",
+                    targetPath = "src/main/java/com/example/OrderDraftDto.java",
+                    content = "package com.example;\npublic class OldDraftDto {}",
+                ),
+            ),
+        )
+        renderer.renderBootstrapInitScript(
+            sessionId = "session-1",
+            snapshot = previous,
+        )
+        val previousArtifactId = assertNotNull(
+            renderer.currentArtifactRefs().generatedCodeDraftContentArtifactIds["draft-1"],
+        )
+        val current = previous.copy(
+            snapshotRevision = 31,
+            generatedCodeDrafts = listOf(
+                GeneratedCodeDraft(
+                    id = "draft-1",
+                    sourceNodeId = "class:order-draft-dto",
+                    title = "OrderDraftDto.java",
+                    targetPath = "src/main/java/com/example/OrderDraftDto.java",
+                    content = "package com.example;\npublic class NewDraftDto {}",
+                ),
+            ),
+        )
+
+        renderer.renderIncrementalScript(
+            sessionId = "session-1",
+            previousSnapshot = previous,
+            snapshot = current,
+        )
+
+        assertEquals(
+            previousArtifactId,
+            renderer.currentArtifactRefs().generatedCodeDraftContentArtifactIds["draft-1"],
+        )
+        assertEquals(
+            "package com.example;\npublic class OldDraftDto {}",
+            renderer.artifactContents(listOf(previousArtifactId))[previousArtifactId],
+        )
+    }
+
+    @Test
+    fun artifactOnlyDraftContentUpdateIsRenderedAsArtifactSliceWithoutFullPayloadHash() {
+        val traceMessages = mutableListOf<String>()
+        val renderer = GraphEditorTransportSliceRenderer(
+            runtimeTrace = { message -> traceMessages += message() },
+        )
+        val previous = snapshot(
+            snapshotRevision = 50,
+            generatedCodeDrafts = listOf(
+                GeneratedCodeDraft(
+                    id = "draft-1",
+                    sourceNodeId = "class:order-draft-dto",
+                    title = "OrderDraftDto.java",
+                    targetPath = "src/main/java/com/example/OrderDraftDto.java",
+                    content = "package com.example;\npublic class OldDraftDto {}",
+                ),
+            ),
+        )
+        renderer.renderBootstrapInitScript(
+            sessionId = "session-1",
+            snapshot = previous,
+        )
+        traceMessages.clear()
+        val current = previous.copy(
+            snapshotRevision = 51,
+            generatedCodeDrafts = listOf(
+                GeneratedCodeDraft(
+                    id = "draft-1",
+                    sourceNodeId = "class:order-draft-dto",
+                    title = "OrderDraftDto.java",
+                    targetPath = "src/main/java/com/example/OrderDraftDto.java",
+                    content = "package com.example;\npublic class NewDraftDto {}",
+                ),
+            ),
+        )
+
+        val rendered = renderer.renderIncrementalSnapshotScript(
+            sessionId = "session-1",
+            previousSnapshot = previous,
+            snapshot = current,
+        )
+
+        assertNotNull(rendered)
+        val artifactEnvelope = rendered.envelopes.single()
+        assertEquals("ARTIFACT_SLICE", artifactEnvelope.transportType)
+        assertEquals(setOf("snapshotRevision", "generatedCodeDrafts", "artifactContents"), artifactEnvelope.state.keys)
+        val draftPayload = assertNotNull(
+            (artifactEnvelope.state["generatedCodeDrafts"] as? List<*>)?.singleOrNull() as? Map<*, *>,
+        )
+        assertEquals("draft-1", draftPayload["id"])
+        assertTrue(draftPayload["contentArtifactId"].toString().contains("NewDraftDto").not())
+        assertFalse(draftPayload.containsKey("content"))
+        val artifactContents = assertNotNull(artifactEnvelope.state["artifactContents"] as? Map<*, *>)
+        assertEquals(1, artifactContents.size)
+        assertEquals(draftPayload["contentArtifactId"], artifactContents.keys.single())
+        assertEquals("package com.example;\npublic class NewDraftDto {}", artifactContents.values.single())
+        assertFalse(traceMessages.any { it.contains("stage=transport.payload.current") })
+        assertFalse(traceMessages.any { it.contains("stage=transport.payload.compare") })
+    }
+
+    @Test
+    fun assistantHistoryExternalizesGenerationAndCodeDraftArtifacts() {
+        val renderer = GraphEditorTransportSliceRenderer()
+        val service = GraphEditorStateService()
+
+        service.asyncRequests.markGenerationPlan(
+            GenerationPlan(
+                source = com.charmnight.linkgraph.llm.GenerationPlanSource.REMOTE,
+                summary = "补齐 DTO 与 service 接线",
+                items = listOf(
+                    GenerationPlanItem(
+                        id = "plan-1",
+                        title = "新增 DTO",
+                        description = "生成 OrderDraftDto 并接回 service。",
+                        risk = SyncPreviewRisk.MEDIUM,
+                        targetPath = "src/main/java/com/example/OrderDraftDto.java",
+                    ),
+                ),
+                warnings = listOf("请复核字段命名"),
+                promptPreview = "system: assistant history generation plan\nuser: inspect graph",
+            ),
+            requestState = AsyncRequestState.succeeded(
+                requestId = 100,
+                finishedAtEpochMillis = 1_000,
+            ),
+        )
+        service.asyncRequests.markGeneratedCodeDrafts(
+            drafts = listOf(
+                GeneratedCodeDraft(
+                    id = "draft-1",
+                    sourceNodeId = "class:order-draft-dto",
+                    title = "OrderDraftDto.java",
+                    targetPath = "src/main/java/com/example/OrderDraftDto.java",
+                    content = "package com.example;\npublic class OrderDraftDto {}",
+                    warnings = listOf("草稿内警告需要保留"),
+                ),
+            ),
+            warnings = listOf("全局草稿警告需要保留"),
+            source = com.charmnight.linkgraph.llm.LlmResultSource.REMOTE,
+            promptPreview = "system: assistant history code draft\nuser: produce DTO draft",
+            requestState = AsyncRequestState.succeeded(
+                requestId = 101,
+                finishedAtEpochMillis = 1_001,
+            ),
+        )
+        val current = service.snapshot()
+        val generationPlanResultId = assertNotNull(
+            current.assistantSessionState.turns.firstOrNull {
+                it.kind == com.charmnight.linkgraph.workbench.AssistantTurnKind.GENERATION_PLAN
+            }?.resultId,
+        )
+        val codeDraftResultId = assertNotNull(
+            current.assistantSessionState.turns.firstOrNull {
+                it.kind == com.charmnight.linkgraph.workbench.AssistantTurnKind.CODE_DRAFT
+            }?.resultId,
+        )
+        val previous = current.copy(
+            snapshotRevision = current.snapshotRevision - 1,
+            assistantResultStore = com.charmnight.linkgraph.workbench.AssistantResultStore(),
+        )
+
+        val envelope = renderer.renderIncrementalEnvelopes(
+            sessionId = "session-1",
+            previousSnapshot = previous,
+            snapshot = current,
+        ).singleOrNull()
+        assertNotNull(envelope)
+
+        val assistantResultStore = envelope.state["assistantResultStore"] as? Map<*, *>
+        assertNotNull(assistantResultStore)
+        val generationPlanEntry = assertNotNull(assistantResultStore[generationPlanResultId] as? Map<*, *>)
+        val historicalPlan = assertNotNull(generationPlanEntry["generationPlan"] as? Map<*, *>)
+        assertFalse(historicalPlan.containsKey("promptPreview"))
+        assertTrue(historicalPlan["promptPreviewArtifactId"].toString().isNotBlank())
+
+        val codeDraftEntry = assertNotNull(assistantResultStore[codeDraftResultId] as? Map<*, *>)
+        assertEquals(listOf("全局草稿警告需要保留"), codeDraftEntry["codeDraftWarnings"])
+        val codeDrafts = codeDraftEntry["codeDrafts"] as? List<*>
+        assertNotNull(codeDrafts)
+        val historicalDraft = assertNotNull(codeDrafts.singleOrNull() as? Map<*, *>)
+        assertFalse(historicalDraft.containsKey("content"))
+        assertTrue(historicalDraft["contentArtifactId"].toString().isNotBlank())
+
+        val script = renderer.renderScript(listOf(envelope))
+        assertFalse(script.contains("public class OrderDraftDto"))
+        assertFalse(script.contains("system: assistant history generation plan"))
+        assertFalse(script.contains("system: assistant history code draft"))
+    }
+
+    @Test
     fun bootstrapInitAllowsStructuredExistingFileDraftWithoutInlineContentArtifact() {
         val renderer = GraphEditorTransportSliceRenderer()
         val bootstrapScript = renderer.renderBootstrapInitScript(
@@ -226,31 +499,32 @@ class GraphEditorTransportSliceRendererTest {
         layoutRevision: Long = 0,
         generatedCodeDrafts: List<GeneratedCodeDraft> = emptyList(),
     ): com.charmnight.linkgraph.ui.GraphEditorStateSnapshot {
-        return testSnapshot(
-            visibleGraph = GraphDocument(
-                nodes = listOf(
-                    GraphNode(
-                        id = "method:submit-order",
-                        type = NodeType.METHOD,
-                        title = "OrderController.submit",
-                        sourceTag = GraphSourceTag.FACT,
-                    ),
+        val graph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "method:submit-order",
+                    type = NodeType.METHOD,
+                    title = "OrderController.submit",
+                    sourceTag = GraphSourceTag.FACT,
                 ),
             ),
-            workingGraph = GraphDocument(
-                nodes = listOf(
-                    GraphNode(
-                        id = "method:submit-order",
-                        type = NodeType.METHOD,
-                        title = "OrderController.submit",
-                        sourceTag = GraphSourceTag.FACT,
-                    ),
-                ),
-            ),
+        )
+        return com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
+            semanticFactGraph = graph,
+            workspaceBaseGraph = graph,
+            workspaceGraph = graph,
+            sceneStates = defaultGraphSceneStates().mapValues { (_, state) ->
+                state.copy(layoutRevision = layoutRevision)
+            },
             semanticRevision = semanticRevision,
-            layoutRevision = layoutRevision,
             snapshotRevision = snapshotRevision,
             generatedCodeDrafts = generatedCodeDrafts,
         )
+    }
+
+    private fun GraphEditorTransportSliceRenderer.lastRenderedPayloadHashForTest(): String? {
+        val field = GraphEditorTransportSliceRenderer::class.java.getDeclaredField("lastRenderedPayloadHash")
+        field.isAccessible = true
+        return field.get(this) as? String
     }
 }

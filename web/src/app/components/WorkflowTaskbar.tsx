@@ -1,22 +1,26 @@
 import type { OperationFeedback } from "../types";
-import {
-  WORKFLOW_STAGE_DEFINITIONS,
-  type WorkflowStage,
-  type WorkflowStageStatus,
-  workflowStageStatusLabel,
-} from "../workflow/workflowStage";
+import type { WorkflowStage, WorkflowStageStatus } from "../workflow/workflowStage";
+import { WORKFLOW_STAGE_DEFINITIONS, workflowStageStatusLabel } from "../workflow/workflowStage";
+
+const ASSISTANT_STATUS_LABELS: Record<WorkflowStage, string> = {
+  understand: "理解代码",
+  evidence: "核验证据",
+  qa: "代码问答",
+  draft: "草稿确认",
+  code: "代码落地",
+};
 
 interface WorkflowTaskbarProps {
   title: string;
   path?: string | null;
   activeStage: WorkflowStage;
   stageStates: Record<WorkflowStage, WorkflowStageStatus>;
+  assistantStatusLabels?: Record<WorkflowStage, string>;
   riskCount: number;
   draftCandidateCount: number;
   operationFeedback?: OperationFeedback | null;
   primaryActionLabel: string;
   primaryActionDisabled?: boolean;
-  onStageChange: (stage: WorkflowStage) => void;
   onImportMermaid: () => void;
   onExportMermaid: () => void;
   onShowDiff: () => void;
@@ -30,12 +34,12 @@ export function WorkflowTaskbar({
   path = null,
   activeStage,
   stageStates,
+  assistantStatusLabels = ASSISTANT_STATUS_LABELS,
   riskCount,
   draftCandidateCount,
   operationFeedback = null,
   primaryActionLabel,
   primaryActionDisabled = false,
-  onStageChange,
   onImportMermaid,
   onExportMermaid,
   onShowDiff,
@@ -60,27 +64,25 @@ export function WorkflowTaskbar({
         </div>
       </div>
 
-      <ol className="workflow-stage-strip" aria-label="工作流阶段">
-        {WORKFLOW_STAGE_DEFINITIONS.map((stage, index) => {
-          const status = activeStage === stage.id ? "active" : stageStates[stage.id] ?? "idle";
+      <div className="assistant-status-strip" role="group" aria-label="AI 工作状态">
+        <span className="assistant-status-heading">AI 状态</span>
+        {WORKFLOW_STAGE_DEFINITIONS.map((stage) => {
+          const status = stageStates[stage.id];
           return (
-            <li key={stage.id}>
-              <button
-                type="button"
-                className={`workflow-stage-step workflow-stage-step-${status}`}
-                aria-current={activeStage === stage.id ? "step" : undefined}
-                onClick={() => onStageChange(stage.id)}
-              >
-                <span className="workflow-stage-num">{index + 1}</span>
-                <span className="workflow-stage-copy">
-                  <span className="workflow-stage-label">{stage.label}</span>
-                  <span className="workflow-stage-status">{workflowStageStatusLabel(status)}</span>
-                </span>
-              </button>
-            </li>
+            <span
+              key={stage.id}
+              className={`assistant-status-item status-${status}${stage.id === activeStage ? " is-current" : ""}`}
+              title={stage.purpose}
+            >
+              <span className="assistant-status-dot" aria-hidden="true" />
+              <span className="assistant-status-copy">
+                <span className="assistant-status-label">{assistantStatusLabels[stage.id]}</span>
+                <span className="assistant-status-value">{workflowStageStatusLabel(status)}</span>
+              </span>
+            </span>
           );
         })}
-      </ol>
+      </div>
 
       <div className="workflow-taskbar-actions" aria-label="全局动作">
         <button

@@ -20,25 +20,51 @@ class ArchitectureIndexFreshnessTracker(
     private var pendingFiles: Set<String> = emptySet()
     private var lastIndexedAtEpochMillis: Long? = null
     private var staleSinceEpochMillis: Long? = null
+    private var dirtyGeneration: Long = 0
 
     fun markDirty(dirtyReason: String, paths: List<String>) {
         synchronized(lock) {
-            state = "STALE"
+            if (state != "BUILDING") {
+                state = "STALE"
+            }
             this.dirtyReason = dirtyReason
             pendingFiles = (pendingFiles + paths.filter(String::isNotBlank)).toSortedSet()
             if (staleSinceEpochMillis == null) {
                 staleSinceEpochMillis = clockMillis()
             }
+            dirtyGeneration += 1
         }
     }
 
-    fun markIndexed() {
+    fun markBuilding(): Long =
         synchronized(lock) {
+            state = "BUILDING"
+            dirtyGeneration
+        }
+
+    fun markIndexed(buildToken: Long? = null) {
+        synchronized(lock) {
+            lastIndexedAtEpochMillis = clockMillis()
+            if (buildToken != null && buildToken != dirtyGeneration) {
+                state = "STALE"
+                return
+            }
             state = "FRESH"
             dirtyReason = null
             pendingFiles = emptySet()
-            lastIndexedAtEpochMillis = clockMillis()
             staleSinceEpochMillis = null
+        }
+    }
+
+    fun markBuildFailed(buildToken: Long? = null) {
+        synchronized(lock) {
+            state = "STALE"
+            if (dirtyReason == null) {
+                dirtyReason = "INDEX_BUILD_FAILED"
+            }
+            if (staleSinceEpochMillis == null) {
+                staleSinceEpochMillis = clockMillis()
+            }
         }
     }
 

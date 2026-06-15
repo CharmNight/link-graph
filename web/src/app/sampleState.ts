@@ -2,6 +2,7 @@ import { readBootstrapState } from "./api";
 import { resolveFlowchartKind } from "./flowchartKind";
 import type {
   AnalysisDisplayMode,
+  AssistantResultStore,
   AssistantSessionState,
   ArchitectureGraphViewDocument,
   AsyncRequestState,
@@ -76,8 +77,17 @@ const DEFAULT_ASSISTANT_SESSION_STATE: AssistantSessionState = {
     selectedMethodSignature: null,
     scopeLabel: "",
   },
+  composer: {
+    draft: "",
+    target: {
+      kind: "NewTask",
+    },
+  },
+  nextResultSequence: 1,
   turns: [],
 };
+
+const EMPTY_ASSISTANT_RESULT_STORE: AssistantResultStore = {};
 
 const EMPTY_DOCUMENT: LinkGraphDocument = {
   nodes: [],
@@ -584,6 +594,7 @@ export const SAMPLE_STATE: LinkGraphBootstrapState = {
       scopeLabel: "OrderService.place",
     },
   },
+  assistantResultStore: EMPTY_ASSISTANT_RESULT_STORE,
   workspaceRevision: 0,
   semanticRevision: 0,
   snapshotRevision: 0,
@@ -631,6 +642,7 @@ export const EMPTY_STATE: LinkGraphBootstrapState = {
   sourceNavigationState: IDLE_SOURCE_NAVIGATION_STATE,
   operationFeedback: null,
   assistantSessionState: DEFAULT_ASSISTANT_SESSION_STATE,
+  assistantResultStore: EMPTY_ASSISTANT_RESULT_STORE,
   workspaceRevision: 0,
   semanticRevision: 0,
   snapshotRevision: 0,

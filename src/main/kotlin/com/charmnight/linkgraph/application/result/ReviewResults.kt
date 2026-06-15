@@ -4,6 +4,8 @@ import com.charmnight.linkgraph.application.model.AsyncRequestState
 import com.charmnight.linkgraph.llm.GraphBeautificationResult
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.workbench.DraftValidationState
+import com.charmnight.linkgraph.workbench.AssistantActionId
+import com.charmnight.linkgraph.workbench.AssistantIntent
 import com.charmnight.linkgraph.workbench.ReplayableQaRequest
 import com.charmnight.linkgraph.workbench.StageEligibilityDecision
 
@@ -46,6 +48,8 @@ data class DiffReviewFailedResult(
 data class BeautificationCompletedResult(
     val result: GraphBeautificationResult,
     val requestState: AsyncRequestState,
+    val assistantIntent: AssistantIntent = AssistantIntent.EXPLAIN_CODE,
+    val assistantActionId: AssistantActionId = AssistantActionId.EXPLAIN_FLOW,
     val feedbackLevel: ApplicationFeedbackLevel? = null,
     val statusMessage: String? = null,
 )
@@ -53,6 +57,8 @@ data class BeautificationCompletedResult(
 data class BeautificationFailedResult(
     val message: String,
     val requestState: AsyncRequestState,
+    val assistantIntent: AssistantIntent = AssistantIntent.EXPLAIN_CODE,
+    val assistantActionId: AssistantActionId = AssistantActionId.EXPLAIN_FLOW,
     val feedbackLevel: ApplicationFeedbackLevel = ApplicationFeedbackLevel.ERROR,
     val preservePreviousStatusKind: Boolean = true,
 )
@@ -67,6 +73,8 @@ data class ReviewRequestStartedResult(
     val scene: ReviewRequestScene,
     val requestState: AsyncRequestState,
     val statusMessage: String,
+    val assistantIntent: AssistantIntent? = null,
+    val assistantActionId: AssistantActionId? = assistantIntent?.let(AssistantActionId::fromIntent),
     val submittedRequest: ReplayableQaRequest? = null,
     val clearRuntimeArtifactScene: String? = null,
     val selectedDiffItemIds: List<String> = emptyList(),

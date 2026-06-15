@@ -9,10 +9,12 @@ import com.charmnight.linkgraph.source.AttachedJarEntry
 import com.charmnight.linkgraph.source.AttachedJarIndex
 import com.charmnight.linkgraph.source.AttachedJarContentResolver
 import com.charmnight.linkgraph.source.SourceOrigin
+import com.intellij.testFramework.PsiTestUtil
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.nio.file.Files
+import java.nio.file.Path
 import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
 import kotlin.test.assertEquals
@@ -156,6 +158,68 @@ class JvmSymbolIndexBuilderAttachedJarTest : BasePlatformTestCase() {
             },
             resourcePaths.joinToString("\n"),
         )
+    }
+
+    fun testProjectBaseFallbackIndexesJavaSourcesWhenIdeContentRootsHaveNoClasses() {
+        val sourceRoot = Path.of(project.basePath!!).resolve("spring-beans/src/main/java/org/springframework/beans")
+        Files.createDirectories(sourceRoot)
+        Files.writeString(
+            sourceRoot.resolve("FatalBeanException.java"),
+            """
+            package org.springframework.beans;
+
+            public class FatalBeanException extends RuntimeException {
+                public FatalBeanException(String msg, Throwable cause) {
+                    super(msg, cause);
+                }
+            }
+            """.trimIndent(),
+        )
+        Files.writeString(
+            sourceRoot.resolve("BeanInstantiationException.java"),
+            """
+            package org.springframework.beans;
+
+            public class BeanInstantiationException extends FatalBeanException {
+                private final Class<?> beanClass;
+
+                public BeanInstantiationException(Class<?> beanClass, String msg, Throwable cause) {
+                    super(msg, cause);
+                    this.beanClass = beanClass;
+                }
+            }
+            """.trimIndent(),
+        )
+        val originalContentRoots = ProjectRootManager.getInstance(project).contentRoots.toList()
+        try {
+            originalContentRoots.forEach { root ->
+                PsiTestUtil.removeContentEntry(module, root)
+            }
+
+            val symbolIndex = JvmSymbolIndexBuilder(project).build()
+            val beanException = requireNotNull(symbolIndex.findClass("org.springframework.beans.BeanInstantiationException"))
+            val fatalException = requireNotNull(symbolIndex.findClass("org.springframework.beans.FatalBeanException"))
+            val view = com.charmnight.linkgraph.architecture.view.ClassDiagramProjector().project(
+                index = com.charmnight.linkgraph.architecture.ClassDiagramFastIndex.fromSymbols(symbolIndex),
+                scopeNodeId = beanException.id,
+            )
+
+            assertEquals("org.springframework.beans", beanException.packageName)
+            assertEquals("FatalBeanException.java", fatalException.source?.displayPath?.substringAfterLast('/'))
+            assertTrue(view.visibleGraph.nodes.any { node -> node.id == beanException.id })
+            assertTrue(view.visibleGraph.nodes.any { node -> node.id == fatalException.id })
+            assertTrue(view.visibleGraph.edges.any { edge ->
+                edge.fromNodeId == beanException.id &&
+                    edge.toNodeId == fatalException.id &&
+                    edge.metadata["classDiagram.relation.role"] == "EXTENDS"
+            }, view.visibleGraph.edges.joinToString("\n") { edge -> "${edge.fromNodeId} -> ${edge.toNodeId} ${edge.metadata}" })
+        } finally {
+            originalContentRoots.forEach { root ->
+                if (ProjectRootManager.getInstance(project).contentRoots.none { current -> current.url == root.url }) {
+                    PsiTestUtil.addSourceContentToRoots(module, root)
+                }
+            }
+        }
     }
 
     fun testAttachedSpiProviderIsIndexedWithoutExternalLibraryExpansion() {

@@ -17,7 +17,6 @@ import type {
   GraphPatch,
   GraphPatchResult,
   GraphPosition,
-  InvestigationThread,
   InvestigationTurnOutcome,
   LinkGraphBootstrapState,
   LinkGraphDocument,
@@ -25,7 +24,6 @@ import type {
   LinkGraphNode,
   ResourceRelationViewDocument,
   ReviewGraphViewDocument,
-  RiskResolutionStatus,
 } from "./types";
 
 export function resolveGraphPatchNodeIds(patch: GraphPatch | null | undefined): string[] {
@@ -213,18 +211,18 @@ export function overlayDraftEntryOntoFlowchartView(args: {
   view: FlowchartViewDocument;
   workingGraph: LinkGraphDocument | null;
   entry: DraftWorkbenchEntry | null;
-  activeWorkbenchTab: "explanation" | "qa" | "draft" | "code";
+  activeAssistantTarget: "explanation" | "qa" | "draft" | "code";
   compareMode: "after" | "compare";
 }): FlowchartViewDocument {
   const {
     view,
     workingGraph,
     entry,
-    activeWorkbenchTab,
+    activeAssistantTarget,
     compareMode,
   } = args;
   if (
-    activeWorkbenchTab !== "draft"
+    activeAssistantTarget !== "draft"
     || compareMode !== "after"
     || entry?.kind !== "CHANGE"
   ) {
@@ -301,26 +299,6 @@ export function resolveEntryOwnerSignatures(
   return signatures;
 }
 
-export function toDraftWorkbenchEntry(change: CandidateDraftChange): DraftWorkbenchEntry {
-  return {
-    entryId: `draft-${change.changeId}`,
-    kind: "CHANGE",
-    title: change.title,
-    sourceChangeId: change.changeId,
-    targetStepIds: change.targetStepIds,
-    targetNodeIds: resolveDraftEntryTargetNodeIds(change),
-    beforeState: change.beforeState ?? null,
-    afterState: change.afterState ?? null,
-    reason: change.reason,
-    impactSummary: change.impactSummary,
-    claimType: change.claimType ?? null,
-    evidence: change.evidence ?? [],
-    editScopes: change.editScopes ?? [],
-    patchIntent: change.patchIntent ?? null,
-    graphPatch: change.graphPatch ?? null,
-  };
-}
-
 export function resolveEvidenceTargetNodeId(
   targetNodeIds: string[],
   evidence?: Array<{ references: Array<{ nodeId?: string | null }> }>,
@@ -340,66 +318,6 @@ export function deriveLatestTurnOutcome(result: GraphPatchResult | null): Invest
     ?? recentTurnOutcomes[recentTurnOutcomes.length - 1]
     ?? sessionTurnOutcomes[sessionTurnOutcomes.length - 1]
     ?? null;
-}
-
-export function updateGraphPatchResultCandidateStatus(
-  result: GraphPatchResult | null,
-  changeId: string,
-  status: CandidateDraftChange["status"],
-): GraphPatchResult | null {
-  if (!result) {
-    return result;
-  }
-  return {
-    ...result,
-    candidateChanges: result.candidateChanges.map((candidate) =>
-      candidate.changeId === changeId ? { ...candidate, status } : candidate),
-    newCandidateChanges: result.newCandidateChanges.map((candidate) =>
-      candidate.changeId === changeId ? { ...candidate, status } : candidate),
-    qaSession: result.qaSession
-      ? {
-          ...result.qaSession,
-          candidateChanges: result.qaSession.candidateChanges.map((candidate) =>
-            candidate.changeId === changeId ? { ...candidate, status } : candidate),
-        }
-      : null,
-  };
-}
-
-export function updateGraphPatchResultThreadResolution(
-  result: GraphPatchResult | null,
-  threadId: string,
-  status: RiskResolutionStatus,
-  note = "",
-): GraphPatchResult | null {
-  if (!result) {
-    return result;
-  }
-
-  const updateThread = (thread: InvestigationThread): InvestigationThread => {
-    if (thread.threadId !== threadId) {
-      return thread;
-    }
-    return {
-      ...thread,
-      resolution: {
-        threadId,
-        status,
-        note: note || thread.resolution?.note || "",
-      },
-    };
-  };
-
-  return {
-    ...result,
-    investigationThreads: result.investigationThreads?.map(updateThread),
-    qaSession: result.qaSession
-      ? {
-          ...result.qaSession,
-          investigationThreads: (result.qaSession.investigationThreads ?? []).map(updateThread),
-        }
-      : null,
-  };
 }
 
 export function deriveFactGraphSummary(

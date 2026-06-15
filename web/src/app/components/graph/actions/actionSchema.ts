@@ -32,7 +32,7 @@ interface NodeActionSchemaInput {
   onInspectNode: (nodeId: string) => void;
   onRequestSourceNavigation: (nodeId: string) => void;
   onRequestBeautification: (selectedNodeId?: string) => void;
-  onRequestQa: (selectedNodeId?: string) => void;
+  onPrimeQuestionComposer: (selectedNodeId?: string) => void;
   onOpenQa: (selectedNodeId?: string) => void;
   onToggleCollapseNode: (nodeId: string) => void;
   onExpandOverflowNode: (nodeId: string) => void;
@@ -136,7 +136,7 @@ export function buildNodeActions({
   onInspectNode,
   onRequestSourceNavigation,
   onRequestBeautification,
-  onRequestQa,
+  onPrimeQuestionComposer,
   onOpenQa,
   onToggleCollapseNode,
   onExpandOverflowNode,
@@ -175,7 +175,7 @@ export function buildNodeActions({
       onClose();
     }),
     makeAction("qa-node", "问答当前节点", () => {
-      onRequestQa(nodeId);
+      onPrimeQuestionComposer(nodeId);
       onClose();
     }),
     makeAction("set-qa-anchor", "设为问答目标", () => {

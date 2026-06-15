@@ -2,6 +2,7 @@ package com.charmnight.linkgraph.application.workflow
 
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.ResultEvidenceReference
+import com.charmnight.linkgraph.llm.withoutInternalQaTrustMarkers
 import com.charmnight.linkgraph.workbench.QaConversationMessage
 import com.charmnight.linkgraph.workbench.QaConversationService
 import com.charmnight.linkgraph.workbench.QaConversationSession
@@ -36,6 +37,7 @@ internal class QaResultNormalizer(
         if (result.qaSession != null) {
             // 已归一化的结果自带会话时，只做出站模式边界，避免重复合并用户轮次。
             return applyModeBoundary(result.withMode(modeContext), modeContext)
+                .withoutInternalQaTrustMarkers()
         }
 
         // 入站边界：先裁掉当前模式不允许的新输出，防止它们进入会话合并。
@@ -73,6 +75,7 @@ internal class QaResultNormalizer(
         )
         // 出站边界：会话合并可能带回历史候选或线程，最终写回前必须再次按模式裁剪。
         return applyModeBoundary(normalized, modeContext)
+            .withoutInternalQaTrustMarkers()
     }
 
     /**

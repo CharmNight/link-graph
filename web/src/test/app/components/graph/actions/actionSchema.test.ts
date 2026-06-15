@@ -60,7 +60,7 @@ describe("actionSchema", () => {
     const onInspectNode = vi.fn();
     const onRequestSourceNavigation = vi.fn();
     const onRequestBeautification = vi.fn();
-    const onRequestQa = vi.fn();
+    const onPrimeQuestionComposer = vi.fn();
     const onOpenQa = vi.fn();
     const onToggleCollapseNode = vi.fn();
     const onExpandOverflowNode = vi.fn();
@@ -79,7 +79,7 @@ describe("actionSchema", () => {
       onInspectNode,
       onRequestSourceNavigation,
       onRequestBeautification,
-      onRequestQa,
+      onPrimeQuestionComposer,
       onOpenQa,
       onToggleCollapseNode,
       onExpandOverflowNode,
@@ -117,7 +117,7 @@ describe("actionSchema", () => {
       onInspectNode,
       onRequestSourceNavigation,
       onRequestBeautification,
-      onRequestQa,
+      onPrimeQuestionComposer,
       onOpenQa,
       onToggleCollapseNode,
       onExpandOverflowNode,
@@ -143,7 +143,7 @@ describe("actionSchema", () => {
     const onInspectNode = vi.fn();
     const onRequestSourceNavigation = vi.fn();
     const onRequestBeautification = vi.fn();
-    const onRequestQa = vi.fn();
+    const onPrimeQuestionComposer = vi.fn();
     const onOpenQa = vi.fn();
     const onToggleCollapseNode = vi.fn();
     const onExpandOverflowNode = vi.fn();
@@ -166,7 +166,7 @@ describe("actionSchema", () => {
       onInspectNode,
       onRequestSourceNavigation,
       onRequestBeautification,
-      onRequestQa,
+      onPrimeQuestionComposer,
       onOpenQa,
       onToggleCollapseNode,
       onExpandOverflowNode,

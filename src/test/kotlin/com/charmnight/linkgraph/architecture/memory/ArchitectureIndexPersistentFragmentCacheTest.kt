@@ -11,7 +11,7 @@ class ArchitectureIndexPersistentFragmentCacheTest {
     @Test
     fun restoresCompleteArchitectureIndexWhenEverySliceHitsPersistentCache() {
         val store = PersistentArchitectureIndexCacheStore(Files.createTempDirectory("link-graph-ide-cache"))
-        val manifest = manifest(slice("slice:orders", "src/main/java/com/example/orders/OrderService.java"))
+        val manifest = manifest(slice("slice:orders", "src/main/java/com/example/orders/OrderService.java", contentSha256 = "hash-orders"))
         val key = cacheKey("slice:orders")
         store.write(
             key,
@@ -61,13 +61,85 @@ class ArchitectureIndexPersistentFragmentCacheTest {
         assertEquals(setOf("slice:orders"), result.missingSliceIds)
     }
 
+    @Test
+    fun treatsProjectSlicesWithoutContentHashAsPersistentCacheMiss() {
+        val store = PersistentArchitectureIndexCacheStore(Files.createTempDirectory("link-graph-ide-cache"))
+        val manifest = manifest(slice("slice:orders", "src/main/java/com/example/orders/OrderService.java", contentSha256 = null))
+        val key = cacheKey("slice:orders")
+        store.write(
+            key,
+            ArchitectureIndexSliceFragment(
+                sliceId = "slice:orders",
+                symbols = listOf(
+                    SymbolSliceFragment(
+                        id = "class:OrderService",
+                        qualifiedName = "com.example.orders.OrderService",
+                        simpleName = "OrderService",
+                        kind = "CLASS",
+                        sourcePath = "src/main/java/com/example/orders/OrderService.java",
+                        packageName = "com.example.orders",
+                    ),
+                ),
+            ),
+        )
+
+        val result = ArchitectureIndexPersistentFragmentCache(store).restoreCompleteIndex(
+            manifest = manifest,
+            staleSliceIds = emptySet(),
+            cacheKeyForSlice = { key },
+            budget = JvmResolutionBudget(),
+        )
+
+        assertNull(result.index)
+        assertEquals(0, result.hits)
+        assertEquals(1, result.misses)
+        assertEquals(setOf("slice:orders"), result.missingSliceIds)
+    }
+
+    @Test
+    fun treatsProjectSlicesWithoutFilesAsPersistentCacheMiss() {
+        val store = PersistentArchitectureIndexCacheStore(Files.createTempDirectory("link-graph-ide-cache"))
+        val manifest = manifest(
+            ProjectSlice(
+                id = "slice:empty",
+                moduleName = null,
+                contentRoot = "/repo",
+                sourceSet = "main",
+                packagePrefix = "com.example.empty",
+                kind = ProjectSliceKind.JVM_SOURCE.name,
+                files = emptyList(),
+            ),
+        )
+        val key = cacheKey("slice:empty")
+        store.write(
+            key,
+            ArchitectureIndexSliceFragment(sliceId = "slice:empty"),
+        )
+
+        val result = ArchitectureIndexPersistentFragmentCache(store).restoreCompleteIndex(
+            manifest = manifest,
+            staleSliceIds = emptySet(),
+            cacheKeyForSlice = { key },
+            budget = JvmResolutionBudget(),
+        )
+
+        assertNull(result.index)
+        assertEquals(0, result.hits)
+        assertEquals(1, result.misses)
+        assertEquals(setOf("slice:empty"), result.missingSliceIds)
+    }
+
     private fun manifest(slice: ProjectSlice): ProjectSliceManifest =
         ProjectSliceManifest(
             projectLocationHash = "project",
             slices = listOf(slice),
         )
 
-    private fun slice(id: String, path: String): ProjectSlice =
+    private fun slice(
+        id: String,
+        path: String,
+        contentSha256: String? = "hash",
+    ): ProjectSlice =
         ProjectSlice(
             id = id,
             moduleName = null,
@@ -75,7 +147,7 @@ class ArchitectureIndexPersistentFragmentCacheTest {
             sourceSet = "main",
             packagePrefix = "com.example.orders",
             kind = ProjectSliceKind.JVM_SOURCE.name,
-            files = listOf(ProjectFileFingerprint(path, 1, 1)),
+            files = listOf(ProjectFileFingerprint(path, 1, 1, contentSha256)),
         )
 
     private fun cacheKey(sliceId: String): ArchitectureIndexFragmentCacheKey =

@@ -2,9 +2,25 @@ package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.testing.*
 
+import com.charmnight.linkgraph.application.model.GraphEditCommandKind
+import com.charmnight.linkgraph.application.model.GraphProjectionIndex
+import com.charmnight.linkgraph.application.model.GraphProjectionMappingKind
+import com.charmnight.linkgraph.application.model.GraphProjectionNodeMapping
+import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
+import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.presentation.GraphHiddenBucket
+import com.charmnight.linkgraph.presentation.GraphPresentationControls
+import com.charmnight.linkgraph.presentation.GraphViewPresentation
+import com.charmnight.linkgraph.usage.ClassUsageEntry
+import com.charmnight.linkgraph.usage.ClassUsageGroup
+import com.charmnight.linkgraph.usage.ClassUsageKind
+import com.charmnight.linkgraph.usage.ClassUsageOwnerKind
+import com.charmnight.linkgraph.usage.ClassUsageSearchResult
+import com.charmnight.linkgraph.usage.ClassUsageSummary
+import com.charmnight.linkgraph.usage.ClassUsageTarget
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
@@ -127,7 +143,6 @@ class GraphEditorStateStoreTest {
             sceneStates = sceneStates,
             trustedNavigationNodes = trustedNavigationNodes,
             runtimeArtifactSummaries = runtimeSummaries,
-            workbenchSectionPreferences = linkedMapOf("qa.request-status" to true),
         )
         val store = GraphEditorStateStore(initial)
 
@@ -165,6 +180,121 @@ class GraphEditorStateStoreTest {
 
         assertEquals(1, snapshot.draftWorkbenchState.draftChanges.size)
         assertNotSame(draftChanges, snapshot.draftWorkbenchState.draftChanges)
+    }
+
+    @Test
+    fun snapshotFreezesArchitectureAndClassDiagramViewCollections() {
+        val architectureNodeMetadata = linkedMapOf("layer" to "service")
+        val architectureVisibleNodes = mutableListOf(
+            GraphNode(
+                id = "class:OrderService",
+                type = NodeType.CLASS,
+                title = "OrderService",
+                metadata = architectureNodeMetadata,
+            ),
+        )
+        val architectureHiddenNodeIds = mutableListOf("class:HiddenOrderRepository")
+        val architectureProjectionCanonicalIds = mutableListOf("class:OrderService")
+        val architectureEditableCommands = linkedSetOf(GraphEditCommandKind.UPDATE_NODE)
+        val architectureNodeMappings = linkedMapOf(
+            "class:OrderService" to GraphProjectionNodeMapping(
+                projectedNodeId = "class:OrderService",
+                mappingKind = GraphProjectionMappingKind.EXACT,
+                canonicalNodeIds = architectureProjectionCanonicalIds,
+                editableCommandKinds = architectureEditableCommands,
+            ),
+        )
+        val availableScopes = mutableListOf("module", "package")
+        val architectureView = ArchitectureGraphViewDocument(
+            visibleGraph = GraphDocument(nodes = architectureVisibleNodes),
+            fullGraph = GraphDocument(nodes = architectureVisibleNodes),
+            projectionIndex = GraphProjectionIndex(nodeMappings = architectureNodeMappings),
+            presentation = GraphViewPresentation(
+                hiddenBuckets = listOf(
+                    GraphHiddenBucket(
+                        id = "hidden:low-signal",
+                        label = "Low signal",
+                        count = 1,
+                        nodeIds = architectureHiddenNodeIds,
+                    ),
+                ),
+                controls = GraphPresentationControls(availableScopes = availableScopes),
+            ),
+        )
+
+        val usageEntries = mutableListOf(
+            ClassUsageEntry(
+                id = "usage:1",
+                ownerId = "class:OrderController",
+                kind = ClassUsageKind.TYPE_REFERENCE,
+                filePath = "src/main/kotlin/OrderController.kt",
+                line = 12,
+                column = 8,
+                text = "OrderService",
+            ),
+        )
+        val usageGroups = mutableListOf(
+            ClassUsageGroup(
+                id = "usage-group:controller",
+                ownerNodeId = "class:OrderController",
+                ownerKind = ClassUsageOwnerKind.CLASS,
+                title = "OrderController",
+                usages = usageEntries,
+            ),
+        )
+        val classDiagramView = ClassDiagramViewDocument(
+            usage = ClassUsageSearchResult(
+                target = ClassUsageTarget(
+                    nodeId = "class:OrderService",
+                    qualifiedName = "com.example.OrderService",
+                    displayName = "OrderService",
+                ),
+                groups = usageGroups,
+                summary = ClassUsageSummary(
+                    targetNodeId = "class:OrderService",
+                    targetQualifiedName = "com.example.OrderService",
+                    groupCount = 1,
+                    usageCount = 1,
+                    visibleGroupCount = 1,
+                    visibleUsageCount = 1,
+                ),
+            ),
+        )
+        val store = GraphEditorStateStore(
+            testSnapshot(
+                architectureGraphView = architectureView,
+                classDiagramView = classDiagramView,
+            ),
+        )
+
+        architectureVisibleNodes.clear()
+        architectureNodeMetadata["layer"] = "mutated"
+        architectureHiddenNodeIds.clear()
+        architectureProjectionCanonicalIds.clear()
+        architectureEditableCommands.clear()
+        architectureNodeMappings.clear()
+        availableScopes.clear()
+        usageEntries.clear()
+        usageGroups.clear()
+        val snapshot = store.snapshot()
+
+        assertEquals(1, snapshot.architectureGraphView.visibleGraph.nodes.size)
+        assertEquals("service", snapshot.architectureGraphView.visibleGraph.nodes.single().metadata["layer"])
+        assertEquals(
+            listOf("class:HiddenOrderRepository"),
+            snapshot.architectureGraphView.presentation.hiddenBuckets.single().nodeIds,
+        )
+        assertEquals(
+            listOf("class:OrderService"),
+            snapshot.architectureGraphView.projectionIndex.nodeMapping("class:OrderService")?.canonicalNodeIds,
+        )
+        assertEquals(
+            setOf(GraphEditCommandKind.UPDATE_NODE),
+            snapshot.architectureGraphView.projectionIndex.nodeMapping("class:OrderService")?.editableCommandKinds,
+        )
+        assertEquals(listOf("module", "package"), snapshot.architectureGraphView.presentation.controls.availableScopes)
+        assertEquals(1, snapshot.classDiagramView.usage?.groups?.size)
+        assertEquals(1, snapshot.classDiagramView.usage?.groups?.single()?.usages?.size)
     }
 
     @Test

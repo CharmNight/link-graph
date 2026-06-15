@@ -2,18 +2,22 @@ package com.charmnight.linkgraph.application.workflow.architecture
 
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
+import com.charmnight.linkgraph.application.indexed.IndexedClassUsageOptions
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRefreshPolicy
 import com.charmnight.linkgraph.application.indexed.requestArchitectureGraphRequest
 import com.charmnight.linkgraph.application.indexed.requestClassDiagramRequest
+import com.charmnight.linkgraph.application.indexed.requestClassUsageOverlayRequest
 import com.charmnight.linkgraph.application.model.AsyncRequestPhase
 import com.charmnight.linkgraph.architecture.ArchitectureGraph
 import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
+import com.charmnight.linkgraph.architecture.ClassDiagramFastIndex
 import com.charmnight.linkgraph.architecture.memory.ArchitectureIndexSliceFragment
 import com.charmnight.linkgraph.architecture.memory.ProjectFileFingerprint
 import com.charmnight.linkgraph.architecture.memory.ProjectSlice
 import com.charmnight.linkgraph.architecture.memory.ProjectSliceKind
 import com.charmnight.linkgraph.architecture.architectureIndexService
 import com.charmnight.linkgraph.architecture.architectureIndexRuntime
+import com.charmnight.linkgraph.application.indexed.IndexedGraphFreshness
 import com.charmnight.linkgraph.jvm.index.JvmClassKind
 import com.charmnight.linkgraph.jvm.index.JvmClassSymbol
 import com.charmnight.linkgraph.jvm.index.JvmFieldTypeRole
@@ -24,8 +28,12 @@ import com.charmnight.linkgraph.jvm.index.JvmServiceProviderIndex
 import com.charmnight.linkgraph.jvm.index.JvmSourceRef
 import com.charmnight.linkgraph.jvm.index.JvmSymbolIndex
 import com.charmnight.linkgraph.jvm.index.effectiveTypeReferences
+import com.charmnight.linkgraph.jvm.index.stableJvmId
+import com.charmnight.linkgraph.jvm.relation.JvmRelation
+import com.charmnight.linkgraph.jvm.relation.JvmRelationConfidence
 import com.charmnight.linkgraph.jvm.relation.JvmRelationIndex
 import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
+import com.charmnight.linkgraph.jvm.relation.JvmRelationSource
 import com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.source.SourceOrigin
@@ -34,6 +42,7 @@ import com.charmnight.linkgraph.testing.assertClassDiagramViewDataContract
 import com.charmnight.linkgraph.testing.testSnapshot
 import com.charmnight.linkgraph.ui.toWorkflowEditorSnapshot
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlin.test.assertEquals
@@ -125,7 +134,10 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
             logger = logger,
         ).requestIndexedGraph(requestClassDiagramRequest("arch:component:com.example.service"))
 
-        val classDiagramEvent = waitForEvent<GraphEditorApplicationEvent.ClassDiagramLoaded>(events)
+        val classDiagramEvent = waitForEvent<GraphEditorApplicationEvent.ClassDiagramLoaded>(
+            events = events,
+            predicate = { event -> event.view.summary.relationCompleteness == "COMPLETE" },
+        )
         val classDiagramView = classDiagramEvent.view
         assertClassDiagramViewDataContract(classDiagramView, "workflow.classDiagram")
         assertTrue(events.filterIsInstance<GraphEditorApplicationEvent.IndexedGraphRequestStarted>().any { event ->
@@ -154,7 +166,7 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
         )
     }
 
-    fun testColdClassDiagramKeepsCanvasLoadingUntilCompleteRelations() {
+    fun testColdClassDiagramPublishesStructurePreviewBeforeCompleteRelations() {
         addArchitectureFixture()
         val events = mutableListOf<GraphEditorApplicationEvent>()
         val indexSupport = ArchitectureIndexWorkflowSupport(project)
@@ -167,16 +179,26 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
             logger = logger,
         ).requestIndexedGraph(requestClassDiagramRequest("arch:component:com.example.service"))
 
+        val structureEvent = waitForEvent<GraphEditorApplicationEvent.ClassDiagramLoaded>(
+            events = events,
+            predicate = { event -> event.view.summary.relationCompleteness == "STRUCTURE_ONLY" },
+        )
         val completeEvent = waitForEvent<GraphEditorApplicationEvent.ClassDiagramLoaded>(
             events = events,
             predicate = { event -> event.view.summary.relationCompleteness == "COMPLETE" },
         )
+        val classDiagramEvents = events.filterIsInstance<GraphEditorApplicationEvent.ClassDiagramLoaded>()
+        val structureIndex = classDiagramEvents.indexOfFirst { event -> event === structureEvent }
+        val completeIndex = classDiagramEvents.indexOfFirst { event -> event === completeEvent }
         assertTrue(
-            events.filterIsInstance<GraphEditorApplicationEvent.ClassDiagramLoaded>().none { event ->
-                event.view.summary.relationCompleteness == "STRUCTURE_ONLY"
-            },
-            "类图冷启动不能把 STRUCTURE_ONLY 半成品作为正式类图同步到前端。",
+            structureIndex in 0 until completeIndex,
+            "类图冷启动必须先同步 STRUCTURE_ONLY 结构预览，再补齐 COMPLETE 关系。",
         )
+        val structureView = structureEvent.view
+        assertClassDiagramViewDataContract(structureView, "workflow.classDiagram.structure")
+        assertEquals(AsyncRequestPhase.SUCCEEDED, structureEvent.requestState.phase)
+        assertTrue(structureView.visibleGraph.nodes.isNotEmpty(), "结构预览不能继续让前端停留在空画布。")
+
         val completeView = completeEvent.view
         assertClassDiagramViewDataContract(completeView, "workflow.classDiagram.complete")
         assertEquals(AsyncRequestPhase.SUCCEEDED, completeEvent.requestState.phase)
@@ -188,6 +210,219 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
                 )
             },
             "完整类图也只展示 UML 类结构，不补入运行时集成关系。",
+        )
+    }
+
+    fun testClassDiagramUsageRequestProjectsReferenceSearchResultsIntoInteractiveView() {
+        addClassUsageFixture()
+        val events = mutableListOf<GraphEditorApplicationEvent>()
+        val indexSupport = ArchitectureIndexWorkflowSupport(project)
+        val logger = Logger.getInstance(ArchitectureWorkflowChainTest::class.java)
+        val targetNodeId = stableJvmId("class", "com.example.usage.OrderService")
+
+        ClassDiagramWorkflow(
+            project = project,
+            indexSupport = indexSupport,
+            eventSink = events::add,
+            logger = logger,
+        ).requestIndexedGraph(
+            requestClassDiagramRequest(targetNodeId).copy(
+                usage = IndexedClassUsageOptions(
+                    enabled = true,
+                    targetNodeId = targetNodeId,
+                    maxUsageGroups = 10,
+                    maxUsageEntries = 20,
+                    includeImports = false,
+                ),
+            ),
+        )
+
+        val usageEvent = waitForEvent<GraphEditorApplicationEvent.ClassDiagramLoaded>(
+            events = events,
+            predicate = { event ->
+                event.view.usage != null
+            },
+        )
+        val view = usageEvent.view
+        assertClassDiagramViewDataContract(view, "workflow.classDiagram.usage")
+        assertEquals(targetNodeId, view.usage?.target?.nodeId)
+        assertEquals("com.example.usage.OrderService", view.usage?.target?.qualifiedName)
+        assertTrue(
+            view.usage?.groups?.any { group -> group.qualifiedName == "com.example.usage.OrderController" } == true,
+            view.usage?.groups.orEmpty().joinToString("\n") { group -> "${group.qualifiedName}: ${group.usages.map { it.kind }}" },
+        )
+        assertTrue(
+            view.visibleGraph.edges.any { edge ->
+                edge.toNodeId == targetNodeId &&
+                    edge.metadata["classDiagram.relation.role"] == "CLASS_USAGE"
+            },
+            "使用处结果必须以 CLASS_USAGE 边叠加到类图完整视图。",
+        )
+        assertTrue(
+            view.usage?.groups.orEmpty()
+                .flatMap { group -> group.usages }
+                .none { usage -> usage.kind == com.charmnight.linkgraph.usage.ClassUsageKind.IMPORT },
+            "默认 usage 请求不应把 import 当作图上使用处。",
+        )
+    }
+
+    fun testClassDiagramUsageRequestDoesNotTriggerCompleteRelationBuild() {
+        addClassUsageFixture()
+        val targetNodeId = stableJvmId("class", "com.example.usage.OrderService")
+        val indexSupport = CountingCompleteClassDiagramIndexSupport(classUsageStructureIndex())
+        val events = mutableListOf<GraphEditorApplicationEvent>()
+        val logger = Logger.getInstance(ArchitectureWorkflowChainTest::class.java)
+
+        ClassDiagramWorkflow(
+            project = project,
+            indexSupport = indexSupport,
+            eventSink = events::add,
+            logger = logger,
+        ).requestIndexedGraph(
+            requestClassUsageOverlayRequest(targetNodeId).copy(
+                usage = IndexedClassUsageOptions(
+                    enabled = true,
+                    targetNodeId = targetNodeId,
+                    maxUsageGroups = 10,
+                    maxUsageEntries = 20,
+                    includeImports = false,
+                ),
+            ),
+        )
+
+        val usageEvent = waitForEvent<GraphEditorApplicationEvent.ClassDiagramLoaded>(
+            events = events,
+            predicate = { event ->
+                event.view.summary.relationCompleteness == "STRUCTURE_ONLY" &&
+                    event.view.usage?.target?.nodeId == targetNodeId
+            },
+        )
+        assertClassDiagramViewDataContract(usageEvent.view, "workflow.classDiagram.usage.structureOnly")
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+        Thread.sleep(250)
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+        assertEquals(
+            0,
+            indexSupport.completeBuildAttempts,
+            "查找类使用处不应触发完整类图补齐，否则大项目会被类图构建拖慢。",
+        )
+        assertTrue(
+            events.none { event -> event is GraphEditorApplicationEvent.IndexedGraphRequestFailed },
+            "查找类使用处不应因为跳过完整类图补齐而产生失败事件。",
+        )
+    }
+
+    fun testClassDiagramUsageRequestWithQualifiedNameSkipsStructureIndexBuild() {
+        addClassUsageFixture()
+        val targetQualifiedName = "com.example.usage.OrderService"
+        val targetNodeId = stableJvmId("class", targetQualifiedName)
+        val indexSupport = FailingClassDiagramIndexSupport()
+        val events = mutableListOf<GraphEditorApplicationEvent>()
+        val logger = Logger.getInstance(ArchitectureWorkflowChainTest::class.java)
+
+        ClassDiagramWorkflow(
+            project = project,
+            indexSupport = indexSupport,
+            eventSink = events::add,
+            logger = logger,
+        ).requestIndexedGraph(
+            requestClassUsageOverlayRequest(targetNodeId).copy(
+                usage = IndexedClassUsageOptions(
+                    enabled = true,
+                    targetNodeId = targetNodeId,
+                    targetQualifiedName = targetQualifiedName,
+                    maxUsageGroups = 10,
+                    maxUsageEntries = 20,
+                    includeImports = false,
+                ),
+            ),
+        )
+
+        val usageEvent = waitForEvent<GraphEditorApplicationEvent.ClassDiagramLoaded>(
+            events = events,
+            predicate = { event ->
+                event.view.usage?.target?.qualifiedName == targetQualifiedName
+            },
+        )
+        assertClassDiagramViewDataContract(usageEvent.view, "workflow.classDiagram.usage.standalone")
+        assertEquals(0, indexSupport.structureBuildAttempts)
+        assertEquals(0, indexSupport.completeBuildAttempts)
+        assertTrue(
+            usageEvent.view.visibleGraph.edges.any { edge ->
+                edge.toNodeId == targetNodeId &&
+                    edge.metadata["classDiagram.relation.role"] == "CLASS_USAGE"
+            },
+            "带 qualifiedName 的 usage 请求应直接生成使用处图，不应等待类图结构索引。",
+        )
+    }
+
+    fun testClassDiagramUsageRequestWithOnlyNodeIdSkipsStructureIndexBuildWhenPsiCanResolveTarget() {
+        addClassUsageFixture()
+        val targetQualifiedName = "com.example.usage.OrderService"
+        val targetNodeId = stableJvmId("class", targetQualifiedName)
+        val indexSupport = FailingClassDiagramIndexSupport()
+        val events = mutableListOf<GraphEditorApplicationEvent>()
+        val logger = Logger.getInstance(ArchitectureWorkflowChainTest::class.java)
+
+        ClassDiagramWorkflow(
+            project = project,
+            indexSupport = indexSupport,
+            eventSink = events::add,
+            logger = logger,
+        ).requestIndexedGraph(
+            requestClassUsageOverlayRequest(targetNodeId).copy(
+                usage = IndexedClassUsageOptions(
+                    enabled = true,
+                    targetNodeId = targetNodeId,
+                    maxUsageGroups = 10,
+                    maxUsageEntries = 20,
+                    includeImports = false,
+                ),
+            ),
+        )
+
+        val usageEvent = waitForEvent<GraphEditorApplicationEvent.ClassDiagramLoaded>(
+            events = events,
+            predicate = { event ->
+                event.view.usage?.target?.qualifiedName == targetQualifiedName
+            },
+        )
+        assertClassDiagramViewDataContract(usageEvent.view, "workflow.classDiagram.usage.nodeIdStandalone")
+        assertEquals(0, indexSupport.structureBuildAttempts)
+        assertEquals(0, indexSupport.completeBuildAttempts)
+    }
+
+    fun testClassDiagramKeepsStructurePreviewWhenCompleteRelationBuildIsCancelled() {
+        val symbolIndex = simpleClassDiagramSymbolIndex()
+        val indexSupport = CancellingCompleteClassDiagramIndexSupport(
+            structureIndex = ClassDiagramFastIndex.fromSymbols(symbolIndex),
+        )
+        val events = mutableListOf<GraphEditorApplicationEvent>()
+        val logger = Logger.getInstance(ArchitectureWorkflowChainTest::class.java)
+        val scopeNodeId = stableJvmId("class", "com.example.BeanInstantiationException")
+
+        ClassDiagramWorkflow(
+            project = project,
+            indexSupport = indexSupport,
+            eventSink = events::add,
+            logger = logger,
+        ).requestIndexedGraph(requestClassDiagramRequest(scopeNodeId))
+
+        val structureEvent = waitForEvent<GraphEditorApplicationEvent.ClassDiagramLoaded>(
+            events = events,
+            predicate = { event -> event.view.summary.relationCompleteness == "STRUCTURE_ONLY" },
+        )
+        PlatformTestUtil.waitWithEventsDispatching(
+            "等待完整关系补齐取消被 workflow 消化",
+            { indexSupport.completeBuildAttempts > 0 },
+            5000,
+        )
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+
+        assertTrue(structureEvent.view.visibleGraph.nodes.isNotEmpty(), "结构预览应保留可见类图。")
+        assertTrue(
+            events.none { event -> event is GraphEditorApplicationEvent.IndexedGraphRequestFailed },
+            "完整关系补齐被取消时不能覆盖已成功发布的结构预览。",
         )
     }
 
@@ -410,6 +645,95 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
         assertEquals(resourceEntryPath, fragment.serviceProviders.single().resourcePath)
     }
 
+    fun testRuntimeFragmentsPersistCrossSliceRelationOnlyOnce() {
+        val orderSource = JvmSourceRef(
+            displayPath = "src/main/java/com/example/orders/OrderService.java",
+            virtualFileUrl = "file:///repo/src/main/java/com/example/orders/OrderService.java",
+            startLine = 1,
+            endLine = 10,
+            decompiled = false,
+        )
+        val customerSource = JvmSourceRef(
+            displayPath = "src/main/java/com/example/customers/CustomerService.java",
+            virtualFileUrl = "file:///repo/src/main/java/com/example/customers/CustomerService.java",
+            startLine = 1,
+            endLine = 10,
+            decompiled = false,
+        )
+        val orderClass = JvmClassSymbol(
+            id = "class:OrderService",
+            qualifiedName = "com.example.orders.OrderService",
+            simpleName = "OrderService",
+            packageName = "com.example.orders",
+            moduleName = null,
+            kind = JvmClassKind.CLASS,
+            source = orderSource,
+            origin = SourceOrigin.PROJECT_SOURCE,
+        )
+        val customerClass = JvmClassSymbol(
+            id = "class:CustomerService",
+            qualifiedName = "com.example.customers.CustomerService",
+            simpleName = "CustomerService",
+            packageName = "com.example.customers",
+            moduleName = null,
+            kind = JvmClassKind.CLASS,
+            source = customerSource,
+            origin = SourceOrigin.PROJECT_SOURCE,
+        )
+        val relation = JvmRelation(
+            id = "rel:orders-to-customers",
+            kind = JvmRelationKind.USES_TYPE,
+            fromSymbolId = orderClass.id,
+            toSymbolId = customerClass.id,
+            confidence = JvmRelationConfidence.PROVEN,
+            source = JvmRelationSource.PSI,
+        )
+        val index = ArchitectureGraphIndex(
+            symbolIndex = JvmSymbolIndex(
+                classesByQualifiedName = mapOf(
+                    orderClass.qualifiedName to orderClass,
+                    customerClass.qualifiedName to customerClass,
+                ),
+            ),
+            relationIndex = JvmRelationIndex(listOf(relation)),
+            graph = ArchitectureGraph(),
+        )
+        val orderSlice = ProjectSlice(
+            id = "slice:orders",
+            moduleName = null,
+            contentRoot = "/repo",
+            sourceSet = "main",
+            packagePrefix = "com.example.orders",
+            kind = ProjectSliceKind.JVM_SOURCE.name,
+            files = listOf(ProjectFileFingerprint("src/main/java/com/example/orders/OrderService.java", 10, 20, "orders-sha")),
+        )
+        val customerSlice = ProjectSlice(
+            id = "slice:customers",
+            moduleName = null,
+            contentRoot = "/repo",
+            sourceSet = "main",
+            packagePrefix = "com.example.customers",
+            kind = ProjectSliceKind.JVM_SOURCE.name,
+            files = listOf(ProjectFileFingerprint("src/main/java/com/example/customers/CustomerService.java", 10, 20, "customers-sha")),
+        )
+        val fragmentMethod = project.architectureIndexRuntime().javaClass.getDeclaredMethod(
+            "fragmentForSlice",
+            ProjectSlice::class.java,
+            ArchitectureGraphIndex::class.java,
+        )
+        fragmentMethod.isAccessible = true
+
+        val fragments = listOf(orderSlice, customerSlice).map { slice ->
+            fragmentMethod.invoke(project.architectureIndexRuntime(), slice, index) as ArchitectureIndexSliceFragment
+        }
+
+        assertEquals(
+            1,
+            fragments.sumOf { fragment -> fragment.relations.count { persisted -> persisted.id == relation.id } },
+            "A cross-slice relation must have exactly one persistent owner slice.",
+        )
+    }
+
     fun testPersistentSliceCacheIsSkippedWhenBudgetExpandsJdkSymbols() {
         addArchitectureFixture()
         val budget = JvmResolutionBudget(includeJdk = true)
@@ -458,15 +782,19 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
             logger = logger,
         ).requestIndexedGraph(requestClassDiagramRequest())
 
+        val structureEvent = waitForEvent<GraphEditorApplicationEvent.ClassDiagramLoaded>(
+            events = events,
+            predicate = { event -> event.view.summary.relationCompleteness == "STRUCTURE_ONLY" },
+        )
         val completeEvent = waitForEvent<GraphEditorApplicationEvent.ClassDiagramLoaded>(
             events = events,
             predicate = { event -> event.view.summary.relationCompleteness == "COMPLETE" },
         )
         assertTrue(
-            events.filterIsInstance<GraphEditorApplicationEvent.ClassDiagramLoaded>().none { event ->
-                event.view.summary.relationCompleteness == "STRUCTURE_ONLY"
+            structureEvent.view.visibleGraph.nodes.any { node ->
+                node.signature == "com.example.debug.DebugGraphDefinition"
             },
-            "未指定范围时也不能把结构预览当作类图完成态发布。",
+            "结构预览也应优先锚定当前编辑器类，避免前端长时间空白。",
         )
         val completeView = completeEvent.view
         assertClassDiagramViewDataContract(completeView, "workflow.classDiagram.currentEditorAnchor")
@@ -564,6 +892,39 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
         )
     }
 
+    private fun addClassUsageFixture() {
+        myFixture.addFileToProject(
+            "src/main/java/com/example/usage/OrderService.java",
+            """
+                package com.example.usage;
+
+                public class OrderService {
+                    public void submit() {}
+                }
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/usage/OrderController.java",
+            """
+                package com.example.usage;
+
+                import com.example.usage.OrderService;
+
+                public class OrderController {
+                    private OrderService service;
+
+                    public OrderController(OrderService service) {
+                        this.service = service;
+                    }
+
+                    public void submit(OrderService overrideService) {
+                        new OrderService().submit();
+                    }
+                }
+            """.trimIndent(),
+        )
+    }
+
     private fun assertPersistentRestoredIndexKeepsFullJvmSemantics(index: ArchitectureGraphIndex) {
         assertTrue(
             index.relationIndex.byKind(JvmRelationKind.IMPLEMENTS).isNotEmpty(),
@@ -626,5 +987,149 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
             Thread.sleep(50)
         }
         throw AssertionError("Timed out waiting for ${T::class.simpleName}. Events: $events")
+    }
+
+    private fun simpleClassDiagramSymbolIndex(): JvmSymbolIndex {
+        val fatal = JvmClassSymbol(
+            id = stableJvmId("class", "com.example.FatalBeanException"),
+            qualifiedName = "com.example.FatalBeanException",
+            simpleName = "FatalBeanException",
+            packageName = "com.example",
+            moduleName = null,
+            kind = JvmClassKind.CLASS,
+            source = null,
+            origin = SourceOrigin.PROJECT_SOURCE,
+        )
+        val bean = JvmClassSymbol(
+            id = stableJvmId("class", "com.example.BeanInstantiationException"),
+            qualifiedName = "com.example.BeanInstantiationException",
+            simpleName = "BeanInstantiationException",
+            packageName = "com.example",
+            moduleName = null,
+            kind = JvmClassKind.CLASS,
+            source = null,
+            origin = SourceOrigin.PROJECT_SOURCE,
+            superClassName = fatal.qualifiedName,
+        )
+        return JvmSymbolIndex(
+            classesByQualifiedName = listOf(fatal, bean).associateBy(JvmClassSymbol::qualifiedName),
+        )
+    }
+
+    private fun classUsageStructureIndex(): ArchitectureGraphIndex {
+        val service = JvmClassSymbol(
+            id = stableJvmId("class", "com.example.usage.OrderService"),
+            qualifiedName = "com.example.usage.OrderService",
+            simpleName = "OrderService",
+            packageName = "com.example.usage",
+            moduleName = null,
+            kind = JvmClassKind.CLASS,
+            source = null,
+            origin = SourceOrigin.PROJECT_SOURCE,
+        )
+        val controller = JvmClassSymbol(
+            id = stableJvmId("class", "com.example.usage.OrderController"),
+            qualifiedName = "com.example.usage.OrderController",
+            simpleName = "OrderController",
+            packageName = "com.example.usage",
+            moduleName = null,
+            kind = JvmClassKind.CLASS,
+            source = null,
+            origin = SourceOrigin.PROJECT_SOURCE,
+        )
+        return ClassDiagramFastIndex.fromSymbols(
+            JvmSymbolIndex(
+                classesByQualifiedName = listOf(service, controller).associateBy(JvmClassSymbol::qualifiedName),
+            ),
+        )
+    }
+
+    private class CancellingCompleteClassDiagramIndexSupport(
+        private val structureIndex: ArchitectureGraphIndex,
+    ) : ClassDiagramIndexSupport {
+        var completeBuildAttempts: Int = 0
+            private set
+
+        override fun currentIndex(): ArchitectureGraphIndex? = null
+
+        override fun freshness(): IndexedGraphFreshness = IndexedGraphFreshness()
+
+        override fun buildIndex(request: com.charmnight.linkgraph.application.indexed.IndexedGraphRequest): ArchitectureGraphIndex =
+            error("The cancellation regression must use the structure-only path first.")
+
+        override fun buildIndex(
+            request: com.charmnight.linkgraph.application.indexed.IndexedGraphRequest,
+            symbolIndexHint: JvmSymbolIndex?,
+        ): ArchitectureGraphIndex {
+            completeBuildAttempts += 1
+            throw ProcessCanceledException()
+        }
+
+        override fun buildClassDiagramStructureIndex(
+            request: com.charmnight.linkgraph.application.indexed.IndexedGraphRequest,
+        ): ArchitectureGraphIndex = structureIndex
+
+        override fun hasFullIndex(request: com.charmnight.linkgraph.application.indexed.IndexedGraphRequest): Boolean = false
+    }
+
+    private class CountingCompleteClassDiagramIndexSupport(
+        private val structureIndex: ArchitectureGraphIndex,
+    ) : ClassDiagramIndexSupport {
+        var completeBuildAttempts: Int = 0
+            private set
+
+        override fun currentIndex(): ArchitectureGraphIndex? = null
+
+        override fun freshness(): IndexedGraphFreshness = IndexedGraphFreshness()
+
+        override fun buildIndex(request: com.charmnight.linkgraph.application.indexed.IndexedGraphRequest): ArchitectureGraphIndex =
+            error("Usage requests should use the structure index first.")
+
+        override fun buildIndex(
+            request: com.charmnight.linkgraph.application.indexed.IndexedGraphRequest,
+            symbolIndexHint: JvmSymbolIndex?,
+        ): ArchitectureGraphIndex {
+            completeBuildAttempts += 1
+            return structureIndex
+        }
+
+        override fun buildClassDiagramStructureIndex(
+            request: com.charmnight.linkgraph.application.indexed.IndexedGraphRequest,
+        ): ArchitectureGraphIndex = structureIndex
+
+        override fun hasFullIndex(request: com.charmnight.linkgraph.application.indexed.IndexedGraphRequest): Boolean = false
+    }
+
+    private class FailingClassDiagramIndexSupport : ClassDiagramIndexSupport {
+        var structureBuildAttempts: Int = 0
+            private set
+        var completeBuildAttempts: Int = 0
+            private set
+
+        override fun currentIndex(): ArchitectureGraphIndex? = null
+
+        override fun freshness(): IndexedGraphFreshness = IndexedGraphFreshness()
+
+        override fun buildIndex(request: com.charmnight.linkgraph.application.indexed.IndexedGraphRequest): ArchitectureGraphIndex {
+            completeBuildAttempts += 1
+            error("Standalone usage requests must not build the complete class diagram index.")
+        }
+
+        override fun buildIndex(
+            request: com.charmnight.linkgraph.application.indexed.IndexedGraphRequest,
+            symbolIndexHint: JvmSymbolIndex?,
+        ): ArchitectureGraphIndex {
+            completeBuildAttempts += 1
+            error("Standalone usage requests must not build the complete class diagram index.")
+        }
+
+        override fun buildClassDiagramStructureIndex(
+            request: com.charmnight.linkgraph.application.indexed.IndexedGraphRequest,
+        ): ArchitectureGraphIndex {
+            structureBuildAttempts += 1
+            error("Standalone usage requests must not build the class diagram structure index.")
+        }
+
+        override fun hasFullIndex(request: com.charmnight.linkgraph.application.indexed.IndexedGraphRequest): Boolean = false
     }
 }

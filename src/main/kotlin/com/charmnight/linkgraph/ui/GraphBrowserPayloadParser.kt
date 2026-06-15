@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.application.indexed.IndexedClassDiagramOptions
+import com.charmnight.linkgraph.application.indexed.IndexedClassUsageOptions
 import com.charmnight.linkgraph.application.indexed.IndexedGraphPreset
 import com.charmnight.linkgraph.application.indexed.IndexedGraphPresetRequest
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
@@ -16,6 +17,7 @@ import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.usage.ClassUsageSearchLimits
 
 internal object GraphBrowserPayloadParser {
     fun validatePayloadSize(
@@ -61,6 +63,7 @@ internal object GraphBrowserPayloadParser {
                 includeJdk = root.booleanOrNull("includeJdk"),
                 viewport = parseIndexedViewport(root["viewport"] as? Map<*, *>),
                 classDiagram = (root["classDiagram"] as? Map<*, *>)?.let(::parseIndexedClassDiagramOptions),
+                usage = (root["usage"] as? Map<*, *>)?.let(::parseIndexedClassUsageOptions),
                 review = (root["review"] as? Map<*, *>)?.let(::parseIndexedReviewOptions),
             ),
         )
@@ -76,6 +79,22 @@ internal object GraphBrowserPayloadParser {
         IndexedClassDiagramOptions(
             neighborhoodLimit = raw?.intOrNull("neighborhoodLimit") ?: 24,
             memberLimit = raw?.intOrNull("memberLimit") ?: 5,
+        )
+
+    private fun parseIndexedClassUsageOptions(raw: Map<*, *>): IndexedClassUsageOptions =
+        IndexedClassUsageOptions(
+            enabled = raw.booleanOrDefault("enabled", false),
+            targetNodeId = (raw["targetNodeId"] as? String)?.takeIf(String::isNotBlank),
+            targetQualifiedName = (raw["targetQualifiedName"] as? String)?.takeIf(String::isNotBlank),
+            sourceVirtualFileUrl = (raw["sourceVirtualFileUrl"] as? String)?.takeIf(String::isNotBlank),
+            sourcePath = (raw["sourcePath"] as? String)?.takeIf(String::isNotBlank),
+            maxUsageGroups = ClassUsageSearchLimits.clampUsageGroups(
+                raw.intOrNull("maxUsageGroups") ?: ClassUsageSearchLimits.DEFAULT_USAGE_GROUPS,
+            ),
+            maxUsageEntries = ClassUsageSearchLimits.clampUsageEntries(
+                raw.intOrNull("maxUsageEntries") ?: ClassUsageSearchLimits.DEFAULT_USAGE_ENTRIES,
+            ),
+            includeImports = raw.booleanOrDefault("includeImports", false),
         )
 
     private fun parseIndexedReviewOptions(raw: Map<*, *>?): IndexedReviewGraphOptions =

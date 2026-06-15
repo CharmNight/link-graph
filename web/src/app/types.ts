@@ -1,25 +1,49 @@
-export type Certainty = "PROVEN" | "RULE_INFERRED" | "LLM_SUGGESTED";
+export type {
+  LinkGraphArtifactSliceEnvelope,
+  LinkGraphFeedbackSliceEnvelope,
+  LinkGraphIncrementalTransportEnvelope,
+  LinkGraphSnapshotEnvelope,
+  LinkGraphTransportEnvelopeBase,
+} from "./transportTypes";
 
-export type BindingStatus =
-  | "BOUND"
-  | "DESIGN_ONLY"
-  | "GENERATABLE"
-  | "PARTIALLY_SYNCED"
-  | "CONFLICTED";
+import type {
+  DraftCompareStatus,
+  GraphPatch,
+  GraphPosition,
+  GraphSourceTag,
+  LinkGraphDocument,
+  LinkGraphEdge,
+  LinkGraphNode,
+  LinkGraphSceneId,
+  LinkGraphSceneState,
+} from "./graphTypes";
 
-export type DiffStatus = "MATCHED" | "ONLY_IN_CODE" | "ONLY_IN_MERMAID" | "MODIFIED";
-export type DraftCompareStatus = "MODIFIED" | "ADDED" | "REMOVED";
-export type GraphSourceTag = "FACT" | "DESIGN_BASELINE" | "DRAFT_MANUAL" | "DRAFT_AI" | "UNCERTAIN_FACT";
-export type GraphDiffElementKind = "NODE" | "EDGE";
-export type GraphPatchAction =
-  | "ADD_NODE"
-  | "UPDATE_NODE"
-  | "DELETE_NODE"
-  | "ADD_EDGE"
-  | "UPDATE_EDGE"
-  | "DELETE_EDGE"
-  | "ADD_ANNOTATION"
-  | "MARK_UNCERTAIN";
+export type {
+  BindingStatus,
+  Certainty,
+  DiffStatus,
+  DraftCompareStatus,
+  EdgeType,
+  GraphDiffElementKind,
+  GraphEditOperation,
+  GraphEditScript,
+  GraphFocusRequest,
+  GraphPatch,
+  GraphPatchAction,
+  GraphPatchOperation,
+  GraphPosition,
+  GraphSourceTag,
+  LinkGraphDocument,
+  LinkGraphEdge,
+  LinkGraphEdgeRoute,
+  LinkGraphEdgeRouteSection,
+  LinkGraphLayoutState,
+  LinkGraphNode,
+  LinkGraphSceneId,
+  LinkGraphSceneState,
+  NodeType,
+} from "./graphTypes";
+
 export type LlmResultSource = "DISABLED" | "LOCAL_RULE" | "REMOTE";
 export type ResultEvidenceLevel = "DIRECT_SOURCE" | "DIRECT_GRAPH" | "CALLSITE_ONLY" | "NOT_OBSERVED";
 export type DraftClaimType = "CODE_FACT" | "RISK_HINT" | "EXPLANATION_NOTE" | "STRUCTURAL_SUGGESTION";
@@ -59,139 +83,15 @@ export type QaMessageRole = "USER" | "ASSISTANT";
 export type QaRequestKind = "ASK" | "INVESTIGATE_THREAD";
 export type QaMode = "AUTO" | "ANSWER" | "REVIEW" | "CHANGE" | "INVESTIGATE";
 export type StageEligibilityTarget = "PLAN" | "CODE";
-export type AssistantIntent = "EXPLAIN_CODE" | "ASK_CODE" | "GENERATE_CODE" | "CHECK_CHANGE";
+export type AssistantActionId =
+  | "DESCRIBE_CLASS"
+  | "EXPLAIN_STRUCTURE"
+  | "EXPLAIN_FLOW"
+  | "ASK_CONTEXT"
+  | "GENERATE_IMPLEMENTATION"
+  | "CHECK_CHANGE";
+export type AssistantIntent = "DESCRIBE_CLASS" | "EXPLAIN_CODE" | "ASK_CODE" | "GENERATE_CODE" | "CHECK_CHANGE";
 export type AssistantTurnKind = "EXPLANATION" | "QA" | "GENERATION_PLAN" | "CODE_DRAFT" | "CHECK_RESULT";
-
-export type NodeType =
-  | "METHOD"
-  | "FLOW_SCOPE"
-  | "FLOW_ACTION"
-  | "TERMINAL"
-  | "MERGE"
-  | "CLASS"
-  | "MODULE"
-  | "PACKAGE"
-  | "INTERFACE"
-  | "ENUM"
-  | "ANNOTATION"
-  | "RECORD"
-  | "OBJECT"
-  | "EXTERNAL_CLASS"
-  | "LIBRARY"
-  | "SERVICE"
-  | "COMPONENT"
-  | "LAYER"
-  | "RESOURCE"
-  | "SQL"
-  | "HTTP_ENDPOINT"
-  | "FEIGN_CLIENT"
-  | "DUBBO_SERVICE"
-  | "MQ_TOPIC"
-  | "MQ_CONSUMER"
-  | "CONFIG_ITEM"
-  | "XML_RESOURCE"
-  | "DOC_PAGE"
-  | "UNCERTAIN_LINK";
-
-export type EdgeType =
-  | "CALL"
-  | "CONTAINS_FLOW"
-  | "CONTROL_FLOW"
-  | "IMPLEMENTS"
-  | "EXTENDS"
-  | "USES_TYPE"
-  | "INJECT"
-  | "ROUTES_TO"
-  | "MAPS_TO_SQL"
-  | "PUBLISHES_TO"
-  | "CONSUMES_FROM"
-  | "BINDS_CONFIG"
-  | "LINKS_DOC"
-  | "USES_PROXY"
-  | "REFLECTS_TO"
-  | "SPI_RESOLVES_TO"
-  | "TESTS"
-  | "GENERATES";
-
-export interface GraphPosition {
-  x: number;
-  y: number;
-}
-
-export interface GraphFocusRequest {
-  nodeId: string;
-  nonce: number;
-}
-
-export interface LinkGraphEdgeRouteSection {
-  startPoint: GraphPosition;
-  endPoint: GraphPosition;
-  bendPoints?: GraphPosition[];
-}
-
-export interface LinkGraphEdgeRoute {
-  sections: LinkGraphEdgeRouteSection[];
-}
-
-export interface LinkGraphLayoutState {
-  positions: Record<string, GraphPosition>;
-}
-
-export type LinkGraphSceneId =
-  | "WORKSPACE_FACT"
-  | "WORKSPACE_FLOWCHART"
-  | "WORKSPACE_RESOURCE_RELATION"
-  | "WORKSPACE_ARCHITECTURE_GRAPH"
-  | "WORKSPACE_CLASS_DIAGRAM"
-  | "WORKSPACE_REVIEW_GRAPH"
-  | "DIFF";
-
-export interface LinkGraphSceneState {
-  selectedNodeId?: string | null;
-  anchorNodeId?: string | null;
-  layoutState: LinkGraphLayoutState;
-  layoutRevision: number;
-  collapsedNodeIds: string[];
-}
-
-export interface LinkGraphNode {
-  id: string;
-  type: NodeType;
-  title: string;
-  location?: string;
-  signature?: string;
-  inputs: string[];
-  outputs: string[];
-  doc?: string;
-  certainty: Certainty;
-  bindingStatus: BindingStatus;
-  diffStatus?: DiffStatus;
-  position?: GraphPosition;
-  metadata?: Record<string, string>;
-  sourceTag?: GraphSourceTag;
-}
-
-export interface LinkGraphEdge {
-  id: string;
-  type: EdgeType;
-  source: string;
-  target: string;
-  sourceHandle?: string | null;
-  targetHandle?: string | null;
-  label?: string;
-  route?: LinkGraphEdgeRoute;
-  metadata?: Record<string, string>;
-  sourceTag?: GraphSourceTag;
-}
-
-export interface LinkGraphDocument {
-  nodes: LinkGraphNode[];
-  edges: LinkGraphEdge[];
-  patch?: GraphPatch | null;
-  nodeCount?: number;
-  edgeCount?: number;
-  truncated?: boolean;
-}
 
 export interface GraphViewPresentation {
   target: GraphPresentationTarget;
@@ -364,6 +264,81 @@ export interface IndexedClassDiagramOptions {
   memberLimit: number;
 }
 
+export interface IndexedClassUsageOptions {
+  enabled: boolean;
+  targetNodeId?: string | null;
+  targetQualifiedName?: string | null;
+  sourceVirtualFileUrl?: string | null;
+  sourcePath?: string | null;
+  maxUsageGroups: number;
+  maxUsageEntries: number;
+  includeImports: boolean;
+}
+
+export type ClassUsageKind =
+  | "TYPE_REFERENCE"
+  | "FIELD_TYPE"
+  | "METHOD_PARAMETER"
+  | "METHOD_RETURN"
+  | "CONSTRUCTOR_CALL"
+  | "ANNOTATION"
+  | "IMPORT"
+  | "EXTENDS"
+  | "IMPLEMENTS"
+  | "OTHER";
+
+export type ClassUsageOwnerKind = "CLASS" | "METHOD" | "FILE";
+
+export interface ClassUsageTarget {
+  nodeId: string;
+  qualifiedName: string;
+  displayName: string;
+}
+
+export interface ClassUsageEntry {
+  id: string;
+  ownerId: string;
+  kind: ClassUsageKind;
+  filePath: string;
+  line: number;
+  column: number;
+  text: string;
+  virtualFileUrl?: string | null;
+  ownerQualifiedName?: string | null;
+  ownerMethodSignature?: string | null;
+}
+
+export interface ClassUsageGroup {
+  id: string;
+  ownerNodeId?: string | null;
+  ownerKind: ClassUsageOwnerKind;
+  title: string;
+  qualifiedName?: string | null;
+  filePath?: string | null;
+  virtualFileUrl?: string | null;
+  usages: ClassUsageEntry[];
+}
+
+export interface ClassUsageSummary {
+  targetNodeId: string;
+  targetQualifiedName: string;
+  groupCount: number;
+  usageCount: number;
+  visibleGroupCount: number;
+  visibleUsageCount: number;
+  truncated: boolean;
+  maxUsageGroups: number;
+  maxUsageEntries: number;
+  includeImports: boolean;
+  canRequestMore: boolean;
+}
+
+export interface ClassUsageSearchResult {
+  target: ClassUsageTarget;
+  groups: ClassUsageGroup[];
+  summary: ClassUsageSummary;
+}
+
 export interface IndexedReviewGraphOptions {
   maxChangedNodes: number;
   maxRelatedTestNodes: number;
@@ -457,6 +432,7 @@ export interface ClassDiagramViewDocument {
   projectionIndex?: GraphProjectionIndex;
   summary: ClassDiagramSummary;
   presentation: GraphViewPresentation;
+  usage?: ClassUsageSearchResult | null;
 }
 
 export interface ReviewGraphSummary {
@@ -579,51 +555,6 @@ export interface GraphProjectionEdgeMapping {
 export interface GraphProjectionIndex {
   nodeMappings: Record<string, GraphProjectionNodeMapping>;
   edgeMappings: Record<string, GraphProjectionEdgeMapping>;
-}
-
-export interface GraphPatchOperation {
-  id: string;
-  action: GraphPatchAction;
-  elementKind: GraphDiffElementKind;
-  elementId: string;
-  title?: string | null;
-  summary?: string | null;
-  node?: LinkGraphNode | null;
-  edge?: LinkGraphEdge | null;
-  metadata?: Record<string, string>;
-}
-
-export interface GraphPatch {
-  summary?: string | null;
-  operations: GraphPatchOperation[];
-  addedNodeIds: string[];
-  removedNodeIds: string[];
-  addedEdgeIds: string[];
-  removedEdgeIds: string[];
-}
-
-export type GraphEditOperation =
-  | {
-      type: "UPSERT_NODE";
-      node: LinkGraphNode;
-    }
-  | {
-      type: "REMOVE_NODE";
-      nodeId: string;
-    }
-  | {
-      type: "UPSERT_EDGE";
-      edge: LinkGraphEdge;
-    }
-  | {
-      type: "REMOVE_EDGE";
-      edgeId: string;
-    };
-
-export interface GraphEditScript {
-  sceneId: LinkGraphSceneId;
-  baseWorkspaceRevision: number;
-  operations: GraphEditOperation[];
 }
 
 export interface ResultEvidenceReference {
@@ -913,7 +844,7 @@ export interface DraftWorkbenchState {
   draftNotes: DraftWorkbenchEntry[];
 }
 
-export interface ExplanationWorkbenchState {
+export interface AssistantExplanationViewState {
   result: GraphBeautificationResult | null;
   requestState: AsyncRequestState;
   selectedStepId?: string | null;
@@ -925,14 +856,12 @@ export interface ExplanationWorkbenchState {
   previousSessionLabel?: string | null;
 }
 
-export interface QaWorkbenchState {
+export interface AssistantQaViewState {
   result: GraphPatchResult | null;
   requestState: AsyncRequestState;
   qaRequestRecoveryState?: QaRequestRecoveryState | null;
   selectedChangeId?: string | null;
   selectedThreadId?: string | null;
-  questionDraft: string;
-  selectedMode?: QaMode;
   scopeLabel?: string | null;
 }
 
@@ -948,30 +877,96 @@ export interface AssistantContextSnapshot {
 export interface AssistantTurnRef {
   turnId: string;
   kind: AssistantTurnKind;
+  intent?: AssistantIntent | null;
+  actionId?: AssistantActionId | null;
   sourceMessageType: string;
-  resultId?: string | null;
+  resultId: string;
   createdAtEpochMillis: number;
   context: AssistantContextSnapshot;
 }
 
+export interface AssistantFailureResult {
+  resultId: string;
+  message: string;
+  detailMessage?: string | null;
+  phase: AsyncRequestPhase | string;
+  requestId?: number | null;
+  sourceMessageType: string;
+  createdAtEpochMillis?: number | null;
+}
+
+export type AssistantComposerTarget =
+  | { kind: "NewTask" }
+  | {
+      kind: "QaRecovery";
+      requestId: string;
+      selectedNodeIds?: string[];
+      sourceThreadId?: string | null;
+      mode?: QaMode | null;
+    }
+  | {
+      kind: "ExplanationFollowUp";
+      stepId: string;
+      stepTitle?: string | null;
+      focusNodeId?: string | null;
+    }
+  | {
+      kind: "GenerationDiscussion";
+      planItemId?: string | null;
+    }
+  | {
+      kind: "RiskInvestigation";
+      threadId: string;
+      targetNodeIds?: string[];
+    };
+
+export interface AssistantComposerState {
+  draft: string;
+  target: AssistantComposerTarget;
+  draftSource?: "AUTO" | "USER" | null;
+  actionId?: AssistantActionId | null;
+  sceneId?: LinkGraphSceneId | null;
+}
+
+export interface AssistantResultStoreEntry {
+  kind: AssistantTurnKind;
+  failure?: AssistantFailureResult | null;
+  qa?: GraphPatchResult | null;
+  explanation?: GraphBeautificationResult | null;
+  generationPlan?: GenerationPlan | null;
+  generationDiscussionSession?: GenerationPlanDiscussionSession | null;
+  codeDrafts?: GeneratedCodeDraft[];
+  codeDraftWarnings?: string[];
+  check?: GraphPatchResult | null;
+}
+
+export type AssistantResultStore = Record<string, AssistantResultStoreEntry>;
+
 export interface AssistantSessionState {
   sessionId: string;
   activeIntent: AssistantIntent;
+  activeActionId?: AssistantActionId | null;
   contextLocked: boolean;
   context: AssistantContextSnapshot;
+  composer?: AssistantComposerState | null;
+  nextResultSequence?: number;
   turns: AssistantTurnRef[];
 }
 
 export interface AssistantTurn {
   turnId: string;
   kind: AssistantTurnKind;
+  intent?: AssistantIntent | null;
+  actionId?: AssistantActionId | null;
   createdAtEpochMillis: number;
   context: AssistantContextSnapshot;
+  failure?: AssistantFailureResult | null;
   qa?: GraphPatchResult | null;
   explanation?: GraphBeautificationResult | null;
   generationPlan?: GenerationPlan | null;
   generationDiscussionSession?: GenerationPlanDiscussionSession | null;
   codeDrafts?: GeneratedCodeDraft[];
+  codeDraftWarnings?: string[];
   check?: GraphPatchResult | null;
 }
 
@@ -1024,20 +1019,6 @@ export interface DraftCompareProjection {
   edgeStatuses: Record<string, DraftCompareStatus>;
   summary: DraftCompareSummary;
 }
-
-export type WorkbenchSectionId =
-  | "explanation.step-list"
-  | "explanation.step-detail"
-  | "qa.request-status"
-  | "qa.thread"
-  | "qa.composer"
-  | "qa.candidate-changes"
-  | "qa.investigation-threads"
-  | "draft.change-list"
-  | "draft.note-list"
-  | "draft.detail";
-
-export type WorkbenchSectionPreferences = Partial<Record<WorkbenchSectionId, boolean>>;
 
 export interface SyncPreviewItem {
   id: string;
@@ -1228,28 +1209,9 @@ export interface LinkGraphBootstrapState {
   sourceNavigationState?: SourceNavigationState | null;
   operationFeedback?: OperationFeedback | null;
   graphSurfaceExperiments?: GraphSurfaceExperimentFlags | null;
-  workbenchSectionPreferences?: WorkbenchSectionPreferences | null;
   assistantSessionState?: AssistantSessionState | null;
+  assistantResultStore?: AssistantResultStore | null;
   artifactContents?: Record<string, string>;
   lastMessageType?: string | null;
   lastGraphSource?: string | null;
 }
-
-export interface LinkGraphSnapshotEnvelope {
-  sessionId: string;
-  revision: number;
-  state: LinkGraphBootstrapState;
-  transportType?: LinkGraphIncrementalTransportEnvelope["type"];
-}
-
-export interface LinkGraphTransportEnvelopeBase {
-  sessionId: string;
-  revision: number;
-}
-
-export interface LinkGraphArtifactSliceEnvelope extends LinkGraphTransportEnvelopeBase {
-  type: "ARTIFACT_SLICE";
-  state: Partial<LinkGraphBootstrapState>;
-}
-
-export type LinkGraphIncrementalTransportEnvelope = LinkGraphArtifactSliceEnvelope;

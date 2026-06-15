@@ -3,7 +3,6 @@ import {
   Handle,
   MarkerType,
   Position,
-  useUpdateNodeInternals,
   type Edge,
   type EdgeMarker,
   type Node,
@@ -17,7 +16,9 @@ import { measureNodeContentBox } from "../../components/graph/nodes/measureNodeC
 import { GraphNodeStateBadges } from "../../components/graph/nodes/GraphNodeStateBadges";
 import type { DraftCompareStatus, GraphProjectionIndex, LinkGraphEdge, LinkGraphNode } from "../../types";
 import { canEditNodeLayout } from "../../layoutEditability";
+import { reactFlowNodeInternalsSignature } from "../../reactflow/nodeInternalsSignature";
 import type { RoutedEdgeData } from "../../reactflow/RoutedEdge";
+import { useStableNodeInternalsUpdate } from "../../reactflow/useStableNodeInternalsUpdate";
 import { resolveGraphNodeHighlightClassName } from "../graphNodeHighlights";
 import {
   draftCompareEdgeClassName,
@@ -26,6 +27,7 @@ import {
 } from "../draftComparePresentation";
 import {
   classDiagramCompactRelationLabel,
+  classDiagramRelationDetailText,
   classDiagramRelationDetailLabel,
   classDiagramRelationDisplayLabel,
   classDiagramRelationKind,
@@ -265,7 +267,11 @@ function compactNodeDetail(node: LinkGraphNode): string | null {
 }
 
 function compactNodeDetailTitle(node: LinkGraphNode): string | null {
-  return node.metadata?.["classDiagram.node.reason"]?.trim() || compactNodeDetail(node);
+  const relationReason = node.metadata?.["classDiagram.node.reason"]?.trim();
+  if (relationReason) {
+    return classDiagramRelationDetailText(relationReason);
+  }
+  return compactNodeDetail(node);
 }
 
 function isAbstractClass(node: LinkGraphNode): boolean {
@@ -358,12 +364,12 @@ function UmlMemberCompartment({
 }
 
 function ClassDiagramReactNode({ id, data, selected, isConnectable }: ClassDiagramFlowNodeProps) {
-  const updateNodeInternals = useUpdateNodeInternals();
   const style = handleStyle(isConnectable);
-
-  useLayoutEffect(() => {
-    updateNodeInternals(id);
-  }, [data.node, id, isConnectable, selected, updateNodeInternals]);
+  const nodeInternalsSignature = [
+    reactFlowNodeInternalsSignature(data.node),
+    String(isConnectable),
+  ].join("\u0001");
+  useStableNodeInternalsUpdate(id, nodeInternalsSignature);
 
   return (
     <div className={["class-diagram-react-node", isConnectable ? "is-connectable" : ""].join(" ").trim()}>
@@ -456,7 +462,11 @@ function classNodeStyle(node: LinkGraphNode) {
     border: isAnchor
       ? "3px solid rgba(52, 180, 255, 0.92)"
       : isTypeNode ? "1.5px solid rgba(38, 38, 38, 0.62)" : "1px solid rgba(44, 32, 22, 0.16)",
-    background: "#f8f8f4",
+    background: isAnchor
+      ? "linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, transparent), var(--panel))"
+      : isTypeNode
+        ? "var(--panel)"
+        : "var(--panel-soft)",
     boxShadow: isAnchor
       ? "0 0 0 3px rgba(52, 180, 255, 0.18), 0 20px 38px rgba(0, 0, 0, 0.34)"
       : "0 12px 26px rgba(0, 0, 0, 0.22)",

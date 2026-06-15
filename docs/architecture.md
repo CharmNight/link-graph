@@ -164,7 +164,7 @@ LLM 相关能力当前不是单一路径：
 
 ## 前端打包链路
 
-前端源码位于 `web/`。Gradle 会安装依赖、运行前端测试、构建 Vite 应用，并把构建产物复制到生成的插件资源目录中。运行时插件优先从打包后的 `linkgraph/index.html` 读取资源；当打包资源不可用时，开发或测试环境可以回退到 `web/dist`。
+前端源码位于 `web/`。Gradle 会安装依赖、运行前端测试、构建 Vite 应用，并把构建产物复制到生成的插件资源目录中。运行时插件默认只从打包后的 `linkgraph/index.html` 读取资源；`web/dist` 仅在显式设置 `LINKGRAPH_FRONTEND_DEV_DIST` 或 `-Dlinkgraph.frontend.devDist=...` 时作为开发资源源启用。
 
 ## 构建链路
 

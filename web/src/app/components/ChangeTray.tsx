@@ -9,6 +9,7 @@ interface ChangeTrayProps {
   canApply: boolean;
   canRevert: boolean;
   onOpenDraft: () => void;
+  onOpenDraftCompare: () => void;
   onOpenCode: () => void;
   onApply: () => void;
   onRevert: () => void;
@@ -23,6 +24,7 @@ export function ChangeTray({
   canApply,
   canRevert,
   onOpenDraft,
+  onOpenDraftCompare,
   onOpenCode,
   onApply,
   onRevert,
@@ -38,6 +40,7 @@ export function ChangeTray({
       </div>
       <div className="change-tray-actions">
         <button type="button" className="ghost-button" onClick={onOpenDraft}>查看草稿</button>
+        <button type="button" className="ghost-button" onClick={onOpenDraftCompare}>查看流程变化</button>
         <button type="button" className="ghost-button" onClick={onOpenCode}>进入代码</button>
         <button type="button" className="primary-button" disabled={!canApply} onClick={onApply}>应用全部</button>
         <button type="button" className="danger-button" disabled={!canRevert} onClick={onRevert}>回退</button>

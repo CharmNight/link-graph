@@ -229,6 +229,30 @@ function applyBootstrapLayoutToViewDocument<T extends GraphViewDocumentLike>(
   };
 }
 
+function hasGraphElements(view: GraphViewDocumentLike): boolean {
+  return view.visibleGraph.nodes.length > 0
+    || view.visibleGraph.edges.length > 0
+    || view.fullGraph.nodes.length > 0
+    || view.fullGraph.edges.length > 0;
+}
+
+function preserveCurrentViewDuringRunningRequest<T extends GraphViewDocumentLike>(
+  nextView: T,
+  currentView: T,
+  requestState: AsyncRequestState | null | undefined,
+  reuseCurrentProjectionGraphs: boolean,
+): T {
+  if (
+    !reuseCurrentProjectionGraphs
+    || requestState?.phase !== "RUNNING"
+    || hasGraphElements(nextView)
+    || !hasGraphElements(currentView)
+  ) {
+    return nextView;
+  }
+  return currentView;
+}
+
 function applySceneStateToViewDocument<T extends GraphViewDocumentLike>(
   view: T,
   currentView: T,
@@ -369,6 +393,10 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
     const reuseCurrentProjectionGraphs = nextState.workspaceRevision === currentCanvasState.workspaceRevision
       && nextState.semanticRevision === currentSemanticRevision;
     const nextSourceNavigationState = args.resolveSourceNavigationState(nextState);
+    const nextIndexedGraphRequestStates = resolveIndexedGraphRequestStates(
+      nextState.indexedGraphRequestStates,
+      args.resolveRequestState,
+    );
 
     const bootstrapFactGraphView = args.applyBootstrapRoutesToViewDocument(
       args.resolveFactGraphView(nextState),
@@ -382,17 +410,32 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       args.resolveResourceRelationView(nextState),
       currentCanvasState.resourceRelationView,
     );
-    const bootstrapArchitectureGraphView = args.applyBootstrapRoutesToViewDocument(
-      args.resolveArchitectureGraphView(nextState),
+    const bootstrapArchitectureGraphView = preserveCurrentViewDuringRunningRequest(
+      args.applyBootstrapRoutesToViewDocument(
+        args.resolveArchitectureGraphView(nextState),
+        currentCanvasState.architectureGraphView,
+      ),
       currentCanvasState.architectureGraphView,
+      nextIndexedGraphRequestStates.ARCHITECTURE,
+      reuseCurrentProjectionGraphs,
     );
-    const bootstrapClassDiagramView = args.applyBootstrapRoutesToViewDocument(
-      args.resolveClassDiagramView(nextState),
+    const bootstrapClassDiagramView = preserveCurrentViewDuringRunningRequest(
+      args.applyBootstrapRoutesToViewDocument(
+        args.resolveClassDiagramView(nextState),
+        currentCanvasState.classDiagramView,
+      ),
       currentCanvasState.classDiagramView,
+      nextIndexedGraphRequestStates.CLASS_DIAGRAM,
+      reuseCurrentProjectionGraphs,
     );
-    const bootstrapReviewGraphView = args.applyBootstrapRoutesToViewDocument(
-      args.resolveReviewGraphView(nextState),
+    const bootstrapReviewGraphView = preserveCurrentViewDuringRunningRequest(
+      args.applyBootstrapRoutesToViewDocument(
+        args.resolveReviewGraphView(nextState),
+        currentCanvasState.reviewGraphView,
+      ),
       currentCanvasState.reviewGraphView,
+      nextIndexedGraphRequestStates.REVIEW,
+      reuseCurrentProjectionGraphs,
     );
 
     const projectedFactGraphView = applyBootstrapLayoutToViewDocument(
@@ -622,14 +665,11 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       generatedCodeDraftWriteReport: nextState.generatedCodeDraftWriteReport ?? null,
       codeDraftRequestState: args.resolveRequestState(nextState.codeDraftRequestState),
       codeEligibilityDecision: nextState.codeEligibilityDecision ?? null,
-      indexedGraphRequestStates: resolveIndexedGraphRequestStates(
-        nextState.indexedGraphRequestStates,
-        args.resolveRequestState,
-      ),
+      indexedGraphRequestStates: nextIndexedGraphRequestStates,
       sourceNavigationState: nextSourceNavigationState,
       operationFeedback: nextState.operationFeedback ?? null,
-      workbenchSectionPreferences: nextState.workbenchSectionPreferences ?? {},
       assistantSessionState: nextState.assistantSessionState ?? current.assistantSessionState,
+      assistantResultStore: nextState.assistantResultStore ?? current.assistantResultStore,
       lastMessageType: nextState.lastMessageType ?? null,
       graphSurfaceExperiments: nextState.graphSurfaceExperiments ?? null,
       artifactContents: nextState.artifactContents

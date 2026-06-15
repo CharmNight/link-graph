@@ -30,4 +30,14 @@ describe("three-view architecture gate", () => {
     expect(editorTransportSource).not.toContain("isLegacyBootstrapState");
     expect(editorTransportSource).not.toContain("\"legacy-bootstrap\"");
   });
+
+  it("keeps GraphFlowSurface focused by extracting context menu geometry", () => {
+    const graphFlowSurfaceSource = readFileSync(appPath("reactflow", "GraphFlowSurface.tsx"), "utf8");
+    const contextMenuModelSource = readFileSync(appPath("reactflow", "graphFlowContextMenuModel.ts"), "utf8");
+
+    expect(graphFlowSurfaceSource.split("\n").length).toBeLessThan(1080);
+    expect(graphFlowSurfaceSource).toContain("graphFlowContextMenuModel");
+    expect(contextMenuModelSource).toContain("resolveContextMenuPoint");
+    expect(contextMenuModelSource).toContain("resolvePanePositionFromRect");
+  });
 });

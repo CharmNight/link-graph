@@ -1,7 +1,5 @@
 export type WorkflowStage = "understand" | "evidence" | "qa" | "draft" | "code";
 
-export type WorkbenchTab = "explanation" | "qa" | "draft" | "code";
-
 export type WorkflowStageStatus = "idle" | "active" | "done" | "blocked" | "running" | "failed";
 
 export interface WorkflowStageDefinition {
@@ -43,34 +41,6 @@ export const WORKFLOW_STAGE_DEFINITIONS: WorkflowStageDefinition[] = [
     purpose: "生成、查看、写入代码 diff",
   },
 ];
-
-export function workflowStageToWorkbenchTab(stage: WorkflowStage): WorkbenchTab | null {
-  switch (stage) {
-    case "understand":
-      return "explanation";
-    case "qa":
-      return "qa";
-    case "draft":
-      return "draft";
-    case "code":
-      return "code";
-    case "evidence":
-      return null;
-  }
-}
-
-export function workbenchTabToWorkflowStage(tab: WorkbenchTab): WorkflowStage {
-  switch (tab) {
-    case "explanation":
-      return "understand";
-    case "qa":
-      return "qa";
-    case "draft":
-      return "draft";
-    case "code":
-      return "code";
-  }
-}
 
 export function getWorkflowStageDefinition(stage: WorkflowStage): WorkflowStageDefinition {
   return WORKFLOW_STAGE_DEFINITIONS.find((definition) => definition.id === stage)

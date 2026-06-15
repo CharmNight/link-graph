@@ -101,6 +101,36 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertTrue("get_project_index_digest" in tools)
     }
 
+    fun testAllowedToolsReflectInjectedRegistryAndReviewModeGate() {
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            qaExecutor = { input, _, _ ->
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "ok",
+                    promptPreview = "prompt",
+                )
+            },
+            toolRegistry = AgentToolRegistry(
+                listOf(
+                    fakeTool("custom_context"),
+                    fakeTool("get_blast_radius"),
+                ),
+            ),
+        )
+        val baseInput = QaCapabilityInput(
+            question = "解释项目结构",
+            qaContext = GraphQaContext(),
+        )
+
+        assertEquals(setOf("custom_context"), capability.allowedTools(baseInput))
+        assertEquals(
+            setOf("custom_context", "get_blast_radius"),
+            capability.allowedTools(baseInput.copy(effectiveMode = QaMode.REVIEW)),
+        )
+    }
+
     fun testBuildsQaInitialStateFromQuestionAndUsesQaCapabilityId() {
         val capability = QaCapability(
             defaultBudget = RunBudget(),
@@ -2045,4 +2075,15 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertTrue(trace.mappingTrace.any { step -> step.contains("projectionIndex:${projectedNode.id}->${realNode.id}") })
         assertTrue(trace.includedInPrompt)
     }
+
+    private fun fakeTool(name: String): AgentTool =
+        object : AgentTool {
+            override val name: String = name
+            override val description: String = "fake tool"
+
+            override fun invoke(
+                input: Map<String, Any?>,
+                context: ToolExecutionContext,
+            ): ToolResult = ToolResult(toolName = name)
+        }
 }

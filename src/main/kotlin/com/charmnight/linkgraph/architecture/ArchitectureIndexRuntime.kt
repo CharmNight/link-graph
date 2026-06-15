@@ -9,6 +9,7 @@ import com.charmnight.linkgraph.architecture.memory.FieldTypeReferenceSliceFragm
 import com.charmnight.linkgraph.architecture.memory.PersistentArchitectureIndexCacheStore
 import com.charmnight.linkgraph.architecture.memory.ProjectFileFingerprint
 import com.charmnight.linkgraph.architecture.memory.ProjectSlice
+import com.charmnight.linkgraph.architecture.memory.ProjectSliceFingerprint
 import com.charmnight.linkgraph.architecture.memory.ProjectSliceInputFile
 import com.charmnight.linkgraph.architecture.memory.ProjectSliceKind
 import com.charmnight.linkgraph.architecture.memory.ProjectSlicePlanner
@@ -70,6 +71,15 @@ class ArchitectureIndexRuntime(
         ArchitectureIndexPersistentFragmentCache(persistentCacheStore)
     }
 
+    private data class ProjectSliceInputFileCandidate(
+        val moduleName: String?,
+        val contentRoot: String,
+        val relativePath: String,
+        val size: Long,
+        val modifiedAtMillis: Long,
+        val virtualFile: VirtualFile,
+    )
+
     fun currentIndex(): ArchitectureGraphIndex? =
         project.architectureIndexService().currentIndex()
 
@@ -104,24 +114,27 @@ class ArchitectureIndexRuntime(
                 "attachedJars=${cacheKey.attachedJars.size}",
             )
         }
+        val indexService = project.architectureIndexService()
         if (!forceRebuild) {
-            project.architectureIndexService().getCachedIndex(cacheKey)?.let { index ->
-                project.architectureIndexService().recordCurrentIndex(index, recordAsCurrent)
+            indexService.getCachedIndex(cacheKey)?.let { index ->
+                indexService.recordCurrentIndex(index, recordAsCurrent)
                 return index
             }
         }
         val lock = buildLocks.computeIfAbsent(cacheKey) { Any() }
         return synchronized(lock) {
+            var buildToken: Long? = null
             try {
                 if (!forceRebuild) {
-                    project.architectureIndexService().getCachedIndex(cacheKey)?.let { index ->
-                        project.architectureIndexService().recordCurrentIndex(index, recordAsCurrent)
+                    indexService.getCachedIndex(cacheKey)?.let { index ->
+                        indexService.recordCurrentIndex(index, recordAsCurrent)
                         return@synchronized index
                     }
+                    buildToken = indexService.beginCurrentIndexBuild(recordAsCurrent)
                     if (symbolIndexHint == null && supportsPersistentSliceCache(budget)) {
                         val manifest = currentProjectSliceManifest(sourceComponents, cacheKey)
                         if (manifest.slices.isNotEmpty()) {
-                            val staleSliceIds = project.architectureIndexService().memorySnapshot().staleSliceIds.toSet()
+                            val staleSliceIds = indexService.memorySnapshot().staleSliceIds.toSet()
                             val restored = persistentFragmentCache.restoreCompleteIndex(
                                 manifest = manifest,
                                 staleSliceIds = staleSliceIds,
@@ -129,7 +142,7 @@ class ArchitectureIndexRuntime(
                                 budget = budget,
                             )
                             restored.index?.let { index ->
-                                project.architectureIndexService().recordMemorySnapshot(
+                                indexService.recordMemorySnapshot(
                                     ArchitectureIndexMemorySnapshot(
                                         manifest = manifest,
                                         staleSliceIds = emptyList(),
@@ -139,7 +152,12 @@ class ArchitectureIndexRuntime(
                                         indexSource = "PERSISTENT_FULL_HIT",
                                     ),
                                 )
-                                return@synchronized project.architectureIndexService().putCachedIndex(cacheKey, index, recordAsCurrent)
+                                return@synchronized indexService.putCachedIndex(
+                                    cacheKey = cacheKey,
+                                    index = index,
+                                    recordAsCurrent = recordAsCurrent,
+                                    buildToken = buildToken,
+                                )
                             }
                             rebuildFromPersistentFragments(
                                 cachedFragments = restored.fragments,
@@ -149,7 +167,7 @@ class ArchitectureIndexRuntime(
                                 cacheKey = cacheKey,
                                 budget = budget,
                             )?.let { index ->
-                                project.architectureIndexService().recordMemorySnapshot(
+                                indexService.recordMemorySnapshot(
                                     ArchitectureIndexMemorySnapshot(
                                         manifest = manifest,
                                         staleSliceIds = emptyList(),
@@ -159,10 +177,17 @@ class ArchitectureIndexRuntime(
                                         indexSource = "PERSISTENT_PARTIAL",
                                     ),
                                 )
-                                return@synchronized project.architectureIndexService().putCachedIndex(cacheKey, index, recordAsCurrent)
+                                return@synchronized indexService.putCachedIndex(
+                                    cacheKey = cacheKey,
+                                    index = index,
+                                    recordAsCurrent = recordAsCurrent,
+                                    buildToken = buildToken,
+                                )
                             }
                         }
                     }
+                } else {
+                    buildToken = indexService.beginCurrentIndexBuild(recordAsCurrent)
                 }
                 val manifest = if (supportsPersistentSliceCache(budget)) {
                     currentProjectSliceManifest(sourceComponents, cacheKey)
@@ -181,7 +206,15 @@ class ArchitectureIndexRuntime(
                     manifestHint = manifest,
                     writePersistentFragments = manifest != null,
                 )
-                project.architectureIndexService().putCachedIndex(cacheKey, built, recordAsCurrent)
+                indexService.putCachedIndex(
+                    cacheKey = cacheKey,
+                    index = built,
+                    recordAsCurrent = recordAsCurrent,
+                    buildToken = buildToken,
+                )
+            } catch (throwable: Throwable) {
+                indexService.recordCurrentIndexBuildFailed(buildToken)
+                throw throwable
             } finally {
                 buildLocks.remove(cacheKey, lock)
             }
@@ -284,13 +317,14 @@ class ArchitectureIndexRuntime(
             var hits = 0
             var misses = 0
             if (writePersistentFragments) {
+                val relationOwnerSliceIds = relationOwnerSliceIds(manifest, index)
                 manifest.slices.forEach { slice ->
                     val fragmentKey = fragmentCacheKey(cacheKey, slice)
                     if (persistentCacheStore.read(fragmentKey) != null) {
                         hits += 1
                     } else {
                         misses += 1
-                        persistentCacheStore.write(fragmentKey, fragmentForSlice(slice, index))
+                        persistentCacheStore.write(fragmentKey, fragmentForSlice(slice, index, relationOwnerSliceIds))
                     }
                 }
             }
@@ -323,6 +357,7 @@ class ArchitectureIndexRuntime(
     private fun currentProjectSliceInputFiles(
         sourceComponents: com.charmnight.linkgraph.source.SourceContentResolverComponents,
     ): List<ProjectSliceInputFile> {
+        val candidates = linkedMapOf<String, ProjectSliceInputFileCandidate>()
         val files = linkedMapOf<String, ProjectSliceInputFile>()
         readActionIfNeeded {
             val projectFileIndex = ProjectFileIndex.getInstance(project)
@@ -338,20 +373,36 @@ class ArchitectureIndexRuntime(
                     if (!isIndexAffectingFile(file, relativePath)) {
                         return@iterateChildrenRecursively true
                     }
-                    files.putIfAbsent(
+                    candidates.putIfAbsent(
                         relativePath,
-                        ProjectSliceInputFile(
+                        ProjectSliceInputFileCandidate(
                             moduleName = projectFileIndex.getModuleForFile(file)?.name,
                             contentRoot = project.basePath ?: root.path,
                             relativePath = relativePath,
                             size = file.length,
                             modifiedAtMillis = file.timeStamp,
-                            contentSha256 = null,
+                            virtualFile = file,
                         ),
                     )
                     true
                 }
             }
+        }
+        candidates.values.forEach { candidate ->
+            val contentSha256 = diskPath(candidate.relativePath)
+                ?.takeIf(Files::isRegularFile)
+                ?.let(ProjectSliceFingerprint::contentSha256)
+                ?: runCatching {
+                    candidate.virtualFile.inputStream.use(ProjectSliceFingerprint::contentSha256)
+                }.getOrNull()
+            files[candidate.relativePath] = ProjectSliceInputFile(
+                moduleName = candidate.moduleName,
+                contentRoot = candidate.contentRoot,
+                relativePath = candidate.relativePath,
+                size = candidate.size,
+                modifiedAtMillis = candidate.modifiedAtMillis,
+                contentSha256 = contentSha256,
+            )
         }
         sourceComponents.attachedJarIndex.fingerprints.forEach { fingerprint ->
             val relativePath = fingerprint.path.replace('\\', '/')
@@ -412,10 +463,20 @@ class ArchitectureIndexRuntime(
             )
         }
         val index = ArchitectureGraphIndex.from(symbolIndex, relationIndex, budget = budget)
-        rebuildSlices.forEach { slice ->
-            persistentCacheStore.write(fragmentCacheKey(cacheKey, slice), fragmentForSlice(slice, index))
-        }
+        writeProjectSliceFragments(manifest, cacheKey, index)
         return index
+    }
+
+    private fun writeProjectSliceFragments(
+        manifest: com.charmnight.linkgraph.architecture.memory.ProjectSliceManifest,
+        cacheKey: ArchitectureGraphCacheKey,
+        index: ArchitectureGraphIndex,
+    ) {
+        val relationOwnerSliceIds = relationOwnerSliceIds(manifest, index)
+        manifest.slices
+            .forEach { slice ->
+                persistentCacheStore.write(fragmentCacheKey(cacheKey, slice), fragmentForSlice(slice, index, relationOwnerSliceIds))
+            }
     }
 
     private fun mergeSymbolIndexes(
@@ -478,7 +539,7 @@ class ArchitectureIndexRuntime(
         val files = linkedMapOf<String, ProjectSliceInputFile>()
         fun addSource(displayPath: String?, moduleName: String?) {
             val relativePath = toProjectRelativePath(displayPath ?: return).takeIf(String::isNotBlank) ?: return
-            val metadata = fileFingerprint(relativePath, contentSha256 = null)
+            val metadata = fileFingerprint(relativePath)
             files.putIfAbsent(
                 relativePath,
                 ProjectSliceInputFile(
@@ -526,7 +587,7 @@ class ArchitectureIndexRuntime(
             projectLocationHash = cacheKey.projectLocationHash.toString(),
             budgetHash = budgetHash(cacheKey),
             sliceId = slice.id,
-            fileHash = sliceFileHash(slice.files),
+            fileHash = ProjectSliceFingerprint.fileHash(slice.files),
             attachedJarFingerprint = slice.files
                 .firstOrNull { slice.kind == ProjectSliceKind.ATTACHED_JAR.name }
                 ?.contentSha256,
@@ -535,6 +596,13 @@ class ArchitectureIndexRuntime(
     private fun fragmentForSlice(
         slice: ProjectSlice,
         index: ArchitectureGraphIndex,
+    ): ArchitectureIndexSliceFragment =
+        fragmentForSlice(slice, index, relationOwnerSliceIds = emptyMap())
+
+    private fun fragmentForSlice(
+        slice: ProjectSlice,
+        index: ArchitectureGraphIndex,
+        relationOwnerSliceIds: Map<String, String>,
     ): ArchitectureIndexSliceFragment {
         val sliceFiles = slice.files.mapTo(hashSetOf(), ProjectFileFingerprint::relativePath)
         val symbols = index.symbolIndex.symbolsById.values
@@ -638,7 +706,12 @@ class ArchitectureIndexRuntime(
             }
         val localSymbolIds = (symbols.map(SymbolSliceFragment::id) + resources.map(ResourceSliceFragment::id)).toSet()
         val relations = index.relationIndex.relations
-            .filter { relation -> relation.fromSymbolId in localSymbolIds || relation.toSymbolId in localSymbolIds }
+            .filter { relation ->
+                relationOwnerSliceIds[relation.id]?.let { ownerSliceId ->
+                    return@filter ownerSliceId == slice.id
+                }
+                relation.fromSymbolId in localSymbolIds
+            }
             .map { relation ->
                 RelationSliceFragment(
                     id = relation.id,
@@ -657,7 +730,44 @@ class ArchitectureIndexRuntime(
             relations = relations,
             resources = resources,
             serviceProviders = serviceProviders,
-        )
+            )
+    }
+
+    private fun sliceSymbolIds(
+        slice: ProjectSlice,
+        index: ArchitectureGraphIndex,
+    ): Set<String> {
+        val sliceFiles = slice.files.mapTo(hashSetOf(), ProjectFileFingerprint::relativePath)
+        val symbolIds = index.symbolIndex.symbolsById.values
+            .filterNot { symbol -> symbol is JvmResourceSymbol }
+            .mapNotNullTo(linkedSetOf()) { symbol ->
+                val path = toProjectRelativePath(symbol.source?.displayPath)
+                symbol.id.takeIf { path.isNotBlank() && pathMatchesSliceFiles(path, sliceFiles) }
+            }
+        val resourceIds = index.symbolIndex.resourcesByPath.values
+            .mapNotNullTo(linkedSetOf()) { resource ->
+                val path = toProjectRelativePath(resource.source?.displayPath ?: resource.path)
+                resource.id.takeIf { path.isNotBlank() && pathMatchesSliceFiles(path, sliceFiles) }
+            }
+        return symbolIds + resourceIds
+    }
+
+    private fun relationOwnerSliceIds(
+        manifest: com.charmnight.linkgraph.architecture.memory.ProjectSliceManifest,
+        index: ArchitectureGraphIndex,
+    ): Map<String, String> {
+        val symbolToSliceId = linkedMapOf<String, String>()
+        manifest.slices.forEach { slice ->
+            sliceSymbolIds(slice, index).forEach { symbolId ->
+                symbolToSliceId.putIfAbsent(symbolId, slice.id)
+            }
+        }
+        return index.relationIndex.relations.mapNotNull { relation ->
+            val ownerSliceId = symbolToSliceId[relation.fromSymbolId]
+                ?: symbolToSliceId[relation.toSymbolId]
+                ?: return@mapNotNull null
+            relation.id to ownerSliceId
+        }.toMap()
     }
 
     private fun persistedSourcePath(source: JvmSourceRef?): String? =
@@ -699,17 +809,19 @@ class ArchitectureIndexRuntime(
         return normalized.removePrefix("$basePath/")
     }
 
-    private fun fileFingerprint(relativePath: String, contentSha256: String?): ProjectFileFingerprint {
+    private fun fileFingerprint(
+        relativePath: String,
+    ): ProjectFileFingerprint {
         val path = diskPath(relativePath)
-        val size = path?.takeIf(Files::isRegularFile)?.let(Files::size) ?: 0L
-        val modifiedAtMillis = path?.takeIf(Files::isRegularFile)
-            ?.let { file -> runCatching { Files.getLastModifiedTime(file).toMillis() }.getOrNull() }
+        val diskFile = path?.takeIf(Files::isRegularFile)
+        val size = diskFile?.let(Files::size) ?: 0L
+        val modifiedAtMillis = diskFile?.let { file -> runCatching { Files.getLastModifiedTime(file).toMillis() }.getOrNull() }
             ?: 0L
         return ProjectFileFingerprint(
             relativePath = relativePath,
             size = size,
             modifiedAtMillis = modifiedAtMillis,
-            contentSha256 = contentSha256,
+            contentSha256 = diskFile?.let(ProjectSliceFingerprint::contentSha256),
         )
     }
 
@@ -737,19 +849,6 @@ class ArchitectureIndexRuntime(
                 cacheKey.attachedJars.joinToString("|"),
                 cacheKey.purpose,
             ).joinToString(":"),
-        )
-
-    private fun sliceFileHash(files: List<ProjectFileFingerprint>): String =
-        stableSha256(
-            files.sortedBy(ProjectFileFingerprint::relativePath)
-                .joinToString("|") { file ->
-                    listOf(
-                        file.relativePath,
-                        file.size.toString(),
-                        file.modifiedAtMillis.toString(),
-                        file.contentSha256.orEmpty(),
-                    ).joinToString(":")
-                },
         )
 
     private fun stableSha256(value: String): String =
@@ -935,8 +1034,9 @@ class ArchitectureIndexRuntime(
                 "attachedJars=${cacheKey.attachedJars.size}",
             )
         }
-        return project.architectureIndexService().getOrBuildAuxiliaryCachedIndex(
+        return project.architectureIndexService().getOrBuildCachedIndex(
             cacheKey = cacheKey,
+            recordAsCurrent = recordAsCurrent,
             forceRebuild = forceRebuild,
         ) {
             val symbolStartedAt = System.nanoTime()
@@ -966,8 +1066,6 @@ class ArchitectureIndexRuntime(
                         )
                     }
                 }
-        }.also { index ->
-            project.architectureIndexService().recordCurrentIndex(index, recordAsCurrent)
         }
     }
 

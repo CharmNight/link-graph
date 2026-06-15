@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.mermaid.MermaidIssue
 import com.charmnight.linkgraph.model.DiffStatus
+import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.GraphDiffEntry
@@ -18,6 +19,7 @@ import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.QaMode
+import com.charmnight.linkgraph.workbench.AssistantActionId
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -874,5 +876,159 @@ class LlmPromptFactoryTest {
         assertTrue(promptPackage.userPrompt.contains("禁止声明：不要把当前锚点称为方法或当前方法"))
         assertTrue(promptPackage.userPrompt.contains("证据缺口：缺少方法级调用边"))
         assertTrue(promptPackage.systemPrompt.contains("必须遵守图证据边界"))
+    }
+
+    @Test
+    fun classDiagramPromptsDescribeRelationKindsAndEdgesInChinese() {
+        val graph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "class:ClientRequestQuotaManager",
+                    type = NodeType.CLASS,
+                    title = "ClientRequestQuotaManager",
+                ),
+                GraphNode(
+                    id = "class:Metrics",
+                    type = NodeType.CLASS,
+                    title = "Metrics",
+                ),
+            ),
+            edges = listOf(
+                GraphEdge(
+                    id = "edge:quota->metrics",
+                    type = EdgeType.USES_TYPE,
+                    fromNodeId = "class:ClientRequestQuotaManager",
+                    toNodeId = "class:Metrics",
+                    label = "field metrics",
+                    metadata = mapOf(
+                        "jvm.relation.kind" to "USES_TYPE",
+                        "uml.relation.kind" to "ASSOCIATION",
+                        "uml.relation.label" to "field metrics",
+                    ),
+                ),
+            ),
+        )
+        val promptPackage = LlmPromptFactory().buildBeautificationPromptPackage(
+            context = GraphBeautificationContext(
+                presentationContext = GraphPresentationContext(
+                    graph = graph,
+                    anchorNodeId = "class:ClientRequestQuotaManager",
+                ),
+                userGoal = "讲解当前类图关系",
+            ),
+            settings = LinkGraphSettingsState(),
+        )
+
+        assertTrue(promptPackage.userPrompt.contains("可用关系类型：类型依赖"))
+        assertTrue(promptPackage.userPrompt.contains("[类型依赖] class:ClientRequestQuotaManager -> class:Metrics | label=字段 metrics"))
+        assertTrue(promptPackage.userPrompt.contains("当前是类图/结构图关系时，应解释为字段关联、构造参数、返回值、参数或局部类型等结构关系"))
+        assertTrue(!promptPackage.userPrompt.contains("USES_TYPE"))
+        assertTrue(!promptPackage.userPrompt.contains("field metrics"))
+    }
+
+    @Test
+    fun classDescriptionPromptAsksForClassIntroductionInsteadOfRelationshipOnlyExplanation() {
+        val graph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "class:ClientRequestQuotaManager",
+                    type = NodeType.CLASS,
+                    title = "ClientRequestQuotaManager",
+                ),
+                GraphNode(
+                    id = "class:QuotaManagers",
+                    type = NodeType.CLASS,
+                    title = "QuotaManagers",
+                ),
+            ),
+            edges = listOf(
+                GraphEdge(
+                    id = "edge:quota-manager->quota-managers",
+                    type = EdgeType.USES_TYPE,
+                    fromNodeId = "class:ClientRequestQuotaManager",
+                    toNodeId = "class:QuotaManagers",
+                    label = "constructor quotaManagers",
+                    metadata = mapOf(
+                        "jvm.relation.kind" to "CONSTRUCTOR_PARAMETER",
+                        "uml.relation.kind" to "ASSOCIATION",
+                        "uml.relation.label" to "constructor quotaManagers",
+                    ),
+                ),
+            ),
+        )
+        val promptPackage = LlmPromptFactory().buildBeautificationPromptPackage(
+            context = GraphBeautificationContext(
+                presentationContext = GraphPresentationContext(
+                    graph = graph,
+                    anchorNodeId = "class:ClientRequestQuotaManager",
+                ),
+                userGoal = "请介绍类图节点“ClientRequestQuotaManager”：说明这个类的职责、核心字段/构造依赖、对外协作关系、典型使用场景，以及建议继续下钻的位置。",
+            ),
+            settings = LinkGraphSettingsState(),
+        )
+        val combinedPrompt = promptPackage.systemPrompt + "\n" + promptPackage.userPrompt
+
+        assertTrue(combinedPrompt.contains("介绍类模式"))
+        assertTrue(combinedPrompt.contains("职责、核心字段/构造依赖、对外协作关系、典型使用场景"))
+        assertTrue(combinedPrompt.contains("不要把回答开头写成“这不是方法调用图”"))
+        assertTrue(combinedPrompt.contains("\"kind\": \"BUSINESS_ACTION|METHOD_CALL|CONDITION|RETURN|RESOURCE_INTERACTION|STRUCTURE_OVERVIEW\""))
+    }
+
+    @Test
+    fun classDiagramPromptModeUsesAssistantActionIdInsteadOfUserGoalText() {
+        val graph = GraphDocument(
+            nodes = listOf(
+                GraphNode(
+                    id = "class:ClientRequestQuotaManager",
+                    type = NodeType.CLASS,
+                    title = "ClientRequestQuotaManager",
+                ),
+                GraphNode(
+                    id = "class:QuotaManagers",
+                    type = NodeType.CLASS,
+                    title = "QuotaManagers",
+                ),
+            ),
+            edges = listOf(
+                GraphEdge(
+                    id = "edge:quota-manager->quota-managers",
+                    type = EdgeType.USES_TYPE,
+                    fromNodeId = "class:ClientRequestQuotaManager",
+                    toNodeId = "class:QuotaManagers",
+                    label = "constructor quotaManagers",
+                    metadata = mapOf(
+                        "jvm.relation.kind" to "CONSTRUCTOR_PARAMETER",
+                        "uml.relation.kind" to "ASSOCIATION",
+                        "uml.relation.label" to "constructor quotaManagers",
+                    ),
+                ),
+            ),
+        )
+
+        val descriptionPrompt = LlmPromptFactory().buildBeautificationPromptPackage(
+            context = GraphBeautificationContext(
+                presentationContext = GraphPresentationContext(
+                    graph = graph,
+                    anchorNodeId = "class:ClientRequestQuotaManager",
+                ),
+                userGoal = "讲解当前视图",
+                assistantActionId = AssistantActionId.DESCRIBE_CLASS,
+            ),
+            settings = LinkGraphSettingsState(),
+        )
+        val relationshipPrompt = LlmPromptFactory().buildBeautificationPromptPackage(
+            context = GraphBeautificationContext(
+                presentationContext = GraphPresentationContext(
+                    graph = graph,
+                    anchorNodeId = "class:ClientRequestQuotaManager",
+                ),
+                userGoal = "讲解当前视图",
+                assistantActionId = AssistantActionId.EXPLAIN_STRUCTURE,
+            ),
+            settings = LinkGraphSettingsState(),
+        )
+
+        assertTrue((descriptionPrompt.systemPrompt + descriptionPrompt.userPrompt).contains("讲解模式：介绍类模式"))
+        assertTrue((relationshipPrompt.systemPrompt + relationshipPrompt.userPrompt).contains("讲解模式：类图关系解释模式"))
     }
 }

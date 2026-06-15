@@ -80,6 +80,7 @@ class ArchitectureIndexService(
         forceRebuild: Boolean = false,
         builder: () -> ArchitectureGraphIndex,
     ): ArchitectureGraphIndex {
+        val buildTokenRef = arrayOfNulls<Long>(1)
         if (!forceRebuild) {
             cache.get(cacheKey)?.index?.let { index ->
                 if (recordAsCurrent) {
@@ -92,12 +93,21 @@ class ArchitectureIndexService(
         val cached = cache.getOrBuild(
             key = cacheKey,
             forceRebuild = forceRebuild,
-            builder = builder,
+            builder = {
+                val buildToken = beginCurrentIndexBuild(recordAsCurrent)
+                buildTokenRef[0] = buildToken
+                try {
+                    builder()
+                } catch (throwable: Throwable) {
+                    recordCurrentIndexBuildFailed(buildToken)
+                    throw throwable
+                }
+            },
         )
         return cached.index.also { index ->
             if (recordAsCurrent) {
                 lastIndex = index
-                freshnessTracker.markIndexed()
+                freshnessTracker.markIndexed(buildTokenRef[0])
             }
         }
     }
@@ -105,11 +115,15 @@ class ArchitectureIndexService(
     fun getCachedIndex(cacheKey: ArchitectureGraphCacheKey): ArchitectureGraphIndex? =
         cache.get(cacheKey)?.index
 
-    fun recordCurrentIndex(index: ArchitectureGraphIndex, recordAsCurrent: Boolean = true): ArchitectureGraphIndex =
+    fun recordCurrentIndex(
+        index: ArchitectureGraphIndex,
+        recordAsCurrent: Boolean = true,
+        buildToken: Long? = null,
+    ): ArchitectureGraphIndex =
         index.also {
             if (recordAsCurrent) {
                 lastIndex = it
-                freshnessTracker.markIndexed()
+                freshnessTracker.markIndexed(buildToken)
             }
         }
 
@@ -117,11 +131,12 @@ class ArchitectureIndexService(
         cacheKey: ArchitectureGraphCacheKey,
         index: ArchitectureGraphIndex,
         recordAsCurrent: Boolean = true,
+        buildToken: Long? = null,
     ): ArchitectureGraphIndex =
         cache.put(cacheKey, index).index.also {
             if (recordAsCurrent) {
                 lastIndex = it
-                freshnessTracker.markIndexed()
+                freshnessTracker.markIndexed(buildToken)
             }
         }
 
@@ -150,6 +165,17 @@ class ArchitectureIndexService(
         markMemoryStale(paths)
         cache.invalidate()
         lastIndex = null
+    }
+
+    internal fun beginCurrentIndexBuild(recordAsCurrent: Boolean = true): Long? =
+        if (recordAsCurrent) {
+            freshnessTracker.markBuilding()
+        } else {
+            null
+        }
+
+    internal fun recordCurrentIndexBuildFailed(buildToken: Long?) {
+        buildToken?.let(freshnessTracker::markBuildFailed)
     }
 
     fun recordMemorySnapshot(snapshot: ArchitectureIndexMemorySnapshot) {

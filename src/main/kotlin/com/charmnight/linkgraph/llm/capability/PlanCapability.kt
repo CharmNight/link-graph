@@ -29,7 +29,6 @@ import com.charmnight.linkgraph.llm.tools.GetDraftWorkbenchTool
 import com.charmnight.linkgraph.llm.tools.GetGraphDiffTool
 import com.charmnight.linkgraph.llm.tools.GraphToolFacade
 import com.charmnight.linkgraph.llm.tools.ReadSourceSnippetTool
-import com.charmnight.linkgraph.llm.tools.ToolExecutionContext
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import java.util.UUID
@@ -107,10 +106,8 @@ internal class PlanCapability(
         )
         val result = toolRegistry.require("get_draft_workbench").invoke(
             input = emptyMap(),
-            context = ToolExecutionContext(
-                project = runtimeContext.project,
+            context = runtimeContext.toolExecutionContext(
                 snapshot = snapshot,
-                artifactStore = runtimeContext.artifactStore,
                 runBudget = state.budget,
             ),
         )
@@ -147,10 +144,8 @@ internal class PlanCapability(
         )
         val result = toolRegistry.require("get_confirmed_intent").invoke(
             input = emptyMap(),
-            context = ToolExecutionContext(
-                project = runtimeContext.project,
+            context = runtimeContext.toolExecutionContext(
                 snapshot = snapshot,
-                artifactStore = runtimeContext.artifactStore,
                 runBudget = state.budget,
             ),
         )
@@ -206,10 +201,8 @@ internal class PlanCapability(
         )
         val result = toolRegistry.require("get_graph_diff").invoke(
             input = emptyMap(),
-            context = ToolExecutionContext(
-                project = runtimeContext.project,
+            context = runtimeContext.toolExecutionContext(
                 snapshot = snapshot,
-                artifactStore = runtimeContext.artifactStore,
                 runBudget = state.budget,
             ),
         )
@@ -285,10 +278,8 @@ internal class PlanCapability(
                         "startLine" to scope.startLine,
                         "endLine" to scope.endLine,
                     ),
-                    context = ToolExecutionContext(
-                        project = runtimeContext.project,
+                    context = runtimeContext.toolExecutionContext(
                         snapshot = snapshot,
-                        artifactStore = runtimeContext.artifactStore,
                         runBudget = nextBudget,
                     ),
                 )

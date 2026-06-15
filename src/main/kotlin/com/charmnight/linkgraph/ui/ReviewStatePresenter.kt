@@ -10,6 +10,7 @@ import com.charmnight.linkgraph.application.result.DiffReviewCompletedResult
 import com.charmnight.linkgraph.application.result.DiffReviewFailedResult
 import com.charmnight.linkgraph.application.result.ReviewRequestScene
 import com.charmnight.linkgraph.application.result.ReviewRequestStartedResult
+import com.charmnight.linkgraph.workbench.AssistantIntent
 
 class ReviewStatePresenter(
     private val stateService: GraphEditorStateService,
@@ -40,7 +41,11 @@ class ReviewStatePresenter(
                 presentation.requestState,
                 selectedDiffItemIds = presentation.selectedDiffItemIds,
             )
-            ReviewRequestScene.BEAUTIFICATION -> stateService.asyncRequests.beginGraphBeautificationRequest(presentation.requestState)
+            ReviewRequestScene.BEAUTIFICATION -> stateService.asyncRequests.beginGraphBeautificationRequest(
+                presentation.requestState,
+                assistantIntent = presentation.assistantIntent ?: AssistantIntent.EXPLAIN_CODE,
+                assistantActionId = presentation.assistantActionId,
+            )
         }
         presentation.clearRuntimeArtifactScene?.let { scene ->
             stateService.workbench.markRuntimeArtifactSummaries(scene, emptyList())
@@ -125,13 +130,23 @@ class ReviewStatePresenter(
     }
 
     fun presentBeautificationCompleted(presentation: BeautificationCompletedResult) {
-        stateService.asyncRequests.markGraphBeautificationResult(presentation.result, presentation.requestState)
+        stateService.asyncRequests.markGraphBeautificationResult(
+            presentation.result,
+            presentation.requestState,
+            assistantIntent = presentation.assistantIntent,
+            assistantActionId = presentation.assistantActionId,
+        )
         markOptionalFeedback(presentation.feedbackLevel, presentation.statusMessage)
         requestBrowserSync()
     }
 
     fun presentBeautificationFailed(presentation: BeautificationFailedResult) {
-        stateService.asyncRequests.markGraphBeautificationRequestFailed(presentation.message, presentation.requestState)
+        stateService.asyncRequests.markGraphBeautificationRequestFailed(
+            presentation.message,
+            presentation.requestState,
+            assistantIntent = presentation.assistantIntent,
+            assistantActionId = presentation.assistantActionId,
+        )
         stateService.workbench.markOperationFeedback(
             presentation.feedbackLevel.toOperationFeedbackLevel(),
             presentation.message,

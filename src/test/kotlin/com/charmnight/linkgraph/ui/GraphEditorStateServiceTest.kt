@@ -32,9 +32,13 @@ import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
+import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionMessage
+import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionResult
+import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession
 import com.charmnight.linkgraph.workbench.AssistantIntent
 import com.charmnight.linkgraph.workbench.AssistantTurnKind
 import com.charmnight.linkgraph.workbench.QaMode
+import com.charmnight.linkgraph.workbench.QaMessageRole
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.charmnight.linkgraph.workbench.StepKind
 import java.nio.file.Files
@@ -42,6 +46,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class GraphEditorStateServiceTest {
@@ -1114,7 +1119,7 @@ class GraphEditorStateServiceTest {
         assertEquals(graph, currentVisibleGraph(snapshot))
         assertEquals(graph, snapshot.workspaceGraph)
         assertEquals(null, snapshot.qaResult)
-        assertEquals("requestQa", snapshot.lastMessageType)
+        assertEquals("requestAssistantTask", snapshot.lastMessageType)
     }
 
     @Test
@@ -1149,8 +1154,7 @@ class GraphEditorStateServiceTest {
         assertEquals(1, assistantSession.turns.size)
         assertEquals(AssistantTurnKind.QA, assistantSession.turns.single().kind)
         assertEquals("qaResult", assistantSession.turns.single().sourceMessageType)
-        assertEquals("qa:850385e5", assistantSession.turns.single().resultId)
-        assertTrue(assistantSession.turns.single().resultId.orEmpty().length <= 12)
+        assertEquals("qa:local:1", assistantSession.turns.single().resultId)
         assertEquals("会影响订单提交流程。", snapshot.qaResult?.answer)
     }
 
@@ -1181,8 +1185,196 @@ class GraphEditorStateServiceTest {
 
         val turns = service.snapshot().assistantSessionState.turns
         assertEquals(2, turns.size)
-        assertEquals("qa-failure:41", turns[0].resultId)
-        assertEquals("qa:850385e5", turns[1].resultId)
+        assertEquals("qa-failure:request:41", turns[0].resultId)
+        assertEquals("qa:request:42", turns[1].resultId)
+    }
+
+    @Test
+    fun assistantResultStoreStoresFailurePayloadForFailedTurns() {
+        val service = GraphEditorStateService()
+
+        service.asyncRequests.markQaRequestFailed(
+            message = "上游超时",
+            requestState = AsyncRequestState.failed(
+                message = "上游超时",
+                requestId = 41,
+                detailMessage = "HTTP 504 from qa provider",
+                finishedAtEpochMillis = 1000,
+            ),
+        )
+
+        val snapshot = service.snapshot()
+        val entry = assertNotNull(snapshot.assistantResultStore.results["qa-failure:request:41"])
+        val failure = assertNotNull(entry.failure)
+        assertEquals(AssistantTurnKind.QA, entry.kind)
+        assertEquals("qa-failure:request:41", failure.resultId)
+        assertEquals("上游超时", failure.message)
+        assertEquals("HTTP 504 from qa provider", failure.detailMessage)
+        assertEquals(41, failure.requestId)
+        assertEquals("FAILED", failure.phase)
+    }
+
+    @Test
+    fun assistantHistoryRetentionPrunesTurnsAndResultStoreTogether() {
+        val service = GraphEditorStateService()
+
+        repeat(55) { index ->
+            service.asyncRequests.markQaResult(
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = "问题 $index",
+                    answer = "回答 $index",
+                    promptPreview = "prompt $index",
+                ),
+                requestState = AsyncRequestState.succeeded(
+                    requestId = index.toLong(),
+                    finishedAtEpochMillis = index.toLong(),
+                ),
+            )
+        }
+
+        val snapshot = service.snapshot()
+        val resultIds = snapshot.assistantSessionState.turns.map { turn -> turn.resultId }
+        assertEquals(50, snapshot.assistantSessionState.turns.size)
+        assertEquals(resultIds.toSet(), snapshot.assistantResultStore.results.keys)
+        assertEquals(5, snapshot.assistantSessionState.turns.first().createdAtEpochMillis)
+        assertEquals(54, snapshot.assistantSessionState.turns.last().createdAtEpochMillis)
+    }
+
+    @Test
+    fun generationPlanDiscussionHistoryKeepsEachTurnResultSnapshot() {
+        val service = GraphEditorStateService()
+
+        service.asyncRequests.markGenerationPlanDiscussion(
+            generationDiscussionResult(
+                answer = "第一轮回答",
+                requestId = 10,
+            ),
+            requestState = AsyncRequestState.succeeded(
+                requestId = 10,
+                finishedAtEpochMillis = 1000,
+            ),
+        )
+        service.asyncRequests.markGenerationPlanDiscussion(
+            generationDiscussionResult(
+                answer = "第二轮回答",
+                requestId = 11,
+            ),
+            requestState = AsyncRequestState.succeeded(
+                requestId = 11,
+                finishedAtEpochMillis = 2000,
+            ),
+        )
+
+        val snapshot = service.snapshot()
+        val turns = snapshot.assistantSessionState.turns
+        assertEquals(2, turns.size)
+        assertEquals(2, turns.map { turn -> turn.resultId }.toSet().size)
+        assertEquals(turns.map { turn -> turn.resultId }.toSet(), snapshot.assistantResultStore.results.keys)
+        assertEquals(
+            "第一轮回答",
+            snapshot.assistantResultStore.results[turns[0].resultId]
+                ?.generationDiscussionSession
+                ?.messages
+                ?.last()
+                ?.content,
+        )
+        assertEquals(
+            "第二轮回答",
+            snapshot.assistantResultStore.results[turns[1].resultId]
+                ?.generationDiscussionSession
+                ?.messages
+                ?.last()
+                ?.content,
+          )
+      }
+
+    @Test
+    fun assistantResultStoreKeepsInstanceScopedSnapshotsForRepeatedSuccessfulTurns() {
+        val service = GraphEditorStateService()
+
+        service.asyncRequests.markQaResult(
+            GraphPatchResult(
+                source = LlmResultSource.LOCAL_RULE,
+                question = "这个方法会影响哪里？",
+                answer = "会影响订单提交流程。",
+                promptPreview = "qa prompt 1",
+                warnings = listOf("qa-first"),
+            ),
+            requestState = AsyncRequestState.succeeded(requestId = 101, finishedAtEpochMillis = 1001),
+        )
+        service.asyncRequests.markQaResult(
+            GraphPatchResult(
+                source = LlmResultSource.LOCAL_RULE,
+                question = "这个方法会影响哪里？",
+                answer = "会影响订单提交流程。",
+                promptPreview = "qa prompt 2",
+                warnings = listOf("qa-second"),
+            ),
+            requestState = AsyncRequestState.succeeded(requestId = 102, finishedAtEpochMillis = 1002),
+        )
+        service.asyncRequests.markDiffReviewResult(
+            GraphPatchResult(
+                source = LlmResultSource.LOCAL_RULE,
+                question = "检查当前改动",
+                answer = "当前改动需要补相关测试。",
+                promptPreview = "diff prompt 1",
+                warnings = listOf("diff-first"),
+            ),
+            requestState = AsyncRequestState.succeeded(requestId = 201, finishedAtEpochMillis = 2001),
+        )
+        service.asyncRequests.markDiffReviewResult(
+            GraphPatchResult(
+                source = LlmResultSource.LOCAL_RULE,
+                question = "检查当前改动",
+                answer = "当前改动需要补相关测试。",
+                promptPreview = "diff prompt 2",
+                warnings = listOf("diff-second"),
+            ),
+            requestState = AsyncRequestState.succeeded(requestId = 202, finishedAtEpochMillis = 2002),
+        )
+        service.asyncRequests.markGraphBeautificationResult(
+            repeatedExplanation(description = "第一轮解释"),
+            requestState = AsyncRequestState.succeeded(requestId = 301, finishedAtEpochMillis = 3001),
+        )
+        service.asyncRequests.markGraphBeautificationResult(
+            repeatedExplanation(description = "第二轮解释"),
+            requestState = AsyncRequestState.succeeded(requestId = 302, finishedAtEpochMillis = 3002),
+        )
+        service.asyncRequests.markGenerationPlan(
+            repeatedPlan(description = "第一轮计划项说明"),
+            requestState = AsyncRequestState.succeeded(requestId = 401, finishedAtEpochMillis = 4001),
+        )
+        service.asyncRequests.markGenerationPlan(
+            repeatedPlan(description = "第二轮计划项说明"),
+            requestState = AsyncRequestState.succeeded(requestId = 402, finishedAtEpochMillis = 4002),
+        )
+
+        val snapshot = service.snapshot()
+        val turns = snapshot.assistantSessionState.turns
+        val store = snapshot.assistantResultStore.results
+        assertEquals(8, turns.size)
+        assertEquals(turns.map { turn -> turn.resultId }.toSet(), store.keys)
+
+        val qaTurns = turns.filter { turn -> turn.kind == AssistantTurnKind.QA }
+        assertNotEquals(qaTurns[0].resultId, qaTurns[1].resultId)
+        assertEquals(listOf("qa-first"), store[qaTurns[0].resultId]?.qa?.warnings)
+        assertEquals(listOf("qa-second"), store[qaTurns[1].resultId]?.qa?.warnings)
+
+        val checkTurns = turns.filter { turn -> turn.kind == AssistantTurnKind.CHECK_RESULT }
+        assertNotEquals(checkTurns[0].resultId, checkTurns[1].resultId)
+        assertEquals(listOf("diff-first"), store[checkTurns[0].resultId]?.check?.warnings)
+        assertEquals(listOf("diff-second"), store[checkTurns[1].resultId]?.check?.warnings)
+
+        val explanationTurns = turns.filter { turn -> turn.kind == AssistantTurnKind.EXPLANATION }
+        assertNotEquals(explanationTurns[0].resultId, explanationTurns[1].resultId)
+        assertEquals("第一轮解释", store[explanationTurns[0].resultId]?.explanation?.steps?.single()?.description)
+        assertEquals("第二轮解释", store[explanationTurns[1].resultId]?.explanation?.steps?.single()?.description)
+
+        val planTurns = turns.filter { turn -> turn.kind == AssistantTurnKind.GENERATION_PLAN }
+        assertNotEquals(planTurns[0].resultId, planTurns[1].resultId)
+        assertEquals("第一轮计划项说明", store[planTurns[0].resultId]?.generationPlan?.items?.single()?.description)
+        assertEquals("第二轮计划项说明", store[planTurns[1].resultId]?.generationPlan?.items?.single()?.description)
     }
 
     @Test
@@ -1330,7 +1522,7 @@ class GraphEditorStateServiceTest {
         assertEquals(emptyList(), snapshot.generatedCodeDraftWarnings)
         assertEquals(null, snapshot.generatedCodeDraftSource)
         assertEquals(null, snapshot.generatedCodeDraftPromptPreview)
-        assertEquals("requestGenerationPlan", snapshot.lastMessageType)
+        assertEquals("generationPlanResult", snapshot.lastMessageType)
     }
 
     @Test
@@ -1533,4 +1725,62 @@ class GraphEditorStateServiceTest {
         assertEquals(null, snapshot.draftPatchPreview)
         assertEquals("workspaceGraphChanged", snapshot.lastMessageType)
     }
+
+    private fun generationDiscussionResult(
+        answer: String,
+        requestId: Long,
+    ): GenerationPlanDiscussionResult =
+        GenerationPlanDiscussionResult(
+            source = LlmResultSource.LOCAL_RULE,
+            question = "继续讨论实现方案 $requestId",
+            answer = answer,
+            promptPreview = "generation discussion prompt $requestId",
+            session = GenerationPlanDiscussionSession(
+                sessionId = "generation-discussion-session",
+                messages = listOf(
+                    GenerationPlanDiscussionMessage(
+                        messageId = "user-$requestId",
+                        role = QaMessageRole.USER,
+                        content = "继续讨论实现方案 $requestId",
+                    ),
+                    GenerationPlanDiscussionMessage(
+                        messageId = "assistant-$requestId",
+                        role = QaMessageRole.ASSISTANT,
+                        content = answer,
+                    ),
+                ),
+            ),
+        )
+
+    private fun repeatedExplanation(description: String): GraphBeautificationResult =
+        GraphBeautificationResult(
+            source = LlmResultSource.LOCAL_RULE,
+            granularity = StepGranularity.BUSINESS,
+            steps = listOf(
+                GraphBeautificationStep(
+                    stepId = "step-submit",
+                    title = "提交订单",
+                    granularity = StepGranularity.BUSINESS,
+                    kind = StepKind.BUSINESS_ACTION,
+                    description = description,
+                ),
+            ),
+            promptPreview = "same explanation prompt",
+        )
+
+    private fun repeatedPlan(description: String): GenerationPlan =
+        GenerationPlan(
+            source = GenerationPlanSource.LOCAL_RULE,
+            summary = "生成订单实现计划",
+            items = listOf(
+                GenerationPlanItem(
+                    id = "plan-item-submit",
+                    title = "补充提交订单实现",
+                    description = description,
+                    risk = SyncPreviewRisk.MEDIUM,
+                    targetPath = "src/main/kotlin/com/example/OrderService.kt",
+                ),
+            ),
+            promptPreview = "same plan prompt",
+        )
 }

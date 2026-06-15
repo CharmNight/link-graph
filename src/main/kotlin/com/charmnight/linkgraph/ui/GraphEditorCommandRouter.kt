@@ -3,10 +3,7 @@ package com.charmnight.linkgraph.ui
 import com.charmnight.linkgraph.application.GraphEditorApplicationService
 import com.charmnight.linkgraph.application.command.ApplicationCommand
 import com.charmnight.linkgraph.application.model.DraftPatchPreviewSource
-import com.charmnight.linkgraph.foundation.debugLazy
-import com.charmnight.linkgraph.workbench.WorkbenchLayoutPreferencesService
 import com.intellij.openapi.components.Service
-import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 
 /**
@@ -43,17 +40,15 @@ class GraphEditorCommandRouter(
             is GraphEditorMessage.RequestRemoveInvocationExpansion ->
                 ApplicationCommand.RequestRemoveInvocationExpansion(current.expansionId)
             GraphEditorMessage.RequestSyncPreview -> ApplicationCommand.RequestSyncPreview
-            is GraphEditorMessage.RequestQa -> ApplicationCommand.RequestQa(
-                question = current.question,
-                selectedNodeIds = current.selectedNodeIds,
-                sourceThreadId = current.sourceThreadId,
-                mode = current.mode,
-            )
             is GraphEditorMessage.RequestAssistantTask -> ApplicationCommand.RequestAssistantTask(
+                actionId = current.actionId,
                 intent = current.intent,
+                sceneId = current.sceneId,
                 prompt = current.prompt,
                 selectedNodeIds = current.selectedNodeIds,
                 selectedDiffItemIds = current.selectedDiffItemIds,
+                target = current.target,
+                explanationGranularity = current.explanationGranularity,
             )
             GraphEditorMessage.RetryLastQaRequest -> ApplicationCommand.RetryLastQaRequest
             is GraphEditorMessage.ConfirmQaCandidateChange -> ApplicationCommand.ConfirmQaCandidateChange(current.changeId)
@@ -63,34 +58,16 @@ class GraphEditorCommandRouter(
                 status = current.resolutionStatus,
                 note = current.note,
             )
-            is GraphEditorMessage.RequestDiffReview -> ApplicationCommand.RequestDiffReview(current.question, current.selectedDiffItemIds)
-            is GraphEditorMessage.RequestGraphBeautification -> ApplicationCommand.RequestGraphBeautification(
-                goal = current.goal,
-                preferredStyle = current.preferredStyle,
-                explanationFocus = current.explanationFocus,
-                focusNodeId = current.focusNodeId,
-                followUp = current.followUp,
-                granularity = current.granularity,
-            )
             is GraphEditorMessage.ApplyDraftPatchPreview -> ApplicationCommand.ApplyDraftPatchPreview(current.operationIds)
             GraphEditorMessage.ClearDraftPatchPreview -> ApplicationCommand.ClearDraftPatchPreview
             is GraphEditorMessage.RestoreDraftPatchPreview -> ApplicationCommand.RestoreDraftPatchPreview(
                 DraftPatchPreviewSource.valueOf(current.source.name),
             )
             GraphEditorMessage.UndoLastDraftPatchApply -> ApplicationCommand.UndoLastDraftPatchApply
-            GraphEditorMessage.RequestGenerationPlan -> ApplicationCommand.RequestGenerationPlan
-            is GraphEditorMessage.RequestGenerationPlanDiscussion -> ApplicationCommand.RequestGenerationPlanDiscussion(
-                question = current.question,
-                focusItemId = current.focusItemId,
-            )
             GraphEditorMessage.RequestCodeDrafts -> ApplicationCommand.RequestCodeDrafts
             GraphEditorMessage.RequestCurrentEditorContextGraph -> ApplicationCommand.LoadCurrentEditorContextGraph()
             is GraphEditorMessage.RequestAnalysisDisplayMode -> ApplicationCommand.RequestAnalysisDisplayMode(current.displayMode)
             is GraphEditorMessage.RequestIndexedGraph -> ApplicationCommand.RequestIndexedGraph(current.request)
-            is GraphEditorMessage.UpdateWorkbenchSectionPreference -> workbenchSectionPreferenceCommand(
-                current.sectionId,
-                current.expanded,
-            )
             GraphEditorMessage.OpenSettings -> ApplicationCommand.OpenSettings
             GraphEditorMessage.ApplyCodeDrafts -> ApplicationCommand.ApplyCodeDrafts
             is GraphEditorMessage.ApplySingleCodeDraft -> ApplicationCommand.ApplySingleCodeDraft(current.draftId)
@@ -102,26 +79,4 @@ class GraphEditorCommandRouter(
             is GraphEditorMessage.GraphBeautificationResult,
             -> error("GraphEditorCommandRouter 不处理前端生命周期或纯状态回写消息: ${current::class.simpleName}")
         }
-
-    fun updateWorkbenchSectionPreference(
-        sectionId: String,
-        expanded: Boolean,
-    ) {
-        commandDispatcher.dispatch(workbenchSectionPreferenceCommand(sectionId, expanded))
-    }
-
-    private fun workbenchSectionPreferenceCommand(
-        sectionId: String,
-        expanded: Boolean,
-    ): ApplicationCommand.UpdateWorkbenchSectionPreference {
-        val nextPreferences = project.getService(WorkbenchLayoutPreferencesService::class.java).update(sectionId, expanded)
-        debugLazy(logger.isDebugEnabled, logger::debug) {
-            "更新工作台分区偏好: sectionId=$sectionId, expanded=$expanded, nextPreferences=$nextPreferences"
-        }
-        return ApplicationCommand.UpdateWorkbenchSectionPreference(nextPreferences)
-    }
-
-    private companion object {
-        private val logger = Logger.getInstance(GraphEditorCommandRouter::class.java)
-    }
 }

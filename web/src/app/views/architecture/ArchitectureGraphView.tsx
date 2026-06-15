@@ -115,7 +115,7 @@ function architectureNodeActions(args: {
   onInspectNode: (nodeId: string) => void;
   onRequestSourceNavigation: (nodeId: string) => void;
   onRequestBeautification: (selectedNodeId?: string) => void;
-  onRequestQa: (selectedNodeId?: string) => void;
+  onPrimeQuestionComposer: (selectedNodeId?: string) => void;
   onOpenQa: (selectedNodeId?: string) => void;
   onToggleCollapseNode: (nodeId: string) => void;
   onRequestClassDiagram: (scopeNodeId?: string | null) => void;
@@ -188,7 +188,7 @@ function architectureNodeActions(args: {
       id: "qa-node",
       label: "问答当前节点",
       onSelect: () => {
-        args.onRequestQa(args.nodeId);
+        args.onPrimeQuestionComposer(args.nodeId);
         args.onClose();
       },
     },
@@ -231,7 +231,7 @@ export function ArchitectureGraphView({
   onMoveNodes,
   onRequestSourceNavigation,
   onRequestBeautification = () => undefined,
-  onRequestQa = () => undefined,
+  onPrimeQuestionComposer = () => undefined,
   onRequestArchitectureGraph = () => undefined,
   onRequestClassDiagram = () => undefined,
   onRequestPackageDependencyGraph = () => undefined,
@@ -512,7 +512,7 @@ export function ArchitectureGraphView({
             onInspectNode,
             onRequestSourceNavigation,
             onRequestBeautification,
-            onRequestQa,
+            onPrimeQuestionComposer,
             onOpenQa,
             onToggleCollapseNode,
             onRequestClassDiagram,

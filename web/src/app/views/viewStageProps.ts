@@ -25,7 +25,7 @@ export interface BaseStageProps {
   onFormatLayout?: () => void;
   onRequestBeautification?: (selectedNodeId?: string) => void;
   onRequestSourceNavigation: (nodeId: string) => void;
-  onRequestQa?: (selectedNodeId?: string) => void;
+  onPrimeQuestionComposer?: (selectedNodeId?: string) => void;
   onToggleCollapseNode?: (nodeId: string) => void;
   onOpenQa?: (selectedNodeId?: string) => void;
   onExpandOverflowNode?: (nodeId: string) => void;
@@ -54,6 +54,17 @@ export interface IndexedReadonlyStageProps extends BaseStageProps {
   onRequestClassDiagramWithOptions?: (
     scopeNodeId: string | null | undefined,
     options: { neighborhoodLimit?: number; memberLimit?: number },
+  ) => void;
+  onRequestClassUsages?: (
+    targetNodeId: string,
+    options?: {
+      targetQualifiedName?: string | null;
+      sourceVirtualFileUrl?: string | null;
+      sourcePath?: string | null;
+      maxUsageGroups?: number | null;
+      maxUsageEntries?: number | null;
+      includeImports?: boolean | null;
+    },
   ) => void;
   onRequestPackageDependencyGraph?: (
     packageName?: string | null,

@@ -5,8 +5,7 @@ import com.charmnight.linkgraph.workbench.QaMode
 /**
  * 负责按 QA 模式过滤结果警告。
  *
- * 当前仍保持前端 `warnings: List<String>` 契约。新 warning 使用稳定分类前缀；
- * 旧 warning 在迁移期继续通过保守关键词兼容。
+ * 当前仍保持前端 `warnings: List<String>` 契约，并使用稳定分类前缀做模式边界。
  */
 internal class QaWarningPolicy {
     fun filterForMode(
@@ -25,7 +24,7 @@ internal class QaWarningPolicy {
         return when (categoryOf(warning)) {
             WarningCategory.RUNTIME -> true
             WarningCategory.BUSINESS -> false
-            null -> isLegacyRuntimeWarning(warning)
+            null -> false
         }
     }
 
@@ -41,28 +40,8 @@ internal class QaWarningPolicy {
         }
     }
 
-    private fun isLegacyRuntimeWarning(warning: String): Boolean {
-        val normalized = warning.trim()
-        return legacyRuntimeWarningKeywords.any(normalized::contains)
-    }
-
     private enum class WarningCategory {
         RUNTIME,
         BUSINESS,
-    }
-
-    private companion object {
-        val legacyRuntimeWarningKeywords = listOf(
-            "远程 LLM",
-            "回退",
-            "重试",
-            "请求地址",
-            "API 密钥",
-            "模型",
-            "配置",
-            "超时",
-            "JSON 修复",
-            "连接",
-        )
     }
 }

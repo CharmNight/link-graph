@@ -1,11 +1,21 @@
 import { startTransition, useEffect, useRef } from "react";
 import { acknowledgeSnapshot, announceFrontendReady, subscribeBootstrap } from "../api";
 import { summarizeBootstrapState, traceLinkGraph } from "../debug";
-import type { LinkGraphBootstrapState } from "../types";
+import type { LinkGraphBootstrapState, LinkGraphIncrementalTransportEnvelope } from "../types";
+import {
+  LINK_GRAPH_ARTIFACT_SLICE_TRANSPORT_TYPE,
+  isLinkGraphIncrementalTransportType,
+} from "../transportProtocol";
 
 interface UseBootstrapStateControllerArgs {
   initialRevision: number;
   applyBootstrapState: (nextState: LinkGraphBootstrapState) => void;
+}
+
+function isIncrementalSlice(
+  transportType: LinkGraphIncrementalTransportEnvelope["type"] | undefined,
+): boolean {
+  return isLinkGraphIncrementalTransportType(transportType);
 }
 
 export function useBootstrapStateController({
@@ -25,7 +35,7 @@ export function useBootstrapStateController({
         envelope.revision < lastAppliedSnapshotRevisionRef.current
         || (
           envelope.revision === lastAppliedSnapshotRevisionRef.current
-          && envelope.transportType !== "ARTIFACT_SLICE"
+          && !isIncrementalSlice(envelope.transportType)
         )
       ) {
         return;
@@ -37,7 +47,7 @@ export function useBootstrapStateController({
       if (envelope.revision > lastAppliedSnapshotRevisionRef.current) {
         lastAppliedSnapshotRevisionRef.current = envelope.revision;
       }
-      if (envelope.transportType !== "ARTIFACT_SLICE") {
+      if (envelope.transportType !== LINK_GRAPH_ARTIFACT_SLICE_TRANSPORT_TYPE) {
         acknowledgeSnapshot(envelope.revision);
       }
     });

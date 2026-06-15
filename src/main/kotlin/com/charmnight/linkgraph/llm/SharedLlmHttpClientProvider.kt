@@ -12,11 +12,21 @@ internal object SharedLlmHttpClientProvider {
     }
 
     fun clientForTimeoutSeconds(timeoutSeconds: Int): HttpClient {
-        val safeTimeout = timeoutSeconds.coerceAtLeast(1)
-        return clients.computeIfAbsent(safeTimeout) { seconds ->
+        val timeoutBucket = timeoutBucketSeconds(timeoutSeconds)
+        return clients.computeIfAbsent(timeoutBucket) { seconds ->
             HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(seconds.toLong()))
                 .build()
         }
     }
+
+    private fun timeoutBucketSeconds(timeoutSeconds: Int): Int =
+        when {
+            timeoutSeconds <= 1 -> 1
+            timeoutSeconds <= 5 -> 5
+            timeoutSeconds <= 10 -> 10
+            timeoutSeconds <= 30 -> 30
+            timeoutSeconds <= 60 -> 60
+            else -> 120
+        }
 }

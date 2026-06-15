@@ -8,6 +8,8 @@ import com.charmnight.linkgraph.presentation.GraphPresentationLane
 import com.charmnight.linkgraph.presentation.GraphPresentationLaneAxis
 import com.charmnight.linkgraph.presentation.GraphPresentationTarget
 import com.charmnight.linkgraph.presentation.GraphViewPresentation
+import com.charmnight.linkgraph.architecture.ClassDiagramResult
+import com.charmnight.linkgraph.architecture.ClassDiagramSummary
 import com.charmnight.linkgraph.codegen.CodeEditOperation
 import com.charmnight.linkgraph.codegen.CodeEditOperationKind
 import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
@@ -45,6 +47,13 @@ import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
+import com.charmnight.linkgraph.usage.ClassUsageEntry
+import com.charmnight.linkgraph.usage.ClassUsageGroup
+import com.charmnight.linkgraph.usage.ClassUsageKind
+import com.charmnight.linkgraph.usage.ClassUsageOwnerKind
+import com.charmnight.linkgraph.usage.ClassUsageSearchResult
+import com.charmnight.linkgraph.usage.ClassUsageSummary
+import com.charmnight.linkgraph.usage.ClassUsageTarget
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.charmnight.linkgraph.workbench.StepKind
 import com.charmnight.linkgraph.workbench.QaConversationMessage
@@ -64,7 +73,12 @@ import com.charmnight.linkgraph.workbench.QaRequestRecoveryState
 import com.charmnight.linkgraph.workbench.ReplayableQaRequest
 import com.charmnight.linkgraph.workbench.StageEligibilityDecision
 import com.charmnight.linkgraph.workbench.AssistantContextSnapshot
+import com.charmnight.linkgraph.workbench.AssistantComposerState
+import com.charmnight.linkgraph.workbench.AssistantComposerTarget
+import com.charmnight.linkgraph.workbench.AssistantFailureResult
 import com.charmnight.linkgraph.workbench.AssistantIntent
+import com.charmnight.linkgraph.workbench.AssistantResultStore
+import com.charmnight.linkgraph.workbench.AssistantResultStoreEntry
 import com.charmnight.linkgraph.workbench.AssistantSessionState
 import com.charmnight.linkgraph.workbench.AssistantTurnKind
 import com.charmnight.linkgraph.workbench.AssistantTurnRef
@@ -89,11 +103,18 @@ class GraphEditorPageRendererTest {
                     selectedMethodSignature = "com.example.OrderController.submit():void",
                     scopeLabel = "当前改动",
                 ),
+                composer = AssistantComposerState(
+                    draft = "继续核对风险",
+                    target = AssistantComposerTarget.RiskInvestigation(
+                        threadId = "thread-risk-1",
+                        targetNodeIds = listOf("method:submit-order"),
+                    ),
+                ),
                 turns = listOf(
                     AssistantTurnRef(
                         turnId = "turn-check-1",
                         kind = AssistantTurnKind.CHECK_RESULT,
-                        sourceMessageType = "requestDiffReview",
+                        sourceMessageType = "diffReviewResult",
                         resultId = "diff-review:1",
                         createdAtEpochMillis = 42,
                         context = AssistantContextSnapshot(
@@ -111,10 +132,42 @@ class GraphEditorPageRendererTest {
         assertTrue(json.contains(""""assistantSessionState""""))
         assertTrue(json.contains(""""activeIntent":"CHECK_CHANGE""""))
         assertTrue(json.contains(""""contextLocked":true"""))
+        assertTrue(json.contains(""""composer":{"draft":"继续核对风险","target":{"kind":"RiskInvestigation""""))
+        assertTrue(json.contains(""""threadId":"thread-risk-1""""))
         assertTrue(json.contains(""""selectedNodeIds":["method:submit-order"]"""))
         assertTrue(json.contains(""""selectedDiffItemIds":["diff:OrderController.kt"]"""))
         assertTrue(json.contains(""""kind":"CHECK_RESULT""""))
         assertFalse(json.contains(""""assistantSessionState":{"qaResult""""))
+    }
+
+    @Test
+    fun bootstrapJsonIncludesFailureResultStoreEntries() {
+        val renderer = GraphEditorPageRenderer()
+        val snapshot = testSnapshot().copy(
+            assistantResultStore = AssistantResultStore(
+                results = mapOf(
+                    "qa-failure:41" to AssistantResultStoreEntry(
+                        kind = AssistantTurnKind.QA,
+                        failure = AssistantFailureResult(
+                            resultId = "qa-failure:41",
+                            message = "上游超时",
+                            detailMessage = "HTTP 504 from qa provider",
+                            phase = "FAILED",
+                            requestId = 41,
+                            sourceMessageType = "requestAssistantTask",
+                            createdAtEpochMillis = 1000,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val json = renderer.bootstrapJson(snapshot)
+
+        assertTrue(json.contains(""""assistantResultStore":{"qa-failure:41""""))
+        assertTrue(json.contains(""""failure":{"resultId":"qa-failure:41","message":"上游超时""""))
+        assertTrue(json.contains(""""detailMessage":"HTTP 504 from qa provider""""))
+        assertTrue(json.contains(""""sourceMessageType":"requestAssistantTask""""))
     }
 
     @Test
@@ -575,33 +628,6 @@ class GraphEditorPageRendererTest {
     }
 
     @Test
-    fun bootstrapJson输出工作台折叠偏好字段() {
-        val renderer = GraphEditorPageRenderer()
-        val snapshot = testSnapshot(
-            visibleGraph = GraphDocument(
-                nodes = listOf(
-                    GraphNode(
-                        id = "method:submit-order",
-                        type = NodeType.METHOD,
-                        title = "OrderController.submit",
-                        sourceTag = GraphSourceTag.FACT,
-                    ),
-                ),
-            ),
-            workbenchSectionPreferences = mapOf(
-                "qa.request-status" to true,
-                "qa.candidate-changes" to false,
-            ),
-        )
-
-        val json = renderer.bootstrapJson(snapshot)
-
-        assertTrue(json.contains("\"workbenchSectionPreferences\""))
-        assertTrue(json.contains("\"qa.request-status\":true"))
-        assertTrue(json.contains("\"qa.candidate-changes\":false"))
-    }
-
-    @Test
     fun bootstrapJson输出草稿图补丁字段() {
         val renderer = GraphEditorPageRenderer()
         val graphPatch = GraphPatch(
@@ -876,6 +902,85 @@ class GraphEditorPageRendererTest {
         assertTrue(json.contains("\"incompleteNodeCount\":1"))
         assertTrue(json.contains("\"semanticallyIncomplete\":true"))
         assertTrue(json.contains("\"laneCounts\":{\"DATA\":1}"))
+    }
+
+    @Test
+    fun bootstrapJsonIncludesClassDiagramUsageDetails() {
+        val renderer = GraphEditorPageRenderer()
+        val targetNodeId = "jvm:class:com-example-order-service"
+        val ownerNodeId = "jvm:class:com-example-order-controller"
+        val snapshot = testSnapshot(
+            analysisDisplayMode = AnalysisDisplayMode.CLASS_DIAGRAM,
+            classDiagramView = ClassDiagramResult(
+                visibleGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = targetNodeId,
+                            type = NodeType.CLASS,
+                            title = "OrderService",
+                            signature = "com.example.OrderService",
+                        ),
+                    ),
+                ),
+                fullGraph = GraphDocument(),
+                anchorNodeId = targetNodeId,
+                summary = ClassDiagramSummary(
+                    classCount = 1,
+                    relationCount = 0,
+                    anchorTypeNodeId = targetNodeId,
+                    anchorTypeQualifiedName = "com.example.OrderService",
+                ),
+                usage = ClassUsageSearchResult(
+                    target = ClassUsageTarget(
+                        nodeId = targetNodeId,
+                        qualifiedName = "com.example.OrderService",
+                        displayName = "OrderService",
+                    ),
+                    groups = listOf(
+                        ClassUsageGroup(
+                            id = "class-usage-owner:$ownerNodeId",
+                            ownerNodeId = ownerNodeId,
+                            ownerKind = ClassUsageOwnerKind.CLASS,
+                            title = "OrderController",
+                            qualifiedName = "com.example.OrderController",
+                            filePath = "src/main/java/com/example/OrderController.java",
+                            virtualFileUrl = "temp:///src/main/java/com/example/OrderController.java",
+                            usages = listOf(
+                                ClassUsageEntry(
+                                    id = "usage:field",
+                                    ownerId = "class-usage-owner:$ownerNodeId",
+                                    kind = ClassUsageKind.FIELD_TYPE,
+                                    filePath = "src/main/java/com/example/OrderController.java",
+                                    line = 8,
+                                    column = 13,
+                                    text = "private OrderService orderService;",
+                                    virtualFileUrl = "temp:///src/main/java/com/example/OrderController.java",
+                                    ownerQualifiedName = "com.example.OrderController",
+                                ),
+                            ),
+                        ),
+                    ),
+                    summary = ClassUsageSummary(
+                        targetNodeId = targetNodeId,
+                        targetQualifiedName = "com.example.OrderService",
+                        groupCount = 1,
+                        usageCount = 1,
+                        visibleGroupCount = 1,
+                        visibleUsageCount = 1,
+                    ),
+                ),
+            ),
+        )
+
+        val json = renderer.bootstrapJson(snapshot)
+
+        assertTrue(json.contains("\"usage\""))
+        assertTrue(json.contains("\"targetQualifiedName\":\"com.example.OrderService\""))
+        assertTrue(json.contains("\"groups\""))
+        assertTrue(json.contains("\"ownerKind\":\"CLASS\""))
+        assertTrue(json.contains("\"kind\":\"FIELD_TYPE\""))
+        assertTrue(json.contains("\"line\":8"))
+        assertTrue(json.contains("private OrderService orderService;"))
     }
 
     @Test

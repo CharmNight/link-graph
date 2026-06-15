@@ -11,13 +11,13 @@ class TestFixtureWordingCleanupTest {
     @Test
     fun qaTestsUseConsistentQuestionWording() {
         val files = listOf(
-            "src/test/kotlin/com/charmnight/linkgraph/services/ReviewWorkflowAgentRuntimeTest.kt",
-            "src/test/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectServiceAsyncLifecycleTest.kt",
+            "src/test/kotlin/com/charmnight/linkgraph/application/ReviewWorkflowAgentRuntimeTest.kt",
+            "src/test/kotlin/com/charmnight/linkgraph/application/GraphEditorApplicationAsyncLifecycleTest.kt",
             "src/test/kotlin/com/charmnight/linkgraph/llm/capability/QaCapabilityTest.kt",
             "src/test/kotlin/com/charmnight/linkgraph/ui/GraphEditorStateServiceTest.kt",
             "src/integrationTest/kotlin/com/charmnight/linkgraph/ui/LinkGraphToolWindowIT.kt",
             "src/test/kotlin/com/charmnight/linkgraph/ui/GraphEditorPageRendererTest.kt",
-            "src/test/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectServiceDraftWorkbenchTest.kt",
+            "src/test/kotlin/com/charmnight/linkgraph/application/GraphEditorApplicationDraftWorkbenchTest.kt",
             "src/test/kotlin/com/charmnight/linkgraph/llm/LlmPromptFactoryTest.kt",
             "src/test/kotlin/com/charmnight/linkgraph/llm/GraphQaScopeResolverTest.kt",
             "src/test/kotlin/com/charmnight/linkgraph/mermaid/MermaidExporterTest.kt",
@@ -46,9 +46,9 @@ class TestFixtureWordingCleanupTest {
             "src/test/kotlin/com/charmnight/linkgraph/llm/capability/QaCapabilityTest.kt",
             "src/test/kotlin/com/charmnight/linkgraph/llm/capability/PlanCapabilityTest.kt",
             "src/test/kotlin/com/charmnight/linkgraph/llm/capability/CodegenCapabilityTest.kt",
-            "src/test/kotlin/com/charmnight/linkgraph/services/ReviewWorkflowAgentRuntimeTest.kt",
-            "src/test/kotlin/com/charmnight/linkgraph/services/GenerationWorkflowAgentRuntimeTest.kt",
-            "src/test/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectServiceSemanticAnalysisTest.kt",
+            "src/test/kotlin/com/charmnight/linkgraph/application/ReviewWorkflowAgentRuntimeTest.kt",
+            "src/test/kotlin/com/charmnight/linkgraph/application/GenerationWorkflowAgentRuntimeTest.kt",
+            "src/test/kotlin/com/charmnight/linkgraph/application/GraphEditorApplicationSemanticAnalysisTest.kt",
             "src/main/kotlin/com/charmnight/linkgraph/workbench/QaConversationService.kt",
             "src/main/kotlin/com/charmnight/linkgraph/semantic/provider/code/CodeInvocationSemanticResolver.kt",
         )

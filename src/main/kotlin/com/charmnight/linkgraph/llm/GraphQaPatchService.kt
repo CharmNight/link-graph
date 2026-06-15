@@ -54,6 +54,7 @@ class GraphQaPatchService(
         requestedMode: QaMode = QaMode.AUTO,
         effectiveMode: QaMode = QaMode.AUTO,
         onPreview: ((String, Boolean) -> Unit)? = null,
+        runtimeEvidenceTrusted: Boolean = false,
     ): GraphPatchResult {
         val effectiveContext = context.withDerivedEvidenceTrace()
         val sanitized = settings.sanitized()
@@ -83,6 +84,7 @@ class GraphQaPatchService(
                 sourceThreadId = sourceThreadId,
                 requestedMode = requestedMode,
                 effectiveMode = resolvedEffectiveMode,
+                runtimeEvidenceTrusted = runtimeEvidenceTrusted,
             )
         }
         val remoteConnection = sanitized.remoteConnectionOrNull()
@@ -95,8 +97,9 @@ class GraphQaPatchService(
                 sourceThreadId = sourceThreadId,
                 requestedMode = requestedMode,
                 effectiveMode = resolvedEffectiveMode,
+                runtimeEvidenceTrusted = runtimeEvidenceTrusted,
             ).copy(
-                warnings = listOf(sanitized.remoteLlmSetupHint("本地规则问答")),
+                warnings = listOf(runtimeWarning(sanitized.remoteLlmSetupHint("本地规则问答"))),
             )
         }
         return runCatching {
@@ -113,7 +116,7 @@ class GraphQaPatchService(
                 RemoteGraphPatchResultParser.parse(content, promptPackage.preview, question)
             }
         }.map { remote ->
-            val remoteResult = remote.value.withPrependedWarnings(remote.warnings)
+            val remoteResult = remote.value.withPrependedWarnings(remote.warnings.map(::runtimeWarning))
             if (traceEnabled) {
                 logger.warn(
                     "问答结果进入归一化: source=${remoteResult.source}, findings=${remoteResult.findings.size}, " +
@@ -139,6 +142,7 @@ class GraphQaPatchService(
                 sourceThreadId = sourceThreadId,
                 requestedMode = requestedMode,
                 effectiveMode = resolvedEffectiveMode,
+                runtimeEvidenceTrusted = false,
             ).copy(
                 warnings = listOf(buildRemoteFallbackWarning("问答", error)),
             )
@@ -154,6 +158,7 @@ class GraphQaPatchService(
         sourceThreadId: String? = null,
         requestedMode: QaMode = QaMode.AUTO,
         effectiveMode: QaMode = QaMode.AUTO,
+        runtimeEvidenceTrusted: Boolean = false,
     ): GraphPatchResult {
         val scopeNodes = GraphQaScopeResolver.resolveScopeNodes(context)
         val analysisGraph = context.editableGraph.takeIf { it.nodes.isNotEmpty() || it.edges.isNotEmpty() } ?: context.factGraph
@@ -175,7 +180,7 @@ class GraphQaPatchService(
         }
         val directSourceFindings = buildMockDirectSourceFindings(context)
         val directSourceTargets = resolveMockDirectSourceTargets(context, scopeNodes, analysisGraph)
-        val canBuildCandidateChange = (effectiveMode == QaMode.CHANGE || effectiveMode == QaMode.AUTO) &&
+        val hasLocalRuleChangeHint = (effectiveMode == QaMode.CHANGE || effectiveMode == QaMode.AUTO) &&
             questionExplicitlyRequestsChange(question) &&
             directSourceFindings.isNotEmpty() &&
             directSourceTargets.isNotEmpty()
@@ -194,10 +199,10 @@ class GraphQaPatchService(
             explanationAnswer.ifBlank {
                 "当前轮结论：当前证据不足以完整回答该问题；本轮不会生成候选变更或风险线程。"
             }
-        } else if (canBuildCandidateChange) {
+        } else if (hasLocalRuleChangeHint) {
             """
-            当前轮结论：$scopeLabel 已直接观察到可落点的源码证据，已生成待确认变更。
-            处理建议：下一步应基于当前 edit scope 继续生成精确代码 diff，而不是退回风险线索。
+            当前轮结论：本地规则在 $scopeLabel 已直接观察到可落点的源码证据，但不会生成待确认变更。
+            处理建议：先登记为风险线索；需要可确认变更时，请使用远程模型或 runtime 证据链生成结构化候选变更。
             """.trimIndent()
         } else if (explanationIntent && !explicitQaIntent && !hasFallbackIntent) {
             explanationAnswer
@@ -212,7 +217,7 @@ class GraphQaPatchService(
             处理建议：先确认真实业务约束，拿到直接证据后再决定是否写入草稿层。
             """.trimIndent()
         }
-        val findings = if (canBuildCandidateChange) {
+        val findings = if (hasLocalRuleChangeHint) {
             directSourceFindings
         } else {
             val findingClaim = if (explanationIntent && !explicitQaIntent && !hasFallbackIntent) {
@@ -233,15 +238,15 @@ class GraphQaPatchService(
                     )
                 }
         }
-        val candidateChanges = if (canBuildCandidateChange) {
+        val candidateChanges = if (hasLocalRuleChangeHint && runtimeEvidenceTrusted) {
             listOf(
                 CandidateDraftChange(
-                    changeId = buildMockCandidateChangeId(directSourceTargets),
+                    changeId = GraphNode.stableId(NodeType.DOC_PAGE, directSourceTargets.joinToString(",") { it.id }, "runtime-candidate-change"),
                     status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
                     title = buildMockCandidateTitle(question, directSourceTargets),
                     targetNodeIds = directSourceTargets.map(GraphNode::id),
-                    reason = "当前源码片段已直接锚定到本轮修改请求涉及的位置。",
-                    impactSummary = "已具备直接源码证据，可继续进入精确代码 diff 生成。",
+                    reason = "runtime 已读取直接源码证据并锚定到本轮修改请求涉及的位置。",
+                    impactSummary = "已具备 runtime 代码证据，可继续进入精确代码 diff 生成。",
                     claimType = "CODE_FACT",
                     evidence = findings,
                 ),
@@ -251,7 +256,7 @@ class GraphQaPatchService(
         }
         val investigationThreads = if (
             effectiveMode == QaMode.ANSWER ||
-            canBuildCandidateChange ||
+            (hasLocalRuleChangeHint && runtimeEvidenceTrusted) ||
             (explanationIntent && !explicitQaIntent && !hasFallbackIntent)
         ) {
             emptyList()
@@ -260,19 +265,31 @@ class GraphQaPatchService(
                 InvestigationThread(
                     threadId = GraphNode.stableId(NodeType.DOC_PAGE, "$scopeKey-qa-change", "qa-thread"),
                     status = InvestigationThreadStatus.OPEN,
-                    title = if (hasFallbackIntent) "补充默认兜底规则" else "补充业务规则说明",
+                    title = if (hasLocalRuleChangeHint) {
+                        buildMockCandidateTitle(question, directSourceTargets)
+                    } else if (hasFallbackIntent) {
+                        "补充默认兜底规则"
+                    } else {
+                        "补充业务规则说明"
+                    },
                     targetNodeIds = scopeNodes.ifEmpty { analysisGraph.nodes.take(1) }.map(GraphNode::id),
-                    summary = if (hasFallbackIntent) {
+                    summary = if (hasLocalRuleChangeHint) {
+                        "本地规则只确认当前源码片段与修改请求相关，不能直接生成待确认变更。"
+                    } else if (hasFallbackIntent) {
                         "当前还不能证明默认兜底逻辑存在或不存在，需要继续核对条件未命中时的处理分支。"
                     } else {
                         "当前还不能证明这条业务规则真实存在，需要继续核对相关源码或图节点。"
                     },
-                    evidenceGap = if (hasFallbackIntent) {
+                    evidenceGap = if (hasLocalRuleChangeHint) {
+                        "缺少远程模型或 runtime 结构化候选变更结果。"
+                    } else if (hasFallbackIntent) {
                         "目前没有直接看到条件未命中后的处理分支。"
                     } else {
                         "目前没有直接看到足以证明完整业务规则的源码或图事实。"
                     },
-                    recommendedQuestion = if (hasFallbackIntent) {
+                    recommendedQuestion = if (hasLocalRuleChangeHint) {
+                        "请基于当前直接源码证据生成结构化候选变更，并通过本地 edit scope 校验。"
+                    } else if (hasFallbackIntent) {
                         "请继续取证：定位条件未命中时的默认处理分支，确认是否存在明确兜底逻辑。"
                     } else {
                         "请继续取证：定位这条链路对应的真实业务规则实现，确认当前图里缺失的是哪一段源码或分支。"
@@ -295,7 +312,9 @@ class GraphQaPatchService(
                 investigationThreads = investigationThreads,
                 sourceContext = context.sourceContext,
                 evidenceTrace = context.evidenceTrace,
-            ),
+            ).let { result ->
+                if (runtimeEvidenceTrusted) result.markRuntimeEvidenceTrusted() else result
+            },
             context = context,
             session = session,
             sourceThreadId = sourceThreadId,
@@ -341,11 +360,6 @@ class GraphQaPatchService(
         }
     }
 
-    private fun buildMockCandidateChangeId(targetNodes: List<GraphNode>): String {
-        val scopeKey = targetNodes.joinToString(",") { it.id }.ifBlank { "scope" }
-        return GraphNode.stableId(NodeType.DOC_PAGE, scopeKey, "mock-candidate-change")
-    }
-
     private fun buildMockCandidateTitle(
         question: String,
         targetNodes: List<GraphNode>,
@@ -374,6 +388,8 @@ class GraphQaPatchService(
             explicitInvestigationThreads = base.investigationThreads,
             context = context,
             question = base.question,
+            source = base.source,
+            runtimeEvidenceTrusted = base.hasRuntimeEvidenceTrustedMarker(),
             effectiveMode = effectiveMode,
             sourceThreadId = sourceThreadId,
         )
@@ -506,13 +522,18 @@ class GraphQaPatchService(
         explicitInvestigationThreads: List<InvestigationThread>,
         context: GraphQaContext,
         question: String,
+        source: LlmResultSource,
+        runtimeEvidenceTrusted: Boolean,
         effectiveMode: QaMode,
         sourceThreadId: String?,
     ): ClassifiedQaOutputs {
         val promotableChanges = mutableListOf<CandidateDraftChange>()
         val investigationThreads = linkedMapOf<String, InvestigationThread>()
 
-        val candidateInput = if (effectiveMode == QaMode.CHANGE || effectiveMode == QaMode.AUTO) {
+        val candidateInput = if (
+            canUseConfirmableCandidatePath(source, runtimeEvidenceTrusted) &&
+            (effectiveMode == QaMode.CHANGE || effectiveMode == QaMode.AUTO)
+        ) {
             candidateChanges
         } else {
             emptyList()
@@ -536,6 +557,7 @@ class GraphQaPatchService(
         }
         val normalizedInvestigationThreads = normalizeInvestigationThreads(explicitInvestigationThreads)
         if (
+            canUseConfirmableCandidatePath(source, runtimeEvidenceTrusted) &&
             (effectiveMode == QaMode.CHANGE || effectiveMode == QaMode.AUTO) &&
             promotableChanges.isEmpty() &&
             questionExplicitlyRequestsChange(question)
@@ -562,6 +584,13 @@ class GraphQaPatchService(
             candidateChanges = promotableChanges,
             investigationThreads = investigationThreads.values.toList(),
         )
+    }
+
+    private fun canUseConfirmableCandidatePath(
+        source: LlmResultSource,
+        runtimeEvidenceTrusted: Boolean,
+    ): Boolean {
+        return source != LlmResultSource.LOCAL_RULE || runtimeEvidenceTrusted
     }
 
     private fun normalizeCandidateChanges(
@@ -874,8 +903,11 @@ class GraphQaPatchService(
         scene: String,
         error: Throwable,
     ): String {
-        return "远程 LLM ${scene}失败，已回退为本地规则分析：${LlmUserMessageFormatter.describe(error)}"
+        return runtimeWarning("远程 LLM ${scene}失败，已回退为本地规则分析：${LlmUserMessageFormatter.describe(error)}")
     }
+
+    private fun runtimeWarning(warning: String): String =
+        warning.takeIf { it.startsWith("RUNTIME:") } ?: "RUNTIME: $warning"
 
     /** 把远程返回的警告插到结果前面。 */
     private fun GraphPatchResult.withPrependedWarnings(extraWarnings: List<String>): GraphPatchResult {

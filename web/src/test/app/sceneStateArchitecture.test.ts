@@ -16,9 +16,11 @@ function interfaceBlock(source: string, interfaceName: string) {
 describe("scene-state architecture gate", () => {
   it("moves bootstrap transport to canonical workspace graphs plus scene states", () => {
     const source = read("src/app/types.ts");
+    const graphTypesSource = read("src/app/graphTypes.ts");
     const bootstrapStateSource = interfaceBlock(source, "LinkGraphBootstrapState");
 
-    expect(source).toContain("export type LinkGraphSceneId");
+    expect(source).toContain("LinkGraphSceneId");
+    expect(graphTypesSource).toContain("export type LinkGraphSceneId");
     expect(bootstrapStateSource).toContain("currentSceneId:");
     expect(bootstrapStateSource).toContain("sceneStates:");
     expect(bootstrapStateSource).toContain("workspaceGraph:");

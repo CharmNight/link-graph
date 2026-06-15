@@ -20,7 +20,7 @@ class AgentToolRegistry(
     }
 
     /** 按名称查找工具，不存在时返回 null。 */
-    fun find(name: String): AgentTool? = toolsByName[name]
+    fun find(name: String): AgentTool? = toolsByName[name]?.let(::withRuntimeAllowedToolGuard)
 
     /** 按名称查找工具，不存在时直接失败。 */
     fun require(name: String): AgentTool {
@@ -28,5 +28,25 @@ class AgentToolRegistry(
     }
 
     /** 列出所有已注册工具。 */
-    fun all(): List<AgentTool> = toolsByName.values.toList()
+    fun all(): List<AgentTool> = toolsByName.values.map(::withRuntimeAllowedToolGuard)
+
+    /** 列出所有已注册工具名。 */
+    fun names(): Set<String> = toolsByName.keys.toSet()
+
+    private fun withRuntimeAllowedToolGuard(tool: AgentTool): AgentTool =
+        object : AgentTool {
+            override val name: String = tool.name
+            override val description: String = tool.description
+
+            override fun invoke(
+                input: Map<String, Any?>,
+                context: ToolExecutionContext,
+            ): ToolResult {
+                val allowedToolNames = context.allowedToolNames ?: return tool.invoke(input, context)
+                check(name in allowedToolNames) {
+                    "工具未被当前 capability 允许: $name"
+                }
+                return tool.invoke(input, context)
+            }
+        }
 }

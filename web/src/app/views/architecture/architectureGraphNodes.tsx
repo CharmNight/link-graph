@@ -3,7 +3,6 @@ import {
   Handle,
   MarkerType,
   Position,
-  useUpdateNodeInternals,
   type Edge,
   type Node,
   type NodeProps,
@@ -16,7 +15,9 @@ import { measureNodeContentBox } from "../../components/graph/nodes/measureNodeC
 import { GraphNodeStateBadges } from "../../components/graph/nodes/GraphNodeStateBadges";
 import type { DraftCompareStatus, GraphProjectionIndex, LinkGraphEdge, LinkGraphNode } from "../../types";
 import { canEditNodeLayout } from "../../layoutEditability";
+import { reactFlowNodeInternalsSignature } from "../../reactflow/nodeInternalsSignature";
 import type { RoutedEdgeData } from "../../reactflow/RoutedEdge";
+import { useStableNodeInternalsUpdate } from "../../reactflow/useStableNodeInternalsUpdate";
 import { resolveGraphNodeHighlightClassName } from "../graphNodeHighlights";
 import {
   draftCompareEdgeClassName,
@@ -397,12 +398,12 @@ function compactMetricText(
 }
 
 function ArchitectureReactNode({ id, data, selected, isConnectable }: ArchitectureFlowNodeProps) {
-  const updateNodeInternals = useUpdateNodeInternals();
   const style = handleStyle(isConnectable);
-
-  useLayoutEffect(() => {
-    updateNodeInternals(id);
-  }, [data.node, id, isConnectable, selected, updateNodeInternals]);
+  const nodeInternalsSignature = [
+    reactFlowNodeInternalsSignature(data.node),
+    String(isConnectable),
+  ].join("\u0001");
+  useStableNodeInternalsUpdate(id, nodeInternalsSignature);
 
   return (
     <div className={["resource-relation-react-node", isConnectable ? "is-connectable" : ""].join(" ").trim()}>
@@ -428,20 +429,50 @@ export const ARCHITECTURE_GRAPH_NODE_TYPES: NodeTypes = {
 function architectureNodeStyle(node: LinkGraphNode) {
   const presentationRole = node.metadata?.["presentation.role"];
   const roleColors: Record<string, { border: string; background: string; shadow: string }> = {
-    ANCHOR: { border: "rgba(37, 99, 235, 0.34)", background: "#f8fbff", shadow: "rgba(37, 99, 235, 0.13)" },
-    ENTRY: { border: "rgba(42, 105, 122, 0.28)", background: "#f6fbfc", shadow: "rgba(42, 105, 122, 0.09)" },
-    APPLICATION: { border: "rgba(62, 86, 133, 0.24)", background: "#fbfcff", shadow: "rgba(62, 86, 133, 0.08)" },
-    DOMAIN: { border: "rgba(82, 118, 71, 0.28)", background: "#fbfdf8", shadow: "rgba(82, 118, 71, 0.08)" },
-    DATA: { border: "rgba(130, 93, 45, 0.28)", background: "#fffaf3", shadow: "rgba(130, 93, 45, 0.08)" },
-    RESOURCE: { border: "rgba(105, 92, 134, 0.26)", background: "#fcfaff", shadow: "rgba(105, 92, 134, 0.08)" },
-    EXTERNAL: { border: "rgba(96, 106, 116, 0.26)", background: "#fafbfb", shadow: "rgba(96, 106, 116, 0.08)" },
+    ANCHOR: {
+      border: "rgba(37, 99, 235, 0.34)",
+      background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, transparent), var(--panel))",
+      shadow: "rgba(37, 99, 235, 0.13)",
+    },
+    ENTRY: {
+      border: "rgba(42, 105, 122, 0.28)",
+      background: "linear-gradient(135deg, color-mix(in srgb, var(--accent-strong) 14%, transparent), var(--panel))",
+      shadow: "rgba(42, 105, 122, 0.09)",
+    },
+    APPLICATION: {
+      border: "rgba(62, 86, 133, 0.24)",
+      background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, transparent), var(--panel))",
+      shadow: "rgba(62, 86, 133, 0.08)",
+    },
+    DOMAIN: {
+      border: "rgba(82, 118, 71, 0.28)",
+      background: "linear-gradient(135deg, color-mix(in srgb, var(--success) 12%, transparent), var(--panel))",
+      shadow: "rgba(82, 118, 71, 0.08)",
+    },
+    DATA: {
+      border: "rgba(130, 93, 45, 0.28)",
+      background: "linear-gradient(135deg, color-mix(in srgb, var(--warning) 14%, transparent), var(--panel))",
+      shadow: "rgba(130, 93, 45, 0.08)",
+    },
+    RESOURCE: {
+      border: "rgba(105, 92, 134, 0.26)",
+      background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, transparent), var(--panel))",
+      shadow: "rgba(105, 92, 134, 0.08)",
+    },
+    EXTERNAL: {
+      border: "rgba(96, 106, 116, 0.26)",
+      background: "linear-gradient(135deg, color-mix(in srgb, var(--muted) 8%, transparent), var(--panel))",
+      shadow: "rgba(96, 106, 116, 0.08)",
+    },
   };
   const colors = presentationRole ? roleColors[presentationRole] : null;
   return {
     width: architectureGraphNodeCardWidth(),
     borderRadius: 8,
     border: `1px solid ${colors?.border ?? "rgba(41, 83, 107, 0.18)"}`,
-    background: colors?.background ?? (node.type === "LAYER" ? "#f7fbf8" : "#fbfcff"),
+    background: colors?.background ?? (node.type === "LAYER"
+      ? "linear-gradient(135deg, color-mix(in srgb, var(--success) 10%, transparent), var(--panel))"
+      : "var(--panel)"),
     boxShadow: `0 4px 14px ${colors?.shadow ?? "rgba(28, 49, 64, 0.06)"}`,
     padding: 0,
   };

@@ -40,6 +40,20 @@ class CoreShellArchitectureTest {
     }
 
     @Test
+    fun graphBrowserPanelLoadsSameOriginEntryUrlInsteadOfInlineFileDocument() {
+        val source = read("src/main/kotlin/com/charmnight/linkgraph/ui/GraphBrowserPanel.kt")
+
+        assertTrue(
+            source.contains("loadURL(entryUrl)"),
+            "GraphBrowserPanel must load the same-origin entry URL so Vite module, CSS, dynamic import, and Worker requests do not resolve under file:///jbcefbrowser",
+        )
+        assertFalse(
+            source.contains("loadHTML("),
+            "loadHTML makes JCEF expose the document as file:///jbcefbrowser with origin null, breaking module/CSS asset loading",
+        )
+    }
+
+    @Test
     fun graphEditorStateServiceKeepsModelsOutsideTheServiceFile() {
         val source = read("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorStateService.kt")
 
@@ -105,7 +119,6 @@ class CoreShellArchitectureTest {
                     "fun markDraftWorkbenchState(",
                     "fun markDraftValidationState(",
                     "fun markCodeEligibilityDecision(",
-                    "fun markWorkbenchSectionPreferences(",
                     "fun markOperationFeedback(",
                     "fun markArtifactContents(",
                 )
@@ -222,6 +235,11 @@ class CoreShellArchitectureTest {
         assertTrue(
             bridge.contains("commandRouter.dispatch(message)"),
             "GraphEditorBridge must delegate graph-editor command dispatch through GraphEditorCommandRouter",
+        )
+        assertFalse(
+            bridge.contains("fun loadGraph(") ||
+                bridge.contains("兼容旧接口"),
+            "GraphEditorBridge must not expose compatibility command helpers outside dispatch(GraphEditorMessage).",
         )
         assertTrue(
             router.contains("fun dispatch(message: GraphEditorMessage)"),
@@ -357,6 +375,27 @@ class CoreShellArchitectureTest {
     }
 
     @Test
+    fun assistantTaskCommandsMustRequireConcreteActionId() {
+        val applicationCommand = read("src/main/kotlin/com/charmnight/linkgraph/application/command/ApplicationCommand.kt")
+        val graphEditorMessage = read("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorMessage.kt")
+        val bridgeParser = read("src/main/kotlin/com/charmnight/linkgraph/ui/bridge/BridgeCommandParser.kt")
+
+        listOf(applicationCommand, graphEditorMessage, bridgeParser).forEach { source ->
+            assertFalse(
+                source.contains("AssistantActionId.fromIntent(intent)") ||
+                    source.contains("enumOrDefault(\"actionId\""),
+                "assistant task routing must require a concrete AssistantActionId instead of inferring user actions from AssistantIntent",
+            )
+        }
+        assertTrue(
+            applicationCommand.contains("val actionId: AssistantActionId") &&
+                graphEditorMessage.contains("val actionId: AssistantActionId") &&
+                bridgeParser.contains("payload.enum<AssistantActionId>(\"actionId\")"),
+            "assistant task contracts should make actionId explicit at every boundary",
+        )
+    }
+
+    @Test
     fun applicationEventsAndResultsLiveOutsidePortProviderFile() {
         listOf(
             "src/main/kotlin/com/charmnight/linkgraph/application/event/GraphEditorApplicationEvent.kt",
@@ -457,7 +496,7 @@ class CoreShellArchitectureTest {
         assertTrue(
             tokenize(source).none {
                 val obsoletePrefix = "Au" + "dit"
-                it in setOf(
+                val exactForbiddenLines = setOf(
                     "function applyBootstrapState(",
                     "function syncGraph(",
                     "function handleRequest${obsoletePrefix}(",
@@ -505,21 +544,22 @@ class CoreShellArchitectureTest {
                     "function handleFocusDiffItem(",
                     "function syncManualNodeIdCounters(",
                     "function maybeCompleteSourceNavigationProbe(",
-                    "requestArtifactContent(",
                     "requestDiffReviewAsync(",
                     "applySingleCodeDraft(",
                     "openCodeDraftNativeDiff(",
-                    "updateWorkbenchSectionPreference(",
                     "importMermaid(",
                 )
+                it in exactForbiddenLines ||
+                    it.startsWith("function handleRequestArtifact(") ||
+                    it.contains("requestArtifactContent(") ||
+                    it.contains("requestArtifactContent }") ||
+                    it.contains("requestArtifactContent,")
             },
             "App.tsx must delegate bootstrap fixtures, bridge actions, graph edit, and workbench command flows to dedicated modules",
         )
         assertExists("web/src/app/controllers/useBootstrapProjectionState.ts")
         assertExists("web/src/app/controllers/useGraphEditController.ts")
-        assertExists("web/src/app/controllers/useDraftWorkbenchController.ts")
         assertExists("web/src/app/controllers/useAppBridgeController.ts")
-        assertExists("web/src/app/controllers/useAppWorkbenchShellController.ts")
         assertExists("web/src/app/controllers/useInteractionProbeController.ts")
         assertExists("web/src/app/sampleState.ts")
         assertExists("web/src/app/appGraphSupport.ts")

@@ -139,7 +139,7 @@
 3. `frontendBuild`：构建 Vite 应用。
 4. `frontendPackResources`：把构建产物复制到生成的插件资源目录。
 
-运行时后端优先从 `linkgraph/index.html` 读取打包后的前端资源。开发和测试场景下，如果打包资源尚不可用，可以回退到 `web/dist`。
+运行时后端默认只从 `linkgraph/index.html` 读取打包后的前端资源。`web/dist` 仅用于显式开发调试：设置 `LINKGRAPH_FRONTEND_DEV_DIST=true` 使用默认目录，或把该变量/JVM 属性 `linkgraph.frontend.devDist` 指向具体 dist 路径。
 
 ## 测试入口
 

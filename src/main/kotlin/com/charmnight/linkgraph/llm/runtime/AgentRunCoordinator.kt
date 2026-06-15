@@ -26,7 +26,9 @@ class AgentRunCoordinator(
                 initial
             }
         }
-        val runRuntimeContext = runtimeContext.withDeadline(state.budget)
+        val runRuntimeContext = runtimeContext
+            .withAllowedTools(capability.allowedTools(input))
+            .withDeadline(state.budget)
         val executor = stepExecutor ?: capability.createStepExecutor(input)
         while (true) {
             stopPolicy.evaluate(state)?.let { reason ->

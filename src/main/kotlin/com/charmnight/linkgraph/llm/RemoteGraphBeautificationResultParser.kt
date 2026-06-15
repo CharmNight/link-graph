@@ -40,11 +40,15 @@ internal object RemoteGraphBeautificationResultParser {
         val description = raw["description"] as? String ?: return null
         /** 步骤稳定标识，缺失时回退到序号。 */
         val stepId = raw["stepId"] as? String ?: "step-$index"
+        /** 步骤类型，缺失或未知时兼容旧响应。 */
+        val kind = (raw["kind"] as? String)
+            ?.let { runCatching { StepKind.valueOf(it) }.getOrNull() }
+            ?: StepKind.BUSINESS_ACTION
         return GraphBeautificationStep(
             stepId = stepId,
             title = title,
             granularity = StepGranularity.BUSINESS,
-            kind = StepKind.BUSINESS_ACTION,
+            kind = kind,
             description = description,
             evidence = parseResultEvidenceFindings(raw["evidence"]),
             followUpQuestions = (raw["followUpQuestions"] as? List<*>).orEmpty().mapNotNull { it as? String },

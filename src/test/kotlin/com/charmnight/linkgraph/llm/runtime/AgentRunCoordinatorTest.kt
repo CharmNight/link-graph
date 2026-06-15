@@ -233,10 +233,46 @@ class AgentRunCoordinatorTest : BasePlatformTestCase() {
         assertTrue(observedRuntimeContext?.isDeadlineExceeded(nowEpochMillis = deadline) ?: false)
     }
 
+    fun testRuntimeContextCarriesCapabilityAllowedToolsIntoStepExecution() {
+        var observedAllowedTools: Set<String>? = null
+        val coordinator = AgentRunCoordinator(
+            stepExecutor = StepExecutor { state, runtimeContext ->
+                observedAllowedTools = runtimeContext.allowedToolNames
+                AgentStepExecutionResult.complete(
+                    state.copy(
+                        phase = AgentRunPhase.SUCCEEDED,
+                        budget = state.budget.recordStep(),
+                        stepIndex = state.stepIndex + 1,
+                        lastModelOutput = "ok",
+                    ),
+                )
+            },
+        )
+        val runtimeContext = AgentRuntimeContext(
+            project = project,
+            snapshotSupplier = { null },
+            artifactStore = InMemoryArtifactStore(),
+        )
+        val capability = stringCapability(
+            runId = "run-allowed-tools",
+            finalizeOutput = "ok",
+            allowedTools = setOf("read_source_snippet"),
+        )
+
+        coordinator.run(
+            capability = capability,
+            input = "解释上传链路",
+            runtimeContext = runtimeContext,
+        )
+
+        assertEquals(setOf("read_source_snippet"), observedAllowedTools)
+    }
+
     private fun stringCapability(
         runId: String,
         finalizeOutput: String,
         budget: RunBudget = RunBudget(),
+        allowedTools: Set<String> = emptySet(),
     ): AgentCapability<String, String> {
         return object : AgentCapability<String, String> {
             override val capabilityId: String = "qa"
@@ -256,7 +292,7 @@ class AgentRunCoordinatorTest : BasePlatformTestCase() {
                 )
             }
 
-            override fun allowedTools(input: String): Set<String> = emptySet()
+            override fun allowedTools(input: String): Set<String> = allowedTools
 
             override fun stopPolicy(input: String): StopPolicy = StopPolicy.default()
 

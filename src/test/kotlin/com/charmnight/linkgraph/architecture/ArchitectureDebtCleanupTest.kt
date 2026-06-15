@@ -2,6 +2,8 @@ package com.charmnight.linkgraph.architecture
 
 import java.nio.file.Files
 import java.nio.file.Path
+import com.charmnight.linkgraph.json.JsonCodec
+import com.charmnight.linkgraph.ui.protocol.GraphEditorProtocol
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -181,6 +183,136 @@ class ArchitectureDebtCleanupTest {
     }
 
     @Test
+    fun localRuleQaResultsNeedRuntimeEvidenceTrustBeforeConfirmableCandidatePath() {
+        val source = read("src/main/kotlin/com/charmnight/linkgraph/llm/GraphQaPatchService.kt")
+        val classifierBlock = source.substringAfter("private fun classifyQaOutputs(")
+            .substringBefore("private fun normalizeCandidateChanges(")
+        val candidatePathGuardCount = Regex("""canUseConfirmableCandidatePath\(source,\s*runtimeEvidenceTrusted\)""")
+            .findAll(classifierBlock)
+            .count()
+
+        assertTrue(
+            classifierBlock.contains("source: LlmResultSource"),
+            "QA output classification must receive result source so LOCAL_RULE cannot be treated like remote/runtime output.",
+        )
+        assertTrue(
+            classifierBlock.contains("runtimeEvidenceTrusted: Boolean"),
+            "QA output classification must know whether LOCAL_RULE came from trusted runtime evidence.",
+        )
+        assertTrue(
+            candidatePathGuardCount >= 2,
+            "Confirmable QA candidate path must be guarded both for candidate normalization and risk-thread promotion.",
+        )
+        assertTrue(
+            source.contains("source != LlmResultSource.LOCAL_RULE || runtimeEvidenceTrusted"),
+            "LOCAL_RULE QA output may enter confirmable candidate path only when runtime evidence marked it trusted.",
+        )
+        assertFalse(
+            source.contains("buildMockCandidateChangeId("),
+            "Local rule QA must not keep a helper for building confirmable candidate changes.",
+        )
+    }
+
+    @Test
+    fun transportEnvelopeTypesComeFromSharedProtocolContract() {
+        val contractPath = root.resolve("protocol/graph-editor-transport-contract.json")
+        assertTrue(
+            Files.exists(contractPath),
+            "Transport envelope contract must be shared outside either Kotlin or TypeScript source tree.",
+        )
+        val contract = JsonCodec.parseObject(Files.readString(contractPath))
+        val transportTypes = (contract["incrementalTransportTypes"] as? List<*>)
+            ?.map { it.toString() }
+            .orEmpty()
+
+        assertEquals(
+            listOf("ARTIFACT_SLICE", "FEEDBACK_SLICE"),
+            transportTypes,
+            "Protocol contract must explicitly list every supported incremental transport slice.",
+        )
+        assertEquals<List<String>>(
+            transportTypes,
+            GraphEditorProtocol.INCREMENTAL_TRANSPORT_TYPES,
+            "Kotlin transport constants must stay aligned with the shared protocol contract.",
+        )
+
+        val frontendTypes = read("web/src/app/types.ts")
+        assertTrue(
+            frontendTypes.contains("LinkGraphFeedbackSliceEnvelope"),
+            "Frontend transport envelope union must include FEEDBACK_SLICE from the shared protocol.",
+        )
+        assertFalse(
+            frontendTypes.contains("export type LinkGraphIncrementalTransportEnvelope = LinkGraphArtifactSliceEnvelope;"),
+            "Frontend incremental envelope type must not collapse back to the old artifact-only contract.",
+        )
+
+        val buildScript = read("build.gradle.kts")
+        assertTrue(
+            buildScript.contains("""val frontendTransportContract = layout.projectDirectory.file("protocol/graph-editor-transport-contract.json")"""),
+            "Gradle frontend tasks must model the shared transport contract as a named input.",
+        )
+        assertTrue(
+            Regex("""val frontendInputs = files\([\s\S]*frontendTransportContract""").containsMatchIn(buildScript),
+            "Gradle frontend inputs must include the shared transport contract so protocol edits invalidate tests/builds.",
+        )
+    }
+
+    @Test
+    fun productionCodeUsesTypedSourceMetadataAccessors() {
+        val allowed = setOf(
+            "src/main/kotlin/com/charmnight/linkgraph/model/GraphMetadataKeys.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/model/GraphSourceLocation.kt",
+        )
+        val sourceMetadataPattern = Regex(""""source\.(filePath|virtualFileUrl|startOffset|endOffset|startLine|endLine|column|origin|decompiled)"""")
+        val offenders = productionKotlinSources()
+            .mapNotNull { path ->
+                val relativePath = root.relativize(path).toString()
+                if (relativePath in allowed) {
+                    return@mapNotNull null
+                }
+                val matches = sourceMetadataPattern.findAll(Files.readString(path))
+                    .map { match -> match.value }
+                    .distinct()
+                    .toList()
+                relativePath.takeIf { matches.isNotEmpty() }?.let { "$it: ${matches.joinToString()}" }
+            }
+            .toList()
+
+        assertEquals(
+            emptyList(),
+            offenders,
+            "Production source metadata access must go through GraphSourceLocation/GraphMetadataKeys accessors.",
+        )
+    }
+
+    @Test
+    fun qaCapabilityUsesRuntimeEvidenceInputInsteadOfLegacyContextBridge() {
+        val source = read("src/main/kotlin/com/charmnight/linkgraph/llm/capability/QaCapability.kt")
+
+        assertTrue(
+            source.contains("data class QaRuntimeEvidenceInput("),
+            "QA runtime should model collected graph/code evidence before adapting it for the executor.",
+        )
+        assertTrue(
+            source.contains("private fun buildRuntimeEvidenceInput("),
+            "QA capability should build runtime-native evidence input instead of mutating the old QA context directly.",
+        )
+        assertTrue(
+            source.contains("private fun QaRuntimeEvidenceInput.toExecutorInput("),
+            "Only the executor boundary should adapt runtime evidence back into QaCapabilityInput.",
+        )
+        listOf(
+            "旧问答执行器",
+            "buildAugmentedInput(",
+        ).forEach { forbidden ->
+            assertFalse(
+                source.contains(forbidden),
+                "QA runtime context cleanup should remove legacy bridge marker: $forbidden",
+            )
+        }
+    }
+
+    @Test
     fun graphEditorCommandRouterDoesNotExposePublicForwardingHelpers() {
         val router = read("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorCommandRouter.kt")
         val forwardingMethods = listOf(
@@ -198,6 +330,46 @@ class ArchitectureDebtCleanupTest {
                 "GraphEditorCommandRouter should route messages in dispatch instead of exposing pure forwarding helper $method",
             )
         }
+    }
+
+    @Test
+    fun graphEditorApplicationServiceDelegatesWorkflowAndCommandAssemblyToCompositionRoot() {
+        val service = read("src/main/kotlin/com/charmnight/linkgraph/application/GraphEditorApplicationService.kt")
+
+        listOf(
+            "src/main/kotlin/com/charmnight/linkgraph/application/composition/ApplicationWorkflowComposition.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/application/composition/ApplicationCommandComposition.kt",
+        ).forEach { relativePath ->
+            assertTrue(
+                Files.exists(root.resolve(relativePath)),
+                "Composition root should own application assembly helper: $relativePath",
+            )
+        }
+
+        assertTrue(
+            service.contains("ApplicationWorkflowComposition("),
+            "GraphEditorApplicationService should delegate workflow construction to ApplicationWorkflowComposition.",
+        )
+        assertTrue(
+            service.contains("ApplicationCommandComposition("),
+            "GraphEditorApplicationService should delegate command dispatcher construction to ApplicationCommandComposition.",
+        )
+        assertFalse(
+            service.contains("SubjectApplicationCommandHandler("),
+            "GraphEditorApplicationService should not inline the command handler list.",
+        )
+    }
+
+    @Test
+    fun graphEditorPageRendererKeepsPresentationPayloadMappersOutOfBootstrapShell() {
+        assertTrue(
+            Files.exists(root.resolve("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorPresentationPayloadMappers.kt")),
+            "GraphEditorPageRenderer should delegate presentation/indexed summary payload mapping to a focused helper.",
+        )
+        assertTrue(
+            lineCount("src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorPageRenderer.kt") < 1400,
+            "GraphEditorPageRenderer should stay below the old bootstrap-plus-presentation-mapping size.",
+        )
     }
 
     @Test
@@ -503,6 +675,73 @@ class ArchitectureDebtCleanupTest {
                 "Indexed graph bridge parser must not keep legacy full-request fallback: $legacyFragment",
             )
         }
+    }
+
+    @Test
+    fun bridgeCommandParserDoesNotKeepUnusedLegacyBooleanHelper() {
+        val parserSource = read("src/main/kotlin/com/charmnight/linkgraph/ui/bridge/BridgeCommandParser.kt")
+
+        assertFalse(
+            parserSource.contains("private fun Map<*, *>.booleanOrDefault"),
+            "Bridge command parser should not keep the unused boolean helper after command parsing moved to explicit envelopes.",
+        )
+    }
+
+    @Test
+    fun testFixturesDoNotUseDeletedProjectServicesPackageAsCurrentContext() {
+        val obsoletePackage = "com.charmnight.linkgraph." + "services"
+        val testRoots = listOf(
+            "src/test/kotlin",
+            "src/integrationTest/kotlin",
+        ).map(root::resolve)
+            .filter(Files::exists)
+
+        val packageOrImportOffenders = testRoots.flatMap { testRoot ->
+            Files.walk(testRoot)
+                .filter { path -> Files.isRegularFile(path) && path.toString().endsWith(".kt") }
+                .flatMap { path ->
+                    val source = Files.readString(path)
+                    listOf(
+                        "package $obsoletePackage",
+                        "import $obsoletePackage.",
+                    ).filter(source::contains)
+                        .map { marker -> "${root.relativize(path)} contains $marker" }
+                        .stream()
+                }
+                .toList()
+        }
+
+        assertEquals(
+            emptyList(),
+            packageOrImportOffenders,
+            "Test fixtures should not keep the deleted production services package as their current context.",
+        )
+        assertFalse(
+            Files.exists(root.resolve("src/test/kotlin/com/charmnight/linkgraph/" + "services")),
+            "The old test services directory should be physically removed after migrating fixtures to current packages.",
+        )
+
+        val obsoleteHelpers = listOf(
+            "registerLinkGraphProject" + "CommandServicesForTest",
+            "linkGraph" + "ApplicationServiceForTest",
+        )
+        val helperOffenders = testRoots.flatMap { testRoot ->
+            Files.walk(testRoot)
+                .filter { path -> Files.isRegularFile(path) && path.toString().endsWith(".kt") }
+                .flatMap { path ->
+                    val source = Files.readString(path)
+                    obsoleteHelpers.filter(source::contains)
+                        .map { helper -> "${root.relativize(path)} contains $helper" }
+                        .stream()
+                }
+                .toList()
+        }
+
+        assertEquals(
+            emptyList(),
+            helperOffenders,
+            "Application-service tests should use GraphEditorApplicationService fixture helpers, not deleted ProjectService wording.",
+        )
     }
 
     private fun read(relativePath: String): String = Files.readString(root.resolve(relativePath))

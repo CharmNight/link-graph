@@ -48,6 +48,29 @@ class AgentToolRegistryTest : BasePlatformTestCase() {
         }
     }
 
+    fun testRegistryRejectsToolInvocationOutsideAllowedToolContext() {
+        val registry = AgentToolRegistry(
+            listOf(
+                fakeTool("allowed_tool"),
+                fakeTool("blocked_tool"),
+            ),
+        )
+        val context = ToolExecutionContext(
+            project = project,
+            snapshot = testSnapshot().toToolGraphSnapshot(),
+            artifactStore = InMemoryArtifactStore(),
+            runBudget = RunBudget(),
+            allowedToolNames = setOf("allowed_tool"),
+        )
+
+        val allowed = registry.require("allowed_tool").invoke(emptyMap(), context)
+        assertEquals("allowed_tool", allowed.toolName)
+        val error = assertFailsWith<IllegalStateException> {
+            registry.require("blocked_tool").invoke(emptyMap(), context)
+        }
+        assertEquals("工具未被当前 capability 允许: blocked_tool", error.message)
+    }
+
     fun testRegistryRejectsDuplicateToolNames() {
         val first = object : AgentTool {
             override val name: String = "duplicate_tool"
@@ -102,4 +125,15 @@ class AgentToolRegistryTest : BasePlatformTestCase() {
         assertEquals("find_proxy_targets", registry.require("find_proxy_targets").name)
         assertEquals("build_review_evidence_bundle", registry.require("build_review_evidence_bundle").name)
     }
+
+    private fun fakeTool(toolName: String): AgentTool =
+        object : AgentTool {
+            override val name: String = toolName
+            override val description: String = "fake"
+
+            override fun invoke(
+                input: Map<String, Any?>,
+                context: ToolExecutionContext,
+            ): ToolResult = ToolResult(toolName = name)
+        }
 }

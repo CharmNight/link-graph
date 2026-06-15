@@ -8,6 +8,7 @@ import com.charmnight.linkgraph.jvm.index.JvmResourceSymbol
 import com.charmnight.linkgraph.jvm.index.JvmSymbol
 import com.charmnight.linkgraph.llm.SourceSnippetContext
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.model.sourceLocation
 import com.charmnight.linkgraph.source.AttachedJarContentResolver
 import com.charmnight.linkgraph.source.CompositeSourceContentResolver
 import com.charmnight.linkgraph.source.IdeSourceContentResolver
@@ -177,9 +178,10 @@ class CodeReadToolFacade(
         readSymbolFromIndex(symbolSignature, project, projectBasePath)?.let { return it }
         val anchor = resolveAnchor(snapshot = snapshot, symbolSignature = symbolSignature) ?: return null
         val fallback = fallbackSourceContexts.firstOrNull { it.nodeId == anchor.id }
-        val filePath = anchor.metadata["source.filePath"] ?: fallback?.filePath ?: return null
-        val startLine = anchor.metadata["source.startLine"]?.toIntOrNull() ?: fallback?.startLine
-        val endLine = anchor.metadata["source.endLine"]?.toIntOrNull() ?: fallback?.endLine
+        val sourceLocation = anchor.sourceLocation()
+        val filePath = sourceLocation.filePath ?: fallback?.filePath ?: return null
+        val startLine = sourceLocation.startLine ?: fallback?.startLine
+        val endLine = sourceLocation.endLine ?: fallback?.endLine
         val snippet = readSourceSnippetRich(
             filePath = filePath,
             startLine = startLine,
@@ -195,7 +197,7 @@ class CodeReadToolFacade(
             endLine = snippet.endLine ?: endLine,
             origin = snippet.origin ?: fallback?.origin,
             decompiled = snippet.decompiled || fallback?.decompiled == true,
-            virtualFileUrl = snippet.virtualFileUrl ?: anchor.metadata["source.virtualFileUrl"] ?: fallback?.virtualFileUrl,
+            virtualFileUrl = snippet.virtualFileUrl ?: sourceLocation.virtualFileUrl ?: fallback?.virtualFileUrl,
             sourceDiagnostic = snippet.sourceDiagnostic,
         )
     }

@@ -95,6 +95,22 @@ class WorkflowArchitectureRegressionTest {
     }
 
     @Test
+    fun architectureRuntimeDoesNotHashFileContentsInsideSliceManifestReadAction() {
+        val runtime = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/architecture/ArchitectureIndexRuntime.kt"))
+        val method = Regex(
+            """private fun currentProjectSliceInputFiles[\s\S]*?sourceComponents\.attachedJarIndex\.fingerprints""",
+        ).find(runtime)?.value ?: error("currentProjectSliceInputFiles method body not found")
+
+        assertFalse(
+            method.contains("fileFingerprint(") ||
+                method.contains("virtualFileContentSha256") ||
+                method.contains("contentsToByteArray()") ||
+                method.contains("Files.readAllBytes"),
+            "Slice manifest read action must collect VFS metadata only; content hashing must run outside the read action.",
+        )
+    }
+
+    @Test
     fun evidenceResolversDoNotBuildFullIndexInsideSynchronousReadActions() {
         val resolvingRoot = Path.of("src/main/kotlin/com/charmnight/linkgraph/investigation/resolving")
         val readActionIndexBuild = Regex(

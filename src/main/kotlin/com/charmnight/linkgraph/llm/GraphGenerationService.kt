@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.llm
 
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.model.sourceFilePathOrLocationPath
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
@@ -189,8 +190,7 @@ class GraphGenerationService(
         val targetPath = change.targetNodeIds
             .asSequence()
             .mapNotNull { nodeId ->
-                nodeById[nodeId]?.metadata?.get("source.filePath")
-                    ?: nodeById[nodeId]?.location?.substringBefore(':')
+                nodeById[nodeId]?.sourceFilePathOrLocationPath()
             }
             .firstOrNull()
         val description = buildString {

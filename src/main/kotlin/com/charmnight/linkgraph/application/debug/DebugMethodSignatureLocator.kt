@@ -28,7 +28,7 @@ internal object DebugMethodSignatureLocator {
         val parsedSignature = parse(normalizedSignature) ?: return null
         val scope = GlobalSearchScope.projectScope(project)
         val psiFacade = JavaPsiFacade.getInstance(project)
-        // 用有序集合收集候选类，兼容全限定类名与简单类名两种匹配方式。
+        // 用有序集合收集候选类，支持全限定类名与简单类名两种匹配方式。
         val candidateClasses = linkedSetOf<com.intellij.psi.PsiClass>()
 
         parsedSignature.qualifiedOwner?.let { qualifiedOwner ->
@@ -44,7 +44,7 @@ internal object DebugMethodSignatureLocator {
             return null
         }
 
-        // 统一把签名转换为可比较形式，兼容限定名与简单类名的差异。
+        // 统一把签名转换为可比较形式，抹平限定名与简单类名的差异。
         val comparableExpectedSignature = comparableMethodSignature(normalizedSignature)
         return candidateClasses
             .asSequence()

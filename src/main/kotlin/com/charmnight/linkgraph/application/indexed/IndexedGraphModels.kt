@@ -8,6 +8,7 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.projection.GraphProjectionMetadata
 import com.charmnight.linkgraph.projection.graphProjectionHiddenCounts
 import com.charmnight.linkgraph.projection.graphProjectionHiddenNodes
+import com.charmnight.linkgraph.usage.ClassUsageSearchLimits
 
 enum class IndexedGraphLayerKind {
     PROJECT_SOURCE,
@@ -113,6 +114,7 @@ data class IndexedGraphRequest(
     val refreshPolicy: IndexedGraphRefreshPolicy = IndexedGraphRefreshPolicy.ReuseCached,
     val viewport: IndexedGraphViewportOptions = IndexedGraphViewportOptions(),
     val classDiagram: IndexedClassDiagramOptions = IndexedClassDiagramOptions(),
+    val usage: IndexedClassUsageOptions = IndexedClassUsageOptions(),
     val review: IndexedReviewGraphOptions = IndexedReviewGraphOptions(),
 )
 
@@ -124,6 +126,17 @@ data class IndexedGraphViewportOptions(
 data class IndexedClassDiagramOptions(
     val neighborhoodLimit: Int = 24,
     val memberLimit: Int = 5,
+)
+
+data class IndexedClassUsageOptions(
+    val enabled: Boolean = false,
+    val targetNodeId: String? = null,
+    val targetQualifiedName: String? = null,
+    val sourceVirtualFileUrl: String? = null,
+    val sourcePath: String? = null,
+    val maxUsageGroups: Int = ClassUsageSearchLimits.DEFAULT_USAGE_GROUPS,
+    val maxUsageEntries: Int = ClassUsageSearchLimits.DEFAULT_USAGE_ENTRIES,
+    val includeImports: Boolean = false,
 )
 
 data class IndexedReviewGraphOptions(

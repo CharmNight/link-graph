@@ -20,6 +20,7 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.model.sourceFilePathOrLocationPath
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import java.nio.file.Paths
@@ -241,8 +242,7 @@ class CodeGenerationService(
         val nodeById = graph.nodes.associateBy(GraphNode::id)
         return confirmedChanges.mapNotNull { change ->
             val targetPath = change.targetNodeIds.firstNotNullOfOrNull { nodeId ->
-                nodeById[nodeId]?.metadata?.get("source.filePath")
-                    ?: nodeById[nodeId]?.location?.substringBefore(':')
+                nodeById[nodeId]?.sourceFilePathOrLocationPath()
             } ?: return@mapNotNull null
             "已确认变更“${change.title}”指向现有源码 $targetPath；当前本地规则无法安全改写现有方法，也无法生成结构化 edit ops，请启用远程 LLM 代码生成。"
         }.distinct()
@@ -462,16 +462,188 @@ class CodeGenerationService(
         }
     }
 
-    /** 为 SQL 节点生成占位草稿。 */
+    /** 为 SQL 节点生成可执行的本地规则草稿。 */
     private fun sqlDraft(node: GraphNode): String {
-        /** SQL 标题，缺失时使用保底名称。 */
-        val title = node.title.ifBlank { "generated_statement" }
-        /** 节点文档转换后的 SQL 注释。 */
+        val statement = sqlStatement(node)
         val docLine = node.doc?.takeIf { it.isNotBlank() }?.let { "-- $it\n" }.orEmpty()
         return """
             ${docLine}-- 由链路图根据 Mermaid 设计生成。
-            -- TODO: 补充 $title 的 SQL 实现
+            $statement
         """.trimIndent()
+    }
+
+    /** 根据 SQL 节点意图推断具体 SQL 语句。 */
+    private fun sqlStatement(node: GraphNode): String {
+        val operation = inferSqlOperation(node)
+        val tableName = inferSqlTableName(node, operation)
+        val columns = inferSqlColumns(node)
+        return when (operation) {
+            SqlOperation.INSERT -> {
+                val insertColumns = columns.ifEmpty { listOf("id") }
+                val placeholders = insertColumns.joinToString(", ") { column -> ":$column" }
+                "INSERT INTO $tableName (${insertColumns.joinToString(", ")})\nVALUES ($placeholders);"
+            }
+            SqlOperation.SELECT -> {
+                "SELECT *\nFROM $tableName\n${whereClause(columns)};"
+            }
+            SqlOperation.UPDATE -> {
+                val updateColumns = columns
+                    .filterNot { column -> column == "id" }
+                    .ifEmpty { listOf("updated_at") }
+                val assignments = updateColumns.joinToString(", ") { column ->
+                    if (column == "updated_at") "$column = CURRENT_TIMESTAMP" else "$column = :$column"
+                }
+                "UPDATE $tableName\nSET $assignments\nWHERE id = :id;"
+            }
+            SqlOperation.DELETE -> {
+                "DELETE FROM $tableName\nWHERE id = :id;"
+            }
+            SqlOperation.CREATE_TABLE -> {
+                val columnDefinitions = createTableColumns(columns)
+                    .joinToString(",\n")
+                "CREATE TABLE $tableName (\n$columnDefinitions\n);"
+            }
+        }
+    }
+
+    /** 推断 SQL 操作类型；未知时优先生成只读查询，避免本地模板默认写入数据。 */
+    private fun inferSqlOperation(node: GraphNode): SqlOperation {
+        val text = listOfNotNull(
+            node.metadata["statementId"],
+            node.metadata["sql.statementId"],
+            node.signature,
+            node.title,
+            node.doc,
+        ).joinToString(" ").lowercase()
+        return when {
+            text.hasAnySqlIntent("create table", "createtable", "create_", "create-", "建表", "创建表") -> SqlOperation.CREATE_TABLE
+            text.hasAnySqlIntent("insert into", "insert", "add", "save", "插入", "新增", "保存") -> SqlOperation.INSERT
+            text.hasAnySqlIntent("update", "modify", "patch", "更新", "修改") -> SqlOperation.UPDATE
+            text.hasAnySqlIntent("delete", "remove", "删除", "移除") -> SqlOperation.DELETE
+            text.hasAnySqlIntent("select", "query", "find", "list", "get", "查询", "查找", "获取") -> SqlOperation.SELECT
+            else -> SqlOperation.SELECT
+        }
+    }
+
+    private fun String.hasAnySqlIntent(vararg markers: String): Boolean =
+        markers.any { marker -> contains(marker) }
+
+    /** 推断表名，优先读取结构化元数据，其次从 statement/title/signature 中去掉动作前缀。 */
+    private fun inferSqlTableName(
+        node: GraphNode,
+        operation: SqlOperation,
+    ): String {
+        listOf(
+            "sql.table",
+            "sql.tableName",
+            "table",
+            "tableName",
+            "db.table",
+        ).asSequence()
+            .mapNotNull { key -> node.metadata[key] }
+            .mapNotNull(::sqlIdentifier)
+            .firstOrNull()
+            ?.let { return it }
+
+        val rawName = listOfNotNull(
+            node.metadata["statementId"],
+            node.metadata["sql.statementId"],
+            node.signature?.substringAfterLast('.'),
+            node.title,
+            node.id.substringAfter(':', node.id),
+        ).firstOrNull { it.isNotBlank() }.orEmpty()
+        val stripped = stripSqlOperationPrefix(rawName, operation)
+        return sqlIdentifier(stripped) ?: "generated_table"
+    }
+
+    /** 去掉常见 SQL 动作前缀，保留更接近表名的片段。 */
+    private fun stripSqlOperationPrefix(
+        rawName: String,
+        operation: SqlOperation,
+    ): String {
+        var normalized = rawName
+            .removePrefix("SQL ")
+            .substringAfterLast('.')
+            .replace(Regex("([a-z0-9])([A-Z])"), "$1_$2")
+            .lowercase()
+            .replace(Regex("[^a-z0-9]+"), "_")
+            .trim('_')
+        val prefixes = when (operation) {
+            SqlOperation.INSERT -> listOf("insert_into_", "insert_", "add_", "save_")
+            SqlOperation.SELECT -> listOf("select_", "query_", "find_", "list_", "get_")
+            SqlOperation.UPDATE -> listOf("update_", "modify_", "patch_")
+            SqlOperation.DELETE -> listOf("delete_", "remove_")
+            SqlOperation.CREATE_TABLE -> listOf("create_table_", "create_")
+        }
+        prefixes.firstOrNull(normalized::startsWith)?.let { prefix ->
+            normalized = normalized.removePrefix(prefix).trim('_')
+        }
+        return normalized
+    }
+
+    /** 推断 SQL 列名，优先结构化 metadata，再使用 graph inputs 中看起来像字段名的条目。 */
+    private fun inferSqlColumns(node: GraphNode): List<String> {
+        val metadataColumns = listOf(
+            "sql.columns",
+            "columns",
+            "fields",
+        ).flatMap { key -> splitSqlColumnList(node.metadata[key]) }
+        val inputColumns = node.inputs.mapNotNull(::sqlColumnName)
+        return (metadataColumns + inputColumns)
+            .distinct()
+    }
+
+    private fun splitSqlColumnList(raw: String?): List<String> =
+        raw.orEmpty()
+            .split(',', ';', '\n', '\t', ' ')
+            .mapNotNull(::sqlColumnName)
+
+    /** 将输入项转换为 SQL 列名；明显的 Java/Kotlin 类型会被忽略。 */
+    private fun sqlColumnName(raw: String): String? {
+        val candidate = raw
+            .trim()
+            .substringBefore('=')
+            .substringBefore(':')
+            .split(Regex("\\s+"))
+            .lastOrNull()
+            ?.takeIf(String::isNotBlank)
+            ?: return null
+        if (candidate.contains('.')) {
+            return null
+        }
+        val identifier = sqlIdentifier(candidate) ?: return null
+        return identifier.takeUnless { it in SQL_TYPE_NAMES }
+    }
+
+    private fun sqlIdentifier(raw: String): String? {
+        val normalized = raw
+            .trim()
+            .replace(Regex("([a-z0-9])([A-Z])"), "$1_$2")
+            .lowercase()
+            .replace(Regex("[^a-z0-9]+"), "_")
+            .trim('_')
+            .takeIf(String::isNotBlank)
+            ?: return null
+        return if (normalized.first().isDigit()) "t_$normalized" else normalized
+    }
+
+    private fun whereClause(columns: List<String>): String {
+        val predicateColumns = columns.ifEmpty { listOf("id") }
+        return "WHERE " + predicateColumns.joinToString(" AND ") { column -> "$column = :$column" }
+    }
+
+    private fun createTableColumns(columns: List<String>): List<String> {
+        val effectiveColumns = columns.ifEmpty { listOf("id", "created_at") }
+        return effectiveColumns.map { column ->
+            val type = when {
+                column == "id" || column.endsWith("_id") -> "BIGINT"
+                column.endsWith("_at") || column.endsWith("_time") -> "TIMESTAMP"
+                column.startsWith("is_") || column.startsWith("has_") -> "BOOLEAN"
+                else -> "VARCHAR(255)"
+            }
+            val constraints = if (column == "id") " PRIMARY KEY" else ""
+            "    $column $type$constraints"
+        }
     }
 
     /** 为配置节点生成 properties 草稿。 */
@@ -729,11 +901,39 @@ class CodeGenerationService(
         val parameters: String,
     )
 
+    /** 本地 SQL 生成支持的确定性语句类型。 */
+    private enum class SqlOperation {
+        INSERT,
+        SELECT,
+        UPDATE,
+        DELETE,
+        CREATE_TABLE,
+    }
+
     companion object {
         /** 无法推断时使用的默认包名。 */
         private const val DEFAULT_PACKAGE = "com.generated.linkgraph"
+
+        private val SQL_TYPE_NAMES = setOf(
+            "string",
+            "char",
+            "character",
+            "varchar",
+            "text",
+            "int",
+            "integer",
+            "long",
+            "short",
+            "double",
+            "float",
+            "decimal",
+            "bigdecimal",
+            "boolean",
+            "bool",
+            "date",
+            "time",
+            "timestamp",
+            "object",
+        )
     }
 }
-
-/** 判断当前设置是否已经具备远程代码生成能力。 */
-private fun LinkGraphSettingsState.isRemoteCodeGenerationReady(): Boolean = remoteConnectionOrNull() != null

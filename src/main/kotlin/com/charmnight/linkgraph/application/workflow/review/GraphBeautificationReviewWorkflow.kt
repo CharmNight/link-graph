@@ -16,6 +16,8 @@ import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.llm.GraphBeautificationService
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
+import com.charmnight.linkgraph.workbench.AssistantActionId
+import com.charmnight.linkgraph.workbench.AssistantIntent
 import com.charmnight.linkgraph.workbench.StepGranularity
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
@@ -37,6 +39,8 @@ internal class GraphBeautificationReviewWorkflow(
         focusNodeId: String? = null,
         followUp: GraphBeautificationFollowUpContext? = null,
         granularity: StepGranularity = StepGranularity.BUSINESS,
+        assistantIntent: AssistantIntent = AssistantIntent.EXPLAIN_CODE,
+        assistantActionId: AssistantActionId = AssistantActionId.EXPLAIN_FLOW,
     ) {
         val requestId = asyncRequestLifecycle.beginBeautificationRequest()
         val snapshot = snapshotProvider.snapshot()
@@ -65,6 +69,8 @@ internal class GraphBeautificationReviewWorkflow(
             ReviewRequestStartedResult(
                 scene = ReviewRequestScene.BEAUTIFICATION,
                 requestState = presentation.requestState,
+                assistantIntent = assistantIntent,
+                assistantActionId = assistantActionId,
                 statusMessage = if (presentation.remoteRequested) {
                     if (presentation.streamingSupported) {
                         "已发起远程 LLM 链路讲解请求，当前采用流式输出。"
@@ -88,6 +94,8 @@ internal class GraphBeautificationReviewWorkflow(
                     BeautificationFailedResult(
                         message = timedOutState.errorMessage ?: "链路讲解超时",
                         requestState = timedOutState,
+                        assistantIntent = assistantIntent,
+                        assistantActionId = assistantActionId,
                     ),
                 )
             },
@@ -102,6 +110,7 @@ internal class GraphBeautificationReviewWorkflow(
                     focusNodeId = focusNodeId,
                     followUp = followUp,
                     granularity = granularity,
+                    assistantActionId = assistantActionId,
                 )
                 if (LinkGraphDebugEnvironment.isEnabled("LINKGRAPH_DEBUG_TRACE")) {
                     val requestedFocusNodeId = focusNodeId?.trim()?.takeIf(String::isNotBlank)
@@ -145,6 +154,8 @@ internal class GraphBeautificationReviewWorkflow(
                             BeautificationCompletedResult(
                                 result = beautification,
                                 requestState = requestState,
+                                assistantIntent = assistantIntent,
+                                assistantActionId = assistantActionId,
                                 feedbackLevel = feedbackLevel,
                                 statusMessage = requestState.statusMessage ?: "链路讲解完成，已更新步骤列表",
                             ),
@@ -159,6 +170,8 @@ internal class GraphBeautificationReviewWorkflow(
                             BeautificationFailedResult(
                                 message = message,
                                 requestState = requestState,
+                                assistantIntent = assistantIntent,
+                                assistantActionId = assistantActionId,
                             ),
                         )
                     },

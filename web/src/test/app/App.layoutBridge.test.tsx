@@ -4,6 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../app/App";
 import { resetEditorTransportForTest } from "../../app/editorTransport";
 import { materializeThreeViewDocuments, type TestBootstrapState } from "../../app/testBootstrapState";
+import {
+  expectBridgeCommand,
+  expectBridgeCommandCount,
+  expectNoBridgeCommand,
+  installBridgeCommandSpy,
+} from "./bridgeTestUtils";
 
 vi.mock("../../app/views/fact/FactGraphView", () => ({
   FactGraphView: ({
@@ -217,12 +223,7 @@ describe("App layout bridge", () => {
   beforeEach(() => {
     resetEditorTransportForTest();
     window.linkGraphBootstrap = structuredClone(bootstrapState);
-    window.linkGraphBridge = {
-      applyGraphEditScript: vi.fn(),
-      layoutChanged: vi.fn(),
-      nodeSelected: vi.fn(),
-      requestAnalysisDisplayMode: vi.fn(),
-    };
+    installBridgeCommandSpy();
   });
 
   it("publishes layout-only changes without sending a semantic graph mutation", async () => {
@@ -231,7 +232,7 @@ describe("App layout bridge", () => {
 
     await user.click(screen.getByRole("button", { name: "simulate flowchart move" }));
 
-    expect(window.linkGraphBridge?.layoutChanged).toHaveBeenCalledWith({
+    expectBridgeCommand("layoutChanged", {
       positions: [
         {
           nodeId: "method:submit-order",
@@ -240,7 +241,7 @@ describe("App layout bridge", () => {
         },
       ],
     });
-    expect(window.linkGraphBridge?.applyGraphEditScript).not.toHaveBeenCalled();
+    expectNoBridgeCommand("applyGraphEditScript");
   });
 
   it("publishes semantic graph changes together with layout snapshots", async () => {
@@ -254,21 +255,19 @@ describe("App layout bridge", () => {
 
     await user.click(screen.getByRole("button", { name: "simulate add" }));
 
-    expect(window.linkGraphBridge?.applyGraphEditScript).toHaveBeenCalledTimes(1);
-    expect(window.linkGraphBridge?.applyGraphEditScript).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sceneId: "WORKSPACE_FACT",
-        operations: expect.arrayContaining([
-          expect.objectContaining({
-            type: "UPSERT_NODE",
-            node: expect.objectContaining({
-              id: "design:2",
-            }),
+    expectBridgeCommandCount("applyGraphEditScript", 1);
+    expectBridgeCommand("applyGraphEditScript", expect.objectContaining({
+      sceneId: "WORKSPACE_FACT",
+      operations: expect.arrayContaining([
+        expect.objectContaining({
+          type: "UPSERT_NODE",
+          node: expect.objectContaining({
+            id: "design:2",
           }),
-        ]),
-      }),
-    );
-    expect(window.linkGraphBridge?.layoutChanged).toHaveBeenCalledWith({
+        }),
+      ]),
+    }));
+    expectBridgeCommand("layoutChanged", {
       positions: expect.arrayContaining([
         expect.objectContaining({
           nodeId: "design:2",
@@ -289,7 +288,7 @@ describe("App layout bridge", () => {
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "simulate add" }));
-    expect(window.linkGraphBridge?.applyGraphEditScript).toHaveBeenCalledTimes(1);
+    expectBridgeCommandCount("applyGraphEditScript", 1);
 
     act(() => {
       window.dispatchEvent(
@@ -326,11 +325,7 @@ describe("App layout bridge", () => {
     const user = userEvent.setup();
     resetEditorTransportForTest();
     window.linkGraphBootstrap = structuredClone(flowchartBootstrapState);
-    window.linkGraphBridge = {
-      applyGraphEditScript: vi.fn(),
-      layoutChanged: vi.fn(),
-      nodeSelected: vi.fn(),
-    };
+    installBridgeCommandSpy();
 
     render(<App />);
 

@@ -6,7 +6,9 @@ import com.charmnight.linkgraph.application.usecase.CurrentMethodNodeInput
 import com.charmnight.linkgraph.application.usecase.SubjectGraphUseCase
 import com.charmnight.linkgraph.foundation.debugLazy
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.model.GraphSourceLocation
 import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.model.putSourceLocation
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectHandle
 import com.charmnight.linkgraph.semantic.subject.ResourceSubjectHandle
 import com.charmnight.linkgraph.semantic.subject.ResourceSubjectKind
@@ -108,11 +110,15 @@ internal class SubjectNodeAppendWorkflow(
                     outputs = listOf(canonicalTypeText(method.returnType)),
                     sourceKind = codeHandle.kind.name,
                     metadata = buildMap {
-                        put("source.filePath", codeHandle.sourcePath)
-                        put("source.startOffset", codeHandle.sourceRange.startOffset.toString())
-                        put("source.endOffset", codeHandle.sourceRange.endOffset.toString())
-                        codeHandle.sourceRange.startLine?.let { put("source.startLine", it.toString()) }
-                        codeHandle.sourceRange.endLine?.let { put("source.endLine", it.toString()) }
+                        putSourceLocation(
+                            GraphSourceLocation(
+                                filePath = codeHandle.sourcePath,
+                                startOffset = codeHandle.sourceRange.startOffset,
+                                endOffset = codeHandle.sourceRange.endOffset,
+                                startLine = codeHandle.sourceRange.startLine,
+                                endLine = codeHandle.sourceRange.endLine,
+                            ),
+                        )
                     },
                 ),
                 methodSignature = codeHandle.methodSignature,

@@ -455,7 +455,7 @@ class GraphQaPatchServiceTest {
     }
 
     @Test
-    fun explicitChangeRequestWithDirectSourceEvidenceBuildsCandidateChangeInMockMode() {
+    fun explicitChangeRequestWithDirectSourceEvidenceStaysRiskHintInLocalRuleMode() {
         val result = GraphQaPatchService().answer(
             context = GraphQaContext(
                 factGraph = GraphDocument(
@@ -499,16 +499,81 @@ class GraphQaPatchServiceTest {
         )
 
         assertEquals(LlmResultSource.LOCAL_RULE, result.source)
-        assertEquals(1, result.candidateChanges.size)
-        assertTrue(result.investigationThreads.isEmpty())
-        assertTrue(result.answer.contains("待确认变更"))
+        assertTrue(result.candidateChanges.isEmpty())
+        assertTrue(result.newCandidateChanges.isEmpty())
+        assertEquals(1, result.investigationThreads.size)
+        assertTrue(result.answer.contains("本地规则"))
+        assertTrue(result.answer.contains("风险线索") || result.answer.contains("继续取证"))
         assertTrue(result.findings.all { finding -> finding.evidenceLevel == ResultEvidenceLevel.DIRECT_SOURCE })
-        assertEquals("method:file-download", result.candidateChanges.single().targetNodeIds.single())
-        assertEquals("CODE_FACT", result.candidateChanges.single().claimType)
-        assertEquals(1, result.candidateChanges.single().editScopes.size)
+        assertEquals("method:file-download", result.investigationThreads.single().targetNodeIds.single())
+        assertEquals("RISK_HINT", result.investigationThreads.single().claimType)
+        assertTrue(result.investigationThreads.single().evidence.all { finding ->
+            finding.evidenceLevel == ResultEvidenceLevel.DIRECT_SOURCE
+        })
+        assertTrue(result.investigationThreads.single().evidence.any { finding ->
+            finding.references.any { reference ->
+                reference.filePath == "src/main/java/com/example/CommonController.java"
+            }
+        })
+    }
+
+    @Test
+    fun localRuleRemoteFailureDoesNotCreateConfirmableCandidateChange() {
+        val result = GraphQaPatchService(
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    error("Remote unavailable")
+                }
+            },
+        ).answer(
+            context = GraphQaContext(
+                factGraph = GraphDocument(
+                    nodes = listOf(
+                        GraphNode(
+                            id = "method:file-download",
+                            type = NodeType.METHOD,
+                            title = "CommonController.fileDownload",
+                            signature = "com.example.CommonController.fileDownload(java.lang.String, java.lang.Boolean):void",
+                            sourceTag = GraphSourceTag.FACT,
+                            metadata = mapOf(
+                                "source.filePath" to "src/main/java/com/example/CommonController.java",
+                                "source.startLine" to "42",
+                                "source.endLine" to "88",
+                            ),
+                        ),
+                    ),
+                ),
+                selectedNodeIds = listOf("method:file-download"),
+                sourceContext = listOf(
+                    SourceSnippetContext(
+                        nodeId = "method:file-download",
+                        filePath = "src/main/java/com/example/CommonController.java",
+                        startLine = 42,
+                        endLine = 88,
+                        snippet = "public void fileDownload(String fileName, Boolean delete) { if (delete) {} }",
+                    ),
+                ),
+            ),
+            question = "请把这里的 if(delete) 改成 delete == true。",
+            requestedMode = QaMode.AUTO,
+            effectiveMode = QaMode.CHANGE,
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://localhost:8080/v1",
+                apiKey = "token",
+                model = "gpt-test",
+            ),
+        )
+
+        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
+        assertTrue(result.warnings.any { warning -> warning.contains("远程 LLM 问答失败") })
+        assertTrue(result.candidateChanges.isEmpty())
+        assertTrue(result.newCandidateChanges.isEmpty())
+        assertEquals(1, result.investigationThreads.size)
         assertEquals(
             "src/main/java/com/example/CommonController.java",
-            result.candidateChanges.single().editScopes.single().filePath,
+            result.investigationThreads.single().evidence.single().references.single().filePath,
         )
     }
 

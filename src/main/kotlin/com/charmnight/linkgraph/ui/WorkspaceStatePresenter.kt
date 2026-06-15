@@ -73,9 +73,4 @@ class WorkspaceStatePresenter(
         stateService.workbench.requestSyncPreview(items)
         requestBrowserSync()
     }
-
-    fun presentWorkbenchSectionPreferences(preferences: Map<String, Boolean>) {
-        stateService.workbench.markWorkbenchSectionPreferences(preferences)
-        requestBrowserSync()
-    }
 }

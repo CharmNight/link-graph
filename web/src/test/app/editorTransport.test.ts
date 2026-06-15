@@ -67,6 +67,22 @@ function artifactSlice(revision: number): LinkGraphIncrementalTransportEnvelope 
   };
 }
 
+function feedbackSlice(revision: number): LinkGraphIncrementalTransportEnvelope {
+  return {
+    type: "FEEDBACK_SLICE",
+    sessionId: "session-1",
+    revision,
+    state: {
+      operationFeedback: {
+        level: "INFO",
+        message: "Saved layout",
+      },
+      snapshotRevision: revision,
+      lastMessageType: "operationFeedback",
+    },
+  };
+}
+
 describe("editorTransport", () => {
   afterEach(() => {
     resetEditorTransportForTest();
@@ -124,7 +140,81 @@ describe("editorTransport", () => {
     unsubscribe();
   });
 
-  it("traces artifact slice clone merge and dispatch timing when debug bridge is enabled", () => {
+  it("preserves graph object identity while merging artifact slices", () => {
+    dispatchBootstrapForTest(envelope(1));
+    let initialWorkingGraph: LinkGraphBootstrapState["workingGraph"] | undefined;
+    let slicedWorkingGraph: LinkGraphBootstrapState["workingGraph"] | undefined;
+
+    const unsubscribe = subscribeBootstrap((nextEnvelope) => {
+      if (!initialWorkingGraph) {
+        initialWorkingGraph = nextEnvelope.state.workingGraph;
+      } else {
+        slicedWorkingGraph = nextEnvelope.state.workingGraph;
+      }
+    });
+
+    announceFrontendReady();
+    dispatchBootstrapForTest(artifactSlice(1));
+
+    expect(slicedWorkingGraph).toBe(initialWorkingGraph);
+    unsubscribe();
+  });
+
+  it("merges feedback slices into the latest snapshot state and dispatches same-revision updates", () => {
+    dispatchBootstrapForTest(envelope(1));
+    const received = [] as Array<{
+      revision: number;
+      selectedNodeId?: string | null;
+      feedbackMessage?: string | null;
+    }>;
+
+    const unsubscribe = subscribeBootstrap((nextEnvelope) => {
+      received.push({
+        revision: nextEnvelope.revision,
+        selectedNodeId: nextEnvelope.state.selectedNodeId,
+        feedbackMessage: nextEnvelope.state.operationFeedback?.message ?? null,
+      });
+    });
+
+    announceFrontendReady();
+    dispatchBootstrapForTest(feedbackSlice(1));
+
+    expect(received).toEqual([
+      {
+        revision: 1,
+        selectedNodeId: "method:submit-order",
+        feedbackMessage: null,
+      },
+      {
+        revision: 1,
+        selectedNodeId: "method:submit-order",
+        feedbackMessage: "Saved layout",
+      },
+    ]);
+    unsubscribe();
+  });
+
+  it("preserves graph object identity while merging feedback slices", () => {
+    dispatchBootstrapForTest(envelope(1));
+    let initialWorkingGraph: LinkGraphBootstrapState["workingGraph"] | undefined;
+    let slicedWorkingGraph: LinkGraphBootstrapState["workingGraph"] | undefined;
+
+    const unsubscribe = subscribeBootstrap((nextEnvelope) => {
+      if (!initialWorkingGraph) {
+        initialWorkingGraph = nextEnvelope.state.workingGraph;
+      } else {
+        slicedWorkingGraph = nextEnvelope.state.workingGraph;
+      }
+    });
+
+    announceFrontendReady();
+    dispatchBootstrapForTest(feedbackSlice(1));
+
+    expect(slicedWorkingGraph).toBe(initialWorkingGraph);
+    unsubscribe();
+  });
+
+  it("traces incremental slice clone merge and dispatch timing when debug bridge is enabled", () => {
     const traceSink = vi.fn();
     window.__linkGraphDebugEnabled = true;
     window.linkGraphDebugTrace = traceSink;
@@ -138,9 +228,18 @@ describe("editorTransport", () => {
     announceFrontendReady();
     dispatchBootstrapForTest(artifactSlice(1));
 
-    const events = traceSink.mock.calls.map(([payload]) => JSON.parse(payload as string).event);
-    expect(events).toContain("editorTransport.artifactSlice.merge");
+    const traces = traceSink.mock.calls.map(([payload]) => JSON.parse(payload as string));
+    const events = traces.map((trace) => trace.event);
+    expect(events).toContain("editorTransport.incrementalSlice.merge");
     expect(events).toContain("editorTransport.flushLatestEnvelope");
+    expect(traces).toContainEqual(
+      expect.objectContaining({
+        event: "editorTransport.incrementalSlice.merge",
+        payload: expect.objectContaining({
+          type: "ARTIFACT_SLICE",
+        }),
+      }),
+    );
     expect(received).toEqual([1, 1]);
     unsubscribe();
   });

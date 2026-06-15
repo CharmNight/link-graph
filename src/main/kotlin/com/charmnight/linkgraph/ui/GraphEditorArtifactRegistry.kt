@@ -7,6 +7,15 @@ import java.security.MessageDigest
  * bootstrap / workflow slice 只传稳定引用，真正文本按需通过 ARTIFACT_SLICE 回填。
  */
 class GraphEditorArtifactRegistry {
+    data class AssistantResultArtifacts(
+        val qaPromptPreviewArtifactId: String? = null,
+        val explanationPromptPreviewArtifactId: String? = null,
+        val checkPromptPreviewArtifactId: String? = null,
+        val generationPlanPromptPreviewArtifactId: String? = null,
+        val generationDiscussionPromptPreviewArtifactId: String? = null,
+        val codeDraftContentArtifactIds: Map<String, String> = emptyMap(),
+    )
+
     data class SnapshotArtifacts(
         val qaPromptPreviewArtifactId: String? = null,
         val diffReviewPromptPreviewArtifactId: String? = null,
@@ -15,15 +24,22 @@ class GraphEditorArtifactRegistry {
         val generationPlanDiscussionPromptPreviewArtifactId: String? = null,
         val generatedCodeDraftPromptPreviewArtifactId: String? = null,
         val generatedCodeDraftContentArtifactIds: Map<String, String> = emptyMap(),
+        val assistantResultArtifacts: Map<String, AssistantResultArtifacts> = emptyMap(),
     ) {
         companion object {
             val EMPTY = SnapshotArtifacts()
         }
     }
 
+    data class PreparedSnapshotArtifacts(
+        val refs: SnapshotArtifacts,
+        val contents: Map<String, String>,
+    )
+
+    @Volatile
     private var artifacts: Map<String, String> = emptyMap()
 
-    fun replaceWith(snapshot: GraphEditorStateSnapshot): SnapshotArtifacts {
+    fun prepare(snapshot: GraphEditorStateSnapshot): PreparedSnapshotArtifacts {
         val nextArtifacts = linkedMapOf<String, String>()
 
         fun register(kind: String, ownerKey: String, content: String?): String? {
@@ -77,17 +93,66 @@ class GraphEditorArtifactRegistry {
                 content = snapshot.generatedCodeDraftPromptPreview,
             ),
             generatedCodeDraftContentArtifactIds = draftContentArtifactIds,
+            assistantResultArtifacts = snapshot.assistantResultStore.results.mapValues { (resultId, entry) ->
+                AssistantResultArtifacts(
+                    qaPromptPreviewArtifactId = register(
+                        kind = "assistant-qa-prompt",
+                        ownerKey = "$resultId:qa",
+                        content = entry.qa?.promptPreview,
+                    ),
+                    explanationPromptPreviewArtifactId = register(
+                        kind = "assistant-explanation-prompt",
+                        ownerKey = "$resultId:explanation",
+                        content = entry.explanation?.promptPreview,
+                    ),
+                    checkPromptPreviewArtifactId = register(
+                        kind = "assistant-check-prompt",
+                        ownerKey = "$resultId:check",
+                        content = entry.check?.promptPreview,
+                    ),
+                    generationPlanPromptPreviewArtifactId = register(
+                        kind = "assistant-generation-plan-prompt",
+                        ownerKey = "$resultId:generation-plan",
+                        content = entry.generationPlan?.promptPreview,
+                    ),
+                    generationDiscussionPromptPreviewArtifactId = register(
+                        kind = "assistant-generation-discussion-prompt",
+                        ownerKey = "$resultId:generation-discussion",
+                        content = entry.generationDiscussionSession?.promptPreview,
+                    ),
+                    codeDraftContentArtifactIds = entry.codeDrafts.mapNotNull { draft ->
+                        register(
+                            kind = "assistant-draft-content",
+                            ownerKey = "$resultId:${draft.id}",
+                            content = draft.content,
+                        )?.let { artifactId -> draft.id to artifactId }
+                    }.toMap(),
+                )
+            },
         )
-        artifacts = nextArtifacts
-        return snapshotArtifacts
+        return PreparedSnapshotArtifacts(
+            refs = snapshotArtifacts,
+            contents = nextArtifacts,
+        )
+    }
+
+    fun replaceWith(snapshot: GraphEditorStateSnapshot): SnapshotArtifacts {
+        val prepared = prepare(snapshot)
+        replaceWith(prepared)
+        return prepared.refs
+    }
+
+    fun replaceWith(prepared: PreparedSnapshotArtifacts) {
+        artifacts = prepared.contents
     }
 
     fun read(artifactId: String): String? = artifacts[artifactId]
 
     fun readAll(artifactIds: Collection<String>): Map<String, String> {
         val selected = linkedMapOf<String, String>()
+        val currentArtifacts = artifacts
         artifactIds.forEach { artifactId ->
-            artifacts[artifactId]?.let { content ->
+            currentArtifacts[artifactId]?.let { content ->
                 selected[artifactId] = content
             }
         }

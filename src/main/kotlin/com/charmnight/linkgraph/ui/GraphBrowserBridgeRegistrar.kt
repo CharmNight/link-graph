@@ -87,17 +87,15 @@ internal class GraphBrowserBridgeRegistrar(
                 exportMermaid: () => sendCommand("exportMermaid"),
                 showDiffMode: () => sendCommand("showDiffMode"),
                 requestSyncPreview: () => sendCommand("requestSyncPreview"),
-                requestQa: (question, selectedNodeIds, sourceThreadId, mode) => sendCommand("requestQa", {
-                  question: question || "",
-                  selectedNodeIds: Array.isArray(selectedNodeIds) ? selectedNodeIds : [],
-                  sourceThreadId: sourceThreadId || null,
-                  mode: mode || "AUTO"
-                }),
                 requestAssistantTask: (request) => sendCommand("requestAssistantTask", {
-                  intent: request && request.intent ? request.intent : "EXPLAIN_CODE",
+                  actionId: request ? request.actionId : null,
+                  sceneId: request && request.sceneId ? request.sceneId : null,
+                  intent: request ? request.intent : null,
                   prompt: request && request.prompt ? request.prompt : "",
                   selectedNodeIds: request && Array.isArray(request.selectedNodeIds) ? request.selectedNodeIds : [],
-                  selectedDiffItemIds: request && Array.isArray(request.selectedDiffItemIds) ? request.selectedDiffItemIds : []
+                  selectedDiffItemIds: request && Array.isArray(request.selectedDiffItemIds) ? request.selectedDiffItemIds : [],
+                  target: request && request.target ? request.target : { kind: "NewTask" },
+                  explanationGranularity: request && request.explanationGranularity ? request.explanationGranularity : null,
                 }),
                 retryLastQaRequest: () => sendCommand("retryLastQaRequest"),
                 confirmQaCandidateChange: (changeId) => sendCommand("confirmQaCandidateChange", { changeId }),
@@ -107,39 +105,16 @@ internal class GraphBrowserBridgeRegistrar(
                   resolutionStatus,
                   note: note || ""
                 }),
-                requestDiffReview: (question, selectedDiffItemIds) => sendCommand("requestDiffReview", {
-                  question: question || "",
-                  selectedDiffItemIds: Array.isArray(selectedDiffItemIds) ? selectedDiffItemIds : []
-                }),
-                requestGraphBeautification: (goal, preferredStyle, explanationFocus, granularity, followUpStepId, followUpStepTitle, followUpQuestion, focusNodeId) => sendCommand("requestGraphBeautification", {
-                  goal: goal || "",
-                  preferredStyle: preferredStyle || null,
-                  explanationFocus: explanationFocus || null,
-                  focusNodeId: focusNodeId || null,
-                  granularity: granularity || "BUSINESS",
-                  followUp: followUpStepId && followUpStepTitle && followUpQuestion
-                    ? { stepId: followUpStepId, stepTitle: followUpStepTitle, question: followUpQuestion }
-                    : null
-                }),
                 applyDraftPatchPreview: (operationIds) => sendCommand("applyDraftPatchPreview", {
                   operationIds: Array.isArray(operationIds) ? operationIds : []
                 }),
                 clearDraftPatchPreview: () => sendCommand("clearDraftPatchPreview"),
                 restoreDraftPatchPreview: (source) => sendCommand("restoreDraftPatchPreview", { source }),
                 undoLastDraftPatchApply: () => sendCommand("undoLastDraftPatchApply"),
-                requestGenerationPlan: () => sendCommand("requestGenerationPlan"),
-                requestGenerationPlanDiscussion: (question, focusItemId) => sendCommand("requestGenerationPlanDiscussion", {
-                  question: question || "",
-                  focusItemId: focusItemId || null
-                }),
                 requestCodeDrafts: () => sendCommand("requestCodeDrafts"),
                 requestCurrentEditorContextGraph: () => sendCommand("requestCurrentEditorContextGraph"),
                 requestAnalysisDisplayMode: (displayMode) => sendCommand("requestAnalysisDisplayMode", { displayMode }),
                 requestIndexedGraph: (request) => sendCommand("requestIndexedGraph", request || {}),
-                updateWorkbenchSectionPreference: (sectionId, expanded) => sendCommand("updateWorkbenchSectionPreference", {
-                  sectionId: sectionId || "",
-                  expanded: !!expanded
-                }),
                 requestOpenSettings: () => sendCommand("requestOpenSettings"),
                 applyCodeDrafts: () => sendCommand("applyCodeDrafts"),
                 applySingleCodeDraft: (draftId) => sendCommand("applySingleCodeDraft", { draftId }),

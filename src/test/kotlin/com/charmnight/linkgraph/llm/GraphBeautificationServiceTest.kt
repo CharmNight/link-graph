@@ -8,6 +8,7 @@ import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.workbench.StepGranularity
+import com.charmnight.linkgraph.workbench.StepKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -204,6 +205,70 @@ class GraphBeautificationServiceTest {
     }
 
     @Test
+    fun remoteBeautificationPreservesStructuredStepKind() {
+        val service = DefaultGraphBeautificationService(
+            gateway = object : LlmGateway {
+                override fun generate(request: LlmRequest): LlmResponse {
+                    return LlmResponse(
+                        content = """
+                            {
+                              "steps": [
+                                {
+                                  "stepId": "class-overview-quota-manager",
+                                  "title": "结构概览：ClientRequestQuotaManager",
+                                  "kind": "STRUCTURE_OVERVIEW",
+                                  "description": "说明类职责、字段依赖和协作者。",
+                                  "evidence": [
+                                    {
+                                      "id": "class-node",
+                                      "claim": "当前节点是类图中的类节点。",
+                                      "evidenceLevel": "DIRECT_GRAPH",
+                                      "references": [
+                                        { "nodeId": "class:quota-manager" }
+                                      ]
+                                    }
+                                  ],
+                                  "followUpQuestions": ["继续下钻构造参数？"],
+                                  "downstreamTargets": []
+                                }
+                              ],
+                              "warnings": []
+                            }
+                        """.trimIndent(),
+                        model = request.model,
+                    )
+                }
+            },
+        )
+        val classNode = GraphNode(
+            id = "class:quota-manager",
+            type = NodeType.CLASS,
+            title = "ClientRequestQuotaManager",
+            sourceTag = GraphSourceTag.FACT,
+        )
+
+        val result = service.beautify(
+            context = GraphBeautificationContext(
+                presentationContext = GraphPresentationContext(
+                    graph = GraphDocument(nodes = listOf(classNode)),
+                    fullGraph = GraphDocument(nodes = listOf(classNode)),
+                    anchorNodeId = classNode.id,
+                ),
+                userGoal = "请介绍类图节点“ClientRequestQuotaManager”",
+            ),
+            settings = LinkGraphSettingsState(
+                llmEnabled = true,
+                provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
+                endpoint = "https://localhost:8080/v1",
+                apiKey = "token",
+                model = "gpt-test",
+            ),
+        )
+
+        assertEquals(StepKind.STRUCTURE_OVERVIEW, result.steps.single().kind)
+    }
+
+    @Test
     fun followUpQuestionChangesLocalBeautificationResultInsteadOfBeingIgnored() {
         val result = DefaultGraphBeautificationService().beautify(
             context = beautificationContext().copy(
@@ -290,13 +355,39 @@ class GraphBeautificationServiceTest {
     }
 
     @Test
-    fun remoteBeautificationIsBypassedForPackageAnchorEvidenceGate() {
+    fun remoteBeautificationHandlesPackageAnchorEvidenceGate() {
         var remoteCalled = false
         val service = DefaultGraphBeautificationService(
             gateway = object : LlmGateway {
                 override fun generate(request: LlmRequest): LlmResponse {
                     remoteCalled = true
-                    return LlmResponse(content = """{"steps":[],"warnings":[]}""", model = request.model)
+                    return LlmResponse(
+                        content = """
+                            {
+                              "steps": [
+                                {
+                                  "stepId": "structure-jvm-package-kafka-cluster",
+                                  "title": "结构概览：kafka.cluster",
+                                  "description": "远程基于类图结构说明 kafka.cluster 的包职责和相邻关系，不生成方法调用链。",
+                                  "evidence": [
+                                    {
+                                      "id": "package-node",
+                                      "claim": "当前锚点是包结构节点。",
+                                      "evidenceLevel": "DIRECT_GRAPH",
+                                      "references": [
+                                        { "nodeId": "jvm:package:kafka-cluster" }
+                                      ]
+                                    }
+                                  ],
+                                  "followUpQuestions": ["下一步应该下钻到哪些类？"],
+                                  "downstreamTargets": []
+                                }
+                              ],
+                              "warnings": []
+                            }
+                        """.trimIndent(),
+                        model = request.model,
+                    )
                 }
             },
         )
@@ -325,9 +416,9 @@ class GraphBeautificationServiceTest {
             ),
         )
 
-        assertFalse(remoteCalled)
-        assertEquals(LlmResultSource.LOCAL_RULE, result.source)
-        assertTrue(result.steps.any { step -> step.description.contains("结构概览") })
+        assertTrue(remoteCalled)
+        assertEquals(LlmResultSource.REMOTE, result.source)
+        assertTrue(result.steps.any { step -> step.description.contains("远程基于类图结构") })
     }
 
     private fun beautificationContext(): GraphBeautificationContext {

@@ -1,9 +1,8 @@
-import { useLayoutEffect, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 import {
   Handle,
   MarkerType,
   Position,
-  useUpdateNodeInternals,
   type Edge,
   type Node,
   type NodeProps,
@@ -21,7 +20,9 @@ import { edgeTypeLabel } from "../../labels";
 import { FlowchartNodeCard } from "../../components/graph/nodes/FlowchartNodeCard";
 import { flowchartKind } from "../../components/graph/nodes/nodePresentation";
 import { canEditNodeLayout } from "../../layoutEditability";
+import { reactFlowNodeInternalsSignature } from "../../reactflow/nodeInternalsSignature";
 import type { RoutedEdgeData } from "../../reactflow/RoutedEdge";
+import { useStableNodeInternalsUpdate } from "../../reactflow/useStableNodeInternalsUpdate";
 import {
   buildIncomingControlFlowIndex,
   buildMergeTargetPortLayout,
@@ -201,17 +202,20 @@ function flowchartNodeShellStyle(kind: string): CSSProperties | undefined {
 
 function FlowchartReactNode({ id, data, isConnectable, selected }: FlowchartFlowNodeProps) {
   const kind = flowchartKind(data.node);
-  const updateNodeInternals = useUpdateNodeInternals();
   const appSelected = data.selected === true || selected;
   const visibleTargetHandleStyle = flowchartHandleStyle(isConnectable, "target");
   const visibleSourceHandleStyle = flowchartHandleStyle(isConnectable, "source");
   const auxiliaryHandleStyle = flowchartAuxiliaryHandleStyle(visibleTargetHandleStyle);
   const mergeLeftTargetCount = kind === "MERGE" ? Math.max(1, data.mergeLeftTargetCount) : 0;
   const mergeRightTargetCount = kind === "MERGE" ? Math.max(1, data.mergeRightTargetCount) : 0;
-
-  useLayoutEffect(() => {
-    updateNodeInternals(id);
-  }, [appSelected, data.node, id, isConnectable, selected, updateNodeInternals]);
+  const nodeInternalsSignature = [
+    reactFlowNodeInternalsSignature(data.node),
+    kind,
+    String(isConnectable),
+    String(mergeLeftTargetCount),
+    String(mergeRightTargetCount),
+  ].join("\u0001");
+  useStableNodeInternalsUpdate(id, nodeInternalsSignature);
 
   return (
     <div
@@ -303,14 +307,14 @@ function flowchartNodeStyle(node: LinkGraphNode) {
         ? "1px solid rgba(25, 90, 153, 0.42)"
         : "1px solid rgba(44, 32, 22, 0.18)",
     background: kind === "ENTRY"
-      ? "linear-gradient(180deg, rgba(25, 90, 153, 0.18), rgba(255, 255, 255, 0.98))"
+      ? "linear-gradient(180deg, rgba(25, 90, 153, 0.18), var(--panel))"
       : kind === "TERMINAL"
-        ? "linear-gradient(180deg, rgba(14, 139, 114, 0.16), rgba(255, 255, 255, 0.98))"
+        ? "linear-gradient(180deg, rgba(14, 139, 114, 0.16), var(--panel))"
         : kind === "MERGE"
-        ? "linear-gradient(180deg, rgba(95, 90, 83, 0.16), rgba(255, 255, 255, 0.98))"
+        ? "linear-gradient(180deg, rgba(95, 90, 83, 0.16), var(--panel))"
         : kind === "DECISION"
             ? "transparent"
-            : "#fffdfa",
+            : "var(--panel)",
     boxShadow: kind === "DECISION" ? "none" : "0 8px 18px rgba(44, 32, 22, 0.09)",
     padding: 0,
     overflow: kind === "DECISION" ? "visible" : undefined,

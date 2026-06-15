@@ -5,11 +5,11 @@ import com.intellij.ui.jcef.JBCefBrowser
 
 internal class GraphBrowserTransportDispatcher(
     private val browserProvider: () -> JBCefBrowser?,
-    private val bridge: GraphEditorBridge,
     private val sliceRenderer: GraphEditorTransportSliceRenderer,
     private val transportState: GraphBrowserTransportState,
     private val debugTracingEnabled: Boolean,
     private val browserLoadedProvider: () -> Boolean,
+    private val dispatchedSnapshotProvider: () -> GraphEditorStateSnapshot,
     private val pendingSnapshotConsumer: (Long) -> GraphEditorStateSnapshot?,
     private val lastDispatchedSnapshotUpdater: (GraphEditorStateSnapshot) -> Unit,
     private val runtimeTrace: ((() -> String) -> Unit)? = null,
@@ -23,7 +23,8 @@ internal class GraphBrowserTransportDispatcher(
         if (dispatchedTransport.script.isBlank()) {
             return
         }
-        pendingSnapshotConsumer(dispatchedTransport.revision)?.let(lastDispatchedSnapshotUpdater)
+        val dispatchedSnapshot = pendingSnapshotConsumer(dispatchedTransport.revision) ?: return
+        lastDispatchedSnapshotUpdater(dispatchedSnapshot)
         val executeStartedAt = System.nanoTime()
         currentBrowser.cefBrowser.executeJavaScript(
             dispatchedTransport.script,
@@ -53,16 +54,16 @@ internal class GraphBrowserTransportDispatcher(
         if (artifactContents.isEmpty()) {
             return
         }
-        val currentSnapshot = bridge.currentState()
+        val dispatchedSnapshot = dispatchedSnapshotProvider()
         val renderStartedAt = System.nanoTime()
         val script = sliceRenderer.renderScript(
             listOf(
                 GraphEditorTransportEnvelope.ArtifactSlice(
                     sessionId = transportState.sessionId,
-                    revision = currentSnapshot.snapshotRevision,
+                    revision = dispatchedSnapshot.snapshotRevision,
                     state = linkedMapOf(
                         "artifactContents" to artifactContents,
-                        "snapshotRevision" to currentSnapshot.snapshotRevision,
+                        "snapshotRevision" to dispatchedSnapshot.snapshotRevision,
                         "lastMessageType" to "artifactSlice",
                     ),
                 ),
@@ -75,7 +76,7 @@ internal class GraphBrowserTransportDispatcher(
             listOf(
                 "requested=${artifactIds.size}",
                 "found=${artifactContents.size}",
-                "revision=${currentSnapshot.snapshotRevision}",
+                "revision=${dispatchedSnapshot.snapshotRevision}",
                 "scriptChars=${script.length}",
             )
         }
@@ -87,7 +88,7 @@ internal class GraphBrowserTransportDispatcher(
         ) {
             listOf(
                 "found=${artifactContents.size}",
-                "revision=${currentSnapshot.snapshotRevision}",
+                "revision=${dispatchedSnapshot.snapshotRevision}",
                 "scriptChars=${script.length}",
             )
         }

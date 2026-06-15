@@ -4,19 +4,19 @@ import { describe, expect, it, vi } from "vitest";
 import { HybridWorkbenchLayout } from "../../../app/components/HybridWorkbenchLayout";
 
 describe("HybridWorkbenchLayout", () => {
-  it("renders outline, graph stage and stage workbench slots in the hybrid body", () => {
+  it("renders outline, graph stage and assistant workbench slots in the hybrid body", () => {
     render(
       <HybridWorkbenchLayout
         outline={<div data-testid="outline-slot">outline</div>}
         graphStage={<div data-testid="graph-stage-slot">graph stage</div>}
-        workbench={<div data-testid="stage-workbench-slot">workbench</div>}
+        assistantWorkbench={<div data-testid="assistant-workbench-slot">workbench</div>}
       />,
     );
 
     const layout = screen.getByTestId("hybrid-workbench-layout");
     expect(within(layout).getByTestId("outline-slot")).toBeInTheDocument();
     expect(within(layout).getByTestId("graph-stage-slot")).toBeInTheDocument();
-    expect(within(layout).getByTestId("stage-workbench-slot")).toBeInTheDocument();
+    expect(within(layout).getByTestId("assistant-workbench-slot")).toBeInTheDocument();
   });
 
   it("collapses the outline into a rail and keeps the graph stage visible", async () => {
@@ -27,7 +27,7 @@ describe("HybridWorkbenchLayout", () => {
       <HybridWorkbenchLayout
         outline={<div data-testid="outline-slot">outline</div>}
         graphStage={<div data-testid="graph-stage-slot">graph stage</div>}
-        workbench={<div data-testid="stage-workbench-slot">workbench</div>}
+        assistantWorkbench={<div data-testid="assistant-workbench-slot">workbench</div>}
         outlineCollapsed={false}
         onOutlineCollapsedChange={onOutlineCollapsedChange}
       />,
@@ -50,7 +50,7 @@ describe("HybridWorkbenchLayout", () => {
       <HybridWorkbenchLayout
         outline={<div data-testid="outline-slot">outline</div>}
         graphStage={<div data-testid="graph-stage-slot">graph stage</div>}
-        workbench={<div data-testid="stage-workbench-slot">workbench</div>}
+        assistantWorkbench={<div data-testid="assistant-workbench-slot">workbench</div>}
         outlineCollapsed
         onOutlineCollapsedChange={onOutlineCollapsedChange}
       />,
@@ -68,20 +68,20 @@ describe("HybridWorkbenchLayout", () => {
     expect(onOutlineCollapsedChange).toHaveBeenCalledWith(false);
   });
 
-  it("resizes the stage workbench by dragging the separator", () => {
+  it("resizes the assistant workbench by dragging the separator", () => {
     const onWorkbenchWidthChange = vi.fn();
 
     render(
       <HybridWorkbenchLayout
         outline={<div data-testid="outline-slot">outline</div>}
         graphStage={<div data-testid="graph-stage-slot">graph stage</div>}
-        workbench={<div data-testid="stage-workbench-slot">workbench</div>}
+        assistantWorkbench={<div data-testid="assistant-workbench-slot">workbench</div>}
         workbenchWidth={420}
         onWorkbenchWidthChange={onWorkbenchWidthChange}
       />,
     );
 
-    const resizer = screen.getByRole("separator", { name: "调整阶段工作台宽度" });
+    const resizer = screen.getByRole("separator", { name: "调整 AI 工作台宽度" });
     const downEvent = createEvent.pointerDown(resizer);
     Object.defineProperty(downEvent, "clientX", { value: 1200 });
     Object.defineProperty(downEvent, "pointerId", { value: 1 });
@@ -100,12 +100,12 @@ describe("HybridWorkbenchLayout", () => {
     expect(onWorkbenchWidthChange).toHaveBeenCalledWith(520);
   });
 
-  it("always keeps the right stage workbench mounted while the outline may collapse for graph-focused views", () => {
+  it("always keeps the right assistant workbench mounted while the outline may collapse for graph-focused views", () => {
     render(
       <HybridWorkbenchLayout
         outline={<div data-testid="outline-slot">outline</div>}
         graphStage={<div data-testid="graph-stage-slot">graph stage</div>}
-        workbench={<div data-testid="stage-workbench-slot">workbench</div>}
+        assistantWorkbench={<div data-testid="assistant-workbench-slot">workbench</div>}
         outlineCollapsed
       />,
     );
@@ -115,7 +115,7 @@ describe("HybridWorkbenchLayout", () => {
     expect(layout).not.toHaveClass("workbench-collapsed");
     expect(layout).toHaveStyle({ "--workbench-width": "420px" });
     expect(screen.getByTestId("graph-stage-slot")).toBeInTheDocument();
-    expect(screen.getByTestId("stage-workbench-slot")).toBeInTheDocument();
-    expect(screen.getByRole("separator", { name: "调整阶段工作台宽度" })).toBeInTheDocument();
+    expect(screen.getByTestId("assistant-workbench-slot")).toBeInTheDocument();
+    expect(screen.getByRole("separator", { name: "调整 AI 工作台宽度" })).toBeInTheDocument();
   });
 });

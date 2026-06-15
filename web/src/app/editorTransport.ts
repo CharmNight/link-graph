@@ -1,5 +1,6 @@
 import type { LinkGraphIncrementalTransportEnvelope, LinkGraphSnapshotEnvelope } from "./types";
 import { measureDuration, measureStart, traceLinkGraph } from "./debug";
+import { isLinkGraphIncrementalTransportType } from "./transportProtocol";
 
 type BootstrapListener = (envelope: LinkGraphSnapshotEnvelope) => void;
 type SnapshotAcknowledger = (revision: number) => void;
@@ -23,7 +24,17 @@ function isIncrementalTransportEnvelope(value: unknown): value is LinkGraphIncre
   if (!value || typeof value !== "object") {
     return false;
   }
-  return "type" in value && "sessionId" in value && "revision" in value && "state" in value;
+  return "type" in value
+    && isLinkGraphIncrementalTransportType(value.type)
+    && "sessionId" in value
+    && "revision" in value
+    && "state" in value;
+}
+
+function isSupportedIncrementalSlice(
+  envelope: LinkGraphSnapshotEnvelope | null,
+): envelope is LinkGraphSnapshotEnvelope & { transportType: LinkGraphIncrementalTransportEnvelope["type"] } {
+  return isLinkGraphIncrementalTransportType(envelope?.transportType);
 }
 
 function flushLatestEnvelope(forceDispatch = false): void {
@@ -58,7 +69,7 @@ function handleBootstrapEnvelope(
     latestEnvelope = normalizedEnvelope;
     window.linkGraphBootstrap = normalizedEnvelope.state;
   }
-  flushLatestEnvelope(normalizedEnvelope.transportType === "ARTIFACT_SLICE");
+  flushLatestEnvelope(isSupportedIncrementalSlice(normalizedEnvelope));
 }
 
 function handleBootstrapEvent(event: Event): void {
@@ -135,16 +146,16 @@ function normalizeTransportEnvelope(
     const startedAt = measureStart();
     const baseArtifactCount = Object.keys(baseState.artifactContents ?? {}).length;
     const incomingArtifactCount = Object.keys(detail.state.artifactContents ?? {}).length;
-    const clonedBaseState = structuredClone(baseState);
     const state = {
-      ...clonedBaseState,
+      ...baseState,
       ...detail.state,
       artifactContents: {
         ...(baseState.artifactContents ?? {}),
         ...(detail.state.artifactContents ?? {}),
       },
     };
-    traceLinkGraph("editorTransport.artifactSlice.merge", {
+    traceLinkGraph("editorTransport.incrementalSlice.merge", {
+      type: detail.type,
       revision: detail.revision,
       baseArtifactCount,
       incomingArtifactCount,

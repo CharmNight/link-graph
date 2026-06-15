@@ -1,12 +1,12 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
-import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.llm.GraphBeautificationResult as GraphBeautificationPayload
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
-import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.RiskResolutionStatus
+import com.charmnight.linkgraph.workbench.AssistantComposerTarget
+import com.charmnight.linkgraph.workbench.AssistantActionId
 import com.charmnight.linkgraph.workbench.AssistantIntent
 import com.charmnight.linkgraph.workbench.StepGranularity
 
@@ -127,31 +127,25 @@ sealed interface GraphEditorMessage {
     data object RequestSyncPreview : GraphEditorMessage
 
     /**
-     * 请求执行图问答。
-     */
-    data class RequestQa(
-        /** 保存用户问题。 */
-        val question: String,
-        /** 保存选中的节点标识列表。 */
-        val selectedNodeIds: List<String> = emptyList(),
-        /** 保存继续取证所追踪的风险线程标识。 */
-        val sourceThreadId: String? = null,
-        /** 保存前端请求的问答模式。 */
-        val mode: QaMode = QaMode.AUTO,
-    ) : GraphEditorMessage
-
-    /**
      * 请求执行统一 AI 工作台任务。
      */
     data class RequestAssistantTask(
-        /** 保存一级任务意图。 */
-        val intent: AssistantIntent,
+        /** 保存用户触发的具体工作台动作。 */
+        val actionId: AssistantActionId,
+        /** 保存由具体动作派生的业务意图。 */
+        val intent: AssistantIntent = actionId.toIntent(),
+        /** 保存提交发生的视图场景。 */
+        val sceneId: String? = null,
         /** 保存用户输入。 */
         val prompt: String,
         /** 保存选中的节点标识列表。 */
         val selectedNodeIds: List<String> = emptyList(),
         /** 保存选中的差异条目标识列表。 */
         val selectedDiffItemIds: List<String> = emptyList(),
+        /** 保存统一输入框提交目标。 */
+        val target: AssistantComposerTarget = AssistantComposerTarget.NewTask,
+        /** 保存讲解粒度。 */
+        val explanationGranularity: StepGranularity = StepGranularity.BUSINESS,
     ) : GraphEditorMessage
 
     /** 请求直接重试最近一次失败的问答。 */
@@ -186,34 +180,6 @@ sealed interface GraphEditorMessage {
     ) : GraphEditorMessage
 
     /**
-     * 请求执行差异评审。
-     */
-    data class RequestDiffReview(
-        /** 保存用户问题。 */
-        val question: String,
-        /** 保存选中的差异条目标识列表。 */
-        val selectedDiffItemIds: List<String> = emptyList(),
-    ) : GraphEditorMessage
-
-    /**
-     * 请求执行图讲解。
-     */
-    data class RequestGraphBeautification(
-        /** 保存用户目标。 */
-        val goal: String = "",
-        /** 保存风格偏好。 */
-        val preferredStyle: String? = null,
-        /** 保存讲解关注点。 */
-        val explanationFocus: String? = null,
-        /** 保存本次讲解显式聚焦的节点。 */
-        val focusNodeId: String? = null,
-        /** 保存步骤追问上下文。 */
-        val followUp: GraphBeautificationFollowUpContext? = null,
-        /** 保存讲解维度。 */
-        val granularity: StepGranularity = StepGranularity.BUSINESS,
-    ) : GraphEditorMessage
-
-    /**
      * 返回图讲解结果。
      */
     data class GraphBeautificationResult(
@@ -243,19 +209,6 @@ sealed interface GraphEditorMessage {
     /** 请求撤销最近一次草稿补丁应用。 */
     data object UndoLastDraftPatchApply : GraphEditorMessage
 
-    /** 请求生成改动计划。 */
-    data object RequestGenerationPlan : GraphEditorMessage
-
-    /**
-     * 请求继续追问当前实现建议。
-     */
-    data class RequestGenerationPlanDiscussion(
-        /** 保存用户追问。 */
-        val question: String,
-        /** 保存当前聚焦的建议条目标识。 */
-        val focusItemId: String? = null,
-    ) : GraphEditorMessage
-
     /** 请求生成代码草稿。 */
     data object RequestCodeDrafts : GraphEditorMessage
 
@@ -276,16 +229,6 @@ sealed interface GraphEditorMessage {
     data class RequestIndexedGraph(
         /** 保存完整 indexed 图请求。 */
         val request: IndexedGraphRequest,
-    ) : GraphEditorMessage
-
-    /**
-     * 更新工作台分区折叠偏好。
-     */
-    data class UpdateWorkbenchSectionPreference(
-        /** 保存分区标识。 */
-        val sectionId: String,
-        /** 保存目标展开状态。 */
-        val expanded: Boolean,
     ) : GraphEditorMessage
 
     /** 请求打开设置页。 */

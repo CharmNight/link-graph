@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { LinkGraphEdge } from "../../../../app/types";
 import {
   classDiagramCompactRelationLabel,
+  classDiagramRelationPresentation,
   classDiagramRelationDetailLabel,
   classDiagramRelationDisplayLabel,
   classDiagramRelationKind,
   classDiagramRelationSortRank,
+  isClassDiagramDependencyRelation,
 } from "../../../../app/views/class-diagram/classDiagramRelations";
 
 function edge(metadata: Record<string, string>): LinkGraphEdge {
@@ -30,7 +32,7 @@ describe("classDiagramRelations", () => {
     });
 
     expect(classDiagramRelationKind(relation)).toBe("FIELD");
-    expect(classDiagramRelationDisplayLabel(relation)).toBe("field config");
+    expect(classDiagramRelationDisplayLabel(relation)).toBe("字段 config");
     expect(classDiagramRelationSortRank(relation)).toBeLessThan(
       classDiagramRelationSortRank(edge({
         "classDiagram.relation.role": "METHOD_PARAMETER",
@@ -50,13 +52,13 @@ describe("classDiagramRelations", () => {
       "classDiagram.relation.label": "field image",
     });
 
-    expect(classDiagramRelationDisplayLabel(relation)).toBe("field image +4");
+    expect(classDiagramRelationDisplayLabel(relation)).toBe("字段 image +4");
     expect(classDiagramRelationDetailLabel(relation)).toBe([
-      "field image",
-      "ctor image",
-      "return apply",
-      "call apply",
-      "param update.image",
+      "字段 image",
+      "构造参数 image",
+      "返回 apply",
+      "调用 apply",
+      "参数 update.image",
     ].join("\n"));
   });
 
@@ -68,8 +70,26 @@ describe("classDiagramRelations", () => {
       "classDiagram.relation.weight": "45",
     });
 
-    expect(classDiagramRelationDisplayLabel(relation)).toBe("param delta");
-    expect(classDiagramRelationDetailLabel(relation)).toBe("param onMetadataUpdate.delta");
-    expect(classDiagramCompactRelationLabel("param onMetadataVersionChanged.metadataVersion")).toBe("param metadataVersion");
+    expect(classDiagramRelationDisplayLabel(relation)).toBe("参数 delta");
+    expect(classDiagramRelationDetailLabel(relation)).toBe("参数 onMetadataUpdate.delta");
+    expect(classDiagramCompactRelationLabel("param onMetadataVersionChanged.metadataVersion")).toBe("参数 metadataVersion");
+  });
+
+  it("renders class usage overlay relations as dependency-style usage links", () => {
+    const relation = edge({
+      "classDiagram.relation.role": "CLASS_USAGE",
+      "classDiagram.relation.label": "usage",
+    });
+
+    expect(classDiagramRelationKind(relation)).toBe("CLASS_USAGE");
+    expect(classDiagramRelationDisplayLabel(relation)).toBe("使用");
+    expect(isClassDiagramDependencyRelation(relation)).toBe(true);
+    expect(classDiagramRelationPresentation(relation).role).toBe("dependency");
+    expect(classDiagramRelationSortRank(relation)).toBeLessThan(
+      classDiagramRelationSortRank(edge({
+        "classDiagram.relation.role": "DEPENDENCY",
+        "classDiagram.relation.label": "dependency",
+      })),
+    );
   });
 });

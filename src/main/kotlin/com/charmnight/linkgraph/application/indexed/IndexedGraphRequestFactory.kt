@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.application.indexed
 
+import com.charmnight.linkgraph.usage.ClassUsageSearchLimits
+
 enum class IndexedGraphPreset {
     ARCHITECTURE,
     PACKAGE_DEPENDENCY,
@@ -16,6 +18,7 @@ data class IndexedGraphPresetRequest(
     val includeJdk: Boolean? = null,
     val viewport: IndexedGraphViewportOptions = IndexedGraphViewportOptions(),
     val classDiagram: IndexedClassDiagramOptions? = null,
+    val usage: IndexedClassUsageOptions? = null,
     val review: IndexedReviewGraphOptions? = null,
 )
 
@@ -25,10 +28,11 @@ object IndexedGraphRequestFactory {
             IndexedGraphPreset.ARCHITECTURE -> requestArchitectureGraphRequest().withCommonOverrides(request)
             IndexedGraphPreset.PACKAGE_DEPENDENCY -> requestPackageDependencyGraphRequest(request.packageName.orEmpty())
                 .withCommonOverrides(request)
-            IndexedGraphPreset.CLASS_DIAGRAM -> requestClassDiagramRequest(request.scopeNodeId)
+            IndexedGraphPreset.CLASS_DIAGRAM -> request.classDiagramBaseRequest()
                 .withCommonOverrides(request)
-                .copy(classDiagram = request.classDiagram?.mergeInto(requestClassDiagramRequest(request.scopeNodeId).classDiagram)
-                    ?: requestClassDiagramRequest(request.scopeNodeId).classDiagram)
+                .copy(classDiagram = request.classDiagram?.mergeInto(request.classDiagramBaseRequest().classDiagram)
+                    ?: request.classDiagramBaseRequest().classDiagram)
+                .copy(usage = request.usage?.mergeInto(IndexedClassUsageOptions()) ?: IndexedClassUsageOptions())
             IndexedGraphPreset.REVIEW -> requestReviewGraphRequest(request.selectedDiffItemIds)
                 .withCommonOverrides(request)
                 .copy(review = request.review?.mergeInto(IndexedReviewGraphOptions()) ?: IndexedReviewGraphOptions())
@@ -40,6 +44,14 @@ object IndexedGraphRequestFactory {
             includeJdk = request.includeJdk ?: includeJdk,
             viewport = request.viewport,
         )
+
+    private fun IndexedGraphPresetRequest.classDiagramBaseRequest(): IndexedGraphRequest {
+        val usageTargetNodeId = usage?.targetNodeId?.takeIf(String::isNotBlank)
+        if (scopeNodeId.isNullOrBlank() && usage?.enabled == true && usageTargetNodeId != null) {
+            return requestClassUsageOverlayRequest(usageTargetNodeId)
+        }
+        return requestClassDiagramRequest(scopeNodeId)
+    }
 }
 
 fun requestArchitectureGraphRequest(): IndexedGraphRequest =
@@ -75,6 +87,15 @@ fun requestClassDiagramRequest(scopeNodeId: String? = null): IndexedGraphRequest
         refreshPolicy = IndexedGraphRefreshPolicy.ReuseCached,
     )
 
+fun requestClassUsageOverlayRequest(targetNodeId: String): IndexedGraphRequest =
+    IndexedGraphRequest(
+        view = IndexedGraphView.CLASS_DIAGRAM,
+        anchor = IndexedGraphAnchor.ClassId(targetNodeId.trim()),
+        scope = IndexedGraphScope.ClassNeighborhood(depth = 1),
+        depth = 1,
+        refreshPolicy = IndexedGraphRefreshPolicy.ReuseCached,
+    )
+
 fun requestReviewGraphRequest(selectedDiffItemIds: List<String> = emptyList()): IndexedGraphRequest =
     IndexedGraphRequest(
         view = IndexedGraphView.REVIEW,
@@ -87,6 +108,26 @@ private fun IndexedClassDiagramOptions.mergeInto(defaults: IndexedClassDiagramOp
     IndexedClassDiagramOptions(
         neighborhoodLimit = neighborhoodLimit,
         memberLimit = memberLimit.takeIf { it != IndexedClassDiagramOptions().memberLimit } ?: defaults.memberLimit,
+    )
+
+private fun IndexedClassUsageOptions.mergeInto(defaults: IndexedClassUsageOptions): IndexedClassUsageOptions =
+    IndexedClassUsageOptions(
+        enabled = enabled,
+        targetNodeId = targetNodeId?.takeIf(String::isNotBlank) ?: defaults.targetNodeId,
+        targetQualifiedName = targetQualifiedName?.takeIf(String::isNotBlank) ?: defaults.targetQualifiedName,
+        sourceVirtualFileUrl = sourceVirtualFileUrl?.takeIf(String::isNotBlank) ?: defaults.sourceVirtualFileUrl,
+        sourcePath = sourcePath?.takeIf(String::isNotBlank) ?: defaults.sourcePath,
+        maxUsageGroups = maxUsageGroups.takeIf { it != IndexedClassUsageOptions().maxUsageGroups }
+            ?: defaults.maxUsageGroups,
+        maxUsageEntries = maxUsageEntries.takeIf { it != IndexedClassUsageOptions().maxUsageEntries }
+            ?: defaults.maxUsageEntries,
+        includeImports = includeImports,
+    ).normalized()
+
+private fun IndexedClassUsageOptions.normalized(): IndexedClassUsageOptions =
+    copy(
+        maxUsageGroups = ClassUsageSearchLimits.clampUsageGroups(maxUsageGroups),
+        maxUsageEntries = ClassUsageSearchLimits.clampUsageEntries(maxUsageEntries),
     )
 
 private fun IndexedReviewGraphOptions.mergeInto(defaults: IndexedReviewGraphOptions): IndexedReviewGraphOptions =

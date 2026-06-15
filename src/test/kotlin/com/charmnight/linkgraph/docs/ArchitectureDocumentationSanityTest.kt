@@ -7,6 +7,7 @@ import com.charmnight.linkgraph.testing.*
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -138,13 +139,23 @@ class ArchitectureDocumentationSanityTest {
     @Test
     fun publicRepositoryFilesExcludeProcessPlansAndMachineLocalPaths() {
         val docsRoot = Path.of("docs")
-        listOf(
-            docsRoot.resolve("readme-update-scope.md"),
-            docsRoot.resolve("link-graph-graph-readability-implementation.md"),
-            docsRoot.resolve("link-graph-target-graph-layout.html"),
-        ).forEach { path ->
-            assertFalse(Files.exists(path), "过程/原型文档不应保留在公开 docs 根目录: $path")
-        }
+        val publicDocsRootFiles = Files.list(docsRoot)
+            .filter { path -> Files.isRegularFile(path) }
+            .map { path -> path.fileName.toString() }
+            .toList()
+            .toSet()
+        assertEquals(
+            setOf(
+                "architecture.md",
+                "development.md",
+                "features-and-limitations.md",
+                "getting-started.md",
+                "project-structure.md",
+                "usage.md",
+            ),
+            publicDocsRootFiles,
+            "公开 docs 根目录只能保留入口文档；过程、计划、原型文档应移入 docs/internal。",
+        )
 
         val marker = machineLocalPathMarker()
         val publicRoots = listOf(

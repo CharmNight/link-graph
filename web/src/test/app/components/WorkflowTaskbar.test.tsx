@@ -13,7 +13,7 @@ const stageStates = {
 } satisfies Record<string, WorkflowStageStatus>;
 
 describe("WorkflowTaskbar", () => {
-  it("renders current target, five stage buttons, counts and feedback", () => {
+  it("renders current target, counts, feedback and a non-linear assistant status summary", () => {
     render(
       <WorkflowTaskbar
         title="OrderController.submit"
@@ -24,7 +24,6 @@ describe("WorkflowTaskbar", () => {
         draftCandidateCount={3}
         operationFeedback={{ level: "WARNING", message: "问答正在流式输出" }}
         primaryActionLabel="去问答"
-        onStageChange={vi.fn()}
         onImportMermaid={vi.fn()}
         onExportMermaid={vi.fn()}
         onShowDiff={vi.fn()}
@@ -41,18 +40,38 @@ describe("WorkflowTaskbar", () => {
     expect(screen.getByText("候选 3")).toBeInTheDocument();
     expect(screen.getByText("问答正在流式输出")).toBeInTheDocument();
 
-    const stageStrip = screen.getByRole("list", { name: "工作流阶段" });
-    expect(within(stageStrip).getAllByRole("button")).toHaveLength(5);
-    expect(screen.getByRole("button", { name: /核验证据/ })).toHaveAttribute("aria-current", "step");
-    expect(screen.getByRole("button", { name: /风险问答/ })).toHaveTextContent("进行中");
-    expect(screen.getByRole("button", { name: /草稿确认/ })).toHaveTextContent("未开始");
-    expect(screen.getByRole("button", { name: /草稿确认/ })).not.toHaveTextContent("待处理");
-    expect(screen.getByRole("button", { name: /代码落地/ })).toHaveTextContent("失败");
+    const assistantStatus = screen.getByRole("group", { name: "AI 工作状态" });
+    expect(assistantStatus).toBeInTheDocument();
+    expect(within(assistantStatus).getByText("AI 状态")).toBeInTheDocument();
+    expect(within(assistantStatus).getByText("理解代码")).toBeInTheDocument();
+    expect(within(assistantStatus).getByText("核验证据")).toBeInTheDocument();
+    expect(within(assistantStatus).getByText("代码问答")).toBeInTheDocument();
+    expect(within(assistantStatus).getByText("草稿确认")).toBeInTheDocument();
+    expect(within(assistantStatus).getByText("代码落地")).toBeInTheDocument();
+    expect(within(assistantStatus).getByText("完成")).toBeInTheDocument();
+    expect(within(assistantStatus).getByText("阻塞")).toBeInTheDocument();
+    expect(within(assistantStatus).getByText("进行中")).toBeInTheDocument();
+    expect(within(assistantStatus).getByText("未开始")).toBeInTheDocument();
+    expect(within(assistantStatus).getByText("失败")).toBeInTheDocument();
+    expect(assistantStatus.querySelectorAll(".assistant-status-item")).toHaveLength(5);
+    expect(assistantStatus.querySelector(".assistant-status-chip")).not.toBeInTheDocument();
+
+    expect(screen.queryByRole("list", { name: "流程概览" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "工作流阶段" })).not.toBeInTheDocument();
+    expect(within(assistantStatus).queryByText("1")).not.toBeInTheDocument();
+    expect(within(assistantStatus).queryByText("2")).not.toBeInTheDocument();
+    expect(within(assistantStatus).queryByText("3")).not.toBeInTheDocument();
+    expect(within(assistantStatus).queryByText("4")).not.toBeInTheDocument();
+    expect(within(assistantStatus).queryByText("5")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /理解链路/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /核验证据/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /风险问答/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /草稿确认/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /代码落地/ })).not.toBeInTheDocument();
   });
 
-  it("delegates stage changes and task actions", async () => {
+  it("delegates task actions without making assistant status interactive", async () => {
     const user = userEvent.setup();
-    const onStageChange = vi.fn();
     const onPrimaryAction = vi.fn();
     const onRequestSync = vi.fn();
     const onShowDiff = vi.fn();
@@ -68,7 +87,6 @@ describe("WorkflowTaskbar", () => {
         riskCount={0}
         draftCandidateCount={0}
         primaryActionLabel="链路讲解"
-        onStageChange={onStageChange}
         onImportMermaid={onImportMermaid}
         onExportMermaid={onExportMermaid}
         onShowDiff={onShowDiff}
@@ -78,7 +96,10 @@ describe("WorkflowTaskbar", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /核验证据/ }));
+    expect(screen.getByRole("group", { name: "AI 工作状态" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /理解代码/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /代码问答/ })).not.toBeInTheDocument();
+
     await user.click(screen.getByRole("button", { name: "链路讲解" }));
     await user.click(screen.getByRole("button", { name: "同步预览" }));
     await user.click(screen.getByRole("button", { name: "对比代码" }));
@@ -86,7 +107,6 @@ describe("WorkflowTaskbar", () => {
     await user.click(screen.getByRole("button", { name: "导出 Mermaid" }));
     await user.click(screen.getByRole("button", { name: "设置" }));
 
-    expect(onStageChange).toHaveBeenCalledWith("evidence");
     expect(onPrimaryAction).toHaveBeenCalledTimes(1);
     expect(onRequestSync).toHaveBeenCalledTimes(1);
     expect(onShowDiff).toHaveBeenCalledTimes(1);

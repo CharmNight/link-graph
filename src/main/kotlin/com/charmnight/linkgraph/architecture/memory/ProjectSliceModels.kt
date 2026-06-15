@@ -6,7 +6,7 @@ data class ProjectSliceManifest(
     val slices: List<ProjectSlice> = emptyList(),
 ) {
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 3
+        const val CURRENT_SCHEMA_VERSION = 4
     }
 }
 

@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react/pure";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LinkGraphEdge, LinkGraphNode } from "../../../app/types";
 import { GraphFlowSurface } from "../../../app/reactflow/GraphFlowSurface";
@@ -308,8 +308,10 @@ function renderSurface(overrides: Partial<ComponentProps<typeof GraphFlowSurface
 }
 
 afterEach(() => {
-  vi.clearAllMocks();
   vi.useRealTimers();
+  cleanup();
+  vi.restoreAllMocks();
+  vi.clearAllMocks();
   vi.unstubAllGlobals();
   delete window.linkGraphDebugTrace;
   delete window.__linkGraphDebugEnabled;
@@ -392,6 +394,7 @@ describe("GraphFlowSurface", () => {
     act(() => {
       vi.advanceTimersByTime(200);
     });
+    vi.useRealTimers();
 
     const domProbeTrace = traceSink.mock.calls
       .map(([payload]) => JSON.parse(String(payload)))
@@ -587,6 +590,7 @@ describe("GraphFlowSurface", () => {
     act(() => {
       vi.runAllTimers();
     });
+    vi.useRealTimers();
     expect(reactFlowFitViewMock).toHaveBeenCalledTimes(2);
   });
 
@@ -675,6 +679,7 @@ describe("GraphFlowSurface", () => {
     act(() => {
       vi.runAllTimers();
     });
+    vi.useRealTimers();
 
     expect(reactFlowFitViewMock).toHaveBeenCalledTimes(4);
   });
@@ -768,6 +773,7 @@ describe("GraphFlowSurface", () => {
     act(() => {
       vi.runAllTimers();
     });
+    vi.useRealTimers();
 
     expect(reactFlowSetCenterMock).toHaveBeenCalledWith(560, 156, { duration: 0 });
     expect(reactFlowFitViewMock).toHaveBeenCalledTimes(2);
@@ -861,6 +867,7 @@ describe("GraphFlowSurface", () => {
     act(() => {
       vi.runAllTimers();
     });
+    vi.useRealTimers();
 
     expect(reactFlowSetCenterMock).toHaveBeenCalledWith(560, 156, { zoom: 0.76, duration: 0 });
     expect(reactFlowFitViewMock).toHaveBeenCalledTimes(2);
@@ -911,6 +918,7 @@ describe("GraphFlowSurface", () => {
     act(() => {
       vi.runAllTimers();
     });
+    vi.useRealTimers();
 
     expect(screen.getByTestId("reactflow")).toHaveAttribute("data-min-zoom", "0.54");
     expect(reactFlowSetCenterMock).toHaveBeenCalledWith(240, 156, { zoom: 0.82, duration: 0 });
@@ -1019,6 +1027,7 @@ describe("GraphFlowSurface", () => {
     act(() => {
       vi.runAllTimers();
     });
+    vi.useRealTimers();
 
     expect(reactFlowFitViewMock).toHaveBeenCalledWith({
       padding: 0.12,
@@ -1142,6 +1151,7 @@ describe("GraphFlowSurface", () => {
     act(() => {
       vi.runAllTimers();
     });
+    vi.useRealTimers();
 
     expect(reactFlowFitViewMock).toHaveBeenCalledWith({
       padding: 0.12,
@@ -1208,12 +1218,14 @@ describe("GraphFlowSurface", () => {
       nodeViewportSize: () => ({ width: 340, height: 116 }),
     });
 
-    expect(screen.getByTestId("reactflow")).toHaveAttribute("data-min-zoom", "0.54");
+    const reactFlow = screen.getByTestId("reactflow");
 
     act(() => {
       vi.runAllTimers();
     });
+    vi.useRealTimers();
 
+    expect(reactFlow).toHaveAttribute("data-min-zoom", "0.54");
     expect(reactFlowSetCenterMock).toHaveBeenCalledWith(746, 453, { zoom: 0.82, duration: 0 });
     expect(reactFlowFitViewMock).not.toHaveBeenCalled();
   });
@@ -1230,6 +1242,7 @@ describe("GraphFlowSurface", () => {
     act(() => {
       vi.runAllTimers();
     });
+    vi.useRealTimers();
 
     expect(reactFlowFitViewMock).toHaveBeenCalledWith({
       padding: 0.16,

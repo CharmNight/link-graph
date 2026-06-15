@@ -51,9 +51,6 @@ class DefaultGraphBeautificationService(
         ).steps
         /** 链路讲解提示词包。 */
         val promptPackage = promptFactory.buildBeautificationPromptPackage(context, sanitized, projectedSteps)
-        if (!context.effectiveEvidenceProfile().methodChainAllowed) {
-            return fallbackService.beautify(context, sanitized, onPreview)
-        }
         if (!sanitized.usesRemoteProvider()) {
             return fallbackService.beautify(context, sanitized, onPreview)
         }
@@ -310,7 +307,7 @@ class PlaceholderGraphBeautificationService(
         val relationText = if (evidenceProfile.availableRelationKinds.isEmpty()) {
             "当前没有足够关系证据确认上下游。"
         } else {
-            "当前可用关系类型：${evidenceProfile.availableRelationKinds.joinToString("、")}。"
+            "当前可用关系类型：${evidenceProfile.availableRelationKinds.joinToString("、") { llmRelationKindDisplayLabel(it) }}。"
         }
         return "结构概览：${node.title} 是 ${node.type.name} 节点。$memberText$relationSummary。$relationText"
     }

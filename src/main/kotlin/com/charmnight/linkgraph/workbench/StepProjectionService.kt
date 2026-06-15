@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.normalizeStableComponent
+import com.charmnight.linkgraph.model.sourceLocation
 
 class StepProjectionService {
     fun buildSteps(
@@ -95,7 +96,7 @@ class StepProjectionService {
     }
 
     private fun sourceStartLine(node: GraphNode): Int {
-        return node.metadata["source.startLine"]?.toIntOrNull() ?: Int.MAX_VALUE
+        return node.sourceLocation().startLine ?: Int.MAX_VALUE
     }
 
     private fun stepKindFor(node: GraphNode): StepKind {

@@ -14,6 +14,7 @@ import com.charmnight.linkgraph.llm.context.PromptSectionPriority.USER_GOAL
 import com.charmnight.linkgraph.model.GraphDiffEntry
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.model.sourceFilePathOrLocationPath
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.workbench.QaConversationSession
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
@@ -716,32 +717,57 @@ class LlmPromptFactory(
         }.ifBlank { "- 无" }
         val evidenceProfile = context.effectiveEvidenceProfile()
         val evidenceProfileText = buildEvidenceProfileText(evidenceProfile)
+        val assistantPromptMode = AssistantPromptModeResolver.resolve(context, evidenceProfile)
+        val classDescriptionGoal = assistantPromptMode.classDescriptionGoal
+        val classRelationshipGoal = assistantPromptMode.classRelationshipGoal
         /** 当前追问上下文。 */
         val followUp = context.followUp
         /** 面向模型的追问说明块。 */
-        val followUpBlock = followUp?.let { current ->
-            """
-            讲解模式：追问讲解
-            追问上下文：
-            - 当前步骤ID：${current.stepId}
-            - 当前步骤标题：${current.stepTitle}
-            - 用户追问：${current.question}
-            本轮回答必须先直接回答用户追问，再补充代码位置、关键条件/分支和下一跳方法。
-            steps[0] 必须优先对应当前步骤；description 的首句必须先回答用户追问。
-            如果当前证据不足，必须明确写出“不足以确认”，不要编造隐藏逻辑。
-            """.trimIndent()
-        } ?: if (!evidenceProfile.methodChainAllowed) {
-            """
-            讲解模式：证据受限讲解
-            当前锚点不是可直接解释为方法调用链的节点，必须按允许讲解模式输出。
-            如果缺少方法级调用边，不能输出“定位被调方法”、调用链、当前方法内部流程或隐藏业务步骤。
-            必须先说明当前能确认的结构事实，再说明当前不能确认的关系和可下钻方向。
-            """.trimIndent()
-        } else {
-            """
-            讲解模式：常规讲解
-            讲解重点：${context.explanationFocus ?: "先讲当前方法内部，再讲跨方法扩展"}
-            """.trimIndent()
+        val followUpBlock = when {
+            followUp != null -> {
+                """
+                讲解模式：追问讲解
+                追问上下文：
+                - 当前步骤ID：${followUp.stepId}
+                - 当前步骤标题：${followUp.stepTitle}
+                - 用户追问：${followUp.question}
+                本轮回答必须先直接回答用户追问，再补充代码位置、关键条件/分支和下一跳方法。
+                steps[0] 必须优先对应当前步骤；description 的首句必须先回答用户追问。
+                如果当前证据不足，必须明确写出“不足以确认”，不要编造隐藏逻辑。
+                """.trimIndent()
+            }
+            classDescriptionGoal -> {
+                """
+                讲解模式：介绍类模式
+                本轮目标是介绍当前类图节点，不是解释方法调用链，也不是只解释边。
+                必须覆盖：职责、核心字段/构造依赖、对外协作关系、典型使用场景，以及建议继续下钻的位置。
+                不要把回答开头写成“这不是方法调用图”；如果证据有限，先介绍能从类图确认的结构事实，再说明不能确认的职责细节。
+                steps[*].kind 优先使用 STRUCTURE_OVERVIEW；只有真实证据支持其他类型时才使用其他 kind。
+                """.trimIndent()
+            }
+            classRelationshipGoal -> {
+                """
+                讲解模式：类图关系解释模式
+                本轮只解释图上的结构关系：字段关联、构造参数、返回值、参数或局部类型依赖。
+                不要把回答写成类职责介绍，不要按方法调用顺序讲解，也不要补出图上没有的隐藏业务步骤。
+                steps[*].kind 优先使用 STRUCTURE_OVERVIEW。
+                """.trimIndent()
+            }
+            !evidenceProfile.methodChainAllowed -> {
+                """
+                讲解模式：证据受限讲解
+                当前锚点不是可直接解释为方法调用链的节点，必须按允许讲解模式输出。
+                如果缺少方法级调用边，不能输出“定位被调方法”、调用链、当前方法内部流程或隐藏业务步骤。
+                当前是类图/结构图关系时，应解释为字段关联、构造参数、返回值、参数或局部类型等结构关系，不要把类型依赖边写成方法调用顺序。
+                必须先说明当前能确认的结构事实，再说明当前不能确认的关系和可下钻方向。
+                """.trimIndent()
+            }
+            else -> {
+                """
+                讲解模式：常规讲解
+                讲解重点：${context.explanationFocus ?: "先讲当前方法内部，再讲跨方法扩展"}
+                """.trimIndent()
+            }
         }
         /** 面向模型的系统提示词。 */
         val systemPrompt = """
@@ -822,7 +848,7 @@ class LlmPromptFactory(
         val forbidden = profile.forbiddenClaims.joinToString("\n") { claim -> "- $claim" }.ifBlank { "- 无" }
         val gapsSummary = profile.evidenceGaps.joinToString("；").ifBlank { "无" }
         val gaps = profile.evidenceGaps.joinToString("\n") { gap -> "- $gap" }.ifBlank { "- 无" }
-        val relations = profile.availableRelationKinds.joinToString(", ").ifBlank { "无" }
+        val relations = profile.availableRelationKinds.joinToString(", ") { llmRelationKindDisplayLabel(it) }.ifBlank { "无" }
         val drilldowns = profile.recommendedDrilldowns.joinToString(", ").ifBlank { "无" }
         return """
             锚点类型：${profile.anchorNodeType?.name ?: "UNKNOWN"}
@@ -894,9 +920,23 @@ class LlmPromptFactory(
     /** 把边转换成提示词里的单行摘要。 */
     private fun edgeSummary(edge: GraphEdge): String {
         /** 边标签字段片段。 */
-        val label = edge.label?.let { " | label=$it" }.orEmpty()
-        return "- [${edge.type.name}] ${edge.fromNodeId} -> ${edge.toNodeId}$label"
+        val label = edgeDisplayLabel(edge)?.let { " | label=$it" }.orEmpty()
+        return "- [${llmRelationKindDisplayLabel(edge.type.name)}] ${edge.fromNodeId} -> ${edge.toNodeId}$label"
     }
+
+    private fun edgeDisplayLabel(edge: GraphEdge): String? =
+        (
+            edge.metadata["classDiagram.relation.label"]
+            ?: edge.metadata["uml.relation.label"]
+            ?: edge.metadata["uml.relation.aggregate.primaryLabel"]
+            ?: edge.metadata["uml.relation.aggregate.label"]
+            ?: edge.label
+            ?: edge.metadata["jvm.relation.kind"]
+            ?: edge.type.name
+            )
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+            ?.let(::llmClassDiagramRelationDisplayLabel)
 
     /** 把差异条目转换成提示词里的单行摘要。 */
     private fun diffSummary(entry: GraphDiffEntry): String {
@@ -915,8 +955,7 @@ class LlmPromptFactory(
         val nodeById = graph.nodes.associateBy { it.id }
         val targets = change.targetNodeIds.joinToString("; ").ifBlank { "未指定节点" }
         val targetFiles = change.targetNodeIds.mapNotNull { nodeId ->
-            nodeById[nodeId]?.metadata?.get("source.filePath")
-                ?: nodeById[nodeId]?.location?.substringBefore(':')
+            nodeById[nodeId]?.sourceFilePathOrLocationPath()
         }.distinct().ifEmpty { listOf("未指定文件") }
         val before = change.beforeState?.takeIf { it.isNotBlank() } ?: "无"
         val after = change.afterState?.takeIf { it.isNotBlank() } ?: "无"
@@ -1178,6 +1217,7 @@ class LlmPromptFactory(
                 {
                   "stepId": "稳定ID",
                   "title": "步骤标题",
+                  "kind": "BUSINESS_ACTION|METHOD_CALL|CONDITION|RETURN|RESOURCE_INTERACTION|STRUCTURE_OVERVIEW",
                   "description": "说明这一步在做什么",
                   "followUpQuestions": ["可继续追问的问题"],
                   "evidence": [

@@ -90,6 +90,24 @@ describe("PropertyPanel", () => {
     expect(screen.getByRole("button", { name: "打开源码" })).toBeDisabled();
   });
 
+  it("uses compact status pills for edit-node metadata", () => {
+    render(
+      <PropertyPanel
+        selectedNode={node}
+        onUpdateNode={() => undefined}
+        onDeleteNode={() => undefined}
+        onRequestSourceNavigation={() => undefined}
+        onClose={() => undefined}
+      />,
+    );
+
+    for (const label of ["类型：方法", "代码状态：已绑定", "证据：已确认"]) {
+      const metaItem = screen.getByText(label);
+      expect(metaItem).toHaveClass("status-pill");
+      expect(metaItem).not.toHaveClass("node-type-chip");
+    }
+  });
+
   it("explains when source navigation will fall back to method signature", () => {
     render(
       <PropertyPanel

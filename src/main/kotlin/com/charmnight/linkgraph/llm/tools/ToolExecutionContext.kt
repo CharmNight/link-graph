@@ -17,4 +17,6 @@ data class ToolExecutionContext(
     val artifactStore: ArtifactStore,
     /** 当前预算快照。 */
     val runBudget: RunBudget,
+    /** 当前 capability 允许调用的工具名；null 表示旧调用点尚未启用 runtime 策略。 */
+    val allowedToolNames: Set<String>? = null,
 )

@@ -1,11 +1,6 @@
 package com.charmnight.linkgraph.ui
 
 import com.intellij.ui.JBColor
-import com.charmnight.linkgraph.application.indexed.IndexedGraphSummary
-import com.charmnight.linkgraph.presentation.GraphHiddenBucket
-import com.charmnight.linkgraph.presentation.GraphPresentationControls
-import com.charmnight.linkgraph.presentation.GraphPresentationLane
-import com.charmnight.linkgraph.presentation.GraphPresentationTarget
 import com.charmnight.linkgraph.presentation.GraphViewPresentation
 import com.charmnight.linkgraph.json.JsonCodec
 import com.charmnight.linkgraph.llm.GraphBeautificationResult
@@ -196,62 +191,69 @@ class GraphEditorPageRenderer {
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
     ): LinkedHashMap<String, Any?> {
+        val domainStates = snapshot.domainStates()
+        val workspaceState = domainStates.workspace
+        val graphViewsState = domainStates.graphViews
+        val reviewState = domainStates.review
+        val generationState = domainStates.generation
+        val assistantState = domainStates.assistant
+        val navigationState = domainStates.navigation
+        val transportState = domainStates.transport
         val editorSnapshot = snapshot.editorSnapshot()
-        val factSceneState = snapshot.sceneState(GraphSceneId.WORKSPACE_FACT)
-        val flowchartSceneState = snapshot.sceneState(GraphSceneId.WORKSPACE_FLOWCHART)
-        val resourceSceneState = snapshot.sceneState(GraphSceneId.WORKSPACE_RESOURCE_RELATION)
-        val architectureSceneState = snapshot.sceneState(GraphSceneId.WORKSPACE_ARCHITECTURE_GRAPH)
-        val classDiagramSceneState = snapshot.sceneState(GraphSceneId.WORKSPACE_CLASS_DIAGRAM)
-        val reviewGraphSceneState = snapshot.sceneState(GraphSceneId.WORKSPACE_REVIEW_GRAPH)
-        val currentSceneState = snapshot.currentSceneState()
+        val factSceneState = graphViewsState.sceneStates[GraphSceneId.WORKSPACE_FACT] ?: GraphSceneState()
+        val flowchartSceneState = graphViewsState.sceneStates[GraphSceneId.WORKSPACE_FLOWCHART] ?: GraphSceneState()
+        val resourceSceneState = graphViewsState.sceneStates[GraphSceneId.WORKSPACE_RESOURCE_RELATION] ?: GraphSceneState()
+        val architectureSceneState = graphViewsState.sceneStates[GraphSceneId.WORKSPACE_ARCHITECTURE_GRAPH] ?: GraphSceneState()
+        val classDiagramSceneState = graphViewsState.sceneStates[GraphSceneId.WORKSPACE_CLASS_DIAGRAM] ?: GraphSceneState()
+        val reviewGraphSceneState = graphViewsState.sceneStates[GraphSceneId.WORKSPACE_REVIEW_GRAPH] ?: GraphSceneState()
         val payload = linkedMapOf<String, Any?>(
-            "analysisDisplayMode" to snapshot.analysisDisplayMode.name,
-            "currentSceneId" to editorSnapshot.currentSceneId.name,
-            "workspaceGraph" to documentToMap(editorSnapshot.workspaceGraph, includeFullContent = true),
-            "workspaceBaseGraph" to documentToMap(editorSnapshot.workspaceBaseGraph, includeFullContent = true),
-            "semanticFactGraph" to documentToMap(editorSnapshot.semanticFactGraph, includeFullContent = false),
-            "designBaselineGraph" to editorSnapshot.designBaselineGraph?.let {
+            "analysisDisplayMode" to graphViewsState.analysisDisplayMode.name,
+            "currentSceneId" to graphViewsState.currentSceneId.name,
+            "workspaceGraph" to documentToMap(workspaceState.workspaceGraph, includeFullContent = true),
+            "workspaceBaseGraph" to documentToMap(workspaceState.workspaceBaseGraph, includeFullContent = true),
+            "semanticFactGraph" to documentToMap(workspaceState.semanticFactGraph, includeFullContent = false),
+            "designBaselineGraph" to workspaceState.designBaselineGraph?.let {
                 documentToMap(it, includeFullContent = false)
             },
-            "sceneStates" to sceneStatesToMap(snapshot.sceneStates),
-            "factGraphView" to editorSnapshot.factGraphView?.let {
+            "sceneStates" to sceneStatesToMap(graphViewsState.sceneStates),
+            "factGraphView" to graphViewsState.factGraphView.let {
                 factGraphViewToMap(it, factSceneState.layoutState)
             },
-            "flowchartView" to editorSnapshot.flowchartView?.let {
+            "flowchartView" to graphViewsState.flowchartView.let {
                 flowchartViewToMap(it, flowchartSceneState.layoutState)
             },
-            "resourceRelationView" to editorSnapshot.resourceRelationView?.let {
+            "resourceRelationView" to graphViewsState.resourceRelationView.let {
                 resourceRelationViewToMap(it, resourceSceneState.layoutState)
             },
             "architectureGraphView" to architectureGraphViewToMap(
-                editorSnapshot.architectureGraphView,
+                graphViewsState.architectureGraphView,
                 architectureSceneState.layoutState,
             ),
             "classDiagramView" to classDiagramViewToMap(
-                editorSnapshot.classDiagramView,
+                graphViewsState.classDiagramView,
                 classDiagramSceneState.layoutState,
             ),
             "reviewGraphView" to reviewGraphViewToMap(
-                editorSnapshot.reviewGraphView,
+                graphViewsState.reviewGraphView,
                 reviewGraphSceneState.layoutState,
             ),
-            "indexedGraphRequestStates" to snapshot.indexedGraphRequestStates.entries.associate { (view, requestState) ->
+            "indexedGraphRequestStates" to graphViewsState.indexedGraphRequestStates.entries.associate { (view, requestState) ->
                 view.name to requestStateToMap(requestState)
             },
-            "draftPatchPreview" to snapshot.draftPatchPreview?.let(::patchToMap),
-            "draftWorkbenchState" to draftWorkbenchStateToMap(snapshot.draftWorkbenchState),
-            "canUndoDraftPatchApply" to (snapshot.draftPatchUndoState != null),
-            "lastAppliedDraftPatchSummary" to snapshot.draftPatchUndoState?.patchPreview?.summary,
-            "lastDraftPatchApplyResult" to snapshot.lastDraftPatchApplyResult?.let(::draftPatchApplyResultToMap),
-            "qaResult" to snapshot.qaResult?.let {
+            "draftPatchPreview" to generationState.draftPatchPreview?.let(::patchToMap),
+            "draftWorkbenchState" to draftWorkbenchStateToMap(generationState.draftWorkbenchState),
+            "canUndoDraftPatchApply" to (generationState.draftPatchUndoState != null),
+            "lastAppliedDraftPatchSummary" to generationState.draftPatchUndoState?.patchPreview?.summary,
+            "lastDraftPatchApplyResult" to generationState.lastDraftPatchApplyResult?.let(::draftPatchApplyResultToMap),
+            "qaResult" to reviewState.qaResult?.let {
                 patchResultToMap(it, artifactRefs.qaPromptPreviewArtifactId)
             },
             "qaRequestState" to requestStateToMap(
-                snapshot.qaRequestState,
-                hasPromptPreview = hasPromptPreview(snapshot.qaResult?.promptPreview, artifactRefs.qaPromptPreviewArtifactId),
+                reviewState.qaRequestState,
+                hasPromptPreview = hasPromptPreview(reviewState.qaResult?.promptPreview, artifactRefs.qaPromptPreviewArtifactId),
             ),
-            "qaRequestRecoveryState" to qaRequestRecoveryStateToMap(snapshot.qaRequestRecoveryState),
-            "runtimeArtifactSummaries" to snapshot.runtimeArtifactSummaries.mapValues { (_, summaries) ->
+            "qaRequestRecoveryState" to qaRequestRecoveryStateToMap(reviewState.qaRequestRecoveryState),
+            "runtimeArtifactSummaries" to assistantState.runtimeArtifactSummaries.mapValues { (_, summaries) ->
                 summaries.map { summary ->
                     linkedMapOf(
                         "artifactId" to summary.artifactId,
@@ -261,21 +263,21 @@ class GraphEditorPageRenderer {
                     )
                 }
             },
-            "diffReviewResult" to snapshot.diffReviewResult?.let {
+            "diffReviewResult" to reviewState.diffReviewResult?.let {
                 patchResultToMap(it, artifactRefs.diffReviewPromptPreviewArtifactId)
             },
             "diffReviewRequestState" to requestStateToMap(
-                snapshot.diffReviewRequestState,
-                hasPromptPreview = hasPromptPreview(snapshot.diffReviewResult?.promptPreview, artifactRefs.diffReviewPromptPreviewArtifactId),
+                reviewState.diffReviewRequestState,
+                hasPromptPreview = hasPromptPreview(reviewState.diffReviewResult?.promptPreview, artifactRefs.diffReviewPromptPreviewArtifactId),
             ),
-            "graphBeautificationResult" to snapshot.graphBeautificationResult?.let {
+            "graphBeautificationResult" to reviewState.graphBeautificationResult?.let {
                 beautificationResultToMap(it, artifactRefs.beautificationPromptPreviewArtifactId)
             },
             "graphBeautificationRequestState" to requestStateToMap(
-                snapshot.graphBeautificationRequestState,
-                hasPromptPreview = hasPromptPreview(snapshot.graphBeautificationResult?.promptPreview, artifactRefs.beautificationPromptPreviewArtifactId),
+                reviewState.graphBeautificationRequestState,
+                hasPromptPreview = hasPromptPreview(reviewState.graphBeautificationResult?.promptPreview, artifactRefs.beautificationPromptPreviewArtifactId),
             ),
-            "mermaidIssues" to snapshot.mermaidIssues.map { issue ->
+            "mermaidIssues" to workspaceState.mermaidIssues.map { issue ->
                 linkedMapOf(
                     "category" to issue.category.name,
                     "code" to issue.code,
@@ -285,15 +287,15 @@ class GraphEditorPageRenderer {
                     "edgeId" to issue.edgeId,
                 )
             },
-            "diffItems" to snapshot.diff?.entries.orEmpty().map { entry ->
+            "diffItems" to workspaceState.diff?.entries.orEmpty().map { entry ->
                 linkedMapOf(
                     "id" to entry.elementId,
-                    "title" to resolveDiffTitle(entry, editorSnapshot.workspaceGraph),
+                    "title" to resolveDiffTitle(entry, workspaceState.workspaceGraph),
                     "status" to entry.status.name,
                     "description" to (entry.message ?: entry.fields.joinToString()),
                 )
             },
-            "syncPreviewItems" to snapshot.syncPreviewItems.map { item ->
+            "syncPreviewItems" to workspaceState.syncPreviewItems.map { item ->
                 linkedMapOf(
                     "id" to item.id,
                     "title" to item.title,
@@ -301,86 +303,61 @@ class GraphEditorPageRenderer {
                     "risk" to item.risk.name,
                 )
             },
-            "draftVersion" to snapshot.draftVersion,
-            "generationPlan" to snapshot.generationPlan?.let { plan ->
-                linkedMapOf(
-                    "source" to plan.source.name,
-                    "summary" to plan.summary,
-                    "warnings" to plan.warnings,
-                    "promptPreviewArtifactId" to artifactRefs.generationPlanPromptPreviewArtifactId,
-                    "items" to plan.items.map { item ->
-                        linkedMapOf(
-                            "id" to item.id,
-                            "title" to item.title,
-                            "description" to item.description,
-                            "risk" to item.risk.name,
-                            "targetPath" to item.targetPath,
-                        )
-                    },
-                )
+            "draftVersion" to generationState.draftVersion,
+            "generationPlan" to generationState.generationPlan?.let { plan ->
+                generationPlanToMap(plan, artifactRefs.generationPlanPromptPreviewArtifactId)
             },
-            "generationPlanDraftVersion" to snapshot.generationPlanDraftVersion,
+            "generationPlanDraftVersion" to generationState.generationPlanDraftVersion,
             "generationPlanRequestState" to requestStateToMap(
-                snapshot.generationPlanRequestState,
-                hasPromptPreview = hasPromptPreview(snapshot.generationPlan?.promptPreview, artifactRefs.generationPlanPromptPreviewArtifactId),
+                generationState.generationPlanRequestState,
+                hasPromptPreview = hasPromptPreview(generationState.generationPlan?.promptPreview, artifactRefs.generationPlanPromptPreviewArtifactId),
             ),
-            "draftValidationState" to snapshot.draftValidationState?.let(::draftValidationStateToMap),
-            "generationPlanDiscussionSession" to snapshot.generationPlanDiscussionSession?.let { session ->
+            "draftValidationState" to generationState.draftValidationState?.let(::draftValidationStateToMap),
+            "generationPlanDiscussionSession" to generationState.generationPlanDiscussionSession?.let { session ->
                 generationPlanDiscussionSessionToMap(session, artifactRefs.generationPlanDiscussionPromptPreviewArtifactId)
             },
             "generationPlanDiscussionRequestState" to requestStateToMap(
-                snapshot.generationPlanDiscussionRequestState,
+                generationState.generationPlanDiscussionRequestState,
                 hasPromptPreview = hasPromptPreview(
-                    snapshot.generationPlanDiscussionSession?.promptPreview,
+                    generationState.generationPlanDiscussionSession?.promptPreview,
                     artifactRefs.generationPlanDiscussionPromptPreviewArtifactId,
                 ),
             ),
-            "generatedCodeDrafts" to snapshot.generatedCodeDrafts.map { draft ->
+            "generatedCodeDrafts" to generationState.generatedCodeDrafts.map { draft ->
                 val contentArtifactId = artifactRefs.generatedCodeDraftContentArtifactIds[draft.id]
-                linkedMapOf<String, Any?>(
-                    "id" to draft.id,
-                    "sourceNodeId" to draft.sourceNodeId,
-                    "title" to draft.title,
-                    "targetPath" to draft.targetPath,
-                    "contentArtifactId" to contentArtifactId,
-                    "editOperations" to draft.editOperations.map(::codeEditOperationToMap),
-                    "editScopes" to draft.editScopes.map(::editScopeToMap),
-                    "preparedEdits" to draft.preparedEdits.map(::preparedCodeEditToMap),
-                    "warnings" to draft.warnings,
-                ).apply {
-                    if (contentArtifactId == null && draft.content != null) {
-                        put("content", draft.content)
-                    }
-                }
+                generatedCodeDraftToMap(draft, contentArtifactId)
             },
-            "generatedCodeDraftVersion" to snapshot.generatedCodeDraftVersion,
-            "generatedCodeDraftWarnings" to snapshot.generatedCodeDraftWarnings,
-            "generatedCodeDraftSource" to snapshot.generatedCodeDraftSource?.name,
+            "generatedCodeDraftVersion" to generationState.generatedCodeDraftVersion,
+            "generatedCodeDraftWarnings" to generationState.generatedCodeDraftWarnings,
+            "generatedCodeDraftSource" to generationState.generatedCodeDraftSource?.name,
             "generatedCodeDraftPromptPreviewArtifactId" to artifactRefs.generatedCodeDraftPromptPreviewArtifactId,
             "codeDraftRequestState" to requestStateToMap(
-                snapshot.codeDraftRequestState,
+                generationState.codeDraftRequestState,
                 hasPromptPreview = hasPromptPreview(
-                    snapshot.generatedCodeDraftPromptPreview,
+                    generationState.generatedCodeDraftPromptPreview,
                     artifactRefs.generatedCodeDraftPromptPreviewArtifactId,
                 ),
             ),
-            "codeEligibilityDecision" to snapshot.codeEligibilityDecision?.let(::stageEligibilityDecisionToMap),
-            "generatedCodeDraftWriteReport" to snapshot.generatedCodeDraftWriteReport?.let { report ->
+            "codeEligibilityDecision" to generationState.codeEligibilityDecision?.let(::stageEligibilityDecisionToMap),
+            "generatedCodeDraftWriteReport" to generationState.generatedCodeDraftWriteReport?.let { report ->
                 linkedMapOf(
                     "writtenFiles" to report.writtenFiles,
                     "skippedFiles" to report.skippedFiles,
                     "warnings" to report.warnings,
                 )
             },
-            "semanticRevision" to editorSnapshot.semanticRevision,
-            "workspaceRevision" to editorSnapshot.workspaceRevision,
-            "snapshotRevision" to editorSnapshot.snapshotRevision,
-            "sourceNavigationState" to sourceNavigationStateToMap(snapshot.sourceNavigationState),
-            "workbenchSectionPreferences" to LinkedHashMap(snapshot.workbenchSectionPreferences),
-            "assistantSessionState" to assistantSessionStateToMap(snapshot.assistantSessionState),
-            "lastMessageType" to snapshot.lastMessageType,
-            "lastGraphSource" to snapshot.lastGraphSource,
-            "operationFeedback" to snapshot.operationFeedback?.let { feedback ->
+            "semanticRevision" to workspaceState.semanticRevision,
+            "workspaceRevision" to workspaceState.workspaceRevision,
+            "snapshotRevision" to transportState.snapshotRevision,
+            "sourceNavigationState" to sourceNavigationStateToMap(navigationState.sourceNavigationState),
+            "assistantSessionState" to GraphEditorAssistantSessionRenderer.assistantSessionStateToMap(assistantState.sessionState),
+            "assistantResultStore" to assistantResultStoreToMap(
+                store = assistantState.resultStore,
+                artifactRefs = artifactRefs.assistantResultArtifacts,
+            ),
+            "lastMessageType" to transportState.lastMessageType,
+            "lastGraphSource" to transportState.lastGraphSource,
+            "operationFeedback" to transportState.operationFeedback?.let { feedback ->
                 linkedMapOf(
                     "level" to feedback.level.name,
                     "message" to feedback.message,
@@ -416,7 +393,7 @@ class GraphEditorPageRenderer {
     )
 
     /** 把异步请求状态转换成前端可消费的映射。 */
-    private fun requestStateToMap(
+    internal fun requestStateToMap(
         state: com.charmnight.linkgraph.ui.AsyncRequestState,
         hasPromptPreview: Boolean = state.promptPreviewAvailable,
     ): Map<String, Any?> = linkedMapOf(
@@ -462,35 +439,128 @@ class GraphEditorPageRenderer {
         "baseSessionId" to request.baseSession?.sessionId,
     )
 
-    private fun assistantSessionStateToMap(
-        state: com.charmnight.linkgraph.workbench.AssistantSessionState,
+    internal fun assistantResultStoreToMap(
+        store: com.charmnight.linkgraph.workbench.AssistantResultStore,
+        artifactRefs: Map<String, GraphEditorArtifactRegistry.AssistantResultArtifacts>,
+    ): Map<String, Any?> = store.results.mapValues { (resultId, entry) ->
+        val resultArtifacts = artifactRefs[resultId] ?: GraphEditorArtifactRegistry.AssistantResultArtifacts()
+        linkedMapOf<String, Any?>(
+            "kind" to entry.kind.name,
+            "failure" to entry.failure?.let(::assistantFailureResultToMap),
+        ).apply {
+            when (entry.kind) {
+                com.charmnight.linkgraph.workbench.AssistantTurnKind.EXPLANATION -> {
+                    put("explanation", entry.explanation?.let { result ->
+                        beautificationResultToMap(
+                            result,
+                            promptPreviewArtifactId = resultArtifacts.explanationPromptPreviewArtifactId,
+                        )
+                    })
+                }
+                com.charmnight.linkgraph.workbench.AssistantTurnKind.QA -> {
+                    put("qa", entry.qa?.let { result ->
+                        patchResultToMap(
+                            result,
+                            promptPreviewArtifactId = resultArtifacts.qaPromptPreviewArtifactId,
+                        )
+                    })
+                }
+                com.charmnight.linkgraph.workbench.AssistantTurnKind.GENERATION_PLAN -> {
+                    put("generationPlan", entry.generationPlan?.let { plan ->
+                        generationPlanToMap(
+                            plan,
+                            promptPreviewArtifactId = resultArtifacts.generationPlanPromptPreviewArtifactId,
+                        )
+                    })
+                    put("generationDiscussionSession", entry.generationDiscussionSession?.let { session ->
+                        generationPlanDiscussionSessionToMap(
+                            session,
+                            promptPreviewArtifactId = resultArtifacts.generationDiscussionPromptPreviewArtifactId,
+                        )
+                    })
+                }
+                com.charmnight.linkgraph.workbench.AssistantTurnKind.CODE_DRAFT -> {
+                    put("generationPlan", entry.generationPlan?.let { plan ->
+                        generationPlanToMap(
+                            plan,
+                            promptPreviewArtifactId = resultArtifacts.generationPlanPromptPreviewArtifactId,
+                        )
+                    })
+                    put("generationDiscussionSession", entry.generationDiscussionSession?.let { session ->
+                        generationPlanDiscussionSessionToMap(
+                            session,
+                            promptPreviewArtifactId = resultArtifacts.generationDiscussionPromptPreviewArtifactId,
+                        )
+                    })
+                    put("codeDraftWarnings", entry.codeDraftWarnings)
+                    put("codeDrafts", entry.codeDrafts.map { draft ->
+                        generatedCodeDraftToMap(
+                            draft,
+                            contentArtifactId = resultArtifacts.codeDraftContentArtifactIds[draft.id],
+                        )
+                    })
+                }
+                com.charmnight.linkgraph.workbench.AssistantTurnKind.CHECK_RESULT -> {
+                    put("check", entry.check?.let { result ->
+                        patchResultToMap(
+                            result,
+                            promptPreviewArtifactId = resultArtifacts.checkPromptPreviewArtifactId,
+                        )
+                    })
+                }
+            }
+        }
+    }
+
+    private fun assistantFailureResultToMap(
+        failure: com.charmnight.linkgraph.workbench.AssistantFailureResult,
     ): Map<String, Any?> = linkedMapOf(
-        "sessionId" to state.sessionId,
-        "activeIntent" to state.activeIntent.name,
-        "contextLocked" to state.contextLocked,
-        "context" to assistantContextSnapshotToMap(state.context),
-        "turns" to state.turns.map { turn ->
+        "resultId" to failure.resultId,
+        "message" to failure.message,
+        "detailMessage" to failure.detailMessage,
+        "phase" to failure.phase,
+        "requestId" to failure.requestId,
+        "sourceMessageType" to failure.sourceMessageType,
+        "createdAtEpochMillis" to failure.createdAtEpochMillis,
+    )
+
+    internal fun generationPlanToMap(
+        plan: com.charmnight.linkgraph.llm.GenerationPlan,
+        promptPreviewArtifactId: String?,
+    ): Map<String, Any?> = linkedMapOf(
+        "source" to plan.source.name,
+        "summary" to plan.summary,
+        "warnings" to plan.warnings,
+        "promptPreviewArtifactId" to promptPreviewArtifactId,
+        "items" to plan.items.map { item ->
             linkedMapOf(
-                "turnId" to turn.turnId,
-                "kind" to turn.kind.name,
-                "sourceMessageType" to turn.sourceMessageType,
-                "resultId" to turn.resultId,
-                "createdAtEpochMillis" to turn.createdAtEpochMillis,
-                "context" to assistantContextSnapshotToMap(turn.context),
+                "id" to item.id,
+                "title" to item.title,
+                "description" to item.description,
+                "risk" to item.risk.name,
+                "targetPath" to item.targetPath,
             )
         },
     )
 
-    private fun assistantContextSnapshotToMap(
-        context: com.charmnight.linkgraph.workbench.AssistantContextSnapshot,
-    ): Map<String, Any?> = linkedMapOf(
-        "selectedNodeIds" to context.selectedNodeIds,
-        "selectedDiffItemIds" to context.selectedDiffItemIds,
-        "analysisDisplayMode" to context.analysisDisplayMode,
-        "currentSceneId" to context.currentSceneId,
-        "selectedMethodSignature" to context.selectedMethodSignature,
-        "scopeLabel" to context.scopeLabel,
-    )
+    internal fun generatedCodeDraftToMap(
+        draft: com.charmnight.linkgraph.codegen.GeneratedCodeDraft,
+        contentArtifactId: String?,
+    ): MutableMap<String, Any?> = linkedMapOf<String, Any?>(
+        "id" to draft.id,
+        "sourceNodeId" to draft.sourceNodeId,
+        "title" to draft.title,
+        "targetPath" to draft.targetPath,
+        "contentArtifactId" to contentArtifactId,
+        "editOperations" to draft.editOperations.map(::codeEditOperationToMap),
+        "editScopes" to draft.editScopes.map(::editScopeToMap),
+        "preparedEdits" to draft.preparedEdits.map(::preparedCodeEditToMap),
+        "warnings" to draft.warnings,
+    ).apply {
+        if (contentArtifactId == null && draft.content != null) {
+            put("content", draft.content)
+        }
+    }
 
     private fun stageEligibilityDecisionToMap(
         decision: com.charmnight.linkgraph.workbench.StageEligibilityDecision,
@@ -706,42 +776,45 @@ class GraphEditorPageRenderer {
     private fun classDiagramViewToMap(
         document: ClassDiagramViewDocument,
         layoutState: GraphLayoutState? = null,
-    ): Map<String, Any?> = viewDocumentToMap(
-        visibleGraph = document.visibleGraph,
-        fullGraph = document.fullGraph,
-        anchorNodeId = document.anchorNodeId,
-        projectionIndex = document.projectionIndex,
-        summary = linkedMapOf(
-            "classCount" to document.summary.classCount,
-            "fieldCount" to document.summary.fieldCount,
-            "interfaceCount" to document.summary.interfaceCount,
-            "enumCount" to document.summary.enumCount,
-            "annotationCount" to document.summary.annotationCount,
-            "recordCount" to document.summary.recordCount,
-            "objectCount" to document.summary.objectCount,
-            "relationCount" to document.summary.relationCount,
-            "spiProviderCount" to document.summary.spiProviderCount,
-            "reflectionRelationCount" to document.summary.reflectionRelationCount,
-            "relationCompleteness" to document.summary.relationCompleteness,
-            "scopeTypeCount" to document.summary.scopeTypeCount,
-            "projectTypeCount" to document.summary.projectTypeCount,
-            "projectClassCount" to document.summary.projectClassCount,
-            "scopeBasis" to document.summary.scopeBasis,
-            "anchorTypeNodeId" to document.summary.anchorTypeNodeId,
-            "anchorTypeTitle" to document.summary.anchorTypeTitle,
-            "anchorTypeQualifiedName" to document.summary.anchorTypeQualifiedName,
-            "neighborhoodLimit" to document.summary.neighborhoodLimit,
-            "memberLimit" to document.summary.memberLimit,
-            "neighborhoodCandidateTypeCount" to document.summary.neighborhoodCandidateTypeCount,
-            "neighborhoodTruncated" to document.summary.neighborhoodTruncated,
-            "truncated" to document.summary.truncated,
-            "hiddenNodeCount" to document.summary.hiddenNodeCount,
-            "hiddenEdgeCount" to document.summary.hiddenEdgeCount,
-            "indexed" to document.summary.indexed?.toMap(),
-        ),
-        layoutState = layoutState,
-        presentation = document.presentation,
-    )
+    ): Map<String, Any?> =
+        viewDocumentToMap(
+            visibleGraph = document.visibleGraph,
+            fullGraph = document.fullGraph,
+            anchorNodeId = document.anchorNodeId,
+            projectionIndex = document.projectionIndex,
+            summary = linkedMapOf(
+                "classCount" to document.summary.classCount,
+                "fieldCount" to document.summary.fieldCount,
+                "interfaceCount" to document.summary.interfaceCount,
+                "enumCount" to document.summary.enumCount,
+                "annotationCount" to document.summary.annotationCount,
+                "recordCount" to document.summary.recordCount,
+                "objectCount" to document.summary.objectCount,
+                "relationCount" to document.summary.relationCount,
+                "spiProviderCount" to document.summary.spiProviderCount,
+                "reflectionRelationCount" to document.summary.reflectionRelationCount,
+                "relationCompleteness" to document.summary.relationCompleteness,
+                "scopeTypeCount" to document.summary.scopeTypeCount,
+                "projectTypeCount" to document.summary.projectTypeCount,
+                "projectClassCount" to document.summary.projectClassCount,
+                "scopeBasis" to document.summary.scopeBasis,
+                "anchorTypeNodeId" to document.summary.anchorTypeNodeId,
+                "anchorTypeTitle" to document.summary.anchorTypeTitle,
+                "anchorTypeQualifiedName" to document.summary.anchorTypeQualifiedName,
+                "neighborhoodLimit" to document.summary.neighborhoodLimit,
+                "memberLimit" to document.summary.memberLimit,
+                "neighborhoodCandidateTypeCount" to document.summary.neighborhoodCandidateTypeCount,
+                "neighborhoodTruncated" to document.summary.neighborhoodTruncated,
+                "truncated" to document.summary.truncated,
+                "hiddenNodeCount" to document.summary.hiddenNodeCount,
+                "hiddenEdgeCount" to document.summary.hiddenEdgeCount,
+                "indexed" to document.summary.indexed?.toMap(),
+            ),
+            layoutState = layoutState,
+            presentation = document.presentation,
+        ).toMutableMap().apply {
+            put("usage", document.usage?.toMap())
+        }
 
     private fun reviewGraphViewToMap(
         document: com.charmnight.linkgraph.review.ReviewGraphViewDocument,
@@ -904,7 +977,7 @@ class GraphEditorPageRenderer {
     )
 
     /** 把补丁类结果转换为前端使用的 Map 结构。 */
-    private fun patchResultToMap(
+    internal fun patchResultToMap(
         result: GraphPatchResult,
         promptPreviewArtifactId: String?,
     ): Map<String, Any?> = linkedMapOf(
@@ -928,7 +1001,7 @@ class GraphEditorPageRenderer {
     )
 
     /** 把链路讲解结果转换为前端使用的 Map 结构。 */
-    private fun beautificationResultToMap(
+    internal fun beautificationResultToMap(
         result: GraphBeautificationResult,
         promptPreviewArtifactId: String?,
     ): Map<String, Any?> = linkedMapOf(
@@ -1044,7 +1117,7 @@ class GraphEditorPageRenderer {
         "focusTargetId" to session.focusTargetId,
     )
 
-    private fun generationPlanDiscussionSessionToMap(
+    internal fun generationPlanDiscussionSessionToMap(
         session: com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession,
         promptPreviewArtifactId: String?,
     ): Map<String, Any?> = linkedMapOf(
@@ -1061,7 +1134,7 @@ class GraphEditorPageRenderer {
         "promptPreviewArtifactId" to promptPreviewArtifactId,
     )
 
-    private fun hasPromptPreview(promptPreview: String?, promptPreviewArtifactId: String?): Boolean {
+    internal fun hasPromptPreview(promptPreview: String?, promptPreviewArtifactId: String?): Boolean {
         return !promptPreview.isNullOrBlank() || !promptPreviewArtifactId.isNullOrBlank()
     }
 
@@ -1224,112 +1297,4 @@ class GraphEditorPageRenderer {
         return filtered.ifEmpty { null }
     }
 
-    private fun GraphViewPresentation.toMap(): Map<String, Any?> =
-        linkedMapOf(
-            "target" to target.toMap(),
-            "lanes" to lanes.map { lane -> lane.toMap() },
-            "hiddenBuckets" to hiddenBuckets.map { bucket -> bucket.toMap() },
-            "controls" to controls.toMap(),
-        )
-
-    private fun GraphPresentationTarget.toMap(): Map<String, Any?> =
-        linkedMapOf(
-            "nodeId" to nodeId,
-            "title" to title,
-            "subtitle" to subtitle,
-            "location" to location,
-        )
-
-    private fun GraphPresentationLane.toMap(): Map<String, Any?> =
-        linkedMapOf(
-            "id" to id,
-            "label" to label,
-            "axis" to axis.name,
-            "order" to order,
-            "role" to role,
-        )
-
-    private fun GraphHiddenBucket.toMap(): Map<String, Any?> =
-        linkedMapOf(
-            "id" to id,
-            "label" to label,
-            "count" to count,
-            "nodeIds" to nodeIds,
-            "edgeIds" to edgeIds,
-        )
-
-    private fun GraphPresentationControls.toMap(): Map<String, Any?> =
-        linkedMapOf(
-            "primaryScope" to primaryScope,
-            "availableScopes" to availableScopes,
-            "searchable" to searchable,
-            "expandable" to expandable,
-        )
-
-    private fun IndexedGraphSummary.toMap(): Map<String, Any?> =
-        linkedMapOf(
-            "view" to view,
-            "anchorKind" to anchorKind,
-            "anchorNodeId" to anchorNodeId,
-            "anchorTitle" to anchorTitle,
-            "anchorQualifiedName" to anchorQualifiedName,
-            "scopeKind" to scopeKind,
-            "scopeLabel" to scopeLabel,
-            "relationKinds" to relationKinds,
-            "depth" to depth,
-            "projectNodeCount" to projectNodeCount,
-            "projectClassCount" to projectClassCount,
-            "externalNodeCount" to externalNodeCount,
-            "jdkNodeCount" to jdkNodeCount,
-            "scopedNodeCount" to scopedNodeCount,
-            "visibleNodeCount" to visibleNodeCount,
-            "hiddenNodeCount" to hiddenNodeCount,
-            "hiddenEdgeCount" to hiddenEdgeCount,
-            "candidateNodeCount" to candidateNodeCount,
-            "candidateEdgeCount" to candidateEdgeCount,
-            "truncated" to truncated,
-            "completeness" to completeness,
-            "cacheState" to cacheState,
-            "includeExternalLibraries" to includeExternalLibraries,
-            "includeJdk" to includeJdk,
-            "projectSourceNodeCount" to projectSourceNodeCount,
-            "externalLibraryNodeCount" to externalLibraryNodeCount,
-            "resourceNodeCount" to resourceNodeCount,
-            "aggregateNodeCount" to aggregateNodeCount,
-            "projectLayerCounts" to projectLayerCounts.toMap(),
-            "visibleLayerCounts" to visibleLayerCounts.toMap(),
-            "scopedLayerCounts" to scopedLayerCounts.toMap(),
-            "candidateLayerCounts" to candidateLayerCounts.toMap(),
-            "hiddenLayerCounts" to hiddenLayerCounts.toMap(),
-            "collapsedLayerCounts" to collapsedLayerCounts.toMap(),
-            "freshness" to freshness.toMap(),
-            "visibilityReasons" to visibilityReasons.map { reason -> reason.toMap() },
-        )
-
-    private fun com.charmnight.linkgraph.application.indexed.IndexedGraphVisibilityReason.toMap(): Map<String, Any?> =
-        linkedMapOf(
-            "code" to code,
-            "label" to label,
-            "nodeCount" to nodeCount,
-            "edgeCount" to edgeCount,
-        )
-
-    private fun com.charmnight.linkgraph.application.indexed.IndexedGraphFreshness.toMap(): Map<String, Any?> =
-        linkedMapOf(
-            "state" to state,
-            "dirtyReason" to dirtyReason,
-            "pendingFileCount" to pendingFileCount,
-            "pendingFileSamples" to pendingFileSamples,
-            "lastIndexedAtEpochMillis" to lastIndexedAtEpochMillis,
-            "staleSinceEpochMillis" to staleSinceEpochMillis,
-        )
-
-    private fun com.charmnight.linkgraph.application.indexed.IndexedGraphLayerCounts.toMap(): Map<String, Int> =
-        linkedMapOf(
-            "projectSource" to projectSource,
-            "externalLibrary" to externalLibrary,
-            "jdk" to jdk,
-            "resource" to resource,
-            "aggregate" to aggregate,
-        )
 }

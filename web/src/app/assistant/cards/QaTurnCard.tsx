@@ -3,97 +3,52 @@ import type {
   AssistantTurn,
   QaRequestRecoveryState,
   ResultEvidenceReference,
-  RiskResolutionStatus,
 } from "../../types";
-import { assistantTurnKindLabel } from "../assistantModels";
+import type { AssistantArtifactAccess } from "../assistantArtifacts";
+import { AssistantFailureNotice } from "./AssistantFailureNotice";
+import { AssistantPromptDisclosure } from "./AssistantPromptDisclosure";
+import { AssistantQuestionAnswer, AssistantTurnHeader } from "./AssistantTurnFrame";
 
-interface QaTurnCardProps {
+interface QaTurnCardProps extends AssistantArtifactAccess {
   turn: AssistantTurn;
+  turnIndex?: number;
+  isLatest?: boolean;
   recoveryState?: QaRequestRecoveryState | null;
   onRetryLastQaRequest: () => void;
   onEditFailedQaRequest: () => void;
   onRevealReference: (reference: ResultEvidenceReference) => void;
-  onConfirmCandidateChange?: (changeId: string) => void;
-  onInvestigateThread?: (threadId: string) => void;
-  onResolveThread?: (threadId: string, status: RiskResolutionStatus) => void;
 }
 
 export function QaTurnCard({
   turn,
+  turnIndex,
+  isLatest = false,
   recoveryState,
   onRetryLastQaRequest,
   onEditFailedQaRequest,
   onRevealReference,
-  onConfirmCandidateChange,
-  onInvestigateThread,
-  onResolveThread,
+  resolveArtifactText,
+  onRequestArtifact,
 }: QaTurnCardProps) {
   const result = turn.qa;
   const failedRequest = recoveryState?.lastFailedRequest ?? null;
   return (
     <article className="assistant-turn-card assistant-turn-qa">
-      <div className="assistant-turn-head">
-        <span className="assistant-turn-kind">{assistantTurnKindLabel(turn.kind)}</span>
-        <span className="muted">{turn.context.scopeLabel}</span>
-      </div>
-      {!result ? (
-        <p className="muted">问答结果尚未返回。</p>
+      <AssistantTurnHeader turn={turn} turnIndex={turnIndex} isLatest={isLatest} />
+      {!result && turn.failure ? (
+        <AssistantFailureNotice failure={turn.failure} />
+      ) : !result ? (
+        <p className="muted assistant-result-text">问答结果尚未返回。</p>
       ) : (
         <div className="assistant-card-flow">
-          <p className="assistant-question">{result.question}</p>
-          <p>{result.answer}</p>
+          <AssistantQuestionAnswer question={result.question} answer={result.answer} />
           <EvidenceFindings findings={result.findings} onRevealReference={onRevealReference} />
-          {result.candidateChanges.length > 0 ? (
-            <section className="assistant-evidence-block">
-              <strong>候选草稿变更</strong>
-              {result.candidateChanges.map((change) => (
-                <div key={change.changeId} className="assistant-evidence-item">
-                  <strong>{change.title}</strong>
-                  <p className="muted">{change.impactSummary || change.reason}</p>
-                  {onConfirmCandidateChange ? (
-                    <button
-                      type="button"
-                      className="ghost-button compact"
-                      onClick={() => onConfirmCandidateChange(change.changeId)}
-                    >
-                      确认进草稿
-                    </button>
-                  ) : null}
-                </div>
-              ))}
-            </section>
-          ) : null}
-          {(result.investigationThreads ?? []).length > 0 ? (
-            <section className="assistant-evidence-block">
-              <strong>风险线程</strong>
-              {(result.investigationThreads ?? []).map((thread) => (
-                <div key={thread.threadId} className="assistant-evidence-item">
-                  <strong>{thread.title}</strong>
-                  <p className="muted">{thread.summary}</p>
-                  <div className="panel-actions">
-                    {onInvestigateThread ? (
-                      <button type="button" className="ghost-button compact" onClick={() => onInvestigateThread(thread.threadId)}>
-                        继续取证
-                      </button>
-                    ) : null}
-                    {onResolveThread ? (
-                      <>
-                        <button type="button" className="ghost-button compact" onClick={() => onResolveThread(thread.threadId, "DEFERRED")}>
-                          暂挂
-                        </button>
-                        <button type="button" className="ghost-button compact" onClick={() => onResolveThread(thread.threadId, "ACCEPTED_RISK")}>
-                          接受风险
-                        </button>
-                        <button type="button" className="ghost-button compact" onClick={() => onResolveThread(thread.threadId, "DISMISSED")}>
-                          排除
-                        </button>
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </section>
-          ) : null}
+          <AssistantPromptDisclosure
+            promptPreview={result.promptPreview}
+            promptPreviewArtifactId={result.promptPreviewArtifactId}
+            resolveArtifactText={resolveArtifactText}
+            onRequestArtifact={onRequestArtifact}
+          />
         </div>
       )}
       {failedRequest ? (
@@ -126,13 +81,13 @@ export function EvidenceFindings({
       {findings.map((finding) => (
         <div key={finding.id} className="assistant-evidence-item">
           <span className="badge">{resultEvidenceLevelLabel(finding.evidenceLevel)}</span>
-          <p>{finding.claim}</p>
+          <p className="assistant-result-text">{finding.claim}</p>
           <div className="panel-actions">
             {finding.references.map((reference, index) => (
               <button
                 key={`${finding.id}:${index}`}
                 type="button"
-                className="ghost-button compact"
+                className="ghost-button compact assistant-wrap-token"
                 onClick={() => onRevealReference(reference)}
               >
                 {formatResultEvidenceReference(reference)}

@@ -6,45 +6,38 @@ import {
   importMermaid,
   openCodeDraftNativeDiff,
   requestArtifactContent,
-  requestDiffReviewAsync,
-  updateWorkbenchSectionPreference,
 } from "../../../app/api";
 import { useAppBridgeController } from "../../../app/controllers/useAppBridgeController";
 
 vi.mock("../../../app/api", () => ({
-  requestArtifactContent: vi.fn((artifactIds: string[]) => ({ ok: true, artifactIds })),
-  updateWorkbenchSectionPreference: vi.fn((sectionId: string, expanded: boolean) => ({ ok: true, sectionId, expanded })),
   importMermaid: vi.fn((mermaid: string) => ({ ok: true, mermaid })),
-  requestDiffReviewAsync: vi.fn((question: string, diffTargetItemIds: string[]) => ({ ok: true, question, diffTargetItemIds })),
   applySingleCodeDraft: vi.fn((draftId: string) => ({ ok: true, draftId })),
   openCodeDraftNativeDiff: vi.fn((draftId: string) => ({ ok: true, draftId })),
+  requestArtifactContent: vi.fn((artifactIds: string[]) => ({ ok: true, artifactIds })),
 }));
 
 function renderController() {
-  const runBridgeCommand = vi.fn((_label: string, command: () => unknown, options?: { onAccepted?: () => void }) => {
+  const runBridgeCommand = vi.fn((
+    _label: string,
+    command: () => unknown,
+    options?: { onAccepted?: () => void; announceFailure?: boolean },
+  ) => {
     const result = command();
     options?.onAccepted?.();
     return result;
   });
   const submitAsyncBridgeCommand = vi.fn((_label: string, command: () => unknown) => command());
   const hook = renderHook(() => {
-    const [artifactContents, setArtifactContents] = useState<Record<string, string>>({ loaded: "cached artifact" });
     const [importDialogOpen, setImportDialogOpen] = useState(true);
-    const [workbenchSectionPreferences, setWorkbenchSectionPreferences] = useState<Record<string, boolean>>({});
     return {
-      artifactContents,
       importDialogOpen,
-      workbenchSectionPreferences,
       controller: useAppBridgeController({
-        artifactContents,
         bridgeCommands: {
           runBridgeCommand,
           submitAsyncBridgeCommand,
         } as never,
         setImportDialogOpen,
-        setWorkbenchSectionPreferences,
       }),
-      setArtifactContents,
     };
   });
   return {
@@ -55,37 +48,33 @@ function renderController() {
 }
 
 describe("useAppBridgeController", () => {
-  it("requests missing artifacts through the bridge but skips cached ones", () => {
-    const { result } = renderController();
-
-    act(() => {
-      result.current.controller.handleRequestArtifact("loaded");
-      result.current.controller.handleRequestArtifact("missing");
-    });
-
-    expect(requestArtifactContent).toHaveBeenCalledTimes(1);
-    expect(requestArtifactContent).toHaveBeenCalledWith(["missing"]);
-  });
-
-  it("delegates workbench preference, import, diff review, and single-draft actions through bridge command wrappers", () => {
+  it("delegates import and single-draft actions through bridge command wrappers", () => {
     const { result, runBridgeCommand, submitAsyncBridgeCommand } = renderController();
 
     act(() => {
-      result.current.controller.handleWorkbenchSectionPreferenceChange("qa.request-status", true);
       result.current.controller.handleConfirmImportMermaid("graph TD\nA-->B");
-      result.current.controller.handleRequestDiffReview("why changed?", ["node-a"]);
       result.current.controller.handleWriteSingleCodeDraft("draft-1");
       result.current.controller.handleOpenCodeDraftNativeDiff("draft-1");
     });
 
-    expect(updateWorkbenchSectionPreference).toHaveBeenCalledWith("qa.request-status", true);
     expect(importMermaid).toHaveBeenCalledWith("graph TD\nA-->B");
-    expect(requestDiffReviewAsync).toHaveBeenCalledWith("why changed?", ["node-a"]);
     expect(applySingleCodeDraft).toHaveBeenCalledWith("draft-1");
     expect(openCodeDraftNativeDiff).toHaveBeenCalledWith("draft-1");
-    expect(result.current.workbenchSectionPreferences["qa.request-status"]).toBe(true);
     expect(runBridgeCommand).toHaveBeenCalledTimes(3);
-    expect(submitAsyncBridgeCommand).toHaveBeenCalledTimes(1);
+    expect(submitAsyncBridgeCommand).not.toHaveBeenCalled();
     expect(result.current.importDialogOpen).toBe(false);
+  });
+
+  it("delegates artifact content requests through the bridge command wrapper", () => {
+    const { result, runBridgeCommand } = renderController();
+
+    act(() => {
+      result.current.controller.handleRequestArtifact("assistant-qa-prompt:turn-1");
+    });
+
+    expect(requestArtifactContent).toHaveBeenCalledWith(["assistant-qa-prompt:turn-1"]);
+    expect(runBridgeCommand).toHaveBeenCalledWith("加载按需内容", expect.any(Function), {
+      announceFailure: false,
+    });
   });
 });

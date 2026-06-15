@@ -7,6 +7,7 @@ import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
+import com.charmnight.linkgraph.workbench.AssistantActionId
 import com.charmnight.linkgraph.workbench.QaConversationSession
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
@@ -230,6 +231,8 @@ data class GraphBeautificationContext(
     val granularity: StepGranularity = StepGranularity.BUSINESS,
     /** 保存当前图证据允许的讲解边界。 */
     val evidenceProfile: GraphEvidenceProfile = GraphEvidenceProfile(),
+    /** 保存用户触发的具体 AI 工作台动作。 */
+    val assistantActionId: AssistantActionId? = null,
 )
 
 /**

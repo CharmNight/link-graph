@@ -101,7 +101,6 @@ fun testSnapshot(
     workspaceRevision: Long = 0,
     snapshotRevision: Long = 0,
     operationFeedback: OperationFeedback? = null,
-    workbenchSectionPreferences: Map<String, Boolean> = emptyMap(),
     lastMessageType: String? = null,
     visibleGraph: GraphDocument? = null,
     workingGraph: GraphDocument? = null,
@@ -248,7 +247,6 @@ fun testSnapshot(
         workspaceRevision = workspaceRevision,
         snapshotRevision = snapshotRevision,
         operationFeedback = operationFeedback,
-        workbenchSectionPreferences = workbenchSectionPreferences,
         lastMessageType = lastMessageType,
     )
 }

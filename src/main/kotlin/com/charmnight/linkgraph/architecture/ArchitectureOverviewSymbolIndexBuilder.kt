@@ -81,15 +81,16 @@ internal class ArchitectureOverviewSymbolIndexBuilder(
                 },
             )
         }
-        var usedVirtualFallback = false
-        if (classes.isEmpty()) {
-            usedVirtualFallback = true
+        val classesBeforeVirtualRoots = classes.size
+        val shouldIndexVirtualContentRoots = classes.isEmpty() || hasNonFileContentRoots()
+        if (shouldIndexVirtualContentRoots) {
             indexVirtualContentRoots(budget, modules, packages, classes, fields, resources, serviceFiles)
         }
         trace?.invoke("architectureOverview.symbolIndex.fileTree", startedAt) {
             listOf(
                 "diskRoot=$diskRootState",
-                "usedVirtualFallback=$usedVirtualFallback",
+                "indexedVirtualContentRoots=$shouldIndexVirtualContentRoots",
+                "virtualClassDelta=${classes.size - classesBeforeVirtualRoots}",
                 "visitedFiles=$visitedFiles",
                 "modules=${modules.size}",
                 "packages=${packages.size}",
@@ -108,6 +109,11 @@ internal class ArchitectureOverviewSymbolIndexBuilder(
             serviceProviderIndex = JvmServiceProviderIndex(serviceFiles),
         )
     }
+
+    private fun hasNonFileContentRoots(): Boolean =
+        ProjectRootManager.getInstance(project).contentRoots.any { root ->
+            root.fileSystem.protocol != "file"
+        }
 
     private fun indexVirtualContentRoots(
         budget: JvmResolutionBudget,

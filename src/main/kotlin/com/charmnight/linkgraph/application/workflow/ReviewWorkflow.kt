@@ -20,6 +20,7 @@ import com.charmnight.linkgraph.llm.GraphDiffPatchService
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.llm.ResultEvidenceFinding
+import com.charmnight.linkgraph.llm.markRuntimeEvidenceTrusted
 import com.charmnight.linkgraph.llm.artifact.AgentArtifactStoreService
 import com.charmnight.linkgraph.llm.artifact.ArtifactStore
 import com.charmnight.linkgraph.llm.capability.QaCapability
@@ -47,6 +48,8 @@ import com.charmnight.linkgraph.application.result.ReviewRequestStartedResult
 import com.charmnight.linkgraph.application.usecase.ReviewUseCase
 import com.charmnight.linkgraph.application.usecase.ReviewUseCaseResult
 import com.charmnight.linkgraph.workbench.QaConversationService
+import com.charmnight.linkgraph.workbench.AssistantIntent
+import com.charmnight.linkgraph.workbench.AssistantActionId
 import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.QaModeClassifier
 import com.charmnight.linkgraph.workbench.QaModeContext
@@ -404,6 +407,7 @@ internal class ReviewWorkflow(
                         requestedMode = qaInput.requestedMode,
                         effectiveMode = qaInput.effectiveMode,
                         onPreview = qaInput.onPreview,
+                        runtimeEvidenceTrusted = true,
                     )
                 }
             },
@@ -549,7 +553,7 @@ internal class ReviewWorkflow(
                 result.fold(
                     onSuccess = { runtimeResult ->
                         val normalizedQaResult = runtimeResult.output?.let { output ->
-                            qaResultNormalizer.normalize(output, modeContext)
+                            qaResultNormalizer.normalize(output.markRuntimeEvidenceTrusted(), modeContext)
                         }
                         val requestState = asyncRequestLifecycle.withRuntimeMetadata(
                             requestState = if (normalizedQaResult == null) {
@@ -755,6 +759,8 @@ internal class ReviewWorkflow(
         focusNodeId: String? = null,
         followUp: GraphBeautificationFollowUpContext? = null,
         granularity: StepGranularity = StepGranularity.BUSINESS,
+        assistantIntent: AssistantIntent = AssistantIntent.EXPLAIN_CODE,
+        assistantActionId: AssistantActionId = AssistantActionId.EXPLAIN_FLOW,
     ) = graphBeautificationWorkflow.requestGraphBeautificationAsync(
         goal = goal,
         preferredStyle = preferredStyle,
@@ -762,5 +768,7 @@ internal class ReviewWorkflow(
         focusNodeId = focusNodeId,
         followUp = followUp,
         granularity = granularity,
+        assistantIntent = assistantIntent,
+        assistantActionId = assistantActionId,
     )
 }

@@ -15,6 +15,11 @@ class GraphBrowserTransportState(
         val script: String,
     )
 
+    data class SnapshotAvailability(
+        val accepted: Boolean,
+        val transport: DispatchedTransport?,
+    )
+
     /**
      * 表示等待发送到前端的最新快照脚本。
      */
@@ -39,6 +44,7 @@ class GraphBrowserTransportState(
     /**
      * 在主框架重新加载开始时重置传输状态。
      */
+    @Synchronized
     fun onMainFrameLoadStarted() {
         // 页面重新加载后，旧的加载状态和修订记录都不再可信，需要整体清空。
         mainFrameLoaded = false
@@ -50,6 +56,7 @@ class GraphBrowserTransportState(
     /**
      * 在主框架加载完成时尝试发送最新快照。
      */
+    @Synchronized
     fun onMainFrameLoadEnded(): DispatchedTransport? {
         mainFrameLoaded = true
         return flushLatestSnapshotIfReady()
@@ -58,27 +65,37 @@ class GraphBrowserTransportState(
     /**
      * 在有新快照可用时记录最新版本，并尝试立即分发。
      */
+    @Synchronized
     fun onSnapshotAvailable(
         revision: Long,
         script: String,
-    ): DispatchedTransport? {
+    ): SnapshotAvailability {
         // 仅保留修订号更新的快照，避免旧快照覆盖新状态。
+        val deliveredFloor = max(lastAckedRevision, lastDispatchedRevision)
         val currentPendingRevision = latestPendingSnapshot?.revision ?: Long.MIN_VALUE
-        if (revision >= currentPendingRevision) {
-            latestPendingSnapshot = PendingSnapshot(
-                revision = revision,
-                transport = DispatchedTransport(
-                    revision = revision,
-                    script = script,
-                ),
+        if (revision <= deliveredFloor || revision < currentPendingRevision) {
+            return SnapshotAvailability(
+                accepted = false,
+                transport = null,
             )
         }
-        return flushLatestSnapshotIfReady()
+        latestPendingSnapshot = PendingSnapshot(
+            revision = revision,
+            transport = DispatchedTransport(
+                revision = revision,
+                script = script,
+            ),
+        )
+        return SnapshotAvailability(
+            accepted = true,
+            transport = flushLatestSnapshotIfReady(),
+        )
     }
 
     /**
      * 在前端完成初始化后更新确认修订号，并尝试补发最新快照。
      */
+    @Synchronized
     fun onFrontendReady(lastAppliedRevision: Long?): DispatchedTransport? {
         frontendReady = true
         if (lastAppliedRevision != null) {
@@ -91,6 +108,7 @@ class GraphBrowserTransportState(
     /**
      * 在前端确认某个快照后推进确认修订号。
      */
+    @Synchronized
     fun onSnapshotAcknowledged(revision: Long): DispatchedTransport? {
         // 确认修订号只允许单调递增，避免乱序确认导致状态回退。
         lastAckedRevision = max(lastAckedRevision, revision)
@@ -109,10 +127,12 @@ class GraphBrowserTransportState(
         // 以“已确认”和“已投递”中的较大修订号作为投递下界，确保不会重复发送旧快照。
         val deliveredFloor = max(lastAckedRevision, lastDispatchedRevision)
         if (pendingSnapshot.revision <= deliveredFloor) {
+            latestPendingSnapshot = null
             return null
         }
         // 一旦决定投递，先更新已投递修订号，再把脚本文本返回给调用方。
         lastDispatchedRevision = pendingSnapshot.revision
+        latestPendingSnapshot = null
         return pendingSnapshot.transport
     }
 }

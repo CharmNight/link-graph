@@ -1,30 +1,40 @@
 import { useMemo } from "react";
+import {
+  activeAnchorNodeIdForDisplayMode,
+  activeVisibleGraphForDisplayMode,
+  type AssistantStageTarget,
+} from "../appDisplaySelectors";
 import { buildDraftCompareProjection } from "../draftCompareProjection";
+import {
+  collectDraftChangedNodeIds,
+  selectDraftWorkbenchEntry,
+} from "../workbenchDraftModel";
+import {
+  deriveCodeDiffStatus,
+  deriveDraftImplementationSuggestionState,
+  type CodeDiffStatus,
+} from "../workbenchStatusModel";
 import type {
   AnalysisDisplayMode,
   ArchitectureGraphViewDocument,
-  QaWorkbenchState,
+  AssistantQaViewState,
   AsyncRequestState,
   ClassDiagramViewDocument,
-  DraftImplementationSuggestionState,
   DraftWorkbenchEntry,
   DraftWorkbenchState,
   DraftWorkbenchViewState,
-  ExplanationWorkbenchState,
+  AssistantExplanationViewState,
+  FactGraphViewDocument,
   FlowchartViewDocument,
   GenerationPlan,
   GeneratedCodeDraft,
   GraphBeautificationResult,
   LinkGraphDocument,
   LinkGraphNode,
-  QaMode,
   QaRequestRecoveryState,
   ResourceRelationViewDocument,
   ReviewGraphViewDocument,
 } from "../types";
-
-type WorkbenchTab = "explanation" | "qa" | "draft" | "code";
-type CodeDiffStatus = "MISSING" | "RUNNING" | "FRESH" | "STALE" | "FAILED";
 
 interface ExplanationHistoryEntry {
   sessionLabel: string;
@@ -32,12 +42,10 @@ interface ExplanationHistoryEntry {
 
 interface UseWorkbenchDerivedStateArgs {
   analysisDisplayMode: AnalysisDisplayMode;
-  activeWorkbenchTab: WorkbenchTab;
-  qaResult: QaWorkbenchState["result"];
+  activeAssistantTarget: AssistantStageTarget;
+  qaResult: AssistantQaViewState["result"];
   qaRequestState: AsyncRequestState;
   qaRequestRecoveryState: QaRequestRecoveryState;
-  qaQuestionDraft: string;
-  qaQuestionMode: QaMode;
   qaTargetNodeIds: string[];
   qaTargetTitle: string | null;
   selectedQaChangeId: string | null;
@@ -45,7 +53,7 @@ interface UseWorkbenchDerivedStateArgs {
   graphBeautificationResult: GraphBeautificationResult | null;
   graphBeautificationRequestState: AsyncRequestState;
   selectedExplanationStepId: string | null;
-  selectedExplanationGranularity: ExplanationWorkbenchState["granularity"];
+  selectedExplanationGranularity: AssistantExplanationViewState["granularity"];
   hoveredExplanationStepId: string | null;
   explanationHistory: ExplanationHistoryEntry[];
   currentExplanationSessionLabel: string;
@@ -55,7 +63,7 @@ interface UseWorkbenchDerivedStateArgs {
   draftGraph: LinkGraphDocument | null;
   semanticFactGraph: LinkGraphDocument | null;
   workspaceBaseGraph: LinkGraphDocument | null;
-  factGraphView: { visibleGraph: LinkGraphDocument; anchorNodeId?: string | null };
+  factGraphView: FactGraphViewDocument;
   flowchartView: FlowchartViewDocument;
   resourceRelationView: ResourceRelationViewDocument;
   architectureGraphView: ArchitectureGraphViewDocument;
@@ -79,35 +87,22 @@ interface UseWorkbenchDerivedStateArgs {
     view: FlowchartViewDocument;
     workingGraph: LinkGraphDocument | null;
     entry: DraftWorkbenchEntry | null;
-    activeWorkbenchTab: WorkbenchTab;
+    activeAssistantTarget: AssistantStageTarget;
     compareMode: "after" | "compare";
   }) => FlowchartViewDocument;
 }
 
 export function useWorkbenchDerivedState(args: UseWorkbenchDerivedStateArgs) {
-  const activeViewGraph = args.analysisDisplayMode === "FLOWCHART"
-    ? args.flowchartView.visibleGraph
-    : args.analysisDisplayMode === "RESOURCE_RELATION_VIEW"
-      ? args.resourceRelationView.visibleGraph
-      : args.analysisDisplayMode === "ARCHITECTURE_GRAPH"
-        ? args.architectureGraphView.visibleGraph
-        : args.analysisDisplayMode === "CLASS_DIAGRAM"
-          ? args.classDiagramView.visibleGraph
-          : args.analysisDisplayMode === "REVIEW_GRAPH"
-            ? args.reviewGraphView.visibleGraph
-            : args.factGraphView.visibleGraph;
-
-  const activeAnchorNodeId = args.analysisDisplayMode === "FLOWCHART"
-    ? args.flowchartView.anchorNodeId ?? null
-    : args.analysisDisplayMode === "RESOURCE_RELATION_VIEW"
-      ? args.resourceRelationView.anchorNodeId ?? null
-      : args.analysisDisplayMode === "ARCHITECTURE_GRAPH"
-        ? args.architectureGraphView.anchorNodeId ?? null
-        : args.analysisDisplayMode === "CLASS_DIAGRAM"
-          ? args.classDiagramView.anchorNodeId ?? null
-          : args.analysisDisplayMode === "REVIEW_GRAPH"
-            ? args.reviewGraphView.anchorNodeId ?? null
-            : args.factGraphView.anchorNodeId ?? null;
+  const activeDisplayGraphDocuments = {
+    factGraphView: args.factGraphView,
+    flowchartView: args.flowchartView,
+    resourceRelationView: args.resourceRelationView,
+    architectureGraphView: args.architectureGraphView,
+    classDiagramView: args.classDiagramView,
+    reviewGraphView: args.reviewGraphView,
+  };
+  const activeViewGraph = activeVisibleGraphForDisplayMode(args.analysisDisplayMode, activeDisplayGraphDocuments);
+  const activeAnchorNodeId = activeAnchorNodeIdForDisplayMode(args.analysisDisplayMode, activeDisplayGraphDocuments);
 
   const activeMethodSignature = useMemo(() => {
     const activeAnchorNode = activeViewGraph.nodes.find((node) => node.id === activeAnchorNodeId) ?? null;
@@ -147,13 +142,8 @@ export function useWorkbenchDerivedState(args: UseWorkbenchDerivedStateArgs) {
   };
 
   const selectedDraftEntry = useMemo(
-    () =>
-      filteredDraftWorkbenchState.draftChanges.find((entry) => entry.entryId === args.selectedDraftEntryId)
-      ?? filteredDraftWorkbenchState.draftNotes.find((entry) => entry.entryId === args.selectedDraftEntryId)
-      ?? filteredDraftWorkbenchState.draftChanges[0]
-      ?? filteredDraftWorkbenchState.draftNotes[0]
-      ?? null,
-    [filteredDraftWorkbenchState.draftChanges, filteredDraftWorkbenchState.draftNotes, args.selectedDraftEntryId],
+    () => selectDraftWorkbenchEntry(filteredDraftWorkbenchState, args.selectedDraftEntryId),
+    [filteredDraftWorkbenchState, args.selectedDraftEntryId],
   );
 
   const presentedFlowchartView = useMemo(
@@ -161,10 +151,10 @@ export function useWorkbenchDerivedState(args: UseWorkbenchDerivedStateArgs) {
       view: args.flowchartView,
       workingGraph: args.draftGraph,
       entry: selectedDraftEntry,
-      activeWorkbenchTab: args.activeWorkbenchTab,
+      activeAssistantTarget: args.activeAssistantTarget,
       compareMode: args.draftCompareMode,
     }),
-    [args.activeWorkbenchTab, args.draftCompareMode, args.draftGraph, args.flowchartView, args.overlayDraftEntryOntoFlowchartView, selectedDraftEntry],
+    [args.activeAssistantTarget, args.draftCompareMode, args.draftGraph, args.flowchartView, args.overlayDraftEntryOntoFlowchartView, selectedDraftEntry],
   );
 
   const selectedExplanationStep = args.graphBeautificationResult?.steps.find((step) => step.stepId === args.selectedExplanationStepId)
@@ -172,13 +162,13 @@ export function useWorkbenchDerivedState(args: UseWorkbenchDerivedStateArgs) {
     ?? null;
   const hoveredExplanationStep = args.graphBeautificationResult?.steps.find((step) => step.stepId === args.hoveredExplanationStepId)
     ?? null;
-  const explanationFocusNodeId = args.activeWorkbenchTab === "explanation"
+  const explanationFocusNodeId = args.activeAssistantTarget === "explanation"
     ? hoveredExplanationStep?.primaryNodeId ?? selectedExplanationStep?.primaryNodeId ?? null
     : null;
 
   const draftChangedNodeIds = useMemo(
-    () => Array.from(new Set(filteredDraftWorkbenchState.draftChanges.flatMap((entry) => args.resolveDraftEntryTargetNodeIds(entry)))),
-    [filteredDraftWorkbenchState.draftChanges, args.resolveDraftEntryTargetNodeIds],
+    () => collectDraftChangedNodeIds(filteredDraftWorkbenchState, args.resolveDraftEntryTargetNodeIds),
+    [filteredDraftWorkbenchState, args.resolveDraftEntryTargetNodeIds],
   );
 
   const draftCompareProjection = useMemo(
@@ -197,7 +187,7 @@ export function useWorkbenchDerivedState(args: UseWorkbenchDerivedStateArgs) {
     [activeViewGraph, args.analysisDisplayMode, args.draftCompareMode, args.draftGraph, args.semanticFactGraph, args.workspaceBaseGraph, selectedDraftEntry],
   );
 
-  const explanationState: ExplanationWorkbenchState = {
+  const explanationState: AssistantExplanationViewState = {
     result: args.graphBeautificationResult,
     requestState: args.graphBeautificationRequestState,
     selectedStepId: args.selectedExplanationStepId,
@@ -212,54 +202,28 @@ export function useWorkbenchDerivedState(args: UseWorkbenchDerivedStateArgs) {
     previousSessionLabel: args.explanationHistory[args.explanationHistory.length - 1]?.sessionLabel ?? null,
   };
 
-  const qaState: QaWorkbenchState = {
+  const qaState: AssistantQaViewState = {
     result: args.qaResult,
     requestState: args.qaRequestState,
     qaRequestRecoveryState: args.qaRequestRecoveryState,
     selectedChangeId: args.selectedQaChangeId,
     selectedThreadId: args.selectedQaThreadId,
-    questionDraft: args.qaQuestionDraft,
-    selectedMode: args.qaQuestionMode,
     scopeLabel: buildQaScopeLabel(args.qaTargetNodeIds, args.qaTargetTitle),
   };
 
-  const draftImplementationSuggestionState: DraftImplementationSuggestionState = {
-    status: args.generationPlan?.summary
-      ? (
-        args.draftVersion != null
-        && args.generationPlanDraftVersion != null
-        && args.generationPlanDraftVersion < args.draftVersion
-          ? "STALE"
-          : "FRESH"
-      )
-      : args.generationPlanRequestState.phase === "RUNNING"
-        ? "RUNNING"
-        : args.generationPlanRequestState.phase === "FAILED" || args.generationPlanRequestState.phase === "TIMED_OUT"
-          ? "FAILED"
-          : "MISSING",
-    summary: args.generationPlan?.summary ?? null,
-    items: args.generationPlan?.items ?? [],
-    source: args.generationPlan?.source ?? null,
-    warnings: args.generationPlan?.warnings ?? [],
-    promptPreview: args.generationPlan?.promptPreview ?? null,
-    promptPreviewArtifactId: args.generationPlan?.promptPreviewArtifactId ?? null,
-    draftVersion: args.draftVersion,
+  const draftImplementationSuggestionState = deriveDraftImplementationSuggestionState({
+    generationPlan: args.generationPlan,
+    generationPlanRequestState: args.generationPlanRequestState,
     generationPlanDraftVersion: args.generationPlanDraftVersion,
-  };
+    draftVersion: args.draftVersion,
+  });
 
-  const codeDiffStatus: CodeDiffStatus = args.generatedCodeDrafts.length > 0
-    ? (
-      args.draftVersion != null
-      && args.generatedCodeDraftVersion != null
-      && args.generatedCodeDraftVersion < args.draftVersion
-        ? "STALE"
-        : "FRESH"
-    )
-    : args.codeDraftRequestState.phase === "RUNNING"
-      ? "RUNNING"
-      : args.codeDraftRequestState.phase === "FAILED" || args.codeDraftRequestState.phase === "TIMED_OUT"
-        ? "FAILED"
-        : "MISSING";
+  const codeDiffStatus: CodeDiffStatus = deriveCodeDiffStatus({
+    generatedCodeDrafts: args.generatedCodeDrafts,
+    generatedCodeDraftVersion: args.generatedCodeDraftVersion,
+    draftVersion: args.draftVersion,
+    codeDraftRequestState: args.codeDraftRequestState,
+  });
 
   return {
     explanationState,

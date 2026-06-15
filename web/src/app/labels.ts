@@ -492,19 +492,6 @@ export function candidateChangeStatusLabel(value: "PENDING_CONFIRMATION" | "CONF
   }
 }
 
-export function investigationLeadStatusLabel(value: "OPEN" | "PROMOTED" | "DISMISSED" | "SUPERSEDED"): string {
-  switch (value) {
-    case "OPEN":
-      return "待取证";
-    case "PROMOTED":
-      return "已转正";
-    case "DISMISSED":
-      return "已排除";
-    case "SUPERSEDED":
-      return "已替代";
-  }
-}
-
 export function investigationThreadStatusLabel(value: "OPEN" | "PROMOTED" | "DISMISSED" | "BLOCKED" | "SUPERSEDED"): string {
   switch (value) {
     case "OPEN":

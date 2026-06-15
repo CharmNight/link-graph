@@ -402,4 +402,34 @@ class ArchitectureIndexFragmentMergerTest {
         assertTrue(merged.symbolIndex.serviceProviderIndex.providersFor("").isEmpty())
         assertTrue(merged.symbolIndex.serviceProviderIndex.providersFor("com.example.EmptyProviders").isEmpty())
     }
+
+    @Test
+    fun dropsRelationsWhoseEndpointsAreNotPresentInMergedFragments() {
+        val merged = ArchitectureIndexFragmentMerger().merge(
+            listOf(
+                ArchitectureIndexSliceFragment(
+                    sliceId = "slice:orders",
+                    symbols = listOf(
+                        SymbolSliceFragment(
+                            id = "class:OrderService",
+                            qualifiedName = "com.example.orders.OrderService",
+                            simpleName = "OrderService",
+                            kind = "CLASS",
+                            sourcePath = "src/main/java/com/example/orders/OrderService.java",
+                        ),
+                    ),
+                    relations = listOf(
+                        RelationSliceFragment(
+                            id = "rel:deleted-target",
+                            kind = "USES_TYPE",
+                            fromSymbolId = "class:OrderService",
+                            toSymbolId = "class:DeletedTarget",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertTrue(merged.relationIndex.relations.isEmpty())
+    }
 }

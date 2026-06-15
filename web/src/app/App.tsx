@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { requestAssistantTask, undoLastDraftPatchApply } from "./api";
+import { undoLastDraftPatchApply } from "./api";
 import { AssistantWorkbenchShell } from "./assistant/AssistantWorkbenchShell";
 import { buildAssistantTurns } from "./assistant/assistantResultAdapters";
+import { useAssistantActionController, type AssistantDisplayModeDocuments } from "./assistant/useAssistantActionController";
+import {
+  buildDefaultClassDescriptionPrompt,
+  buildDefaultExplanationPrompt,
+  buildDefaultQaQuestion,
+  DEFAULT_GENERATION_PLAN_PROMPT,
+  NEW_ASSISTANT_COMPOSER_TARGET,
+} from "./assistant/assistantPromptDefaults";
 import {
   applyLayoutUpdatesToGraphDocument,
   applyBootstrapRoutesToViewDocument,
@@ -26,26 +34,34 @@ import {
   syncReviewGraphViewLayout,
   syncFlowchartViewLayout,
   syncResourceRelationViewLayout,
-  toDraftWorkbenchEntry,
-  updateGraphPatchResultCandidateStatus,
-  updateGraphPatchResultThreadResolution,
 } from "./appGraphSupport";
-import { AsyncRequestFailureDialog } from "./components/AsyncRequestFailureDialog";
-import { AppGraphStage } from "./components/AppGraphStage";
-import { AppWorkbenchPanels, type WorkbenchTab } from "./components/AppWorkbenchPanels";
-import { ChangeTray } from "./components/ChangeTray";
-import { EvidenceStagePanel } from "./components/EvidenceStagePanel";
-import { GraphStageFooter } from "./components/GraphStageFooter";
-import { GraphStageHeader } from "./components/GraphStageHeader";
-import { HybridWorkbenchLayout } from "./components/HybridWorkbenchLayout";
-import { LinkGraphOutline } from "./components/LinkGraphOutline";
-import { MermaidImportDialog } from "./components/MermaidImportDialog";
-import { StageWorkbench } from "./components/StageWorkbench";
-import { WorkflowTaskbar } from "./components/WorkflowTaskbar";
+import {
+  activeAnchorNodeIdForDisplayMode,
+  activeFullGraphForDisplayMode,
+  activeProjectionIndex,
+  workflowStageToAssistantTarget,
+} from "./appDisplaySelectors";
+import {
+  findExplanationStep,
+  resolveExplanationFollowUpQuestion,
+  resolveExplanationRerunIntent,
+  resolveExplanationStepRawNodeId as resolveRawNodeIdForExplanationStep,
+} from "./appExplanationStepModel";
+import {
+  clampAssistantWorkbenchWidth,
+  readHybridWorkbenchLayoutPreference,
+  writeHybridWorkbenchLayoutPreference,
+} from "./appWorkbenchPreferences";
+import {
+  primaryWorkflowActionCommand,
+} from "./appPrimaryWorkflowAction";
+import { deriveInvestigationThreads } from "./investigationThreads";
+import { AppDialogs } from "./components/AppDialogs";
+import { AppGraphStagePanel } from "./components/AppGraphStagePanel";
+import { AppWorkbenchChrome } from "./components/AppWorkbenchChrome";
 import {
   deriveChangeTrayState,
   deriveCurrentTarget,
-  deriveEvidencePanelState,
   deriveLinkGraphOutline,
   deriveWorkflowStageStates,
 } from "./components/hybridDerivations";
@@ -60,6 +76,8 @@ import { canEditNodeLayout } from "./layoutEditability";
 import type {
   AsyncRequestState,
   AnalysisDisplayMode,
+  AssistantActionId,
+  AssistantComposerTarget,
   AssistantIntent,
   CandidateDraftChange,
   DraftWorkbenchEntry,
@@ -70,13 +88,12 @@ import type {
   ClassDiagramViewDocument,
   FactGraphViewDocument,
   FlowchartViewDocument,
-  GraphProjectionIndex,
   GraphSurfaceExperimentFlags,
-  IndexedGraphSummary,
   LinkGraphDocument,
   LinkGraphBootstrapState,
   LinkGraphEdge,
   LinkGraphNode,
+  LinkGraphSceneId,
   QaRequestRecoveryState,
   ResultEvidenceReference,
   ReviewGraphViewDocument,
@@ -84,17 +101,12 @@ import type {
   StepGranularity,
 } from "./types";
 import type { EditableStageProps, IndexedReadonlyStageProps } from "./views/viewStageProps";
-import { GraphWorkbench } from "./workbench/GraphWorkbench";
-import { WorkbenchPropertyDrawer } from "./workbench/WorkbenchPropertyDrawer";
-import type { RequestFailureNotice } from "./controllers/bridgeCommandTypes";
-import { useQaWorkbenchController } from "./controllers/useQaWorkbenchController";
-import { useAppWorkbenchShellController } from "./controllers/useAppWorkbenchShellController";
+import { useAssistantQaActions } from "./controllers/useAssistantQaActions";
 import { useBootstrapProjectionState } from "./controllers/useBootstrapProjectionState";
 import { useBootstrapStateController } from "./controllers/useBootstrapStateController";
 import { useAppBridgeController } from "./controllers/useAppBridgeController";
 import { useBridgeCommandController } from "./controllers/useBridgeCommandController";
-import { useDraftWorkbenchController } from "./controllers/useDraftWorkbenchController";
-import { useExplanationWorkbenchController } from "./controllers/useExplanationWorkbenchController";
+import { useAssistantExplanationHistory } from "./controllers/useAssistantExplanationHistory";
 import { useGraphCanvasController } from "./controllers/useGraphCanvasController";
 import { useGraphEditController } from "./controllers/useGraphEditController";
 import { useInteractionProbeController } from "./controllers/useInteractionProbeController";
@@ -105,11 +117,7 @@ import { useWorkbenchDerivedState } from "./controllers/useWorkbenchDerivedState
 import { useWorkbenchCommandController } from "./controllers/useWorkbenchCommandController";
 import { useWorkbenchState } from "./controllers/useWorkbenchState";
 import { resolveToolbarFeedback } from "./asyncRequestStatus";
-import {
-  type WorkflowStage,
-  workbenchTabToWorkflowStage,
-  workflowStageToWorkbenchTab,
-} from "./workflow/workflowStage";
+import type { WorkflowStage } from "./workflow/workflowStage";
 import {
   EMPTY_QA_REQUEST_RECOVERY_STATE,
   EMPTY_STATE,
@@ -135,50 +143,6 @@ import {
 
 type ExplanationRequestMode = "fresh" | "follow_up";
 
-function activeIndexedGraphSummary(
-  analysisDisplayMode: AnalysisDisplayMode,
-  architectureSummary: IndexedGraphSummary | null,
-  classDiagramSummary: IndexedGraphSummary | null,
-  reviewSummary: IndexedGraphSummary | null,
-): IndexedGraphSummary | null {
-  switch (analysisDisplayMode) {
-    case "ARCHITECTURE_GRAPH":
-      return architectureSummary;
-    case "CLASS_DIAGRAM":
-      return classDiagramSummary;
-    case "REVIEW_GRAPH":
-      return reviewSummary;
-    default:
-      return null;
-  }
-}
-
-function activeProjectionIndex(
-  analysisDisplayMode: AnalysisDisplayMode,
-  factProjectionIndex: GraphProjectionIndex | null | undefined,
-  flowchartProjectionIndex: GraphProjectionIndex | null | undefined,
-  resourceProjectionIndex: GraphProjectionIndex | null | undefined,
-  architectureProjectionIndex: GraphProjectionIndex | null | undefined,
-  classDiagramProjectionIndex: GraphProjectionIndex | null | undefined,
-  reviewProjectionIndex: GraphProjectionIndex | null | undefined,
-): GraphProjectionIndex | null {
-  switch (analysisDisplayMode) {
-    case "FLOWCHART":
-      return flowchartProjectionIndex ?? null;
-    case "RESOURCE_RELATION_VIEW":
-      return resourceProjectionIndex ?? null;
-    case "ARCHITECTURE_GRAPH":
-      return architectureProjectionIndex ?? null;
-    case "CLASS_DIAGRAM":
-      return classDiagramProjectionIndex ?? null;
-    case "REVIEW_GRAPH":
-      return reviewProjectionIndex ?? null;
-    case "FACT_GRAPH":
-    default:
-      return factProjectionIndex ?? null;
-  }
-}
-
 interface ExplanationHistoryEntry {
   result: GraphBeautificationResult;
   requestState: AsyncRequestState;
@@ -188,52 +152,9 @@ interface ExplanationHistoryEntry {
 }
 
 const DEFAULT_EXPLANATION_SESSION_LABEL = "当前链路讲解";
-const WORKBENCH_LAYOUT_STORAGE_KEY = "linkGraph.hybridWorkbenchLayout";
-const DEFAULT_STAGE_WORKBENCH_WIDTH = 420;
-const MIN_STAGE_WORKBENCH_WIDTH = 320;
-const MAX_STAGE_WORKBENCH_WIDTH = 720;
 export { resolveQaTargetNodeIds } from "./appGraphSupport";
 
-function isProjectStructureDisplay(
-  analysisDisplayMode: AnalysisDisplayMode,
-  architectureSummary: IndexedGraphSummary | null | undefined,
-): boolean {
-  return analysisDisplayMode === "ARCHITECTURE_GRAPH" && architectureSummary?.scopeKind === "PROJECT";
-}
-
-function clampStageWorkbenchWidth(width: number): number {
-  return Math.max(MIN_STAGE_WORKBENCH_WIDTH, Math.min(MAX_STAGE_WORKBENCH_WIDTH, Math.round(width)));
-}
-
-function readHybridWorkbenchLayoutPreference() {
-  if (typeof window === "undefined") {
-    return {
-      outlineCollapsed: false,
-      workbenchWidth: DEFAULT_STAGE_WORKBENCH_WIDTH,
-    };
-  }
-  try {
-    const raw = window.localStorage.getItem(WORKBENCH_LAYOUT_STORAGE_KEY);
-    if (!raw) {
-      return {
-        outlineCollapsed: false,
-        workbenchWidth: DEFAULT_STAGE_WORKBENCH_WIDTH,
-      };
-    }
-    const parsed = JSON.parse(raw) as Partial<{ outlineCollapsed: boolean; workbenchWidth: number }>;
-    return {
-      outlineCollapsed: parsed.outlineCollapsed === true,
-      workbenchWidth: typeof parsed.workbenchWidth === "number"
-        ? clampStageWorkbenchWidth(parsed.workbenchWidth)
-        : DEFAULT_STAGE_WORKBENCH_WIDTH,
-    };
-  } catch {
-    return {
-      outlineCollapsed: false,
-      workbenchWidth: DEFAULT_STAGE_WORKBENCH_WIDTH,
-    };
-  }
-}
+const DEFAULT_GENERATION_DISCUSSION_PROMPT = "请继续讨论这份实现建议的取舍、风险和下一步。";
 
 export function App() {
   const initialStateRef = useRef<LinkGraphBootstrapState | null>(null);
@@ -255,10 +176,6 @@ export function App() {
     projectionSetters,
     qaTargetNodeIds,
     setQaTargetNodeIds,
-    qaQuestionDraft,
-    setQaQuestionDraft,
-    qaQuestionMode,
-    setQaQuestionMode,
     selectionGroupNodeIds,
     setSelectionGroupNodeIds,
     collapsedNodeIds,
@@ -360,11 +277,11 @@ export function App() {
     indexedGraphRequestStates,
     sourceNavigationState: _sourceNavigationState,
     operationFeedback,
-    workbenchSectionPreferences,
     lastMessageType,
     graphSurfaceExperiments,
     artifactContents,
     assistantSessionState,
+    assistantResultStore,
   } = projectionState;
   const {
     setDetailNodeId,
@@ -403,31 +320,24 @@ export function App() {
     setCodeEligibilityDecision,
     setSourceNavigationState,
     setOperationFeedback,
-    setWorkbenchSectionPreferences,
     setLastMessageType,
     setGraphSurfaceExperiments,
     setArtifactContents,
     setAssistantSessionState,
+    setAssistantResultStore,
   } = projectionSetters;
-  const [generationPlanDiscussionQuestionDraft, setGenerationPlanDiscussionQuestionDraft] = useState("");
-  const [assistantComposerDraft, setAssistantComposerDraft] = useState("");
   const bridgeCommands = useBridgeCommandController({
     setOperationFeedback,
     setRequestFailureNotice,
   });
   const {
-    resolveArtifactText,
-    handleRequestArtifact,
-    handleWorkbenchSectionPreferenceChange,
     handleConfirmImportMermaid,
-    handleRequestDiffReview,
     handleWriteSingleCodeDraft,
     handleOpenCodeDraftNativeDiff,
+    handleRequestArtifact,
   } = useAppBridgeController({
-    artifactContents,
     bridgeCommands,
     setImportDialogOpen,
-    setWorkbenchSectionPreferences,
   });
   const sourceNavigationCommands = useSourceNavigationController({
     nodes,
@@ -471,72 +381,7 @@ export function App() {
   ]);
   const [activeWorkflowStage, setActiveWorkflowStage] = useState<WorkflowStage>("understand");
   const [hybridLayoutPreference, setHybridLayoutPreference] = useState(readHybridWorkbenchLayoutPreference);
-  const activeWorkbenchTab = workflowStageToWorkbenchTab(activeWorkflowStage) ?? "explanation";
-  const activeWorkbenchTabForDerived = workflowStageToWorkbenchTab(activeWorkflowStage) ?? "qa";
-  function setActiveWorkbenchTabCompat(tab: WorkbenchTab) {
-    setActiveWorkflowStage(workbenchTabToWorkflowStage(tab));
-  }
-  function updateAssistantIntent(intent: AssistantIntent) {
-    setAssistantSessionState((current) => ({
-      ...current,
-      activeIntent: intent,
-    }));
-  }
-
-  function selectedAssistantNodeIds() {
-    if (selectionGroupNodeIds.length > 0) {
-      return selectionGroupNodeIds;
-    }
-    return selectedNodeId ? [selectedNodeId] : [];
-  }
-
-  function selectedAssistantDiffItemIds() {
-    if (diffTargetItemIds.length > 0) {
-      return diffTargetItemIds;
-    }
-    return selectedNodeId && diffItems.some((item) => item.id === selectedNodeId) ? [selectedNodeId] : [];
-  }
-
-  function handleAssistantIntentChange(intent: AssistantIntent) {
-    updateAssistantIntent(intent);
-  }
-
-  function handleAssistantSubmit(intent: AssistantIntent, prompt: string) {
-    const normalizedPrompt = prompt.trim();
-    if (!normalizedPrompt && intent !== "CHECK_CHANGE") {
-      return;
-    }
-    updateAssistantIntent(intent);
-    switch (intent) {
-      case "EXPLAIN_CODE":
-        setActiveWorkflowStage("understand");
-        break;
-      case "ASK_CODE":
-        setActiveWorkflowStage("qa");
-        break;
-      case "GENERATE_CODE":
-        setActiveWorkflowStage("code");
-        break;
-      case "CHECK_CHANGE":
-        setActiveWorkflowStage("qa");
-        break;
-    }
-    bridgeCommands.submitAsyncBridgeCommand(
-      "AI 代码工作台",
-      () => requestAssistantTask({
-        intent,
-        prompt: normalizedPrompt,
-        selectedNodeIds: selectedAssistantNodeIds(),
-        selectedDiffItemIds: selectedAssistantDiffItemIds(),
-      }),
-      {
-        successFeedback: {
-          level: "INFO",
-          message: "已提交 AI 代码工作台请求。",
-        },
-      },
-    );
-  }
+  const activeAssistantTarget = workflowStageToAssistantTarget(activeWorkflowStage);
 
   function handleAssistantRevealReference(reference: ResultEvidenceReference) {
     if (reference.nodeId) {
@@ -581,7 +426,6 @@ export function App() {
   const [hoveredExplanationStepId, setHoveredExplanationStepId] = useState<string | null>(null);
   const [selectedQaChangeId, setSelectedQaChangeId] = useState<string | null>(null);
   const [selectedQaThreadId, setSelectedQaThreadId] = useState<string | null>(null);
-  const [qaSourceThreadId, setQaSourceThreadId] = useState<string | null>(null);
   const [selectedDraftEntryId, setSelectedDraftEntryId] = useState<string | null>(
     () => initialState.draftWorkbenchState?.draftChanges[0]?.entryId
       ?? initialState.draftWorkbenchState?.draftNotes[0]?.entryId
@@ -600,6 +444,71 @@ export function App() {
   const pendingExplanationRequestModeRef = useRef<ExplanationRequestMode | null>(null);
   const pendingExplanationSessionLabelRef = useRef<string | null>(null);
   const pendingExplanationHistoryEntryRef = useRef<ExplanationHistoryEntry | null>(null);
+  const assistantViewDocuments = useMemo<AssistantDisplayModeDocuments>(() => ({
+    FACT_GRAPH: factGraphView,
+    FLOWCHART: flowchartView,
+    RESOURCE_RELATION_VIEW: resourceRelationView,
+    ARCHITECTURE_GRAPH: architectureGraphView,
+    CLASS_DIAGRAM: classDiagramView,
+    REVIEW_GRAPH: reviewGraphView,
+  }), [
+    factGraphView,
+    flowchartView,
+    resourceRelationView,
+    architectureGraphView,
+    classDiagramView,
+    reviewGraphView,
+  ]);
+  const {
+    assistantComposerDraft,
+    assistantComposerTarget,
+    handleAssistantActionChange,
+    handleAssistantSubmit,
+    primeAssistantComposer,
+    selectedAssistantNodeIds,
+    assistantTargetTitle,
+    setAssistantComposer,
+    setAssistantComposerDraft,
+  } = useAssistantActionController({
+    analysisDisplayMode,
+    currentSceneId,
+    selectedMethodSignature: assistantSessionState.context.selectedMethodSignature ?? null,
+    selectedNodeId,
+    anchorNodeId,
+    selectionGroupNodeIds,
+    diffTargetItemIds,
+    diffItems,
+    viewDocuments: assistantViewDocuments,
+    assistantSessionState,
+    setAssistantSessionState,
+    selectedExplanationGranularity,
+    bridgeCommands,
+    setActiveWorkflowStage,
+    onExplanationAccepted: ({ actionId, intent, target }) => {
+      const explanationFollowUp = intent === "EXPLAIN_CODE" && target.kind === "ExplanationFollowUp" ? target : null;
+      if (explanationFollowUp) {
+        pendingExplanationRequestModeRef.current = "follow_up";
+        pendingExplanationHistoryEntryRef.current = graphBeautificationResult
+          ? {
+              result: graphBeautificationResult,
+              requestState: graphBeautificationRequestState,
+              selectedStepId: selectedExplanationStepId,
+              granularity: selectedExplanationGranularity,
+              sessionLabel: currentExplanationSessionLabel,
+            }
+          : null;
+        pendingExplanationSessionLabelRef.current = `围绕 ${explanationFollowUp.stepTitle ?? explanationFollowUp.stepId} 继续讲解`;
+        setSelectedExplanationStepId(explanationFollowUp.stepId);
+      } else {
+        pendingExplanationRequestModeRef.current = "fresh";
+        pendingExplanationHistoryEntryRef.current = null;
+        pendingExplanationSessionLabelRef.current = actionId === "DESCRIBE_CLASS"
+          ? "当前类介绍"
+          : DEFAULT_EXPLANATION_SESSION_LABEL;
+      }
+      explanationLocalOverrideRef.current = false;
+    },
+  });
   const {
     nextManualNodeIdRef,
     syncManualNodeIdCounters,
@@ -668,7 +577,6 @@ export function App() {
     setDraftValidationState(null);
     setGenerationPlanDiscussionSession(null);
     setGenerationPlanDiscussionRequestState(IDLE_REQUEST_STATE);
-    setGenerationPlanDiscussionQuestionDraft("");
     setGraphBeautificationResult(null);
     setGraphBeautificationRequestState(IDLE_REQUEST_STATE);
     setGeneratedCodeDrafts([]);
@@ -797,41 +705,19 @@ export function App() {
   });
 
   const {
-    handleRequestQa,
     handleConfirmCandidateChange,
     handleRetryLastQaRequest,
-    handleEditFailedQaRequest,
-    handleSelectQaChange,
     handleSelectQaThread,
-    handleInvestigateQaThread,
     handleResolveQaThread,
-    handleUnconfirmDraftChange,
-  } = useQaWorkbenchController({
+  } = useAssistantQaActions({
     qaRequestRecoveryState,
     qaResult,
-    qaSourceThreadId,
-    qaQuestionMode,
-    qaTargetNodeIds,
-    selectedQaChangeId,
-    selectedQaThreadId,
     nodes,
-    draftWorkbenchState,
     bridgeCommands,
-    setQaQuestionDraft,
-    setQaQuestionMode,
-    setQaTargetNodeIds,
-    setQaSourceThreadId,
-    setActiveWorkbenchTab: setActiveWorkbenchTabCompat,
     setOperationFeedback,
-    setDraftWorkbenchState,
-    setSelectedDraftEntryId,
-    setQaResult,
     setSelectedQaChangeId,
     setSelectedQaThreadId,
     selectExplanationTargetNode,
-    toDraftWorkbenchEntry,
-    updateGraphPatchResultCandidateStatus,
-    updateGraphPatchResultThreadResolution,
     resolveDraftEntryTargetNodeIds,
     resolveDisplayedNodeId,
     resolveEvidenceTargetNodeId,
@@ -839,12 +725,24 @@ export function App() {
 
   function handleEditFailedQaRequestFromAssistantWorkbench() {
     const failedRequest = qaRequestRecoveryState.lastFailedRequest;
-    handleEditFailedQaRequest();
     if (!failedRequest) {
       return;
     }
-    setAssistantComposerDraft(failedRequest.question);
-    updateAssistantIntent("ASK_CODE");
+    setQaTargetNodeIds(failedRequest.selectedNodeIds);
+    primeAssistantComposer("ASK_CODE", failedRequest.question, {
+      target: {
+        kind: "QaRecovery",
+        requestId: failedRequest.requestId,
+        sourceThreadId: failedRequest.sourceThreadId ?? null,
+        mode: failedRequest.mode ?? "AUTO",
+        selectedNodeIds: failedRequest.selectedNodeIds,
+      },
+      stage: "qa",
+    });
+    setOperationFeedback({
+      level: "INFO",
+      message: "已把失败问答回填到 AI 工作台输入框，可修改后重新提交。",
+    });
   }
   const { applyBootstrapState } = useBootstrapProjectionState({
     nodesRef,
@@ -900,72 +798,79 @@ export function App() {
     handleRequestSourceNavigation,
   });
 
-  const {
-    handleOpenQa,
-    handleOpenDraftValidation,
-    handleRequestGenerationPlan,
-    handleRequestCodeDrafts,
-    handleRequestGenerationPlanDiscussion,
-    handleRequestScopedQa,
-    handleConfirmImportMermaidDraft,
-    handleExpandOverflowNode,
-    handleExpandInvocation,
-    handleRemoveInvocationExpansion,
-  } = useAppWorkbenchShellController({
-    nodes,
-    selectionGroupNodeIds,
-    mermaidDraft,
-    activeWorkbenchTab: activeWorkbenchTabForDerived,
-    selectedNodeId,
-    analysisDisplayMode,
-    generationPlan,
-    generationPlanRequestState,
-    generationPlanDiscussionQuestionDraft,
-    generationPlanDiscussionSession,
-    setQaTargetNodeIds,
-    setQaQuestionDraft,
-    setQaQuestionMode,
-    setQaSourceThreadId,
-    setActiveWorkbenchTab: setActiveWorkbenchTabCompat,
-    setOperationFeedback,
-    setDiffTargetItemIds,
-    handleRequestQa,
-    handleInspectNode,
-    bridgeCommands: {
-      handleConfirmImportMermaid,
-    },
-    workbenchCommands,
-  });
+  function resolveQaScope(targetNodeId?: string) {
+    const nodeIds = resolveQaTargetNodeIds(targetNodeId, selectionGroupNodeIds);
+    return {
+      nodeIds,
+      title: nodeIds.length === 1
+        ? nodes.find((node) => node.id === nodeIds[0])?.title ?? null
+        : null,
+    };
+  }
+
+  function handleOpenQa(targetNodeId?: string) {
+    const scope = resolveQaScope(targetNodeId);
+    const question = buildDefaultQaQuestion(scope.nodeIds, scope.title, analysisDisplayMode);
+    setQaTargetNodeIds(scope.nodeIds);
+    primeAssistantComposer("ASK_CODE", question, {
+      target: NEW_ASSISTANT_COMPOSER_TARGET,
+      stage: "qa",
+    });
+  }
+
+  function primeGenerationPlanComposer() {
+    setActiveWorkflowStage("code");
+    primeAssistantComposer("GENERATE_CODE", DEFAULT_GENERATION_PLAN_PROMPT, {
+      target: NEW_ASSISTANT_COMPOSER_TARGET,
+      stage: "code",
+    });
+  }
+
+  function handleRequestCodeDrafts() {
+    setActiveWorkflowStage("code");
+    workbenchCommands.handleRequestCodeDrafts();
+  }
+
+  function handleDiscussGenerationPlanFromAssistant(question?: string) {
+    primeAssistantComposer("GENERATE_CODE", question?.trim() || DEFAULT_GENERATION_DISCUSSION_PROMPT, {
+      target: {
+        kind: "GenerationDiscussion",
+        planItemId: generationPlanDiscussionSession?.focusItemId ?? generationPlan?.items[0]?.id ?? null,
+      },
+      stage: "code",
+    });
+  }
+
+  function handleConfirmImportMermaidDraft() {
+    const mermaid = mermaidDraft.trim();
+    if (mermaid.length === 0) {
+      setOperationFeedback({
+        level: "WARNING",
+        message: "请输入 Mermaid 内容后再导入。",
+      });
+      return;
+    }
+    handleConfirmImportMermaid(mermaid);
+  }
+
+  function handleExpandOverflowNode(nodeId: string) {
+    const nodeTitle = nodes.find((node) => node.id === nodeId)?.title ?? nodeId;
+    workbenchCommands.handleExpandOverflowNode(nodeId, nodeTitle);
+  }
 
   const {
-    handleRequestGraphBeautification,
-    handleChangeExplanationGranularity,
-    handleHoverExplanationStep,
-    handleLeaveExplanationStep,
-    handleFollowUpExplanationStep,
     handleReturnToPreviousExplanation,
     handleOpenExplanationHistory,
-    handleSelectExplanationStep,
-    handleLocateExplanationStepNode,
-    handleInspectExplanationStepNode,
-    handleDrillDownExplanationStep,
-    handleRevealExplanationReference,
-  } = useExplanationWorkbenchController({
-    nodes,
+  } = useAssistantExplanationHistory({
     graphBeautificationResult,
     graphBeautificationRequestState,
-    selectedExplanationGranularity,
-    selectedExplanationStepId,
-    selectedNodeId,
-    currentExplanationSessionLabel,
     explanationHistory,
     explanationLocalOverrideRef,
     pendingExplanationRequestModeRef,
     pendingExplanationSessionLabelRef,
     pendingExplanationHistoryEntryRef,
-    pendingExplanationDrillTargetRef,
-    bridgeCommands,
-    setActiveWorkbenchTab: setActiveWorkbenchTabCompat,
+    assistantSessionState,
+    assistantResultStore,
     setSelectedExplanationStepId,
     setHoveredExplanationStepId,
     setSelectedExplanationGranularity,
@@ -973,31 +878,103 @@ export function App() {
     setExplanationHistory,
     setGraphBeautificationResult,
     setGraphBeautificationRequestState,
-    setSelectedNodeId,
-    setDetailNodeId,
-    setOperationFeedback,
-    selectExplanationTargetNode,
-    requestViewportFocus,
-    handleInspectNode,
-    handleExpandOverflowNode,
-    resolveDisplayedNodeId,
-    defaultSessionLabel: DEFAULT_EXPLANATION_SESSION_LABEL,
+    setAssistantSessionState,
+    setAssistantResultStore,
   });
 
-  useEffect(() => {
-    if (!generationPlan) {
-      setGenerationPlanDiscussionQuestionDraft("");
+  function resolveExplanationStepRawNodeId(stepId: string): string | null {
+    return resolveRawNodeIdForExplanationStep(findExplanationStep(graphBeautificationResult, stepId));
+  }
+
+  function resolveExplanationStepTargetNodeId(stepId: string): string | null {
+    return resolveDisplayedNodeId(resolveExplanationStepRawNodeId(stepId), nodes);
+  }
+
+  function resolveExplanationStepFocusNodeId(stepId: string): string | null {
+    const rawNodeId = resolveExplanationStepRawNodeId(stepId);
+    if (!rawNodeId) {
+      return null;
+    }
+    return resolveDisplayedNodeId(rawNodeId, nodes) ?? rawNodeId;
+  }
+
+  function handleSelectExplanationStepFromAssistant(stepId: string) {
+    setSelectedExplanationStepId(stepId);
+    const targetNodeId = resolveExplanationStepTargetNodeId(stepId);
+    if (targetNodeId) {
+      selectExplanationTargetNode(targetNodeId);
+    }
+  }
+
+  function handleLocateExplanationStepNodeFromAssistant(stepId: string) {
+    setSelectedExplanationStepId(stepId);
+    const targetNodeId = resolveExplanationStepTargetNodeId(stepId);
+    if (!targetNodeId) {
+      setOperationFeedback({
+        level: "WARNING",
+        message: "当前步骤没有可定位的图节点。",
+      });
       return;
     }
-    if (generationPlanDiscussionRequestState.phase === "SUCCEEDED") {
-      setGenerationPlanDiscussionQuestionDraft("");
+    selectExplanationTargetNode(targetNodeId, { focusViewport: true });
+    const targetNode = nodes.find((node) => node.id === targetNodeId) ?? null;
+    setOperationFeedback({
+      level: "INFO",
+      message: `已定位到图中节点：${targetNode?.title ?? targetNodeId}`,
+    });
+  }
+
+  function handleInspectExplanationStepNodeFromAssistant(stepId: string) {
+    setSelectedExplanationStepId(stepId);
+    const targetNodeId = resolveExplanationStepTargetNodeId(stepId);
+    if (!targetNodeId) {
+      setOperationFeedback({
+        level: "WARNING",
+        message: "当前步骤没有可编辑的图节点。",
+      });
+      return;
     }
-  }, [generationPlan, generationPlanDiscussionRequestState.phase]);
+    handleInspectNode(targetNodeId);
+  }
+
+  function handleChangeExplanationGranularityFromAssistant(granularity: StepGranularity) {
+    setSelectedExplanationGranularity(granularity);
+    setAssistantComposer(assistantComposerDraft, NEW_ASSISTANT_COMPOSER_TARGET);
+    const rerunIntent = resolveExplanationRerunIntent(analysisDisplayMode, assistantSessionState.activeIntent);
+    const targetNodeIds = selectedAssistantNodeIds();
+    const targetTitle = assistantTargetTitle(targetNodeIds) ?? selectedNode?.title ?? null;
+    const prompt = rerunIntent === "DESCRIBE_CLASS"
+      ? buildDefaultClassDescriptionPrompt(targetTitle)
+      : buildDefaultExplanationPrompt(targetTitle, analysisDisplayMode);
+    handleAssistantSubmit(rerunIntent, prompt, {
+      explanationGranularity: granularity,
+    });
+  }
+
+  function handleFollowUpExplanationStepFromAssistant(stepId: string, customQuestion?: string) {
+    const step = findExplanationStep(graphBeautificationResult, stepId);
+    if (!step) {
+      return;
+    }
+    const question = resolveExplanationFollowUpQuestion(step, customQuestion);
+    const focusNodeId = resolveExplanationStepFocusNodeId(stepId)
+      ?? (selectedNodeId ? resolveDisplayedNodeId(selectedNodeId, nodes) ?? selectedNodeId : null);
+    setSelectedExplanationStepId(step.stepId);
+    if (focusNodeId) {
+      selectExplanationTargetNode(focusNodeId, { focusViewport: true });
+    }
+    primeAssistantComposer("EXPLAIN_CODE", question, {
+      target: {
+        kind: "ExplanationFollowUp",
+        stepId: step.stepId,
+        stepTitle: step.title,
+        focusNodeId,
+      },
+      stage: "understand",
+    });
+  }
 
   const {
-    explanationState,
-    qaState,
-    draftImplementationSuggestionState,
     codeDiffStatus,
     activeViewGraph,
     selectedDraftEntry,
@@ -1005,15 +982,12 @@ export function App() {
     explanationFocusNodeId,
     draftChangedNodeIds,
     draftCompareProjection,
-    draftState,
   } = useWorkbenchDerivedState({
     analysisDisplayMode,
-    activeWorkbenchTab: activeWorkbenchTabForDerived,
+    activeAssistantTarget,
     qaResult,
     qaRequestState,
     qaRequestRecoveryState,
-    qaQuestionDraft,
-    qaQuestionMode,
     qaTargetNodeIds,
     qaTargetTitle,
     selectedQaChangeId,
@@ -1050,48 +1024,17 @@ export function App() {
     resolveDisplayedNodeId,
     overlayDraftEntryOntoFlowchartView,
   });
-  const activeFullGraph = analysisDisplayMode === "FLOWCHART"
-    ? flowchartView.fullGraph
-    : analysisDisplayMode === "RESOURCE_RELATION_VIEW"
-      ? resourceRelationView.fullGraph
-      : analysisDisplayMode === "ARCHITECTURE_GRAPH"
-        ? architectureGraphView.fullGraph
-        : analysisDisplayMode === "CLASS_DIAGRAM"
-          ? classDiagramView.fullGraph
-          : analysisDisplayMode === "REVIEW_GRAPH"
-            ? reviewGraphView.fullGraph
-            : factGraphView.fullGraph;
-  const activeAnchorNodeId = analysisDisplayMode === "FLOWCHART"
-    ? flowchartView.anchorNodeId ?? null
-    : analysisDisplayMode === "RESOURCE_RELATION_VIEW"
-      ? resourceRelationView.anchorNodeId ?? null
-      : analysisDisplayMode === "ARCHITECTURE_GRAPH"
-        ? architectureGraphView.anchorNodeId ?? null
-        : analysisDisplayMode === "CLASS_DIAGRAM"
-          ? classDiagramView.anchorNodeId ?? null
-          : analysisDisplayMode === "REVIEW_GRAPH"
-            ? reviewGraphView.anchorNodeId ?? null
-            : factGraphView.anchorNodeId ?? null;
+  const activeDisplayGraphDocuments = {
+    factGraphView,
+    flowchartView,
+    resourceRelationView,
+    architectureGraphView,
+    classDiagramView,
+    reviewGraphView,
+  };
+  const activeFullGraph = activeFullGraphForDisplayMode(analysisDisplayMode, activeDisplayGraphDocuments);
+  const activeAnchorNodeId = activeAnchorNodeIdForDisplayMode(analysisDisplayMode, activeDisplayGraphDocuments);
   const activeAnchorNode = activeViewGraph.nodes.find((node) => node.id === activeAnchorNodeId) ?? null;
-  const workflowStageStates = useMemo(() => deriveWorkflowStageStates({
-    graphBeautificationResult,
-    graphBeautificationRequestState,
-    qaResult,
-    qaRequestState,
-    draftWorkbenchState,
-    draftValidationState,
-    codeDiffStatus,
-    codeDraftRequestState,
-  }), [
-    qaRequestState,
-    qaResult,
-    codeDiffStatus,
-    codeDraftRequestState,
-    draftValidationState,
-    draftWorkbenchState,
-    graphBeautificationRequestState,
-    graphBeautificationResult,
-  ]);
   const currentTarget = useMemo(() => deriveCurrentTarget({
     detailNode,
     activeAnchorNode,
@@ -1114,12 +1057,6 @@ export function App() {
     draftWorkbenchState,
     selectedNodeId,
   ]);
-  const evidencePanelState = useMemo(() => deriveEvidencePanelState({
-    selectedNode,
-    activeViewGraph,
-    qaResult,
-    graphBeautificationResult,
-  }), [activeViewGraph, qaResult, graphBeautificationResult, selectedNode]);
   const changeTrayState = useMemo(() => deriveChangeTrayState({
     qaResult,
     draftWorkbenchState,
@@ -1137,14 +1074,29 @@ export function App() {
     lastAppliedDraftPatchSummary,
     lastDraftPatchApplyResult,
   ]);
+  const workflowStageStates = useMemo(() => deriveWorkflowStageStates({
+    graphBeautificationResult,
+    graphBeautificationRequestState,
+    qaResult,
+    qaRequestState,
+    draftWorkbenchState,
+    draftValidationState,
+    codeDiffStatus,
+    codeDraftRequestState,
+  }), [
+    codeDiffStatus,
+    codeDraftRequestState,
+    draftValidationState,
+    draftWorkbenchState,
+    graphBeautificationRequestState,
+    graphBeautificationResult,
+    qaRequestState,
+    qaResult,
+  ]);
   const [outlineQuery, setOutlineQuery] = useState("");
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(WORKBENCH_LAYOUT_STORAGE_KEY, JSON.stringify(hybridLayoutPreference));
-    } catch {
-      // Layout persistence is a convenience; rendering should not depend on storage availability.
-    }
+    writeHybridWorkbenchLayoutPreference(hybridLayoutPreference);
   }, [hybridLayoutPreference]);
 
   function handleOutlineCollapsedChange(outlineCollapsed: boolean) {
@@ -1157,33 +1109,23 @@ export function App() {
   function handleWorkbenchWidthChange(workbenchWidth: number) {
     setHybridLayoutPreference((current) => ({
       ...current,
-      workbenchWidth: clampStageWorkbenchWidth(workbenchWidth),
+      workbenchWidth: clampAssistantWorkbenchWidth(workbenchWidth),
     }));
   }
 
-  function resolveDraftNodeTitle(nodeId: string) {
-    return nodes.find((node) => node.id === nodeId)?.title ?? nodeId;
+  function handleSelectDraftEntry(entryId: string) {
+    setSelectedDraftEntryId(entryId);
+    const entry = draftWorkbenchState.draftChanges.find((item) => item.entryId === entryId)
+      ?? draftWorkbenchState.draftNotes.find((item) => item.entryId === entryId)
+      ?? null;
+    const targetNodeId = resolveDraftEntryTargetNodeIds(entry)
+      .map((nodeId) => resolveDisplayedNodeId(nodeId, nodes))
+      .find(Boolean)
+      ?? null;
+    if (targetNodeId) {
+      selectExplanationTargetNode(targetNodeId, { focusViewport: true });
+    }
   }
-
-  const {
-    handleAddExplanationNoteToDraft,
-    handleSelectDraftEntry,
-    handleLocateDraftChangeNode,
-    handleOpenDraftNote,
-    handleLocateDraftNoteNode,
-  } = useDraftWorkbenchController({
-    graphBeautificationResult,
-    draftWorkbenchState,
-    nodes,
-    setDraftWorkbenchState,
-    setSelectedDraftEntryId,
-    setActiveWorkbenchTab: setActiveWorkbenchTabCompat,
-    setOperationFeedback,
-    selectExplanationTargetNode,
-    handleSelectExplanationStep,
-    resolveDraftEntryTargetNodeIds,
-    resolveDisplayedNodeId,
-  });
 
   useEffect(() => {
     if (activeWorkflowStage !== "draft" || !selectedDraftEntry) {
@@ -1200,96 +1142,58 @@ export function App() {
     selectExplanationTargetNode(displayedTargetNodeId, { focusViewport: true });
   }, [activeWorkflowStage, nodes, selectedDraftEntry, selectedNodeId]);
 
-  const codePanelProps = {
-    drafts: generatedCodeDrafts,
-    warnings: generatedCodeDraftWarnings,
-    requestState: codeDraftRequestState,
-    source: generatedCodeDraftSource,
-    promptPreview: generatedCodeDraftPromptPreview,
-    promptPreviewArtifactId: generatedCodeDraftPromptPreviewArtifactId,
-    resolveArtifactText,
-    onRequestArtifact: handleRequestArtifact,
-    writeReport: generatedCodeDraftWriteReport,
-    hasPlan: generationPlan != null,
-    eligibilityDecision: codeEligibilityDecision,
-    draftVersion,
-    generatedCodeDraftVersion,
-    onOpenDraftWorkbench: () => setActiveWorkbenchTabCompat("draft"),
-    onOpenDraftValidation: handleOpenDraftValidation,
-    onOpenQaWorkbench: () => setActiveWorkbenchTabCompat("qa"),
-    draftValidationState,
-    implementationSuggestion: draftImplementationSuggestionState,
-    implementationSuggestionRequestState: generationPlanRequestState,
-    implementationSuggestionDiscussionQuestionDraft: generationPlanDiscussionQuestionDraft,
-    implementationSuggestionDiscussionSession: generationPlanDiscussionSession,
-    implementationSuggestionDiscussionRequestState: generationPlanDiscussionRequestState,
-    onRequestPlan: handleRequestGenerationPlan,
-    onRequestDrafts: handleRequestCodeDrafts,
-    onImplementationSuggestionDiscussionQuestionDraftChange: setGenerationPlanDiscussionQuestionDraft,
-    onSubmitImplementationSuggestionDiscussion: handleRequestGenerationPlanDiscussion,
-    onWriteDrafts: workbenchCommands.handleWriteDrafts,
-    onWriteSingleDraft: handleWriteSingleCodeDraft,
-    onOpenNativeDiff: handleOpenCodeDraftNativeDiff,
-    onOpenDraft: workbenchCommands.handleOpenDraft,
-  };
+  function handleExplainCurrentScope(focusNodeId?: string) {
+    const targetNodeId = focusNodeId ?? selectedNodeId ?? null;
+    const displayedTargetNodeId = targetNodeId ? resolveDisplayedNodeId(targetNodeId, nodes) ?? targetNodeId : null;
+    const targetNode = displayedTargetNodeId ? nodes.find((node) => node.id === displayedTargetNodeId) ?? null : null;
+    if (displayedTargetNodeId) {
+      selectExplanationTargetNode(displayedTargetNodeId);
+    }
+    const prompt = buildDefaultExplanationPrompt(targetNode?.title ?? null, analysisDisplayMode);
+    if (analysisDisplayMode === "CLASS_DIAGRAM") {
+      handleAssistantSubmit("EXPLAIN_CODE", prompt, {
+        selectedNodeIds: displayedTargetNodeId ? [displayedTargetNodeId] : undefined,
+        target: NEW_ASSISTANT_COMPOSER_TARGET,
+      });
+      return;
+    }
+    primeAssistantComposer("EXPLAIN_CODE", prompt, {
+      stage: "understand",
+    });
+  }
 
-  const qaTabProps = {
-    state: qaState,
-    onQuestionDraftChange: setQaQuestionDraft,
-    onQuestionModeChange: setQaQuestionMode,
-    onSubmitQuestion: () => handleRequestQa(qaQuestionDraft),
-    onRetryLastRequest: handleRetryLastQaRequest,
-    onEditFailedRequest: handleEditFailedQaRequestFromAssistantWorkbench,
-    onSelectChange: handleSelectQaChange,
-    onConfirmChange: handleConfirmCandidateChange,
-    onSelectThread: handleSelectQaThread,
-    onInvestigateThread: handleInvestigateQaThread,
-    onDeferRisk: (threadId: string) => handleResolveQaThread(threadId, "DEFERRED"),
-    onAcceptRisk: (threadId: string) => handleResolveQaThread(threadId, "ACCEPTED_RISK"),
-    onDismissRisk: (threadId: string) => handleResolveQaThread(threadId, "DISMISSED"),
-    resolveArtifactText,
-    onRequestArtifact: handleRequestArtifact,
-    sectionPreferences: workbenchSectionPreferences,
-    onSectionPreferenceChange: handleWorkbenchSectionPreferenceChange,
-  };
+  function findAssistantRiskThread(threadId: string) {
+    return [
+      ...deriveInvestigationThreads(qaResult),
+      ...deriveInvestigationThreads(diffReviewResult),
+    ].find((thread) => thread.threadId === threadId) ?? null;
+  }
 
-  const draftTabProps = {
-    state: draftState,
-    implementationSuggestion: draftImplementationSuggestionState,
-    draftCompareProjection,
-    draftVersion,
-    codeDiffStatus,
-    codeDiffDraftVersion: generatedCodeDraftVersion,
-    onToggleCompare: () => setDraftCompareMode((current) => current === "after" ? "compare" : "after"),
-    onSelectEntry: handleSelectDraftEntry,
-    onLocateChangeNode: handleLocateDraftChangeNode,
-    onUnconfirmChange: handleUnconfirmDraftChange,
-    onOpenNote: handleOpenDraftNote,
-    onLocateNoteNode: handleLocateDraftNoteNode,
-    resolveNodeTitle: resolveDraftNodeTitle,
-    sectionPreferences: workbenchSectionPreferences,
-    onSectionPreferenceChange: handleWorkbenchSectionPreferenceChange,
-  };
-
-  const explanationTabProps = {
-    state: explanationState,
-    onSelectStep: handleSelectExplanationStep,
-    onLocateStepNode: handleLocateExplanationStepNode,
-    onInspectStepNode: handleInspectExplanationStepNode,
-    onGranularityChange: handleChangeExplanationGranularity,
-    onHoverStep: handleHoverExplanationStep,
-    onLeaveStep: handleLeaveExplanationStep,
-    onAddToDraft: handleAddExplanationNoteToDraft,
-    onDrillDown: handleDrillDownExplanationStep,
-    onFollowUp: handleFollowUpExplanationStep,
-    onRevealReference: handleRevealExplanationReference,
-    onReturnToPrevious: handleReturnToPreviousExplanation,
-    onOpenHistory: handleOpenExplanationHistory,
-    resolveArtifactText,
-    onRequestArtifact: handleRequestArtifact,
-    sectionPreferences: workbenchSectionPreferences,
-    onSectionPreferenceChange: handleWorkbenchSectionPreferenceChange,
-  };
+  function handleInvestigateThreadFromAssistant(threadId: string) {
+    const thread = findAssistantRiskThread(threadId);
+    if (!thread) {
+      return;
+    }
+    setSelectedQaThreadId(threadId);
+    setQaTargetNodeIds(thread.targetNodeIds);
+    const question = thread.recommendedQuestion.trim()
+      || `请继续取证：核对“${thread.title}”对应的直接源码证据。`;
+    const targetNodeId = resolveDisplayedNodeId(
+      resolveEvidenceTargetNodeId(thread.targetNodeIds, thread.evidence),
+      nodes,
+    );
+    if (targetNodeId) {
+      selectExplanationTargetNode(targetNodeId, { focusViewport: true });
+    }
+    primeAssistantComposer("ASK_CODE", question, {
+      target: {
+        kind: "RiskInvestigation",
+        threadId,
+        targetNodeIds: thread.targetNodeIds,
+      },
+      stage: "qa",
+    });
+  }
 
   const baseStageProps = {
     selectedNodeId,
@@ -1308,14 +1212,14 @@ export function App() {
     onMoveNode: handleMoveNode,
     onMoveNodes: handleMoveNodes,
     onFormatLayout: handleFormatLayout,
-    onRequestBeautification: handleRequestGraphBeautification,
+    onRequestBeautification: handleExplainCurrentScope,
     onRequestSourceNavigation: handleRequestSourceNavigation,
-    onRequestQa: handleRequestScopedQa,
+    onPrimeQuestionComposer: handleOpenQa,
     onToggleCollapseNode: handleToggleCollapseNode,
     onOpenQa: handleOpenQa,
     onExpandOverflowNode: handleExpandOverflowNode,
-    onExpandInvocation: handleExpandInvocation,
-    onRemoveInvocationExpansion: handleRemoveInvocationExpansion,
+    onExpandInvocation: workbenchCommands.handleExpandInvocation,
+    onRemoveInvocationExpansion: workbenchCommands.handleRemoveInvocationExpansion,
   };
 
   const editableStageProps: EditableStageProps = {
@@ -1335,65 +1239,43 @@ export function App() {
     onRequestArchitectureGraph: workbenchCommands.handleRequestArchitectureGraph,
     onRequestClassDiagram: workbenchCommands.handleRequestClassDiagram,
     onRequestClassDiagramWithOptions: workbenchCommands.handleRequestClassDiagramWithOptions,
+    onRequestClassUsages: workbenchCommands.handleRequestClassUsages,
     onRequestPackageDependencyGraph: workbenchCommands.handleRequestPackageDependencyGraph,
     onRequestReviewGraphWithOptions: workbenchCommands.handleRequestReviewGraphWithOptions,
   };
 
-  function handleWorkflowStageChange(stage: WorkflowStage) {
-    setActiveWorkflowStage(stage);
-  }
+  const primaryWorkflowActionState = {
+    activeWorkflowStage,
+    analysisDisplayMode,
+    graphBeautificationRequestState,
+    qaRequestState,
+    generationPlanRequestState,
+    codeDraftRequestState,
+    codeDiffStatus,
+    generatedCodeDraftCount: generatedCodeDrafts.length,
+    assistantComposerDraft,
+    selectedNodeId,
+    selectedNodeTitle: selectedNode?.title ?? null,
+    assistantTargetTitle: assistantTargetTitle(selectedAssistantNodeIds()) ?? null,
+  };
 
   function handlePrimaryWorkflowAction() {
-    switch (activeWorkflowStage) {
-      case "understand":
-        handleRequestGraphBeautification();
+    const command = primaryWorkflowActionCommand(primaryWorkflowActionState);
+    switch (command.kind) {
+      case "SUBMIT_ASSISTANT":
+        handleAssistantSubmit(command.intent, command.prompt);
         return;
-      case "evidence":
-        handleOpenQa(selectedNodeId ?? undefined);
+      case "OPEN_QA":
+        handleOpenQa(command.targetNodeId ?? undefined);
         return;
-      case "qa":
-        handleRequestQa(qaQuestionDraft);
+      case "PRIME_GENERATION_PLAN":
+        primeGenerationPlanComposer();
         return;
-      case "draft":
-        handleRequestGenerationPlan();
+      case "WRITE_DRAFTS":
+        workbenchCommands.handleWriteDrafts();
         return;
-      case "code":
-        if (codeDiffStatus === "FRESH") {
-          workbenchCommands.handleWriteDrafts();
-          return;
-        }
+      case "REQUEST_CODE_DRAFTS":
         handleRequestCodeDrafts();
-    }
-  }
-
-  function resolvePrimaryActionLabel(): string {
-    switch (activeWorkflowStage) {
-      case "understand":
-        return graphBeautificationRequestState.phase === "RUNNING" ? "讲解中" : "链路讲解";
-      case "evidence":
-        return "去问答";
-      case "qa":
-        return qaRequestState.phase === "RUNNING" ? "问答中" : "提交问答";
-      case "draft":
-        return generationPlanRequestState.phase === "RUNNING" ? "生成中" : "生成实现建议";
-      case "code":
-        return codeDiffStatus === "FRESH" ? "写入全部" : codeDraftRequestState.phase === "RUNNING" ? "生成中" : "生成代码 diff";
-    }
-  }
-
-  function resolvePrimaryActionDisabled(): boolean {
-    switch (activeWorkflowStage) {
-      case "understand":
-        return graphBeautificationRequestState.phase === "RUNNING";
-      case "qa":
-        return qaRequestState.phase === "RUNNING" || qaQuestionDraft.trim().length === 0;
-      case "draft":
-        return generationPlanRequestState.phase === "RUNNING" || draftWorkbenchState.draftChanges.length === 0;
-      case "code":
-        return codeDraftRequestState.phase === "RUNNING" || (codeDiffStatus === "FRESH" ? generatedCodeDrafts.length === 0 : false);
-      case "evidence":
-      default:
-        return false;
     }
   }
 
@@ -1413,30 +1295,6 @@ export function App() {
     handleSelectNode(itemId);
   }
 
-  function handleOpenEvidenceQa() {
-    const scopeIds = selectedNodeId ? [selectedNodeId] : [];
-    const targetTitle = selectedNode?.title ?? null;
-    setQaTargetNodeIds(scopeIds);
-    setQaQuestionDraft(
-      scopeIds.length === 1
-        ? `请围绕节点“${targetTitle ?? scopeIds[0]}”及其直接关联链路进行问答，指出可能遗漏的业务链路、异常分支、资源依赖和数据约束。`
-        : "请围绕当前整张链路图进行问答，指出可能遗漏的业务链路、异常分支、资源依赖和数据约束。",
-    );
-    setQaQuestionMode("AUTO");
-    setQaSourceThreadId(null);
-    setActiveWorkflowStage("qa");
-  }
-
-  function handleEvidenceThreadSelect(threadId: string) {
-    setActiveWorkflowStage("qa");
-    handleSelectQaThread(threadId);
-  }
-
-  function handleEvidenceCandidateSelect(changeId: string) {
-    setActiveWorkflowStage("qa");
-    handleSelectQaChange(changeId);
-  }
-
   function handleUndoDraftPatchApply() {
     bridgeCommands.runBridgeCommand("回退草稿应用", () => undoLastDraftPatchApply(), {
       successFeedback: {
@@ -1446,24 +1304,18 @@ export function App() {
     });
   }
 
+  function resolveArtifactText(artifactId: string): string | null {
+    return artifactContents[artifactId] ?? null;
+  }
+
   const assistantTurns = useMemo(() => buildAssistantTurns({
     assistantSessionState,
-    qaResult,
-    graphBeautificationResult,
-    generationPlan,
-    generationPlanDiscussionSession,
-    generatedCodeDrafts,
-    diffReviewResult,
+    assistantResultStore,
   }), [
     assistantSessionState,
-    diffReviewResult,
-    generatedCodeDrafts,
-    generationPlan,
-    generationPlanDiscussionSession,
-    graphBeautificationResult,
-    qaResult,
+    assistantResultStore,
   ]);
-  const visibleAssistantTurns = assistantSessionState.turns.length > 0 ? assistantTurns : [];
+  const visibleAssistantTurns = assistantTurns;
   const assistantRequestRunning = [
     qaRequestState,
     diffReviewRequestState,
@@ -1472,206 +1324,129 @@ export function App() {
     generationPlanDiscussionRequestState,
     codeDraftRequestState,
   ].some((state) => state.phase === "RUNNING");
-  const legacyWorkbenchContent = activeWorkflowStage === "evidence"
-    ? (
-      <EvidenceStagePanel
-        state={evidencePanelState}
-        isLoading={qaRequestState.phase === "RUNNING" || graphBeautificationRequestState.phase === "RUNNING"}
-        errorMessage={qaRequestState.errorMessage ?? graphBeautificationRequestState.errorMessage ?? null}
-        onOpenQa={handleOpenEvidenceQa}
-        onSelectThread={handleEvidenceThreadSelect}
-        onSelectCandidateChange={handleEvidenceCandidateSelect}
-        onRequestSourceNavigation={handleRequestSourceNavigation}
-      />
-    )
-    : (
-      <AppWorkbenchPanels
-        activeWorkbenchTab={activeWorkbenchTab}
-        onTabChange={setActiveWorkbenchTabCompat}
-        codePanelProps={codePanelProps}
-        qaTabProps={qaTabProps}
-        draftTabProps={draftTabProps}
-        explanationTabProps={explanationTabProps}
-        showTabs={false}
-      />
-    );
   const assistantWorkbenchContent = (
     <AssistantWorkbenchShell
       assistantSessionState={assistantSessionState}
       turns={visibleAssistantTurns}
       activeIntent={assistantSessionState.activeIntent}
+      activeActionId={assistantSessionState.activeActionId}
       requestRunning={assistantRequestRunning}
       qaRequestRecoveryState={qaRequestRecoveryState}
       composerDraft={assistantComposerDraft}
       onComposerDraftChange={setAssistantComposerDraft}
-      generationDiscussionQuestionDraft={generationPlanDiscussionQuestionDraft}
-      onGenerationDiscussionQuestionDraftChange={setGenerationPlanDiscussionQuestionDraft}
-      onSubmitGenerationDiscussion={handleRequestGenerationPlanDiscussion}
-      onIntentChange={handleAssistantIntentChange}
+      onActionChange={handleAssistantActionChange}
       onSubmit={handleAssistantSubmit}
       onRetryLastQaRequest={handleRetryLastQaRequest}
       onEditFailedQaRequest={handleEditFailedQaRequestFromAssistantWorkbench}
-      onRequestGenerationPlan={handleRequestGenerationPlan}
+      onPrimeGenerationPlan={primeGenerationPlanComposer}
       onRequestCodeDrafts={handleRequestCodeDrafts}
       onWriteCodeDrafts={workbenchCommands.handleWriteDrafts}
       onWriteSingleCodeDraft={handleWriteSingleCodeDraft}
       onOpenNativeDiff={handleOpenCodeDraftNativeDiff}
       onOpenDraft={workbenchCommands.handleOpenDraft}
       onRevealReference={handleAssistantRevealReference}
-      onFollowUpExplanationStep={handleFollowUpExplanationStep}
+      selectedExplanationStepId={selectedExplanationStepId}
+      selectedExplanationGranularity={selectedExplanationGranularity}
+      explanationHistoryTrail={[
+        ...explanationHistory.map((entry) => entry.sessionLabel),
+        currentExplanationSessionLabel,
+      ]}
+      previousExplanationSessionLabel={explanationHistory[explanationHistory.length - 1]?.sessionLabel ?? null}
+      onSelectExplanationStep={handleSelectExplanationStepFromAssistant}
+      onLocateExplanationStepNode={handleLocateExplanationStepNodeFromAssistant}
+      onInspectExplanationStepNode={handleInspectExplanationStepNodeFromAssistant}
+      onHoverExplanationStep={setHoveredExplanationStepId}
+      onLeaveExplanationStep={() => setHoveredExplanationStepId(null)}
+      onChangeExplanationGranularity={handleChangeExplanationGranularityFromAssistant}
+      onFollowUpExplanationStep={handleFollowUpExplanationStepFromAssistant}
       onReturnToPreviousExplanation={handleReturnToPreviousExplanation}
+      onOpenExplanationHistory={handleOpenExplanationHistory}
       canReturnToPreviousExplanation={explanationHistory.length > 0}
+      onDiscussGenerationPlan={handleDiscussGenerationPlanFromAssistant}
       onConfirmCandidateChange={handleConfirmCandidateChange}
-      onInvestigateThread={handleInvestigateQaThread}
+      onInvestigateThread={handleInvestigateThreadFromAssistant}
       onResolveThread={handleAssistantResolveThread}
-      legacyWorkbenchContent={legacyWorkbenchContent}
+      resolveArtifactText={resolveArtifactText}
+      onRequestArtifact={handleRequestArtifact}
     />
   );
-  const graphFocusedLayout = analysisDisplayMode === "CLASS_DIAGRAM" || isProjectStructureDisplay(
-    analysisDisplayMode,
-    architectureGraphView.summary.indexed ?? null,
-  );
   const graphStage = (
-    <section className="graph-stage" aria-label="图谱舞台">
-      <GraphStageHeader
-        analysisDisplayMode={analysisDisplayMode}
-        activeStage={activeWorkflowStage}
-        onRequestAnalysisDisplayMode={handleRequestAnalysisDisplayMode}
-      />
-      <div className="graph-stage-canvas">
-        {analysisDisplayMode === "ARCHITECTURE_GRAPH" ||
-        analysisDisplayMode === "CLASS_DIAGRAM" ||
-        analysisDisplayMode === "REVIEW_GRAPH" ? (
-          <AppGraphStage
-            analysisDisplayMode={analysisDisplayMode}
-            stageProps={indexedReadonlyStageProps}
-            factGraphView={factGraphView}
-            presentedFlowchartView={presentedFlowchartView}
-            flowchartView={flowchartView}
-            resourceRelationView={resourceRelationView}
-            architectureGraphView={architectureGraphView}
-            classDiagramView={classDiagramView}
-            reviewGraphView={reviewGraphView}
-          />
-        ) : (
-          <AppGraphStage
-            analysisDisplayMode={analysisDisplayMode}
-            stageProps={editableStageProps}
-            factGraphView={factGraphView}
-            presentedFlowchartView={presentedFlowchartView}
-            flowchartView={flowchartView}
-            resourceRelationView={resourceRelationView}
-            architectureGraphView={architectureGraphView}
-            classDiagramView={classDiagramView}
-            reviewGraphView={reviewGraphView}
-          />
-        )}
-      </div>
-      <GraphStageFooter
-        analysisDisplayMode={analysisDisplayMode}
-        activeViewGraph={activeViewGraph}
-        fullNodeCount={activeFullGraph.nodeCount ?? activeFullGraph.nodes.length}
-        hasExplanationFocus={explanationFocusNodeId != null}
-        draftChangedNodeCount={draftChangedNodeIds.length}
-        draftCompareProjection={draftCompareProjection}
-        indexedSummary={activeIndexedGraphSummary(
-          analysisDisplayMode,
-          architectureGraphView.summary.indexed ?? null,
-          classDiagramView.summary.indexed ?? null,
-          reviewGraphView.summary.indexed ?? null,
-        )}
-        codeDiffStatus={codeDiffStatus}
-      />
-    </section>
+    <AppGraphStagePanel
+      analysisDisplayMode={analysisDisplayMode}
+      activeWorkflowStage={activeWorkflowStage}
+      activeViewGraph={activeViewGraph}
+      fullNodeCount={activeFullGraph.nodeCount ?? activeFullGraph.nodes.length}
+      hasExplanationFocus={explanationFocusNodeId != null}
+      draftChangedNodeCount={draftChangedNodeIds.length}
+      draftCompareProjection={draftCompareProjection}
+      codeDiffStatus={codeDiffStatus}
+      editableStageProps={editableStageProps}
+      indexedReadonlyStageProps={indexedReadonlyStageProps}
+      factGraphView={factGraphView}
+      presentedFlowchartView={presentedFlowchartView}
+      flowchartView={flowchartView}
+      resourceRelationView={resourceRelationView}
+      architectureGraphView={architectureGraphView}
+      classDiagramView={classDiagramView}
+      reviewGraphView={reviewGraphView}
+      onRequestAnalysisDisplayMode={handleRequestAnalysisDisplayMode}
+    />
   );
 
   return (
-    <GraphWorkbench
-      taskbar={(
-        <WorkflowTaskbar
-          title={currentTarget.title}
-          path={currentTarget.path}
-          activeStage={activeWorkflowStage}
-          stageStates={workflowStageStates}
-          riskCount={changeTrayState.blockingRiskCount}
-          draftCandidateCount={changeTrayState.pendingCandidateCount + changeTrayState.confirmedDraftCount}
-          operationFeedback={toolbarFeedback}
-          primaryActionLabel={resolvePrimaryActionLabel()}
-          primaryActionDisabled={resolvePrimaryActionDisabled()}
-          onStageChange={handleWorkflowStageChange}
-          onImportMermaid={handleOpenImportMermaid}
-          onExportMermaid={workbenchCommands.handleExportMermaid}
-          onShowDiff={workbenchCommands.handleShowDiffMode}
-          onRequestSync={workbenchCommands.handleRequestSyncPreview}
-          onOpenSettings={workbenchCommands.handleOpenSettings}
-          onPrimaryAction={handlePrimaryWorkflowAction}
-        />
-      )}
+    <AppWorkbenchChrome
+      currentTarget={currentTarget}
+      activeWorkflowStage={activeWorkflowStage}
+      workflowStageStates={workflowStageStates}
+      analysisDisplayMode={analysisDisplayMode}
+      indexedArchitectureSummary={architectureGraphView.summary.indexed ?? null}
+      changeTrayState={changeTrayState}
+      toolbarFeedback={toolbarFeedback}
+      primaryWorkflowActionState={primaryWorkflowActionState}
+      hybridLayoutPreference={hybridLayoutPreference}
+      outlineState={outlineState}
+      outlineQuery={outlineQuery}
+      selectedNodeId={selectedNodeId}
+      graphStage={graphStage}
+      assistantWorkbench={assistantWorkbenchContent}
       dialogs={(
-        <>
-          <MermaidImportDialog
-            open={isImportDialogOpen}
-            value={mermaidDraft}
-            onChange={setMermaidDraft}
-            onCancel={() => setImportDialogOpen(false)}
-            onConfirm={handleConfirmImportMermaidDraft}
-          />
-
-          <AsyncRequestFailureDialog
-            open={requestFailureNotice !== null}
-            title={requestFailureNotice?.title ?? ""}
-            message={requestFailureNotice?.message ?? ""}
-            detailMessage={requestFailureNotice?.detailMessage ?? null}
-            onClose={() => setRequestFailureNotice(null)}
-          />
-        </>
-      )}
-      body={(
-        <HybridWorkbenchLayout
-          outlineCollapsed={graphFocusedLayout ? true : hybridLayoutPreference.outlineCollapsed}
-          onOutlineCollapsedChange={handleOutlineCollapsedChange}
-          workbenchWidth={hybridLayoutPreference.workbenchWidth}
-          onWorkbenchWidthChange={handleWorkbenchWidthChange}
-          outline={(
-            <LinkGraphOutline
-              metrics={outlineState.metrics}
-              items={outlineState.items}
-              activeItemId={selectedNodeId}
-              query={outlineQuery}
-              onQueryChange={setOutlineQuery}
-              onSelectItem={handleSelectOutlineItem}
-            />
-          )}
-          graphStage={graphStage}
-          workbench={(
-            <StageWorkbench
-              activeStage={activeWorkflowStage}
-              stageStates={workflowStageStates}
-              onStageChange={handleWorkflowStageChange}
-              content={assistantWorkbenchContent}
-            />
-          )}
+        <AppDialogs
+          importDialogOpen={isImportDialogOpen}
+          mermaidDraft={mermaidDraft}
+          requestFailureNotice={requestFailureNotice}
+          onMermaidDraftChange={setMermaidDraft}
+          onCancelImport={() => setImportDialogOpen(false)}
+          onConfirmImport={handleConfirmImportMermaidDraft}
+          onCloseRequestFailure={() => setRequestFailureNotice(null)}
         />
       )}
-      tray={(
-        <ChangeTray
-          {...changeTrayState}
-          onOpenDraft={() => setActiveWorkflowStage("draft")}
-          onOpenCode={() => setActiveWorkflowStage("code")}
-          onApply={workbenchCommands.handleWriteDrafts}
-          onRevert={handleUndoDraftPatchApply}
-        />
-      )}
-      propertyDrawer={(
-        <WorkbenchPropertyDrawer
-          selectedNode={detailNode}
-          onUpdateNode={handleUpdateNode}
-          onDeleteNode={handleDeleteNode}
-          onDeleteNodeSubtree={handleDeleteNodeSubtree}
-          onRequestSourceNavigation={handleRequestSourceNavigation}
-          onClose={() => setDetailNodeId(null)}
-        />
-      )}
+      detailNode={detailNode}
+      onImportMermaid={handleOpenImportMermaid}
+      onExportMermaid={workbenchCommands.handleExportMermaid}
+      onShowDiff={workbenchCommands.handleShowDiffMode}
+      onRequestSync={workbenchCommands.handleRequestSyncPreview}
+      onOpenSettings={workbenchCommands.handleOpenSettings}
+      onPrimaryAction={handlePrimaryWorkflowAction}
+      onOutlineCollapsedChange={handleOutlineCollapsedChange}
+      onWorkbenchWidthChange={handleWorkbenchWidthChange}
+      onOutlineQueryChange={setOutlineQuery}
+      onSelectOutlineItem={handleSelectOutlineItem}
+      onOpenDraft={() => {
+        setDraftCompareMode("after");
+        setActiveWorkflowStage("draft");
+      }}
+      onOpenDraftCompare={() => {
+        setDraftCompareMode("compare");
+        setActiveWorkflowStage("draft");
+      }}
+      onOpenCode={() => setActiveWorkflowStage("code")}
+      onApplyChanges={workbenchCommands.handleWriteDrafts}
+      onRevertChanges={handleUndoDraftPatchApply}
+      onUpdateNode={handleUpdateNode}
+      onDeleteNode={handleDeleteNode}
+      onDeleteNodeSubtree={handleDeleteNodeSubtree}
+      onRequestSourceNavigation={handleRequestSourceNavigation}
+      onClosePropertyDrawer={() => setDetailNodeId(null)}
     />
   );
 }

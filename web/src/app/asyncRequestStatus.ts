@@ -12,13 +12,12 @@ interface ResolveToolbarFeedbackArgs {
 }
 
 const ASYNC_LAST_MESSAGE_TYPES = new Set([
-  "requestQa",
+  "requestAssistantTask",
   "qaResult",
-  "requestDiffReview",
   "diffReviewResult",
-  "requestGraphBeautification",
   "graphBeautificationResult",
-  "requestGenerationPlan",
+  "generationPlanResult",
+  "generationPlanDiscussionResult",
   "requestCodeDrafts",
 ]);
 

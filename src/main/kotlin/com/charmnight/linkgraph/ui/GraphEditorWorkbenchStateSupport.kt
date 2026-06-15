@@ -129,12 +129,4 @@ internal class GraphEditorWorkbenchStateSupport(
         }
     }
 
-    fun markWorkbenchSectionPreferences(preferences: Map<String, Boolean>) {
-        mutate {
-            it.copy(
-                workbenchSectionPreferences = LinkedHashMap(preferences),
-                lastMessageType = "workbenchSectionPreferences",
-            )
-        }
-    }
 }

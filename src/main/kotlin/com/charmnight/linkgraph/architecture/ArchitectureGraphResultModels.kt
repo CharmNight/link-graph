@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.application.indexed.IndexedGraphSummary
 import com.charmnight.linkgraph.application.model.GraphProjectionIndex
 import com.charmnight.linkgraph.presentation.GraphViewPresentation
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.usage.ClassUsageSearchResult
 
 data class ProjectStructureRelationGroup(
     val id: String,
@@ -91,4 +92,5 @@ data class ClassDiagramResult(
     val summary: ClassDiagramSummary = ClassDiagramSummary(),
     val projectionIndex: GraphProjectionIndex = GraphProjectionIndex.EMPTY,
     val presentation: GraphViewPresentation = GraphViewPresentation(),
+    val usage: ClassUsageSearchResult? = null,
 )

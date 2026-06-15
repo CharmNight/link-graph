@@ -15,17 +15,17 @@ import com.intellij.openapi.project.Project
 
 internal class ArchitectureIndexWorkflowSupport(
     private val project: Project,
-) {
+) : ClassDiagramIndexSupport {
     @Volatile
     private var cachedIndex: ArchitectureGraphIndex? = null
 
     @Volatile
     private var cachedFullIndex: ArchitectureGraphIndex? = null
 
-    fun currentIndex(): ArchitectureGraphIndex? = cachedIndex
+    override fun currentIndex(): ArchitectureGraphIndex? = cachedIndex
         ?: runCatching { project.architectureIndexRuntime().currentIndex() }.getOrNull()
 
-    fun freshness(): IndexedGraphFreshness =
+    override fun freshness(): IndexedGraphFreshness =
         runCatching { project.architectureIndexService().freshness().toIndexedFreshness() }
             .getOrDefault(IndexedGraphFreshness())
 
@@ -36,14 +36,14 @@ internal class ArchitectureIndexWorkflowSupport(
         }
     }
 
-    fun buildIndex(request: IndexedGraphRequest): ArchitectureGraphIndex =
+    override fun buildIndex(request: IndexedGraphRequest): ArchitectureGraphIndex =
         if (request.view == IndexedGraphView.ARCHITECTURE && request.scope is IndexedGraphScope.Project) {
             buildArchitectureOverviewIndex(request)
         } else {
             buildIndex(request.toResolutionBudget(), forceRebuild = request.forceRebuild)
         }
 
-    fun buildIndex(
+    override fun buildIndex(
         request: IndexedGraphRequest,
         symbolIndexHint: JvmSymbolIndex?,
     ): ArchitectureGraphIndex =
@@ -90,7 +90,7 @@ internal class ArchitectureIndexWorkflowSupport(
             forceRebuild = forceRebuild,
         )
 
-    fun buildClassDiagramStructureIndex(request: IndexedGraphRequest): ArchitectureGraphIndex =
+    override fun buildClassDiagramStructureIndex(request: IndexedGraphRequest): ArchitectureGraphIndex =
         buildClassDiagramStructureIndex(
             budget = request.toResolutionBudget(),
             forceRebuild = request.forceRebuild,
@@ -108,7 +108,7 @@ internal class ArchitectureIndexWorkflowSupport(
     fun hasFullIndex(budget: JvmResolutionBudget = defaultBudget()): Boolean =
         cachedFullIndex != null || project.architectureIndexRuntime().hasCachedFullIndex(budget)
 
-    fun hasFullIndex(request: IndexedGraphRequest): Boolean =
+    override fun hasFullIndex(request: IndexedGraphRequest): Boolean =
         project.architectureIndexRuntime().hasCachedFullIndex(request.toResolutionBudget())
 
     fun invalidateCache() {
@@ -131,4 +131,21 @@ internal class ArchitectureIndexWorkflowSupport(
 
     private val IndexedGraphRequest.forceRebuild: Boolean
         get() = refreshPolicy == IndexedGraphRefreshPolicy.ForceRebuild
+}
+
+internal interface ClassDiagramIndexSupport {
+    fun currentIndex(): ArchitectureGraphIndex?
+
+    fun freshness(): IndexedGraphFreshness
+
+    fun buildIndex(request: IndexedGraphRequest): ArchitectureGraphIndex
+
+    fun buildIndex(
+        request: IndexedGraphRequest,
+        symbolIndexHint: JvmSymbolIndex?,
+    ): ArchitectureGraphIndex
+
+    fun buildClassDiagramStructureIndex(request: IndexedGraphRequest): ArchitectureGraphIndex
+
+    fun hasFullIndex(request: IndexedGraphRequest): Boolean
 }

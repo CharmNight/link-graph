@@ -37,10 +37,24 @@ class GraphBrowserBridgeRegistrarTest {
         assertTrue(source.contains("schemaVersion: 1"))
         assertTrue(source.contains("type: type"))
         assertTrue(source.contains("payload: payload"))
-        assertTrue(source.contains("requestQa: (question, selectedNodeIds, sourceThreadId, mode) => sendCommand(\"requestQa\""))
-        assertTrue(source.contains("requestGraphBeautification: (goal, preferredStyle, explanationFocus, granularity"))
+        assertTrue(source.contains("requestAssistantTask: (request) => sendCommand(\"requestAssistantTask\""))
+        assertFalse(source.contains("actionId: request && request.actionId ? request.actionId :"))
+        assertFalse(source.contains("intent: request && request.intent ? request.intent :"))
+        assertTrue(source.contains("target: request && request.target ? request.target : { kind: \"NewTask\" }"))
         assertTrue(source.contains("requestIndexedGraph: (request) => sendCommand(\"requestIndexedGraph\""))
         assertTrue(source.contains("applyGraphEditScript: (payload) => sendCommand(\"applyGraphEditScript\""))
+        listOf(
+            "requestQa",
+            "requestDiffReview",
+            "requestGraphBeautification",
+            "requestGenerationPlan",
+            "requestGenerationPlanDiscussion",
+        ).forEach { oldCommand ->
+            assertFalse(
+                source.contains("""$oldCommand:""") || source.contains("""sendCommand("$oldCommand""""),
+                "$oldCommand must not remain as a natural-language assistant entrypoint",
+            )
+        }
     }
 
     @Test
@@ -48,8 +62,7 @@ class GraphBrowserBridgeRegistrarTest {
         val source = readRegistrar()
 
         listOf(
-            "requestQa",
-            "requestGraphBeautification",
+            "requestAssistantTask",
             "requestIndexedGraph",
             "requestOpenSettings",
             "applyCodeDrafts",

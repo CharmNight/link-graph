@@ -44,22 +44,41 @@ vi.mock("../../../../app/components/graph/nodes/FactGraphNodeCard", () => ({
 }));
 
 describe("FACT_GRAPH_NODE_TYPES", () => {
-  it("refreshes React Flow internals after rendering a custom fact node", () => {
+  it("refreshes React Flow internals only after a custom fact node structure changes", () => {
     updateNodeInternalsMock.mockClear();
     const FactGraphNode = FACT_GRAPH_NODE_TYPES.factGraphNode as (props: Record<string, unknown>) => JSX.Element;
+    const node = {
+      id: "method:submit-order",
+      type: "METHOD" as const,
+      title: "OrderService.submit",
+      inputs: [],
+      outputs: [],
+      certainty: "PROVEN" as const,
+      bindingStatus: "BOUND" as const,
+    };
 
-    render(
+    const { rerender } = render(
+      <FactGraphNode
+        id="method:submit-order"
+        data={{
+          node,
+          collapsed: false,
+          onExpandOverflow: vi.fn(),
+        }}
+        selected={false}
+        isConnectable
+      />,
+    );
+
+    expect(updateNodeInternalsMock).not.toHaveBeenCalled();
+
+    rerender(
       <FactGraphNode
         id="method:submit-order"
         data={{
           node: {
-            id: "method:submit-order",
-            type: "METHOD",
-            title: "OrderService.submit",
-            inputs: [],
-            outputs: [],
-            certainty: "PROVEN",
-            bindingStatus: "BOUND",
+            ...node,
+            title: "OrderService.submitOrder",
           },
           collapsed: false,
           onExpandOverflow: vi.fn(),
@@ -242,6 +261,51 @@ describe("FACT_GRAPH_NODE_TYPES", () => {
       boxShadow: expect.stringContaining("14, 139, 114"),
     });
     expect(anchorStyle?.boxShadow).not.toBe(callerStyle?.boxShadow);
+  });
+
+  it("uses theme-aware node backgrounds in the dark graph stage instead of hardcoded light cards", () => {
+    const builtNodes = buildFactGraphNodes({
+      nodes: [
+        {
+          id: "method:caller",
+          type: "METHOD",
+          title: "OrderController.submit",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN",
+          bindingStatus: "BOUND",
+          metadata: { "presentation.role": "UPSTREAM" },
+        },
+        {
+          id: "method:anchor",
+          type: "METHOD",
+          title: "OrderService.place",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN",
+          bindingStatus: "BOUND",
+          metadata: { "presentation.role": "ANCHOR" },
+        },
+        {
+          id: "flow-action:guard",
+          type: "FLOW_ACTION",
+          title: "校验条件",
+          inputs: [],
+          outputs: [],
+          certainty: "PROVEN",
+          bindingStatus: "BOUND",
+        },
+      ],
+      selectedNodeId: null,
+      onExpandOverflowNode: vi.fn(),
+      nodeSizeRegistry: createNodeSizeRegistry(),
+    });
+
+    for (const node of builtNodes) {
+      const background = String(node.style?.background ?? "");
+      expect(background).toContain("var(--panel");
+      expect(background).not.toMatch(/#(?:f|fff)|rgba\(255/i);
+    }
   });
 
   it("switches fact edges to the shared routed edge renderer when ELK route data is present", () => {
