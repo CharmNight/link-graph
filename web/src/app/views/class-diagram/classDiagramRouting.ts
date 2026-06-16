@@ -516,6 +516,12 @@ function sameLaneVerticalRoutePoints(
   ];
 }
 
+function compactHorizontalRoutePoints(sourcePoint: GraphPosition, targetPoint: GraphPosition): GraphPosition[] {
+  if (Math.abs(sourcePoint.y - targetPoint.y) <= 0.5) return [sourcePoint, targetPoint];
+  const midX = Math.round((sourcePoint.x + targetPoint.x) / 2);
+  return [sourcePoint, { x: midX, y: sourcePoint.y }, { x: midX, y: targetPoint.y }, targetPoint];
+}
+
 function routeAnchorToOutgoingPoints(
   sourcePoint: GraphPosition,
   targetPoint: GraphPosition,
@@ -527,7 +533,7 @@ function routeAnchorToOutgoingPoints(
 ): GraphPosition[] {
   const gap = targetPoint.x - sourcePoint.x;
   if (gap <= 96) {
-    return [sourcePoint, targetPoint];
+    return compactHorizontalRoutePoints(sourcePoint, targetPoint);
   }
   const targetLeft = nodeLeft(target);
   const columnGap = anchorOutgoingColumnGap(target, context, sizeSnapshot);
@@ -573,7 +579,7 @@ function routeIncomingToAnchorPoints(
 ): GraphPosition[] {
   const gap = targetPoint.x - sourcePoint.x;
   if (gap <= 96) {
-    return [sourcePoint, targetPoint];
+    return compactHorizontalRoutePoints(sourcePoint, targetPoint);
   }
   const channelMinX = sourcePoint.x + ANCHOR_ROUTE_TARGET_MARGIN_X;
   const channelMaxX = targetPoint.x - ANCHOR_ROUTE_SOURCE_MARGIN_X;

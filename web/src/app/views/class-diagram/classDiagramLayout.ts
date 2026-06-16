@@ -14,7 +14,10 @@ import {
   measuredNodeSize,
 } from "./classDiagramLayoutModel";
 import { ClassDiagramTopologyBuilder } from "./classDiagramTopology";
-import { ClassDiagramPlacementEngine } from "./classDiagramPlacement";
+import {
+  ClassDiagramPlacementEngine,
+  type ClassDiagramPlacement,
+} from "./classDiagramPlacement";
 import { ClassDiagramRoutingEngine } from "./classDiagramRouting";
 import { ClassDiagramReadabilityScorer } from "./classDiagramReadability";
 
@@ -49,6 +52,52 @@ function createClassDiagramPipeline(): ClassDiagramPipeline {
   };
 }
 
+function explicitPosition(node: LinkGraphNode) {
+  if (node.position) {
+    return node.position;
+  }
+  const x = Number(node.metadata?.["ui.x"]);
+  const y = Number(node.metadata?.["ui.y"]);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+}
+
+function shouldPreserveExplicitPositions(request: MeasuredLayoutRequest): boolean {
+  return request.reason === "position"
+    && request.nodes.length > 0
+    && request.nodes.every((node) => explicitPosition(node) !== null);
+}
+
+function withPreservedExplicitPositions(
+  placement: ClassDiagramPlacement,
+  requestNodes: LinkGraphNode[],
+): ClassDiagramPlacement {
+  const explicitPositionsById = new Map(
+    requestNodes
+      .map((node) => [node.id, explicitPosition(node)] as const)
+      .filter((entry): entry is readonly [string, NonNullable<ReturnType<typeof explicitPosition>>] => entry[1] !== null),
+  );
+  const nodes = placement.nodes.map((node) => {
+    const position = explicitPositionsById.get(node.id);
+    if (!position) {
+      return node;
+    }
+    return {
+      ...node,
+      position,
+      metadata: {
+        ...(node.metadata ?? {}),
+        "ui.x": String(position.x),
+        "ui.y": String(position.y),
+      },
+    };
+  });
+  return {
+    ...placement,
+    nodes,
+    nodeIndex: new Map(nodes.map((node) => [node.id, node])),
+  };
+}
+
 function runManualClassDiagramPipeline(
   request: MeasuredLayoutRequest,
   pipeline: ClassDiagramPipeline,
@@ -57,7 +106,12 @@ function runManualClassDiagramPipeline(
   if (!topology) {
     return { nodes: request.nodes, edges: request.edges };
   }
-  const placement = pipeline.placementEngine.place(topology, request.sizeSnapshot);
+  const placement = shouldPreserveExplicitPositions(request)
+    ? withPreservedExplicitPositions(
+        pipeline.placementEngine.place(topology, request.sizeSnapshot),
+        request.nodes,
+      )
+    : pipeline.placementEngine.place(topology, request.sizeSnapshot);
   const edges = pipeline.routingEngine.routeClassDiagramEdges(topology, placement, request.sizeSnapshot);
   const report = pipeline.readabilityScorer.scoreClassDiagramReadability(
     { nodes: placement.nodes, edges },
@@ -105,7 +159,7 @@ async function runElkClassDiagramPipeline(
 
 export async function layoutClassDiagramView(request: MeasuredLayoutRequest) {
   const pipeline = createClassDiagramPipeline();
-  if (request.nodes.length <= 32) {
+  if (request.nodes.length <= 32 || request.reason === "position") {
     return runManualClassDiagramPipeline(request, pipeline);
   }
   return runElkClassDiagramPipeline(request, pipeline);

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "incrementalTransportTypes": [
+    "ARTIFACT_SLICE",
+    "FEEDBACK_SLICE"
+  ]
+}

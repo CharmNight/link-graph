@@ -488,7 +488,7 @@ export class ClassDiagramPlacementEngine {
     const channelGap = fanoutCount <= 1
       ? 56
       : fanoutCount <= 2 ? 72
-      : fanoutCount <= 4 ? 84 : ANCHOR_ROUTE_CHANNEL_GAP;
+      : 84;
     const readableCorridorWidth = ANCHOR_ROUTE_SOURCE_MARGIN_X
       + ANCHOR_ROUTE_TARGET_MARGIN_X
       + (fanoutCount + 1) * channelGap;

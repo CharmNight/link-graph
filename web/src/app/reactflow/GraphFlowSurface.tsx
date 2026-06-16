@@ -89,6 +89,8 @@ interface GraphFlowSurfaceProps {
   experiments?: GraphSurfaceExperimentFlags | null;
   editable?: boolean;
   layoutEditable?: boolean;
+  panOnDrag?: boolean | number[];
+  groupSelectionEnabled?: boolean;
   header?: ReactNode;
   viewportOverlay?: (context: ViewportOverlayContext) => ReactNode;
   emptyState: ReactNode;
@@ -177,6 +179,8 @@ export function GraphFlowSurface({
   experiments = null,
   editable = false,
   layoutEditable = true,
+  panOnDrag = true,
+  groupSelectionEnabled = true,
   header = null,
   viewportOverlay,
   emptyState,
@@ -319,13 +323,6 @@ export function GraphFlowSurface({
         .join("|"),
     [positionedNodes, edges],
   );
-  const classDiagramViewportContentSignature = useMemo(
-    () =>
-      viewportMode === "CLASS_DIAGRAM"
-        ? graphViewportContentSignature(positionedNodes, edges, nodeViewportSize)
-        : "",
-    [positionedNodes, edges, nodeViewportSize, viewportMode],
-  );
   const readableFitViewportContentSignature = useMemo(
     () =>
       viewportPolicy === "readable-fit"
@@ -334,7 +331,7 @@ export function GraphFlowSurface({
     [positionedNodes, edges, nodeViewportSize, viewportPolicy],
   );
   const effectiveViewportResetKey = viewportMode === "CLASS_DIAGRAM"
-    ? `${viewportResetKey ?? ""}:${hashText(classDiagramViewportContentSignature)}`
+    ? viewportResetKey
     : viewportPolicy === "readable-fit"
       ? `${viewportResetKey ?? ""}:${hashText(readableFitViewportContentSignature)}`
     : viewportResetKey;
@@ -829,14 +826,14 @@ export function GraphFlowSurface({
   };
 
   const handleFlowSelectionChange = useCallback(({ nodes: nextNodes }: { nodes: Node[] }) => {
-    const nodeIds = nextNodes.map((node) => node.id);
+    const nodeIds = groupSelectionEnabled ? nextNodes.map((node) => node.id) : [];
     const nextSignature = nodeIds.join("\u0000");
     if (lastSelectionChangeSignatureRef.current === nextSignature) {
       return;
     }
     lastSelectionChangeSignatureRef.current = nextSignature;
     onSelectionGroupChangeRef.current(nodeIds);
-  }, []);
+  }, [groupSelectionEnabled]);
 
   const selectedEdgeActions = selectedEdgeId
     ? buildEdgeActions({
@@ -920,7 +917,9 @@ export function GraphFlowSurface({
           zoomOnDoubleClick={false}
           selectionOnDrag={false}
           selectionMode={SelectionMode.Partial}
-          panOnDrag={true}
+          panOnDrag={panOnDrag}
+          multiSelectionKeyCode={groupSelectionEnabled ? undefined : null}
+          selectNodesOnDrag={groupSelectionEnabled}
           nodesDraggable={layoutEditable}
           nodesConnectable={editable}
           elementsSelectable={true}
@@ -946,7 +945,7 @@ export function GraphFlowSurface({
           onEdgeContextMenu={(event, edge) => openEdgeMenu(event, edge.id)}
           onSelectionChange={handleFlowSelectionChange}
           onSelectionDragStop={(_, movedNodes) => {
-            if (!layoutEditable) {
+            if (!layoutEditable || !groupSelectionEnabled) {
               return;
             }
             updateLiveDragPositions(
@@ -968,7 +967,7 @@ export function GraphFlowSurface({
             }
           }}
           onSelectionDrag={(_, movedNodes) => {
-            if (!layoutEditable) {
+            if (!layoutEditable || !groupSelectionEnabled) {
               return;
             }
             updateLiveDragPositions(

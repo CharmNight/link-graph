@@ -400,6 +400,104 @@ describe("useMeasuredLayout", () => {
     expect(layout).toHaveBeenCalledTimes(1);
   });
 
+  it("reruns layout for position-only updates when requested by routed diagrams", async () => {
+    const layout = vi.fn(async ({
+      nodes,
+      reason,
+    }: {
+      nodes: LinkGraphNode[];
+      reason: string;
+    }) => ({
+      nodes,
+      edges: [{
+        id: "edge:anchor->callee",
+        type: "CALL",
+        source: "method:anchor",
+        target: "method:callee",
+        route: {
+          sections: [{
+            startPoint: nodes[0]?.position ?? { x: 0, y: 0 },
+            endPoint: nodes[1]?.position ?? { x: 0, y: 0 },
+          }],
+        },
+        metadata: {
+          reason,
+        },
+      }],
+    }));
+
+    const initialGraph: LinkGraphDocument = {
+      nodes: [
+        {
+          ...methodNode("method:anchor", "OrderService.submit"),
+          position: { x: 120, y: 96 },
+          metadata: {
+            "ui.x": "120",
+            "ui.y": "96",
+          },
+        },
+        {
+          ...methodNode("method:callee", "OrderMapper.insert"),
+          position: { x: 440, y: 96 },
+          metadata: {
+            "ui.x": "440",
+            "ui.y": "96",
+          },
+        },
+      ],
+      edges: [{
+        id: "edge:anchor->callee",
+        type: "CALL",
+        source: "method:anchor",
+        target: "method:callee",
+      }],
+    };
+
+    const { result, rerender } = renderHook(
+      ({ graph }) =>
+        useMeasuredLayout({
+          graph,
+          anchorNodeId: "method:anchor",
+          layout,
+          layoutOnPositionChange: true,
+        }),
+      {
+        initialProps: {
+          graph: initialGraph,
+        },
+      },
+    );
+
+    await waitFor(() => {
+      expect(layout).toHaveBeenCalledTimes(1);
+    });
+
+    rerender({
+      graph: {
+        ...initialGraph,
+        nodes: [
+          initialGraph.nodes[0]!,
+          {
+            ...initialGraph.nodes[1]!,
+            position: { x: 560, y: 180 },
+            metadata: {
+              ...(initialGraph.nodes[1]!.metadata ?? {}),
+              "ui.x": "560",
+              "ui.y": "180",
+            },
+          },
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      expect(layout).toHaveBeenCalledTimes(2);
+    });
+    expect(result.current.nodes[1]?.position).toEqual({ x: 560, y: 180 });
+    expect(result.current.edges[0]?.route?.sections[0]?.endPoint).toEqual({ x: 560, y: 180 });
+    expect(result.current.edges[0]?.metadata?.reason).toBe("position");
+  });
+
   it("reruns layout when positioned node additions are invocation expansion batches", async () => {
     const initialGraph: LinkGraphDocument = {
       nodes: [methodNode("method:caller", "Caller.run")],

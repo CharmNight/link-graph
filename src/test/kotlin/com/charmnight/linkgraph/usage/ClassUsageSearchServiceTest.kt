@@ -3,6 +3,7 @@ package com.charmnight.linkgraph.usage
 import com.charmnight.linkgraph.jvm.index.stableJvmId
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.search.GlobalSearchScope
+import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -171,6 +172,56 @@ class ClassUsageSearchServiceTest : BasePlatformTestCase() {
         assertTrue(
             result.groups.any { group -> group.qualifiedName == "com.example.OrderClient" },
             result.groups.joinToString("\n") { group -> "${group.qualifiedName}: ${group.usages.map { it.kind }}" },
+        )
+    }
+
+    fun testSourceRootPathHintDoesNotForceWordIndexFallback() {
+        val targetFile = myFixture.addFileToProject(
+            "src/main/java/com/example/OrderService.java",
+            """
+            package com.example;
+            public class OrderService {}
+            """.trimIndent(),
+        )
+        val sourceRoot = targetFile.virtualFile.parent.parent.parent
+        PsiTestUtil.addSourceContentToRoots(module, sourceRoot)
+
+        val resolution = ClassUsageTargetResolver(project).resolve(
+            ClassUsageSearchTargetHint(
+                qualifiedName = "com.example.OrderService",
+                nodeId = "jvm:class:com-example-orderservice",
+                sourceVirtualFileUrl = targetFile.virtualFile.url,
+            ),
+        )
+
+        assertNotNull(resolution, "sourcePath hint should still resolve the source-root PSI class.")
+        assertFalse(
+            resolution.allowWordIndexFallback,
+            "Classes already backed by source roots should rely on indexed reference search instead of broad fallback scans.",
+        )
+    }
+
+    fun testNonSourcePathHintKeepsWordIndexFallback() {
+        val targetFile = myFixture.addFileToProject(
+            "samples/com/example/OrderService.java",
+            """
+            package com.example;
+            public class OrderService {}
+            """.trimIndent(),
+        )
+
+        val resolution = ClassUsageTargetResolver(project).resolve(
+            ClassUsageSearchTargetHint(
+                qualifiedName = "com.example.OrderService",
+                nodeId = "jvm:class:com-example-orderservice",
+                sourceVirtualFileUrl = targetFile.virtualFile.url,
+            ),
+        )
+
+        assertNotNull(resolution, "source hint should resolve Java files outside source roots.")
+        assertTrue(
+            resolution.allowWordIndexFallback,
+            "Java files outside source roots still need word/file fallback to find their usages.",
         )
     }
 

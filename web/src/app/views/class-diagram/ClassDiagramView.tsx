@@ -250,6 +250,7 @@ export function ClassDiagramView({
     anchorNodeId: view.anchorNodeId ?? null,
     nodeSizeRegistry,
     layout: layoutClassDiagramView,
+    layoutOnPositionChange: true,
     debugLabel: "class-diagram",
   });
 
@@ -395,7 +396,9 @@ export function ClassDiagramView({
           selectedGroupNodeIds={selectedGroupNodeIds}
           experiments={experiments}
           editable={false}
-          layoutEditable={false}
+          layoutEditable
+          panOnDrag={[1]}
+          groupSelectionEnabled={false}
           emptyState={(
             isLayoutLoading ? (
               <div className="canvas-empty-state">

@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.usage
 
 import com.charmnight.linkgraph.jvm.index.stableJvmId
 import com.charmnight.linkgraph.jvm.index.methodSignature
-import com.intellij.openapi.roots.ProjectFileIndex
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiAnonymousClass
@@ -64,12 +64,13 @@ class ClassUsageSearchService(
         val maxUsageEntries = effectiveOptions.maxUsageEntries
         val maxUsageGroups = effectiveOptions.maxUsageGroups
         val collectionLimit = maxUsageEntries.sentinelLimit()
+        val shouldUseFallbackSearch = allowWordIndexFallback || targetClass.requiresWordIndexFallback()
         val allEntries = collectEntries(
             targetClass = targetClass,
             targetQualifiedName = targetQualifiedName,
             includeImports = effectiveOptions.includeImports,
             limit = collectionLimit,
-            allowWordIndexFallback = allowWordIndexFallback || targetClass.requiresWordIndexFallback(),
+            allowWordIndexFallback = shouldUseFallbackSearch,
         ).let { entries ->
             if (entries.size >= collectionLimit) {
                 entries
@@ -79,6 +80,7 @@ class ClassUsageSearchService(
                     targetQualifiedName = targetQualifiedName,
                     existingIds = entries.mapTo(mutableSetOf(), ClassUsageEntry::id),
                     limit = collectionLimit - entries.size,
+                    allowNonSourceEntries = shouldUseFallbackSearch,
                 )
             }
         }
@@ -165,6 +167,7 @@ class ClassUsageSearchService(
         val seenEntryIds = mutableSetOf<String>()
         ReferencesSearch.search(targetClass, scope).forEach(
             Processor { reference ->
+                ProgressManager.checkCanceled()
                 if (entries.size >= limit) {
                     return@Processor false
                 }
@@ -176,11 +179,12 @@ class ClassUsageSearchService(
                     entries = entries,
                     seenEntryIds = seenEntryIds,
                     limit = limit,
+                    allowNonSourceEntries = allowWordIndexFallback,
                 )
                 entries.size < limit
             },
         )
-        if ((allowWordIndexFallback || entries.isEmpty()) && entries.size < limit) {
+        if (allowWordIndexFallback && entries.size < limit) {
             collectWordIndexEntries(
                 targetClass = targetClass,
                 targetQualifiedName = targetQualifiedName,
@@ -217,8 +221,9 @@ class ClassUsageSearchService(
         val packageName = targetQualifiedName.substringBeforeLast('.', missingDelimiterValue = "")
         PsiSearchHelper.getInstance(project).processAllFilesWithWord(
             simpleName,
-            GlobalSearchScope.allScope(project),
+            GlobalSearchScope.projectScope(project),
             Processor { file ->
+                ProgressManager.checkCanceled()
                 if (entries.size >= limit) {
                     return@Processor false
                 }
@@ -228,6 +233,7 @@ class ClassUsageSearchService(
                     PsiJavaCodeReferenceElement::class.java,
                 )
                 for (referenceElement in references) {
+                    ProgressManager.checkCanceled()
                     if (entries.size >= limit) {
                         return@Processor false
                     }
@@ -241,6 +247,7 @@ class ClassUsageSearchService(
                         entries = entries,
                         seenEntryIds = seenEntryIds,
                         limit = limit,
+                        allowNonSourceEntries = true,
                     )
                 }
                 entries.size < limit
@@ -269,6 +276,7 @@ class ClassUsageSearchService(
                 PsiTreeUtil.findChildrenOfType(javaFile, PsiJavaCodeReferenceElement::class.java).asSequence()
             }
             .forEach { referenceElement ->
+                ProgressManager.checkCanceled()
                 if (entries.size >= limit) {
                     return
                 }
@@ -282,13 +290,14 @@ class ClassUsageSearchService(
                     entries = entries,
                     seenEntryIds = seenEntryIds,
                     limit = limit,
+                    allowNonSourceEntries = true,
                 )
             }
     }
 
     private fun fallbackJavaVirtualFiles(targetClass: PsiClass): Sequence<VirtualFile> =
         (
-            FilenameIndex.getAllFilesByExt(project, "java", GlobalSearchScope.allScope(project)).asSequence() +
+            FilenameIndex.getAllFilesByExt(project, "java", GlobalSearchScope.projectScope(project)).asSequence() +
                 (targetClass.containingFile?.virtualFile?.parent?.javaDescendants() ?: emptySequence())
             )
             .distinctBy { file -> file.url }
@@ -300,6 +309,7 @@ class ClassUsageSearchService(
         entries: MutableList<ClassUsageEntry>,
         seenEntryIds: MutableSet<String>,
         limit: Int,
+        allowNonSourceEntries: Boolean,
     ) {
         if (entries.size >= limit) {
             return
@@ -309,6 +319,12 @@ class ClassUsageSearchService(
             return
         }
         val file = element.containingFile ?: return
+        if (!allowNonSourceEntries) {
+            val virtualFile = file.virtualFile ?: return
+            if (!virtualFile.isStandardClassUsageSourceFile(project)) {
+                return
+            }
+        }
         val document = com.intellij.psi.PsiDocumentManager.getInstance(project).getDocument(file)
         val offset = element.textRange?.startOffset ?: return
         val lineIndex = document?.getLineNumber(offset) ?: 0
@@ -353,6 +369,7 @@ class ClassUsageSearchService(
         targetQualifiedName: String,
         existingIds: MutableSet<String> = mutableSetOf(),
         limit: Int = Int.MAX_VALUE,
+        allowNonSourceEntries: Boolean,
     ): List<ClassUsageEntry> {
         if (limit <= 0) {
             return emptyList()
@@ -360,8 +377,13 @@ class ClassUsageSearchService(
         val scope = targetClass.usageSearchScope()
         val entries = mutableListOf<ClassUsageEntry>()
         for (inheritor in ClassInheritorsSearch.search(targetClass, scope, true).asIterable()) {
+            ProgressManager.checkCanceled()
             val qualifiedName = inheritor.qualifiedName?.takeIf(String::isNotBlank) ?: continue
             val file = inheritor.containingFile ?: continue
+            val virtualFile = file.virtualFile
+            if (!allowNonSourceEntries && (virtualFile == null || !virtualFile.isStandardClassUsageSourceFile(project))) {
+                continue
+            }
             val anchorElement = inheritor.extendsList?.referenceElements?.firstOrNull()
                 ?: inheritor.implementsList?.referenceElements?.firstOrNull()
                 ?: inheritor.nameIdentifier
@@ -419,7 +441,7 @@ class ClassUsageSearchService(
 
     private fun PsiClass.requiresWordIndexFallback(): Boolean {
         val file = containingFile?.virtualFile ?: return true
-        return !ProjectFileIndex.getInstance(project).isInSourceContent(file)
+        return !file.isStandardClassUsageSourceFile(project)
     }
 
     private fun VirtualFile.javaDescendants(): Sequence<VirtualFile> =

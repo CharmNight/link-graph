@@ -611,6 +611,61 @@ describe("layoutClassDiagramView", () => {
     expect(routeCrossingCount(laidOut.edges)).toBe(0);
   });
 
+  it("preserves explicit class diagram node positions while rerouting relation lines", async () => {
+    const nodes = [
+      {
+        ...tallClassNode("caller", "OrderController"),
+        position: { x: 120, y: 180 },
+        metadata: {
+          "ui.x": "120",
+          "ui.y": "180",
+        },
+      },
+      {
+        ...tallClassNode("anchor", "OrderService"),
+        position: { x: 520, y: 260 },
+        metadata: {
+          "ui.x": "520",
+          "ui.y": "260",
+        },
+      },
+      {
+        ...tallClassNode("repository", "OrderRepository"),
+        position: { x: 940, y: 160 },
+        metadata: {
+          "ui.x": "940",
+          "ui.y": "160",
+        },
+      },
+    ];
+    const edges = [
+      relation("caller-anchor", "caller", "anchor", "INJECTS"),
+      relation("anchor-repository", "anchor", "repository", "USES_TYPE", "ASSOCIATION"),
+    ];
+
+    const laidOut = await layoutClassDiagramView({
+      graph: { nodes, edges },
+      nodes,
+      edges,
+      anchorNodeId: "anchor",
+      sizeSnapshot: new Map(),
+      reason: "position",
+    });
+    const byId = new Map(laidOut.nodes.map((node) => [node.id, node]));
+
+    expect(byId.get("caller")?.position).toEqual({ x: 120, y: 180 });
+    expect(byId.get("anchor")?.position).toEqual({ x: 520, y: 260 });
+    expect(byId.get("repository")?.position).toEqual({ x: 940, y: 160 });
+    laidOut.edges.forEach((edge) => {
+      expect(edge.metadata?.["layout.routeMode"]).toBe("stored");
+      expect(routeIsOrthogonal(edge)).toBe(true);
+      const crossedNode = laidOut.nodes.find((node) =>
+        node.id !== edge.source && node.id !== edge.target && routeCrossesExpandedNode(edge, node, 16),
+      );
+      expect(crossedNode, `${edge.id} crosses or hugs ${crossedNode?.id}`).toBeUndefined();
+    });
+  });
+
   it("repairs edge-to-edge crossings across independent lane relations", async () => {
     const nodes = [
       tallClassNode("left-a", "BuildIndexWorkflow"),
@@ -873,11 +928,15 @@ describe("layoutClassDiagramView", () => {
     expect(anchorIncomingEdges).toHaveLength(2);
     const outgoingChannels = anchorOutgoingEdges.map(primaryVerticalChannelX);
     const incomingChannels = anchorIncomingEdges.map(primaryVerticalChannelX);
+    const firstOutgoingGap = Math.min(...anchorOutgoingEdges.map((edge) =>
+      (byId.get(edge.target)?.position?.x ?? 0) - (byId.get("anchor")?.position?.x ?? 0),
+    ));
     expect(outgoingChannels.every(Number.isFinite)).toBe(true);
     expect(incomingChannels.every(Number.isFinite)).toBe(true);
     expect(new Set(outgoingChannels).size).toBe(anchorOutgoingEdges.length);
     expect(new Set(incomingChannels).size).toBe(anchorIncomingEdges.length);
-    expect(minimumChannelGap(outgoingChannels)).toBeGreaterThanOrEqual(96);
+    expect(firstOutgoingGap).toBeLessThanOrEqual(classDiagramNodeCardWidth() + 560);
+    expect(minimumChannelGap(outgoingChannels)).toBeGreaterThanOrEqual(60);
     expect(minimumChannelGap(incomingChannels)).toBeGreaterThanOrEqual(72);
     outgoingChannels.forEach((channelX) => expect(channelX).toBeGreaterThan(anchorRight + 40));
     incomingChannels.forEach((channelX) => expect(channelX).toBeLessThan(anchorLeft - 40));

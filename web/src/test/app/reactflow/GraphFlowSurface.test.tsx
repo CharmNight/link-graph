@@ -37,6 +37,9 @@ vi.mock("@xyflow/react", async () => {
     onSelectionDrag,
     onSelectionDragStop,
     nodesDraggable,
+    panOnDrag,
+    multiSelectionKeyCode,
+    selectNodesOnDrag,
     children,
   }: {
     nodes: Array<{ id: string; data: { label: ReactNode }; position?: { x: number; y: number } }>;
@@ -74,6 +77,9 @@ vi.mock("@xyflow/react", async () => {
       nodes: Array<{ id: string; position: { x: number; y: number } }>,
     ) => void;
     nodesDraggable?: boolean;
+    panOnDrag?: boolean | number[];
+    multiSelectionKeyCode?: string | string[] | null;
+    selectNodesOnDrag?: boolean;
     children?: ReactNode;
   }) {
     React.useEffect(() => {
@@ -86,6 +92,9 @@ vi.mock("@xyflow/react", async () => {
         data-edge-types={Object.keys(edgeTypes ?? {}).join(",")}
         data-min-zoom={String(minZoom ?? "")}
         data-nodes-draggable={String(nodesDraggable)}
+        data-pan-on-drag={Array.isArray(panOnDrag) ? panOnDrag.join(",") : String(panOnDrag)}
+        data-multi-selection-key-code={multiSelectionKeyCode === null ? "null" : String(multiSelectionKeyCode)}
+        data-select-nodes-on-drag={String(selectNodesOnDrag)}
         onClick={() => onPaneClick?.()}
         onContextMenu={(event) => onPaneContextMenu?.(event)}
       >
@@ -927,6 +936,106 @@ describe("GraphFlowSurface", () => {
       .map(([payload]) => JSON.parse(String(payload)))
       .find((trace) => trace.event === "graphFlowSurface.viewport.apply");
     expect(viewportApplyTrace?.payload.branch).toBe("readableFit");
+  });
+
+  it("preserves the class diagram viewport when a node position changes after dragging", () => {
+    installResizeObserverStub();
+    vi.useFakeTimers();
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function getBoundingClientRect(this: HTMLElement) {
+      if ((this as HTMLElement).dataset.testid === "graph-canvas-shell") {
+        return {
+          left: 0,
+          top: 0,
+          right: 1280,
+          bottom: 720,
+          width: 1280,
+          height: 720,
+          x: 0,
+          y: 0,
+          toJSON: () => undefined,
+        };
+      }
+      return {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 0,
+        height: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => undefined,
+      };
+    });
+    const initialNode = { ...baseNode("class:OrderService"), type: "CLASS", position: { x: 120, y: 96 } };
+    const movedNode = { ...initialNode, position: { x: 420, y: 240 } };
+    const renderNode = (node: LinkGraphNode) => ({
+      id: node.id,
+      data: { label: node.title },
+      position: node.position ?? { x: 0, y: 0 },
+    });
+    const props: ComponentProps<typeof GraphFlowSurface> = {
+      nodes: [initialNode],
+      edges: [],
+      flowNodes: [renderNode(initialNode)],
+      flowEdges: [],
+      anchorNodeId: initialNode.id,
+      selectedNodeId: null,
+      selectedGroupNodeIds: [],
+      editable: true,
+      viewportMode: "CLASS_DIAGRAM",
+      viewportPolicy: "readable-fit",
+      viewportResetKey: "class-diagram:stable",
+      shouldFocusAnchorOnLoad: true,
+      emptyState: <div>empty</div>,
+      buildPaneActions: () => [],
+      buildNodeActions: () => [],
+      buildEdgeActions: () => [],
+      onSelectNode: () => undefined,
+      onSelectionGroupChange: () => undefined,
+      onInspectNode: () => undefined,
+      onCreateEdge: () => undefined,
+      onMoveNode: () => undefined,
+      onMoveNodes: () => undefined,
+      nodeViewportSize: () => ({ width: 240, height: 120 }),
+    };
+    const { rerender } = render(<GraphFlowSurface {...props} />);
+
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(reactFlowSetCenterMock).toHaveBeenCalledTimes(1);
+
+    rerender(<GraphFlowSurface {...props} nodes={[movedNode]} flowNodes={[renderNode(movedNode)]} />);
+    act(() => {
+      vi.runAllTimers();
+    });
+    vi.useRealTimers();
+
+    expect(reactFlowSetCenterMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("can keep node dragging enabled while disabling left-button pane panning and grouped dragging", () => {
+    installResizeObserverStub();
+
+    renderSurface({
+      editable: false,
+      layoutEditable: true,
+      panOnDrag: [1],
+      groupSelectionEnabled: false,
+    });
+
+    const reactFlow = screen.getByTestId("reactflow");
+    expect(reactFlow).toHaveAttribute("data-nodes-draggable", "true");
+    expect(reactFlow).toHaveAttribute("data-pan-on-drag", "1");
+    expect(reactFlow).toHaveAttribute("data-multi-selection-key-code", "null");
+    expect(reactFlow).toHaveAttribute("data-select-nodes-on-drag", "false");
+
+    fireEvent.contextMenu(screen.getByTestId("reactflow-node-method:anchor"), {
+      clientX: 360,
+      clientY: 260,
+    });
+    expect(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Node Action method:anchor" })).toBeInTheDocument();
   });
 
   it("does not crop dense current-class diagrams to only the current class on first open", () => {

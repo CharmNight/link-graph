@@ -18,6 +18,8 @@ vi.mock("../../../../app/reactflow/GraphFlowSurface", () => ({
     anchorNodeId?: string | null;
     editable?: boolean;
     layoutEditable?: boolean;
+    panOnDrag?: boolean | number[];
+    groupSelectionEnabled?: boolean;
     viewportResetKey?: string | null;
     viewportPolicy?: string;
     shouldFocusAnchorOnLoad?: boolean;
@@ -85,6 +87,8 @@ vi.mock("../../../../app/reactflow/GraphFlowSurface", () => ({
         data-anchor={props.anchorNodeId ?? ""}
         data-editable={String(props.editable)}
         data-layout-editable={String(props.layoutEditable)}
+        data-pan-on-drag={Array.isArray(props.panOnDrag) ? props.panOnDrag.join(",") : String(props.panOnDrag)}
+        data-group-selection-enabled={String(props.groupSelectionEnabled)}
         data-viewport-reset-key={props.viewportResetKey ?? ""}
         data-viewport-policy={props.viewportPolicy ?? ""}
         data-should-focus-anchor-on-load={String(props.shouldFocusAnchorOnLoad)}
@@ -441,6 +445,26 @@ describe("ClassDiagramView", () => {
     expect(screen.queryByLabelText("类图阅读顺序")).not.toBeInTheDocument();
     expect(screen.queryByText("1 继承 / 实现")).not.toBeInTheDocument();
     expect(screen.queryByText("更多类型")).not.toBeInTheDocument();
+  });
+
+  it("keeps class diagram nodes draggable and asks measured layout to reroute position changes", () => {
+    render(
+      <ClassDiagramView
+        view={view}
+        selectedNodeId="class:OrderService"
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+      />,
+    );
+
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute("data-layout-editable", "true");
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute("data-pan-on-drag", "1");
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute("data-group-selection-enabled", "false");
+    expect(useMeasuredLayoutMock).toHaveBeenCalledWith(expect.objectContaining({
+      layoutOnPositionChange: true,
+    }));
   });
 
   it("passes the backend visible class diagram to layout without creating a second frontend projection", () => {

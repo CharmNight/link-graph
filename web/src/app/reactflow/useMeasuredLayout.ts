@@ -7,7 +7,7 @@ import {
 } from "../graph/nodeSizeRegistry";
 import type { GraphPosition, LinkGraphDocument, LinkGraphEdge, LinkGraphNode } from "../types";
 
-export type LayoutTriggerReason = "graph" | "measurement" | "manual";
+export type LayoutTriggerReason = "graph" | "measurement" | "manual" | "position";
 
 export interface MeasuredLayoutRequest {
   graph: LinkGraphDocument;
@@ -30,6 +30,7 @@ export interface UseMeasuredLayoutOptions {
   nodeSizeRegistry?: NodeSizeRegistry;
   layout: (request: MeasuredLayoutRequest) => Promise<{ nodes: LinkGraphNode[]; edges: LinkGraphEdge[] }>;
   layoutSizeSignature?: LayoutSizeSignatureResolver;
+  layoutOnPositionChange?: boolean;
   debugLabel?: string;
 }
 
@@ -49,6 +50,7 @@ interface LayoutState {
 interface LayoutTriggerSnapshot {
   graphSignature: string;
   collapsedSignature: string;
+  positionSignature: string;
   manualNonce: number;
 }
 
@@ -310,6 +312,7 @@ export function useMeasuredLayout({
   nodeSizeRegistry = defaultNodeSizeRegistry,
   layout,
   layoutSizeSignature = sizeSignature,
+  layoutOnPositionChange = false,
   debugLabel = "graph",
 }: UseMeasuredLayoutOptions): UseMeasuredLayoutResult {
   const [manualNonce, setManualNonce] = useState(0);
@@ -325,6 +328,7 @@ export function useMeasuredLayout({
     [graph.nodes, layoutSizeSignature, measuredSizes],
   );
   const nextPositionSignature = useMemo(() => positionSignature(graph.nodes), [graph.nodes]);
+  const trackedPositionSignature = layoutOnPositionChange ? nextPositionSignature : "";
   const [layoutState, setLayoutState] = useState<LayoutState>(() => ({
     nodes: hasResolvedLayoutPositions(seedLayoutNodes(graph.nodes, []))
       ? seedLayoutNodes(graph.nodes, [])
@@ -378,10 +382,13 @@ export function useMeasuredLayout({
         ? "manual"
         : nextGraphSignature !== previousTrigger.graphSignature || nextCollapsedSignature !== previousTrigger.collapsedSignature
           ? "graph"
-          : "measurement";
+          : trackedPositionSignature !== previousTrigger.positionSignature
+            ? "position"
+            : "measurement";
     triggerRef.current = {
       graphSignature: nextGraphSignature,
       collapsedSignature: nextCollapsedSignature,
+      positionSignature: trackedPositionSignature,
       manualNonce,
     };
 
@@ -503,9 +510,11 @@ export function useMeasuredLayout({
     anchorNodeId,
     debugLabel,
     layout,
+    layoutOnPositionChange,
     manualNonce,
     nextCollapsedSignature,
     nextGraphSignature,
+    trackedPositionSignature,
     nextSizeSignature,
   ]);
 

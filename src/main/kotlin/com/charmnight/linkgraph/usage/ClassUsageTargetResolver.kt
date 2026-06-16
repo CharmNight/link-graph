@@ -3,6 +3,7 @@ package com.charmnight.linkgraph.usage
 import com.charmnight.linkgraph.jvm.index.stableJvmId
 import com.intellij.ide.highlighter.JavaFileType
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
@@ -31,9 +32,7 @@ class ClassUsageTargetResolver(
             ?.trim()
             ?.takeIf(String::isNotBlank)
         if (qualifiedName != null) {
-            findClassBySourceHint(qualifiedName, target)?.let { psiClass ->
-                return ClassUsageTargetResolution(psiClass, allowWordIndexFallback = true)
-            }
+            findClassBySourceHint(qualifiedName, target)?.let { return it }
             findClassByQualifiedName(qualifiedName)?.let { return it }
         }
         return target.nodeId
@@ -118,11 +117,22 @@ class ClassUsageTargetResolver(
     private fun findClassBySourceHint(
         qualifiedName: String,
         target: ClassUsageSearchTargetHint,
-    ): PsiClass? {
-        return findClassInJavaFiles(
-            candidateFiles = target.hintedVirtualFiles(),
-            matcher = { javaFile -> javaFile.findUsageClass(qualifiedName) },
-        )
+    ): ClassUsageTargetResolution? {
+        val psiManager = PsiManager.getInstance(project)
+        return target.hintedVirtualFiles()
+            .filter { file -> file.isValid && !file.isDirectory && file.extension.equals("java", ignoreCase = true) }
+            .distinctBy { file -> file.url }
+            .mapNotNull { file ->
+                file.toPsiJavaFile(psiManager)
+                    ?.findUsageClass(qualifiedName)
+                    ?.let { psiClass ->
+                        ClassUsageTargetResolution(
+                            targetClass = psiClass,
+                            allowWordIndexFallback = !file.isStandardClassUsageSourceFile(project),
+                        )
+                    }
+            }
+            .firstOrNull()
     }
 
     private fun findClassInJavaFiles(
@@ -282,6 +292,25 @@ private fun String.matchesStableClassNameCandidate(candidateName: String): Boole
     val classKey = stableClassKey(candidateName)
     return this == classKey || endsWith("-$classKey") || contains("-$classKey-")
 }
+
+internal fun VirtualFile.isStandardClassUsageSourceFile(project: Project): Boolean {
+    if (!ProjectFileIndex.getInstance(project).isInSourceContent(this)) {
+        return false
+    }
+    val normalizedPath = path.replace('\\', '/')
+    return standardClassUsageSourcePathMarkers.any { marker -> marker in normalizedPath }
+}
+
+private val standardClassUsageSourcePathMarkers = listOf(
+    "/src/main/java/",
+    "/src/test/java/",
+    "/src/jmh/java/",
+    "/src/integrationTest/java/",
+    "/src/main/kotlin/",
+    "/src/test/kotlin/",
+    "/src/jmh/kotlin/",
+    "/src/integrationTest/kotlin/",
+)
 
 private val classUsageAlwaysExcludedPathSegments = setOf(
     ".cache",
