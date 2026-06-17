@@ -273,11 +273,46 @@ function canReuseSeededRoute(nextEdge: LinkGraphEdge, previousEdge: LinkGraphEdg
     && (nextEdge.label ?? "") === (previousEdge.label ?? "");
 }
 
-function seedLayoutEdges(nextEdges: LinkGraphEdge[], previousEdges: LinkGraphEdge[]): LinkGraphEdge[] {
+function positionsEqual(left: GraphPosition | null, right: GraphPosition | null): boolean {
+  return left !== null
+    && right !== null
+    && left.x === right.x
+    && left.y === right.y;
+}
+
+function canReuseEndpointRoute(
+  edge: LinkGraphEdge,
+  nextNodeIndex?: ReadonlyMap<string, LinkGraphNode>,
+  previousNodeIndex?: ReadonlyMap<string, LinkGraphNode>,
+): boolean {
+  if (!nextNodeIndex || !previousNodeIndex) {
+    return true;
+  }
+  const nextSourcePosition = resolvePosition(nextNodeIndex.get(edge.source));
+  const previousSourcePosition = resolvePosition(previousNodeIndex.get(edge.source));
+  const nextTargetPosition = resolvePosition(nextNodeIndex.get(edge.target));
+  const previousTargetPosition = resolvePosition(previousNodeIndex.get(edge.target));
+  return positionsEqual(nextSourcePosition, previousSourcePosition)
+    && positionsEqual(nextTargetPosition, previousTargetPosition);
+}
+
+function seedLayoutEdges(
+  nextEdges: LinkGraphEdge[],
+  previousEdges: LinkGraphEdge[],
+  nextNodes?: LinkGraphNode[],
+  previousNodes?: LinkGraphNode[],
+): LinkGraphEdge[] {
   const previousEdgeIndex = new Map(previousEdges.map((edge) => [edge.id, edge]));
+  const nextNodeIndex = nextNodes ? new Map(nextNodes.map((node) => [node.id, node])) : undefined;
+  const previousNodeIndex = previousNodes ? new Map(previousNodes.map((node) => [node.id, node])) : undefined;
   return nextEdges.map((edge) => {
     const previousEdge = previousEdgeIndex.get(edge.id);
-    if (!previousEdge?.route || edge.route || !canReuseSeededRoute(edge, previousEdge)) {
+    if (
+      !previousEdge?.route
+      || edge.route
+      || !canReuseSeededRoute(edge, previousEdge)
+      || !canReuseEndpointRoute(edge, nextNodeIndex, previousNodeIndex)
+    ) {
       return edge;
     }
     return {
@@ -360,7 +395,12 @@ export function useMeasuredLayout({
         ? seedLayoutNodes(graph.nodes, current.nodes)
         : [],
       edges: hasResolvedLayoutPositions(seedLayoutNodes(graph.nodes, current.nodes))
-        ? seedLayoutEdges(graph.edges, current.edges)
+        ? seedLayoutEdges(
+            graph.edges,
+            current.edges,
+            seedLayoutNodes(graph.nodes, current.nodes),
+            current.nodes,
+          )
         : [],
       layoutPending: graph.nodes.length > 0
         ? current.layoutPending || !hasResolvedLayoutPositions(seedLayoutNodes(graph.nodes, current.nodes))
@@ -374,7 +414,7 @@ export function useMeasuredLayout({
     const nextMeasuredSizes = latestMeasuredSizesRef.current;
     const currentLayoutState = latestLayoutStateRef.current;
     const seededNodes = seedLayoutNodes(nextGraph.nodes, currentLayoutState.nodes);
-    const seededEdges = seedLayoutEdges(nextGraph.edges, currentLayoutState.edges);
+    const seededEdges = seedLayoutEdges(nextGraph.edges, currentLayoutState.edges, seededNodes, currentLayoutState.nodes);
     const previousTrigger = triggerRef.current;
     const reason: LayoutTriggerReason = !previousTrigger
       ? "graph"
@@ -433,7 +473,7 @@ export function useMeasuredLayout({
     }
 
     if (nextGraph.nodes.length === 0) {
-      const clearedEdges = seedLayoutEdges(nextGraph.edges, currentLayoutState.edges);
+      const clearedEdges = seedLayoutEdges(nextGraph.edges, currentLayoutState.edges, [], currentLayoutState.nodes);
       setLayoutState((current) => {
         if (current.nodes.length === 0 && areEdgeSetsEquivalent(current.edges, clearedEdges) && !current.layoutPending) {
           return current;
@@ -496,7 +536,7 @@ export function useMeasuredLayout({
         setLayoutState((current) => ({
           ...current,
           nodes: fallbackNodes,
-          edges: seedLayoutEdges(nextGraph.edges, current.edges),
+          edges: seedLayoutEdges(nextGraph.edges, current.edges, fallbackNodes, current.nodes),
           layoutPending: false,
         }));
         traceLinkGraph("useMeasuredLayout.failed", {

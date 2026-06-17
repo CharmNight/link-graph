@@ -498,6 +498,138 @@ describe("useMeasuredLayout", () => {
     expect(result.current.edges[0]?.metadata?.reason).toBe("position");
   });
 
+  it("does not reuse stale routes for edges attached to nodes whose positions changed", async () => {
+    const initialGraph: LinkGraphDocument = {
+      nodes: [
+        {
+          ...methodNode("method:anchor", "OrderService.submit"),
+          position: { x: 120, y: 96 },
+          metadata: {
+            "ui.x": "120",
+            "ui.y": "96",
+          },
+        },
+        {
+          ...methodNode("method:callee", "OrderMapper.insert"),
+          position: { x: 440, y: 96 },
+          metadata: {
+            "ui.x": "440",
+            "ui.y": "96",
+          },
+        },
+        {
+          ...methodNode("method:stable", "AuditSink.record"),
+          position: { x: 760, y: 96 },
+          metadata: {
+            "ui.x": "760",
+            "ui.y": "96",
+          },
+        },
+      ],
+      edges: [
+        {
+          id: "edge:anchor->callee",
+          type: "CALL",
+          source: "method:anchor",
+          target: "method:callee",
+        },
+        {
+          id: "edge:callee->stable",
+          type: "CALL",
+          source: "method:callee",
+          target: "method:stable",
+        },
+      ],
+    };
+    let resolveLayout: ((value: { nodes: LinkGraphNode[]; edges: LinkGraphDocument["edges"] }) => void) | null = null;
+    const layout = vi.fn(({ nodes, edges }: { nodes: LinkGraphNode[]; edges: LinkGraphDocument["edges"] }) =>
+      new Promise<{ nodes: LinkGraphNode[]; edges: LinkGraphDocument["edges"] }>((resolve) => {
+        resolveLayout = resolve;
+        if (layout.mock.calls.length === 1) {
+          resolve({
+            nodes,
+            edges: edges.map((edge, index) => ({
+              ...edge,
+              route: {
+                sections: [{
+                  startPoint: { x: 240 + index * 320, y: 156 },
+                  endPoint: { x: 440 + index * 320, y: 156 },
+                }],
+              },
+            })),
+          });
+        }
+      }),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ graph }) =>
+        useMeasuredLayout({
+          graph,
+          anchorNodeId: "method:anchor",
+          layout,
+          layoutOnPositionChange: true,
+        }),
+      {
+        initialProps: {
+          graph: initialGraph,
+        },
+      },
+    );
+
+    await waitFor(() => {
+      expect(result.current.edges[0]?.route?.sections[0]?.startPoint).toEqual({ x: 240, y: 156 });
+    });
+    expect(result.current.edges[1]?.route?.sections[0]?.startPoint).toEqual({ x: 560, y: 156 });
+
+    rerender({
+      graph: {
+        ...initialGraph,
+        nodes: [
+          initialGraph.nodes[0]!,
+          {
+            ...initialGraph.nodes[1]!,
+            position: { x: 560, y: 180 },
+            metadata: {
+              ...(initialGraph.nodes[1]!.metadata ?? {}),
+              "ui.x": "560",
+              "ui.y": "180",
+            },
+          },
+          initialGraph.nodes[2]!,
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      expect(layout).toHaveBeenCalledTimes(2);
+    });
+    expect(result.current.nodes[1]?.position).toEqual({ x: 560, y: 180 });
+    expect(result.current.layoutPending).toBe(true);
+    expect(result.current.edges[0]?.route).toBeUndefined();
+    expect(result.current.edges[1]?.route).toBeUndefined();
+
+    act(() => {
+      resolveLayout?.({
+        nodes: result.current.nodes,
+        edges: initialGraph.edges.map((edge) => ({
+          ...edge,
+          route: {
+            sections: [{
+              startPoint: { x: edge.source === "method:anchor" ? 240 : 680, y: edge.source === "method:anchor" ? 156 : 240 },
+              endPoint: { x: edge.target === "method:callee" ? 560 : 760, y: edge.target === "method:callee" ? 240 : 156 },
+            }],
+          },
+        })),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.layoutPending).toBe(false);
+    });
+    expect(result.current.edges[0]?.route?.sections[0]?.endPoint).toEqual({ x: 560, y: 240 });
+  });
+
   it("reruns layout when positioned node additions are invocation expansion batches", async () => {
     const initialGraph: LinkGraphDocument = {
       nodes: [methodNode("method:caller", "Caller.run")],

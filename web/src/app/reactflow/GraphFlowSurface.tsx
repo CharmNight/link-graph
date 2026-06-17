@@ -52,6 +52,7 @@ import {
   resolvePanePositionFromRect,
   type GraphFlowContextMenuState,
 } from "./graphFlowContextMenuModel";
+import { buildRenderedFlowEdges } from "./graphFlowDragEdges";
 
 interface PaneActionContext {
   position?: GraphPosition;
@@ -311,16 +312,10 @@ export function GraphFlowSurface({
     nodes: viewportOverlayNodes,
     edges,
   }) ?? null;
-  const renderedFlowEdges = useMemo(() => {
-    if (!selectedEdgeId) {
-      return flowEdges;
-    }
-    return flowEdges.map((edge) => (
-      edge.id === selectedEdgeId
-        ? { ...edge, selected: true }
-      : edge
-    ));
-  }, [flowEdges, selectedEdgeId]);
+  const renderedFlowEdges = useMemo(
+    () => buildRenderedFlowEdges(flowEdges, liveDragPositions, selectedEdgeId),
+    [flowEdges, liveDragPositions, selectedEdgeId],
+  );
 
   const graphShapeSignature = useMemo(
     () =>

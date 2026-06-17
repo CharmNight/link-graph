@@ -50,7 +50,14 @@ vi.mock("@xyflow/react", async () => {
     children,
   }: {
     nodes: Array<{ id: string; data: { label: ReactNode }; position?: { x: number; y: number } }>;
-    edges: Array<{ id: string; label?: string; selected?: boolean }>;
+    edges: Array<{
+      id: string;
+      label?: string;
+      selected?: boolean;
+      data?: {
+        route?: LinkGraphEdge["route"];
+      };
+    }>;
     edgeTypes?: Record<string, unknown>;
     minZoom?: number;
     onInit?: (instance: typeof reactFlowInstanceMock) => void;
@@ -145,6 +152,11 @@ vi.mock("@xyflow/react", async () => {
               key={edge.id}
               data-testid={`reactflow-edge-${edge.id}`}
               data-selected={String(edge.selected === true)}
+              data-route-start={
+                edge.data?.route?.sections[0]?.startPoint
+                  ? `${edge.data.route.sections[0].startPoint.x},${edge.data.route.sections[0].startPoint.y}`
+                  : "none"
+              }
               onClick={(event) => onEdgeClick?.(event, { id: edge.id })}
               onContextMenu={(event) => onEdgeContextMenu?.(event, { id: edge.id })}
             >
@@ -431,6 +443,58 @@ describe("GraphFlowSurface", () => {
     fireEvent.click(screen.getByTestId("reactflow-drag-progress-node"));
 
     expect(screen.getByTestId("viewport-overlay-position")).toHaveTextContent("420,240");
+  });
+
+  it("drops stale routed-edge geometry while an incident node is being dragged", () => {
+    installResizeObserverStub();
+    const anchor = baseNode("method:anchor");
+    const tail: LinkGraphNode = {
+      ...baseNode("method:tail"),
+      position: { x: 440, y: 96 },
+    };
+    const edge: LinkGraphEdge = {
+      id: "edge:anchor->tail",
+      type: "CALL",
+      source: anchor.id,
+      target: tail.id,
+    };
+
+    renderSurface({
+      nodes: [anchor, tail],
+      edges: [edge],
+      flowNodes: [anchor, tail].map((node) => ({
+        id: node.id,
+        data: { label: node.title },
+        position: node.position ?? { x: 0, y: 0 },
+      })),
+      flowEdges: [
+        {
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          label: edge.id,
+          type: "routedEdge",
+          data: {
+            route: {
+              sections: [
+                {
+                  startPoint: { x: 240, y: 156 },
+                  bendPoints: [{ x: 340, y: 156 }],
+                  endPoint: { x: 440, y: 156 },
+                },
+              ],
+            },
+          },
+        },
+      ],
+    });
+
+    expect(screen.getByTestId("reactflow-edge-edge:anchor->tail")).toHaveAttribute("data-route-start", "240,156");
+
+    fireEvent.click(screen.getByTestId("reactflow-drag-progress-node"));
+
+    expect(screen.getByTestId("reactflow-node-method:anchor")).toHaveAttribute("data-position", "420,240");
+    expect(screen.getByTestId("reactflow-edge-edge:anchor->tail")).toHaveAttribute("data-route-start", "none");
   });
 
   it("does not include removed architecture layer overlays in the debug DOM probe", () => {
