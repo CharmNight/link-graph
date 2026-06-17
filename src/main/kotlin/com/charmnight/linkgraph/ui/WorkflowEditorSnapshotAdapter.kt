@@ -49,42 +49,42 @@ internal fun GraphEditorStateSnapshot.toWorkflowEditorSnapshot(): WorkflowEditor
     )
 }
 
-private fun com.charmnight.linkgraph.ui.view.FactGraphViewDocument.toApplicationGraphView(): ApplicationGraphView =
+private fun com.charmnight.linkgraph.semantic.outcome.FactGraphViewDocument.toApplicationGraphView(): ApplicationGraphView =
     ApplicationGraphView(
         visibleGraph = visibleGraph,
         fullGraph = fullGraph,
         projectionIndex = projectionIndex,
     )
 
-private fun com.charmnight.linkgraph.ui.view.FlowchartViewDocument.toApplicationGraphView(): ApplicationGraphView =
+private fun com.charmnight.linkgraph.semantic.outcome.FlowchartViewDocument.toApplicationGraphView(): ApplicationGraphView =
     ApplicationGraphView(
         visibleGraph = visibleGraph,
         fullGraph = fullGraph,
         projectionIndex = projectionIndex,
     )
 
-private fun com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument.toApplicationGraphView(): ApplicationGraphView =
+private fun com.charmnight.linkgraph.semantic.outcome.ResourceRelationViewDocument.toApplicationGraphView(): ApplicationGraphView =
     ApplicationGraphView(
         visibleGraph = visibleGraph,
         fullGraph = fullGraph,
         projectionIndex = projectionIndex,
     )
 
-private fun com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument.toApplicationGraphView(): ApplicationGraphView =
+private fun com.charmnight.linkgraph.architecture.ArchitectureGraphResult.toApplicationGraphView(): ApplicationGraphView =
     ApplicationGraphView(
         visibleGraph = visibleGraph,
         fullGraph = fullGraph,
         projectionIndex = projectionIndex,
     )
 
-private fun com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument.toApplicationGraphView(): ApplicationGraphView =
+private fun com.charmnight.linkgraph.architecture.ClassDiagramResult.toApplicationGraphView(): ApplicationGraphView =
     ApplicationGraphView(
         visibleGraph = visibleGraph,
         fullGraph = fullGraph,
         projectionIndex = projectionIndex,
     )
 
-private fun com.charmnight.linkgraph.review.ReviewGraphViewDocument.toApplicationGraphView(): ApplicationGraphView =
+private fun com.charmnight.linkgraph.review.ReviewGraphResult.toApplicationGraphView(): ApplicationGraphView =
     ApplicationGraphView(
         visibleGraph = visibleGraph,
         fullGraph = fullGraph,

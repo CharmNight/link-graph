@@ -13,7 +13,7 @@ class GenerationPlanDiscussionService(
     private val promptFactory: LlmPromptFactory = LlmPromptFactory(),
     private val gateway: LlmGateway = RoutingLlmGateway(),
 ) {
-    private val responseSupport = RemoteStructuredResponseSupport(gateway)
+    private val responseSupport = RemoteStructuredResponseParser(gateway)
 
     fun discuss(
         context: GenerationContext,
@@ -153,7 +153,7 @@ class GenerationPlanDiscussionService(
         plan: GenerationPlan,
         focusItemId: String?,
     ): GenerationPlanDiscussionResult {
-        val root = LlmJsonSupport.parseObject(RemoteStructuredJsonExtractor.extract(content))
+        val root = LlmJsonCodec.parseObject(RemoteStructuredJsonExtractor.extract(content))
         val remoteFocusItemId = (root["focusItemId"] as? String)
             ?.takeIf(String::isNotBlank)
             ?.takeIf { candidate -> plan.items.any { item -> item.id == candidate } }

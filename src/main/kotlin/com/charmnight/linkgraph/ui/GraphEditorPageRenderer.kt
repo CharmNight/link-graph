@@ -7,15 +7,16 @@ import com.charmnight.linkgraph.llm.GraphBeautificationResult
 import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
+import com.charmnight.linkgraph.model.GraphMetadataKeys
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.model.GraphPatchOperation
 import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
-import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
-import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
-import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
-import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
+import com.charmnight.linkgraph.architecture.ArchitectureGraphResult
+import com.charmnight.linkgraph.architecture.ClassDiagramResult
+import com.charmnight.linkgraph.semantic.outcome.FactGraphViewDocument
+import com.charmnight.linkgraph.semantic.outcome.FlowchartViewDocument
+import com.charmnight.linkgraph.semantic.outcome.ResourceRelationViewDocument
 
 /**
  * 把项目状态序列化成前端可直接消费的 bootstrap JSON，并注入到入口 HTML。
@@ -26,10 +27,6 @@ class GraphEditorPageRenderer {
         private const val MAX_SECONDARY_LAYER_SERIALIZED_NODES = 96
         /** 允许完整内联的次级图层最大边数。 */
         private const val MAX_SECONDARY_LAYER_SERIALIZED_EDGES = 144
-        /** 节点 x 坐标的元数据键。 */
-        private const val UI_X_KEY = "ui.x"
-        /** 节点 y 坐标的元数据键。 */
-        private const val UI_Y_KEY = "ui.y"
         /** 需要从语义元数据中过滤掉的 UI 前缀。 */
         private const val UI_PREFIX = "ui."
         /** 需要从语义元数据中过滤掉的布局前缀。 */
@@ -722,7 +719,7 @@ class GraphEditorPageRenderer {
     )
 
     private fun architectureGraphViewToMap(
-        document: ArchitectureGraphViewDocument,
+        document: ArchitectureGraphResult,
         layoutState: GraphLayoutState? = null,
     ): Map<String, Any?> = viewDocumentToMap(
         visibleGraph = document.visibleGraph,
@@ -774,7 +771,7 @@ class GraphEditorPageRenderer {
     )
 
     private fun classDiagramViewToMap(
-        document: ClassDiagramViewDocument,
+        document: ClassDiagramResult,
         layoutState: GraphLayoutState? = null,
     ): Map<String, Any?> =
         viewDocumentToMap(
@@ -817,7 +814,7 @@ class GraphEditorPageRenderer {
         }
 
     private fun reviewGraphViewToMap(
-        document: com.charmnight.linkgraph.review.ReviewGraphViewDocument,
+        document: com.charmnight.linkgraph.review.ReviewGraphResult,
         layoutState: GraphLayoutState? = null,
     ): Map<String, Any?> =
         viewDocumentToMap(
@@ -914,7 +911,7 @@ class GraphEditorPageRenderer {
         visibleGraph: GraphDocument,
         fullGraph: GraphDocument,
         anchorNodeId: String?,
-        projectionIndex: com.charmnight.linkgraph.ui.view.GraphProjectionIndex,
+        projectionIndex: com.charmnight.linkgraph.application.model.GraphProjectionIndex,
         summary: Map<String, Any?>,
         layoutState: GraphLayoutState? = null,
         presentation: GraphViewPresentation? = null,
@@ -932,7 +929,7 @@ class GraphEditorPageRenderer {
         }
 
     private fun projectionIndexToMap(
-        projectionIndex: com.charmnight.linkgraph.ui.view.GraphProjectionIndex,
+        projectionIndex: com.charmnight.linkgraph.application.model.GraphProjectionIndex,
     ): Map<String, Any?> = linkedMapOf(
         "nodeMappings" to projectionIndex.nodeMappings.mapValues { (_, mapping) ->
             linkedMapOf(
@@ -1279,9 +1276,9 @@ class GraphEditorPageRenderer {
     /** 从节点元数据中提取 UI 坐标。 */
     private fun Map<String, String>.uiPosition(): Pair<Double, Double>? {
         /** 节点 x 坐标。 */
-        val x = this[UI_X_KEY]?.toDoubleOrNull() ?: return null
+        val x = this[GraphMetadataKeys.Ui.X]?.toDoubleOrNull() ?: return null
         /** 节点 y 坐标。 */
-        val y = this[UI_Y_KEY]?.toDoubleOrNull() ?: return null
+        val y = this[GraphMetadataKeys.Ui.Y]?.toDoubleOrNull() ?: return null
         return x to y
     }
 

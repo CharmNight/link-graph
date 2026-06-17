@@ -288,6 +288,18 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
             },
             "使用处结果必须以 CLASS_USAGE 边叠加到类图完整视图。",
         )
+        val targetNode = assertNotNull(
+            view.visibleGraph.nodes.firstOrNull { node -> node.id == targetNodeId },
+            "使用处叠加后必须保留目标类节点。",
+        )
+        assertTrue(
+            (targetNode.metadata["uml.method.count"]?.toIntOrNull() ?: 0) > 0,
+            "带类图 scope 的使用处请求必须保留目标类成员，不能退化为字段/方法均为 0 的 standalone 占位节点。",
+        )
+        assertTrue(
+            targetNode.metadata["uml.method.items"].orEmpty().contains("submit"),
+            "目标类节点应显示从结构索引得到的方法。",
+        )
         assertTrue(
             view.usage?.groups.orEmpty()
                 .flatMap { group -> group.usages }

@@ -1,4 +1,6 @@
 package com.charmnight.linkgraph.ui
+import com.charmnight.linkgraph.model.GraphMetadataKeys
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.testing.*
 
@@ -12,12 +14,12 @@ import com.charmnight.linkgraph.architecture.ClassDiagramResult
 import com.charmnight.linkgraph.architecture.ClassDiagramSummary
 import com.charmnight.linkgraph.codegen.CodeEditOperation
 import com.charmnight.linkgraph.codegen.CodeEditOperationKind
-import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
-import com.charmnight.linkgraph.ui.view.FactGraphSummary
-import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
-import com.charmnight.linkgraph.ui.view.FlowchartSummary
-import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
-import com.charmnight.linkgraph.ui.view.ResourceRelationSummary
+import com.charmnight.linkgraph.semantic.outcome.FactGraphViewDocument
+import com.charmnight.linkgraph.semantic.outcome.FactGraphSummary
+import com.charmnight.linkgraph.semantic.outcome.FlowchartViewDocument
+import com.charmnight.linkgraph.semantic.outcome.FlowchartSummary
+import com.charmnight.linkgraph.semantic.outcome.ResourceRelationViewDocument
+import com.charmnight.linkgraph.semantic.outcome.ResourceRelationSummary
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.mermaid.MermaidIssue
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
@@ -1006,8 +1008,8 @@ class GraphEditorPageRendererTest {
                         outputs = listOf("com.example.SubmitResult"),
                         doc = "Submit order entry.",
                         metadata = mapOf(
-                            "ui.x" to "120",
-                            "ui.y" to "96",
+                            GraphMetadataKeys.Ui.X to "120",
+                            GraphMetadataKeys.Ui.Y to "96",
                             "linkGraph.manual" to "true",
                         ),
                         sourceTag = GraphSourceTag.FACT,
@@ -1207,7 +1209,7 @@ class GraphEditorPageRendererTest {
             diffReviewRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.failed("差异分析失败：HTTP 503"),
             codeDraftRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.running(),
             operationFeedback = com.charmnight.linkgraph.ui.OperationFeedback(
-                level = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
+                level = com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.SUCCESS,
                 message = "已加载当前编辑器上下文链路：OrderController.submit",
             ),
             layoutState = GraphLayoutState(

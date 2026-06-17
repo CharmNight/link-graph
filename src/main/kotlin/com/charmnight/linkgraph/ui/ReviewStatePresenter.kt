@@ -51,7 +51,7 @@ class ReviewStatePresenter(
             stateService.workbench.markRuntimeArtifactSummaries(scene, emptyList())
         }
         stateService.workbench.markOperationFeedback(
-            OperationFeedbackLevel.INFO,
+            ApplicationFeedbackLevel.INFO,
             presentation.statusMessage,
         )
         requestBrowserSync()
@@ -97,7 +97,7 @@ class ReviewStatePresenter(
             failedRequest = presentation.failedRequest,
         )
         stateService.workbench.markOperationFeedback(
-            presentation.feedbackLevel.toOperationFeedbackLevel(),
+            presentation.feedbackLevel,
             presentation.message,
             preservePreviousStatusKind = presentation.preservePreviousStatusKind,
         )
@@ -122,7 +122,7 @@ class ReviewStatePresenter(
             selectedDiffItemIds = presentation.selectedDiffItemIds,
         )
         stateService.workbench.markOperationFeedback(
-            presentation.feedbackLevel.toOperationFeedbackLevel(),
+            presentation.feedbackLevel,
             presentation.message,
             preservePreviousStatusKind = presentation.preservePreviousStatusKind,
         )
@@ -148,7 +148,7 @@ class ReviewStatePresenter(
             assistantActionId = presentation.assistantActionId,
         )
         stateService.workbench.markOperationFeedback(
-            presentation.feedbackLevel.toOperationFeedbackLevel(),
+            presentation.feedbackLevel,
             presentation.message,
             preservePreviousStatusKind = presentation.preservePreviousStatusKind,
         )
@@ -160,7 +160,7 @@ class ReviewStatePresenter(
         message: String?,
     ) {
         if (level != null && message != null) {
-            stateService.workbench.markOperationFeedback(level.toOperationFeedbackLevel(), message, preservePreviousStatusKind = true)
+            stateService.workbench.markOperationFeedback(level, message, preservePreviousStatusKind = true)
         }
     }
 }

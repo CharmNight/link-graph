@@ -12,7 +12,7 @@ class SourceNavigationStatePresenter(
 
     fun presentNavigationStarting(title: String) {
         stateService.workbench.markOperationFeedback(
-            OperationFeedbackLevel.INFO,
+            ApplicationFeedbackLevel.INFO,
             "正在定位源码：$title",
         )
         requestBrowserSync()
@@ -27,7 +27,7 @@ class SourceNavigationStatePresenter(
     ) {
         stateService.graph.markSourceNavigationOpened(nodeId, targetPath, line, column)
         stateService.workbench.markOperationFeedback(
-            OperationFeedbackLevel.SUCCESS,
+            ApplicationFeedbackLevel.SUCCESS,
             "已打开源码：$title",
         )
         requestBrowserSync()
@@ -39,7 +39,7 @@ class SourceNavigationStatePresenter(
     ) {
         stateService.graph.markSourceNavigationNotFound(nodeId)
         stateService.workbench.markOperationFeedback(
-            OperationFeedbackLevel.WARNING,
+            ApplicationFeedbackLevel.WARNING,
             "未找到源码位置：$label",
         )
         requestBrowserSync()
@@ -52,13 +52,13 @@ class SourceNavigationStatePresenter(
         level: ApplicationFeedbackLevel = ApplicationFeedbackLevel.ERROR,
     ) {
         stateService.graph.markSourceNavigationFailed(nodeId, message)
-        stateService.workbench.markOperationFeedback(level.toOperationFeedbackLevel(), statusMessage)
+        stateService.workbench.markOperationFeedback(level, statusMessage)
         requestBrowserSync()
     }
 
     fun presentSettingsOpened() {
         stateService.workbench.markOperationFeedback(
-            OperationFeedbackLevel.SUCCESS,
+            ApplicationFeedbackLevel.SUCCESS,
             "已打开 IDE 设置 > Link Graph。",
         )
         requestBrowserSync()
@@ -66,7 +66,7 @@ class SourceNavigationStatePresenter(
 
     fun presentSettingsOpenFailed(message: String) {
         stateService.workbench.markOperationFeedback(
-            OperationFeedbackLevel.ERROR,
+            ApplicationFeedbackLevel.ERROR,
             "打开插件设置失败：$message",
         )
         requestBrowserSync()

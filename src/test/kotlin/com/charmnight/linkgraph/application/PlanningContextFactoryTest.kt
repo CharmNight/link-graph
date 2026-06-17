@@ -1,10 +1,10 @@
 package com.charmnight.linkgraph.application
 
-import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
-import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
+import com.charmnight.linkgraph.architecture.ArchitectureGraphResult
+import com.charmnight.linkgraph.architecture.ClassDiagramResult
 import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.review.ReviewGraphSummary
-import com.charmnight.linkgraph.review.ReviewGraphViewDocument
+import com.charmnight.linkgraph.review.ReviewGraphResult
 import com.charmnight.linkgraph.application.planning.PlanningContextFactory
 import com.charmnight.linkgraph.testing.*
 
@@ -106,7 +106,7 @@ class PlanningContextFactoryTest {
         val stateService = GraphEditorStateService()
         stateService.loadGraph(GraphDocument(nodes = listOf(staleMethod)), "currentMethod")
         stateService.loadArchitectureGraphView(
-            ArchitectureGraphViewDocument(
+            ArchitectureGraphResult(
                 visibleGraph = visibleGraph,
                 fullGraph = fullGraph,
                 anchorNodeId = moduleNode.id,
@@ -188,7 +188,7 @@ class PlanningContextFactoryTest {
         val stateService = GraphEditorStateService()
         stateService.loadGraph(GraphDocument(nodes = listOf(staleMethod)), "currentMethod")
         stateService.loadArchitectureGraphView(
-            ArchitectureGraphViewDocument(
+            ArchitectureGraphResult(
                 visibleGraph = visibleGraph,
                 fullGraph = fullGraph,
                 anchorNodeId = layerNode.id,
@@ -277,7 +277,7 @@ class PlanningContextFactoryTest {
         val stateService = GraphEditorStateService()
         stateService.loadGraph(GraphDocument(nodes = listOf(staleMethod)), "currentMethod")
         stateService.loadClassDiagramView(
-            ClassDiagramViewDocument(
+            ClassDiagramResult(
                 visibleGraph = visibleGraph,
                 fullGraph = fullGraph,
                 anchorNodeId = controller.id,
@@ -360,7 +360,7 @@ class PlanningContextFactoryTest {
         val stateService = GraphEditorStateService()
         stateService.loadGraph(GraphDocument(nodes = listOf(staleMethod)), "currentMethod")
         stateService.loadClassDiagramView(
-            ClassDiagramViewDocument(
+            ClassDiagramResult(
                 visibleGraph = visibleGraph,
                 fullGraph = fullGraph,
                 anchorNodeId = handler.id,
@@ -443,7 +443,7 @@ class PlanningContextFactoryTest {
         val stateService = GraphEditorStateService()
         stateService.loadGraph(GraphDocument(nodes = listOf(staleMethod)), "currentMethod")
         stateService.loadReviewGraphView(
-            ReviewGraphViewDocument(
+            ReviewGraphResult(
                 visibleGraph = visibleGraph,
                 fullGraph = fullGraph,
                 anchorNodeId = changed.id,
@@ -452,7 +452,7 @@ class PlanningContextFactoryTest {
                     upstreamCount = 1,
                     downstreamCount = 1,
                 ),
-                projectionIndex = com.charmnight.linkgraph.ui.view.graphProjectionIndexForVisibleGraph(
+                projectionIndex = com.charmnight.linkgraph.semantic.outcome.graphProjectionIndexForVisibleGraph(
                     visibleGraph = visibleGraph,
                     fullGraph = fullGraph,
                 ),
@@ -532,7 +532,7 @@ class PlanningContextFactoryTest {
             analysisDisplayMode = AnalysisDisplayMode.REVIEW_GRAPH,
             currentSceneId = com.charmnight.linkgraph.application.model.GraphSceneId.WORKSPACE_REVIEW_GRAPH,
             selectedNodeId = changed.id,
-            reviewGraphView = ReviewGraphViewDocument(
+            reviewGraphView = ReviewGraphResult(
                 visibleGraph = visibleGraph,
                 fullGraph = fullGraph,
                 anchorNodeId = changed.id,
@@ -541,7 +541,7 @@ class PlanningContextFactoryTest {
                     upstreamCount = 1,
                     downstreamCount = 1,
                 ),
-                projectionIndex = com.charmnight.linkgraph.ui.view.graphProjectionIndexForVisibleGraph(
+                projectionIndex = com.charmnight.linkgraph.semantic.outcome.graphProjectionIndexForVisibleGraph(
                     visibleGraph = visibleGraph,
                     fullGraph = fullGraph,
                 ),

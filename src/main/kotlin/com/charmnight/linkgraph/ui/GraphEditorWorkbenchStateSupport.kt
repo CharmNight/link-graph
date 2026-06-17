@@ -1,4 +1,5 @@
 package com.charmnight.linkgraph.ui
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
 import com.charmnight.linkgraph.model.GraphPatch
@@ -113,7 +114,7 @@ internal class GraphEditorWorkbenchStateSupport(
     }
 
     fun markOperationFeedback(
-        level: OperationFeedbackLevel,
+        level: ApplicationFeedbackLevel,
         message: String,
         preservePreviousStatusKind: Boolean = false,
     ) {

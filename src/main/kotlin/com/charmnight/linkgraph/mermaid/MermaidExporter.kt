@@ -3,6 +3,7 @@ package com.charmnight.linkgraph.mermaid
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
+import com.charmnight.linkgraph.model.GraphMetadataKeys
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 
@@ -109,8 +110,8 @@ class MermaidExporter {
             compareBy<GraphNode>(
                 { directionRank(it) },
                 { metadataInt(it, "layout.depth") ?: Int.MAX_VALUE },
-                { metadataInt(it, "ui.x") ?: Int.MAX_VALUE },
-                { metadataInt(it, "ui.y") ?: Int.MAX_VALUE },
+                { metadataInt(it, GraphMetadataKeys.Ui.X) ?: Int.MAX_VALUE },
+                { metadataInt(it, GraphMetadataKeys.Ui.Y) ?: Int.MAX_VALUE },
                 { it.id },
             ),
         )

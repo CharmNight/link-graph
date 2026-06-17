@@ -14,7 +14,7 @@ class SubjectGraphStatePresenter(
         preservePreviousStatusKind: Boolean = false,
     ) {
         stateService.workbench.markOperationFeedback(
-            level.toOperationFeedbackLevel(),
+            level,
             message,
             preservePreviousStatusKind = preservePreviousStatusKind,
         )
@@ -52,7 +52,7 @@ class SubjectGraphStatePresenter(
             selectedMethodSignature = selectedMethodSignature,
         )
         stateService.workbench.markOperationFeedback(
-            OperationFeedbackLevel.INFO,
+            ApplicationFeedbackLevel.INFO,
             "已自动载入诊断链路图：$summary",
         )
         requestBrowserSync()
@@ -62,7 +62,7 @@ class SubjectGraphStatePresenter(
         selectedNodeId: String,
         statusMessage: String,
     ) {
-        stateService.workbench.markOperationFeedback(OperationFeedbackLevel.SUCCESS, statusMessage)
+        stateService.workbench.markOperationFeedback(ApplicationFeedbackLevel.SUCCESS, statusMessage)
         stateService.graph.selectNode(selectedNodeId)
         requestBrowserSync()
     }

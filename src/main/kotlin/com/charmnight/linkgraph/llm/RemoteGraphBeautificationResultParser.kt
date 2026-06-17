@@ -14,7 +14,7 @@ internal object RemoteGraphBeautificationResultParser {
         prompt: String,
     ): GraphBeautificationResult {
         /** 解析后的 JSON 根对象。 */
-        val root = LlmJsonSupport.parseObject(RemoteStructuredJsonExtractor.extract(content))
+        val root = LlmJsonCodec.parseObject(RemoteStructuredJsonExtractor.extract(content))
         /** 远程返回的步骤化讲解列表。 */
         val steps = (root["steps"] as? List<*>).orEmpty().mapIndexedNotNull { index, raw ->
             parseStep(raw as? Map<*, *>, index)

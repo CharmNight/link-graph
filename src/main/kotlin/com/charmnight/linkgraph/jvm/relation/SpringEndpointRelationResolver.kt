@@ -6,14 +6,14 @@ class SpringEndpointRelationResolver : JvmRelationResolver {
     override fun resolve(context: JvmResolutionContext): List<JvmRelation> =
         projectMethods(context.symbolIndex).mapNotNull { methodSymbol ->
             val psiMethod = context.findPsiMethod(methodSymbol) ?: return@mapNotNull null
-            val endpoint = HttpEndpointRelationSupport.controllerEndpoint(psiMethod) ?: return@mapNotNull null
+            val endpoint = HttpEndpointRelationExtractor.controllerEndpoint(psiMethod) ?: return@mapNotNull null
             val controllerClass = context.symbolIndex.classByQualifiedName(methodSymbol.ownerClassName) ?: return@mapNotNull null
             JvmRelation(
-                id = jvmRelationId(JvmRelationKind.SPRING_ROUTES_TO, controllerClass.id, HttpEndpointRelationSupport.endpointResourceSymbol(endpoint).id) +
+                id = jvmRelationId(JvmRelationKind.SPRING_ROUTES_TO, controllerClass.id, HttpEndpointRelationExtractor.endpointResourceSymbol(endpoint).id) +
                     ":${methodSymbol.id}",
                 kind = JvmRelationKind.SPRING_ROUTES_TO,
                 fromSymbolId = controllerClass.id,
-                toSymbolId = HttpEndpointRelationSupport.endpointResourceSymbol(endpoint).id,
+                toSymbolId = HttpEndpointRelationExtractor.endpointResourceSymbol(endpoint).id,
                 confidence = JvmRelationConfidence.PROVEN,
                 source = JvmRelationSource.FRAMEWORK_RULE,
                 samples = listOf(psiMethod.evidence("Spring endpoint ${endpoint.method} ${endpoint.path}", methodSymbol.source)),

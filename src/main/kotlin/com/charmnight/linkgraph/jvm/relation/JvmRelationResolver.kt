@@ -20,7 +20,7 @@ data class JvmResolutionContext(
     val sourceResolver: SourceContentResolver,
     val budget: JvmResolutionBudget = JvmResolutionBudget(),
 ) {
-    internal val psiFactIndex: JvmPsiFactIndex by lazy(LazyThreadSafetyMode.NONE) {
+    internal val psiFactIndex: JvmPsiFactIndex by lazy(LazyThreadSafetyMode.PUBLICATION) {
         JvmPsiFactIndex.build(project, symbolIndex)
     }
 

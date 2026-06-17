@@ -35,7 +35,7 @@ internal object LlmGatewayPayloadBuilder {
                         JsonObject().apply {
                             addProperty("name", output.name)
                             addProperty("strict", output.strict)
-                            add("schema", LlmJsonSupport.schemaElement(output.schema))
+                            add("schema", LlmJsonCodec.schemaElement(output.schema))
                         },
                     )
                 },
@@ -44,7 +44,7 @@ internal object LlmGatewayPayloadBuilder {
         if (request.deliveryMode == LlmDeliveryMode.STREAM) {
             root.addProperty("stream", true)
         }
-        return LlmJsonSupport.toJson(root)
+        return LlmJsonCodec.toJson(root)
     }
 
     fun openAiResponsesPayload(request: LlmRequest): String {
@@ -83,7 +83,7 @@ internal object LlmGatewayPayloadBuilder {
                             addProperty("type", "json_schema")
                             addProperty("name", output.name)
                             addProperty("strict", output.strict)
-                            add("schema", LlmJsonSupport.schemaElement(output.schema))
+                            add("schema", LlmJsonCodec.schemaElement(output.schema))
                         },
                     )
                 },
@@ -92,7 +92,7 @@ internal object LlmGatewayPayloadBuilder {
         if (request.deliveryMode == LlmDeliveryMode.STREAM) {
             root.addProperty("stream", true)
         }
-        return LlmJsonSupport.toJson(root)
+        return LlmJsonCodec.toJson(root)
     }
 
     fun anthropicMessagesPayload(request: LlmRequest): String {
@@ -122,7 +122,7 @@ internal object LlmGatewayPayloadBuilder {
                 )
             },
         )
-        return LlmJsonSupport.toJson(root)
+        return LlmJsonCodec.toJson(root)
     }
 
     private fun finiteTemperature(value: Double): Double {

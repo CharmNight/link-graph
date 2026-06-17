@@ -37,7 +37,7 @@ internal object RemoteGraphPatchResultParser {
         question: String,
     ): GraphPatchResult {
         /** 解析后的 JSON 根对象。 */
-        val root = LlmJsonSupport.parseObject(unwrapJson(content))
+        val root = LlmJsonCodec.parseObject(unwrapJson(content))
         /** LLM 对用户问题的直接回答文本。 */
         val answer = root["answer"] as? String
             ?: root["summary"] as? String

@@ -1,19 +1,19 @@
 package com.charmnight.linkgraph.investigation.application
 
 import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
-import com.charmnight.linkgraph.investigation.domain.EvidenceGoal
-import com.charmnight.linkgraph.investigation.domain.EvidenceGoalKind
-import com.charmnight.linkgraph.investigation.domain.EvidenceCandidate
-import com.charmnight.linkgraph.investigation.domain.GateDecision
-import com.charmnight.linkgraph.investigation.domain.InvestigationRequest
-import com.charmnight.linkgraph.investigation.domain.InvestigationStatus
-import com.charmnight.linkgraph.investigation.domain.InvestigationTurnResult
-import com.charmnight.linkgraph.investigation.domain.ResolutionOutcome
-import com.charmnight.linkgraph.investigation.gate.EvidenceGate
-import com.charmnight.linkgraph.investigation.planning.EvidenceGoalPlanner
-import com.charmnight.linkgraph.investigation.presentation.InvestigationNoEvidencePresenter
-import com.charmnight.linkgraph.investigation.presentation.InvestigationSummaryService
-import com.charmnight.linkgraph.investigation.presentation.TemplateInvestigationSummaryService
+import com.charmnight.linkgraph.investigation.application.EvidenceGoal
+import com.charmnight.linkgraph.investigation.application.EvidenceGoalKind
+import com.charmnight.linkgraph.investigation.application.EvidenceCandidate
+import com.charmnight.linkgraph.investigation.application.GateDecision
+import com.charmnight.linkgraph.investigation.application.InvestigationRequest
+import com.charmnight.linkgraph.investigation.application.InvestigationStatus
+import com.charmnight.linkgraph.investigation.application.InvestigationTurnResult
+import com.charmnight.linkgraph.investigation.application.ResolutionOutcome
+import com.charmnight.linkgraph.investigation.application.EvidenceGate
+import com.charmnight.linkgraph.investigation.application.EvidenceGoalPlanner
+import com.charmnight.linkgraph.investigation.application.InvestigationNoEvidencePresenter
+import com.charmnight.linkgraph.investigation.application.InvestigationSummaryProjector
+import com.charmnight.linkgraph.investigation.application.TemplateInvestigationSummaryProjector
 import com.charmnight.linkgraph.investigation.resolving.InvestigationContext
 import com.charmnight.linkgraph.investigation.resolving.ResolverChain
 import com.charmnight.linkgraph.investigation.resolving.java.JavaEnumConstantResolver
@@ -36,7 +36,7 @@ class InvestigationPipeline(
     /** 保存证据闸门。 */
     private val gate: EvidenceGate,
     /** 保存有直接证据时的总结服务。 */
-    private val summaryService: InvestigationSummaryService,
+    private val summaryService: InvestigationSummaryProjector,
     /** 保存无直接证据时的展示器。 */
     private val noEvidencePresenter: InvestigationNoEvidencePresenter,
     /** 保存当前项目。 */
@@ -118,7 +118,7 @@ class InvestigationPipeline(
          */
         fun default(
             project: Project,
-            summaryService: InvestigationSummaryService = TemplateInvestigationSummaryService(),
+            summaryService: InvestigationSummaryProjector = TemplateInvestigationSummaryProjector(),
         ): InvestigationPipeline {
             return InvestigationPipeline(
                 planner = EvidenceGoalPlanner(),

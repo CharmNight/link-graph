@@ -1,10 +1,10 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
-import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
+import com.charmnight.linkgraph.architecture.ArchitectureGraphResult
+import com.charmnight.linkgraph.architecture.ClassDiagramResult
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
 import com.charmnight.linkgraph.application.model.AsyncRequestState
-import com.charmnight.linkgraph.review.ReviewGraphViewDocument
+import com.charmnight.linkgraph.review.ReviewGraphResult
 
 class ArchitectureGraphStatePresenter(
     private val stateService: GraphEditorStateService,
@@ -29,7 +29,7 @@ class ArchitectureGraphStatePresenter(
     }
 
     fun presentArchitectureGraph(
-        view: ArchitectureGraphViewDocument,
+        view: ArchitectureGraphResult,
         requestState: AsyncRequestState,
         statusMessage: String,
     ) {
@@ -38,7 +38,7 @@ class ArchitectureGraphStatePresenter(
     }
 
     fun presentClassDiagram(
-        view: ClassDiagramViewDocument,
+        view: ClassDiagramResult,
         requestState: AsyncRequestState,
         statusMessage: String,
     ) {
@@ -47,7 +47,7 @@ class ArchitectureGraphStatePresenter(
     }
 
     fun presentReviewGraph(
-        view: ReviewGraphViewDocument,
+        view: ReviewGraphResult,
         requestState: AsyncRequestState,
         statusMessage: String,
     ) {

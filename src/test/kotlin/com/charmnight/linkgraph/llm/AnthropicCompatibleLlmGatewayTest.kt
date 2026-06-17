@@ -38,7 +38,7 @@ class AnthropicCompatibleLlmGatewayTest {
             ),
         )
 
-        val root = LlmJsonSupport.parseJsonObject(payload)
+        val root = LlmJsonCodec.parseJsonObject(payload)
 
         assertEquals("MiniMax-M2.7", root.get("model").asString)
         assertEquals("system prompt", root.get("system").asString)

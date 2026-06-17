@@ -1,4 +1,5 @@
 package com.charmnight.linkgraph.ui
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.mermaid.MermaidIssue
 import com.charmnight.linkgraph.application.model.GraphEditTransaction
@@ -54,7 +55,7 @@ class WorkspaceStatePresenter(
     ) {
         stateService.graph.markMermaidExported(exported)
         stateService.workbench.markOperationFeedback(
-            OperationFeedbackLevel.SUCCESS,
+            ApplicationFeedbackLevel.SUCCESS,
             if (copiedToClipboard) {
                 "已导出 Mermaid，并复制到剪贴板。"
             } else {

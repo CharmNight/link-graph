@@ -322,6 +322,7 @@ describe("ClassDiagramView", () => {
     await userEvent.click(screen.getByTestId("node-action-class:OrderService-find-class-usages"));
 
     expect(onRequestClassUsages).toHaveBeenCalledWith("class:OrderService", {
+      scopeNodeId: "class:OrderService",
       targetQualifiedName: "com.example.OrderService",
       sourceVirtualFileUrl: null,
       sourcePath: null,
@@ -346,6 +347,7 @@ describe("ClassDiagramView", () => {
     await userEvent.click(screen.getByRole("button", { name: "查找使用处" }));
 
     expect(onRequestClassUsages).toHaveBeenCalledWith("class:OrderService", {
+      scopeNodeId: "class:OrderService",
       targetQualifiedName: "com.example.OrderService",
       sourceVirtualFileUrl: null,
       sourcePath: null,
@@ -408,6 +410,7 @@ describe("ClassDiagramView", () => {
     await userEvent.click(screen.getByTestId("pane-action-class-diagram-more-usages"));
 
     expect(onRequestClassUsages).toHaveBeenCalledWith("class:OrderService", {
+      scopeNodeId: "class:OrderService",
       targetQualifiedName: "com.example.OrderService",
       maxUsageGroups: 55,
       maxUsageEntries: 220,

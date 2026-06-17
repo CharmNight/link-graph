@@ -12,9 +12,9 @@ import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.ui.GraphEditorStateSnapshot
 import com.charmnight.linkgraph.ui.GraphSceneId
 import com.charmnight.linkgraph.ui.toWorkflowEditorSnapshot
-import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
-import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
-import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
+import com.charmnight.linkgraph.semantic.outcome.FlowchartViewDocument
+import com.charmnight.linkgraph.semantic.outcome.FactGraphViewDocument
+import com.charmnight.linkgraph.semantic.outcome.ResourceRelationViewDocument
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

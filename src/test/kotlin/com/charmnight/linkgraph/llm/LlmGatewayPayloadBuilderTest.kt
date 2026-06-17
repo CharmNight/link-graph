@@ -17,7 +17,7 @@ class LlmGatewayPayloadBuilderTest {
                 structuredOutput = structuredOutput(),
             ),
         )
-        val root = LlmJsonSupport.parseJsonObject(payload)
+        val root = LlmJsonCodec.parseJsonObject(payload)
 
         assertEquals("gpt-5.4", root.get("model").asString)
         assertEquals(0.2, root.get("temperature").asDouble)
@@ -42,7 +42,7 @@ class LlmGatewayPayloadBuilderTest {
                 structuredOutput = structuredOutput(),
             ),
         )
-        val root = LlmJsonSupport.parseJsonObject(payload)
+        val root = LlmJsonCodec.parseJsonObject(payload)
 
         assertEquals("gpt-5.4", root.get("model").asString)
         assertEquals(true, root.get("stream").asBoolean)
@@ -59,7 +59,7 @@ class LlmGatewayPayloadBuilderTest {
         val payload = LlmGatewayPayloadBuilder.anthropicMessagesPayload(
             request = request(protocol = LlmWireProtocol.ANTHROPIC_MESSAGES),
         )
-        val root = LlmJsonSupport.parseJsonObject(payload)
+        val root = LlmJsonCodec.parseJsonObject(payload)
 
         assertEquals("gpt-5.4", root.get("model").asString)
         assertEquals(4096, root.get("max_tokens").asInt)

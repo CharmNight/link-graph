@@ -1,4 +1,5 @@
 package com.charmnight.linkgraph.application
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.testing.*
 
@@ -146,7 +147,7 @@ class GraphEditorApplicationPlanningTest : BasePlatformTestCase() {
         assertTrue(plan != null, "即使当前草稿为空，也应该允许生成实现建议。")
         assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.SUCCEEDED, snapshot.generationPlanRequestState.phase)
         assertEquals("实现计划生成", snapshot.generationPlanRequestState.scene)
-        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
+        assertEquals(com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
     }
 
     fun testRequestGenerationPlanNoLongerBlocksOnUnresolvedRiskThreads() {
@@ -251,7 +252,7 @@ class GraphEditorApplicationPlanningTest : BasePlatformTestCase() {
         assertEquals("代码草稿", snapshot.codeDraftRequestState.scene)
         assertTrue(snapshot.codeDraftRequestState.errorMessage?.contains("请先确认至少一条草稿变更") == true)
         assertTrue(snapshot.codeDraftRequestState.detailMessage?.contains("先在问答结果中确认候选变更") == true)
-        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
+        assertEquals(com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
     }
 
     private fun sampleGraph(): GraphDocument {

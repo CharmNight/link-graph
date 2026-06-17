@@ -33,7 +33,7 @@ class DefaultGraphBeautificationService(
         PlaceholderGraphBeautificationService(promptFactory, stepProjectionService),
 ) : GraphBeautificationService {
     /** 负责处理结构化 JSON 响应与自动修复。 */
-    private val responseSupport = RemoteStructuredResponseSupport(gateway)
+    private val responseSupport = RemoteStructuredResponseParser(gateway)
 
     /** 优先调用远程讲解，失败时自动回退到本地规则。 */
     override fun beautify(

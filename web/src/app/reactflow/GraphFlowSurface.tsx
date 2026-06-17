@@ -780,14 +780,15 @@ export function GraphFlowSurface({
     if (updates.length === 0) {
       return;
     }
-    setLiveDragPositions(
-      Object.fromEntries(
+    setLiveDragPositions((current) => ({
+      ...current,
+      ...Object.fromEntries(
         updates.map((update) => [
           update.id,
           update.position,
         ]),
       ),
-    );
+    }));
   }
 
   function openNodeMenu(event: ReactMouseEvent, nodeId: string) {

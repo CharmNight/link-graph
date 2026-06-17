@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.review
 
+import com.charmnight.linkgraph.projection.business.ReviewGraphProjector
 import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
 import com.charmnight.linkgraph.jvm.index.JvmClassKind
 import com.charmnight.linkgraph.jvm.index.JvmClassSymbol

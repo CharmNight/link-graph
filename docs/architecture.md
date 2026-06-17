@@ -32,12 +32,12 @@ Link Graph 是一个 IntelliJ Platform 插件，不是独立桌面程序。后�
 - 应用服务与工作流层
   - `GraphEditorApplicationService` 是应用组合根，向 IDE 动作、工具窗口 bridge 和调试自动化暴露 `ApplicationCommandDispatcher`，不再把每个业务动作展开成一组公共转发方法。
   - `application/command` 把前端消息、IDE 动作和调试请求统一收敛为 `ApplicationCommand`，再由命令处理器调度链路加载、架构图、类图、Review Graph、问答、讲解、实现建议、代码 diff、同步预览和导航等流程。
-  - `application/event` 和 `application/result` 只承载应用事件与应用结果；UI 展示文案和视图投影由 UI 侧 presenter/projector 负责。
+  - `application/event` 和 `application/result` 只承载应用事件与应用结果；展示文案由 UI presenter 负责，视图投影由 `projection/business` 和 `semantic/outcome` 的 projector/result 模型负责。
 - 分析与图领域层
   - `semantic` 等模块负责把代码主体和资源主体转换成图导向的分析结果。
   - `architecture` 和 `jvm` 提供项目级 JVM 符号、关系和架构索引，供架构图、类图、链路增强和 Review Graph 查询复用。
   - `review` 负责把 diff、工作区变更、变更 hunk、命中符号、上下游影响和相关测试投影为 Review Graph。
-  - `projection` 提供统一图窗口裁剪、隐藏计数、overflow 元数据和交互式投影内核，避免各视图重复实现可见窗口逻辑。
+  - `projection` 提供统一图窗口裁剪、隐藏计数、overflow 元数据、交互式投影内核和各视图业务 projector，避免各视图重复实现可见窗口逻辑。
   - `presentation` 提供图展示目标、lane、hidden bucket 等展示契约，后端生成结构化展示信息，前端只消费和渲染。
   - `json` 提供生产代码共享的 JSON codec，避免渲染器、模型和 bridge 各自维护私有解析或转义逻辑。
 - 状态与传输层

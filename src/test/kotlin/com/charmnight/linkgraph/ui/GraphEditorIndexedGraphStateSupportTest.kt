@@ -3,8 +3,8 @@ package com.charmnight.linkgraph.ui
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
 import com.charmnight.linkgraph.application.model.AsyncRequestPhase
 import com.charmnight.linkgraph.application.model.AsyncRequestState
-import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
-import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
+import com.charmnight.linkgraph.architecture.ArchitectureGraphResult
+import com.charmnight.linkgraph.architecture.ClassDiagramResult
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphDocument
@@ -55,14 +55,14 @@ class GraphEditorIndexedGraphStateSupportTest {
         val initialGraph = GraphDocument(nodes = listOf(staleAnchor))
 
         stateService.loadClassDiagramView(
-            ClassDiagramViewDocument(
+            ClassDiagramResult(
                 visibleGraph = initialGraph,
                 fullGraph = initialGraph,
                 anchorNodeId = staleAnchor.id,
             ),
         )
         stateService.indexedGraphs.loadClassDiagramView(
-            view = ClassDiagramViewDocument(
+            view = ClassDiagramResult(
                 visibleGraph = GraphDocument(
                     nodes = listOf(staleAnchor, requestedAnchor),
                     edges = listOf(
@@ -107,7 +107,7 @@ class GraphEditorIndexedGraphStateSupportTest {
         val initialGraph = GraphDocument(nodes = listOf(staleAnchor))
 
         stateService.loadClassDiagramView(
-            ClassDiagramViewDocument(
+            ClassDiagramResult(
                 visibleGraph = initialGraph,
                 fullGraph = initialGraph,
                 anchorNodeId = staleAnchor.id,
@@ -134,7 +134,7 @@ class GraphEditorIndexedGraphStateSupportTest {
         assertEquals(AsyncRequestPhase.RUNNING, snapshot.indexedGraphRequestStates[IndexedGraphView.CLASS_DIAGRAM]?.phase)
     }
 
-    private fun architectureViewWithNode(nodeId: String): ArchitectureGraphViewDocument {
+    private fun architectureViewWithNode(nodeId: String): ArchitectureGraphResult {
         val graph = GraphDocument(
             nodes = listOf(
                 GraphNode(
@@ -144,7 +144,7 @@ class GraphEditorIndexedGraphStateSupportTest {
                 ),
             ),
         )
-        return ArchitectureGraphViewDocument(
+        return ArchitectureGraphResult(
             visibleGraph = graph,
             fullGraph = graph,
         )

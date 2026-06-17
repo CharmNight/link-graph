@@ -6,10 +6,10 @@ import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
 import com.charmnight.linkgraph.application.port.GraphEditRequestExecutor
 import com.charmnight.linkgraph.application.port.ToolGraphSnapshotProvider
 import com.charmnight.linkgraph.diff.GraphDiffer
-import com.charmnight.linkgraph.investigation.adapter.InvestigationGraphPatchAdapter
+import com.charmnight.linkgraph.investigation.application.InvestigationGraphPatchAdapter
 import com.charmnight.linkgraph.investigation.application.InvestigationPipeline
-import com.charmnight.linkgraph.investigation.domain.InvestigationRequest
-import com.charmnight.linkgraph.investigation.domain.InvestigationTargetHint
+import com.charmnight.linkgraph.investigation.application.InvestigationRequest
+import com.charmnight.linkgraph.investigation.application.InvestigationTargetHint
 import com.charmnight.linkgraph.application.workflow.review.DiffReviewWorkflow
 import com.charmnight.linkgraph.application.workflow.review.GraphBeautificationReviewWorkflow
 import com.charmnight.linkgraph.llm.GraphQaContext

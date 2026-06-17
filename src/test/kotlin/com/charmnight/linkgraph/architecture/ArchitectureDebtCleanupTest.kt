@@ -29,8 +29,8 @@ class ArchitectureDebtCleanupTest {
         }
 
         assertFalse(
-            read("src/main/kotlin/com/charmnight/linkgraph/llm/LlmGatewaySupport.kt").contains("fun escapeJson("),
-            "LlmGatewaySupport should not keep unused manual JSON escaping after payload builder moved to structured JSON.",
+            read("src/main/kotlin/com/charmnight/linkgraph/llm/LlmGatewayClient.kt").contains("fun escapeJson("),
+            "LlmGatewayClient should not keep unused manual JSON escaping after payload builder moved to structured JSON.",
         )
     }
 

@@ -1,10 +1,10 @@
 package com.charmnight.linkgraph.investigation.resolving.java
 
 import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
-import com.charmnight.linkgraph.investigation.domain.EvidenceCandidate
-import com.charmnight.linkgraph.investigation.domain.EvidenceFact
-import com.charmnight.linkgraph.investigation.domain.EvidenceGoal
-import com.charmnight.linkgraph.investigation.domain.EvidenceLevel
+import com.charmnight.linkgraph.investigation.application.EvidenceCandidate
+import com.charmnight.linkgraph.investigation.application.EvidenceFact
+import com.charmnight.linkgraph.investigation.application.EvidenceGoal
+import com.charmnight.linkgraph.investigation.application.EvidenceLevel
 import com.charmnight.linkgraph.jvm.index.JvmClassKind
 import com.charmnight.linkgraph.jvm.index.JvmClassSymbol
 import com.charmnight.linkgraph.jvm.index.JvmFieldSymbol

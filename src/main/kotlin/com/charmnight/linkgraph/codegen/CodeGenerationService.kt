@@ -9,7 +9,7 @@ import com.charmnight.linkgraph.llm.LlmPromptFactory
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.llm.LlmUserMessageFormatter
 import com.charmnight.linkgraph.llm.LlmStructuredSchemas
-import com.charmnight.linkgraph.llm.RemoteStructuredResponseSupport
+import com.charmnight.linkgraph.llm.RemoteStructuredResponseParser
 import com.charmnight.linkgraph.llm.RoutingLlmGateway
 import com.charmnight.linkgraph.llm.remoteConnectionOrNull
 import com.charmnight.linkgraph.llm.remoteLlmSetupHint
@@ -109,7 +109,7 @@ class CodeGenerationService(
     private val gateway: LlmGateway = RoutingLlmGateway(),
 ) {
     /** 负责结构化响应请求和解析的辅助组件。 */
-    private val responseSupport = RemoteStructuredResponseSupport(gateway)
+    private val responseSupport = RemoteStructuredResponseParser(gateway)
 
     /** 基于当前上下文生成代码草稿，优先远程，失败回退本地模板。 */
     fun generateDrafts(

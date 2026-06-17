@@ -1,12 +1,12 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.model.GraphDocument
-import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
-import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
-import com.charmnight.linkgraph.review.ReviewGraphViewDocument
-import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
-import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
-import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
+import com.charmnight.linkgraph.architecture.ArchitectureGraphResult
+import com.charmnight.linkgraph.architecture.ClassDiagramResult
+import com.charmnight.linkgraph.review.ReviewGraphResult
+import com.charmnight.linkgraph.semantic.outcome.FactGraphViewDocument
+import com.charmnight.linkgraph.semantic.outcome.FlowchartViewDocument
+import com.charmnight.linkgraph.semantic.outcome.ResourceRelationViewDocument
 
 typealias GraphLayoutPosition = com.charmnight.linkgraph.application.model.GraphLayoutPosition
 
@@ -23,9 +23,9 @@ data class GraphEditorSnapshot(
     val factGraphView: FactGraphViewDocument = FactGraphViewDocument(),
     val flowchartView: FlowchartViewDocument = FlowchartViewDocument(),
     val resourceRelationView: ResourceRelationViewDocument = ResourceRelationViewDocument(),
-    val architectureGraphView: ArchitectureGraphViewDocument = ArchitectureGraphViewDocument(),
-    val classDiagramView: ClassDiagramViewDocument = ClassDiagramViewDocument(),
-    val reviewGraphView: ReviewGraphViewDocument = ReviewGraphViewDocument(),
+    val architectureGraphView: ArchitectureGraphResult = ArchitectureGraphResult(),
+    val classDiagramView: ClassDiagramResult = ClassDiagramResult(),
+    val reviewGraphView: ReviewGraphResult = ReviewGraphResult(),
     val analysisDisplayMode: com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode =
         com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode.FACT_GRAPH,
     val currentSceneId: GraphSceneId = GraphSceneId.WORKSPACE_FACT,

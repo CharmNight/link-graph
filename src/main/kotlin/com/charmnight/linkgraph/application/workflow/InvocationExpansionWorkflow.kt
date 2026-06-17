@@ -11,6 +11,7 @@ import com.charmnight.linkgraph.application.usecase.InvocationExpansionTarget
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionTargetKind
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionUseCase
 import com.charmnight.linkgraph.architecture.architectureIndexRuntime
+import com.charmnight.linkgraph.foundation.LoggedFailures
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.semantic.SemanticAnalyzer
@@ -154,8 +155,9 @@ internal class InvocationExpansionWorkflow(
 
     private fun resolveTarget(signature: String): InvocationExpansionTarget {
         targetResolverOverrideProvider()?.invoke(project, signature)?.let { target -> return target }
-        val index = runCatching { project.architectureIndexRuntime().index() }.getOrNull()
-            ?: return InvocationExpansionTarget(InvocationExpansionTargetKind.NOT_FOUND)
+        val index = LoggedFailures.orNull(logger, "InvocationExpansion architectureIndexRuntime.index") {
+            project.architectureIndexRuntime().index()
+        } ?: return InvocationExpansionTarget(InvocationExpansionTargetKind.NOT_FOUND)
         return targetResolver.resolve(signature, index)
     }
 

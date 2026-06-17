@@ -4,8 +4,8 @@ import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
-import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
-import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
+import com.charmnight.linkgraph.architecture.ArchitectureGraphResult
+import com.charmnight.linkgraph.architecture.ClassDiagramResult
 import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.GraphBeautificationResult
 import com.charmnight.linkgraph.llm.GraphPatchResult
@@ -17,7 +17,7 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.application.model.GraphEditRejected
 import com.charmnight.linkgraph.application.model.GraphEditTransaction
-import com.charmnight.linkgraph.review.ReviewGraphViewDocument
+import com.charmnight.linkgraph.review.ReviewGraphResult
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.sync.SyncPreviewItem
 import com.charmnight.linkgraph.ui.AsyncRequestState
@@ -32,9 +32,9 @@ import com.charmnight.linkgraph.ui.OperationFeedback
 import com.charmnight.linkgraph.ui.SourceNavigationState
 import com.charmnight.linkgraph.ui.buildViewDocuments
 import com.charmnight.linkgraph.ui.defaultGraphSceneStates
-import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
-import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
-import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
+import com.charmnight.linkgraph.semantic.outcome.FactGraphViewDocument
+import com.charmnight.linkgraph.semantic.outcome.FlowchartViewDocument
+import com.charmnight.linkgraph.semantic.outcome.ResourceRelationViewDocument
 import com.charmnight.linkgraph.workbench.DraftValidationState
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
 import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession
@@ -52,9 +52,9 @@ fun testSnapshot(
     factGraphView: FactGraphViewDocument = FactGraphViewDocument(),
     flowchartView: FlowchartViewDocument = FlowchartViewDocument(),
     resourceRelationView: ResourceRelationViewDocument = ResourceRelationViewDocument(),
-    architectureGraphView: ArchitectureGraphViewDocument = ArchitectureGraphViewDocument(),
-    classDiagramView: ClassDiagramViewDocument = ClassDiagramViewDocument(),
-    reviewGraphView: ReviewGraphViewDocument = ReviewGraphViewDocument(),
+    architectureGraphView: ArchitectureGraphResult = ArchitectureGraphResult(),
+    classDiagramView: ClassDiagramResult = ClassDiagramResult(),
+    reviewGraphView: ReviewGraphResult = ReviewGraphResult(),
     analysisDisplayMode: AnalysisDisplayMode = AnalysisDisplayMode.FACT_GRAPH,
     currentSceneId: GraphSceneId? = null,
     previousWorkspaceSceneId: GraphSceneId? = null,

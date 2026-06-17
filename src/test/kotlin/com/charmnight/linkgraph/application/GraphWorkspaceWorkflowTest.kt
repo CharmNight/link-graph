@@ -1,4 +1,5 @@
 package com.charmnight.linkgraph.application
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.application.workflow.GraphWorkspaceWorkflow
 import com.charmnight.linkgraph.application.model.GraphEditIssueCode
@@ -23,8 +24,8 @@ import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.GraphLayoutPosition
 import com.charmnight.linkgraph.ui.GraphSceneId
 import com.charmnight.linkgraph.ui.currentVisibleGraph
-import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
-import com.charmnight.linkgraph.ui.view.deriveFlowchartSummary
+import com.charmnight.linkgraph.semantic.outcome.FlowchartViewDocument
+import com.charmnight.linkgraph.semantic.outcome.deriveFlowchartSummary
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -101,7 +102,7 @@ class GraphWorkspaceWorkflowTest {
                 anchorNodeId = entryNode.id,
                 selectedMethodSignature = entryNode.signature,
                 displayName = "uploadFiles",
-                feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.INFO,
+                feedbackLevel = com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.INFO,
                 statusMessage = "loaded",
                 flowchartView = FlowchartViewDocument(
                     visibleGraph = visibleGraph,
@@ -189,7 +190,7 @@ class GraphWorkspaceWorkflowTest {
 
         val snapshot = stateService.snapshot()
         assertNull(diffResult)
-        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
+        assertEquals(com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
         assertTrue(snapshot.operationFeedback?.message?.contains("缺少") == true, snapshot.operationFeedback?.message)
     }
 
@@ -212,7 +213,7 @@ class GraphWorkspaceWorkflowTest {
 
         val snapshot = stateService.snapshot()
         assertTrue(items.isEmpty())
-        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.INFO, snapshot.operationFeedback?.level)
+        assertEquals(com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.INFO, snapshot.operationFeedback?.level)
         assertTrue(snapshot.operationFeedback?.message?.contains("没有可同步") == true, snapshot.operationFeedback?.message)
     }
 
@@ -377,7 +378,7 @@ class GraphWorkspaceWorkflowTest {
         )
 
         val snapshot = stateService.snapshot()
-        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.ERROR, snapshot.operationFeedback?.level)
+        assertEquals(com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.ERROR, snapshot.operationFeedback?.level)
         assertTrue(snapshot.operationFeedback?.message?.contains("STALE_BASE_REVISION") == true, snapshot.operationFeedback?.message)
         assertEquals(GraphEditIssueCode.STALE_BASE_REVISION, snapshot.lastGraphEditRejection?.issues?.single()?.code)
         assertNull(snapshot.lastGraphEditTransaction)

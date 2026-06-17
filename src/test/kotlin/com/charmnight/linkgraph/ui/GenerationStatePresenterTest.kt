@@ -39,7 +39,7 @@ class GenerationStatePresenterTest {
         assertEquals(plan, snapshot.generationPlan)
         assertEquals("实现计划已生成。", snapshot.generationPlanRequestState.statusMessage)
         assertEquals("Plan", snapshot.runtimeArtifactSummaries["plan"]?.single()?.title)
-        assertEquals(OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
+        assertEquals(ApplicationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
     }
 
     @Test
@@ -57,7 +57,7 @@ class GenerationStatePresenterTest {
 
         val snapshot = stateService.snapshot()
         assertEquals(listOf("src/App.kt"), snapshot.generatedCodeDraftWriteReport?.writtenFiles)
-        assertEquals(OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
+        assertEquals(ApplicationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
         assertEquals("代码草稿已写入当前文件。", snapshot.operationFeedback?.message)
     }
 
@@ -90,7 +90,7 @@ class GenerationStatePresenterTest {
         assertEquals("draft-1", snapshot.generatedCodeDrafts.single().id)
         assertEquals(listOf("warn"), snapshot.generatedCodeDraftWarnings)
         assertEquals("Codegen", snapshot.runtimeArtifactSummaries["codegen"]?.single()?.title)
-        assertEquals(OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
+        assertEquals(ApplicationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
     }
 
     @Test

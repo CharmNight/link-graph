@@ -1,4 +1,5 @@
 package com.charmnight.linkgraph.ui
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.application.usecase.ConfirmDraftChangeUseCaseResult
 import com.charmnight.linkgraph.application.usecase.UnconfirmDraftChangeUseCaseResult
@@ -19,7 +20,7 @@ class ConfirmedDraftStatePresenter(
             ConfirmDraftChangeUseCaseResult.MissingCandidate -> Unit
             is ConfirmDraftChangeUseCaseResult.Rejected -> {
                 stateService.workbench.markOperationFeedback(
-                    OperationFeedbackLevel.WARNING,
+                    ApplicationFeedbackLevel.WARNING,
                     result.reason,
                 )
             }
@@ -45,7 +46,7 @@ class ConfirmedDraftStatePresenter(
                 stateService.workbench.markDraftValidationState(draftValidationEvaluator(refreshedSnapshot))
                 stateService.workbench.markCodeEligibilityDecision(codeEligibilityEvaluator(refreshedSnapshot))
                 stateService.workbench.markOperationFeedback(
-                    OperationFeedbackLevel.SUCCESS,
+                    ApplicationFeedbackLevel.SUCCESS,
                     "已确认候选变更，并写入草稿层。",
                 )
                 requestBrowserSync()
@@ -81,7 +82,7 @@ class ConfirmedDraftStatePresenter(
                 stateService.workbench.markDraftValidationState(draftValidationEvaluator(refreshedSnapshot))
                 stateService.workbench.markCodeEligibilityDecision(codeEligibilityEvaluator(refreshedSnapshot))
                 stateService.workbench.markOperationFeedback(
-                    OperationFeedbackLevel.INFO,
+                    ApplicationFeedbackLevel.INFO,
                     "已取消确认该候选变更，并从草稿层移除。",
                 )
                 requestBrowserSync()

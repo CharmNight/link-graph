@@ -1,22 +1,23 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.model.GraphMetadataKeys
 import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
-import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
+import com.charmnight.linkgraph.architecture.ArchitectureGraphResult
+import com.charmnight.linkgraph.architecture.ClassDiagramResult
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.foundation.LinkGraphRenderTrace
-import com.charmnight.linkgraph.ui.view.FactGraphSummary
-import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
-import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
-import com.charmnight.linkgraph.ui.view.GraphProjectionIndex
-import com.charmnight.linkgraph.ui.view.ResourceRelationSummary
-import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
-import com.charmnight.linkgraph.ui.view.deriveFlowchartSummary
-import com.charmnight.linkgraph.ui.view.exactGraphProjectionIndex
-import com.charmnight.linkgraph.ui.view.graphProjectionIndexForVisibleGraph
-import com.charmnight.linkgraph.ui.view.projectReadableFlowchartView
-import com.charmnight.linkgraph.ui.view.resolveProjectedFlowchartNodeId
+import com.charmnight.linkgraph.semantic.outcome.FactGraphSummary
+import com.charmnight.linkgraph.semantic.outcome.FactGraphViewDocument
+import com.charmnight.linkgraph.semantic.outcome.FlowchartViewDocument
+import com.charmnight.linkgraph.application.model.GraphProjectionIndex
+import com.charmnight.linkgraph.semantic.outcome.ResourceRelationSummary
+import com.charmnight.linkgraph.semantic.outcome.ResourceRelationViewDocument
+import com.charmnight.linkgraph.semantic.outcome.deriveFlowchartSummary
+import com.charmnight.linkgraph.semantic.outcome.exactGraphProjectionIndex
+import com.charmnight.linkgraph.semantic.outcome.graphProjectionIndexForVisibleGraph
+import com.charmnight.linkgraph.semantic.outcome.projectReadableFlowchartView
+import com.charmnight.linkgraph.semantic.outcome.resolveProjectedFlowchartNodeId
 
 internal fun resolveSelectedNodeId(
     graph: GraphDocument,
@@ -212,8 +213,8 @@ internal fun extractLayoutState(graph: GraphDocument?): GraphLayoutState {
         return GraphLayoutState()
     }
     val positions = graph.nodes.mapNotNull { node ->
-        val x = node.metadata["ui.x"]?.toDoubleOrNull() ?: return@mapNotNull null
-        val y = node.metadata["ui.y"]?.toDoubleOrNull() ?: return@mapNotNull null
+        val x = node.metadata[GraphMetadataKeys.Ui.X]?.toDoubleOrNull() ?: return@mapNotNull null
+        val y = node.metadata[GraphMetadataKeys.Ui.Y]?.toDoubleOrNull() ?: return@mapNotNull null
         node.id to GraphLayoutPosition(x = x, y = y)
     }.toMap()
     return GraphLayoutState(positions)
@@ -239,8 +240,8 @@ internal data class GraphEditorViewDocuments(
     val factGraphView: FactGraphViewDocument,
     val flowchartView: FlowchartViewDocument,
     val resourceRelationView: ResourceRelationViewDocument,
-    val architectureGraphView: ArchitectureGraphViewDocument = ArchitectureGraphViewDocument(),
-    val classDiagramView: ClassDiagramViewDocument = ClassDiagramViewDocument(),
+    val architectureGraphView: ArchitectureGraphResult = ArchitectureGraphResult(),
+    val classDiagramView: ClassDiagramResult = ClassDiagramResult(),
 )
 
 private data class FactGraphViewDocumentSummary(

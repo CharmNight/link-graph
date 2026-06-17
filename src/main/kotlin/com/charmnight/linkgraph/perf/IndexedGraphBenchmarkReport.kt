@@ -1,13 +1,13 @@
 package com.charmnight.linkgraph.perf
 
 import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
-import com.charmnight.linkgraph.architecture.view.ArchitectureGraphProjector
-import com.charmnight.linkgraph.architecture.view.ClassDiagramProjector
+import com.charmnight.linkgraph.projection.business.ArchitectureGraphProjector
+import com.charmnight.linkgraph.projection.business.ClassDiagramProjector
 import com.charmnight.linkgraph.json.JsonCodec
 import com.charmnight.linkgraph.llm.tools.ToolResult
 import com.charmnight.linkgraph.review.BlastRadius
 import com.charmnight.linkgraph.review.ReviewEvidenceBundle
-import com.charmnight.linkgraph.review.ReviewGraphProjector
+import com.charmnight.linkgraph.projection.business.ReviewGraphProjector
 import java.nio.charset.StandardCharsets
 
 data class IndexedGraphBenchmarkReport(

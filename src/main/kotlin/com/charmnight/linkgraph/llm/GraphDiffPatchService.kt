@@ -19,7 +19,7 @@ class GraphDiffPatchService(
     private val gateway: LlmGateway = RoutingLlmGateway(),
 ) {
     /** 负责处理结构化 JSON 响应与自动修复。 */
-    private val responseSupport = RemoteStructuredResponseSupport(gateway)
+    private val responseSupport = RemoteStructuredResponseParser(gateway)
 
     /** 执行差异问答，必要时回退到本地规则结果。 */
     fun review(

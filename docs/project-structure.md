@@ -56,6 +56,8 @@
   - 生产代码共享 JSON codec 和脚本安全序列化支撑。
 - `projection`
   - 统一图投影内核、窗口裁剪、隐藏计数、overflow 元数据和交互式图投影。
+- `projection/business`
+  - 事实图、流程图、资源关系视图、架构图、类图、类使用处和 Review Graph 的业务 projector。
 - `presentation`
   - 图展示目标、lane、hidden bucket 等展示契约模型。
 - `foundation`
@@ -63,7 +65,7 @@
 - `semantic`
   - 语义分析、事实构建与主体定位。
 - `architecture`、`jvm`、`source`
-  - 项目级 JVM 符号/关系索引、架构图/类图投影和源码内容解析支撑。
+  - 项目级 JVM 符号/关系索引、架构/类图查询输入和源码内容解析支撑。
 - `review`
   - Review Graph 查询、diff 到符号映射、影响面和相关测试证据。
 - `model`

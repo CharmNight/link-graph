@@ -1,4 +1,5 @@
 package com.charmnight.linkgraph.application
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
 import com.charmnight.linkgraph.testing.*
@@ -65,7 +66,7 @@ class GraphEditorApplicationAsyncLifecycleTest : BasePlatformTestCase() {
             snapshot.generationPlanRequestState.executionMode,
         )
         assertNotNull(snapshot.generationPlan)
-        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
+        assertEquals(com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
     }
 
     fun testCodeDraftAsyncRejectsWhenNoConfirmedDraftChangesExist() {
@@ -87,7 +88,7 @@ class GraphEditorApplicationAsyncLifecycleTest : BasePlatformTestCase() {
         assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.FAILED, snapshot.codeDraftRequestState.phase)
         assertEquals("代码草稿", snapshot.codeDraftRequestState.scene)
         assertTrue(snapshot.codeDraftRequestState.errorMessage?.contains("请先确认至少一条草稿变更") == true)
-        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
+        assertEquals(com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
     }
 
     fun testQaAsyncSuccessDoesNotGetOverwrittenByItsOwnTimeout() {
@@ -177,7 +178,7 @@ class GraphEditorApplicationAsyncLifecycleTest : BasePlatformTestCase() {
         assertEquals(com.charmnight.linkgraph.ui.AsyncRequestPhase.TIMED_OUT, snapshot.qaRequestState.phase)
         assertTrue(snapshot.qaRequestState.errorMessage?.contains("超时") == true)
         assertTrue(snapshot.qaRequestState.detailMessage?.contains("流式输出") == true)
-        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.ERROR, snapshot.operationFeedback?.level)
+        assertEquals(com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.ERROR, snapshot.operationFeedback?.level)
     }
 
     fun testQaAsyncTracksLocalRuleExecutionWhenRemoteLlmIsDisabled() {
@@ -267,7 +268,7 @@ class GraphEditorApplicationAsyncLifecycleTest : BasePlatformTestCase() {
         assertTrue(snapshot.qaRequestState.fallbackUsed)
         assertEquals(com.charmnight.linkgraph.ui.AsyncRequestExecutionMode.REMOTE_FALLBACK, snapshot.qaRequestState.executionMode)
         assertTrue(snapshot.qaRequestState.statusMessage?.contains("已回退") == true)
-        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
+        assertEquals(com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
     }
 
     private fun sampleGraph(): GraphDocument {

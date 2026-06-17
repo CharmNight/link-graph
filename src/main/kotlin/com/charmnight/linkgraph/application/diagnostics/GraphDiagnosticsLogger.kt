@@ -2,6 +2,7 @@ package com.charmnight.linkgraph.application.diagnostics
 
 import com.charmnight.linkgraph.foundation.debugLazy
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.model.GraphMetadataKeys
 import com.intellij.openapi.diagnostic.Logger
 
 internal class GraphDiagnosticsLogger(
@@ -31,8 +32,8 @@ internal class GraphDiagnosticsLogger(
             .take(6)
             .map { edge -> "${edge.id}(${edge.fromNodeId}->${edge.toNodeId})" }
         val positionedNodes = graph.nodes.mapNotNull { node ->
-            val x = node.metadata[UI_X_KEY]?.toDoubleOrNull()
-            val y = node.metadata[UI_Y_KEY]?.toDoubleOrNull()
+            val x = node.metadata[GraphMetadataKeys.Ui.X]?.toDoubleOrNull()
+            val y = node.metadata[GraphMetadataKeys.Ui.Y]?.toDoubleOrNull()
             if (x != null && y != null) {
                 x to y
             } else {
@@ -60,10 +61,5 @@ internal class GraphDiagnosticsLogger(
                 "positioned=${positionedNodes.size}, xRange=$xRange, yRange=$yRange, maxOutDegree=$maxOutDegree, maxInDegree=$maxInDegree, " +
                 "sampleNodes=${graph.nodes.take(6).map { it.id }}, nodeTypes=[$typeSummary]"
         }
-    }
-
-    private companion object {
-        const val UI_X_KEY: String = "ui.x"
-        const val UI_Y_KEY: String = "ui.y"
     }
 }

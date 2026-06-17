@@ -1,4 +1,5 @@
 package com.charmnight.linkgraph.ui
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.workbench.AssistantResultStore
 
@@ -80,7 +81,7 @@ private fun GraphEditorStateSnapshot.normalizeAssistantHistory(): GraphEditorSta
 }
 
 internal fun GraphEditorStateSnapshot.withOperationFeedback(
-    level: OperationFeedbackLevel,
+    level: ApplicationFeedbackLevel,
     message: String,
     preservePreviousStatusKind: Boolean = false,
 ): GraphEditorStateSnapshot {

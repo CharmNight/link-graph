@@ -23,7 +23,7 @@ class SubjectGraphStatePresenterTest {
         presenter.presentSelectedMethod("com.example.Foo.bar()")
 
         val snapshot = stateService.snapshot()
-        assertEquals(OperationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
+        assertEquals(ApplicationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
         assertEquals("需要重新分析", snapshot.operationFeedback?.message)
         assertEquals(AnalysisDisplayMode.FACT_GRAPH, snapshot.analysisDisplayMode)
         assertEquals("com.example.Foo.bar()", snapshot.selectedMethodSignature)
@@ -50,7 +50,7 @@ class SubjectGraphStatePresenterTest {
             fullGraph = graph,
             selectedMethodSignature = "com.example.Foo.bar()",
             displayName = "Foo.bar",
-            feedbackLevel = OperationFeedbackLevel.SUCCESS,
+            feedbackLevel = ApplicationFeedbackLevel.SUCCESS,
             statusMessage = "分析完成",
         )
 

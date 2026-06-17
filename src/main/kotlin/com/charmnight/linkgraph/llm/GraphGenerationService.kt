@@ -18,7 +18,7 @@ class GraphGenerationService(
     private val gateway: LlmGateway = RoutingLlmGateway(),
 ) {
     /** 负责结构化响应请求和解析的辅助组件。 */
-    private val responseSupport = RemoteStructuredResponseSupport(gateway)
+    private val responseSupport = RemoteStructuredResponseParser(gateway)
 
     /** 根据当前图上下文生成实现计划。 */
     fun generatePlan(
@@ -131,7 +131,7 @@ class GraphGenerationService(
         prompt: String,
     ): GenerationPlan {
         /** 解析后的 JSON 根对象。 */
-        val root = LlmJsonSupport.parseObject(RemoteStructuredJsonExtractor.extract(content))
+        val root = LlmJsonCodec.parseObject(RemoteStructuredJsonExtractor.extract(content))
         /** 远程返回的计划条目列表。 */
         val items = (root["items"] as? List<*>).orEmpty().mapNotNull { raw ->
             val item = raw as? Map<*, *> ?: return@mapNotNull null

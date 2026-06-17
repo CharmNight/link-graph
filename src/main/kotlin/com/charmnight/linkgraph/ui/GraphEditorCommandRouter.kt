@@ -14,11 +14,11 @@ import com.intellij.openapi.project.Project
 class GraphEditorCommandRouter(
     private val project: Project,
 ) {
-    private val applicationService by lazy(LazyThreadSafetyMode.NONE) {
+    private val applicationService by lazy(LazyThreadSafetyMode.PUBLICATION) {
         project.getService(GraphEditorApplicationService::class.java)
     }
 
-    private val commandDispatcher by lazy(LazyThreadSafetyMode.NONE) {
+    private val commandDispatcher by lazy(LazyThreadSafetyMode.PUBLICATION) {
         applicationService.commandDispatcher
     }
 

@@ -6,10 +6,10 @@ import com.charmnight.linkgraph.application.indexed.IndexedGraphRelationLayer
 import com.charmnight.linkgraph.application.indexed.IndexedGraphSourceKind
 import com.charmnight.linkgraph.application.model.GraphProjectionIndex
 import com.charmnight.linkgraph.application.model.GraphProjectionMappingKind
-import com.charmnight.linkgraph.architecture.view.ArchitectureGraphSummary
-import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
-import com.charmnight.linkgraph.architecture.view.ClassDiagramSummary
-import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
+import com.charmnight.linkgraph.architecture.ArchitectureGraphSummary
+import com.charmnight.linkgraph.architecture.ArchitectureGraphResult
+import com.charmnight.linkgraph.architecture.ClassDiagramSummary
+import com.charmnight.linkgraph.architecture.ClassDiagramResult
 import com.charmnight.linkgraph.jvm.index.JvmClassKind
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
@@ -18,13 +18,13 @@ import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.review.ReviewGraphChangedFile
 import com.charmnight.linkgraph.review.ReviewGraphChangedHunk
 import com.charmnight.linkgraph.review.ReviewGraphSummary
-import com.charmnight.linkgraph.review.ReviewGraphViewDocument
-import com.charmnight.linkgraph.ui.view.FactGraphSummary
-import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
-import com.charmnight.linkgraph.ui.view.FlowchartSummary
-import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
-import com.charmnight.linkgraph.ui.view.ResourceRelationSummary
-import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
+import com.charmnight.linkgraph.review.ReviewGraphResult
+import com.charmnight.linkgraph.semantic.outcome.FactGraphSummary
+import com.charmnight.linkgraph.semantic.outcome.FactGraphViewDocument
+import com.charmnight.linkgraph.semantic.outcome.FlowchartSummary
+import com.charmnight.linkgraph.semantic.outcome.FlowchartViewDocument
+import com.charmnight.linkgraph.semantic.outcome.ResourceRelationSummary
+import com.charmnight.linkgraph.semantic.outcome.ResourceRelationViewDocument
 import com.charmnight.linkgraph.projection.graphProjectionHiddenCounts
 import com.charmnight.linkgraph.projection.projectedSourceEdgeIds
 import kotlin.test.assertEquals
@@ -80,7 +80,7 @@ internal fun assertResourceRelationViewDataContract(
 }
 
 internal fun assertArchitectureGraphViewDataContract(
-    view: ArchitectureGraphViewDocument,
+    view: ArchitectureGraphResult,
     label: String = "ArchitectureGraphView",
 ) {
     assertGraphDocumentDataContract(view.visibleGraph, "$label.visibleGraph")
@@ -92,7 +92,7 @@ internal fun assertArchitectureGraphViewDataContract(
 }
 
 internal fun assertClassDiagramViewDataContract(
-    view: ClassDiagramViewDocument,
+    view: ClassDiagramResult,
     label: String = "ClassDiagramView",
 ) {
     assertGraphDocumentDataContract(view.visibleGraph, "$label.visibleGraph")
@@ -104,7 +104,7 @@ internal fun assertClassDiagramViewDataContract(
 }
 
 internal fun assertReviewGraphViewDataContract(
-    view: ReviewGraphViewDocument,
+    view: ReviewGraphResult,
     label: String = "ReviewGraphView",
 ) {
     assertGraphDocumentDataContract(view.visibleGraph, "$label.visibleGraph")
@@ -527,7 +527,7 @@ private fun assertReviewGraphDiffDetails(
 }
 
 private fun assertReviewGraphEvidenceDetails(
-    view: ReviewGraphViewDocument,
+    view: ReviewGraphResult,
     label: String,
 ) {
     val fullNodeIds = view.fullGraph.nodes.mapTo(linkedSetOf(), GraphNode::id)

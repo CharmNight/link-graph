@@ -25,11 +25,11 @@ import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.GraphSceneId
-import com.charmnight.linkgraph.ui.view.FlowchartSummary
-import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
-import com.charmnight.linkgraph.ui.view.GraphProjectionIndex
-import com.charmnight.linkgraph.ui.view.GraphProjectionMappingKind
-import com.charmnight.linkgraph.ui.view.GraphProjectionNodeMapping
+import com.charmnight.linkgraph.semantic.outcome.FlowchartSummary
+import com.charmnight.linkgraph.semantic.outcome.FlowchartViewDocument
+import com.charmnight.linkgraph.application.model.GraphProjectionIndex
+import com.charmnight.linkgraph.application.model.GraphProjectionMappingKind
+import com.charmnight.linkgraph.application.model.GraphProjectionNodeMapping
 import com.charmnight.linkgraph.workbench.QaConversationMessage
 import com.charmnight.linkgraph.workbench.QaConversationSession
 import com.charmnight.linkgraph.workbench.QaMessageRole

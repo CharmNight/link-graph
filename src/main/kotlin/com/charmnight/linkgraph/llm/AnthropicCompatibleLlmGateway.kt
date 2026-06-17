@@ -8,11 +8,11 @@ import java.net.http.HttpClient
  */
 class AnthropicCompatibleLlmGateway(
     /** 根据请求动态创建 HTTP 客户端，便于测试或按需调整超时。 */
-    private val clientFactory: (LlmRequest) -> HttpClient = LlmGatewaySupport::defaultHttpClient,
+    private val clientFactory: (LlmRequest) -> HttpClient = LlmGatewayClient::defaultHttpClient,
 ) : LlmGateway {
     /** 调用远程服务并把结果转换成统一的 `LlmResponse`。 */
     override fun generate(request: LlmRequest): LlmResponse {
-        return LlmGatewaySupport.generateJson(
+        return LlmGatewayClient.generateJson(
             client = clientFactory(request),
             request = request,
             url = resolveMessagesUrl(request.endpoint),
@@ -36,7 +36,7 @@ class AnthropicCompatibleLlmGateway(
     /** 从远程返回 JSON 中提取文本内容。 */
     internal fun extractContent(body: String): String {
         /** 解析后的 JSON 根对象。 */
-        val root = LlmGatewaySupport.parseObject(body)
+        val root = LlmGatewayClient.parseObject(body)
         /** Anthropic 返回的内容字段。 */
         val content = root["content"]
         return when (content) {

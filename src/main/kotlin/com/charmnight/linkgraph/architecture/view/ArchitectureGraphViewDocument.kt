@@ -1,6 +1,0 @@
-package com.charmnight.linkgraph.architecture.view
-
-typealias ArchitectureGraphSummary = com.charmnight.linkgraph.architecture.ArchitectureGraphSummary
-typealias ArchitectureGraphViewDocument = com.charmnight.linkgraph.architecture.ArchitectureGraphResult
-typealias ClassDiagramSummary = com.charmnight.linkgraph.architecture.ClassDiagramSummary
-typealias ClassDiagramViewDocument = com.charmnight.linkgraph.architecture.ClassDiagramResult

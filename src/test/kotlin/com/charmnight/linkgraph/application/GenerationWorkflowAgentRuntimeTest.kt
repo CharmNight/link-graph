@@ -1,4 +1,5 @@
 package com.charmnight.linkgraph.application
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.application.planning.PlanningContextFactory
 import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
@@ -236,7 +237,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
 
         val snapshot = stateService.snapshot()
         assertTrue(mergeRequests.isEmpty(), "content-only existing-file draft must not open a writable merge")
-        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.ERROR, snapshot.operationFeedback?.level)
+        assertEquals(com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.ERROR, snapshot.operationFeedback?.level)
         assertTrue(snapshot.operationFeedback?.message?.contains("结构化 editOperations") == true)
     }
 
@@ -326,7 +327,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
 
         val snapshot = stateService.snapshot()
         assertTrue(mergeRequests.isEmpty(), "project-external draft path must not open a writable merge")
-        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.ERROR, snapshot.operationFeedback?.level)
+        assertEquals(com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.ERROR, snapshot.operationFeedback?.level)
         assertTrue(snapshot.operationFeedback?.message?.contains("项目目录之外") == true, snapshot.operationFeedback?.message)
     }
 
@@ -379,7 +380,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
 
         val snapshot = stateService.snapshot()
         assertTrue(snapshot.generatedCodeDraftWriteReport?.writtenFiles?.contains(targetPath) == true)
-        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
+        assertEquals(com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
         assertEquals("代码草稿已写入当前文件。", snapshot.operationFeedback?.message)
         assertTrue(Files.exists(targetFile))
         assertEquals("class RuntimeChain {}", Files.readString(targetFile))

@@ -459,6 +459,25 @@ describe("publishGraphEditRequest", () => {
     });
   });
 
+  it("sends class usage scope when the current class diagram should be preserved", () => {
+    const sendCommand = installBridgeCommandSpy();
+
+    requestClassUsages("jvm:class:com-example-order-service", {
+      scopeNodeId: "jvm:class:com-example-order-controller",
+      targetQualifiedName: "com.example.OrderService",
+    });
+
+    expectCommand(sendCommand, 0, "requestIndexedGraph", {
+      preset: "CLASS_DIAGRAM",
+      scopeNodeId: "jvm:class:com-example-order-controller",
+      usage: {
+        enabled: true,
+        targetNodeId: "jvm:class:com-example-order-service",
+        targetQualifiedName: "com.example.OrderService",
+      },
+    });
+  });
+
   it("rejects injected bridges that do not expose the unified command entrypoint", () => {
     window.linkGraphBridge = {};
 

@@ -26,7 +26,7 @@ import com.charmnight.linkgraph.application.workflow.generation.CodeDraftApplyWo
 import com.charmnight.linkgraph.application.workflow.generation.CodeDraftGenerationWorkflow
 import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanDiscussionWorkflow
 import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanWorkflow
-import com.charmnight.linkgraph.application.workflow.review.ReviewGraphWorkflow
+import com.charmnight.linkgraph.application.workflow.ReviewGraphWorkflow
 
 internal class ApplicationCommandComposition(
     private val workflows: ApplicationWorkflows,

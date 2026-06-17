@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.jvm.index
 
+import com.charmnight.linkgraph.projection.business.ClassDiagramProjector
 import com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget
 import com.charmnight.linkgraph.jvm.relation.JvmResolutionContext
 import com.charmnight.linkgraph.jvm.relation.JvmRelationConfidence
@@ -199,7 +200,7 @@ class JvmSymbolIndexBuilderAttachedJarTest : BasePlatformTestCase() {
             val symbolIndex = JvmSymbolIndexBuilder(project).build()
             val beanException = requireNotNull(symbolIndex.findClass("org.springframework.beans.BeanInstantiationException"))
             val fatalException = requireNotNull(symbolIndex.findClass("org.springframework.beans.FatalBeanException"))
-            val view = com.charmnight.linkgraph.architecture.view.ClassDiagramProjector().project(
+            val view = com.charmnight.linkgraph.projection.business.ClassDiagramProjector().project(
                 index = com.charmnight.linkgraph.architecture.ClassDiagramFastIndex.fromSymbols(symbolIndex),
                 scopeNodeId = beanException.id,
             )

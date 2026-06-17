@@ -10,7 +10,7 @@ import com.charmnight.linkgraph.semantic.subject.SubjectHandle
 import com.charmnight.linkgraph.semantic.subject.SubjectLocator
 import com.charmnight.linkgraph.semantic.subject.SubjectPreviewKind
 import com.charmnight.linkgraph.ui.GraphEditorStateService
-import com.charmnight.linkgraph.ui.OperationFeedbackLevel
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.ui.currentVisibleGraph
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
@@ -176,7 +176,7 @@ class EditorPopupContextActionTest : BasePlatformTestCase() {
             PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
 
             val queuedSnapshot = project.getService(GraphEditorStateService::class.java).snapshot()
-            assertEquals(OperationFeedbackLevel.INFO, queuedSnapshot.operationFeedback?.level)
+            assertEquals(ApplicationFeedbackLevel.INFO, queuedSnapshot.operationFeedback?.level)
             assertEquals("项目正在索引，已在索引完成后继续分析当前编辑器上下文链路。", queuedSnapshot.operationFeedback?.message)
         } finally {
             DumbModeTestUtils.endEternalDumbModeTaskAndWaitForSmartMode(project, token)
@@ -414,7 +414,7 @@ class EditorPopupContextActionTest : BasePlatformTestCase() {
         assertEquals("currentContext", snapshot.lastGraphSource)
         assertNotNull(currentVisibleGraph(snapshot))
         assertEquals(listOf(NodeType.DOC_PAGE), currentVisibleGraph(snapshot).nodes.map { node -> node.type })
-        assertEquals(OperationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
+        assertEquals(ApplicationFeedbackLevel.WARNING, snapshot.operationFeedback?.level)
         assertTrue(snapshot.operationFeedback?.message.orEmpty().contains("候选"))
         val docNode = currentVisibleGraph(snapshot).nodes.single()
         assertEquals("AMBIGUOUS", docNode.metadata["linkGraph.anchorResolutionState"])

@@ -2,11 +2,13 @@ package com.charmnight.linkgraph.application.workflow.architecture
 
 import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
 import com.charmnight.linkgraph.architecture.ClassDiagramFastIndex
-import com.charmnight.linkgraph.architecture.ClassDiagramProjector
+import com.charmnight.linkgraph.projection.business.ClassDiagramProjector
 import com.charmnight.linkgraph.architecture.ClassDiagramResult
 import com.charmnight.linkgraph.application.model.AsyncRequestState
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
+import com.charmnight.linkgraph.application.indexed.IndexedGraphAnchor
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRelationDetail
+import com.charmnight.linkgraph.application.indexed.IndexedGraphScope
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
 import com.charmnight.linkgraph.application.indexed.cacheState
 import com.charmnight.linkgraph.application.indexed.classDiagramScopeNodeId
@@ -17,7 +19,7 @@ import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSin
 import com.charmnight.linkgraph.jvm.index.JvmClassSymbol
 import com.charmnight.linkgraph.jvm.index.JvmSymbolIndex
 import com.charmnight.linkgraph.model.NodeType
-import com.charmnight.linkgraph.usage.ClassUsageGraphProjector
+import com.charmnight.linkgraph.projection.business.ClassUsageGraphProjector
 import com.charmnight.linkgraph.usage.ClassUsageSearchOptions
 import com.charmnight.linkgraph.usage.ClassUsageSearchService
 import com.charmnight.linkgraph.usage.ClassUsageSearchTargetHint
@@ -554,7 +556,7 @@ internal class ClassDiagramWorkflow(
     }
 
     private fun buildStandaloneUsageView(request: IndexedGraphRequest): ClassDiagramResult? {
-        if (!request.usage.enabled) {
+        if (!request.isStandaloneUsageRequest()) {
             return null
         }
         val targetHint = request.standaloneUsageTargetHint() ?: return null
@@ -599,6 +601,22 @@ internal class ClassDiagramWorkflow(
             sourceVirtualFileUrl = usage.sourceVirtualFileUrl,
             sourcePath = usage.sourcePath,
         )
+    }
+
+    private fun IndexedGraphRequest.isStandaloneUsageRequest(): Boolean {
+        if (!usage.enabled) {
+            return false
+        }
+        val anchorNodeId = (anchor as? IndexedGraphAnchor.ClassId)
+            ?.nodeId
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+            ?: return false
+        val targetNodeId = usage.targetNodeId
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+            ?: return false
+        return anchorNodeId == targetNodeId && scope is IndexedGraphScope.ClassNeighborhood
     }
 
     private fun resolveUsageTarget(

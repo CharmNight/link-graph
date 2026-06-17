@@ -1,4 +1,5 @@
 package com.charmnight.linkgraph.ui
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
@@ -21,6 +22,6 @@ class WorkspaceStatePresenterTest {
         assertEquals(graph, snapshot.workspaceGraph)
         assertEquals("graph TD\nA-->B", snapshot.importedMermaid)
         assertEquals("graph TD\nA-->B", snapshot.exportedMermaid)
-        assertEquals(OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
+        assertEquals(ApplicationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
     }
 }

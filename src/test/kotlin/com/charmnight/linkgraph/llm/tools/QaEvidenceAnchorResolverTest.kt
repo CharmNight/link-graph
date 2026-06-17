@@ -7,11 +7,11 @@ import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.testing.testSnapshot
 import com.charmnight.linkgraph.testing.toToolGraphSnapshot
 import com.charmnight.linkgraph.ui.GraphSceneId
-import com.charmnight.linkgraph.ui.view.FlowchartSummary
-import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
-import com.charmnight.linkgraph.ui.view.GraphProjectionIndex
-import com.charmnight.linkgraph.ui.view.GraphProjectionMappingKind
-import com.charmnight.linkgraph.ui.view.GraphProjectionNodeMapping
+import com.charmnight.linkgraph.semantic.outcome.FlowchartSummary
+import com.charmnight.linkgraph.semantic.outcome.FlowchartViewDocument
+import com.charmnight.linkgraph.application.model.GraphProjectionIndex
+import com.charmnight.linkgraph.application.model.GraphProjectionMappingKind
+import com.charmnight.linkgraph.application.model.GraphProjectionNodeMapping
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

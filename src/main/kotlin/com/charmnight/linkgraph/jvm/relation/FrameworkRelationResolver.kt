@@ -214,33 +214,33 @@ class FrameworkRelationResolver : JvmRelationResolver {
     }
 
     private fun controllerEndpoint(method: com.intellij.psi.PsiMethod): HttpEndpoint? {
-        return HttpEndpointRelationSupport.controllerEndpoint(method)
+        return HttpEndpointRelationExtractor.controllerEndpoint(method)
     }
 
     private fun feignEndpoint(
         classPath: String?,
         method: com.intellij.psi.PsiMethod,
     ): HttpEndpoint? {
-        return HttpEndpointRelationSupport.feignEndpoint(classPath, method)
+        return HttpEndpointRelationExtractor.feignEndpoint(classPath, method)
     }
 
     private fun requestMethod(method: com.intellij.psi.PsiMethod): String? {
-        return HttpEndpointRelationSupport.requestMethod(method)
+        return HttpEndpointRelationExtractor.requestMethod(method)
     }
 
     private fun requestPath(method: com.intellij.psi.PsiMethod): String? {
-        return HttpEndpointRelationSupport.requestPath(method)
+        return HttpEndpointRelationExtractor.requestPath(method)
     }
 
     private fun combinePaths(
         classPath: String?,
         methodPath: String?,
     ): String? {
-        return HttpEndpointRelationSupport.combinePaths(classPath, methodPath)
+        return HttpEndpointRelationExtractor.combinePaths(classPath, methodPath)
     }
 
     private fun endpointResourceSymbol(endpoint: HttpEndpoint): JvmResourceSymbol =
-        HttpEndpointRelationSupport.endpointResourceSymbol(endpoint)
+        HttpEndpointRelationExtractor.endpointResourceSymbol(endpoint)
 
     private fun mqRelations(context: JvmResolutionContext): List<JvmRelation> {
         val consumers = mutableListOf<JvmRelation>()

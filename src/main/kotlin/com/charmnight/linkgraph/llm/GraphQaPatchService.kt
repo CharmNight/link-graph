@@ -40,7 +40,7 @@ class GraphQaPatchService(
     private val traceEnabled: Boolean =
         LinkGraphDebugEnvironment.isEnabled("LINKGRAPH_DEBUG_TRACE")
     /** 负责处理结构化 JSON 响应与自动修复。 */
-    private val responseSupport = RemoteStructuredResponseSupport(gateway)
+    private val responseSupport = RemoteStructuredResponseParser(gateway)
     /** 统一候选变更 patch 归一化器。 */
     private val candidatePatchComposer = CandidateGraphPatchComposer()
 

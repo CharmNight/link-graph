@@ -24,7 +24,7 @@ internal class GraphEditorApplicationProjectionService(
     private val syncNotifier: GraphEditorSyncNotifier
         get() = project.getService(GraphEditorSyncNotifier::class.java)
 
-    private val riskResolutionService by lazy(LazyThreadSafetyMode.NONE) {
+    private val riskResolutionService by lazy(LazyThreadSafetyMode.PUBLICATION) {
         RiskResolutionService()
     }
 

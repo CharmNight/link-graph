@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.usage
 
+import com.charmnight.linkgraph.projection.business.ClassUsageGraphProjector
 import com.charmnight.linkgraph.architecture.ClassDiagramResult
 import com.charmnight.linkgraph.architecture.ClassDiagramSummary
 import com.charmnight.linkgraph.application.model.GraphProjectionIndex

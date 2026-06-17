@@ -1,4 +1,6 @@
 package com.charmnight.linkgraph.application
+import com.charmnight.linkgraph.model.GraphMetadataKeys
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.application.command.ApplicationCommand
 import com.charmnight.linkgraph.ui.GraphEditorSyncNotifier
@@ -29,9 +31,9 @@ import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
 import com.charmnight.linkgraph.semantic.outcome.AnalysisProjectionStats
 import com.charmnight.linkgraph.ui.GraphEditorStateService
-import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
-import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
-import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
+import com.charmnight.linkgraph.semantic.outcome.FactGraphViewDocument
+import com.charmnight.linkgraph.semantic.outcome.FlowchartViewDocument
+import com.charmnight.linkgraph.semantic.outcome.ResourceRelationViewDocument
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 import com.charmnight.linkgraph.workbench.CandidatePatchIntent
@@ -821,8 +823,8 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     metadata = mapOf(
                         "flowchart.kind" to "ENTRY",
                         "flow.ownerMethod" to selectedMethodSignature,
-                        "ui.x" to "32",
-                        "ui.y" to "24",
+                        GraphMetadataKeys.Ui.X to "32",
+                        GraphMetadataKeys.Ui.Y to "24",
                     ),
                 ),
                 GraphNode(
@@ -833,8 +835,8 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     metadata = mapOf(
                         "flowchart.kind" to "DECISION",
                         "flow.ownerMethod" to selectedMethodSignature,
-                        "ui.x" to "192",
-                        "ui.y" to "24",
+                        GraphMetadataKeys.Ui.X to "192",
+                        GraphMetadataKeys.Ui.Y to "24",
                     ),
                 ),
                 GraphNode(
@@ -845,8 +847,8 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     metadata = mapOf(
                         "flowchart.kind" to "DECISION",
                         "flow.ownerMethod" to selectedMethodSignature,
-                        "ui.x" to "352",
-                        "ui.y" to "24",
+                        GraphMetadataKeys.Ui.X to "352",
+                        GraphMetadataKeys.Ui.Y to "24",
                     ),
                 ),
                 GraphNode(
@@ -857,8 +859,8 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                     metadata = mapOf(
                         "flowchart.kind" to "TERMINAL",
                         "flow.ownerMethod" to selectedMethodSignature,
-                        "ui.x" to "512",
-                        "ui.y" to "24",
+                        GraphMetadataKeys.Ui.X to "512",
+                        GraphMetadataKeys.Ui.Y to "24",
                     ),
                 ),
             ),
@@ -1115,7 +1117,7 @@ class GraphEditorApplicationDraftWorkbenchTest : BasePlatformTestCase() {
                 anchorNodeId = "scope:file-download-if",
                 selectedMethodSignature = selectedMethodSignature,
                 displayName = "CommonController.fileDownload",
-                feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
+                feedbackLevel = com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.SUCCESS,
                 statusMessage = "已加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(

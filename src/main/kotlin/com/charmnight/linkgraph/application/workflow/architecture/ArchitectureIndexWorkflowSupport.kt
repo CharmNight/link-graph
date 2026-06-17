@@ -10,17 +10,21 @@ import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRefreshPolicy
 import com.charmnight.linkgraph.application.indexed.IndexedGraphScope
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
+import com.charmnight.linkgraph.foundation.LoggedFailures
 import com.charmnight.linkgraph.jvm.index.JvmSymbolIndex
 import com.charmnight.linkgraph.jvm.relation.CallAggregationRelationResolver
 import com.charmnight.linkgraph.jvm.relation.JvmRelationIndex
 import com.charmnight.linkgraph.jvm.relation.JvmResolutionContext
 import com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget
 import com.charmnight.linkgraph.source.IdeSourceContentResolver
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 
 internal class ArchitectureIndexWorkflowSupport(
     private val project: Project,
 ) : ClassDiagramIndexSupport {
+    private val logger = Logger.getInstance(ArchitectureIndexWorkflowSupport::class.java)
+
     @Volatile
     private var cachedIndex: ArchitectureGraphIndex? = null
 
@@ -28,11 +32,18 @@ internal class ArchitectureIndexWorkflowSupport(
     private var cachedFullIndex: ArchitectureGraphIndex? = null
 
     override fun currentIndex(): ArchitectureGraphIndex? = cachedIndex
-        ?: runCatching { project.architectureIndexRuntime().currentIndex() }.getOrNull()
+        ?: LoggedFailures.orNull(logger, "currentIndex architectureIndexRuntime.currentIndex") {
+            project.architectureIndexRuntime().currentIndex()
+        }
 
     override fun freshness(): IndexedGraphFreshness =
-        runCatching { project.architectureIndexService().freshness().toIndexedFreshness() }
-            .getOrDefault(IndexedGraphFreshness())
+        LoggedFailures.orDefault(
+            logger,
+            "freshness architectureIndexService.freshness",
+            defaultValue = IndexedGraphFreshness(),
+        ) {
+            project.architectureIndexService().freshness().toIndexedFreshness()
+        }
 
     fun buildIndex(budget: JvmResolutionBudget = defaultBudget()): ArchitectureGraphIndex {
         return project.architectureIndexRuntime().index(budget).also { index ->
@@ -148,7 +159,13 @@ internal class ArchitectureIndexWorkflowSupport(
         project.architectureIndexRuntime().hasCachedFullIndex(request.toResolutionBudget())
 
     fun invalidateCache() {
-        runCatching { project.architectureIndexRuntime().invalidate() }
+        LoggedFailures.orDefault(
+            logger,
+            "invalidateCache architectureIndexRuntime.invalidate",
+            defaultValue = Unit,
+        ) {
+            project.architectureIndexRuntime().invalidate()
+        }
         cachedIndex = null
         cachedFullIndex = null
     }

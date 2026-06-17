@@ -1,9 +1,9 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
-import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
-import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
-import com.charmnight.linkgraph.review.ReviewGraphViewDocument
+import com.charmnight.linkgraph.architecture.ArchitectureGraphResult
+import com.charmnight.linkgraph.architecture.ClassDiagramResult
+import com.charmnight.linkgraph.review.ReviewGraphResult
 
 internal class GraphEditorIndexedGraphStateSupport(
     private val mutate: ((GraphEditorStateSnapshot) -> GraphEditorStateSnapshot) -> Unit,
@@ -37,7 +37,7 @@ internal class GraphEditorIndexedGraphStateSupport(
     }
 
     fun loadArchitectureGraphView(
-        view: ArchitectureGraphViewDocument,
+        view: ArchitectureGraphResult,
         requestState: AsyncRequestState,
         statusMessage: String,
     ) {
@@ -51,7 +51,7 @@ internal class GraphEditorIndexedGraphStateSupport(
     }
 
     fun loadClassDiagramView(
-        view: ClassDiagramViewDocument,
+        view: ClassDiagramResult,
         requestState: AsyncRequestState,
         statusMessage: String,
     ) {
@@ -65,7 +65,7 @@ internal class GraphEditorIndexedGraphStateSupport(
     }
 
     fun loadReviewGraphView(
-        view: ReviewGraphViewDocument,
+        view: ReviewGraphResult,
         requestState: AsyncRequestState,
         statusMessage: String,
     ) {

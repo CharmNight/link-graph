@@ -383,6 +383,7 @@ export function requestClassDiagram(scopeNodeId?: string | null, options: {
 }
 
 export function requestClassUsages(targetNodeId: string, options: {
+  scopeNodeId?: string | null;
   targetQualifiedName?: string | null;
   sourceVirtualFileUrl?: string | null;
   sourcePath?: string | null;
@@ -394,6 +395,7 @@ export function requestClassUsages(targetNodeId: string, options: {
   const normalizedTargetNodeId = targetNodeId.trim();
   return requestIndexedGraph(definedPayload({
     preset: "CLASS_DIAGRAM",
+    scopeNodeId: options.scopeNodeId?.trim() || undefined,
     viewport: options.viewport ?? undefined,
     usage: definedPayload({
       enabled: true,

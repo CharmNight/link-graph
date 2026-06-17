@@ -12,7 +12,7 @@ class SemanticProviderRegistry(
     /** 保存当前可用的语义 Provider 列表。 */
     private val providers: List<SemanticProvider>,
 ) {
-    private val codeProvidersByKind: Map<CodeSubjectKind, SemanticProvider> by lazy(LazyThreadSafetyMode.NONE) {
+    private val codeProvidersByKind: Map<CodeSubjectKind, SemanticProvider> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         providers
             .filterIsInstance<CodeSubjectSemanticProvider>()
             .flatMap { provider -> provider.supportedKinds.map { kind -> kind to provider } }

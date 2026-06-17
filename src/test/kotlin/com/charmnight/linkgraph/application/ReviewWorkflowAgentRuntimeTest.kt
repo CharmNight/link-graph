@@ -1,4 +1,5 @@
 package com.charmnight.linkgraph.application
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.application.planning.QaEvidenceCollector
 import com.charmnight.linkgraph.application.planning.PlanningContextFactory
@@ -6,7 +7,7 @@ import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
 import com.charmnight.linkgraph.application.workflow.ReviewWorkflow
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
+import com.charmnight.linkgraph.architecture.ArchitectureGraphResult
 import com.charmnight.linkgraph.llm.LlmProviderPresets
 import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.llm.GraphQaContext
@@ -121,7 +122,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             ),
         )
         stateService.loadArchitectureGraphView(
-            ArchitectureGraphViewDocument(
+            ArchitectureGraphResult(
                 visibleGraph = architectureGraph,
                 fullGraph = architectureGraph,
                 anchorNodeId = "arch:component:com.example.application",
@@ -913,7 +914,7 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
 
         assertFalse(qaExecutorInvoked)
         assertTrue(snapshot.qaRequestState.errorMessage?.contains("继续取证失败：pipeline boom") == true)
-        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.ERROR, snapshot.operationFeedback?.level)
+        assertEquals(com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.ERROR, snapshot.operationFeedback?.level)
         assertTrue(snapshot.operationFeedback?.message?.contains("继续取证失败：pipeline boom") == true)
         assertEquals("thread-missing-event-type", snapshot.qaRequestRecoveryState.lastFailedRequest?.sourceThreadId)
         assertEquals(QaMode.AUTO, snapshot.qaRequestRecoveryState.lastFailedRequest?.mode)

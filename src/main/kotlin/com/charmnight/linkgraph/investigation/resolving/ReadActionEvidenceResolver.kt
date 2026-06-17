@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.investigation.resolving
 
-import com.charmnight.linkgraph.investigation.domain.EvidenceGoal
-import com.charmnight.linkgraph.investigation.domain.ResolutionOutcome
+import com.charmnight.linkgraph.investigation.application.EvidenceGoal
+import com.charmnight.linkgraph.investigation.application.ResolutionOutcome
 import com.intellij.openapi.application.ReadAction
 
 abstract class ReadActionEvidenceResolver : EvidenceResolver {

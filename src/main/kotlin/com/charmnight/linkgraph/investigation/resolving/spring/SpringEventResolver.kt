@@ -1,11 +1,11 @@
 package com.charmnight.linkgraph.investigation.resolving.spring
 
 import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
-import com.charmnight.linkgraph.investigation.domain.EvidenceGoal
-import com.charmnight.linkgraph.investigation.domain.EvidenceGoalKind
-import com.charmnight.linkgraph.investigation.domain.EvidenceFact
-import com.charmnight.linkgraph.investigation.domain.EvidenceLevel
-import com.charmnight.linkgraph.investigation.domain.ResolutionOutcome
+import com.charmnight.linkgraph.investigation.application.EvidenceGoal
+import com.charmnight.linkgraph.investigation.application.EvidenceGoalKind
+import com.charmnight.linkgraph.investigation.application.EvidenceFact
+import com.charmnight.linkgraph.investigation.application.EvidenceLevel
+import com.charmnight.linkgraph.investigation.application.ResolutionOutcome
 import com.charmnight.linkgraph.investigation.resolving.InvestigationContext
 import com.charmnight.linkgraph.investigation.resolving.java.JvmEvidenceIndexAdapter
 import com.charmnight.linkgraph.investigation.resolving.java.JvmIndexReadActionEvidenceResolver

@@ -27,6 +27,7 @@ interface ClassDiagramViewProps extends IndexedReadonlyStageProps {
 }
 
 interface ClassUsageRequestOptions {
+  scopeNodeId?: string | null;
   targetQualifiedName?: string | null;
   sourceVirtualFileUrl?: string | null;
   sourcePath?: string | null;
@@ -85,11 +86,21 @@ function canRequestClassUsagesForNode(node: LinkGraphNode | null): boolean {
   return ["CLASS", "INTERFACE", "ENUM", "ANNOTATION", "RECORD", "OBJECT"].includes(node.type);
 }
 
-function classUsageRequestOptionsForNode(node: LinkGraphNode | null): ClassUsageRequestOptions {
+function classDiagramUsageScopeNodeId(view: ClassDiagramViewDocument): string | null {
+  return view.summary.anchorTypeNodeId
+    ?? view.anchorNodeId
+    ?? view.presentation.target.nodeId
+    ?? null;
+}
+
+function classUsageRequestOptionsForNode(
+  node: LinkGraphNode | null,
+  scopeNodeId?: string | null,
+): ClassUsageRequestOptions {
   if (!node) {
-    return {};
+    return scopeNodeId ? { scopeNodeId } : {};
   }
-  return {
+  const options: ClassUsageRequestOptions = {
     targetQualifiedName: node.metadata?.["architecture.qualifiedName"]
       ?? node.metadata?.["class.qualifiedName"]
       ?? node.signature
@@ -97,6 +108,10 @@ function classUsageRequestOptionsForNode(node: LinkGraphNode | null): ClassUsage
     sourceVirtualFileUrl: node.metadata?.["source.virtualFileUrl"] ?? null,
     sourcePath: node.metadata?.["source.filePath"] ?? node.location ?? null,
   };
+  if (scopeNodeId) {
+    options.scopeNodeId = scopeNodeId;
+  }
+  return options;
 }
 
 function classDiagramNodeActions(args: {
@@ -111,6 +126,7 @@ function classDiagramNodeActions(args: {
   onPrimeQuestionComposer: (selectedNodeId?: string) => void;
   onRequestClassDiagram: (scopeNodeId?: string | null) => void;
   onRequestClassUsages: (targetNodeId: string, options?: ClassUsageRequestOptions) => void;
+  usageScopeNodeId?: string | null;
   onOpenQa: (selectedNodeId?: string) => void;
   onToggleCollapseNode: (nodeId: string) => void;
   onFormatLayout: () => void;
@@ -149,7 +165,7 @@ function classDiagramNodeActions(args: {
       id: "find-class-usages",
       label: "查找使用处",
       onSelect: () => {
-        args.onRequestClassUsages(args.nodeId, classUsageRequestOptionsForNode(args.node));
+        args.onRequestClassUsages(args.nodeId, classUsageRequestOptionsForNode(args.node, args.usageScopeNodeId));
         args.onClose();
       },
     });
@@ -284,6 +300,7 @@ export function ClassDiagramView({
     return canRequestClassUsagesForNode(selectedNode) ? selectedNode?.id ?? null : null;
   }, [nodeIndex, selectedNodeId]);
   const selectedUsageNode = selectedUsageNodeId ? nodeIndex.get(selectedUsageNodeId) ?? null : null;
+  const usageScopeNodeId = classDiagramUsageScopeNodeId(view);
   const visibleTypeCount = baseGraph.nodes.length;
   const neighborhoodLimit = view.summary.neighborhoodLimit;
   const memberLimit = view.summary.memberLimit ?? 5;
@@ -339,6 +356,7 @@ export function ClassDiagramView({
       return;
     }
     onRequestClassUsages(summary.targetNodeId, {
+      scopeNodeId: usageScopeNodeId,
       targetQualifiedName: summary.targetQualifiedName,
       maxUsageGroups: summary.maxUsageGroups + 50,
       maxUsageEntries: summary.maxUsageEntries + 200,
@@ -372,7 +390,10 @@ export function ClassDiagramView({
           <button
             type="button"
             className="ghost-button compact"
-            onClick={() => onRequestClassUsages(selectedUsageNodeId, classUsageRequestOptionsForNode(selectedUsageNode))}
+            onClick={() => onRequestClassUsages(
+              selectedUsageNodeId,
+              classUsageRequestOptionsForNode(selectedUsageNode, usageScopeNodeId),
+            )}
           >
             查找使用处
           </button>
@@ -499,6 +520,7 @@ export function ClassDiagramView({
               onPrimeQuestionComposer,
               onRequestClassDiagram,
               onRequestClassUsages,
+              usageScopeNodeId,
               onOpenQa,
               onToggleCollapseNode,
               onFormatLayout: layoutState.requestRelayout,

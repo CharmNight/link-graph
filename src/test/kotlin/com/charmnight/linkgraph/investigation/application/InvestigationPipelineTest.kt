@@ -1,12 +1,12 @@
 package com.charmnight.linkgraph.investigation.application
 
-import com.charmnight.linkgraph.investigation.domain.EvidenceGoalKind
-import com.charmnight.linkgraph.investigation.domain.GateDecision
-import com.charmnight.linkgraph.investigation.domain.InvestigationRequest
-import com.charmnight.linkgraph.investigation.domain.InvestigationStatus
-import com.charmnight.linkgraph.investigation.domain.InvestigationTargetHint
-import com.charmnight.linkgraph.investigation.planning.EvidenceGoalPlanner
-import com.charmnight.linkgraph.investigation.presentation.InvestigationSummaryService
+import com.charmnight.linkgraph.investigation.application.EvidenceGoalKind
+import com.charmnight.linkgraph.investigation.application.GateDecision
+import com.charmnight.linkgraph.investigation.application.InvestigationRequest
+import com.charmnight.linkgraph.investigation.application.InvestigationStatus
+import com.charmnight.linkgraph.investigation.application.InvestigationTargetHint
+import com.charmnight.linkgraph.investigation.application.EvidenceGoalPlanner
+import com.charmnight.linkgraph.investigation.application.InvestigationSummaryProjector
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -49,7 +49,7 @@ class InvestigationPipelineTest : BasePlatformTestCase() {
         var summaryCalled = false
         val pipeline = InvestigationPipeline.default(
             project = project,
-            summaryService = object : InvestigationSummaryService {
+            summaryService = object : InvestigationSummaryProjector {
                 override fun summarize(
                     request: InvestigationRequest,
                     gateDecision: GateDecision.Accepted,

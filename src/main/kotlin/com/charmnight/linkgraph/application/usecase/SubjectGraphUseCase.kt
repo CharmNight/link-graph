@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
 import com.charmnight.linkgraph.application.model.currentVisibleGraph
 import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.model.GraphMetadataKeys
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.model.SemanticAnalysisResult
@@ -147,7 +148,7 @@ class SubjectGraphUseCase {
         node: GraphNode,
         existingNodeCount: Int,
     ): GraphNode {
-        if (node.metadata.containsKey(UI_X_KEY) && node.metadata.containsKey(UI_Y_KEY)) {
+        if (node.metadata.containsKey(GraphMetadataKeys.Ui.X) && node.metadata.containsKey(GraphMetadataKeys.Ui.Y)) {
             return node
         }
         val column = existingNodeCount % DEFAULT_CANVAS_COLUMNS
@@ -156,8 +157,8 @@ class SubjectGraphUseCase {
         val y = DEFAULT_CANVAS_START_Y + row * DEFAULT_CANVAS_GAP_Y
         return node.copy(
             metadata = node.metadata + mapOf(
-                UI_X_KEY to x.toString(),
-                UI_Y_KEY to y.toString(),
+                GraphMetadataKeys.Ui.X to x.toString(),
+                GraphMetadataKeys.Ui.Y to y.toString(),
             ),
         )
     }
@@ -188,8 +189,6 @@ class SubjectGraphUseCase {
     companion object {
         const val CURRENT_METHOD_SOURCE: String = "currentMethod"
         const val CURRENT_CONTEXT_SOURCE: String = "currentContext"
-        private const val UI_X_KEY = "ui.x"
-        private const val UI_Y_KEY = "ui.y"
         private const val DEFAULT_CANVAS_COLUMNS = 3
         private const val DEFAULT_CANVAS_START_X = 120
         private const val DEFAULT_CANVAS_START_Y = 96

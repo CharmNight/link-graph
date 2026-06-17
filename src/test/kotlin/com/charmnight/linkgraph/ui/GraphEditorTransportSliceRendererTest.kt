@@ -1,4 +1,5 @@
 package com.charmnight.linkgraph.ui
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.codegen.CodeEditOperation
 import com.charmnight.linkgraph.codegen.CodeEditOperationKind
@@ -38,7 +39,7 @@ class GraphEditorTransportSliceRendererTest {
         val current = previous.copy(
             snapshotRevision = 2,
             operationFeedback = com.charmnight.linkgraph.ui.OperationFeedback(
-                level = com.charmnight.linkgraph.ui.OperationFeedbackLevel.INFO,
+                level = com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.INFO,
                 message = "只更新提示文案，不应通过完整权威快照下发。",
             ),
             lastMessageType = "operationFeedback",
@@ -90,7 +91,7 @@ class GraphEditorTransportSliceRendererTest {
         val current = previous.copy(
             snapshotRevision = 21,
             operationFeedback = com.charmnight.linkgraph.ui.OperationFeedback(
-                level = com.charmnight.linkgraph.ui.OperationFeedbackLevel.INFO,
+                level = com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.INFO,
                 message = "trace me",
             ),
             lastMessageType = "operationFeedback",
@@ -123,7 +124,7 @@ class GraphEditorTransportSliceRendererTest {
         val current = previous.copy(
             snapshotRevision = 41,
             operationFeedback = com.charmnight.linkgraph.ui.OperationFeedback(
-                level = com.charmnight.linkgraph.ui.OperationFeedbackLevel.INFO,
+                level = com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.INFO,
                 message = "只更新反馈 slice。",
             ),
             lastMessageType = "operationFeedback",

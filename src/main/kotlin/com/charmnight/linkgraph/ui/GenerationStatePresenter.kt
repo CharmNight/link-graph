@@ -19,7 +19,7 @@ class GenerationStatePresenter(
         stateService.workbench.markRuntimeArtifactSummaries("plan", presentation.runtimeArtifacts.toUiRuntimeArtifacts())
         stateService.asyncRequests.markGenerationPlan(presentation.plan, presentation.requestState)
         stateService.workbench.markOperationFeedback(
-            presentation.feedbackLevel.toOperationFeedbackLevel(),
+            presentation.feedbackLevel,
             presentation.statusMessage,
             preservePreviousStatusKind = true,
         )
@@ -47,7 +47,7 @@ class GenerationStatePresenter(
             stateService.workbench.markRuntimeArtifactSummaries(scene, emptyList())
         }
         stateService.workbench.markOperationFeedback(
-            OperationFeedbackLevel.INFO,
+            ApplicationFeedbackLevel.INFO,
             presentation.statusMessage,
         )
         requestBrowserSync()
@@ -89,7 +89,7 @@ class GenerationStatePresenter(
         stateService.workbench.markRuntimeArtifactSummaries("plan", presentation.runtimeArtifacts.toUiRuntimeArtifacts())
         stateService.asyncRequests.markGenerationPlanRequestFailed(presentation.message, presentation.requestState)
         stateService.workbench.markOperationFeedback(
-            presentation.feedbackLevel.toOperationFeedbackLevel(),
+            presentation.feedbackLevel,
             presentation.message,
             preservePreviousStatusKind = presentation.preservePreviousStatusKind,
         )
@@ -99,7 +99,7 @@ class GenerationStatePresenter(
     fun presentGenerationPlanDiscussion(presentation: GenerationDiscussionResult) {
         stateService.asyncRequests.markGenerationPlanDiscussion(presentation.result, presentation.requestState)
         stateService.workbench.markOperationFeedback(
-            presentation.feedbackLevel.toOperationFeedbackLevel(),
+            presentation.feedbackLevel,
             presentation.statusMessage,
             preservePreviousStatusKind = true,
         )
@@ -109,7 +109,7 @@ class GenerationStatePresenter(
     fun presentGenerationPlanDiscussionFailure(presentation: GenerationRequestFailureResult) {
         stateService.asyncRequests.markGenerationPlanDiscussionRequestFailed(presentation.message, presentation.requestState)
         stateService.workbench.markOperationFeedback(
-            presentation.feedbackLevel.toOperationFeedbackLevel(),
+            presentation.feedbackLevel,
             presentation.message,
             preservePreviousStatusKind = presentation.preservePreviousStatusKind,
         )
@@ -121,7 +121,7 @@ class GenerationStatePresenter(
         val level = presentation.feedbackLevel
         val message = presentation.statusMessage
         if (level != null && message != null) {
-            stateService.workbench.markOperationFeedback(level.toOperationFeedbackLevel(), message)
+            stateService.workbench.markOperationFeedback(level, message)
         }
         requestBrowserSync()
     }
@@ -132,7 +132,7 @@ class GenerationStatePresenter(
         preservePreviousStatusKind: Boolean,
     ) {
         stateService.workbench.markOperationFeedback(
-            level.toOperationFeedbackLevel(),
+            level,
             message,
             preservePreviousStatusKind = preservePreviousStatusKind,
         )
@@ -146,7 +146,7 @@ class GenerationStatePresenter(
     ) {
         stateService.workbench.markGeneratedCodeDraftWriteReport(report)
         stateService.workbench.markOperationFeedback(
-            level.toOperationFeedbackLevel(),
+            level,
             message,
             preservePreviousStatusKind = true,
         )
@@ -165,7 +165,7 @@ class GenerationStatePresenter(
         val level = presentation.feedbackLevel
         val message = presentation.statusMessage
         if (level != null && message != null) {
-            stateService.workbench.markOperationFeedback(level.toOperationFeedbackLevel(), message, preservePreviousStatusKind = true)
+            stateService.workbench.markOperationFeedback(level, message, preservePreviousStatusKind = true)
         }
         requestBrowserSync()
     }
@@ -174,20 +174,11 @@ class GenerationStatePresenter(
         stateService.workbench.markRuntimeArtifactSummaries("codegen", presentation.runtimeArtifacts.toUiRuntimeArtifacts())
         stateService.asyncRequests.markCodeDraftRequestFailed(presentation.message, presentation.requestState)
         stateService.workbench.markOperationFeedback(
-            presentation.feedbackLevel.toOperationFeedbackLevel(),
+            presentation.feedbackLevel,
             presentation.message,
             preservePreviousStatusKind = presentation.preservePreviousStatusKind,
         )
         requestBrowserSync()
-    }
-}
-
-internal fun ApplicationFeedbackLevel.toOperationFeedbackLevel(): OperationFeedbackLevel {
-    return when (this) {
-        ApplicationFeedbackLevel.INFO -> OperationFeedbackLevel.INFO
-        ApplicationFeedbackLevel.SUCCESS -> OperationFeedbackLevel.SUCCESS
-        ApplicationFeedbackLevel.WARNING -> OperationFeedbackLevel.WARNING
-        ApplicationFeedbackLevel.ERROR -> OperationFeedbackLevel.ERROR
     }
 }
 

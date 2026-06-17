@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.application
 
+import com.charmnight.linkgraph.model.GraphMetadataKeys
 import com.charmnight.linkgraph.application.model.ApplicationGraphView
 import com.charmnight.linkgraph.application.model.GraphSceneId
 import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
@@ -123,8 +124,8 @@ class SubjectGraphUseCaseTest {
 
         val applied = assertIs<SubjectGraphUseCaseResult.CurrentMethodNodeApplied>(result)
         val addedNode = applied.graph.nodes.single { it.id == "method:run" }
-        assertEquals("380", addedNode.metadata["ui.x"])
-        assertEquals("96", addedNode.metadata["ui.y"])
+        assertEquals("380", addedNode.metadata[GraphMetadataKeys.Ui.X])
+        assertEquals("96", addedNode.metadata[GraphMetadataKeys.Ui.Y])
         assertEquals("com.example.Service.run():void", applied.selectedMethodSignature)
         assertEquals(listOf("node-existing"), snapshot.factGraphView.visibleGraph.nodes.map { it.id })
     }

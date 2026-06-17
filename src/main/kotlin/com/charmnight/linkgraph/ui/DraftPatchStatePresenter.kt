@@ -1,4 +1,5 @@
 package com.charmnight.linkgraph.ui
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.application.usecase.ApplyDraftPatchUseCaseResult
 import com.charmnight.linkgraph.application.usecase.ClearDraftPatchPreviewUseCaseResult
@@ -16,7 +17,7 @@ class DraftPatchStatePresenter(
             is PreviewDraftPatchUseCaseResult.Previewed -> {
                 stateService.workbench.markDraftPatchPreview(result.patch)
                 stateService.workbench.markOperationFeedback(
-                    OperationFeedbackLevel.SUCCESS,
+                    ApplicationFeedbackLevel.SUCCESS,
                     result.patch.summary ?: "已生成草稿 patch 预览。",
                 )
                 requestBrowserSync()
@@ -35,7 +36,7 @@ class DraftPatchStatePresenter(
                 )
                 stateService.workbench.clearDraftPatchPreview()
                 stateService.workbench.markOperationFeedback(
-                    OperationFeedbackLevel.SUCCESS,
+                    ApplicationFeedbackLevel.SUCCESS,
                     "已将草稿 patch 应用到当前工作图。",
                 )
                 stateService.workbench.markDraftPatchApplyResult(result.applyResult.toUiResult())
@@ -48,7 +49,7 @@ class DraftPatchStatePresenter(
         when (result) {
             ClearDraftPatchPreviewUseCaseResult.MissingPreview -> {
                 stateService.workbench.markOperationFeedback(
-                    OperationFeedbackLevel.WARNING,
+                    ApplicationFeedbackLevel.WARNING,
                     "当前没有可清空的草稿预览。",
                 )
                 requestBrowserSync()
@@ -56,7 +57,7 @@ class DraftPatchStatePresenter(
             ClearDraftPatchPreviewUseCaseResult.Cleared -> {
                 stateService.workbench.clearDraftPatchPreview()
                 stateService.workbench.markOperationFeedback(
-                    OperationFeedbackLevel.INFO,
+                    ApplicationFeedbackLevel.INFO,
                     "已清空当前草稿预览。",
                 )
                 requestBrowserSync()
@@ -68,7 +69,7 @@ class DraftPatchStatePresenter(
         when (result) {
             RestoreDraftPatchPreviewUseCaseResult.MissingPreview -> {
                 stateService.workbench.markOperationFeedback(
-                    OperationFeedbackLevel.WARNING,
+                    ApplicationFeedbackLevel.WARNING,
                     "当前没有可恢复的草稿预览。",
                 )
                 requestBrowserSync()
@@ -76,7 +77,7 @@ class DraftPatchStatePresenter(
             is RestoreDraftPatchPreviewUseCaseResult.Restored -> {
                 stateService.workbench.markDraftPatchPreview(result.patch)
                 stateService.workbench.markOperationFeedback(
-                    OperationFeedbackLevel.INFO,
+                    ApplicationFeedbackLevel.INFO,
                     "已恢复草稿预览。",
                 )
                 requestBrowserSync()
@@ -88,7 +89,7 @@ class DraftPatchStatePresenter(
         when (result) {
             UndoDraftPatchApplyUseCaseResult.MissingUndo -> {
                 stateService.workbench.markOperationFeedback(
-                    OperationFeedbackLevel.WARNING,
+                    ApplicationFeedbackLevel.WARNING,
                     "当前没有可撤销的草稿写回。",
                 )
                 requestBrowserSync()
@@ -98,7 +99,7 @@ class DraftPatchStatePresenter(
                 stateService.workbench.clearDraftPatchApplyUndo()
                 result.patchPreview?.let(stateService.workbench::markDraftPatchPreview)
                 stateService.workbench.markOperationFeedback(
-                    OperationFeedbackLevel.SUCCESS,
+                    ApplicationFeedbackLevel.SUCCESS,
                     "已撤销上次草稿写回，并恢复应用前工作图。",
                 )
                 stateService.graph.markLastMessageType("undoDraftPatchApply")

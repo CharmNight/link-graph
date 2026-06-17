@@ -205,7 +205,7 @@ class CodeEditValidationService(
     }
 
     private fun methodSignature(method: PsiMethod): String {
-        return JavaMethodSignatureTextSupport.methodSignature(method)
+        return JavaMethodSignatureFormatter.methodSignature(method)
     }
 
     private fun normalizedMethodText(method: PsiMethod): String {

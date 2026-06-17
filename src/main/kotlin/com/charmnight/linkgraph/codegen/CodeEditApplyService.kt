@@ -811,7 +811,7 @@ class CodeEditApplyService(
     }
 
     private fun javaMethodSignature(method: PsiMethod): String {
-        return JavaMethodSignatureTextSupport.methodSignature(method)
+        return JavaMethodSignatureFormatter.methodSignature(method)
     }
 
     private fun matchesScopeSignature(

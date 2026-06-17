@@ -26,7 +26,7 @@ import com.charmnight.linkgraph.semantic.policy.TraversalBudgetPolicy
 import com.charmnight.linkgraph.semantic.subject.CaretSubjectLocator
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectHandle
 import com.charmnight.linkgraph.source.IdeSourceContentResolver
-import com.charmnight.linkgraph.ui.view.FlowchartProjector
+import com.charmnight.linkgraph.projection.business.FlowchartProjector
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class JavaCodeSemanticProviderTest : BasePlatformTestCase() {

@@ -40,7 +40,7 @@ class OpenAiResponsesLlmGatewayTest {
             ),
         )
 
-        val root = LlmJsonSupport.parseJsonObject(payload)
+        val root = LlmJsonCodec.parseJsonObject(payload)
 
         assertEquals("gpt-5.4", root.get("model").asString)
         assertEquals("system prompt", root.get("instructions").asString)
@@ -82,7 +82,7 @@ class OpenAiResponsesLlmGatewayTest {
             ),
         )
 
-        val root = LlmJsonSupport.parseJsonObject(payload)
+        val root = LlmJsonCodec.parseJsonObject(payload)
         val format = root.getAsJsonObject("text").getAsJsonObject("format")
 
         assertEquals("json_schema", format.get("type").asString)

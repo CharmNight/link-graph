@@ -13,7 +13,7 @@ import com.charmnight.linkgraph.semantic.provider.code.CodeSemanticProvider
 import com.charmnight.linkgraph.semantic.provider.resource.MarkdownSemanticProvider
 import com.charmnight.linkgraph.semantic.subject.CaretSubjectLocator
 import com.charmnight.linkgraph.semantic.subject.ResourceSubjectHandle
-import com.charmnight.linkgraph.ui.OperationFeedbackLevel
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class SemanticAnalyzerResourceAnchorIntegrationTest : BasePlatformTestCase() {
@@ -157,7 +157,7 @@ class SemanticAnalyzerResourceAnchorIntegrationTest : BasePlatformTestCase() {
             projectionPolicy = ProjectionPolicy(maxVisibleNodes = 64, maxVisibleEdges = 128),
         )
 
-        assertEquals(OperationFeedbackLevel.WARNING, outcome.feedbackLevel)
+        assertEquals(ApplicationFeedbackLevel.WARNING, outcome.feedbackLevel)
         assertTrue(outcome.statusMessage.contains("候选"))
         assertEquals(1, outcome.visibleGraph.nodes.size)
         val docNode = outcome.visibleGraph.nodes.single()

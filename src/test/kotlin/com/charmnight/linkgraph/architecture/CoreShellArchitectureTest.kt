@@ -473,13 +473,13 @@ class CoreShellArchitectureTest {
 
     @Test
     fun sourceNavigationUsesTrustedNavigationBoundaryAndFrontendGraphSanitizer() {
-        val projectComponents = read("src/main/kotlin/com/charmnight/linkgraph/application/GraphEditorApplicationService.kt")
+        val workflowComposition = read("src/main/kotlin/com/charmnight/linkgraph/application/composition/WorkflowComposition.kt")
         val graphWorkspaceWorkflow = read("src/main/kotlin/com/charmnight/linkgraph/application/workflow/GraphWorkspaceWorkflow.kt")
         val workspaceGraphUseCase = read("src/main/kotlin/com/charmnight/linkgraph/application/usecase/WorkspaceGraphUseCase.kt")
         val graphEditApplier = read("src/main/kotlin/com/charmnight/linkgraph/application/edit/GraphEditApplier.kt")
 
         assertTrue(
-            projectComponents.contains("navigationNodeFinder = ::findTrustedNavigationNodeFromIndex"),
+            workflowComposition.contains("navigationNodeFinder = ::findTrustedNavigationNodeFromIndex"),
             "SourceNavigationWorkflow must resolve bridge node-navigation requests from the trusted navigation index only",
         )
         assertTrue(

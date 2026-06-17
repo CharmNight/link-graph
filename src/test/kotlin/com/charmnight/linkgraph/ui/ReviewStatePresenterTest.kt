@@ -47,7 +47,7 @@ class ReviewStatePresenterTest {
         assertEquals("QA", snapshot.runtimeArtifactSummaries["qa"]?.single()?.title)
         assertEquals(DraftValidationStatus.READY, snapshot.draftValidationState?.status)
         assertEquals(true, snapshot.codeEligibilityDecision?.allowed)
-        assertEquals(OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
+        assertEquals(ApplicationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
     }
 
     @Test
@@ -75,7 +75,7 @@ class ReviewStatePresenterTest {
         val snapshot = stateService.snapshot()
         assertEquals(result, snapshot.diffReviewResult)
         assertEquals(patch, snapshot.draftPatchPreview)
-        assertEquals(OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
+        assertEquals(ApplicationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
     }
 
     @Test
@@ -95,7 +95,7 @@ class ReviewStatePresenterTest {
 
         val snapshot = stateService.snapshot()
         assertEquals(result, snapshot.graphBeautificationResult)
-        assertEquals(OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
+        assertEquals(ApplicationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
     }
 
     @Test

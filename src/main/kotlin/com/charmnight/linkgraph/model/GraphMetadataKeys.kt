@@ -12,4 +12,9 @@ object GraphMetadataKeys {
         const val ORIGIN: String = "source.origin"
         const val DECOMPILED: String = "source.decompiled"
     }
+
+    object Ui {
+        const val X: String = "ui.x"
+        const val Y: String = "ui.y"
+    }
 }

@@ -38,6 +38,7 @@ class ArchitectureDocumentationSanityTest {
         assertFalse(structure.contains("docs/archive"))
         assertTrue(structure.contains("docs/diagrams/"))
         assertTrue(structure.contains("docs/diagrams/src/"))
+        assertTrue(structure.contains("projection/business"))
         assertTrue(structure.contains("frontendInstall"))
         assertTrue(structure.contains("frontendPackResources"))
         assertTrue(structure.contains("controllers"))

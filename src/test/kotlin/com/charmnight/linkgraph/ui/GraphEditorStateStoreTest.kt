@@ -1,4 +1,5 @@
 package com.charmnight.linkgraph.ui
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.testing.*
 
@@ -6,8 +7,8 @@ import com.charmnight.linkgraph.application.model.GraphEditCommandKind
 import com.charmnight.linkgraph.application.model.GraphProjectionIndex
 import com.charmnight.linkgraph.application.model.GraphProjectionMappingKind
 import com.charmnight.linkgraph.application.model.GraphProjectionNodeMapping
-import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
-import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
+import com.charmnight.linkgraph.architecture.ArchitectureGraphResult
+import com.charmnight.linkgraph.architecture.ClassDiagramResult
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
@@ -40,13 +41,13 @@ class GraphEditorStateStoreTest {
 
         val firstCommit = store.tryCommit(baseRevision) { current ->
             current.withOperationFeedback(
-                level = OperationFeedbackLevel.INFO,
+                level = ApplicationFeedbackLevel.INFO,
                 message = "较新的短事务",
             )
         }
         val staleCommit = store.tryCommit(baseRevision) { current ->
             current.withOperationFeedback(
-                level = OperationFeedbackLevel.ERROR,
+                level = ApplicationFeedbackLevel.ERROR,
                 message = "旧快照不允许整块覆盖",
             )
         }
@@ -205,7 +206,7 @@ class GraphEditorStateStoreTest {
             ),
         )
         val availableScopes = mutableListOf("module", "package")
-        val architectureView = ArchitectureGraphViewDocument(
+        val architectureView = ArchitectureGraphResult(
             visibleGraph = GraphDocument(nodes = architectureVisibleNodes),
             fullGraph = GraphDocument(nodes = architectureVisibleNodes),
             projectionIndex = GraphProjectionIndex(nodeMappings = architectureNodeMappings),
@@ -242,7 +243,7 @@ class GraphEditorStateStoreTest {
                 usages = usageEntries,
             ),
         )
-        val classDiagramView = ClassDiagramViewDocument(
+        val classDiagramView = ClassDiagramResult(
             usage = ClassUsageSearchResult(
                 target = ClassUsageTarget(
                     nodeId = "class:OrderService",

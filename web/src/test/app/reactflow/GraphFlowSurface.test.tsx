@@ -180,6 +180,19 @@ vi.mock("@xyflow/react", async () => {
         </button>
         <button
           type="button"
+          data-testid="reactflow-drag-progress-second-node"
+          onClick={(event) =>
+            nodes[1]
+              ? onNodeDrag?.(event as unknown as React.MouseEvent<HTMLDivElement>, {
+                  id: nodes[1].id,
+                  position: { x: 780, y: 360 },
+                })
+              : undefined}
+        >
+          drag-progress-second-node
+        </button>
+        <button
+          type="button"
           data-testid="reactflow-drag-node"
           onClick={(event) =>
             nodes[0]
@@ -1517,6 +1530,58 @@ describe("GraphFlowSurface", () => {
     fireEvent.click(screen.getByTestId("reactflow-drag-progress-node"));
 
     expect(screen.getByTestId("reactflow-node-method:anchor")).toHaveAttribute("data-position", "420,240");
+    expect(onMoveNode).not.toHaveBeenCalled();
+  });
+
+  it("keeps prior live drag positions while another node is dragged before the parent commits layout", () => {
+    installResizeObserverStub();
+    const onMoveNode = vi.fn();
+    const anchorNode = baseNode();
+    const tailNode = {
+      ...baseNode("method:tail"),
+      position: { x: 440, y: 96 },
+    };
+
+    renderSurface({
+      nodes: [anchorNode, tailNode],
+      edges: [
+        {
+          id: "edge:anchor->tail",
+          type: "CALL",
+          source: "method:anchor",
+          target: "method:tail",
+        },
+      ],
+      flowNodes: [
+        {
+          id: anchorNode.id,
+          data: { label: anchorNode.title },
+          position: anchorNode.position ?? { x: 0, y: 0 },
+        },
+        {
+          id: tailNode.id,
+          data: { label: tailNode.title },
+          position: tailNode.position ?? { x: 0, y: 0 },
+        },
+      ],
+      flowEdges: [
+        {
+          id: "edge:anchor->tail",
+          source: "method:anchor",
+          target: "method:tail",
+          label: "edge:anchor->tail",
+        },
+      ],
+      onMoveNode,
+    });
+
+    fireEvent.click(screen.getByTestId("reactflow-drag-progress-node"));
+    expect(screen.getByTestId("reactflow-node-method:anchor")).toHaveAttribute("data-position", "420,240");
+
+    fireEvent.click(screen.getByTestId("reactflow-drag-progress-second-node"));
+
+    expect(screen.getByTestId("reactflow-node-method:anchor")).toHaveAttribute("data-position", "420,240");
+    expect(screen.getByTestId("reactflow-node-method:tail")).toHaveAttribute("data-position", "780,360");
     expect(onMoveNode).not.toHaveBeenCalled();
   });
 

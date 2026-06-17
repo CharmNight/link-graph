@@ -1,4 +1,5 @@
 package com.charmnight.linkgraph.ui
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.application.usecase.ApplyDraftPatchUseCaseResult
 import com.charmnight.linkgraph.application.usecase.DraftPatchApplySummary
@@ -25,7 +26,7 @@ class DraftPatchStatePresenterTest {
 
         val snapshot = stateService.snapshot()
         assertEquals(patch, snapshot.draftPatchPreview)
-        assertEquals(OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
+        assertEquals(ApplicationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
         assertEquals("preview summary", snapshot.operationFeedback?.message)
     }
 
@@ -73,7 +74,7 @@ class DraftPatchStatePresenterTest {
         assertEquals(baseGraph, snapshot.draftPatchUndoState?.graphBeforeApply)
         assertEquals(null, snapshot.draftPatchPreview)
         assertEquals(1, snapshot.lastDraftPatchApplyResult?.appliedOperationCount)
-        assertEquals(OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
+        assertEquals(ApplicationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
     }
 
     @Test

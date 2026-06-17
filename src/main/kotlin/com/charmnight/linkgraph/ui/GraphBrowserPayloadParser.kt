@@ -10,7 +10,7 @@ import com.charmnight.linkgraph.application.indexed.IndexedGraphRelationDetail
 import com.charmnight.linkgraph.application.indexed.IndexedGraphViewportOptions
 import com.charmnight.linkgraph.application.indexed.IndexedReviewGraphOptions
 import com.charmnight.linkgraph.application.edit.GraphEditRequestPayloadParser
-import com.charmnight.linkgraph.llm.LlmJsonSupport
+import com.charmnight.linkgraph.llm.LlmJsonCodec
 import com.charmnight.linkgraph.application.model.GraphEditRequest
 import com.charmnight.linkgraph.usage.ClassUsageSearchLimits
 
@@ -26,13 +26,13 @@ internal object GraphBrowserPayloadParser {
 
     fun parseGraphEditRequest(payload: String): GraphEditRequest {
         validatePayloadSize(payload, GraphBrowserPayloadKind.GRAPH_EDIT_SCRIPT)
-        val root = LlmJsonSupport.parseObject(payload)
+        val root = LlmJsonCodec.parseObject(payload)
         return GraphEditRequestPayloadParser.parse(root)
     }
 
     fun parseIndexedGraphRequest(payload: String): IndexedGraphRequest {
         validatePayloadSize(payload, GraphBrowserPayloadKind.STRUCTURED)
-        val root = LlmJsonSupport.parseObject(payload)
+        val root = LlmJsonCodec.parseObject(payload)
         val preset = root.enumValue<IndexedGraphPreset>("preset")
             ?: error("indexed graph request preset is required")
         val classDiagramRaw = root["classDiagram"] as? Map<*, *>

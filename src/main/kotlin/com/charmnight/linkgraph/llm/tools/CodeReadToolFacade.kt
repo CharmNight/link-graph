@@ -12,7 +12,9 @@ import com.charmnight.linkgraph.model.sourceLocation
 import com.charmnight.linkgraph.source.AttachedJarContentResolver
 import com.charmnight.linkgraph.source.CompositeSourceContentResolver
 import com.charmnight.linkgraph.source.IdeSourceContentResolver
+import com.charmnight.linkgraph.foundation.LoggedFailures
 import com.charmnight.linkgraph.source.SourceContentResolver
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import java.nio.file.Files
 
@@ -26,6 +28,7 @@ class CodeReadToolFacade(
     private val sourceContextCollector: SourceContextCollector = SourceContextCollector(),
     private val projectRootFileAccessPolicy: ProjectRootFileAccessPolicy = ProjectRootFileAccessPolicy(),
 ) {
+    private val logger = Logger.getInstance(CodeReadToolFacade::class.java)
     /** 根据 nodeId 或 symbol 定位问答证据锚点，并保留投影到真实节点的映射轨迹。 */
     fun resolveEvidenceAnchor(
         snapshot: ToolGraphSnapshot,
@@ -97,7 +100,9 @@ class CodeReadToolFacade(
         }
         val path = projectRootFileAccessPolicy.resolveReadablePath(filePath, projectBasePath, project)
             ?: return null
-        runCatching { resolver?.readSnippetByPath(path.toString(), startLine, endLine) }.getOrNull()?.let { content ->
+        LoggedFailures.orNull(logger, "resolveSnippet resolver.readSnippetByPath") {
+            resolver?.readSnippetByPath(path.toString(), startLine, endLine)
+        }?.let { content ->
             return RichSourceSnippet(
                 filePath = content.displayPath,
                 startLine = content.startLine ?: startLine,
@@ -109,7 +114,9 @@ class CodeReadToolFacade(
                 sourceDiagnostic = content.diagnostic,
             )
         }
-        val lines = runCatching { Files.readAllLines(path) }.getOrNull() ?: return null
+        val lines = LoggedFailures.orNull(logger, "resolveSnippet Files.readAllLines") {
+            Files.readAllLines(path)
+        } ?: return null
         if (startLine == null || endLine == null) {
             return RichSourceSnippet(
                 filePath = filePath,
@@ -209,7 +216,9 @@ class CodeReadToolFacade(
     ): RichSourceSnippet? {
         project ?: return null
         val query = symbolSignature.trim().takeIf(String::isNotBlank) ?: return null
-        val index = runCatching { project.architectureIndexRuntime().index() }.getOrNull()
+        val index = LoggedFailures.orNull(logger, "readSymbolFromIndex architectureIndexRuntime.index") {
+            project.architectureIndexRuntime().index()
+        }
             ?: return null
         val symbol = findIndexedSymbol(index, query)
             ?: return null
@@ -223,7 +232,9 @@ class CodeReadToolFacade(
     ): String? {
         project ?: return null
         val query = symbolSignature.trim().takeIf(String::isNotBlank) ?: return null
-        val index = runCatching { project.architectureIndexRuntime().index() }.getOrNull()
+        val index = LoggedFailures.orNull(logger, "readSymbolFailureReason architectureIndexRuntime.index") {
+            project.architectureIndexRuntime().index()
+        }
         val symbol = index?.let { findIndexedSymbol(it, query) }
         val source = symbol?.source
         if (source != null) {
@@ -329,8 +340,9 @@ class CodeReadToolFacade(
     }
 
     private fun allowJdkLibraryExpansion(project: Project): Boolean =
-        runCatching { project.architectureIndexRuntime().settingsSnapshot().allowJdkLibraryExpansion }
-            .getOrDefault(false)
+        LoggedFailures.orDefault(logger, "allowJdkLibraryExpansion settingsSnapshot", defaultValue = false) {
+            project.architectureIndexRuntime().settingsSnapshot().allowJdkLibraryExpansion
+        }
 
     private fun isJdkSymbolName(value: String): Boolean =
         value.startsWith("java.") ||

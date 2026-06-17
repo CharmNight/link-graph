@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.jvm.index
 
 import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
-import com.charmnight.linkgraph.architecture.view.ClassDiagramProjector
+import com.charmnight.linkgraph.projection.business.ClassDiagramProjector
 import com.charmnight.linkgraph.application.indexed.IndexedClassDiagramOptions
 import com.charmnight.linkgraph.application.indexed.IndexedGraphViewportOptions
 import com.charmnight.linkgraph.application.indexed.requestClassDiagramRequest
@@ -162,7 +162,7 @@ class JvmSymbolIndexBuilderMixedJvmTest : BasePlatformTestCase() {
     private data class KafkaValidatorViewFixture(
         val validator: JvmClassSymbol,
         val kafkaConfig: JvmClassSymbol,
-        val view: com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument,
+        val view: com.charmnight.linkgraph.architecture.ClassDiagramResult,
     )
 
     private fun assertVisibleRelationLabel(

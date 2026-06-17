@@ -3,9 +3,9 @@ package com.charmnight.linkgraph.ui
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.application.model.GraphEditTransaction
-import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
-import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
-import com.charmnight.linkgraph.review.ReviewGraphViewDocument
+import com.charmnight.linkgraph.architecture.ArchitectureGraphResult
+import com.charmnight.linkgraph.architecture.ClassDiagramResult
+import com.charmnight.linkgraph.review.ReviewGraphResult
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
 import com.charmnight.linkgraph.sync.GraphPatchApplyService
@@ -62,7 +62,7 @@ internal class GraphEditorGraphStateSupport(
         }
     }
 
-    fun loadArchitectureGraphView(view: ArchitectureGraphViewDocument) {
+    fun loadArchitectureGraphView(view: ArchitectureGraphResult) {
         mutate { currentState ->
             currentState.withLoadedArchitectureGraphView(
                 view = view,
@@ -75,7 +75,7 @@ internal class GraphEditorGraphStateSupport(
         }
     }
 
-    fun loadClassDiagramView(view: ClassDiagramViewDocument) {
+    fun loadClassDiagramView(view: ClassDiagramResult) {
         mutate { currentState ->
             currentState.withLoadedClassDiagramView(
                 view = view,
@@ -88,7 +88,7 @@ internal class GraphEditorGraphStateSupport(
         }
     }
 
-    fun loadReviewGraphView(view: ReviewGraphViewDocument) {
+    fun loadReviewGraphView(view: ReviewGraphResult) {
         mutate { currentState ->
             currentState.withLoadedReviewGraphView(
                 view = view,

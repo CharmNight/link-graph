@@ -59,6 +59,7 @@ export interface IndexedReadonlyStageProps extends BaseStageProps {
   onRequestClassUsages?: (
     targetNodeId: string,
     options?: {
+      scopeNodeId?: string | null;
       targetQualifiedName?: string | null;
       sourceVirtualFileUrl?: string | null;
       sourcePath?: string | null;

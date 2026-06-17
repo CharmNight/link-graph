@@ -1,4 +1,5 @@
 package com.charmnight.linkgraph.ui
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.application.usecase.ConfirmDraftChangeUseCaseResult
 import com.charmnight.linkgraph.model.GraphDocument
@@ -63,6 +64,6 @@ class ConfirmedDraftStatePresenterTest {
         assertEquals("q", snapshot.qaResult?.question)
         assertEquals(DraftValidationStatus.READY, snapshot.draftValidationState?.status)
         assertEquals(true, snapshot.codeEligibilityDecision?.allowed)
-        assertEquals(OperationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
+        assertEquals(ApplicationFeedbackLevel.SUCCESS, snapshot.operationFeedback?.level)
     }
 }

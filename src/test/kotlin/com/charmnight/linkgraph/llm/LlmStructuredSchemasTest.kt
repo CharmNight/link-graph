@@ -27,7 +27,7 @@ class LlmStructuredSchemasTest {
         schemaText: String,
         sink: MutableList<String>,
     ) {
-        val root = LlmJsonSupport.parseValue(schemaText)
+        val root = LlmJsonCodec.parseValue(schemaText)
         visitSchema(
             node = root,
             path = name,

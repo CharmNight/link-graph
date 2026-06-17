@@ -7,8 +7,8 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
-import com.charmnight.linkgraph.ui.view.FlowchartSummary
-import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
+import com.charmnight.linkgraph.semantic.outcome.FlowchartSummary
+import com.charmnight.linkgraph.semantic.outcome.FlowchartViewDocument
 import com.charmnight.linkgraph.ui.toWorkflowEditorSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals

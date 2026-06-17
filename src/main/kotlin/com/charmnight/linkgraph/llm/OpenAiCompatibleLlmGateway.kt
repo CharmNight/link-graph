@@ -8,11 +8,11 @@ import java.net.http.HttpClient
  */
 class OpenAiCompatibleLlmGateway(
     /** 根据请求动态创建 HTTP 客户端，便于测试或按需调整超时。 */
-    private val clientFactory: (LlmRequest) -> HttpClient = LlmGatewaySupport::defaultHttpClient,
+    private val clientFactory: (LlmRequest) -> HttpClient = LlmGatewayClient::defaultHttpClient,
 ) : LlmGateway {
     /** 调用兼容 OpenAI Chat Completions 的远程服务。 */
     override fun generate(request: LlmRequest): LlmResponse {
-        return LlmGatewaySupport.generateJson(
+        return LlmGatewayClient.generateJson(
             client = clientFactory(request),
             request = request,
             url = resolveCompletionUrl(request.endpoint),
@@ -26,7 +26,7 @@ class OpenAiCompatibleLlmGateway(
         request: LlmRequest,
         listener: (LlmStreamEvent) -> Unit,
     ): LlmResponse {
-        return LlmGatewaySupport.streamSse(
+        return LlmGatewayClient.streamSse(
             client = clientFactory(request),
             request = request,
             url = resolveCompletionUrl(request.endpoint),
@@ -50,7 +50,7 @@ class OpenAiCompatibleLlmGateway(
     /** 从远程返回 JSON 中提取最终文本内容。 */
     internal fun extractContent(body: String): String {
         /** 解析后的 JSON 根对象。 */
-        val root = LlmGatewaySupport.parseObject(body)
+        val root = LlmGatewayClient.parseObject(body)
         /** choices 列表。 */
         val choices = root["choices"] as? List<*>
         /** 第一条候选结果。 */
@@ -75,7 +75,7 @@ class OpenAiCompatibleLlmGateway(
 
     /** 从 OpenAI Chat Completions 流事件中提取文本增量。 */
     internal fun extractTextDelta(data: String): String? {
-        val root = LlmJsonSupport.parseObjectOrNull(data) ?: return null
+        val root = LlmJsonCodec.parseObjectOrNull(data) ?: return null
         val choices = root["choices"] as? List<*>
         val firstChoice = choices?.firstOrNull() as? Map<*, *>
         val delta = firstChoice?.get("delta") as? Map<*, *>

@@ -1,11 +1,13 @@
 package com.charmnight.linkgraph.ui
+import com.charmnight.linkgraph.model.GraphMetadataKeys
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.application.model.AsyncRequestState
-import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
-import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
-import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
+import com.charmnight.linkgraph.semantic.outcome.FactGraphViewDocument
+import com.charmnight.linkgraph.semantic.outcome.FlowchartViewDocument
+import com.charmnight.linkgraph.semantic.outcome.ResourceRelationViewDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
 import com.charmnight.linkgraph.semantic.outcome.AnalysisProjectionStats
@@ -78,7 +80,7 @@ class GraphEditorStateServiceTest {
 
         service.asyncRequests.markGraphBeautificationResult(GraphBeautificationResult(source = LlmResultSource.LOCAL_RULE))
         service.workbench.markOperationFeedback(
-            level = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
+            level = com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.SUCCESS,
             message = "链路讲解完成，已更新步骤列表",
             preservePreviousStatusKind = true,
         )
@@ -99,8 +101,8 @@ class GraphEditorStateServiceTest {
                     title = "OrderService.place",
                     sourceTag = GraphSourceTag.FACT,
                     metadata = mapOf(
-                        "ui.x" to "120",
-                        "ui.y" to "96",
+                        GraphMetadataKeys.Ui.X to "120",
+                        GraphMetadataKeys.Ui.Y to "96",
                     ),
                 ),
             ),
@@ -119,7 +121,7 @@ class GraphEditorStateServiceTest {
         service.markGraphChanged(
             initialGraph.copy(
                 nodes = initialGraph.nodes.map { node ->
-                    node.copy(metadata = node.metadata - "ui.x" - "ui.y")
+                    node.copy(metadata = node.metadata - GraphMetadataKeys.Ui.X - GraphMetadataKeys.Ui.Y)
                 },
             ),
         )
@@ -183,7 +185,7 @@ class GraphEditorStateServiceTest {
                 anchorNodeId = "method:order-service-place",
                 selectedMethodSignature = "com.example.OrderService.place(java.lang.String):void",
                 displayName = "OrderService.place",
-                feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
+                feedbackLevel = com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.SUCCESS,
                 statusMessage = "已加载当前主体分析：OrderService.place",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
@@ -297,7 +299,7 @@ class GraphEditorStateServiceTest {
                 anchorNodeId = "scope:guard",
                 selectedMethodSignature = "com.example.OrderService.place():void",
                 displayName = "OrderService.place",
-                feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
+                feedbackLevel = com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.SUCCESS,
                 statusMessage = "已加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
@@ -479,7 +481,7 @@ class GraphEditorStateServiceTest {
                 anchorNodeId = "scope:file-download-if",
                 selectedMethodSignature = selectedMethodSignature,
                 displayName = "CommonController.fileDownload",
-                feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
+                feedbackLevel = com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.SUCCESS,
                 statusMessage = "已加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
@@ -519,7 +521,7 @@ class GraphEditorStateServiceTest {
                 anchorNodeId = "scope:file-download-if",
                 selectedMethodSignature = selectedMethodSignature,
                 displayName = "CommonController.fileDownload",
-                feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
+                feedbackLevel = com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.SUCCESS,
                 statusMessage = "已重新加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
@@ -789,7 +791,7 @@ class GraphEditorStateServiceTest {
                 anchorNodeId = "method:flow-entry",
                 selectedMethodSignature = "com.example.OrderService.place():void",
                 displayName = "OrderService.place",
-                feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
+                feedbackLevel = com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.SUCCESS,
                 statusMessage = "已加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
@@ -865,7 +867,7 @@ class GraphEditorStateServiceTest {
                 anchorNodeId = "method:flow-entry",
                 selectedMethodSignature = "com.example.OrderService.place():void",
                 displayName = "OrderService.place",
-                feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
+                feedbackLevel = com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.SUCCESS,
                 statusMessage = "已加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
@@ -951,7 +953,7 @@ class GraphEditorStateServiceTest {
                 anchorNodeId = "method:flow-entry",
                 selectedMethodSignature = "com.example.OrderService.place():void",
                 displayName = "OrderService.place",
-                feedbackLevel = com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS,
+                feedbackLevel = com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.SUCCESS,
                 statusMessage = "已加载流程图",
                 projectionStats = AnalysisProjectionStats(),
                 factGraphView = FactGraphViewDocument(
@@ -1465,7 +1467,7 @@ class GraphEditorStateServiceTest {
         val initial = service.snapshot()
 
         service.workbench.markOperationFeedback(
-            level = com.charmnight.linkgraph.ui.OperationFeedbackLevel.INFO,
+            level = com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel.INFO,
             message = "正在生成链路讲解，请稍候。",
         )
 

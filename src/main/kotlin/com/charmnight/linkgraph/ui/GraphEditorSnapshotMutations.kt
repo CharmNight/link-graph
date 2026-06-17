@@ -1,12 +1,13 @@
 package com.charmnight.linkgraph.ui
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.application.model.GraphEditRejected
 import com.charmnight.linkgraph.application.model.GraphEditTransaction
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
-import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
-import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
-import com.charmnight.linkgraph.review.ReviewGraphViewDocument
+import com.charmnight.linkgraph.architecture.ArchitectureGraphResult
+import com.charmnight.linkgraph.architecture.ClassDiagramResult
+import com.charmnight.linkgraph.review.ReviewGraphResult
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
 import com.charmnight.linkgraph.sync.GraphPatchApplyService
@@ -265,7 +266,7 @@ internal fun GraphEditorStateSnapshot.withIndexedGraphRequestStarted(
         previousWorkspaceSceneId = nextScene,
         sceneStates = clearedState.sceneStates.withSceneState(nextScene, nextSceneState),
         operationFeedback = OperationFeedback(
-            level = OperationFeedbackLevel.INFO,
+            level = ApplicationFeedbackLevel.INFO,
             message = statusMessage,
         ),
         snapshotRevision = clearedState.snapshotRevision + 1,
@@ -284,7 +285,7 @@ internal fun GraphEditorStateSnapshot.withIndexedGraphRequestFailed(
     return copy(
         indexedGraphRequestStates = indexedGraphRequestStates + (view to requestState),
         operationFeedback = OperationFeedback(
-            level = OperationFeedbackLevel.ERROR,
+            level = ApplicationFeedbackLevel.ERROR,
             message = statusMessage,
         ),
         snapshotRevision = snapshotRevision + 1,
@@ -369,7 +370,7 @@ internal fun GraphEditorStateSnapshot.withGraphEditRejected(
     } ?: "图编辑失败。"
     return copy(
         operationFeedback = OperationFeedback(
-            level = OperationFeedbackLevel.ERROR,
+            level = ApplicationFeedbackLevel.ERROR,
             message = message,
         ),
         lastGraphEditRejection = rejection,
@@ -380,7 +381,7 @@ internal fun GraphEditorStateSnapshot.withGraphEditRejected(
 }
 
 internal fun GraphEditorStateSnapshot.withLoadedArchitectureGraphView(
-    view: ArchitectureGraphViewDocument,
+    view: ArchitectureGraphResult,
     requestState: AsyncRequestState,
     statusMessage: String,
 ): GraphEditorStateSnapshot {
@@ -419,7 +420,7 @@ internal fun GraphEditorStateSnapshot.withLoadedArchitectureGraphView(
         previousWorkspaceSceneId = nextScene,
         sceneStates = sceneStates.withSceneState(nextScene, nextSceneState),
         operationFeedback = OperationFeedback(
-            level = requestState.toOperationFeedbackLevel(),
+            level = requestState.toApplicationFeedbackLevel(),
             message = statusMessage,
         ),
         snapshotRevision = snapshotRevision + 1,
@@ -428,7 +429,7 @@ internal fun GraphEditorStateSnapshot.withLoadedArchitectureGraphView(
 }
 
 internal fun GraphEditorStateSnapshot.withLoadedClassDiagramView(
-    view: ClassDiagramViewDocument,
+    view: ClassDiagramResult,
     requestState: AsyncRequestState,
     statusMessage: String,
 ): GraphEditorStateSnapshot {
@@ -467,7 +468,7 @@ internal fun GraphEditorStateSnapshot.withLoadedClassDiagramView(
         previousWorkspaceSceneId = nextScene,
         sceneStates = sceneStates.withSceneState(nextScene, nextSceneState),
         operationFeedback = OperationFeedback(
-            level = requestState.toOperationFeedbackLevel(),
+            level = requestState.toApplicationFeedbackLevel(),
             message = statusMessage,
         ),
         snapshotRevision = snapshotRevision + 1,
@@ -476,7 +477,7 @@ internal fun GraphEditorStateSnapshot.withLoadedClassDiagramView(
 }
 
 internal fun GraphEditorStateSnapshot.withLoadedReviewGraphView(
-    view: ReviewGraphViewDocument,
+    view: ReviewGraphResult,
     requestState: AsyncRequestState,
     statusMessage: String,
 ): GraphEditorStateSnapshot {
@@ -515,7 +516,7 @@ internal fun GraphEditorStateSnapshot.withLoadedReviewGraphView(
         previousWorkspaceSceneId = nextScene,
         sceneStates = sceneStates.withSceneState(nextScene, nextSceneState),
         operationFeedback = OperationFeedback(
-            level = requestState.toOperationFeedbackLevel(),
+            level = requestState.toApplicationFeedbackLevel(),
             message = statusMessage,
         ),
         snapshotRevision = snapshotRevision + 1,
@@ -541,18 +542,18 @@ private fun IndexedGraphView.toAnalysisDisplayMode(): AnalysisDisplayMode =
 
 private fun GraphEditorStateSnapshot.clearIndexedGraphView(view: IndexedGraphView): GraphEditorStateSnapshot =
     when (view) {
-        IndexedGraphView.ARCHITECTURE -> copy(architectureGraphView = ArchitectureGraphViewDocument())
-        IndexedGraphView.CLASS_DIAGRAM -> copy(classDiagramView = ClassDiagramViewDocument())
-        IndexedGraphView.REVIEW -> copy(reviewGraphView = ReviewGraphViewDocument())
+        IndexedGraphView.ARCHITECTURE -> copy(architectureGraphView = ArchitectureGraphResult())
+        IndexedGraphView.CLASS_DIAGRAM -> copy(classDiagramView = ClassDiagramResult())
+        IndexedGraphView.REVIEW -> copy(reviewGraphView = ReviewGraphResult())
     }
 
-private fun AsyncRequestState.toOperationFeedbackLevel(): OperationFeedbackLevel =
+private fun AsyncRequestState.toApplicationFeedbackLevel(): ApplicationFeedbackLevel =
     when (phase) {
-        com.charmnight.linkgraph.application.model.AsyncRequestPhase.SUCCEEDED -> OperationFeedbackLevel.SUCCESS
+        com.charmnight.linkgraph.application.model.AsyncRequestPhase.SUCCEEDED -> ApplicationFeedbackLevel.SUCCESS
         com.charmnight.linkgraph.application.model.AsyncRequestPhase.FAILED,
         com.charmnight.linkgraph.application.model.AsyncRequestPhase.TIMED_OUT,
-        -> OperationFeedbackLevel.ERROR
-        else -> OperationFeedbackLevel.INFO
+        -> ApplicationFeedbackLevel.ERROR
+        else -> ApplicationFeedbackLevel.INFO
     }
 
 private fun GraphEditorStateSnapshot.resetDerivedGraphState(

@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.application.GraphEditorApplicationService
+import com.charmnight.linkgraph.application.indexed.IndexedGraphRelationDetail
 import com.charmnight.linkgraph.application.indexed.requestClassDiagramRequest
 import com.charmnight.linkgraph.application.model.GraphSceneId
 import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
@@ -75,7 +76,10 @@ class ClassDiagramIT : BasePlatformTestCase() {
         val taskProviderNodeId = stableJvmId("class", "com.example.classdiagram.TaskProvider")
 
         GraphEditorBridge(project).dispatch(
-            GraphEditorMessage.RequestIndexedGraph(requestClassDiagramRequest(taskRunnerNodeId)),
+            GraphEditorMessage.RequestIndexedGraph(
+                requestClassDiagramRequest(taskRunnerNodeId)
+                    .copy(relationDetail = IndexedGraphRelationDetail.COMPLETE),
+            ),
         )
         waitForClassDiagram()
 

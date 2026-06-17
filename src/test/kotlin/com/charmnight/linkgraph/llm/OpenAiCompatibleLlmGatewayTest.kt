@@ -38,7 +38,7 @@ class OpenAiCompatibleLlmGatewayTest {
             ),
         )
 
-        val root = LlmJsonSupport.parseJsonObject(payload)
+        val root = LlmJsonCodec.parseJsonObject(payload)
         val jsonSchema = root.getAsJsonObject("response_format").getAsJsonObject("json_schema")
 
         assertEquals("json_schema", root.getAsJsonObject("response_format").get("type").asString)

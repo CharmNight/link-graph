@@ -17,7 +17,7 @@ import com.charmnight.linkgraph.application.workflow.generation.CodeDraftApplyWo
 import com.charmnight.linkgraph.application.workflow.generation.CodeDraftGenerationWorkflow
 import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanDiscussionWorkflow
 import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanWorkflow
-import com.charmnight.linkgraph.application.workflow.review.ReviewGraphWorkflow
+import com.charmnight.linkgraph.application.workflow.ReviewGraphWorkflow
 import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.workbench.AssistantActionId
 import com.charmnight.linkgraph.workbench.AssistantIntent

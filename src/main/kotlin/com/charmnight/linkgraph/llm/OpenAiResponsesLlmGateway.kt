@@ -7,10 +7,10 @@ import java.net.http.HttpClient
  */
 class OpenAiResponsesLlmGateway(
     /** 根据请求动态创建 HTTP 客户端，便于测试或按需调整超时。 */
-    private val clientFactory: (LlmRequest) -> HttpClient = LlmGatewaySupport::defaultHttpClient,
+    private val clientFactory: (LlmRequest) -> HttpClient = LlmGatewayClient::defaultHttpClient,
 ) : LlmGateway {
     override fun generate(request: LlmRequest): LlmResponse {
-        return LlmGatewaySupport.generateJson(
+        return LlmGatewayClient.generateJson(
             client = clientFactory(request),
             request = request,
             url = resolveResponsesUrl(request.endpoint),
@@ -24,7 +24,7 @@ class OpenAiResponsesLlmGateway(
         request: LlmRequest,
         listener: (LlmStreamEvent) -> Unit,
     ): LlmResponse {
-        return LlmGatewaySupport.streamSse(
+        return LlmGatewayClient.streamSse(
             client = clientFactory(request),
             request = request,
             url = resolveResponsesUrl(request.endpoint),
@@ -44,7 +44,7 @@ class OpenAiResponsesLlmGateway(
     }
 
     internal fun extractContent(body: String): String {
-        val root = LlmGatewaySupport.parseObject(body)
+        val root = LlmGatewayClient.parseObject(body)
         val outputText = root["output_text"] as? String
         if (!outputText.isNullOrBlank()) {
             return outputText
@@ -67,7 +67,7 @@ class OpenAiResponsesLlmGateway(
     }
 
     internal fun extractTextDelta(data: String): String? {
-        val root = LlmJsonSupport.parseObjectOrNull(data) ?: return null
+        val root = LlmJsonCodec.parseObjectOrNull(data) ?: return null
         return when (root["type"] as? String) {
             "response.output_text.delta" -> root["delta"] as? String
             "response.output_text.done" -> root["text"] as? String

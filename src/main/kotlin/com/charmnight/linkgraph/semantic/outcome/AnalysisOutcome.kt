@@ -1,10 +1,7 @@
 package com.charmnight.linkgraph.semantic.outcome
 
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.model.GraphDocument
-import com.charmnight.linkgraph.ui.GraphEditorStateService
-import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
-import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
-import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
 
 /**
  * 表示语义分析经过投影后的展示结果。
@@ -23,7 +20,7 @@ data class AnalysisOutcome(
     /** 保存展示名称。 */
     val displayName: String,
     /** 保存操作反馈等级。 */
-    val feedbackLevel: com.charmnight.linkgraph.ui.OperationFeedbackLevel,
+    val feedbackLevel: ApplicationFeedbackLevel,
     /** 保存反馈消息。 */
     val statusMessage: String,
     /** 保存投影阶段的统计信息。 */

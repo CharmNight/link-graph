@@ -17,14 +17,15 @@ import com.charmnight.linkgraph.application.model.GraphEditTransaction
 import com.charmnight.linkgraph.application.model.toAnalysisDisplayMode as toApplicationAnalysisDisplayMode
 import com.charmnight.linkgraph.application.model.toWorkspaceSceneId as toApplicationWorkspaceSceneId
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
-import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
-import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
-import com.charmnight.linkgraph.review.ReviewGraphViewDocument
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.architecture.ArchitectureGraphResult
+import com.charmnight.linkgraph.architecture.ClassDiagramResult
+import com.charmnight.linkgraph.review.ReviewGraphResult
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.sync.SyncPreviewItem
-import com.charmnight.linkgraph.ui.view.FactGraphViewDocument
-import com.charmnight.linkgraph.ui.view.FlowchartViewDocument
-import com.charmnight.linkgraph.ui.view.ResourceRelationViewDocument
+import com.charmnight.linkgraph.semantic.outcome.FactGraphViewDocument
+import com.charmnight.linkgraph.semantic.outcome.FlowchartViewDocument
+import com.charmnight.linkgraph.semantic.outcome.ResourceRelationViewDocument
 import com.charmnight.linkgraph.workbench.DraftValidationState
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
 import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession
@@ -66,9 +67,9 @@ data class GraphEditorStateSnapshot(
     val factGraphView: FactGraphViewDocument = FactGraphViewDocument(),
     val flowchartView: FlowchartViewDocument = FlowchartViewDocument(),
     val resourceRelationView: ResourceRelationViewDocument = ResourceRelationViewDocument(),
-    val architectureGraphView: ArchitectureGraphViewDocument = ArchitectureGraphViewDocument(),
-    val classDiagramView: ClassDiagramViewDocument = ClassDiagramViewDocument(),
-    val reviewGraphView: ReviewGraphViewDocument = ReviewGraphViewDocument(),
+    val architectureGraphView: ArchitectureGraphResult = ArchitectureGraphResult(),
+    val classDiagramView: ClassDiagramResult = ClassDiagramResult(),
+    val reviewGraphView: ReviewGraphResult = ReviewGraphResult(),
     val indexedGraphRequestStates: Map<IndexedGraphView, AsyncRequestState> = defaultIndexedGraphRequestStates(),
     val analysisDisplayMode: AnalysisDisplayMode = AnalysisDisplayMode.FACT_GRAPH,
     val currentSceneId: GraphSceneId = GraphSceneId.WORKSPACE_FACT,
@@ -153,9 +154,9 @@ data class GraphViewsState(
     val factGraphView: FactGraphViewDocument = FactGraphViewDocument(),
     val flowchartView: FlowchartViewDocument = FlowchartViewDocument(),
     val resourceRelationView: ResourceRelationViewDocument = ResourceRelationViewDocument(),
-    val architectureGraphView: ArchitectureGraphViewDocument = ArchitectureGraphViewDocument(),
-    val classDiagramView: ClassDiagramViewDocument = ClassDiagramViewDocument(),
-    val reviewGraphView: ReviewGraphViewDocument = ReviewGraphViewDocument(),
+    val architectureGraphView: ArchitectureGraphResult = ArchitectureGraphResult(),
+    val classDiagramView: ClassDiagramResult = ClassDiagramResult(),
+    val reviewGraphView: ReviewGraphResult = ReviewGraphResult(),
     val indexedGraphRequestStates: Map<IndexedGraphView, AsyncRequestState> = defaultIndexedGraphRequestStates(),
     val analysisDisplayMode: AnalysisDisplayMode = AnalysisDisplayMode.FACT_GRAPH,
     val currentSceneId: GraphSceneId = GraphSceneId.WORKSPACE_FACT,
@@ -349,13 +350,6 @@ enum class SourceNavigationResult {
 }
 
 data class OperationFeedback(
-    val level: OperationFeedbackLevel,
+    val level: ApplicationFeedbackLevel,
     val message: String,
 )
-
-enum class OperationFeedbackLevel {
-    INFO,
-    SUCCESS,
-    WARNING,
-    ERROR,
-}

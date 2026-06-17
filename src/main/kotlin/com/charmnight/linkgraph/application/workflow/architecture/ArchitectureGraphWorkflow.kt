@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.application.workflow.architecture
 
-import com.charmnight.linkgraph.architecture.ArchitectureGraphProjector
+import com.charmnight.linkgraph.projection.business.ArchitectureGraphProjector
 import com.charmnight.linkgraph.architecture.ArchitectureGraphResult
 import com.charmnight.linkgraph.application.model.AsyncRequestState
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest

@@ -1,6 +1,11 @@
 package com.charmnight.linkgraph.semantic.outcome
 
+import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.projection.business.FactGraphProjector
+import com.charmnight.linkgraph.projection.business.FlowchartProjector
+import com.charmnight.linkgraph.projection.business.ResourceRelationProjector
+import com.charmnight.linkgraph.projection.graphProjectionHiddenCounts
 import com.charmnight.linkgraph.semantic.graph.GraphAssembler
 import com.charmnight.linkgraph.semantic.model.MethodLikeUnit
 import com.charmnight.linkgraph.semantic.model.SemanticAnalysisResult
@@ -8,10 +13,6 @@ import com.charmnight.linkgraph.semantic.model.SemanticDiagnostic
 import com.charmnight.linkgraph.semantic.model.SemanticDiagnosticSeverity
 import com.charmnight.linkgraph.semantic.policy.ProjectionPolicy
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectHandle
-import com.charmnight.linkgraph.ui.view.FactGraphProjector
-import com.charmnight.linkgraph.ui.view.FlowchartProjector
-import com.charmnight.linkgraph.ui.view.ResourceRelationProjector
-import com.charmnight.linkgraph.projection.graphProjectionHiddenCounts
 import java.util.Locale
 
 class AnalysisOutcomeFactory(
@@ -189,14 +190,14 @@ class AnalysisOutcomeFactory(
     private fun resolveFeedbackLevel(
         diagnostic: SemanticDiagnostic?,
         truncated: Boolean,
-    ): com.charmnight.linkgraph.ui.OperationFeedbackLevel {
+    ): ApplicationFeedbackLevel {
         return when (diagnostic?.severity) {
-            SemanticDiagnosticSeverity.ERROR -> com.charmnight.linkgraph.ui.OperationFeedbackLevel.ERROR
-            SemanticDiagnosticSeverity.WARNING -> com.charmnight.linkgraph.ui.OperationFeedbackLevel.WARNING
+            SemanticDiagnosticSeverity.ERROR -> ApplicationFeedbackLevel.ERROR
+            SemanticDiagnosticSeverity.WARNING -> ApplicationFeedbackLevel.WARNING
             else -> if (truncated) {
-                com.charmnight.linkgraph.ui.OperationFeedbackLevel.WARNING
+                ApplicationFeedbackLevel.WARNING
             } else {
-                com.charmnight.linkgraph.ui.OperationFeedbackLevel.SUCCESS
+                ApplicationFeedbackLevel.SUCCESS
             }
         }
     }

@@ -8,7 +8,7 @@ import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshot
 import com.charmnight.linkgraph.llm.tools.ToolGraphView
 import com.charmnight.linkgraph.ui.GraphEditorStateSnapshot
 import com.charmnight.linkgraph.ui.GraphSceneId
-import com.charmnight.linkgraph.ui.view.GraphProjectionIndex
+import com.charmnight.linkgraph.application.model.GraphProjectionIndex
 
 fun GraphEditorStateSnapshot.toToolGraphSnapshot(): ToolGraphSnapshot {
     return ToolGraphSnapshot(

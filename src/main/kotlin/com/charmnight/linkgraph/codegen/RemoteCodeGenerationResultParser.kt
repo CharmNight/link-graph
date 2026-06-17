@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.codegen
 
 import com.charmnight.linkgraph.llm.EditScope
-import com.charmnight.linkgraph.llm.LlmJsonSupport
+import com.charmnight.linkgraph.llm.LlmJsonCodec
 import com.charmnight.linkgraph.llm.LlmResultSource
 import com.charmnight.linkgraph.llm.RemoteStructuredJsonExtractor
 
@@ -16,7 +16,7 @@ internal object RemoteCodeGenerationResultParser {
         promptPreview: String,
     ): CodeGenerationResult {
         /** 解析后的 JSON 根对象。 */
-        val root = LlmJsonSupport.parseObject(unwrapJson(content))
+        val root = LlmJsonCodec.parseObject(unwrapJson(content))
         /** 远程返回的警告列表。 */
         val warnings = (root["warnings"] as? List<*>).orEmpty().mapNotNull { it as? String }
         /** 远程返回的代码草稿列表。 */
