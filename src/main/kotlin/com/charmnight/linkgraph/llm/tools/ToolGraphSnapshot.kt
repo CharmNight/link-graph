@@ -28,6 +28,7 @@ data class ToolGraphView(
 
 data class ToolGraphSnapshot(
     val workspaceGraph: GraphDocument = GraphDocument(),
+    val workspaceRevision: Long = 0,
     val semanticFactGraph: GraphDocument = GraphDocument(),
     val factGraphView: ToolGraphView = ToolGraphView(),
     val flowchartView: ToolGraphView = ToolGraphView(),

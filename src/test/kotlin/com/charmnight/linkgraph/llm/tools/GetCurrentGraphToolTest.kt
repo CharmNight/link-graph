@@ -36,6 +36,7 @@ class GetCurrentGraphToolTest : BasePlatformTestCase() {
                 project = project,
                 snapshot = snapshot(
                     workspaceGraph = graph,
+                    workspaceRevision = 42,
                     selectedNodeId = "method:upload-file",
                 ),
                 artifactStore = InMemoryArtifactStore(),
@@ -44,6 +45,8 @@ class GetCurrentGraphToolTest : BasePlatformTestCase() {
         )
 
         assertEquals("interactiveGraph", result.payload["graphSource"])
+        assertEquals(42L, result.payload["workspaceRevision"])
+        assertEquals("WORKSPACE_FACT", result.payload["recommendedSceneId"])
         assertEquals(1, result.payload["nodeCount"])
         assertEquals(listOf("method:upload-file"), result.payload["selectedNodeIds"])
         assertNotNull(result.payload["graph"])
@@ -255,6 +258,7 @@ private fun snapshot(
     analysisDisplayMode: AnalysisDisplayMode = AnalysisDisplayMode.FACT_GRAPH,
     currentSceneId: GraphSceneId = GraphSceneId.WORKSPACE_FACT,
     workspaceGraph: GraphDocument = GraphDocument(),
+    workspaceRevision: Long = 0,
     factGraphView: FactGraphViewDocument = FactGraphViewDocument(),
     flowchartView: FlowchartViewDocument = FlowchartViewDocument(),
     resourceRelationView: ResourceRelationViewDocument = ResourceRelationViewDocument(),
@@ -269,6 +273,7 @@ private fun snapshot(
     val nextSceneState = baseSceneStates.getValue(currentSceneId).copy(selectedNodeId = selectedNodeId)
     return com.charmnight.linkgraph.ui.GraphEditorStateSnapshot(
         workspaceGraph = workspaceGraph,
+        workspaceRevision = workspaceRevision,
         workspaceBaseGraph = workspaceGraph,
         semanticFactGraph = workspaceGraph,
         factGraphView = factGraphView,

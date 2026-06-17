@@ -54,6 +54,7 @@ import com.charmnight.linkgraph.llm.tools.ResolveAnchorTool
 import com.charmnight.linkgraph.llm.tools.ToolExecutionContext
 import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshot
 import com.charmnight.linkgraph.llm.tools.DraftToolFacade
+import com.charmnight.linkgraph.llm.tools.EditGraphTool
 import com.charmnight.linkgraph.workbench.QaConversationSession
 import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.model.GraphDocument
@@ -78,6 +79,7 @@ class QaCapability(
         listOf<AgentTool>(
             GetDraftWorkbenchTool(DraftToolFacade()),
             GetCurrentGraphTool(GraphToolFacade()),
+            EditGraphTool(),
             GetSelectedScopeTool(GraphToolFacade()),
             ResolveAnchorTool(CodeReadToolFacade()),
             ReadSourceSnippetTool(CodeReadToolFacade()),
@@ -126,9 +128,12 @@ class QaCapability(
     override fun allowedTools(input: QaCapabilityInput): Set<String> {
         val registeredTools = toolRegistry.names()
         val tools = registeredTools
-            .filterTo(linkedSetOf()) { toolName -> toolName !in REVIEW_TOOL_NAMES }
+            .filterTo(linkedSetOf()) { toolName -> toolName !in REVIEW_TOOL_NAMES && toolName !in GRAPH_MUTATION_TOOL_NAMES }
         if (input.effectiveMode in REVIEW_TOOL_MODES || input.requestedMode in REVIEW_TOOL_MODES) {
             tools += registeredTools.filter { toolName -> toolName in REVIEW_TOOL_NAMES }
+        }
+        if (input.effectiveMode in GRAPH_MUTATION_TOOL_MODES || input.requestedMode in GRAPH_MUTATION_TOOL_MODES) {
+            tools += registeredTools.filter { toolName -> toolName in GRAPH_MUTATION_TOOL_NAMES }
         }
         return tools
     }
@@ -873,6 +878,14 @@ private val REVIEW_TOOL_NAMES = setOf(
     "get_blast_radius",
     "find_related_tests",
     "build_review_evidence_bundle",
+)
+
+private val GRAPH_MUTATION_TOOL_MODES = setOf(
+    QaMode.CHANGE,
+)
+
+private val GRAPH_MUTATION_TOOL_NAMES = setOf(
+    "edit_graph",
 )
 
 /**

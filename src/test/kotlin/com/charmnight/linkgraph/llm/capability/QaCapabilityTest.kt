@@ -101,6 +101,30 @@ class QaCapabilityTest : BasePlatformTestCase() {
         assertTrue("get_project_index_digest" in tools)
     }
 
+    fun testQaAnswerModeDoesNotAllowGraphMutationTool() {
+        val capability = QaCapability(
+            defaultBudget = RunBudget(),
+            qaExecutor = { input, _, _ ->
+                GraphPatchResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = input.question,
+                    answer = "ok",
+                    promptPreview = "prompt",
+                )
+            },
+        )
+
+        val tools = capability.allowedTools(
+            QaCapabilityInput(
+                question = "解释当前图，不要修改",
+                qaContext = GraphQaContext(),
+                effectiveMode = QaMode.ANSWER,
+            ),
+        )
+
+        assertFalse("edit_graph" in tools)
+    }
+
     fun testAllowedToolsReflectInjectedRegistryAndReviewModeGate() {
         val capability = QaCapability(
             defaultBudget = RunBudget(),

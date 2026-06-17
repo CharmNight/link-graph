@@ -1,7 +1,10 @@
 package com.charmnight.linkgraph.application
 
 import com.charmnight.linkgraph.application.workflow.GraphWorkspaceWorkflow
+import com.charmnight.linkgraph.application.model.GraphEditIssueCode
 import com.charmnight.linkgraph.application.model.GraphEditOperation
+import com.charmnight.linkgraph.application.model.GraphEditRequest
+import com.charmnight.linkgraph.application.model.GraphEditRequestSource
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.diff.GraphDiffer
@@ -16,7 +19,6 @@ import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
 import com.charmnight.linkgraph.sync.SyncPreviewPlanner
-import com.charmnight.linkgraph.ui.GraphEditScript
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.ui.GraphLayoutPosition
 import com.charmnight.linkgraph.ui.GraphSceneId
@@ -41,7 +43,7 @@ class GraphWorkspaceWorkflowTest {
             root.resolve("src/main/kotlin/com/charmnight/linkgraph/application/workflow/GraphWorkspaceWorkflow.kt"),
         )
 
-        assertTrue(source.contains("handleFrontendEditScript"))
+        assertTrue(source.contains("handleGraphEditRequest"))
         assertFalse(source.contains("handleFrontendGraphChanged"))
         assertFalse(source.contains("markViewGraphChanged"))
     }
@@ -267,8 +269,8 @@ class GraphWorkspaceWorkflowTest {
         )
         stateService.loadGraph(trustedNode.asGraph(), "trusted-graph")
 
-        workflow.handleFrontendEditScript(
-            GraphEditScript(
+        workflow.handleGraphEditRequest(
+            GraphEditRequest(
                 sceneId = GraphSceneId.WORKSPACE_FACT,
                 baseWorkspaceRevision = stateService.snapshot().workspaceRevision,
                 operations = listOf(
@@ -283,6 +285,7 @@ class GraphWorkspaceWorkflowTest {
                         ),
                     ),
                 ),
+                source = GraphEditRequestSource.FRONTEND,
             ),
         )
 
@@ -312,8 +315,8 @@ class GraphWorkspaceWorkflowTest {
             copyToClipboard = { false },
         )
 
-        workflow.handleFrontendEditScript(
-            GraphEditScript(
+        workflow.handleGraphEditRequest(
+            GraphEditRequest(
                 sceneId = GraphSceneId.WORKSPACE_FACT,
                 baseWorkspaceRevision = stateService.snapshot().workspaceRevision,
                 operations = listOf(
@@ -328,15 +331,57 @@ class GraphWorkspaceWorkflowTest {
                         ),
                     ),
                 ),
+                source = GraphEditRequestSource.FRONTEND,
             ),
         )
 
-        val persistedNode = stateService.snapshot().workspaceGraph.nodes.single()
+        val snapshot = stateService.snapshot()
+        val persistedNode = snapshot.workspaceGraph.nodes.single()
         assertNotNull(persistedNode)
         assertEquals("Manual draft node", persistedNode.title)
         assertEquals("User-authored draft node", persistedNode.doc)
         assertNull(persistedNode.location)
         assertNull(persistedNode.signature)
+        val transaction = assertNotNull(snapshot.lastGraphEditTransaction)
+        assertEquals("design:1", transaction.graphAfterApply.nodes.single().id)
+        assertEquals(GraphEditRequestSource.FRONTEND, transaction.source)
+        assertNull(snapshot.lastGraphEditRejection)
+    }
+
+    @Test
+    fun rejectedGraphEditPublishesFeedbackAndStructuredRejection() {
+        val stateService = GraphEditorStateService()
+        val workflow = GraphWorkspaceWorkflow(
+            snapshotProvider = stateService.editorSnapshotProvider(),
+            workspaceGraphCommitter = stateService.workspaceGraphCommitter(),
+            eventSink = stateService.applicationEventSink(),
+            mermaidImporter = MermaidImporter(),
+            mermaidValidator = MermaidValidator(),
+            mermaidExporter = MermaidExporter(),
+            graphDiffer = GraphDiffer(),
+            syncPreviewPlanner = SyncPreviewPlanner(),
+            copyToClipboard = { false },
+        )
+
+        workflow.handleGraphEditRequest(
+            GraphEditRequest(
+                sceneId = GraphSceneId.WORKSPACE_FACT,
+                baseWorkspaceRevision = stateService.snapshot().workspaceRevision - 1,
+                operations = listOf(
+                    GraphEditOperation.UpsertNode(
+                        GraphNode(id = "node-new", type = NodeType.METHOD, title = "New"),
+                    ),
+                ),
+                source = GraphEditRequestSource.FRONTEND,
+            ),
+        )
+
+        val snapshot = stateService.snapshot()
+        assertEquals(com.charmnight.linkgraph.ui.OperationFeedbackLevel.ERROR, snapshot.operationFeedback?.level)
+        assertTrue(snapshot.operationFeedback?.message?.contains("STALE_BASE_REVISION") == true, snapshot.operationFeedback?.message)
+        assertEquals(GraphEditIssueCode.STALE_BASE_REVISION, snapshot.lastGraphEditRejection?.issues?.single()?.code)
+        assertNull(snapshot.lastGraphEditTransaction)
+        assertTrue(snapshot.workspaceGraph.nodes.isEmpty())
     }
 
     private fun GraphNode.asGraph() = GraphDocument(nodes = listOf(this))

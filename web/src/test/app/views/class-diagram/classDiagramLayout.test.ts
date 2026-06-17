@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
+import type { NodeMeasuredSize } from "../../../../app/graph/nodeSizeRegistry";
 import type { GraphPosition, LinkGraphEdge, LinkGraphNode } from "../../../../app/types";
 import { layoutClassDiagramView } from "../../../../app/views/class-diagram/classDiagramLayout";
+import type { ClassDiagramPlacement } from "../../../../app/views/class-diagram/classDiagramPlacement";
+import type { ClassDiagramTopology } from "../../../../app/views/class-diagram/classDiagramTopology";
+import type { ClassDiagramLane, ClassLaneEntry } from "../../../../app/views/class-diagram/classDiagramLayoutModel";
 import { ClassDiagramReadabilityScorer } from "../../../../app/views/class-diagram/classDiagramReadability";
+import { ClassDiagramRoutingEngine } from "../../../../app/views/class-diagram/classDiagramRouting";
 import { classDiagramNodeCardWidth } from "../../../../app/graphNodeSizing";
 
 function classNode(id: string, title = id): LinkGraphNode {
@@ -41,6 +46,24 @@ function tallClassNode(id: string, title = id): LinkGraphNode {
   };
 }
 
+function placedClassNode(
+  id: string,
+  lane: ClassDiagramLane,
+  position: GraphPosition,
+  column = 0,
+  title = id,
+): LinkGraphNode {
+  return {
+    ...classNode(id, title),
+    position,
+    metadata: {
+      "layout.direction": lane,
+      "layout.column": String(column),
+      "layout.estimatedHeight": "120",
+    },
+  };
+}
+
 function relation(
   id: string,
   source: string,
@@ -59,6 +82,39 @@ function relation(
       "uml.relation.kind": umlKind,
     },
   };
+}
+
+function routePlacedClassEdges(
+  nodes: LinkGraphNode[],
+  edges: LinkGraphEdge[],
+  anchorId = nodes[0]?.id ?? "anchor",
+): LinkGraphEdge[] {
+  const sizeSnapshot = new Map<string, NodeMeasuredSize>(
+    nodes.map((node) => [node.id, { width: 220, height: 120 }]),
+  );
+  const laneBuckets = new Map<ClassDiagramLane, ClassLaneEntry[]>();
+  nodes.forEach((node) => {
+    const lane = (node.metadata?.["layout.direction"] as ClassDiagramLane | undefined) ?? "RELATED";
+    laneBuckets.set(lane, [...(laneBuckets.get(lane) ?? []), { node, lane, depth: node.id === anchorId ? 0 : 1 }]);
+  });
+  const topology: ClassDiagramTopology = {
+    anchorId,
+    nodes,
+    edges,
+    incoming: new Map(),
+    outgoing: new Map(),
+    incomingDistances: new Map([[anchorId, 0]]),
+    outgoingDistances: new Map([[anchorId, 0]]),
+    nodesWithLane: Array.from(laneBuckets.values()).flat(),
+    laneBuckets,
+  };
+  const placement: ClassDiagramPlacement = {
+    anchorId,
+    nodes,
+    nodeIndex: new Map(nodes.map((node) => [node.id, node])),
+    laneBuckets,
+  };
+  return new ClassDiagramRoutingEngine().routeClassDiagramEdges(topology, placement, sizeSnapshot);
 }
 
 function routePoints(edge: LinkGraphEdge): GraphPosition[] {
@@ -494,6 +550,64 @@ describe("layoutClassDiagramView", () => {
       sourceHandle: "source-top",
       targetHandle: "target-bottom",
     });
+  });
+
+  it("routes horizontally separated hierarchy relations through side ports", () => {
+    const nodes = [
+      placedClassNode("anchor", "ANCHOR", { x: 500, y: 360 }),
+      placedClassNode("contract", "PARENT", { x: 860, y: 160 }, 0, "WorkerContract"),
+    ];
+    const edges = [
+      relation("anchor-contract", "anchor", "contract", "USES_TYPE", "REALIZATION"),
+    ];
+
+    const [edge] = routePlacedClassEdges(nodes, edges, "anchor");
+
+    expect(edge).toMatchObject({
+      sourceHandle: expect.stringMatching(/^source-right(?:-\d+)?$/),
+      targetHandle: expect.stringMatching(/^target-left(?:-\d+)?$/),
+      metadata: expect.objectContaining({
+        "layout.sourcePort": expect.stringMatching(/^source-right(?:-\d+)?$/),
+        "layout.targetPort": expect.stringMatching(/^target-left(?:-\d+)?$/),
+      }),
+    });
+    expect(routeIsOrthogonal(edge!)).toBe(true);
+  });
+
+  it("keeps near-column hierarchy relations on vertical ports", () => {
+    const nodes = [
+      placedClassNode("contract", "PARENT", { x: 500, y: 120 }, 0, "WorkerContract"),
+      placedClassNode("anchor", "ANCHOR", { x: 500, y: 360 }),
+    ];
+    const edges = [
+      relation("anchor-contract", "anchor", "contract", "USES_TYPE", "REALIZATION"),
+    ];
+
+    const [edge] = routePlacedClassEdges(nodes, edges, "anchor");
+
+    expect(edge).toMatchObject({
+      sourceHandle: "source-top",
+      targetHandle: "target-bottom",
+    });
+    expect(routeIsOrthogonal(edge!)).toBe(true);
+  });
+
+  it("routes horizontally separated structural relations through side ports before vertical fallback", () => {
+    const nodes = [
+      placedClassNode("anchor", "ANCHOR", { x: 500, y: 360 }),
+      placedClassNode("repository", "RELATED", { x: 880, y: 120 }, 0, "TaskRepository"),
+    ];
+    const edges = [
+      relation("anchor-repository", "anchor", "repository", "USES_TYPE", "ASSOCIATION"),
+    ];
+
+    const [edge] = routePlacedClassEdges(nodes, edges, "anchor");
+
+    expect(edge).toMatchObject({
+      sourceHandle: expect.stringMatching(/^source-right(?:-\d+)?$/),
+      targetHandle: expect.stringMatching(/^target-left(?:-\d+)?$/),
+    });
+    expect(routeIsOrthogonal(edge!)).toBe(true);
   });
 
   it("separates mixed relation routes instead of stacking them on the same lane", async () => {

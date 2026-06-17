@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.application.command
 
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
 import com.charmnight.linkgraph.application.model.DraftPatchPreviewSource
-import com.charmnight.linkgraph.application.model.GraphEditScript
+import com.charmnight.linkgraph.application.model.GraphEditRequest
 import com.charmnight.linkgraph.application.model.GraphLayoutPosition
 import com.charmnight.linkgraph.diff.GraphDifferResult
 import com.charmnight.linkgraph.model.GraphDocument
@@ -54,8 +54,8 @@ internal sealed interface ApplicationCommand<out R> {
 
     data object ShowDiffMode : ApplicationCommand<GraphDifferResult?>
 
-    data class ApplyGraphEditScript(
-        val script: GraphEditScript,
+    data class ApplyGraphEditRequest(
+        val request: GraphEditRequest,
     ) : ApplicationCommand<Unit>
 
     data class LayoutChanged(

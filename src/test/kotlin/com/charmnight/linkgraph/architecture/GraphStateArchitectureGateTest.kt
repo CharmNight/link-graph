@@ -119,10 +119,10 @@ class GraphStateArchitectureGateTest {
         assertFalse(bridgeSource.contains("graphChangedQuery"))
         assertFalse(bridgeSource.contains("GraphEditorMessage.GraphChanged"))
         assertFalse(routerSource.contains("handleFrontendGraphChanged"))
-        assertTrue(messageSource.contains("data class ApplyGraphEditScript"))
+        assertTrue(messageSource.contains("data class ApplyGraphEditRequest"))
         assertTrue(bridgeSource.contains("private val bridgeCommandQuery: JBCefJSQuery"))
         assertTrue(bridgeSource.contains("applyGraphEditScript: (payload) => sendCommand(\"applyGraphEditScript\""))
-        assertTrue(routerSource.contains("ApplyGraphEditScript"))
+        assertTrue(routerSource.contains("ApplyGraphEditRequest"))
     }
 
     @Test

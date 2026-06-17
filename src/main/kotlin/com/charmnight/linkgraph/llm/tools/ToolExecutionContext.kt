@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.application.port.GraphEditRequestExecutor
 import com.charmnight.linkgraph.llm.artifact.ArtifactStore
 import com.charmnight.linkgraph.llm.runtime.RunBudget
 import com.intellij.openapi.project.Project
@@ -19,4 +20,6 @@ data class ToolExecutionContext(
     val runBudget: RunBudget,
     /** 当前 capability 允许调用的工具名；null 表示旧调用点尚未启用 runtime 策略。 */
     val allowedToolNames: Set<String>? = null,
+    /** 受控 graph edit 执行入口。为空表示当前 runtime 不允许写图。 */
+    val graphEditRequestExecutor: GraphEditRequestExecutor? = null,
 )

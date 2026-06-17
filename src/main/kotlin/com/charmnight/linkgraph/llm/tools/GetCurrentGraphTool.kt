@@ -21,6 +21,8 @@ class GetCurrentGraphTool(
             payload = mapOf(
                 "graph" to graph,
                 "graphSource" to graphToolFacade.currentGraphSource(context.snapshot),
+                "workspaceRevision" to context.snapshot.workspaceRevision,
+                "recommendedSceneId" to context.snapshot.currentSceneId.name,
                 "nodeCount" to graph.nodes.size,
                 "edgeCount" to graph.edges.size,
                 "selectedNodeIds" to selectedNodeIds,

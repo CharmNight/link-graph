@@ -12,6 +12,8 @@ import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
+import com.charmnight.linkgraph.application.model.GraphEditRejected
+import com.charmnight.linkgraph.application.model.GraphEditTransaction
 import com.charmnight.linkgraph.application.model.toAnalysisDisplayMode as toApplicationAnalysisDisplayMode
 import com.charmnight.linkgraph.application.model.toWorkspaceSceneId as toApplicationWorkspaceSceneId
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
@@ -116,6 +118,8 @@ data class GraphEditorStateSnapshot(
     val workspaceRevision: Long = 0,
     val snapshotRevision: Long = 0,
     val operationFeedback: OperationFeedback? = null,
+    val lastGraphEditTransaction: GraphEditTransaction? = null,
+    val lastGraphEditRejection: GraphEditRejected? = null,
     val assistantSessionState: AssistantSessionState = AssistantSessionState(sessionId = "assistant-session"),
     val assistantResultStore: AssistantResultStore = AssistantResultStore(),
     val lastMessageType: String? = null,
@@ -141,6 +145,8 @@ data class WorkspaceState(
     val workingGraphDirty: Boolean = false,
     val semanticRevision: Long = 0,
     val workspaceRevision: Long = 0,
+    val lastGraphEditTransaction: GraphEditTransaction? = null,
+    val lastGraphEditRejection: GraphEditRejected? = null,
 )
 
 data class GraphViewsState(
@@ -237,6 +243,8 @@ fun GraphEditorStateSnapshot.domainStates(): GraphEditorDomainStates =
             workingGraphDirty = workingGraphDirty,
             semanticRevision = semanticRevision,
             workspaceRevision = workspaceRevision,
+            lastGraphEditTransaction = lastGraphEditTransaction,
+            lastGraphEditRejection = lastGraphEditRejection,
         ),
         graphViews = GraphViewsState(
             factGraphView = factGraphView,

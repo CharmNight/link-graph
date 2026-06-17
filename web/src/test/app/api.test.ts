@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   acknowledgeSnapshot,
   announceFrontendReady,
-  publishGraphEditScript,
+  publishGraphEditRequest,
   readBootstrapState,
   requestAssistantTask,
   requestAnalysisDisplayMode,
@@ -64,7 +64,7 @@ function expectCommand(
   });
 }
 
-describe("publishGraphEditScript", () => {
+describe("publishGraphEditRequest", () => {
   afterEach(() => {
     resetEditorTransportForTest();
     resetApiBridgeLifecycleStateForTest();
@@ -92,9 +92,10 @@ describe("publishGraphEditScript", () => {
       },
     ];
 
-    publishGraphEditScript({
+    publishGraphEditRequest({
       sceneId: "WORKSPACE_FLOWCHART",
       baseWorkspaceRevision: 7,
+      source: "FRONTEND",
       operations: [
         {
           type: "UPSERT_NODE",
@@ -114,6 +115,7 @@ describe("publishGraphEditScript", () => {
     expectCommand(sendCommand, 0, "applyGraphEditScript", {
       sceneId: "WORKSPACE_FLOWCHART",
       baseWorkspaceRevision: 7,
+      source: "FRONTEND",
       operations: [
         expect.objectContaining({
           type: "UPSERT_NODE",
@@ -155,9 +157,10 @@ describe("publishGraphEditScript", () => {
       },
     ];
 
-    publishGraphEditScript({
+    publishGraphEditRequest({
       sceneId: "WORKSPACE_FACT",
       baseWorkspaceRevision: 3,
+      source: "FRONTEND",
       operations: [
         {
           type: "UPSERT_NODE",
@@ -187,9 +190,10 @@ describe("publishGraphEditScript", () => {
       },
     ];
 
-    publishGraphEditScript({
+    publishGraphEditRequest({
       sceneId: "WORKSPACE_RESOURCE_RELATION",
       baseWorkspaceRevision: 5,
+      source: "FRONTEND",
       operations: [
         {
           type: "UPSERT_NODE",
@@ -396,7 +400,12 @@ describe("publishGraphEditScript", () => {
 
     requestArchitectureGraph({ viewport: { maxVisibleNodes: 80 } });
     requestPackageDependencyGraph("com.example.orders", { includeJdk: false });
-    requestClassDiagram("component:orders", { classDiagram: { neighborhoodLimit: 48 } });
+    requestClassDiagram("component:orders", {
+      classDiagram: {
+        neighborhoodLimit: 48,
+        relationDetail: "SCOPED_BODY_RELATIONS",
+      },
+    });
     requestReviewGraph(["diff:1"], { review: { maxChangedNodes: 160 } });
 
     expectCommand(sendCommand, 0, "requestIndexedGraph", {
@@ -411,7 +420,10 @@ describe("publishGraphEditScript", () => {
     expectCommand(sendCommand, 2, "requestIndexedGraph", {
       preset: "CLASS_DIAGRAM",
       scopeNodeId: "component:orders",
-      classDiagram: { neighborhoodLimit: 48 },
+      classDiagram: {
+        neighborhoodLimit: 48,
+        relationDetail: "SCOPED_BODY_RELATIONS",
+      },
     });
     expectCommand(sendCommand, 3, "requestIndexedGraph", {
       preset: "REVIEW",
@@ -522,9 +534,10 @@ describe("publishGraphEditScript", () => {
 
     announceFrontendReady(12);
     acknowledgeSnapshot(13);
-    publishGraphEditScript({
+    publishGraphEditRequest({
       sceneId: "WORKSPACE_FLOWCHART",
       baseWorkspaceRevision: 7,
+      source: "FRONTEND",
       operations: [
         {
           type: "UPSERT_NODE",
@@ -553,6 +566,7 @@ describe("publishGraphEditScript", () => {
       payload: {
         sceneId: "WORKSPACE_FLOWCHART",
         baseWorkspaceRevision: 7,
+        source: "FRONTEND",
         operations: [
           expect.objectContaining({
             type: "UPSERT_NODE",

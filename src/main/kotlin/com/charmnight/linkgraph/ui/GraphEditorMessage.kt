@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
+import com.charmnight.linkgraph.application.model.GraphEditRequest
 import com.charmnight.linkgraph.llm.GraphBeautificationResult as GraphBeautificationPayload
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
@@ -60,11 +61,11 @@ sealed interface GraphEditorMessage {
     ) : GraphEditorMessage
 
     /**
-     * 请求把当前 scene 的结构编辑脚本应用到 canonical workspace graph。
+     * 请求把当前 scene 的结构编辑请求应用到 canonical workspace graph。
      */
-    data class ApplyGraphEditScript(
-        /** 保存待应用的编辑脚本。 */
-        val script: GraphEditScript,
+    data class ApplyGraphEditRequest(
+        /** 保存待应用的编辑请求。 */
+        val request: GraphEditRequest,
     ) : GraphEditorMessage
 
     /**

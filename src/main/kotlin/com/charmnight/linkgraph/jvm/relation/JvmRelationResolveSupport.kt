@@ -124,6 +124,21 @@ internal fun projectClasses(index: JvmSymbolIndex): List<JvmClassSymbol> =
 internal fun projectMethods(index: JvmSymbolIndex): List<JvmMethodSymbol> =
     index.methodsBySignature.values.sortedBy(JvmMethodSymbol::signature)
 
+internal fun projectMethodsForBodyRelations(
+    index: JvmSymbolIndex,
+    budget: JvmResolutionBudget,
+): List<JvmMethodSymbol> {
+    val allowedClassIds = budget.methodBodySourceClassIds
+    return projectMethods(index)
+        .asSequence()
+        .filter { method ->
+            allowedClassIds.isEmpty() ||
+                index.classByQualifiedName(method.ownerClassName)?.id in allowedClassIds
+        }
+        .take(budget.maxMethodBodiesScanned.coerceAtLeast(0))
+        .toList()
+}
+
 internal fun projectFields(index: JvmSymbolIndex): List<JvmFieldSymbol> =
     index.fieldsByQualifiedName.values.sortedBy(JvmFieldSymbol::qualifiedName)
 

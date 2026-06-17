@@ -38,10 +38,17 @@ data class GraphLayoutPosition(
     val y: Double,
 )
 
-data class GraphEditScript(
+enum class GraphEditRequestSource {
+    FRONTEND,
+    AI_TOOL,
+    DEBUG_AUTOMATION,
+}
+
+data class GraphEditRequest(
     val sceneId: GraphSceneId,
     val baseWorkspaceRevision: Long,
     val operations: List<GraphEditOperation>,
+    val source: GraphEditRequestSource,
 )
 
 sealed interface GraphEditOperation {
@@ -61,3 +68,54 @@ sealed interface GraphEditOperation {
         val edgeId: String,
     ) : GraphEditOperation
 }
+
+enum class GraphEditIssueCode {
+    STALE_BASE_REVISION,
+    EMPTY_OPERATIONS,
+    DUPLICATE_NODE_ID,
+    DUPLICATE_EDGE_ID,
+    MISSING_NODE,
+    MISSING_EDGE,
+    INVALID_EDGE_ENDPOINT,
+    READONLY_PROJECTION_NODE,
+    READONLY_PROJECTION_EDGE,
+    UNSUPPORTED_SCENE,
+    INVALID_NODE_TYPE,
+    INVALID_EDGE_TYPE,
+    INVALID_SOURCE_TAG,
+    PAYLOAD_TOO_LARGE,
+}
+
+data class GraphEditIssue(
+    val code: GraphEditIssueCode,
+    val message: String,
+    val operationIndex: Int? = null,
+    val targetId: String? = null,
+    val retryable: Boolean = false,
+)
+
+data class GraphEditRejected(
+    val issues: List<GraphEditIssue>,
+    val currentWorkspaceRevision: Long,
+)
+
+sealed interface GraphEditResult {
+    data class Applied(
+        val graph: com.charmnight.linkgraph.model.GraphDocument,
+        val transaction: GraphEditTransaction,
+    ) : GraphEditResult
+
+    data class Rejected(
+        val rejection: GraphEditRejected,
+    ) : GraphEditResult
+}
+
+data class GraphEditTransaction(
+    val graphBeforeApply: com.charmnight.linkgraph.model.GraphDocument,
+    val graphAfterApply: com.charmnight.linkgraph.model.GraphDocument,
+    val request: GraphEditRequest,
+    val appliedOperations: List<GraphEditOperation>,
+    val source: GraphEditRequestSource,
+    val workspaceRevisionBefore: Long,
+    val workspaceRevisionAfter: Long,
+)

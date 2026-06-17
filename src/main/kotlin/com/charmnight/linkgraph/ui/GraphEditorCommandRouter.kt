@@ -32,7 +32,7 @@ class GraphEditorCommandRouter(
             is GraphEditorMessage.ImportMermaid -> ApplicationCommand.ImportMermaid(current.mermaid)
             GraphEditorMessage.ExportMermaid -> ApplicationCommand.ExportMermaid
             GraphEditorMessage.ShowDiffMode -> ApplicationCommand.ShowDiffMode
-            is GraphEditorMessage.ApplyGraphEditScript -> ApplicationCommand.ApplyGraphEditScript(current.script)
+            is GraphEditorMessage.ApplyGraphEditRequest -> ApplicationCommand.ApplyGraphEditRequest(current.request)
             is GraphEditorMessage.LayoutChanged -> ApplicationCommand.LayoutChanged(current.positions)
             is GraphEditorMessage.RequestSourceNavigation -> ApplicationCommand.RequestSourceNavigation(current.nodeId)
             is GraphEditorMessage.RequestExpandOverflowNode -> ApplicationCommand.RequestExpandOverflowNode(current.nodeId)

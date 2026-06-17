@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.mermaid.MermaidIssue
+import com.charmnight.linkgraph.application.model.GraphEditTransaction
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.sync.SyncPreviewItem
@@ -22,12 +23,14 @@ class WorkspaceStatePresenter(
         selectedMethodSignature: String?,
         preserveDraftPatchUndo: Boolean,
         workingGraphDirty: Boolean,
+        graphEditTransaction: GraphEditTransaction? = null,
     ) {
         stateService.graph.markGraphChanged(
             graph = graph,
             selectedMethodSignature = selectedMethodSignature,
             preserveDraftPatchUndo = preserveDraftPatchUndo,
             workingGraphDirty = workingGraphDirty,
+            graphEditTransaction = graphEditTransaction,
         )
         requestBrowserSync()
     }

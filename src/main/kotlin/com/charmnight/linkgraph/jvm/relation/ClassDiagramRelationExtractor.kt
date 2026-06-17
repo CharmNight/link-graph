@@ -23,6 +23,7 @@ import com.intellij.psi.PsiParameter
 import com.intellij.psi.PsiReferenceExpression
 import com.intellij.psi.PsiType
 import com.intellij.psi.PsiTypeElement
+import com.intellij.openapi.progress.ProgressManager
 
 enum class ClassDiagramRelationRole(
     val label: String,
@@ -147,13 +148,20 @@ object ClassDiagramRelationExtractor {
     fun extractMethodCallRelations(context: JvmResolutionContext): List<JvmRelation> {
         val calls = linkedMapOf<Pair<String, String>, MutableList<JvmEvidenceRef>>()
         val metadata = linkedMapOf<Pair<String, String>, MutableMap<String, LinkedHashSet<String>>>()
-        projectMethods(context.symbolIndex).forEach { methodSymbol ->
+        var resolvedCallExpressions = 0
+        projectMethodsForBodyRelations(context.symbolIndex, context.budget).forEach { methodSymbol ->
+            ProgressManager.checkCanceled()
             val psiMethod = context.findPsiMethod(methodSymbol) ?: return@forEach
             val sourceClass = context.symbolIndex.classByQualifiedName(methodSymbol.ownerClassName) ?: return@forEach
             val ownerPackageName = sourceClass.packageName
             psiMethod.accept(
                 object : JavaRecursiveElementVisitor() {
                     override fun visitMethodCallExpression(expression: PsiMethodCallExpression) {
+                        ProgressManager.checkCanceled()
+                        if (resolvedCallExpressions >= context.budget.maxMethodCallExpressionsResolved) {
+                            return
+                        }
+                        resolvedCallExpressions += 1
                         val targetMethod = expression.resolveMethod()
                         val resolvedTargetClass = targetMethod?.containingClass
                         val targetClass = resolvedTargetClass?.ownerClassSymbol(context.symbolIndex)

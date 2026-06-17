@@ -1,6 +1,8 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.application.model.GraphEditRejected
+import com.charmnight.linkgraph.application.model.GraphEditTransaction
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
 import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
 import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
@@ -295,6 +297,7 @@ internal fun GraphEditorStateSnapshot.withWorkspaceGraphChanged(
     selectedMethodSignatureOverride: String? = null,
     preserveDraftPatchUndo: Boolean = false,
     workingGraphDirtyOverride: Boolean = true,
+    graphEditTransaction: GraphEditTransaction? = null,
 ): GraphEditorStateSnapshot {
     val effectiveSignature = selectedMethodSignatureOverride ?: selectedMethodSignature
     val nextViewDocuments = buildViewDocuments(
@@ -346,12 +349,33 @@ internal fun GraphEditorStateSnapshot.withWorkspaceGraphChanged(
         resourceRelationView = nextViewDocuments.resourceRelationView,
         draftPatchUndoState = if (preserveDraftPatchUndo) draftPatchUndoState else null,
         workingGraphDirty = workingGraphDirtyOverride,
+        lastGraphEditTransaction = graphEditTransaction,
+        lastGraphEditRejection = null,
         sceneStates = sceneStates.withSceneState(currentSceneId, nextSceneState),
         semanticRevision = semanticRevision + 1,
         workspaceRevision = workspaceRevision + 1,
         snapshotRevision = snapshotRevision + 1,
         selectedMethodSignature = effectiveSignature,
         lastMessageType = "workspaceGraphChanged",
+    )
+}
+
+internal fun GraphEditorStateSnapshot.withGraphEditRejected(
+    rejection: GraphEditRejected,
+): GraphEditorStateSnapshot {
+    val firstIssue = rejection.issues.firstOrNull()
+    val message = firstIssue?.let { issue ->
+        "图编辑失败：${issue.code.name} - ${issue.message}"
+    } ?: "图编辑失败。"
+    return copy(
+        operationFeedback = OperationFeedback(
+            level = OperationFeedbackLevel.ERROR,
+            message = message,
+        ),
+        lastGraphEditRejection = rejection,
+        lastGraphEditTransaction = null,
+        snapshotRevision = snapshotRevision + 1,
+        lastMessageType = "graphEditRejected",
     )
 }
 
@@ -554,6 +578,8 @@ private fun GraphEditorStateSnapshot.resetDerivedGraphState(
         mermaidIssues = emptyList(),
         syncPreviewItems = emptyList(),
         syncPreviewRequested = false,
+        lastGraphEditTransaction = null,
+        lastGraphEditRejection = null,
         draftVersion = if (preserveDrafts) draftVersion else 0,
         generationPlan = if (preserveWorkbenchPlan) generationPlan else null,
         generationPlanDraftVersion = if (preserveWorkbenchPlan) generationPlanDraftVersion else null,

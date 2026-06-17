@@ -1,5 +1,5 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
-import { publishGraphEditScript, publishLayoutChange } from "../api";
+import { publishGraphEditRequest, publishLayoutChange } from "../api";
 import { measureDuration, measureStart, summarizeGraph, traceLinkGraph } from "../debug";
 import { clearStoredNodePosition, extractLayoutPayload, extractLayoutState, normalizeGraphNodes } from "../graphState";
 import type {
@@ -8,7 +8,7 @@ import type {
   ClassDiagramViewDocument,
   FactGraphViewDocument,
   GraphEditOperation,
-  GraphEditScript,
+  GraphEditRequest,
   LinkGraphSceneId,
   FlowchartViewDocument,
   LinkGraphDocument,
@@ -60,12 +60,12 @@ interface UseGraphEditControllerArgs {
 }
 
 export function useGraphEditController(args: UseGraphEditControllerArgs) {
-  function buildGraphEditScript(
+  function buildGraphEditRequest(
     previousNodes: LinkGraphNode[],
     previousEdges: LinkGraphEdge[],
     nextNodes: LinkGraphNode[],
     nextEdges: LinkGraphEdge[],
-  ): GraphEditScript {
+  ): GraphEditRequest {
     const previousNodesById = new Map(previousNodes.map((node) => [node.id, node]));
     const previousEdgesById = new Map(previousEdges.map((edge) => [edge.id, edge]));
     const operations: GraphEditOperation[] = [];
@@ -109,6 +109,7 @@ export function useGraphEditController(args: UseGraphEditControllerArgs) {
       sceneId: args.currentSceneId,
       baseWorkspaceRevision: args.workspaceRevision ?? 0,
       operations,
+      source: "FRONTEND",
     };
   }
 
@@ -206,8 +207,8 @@ export function useGraphEditController(args: UseGraphEditControllerArgs) {
     }
     args.setQaTargetNodeIds((current) => current.filter((nodeId) => laidOutNodes.some((node) => node.id === nodeId)));
     args.clearLocalDerivedGraphState();
-    publishGraphEditScript(
-      buildGraphEditScript(
+    publishGraphEditRequest(
+      buildGraphEditRequest(
         args.nodes,
         args.edges,
         laidOutNodes,

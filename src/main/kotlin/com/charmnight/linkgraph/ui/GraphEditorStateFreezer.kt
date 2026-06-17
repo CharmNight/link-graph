@@ -4,6 +4,9 @@ import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
 import com.charmnight.linkgraph.codegen.PreparedCodeEdit
 import com.charmnight.linkgraph.application.indexed.IndexedGraphSummary
+import com.charmnight.linkgraph.application.model.GraphEditOperation
+import com.charmnight.linkgraph.application.model.GraphEditRejected
+import com.charmnight.linkgraph.application.model.GraphEditTransaction
 import com.charmnight.linkgraph.application.model.GraphProjectionEdgeMapping
 import com.charmnight.linkgraph.application.model.GraphProjectionIndex
 import com.charmnight.linkgraph.application.model.GraphProjectionNodeMapping
@@ -95,6 +98,8 @@ internal fun GraphEditorStateSnapshot.freeze(): GraphEditorStateSnapshot {
         diffGraph = workspaceState.diffGraph?.freeze(),
         mermaidIssues = workspaceState.mermaidIssues.toList(),
         syncPreviewItems = workspaceState.syncPreviewItems.toList(),
+        lastGraphEditTransaction = workspaceState.lastGraphEditTransaction?.freeze(),
+        lastGraphEditRejection = workspaceState.lastGraphEditRejection?.freeze(),
         generationPlan = generationState.generationPlan?.freeze(),
         draftValidationState = generationState.draftValidationState?.freeze(),
         generationPlanDiscussionSession = generationState.generationPlanDiscussionSession?.freeze(),
@@ -167,6 +172,25 @@ private fun GraphPatch.freeze(): GraphPatch {
         removedEdgeIds = removedEdgeIds.toList(),
     )
 }
+
+private fun GraphEditRejected.freeze(): GraphEditRejected =
+    copy(issues = issues.toList())
+
+private fun GraphEditTransaction.freeze(): GraphEditTransaction =
+    copy(
+        graphBeforeApply = graphBeforeApply.freeze(),
+        graphAfterApply = graphAfterApply.freeze(),
+        request = request.copy(operations = request.operations.map { operation -> operation.freeze() }),
+        appliedOperations = appliedOperations.map { operation -> operation.freeze() },
+    )
+
+private fun GraphEditOperation.freeze(): GraphEditOperation =
+    when (this) {
+        is GraphEditOperation.UpsertNode -> copy(node = node.freeze())
+        is GraphEditOperation.RemoveNode -> copy()
+        is GraphEditOperation.UpsertEdge -> copy(edge = edge.freeze())
+        is GraphEditOperation.RemoveEdge -> copy()
+    }
 
 private fun ArchitectureGraphResult.freeze(): ArchitectureGraphResult {
     return copy(

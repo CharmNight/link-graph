@@ -3,6 +3,7 @@ package com.charmnight.linkgraph.application.workflow
 import com.charmnight.linkgraph.application.model.toRiskResolutionSnapshot
 import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
+import com.charmnight.linkgraph.application.port.GraphEditRequestExecutor
 import com.charmnight.linkgraph.application.port.ToolGraphSnapshotProvider
 import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.investigation.adapter.InvestigationGraphPatchAdapter
@@ -94,6 +95,8 @@ internal class ReviewWorkflow(
     private val artifactStoreProvider: () -> ArtifactStore = {
         project.getService(AgentArtifactStoreService::class.java).artifactStore
     },
+    /** 受控图编辑入口，供 runtime tool 调用。 */
+    private val graphEditRequestExecutor: GraphEditRequestExecutor? = null,
     /** 运行时链路追踪是否开启。 */
     private val runtimeQaTraceEnabled: Boolean =
         LinkGraphDebugEnvironment.isEnabled("LINKGRAPH_DEBUG_TRACE"),
@@ -419,6 +422,7 @@ internal class ReviewWorkflow(
                 project = project,
                 snapshotSupplier = toolGraphSnapshotProvider::snapshot,
                 artifactStore = artifactStoreProvider(),
+                graphEditRequestExecutor = graphEditRequestExecutor,
             ),
         )
         debugLazy(logger.isDebugEnabled, logger::debug) {

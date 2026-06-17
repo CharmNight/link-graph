@@ -156,6 +156,32 @@ export function graphViewportContentSignature(
   ].join("|");
 }
 
+export function graphRenderCommitTraceSignature(args: {
+  graphShapeSignature: string;
+  bounds: GraphContentBounds | null;
+  selectedNodeId: string | null;
+  selectedGroupNodeCount: number;
+  supportsResizeObserver: boolean;
+}): string {
+  const boundsSignature = args.bounds
+    ? [
+        args.bounds.minX,
+        args.bounds.minY,
+        args.bounds.maxX,
+        args.bounds.maxY,
+        args.bounds.width,
+        args.bounds.height,
+      ].join(":")
+    : "none";
+  return [
+    args.graphShapeSignature,
+    boundsSignature,
+    args.selectedNodeId ?? "",
+    args.selectedGroupNodeCount,
+    args.supportsResizeObserver ? "resize-observer" : "no-resize-observer",
+  ].join("|");
+}
+
 export function reactFlowPaddingPixels(size: number, padding: number): number {
   if (padding <= 0) {
     return 0;

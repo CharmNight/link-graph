@@ -258,6 +258,7 @@ describe("App layout bridge", () => {
     expectBridgeCommandCount("applyGraphEditScript", 1);
     expectBridgeCommand("applyGraphEditScript", expect.objectContaining({
       sceneId: "WORKSPACE_FACT",
+      source: "FRONTEND",
       operations: expect.arrayContaining([
         expect.objectContaining({
           type: "UPSERT_NODE",

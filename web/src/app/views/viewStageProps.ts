@@ -2,6 +2,7 @@ import type {
   DraftCompareProjection,
   GraphFocusRequest,
   GraphSurfaceExperimentFlags,
+  IndexedClassDiagramOptions,
   IndexedGraphRequestStates,
   GraphPosition,
 } from "../types";
@@ -53,7 +54,7 @@ export interface IndexedReadonlyStageProps extends BaseStageProps {
   onRequestClassDiagram?: (scopeNodeId?: string | null) => void;
   onRequestClassDiagramWithOptions?: (
     scopeNodeId: string | null | undefined,
-    options: { neighborhoodLimit?: number; memberLimit?: number },
+    options: Partial<IndexedClassDiagramOptions>,
   ) => void;
   onRequestClassUsages?: (
     targetNodeId: string,

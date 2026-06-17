@@ -4,7 +4,7 @@ import type {
   Certainty,
   DraftPatchPreviewSource,
   DiffStatus,
-  GraphEditScript,
+  GraphEditRequest,
   IndexedClassDiagramOptions,
   IndexedClassUsageOptions,
   IndexedReviewGraphOptions,
@@ -377,6 +377,7 @@ export function requestClassDiagram(scopeNodeId?: string | null, options: {
     classDiagram: definedPayload({
       neighborhoodLimit: options.classDiagram?.neighborhoodLimit,
       memberLimit: options.classDiagram?.memberLimit,
+      relationDetail: options.classDiagram?.relationDetail,
     }),
   }));
 }
@@ -466,11 +467,12 @@ export function requestRemoveInvocationExpansion(expansionId: string): BridgeInv
   return invokeBridgeAction("requestRemoveInvocationExpansion", { expansionId }, { expansionId });
 }
 
-export function publishGraphEditScript(script: GraphEditScript): BridgeInvocationResult {
+export function publishGraphEditRequest(request: GraphEditRequest): BridgeInvocationResult {
   const payload = {
-    sceneId: script.sceneId,
-    baseWorkspaceRevision: script.baseWorkspaceRevision,
-    operations: script.operations.map((operation) => {
+    sceneId: request.sceneId,
+    baseWorkspaceRevision: request.baseWorkspaceRevision,
+    source: request.source,
+    operations: request.operations.map((operation) => {
       switch (operation.type) {
         case "UPSERT_NODE":
           return {
@@ -516,10 +518,11 @@ export function publishGraphEditScript(script: GraphEditScript): BridgeInvocatio
       }
     }),
   };
-  traceLinkGraph("api.publishGraphEditScript", {
-    sceneId: script.sceneId,
-    baseWorkspaceRevision: script.baseWorkspaceRevision,
-    operationCount: script.operations.length,
+  traceLinkGraph("api.publishGraphEditRequest", {
+    sceneId: request.sceneId,
+    baseWorkspaceRevision: request.baseWorkspaceRevision,
+    source: request.source,
+    operationCount: request.operations.length,
   });
   return invokeBridgeAction("applyGraphEditScript", payload, payload);
 }

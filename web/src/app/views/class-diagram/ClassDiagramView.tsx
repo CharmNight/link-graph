@@ -231,9 +231,7 @@ export function ClassDiagramView({
     ?? (view.summary.indexed ? { phase: "SUCCEEDED" as const } : null);
   const isStructureOnlyStillLoading = view.summary.relationCompleteness === "STRUCTURE_ONLY"
     && effectiveClassDiagramRequestState?.phase === "RUNNING";
-  const baseGraph = isStructureOnlyStillLoading
-    ? { nodes: [], edges: [] }
-    : view.visibleGraph;
+  const baseGraph = view.visibleGraph;
   const presentedGraph = draftCompareProjection?.compareGraph ?? baseGraph;
   const queryFilteredGraph = useMemo(() => {
     const filteredNodes = presentedGraph.nodes.filter((node) => nodeMatchesClassDiagramQuery(node, query));
@@ -398,6 +396,13 @@ export function ClassDiagramView({
           editable={false}
           layoutEditable
           panOnDrag={[1]}
+          panOnScroll
+          panOnScrollMode="free"
+          panOnScrollSpeed={0.8}
+          zoomOnScroll
+          preventScrolling={false}
+          nodeClickDistance={6}
+          paneClickDistance={6}
           groupSelectionEnabled={false}
           emptyState={(
             isLayoutLoading ? (
@@ -431,6 +436,22 @@ export function ClassDiagramView({
                     close();
                   },
                 },
+              );
+              if (view.summary.relationCompleteness === "STRUCTURE_ONLY") {
+                actions.push({
+                  id: "class-diagram-enrich-relations",
+                  label: "补齐当前范围调用",
+                  onSelect: () => {
+                    onRequestClassDiagramWithOptions(anchorTypeNodeId, {
+                      neighborhoodLimit: neighborhoodLimit ?? 24,
+                      memberLimit,
+                      relationDetail: "SCOPED_BODY_RELATIONS",
+                    });
+                    close();
+                  },
+                });
+              }
+              actions.push(
                 {
                   id: "class-diagram-more-members",
                   label: "显示更多成员",

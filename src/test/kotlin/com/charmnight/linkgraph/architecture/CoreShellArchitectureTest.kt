@@ -476,6 +476,7 @@ class CoreShellArchitectureTest {
         val projectComponents = read("src/main/kotlin/com/charmnight/linkgraph/application/GraphEditorApplicationService.kt")
         val graphWorkspaceWorkflow = read("src/main/kotlin/com/charmnight/linkgraph/application/workflow/GraphWorkspaceWorkflow.kt")
         val workspaceGraphUseCase = read("src/main/kotlin/com/charmnight/linkgraph/application/usecase/WorkspaceGraphUseCase.kt")
+        val graphEditApplier = read("src/main/kotlin/com/charmnight/linkgraph/application/edit/GraphEditApplier.kt")
 
         assertTrue(
             projectComponents.contains("navigationNodeFinder = ::findTrustedNavigationNodeFromIndex"),
@@ -483,8 +484,9 @@ class CoreShellArchitectureTest {
         )
         assertTrue(
             graphWorkspaceWorkflow.contains("WorkspaceGraphUseCase") &&
-                workspaceGraphUseCase.contains("frontendGraphMutationSanitizer.sanitize"),
-            "Workspace graph edits must sanitize frontend graph mutations inside the use case before persistence",
+                workspaceGraphUseCase.contains("GraphEditApplier") &&
+                graphEditApplier.contains("frontendGraphMutationSanitizer.sanitize"),
+            "Workspace graph edits must sanitize frontend graph mutations inside the graph edit applier before persistence",
         )
         assertExists("src/main/kotlin/com/charmnight/linkgraph/application/workflow/FrontendGraphMutationSanitizer.kt")
     }

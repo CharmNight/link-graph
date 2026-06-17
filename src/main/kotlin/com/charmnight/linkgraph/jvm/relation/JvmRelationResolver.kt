@@ -41,6 +41,9 @@ data class JvmResolutionBudget(
     val maxMethods: Int = 80_000,
     val maxRelations: Int = 80_000,
     val maxSamplesPerRelation: Int = 5,
+    val methodBodySourceClassIds: Set<String> = emptySet(),
+    val maxMethodBodiesScanned: Int = Int.MAX_VALUE,
+    val maxMethodCallExpressionsResolved: Int = Int.MAX_VALUE,
 )
 
 class JvmRelationResolverRegistry(

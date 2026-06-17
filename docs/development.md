@@ -82,7 +82,7 @@ npm --prefix web run build
 重点看这些阶段：
 
 - `architectureGraph.buildIndex` / `classDiagram.buildIndex` / `reviewGraph.buildIndex`：项目级 JVM 符号与关系索引耗时。
-- `classDiagram.buildStructureIndex` / `classDiagram.completeBuildIndex`：类图两阶段加载耗时。首次无完整索引时，类图会先构建结构快照，再异步补齐完整关系。
+- `classDiagram.buildStructureIndex` / `classDiagram.scopedBuildIndex` / `classDiagram.completeBuildIndex`：类图结构加载、当前范围调用补齐和显式完整关系补齐耗时。普通类图请求默认停留在结构快照；只有用户按需补齐当前范围调用或显式请求完整关系时，才会继续构建方法体或完整关系。
 - `architectureIndex.sourceComponents` / `architectureIndex.cacheKey`：索引依赖的源码解析器、附加 Jar 指纹和 cache key 构造耗时。
 - `jvmSymbolIndex.contentRoots` / `jvmSymbolIndex.allClassesSearch` / `jvmSymbolIndex.shortNamesCache`：项目文件扫描、IDE 类索引搜索和短名缓存遍历耗时。
 - `jvmSymbolIndex.attachedJars` / `jvmSymbolIndex.externalLibraries` / `jvmSymbolIndex.jdk`：附加 Jar、外部库、JDK 类型扩展耗时。
@@ -95,7 +95,7 @@ npm --prefix web run build
 - `useMeasuredLayout.start` / `elkLayout.complete` / `useMeasuredLayout.complete`：前端 ReactFlow/ELK 布局耗时。
 - `graphFlowSurface.renderCommitted`：ReactFlow surface 提交渲染耗时。
 
-如果 `buildIndex` 首次很慢但后续同项目请求明显变快，通常是冷索引成本；如果类图先出现结构节点、稍后关系补齐，优先对比 `classDiagram.buildStructureIndex` 和 `classDiagram.completeBuildIndex`；如果 `elkLayout.complete` 对 Review Graph 或架构图持续偏高，优先看 visible 节点/边数量和布局策略；如果 `transport.renderScript` 或 payload 阶段偏高，优先看是否把大视图随无关状态更新反复发送。
+如果 `buildIndex` 首次很慢但后续同项目请求明显变快，通常是冷索引成本；如果类图先出现结构节点、随后按需补齐调用或完整关系，优先对比 `classDiagram.buildStructureIndex`、`classDiagram.scopedBuildIndex` 和 `classDiagram.completeBuildIndex`；如果 `elkLayout.complete` 对 Review Graph 或架构图持续偏高，优先看 visible 节点/边数量和布局策略；如果 `transport.renderScript` 或 payload 阶段偏高，优先看是否把大视图随无关状态更新反复发送。
 
 ## 改动文档时的要求
 

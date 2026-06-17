@@ -6,6 +6,7 @@ import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSin
 import com.charmnight.linkgraph.application.port.GraphEditorPresentationProvider
 import com.charmnight.linkgraph.application.port.ToolGraphSnapshotProvider
 import com.charmnight.linkgraph.application.port.WorkspaceGraphCommitter
+import com.charmnight.linkgraph.application.model.GraphEditTransaction
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.ui.GraphEditorSyncNotifier
 import com.charmnight.linkgraph.ui.toToolGraphSnapshot
@@ -45,6 +46,7 @@ internal class GraphEditorApplicationProjectionService(
                 preserveDraftPatchUndo: Boolean,
                 workingGraphDirty: Boolean,
                 syncBrowser: Boolean,
+                graphEditTransaction: GraphEditTransaction?,
             ): Boolean {
                 val currentStateService = stateService
                 val revision = expectedSnapshotRevision ?: currentStateService.snapshot().snapshotRevision
@@ -54,6 +56,7 @@ internal class GraphEditorApplicationProjectionService(
                         selectedMethodSignatureOverride = selectedMethodSignature,
                         preserveDraftPatchUndo = preserveDraftPatchUndo,
                         workingGraphDirtyOverride = workingGraphDirty,
+                        graphEditTransaction = graphEditTransaction,
                     )
                 }
                 if (syncBrowser) {

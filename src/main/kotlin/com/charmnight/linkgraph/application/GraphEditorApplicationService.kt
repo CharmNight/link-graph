@@ -309,6 +309,7 @@ internal class GraphEditorApplicationService(
             asyncRequestLifecycle = asyncRequestLifecycle,
             logger = logger,
             artifactStoreProvider = { artifactStore },
+            graphEditRequestExecutor = workspaceFlow::handleGraphEditRequest,
         )
     }
 

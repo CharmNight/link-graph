@@ -38,6 +38,13 @@ vi.mock("@xyflow/react", async () => {
     onSelectionDragStop,
     nodesDraggable,
     panOnDrag,
+    panOnScroll,
+    panOnScrollMode,
+    panOnScrollSpeed,
+    zoomOnScroll,
+    preventScrolling,
+    nodeClickDistance,
+    paneClickDistance,
     multiSelectionKeyCode,
     selectNodesOnDrag,
     children,
@@ -78,6 +85,13 @@ vi.mock("@xyflow/react", async () => {
     ) => void;
     nodesDraggable?: boolean;
     panOnDrag?: boolean | number[];
+    panOnScroll?: boolean;
+    panOnScrollMode?: string;
+    panOnScrollSpeed?: number;
+    zoomOnScroll?: boolean;
+    preventScrolling?: boolean;
+    nodeClickDistance?: number;
+    paneClickDistance?: number;
     multiSelectionKeyCode?: string | string[] | null;
     selectNodesOnDrag?: boolean;
     children?: ReactNode;
@@ -93,6 +107,13 @@ vi.mock("@xyflow/react", async () => {
         data-min-zoom={String(minZoom ?? "")}
         data-nodes-draggable={String(nodesDraggable)}
         data-pan-on-drag={Array.isArray(panOnDrag) ? panOnDrag.join(",") : String(panOnDrag)}
+        data-pan-on-scroll={String(panOnScroll)}
+        data-pan-on-scroll-mode={String(panOnScrollMode ?? "")}
+        data-pan-on-scroll-speed={String(panOnScrollSpeed ?? "")}
+        data-zoom-on-scroll={String(zoomOnScroll)}
+        data-prevent-scrolling={String(preventScrolling)}
+        data-node-click-distance={String(nodeClickDistance ?? "")}
+        data-pane-click-distance={String(paneClickDistance ?? "")}
         data-multi-selection-key-code={multiSelectionKeyCode === null ? "null" : String(multiSelectionKeyCode)}
         data-select-nodes-on-drag={String(selectNodesOnDrag)}
         onClick={() => onPaneClick?.()}
@@ -104,9 +125,15 @@ vi.mock("@xyflow/react", async () => {
               key={node.id}
               data-testid={`reactflow-node-${node.id}`}
               data-position={`${node.position?.x ?? 0},${node.position?.y ?? 0}`}
-              onClick={(event) => onNodeClick?.(event, { id: node.id })}
+              onClick={(event) => {
+                event.stopPropagation();
+                onNodeClick?.(event, { id: node.id });
+              }}
               onDoubleClick={(event) => onNodeDoubleClick?.(event, { id: node.id })}
-              onContextMenu={(event) => onNodeContextMenu?.(event, { id: node.id })}
+              onContextMenu={(event) => {
+                event.stopPropagation();
+                onNodeContextMenu?.(event, { id: node.id });
+              }}
             >
               {node.data.label}
             </div>
@@ -252,7 +279,7 @@ function baseNode(id = "method:anchor"): LinkGraphNode {
   };
 }
 
-function renderSurface(overrides: Partial<ComponentProps<typeof GraphFlowSurface>> = {}) {
+function surfaceProps(overrides: Partial<ComponentProps<typeof GraphFlowSurface>> = {}): ComponentProps<typeof GraphFlowSurface> {
   const node = baseNode();
   const edge: LinkGraphEdge = {
     id: "edge:anchor->tail",
@@ -260,7 +287,7 @@ function renderSurface(overrides: Partial<ComponentProps<typeof GraphFlowSurface
     source: "method:anchor",
     target: "method:tail",
   };
-  const props: ComponentProps<typeof GraphFlowSurface> = {
+  return {
     nodes: [node],
     edges: [edge],
     flowNodes: [
@@ -313,6 +340,10 @@ function renderSurface(overrides: Partial<ComponentProps<typeof GraphFlowSurface
     nodeViewportSize: () => ({ width: 240, height: 120 }),
     ...overrides,
   };
+}
+
+function renderSurface(overrides: Partial<ComponentProps<typeof GraphFlowSurface>> = {}) {
+  const props = surfaceProps(overrides);
   return render(<GraphFlowSurface {...props} />);
 }
 
@@ -420,6 +451,44 @@ describe("GraphFlowSurface", () => {
         expect.objectContaining({ selector: ".architecture-layer-frame" }),
       ]),
     );
+  });
+
+  it("does not repeat render-commit traces for local initialization rerenders when graph input is unchanged", () => {
+    installResizeObserverStub();
+    const traceSink = vi.fn();
+    window.linkGraphDebugTrace = traceSink;
+
+    renderSurface();
+
+    const renderCommitTraces = traceSink.mock.calls
+      .map(([payload]) => JSON.parse(String(payload)))
+      .filter((trace) => trace.event === "graphFlowSurface.renderCommitted");
+
+    expect(renderCommitTraces).toHaveLength(1);
+  });
+
+  it("does not repeat render-commit traces when rerendered with equivalent graph arrays", () => {
+    installResizeObserverStub();
+    const traceSink = vi.fn();
+    window.linkGraphDebugTrace = traceSink;
+    const props = surfaceProps();
+
+    const { rerender } = render(<GraphFlowSurface {...props} />);
+    rerender(
+      <GraphFlowSurface
+        {...props}
+        nodes={props.nodes.map((node) => ({ ...node }))}
+        edges={props.edges.map((edge) => ({ ...edge }))}
+        flowNodes={props.flowNodes.map((node) => ({ ...node, position: { ...node.position } }))}
+        flowEdges={props.flowEdges.map((edge) => ({ ...edge }))}
+      />,
+    );
+
+    const renderCommitTraces = traceSink.mock.calls
+      .map(([payload]) => JSON.parse(String(payload)))
+      .filter((trace) => trace.event === "graphFlowSurface.renderCommitted");
+
+    expect(renderCommitTraces).toHaveLength(1);
   });
 
   it("lowers the React Flow minimum zoom so very tall graphs can still fit inside the canvas", () => {
@@ -1036,6 +1105,65 @@ describe("GraphFlowSurface", () => {
       clientY: 260,
     });
     expect(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Node Action method:anchor" })).toBeInTheDocument();
+  });
+
+  it("passes scroll and click-distance interaction settings through to React Flow", () => {
+    installResizeObserverStub();
+
+    renderSurface({
+      panOnScroll: true,
+      panOnScrollMode: "vertical",
+      panOnScrollSpeed: 0.8,
+      zoomOnScroll: false,
+      preventScrolling: false,
+      nodeClickDistance: 6,
+      paneClickDistance: 6,
+    });
+
+    const reactFlow = screen.getByTestId("reactflow");
+    expect(reactFlow).toHaveAttribute("data-pan-on-scroll", "true");
+    expect(reactFlow).toHaveAttribute("data-pan-on-scroll-mode", "vertical");
+    expect(reactFlow).toHaveAttribute("data-pan-on-scroll-speed", "0.8");
+    expect(reactFlow).toHaveAttribute("data-zoom-on-scroll", "false");
+    expect(reactFlow).toHaveAttribute("data-prevent-scrolling", "false");
+    expect(reactFlow).toHaveAttribute("data-node-click-distance", "6");
+    expect(reactFlow).toHaveAttribute("data-pane-click-distance", "6");
+  });
+
+  it("keeps node selection switching and node context menus active after a layout drag", () => {
+    installResizeObserverStub();
+    const onSelectNode = vi.fn();
+    const anchor = baseNode("method:anchor");
+    const tail = { ...baseNode("method:tail"), position: { x: 420, y: 240 } };
+
+    renderSurface({
+      nodes: [anchor, tail],
+      flowNodes: [anchor, tail].map((node) => ({
+        id: node.id,
+        data: { label: node.title },
+        position: node.position ?? { x: 0, y: 0 },
+      })),
+      selectedNodeId: "method:anchor",
+      layoutEditable: true,
+      panOnDrag: [1],
+      groupSelectionEnabled: false,
+      nodeClickDistance: 6,
+      paneClickDistance: 6,
+      onSelectNode,
+    });
+
+    fireEvent.click(screen.getByTestId("reactflow-drag-node"));
+    fireEvent.click(screen.getByTestId("reactflow-node-method:tail"));
+
+    expect(onSelectNode).toHaveBeenLastCalledWith("method:tail");
+
+    fireEvent.contextMenu(screen.getByTestId("reactflow-node-method:tail"), {
+      clientX: 420,
+      clientY: 240,
+    });
+
+    expect(onSelectNode).toHaveBeenLastCalledWith("method:tail");
+    expect(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Node Action method:tail" })).toBeInTheDocument();
   });
 
   it("does not crop dense current-class diagrams to only the current class on first open", () => {

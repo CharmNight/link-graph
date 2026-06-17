@@ -2,6 +2,7 @@ package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
 import com.charmnight.linkgraph.model.GraphDocument
+import com.charmnight.linkgraph.application.model.GraphEditTransaction
 import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
 import com.charmnight.linkgraph.architecture.view.ClassDiagramViewDocument
 import com.charmnight.linkgraph.review.ReviewGraphViewDocument
@@ -142,6 +143,7 @@ internal class GraphEditorGraphStateSupport(
         selectedMethodSignature: String? = null,
         preserveDraftPatchUndo: Boolean = false,
         workingGraphDirty: Boolean = true,
+        graphEditTransaction: GraphEditTransaction? = null,
     ) {
         mutate { currentState ->
             currentState.withWorkspaceGraphChanged(
@@ -149,6 +151,7 @@ internal class GraphEditorGraphStateSupport(
                 selectedMethodSignatureOverride = selectedMethodSignature,
                 preserveDraftPatchUndo = preserveDraftPatchUndo,
                 workingGraphDirtyOverride = workingGraphDirty,
+                graphEditTransaction = graphEditTransaction,
             )
         }
     }

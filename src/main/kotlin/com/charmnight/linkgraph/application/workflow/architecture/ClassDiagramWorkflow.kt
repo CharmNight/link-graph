@@ -6,6 +6,7 @@ import com.charmnight.linkgraph.architecture.ClassDiagramProjector
 import com.charmnight.linkgraph.architecture.ClassDiagramResult
 import com.charmnight.linkgraph.application.model.AsyncRequestState
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
+import com.charmnight.linkgraph.application.indexed.IndexedGraphRelationDetail
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
 import com.charmnight.linkgraph.application.indexed.cacheState
 import com.charmnight.linkgraph.application.indexed.classDiagramScopeNodeId
@@ -15,6 +16,7 @@ import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
 import com.charmnight.linkgraph.jvm.index.JvmClassSymbol
 import com.charmnight.linkgraph.jvm.index.JvmSymbolIndex
+import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.usage.ClassUsageGraphProjector
 import com.charmnight.linkgraph.usage.ClassUsageSearchOptions
 import com.charmnight.linkgraph.usage.ClassUsageSearchService
@@ -238,16 +240,149 @@ internal class ClassDiagramWorkflow(
                                     ),
                                 )
                             }
-                            if (workflowPlan.shouldRequestCompleteRelations()) {
-                                requestCompleteClassDiagram(
-                                    result.payload.resolvedScopeNodeId,
-                                    result.payload.symbolIndexHint,
-                                    result.payload.request,
-                                    requestId,
-                                    runningState.startedAtEpochMillis,
-                                )
+                            when {
+                                workflowPlan.shouldRequestCompleteRelations() -> {
+                                    requestCompleteClassDiagram(
+                                        result.payload.resolvedScopeNodeId,
+                                        result.payload.symbolIndexHint,
+                                        result.payload.request,
+                                        requestId,
+                                        runningState.startedAtEpochMillis,
+                                    )
+                                }
+                                workflowPlan.shouldRequestScopedBodyRelations() -> {
+                                    requestScopedClassDiagram(
+                                        scopeNodeId = result.payload.resolvedScopeNodeId,
+                                        symbolIndexHint = result.payload.symbolIndexHint,
+                                        sourceClassIds = view.visibleClassNodeIds(),
+                                        request = result.payload.request,
+                                        requestId = requestId,
+                                        startedAtEpochMillis = runningState.startedAtEpochMillis,
+                                    )
+                                }
                             }
                         }
+                    }
+                }
+            }
+            .submit(AppExecutorUtil.getAppExecutorService())
+    }
+
+    private fun requestScopedClassDiagram(
+        scopeNodeId: String?,
+        symbolIndexHint: JvmSymbolIndex?,
+        sourceClassIds: Set<String>,
+        request: IndexedGraphRequest,
+        requestId: Long,
+        startedAtEpochMillis: Long?,
+    ) {
+        if (sourceClassIds.isEmpty()) {
+            return
+        }
+        ReadAction
+            .nonBlocking<ClassDiagramViewResult> {
+                if (project.isDisposed) {
+                    return@nonBlocking ClassDiagramViewResult.cancelled()
+                }
+                runCatching {
+                    val cacheState = request.cacheState(indexSupport.hasFullIndex(request))
+                    val indexStartedAt = System.nanoTime()
+                    val index = indexSupport.buildScopedClassDiagramIndex(
+                        request = request,
+                        symbolIndexHint = symbolIndexHint,
+                        sourceClassIds = sourceClassIds,
+                    )
+                    traceStage("classDiagram.scopedBuildIndex", indexStartedAt) {
+                        listOf(
+                            "view=${request.view}",
+                            "cacheState=$cacheState",
+                            "scopeNodeId=${scopeNodeId.orEmpty()}",
+                            "relationCompleteness=${IndexedGraphRelationDetail.SCOPED_BODY_RELATIONS.name}",
+                            "sourceClasses=${sourceClassIds.size}",
+                            "classes=${index.symbolIndex.classesByQualifiedName.size}",
+                            "methods=${index.symbolIndex.methodsBySignature.size}",
+                            "fields=${index.symbolIndex.fieldsByQualifiedName.size}",
+                            "relations=${index.relationIndex.relations.size}",
+                            "graphNodes=${index.graph.nodes.size}",
+                            "graphEdges=${index.graph.edges.size}",
+                            "truncated=${index.graph.truncated}",
+                        )
+                    }
+                    val projectStartedAt = System.nanoTime()
+                    projector.project(
+                        index = index,
+                        scopeNodeId = scopeNodeId,
+                        relationCompleteness = IndexedGraphRelationDetail.SCOPED_BODY_RELATIONS.name,
+                        request = request,
+                        cacheState = cacheState,
+                        freshness = indexSupport.freshness(),
+                    ).let { view ->
+                        applyUsageOverlay(
+                            index = index,
+                            request = request,
+                            view = view,
+                            scopeNodeId = scopeNodeId,
+                        )
+                    }.also { view ->
+                        traceStage("classDiagram.scopedProject", projectStartedAt) {
+                            listOf(
+                                "view=${request.view}",
+                                "cacheState=$cacheState",
+                                "scopeNodeId=${scopeNodeId.orEmpty()}",
+                                "relationCompleteness=${IndexedGraphRelationDetail.SCOPED_BODY_RELATIONS.name}",
+                                "visible=${LinkGraphRenderTrace.graphSummary(view.visibleGraph)}",
+                                "full=${LinkGraphRenderTrace.graphSummary(view.fullGraph)}",
+                                "truncated=${view.summary.truncated}",
+                                "hiddenNodes=${view.summary.hiddenNodeCount}",
+                                "hiddenEdges=${view.summary.hiddenEdgeCount}",
+                            )
+                        }
+                    }.let { view ->
+                        ClassDiagramViewPayload(view = view, request = request)
+                    }
+                }.fold(
+                    onSuccess = { payload -> ClassDiagramViewResult.success(payload) },
+                    onFailure = { error -> ClassDiagramViewResult.failure(error) },
+                )
+            }
+            .inSmartMode(project)
+            .expireWith(project)
+            .finishOnUiThread(ModalityState.defaultModalityState()) { result ->
+                when {
+                    result.cancelled || project.isDisposed -> Unit
+                    result.failure != null -> {
+                        if (isBenignCompleteClassDiagramCancellation(result.failure)) {
+                            return@finishOnUiThread
+                        }
+                        logger.warn("补齐当前范围类图调用失败", result.failure)
+                        val message = "补齐当前范围调用失败：${result.failure.message ?: result.failure.javaClass.simpleName}"
+                        eventSink.emit(
+                            GraphEditorApplicationEvent.IndexedGraphRequestFailed(
+                                view = IndexedGraphView.CLASS_DIAGRAM,
+                                requestState = AsyncRequestState.failed(
+                                    message = message,
+                                    requestId = requestId,
+                                    scene = request.view.name,
+                                    startedAtEpochMillis = startedAtEpochMillis,
+                                ),
+                                statusMessage = message,
+                            ),
+                        )
+                    }
+                    result.payload?.view != null -> {
+                        val message = ClassDiagramWorkflowPlan(request).scopedRelationSuccessMessage(result.payload.view)
+                        eventSink.emit(
+                            GraphEditorApplicationEvent.ClassDiagramLoaded(
+                                view = result.payload.view,
+                                requestState = AsyncRequestState.succeeded(
+                                    requestId = requestId,
+                                    scene = request.view.name,
+                                    statusMessage = message,
+                                    startedAtEpochMillis = startedAtEpochMillis,
+                                ),
+                                statusMessage = message,
+                            ),
+                        )
                     }
                 }
             }
@@ -545,6 +680,24 @@ internal class ClassDiagramWorkflow(
                 frame.className == "com.intellij.openapi.vfs.newvfs.persistent.PersistentFSImpl"
             }
     }
+
+    private fun ClassDiagramResult.visibleClassNodeIds(): Set<String> =
+        visibleGraph.nodes
+            .asSequence()
+            .filter { node -> node.type in classDiagramBodyRelationNodeTypes }
+            .map { node -> node.id }
+            .toSet()
+
+    private companion object {
+        private val classDiagramBodyRelationNodeTypes = setOf(
+            NodeType.CLASS,
+            NodeType.INTERFACE,
+            NodeType.ENUM,
+            NodeType.ANNOTATION,
+            NodeType.RECORD,
+            NodeType.OBJECT,
+        )
+    }
 }
 
 private data class ClassDiagramViewPayload(
@@ -586,11 +739,17 @@ private data class ClassDiagramWorkflowPlan(
 ) {
     private val isUsageRequest: Boolean = request.usage.enabled
 
-    fun shouldRequestCompleteRelations(): Boolean = !isUsageRequest
+    fun shouldRequestCompleteRelations(): Boolean =
+        !isUsageRequest && request.relationDetail == IndexedGraphRelationDetail.COMPLETE
+
+    fun shouldRequestScopedBodyRelations(): Boolean =
+        !isUsageRequest && request.relationDetail == IndexedGraphRelationDetail.SCOPED_BODY_RELATIONS
 
     fun startMessage(scopeNodeId: String?): String =
         when {
             isUsageRequest -> "正在查找类使用处。"
+            request.relationDetail == IndexedGraphRelationDetail.COMPLETE -> "正在构建项目类图并准备补齐完整关系。"
+            request.relationDetail == IndexedGraphRelationDetail.SCOPED_BODY_RELATIONS -> "正在构建类图并补齐当前范围调用。"
             scopeNodeId.isNullOrBlank() -> "正在构建项目类图。"
             else -> "正在从架构节点下钻类图。"
         }
@@ -599,7 +758,9 @@ private data class ClassDiagramWorkflowPlan(
         when {
             isUsageRequest && view.usage != null -> "已加载类使用处。"
             isUsageRequest -> "未找到类使用处目标。"
-            else -> "已加载类图结构，正在补齐完整关系。"
+            request.relationDetail == IndexedGraphRelationDetail.COMPLETE -> "已加载类图结构，正在补齐完整关系。"
+            request.relationDetail == IndexedGraphRelationDetail.SCOPED_BODY_RELATIONS -> "已加载类图结构，正在补齐当前范围调用。"
+            else -> "已加载类图结构。"
         }
 
     fun initialCompleteSuccessMessage(view: ClassDiagramResult): String =
@@ -614,5 +775,12 @@ private data class ClassDiagramWorkflowPlan(
             isUsageRequest && view.usage != null -> "已加载类使用处。"
             isUsageRequest -> "未找到类使用处目标。"
             else -> "已补齐类图完整关系。"
+        }
+
+    fun scopedRelationSuccessMessage(view: ClassDiagramResult): String =
+        when {
+            isUsageRequest && view.usage != null -> "已加载类使用处。"
+            isUsageRequest -> "未找到类使用处目标。"
+            else -> "已补齐当前范围调用。"
         }
 }

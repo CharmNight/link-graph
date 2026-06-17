@@ -439,6 +439,76 @@ class JavaJvmRelationResolverTest : BasePlatformTestCase() {
         }, relationSummary)
     }
 
+    fun testCallAggregationOnlyScansBudgetedSourceClasses() {
+        myFixture.addFileToProject(
+            "src/main/java/com/example/scope/TargetService.java",
+            """
+            package com.example.scope;
+            public class TargetService {
+                public void execute() {}
+            }
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/scope/AllowedCaller.java",
+            """
+            package com.example.scope;
+            public class AllowedCaller {
+                public void run(TargetService target) {
+                    target.execute();
+                }
+            }
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/scope/BlockedCaller.java",
+            """
+            package com.example.scope;
+            public class BlockedCaller {
+                public void run(TargetService target) {
+                    target.execute();
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val symbolIndex = JvmSymbolIndexBuilder(project).build()
+        val allowed = requireNotNull(symbolIndex.findClass("com.example.scope.AllowedCaller"))
+        val blocked = requireNotNull(symbolIndex.findClass("com.example.scope.BlockedCaller"))
+        val target = requireNotNull(symbolIndex.findClass("com.example.scope.TargetService"))
+        val relations = CallAggregationRelationResolver().resolve(
+            JvmResolutionContext(
+                project = project,
+                symbolIndex = symbolIndex,
+                sourceResolver = IdeSourceContentResolver(project),
+                budget = JvmResolutionBudget(
+                    methodBodySourceClassIds = setOf(allowed.id),
+                    maxMethodBodiesScanned = 10,
+                    maxMethodCallExpressionsResolved = 10,
+                ),
+            ),
+        )
+
+        val relationSummary = relations.joinToString("\n") { relation ->
+            "${relation.kind} ${relation.fromSymbolId} -> ${relation.toSymbolId} ${relation.metadata}"
+        }
+        assertTrue(
+            relations.any { relation ->
+                relation.kind == JvmRelationKind.CALLS &&
+                    relation.fromSymbolId == allowed.id &&
+                    relation.toSymbolId == target.id
+            },
+            relationSummary,
+        )
+        assertTrue(
+            relations.none { relation ->
+                relation.kind == JvmRelationKind.CALLS &&
+                    relation.fromSymbolId == blocked.id
+            },
+            relationSummary,
+        )
+    }
+
     fun testStaticReflectionConstantsAndClassLiteralsAreProven() {
         myFixture.addFileToProject(
             "src/main/java/com/example/reflect/StaticReflectionTarget.java",

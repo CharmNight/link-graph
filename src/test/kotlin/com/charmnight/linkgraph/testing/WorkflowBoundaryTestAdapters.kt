@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
 import com.charmnight.linkgraph.application.port.ToolGraphSnapshotProvider
 import com.charmnight.linkgraph.application.port.WorkspaceGraphCommitter
+import com.charmnight.linkgraph.application.model.GraphEditTransaction
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.ui.GenerationStatePresenter
 import com.charmnight.linkgraph.ui.GraphEditorApplicationEventProjector
@@ -30,6 +31,7 @@ internal fun GraphEditorStateService.workspaceGraphCommitter(
             preserveDraftPatchUndo: Boolean,
             workingGraphDirty: Boolean,
             syncBrowser: Boolean,
+            graphEditTransaction: GraphEditTransaction?,
         ): Boolean {
             val revision = expectedSnapshotRevision ?: snapshot().snapshotRevision
             val commitResult = tryCommit(revision) { current ->
@@ -38,6 +40,7 @@ internal fun GraphEditorStateService.workspaceGraphCommitter(
                     selectedMethodSignatureOverride = selectedMethodSignature,
                     preserveDraftPatchUndo = preserveDraftPatchUndo,
                     workingGraphDirtyOverride = workingGraphDirty,
+                    graphEditTransaction = graphEditTransaction,
                 )
             }
             if (syncBrowser) {

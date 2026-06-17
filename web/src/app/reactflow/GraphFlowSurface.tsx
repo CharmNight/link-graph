@@ -11,6 +11,7 @@ import {
   type Node,
   type NodeMouseHandler,
   type NodeTypes,
+  type PanOnScrollMode,
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -35,6 +36,7 @@ import {
 import {
   clamp,
   graphContentBounds,
+  graphRenderCommitTraceSignature,
   graphViewportContentSignature,
   hashText,
   locateAnchorButtonLabel,
@@ -90,6 +92,8 @@ interface GraphFlowSurfaceProps {
   editable?: boolean;
   layoutEditable?: boolean;
   panOnDrag?: boolean | number[];
+  panOnScroll?: boolean; panOnScrollMode?: "free" | "vertical" | "horizontal"; panOnScrollSpeed?: number;
+  zoomOnScroll?: boolean; preventScrolling?: boolean; nodeClickDistance?: number; paneClickDistance?: number;
   groupSelectionEnabled?: boolean;
   header?: ReactNode;
   viewportOverlay?: (context: ViewportOverlayContext) => ReactNode;
@@ -180,6 +184,8 @@ export function GraphFlowSurface({
   editable = false,
   layoutEditable = true,
   panOnDrag = true,
+  panOnScroll, panOnScrollMode, panOnScrollSpeed,
+  zoomOnScroll, preventScrolling, nodeClickDistance, paneClickDistance,
   groupSelectionEnabled = true,
   header = null,
   viewportOverlay,
@@ -200,7 +206,8 @@ export function GraphFlowSurface({
   showViewportControls = true,
   showLocateAnchorButton = true,
 }: GraphFlowSurfaceProps) {
-  const renderStartedAt = measureStart();
+  const renderStartedAtRef = useRef(0);
+  renderStartedAtRef.current = measureStart();
   const supportsResizeObserver = typeof ResizeObserver !== "undefined";
   const [contextMenu, setContextMenu] = useState<GraphFlowContextMenuState | null>(null);
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null);
@@ -330,6 +337,14 @@ export function GraphFlowSurface({
         : "",
     [positionedNodes, edges, nodeViewportSize, viewportPolicy],
   );
+  const renderCommitBounds = useMemo(() => graphBounds(positionedNodes), [positionedNodes]);
+  const renderCommitTraceSignature = graphRenderCommitTraceSignature({
+    graphShapeSignature,
+    bounds: renderCommitBounds,
+    selectedNodeId,
+    selectedGroupNodeCount: selectedGroupNodeIds.length,
+    supportsResizeObserver,
+  });
   const effectiveViewportResetKey = viewportMode === "CLASS_DIAGRAM"
     ? viewportResetKey
     : viewportPolicy === "readable-fit"
@@ -365,18 +380,11 @@ export function GraphFlowSurface({
       graph: summarizeGraph({ nodes: positionedNodes, edges }),
       selectedNodeId,
       selectedGroupNodeCount: selectedGroupNodeIds.length,
-      bounds: graphBounds(positionedNodes),
+      bounds: renderCommitBounds,
       supportsResizeObserver,
-      durationMs: measureDuration(renderStartedAt),
+      durationMs: measureDuration(renderStartedAtRef.current),
     });
-  }, [
-    positionedNodes,
-    edges,
-    selectedNodeId,
-    selectedGroupNodeIds.length,
-    supportsResizeObserver,
-    renderStartedAt,
-  ]);
+  }, [renderCommitTraceSignature]);
 
   useEffect(() => {
     if (typeof window === "undefined" || window.__linkGraphDebugEnabled !== true) {
@@ -918,6 +926,7 @@ export function GraphFlowSurface({
           selectionOnDrag={false}
           selectionMode={SelectionMode.Partial}
           panOnDrag={panOnDrag}
+          {...{ panOnScroll, panOnScrollMode: panOnScrollMode as PanOnScrollMode | undefined, panOnScrollSpeed, zoomOnScroll, preventScrolling, nodeClickDistance, paneClickDistance }}
           multiSelectionKeyCode={groupSelectionEnabled ? undefined : null}
           selectNodesOnDrag={groupSelectionEnabled}
           nodesDraggable={layoutEditable}

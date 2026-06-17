@@ -6,17 +6,12 @@ import com.charmnight.linkgraph.application.indexed.IndexedGraphPreset
 import com.charmnight.linkgraph.application.indexed.IndexedGraphPresetRequest
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRequestFactory
+import com.charmnight.linkgraph.application.indexed.IndexedGraphRelationDetail
 import com.charmnight.linkgraph.application.indexed.IndexedGraphViewportOptions
 import com.charmnight.linkgraph.application.indexed.IndexedReviewGraphOptions
+import com.charmnight.linkgraph.application.edit.GraphEditRequestPayloadParser
 import com.charmnight.linkgraph.llm.LlmJsonSupport
-import com.charmnight.linkgraph.application.model.GraphEditOperation
-import com.charmnight.linkgraph.model.BindingStatus
-import com.charmnight.linkgraph.model.Certainty
-import com.charmnight.linkgraph.model.EdgeType
-import com.charmnight.linkgraph.model.GraphEdge
-import com.charmnight.linkgraph.model.GraphNode
-import com.charmnight.linkgraph.model.GraphSourceTag
-import com.charmnight.linkgraph.model.NodeType
+import com.charmnight.linkgraph.application.model.GraphEditRequest
 import com.charmnight.linkgraph.usage.ClassUsageSearchLimits
 
 internal object GraphBrowserPayloadParser {
@@ -29,23 +24,10 @@ internal object GraphBrowserPayloadParser {
         }
     }
 
-    fun parseGraphEditScript(payload: String): GraphEditScript {
+    fun parseGraphEditRequest(payload: String): GraphEditRequest {
         validatePayloadSize(payload, GraphBrowserPayloadKind.GRAPH_EDIT_SCRIPT)
         val root = LlmJsonSupport.parseObject(payload)
-        val sceneId = (root["sceneId"] as? String)
-            ?.takeIf(String::isNotBlank)
-            ?.let(GraphSceneId::valueOf)
-            ?: error("graph edit script sceneId is required")
-        val baseWorkspaceRevision = (root["baseWorkspaceRevision"] as? Number)?.toLong()
-            ?: error("graph edit script baseWorkspaceRevision is required")
-        val operations = (root["operations"] as? List<*>).orEmpty().mapIndexed { index, raw ->
-            parseGraphEditOperation(raw as? Map<*, *>, index)
-        }
-        return GraphEditScript(
-            sceneId = sceneId,
-            baseWorkspaceRevision = baseWorkspaceRevision,
-            operations = operations,
-        )
+        return GraphEditRequestPayloadParser.parse(root)
     }
 
     fun parseIndexedGraphRequest(payload: String): IndexedGraphRequest {
@@ -53,6 +35,7 @@ internal object GraphBrowserPayloadParser {
         val root = LlmJsonSupport.parseObject(payload)
         val preset = root.enumValue<IndexedGraphPreset>("preset")
             ?: error("indexed graph request preset is required")
+        val classDiagramRaw = root["classDiagram"] as? Map<*, *>
         return IndexedGraphRequestFactory.fromPreset(
             IndexedGraphPresetRequest(
                 preset = preset,
@@ -61,8 +44,9 @@ internal object GraphBrowserPayloadParser {
                 selectedDiffItemIds = root.stringList("selectedDiffItemIds"),
                 includeExternalLibraries = root.booleanOrNull("includeExternalLibraries"),
                 includeJdk = root.booleanOrNull("includeJdk"),
+                relationDetail = parseRelationDetail(root, classDiagramRaw),
                 viewport = parseIndexedViewport(root["viewport"] as? Map<*, *>),
-                classDiagram = (root["classDiagram"] as? Map<*, *>)?.let(::parseIndexedClassDiagramOptions),
+                classDiagram = classDiagramRaw?.let(::parseIndexedClassDiagramOptions),
                 usage = (root["usage"] as? Map<*, *>)?.let(::parseIndexedClassUsageOptions),
                 review = (root["review"] as? Map<*, *>)?.let(::parseIndexedReviewOptions),
             ),
@@ -80,6 +64,22 @@ internal object GraphBrowserPayloadParser {
             neighborhoodLimit = raw?.intOrNull("neighborhoodLimit") ?: 24,
             memberLimit = raw?.intOrNull("memberLimit") ?: 5,
         )
+
+    private fun parseRelationDetail(
+        root: Map<*, *>,
+        classDiagram: Map<*, *>?,
+    ): IndexedGraphRelationDetail? =
+        (classDiagram?.stringOrNull("relationDetail") ?: root.stringOrNull("relationDetail"))
+            ?.trim()
+            ?.uppercase()
+            ?.let { value ->
+                when (value) {
+                    IndexedGraphRelationDetail.SCOPED_BODY_RELATIONS.name -> IndexedGraphRelationDetail.SCOPED_BODY_RELATIONS
+                    IndexedGraphRelationDetail.COMPLETE.name -> IndexedGraphRelationDetail.COMPLETE
+                    IndexedGraphRelationDetail.STRUCTURE_ONLY.name -> IndexedGraphRelationDetail.STRUCTURE_ONLY
+                    else -> IndexedGraphRelationDetail.STRUCTURE_ONLY
+                }
+            }
 
     private fun parseIndexedClassUsageOptions(raw: Map<*, *>): IndexedClassUsageOptions =
         IndexedClassUsageOptions(
@@ -105,86 +105,6 @@ internal object GraphBrowserPayloadParser {
             maxDownstreamNodes = raw?.intOrNull("maxDownstreamNodes") ?: 40,
         )
 
-
-    private fun parseGraphEditOperation(
-        raw: Map<*, *>?,
-        index: Int,
-    ): GraphEditOperation {
-        raw ?: error("graph edit script operation[$index] must be an object")
-        val type = (raw["type"] as? String)?.trim().orEmpty()
-        return when (type.uppercase()) {
-            "UPSERT_NODE",
-            "UPSERTNODE",
-            -> GraphEditOperation.UpsertNode(
-                node = parseGraphNode(raw["node"] as? Map<*, *>, index),
-            )
-
-            "REMOVE_NODE",
-            "REMOVENODE",
-            -> GraphEditOperation.RemoveNode(
-                nodeId = raw.requiredString("nodeId", "graph edit script operation[$index].nodeId"),
-            )
-
-            "UPSERT_EDGE",
-            "UPSERTEDGE",
-            -> GraphEditOperation.UpsertEdge(
-                edge = parseGraphEdge(raw["edge"] as? Map<*, *>, index),
-            )
-
-            "REMOVE_EDGE",
-            "REMOVEEDGE",
-            -> GraphEditOperation.RemoveEdge(
-                edgeId = raw.requiredString("edgeId", "graph edit script operation[$index].edgeId"),
-            )
-
-            else -> error("unsupported graph edit script operation[$index].type: $type")
-        }
-    }
-
-    private fun parseGraphNode(
-        raw: Map<*, *>?,
-        index: Int,
-    ): GraphNode {
-        raw ?: error("graph edit script operation[$index].node is required")
-        return GraphNode(
-            id = raw.requiredString("id", "graph edit script operation[$index].node.id"),
-            type = NodeType.valueOf(raw.requiredString("type", "graph edit script operation[$index].node.type")),
-            title = (raw["title"] as? String)?.takeIf(String::isNotBlank)
-                ?: (raw["label"] as? String)?.takeIf(String::isNotBlank)
-                ?: raw.requiredString("id", "graph edit script operation[$index].node.id"),
-            location = raw["location"] as? String,
-            signature = raw["signature"] as? String,
-            inputs = raw.stringList("inputs"),
-            outputs = raw.stringList("outputs"),
-            doc = raw["doc"] as? String,
-            sourceKind = raw["sourceKind"] as? String,
-            status = raw["status"] as? String,
-            bindingStatus = raw.enumOrDefault("bindingStatus", BindingStatus.BOUND),
-            certainty = raw.enumOrDefault("certainty", Certainty.PROVEN),
-            metadata = raw.stringMap("metadata"),
-            sourceTag = raw.enumOrDefault("sourceTag", GraphSourceTag.FACT),
-        )
-    }
-
-    private fun parseGraphEdge(
-        raw: Map<*, *>?,
-        index: Int,
-    ): GraphEdge {
-        raw ?: error("graph edit script operation[$index].edge is required")
-        return GraphEdge(
-            id = raw.requiredString("id", "graph edit script operation[$index].edge.id"),
-            type = EdgeType.valueOf(raw.requiredString("type", "graph edit script operation[$index].edge.type")),
-            fromNodeId = raw.requiredString("fromNodeId", "graph edit script operation[$index].edge.fromNodeId"),
-            toNodeId = raw.requiredString("toNodeId", "graph edit script operation[$index].edge.toNodeId"),
-            label = raw["label"] as? String,
-            certainty = raw.enumOrDefault("certainty", Certainty.PROVEN),
-            bindingStatus = raw.enumOrDefault("bindingStatus", BindingStatus.BOUND),
-            status = raw["status"] as? String,
-            metadata = raw.stringMap("metadata"),
-            sourceTag = raw.enumOrDefault("sourceTag", GraphSourceTag.FACT),
-        )
-    }
-
     private fun Map<*, *>.requiredString(
         key: String,
         description: String,
@@ -194,14 +114,6 @@ internal object GraphBrowserPayloadParser {
         return (this[key] as? List<*>).orEmpty().mapNotNull { value ->
             (value as? String)?.takeIf(String::isNotBlank)
         }
-    }
-
-    private fun Map<*, *>.stringMap(key: String): Map<String, String> {
-        return ((this[key] as? Map<*, *>).orEmpty()).mapNotNull { (rawKey, rawValue) ->
-            val mapKey = rawKey as? String ?: return@mapNotNull null
-            val mapValue = rawValue as? String ?: return@mapNotNull null
-            mapKey to mapValue
-        }.toMap()
     }
 
     private inline fun <reified T : Enum<T>> Map<*, *>.enumValue(key: String): T? {
@@ -218,13 +130,8 @@ internal object GraphBrowserPayloadParser {
 
     private fun Map<*, *>.intOrNull(key: String): Int? = (this[key] as? Number)?.toInt()
 
-    private inline fun <reified T : Enum<T>> Map<*, *>.enumOrDefault(
-        key: String,
-        defaultValue: T,
-    ): T {
-        val raw = this[key] as? String ?: return defaultValue
-        return enumValues<T>().firstOrNull { it.name == raw } ?: defaultValue
-    }
+    private fun Map<*, *>.stringOrNull(key: String): String? = this[key] as? String
+
 }
 
 internal enum class GraphBrowserPayloadKind(

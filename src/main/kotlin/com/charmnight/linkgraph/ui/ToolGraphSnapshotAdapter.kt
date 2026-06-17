@@ -13,6 +13,7 @@ import com.charmnight.linkgraph.ui.view.GraphProjectionIndex
 internal fun GraphEditorStateSnapshot.toToolGraphSnapshot(): ToolGraphSnapshot {
     return ToolGraphSnapshot(
         workspaceGraph = workspaceGraph,
+        workspaceRevision = workspaceRevision,
         semanticFactGraph = semanticFactGraph,
         factGraphView = ToolGraphView(
             visibleGraph = factGraphView.visibleGraph,

@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.application.workflow.architecture
 
 import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
+import com.charmnight.linkgraph.architecture.ClassDiagramFastIndex
 import com.charmnight.linkgraph.architecture.architectureIndexRuntime
 import com.charmnight.linkgraph.architecture.architectureIndexService
 import com.charmnight.linkgraph.architecture.toIndexedFreshness
@@ -10,7 +11,11 @@ import com.charmnight.linkgraph.application.indexed.IndexedGraphRefreshPolicy
 import com.charmnight.linkgraph.application.indexed.IndexedGraphScope
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
 import com.charmnight.linkgraph.jvm.index.JvmSymbolIndex
+import com.charmnight.linkgraph.jvm.relation.CallAggregationRelationResolver
+import com.charmnight.linkgraph.jvm.relation.JvmRelationIndex
+import com.charmnight.linkgraph.jvm.relation.JvmResolutionContext
 import com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget
+import com.charmnight.linkgraph.source.IdeSourceContentResolver
 import com.intellij.openapi.project.Project
 
 internal class ArchitectureIndexWorkflowSupport(
@@ -52,6 +57,37 @@ internal class ArchitectureIndexWorkflowSupport(
             symbolIndexHint = symbolIndexHint,
             forceRebuild = request.forceRebuild,
         )
+
+    override fun buildScopedClassDiagramIndex(
+        request: IndexedGraphRequest,
+        symbolIndexHint: JvmSymbolIndex?,
+        sourceClassIds: Set<String>,
+    ): ArchitectureGraphIndex {
+        val symbolIndex = symbolIndexHint ?: buildClassDiagramStructureIndex(request).symbolIndex
+        val budget = request.toResolutionBudget().copy(
+            includeTests = false,
+            methodBodySourceClassIds = sourceClassIds,
+            maxMethodBodiesScanned = SCOPED_METHOD_BODY_LIMIT,
+            maxMethodCallExpressionsResolved = SCOPED_METHOD_CALL_LIMIT,
+        )
+        val callRelations = CallAggregationRelationResolver().resolve(
+            JvmResolutionContext(
+                project = project,
+                symbolIndex = symbolIndex,
+                sourceResolver = IdeSourceContentResolver(project),
+                budget = budget,
+            ),
+        )
+        val relationIndex = JvmRelationIndex(
+            relations = ClassDiagramFastIndex.structureRelations(symbolIndex) + callRelations,
+            maxRelations = budget.maxRelations,
+        )
+        return ArchitectureGraphIndex.from(
+            symbolIndex = symbolIndex,
+            relationIndex = relationIndex,
+            budget = budget,
+        )
+    }
 
     private fun buildIndex(
         budget: JvmResolutionBudget = defaultBudget(),
@@ -131,6 +167,11 @@ internal class ArchitectureIndexWorkflowSupport(
 
     private val IndexedGraphRequest.forceRebuild: Boolean
         get() = refreshPolicy == IndexedGraphRefreshPolicy.ForceRebuild
+
+    private companion object {
+        private const val SCOPED_METHOD_BODY_LIMIT = 1_500
+        private const val SCOPED_METHOD_CALL_LIMIT = 8_000
+    }
 }
 
 internal interface ClassDiagramIndexSupport {
@@ -144,6 +185,13 @@ internal interface ClassDiagramIndexSupport {
         request: IndexedGraphRequest,
         symbolIndexHint: JvmSymbolIndex?,
     ): ArchitectureGraphIndex
+
+    fun buildScopedClassDiagramIndex(
+        request: IndexedGraphRequest,
+        symbolIndexHint: JvmSymbolIndex?,
+        sourceClassIds: Set<String>,
+    ): ArchitectureGraphIndex =
+        buildIndex(request, symbolIndexHint)
 
     fun buildClassDiagramStructureIndex(request: IndexedGraphRequest): ArchitectureGraphIndex
 

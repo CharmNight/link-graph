@@ -19,6 +19,13 @@ vi.mock("../../../../app/reactflow/GraphFlowSurface", () => ({
     editable?: boolean;
     layoutEditable?: boolean;
     panOnDrag?: boolean | number[];
+    panOnScroll?: boolean;
+    panOnScrollMode?: string;
+    panOnScrollSpeed?: number;
+    zoomOnScroll?: boolean;
+    preventScrolling?: boolean;
+    nodeClickDistance?: number;
+    paneClickDistance?: number;
     groupSelectionEnabled?: boolean;
     viewportResetKey?: string | null;
     viewportPolicy?: string;
@@ -88,6 +95,13 @@ vi.mock("../../../../app/reactflow/GraphFlowSurface", () => ({
         data-editable={String(props.editable)}
         data-layout-editable={String(props.layoutEditable)}
         data-pan-on-drag={Array.isArray(props.panOnDrag) ? props.panOnDrag.join(",") : String(props.panOnDrag)}
+        data-pan-on-scroll={String(props.panOnScroll)}
+        data-pan-on-scroll-mode={props.panOnScrollMode ?? ""}
+        data-pan-on-scroll-speed={String(props.panOnScrollSpeed ?? "")}
+        data-zoom-on-scroll={String(props.zoomOnScroll)}
+        data-prevent-scrolling={String(props.preventScrolling)}
+        data-node-click-distance={String(props.nodeClickDistance ?? "")}
+        data-pane-click-distance={String(props.paneClickDistance ?? "")}
         data-group-selection-enabled={String(props.groupSelectionEnabled)}
         data-viewport-reset-key={props.viewportResetKey ?? ""}
         data-viewport-policy={props.viewportPolicy ?? ""}
@@ -426,6 +440,38 @@ describe("ClassDiagramView", () => {
     expect(onRequestClassUsages).not.toHaveBeenCalled();
   });
 
+  it("requests scoped body relations from the structure-only class diagram pane action", async () => {
+    const onRequestClassDiagramWithOptions = vi.fn();
+
+    render(
+      <ClassDiagramView
+        view={{
+          ...view,
+          summary: {
+            ...view.summary,
+            relationCompleteness: "STRUCTURE_ONLY",
+            neighborhoodLimit: 32,
+            memberLimit: 7,
+          },
+        }}
+        selectedNodeId="class:OrderService"
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+        onRequestClassDiagramWithOptions={onRequestClassDiagramWithOptions}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId("pane-action-class-diagram-enrich-relations"));
+
+    expect(onRequestClassDiagramWithOptions).toHaveBeenCalledWith("class:OrderService", {
+      neighborhoodLimit: 32,
+      memberLimit: 7,
+      relationDetail: "SCOPED_BODY_RELATIONS",
+    });
+  });
+
   it("opens class diagrams around the anchor without adding in-canvas summary chrome", () => {
     render(
       <ClassDiagramView
@@ -465,6 +511,28 @@ describe("ClassDiagramView", () => {
     expect(useMeasuredLayoutMock).toHaveBeenCalledWith(expect.objectContaining({
       layoutOnPositionChange: true,
     }));
+  });
+
+  it("uses a class-diagram interaction policy that preserves free scrolling, zooming, and post-drag node clicks", () => {
+    render(
+      <ClassDiagramView
+        view={view}
+        selectedNodeId="class:OrderService"
+        onSelectNode={noop}
+        onInspectNode={noop}
+        onMoveNode={noop}
+        onRequestSourceNavigation={noop}
+      />,
+    );
+
+    const surface = screen.getByTestId("graph-flow-surface");
+    expect(surface).toHaveAttribute("data-pan-on-scroll", "true");
+    expect(surface).toHaveAttribute("data-pan-on-scroll-mode", "free");
+    expect(surface).toHaveAttribute("data-pan-on-scroll-speed", "0.8");
+    expect(surface).toHaveAttribute("data-zoom-on-scroll", "true");
+    expect(surface).toHaveAttribute("data-prevent-scrolling", "false");
+    expect(surface).toHaveAttribute("data-node-click-distance", "6");
+    expect(surface).toHaveAttribute("data-pane-click-distance", "6");
   });
 
   it("passes the backend visible class diagram to layout without creating a second frontend projection", () => {
@@ -1054,7 +1122,7 @@ describe("ClassDiagramView", () => {
     expect(screen.getByText("索引完成，但当前项目范围没有可展示的类关系")).toBeInTheDocument();
   });
 
-  it("does not render structure-only class diagrams as the current graph while complete relations are still loading", () => {
+  it("keeps the structure-only class diagram visible while complete relations are still loading", () => {
     const repositoryNode: LinkGraphNode = {
       id: "class:OrderRepository",
       type: "CLASS",
@@ -1114,8 +1182,15 @@ describe("ClassDiagramView", () => {
       />,
     );
 
-    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute("data-node-ids", "");
-    expect(screen.getByText("正在补齐类图关系")).toBeInTheDocument();
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
+      "data-node-ids",
+      "class:OrderService,class:OrderRepository",
+    );
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute(
+      "data-edge-ids",
+      "edge:OrderService->OrderRepository",
+    );
+    expect(screen.queryByText("正在补齐类图关系")).not.toBeInTheDocument();
   });
 });
 

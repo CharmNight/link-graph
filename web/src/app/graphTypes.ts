@@ -192,8 +192,11 @@ export type GraphEditOperation =
       edgeId: string;
     };
 
-export interface GraphEditScript {
+export type GraphEditRequestSource = "FRONTEND" | "AI_TOOL" | "DEBUG_AUTOMATION";
+
+export interface GraphEditRequest {
   sceneId: LinkGraphSceneId;
   baseWorkspaceRevision: number;
   operations: GraphEditOperation[];
+  source: GraphEditRequestSource;
 }

@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
 import com.charmnight.linkgraph.application.indexed.IndexedClassUsageOptions
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRefreshPolicy
+import com.charmnight.linkgraph.application.indexed.IndexedGraphRelationDetail
 import com.charmnight.linkgraph.application.indexed.requestArchitectureGraphRequest
 import com.charmnight.linkgraph.application.indexed.requestClassDiagramRequest
 import com.charmnight.linkgraph.application.indexed.requestClassUsageOverlayRequest
@@ -166,7 +167,7 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
         )
     }
 
-    fun testColdClassDiagramPublishesStructurePreviewBeforeCompleteRelations() {
+    fun testColdClassDiagramPublishesStructurePreviewWithoutAutoCompleteRelations() {
         addArchitectureFixture()
         val events = mutableListOf<GraphEditorApplicationEvent>()
         val indexSupport = ArchitectureIndexWorkflowSupport(project)
@@ -183,6 +184,40 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
             events = events,
             predicate = { event -> event.view.summary.relationCompleteness == "STRUCTURE_ONLY" },
         )
+        val structureView = structureEvent.view
+        assertClassDiagramViewDataContract(structureView, "workflow.classDiagram.structure")
+        assertEquals(AsyncRequestPhase.SUCCEEDED, structureEvent.requestState.phase)
+        assertTrue(structureView.visibleGraph.nodes.isNotEmpty(), "结构预览不能继续让前端停留在空画布。")
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+        Thread.sleep(300)
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+        assertTrue(
+            events.filterIsInstance<GraphEditorApplicationEvent.ClassDiagramLoaded>()
+                .none { event -> event.view.summary.relationCompleteness == "COMPLETE" },
+            "普通冷启动类图请求不得自动触发全项目完整关系补齐。",
+        )
+    }
+
+    fun testExplicitCompleteClassDiagramRequestPublishesStructurePreviewBeforeCompleteRelations() {
+        addArchitectureFixture()
+        val events = mutableListOf<GraphEditorApplicationEvent>()
+        val indexSupport = ArchitectureIndexWorkflowSupport(project)
+        val logger = Logger.getInstance(ArchitectureWorkflowChainTest::class.java)
+
+        ClassDiagramWorkflow(
+            project = project,
+            indexSupport = indexSupport,
+            eventSink = events::add,
+            logger = logger,
+        ).requestIndexedGraph(
+            requestClassDiagramRequest("arch:component:com.example.service")
+                .copy(relationDetail = IndexedGraphRelationDetail.COMPLETE),
+        )
+
+        val structureEvent = waitForEvent<GraphEditorApplicationEvent.ClassDiagramLoaded>(
+            events = events,
+            predicate = { event -> event.view.summary.relationCompleteness == "STRUCTURE_ONLY" },
+        )
         val completeEvent = waitForEvent<GraphEditorApplicationEvent.ClassDiagramLoaded>(
             events = events,
             predicate = { event -> event.view.summary.relationCompleteness == "COMPLETE" },
@@ -192,13 +227,8 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
         val completeIndex = classDiagramEvents.indexOfFirst { event -> event === completeEvent }
         assertTrue(
             structureIndex in 0 until completeIndex,
-            "类图冷启动必须先同步 STRUCTURE_ONLY 结构预览，再补齐 COMPLETE 关系。",
+            "显式 COMPLETE 类图请求必须先同步 STRUCTURE_ONLY 结构预览，再补齐 COMPLETE 关系。",
         )
-        val structureView = structureEvent.view
-        assertClassDiagramViewDataContract(structureView, "workflow.classDiagram.structure")
-        assertEquals(AsyncRequestPhase.SUCCEEDED, structureEvent.requestState.phase)
-        assertTrue(structureView.visibleGraph.nodes.isNotEmpty(), "结构预览不能继续让前端停留在空画布。")
-
         val completeView = completeEvent.view
         assertClassDiagramViewDataContract(completeView, "workflow.classDiagram.complete")
         assertEquals(AsyncRequestPhase.SUCCEEDED, completeEvent.requestState.phase)
@@ -312,6 +342,43 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
         )
     }
 
+    fun testScopedBodyRelationRequestBuildsCurrentVisibleScopeWithoutCompleteBuild() {
+        val symbolIndex = simpleClassDiagramSymbolIndex()
+        val structureIndex = ClassDiagramFastIndex.fromSymbols(symbolIndex)
+        val indexSupport = ScopedClassDiagramIndexSupport(structureIndex)
+        val events = mutableListOf<GraphEditorApplicationEvent>()
+        val logger = Logger.getInstance(ArchitectureWorkflowChainTest::class.java)
+        val scopeNodeId = stableJvmId("class", "com.example.BeanInstantiationException")
+
+        ClassDiagramWorkflow(
+            project = project,
+            indexSupport = indexSupport,
+            eventSink = events::add,
+            logger = logger,
+        ).requestIndexedGraph(
+            requestClassDiagramRequest(scopeNodeId)
+                .copy(relationDetail = IndexedGraphRelationDetail.SCOPED_BODY_RELATIONS),
+        )
+
+        val structureEvent = waitForEvent<GraphEditorApplicationEvent.ClassDiagramLoaded>(
+            events = events,
+            predicate = { event -> event.view.summary.relationCompleteness == "STRUCTURE_ONLY" },
+        )
+        val scopedEvent = waitForEvent<GraphEditorApplicationEvent.ClassDiagramLoaded>(
+            events = events,
+            predicate = { event -> event.view.summary.relationCompleteness == "SCOPED_BODY_RELATIONS" },
+        )
+
+        assertTrue(structureEvent.view.visibleGraph.nodes.isNotEmpty(), "scoped 补齐前必须先发布结构预览。")
+        assertClassDiagramViewDataContract(scopedEvent.view, "workflow.classDiagram.scopedBodyRelations")
+        assertEquals(1, indexSupport.scopedBuildAttempts)
+        assertEquals(0, indexSupport.completeBuildAttempts)
+        assertTrue(
+            indexSupport.lastScopedSourceClassIds.contains(scopeNodeId),
+            "scoped 方法体补齐必须限制在当前结构图可见类范围内。",
+        )
+    }
+
     fun testClassDiagramUsageRequestWithQualifiedNameSkipsStructureIndexBuild() {
         addClassUsageFixture()
         val targetQualifiedName = "com.example.usage.OrderService"
@@ -406,7 +473,10 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
             indexSupport = indexSupport,
             eventSink = events::add,
             logger = logger,
-        ).requestIndexedGraph(requestClassDiagramRequest(scopeNodeId))
+        ).requestIndexedGraph(
+            requestClassDiagramRequest(scopeNodeId)
+                .copy(relationDetail = IndexedGraphRelationDetail.COMPLETE),
+        )
 
         val structureEvent = waitForEvent<GraphEditorApplicationEvent.ClassDiagramLoaded>(
             events = events,
@@ -786,31 +856,27 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
             events = events,
             predicate = { event -> event.view.summary.relationCompleteness == "STRUCTURE_ONLY" },
         )
-        val completeEvent = waitForEvent<GraphEditorApplicationEvent.ClassDiagramLoaded>(
-            events = events,
-            predicate = { event -> event.view.summary.relationCompleteness == "COMPLETE" },
-        )
         assertTrue(
             structureEvent.view.visibleGraph.nodes.any { node ->
                 node.signature == "com.example.debug.DebugGraphDefinition"
             },
             "结构预览也应优先锚定当前编辑器类，避免前端长时间空白。",
         )
-        val completeView = completeEvent.view
-        assertClassDiagramViewDataContract(completeView, "workflow.classDiagram.currentEditorAnchor")
+        val structureView = structureEvent.view
+        assertClassDiagramViewDataContract(structureView, "workflow.classDiagram.currentEditorAnchor")
         assertTrue(
-            completeView.anchorNodeId?.contains("debuggraphdefinition") == true,
+            structureView.anchorNodeId?.contains("debuggraphdefinition") == true,
             "未指定类图范围时应优先锚定当前编辑器所在类。",
         )
-        assertEquals(completeView.anchorNodeId, completeView.summary.indexed?.anchorNodeId)
-        assertEquals("DebugGraphDefinition", completeView.summary.indexed?.anchorTitle)
-        assertEquals("com.example.debug.DebugGraphDefinition", completeView.summary.indexed?.anchorQualifiedName)
+        assertEquals(structureView.anchorNodeId, structureView.summary.indexed?.anchorNodeId)
+        assertEquals("DebugGraphDefinition", structureView.summary.indexed?.anchorTitle)
+        assertEquals("com.example.debug.DebugGraphDefinition", structureView.summary.indexed?.anchorQualifiedName)
         assertTrue(
-            completeView.visibleGraph.nodes.any { node -> node.signature == "com.example.debug.DebugGraphDefinition" },
+            structureView.visibleGraph.nodes.any { node -> node.signature == "com.example.debug.DebugGraphDefinition" },
             "类图应展示当前编辑器类 DebugGraphDefinition。",
         )
         assertTrue(
-            completeView.visibleGraph.nodes.none { node -> node.signature == "com.example.app.DraftPatchUndo" },
+            structureView.visibleGraph.nodes.none { node -> node.signature == "com.example.app.DraftPatchUndo" },
             "类图不应在当前编辑器类存在时跳到无关项目默认类。",
         )
     }
@@ -1090,6 +1156,48 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
             symbolIndexHint: JvmSymbolIndex?,
         ): ArchitectureGraphIndex {
             completeBuildAttempts += 1
+            return structureIndex
+        }
+
+        override fun buildClassDiagramStructureIndex(
+            request: com.charmnight.linkgraph.application.indexed.IndexedGraphRequest,
+        ): ArchitectureGraphIndex = structureIndex
+
+        override fun hasFullIndex(request: com.charmnight.linkgraph.application.indexed.IndexedGraphRequest): Boolean = false
+    }
+
+    private class ScopedClassDiagramIndexSupport(
+        private val structureIndex: ArchitectureGraphIndex,
+    ) : ClassDiagramIndexSupport {
+        var scopedBuildAttempts: Int = 0
+            private set
+        var completeBuildAttempts: Int = 0
+            private set
+        var lastScopedSourceClassIds: Set<String> = emptySet()
+            private set
+
+        override fun currentIndex(): ArchitectureGraphIndex? = null
+
+        override fun freshness(): IndexedGraphFreshness = IndexedGraphFreshness()
+
+        override fun buildIndex(request: com.charmnight.linkgraph.application.indexed.IndexedGraphRequest): ArchitectureGraphIndex =
+            error("Scoped body relation requests should use the structure index first.")
+
+        override fun buildIndex(
+            request: com.charmnight.linkgraph.application.indexed.IndexedGraphRequest,
+            symbolIndexHint: JvmSymbolIndex?,
+        ): ArchitectureGraphIndex {
+            completeBuildAttempts += 1
+            return structureIndex
+        }
+
+        override fun buildScopedClassDiagramIndex(
+            request: com.charmnight.linkgraph.application.indexed.IndexedGraphRequest,
+            symbolIndexHint: JvmSymbolIndex?,
+            sourceClassIds: Set<String>,
+        ): ArchitectureGraphIndex {
+            scopedBuildAttempts += 1
+            lastScopedSourceClassIds = sourceClassIds
             return structureIndex
         }
 

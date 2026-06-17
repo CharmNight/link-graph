@@ -16,6 +16,7 @@ data class IndexedGraphPresetRequest(
     val selectedDiffItemIds: List<String> = emptyList(),
     val includeExternalLibraries: Boolean? = null,
     val includeJdk: Boolean? = null,
+    val relationDetail: IndexedGraphRelationDetail? = null,
     val viewport: IndexedGraphViewportOptions = IndexedGraphViewportOptions(),
     val classDiagram: IndexedClassDiagramOptions? = null,
     val usage: IndexedClassUsageOptions? = null,
@@ -42,6 +43,7 @@ object IndexedGraphRequestFactory {
         copy(
             includeExternalLibraries = request.includeExternalLibraries ?: includeExternalLibraries,
             includeJdk = request.includeJdk ?: includeJdk,
+            relationDetail = request.relationDetail ?: relationDetail,
             viewport = request.viewport,
         )
 

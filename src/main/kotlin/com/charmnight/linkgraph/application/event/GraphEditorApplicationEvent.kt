@@ -3,6 +3,8 @@ package com.charmnight.linkgraph.application.event
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
 import com.charmnight.linkgraph.application.model.ApplicationSnapshot
 import com.charmnight.linkgraph.application.model.AsyncRequestState
+import com.charmnight.linkgraph.application.model.GraphEditTransaction
+import com.charmnight.linkgraph.application.model.GraphEditRejected as GraphEditRejectedPayload
 import com.charmnight.linkgraph.application.model.GraphLayoutPosition
 import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.application.result.BeautificationCompletedResult
@@ -47,7 +49,9 @@ sealed interface GraphEditorApplicationEvent {
         val selectedMethodSignature: String?,
         val preserveDraftPatchUndo: Boolean,
         val workingGraphDirty: Boolean,
+        val graphEditTransaction: GraphEditTransaction? = null,
     ) : GraphEditorApplicationEvent
+    data class GraphEditRejected(val rejection: GraphEditRejectedPayload) : GraphEditorApplicationEvent
     data class WorkspaceLayoutChanged(val positions: Map<String, GraphLayoutPosition>) : GraphEditorApplicationEvent
     data class MermaidImported(val mermaid: String, val graph: GraphDocument, val issues: List<MermaidIssue>) : GraphEditorApplicationEvent
     data class MermaidExported(val exported: String, val copiedToClipboard: Boolean) : GraphEditorApplicationEvent

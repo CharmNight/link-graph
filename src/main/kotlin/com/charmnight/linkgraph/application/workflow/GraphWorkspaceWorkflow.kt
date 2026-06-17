@@ -2,7 +2,8 @@ package com.charmnight.linkgraph.application.workflow
 
 import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.diff.GraphDifferResult
-import com.charmnight.linkgraph.application.model.GraphEditScript
+import com.charmnight.linkgraph.application.model.GraphEditResult
+import com.charmnight.linkgraph.application.model.GraphEditRequest
 import com.charmnight.linkgraph.application.model.GraphLayoutPosition
 import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
@@ -47,16 +48,23 @@ internal class GraphWorkspaceWorkflow(
         eventSink.emit(GraphEditorApplicationEvent.WorkspaceGraphLoaded(result.graph, result.source))
     }
 
-    fun handleFrontendEditScript(script: GraphEditScript) {
-        when (val result = useCase.applyFrontendEditScript(snapshotProvider.snapshot(), script)) {
-            is WorkspaceGraphUseCaseResult.EditIgnored -> return
-            is WorkspaceGraphUseCaseResult.EditApplied -> workspaceGraphCommitter.commitWorkspaceGraph(
+    fun handleGraphEditRequest(request: GraphEditRequest): GraphEditResult {
+        return when (val result = useCase.applyGraphEditRequest(snapshotProvider.snapshot(), request)) {
+            is WorkspaceGraphUseCaseResult.EditRejected -> {
+                eventSink.emit(GraphEditorApplicationEvent.GraphEditRejected(result.rejection))
+                GraphEditResult.Rejected(result.rejection)
+            }
+            is WorkspaceGraphUseCaseResult.EditApplied -> {
+                workspaceGraphCommitter.commitWorkspaceGraph(
                 expectedSnapshotRevision = result.expectedSnapshotRevision,
                 graph = result.graph,
                 selectedMethodSignature = result.selectedMethodSignature,
                 syncBrowser = false,
+                    graphEditTransaction = result.transaction,
             )
-            else -> Unit
+                GraphEditResult.Applied(result.graph, result.transaction)
+            }
+            else -> error("unsupported graph edit use case result: ${result::class.simpleName}")
         }
     }
 

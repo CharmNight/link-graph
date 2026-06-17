@@ -125,8 +125,8 @@ internal object BridgeCommandParser {
             "requestRemoveInvocationExpansion" -> GraphEditorMessage.RequestRemoveInvocationExpansion(
                 expansionId = payload.requiredString("expansionId", "expansionId"),
             )
-            "applyGraphEditScript" -> GraphEditorMessage.ApplyGraphEditScript(
-                GraphBrowserPayloadParser.parseGraphEditScript(JsonCodec.toJson(payload)),
+            "applyGraphEditScript" -> GraphEditorMessage.ApplyGraphEditRequest(
+                GraphBrowserPayloadParser.parseGraphEditRequest(JsonCodec.toJson(payload)),
             )
             else -> error("unsupported bridge command type: $type")
         }
@@ -221,7 +221,7 @@ internal object BridgeCommandParser {
             "requestExpandOverflowNode" -> "展开溢出节点"
             "requestExpandInvocation" -> "展开调用方法"
             "requestRemoveInvocationExpansion" -> "移除调用展开"
-            "applyGraphEditScript" -> "链路图编辑脚本同步"
+            "applyGraphEditScript" -> "链路图编辑请求同步"
             else -> type
         }
 

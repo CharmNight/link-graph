@@ -15,6 +15,8 @@ import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
+import com.charmnight.linkgraph.application.model.GraphEditRejected
+import com.charmnight.linkgraph.application.model.GraphEditTransaction
 import com.charmnight.linkgraph.review.ReviewGraphViewDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.sync.SyncPreviewItem
@@ -101,6 +103,8 @@ fun testSnapshot(
     workspaceRevision: Long = 0,
     snapshotRevision: Long = 0,
     operationFeedback: OperationFeedback? = null,
+    lastGraphEditTransaction: GraphEditTransaction? = null,
+    lastGraphEditRejection: GraphEditRejected? = null,
     lastMessageType: String? = null,
     visibleGraph: GraphDocument? = null,
     workingGraph: GraphDocument? = null,
@@ -247,6 +251,8 @@ fun testSnapshot(
         workspaceRevision = workspaceRevision,
         snapshotRevision = snapshotRevision,
         operationFeedback = operationFeedback,
+        lastGraphEditTransaction = lastGraphEditTransaction,
+        lastGraphEditRejection = lastGraphEditRejection,
         lastMessageType = lastMessageType,
     )
 }

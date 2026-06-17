@@ -111,6 +111,7 @@ data class IndexedGraphRequest(
     val includeExternalLibraries: Boolean = false,
     val includeJdk: Boolean = false,
     val completeness: IndexedGraphCompleteness = IndexedGraphCompleteness.Interactive,
+    val relationDetail: IndexedGraphRelationDetail = IndexedGraphRelationDetail.STRUCTURE_ONLY,
     val refreshPolicy: IndexedGraphRefreshPolicy = IndexedGraphRefreshPolicy.ReuseCached,
     val viewport: IndexedGraphViewportOptions = IndexedGraphViewportOptions(),
     val classDiagram: IndexedClassDiagramOptions = IndexedClassDiagramOptions(),
@@ -172,6 +173,12 @@ enum class IndexedGraphCompleteness {
     StructureOnly,
     Interactive,
     CompleteWithinScope,
+}
+
+enum class IndexedGraphRelationDetail {
+    STRUCTURE_ONLY,
+    SCOPED_BODY_RELATIONS,
+    COMPLETE,
 }
 
 enum class IndexedGraphRefreshPolicy {

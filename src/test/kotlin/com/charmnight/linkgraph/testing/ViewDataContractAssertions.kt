@@ -386,7 +386,7 @@ private fun assertClassDiagramSummary(
     assertEquals(visibleGraph.nodes.count { it.metadata["jvm.class.kind"] == JvmClassKind.OBJECT.name }, summary.objectCount, "$label objectCount mismatch.")
     assertEquals(visibleGraph.edges.size, summary.relationCount, "$label relationCount mismatch.")
     assertTrue(
-        summary.relationCompleteness in setOf("COMPLETE", "STRUCTURE_ONLY"),
+        summary.relationCompleteness in setOf("COMPLETE", "STRUCTURE_ONLY", "SCOPED_BODY_RELATIONS"),
         "$label relationCompleteness must be explicit.",
     )
     assertTrue(summary.scopeTypeCount >= visibleGraph.nodes.size, "$label scopeTypeCount must cover visible nodes.")

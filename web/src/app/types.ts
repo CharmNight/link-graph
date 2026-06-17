@@ -26,7 +26,8 @@ export type {
   EdgeType,
   GraphDiffElementKind,
   GraphEditOperation,
-  GraphEditScript,
+  GraphEditRequest,
+  GraphEditRequestSource,
   GraphFocusRequest,
   GraphPatch,
   GraphPatchAction,
@@ -259,9 +260,12 @@ export interface IndexedGraphViewportOptions {
   maxVisibleEdges?: number | null;
 }
 
+export type IndexedGraphRelationDetail = "STRUCTURE_ONLY" | "SCOPED_BODY_RELATIONS" | "COMPLETE";
+
 export interface IndexedClassDiagramOptions {
   neighborhoodLimit: number;
   memberLimit: number;
+  relationDetail?: IndexedGraphRelationDetail;
 }
 
 export interface IndexedClassUsageOptions {
@@ -407,7 +411,7 @@ export interface ClassDiagramSummary {
   relationCount: number;
   spiProviderCount?: number;
   reflectionRelationCount?: number;
-  relationCompleteness?: "COMPLETE" | "STRUCTURE_ONLY" | string;
+  relationCompleteness?: IndexedGraphRelationDetail | string;
   scopeTypeCount?: number;
   projectTypeCount?: number;
   projectClassCount?: number;

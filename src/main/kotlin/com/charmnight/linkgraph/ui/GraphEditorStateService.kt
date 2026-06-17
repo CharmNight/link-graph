@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.mermaid.MermaidIssue
+import com.charmnight.linkgraph.application.model.GraphEditTransaction
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.architecture.view.ArchitectureGraphViewDocument
@@ -83,7 +84,14 @@ class GraphEditorStateService {
         selectedMethodSignature: String? = null,
         preserveDraftPatchUndo: Boolean = false,
         workingGraphDirty: Boolean = true,
-    ) = this.graph.markGraphChanged(graph, selectedMethodSignature, preserveDraftPatchUndo, workingGraphDirty)
+        graphEditTransaction: GraphEditTransaction? = null,
+    ) = this.graph.markGraphChanged(
+        graph,
+        selectedMethodSignature,
+        preserveDraftPatchUndo,
+        workingGraphDirty,
+        graphEditTransaction,
+    )
 
     fun markLayoutChanged(positions: Map<String, GraphLayoutPosition>) = graph.markLayoutChanged(positions)
 

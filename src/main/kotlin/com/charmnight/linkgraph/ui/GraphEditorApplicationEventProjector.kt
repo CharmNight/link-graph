@@ -51,7 +51,10 @@ internal class GraphEditorApplicationEventProjector(
                     selectedMethodSignature = event.selectedMethodSignature,
                     preserveDraftPatchUndo = event.preserveDraftPatchUndo,
                     workingGraphDirty = event.workingGraphDirty,
+                    graphEditTransaction = event.graphEditTransaction,
                 )
+            is GraphEditorApplicationEvent.GraphEditRejected ->
+                stateService.mutate { currentState -> currentState.withGraphEditRejected(event.rejection) }
             is GraphEditorApplicationEvent.WorkspaceLayoutChanged ->
                 workspacePresenter().presentLayoutChanged(event.positions)
             is GraphEditorApplicationEvent.MermaidImported ->

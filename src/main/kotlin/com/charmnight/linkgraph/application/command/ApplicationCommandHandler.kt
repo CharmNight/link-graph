@@ -193,7 +193,7 @@ internal class WorkspaceApplicationCommandHandler(
             command is ApplicationCommand.ImportMermaid ||
             command is ApplicationCommand.ExportMermaid ||
             command is ApplicationCommand.ShowDiffMode ||
-            command is ApplicationCommand.ApplyGraphEditScript ||
+            command is ApplicationCommand.ApplyGraphEditRequest ||
             command is ApplicationCommand.LayoutChanged ||
             command is ApplicationCommand.RequestSyncPreview
 
@@ -210,9 +210,9 @@ internal class WorkspaceApplicationCommandHandler(
             ApplicationCommand.ExportMermaid -> workspaceFlow.exportMermaid()
             ApplicationCommand.ShowDiffMode ->
                 workspaceChangeCoordinator.invalidateRequests().let { workspaceFlow.showDiffMode() }
-            is ApplicationCommand.ApplyGraphEditScript -> {
+            is ApplicationCommand.ApplyGraphEditRequest -> {
                 workspaceChangeCoordinator.resetWorkspaceGraphContext()
-                workspaceFlow.handleFrontendEditScript(command.script)
+                workspaceFlow.handleGraphEditRequest(command.request)
             }
             is ApplicationCommand.LayoutChanged ->
                 workspaceFlow.handleFrontendLayoutChanged(command.positions)

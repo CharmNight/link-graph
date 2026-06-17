@@ -1,8 +1,11 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.application.indexed.IndexedGraphAnchor
+import com.charmnight.linkgraph.application.indexed.IndexedGraphRelationDetail
 import com.charmnight.linkgraph.application.indexed.IndexedGraphScope
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
+import com.charmnight.linkgraph.application.model.GraphEditOperation
+import com.charmnight.linkgraph.application.model.GraphEditRequestSource
 import com.charmnight.linkgraph.json.JsonCodec
 import com.charmnight.linkgraph.ui.bridge.BridgeCommandParser
 import com.charmnight.linkgraph.workbench.AssistantComposerTarget
@@ -245,7 +248,10 @@ class GraphBrowserPayloadParserTest {
                 mapOf(
                     "preset" to "CLASS_DIAGRAM",
                     "scopeNodeId" to "component:orders",
-                    "classDiagram" to mapOf("neighborhoodLimit" to 36),
+                    "classDiagram" to mapOf(
+                        "neighborhoodLimit" to 36,
+                        "relationDetail" to "SCOPED_BODY_RELATIONS",
+                    ),
                     "viewport" to mapOf("maxVisibleNodes" to 72),
                 ),
             ),
@@ -257,9 +263,65 @@ class GraphBrowserPayloadParserTest {
         assertEquals("component:orders", assertIs<IndexedGraphScope.ArchitectureNode>(message.request.scope).nodeId)
         assertEquals(false, message.request.includeExternalLibraries)
         assertEquals(false, message.request.includeJdk)
+        assertEquals(IndexedGraphRelationDetail.SCOPED_BODY_RELATIONS, message.request.relationDetail)
         assertEquals(36, message.request.classDiagram.neighborhoodLimit)
         assertEquals(5, message.request.classDiagram.memberLimit)
         assertEquals(72, message.request.viewport.maxVisibleNodes)
+    }
+
+    @Test
+    fun bridgeCommandEnvelopeParsesGraphEditRequestPayload() {
+        val parsed = BridgeCommandParser.parse(
+            command(
+                "applyGraphEditScript",
+                mapOf(
+                    "sceneId" to "WORKSPACE_FACT",
+                    "baseWorkspaceRevision" to 12,
+                    "source" to "FRONTEND",
+                    "operations" to listOf(
+                        mapOf(
+                            "type" to "UPSERT_NODE",
+                            "node" to mapOf(
+                                "id" to "node-new",
+                                "type" to "METHOD",
+                                "title" to "New Node",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val message = assertIs<GraphEditorMessage.ApplyGraphEditRequest>(parsed.message)
+        assertEquals(12, message.request.baseWorkspaceRevision)
+        assertEquals(GraphEditRequestSource.FRONTEND, message.request.source)
+        val operation = assertIs<GraphEditOperation.UpsertNode>(message.request.operations.single())
+        assertEquals("node-new", operation.node.id)
+        assertEquals("New Node", operation.node.title)
+    }
+
+    @Test
+    fun bridgeCommandEnvelopeRejectsLegacyGraphEditOperationTypeAliases() {
+        val error = assertFailsWith<IllegalStateException> {
+            BridgeCommandParser.parse(
+                command(
+                    "applyGraphEditScript",
+                    mapOf(
+                        "sceneId" to "WORKSPACE_FACT",
+                        "baseWorkspaceRevision" to 12,
+                        "source" to "FRONTEND",
+                        "operations" to listOf(
+                            mapOf(
+                                "type" to "UPSERTNODE",
+                                "node" to mapOf("id" to "node-new", "type" to "METHOD"),
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        }
+
+        assertTrue(error.message?.contains("unsupported graph edit request operation") == true)
     }
 
     @Test
@@ -382,11 +444,11 @@ class GraphBrowserPayloadParserTest {
     }
 
     @Test
-    fun rejectsOversizedGraphEditScriptPayloadBeforeJsonParsing() {
+    fun rejectsOversizedGraphEditRequestPayloadBeforeJsonParsing() {
         val payload = "x".repeat(GraphBrowserPayloadLimits.GRAPH_EDIT_SCRIPT_MAX_CHARS + 1)
 
         val error = assertFailsWith<IllegalArgumentException> {
-            GraphBrowserPayloadParser.parseGraphEditScript(payload)
+            GraphBrowserPayloadParser.parseGraphEditRequest(payload)
         }
 
         assertTrue(error.message?.contains("payload 过大") == true)

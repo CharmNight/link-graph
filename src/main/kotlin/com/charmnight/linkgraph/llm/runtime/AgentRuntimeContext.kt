@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.llm.runtime
 
+import com.charmnight.linkgraph.application.port.GraphEditRequestExecutor
 import com.charmnight.linkgraph.llm.artifact.ArtifactStore
 import com.charmnight.linkgraph.llm.tools.ToolExecutionContext
 import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshot
@@ -20,6 +21,8 @@ data class AgentRuntimeContext(
     val deadlineEpochMillis: Long? = null,
     /** 当前 capability 明确允许调用的工具名；为空集合表示禁止调用任何工具。 */
     val allowedToolNames: Set<String>? = null,
+    /** 当前 runtime 允许的受控图编辑入口；为空表示工具不能写图。 */
+    val graphEditRequestExecutor: GraphEditRequestExecutor? = null,
 ) {
     fun isDeadlineExceeded(nowEpochMillis: Long = System.currentTimeMillis()): Boolean {
         return deadlineEpochMillis?.let { deadline -> nowEpochMillis >= deadline } ?: false
@@ -49,6 +52,7 @@ data class AgentRuntimeContext(
             artifactStore = artifactStore,
             runBudget = runBudget,
             allowedToolNames = allowedToolNames,
+            graphEditRequestExecutor = graphEditRequestExecutor,
         )
 }
 
