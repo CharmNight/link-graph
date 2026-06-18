@@ -51,11 +51,7 @@ export function LinkGraphOutline({
   return (
     <aside className="link-outline" aria-label="链路大纲">
       <div className="link-outline-head">
-        <div>
-          <p className="eyebrow">Outline</p>
-          <h2>链路大纲</h2>
-          <p className="muted">从入口、资源证据、风险和草稿定位当前链路。</p>
-        </div>
+        <h2>链路大纲</h2>
         <label className="link-outline-search">
           <span className="sr-only">搜索链路大纲</span>
           <input

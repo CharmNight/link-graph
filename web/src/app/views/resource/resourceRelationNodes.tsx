@@ -120,7 +120,7 @@ function resourceEdgeLabel(edge: LinkGraphEdge): string | undefined {
 
 function resourceEdgeStyle() {
   return {
-    stroke: "#5f5a53",
+    stroke: "var(--edge-neutral)",
     strokeWidth: 1.6,
     opacity: 0.88,
   };

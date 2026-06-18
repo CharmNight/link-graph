@@ -4,6 +4,7 @@ import {
   draftCompareStatusLabel,
   sourceTagLabel,
 } from "../labels";
+import { Chip } from "./Chip";
 import type {
   AnalysisDisplayMode,
   DraftCompareProjection,
@@ -46,7 +47,6 @@ export function GraphStageFooter({
       ...Object.values(draftCompareProjection.edgeStatuses),
     ]));
   const visibleNodeCount = activeViewGraph.nodeCount ?? activeViewGraph.nodes.length;
-  const renderedNodeCount = activeViewGraph.nodes.length;
   const resolvedFullNodeCount = Math.max(fullNodeCount, visibleNodeCount);
   const nodeCountLabel = isIndexedGraphDisplayMode(analysisDisplayMode)
     ? indexedGraphNodeCountLabel(indexedSummary)
@@ -57,30 +57,49 @@ export function GraphStageFooter({
   const indexedCacheLabel = isIndexedGraphDisplayMode(analysisDisplayMode)
     ? indexedGraphCacheLabel(indexedSummary)
     : null;
+  const visibilityReasons = indexedSummary?.visibilityReasons ?? [];
+
+  // Detail-tier telemetry: only rendered inside a collapsed <details> so the
+  // default footer stays scannable (mode + node count + freshness). These are
+  // diagnostics, not primary information.
+  const hasDetailPills = sourceTags.length > 0
+    || hasExplanationFocus
+    || draftChangedNodeCount > 0
+    || compareStatuses.length > 0
+    || Boolean(indexedCacheLabel)
+    || visibilityReasons.length > 0;
 
   return (
     <footer className="graph-stage-footer" aria-label="图谱图例">
-      <span className="status-pill">{analysisDisplayModeLabel(analysisDisplayMode)}</span>
-      <span className="status-pill">{certaintyLabel("PROVEN")}</span>
-      <span className="status-pill">{certaintyLabel("RULE_INFERRED")}</span>
-      <span className="status-pill">{certaintyLabel("LLM_SUGGESTED")}</span>
-      {sourceTags.map((tag) => (
-        <span key={tag} className="status-pill">{sourceTagLabel(tag)}</span>
-      ))}
-      {hasExplanationFocus ? <span className="app-pill">讲解焦点</span> : null}
-      {draftChangedNodeCount > 0 ? <span className="app-pill">草稿变更 {draftChangedNodeCount}</span> : null}
-      {compareStatuses.map((status) => (
-        <span key={status} className="app-pill">{draftCompareStatusLabel(status)}</span>
-      ))}
-      <span className="status-pill">{nodeCountLabel}</span>
-      {indexedFreshnessLabel ? <span className="status-pill">{indexedFreshnessLabel}</span> : null}
-      {indexedCacheLabel ? <span className="status-pill">{indexedCacheLabel}</span> : null}
-      {indexedSummary?.visibilityReasons?.map((reason) => (
-        <span key={reason.code} className="status-pill">
-          {indexedVisibilityReasonLabel(reason)}
-        </span>
-      ))}
-      <span className="status-pill">代码 diff {codeDiffStatusLabel(codeDiffStatus)}</span>
+      <Chip variant="status-pill">{analysisDisplayModeLabel(analysisDisplayMode)}</Chip>
+      <Chip variant="status-pill">{nodeCountLabel}</Chip>
+      {indexedFreshnessLabel ? <Chip variant="status-pill">{indexedFreshnessLabel}</Chip> : null}
+
+      {hasDetailPills ? (
+        <details className="graph-stage-footer-details">
+          <summary>详情</summary>
+          <Chip variant="status-pill">{certaintyLabel("PROVEN")}</Chip>
+          <Chip variant="status-pill">{certaintyLabel("RULE_INFERRED")}</Chip>
+          <Chip variant="status-pill">{certaintyLabel("LLM_SUGGESTED")}</Chip>
+          {sourceTags.map((tag) => (
+            <Chip key={tag} variant="status-pill">{sourceTagLabel(tag)}</Chip>
+          ))}
+          {hasExplanationFocus ? <Chip variant="app-pill">讲解焦点</Chip> : null}
+          {draftChangedNodeCount > 0 ? <Chip variant="app-pill">草稿变更 {draftChangedNodeCount}</Chip> : null}
+          {compareStatuses.map((status) => (
+            <Chip key={status} variant="app-pill">{draftCompareStatusLabel(status)}</Chip>
+          ))}
+          {indexedCacheLabel ? <Chip variant="status-pill">{indexedCacheLabel}</Chip> : null}
+          {visibilityReasons.map((reason) => (
+            <Chip key={reason.code} variant="status-pill">
+              {indexedVisibilityReasonLabel(reason)}
+            </Chip>
+          ))}
+          <Chip variant="status-pill">代码 diff {codeDiffStatusLabel(codeDiffStatus)}</Chip>
+        </details>
+      ) : (
+        <Chip variant="status-pill">代码 diff {codeDiffStatusLabel(codeDiffStatus)}</Chip>
+      )}
     </footer>
   );
 }

@@ -509,7 +509,7 @@ describe("ClassDiagramView", () => {
     );
 
     expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute("data-layout-editable", "true");
-    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute("data-pan-on-drag", "1");
+    expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute("data-pan-on-drag", "true");
     expect(screen.getByTestId("graph-flow-surface")).toHaveAttribute("data-group-selection-enabled", "false");
     expect(useMeasuredLayoutMock).toHaveBeenCalledWith(expect.objectContaining({
       layoutOnPositionChange: true,

@@ -345,7 +345,7 @@ describe("App view modules", () => {
     expect(screen.getByRole("button", { name: "介绍这个类" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "解释关系" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "追问类图" })).toBeInTheDocument();
-    expect(screen.getByText("当前展示类、字段、构造参数、返回值和类型依赖关系。")).toBeInTheDocument();
+    // P1: the class-diagram stage description prose was removed.
     expect(within(screen.getByRole("banner", { name: "链路任务栏" })).getByRole("button", { name: "解释类关系" })).toBeInTheDocument();
     expect(within(screen.getByRole("banner", { name: "链路任务栏" })).queryByRole("button", { name: "链路讲解" })).not.toBeInTheDocument();
     const assistantStatus = screen.getByRole("group", { name: "AI 工作状态" });

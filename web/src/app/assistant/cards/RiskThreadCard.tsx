@@ -1,4 +1,5 @@
 import type { InvestigationThread, RiskResolutionStatus } from "../../types";
+import { Button } from "../../components/Button";
 
 interface RiskThreadCardProps {
   threads: InvestigationThread[];
@@ -28,41 +29,41 @@ export function RiskThreadCard({
             <p className="muted assistant-result-text">{thread.evidenceGap}</p>
             <div className="panel-actions">
               {onInvestigateThread ? (
-                <button
-                  type="button"
-                  className="ghost-button compact assistant-wrap-token"
+                <Button
+                  compact
+                  className="assistant-wrap-token"
                   aria-label={`继续取证：${thread.title}`}
                   onClick={() => onInvestigateThread(thread.threadId)}
                 >
                   继续取证
-                </button>
+                </Button>
               ) : null}
               {onResolveThread ? (
                 <>
-                  <button
-                    type="button"
-                    className="ghost-button compact assistant-wrap-token"
+                  <Button
+                    compact
+                    className="assistant-wrap-token"
                     aria-label={`暂挂风险：${thread.title}`}
                     onClick={() => onResolveThread(thread.threadId, "DEFERRED")}
                   >
                     暂挂
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-button compact assistant-wrap-token"
+                  </Button>
+                  <Button
+                    compact
+                    className="assistant-wrap-token"
                     aria-label={`接受风险：${thread.title}`}
                     onClick={() => onResolveThread(thread.threadId, "ACCEPTED_RISK")}
                   >
                     接受风险
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-button compact assistant-wrap-token"
+                  </Button>
+                  <Button
+                    compact
+                    className="assistant-wrap-token"
                     aria-label={`排除风险：${thread.title}`}
                     onClick={() => onResolveThread(thread.threadId, "DISMISSED")}
                   >
                     排除
-                  </button>
+                  </Button>
                 </>
               ) : null}
             </div>

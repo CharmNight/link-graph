@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { buildEdgeActions as buildSharedEdgeActions, buildPaneActions } from "../../components/graph/actions/actionSchema";
+import { CanvasEmptyState } from "../../components/graph/CanvasEmptyState";
 import { projectedAliasNodeIds } from "../../appGraphSupport";
 import { traceLinkGraph } from "../../debug";
 import { canEditProjectedEdge, canEditProjectedNode } from "../../graphProjectionPermissions";
@@ -545,17 +546,11 @@ export function FlowchartView({
         layoutEditable
         header={header}
         emptyState={(
-          isLayoutLoading ? (
-            <div className="canvas-empty-state">
-              <strong>正在整理流程图</strong>
-              <p className="muted">链路识别已完成，正在计算稳定布局。</p>
-            </div>
-          ) : (
-            <div className="canvas-empty-state">
-              <strong>当前没有可展示的流程节点</strong>
-              <p className="muted">请先选择方法并完成分析，再查看控制流视图。</p>
-            </div>
-          )
+          <CanvasEmptyState
+            isLoading={isLayoutLoading}
+            loadingTitle="正在整理流程图"
+            idleTitle="当前没有可展示的流程节点"
+          />
         )}
         buildPaneActions={({ position, hasGroupedSelection, visibleNodeCount, close }) =>
           buildPaneActions({

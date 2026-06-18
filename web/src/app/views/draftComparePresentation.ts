@@ -23,14 +23,14 @@ export function draftCompareEdgeStyle<T extends Record<string, unknown>>(
     case "ADDED":
       return {
         ...baseStyle,
-        stroke: "#0e8b72",
+        stroke: "var(--edge-success)",
         strokeWidth: 2.4,
         opacity: 0.96,
       };
     case "REMOVED":
       return {
         ...baseStyle,
-        stroke: "#95403a",
+        stroke: "var(--edge-danger)",
         strokeWidth: 2.2,
         strokeDasharray: "8 5",
         opacity: 0.96,
@@ -39,7 +39,7 @@ export function draftCompareEdgeStyle<T extends Record<string, unknown>>(
     default:
       return {
         ...baseStyle,
-        stroke: "#b8682f",
+        stroke: "var(--edge-warning)",
         strokeWidth: 2.4,
         opacity: 0.96,
       };

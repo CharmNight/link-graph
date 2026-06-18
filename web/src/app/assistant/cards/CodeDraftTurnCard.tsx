@@ -1,4 +1,5 @@
 import type { AssistantTurn } from "../../types";
+import { Button } from "../../components/Button";
 import { AssistantFailureNotice } from "./AssistantFailureNotice";
 import { AssistantTurnHeader } from "./AssistantTurnFrame";
 
@@ -36,17 +37,17 @@ export function CodeDraftTurnCard({
       ) : drafts.length === 0 ? (
         <div className="assistant-card-flow">
           <p className="muted assistant-result-text">还没有代码草稿。先基于实现建议生成代码 diff。</p>
-          <button type="button" className="primary-button" onClick={onRequestCodeDrafts}>
+          <Button variant="primary" onClick={onRequestCodeDrafts}>
             生成代码 diff
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="assistant-card-flow">
           <div className="preview-head">
             <strong>代码草稿</strong>
-            <button type="button" className="primary-button" onClick={onWriteCodeDrafts}>
+            <Button variant="primary" onClick={onWriteCodeDrafts}>
               写入全部
-            </button>
+            </Button>
           </div>
           {warnings.length > 0 ? (
             <div className="assistant-evidence-list" aria-label="代码草稿警告">
@@ -61,38 +62,38 @@ export function CodeDraftTurnCard({
               <p className="muted assistant-result-text">{draft.targetPath}</p>
               <div className="panel-actions">
                 {onWriteSingleCodeDraft ? (
-                  <button
-                    type="button"
-                    className="ghost-button compact assistant-wrap-token"
+                  <Button
+                    compact
+                    className="assistant-wrap-token"
                     onClick={() => onWriteSingleCodeDraft(draft.id)}
                   >
                     写入
-                  </button>
+                  </Button>
                 ) : null}
                 {onOpenNativeDiff ? (
-                  <button
-                    type="button"
-                    className="ghost-button compact assistant-wrap-token"
+                  <Button
+                    compact
+                    className="assistant-wrap-token"
                     onClick={() => onOpenNativeDiff(draft.id)}
                   >
                     打开 diff
-                  </button>
+                  </Button>
                 ) : null}
                 {onOpenDraft ? (
-                  <button
-                    type="button"
-                    className="ghost-button compact assistant-wrap-token"
+                  <Button
+                    compact
+                    className="assistant-wrap-token"
                     onClick={() => onOpenDraft(draft.targetPath)}
                   >
                     打开源码
-                  </button>
+                  </Button>
                 ) : null}
               </div>
             </div>
           ))}
-          <button type="button" className="ghost-button compact assistant-wrap-token" onClick={onRequestCodeDrafts}>
+          <Button compact className="assistant-wrap-token" onClick={onRequestCodeDrafts}>
             重新生成代码 diff
-          </button>
+          </Button>
         </div>
       )}
     </article>

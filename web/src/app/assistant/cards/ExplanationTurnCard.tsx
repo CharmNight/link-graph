@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { Button } from "../../components/Button";
 import { GraphContextMenu } from "../../components/graph/actions/GraphContextMenu";
 import { formatResultEvidenceReference, stepGranularityLabel, stepKindLabel } from "../../labels";
 import type { AssistantTurn, ResultEvidenceReference, StepGranularity } from "../../types";
@@ -144,27 +145,27 @@ export function ExplanationTurnCard({
             {historyItems.length > 0 && onOpenHistory ? (
               <div className="panel-actions" aria-label="讲解历史路径">
                 {historyItems.map((label, index) => (
-                  <button
+                  <Button
                     key={`${label}-${index}`}
-                    type="button"
-                    className="ghost-button compact assistant-wrap-token"
+                    compact
+                    className="assistant-wrap-token"
                     aria-label={`讲解历史：${label}`}
                     onClick={() => onOpenHistory(index)}
                   >
                     {label}
-                  </button>
+                  </Button>
                 ))}
               </div>
             ) : null}
             {canReturnToPrevious && onReturnToPrevious ? (
-              <button
-                type="button"
-                className="ghost-button compact assistant-wrap-token"
+              <Button
+                compact
+                className="assistant-wrap-token"
                 aria-label={`返回上一讲解：${previousSessionLabel ?? "上一讲解"}`}
                 onClick={onReturnToPrevious}
               >
                 返回上一讲解
-              </button>
+              </Button>
             ) : null}
             {onGranularityChange ? (
               <section className="assistant-explanation-rerun" aria-label="重新解释粒度">
@@ -226,27 +227,27 @@ export function ExplanationTurnCard({
                     <div key={finding.id} className="assistant-evidence-item">
                       <strong className="assistant-result-text">{finding.claim}</strong>
                       {finding.references.map((reference, index) => (
-                        <button
+                        <Button
                           key={`${finding.id}:${index}`}
-                          type="button"
-                          className="ghost-button compact assistant-wrap-token"
+                          compact
+                          className="assistant-wrap-token"
                           onClick={() => onRevealReference(reference)}
                         >
                           {formatResultEvidenceReference(reference)}
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   ))}
                 </div>
               ) : null}
               {step.followUpQuestions[0] && onFollowUpStep ? (
-                <button
-                  type="button"
-                  className="ghost-button compact assistant-wrap-token"
+                <Button
+                  compact
+                  className="assistant-wrap-token"
                   onClick={() => onFollowUpStep(step.stepId, step.followUpQuestions[0])}
                 >
                   继续追问
-                </button>
+                </Button>
               ) : null}
             </section>
           ))}

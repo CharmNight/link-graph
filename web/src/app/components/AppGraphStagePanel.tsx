@@ -12,14 +12,12 @@ import type {
 } from "../types";
 import type { EditableStageProps, IndexedReadonlyStageProps } from "../views/viewStageProps";
 import type { CodeDiffStatus } from "../workbenchStatusModel";
-import type { WorkflowStage } from "../workflow/workflowStage";
 import { AppGraphStage } from "./AppGraphStage";
 import { GraphStageFooter } from "./GraphStageFooter";
 import { GraphStageHeader } from "./GraphStageHeader";
 
 interface AppGraphStagePanelProps {
   analysisDisplayMode: AnalysisDisplayMode;
-  activeWorkflowStage: WorkflowStage;
   activeViewGraph: LinkGraphDocument;
   fullNodeCount: number;
   hasExplanationFocus: boolean;
@@ -40,7 +38,6 @@ interface AppGraphStagePanelProps {
 
 export function AppGraphStagePanel({
   analysisDisplayMode,
-  activeWorkflowStage,
   activeViewGraph,
   fullNodeCount,
   hasExplanationFocus,
@@ -72,7 +69,6 @@ export function AppGraphStagePanel({
     <section className="graph-stage" aria-label="图谱舞台">
       <GraphStageHeader
         analysisDisplayMode={analysisDisplayMode}
-        activeStage={activeWorkflowStage}
         onRequestAnalysisDisplayMode={onRequestAnalysisDisplayMode}
       />
       <div className="graph-stage-canvas">

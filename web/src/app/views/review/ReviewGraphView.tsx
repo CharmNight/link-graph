@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { buildEdgeActions as buildSharedEdgeActions } from "../../components/graph/actions/actionSchema";
+import { CanvasEmptyState } from "../../components/graph/CanvasEmptyState";
 import type { GraphContextMenuAction } from "../../components/graph/actions/actionSchema";
 import { DraftCompareSummary } from "../../components/DraftCompareSummary";
 import { createNodeSizeRegistry } from "../../graph/nodeSizeRegistry";
@@ -572,17 +573,11 @@ export function ReviewGraphView({
         layoutEditable={false}
         header={header}
         emptyState={(
-          isLayoutLoading ? (
-            <div className="canvas-empty-state">
-              <strong>正在整理 Review Graph</strong>
-              <p className="muted">变更审查索引已完成，正在计算布局。</p>
-            </div>
-          ) : (
-            <div className="canvas-empty-state">
-              <strong>{emptyStateCopy.title}</strong>
-              <p className="muted">{emptyStateCopy.detail}</p>
-            </div>
-          )
+          <CanvasEmptyState
+            isLoading={isLayoutLoading}
+            loadingTitle="正在整理 Review Graph"
+            idleTitle={emptyStateCopy.title}
+          />
         )}
         buildPaneActions={({ visibleNodeCount, hasGroupedSelection, close }) => {
           const actions: GraphContextMenuAction[] = [];

@@ -32,10 +32,24 @@ body,
   --code-text: #f4f4f5;
   --danger-bg: rgba(219, 110, 120, 0.14);
   --danger-border: rgba(219, 110, 120, 0.36);
+  --danger-tint: rgba(251, 113, 133, 0.14);
   --warning-bg: rgba(214, 162, 79, 0.16);
   --warning-border: rgba(214, 162, 79, 0.34);
+  --warning-tint: rgba(185, 104, 47, 0.14);
+  --success-tint: rgba(14, 139, 114, 0.14);
+  --success-tint-strong: rgba(14, 139, 114, 0.18);
   --info-bg: rgba(78, 163, 216, 0.14);
   --info-border: rgba(78, 163, 216, 0.30);
+  --info-tint: rgba(56, 189, 248, 0.14);
+  --info-tint-border: rgba(56, 189, 248, 0.30);
+  --info-ink: #195a99;
+  --accent-tint: rgba(56, 189, 248, 0.13);
+  --edge-info: #195a99;
+  --edge-warning: #8f4f23;
+  --edge-success: #0e8b72;
+  --edge-danger: #95403a;
+  --edge-neutral: #5f5a53;
+  --edge-default: #61717f;
   --shadow: 0 18px 38px rgba(0, 0, 0, 0.22);
   --font-head: "SF Pro Text", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --font-body: "SF Pro Text", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
@@ -73,10 +87,24 @@ body,
     --code-text: #1f2328;
     --danger-bg: rgba(194, 65, 75, 0.10);
     --danger-border: rgba(194, 65, 75, 0.28);
+    --danger-tint: rgba(194, 65, 75, 0.10);
     --warning-bg: rgba(154, 103, 0, 0.10);
     --warning-border: rgba(154, 103, 0, 0.26);
+    --warning-tint: rgba(154, 103, 0, 0.10);
+    --success-tint: rgba(46, 125, 50, 0.10);
+    --success-tint-strong: rgba(46, 125, 50, 0.14);
     --info-bg: rgba(47, 122, 184, 0.10);
     --info-border: rgba(47, 122, 184, 0.26);
+    --info-tint: rgba(47, 122, 184, 0.10);
+    --info-tint-border: rgba(47, 122, 184, 0.26);
+    --info-ink: #2f7ab8;
+    --accent-tint: rgba(47, 122, 184, 0.10);
+    --edge-info: #2f7ab8;
+    --edge-warning: #9a6700;
+    --edge-success: #2e7d32;
+    --edge-danger: #c2414b;
+    --edge-neutral: #5f6671;
+    --edge-default: #5f6671;
     --shadow: 0 18px 38px rgba(31, 35, 40, 0.10);
   }
 }
@@ -108,10 +136,24 @@ body,
   --code-text: #f4f4f5;
   --danger-bg: rgba(219, 110, 120, 0.14);
   --danger-border: rgba(219, 110, 120, 0.36);
+  --danger-tint: rgba(251, 113, 133, 0.14);
   --warning-bg: rgba(214, 162, 79, 0.16);
   --warning-border: rgba(214, 162, 79, 0.34);
+  --warning-tint: rgba(185, 104, 47, 0.14);
+  --success-tint: rgba(14, 139, 114, 0.14);
+  --success-tint-strong: rgba(14, 139, 114, 0.18);
   --info-bg: rgba(78, 163, 216, 0.14);
   --info-border: rgba(78, 163, 216, 0.30);
+  --info-tint: rgba(56, 189, 248, 0.14);
+  --info-tint-border: rgba(56, 189, 248, 0.30);
+  --info-ink: #195a99;
+  --accent-tint: rgba(56, 189, 248, 0.13);
+  --edge-info: #195a99;
+  --edge-warning: #8f4f23;
+  --edge-success: #0e8b72;
+  --edge-danger: #95403a;
+  --edge-neutral: #5f5a53;
+  --edge-default: #61717f;
   --shadow: 0 18px 38px rgba(0, 0, 0, 0.22);
 }
 
@@ -142,10 +184,24 @@ body,
   --code-text: #1f2328;
   --danger-bg: rgba(194, 65, 75, 0.10);
   --danger-border: rgba(194, 65, 75, 0.28);
+  --danger-tint: rgba(194, 65, 75, 0.10);
   --warning-bg: rgba(154, 103, 0, 0.10);
   --warning-border: rgba(154, 103, 0, 0.26);
+  --warning-tint: rgba(154, 103, 0, 0.10);
+  --success-tint: rgba(46, 125, 50, 0.10);
+  --success-tint-strong: rgba(46, 125, 50, 0.14);
   --info-bg: rgba(47, 122, 184, 0.10);
   --info-border: rgba(47, 122, 184, 0.26);
+  --info-tint: rgba(47, 122, 184, 0.10);
+  --info-tint-border: rgba(47, 122, 184, 0.26);
+  --info-ink: #2f7ab8;
+  --accent-tint: rgba(47, 122, 184, 0.10);
+  --edge-info: #2f7ab8;
+  --edge-warning: #9a6700;
+  --edge-success: #2e7d32;
+  --edge-danger: #c2414b;
+  --edge-neutral: #5f6671;
+  --edge-default: #5f6671;
   --shadow: 0 18px 38px rgba(31, 35, 40, 0.10);
 }
 
@@ -399,12 +455,12 @@ button {
 
 .feedback-success {
   color: var(--accent-strong);
-  background: rgba(14, 139, 114, 0.14);
+  background: var(--success-tint);
 }
 
 .feedback-warning {
   color: var(--warning);
-  background: rgba(185, 104, 47, 0.14);
+  background: var(--warning-tint);
 }
 
 .feedback-error {
@@ -527,7 +583,7 @@ button {
 }
 
 .canvas-reading-card.is-anchor {
-  border-color: rgba(14, 139, 114, 0.18);
+  border-color: var(--success-tint-strong);
   background: linear-gradient(135deg, rgba(14, 139, 114, 0.08), rgba(255, 255, 255, 0.92));
 }
 
@@ -611,7 +667,7 @@ button {
 .canvas-reading-flag.is-draft-compare-added,
 .draft-compare-added {
   color: var(--accent-strong);
-  background: rgba(14, 139, 114, 0.14);
+  background: var(--success-tint);
   border: 1px solid rgba(14, 139, 114, 0.22);
 }
 
@@ -902,6 +958,65 @@ button {
   transition: none !important;
 }
 
+/*
+ * P3 — interaction animation layer.
+ * One consistent motion language for graph interactions. Animations are:
+ *   - subtle (≤220ms, transform/opacity/shadow only — no layout reflow)
+ *   - disabled during drag (the .is-dragging guard above wins via !important)
+ *   - disabled when the user prefers reduced motion (global @media below)
+ *   - skipped on large graphs via a [data-graph-density="dense"] attribute set
+ *     by GraphFlowSurface when node count exceeds DENSE_GRAPH_NODE_THRESHOLD
+ */
+:root {
+  --graph-transition-duration: 180ms;
+  --graph-transition-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --edge-draw-duration: 280ms;
+}
+
+.graph-canvas-shell .flow-node-card,
+.graph-canvas-shell .uml-class-card,
+.graph-canvas-shell .resource-node-card {
+  transition:
+    box-shadow var(--graph-transition-duration) var(--graph-transition-ease),
+    border-color var(--graph-transition-duration) var(--graph-transition-ease),
+    transform var(--graph-transition-duration) var(--graph-transition-ease);
+}
+
+/* Gentle lift on hover — only the floating cards, never during drag. */
+.graph-canvas-shell:not(.is-dragging) .react-flow__node:not(.selected) > .flow-node-card,
+.graph-canvas-shell:not(.is-dragging) .react-flow__node:not(.selected) > .resource-node-card {
+  transition:
+    box-shadow var(--graph-transition-duration) var(--graph-transition-ease),
+    border-color var(--graph-transition-duration) var(--graph-transition-ease),
+    transform var(--graph-transition-duration) var(--graph-transition-ease);
+}
+@media (hover: hover) {
+  .graph-canvas-shell:not(.is-dragging) .react-flow__node:not(.selected) > .flow-node-card:hover,
+  .graph-canvas-shell:not(.is-dragging) .react-flow__node:not(.selected) > .resource-node-card:hover {
+    transform: translateY(-1px);
+  }
+}
+
+/* Dense-graph guard: skip the draw animation entirely on large graphs. */
+.graph-canvas-shell[data-graph-density="dense"] .react-flow__edge {
+  animation: none;
+}
+
+/* Respect the user's motion preference — disable every animation above. */
+@media (prefers-reduced-motion: reduce) {
+  .graph-canvas-shell .flow-node-card,
+  .graph-canvas-shell .uml-class-card,
+  .graph-canvas-shell .resource-node-card,
+  .graph-canvas-shell .react-flow__edge,
+  .graph-canvas-shell .react-flow__edge path,
+  .graph-canvas-shell .react-flow__node > .flow-node-card,
+  .graph-canvas-shell .react-flow__node > .resource-node-card {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
 .canvas-column-markers {
   position: absolute;
   top: 14px;
@@ -951,7 +1066,7 @@ button {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  border: 1px solid rgba(14, 139, 114, 0.18);
+  border: 1px solid var(--success-tint-strong);
   padding: 8px 12px;
   background: rgba(255, 252, 247, 0.96);
   color: var(--accent-strong);
@@ -1977,7 +2092,7 @@ button {
 .flow-node-expand-button {
   justify-self: flex-start;
   border-radius: 999px;
-  border: 1px solid rgba(14, 139, 114, 0.18);
+  border: 1px solid var(--success-tint-strong);
   padding: 7px 12px;
   background: rgba(14, 139, 114, 0.08);
   color: var(--accent-strong);
@@ -2089,7 +2204,7 @@ button {
   display: grid;
   gap: 8px;
   padding: 10px 12px;
-  border: 1px solid rgba(14, 139, 114, 0.18);
+  border: 1px solid var(--success-tint-strong);
   border-radius: 10px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(249, 252, 250, 0.96));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
@@ -2239,7 +2354,7 @@ button {
 
 .legend-highlight-badge.draft-change {
   color: #8f4f23;
-  background: rgba(185, 104, 47, 0.14);
+  background: var(--warning-tint);
 }
 
 .hierarchy-badge {
@@ -2249,7 +2364,7 @@ button {
 
 .collapse-badge {
   color: var(--warning);
-  background: rgba(185, 104, 47, 0.14);
+  background: var(--warning-tint);
 }
 
 .flow-node-meta {
@@ -2657,12 +2772,12 @@ button {
 
 .certainty-proven {
   color: var(--accent-strong);
-  background: rgba(14, 139, 114, 0.14);
+  background: var(--success-tint);
 }
 
 .certainty-rule_inferred {
   color: var(--warning);
-  background: rgba(185, 104, 47, 0.14);
+  background: var(--warning-tint);
 }
 
 .certainty-llm_suggested,
@@ -2684,12 +2799,12 @@ button {
 .risk-binding,
 .risk-medium {
   color: var(--warning);
-  background: rgba(185, 104, 47, 0.14);
+  background: var(--warning-tint);
 }
 
 .risk-low {
   color: var(--accent-strong);
-  background: rgba(14, 139, 114, 0.14);
+  background: var(--success-tint);
 }
 
 .risk-high {
@@ -3126,8 +3241,8 @@ button:disabled {
 }
 
 .danger-button {
-  border-color: rgba(251, 113, 133, 0.34);
-  background: rgba(251, 113, 133, 0.14);
+  border-color: var(--danger-border);
+  background: var(--danger-tint);
   color: var(--text);
 }
 
@@ -3164,14 +3279,14 @@ button:disabled {
 }
 
 .app-pill {
-  border-color: rgba(56, 189, 248, 0.30);
-  background: rgba(56, 189, 248, 0.14);
+  border-color: var(--info-tint-border);
+  background: var(--info-tint);
   color: var(--text);
 }
 
 .risk-pill {
-  border-color: rgba(251, 113, 133, 0.34);
-  background: rgba(251, 113, 133, 0.14);
+  border-color: var(--danger-border);
+  background: var(--danger-tint);
   color: var(--text);
 }
 
@@ -3188,14 +3303,14 @@ button:disabled {
 }
 
 .status-pill.feedback-error {
-  border-color: rgba(251, 113, 133, 0.34);
-  background: rgba(251, 113, 133, 0.14);
+  border-color: var(--danger-border);
+  background: var(--danger-tint);
   color: var(--text);
 }
 
 .status-pill.feedback-info {
-  border-color: rgba(56, 189, 248, 0.30);
-  background: rgba(56, 189, 248, 0.14);
+  border-color: var(--info-tint-border);
+  background: var(--info-tint);
   color: var(--text);
 }
 
@@ -4345,8 +4460,8 @@ button:disabled {
 
 .graph-stage-canvas .canvas-reading-flag.is-info {
   color: var(--text);
-  background: rgba(56, 189, 248, 0.14);
-  border-color: rgba(56, 189, 248, 0.30);
+  background: var(--info-tint);
+  border-color: var(--info-tint-border);
 }
 
 .graph-stage-canvas .react-flow__controls {
@@ -4491,9 +4606,8 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   min-height: 42px;
-  max-height: 42px;
   padding: 9px 12px;
   border-top: 1px solid var(--line);
   background: var(--shell);
@@ -4504,6 +4618,26 @@ button:disabled {
 .graph-stage-footer :is(.status-pill, .app-pill) {
   flex: 0 0 auto;
   white-space: nowrap;
+}
+
+.graph-stage-footer-details {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.graph-stage-footer-details > summary {
+  flex: 0 0 auto;
+  cursor: pointer;
+  list-style: none;
+  font-size: 12px;
+  color: var(--text-muted, var(--muted, inherit));
+}
+
+.graph-stage-footer-details[open] > summary {
+  margin-bottom: 2px;
 }
 
 .assistant-workbench-shell {

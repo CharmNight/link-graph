@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useRef } from "react";
+import { memo } from "react";
 import { nodeTypeLabel } from "../../../labels";
 import type { DraftCompareStatus, LinkGraphNode } from "../../../types";
 import { IssueBadge } from "../../IssueBadge";
@@ -15,8 +15,7 @@ import {
   ownerPreview,
   signaturePreview,
 } from "./nodePresentation";
-import { measureNodeContentBox } from "./measureNodeContentBox";
-import { GraphNodeStateBadges } from "./GraphNodeStateBadges";
+import { NodeCardBase } from "./NodeCardBase";
 
 interface FactGraphNodeCardProps {
   node: LinkGraphNode;
@@ -41,7 +40,6 @@ export const FactGraphNodeCard = memo(function FactGraphNodeCard({
   onMeasure,
   onExpandOverflow,
 }: FactGraphNodeCardProps) {
-  const rootRef = useRef<HTMLDivElement | null>(null);
   const overflow = overflowPresentation(node);
   const sourceBadge = overflow?.expandable ? null : nodeSourceBadge(node);
   const metaText = overflow
@@ -55,28 +53,21 @@ export const FactGraphNodeCard = memo(function FactGraphNodeCard({
   const signatureText = overflow?.signatureLine ?? signaturePreview(node) ?? nodeTypeLabel(node.type);
   const ownerText = overflow?.ownerLine ?? ownerPreview(node);
 
-  useLayoutEffect(() => {
-    const size = measureNodeContentBox(rootRef.current);
-    if (!size) {
-      return;
-    }
-    onMeasure?.(size);
-  }, [node, collapsed, collapsedCount, onMeasure]);
-
   return (
-    <div
-      ref={rootRef}
-      className={[
-        "flow-node-card",
-        selected ? "is-selected" : "",
+    <NodeCardBase
+      node={node}
+      selected={selected}
+      explanationFocused={explanationFocused}
+      draftChanged={draftChanged}
+      onMeasure={onMeasure}
+      measureDeps={[node, collapsed, collapsedCount, onMeasure]}
+      variantClassName={[
         node.type === "FLOW_SCOPE" ? "is-flow-scope" : "",
         isFlowActionNode(node) ? "is-flow-action" : "",
         isDecisionFlowScope(node) ? "is-flow-decision" : "",
         `direction-${directionClassName}`,
-      ].join(" ").trim()}
-      data-node-id={node.id}
+      ]}
     >
-      <GraphNodeStateBadges selected={selected} explanationFocused={explanationFocused} draftChanged={draftChanged} />
       <div className="flow-node-head">
         <span className="flow-node-doc" title={node.doc ?? factNodeDocText(node)}>
           {factNodeDocText(node)}
@@ -119,6 +110,6 @@ export const FactGraphNodeCard = memo(function FactGraphNodeCard({
           {overflow.expandActionLabel}
         </button>
       ) : null}
-    </div>
+    </NodeCardBase>
   );
 });

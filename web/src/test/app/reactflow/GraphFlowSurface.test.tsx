@@ -1,15 +1,19 @@
 import type { ComponentProps, ReactNode } from "react";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react/pure";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react/pure";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LinkGraphEdge, LinkGraphNode } from "../../../app/types";
 import { GraphFlowSurface } from "../../../app/reactflow/GraphFlowSurface";
 
 const reactFlowFitViewMock = vi.fn();
 const reactFlowSetCenterMock = vi.fn();
+const reactFlowSetViewportMock = vi.fn();
+const reactFlowGetViewportMock = vi.fn(() => ({ x: 0, y: 0, zoom: 1 }));
 const reactFlowScreenToFlowPositionMock = vi.fn(({ x, y }: { x: number; y: number }) => ({ x, y }));
 const reactFlowInstanceMock = {
   fitView: reactFlowFitViewMock,
   setCenter: reactFlowSetCenterMock,
+  setViewport: reactFlowSetViewportMock,
+  getViewport: reactFlowGetViewportMock,
   screenToFlowPosition: reactFlowScreenToFlowPositionMock,
 };
 
@@ -36,6 +40,7 @@ vi.mock("@xyflow/react", async () => {
     onNodeDragStop,
     onSelectionDrag,
     onSelectionDragStop,
+    onMove,
     nodesDraggable,
     panOnDrag,
     panOnScroll,
@@ -90,6 +95,7 @@ vi.mock("@xyflow/react", async () => {
       event: React.MouseEvent<HTMLDivElement>,
       nodes: Array<{ id: string; position: { x: number; y: number } }>,
     ) => void;
+    onMove?: (event: MouseEvent | TouchEvent | null, viewport: { x: number; y: number; zoom: number }) => void;
     nodesDraggable?: boolean;
     panOnDrag?: boolean | number[];
     panOnScroll?: boolean;
@@ -215,6 +221,20 @@ vi.mock("@xyflow/react", async () => {
               : undefined}
         >
           drag-node
+        </button>
+        <button
+          type="button"
+          data-testid="reactflow-programmatic-move"
+          onClick={() => onMove?.(null, { x: -120, y: -80, zoom: 0.8 })}
+        >
+          programmatic-move
+        </button>
+        <button
+          type="button"
+          data-testid="reactflow-user-move"
+          onClick={() => onMove?.(new MouseEvent("mousemove"), { x: -120, y: -80, zoom: 0.8 })}
+        >
+          user-move
         </button>
         <button
           type="button"
@@ -598,7 +618,7 @@ describe("GraphFlowSurface", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "定位当前方法" }));
 
-    expect(reactFlowSetCenterMock).toHaveBeenCalledWith(240, 156, { duration: 0 });
+    expect(reactFlowSetCenterMock).toHaveBeenCalledWith(240, 156, { duration: 280, easing: [0.4, 0, 0.2, 1] });
   });
 
   it("shows the grouped-selection chip without depending on per-view canvas logic", () => {
@@ -930,11 +950,11 @@ describe("GraphFlowSurface", () => {
     });
     vi.useRealTimers();
 
-    expect(reactFlowSetCenterMock).toHaveBeenCalledWith(560, 156, { duration: 0 });
+    expect(reactFlowSetCenterMock).toHaveBeenCalledWith(560, 156, { duration: 280, easing: [0.4, 0, 0.2, 1] });
     expect(reactFlowFitViewMock).toHaveBeenCalledTimes(2);
   });
 
-  it("centers a newly selected non-anchor node even when the graph shape stays unchanged", () => {
+  it("does not force-centre a newly selected node when it is already in view", () => {
     installResizeObserverStub();
     vi.useFakeTimers();
 
@@ -1024,7 +1044,10 @@ describe("GraphFlowSurface", () => {
     });
     vi.useRealTimers();
 
-    expect(reactFlowSetCenterMock).toHaveBeenCalledWith(560, 156, { zoom: 0.76, duration: 0 });
+    // P0-1: selecting a node no longer force-centres the viewport. The canvas
+    // only nudges a node into view when it is off-screen, so selecting an
+    // already-visible node leaves the viewport untouched.
+    expect(reactFlowSetCenterMock).not.toHaveBeenCalled();
     expect(reactFlowFitViewMock).toHaveBeenCalledTimes(2);
   });
 
@@ -1076,7 +1099,7 @@ describe("GraphFlowSurface", () => {
     vi.useRealTimers();
 
     expect(screen.getByTestId("reactflow")).toHaveAttribute("data-min-zoom", "0.54");
-    expect(reactFlowSetCenterMock).toHaveBeenCalledWith(240, 156, { zoom: 0.82, duration: 0 });
+    expect(reactFlowSetCenterMock).toHaveBeenCalledWith(240, 156, { zoom: 0.82, duration: 280, easing: [0.4, 0, 0.2, 1] });
     expect(reactFlowFitViewMock).not.toHaveBeenCalled();
     const viewportApplyTrace = traceSink.mock.calls
       .map(([payload]) => JSON.parse(String(payload)))
@@ -1345,7 +1368,8 @@ describe("GraphFlowSurface", () => {
 
     expect(reactFlowFitViewMock).toHaveBeenCalledWith({
       padding: 0.12,
-      duration: 0,
+      duration: 280,
+      easing: [0.4, 0, 0.2, 1],
       maxZoom: 0.9,
       includeHiddenNodes: true,
     });
@@ -1469,7 +1493,8 @@ describe("GraphFlowSurface", () => {
 
     expect(reactFlowFitViewMock).toHaveBeenCalledWith({
       padding: 0.12,
-      duration: 0,
+      duration: 280,
+      easing: [0.4, 0, 0.2, 1],
       maxZoom: 0.9,
       includeHiddenNodes: true,
     });
@@ -1540,7 +1565,7 @@ describe("GraphFlowSurface", () => {
     vi.useRealTimers();
 
     expect(reactFlow).toHaveAttribute("data-min-zoom", "0.54");
-    expect(reactFlowSetCenterMock).toHaveBeenCalledWith(746, 453, { zoom: 0.82, duration: 0 });
+    expect(reactFlowSetCenterMock).toHaveBeenCalledWith(746, 453, { zoom: 0.82, duration: 280, easing: [0.4, 0, 0.2, 1] });
     expect(reactFlowFitViewMock).not.toHaveBeenCalled();
   });
 
@@ -1560,7 +1585,8 @@ describe("GraphFlowSurface", () => {
 
     expect(reactFlowFitViewMock).toHaveBeenCalledWith({
       padding: 0.16,
-      duration: 0,
+      duration: 280,
+      easing: [0.4, 0, 0.2, 1],
       maxZoom: 1,
       includeHiddenNodes: true,
     });
@@ -1647,6 +1673,120 @@ describe("GraphFlowSurface", () => {
     expect(screen.getByTestId("reactflow-node-method:anchor")).toHaveAttribute("data-position", "420,240");
     expect(screen.getByTestId("reactflow-node-method:tail")).toHaveAttribute("data-position", "780,360");
     expect(onMoveNode).not.toHaveBeenCalled();
+  });
+
+  it("clears live drag positions after the committed node position catches up", async () => {
+    installResizeObserverStub();
+    const initialNode = baseNode();
+    const committedNode = { ...initialNode, position: { x: 420, y: 240 } };
+    const relaidOutNode = { ...initialNode, position: { x: 240, y: 180 } };
+    const renderNode = (node: LinkGraphNode) => ({
+      id: node.id,
+      data: { label: node.title },
+      position: node.position ?? { x: 0, y: 0 },
+    });
+    const props = surfaceProps({
+      nodes: [initialNode],
+      edges: [],
+      flowNodes: [renderNode(initialNode)],
+      flowEdges: [],
+      viewportResetKey: "before-drag-commit",
+    });
+    const { rerender } = render(<GraphFlowSurface {...props} />);
+
+    fireEvent.click(screen.getByTestId("reactflow-drag-progress-node"));
+    expect(screen.getByTestId("reactflow-node-method:anchor")).toHaveAttribute("data-position", "420,240");
+
+    rerender(<GraphFlowSurface {...props} nodes={[committedNode]} flowNodes={[renderNode(committedNode)]} />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("reactflow-node-method:anchor")).toHaveAttribute("data-position", "420,240"),
+    );
+
+    rerender(<GraphFlowSurface {...props} nodes={[relaidOutNode]} flowNodes={[renderNode(relaidOutNode)]} />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("reactflow-node-method:anchor")).toHaveAttribute("data-position", "240,180"),
+    );
+  });
+
+  it("does not treat programmatic viewport moves as user interaction for graph refits", () => {
+    installResizeObserverStub();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    const initialNode = baseNode();
+    const addedNode = { ...baseNode("method:tail"), position: { x: 440, y: 96 } };
+    const renderNode = (node: LinkGraphNode) => ({
+      id: node.id,
+      data: { label: node.title },
+      position: node.position ?? { x: 0, y: 0 },
+    });
+    const props = surfaceProps({
+      nodes: [initialNode],
+      edges: [],
+      flowNodes: [renderNode(initialNode)],
+      flowEdges: [],
+    });
+    const { rerender } = render(<GraphFlowSurface {...props} />);
+    act(() => {
+      vi.runAllTimers();
+    });
+    reactFlowFitViewMock.mockClear();
+
+    fireEvent.click(screen.getByTestId("reactflow-programmatic-move"));
+    rerender(
+      <GraphFlowSurface
+        {...props}
+        viewportResetKey="after-programmatic-move"
+        nodes={[initialNode, addedNode]}
+        flowNodes={[renderNode(initialNode), renderNode(addedNode)]}
+      />,
+    );
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(reactFlowFitViewMock).toHaveBeenCalled();
+  });
+
+  it("suppresses graph refits immediately after a user viewport move", () => {
+    installResizeObserverStub();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    const initialNode = baseNode();
+    const addedNode = { ...baseNode("method:tail"), position: { x: 440, y: 96 } };
+    const renderNode = (node: LinkGraphNode) => ({
+      id: node.id,
+      data: { label: node.title },
+      position: node.position ?? { x: 0, y: 0 },
+    });
+    const props = surfaceProps({
+      nodes: [initialNode],
+      edges: [],
+      flowNodes: [renderNode(initialNode)],
+      flowEdges: [],
+      viewportResetKey: "before-user-move",
+    });
+    const { rerender } = render(<GraphFlowSurface {...props} />);
+    act(() => {
+      vi.runAllTimers();
+    });
+    reactFlowFitViewMock.mockClear();
+
+    fireEvent.click(screen.getByTestId("reactflow-user-move"));
+    rerender(
+      <GraphFlowSurface
+        {...props}
+        viewportResetKey="after-user-move"
+        nodes={[initialNode, addedNode]}
+        flowNodes={[renderNode(initialNode), renderNode(addedNode)]}
+      />,
+    );
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(reactFlowFitViewMock).not.toHaveBeenCalled();
   });
 
   it("publishes grouped drag updates even when structural editing is disabled", () => {

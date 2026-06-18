@@ -124,8 +124,10 @@ describe("hybrid visual contract", () => {
   });
 
   it("keeps graph footer chrome compact so the canvas keeps vertical space", () => {
+    // P1: footer now wraps (so the collapsed <details> detail pills reflow) and
+    // grows when details expand, but stays compact by default via min-height.
     expect(themeCss).toMatch(
-      /\.graph-stage-footer\s*\{(?=[^}]*flex-wrap:\s*nowrap;)(?=[^}]*overflow-x:\s*auto;)(?=[^}]*min-height:\s*42px;)(?=[^}]*max-height:\s*42px;)[^}]*\}/s,
+      /\.graph-stage-footer\s*\{(?=[^}]*flex-wrap:\s*wrap;)(?=[^}]*overflow-x:\s*auto;)(?=[^}]*min-height:\s*42px;)[^}]*\}/s,
     );
     expect(themeCss).toMatch(
       /\.graph-stage-footer\s+:is\(\.status-pill,\s*\.app-pill\)\s*\{(?=[^}]*flex:\s*0\s+0\s+auto;)(?=[^}]*white-space:\s*nowrap;)[^}]*\}/s,

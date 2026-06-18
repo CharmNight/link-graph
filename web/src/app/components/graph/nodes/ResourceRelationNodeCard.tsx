@@ -1,10 +1,9 @@
-import { memo, useLayoutEffect, useRef } from "react";
+import { memo } from "react";
 import { nodeTypeLabel } from "../../../labels";
 import { IssueBadge } from "../../IssueBadge";
 import type { DraftCompareStatus, LinkGraphNode } from "../../../types";
 import { nodeTooltip, resourceLane, resourceLaneLabel, signaturePreview } from "./nodePresentation";
-import { measureNodeContentBox } from "./measureNodeContentBox";
-import { GraphNodeStateBadges } from "./GraphNodeStateBadges";
+import { NodeCardBase } from "./NodeCardBase";
 
 interface ResourceRelationNodeCardProps {
   node: LinkGraphNode;
@@ -23,28 +22,18 @@ export const ResourceRelationNodeCard = memo(function ResourceRelationNodeCard({
   draftCompareStatus,
   onMeasure,
 }: ResourceRelationNodeCardProps) {
-  const rootRef = useRef<HTMLDivElement | null>(null);
   const lane = resourceLane(node);
 
-  useLayoutEffect(() => {
-    const size = measureNodeContentBox(rootRef.current);
-    if (size) {
-      onMeasure?.(size);
-    }
-  }, [node, onMeasure]);
-
   return (
-    <div
-      ref={rootRef}
-      className={[
-        "flow-node-card",
-        "resource-node-card",
-        `lane-${lane.toLowerCase()}`,
-        selected ? "is-selected" : "",
-      ].join(" ").trim()}
-      data-node-id={node.id}
+    <NodeCardBase
+      node={node}
+      selected={selected}
+      explanationFocused={explanationFocused}
+      draftChanged={draftChanged}
+      onMeasure={onMeasure}
+      measureDeps={[node, onMeasure]}
+      variantClassName={["resource-node-card", `lane-${lane.toLowerCase()}`]}
     >
-      <GraphNodeStateBadges selected={selected} explanationFocused={explanationFocused} draftChanged={draftChanged} />
       <div className="flow-node-head">
         <span className="flow-node-doc">{resourceLaneLabel(lane)}</span>
         <div className="flow-node-tags">
@@ -57,6 +46,6 @@ export const ResourceRelationNodeCard = memo(function ResourceRelationNodeCard({
       <span className="flow-node-signature" title={nodeTooltip(node)}>
         {signaturePreview(node) ?? nodeTypeLabel(node.type)}
       </span>
-    </div>
+    </NodeCardBase>
   );
 });

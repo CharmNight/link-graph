@@ -1,4 +1,5 @@
 import type { GraphPosition, LinkGraphEdgeRoute } from "../types";
+import { RoutePriorityQueue } from "./routePriorityQueue";
 
 export type OrthogonalSide = "top" | "right" | "bottom" | "left";
 
@@ -249,20 +250,33 @@ function findGridPath(
   const startPointKey = pointKey(startPoint);
   const endPointKey = pointKey(endPoint);
   const startStateKey = `${startPointKey}:start`;
-  const openStates: RouteState[] = [{
+
+  const openQueue = new RoutePriorityQueue<RouteState>();
+  const startState: RouteState = {
     key: startStateKey,
     pointKey: startPointKey,
     direction: "start",
     cost: 0,
     estimate: heuristic(startPoint, endPoint),
-  }];
+  };
+  openQueue.push(startState, startState.cost + startState.estimate);
+
+  // bestCost tracks the cheapest cost at which each state key was *popped*.
+  // Because we allow re-pushing a key when a cheaper path is found, stale
+  // heap entries are skipped on pop by comparing against this map.
   const bestCost = new Map<string, number>([[startStateKey, 0]]);
   const cameFrom = new Map<string, string>();
-  const states = new Map<string, RouteState>([[startStateKey, openStates[0]!]]);
+  const states = new Map<string, RouteState>([[startStateKey, startState]]);
 
-  while (openStates.length > 0) {
-    openStates.sort((left, right) => (left.cost + left.estimate) - (right.cost + right.estimate));
-    const current = openStates.shift()!;
+  while (openQueue.size > 0) {
+    const current = openQueue.pop();
+    if (!current) {
+      break;
+    }
+    // Skip stale entries superseded by a cheaper re-push.
+    if (current.cost > (bestCost.get(current.key) ?? Number.POSITIVE_INFINITY)) {
+      continue;
+    }
     const currentPoint = pointsByKey.get(current.pointKey);
     if (!currentPoint) {
       continue;
@@ -288,7 +302,8 @@ function findGridPath(
       bestCost.set(nextKey, nextCost);
       cameFrom.set(nextKey, current.key);
       states.set(nextKey, nextState);
-      openStates.push(nextState);
+      // Allow duplicate keys in the heap; stale ones are filtered on pop.
+      openQueue.push(nextState, nextCost + nextState.estimate);
     });
   }
 

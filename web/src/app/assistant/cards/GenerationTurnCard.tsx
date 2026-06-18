@@ -1,4 +1,5 @@
 import { generationSourceLabel, riskLabel } from "../../labels";
+import { Button } from "../../components/Button";
 import type { AssistantTurn } from "../../types";
 import type { AssistantArtifactAccess } from "../assistantArtifacts";
 import { AssistantFailureNotice } from "./AssistantFailureNotice";
@@ -37,9 +38,9 @@ export function GenerationTurnCard({
       ) : !plan ? (
         <div className="assistant-card-flow">
           <p className="muted assistant-result-text">生成实现建议会先整理可审查方案，确认后再生成代码 diff。</p>
-          <button type="button" className="primary-button" onClick={onPrimeGenerationPlan}>
+          <Button variant="primary" onClick={onPrimeGenerationPlan}>
             生成实现建议
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="assistant-card-flow">
@@ -81,13 +82,13 @@ export function GenerationTurnCard({
               </p>
             ))}
             {onDiscussGenerationPlan ? (
-              <button
-                type="button"
-                className="ghost-button compact assistant-wrap-token"
+              <Button
+                compact
+                className="assistant-wrap-token"
                 onClick={() => onDiscussGenerationPlan(lastUserQuestion)}
               >
                 追问建议
-              </button>
+              </Button>
             ) : null}
           </section>
           <AssistantPromptDisclosure
@@ -96,9 +97,9 @@ export function GenerationTurnCard({
             resolveArtifactText={resolveArtifactText}
             onRequestArtifact={onRequestArtifact}
           />
-          <button type="button" className="primary-button" onClick={onRequestCodeDrafts}>
+          <Button variant="primary" onClick={onRequestCodeDrafts}>
             生成代码 diff
-          </button>
+          </Button>
         </div>
       )}
     </article>

@@ -1,6 +1,7 @@
 import type { OperationFeedback } from "../types";
 import type { WorkflowStage, WorkflowStageStatus } from "../workflow/workflowStage";
 import { WORKFLOW_STAGE_DEFINITIONS, workflowStageStatusLabel } from "../workflow/workflowStage";
+import { Button } from "./Button";
 
 const ASSISTANT_STATUS_LABELS: Record<WorkflowStage, string> = {
   understand: "理解代码",
@@ -85,19 +86,18 @@ export function WorkflowTaskbar({
       </div>
 
       <div className="workflow-taskbar-actions" aria-label="全局动作">
-        <button
-          type="button"
-          className="primary-button"
+        <Button
+          variant="primary"
           disabled={primaryActionDisabled}
           onClick={onPrimaryAction}
         >
           {primaryActionLabel}
-        </button>
-        <button type="button" className="ghost-button" onClick={onRequestSync}>同步预览</button>
-        <button type="button" className="ghost-button" onClick={onShowDiff}>对比代码</button>
-        <button type="button" className="ghost-button" onClick={onImportMermaid}>导入 Mermaid</button>
-        <button type="button" className="ghost-button" onClick={onExportMermaid}>导出 Mermaid</button>
-        <button type="button" className="ghost-button" onClick={onOpenSettings}>设置</button>
+        </Button>
+        <Button onClick={onRequestSync}>同步预览</Button>
+        <Button onClick={onShowDiff}>对比代码</Button>
+        <Button onClick={onImportMermaid}>导入 Mermaid</Button>
+        <Button onClick={onExportMermaid}>导出 Mermaid</Button>
+        <Button onClick={onOpenSettings}>设置</Button>
       </div>
     </header>
   );

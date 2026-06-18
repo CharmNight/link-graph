@@ -1304,7 +1304,7 @@ describe.sequential("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("事实图谱")).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "图谱舞台" })).toBeInTheDocument();
     expect((await screen.findAllByText("OrderController.submit")).length).toBeGreaterThan(0);
   });
 
@@ -1322,7 +1322,7 @@ describe.sequential("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("事实图谱")).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "图谱舞台" })).toBeInTheDocument();
     expect((await screen.findAllByText("OrderController.submit")).length).toBeGreaterThan(0);
   });
 
@@ -1380,7 +1380,7 @@ describe.sequential("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("事实图谱")).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "图谱舞台" })).toBeInTheDocument();
     expect(screen.getByText("画布里还没有节点")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "图谱舞台" })).queryByText("OrderController.submit")).not.toBeInTheDocument();
   });
@@ -1394,8 +1394,9 @@ describe.sequential("App", () => {
   it("renders a compact Chinese workspace and keeps the graph as primary", () => {
     render(<App />);
 
-    expect(screen.getByText("事实图谱")).toBeInTheDocument();
-    expect(screen.getByText("当前展示链路结构、入口和主路径。")).toBeInTheDocument();
+    // P1: the graph-stage title/description prose was removed; the stage region
+    // and its mode switch are the remaining header surface.
+    expect(screen.getByRole("region", { name: "图谱舞台" })).toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "链路大纲" })).toBeInTheDocument();
     expect(screen.getByRole("contentinfo", { name: "变更托盘" })).toBeInTheDocument();
     expect(screen.getByText("已加载当前编辑器上下文链路：OrderController.submit")).toBeInTheDocument();

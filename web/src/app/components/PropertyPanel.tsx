@@ -3,6 +3,7 @@ import type { SyntheticEvent, WheelEvent as ReactWheelEvent } from "react";
 import { bindingStatusLabel, certaintyLabel, nodeTypeLabel } from "../labels";
 import { canNavigateToSource } from "../sourceNavigation";
 import type { LinkGraphNode } from "../types";
+import { Button } from "./Button";
 
 function joinLines(values: string[]): string {
   return values.join("\n");
@@ -226,9 +227,9 @@ export function PropertyPanel({
             <p className="eyebrow">编辑节点</p>
             <h2 id={titleId}>编辑节点</h2>
           </div>
-          <button type="button" className="ghost-button" onClick={onClose}>
+          <Button onClick={onClose}>
             收起
-          </button>
+          </Button>
         </div>
 
         <div className="modal-body">
@@ -254,12 +255,10 @@ export function PropertyPanel({
             <ReadOnlyField label={sourceFieldLabel} value={draft.signature} code />
           </section>
 
-          {!canOpenSource ? <p className="muted">该节点当前没有可跳转的源码位置。</p> : null}
-          {usesSignatureFallback ? <p className="muted">当前将按方法/类签名在 IDEA 中定位源码。</p> : null}
+          {!canOpenSource && !usesSignatureFallback ? <p className="muted">该节点当前没有可跳转的源码位置。</p> : null}
 
           {anchorResolutionStateText || anchorResolutionHint || anchorCandidates.length > 0 ? (
             <section className="panel-section" aria-label="解析提示">
-              <p className="eyebrow">解析提示</p>
               {anchorResolutionStateText ? <p className="muted">{anchorResolutionStateText}</p> : null}
               {anchorResolutionHint ? <p>{anchorResolutionHint}</p> : null}
               {anchorCandidates.length > 0 ? (
@@ -278,9 +277,7 @@ export function PropertyPanel({
           ) : null}
 
           {isFlowScope ? (
-            <section className="panel-section" aria-label="流程说明">
-              <p className="eyebrow">流程说明</p>
-              <p className="muted">该节点不是独立方法，而是当前方法里的流程作用域容器。</p>
+            <section className="panel-section" aria-label="流程作用域">
               <div className="form-stack">
                 <p className="eyebrow">作用域类型</p>
                 <p>{flowKindLabel}</p>
@@ -289,9 +286,7 @@ export function PropertyPanel({
           ) : null}
 
           {isFlowAction ? (
-            <section className="panel-section" aria-label="动作说明">
-              <p className="eyebrow">动作说明</p>
-              <p className="muted">该节点表示当前方法中的内部执行动作，用来补齐代码阅读顺序，不等同于独立方法定义。</p>
+            <section className="panel-section" aria-label="动作节点">
               {actionAnchorMethod ? (
                 <div className="form-stack">
                   <p className="eyebrow">所属方法</p>
@@ -350,23 +345,21 @@ export function PropertyPanel({
         </div>
 
         <div className="panel-actions modal-footer">
-          <button type="button" className="primary-button" onClick={() => onUpdateNode(draft)}>
+          <Button variant="primary" onClick={() => onUpdateNode(draft)}>
             保存修改
-          </button>
-          <button
-            type="button"
-            className="ghost-button"
+          </Button>
+          <Button
             disabled={!canOpenSource}
             onClick={() => onRequestSourceNavigation(draft.id)}
           >
             打开源码
-          </button>
-          <button type="button" className="ghost-button" onClick={() => onDeleteNode(draft.id)}>
+          </Button>
+          <Button onClick={() => onDeleteNode(draft.id)}>
             删除节点
-          </button>
-          <button type="button" className="ghost-button" onClick={() => onDeleteNodeSubtree(draft.id)}>
+          </Button>
+          <Button onClick={() => onDeleteNodeSubtree(draft.id)}>
             删除节点及子节点
-          </button>
+          </Button>
         </div>
       </aside>
     </div>

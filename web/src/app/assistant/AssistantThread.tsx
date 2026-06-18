@@ -87,15 +87,10 @@ export function AssistantThread({
       {turns.length === 0 ? (
         <div className="assistant-thread-empty">
           <strong className="assistant-result-text">还没有 AI 结果</strong>
-          <p className="muted assistant-result-text">
-          在底部输入问题，并选择发送动作；下一次发送上下文随图谱选择更新。
-          </p>
+          <p className="muted assistant-result-text">在底部输入问题并选择发送动作即可开始。</p>
         </div>
       ) : (
         <>
-          <div className="assistant-thread-order-note" role="note">
-            历史回答：旧结果在上，最新回答追加到底部。
-          </div>
           {turns.map((turn, turnIndex) => {
             const isLatestExplanation = turn.turnId === latestExplanationTurnId;
             const isLatestTurn = turnIndex === turns.length - 1;

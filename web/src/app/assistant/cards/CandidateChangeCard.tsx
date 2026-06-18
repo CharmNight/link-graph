@@ -1,4 +1,5 @@
 import type { CandidateDraftChange } from "../../types";
+import { Button } from "../../components/Button";
 
 interface CandidateChangeCardProps {
   title?: string;
@@ -26,14 +27,14 @@ export function CandidateChangeCard({
             <strong className="assistant-result-text">{change.title}</strong>
             <p className="muted assistant-result-text">{change.impactSummary || change.reason}</p>
             {onConfirmCandidateChange ? (
-              <button
-                type="button"
-                className="ghost-button compact assistant-wrap-token"
+              <Button
+                compact
+                className="assistant-wrap-token"
                 aria-label={`确认候选变更：${change.title}`}
                 onClick={() => onConfirmCandidateChange(change.changeId)}
               >
                 确认进草稿
-              </button>
+              </Button>
             ) : null}
           </div>
         ))}

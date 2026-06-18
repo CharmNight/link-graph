@@ -1,9 +1,9 @@
 import { useMemo } from "react";
 import { buildEdgeActions as buildSharedEdgeActions, buildPaneActions } from "../../components/graph/actions/actionSchema";
+import { CanvasEmptyState } from "../../components/graph/CanvasEmptyState";
 import { canEditProjectedEdge, canEditProjectedNode } from "../../graphProjectionPermissions";
-import { createNodeSizeRegistry } from "../../graph/nodeSizeRegistry";
 import { nodeCardWidth } from "../../graphNodeSizing";
-import { useMeasuredLayout } from "../../reactflow/useMeasuredLayout";
+import { useGraphView } from "../../reactflow/useGraphView";
 import { GraphFlowSurface } from "../../reactflow/GraphFlowSurface";
 import { canNavigateToSource } from "../../sourceNavigation";
 import type { ResourceRelationViewDocument } from "../../types";
@@ -155,34 +155,24 @@ export function ResourceRelationView({
   onOpenQa = () => undefined,
   onImportMermaid,
 }: ResourceRelationViewProps) {
-  const nodeSizeRegistry = useMemo(() => createNodeSizeRegistry(), []);
   const presentedGraph = draftCompareProjection?.compareGraph ?? view.visibleGraph;
-  const layoutState = useMeasuredLayout({
+  const {
+    visibleNodes,
+    visibleEdges,
+    nodeIndex,
+    nodeSizeRegistry,
+    selectedNode,
+    isLayoutLoading,
+    requestRelayout,
+  } = useGraphView({
     graph: presentedGraph,
     anchorNodeId: view.anchorNodeId ?? null,
-    nodeSizeRegistry,
+    selectedNodeId,
+    hiddenNodeIds,
     layout: layoutResourceRelationView,
     debugLabel: "resource",
   });
 
-  const hiddenNodeIdSet = useMemo(() => new Set(hiddenNodeIds), [hiddenNodeIds]);
-  const visibleNodes = useMemo(
-    () => layoutState.nodes.filter((node) => !hiddenNodeIdSet.has(node.id)),
-    [layoutState.nodes, hiddenNodeIdSet],
-  );
-  const visibleEdges = useMemo(
-    () => layoutState.edges.filter((edge) => !hiddenNodeIdSet.has(edge.source) && !hiddenNodeIdSet.has(edge.target)),
-    [layoutState.edges, hiddenNodeIdSet],
-  );
-  const isLayoutLoading = layoutState.layoutPending && presentedGraph.nodes.length > 0 && layoutState.nodes.length === 0;
-  const nodeIndex = useMemo(
-    () => new Map(visibleNodes.map((node) => [node.id, node])),
-    [visibleNodes],
-  );
-  const selectedNode = useMemo(
-    () => visibleNodes.find((node) => node.id === selectedNodeId) ?? null,
-    [visibleNodes, selectedNodeId],
-  );
   const flowNodes = useMemo(
     () => buildResourceRelationNodes({
       nodes: visibleNodes,
@@ -254,17 +244,11 @@ export function ResourceRelationView({
         layoutEditable
         header={header}
         emptyState={(
-          isLayoutLoading ? (
-            <div className="canvas-empty-state">
-              <strong>正在整理资源关系</strong>
-              <p className="muted">资源分析已完成，正在计算稳定布局。</p>
-            </div>
-          ) : (
-            <div className="canvas-empty-state">
-              <strong>当前没有可展示的资源关系</strong>
-              <p className="muted">请先完成分析，再查看代码与资源之间的依赖关系。</p>
-            </div>
-          )
+          <CanvasEmptyState
+            isLoading={isLayoutLoading}
+            loadingTitle="正在整理资源关系"
+            idleTitle="当前没有可展示的资源关系"
+          />
         )}
         buildPaneActions={({ position, hasGroupedSelection, visibleNodeCount, close }) =>
           buildPaneActions({
@@ -275,7 +259,7 @@ export function ResourceRelationView({
             position,
             onAddNode,
             onImportMermaid,
-            onFormatLayout: layoutState.requestRelayout,
+            onFormatLayout: requestRelayout,
             onOpenQa,
             onClose: close,
           })
@@ -291,7 +275,7 @@ export function ResourceRelationView({
             onRequestBeautification,
             onPrimeQuestionComposer,
             onOpenQa,
-            onFormatLayout: layoutState.requestRelayout,
+            onFormatLayout: requestRelayout,
             onClose: close,
           })
         }

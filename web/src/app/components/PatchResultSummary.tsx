@@ -1,7 +1,6 @@
-import { llmResultSourceLabel, patchResultBoundaryDescription } from "../labels";
+import { llmResultSourceLabel } from "../labels";
 import type { GraphPatchResult } from "../types";
 import { EvidenceFindingsSection } from "./EvidenceFindingsSection";
-import { RequestPromptDisclosure } from "./RequestPromptDisclosure";
 
 interface PatchResultSummaryProps {
   title: string;
@@ -175,11 +174,6 @@ export function PatchResultSummary({
           <p>{sections.summary}</p>
         </section>
 
-        <section className="answer-section">
-          <strong>真实性边界</strong>
-          <p>{patchResultBoundaryDescription(result.source)}</p>
-        </section>
-
         <EvidenceFindingsSection findings={result.findings ?? []} />
 
         {sections.impacts.length > 0 ? (
@@ -232,21 +226,6 @@ export function PatchResultSummary({
                 </li>
               ))}
             </ul>
-          </section>
-        ) : null}
-
-        {result.promptPreview?.trim() || result.promptPreviewArtifactId ? (
-          <section className="answer-section">
-            <div className="preview-head">
-              <strong>调试用提示词</strong>
-            </div>
-            <RequestPromptDisclosure
-              promptPreview={result.promptPreview ?? null}
-              promptPreviewArtifactId={result.promptPreviewArtifactId ?? null}
-              promptPreviewAvailable={Boolean(result.promptPreview?.trim() || result.promptPreviewArtifactId)}
-              resolveArtifactText={resolveArtifactText}
-              onRequestArtifact={onRequestArtifact}
-            />
           </section>
         ) : null}
       </div>

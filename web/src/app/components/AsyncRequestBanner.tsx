@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { asyncRequestExecutionModeLabel, normalizeWorkbenchWording, qaModeLabel } from "../labels";
 import type { AsyncRequestState } from "../types";
+import { Button } from "./Button";
 import { resolveAsyncRequestPrimaryMessage } from "../asyncRequestStatus";
 
 interface AsyncRequestBannerProps {
@@ -157,14 +158,13 @@ export function AsyncRequestBanner({
       <div className="request-state-banner-head">
         {title ? <strong className="request-state-banner-title">{title}</strong> : null}
         {hasExpandableDetails && shouldCollapseDetailsByDefault ? (
-          <button
-            type="button"
-            className="ghost-button compact"
+          <Button
+            compact
             aria-expanded={shouldShowDetails}
             onClick={() => setDetailsExpanded((current) => !current)}
           >
             {shouldShowDetails ? "收起请求详情" : "展开请求详情"}
-          </button>
+          </Button>
         ) : null}
       </div>
       {inlineDetail ? <p className="muted">{inlineDetail}</p> : null}

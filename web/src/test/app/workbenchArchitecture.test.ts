@@ -79,7 +79,9 @@ describe("workbench architecture", () => {
     expect(shellSource).toContain("<AssistantComposer");
     expect(shellSource).toContain("onActionChange={onActionChange}");
     expect(composerSource).toContain("<AssistantActionSelector");
-    expect(composerSource).toContain("发送为");
+    // P1: the "发送为" eyebrow text was removed; the active send action is now
+    // surfaced via the .tag.active chip.
+    expect(composerSource).toContain("tag active");
 
     expect(threadSource).toContain("ExplanationTurnCard");
     expect(threadSource).toContain("QaTurnCard");

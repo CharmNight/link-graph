@@ -34,6 +34,24 @@ import {
   type GraphViewportSnapshot,
 } from "./viewportPolicy";
 import {
+  FIT_VIEW_DELAY_MS,
+  FIT_VIEW_RETRY_DELAY_MS,
+  GRAPH_SURFACE_MIN_ZOOM,
+  READABLE_FIT_MAX_PADDING,
+  READABLE_FIT_MAX_ZOOM,
+  READABLE_FIT_MIN_PADDING,
+  READABLE_FIT_MIN_ZOOM,
+  RESIZE_SETTLE_DELAY_MS,
+  USER_INTERACTION_GUARD_MS,
+  VIEWPORT_EASE,
+  VIEWPORT_TRANSITION_DURATION_MS,
+  WIDE_GRAPH_FOCUS_ZOOM,
+} from "./viewportConfig";
+import {
+  DEFAULT_NODE_VIEWPORT_SIZE,
+  VIEWPORT_TRANSITION,
+} from "./graphFlowInteractionModel";
+import {
   clamp,
   graphContentBounds,
   graphRenderCommitTraceSignature,
@@ -123,16 +141,6 @@ interface GraphFlowSurfaceProps {
 
 type ViewportScheduleReason = "graph" | "resize";
 
-const FIT_VIEW_DELAY_MS = 96;
-const FIT_VIEW_RETRY_DELAY_MS = 220;
-const RESIZE_SETTLE_DELAY_MS = 140;
-const WIDE_GRAPH_FOCUS_ZOOM = 0.76;
-const READABLE_FIT_MIN_ZOOM = 0.54;
-const READABLE_FIT_MAX_ZOOM = 0.82;
-const READABLE_FIT_MIN_PADDING = 42;
-const READABLE_FIT_MAX_PADDING = 96;
-const GRAPH_SURFACE_MIN_ZOOM = 0.08;
-
 function roundedRect(element: Element | null) {
   if (!element) {
     return null;
@@ -201,7 +209,7 @@ export function GraphFlowSurface({
   onMoveNode,
   onMoveNodes,
   shouldFocusAnchorOnLoad = false,
-  nodeViewportSize = () => ({ width: DEFAULT_NODE_CARD_WIDTH, height: 156 }),
+  nodeViewportSize = () => DEFAULT_NODE_VIEWPORT_SIZE,
   fitViewPadding = 0.16,
   fitViewMaxZoom = 1,
   showViewportControls = true,
@@ -222,11 +230,18 @@ export function GraphFlowSurface({
   const lastResizeShellSizeRef = useRef<{ width: number; height: number } | null>(null);
   const previousViewportGraphRef = useRef<GraphViewportSnapshot | null>(null);
   const handledFocusNonceRef = useRef<number | null>(null);
-  const previousSelectedNodeIdRef = useRef<string | null>(selectedNodeId);
   const onSelectionGroupChangeRef = useRef(onSelectionGroupChange);
   const lastSelectionChangeSignatureRef = useRef<string>(selectedGroupNodeIds.join("\u0000"));
+  /**
+   * Timestamp of the last user-initiated pan/zoom. While
+   * {@link USER_INTERACTION_GUARD_MS} hasn't elapsed, automatic viewport moves
+   * (incremental re-fit, off-screen selection focus) are suppressed so the
+   * canvas stops fighting the user mid-interaction.
+   */
+  const lastUserViewportMoveRef = useRef(0);
 
-  const onlyRenderVisibleElements = experiments?.onlyRenderVisibleElements === true;
+  // P0-3: virtualise large graphs by default; opt back out via experiments flag.
+  const onlyRenderVisibleElements = experiments?.onlyRenderVisibleElements !== false;
   const dragShieldingEnabled = experiments?.dragShielding === true;
 
   useEffect(() => {
@@ -283,7 +298,7 @@ export function GraphFlowSurface({
     }
     return flowNodes.map((node) => {
       const livePosition = liveDragPositions[node.id];
-      if (!livePosition || positionsMatch(node.position, livePosition)) {
+      if (!livePosition) {
         return node;
       }
       return {
@@ -299,7 +314,7 @@ export function GraphFlowSurface({
     }
     return positionedNodes.map((node) => {
       const livePosition = liveDragPositions[node.id];
-      if (!livePosition || positionsMatch(node.position, livePosition)) {
+      if (!livePosition) {
         return node;
       }
       return {
@@ -346,28 +361,35 @@ export function GraphFlowSurface({
       ? `${viewportResetKey ?? ""}:${hashText(readableFitViewportContentSignature)}`
     : viewportResetKey;
 
+  /**
+   * P0-1: was the viewport recently moved by the user? While this is true we
+   * suppress automatic fit/selection moves so the canvas does not "jump".
+   */
+  const isWithinUserInteractionGuard = useCallback(() => {
+    if (lastUserViewportMoveRef.current === 0) {
+      return false;
+    }
+    return Date.now() - lastUserViewportMoveRef.current < USER_INTERACTION_GUARD_MS;
+  }, []);
+
   useEffect(() => {
     const liveDragNodeIds = Object.keys(liveDragPositions);
     if (liveDragNodeIds.length === 0) {
       return;
     }
+    // Drop live-drag overlays once the parent commits the same coordinates.
     const committedPositions = new Map(
       flowNodes.map((node) => [node.id, node.position]),
     );
-    const nextLivePositions = Object.fromEntries(
+    const remaining = Object.fromEntries(
       liveDragNodeIds
-        .filter((nodeId) => {
-          const livePosition = liveDragPositions[nodeId];
-          const committedPosition = committedPositions.get(nodeId);
-          return livePosition && !positionsMatch(committedPosition, livePosition);
-        })
+        .filter((nodeId) => !positionsMatch(committedPositions.get(nodeId), liveDragPositions[nodeId]))
         .map((nodeId) => [nodeId, liveDragPositions[nodeId]!]),
     );
-    const nextLivePositionIds = Object.keys(nextLivePositions);
-    if (nextLivePositionIds.length === liveDragNodeIds.length) {
+    if (Object.keys(remaining).length === liveDragNodeIds.length) {
       return;
     }
-    setLiveDragPositions(nextLivePositions);
+    setLiveDragPositions(remaining);
   }, [flowNodes, liveDragPositions]);
 
   useEffect(() => {
@@ -432,10 +454,10 @@ export function GraphFlowSurface({
     }
     const size = nodeViewportSize(node);
     const zoomOptions = reason === "manualAnchor" || reason === "explicitNodeFocus"
-      ? { duration: 0 }
+      ? { ...VIEWPORT_TRANSITION }
       : {
           zoom: WIDE_GRAPH_FOCUS_ZOOM,
-          duration: 0,
+          ...VIEWPORT_TRANSITION,
         };
     traceLinkGraph("graphFlowSurface.viewport.focusNode", {
       reason,
@@ -511,7 +533,7 @@ export function GraphFlowSurface({
         y: rounded(centerY),
       },
     });
-    flowInstance.setCenter(centerX, centerY, { zoom, duration: 0 });
+    flowInstance.setCenter(centerX, centerY, { zoom, ...VIEWPORT_TRANSITION });
     return true;
   }
 
@@ -536,6 +558,15 @@ export function GraphFlowSurface({
         reason,
         hasFlowInstance: Boolean(flowInstance),
         nodeCount: positionedNodes.length,
+      });
+      return;
+    }
+    // P0-1: a resize-induced re-fit is user-driven; never override it. But a
+    // graph-induced re-fit right after the user panned/zoomed would fight them.
+    if (reason === "graph" && isWithinUserInteractionGuard()) {
+      traceLinkGraph("graphFlowSurface.scheduleViewport.suppressedByUserInteraction", {
+        reason,
+        viewportMode,
       });
       return;
     }
@@ -599,7 +630,7 @@ export function GraphFlowSurface({
       });
       flowInstance.fitView({
         padding: fitViewPadding,
-        duration: 0,
+        ...VIEWPORT_TRANSITION,
         maxZoom: fitViewMaxZoom,
         includeHiddenNodes: true,
       });
@@ -635,24 +666,9 @@ export function GraphFlowSurface({
     focusNodeInViewport(targetNode, "explicitNodeFocus");
   }, [flowInstance, focusNodeRequest, positionedNodes]);
 
-  useEffect(() => {
-    const previousSelectedNodeId = previousSelectedNodeIdRef.current;
-    previousSelectedNodeIdRef.current = selectedNodeId;
-    if (!flowInstance || !selectedNodeId || previousSelectedNodeId === selectedNodeId) {
-      return;
-    }
-    const targetNode = positionedNodes.find((node) => node.id === selectedNodeId);
-    if (!targetNode?.position || selectedNodeId === anchorNode?.id) {
-      return;
-    }
-    traceLinkGraph("graphFlowSurface.viewport.selectionEffect", {
-      previousSelectedNodeId,
-      selectedNodeId,
-      anchorNodeId: anchorNode?.id ?? null,
-      viewportMode,
-    });
-    focusNodeInViewport(targetNode, "selectedNodeChange");
-  }, [anchorNode?.id, flowInstance, positionedNodes, selectedNodeId, viewportMode]);
+  // Selecting a node never moves the viewport — the user is in full control of
+  // pan/zoom. (Previously a "nudge into view" fired on selection, which users
+  // experienced as the canvas jumping when they clicked a node.)
 
   useEffect(() => {
     if (!flowInstance) {
@@ -829,6 +845,14 @@ export function GraphFlowSurface({
     setContextMenu(null);
   };
 
+  // P0-1: track user-driven viewport moves so the auto-fit logic can stand down.
+  const handleViewportChange = useCallback((event: MouseEvent | TouchEvent | null) => {
+    if (!event) {
+      return;
+    }
+    lastUserViewportMoveRef.current = Date.now();
+  }, []);
+
   const handleFlowSelectionChange = useCallback(({ nodes: nextNodes }: { nodes: Node[] }) => {
     const nodeIds = groupSelectionEnabled ? nextNodes.map((node) => node.id) : [];
     const nextSignature = nodeIds.join("\u0000");
@@ -841,9 +865,9 @@ export function GraphFlowSurface({
 
   const selectedEdgeActions = selectedEdgeId
     ? buildEdgeActions({
-        edgeId: selectedEdgeId,
-        close: () => setSelectedEdgeId(null),
-      })
+      edgeId: selectedEdgeId,
+      close: () => setSelectedEdgeId(null),
+    })
     : [];
   const hasHeader = header !== null && header !== undefined && header !== false;
 
@@ -861,21 +885,21 @@ export function GraphFlowSurface({
   const contextMenuActions =
     contextMenu?.kind === "pane"
       ? buildPaneActions({
-          position: contextMenu.position,
-          hasGroupedSelection,
-          visibleNodeCount: positionedNodes.length,
-          close: () => setContextMenu(null),
-        })
+        position: contextMenu.position,
+        hasGroupedSelection,
+        visibleNodeCount: positionedNodes.length,
+        close: () => setContextMenu(null),
+      })
       : contextMenu?.kind === "node"
         ? buildNodeActions({
-            nodeId: contextMenu.nodeId,
-            close: () => setContextMenu(null),
-          })
+          nodeId: contextMenu.nodeId,
+          close: () => setContextMenu(null),
+        })
         : contextMenu?.kind === "edge"
           ? buildEdgeActions({
-              edgeId: contextMenu.edgeId,
-              close: () => setContextMenu(null),
-            })
+            edgeId: contextMenu.edgeId,
+            close: () => setContextMenu(null),
+          })
           : [];
 
   return (
@@ -885,6 +909,7 @@ export function GraphFlowSurface({
         ref={canvasShellRef}
         className={["graph-canvas-shell", dragShieldingEnabled && isExperimentalDragging ? "is-dragging" : ""].join(" ").trim()}
         data-testid="graph-canvas-shell"
+        data-graph-density={positionedNodes.length > 80 ? "dense" : "normal"}
         tabIndex={0}
         onContextMenu={(event) => {
           if (event.defaultPrevented) {
@@ -938,6 +963,9 @@ export function GraphFlowSurface({
             });
             setFlowInstance(instance);
           }}
+          // P0-1: stamp the interaction guard whenever the user pans/zooms so
+          // the auto-fit effects know to yield.
+          onMove={handleViewportChange}
           onNodeClick={handleNodeClick}
           onNodeContextMenu={(event, node) => openNodeMenu(event, node.id)}
           onEdgeClick={(event, edge) => {

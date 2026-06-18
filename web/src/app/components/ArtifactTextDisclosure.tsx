@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button } from "./Button";
 
 interface ArtifactTextDisclosureProps {
   buttonLabel: string;
@@ -28,9 +29,7 @@ export function ArtifactTextDisclosure({
   return (
     <>
       <div className="panel-actions">
-        <button
-          type="button"
-          className="ghost-button"
+        <Button
           onClick={() => {
             setExpanded((current) => {
               const next = !current;
@@ -42,7 +41,7 @@ export function ArtifactTextDisclosure({
           }}
         >
           {expanded ? expandedLabel : buttonLabel}
-        </button>
+        </Button>
       </div>
       {expanded ? (
         hasText ? (

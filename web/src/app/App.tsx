@@ -1373,7 +1373,6 @@ export function App() {
   const graphStage = (
     <AppGraphStagePanel
       analysisDisplayMode={analysisDisplayMode}
-      activeWorkflowStage={activeWorkflowStage}
       activeViewGraph={activeViewGraph}
       fullNodeCount={activeFullGraph.nodeCount ?? activeFullGraph.nodes.length}
       hasExplanationFocus={explanationFocusNodeId != null}

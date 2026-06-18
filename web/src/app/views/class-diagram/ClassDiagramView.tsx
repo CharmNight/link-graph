@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { buildEdgeActions as buildSharedEdgeActions } from "../../components/graph/actions/actionSchema";
+import { Button } from "../../components/Button";
+import { CanvasEmptyState } from "../../components/graph/CanvasEmptyState";
 import type { GraphContextMenuAction } from "../../components/graph/actions/actionSchema";
 import { createNodeSizeRegistry } from "../../graph/nodeSizeRegistry";
 import { classDiagramNodeCardWidth } from "../../graphNodeSizing";
@@ -387,16 +389,15 @@ export function ClassDiagramView({
       >
       {selectedUsageNodeId ? (
         <div className="class-diagram-action-strip" aria-label="类图操作">
-          <button
-            type="button"
-            className="ghost-button compact"
+          <Button
+            compact
             onClick={() => onRequestClassUsages(
               selectedUsageNodeId,
               classUsageRequestOptionsForNode(selectedUsageNode, usageScopeNodeId),
             )}
           >
             查找使用处
-          </button>
+          </Button>
         </div>
       ) : null}
       <div className={view.usage ? "class-diagram-workspace has-usage-panel" : "class-diagram-workspace"}>
@@ -416,7 +417,7 @@ export function ClassDiagramView({
           experiments={experiments}
           editable={false}
           layoutEditable
-          panOnDrag={[1]}
+          panOnDrag
           panOnScroll
           panOnScrollMode="free"
           panOnScrollSpeed={0.8}
@@ -426,15 +427,11 @@ export function ClassDiagramView({
           paneClickDistance={6}
           groupSelectionEnabled={false}
           emptyState={(
-            isLayoutLoading ? (
-              <div className="canvas-empty-state">
-                <strong>正在整理类图</strong>
-              </div>
-            ) : (
-              <div className="canvas-empty-state">
-                <strong>{emptyStateCopy.title}</strong>
-              </div>
-            )
+            <CanvasEmptyState
+              isLoading={isLayoutLoading}
+              loadingTitle="正在整理类图"
+              idleTitle={emptyStateCopy.title}
+            />
           )}
           buildPaneActions={({ visibleNodeCount, hasGroupedSelection, close }) => {
             const actions: GraphContextMenuAction[] = [];
@@ -545,8 +542,8 @@ export function ClassDiagramView({
           shouldFocusAnchorOnLoad={true}
           fitViewPadding={0.12}
           fitViewMaxZoom={0.9}
-          showViewportControls={false}
-          showLocateAnchorButton={false}
+          showViewportControls
+          showLocateAnchorButton
           nodeViewportSize={classDiagramViewportNodeSize}
         />
         {view.usage ? (

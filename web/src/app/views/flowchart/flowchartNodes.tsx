@@ -401,13 +401,13 @@ function flowchartEdgeStyle(edge: LinkGraphEdge) {
     case "CONTAINS_FLOW":
     case "CONTROL_FLOW":
       return {
-        stroke: "#195a99",
+        stroke: "var(--edge-info)",
         strokeWidth: 2.2,
         opacity: 0.96,
       };
     default:
       return {
-        stroke: "#8f4f23",
+        stroke: "var(--edge-warning)",
         strokeWidth: 1.8,
         strokeDasharray: "6 4",
         opacity: 0.86,

@@ -217,7 +217,7 @@ describe("ReviewGraphView", () => {
     );
 
     expect(screen.getByText("正在构建 Review Graph")).toBeInTheDocument();
-    expect(screen.getByText("正在构建 Review Graph。")).toBeInTheDocument();
+    // P1: empty-state detail prose was collapsed to a single title line.
 
     rerender(
       <ReviewGraphView
@@ -234,7 +234,8 @@ describe("ReviewGraphView", () => {
     );
 
     expect(screen.getByText("Review Graph 加载失败")).toBeInTheDocument();
-    expect(screen.getByText("Review Graph 索引失败")).toBeInTheDocument();
+    // P1: empty-state detail prose collapsed to a single title; the failure
+    // reason is still surfaced via the request banner, not the canvas.
 
     rerender(
       <ReviewGraphView

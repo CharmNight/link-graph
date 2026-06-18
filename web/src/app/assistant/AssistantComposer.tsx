@@ -1,4 +1,5 @@
 import type { AssistantActionId, AssistantContextSnapshot, AssistantIntent } from "../types";
+import { Button } from "../components/Button";
 import { AssistantActionSelector } from "./AssistantActionSelector";
 import { assistantComposerPlaceholder, isClassDiagramAssistantContext } from "./assistantModels";
 import { assistantActionLabel } from "./assistantActionRegistry";
@@ -43,16 +44,9 @@ export function AssistantComposer({
       }}
     >
       <div className="assistant-send-type-head">
-        <div>
-          <p className="eyebrow">发送动作</p>
-          <strong>发送为</strong>
-        </div>
         <span className="tag active">{activeActionLabel}</span>
       </div>
       <AssistantActionSelector activeActionId={activeActionId} context={context} onActionChange={onActionChange} />
-      <p className="muted assistant-composer-help">
-        切换发送动作只会改变下一次提交，不会改动上方已返回结果。
-      </p>
       <label className="sr-only" htmlFor="assistant-composer-input">{inputLabel}</label>
       <textarea
         id="assistant-composer-input"
@@ -66,14 +60,14 @@ export function AssistantComposer({
         <span className="muted">
           {isClassDiagram ? "下一次类图发送上下文随图谱选择更新" : "下一次发送上下文随图谱选择更新"}
         </span>
-        <button
+        <Button
           type="submit"
-          className="primary-button"
+          variant="primary"
           disabled={!canSubmit}
           aria-label={submitLabel}
         >
           {requestRunning ? "处理中" : "发送"}
-        </button>
+        </Button>
       </div>
     </form>
   );

@@ -108,7 +108,7 @@ describe("PropertyPanel", () => {
     }
   });
 
-  it("explains when source navigation will fall back to method signature", () => {
+  it("keeps source navigation enabled when a signature fallback is available", () => {
     render(
       <PropertyPanel
         selectedNode={{
@@ -122,7 +122,8 @@ describe("PropertyPanel", () => {
       />,
     );
 
-    expect(screen.getByText("当前将按方法/类签名在 IDEA 中定位源码。")).toBeInTheDocument();
+    // P1: the signature-fallback prose was removed; the button staying enabled
+    // is the user-facing signal that navigation still works via signature.
     expect(screen.getByRole("button", { name: "打开源码" })).toBeEnabled();
   });
 
@@ -148,7 +149,6 @@ describe("PropertyPanel", () => {
       />,
     );
 
-    expect(screen.getByText("解析提示")).toBeInTheDocument();
     expect(screen.getByText("当前引用命中多个候选，请补充参数签名后再试。")).toBeInTheDocument();
     expect(screen.getByText("候选方法")).toBeInTheDocument();
     expect(screen.getByText("com.example.OrderService.submit(java.lang.String):java.lang.String")).toBeInTheDocument();
@@ -180,7 +180,6 @@ describe("PropertyPanel", () => {
       />,
     );
 
-    expect(screen.getByText("该节点不是独立方法，而是当前方法里的流程作用域容器。")).toBeInTheDocument();
     expect(screen.getByText("作用域类型")).toBeInTheDocument();
     expect(screen.getByText("Lambda 作用域")).toBeInTheDocument();
     expect(screen.getByText("流程摘要")).toBeInTheDocument();
@@ -215,7 +214,6 @@ describe("PropertyPanel", () => {
     );
 
     expect(screen.getByText("类型：当前方法内部动作")).toBeInTheDocument();
-    expect(screen.getByText("该节点表示当前方法中的内部执行动作，用来补齐代码阅读顺序，不等同于独立方法定义。")).toBeInTheDocument();
     expect(screen.getByText("所属方法")).toBeInTheDocument();
     expect(screen.getByText("com.example.ShiroUtils.setSysUser(com.example.User):void")).toBeInTheDocument();
     expect(screen.getByText("动作表达式")).toBeInTheDocument();

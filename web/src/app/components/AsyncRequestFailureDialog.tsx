@@ -1,3 +1,5 @@
+import { Button } from "./Button";
+
 interface AsyncRequestFailureDialogProps {
   open: boolean;
   title: string;
@@ -31,9 +33,9 @@ export function AsyncRequestFailureDialog({
             <p className="eyebrow">请求状态</p>
             <h2>{title}</h2>
           </div>
-          <button type="button" className="ghost-button" onClick={onClose}>
+          <Button onClick={onClose}>
             关闭提示
-          </button>
+          </Button>
         </div>
 
         <div className="modal-body">
@@ -45,9 +47,9 @@ export function AsyncRequestFailureDialog({
         </div>
 
         <div className="panel-actions modal-footer">
-          <button type="button" className="primary-button" onClick={onClose}>
+          <Button variant="primary" onClick={onClose}>
             我知道了
-          </button>
+          </Button>
         </div>
       </section>
     </div>

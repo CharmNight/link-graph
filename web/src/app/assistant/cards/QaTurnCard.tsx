@@ -1,4 +1,5 @@
 import { formatResultEvidenceReference, resultEvidenceLevelLabel } from "../../labels";
+import { Button } from "../../components/Button";
 import type {
   AssistantTurn,
   QaRequestRecoveryState,
@@ -53,12 +54,12 @@ export function QaTurnCard({
       )}
       {failedRequest ? (
         <div className="assistant-recovery-actions">
-          <button type="button" className="ghost-button compact" onClick={onRetryLastQaRequest}>
+          <Button compact onClick={onRetryLastQaRequest}>
             直接重试
-          </button>
-          <button type="button" className="ghost-button compact" onClick={onEditFailedQaRequest}>
+          </Button>
+          <Button compact onClick={onEditFailedQaRequest}>
             修改后重试
-          </button>
+          </Button>
         </div>
       ) : null}
     </article>
@@ -84,14 +85,14 @@ export function EvidenceFindings({
           <p className="assistant-result-text">{finding.claim}</p>
           <div className="panel-actions">
             {finding.references.map((reference, index) => (
-              <button
+              <Button
                 key={`${finding.id}:${index}`}
-                type="button"
-                className="ghost-button compact assistant-wrap-token"
+                compact
+                className="assistant-wrap-token"
                 onClick={() => onRevealReference(reference)}
               >
                 {formatResultEvidenceReference(reference)}
-              </button>
+              </Button>
             ))}
           </div>
         </div>

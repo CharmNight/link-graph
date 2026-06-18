@@ -1,8 +1,7 @@
-import { memo, useLayoutEffect, useRef } from "react";
+import { memo } from "react";
 import type { DraftCompareStatus, LinkGraphNode } from "../../../types";
 import { flowchartKind, flowchartKindLabel, nodeTooltip, signaturePreview } from "./nodePresentation";
-import { measureNodeContentBox } from "./measureNodeContentBox";
-import { GraphNodeStateBadges } from "./GraphNodeStateBadges";
+import { NodeCardBase } from "./NodeCardBase";
 import { IssueBadge } from "../../IssueBadge";
 
 interface FlowchartNodeCardProps {
@@ -22,27 +21,16 @@ export const FlowchartNodeCard = memo(function FlowchartNodeCard({
   draftCompareStatus,
   onMeasure,
 }: FlowchartNodeCardProps) {
-  const rootRef = useRef<HTMLDivElement | null>(null);
-
-  useLayoutEffect(() => {
-    const size = measureNodeContentBox(rootRef.current);
-    if (size) {
-      onMeasure?.(size);
-    }
-  }, [node, onMeasure]);
-
   return (
-    <div
-      ref={rootRef}
-      className={[
-        "flow-node-card",
-        "flowchart-node-card",
-        `kind-${flowchartKind(node).toLowerCase()}`,
-        selected ? "is-selected" : "",
-      ].join(" ").trim()}
-      data-node-id={node.id}
+    <NodeCardBase
+      node={node}
+      selected={selected}
+      explanationFocused={explanationFocused}
+      draftChanged={draftChanged}
+      onMeasure={onMeasure}
+      measureDeps={[node, onMeasure]}
+      variantClassName={["flowchart-node-card", `kind-${flowchartKind(node).toLowerCase()}`]}
     >
-      <GraphNodeStateBadges selected={selected} explanationFocused={explanationFocused} draftChanged={draftChanged} />
       <div className="flow-node-head">
         <span className="flowchart-node-kind">{flowchartKindLabel(node)}</span>
         <div className="flow-node-tags">
@@ -57,6 +45,6 @@ export const FlowchartNodeCard = memo(function FlowchartNodeCard({
           {signaturePreview(node)}
         </span>
       ) : null}
-    </div>
+    </NodeCardBase>
   );
 });

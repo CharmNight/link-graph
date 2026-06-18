@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type CSSProperties } from "react";
+import { type CSSProperties } from "react";
 import {
   Handle,
   MarkerType,
@@ -11,8 +11,7 @@ import {
 import { edgeTypeLabel, relationConfidenceLabel } from "../../labels";
 import type { NodeMeasuredSize, NodeSizeRegistry } from "../../graph/nodeSizeRegistry";
 import { architectureGraphNodeCardWidth } from "../../graphNodeSizing";
-import { measureNodeContentBox } from "../../components/graph/nodes/measureNodeContentBox";
-import { GraphNodeStateBadges } from "../../components/graph/nodes/GraphNodeStateBadges";
+import { NodeCardBase } from "../../components/graph/nodes/NodeCardBase";
 import type { DraftCompareStatus, GraphProjectionIndex, LinkGraphEdge, LinkGraphNode } from "../../types";
 import { canEditNodeLayout } from "../../layoutEditability";
 import { reactFlowNodeInternalsSignature } from "../../reactflow/nodeInternalsSignature";
@@ -99,7 +98,6 @@ export function ArchitectureNodeCard({
   draftCompareStatus?: DraftCompareStatus;
   onMeasure?: (size: NodeMeasuredSize) => void;
 }) {
-  const rootRef = useRef<HTMLDivElement | null>(null);
   const layerKind = node.metadata?.["indexed.layerKind"];
   const nodeRole = node.metadata?.["indexed.nodeRole"];
   const presentationRole = node.metadata?.["presentation.role"];
@@ -116,26 +114,20 @@ export function ArchitectureNodeCard({
   const titleText = readableNodeTitle(node);
   const locationText = architectureNodeLocation(node, titleText);
 
-  useLayoutEffect(() => {
-    const size = measureNodeContentBox(rootRef.current);
-    if (size) {
-      onMeasure?.(size);
-    }
-  }, [node, onMeasure]);
-
   return (
-    <div
-      ref={rootRef}
-      className={[
-        "flow-node-card",
+    <NodeCardBase
+      node={node}
+      selected={selected}
+      explanationFocused={explanationFocused}
+      draftChanged={draftChanged}
+      onMeasure={onMeasure}
+      measureDeps={[node, onMeasure]}
+      variantClassName={[
         "resource-node-card",
         `architecture-node-card--${architectureRoleClass(presentationRole)}`,
-        selected ? "is-selected" : "",
         targetNode ? "is-target-node" : "",
-      ].join(" ").trim()}
-      data-node-id={node.id}
+      ]}
     >
-      <GraphNodeStateBadges selected={selected} explanationFocused={explanationFocused} draftChanged={draftChanged} />
       <div className="flow-node-head architecture-node-head">
         <span className={`architecture-node-glyph ${architectureGlyphClass(nodeKind, boundaryKind, layerKind)}`} aria-hidden="true" />
         <div className="flow-node-tags architecture-node-tags">
@@ -156,7 +148,7 @@ export function ArchitectureNodeCard({
         </span>
       ) : null}
       {metricText ? <span className="flow-node-meta" title={detailTitle}>{metricText}</span> : null}
-    </div>
+    </NodeCardBase>
   );
 }
 
@@ -484,9 +476,9 @@ function architectureEdgeStyle(edge: LinkGraphEdge) {
     || edge.metadata?.["jvm.relation.confidence"] === "AMBIGUOUS"
     || edge.metadata?.["jvm.relation.confidence"] === "RUNTIME_REQUIRED"
   ) {
-    return { stroke: "#8d6b2f", strokeWidth: 1.5, strokeDasharray: "7 5", opacity: 0.86 };
+    return { stroke: "var(--edge-warning)", strokeWidth: 1.5, strokeDasharray: "7 5", opacity: 0.86 };
   }
-  return { stroke: "#29536b", strokeWidth: 1.7, opacity: 0.9 };
+  return { stroke: "var(--edge-info)", strokeWidth: 1.7, opacity: 0.9 };
 }
 
 function edgePriority(edge: LinkGraphEdge): number {

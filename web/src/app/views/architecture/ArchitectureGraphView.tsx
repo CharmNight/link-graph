@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { buildEdgeActions as buildSharedEdgeActions } from "../../components/graph/actions/actionSchema";
+import { CanvasEmptyState } from "../../components/graph/CanvasEmptyState";
 import type { GraphContextMenuAction } from "../../components/graph/actions/actionSchema";
 import { createNodeSizeRegistry } from "../../graph/nodeSizeRegistry";
 import { architectureGraphNodeCardWidth } from "../../graphNodeSizing";
@@ -469,15 +470,11 @@ export function ArchitectureGraphView({
           editable={false}
           layoutEditable={!isProjectStructureView}
           emptyState={(
-            isLayoutLoading ? (
-              <div className="canvas-empty-state">
-                <strong>正在整理架构图</strong>
-              </div>
-            ) : (
-              <div className="canvas-empty-state">
-                <strong>{emptyStateCopy.title}</strong>
-              </div>
-            )
+            <CanvasEmptyState
+              isLoading={isLayoutLoading}
+              loadingTitle="正在整理架构图"
+              idleTitle={emptyStateCopy.title}
+            />
           )}
         buildPaneActions={({ visibleNodeCount, hasGroupedSelection, close }) => {
           const actions: GraphContextMenuAction[] = [];

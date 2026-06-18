@@ -1,3 +1,5 @@
+import { Button } from "./Button";
+
 interface MermaidImportDialogProps {
   open: boolean;
   value: string;
@@ -34,9 +36,9 @@ export function MermaidImportDialog({
             <p className="eyebrow">Mermaid</p>
             <h2>导入 Mermaid</h2>
           </div>
-          <button type="button" className="ghost-button" onClick={onCancel}>
+          <Button onClick={onCancel}>
             取消
-          </button>
+          </Button>
         </div>
 
         <div className="modal-body">
@@ -53,12 +55,12 @@ export function MermaidImportDialog({
         </div>
 
         <div className="panel-actions modal-footer">
-          <button type="button" className="primary-button" onClick={onConfirm}>
+          <Button variant="primary" onClick={onConfirm}>
             确认导入
-          </button>
-          <button type="button" className="ghost-button" onClick={onCancel}>
+          </Button>
+          <Button onClick={onCancel}>
             关闭
-          </button>
+          </Button>
         </div>
       </section>
     </div>

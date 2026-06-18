@@ -201,26 +201,26 @@ function factGraphEdgeStyle(edge: LinkGraphEdge) {
   switch (edge.type) {
     case "CONTAINS_FLOW":
       return {
-        stroke: "#195a99",
+        stroke: "var(--edge-info)",
         strokeWidth: 1.8,
         strokeDasharray: "7 5",
         opacity: 0.84,
       };
     case "CONTROL_FLOW":
       return {
-        stroke: "#195a99",
+        stroke: "var(--edge-info)",
         strokeWidth: 2.1,
         opacity: 0.94,
       };
     case "CALL":
       return {
-        stroke: "#8f4f23",
+        stroke: "var(--edge-warning)",
         strokeWidth: 1.9,
         opacity: 0.92,
       };
     default:
       return {
-        stroke: "#5f5a53",
+        stroke: "var(--edge-neutral)",
         strokeWidth: 1.6,
         opacity: 0.88,
       };

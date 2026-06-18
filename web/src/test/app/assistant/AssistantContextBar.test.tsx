@@ -67,14 +67,13 @@ describe("AssistantContextBar", () => {
       />,
     );
 
+    // P1: the eyebrow/heading/help prose was removed; the region (aria-label)
+    // and the chips are the remaining context surface.
     const region = screen.getByRole("region", { name: "下一次类图发送上下文" });
     const chips = within(region).getAllByText((_, element) =>
       element?.classList.contains("assistant-context-chip") ?? false
     );
 
-    expect(within(region).getByText("AI 类图工作台")).toBeInTheDocument();
-    expect(within(region).getByRole("heading", { name: "下一次类图发送上下文" })).toBeInTheDocument();
-    expect(within(region).getByText("只影响底部下一次提交，历史回答保留各自上下文。")).toBeInTheDocument();
     expect(chips.map((chip) => chip.textContent)).toEqual([
       "类图",
       "ClientRequestQuotaManager",

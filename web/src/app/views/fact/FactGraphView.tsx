@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 import { buildEdgeActions, buildNodeActions, buildPaneActions } from "../../components/graph/actions/actionSchema";
+import { CanvasEmptyState } from "../../components/graph/CanvasEmptyState";
 import { overflowPresentation } from "../../components/graph/nodes/nodePresentation";
 import { canEditProjectedEdge, canEditProjectedNode } from "../../graphProjectionPermissions";
-import { createNodeSizeRegistry } from "../../graph/nodeSizeRegistry";
 import { nodeCardWidth } from "../../graphNodeSizing";
 import { GraphCanvasLanes } from "../../presentation/GraphCanvasLanes";
 import { GraphViewShell } from "../../presentation/GraphViewShell";
-import { useMeasuredLayout } from "../../reactflow/useMeasuredLayout";
+import { useGraphView } from "../../reactflow/useGraphView";
 import { shouldFocusAnchor } from "../../reactflow/viewportPolicy";
 import { GraphFlowSurface } from "../../reactflow/GraphFlowSurface";
 import { canNavigateToSource } from "../../sourceNavigation";
@@ -85,7 +85,6 @@ export function FactGraphView({
   const [scope, setScope] = useState(
     view.presentation.controls.primaryScope || view.presentation.controls.availableScopes[0] || "",
   );
-  const nodeSizeRegistry = useMemo(() => createNodeSizeRegistry(), []);
   const scopedGraph = useMemo(() => {
     if (draftCompareProjection) {
       return draftCompareProjection.compareGraph;
@@ -105,31 +104,25 @@ export function FactGraphView({
       nodeCount: nodes.length,
     };
   }, [query, scopedGraph]);
-  const layoutState = useMeasuredLayout({
+  const collapsedNodeIdSet = useMemo(() => new Set(collapsedNodeIds), [collapsedNodeIds]);
+  const {
+    visibleNodes,
+    visibleEdges,
+    nodeIndex,
+    nodeSizeRegistry,
+    isLayoutLoading,
+    requestRelayout,
+  } = useGraphView({
     graph: presentedGraph,
     anchorNodeId: view.anchorNodeId ?? null,
+    selectedNodeId,
+    hiddenNodeIds,
     collapsedNodeIds,
-    nodeSizeRegistry,
     layout: layoutFactGraphView,
     layoutSizeSignature: factGraphLayoutSizeSignature,
     debugLabel: "fact",
   });
 
-  const hiddenNodeIdSet = useMemo(() => new Set(hiddenNodeIds), [hiddenNodeIds]);
-  const collapsedNodeIdSet = useMemo(() => new Set(collapsedNodeIds), [collapsedNodeIds]);
-  const visibleNodes = useMemo(
-    () => layoutState.nodes.filter((node) => !hiddenNodeIdSet.has(node.id)),
-    [layoutState.nodes, hiddenNodeIdSet],
-  );
-  const visibleEdges = useMemo(
-    () => layoutState.edges.filter((edge) => !hiddenNodeIdSet.has(edge.source) && !hiddenNodeIdSet.has(edge.target)),
-    [layoutState.edges, hiddenNodeIdSet],
-  );
-  const isLayoutLoading = layoutState.layoutPending && presentedGraph.nodes.length > 0 && layoutState.nodes.length === 0;
-  const nodeIndex = useMemo(
-    () => new Map(visibleNodes.map((node) => [node.id, node])),
-    [visibleNodes],
-  );
   const flowNodes = useMemo(
     () =>
       buildFactGraphNodes({
@@ -214,15 +207,11 @@ export function FactGraphView({
         editable
         layoutEditable
         emptyState={(
-          isLayoutLoading ? (
-            <div className="canvas-empty-state">
-              <strong>正在整理链路画布</strong>
-            </div>
-          ) : (
-            <div className="canvas-empty-state">
-              <strong>画布里还没有节点</strong>
-            </div>
-          )
+          <CanvasEmptyState
+            isLoading={isLayoutLoading}
+            loadingTitle="正在整理链路画布"
+            idleTitle="画布里还没有节点"
+          />
         )}
         buildPaneActions={({ position, hasGroupedSelection, visibleNodeCount, close }) =>
           buildPaneActions({
@@ -233,7 +222,7 @@ export function FactGraphView({
             position,
             onAddNode,
             onImportMermaid,
-            onFormatLayout: layoutState.requestRelayout,
+            onFormatLayout: requestRelayout,
             onOpenQa,
             onClose: close,
           })
@@ -262,7 +251,7 @@ export function FactGraphView({
               onExpandOverflowNode,
               onExpandInvocation,
               onRemoveInvocationExpansion,
-              onFormatLayout: layoutState.requestRelayout,
+              onFormatLayout: requestRelayout,
               onDeleteNodeSubtree,
               onDeleteNode,
               canEditNode: (command) => canEditProjectedNode(view.projectionIndex, nodeId, command),

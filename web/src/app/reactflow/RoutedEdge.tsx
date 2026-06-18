@@ -584,7 +584,7 @@ export function RoutedEdge({
   const renderedPoints = routePoints(renderedRoute);
   const sourceEndpoint = endpointVector(renderedPoints, "source");
   const targetEndpoint = endpointVector(renderedPoints, "target");
-  const adornmentColor = typeof style?.stroke === "string" ? style.stroke : "#61717f";
+  const adornmentColor = typeof style?.stroke === "string" ? style.stroke : "var(--edge-default)";
   const originalRouteStart = routeStartPoint(data?.route);
   const originalRouteEnd = routeEndPoint(data?.route);
   const adjustedRouteStart = routeStartPoint(renderedRoute);

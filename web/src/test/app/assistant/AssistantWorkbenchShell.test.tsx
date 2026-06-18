@@ -342,8 +342,9 @@ describe("AssistantWorkbenchShell", () => {
     expect(composer).toContainElement(selector);
     expect(screen.queryByLabelText("AI 工作台 intent")).not.toBeInTheDocument();
     expect(within(selector).getByRole("button", { name: "追问代码" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(composer).getByText("发送为")).toBeInTheDocument();
-    expect(within(composer).getByText("切换发送动作只会改变下一次提交，不会改动上方已返回结果。")).toBeInTheDocument();
+    // P1: the "发送为" eyebrow and helper prose were removed; the active tag
+    // still reflects the chosen send action.
+    expect(within(composer).getByText("追问代码", { selector: ".tag.active" })).toBeInTheDocument();
     expect(themeCss).toContain("grid-template-columns: repeat(4, minmax(0, 1fr));");
   });
 
@@ -369,7 +370,8 @@ describe("AssistantWorkbenchShell", () => {
     const composer = screen.getByTestId("assistant-composer");
     const selector = screen.getByLabelText("发送动作");
 
-    expect(within(composer).getByText("发送动作")).toBeInTheDocument();
+    // P1: the "发送动作" eyebrow text was removed; the selector is still
+    // reachable via its aria-label.
     expect(within(composer).queryByText("Send As")).not.toBeInTheDocument();
     expect(within(composer).getByText("追问类图", { selector: ".tag.active" })).toBeInTheDocument();
     expect(within(selector).getByRole("button", { name: "介绍这个类" })).toBeInTheDocument();
@@ -377,7 +379,6 @@ describe("AssistantWorkbenchShell", () => {
     expect(within(selector).getByRole("button", { name: "解释关系" })).toBeInTheDocument();
     expect(within(selector).queryByRole("button", { name: "检查当前改动" })).not.toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "AI 类图工作台" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "下一次类图发送上下文" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "当前类图上下文" })).not.toBeInTheDocument();
     expect(screen.getByText("类图节点 1")).toBeInTheDocument();
     expect(screen.queryByText("改动 0")).not.toBeInTheDocument();
@@ -406,7 +407,8 @@ describe("AssistantWorkbenchShell", () => {
       />,
     );
 
-    expect(screen.getByText("历史回答：旧结果在上，最新回答追加到底部。")).toBeInTheDocument();
+    // P1: the permanent "历史回答" order-note banner was removed; turn order is
+    // still conveyed by the per-turn round labels.
     expect(screen.getByText("第 1 轮")).toBeInTheDocument();
     expect(screen.getByText("第 2 轮")).toBeInTheDocument();
     expect(screen.getByText("第 3 轮")).toBeInTheDocument();
@@ -694,8 +696,8 @@ describe("AssistantWorkbenchShell", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "下一次发送上下文" })).toBeInTheDocument();
-    expect(screen.getByText("在底部输入问题，并选择发送动作；下一次发送上下文随图谱选择更新。")).toBeInTheDocument();
+    // P1: the "下一次发送上下文" heading and verbose empty help were removed;
+    // the long scope is still surfaced as a context chip (not a heading).
     expect(screen.queryByText(/intent/)).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: longScope })).not.toBeInTheDocument();
     expect(screen.getByTitle(longScope)).toHaveClass("assistant-context-chip");

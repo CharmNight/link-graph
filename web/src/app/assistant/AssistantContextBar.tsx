@@ -1,4 +1,5 @@
 import { analysisDisplayModeLabel } from "../labels";
+import { Chip } from "../components/Chip";
 import type { AnalysisDisplayMode, AssistantContextSnapshot } from "../types";
 import { isClassDiagramAssistantContext } from "./assistantModels";
 
@@ -50,30 +51,24 @@ export function AssistantContextBar({ context }: AssistantContextBarProps) {
   const methodSignature = context.selectedMethodSignature?.trim() || null;
   const scopeLabel = contextScopeLabel(context.scopeLabel, methodSignature);
   const rawScopeLabel = context.scopeLabel?.trim() || methodSignature || scopeLabel;
-  const workbenchLabel = isClassDiagram ? "AI 类图工作台" : "AI 代码工作台";
   const contextLabel = isClassDiagram ? "下一次类图发送上下文" : "下一次发送上下文";
   const nodeCountLabel = isClassDiagram
     ? `类图节点 ${context.selectedNodeIds.length}`
     : `节点 ${context.selectedNodeIds.length}`;
   return (
     <section className="assistant-context-bar" aria-label={contextLabel}>
-      <div>
-        <p className="eyebrow">{workbenchLabel}</p>
-        <h2>{contextLabel}</h2>
-      </div>
-      <p className="muted assistant-context-help">只影响底部下一次提交，历史回答保留各自上下文。</p>
       <div className="assistant-context-meta">
         {context.analysisDisplayMode ? (
-          <span className="toolbar-chip assistant-context-chip" title={modeLabel ?? context.analysisDisplayMode}>
+          <Chip variant="toolbar-chip" className="assistant-context-chip" title={modeLabel ?? context.analysisDisplayMode}>
             {modeLabel ?? context.analysisDisplayMode}
-          </span>
+          </Chip>
         ) : null}
         {scopeLabel ? (
-          <span className="toolbar-chip assistant-context-chip" title={rawScopeLabel ?? scopeLabel}>{scopeLabel}</span>
+          <Chip variant="toolbar-chip" className="assistant-context-chip" title={rawScopeLabel ?? scopeLabel}>{scopeLabel}</Chip>
         ) : null}
-        <span className="toolbar-chip assistant-context-chip">{nodeCountLabel}</span>
+        <Chip variant="toolbar-chip" className="assistant-context-chip">{nodeCountLabel}</Chip>
         {isClassDiagram ? null : (
-          <span className="toolbar-chip assistant-context-chip">改动 {context.selectedDiffItemIds.length}</span>
+          <Chip variant="toolbar-chip" className="assistant-context-chip">改动 {context.selectedDiffItemIds.length}</Chip>
         )}
       </div>
       {methodSignature ? (
