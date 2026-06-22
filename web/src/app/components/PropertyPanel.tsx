@@ -157,17 +157,6 @@ export function PropertyPanel({
     if (!draft) {
       return undefined;
     }
-    const previousBodyOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousBodyOverflow;
-    };
-  }, [draft]);
-
-  useEffect(() => {
-    if (!draft) {
-      return undefined;
-    }
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         onClose();

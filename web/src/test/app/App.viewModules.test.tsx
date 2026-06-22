@@ -348,11 +348,13 @@ describe("App view modules", () => {
     // P1: the class-diagram stage description prose was removed.
     expect(within(screen.getByRole("banner", { name: "链路任务栏" })).getByRole("button", { name: "解释类关系" })).toBeInTheDocument();
     expect(within(screen.getByRole("banner", { name: "链路任务栏" })).queryByRole("button", { name: "链路讲解" })).not.toBeInTheDocument();
-    const assistantStatus = screen.getByRole("group", { name: "AI 工作状态" });
-    expect(within(assistantStatus).getByText("理解类图")).toBeInTheDocument();
-    expect(within(assistantStatus).getByText("类图问答")).toBeInTheDocument();
-    expect(within(assistantStatus).queryByText("理解代码")).not.toBeInTheDocument();
-    expect(within(assistantStatus).queryByText("代码问答")).not.toBeInTheDocument();
+    // P1: 五段状态条已删除，类图模式下用通用 badge 展示当前阶段
+    expect(screen.queryByRole("group", { name: "AI 工作状态" })).not.toBeInTheDocument();
+    expect(screen.queryByText("理解类图")).not.toBeInTheDocument();
+    expect(screen.queryByText("类图问答")).not.toBeInTheDocument();
+    expect(screen.queryByText("理解代码")).not.toBeInTheDocument();
+    expect(screen.queryByText("代码问答")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/当前阶段/);
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
   });
 

@@ -118,7 +118,6 @@ export function AssistantWorkbenchShell({
     onDraftChange: onComposerDraftChange,
     onSubmit,
   });
-
   return (
     <aside className="assistant-workbench-shell" role="complementary" aria-label={workbenchLabel}>
       <AssistantContextBar context={assistantSessionState.context} />

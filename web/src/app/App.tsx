@@ -63,7 +63,6 @@ import {
   deriveChangeTrayState,
   deriveCurrentTarget,
   deriveLinkGraphOutline,
-  deriveWorkflowStageStates,
 } from "./components/hybridDerivations";
 import {
   collectDownstreamSubtreeNodeIds,
@@ -431,6 +430,8 @@ export function App() {
       ?? initialState.draftWorkbenchState?.draftNotes[0]?.entryId
       ?? null,
   );
+  // draftCompareMode 控制草稿对比是「看结果 after」还是「看流程变化 compare」。
+  // 入口已从旧 ChangeTray 迁移到 AI 工作台的「查看流程变化」按钮。
   const [draftCompareMode, setDraftCompareMode] = useState<"after" | "compare">("after");
   const semanticRevisionRef = useRef<number | null>(initialState.semanticRevision ?? null);
   const layoutRevisionRef = useRef<number | null>(resolveCurrentSceneState(initialState).layoutRevision ?? null);
@@ -1074,25 +1075,6 @@ export function App() {
     lastAppliedDraftPatchSummary,
     lastDraftPatchApplyResult,
   ]);
-  const workflowStageStates = useMemo(() => deriveWorkflowStageStates({
-    graphBeautificationResult,
-    graphBeautificationRequestState,
-    qaResult,
-    qaRequestState,
-    draftWorkbenchState,
-    draftValidationState,
-    codeDiffStatus,
-    codeDraftRequestState,
-  }), [
-    codeDiffStatus,
-    codeDraftRequestState,
-    draftValidationState,
-    draftWorkbenchState,
-    graphBeautificationRequestState,
-    graphBeautificationResult,
-    qaRequestState,
-    qaResult,
-  ]);
   const [outlineQuery, setOutlineQuery] = useState("");
 
   useEffect(() => {
@@ -1396,7 +1378,6 @@ export function App() {
     <AppWorkbenchChrome
       currentTarget={currentTarget}
       activeWorkflowStage={activeWorkflowStage}
-      workflowStageStates={workflowStageStates}
       analysisDisplayMode={analysisDisplayMode}
       indexedArchitectureSummary={architectureGraphView.summary.indexed ?? null}
       changeTrayState={changeTrayState}
@@ -1430,6 +1411,8 @@ export function App() {
       onWorkbenchWidthChange={handleWorkbenchWidthChange}
       onOutlineQueryChange={setOutlineQuery}
       onSelectOutlineItem={handleSelectOutlineItem}
+      onApplyChanges={workbenchCommands.handleWriteDrafts}
+      onRevertChanges={handleUndoDraftPatchApply}
       onOpenDraft={() => {
         setDraftCompareMode("after");
         setActiveWorkflowStage("draft");
@@ -1439,8 +1422,6 @@ export function App() {
         setActiveWorkflowStage("draft");
       }}
       onOpenCode={() => setActiveWorkflowStage("code")}
-      onApplyChanges={workbenchCommands.handleWriteDrafts}
-      onRevertChanges={handleUndoDraftPatchApply}
       onUpdateNode={handleUpdateNode}
       onDeleteNode={handleDeleteNode}
       onDeleteNodeSubtree={handleDeleteNodeSubtree}

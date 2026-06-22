@@ -274,6 +274,26 @@ describe("ClassDiagramView", () => {
     });
   });
 
+  it("does not log class diagram debug payloads during render", () => {
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      render(
+        <ClassDiagramView
+          view={view}
+          selectedNodeId="class:OrderService"
+          onSelectNode={noop}
+          onInspectNode={noop}
+          onMoveNode={noop}
+          onRequestSourceNavigation={noop}
+        />,
+      );
+
+      expect(consoleLog).not.toHaveBeenCalled();
+    } finally {
+      consoleLog.mockRestore();
+    }
+  });
+
   it("adds a node context action for reopening the class diagram around the selected class", async () => {
     const onRequestClassDiagram = vi.fn();
 
@@ -466,11 +486,12 @@ describe("ClassDiagramView", () => {
       />,
     );
 
+    expect(screen.queryByTestId("pane-action-class-diagram-more-members")).not.toBeInTheDocument();
+
     await userEvent.click(screen.getByTestId("pane-action-class-diagram-enrich-relations"));
 
     expect(onRequestClassDiagramWithOptions).toHaveBeenCalledWith("class:OrderService", {
       neighborhoodLimit: 32,
-      memberLimit: 7,
       relationDetail: "SCOPED_BODY_RELATIONS",
     });
   });
@@ -847,7 +868,6 @@ describe("ClassDiagramView", () => {
     await userEvent.click(screen.getByRole("button", { name: "展开" }));
     expect(onRequestClassDiagramWithOptions).toHaveBeenCalledWith("class:OrderService", {
       neighborhoodLimit: 48,
-      memberLimit: 5,
     });
   });
 

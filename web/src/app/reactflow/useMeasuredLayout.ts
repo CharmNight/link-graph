@@ -32,6 +32,11 @@ export interface UseMeasuredLayoutOptions {
   layoutSizeSignature?: LayoutSizeSignatureResolver;
   layoutOnPositionChange?: boolean;
   debugLabel?: string;
+  /**
+   * 重置键。变化时丢弃所有 layoutState（含 seed），强制从零重新布局。
+   * 用于语义切换场景（如类图「查看使用处」切换 target），避免旧节点/边残留。
+   */
+  resetKey?: string | null;
 }
 
 export interface UseMeasuredLayoutResult {
@@ -349,9 +354,12 @@ export function useMeasuredLayout({
   layoutSizeSignature = sizeSignature,
   layoutOnPositionChange = false,
   debugLabel = "graph",
+  resetKey = null,
 }: UseMeasuredLayoutOptions): UseMeasuredLayoutResult {
   const [manualNonce, setManualNonce] = useState(0);
   const [registryRevision, setRegistryRevision] = useState(() => nodeSizeRegistry.currentRevision());
+  // resetKey 变化时完全清空 layoutState，丢弃所有 seed（旧节点位置 / 旧边 route）。
+  const previousResetKeyRef = useRef<string | null>(resetKey);
   const measuredSizes = useMemo(() => nodeSizeRegistry.snapshot(), [nodeSizeRegistry, registryRevision]);
   const nextGraphSignature = useMemo(() => graphSignature(graph), [graph]);
   const nextCollapsedSignature = useMemo(
@@ -373,7 +381,23 @@ export function useMeasuredLayout({
       : [],
     layoutPending: graph.nodes.length > 0 && !hasResolvedLayoutPositions(seedLayoutNodes(graph.nodes, [])),
   }));
+  // resetKey 变化（语义切换，如类图 usage target 切换）：完全清空 layoutState，
+  // 后续布局 effect 会从空 seed 重新布局，旧节点/边不会残留。
   const latestLayoutStateRef = useRef<LayoutState>(layoutState);
+  useEffect(() => {
+    if (previousResetKeyRef.current === resetKey) {
+      return;
+    }
+    previousResetKeyRef.current = resetKey;
+    // 同步更新 ref，避免同一 commit 内布局 effect 读到清空前的旧 layoutState
+    const cleared: LayoutState = {
+      nodes: [],
+      edges: [],
+      layoutPending: graph.nodes.length > 0,
+    };
+    latestLayoutStateRef.current = cleared;
+    setLayoutState(cleared);
+  }, [resetKey, graph.nodes.length]);
   const triggerRef = useRef<LayoutTriggerSnapshot | null>(null);
   const requestVersionRef = useRef(0);
   const latestGraphRef = useRef(graph);
@@ -556,6 +580,7 @@ export function useMeasuredLayout({
     nextGraphSignature,
     trackedPositionSignature,
     nextSizeSignature,
+    resetKey,
   ]);
 
   return {

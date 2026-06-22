@@ -35,29 +35,11 @@ class ClassUsageGraphProjectorTest {
     }
 
     @Test
-    fun projectsUsageGroupsIntoClassDiagramOverlayWithoutDroppingAnchor() {
-        val anchor = GraphNode(
-            id = "jvm:class:com-example-order-service",
-            type = NodeType.CLASS,
-            title = "OrderService",
-            signature = "com.example.OrderService",
-            metadata = mapOf(
-                "architecture.qualifiedName" to "com.example.OrderService",
-                "jvm.class.kind" to "CLASS",
-            ),
-        )
-        val baseView = ClassDiagramResult(
-            visibleGraph = GraphDocument(nodes = listOf(anchor)),
-            fullGraph = GraphDocument(nodes = listOf(anchor)),
-            anchorNodeId = anchor.id,
-            summary = ClassDiagramSummary(classCount = 1, relationCount = 0),
-            projectionIndex = GraphProjectionIndex.EMPTY,
-        )
-        val usageResult = orderServiceUsageResult(anchor.id)
+    fun projectsStandaloneUsageGraphWithTargetAndOwnerNodes() {
+        val usageResult = orderServiceUsageResult("jvm:class:com-example-order-service")
 
-        val projected = ClassUsageGraphProjector().project(baseView, usageResult)
+        val projected = ClassUsageGraphProjector().projectStandalone(usageResult)
 
-        assertEquals(anchor.id, projected.anchorNodeId)
         assertNotNull(projected.usage)
         assertEquals(2, projected.visibleGraph.nodes.size)
         val ownerNode = projected.visibleGraph.nodes.single { node -> node.id == "jvm:class:com-example-order-controller" }
@@ -66,7 +48,7 @@ class ClassUsageGraphProjectorTest {
         assertEquals("2", ownerNode.metadata["classUsage.count"])
         val usageEdge = projected.visibleGraph.edges.single()
         assertEquals("jvm:class:com-example-order-controller", usageEdge.fromNodeId)
-        assertEquals(anchor.id, usageEdge.toNodeId)
+        assertEquals("jvm:class:com-example-order-service", usageEdge.toNodeId)
         assertEquals("CLASS_USAGE", usageEdge.metadata["classDiagram.relation.role"])
         assertEquals("usage", usageEdge.metadata["classDiagram.relation.label"])
         assertEquals("2", usageEdge.metadata["classUsage.count"])

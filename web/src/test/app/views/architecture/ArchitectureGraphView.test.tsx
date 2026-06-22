@@ -289,7 +289,8 @@ describe("ArchitectureGraphView", () => {
     expect(surface).toHaveAttribute("data-node-ids", "layer:api|service:order|component:domain|resource:application.yml");
     expect(surface).toHaveAttribute("data-edge-ids", "edge:api->service|edge:service->resource");
     expect(surface).toHaveAttribute("data-editable", "false");
-    expect(surface).toHaveAttribute("data-layout-editable", "false");
+    // P3 1C: 所有图谱允许自由拖拽节点
+    expect(surface).toHaveAttribute("data-layout-editable", "true");
     expect(surface).toHaveAttribute("data-viewport-policy", "readable-fit");
     expect(screen.getByText("项目架构")).toBeInTheDocument();
     expect(screen.getByText("Order context")).toBeInTheDocument();

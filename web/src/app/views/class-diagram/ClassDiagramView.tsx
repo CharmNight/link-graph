@@ -89,6 +89,13 @@ function canRequestClassUsagesForNode(node: LinkGraphNode | null): boolean {
 }
 
 function classDiagramUsageScopeNodeId(view: ClassDiagramViewDocument): string | null {
+  // usage 模式下定位被查询的目标类；否则用作用域锚点
+  if (view.usage) {
+    return view.usage.summary.targetNodeId
+      ?? view.summary.anchorTypeNodeId
+      ?? view.presentation.target.nodeId
+      ?? null;
+  }
   return view.summary.anchorTypeNodeId
     ?? view.anchorNodeId
     ?? view.presentation.target.nodeId
@@ -268,6 +275,9 @@ export function ClassDiagramView({
     layout: layoutClassDiagramView,
     layoutOnPositionChange: true,
     debugLabel: "class-diagram",
+    // usage target 变化（查看使用处切换）时完全重置布局，丢弃旧节点/边 seed，
+    // 避免旧的类关系连线残留在新的 usage 子图上。
+    resetKey: view.usage?.summary.targetNodeId ?? view.presentation.target.nodeId ?? view.anchorNodeId ?? null,
   });
 
   const hiddenNodeIdSet = useMemo(() => new Set(hiddenNodeIds), [hiddenNodeIds]);
@@ -286,6 +296,7 @@ export function ClassDiagramView({
   );
   const visibleNodeIds = useMemo(() => new Set(visibleNodes.map((node) => node.id)), [visibleNodes]);
   const visibleEdges = useMemo(() => filterVisibleClassDiagramEdges(layoutState.edges, visibleNodeIds), [layoutState.edges, visibleNodeIds]);
+
   const viewportResetKey = useMemo(
     () => [
       view.summary.relationCompleteness ?? "UNKNOWN",
@@ -305,7 +316,6 @@ export function ClassDiagramView({
   const usageScopeNodeId = classDiagramUsageScopeNodeId(view);
   const visibleTypeCount = baseGraph.nodes.length;
   const neighborhoodLimit = view.summary.neighborhoodLimit;
-  const memberLimit = view.summary.memberLimit ?? 5;
   const emptyStateCopy = resolveIndexedGraphEmptyState(effectiveClassDiagramRequestState, {
     idleTitle: "尚未加载类图",
     idleDetail: "点击类图入口会构建项目级索引。",
@@ -348,7 +358,6 @@ export function ClassDiagramView({
     const anchorTypeNodeId = view.summary.anchorTypeNodeId ?? view.anchorNodeId ?? view.presentation.target.nodeId ?? null;
     onRequestClassDiagramWithOptions(anchorTypeNodeId, {
       neighborhoodLimit: Math.max((neighborhoodLimit ?? 24) + 24, visibleTypeCount + 24),
-      memberLimit,
     });
   }
 
@@ -410,7 +419,7 @@ export function ClassDiagramView({
           viewportMode="CLASS_DIAGRAM"
           viewportPolicy="readable-fit"
           viewportResetKey={viewportResetKey}
-          anchorNodeId={view.anchorNodeId ?? null}
+          anchorNodeId={usageScopeNodeId ?? view.anchorNodeId ?? null}
           selectedNodeId={selectedNodeId}
           focusNodeRequest={focusNodeRequest}
           selectedGroupNodeIds={selectedGroupNodeIds}
@@ -462,7 +471,6 @@ export function ClassDiagramView({
                   onSelect: () => {
                     onRequestClassDiagramWithOptions(anchorTypeNodeId, {
                       neighborhoodLimit: neighborhoodLimit ?? 24,
-                      memberLimit,
                       relationDetail: "SCOPED_BODY_RELATIONS",
                     });
                     close();
@@ -470,17 +478,6 @@ export function ClassDiagramView({
                 });
               }
               actions.push(
-                {
-                  id: "class-diagram-more-members",
-                  label: "显示更多成员",
-                  onSelect: () => {
-                    onRequestClassDiagramWithOptions(anchorTypeNodeId, {
-                      neighborhoodLimit: neighborhoodLimit ?? 24,
-                      memberLimit: memberLimit + 5,
-                    });
-                    close();
-                  },
-                },
                 {
                   id: "open-qa",
                   label: hasGroupedSelection ? "问答已框选范围" : "问答当前范围",

@@ -5,14 +5,6 @@ import type { WorkflowStage } from "./workflow/workflowStage";
 
 export type PrimaryWorkflowCodeDiffStatus = CodeDiffStatus;
 
-export const CLASS_DIAGRAM_ASSISTANT_STATUS_LABELS: Record<WorkflowStage, string> = {
-  understand: "理解类图",
-  evidence: "核验证据",
-  qa: "类图问答",
-  draft: "结构建议",
-  code: "实现落地",
-};
-
 export interface PrimaryWorkflowActionState {
   activeWorkflowStage: WorkflowStage;
   analysisDisplayMode: AnalysisDisplayMode;

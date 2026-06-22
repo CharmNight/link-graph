@@ -405,6 +405,7 @@ class ClassDiagramProjector(
             .asSequence()
             .filter { edge -> edge.fromNodeId in nodeById && edge.toNodeId in nodeById }
             .filter { edge -> edge.isReadableAnchorRelation(anchorNode.id) }
+            .filterNot { edge -> edge.isIncomingNonHierarchyAnchorRelation(anchorNode.id) }
             .sortedWith(
                 compareByDescending<GraphEdge> { edge -> edge.readableRelationPriority(anchorNode.id) }
                     .thenBy { edge -> edge.classDiagramRelationSortKey() },
@@ -419,6 +420,7 @@ class ClassDiagramProjector(
                 .filter { edge -> edge.fromNodeId in nodeById && edge.toNodeId in nodeById }
                 .filter { edge -> edge.isAnchorRelation(anchorNode.id) }
                 .filterNot { edge -> edge.isNoisyDefaultRelation() }
+                .filterNot { edge -> edge.isIncomingNonHierarchyAnchorRelation(anchorNode.id) }
                 .sortedWith(
                     compareByDescending<GraphEdge> { edge -> edge.readableRelationPriority(anchorNode.id) }
                         .thenBy { edge -> edge.classDiagramRelationSortKey() },
@@ -441,9 +443,13 @@ class ClassDiagramProjector(
             edges = edges
                 .filter { edge -> edge.fromNodeId in visibleNodeIds && edge.toNodeId in visibleNodeIds }
                 .filter { edge -> edge.isReadableClassDiagramRelation() || edge.isFallbackVisibleRelation(anchorNode.id) }
+                .filterNot { edge -> edge.isIncomingNonHierarchyAnchorRelation(anchorNode.id) }
                 .sortedBy { edge -> edge.classDiagramRelationSortKey() },
         )
     }
+
+    private fun GraphEdge.isIncomingNonHierarchyAnchorRelation(anchorNodeId: String): Boolean =
+        toNodeId == anchorNodeId && !isHierarchyRelation() && isStructuralAssociationRelation()
 
     private fun GraphDocument.resolveReadableAnchorNode(anchorNodeId: String?): GraphNode? =
         anchorNodeId
@@ -802,7 +808,7 @@ class ClassDiagramProjector(
                 val methods = methodsByOwner[qualifiedName].orEmpty().sortedWith(
                     compareBy<JvmMethodSymbol>({ it.simpleName == "<init>" }, JvmMethodSymbol::signature),
                 )
-                node.withUmlClassMetadata(classSymbol, fields, methods, request.classDiagram.memberLimit)
+                node.withUmlClassMetadata(classSymbol, fields, methods)
             },
         )
     }
@@ -811,11 +817,9 @@ class ClassDiagramProjector(
         classSymbol: com.charmnight.linkgraph.jvm.index.JvmClassSymbol?,
         fields: List<JvmFieldSymbol>,
         methods: List<JvmMethodSymbol>,
-        memberLimit: Int,
     ): GraphNode {
-        val visibleMemberLimit = memberLimit.coerceAtLeast(0)
-        val visibleFields = fields.take(visibleMemberLimit).map(::umlFieldText)
-        val visibleMethods = methods.take(visibleMemberLimit).map(::umlMethodText)
+        val visibleFields = fields.map(::umlFieldText)
+        val visibleMethods = methods.map(::umlMethodText)
         val comment = classSymbol?.docComment?.trim()?.ifBlank { null }
         return copy(
             doc = comment ?: doc,
@@ -830,8 +834,8 @@ class ClassDiagramProjector(
                 put("uml.method.count", methods.size.toString())
                 put("uml.field.items", visibleFields.joinToString("\n"))
                 put("uml.method.items", visibleMethods.joinToString("\n"))
-                put("uml.field.hiddenCount", (fields.size - visibleFields.size).coerceAtLeast(0).toString())
-                put("uml.method.hiddenCount", (methods.size - visibleMethods.size).coerceAtLeast(0).toString())
+                put("uml.field.hiddenCount", "0")
+                put("uml.method.hiddenCount", "0")
             },
         )
     }

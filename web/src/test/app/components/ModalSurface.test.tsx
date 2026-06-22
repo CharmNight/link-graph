@@ -55,8 +55,12 @@ describe("shared modal surfaces", () => {
   });
 
   it("keeps shared modal content inset from the viewport and fixes actions to the modal footer", () => {
+    // P2: property-drawer 已改为贴右滑入抽屉，不再与 modal-backdrop 共用居中布局
     expect(themeCss).toMatch(
-      /\.modal-backdrop,\s*\.property-drawer-backdrop\s*\{(?=[^}]*place-items:\s*center;)(?=[^}]*padding:\s*clamp\(16px,\s*3vw,\s*32px\);)[^}]*\}/s,
+      /\.modal-backdrop\s*\{(?=[^}]*place-items:\s*center;)(?=[^}]*padding:\s*clamp\(16px,\s*3vw,\s*32px\);)[^}]*\}/s,
+    );
+    expect(themeCss).toMatch(
+      /\.property-drawer-backdrop\s*\{(?=[^}]*display:\s*grid;)(?=[^}]*grid-template-columns:\s*1fr\s*auto;)[^}]*\}/s,
     );
     expect(themeCss).toMatch(
       /\.modal-dialog\s*\{(?=[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)\s+auto;)(?=[^}]*overflow:\s*hidden;)(?=[^}]*border-radius:\s*var\(--radius-xl\);)[^}]*\}/s,

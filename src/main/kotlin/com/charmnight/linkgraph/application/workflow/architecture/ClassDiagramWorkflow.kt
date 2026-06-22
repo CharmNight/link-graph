@@ -542,7 +542,7 @@ internal class ClassDiagramWorkflow(
             logger.warn("无法在 PSI 中找到类使用处目标：${target.qualifiedName}")
             return view
         }
-        val projected = usageProjector.project(view, result)
+        val projected = usageProjector.projectStandalone(result)
         traceStage("classDiagram.usage", usageStartedAt) {
             listOf(
                 "targetNodeId=${result.target.nodeId}",
@@ -550,6 +550,7 @@ internal class ClassDiagramWorkflow(
                 "groups=${result.summary.visibleGroupCount}/${result.summary.groupCount}",
                 "entries=${result.summary.visibleUsageCount}/${result.summary.usageCount}",
                 "truncated=${result.summary.truncated}",
+                "mode=switch",
             )
         }
         return projected

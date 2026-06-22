@@ -30,9 +30,12 @@ export const STACK_GAP = 92;
 export const PARENT_ANCHOR_GAP = 148;
 export const DATA_COLUMN_GAP = 112;
 export const OUTGOING_COLUMN_GAP = 112;
+export const INCOMING_COLUMN_GAP = 112;
+export const RELATED_COLUMN_GAP = 112;
 export const DATA_COLUMN_VERTICAL_STAGGER = 56;
 export const DATA_ANCHOR_GAP = 190;
 export const DATA_RIGHT_OFFSET = 128;
+export const RELATED_LANE_GAP = MIN_NODE_WIDTH + 128;
 export const ROUTE_GAP = 38;
 export const ROUTE_LANE_GAP = 58;
 export const OUTER_ROUTE_MARGIN_X = 140;
@@ -84,9 +87,15 @@ export interface ClassNodeBounds {
 
 export interface ClassRouteContext {
   laneNodes: Map<ClassDiagramLane, LinkGraphNode[]>;
+  laneBounds: Map<ClassDiagramLane, ClassNodeBounds>;
+  laneColumnBounds: Map<string, ClassNodeBounds>;
   dataBounds: ClassNodeBounds | null;
   dataColumnBounds: Map<number, ClassNodeBounds>;
   obstacleRects: OrthogonalRect[];
+}
+
+export function laneColumnBoundsKey(lane: ClassDiagramLane, column: number): string {
+  return `${lane}:${column}`;
 }
 
 export interface AxisInterval {
@@ -102,6 +111,41 @@ export const LANE_RANK: Record<ClassDiagramLane, number> = {
   DATA: 4,
   RELATED: 5,
 };
+
+export const LANE_COLUMN_LIMIT: Record<ClassDiagramLane, number> = {
+  PARENT: 1,
+  INCOMING: 3,
+  ANCHOR: 1,
+  OUTGOING: 3,
+  DATA: 2,
+  RELATED: 3,
+};
+
+export function laneColumnGap(lane: ClassDiagramLane): number {
+  switch (lane) {
+    case "DATA":
+      return DATA_COLUMN_GAP;
+    case "INCOMING":
+      return INCOMING_COLUMN_GAP;
+    case "OUTGOING":
+      return OUTGOING_COLUMN_GAP;
+    case "RELATED":
+      return RELATED_COLUMN_GAP;
+    default:
+      return 0;
+  }
+}
+
+export function laneColumnWidth(lane: ClassDiagramLane, columnCount: number): number {
+  if (columnCount <= 0) {
+    return 0;
+  }
+  const limit = Math.min(columnCount, LANE_COLUMN_LIMIT[lane]);
+  if (limit <= 1) {
+    return MIN_NODE_WIDTH;
+  }
+  return limit * MIN_NODE_WIDTH + (limit - 1) * laneColumnGap(lane);
+}
 
 export function relationRank(edge: LinkGraphEdge): number {
   return classDiagramRelationSortRank(edge);

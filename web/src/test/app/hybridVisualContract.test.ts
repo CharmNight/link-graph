@@ -79,31 +79,22 @@ describe("hybrid visual contract", () => {
     expect(themeCss).not.toMatch(/input,\s*textarea,\s*select\s*\{[^}]*background:\s*rgba\(255,\s*255,\s*255/s);
   });
 
-  it("keeps the top assistant status as a read-only summary instead of button-like chips", () => {
-    expect(themeCss).toMatch(
-      /\.workflow-taskbar\s*\{[^}]*grid-template-columns:\s*minmax\(230px,\s*0\.72fr\)\s+minmax\(360px,\s*1fr\)\s+auto;[^}]*background:\s*var\(--shell\);/s,
-    );
-    expect(themeCss).toMatch(
-      /\.assistant-status-strip\s*\{(?=[^}]*display:\s*flex;)(?=[^}]*flex-wrap:\s*wrap;)[^}]*\}/s,
-    );
-    expect(themeCss).toMatch(
-      /\.assistant-status-heading\s*\{(?=[^}]*color:\s*var\(--muted\);)(?=[^}]*text-transform:\s*uppercase;)[^}]*\}/s,
-    );
-    expect(themeCss).toMatch(
-      /\.assistant-status-item\s*\{(?=[^}]*display:\s*inline-flex;)(?=[^}]*background:\s*transparent;)(?=[^}]*border:\s*0;)[^}]*\}/s,
-    );
-    expect(themeCss).toMatch(
-      /\.assistant-status-dot\s*\{(?=[^}]*border-radius:\s*999px;)(?=[^}]*background:\s*var\(--muted\);)[^}]*\}/s,
-    );
-    expect(themeCss).toMatch(
-      /\.assistant-status-label,\s*\.assistant-status-value\s*\{(?=[^}]*white-space:\s*normal;)(?=[^}]*overflow-wrap:\s*anywhere;)(?=[^}]*word-break:\s*break-word;)[^}]*\}/s,
-    );
+  it("drops the five-stage status strip in favor of a compact stage badge", () => {
+    expect(themeCss).not.toContain(".assistant-status-strip");
+    expect(themeCss).not.toContain(".assistant-status-heading");
+    expect(themeCss).not.toContain(".assistant-status-item");
+    expect(themeCss).not.toContain(".assistant-status-dot");
+    expect(themeCss).not.toContain(".assistant-status-label");
+    expect(themeCss).not.toContain(".assistant-status-value");
     expect(themeCss).not.toContain(".assistant-status-chip");
     expect(themeCss).not.toContain("workflow-overview");
     expect(themeCss).not.toContain(".workflow-stage-strip");
     expect(themeCss).not.toContain(".workflow-stage-button");
     expect(themeCss).not.toContain('aria-current="step"');
     expect(themeCss).not.toContain("repeat(5");
+    expect(themeCss).toMatch(
+      /\.stage-badge\s*\{(?=[^}]*display:\s*inline-flex;)(?=[^}]*border-radius:\s*999px;)(?=[^}]*background:\s*var\(--canvas\);)[^}]*\}/s,
+    );
   });
 
   it("wraps assistant result content and evidence references instead of truncating them", () => {
@@ -356,8 +347,9 @@ describe("hybrid visual contract", () => {
     expect(themeCss).toMatch(
       /\.hybrid-workbench-layout\s*\{[^}]*grid-template-columns:\s*var\(--outline-width\)\s+minmax\(0,\s*1fr\)\s+var\(--workbench-width\);/s,
     );
+    // P1: 窄屏下 actions 允许换行（旧 grid-column:1/-1 已移除）
     expect(themeCss).toMatch(
-      /@media\s*\(max-width:\s*1440px\)\s+and\s+\(min-width:\s*1061px\)\s*\{[\s\S]*?\.workflow-taskbar-actions\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*-1;[\s\S]*?\.hybrid-workbench-layout\s*\{[\s\S]*?--outline-width:\s*300px;[\s\S]*?--workbench-width:\s*420px;/s,
+      /@media\s*\(max-width:\s*1440px\)\s+and\s+\(min-width:\s*1061px\)\s*\{[\s\S]*?\.workflow-taskbar-actions\s*\{[\s\S]*?flex-wrap:\s*wrap;[\s\S]*?\.hybrid-workbench-layout\s*\{[\s\S]*?--outline-width:\s*300px;[\s\S]*?--workbench-width:\s*420px;/s,
     );
   });
 

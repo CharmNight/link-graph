@@ -1,22 +1,24 @@
 import type { OperationFeedback } from "../types";
-import type { WorkflowStage, WorkflowStageStatus } from "../workflow/workflowStage";
-import { WORKFLOW_STAGE_DEFINITIONS, workflowStageStatusLabel } from "../workflow/workflowStage";
+import type { WorkflowStage } from "../workflow/workflowStage";
+import { getWorkflowStageDefinition } from "../workflow/workflowStage";
 import { Button } from "./Button";
 
-const ASSISTANT_STATUS_LABELS: Record<WorkflowStage, string> = {
-  understand: "理解代码",
-  evidence: "核验证据",
-  qa: "代码问答",
-  draft: "草稿确认",
-  code: "代码落地",
+/**
+ * 顶栏只读阶段标签：当前阶段名 + 状态点。
+ * 取代旧的五段状态条 —— 阶段不再做导航，只展示「现在在哪一步」。
+ */
+const STAGE_LABEL: Record<WorkflowStage, string> = {
+  understand: "理解",
+  evidence: "证据",
+  qa: "问答",
+  draft: "草稿",
+  code: "代码",
 };
 
 interface WorkflowTaskbarProps {
   title: string;
   path?: string | null;
   activeStage: WorkflowStage;
-  stageStates: Record<WorkflowStage, WorkflowStageStatus>;
-  assistantStatusLabels?: Record<WorkflowStage, string>;
   riskCount: number;
   draftCandidateCount: number;
   operationFeedback?: OperationFeedback | null;
@@ -34,8 +36,6 @@ export function WorkflowTaskbar({
   title,
   path = null,
   activeStage,
-  stageStates,
-  assistantStatusLabels = ASSISTANT_STATUS_LABELS,
   riskCount,
   draftCandidateCount,
   operationFeedback = null,
@@ -48,6 +48,7 @@ export function WorkflowTaskbar({
   onOpenSettings,
   onPrimaryAction,
 }: WorkflowTaskbarProps) {
+  const stageDefinition = getWorkflowStageDefinition(activeStage);
   return (
     <header className="workflow-taskbar" role="banner" aria-label="链路任务栏">
       <div className="workflow-taskbar-title">
@@ -65,27 +66,15 @@ export function WorkflowTaskbar({
         </div>
       </div>
 
-      <div className="assistant-status-strip" role="group" aria-label="AI 工作状态">
-        <span className="assistant-status-heading">AI 状态</span>
-        {WORKFLOW_STAGE_DEFINITIONS.map((stage) => {
-          const status = stageStates[stage.id];
-          return (
-            <span
-              key={stage.id}
-              className={`assistant-status-item status-${status}${stage.id === activeStage ? " is-current" : ""}`}
-              title={stage.purpose}
-            >
-              <span className="assistant-status-dot" aria-hidden="true" />
-              <span className="assistant-status-copy">
-                <span className="assistant-status-label">{assistantStatusLabels[stage.id]}</span>
-                <span className="assistant-status-value">{workflowStageStatusLabel(status)}</span>
-              </span>
-            </span>
-          );
-        })}
-      </div>
-
       <div className="workflow-taskbar-actions" aria-label="全局动作">
+        {/* 当前阶段轻量 badge：取代旧五段状态条，只展示「现在在哪一步」 */}
+        <span
+          className="stage-badge"
+          role="status"
+          title={stageDefinition.purpose}
+        >
+          当前阶段 · {STAGE_LABEL[activeStage]}
+        </span>
         <Button
           variant="primary"
           disabled={primaryActionDisabled}

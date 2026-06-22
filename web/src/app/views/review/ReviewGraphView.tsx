@@ -570,7 +570,7 @@ export function ReviewGraphView({
         selectedGroupNodeIds={selectedGroupNodeIds}
         experiments={experiments}
         editable={false}
-        layoutEditable={false}
+        layoutEditable
         header={header}
         emptyState={(
           <CanvasEmptyState

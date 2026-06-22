@@ -44,8 +44,8 @@ export function ChangeTray({
         <Button onClick={onOpenDraft}>查看草稿</Button>
         <Button onClick={onOpenDraftCompare}>查看流程变化</Button>
         <Button onClick={onOpenCode}>进入代码</Button>
-        <Button variant="primary" disabled={!canApply} onClick={onApply}>应用全部</Button>
         <Button variant="danger" disabled={!canRevert} onClick={onRevert}>回退</Button>
+        <Button variant="primary" disabled={!canApply} onClick={onApply}>应用全部</Button>
       </div>
     </footer>
   );

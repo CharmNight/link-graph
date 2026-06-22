@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  CLASS_DIAGRAM_ASSISTANT_STATUS_LABELS,
   primaryWorkflowActionCommand,
   primaryWorkflowActionDisabled,
   primaryWorkflowActionLabel,
@@ -84,15 +83,6 @@ describe("appPrimaryWorkflowAction", () => {
     }))).toBe(false);
   });
 
-  it("keeps class diagram assistant workflow labels centralized", () => {
-    expect(CLASS_DIAGRAM_ASSISTANT_STATUS_LABELS).toEqual({
-      understand: "理解类图",
-      evidence: "核验证据",
-      qa: "类图问答",
-      draft: "结构建议",
-      code: "实现落地",
-    });
-  });
 
   it("resolves primary workflow commands without embedding side effects in App", () => {
     expect(primaryWorkflowActionCommand(baseArgs({

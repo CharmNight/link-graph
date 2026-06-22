@@ -468,7 +468,7 @@ export function ArchitectureGraphView({
           selectedGroupNodeIds={selectedGroupNodeIds}
           experiments={experiments}
           editable={false}
-          layoutEditable={!isProjectStructureView}
+          layoutEditable
           emptyState={(
             <CanvasEmptyState
               isLoading={isLayoutLoading}

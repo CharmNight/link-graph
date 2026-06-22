@@ -801,12 +801,13 @@ describe.sequential("App", () => {
     vi.useRealTimers();
   });
 
-  it("renders the final assistant workbench without the old linear workflow stepper", () => {
+  it("renders the final assistant workbench with a compact stage badge instead of the old linear workflow stepper", () => {
     render(<App />);
 
-    const assistantStatus = screen.getByRole("group", { name: "AI 工作状态" });
-    expect(within(assistantStatus).getByText("理解代码")).toBeInTheDocument();
-    expect(within(assistantStatus).getByText("代码问答")).toBeInTheDocument();
+    // 旧的五段状态条彻底移除
+    expect(screen.queryByRole("group", { name: "AI 工作状态" })).not.toBeInTheDocument();
+    expect(screen.queryByText("理解代码")).not.toBeInTheDocument();
+    expect(screen.queryByText("代码问答")).not.toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "流程概览" })).not.toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "工作流阶段" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /理解链路/ })).not.toBeInTheDocument();

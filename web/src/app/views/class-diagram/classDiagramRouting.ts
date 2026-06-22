@@ -34,6 +34,7 @@ import {
   hashText,
   isHorizontalPort,
   laneColumn,
+  laneColumnBoundsKey,
   laneOf,
   nodeBounds,
   nodeCenterY,
@@ -227,6 +228,10 @@ function hasSameLaneNodeBetween(
   if (lane !== laneOf(target)) {
     return false;
   }
+  const sourceColumn = laneColumn(source);
+  if (sourceColumn !== laneColumn(target)) {
+    return false;
+  }
   const top = Math.min(nodeBottom(source, sizeSnapshot), nodeBottom(target, sizeSnapshot));
   const bottom = Math.max(nodeTop(source), nodeTop(target));
   if (bottom <= top) {
@@ -235,9 +240,33 @@ function hasSameLaneNodeBetween(
   return (context.laneNodes.get(lane) ?? []).some((node) =>
     node.id !== source.id
     && node.id !== target.id
+    && laneColumn(node) === sourceColumn
     && nodeBottom(node, sizeSnapshot) > top
     && nodeTop(node) < bottom,
   );
+}
+
+function laneColumnBoundsFor(
+  node: LinkGraphNode,
+  context: ClassRouteContext,
+  sizeSnapshot: ReadonlyMap<string, NodeMeasuredSize>,
+): { left: number; right: number } {
+  const lane = laneOf(node);
+  const column = laneColumn(node);
+  const columnKey = laneColumnBoundsKey(lane, column);
+  const bounds = context.laneColumnBounds.get(columnKey);
+  if (bounds) {
+    return { left: bounds.left, right: bounds.right };
+  }
+  const laneBounds = context.laneBounds.get(lane);
+  if (laneBounds) {
+    return { left: laneBounds.left, right: laneBounds.right };
+  }
+  const laneNodes = context.laneNodes.get(lane) ?? [node];
+  return {
+    left: Math.min(...laneNodes.map(nodeLeft)),
+    right: Math.max(...laneNodes.map((candidate) => nodeRight(candidate, sizeSnapshot))),
+  };
 }
 
 function sameLaneVerticalRoutePoints(
@@ -271,14 +300,12 @@ function sameLaneVerticalRoutePoints(
   }
   const edgeSkew = isClassDiagramRoutedStructuralRelationKind(relation) ? pairOffset : pairOffset / 2;
   const sameLane = laneOf(source);
-  const laneNodes = context.laneNodes.get(sameLane) ?? [source, target];
-  const laneLeft = Math.min(...laneNodes.map(nodeLeft));
-  const laneRight = Math.max(...laneNodes.map((node) => nodeRight(node, sizeSnapshot)));
+  const columnBounds = laneColumnBoundsFor(source, context, sizeSnapshot);
   const laneSlotOffset = Math.min(Math.round(laneOffset / ROUTE_GAP), 3) * 8;
   const boundedSkew = clamp(edgeSkew / 4, -8, 8);
   const laneX = sameLane === "OUTGOING"
-    ? laneRight + 30 + laneSlotOffset + Math.max(0, boundedSkew)
-    : laneLeft - 30 - laneSlotOffset + Math.min(0, boundedSkew);
+    ? columnBounds.right + 30 + laneSlotOffset + Math.max(0, boundedSkew)
+    : columnBounds.left - 30 - laneSlotOffset + Math.min(0, boundedSkew);
   const exitY = sourceAboveTarget
     ? sourceBoundaryY + Math.min(Math.max(60, verticalGap * 0.2), 92)
     : sourceBoundaryY - Math.min(Math.max(60, verticalGap * 0.2), 92);
@@ -413,15 +440,13 @@ function sameLaneOuterRoutePoints(
   pairOffset: number,
 ): GraphPosition[] {
   const lane = laneOf(source);
-  const laneNodes = context.laneNodes.get(lane) ?? [source, target];
-  const laneLeft = Math.min(...laneNodes.map(nodeLeft));
-  const laneRight = Math.max(...laneNodes.map((node) => nodeRight(node, sizeSnapshot)));
+  const columnBounds = laneColumnBoundsFor(source, context, sizeSnapshot);
   const laneSlotOffset = Math.min(Math.round(laneOffset / ROUTE_GAP), 3) * 8;
   const boundedSkew = clamp(pairOffset / 4, -8, 8);
   const routeOnLeft = lane === "INCOMING";
   const laneX = routeOnLeft
-    ? laneLeft - 30 - laneSlotOffset + Math.min(0, boundedSkew)
-    : laneRight + 30 + laneSlotOffset + Math.max(0, boundedSkew);
+    ? columnBounds.left - 30 - laneSlotOffset + Math.min(0, boundedSkew)
+    : columnBounds.right + 30 + laneSlotOffset + Math.max(0, boundedSkew);
   return [
     sourcePoint,
     { x: laneX, y: sourcePoint.y },

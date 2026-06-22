@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { isProjectStructureDisplay } from "../appDisplaySelectors";
 import {
-  CLASS_DIAGRAM_ASSISTANT_STATUS_LABELS,
   primaryWorkflowActionDisabled,
   primaryWorkflowActionLabel,
   type PrimaryWorkflowActionState,
@@ -13,7 +12,7 @@ import type {
   LinkGraphNode,
   OperationFeedback,
 } from "../types";
-import type { WorkflowStage, WorkflowStageStatus } from "../workflow/workflowStage";
+import type { WorkflowStage } from "../workflow/workflowStage";
 import { GraphWorkbench } from "../workbench/GraphWorkbench";
 import { WorkbenchPropertyDrawer } from "../workbench/WorkbenchPropertyDrawer";
 import { ChangeTray } from "./ChangeTray";
@@ -32,7 +31,6 @@ interface AppWorkbenchChromeProps {
     path: string | null;
   };
   activeWorkflowStage: WorkflowStage;
-  workflowStageStates: Record<WorkflowStage, WorkflowStageStatus>;
   analysisDisplayMode: AnalysisDisplayMode;
   indexedArchitectureSummary: IndexedGraphSummary | null;
   changeTrayState: ChangeTrayState;
@@ -74,7 +72,6 @@ interface AppWorkbenchChromeProps {
 export function AppWorkbenchChrome({
   currentTarget,
   activeWorkflowStage,
-  workflowStageStates,
   analysisDisplayMode,
   indexedArchitectureSummary,
   changeTrayState,
@@ -119,8 +116,6 @@ export function AppWorkbenchChrome({
           title={currentTarget.title}
           path={currentTarget.path}
           activeStage={activeWorkflowStage}
-          stageStates={workflowStageStates}
-          assistantStatusLabels={analysisDisplayMode === "CLASS_DIAGRAM" ? CLASS_DIAGRAM_ASSISTANT_STATUS_LABELS : undefined}
           riskCount={changeTrayState.blockingRiskCount}
           draftCandidateCount={changeTrayState.pendingCandidateCount + changeTrayState.confirmedDraftCount}
           operationFeedback={toolbarFeedback}
