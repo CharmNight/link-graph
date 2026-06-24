@@ -972,90 +972,26 @@ class GraphProjectionKernel(
     private fun edgePriority(
         edge: GraphEdge,
         nodeById: Map<String, GraphNode>,
-    ): Int {
-        /** 由边类型决定的结构优先级。 */
-        val structuralPriority = when (edge.type) {
-            EdgeType.CONTAINS_FLOW -> 0
-            EdgeType.CALL -> 1
-            EdgeType.ROUTES_TO -> 2
-            EdgeType.PUBLISHES_TO, EdgeType.CONSUMES_FROM -> 3
-            else -> 4
-        }
-        /** 由端点节点类型决定的附加优先级。 */
-        val endpointPriority = maxOf(
-            nodePriority(nodeById[edge.fromNodeId]),
-            nodePriority(nodeById[edge.toNodeId]),
-        )
-        return structuralPriority * 10 + endpointPriority
-    }
+    ): Int = com.charmnight.linkgraph.projection.edgePriority(edge, nodeById)
 
     /** 返回方向遍历时使用的边排序器。 */
-    private fun edgeComparator(nodeById: Map<String, GraphNode>): Comparator<GraphEdge> {
-        return compareBy(
-            { edgePriority(it, nodeById) },
-            { rootCallOrder(it) ?: Int.MAX_VALUE },
-            { it.id },
-        )
-    }
+    private fun edgeComparator(nodeById: Map<String, GraphNode>): Comparator<GraphEdge> =
+        com.charmnight.linkgraph.projection.edgeComparator(nodeById)
 
     /** 返回锚点一跳邻居选择时使用的边排序器。 */
-    private fun rootEdgeComparator(nodeById: Map<String, GraphNode>): Comparator<GraphEdge> {
-        return compareBy(
-            { rootCallOrder(it) ?: Int.MAX_VALUE },
-            { edgePriority(it, nodeById) },
-            { it.id },
-        )
-    }
+    private fun rootEdgeComparator(nodeById: Map<String, GraphNode>): Comparator<GraphEdge> =
+        com.charmnight.linkgraph.projection.rootEdgeComparator(nodeById)
 
     /** 读取根调用顺序。 */
-    private fun rootCallOrder(edge: GraphEdge): Int? = edge.metadata["callOrder"]?.toIntOrNull()
+    private fun rootCallOrder(edge: GraphEdge): Int? = com.charmnight.linkgraph.projection.rootCallOrder(edge)
 
     /** 判断节点是否已经是提取阶段生成的溢出摘要节点。 */
-    private fun isExtractionOverflowNode(node: GraphNode?): Boolean {
-        return node?.metadata?.containsKey(GraphProjectionMetadata.Overflow.HIDDEN_METHOD_COUNT) == true &&
-            node.metadata.containsKey(GraphProjectionMetadata.Overflow.TITLE_PREFIX)
-    }
+    private fun isExtractionOverflowNode(node: GraphNode?): Boolean =
+        com.charmnight.linkgraph.projection.isExtractionOverflowNode(node)
 
     /** 计算节点在展示中的优先级。 */
-    private fun nodePriority(node: GraphNode?): Int {
-        if (node == null) {
-            return 4
-        }
-        if (isAccessorLike(node)) {
-            return 4
-        }
-        return when (node.type) {
-            NodeType.FLOW_SCOPE -> 0
-            NodeType.FLOW_ACTION -> 1
-            NodeType.TERMINAL,
-            NodeType.MERGE -> 1
-            NodeType.METHOD -> 2
-            NodeType.SQL,
-            NodeType.HTTP_ENDPOINT,
-            NodeType.FEIGN_CLIENT,
-            NodeType.DUBBO_SERVICE,
-            NodeType.MQ_TOPIC,
-            NodeType.MQ_CONSUMER -> 2
-            NodeType.CLASS,
-            NodeType.MODULE,
-            NodeType.PACKAGE,
-            NodeType.INTERFACE,
-            NodeType.ENUM,
-            NodeType.ANNOTATION,
-            NodeType.RECORD,
-            NodeType.OBJECT,
-            NodeType.EXTERNAL_CLASS,
-            NodeType.LIBRARY,
-            NodeType.SERVICE,
-            NodeType.COMPONENT,
-            NodeType.LAYER,
-            NodeType.RESOURCE,
-            NodeType.CONFIG_ITEM,
-            NodeType.XML_RESOURCE,
-            NodeType.DOC_PAGE -> 3
-            NodeType.UNCERTAIN_LINK -> 4
-        }
-    }
+    private fun nodePriority(node: GraphNode?): Int =
+        com.charmnight.linkgraph.projection.nodePriority(node)
 
     /** 计算遍历过程中节点的优先级，优先保留当前方法内部节点。 */
     private fun traversalNodePriority(
@@ -1069,29 +1005,8 @@ class GraphProjectionKernel(
     }
 
     /** 判断方法节点是否更像 getter/setter 等访问器。 */
-    private fun isAccessorLike(node: GraphNode): Boolean {
-        if (node.type != NodeType.METHOD) {
-            return false
-        }
-        /** 方法简单名。 */
-        val methodName = node.title.substringAfterLast('.')
-        /** 参数列表文本。 */
-        val parameterText = node.signature.orEmpty().substringAfter('(', "").substringBefore(')', "")
-        /** 参数个数。 */
-        val parameterCount = parameterText
-            .split(',')
-            .map(String::trim)
-            .filter(String::isNotBlank)
-            .size
-        /** 是否像 getter。 */
-        val getterLike =
-            (methodName.startsWith("get") && methodName.length > 3 && parameterCount == 0) ||
-                (methodName.startsWith("is") && methodName.length > 2 && parameterCount == 0) ||
-                (methodName.startsWith("has") && methodName.length > 3 && parameterCount == 0)
-        /** 是否像 setter。 */
-        val setterLike = methodName.startsWith("set") && methodName.length > 3 && parameterCount <= 1
-        return getterLike || setterLike
-    }
+    private fun isAccessorLike(node: GraphNode): Boolean =
+        com.charmnight.linkgraph.projection.isAccessorLike(node)
 
     /** 折叠摘要节点的方向类型。 */
     private enum class OverflowDirection(val label: String) {
