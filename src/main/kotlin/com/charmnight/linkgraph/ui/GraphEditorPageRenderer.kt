@@ -598,12 +598,7 @@ class GraphEditorPageRenderer {
     private fun resolveDiffTitle(
         entry: com.charmnight.linkgraph.model.GraphDiffEntry,
         document: GraphDocument,
-    ): String {
-        return when (entry.elementKind) {
-            GraphDiffElementKind.NODE -> document.nodes.firstOrNull { it.id == entry.elementId }?.title ?: entry.elementId
-            GraphDiffElementKind.EDGE -> entry.elementId
-        }
-    }
+    ): String = com.charmnight.linkgraph.ui.resolveDiffTitle(entry, document)
 
     /** 把节点转换为前端使用的 Map 结构。 */
     private fun nodeToMap(
@@ -632,15 +627,8 @@ class GraphEditorPageRenderer {
     )
 
     /** 把边转换为前端使用的 Map 结构。 */
-    private fun edgeToMap(edge: GraphEdge): Map<String, Any?> = linkedMapOf(
-        "id" to edge.id,
-        "type" to edge.type.name,
-        "source" to edge.fromNodeId,
-        "target" to edge.toNodeId,
-        "label" to edge.label,
-        "metadata" to edge.metadata,
-        "sourceTag" to edge.sourceTag.name,
-    )
+    private fun edgeToMap(edge: GraphEdge): Map<String, Any?> =
+        com.charmnight.linkgraph.ui.edgeToMap(edge)
 
     /** 把图文档转换为前端使用的 Map，并按规模决定是否裁剪内容。 */
     private fun documentToMap(
