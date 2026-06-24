@@ -560,35 +560,10 @@ class ClassDiagramProjector(
             id = id,
         )
 
-    /** 返回类图关系类型字符串，依次回退到 role、uml kind、jvm kind、edge type。 */
-    private fun GraphEdge.classDiagramRelationKind(): String =
-        metadata[ClassDiagramRelationExtractor.ROLE_KEY]
-            ?: metadata["uml.relation.kind"]
-            ?: metadata["jvm.relation.kind"]
-            ?: type.name
-
-    /** 推导边对应的 UML 关系类型（泛化、实现、关联、依赖等），用于展示与聚合。 */
-    private fun GraphEdge.classDiagramUmlRelationKind(): String =
-        metadata["uml.relation.kind"]
-            ?: when (classDiagramRelationRole()) {
-                ClassDiagramRelationRole.EXTENDS -> UmlClassRelationKind.GENERALIZATION.name
-                ClassDiagramRelationRole.IMPLEMENTS -> UmlClassRelationKind.REALIZATION.name
-                ClassDiagramRelationRole.FIELD,
-                ClassDiagramRelationRole.CONSTRUCTOR_PARAMETER,
-                -> UmlClassRelationKind.ASSOCIATION.name
-                ClassDiagramRelationRole.METHOD_CALL,
-                ClassDiagramRelationRole.METHOD_PARAMETER,
-                ClassDiagramRelationRole.METHOD_RETURN,
-                ClassDiagramRelationRole.THROWS,
-                ClassDiagramRelationRole.LOCAL_TYPE,
-                -> UmlClassRelationKind.DEPENDENCY.name
-                null -> metadata["jvm.relation.kind"] ?: type.name
-            }
-
-    /** 解析边在 JVM 关系抽取阶段记录的角色枚举。 */
-    private fun GraphEdge.classDiagramRelationRole(): ClassDiagramRelationRole? =
-        metadata[ClassDiagramRelationExtractor.ROLE_KEY]
-            ?.let { raw -> ClassDiagramRelationRole.entries.firstOrNull { role -> role.name == raw } }
+    /** 返回类图关系类型字符串（详见 top-level fun classDiagramRelationKind）。 */
+    /** 推导 UML 关系类型（详见 top-level fun classDiagramUmlRelationKind）。 */
+    /** 解析关系角色枚举（详见 top-level fun classDiagramRelationRole）。 */
+    /** 计算关系展示权重（详见 top-level fun relationWeight）。 */
 
     /** 判断是否为层级关系（继承、实现）。 */
     private fun GraphEdge.isHierarchyRelation(): Boolean =
@@ -611,36 +586,7 @@ class ClassDiagramProjector(
             )
         }
 
-    /** 计算关系权重：优先使用抽取阶段记录的权重，其次按角色/类型映射默认权重。 */
-    private fun GraphEdge.relationWeight(): Int =
-        metadata[ClassDiagramRelationExtractor.WEIGHT_KEY]
-            ?.toIntOrNull()
-            ?: classDiagramRelationRole()?.baseWeight
-            ?: when (classDiagramRelationKind()) {
-                "GENERALIZATION",
-                "EXTENDS",
-                "REALIZATION",
-                "IMPLEMENTS",
-                -> 100
-                "COMPOSITION",
-                "AGGREGATION",
-                "ASSOCIATION",
-                "FIELD",
-                "CONSTRUCTOR_PARAMETER",
-                -> 90
-                "METHOD_CALL" -> 72
-                "METHOD_RETURN",
-                "METHOD_PARAMETER",
-                -> 58
-                "DEPENDENCY",
-                "USES_TYPE",
-                "INJECTS",
-                -> 48
-                "THROWS",
-                "LOCAL_TYPE",
-                -> 20
-                else -> 40
-            }
+    /** 计算关系权重（详见 top-level fun relationWeight）。 */
 
     /** 判断是否为纯签名噪声关系：方法参数未被使用，或构造参数既未被使用也未赋值给字段。 */
     private fun GraphEdge.isSignatureOnlyNoiseRelation(): Boolean {
