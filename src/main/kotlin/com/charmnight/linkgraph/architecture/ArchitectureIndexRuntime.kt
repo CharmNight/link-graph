@@ -541,46 +541,10 @@ class ArchitectureIndexRuntime(
         cached: JvmSymbolIndex,
         rebuilt: JvmSymbolIndex,
     ): JvmSymbolIndex =
-        JvmSymbolIndex(
-            modulesByName = cached.modulesByName + rebuilt.modulesByName,
-            packagesByName = cached.packagesByName + rebuilt.packagesByName,
-            classesByQualifiedName = cached.classesByQualifiedName + rebuilt.classesByQualifiedName,
-            methodsBySignature = cached.methodsBySignature + rebuilt.methodsBySignature,
-            fieldsByQualifiedName = cached.fieldsByQualifiedName + rebuilt.fieldsByQualifiedName,
-            resourcesByPath = cached.resourcesByPath + rebuilt.resourcesByPath,
-            serviceProviderIndex = JvmServiceProviderIndex(
-                mergeServiceProviderFiles(
-                    cached.serviceProviderIndex.filesByInterfaceName,
-                    rebuilt.serviceProviderIndex.filesByInterfaceName,
-                ),
-            ),
-        )
+        com.charmnight.linkgraph.architecture.mergeSymbolIndexes(cached, rebuilt)
 
-    private fun mergeServiceProviderFiles(
-        cached: Map<String, List<JvmServiceProviderFile>>,
-        rebuilt: Map<String, List<JvmServiceProviderFile>>,
-    ): Map<String, List<JvmServiceProviderFile>> =
-        (cached.keys + rebuilt.keys).associateWith { interfaceName ->
-            (cached[interfaceName].orEmpty() + rebuilt[interfaceName].orEmpty())
-                .distinctBy { file -> file.resource.path to file.providerClassNames }
-        }
-
-    private fun isIndexAffectingFile(file: VirtualFile, relativePath: String): Boolean {
-        if (relativePath.contains("/META-INF/services/")) {
-            return true
-        }
-        return file.extension?.lowercase() in setOf(
-            "java",
-            "kt",
-            "kts",
-            "xml",
-            "yml",
-            "yaml",
-            "properties",
-            "sql",
-            "md",
-        )
-    }
+    private fun isIndexAffectingFile(file: VirtualFile, relativePath: String): Boolean =
+        com.charmnight.linkgraph.architecture.isIndexAffectingFile(file, relativePath)
 
     private fun buildProjectSliceManifest(
         symbolIndex: JvmSymbolIndex,
@@ -795,42 +759,14 @@ class ArchitectureIndexRuntime(
     private fun sliceSymbolIds(
         slice: ProjectSlice,
         index: ArchitectureGraphIndex,
-    ): Set<String> {
-        val sliceFiles = slice.files.mapTo(hashSetOf(), ProjectFileFingerprint::relativePath)
-        val symbolIds = index.symbolIndex.symbolsById.values
-            .filterNot { symbol -> symbol is JvmResourceSymbol }
-            .mapNotNullTo(linkedSetOf()) { symbol ->
-                val path = toProjectRelativePath(symbol.source?.displayPath)
-                symbol.id.takeIf { path.isNotBlank() && pathMatchesSliceFiles(path, sliceFiles) }
-            }
-        val resourceIds = index.symbolIndex.resourcesByPath.values
-            .mapNotNullTo(linkedSetOf()) { resource ->
-                val path = toProjectRelativePath(resource.source?.displayPath ?: resource.path)
-                resource.id.takeIf { path.isNotBlank() && pathMatchesSliceFiles(path, sliceFiles) }
-            }
-        return symbolIds + resourceIds
-    }
+    ): Set<String> =
+        com.charmnight.linkgraph.architecture.sliceSymbolIds(slice, index, project.basePath)
 
     private fun relationOwnerSliceIds(
         manifest: com.charmnight.linkgraph.architecture.memory.ProjectSliceManifest,
         index: ArchitectureGraphIndex,
-    ): Map<String, Set<String>> {
-        val symbolToSliceId = linkedMapOf<String, String>()
-        manifest.slices.forEach { slice ->
-            sliceSymbolIds(slice, index).forEach { symbolId ->
-                symbolToSliceId.putIfAbsent(symbolId, slice.id)
-            }
-        }
-        // 跨 slice 关系：from/to 任一端在 slice 内，就把关系复制到该 slice 的 fragment 中。
-        // 这样一端 slice 失效重建时，另一端的 fragment 仍持有完整关系副本，避免关系在视图里"消失"。
-        // 旧实现只取一个 owner slice id，关系只写入一端，另一端 slice 失效后关系会丢失。
-        return index.relationIndex.relations.mapNotNull { relation ->
-            val ownerSliceIds = linkedSetOf<String>()
-            symbolToSliceId[relation.fromSymbolId]?.let(ownerSliceIds::add)
-            symbolToSliceId[relation.toSymbolId]?.let(ownerSliceIds::add)
-            if (ownerSliceIds.isEmpty()) null else relation.id to ownerSliceIds
-        }.toMap()
-    }
+    ): Map<String, Set<String>> =
+        com.charmnight.linkgraph.architecture.relationOwnerSliceIds(manifest, index, project.basePath)
 
     private fun persistedSourcePath(source: JvmSourceRef?): String? =
         com.charmnight.linkgraph.architecture.persistedSourcePath(source, project.basePath)

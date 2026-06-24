@@ -185,6 +185,9 @@ class ArchitectureDebtCleanupTest {
     @Test
     fun localRuleQaResultsNeedRuntimeEvidenceTrustBeforeConfirmableCandidatePath() {
         val source = read("src/main/kotlin/com/charmnight/linkgraph/llm/GraphQaPatchService.kt")
+        // P2-1 拆分后，canUseConfirmableCandidatePath 的实现搬到 QaPatchValidator.kt，
+        // 测试需要同时扫描两个文件以确认 LOCAL_RULE 守卫语义仍存在。
+        val validatorSource = read("src/main/kotlin/com/charmnight/linkgraph/llm/qa/QaPatchValidator.kt")
         val classifierBlock = source.substringAfter("private fun classifyQaOutputs(")
             .substringBefore("private fun normalizeCandidateChanges(")
         val candidatePathGuardCount = Regex("""canUseConfirmableCandidatePath\(source,\s*runtimeEvidenceTrusted\)""")
@@ -204,8 +207,9 @@ class ArchitectureDebtCleanupTest {
             "Confirmable QA candidate path must be guarded both for candidate normalization and risk-thread promotion.",
         )
         assertTrue(
-            source.contains("source != LlmResultSource.LOCAL_RULE || runtimeEvidenceTrusted"),
-            "LOCAL_RULE QA output may enter confirmable candidate path only when runtime evidence marked it trusted.",
+            validatorSource.contains("source != LlmResultSource.LOCAL_RULE || runtimeEvidenceTrusted"),
+            "LOCAL_RULE QA output may enter confirmable candidate path only when runtime evidence marked it trusted. " +
+                "P2-1 后该守卫位于 QaPatchValidator.kt。",
         )
         assertFalse(
             source.contains("buildMockCandidateChangeId("),
