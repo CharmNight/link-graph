@@ -1,6 +1,8 @@
 package com.charmnight.linkgraph.llm
 
 import com.charmnight.linkgraph.foundation.LinkGraphDebugEnvironment
+import com.charmnight.linkgraph.llm.qa.withDerivedEvidenceTrace
+import com.charmnight.linkgraph.llm.qa.withPrependedWarnings
 import com.charmnight.linkgraph.model.diagnostics.GraphPatchDiagnostics
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphDocument
@@ -740,69 +742,24 @@ class GraphQaPatchService(
     private fun ensureUserQuestion(
         session: QaConversationSession,
         question: String,
-    ): QaConversationSession {
-        if (session.messages.lastOrNull()?.role == QaMessageRole.USER && session.messages.lastOrNull()?.content == question) {
-            return session
-        }
-        return session.copy(
-            messages = session.messages + QaConversationMessage(
-                messageId = "${session.sessionId}-user-${session.messages.size + 1}",
-                role = QaMessageRole.USER,
-                content = question,
-                focusTargetId = session.focusTargetId,
-            ),
-        )
-    }
+    ): QaConversationSession = com.charmnight.linkgraph.llm.qa.ensureUserQuestion(session, question)
 
-    /** 基于当前范围生成默认空会话。 */
-    private fun emptySession(context: GraphQaContext): QaConversationSession {
-        val scopeKey = context.selectedNodeIds.sorted().joinToString(",")
-            .ifBlank { (context.editableGraph.nodes.firstOrNull() ?: context.factGraph.nodes.firstOrNull())?.id ?: "graph" }
-        return QaConversationSession(
-            sessionId = "qa-${GraphNode.stableId(NodeType.DOC_PAGE, scopeKey, "session")}",
-            scopeKey = scopeKey,
-        )
-    }
+    /** 基于当前范围生成默认空会话：详见 top-level fun emptySession。 */
+    private fun emptySession(context: GraphQaContext): QaConversationSession =
+        com.charmnight.linkgraph.llm.qa.emptySession(context)
 
-    /** 生成远程失败后的回退警告文案。 */
+    /** 生成远程失败后的回退警告文案：详见 top-level fun buildRemoteFallbackWarning。 */
     private fun buildRemoteFallbackWarning(
         scene: String,
         error: Throwable,
-    ): String {
-        return runtimeWarning("远程 LLM ${scene}失败，已回退为本地规则分析：${LlmUserMessageFormatter.describe(error)}")
-    }
+    ): String = com.charmnight.linkgraph.llm.qa.buildRemoteFallbackWarning(scene, error)
 
-    /** 把警告文本统一加上 RUNTIME 前缀，便于 UI 区分运行时产生的提示与其他提示。 */
+    /** 把警告文本统一加上 RUNTIME 前缀：详见 top-level fun runtimeWarning。 */
     private fun runtimeWarning(warning: String): String =
-        warning.takeIf { it.startsWith("RUNTIME:") } ?: "RUNTIME: $warning"
+        com.charmnight.linkgraph.llm.qa.runtimeWarning(warning)
 
-    /** 把远程返回的警告插到结果前面。 */
-    private fun GraphPatchResult.withPrependedWarnings(extraWarnings: List<String>): GraphPatchResult {
-        if (extraWarnings.isEmpty()) {
-            return this
-        }
-        return copy(warnings = extraWarnings + warnings)
-    }
-
-    /** 把源码片段补充为取证轨迹条目，使后续模型与 UI 能看到本轮直接附带的源码证据。 */
-    private fun GraphQaContext.withDerivedEvidenceTrace(): GraphQaContext {
-        if (evidenceTrace.isNotEmpty() || sourceContext.isEmpty()) {
-            return this
-        }
-        return copy(
-            evidenceTrace = sourceContext.map { snippet ->
-                EvidenceTraceEntry(
-                    nodeId = snippet.nodeId,
-                    filePath = snippet.filePath,
-                    // 该理由会展示给后续 runtime / UI 消费方，必须明确这是本轮问答附带的源码证据。
-                    reason = "本轮问答直接附带的源码片段",
-                    startLine = snippet.startLine,
-                    endLine = snippet.endLine,
-                    includedInPrompt = true,
-                )
-            },
-        )
-    }
+    /** 把远程返回的警告插到结果前面：详见 top-level fun withPrependedWarnings（已 import）。 */
+    /** 把源码片段补充为取证轨迹条目：详见 top-level fun withDerivedEvidenceTrace（已 import）。 */
 
     /** 问答结果归一化过程中产生的内部结构，包含分类后的候选变更与风险线程。 */
     private data class ClassifiedQaOutputs(
