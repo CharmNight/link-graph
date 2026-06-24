@@ -28,7 +28,7 @@ class AnthropicCompatibleLlmGateway(
             // Anthropic 错误码可能在 code 或 type 字段中
             errorCodeKeys = ANTHROPIC_ERROR_CODE_KEYS,
             extractContent = ::extractContent,
-        )
+        ).withoutRawBody()
     }
 
     /** 把用户配置的 endpoint 解析为 Anthropic Messages 的完整访问地址。 */

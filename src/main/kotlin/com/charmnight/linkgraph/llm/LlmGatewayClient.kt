@@ -343,3 +343,38 @@ internal object LlmGatewayClient {
             }
     }
 }
+
+/**
+ * 把 [LlmResponse] 的 rawBody 字段擦除，返回给上游服务/调用方前调用。
+ *
+ * rawBody 最大可能 2MB，且包含远程响应原文（可能含源码片段、错误堆栈等）。
+ * 让它一路流到 GraphQaPatchService / GraphDiffPatchService 等业务层后，
+ * 任何 logger.warn(... response ...) 或 toString 都可能把整段原文写进 IDE 日志。
+ * 在 gateway wrapper 边界擦除可以一刀切阻断这条泄漏路径。
+ *
+ * LlmGatewayClient 内部仍保留 rawBody 用于测试断言（[LlmGatewayClient.generateJson] /
+ * [LlmGatewayClient.streamSse] 直接返回的 response 仍带 rawBody）。
+ */
+internal fun LlmResponse.withoutRawBody(): LlmResponse = copy(rawBody = null)
+
+/**
+ * 对要进入 trace / 日志的内容做最低限度的脱敏：把疑似含密钥/口令的整行替换为 `[REDACTED]`。
+ *
+ * 命中规则：行内出现 `api_key` / `apikey` / `token` / `password` / `secret` / `passwd`
+ * 等关键字后跟 `:` 或 `=`（任意空白）。这种"自我描述"的密钥行最常见，也最危险。
+ *
+ * 不做的：
+ * - 不尝试解析 JSON 后逐字段脱敏（容易漏判，且性能差）
+ * - 不处理多行 PEM / JWT（结构化密钥不在源码片段常见范围）
+ *
+ * 当 LINKGRAPH_DEBUG_TRACE 开启、需要把 question / sourceContext / answer 写进 IDE 日志时，
+ * 先用本函数过一遍，避免 IDE 日志 / 遥测意外收集用户密钥。
+ */
+internal fun redactForTrace(content: String): String {
+    if (content.isEmpty()) return content
+    val pattern = Regex("""(?i)(api[_-]?key|token|password|passwd|secret)\s*[:=]""")
+    return content.lines().joinToString("\n") { line ->
+        if (pattern.containsMatchIn(line)) "[REDACTED]" else line
+    }
+}
+

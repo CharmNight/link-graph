@@ -69,10 +69,13 @@ class GraphQaPatchService(
             effectiveMode = resolvedEffectiveMode,
         )
         if (traceEnabled) {
+            // sourceContext 可能含真实源码（包括密钥行）；用 redactForTrace 过滤疑似密钥行后再写日志。
             logger.warn(
-                "问答请求证据快照: question=${question.trim()}, selectedNodeIds=${effectiveContext.selectedNodeIds}, " +
-                    "sourceContext=${sourceContextSummaries(effectiveContext.sourceContext)}, " +
-                    "evidenceTrace=${evidenceTraceSummaries(effectiveContext.evidenceTrace)}",
+                redactForTrace(
+                    "问答请求证据快照: question=${question.trim()}, selectedNodeIds=${effectiveContext.selectedNodeIds}, " +
+                        "sourceContext=${sourceContextSummaries(effectiveContext.sourceContext)}, " +
+                        "evidenceTrace=${evidenceTraceSummaries(effectiveContext.evidenceTrace)}",
+                ),
             )
         }
         if (!sanitized.usesRemoteProvider()) {

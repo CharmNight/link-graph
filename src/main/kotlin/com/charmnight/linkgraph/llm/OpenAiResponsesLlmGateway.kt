@@ -18,7 +18,7 @@ class OpenAiResponsesLlmGateway(
             headers = openAiHeaders(request),
             payload = buildPayload(request.copy(deliveryMode = LlmDeliveryMode.FULL)),
             extractContent = ::extractContent,
-        )
+        ).withoutRawBody()
     }
 
     /** 以 SSE 流式方式调用 OpenAI Responses 协议服务。 */
@@ -34,7 +34,7 @@ class OpenAiResponsesLlmGateway(
             payload = buildPayload(request.copy(deliveryMode = LlmDeliveryMode.STREAM)),
             listener = listener,
             extractTextDelta = ::extractTextDelta,
-        )
+        ).withoutRawBody()
     }
 
     /** 把用户配置的 endpoint 解析为完整的 OpenAI Responses 请求地址。 */

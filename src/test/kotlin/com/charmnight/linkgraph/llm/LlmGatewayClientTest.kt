@@ -63,6 +63,44 @@ class LlmGatewayClientTest {
     }
 
     @Test
+    fun withoutRawBodyStripsRawBodyField() {
+        val original = LlmResponse(content = "hello", model = "m", rawBody = """{"raw":"secret"}""")
+        val stripped = original.withoutRawBody()
+        assertEquals("hello", stripped.content)
+        assertEquals("m", stripped.model)
+        assertEquals(null, stripped.rawBody, "withoutRawBody 必须把 rawBody 擦成 null")
+    }
+
+    @Test
+    fun redactForTraceReplacesKeyLookingLines() {
+        val input = """
+            line one is clean
+            api_key: abc123DEF456
+            token=Bearer XYZ
+            password: hunter2
+            normal code here
+            apiKey = "shhh"
+            SECRET: hidden
+        """.trimIndent()
+        val redacted = redactForTrace(input)
+        val lines = redacted.split("\n")
+
+        assertEquals("line one is clean", lines[0])
+        assertEquals("[REDACTED]", lines[1])
+        assertEquals("[REDACTED]", lines[2])
+        assertEquals("[REDACTED]", lines[3])
+        assertEquals("normal code here", lines[4])
+        assertEquals("[REDACTED]", lines[5])
+        assertEquals("[REDACTED]", lines[6])
+    }
+
+    @Test
+    fun redactForTraceLeavesNonKeyContentIntact() {
+        val input = "val user = User(name = \"Alice\")"
+        assertEquals(input, redactForTrace(input))
+    }
+
+    @Test
     fun generateJsonSendsRequestAndExtractsStandardResponse() {
         val client = RecordingHttpClient(
             response = SimpleHttpResponse(

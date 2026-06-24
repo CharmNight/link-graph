@@ -19,7 +19,7 @@ class OpenAiCompatibleLlmGateway(
             headers = openAiHeaders(request),
             payload = buildPayload(request),
             extractContent = ::extractContent,
-        )
+        ).withoutRawBody()
     }
 
     /** 以 SSE 流式方式调用 OpenAI Chat Completions 服务。 */
@@ -35,7 +35,7 @@ class OpenAiCompatibleLlmGateway(
             payload = buildPayload(request.copy(deliveryMode = LlmDeliveryMode.STREAM)),
             listener = listener,
             extractTextDelta = ::extractTextDelta,
-        )
+        ).withoutRawBody()
     }
 
     /** 把用户配置的 endpoint 解析为完整的 `/chat/completions` 地址。 */
