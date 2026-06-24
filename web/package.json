@@ -8,8 +8,9 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "test": "vitest run --maxWorkers=1"
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run --maxWorkers=1",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@xyflow/react": "12.10.2",
