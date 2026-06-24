@@ -290,7 +290,7 @@ class GraphBeautificationServiceTest {
         assertEquals(LlmResultSource.LOCAL_RULE, result.source)
         assertEquals(listOf("step-run-as"), result.steps.map { it.stepId })
         assertTrue(result.steps[0].description.contains("这里失败时会如何处理"))
-        assertTrue(result.promptPreview.contains("用户追问：这里失败时会如何处理？"))
+        assertTrue(result.promptPreview.contains("用户追问：<user_input>这里失败时会如何处理？</user_input>"))
     }
 
     @Test
