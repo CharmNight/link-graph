@@ -89,6 +89,7 @@ export function useStageNavController(
   const handleSelectStage = useCallback((stage: WorkflowStage) => {
     const decision = canEnterStage(stage, {
       blockingRiskCount: args.blockingRiskCount,
+      hasConfirmedDraft: args.confirmedDraftCount > 0,
     });
     if (!decision.ok) {
       args.setOperationFeedback({

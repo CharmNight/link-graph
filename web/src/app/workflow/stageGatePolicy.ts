@@ -10,8 +10,8 @@ import type { WorkflowStage } from "./workflowStage";
  *   {@link ../assistant/useAssistantActionController} 的 handleAssistantSubmit。
  *
  * 规则保持最小、可解释：
- * - 进入 `code`（写入代码）阶段时，若存在阻塞风险，需要用户先处理或显式接受风险。
- *   写盘是破坏性动作，把它和未解决的风险放在一起会让用户误操作。
+ * - 进入 `code`（写入代码）阶段时，要求 (1) 没有阻塞风险 (2) 至少确认一份草稿。
+ *   写盘是破坏性动作，没有确认草稿就进入 code 阶段等于让用户面对空白编辑器胡乱写。
  * - 其余阶段之间自由跳转：工作流是阅读辅助，不是强制向导。
  */
 export type StageGateDecision =
@@ -21,16 +21,27 @@ export type StageGateDecision =
 export interface StageGateContext {
   /** 阻塞风险数（来自 deriveChangeTrayState.blockingRiskCount）。 */
   blockingRiskCount: number;
+  /** 是否已确认至少一份草稿（来自 changeTrayState.confirmedDraftCount > 0）。 */
+  hasConfirmedDraft: boolean;
 }
 
 export function canEnterStage(
   stage: WorkflowStage,
   ctx: StageGateContext,
 ): StageGateDecision {
-  if (stage === "code" && ctx.blockingRiskCount > 0) {
+  if (stage !== "code") {
+    return { ok: true };
+  }
+  if (ctx.blockingRiskCount > 0) {
     return {
       ok: false,
       reason: `当前有 ${ctx.blockingRiskCount} 处阻塞风险，写盘前需先处理或显式接受风险。`,
+    };
+  }
+  if (!ctx.hasConfirmedDraft) {
+    return {
+      ok: false,
+      reason: "进入代码阶段前，请先确认一份草稿。",
     };
   }
   return { ok: true };
