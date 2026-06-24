@@ -459,29 +459,14 @@ internal class ReviewWorkflow(
         modeContext: QaModeContext,
         settings: LinkGraphSettingsState,
         onPreview: ((String, Boolean) -> Unit)? = null,
-    ): QaCapabilityInput {
-        val request = modeContext.request
-        val qaGraphs = planningContextFactory.buildQaGraphs(
+    ): QaCapabilityInput =
+        com.charmnight.linkgraph.application.workflow.review.buildQaCapabilityInput(
             snapshot = snapshot,
-            selectedNodeIds = modeContext.selectedNodeIds,
-        )
-        return QaCapabilityInput(
-            question = modeContext.question,
-            qaContext = GraphQaContext(
-                factGraph = qaGraphs.factGraph,
-                editableGraph = qaGraphs.editableGraph,
-                selectedNodeIds = modeContext.selectedNodeIds,
-                sourceContext = qaGraphs.sourceContext,
-                evidenceTrace = qaGraphs.evidenceTrace,
-            ),
+            modeContext = modeContext,
             settings = settings,
-            session = request.baseSession ?: snapshot.qaResult?.qaSession,
-            sourceThreadId = modeContext.sourceThreadId,
-            requestedMode = modeContext.requestedMode,
-            effectiveMode = modeContext.effectiveMode,
+            planningContextFactory = planningContextFactory,
             onPreview = onPreview,
         )
-    }
 
     private fun executeQaAsync(
         snapshot: WorkflowEditorSnapshot,
@@ -678,18 +663,14 @@ internal class ReviewWorkflow(
 
     private fun evaluateEligibility(
         snapshot: WorkflowEditorSnapshot,
-    ): Pair<com.charmnight.linkgraph.workbench.DraftValidationState, com.charmnight.linkgraph.workbench.StageEligibilityDecision> {
-        val riskSnapshot = snapshot.toApplicationSnapshot().toRiskResolutionSnapshot()
-        return riskResolutionService.evaluateDraftValidation(riskSnapshot) to
-            riskResolutionService.evaluateCodeEligibility(riskSnapshot)
-    }
+    ): Pair<com.charmnight.linkgraph.workbench.DraftValidationState, com.charmnight.linkgraph.workbench.StageEligibilityDecision> =
+        com.charmnight.linkgraph.application.workflow.review.evaluateQaEligibility(snapshot, riskResolutionService)
 
-    private fun effectiveRemoteRequested(): Boolean = settingsProvider().usesRemoteProvider()
+    private fun effectiveRemoteRequested(): Boolean =
+        com.charmnight.linkgraph.application.workflow.review.effectiveRemoteRequested(settingsProvider())
 
-    private fun effectiveStreamingSupported(): Boolean {
-        val settings = settingsProvider()
-        return settings.remoteConnectionOrNull()?.preset?.capabilities?.supportsStreaming == true
-    }
+    private fun effectiveStreamingSupported(): Boolean =
+        com.charmnight.linkgraph.application.workflow.review.effectiveStreamingSupported(settingsProvider())
 
     private fun buildQaStartMessage(
         remoteRequested: Boolean,
@@ -715,16 +696,8 @@ internal class ReviewWorkflow(
     /**
      * 将可重放请求分类为本轮唯一的模式上下文。
      */
-    private fun modeContext(request: ReplayableQaRequest): QaModeContext {
-        return QaModeContext(
-            request = request,
-            effectiveMode = qaModeClassifier.classify(
-                requestedMode = request.mode,
-                question = request.question,
-                sourceThreadId = request.sourceThreadId,
-            ),
-        )
-    }
+    private fun modeContext(request: ReplayableQaRequest): QaModeContext =
+        com.charmnight.linkgraph.application.workflow.review.resolveQaModeContext(request, qaModeClassifier)
 
     private fun resolutionFeedbackMessage(
         status: RiskResolutionStatus,
