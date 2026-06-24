@@ -381,4 +381,125 @@ class ClassUsageSearchServiceTest : BasePlatformTestCase() {
             "limit=3 时返回的总条目数不应远超 limit；实际：${result.groups.sumOf { group -> group.usages.size }}",
         )
     }
+
+    fun testInheritorCollectionRespectsEntryLimitWhenManySubclassesExtendBase() {
+        myFixture.addFileToProject(
+            "src/main/java/com/example/inherit/Base.java",
+            """
+            package com.example.inherit;
+            public class Base {}
+            """.trimIndent(),
+        )
+        repeat(20) { index ->
+            myFixture.addFileToProject(
+                "src/main/java/com/example/inherit/Child$index.java",
+                """
+                package com.example.inherit;
+                public class Child$index extends Base {}
+                """.trimIndent(),
+            )
+        }
+        val targetClass = requireNotNull(
+            JavaPsiFacade.getInstance(project).findClass(
+                "com.example.inherit.Base",
+                GlobalSearchScope.projectScope(project),
+            ),
+        )
+
+        val result = ClassUsageSearchService(project).search(
+            targetClass = targetClass,
+            targetNodeId = "jvm:class:com-example-inherit-base",
+            options = ClassUsageSearchOptions(maxUsageGroups = 10, maxUsageEntries = 3),
+        )
+
+        val debugSummary = "${result.summary}\n" +
+            result.groups.joinToString("\n") { group -> "${group.title}: ${group.usages.map { "${it.kind}@${it.line}:${it.column}" }}" }
+        assertTrue(
+            result.groups.sumOf { group -> group.usages.size } <= 4,
+            "limit=3 时返回的总条目数不应远超 limit；实际：${result.groups.sumOf { group -> group.usages.size }}\n$debugSummary",
+        )
+        assertTrue(result.summary.truncated, "存在 20 个继承者但 limit=3，应标记 truncated=true。")
+        assertTrue(
+            result.groups.flatMap { it.usages }.any { it.kind == ClassUsageKind.EXTENDS },
+            "继承场景下应至少出现一个 EXTENDS 条目。",
+        )
+    }
+
+    fun testSearchReportsExtendsAndImplementsKindsForInheritorEntries() {
+        myFixture.addFileToProject(
+            "src/main/java/com/example/kind/Sortable.java",
+            """
+            package com.example.kind;
+            public interface Sortable {}
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/kind/AbstractShape.java",
+            """
+            package com.example.kind;
+            public abstract class AbstractShape {}
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/kind/Circle.java",
+            """
+            package com.example.kind;
+            public class Circle extends AbstractShape {}
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/kind/Square.java",
+            """
+            package com.example.kind;
+            public class Square extends AbstractShape {}
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/kind/NumberRow.java",
+            """
+            package com.example.kind;
+            public class NumberRow implements Sortable {}
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/kind/StringRow.java",
+            """
+            package com.example.kind;
+            public class StringRow implements Sortable {}
+            """.trimIndent(),
+        )
+
+        val sortable = requireNotNull(
+            JavaPsiFacade.getInstance(project).findClass(
+                "com.example.kind.Sortable",
+                GlobalSearchScope.projectScope(project),
+            ),
+        )
+        val abstractShape = requireNotNull(
+            JavaPsiFacade.getInstance(project).findClass(
+                "com.example.kind.AbstractShape",
+                GlobalSearchScope.projectScope(project),
+            ),
+        )
+
+        val interfaceResult = ClassUsageSearchService(project).search(
+            targetClass = sortable,
+            targetNodeId = "jvm:class:com-example-kind-sortable",
+            options = ClassUsageSearchOptions(maxUsageGroups = 10, maxUsageEntries = 10),
+        )
+        val classResult = ClassUsageSearchService(project).search(
+            targetClass = abstractShape,
+            targetNodeId = "jvm:class:com-example-kind-abstractshape",
+            options = ClassUsageSearchOptions(maxUsageGroups = 10, maxUsageEntries = 10),
+        )
+
+        assertTrue(
+            interfaceResult.groups.flatMap { it.usages }.any { it.kind == ClassUsageKind.IMPLEMENTS },
+            "接口继承应分类为 IMPLEMENTS；实际：${interfaceResult.groups.flatMap { it.usages }.map { it.kind }}",
+        )
+        assertTrue(
+            classResult.groups.flatMap { it.usages }.any { it.kind == ClassUsageKind.EXTENDS },
+            "类继承应分类为 EXTENDS；实际：${classResult.groups.flatMap { it.usages }.map { it.kind }}",
+        )
+    }
 }

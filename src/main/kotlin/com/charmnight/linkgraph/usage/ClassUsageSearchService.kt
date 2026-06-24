@@ -7,6 +7,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiAnonymousClass
 import com.intellij.psi.PsiClass
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiJavaCodeReferenceElement
 import com.intellij.psi.PsiJavaFile
@@ -445,20 +446,26 @@ class ClassUsageSearchService(
         }
         val scope = targetClass.usageSearchScope()
         val entries = mutableListOf<ClassUsageEntry>()
-        for (inheritor in ClassInheritorsSearch.search(targetClass, scope, true).asIterable()) {
+        // 用 Processor 形式而非 for+asIterable：false 返回值会把停止信号传回 search engine，
+        // 让 ClassInheritorsSearch 自身停止产出更多 inheritor（对 java.lang.Object / Exception
+        // 这种被大量继承的类，避免 search engine 持续扫描整个项目）。
+        ClassInheritorsSearch.search(targetClass, scope, true).forEach(Processor { inheritor ->
             ProgressManager.checkCanceled()
-            val qualifiedName = inheritor.qualifiedName?.takeIf(String::isNotBlank) ?: continue
-            val file = inheritor.containingFile ?: continue
+            val qualifiedName = inheritor.qualifiedName?.takeIf(String::isNotBlank) ?: return@Processor true
+            ProgressManager.checkCanceled()
+            val file = inheritor.containingFile ?: return@Processor true
             val virtualFile = file.virtualFile
             if (!allowNonSourceEntries && (virtualFile == null || !virtualFile.isStandardClassUsageSourceFile(project))) {
-                continue
+                return@Processor true
             }
+            ProgressManager.checkCanceled()
             val anchorElement = inheritor.extendsList?.referenceElements?.firstOrNull()
                 ?: inheritor.implementsList?.referenceElements?.firstOrNull()
                 ?: inheritor.nameIdentifier
                 ?: inheritor
-            val document = com.intellij.psi.PsiDocumentManager.getInstance(project).getDocument(file)
-            val offset = anchorElement.textRange?.startOffset ?: continue
+            ProgressManager.checkCanceled()
+            val document = PsiDocumentManager.getInstance(project).getDocument(file)
+            val offset = anchorElement.textRange?.startOffset ?: return@Processor true
             val lineIndex = document?.getLineNumber(offset) ?: 0
             val lineStart = document?.getLineStartOffset(lineIndex) ?: offset
             val lineEnd = document?.getLineEndOffset(lineIndex) ?: offset
@@ -487,10 +494,8 @@ class ClassUsageSearchService(
             if (existingIds.add(entry.id)) {
                 entries += entry
             }
-            if (entries.size >= limit) {
-                break
-            }
-        }
+            entries.size < limit
+        })
         return entries
     }
 
