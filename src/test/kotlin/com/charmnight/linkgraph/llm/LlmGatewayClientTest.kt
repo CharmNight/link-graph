@@ -269,6 +269,171 @@ class LlmGatewayClientTest {
         assertEquals(LlmStreamEvent.Completed(response), events[3])
     }
 
+    @Test
+    fun generateJsonRetriesOn429AndSucceeds() {
+        // 队列：第 1 次 429（带 Retry-After: 0，避免测试 sleep），第 2 次 200。
+        val client = QueueHttpClient(
+            responses = listOf(
+                SimpleHttpResponse(
+                    statusCode = 429,
+                    body = ByteArrayInputStream("""{"error":"rate limited"}""".toByteArray(StandardCharsets.UTF_8)),
+                    headerMap = mapOf("retry-after" to listOf("0")),
+                ),
+                SimpleHttpResponse(
+                    statusCode = 200,
+                    body = ByteArrayInputStream("""{"model":"m","content":"after-retry"}""".toByteArray(StandardCharsets.UTF_8)),
+                ),
+            ),
+        )
+
+        val response = LlmGatewayClient.generateJson(
+            client = client,
+            request = testLlmRequest(),
+            url = "https://api.example.com/v1/messages",
+            headers = emptyList(),
+            payload = "{}",
+            extractContent = { body -> LlmJsonCodec.parseObject(body)["content"] as String },
+        )
+
+        assertEquals("after-retry", response.content)
+        assertEquals(2, client.sendCount, "首次 429 + 重试成功 = 共 2 次 send")
+    }
+
+    @Test
+    fun generateJsonRetriesOn503UpToThreeAttemptsThenFails() {
+        // 连续 3 次 503，全部用 Retry-After: 0 保持测试快速。
+        val client = QueueHttpClient(
+            responses = (1..3).map {
+                SimpleHttpResponse(
+                    statusCode = 503,
+                    body = ByteArrayInputStream("""{"error":"unavailable"}""".toByteArray(StandardCharsets.UTF_8)),
+                    headerMap = mapOf("retry-after" to listOf("0")),
+                )
+            },
+        )
+
+        val failure = assertFailsWith<LlmHttpException> {
+            LlmGatewayClient.generateJson(
+                client = client,
+                request = testLlmRequest(),
+                url = "https://api.example.com/v1/messages",
+                headers = emptyList(),
+                payload = "{}",
+                extractContent = { error("must not be called for failed responses") },
+            )
+        }
+        assertEquals(503, failure.statusCode)
+        assertEquals(3, client.sendCount, "DEFAULT_MAX_ATTEMPTS=3，重试耗尽后抛")
+    }
+
+    @Test
+    fun generateJsonDoesNotRetryOn400() {
+        // 400 不是可重试状态，只应 send 一次。QueueHttpClient 在第二次 send 时抛 "队列耗尽"。
+        val client = QueueHttpClient(
+            responses = listOf(
+                SimpleHttpResponse(
+                    statusCode = 400,
+                    body = ByteArrayInputStream(
+                        """{"error":{"type":"invalid_request_error","message":"Bad request"}}"""
+                            .toByteArray(StandardCharsets.UTF_8),
+                    ),
+                ),
+            ),
+        )
+
+        val failure = assertFailsWith<IllegalStateException> {
+            LlmGatewayClient.generateJson(
+                client = client,
+                request = testLlmRequest(),
+                url = "https://api.example.com/v1/messages",
+                headers = emptyList(),
+                payload = "{}",
+                errorCodeKeys = listOf("code", "type"),
+                extractContent = { error("must not be called for failed responses") },
+            )
+        }
+        assertEquals(1, client.sendCount, "400 不可重试，只应 send 1 次")
+        assertTrue(
+            failure.message!!.contains("HTTP 400"),
+            "message 应保留状态码；实际：${failure.message}",
+        )
+    }
+
+    @Test
+    fun generateJsonRespectsRetryAfterHeader() {
+        // 用 1s Retry-After 验证 retryAfter 解析路径（不直接断言 sleep 时长，避免 flaky）。
+        // 但要确认：服务端给了 Retry-After=1，重试成功后最终拿到 200。
+        val client = QueueHttpClient(
+            responses = listOf(
+                SimpleHttpResponse(
+                    statusCode = 429,
+                    body = ByteArrayInputStream(ByteArray(0)),
+                    headerMap = mapOf("retry-after" to listOf("1")),
+                ),
+                SimpleHttpResponse(
+                    statusCode = 200,
+                    body = ByteArrayInputStream("""{"model":"m","content":"ok"}""".toByteArray(StandardCharsets.UTF_8)),
+                ),
+            ),
+        )
+
+        val started = System.currentTimeMillis()
+        val response = LlmGatewayClient.generateJson(
+            client = client,
+            request = testLlmRequest(),
+            url = "https://api.example.com/v1/messages",
+            headers = emptyList(),
+            payload = "{}",
+            extractContent = { body -> LlmJsonCodec.parseObject(body)["content"] as String },
+        )
+        val elapsed = System.currentTimeMillis() - started
+
+        assertEquals("ok", response.content)
+        assertEquals(2, client.sendCount)
+        // 至少 sleep 了 ~1s（jitter 0-500ms，允许下限略小于 1000ms 但不应明显小于）。
+        assertTrue(
+            elapsed >= 900,
+            "Retry-After: 1 应触发 ≥1s sleep；实际耗时 ${elapsed}ms",
+        )
+    }
+
+    @Test
+    fun streamSseRetriesOn429BeforeStreamingStarts() {
+        // 第 1 次 429，第 2 次 200 + SSE 流。验证 streaming 起始前的重试。
+        val sseBody = """
+            data: {"delta":"hi"}
+            data: [DONE]
+        """.trimIndent()
+        val client = QueueHttpClient(
+            responses = listOf(
+                SimpleHttpResponse(
+                    statusCode = 429,
+                    body = ByteArrayInputStream(ByteArray(0)),
+                    headerMap = mapOf("retry-after" to listOf("0")),
+                ),
+                SimpleHttpResponse(
+                    statusCode = 200,
+                    body = ByteArrayInputStream(sseBody.toByteArray(StandardCharsets.UTF_8)),
+                ),
+            ),
+        )
+        val events = mutableListOf<LlmStreamEvent>()
+
+        val response = LlmGatewayClient.streamSse(
+            client = client,
+            request = testLlmRequest(),
+            url = "https://api.example.com/v1/responses",
+            headers = listOf("Authorization" to "Bearer secret"),
+            payload = """{"stream":true}""",
+            listener = events::add,
+            extractTextDelta = { data -> LlmJsonCodec.parseObject(data)["delta"] as? String },
+        )
+
+        assertEquals("hi", response.content)
+        assertEquals(2, client.sendCount)
+        assertEquals(LlmStreamEvent.TextDelta("hi"), events[1])
+    }
+
     private fun testLlmRequest(): LlmRequest {
         return LlmRequest(
             protocol = LlmWireProtocol.OPENAI_CHAT_COMPLETIONS,
@@ -322,14 +487,63 @@ class LlmGatewayClientTest {
         }
     }
 
+    /**
+     * 测试用 HTTP 客户端：按入队顺序依次返回 response；队空时抛错。
+     * 用于验证重试次数——若被测代码错误地多发了 send，会立即暴露为 "no more queued responses"。
+     */
+    private class QueueHttpClient(
+        responses: List<HttpResponse<*>>,
+    ) : HttpClient() {
+        private val queue: ArrayDeque<HttpResponse<*>> = ArrayDeque(responses)
+        var sendCount: Int = 0
+            private set
+
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : Any?> send(
+            request: HttpRequest,
+            responseBodyHandler: HttpResponse.BodyHandler<T>,
+        ): HttpResponse<T> {
+            sendCount += 1
+            val next = queue.removeFirstOrNull()
+                ?: error("no more queued responses (send called ${sendCount} times)")
+            return next as HttpResponse<T>
+        }
+
+        override fun cookieHandler(): Optional<CookieHandler> = Optional.empty()
+        override fun connectTimeout(): Optional<Duration> = Optional.empty()
+        override fun followRedirects(): Redirect = Redirect.NEVER
+        override fun proxy(): Optional<ProxySelector> = Optional.empty()
+        override fun sslContext(): SSLContext = SSLContext.getDefault()
+        override fun sslParameters(): SSLParameters = SSLParameters()
+        override fun authenticator(): Optional<Authenticator> = Optional.empty()
+        override fun version(): Version = Version.HTTP_1_1
+        override fun executor(): Optional<Executor> = Optional.empty()
+
+        override fun <T : Any?> sendAsync(
+            request: HttpRequest,
+            responseBodyHandler: HttpResponse.BodyHandler<T>,
+        ): CompletableFuture<HttpResponse<T>> {
+            error("sendAsync is not used by gateway support tests.")
+        }
+
+        override fun <T : Any?> sendAsync(
+            request: HttpRequest,
+            responseBodyHandler: HttpResponse.BodyHandler<T>,
+            pushPromiseHandler: HttpResponse.PushPromiseHandler<T>,
+        ): CompletableFuture<HttpResponse<T>> {
+            error("sendAsync is not used by gateway support tests.")
+        }
+    }
+
     private class SimpleHttpResponse<T>(
         private val statusCode: Int,
         private val body: T,
+        private val headerMap: Map<String, List<String>> = emptyMap(),
     ) : HttpResponse<T> {
         override fun statusCode(): Int = statusCode
         override fun request(): HttpRequest? = null
         override fun previousResponse(): Optional<HttpResponse<T>> = Optional.empty()
-        override fun headers(): HttpHeaders = HttpHeaders.of(emptyMap()) { _, _ -> true }
+        override fun headers(): HttpHeaders = HttpHeaders.of(headerMap) { _, _ -> true }
         override fun body(): T = body
         override fun sslSession(): Optional<SSLSession> = Optional.empty()
         override fun uri(): URI = URI.create("https://api.example.com")

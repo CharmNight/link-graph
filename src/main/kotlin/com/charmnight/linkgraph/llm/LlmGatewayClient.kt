@@ -6,9 +6,42 @@ import java.io.InputStreamReader
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
+import java.net.http.HttpHeaders
 import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
 import java.time.Duration
+import java.util.concurrent.ThreadLocalRandom
+
+/**
+ * 远程 LLM HTTP 请求失败时抛出的类型化异常。
+ *
+ * - 继承 [IllegalStateException]：与既有错误处理路径兼容（generateJson 原本就对非 2xx 抛 IllegalStateException）
+ * - 同时携带 [statusCode]、[retryAfterSeconds]、[body]，方便 [LlmGatewayClient.retryWithBackoff]
+ *   据此判断是否重试，以及上层（网关、parser）按状态码做更细的处理
+ *
+ * @param statusCode HTTP 状态码，例如 429 / 503
+ * @param retryAfterSeconds 服务端 `Retry-After` 头解析出的秒数；不解析日期格式，无法解析时为 null
+ * @param body 响应体（已通过 size guard 限制规模），用于错误消息
+ */
+internal class LlmHttpException(
+    val statusCode: Int,
+    val retryAfterSeconds: Long?,
+    body: String,
+) : IllegalStateException(
+    buildString {
+        append("Remote LLM request failed with HTTP ")
+        append(statusCode)
+        retryAfterSeconds?.let {
+            append(" (Retry-After=")
+            append(it)
+            append("s)")
+        }
+        if (body.isNotBlank()) {
+            append(": ")
+            append(body)
+        }
+    },
+)
 
 /**
  * 远程 LLM 网关底层客户端工具。
@@ -22,6 +55,14 @@ internal object LlmGatewayClient {
     private const val MAX_RESPONSE_CHARS = 2_000_000
     /** 单次 SSE 流读取过程中可缓存的原始事件文本上限，避免流式响应无限增长。 */
     private const val MAX_SSE_EVENT_CHARS = 2_000_000
+    /** 触发自动重试的 HTTP 状态码集合：429 限流、503 临时不可用。 */
+    private val RETRYABLE_STATUSES: Set<Int> = setOf(429, 503)
+    /** Retry-After 上限，避免恶意/异常服务器返回超大值（如 86400）卡死 IDE 后台线程。 */
+    private const val MAX_RETRY_AFTER_SECONDS = 180L
+    /** 指数退避的 base 上限，避免 attempt 异常大时计算溢出。 */
+    private const val MAX_BACKOFF_BASE_SECONDS = 8L
+    /** 重试最大尝试次数（含首次），默认 3 = 首次 + 2 次重试。 */
+    private const val DEFAULT_MAX_ATTEMPTS = 3
 
     /** 根据当前请求参数选择共享的 HTTP 客户端实例。 */
     fun defaultHttpClient(request: LlmRequest): HttpClient {
@@ -48,16 +89,25 @@ internal object LlmGatewayClient {
         errorCodeKeys: List<String> = listOf("code"),
         extractContent: (String) -> String,
     ): LlmResponse {
-        val response = client.send(
-            jsonRequestBuilder(request, url, headers)
-                .POST(HttpRequest.BodyPublishers.ofString(payload))
-                .build(),
-            HttpResponse.BodyHandlers.ofInputStream(),
-        )
+        // 重试只覆盖 send + status check：429/503 时抛 LlmHttpException 由 retryWithBackoff 处理。
+        // body 读到一半的错误（size guard 触发、IO 异常等）不是可重试 HTTP 错误，正常向上抛。
+        val (status, body) = retryWithBackoff { _ ->
+            val response = client.send(
+                jsonRequestBuilder(request, url, headers)
+                    .POST(HttpRequest.BodyPublishers.ofString(payload))
+                    .build(),
+                HttpResponse.BodyHandlers.ofInputStream(),
+            )
+            val responseStatus = response.statusCode()
+            // 注意：429/503 也要读完 body 才能复用连接、避免连接泄漏；size guard 仍生效。
+            val responseBody = response.body().use { input -> readBodyWithSizeGuard(input) }
+            if (responseStatus in RETRYABLE_STATUSES) {
+                val retryAfter = parseRetryAfterSeconds(response.headers())
+                throw LlmHttpException(responseStatus, retryAfter, responseBody)
+            }
+            responseStatus to responseBody
+        }
 
-        val status = response.statusCode()
-        // error / 2xx 都走同一套 size-guarded reader，避免恶意或异常服务器返回超大 body 触发 OOM。
-        val body = response.body().use { input -> readBodyWithSizeGuard(input) }
         if (status !in 200..299) {
             error(buildFailureMessage(status, body, errorCodeKeys))
         }
@@ -85,12 +135,22 @@ internal object LlmGatewayClient {
         errorCodeKeys: List<String> = listOf("code"),
         extractTextDelta: (String) -> String?,
     ): LlmResponse {
-        val response = client.send(
-            jsonRequestBuilder(request, url, headers)
-                .POST(HttpRequest.BodyPublishers.ofString(payload))
-                .build(),
-            HttpResponse.BodyHandlers.ofInputStream(),
-        )
+        // 重试只在初始 send + status check 阶段：429/503 时抛 LlmHttpException 由 retryWithBackoff 处理。
+        // 一旦进入流式 body 读取就不再重试（streaming 语义要求事务性，半截流不能续传）。
+        val response = retryWithBackoff { _ ->
+            val resp = client.send(
+                jsonRequestBuilder(request, url, headers)
+                    .POST(HttpRequest.BodyPublishers.ofString(payload))
+                    .build(),
+                HttpResponse.BodyHandlers.ofInputStream(),
+            )
+            if (resp.statusCode() in RETRYABLE_STATUSES) {
+                val retryAfter = parseRetryAfterSeconds(resp.headers())
+                val errorBody = resp.body().use { input -> readBodyWithSizeGuard(input) }
+                throw LlmHttpException(resp.statusCode(), retryAfter, errorBody)
+            }
+            resp
+        }
 
         if (response.statusCode() !in 200..299) {
             // error 路径同样要 size guard：恶意/异常服务器可能返回 200MB 的错误 JSON。
@@ -206,6 +266,67 @@ internal object LlmGatewayClient {
             }
         }
         return buf.toString()
+    }
+
+    /**
+     * 带退避的重试包装器，专为 HTTP 429/503 设计。
+     *
+     * - 仅捕获 [LlmHttpException]；其他异常（size guard 触发的 IllegalStateException、
+     *   IO 异常、超时等）一律向上抛，由各自既有路径处理
+     * - 仅当 statusCode ∈ [RETRYABLE_STATUSES] 时重试，否则直接抛
+     * - 退避时长：优先用服务端 `Retry-After`（cap 在 [MAX_RETRY_AFTER_SECONDS]）；
+     *   没有则用指数退避 `1L shl attempt`（cap 在 [MAX_BACKOFF_BASE_SECONDS]）；
+     *   最后加 0-500ms jitter，避免雷同客户端同步重试惊群
+     * - 最后一次 attempt 失败时直接抛 LlmHttpException，不再 sleep
+     *
+     * 注：cancel 是 best-effort——Thread.sleep 可被 interrupt 打断，但不主动调
+     * ProgressManager.checkCanceled，保持 LlmGatewayClient 与 IntelliJ 平台解耦。
+     * 上层 workflow 已有自己的 checkCanceled。
+     */
+    private fun <T> retryWithBackoff(
+        maxAttempts: Int = DEFAULT_MAX_ATTEMPTS,
+        block: (attempt: Int) -> T,
+    ): T {
+        require(maxAttempts > 0)
+        var lastError: LlmHttpException? = null
+        repeat(maxAttempts) { attempt ->
+            try {
+                return block(attempt)
+            } catch (e: LlmHttpException) {
+                lastError = e
+                if (e.statusCode !in RETRYABLE_STATUSES) throw e
+                if (attempt == maxAttempts - 1) throw e
+                // 优先用服务端 Retry-After（cap 180s）；没有则指数退避（cap 8s）。
+                val baseSeconds = when (val retryAfter = e.retryAfterSeconds) {
+                    null -> (1L shl attempt).coerceAtMost(MAX_BACKOFF_BASE_SECONDS)
+                    else -> retryAfter.coerceAtMost(MAX_RETRY_AFTER_SECONDS)
+                }
+                val delayMs = baseSeconds * 1000L + ThreadLocalRandom.current().nextLong(0, 500)
+                try {
+                    Thread.sleep(delayMs)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw e
+                }
+            }
+        }
+        // 理论不可达（repeat 内一定会 return 或 throw），保险起见显式抛。
+        throw lastError ?: error("retryWithBackoff exhausted without exception")
+    }
+
+    /**
+     * 解析 `Retry-After` 响应头，仅支持秒数格式。
+     *
+     * HTTP 规范允许两种格式：
+     * - 秒数：`Retry-After: 5`
+     * - HTTP 日期：`Retry-After: Wed, 24 Jun 2026 12:00:00 GMT`
+     *
+     * 实际 LLM provider（Anthropic / OpenAI）都用秒数；日期格式当无效处理，
+     * 由 retryWithBackoff 回退到指数退避。
+     */
+    private fun parseRetryAfterSeconds(headers: HttpHeaders): Long? {
+        val raw = headers.firstValue("retry-after").orElse(null) ?: return null
+        return raw.trim().toLongOrNull()?.takeIf { it >= 0 }
     }
 
     /** 构造统一的 HTTP 请求构造器：设置目标 URL、超时、Content-Type 与自定义请求头。 */
