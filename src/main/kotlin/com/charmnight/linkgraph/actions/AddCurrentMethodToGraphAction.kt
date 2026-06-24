@@ -13,6 +13,11 @@ import com.charmnight.linkgraph.toolwindow.LinkGraphToolWindowSession
 
 /**
  * 将当前编辑器所在主题追加到现有图中。
+ *
+ * 与 [OpenLinkGraphAction] 区别：本动作不替换当前图，
+ * 而是把当前主题作为新节点追加进去，便于把多个方法/资源放到同一张图中对比。
+ *
+ * 文案会按当前主题类型动态切换（方法 vs 资源节点）。
  */
 class AddCurrentMethodToGraphAction : DumbAwareAction(
     LinkGraphBundle.message("action.add-current-method-to-graph.text"),
@@ -21,11 +26,17 @@ class AddCurrentMethodToGraphAction : DumbAwareAction(
 ) {
     /**
      * 指定动作更新在线程池中执行。
+     * 因为 update 中会调用 PreviewCurrentEditorSubjectKind（可能触发 PSI 访问）。
      */
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     /**
      * 根据当前上下文更新动作文案和可见性。
+     *
+     * 编辑器右键菜单下：
+     * - 无可识别主题时隐藏；
+     * - 资源主题时切换为"添加当前节点到图"文案；
+     * - 其他主题保持"添加当前方法到图"。
      */
     override fun update(event: AnActionEvent) {
         // 非空项目是动作可用的基础条件。
@@ -43,9 +54,11 @@ class AddCurrentMethodToGraphAction : DumbAwareAction(
             // 无法识别当前主题时，不展示该入口。
             event.presentation.isEnabledAndVisible = previewKind != null
             if (previewKind == SubjectPreviewKind.RESOURCE_SUBJECT) {
+                // 资源主题切换文案
                 event.presentation.text = LinkGraphBundle.message("action.add-current-node-to-graph.text")
                 event.presentation.description = LinkGraphBundle.message("action.add-current-node-to-graph.description")
             } else {
+                // 代码主题保持默认
                 event.presentation.text = LinkGraphBundle.message("action.add-current-method-to-graph.text")
                 event.presentation.description = LinkGraphBundle.message("action.add-current-method-to-graph.description")
             }
@@ -64,6 +77,7 @@ class AddCurrentMethodToGraphAction : DumbAwareAction(
         val appended = project.getService(GraphEditorApplicationService::class.java)
             .commandDispatcher
             .dispatch(ApplicationCommand.AddCurrentEditorContextNode)
+        // 追加成功后才打开工具窗口，避免空图场景
         if (appended) {
             project.getService(LinkGraphToolWindowSession::class.java).openToolWindow()
         }

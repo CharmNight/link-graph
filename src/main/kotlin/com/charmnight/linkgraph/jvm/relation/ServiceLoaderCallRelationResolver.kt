@@ -5,9 +5,15 @@ import com.intellij.psi.PsiClassObjectAccessExpression
 import com.intellij.psi.PsiMethodCallExpression
 import com.intellij.psi.PsiReferenceExpression
 
+/** ServiceLoader 调用关系解析器：识别代码中通过 ServiceLoader.load 加载的 SPI 实现。 */
 class ServiceLoaderCallRelationResolver : JvmRelationResolver {
+    /** 解析器的唯一标识，用于在 JVM 关系网络中注册和引用此 ServiceLoader 解析器。 */
     override val id: String = "jvm.service-loader"
 
+    /**
+     * 扫描项目中所有方法体，识别对 ServiceLoader.load 的调用，
+     * 并据此产出 SPI 接口加载关系以及对应实现的提供关系。
+     */
     override fun resolve(context: JvmResolutionContext): List<JvmRelation> {
         val relations = mutableListOf<JvmRelation>()
         projectMethods(context.symbolIndex).forEach { methodSymbol ->
@@ -93,6 +99,10 @@ class ServiceLoaderCallRelationResolver : JvmRelationResolver {
         return relations
     }
 
+    /**
+     * 判断给定方法调用表达式是否为 ServiceLoader.load 系列调用，
+     * 兼容简短写法、全限定名写法以及解析后引用 ServiceLoader 的情况。
+     */
     private fun isServiceLoaderLoad(expression: PsiMethodCallExpression): Boolean {
         if (expression.methodExpression.referenceName != "load") {
             return false
@@ -105,6 +115,10 @@ class ServiceLoaderCallRelationResolver : JvmRelationResolver {
         return resolved?.text?.contains("java.util.ServiceLoader") == true
     }
 
+    /**
+     * 从表达式里提取类对象字面量所对应的规范化类型名，
+     * 用于识别 ServiceLoader.load(Xxx.class) 中传入的服务接口。
+     */
     private fun classObjectTypeName(expression: com.intellij.psi.PsiExpression): String? {
         val classObject = expression as? PsiClassObjectAccessExpression ?: return null
         return com.charmnight.linkgraph.jvm.index.canonicalTypeText(classObject.operand.type)

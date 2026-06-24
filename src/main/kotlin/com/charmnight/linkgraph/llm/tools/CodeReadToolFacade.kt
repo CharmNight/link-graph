@@ -23,11 +23,16 @@ import java.nio.file.Files
  * 第一阶段优先复用 graph node 上已有 source metadata，读不到时再回退到显式文件路径读取。
  */
 class CodeReadToolFacade(
+    /** 图工具门面，复用其对图谱快照的查询能力。 */
     private val graphToolFacade: GraphToolFacade = GraphToolFacade(),
+    /** 问答证据锚点解析器，负责把 nodeId 或签名映射回真实节点。 */
     private val anchorResolver: QaEvidenceAnchorResolver = QaEvidenceAnchorResolver(),
+    /** 源码上下文收集器，用于在读取片段附近补充上下文行。 */
     private val sourceContextCollector: SourceContextCollector = SourceContextCollector(),
+    /** 项目根路径下的可读文件访问策略，统一处理越权与符号链接等安全约束。 */
     private val projectRootFileAccessPolicy: ProjectRootFileAccessPolicy = ProjectRootFileAccessPolicy(),
 ) {
+    /** 当前类的日志记录器。 */
     private val logger = Logger.getInstance(CodeReadToolFacade::class.java)
     /** 根据 nodeId 或 symbol 定位问答证据锚点，并保留投影到真实节点的映射轨迹。 */
     fun resolveEvidenceAnchor(
@@ -66,6 +71,10 @@ class CodeReadToolFacade(
         )?.snippet
     }
 
+    /**
+     * 读取源码片段并返回更丰富的元数据，包括来源、是否反编译、VFS URL 等。
+     * 优先使用 fallback snippet，其次尝试 jar/VFS 协议路径，最后回退到项目根路径下的文件读取。
+     */
     fun readSourceSnippetRich(
         filePath: String,
         startLine: Int? = null,
@@ -144,6 +153,7 @@ class CodeReadToolFacade(
         )
     }
 
+    /** 读取源码片段失败时返回的原因字符串；可读到时返回 null，便于上层在 UI 中给出具体失败原因。 */
     fun readSourceSnippetFailureReason(
         filePath: String,
         startLine: Int? = null,
@@ -175,6 +185,7 @@ class CodeReadToolFacade(
             ?.toSourceSnippetContext()
     }
 
+    /** 读取指定符号的源码片段并附带丰富元数据；优先命中架构索引，命中失败时回退到符号锚点解析。 */
     fun readSymbolRich(
         snapshot: ToolGraphSnapshot,
         symbolSignature: String,
@@ -209,6 +220,7 @@ class CodeReadToolFacade(
         )
     }
 
+    /** 直接从架构索引中按签名命中符号并读取对应源码片段。 */
     private fun readSymbolFromIndex(
         symbolSignature: String,
         project: Project?,
@@ -225,6 +237,7 @@ class CodeReadToolFacade(
         return readIndexedSymbol(symbol, project, projectBasePath)
     }
 
+    /** 返回符号源码读取失败的具体原因；命中成功时返回 null。 */
     fun readSymbolFailureReason(
         symbolSignature: String,
         project: Project?,
@@ -249,6 +262,7 @@ class CodeReadToolFacade(
         return readSymbolByQualifiedNameFailureReason(query, project)
     }
 
+    /** 在索引中按多种匹配策略查找符号：精确 id、方法签名、字段、类、资源路径、去参数签名等。 */
     private fun findIndexedSymbol(
         index: com.charmnight.linkgraph.architecture.ArchitectureGraphIndex,
         query: String,
@@ -261,6 +275,7 @@ class CodeReadToolFacade(
             ?: query.substringBefore('(').takeIf { candidate -> candidate != query }?.let(index::findMethod)
             ?: query.substringBefore('#').takeIf { candidate -> candidate != query }?.let(index::findClass)
 
+    /** 读取架构索引中符号对应的源码片段，并补充符号 ID、种类等元数据。 */
     private fun readIndexedSymbol(
         symbol: JvmSymbol,
         project: Project,
@@ -295,6 +310,7 @@ class CodeReadToolFacade(
         )
     }
 
+    /** 直接按全限定名读取类或资源内容，主要用于绕过架构索引时的回退路径。 */
     fun readSymbolByQualifiedNameRich(
         symbolSignature: String,
         project: Project,
@@ -321,6 +337,7 @@ class CodeReadToolFacade(
         )
     }
 
+    /** 返回按全限定名读取失败的具体原因；命中成功时返回 null。 */
     fun readSymbolByQualifiedNameFailureReason(
         symbolSignature: String,
         project: Project,
@@ -335,15 +352,18 @@ class CodeReadToolFacade(
         return resolver.sourceUnavailableReason()
     }
 
+    /** 创建项目默认的源码内容解析器。 */
     private fun defaultResolver(project: Project): SourceContentResolver {
         return project.architectureIndexRuntime().sourceQuery()
     }
 
+    /** 判断当前项目是否允许展开 JDK 库源码（受项目设置控制）。 */
     private fun allowJdkLibraryExpansion(project: Project): Boolean =
         LoggedFailures.orDefault(logger, "allowJdkLibraryExpansion settingsSnapshot", defaultValue = false) {
             project.architectureIndexRuntime().settingsSnapshot().allowJdkLibraryExpansion
         }
 
+    /** 判断符号名是否属于 JDK 命名空间，用于默认禁止 JDK 源码展开的硬边界。 */
     private fun isJdkSymbolName(value: String): Boolean =
         value.startsWith("java.") ||
             value.startsWith("javax.") ||
@@ -352,19 +372,36 @@ class CodeReadToolFacade(
             value.startsWith("com.sun.")
 }
 
+/**
+ * 表示一次源码读取的丰富结果。
+ * 比基础 SourceSnippetContext 多携带了来源、是否反编译、VFS URL、源码诊断信息和符号元数据，
+ * 便于 runtime 与 UI 在不再次读取源码的前提下完整展示。
+ */
 data class RichSourceSnippet(
+    /** 关联节点 ID。 */
     val nodeId: String? = null,
+    /** 源码文件路径。 */
     val filePath: String,
+    /** 片段起始行号。 */
     val startLine: Int? = null,
+    /** 片段结束行号。 */
     val endLine: Int? = null,
+    /** 真正读到的源码片段。 */
     val snippet: String,
+    /** 源码来源标签，例如项目源码、依赖 jar 等。 */
     val origin: String? = null,
+    /** 是否来自反编译内容。 */
     val decompiled: Boolean = false,
+    /** IDEA VFS URL。 */
     val virtualFileUrl: String? = null,
+    /** 源码读取过程中产生的诊断信息，便于排查。 */
     val sourceDiagnostic: String? = null,
+    /** 关联的符号 ID。 */
     val symbolId: String? = null,
+    /** 关联的符号种类标签。 */
     val symbolKind: String? = null,
 ) {
+    /** 把当前对象转换为更基础的 SourceSnippetContext，便于复用现有数据模型。 */
     fun toSourceSnippetContext(): SourceSnippetContext =
         SourceSnippetContext(
             nodeId = nodeId.orEmpty(),
@@ -378,6 +415,7 @@ data class RichSourceSnippet(
         )
 }
 
+/** 针对不同来源的解析器获取最近一次"读取失败原因"，便于上层在 UI 中直接展示。 */
 private fun SourceContentResolver?.sourceUnavailableReason(): String? =
     when (this) {
         is CompositeSourceContentResolver -> lastUnavailableReason()

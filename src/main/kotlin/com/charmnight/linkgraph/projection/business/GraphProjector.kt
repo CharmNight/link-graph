@@ -1,12 +1,13 @@
 package com.charmnight.linkgraph.projection.business
 
 /**
- * Marker for projectors that turn a domain input (semantic analysis result, architecture
- * index, usage search result, review evidence bundle, ...) into a view document or other
- * presentation shape ready for UI consumption.
+ * 业务投影器的统一标记接口。
  *
- * The implementations in this package vary widely in input/output types, so the interface
- * carries no generics — its purpose is to make the "I am a business projector" role
- * discoverable for navigation and future tooling, not to enforce a uniform signature.
+ * 业务投影器负责把领域输入（语义分析结果、架构索引、使用情况搜索结果、审查证据集合等）
+ * 转换为视图文档或其他可供 UI 直接消费的呈现形态。
+ *
+ * 该包内的实现输入/输出类型差异巨大，因此本接口故意不携带泛型——
+ * 它的作用只是让"我是一个业务投影器"这一身份可被发现，方便后续工具与导航，
+ * 而非强制统一签名。
  */
 interface GraphProjector

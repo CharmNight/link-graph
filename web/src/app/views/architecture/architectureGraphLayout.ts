@@ -6,19 +6,31 @@ import type { MeasuredLayoutRequest } from "../../reactflow/useMeasuredLayout";
 import type { GraphPosition, LinkGraphEdge, LinkGraphNode } from "../../types";
 import { architectureLaneSortValue } from "./architectureDisplayLayers";
 
+/** 架构图左上角原点偏移：为顶部工具栏/侧栏留出可视边距，避免节点贴边。 */
 const ARCHITECTURE_LAYOUT_ORIGIN: GraphPosition = { x: 120, y: 96 };
+/** 不同泳道列之间的水平间距，控制整体图横向密度。 */
 const ARCHITECTURE_COLUMN_GAP = 136;
+/** 同一泳道内节点的垂直间距，避免节点重叠并留出边走线空间。 */
 const ARCHITECTURE_ROW_GAP = 64;
+/** 测量失败时的兜底节点高度，保证布局可读。 */
 const ARCHITECTURE_DEFAULT_NODE_HEIGHT = 116;
+/** 项目结构视图里相邻 band（横向分组）之间的垂直留白。 */
 const STRUCTURE_LAYOUT_BAND_GAP = 72;
+/** 项目结构视图里同 band 内的列间距。 */
 const STRUCTURE_LAYOUT_COLUMN_GAP = 72;
+/** 项目结构视图里同 band 内的行间距。 */
 const STRUCTURE_LAYOUT_ROW_GAP = 50;
+/** band 内左右内边距，给 band 标题和节点之间留呼吸感。 */
 const STRUCTURE_LAYOUT_BAND_PADDING_X = 48;
+/** band 上下内边距，配合 band 头部高度形成视觉包裹感。 */
 const STRUCTURE_LAYOUT_BAND_PADDING_Y = 40;
+/** band 顶部标题条高度，用于摆放 band 名称标签。 */
 const STRUCTURE_LAYOUT_BAND_HEADER = 34;
 
+/** 泳道标识：即"entry/application/domain/data/resource/external"这种展示层名称。 */
 type ArchitectureLayoutLane = string;
 
+/** 单个节点的布局上下文：聚合了原始节点、所属泳道、拓扑层级、尺寸等布局所需信息。 */
 interface ArchitectureLayoutNode {
   node: LinkGraphNode;
   lane: ArchitectureLayoutLane;
@@ -29,10 +41,12 @@ interface ArchitectureLayoutNode {
   height: number;
 }
 
+/** 架构图布局入口的请求参数；额外支持切换"项目结构视图"分支布局。 */
 export interface ArchitectureGraphLayoutOptions extends MeasuredLayoutRequest {
   projectStructureView?: boolean;
 }
 
+/** 生成边的去重键：source/target/handle 拼接，用于折叠重复连线。 */
 function architectureLayoutEdgeKey(edge: LinkGraphEdge): string {
   return [
     edge.source,
@@ -42,6 +56,11 @@ function architectureLayoutEdgeKey(edge: LinkGraphEdge): string {
   ].join("\u0000");
 }
 
+/**
+ * 折叠同源同目标的重复边：架构图里同一对节点常有多条关系（调用/路由/实现），
+ * 布局阶段会先按 source+target+handle 合并，避免堆叠遮挡。同时重新分配
+ * layout 专用边 id，避免与原始边 id 冲突。
+ */
 function compactArchitectureLayoutEdges(edges: LinkGraphEdge[]): LinkGraphEdge[] {
   const edgeGroups = new Map<string, LinkGraphEdge>();
   edges.forEach((edge) => {
@@ -56,14 +75,22 @@ function compactArchitectureLayoutEdges(edges: LinkGraphEdge[]): LinkGraphEdge[]
   return [...edgeGroups.values()];
 }
 
+/**
+ * 取节点所属泳道：默认 application，让没有显式泳道信息的节点仍能落入中部业务层。
+ */
 function architectureLayoutLane(node: MeasuredLayoutRequest["nodes"][number]): ArchitectureLayoutLane {
   return node.metadata?.["presentation.laneId"] ?? "application";
 }
 
+/** 泳道转换为顶部到底部的顺序索引，决定 y 方向排布。 */
 function architectureLayoutLaneIndex(lane: ArchitectureLayoutLane): number {
   return architectureLaneSortValue(lane);
 }
 
+/**
+ * 按节点 kind（模块/服务/资源 等）赋予优先级：粗粒度结构节点排在前面，
+ * 让顶层架构元素先排出来，类/资源等细粒度排到后面。
+ */
 function architectureNodeKindPriority(node: MeasuredLayoutRequest["nodes"][number]): number {
   const nodeKind = node.metadata?.["architecture.node.kind"] ?? node.type;
   switch (nodeKind) {
@@ -87,6 +114,7 @@ function architectureNodeKindPriority(node: MeasuredLayoutRequest["nodes"][numbe
   }
 }
 
+/** 按节点业务角色（API/数据/外部 等）排优先级：入口/接口在前，外部依赖在后。 */
 function architectureNodeRolePriority(node: MeasuredLayoutRequest["nodes"][number]): number {
   switch (node.metadata?.["indexed.nodeRole"]) {
     case "API":
@@ -107,6 +135,10 @@ function architectureNodeRolePriority(node: MeasuredLayoutRequest["nodes"][numbe
   }
 }
 
+/**
+ * 生成节点排序键：把"泳道序号 + 角色优先级 + 类型优先级 + 全限定名"拼成可比较的字符串，
+ * 让同一泳道里语义相近的节点能聚在一起，肉眼上看更连贯。
+ */
 function architectureLayoutSortKey(node: MeasuredLayoutRequest["nodes"][number]): string {
   return [
     String(architectureLayoutLaneIndex(architectureLayoutLane(node))).padStart(2, "0"),
@@ -118,6 +150,10 @@ function architectureLayoutSortKey(node: MeasuredLayoutRequest["nodes"][number])
   ].join("\u0000");
 }
 
+/**
+ * BFS 计算从起始节点出发的跳数距离：用于确定相对锚点的拓扑层级。
+ * 跳过已访问节点和图外节点，保证连通分量外节点不会被错误计入。
+ */
 function graphDistances(
   startNodeId: string,
   edgesByNode: Map<string, string[]>,
@@ -139,6 +175,13 @@ function graphDistances(
   return distances;
 }
 
+/**
+ * 计算每个节点相对于锚点（即问答目标）的拓扑层级：
+ * - 锚点自身为 0
+ * - 下游节点（被锚点调用）取正距离
+ * - 上游节点（调用锚点）取负距离
+ * 用于按"离锚点跳数"在 x 方向排布，让流向从左到右更直观。
+ */
 function architectureTopologyRanks(
   nodes: LinkGraphNode[],
   edges: LinkGraphEdge[],
@@ -185,6 +228,10 @@ function architectureTopologyRanks(
   }));
 }
 
+/**
+ * 计算普通架构视图的边端点：从源节点右侧中点出发，到目标节点左侧中点，
+ * 构成左右贯通的横向走线。
+ */
 function routeAttachmentPoints(
   source: ArchitectureLayoutNode,
   target: ArchitectureLayoutNode,
@@ -204,6 +251,10 @@ function routeAttachmentPoints(
   };
 }
 
+/**
+ * 项目结构视图的边端点计算：根据两节点中心偏移自动选择走"右→左"或"下→上"。
+ * 上下偏移较大时走纵向，否则走横向，匹配 band 内的多列网格布局。
+ */
 function structureRouteAttachmentPoints(
   source: ArchitectureLayoutNode,
   target: ArchitectureLayoutNode,
@@ -243,6 +294,7 @@ function structureRouteAttachmentPoints(
   };
 }
 
+/** 把布局节点转成正交路由所需的矩形信息；位置缺失时返回 null 表示不参与路由。 */
 function nodeRect(definition: ArchitectureLayoutNode): OrthogonalRect | null {
   if (!definition.node.position) {
     return null;
@@ -256,6 +308,7 @@ function nodeRect(definition: ArchitectureLayoutNode): OrthogonalRect | null {
   };
 }
 
+/** 计算所有节点的外接矩形（minX/minY/maxX/maxY），用于布局后的视口自适应与调试埋点。 */
 function architectureBounds(nodes: ArchitectureLayoutNode[]) {
   const rects = nodes.map(nodeRect).filter((rect): rect is OrthogonalRect => rect !== null);
   if (rects.length === 0) {
@@ -275,8 +328,10 @@ function architectureBounds(nodes: ArchitectureLayoutNode[]) {
   };
 }
 
+/** 项目结构视图的 band 标识：把所有泳道合并成 4 个粗粒度分组。 */
 type ProjectStructureBand = "entry" | "application" | "domain" | "data";
 
+/** 单个 band 的布局规格：包含节点桶、网格列/行数、内容尺寸、最终位置。 */
 interface ProjectStructureBandLayout {
   band: ProjectStructureBand;
   bucket: ArchitectureLayoutNode[];
@@ -290,6 +345,12 @@ interface ProjectStructureBandLayout {
   y: number;
 }
 
+/**
+ * 把节点映射到项目结构视图的 band：
+ * - entry/domain 原样保留
+ * - data/resource/external 全部归入 data band（项目结构里都视为"底层"）
+ * - 其余进入 application band
+ */
 function projectStructureBand(node: LinkGraphNode): ProjectStructureBand {
   const lane = architectureLayoutLane(node);
   if (lane === "entry") {
@@ -304,6 +365,7 @@ function projectStructureBand(node: LinkGraphNode): ProjectStructureBand {
   return "application";
 }
 
+/** band 在垂直方向上的顺序号，从上到下排列。 */
 function projectStructureBandIndex(band: ProjectStructureBand): number {
   switch (band) {
     case "entry":
@@ -317,6 +379,11 @@ function projectStructureBandIndex(band: ProjectStructureBand): number {
   }
 }
 
+/**
+ * 估算 band 内每行容纳多少列：
+ * - 单节点用 1 列
+ * - 否则用开方缩放，限制在 2-3 列之间，让 band 既不太宽也不会拉得很长。
+ */
 function projectStructureColumnCount(nodeCount: number): number {
   if (nodeCount <= 1) {
     return 1;
@@ -324,11 +391,13 @@ function projectStructureColumnCount(nodeCount: number): number {
   return Math.min(3, Math.max(2, Math.ceil(Math.sqrt(nodeCount * 1.35))));
 }
 
+/** 取节点排序键用于边排序，保证同端点边顺序稳定。 */
 function edgeNodeOrder(nodeIndex: Map<string, ArchitectureLayoutNode>, nodeId: string): string {
   const node = nodeIndex.get(nodeId)?.node;
   return node ? architectureLayoutSortKey(node) : nodeId;
 }
 
+/** 生成项目结构视图的边排序键：按 source/target 的 lane 和节点排序键拼合，使同泳道边聚合。 */
 function structureEdgeOrderKey(edge: LinkGraphEdge, nodeIndex: Map<string, ArchitectureLayoutNode>): string {
   return [
     String(nodeIndex.get(edge.source)?.laneIndex ?? 0).padStart(2, "0"),
@@ -339,6 +408,10 @@ function structureEdgeOrderKey(edge: LinkGraphEdge, nodeIndex: Map<string, Archi
   ].join("\u0000");
 }
 
+/**
+ * 给同一端点上的多条边分配槽位序号（0..count-1），用于在端点宽度上把多条平行边错开。
+ * 同端点边先按结构排序键排序，再依次编号，保证视觉稳定。
+ */
 function edgeSlots(
   edges: LinkGraphEdge[],
   nodeIndex: Map<string, ArchitectureLayoutNode>,
@@ -364,6 +437,10 @@ function edgeSlots(
   return slots;
 }
 
+/**
+ * 把槽位序号转换为端点垂直/水平偏移量：
+ * 单条边返回 0；多条边以 42px 为最大间距均分，使它们均匀分布在节点中心两侧。
+ */
 function slotOffset(slot: { index: number; count: number } | undefined, availableSize: number): number {
   if (!slot || slot.count <= 1) {
     return 0;
@@ -372,6 +449,10 @@ function slotOffset(slot: { index: number; count: number } | undefined, availabl
   return Math.round((slot.index - (slot.count - 1) / 2) * spacing);
 }
 
+/**
+ * 项目结构视图布局：把节点按 entry/application/domain/data 四个 band 自上而下排列，
+ * 每个 band 内按估算的列数摆成网格，最后为每条边计算正交走线（含多边错开）。
+ */
 async function layoutProjectStructureGraphView({
   nodes,
   edges,
@@ -550,6 +631,12 @@ async function layoutProjectStructureGraphView({
   };
 }
 
+/**
+ * 架构图主布局入口：
+ * - 项目结构视图直接走 band 布局
+ * - 默认按"泳道 × 拓扑层级"组织：同一泳道纵向排列，不同拓扑层级横向推进，
+ *   让从锚点出发的依赖关系在 x 方向逐层展开。同时为每条边生成正交走线。
+ */
 export async function layoutArchitectureGraphView({
   nodes,
   edges,

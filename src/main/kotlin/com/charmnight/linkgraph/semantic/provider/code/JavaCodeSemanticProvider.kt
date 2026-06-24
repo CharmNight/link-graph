@@ -9,15 +9,25 @@ import com.charmnight.linkgraph.semantic.subject.SubjectHandle
 
 /**
  * 提供 Java 方法的语义分析能力。
+ *
+ * 在 [CodeSubjectSemanticProvider] 之上特化 Java 方法这一种类，
+ * 把实际语义提取委托给 [CodeFlowSemanticExtractor]，
+ * 让本类只负责种类声明与转派发。
  */
 class JavaCodeSemanticProvider(
     /** 保存真正执行代码流提取的提取器。 */
     private val extractor: CodeFlowSemanticExtractor = CodeFlowSemanticExtractor(),
 ) : CodeSubjectSemanticProvider {
+    /** 仅支持 Java 方法种类。 */
     override val supportedKinds: Set<CodeSubjectKind> = setOf(CodeSubjectKind.JAVA_METHOD)
 
     /**
      * 对 Java 方法句柄执行语义分析。
+     *
+     * @param handle 主题句柄；必须是 [CodeSubjectHandle]，否则抛出 IllegalStateException
+     * @param capturePolicy 捕获策略
+     * @param budgetPolicy 遍历预算
+     * @return 完整的语义分析结果
      */
     override fun analyze(
         handle: SubjectHandle,

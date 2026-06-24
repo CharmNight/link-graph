@@ -4,6 +4,7 @@ import com.charmnight.linkgraph.architecture.architectureIndexService
 import com.charmnight.linkgraph.architecture.query.ArchitectureGraphQueryService
 import com.charmnight.linkgraph.architecture.query.TraversalMode
 
+/** 工具实现：一次性返回项目上下文综合包，包含符号、关系、片段、变更符号、索引新鲜度和告警。 */
 class ExploreProjectContextTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
 ) : AgentTool {
@@ -93,6 +94,7 @@ class ExploreProjectContextTool(
     }
 }
 
+/** 工具实现：按自然语言问题查询项目图的小上下文子图。 */
 class QueryProjectGraphTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
 ) : AgentTool {
@@ -112,6 +114,7 @@ class QueryProjectGraphTool(
     }
 }
 
+/** 工具实现：查找两个项目符号之间的最短关系路径。 */
 class FindProjectPathTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
 ) : AgentTool {
@@ -128,6 +131,7 @@ class FindProjectPathTool(
     }
 }
 
+/** 工具实现：解释项目图节点的符号信息和出入关系。 */
 class ExplainProjectNodeTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
 ) : AgentTool {
@@ -140,6 +144,7 @@ class ExplainProjectNodeTool(
     }
 }
 
+/** 工具实现：按图关系查找指定符号或文件受影响的上下游节点。 */
 class AffectedProjectNodesTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
 ) : AgentTool {
@@ -152,6 +157,7 @@ class AffectedProjectNodesTool(
     }
 }
 
+/** 工具实现：返回当前项目索引的诊断摘要。 */
 class GetProjectIndexDigestTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
 ) : AgentTool {

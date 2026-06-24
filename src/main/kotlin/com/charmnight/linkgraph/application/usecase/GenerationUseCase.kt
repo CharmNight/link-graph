@@ -18,12 +18,27 @@ import com.charmnight.linkgraph.llm.runtime.AgentRunFailureReason
 import com.charmnight.linkgraph.llm.runtime.AgentRunResult
 import com.charmnight.linkgraph.llm.runtime.AgentRunState
 
+/**
+ * 生成用例结果 sealed 接口：统一封装实现计划与代码草稿生成相关的成功/失败结果类型，
+ * 便于上层做穷尽式分支处理。
+ */
 sealed interface GenerationUseCaseResult {
+    /** 实现计划已就绪，携带面向前端展示的展示对象。 */
     data class PlanReady(val presentation: GenerationPlanResult) : GenerationUseCaseResult
+    /** 代码草稿已就绪，携带面向前端展示的展示对象。 */
     data class CodeDraftsReady(val presentation: GeneratedCodeDraftsResult) : GenerationUseCaseResult
+    /** 代码草稿生成失败，携带面向前端的失败展示对象（含原因与状态）。 */
     data class CodeDraftFailed(val presentation: GenerationRequestFailureResult) : GenerationUseCaseResult
 }
 
+/**
+ * 生成用例：协调"实现计划"与"代码草稿"两类生成结果的应用层逻辑，
+ * 把 runtime 执行结果、请求状态与运行时产物组装为可呈现给前端的结果对象，
+ * 并处理 runtime 失败或空结果时的回退与友好提示。
+ *
+ * @param planSnapshotBuilder 由外部注入的快照构造函数：根据计划所需输入（图、差异、同步预览、Mermaid 问题、已确认变更、源上下文、用户目标）生成实现计划
+ * @param projectBasePathProvider 项目根路径提供函数：用于在回退计划中规范化路径
+ */
 class GenerationUseCase(
     private val planSnapshotBuilder: (
         planningGraph: com.charmnight.linkgraph.model.GraphDocument,
@@ -36,6 +51,14 @@ class GenerationUseCase(
     ) -> GenerationPlan,
     private val projectBasePathProvider: () -> String?,
 ) {
+    /**
+     * 解析实现计划 runtime 结果：优先采用 runtime 输出，缺失时回退到本地快照构造的计划。
+     * 同时根据回退状态调整反馈级别（成功或告警）与状态文案。
+     * @param payload 计划输入载荷（包含图、差异、预览项等）
+     * @param runtimeResult runtime 执行结果
+     * @param requestState 当前请求异步状态
+     * @param runtimeArtifacts runtime 产生的产物摘要
+     */
     fun resolvePlan(
         payload: PlanningInput,
         runtimeResult: AgentRunResult<GenerationPlan>,
@@ -55,6 +78,16 @@ class GenerationUseCase(
         )
     }
 
+    /**
+     * 解析代码草稿 runtime 结果：
+     * - runtime 输出为空时，根据 runtime 终态推导失败原因并返回失败结果；
+     * - 输出为空草稿列表时，给出空结果友好提示并返回失败结果；
+     * - 否则返回成功的草稿展示对象，并合并外部预先生成的草稿（如有）。
+     * @param runtimeResult runtime 执行结果
+     * @param requestState 当前请求异步状态
+     * @param runtimeArtifacts runtime 产生的产物摘要
+     * @param preparedDrafts 外部预先生成的草稿（如有则优先使用，绕过 runtime 输出的草稿）
+     */
     fun resolveCodeDrafts(
         runtimeResult: AgentRunResult<CodeGenerationResult>,
         requestState: AsyncRequestState,
@@ -105,6 +138,10 @@ class GenerationUseCase(
         )
     }
 
+    /**
+     * 回退计划：在 runtime 未返回实现计划时，本地基于输入载荷直接构造一份计划，
+     * 并加上"runtime 未返回结果"的告警提示，便于前端展示已发生回退。
+     */
     private fun fallbackPlan(payload: PlanningInput): GenerationPlan {
         val fallbackPlan = ProjectPathNormalizer.normalizePlan(
             planSnapshotBuilder(
@@ -125,6 +162,11 @@ class GenerationUseCase(
         )
     }
 
+    /**
+     * 根据 runtime 终态推导代码草稿生成失败的展示信息：
+     * 先看最后一步摘要是否对应本地校验失败；否则按失败原因归类给出相应提示。
+     * 同时尽量补充可读的明细信息（最后模型输出或失败原因）。
+     */
     private fun resolveCodegenRuntimeFailure(runtimeState: AgentRunState): RuntimeFailureResult {
         val lastStepSummary = runtimeState.stepRecords.lastOrNull()?.summary
         val message = when (lastStepSummary) {
@@ -153,11 +195,15 @@ class GenerationUseCase(
         return RuntimeFailureResult(message, detailMessage)
     }
 
+    /** runtime 失败解析结果：主消息与可选的明细信息（用于在 UI 展示主因 + 调试明细）。 */
     private data class RuntimeFailureResult(
         val message: String,
         val detailMessage: String?,
     )
 
+    /**
+     * 合并两段明细信息：去除空白与重复，非空时按换行拼接，全部为空则返回 null。
+     */
     private fun mergedDetailMessage(
         primary: String?,
         secondary: String?,

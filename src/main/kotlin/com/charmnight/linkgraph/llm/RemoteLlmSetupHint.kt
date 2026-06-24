@@ -3,8 +3,13 @@ package com.charmnight.linkgraph.llm
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 
 /**
- * 为“远程 LLM 未就绪”生成可直接展示给用户的中文提示。
+ * 为"远程 LLM 未就绪"生成可直接展示给用户的中文提示。
+ *
  * 重点是明确缺少哪项、去哪修，以及需要先在设置页完成验证。
+ * 把这种"可操作的错误提示"集中在本函数里，避免散落在多个调用点各自拼接。
+ *
+ * @param fallbackTarget 实际采用的回退目标，例如"本地规则"
+ * @return 可直接展示给用户的中文提示文本
  */
 internal fun LinkGraphSettingsState.remoteLlmSetupHint(fallbackTarget: String): String {
     val endpointPolicy = RemoteLlmEndpointPolicy()
@@ -14,6 +19,7 @@ internal fun LinkGraphSettingsState.remoteLlmSetupHint(fallbackTarget: String): 
         if (effectiveEndpoint().isBlank()) {
             add("请求地址")
         } else if (endpointPolicy.validationError(effectiveEndpoint()) != null) {
+            // 地址存在但格式不合法（例如非 https）
             add("请求地址必须使用 https://")
         }
         if (apiKey.isBlank()) {

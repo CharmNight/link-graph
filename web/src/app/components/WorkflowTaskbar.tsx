@@ -4,8 +4,8 @@ import { getWorkflowStageDefinition } from "../workflow/workflowStage";
 import { Button } from "./Button";
 
 /**
- * 顶栏只读阶段标签：当前阶段名 + 状态点。
- * 取代旧的五段状态条 —— 阶段不再做导航，只展示「现在在哪一步」。
+ * 顶栏只读阶段标签：阶段序号 + 阶段短名。
+ * 取代旧的五段状态条 —— 阶段不再做导航，完整导航交给左侧 WorkflowStageNav。
  */
 const STAGE_LABEL: Record<WorkflowStage, string> = {
   understand: "理解",
@@ -15,6 +15,17 @@ const STAGE_LABEL: Record<WorkflowStage, string> = {
   code: "代码",
 };
 
+/** 阶段序号（1-based），用于 badge 中"N/5"格式。 */
+const STAGE_INDEX: Record<WorkflowStage, number> = {
+  understand: 1,
+  evidence: 2,
+  qa: 3,
+  draft: 4,
+  code: 5,
+};
+
+const TOTAL_STAGES = 5;
+
 interface WorkflowTaskbarProps {
   title: string;
   path?: string | null;
@@ -23,6 +34,8 @@ interface WorkflowTaskbarProps {
   draftCandidateCount: number;
   operationFeedback?: OperationFeedback | null;
   primaryActionLabel: string;
+  /** 主操作副标题（展示具体动作与阶段位置），补充主标题"下一步"以外的语义。 */
+  primaryActionSubtitle?: string;
   primaryActionDisabled?: boolean;
   onImportMermaid: () => void;
   onExportMermaid: () => void;
@@ -40,6 +53,7 @@ export function WorkflowTaskbar({
   draftCandidateCount,
   operationFeedback = null,
   primaryActionLabel,
+  primaryActionSubtitle,
   primaryActionDisabled = false,
   onImportMermaid,
   onExportMermaid,
@@ -67,14 +81,17 @@ export function WorkflowTaskbar({
       </div>
 
       <div className="workflow-taskbar-actions" aria-label="全局动作">
-        {/* 当前阶段轻量 badge：取代旧五段状态条，只展示「现在在哪一步」 */}
+        {/* 阶段 badge 精简为进度指示（N/总 · 阶段名），完整导航交给左侧 WorkflowStageNav */}
         <span
           className="stage-badge"
           role="status"
           title={stageDefinition.purpose}
         >
-          当前阶段 · {STAGE_LABEL[activeStage]}
+          {STAGE_INDEX[activeStage]}/{TOTAL_STAGES} · {STAGE_LABEL[activeStage]}
         </span>
+        {primaryActionSubtitle ? (
+          <span className="primary-action-subtitle">{primaryActionSubtitle}</span>
+        ) : null}
         <Button
           variant="primary"
           disabled={primaryActionDisabled}

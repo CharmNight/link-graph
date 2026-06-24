@@ -96,6 +96,7 @@ class InvestigationPipeline(
         }.distinctBy(EvidenceCandidate::candidateId)
     }
 
+    /** 仅当目标集合中包含 JVM 相关目标时才提前构建架构图索引，避免无谓开销。 */
     private fun prepareJvmEvidenceIndex(goals: List<EvidenceGoal>): ArchitectureGraphIndex? {
         if (goals.none { goal -> goal.kind in jvmEvidenceGoalKinds }) {
             return null
@@ -104,6 +105,7 @@ class InvestigationPipeline(
     }
 
     companion object {
+        /** 需要 JVM 架构图索引支撑的目标类型集合。 */
         private val jvmEvidenceGoalKinds = setOf(
             EvidenceGoalKind.ENUM_CONSTANT,
             EvidenceGoalKind.METHOD_SYMBOL,

@@ -6,7 +6,11 @@ import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.normalizeStableComponent
 import com.charmnight.linkgraph.model.sourceLocation
 
+/**
+ * 步骤投影服务：把事实图按指定粒度（业务/方法调用/代码语义）投影为工作台步骤列表。
+ */
 class StepProjectionService {
+    /** 根据粒度从事实图构建工作台步骤列表。 */
     fun buildSteps(
         factGraph: GraphDocument,
         draftEntries: List<DraftWorkbenchEntry>,
@@ -35,6 +39,7 @@ class StepProjectionService {
         return StepProjectionResult(steps = steps)
     }
 
+    /** 以方法调用为粒度构建步骤：纳入调用动作节点，以及被调用或有调用动作同行的普通方法节点。 */
     private fun buildMethodCallSteps(factGraph: GraphDocument): List<WorkbenchStep> {
         val invocationNodes = factGraph.nodes.filter { node ->
             node.type == NodeType.FLOW_ACTION && node.metadata["flow.kind"] == "INVOCATION"
@@ -67,6 +72,7 @@ class StepProjectionService {
             .toList()
     }
 
+    /** 以代码语义为粒度构建步骤：把流程作用域/动作/终态节点映射为条件/动作/返回等语义步骤。 */
     private fun buildCodeSemanticSteps(factGraph: GraphDocument): List<WorkbenchStep> {
         return factGraph.nodes
             .asSequence()
@@ -91,14 +97,17 @@ class StepProjectionService {
             .toList()
     }
 
+    /** 判断节点是否可以作为业务步骤候选（流程动作或终态节点）。 */
     private fun isBusinessStepNode(node: GraphNode): Boolean {
         return node.type == NodeType.FLOW_ACTION || node.type == NodeType.TERMINAL
     }
 
+    /** 取节点源码起始行号，缺失时返回 Int.MAX_VALUE 以确保排序时排在末尾。 */
     private fun sourceStartLine(node: GraphNode): Int {
         return node.sourceLocation().startLine ?: Int.MAX_VALUE
     }
 
+    /** 把节点类型映射到对应的步骤种类，终态返回 RETURN，其余视为业务动作。 */
     private fun stepKindFor(node: GraphNode): StepKind {
         return when (node.type) {
             NodeType.TERMINAL -> StepKind.RETURN
@@ -106,10 +115,12 @@ class StepProjectionService {
         }
     }
 
+    /** 当节点未携带业务步骤 ID 元数据时，基于标题生成稳定的兜底步骤 ID。 */
     private fun fallbackStepId(node: GraphNode): String {
         return "step-${normalizeStableComponent(node.title)}"
     }
 
+    /** 当节点未携带业务步骤标题元数据时，从节点标题中提取方法名并尝试翻译为中文业务动作描述。 */
     private fun fallbackBusinessTitle(node: GraphNode): String {
         if (node.type == NodeType.TERMINAL) {
             return "返回结果"
@@ -136,6 +147,7 @@ class StepProjectionService {
         }
     }
 
+    /** 拆分驼峰与分隔符，把方法名归一化为词列表，便于后续翻译与组装业务标题。 */
     private fun splitCamelCase(text: String): List<String> {
         val normalized = text
             .replace(Regex("[^A-Za-z0-9]"), " ")
@@ -144,6 +156,7 @@ class StepProjectionService {
         return normalized.split(Regex("\\s+")).filter(String::isNotBlank)
     }
 
+    /** 把常见英文动词/名词翻译为中文，未命中词典时按首字母大写形式原样返回。 */
     private fun translateWord(word: String): String {
         return when (word.lowercase()) {
             "upload" -> "上传"

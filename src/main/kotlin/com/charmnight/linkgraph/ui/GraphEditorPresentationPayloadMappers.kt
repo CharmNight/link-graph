@@ -10,6 +10,7 @@ import com.charmnight.linkgraph.presentation.GraphPresentationLane
 import com.charmnight.linkgraph.presentation.GraphPresentationTarget
 import com.charmnight.linkgraph.presentation.GraphViewPresentation
 
+/** 把图谱视图展示模型转换为前端可消费的键值映射，包含目标、泳道、隐藏桶与控件等结构。 */
 internal fun GraphViewPresentation.toMap(): Map<String, Any?> =
     linkedMapOf(
         "target" to target.toMap(),
@@ -18,6 +19,7 @@ internal fun GraphViewPresentation.toMap(): Map<String, Any?> =
         "controls" to controls.toMap(),
     )
 
+/** 把当前展示目标（锚点节点信息）转换为前端使用的字段映射。 */
 private fun GraphPresentationTarget.toMap(): Map<String, Any?> =
     linkedMapOf(
         "nodeId" to nodeId,
@@ -26,6 +28,7 @@ private fun GraphPresentationTarget.toMap(): Map<String, Any?> =
         "location" to location,
     )
 
+/** 把单条展示泳道元数据（坐标轴、顺序、角色）转换为前端字段映射。 */
 private fun GraphPresentationLane.toMap(): Map<String, Any?> =
     linkedMapOf(
         "id" to id,
@@ -35,6 +38,7 @@ private fun GraphPresentationLane.toMap(): Map<String, Any?> =
         "role" to role,
     )
 
+/** 把隐藏节点/边的聚合桶转换为前端可展示的统计映射。 */
 private fun GraphHiddenBucket.toMap(): Map<String, Any?> =
     linkedMapOf(
         "id" to id,
@@ -44,6 +48,7 @@ private fun GraphHiddenBucket.toMap(): Map<String, Any?> =
         "edgeIds" to edgeIds,
     )
 
+/** 把视图交互控件配置（作用域、是否可搜索/展开）转换为前端字段映射。 */
 private fun GraphPresentationControls.toMap(): Map<String, Any?> =
     linkedMapOf(
         "primaryScope" to primaryScope,
@@ -52,6 +57,7 @@ private fun GraphPresentationControls.toMap(): Map<String, Any?> =
         "expandable" to expandable,
     )
 
+/** 把索引图谱摘要转换为前端负载映射，涵盖锚点、统计计数、层级分布与新鲜度等全部信息。 */
 internal fun IndexedGraphSummary.toMap(): Map<String, Any?> =
     linkedMapOf(
         "view" to view,
@@ -92,6 +98,7 @@ internal fun IndexedGraphSummary.toMap(): Map<String, Any?> =
         "visibilityReasons" to visibilityReasons.map { reason -> reason.toMap() },
     )
 
+/** 把某类节点的可见性原因（含统计）转换为前端字段映射。 */
 private fun IndexedGraphVisibilityReason.toMap(): Map<String, Any?> =
     linkedMapOf(
         "code" to code,
@@ -100,6 +107,7 @@ private fun IndexedGraphVisibilityReason.toMap(): Map<String, Any?> =
         "edgeCount" to edgeCount,
     )
 
+/** 把索引新鲜度状态（脏原因、待处理文件、时间戳）转换为前端字段映射。 */
 private fun IndexedGraphFreshness.toMap(): Map<String, Any?> =
     linkedMapOf(
         "state" to state,
@@ -110,6 +118,7 @@ private fun IndexedGraphFreshness.toMap(): Map<String, Any?> =
         "staleSinceEpochMillis" to staleSinceEpochMillis,
     )
 
+/** 把按来源分层的节点统计转换为前端字段映射。 */
 private fun IndexedGraphLayerCounts.toMap(): Map<String, Int> =
     linkedMapOf(
         "projectSource" to projectSource,

@@ -27,20 +27,38 @@ import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 
+/**
+ * 调用展开工作流：把图谱中代表一次方法调用的节点展开为该方法自身的链路，
+ * 并把展开得到的子图合并进当前工作区图谱；也负责撤销之前已合入的展开。
+ * 内部串联校验、目标解析、语义分析、合并提交与反馈发送。
+ */
 internal class InvocationExpansionWorkflow(
+    /** 当前 IntelliJ 项目。 */
     private val project: Project,
+    /** 编辑器快照提供者，用于读取当前工作区图谱及选中状态。 */
     private val snapshotProvider: EditorSnapshotProvider,
+    /** 工作区图谱提交器，负责把合并后的图谱写回并触发同步。 */
     private val workspaceGraphCommitter: WorkspaceGraphCommitter,
+    /** 应用事件出口，用于向 UI 推送反馈。 */
     private val eventSink: GraphEditorApplicationEventSink,
+    /** 语义分析器延迟提供者，避免不必要的初始化。 */
     private val semanticAnalyzerProvider: () -> SemanticAnalyzer,
+    /** 分析结果工厂延迟提供者，把分析结果转为可渲染的图谱。 */
     private val analysisOutcomeFactoryProvider: () -> AnalysisOutcomeFactory,
+    /** 用于把 PSI 方法包装为统一代码主题句柄的工厂。 */
     private val codeSubjectHandleFactory: CodeSubjectHandleFactory,
+    /** 目标解析自定义覆盖点，测试或扩展时可注入替代实现。 */
     private val targetResolverOverrideProvider: () -> ((Project, String) -> InvocationExpansionTarget)?,
+    /** 主题解析自定义覆盖点，测试或扩展时可注入替代实现。 */
     private val subjectResolverOverrideProvider: () -> ((String) -> CodeSubjectHandle?)?,
+    /** 日志记录器。 */
     private val logger: Logger,
+    /** 封装展开/合并/移除核心规则的业务用例。 */
     private val useCase: InvocationExpansionUseCase = InvocationExpansionUseCase(),
+    /** 把签名解析为可展开目标的解析器。 */
     private val targetResolver: InvocationExpansionTargetResolver = InvocationExpansionTargetResolver(),
 ) {
+    /** 接收一个调用节点 ID，校验后展开其对应方法并把链路合入工作区图谱。 */
     fun requestExpandInvocation(nodeId: String) {
         val snapshot = snapshotProvider.snapshot()
         val node = findInvocationNode(snapshot, nodeId)
@@ -125,6 +143,7 @@ internal class InvocationExpansionWorkflow(
         }
     }
 
+    /** 根据展开批次 ID，撤销之前已合入工作区图谱的展开内容。 */
     fun requestRemoveInvocationExpansion(expansionId: String) {
         val trimmedExpansionId = expansionId.trim()
         if (trimmedExpansionId.isEmpty()) {
@@ -153,6 +172,7 @@ internal class InvocationExpansionWorkflow(
         }
     }
 
+    /** 解析方法签名所属的展开目标（项目源码 / JDK / 三方库 / 跨服务等），优先使用自定义覆盖。 */
     private fun resolveTarget(signature: String): InvocationExpansionTarget {
         targetResolverOverrideProvider()?.invoke(project, signature)?.let { target -> return target }
         val index = LoggedFailures.orNull(logger, "InvocationExpansion architectureIndexRuntime.index") {
@@ -161,6 +181,7 @@ internal class InvocationExpansionWorkflow(
         return targetResolver.resolve(signature, index)
     }
 
+    /** 把签名解析为可分析的代码主题句柄，优先使用自定义覆盖，否则在 PSI 中定位方法并包装。 */
     private fun resolveSubject(signature: String): CodeSubjectHandle? {
         subjectResolverOverrideProvider()?.invoke(signature)?.let { handle -> return handle }
         return ReadAction.compute<CodeSubjectHandle?, RuntimeException> {
@@ -170,6 +191,7 @@ internal class InvocationExpansionWorkflow(
         }
     }
 
+    /** 在编辑器快照的多张视图与工作区图谱中查找代表该调用的可展开节点。 */
     private fun findInvocationNode(
         snapshot: com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot,
         nodeId: String,
@@ -201,6 +223,7 @@ internal class InvocationExpansionWorkflow(
             }
     }
 
+    /** 在展开得到的子图中找出与目标签名匹配的入口节点 ID，作为合并时的对接点。 */
     private fun resolveTargetEntryNodeId(
         analysisResult: SemanticAnalysisResult,
         targetGraph: GraphDocument,
@@ -221,6 +244,7 @@ internal class InvocationExpansionWorkflow(
         return methodUnitId ?: targetGraph.nodes.firstOrNull()?.id
     }
 
+    /** 针对不可展开的目标（JDK、三方库、多实现、跨服务等）生成对应的用户提示文案。 */
     private fun nonExpandableMessage(
         target: InvocationExpansionTarget,
         signature: String,
@@ -237,6 +261,7 @@ internal class InvocationExpansionWorkflow(
         }
     }
 
+    /** 把一条反馈事件发送到应用事件出口。 */
     private fun emitFeedback(
         level: ApplicationFeedbackLevel,
         message: String,

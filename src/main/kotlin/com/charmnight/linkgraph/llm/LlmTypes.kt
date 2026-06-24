@@ -90,31 +90,60 @@ data class GraphPresentationContext(
     val hiddenCrossMethodNodeCount: Int = 0,
 )
 
+/**
+ * 表示当前锚点允许的讲解模式。
+ * 模型在生成回答时必须从允许的模式中选择，避免在证据不足时输出过于乐观的方法调用链等结论。
+ */
 enum class GraphExplanationMode {
+    /** 方法调用链模式：解释方法之间的调用关系。 */
     METHOD_CHAIN,
+    /** 包概览模式：解释包内成员与整体结构。 */
     PACKAGE_OVERVIEW,
+    /** 组件概览模式：解释组件/服务/分层结构。 */
     COMPONENT_OVERVIEW,
+    /** 结构概览模式：在没有方法调用证据时使用，介绍节点结构关系。 */
     STRUCTURE_OVERVIEW,
+    /** 下钻建议模式：强调可继续展开的下一步方向。 */
     DRILLDOWN_SUGGESTION,
+    /** 关系概览模式：解释节点之间的关系类型汇总。 */
     RELATION_SUMMARY,
+    /** 资源绑定模式：解释资源、SQL、配置或 HTTP 端点节点的绑定关系。 */
     RESOURCE_BINDING,
 }
 
+/**
+ * 当前问答或讲解上下文允许的证据边界。
+ * 由 GraphEvidenceProfileSupport 系列函数基于图与源码片段推导，用于约束模型输出与本地回退逻辑。
+ */
 data class GraphEvidenceProfile(
+    /** 当前锚点节点 ID。 */
     val anchorNodeId: String? = null,
+    /** 当前锚点节点类型。 */
     val anchorNodeType: NodeType? = null,
+    /** 当前锚点的架构类型标签。 */
     val anchorArchitectureKind: String? = null,
+    /** 当前可观测到的关系种类列表。 */
     val availableRelationKinds: List<String> = emptyList(),
+    /** 锚点的入边数量。 */
     val incomingRelationCount: Int = 0,
+    /** 锚点的出边数量。 */
     val outgoingRelationCount: Int = 0,
+    /** 是否存在方法调用证据。 */
     val hasMethodCallEvidence: Boolean = false,
+    /** 是否存在源码片段证据。 */
     val hasSourceEvidence: Boolean = false,
+    /** 是否存在包成员证据。 */
     val hasPackageMemberEvidence: Boolean = false,
+    /** 当前允许的讲解模式集合。 */
     val allowedExplanationModes: List<GraphExplanationMode> = emptyList(),
+    /** 当前禁止做出的声明列表，会注入提示词约束模型输出。 */
     val forbiddenClaims: List<String> = emptyList(),
+    /** 当前可观测到的证据缺口列表。 */
     val evidenceGaps: List<String> = emptyList(),
+    /** 推荐继续下钻的目标节点 ID 列表。 */
     val recommendedDrilldowns: List<String> = emptyList(),
 ) {
+    /** 便捷属性：当前是否允许输出方法调用链讲解。 */
     val methodChainAllowed: Boolean
         get() = GraphExplanationMode.METHOD_CHAIN in allowedExplanationModes
 }

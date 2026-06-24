@@ -14,11 +14,19 @@ import com.charmnight.linkgraph.semantic.subject.ResourceSubjectHandle
 import com.charmnight.linkgraph.semantic.subject.ResourceSubjectKind
 import com.charmnight.linkgraph.semantic.subject.canonicalTypeText
 
+/**
+ * 主题节点追加工作流：负责把当前光标所在方法或当前资源主题转换并追加为图谱节点，
+ * 并把变更提交到工作台图谱、发送反馈或事件。
+ */
 internal class SubjectNodeAppendWorkflow(
     private val dependencies: SubjectGraphWorkflowDependencies,
     private val subjectResolutionWorkflow: SubjectResolutionWorkflow,
     private val useCase: SubjectGraphUseCase,
 ) {
+    /**
+     * 追加当前光标所在方法为图谱节点。当未显式传入 handle 时，会基于光标位置自动解析；
+     * 解析失败或抛出异常时通过反馈通道告知调用方，并返回 false 表示未追加。
+     */
     fun addCurrentMethodNode(handle: CodeSubjectHandle? = null): Boolean {
         debugLazy(dependencies.logger.isDebugEnabled, dependencies.logger::debug) { "开始追加当前方法节点" }
         val currentMethodNode = try {
@@ -59,6 +67,10 @@ internal class SubjectNodeAppendWorkflow(
         return true
     }
 
+    /**
+     * 追加指定资源主题为图谱节点：依据 handle 生成节点后交由用例应用、提交到工作台图谱，
+     * 并发出资源节点已追加的事件，最终返回 true 表示成功追加。
+     */
     fun addCurrentResourceNode(handle: ResourceSubjectHandle): Boolean {
         val node = resourceNodeForHandle(handle)
         debugLazy(dependencies.logger.isDebugEnabled, dependencies.logger::debug) {
@@ -81,6 +93,7 @@ internal class SubjectNodeAppendWorkflow(
         return true
     }
 
+    /** 解析当前光标对应的代码主题并构建方法节点输入，整个过程在读线程上异步执行；光标不在方法内时返回 null。 */
     private fun computeCurrentMethodNode(handle: CodeSubjectHandle? = null): CurrentMethodNode? {
         val codeHandle = handle ?: subjectResolutionWorkflow.locateCurrentCodeSubject() ?: return null
         return dependencies.asyncRequestLifecycle.computeOnBackgroundReadThread {
@@ -127,6 +140,7 @@ internal class SubjectNodeAppendWorkflow(
         }
     }
 
+    /** 把资源主题 handle 转换为图谱节点：依据资源种类选择节点类型、组装元数据、定位字符串与稳定节点 ID。 */
     private fun resourceNodeForHandle(handle: ResourceSubjectHandle): GraphNode {
         val nodeType = when (handle.kind) {
             ResourceSubjectKind.CONFIG_ITEM -> NodeType.CONFIG_ITEM

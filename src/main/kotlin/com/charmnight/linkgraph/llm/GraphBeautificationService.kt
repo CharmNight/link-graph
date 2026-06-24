@@ -187,6 +187,7 @@ class PlaceholderGraphBeautificationService(
                 node.type == NodeType.METHOD &&
                 node.signature != anchorNode?.signature
         }
+        /** 根据当前展示上下文推导出的证据边界。 */
         val evidenceProfile = context.effectiveEvidenceProfile()
         /** 当前投影出的稳定步骤。 */
         val projectedSteps = stepProjectionService.buildSteps(
@@ -241,6 +242,7 @@ class PlaceholderGraphBeautificationService(
         )
     }
 
+    /** 锚点不允许走方法调用链讲解时，回退为结构概览讲解。 */
     private fun structureOverviewResult(
         context: GraphBeautificationContext,
         settings: LinkGraphSettingsState,
@@ -291,12 +293,14 @@ class PlaceholderGraphBeautificationService(
         )
     }
 
+    /** 汇总指定节点的入边和出边数量，作为结构概览说明的一部分。 */
     private fun relationSummaryFor(node: GraphNode, graph: com.charmnight.linkgraph.model.GraphDocument): String {
         val incoming = graph.edges.count { edge -> edge.toNodeId == node.id }
         val outgoing = graph.edges.count { edge -> edge.fromNodeId == node.id }
         return "入边 $incoming 条，出边 $outgoing 条"
     }
 
+    /** 拼装单个节点的结构概览说明文本。 */
     private fun buildStructureDescription(
         node: GraphNode,
         evidenceProfile: GraphEvidenceProfile,
@@ -312,6 +316,7 @@ class PlaceholderGraphBeautificationService(
         return "结构概览：${node.title} 是 ${node.type.name} 节点。$memberText$relationSummary。$relationText"
     }
 
+    /** 生成结构概览场景下可继续追问的候选问题。 */
     private fun structureFollowUpQuestions(evidenceProfile: GraphEvidenceProfile): List<String> =
         buildList {
             add("这个结构节点的核心职责由哪些源码证据支撑？")

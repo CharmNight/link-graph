@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
-import com.charmnight.linkgraph.application.model.GraphEditRequest
+import com.charmnight.linkgraph.application.model.GraphEditRequestParseResult
 import com.charmnight.linkgraph.llm.GraphBeautificationResult as GraphBeautificationPayload
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
@@ -9,6 +9,7 @@ import com.charmnight.linkgraph.workbench.RiskResolutionStatus
 import com.charmnight.linkgraph.workbench.AssistantComposerTarget
 import com.charmnight.linkgraph.workbench.AssistantActionId
 import com.charmnight.linkgraph.workbench.AssistantIntent
+import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.StepGranularity
 
 /**
@@ -64,8 +65,8 @@ sealed interface GraphEditorMessage {
      * 请求把当前 scene 的结构编辑请求应用到 canonical workspace graph。
      */
     data class ApplyGraphEditRequest(
-        /** 保存待应用的编辑请求。 */
-        val request: GraphEditRequest,
+        /** 解析结果：成功时 request 非空，失败时仅 issues；workflow 会根据 issues 是否为空决定走 apply 还是 reject。 */
+        val parseResult: GraphEditRequestParseResult,
     ) : GraphEditorMessage
 
     /**
@@ -145,6 +146,8 @@ sealed interface GraphEditorMessage {
         val selectedDiffItemIds: List<String> = emptyList(),
         /** 保存统一输入框提交目标。 */
         val target: AssistantComposerTarget = AssistantComposerTarget.NewTask,
+        /** 保存普通问答的显式模式选择。 */
+        val mode: QaMode = QaMode.AUTO,
         /** 保存讲解粒度。 */
         val explanationGranularity: StepGranularity = StepGranularity.BUSINESS,
     ) : GraphEditorMessage

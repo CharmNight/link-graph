@@ -304,6 +304,65 @@ class WorkspaceGraphUseCaseTest {
         assertEquals("node-b", applied.graph.edges.single().toNodeId)
     }
 
+    /**
+     * 两个线程同时用同一 baseWorkspaceRevision 提交编辑：先到的成功，后到的必须被拒绝。
+     *
+     * 旧实现 check 与 apply 之间没有同步块，两个线程都能通过 baseRevision 校验并各自 apply，
+     * 造成"同一基线被消费两次"。新实现用 workspaceEditLock + lastAcceptedBaseRevision
+     * 保证同一 baseRevision 只能被一个请求消费。
+     */
+    @Test
+    fun concurrentRequestsWithSameBaseRevisionAreSerialized() {
+        val snapshot = WorkflowEditorSnapshot(
+            workspaceRevision = 4,
+            workspaceGraph = GraphDocument(
+                nodes = listOf(GraphNode(id = "node-a", type = NodeType.METHOD, title = "A")),
+            ),
+        )
+        val useCase = useCase()
+        val request = GraphEditRequest(
+            sceneId = GraphSceneId.WORKSPACE_FACT,
+            baseWorkspaceRevision = 4,
+            operations = listOf(
+                GraphEditOperation.UpsertNode(
+                    GraphNode(id = "node-new", type = NodeType.METHOD, title = "new"),
+                ),
+            ),
+            source = GraphEditRequestSource.FRONTEND,
+        )
+
+        val outcomes = java.util.concurrent.ConcurrentLinkedQueue<WorkspaceGraphUseCaseResult>()
+        val latch = java.util.concurrent.CountDownLatch(1)
+        val executor = java.util.concurrent.Executors.newFixedThreadPool(2)
+        try {
+            val futures = listOf(
+                executor.submit<Long> {
+                    latch.await()
+                    outcomes.add(useCase.applyGraphEditRequest(snapshot, request))
+                    0L
+                },
+                executor.submit<Long> {
+                    latch.await()
+                    outcomes.add(useCase.applyGraphEditRequest(snapshot, request))
+                    0L
+                },
+            )
+            latch.countDown()
+            futures.forEach { it.get(10, java.util.concurrent.TimeUnit.SECONDS) }
+        } finally {
+            executor.shutdownNow()
+        }
+
+        assertEquals(2, outcomes.size, "两个并发请求都应得到结果")
+        val appliedCount = outcomes.count { it is WorkspaceGraphUseCaseResult.EditApplied }
+        val rejectedCount = outcomes.count {
+            it is WorkspaceGraphUseCaseResult.EditRejected &&
+                it.rejection.issues.any { issue -> issue.code == GraphEditIssueCode.STALE_BASE_REVISION }
+        }
+        assertEquals(1, appliedCount, "只有一个请求应成功应用：实际 $appliedCount")
+        assertEquals(1, rejectedCount, "另一个必须返回 STALE_BASE_REVISION：实际 $rejectedCount")
+    }
+
     private fun useCase(): WorkspaceGraphUseCase {
         return WorkspaceGraphUseCase(
             mermaidImporter = MermaidImporter(),

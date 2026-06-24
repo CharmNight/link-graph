@@ -135,7 +135,13 @@ class EditGraphToolTest : BasePlatformTestCase() {
         )
 
     private fun executor(snapshot: WorkflowEditorSnapshot): GraphEditRequestExecutor =
-        GraphEditRequestExecutor { request ->
+        GraphEditRequestExecutor { parseResult ->
+            val request = parseResult.request ?: return@GraphEditRequestExecutor GraphEditResult.Rejected(
+                com.charmnight.linkgraph.application.model.GraphEditRejected(
+                    issues = parseResult.issues,
+                    currentWorkspaceRevision = snapshot.workspaceRevision,
+                ),
+            )
             when (val result = useCase().applyGraphEditRequest(snapshot, request)) {
                 is WorkspaceGraphUseCaseResult.EditApplied -> GraphEditResult.Applied(
                     graph = result.graph,

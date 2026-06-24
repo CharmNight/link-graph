@@ -28,15 +28,25 @@ data class MethodLikeUnit(
  * 表示流程作用域单元，例如条件或循环块。
  */
 enum class FlowScopeCategory {
+    /** 分支作用域，例如 if/else 条件块。 */
     BRANCH,
+    /** 前置判断循环，例如 while/for。 */
     LOOP_PRE_TEST,
+    /** 后置判断循环，例如 do/while。 */
     LOOP_POST_TEST,
+    /** 多路选择作用域，例如 switch。 */
     SWITCH,
+    /** 异常处理作用域，例如 try/catch/finally。 */
     TRY,
+    /** Lambda 表达式形成的独立作用域。 */
     LAMBDA_SCOPE,
+    /** 不属于上述分类的通用作用域。 */
     GENERIC_SCOPE,
 }
 
+/**
+ * 表示流程图中的某个作用域块节点，用于承载控制流结构信息。
+ */
 data class FlowScopeUnit(
     /** 保存语义单元标识。 */
     override val id: String,

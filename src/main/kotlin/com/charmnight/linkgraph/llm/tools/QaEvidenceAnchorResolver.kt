@@ -5,15 +5,36 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.sourceLocation
 
+/**
+ * 表示一次证据锚点解析的结果。
+ * 既包含原始请求参数，也包含解析命中节点、解析后真实节点 ID 与解析过程中收集的映射轨迹。
+ */
 data class QaEvidenceAnchorResolution(
+    /** 调用方传入的原始节点 ID。 */
     val requestedNodeId: String? = null,
+    /** 调用方传入的原始符号签名。 */
     val requestedSymbolSignature: String? = null,
+    /** 解析到的图节点；为空表示未命中可读节点。 */
     val node: GraphNode? = null,
+    /** 解析后的真实节点 ID，缺失时回退到 node.id。 */
     val resolvedNodeId: String? = node?.id,
+    /** 解析过程中按顺序收集的映射轨迹，便于排查为什么命中到当前节点。 */
     val mappingTrace: List<String> = emptyList(),
 )
 
+/**
+ * 问答场景下证据锚点解析器。
+ * 在节点 ID 或符号签名之外，还会通过投影索引、信任导航节点和多种图视图回退查找真实可读节点，
+ * 同时记录完整映射轨迹，供 UI 展示和日志排查使用。
+ */
 class QaEvidenceAnchorResolver {
+    /**
+     * 解析证据锚点。
+     *
+     * @param snapshot 当前工具可访问的图快照。
+     * @param nodeId 优先按节点 ID 查找。
+     * @param symbolSignature 缺失节点 ID 时按签名查找。
+     */
     fun resolve(
         snapshot: ToolGraphSnapshot,
         nodeId: String? = null,
@@ -105,6 +126,7 @@ class QaEvidenceAnchorResolver {
         )
     }
 
+    /** 把命中节点和当前轨迹包装成完整的解析结果。 */
     private fun resolution(
         requestedNodeId: String?,
         requestedSymbolSignature: String?,
@@ -118,6 +140,7 @@ class QaEvidenceAnchorResolver {
         mappingTrace = trace.distinct(),
     )
 
+    /** 根据当前场景 ID 选择对应的可见图、完整图与投影索引。 */
     private fun currentView(snapshot: ToolGraphSnapshot): CurrentView {
         return when (snapshot.currentSceneId) {
             ToolGraphSceneId.WORKSPACE_FLOWCHART -> CurrentView(
@@ -158,6 +181,7 @@ class QaEvidenceAnchorResolver {
         }
     }
 
+    /** 按节点 ID 顺序在多张图中查找首个可读节点，命中即返回。 */
     private fun List<String>.firstReadableFrom(
         documents: List<Pair<String, GraphDocument>>,
         readable: (GraphNode?, String) -> GraphNode?,
@@ -170,6 +194,7 @@ class QaEvidenceAnchorResolver {
         return null
     }
 
+    /** 按节点 ID 顺序在信任导航节点集合中查找首个可读节点。 */
     private fun List<String>.firstReadableTrustedNode(
         snapshot: ToolGraphSnapshot,
         readable: (GraphNode?, String) -> GraphNode?,
@@ -180,6 +205,7 @@ class QaEvidenceAnchorResolver {
         return null
     }
 
+    /** 按签名在多张图与信任导航节点中查找首个可读节点，并对候选按节点类型排序后取最优解。 */
     private fun findBySignature(
         snapshot: ToolGraphSnapshot,
         currentView: CurrentView,
@@ -214,10 +240,13 @@ class QaEvidenceAnchorResolver {
             .firstNotNullOfOrNull { candidate -> readable(candidate.node, candidate.stage) }
     }
 
+    /** 在图中查找指定 ID 的首个节点。 */
     private fun GraphDocument.findNode(nodeId: String): GraphNode? = nodes.firstOrNull { node -> node.id == nodeId }
 
+    /** 判断节点是否具备源码元数据，可作为可读节点返回。 */
     private fun hasSourceMetadata(node: GraphNode): Boolean = !node.sourceLocation().filePath.isNullOrBlank()
 
+    /** 给签名匹配候选节点打分，方法类节点优先于普通节点，方法调用节点优先级最低。 */
     private fun signatureAnchorRank(node: GraphNode): Int {
         return when {
             node.type == NodeType.METHOD -> 0
@@ -226,12 +255,14 @@ class QaEvidenceAnchorResolver {
         }
     }
 
+    /** 当前场景下可见图、完整图与投影索引的组合视图。 */
     private data class CurrentView(
         val visibleGraph: GraphDocument,
         val fullGraph: GraphDocument,
         val projectionIndex: ToolGraphProjectionIndex,
     )
 
+    /** 单个签名匹配候选，附带来源阶段与文档索引，用于稳定排序。 */
     private data class SignatureAnchorCandidate(
         val stage: String,
         val documentIndex: Int,

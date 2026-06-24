@@ -13,6 +13,10 @@ class AgentRunCoordinator(
     /** 统一收口 runtime 产物生命周期。 */
     private val artifactStorePruner: ArtifactStorePruner = ArtifactStorePruner,
 ) {
+    /**
+     * 受控运行 capability，把输入逐步推进到完成、失败或停止。
+     * 运行期间持续校验停止策略与 deadline，结束前会汇总 artifact 摘要并触发 pruner 清理。
+     */
     fun <I, O> run(
         capability: AgentCapability<I, O>,
         input: I,
@@ -116,6 +120,7 @@ class AgentRunCoordinator(
         }
     }
 
+    /** 汇总 artifact 摘要、清理过期产物并构造 capability 运行结果。 */
     private fun <O> completeRun(
         runtimeContext: AgentRuntimeContext,
         finalState: AgentRunState,
@@ -133,6 +138,7 @@ class AgentRunCoordinator(
         )
     }
 
+    /** 把 CREATED 状态归一化为 RUNNING，确保 runtime 主循环始终在运行态推进。 */
     private fun normalizeRunningState(state: AgentRunState): AgentRunState {
         return if (state.phase == AgentRunPhase.CREATED) {
             state.copy(phase = AgentRunPhase.RUNNING)
@@ -141,6 +147,7 @@ class AgentRunCoordinator(
         }
     }
 
+    /** 把状态归一化为 SUCCEEDED，便于 finalize 阶段统一处理成功路径。 */
     private fun normalizeCompletedState(state: AgentRunState): AgentRunState {
         return if (state.phase == AgentRunPhase.SUCCEEDED) {
             state
@@ -149,6 +156,7 @@ class AgentRunCoordinator(
         }
     }
 
+    /** 把预算中的运行时间上限换算成绝对 deadline 时间戳，注入到 runtime 上下文中。 */
     private fun AgentRuntimeContext.withDeadline(budget: RunBudget): AgentRuntimeContext {
         return copy(
             deadlineEpochMillis = budget.startedAtEpochMillis + budget.maxRuntimeSeconds.toLong() * 1_000L,

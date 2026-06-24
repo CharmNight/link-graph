@@ -5,11 +5,12 @@ package com.charmnight.linkgraph.llm.context
  * 当前先按字符数做最小裁剪，后续再按 token 估算细化。
  */
 data class ContextBudgetController(
-    /** 最大字符数。 */
+    /** 单次拼装 prompt 时允许保留的最大字符数。 */
     val maxCharacters: Int = 12_000,
-    /** 最大估算 token 数。 */
+    /** 单次拼装 prompt 时允许保留的最大估算 token 数。 */
     val maxTokens: Int = 3_000,
 ) {
+    /** 在字符数与估算 token 数双重约束下裁剪文本，返回尽可能保留前缀的结果。 */
     fun trim(text: String): String {
         val charTrimmed = text.take(maxCharacters)
         if (estimateTokens(charTrimmed) <= maxTokens) {
@@ -26,6 +27,10 @@ data class ContextBudgetController(
         return result.toString()
     }
 
+    /**
+     * 在总预算内依次裁剪多段文本。
+     * 先消费完前段预算再处理后段，预算耗尽后剩余段会被丢弃。
+     */
     fun trimSections(sections: List<String>): List<String> {
         var remaining = maxCharacters
         var remainingTokens = maxTokens
@@ -44,6 +49,10 @@ data class ContextBudgetController(
         return result
     }
 
+    /**
+     * 估算文本大致 token 数。
+     * 按 ASCII 单词、非 ASCII 单字符与标点四字符一组综合计算，避免引入完整分词器依赖。
+     */
     fun estimateTokens(text: String): Int {
         var asciiWords = 0
         var inAsciiWord = false
@@ -72,6 +81,7 @@ data class ContextBudgetController(
         return asciiWords + nonAsciiChars + punctuationTokens
     }
 
+    /** 在指定剩余预算内裁剪单段文本，规则与 [trim] 一致。 */
     private fun trimToBudgets(section: String, remainingCharacters: Int, remainingTokens: Int): String {
         val charTrimmed = section.take(remainingCharacters)
         if (estimateTokens(charTrimmed) <= remainingTokens) {

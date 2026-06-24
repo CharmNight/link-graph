@@ -137,9 +137,9 @@ class JvmSymbolIndexBuilderMixedJvmTest : BasePlatformTestCase() {
         })
         assertVisibleRelationLabel(view.visibleGraph, validator.id, "KafkaConfig", "field config")
         assertVisibleRelationLabel(view.visibleGraph, validator.id, "KafkaConfig", "ctor config")
-        assertVisibleRelationLabel(view.visibleGraph, validator.id, "MetadataDelta", "param onMetadataUpdate.delta")
-        assertVisibleRelationLabel(view.visibleGraph, validator.id, "MetadataImage", "param onMetadataUpdate.newImage")
-        assertVisibleRelationLabel(view.visibleGraph, validator.id, "MetadataVersion", "param onMetadataVersionChanged.metadataVersion")
+        assertVisibleRelationLabel(view.visibleGraph, validator.id, "MetadataDelta", "call metadataVersionChanged")
+        assertVisibleRelationLabel(view.visibleGraph, validator.id, "MetadataImage", "call features")
+        assertVisibleRelationLabel(view.visibleGraph, validator.id, "MetadataVersion", "field latestVersion")
     }
 
     fun testKafkaMetadataVersionConfigValidatorDefaultClassDiagramKeepsUsedDependenciesVisible() {

@@ -287,7 +287,7 @@ describe("hybridDerivations", () => {
       blockingRiskCount: 1,
       syncStatusLabel: "已应用 1 条草稿 patch",
       codeDiffStatus: "FRESH",
-      canApply: true,
+      canApply: false,
       canRevert: true,
     });
   });

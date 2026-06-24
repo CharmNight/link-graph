@@ -7,8 +7,8 @@ import type { AsyncRequestState, GeneratedCodeDraft, GenerationPlan } from "../.
 
 const idle: AsyncRequestState = { phase: "IDLE" };
 const running: AsyncRequestState = { phase: "RUNNING" };
-const failed: AsyncRequestState = { phase: "FAILED", message: "failed" };
-const timedOut: AsyncRequestState = { phase: "TIMED_OUT", message: "timed out" };
+const failed: AsyncRequestState = { phase: "FAILED", statusMessage: "failed" };
+const timedOut: AsyncRequestState = { phase: "TIMED_OUT", statusMessage: "timed out" };
 
 const plan: GenerationPlan = {
   source: "LOCAL_RULE",

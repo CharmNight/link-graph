@@ -16,9 +16,15 @@ import com.charmnight.linkgraph.model.EdgeType
  * 这里是唯一允许把候选文案映射成真实图节点/边 patch 的入口。
  */
 class CandidateGraphPatchComposer {
+    // 从文本中抽取 `if/switch/while/for/do-while/catch (...)` 这类控制流片段的正则，用于识别节点标题是否代表决策。
     private val controlFragmentRegex = Regex("""\b(?:if|switch|while|for|do-while|catch)\s*\([^`\n{}]+\)""", RegexOption.IGNORE_CASE)
+    // 流程图中归类为决策（条件分支）的 scope kind 集合，用于在归一化时修正 flowchart.kind。
     private val decisionScopeKinds = setOf("IF", "SWITCH", "FOREACH", "FOR", "WHILE", "DO_WHILE")
 
+    /**
+     * 把一条候选变更归一化：解析出最终的 [GraphPatch]，并重新推导出与之匹配的目标节点列表。
+     * 调用方拿到的结果会同时携带 patch 与 targetNodeIds，可安全用于 UI 预览与提交。
+     */
     fun normalizeCandidate(
         candidate: CandidateDraftChange,
         baseGraph: GraphDocument,
@@ -31,6 +37,10 @@ class CandidateGraphPatchComposer {
         )
     }
 
+    /**
+     * 给定候选变更与基础图谱，推导出最终的可应用 [GraphPatch]。
+     * 优先使用显式意图（patchIntent）合成；否则归一化候选自带的 patch；最后才退化为兜底合成。
+     */
     fun resolveGraphPatch(
         candidate: CandidateDraftChange,
         baseGraph: GraphDocument,
@@ -41,6 +51,10 @@ class CandidateGraphPatchComposer {
         return normalizeGraphPatch(candidate, baseGraph) ?: synthesizePatch(candidate, baseGraph)
     }
 
+    /**
+     * 当候选携带显式意图（如「更新现有节点」「插入新动作」「插入新决策」「仅加注释」）时，
+     * 按意图分支组合出对应 patch。意图所需的目标节点 / 边 / 分支若无法解析则返回 null。
+     */
     private fun resolveGraphPatchFromExplicitIntent(
         candidate: CandidateDraftChange,
         baseGraph: GraphDocument,
@@ -80,6 +94,10 @@ class CandidateGraphPatchComposer {
         }
     }
 
+    /**
+     * 对候选自带的 patch 做归一化：逐个修正 UPDATE_NODE 操作里的标题、文档、源标签与元数据，
+     * 使最终 patch 落到真实的图节点上，避免 LLM 输出的偏差被原样带入。
+     */
     private fun normalizeGraphPatch(
         candidate: CandidateDraftChange,
         baseGraph: GraphDocument,
@@ -91,6 +109,10 @@ class CandidateGraphPatchComposer {
         return patch.copy(operations = normalizedOperations)
     }
 
+    /**
+     * 归一化单个操作：只处理节点更新操作，把目标节点替换为带最新标题/文档/元数据的版本，
+     * 并保留决策类节点的 flowchart.kind。其它操作原样返回。
+     */
     private fun normalizeOperation(
         candidate: CandidateDraftChange,
         operation: GraphPatchOperation,
@@ -120,6 +142,10 @@ class CandidateGraphPatchComposer {
         )
     }
 
+    /**
+     * 合并目标节点原有元数据与新传入的元数据；若节点本身被识别为决策（DECISION）则强制修正 flowchart.kind，
+     * 避免下游渲染把分支节点画成普通流程节点。
+     */
     private fun normalizeUpdatedNodeMetadata(
         targetNode: GraphNode,
         incomingMetadata: Map<String, String>,
@@ -134,6 +160,10 @@ class CandidateGraphPatchComposer {
             ?: mergedMetadata
     }
 
+    /**
+     * 在候选没有显式意图、也没有自带 patch 时的兜底合成路径。
+     * 说明类候选直接产出注释节点；其它候选尝试匹配目标节点后产出节点更新 patch。
+     */
     private fun synthesizePatch(
         candidate: CandidateDraftChange,
         baseGraph: GraphDocument,
@@ -146,6 +176,10 @@ class CandidateGraphPatchComposer {
         return synthesizeExistingNodeUpdatePatch(candidate, targetNode)
     }
 
+    /**
+     * 在控制流边上插入一个新的「动作节点」：删除原边、新增动作节点，
+     * 并把原边的源/目标分别接到新节点上，从而保持流程图的拓扑连通性。
+     */
     private fun synthesizeInsertedActionPatch(
         candidate: CandidateDraftChange,
         baseGraph: GraphDocument,
@@ -235,6 +269,11 @@ class CandidateGraphPatchComposer {
         )
     }
 
+    /**
+     * 在控制流边上插入一个新的「决策节点」：删除原边、新增决策节点，
+     * 然后从源节点接入决策节点，再从决策节点向原来的目标节点（TRUE 分支）和指定的假分支目标（FALSE 分支）出两条边。
+     * 若真假分支落在同一节点上则视为无效，返回 null。
+     */
     private fun synthesizeInsertedDecisionPatch(
         candidate: CandidateDraftChange,
         baseGraph: GraphDocument,
@@ -347,6 +386,11 @@ class CandidateGraphPatchComposer {
         )
     }
 
+    /**
+     * 推导候选最终应当聚焦展示的节点集合。
+     * 依次考虑：显式意图里指向的节点 / 边端点；patch 操作涉及的节点与边端点；候选自带的 targetNodeIds 与证据引用节点。
+     * 全部去重并保留插入顺序，便于 UI 高亮关联节点。
+     */
     private fun deriveTargetNodeIds(
         candidate: CandidateDraftChange,
         graphPatch: GraphPatch?,
@@ -382,6 +426,11 @@ class CandidateGraphPatchComposer {
         return targetNodeIds.toList()
     }
 
+    /**
+     * 在图谱中定位候选变更应当作用到的目标节点。
+     * 综合候选引用的节点、所属方法签名限制与基于标题/控制片段的打分，挑选最匹配的节点。
+     * 若打分胜出者相对兜底目标没有显著优势则仍使用兜底目标，避免无意义地"抢节点"。
+     */
     private fun resolveTargetNode(
         candidate: CandidateDraftChange,
         baseGraph: GraphDocument,
@@ -422,6 +471,11 @@ class CandidateGraphPatchComposer {
         }
     }
 
+    /**
+     * 判断是否应把当前目标节点替换为新打分胜出的节点。
+     * 规则：同一节点不替换；分数不占优不替换；意图期望决策节点且胜出者为决策节点时可替换；
+     * 否则需胜出分数至少高出阈值才替换，确保替换确实显著。
+     */
     private fun shouldRetarget(
         currentTarget: GraphNode,
         bestTarget: GraphNode,
@@ -443,6 +497,10 @@ class CandidateGraphPatchComposer {
         return bestScore >= currentScore + 180
     }
 
+    /**
+     * 为单个候选节点打分，分数越高越可能是正确目标。
+     * 综合节点是否被直接引用、是否出现在证据中、标题与候选前后态匹配度、控制片段匹配、意图一致性等因素。
+     */
     private fun scoreTargetNode(
         node: GraphNode,
         candidate: CandidateDraftChange,
@@ -492,6 +550,9 @@ class CandidateGraphPatchComposer {
         return score
     }
 
+    /**
+     * 构造每个草稿操作都需要的通用元数据：变更 ID 与可选的声明类型，便于下游溯源。
+     */
     private fun buildDraftMetadata(candidate: CandidateDraftChange): Map<String, String> {
         val metadata = linkedMapOf<String, String>()
         metadata["draft.changeId"] = candidate.changeId
@@ -499,11 +560,19 @@ class CandidateGraphPatchComposer {
         return metadata
     }
 
+    /**
+     * 取节点所属方法的标识（优先用 flow.ownerMethod 元数据，回退到节点自带的签名），
+     * 用于把候选变更限定在同一方法范围内的节点上匹配。
+     */
     private fun ownerMethodSignature(node: GraphNode?): String? {
         node ?: return null
         return node.metadata["flow.ownerMethod"] ?: node.signature
     }
 
+    /**
+     * 合成"更新已存在节点"的 patch：把候选的修改前/修改后/原因/影响合并进节点文档与标题，
+     * 同时打上草稿元数据。若候选没有任何可写入的草稿内容则返回 null。
+     */
     private fun synthesizeExistingNodeUpdatePatch(
         candidate: CandidateDraftChange,
         targetNode: GraphNode,
@@ -550,6 +619,10 @@ class CandidateGraphPatchComposer {
         )
     }
 
+    /**
+     * 拼接目标节点更新后的文档：保留原 doc，依次追加修改前/修改后/原因/影响等说明字段。
+     * 若最终为空白则返回 null，避免覆盖原有文档。
+     */
     private fun buildPatchedNodeDoc(
         targetNode: GraphNode,
         candidate: CandidateDraftChange,
@@ -564,6 +637,9 @@ class CandidateGraphPatchComposer {
         return segments.joinToString("\n").ifBlank { null }
     }
 
+    /**
+     * 构造新插入节点（动作/决策/注释）的初始文档，只包含候选的修改前/修改后/原因/影响。
+     */
     private fun buildInsertedNodeDoc(candidate: CandidateDraftChange): String? {
         return listOfNotNull(
             candidate.beforeState?.takeIf(String::isNotBlank)?.let { "修改前：$it" },
@@ -573,6 +649,10 @@ class CandidateGraphPatchComposer {
         ).joinToString("\n").ifBlank { null }
     }
 
+    /**
+     * 决定目标节点更新后的展示标题：优先使用显式标题，其次使用候选的 afterState，
+     * 都不满足展示规范时回退为节点原标题。
+     */
     private fun resolveUpdatedNodeTitle(
         targetNode: GraphNode,
         candidate: CandidateDraftChange,
@@ -595,6 +675,10 @@ class CandidateGraphPatchComposer {
         return targetNode.title
     }
 
+    /**
+     * 把原始标题归一化为可直接展示的更新标题。
+     * 原始文本若符合规范就直接采用；否则尝试从文本中抽取控制流片段作为标题。
+     */
     private fun resolveDisplayablePatchedTitle(
         rawTitle: String,
         targetNode: GraphNode,
@@ -609,16 +693,26 @@ class CandidateGraphPatchComposer {
         return extractedControlTitle
     }
 
+    /**
+     * 从输入文本中匹配出第一个控制流片段（如 `if (x > 0)`），用于决策节点的标题提取。
+     */
     private fun extractDisplayableControlFragment(text: String): String? {
         return controlFragmentRegex.find(text)?.value?.trim()
     }
 
+    /**
+     * 为新插入的决策节点挑选展示标题：优先候选的 afterState，其次 title，逐个尝试转换为决策标题。
+     */
     private fun resolveInsertedDecisionTitle(candidate: CandidateDraftChange): String? {
         return listOfNotNull(candidate.afterState, candidate.title)
             .map(String::trim)
             .firstNotNullOfOrNull(::resolveDisplayableDecisionTitle)
     }
 
+    /**
+     * 校验并清洗决策节点的展示标题：去掉过长、含换行或中文标点的文本，
+     * 并要求最终文本确实以某个控制关键字开头或能抽出控制片段。
+     */
     private fun resolveDisplayableDecisionTitle(rawTitle: String): String? {
         val normalizedTitle = rawTitle.trim()
         if (normalizedTitle.isBlank() || normalizedTitle.length > 120 || normalizedTitle.contains('\n')) {
@@ -634,12 +728,18 @@ class CandidateGraphPatchComposer {
         return extractedControlTitle.takeIf { controlKeyword(it) in setOf("if", "switch", "while", "for", "catch") }
     }
 
+    /**
+     * 为新插入的动作节点挑选展示标题：优先 afterState，其次 title，取第一个符合可读规范的。
+     */
     private fun resolveInsertedActionTitle(candidate: CandidateDraftChange): String? {
         return listOfNotNull(candidate.afterState, candidate.title)
             .map(String::trim)
             .firstOrNull(::isReadableActionTitle)
     }
 
+    /**
+     * 判断文本能否作为动作节点的可读标题：非空、长度合理、不含换行与中文标点。
+     */
     private fun isReadableActionTitle(title: String): Boolean {
         val normalizedTitle = title.trim()
         if (normalizedTitle.isBlank() || normalizedTitle.length > 80 || normalizedTitle.contains('\n')) {
@@ -651,6 +751,10 @@ class CandidateGraphPatchComposer {
         return true
     }
 
+    /**
+     * 判断一段标题文本能否用作更新后的节点标题。
+     * 决策节点要求标题与控制关键字匹配；普通节点则只要求长度合理、不含换行/中文标点。
+     */
     private fun shouldUseAsPatchedTitle(
         title: String,
         targetNode: GraphNode,
@@ -676,6 +780,9 @@ class CandidateGraphPatchComposer {
         return normalizedTitle.length <= 80
     }
 
+    /**
+     * 识别文本开头的控制流关键字（if/switch/while/for/catch/try），用于推断节点是否表达决策或控制流。
+     */
     private fun controlKeyword(value: String): String? {
         val normalizedValue = value.trim().lowercase()
         return when {
@@ -689,6 +796,10 @@ class CandidateGraphPatchComposer {
         }
     }
 
+    /**
+     * 构造新插入流程节点的元数据：写入 flowchart 类型与 flow 类型，
+     * 并从源/目标节点继承所属方法与锚点方法，再补齐草稿元数据，保证插入节点可被归属到正确的方法上下文。
+     */
     private fun buildInsertedFlowNodeMetadata(
         candidate: CandidateDraftChange,
         sourceNode: GraphNode,
@@ -717,6 +828,10 @@ class CandidateGraphPatchComposer {
         return metadata
     }
 
+    /**
+     * 合成说明性注释节点的无锚点版本：从候选的目标节点或证据引用中找出第一个可用锚点，再调用带锚点的重载。
+     * 若找不到任何锚点节点则返回 null。
+     */
     private fun synthesizeExplanationNotePatch(candidate: CandidateDraftChange): GraphPatch? {
         val anchorNodeId = candidate.targetNodeIds.firstOrNull()
             ?: candidate.evidence
@@ -725,6 +840,10 @@ class CandidateGraphPatchComposer {
         return anchorNodeId?.let { synthesizeExplanationNotePatch(candidate, it) }
     }
 
+    /**
+     * 合成挂在指定锚点节点下的注释 patch：新建一个 DOC_PAGE 注释节点，并通过 LINKS_DOC 边连到锚点节点，
+     * 用以承载候选的修改前/修改后/原因/影响文本，不改动原图结构。
+     */
     private fun synthesizeExplanationNotePatch(
         candidate: CandidateDraftChange,
         anchorNodeId: String,
@@ -787,15 +906,24 @@ class CandidateGraphPatchComposer {
         )
     }
 
+    /**
+     * \u63CF\u8FF0\u5019\u9009\u53D8\u66F4\u5728\u9009\u76EE\u6807\u8282\u70B9\u65F6\u7684"\u6253\u5206\u610F\u56FE"\uFF1A\u662F\u5426\u9884\u671F\u5339\u914D\u51B3\u7B56\u8282\u70B9\u3001\u547D\u4E2D\u4E86\u54EA\u4E9B\u63A7\u5236\u6D41\u7247\u6BB5\u3001\u5173\u8054\u7684\u8BCD\u5143\u96C6\u5408\u3002
+     * \u7528\u6765\u5728 [scoreTargetNode] \u4E2D\u6309\u573A\u666F\u8C03\u6574\u6743\u91CD\u3002
+     */
     private data class TargetResolutionIntent(
         val expectsDecisionNode: Boolean,
         val controlFragments: List<String>,
         val tokens: Set<String>,
     ) {
         companion object {
+            // \u7528\u4E8E\u4ECE\u6587\u672C\u4E2D\u62BD\u53D6\u63A7\u5236\u6D41\u7247\u6BB5\u7684\u6B63\u5219\uFF08\u4E0E\u5916\u5C42\u7C7B\u540C\u4E49\uFF09\uFF0C\u7528\u4E8E\u63A8\u65AD\u5019\u9009\u662F\u5426\u4E0E\u51B3\u7B56\u76F8\u5173\u3002
             private val controlFragmentRegex = Regex("""\b(?:if|switch|while|for|do-while|catch)\s*\([^`\n{}]+\)""", RegexOption.IGNORE_CASE)
+            // \u7528\u4E8E\u628A\u6587\u672C\u5207\u5206\u4E3A\u8BCD\u5143\u7684\u6B63\u5219\uFF1A\u8BC6\u522B\u82F1\u6587/\u4E0B\u5212\u7EBF\u6807\u8BC6\u7B26\u4E0E\u8FDE\u7EED\u4E2D\u6587\u7247\u6BB5\u3002
             private val tokenRegex = Regex("""[A-Za-z_][A-Za-z0-9_]*|[\u4E00-\u9FFF]{2,}""")
 
+            /**
+             * \u628A\u5019\u9009\u4E0E\u5176\u64CD\u4F5C\u6587\u672C\u805A\u5408\uFF0C\u5206\u6790\u51FA\u9884\u671F\u610F\u56FE\uFF1A\u662F\u5426\u671F\u671B\u51B3\u7B56\u8282\u70B9\u3001\u547D\u4E2D\u7684\u63A7\u5236\u7247\u6BB5\u3001\u6240\u6709\u53EF\u6BD4\u8F83\u7684\u8BCD\u5143\u3002
+             */
             fun from(
                 candidate: CandidateDraftChange,
                 operation: GraphPatchOperation?,
@@ -829,6 +957,9 @@ class CandidateGraphPatchComposer {
                 )
             }
 
+            /**
+             * \u628A\u6587\u672C\u5207\u5206\u4E3A\u5F52\u4E00\u5316\u7684\u5C0F\u5199\u8BCD\u5143\u96C6\u5408\uFF0C\u4E22\u5F03\u5355\u5B57\u7B26\u566A\u97F3\uFF0C\u4FBF\u4E8E\u8DE8\u8282\u70B9\u6807\u9898\u8BA1\u7B97\u91CD\u53E0\u5EA6\u3002
+             */
             private fun tokenize(text: String): Set<String> {
                 return tokenRegex.findAll(text)
                     .map { it.value.lowercase() }
@@ -839,8 +970,12 @@ class CandidateGraphPatchComposer {
     }
 
     private companion object {
+        // \u7C7B\u7EA7\u522B\u5171\u4EAB\u7684\u8BCD\u5143\u5207\u5206\u6B63\u5219\uFF1A\u8BC6\u522B\u82F1\u6587/\u4E0B\u5212\u7EBF\u6807\u8BC6\u7B26\u4E0E\u8FDE\u7EED\u4E2D\u6587\u7247\u6BB5\u3002
         private val tokenRegex = Regex("""[A-Za-z_][A-Za-z0-9_]*|[\u4E00-\u9FFF]{2,}""")
 
+        /**
+         * \u628A\u6587\u672C\u5207\u5206\u4E3A\u5F52\u4E00\u5316\u7684\u5C0F\u5199\u8BCD\u5143\u96C6\u5408\uFF0C\u4F9B\u8282\u70B9\u6253\u5206\u65F6\u8BA1\u7B97\u6807\u9898\u4E4B\u95F4\u7684\u8BCD\u5143\u91CD\u53E0\u3002
+         */
         fun tokenize(text: String): Set<String> {
             return tokenRegex.findAll(text)
                 .map { it.value.lowercase() }

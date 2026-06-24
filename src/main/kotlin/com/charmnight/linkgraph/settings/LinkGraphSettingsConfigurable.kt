@@ -33,6 +33,7 @@ import javax.swing.SpinnerNumberModel
  * 这里提供真正可用的配置入口，避免把 LLM 配置埋在代码或环境变量里。
  */
 class LinkGraphSettingsConfigurable : SearchableConfigurable {
+    /** 公共构造函数：从应用容器获取设置服务，并在后台线程异步加载密钥。 */
     constructor() : this(
         serviceProvider = {
             ApplicationManager.getApplication().getService(LinkGraphSettingsService::class.java)
@@ -40,6 +41,7 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
         loadSecretSnapshotAsync = ::loadSecretSnapshotOnPooledThread,
     )
 
+    /** 测试用构造函数：允许注入服务提供者和异步加载器以隔离 EDT 与 PasswordSafe 依赖。 */
     internal constructor(
         serviceProvider: () -> LinkGraphSettingsService,
         loadSecretSnapshotAsync: (LinkGraphSettingsService, (LinkGraphSettingsState) -> Unit) -> Unit,
@@ -48,7 +50,9 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
         this.loadSecretSnapshotAsync = loadSecretSnapshotAsync
     }
 
+    /** 设置服务提供者，便于在测试中替换实现。 */
     private val serviceProvider: () -> LinkGraphSettingsService
+    /** 异步加载密钥快照的执行器，回调在 UI 线程触发。 */
     private val loadSecretSnapshotAsync: (LinkGraphSettingsService, (LinkGraphSettingsState) -> Unit) -> Unit
     /** 设置持久化服务，负责读取和写回配置快照。 */
     private val service: LinkGraphSettingsService
@@ -330,6 +334,10 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
         validationStatusLabel = null
     }
 
+    /**
+     * 在后台异步加载已保存的 API Key 并回填到密码框。
+     * 使用版本号校验，避免多次 reset 之间旧回调覆盖最新 UI 状态。
+     */
     private fun scheduleApiKeyLoad() {
         val currentGeneration = ++secretLoadGeneration
         val currentService = service
@@ -348,6 +356,11 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
         }
     }
 
+    /**
+     * 判断是否应保留空 API Key。
+     * 在尚未异步加载出真实密钥的窗口期内，用户未改动密码框就点击保存，
+     * 应跳过密钥清空逻辑，避免误删已有密钥。
+     */
     private fun shouldPreserveBlankApiKey(nextState: LinkGraphSettingsState): Boolean {
         return nextState.apiKey.isBlank() && !baselineApiKeyLoaded
     }
@@ -423,6 +436,10 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
         return result
     }
 
+    /**
+     * 把附加 JAR 文本区按行解析为条目列表。
+     * 每行格式为 `classJar|sourceJar|enabled/disabled`，井号开头视为注释忽略。
+     */
     private fun parseAttachedJarEntries(text: String): List<AttachedJarEntry> =
         text.lineSequence()
             .map(String::trim)
@@ -467,6 +484,10 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
     }
 }
 
+/**
+ * 在后台线程加载包含密钥的设置快照，再切回 UI 线程回调。
+ * 这样可避免在 EDT 上同步读取 PasswordSafe，造成锁冲突或界面卡顿。
+ */
 private fun loadSecretSnapshotOnPooledThread(
     service: LinkGraphSettingsService,
     onLoaded: (LinkGraphSettingsState) -> Unit,

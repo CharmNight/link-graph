@@ -9,12 +9,14 @@ import com.intellij.psi.PsiType
 import com.intellij.psi.PsiWildcardType
 import org.jetbrains.kotlin.psi.KtFile
 
+/** 根据种类与原始键生成稳定的 JVM 符号 ID。 */
 fun stableJvmId(kind: String, rawKey: String): String {
     val normalizedKind = kind.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifBlank { "jvm" }
     val normalizedKey = rawKey.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifBlank { "unknown" }
     return "jvm:$normalizedKind:$normalizedKey"
 }
 
+/** 生成 PSI 方法的规范签名（含所有者、参数与返回类型）。 */
 fun methodSignature(method: PsiMethod): String {
     val ownerName = method.containingClass?.qualifiedName
         ?: method.containingClass?.name
@@ -32,12 +34,19 @@ fun methodSignature(method: PsiMethod): String {
     return "$ownerName.${method.name}($parameters):$returnType"
 }
 
+/** 把 PSI 类型解析为规范类型文本（优先使用类限定名）。 */
 fun canonicalTypeText(type: PsiType?): String? {
     val psiType = type ?: return null
     val resolvedClass = runCatching { (psiType as? PsiClassType)?.resolve() }.getOrNull()
     return resolvedClass?.qualifiedName ?: normalizeImplicitJavaLangType(psiType.canonicalText)
 }
 
+/**
+ * 在已知所有者包名的前提下解析类型文本。
+ *
+ * 优先使用类型的限定名；若类型没有包名且与所有者位于同一源文件包内，
+ * 会尝试补上所有者包名前缀（通过 JavaPsiFacade 验证是否真实存在），避免出现短名歧义。
+ */
 internal fun canonicalTypeTextNear(type: PsiType?, ownerPackageName: String): String? {
     val normalized = canonicalTypeText(type) ?: return null
     if (normalized.contains('.') || ownerPackageName.isBlank()) {
@@ -57,12 +66,14 @@ internal fun canonicalTypeTextNear(type: PsiType?, ownerPackageName: String): St
     }
 }
 
+/** 提取字段的类型引用列表（区分角色：类型使用、集合元素等）。 */
 fun fieldTypeReferences(
     type: PsiType?,
     ownerPackageName: String?,
 ): List<JvmFieldTypeReference> {
     val references = linkedMapOf<String, JvmFieldTypeRole>()
 
+    /** 把一个类型名以指定角色加入引用集合；若同名已有更高优先级角色，则保留旧角色。 */
     fun add(typeName: String?, role: JvmFieldTypeRole) {
         val normalized = normalizeReferenceTypeName(typeName, ownerPackageName) ?: return
         val current = references[normalized]
@@ -71,6 +82,7 @@ fun fieldTypeReferences(
         }
     }
 
+    /** 递归遍历类型结构，根据容器类型（集合、Map、Provider 等）把内部参数分配到合适的角色上。 */
     fun visit(currentType: PsiType?, role: JvmFieldTypeRole) {
         when (currentType) {
             null -> return
@@ -121,15 +133,25 @@ fun fieldTypeReferences(
     return references.map { (typeName, role) -> JvmFieldTypeReference(typeName, role) }
 }
 
+/**
+ * 字段类型的容器种类，决定字段内部类型参数的递归角色分配策略。
+ */
 internal enum class FieldTypeContainerCategory {
+    /** 集合类容器，元素以 COLLECTION_ELEMENT 角色收集。 */
     COLLECTION,
+    /** 键值类容器，分别处理键和值。 */
     MAP,
+    /** 延迟/异步生产者容器（Provider、Supplier 等）。 */
     PROVIDER,
+    /** 函数类型容器（Kotlin FunctionN、Java SAM 等）。 */
     FUNCTION,
+    /** 包装类容器（Optional、Reference 等）。 */
     WRAPPER,
+    /** 其他普通类型，按直接值处理。 */
     OTHER,
 }
 
+/** 角色优先级：值越小代表角色越具体，发生同名冲突时优先保留更具体的角色。 */
 internal val JvmFieldTypeRole.precedence: Int
     get() = when (this) {
         JvmFieldTypeRole.DIRECT_VALUE -> 0
@@ -143,6 +165,7 @@ internal val JvmFieldTypeRole.precedence: Int
         JvmFieldTypeRole.FUNCTION_PARAMETER -> 8
     }
 
+/** 在容器元素语义下递归时的角色推导：高优先级角色保持不变，普通角色降级为 COLLECTION_ELEMENT。 */
 internal fun JvmFieldTypeRole.elementRole(): JvmFieldTypeRole =
     when (this) {
         JvmFieldTypeRole.PROVIDER_RETURN,
@@ -152,6 +175,7 @@ internal fun JvmFieldTypeRole.elementRole(): JvmFieldTypeRole =
         else -> JvmFieldTypeRole.COLLECTION_ELEMENT
     }
 
+/** 进入 Map 键位置时的角色推导：保持高优先级角色，其余降级为 MAP_KEY。 */
 internal fun JvmFieldTypeRole.mapKeyRole(): JvmFieldTypeRole =
     when (this) {
         JvmFieldTypeRole.PROVIDER_RETURN,
@@ -161,6 +185,7 @@ internal fun JvmFieldTypeRole.mapKeyRole(): JvmFieldTypeRole =
         else -> JvmFieldTypeRole.MAP_KEY
     }
 
+/** 进入包装类内部时的角色推导：保持高优先级角色，其余降级为 WRAPPER_VALUE。 */
 internal fun JvmFieldTypeRole.wrapperRole(): JvmFieldTypeRole =
     when (this) {
         JvmFieldTypeRole.PROVIDER_RETURN,
@@ -170,6 +195,7 @@ internal fun JvmFieldTypeRole.wrapperRole(): JvmFieldTypeRole =
         else -> JvmFieldTypeRole.WRAPPER_VALUE
     }
 
+/** 进入普通泛型参数时的角色推导：保持高优先级角色，其余降级为 TYPE_ARGUMENT。 */
 internal fun JvmFieldTypeRole.typeArgumentRole(): JvmFieldTypeRole =
     when (this) {
         JvmFieldTypeRole.PROVIDER_RETURN,
@@ -179,11 +205,18 @@ internal fun JvmFieldTypeRole.typeArgumentRole(): JvmFieldTypeRole =
         else -> JvmFieldTypeRole.TYPE_ARGUMENT
     }
 
+/** 提取 [PsiClassType] 对应的原始类全限定名，优先使用解析后的 qualifiedName。 */
 internal fun rawClassTypeName(type: PsiClassType): String? {
     val resolved = runCatching { type.resolve() }.getOrNull()
     return resolved?.qualifiedName ?: normalizeReferenceTypeName(type.rawType().canonicalText, null)
 }
 
+/**
+ * 根据类型全限定名（或简单名）判断其属于哪种容器类别。
+ *
+ * 通过查阅预置的集合、Map、Provider、Wrapper 类型表来识别，
+ * 不在任何表中的视为 [FieldTypeContainerCategory.OTHER]。
+ */
 internal fun fieldContainerCategory(rawName: String?): FieldTypeContainerCategory {
     val normalized = rawName?.removeSuffix("?") ?: return FieldTypeContainerCategory.OTHER
     if (isJvmFunctionType(normalized)) {
@@ -205,10 +238,20 @@ internal fun fieldContainerCategory(rawName: String?): FieldTypeContainerCategor
     return FieldTypeContainerCategory.OTHER
 }
 
-internal fun isJvmFunctionType(typeName: String): Boolean =
-    typeName == "kotlin.Function" ||
-        Regex("""^(kotlin\.|kotlin\.jvm\.functions\.)Function\d+$""").matches(typeName)
+/** Kotlin 函数类型匹配正则：Function0..FunctionN 或 kotlin.Function。
+ * 提到顶层 val 避免每次调用都重新编译正则。 */
+private val jvmFunctionTypeRegex = Regex("""^(kotlin\.|kotlin\.jvm\.functions\.)Function\d+$""")
 
+/** 判断类型名是否属于 Kotlin 函数类型（Function0..FunctionN 或 kotlin.Function）。 */
+internal fun isJvmFunctionType(typeName: String): Boolean =
+    typeName == "kotlin.Function" || jvmFunctionTypeRegex.matches(typeName)
+
+/**
+ * 把类型名规范化为可用于引用索引的形式。
+ *
+ * 处理流程：去空白、去可空后缀、去数组后缀、补全 java.lang 隐式前缀；
+ * 同时过滤掉原始类型，并在缺少包名时尝试用所有者包名补全。
+ */
 internal fun normalizeReferenceTypeName(
     typeName: String?,
     ownerPackageName: String?,
@@ -231,6 +274,7 @@ internal fun normalizeReferenceTypeName(
     return "$ownerPackageName.$normalized"
 }
 
+/** 把 Java 默认 import 的 java.lang 包下常用包装类型补全为全限定名，避免短名歧义。 */
 internal fun normalizeImplicitJavaLangType(typeText: String): String {
     return when (typeText) {
         "String" -> "java.lang.String"
@@ -248,6 +292,7 @@ internal fun normalizeImplicitJavaLangType(typeText: String): String {
     }
 }
 
+/** 从全限定名中提取最外层包名（去掉嵌套类与类名），用于回退场景下推断 PSI 文件所在包。 */
 internal fun outermostPackageFromQualifiedName(qualifiedName: String): String {
     val parts = qualifiedName.substringBefore('$').split('.').filter(String::isNotBlank)
     val classIndex = parts.indexOfFirst { part -> part.firstOrNull()?.isUpperCase() == true }
@@ -257,6 +302,12 @@ internal fun outermostPackageFromQualifiedName(qualifiedName: String): String {
     }
 }
 
+/**
+ * 判断路径中是否包含应该被排除的内容根目录片段。
+ *
+ * 总是排除版本控制、缓存目录；对于生成的输出目录（build/out 等），
+ * 仅在它们没有出现在 `src` 之前时才排除，避免误伤用户源码。
+ */
 internal fun String.hasExcludedContentRootSegment(): Boolean {
     val segments = split('/').filter(String::isNotBlank)
     return segments.withIndex().any { (index, segment) ->
@@ -265,6 +316,7 @@ internal fun String.hasExcludedContentRootSegment(): Boolean {
     }
 }
 
+/** 始终排除的内容根目录片段，主要覆盖各类工具缓存与依赖目录。 */
 private val alwaysExcludedContentRootSegments = setOf(
     ".cache",
     ".git",
@@ -277,6 +329,7 @@ private val alwaysExcludedContentRootSegments = setOf(
     "node_modules",
 )
 
+/** 由构建工具生成的输出目录片段，需结合上下文判断是否真的可排除。 */
 private val generatedContentRootSegments = setOf(
     "build",
     "coverage",
@@ -287,6 +340,7 @@ private val generatedContentRootSegments = setOf(
     "tmp",
 )
 
+/** Java/Kotlin 原始类型名集合，不参与字段引用索引。 */
 private val primitiveTypeNames = setOf(
     "boolean",
     "byte",
@@ -299,6 +353,7 @@ private val primitiveTypeNames = setOf(
     "void",
 )
 
+/** 集合类全限定名集合，用于识别字段中作为容器使用的集合类型。 */
 private val collectionTypeNames = setOf(
     "java.lang.Iterable",
     "java.util.Collection",
@@ -320,6 +375,7 @@ private val collectionTypeNames = setOf(
     "scala.collection.Seq",
     "scala.collection.Set",
 )
+/** 集合类简单名集合，配合全限定名一起识别容器种类。 */
 private val collectionSimpleTypeNames = setOf(
     "Collection",
     "Deque",
@@ -336,6 +392,7 @@ private val collectionSimpleTypeNames = setOf(
     "SortedSet",
 )
 
+/** Map 类全限定名集合，用于识别字段中作为键值容器的类型。 */
 private val mapTypeNames = setOf(
     "java.util.Map",
     "java.util.SortedMap",
@@ -345,6 +402,7 @@ private val mapTypeNames = setOf(
     "kotlin.collections.MutableMap",
     "scala.collection.Map",
 )
+/** Map 类简单名集合，配合全限定名一起识别 Map 容器。 */
 private val mapSimpleTypeNames = setOf(
     "ConcurrentMap",
     "Map",
@@ -353,6 +411,7 @@ private val mapSimpleTypeNames = setOf(
     "SortedMap",
 )
 
+/** Provider/生产者类全限定名集合，用于识别延迟/异步生产语义。 */
 private val providerTypeNames = setOf(
     "com.google.inject.Provider",
     "dagger.Lazy",
@@ -366,6 +425,7 @@ private val providerTypeNames = setOf(
     "reactor.core.publisher.Flux",
     "reactor.core.publisher.Mono",
 )
+/** Provider 类简单名集合，配合全限定名一起识别生产者语义。 */
 private val providerSimpleTypeNames = setOf(
     "Callable",
     "Flux",
@@ -377,6 +437,7 @@ private val providerSimpleTypeNames = setOf(
     "Supplier",
 )
 
+/** 包装类全限定名集合（Optional/Reference/Result 等），其内部类型会被抽取为 WRAPPER_VALUE。 */
 private val wrapperTypeNames = setOf(
     "java.lang.ref.Reference",
     "java.lang.ref.SoftReference",
@@ -387,6 +448,7 @@ private val wrapperTypeNames = setOf(
     "java.util.OptionalLong",
     "kotlin.Result",
 )
+/** 包装类简单名集合，配合全限定名一起识别包装语义。 */
 private val wrapperSimpleTypeNames = setOf(
     "Optional",
     "OptionalDouble",

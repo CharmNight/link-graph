@@ -19,6 +19,12 @@ import com.charmnight.linkgraph.semantic.outcome.graphProjectionIndexForVisibleG
 import com.charmnight.linkgraph.semantic.outcome.projectReadableFlowchartView
 import com.charmnight.linkgraph.semantic.outcome.resolveProjectedFlowchartNodeId
 
+/**
+ * 在给定图中确定当前选中的节点 ID。
+ *
+ * 优先按原始节点 ID 精确匹配；若未命中，再尝试通过投影索引回查、最后用方法签名兜底。
+ * 用于在刷新视图时把外部传入的选中信息稳定地映射到图中的真实节点。
+ */
 internal fun resolveSelectedNodeId(
     graph: GraphDocument,
     selectedNodeId: String?,
@@ -33,6 +39,11 @@ internal fun resolveSelectedNodeId(
     return findNodeIdBySignature(graph, selectedMethodSignature)
 }
 
+/**
+ * 按方法签名在图中查找首个匹配节点 ID。
+ *
+ * 同时支持原始签名匹配与归一化后的签名匹配（去掉包名只保留类名），以兼容不同来源的签名格式。
+ */
 internal fun findNodeIdBySignature(
     graph: GraphDocument?,
     signature: String?,
@@ -47,6 +58,7 @@ internal fun findNodeIdBySignature(
     }?.id
 }
 
+/** 把方法签名中的全限定类名压缩为简单类名，便于在签名格式不完全一致时仍能匹配同一目标。 */
 private fun comparableMethodSignature(signature: String): String {
     val argumentsStart = signature.indexOf('(')
     if (argumentsStart <= 0) {
@@ -59,6 +71,12 @@ private fun comparableMethodSignature(signature: String): String {
     return "$simpleOwner.$methodName${signature.substring(argumentsStart)}"
 }
 
+/**
+ * 基于工作区图和选中信息构建图谱编辑器需要的多视图文档集合。
+ *
+ * 依次构造事实图、流程图、资源关系图视图，并为流程图额外计算投影索引；
+ * 全程通过 [runtimeTrace] 上报各阶段耗时与图规模，方便性能定位。
+ */
 internal fun buildViewDocuments(
     workspaceGraph: GraphDocument,
     selectedNodeId: String?,
@@ -166,10 +184,16 @@ internal fun buildViewDocuments(
     return documents
 }
 
+/** 复制一份流程图视图文档，并把投影索引替换为指定值。 */
 private fun FlowchartViewDocument.withProjectionIndex(index: GraphProjectionIndex): FlowchartViewDocument = copy(
     projectionIndex = index,
 )
 
+/**
+ * 上报一次视图构建阶段的执行追踪信息。
+ *
+ * 没有传入 [runtimeTrace] 时直接跳过；否则记录阶段名、起始时间戳以及各阶段自定义明细。
+ */
 private fun traceViewStage(
     runtimeTrace: ((() -> String) -> Unit)?,
     stage: String,
@@ -186,6 +210,12 @@ private fun traceViewStage(
     )
 }
 
+/**
+ * 根据分析展示模式从快照中取出对应的可见图。
+ *
+ * 不同模式对应不同的图视图（事实图、流程图、资源关系图、架构图、类图、审查图），
+ * 用于按当前模式渲染节点和边。
+ */
 internal fun resolveVisibleGraphForDisplayMode(
     snapshot: GraphEditorStateSnapshot,
     displayMode: AnalysisDisplayMode,
@@ -200,6 +230,11 @@ internal fun resolveVisibleGraphForDisplayMode(
     }
 }
 
+/**
+ * 按当前场景取可见图：差异比对场景下优先返回 diff 图，其它场景按分析模式选择。
+ *
+ * 用于在多个场景共用同一份状态时，按场景上下文返回渲染所需的图。
+ */
 internal fun resolveVisibleGraphForScene(snapshot: GraphEditorStateSnapshot): GraphDocument {
     return if (snapshot.currentSceneId == GraphSceneId.DIFF) {
         snapshot.diffGraph ?: GraphDocument()
@@ -208,6 +243,11 @@ internal fun resolveVisibleGraphForScene(snapshot: GraphEditorStateSnapshot): Gr
     }
 }
 
+/**
+ * 从图的节点元数据中读取 UI 保存的坐标，重建出布局状态。
+ *
+ * 缺失 X/Y 元数据的节点会被跳过，最终返回以节点 ID 为键的坐标映射。
+ */
 internal fun extractLayoutState(graph: GraphDocument?): GraphLayoutState {
     if (graph == null) {
         return GraphLayoutState()
@@ -220,6 +260,12 @@ internal fun extractLayoutState(graph: GraphDocument?): GraphLayoutState {
     return GraphLayoutState(positions)
 }
 
+/**
+ * 合并多个布局来源，得到最终生效的节点布局。
+ *
+ * 优先使用从图元数据中提取的坐标，其次使用 [preferred]，最后回退到 [fallback]；
+ * 任一来源都没有该节点坐标时跳过，确保结果只包含确定位置的节点。
+ */
 internal fun mergeLayoutState(
     graph: GraphDocument,
     preferred: GraphLayoutState,
@@ -236,6 +282,7 @@ internal fun mergeLayoutState(
     return GraphLayoutState(positions)
 }
 
+/** 图谱编辑器各场景视图文档的集合，包含事实图、流程图、资源关系图等视图。 */
 internal data class GraphEditorViewDocuments(
     val factGraphView: FactGraphViewDocument,
     val flowchartView: FlowchartViewDocument,
@@ -244,11 +291,13 @@ internal data class GraphEditorViewDocuments(
     val classDiagramView: ClassDiagramResult = ClassDiagramResult(),
 )
 
+/** 事实图视图的汇总计算中间结构，根据可见图、完整图与锚点节点生成对外展示的摘要。 */
 private data class FactGraphViewDocumentSummary(
     val visibleGraph: GraphDocument,
     val fullGraph: GraphDocument,
     val anchorNodeId: String?,
 ) {
+    /** 生成事实图摘要：包含锚点节点标题，以及可见/完整两份节点数。 */
     fun toSummary() = FactGraphSummary(
         anchorTitle = fullGraph.nodes.firstOrNull { it.id == anchorNodeId }?.title
             ?: visibleGraph.nodes.firstOrNull { it.id == anchorNodeId }?.title,
@@ -257,9 +306,11 @@ private data class FactGraphViewDocumentSummary(
     )
 }
 
+/** 资源关系图视图的汇总计算中间结构，按泳道分类统计节点数。 */
 private data class ResourceRelationViewSummary(
     val visibleGraph: GraphDocument,
 ) {
+    /** 生成资源关系图摘要：可见节点总数与按泳道分组后的节点计数（按 key 排序）。 */
     fun toSummary() = ResourceRelationSummary(
         visibleNodeCount = visibleGraph.nodes.size,
         laneCounts = visibleGraph.nodes

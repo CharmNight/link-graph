@@ -22,9 +22,14 @@ import com.charmnight.linkgraph.application.usecase.GenerationUseCaseResult
 import com.charmnight.linkgraph.codegen.ProjectPathNormalizer
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 
+/**
+ * 实现计划生成工作流：协调快照采集、异步请求生命周期、远程/规则化生成与事件分发，
+ * 是"用户触发实现计划生成"这一交互在应用层的编排入口。
+ */
 internal class GenerationPlanWorkflow(
     private val dependencies: GenerationWorkflowDependencies,
 ) {
+    // 实现计划相关的用例，负责把计划快照构造与项目路径提供桥接到生成逻辑
     private val useCase = GenerationUseCase(
         planSnapshotBuilder = { planningGraph, diff, previewItems, mermaidIssues, confirmedChanges, sourceContext, userGoal ->
             dependencies.planningContextFactory.buildPlanSnapshot(
@@ -40,6 +45,11 @@ internal class GenerationPlanWorkflow(
         projectBasePathProvider = { dependencies.project.basePath },
     )
 
+    /**
+     * 异步发起实现计划生成请求：
+     * 刷新草稿/代码状态，登记请求并发出"开始"事件，必要时启动流式预览推送，
+     * 调度超时守护任务并在后台真正执行生成逻辑，最终按成功/失败分别发出对应事件。
+     */
     fun requestGenerationPlanAsync(userGoal: String = "") {
         val snapshot = dependencies.snapshotProvider.snapshot()
         dependencies.refreshDraftAndCodeState(snapshot.toApplicationSnapshot().toRiskResolutionSnapshot())
@@ -174,6 +184,10 @@ internal class GenerationPlanWorkflow(
         )
     }
 
+    /**
+     * 在后台真正执行实现计划生成：构造计划执行能力并基于运行时上下文调用代理运行协调器，
+     * 把路径归一化后的计划作为结果返回，并在结束后输出运行时追踪日志。
+     */
     private fun executePlanRuntime(
         payload: PlanningInput,
         settings: LinkGraphSettingsState,

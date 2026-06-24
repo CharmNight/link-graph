@@ -34,6 +34,7 @@ import {
   classDiagramRelationPresentation,
 } from "./classDiagramRelations";
 
+/** React Flow 节点 data：携带原始 LinkGraphNode、是否紧凑模式、解释高亮、草稿对比状态及尺寸测量回调。 */
 interface ClassDiagramNodeData extends Record<string, unknown> {
   node: LinkGraphNode;
   compact?: boolean;
@@ -43,6 +44,7 @@ interface ClassDiagramNodeData extends Record<string, unknown> {
   onMeasure?: (size: NodeMeasuredSize) => void;
 }
 
+/** 构造类图节点列表所需的全部外部输入：节点集合、选中态、解释聚焦、草稿状态、尺寸注册表等。 */
 interface BuildClassDiagramNodesOptions {
   nodes: LinkGraphNode[];
   selectedNodeId: string | null;
@@ -53,14 +55,18 @@ interface BuildClassDiagramNodesOptions {
   nodeSizeRegistry: NodeSizeRegistry;
 }
 
+/** 构造类图边列表所需的外部输入：边集合以及可选的草稿对比状态映射。 */
 interface BuildClassDiagramEdgesOptions {
   edges: LinkGraphEdge[];
   draftCompareEdgeStatuses?: Record<string, DraftCompareStatus>;
 }
 
+/** React Flow 中类图节点的具体 Node 类型定义。 */
 type ClassDiagramFlowNode = Node<ClassDiagramNodeData, "classDiagramNode">;
+/** 类图节点对应的 NodeProps 类型，供组件签名使用。 */
 type ClassDiagramFlowNodeProps = NodeProps<ClassDiagramFlowNode>;
 
+// 端点 Handle 的基础样式：默认透明，仅在可连接时半透明显示
 const HANDLE_STYLE: CSSProperties = {
   width: 14,
   height: 14,
@@ -70,8 +76,10 @@ const HANDLE_STYLE: CSSProperties = {
   borderRadius: "50%",
   boxShadow: "0 0 0 3px rgba(52, 180, 255, 0.16)",
 };
+// 同侧端口扇出的分槽数量，用于在一条边上分配多个 slot
 const SIDE_FANOUT_SLOT_COUNT = 7;
 
+/** 根据 isConnectable 返回端点的实际样式：不可连接时完全透明且不响应事件。 */
 function handleStyle(isConnectable: boolean): CSSProperties {
   return {
     ...HANDLE_STYLE,
@@ -80,6 +88,7 @@ function handleStyle(isConnectable: boolean): CSSProperties {
   };
 }
 
+/** 水平方向（左右）端点的扇出样式：根据 slot 索引计算 top 百分比均匀分布。 */
 function sideFanoutHandleStyle(isConnectable: boolean, index: number): CSSProperties {
   return {
     ...handleStyle(isConnectable),
@@ -87,6 +96,7 @@ function sideFanoutHandleStyle(isConnectable: boolean, index: number): CSSProper
   };
 }
 
+/** 垂直方向（上下）端点的扇出样式：根据 slot 索引计算 left 百分比均匀分布。 */
 function verticalFanoutHandleStyle(isConnectable: boolean, index: number): CSSProperties {
   return {
     ...handleStyle(isConnectable),
@@ -94,6 +104,10 @@ function verticalFanoutHandleStyle(isConnectable: boolean, index: number): CSSPr
   };
 }
 
+/**
+ * 类图节点卡片：完整 UML 框，含 stereotype、类名、包名、注释、字段与方法分区。
+ * 紧凑模式且非 anchor 节点时委托给 CompactClassDiagramNodeCard 渲染精简视图。
+ */
 function ClassDiagramNodeCard({
   node,
   compact = false,
@@ -176,6 +190,10 @@ function ClassDiagramNodeCard({
   );
 }
 
+/**
+ * 紧凑型节点卡片：用单行标题 + 可选 meta/detail 展示节点，省略 UML 字段方法分区，
+ * 用于非 anchor 的协作节点以节省画布空间。
+ */
 function CompactClassDiagramNodeCard({
   rootRef,
   node,
@@ -213,6 +231,7 @@ function CompactClassDiagramNodeCard({
   );
 }
 
+/** 把以换行符分隔的成员文本拆分为非空、去空白的多行数组。 */
 function memberLines(value?: string | null): string[] {
   return (value ?? "")
     .split("\n")
@@ -220,11 +239,13 @@ function memberLines(value?: string | null): string[] {
     .filter(Boolean);
 }
 
+/** 安全地把 metadata 中的字符串数值化为非负数字；非法值统一视为 0。 */
 function numericMetadata(value?: string | null): number {
   const parsed = Number(value ?? "0");
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
 }
 
+/** 根据节点的 role/lane/direction 元数据返回中文角色标签，用于紧凑卡片的类型角标。 */
 function compactRoleLabel(node: LinkGraphNode): string {
   const role = node.metadata?.["presentation.role"];
   const lane = node.metadata?.["presentation.laneId"];
@@ -243,6 +264,7 @@ function compactRoleLabel(node: LinkGraphNode): string {
   return "协作对象";
 }
 
+/** 取紧凑卡片 meta 行的文本：优先包名，其次签名，再次位置信息。 */
 function compactNodeMeta(node: LinkGraphNode): string | null {
   return node.metadata?.["architecture.package"]
     ?? node.signature
@@ -250,6 +272,7 @@ function compactNodeMeta(node: LinkGraphNode): string | null {
     ?? null;
 }
 
+/** 取紧凑卡片 detail 行的文本：优先关系原因，其次首个方法/字段，再次文档摘要。 */
 function compactNodeDetail(node: LinkGraphNode): string | null {
   const relationReason = node.metadata?.["classDiagram.node.reason"]?.trim();
   if (relationReason) {
@@ -266,6 +289,7 @@ function compactNodeDetail(node: LinkGraphNode): string | null {
   return node.doc?.trim() || null;
 }
 
+/** 取 detail 行的 title 文本（hover 时展示），关系原因场景下返回更详细的描述。 */
 function compactNodeDetailTitle(node: LinkGraphNode): string | null {
   const relationReason = node.metadata?.["classDiagram.node.reason"]?.trim();
   if (relationReason) {
@@ -274,10 +298,12 @@ function compactNodeDetailTitle(node: LinkGraphNode): string | null {
   return compactNodeDetail(node);
 }
 
+/** 判断是否为抽象类（CLASS 类型且 metadata 标记 abstract=true）。 */
 function isAbstractClass(node: LinkGraphNode): boolean {
   return node.type === "CLASS" && node.metadata?.["jvm.class.abstract"] === "true";
 }
 
+/** 判断是否为"当前类"（anchor）节点：优先看 presentation.role，否则回退到 layout.direction。 */
 function isAnchorNode(node: LinkGraphNode): boolean {
   if (node.metadata?.["presentation.role"]) {
     return node.metadata["presentation.role"] === "ANCHOR";
@@ -286,6 +312,7 @@ function isAnchorNode(node: LinkGraphNode): boolean {
     || node.metadata?.["layout.direction"] === "ANCHOR";
 }
 
+/** 判断是否为数据类型节点（OUTPUT/DATA 角色，或 ENUM/RECORD/OBJECT 类型）。 */
 function isDataTypeNode(node: LinkGraphNode): boolean {
   return node.metadata?.["presentation.role"] === "OUTPUT"
     || node.metadata?.["layout.direction"] === "DATA"
@@ -297,6 +324,7 @@ function isDataTypeNode(node: LinkGraphNode): boolean {
     || node.metadata?.["jvm.class.kind"] === "OBJECT";
 }
 
+/** 拼接节点 kind 相关的 className，便于在 CSS 中按类型/抽象/数据节点差异化呈现。 */
 function umlCardKindClassName(node: LinkGraphNode): string {
   return [
     `uml-kind-${node.type.toLowerCase()}`,
@@ -305,6 +333,7 @@ function umlCardKindClassName(node: LinkGraphNode): string {
   ].filter(Boolean).join(" ");
 }
 
+/** 根据节点类型和抽象标记生成 UML stereotype 文本（如 <<interface>>、<<abstract>> 等）。 */
 function umlStereotype(node: LinkGraphNode): string {
   if (isAbstractClass(node)) {
     return "<<abstract>>";
@@ -327,11 +356,13 @@ function umlStereotype(node: LinkGraphNode): string {
   }
 }
 
+/** 取节点的注释文本：优先 doc，其次 uml.comment 和 jvm.class.docComment；空字符串归一化为 null。 */
 function umlComment(node: LinkGraphNode): string | null {
   const comment = node.doc ?? node.metadata?.["uml.comment"] ?? node.metadata?.["jvm.class.docComment"];
   return comment?.trim() || null;
 }
 
+/** UML 卡片中的注释分区：单独一块展示文档/注释，title 提供完整内容。 */
 function UmlCommentCompartment({ text }: { text: string }) {
   return (
     <div className="uml-comment-compartment" aria-label="注释">
@@ -340,6 +371,7 @@ function UmlCommentCompartment({ text }: { text: string }) {
   );
 }
 
+/** UML 卡片中的成员（字段/方法）分区：列出可见成员并在末尾以 +N 形式提示被折叠的数量。 */
 function UmlMemberCompartment({
   kind,
   items,
@@ -363,6 +395,10 @@ function UmlMemberCompartment({
   );
 }
 
+/**
+ * React Flow 中实际渲染的类图节点：在卡片四周布置全部 source/target Handle（含扇出 slot），
+ * 内部委托 ClassDiagramNodeCard 渲染具体 UML 内容，同时通过 hook 上报 internals 变更。
+ */
 function ClassDiagramReactNode({ id, data, selected, isConnectable }: ClassDiagramFlowNodeProps) {
   const style = handleStyle(isConnectable);
   const nodeInternalsSignature = [
@@ -448,10 +484,12 @@ function ClassDiagramReactNode({ id, data, selected, isConnectable }: ClassDiagr
   );
 }
 
+/** React Flow 注册表：声明类图使用的节点类型与对应组件。 */
 export const CLASS_DIAGRAM_NODE_TYPES: NodeTypes = {
   classDiagramNode: ClassDiagramReactNode,
 };
 
+/** 计算单个节点的内联样式：宽度、圆角、边框、背景渐变与阴影，anchor 节点会得到更醒目的样式。 */
 function classNodeStyle(node: LinkGraphNode) {
   const isTypeNode = ["CLASS", "INTERFACE", "ENUM", "ANNOTATION", "RECORD", "OBJECT"].includes(node.type);
   const presentationRole = node.metadata?.["presentation.role"];
@@ -460,20 +498,21 @@ function classNodeStyle(node: LinkGraphNode) {
     width: classDiagramNodeCardWidth(node),
     borderRadius: 7,
     border: isAnchor
-      ? "3px solid rgba(52, 180, 255, 0.92)"
-      : isTypeNode ? "1.5px solid rgba(38, 38, 38, 0.62)" : "1px solid rgba(44, 32, 22, 0.16)",
+      ? "3px solid var(--accent)"
+      : isTypeNode ? "1.5px solid var(--uml-line)" : "1px solid var(--uml-line)",
     background: isAnchor
-      ? "linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, transparent), var(--panel))"
+      ? "linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, transparent), var(--surface))"
       : isTypeNode
-        ? "var(--panel)"
-        : "var(--panel-soft)",
+        ? "var(--uml-bg)"
+        : "var(--surface-soft)",
     boxShadow: isAnchor
-      ? "0 0 0 3px rgba(52, 180, 255, 0.18), 0 20px 38px rgba(0, 0, 0, 0.34)"
+      ? "0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent), 0 20px 38px rgba(0, 0, 0, 0.34)"
       : "0 12px 26px rgba(0, 0, 0, 0.22)",
     padding: 0,
   };
 }
 
+/** 决定节点是否应使用紧凑卡片：尊重显式标记，否则按非 anchor 默认紧凑的原则。 */
 function compactClassCard(node: LinkGraphNode): boolean {
   if (node.metadata?.["presentation.compact"] === "false") {
     return false;
@@ -487,6 +526,7 @@ function compactClassCard(node: LinkGraphNode): boolean {
   return node.metadata?.["layout.direction"] !== "ANCHOR";
 }
 
+/** 根据关系类型与 lane 关系调整边的描边颜色、宽度、不透明度和虚线模式。 */
 function classEdgeStyle(edge: LinkGraphEdge): Record<string, string | number> {
   const presentation = classDiagramRelationPresentation(edge);
   const sameLaneRelation = edge.metadata?.["layout.sameLaneRelation"] === "true";
@@ -507,22 +547,26 @@ function classEdgeStyle(edge: LinkGraphEdge): Record<string, string | number> {
   return style;
 }
 
+/** 生成边的可见标签文本：基础关系名 + 可信度（非"静态确认"才追加）。 */
 function classEdgeLabel(edge: LinkGraphEdge): string {
   const base = classDiagramRelationDisplayLabel(edge);
   const confidence = relationConfidenceLabel(edge.metadata?.["jvm.relation.confidence"]);
   return confidence && confidence !== "静态确认" ? `${base} · ${confidence}` : base;
 }
 
+/** 生成边标签 hover 时的 title 文本（多行），用更详细的关系描述加可信度。 */
 function classEdgeLabelTitle(edge: LinkGraphEdge): string {
   const detail = classDiagramRelationDetailLabel(edge);
   const confidence = relationConfidenceLabel(edge.metadata?.["jvm.relation.confidence"]);
   return confidence && confidence !== "静态确认" ? `${detail}\n${confidence}` : detail;
 }
 
+/** 决定边标签的可见性策略：次级关系仅在聚焦时显示，其余始终显示。 */
 function classEdgeLabelVisibility(edge: LinkGraphEdge): RoutedEdgeData["labelVisibility"] {
   return edge.metadata?.["layout.anchorRelation"] === "false" ? "focus" : "always";
 }
 
+/** 根据关系类型选择 React Flow 的箭头 marker：泛化/实现用空心箭头，其余用实心。 */
 function classEdgeMarker(edge: LinkGraphEdge): EdgeMarker {
   const kind = classDiagramRelationKind(edge);
   const presentation = classDiagramRelationPresentation(edge);
@@ -534,6 +578,7 @@ function classEdgeMarker(edge: LinkGraphEdge): EdgeMarker {
   };
 }
 
+/** 选择目标端的装饰物：组合关系用实心菱形，聚合用空心菱形，其它由 marker 处理。 */
 function classEdgeTargetAdornment(edge: LinkGraphEdge): RoutedEdgeData["targetAdornment"] | undefined {
   switch (classDiagramRelationKind(edge)) {
     case "COMPOSITION":
@@ -545,6 +590,7 @@ function classEdgeTargetAdornment(edge: LinkGraphEdge): RoutedEdgeData["targetAd
   }
 }
 
+/** 解析边 metadata 中的标签摆放策略，未配置时默认 target-stub。 */
 function classEdgeLabelPlacement(edge: LinkGraphEdge): RoutedEdgeData["labelPlacement"] {
   const placement = edge.metadata?.["layout.labelPlacement"];
   return placement === "source-stub" || placement === "target-stub" || placement === "center"
@@ -552,6 +598,10 @@ function classEdgeLabelPlacement(edge: LinkGraphEdge): RoutedEdgeData["labelPlac
     : "target-stub";
 }
 
+/**
+ * 把领域节点转换为 React Flow 节点：合并 className（kind + 高亮状态）、写入位置与 data、
+ * 应用节点样式，并把每条节点挂上对应的尺寸上报回调。
+ */
 export function buildClassDiagramNodes({
   nodes,
   selectedNodeId,
@@ -591,6 +641,10 @@ export function buildClassDiagramNodes({
   }));
 }
 
+/**
+ * 把领域边转换为 React Flow 边：写入标签、样式、装饰、marker、zIndex 等，
+ * 同时按 metadata 决定是否保留存储路径还是交由路由器重算。
+ */
 export function buildClassDiagramEdges({
   edges,
   draftCompareEdgeStatuses = {},

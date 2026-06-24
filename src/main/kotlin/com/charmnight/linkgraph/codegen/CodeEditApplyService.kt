@@ -23,23 +23,43 @@ import org.jetbrains.kotlin.psi.KtPsiFactory
  * 把结构化 edit op 应用到内存文本，并交给 validation gate 判定是否允许落盘。
  */
 class CodeEditApplyService(
+    /** 当前 IntelliJ 项目实例，用于获取 PSI 工厂与执行写入命令。 */
     private val project: Project,
+    /** 把 operation 映射到已授权 EditScope 的解析器。 */
     private val scopeResolver: CodeEditScopeResolver = CodeEditScopeResolver(),
+    /** 校验改写后文本是否仍符合可控改写边界的校验服务。 */
     private val validationService: CodeEditValidationService = CodeEditValidationService(project),
 ) {
+    /** 统一对 operation 的 payload 做换行/空白归一化，避免 PSI 解析偏差。 */
     private fun normalizedPayload(operation: CodeEditOperation): String = CodeEditPayloadNormalizer.normalize(operation.payload)
 
+    /**
+     * 参与排序的 operation 包装结构。
+     * 携带匹配到的 scope、原始顺序、按 scope 位置生成的排序键，用于稳定应用多 operation。
+     */
     private data class OrderedOperation(
+        /** 原始 edit operation。 */
         val operation: CodeEditOperation,
+        /** 解析出的授权 scope，可能为 null。 */
         val scope: EditScope?,
+        /** 在原始 operation 列表中的下标，用于稳定排序。 */
         val originalIndex: Int,
+        /** 基于 scope 起止位置算出的排序键，越大越先应用。 */
         val sortKey: Int?,
     )
 
+    /**
+     * 把一串 operation 顺序应用到 [beforeText]，并构造可落盘的预览批次。
+     * 任意 operation 失败或越界都会立即终止，并把批次标记为不可应用。
+     */
     fun prepareEdits(
+        /** 目标文件相对路径，用于 dispatch 与校验。 */
         filePath: String,
+        /** 应用前的完整源码文本。 */
         beforeText: String,
+        /** 待应用的结构化 operation 列表。 */
         operations: List<CodeEditOperation>,
+        /** 已授权的 scope 列表，用于校验每个 operation。 */
         editScopes: List<EditScope>,
     ): PreparedCodeEditBatch {
         if (operations.isEmpty()) {
@@ -108,6 +128,7 @@ class CodeEditApplyService(
         )
     }
 
+    /** 把 operation 与 scope 配对，并按 scope 在文件中的位置倒序排序，避免后续 offset 被前序操作偏移。 */
     private fun orderOperationsForStableApply(
         operations: List<CodeEditOperation>,
         editScopes: List<EditScope>,
@@ -127,6 +148,7 @@ class CodeEditApplyService(
         )
     }
 
+    /** 优先使用 endOffset/endLine，再退化到 startOffset/startLine，得到 scope 在文件中的排序键。 */
     private fun resolveScopeSortKey(scope: EditScope): Int? {
         scope.endOffset?.let { return it }
         scope.endLine?.let { return it * 1_000_000 }
@@ -135,6 +157,7 @@ class CodeEditApplyService(
         return null
     }
 
+    /** 对比应用前后两份文本，提取出最小局部差异并构造可送审的 PreparedCodeEdit；若文本未变化返回 null。 */
     private fun buildPreparedEdit(
         operation: CodeEditOperation,
         scope: EditScope,
@@ -173,6 +196,7 @@ class CodeEditApplyService(
         )
     }
 
+    /** 按目标文件类型分发到 Java 或 Kotlin 的具体实现；返回应用后的完整文本或失败时返回 null。 */
     private fun applyOperation(
         currentText: String,
         operation: CodeEditOperation,
@@ -184,6 +208,7 @@ class CodeEditApplyService(
         }
     }
 
+    /** 应用单个 Java 文件 operation；对流程类 scope 走代码块片段替换，其余按 operation kind 分发。 */
     private fun applyJavaOperation(
         currentText: String,
         operation: CodeEditOperation,
@@ -202,6 +227,7 @@ class CodeEditApplyService(
         }
     }
 
+    /** 应用单个 Kotlin 文件 operation；当前仅支持整体函数替换与函数体替换。 */
     private fun applyKotlinOperation(
         currentText: String,
         operation: CodeEditOperation,
@@ -214,6 +240,7 @@ class CodeEditApplyService(
         }
     }
 
+    /** 用 payload 提供的新方法整体替换目标 Java 方法；payload 解析失败时退化为仅替换方法体。 */
     private fun applyJavaMethodBlockReplacement(
         currentText: String,
         operation: CodeEditOperation,
@@ -244,6 +271,7 @@ class CodeEditApplyService(
         return psiFile.text
     }
 
+    /** 仅替换目标 Java 方法的方法体，保留方法签名与注解。 */
     private fun applyJavaMethodBodyReplacement(
         currentText: String,
         operation: CodeEditOperation,
@@ -260,6 +288,7 @@ class CodeEditApplyService(
         return psiFile.text
     }
 
+    /** 在现有 import 区追加一行新 import 并保持去重、排序，若 import 不存在则在 package 之后插入新区。 */
     private fun applyJavaImportAddition(
         currentText: String,
         operation: CodeEditOperation,
@@ -297,6 +326,7 @@ class CodeEditApplyService(
         }
     }
 
+    /** 在目标方法所属类中插入由 payload 描述的新字段，位置插在目标方法之前。 */
     private fun applyJavaFieldAddition(
         currentText: String,
         operation: CodeEditOperation,
@@ -312,6 +342,7 @@ class CodeEditApplyService(
         return psiFile.text
     }
 
+    /** 把 payload 中描述的新 Java 方法插入到目标方法之后，保持类内顺序可读。 */
     private fun applyJavaMethodInsertionAfter(
         currentText: String,
         operation: CodeEditOperation,
@@ -327,6 +358,7 @@ class CodeEditApplyService(
         return psiFile.text
     }
 
+    /** 用 payload 中的完整函数定义整体替换目标 Kotlin 函数；签名不匹配则视为失败。 */
     private fun applyKotlinFunctionReplacement(
         currentText: String,
         operation: CodeEditOperation,
@@ -348,6 +380,7 @@ class CodeEditApplyService(
         return psiFile.text
     }
 
+    /** 仅替换目标 Kotlin 函数的函数体，签名、参数与返回类型保留原状。 */
     private fun applyKotlinFunctionBodyReplacement(
         currentText: String,
         operation: CodeEditOperation,
@@ -381,6 +414,7 @@ class CodeEditApplyService(
         return psiFile.text
     }
 
+    /** 当 payload 不以 `{` 开头时，补齐方法体大括号，方便后续 PSI 直接解析为代码块。 */
     private fun normalizeJavaCodeBlockPayload(payload: String): String {
         val trimmed = payload.trim()
         return if (trimmed.startsWith("{")) {
@@ -390,6 +424,7 @@ class CodeEditApplyService(
         }
     }
 
+    /** 判断是否应走控制流片段替换路径：仅针对流程类 scope 且为方法块/方法体替换 operation。 */
     private fun shouldApplyScopedJavaSnippetReplacement(
         scope: EditScope,
         operation: CodeEditOperation,
@@ -400,6 +435,7 @@ class CodeEditApplyService(
         return scope.symbolKind in setOf("FLOW_SCOPE", "FLOW_ACTION", "TERMINAL")
     }
 
+    /** 对流程类 scope 做局部代码块片段替换，保留外层 if/try 等包装结构并按需扩展到完整语句。 */
     private fun applyJavaScopedSnippetReplacement(
         currentText: String,
         operation: CodeEditOperation,
@@ -425,6 +461,7 @@ class CodeEditApplyService(
         }
     }
 
+    /** 优先返回控制语句范围，否则退化到 scope 的纯文本范围，用于定位片段替换区间。 */
     private fun resolveScopedJavaReplacementRange(
         currentText: String,
         operation: CodeEditOperation,
@@ -435,6 +472,7 @@ class CodeEditApplyService(
         return rawRange
     }
 
+    /** 在内存中构造临时 Java PSI 文件，并通过签名或 offset 定位目标 PsiMethod；找不到时返回 null。 */
     private fun locateJavaTargetMethod(
         currentText: String,
         operation: CodeEditOperation,
@@ -459,6 +497,7 @@ class CodeEditApplyService(
         return psiFile to targetMethod
     }
 
+    /** 把 scope 的 offset/startLine 解析为字符 offset；起始行号小于等于 1 时返回首个非空白字符位置。 */
     private fun resolveOffset(
         text: String,
         scope: EditScope,
@@ -484,6 +523,7 @@ class CodeEditApplyService(
         return if (currentLine == startLine) text.length else null
     }
 
+    /** 基于 scope 的行号或 offset 计算替换区间；参数越界或倒置时返回 null。 */
     private fun resolveScopedTextRange(
         text: String,
         scope: EditScope,
@@ -503,6 +543,7 @@ class CodeEditApplyService(
         return safeStart to safeEnd
     }
 
+    /** 返回指定行号的起始字符 offset，超出实际行数时返回 null。 */
     private fun lineStartOffset(text: String, lineNumber: Int): Int? {
         if (lineNumber <= 1) {
             return 0
@@ -522,6 +563,7 @@ class CodeEditApplyService(
         return null
     }
 
+    /** 返回指定行号末尾的字符 offset（不包含换行符），超出实际行数时返回 null。 */
     private fun lineEndOffset(text: String, lineNumber: Int): Int? {
         if (lineNumber < 1) {
             return null
@@ -538,6 +580,7 @@ class CodeEditApplyService(
         return if (currentLine == lineNumber) text.length else null
     }
 
+    /** 把流程类 payload 归一化为去掉外层大括号与缩进的纯片段，并按现有片段缩进重新对齐。 */
     private fun normalizeScopedJavaSnippetPayload(
         payload: String,
         existingSnippet: String,
@@ -565,6 +608,7 @@ class CodeEditApplyService(
         }
     }
 
+    /** 当片段大括号不闭合且后面紧跟 `} else / catch / finally` 等延续结构时，扩展替换区间到延续结构之前，避免漏改。 */
     private fun expandScopedJavaTextRange(
         text: String,
         range: Pair<Int, Int>,
@@ -588,6 +632,7 @@ class CodeEditApplyService(
         return startOffset to (endOffset + closingBracePrefix.length)
     }
 
+    /** 解析目标方法体内层（去掉外层大括号）的字符范围，用于把片段替换范围限制在方法体内。 */
     private fun resolveJavaMethodBodyContentRange(
         currentText: String,
         operation: CodeEditOperation,
@@ -600,6 +645,7 @@ class CodeEditApplyService(
         return start to end
     }
 
+    /** 锚点向上回溯到最近的 if/try/loop 等控制语句，返回其字符范围；找不到时返回 null。 */
     private fun resolveScopedJavaControlStatementRange(
         currentText: String,
         operation: CodeEditOperation,
@@ -613,6 +659,7 @@ class CodeEditApplyService(
         return range.startOffset to range.endOffset
     }
 
+    /** 从锚点元素向上查找，返回首个 if/try/loop/switch/synchronized 控制语句；超出目标方法边界时停止。 */
     private fun nearestScopedJavaControlElement(
         anchor: PsiElement,
         targetMethod: PsiMethod,
@@ -632,6 +679,7 @@ class CodeEditApplyService(
         return null
     }
 
+    /** 把目标区间夹取到 [bounds] 范围内，确保片段替换不会越界覆盖方法体外内容。 */
     private fun clampRangeToBounds(
         range: Pair<Int, Int>,
         bounds: Pair<Int, Int>,
@@ -643,6 +691,7 @@ class CodeEditApplyService(
         return safeStart to safeEnd
     }
 
+    /** 统计 `{` 与 `}` 的差值；正值表示存在未闭合大括号。 */
     private fun braceBalance(text: String): Int {
         var balance = 0
         for (char in text) {
@@ -654,6 +703,7 @@ class CodeEditApplyService(
         return balance
     }
 
+    /** 在 payload 仅是片段时，尝试保留原 if/try 等包装头，并把片段注入到包装体内部；若 payload 已含完整包装返回 null 表示无操作。 */
     private fun preserveScopedJavaWrapper(
         existingSnippet: String,
         payload: String,
@@ -708,6 +758,7 @@ class CodeEditApplyService(
         }
     }
 
+    /** 当 payload 仅是包装头（如 `if (cond)`）而片段已含方法体时，把 payload 作为新条件合并到原包装上。 */
     private fun mergeScopedJavaWrapperHeaderOnly(
         existingSnippet: String,
         payload: String,
@@ -735,6 +786,7 @@ class CodeEditApplyService(
         }
     }
 
+    /** 用原片段首行的缩进把替换片段整体重新缩进，保持视觉对齐。 */
     private fun indentScopedJavaSnippet(
         existingSnippet: String,
         replacementSnippet: String,
@@ -753,6 +805,7 @@ class CodeEditApplyService(
         }
     }
 
+    /** 去掉 payload 外层大括号与首尾空白，得到流程类包装体内的纯片段。 */
     private fun normalizeScopedJavaBodyPayload(payload: String): String {
         val trimmed = payload.trim()
         return if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
@@ -762,6 +815,7 @@ class CodeEditApplyService(
         }
     }
 
+    /** 识别 Java 流程控制包装关键字（if/else/try/for/while/switch/synchronized/catch/finally），便于包装保留逻辑分支。 */
     private fun scopedJavaWrapperKeyword(snippet: String): String? {
         val normalized = snippet.trimStart()
         return when {
@@ -779,6 +833,7 @@ class CodeEditApplyService(
         }
     }
 
+    /** 检测 payload 是否已自带同类型包装关键字，避免重复包装。 */
     private fun payloadAlreadyContainsScopedWrapper(
         payload: String,
         wrapperKeyword: String,
@@ -790,6 +845,7 @@ class CodeEditApplyService(
         }
     }
 
+    /** 找到 snippet 第一个 `{` 到其配对 `}` 的字符范围，未闭合时返回 null。 */
     private fun topLevelBraceRange(snippet: String): IntRange? {
         val openBrace = snippet.indexOf('{')
         if (openBrace < 0) {
@@ -810,10 +866,12 @@ class CodeEditApplyService(
         return null
     }
 
+    /** 通过统一签名格式化器输出 PsiMethod 的标准签名文本，便于跨工具比较。 */
     private fun javaMethodSignature(method: PsiMethod): String {
         return JavaMethodSignatureFormatter.methodSignature(method)
     }
 
+    /** 判断 Java 方法签名是否匹配 scope 的预期签名；签名缺失时退化为方法名匹配。 */
     private fun matchesScopeSignature(
         method: PsiMethod,
         scope: EditScope,
@@ -827,6 +885,7 @@ class CodeEditApplyService(
         return method.name == expectedMethodName
     }
 
+    /** 构造 Kotlin 函数的统一签名文本，使用 fqName 拼出 owner，并对基础类型做 kotlin 命名空间归一化。 */
     private fun kotlinFunctionSignature(function: KtNamedFunction): String {
         val owner = function.fqName?.asString()
             ?: PsiTreeUtil.getParentOfType(function, KtClassOrObject::class.java, true)
@@ -844,6 +903,7 @@ class CodeEditApplyService(
         return "$owner($parameters):$returnType"
     }
 
+    /** 判断 Kotlin 函数签名是否匹配 scope；签名缺失时退化为函数名匹配。 */
     private fun matchesKotlinScopeSignature(
         function: KtNamedFunction,
         scope: EditScope,
@@ -857,6 +917,7 @@ class CodeEditApplyService(
         return function.name == expectedFunctionName
     }
 
+    /** 把 Kotlin 基础类型（去 `?`）补齐 kotlin. 前缀，便于跨上下文比对签名一致性。 */
     private fun normalizeKotlinTypeName(typeName: String): String {
         return when (typeName.removeSuffix("?")) {
             "String" -> "kotlin.String"

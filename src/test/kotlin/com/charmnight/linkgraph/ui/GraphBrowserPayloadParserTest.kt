@@ -11,6 +11,7 @@ import com.charmnight.linkgraph.ui.bridge.BridgeCommandParser
 import com.charmnight.linkgraph.workbench.AssistantComposerTarget
 import com.charmnight.linkgraph.workbench.AssistantActionId
 import com.charmnight.linkgraph.workbench.AssistantIntent
+import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.RiskResolutionStatus
 import com.charmnight.linkgraph.workbench.StepGranularity
 import kotlin.test.Test
@@ -38,11 +39,13 @@ class GraphBrowserPayloadParserTest {
                         "targetNodeIds" to listOf("method:validate-order"),
                     ),
                     "explanationGranularity" to "CODE_SEMANTIC",
+                    "mode" to "REVIEW",
                 ),
             ),
         )
 
         val message = assertIs<GraphEditorMessage.RequestAssistantTask>(parsed.message)
+        assertEquals(QaMode.REVIEW, message.mode)
         assertEquals(AssistantIntent.CHECK_CHANGE, message.intent)
         assertEquals(AssistantActionId.CHECK_CHANGE, message.actionId)
         assertEquals("WORKSPACE_REVIEW_GRAPH", message.sceneId)
@@ -293,35 +296,38 @@ class GraphBrowserPayloadParserTest {
         )
 
         val message = assertIs<GraphEditorMessage.ApplyGraphEditRequest>(parsed.message)
-        assertEquals(12, message.request.baseWorkspaceRevision)
-        assertEquals(GraphEditRequestSource.FRONTEND, message.request.source)
-        val operation = assertIs<GraphEditOperation.UpsertNode>(message.request.operations.single())
+        val request = requireNotNull(message.parseResult.request)
+        assertEquals(12, request.baseWorkspaceRevision)
+        assertEquals(GraphEditRequestSource.FRONTEND, request.source)
+        val operation = assertIs<GraphEditOperation.UpsertNode>(request.operations.single())
         assertEquals("node-new", operation.node.id)
         assertEquals("New Node", operation.node.title)
     }
 
     @Test
-    fun bridgeCommandEnvelopeRejectsLegacyGraphEditOperationTypeAliases() {
-        val error = assertFailsWith<IllegalStateException> {
-            BridgeCommandParser.parse(
-                command(
-                    "applyGraphEditScript",
-                    mapOf(
-                        "sceneId" to "WORKSPACE_FACT",
-                        "baseWorkspaceRevision" to 12,
-                        "source" to "FRONTEND",
-                        "operations" to listOf(
-                            mapOf(
-                                "type" to "UPSERTNODE",
-                                "node" to mapOf("id" to "node-new", "type" to "METHOD"),
-                            ),
+    fun bridgeCommandEnvelopeCollectsParseIssuesForLegacyGraphEditOperationTypeAliases() {
+        // 旧实现会抛 IllegalStateException；新实现把解析失败转为 parseResult.issues
+        val parsed = BridgeCommandParser.parse(
+            command(
+                "applyGraphEditScript",
+                mapOf(
+                    "sceneId" to "WORKSPACE_FACT",
+                    "baseWorkspaceRevision" to 12,
+                    "source" to "FRONTEND",
+                    "operations" to listOf(
+                        mapOf(
+                            "type" to "UPSERTNODE",
+                            "node" to mapOf("id" to "node-new", "type" to "METHOD"),
                         ),
                     ),
                 ),
-            )
-        }
+            ),
+        )
 
-        assertTrue(error.message?.contains("unsupported graph edit request operation") == true)
+        val message = assertIs<GraphEditorMessage.ApplyGraphEditRequest>(parsed.message)
+        assertEquals(null, message.parseResult.request)
+        val issue = message.parseResult.issues.single()
+        assertTrue(issue.message.contains("unsupported graph edit request operation"))
     }
 
     @Test

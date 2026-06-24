@@ -15,12 +15,14 @@ import com.intellij.psi.PsiMethod
 import com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.psi.KtFile
 
+/** PSI 事实索引：把符号 ID 映射到对应的 PSI 类/方法以及 Kotlin 文件，供解析器快速查询。 */
 internal data class JvmPsiFactIndex(
     val classBySymbolId: Map<String, PsiClass>,
     val methodBySymbolId: Map<String, PsiMethod>,
     val kotlinFiles: List<KtFile>,
 ) {
     companion object {
+        /** 基于符号索引构建 PSI 事实索引。 */
         fun build(
             project: Project,
             symbolIndex: JvmSymbolIndex,
@@ -54,10 +56,7 @@ internal data class JvmPsiFactIndex(
         ): PsiClass? =
             symbol.source
                 ?.virtualFileUrl
-                ?.let { url ->
-                    VirtualFileManager.getInstance().findFileByUrl(url)
-                        ?: VirtualFileManager.getInstance().refreshAndFindFileByUrl(url)
-                }
+                ?.let { url -> VirtualFileManager.getInstance().findFileByUrl(url) }
                 ?.let { file -> PsiManager.getInstance(project).findFile(file) as? PsiJavaFile }
                 ?.classes
                 ?.flatMap(::flattenPsiClasses)
@@ -75,10 +74,9 @@ internal data class JvmPsiFactIndex(
                 .filterNot { symbol -> symbol.external || symbol.library || symbol.jdk }
                 .mapNotNull { symbol -> symbol.source?.virtualFileUrl }
                 .distinct()
-                .mapNotNull { url ->
-                    VirtualFileManager.getInstance().findFileByUrl(url)
-                        ?: VirtualFileManager.getInstance().refreshAndFindFileByUrl(url)
-                }
+                // 不在循环里调用 refreshAndFindFileByUrl —— 同步 VFS refresh 会阻塞 EDT 并对每个 url 触发 IO；
+                // 文件不存在时直接跳过即可（索引通常是 VFS 已知文件）。
+                .mapNotNull { url -> VirtualFileManager.getInstance().findFileByUrl(url) }
                 .filter { file -> file.extension?.lowercase() in setOf("kt", "kts") && fileIndex.isInContent(file) }
                 .mapNotNull { file -> psiManager.findFile(file) as? KtFile }
                 .distinctBy { file -> file.virtualFile?.url ?: file.name }

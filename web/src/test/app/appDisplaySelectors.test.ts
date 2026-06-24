@@ -14,8 +14,10 @@ function projectionIndex(id: string): GraphProjectionIndex {
   return {
     nodeMappings: {
       [id]: {
-        sceneNodeId: id,
-        sourceNodeIds: [id],
+        projectedNodeId: id,
+        mappingKind: "EXACT",
+        canonicalNodeIds: [id],
+        editableCommandKinds: [],
       },
     },
     edgeMappings: {},
@@ -31,9 +33,17 @@ function indexedSummary(scopeKind: string): IndexedGraphSummary {
     depth: 0,
     projectNodeCount: 0,
     projectClassCount: 0,
-    canonicalEdgeIds: [],
-    canonicalPathNodeIds: [],
-    editableCommandKinds: [],
+    externalNodeCount: 0,
+    jdkNodeCount: 0,
+    scopedNodeCount: 0,
+    visibleNodeCount: 0,
+    hiddenNodeCount: 0,
+    hiddenEdgeCount: 0,
+    candidateNodeCount: 0,
+    candidateEdgeCount: 0,
+    truncated: false,
+    completeness: "PARTIAL",
+    cacheState: "FRESH",
   };
 }
 

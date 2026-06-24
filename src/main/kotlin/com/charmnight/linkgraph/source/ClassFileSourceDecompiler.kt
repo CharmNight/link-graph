@@ -8,12 +8,18 @@ import java.nio.file.Path
 import java.util.Comparator
 import java.util.jar.JarFile
 
+/**
+ * 字节码反编译工具：通过 IntelliJ 内置 ClassFileDecompiler 反编译 .class 文件，
+ * 或在外部 jar 场景下使用独立的 FernFlower 反编译器。
+ */
 internal object ClassFileSourceDecompiler {
+    /** 反编译结果，包含文本或诊断信息。 */
     data class Result(
         val text: String?,
         val diagnostic: String? = null,
     )
 
+    /** 反编译 IntelliJ 虚拟文件形式的 class 文件，附带诊断。 */
     fun decompileVirtualFileWithDiagnostic(file: VirtualFile): Result {
         if (!file.extension.equals("class", ignoreCase = true)) {
             return Result(null, "NOT_CLASS_FILE")
@@ -34,10 +40,19 @@ internal object ClassFileSourceDecompiler {
         return Result(text)
     }
 
+    /** 反编译 IntelliJ 虚拟文件形式的 class 文件，仅返回文本结果（无诊断时为空）。 */
     fun decompileVirtualFile(file: VirtualFile): String? {
         return decompileVirtualFileWithDiagnostic(file).text
     }
 
+    /**
+     * 反编译外部 jar 中的指定 class 条目，先尝试 IntelliJ 内置反编译器，
+     * 失败时回落到独立 FernFlower 进程。
+     *
+     * @param jarPath 目标 jar 文件路径
+     * @param classEntryName jar 内部 class 条目名（如 com/foo/Bar.class）
+     * @return 反编译结果，可能包含 Java 源码或诊断信息
+     */
     fun decompileJarEntryWithDiagnostic(
         jarPath: Path,
         classEntryName: String,
@@ -61,6 +76,7 @@ internal object ClassFileSourceDecompiler {
         return decompileWithFernflower(normalizedJar, classEntryName)
     }
 
+    /** 反编译外部 jar 内的 class 条目，仅返回 Java 源码文本。 */
     fun decompileJarEntry(
         jarPath: Path,
         classEntryName: String,
@@ -68,6 +84,7 @@ internal object ClassFileSourceDecompiler {
         return decompileJarEntryWithDiagnostic(jarPath, classEntryName).text
     }
 
+    /** 使用独立 FernFlower 反编译 jar：先尝试同进程加载，失败再尝试外部进程，并清理临时目录。 */
     private fun decompileWithFernflower(
         inputJar: Path,
         classEntryName: String,
@@ -108,6 +125,7 @@ internal object ClassFileSourceDecompiler {
         }
     }
 
+    /** 读取 FernFlower 反编译输出：优先读展开的 .java 文件，其次从产物 jar 中读取对应条目。 */
     private fun readFernflowerOutput(
         outputDir: Path,
         inputJarName: String,
@@ -129,6 +147,7 @@ internal object ClassFileSourceDecompiler {
         }
     }
 
+    /** 从指定 jar 中按条目名读取文本内容，读取失败或条目不存在时返回 null。 */
     private fun readJarText(
         jarPath: Path,
         entryName: String,
@@ -144,6 +163,7 @@ internal object ClassFileSourceDecompiler {
         }.getOrNull()
     }
 
+    /** 在当前进程内通过 URLClassLoader 加载 FernFlower 并执行反编译，成功返回 true。 */
     private fun runFernflowerInProcess(inputJar: Path, outputDir: Path, decompilerJar: Path): Boolean? {
         return runCatching {
             URLClassLoader(arrayOf(decompilerJar.toUri().toURL()), javaClass.classLoader).use { loader ->
@@ -155,6 +175,7 @@ internal object ClassFileSourceDecompiler {
         }.getOrNull()
     }
 
+    /** 通过启动独立 Java 子进程运行 FernFlower，规避同进程类加载冲突。 */
     private fun runFernflowerOutOfProcess(inputJar: Path, outputDir: Path, decompilerJar: Path): Boolean? {
         return runCatching {
             val javaExecutable = Path.of(System.getProperty("java.home"), "bin", "java")
@@ -178,6 +199,7 @@ internal object ClassFileSourceDecompiler {
         }.getOrNull()?.takeIf { it }
     }
 
+    /** 查找 FernFlower 反编译 jar：依次搜索 classpath、IDE 安装目录，最后回落到 Gradle 缓存。 */
     private fun fernflowerJar(): Path? {
         val classPathCandidates = System.getProperty("java.class.path").orEmpty()
             .split(java.io.File.pathSeparatorChar)
@@ -195,6 +217,7 @@ internal object ClassFileSourceDecompiler {
             ?: gradleCacheFernflowerJar()
     }
 
+    /** 在用户 Gradle 缓存目录下递归查找 java-decompiler.jar，作为最后兜底来源。 */
     private fun gradleCacheFernflowerJar(): Path? {
         val userHome = System.getProperty("user.home")?.takeIf(String::isNotBlank) ?: return null
         val caches = runCatching { Path.of(userHome).resolve(".gradle/caches").normalize() }.getOrNull()
@@ -211,6 +234,7 @@ internal object ClassFileSourceDecompiler {
         }.getOrNull()
     }
 
+    /** 粗略判断反编译结果是否为有效 Java 源码：排除空文本与桩代码，并要求包含类/接口等关键字。 */
     private fun looksLikeDecompiledJava(text: String): Boolean {
         if (text.isBlank() || text.contains("Decompiled class stub")) {
             return false

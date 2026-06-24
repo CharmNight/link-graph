@@ -16,10 +16,16 @@ import {
   RESOURCE_RELATION_NODE_TYPES,
 } from "./resourceRelationNodes";
 
+/**
+ * 资源关系视图组件的入参声明，扩展自可编辑阶段视图的通用入参，并附带当前要展示的视图文档。
+ */
 interface ResourceRelationViewProps extends EditableStageProps {
   view: ResourceRelationViewDocument;
 }
 
+/**
+ * 当节点在索引中查不到源码信息时使用的兜底源节点，避免跳转逻辑拿到 undefined。
+ */
 function fallbackSourceNode() {
   return {
     type: "DOC_PAGE" as const,
@@ -28,6 +34,10 @@ function fallbackSourceNode() {
   };
 }
 
+/**
+ * 构造资源节点的右键菜单条目，覆盖查看、跳源码、讲解、问答、整理布局与删除等常用动作。
+ * 是否显示某些条目受可编辑性与是否可跳源码控制。
+ */
 function resourceNodeActions(args: {
   nodeId: string;
   canOpenSource: boolean;
@@ -108,6 +118,9 @@ function resourceNodeActions(args: {
   return actions;
 }
 
+/**
+ * 根据 Lane（泳道）计数生成顶部摘要文字，将各资源类型及其数量用分隔符拼接展示。
+ */
 function resourceSummaryText(laneCounts: Record<string, number>) {
   const items = Object.entries(laneCounts);
   if (items.length === 0) {
@@ -118,6 +131,10 @@ function resourceSummaryText(laneCounts: Record<string, number>) {
     .join(" · ");
 }
 
+/**
+ * 当视图摘要中带有兜底原因时，给出对应的中文提示文字；否则返回 null。
+ * 用于在画布顶部告知用户为何资源关系无法正常呈现。
+ */
 function resourceFallbackText(summary: ResourceRelationViewDocument["summary"]): string | null {
   switch (summary.fallbackReason) {
     case "NO_RESOURCE_UNITS":
@@ -129,6 +146,10 @@ function resourceFallbackText(summary: ResourceRelationViewDocument["summary"]):
   }
 }
 
+/**
+ * 资源关系视图组件：以泳道布局展示代码与资源之间的绑定关系，
+ * 同时支持草稿对比、节点选择、源码跳转、问答与重新整理布局等交互。
+ */
 export function ResourceRelationView({
   view,
   selectedNodeId,

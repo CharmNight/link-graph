@@ -118,6 +118,41 @@ class GraphEditPermissionPolicyTest {
         assertEquals("edge-ab", issue.targetId)
     }
 
+    /**
+     * 投影源 ID 命中已有节点但 canonical 目标 ID 不命中时，应判 ADD_NODE 而不是 UPDATE_NODE。
+     *
+     * 旧实现用 `targetNodeId in nodesById || operation.node.id in nodesById`，会把这种场景误判为 UPDATE。
+     */
+    @Test
+    fun treatsProjectedIdMatchWithMissingCanonicalTargetAsAddNode() {
+        val snapshot = WorkflowEditorSnapshot(
+            workspaceGraph = GraphDocument(nodes = listOf(node("node-a"))),
+            factGraphView = ApplicationGraphView(
+                projectionIndex = GraphProjectionIndex(
+                    nodeMappings = mapOf(
+                        // 投影源 ID "node-a" 命中已有节点，但 canonical 解析到一个不存在的 "node-b"
+                        "node-a" to GraphProjectionNodeMapping(
+                            projectedNodeId = "node-a",
+                            mappingKind = GraphProjectionMappingKind.EXACT,
+                            canonicalNodeIds = listOf("node-b"),
+                            // 仅放行 ADD_NODE：如果旧实现误判为 UPDATE_NODE 就会触发 readonly issue
+                            editableCommandKinds = setOf(GraphEditCommandKind.ADD_NODE),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val decision = policy.evaluate(
+            snapshot = snapshot,
+            request = request(GraphEditOperation.UpsertNode(node("node-a"))),
+        )
+
+        // 因为 command 应被判为 ADD_NODE（在 allowlist 内），所以不应有 issue
+        assertTrue(decision.issues.isEmpty(), "应当作为 ADD_NODE 放行，实际 issues=${decision.issues}")
+        assertEquals("node-b", decision.resolution.nodeTargetId("node-a"))
+    }
+
     private fun snapshotWithFactProjection(index: GraphProjectionIndex) =
         WorkflowEditorSnapshot(
             workspaceGraph = GraphDocument(nodes = listOf(node("node-a"), node("node-b"))),

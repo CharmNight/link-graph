@@ -1,9 +1,15 @@
+/**
+ * 测试用 bootstrap 状态构建模块。
+ * 主要用于在测试环境中，将简化的输入数据补全为完整的 LinkGraphBootstrapState，
+ * 包括为不同视图（事实图、流程图、资源关系、架构、类图、评审图）构造对应文档，
+ * 以及重建助手会话历史。
+ */
 import { resolveFlowchartKind } from "./flowchartKind";
+import type { AssistantTurnKind } from "./assistant/assistantTypes";
 import type {
   AssistantContextSnapshot,
   AssistantResultStore,
   AssistantSessionState,
-  AssistantTurnKind,
   AssistantTurnRef,
   FactGraphViewDocument,
   FlowchartViewDocument,
@@ -23,11 +29,13 @@ import {
   resolveCurrentSceneState,
 } from "./sampleState";
 
+/** 空的图谱文档占位对象，节点和边列表均为空。 */
 const EMPTY_DOCUMENT: LinkGraphDocument = {
   nodes: [],
   edges: [],
 };
 
+/** 空的图谱视图展示配置占位，不包含任何聚焦目标、泳道或作用域。 */
 const EMPTY_GRAPH_VIEW_PRESENTATION: GraphViewPresentation = {
   target: {
     nodeId: null,
@@ -45,6 +53,7 @@ const EMPTY_GRAPH_VIEW_PRESENTATION: GraphViewPresentation = {
   },
 };
 
+/** 兼容旧版本测试输入的字段集合，用于在新字段命名之外仍接受旧字段。 */
 export interface LegacyTestBootstrapState {
   visibleGraph?: LinkGraphDocument;
   workingGraph?: LinkGraphDocument;
@@ -56,8 +65,10 @@ export interface LegacyTestBootstrapState {
   layoutRevision?: number;
 }
 
+/** 测试 bootstrap 输入类型，组合了标准 bootstrap 字段（部分可选）与遗留兼容字段。 */
 export type TestBootstrapStateInput = Partial<LinkGraphBootstrapState> & LegacyTestBootstrapState;
 
+/** 完整的测试 bootstrap 状态，将输入中所有可选字段强制具体化为非空结构。 */
 export type TestBootstrapState = LinkGraphBootstrapState & {
   visibleGraph: LinkGraphDocument;
   workingGraph: LinkGraphDocument;
@@ -69,6 +80,7 @@ export type TestBootstrapState = LinkGraphBootstrapState & {
   layoutRevision: number;
 };
 
+/** 判断输入对象是否显式包含某个 bootstrap 字段（即使值为 undefined 也算）。 */
 function hasOwnInputField(
   state: TestBootstrapStateInput,
   field: keyof LinkGraphBootstrapState,
@@ -76,6 +88,7 @@ function hasOwnInputField(
   return Object.prototype.hasOwnProperty.call(state, field);
 }
 
+/** 根据分析显示模式推导当前激活的场景 ID，若已显式指定则直接返回。 */
 function resolveSceneId(
   state: Partial<LinkGraphBootstrapState>,
 ): LinkGraphBootstrapState["currentSceneId"] {
@@ -99,6 +112,7 @@ function resolveSceneId(
   }
 }
 
+/** 解析锚点节点 ID：优先使用预设值（若存在于节点列表中），否则退回到第一个 METHOD 类型或首个节点。 */
 function resolveAnchorNodeId(
   nodes: LinkGraphNode[],
   preferredNodeId?: string | null,
@@ -109,6 +123,7 @@ function resolveAnchorNodeId(
   return nodes.find((node) => node.type === "METHOD")?.id ?? nodes[0]?.id ?? null;
 }
 
+/** 构建事实图谱视图文档，包含可见图谱、完整图谱及隐藏元素统计摘要。 */
 function buildFactGraphViewDocument(
   visibleGraph: LinkGraphDocument,
   fullGraph: LinkGraphDocument,
@@ -133,6 +148,7 @@ function buildFactGraphViewDocument(
   };
 }
 
+/** 计算在完整图谱中存在、但未被包含在可见图谱中的节点和边的数量。 */
 function deriveSampleOnlyHiddenCounts(
   visibleGraph: LinkGraphDocument,
   fullGraph: LinkGraphDocument,
@@ -151,6 +167,7 @@ function deriveSampleOnlyHiddenCounts(
   };
 }
 
+/** 构建流程图视图文档，统计分支节点、异常路径以及语义不完整的节点/边数量。 */
 function buildFlowchartViewDocument(
   visibleGraph: LinkGraphDocument,
   anchorNodeId: string | null,
@@ -180,6 +197,7 @@ function buildFlowchartViewDocument(
   };
 }
 
+/** 构建资源关系视图文档，统计资源单元数量、关系数量以及各泳道分布。 */
 function buildResourceRelationViewDocument(
   visibleGraph: LinkGraphDocument,
   anchorNodeId: string | null,
@@ -208,12 +226,14 @@ function buildResourceRelationViewDocument(
   };
 }
 
+/** 判断给定节点是否属于资源关系类型（含资源泳道标记或常见资源类型）。 */
 function isResourceRelationNode(node: LinkGraphNode): boolean {
   return node.metadata?.["resource.lane"] != null ||
     node.type.includes("RESOURCE") ||
     ["SQL", "HTTP_ENDPOINT", "MQ_TOPIC", "CONFIG_ITEM"].includes(node.type);
 }
 
+/** 构建架构视图文档，统计模块、包、服务、组件、资源、层级等结构元素的数量。 */
 function buildArchitectureGraphViewDocument(
   visibleGraph: LinkGraphDocument,
   anchorNodeId: string | null,
@@ -240,6 +260,7 @@ function buildArchitectureGraphViewDocument(
   };
 }
 
+/** 构建 UML 类图视图文档，统计类、接口、枚举、注解、记录等类型数量及字段总数。 */
 function buildClassDiagramViewDocument(
   visibleGraph: LinkGraphDocument,
   anchorNodeId: string | null,
@@ -279,6 +300,7 @@ function buildClassDiagramViewDocument(
   };
 }
 
+/** 构建评审视图文档，统计变更符号、上下游影响、相关测试节点及证据引用数量。 */
 function buildReviewGraphViewDocument(
   visibleGraph: LinkGraphDocument,
   anchorNodeId: string | null,
@@ -304,6 +326,7 @@ function buildReviewGraphViewDocument(
   };
 }
 
+/** 根据当前 bootstrap 状态与选中节点构建助手上下文快照。 */
 function assistantContextFromState(
   state: LinkGraphBootstrapState,
   selectedNodeId: string | null,
@@ -322,6 +345,7 @@ function assistantContextFromState(
   };
 }
 
+/** 构建一个助手回合引用对象，由类型、结果 ID、源消息类型与序号组合出 turnId。 */
 function assistantTurnRef(
   kind: AssistantTurnKind,
   resultId: string,
@@ -339,6 +363,7 @@ function assistantTurnRef(
   };
 }
 
+/** 根据 bootstrap 状态中已有的结果项（解释、问答、评审、生成计划、代码草稿）重建助手历史会话与结果存储。 */
 function materializeAssistantHistory(
   state: LinkGraphBootstrapState,
   selectedNodeId: string | null,
@@ -415,6 +440,10 @@ function materializeAssistantHistory(
   };
 }
 
+/**
+ * 将测试 bootstrap 输入具象化为完整状态。
+ * 处理流程：解析场景 ID，规范化场景状态，构建各视图文档与助手历史，最终合并产出可用的 TestBootstrapState。
+ */
 export function materializeThreeViewDocuments(
   state: TestBootstrapStateInput,
 ): TestBootstrapState {

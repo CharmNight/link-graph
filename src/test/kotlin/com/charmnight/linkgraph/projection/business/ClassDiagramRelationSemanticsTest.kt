@@ -120,22 +120,17 @@ class ClassDiagramRelationSemanticsTest {
         assertEquals(JvmRelationKind.USES_TYPE.name, aggregateEdge.metadata["jvm.relation.kind"])
         assertEquals("FIELD", aggregateEdge.metadata["classDiagram.relation.role"])
         assertEquals("ASSOCIATION", aggregateEdge.metadata["uml.relation.kind"])
-        assertEquals("field repository +1", aggregateEdge.label)
-        assertEquals("field repository", aggregateEdge.metadata["uml.relation.aggregate.primaryLabel"])
-        assertEquals("return load", aggregateEdge.metadata["uml.relation.aggregate.secondaryLabels"])
-        assertEquals("ASSOCIATION,DEPENDENCY", aggregateEdge.metadata["uml.relation.aggregate.kinds"])
-        assertEquals("2", aggregateEdge.metadata["uml.relation.aggregate.count"])
-        assertEquals(
-            fullSourceEdgeIds,
-            aggregateEdge.metadata.getValue("uml.relation.aggregate.edgeIds")
-                .split(',')
-                .mapTo(linkedSetOf()) { edgeId -> edgeId.trim() },
-        )
+        assertEquals("field repository", aggregateEdge.label)
+        assertEquals(null, aggregateEdge.metadata["uml.relation.aggregate.primaryLabel"])
+        assertEquals(null, aggregateEdge.metadata["uml.relation.aggregate.secondaryLabels"])
+        assertEquals(null, aggregateEdge.metadata["uml.relation.aggregate.kinds"])
+        assertEquals(null, aggregateEdge.metadata["uml.relation.aggregate.count"])
+        assertTrue(aggregateEdge.id in fullSourceEdgeIds)
         val edgeMapping = view.projectionIndex.edgeMapping(aggregateEdge.id)
         assertEquals(GraphProjectionMappingKind.INDEXED_READONLY, edgeMapping?.mappingKind)
-        assertEquals(fullSourceEdgeIds, edgeMapping?.canonicalEdgeIds?.toSet())
+        assertEquals(setOf(aggregateEdge.id), edgeMapping?.canonicalEdgeIds?.toSet())
         assertEquals(1, view.summary.relationCount)
-        assertEquals(0, view.summary.hiddenEdgeCount)
+        assertEquals(1, view.summary.hiddenEdgeCount)
     }
 
     private class SymbolFixture(private val packageName: String) {

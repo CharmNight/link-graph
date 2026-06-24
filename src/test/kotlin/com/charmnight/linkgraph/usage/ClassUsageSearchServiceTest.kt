@@ -335,4 +335,50 @@ class ClassUsageSearchServiceTest : BasePlatformTestCase() {
         assertTrue(result.groups.sumOf { group -> group.usages.size } <= 1000)
         assertFalse(result.summary.canRequestMore)
     }
+
+    /**
+     * 验证 collectProjectJavaFileEntries 在命中 limit 后会立刻停止扫描，不会继续遍历后续文件。
+     *
+     * 通过把目标类放在 `samples/` 目录（非 source root）触发 word-index fallback 失败 → 走 project
+     * java file 全量回退路径；构造多个客户端文件，断言小 limit 下扫描会提前结束（truncated=true，
+     * usageCount 不超过 limit+slop）。
+     */
+    fun testProjectJavaFileFallbackStopsScanningOnceEntryLimitReached() {
+        myFixture.addFileToProject(
+            "samples/com/example/OrderService.java",
+            """
+            package com.example;
+            public class OrderService {}
+            """.trimIndent(),
+        )
+        // 8 个客户端文件，每个有 2 处引用（field + return type）
+        repeat(8) { index ->
+            myFixture.addFileToProject(
+                "samples/com/example/client/OrderClient$index.java",
+                """
+                package com.example.client;
+                public class OrderClient$index {
+                    private com.example.OrderService orderService;
+                    public com.example.OrderService get() { return orderService; }
+                }
+                """.trimIndent(),
+            )
+        }
+
+        val result = ClassUsageSearchService(project).search(
+            qualifiedName = "com.example.OrderService",
+            targetNodeId = "jvm:class:com-example-orderservice",
+            options = ClassUsageSearchOptions(maxUsageGroups = 10, maxUsageEntries = 3),
+        )
+
+        assertNotNull(result, "samples 目录下的 Java 类应通过 PSI fallback 找到 usage。")
+        val debugSummary = "${result.summary}\n" +
+            result.groups.joinToString("\n") { group -> "${group.title}: ${group.usages.map { "${it.kind}@${it.line}:${it.column}" }}" }
+        assertEquals(3, result.summary.visibleUsageCount, debugSummary)
+        assertTrue(result.summary.truncated, "limit 命中后必须立即停止扫描并标记 truncated=true。")
+        assertTrue(
+            result.groups.sumOf { group -> group.usages.size } <= 4,
+            "limit=3 时返回的总条目数不应远超 limit；实际：${result.groups.sumOf { group -> group.usages.size }}",
+        )
+    }
 }

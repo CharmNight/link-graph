@@ -24,8 +24,8 @@ describe("ChangeTray", () => {
 
     expect(screen.getByRole("contentinfo", { name: "变更托盘" })).toBeInTheDocument();
     expect(screen.getByText("暂无待应用变更")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看草稿" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "应用全部" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "改动列表" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "写入工程" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "回退" })).toBeDisabled();
   });
 
@@ -59,10 +59,10 @@ describe("ChangeTray", () => {
     expect(screen.getByText("阻塞 1")).toBeInTheDocument();
     expect(screen.getByText("Diff 已就绪")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "查看草稿" }));
+    await user.click(screen.getByRole("button", { name: "改动列表" }));
     await user.click(screen.getByRole("button", { name: "查看流程变化" }));
     await user.click(screen.getByRole("button", { name: "进入代码" }));
-    await user.click(screen.getByRole("button", { name: "应用全部" }));
+    await user.click(screen.getByRole("button", { name: "写入工程" }));
     await user.click(screen.getByRole("button", { name: "回退" }));
 
     expect(onOpenDraft).toHaveBeenCalledTimes(1);

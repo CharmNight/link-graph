@@ -41,28 +41,40 @@ internal class AsyncRequestLifecycleSupport(
     /** 链路讲解请求跟踪器。 */
     private val beautificationRequestTracker = AsyncRequestTracker()
 
+    /** 标记一次新的图问答请求开始，返回该请求的唯一 ID 用于后续完成或取消。 */
     fun beginQaRequest(): Long = qaRequestTracker.beginRequest()
 
+    /** 完成指定 ID 的图问答请求，返回是否确实由本次调用关闭了该请求。 */
     fun completeQaRequest(requestId: Long): Boolean = qaRequestTracker.finishRequest(requestId)
 
+    /** 标记一次新的图 diff 评审请求开始，返回唯一请求 ID。 */
     fun beginDiffReviewRequest(): Long = diffReviewRequestTracker.beginRequest()
 
+    /** 完成指定 ID 的图 diff 评审请求。 */
     fun completeDiffReviewRequest(requestId: Long): Boolean = diffReviewRequestTracker.finishRequest(requestId)
 
+    /** 标记一次新的生成计划请求开始，返回唯一请求 ID。 */
     fun beginGenerationPlanRequest(): Long = generationPlanRequestTracker.beginRequest()
 
+    /** 完成指定 ID 的生成计划请求。 */
     fun completeGenerationPlanRequest(requestId: Long): Boolean = generationPlanRequestTracker.finishRequest(requestId)
 
+    /** 标记一次新的实现建议追问请求开始，返回唯一请求 ID。 */
     fun beginGenerationPlanDiscussionRequest(): Long = generationPlanDiscussionRequestTracker.beginRequest()
 
+    /** 完成指定 ID 的实现建议追问请求。 */
     fun completeGenerationPlanDiscussionRequest(requestId: Long): Boolean = generationPlanDiscussionRequestTracker.finishRequest(requestId)
 
+    /** 标记一次新的代码草稿生成请求开始，返回唯一请求 ID。 */
     fun beginCodeDraftRequest(): Long = codeDraftRequestTracker.beginRequest()
 
+    /** 完成指定 ID 的代码草稿生成请求。 */
     fun completeCodeDraftRequest(requestId: Long): Boolean = codeDraftRequestTracker.finishRequest(requestId)
 
+    /** 标记一次新的链路讲解请求开始，返回唯一请求 ID。 */
     fun beginBeautificationRequest(): Long = beautificationRequestTracker.beginRequest()
 
+    /** 完成指定 ID 的链路讲解请求。 */
     fun completeBeautificationRequest(requestId: Long): Boolean = beautificationRequestTracker.finishRequest(requestId)
 
     /**
@@ -324,6 +336,7 @@ internal class AsyncRequestLifecycleSupport(
         return requestState.copy(detailMessage = mergedDetail)
     }
 
+    /** 把 runtime 的运行头、预算和每一步记录以 debug 级别写入日志，仅在 logger 开启 debug 时输出。 */
     fun logRuntimeTrace(
         logger: Logger,
         runtimeState: AgentRunState,
@@ -412,6 +425,7 @@ internal class AsyncRequestLifecycleSupport(
         }
     }
 
+    /** 在后台线程池执行耗时任务，完成后回到指定 modality 状态派发回调结果，避免阻塞 EDT。 */
     fun <T> runBackgroundTask(
         work: () -> T,
         onCompleted: (Result<T>) -> Unit,
@@ -430,6 +444,7 @@ internal class AsyncRequestLifecycleSupport(
         }
     }
 
+    /** 在后台读线程上以 ReadAction 同步执行计算并等待返回，避免在 EDT 上触发索引访问违规。 */
     fun <T> computeOnBackgroundReadThread(action: () -> T): T {
         val future = AppExecutorUtil.getAppExecutorService().submit<T> {
             ReadAction.compute<T, RuntimeException>(action)
@@ -441,6 +456,7 @@ internal class AsyncRequestLifecycleSupport(
         }
     }
 
+    /** 把 runtime 状态、预算和每一步记录格式化为多行文本，用于追加到请求详情中。 */
     private fun formatRuntimeDetail(runtimeState: AgentRunState): String {
         val sections = mutableListOf<String>()
         sections += runtimeHeader(runtimeState)
@@ -451,6 +467,7 @@ internal class AsyncRequestLifecycleSupport(
         return sections.joinToString(separator = "\n")
     }
 
+    /** 输出包含 runId、capability 与失败原因的 runtime 头部摘要。 */
     private fun runtimeHeader(runtimeState: AgentRunState): String {
         return buildString {
             append("runtime runId=").append(runtimeState.runId)
@@ -461,6 +478,7 @@ internal class AsyncRequestLifecycleSupport(
         }
     }
 
+    /** 把步数、文件、片段、代码行四类预算消耗格式化为单行文本。 */
     private fun formatBudget(budget: RunBudget): String {
         return buildString {
             append("runtime budget steps=").append(budget.usedSteps).append('/').append(budget.maxSteps)
@@ -470,6 +488,7 @@ internal class AsyncRequestLifecycleSupport(
         }
     }
 
+    /** 把单步执行记录（序号、阶段、摘要、工具、节点）格式化为可读文本。 */
     private fun formatStepRecord(record: AgentStepRecord): String {
         return buildString {
             append("step[").append(record.stepIndex).append("]")

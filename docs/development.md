@@ -9,6 +9,14 @@
 - 前端链路
   - 修改 `web/` 下的 React 工作台、图渲染和交互控制逻辑
 
+## 开发环境
+
+- JDK 17(`gradle.properties` 的 `javaVersion` 固定)
+- Node.js `^20.19.0` 或 `>=22.12.0`(由 `web/package.json` 的 `engines` 声明)
+- IntelliJ IDEA 2023.3.4 或更高兼容版本
+
+CI 在 Ubuntu 上使用 JDK 17 和 Node 22,与本地推荐保持一致。CI 配置见 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)。
+
 ## 常用命令
 
 ### 后端
@@ -17,6 +25,7 @@
 ./gradlew test
 ./gradlew integrationTest
 ./gradlew runIde
+./gradlew buildPlugin
 ```
 
 ### 前端
@@ -33,7 +42,7 @@ npm --prefix web run build
 ./gradlew check
 ```
 
-`check` 会执行后端检查，并接线触发前端测试。
+`check` 会执行后端检查、集成测试，并接线触发前端测试。提交 PR 前建议本地跑一次,等价于 CI 的主流程。
 
 ## 构建与打包
 

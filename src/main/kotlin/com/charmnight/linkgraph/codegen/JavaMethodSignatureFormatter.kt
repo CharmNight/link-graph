@@ -4,6 +4,10 @@ import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiMethod
 
+/**
+ * Java 方法签名格式化器：基于 PSI 把方法签名规范化为可比较的字符串形式，
+ * 解析类型注解、泛型参数、可变参数、数组等，并结合导入与包名补全限定名。
+ */
 internal object JavaMethodSignatureFormatter {
     private val implicitJavaLangTypes = setOf(
         "String",
@@ -33,6 +37,7 @@ internal object JavaMethodSignatureFormatter {
 
     private val typeAnnotationRegex = Regex("""@[\w$.]+(?:\([^)]*\))?\s*""")
 
+    /** 生成方法的规范签名（含所有者、参数类型、返回类型）。 */
     fun methodSignature(method: PsiMethod): String {
         val javaFile = method.containingFile as? PsiJavaFile
         val ownerName = method.containingClass?.qualifiedName
@@ -50,6 +55,7 @@ internal object JavaMethodSignatureFormatter {
         return "$ownerName.${method.name}($parameters):$returnType"
     }
 
+    /** 从 Java 文件中提取显式（非通配、非 static）导入映射。 */
     private fun explicitImports(file: PsiJavaFile?): Map<String, String> {
         val importStatements = file?.importList?.allImportStatements.orEmpty()
         return buildMap {
@@ -63,6 +69,7 @@ internal object JavaMethodSignatureFormatter {
         }
     }
 
+    /** 收集方法及其外层类的类型参数名集合。 */
     private fun collectTypeParameterNames(method: PsiMethod): Set<String> {
         val names = linkedSetOf<String>()
         var ownerClass: PsiClass? = method.containingClass
@@ -74,6 +81,7 @@ internal object JavaMethodSignatureFormatter {
         return names
     }
 
+    /** 把类型字符串清洗并解析为规范形式。 */
     private fun normalizeType(
         rawType: String,
         context: TypeContext,
@@ -90,6 +98,7 @@ internal object JavaMethodSignatureFormatter {
         return TypeParser(sanitized, context).parse()
     }
 
+    /** 把以点分隔的类型段补全为完整限定名（结合导入、java.lang、包名）。 */
     private fun qualifySegments(
         segments: List<String>,
         context: TypeContext,
@@ -112,12 +121,14 @@ internal object JavaMethodSignatureFormatter {
         }
     }
 
+    /** 类型解析上下文：当前包名、显式导入、可见类型参数。 */
     private data class TypeContext(
         val packageName: String,
         val explicitImports: Map<String, String>,
         val typeParameters: Set<String>,
     )
 
+    /** 简易递归下降类型解析器，按 Java 类型语法解析并补全限定名。 */
     private class TypeParser(
         private val source: String,
         private val context: TypeContext,

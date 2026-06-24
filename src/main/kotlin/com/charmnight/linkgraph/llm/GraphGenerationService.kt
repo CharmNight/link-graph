@@ -164,7 +164,7 @@ class GraphGenerationService(
         return copy(warnings = extraWarnings + warnings)
     }
 
-    /** 从同步预览项描述中推断目标路径。 */
+    /** 从同步预览项描述或标题中推断目标代码文件路径，无法推断时返回 null。 */
     private fun inferTargetPath(item: SyncPreviewItem): String? {
         /** 从描述文本中直接匹配出的文件路径。 */
         val description = item.description
@@ -181,7 +181,7 @@ class GraphGenerationService(
         }
     }
 
-    /** 把已确认草稿变更转换为规则化计划条目。 */
+    /** 把已确认草稿变更转换为规则化计划条目，并尽量从节点定位到目标文件路径。 */
     private fun confirmedChangeToPlanItem(
         change: DraftWorkbenchEntry,
         context: GenerationContext,

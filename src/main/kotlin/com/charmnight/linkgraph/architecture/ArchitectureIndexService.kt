@@ -16,8 +16,12 @@ import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.newvfs.BulkFileListener
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 
+/**
+ * 项目级架构索引服务，维护缓存、新鲜度状态与内存快照，并监听 VFS/模块根/设置变更以触发失效。
+ */
 @Service(Service.Level.PROJECT)
 class ArchitectureIndexService(
+    /** 当前项目实例。 */
     private val project: Project,
 ) {
     private val cache = ArchitectureGraphCache()
@@ -64,16 +68,21 @@ class ArchitectureIndexService(
         )
     }
 
+    /** 当前已记录的最新索引（可能为空）。 */
     fun currentIndex(): ArchitectureGraphIndex? = lastIndex
 
+    /** 返回当前索引新鲜度快照。 */
     fun freshness(): ArchitectureIndexFreshnessSnapshot = freshnessTracker.snapshot()
 
+    /** 返回索引内存快照（含切片清单与陈旧片段）。 */
     fun memorySnapshot(): ArchitectureIndexMemorySnapshot = memorySnapshot
 
+    /** 通过运行时按预算构建或获取索引。 */
     fun getOrBuildIndex(budget: JvmResolutionBudget = defaultBudget()): ArchitectureGraphIndex {
         return project.architectureIndexRuntime().index(budget)
     }
 
+    /** 获取或构建并写入缓存的索引，支持记录为当前索引并附带构建代际。 */
     fun getOrBuildCachedIndex(
         cacheKey: ArchitectureGraphCacheKey,
         recordAsCurrent: Boolean = true,
@@ -112,9 +121,11 @@ class ArchitectureIndexService(
         }
     }
 
+    /** 从缓存读取索引，未命中返回 null。 */
     fun getCachedIndex(cacheKey: ArchitectureGraphCacheKey): ArchitectureGraphIndex? =
         cache.get(cacheKey)?.index
 
+    /** 记录一个已构建的索引为当前索引（可选）。 */
     fun recordCurrentIndex(
         index: ArchitectureGraphIndex,
         recordAsCurrent: Boolean = true,
@@ -127,6 +138,7 @@ class ArchitectureIndexService(
             }
         }
 
+    /** 写入缓存并可选用作当前索引。 */
     fun putCachedIndex(
         cacheKey: ArchitectureGraphCacheKey,
         index: ArchitectureGraphIndex,
@@ -140,6 +152,7 @@ class ArchitectureIndexService(
             }
         }
 
+    /** 获取或构建辅助用途的缓存索引（不会记录为当前索引）。 */
     fun getOrBuildAuxiliaryCachedIndex(
         cacheKey: ArchitectureGraphCacheKey,
         forceRebuild: Boolean = false,
@@ -151,15 +164,18 @@ class ArchitectureIndexService(
             builder = builder,
         ).index
 
+    /** 清空热缓存与当前索引，仅测试使用。 */
     internal fun clearHotCacheForTesting() {
         cache.invalidate()
         lastIndex = null
     }
 
+    /** 失效全部缓存（默认原因）。 */
     fun invalidate() {
         invalidate("EXPLICIT_INVALIDATE")
     }
 
+    /** 失效全部缓存，并按路径标记脏状态。 */
     fun invalidate(dirtyReason: String, paths: List<String> = emptyList()) {
         freshnessTracker.markDirty(dirtyReason, paths)
         markMemoryStale(paths)
@@ -167,6 +183,7 @@ class ArchitectureIndexService(
         lastIndex = null
     }
 
+    /** 标记开始构建当前索引，返回构建代际令牌。 */
     internal fun beginCurrentIndexBuild(recordAsCurrent: Boolean = true): Long? =
         if (recordAsCurrent) {
             freshnessTracker.markBuilding()
@@ -174,20 +191,24 @@ class ArchitectureIndexService(
             null
         }
 
+    /** 记录当前索引构建失败。 */
     internal fun recordCurrentIndexBuildFailed(buildToken: Long?) {
         buildToken?.let(freshnessTracker::markBuildFailed)
     }
 
+    /** 写入索引内存快照（线程安全）。 */
     fun recordMemorySnapshot(snapshot: ArchitectureIndexMemorySnapshot) {
         synchronized(memoryLock) {
             memorySnapshot = snapshot
         }
     }
 
+    /** 返回运行时默认预算。 */
     fun defaultBudget(): JvmResolutionBudget {
         return project.architectureIndexRuntime().defaultBudget()
     }
 
+    /** 判断 VFS 事件涉及的文件路径是否会影响索引（扩展名/META-INF services）。 */
     private fun indexAffectingPath(event: VFileEvent): String? {
         val path = (event.file?.path ?: event.path).replace('\\', '/')
         if (path.isBlank()) {
@@ -212,6 +233,7 @@ class ArchitectureIndexService(
         return path.takeIf { underProject && (sourceLike || path.contains("/META-INF/services/")) }
     }
 
+    /** 根据变更路径规划受影响的切片，更新内存快照中的陈旧切片集合。 */
     private fun markMemoryStale(paths: List<String>) {
         val current = memorySnapshot
         val manifest = current.manifest ?: return
@@ -231,6 +253,7 @@ class ArchitectureIndexService(
         }
     }
 
+    /** 把绝对路径转换为项目相对路径。 */
     private fun toProjectRelativePath(path: String): String {
         val normalized = path.replace('\\', '/')
         val basePath = project.basePath?.replace('\\', '/') ?: return normalized
@@ -238,5 +261,6 @@ class ArchitectureIndexService(
     }
 }
 
+/** 获取当前项目的架构索引服务。 */
 fun Project.architectureIndexService(): ArchitectureIndexService =
     getService(ArchitectureIndexService::class.java)

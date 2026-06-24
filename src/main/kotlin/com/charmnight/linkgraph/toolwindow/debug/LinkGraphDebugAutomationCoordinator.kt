@@ -31,8 +31,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class LinkGraphDebugAutomationCoordinator(
     private val project: Project,
 ) {
+    /** 标记是否已经调度过自动化任务，避免同一项目重复触发。 */
     private val automationScheduled = AtomicBoolean(false)
 
+    /**
+     * 当传入的请求包含任一自动化动作时，依次调度对应的窗口打开、载图与请求任务。
+     * 每种动作都会以固定延迟在后台执行，并尽量等待图就绪后再触发对应命令。
+     */
     fun scheduleIfRequested(request: LinkGraphDebugAutomationRequest) {
         if (!request.hasAnyAction) {
             return
@@ -237,6 +242,10 @@ internal class LinkGraphDebugAutomationCoordinator(
         }
     }
 
+    /**
+     * 计算类图当前焦点节点 ID。
+     * 优先使用界面选中节点，其次使用锚点节点，最后回退到可见图中的第一个节点。
+     */
     private fun currentClassDiagramFocusNodeId(): String? {
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
         val currentSceneSelection = snapshot.currentSceneState().selectedNodeId
@@ -247,6 +256,10 @@ internal class LinkGraphDebugAutomationCoordinator(
             ?: snapshot.classDiagramView.visibleGraph.nodes.firstOrNull()?.id
     }
 
+    /**
+     * 计算架构图当前焦点节点 ID。
+     * 选择顺序：界面选中 -> 锚点 -> 推荐焦点（有源码样本的聚合节点）-> 第一个节点。
+     */
     private fun currentArchitectureGraphFocusNodeId(): String? {
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
         val currentSceneSelection = snapshot.currentSceneState().selectedNodeId
@@ -258,6 +271,10 @@ internal class LinkGraphDebugAutomationCoordinator(
             ?: snapshot.architectureGraphView.visibleGraph.nodes.firstOrNull()?.id
     }
 
+    /**
+     * 在架构图中挑选一个具备源码导航能力的节点。
+     * 优先返回界面选中且可导航的节点，其次取推荐焦点，最后退回到首个可导航节点。
+     */
     private fun currentArchitectureGraphSourceNavigationNode(): GraphNode? {
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
         val graph = snapshot.architectureGraphView.visibleGraph
@@ -272,6 +289,10 @@ internal class LinkGraphDebugAutomationCoordinator(
             ?: graph.nodes.firstOrNull(SourceNavigationAnchors::canNavigate)
     }
 
+    /**
+     * 在架构图中挑选一个"推荐焦点"节点。
+     * 优先返回带有源码样本的层级/服务/包/资源节点，便于在自动演示中聚焦有真实代码背景的元素。
+     */
     private fun com.charmnight.linkgraph.model.GraphDocument.preferredArchitectureFocusNode(): GraphNode? {
         val sourceBackedAggregateTypes = listOf(
             NodeType.LAYER,
@@ -287,9 +308,14 @@ internal class LinkGraphDebugAutomationCoordinator(
         return null
     }
 
+    /** 判断节点是否带有架构源码样本（依据元数据中的样本计数）。 */
     private fun GraphNode.hasArchitectureSourceSamples(): Boolean =
         metadata["architecture.sourceSample.count"]?.toIntOrNull()?.let { count -> count > 0 } == true
 
+    /**
+     * 周期性轮询源码导航的最终结果，直到状态终结或达到最大尝试次数。
+     * 主要用于自动测试场景下采集导航是否成功落点的诊断信息。
+     */
     private fun logSourceNavigationResult(
         nodeId: String,
         attempt: Int = 0,
@@ -312,6 +338,10 @@ internal class LinkGraphDebugAutomationCoordinator(
         }
     }
 
+    /**
+     * 在后台线程执行动作，失败时仅记录告警，不向上抛出。
+     * 入参 [actionLabel] 仅用于日志标识。
+     */
     private fun runBackground(
         actionLabel: String,
         action: () -> Unit,
@@ -323,6 +353,10 @@ internal class LinkGraphDebugAutomationCoordinator(
         }
     }
 
+    /**
+     * 等待架构图就绪后再执行动作。
+     * 若节点数仍为空，则按固定间隔轮询，直到达到最大尝试次数后放弃并记录告警。
+     */
     private fun runWhenArchitectureGraphReady(
         actionLabel: String,
         attempt: Int = 0,
@@ -343,6 +377,10 @@ internal class LinkGraphDebugAutomationCoordinator(
         }
     }
 
+    /**
+     * 等待类图就绪后再执行动作。
+     * 与 [runWhenArchitectureGraphReady] 行为一致，只是面向类图视图。
+     */
     private fun runWhenClassDiagramReady(
         actionLabel: String,
         attempt: Int = 0,
@@ -363,6 +401,10 @@ internal class LinkGraphDebugAutomationCoordinator(
         }
     }
 
+    /**
+     * 在调度线程上延迟执行动作，并切换到智能模式下的项目线程。
+     * 如果项目已被释放则直接跳过，避免在已关闭的项目上触发命令。
+     */
     private fun schedule(
         delayMillis: Long,
         action: () -> Unit,
@@ -382,21 +424,37 @@ internal class LinkGraphDebugAutomationCoordinator(
     }
 
     private companion object {
+        /** 调试自动载图前等待界面就绪的延迟（毫秒）。 */
         private const val DEBUG_AUTOLOAD_DELAY_MS = 3000L
+        /** 触发架构图请求前等待界面就绪的延迟（毫秒）。 */
         private const val DEBUG_AUTO_REQUEST_ARCHITECTURE_GRAPH_DELAY_MS = 3000L
+        /** 触发架构图讲解前等待图就绪的延迟（毫秒）。 */
         private const val DEBUG_AUTO_REQUEST_ARCHITECTURE_GRAPH_BEAUTIFICATION_DELAY_MS = 7000L
+        /** 触发架构图问答前等待图就绪的延迟（毫秒）。 */
         private const val DEBUG_AUTO_REQUEST_ARCHITECTURE_GRAPH_QA_DELAY_MS = 9000L
+        /** 触发类图请求前等待界面就绪的延迟（毫秒）。 */
         private const val DEBUG_AUTO_REQUEST_CLASS_DIAGRAM_DELAY_MS = 5000L
+        /** 触发类使用处请求前等待界面就绪的延迟（毫秒）。 */
         private const val DEBUG_AUTO_REQUEST_CLASS_USAGE_DELAY_MS = 5000L
+        /** 触发类图讲解前等待图就绪的延迟（毫秒）。 */
         private const val DEBUG_AUTO_REQUEST_CLASS_DIAGRAM_BEAUTIFICATION_DELAY_MS = 9000L
+        /** 触发类图问答前等待图就绪的延迟（毫秒）。 */
         private const val DEBUG_AUTO_REQUEST_CLASS_DIAGRAM_QA_DELAY_MS = 12000L
+        /** 触发源码导航前等待图就绪的延迟（毫秒）。 */
         private const val DEBUG_AUTO_REQUEST_SOURCE_NAVIGATION_DELAY_MS = 7000L
+        /** 等待图就绪时的轮询间隔（毫秒）。 */
         private const val DEBUG_GRAPH_READY_POLL_MS = 2000L
+        /** 等待图就绪的最大轮询次数。 */
         private const val DEBUG_GRAPH_READY_MAX_ATTEMPTS = 180
+        /** 源码导航状态轮询间隔（毫秒）。 */
         private const val DEBUG_SOURCE_NAVIGATION_STATE_POLL_MS = 1000L
+        /** 源码导航状态轮询最大次数。 */
         private const val DEBUG_SOURCE_NAVIGATION_STATE_MAX_ATTEMPTS = 30
+        /** 触发生成计划前等待界面就绪的延迟（毫秒）。 */
         private const val DEBUG_AUTO_REQUEST_PLAN_DELAY_MS = 6000L
+        /** 触发生成代码草稿前等待界面就绪的延迟（毫秒）。 */
         private const val DEBUG_AUTO_REQUEST_CODE_DRAFTS_DELAY_MS = 10000L
+        /** 协调器日志器。 */
         private val logger = Logger.getInstance(LinkGraphDebugAutomationCoordinator::class.java)
     }
 }

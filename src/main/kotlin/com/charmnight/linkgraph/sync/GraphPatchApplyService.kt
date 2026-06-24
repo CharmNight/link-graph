@@ -14,6 +14,11 @@ import com.charmnight.linkgraph.model.GraphPatchOperation
 class GraphPatchApplyService {
     /**
      * 把图补丁应用到当前工作图，可选只应用指定操作。
+     *
+     * @param graph 当前的工作图文档
+     * @param patch 待应用的图补丁
+     * @param operationIds 仅应用指定 id 的操作；传 null 表示应用补丁中的全部操作
+     * @return 应用补丁后产生的新图文档
      */
     fun apply(
         graph: GraphDocument,
@@ -69,6 +74,11 @@ class GraphPatchApplyService {
 
     /**
      * 合并节点变更。
+     *
+     * @param existing 工作图中已有的节点；新增操作或不存在旧节点时为 null
+     * @param incoming 补丁中携带的新节点数据
+     * @param operation 当前正在执行的补丁操作，用于判断是新增还是更新
+     * @return 合并后的节点
      */
     private fun mergeNode(
         existing: GraphNode?,
@@ -102,6 +112,11 @@ class GraphPatchApplyService {
 
     /**
      * 合并边变更。
+     *
+     * @param existing 工作图中已有的边；新增操作或不存在旧边时为 null
+     * @param incoming 补丁中携带的新边数据
+     * @param operation 当前正在执行的补丁操作，用于判断是新增还是更新
+     * @return 合并后的边
      */
     private fun mergeEdge(
         existing: GraphEdge?,

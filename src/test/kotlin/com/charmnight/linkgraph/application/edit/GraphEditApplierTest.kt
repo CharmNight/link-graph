@@ -1,10 +1,12 @@
 package com.charmnight.linkgraph.application.edit
 
 import com.charmnight.linkgraph.application.model.GraphEditOperation
+import com.charmnight.linkgraph.application.model.GraphEditIssueCode
 import com.charmnight.linkgraph.application.model.GraphEditRequest
 import com.charmnight.linkgraph.application.model.GraphEditRequestSource
 import com.charmnight.linkgraph.application.model.GraphSceneId
 import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
+import com.charmnight.linkgraph.application.workflow.FrontendGraphMutationSanitizer
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
@@ -13,6 +15,7 @@ import com.charmnight.linkgraph.model.NodeType
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class GraphEditApplierTest {
     private val applier = GraphEditApplier()
@@ -31,8 +34,9 @@ class GraphEditApplierTest {
             resolution = GraphEditResolution.identity(),
         )
 
-        assertEquals(listOf("node-a", "node-b", "node-c", "node-aa"), applied.nodes.map { it.id })
-        assertEquals("B2", applied.nodes.first { it.id == "node-b" }.title)
+        assertEquals(listOf("node-a", "node-b", "node-c", "node-aa"), applied.graph.nodes.map { it.id })
+        assertEquals("B2", applied.graph.nodes.first { it.id == "node-b" }.title)
+        assertTrue(applierResultHasNoIssues(applied))
     }
 
     @Test
@@ -54,8 +58,9 @@ class GraphEditApplierTest {
             resolution = GraphEditResolution.identity(),
         )
 
-        assertEquals(listOf("edge-ab", "edge-bc", "edge-ac", "edge-aa"), applied.edges.map { it.id })
-        assertEquals("updated", applied.edges.first { it.id == "edge-bc" }.label)
+        assertEquals(listOf("edge-ab", "edge-bc", "edge-ac", "edge-aa"), applied.graph.edges.map { it.id })
+        assertEquals("updated", applied.graph.edges.first { it.id == "edge-bc" }.label)
+        assertTrue(applierResultHasNoIssues(applied))
     }
 
     @Test
@@ -77,9 +82,9 @@ class GraphEditApplierTest {
             resolution = GraphEditResolution.identity(),
         )
 
-        assertEquals(listOf("node-a", "node-c"), applied.nodes.map { it.id })
-        assertEquals(listOf("edge-ac"), applied.edges.map { it.id })
-        assertEquals(patch, applied.patch)
+        assertEquals(listOf("node-a", "node-c"), applied.graph.nodes.map { it.id })
+        assertEquals(listOf("edge-ac"), applied.graph.edges.map { it.id })
+        assertEquals(patch, applied.graph.patch)
     }
 
     @Test
@@ -97,10 +102,98 @@ class GraphEditApplierTest {
             resolution = GraphEditResolution.identity(),
         )
 
-        val newNode = applied.nodes.single()
+        val newNode = applied.graph.nodes.single()
         assertNull(newNode.location)
         assertNull(newNode.signature)
     }
+
+    @Test
+    fun sanitizerEmptyOutputDoesNotWriteRawNode() {
+        // 构造一个会让 sanitizer 返回空节点列表的 applier：模拟 sanitizer 拒绝写入
+        val rejectingSanitizer = object : FrontendGraphMutationSanitizer() {
+            override fun sanitize(
+                snapshot: WorkflowEditorSnapshot,
+                graph: GraphDocument,
+            ): GraphDocument = graph.copy(nodes = emptyList())
+        }
+        val rejectingApplier = GraphEditApplier(frontendGraphMutationSanitizer = rejectingSanitizer)
+
+        val existing = node("node-existing", "Existing")
+        val maliciousNode = node("node-raw").copy(
+            location = "/tmp/escape.java:1:1",
+            signature = "java.lang.System.exit(int):void",
+        )
+        val applied = rejectingApplier.apply(
+            snapshot = WorkflowEditorSnapshot(
+                workspaceGraph = GraphDocument(nodes = listOf(existing)),
+            ),
+            request = request(GraphEditOperation.UpsertNode(maliciousNode)),
+            resolution = GraphEditResolution.identity(),
+        )
+
+        // ① 不修改 nodesById：原节点仍在，恶意节点未被写入
+        assertEquals(listOf("node-existing"), applied.graph.nodes.map { it.id })
+        // ② 返回结果包含 issue
+        assertEquals(1, applied.issues.size)
+        // ③ issue code 与新增常量匹配
+        assertEquals(GraphEditIssueCode.SANITIZER_REJECTED_NODE, applied.issues.single().code)
+        assertEquals("node-raw", applied.issues.single().targetId)
+        assertEquals(0, applied.issues.single().operationIndex)
+    }
+
+    @Test
+    fun trustedMetadataProtectedFromFrontendOverwrite() {
+        // 可信节点已带 jvm.class.kind=CLASS、signature 等不可信前端不应覆盖的字段
+        val trustedNode = node("node-trusted", "Trusted").copy(
+            metadata = mapOf(
+                "jvm.class.kind" to "CLASS",
+                "signature" to "com.example.Real.signature():void",
+                "source.path" to "/trusted/Real.java",
+                "presentation.color" to "trusted-color",
+            ),
+        )
+        // 模拟 WorkspaceEditorSnapshot 暴露 trustedNavigationNodes
+        val snapshot = WorkflowEditorSnapshot(
+            workspaceGraph = GraphDocument(nodes = listOf(trustedNode)),
+            trustedNavigationNodes = linkedMapOf(trustedNode.id to trustedNode),
+        )
+        // 前端构造的 upsert：试图把 signature、jvm.class.kind 改成恶意值
+        // 注意：FrontendGraphMutationSanitizer 对已知节点会保留 trusted 的 title/inputs/outputs/doc，
+        // 但 metadata 字段会从 node.metadata 直传，这里手动构造一个不消毒的 applier 来精确测试合并逻辑
+        val passthroughSanitizer = object : FrontendGraphMutationSanitizer() {
+            override fun sanitize(
+                snapshot: WorkflowEditorSnapshot,
+                graph: GraphDocument,
+            ): GraphDocument = graph
+        }
+        val applier = GraphEditApplier(frontendGraphMutationSanitizer = passthroughSanitizer)
+        val maliciousPayload = node("node-trusted", "Trusted").copy(
+            metadata = mapOf(
+                "jvm.class.kind" to "INTERFACE",
+                "signature" to "java.lang.System.exit(int):void",
+                "source.path" to "/untrusted/Escape.java",
+                "presentation.color" to "frontend-color",
+                "layout.x" to "100",
+            ),
+        )
+
+        val applied = applier.apply(
+            snapshot = snapshot,
+            request = request(GraphEditOperation.UpsertNode(maliciousPayload)),
+            resolution = GraphEditResolution.identity(),
+        )
+
+        val merged = applied.graph.nodes.single { it.id == "node-trusted" }.metadata
+        // 受保护前缀：trusted 值胜出
+        assertEquals("CLASS", merged["jvm.class.kind"], "jvm.class.kind 必须保持 trusted 值")
+        assertEquals("com.example.Real.signature():void", merged["signature"], "signature 必须保持 trusted 值")
+        assertEquals("/trusted/Real.java", merged["source.path"], "source.path 必须保持 trusted 值")
+        // 非受保护前缀：前端值胜出
+        assertEquals("frontend-color", merged["presentation.color"], "非受保护字段允许前端覆盖")
+        assertEquals("100", merged["layout.x"], "layout.* 应允许前端写入")
+    }
+
+    private fun applierResultHasNoIssues(result: GraphEditApplierResult): Boolean = result.issues.isEmpty()
 
     private fun request(vararg operations: GraphEditOperation) =
         GraphEditRequest(

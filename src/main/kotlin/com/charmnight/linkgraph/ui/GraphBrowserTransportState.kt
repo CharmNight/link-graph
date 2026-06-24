@@ -10,13 +10,27 @@ class GraphBrowserTransportState(
     /** 保存当前浏览器会话的唯一标识。 */
     val sessionId: String = UUID.randomUUID().toString(),
 ) {
+    /**
+     * 表示已经下发到前端的一次快照传输内容。
+     *
+     * 携带修订号和实际要执行的脚本，便于在重试或确认场景下统一比对。
+     */
     data class DispatchedTransport(
+        /** 本次下发对应的快照修订号。 */
         val revision: Long,
+        /** 真正投递到前端执行的脚本文本。 */
         val script: String,
     )
 
+    /**
+     * 描述一次"新快照可用"事件被接收/拒绝后的处理结果。
+     *
+     * 通过 accepted 标记快照是否被记录为待发送，并附带本次立即投递的传输内容（若条件满足）。
+     */
     data class SnapshotAvailability(
+        /** 快照是否被接收为待发送状态。 */
         val accepted: Boolean,
+        /** 若立即完成投递，则携带下发内容；否则为 null。 */
         val transport: DispatchedTransport?,
     )
 

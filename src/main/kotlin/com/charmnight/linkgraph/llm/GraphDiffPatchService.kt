@@ -11,6 +11,7 @@ import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 
 /**
  * 围绕“设计基线 vs 代码事实图”的差异生成解释与修订草稿。
+ * 该服务负责拼装提示词、调用远程模型、解析响应，并在远程不可用时回退为本地规则化差异分析。
  */
 class GraphDiffPatchService(
     /** 负责构造差异问答提示词。 */

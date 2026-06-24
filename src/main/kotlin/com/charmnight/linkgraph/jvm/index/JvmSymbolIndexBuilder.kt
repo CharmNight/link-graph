@@ -42,18 +42,28 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.FileSystems
 import java.nio.file.Files
 
+/** 符号索引构建过程中的追踪事件，记录阶段名、起始纳秒与详情。 */
 data class JvmSymbolIndexBuildTraceEvent(
     val stage: String,
     val startedAtNanos: Long,
     val details: () -> List<String>,
 )
 
+/**
+ * JVM 符号索引构建器：通过 PSI 扫描项目源码、附加 jar 等位置，
+ * 构建模块/包/类/字段/方法/资源等符号的统一索引。
+ */
 class JvmSymbolIndexBuilder(
+    /** 当前项目实例。 */
     private val project: Project,
+    /** 可选的构建追踪回调。 */
     private val trace: ((JvmSymbolIndexBuildTraceEvent) -> Unit)? = null,
+    /** 文件过滤谓词，控制扫描范围。 */
     private val fileFilter: (VirtualFile) -> Boolean = { true },
+    /** 附加 jar 索引提供者。 */
     private val attachedJarIndexProvider: () -> AttachedJarIndex = { AttachedJarIndex() },
 ) {
+    /** 按预算构建 JVM 符号索引。 */
     fun build(budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget = com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget()): JvmSymbolIndex {
         val modules = linkedMapOf<String, JvmModuleSymbol>()
         val packages = linkedMapOf<String, JvmPackageSymbol>()
@@ -242,6 +252,7 @@ class JvmSymbolIndexBuilder(
         )
     }
 
+    /** 兜底扫描阶段的统计计数，按语言/资源类型分组，用于追踪埋点。 */
     private data class ProjectBaseFallbackStats(
         var files: Int = 0,
         var javaFiles: Int = 0,
@@ -250,6 +261,10 @@ class JvmSymbolIndexBuilder(
         var resourceFiles: Int = 0,
     )
 
+    /**
+     * 当 content root 扫描未采集到任何类时的兜底实现：
+     * 直接基于 [project] 基础路径递归遍历文件系统，确保即使 IntelliJ 索引不可用也能产出一个最小可用的符号集。
+     */
     private fun indexProjectBaseSourcesFallback(
         psiManager: PsiManager,
         modules: MutableMap<String, JvmModuleSymbol>,
@@ -333,6 +348,7 @@ class JvmSymbolIndexBuilder(
         return stats
     }
 
+    /** 判断当前路径是否属于典型的配置/文档资源，用于决定是否突破类预算限制继续索引。 */
     private fun java.nio.file.Path.isProjectResourcePath(): Boolean =
         fileName?.toString()?.substringAfterLast('.', missingDelimiterValue = "")?.lowercase() in setOf(
             "xml",
@@ -343,6 +359,7 @@ class JvmSymbolIndexBuilder(
             "md",
         )
 
+    /** 判断相对路径是否符合兜底扫描的收录规则：排除受控目录、按测试预算过滤、限定扩展名白名单。 */
     private fun shouldIndexProjectBaseFallbackPath(
         relativePath: String,
         budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget,
@@ -368,6 +385,7 @@ class JvmSymbolIndexBuilder(
         )
     }
 
+    /** 兜底扫描单个 Java 文件：先尝试通过 PSI 解析，失败时使用 [fallbackPsiJavaFile] 重建，再补充继承信息。 */
     private fun indexFallbackJavaFile(
         file: VirtualFile,
         relativePath: String,
@@ -400,9 +418,11 @@ class JvmSymbolIndexBuilder(
         }
     }
 
+    /** 容错读取 [VirtualFile] 文本，捕获编码异常返回 null，避免单文件失败拖垮整次扫描。 */
     private fun readVirtualFileText(file: VirtualFile): String? =
         runCatching { String(file.contentsToByteArray(), file.charset) }.getOrNull()
 
+    /** 在不依赖项目索引的情况下，使用 [PsiFileFactory] 直接由文本创建一个临时 [PsiJavaFile] 供词法/语法解析。 */
     private fun fallbackPsiJavaFile(
         relativePath: String,
         fallbackFileName: String,
@@ -414,6 +434,7 @@ class JvmSymbolIndexBuilder(
             .createFileFromText(fileName, JavaFileType.INSTANCE, sourceText) as? PsiJavaFile
     }
 
+    /** 将兜底提取器得到的父类/接口名称合并到已索引的 [JvmClassSymbol] 中，补充 PSI 在简化模式下遗漏的继承关系。 */
     private fun applyFallbackJavaClassInfo(
         psiJavaFile: PsiJavaFile,
         psiClass: PsiClass,
@@ -448,6 +469,7 @@ class JvmSymbolIndexBuilder(
         )
     }
 
+    /** 兜底扫描 Kotlin 文件：取出顶层 [KtClass] 转 light PSI 后按通用流程索引，保证 Kotlin 类不被遗漏。 */
     private fun indexFallbackKotlinFile(
         file: VirtualFile,
         psiManager: PsiManager,
@@ -474,6 +496,7 @@ class JvmSymbolIndexBuilder(
             }
     }
 
+    /** 判断 content root 内的某个目录是否应当继续向下递归：用于剔除构建产物、版本控制等噪声目录。 */
     private fun shouldDescendContentRootDirectory(
         root: VirtualFile,
         directory: VirtualFile,
@@ -485,18 +508,21 @@ class JvmSymbolIndexBuilder(
         return !relativePath.hasExcludedContentRootSegment()
     }
 
+    /** 判断 content root 内的文件是否应被纳入索引，主要过滤掉排除目录下的文件。 */
     private fun shouldIndexContentRootFile(
         root: VirtualFile,
         file: VirtualFile,
     ): Boolean =
         !contentRootRelativePath(root, file).hasExcludedContentRootSegment()
 
+    /** 计算文件相对 content root 的归一化路径（'/' 分隔），失败时退化为绝对路径，用于排除规则匹配。 */
     private fun contentRootRelativePath(
         root: VirtualFile,
         file: VirtualFile,
     ): String =
         (VfsUtilCore.getRelativePath(file, root, '/') ?: file.path).replace('\\', '/')
 
+    /** 在构建过程的关键节点上报一条追踪事件；若未注入 [trace] 回调则直接跳过，避免无谓的字符串构造。 */
     private fun traceStage(
         stage: String,
         details: () -> Pair<Long, List<String>>,
@@ -512,6 +538,10 @@ class JvmSymbolIndexBuilder(
         )
     }
 
+    /**
+     * 抽取项目类引用到的外部类型（父类、接口、字段类型、方法签名、异常），并在预算内将这些外部类
+     * 通过 PSI 反查补充进索引，使得依赖链路在图谱中可被呈现。
+     */
     private fun indexDirectExternalClasses(
         classes: MutableMap<String, JvmClassSymbol>,
         methods: MutableMap<String, JvmMethodSymbol>,
@@ -519,13 +549,25 @@ class JvmSymbolIndexBuilder(
         budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget,
     ) {
         checkCanceled()
+        // 同一 build 周期内的 PSI findClass 缓存：避免对同一个外部类名重复走 project+all 双 scope 查找。
+        // 项目越大、外部依赖越深，这个缓存的收益越显著（从 O(N²) 降到 O(N)）。
+        val findClassCache = mutableMapOf<String, PsiClass?>()
+        val findClassByProjectScope: (String) -> PsiClass? = { name ->
+            findClassCache.getOrPut("project:$name") {
+                JavaPsiFacade.getInstance(project).findClass(name, GlobalSearchScope.projectScope(project))
+            } ?: null
+        }
+        val findClassByAllScope: (String) -> PsiClass? = { name ->
+            findClassCache.getOrPut("all:$name") {
+                JavaPsiFacade.getInstance(project).findClass(name, GlobalSearchScope.allScope(project))
+            } ?: null
+        }
         val externalNames = linkedSetOf<String>()
         classes.values
             .filterNot { symbol -> symbol.external }
             .forEach { symbol ->
                 checkCanceled()
-                val psiClass = JavaPsiFacade.getInstance(project).findClass(symbol.qualifiedName, GlobalSearchScope.projectScope(project))
-                    ?: return@forEach
+                val psiClass = findClassByProjectScope(symbol.qualifiedName) ?: return@forEach
                 psiClass.superClass?.qualifiedName?.let(externalNames::add)
                 psiClass.interfaces.mapNotNull(PsiClass::getQualifiedName).forEach(externalNames::add)
                 psiClass.fields
@@ -545,7 +587,7 @@ class JvmSymbolIndexBuilder(
             .take((budget.maxExternalClasses - classes.values.count { symbol -> symbol.external }).coerceAtLeast(0))
             .forEach { qualifiedName ->
                 checkCanceled()
-                val psiClass = facade.findClass(qualifiedName, GlobalSearchScope.allScope(project)) ?: return@forEach
+                val psiClass = findClassByAllScope(qualifiedName) ?: return@forEach
                 val navigationFile = psiClass.navigationElement?.containingFile?.virtualFile ?: psiClass.containingFile?.virtualFile
                 val origin = navigationFile?.let(::sourceOriginForExternalFile)
                     ?: if (qualifiedName.startsWith("java.") || qualifiedName.startsWith("javax.") || qualifiedName.startsWith("jdk.")) {
@@ -583,6 +625,7 @@ class JvmSymbolIndexBuilder(
             }
     }
 
+    /** 遍历项目依赖 jar（classes + sources）的 META-INF/services 目录，把 SPI 配置文件收录为服务发现资源。 */
     private fun indexLibraryServiceFiles(
         resources: MutableMap<String, JvmResourceSymbol>,
         serviceFiles: MutableMap<String, MutableList<JvmServiceProviderFile>>,
@@ -633,6 +676,7 @@ class JvmSymbolIndexBuilder(
         }
     }
 
+/** 通过 jrt 文件系统枚举 JDK 各模块下的 META-INF/services，将 JDK 自带的 SPI 配置补充到服务索引中。 */
     private fun indexJdkServiceFiles(
         resources: MutableMap<String, JvmResourceSymbol>,
         serviceFiles: MutableMap<String, MutableList<JvmServiceProviderFile>>,
@@ -706,6 +750,7 @@ class JvmSymbolIndexBuilder(
         }
     }
 
+    /** 处理用户手动附加的 jar：将其中的类、字段、方法和 SPI 服务文件按预算追加到索引中。 */
     private fun indexAttachedJars(
         attachedJarIndex: AttachedJarIndex,
         classes: MutableMap<String, JvmClassSymbol>,
@@ -791,6 +836,7 @@ class JvmSymbolIndexBuilder(
             }
     }
 
+    /** 把 SPI 服务文件中出现的接口名/实现类名补齐到类索引，确保服务提供关系两端都能在图谱中找到节点。 */
     private fun ensureServiceTypesIndexed(
         serviceFiles: MutableMap<String, MutableList<JvmServiceProviderFile>>,
         classes: MutableMap<String, JvmClassSymbol>,
@@ -848,6 +894,7 @@ class JvmSymbolIndexBuilder(
             }
     }
 
+    /** 在附加 jar 索引中补齐 SPI 服务接口/实现类，避免附加 jar 的服务发现链路因缺类而断链。 */
     private fun ensureAttachedServiceTypesIndexed(
         serviceFile: AttachedJarServiceFileEntry,
         attachedJarIndex: AttachedJarIndex,
@@ -900,6 +947,7 @@ class JvmSymbolIndexBuilder(
             }
     }
 
+    /** 把附加 jar 中识别出的字节码类型映射到统一 [JvmClassKind] 枚举。 */
     private fun AttachedJarClassKind.toJvmClassKind(): JvmClassKind =
         when (this) {
             AttachedJarClassKind.CLASS -> JvmClassKind.CLASS
@@ -909,6 +957,7 @@ class JvmSymbolIndexBuilder(
             AttachedJarClassKind.RECORD -> JvmClassKind.RECORD
         }
 
+    /** 解析附加 jar 类的字节码成员表，按访问标志过滤合成/桥接方法后写入字段与方法符号。 */
     private fun indexAttachedJarMembers(
         entry: AttachedJarClassEntry,
         classSymbol: JvmClassSymbol,
@@ -967,6 +1016,7 @@ class JvmSymbolIndexBuilder(
             }
     }
 
+    /** 把外部 [PsiClass] 的字段和方法（去除超类继承成员）补齐到符号表，附带反编译标记和源引用。 */
     private fun indexExternalPsiMembers(
         ownerClassName: String,
         psiClass: PsiClass,
@@ -1028,6 +1078,7 @@ class JvmSymbolIndexBuilder(
         }
     }
 
+    /** 把附加 jar 方法的全限定签名格式化为 `Owner.name(params):return`，构造器以类名作为显示名。 */
     private fun attachedMethodSignature(
         ownerClassName: String,
         methodName: String,
@@ -1038,6 +1089,7 @@ class JvmSymbolIndexBuilder(
         return "$ownerClassName.$displayName(${descriptor.parameterTypes.joinToString(",")}):$returnType"
     }
 
+    /** 解析 JVM 方法描述符（形如 `(Ljava/lang/String;I)V`），拆出参数类型列表与返回类型。 */
     private fun methodDescriptor(descriptor: String): MethodDescriptor? {
         if (!descriptor.startsWith("(")) {
             return null
@@ -1056,9 +1108,11 @@ class JvmSymbolIndexBuilder(
         return MethodDescriptor(parameters, returnType)
     }
 
+    /** 解析单个 JVM 类型描述符（要求整段都被消费），返回对应的 Java 类型文本。 */
     private fun descriptorTypeName(descriptor: String): String? =
         parseDescriptorType(descriptor, 0)?.takeIf { parsed -> parsed.nextOffset == descriptor.length }?.typeName
 
+    /** 从描述符的指定偏移开始解析一个类型（含数组维度），返回类型名与解析结束后的下一个偏移。 */
     private fun parseDescriptorType(
         descriptor: String,
         startOffset: Int,
@@ -1100,6 +1154,7 @@ class JvmSymbolIndexBuilder(
         )
     }
 
+    /** 把一个 [PsiClass] 转换为 [JvmClassSymbol] 写入索引，并连带登记模块、包、内部类、字段与方法。 */
     private fun indexPsiClass(
         file: VirtualFile,
         psiClass: PsiClass,
@@ -1216,6 +1271,7 @@ class JvmSymbolIndexBuilder(
         }
     }
 
+    /** 兜底解析 Scala 源文件：在缺少 Scala 插件时用正则提取包名、顶层声明并写入最小可用类符号。 */
     private fun indexScalaSourceFile(
         file: VirtualFile,
         modules: MutableMap<String, JvmModuleSymbol>,
@@ -1306,18 +1362,21 @@ class JvmSymbolIndexBuilder(
             }
     }
 
+    /** 正则解析得到的 Scala 顶层声明片段，记录关键字类别、名称与所在行号。 */
     private data class ScalaTopLevelDeclaration(
         val kind: String,
         val name: String,
         val startLine: Int,
     )
 
+    /** 用正则从 Scala 源码顶部抽取 package 声明的全限定名，兼容末尾花括号语法。 */
     private fun scalaPackageName(text: String): String? =
         Regex("""(?m)^\s*package\s+([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*)\s*(?:$|\{)""")
             .find(text)
             ?.groupValues
             ?.getOrNull(1)
 
+    /** 用正则枚举 Scala 顶层 class/trait/object/enum，剔除块注释干扰后返回声明列表。 */
     private fun scalaTopLevelDeclarations(text: String): List<ScalaTopLevelDeclaration> {
         val withoutBlockComments = text.replace(Regex("""(?s)/\*.*?\*/"""), "")
         return Regex(
@@ -1333,6 +1392,7 @@ class JvmSymbolIndexBuilder(
             .toList()
     }
 
+    /** 在 content root 扫描不足预算时，再通过 [AllClassesSearch] 和 [PsiShortNamesCache] 双通道兜底补齐项目类。 */
     private fun indexProjectScopeClasses(
         modules: MutableMap<String, JvmModuleSymbol>,
         packages: MutableMap<String, JvmPackageSymbol>,
@@ -1401,6 +1461,7 @@ class JvmSymbolIndexBuilder(
         }
     }
 
+    /** 把一个非代码文件登记为 [JvmResourceSymbol] 并归类，对无关扩展名直接返回 null 跳过。 */
     private fun indexResource(
         file: VirtualFile,
         resources: MutableMap<String, JvmResourceSymbol>,
@@ -1427,6 +1488,7 @@ class JvmSymbolIndexBuilder(
         return resource
     }
 
+    /** 根据路径前缀/后缀把资源文件分门别类（SPI/MQ/配置文件/文档等），用于后续按类型筛选。 */
     private fun resourceKind(path: String): JvmResourceKind {
         return when {
             path.startsWith("mq:") -> JvmResourceKind.MQ_TOPIC
@@ -1440,6 +1502,7 @@ class JvmSymbolIndexBuilder(
         }
     }
 
+    /** 读取 SPI 服务配置文件，逐行剔除注释与空白，得到该接口的实现类全限定名列表。 */
     private fun providerClassNames(file: VirtualFile): List<String> {
         checkCanceled()
         return runCatching { String(file.contentsToByteArray(), StandardCharsets.UTF_8) }
@@ -1447,6 +1510,7 @@ class JvmSymbolIndexBuilder(
             .let(::providerClassNames)
     }
 
+    /** 纯文本版本的 SPI 实现名提取，去除行内注释并去重，供 jrt/jar 内的文件复用。 */
     private fun providerClassNames(text: String): List<String> {
         return text
             .lineSequence()
@@ -1456,6 +1520,7 @@ class JvmSymbolIndexBuilder(
             .toList()
     }
 
+    /** 扫描类方法上的 MQ 监听注解（Kafka/Rabbit/Jms/RocketMQ 等），把目标主题登记为 MQ 资源节点。 */
     private fun indexFrameworkResources(
         file: VirtualFile,
         psiClass: PsiClass,
@@ -1480,10 +1545,12 @@ class JvmSymbolIndexBuilder(
         }
     }
 
+    /** 包装 [ProgressManager.checkCanceled]，让长循环可以统一抛出 ProcessCanceledException 中断。 */
     private fun checkCanceled() {
         ProgressManager.checkCanceled()
     }
 
+    /** 从消息监听注解中按候选属性名（topics/queues/destination 等）取出目标目的地字符串。 */
     private fun mqDestination(annotation: com.intellij.psi.PsiAnnotation): String? {
         val simpleName = annotation.qualifiedName?.substringAfterLast('.') ?: annotation.nameReferenceElement?.referenceName
         if (simpleName !in setOf("KafkaListener", "RabbitListener", "JmsListener", "RocketMQMessageListener", "StreamListener")) {
@@ -1495,6 +1562,7 @@ class JvmSymbolIndexBuilder(
             ?.takeIf(String::isNotBlank)
     }
 
+    /** 提取注解属性值的字符串表示，兼容字面量与数组初始化表达式两种形式。 */
     private fun annotationString(value: com.intellij.psi.PsiAnnotationMemberValue?): String? =
         when (value) {
             is com.intellij.psi.PsiLiteralExpression -> value.value as? String
@@ -1502,6 +1570,7 @@ class JvmSymbolIndexBuilder(
             else -> null
         }
 
+    /** 根据 PSI 标志位判定类的具体形态：注解、枚举、record、接口、Kotlin object 或普通 class。 */
     private fun classKind(psiClass: PsiClass): JvmClassKind {
         return when {
             psiClass.isAnnotationType -> JvmClassKind.ANNOTATION
@@ -1513,6 +1582,7 @@ class JvmSymbolIndexBuilder(
         }
     }
 
+    /** 根据 Spring/Spring Boot 等框架的常见 stereotype 注解推断类在分层架构中的角色。 */
     private fun stereotypeOf(psiClass: PsiClass): JvmStereotype {
         val names = psiClass.annotations.mapNotNull { annotation -> annotation.qualifiedName?.substringAfterLast('.') }
             .toSet()
@@ -1526,9 +1596,11 @@ class JvmSymbolIndexBuilder(
         }
     }
 
+    /** 提取类的 KDoc/Javadoc 文本，作为节点 tooltip 与语义提示的基础素材。 */
     private fun PsiClass.docCommentText(): String? =
         docComment?.plainText()
 
+    /** 把 [PsiDocComment] 描述段拼接成单行紧凑文本，去除多余空白和换行。 */
     private fun PsiDocComment.plainText(): String? =
         descriptionElements
             .joinToString(separator = "") { element -> element.text }
@@ -1537,10 +1609,12 @@ class JvmSymbolIndexBuilder(
             .trim()
             .ifBlank { null }
 
+    /** 通过 [ModuleUtilCore] 反查文件所属 IntelliJ 模块名，作为符号的模块归属。 */
     private fun moduleName(file: VirtualFile): String? {
         return ModuleUtilCore.findModuleForFile(file, project)?.name
     }
 
+    /** 综合多种来源（Java/Kotlin PSI、文件路径、外层类）确定一个 [PsiClass] 的包名，尽量不返回空。 */
     private fun packageNameForPsiClass(file: VirtualFile?, psiClass: PsiClass): String {
         (psiClass.containingFile as? PsiJavaFile)
             ?.packageName
@@ -1565,6 +1639,7 @@ class JvmSymbolIndexBuilder(
             ?: psiClass.qualifiedName?.let(::outermostPackageFromQualifiedName).orEmpty()
     }
 
+    /** 用附加 jar 的 class/source entry 路径反推包名，作为符号归属的兜底来源。 */
     private fun packageNameForClassEntry(
         qualifiedName: String,
         classEntryName: String?,
@@ -1575,6 +1650,7 @@ class JvmSymbolIndexBuilder(
             ?: outermostPackageFromQualifiedName(qualifiedName)
     }
 
+    /** 通过 jar entry 路径与全限定类名做交叉匹配，挑出最可能的包名段，避免内部类污染包路径。 */
     private fun packageNameForPath(path: String?, qualifiedName: String): String? {
         val normalizedPath = path
             ?.substringAfter("!/", missingDelimiterValue = path)
@@ -1593,6 +1669,7 @@ class JvmSymbolIndexBuilder(
             .lastOrNull { candidate -> packageFromPath.endsWith(candidate) }
     }
 
+    /** 计算 PSI 元素在文件中的起止行号，组装成 [JvmSourceRef]，用于点击节点跳转源码。 */
     private fun sourceRef(file: VirtualFile, element: PsiElement): JvmSourceRef {
         val document = FileDocumentManager.getInstance().getDocument(file)
         val range = element.textRange
@@ -1605,6 +1682,7 @@ class JvmSymbolIndexBuilder(
         )
     }
 
+    /** 计算 [file] 相对其所属 content root 的相对路径，找不到祖先 root 时回退为绝对路径。 */
     private fun relativePath(file: VirtualFile): String? {
         val root = ProjectRootManager.getInstance(project).contentRoots
             .firstOrNull { contentRoot -> VfsUtilCore.isAncestor(contentRoot, file, false) }
@@ -1612,9 +1690,11 @@ class JvmSymbolIndexBuilder(
         return VfsUtilCore.getRelativePath(file, root, '/') ?: file.path
     }
 
+    /** 把外部资源（jar/jrt 内）的 URL 路径裁剪为用户友好的显示路径，去掉协议前缀和 jar 包装。 */
     private fun displayPathForExternalResource(file: VirtualFile): String =
         file.path.substringAfter("!/", missingDelimiterValue = file.path)
 
+    /** 根据外部文件的协议（jrt/jar）和 [ProjectFileIndex] 归属，判定它是 JDK 源码、JDK class 还是库源码/class。 */
     private fun sourceOriginForExternalFile(file: VirtualFile): SourceOrigin {
         val fileIndex = ProjectFileIndex.getInstance(project)
         return when {
@@ -1628,6 +1708,7 @@ class JvmSymbolIndexBuilder(
         }
     }
 
+    /** 根据来源类型推导外部依赖的模块显示名：JDK 统一记为 `jdk`，库以 jar 文件名标记。 */
     private fun externalModuleName(file: VirtualFile?, origin: SourceOrigin): String? =
         when (origin) {
             SourceOrigin.JDK_SOURCE,
@@ -1639,8 +1720,10 @@ class JvmSymbolIndexBuilder(
             else -> null
         }
 
+    /** 取当前运行 JDK 的 home 路径，作为 jrt 资源 URL 拼装的辅助信息。 */
     private fun jdkHomePath(): String = System.getProperty("java.home").orEmpty()
 
+    /** 通过包名前缀判断该全限定名是否属于 JDK（java/javax/jdk/sun/com.sun）。 */
     private fun String.isJdkQualifiedName(): Boolean =
         startsWith("java.") ||
             startsWith("javax.") ||
@@ -1648,19 +1731,24 @@ class JvmSymbolIndexBuilder(
             startsWith("sun.") ||
             startsWith("com.sun.")
 
+    /** 方法描述符解析结果：参数类型列表 + 返回类型。 */
     private data class MethodDescriptor(
         val parameterTypes: List<String>,
         val returnType: String,
     )
 
+    /** 类型描述符解析结果：解析出的类型名与解析结束位置（用于连续解析下一个类型）。 */
     private data class ParsedDescriptorType(
         val typeName: String,
         val nextOffset: Int,
     )
 
     private companion object {
+        // JVM access flag：桥接方法，编译器为泛型兼容生成
         private const val ACC_BRIDGE = 0x0040
+        // JVM access flag：合成方法/字段，由编译器内部使用
         private const val ACC_SYNTHETIC = 0x1000
+        // JVM access flag：抽象方法
         private const val ACC_ABSTRACT = 0x0400
     }
 }

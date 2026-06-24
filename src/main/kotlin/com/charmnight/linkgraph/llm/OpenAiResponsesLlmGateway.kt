@@ -9,6 +9,7 @@ class OpenAiResponsesLlmGateway(
     /** 根据请求动态创建 HTTP 客户端，便于测试或按需调整超时。 */
     private val clientFactory: (LlmRequest) -> HttpClient = LlmGatewayClient::defaultHttpClient,
 ) : LlmGateway {
+    /** 调用 OpenAI Responses 协议服务，返回一次性完整响应。 */
     override fun generate(request: LlmRequest): LlmResponse {
         return LlmGatewayClient.generateJson(
             client = clientFactory(request),
@@ -20,6 +21,7 @@ class OpenAiResponsesLlmGateway(
         )
     }
 
+    /** 以 SSE 流式方式调用 OpenAI Responses 协议服务。 */
     override fun stream(
         request: LlmRequest,
         listener: (LlmStreamEvent) -> Unit,
@@ -35,14 +37,17 @@ class OpenAiResponsesLlmGateway(
         )
     }
 
+    /** 把用户配置的 endpoint 解析为完整的 OpenAI Responses 请求地址。 */
     internal fun resolveResponsesUrl(endpoint: String): String {
         return LlmProtocolUrlResolver.resolve(endpoint, LlmWireProtocol.OPENAI_RESPONSES)
     }
 
+    /** 构造 OpenAI Responses 协议风格的请求 JSON。 */
     internal fun buildPayload(request: LlmRequest): String {
         return LlmGatewayPayloadBuilder.openAiResponsesPayload(request)
     }
 
+    /** 从远程返回 JSON 中提取最终输出文本，优先使用 output_text 字段，缺失时回退到 output 列表。 */
     internal fun extractContent(body: String): String {
         val root = LlmGatewayClient.parseObject(body)
         val outputText = root["output_text"] as? String
@@ -66,6 +71,7 @@ class OpenAiResponsesLlmGateway(
         }
     }
 
+    /** 从 OpenAI Responses 流事件中提取文本增量或最终完整文本。 */
     internal fun extractTextDelta(data: String): String? {
         val root = LlmJsonCodec.parseObjectOrNull(data) ?: return null
         return when (root["type"] as? String) {
@@ -75,6 +81,7 @@ class OpenAiResponsesLlmGateway(
         }
     }
 
+    /** 构造 OpenAI Responses 协议要求的鉴权请求头。 */
     private fun openAiHeaders(request: LlmRequest): List<Pair<String, String>> {
         return listOf("Authorization" to "Bearer ${request.apiKey}")
     }

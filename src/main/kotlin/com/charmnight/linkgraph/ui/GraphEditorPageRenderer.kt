@@ -32,6 +32,7 @@ class GraphEditorPageRenderer {
         /** 需要从语义元数据中过滤掉的布局前缀。 */
         private const val LAYOUT_PREFIX = "layout."
 
+        /** 通过 [JBColor] 判断当前 IDE 是否处于暗色主题。 */
         private fun isIdeaDarkTheme(): Boolean = !JBColor.isBright()
     }
 
@@ -364,6 +365,7 @@ class GraphEditorPageRenderer {
         return payload
     }
 
+    /** 把多个场景的运行时状态映射为前端使用的字典结构。 */
     private fun sceneStatesToMap(
         sceneStates: Map<GraphSceneId, GraphSceneState>,
     ): Map<String, Any?> {
@@ -372,6 +374,7 @@ class GraphEditorPageRenderer {
         }
     }
 
+    /** 把单个场景的运行时状态（选中节点、锚点、折叠节点、布局）转换为前端结构。 */
     private fun graphSceneStateToMap(
         state: GraphSceneState,
     ): Map<String, Any?> = linkedMapOf(
@@ -417,6 +420,7 @@ class GraphEditorPageRenderer {
         "effectiveMode" to state.effectiveMode?.name,
     )
 
+    /** 把 QA 请求恢复状态（最近成功/失败的请求）转换为前端可重放的载荷。 */
     private fun qaRequestRecoveryStateToMap(
         state: com.charmnight.linkgraph.workbench.QaRequestRecoveryState,
     ): Map<String, Any?> = linkedMapOf(
@@ -424,6 +428,7 @@ class GraphEditorPageRenderer {
         "lastFailedRequest" to state.lastFailedRequest?.let(::replayableQaRequestToMap),
     )
 
+    /** 把可重放的 QA 请求结构（用于失败后重试或回放）展开为前端字段。 */
     private fun replayableQaRequestToMap(
         request: com.charmnight.linkgraph.workbench.ReplayableQaRequest,
     ): Map<String, Any?> = linkedMapOf(
@@ -436,6 +441,7 @@ class GraphEditorPageRenderer {
         "baseSessionId" to request.baseSession?.sessionId,
     )
 
+    /** 把助手结果存储（按结果 ID 索引的多种轮次结果）展开为前端可消费的嵌套结构。 */
     internal fun assistantResultStoreToMap(
         store: com.charmnight.linkgraph.workbench.AssistantResultStore,
         artifactRefs: Map<String, GraphEditorArtifactRegistry.AssistantResultArtifacts>,
@@ -509,6 +515,7 @@ class GraphEditorPageRenderer {
         }
     }
 
+    /** 把助手调用失败结果转换为前端字段，携带错误消息、阶段与时间戳。 */
     private fun assistantFailureResultToMap(
         failure: com.charmnight.linkgraph.workbench.AssistantFailureResult,
     ): Map<String, Any?> = linkedMapOf(
@@ -521,6 +528,7 @@ class GraphEditorPageRenderer {
         "createdAtEpochMillis" to failure.createdAtEpochMillis,
     )
 
+    /** 把生成计划（含若干变更项、风险等级和目标路径）转换为前端结构。 */
     internal fun generationPlanToMap(
         plan: com.charmnight.linkgraph.llm.GenerationPlan,
         promptPreviewArtifactId: String?,
@@ -540,6 +548,7 @@ class GraphEditorPageRenderer {
         },
     )
 
+    /** 把生成的代码草稿（编辑操作、范围、准备好的编辑等）转换为前端结构。 */
     internal fun generatedCodeDraftToMap(
         draft: com.charmnight.linkgraph.codegen.GeneratedCodeDraft,
         contentArtifactId: String?,
@@ -559,6 +568,7 @@ class GraphEditorPageRenderer {
         }
     }
 
+    /** 把阶段准入判定（是否允许进入下一阶段、阻塞原因等）转换为前端结构。 */
     private fun stageEligibilityDecisionToMap(
         decision: com.charmnight.linkgraph.workbench.StageEligibilityDecision,
     ): Map<String, Any?> = linkedMapOf(
@@ -718,6 +728,7 @@ class GraphEditorPageRenderer {
         layoutState = layoutState,
     )
 
+    /** 把架构图视图结果（含丰富的项目结构摘要）转换为前端结构。 */
     private fun architectureGraphViewToMap(
         document: ArchitectureGraphResult,
         layoutState: GraphLayoutState? = null,
@@ -770,6 +781,7 @@ class GraphEditorPageRenderer {
         presentation = document.presentation,
     )
 
+    /** 把类图视图结果（类型统计、作用域基础、邻域限制等）转换为前端结构。 */
     private fun classDiagramViewToMap(
         document: ClassDiagramResult,
         layoutState: GraphLayoutState? = null,
@@ -813,6 +825,7 @@ class GraphEditorPageRenderer {
             put("usage", document.usage?.toMap())
         }
 
+    /** 把影响面审查图结果（变更符号、上下游、相关测试、证据片段等）转换为前端结构。 */
     private fun reviewGraphViewToMap(
         document: com.charmnight.linkgraph.review.ReviewGraphResult,
         layoutState: GraphLayoutState? = null,
@@ -890,6 +903,7 @@ class GraphEditorPageRenderer {
             })
         }
 
+    /** 把代码审查中的变更 hunk（含匹配到的符号 ID 和原因）转换为前端结构。 */
     private fun reviewHunkToMap(
         hunk: com.charmnight.linkgraph.review.ReviewGraphChangedHunk,
     ): Map<String, Any?> = linkedMapOf(
@@ -928,6 +942,7 @@ class GraphEditorPageRenderer {
             }
         }
 
+    /** 把投影索引（节点/边的规范化映射）转换为前端结构。 */
     private fun projectionIndexToMap(
         projectionIndex: com.charmnight.linkgraph.application.model.GraphProjectionIndex,
     ): Map<String, Any?> = linkedMapOf(
@@ -1047,6 +1062,7 @@ class GraphEditorPageRenderer {
         "appliedTargets" to result.appliedTargets,
     )
 
+    /** 把草稿工作台状态（草稿变更与笔记条目）转换为前端结构。 */
     private fun draftWorkbenchStateToMap(
         state: com.charmnight.linkgraph.workbench.DraftWorkbenchState,
     ): Map<String, Any?> = linkedMapOf(
@@ -1054,6 +1070,7 @@ class GraphEditorPageRenderer {
         "draftNotes" to state.draftNotes.map(::draftWorkbenchEntryToMap),
     )
 
+    /** 把单条草稿工作台条目（前后状态、影响摘要、证据等）转换为前端结构。 */
     private fun draftWorkbenchEntryToMap(
         entry: com.charmnight.linkgraph.workbench.DraftWorkbenchEntry,
     ): Map<String, Any?> = linkedMapOf(
@@ -1074,6 +1091,7 @@ class GraphEditorPageRenderer {
         "graphPatch" to entry.graphPatch?.let(::patchToMap),
     )
 
+    /** 把候选草稿变更（含状态、证据、补丁意图等）转换为前端结构。 */
     private fun candidateDraftChangeToMap(
         change: com.charmnight.linkgraph.workbench.CandidateDraftChange,
     ): Map<String, Any?> = linkedMapOf(
@@ -1093,6 +1111,7 @@ class GraphEditorPageRenderer {
         "graphPatch" to change.graphPatch?.let(::patchToMap),
     )
 
+    /** 把候选补丁意图（附加目标、真假分支节点）转换为前端结构。 */
     private fun candidatePatchIntentToMap(
         intent: com.charmnight.linkgraph.workbench.CandidatePatchIntent,
     ): Map<String, Any?> = linkedMapOf(
@@ -1102,6 +1121,7 @@ class GraphEditorPageRenderer {
         "falseBranchTargetNodeId" to intent.falseBranchTargetNodeId,
     )
 
+    /** 把 QA 多轮对话会话（消息列表、候选变更、调查线程等）转换为前端结构。 */
     private fun qaConversationSessionToMap(
         session: com.charmnight.linkgraph.workbench.QaConversationSession,
     ): Map<String, Any?> = linkedMapOf(
@@ -1114,6 +1134,7 @@ class GraphEditorPageRenderer {
         "focusTargetId" to session.focusTargetId,
     )
 
+    /** 把生成计划讨论会话（消息列表与当前焦点项）转换为前端结构。 */
     internal fun generationPlanDiscussionSessionToMap(
         session: com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession,
         promptPreviewArtifactId: String?,
@@ -1131,10 +1152,12 @@ class GraphEditorPageRenderer {
         "promptPreviewArtifactId" to promptPreviewArtifactId,
     )
 
+    /** 判断是否拥有可展示的 prompt 预览：文本或工件 ID 至少有一个非空即可。 */
     internal fun hasPromptPreview(promptPreview: String?, promptPreviewArtifactId: String?): Boolean {
         return !promptPreview.isNullOrBlank() || !promptPreviewArtifactId.isNullOrBlank()
     }
 
+    /** 把草稿校验状态（状态、消息、未解决的调查线程）转换为前端结构。 */
     private fun draftValidationStateToMap(
         state: com.charmnight.linkgraph.workbench.DraftValidationState,
     ): Map<String, Any?> = linkedMapOf(
@@ -1145,6 +1168,7 @@ class GraphEditorPageRenderer {
         "unresolvedThreads" to state.unresolvedThreads.map(::investigationThreadToMap),
     )
 
+    /** 把单条调查线程（含目标、证据缺口、推荐问题、解决状态）转换为前端结构。 */
     private fun investigationThreadToMap(
         thread: com.charmnight.linkgraph.workbench.InvestigationThread,
     ): Map<String, Any?> = linkedMapOf(
@@ -1162,6 +1186,7 @@ class GraphEditorPageRenderer {
         "resolution" to thread.resolution?.let(::riskResolutionToMap),
     )
 
+    /** 把风险线程的解决结果（状态与备注）转换为前端结构。 */
     private fun riskResolutionToMap(
         resolution: com.charmnight.linkgraph.workbench.RiskResolution,
     ): Map<String, Any?> = linkedMapOf(
@@ -1170,6 +1195,7 @@ class GraphEditorPageRenderer {
         "note" to resolution.note,
     )
 
+    /** 把单轮调查结果（含证据增量、观察到的节点/文件、阻塞原因）转换为前端结构。 */
     private fun investigationTurnOutcomeToMap(
         outcome: com.charmnight.linkgraph.workbench.InvestigationTurnOutcome,
     ): Map<String, Any?> = linkedMapOf(
@@ -1192,6 +1218,7 @@ class GraphEditorPageRenderer {
         "strongestEvidenceLevel" to outcome.strongestEvidenceLevel?.name,
     )
 
+    /** 把 QA 多轮对话中的单条消息转换为前端结构。 */
     private fun qaConversationMessageToMap(
         message: com.charmnight.linkgraph.workbench.QaConversationMessage,
     ): Map<String, Any?> = linkedMapOf(
@@ -1202,6 +1229,7 @@ class GraphEditorPageRenderer {
         "turnOutcomeId" to message.turnOutcomeId,
     )
 
+    /** 把源码片段上下文（行号区间、原始片段、反编译标记）转换为前端结构。 */
     private fun sourceSnippetContextToMap(
         snippet: com.charmnight.linkgraph.llm.SourceSnippetContext,
     ): Map<String, Any?> = linkedMapOf(
@@ -1217,6 +1245,7 @@ class GraphEditorPageRenderer {
         "virtualFileUrl" to snippet.virtualFileUrl,
     )
 
+    /** 把证据追踪条目（节点/文件/行号、是否纳入 prompt）转换为前端结构。 */
     private fun evidenceTraceEntryToMap(
         trace: com.charmnight.linkgraph.llm.EvidenceTraceEntry,
     ): Map<String, Any?> = linkedMapOf(
@@ -1230,6 +1259,7 @@ class GraphEditorPageRenderer {
         "mappingTrace" to trace.mappingTrace,
     )
 
+    /** 把代码编辑作用域（目标符号、允许的变更类型）转换为前端结构。 */
     private fun editScopeToMap(
         scope: com.charmnight.linkgraph.llm.EditScope,
     ): Map<String, Any?> = linkedMapOf(
@@ -1247,6 +1277,7 @@ class GraphEditorPageRenderer {
         "supportingFindingIds" to scope.supportingFindingIds,
     )
 
+    /** 把单条代码编辑操作（文件路径、作用域、操作类型、负载）转换为前端结构。 */
     private fun codeEditOperationToMap(
         operation: com.charmnight.linkgraph.codegen.CodeEditOperation,
     ): Map<String, Any?> = linkedMapOf(
@@ -1258,6 +1289,7 @@ class GraphEditorPageRenderer {
         "warnings" to operation.warnings,
     )
 
+    /** 把准备好的代码编辑（带前后锚文本和符号签名）转换为前端结构。 */
     private fun preparedCodeEditToMap(
         edit: com.charmnight.linkgraph.codegen.PreparedCodeEdit,
     ): Map<String, Any?> = linkedMapOf(

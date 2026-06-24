@@ -55,6 +55,55 @@ class ClassUsageGraphProjectorTest {
         assertTrue(projected.summary.relationCount >= 1)
     }
 
+    /**
+     * 验证：trusted 基础视图的 `jvm.class.kind` 等受保护元数据在叠加 overlay 后保持不变。
+     *
+     * 旧实现 `metadata + overlay.metadata`（未做前缀过滤）会让 overlay 携带的同名 key 覆盖 trusted 值。
+     * 现在过滤掉非 allowlist 前缀（classUsage./presentation./layout.），trusted 字段得以保留。
+     */
+    @Test
+    fun preservesTrustedJvmClassKindWhenOverlyingUsage() {
+        val usageResult = orderServiceUsageResult("jvm:class:com-example-order-service")
+        // 构造一个带 trusted jvm.class.kind 的基础视图
+        val trustedOwnerNode = GraphNode(
+            id = "jvm:class:com-example-order-controller",
+            type = NodeType.CLASS,
+            title = "OrderController",
+            metadata = mapOf(
+                "jvm.class.kind" to "CLASS",
+                "source.path" to "src/main/java/com/example/OrderController.java",
+                "presentation.color" to "trusted-color",
+            ),
+        )
+        val trustedAnchor = GraphNode(
+            id = "jvm:class:com-example-order-service",
+            type = NodeType.CLASS,
+            title = "OrderService",
+            metadata = mapOf("jvm.class.kind" to "CLASS"),
+        )
+        val baseGraph = GraphDocument(nodes = listOf(trustedAnchor, trustedOwnerNode))
+        // 直接拿 standalone 投影后的视图作为 "已带 trusted jvm.class.kind" 的基础视图
+        val standalone = ClassUsageGraphProjector().projectStandalone(usageResult)
+        // 把 trusted 节点替换进 visibleGraph（确保基础视图真的带有 trusted 元数据）
+        val baseView = standalone.copy(
+            visibleGraph = baseGraph,
+            fullGraph = baseGraph,
+        )
+
+        val projected = ClassUsageGraphProjector().project(baseView, usageResult)
+        val mergedOwner = projected.visibleGraph.nodes.single { it.id == "jvm:class:com-example-order-controller" }
+
+        // trusted 元数据保留
+        assertEquals("CLASS", mergedOwner.metadata["jvm.class.kind"], "jvm.class.kind 必须保留 trusted 值")
+        assertEquals(
+            "src/main/java/com/example/OrderController.java",
+            mergedOwner.metadata["source.path"],
+            "source.path 必须保留 trusted 值",
+        )
+        // overlay 写入的 counts 应生效
+        assertEquals("2", mergedOwner.metadata["classUsage.count"], "classUsage.count 应来自 overlay")
+    }
+
     private fun orderServiceUsageResult(targetNodeId: String): ClassUsageSearchResult =
         ClassUsageSearchResult(
             target = ClassUsageTarget(

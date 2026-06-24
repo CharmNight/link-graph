@@ -1125,6 +1125,17 @@ class GraphEditorStateServiceTest {
     }
 
     @Test
+    fun beginQaRequestPersistsRequestedModeInAssistantComposer() {
+        val service = GraphEditorStateService()
+
+        service.asyncRequests.beginQaRequest(
+            requestState = AsyncRequestState.running(requestedMode = QaMode.REVIEW),
+        )
+
+        assertEquals(QaMode.REVIEW, service.snapshot().assistantSessionState.composer.qaMode)
+    }
+
+    @Test
     fun assistantSessionTracksThinTurnRefsWithoutCopyingQaResult() {
         val service = GraphEditorStateService()
         val graph = GraphDocument(

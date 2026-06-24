@@ -1,7 +1,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { createNodeSizeRegistry } from "../../../app/graph/nodeSizeRegistry";
-import type { LinkGraphDocument, LinkGraphNode } from "../../../app/types";
+import type { LinkGraphDocument, LinkGraphEdge, LinkGraphNode } from "../../../app/types";
+import type { MeasuredLayoutRequest } from "../../../app/reactflow/useMeasuredLayout";
 import { useMeasuredLayout } from "../../../app/reactflow/useMeasuredLayout";
 
 function methodNode(id: string, title: string): LinkGraphNode {
@@ -404,14 +405,11 @@ describe("useMeasuredLayout", () => {
     const layout = vi.fn(async ({
       nodes,
       reason,
-    }: {
-      nodes: LinkGraphNode[];
-      reason: string;
-    }) => ({
+    }: MeasuredLayoutRequest): Promise<{ nodes: LinkGraphNode[]; edges: LinkGraphEdge[] }> => ({
       nodes,
       edges: [{
         id: "edge:anchor->callee",
-        type: "CALL",
+        type: "CALL" as const,
         source: "method:anchor",
         target: "method:callee",
         route: {

@@ -1,9 +1,16 @@
 package com.charmnight.linkgraph.architecture.memory
 
+/**
+ * 项目切片规划器：根据文件元数据把项目输入文件划分为切片，
+ * 生成项目切片清单用于持久化缓存键与失效判断。
+ */
 class ProjectSlicePlanner(
+    /** 项目位置哈希，用于清单标识。 */
     private val projectLocationHash: String,
+    /** 清单 schema 版本。 */
     private val schemaVersion: Int = ProjectSliceManifest.CURRENT_SCHEMA_VERSION,
 ) {
+    /** 按切片键分组并生成最终清单。 */
     fun plan(files: List<ProjectSliceInputFile>): ProjectSliceManifest {
         val slices = files
             .filter { file -> file.relativePath.isNotBlank() }
@@ -36,6 +43,7 @@ class ProjectSlicePlanner(
         )
     }
 
+    /** 根据文件路径与附加指纹推断其所属切片键：附加 jar 走 attached-jar 分支，否则按 JVM 源码或资源分类。 */
     private fun sliceKey(file: ProjectSliceInputFile): SliceKey {
         val path = file.relativePath.normalizePath()
         file.attachedJarFingerprint?.takeIf(String::isNotBlank)?.let { fingerprint ->
@@ -66,6 +74,7 @@ class ProjectSlicePlanner(
         }
     }
 
+    /** 按路径中的 main/test 目录标识推断源集归属，无法识别时返回 unknown。 */
     private fun sourceSet(path: String): String =
         when {
             path.contains("/src/test/") || path.startsWith("src/test/") -> "test"
@@ -73,6 +82,7 @@ class ProjectSlicePlanner(
             else -> "unknown"
         }
 
+    /** 从 JVM 源码路径中提取包前缀，找不到 java/kotlin 标识目录时返回 null。 */
     private fun packagePrefix(path: String): String? {
         val marker = when {
             path.contains("/java/") -> "/java/"
@@ -86,6 +96,7 @@ class ProjectSlicePlanner(
             .takeIf(String::isNotBlank)
     }
 
+    /** 根据资源文件后缀或目录特征，给出资源分类标签（spi/xml/yaml/properties/sql/markdown/resource）。 */
     private fun resourceKind(path: String): String =
         when {
             path.contains("/META-INF/services/") -> "spi"
@@ -97,6 +108,7 @@ class ProjectSlicePlanner(
             else -> "resource"
         }
 
+    /** 用切片键的各部分拼接成稳定可复现的切片 ID，便于持久化缓存命中。 */
     private fun stableSliceId(key: SliceKey): String =
         listOf(
             key.kind.name.lowercase(),
@@ -106,6 +118,7 @@ class ProjectSlicePlanner(
             key.packagePrefix.orEmpty(),
         ).joinToString(":") { part -> part.sanitizeIdPart() }
 
+    /** 切片分组用的内部键，聚合模块、内容根、源集、包前缀与切片类型。 */
     private data class SliceKey(
         val moduleName: String?,
         val contentRoot: String,
@@ -115,7 +128,9 @@ class ProjectSlicePlanner(
     )
 }
 
+/** 把路径中的反斜杠统一成正斜杠并去首尾空白，便于跨平台比较。 */
 internal fun String.normalizePath(): String = replace('\\', '/').trim()
 
+/** 把任意字符串转成可作为切片 ID 片段的安全标识，去除非法字符并在空白时回退为 none。 */
 private fun String.sanitizeIdPart(): String =
     replace(Regex("[^A-Za-z0-9._-]+"), "_").trim('_').ifBlank { "none" }

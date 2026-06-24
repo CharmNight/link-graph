@@ -14,6 +14,7 @@ import com.charmnight.linkgraph.sync.GraphPatchApplyService
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
 import com.charmnight.linkgraph.workbench.QaRequestRecoveryState
 
+/** 加载完整图数据，刷新工作区与语义基线，并将场景切换到事实图视图。 */
 internal fun GraphEditorStateSnapshot.withLoadedGraph(
     graph: GraphDocument,
     source: String,
@@ -62,6 +63,7 @@ internal fun GraphEditorStateSnapshot.withLoadedGraph(
     ).withAssistantContextFromCurrentState()
 }
 
+/** 装载一个带有"可见子图 + 全量底图"两层结构的图，使事实图视图聚焦可见子图但其他视图仍可基于全量底图。 */
 internal fun GraphEditorStateSnapshot.withLoadedGraphProjection(
     visibleGraph: GraphDocument,
     fullGraph: GraphDocument,
@@ -116,6 +118,7 @@ internal fun GraphEditorStateSnapshot.withLoadedGraphProjection(
     ).withAssistantContextFromCurrentState()
 }
 
+/** 接收一次完整的语义分析结果，按展示模式重算工作区、视图与场景，并尽量保留之前已确认的草稿变更。 */
 internal fun GraphEditorStateSnapshot.withLoadedAnalysisOutcome(
     outcome: AnalysisOutcome,
     source: String,
@@ -209,6 +212,7 @@ internal fun GraphEditorStateSnapshot.withLoadedAnalysisOutcome(
     ).withAssistantContextFromCurrentState()
 }
 
+/** 切换展示模式（事实图/流程图/资源关系图等），并同步更新当前场景和锚点选中节点。 */
 internal fun GraphEditorStateSnapshot.withSwitchedAnalysisDisplayMode(
     displayMode: AnalysisDisplayMode,
 ): GraphEditorStateSnapshot {
@@ -237,6 +241,7 @@ internal fun GraphEditorStateSnapshot.withSwitchedAnalysisDisplayMode(
     ).withAssistantContextFromCurrentState()
 }
 
+/** 在发起某类索引图（架构/类图/评审）请求时，清除该视图旧数据并切到对应场景，给出"加载中"提示。 */
 internal fun GraphEditorStateSnapshot.withIndexedGraphRequestStarted(
     view: IndexedGraphView,
     requestState: AsyncRequestState,
@@ -274,6 +279,7 @@ internal fun GraphEditorStateSnapshot.withIndexedGraphRequestStarted(
     )
 }
 
+/** 当某类索引图请求失败时，依据请求 ID 判断是否仍为当前请求，匹配则把错误反馈写入快照。 */
 internal fun GraphEditorStateSnapshot.withIndexedGraphRequestFailed(
     view: IndexedGraphView,
     requestState: AsyncRequestState,
@@ -293,6 +299,7 @@ internal fun GraphEditorStateSnapshot.withIndexedGraphRequestFailed(
     )
 }
 
+/** 当工作区图被外部修改或被工具自身改动后，重算视图、布局、选中节点并保留必要的草稿状态。 */
 internal fun GraphEditorStateSnapshot.withWorkspaceGraphChanged(
     graph: GraphDocument,
     selectedMethodSignatureOverride: String? = null,
@@ -361,6 +368,7 @@ internal fun GraphEditorStateSnapshot.withWorkspaceGraphChanged(
     )
 }
 
+/** 当一次图编辑请求被校验/拒绝时，把首条拒绝原因以错误级别反馈写入快照，并清空挂起事务。 */
 internal fun GraphEditorStateSnapshot.withGraphEditRejected(
     rejection: GraphEditRejected,
 ): GraphEditorStateSnapshot {
@@ -380,6 +388,7 @@ internal fun GraphEditorStateSnapshot.withGraphEditRejected(
     )
 }
 
+/** 装载架构图结果，切换到架构图场景，更新索引请求状态、导航索引和操作反馈。 */
 internal fun GraphEditorStateSnapshot.withLoadedArchitectureGraphView(
     view: ArchitectureGraphResult,
     requestState: AsyncRequestState,
@@ -428,6 +437,7 @@ internal fun GraphEditorStateSnapshot.withLoadedArchitectureGraphView(
     )
 }
 
+/** 装载类图结果，切换到类图场景，并维护跨视图的导航索引和反馈。 */
 internal fun GraphEditorStateSnapshot.withLoadedClassDiagramView(
     view: ClassDiagramResult,
     requestState: AsyncRequestState,
@@ -476,6 +486,7 @@ internal fun GraphEditorStateSnapshot.withLoadedClassDiagramView(
     )
 }
 
+/** 装载评审图结果，切换到评审图场景，并刷新跨视图的导航索引和反馈。 */
 internal fun GraphEditorStateSnapshot.withLoadedReviewGraphView(
     view: ReviewGraphResult,
     requestState: AsyncRequestState,
@@ -524,6 +535,7 @@ internal fun GraphEditorStateSnapshot.withLoadedReviewGraphView(
     )
 }
 
+/** 判定收到的索引图请求是否仍是当前等待的请求，避免过时响应覆盖最新状态。 */
 private fun GraphEditorStateSnapshot.shouldApplyIndexedGraphRequestState(
     view: IndexedGraphView,
     requestState: AsyncRequestState,
@@ -533,6 +545,7 @@ private fun GraphEditorStateSnapshot.shouldApplyIndexedGraphRequestState(
     return incomingRequestId == currentRequestId
 }
 
+/** 把索引图视图枚举映射到对应的展示模式，便于复用统一的状态切换路径。 */
 private fun IndexedGraphView.toAnalysisDisplayMode(): AnalysisDisplayMode =
     when (this) {
         IndexedGraphView.ARCHITECTURE -> AnalysisDisplayMode.ARCHITECTURE_GRAPH
@@ -540,6 +553,7 @@ private fun IndexedGraphView.toAnalysisDisplayMode(): AnalysisDisplayMode =
         IndexedGraphView.REVIEW -> AnalysisDisplayMode.REVIEW_GRAPH
     }
 
+/** 把指定索引图视图还原为空结果，通常用于发起重新请求前清空旧展示。 */
 private fun GraphEditorStateSnapshot.clearIndexedGraphView(view: IndexedGraphView): GraphEditorStateSnapshot =
     when (view) {
         IndexedGraphView.ARCHITECTURE -> copy(architectureGraphView = ArchitectureGraphResult())
@@ -547,6 +561,7 @@ private fun GraphEditorStateSnapshot.clearIndexedGraphView(view: IndexedGraphVie
         IndexedGraphView.REVIEW -> copy(reviewGraphView = ReviewGraphResult())
     }
 
+/** 把异步请求的阶段翻译成对外反馈的级别（成功/错误/信息），驱动 UI 提示样式。 */
 private fun AsyncRequestState.toApplicationFeedbackLevel(): ApplicationFeedbackLevel =
     when (phase) {
         com.charmnight.linkgraph.application.model.AsyncRequestPhase.SUCCEEDED -> ApplicationFeedbackLevel.SUCCESS
@@ -556,6 +571,7 @@ private fun AsyncRequestState.toApplicationFeedbackLevel(): ApplicationFeedbackL
         else -> ApplicationFeedbackLevel.INFO
     }
 
+/** 重置由图派生出的临时状态（草稿、QA、Diff、生成代码等），可按需保留草稿和已有计划。 */
 private fun GraphEditorStateSnapshot.resetDerivedGraphState(
     preserveDrafts: Boolean,
     preserveWorkbenchPlan: Boolean,
@@ -600,6 +616,7 @@ private fun GraphEditorStateSnapshot.resetDerivedGraphState(
     )
 }
 
+/** 用一个新场景状态覆盖现有映射，返回保留插入顺序的新映射。 */
 internal fun Map<GraphSceneId, GraphSceneState>.withSceneState(
     sceneId: GraphSceneId,
     state: GraphSceneState,

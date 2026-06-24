@@ -1,6 +1,12 @@
 import type { ClassUsageGroup, ClassUsageKind, ClassUsageOwnerKind, ClassUsageSearchResult } from "../../types";
 
+/**
+ * 类用法面板：在类图侧栏展示某个类被哪些位置引用，按"分组 → 单条用法"两层结构呈现。
+ * 顶部展示目标类名和命中数量统计，并对截断/包含 import 等特殊状态做提示标注，
+ * 让用户对搜索结果的完整度有直观认知。
+ */
 export function ClassUsagePanel({ usage }: { usage: ClassUsageSearchResult }) {
+  // 是否存在至少一个使用分组，用于切换列表与空状态两种渲染分支
   const hasGroups = usage.groups.length > 0;
   return (
     <section className="class-usage-panel" aria-label="类使用处">
@@ -35,6 +41,10 @@ export function ClassUsagePanel({ usage }: { usage: ClassUsageSearchResult }) {
   );
 }
 
+/**
+ * 单个使用分组的渲染组件：一个分组通常对应一个类/方法/文件，
+ * 内部再以列表形式罗列该上下文中的所有具体引用位置（行号、文本、所属方法签名）。
+ */
 function ClassUsageGroupView({ group }: { group: ClassUsageGroup }) {
   return (
     <article className="class-usage-group">
@@ -62,6 +72,10 @@ function ClassUsageGroupView({ group }: { group: ClassUsageGroup }) {
   );
 }
 
+/**
+ * 把搜索结果的数量统计格式化为人类可读的摘要字符串，
+ * 形如"3 / 10 分组 · 25 / 100 处"，左侧是当前可见数、右侧是总数，便于一眼看出截断比例。
+ */
 function usageSummaryText(usage: ClassUsageSearchResult): string {
   return [
     `${usage.summary.visibleGroupCount} / ${usage.summary.groupCount} 分组`,
@@ -69,6 +83,10 @@ function usageSummaryText(usage: ClassUsageSearchResult): string {
   ].join(" · ");
 }
 
+/**
+ * 将使用分组的拥有者类型（类/方法/文件）映射为中文标签，
+ * 用于在分组标题旁显示该用法的归属层级。
+ */
 function ownerKindLabel(kind: ClassUsageOwnerKind): string {
   switch (kind) {
     case "CLASS":
@@ -82,6 +100,11 @@ function ownerKindLabel(kind: ClassUsageOwnerKind): string {
   }
 }
 
+/**
+ * 将单条用法的语义类型（类型引用、字段、参数、返回值、构造调用、注解等）
+ * 映射为中文标签，让用户在不用阅读源码的情况下就能判断每条引用的角色。
+ * 对外导出，便于其他模块（如表格视图）复用同一套术语。
+ */
 export function usageKindLabel(kind: ClassUsageKind): string {
   switch (kind) {
     case "TYPE_REFERENCE":

@@ -22,6 +22,8 @@ import {
 } from "./decisionPortGeometry";
 import { buildFlowchartLayoutModel, type FlowchartExpansionGroup } from "./flowchartLayoutModel";
 
+// ELK 分层布局的全局参数：自上而下流向、正交折线路由、Brandes-Koepf 节点对齐策略，
+// 同时保留模型中节点与边的顺序以稳定输出，并按层次间距与节点间距生成舒展的画布。
 const FLOWCHART_LAYOUT_OPTIONS: LayoutOptions = {
   "elk.algorithm": "layered",
   "org.eclipse.elk.direction": "DOWN",
@@ -34,16 +36,23 @@ const FLOWCHART_LAYOUT_OPTIONS: LayoutOptions = {
   "org.eclipse.elk.layered.crossingMinimization.forceNodeModelOrder": "true",
 };
 
+// 普通节点（业务动作、方法调用等）的默认高度，决定 ELK 布局前的预估包围盒。
 const DEFAULT_FLOWCHART_NODE_HEIGHT = 156;
+// 调用展开泳道与主控流之间的横向间距，把被展开的子图整体推到画布右侧。
 const EXPANSION_LANE_GAP = 160;
+// 同一调用源下多个展开分组在纵向上的额外间隔，避免堆叠重叠。
 const EXPANSION_SOURCE_GAP = 96;
+// 调用边绕开障碍时与节点或既有折线之间保留的安全留白。
 const CALL_EDGE_OBSTACLE_GAP = 48;
+// 折线相交与障碍判断中允许的坐标容差，避免浮点抖动导致的误判。
 const ROUTE_INTERSECTION_EPSILON = 1;
 
+/** 依据节点类型返回节点高度：决策菱形需要更大的纵向空间，其他节点复用默认高度。 */
 function nodeHeight(node: LinkGraphNode): number {
   return flowchartKind(node) === "DECISION" ? 228 : DEFAULT_FLOWCHART_NODE_HEIGHT;
 }
 
+/** 计算节点的几何包围盒，统一返回上下左右以及宽高，便于后续路由避障和碰撞检测。 */
 function nodeBounds(node: LinkGraphNode) {
   const position = node.position ?? { x: 0, y: 0 };
   const width = flowchartNodeCardWidth(node);
@@ -58,22 +67,31 @@ function nodeBounds(node: LinkGraphNode) {
   };
 }
 
+/** 包装节点类型解析逻辑，集中处理节点元数据缺失等边界情况。 */
 function flowchartKind(node?: MeasuredLayoutRequest["nodes"][number]): string {
   return resolveFlowchartKind(node);
 }
 
+/** 将边标签规范化为大写无空白的统一形式，便于在条件分支判断时做匹配。 */
 function normalizedFlowLabel(edge?: MeasuredLayoutRequest["edges"][number]): string {
   return edge?.label?.trim().toUpperCase() ?? "";
 }
 
+/** 提取边的流程角色元数据（循环体/回边/退出等），用于决定路由优先级与方向。 */
 function flowEdgeRole(edge?: LinkGraphEdge): string {
   return edge?.metadata?.["flow.edgeRole"]?.toUpperCase() ?? "";
 }
 
+/** 读取节点所处的流程作用域类别（如循环前置/后置条件），用于推断边方向偏好。 */
 function flowScopeCategory(node?: LinkGraphNode): string {
   return node?.metadata?.["flow.scopeCategory"] ?? "";
 }
 
+/**
+ * 按节点类型产出 ELK 端口定义：决策节点提供左右多个出口以表达真假分支，
+ * 汇聚节点根据左右入口计数动态生成多个目标端口，终端节点仅有顶部入口，
+ * 其余普通节点则统一为顶部入口、右/下出口。
+ */
 function flowPortDefinitions(
   node: MeasuredLayoutRequest["nodes"][number],
   outgoingEdges?: LinkGraphEdge[],
@@ -113,6 +131,7 @@ function flowPortDefinitions(
   }
 }
 
+/** 将决策节点的逻辑端口标识映射为 React Flow 使用的四向位置枚举，用于锚点重定向。 */
 function decisionPortPosition(portId: FlowchartDecisionPortId): Position {
   switch (portId) {
     case "target-left":
@@ -129,6 +148,11 @@ function decisionPortPosition(portId: FlowchartDecisionPortId): Position {
   }
 }
 
+/**
+ * 在 ELK 输出的折线基础上重新对齐决策节点的连接锚点：对从决策节点出去的边
+ * 把起点投射到对应分支端口，对进入决策节点的边把终点投射到目标端口，
+ * 让连线视觉上贴在决策菱形的真实分支位置而不是节点中心。
+ */
 function projectDecisionAttachmentPoint(
   edge: LinkGraphEdge,
   node: LinkGraphNode | undefined,
@@ -177,6 +201,10 @@ function projectDecisionAttachmentPoint(
   return edge;
 }
 
+/**
+ * 推断一条控制流边应从源节点的哪个端口发出：终端节点没有出口，
+ * 普通节点优先用底部出口、异常分支使用右侧出口，决策节点交给专用解析。
+ */
 function resolveSourcePort(
   edge: MeasuredLayoutRequest["edges"][number],
   sourceNodeKind: string,
@@ -208,6 +236,10 @@ function resolveSourcePort(
   });
 }
 
+/**
+ * 推断一条控制流边应进入目标节点的哪个端口：决策节点交给专用解析，
+ * 普通节点使用顶部入口，汇聚节点按预先计算的端口或几何相对位置选择左/右入口。
+ */
 function resolveTargetPort(
   edge: MeasuredLayoutRequest["edges"][number],
   targetNodeKind: string,
@@ -246,6 +278,10 @@ function resolveTargetPort(
   return "target-top";
 }
 
+/**
+ * 将图谱节点整理成 ELK 布局所需的节点描述：解析实测尺寸、生成端口集合，
+ * 把异常出口与汇聚端口计数写入元数据，并对锚点节点强制放置在首层以稳定整体走向。
+ */
 function buildLayoutNodes(
   nodes: MeasuredLayoutRequest["nodes"],
   anchorNodeId: string | null | undefined,
@@ -282,6 +318,10 @@ function buildLayoutNodes(
   });
 }
 
+/**
+ * 根据边的流程角色与目标节点所处循环类型，给定 ELK 方向优先级，
+ * 让回环边倾向于向上回弯、循环体/退出边倾向向下，使循环结构在视觉上更清晰。
+ */
 function flowEdgeLayoutOptions(
   edge: LinkGraphEdge,
   nodeIndex: Map<string, LinkGraphNode>,
@@ -306,6 +346,7 @@ function flowEdgeLayoutOptions(
   return undefined;
 }
 
+/** 按位移向量平移一个二维坐标点，用于整体搬迁节点或折线节点。 */
 function translatePoint(point: GraphPosition, delta: GraphPosition): GraphPosition {
   return {
     x: point.x + delta.x,
@@ -313,6 +354,7 @@ function translatePoint(point: GraphPosition, delta: GraphPosition): GraphPositi
   };
 }
 
+/** 按位移向量平移一条边所有折线段（起点、拐点、终点），保持内部形状不变地整体迁移。 */
 function translateEdgeRoute(edge: LinkGraphEdge, delta: GraphPosition): LinkGraphEdge {
   if (!edge.route) {
     return edge;
@@ -329,6 +371,7 @@ function translateEdgeRoute(edge: LinkGraphEdge, delta: GraphPosition): LinkGrap
   };
 }
 
+/** 计算一个调用展开分组内所有节点构成的最小包围盒，用于在右侧泳道中确定整体摆放位置。 */
 function expansionGroupBounds(
   group: FlowchartExpansionGroup,
   nodeIndex: Map<string, LinkGraphNode>,
@@ -346,9 +389,15 @@ function expansionGroupBounds(
   };
 }
 
+/** 节点包围盒类型，包含上下左右与宽高信息，复用 nodeBounds 的返回结构。 */
 type FlowchartNodeBounds = ReturnType<typeof nodeBounds>;
+/** 折线段类型，由起点与终点两个二维坐标构成，是路由相交判断的基本单位。 */
 type RouteSegment = { startPoint: GraphPosition; endPoint: GraphPosition };
 
+/**
+ * 判断一条水平或垂直折线段是否落入给定节点包围盒内部，
+ * 仅处理严格横平竖直的线段并对边界做小量容差以避免边贴边误判。
+ */
 function segmentIntersectsBounds(
   segment: { startPoint: GraphPosition; endPoint: GraphPosition },
   bounds: FlowchartNodeBounds,
@@ -374,6 +423,7 @@ function segmentIntersectsBounds(
   return true;
 }
 
+/** 合并折线中几乎重合的相邻点，避免重复坐标带来的退化线段与多余计算。 */
 function compactRoutePoints(points: GraphPosition[]): GraphPosition[] {
   return points.reduce<GraphPosition[]>((compacted, point) => {
     const previous = compacted[compacted.length - 1];
@@ -385,6 +435,7 @@ function compactRoutePoints(points: GraphPosition[]): GraphPosition[] {
   }, []);
 }
 
+/** 判断折线经过的所有线段中是否存在与任一节点包围盒相交的线段，用于校验路由是否穿越障碍。 */
 function routePointsIntersectBounds(points: GraphPosition[], bounds: FlowchartNodeBounds[]): boolean {
   const compacted = compactRoutePoints(points);
   return compacted.slice(1).some((point, index) => {
@@ -396,6 +447,7 @@ function routePointsIntersectBounds(points: GraphPosition[], bounds: FlowchartNo
   });
 }
 
+/** 把折线坐标序列切分成连续的线段数组，便于逐段做相交判断。 */
 function routeSegmentsFromPoints(points: GraphPosition[]): RouteSegment[] {
   const compacted = compactRoutePoints(points);
   return compacted.slice(1).map((point, index) => ({
@@ -404,14 +456,17 @@ function routeSegmentsFromPoints(points: GraphPosition[]): RouteSegment[] {
   }));
 }
 
+/** 判断折线段是否近似垂直（X 坐标不变），用于区分线段朝向以选择合适的相交算法。 */
 function isVerticalSegment(segment: RouteSegment): boolean {
   return Math.abs(segment.startPoint.x - segment.endPoint.x) <= 0.5;
 }
 
+/** 判断折线段是否近似水平（Y 坐标不变），与 isVerticalSegment 配合处理横竖相交。 */
 function isHorizontalSegment(segment: RouteSegment): boolean {
   return Math.abs(segment.startPoint.y - segment.endPoint.y) <= 0.5;
 }
 
+/** 判断两条横竖正交的折线段是否在中间（不含端点）相交，用以统计路由之间的交叉次数。 */
 function segmentsCross(left: RouteSegment, right: RouteSegment): boolean {
   if (isVerticalSegment(left) && isHorizontalSegment(right)) {
     const x = left.startPoint.x;
@@ -431,12 +486,14 @@ function segmentsCross(left: RouteSegment, right: RouteSegment): boolean {
   return false;
 }
 
+/** 判断一条折线是否与给定的一组折线段发生任何交叉，用于评估候选路由是否引入额外交叉。 */
 function routePointsCrossSegments(points: GraphPosition[], segments: RouteSegment[]): boolean {
   return routeSegmentsFromPoints(points).some((candidateSegment) =>
     segments.some((segment) => segmentsCross(candidateSegment, segment)),
   );
 }
 
+/** 统计一条折线与给定折线段集合的交叉次数，用于在多条候选路由中选择交叉最少的方案。 */
 function routeSegmentCrossCount(points: GraphPosition[], segments: RouteSegment[]): number {
   return routeSegmentsFromPoints(points).reduce(
     (count, candidateSegment) => count + segments.filter((segment) => segmentsCross(candidateSegment, segment)).length,
@@ -444,6 +501,7 @@ function routeSegmentCrossCount(points: GraphPosition[], segments: RouteSegment[
   );
 }
 
+/** 从一条已有边的路由信息中提取所有折线段，便于把已布好的边当作新路由的障碍处理。 */
 function routeSegmentsFromEdge(edge: LinkGraphEdge): RouteSegment[] {
   if (!edge.route) {
     return [];
@@ -455,6 +513,7 @@ function routeSegmentsFromEdge(edge: LinkGraphEdge): RouteSegment[] {
   ]));
 }
 
+/** 计算折线的曼哈顿总长度，作为候选路由排序的代价函数，越短越优。 */
 function routePointCost(points: GraphPosition[]): number {
   const compacted = compactRoutePoints(points);
   return compacted.slice(1).reduce((total, point, index) => {
@@ -463,6 +522,7 @@ function routePointCost(points: GraphPosition[]): number {
   }, 0);
 }
 
+/** 用一组坐标点重新构造边的正交折线（起点-拐点-终点单段形式）并绑上指定端口句柄。 */
 function routeFromPoints(
   edge: LinkGraphEdge,
   points: GraphPosition[],
@@ -484,6 +544,7 @@ function routeFromPoints(
   );
 }
 
+/** 把已构造好的折线对象绑定到边并标注其端口句柄，是路由最终落地到边的统一入口。 */
 function routeWithHandles(
   edge: LinkGraphEdge,
   route: NonNullable<LinkGraphEdge["route"]>,
@@ -498,14 +559,17 @@ function routeWithHandles(
   };
 }
 
+/** 对一组数值做四舍五入并去重，用于在生成候选绕行 Y 坐标时获得有限且唯一的集合。 */
 function uniqueNumbers(values: number[]): number[] {
   return Array.from(new Set(values.map((value) => Math.round(value))));
 }
 
+/** 判断节点包围盒是否与给定横向区间在 X 方向上重叠，作为筛选相关障碍的依据。 */
 function boundsOverlapHorizontalRange(bounds: FlowchartNodeBounds, left: number, right: number): boolean {
   return Math.max(left, bounds.left) < Math.min(right, bounds.right);
 }
 
+/** 给出在指定横向通道内绕过节点障碍的 Y 候选值：要么从最上方障碍之上绕过，要么从最下方之下绕过。 */
 function verticalDetourCandidates(bounds: FlowchartNodeBounds[], left: number, right: number): number[] {
   const overlappingBounds = bounds.filter((candidate) => boundsOverlapHorizontalRange(candidate, left, right));
   if (overlappingBounds.length === 0) {
@@ -517,6 +581,7 @@ function verticalDetourCandidates(bounds: FlowchartNodeBounds[], left: number, r
   ];
 }
 
+/** 判断一条折线段是否落在给定横向区间内（垂直段看 X、水平段看区间相交），用于筛选相关线段。 */
 function segmentOverlapsHorizontalRange(segment: RouteSegment, left: number, right: number): boolean {
   if (isVerticalSegment(segment)) {
     const x = segment.startPoint.x;
@@ -527,6 +592,7 @@ function segmentOverlapsHorizontalRange(segment: RouteSegment, left: number, rig
   return Math.max(left, segmentLeft) < Math.min(right, segmentRight);
 }
 
+/** 在指定横向通道内对相交折线段给出可绕行的 Y 候选值，向线段上下各退开一个安全间距。 */
 function segmentDetourCandidates(segments: RouteSegment[], left: number, right: number): number[] {
   return segments
     .filter((segment) => segmentOverlapsHorizontalRange(segment, left, right))
@@ -544,6 +610,7 @@ function segmentDetourCandidates(segments: RouteSegment[], left: number, right: 
     });
 }
 
+/** 当障碍在通道内部都难以绕开时，给出从所有障碍整体之上/之下绕行的 Y 候选值作为兜底方案。 */
 function outerDetourCandidates(bounds: FlowchartNodeBounds[], segments: RouteSegment[]): number[] {
   const candidateYs = [
     ...bounds.flatMap((bound) => [bound.top, bound.bottom]),
@@ -558,6 +625,7 @@ function outerDetourCandidates(bounds: FlowchartNodeBounds[], segments: RouteSeg
   ];
 }
 
+/** 在所有障碍整体之外给出绕行用的 X 锚点（左侧或右侧），用于让边先绕到外侧再下行。 */
 function outerEscapeX(bounds: FlowchartNodeBounds[], segments: RouteSegment[], side: "left" | "right"): number | null {
   const xs = [
     ...bounds.flatMap((bound) => [bound.left, bound.right]),
@@ -571,6 +639,7 @@ function outerEscapeX(bounds: FlowchartNodeBounds[], segments: RouteSegment[], s
     : Math.max(...xs) + CALL_EDGE_OBSTACLE_GAP;
 }
 
+/** 将节点转成正交避障器需要的矩形描述；没有位置的节点不参与避障计算。 */
 function nodeObstacleRect(node: LinkGraphNode): OrthogonalRect | null {
   if (!node.position) {
     return null;
@@ -585,6 +654,7 @@ function nodeObstacleRect(node: LinkGraphNode): OrthogonalRect | null {
   };
 }
 
+/** 把一条折线段包装成超薄的矩形障碍（垂直段包成竖条、水平段包成横条），交给正交绕路算法处理。 */
 function segmentObstacleRect(segment: RouteSegment, index: number): OrthogonalRect {
   const left = Math.min(segment.startPoint.x, segment.endPoint.x);
   const right = Math.max(segment.startPoint.x, segment.endPoint.x);
@@ -608,6 +678,10 @@ function segmentObstacleRect(segment: RouteSegment, index: number): OrthogonalRe
   };
 }
 
+/**
+ * 调用网格化正交绕路算法生成调用边路径：把节点和既有折线段都当作障碍，
+ * 若生成结果仍然穿过障碍或与既有折线交叉则放弃，否则返回带端口句柄的边。
+ */
 function routeWithGridRouter(
   edge: LinkGraphEdge,
   sourceNode: LinkGraphNode,
@@ -653,6 +727,10 @@ function routeWithGridRouter(
   return routeWithHandles(edge, route);
 }
 
+/**
+ * 为一条方法调用边规划避开节点和既有控制流折线的路径：先尝试直接折线、
+ * 再尝试网格绕路，都失败时枚举绕行候选点（向上下或外侧绕）并按代价与交叉数排序选最优。
+ */
 function routeCallEdge(
   edge: LinkGraphEdge,
   sourceNode: LinkGraphNode,
@@ -776,6 +854,10 @@ function routeCallEdge(
   return routeFromPoints(edge, directPoints);
 }
 
+/**
+ * 把方法调用展开得到的子图整体迁移到主控流右侧的泳道：按调用源堆叠分组、
+ * 平移所有相关节点与内部边，并对调用边重新走避开主控流的折线路由。
+ */
 function applyInvocationExpansionLayout(
   nodes: LinkGraphNode[],
   edges: LinkGraphEdge[],
@@ -887,6 +969,10 @@ function applyInvocationExpansionLayout(
   };
 }
 
+/**
+ * 流程图视图布局主入口：先做一次预布局以统计汇聚节点端口需求，再正式布局并锁定每条边的端口；
+ * 之后重新投射决策节点的连接锚点，最后把调用展开的子图搬到右侧泳道完成最终输出。
+ */
 export async function layoutFlowchartView({
   nodes,
   edges,

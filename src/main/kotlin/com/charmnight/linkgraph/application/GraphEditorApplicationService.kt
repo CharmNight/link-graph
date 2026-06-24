@@ -17,19 +17,24 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 
 /**
- * Project-level composition root for Link Graph workflows and shared collaborators.
+ * 项目级组合根，统一装配 Link Graph 工作流及其共享协作者。
  *
- * This service owns object assembly only. Production entrypoints should depend on the focused command
- * services that wrap these workflows, not on a broad project-service facade. Per-workflow wiring lives
- * in [WorkflowComposition]; shared infrastructure collaborators live in [InfrastructureComposition].
+ * 该服务只负责对象装配，不包含业务逻辑。
+ * 生产入口应依赖聚焦的命令服务（包装各工作流），
+ * 而不是直接依赖这个宽口径的项目服务门面。
+ * 单个工作流的装配放在 [WorkflowComposition]；
+ * 共享的基础设施协作者放在 [InfrastructureComposition]。
  */
 @Service(Service.Level.PROJECT)
 internal class GraphEditorApplicationService(
+    /** 当前 IntelliJ 项目。 */
     private val project: Project,
 ) : Disposable {
+    /** 测试桩注入入口；运行期为空，仅在单元测试中被覆写。 */
     private val testOverrides: LinkGraphProjectTestOverrides
         get() = project.getService(LinkGraphProjectTestOverrides::class.java)
 
+    /** 共享基础设施协作者集合；惰性初始化以避免循环依赖。 */
     private val infrastructure: InfrastructureComposition by lazy(LazyThreadSafetyMode.PUBLICATION) {
         InfrastructureComposition(
             project = project,
@@ -38,6 +43,7 @@ internal class GraphEditorApplicationService(
         )
     }
 
+    /** 各工作流装配集合；惰性初始化以保证装配顺序。 */
     private val workflows: WorkflowComposition by lazy(LazyThreadSafetyMode.PUBLICATION) {
         WorkflowComposition(
             project = project,
@@ -47,6 +53,7 @@ internal class GraphEditorApplicationService(
         )
     }
 
+    /** 应用工作流集合包装器，把单个工作流统一暴露给命令派发层。 */
     private val workflowComposition by lazy(LazyThreadSafetyMode.PUBLICATION) {
         ApplicationWorkflowComposition(
             workflowsProvider = {
@@ -72,6 +79,7 @@ internal class GraphEditorApplicationService(
         )
     }
 
+    /** 应用命令派发器；惰性初始化以集中装配各命令处理器。 */
     val commandDispatcher: ApplicationCommandDispatcher by lazy(LazyThreadSafetyMode.PUBLICATION) {
         ApplicationCommandComposition(
             workflows = workflowComposition.workflows(),
@@ -79,12 +87,15 @@ internal class GraphEditorApplicationService(
         ).dispatcher()
     }
 
+    /** 释放工作流持有的资源。 */
     override fun dispose() {
         workflows.subjectFlow.dispose()
     }
 
     companion object {
+        /** 调试环境变量名：用于覆写分析展示模式。 */
         const val DEBUG_ANALYSIS_DISPLAY_MODE_ENV: String = "LINKGRAPH_DEBUG_ANALYSIS_DISPLAY_MODE"
+        /** 本服务的日志记录器，供基础设施与工作流组合共享。 */
         private val logger = Logger.getInstance(GraphEditorApplicationService::class.java)
     }
 }

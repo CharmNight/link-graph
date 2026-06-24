@@ -20,6 +20,12 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import java.util.concurrent.atomic.AtomicLong
 
+/**
+ * 复核图构建工作流。
+ *
+ * 负责协调 Review Graph 的整体生成过程：根据传入的索引请求，按序构建架构索引、解析差异、生成证据包并投影为
+ * 可在编辑器中展示的复核图视图。所有阶段都会通过事件总线通知 UI，并对阶段执行情况进行追踪。
+ */
 internal class ReviewGraphWorkflow(
     private val project: Project,
     private val snapshotProvider: EditorSnapshotProvider,
@@ -31,8 +37,15 @@ internal class ReviewGraphWorkflow(
     private val logger: Logger,
     private val runtimeTrace: ((() -> String) -> Unit)? = null,
 ) {
+    /** 自增的请求序号生成器，用于唯一标识每次复核图构建请求。 */
     private val requestIds = AtomicLong()
 
+    /**
+     * 异步构建并发布复核图。
+     *
+     * 流程：先发出"请求开始"事件，然后切到后台线程依次完成索引构建、差异解析、证据包生成、视图投影；
+     * 完成后再切回 UI 线程，根据结果分别发出"加载成功"或"加载失败"事件。期间若项目已关闭则取消。
+     */
     fun requestIndexedGraph(request: IndexedGraphRequest) {
         val requestId = requestIds.incrementAndGet()
         val selectedDiffItemIds = request.reviewSelectedDiffItemIds()
@@ -162,6 +175,11 @@ internal class ReviewGraphWorkflow(
         }
     }
 
+    /**
+     * 输出单个处理阶段的耗时与详情追踪信息。
+     *
+     * 若未配置运行时追踪回调则直接返回；否则将该阶段的名称、起始时间戳与详情列表写入追踪日志。
+     */
     private fun traceStage(
         stage: String,
         startedAtNanos: Long,
@@ -178,14 +196,22 @@ internal class ReviewGraphWorkflow(
     }
 }
 
+/**
+ * 复核图构建结果的内部承载结构。
+ *
+ * 用以在后台线程与 UI 线程之间传递复核图最终状态：成功时携带视图，失败时携带异常，取消时不携带任何数据。
+ */
 private data class ReviewGraphViewResult(
     val view: ReviewGraphResult? = null,
     val failure: Throwable? = null,
     val cancelled: Boolean = false,
 ) {
     companion object {
+        /** 构建成功时的工厂方法，携带最终视图。 */
         fun success(view: ReviewGraphResult): ReviewGraphViewResult = ReviewGraphViewResult(view = view)
+        /** 构建失败时的工厂方法，携带底层异常。 */
         fun failure(error: Throwable): ReviewGraphViewResult = ReviewGraphViewResult(failure = error)
+        /** 构建被取消时的工厂方法（如项目已关闭）。 */
         fun cancelled(): ReviewGraphViewResult = ReviewGraphViewResult(cancelled = true)
     }
 }

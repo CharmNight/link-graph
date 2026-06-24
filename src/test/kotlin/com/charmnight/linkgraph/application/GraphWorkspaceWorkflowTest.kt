@@ -5,6 +5,7 @@ import com.charmnight.linkgraph.application.workflow.GraphWorkspaceWorkflow
 import com.charmnight.linkgraph.application.model.GraphEditIssueCode
 import com.charmnight.linkgraph.application.model.GraphEditOperation
 import com.charmnight.linkgraph.application.model.GraphEditRequest
+import com.charmnight.linkgraph.application.model.GraphEditRequestParseResult
 import com.charmnight.linkgraph.application.model.GraphEditRequestSource
 import com.charmnight.linkgraph.testing.*
 
@@ -271,22 +272,25 @@ class GraphWorkspaceWorkflowTest {
         stateService.loadGraph(trustedNode.asGraph(), "trusted-graph")
 
         workflow.handleGraphEditRequest(
-            GraphEditRequest(
-                sceneId = GraphSceneId.WORKSPACE_FACT,
-                baseWorkspaceRevision = stateService.snapshot().workspaceRevision,
-                operations = listOf(
-                    GraphEditOperation.UpsertNode(
-                        trustedNode.copy(
-                            title = "OrderService.placeDraft",
-                            location = "/tmp/escape.java:1:1",
-                            signature = "java.lang.Runtime.exec(java.lang.String):void",
-                            inputs = listOf("java.lang.String", "com.example.OrderDraft"),
-                            outputs = listOf("com.example.OrderDraft"),
-                            doc = "Edited doc",
+            GraphEditRequestParseResult(
+                request = GraphEditRequest(
+                    sceneId = GraphSceneId.WORKSPACE_FACT,
+                    baseWorkspaceRevision = stateService.snapshot().workspaceRevision,
+                    operations = listOf(
+                        GraphEditOperation.UpsertNode(
+                            trustedNode.copy(
+                                title = "OrderService.placeDraft",
+                                location = "/tmp/escape.java:1:1",
+                                signature = "java.lang.Runtime.exec(java.lang.String):void",
+                                inputs = listOf("java.lang.String", "com.example.OrderDraft"),
+                                outputs = listOf("com.example.OrderDraft"),
+                                doc = "Edited doc",
+                            ),
                         ),
                     ),
+                    source = GraphEditRequestSource.FRONTEND,
                 ),
-                source = GraphEditRequestSource.FRONTEND,
+                issues = emptyList(),
             ),
         )
 
@@ -317,22 +321,25 @@ class GraphWorkspaceWorkflowTest {
         )
 
         workflow.handleGraphEditRequest(
-            GraphEditRequest(
-                sceneId = GraphSceneId.WORKSPACE_FACT,
-                baseWorkspaceRevision = stateService.snapshot().workspaceRevision,
-                operations = listOf(
-                    GraphEditOperation.UpsertNode(
-                        GraphNode(
-                            id = "design:1",
-                            type = NodeType.METHOD,
-                            title = "Manual draft node",
-                            location = "/tmp/escape.java:1:1",
-                            signature = "java.lang.System.exit(int):void",
-                            doc = "User-authored draft node",
+            GraphEditRequestParseResult(
+                request = GraphEditRequest(
+                    sceneId = GraphSceneId.WORKSPACE_FACT,
+                    baseWorkspaceRevision = stateService.snapshot().workspaceRevision,
+                    operations = listOf(
+                        GraphEditOperation.UpsertNode(
+                            GraphNode(
+                                id = "design:1",
+                                type = NodeType.METHOD,
+                                title = "Manual draft node",
+                                location = "/tmp/escape.java:1:1",
+                                signature = "java.lang.System.exit(int):void",
+                                doc = "User-authored draft node",
+                            ),
                         ),
                     ),
+                    source = GraphEditRequestSource.FRONTEND,
                 ),
-                source = GraphEditRequestSource.FRONTEND,
+                issues = emptyList(),
             ),
         )
 
@@ -365,15 +372,18 @@ class GraphWorkspaceWorkflowTest {
         )
 
         workflow.handleGraphEditRequest(
-            GraphEditRequest(
-                sceneId = GraphSceneId.WORKSPACE_FACT,
-                baseWorkspaceRevision = stateService.snapshot().workspaceRevision - 1,
-                operations = listOf(
-                    GraphEditOperation.UpsertNode(
-                        GraphNode(id = "node-new", type = NodeType.METHOD, title = "New"),
+            GraphEditRequestParseResult(
+                request = GraphEditRequest(
+                    sceneId = GraphSceneId.WORKSPACE_FACT,
+                    baseWorkspaceRevision = stateService.snapshot().workspaceRevision - 1,
+                    operations = listOf(
+                        GraphEditOperation.UpsertNode(
+                            GraphNode(id = "node-new", type = NodeType.METHOD, title = "New"),
+                        ),
                     ),
+                    source = GraphEditRequestSource.FRONTEND,
                 ),
-                source = GraphEditRequestSource.FRONTEND,
+                issues = emptyList(),
             ),
         )
 

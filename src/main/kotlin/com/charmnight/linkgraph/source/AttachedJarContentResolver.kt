@@ -6,19 +6,33 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
 import java.util.jar.JarFile
 
+/**
+ * 附加 Jar 内容解析器：基于附加 jar 索引读取源码或反编译 class 字节码，
+ * 对外实现统一的源码内容解析接口。
+ */
 class AttachedJarContentResolver(
+    /** 附加 jar 索引。 */
     private val index: AttachedJarIndex,
+    /** 是否允许反编译 class 字节码。 */
     private val allowDecompile: Boolean = true,
 ) : SourceContentResolver {
+    /** 最近一次内容不可读时的原因代码（用于排查 UI 上"源码不可用"问题）。 */
     @Volatile
     var lastUnavailableReason: String? = null
         private set
 
+    /**
+     * 直接基于附加 jar 条目列表构造解析器（内部会构建索引）。
+     */
     constructor(
         entries: List<AttachedJarEntry>,
         allowDecompile: Boolean = true,
     ) : this(AttachedJarIndex.build(entries), allowDecompile)
 
+    /**
+     * 按虚拟文件 URL（形如 jar://path!/entry）读取源码内容。
+     * 非附加 jar 路径或路径格式异常时返回 null。
+     */
     override fun readByVirtualFileUrl(url: String): SourceContent? {
         lastUnavailableReason = null
         if (!url.startsWith("jar://")) {
@@ -34,6 +48,9 @@ class AttachedJarContentResolver(
         return readJarEntry(jarPath, entryName)
     }
 
+    /**
+     * 按路径读取内容，支持 jar entry（包含 !/）或全限定类名两种形式。
+     */
     override fun readByPath(path: String): SourceContent? {
         lastUnavailableReason = null
         val normalized = path.trim()
@@ -51,12 +68,19 @@ class AttachedJarContentResolver(
         return readClassByQualifiedName(qualifiedName)
     }
 
+    /**
+     * 按路径读取指定行范围的内容（用于代码片段展示）。
+     */
     override fun readSnippetByPath(path: String, startLine: Int?, endLine: Int?): SourceContent? {
         lastUnavailableReason = null
         val full = readByPath(path) ?: return null
         return full.toLineRange(startLine, endLine)
     }
 
+    /**
+     * 按全限定类名查找源码：优先返回附加源码 jar 中的源文件，
+     * 否则尝试反编译附加 class jar（需 allowDecompile）。
+     */
     override fun readClassByQualifiedName(qualifiedName: String): SourceContent? {
         lastUnavailableReason = null
         val entry = index.findClass(qualifiedName) ?: return null
@@ -87,6 +111,9 @@ class AttachedJarContentResolver(
         return null
     }
 
+    /**
+     * 按资源路径（如 META-INF/services 接口文件）匹配并返回源码内容。
+     */
     override fun readResourceByPath(resourcePath: String): SourceContent? {
         lastUnavailableReason = null
         val normalized = resourcePath.trim().removePrefix("/")
@@ -103,6 +130,9 @@ class AttachedJarContentResolver(
         return null
     }
 
+    /**
+     * 从指定 jar 中读取指定 entry 名的内容；class 文件按需反编译。
+     */
     private fun readJarEntry(jarPath: String, entryName: String): SourceContent? {
         val path = runCatching { Path.of(jarPath).normalize() }.getOrNull()
             ?.takeIf { candidate -> Files.isRegularFile(candidate) }
@@ -142,6 +172,9 @@ class AttachedJarContentResolver(
         }.getOrNull()
     }
 
+    /**
+     * 按起止行号裁剪源码内容，越界或范围非法返回 null。
+     */
     private fun SourceContent.toLineRange(startLine: Int?, endLine: Int?): SourceContent? {
         if (startLine == null || endLine == null) {
             return this
@@ -159,6 +192,7 @@ class AttachedJarContentResolver(
         )
     }
 
+    /** 根据条目名/是否反编译推断高亮语言。 */
     private fun languageOf(entryName: String, decompiled: Boolean): String? =
         when {
             decompiled -> "JAVA"
@@ -170,6 +204,10 @@ class AttachedJarContentResolver(
             else -> null
         }
 
+    /**
+     * 反编译 class 条目并校验：命中缓存则直接复用；并发时通过信号量限流，
+     * 并检查反编译产物类名是否匹配（避免误命中同 jar 内同名外部类）。
+     */
     private fun decompileClassEntry(
         jarPath: String,
         entryName: String,
@@ -213,6 +251,7 @@ class AttachedJarContentResolver(
         }
     }
 
+    /** 不查缓存直接反编译，失败时返回带诊断信息的空结果。 */
     private fun decompileClassEntryUncached(
         inputJar: Path,
         entryName: String,
@@ -225,10 +264,17 @@ class AttachedJarContentResolver(
         }
     }
 
+    /** 反编译并发限流与结果缓存（避免重复反编译耗时）。 */
     private companion object {
+        // 限制反编译同时只有一个进行，避免阻塞 EDT。
         private val decompileSemaphore = Semaphore(1)
+        // 反编译结果缓存，键为 jar 路径 + 修改时间 + 大小 + entry 名。
         private val decompiledClassCache = ConcurrentHashMap<String, DecompiledSource>()
 
+        /**
+         * 生成反编译缓存键，结合 jar 路径、最后修改时间、文件大小与 entry 名，
+         * 确保 jar 内容变化后缓存能自然失效。
+         */
         private fun decompileCacheKey(
             jarPath: Path,
             entryName: String,
@@ -240,11 +286,15 @@ class AttachedJarContentResolver(
     }
 }
 
+/** 反编译结果（文本可能为空，附带诊断信息）。 */
 private data class DecompiledSource(
+    /** 反编译出的源码文本，失败时为 null。 */
     val text: String?,
+    /** 失败原因代码或诊断信息，成功时通常为 null。 */
     val diagnostic: String?,
 )
 
+/** 判断指定 jar 条目是否在索引中被引用，从而允许读取（避免越权读任意条目）。 */
 private fun AttachedJarIndex.allowsEntry(jarPath: String, entryName: String): Boolean {
     val normalizedJar = runCatching { Path.of(jarPath).normalize().toString() }.getOrDefault(jarPath)
     val normalizedEntry = entryName.trim().removePrefix("/")

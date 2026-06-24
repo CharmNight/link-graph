@@ -19,14 +19,25 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 
+/** 类用法解析结果，包装解析得到的 PsiClass 以及是否允许在词项索引降级匹配。 */
 internal data class ClassUsageTargetResolution(
+    /** 最终定位到的 Java/Kotlin 类的 PSI 句柄。 */
     val targetClass: PsiClass,
+    /** 为 true 时表示来源不够权威，允许在后续用法搜索时回退到词项索引以放宽匹配。 */
     val allowWordIndexFallback: Boolean,
 )
 
+/**
+ * 类用法目标解析器。
+ *
+ * 用于把上层传入的"类查找线索"（如全限定名、稳定 JVM 节点 ID、源文件位置等）转换为可被
+ * IntelliJ 用法搜索消费的 PsiClass，避免在 dumb 模式或索引未就绪时直接失败。
+ */
 class ClassUsageTargetResolver(
+    /** 当前 IntelliJ 项目句柄，用于访问 PSI、文件索引等平台能力。 */
     private val project: Project,
 ) {
+    /** 根据上层提供的多种线索尝试定位类，依次尝试源文件提示、全限定名和稳定节点 ID。 */
     internal fun resolve(target: ClassUsageSearchTargetHint): ClassUsageTargetResolution? {
         val qualifiedName = target.qualifiedName
             ?.trim()
@@ -41,6 +52,7 @@ class ClassUsageTargetResolver(
             ?.let(::findClassByStableNodeId)
     }
 
+    /** 通过全限定名定位类，依次尝试精确查找、短名缓存兜底以及 Java 文件内容匹配。 */
     private fun findClassByQualifiedName(qualifiedName: String): ClassUsageTargetResolution? {
         val scopes = searchScopes()
         val facade = JavaPsiFacade.getInstance(project)
@@ -69,6 +81,7 @@ class ClassUsageTargetResolver(
         return null
     }
 
+    /** 通过 `jvm:class:` 前缀的稳定节点 ID 定位类，避免依赖完整全限定名。 */
     private fun findClassByStableNodeId(nodeId: String): ClassUsageTargetResolution? {
         if (!nodeId.startsWith("jvm:class:")) {
             return null
@@ -88,6 +101,7 @@ class ClassUsageTargetResolver(
         return null
     }
 
+    /** 在短名缓存中扫描名字匹配稳定键的候选类，逐一比对生成的稳定节点 ID。 */
     private fun findClassByStableNodeIdFromShortNames(
         nodeId: String,
         targetKey: String,
@@ -114,6 +128,7 @@ class ClassUsageTargetResolver(
         return null
     }
 
+    /** 基于上层提供的源文件 URL/路径提示直接打开文件并匹配其中的目标类。 */
     private fun findClassBySourceHint(
         qualifiedName: String,
         target: ClassUsageSearchTargetHint,
@@ -135,6 +150,7 @@ class ClassUsageTargetResolver(
             .firstOrNull()
     }
 
+    /** 在候选 Java 文件中按匹配器逐一查找，返回首个命中的 PsiClass。 */
     private fun findClassInJavaFiles(
         candidateFiles: Sequence<VirtualFile>,
         matcher: (PsiJavaFile) -> PsiClass?,
@@ -148,6 +164,7 @@ class ClassUsageTargetResolver(
             .firstOrNull()
     }
 
+    /** 把虚拟文件转换为 PsiJavaFile；若 PSI 不存在则按文本内容现场构造一个轻量 PSI。 */
     private fun VirtualFile.toPsiJavaFile(psiManager: PsiManager): PsiJavaFile? {
         (psiManager.findFile(this) as? PsiJavaFile)?.let { return it }
         val sourceText = runCatching { String(contentsToByteArray(), charset) }.getOrNull() ?: return null
@@ -155,6 +172,7 @@ class ClassUsageTargetResolver(
             .createFileFromText(name, JavaFileType.INSTANCE, sourceText) as? PsiJavaFile
     }
 
+    /** 通过文件名索引（如 Foo.java）查找候选 Java 文件，常作为全限定名兜底匹配。 */
     private fun filenameIndexJavaFilesForSimpleName(
         simpleName: String,
         scopes: List<GlobalSearchScope>,
@@ -162,6 +180,7 @@ class ClassUsageTargetResolver(
         scopes.asSequence()
             .flatMap { scope -> FilenameIndex.getVirtualFilesByName("$simpleName.java", scope).asSequence() }
 
+    /** 通过扩展名索引枚举所有 Java 文件，再按稳定键过滤候选；适合无完整全限定名的场景。 */
     private fun filenameIndexJavaFilesForStableKey(
         targetKey: String,
         scopes: List<GlobalSearchScope>,
@@ -170,6 +189,7 @@ class ClassUsageTargetResolver(
             .flatMap { scope -> FilenameIndex.getAllFilesByExt(project, "java", scope).asSequence() }
             .filter { file -> targetKey.matchesStableClassNameCandidate(file.nameWithoutExtension) }
 
+    /** 兜底方案：直接遍历项目根目录下的 Java 文件，绕过索引以应对索引尚未建立的情况。 */
     private fun projectBaseJavaFilesForStableKey(targetKey: String): Sequence<VirtualFile> =
         sequence {
             val basePath = project.basePath
@@ -180,34 +200,54 @@ class ClassUsageTargetResolver(
                 return@sequence
             }
             val localFileSystem = LocalFileSystem.getInstance()
-            val paths = runCatching { Files.walk(basePath) }.getOrNull() ?: return@sequence
-            try {
-                val iterator = paths.iterator()
-                while (iterator.hasNext()) {
-                    val path = iterator.next()
-                    if (!Files.isRegularFile(path)) {
-                        continue
+            // 旧实现用 Files.walk 全量遍历，对 node_modules、build、target 等大目录也会递归进入；
+            // 改用 walkFileTree + preVisitDirectory 提前剪枝，避免不必要的 IO。
+            val collected = mutableListOf<VirtualFile>()
+            val visitor = object : java.nio.file.SimpleFileVisitor<Path>() {
+                override fun preVisitDirectory(
+                    dir: Path,
+                    attrs: java.nio.file.attribute.BasicFileAttributes,
+                ): java.nio.file.FileVisitResult {
+                    val name = dir.fileName?.toString() ?: return java.nio.file.FileVisitResult.CONTINUE
+                    if (name in classUsagePrunedDirectoryNames) {
+                        return java.nio.file.FileVisitResult.SKIP_SUBTREE
+                    }
+                    return java.nio.file.FileVisitResult.CONTINUE
+                }
+
+                override fun visitFile(
+                    file: Path,
+                    attrs: java.nio.file.attribute.BasicFileAttributes,
+                ): java.nio.file.FileVisitResult {
+                    if (!attrs.isRegularFile) {
+                        return java.nio.file.FileVisitResult.CONTINUE
                     }
                     val relativePath = runCatching {
-                        basePath.relativize(path.normalize()).toString().replace('\\', '/')
-                    }.getOrNull()?.takeIf(String::isNotBlank) ?: continue
+                        basePath.relativize(file.normalize()).toString().replace('\\', '/')
+                    }.getOrNull()?.takeIf(String::isNotBlank)
+                        ?: return java.nio.file.FileVisitResult.CONTINUE
                     if (!relativePath.isClassUsageJavaCandidatePath()) {
-                        continue
+                        return java.nio.file.FileVisitResult.CONTINUE
                     }
-                    val fileName = path.fileName?.toString().orEmpty()
-                    val baseName = fileName.removeJavaExtensionOrNull() ?: continue
+                    val fileName = file.fileName?.toString().orEmpty()
+                    val baseName = fileName.removeJavaExtensionOrNull()
+                        ?: return java.nio.file.FileVisitResult.CONTINUE
                     if (!targetKey.matchesStableClassNameCandidate(baseName)) {
-                        continue
+                        return java.nio.file.FileVisitResult.CONTINUE
                     }
-                    localFileSystem.refreshAndFindFileByNioFile(path)
-                        ?.takeIf { file -> !file.isDirectory }
-                        ?.let { file -> yield(file) }
+                    localFileSystem.refreshAndFindFileByNioFile(file)
+                        ?.takeIf { f -> !f.isDirectory }
+                        ?.let(collected::add)
+                    return java.nio.file.FileVisitResult.CONTINUE
                 }
-            } finally {
-                paths.close()
             }
+            runCatching {
+                java.nio.file.Files.walkFileTree(basePath, visitor)
+            }
+            collected.forEach { file -> yield(file) }
         }
 
+    /** 把上层提供的源文件 URL 和路径线索展开为候选 VirtualFile 序列，并去重。 */
     private fun ClassUsageSearchTargetHint.hintedVirtualFiles(): Sequence<VirtualFile> =
         sequenceOf(sourceVirtualFileUrl, sourcePath)
             .filterNotNull()
@@ -216,6 +256,7 @@ class ClassUsageTargetResolver(
             .flatMap { hint -> hint.resolveVirtualFilesFromHint() }
             .distinctBy { file -> file.url }
 
+    /** 将单个线索字符串解析为 VirtualFile，支持 URL、绝对路径以及项目根下的相对路径。 */
     private fun String.resolveVirtualFilesFromHint(): Sequence<VirtualFile> =
         sequence {
             VirtualFileManager.getInstance().findFileByUrl(this@resolveVirtualFilesFromHint)?.let { yield(it) }
@@ -233,6 +274,7 @@ class ClassUsageTargetResolver(
             }
         }
 
+    /** 返回项目范围 + 全局范围的搜索域列表，用于在 PSI 查找时按优先级尝试。 */
     private fun searchScopes(): List<GlobalSearchScope> =
         listOf(
             GlobalSearchScope.projectScope(project),
@@ -240,11 +282,13 @@ class ClassUsageTargetResolver(
         ).distinct()
 }
 
+/** 在 PsiJavaFile 中按全限定名查找顶层及内部类。 */
 internal fun PsiJavaFile.findUsageClass(qualifiedName: String): PsiClass? =
     classes.asSequence()
         .flatMap { psiClass -> psiClass.withUsageInnerClasses() }
         .firstOrNull { psiClass -> psiClass.matchesUsageQualifiedName(qualifiedName) }
 
+/** 在 PsiJavaFile 中按稳定 JVM 节点 ID 查找顶层及内部类。 */
 private fun PsiJavaFile.findUsageClassByStableNodeId(nodeId: String): PsiClass? =
     classes.asSequence()
         .flatMap { psiClass -> psiClass.withUsageInnerClasses() }
@@ -253,22 +297,26 @@ private fun PsiJavaFile.findUsageClassByStableNodeId(nodeId: String): PsiClass? 
             stableJvmId("class", qualifiedName) == nodeId
         }
 
+/** 把当前类与其所有内部类（递归）展开为一个序列，便于按统一规则匹配。 */
 private fun PsiClass.withUsageInnerClasses(): Sequence<PsiClass> =
     sequence {
         yield(this@withUsageInnerClasses)
         innerClasses.forEach { innerClass -> yieldAll(innerClass.withUsageInnerClasses()) }
     }
 
+/** 判断 PsiClass 的全限定名是否与目标匹配，兼容 `$`/`.` 混用的内部类写法。 */
 internal fun PsiClass.matchesUsageQualifiedName(qualifiedName: String): Boolean {
     val actual = this.qualifiedName ?: return false
     return actual == qualifiedName || actual.replace('$', '.') == qualifiedName.replace('$', '.')
 }
 
+/** 若文件名以 `.java` 结尾则去掉扩展名并返回基名，否则返回 null。 */
 private fun String.removeJavaExtensionOrNull(): String? =
     takeIf { fileName -> fileName.endsWith(".java", ignoreCase = true) }
         ?.dropLast(".java".length)
         ?.takeIf(String::isNotBlank)
 
+/** 判断相对路径是否为候选 Java 文件，过滤掉包含构建产物等被排除路径的文件。 */
 private fun String.isClassUsageJavaCandidatePath(): Boolean {
     val normalized = replace('\\', '/').trim('/').takeIf(String::isNotBlank) ?: return false
     if (normalized.hasClassUsageExcludedPathSegment()) {
@@ -277,6 +325,7 @@ private fun String.isClassUsageJavaCandidatePath(): Boolean {
     return normalized.endsWith(".java", ignoreCase = true)
 }
 
+/** 判断路径中是否包含永远排除的目录段，或在 src 之外出现的生成代码段。 */
 private fun String.hasClassUsageExcludedPathSegment(): Boolean {
     val segments = split('/').filter(String::isNotBlank)
     return segments.withIndex().any { (index, segment) ->
@@ -285,14 +334,17 @@ private fun String.hasClassUsageExcludedPathSegment(): Boolean {
     }
 }
 
+/** 将原始类名转换为稳定 JVM ID 中冒号后的键部分，用于跨索引匹配。 */
 private fun stableClassKey(rawKey: String): String =
     stableJvmId("class", rawKey).substringAfterLast(':')
 
+/** 判断候选类名是否在稳定键意义上与当前键相符（精确匹配、后缀匹配或中段匹配）。 */
 private fun String.matchesStableClassNameCandidate(candidateName: String): Boolean {
     val classKey = stableClassKey(candidateName)
     return this == classKey || endsWith("-$classKey") || contains("-$classKey-")
 }
 
+/** 判断 VirtualFile 是否位于项目源代码内容中且路径符合标准源码目录结构。 */
 internal fun VirtualFile.isStandardClassUsageSourceFile(project: Project): Boolean {
     if (!ProjectFileIndex.getInstance(project).isInSourceContent(this)) {
         return false
@@ -301,6 +353,7 @@ internal fun VirtualFile.isStandardClassUsageSourceFile(project: Project): Boole
     return standardClassUsageSourcePathMarkers.any { marker -> marker in normalizedPath }
 }
 
+/** 标准源码目录路径标记，命中其中之一即认为是规范项目源码位置。 */
 private val standardClassUsageSourcePathMarkers = listOf(
     "/src/main/java/",
     "/src/test/java/",
@@ -312,6 +365,7 @@ private val standardClassUsageSourcePathMarkers = listOf(
     "/src/integrationTest/kotlin/",
 )
 
+/** 永远排除的路径段集合，通常为缓存、版本控制或构建沙箱目录。 */
 private val classUsageAlwaysExcludedPathSegments = setOf(
     ".cache",
     ".git",
@@ -324,6 +378,24 @@ private val classUsageAlwaysExcludedPathSegments = setOf(
     "node_modules",
 )
 
+/** walkFileTree 预剪枝目录名集合：进入这些目录前直接 SKIP_SUBTREE，避免无谓 IO。 */
+private val classUsagePrunedDirectoryNames = setOf(
+    "node_modules",
+    "build",
+    "target",
+    "out",
+    "dist",
+    ".git",
+    ".gradle",
+    ".idea",
+    ".cache",
+    ".next",
+    ".nuxt",
+    ".parcel-cache",
+    "build-idea-sandbox",
+)
+
+/** 生成代码所在路径段集合；若出现在 src 目录之前才认为是非源代码而排除。 */
 private val classUsageGeneratedPathSegments = setOf(
     "build",
     "coverage",

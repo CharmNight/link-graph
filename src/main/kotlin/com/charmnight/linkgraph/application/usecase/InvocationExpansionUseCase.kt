@@ -8,6 +8,11 @@ import com.charmnight.linkgraph.model.NodeType
 import java.time.Instant
 import java.util.UUID
 
+/**
+ * 调用展开目标类型的枚举。
+ *
+ * 描述被展开的调用节点所对应的实现来源所属的类别，便于在 UI 上区分展示与处理策略。
+ */
 enum class InvocationExpansionTargetKind {
     PROJECT_SOURCE,
     MULTIPLE_IMPLEMENTATIONS,
@@ -18,6 +23,11 @@ enum class InvocationExpansionTargetKind {
     NOT_FOUND,
 }
 
+/**
+ * 调用展开目标信息。
+ *
+ * 表示一次调用展开所定位到的具体实现或失败原因，含目标签名、候选签名集合以及给用户的提示消息。
+ */
 data class InvocationExpansionTarget(
     val kind: InvocationExpansionTargetKind,
     val signature: String? = null,
@@ -25,26 +35,52 @@ data class InvocationExpansionTarget(
     val message: String? = null,
 )
 
+/**
+ * 调用展开合并操作的结果。
+ *
+ * 持有合并后的工作区图谱以及本次展开所生成的唯一标识，便于后续追踪与撤销。
+ */
 data class InvocationExpansionMergeResult(
     val graph: GraphDocument,
     val expansionId: String,
 )
 
+/**
+ * 调用展开移除操作的结果。
+ *
+ * 包含移除展开后的图谱以及是否实际发生了移除动作的标志。
+ */
 data class InvocationExpansionRemovalResult(
     val graph: GraphDocument,
     val removed: Boolean,
 )
 
+/**
+ * 调用展开用例。
+ *
+ * 封装对调用（INVOCATION）类型节点的展开与撤销行为：将目标实现对应的子图谱合并进当前工作区，
+ * 并为新增节点/边打上统一的展开元数据标签以便后续整体移除。
+ */
 class InvocationExpansionUseCase(
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
     private val clock: () -> String = { Instant.now().toString() },
 ) {
+    /**
+     * 调用节点校验结果枚举。
+     *
+     * 表示节点是否可作为展开的输入，以及不能展开时的具体原因。
+     */
     enum class ValidationResult {
         READY,
         NOT_INVOCATION,
         MISSING_SIGNATURE,
     }
 
+    /**
+     * 校验给定节点是否可被作为调用展开的源节点。
+     *
+     * 仅接受类型为流动作且流种类为调用（INVOCATION）的节点，并要求其携带有效的签名信息。
+     */
     fun validateInvocationNode(node: GraphNode): ValidationResult {
         if (node.type != NodeType.FLOW_ACTION || node.metadata["flow.kind"] != "INVOCATION") {
             return ValidationResult.NOT_INVOCATION
@@ -55,6 +91,12 @@ class InvocationExpansionUseCase(
         return ValidationResult.READY
     }
 
+    /**
+     * 将目标子图谱合并到工作区中以完成一次调用展开。
+     *
+     * 为新增节点和边追加展开元数据，避免覆盖工作区已有内容；同时生成一条连接调用节点
+     * 与目标入口节点的调用边，并返回携带新图谱与展开标识的结果。
+     */
     fun mergeExpansion(
         workspace: GraphDocument,
         sourceInvocationNode: GraphNode,
@@ -102,6 +144,12 @@ class InvocationExpansionUseCase(
         )
     }
 
+    /**
+     * 根据展开标识撤销一次调用展开。
+     *
+     * 移除所有由该展开生成并打上元数据标签的节点和边，以及任何引用了被移除节点的边；
+     * 若图谱中没有任何对应内容则返回未发生移除的结果。
+     */
     fun removeExpansion(
         graph: GraphDocument,
         expansionId: String,
@@ -129,6 +177,12 @@ class InvocationExpansionUseCase(
         )
     }
 
+    /**
+     * 构造单次展开所用的元数据标签映射。
+     *
+     * 将展开标识、根节点、源调用节点、目标签名、创建时间与展开种类等信息组装为统一的元数据集合，
+     * 用于标记本次展开所新增的节点和边。
+     */
     private fun expansionMetadata(
         expansionId: String,
         rootNodeId: String,
@@ -143,6 +197,9 @@ class InvocationExpansionUseCase(
         EXPANSION_KIND to EXPANSION_KIND_INVOCATION,
     )
 
+    /**
+     * 展开元数据相关的常量定义集合。
+     */
     companion object {
         const val EXPANSION_ID = "linkGraph.expansion.id"
         const val EXPANSION_ROOT_NODE_ID = "linkGraph.expansion.rootNodeId"

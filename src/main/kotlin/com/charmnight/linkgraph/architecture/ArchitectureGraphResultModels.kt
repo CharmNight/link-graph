@@ -6,21 +6,37 @@ import com.charmnight.linkgraph.presentation.GraphViewPresentation
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.usage.ClassUsageSearchResult
 
+/**
+ * 项目结构关系分组，描述两个节点在项目结构视图上展示的聚合关系。
+ */
 data class ProjectStructureRelationGroup(
+    /** 分组唯一标识。 */
     val id: String,
+    /** 起点 ID。 */
     val fromNodeId: String,
+    /** 终点 ID。 */
     val toNodeId: String,
+    /** 用于展示的关系种类字符串。 */
     val displayRelationKind: String,
+    /** 关系展示名。 */
     val displayRelation: String,
+    /** 实际包含的关系种类列表。 */
     val relationKinds: List<String> = emptyList(),
+    /** 聚合后的关系总数。 */
     val count: Int = 0,
+    /** 置信度字符串。 */
     val confidence: String = "UNKNOWN",
+    /** 关联的原始关系 ID。 */
     val sourceRelationIds: List<String> = emptyList(),
+    /** 样例证据引用列表。 */
     val sampleEvidenceRefs: List<String> = emptyList(),
+    /** 是否默认可见。 */
     val defaultVisible: Boolean = false,
+    /** 被隐藏时的原因说明。 */
     val hiddenReason: String? = null,
 )
 
+/** 架构图统计摘要，描述节点与边的数量分布等概览信息。 */
 data class ArchitectureGraphSummary(
     val moduleCount: Int = 0,
     val packageCount: Int = 0,
@@ -47,6 +63,7 @@ data class ArchitectureGraphSummary(
     val projectStructureRelationGroups: List<ProjectStructureRelationGroup> = emptyList(),
 )
 
+/** 架构图渲染结果，包含可见图、完整图、锚点节点、摘要、投影索引和呈现信息。 */
 data class ArchitectureGraphResult(
     val visibleGraph: GraphDocument = GraphDocument(),
     val fullGraph: GraphDocument = GraphDocument(),
@@ -56,6 +73,7 @@ data class ArchitectureGraphResult(
     val presentation: GraphViewPresentation = GraphViewPresentation(),
 )
 
+/** 类图统计摘要，记录类、成员、关系、截断与作用域相关数量。 */
 data class ClassDiagramSummary(
     val classCount: Int = 0,
     val fieldCount: Int = 0,
@@ -85,6 +103,7 @@ data class ClassDiagramSummary(
     val indexed: IndexedGraphSummary? = null,
 )
 
+/** 类图渲染结果，包含可见图、完整图、锚点节点、摘要、投影索引、呈现信息与使用情况。 */
 data class ClassDiagramResult(
     val visibleGraph: GraphDocument = GraphDocument(),
     val fullGraph: GraphDocument = GraphDocument(),

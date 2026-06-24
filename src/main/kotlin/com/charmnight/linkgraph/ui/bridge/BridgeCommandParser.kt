@@ -146,6 +146,7 @@ internal object BridgeCommandParser {
             selectedNodeIds = payload.stringList("selectedNodeIds"),
             selectedDiffItemIds = payload.stringList("selectedDiffItemIds"),
             target = parseAssistantComposerTarget(payload["target"] as? Map<*, *>),
+            mode = payload.enumOrDefault("mode", QaMode.AUTO),
             explanationGranularity = payload.enumOrDefault("explanationGranularity", StepGranularity.BUSINESS),
         )
     }

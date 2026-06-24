@@ -33,6 +33,7 @@ import {
 } from "./classDiagramRelations";
 import { ClassDiagramReadabilityScorer } from "./classDiagramReadability";
 
+/** 判断是否为"走廊绑定"的主关系（ANCHOR<->OUTGOING/INCOMING，且非层级关系），这类边不允许在修复阶段被改写。 */
 function isCorridorBoundMainRelation(
   edge: LinkGraphEdge,
   source: LinkGraphNode,
@@ -45,10 +46,15 @@ function isCorridorBoundMainRelation(
     || (laneOf(source) === "INCOMING" && laneOf(target) === "ANCHOR");
 }
 
+/** 把路径点序列归一化为字符串 key，用于在修复候选集中去重。 */
 function routeCandidateKey(points: GraphPosition[]): string {
   return simplifyRoutePoints(points).map((point) => `${point.x},${point.y}`).join("|");
 }
 
+/**
+ * 把一条候选路径规范化后追加到候选列表：会丢弃退化（点数不足、非轴对齐）和重复候选。
+ * localityPenalty 表示该候选相对当前路径的局部性惩罚，惩罚越低越倾向于保留原路径形态。
+ */
 function pushRouteCandidate(
   candidates: Array<{ points: GraphPosition[]; localityPenalty: number }>,
   seen: Set<string>,
@@ -72,6 +78,7 @@ function pushRouteCandidate(
   candidates.push({ points: simplified, localityPenalty });
 }
 
+/** 从轴候选中挑选至多 limit 个：优先按惩罚最低，再保证覆盖最小/最大值，且彼此至少相差 1 单位。 */
 function selectAxisCandidates<T extends { value: number; penalty: number }>(candidates: T[], limit: number): T[] {
   const selected: T[] = [];
   const pushSelected = (candidate: T | undefined) => {
@@ -91,10 +98,12 @@ function selectAxisCandidates<T extends { value: number; penalty: number }>(cand
   return selected;
 }
 
+/** 把路由上下文中按 lane 分桶的节点打平为单一数组。 */
 function routeContextNodes(context: ClassRouteContext): LinkGraphNode[] {
   return Array.from(context.laneNodes.values()).flat();
 }
 
+/** 合并一维区间数组：去除空区间、按起点排序后合并相邻或重叠区间。 */
 function mergeAxisIntervals(intervals: AxisInterval[]): AxisInterval[] {
   const ordered = intervals
     .filter((interval) => interval.end > interval.start)
@@ -111,6 +120,7 @@ function mergeAxisIntervals(intervals: AxisInterval[]): AxisInterval[] {
   return merged;
 }
 
+/** 在给定轴上扫描节点之间的"空隙"，返回可作为安全布线通道的坐标列表（含 gap 起止内偏移和中点）。 */
 function clearAxisChannels(
   nodes: LinkGraphNode[],
   axis: "x" | "y",
@@ -149,6 +159,7 @@ function clearAxisChannels(
   return channels;
 }
 
+/** 给候选通道计算惩罚：基础惩罚 + 与当前通道距离的微调，让修复倾向于贴近原通道以减少抖动。 */
 function axisChannelPenalty(channel: number, currentChannel: number | undefined, basePenalty: number): number {
   if (currentChannel == null) {
     return basePenalty;
@@ -156,6 +167,7 @@ function axisChannelPenalty(channel: number, currentChannel: number | undefined,
   return basePenalty + Math.min(46, Math.abs(channel - currentChannel) * 0.02);
 }
 
+/** 枚举单条边的水平折点 X 候选：当前通道、走廊内通道、lane 内/外、各种外侧回绕位置，各自附带惩罚分。 */
 function candidateXsForRoute(
   source: LinkGraphNode,
   target: LinkGraphNode,
@@ -229,6 +241,7 @@ function candidateXsForRoute(
   return values;
 }
 
+/** 枚举单条边的水平段 Y 候选：当前 Y、节点间空隙通道、lane 上下回绕位置，各自附带惩罚分。 */
 function candidateYsForRoute(
   source: LinkGraphNode,
   target: LinkGraphNode,
@@ -278,6 +291,10 @@ function candidateYsForRoute(
   return values;
 }
 
+/**
+ * 为单条边生成所有交叉修复候选：按端口方向（双横/双竖/横竖混合）组合 X/Y 候选，
+ * 构造从简单两段折线到复杂"双 X 双 Y"绕行的多种形态供评分择优。
+ */
 function crossingRepairCandidates(
   edge: LinkGraphEdge,
   nodeIndex: Map<string, LinkGraphNode>,
@@ -378,6 +395,7 @@ function crossingRepairCandidates(
   return candidates;
 }
 
+/** 把一条边的一段折线转成极薄的 OrthogonalRect（垂直段宽 2 / 水平段高 2），作为障碍矩形参与避障布线。 */
 function routeSegmentObstacleRect(edge: LinkGraphEdge, segmentIndex: number, start: GraphPosition, end: GraphPosition): OrthogonalRect {
   const left = Math.min(start.x, end.x);
   const right = Math.max(start.x, end.x);
@@ -401,6 +419,7 @@ function routeSegmentObstacleRect(edge: LinkGraphEdge, segmentIndex: number, sta
   };
 }
 
+/** 汇总除当前边外所有边的所有线段为障碍矩形集合，供避障算法把已有边当作屏障。 */
 function edgeSegmentObstacleRects(edges: LinkGraphEdge[], routedEdgeId: string): OrthogonalRect[] {
   return edges
     .filter((edge) => edge.id !== routedEdgeId)
@@ -412,6 +431,10 @@ function edgeSegmentObstacleRects(edges: LinkGraphEdge[], routedEdgeId: string):
     });
 }
 
+/**
+ * 借助通用正交避障算法为单条边产出"绕开所有节点+其它边"的候选路径，
+ * 作为组合式候选之外的全局兜底方案，惩罚较高以优先选择更紧凑的候选。
+ */
 function graphAvoidingRepairCandidates(
   edge: LinkGraphEdge,
   edges: LinkGraphEdge[],
@@ -447,6 +470,7 @@ function graphAvoidingRepairCandidates(
   return candidates;
 }
 
+/** 把交叉修复候选和全局避障候选合并去重，作为某条边在当前图上下文中可用的全部修复方案。 */
 function routeRepairCandidates(
   edge: LinkGraphEdge,
   edges: LinkGraphEdge[],
@@ -464,6 +488,10 @@ function routeRepairCandidates(
   return candidates;
 }
 
+/**
+ * 在已经完成交叉修复的边集合上做第二轮局部优化：仅针对被修复过的边，尝试找到比当前评分
+ * 明显更好（达到 LOCALITY_IMPROVEMENT 阈值）的候选，提升整体可读性而不引入新的交叉。
+ */
 function improveRepairedRouteLocality(
   edges: LinkGraphEdge[],
   nodeIndex: Map<string, LinkGraphNode>,
@@ -505,6 +533,10 @@ function improveRepairedRouteLocality(
   return improved;
 }
 
+/**
+ * 边交叉修复主入口：若初始就有交叉/重叠/节点穿越，则按"压力从高到低"逐条尝试用候选路径替换，
+ * 多趟迭代直到无交叉或达到最大次数；若最终清零则再触发局部性优化，并通过 trace 输出统计。
+ */
 export function repairEdgeRouteCrossings(
   edges: LinkGraphEdge[],
   nodeIndex: Map<string, LinkGraphNode>,
@@ -512,6 +544,9 @@ export function repairEdgeRouteCrossings(
   sizeSnapshot: ReadonlyMap<string, NodeMeasuredSize>,
   readability: ClassDiagramReadabilityScorer,
 ): LinkGraphEdge[] {
+  // 用 Map<edgeId, edge> 作为可变状态：每次更新单条 edge 时 O(1) 写入，避免 O(E) 全表扫描。
+  // 与 readability scorer 交互时再 `Array.from(repairedById.values())` 取回数组形式。
+  const repairedById = new Map<string, LinkGraphEdge>(edges.map((edge) => [edge.id, edge]));
   let repaired = edges;
   const initialReport = readability.graphRouteRepairReport(repaired, nodeIndex, sizeSnapshot);
   if (initialReport.crossingCount + initialReport.overlapCount + initialReport.nodeCrossingCount === 0) {
@@ -548,16 +583,17 @@ export function repairEdgeRouteCrossings(
       if (!best || best.score >= currentScore - 1) {
         continue;
       }
-      repaired = repaired.map((candidate) => candidate.id === edge.id
-        ? {
-            ...candidate,
-            route: routeFromPoints(best.points),
-            metadata: {
-              ...(candidate.metadata ?? {}),
-              "layout.edgeCrossingRepair": "true",
-            },
-          }
-        : candidate);
+      // 旧实现用 `.map(...)` 在每条 edge 更新时遍历整个 repaired 数组（O(E) per update, O(E²) 全程）。
+      // 改为 Map<edgeId, edge> 累积：每次更新只重写一个 entry，最后再转回数组。
+      repairedById.set(edge.id, {
+        ...(repairedById.get(edge.id) ?? edge),
+        route: routeFromPoints(best.points),
+        metadata: {
+          ...((repairedById.get(edge.id) ?? edge).metadata ?? {}),
+          "layout.edgeCrossingRepair": "true",
+        },
+      });
+      repaired = Array.from(repairedById.values());
       changed = true;
     }
     if (!changed) {
@@ -582,6 +618,7 @@ export function repairEdgeRouteCrossings(
   return optimized;
 }
 
+/** 给所有边写入 routeMode=stored 元数据，标记当前路径为"已存储"，渲染时跳过重路由以保持稳定。 */
 export function preserveClassDiagramRoutes(edges: LinkGraphEdge[]): LinkGraphEdge[] {
   return edges.map((edge) => ({
     ...edge,
@@ -593,6 +630,7 @@ export function preserveClassDiagramRoutes(edges: LinkGraphEdge[]): LinkGraphEdg
   }));
 }
 
+/** 把每条边的路径信息汇总为可读的轨迹摘要（关系、端点、端口、点数、坐标列表），供 trace 工具展示。 */
 export function summarizeClassDiagramRoutes(edges: LinkGraphEdge[], nodeIndex: Map<string, LinkGraphNode>) {
   return edges.map((edge) => {
     const source = nodeIndex.get(edge.source);
@@ -612,6 +650,7 @@ export function summarizeClassDiagramRoutes(edges: LinkGraphEdge[], nodeIndex: M
   });
 }
 
+/** 把坐标四舍五入到 0.1 像素精度，让 trace 输出更紧凑可读。 */
 function roundTracePoint(point: GraphPosition): GraphPosition {
   return {
     x: Math.round(point.x * 10) / 10,

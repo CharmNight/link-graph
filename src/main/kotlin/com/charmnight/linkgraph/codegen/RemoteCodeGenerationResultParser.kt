@@ -72,6 +72,7 @@ internal object RemoteCodeGenerationResultParser {
         )
     }
 
+    /** 解析单个结构化编辑操作对象，校验必要字段并构造可执行的编辑动作。 */
     private fun parseEditOperation(
         raw: Map<*, *>?,
         draftIndex: Int,
@@ -98,6 +99,7 @@ internal object RemoteCodeGenerationResultParser {
         )
     }
 
+    /** 解析草稿附带的授权范围信息；关键字段缺失时返回 null 表示忽略该项。 */
     private fun parseEditScope(raw: Map<*, *>?): EditScope? {
         raw ?: return null
         return EditScope(

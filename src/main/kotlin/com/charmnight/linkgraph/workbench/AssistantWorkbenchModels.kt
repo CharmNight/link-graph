@@ -5,6 +5,7 @@ import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.GraphBeautificationResult
 import com.charmnight.linkgraph.llm.GraphPatchResult
 
+/** 助手意图，标识用户在助手会话中的目标。 */
 enum class AssistantIntent {
     DESCRIBE_CLASS,
     EXPLAIN_CODE,
@@ -13,6 +14,7 @@ enum class AssistantIntent {
     CHECK_CHANGE,
 }
 
+/** 助手动作 ID，对应用户可触发的具体动作。 */
 enum class AssistantActionId {
     DESCRIBE_CLASS,
     EXPLAIN_STRUCTURE,
@@ -44,6 +46,7 @@ enum class AssistantActionId {
     }
 }
 
+/** 助手轮次种类，描述本轮回复的性质。 */
 enum class AssistantTurnKind {
     EXPLANATION,
     QA,
@@ -52,6 +55,7 @@ enum class AssistantTurnKind {
     CHECK_RESULT,
 }
 
+/** 助手上下文快照，记录会话发生时的用户界面选择与场景信息。 */
 data class AssistantContextSnapshot(
     val selectedNodeIds: List<String> = emptyList(),
     val selectedDiffItemIds: List<String> = emptyList(),
@@ -61,6 +65,7 @@ data class AssistantContextSnapshot(
     val scopeLabel: String = "",
 )
 
+/** 助手轮次引用，记录轮次标识、种类、意图、来源消息与结果 ID 等。 */
 data class AssistantTurnRef(
     val turnId: String,
     val kind: AssistantTurnKind,
@@ -72,6 +77,7 @@ data class AssistantTurnRef(
     val context: AssistantContextSnapshot,
 )
 
+/** 助手失败结果，记录失败阶段、消息与上下文信息。 */
 data class AssistantFailureResult(
     val resultId: String,
     val message: String,
@@ -82,6 +88,7 @@ data class AssistantFailureResult(
     val createdAtEpochMillis: Long? = null,
 )
 
+/** 输入框的目标对象，标识当前输入是新建任务还是某种后续动作。 */
 sealed interface AssistantComposerTarget {
     data object NewTask : AssistantComposerTarget
 
@@ -108,14 +115,17 @@ sealed interface AssistantComposerTarget {
     ) : AssistantComposerTarget
 }
 
+/** 输入框状态，包括草稿文本、目标、动作 ID 等。 */
 data class AssistantComposerState(
     val draft: String = "",
     val target: AssistantComposerTarget = AssistantComposerTarget.NewTask,
     val draftSource: String? = null,
     val actionId: AssistantActionId? = null,
     val sceneId: String? = null,
+    val qaMode: QaMode = QaMode.AUTO,
 )
 
+/** 助手会话状态，包含意图、上下文、输入框与历史轮次等。 */
 data class AssistantSessionState(
     val sessionId: String,
     val activeIntent: AssistantIntent = AssistantIntent.EXPLAIN_CODE,
@@ -127,6 +137,7 @@ data class AssistantSessionState(
     val turns: List<AssistantTurnRef> = emptyList(),
 )
 
+/** 助手结果存储条目，承载 QA、解释、生成方案、草稿、检查等多种结果。 */
 data class AssistantResultStoreEntry(
     val kind: AssistantTurnKind,
     val failure: AssistantFailureResult? = null,
@@ -139,13 +150,16 @@ data class AssistantResultStoreEntry(
     val check: GraphPatchResult? = null,
 )
 
+/** 助手结果存储，按结果 ID 维护历史结果条目。 */
 data class AssistantResultStore(
     val results: Map<String, AssistantResultStoreEntry> = emptyMap(),
 ) {
     companion object {
+        /** 历史保留条数上限。 */
         const val HISTORY_RETENTION_LIMIT: Int = 50
     }
 
+    /** 写入或更新结果条目。 */
     fun put(
         resultId: String,
         entry: AssistantResultStoreEntry?,
@@ -156,6 +170,7 @@ data class AssistantResultStore(
         return copy(results = results + (resultId to entry))
     }
 
+    /** 仅保留指定的结果 ID，其余丢弃。 */
     fun retainOnly(resultIds: Collection<String>): AssistantResultStore {
         val retainedResultIds = resultIds.toSet()
         return copy(results = results.filterKeys { resultId -> resultId in retainedResultIds })

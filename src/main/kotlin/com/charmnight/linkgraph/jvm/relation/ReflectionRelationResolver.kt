@@ -15,14 +15,23 @@ import com.intellij.psi.PsiReferenceExpression
 import com.intellij.psi.PsiVariable
 import com.intellij.psi.util.PsiTreeUtil
 
+/** 反射关系解析器：识别 Class.forName、字段访问、方法调用等反射式类型引用。 */
 class ReflectionRelationResolver : JvmRelationResolver {
+    /** 解析器在索引中的唯一标识，用于关联持久化结果。 */
     override val id: String = "jvm.reflection"
 
+    /**
+     * 扫描项目中所有方法体与配置文件，识别以反射形式出现的类型引用，
+     * 包括 Class.forName、Class.class 字面量、getMethod/getDeclaredMethod 调用，
+     * 以及注解与配置文件中以字符串形式出现的类名。
+     */
     override fun resolve(context: JvmResolutionContext): List<JvmRelation> {
         val relations = mutableListOf<JvmRelation>()
         projectMethods(context.symbolIndex).forEach { methodSymbol ->
             val psiMethod = context.findPsiMethod(methodSymbol) ?: return@forEach
             val sourceClass = context.symbolIndex.classByQualifiedName(methodSymbol.ownerClassName) ?: return@forEach
+            // 提前收集方法体内由 Class.forName 或 .class 字面量赋值的局部变量，
+            // 供后续 getMethod/getDeclaredMethod 的 qualifier 推断时使用
             val classVariables = classForNameVariables(psiMethod.body)
             PsiTreeUtil.collectElementsOfType(psiMethod.body, PsiClassObjectAccessExpression::class.java)
                 .forEach { expression ->
@@ -36,6 +45,7 @@ class ReflectionRelationResolver : JvmRelationResolver {
                     override fun visitMethodCallExpression(expression: PsiMethodCallExpression) {
                         val methodName = expression.methodExpression.referenceName
                         if (methodName == "forName") {
+                            // 处理 Class.forName("xxx"):优先取常量参数，命中索引则产出 PROVEN 关系，否则记为运行时占位
                             val classNameExpression = expression.argumentList.expressions.firstOrNull()
                             val resolvedClassName = classNameExpression?.staticString()
                             val target = resolvedClassName?.let(context.symbolIndex::classByQualifiedName)
@@ -62,6 +72,7 @@ class ReflectionRelationResolver : JvmRelationResolver {
                                 )
                             }
                         } else if (methodName == "getMethod" || methodName == "getDeclaredMethod") {
+                            // 处理反射方法获取调用：尝试解析 qualifier 上的目标类与方法名，命中后绑定到方法符号或类
                             val qualifierClassName = reflectedClassName(
                                 expression.methodExpression.qualifierExpression,
                                 classVariables,
@@ -112,6 +123,10 @@ class ReflectionRelationResolver : JvmRelationResolver {
         return relations + configAndAnnotationReflectionRelations(context)
     }
 
+    /**
+     * 构造一条由 `SomeClass.class` 字面量产生的反射关系，
+     * 来源被记为 PROVEN，并通过唯一 qualifier 区分同方法内的多处出现。
+     */
     private fun classLiteralRelation(
         sourceClass: com.charmnight.linkgraph.jvm.index.JvmClassSymbol,
         target: com.charmnight.linkgraph.jvm.index.JvmClassSymbol,
@@ -134,6 +149,11 @@ class ReflectionRelationResolver : JvmRelationResolver {
             ),
         )
 
+    /**
+     * 扫描注解值、枚举常量与配置文件，识别以字符串形式出现的类名引用。
+     * 这些引用虽非 Java 反射 API 调用，但在运行时同样会产生动态加载关系，
+     * 因此作为规则推断/资源来源的弱关系产出。
+     */
     private fun configAndAnnotationReflectionRelations(context: JvmResolutionContext): List<JvmRelation> {
         val classNames = context.symbolIndex.classesByQualifiedName.keys.toList()
         if (classNames.isEmpty()) {
@@ -222,9 +242,14 @@ class ReflectionRelationResolver : JvmRelationResolver {
         return relations
     }
 
+    /** 仅当表达式是字符串字面量时才返回其值，否则返回 null。 */
     private fun com.intellij.psi.PsiExpression.constantString(): String? =
         (this as? PsiLiteralExpression)?.value as? String
 
+    /**
+     * 尝试把一个表达式静态求值为字符串常量：支持字面量、字符串拼接，
+     * 以及指向局部常量变量的引用，常用于推断 Class.forName 的目标类名。
+     */
     private fun PsiExpression.staticString(): String? {
         constantString()?.let { return it }
         if (this is PsiPolyadicExpression) {
@@ -240,9 +265,14 @@ class ReflectionRelationResolver : JvmRelationResolver {
         return null
     }
 
+    /** 根据表达式能否静态求值决定置信度：可求值为 PROVEN，否则依赖运行时信息记为 RUNTIME_REQUIRED。 */
     private fun PsiExpression.staticReflectionConfidence(): JvmRelationConfidence =
         if (staticString() != null) JvmRelationConfidence.PROVEN else JvmRelationConfidence.RUNTIME_REQUIRED
 
+    /**
+     * 把表达式求值能力映射成可读的置信度标签，用于结果元数据，
+     * 区分未知、字面量常量、派生常量、运行时值四种情况。
+     */
     private fun PsiExpression?.staticConfidenceLabel(): String =
         when {
             this == null -> "UNKNOWN"
@@ -251,6 +281,10 @@ class ReflectionRelationResolver : JvmRelationResolver {
             else -> "RUNTIME_VALUE"
         }
 
+    /**
+     * 当反射目标无法静态解析（如参数来自外部配置或运行时变量）时，
+     * 产出一条指向源类自身的占位关系，标记为需要运行时补强证据。
+     */
     private fun unresolvedRuntimeReflectionRelation(
         sourceClass: com.charmnight.linkgraph.jvm.index.JvmClassSymbol,
         methodSymbol: com.charmnight.linkgraph.jvm.index.JvmMethodSymbol,
@@ -274,6 +308,10 @@ class ReflectionRelationResolver : JvmRelationResolver {
         )
     }
 
+    /**
+     * 扫描方法体内的局部变量声明，收集那些由 Class.forName 或 `.class` 字面量
+     * 初始化的变量，建立变量名到类名的映射，供后续 qualifier 推断使用。
+     */
     private fun classForNameVariables(body: com.intellij.psi.PsiCodeBlock?): Map<String, String> {
         if (body == null) {
             return emptyMap()
@@ -291,6 +329,7 @@ class ReflectionRelationResolver : JvmRelationResolver {
         return variables
     }
 
+    /** 推断反射方法调用的 qualifier 所指向的目标类名：优先解析 Class.forName 调用，再退化到局部变量映射。 */
     private fun reflectedClassName(
         qualifier: PsiExpression?,
         variables: Map<String, String>,
@@ -302,6 +341,7 @@ class ReflectionRelationResolver : JvmRelationResolver {
         return qualifier?.text?.let(variables::get)
     }
 
+    /** 校验方法调用确实是 Class.forName 形态，并返回其首个参数的静态字符串值。 */
     private fun classForNameLiteral(call: PsiMethodCallExpression): String? {
         if (call.methodExpression.referenceName != "forName") {
             return null
@@ -313,11 +353,16 @@ class ReflectionRelationResolver : JvmRelationResolver {
         return call.argumentList.expressions.firstOrNull()?.staticString()
     }
 
+/** 从 `.class` 字面量表达式中提取其规范的类型名称，便于在索引中匹配。 */
     private fun classObjectTypeName(expression: PsiExpression): String? {
         val classObject = expression as? PsiClassObjectAccessExpression ?: return null
         return com.charmnight.linkgraph.jvm.index.canonicalTypeText(classObject.operand.type)
     }
 
+    /**
+     * 解析 `.class` 字面量所指向的目标类符号：先尝试按类型查询索引，
+     * 再回退到 PSI 引用解析，最后处理同包简写情况，确保能命中源码外的类。
+     */
     private fun classObjectTarget(
         context: JvmResolutionContext,
         expression: PsiClassObjectAccessExpression,
@@ -344,6 +389,7 @@ class ReflectionRelationResolver : JvmRelationResolver {
             }
     }
 
+    /** 根据归属类、方法名与参数类型签名在索引中精确查找方法符号，仅当唯一匹配时返回。 */
     private fun targetMethodSymbol(
         ownerClassName: String,
         methodName: String,
@@ -359,6 +405,7 @@ class ReflectionRelationResolver : JvmRelationResolver {
         return candidates.singleOrNull()
     }
 
+    /** 从任意文本中提取潜在类名候选：先匹配全限定名，再补充出现在文本中的简单类名，去重后返回。 */
     private fun String.classNameCandidates(knownClassNames: List<String>): List<String> {
         val exact = CLASS_NAME_PATTERN.findAll(this)
             .map { match -> match.value }
@@ -369,6 +416,10 @@ class ReflectionRelationResolver : JvmRelationResolver {
         return (exact + simple).distinct().toList()
     }
 
+    /**
+     * 判断一个静态 final 字段（或枚举常量）是否通过其字面值或名称编码了某个类名，
+     * 用于发现框架约定的类名映射约定（例如按字段名匹配类）。
+     */
     private fun PsiField.enumClassNameCandidate(context: JvmResolutionContext): String? {
         if (!hasModifierProperty(PsiModifier.STATIC) || !hasModifierProperty(PsiModifier.FINAL)) {
             return null
@@ -385,7 +436,9 @@ class ReflectionRelationResolver : JvmRelationResolver {
     }
 
     private companion object {
+        // 匹配全限定类名（至少包含一个点号）
         private val CLASS_NAME_PATTERN = Regex("""\b[a-zA-Z_$][\w$]*(?:\.[a-zA-Z_$][\w$]*)+\b""")
+        // 匹配简单类名（首字母大写），可选附带 .class 后缀
         private val SIMPLE_CLASS_NAME_PATTERN = Regex("""\b[A-Z][A-Za-z0-9_$]*(?:\.class)?\b""")
     }
 }

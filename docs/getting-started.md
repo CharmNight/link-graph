@@ -4,10 +4,12 @@
 
 这份文档面向第一次在本地运行 Link Graph 的开发者。它只关注最短可运行路径，不展开解释内部实现细节。
 
+如果你只想安装插件使用，直接看 [installation.md](installation.md)。
+
 ## 环境要求
 
 - JDK 17
-- Node.js 与 npm
+- Node.js `^20.19.0` 或 `>=22.12.0`，并自带 npm
 - IntelliJ IDEA 2023.3.4 或更高兼容版本；最低平台 build 由 `gradle.properties` 中的 `platformSinceBuild` 声明
 
 ## 第一次运行
@@ -69,6 +71,6 @@ npm --prefix web ci
 
 ## 下一步
 
-- 开发者请继续阅读 [development.md](development.md)
 - 想理解实现结构请阅读 [architecture.md](architecture.md)
 - 想确认当前支持范围请阅读 [features-and-limitations.md](features-and-limitations.md)
+- 开发者请继续阅读 [development.md](development.md)

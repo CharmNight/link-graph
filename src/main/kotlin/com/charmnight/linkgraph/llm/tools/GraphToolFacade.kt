@@ -105,6 +105,8 @@ class GraphToolFacade(
     /**
      * 返回某个节点的邻域子图。
      * 第一阶段仅按无向一跳/多跳近邻展开，足够支撑问答先收缩讨论范围。
+     *
+     * @param depth 邻域展开深度，1 表示直接邻居，数值越大覆盖范围越广。
      */
     fun expandNeighborhood(
         snapshot: ToolGraphSnapshot,
@@ -145,6 +147,7 @@ class GraphToolFacade(
     fun currentDiff(snapshot: ToolGraphSnapshot): GraphDiff = snapshot.diff ?: GraphDiff()
 }
 
+/** 汇总给定节点集合及其相关边上的扩展调用 ID，便于在构造当前工作图时把折叠展开节点重新纳入。 */
 private fun collectVisibleExpansionIds(
     graph: GraphDocument,
     nodeIds: Set<String>,
@@ -169,6 +172,7 @@ private fun collectVisibleExpansionIds(
     return expansionIds
 }
 
+/** 根据当前场景 ID 选择对应的可见子图，供 currentGraph 等方法消费。 */
 private fun currentVisibleGraph(snapshot: ToolGraphSnapshot): GraphDocument {
     return when (snapshot.currentSceneId) {
         ToolGraphSceneId.WORKSPACE_FLOWCHART -> snapshot.flowchartView.visibleGraph
@@ -181,4 +185,5 @@ private fun currentVisibleGraph(snapshot: ToolGraphSnapshot): GraphDocument {
     }
 }
 
+/** 节点/边上记录调用展开分组的元数据键。 */
 private const val INVOCATION_EXPANSION_ID_KEY = "linkGraph.expansion.id"

@@ -45,11 +45,40 @@ import com.charmnight.linkgraph.model.putSourceLocation
 import com.charmnight.linkgraph.projection.graphProjectionHiddenCounts
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 
+/**
+ * 架构图投影器。
+ *
+ * 把架构索引（[ArchitectureGraphIndex]）转换为对外可消费的架构图视图：
+ * 1) 根据请求的范围与节点种类筛选要展示的结构节点；
+ * 2) 把节点/边投影为通用图文档，附带展示元数据；
+ * 3) 通过视口策略裁剪可见规模，统计被隐藏的规模；
+ * 4) 组装出 [ArchitectureGraphResult]，包含可见图、完整图、锚点、摘要、
+ *    投影索引和呈现层信息。
+ *
+ * 同时提供包视图（按 `IndexedGraphScope.Package` 触发）专用投影路径，
+ * 把同一个架构索引呈现为更聚焦于包结构的视图。
+ *
+ * @param viewportPolicy 默认的可见规模上限
+ * @param displayLayerResolver 用于把节点归类到展示分层的解析器
+ * @param hiddenBucketProjector 把被裁剪掉的节点按桶汇总的投影器
+ */
 class ArchitectureGraphProjector(
     private val viewportPolicy: GraphViewportPolicy = GraphViewportPolicy(),
     private val displayLayerResolver: ArchitectureDisplayLayerResolver = ArchitectureDisplayLayerResolver(),
     private val hiddenBucketProjector: GraphHiddenBucketProjector = GraphHiddenBucketProjector(),
 ) : GraphProjector {
+    /**
+     * 投影架构索引为架构图视图结果。
+     *
+     * 当请求范围是包（[IndexedGraphScope.Package]）时切换到包视图投影；
+     * 否则按服务/组件/资源等结构节点执行通用投影流程。
+     *
+     * @param index 已构建好的架构索引
+     * @param request 索引视图请求，决定范围、外部依赖是否纳入、视口参数等
+     * @param cacheState 当前缓存状态的对外描述（用于摘要展示）
+     * @param freshness 索引新鲜度信息
+     * @return 完整的架构图投影结果
+     */
     fun project(
         index: ArchitectureGraphIndex,
         request: IndexedGraphRequest = requestArchitectureGraphRequest(),
@@ -59,12 +88,17 @@ class ArchitectureGraphProjector(
         if (request.scope is IndexedGraphScope.Package) {
             return projectPackageGraph(index, request, cacheState, freshness)
         }
+        // 本次请求允许参与结构视图的节点种类（服务、组件、资源，按需扩展库/JDK）。
         val structureKinds = request.projectStructureKinds()
+        // 在结构视图下应当出现的候选节点列表。
         val structureNodes = index.graph.nodes.filter { node ->
             node.kind in structureKinds && node.isVisibleProjectStructureNode(index)
         }
+        // 被识别为"辅助/支撑"性质的节点（例如 demo、test 包中的组件）。
         val supportNodeIds = supportProjectStructureNodeIds(index)
+        // 至少被一条 OVERVIEW 聚合关系覆盖的节点，用于判断孤立的"清单型"节点。
         val relationBackedNodeIds = relationBackedProjectStructureNodeIds(index)
+        // 节点展示上下文（去重后的展示名、可读基名等）。
         val structureDisplayContexts = structureNodes.structureDisplayContexts()
         val fullGraph = projectStructureGraphDocument(
             index = index,
@@ -83,6 +117,7 @@ class ArchitectureGraphProjector(
         val visibleGraph = visibleWindow.graph.withMissingArchitecturePresentationMetadata()
         val anchorNodeId = selectArchitectureAnchorNodeId(visibleGraph)
         val hiddenCounts = graphProjectionHiddenCounts(visibleGraph = visibleGraph, fullGraph = fullGraph)
+        // 视口裁剪与隐藏桶统计可能各自报告一部分隐藏数，取较大者作为最终展示。
         val hiddenNodeCount = hiddenCounts.hiddenNodeCount.coerceAtLeast(visibleWindow.hiddenNodeCount)
         val hiddenEdgeCount = hiddenCounts.hiddenEdgeCount.coerceAtLeast(visibleWindow.hiddenEdgeCount)
         return ArchitectureGraphResult(
@@ -136,12 +171,26 @@ class ArchitectureGraphProjector(
         )
     }
 
+    /**
+     * 包视图投影：把架构索引转换为以包为单位的视图。
+     *
+     * 包视图仅保留包、资源、外部库与 JDK 这几类节点；当请求指定了具体包范围时，
+     * 视图会聚焦到该包及其直接相关的边；否则仅保留至少参与一条包级关系的节点。
+     * 剩余未被任何关系覆盖的"清单型"节点会被单独统计，用于摘要展示。
+     *
+     * @param index 架构索引
+     * @param request 索引请求，携带范围与视口参数
+     * @param cacheState 缓存状态描述
+     * @param freshness 索引新鲜度
+     * @return 包视图的架构图投影结果
+     */
     private fun projectPackageGraph(
         index: ArchitectureGraphIndex,
         request: IndexedGraphRequest,
         cacheState: String,
         freshness: IndexedGraphFreshness,
     ): ArchitectureGraphResult {
+        // 包视图允许出现的节点种类。
         val packageViewKinds = setOf(
             ArchitectureNodeKind.PACKAGE,
             ArchitectureNodeKind.RESOURCE,
@@ -152,11 +201,13 @@ class ArchitectureGraphProjector(
             node.kind in packageViewKinds && node.isVisibleProjectStructureNode(index)
         }
         val packageNodes = candidateNodes.filter { node -> node.kind == ArchitectureNodeKind.PACKAGE }
+        // 所有参与包级关系的节点 ID 集合（默认情况下作为可见集合）。
         val relationshipNodeIds = index.graph.edges
             .asSequence()
             .filter { edge -> edge.metadata["architecture.aggregate.level"] == "PACKAGE" }
             .flatMap { edge -> sequenceOf(edge.fromNodeId, edge.toNodeId) }
             .toSet()
+        // 当请求指定了具体包时，scope 范围内的所有包节点 ID。
         val scopedPackage = (request.scope as? IndexedGraphScope.Package)?.qualifiedName?.takeIf(String::isNotBlank)
         val scopedNodeIds = scopedPackage
             ?.let { packageName ->
@@ -165,6 +216,8 @@ class ArchitectureGraphProjector(
                     .mapTo(linkedSetOf(), ArchitectureNode::id)
             }
             .orEmpty()
+        // 最终需要纳入完整图的节点 ID：聚焦范围时为"范围内 + 与之直接相关的"，
+        // 否则使用全部参与包级关系的节点。
         val fullGraphNodeIds = if (scopedNodeIds.isNotEmpty()) {
             scopedNodeIds + index.graph.edges
                 .asSequence()
@@ -175,7 +228,9 @@ class ArchitectureGraphProjector(
         } else {
             relationshipNodeIds
         }
+        // 至少参与一条关系的节点，会进入正式展示图。
         val relationshipNodes = candidateNodes.filter { node -> node.id in fullGraphNodeIds }
+        // 完全孤立、仅作清单展示的节点，仅参与统计不进入图。
         val inventoryOnlyNodes = candidateNodes.filter { node -> node.id !in fullGraphNodeIds }
         val packageDisplayContexts = relationshipNodes.structureDisplayContexts()
         val packageGraph = graphDocument(
@@ -186,6 +241,7 @@ class ArchitectureGraphProjector(
             request = request,
             displayContexts = packageDisplayContexts,
         )
+        // 仅保留包级别的边，剔除类级别细枝末节。
         val fullGraph = packageGraph.copy(
             edges = packageGraph.edges.filter { edge -> edge.metadata["architecture.aggregate.level"] == "PACKAGE" },
         )
@@ -250,6 +306,25 @@ class ArchitectureGraphProjector(
         )
     }
 
+    /**
+     * 把架构节点集合投影为通用图文档。
+     *
+     * - 节点：通过 [ArchitectureNode.toGraphNode] 转换并附带展示元数据；
+     * - 边：按 [includeClassEdges] 决定是否保留类级边，否则仅保留 OVERVIEW 聚合关系
+     *   与少量结构包含/SPI 关系；
+     * - 元数据：合并视图模式、关系种类/置信度/来源/计数、显示关系元数据、
+     *   以及索引层级的统一元数据。
+     *
+     * @param index 架构索引
+     * @param nodes 要参与投影的架构节点集合
+     * @param includeClassEdges 是否保留类级别的边
+     * @param viewMode 当前分析显示模式
+     * @param request 索引请求，用于推导范围相关元数据
+     * @param displayContexts 各节点的展示上下文
+     * @param supportNodeIds 辅助性质节点 ID 集合
+     * @param relationBackedNodeIds 至少被一条聚合关系覆盖的节点 ID 集合
+     * @return 已排序的通用图文档
+     */
     internal fun graphDocument(
         index: ArchitectureGraphIndex,
         nodes: List<ArchitectureNode>,
@@ -260,6 +335,7 @@ class ArchitectureGraphProjector(
         supportNodeIds: Set<String> = emptySet(),
         relationBackedNodeIds: Set<String> = emptySet(),
     ): GraphDocument {
+        // 当前批次的节点 ID 集合，用于边过滤。
         val nodeIds = nodes.mapTo(linkedSetOf(), ArchitectureNode::id)
         val graphNodes = nodes.map { node ->
             node.toGraphNode(
@@ -311,6 +387,13 @@ class ArchitectureGraphProjector(
         )
     }
 
+    /**
+     * 结构视图专用图文档投影：在 [graphDocument] 基础上剔除噪声关系。
+     *
+     * 结构视图（项目结构）仅保留 OVERVIEW 级别的关系，
+     * 同时排除过于底层的关系种类（如模块包含包、SPI 提供等），
+     * 让最终展示更聚焦于组件之间的依赖。
+     */
     private fun projectStructureGraphDocument(
         index: ArchitectureGraphIndex,
         nodes: List<ArchitectureNode>,
@@ -339,7 +422,23 @@ class ArchitectureGraphProjector(
         )
     }
 
+    /**
+     * 把完整图中 OVERVIEW 级别的边聚合为"项目结构关系分组"。
+     *
+     * 每个分组由 `(from, to, displayRelationKind)` 三元组唯一标识，
+     * 分组内的所有边被视为同一类关系的多条具体实例，参与汇总：
+     * - 累计关系条数；
+     * - 收集所有底层关系 ID 作为证据；
+     * - 默认是否在当前可见图中展示。
+     *
+     * 最终按"默认可见优先、计数大优先、关系名稳定"排序。
+     *
+     * @receiver 完整图（包含全部 OVERVIEW 边）
+     * @param visibleGraph 当前可见图，用于判断分组默认是否可见
+     * @return 排序后的关系分组列表
+     */
     private fun GraphDocument.projectStructureRelationGroups(visibleGraph: GraphDocument): List<ProjectStructureRelationGroup> {
+        // 当前可见图中的边 ID 集合，用于判断分组默认可见性。
         val visibleEdgeIds = visibleGraph.edges.mapTo(linkedSetOf(), GraphEdge::id)
         return edges
             .filter { edge -> edge.metadata["architecture.aggregate.level"] == "OVERVIEW" }
@@ -354,6 +453,7 @@ class ArchitectureGraphProjector(
             .map { groupEdges ->
                 val sortedEdges = groupEdges.sortedBy(GraphEdge::id)
                 val first = sortedEdges.first()
+                // 当前分组下所有底层关系 ID 的并集，作为证据链。
                 val sourceRelationIds = sortedEdges
                     .flatMap { edge ->
                         listOf(
@@ -390,6 +490,15 @@ class ArchitectureGraphProjector(
             )
     }
 
+    /**
+     * 为图文档生成只读的投影索引。
+     *
+     * 架构图本身不可编辑，因此所有节点/边都被标记为 [GraphProjectionMappingKind.INDEXED_READONLY]，
+     * 且不携带任何可执行的编辑命令种类。投影索引供上层把投影 ID 与规范化 ID 对应起来。
+     *
+     * @param graph 已投影的图文档
+     * @return 只读投影索引
+     */
     internal fun readonlyProjectionIndex(graph: GraphDocument): GraphProjectionIndex =
         GraphProjectionIndex(
             nodeMappings = graph.nodes.associate { node ->
@@ -410,6 +519,11 @@ class ArchitectureGraphProjector(
             },
         )
 
+    /**
+     * 推导请求对应的标准架构视口策略。
+     *
+     * 优先使用请求自带的视口上限，缺失时回退到注入的默认策略。
+     */
     private fun IndexedGraphRequest.architectureViewportPolicy(): GraphViewportPolicy =
         GraphViewportPolicy(
             maxVisibleNodes = viewport.maxVisibleNodes ?: viewportPolicy.maxVisibleNodes,
@@ -417,6 +531,11 @@ class ArchitectureGraphProjector(
             enableOverflowSummary = viewportPolicy.enableOverflowSummary,
         )
 
+    /**
+     * 推导请求对应的结构视图专用视口策略。
+     *
+     * 结构视图通常希望节点更少，便于阅读，因此默认上限低于普通架构图。
+     */
     private fun IndexedGraphRequest.architectureStructureViewportPolicy(): GraphViewportPolicy =
         GraphViewportPolicy(
             maxVisibleNodes = viewport.maxVisibleNodes ?: DEFAULT_STRUCTURE_VISIBLE_NODES,
@@ -424,6 +543,13 @@ class ArchitectureGraphProjector(
             enableOverflowSummary = viewportPolicy.enableOverflowSummary,
         )
 
+    /**
+     * 把架构节点转换为通用图节点。
+     *
+     * 携带：节点 ID、对应类型、标题、位置、可签名信息（类型节点才有）、文档、
+     * 资源种类、绑定状态、确定性，以及大量元数据（视图模式、架构元信息、来源、
+     * 展示分层、索引统一元数据等）。
+     */
     private fun ArchitectureNode.toGraphNode(
         index: ArchitectureGraphIndex,
         viewMode: AnalysisDisplayMode,
@@ -484,6 +610,13 @@ class ArchitectureGraphProjector(
         )
     }
 
+    /**
+     * 构建结构视图下节点附带的展示元数据。
+     *
+     * 包括：展示名、子标题、可读基名（如有）、展示分层与角色、
+     * 是否过于宽泛（聚合粒度过大）、是否属于辅助/支撑节点、是否被关系覆盖、
+     * 排序权重，以及边界种类。
+     */
     private fun ArchitectureNode.structureDisplayMetadata(
         index: ArchitectureGraphIndex,
         displayLayer: ArchitectureDisplayLayer,
@@ -491,6 +624,7 @@ class ArchitectureGraphProjector(
         supportNode: Boolean,
         relationBackedNode: Boolean,
     ): Map<String, String> {
+        // 当前节点是否因为聚合粒度过大而需要在 UI 上降权/隐藏。
         val tooBroad = isBroadProjectStructureAggregate(index)
         val displayName = when (kind) {
             ArchitectureNodeKind.RESOURCE -> title.ifBlank { qualifiedName }
@@ -511,6 +645,10 @@ class ArchitectureGraphProjector(
         }
     }
 
+    /**
+     * 节点的可读结构名：资源节点直接使用 title，
+     * 其余类型在 title 为空时回退到全限定名的最后一段。
+     */
     private fun ArchitectureNode.readableStructureName(): String {
         if (kind == ArchitectureNodeKind.RESOURCE) {
             return title
@@ -518,6 +656,9 @@ class ArchitectureGraphProjector(
         return title.ifBlank { qualifiedName.substringAfterLast('.') }
     }
 
+    /**
+     * 构造节点在结构视图中的子标题，区分资源、服务、组件、外部依赖与 JDK。
+     */
     private fun ArchitectureNode.structureSubtitle(
         displayName: String,
         displayLayer: ArchitectureDisplayLayer,
@@ -531,6 +672,12 @@ class ArchitectureGraphProjector(
             else -> displayLayer.label
         }
 
+    /**
+     * 计算节点在结构视图中的排序权重。
+     *
+     * 数值越小越靠前。综合考虑：聚合是否过宽、是否辅助节点、是否孤立、
+     * 分层权重、成员角色权重、名称权重以及"更小的成员数加分"。
+     */
     private fun ArchitectureNode.structureRank(
         index: ArchitectureGraphIndex,
         displayLayer: ArchitectureDisplayLayer,
@@ -558,6 +705,12 @@ class ArchitectureGraphProjector(
         return supportPenalty + orphanPenalty + displayLayer.order * 100 + roleRank * 10 + nameRank + sizeBoost
     }
 
+    /**
+     * 根据成员类中最高优先级的 Stereotype 推断角色权重。
+     *
+     * Controller 优先级最高，依次为 Service、Repository、Configuration，
+     * 都不匹配时返回最大值表示未知。
+     */
     private fun ArchitectureNode.memberRoleRank(index: ArchitectureGraphIndex): Int {
         val memberClasses = memberClassIds.mapNotNull { memberId -> index.findSymbol(memberId) as? JvmClassSymbol }
         if (memberClasses.any { cls -> cls.stereotype == JvmStereotype.CONTROLLER }) {
@@ -575,6 +728,9 @@ class ArchitectureGraphProjector(
         return 4
     }
 
+    /**
+     * 收集所有被识别为辅助性质（demo/test/mock 等）的组件/服务节点 ID。
+     */
     private fun supportProjectStructureNodeIds(index: ArchitectureGraphIndex): Set<String> =
         index.graph.nodes
             .asSequence()
@@ -583,6 +739,9 @@ class ArchitectureGraphProjector(
             .map(ArchitectureNode::id)
             .toSet()
 
+    /**
+     * 收集所有至少参与一条 OVERVIEW 聚合关系（且非噪声种类）的节点 ID。
+     */
     private fun relationBackedProjectStructureNodeIds(index: ArchitectureGraphIndex): Set<String> =
         index.graph.edges
             .asSequence()
@@ -593,6 +752,12 @@ class ArchitectureGraphProjector(
             .flatMap { edge -> sequenceOf(edge.fromNodeId, edge.toNodeId) }
             .toSet()
 
+    /**
+     * 判定组件/服务节点是否属于辅助性质。
+     *
+     * 判定规则：包路径中含 demo/test/mock/benchmark 等关键字，
+     * 或所有成员类都是测试源/位于测试源路径下。
+     */
     private fun ArchitectureNode.isSupportProjectStructureNode(index: ArchitectureGraphIndex): Boolean {
         if (kind !in setOf(ArchitectureNodeKind.COMPONENT, ArchitectureNodeKind.SERVICE)) {
             return false
@@ -614,6 +779,9 @@ class ArchitectureGraphProjector(
         }
     }
 
+    /**
+     * 判定源代码路径是否位于测试/示例目录下。
+     */
     private fun String.hasSupportSourcePath(): Boolean {
         val segments = replace('\\', '/')
             .split('/')
@@ -622,8 +790,15 @@ class ArchitectureGraphProjector(
         return segments.any { segment -> segment in supportSourcePathSegments }
     }
 
+    /**
+     * 为一组节点计算展示上下文（用于避免展示名冲突）。
+     *
+     * 流程：先计算每个节点的"可读基名"，统计出现冲突的基名；
+     * 冲突的节点回退到最短唯一后缀，作为展示名。
+     */
     private fun List<ArchitectureNode>.structureDisplayContexts(): Map<String, StructureDisplayContext> {
         val readableBaseNames = associate { node -> node.id to node.readableStructureBaseName(this) }
+        // 出现次数大于 1 的基名集合，用于回退到更长的唯一名称。
         val duplicateBaseNames = readableBaseNames.values
             .filter(String::isNotBlank)
             .groupingBy { name -> name }
@@ -644,6 +819,9 @@ class ArchitectureGraphProjector(
         }
     }
 
+    /**
+     * 计算节点的可读基名：去掉公共根前缀和项目组织前缀后的剩余命名。
+     */
     private fun ArchitectureNode.readableStructureBaseName(allNodes: List<ArchitectureNode>): String {
         if (kind == ArchitectureNodeKind.RESOURCE) {
             return title
@@ -652,6 +830,7 @@ class ArchitectureGraphProjector(
         if (parts.isEmpty()) {
             return title.ifBlank { qualifiedName }
         }
+        // 全部节点的全限定名分段，用于计算公共根。
         val projectNames = allNodes
             .asSequence()
             .map { node -> node.qualifiedName.split('.').filter(String::isNotBlank) }
@@ -664,6 +843,9 @@ class ArchitectureGraphProjector(
             .ifBlank { title.ifBlank { qualifiedName } }
     }
 
+    /**
+     * 在分段列表中再剥除模块名/组织前缀，得到更短的展示用命名片段。
+     */
     private fun ArchitectureNode.projectNamespaceTrimmedParts(parts: List<String>): List<String> {
         val moduleSegment = moduleName
             ?.substringAfterLast(':')
@@ -680,6 +862,11 @@ class ArchitectureGraphProjector(
         return organizationTrimmedParts.takeIf(List<String>::isNotEmpty) ?: parts
     }
 
+    /**
+     * 计算节点在全节点集合中最短且唯一的名称后缀。
+     *
+     * 从最短 2 段后缀开始尝试，遇到不冲突的后缀即返回，确保展示名既短又唯一。
+     */
     private fun ArchitectureNode.shortestUniqueStructureName(allNodes: List<ArchitectureNode>): String {
         if (kind == ArchitectureNodeKind.RESOURCE) {
             return title
@@ -706,6 +893,9 @@ class ArchitectureGraphProjector(
         return qualifiedName.ifBlank { title }
     }
 
+    /**
+     * 计算多组命名分段列表的公共前缀长度。
+     */
     private fun commonRootSize(names: List<List<String>>): Int {
         if (names.isEmpty()) {
             return 0
@@ -723,6 +913,11 @@ class ArchitectureGraphProjector(
         return rootSize
     }
 
+    /**
+     * 判定组件/服务聚合是否过于宽泛（命名层级过浅或成员类占比过高）。
+     *
+     * 宽泛的聚合会被 UI 降权或隐藏，避免出现"项目根聚合"这类无意义节点。
+     */
     private fun ArchitectureNode.isBroadProjectStructureAggregate(index: ArchitectureGraphIndex): Boolean {
         if (kind !in setOf(ArchitectureNodeKind.COMPONENT, ArchitectureNodeKind.SERVICE)) {
             return false
@@ -734,6 +929,7 @@ class ArchitectureGraphProjector(
         if (readableStructureName().isBlank()) {
             return true
         }
+        // 项目自身源码类的总数，作为成员数比较的分母。
         val projectClassCount = index.symbolIndex.classesByQualifiedName.values.count { cls ->
             !cls.external && !cls.library && !cls.jdk && !cls.testSource
         }.coerceAtLeast(1)
@@ -743,6 +939,14 @@ class ArchitectureGraphProjector(
         return false
     }
 
+    /**
+     * 构造架构视图的整体呈现层信息：目标节点、泳道、隐藏桶、控件。
+     *
+     * @param visibleGraph 当前可见图
+     * @param fullGraph 完整图
+     * @param anchorNodeId 锚点节点 ID（用于目标展示）
+     * @return 可直接渲染的呈现层信息
+     */
     private fun architecturePresentation(
         visibleGraph: GraphDocument,
         fullGraph: GraphDocument,
@@ -780,6 +984,11 @@ class ArchitectureGraphProjector(
         )
     }
 
+    /**
+     * 给尚未填充展示元数据的节点补齐默认展示信息。
+     *
+     * 节点若已有 `presentation.role` 则保留原值，否则按解析出的分层注入。
+     */
     private fun GraphDocument.withMissingArchitecturePresentationMetadata(): GraphDocument =
         copy(
             nodes = nodes.map { node ->
@@ -791,6 +1000,9 @@ class ArchitectureGraphProjector(
             },
         )
 
+    /**
+     * 把展示分层转换为前端可识别的展示元数据键值对。
+     */
     private fun ArchitectureDisplayLayer.presentationMetadata(): Map<String, String> =
         mapOf(
             "presentation.role" to role,
@@ -799,9 +1011,15 @@ class ArchitectureGraphProjector(
             "presentation.compact" to "true",
         )
 
+    /**
+     * 把隐藏桶的 ID 转换为中文展示标签。
+     */
     private fun architectureBucketLabel(bucket: String): String =
         ArchitectureDisplayLayer.entries.firstOrNull { layer -> layer.laneId == bucket }?.label ?: bucket
 
+    /**
+     * 构造节点的源代码示例元数据：数量、首要示例（用于导航）以及全部样本明细。
+     */
     private fun ArchitectureNode.architectureSourceSampleMetadata(
         index: ArchitectureGraphIndex,
     ): Map<String, String> {
@@ -835,6 +1053,12 @@ class ArchitectureGraphProjector(
         }
     }
 
+    /**
+     * 收集节点的源代码样本：节点自身来源、成员类来源与成员资源来源。
+     *
+     * 同一节点 ID 只保留第一个样本，结果按路径与起始行排序，
+     * 总数不超过 [MAX_ARCHITECTURE_SOURCE_SAMPLES]。
+     */
     private fun ArchitectureNode.architectureSourceSamples(
         index: ArchitectureGraphIndex,
     ): List<ArchitectureSourceSample> {
@@ -877,6 +1101,9 @@ class ArchitectureGraphProjector(
             .take(MAX_ARCHITECTURE_SOURCE_SAMPLES)
     }
 
+    /**
+     * 节点默认文档说明：根据节点种类生成成员数量描述。
+     */
     private fun ArchitectureNode.docText(): String? =
         when (kind) {
             ArchitectureNodeKind.SERVICE -> "Service scope with ${memberClassIds.size} classes"
@@ -888,6 +1115,11 @@ class ArchitectureGraphProjector(
             else -> null
         }
 
+    /**
+     * 把架构节点种类映射到通用图节点类型。
+     *
+     * 注意：外部库与 JDK 在通用类型系统中合并为 [NodeType.LIBRARY]。
+     */
     private fun ArchitectureNodeKind.toNodeType(): NodeType =
         when (this) {
             ArchitectureNodeKind.MODULE -> NodeType.MODULE
@@ -907,6 +1139,9 @@ class ArchitectureGraphProjector(
             -> NodeType.LIBRARY
         }
 
+    /**
+     * 判定节点种类是否属于"类型节点"（可使用全限定名作为签名）。
+     */
     private fun ArchitectureNodeKind.isTypeLike(): Boolean =
         this in setOf(
             ArchitectureNodeKind.CLASS,
@@ -917,6 +1152,11 @@ class ArchitectureGraphProjector(
             ArchitectureNodeKind.OBJECT,
         )
 
+    /**
+     * 节点优先级：数字越小越优先保留。
+     *
+     * 优先使用预计算的 `architecture.structureRank`，缺失时按节点类型回退。
+     */
     private fun architectureNodePriority(node: GraphNode): Int =
         node.metadata["architecture.structureRank"]?.toIntOrNull()
             ?: when (node.type) {
@@ -930,6 +1170,11 @@ class ArchitectureGraphProjector(
             else -> 6
         }
 
+    /**
+     * 边优先级：数字越小越优先保留。
+     *
+     * 结构边最优先，其次按聚合层级，再按 JVM 关系种类排序。
+     */
     private fun architectureEdgePriority(edge: GraphEdge): Int =
         when {
             edge.metadata["architecture.graph.kind"] == "STRUCTURE" -> 0
@@ -947,6 +1192,11 @@ class ArchitectureGraphProjector(
             }
         }
 
+    /**
+     * 把 JVM 关系种类映射到展示层"显示关系种类"和中文标签。
+     *
+     * 例如：调用、注入、路由等归为运行时调用；继承、实现归为类型依赖。
+     */
     private fun ArchitectureEdge.displayRelationMetadata(): Map<String, String> =
         when (kind) {
             JvmRelationKind.CALLS,
@@ -1002,7 +1252,15 @@ class ArchitectureGraphProjector(
             )
         }
 
+    /**
+     * 从可见图中挑选架构锚点节点。
+     *
+     * 选择优先级：1) 优先角色（API/ENTRY/SERVICE 等）且非宽聚合且有源样本；
+     * 2) 含源样本的聚合类型节点；3) 同样角色但允许无源样本；
+     * 4) 任意 MODULE 节点；5) 第一个节点。
+     */
     private fun selectArchitectureAnchorNodeId(graph: GraphDocument): String? {
+        // 角色优先级列表，越靠前越优先。
         val preferredRoles = listOf("API", "ENTRY", "SERVICE", "DATA", "CONFIG", "RESOURCE")
         preferredRoles.forEach { role ->
             graph.nodes.firstOrNull { node ->
@@ -1034,9 +1292,17 @@ class ArchitectureGraphProjector(
         return graph.nodes.firstOrNull { it.type == NodeType.MODULE }?.id ?: graph.nodes.firstOrNull()?.id
     }
 
+    /**
+     * 判定节点是否携带至少一个源代码样本。
+     */
     private fun GraphNode.hasArchitectureSourceSamples(): Boolean =
         metadata["architecture.sourceSample.count"]?.toIntOrNull()?.let { count -> count > 0 } == true
 
+    /**
+     * 判定图节点是否对应一个过于宽泛的架构聚合。
+     *
+     * 仅 MODULE 节点或角色未知且命名空间过宽的 COMPONENT 节点被视为宽聚合。
+     */
     private fun GraphNode.isBroadArchitectureAggregate(allNodes: List<GraphNode>): Boolean {
         val nodeKind = metadata["architecture.node.kind"] ?: type.name
         val role = metadata["indexed.nodeRole"]
@@ -1051,6 +1317,9 @@ class ArchitectureGraphProjector(
         return false
     }
 
+    /**
+     * 判定组件命名空间是否过宽：是否有较多更细粒度的子节点位于其下。
+     */
     private fun String.isBroadComponentNamespace(allNodes: List<GraphNode>): Boolean {
         if (isBlank()) {
             return false
@@ -1077,6 +1346,11 @@ class ArchitectureGraphProjector(
             .count() >= 2
     }
 
+    /**
+     * 判定节点是否应当出现在结构视图的可见集合中。
+     *
+     * 资源节点需要排除构建产物、缓存目录等噪声路径。
+     */
     private fun ArchitectureNode.isVisibleProjectStructureNode(index: ArchitectureGraphIndex): Boolean {
         if (kind != ArchitectureNodeKind.RESOURCE) {
             return true
@@ -1085,6 +1359,9 @@ class ArchitectureGraphProjector(
         return paths.isEmpty() || paths.any { path -> !path.hasExcludedResourcePathSegment() }
     }
 
+    /**
+     * 收集节点的所有资源路径：自身元数据中的路径 + 成员资源路径。
+     */
     private fun ArchitectureNode.resourcePaths(index: ArchitectureGraphIndex): List<String> =
         buildList {
             metadata["resource.path"]?.let(::add)
@@ -1093,6 +1370,12 @@ class ArchitectureGraphProjector(
             }
         }
 
+    /**
+     * 判定资源路径是否包含应当排除的目录段。
+     *
+     * 例如 `.git`、`node_modules` 始终排除；`build`、`dist` 这类生成目录
+     * 在出现在 `src` 之前时才视为生成产物排除。
+     */
     private fun String.hasExcludedResourcePathSegment(): Boolean {
         val segments = replace('\\', '/')
             .split('/')
@@ -1103,6 +1386,9 @@ class ArchitectureGraphProjector(
         }
     }
 
+    /**
+     * 根据请求参数推导结构视图下需要保留的架构节点种类集合。
+     */
     private fun IndexedGraphRequest.projectStructureKinds(): Set<ArchitectureNodeKind> =
         buildSet {
             add(ArchitectureNodeKind.SERVICE)
@@ -1116,6 +1402,9 @@ class ArchitectureGraphProjector(
             }
         }
 
+    /**
+     * 根据请求参数推导视口裁剪时使用的种子节点类型集合。
+     */
     private fun IndexedGraphRequest.projectSeedNodeTypes(): Set<NodeType> =
         buildSet {
             add(NodeType.SERVICE)
@@ -1126,28 +1415,40 @@ class ArchitectureGraphProjector(
             }
         }
 
+    /**
+     * 单个源代码样本：携带节点 ID、来源引用以及采集原因。
+     */
     private data class ArchitectureSourceSample(
         val nodeId: String,
         val source: JvmSourceRef,
         val reason: String,
     )
 
+    /**
+     * 节点展示上下文：展示名与可读基名，用于避免重名并支持 UI 渲染。
+     */
     internal data class StructureDisplayContext(
         val displayName: String,
         val readableBaseName: String?,
     )
 
     private companion object {
+        /** 单个节点最多保留的源样本数量。 */
         private const val MAX_ARCHITECTURE_SOURCE_SAMPLES = 8
+        /** 结构视图默认最大可见节点数。 */
         private const val DEFAULT_STRUCTURE_VISIBLE_NODES = 12
+        /** 结构视图默认最大可见边数。 */
         private const val DEFAULT_STRUCTURE_VISIBLE_EDGES = 18
+        /** 判定聚合节点是否过宽的成员类占比阈值。 */
         private const val BROAD_STRUCTURE_NODE_RATIO = 0.55
+        /** 在结构视图中需要被剔除的关系种类（结构包含/SPI 等噪声关系）。 */
         private val hiddenProjectStructureRelationKinds = setOf(
             JvmRelationKind.MODULE_CONTAINS_PACKAGE.name,
             JvmRelationKind.PACKAGE_CONTAINS_CLASS.name,
             JvmRelationKind.SPI_PROVIDES.name,
             JvmRelationKind.SERVICE_LOADER_LOADS.name,
         )
+        /** 资源路径中应当无条件排除的目录段。 */
         private val alwaysExcludedResourcePathSegments = setOf(
             ".cache",
             ".git",
@@ -1159,6 +1460,7 @@ class ArchitectureGraphProjector(
             "build-idea-sandbox",
             "node_modules",
         )
+        /** 资源路径中的生成产物目录段，按上下文判断是否排除。 */
         private val generatedResourcePathSegments = setOf(
             "build",
             "coverage",
@@ -1168,6 +1470,7 @@ class ArchitectureGraphProjector(
             "temp",
             "tmp",
         )
+        /** 常见组织前缀段，用于展示时剥除命名空间前缀。 */
         private val organizationPrefixSegments = setOf(
             "com",
             "org",
@@ -1175,6 +1478,7 @@ class ArchitectureGraphProjector(
             "io",
             "dev",
         )
+        /** 辅助/测试性质的包名段，命中即视为非项目主体代码。 */
         private val supportPackageSegments = setOf(
             "benchmark",
             "benchmarks",
@@ -1192,6 +1496,7 @@ class ArchitectureGraphProjector(
             "testing",
             "tests",
         )
+        /** 辅助/测试性质的源码路径段，命中即视为非项目主体代码。 */
         private val supportSourcePathSegments = supportPackageSegments + setOf(
             "src/test",
             "src/integrationtest",
@@ -1200,6 +1505,9 @@ class ArchitectureGraphProjector(
     }
 }
 
+/**
+ * 把 JVM 关系种类映射到通用边类型，用于把索引关系转换为图文档边。
+ */
 internal fun JvmRelationKind.toEdgeType(): EdgeType =
     when (this) {
         JvmRelationKind.MODULE_CONTAINS_PACKAGE,
@@ -1231,6 +1539,9 @@ internal fun JvmRelationKind.toEdgeType(): EdgeType =
         -> EdgeType.USES_TYPE
     }
 
+/**
+ * 把 JVM 关系置信度映射到通用确定性枚举。
+ */
 internal fun JvmRelationConfidence.toCertainty(): Certainty =
     when (this) {
         JvmRelationConfidence.PROVEN -> Certainty.PROVEN
@@ -1240,6 +1551,9 @@ internal fun JvmRelationConfidence.toCertainty(): Certainty =
         -> Certainty.RULE_INFERRED
     }
 
+/**
+ * 根据 JVM 关系种类返回简洁的英文展示标签。
+ */
 internal fun edgeLabel(kind: JvmRelationKind): String =
     when (kind) {
         JvmRelationKind.MODULE_CONTAINS_PACKAGE -> "contains"

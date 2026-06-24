@@ -1,14 +1,24 @@
+/** GraphNodeStateBadges 组件的入参。 */
 interface GraphNodeStateBadgesProps {
+  /** 节点是否被选中。 */
   selected?: boolean;
+  /** 节点是否处于讲解聚焦状态。 */
   explanationFocused?: boolean;
+  /** 节点是否被草稿改动影响。 */
   draftChanged?: boolean;
 }
 
+/**
+ * 节点状态徽章：在节点卡片角落展示"选中""讲解中""已改草稿"等状态。
+ *
+ * 所有状态都为 false 时不渲染任何内容。
+ */
 export function GraphNodeStateBadges({
   selected = false,
   explanationFocused = false,
   draftChanged = false,
 }: GraphNodeStateBadgesProps) {
+  // 全部为 false 时不渲染容器
   if (!selected && !explanationFocused && !draftChanged) {
     return null;
   }

@@ -2,6 +2,7 @@ import { nodeTypeLabel, sourceTagLabel } from "../../../labels";
 import { resolveFlowchartKind } from "../../../flowchartKind";
 import type { LinkGraphNode } from "../../../types";
 
+/** 把文档字符串截断到 84 字符以内，超出部分以省略号结尾，方便节点卡片展示。 */
 function shortDoc(value?: string): string | null {
   if (!value) {
     return null;
@@ -9,17 +10,20 @@ function shortDoc(value?: string): string | null {
   return value.length > 84 ? `${value.slice(0, 84)}...` : value;
 }
 
+/** 简化类型名显示：去掉 java.lang. 前缀，并将包路径折叠为简单类名。 */
 function shortTypeName(value: string): string {
   return value
     .replace(/\bjava\.lang\./g, "")
     .replace(/\b(?:[a-z_]\w*\.)+([A-Z]\w*)/g, "$1");
 }
 
+/** 解析方法签名后得到的结构：参数列表和返回类型。 */
 interface ParsedMethodSignature {
   parameters: string[];
   returnType: string | null;
 }
 
+/** 按顶层逗号拆分方法参数文本，泛型尖括号内的逗号会被忽略，避免拆错泛型参数。 */
 function splitMethodParameters(parametersText: string): string[] {
   const parameters: string[] = [];
   let genericDepth = 0;
@@ -45,6 +49,7 @@ function splitMethodParameters(parametersText: string): string[] {
   return parameters;
 }
 
+/** 解析方法签名字符串，正则匹配宿主.方法名(参数):返回类型，提取参数列表与返回类型。 */
 function parseMethodSignature(signature?: string): ParsedMethodSignature | null {
   const normalized = signature?.trim();
   if (!normalized) {
@@ -60,6 +65,7 @@ function parseMethodSignature(signature?: string): ParsedMethodSignature | null 
   };
 }
 
+/** 根据流程作用域元数据返回中文标签，覆盖 Lambda、条件分支、各类循环等子类型。 */
 export function flowScopeKindLabel(node: LinkGraphNode): string | null {
   if (node.type !== "FLOW_SCOPE") {
     return null;
@@ -82,6 +88,7 @@ export function flowScopeKindLabel(node: LinkGraphNode): string | null {
   }
 }
 
+/** 从方法签名中提取"宿主类.方法名"格式的简化显示字符串，括号后部分会被丢弃。 */
 function methodDisplayFromSignature(signature?: string): string | null {
   if (!signature?.trim()) {
     return null;
@@ -98,11 +105,13 @@ function methodDisplayFromSignature(signature?: string): string | null {
   return `${owner}.${methodName}`;
 }
 
+/** 从形如"宿主.方法名"的标题中取最后一段作为方法名展示。 */
 function methodNameFromTitle(title: string): string {
   const lastDotIndex = title.lastIndexOf(".");
   return lastDotIndex >= 0 ? title.slice(lastDotIndex + 1) : title;
 }
 
+/** 从方法签名中提取宿主类名（参数列表之前的最后一段），并简化为不带包路径的形式。 */
 function ownerNameFromSignature(signature?: string): string | null {
   if (!signature) {
     return null;
@@ -114,15 +123,18 @@ function ownerNameFromSignature(signature?: string): string | null {
   return shortTypeName(signature.slice(0, lastMethodDot));
 }
 
+/** 读取流程动作节点所属的锚点方法（即该方法动作所在的方法）的显示字符串。 */
 function flowActionAnchorMethod(node: LinkGraphNode): string | null {
   return methodDisplayFromSignature(node.metadata?.["flow.anchorMethod"]) ?? null;
 }
 
+/** 返回流程动作节点的展示文本，优先使用签名，否则退回到标题。 */
 function flowActionText(node: LinkGraphNode): string | null {
   const actionText = node.signature?.trim() || node.title.trim();
   return actionText || null;
 }
 
+/** 计算节点卡片的"所有者/宿主"展示文本，按节点类型分别给出最合适的归属标识。 */
 export function ownerPreview(node: LinkGraphNode): string {
   if (node.type === "TERMINAL") {
     return "流程终止";
@@ -149,6 +161,7 @@ export function ownerPreview(node: LinkGraphNode): string {
   return node.title;
 }
 
+/** 生成节点签名预览：根据节点类型展示方法名+参数+返回类型、流程节点描述或入出参摘要。 */
 export function signaturePreview(node: LinkGraphNode): string | null {
   if (node.type === "TERMINAL") {
     return node.metadata?.["terminal.kind"] === "RETURN" ? "返回路径结束" : nodeTypeLabel(node.type);
@@ -202,15 +215,18 @@ export function signaturePreview(node: LinkGraphNode): string | null {
   return null;
 }
 
+/** 返回节点的阅读态详细文本，优先签名预览，否则回退到节点类型中文标签。 */
 export function readingSummaryDetail(node: LinkGraphNode): string {
   return signaturePreview(node) ?? nodeTypeLabel(node.type);
 }
 
+/** 读取节点在调用层级中的方向（上游/当前/下游），用于在卡片上展示调用方向标签。 */
 export function hierarchyDirection(node: LinkGraphNode): "UPSTREAM" | "CURRENT" | "DOWNSTREAM" | null {
   const value = node.metadata?.["layout.direction"];
   return value === "UPSTREAM" || value === "CURRENT" || value === "DOWNSTREAM" ? value : null;
 }
 
+/** 计算节点的层级展示文本：组合调用序号标签和层级标签，对方法内部动作有特殊处理。 */
 export function hierarchyLabel(node: LinkGraphNode): string | null {
   const sequenceLabel = node.metadata?.["layout.sequenceLabel"]?.trim() || null;
   const levelLabel = node.metadata?.["layout.levelLabel"]?.trim() || null;
@@ -227,6 +243,7 @@ export function hierarchyLabel(node: LinkGraphNode): string | null {
   return sequenceLabel ?? levelLabel;
 }
 
+/** 将层级方向枚举翻译为中文短语：上游/当前/下游。 */
 export function hierarchyDirectionLabel(node: LinkGraphNode): string | null {
   switch (hierarchyDirection(node)) {
     case "UPSTREAM":
@@ -240,10 +257,12 @@ export function hierarchyDirectionLabel(node: LinkGraphNode): string | null {
   }
 }
 
+/** 判断节点集合中是否至少有一个节点携带层级方向信息，用于决定是否显示方向标记栏。 */
 export function hasHierarchyDirections(nodes: LinkGraphNode[]): boolean {
   return nodes.some((node) => hierarchyDirection(node) !== null);
 }
 
+/** 拼接节点 tooltip 文本：包含类型、标题、签名、文档、入出参以及位置等，过滤空值后用换行分隔。 */
 export function nodeTooltip(node: LinkGraphNode): string {
   const parsedSignature = node.type === "METHOD" ? parseMethodSignature(node.signature) : null;
   const derivedInputs = node.inputs.length === 0 ? parsedSignature?.parameters ?? [] : [];
@@ -263,19 +282,23 @@ export function nodeTooltip(node: LinkGraphNode): string {
     .join("\n");
 }
 
+/** 判断节点是否为条件分支（IF）类型的流程作用域节点。 */
 export function isDecisionFlowScope(node: LinkGraphNode): boolean {
   return node.type === "FLOW_SCOPE" && node.metadata?.["flow.kind"] === "IF";
 }
 
+/** 判断节点是否为方法内部动作节点（FLOW_ACTION 类型）。 */
 export function isFlowActionNode(node: LinkGraphNode): boolean {
   return node.type === "FLOW_ACTION";
 }
 
+/** 判断节点是否为方法边界的系统解释节点（携带特定元数据标记）。 */
 function isMethodBoundaryExplanationNode(node: LinkGraphNode): boolean {
   return node.metadata?.["linkGraph.overflow.presentation"] === "METHOD_BOUNDARY"
     || Boolean(node.metadata?.["linkGraph.boundary.kind"]);
 }
 
+/** 计算节点来源角标文本与提示：根据来源标签返回设计/草稿/待确认等标识，事实来源不显示角标。 */
 export function nodeSourceBadge(node: LinkGraphNode): { text: string; title: string } | null {
   if (isMethodBoundaryExplanationNode(node)) {
     return { text: "解释", title: "系统解释节点" };
@@ -295,21 +318,25 @@ export function nodeSourceBadge(node: LinkGraphNode): { text: string; title: str
   }
 }
 
+/** 从节点元数据中读取因提图限流而隐藏的方法数量，缺失或非法时返回 null。 */
 function extractionOverflowCount(node: LinkGraphNode): number | null {
   const rawCount = Number(node.metadata?.["linkGraph.overflow.hiddenMethodCount"]);
   return Number.isFinite(rawCount) ? rawCount : null;
 }
 
+/** 读取节点所属的折叠方向（上游/下游），用于决定摘要节点的展开行为与文案。 */
 function projectorOverflowDirection(node: LinkGraphNode): "UPSTREAM" | "DOWNSTREAM" | null {
   const direction = node.metadata?.["linkGraph.overflow.direction"];
   return direction === "UPSTREAM" || direction === "DOWNSTREAM" ? direction : null;
 }
 
+/** 按指定元数据键读取被折叠隐藏的节点数量，缺失或非法时返回 null。 */
 function projectorOverflowHiddenCount(node: LinkGraphNode, key: string): number | null {
   const rawCount = Number(node.metadata?.[key]);
   return Number.isFinite(rawCount) ? rawCount : null;
 }
 
+/** 根据节点折叠/边界元数据生成溢出展示信息：包括标题、说明、是否可展开以及操作文案，供摘要节点渲染。 */
 export function overflowPresentation(node: LinkGraphNode): {
   docLine: string;
   ownerLine: string;
@@ -388,10 +415,12 @@ export function overflowPresentation(node: LinkGraphNode): {
   return null;
 }
 
+/** 复用通用流程图类型解析逻辑（入口/判断/子过程/终端/汇聚/作用域等）。 */
 export function flowchartKind(node: LinkGraphNode): string {
   return resolveFlowchartKind(node);
 }
 
+/** 将流程图类型翻译为中文短语，用于卡片标题或徽标展示。 */
 export function flowchartKindLabel(node: LinkGraphNode): string {
   switch (flowchartKind(node)) {
     case "ENTRY":
@@ -411,10 +440,12 @@ export function flowchartKindLabel(node: LinkGraphNode): string {
   }
 }
 
+/** 读取节点所属的资源泳道元数据（代码主体、数据资源等），缺失时默认为代码主体。 */
 export function resourceLane(node: LinkGraphNode): string {
   return node.metadata?.["resource.lane"] ?? "CODE";
 }
 
+/** 将资源泳道标识翻译为中文短语，未匹配的值统一显示为辅助资源。 */
 export function resourceLaneLabel(lane: string): string {
   switch (lane) {
     case "CODE":
@@ -432,6 +463,7 @@ export function resourceLaneLabel(lane: string): string {
   }
 }
 
+/** 计算事实节点的文档展示文本：优先折叠摘要节点文案，再按类型给出默认描述，最后回退到原始 doc 或"暂无注释"。 */
 export function factNodeDocText(node: LinkGraphNode): string {
   const overflow = overflowPresentation(node);
   return overflow?.docLine

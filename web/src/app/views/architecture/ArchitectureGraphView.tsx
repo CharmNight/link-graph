@@ -18,10 +18,15 @@ import {
   buildArchitectureGraphNodes,
 } from "./architectureGraphNodes";
 
+/** 架构图视图组件的 props：基于通用只读阶段 props，再加上当前架构视图文档。 */
 interface ArchitectureGraphViewProps extends IndexedReadonlyStageProps {
   view: ArchitectureGraphViewDocument;
 }
 
+/**
+ * 顶部"节点来源"下拉的可选项：按代码来源（项目/三方/JDK/资源/聚合）筛选，
+ * "全部来源"为默认值，方便用户切换不同关注点。
+ */
 const LAYER_FILTERS = [
   { value: "ALL", label: "全部来源" },
   { value: "PROJECT_SOURCE", label: "项目代码" },
@@ -31,14 +36,21 @@ const LAYER_FILTERS = [
   { value: "AGGREGATE", label: "聚合分组" },
 ] as const;
 
+/** 节点来源筛选值类型（从 LAYER_FILTERS 派生，保证可选项与 UI 同步）。 */
 type ArchitectureLayerFilter = typeof LAYER_FILTERS[number]["value"];
 
+/** 标记哪些筛选值属于"外部依赖"类：这类筛选需要触发后端补抓依赖图，而非简单前端过滤。 */
 const DEPENDENCY_LAYER_FILTERS = new Set<ArchitectureLayerFilter>(["EXTERNAL_LIBRARY", "JDK"]);
 
+/** 判断当前视图是否是项目级架构（区别于包/类等更细粒度视图），用于决定布局分支。 */
 function isProjectStructureGraph(view: ArchitectureGraphViewDocument): boolean {
   return view.summary.indexed?.scopeKind === "PROJECT";
 }
 
+/**
+ * 节点是否匹配用户输入的搜索关键字：在 title/signature/location/doc 以及多个 metadata 字段中
+ * 做大小写无关的子串匹配，任一命中即返回 true。
+ */
 function nodeMatchesQuery(node: LinkGraphNode, query: string): boolean {
   const normalized = query.trim().toLowerCase();
   if (!normalized) {
@@ -55,10 +67,15 @@ function nodeMatchesQuery(node: LinkGraphNode, query: string): boolean {
   ].some((value) => value?.toLowerCase().includes(normalized));
 }
 
+/** 当前筛选是否需要外部依赖类（三方库/JDK）数据。 */
 function isDependencyLayerFilter(layerFilter: ArchitectureLayerFilter): boolean {
   return DEPENDENCY_LAYER_FILTERS.has(layerFilter);
 }
 
+/**
+ * 判断所选依赖层的数据是否已加载：
+ * 项目侧通过 includeExternalLibraries/includeJdk 标记控制；非依赖层总是视为已加载。
+ */
 function isLayerLoaded(
   layerFilter: ArchitectureLayerFilter,
   includeExternalLibraries: boolean,
@@ -73,6 +90,11 @@ function isLayerLoaded(
   return true;
 }
 
+/**
+ * 在依赖层筛选模式下计算要保留的节点集合：
+ * 先找出符合筛选 + 搜索的依赖节点，再补齐与这些依赖有边相连的项目侧节点，
+ * 让依赖图中"孤立的依赖"被排除，同时保留依赖的调用方供用户理解上下文。
+ */
 function connectedDependencyNodeIds(
   graph: { nodes: LinkGraphNode[]; edges: LinkGraphEdge[] },
   layerFilter: ArchitectureLayerFilter,
@@ -108,6 +130,10 @@ function connectedDependencyNodeIds(
   return connectedNodeIds;
 }
 
+/**
+ * 构造节点右键菜单的动作列表：查看详情、下钻类图、包依赖、折叠下游、打开源码、
+ * AI 讲解 / 问答 / 设为问答目标、重新整理布局等。canOpenSource 为假时自动隐藏"打开源码"。
+ */
 function architectureNodeActions(args: {
   nodeId: string;
   node: LinkGraphNode | null;
@@ -213,6 +239,11 @@ function architectureNodeActions(args: {
   return actions;
 }
 
+/**
+ * 架构图主视图组件：
+ * 把后端返回的架构视图文档渲染成 React Flow 画布，处理搜索、来源筛选、布局、
+ * 视口重置、右键菜单、空状态等。同时根据是否为"项目结构视图"切换不同的布局算法和视口策略。
+ */
 export function ArchitectureGraphView({
   view,
   selectedNodeId,
@@ -374,6 +405,10 @@ export function ArchitectureGraphView({
     `layer:${layerFilter}`,
   ].join("|");
 
+  /**
+   * 触发当前架构范围（项目或包）的重新加载：包范围时调用包依赖图入口，
+   * 否则走完整架构图入口。include 参数控制是否一并抓取三方/JDK 依赖。
+   */
   function requestCurrentArchitectureScope(options: { includeExternalLibraries: boolean; includeJdk: boolean }) {
     if (isPackageScope) {
       onRequestPackageDependencyGraph(indexedSummary?.scopeLabel ?? null, options);
@@ -382,6 +417,7 @@ export function ArchitectureGraphView({
     onRequestArchitectureGraph(options);
   }
 
+  /** 来源筛选切换：更新本地状态；若用户切到尚未加载的外部依赖/JDK，自动触发后端补抓。 */
   function handleLayerFilterChange(nextLayerFilter: ArchitectureLayerFilter) {
     setLayerFilter(nextLayerFilter);
     if (nextLayerFilter === "EXTERNAL_LIBRARY" && !includeExternalLibraries) {
@@ -399,6 +435,7 @@ export function ArchitectureGraphView({
     }
   }
 
+  /** 视图粒度切换：在"包/类/组件"三个粒度之间跳转，分别打开包依赖图、类图或刷新架构图。 */
   function handleScopeChange(nextScope: string) {
     setScope(nextScope);
     if (nextScope === "包") {
@@ -547,6 +584,7 @@ export function ArchitectureGraphView({
   );
 }
 
+/** 选中某个节点时收集与该节点直接相连的所有边 id，用于把这些边高亮（focus 样式）。 */
 function architectureFocusEdgeIds(selectedNodeId: string, edges: LinkGraphEdge[]): Set<string> {
   return new Set(
     edges
@@ -555,6 +593,7 @@ function architectureFocusEdgeIds(selectedNodeId: string, edges: LinkGraphEdge[]
   );
 }
 
+/** 选中某个节点时收集"该节点 + 其直接相邻节点"集合，用于把这些节点高亮、其他节点变暗。 */
 function architectureFocusNodeIds(selectedNodeId: string, edges: LinkGraphEdge[]): Set<string> {
   const nodeIds = new Set<string>([selectedNodeId]);
   edges.forEach((edge) => {

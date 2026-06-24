@@ -13,13 +13,20 @@ import com.intellij.psi.PsiLiteralExpression
 import com.intellij.psi.PsiMethodCallExpression
 import com.intellij.psi.PsiArrayInitializerMemberValue
 
+/** 框架关系解析器：识别 Dubbo、Feign、MQ 等远程/消息框架相关的关系。 */
 class FrameworkRelationResolver : JvmRelationResolver {
+    /** 解析器稳定标识，外部按此 ID 注册和去重。 */
     override val id: String = "jvm.framework"
 
+    /** 汇总 Dubbo、Feign、MQ 三类框架关系并返回给上游聚合。 */
     override fun resolve(context: JvmResolutionContext): List<JvmRelation> {
         return dubboRelations(context) + feignRelations(context) + mqRelations(context)
     }
 
+    /**
+     * 扫描项目中的 Dubbo Service 提供方与 Reference 注入字段，建立 PROVIDES / REFERENCES 关系。
+     * PROVIDES 来自注解直接声明的接口实现，REFERENCES 来自字段注入的接口类型推断。
+     */
     private fun dubboRelations(context: JvmResolutionContext): List<JvmRelation> {
         val relations = mutableListOf<JvmRelation>()
         projectClasses(context.symbolIndex).forEach { classSymbol ->
@@ -69,6 +76,7 @@ class FrameworkRelationResolver : JvmRelationResolver {
         return relations
     }
 
+    /** 提取 Dubbo Service 注解类所实现的对外服务接口符号列表。 */
     private fun dubboServiceInterfaces(
         psiClass: PsiClass,
         context: JvmResolutionContext,
@@ -100,6 +108,10 @@ class FrameworkRelationResolver : JvmRelationResolver {
             .mapNotNull(context.symbolIndex::classByQualifiedName)
     }
 
+    /**
+     * 收集所有 Feign 客户端接口，再扫描项目方法中对这些接口的调用，
+     * 同时把客户端方法映射到 HTTP 端点资源以及对应的服务端 Controller 实现。
+     */
     private fun feignRelations(context: JvmResolutionContext): List<JvmRelation> {
         val feignClients = projectClasses(context.symbolIndex)
             .mapNotNull { classSymbol ->
@@ -203,6 +215,7 @@ class FrameworkRelationResolver : JvmRelationResolver {
         return relations
     }
 
+    /** 汇总项目中所有 Controller 暴露的 HTTP 端点，按端点聚合对应的处理方法。 */
     private fun httpEndpoints(context: JvmResolutionContext): Map<HttpEndpoint, List<com.charmnight.linkgraph.jvm.index.JvmMethodSymbol>> {
         return projectMethods(context.symbolIndex)
             .mapNotNull { methodSymbol ->
@@ -213,10 +226,12 @@ class FrameworkRelationResolver : JvmRelationResolver {
             .groupBy({ it.first }, { it.second })
     }
 
+    /** 转交给 HTTP 端点提取器，识别 Controller 方法对应的 HTTP 端点。 */
     private fun controllerEndpoint(method: com.intellij.psi.PsiMethod): HttpEndpoint? {
         return HttpEndpointRelationExtractor.controllerEndpoint(method)
     }
 
+    /** 转交给 HTTP 端点提取器，根据类路径前缀和 Feign 方法签名推导端点。 */
     private fun feignEndpoint(
         classPath: String?,
         method: com.intellij.psi.PsiMethod,
@@ -224,14 +239,17 @@ class FrameworkRelationResolver : JvmRelationResolver {
         return HttpEndpointRelationExtractor.feignEndpoint(classPath, method)
     }
 
+    /** 转交给 HTTP 端点提取器，获取请求方法字符串（GET/POST 等）。 */
     private fun requestMethod(method: com.intellij.psi.PsiMethod): String? {
         return HttpEndpointRelationExtractor.requestMethod(method)
     }
 
+    /** 转交给 HTTP 端点提取器，获取请求路径。 */
     private fun requestPath(method: com.intellij.psi.PsiMethod): String? {
         return HttpEndpointRelationExtractor.requestPath(method)
     }
 
+    /** 转交给 HTTP 端点提取器，把类路径与方法路径拼接成完整 URL。 */
     private fun combinePaths(
         classPath: String?,
         methodPath: String?,
@@ -239,9 +257,14 @@ class FrameworkRelationResolver : JvmRelationResolver {
         return HttpEndpointRelationExtractor.combinePaths(classPath, methodPath)
     }
 
+    /** 把 HTTP 端点转换为资源符号，用于在图谱中作为虚拟节点承载路由关系。 */
     private fun endpointResourceSymbol(endpoint: HttpEndpoint): JvmResourceSymbol =
         HttpEndpointRelationExtractor.endpointResourceSymbol(endpoint)
 
+    /**
+     * 扫描 MQ 监听注解与 MQ 发送调用，分别建立 CONSUMES 与 PUBLISHES 关系。
+     * 同时把发布方法直接关联回监听方法，便于在没有显式主题资源时仍能追溯消费链路。
+     */
     private fun mqRelations(context: JvmResolutionContext): List<JvmRelation> {
         val consumers = mutableListOf<JvmRelation>()
         val listenersByDestination = linkedMapOf<String, MutableList<Pair<com.charmnight.linkgraph.jvm.index.JvmMethodSymbol, PsiAnnotation>>>()
@@ -327,6 +350,7 @@ class FrameworkRelationResolver : JvmRelationResolver {
         return consumers + publishers
     }
 
+    /** 根据监听注解的属性识别 MQ 目的地（topic/queue/destination 等）。 */
     private fun mqDestination(annotation: PsiAnnotation): String? {
         if (annotation.simpleName() !in MQ_LISTENER_ANNOTATIONS) {
             return null
@@ -337,6 +361,7 @@ class FrameworkRelationResolver : JvmRelationResolver {
             ?.takeIf(String::isNotBlank)
     }
 
+    /** 判断方法调用是否符合 MQ 模板发送的命名约定且接收者类型是已知的 MQ 客户端。 */
     private fun isMqPublishCall(expression: PsiMethodCallExpression): Boolean {
         val name = expression.methodExpression.referenceName ?: return false
         if (name !in MQ_PUBLISH_METHODS) {
@@ -351,11 +376,13 @@ class FrameworkRelationResolver : JvmRelationResolver {
             qualifierType.contains("MessageChannel")
     }
 
+    /** 取出 MQ 发送调用第一个参数中的静态字符串作为目的地，无法解析时返回 null。 */
     private fun mqDestinationArgument(expression: PsiMethodCallExpression): String? =
         expression.argumentList.expressions.firstOrNull()?.staticString()
             ?.trim()
             ?.takeIf(String::isNotBlank)
 
+    /** 按目的地查找 MQ 主题资源符号，支持直接命名或带 mq: 前缀的命名空间。 */
     private fun mqTopicSymbol(
         context: JvmResolutionContext,
         destination: String,
@@ -363,9 +390,11 @@ class FrameworkRelationResolver : JvmRelationResolver {
         context.symbolIndex.resourcesByPath[destination]
             ?: context.symbolIndex.resourcesByPath["mq:$destination"]
 
+    /** 提取注解的简短名，兼容全限定名和仅名称引用两种情况。 */
     private fun PsiAnnotation.simpleName(): String? =
         qualifiedName?.substringAfterLast('.') ?: nameReferenceElement?.referenceName
 
+    /** 判定注解是否为 Dubbo 服务提供方注解（兼容 Apache / Alibaba 两套命名空间）。 */
     private fun PsiAnnotation.isDubboServiceAnnotation(): Boolean {
         val qualified = qualifiedName.orEmpty()
         val simple = simpleName()
@@ -376,6 +405,7 @@ class FrameworkRelationResolver : JvmRelationResolver {
             )
     }
 
+    /** 判定注解是否为 Dubbo 引用注入注解（兼容 Apache / Alibaba 两套命名空间）。 */
     private fun PsiAnnotation.isDubboReferenceAnnotation(): Boolean {
         val qualified = qualifiedName.orEmpty()
         val simple = simpleName()
@@ -386,6 +416,7 @@ class FrameworkRelationResolver : JvmRelationResolver {
             )
     }
 
+    /** 判定注解是否为 Feign 客户端注解（兼容 Spring Cloud OpenFeign 与旧版 Netflix 命名空间）。 */
     private fun PsiAnnotation.isFeignClientAnnotation(): Boolean {
         val qualified = qualifiedName.orEmpty()
         return simpleName() == "FeignClient" ||
@@ -393,6 +424,7 @@ class FrameworkRelationResolver : JvmRelationResolver {
             qualified == "org.springframework.cloud.netflix.feign.FeignClient"
     }
 
+    /** 读取注解上指定属性的字符串值，对 value 属性也支持缺省名引用。 */
     private fun PsiAnnotation.annotationStringValue(name: String): String? =
         findDeclaredAttributeValue(name)?.annotationString()
             ?: if (name == "value") {
@@ -401,6 +433,7 @@ class FrameworkRelationResolver : JvmRelationResolver {
                 null
             }
 
+    /** 解析注解上 Class 数组属性的类名字符串列表，去掉 .class 后缀和占位 void 类型。 */
     private fun PsiAnnotation.classValues(name: String): List<String> =
         findDeclaredAttributeValue(name)?.text
             ?.split(',', '{', '}')
@@ -408,6 +441,7 @@ class FrameworkRelationResolver : JvmRelationResolver {
             ?.filter { value -> value != "void" && value.contains('.') }
             .orEmpty()
 
+    /** 把注解成员值统一规约为字符串：数组取首元素，字面量取字符串值。 */
     private fun PsiAnnotationMemberValue.annotationString(): String? {
         if (this is PsiArrayInitializerMemberValue) {
             return initializers.firstOrNull()?.annotationString()
@@ -418,10 +452,12 @@ class FrameworkRelationResolver : JvmRelationResolver {
         return null
     }
 
+    /** 把表达式规约为静态字符串字面量，常用于解析注解或方法参数中的常量。 */
     private fun PsiExpression.staticString(): String? =
         (this as? PsiLiteralExpression)?.value as? String
 
     private companion object {
+        /** MQ 监听注解的简短名集合，覆盖 Kafka/Rabbit/JMS/RocketMQ/Stream 主流客户端。 */
         private val MQ_LISTENER_ANNOTATIONS = setOf(
             "KafkaListener",
             "RabbitListener",
@@ -429,6 +465,7 @@ class FrameworkRelationResolver : JvmRelationResolver {
             "RocketMQMessageListener",
             "StreamListener",
         )
+        /** MQ 模板常见的发送方法名集合，用于识别发布动作。 */
         private val MQ_PUBLISH_METHODS = setOf(
             "send",
             "sendDefault",
@@ -437,7 +474,9 @@ class FrameworkRelationResolver : JvmRelationResolver {
             "asyncSend",
             "sendAndReceive",
         )
+        /** Spring Controller 相关注解简短名集合。 */
         private val CONTROLLER_ANNOTATIONS = setOf("Controller", "RestController")
+        /** Spring MVC 路径映射注解简短名集合。 */
         private val REQUEST_MAPPING_ANNOTATIONS = setOf(
             "RequestMapping",
             "GetMapping",
@@ -446,10 +485,13 @@ class FrameworkRelationResolver : JvmRelationResolver {
             "DeleteMapping",
             "PatchMapping",
         )
+        /** 已知的 HTTP 方法大写集合，用于规范化端点元数据。 */
         private val HTTP_METHODS = setOf("GET", "POST", "PUT", "DELETE", "PATCH")
     }
 }
 
+/** Feign 客户端解析过程中缓存每个客户端接口对应的类路径前缀。 */
 private data class FeignClientInfo(
+    /** Feign 客户端注解上声明的 path 前缀，用于拼接完整请求路径。 */
     val classPath: String?,
 )

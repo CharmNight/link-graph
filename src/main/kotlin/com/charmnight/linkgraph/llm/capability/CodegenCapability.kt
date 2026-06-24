@@ -43,11 +43,20 @@ import java.util.UUID
  * 代码生成 capability。
  * 它先读取 confirmed intent，再读取目标代码证据，最后由正式执行器生成草稿并执行本地硬边界校验。
  */
+/**
+ * 代码生成 capability。
+ * 它先读取 confirmed intent，再读取目标代码证据，最后由正式执行器生成草稿并执行本地硬边界校验。
+ */
 internal class CodegenCapability(
+    /** 当前 IDEA 项目实例，用于读取代码与索引。 */
     project: Project,
+    /** 默认运行预算，控制步数与文件读取上限。 */
     private val defaultBudget: RunBudget = RunBudget(),
+    /** 真正生成代码草稿的执行器，通常由上层注入远程模型调用实现。 */
     private val codegenExecutor: CodegenExecutor,
+    /** 校验 edit scope、可写性、证据命中的本地硬边界门面。 */
     private val validationToolFacade: ValidationToolFacade = ValidationToolFacade(),
+    /** capability 可用工具注册表。 */
     private val toolRegistry: AgentToolRegistry = AgentToolRegistry(
         listOf(
             GetConfirmedIntentTool(DraftToolFacade()),
@@ -57,8 +66,10 @@ internal class CodegenCapability(
         ),
     ),
 ) : AgentCapability<CodegenCapabilityInput, CodeGenerationResult> {
+    /** capability 稳定标识，外部通过该字符串识别代码生成能力。 */
     override val capabilityId: String = "codegen"
 
+    /** 构造代码生成运行的初始状态。 */
     override fun buildInitialState(input: CodegenCapabilityInput, runtimeContext: AgentRuntimeContext): AgentRunState {
         return AgentRunState(
             runId = "codegen-${UUID.randomUUID()}",
@@ -71,12 +82,15 @@ internal class CodegenCapability(
         )
     }
 
+    /** 声明本 capability 运行期间允许调用的工具名称集合。 */
     override fun allowedTools(input: CodegenCapabilityInput): Set<String> {
         return setOf("get_confirmed_intent", "read_source_snippet", "validate_edit_scope", "check_writable_draft")
     }
 
+    /** 返回默认停止策略。 */
     override fun stopPolicy(input: CodegenCapabilityInput): StopPolicy = StopPolicy.default()
 
+    /** 从运行末态的 CodeDraftArtifact 中取出最终草稿结果，缺失则视为运行异常。 */
     override fun finalize(runState: AgentRunState, runtimeContext: AgentRuntimeContext): CodeGenerationResult {
         val artifact = runState.artifactRefs
             .asSequence()
@@ -87,6 +101,7 @@ internal class CodegenCapability(
         return artifact.draftResult
     }
 
+    /** 创建分步执行器：依次读取确认意图、绑定计划、读取代码证据、生成草稿。 */
     override fun createStepExecutor(input: CodegenCapabilityInput): StepExecutor {
         return StepExecutor { state, runtimeContext ->
             when (state.stepIndex) {
@@ -98,6 +113,7 @@ internal class CodegenCapability(
         }
     }
 
+    /** 第 0 步：读取 confirmed intent，没有已确认意图时直接失败，避免在无依据下生成代码。 */
     private fun readConfirmedIntent(
         state: AgentRunState,
         runtimeContext: AgentRuntimeContext,
@@ -155,6 +171,7 @@ internal class CodegenCapability(
         )
     }
 
+    /** 第 1 步：如果调用方传入实现计划，则把对应 PlanArtifact 绑定到当前运行；否则跳过。 */
     private fun attachPlanArtifactIfPresent(
         state: AgentRunState,
         runtimeContext: AgentRuntimeContext,
@@ -199,6 +216,7 @@ internal class CodegenCapability(
         )
     }
 
+    /** 第 2 步：根据 confirmed intent 的 edit scope 读取代码证据，并按预算截断。 */
     private fun readCodeEvidence(
         state: AgentRunState,
         runtimeContext: AgentRuntimeContext,
@@ -291,6 +309,7 @@ internal class CodegenCapability(
         )
     }
 
+    /** 最后一步：调用执行器生成草稿，并对 existing-file 草稿执行 scope、证据、可写性三重校验。 */
     private fun generateDrafts(
         state: AgentRunState,
         runtimeContext: AgentRuntimeContext,
@@ -418,6 +437,7 @@ internal class CodegenCapability(
         }
     }
 
+    /** 生成草稿前对每个 edit scope 做预检，任一项未通过即直接失败，避免生成无效草稿。 */
     private fun prevalidateExistingFileTargets(
         state: AgentRunState,
         runtimeContext: AgentRuntimeContext,
@@ -465,6 +485,7 @@ internal class CodegenCapability(
         return null
     }
 
+    /** 基于 edit scope 构造一个探测用草稿，用于在真实生成前预检 scope 合法性。 */
     private fun buildScopeProbeDraft(scope: EditScope): GeneratedCodeDraft {
         val probeKind = scope.allowedChangeKinds
             .asSequence()
@@ -499,6 +520,7 @@ internal class CodegenCapability(
         )
     }
 
+    /** 从 artifact 列表中提取 confirmed intent 对应的草稿条目。 */
     private fun extractConfirmedIntents(
         state: AgentRunState,
         runtimeContext: AgentRuntimeContext,
@@ -511,7 +533,9 @@ internal class CodegenCapability(
             .toList()
     }
 
+    /** 代码生成执行器接口，由上层注入真实实现（通常是远程模型调用）。 */
     fun interface CodegenExecutor {
+        /** 根据当前 capability 输入、运行上下文与状态生成代码草稿结果。 */
         fun invoke(
             input: CodegenCapabilityInput,
             runtimeContext: AgentRuntimeContext,
@@ -519,6 +543,7 @@ internal class CodegenCapability(
         ): CodeGenerationResult
     }
 
+    /** 判断两个文件路径在项目根路径归一化后是否指向同一文件，用于跨来源路径对齐。 */
     private fun referToSameFile(
         left: String,
         right: String,
@@ -533,6 +558,7 @@ internal class CodegenCapability(
     }
 }
 
+/** 代码生成 capability 的输入。 */
 internal data class CodegenCapabilityInput(
     /** 代码生成上下文。 */
     val generationContext: GenerationContext,

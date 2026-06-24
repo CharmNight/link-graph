@@ -377,7 +377,10 @@ export function edgeTypeLabel(value: EdgeType): string {
       return "测试";
     case "GENERATES":
       return "生成";
+    case "CLASS_USAGE":
+      return "类用法";
   }
+  return value;
 }
 
 export function analysisDisplayModeLabel(value: AnalysisDisplayMode): string {

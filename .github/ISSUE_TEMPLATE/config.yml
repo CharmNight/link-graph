@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用问题 / Question
+    url: https://github.com/CharmNight/link-graph/blob/master/docs/usage.md
+    about: 先查阅使用说明;仍未解决再通过 Bug 报告或 Feature Request 提交。
+  - name: 安全披露 / Security Report
+    url: https://github.com/CharmNight/link-graph/security/advisories/new
+    about: 不要通过 Issue 公开报告安全问题,请走 GitHub Security Advisory。
+  - name: 文档导航 / Docs
+    url: https://github.com/CharmNight/link-graph/blob/master/README.md#文档导航
+    about: README 中的文档导航入口。

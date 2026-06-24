@@ -7,6 +7,12 @@ import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcome
 import com.charmnight.linkgraph.semantic.policy.ProjectionPolicy
 import com.charmnight.linkgraph.semantic.policy.TraversalBudgetPolicy
 
+/**
+ * 交互式主题图投影设置。
+ *
+ * 保存当前可见节点/边上限、上下游展开深度以及单方向邻居展开上限，
+ * 用户在工具窗口内点开摘要节点时会通过 [expandFor] 放宽预算并重新投影。
+ */
 internal data class InteractiveProjectionSettings(
     /** 当前可见节点上限。 */
     val maxVisibleNodes: Int = 26,
@@ -57,6 +63,12 @@ internal data class InteractiveProjectionSettings(
     }
 }
 
+/**
+ * 当前方法节点上下文。
+ *
+ * 在主题图工作流中保存被选中的"当前方法"信息，包含对应的图节点、
+ * 方法签名以及面向用户展示的名称，便于后续投影和导航。
+ */
 internal data class CurrentMethodNode(
     /** 当前方法对应的图节点。 */
     val node: GraphNode,
@@ -66,6 +78,12 @@ internal data class CurrentMethodNode(
     val methodDisplayName: String,
 )
 
+/**
+ * 单次语义分析的执行结果。
+ *
+ * 同时携带原始语义分析结果和投影后用于展示的 outcome，方便上层既能拿到
+ * 完整的语义事实，又能直接渲染投影图。
+ */
 internal data class AnalysisExecutionResult(
     /** 原始语义分析结果。 */
     val analysisResult: SemanticAnalysisResult,
@@ -73,6 +91,12 @@ internal data class AnalysisExecutionResult(
     val outcome: AnalysisOutcome,
 )
 
+/**
+ * 异步语义分析执行结果封装。
+ *
+ * 通过 success/cancelled/failure 三种工厂方法构造，分别表示分析成功返回结果、
+ * 被用户取消、以及执行过程中抛出异常，调用方据此走不同分支。
+ */
 internal data class AnalysisOutcomeAsyncResult(
     /** 成功时返回的分析结果。 */
     val result: AnalysisExecutionResult? = null,

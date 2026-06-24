@@ -32,7 +32,7 @@ class GraphEditorCommandRouter(
             is GraphEditorMessage.ImportMermaid -> ApplicationCommand.ImportMermaid(current.mermaid)
             GraphEditorMessage.ExportMermaid -> ApplicationCommand.ExportMermaid
             GraphEditorMessage.ShowDiffMode -> ApplicationCommand.ShowDiffMode
-            is GraphEditorMessage.ApplyGraphEditRequest -> ApplicationCommand.ApplyGraphEditRequest(current.request)
+            is GraphEditorMessage.ApplyGraphEditRequest -> ApplicationCommand.ApplyGraphEditRequest(current.parseResult)
             is GraphEditorMessage.LayoutChanged -> ApplicationCommand.LayoutChanged(current.positions)
             is GraphEditorMessage.RequestSourceNavigation -> ApplicationCommand.RequestSourceNavigation(current.nodeId)
             is GraphEditorMessage.RequestExpandOverflowNode -> ApplicationCommand.RequestExpandOverflowNode(current.nodeId)
@@ -48,6 +48,7 @@ class GraphEditorCommandRouter(
                 selectedNodeIds = current.selectedNodeIds,
                 selectedDiffItemIds = current.selectedDiffItemIds,
                 target = current.target,
+                mode = current.mode,
                 explanationGranularity = current.explanationGranularity,
             )
             GraphEditorMessage.RetryLastQaRequest -> ApplicationCommand.RetryLastQaRequest

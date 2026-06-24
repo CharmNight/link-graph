@@ -10,7 +10,13 @@ import {
 } from "../../app/editorTransport";
 
 const sampleState = {
-  workingGraph: {
+  currentSceneId: "WORKSPACE_FACT",
+  sceneStates: {
+    WORKSPACE_FACT: {
+      selectedNodeId: "method:submit-order",
+    },
+  },
+  workspaceGraph: {
     nodes: [
       {
         id: "method:submit-order",
@@ -24,22 +30,17 @@ const sampleState = {
     ],
     edges: [],
   },
-  referenceFactGraph: null,
-  designBaseline: null,
-  layoutState: {
-    positions: {
-      "method:submit-order": { x: 120, y: 96 },
-    },
+  workspaceBaseGraph: {
+    nodes: [],
+    edges: [],
   },
-  semanticRevision: 1,
-  layoutRevision: 1,
-  snapshotRevision: 1,
-  selectedNodeId: "method:submit-order",
+  semanticFactGraph: {
+    nodes: [],
+    edges: [],
+  },
+  mermaidIssues: [],
   diffItems: [],
   syncPreviewItems: [],
-  mermaidIssues: [],
-  generatedCodeDrafts: [],
-  generatedCodeDraftWarnings: [],
 } as unknown as LinkGraphBootstrapState;
 
 function envelope(revision: number): LinkGraphSnapshotEnvelope {
@@ -142,14 +143,14 @@ describe("editorTransport", () => {
 
   it("preserves graph object identity while merging artifact slices", () => {
     dispatchBootstrapForTest(envelope(1));
-    let initialWorkingGraph: LinkGraphBootstrapState["workingGraph"] | undefined;
-    let slicedWorkingGraph: LinkGraphBootstrapState["workingGraph"] | undefined;
+    let initialWorkingGraph: LinkGraphBootstrapState["workspaceGraph"] | undefined;
+    let slicedWorkingGraph: LinkGraphBootstrapState["workspaceGraph"] | undefined;
 
     const unsubscribe = subscribeBootstrap((nextEnvelope) => {
       if (!initialWorkingGraph) {
-        initialWorkingGraph = nextEnvelope.state.workingGraph;
+        initialWorkingGraph = nextEnvelope.state.workspaceGraph;
       } else {
-        slicedWorkingGraph = nextEnvelope.state.workingGraph;
+        slicedWorkingGraph = nextEnvelope.state.workspaceGraph;
       }
     });
 
@@ -171,7 +172,6 @@ describe("editorTransport", () => {
     const unsubscribe = subscribeBootstrap((nextEnvelope) => {
       received.push({
         revision: nextEnvelope.revision,
-        selectedNodeId: nextEnvelope.state.selectedNodeId,
         feedbackMessage: nextEnvelope.state.operationFeedback?.message ?? null,
       });
     });
@@ -182,12 +182,10 @@ describe("editorTransport", () => {
     expect(received).toEqual([
       {
         revision: 1,
-        selectedNodeId: "method:submit-order",
         feedbackMessage: null,
       },
       {
         revision: 1,
-        selectedNodeId: "method:submit-order",
         feedbackMessage: "Saved layout",
       },
     ]);
@@ -196,14 +194,14 @@ describe("editorTransport", () => {
 
   it("preserves graph object identity while merging feedback slices", () => {
     dispatchBootstrapForTest(envelope(1));
-    let initialWorkingGraph: LinkGraphBootstrapState["workingGraph"] | undefined;
-    let slicedWorkingGraph: LinkGraphBootstrapState["workingGraph"] | undefined;
+    let initialWorkingGraph: LinkGraphBootstrapState["workspaceGraph"] | undefined;
+    let slicedWorkingGraph: LinkGraphBootstrapState["workspaceGraph"] | undefined;
 
     const unsubscribe = subscribeBootstrap((nextEnvelope) => {
       if (!initialWorkingGraph) {
-        initialWorkingGraph = nextEnvelope.state.workingGraph;
+        initialWorkingGraph = nextEnvelope.state.workspaceGraph;
       } else {
-        slicedWorkingGraph = nextEnvelope.state.workingGraph;
+        slicedWorkingGraph = nextEnvelope.state.workspaceGraph;
       }
     });
 

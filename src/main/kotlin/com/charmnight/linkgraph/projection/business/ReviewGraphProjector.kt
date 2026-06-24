@@ -54,9 +54,38 @@ import com.charmnight.linkgraph.review.ReviewGraphSummary
 import com.charmnight.linkgraph.review.ReviewGraphResult
 import com.charmnight.linkgraph.review.git.GitChangedFile
 
+/**
+ * 代码评审图投影器。
+ *
+ * 把评审证据包（变更符号 + 影响半径 + 关联测试 + 关系集合）投影为
+ * 一个以"变更符号"为中心的评审图，包含：
+ * - 变更符号节点（CHANGED）；
+ * - 上游、下游影响节点（UPSTREAM / DOWNSTREAM）；
+ * - 相关测试节点（RELATED_TEST）；
+ * - 关系边（运行时调用/SPI/反射/代理/测试关系）；
+ * - 上游/下游/测试影响边；
+ * - 变更文件、变更代码块、未匹配代码块、相关测试详情、证据片段等。
+ *
+ * 同时通过窗口投影器裁剪规模，输出完整的 [ReviewGraphResult]。
+ *
+ * @param windowProjector 窗口投影器，用于裁剪可见规模
+ */
 class ReviewGraphProjector(
+    /**
+     * 窗口投影器，负责按配额与优先级裁剪评审图，把规模控制在可视范围内。
+     */
     private val windowProjector: GraphWindowProjector = GraphWindowProjector(),
 ) : GraphProjector {
+    /**
+     * 把评审证据包投影为评审图结果。
+     *
+     * @param bundle 评审证据包，包含变更符号与影响半径
+     * @param index 可选架构索引，用于生成索引摘要；为空时摘要中不携带索引信息
+     * @param request 索引请求，控制可见规模、配额与选中 diff 项
+     * @param cacheState 当前缓存状态描述
+     * @param freshness 索引新鲜度信息
+     * @return 评审图投影结果
+     */
     fun project(
         bundle: ReviewEvidenceBundle,
         index: ArchitectureGraphIndex? = null,
@@ -64,14 +93,23 @@ class ReviewGraphProjector(
         cacheState: String = "UNKNOWN",
         freshness: IndexedGraphFreshness = IndexedGraphFreshness(),
     ): ReviewGraphResult {
+        // 节点集合：保持插入顺序，键为节点 ID。
         val nodes = linkedMapOf<String, GraphNode>()
+        // 边集合：保持插入顺序，键为边 ID。
         val edges = linkedMapOf<String, GraphEdge>()
+        // 变更符号按 ID 索引，便于后续为影响半径节点附加变更身份。
         val changedById = bundle.changedSymbols.associateBy(ChangedSymbol::symbolId)
+        // 提前计算代码变更块（含匹配上的符号），用于结果中暴露未匹配块。
         val changedHunks = reviewChangedHunks(bundle)
 
+        // 先把所有变更符号加入图。
         bundle.blastRadius.changedSymbols.forEach { changed ->
             nodes[changed.symbolId] = changed.toGraphNode(request)
         }
+        /**
+         * 把一个 JVM 符号作为影响半径节点加入图。
+         * 如果该符号同时也是变更符号，则使用变更身份覆盖默认角色。
+         */
         fun addSymbolNode(symbol: JvmSymbol, role: String) {
             nodes.putIfAbsent(symbol.id, symbol.toGraphNode(role, changedById[symbol.id], request))
         }
@@ -79,6 +117,7 @@ class ReviewGraphProjector(
         bundle.blastRadius.downstream.forEach { addSymbolNode(it, "DOWNSTREAM") }
         bundle.blastRadius.relatedTests.forEach { addSymbolNode(it, "RELATED_TEST") }
 
+        // 把影响半径中收集到的多种关系去重后转为图边。
         val relationEdges = (bundle.blastRadius.spiProviders +
             bundle.blastRadius.reflectionTargets +
             bundle.blastRadius.serviceLoaderLoads +
@@ -88,6 +127,7 @@ class ReviewGraphProjector(
             .mapNotNull { relation -> relation.toGraphEdge(nodes) }
         relationEdges.forEach { edge -> edges.putIfAbsent(edge.id, edge) }
 
+        // 为每个变更符号构造"上游影响"边。
         bundle.blastRadius.changedSymbols.forEach { changed ->
             bundle.blastRadius.upstreamByChangedSymbolId[changed.symbolId].orEmpty().forEach { symbol ->
                 edges.putIfAbsent(
@@ -103,6 +143,7 @@ class ReviewGraphProjector(
                 )
             }
         }
+        // 为每个变更符号构造"下游影响"边。
         bundle.blastRadius.changedSymbols.forEach { changed ->
             bundle.blastRadius.downstreamByChangedSymbolId[changed.symbolId].orEmpty().forEach { symbol ->
                 edges.putIfAbsent(
@@ -118,6 +159,7 @@ class ReviewGraphProjector(
                 )
             }
         }
+        // 为每个变更符号构造"相关测试"边，携带原因元数据。
         bundle.blastRadius.changedSymbols.forEach { changed ->
             val reasons = bundle.blastRadius.relatedTestReasonsByChangedSymbolId[changed.symbolId].orEmpty()
             bundle.blastRadius.relatedTestsByChangedSymbolId[changed.symbolId].orEmpty().forEach { symbol ->
@@ -147,6 +189,7 @@ class ReviewGraphProjector(
         val hiddenCounts = graphProjectionHiddenCounts(visibleGraph = visibleGraph, fullGraph = graph)
         val hiddenNodeCount = hiddenCounts.hiddenNodeCount
         val hiddenEdgeCount = hiddenCounts.hiddenEdgeCount
+        // 锚点优先选可见图中的第一个变更符号，缺失时回退到首个节点。
         val anchorNodeId = bundle.blastRadius.changedSymbols.firstOrNull { symbol ->
             visibleGraph.nodes.any { node -> node.id == symbol.symbolId }
         }?.symbolId ?: visibleGraph.nodes.firstOrNull()?.id
@@ -209,6 +252,11 @@ class ReviewGraphProjector(
         )
     }
 
+    /**
+     * 把证据包中的变更文件清单整理为评审图变更文件列表。
+     *
+     * 当证据包携带 Git 变更文件信息时直接使用；否则按变更符号路径分组构造。
+     */
     private fun reviewChangedFiles(bundle: ReviewEvidenceBundle): List<ReviewGraphChangedFile> {
         if (bundle.gitChangedFiles.isNotEmpty()) {
             return bundle.gitChangedFiles.map { file ->
@@ -234,6 +282,15 @@ class ReviewGraphProjector(
             .sortedBy { file -> file.newPath ?: file.oldPath.orEmpty() }
     }
 
+    /**
+     * 把证据包中的变更代码块整理为评审图变更块列表。
+     *
+     * - 优先使用 Git 变更文件中的代码块；
+     * - 否则使用变更符号携带的代码块信息。
+     *
+     * 每个代码块都会尝试匹配变更符号，未匹配上的块会带上原因元数据，
+     * 最终结果按路径与起始行排序并去重。
+     */
     private fun reviewChangedHunks(bundle: ReviewEvidenceBundle): List<ReviewGraphChangedHunk> {
         val rawHunks = if (bundle.gitChangedFiles.isNotEmpty()) {
             bundle.gitChangedFiles.flatMap { file -> file.toReviewHunks() }
@@ -245,6 +302,7 @@ class ReviewGraphProjector(
         }
         return rawHunks
             .map { hunk ->
+                // 与当前块 key 相同的变更符号列表，视为该块的匹配符号。
                 val matchedSymbolIds = bundle.changedSymbols
                     .filter { symbol -> symbol.hunk?.let { symbolHunk -> hunkKey(symbolHunk) == reviewHunkKey(hunk) } == true }
                     .map(ChangedSymbol::symbolId)
@@ -258,6 +316,11 @@ class ReviewGraphProjector(
             .sortedWith(compareBy<ReviewGraphChangedHunk> { it.newFilePath ?: it.oldFilePath ?: it.filePath }.thenBy { it.newStartLine ?: it.oldStartLine ?: 0 })
     }
 
+    /**
+     * 把 Git 变更文件中的所有代码块转换为评审图变更块。
+     *
+     * 若该文件没有任何块（极端情况），构造一个最小占位块用于占位。
+     */
     private fun GitChangedFile.toReviewHunks(): List<ReviewGraphChangedHunk> =
         hunks.map { hunk ->
             ReviewGraphChangedHunk(
@@ -283,6 +346,9 @@ class ReviewGraphProjector(
             )
         }
 
+    /**
+     * 把变更块对象转换为评审图变更块，附带匹配上的符号列表。
+     */
     private fun ChangedHunk.toReviewHunk(matchedSymbolIds: List<String>): ReviewGraphChangedHunk =
         ReviewGraphChangedHunk(
             filePath = filePath,
@@ -297,6 +363,9 @@ class ReviewGraphProjector(
             matchedSymbolIds = matchedSymbolIds,
         )
 
+    /**
+     * 把变更符号转换为评审图变更符号详情。
+     */
     private fun ChangedSymbol.toChangedSymbolDetail(): ReviewGraphChangedSymbolDetail =
         ReviewGraphChangedSymbolDetail(
             symbolId = symbolId,
@@ -309,6 +378,11 @@ class ReviewGraphProjector(
             unavailableReason = unavailableReason,
         )
 
+    /**
+     * 从证据引用集合中提取前若干条证据片段，用于评审 UI 展示。
+     *
+     * 同一条证据需要至少包含片段文本或不可用原因，才会被纳入结果。
+     */
     private fun evidenceSnippets(bundle: ReviewEvidenceBundle): List<ReviewGraphEvidenceSnippet> =
         bundle.evidenceRefs
             .mapNotNull { ref ->
@@ -329,14 +403,23 @@ class ReviewGraphProjector(
             }
             .take(30)
 
+    /**
+     * 构造评审图变更块的稳定 key，用于去重和匹配。
+     */
     private fun reviewHunkKey(hunk: ReviewGraphChangedHunk): String =
         listOf(hunk.filePath, hunk.oldFilePath.orEmpty(), hunk.newFilePath.orEmpty(), hunk.header, hunk.oldStartLine, hunk.newStartLine)
             .joinToString("|")
 
+    /**
+     * 构造原始变更块的稳定 key，用于去重。
+     */
     private fun hunkKey(hunk: ChangedHunk): String =
         listOf(hunk.filePath, hunk.oldFilePath.orEmpty(), hunk.newFilePath.orEmpty(), hunk.header, hunk.oldStartLine, hunk.newStartLine)
             .joinToString("|")
 
+    /**
+     * 把变更符号转换为图节点，携带变更专用的元数据（角色、变更种类、原因等）。
+     */
     private fun ChangedSymbol.toGraphNode(request: IndexedGraphRequest): GraphNode =
         GraphNode(
             id = symbolId,
@@ -366,6 +449,9 @@ class ReviewGraphProjector(
             },
         )
 
+    /**
+     * 生成变更符号的展示标题：路径类符号取文件名，其余取最后一段类名。
+     */
     private fun ChangedSymbol.displayTitle(): String {
         if (qualifiedName.contains('/') || qualifiedName.contains('\\')) {
             return qualifiedName.replace('\\', '/').substringAfterLast('/')
@@ -373,6 +459,11 @@ class ReviewGraphProjector(
         return qualifiedName.substringAfterLast('.')
     }
 
+    /**
+     * 把 JVM 符号转换为图节点。
+     *
+     * 如果该符号同时也是变更符号（[changed] 非空），则其角色会被标记为 CHANGED。
+     */
     private fun JvmSymbol.toGraphNode(
         role: String,
         changed: ChangedSymbol?,
@@ -405,6 +496,9 @@ class ReviewGraphProjector(
             },
         )
 
+    /**
+     * 把 JVM 符号种类映射到通用节点类型（类/接口/枚举/方法/资源等）。
+     */
     private fun JvmSymbol.nodeType(): NodeType =
         when (this) {
             is JvmClassSymbol -> when (kind) {
@@ -425,6 +519,11 @@ class ReviewGraphProjector(
             else -> NodeType.RESOURCE
         }
 
+    /**
+     * 把 JVM 关系转换为评审图边。
+     *
+     * 当关系的两端节点不都在节点集合中时返回空，避免出现悬空边。
+     */
     private fun JvmRelation.toGraphEdge(nodes: Map<String, GraphNode>): GraphEdge? {
         if (fromSymbolId !in nodes || toSymbolId !in nodes) {
             return null
@@ -446,6 +545,11 @@ class ReviewGraphProjector(
         )
     }
 
+    /**
+     * 构造一条评审图专用的影响边（上游/下游/相关测试等）。
+     *
+     * 这些边默认按规则推断的确定性、单条来源计数。
+     */
     private fun reviewEdge(
         id: String,
         from: String,
@@ -475,6 +579,9 @@ class ReviewGraphProjector(
             ) + metadata,
         )
 
+    /**
+     * 变更符号专用的索引元数据：固定为项目源、未知角色、不可展开。
+     */
     private fun ChangedSymbol.reviewChangedSymbolIndexedMetadata(request: IndexedGraphRequest): Map<String, String> =
         mapOf(
             "indexed.layerKind" to IndexedGraphLayerKind.PROJECT_SOURCE.name,
@@ -487,6 +594,10 @@ class ReviewGraphProjector(
             "indexed.expandable" to "false",
         )
 
+    /**
+     * JVM 符号的索引元数据：根据角色、层类、源种类推导；
+     * 关联测试角色的节点会被强制标记为 TEST 角色。
+     */
     private fun JvmSymbol.indexedNodeMetadata(
         role: String,
         request: IndexedGraphRequest,
@@ -509,6 +620,9 @@ class ReviewGraphProjector(
         )
     }
 
+    /**
+     * JVM 关系的索引元数据：关系种类、关系层级、来源计数、样本数等。
+     */
     private fun JvmRelation.indexedEdgeMetadata(
         fromNode: GraphNode?,
         toNode: GraphNode?,
@@ -523,6 +637,9 @@ class ReviewGraphProjector(
             "indexed.confidence" to confidence.indexedConfidence(),
         )
 
+    /**
+     * 根据两端节点的层类推导关系层级（项目内部、项目到外部等）。
+     */
     private fun reviewRelationLayer(
         fromNode: GraphNode?,
         toNode: GraphNode?,
@@ -536,6 +653,9 @@ class ReviewGraphProjector(
         return fromLayer.relationLayerTo(toLayer)
     }
 
+    /**
+     * 把 JVM 关系置信度映射到索引摘要中使用的字符串。
+     */
     private fun JvmRelationConfidence.indexedConfidence(): String =
         when (this) {
             JvmRelationConfidence.PROVEN -> "STATIC"
@@ -544,6 +664,9 @@ class ReviewGraphProjector(
             JvmRelationConfidence.AMBIGUOUS -> "AMBIGUOUS"
         }
 
+    /**
+     * 把 JVM 关系种类映射到评审图通用边类型。
+     */
     private fun JvmRelationKind.toReviewEdgeType(): EdgeType =
         when (this) {
             JvmRelationKind.CALLS -> EdgeType.CALL
@@ -566,6 +689,9 @@ class ReviewGraphProjector(
             else -> EdgeType.USES_TYPE
         }
 
+    /**
+     * 把 JVM 关系置信度映射到通用确定性枚举。
+     */
     private fun JvmRelationConfidence.toCertainty(): Certainty =
         when (this) {
             JvmRelationConfidence.PROVEN -> Certainty.PROVEN
@@ -575,6 +701,9 @@ class ReviewGraphProjector(
             -> Certainty.RULE_INFERRED
         }
 
+    /**
+     * 为评审图生成只读投影索引，每个节点和边都映射到自身。
+     */
     private fun readonlyProjectionIndex(graph: GraphDocument): GraphProjectionIndex =
         GraphProjectionIndex(
             nodeMappings = graph.nodes.associate { node ->
@@ -595,6 +724,12 @@ class ReviewGraphProjector(
             },
         )
 
+    /**
+     * 把完整评审图按角色配额裁剪为可见评审图。
+     *
+     * 启用"填充孤立节点"，避免因为关系紧密程度差异而漏掉变更符号；
+     * 通过角色配额分别限制变更、上游、下游、相关测试的可见规模。
+     */
     private fun GraphDocument.toReviewVisibleGraph(request: IndexedGraphRequest): GraphDocument =
         windowProjector.project(
             graph = this,
@@ -616,6 +751,9 @@ class ReviewGraphProjector(
             overflowOwnerContext = "review-graph",
         ).graph
 
+    /**
+     * 评审图节点优先级：变更 > 相关测试 > 上游 > 下游 > 其他。
+     */
     private fun reviewNodePriority(node: GraphNode): Int =
         when (node.metadata["review.role"]) {
             "CHANGED" -> 0
@@ -625,6 +763,9 @@ class ReviewGraphProjector(
             else -> 4
         }
 
+    /**
+     * 评审图边优先级：相关测试 > 关系 > 上游 > 下游 > 其他。
+     */
     private fun reviewEdgePriority(edge: GraphEdge): Int =
         when (edge.metadata["review.edgeRole"]) {
             "RELATED_TEST" -> 0
@@ -635,7 +776,9 @@ class ReviewGraphProjector(
         }
 
     private companion object {
+        /** 评审图默认最大可见节点数。 */
         const val MAX_VISIBLE_NODES = 240
+        /** 评审图默认最大可见边数。 */
         const val MAX_VISIBLE_EDGES = 360
     }
 }

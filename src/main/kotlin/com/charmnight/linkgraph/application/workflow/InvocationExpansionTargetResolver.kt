@@ -9,7 +9,22 @@ import com.charmnight.linkgraph.jvm.index.JvmMethodSymbol
 import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
 import com.charmnight.linkgraph.source.SourceOrigin
 
+/**
+ * 调用展开目标解析器。
+ *
+ * 根据传入的方法签名和图索引，判断调用点应当如何展开：
+ * 当目标方法在项目源码中时进一步判断抽象方法是否需要解析到具体实现，
+ * 当目标在 JDK 或外部库中时给出对应的外部来源标记。
+ */
 class InvocationExpansionTargetResolver {
+    /**
+     * 解析调用签名对应的展开目标。
+     *
+     * 流程为：先按完整签名查找方法，找不到时退化为按类名查找；
+     * 如果方法属于非项目源码（JDK、外部库），返回外部来源结果；
+     * 如果属于项目源码且非抽象，直接返回；
+     * 抽象方法则尝试解析实现，并按实现数量返回单实现、多实现或无实现结果。
+     */
     fun resolve(
         invocationSignature: String,
         index: ArchitectureGraphIndex,
@@ -50,6 +65,12 @@ class InvocationExpansionTargetResolver {
         }
     }
 
+    /**
+     * 根据所属类的来源信息返回对应的展开目标。
+     *
+     * JDK 来源或 JDK 类标记为外部 JDK；其它非项目源码或外部库标记为外部库；
+     * 项目源码时附带方法签名，外部来源时签名留空。
+     */
     private fun targetForClassOrigin(
         ownerClass: JvmClassSymbol,
         signature: String,
@@ -64,6 +85,12 @@ class InvocationExpansionTargetResolver {
         return InvocationExpansionTarget(kind = kind, signature = signature.takeIf { kind == InvocationExpansionTargetKind.PROJECT_SOURCE })
     }
 
+    /**
+     * 判断是否需要进一步解析具体实现。
+     *
+     * 当所属类是接口、类本身是抽象的，或方法本身是抽象的，
+     * 都意味着当前签名指向的是一个声明，需要找到真正的实现方法。
+     */
     private fun requiresImplementationResolution(
         ownerClass: JvmClassSymbol,
         method: JvmMethodSymbol,
@@ -72,6 +99,12 @@ class InvocationExpansionTargetResolver {
             ownerClass.abstract ||
             method.abstract
 
+    /**
+     * 在所有实现类中查找同名同参的具体实现方法。
+     *
+     * 先收集目标类（接口或抽象类）的全部实现/继承类标识，
+     * 再在这些项目源码的实现类中匹配方法名和参数类型，结果按方法标识去重。
+     */
     private fun implementationMethods(
         method: JvmMethodSymbol,
         ownerClass: JvmClassSymbol,
@@ -99,6 +132,12 @@ class InvocationExpansionTargetResolver {
             .toList()
     }
 
+    /**
+     * 通过广度优先遍历实现/继承关系，收集目标类的全部子类与实现类标识。
+     *
+     * 从目标类出发，沿着 incoming 的实现和继承边反向收集，
+     * 最后排除目标类自身，避免把抽象声明当成实现计入结果。
+     */
     private fun implementationClassIds(
         ownerClass: JvmClassSymbol,
         index: ArchitectureGraphIndex,
@@ -120,6 +159,12 @@ class InvocationExpansionTargetResolver {
         return result
     }
 
+    /**
+     * 从方法签名中提取所属类的全限定名。
+     *
+     * 取参数列表前的部分，再以最后一个点切分得到类名；
+     * 当签名结构不完整时返回空，由调用方按未找到处理。
+     */
     private fun ownerClassName(signature: String): String? {
         val beforeParameters = signature.substringBefore('(', missingDelimiterValue = signature)
         return beforeParameters

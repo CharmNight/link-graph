@@ -42,6 +42,7 @@ import {
   draftCompareMarkerColor,
 } from "../draftComparePresentation";
 
+/** 流程图节点在 React Flow 中承载的运行时数据，包含原始节点、选中/异常/汇聚等展示状态和尺寸回调。 */
 interface FlowchartNodeData extends Record<string, unknown> {
   node: LinkGraphNode;
   selected?: boolean;
@@ -54,6 +55,7 @@ interface FlowchartNodeData extends Record<string, unknown> {
   onMeasure?: (size: NodeMeasuredSize) => void;
 }
 
+/** 构造流程图 React Flow 节点列表时所需的全部入参：节点、边、选中态、解释聚焦、草稿比较与投影信息。 */
 interface BuildFlowchartNodesOptions {
   nodes: LinkGraphNode[];
   edges: LinkGraphEdge[];
@@ -65,17 +67,22 @@ interface BuildFlowchartNodesOptions {
   nodeSizeRegistry: NodeSizeRegistry;
 }
 
+/** 构造流程图 React Flow 边列表时所需的入参：边集合、节点索引以及可选的草稿比较状态。 */
 interface BuildFlowchartEdgesOptions {
   edges: LinkGraphEdge[];
   nodeIndex: Map<string, LinkGraphNode>;
   draftCompareEdgeStatuses?: Record<string, DraftCompareStatus>;
 }
 
+/** 流程图节点在 React Flow 中的具体节点类型别名，绑定 flowchartNode 类型与 FlowchartNodeData。 */
 type FlowchartFlowNode = Node<FlowchartNodeData, "flowchartNode">;
+/** React Flow 注入给单个流程图节点的属性类型，包含 id、数据、连接能力、选中状态等。 */
 type FlowchartFlowNodeProps = NodeProps<FlowchartFlowNode>;
 
+// 节点元数据中保存"投影来源节点 ID 列表"的字段名，用于在融合/投影节点上回溯原始节点身份。
 const FLOWCHART_ALIAS_IDS_KEY = "flowchart.projectedFromNodeIds";
 
+/** 流程图节点上可视化连接句柄的标识联合类型，覆盖四个方向上的源/目标句柄。 */
 type VisibleFlowchartHandleId =
   | "target-top"
   | "target-right"
@@ -86,6 +93,7 @@ type VisibleFlowchartHandleId =
   | "source-bottom"
   | "source-left";
 
+// 所有流程图连接句柄共享的基础样式：固定大小、隐藏、带主题色边框，便于在 hover/连接时再叠加透明度。
 const FLOWCHART_HANDLE_STYLE_BASE: CSSProperties = {
   width: 16,
   height: 16,
@@ -96,6 +104,7 @@ const FLOWCHART_HANDLE_STYLE_BASE: CSSProperties = {
   transition: "opacity 0.12s ease",
 };
 
+/** 根据可连接状态与句柄方向，返回带交互反馈的句柄样式：源句柄在可连接时显示并启用指针事件。 */
 function flowchartHandleStyle(
   isConnectable: boolean,
   handleDirection: "source" | "target",
@@ -109,6 +118,7 @@ function flowchartHandleStyle(
   };
 }
 
+/** 让辅助句柄（如汇聚节点的多入口）保持隐藏且不响应指针，仅作为路由锚点存在。 */
 function flowchartAuxiliaryHandleStyle(baseStyle: CSSProperties): CSSProperties {
   return {
     ...baseStyle,
@@ -117,6 +127,7 @@ function flowchartAuxiliaryHandleStyle(baseStyle: CSSProperties): CSSProperties 
   };
 }
 
+/** 把基础句柄样式按其所在方向对齐到节点边缘（上/下贴边水平居中，左/右贴边垂直居中）。 */
 function flowchartFlushHandleStyle(
   position: Position,
   baseStyle: CSSProperties,
@@ -149,6 +160,10 @@ function flowchartFlushHandleStyle(
   }
 }
 
+/**
+ * 决定某个可视化句柄的最终样式：决策节点上的源/目标句柄走专用菱形端口布局，
+ * 其他节点则按方向贴边显示，保证句柄位置与节点几何形状吻合。
+ */
 function flowchartVisibleHandleStyle(
   kind: string,
   handleId: VisibleFlowchartHandleId,
@@ -171,6 +186,7 @@ function flowchartVisibleHandleStyle(
   return flowchartFlushHandleStyle(position, baseStyle);
 }
 
+/** 节点上需要渲染的四向目标（入口）句柄配置，统一驱动 React Flow 渲染逻辑。 */
 const FLOWCHART_VISIBLE_TARGET_HANDLES: Array<{
   id: Extract<VisibleFlowchartHandleId, `target-${string}`>;
   position: Position;
@@ -181,6 +197,7 @@ const FLOWCHART_VISIBLE_TARGET_HANDLES: Array<{
   { id: "target-left", position: Position.Left },
 ];
 
+/** 节点上需要渲染的四向源（出口）句柄配置，与目标句柄对称覆盖四个方向。 */
 const FLOWCHART_VISIBLE_SOURCE_HANDLES: Array<{
   id: Extract<VisibleFlowchartHandleId, `source-${string}`>;
   position: Position;
@@ -191,6 +208,7 @@ const FLOWCHART_VISIBLE_SOURCE_HANDLES: Array<{
   { id: "source-left", position: Position.Left },
 ];
 
+/** 为节点外壳返回内联样式，目前仅决策节点需要强制最小高度以容纳菱形布局。 */
 function flowchartNodeShellStyle(kind: string): CSSProperties | undefined {
   if (kind !== "DECISION") {
     return undefined;
@@ -200,6 +218,11 @@ function flowchartNodeShellStyle(kind: string): CSSProperties | undefined {
   };
 }
 
+/**
+ * 流程图节点的 React 实现：根据节点类型渲染外壳、源/目标句柄和内容卡片，
+ * 决策/普通节点使用四向句柄，汇聚节点额外按计数渲染左右两侧的多入口句柄，
+ * 同时通过签名比较稳定地同步 React Flow 的内部状态。
+ */
 function FlowchartReactNode({ id, data, isConnectable, selected }: FlowchartFlowNodeProps) {
   const kind = flowchartKind(data.node);
   const appSelected = data.selected === true || selected;
@@ -287,10 +310,12 @@ function FlowchartReactNode({ id, data, isConnectable, selected }: FlowchartFlow
   );
 }
 
+/** 注册给 React Flow 的流程图节点类型映射，目前只有 flowchartNode 一种自定义渲染器。 */
 export const FLOWCHART_NODE_TYPES: NodeTypes = {
   flowchartNode: FlowchartReactNode,
 };
 
+/** 根据节点类型生成节点外壳的内联样式，覆盖宽度、最小高度、圆角、边框、背景与阴影等视觉差异。 */
 function flowchartNodeStyle(node: LinkGraphNode) {
   const kind = flowchartKind(node);
   return {
@@ -321,10 +346,12 @@ function flowchartNodeStyle(node: LinkGraphNode) {
   };
 }
 
+/** 将边标签规范化为大写无空白的统一形式，便于条件分支匹配（如 EXCEPTION）。 */
 function normalizedFlowLabel(edge: LinkGraphEdge): string {
   return edge.label?.trim().toUpperCase() ?? "";
 }
 
+/** 返回流程图边上要显示的文字：纯数字标签和流程/调用类边不显示，其他无标签的边用类型名称兜底。 */
 function flowchartEdgeLabel(edge: LinkGraphEdge): string | undefined {
   if (edge.label?.trim()) {
     if (/^\d+$/.test(edge.label.trim())) {
@@ -338,6 +365,10 @@ function flowchartEdgeLabel(edge: LinkGraphEdge): string | undefined {
   return edgeTypeLabel(edge.type);
 }
 
+/**
+ * 解析一条边在源节点上应使用的句柄 ID：优先复用边自身记录的 sourceHandle，
+ * 否则按节点类型决定（决策节点交给专用解析，异常边走右侧，其余走底部）。
+ */
 function resolveFlowSourceHandleId(
   edge: LinkGraphEdge,
   nodeIndex: Map<string, LinkGraphNode>,
@@ -370,6 +401,10 @@ function resolveFlowSourceHandleId(
   }
 }
 
+/**
+ * 解析一条边在目标节点上应使用的句柄 ID：优先复用边自身记录的 targetHandle，
+ * 决策节点交给专用解析，普通节点用顶部入口，汇聚节点查表或退回到顶部入口。
+ */
 function resolveFlowTargetHandleId(
   edge: LinkGraphEdge,
   nodeIndex: Map<string, LinkGraphNode>,
@@ -396,6 +431,7 @@ function resolveFlowTargetHandleId(
     ?? (isDecisionFallthroughEdge(edge, outgoingEdges, nodeIndex) ? "target-top" : "target-top");
 }
 
+/** 根据边类型给出基础描边样式：流程控制类边为实线主色，其他关系类边为虚线警示色。 */
 function flowchartEdgeStyle(edge: LinkGraphEdge) {
   switch (edge.type) {
     case "CONTAINS_FLOW":
@@ -415,6 +451,7 @@ function flowchartEdgeStyle(edge: LinkGraphEdge) {
   }
 }
 
+/** 从节点元数据中读取投影来源节点 ID 列表（逗号分隔），用于回溯被融合/投影节点的原始身份。 */
 function projectedAliasNodeIds(node: LinkGraphNode): string[] {
   const rawAliasNodeIds = node.metadata?.[FLOWCHART_ALIAS_IDS_KEY];
   if (!rawAliasNodeIds) {
@@ -426,10 +463,15 @@ function projectedAliasNodeIds(node: LinkGraphNode): string[] {
     .filter((value) => value.length > 0);
 }
 
+/** 判断节点是否匹配某个期望 ID：自身 ID 相等或投影来源列表中包含该 ID 都算命中。 */
 function nodeMatchesProjectedId(node: LinkGraphNode, expectedNodeId: string): boolean {
   return node.id === expectedNodeId || projectedAliasNodeIds(node).includes(expectedNodeId);
 }
 
+/**
+ * 查找节点的草稿比较状态：先看精确 ID 命中，再遍历投影来源 ID 找状态，
+ * 用于让融合节点也能反映其原始节点在草稿对比中的变化。
+ */
 function resolveProjectedDraftCompareStatus(
   node: LinkGraphNode,
   draftCompareNodeStatuses: Record<string, DraftCompareStatus>,
@@ -443,6 +485,10 @@ function resolveProjectedDraftCompareStatus(
     .find(Boolean);
 }
 
+/**
+ * 把图谱节点转换为 React Flow 渲染所需的节点数组：构建控制流索引、计算汇聚端口计数，
+ * 整合选中/解释聚焦/草稿变更/草稿对比等展示态并写入 data 与 className，供节点组件消费。
+ */
 export function buildFlowchartNodes({
   nodes,
   edges,
@@ -500,6 +546,10 @@ export function buildFlowchartNodes({
   });
 }
 
+/**
+ * 把图谱边转换为 React Flow 渲染所需的边数组：解析每条边的源/目标句柄、
+ * 标签与样式，叠加草稿对比状态相关的 className/样式/箭头颜色，统一交给 RoutedEdge 渲染。
+ */
 export function buildFlowchartEdges({
   edges,
   nodeIndex,

@@ -10,7 +10,7 @@ class OpenAiCompatibleLlmGateway(
     /** 根据请求动态创建 HTTP 客户端，便于测试或按需调整超时。 */
     private val clientFactory: (LlmRequest) -> HttpClient = LlmGatewayClient::defaultHttpClient,
 ) : LlmGateway {
-    /** 调用兼容 OpenAI Chat Completions 的远程服务。 */
+    /** 调用兼容 OpenAI Chat Completions 的远程服务，返回一次性完整响应。 */
     override fun generate(request: LlmRequest): LlmResponse {
         return LlmGatewayClient.generateJson(
             client = clientFactory(request),
@@ -22,6 +22,7 @@ class OpenAiCompatibleLlmGateway(
         )
     }
 
+    /** 以 SSE 流式方式调用 OpenAI Chat Completions 服务。 */
     override fun stream(
         request: LlmRequest,
         listener: (LlmStreamEvent) -> Unit,
@@ -94,6 +95,7 @@ class OpenAiCompatibleLlmGateway(
         }
     }
 
+    /** 构造 OpenAI 协议要求的鉴权请求头。 */
     private fun openAiHeaders(request: LlmRequest): List<Pair<String, String>> {
         return listOf("Authorization" to "Bearer ${request.apiKey}")
     }

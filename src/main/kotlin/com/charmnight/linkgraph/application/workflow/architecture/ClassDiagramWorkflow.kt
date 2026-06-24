@@ -16,7 +16,6 @@ import com.charmnight.linkgraph.foundation.LinkGraphRenderTrace
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
-import com.charmnight.linkgraph.jvm.index.JvmClassSymbol
 import com.charmnight.linkgraph.jvm.index.JvmSymbolIndex
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.projection.business.ClassUsageGraphProjector
@@ -32,20 +31,45 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.CancellationException
 import java.util.concurrent.atomic.AtomicLong
 
+/**
+ * 类图工作流：根据前端请求协调类图索引构建、范围解析、关系补齐与使用处叠加，
+ * 通过事件总线把请求态、结果和失败反馈给前端。
+ *
+ * 主要流程：
+ * 1. 接收到 [IndexedGraphRequest] 后解析范围节点，发起首屏类图（结构/全量索引二选一）；
+ * 2. 视情况再触发"当前范围调用补齐"或"完整关系补齐"两次异步任务；
+ * 3. 当请求聚焦"类使用处"时，会跳过类图本身，直接走独立使用处检索；
+ * 4. 关键阶段通过 [runtimeTrace] 输出渲染追踪，便于排查性能与可见性问题。
+ */
 internal class ClassDiagramWorkflow(
+    /** 当前 IntelliJ 项目。 */
     private val project: Project,
+    /** 类图索引、缓存与新鲜度查询能力。 */
     private val indexSupport: ClassDiagramIndexSupport,
+    /** 应用层事件总线，用于把请求/结果事件转发到前端。 */
     private val eventSink: GraphEditorApplicationEventSink,
+    /** 编辑器快照查询入口，可空（仅用作范围解析器回退）。 */
     snapshotProvider: EditorSnapshotProvider? = null,
+    /** 类图投影器：把符号索引转换为前端可消费的可见图与全量图。 */
     private val projector: ClassDiagramProjector = ClassDiagramProjector(),
+    /** 类使用处检索服务（PSI 层）。 */
     private val usageSearchService: ClassUsageSearchService = ClassUsageSearchService(project),
+    /** 类使用处投影器：把检索结果组装成与类图同构的视图。 */
     private val usageProjector: ClassUsageGraphProjector = ClassUsageGraphProjector(),
+    /** 类图范围解析器：把请求中的 scopeNodeId 还原为实际可用的锚点节点。 */
     private val scopeResolver: ClassDiagramScopeResolver = ClassDiagramScopeResolver(project, snapshotProvider),
+    /** 日志记录器。 */
     private val logger: com.intellij.openapi.diagnostic.Logger,
+    /** 渲染追踪回调，仅在开启追踪时输出阶段信息。 */
     private val runtimeTrace: ((() -> String) -> Unit)? = null,
 ) {
+    /** 自增的请求 ID 序列，用于把多个异步回调绑定到同一个前端请求。 */
     private val requestIds = AtomicLong()
 
+    /**
+     * 入口方法：发起一次类图请求，先发出 started 事件，再以非阻塞读动作执行构建，
+     * 最终根据结果分支发出 Loaded / Failed 事件，或继续触发补齐请求。
+     */
     fun requestIndexedGraph(request: IndexedGraphRequest) {
         val requestId = requestIds.incrementAndGet()
         val scopeNodeId = request.classDiagramScopeNodeId()
@@ -140,10 +164,8 @@ internal class ClassDiagramWorkflow(
                         freshness = indexSupport.freshness(),
                     ).let { view ->
                         applyUsageOverlay(
-                            index = index,
                             request = request,
                             view = view,
-                            scopeNodeId = resolvedScopeNodeId,
                         )
                     }.also { view ->
                         traceStage("classDiagram.project", projectStartedAt) {
@@ -270,6 +292,10 @@ internal class ClassDiagramWorkflow(
             .submit(AppExecutorUtil.getAppExecutorService())
     }
 
+    /**
+     * 第二阶段：以"当前可见类"为种子补齐方法体内部的调用关系，
+     * 用于在首屏结构图渲染完成后把当前范围内更深的关系叠加进来。
+     */
     private fun requestScopedClassDiagram(
         scopeNodeId: String?,
         symbolIndexHint: JvmSymbolIndex?,
@@ -320,10 +346,8 @@ internal class ClassDiagramWorkflow(
                         freshness = indexSupport.freshness(),
                     ).let { view ->
                         applyUsageOverlay(
-                            index = index,
                             request = request,
                             view = view,
-                            scopeNodeId = scopeNodeId,
                         )
                     }.also { view ->
                         traceStage("classDiagram.scopedProject", projectStartedAt) {
@@ -391,6 +415,10 @@ internal class ClassDiagramWorkflow(
             .submit(AppExecutorUtil.getAppExecutorService())
     }
 
+    /**
+     * 第二阶段：构建全量索引并投影完整关系，把首屏"仅结构"的视图升级为完整类图。
+     * 适用于首屏结构图渲染成功且请求明确要求完整关系的场景。
+     */
     private fun requestCompleteClassDiagram(
         scopeNodeId: String?,
         symbolIndexHint: JvmSymbolIndex?,
@@ -436,10 +464,8 @@ internal class ClassDiagramWorkflow(
                         freshness = indexSupport.freshness(),
                     ).let { view ->
                         applyUsageOverlay(
-                            index = index,
                             request = request,
                             view = view,
-                            scopeNodeId = scopeNodeId,
                         )
                     }.also { view ->
                         traceStage("classDiagram.completeProject", projectStartedAt) {
@@ -507,39 +533,35 @@ internal class ClassDiagramWorkflow(
             .submit(AppExecutorUtil.getAppExecutorService())
     }
 
+    /**
+     * 在常规类图构建完成后，按请求把"切换到类使用处视图"叠加在结果上：
+     * 请求要求 usage.enabled 时，会查询 PSI 使用处并把整个结果替换成使用处视图。
+     */
     private fun applyUsageOverlay(
-        index: ArchitectureGraphIndex,
         request: IndexedGraphRequest,
         view: ClassDiagramResult,
-        scopeNodeId: String?,
     ): ClassDiagramResult {
         if (!request.usage.enabled) {
             return view
         }
-        val target = resolveUsageTarget(
-            index = index,
-            request = request,
-            view = view,
-            scopeNodeId = scopeNodeId,
-        ) ?: run {
-            logger.warn("无法解析类使用处目标：targetNodeId=${request.usage.targetNodeId}, scopeNodeId=${scopeNodeId.orEmpty()}")
+        val targetHint = request.explicitUsageTargetHint() ?: run {
+            logger.warn("无法解析类使用处目标：targetNodeId=${request.usage.targetNodeId}")
             return view
         }
         val usageStartedAt = System.nanoTime()
         val result = usageSearchService.search(
-            target = ClassUsageSearchTargetHint(
-                qualifiedName = target.qualifiedName,
-                nodeId = target.nodeId,
-                sourceVirtualFileUrl = target.sourceVirtualFileUrl,
-                sourcePath = target.sourcePath,
-            ),
+            target = targetHint,
             options = ClassUsageSearchOptions(
                 maxUsageGroups = request.usage.maxUsageGroups,
                 maxUsageEntries = request.usage.maxUsageEntries,
                 includeImports = request.usage.includeImports,
             ),
         ) ?: run {
-            logger.warn("无法在 PSI 中找到类使用处目标：${target.qualifiedName}")
+            logger.warn(
+                "无法在 PSI 中找到类使用处目标：" +
+                    "targetNodeId=${targetHint.nodeId.orEmpty()}, " +
+                    "targetQualifiedName=${targetHint.qualifiedName.orEmpty()}",
+            )
             return view
         }
         val projected = usageProjector.projectStandalone(result)
@@ -556,20 +578,36 @@ internal class ClassDiagramWorkflow(
         return projected
     }
 
+    /**
+     * 独立使用处视图：当请求只关心一个类的使用处（锚点与目标一致、scope 为 ClassNeighborhood）时，
+     * 跳过整张类图，直接用使用处检索结果构造一份与类图同构的视图。
+     *
+     * 与 applyUsageOverlay 一致：search 调用包在 runCatching 里，
+     * ProcessCanceledException / 内部异常冒泡时记日志并返回 null，避免卡死工作台。
+     */
     private fun buildStandaloneUsageView(request: IndexedGraphRequest): ClassDiagramResult? {
         if (!request.isStandaloneUsageRequest()) {
             return null
         }
         val targetHint = request.standaloneUsageTargetHint() ?: return null
         val usageStartedAt = System.nanoTime()
-        val result = usageSearchService.search(
-            target = targetHint,
-            options = ClassUsageSearchOptions(
-                maxUsageGroups = request.usage.maxUsageGroups,
-                maxUsageEntries = request.usage.maxUsageEntries,
-                includeImports = request.usage.includeImports,
-            ),
+        val result = runCatching {
+            usageSearchService.search(
+                target = targetHint,
+                options = ClassUsageSearchOptions(
+                    maxUsageGroups = request.usage.maxUsageGroups,
+                    maxUsageEntries = request.usage.maxUsageEntries,
+                    includeImports = request.usage.includeImports,
+                ),
+            )
+        }.fold(
+            onSuccess = { it },
+            onFailure = { error ->
+                logger.warn("类图独立使用处检索失败：targetNodeId=${targetHint.nodeId.orEmpty()}", error)
+                null
+            },
         ) ?: return null
+        result ?: return null
         traceStage("classDiagram.usage", usageStartedAt) {
             listOf(
                 "targetNodeId=${result.target.nodeId}",
@@ -583,7 +621,12 @@ internal class ClassDiagramWorkflow(
         return usageProjector.projectStandalone(result)
     }
 
+    /**
+     * 解析"独立使用处请求"中的目标提示，依次从 usage 显式字段、anchor 限定名兜底，
+     * 并补充必要的 nodeId（缺失时按 JVM 稳定 ID 规则生成）。
+     */
     private fun IndexedGraphRequest.standaloneUsageTargetHint(): ClassUsageSearchTargetHint? {
+        explicitUsageTargetHint()?.let { return it }
         val qualifiedName = usage.targetQualifiedName
             ?.trim()
             ?.takeIf(String::isNotBlank)
@@ -604,6 +647,35 @@ internal class ClassDiagramWorkflow(
         )
     }
 
+    /**
+     * 解析常规类图请求中附带的 usage 目标提示（仅在 usage.enabled 时有意义），
+     * 不做 anchor 兜底，所有字段都来自 usage 配置。
+     */
+    private fun IndexedGraphRequest.explicitUsageTargetHint(): ClassUsageSearchTargetHint? {
+        if (!usage.enabled) {
+            return null
+        }
+        val qualifiedName = usage.targetQualifiedName
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+        val nodeId = usage.targetNodeId
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+            ?: qualifiedName
+                ?.let { com.charmnight.linkgraph.jvm.index.stableJvmId("class", it) }
+            ?: return null
+        return ClassUsageSearchTargetHint(
+            qualifiedName = qualifiedName,
+            nodeId = nodeId,
+            sourceVirtualFileUrl = usage.sourceVirtualFileUrl,
+            sourcePath = usage.sourcePath,
+        )
+    }
+
+    /**
+     * 判断请求是否为"独立使用处"：必须开启 usage，且锚点指向的类与 usage 目标一致，
+     * 同时 scope 被收敛到 ClassNeighborhood，表示用户只想看这一个类的使用处而非整张类图。
+     */
     private fun IndexedGraphRequest.isStandaloneUsageRequest(): Boolean {
         if (!usage.enabled) {
             return false
@@ -620,47 +692,9 @@ internal class ClassDiagramWorkflow(
         return anchorNodeId == targetNodeId && scope is IndexedGraphScope.ClassNeighborhood
     }
 
-    private fun resolveUsageTarget(
-        index: ArchitectureGraphIndex,
-        request: IndexedGraphRequest,
-        view: ClassDiagramResult,
-        scopeNodeId: String?,
-    ): ResolvedClassUsageTarget? {
-        val candidates = listOfNotNull(
-            request.usage.targetNodeId,
-            scopeNodeId,
-            view.summary.anchorTypeNodeId,
-            view.anchorNodeId,
-            request.classDiagramScopeNodeId(),
-        ).map(String::trim)
-            .filter(String::isNotBlank)
-            .distinct()
-        candidates.forEach { nodeId ->
-            resolveUsageTarget(index, nodeId)?.let { return it }
-        }
-        view.summary.anchorTypeQualifiedName
-            ?.takeIf(String::isNotBlank)
-            ?.let { qualifiedName -> index.findClass(qualifiedName) }
-            ?.let { symbol -> return symbol.toResolvedClassUsageTarget() }
-        return null
-    }
-
-    private fun resolveUsageTarget(
-        index: ArchitectureGraphIndex,
-        nodeId: String,
-    ): ResolvedClassUsageTarget? {
-        (index.findSymbol(nodeId) as? JvmClassSymbol)
-            ?.let { symbol -> return symbol.toResolvedClassUsageTarget() }
-        val architectureNode = index.node(nodeId) ?: return null
-        architectureNode.memberClassIds
-            .takeIf { memberIds -> memberIds.size == 1 }
-            ?.single()
-            ?.let { memberId -> index.findSymbol(memberId) as? JvmClassSymbol }
-            ?.let { symbol -> return symbol.toResolvedClassUsageTarget() }
-        return index.findClass(architectureNode.qualifiedName)
-            ?.let { symbol -> symbol.toResolvedClassUsageTarget() }
-    }
-
+    /**
+     * 输出一个渲染追踪阶段，包含阶段名、耗时与详情键值对；未配置 [runtimeTrace] 时直接跳过。
+     */
     private fun traceStage(
         stage: String,
         startedAtNanos: Long,
@@ -676,6 +710,10 @@ internal class ClassDiagramWorkflow(
         )
     }
 
+    /**
+     * 判断补齐全量类图时抛出的异常是否为可忽略的"良性取消"：
+     * 项目已释放、IntelliJ 取消异常、VFS 已释放空指针等都不应作为构建失败上报。
+     */
     private fun isBenignCompleteClassDiagramCancellation(throwable: Throwable): Boolean {
         if (project.isDisposed) {
             return true
@@ -689,6 +727,10 @@ internal class ClassDiagramWorkflow(
         return throwable.cause?.let(::isBenignCompleteClassDiagramCancellation) == true
     }
 
+    /**
+     * 识别 VFS 已释放导致的 NPE：堆栈中包含 PersistentFSImpl 且消息提及 vfsPeer，
+     * 视作项目正在关闭期间的良性失败。
+     */
     private fun Throwable.isVfsDisposedFailure(): Boolean {
         if (this !is NullPointerException) {
             return false
@@ -700,6 +742,10 @@ internal class ClassDiagramWorkflow(
             }
     }
 
+    /**
+     * 提取当前可见图里所有类/接口/枚举/注解/Record/Object 节点的 ID，
+     * 作为 scoped 补齐阶段的种子类集合。
+     */
     private fun ClassDiagramResult.visibleClassNodeIds(): Set<String> =
         visibleGraph.nodes
             .asSequence()
@@ -708,6 +754,7 @@ internal class ClassDiagramWorkflow(
             .toSet()
 
     private companion object {
+        /** 类图方法体关系补齐时关注的"类级"节点类型集合。 */
         private val classDiagramBodyRelationNodeTypes = setOf(
             NodeType.CLASS,
             NodeType.INTERFACE,
@@ -719,6 +766,10 @@ internal class ClassDiagramWorkflow(
     }
 }
 
+/**
+ * 单次类图构建任务的输出载荷，承载投影后的视图、供后续阶段复用的符号索引提示、
+ * 实际生效的范围节点 ID，以及原始请求。
+ */
 private data class ClassDiagramViewPayload(
     val view: ClassDiagramResult? = null,
     val symbolIndexHint: JvmSymbolIndex? = null,
@@ -726,44 +777,43 @@ private data class ClassDiagramViewPayload(
     val request: IndexedGraphRequest,
 )
 
+/**
+ * 类图构建任务的统一结果包装：可能是成功载荷、失败异常，或者被取消（视为正常退出）。
+ */
 private data class ClassDiagramViewResult(
     val payload: ClassDiagramViewPayload? = null,
     val failure: Throwable? = null,
     val cancelled: Boolean = false,
 ) {
     companion object {
+        /** 成功工厂，仅携带载荷。 */
         fun success(payload: ClassDiagramViewPayload): ClassDiagramViewResult = ClassDiagramViewResult(payload = payload)
+        /** 失败工厂，仅携带异常。 */
         fun failure(error: Throwable): ClassDiagramViewResult = ClassDiagramViewResult(failure = error)
+        /** 取消工厂，三个字段都不设置。 */
         fun cancelled(): ClassDiagramViewResult = ClassDiagramViewResult(cancelled = true)
     }
 }
 
-private data class ResolvedClassUsageTarget(
-    val nodeId: String,
-    val qualifiedName: String,
-    val sourceVirtualFileUrl: String?,
-    val sourcePath: String?,
-)
-
-private fun JvmClassSymbol.toResolvedClassUsageTarget(): ResolvedClassUsageTarget =
-    ResolvedClassUsageTarget(
-        nodeId = id,
-        qualifiedName = qualifiedName,
-        sourceVirtualFileUrl = source?.virtualFileUrl,
-        sourcePath = source?.displayPath,
-    )
-
+/**
+ * 类图工作流计划：根据原始请求推断这次应当走"独立使用处 / 首屏结构 / scoped 补齐 / 完整补齐"哪条路径，
+ * 并集中维护各阶段对用户可见的中文提示文案。
+ */
 private data class ClassDiagramWorkflowPlan(
     val request: IndexedGraphRequest,
 ) {
+    /** 该请求是否只关心类使用处（与类图本身互斥）。 */
     private val isUsageRequest: Boolean = request.usage.enabled
 
+    /** 是否需要在首屏结构图之后追加一次"完整关系"补齐。 */
     fun shouldRequestCompleteRelations(): Boolean =
         !isUsageRequest && request.relationDetail == IndexedGraphRelationDetail.COMPLETE
 
+    /** 是否需要在首屏结构图之后追加一次"当前范围调用"补齐。 */
     fun shouldRequestScopedBodyRelations(): Boolean =
         !isUsageRequest && request.relationDetail == IndexedGraphRelationDetail.SCOPED_BODY_RELATIONS
 
+    /** 请求开始时给用户的提示文案，根据 usage / 关系细节 / 是否有 scopeNode 区分。 */
     fun startMessage(scopeNodeId: String?): String =
         when {
             isUsageRequest -> "正在查找类使用处。"
@@ -773,6 +823,7 @@ private data class ClassDiagramWorkflowPlan(
             else -> "正在从架构节点下钻类图。"
         }
 
+    /** 首屏结构图加载成功但关系尚未补齐时的过渡文案。 */
     fun partialSuccessMessage(view: ClassDiagramResult): String =
         when {
             isUsageRequest && view.usage != null -> "已加载类使用处。"
@@ -782,6 +833,7 @@ private data class ClassDiagramWorkflowPlan(
             else -> "已加载类图结构。"
         }
 
+    /** 首屏即得到完整关系（无需补齐）时的成功文案。 */
     fun initialCompleteSuccessMessage(view: ClassDiagramResult): String =
         when {
             isUsageRequest && view.usage != null -> "已加载类使用处。"
@@ -789,6 +841,7 @@ private data class ClassDiagramWorkflowPlan(
             else -> "已加载类图。"
         }
 
+    /** 完整关系补齐完成后的成功文案。 */
     fun completeRelationSuccessMessage(view: ClassDiagramResult): String =
         when {
             isUsageRequest && view.usage != null -> "已加载类使用处。"
@@ -796,6 +849,7 @@ private data class ClassDiagramWorkflowPlan(
             else -> "已补齐类图完整关系。"
         }
 
+    /** 当前范围调用补齐完成后的成功文案。 */
     fun scopedRelationSuccessMessage(view: ClassDiagramResult): String =
         when {
             isUsageRequest && view.usage != null -> "已加载类使用处。"

@@ -323,6 +323,7 @@ class GraphQaPatchService(
         )
     }
 
+    /** 把问答上下文中已有的源码片段转换为直接源码证据结论，用于本地规则化场景的快速证据补齐。 */
     private fun buildMockDirectSourceFindings(
         context: GraphQaContext,
     ): List<ResultEvidenceFinding> {
@@ -345,6 +346,7 @@ class GraphQaPatchService(
             }
     }
 
+    /** 解析本地规则化场景下候选变更应当落到的目标节点列表。 */
     private fun resolveMockDirectSourceTargets(
         context: GraphQaContext,
         scopeNodes: List<GraphNode>,
@@ -360,6 +362,7 @@ class GraphQaPatchService(
         }
     }
 
+    /** 根据用户问题或目标节点标题生成本地规则化候选变更的标题。 */
     private fun buildMockCandidateTitle(
         question: String,
         targetNodes: List<GraphNode>,
@@ -487,6 +490,7 @@ class GraphQaPatchService(
     }
 
     /** 当远程仍返回 patch 结构时，兜底转换为候选变更。 */
+    /** 当远程仍以 patch 形式返回结果时，把每条 operation 转换为候选变更，便于统一后续归一化流程。 */
     private fun deriveCandidateChanges(
         patch: com.charmnight.linkgraph.model.GraphPatch?,
         findings: List<ResultEvidenceFinding>,
@@ -517,6 +521,7 @@ class GraphQaPatchService(
         }
     }
 
+    /** 把候选变更与风险线程按证据强度分类：直接证据充足的提升为待确认项，证据不足的降级为风险线程。 */
     private fun classifyQaOutputs(
         candidateChanges: List<CandidateDraftChange>,
         explicitInvestigationThreads: List<InvestigationThread>,
@@ -586,6 +591,7 @@ class GraphQaPatchService(
         )
     }
 
+    /** 判断当前结果是否具备进入“待确认候选变更”路径的资格：远程结果或受信任的 runtime 证据均可。 */
     private fun canUseConfirmableCandidatePath(
         source: LlmResultSource,
         runtimeEvidenceTrusted: Boolean,
@@ -593,6 +599,7 @@ class GraphQaPatchService(
         return source != LlmResultSource.LOCAL_RULE || runtimeEvidenceTrusted
     }
 
+    /** 归一化候选变更列表：去重证据、丢弃无证据项、补充 claimType 与 editScopes 等。 */
     private fun normalizeCandidateChanges(
         changes: List<CandidateDraftChange>,
         context: GraphQaContext,
@@ -628,6 +635,7 @@ class GraphQaPatchService(
         }
     }
 
+    /** 基于候选变更的目标节点与源码片段，推导出精确的 edit scope 列表。 */
     private fun deriveEditScopes(
         change: CandidateDraftChange,
         context: GraphQaContext,
@@ -665,6 +673,7 @@ class GraphQaPatchService(
         }.distinctBy(EditScope::scopeId)
     }
 
+    /** 根据文件扩展名推断语言种类，未识别时回退为 TEXT。 */
     private fun inferLanguage(filePath: String): String {
         return when {
             filePath.endsWith(".kt", ignoreCase = true) -> "KOTLIN"
@@ -673,6 +682,7 @@ class GraphQaPatchService(
         }
     }
 
+    /** 返回可编辑符号签名：流程类节点优先从元数据取所属方法签名，其他节点直接返回 signature 字段。 */
     private fun editableSymbolSignature(node: GraphNode): String? {
         return when (node.type) {
             NodeType.FLOW_SCOPE, NodeType.FLOW_ACTION, NodeType.TERMINAL ->
@@ -683,6 +693,7 @@ class GraphQaPatchService(
         }
     }
 
+    /** 归一化风险线程列表：丢弃无证据项，并补齐 claimType、summary、evidenceGap、recommendedQuestion 等字段。 */
     private fun normalizeInvestigationThreads(threads: List<InvestigationThread>): List<InvestigationThread> {
         return threads.mapNotNull { thread ->
             val normalizedEvidence = thread.evidence.distinctBy(ResultEvidenceFinding::id)
@@ -705,6 +716,7 @@ class GraphQaPatchService(
         }
     }
 
+    /** 当本轮没有候选变更但用户明确要求修改时，把满足条件的风险线程提升为候选变更。 */
     private fun promoteThreadsToCandidateChanges(
         threads: List<InvestigationThread>,
         context: GraphQaContext,
@@ -716,6 +728,7 @@ class GraphQaPatchService(
             .filter { change -> change.hasDirectEvidence() }
     }
 
+    /** 判断风险线程是否可被提升为候选变更：状态为 OPEN、有目标节点且证据等级达到直接证据。 */
     private fun isEligibleForCandidatePromotion(thread: InvestigationThread): Boolean {
         return thread.status == InvestigationThreadStatus.OPEN &&
             (thread.targetNodeIds.isNotEmpty() || thread.targetStepIds.isNotEmpty()) &&
@@ -725,6 +738,7 @@ class GraphQaPatchService(
             }
     }
 
+    /** 把风险线程转换为候选变更，保留原有证据与目标节点。 */
     private fun candidateFromThread(thread: InvestigationThread): CandidateDraftChange {
         val normalizedEvidence = thread.evidence.distinctBy(ResultEvidenceFinding::id)
         return CandidateDraftChange(
@@ -742,6 +756,7 @@ class GraphQaPatchService(
         )
     }
 
+    /** 根据线程 ID 生成对应的候选变更 ID，保持前缀一致便于追溯。 */
     private fun promotedChangeIdForThread(threadId: String): String {
         return if (threadId.startsWith("thread-")) {
             "change-${threadId.removePrefix("thread-")}"
@@ -750,6 +765,7 @@ class GraphQaPatchService(
         }
     }
 
+    /** 生成风险线程提升为候选变更后的展示标题，依次回退到原始标题、摘要与推荐问题。 */
     private fun promotedCandidateTitle(thread: InvestigationThread): String {
         val rawTitle = thread.title.trim()
         if (rawTitle.isNotBlank() && rawTitle != thread.threadId) {
@@ -766,6 +782,7 @@ class GraphQaPatchService(
         return thread.threadId
     }
 
+    /** 根据证据等级推断声明类型：包含直接证据视为 CODE_FACT，否则视为 RISK_HINT。 */
     private fun inferClaimType(evidence: List<ResultEvidenceFinding>): String {
         return if (evidence.any { finding ->
                 finding.evidenceLevel == ResultEvidenceLevel.DIRECT_SOURCE ||
@@ -778,6 +795,7 @@ class GraphQaPatchService(
         }
     }
 
+    /** 把证据不足的候选变更降级为风险线程，保留原证据与目标节点。 */
     private fun threadFromWeakCandidateChange(change: CandidateDraftChange): InvestigationThread {
         val normalizedEvidence = change.evidence.distinctBy(ResultEvidenceFinding::id)
         return InvestigationThread(
@@ -794,6 +812,7 @@ class GraphQaPatchService(
         )
     }
 
+    /** 根据证据等级推断当前证据缺口描述，便于 UI 提示用户该线索需要补什么证据。 */
     private fun inferEvidenceGap(evidence: List<ResultEvidenceFinding>): String {
         return when {
             evidence.any { it.evidenceLevel == ResultEvidenceLevel.CALLSITE_ONLY } ->
@@ -805,6 +824,7 @@ class GraphQaPatchService(
         }
     }
 
+    /** 生成下一轮推荐的追问问题，根据当前证据缺口给出明确取证方向。 */
     private fun buildRecommendedQuestion(
         title: String,
         evidence: List<ResultEvidenceFinding>,
@@ -819,6 +839,7 @@ class GraphQaPatchService(
         }
     }
 
+    /** 启发式判断用户问题是否明确要求修改代码：包含祈使语或修改类关键词时返回 true。 */
     private fun questionExplicitlyRequestsChange(question: String): Boolean {
         val normalizedQuestion = question.replace(Regex("\\s+"), "")
         if (normalizedQuestion.isBlank()) {
@@ -906,6 +927,7 @@ class GraphQaPatchService(
         return runtimeWarning("远程 LLM ${scene}失败，已回退为本地规则分析：${LlmUserMessageFormatter.describe(error)}")
     }
 
+    /** 把警告文本统一加上 RUNTIME 前缀，便于 UI 区分运行时产生的提示与其他提示。 */
     private fun runtimeWarning(warning: String): String =
         warning.takeIf { it.startsWith("RUNTIME:") } ?: "RUNTIME: $warning"
 
@@ -917,6 +939,7 @@ class GraphQaPatchService(
         return copy(warnings = extraWarnings + warnings)
     }
 
+    /** 把源码片段补充为取证轨迹条目，使后续模型与 UI 能看到本轮直接附带的源码证据。 */
     private fun GraphQaContext.withDerivedEvidenceTrace(): GraphQaContext {
         if (evidenceTrace.isNotEmpty() || sourceContext.isEmpty()) {
             return this
@@ -936,11 +959,13 @@ class GraphQaPatchService(
         )
     }
 
+    /** 问答结果归一化过程中产生的内部结构，包含分类后的候选变更与风险线程。 */
     private data class ClassifiedQaOutputs(
         val candidateChanges: List<CandidateDraftChange>,
         val investigationThreads: List<InvestigationThread>,
     )
 
+    /** 生成候选变更的简短摘要字符串，用于 trace 日志输出。 */
     private fun candidateSummaries(changes: List<CandidateDraftChange>): String {
         if (changes.isEmpty()) {
             return "[]"
@@ -959,6 +984,7 @@ class GraphQaPatchService(
         }
     }
 
+    /** 生成风险线程的简短摘要字符串，用于 trace 日志输出。 */
     private fun threadSummaries(threads: List<InvestigationThread>): String {
         if (threads.isEmpty()) {
             return "[]"
@@ -977,6 +1003,7 @@ class GraphQaPatchService(
         }
     }
 
+    /** 生成源码片段的简短摘要字符串，用于 trace 日志输出。 */
     private fun sourceContextSummaries(sourceContext: List<SourceSnippetContext>): String {
         if (sourceContext.isEmpty()) {
             return "[]"
@@ -1003,6 +1030,7 @@ class GraphQaPatchService(
         }
     }
 
+    /** 生成取证轨迹的简短摘要字符串，用于 trace 日志输出。 */
     private fun evidenceTraceSummaries(evidenceTrace: List<EvidenceTraceEntry>): String {
         if (evidenceTrace.isEmpty()) {
             return "[]"

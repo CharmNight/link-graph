@@ -13,7 +13,18 @@ import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 
+/**
+ * 图谱编辑权限策略：在投影视图场景下判断每一次节点/边增删改操作是否被允许，
+ * 同时记录解析后的真实目标 ID，供后续应用层使用。
+ */
 class GraphEditPermissionPolicy {
+    /**
+     * 评估一次图谱编辑请求中所有操作的合法性，并产出问题清单与解析结果。
+     *
+     * @param snapshot 当前工作流编辑器快照，提供各投影视图与基础图谱
+     * @param request 待评估的编辑请求，包含一组有序操作
+     * @return 权限决策结果，包含问题清单与目标解析
+     */
     fun evaluate(
         snapshot: WorkflowEditorSnapshot,
         request: GraphEditRequest,
@@ -37,7 +48,9 @@ class GraphEditPermissionPolicy {
                     val targetNodeId = upsertNodeTargetIds[operation.node.id]
                         ?: resolveEditableNodeId(operation.node.id, projectionIndex, nodesById)
                     resolutionBuilder.nodeTargetId(operation.node.id, targetNodeId)
-                    val existing = targetNodeId in nodesById || operation.node.id in nodesById
+                    // 只看 canonical 后的目标 ID 是否存在：投影源 ID 命中但目标 ID 不命中时
+                    // 等价于"新增一个新节点"，应判 ADD_NODE 而不是 UPDATE_NODE（旧实现的 || 会误判）。
+                    val existing = targetNodeId in nodesById
                     val command = if (existing) GraphEditCommandKind.UPDATE_NODE else GraphEditCommandKind.ADD_NODE
                     if (!canEditNode(operation.node.id, projectionIndex, command)) {
                         issues += readonlyNodeIssue(index, operation.node.id, command)
@@ -111,6 +124,7 @@ class GraphEditPermissionPolicy {
         return GraphEditPermissionDecision(issues = issues, resolution = resolutionBuilder.build())
     }
 
+    /** 判断连接端点是否合法：要么属于本次新增节点，要么该端点在当前视图允许被连接。 */
     private fun canConnectEndpoint(
         projectedNodeId: String,
         targetNodeId: String,
@@ -120,6 +134,7 @@ class GraphEditPermissionPolicy {
         targetNodeId in addedNodeIds ||
             canEditNode(projectedNodeId, projectionIndex, GraphEditCommandKind.CONNECT_NODES)
 
+    /** 根据请求中的场景 ID 选择对应的投影视图索引，缺省时回落到事实图谱视图。 */
     private fun projectionIndexFor(
         snapshot: WorkflowEditorSnapshot,
         request: GraphEditRequest,
@@ -134,6 +149,7 @@ class GraphEditPermissionPolicy {
             null -> snapshot.factGraphView.projectionIndex
         }
 
+    /** 判断在当前投影视图下能否对节点执行指定命令；无投影映射时仅允许新增节点。 */
     private fun canEditNode(
         projectedNodeId: String,
         projectionIndex: GraphProjectionIndex,
@@ -143,6 +159,7 @@ class GraphEditPermissionPolicy {
         return command in mapping.editableCommandKinds
     }
 
+    /** 判断在当前投影视图下能否对边执行指定命令；无投影映射则一律不允许。 */
     private fun canEditEdge(
         projectedEdgeId: String,
         projectionIndex: GraphProjectionIndex,
@@ -152,6 +169,7 @@ class GraphEditPermissionPolicy {
         return command in mapping.editableCommandKinds
     }
 
+    /** 把投影节点 ID 解析为真实可编辑的节点 ID：精确映射取唯一规范 ID，否则按原值处理。 */
     private fun resolveEditableNodeId(
         projectedNodeId: String,
         projectionIndex: GraphProjectionIndex,
@@ -162,11 +180,11 @@ class GraphEditPermissionPolicy {
             mapping == null -> projectedNodeId
             mapping.mappingKind == GraphProjectionMappingKind.EXACT &&
                 mapping.canonicalNodeIds.size == 1 -> mapping.canonicalNodeIds.first()
-            projectedNodeId in nodesById -> projectedNodeId
             else -> projectedNodeId
         }
     }
 
+    /** 计算投影节点实际可被删除的底层节点 ID 集合：精确/合并别名映射返回全部规范 ID，其它只读映射返回空。 */
     private fun resolveRemovableNodeIds(
         projectedNodeId: String,
         projectionIndex: GraphProjectionIndex,
@@ -184,6 +202,7 @@ class GraphEditPermissionPolicy {
         }
     }
 
+    /** 把投影边 ID 解析为真实可编辑的边 ID：精确映射取唯一规范 ID，否则按原值处理。 */
     private fun resolveEditableEdgeId(
         projectedEdgeId: String,
         projectionIndex: GraphProjectionIndex,
@@ -194,11 +213,11 @@ class GraphEditPermissionPolicy {
             mapping == null -> projectedEdgeId
             mapping.mappingKind == GraphProjectionMappingKind.EXACT &&
                 mapping.canonicalEdgeIds.size == 1 -> mapping.canonicalEdgeIds.first()
-            projectedEdgeId in edgesById -> projectedEdgeId
             else -> projectedEdgeId
         }
     }
 
+    /** 计算投影边实际可被删除的底层边 ID 集合：仅精确映射返回规范 ID，其它只读映射返回空。 */
     private fun resolveRemovableEdgeIds(
         projectedEdgeId: String,
         projectionIndex: GraphProjectionIndex,
@@ -215,6 +234,7 @@ class GraphEditPermissionPolicy {
         }
     }
 
+    /** 构造一条"只读投影节点"问题，描述当前视图不允许对该节点执行该命令。 */
     private fun readonlyNodeIssue(
         index: Int,
         nodeId: String,

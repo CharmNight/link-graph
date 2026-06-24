@@ -151,6 +151,7 @@ class ArchitectureDocumentationSanityTest {
                 "development.md",
                 "features-and-limitations.md",
                 "getting-started.md",
+                "installation.md",
                 "project-structure.md",
                 "usage.md",
             ),
@@ -161,6 +162,8 @@ class ArchitectureDocumentationSanityTest {
         val marker = machineLocalPathMarker()
         val publicRoots = listOf(
             Path.of("README.md"),
+            Path.of("CONTRIBUTING.md"),
+            Path.of(".github"),
             docsRoot,
             Path.of("src/main"),
             Path.of("src/test"),
@@ -173,8 +176,24 @@ class ArchitectureDocumentationSanityTest {
         val publicFiles = publicRoots.flatMap(::repositoryFilesForPublicScan)
 
         publicFiles.forEach { path ->
-            assertFalse(Files.readString(path).contains(marker), "公开源码/测试不能包含本机绝对路径: $path")
+            val source = Files.readString(path)
+            assertFalse(source.contains(marker), "公开源码/测试不能包含本机绝对路径: $path")
+            assertFalse(
+                source.contains(missingInternalDesignDocPath()),
+                "公开源码/测试不能引用不存在的内部设计文档: $path",
+            )
         }
+    }
+
+    @Test
+    fun ciWorkflowMatchesDocumentedFullCheckContract() {
+        val contributing = Files.readString(Path.of("CONTRIBUTING.md"))
+        val development = Files.readString(Path.of("docs/development.md"))
+        val ci = Files.readString(Path.of(".github/workflows/ci.yml"))
+
+        assertTrue(contributing.contains("`./gradlew check`"))
+        assertTrue(development.contains("`check` 会执行后端检查、集成测试"))
+        assertTrue(ci.contains("./gradlew check"), "文档把 ./gradlew check 作为 CI 主流程时, workflow 也必须跑 check。")
     }
 }
 
@@ -186,6 +205,9 @@ private fun removedInternalDocsPath(): String =
 
 private fun machineLocalPathMarker(): String =
     listOf("", "Users", "").joinToString("/")
+
+private fun missingInternalDesignDocPath(): String =
+    listOf("design", "IMPLEMENTATION.md").joinToString("/")
 
 private fun repositoryFilesForPublicScan(root: Path): List<Path> {
     if (!Files.exists(root)) {
@@ -209,6 +231,8 @@ private fun isPublicTextFile(path: Path): Boolean {
         name.endsWith(".ts") ||
         name.endsWith(".tsx") ||
         name.endsWith(".md") ||
+        name.endsWith(".yml") ||
+        name.endsWith(".yaml") ||
         name.endsWith(".html") ||
         name.endsWith(".xml") ||
         name.endsWith(".properties") ||

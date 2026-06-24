@@ -1136,7 +1136,7 @@ describe("GraphFlowSurface", () => {
         toJSON: () => undefined,
       };
     });
-    const initialNode = { ...baseNode("class:OrderService"), type: "CLASS", position: { x: 120, y: 96 } };
+    const initialNode = { ...baseNode("class:OrderService"), type: "CLASS" as const, position: { x: 120, y: 96 } };
     const movedNode = { ...initialNode, position: { x: 420, y: 240 } };
     const renderNode = (node: LinkGraphNode) => ({
       id: node.id,
@@ -1205,6 +1205,16 @@ describe("GraphFlowSurface", () => {
       clientY: 260,
     });
     expect(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Node Action method:anchor" })).toBeInTheDocument();
+  });
+
+  it("defaults node click distance to keep slight pointer drift selectable", () => {
+    installResizeObserverStub();
+
+    renderSurface();
+
+    const reactFlow = screen.getByTestId("reactflow");
+    expect(reactFlow).toHaveAttribute("data-node-click-distance", "6");
+    expect(reactFlow).toHaveAttribute("data-pane-click-distance", "");
   });
 
   it("passes scroll and click-distance interaction settings through to React Flow", () => {

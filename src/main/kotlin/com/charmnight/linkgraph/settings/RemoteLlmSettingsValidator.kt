@@ -178,6 +178,10 @@ class RemoteLlmSettingsValidator(
         )
     }
 
+    /**
+     * 构造用于校验的系统提示词。
+     * 针对 OpenAI Responses 协议要求模型返回 JSON Schema 结构，其他协议则只要求返回纯文本。
+     */
     private fun buildValidationSystemPrompt(remoteConnection: RemoteLlmConnection): String {
         return if (remoteConnection.preset.wireProtocol == LlmWireProtocol.OPENAI_RESPONSES) {
             "你是 IDEA Link Graph 的远程配置校验器。只允许返回符合给定 JSON Schema 的配置校验结果。"
@@ -186,6 +190,10 @@ class RemoteLlmSettingsValidator(
         }
     }
 
+    /**
+     * 构造用于校验的用户提示词。
+     * Responses 协议要求返回一个最小结构化问答结果，其他协议只要求返回 OK。
+     */
     private fun buildValidationUserPrompt(remoteConnection: RemoteLlmConnection): String {
         return if (remoteConnection.preset.wireProtocol == LlmWireProtocol.OPENAI_RESPONSES) {
             """

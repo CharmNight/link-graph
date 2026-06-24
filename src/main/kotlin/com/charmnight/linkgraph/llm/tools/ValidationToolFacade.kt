@@ -66,6 +66,7 @@ class ValidationToolFacade(
         return draft.content != null || (draft.editOperations.isNotEmpty() && draft.editScopes.isNotEmpty())
     }
 
+    /** 判断两个文件路径在项目根路径归一化后是否指向同一文件，用于跨来源路径对齐。 */
     private fun pathsReferToSameFile(
         left: String,
         right: String,

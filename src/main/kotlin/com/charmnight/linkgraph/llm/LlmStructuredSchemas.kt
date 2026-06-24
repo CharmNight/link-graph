@@ -5,18 +5,21 @@ package com.charmnight.linkgraph.llm
  * 这些 schema 会直接下发给支持原生结构化输出的 provider，而不是只作为 prompt 文本展示。
  */
 internal object LlmStructuredSchemas {
+    /** 可空字符串类型，常用于可选文本字段。 */
     private const val NULLABLE_STRING_SCHEMA = """
 {
   "type": ["string", "null"]
 }
 """
 
+    /** 可空整数类型，常用于可选行号或偏移字段。 */
     private const val NULLABLE_INTEGER_SCHEMA = """
 {
   "type": ["integer", "null"]
 }
 """
 
+    /** 不允许任何属性的空对象，用于 metadata 占位字段。 */
     private const val EMPTY_OBJECT_SCHEMA = """
 {
   "type": "object",
@@ -26,6 +29,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 字符串数组类型。 */
     private const val STRING_ARRAY_SCHEMA = """
 {
   "type": "array",
@@ -35,6 +39,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 证据引用 schema：节点 ID、文件路径、起止行号均可空。 */
     private const val EVIDENCE_REFERENCE_SCHEMA = """
 {
   "type": "object",
@@ -49,6 +54,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 单条结构化证据的 schema：包含结论文本、证据等级和引用列表。 */
     private const val EVIDENCE_FINDING_SCHEMA = """
 {
   "type": "object",
@@ -66,6 +72,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 候选变更 patchIntent 的 schema：表达更新/新增节点、新增判断/动作、仅注释等模式。 */
     private const val PATCH_INTENT_SCHEMA = """
 {
   "type": "object",
@@ -80,6 +87,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 可空的 patchIntent schema：候选变更允许在没有 patchIntent 时省略。 */
     private const val NULLABLE_PATCH_INTENT_SCHEMA = """
 {
   "type": ["object", "null"],
@@ -94,6 +102,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 图节点 schema：覆盖 ID、类型、标题、签名、输入输出、文档与绑定状态等字段。 */
     private const val GRAPH_NODE_SCHEMA = """
 {
   "type": "object",
@@ -129,6 +138,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 可空图节点 schema：用于 patch operation 中允许为空的 node 字段。 */
     private const val NULLABLE_GRAPH_NODE_SCHEMA = """
 {
   "type": ["object", "null"],
@@ -164,6 +174,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 图边 schema：覆盖 ID、类型、起止节点、标签、绑定状态等字段。 */
     private const val GRAPH_EDGE_SCHEMA = """
 {
   "type": "object",
@@ -193,6 +204,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 可空图边 schema：用于 patch operation 中允许为空的 edge 字段。 */
     private const val NULLABLE_GRAPH_EDGE_SCHEMA = """
 {
   "type": ["object", "null"],
@@ -222,6 +234,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 单条 patch 操作 schema：表示节点/边的新增、更新或删除动作。 */
     private const val GRAPH_PATCH_OPERATION_SCHEMA = """
 {
   "type": "object",
@@ -251,6 +264,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 图补丁 schema：包含一组操作和增删节点/边的 ID 汇总。 */
     private const val GRAPH_PATCH_SCHEMA = """
 {
   "type": "object",
@@ -277,6 +291,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 可空图补丁 schema：问答结果允许没有 patch，因此 patch 字段使用此可空版本。 */
     private const val NULLABLE_GRAPH_PATCH_SCHEMA = """
 {
   "type": ["object", "null"],
@@ -303,6 +318,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 单条待确认候选变更 schema：携带目标节点、修改前后状态、理由、证据和 patchIntent 等。 */
     private const val CANDIDATE_CHANGE_SCHEMA = """
 {
   "type": "object",
@@ -345,6 +361,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 单条风险线索 schema：表示当前证据不足以确认、需要继续追问的线程。 */
     private const val INVESTIGATION_THREAD_SCHEMA = """
 {
   "type": "object",
@@ -381,6 +398,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 单条代码编辑操作 schema：标识目标文件、作用域、操作类型与负载。 */
     private const val CODE_EDIT_OPERATION_SCHEMA = """
 {
   "type": "object",
@@ -397,6 +415,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 单个 edit scope schema：表示一段被证据锚定的精确代码作用域。 */
     private const val EDIT_SCOPE_SCHEMA = """
 {
   "type": "object",
@@ -432,6 +451,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 单个代码草稿 schema：包含目标文件、整文件内容或结构化编辑操作列表。 */
     private const val CODE_DRAFT_SCHEMA = """
 {
   "type": "object",
@@ -456,6 +476,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 实现计划生成场景使用的根 schema：包含摘要、计划项列表与可选警告。 */
     const val GENERATION_PLAN: String = """
 {
   "type": "object",
@@ -483,6 +504,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 实现建议追问场景使用的根 schema：包含回答、聚焦条目 ID 与可选警告。 */
     const val DISCUSSION: String = """
 {
   "type": "object",
@@ -496,6 +518,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 代码草稿生成场景使用的根 schema：包含摘要、警告与代码草稿列表。 */
     const val CODE_GENERATION_RESULT: String = """
 {
   "type": "object",
@@ -512,6 +535,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 图问答场景使用的根 schema：包含回答、证据、可选补丁、候选变更与风险线程。 */
     const val PATCH_RESULT: String = """
 {
   "type": "object",
@@ -544,6 +568,7 @@ internal object LlmStructuredSchemas {
 }
 """
 
+    /** 链路讲解场景使用的根 schema：包含步骤化讲解列表和可选警告。 */
     const val BEAUTIFICATION: String = """
 {
   "type": "object",

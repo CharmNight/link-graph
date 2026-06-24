@@ -41,6 +41,7 @@ class GraphBrowserBridgeRegistrarTest {
         assertFalse(source.contains("actionId: request && request.actionId ? request.actionId :"))
         assertFalse(source.contains("intent: request && request.intent ? request.intent :"))
         assertTrue(source.contains("target: request && request.target ? request.target : { kind: \"NewTask\" }"))
+        assertTrue(source.contains("mode: request && request.mode ? request.mode : null"))
         assertTrue(source.contains("requestIndexedGraph: (request) => sendCommand(\"requestIndexedGraph\""))
         assertTrue(source.contains("applyGraphEditScript: (payload) => sendCommand(\"applyGraphEditScript\""))
         listOf(

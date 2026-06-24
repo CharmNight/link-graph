@@ -138,6 +138,10 @@ class JavaOverrideResolver(
             !classSymbol.abstract
     }
 
+    /**
+     * 广度优先收集基础方法所属类（含接口）的所有实现/子类节点 ID。
+     * 沿 IMPLEMENTS 与 EXTENDS 反向关系向上扩展，最终排除基础类自身。
+     */
     private fun implementationClassIds(
         ownerClass: JvmClassSymbol,
         index: ArchitectureGraphIndex,

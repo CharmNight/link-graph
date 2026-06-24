@@ -2,6 +2,9 @@ package com.charmnight.linkgraph.model
 
 /**
  * 定义链路图中节点的语义类型。
+ *
+ * 节点类型决定 UI 上的图标、形状与默认布局策略。
+ * 不同视图（事实图/流程图/架构图等）会按类型选择不同的展示方式。
  */
 enum class NodeType {
     /** 表示方法节点。 */
@@ -30,15 +33,15 @@ enum class NodeType {
     RECORD,
     /** 表示 Kotlin object 节点。 */
     OBJECT,
-    /** 表示外部类节点。 */
+    /** 表示外部类节点（不在项目源码内）。 */
     EXTERNAL_CLASS,
     /** 表示依赖库节点。 */
     LIBRARY,
-    /** 表示服务聚合节点。 */
+    /** 表示服务聚合节点（多个相关类的逻辑分组）。 */
     SERVICE,
     /** 表示项目组件聚合节点。 */
     COMPONENT,
-    /** 表示架构层节点。 */
+    /** 表示架构层节点（按层次组织时的层）。 */
     LAYER,
     /** 表示泛化资源节点。 */
     RESOURCE,
@@ -60,6 +63,6 @@ enum class NodeType {
     XML_RESOURCE,
     /** 表示文档页面节点。 */
     DOC_PAGE,
-    /** 表示待确认的链路节点。 */
+    /** 表示待确认的链路节点（来自不确定推断，需用户复核）。 */
     UNCERTAIN_LINK,
 }

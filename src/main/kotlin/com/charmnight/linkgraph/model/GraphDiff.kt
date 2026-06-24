@@ -2,6 +2,9 @@ package com.charmnight.linkgraph.model
 
 /**
  * 表示单个图元素的差异摘要。
+ *
+ * 描述某次比对中该元素的状态（一致/仅一边存在/已修改）以及具体变化字段，
+ * 用于差异视图与代码生成等场景的输入。
  */
 data class GraphDiff(
     /** 记录当前元素的整体差异状态。 */
@@ -30,6 +33,9 @@ enum class GraphDiffElementKind {
 
 /**
  * 表示差异列表中的单条明细记录。
+ *
+ * 与 [GraphDiff] 类似，但作用在更细的元素粒度（单个节点或单条边），
+ * 用于差异视图的列表展示。
  */
 data class GraphDiffEntry(
     /** 记录差异元素的种类。 */

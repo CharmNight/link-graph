@@ -329,6 +329,39 @@ describe("hybrid visual contract", () => {
     );
   });
 
+  it("turns the collapsed outline stage navigation into a compact icon rail", () => {
+    expect(themeCss).toMatch(
+      /\.hybrid-workbench-layout\.outline-collapsed\s+\.workflow-stage-nav\s*\{(?=[^}]*padding:\s*10px\s+0\s+8px;)(?=[^}]*display:\s*grid;)(?=[^}]*justify-items:\s*center;)[^}]*\}/s,
+    );
+    expect(themeCss).toMatch(
+      /\.hybrid-workbench-layout\.outline-collapsed\s+\.workflow-stage-nav-title\s*\{[^}]*display:\s*none;[^}]*\}/s,
+    );
+    expect(themeCss).toMatch(
+      /\.hybrid-workbench-layout\.outline-collapsed\s+\.workflow-stage-item\s*\{(?=[^}]*width:\s*34px;)(?=[^}]*height:\s*32px;)(?=[^}]*grid-template-columns:\s*1fr;)[^}]*\}/s,
+    );
+    expect(themeCss).toMatch(
+      /\.hybrid-workbench-layout\.outline-collapsed\s+\.workflow-stage-body,\s*\.hybrid-workbench-layout\.outline-collapsed\s+\.workflow-stage-flag\s*\{[^}]*display:\s*none;[^}]*\}/s,
+    );
+    expect(themeCss).toMatch(
+      /\.hybrid-workbench-outline-rail\s*\{(?=[^}]*display:\s*grid;)(?=[^}]*place-items:\s*start\s+center;)[^}]*\}/s,
+    );
+  });
+
+  it("keeps the taskbar primary action as a stable block before graph operations", () => {
+    expect(themeCss).toMatch(
+      /\.workflow-taskbar-actions\s*\{(?=[^}]*display:\s*grid;)(?=[^}]*grid-template-columns:\s*minmax\(156px,\s*auto\)\s+auto\s+auto;)(?=[^}]*justify-content:\s*end;)[^}]*\}/s,
+    );
+    expect(themeCss).toMatch(
+      /\.taskbar-group-primary\s*\{(?=[^}]*min-width:\s*156px;)(?=[^}]*justify-self:\s*end;)[^}]*\}/s,
+    );
+    expect(themeCss).toMatch(
+      /\.taskbar-primary-action\s*\{(?=[^}]*min-width:\s*156px;)(?=[^}]*justify-items:\s*stretch;)[^}]*\}/s,
+    );
+    expect(themeCss).toMatch(
+      /\.taskbar-primary-action\s+\.primary-button\s*\{[^}]*width:\s*100%;[^}]*\}/s,
+    );
+  });
+
   it("keeps the assistant workbench to a single shell with card-level content", () => {
     const removedShellClass = ["workbench", "shell"].join("-");
     expect(themeCss).toMatch(
@@ -347,9 +380,9 @@ describe("hybrid visual contract", () => {
     expect(themeCss).toMatch(
       /\.hybrid-workbench-layout\s*\{[^}]*grid-template-columns:\s*var\(--outline-width\)\s+minmax\(0,\s*1fr\)\s+var\(--workbench-width\);/s,
     );
-    // P1: 窄屏下 actions 允许换行（旧 grid-column:1/-1 已移除）
+    // P1: 窄桌面仍保留主操作列，工具组在右侧列内自然换行。
     expect(themeCss).toMatch(
-      /@media\s*\(max-width:\s*1440px\)\s+and\s+\(min-width:\s*1061px\)\s*\{[\s\S]*?\.workflow-taskbar-actions\s*\{[\s\S]*?flex-wrap:\s*wrap;[\s\S]*?\.hybrid-workbench-layout\s*\{[\s\S]*?--outline-width:\s*300px;[\s\S]*?--workbench-width:\s*420px;/s,
+      /@media\s*\(max-width:\s*1440px\)\s+and\s+\(min-width:\s*1061px\)\s*\{[\s\S]*?\.workflow-taskbar-actions\s*\{[\s\S]*?grid-template-columns:\s*minmax\(156px,\s*auto\)\s+minmax\(0,\s*auto\);[\s\S]*?\.hybrid-workbench-layout\s*\{[\s\S]*?--outline-width:\s*300px;[\s\S]*?--workbench-width:\s*420px;/s,
     );
   });
 

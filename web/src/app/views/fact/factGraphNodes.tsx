@@ -25,6 +25,7 @@ import {
   draftCompareMarkerColor,
 } from "../draftComparePresentation";
 
+/** React Flow 中事实图节点携带的运行时数据：原始节点模型、选中/折叠/草稿比对等展示态，以及溢出展开、尺寸上报等回调。 */
 interface FactGraphNodeData extends Record<string, unknown> {
   node: LinkGraphNode;
   selected?: boolean;
@@ -37,6 +38,7 @@ interface FactGraphNodeData extends Record<string, unknown> {
   onMeasure?: (size: NodeMeasuredSize) => void;
 }
 
+/** 构造事实图节点列表时所需的全部上下文：原始节点、各类展示状态、折叠信息以及尺寸注册表等。 */
 interface BuildFactGraphNodesOptions {
   nodes: LinkGraphNode[];
   selectedNodeId: string | null;
@@ -50,14 +52,18 @@ interface BuildFactGraphNodesOptions {
   nodeSizeRegistry: NodeSizeRegistry;
 }
 
+/** 构造事实图边列表所需上下文：原始边集合以及可选的草稿比对状态，用于在比对模式下高亮差异。 */
 interface BuildFactGraphEdgesOptions {
   edges: LinkGraphEdge[];
   draftCompareEdgeStatuses?: Record<string, DraftCompareStatus>;
 }
 
+// React Flow 中事实图节点的具体类型，绑定 data 形状与自定义节点 type 名。
 type FactGraphFlowNode = Node<FactGraphNodeData, "factGraphNode">;
+// 上述节点类型对应的 React Flow 组件 props 类型。
 type FactGraphFlowNodeProps = NodeProps<FactGraphFlowNode>;
 
+// 节点上连线手柄的基础样式：默认透明，仅在可连线时显示半透明圆形热区。
 const FACT_GRAPH_HANDLE_STYLE_BASE: CSSProperties = {
   width: 16,
   height: 16,
@@ -68,6 +74,7 @@ const FACT_GRAPH_HANDLE_STYLE_BASE: CSSProperties = {
   transition: "opacity 0.15s ease",
 };
 
+/** 根据当前是否允许连线，返回连线手柄的可见性与指针交互样式。 */
 function factGraphHandleStyle(isConnectable: boolean): CSSProperties {
   return {
     ...FACT_GRAPH_HANDLE_STYLE_BASE,
@@ -77,6 +84,11 @@ function factGraphHandleStyle(isConnectable: boolean): CSSProperties {
   };
 }
 
+/**
+ * 事实图中单个节点的 React 渲染组件：
+ * 渲染左右两侧的连线手柄与统一的节点卡片，
+ * 并通过签名比对驱动节点内部状态的稳定更新，避免无谓重渲染。
+ */
 function FactGraphReactNode({ id, data, selected, isConnectable }: FactGraphFlowNodeProps) {
   const handleStyle = factGraphHandleStyle(isConnectable);
   const appSelected = data.selected === true || selected;
@@ -107,10 +119,15 @@ function FactGraphReactNode({ id, data, selected, isConnectable }: FactGraphFlow
   );
 }
 
+/** React Flow 识别的节点类型注册表：把字符串 type "factGraphNode" 映射到上面的渲染组件。 */
 export const FACT_GRAPH_NODE_TYPES: NodeTypes = {
   factGraphNode: FactGraphReactNode,
 };
 
+/**
+ * 根据节点的展示角色（锚点/上游/下游）以及流程类型（作用域/动作/决策），
+ * 生成差异化的边框、背景渐变和阴影样式，让用户一眼区分节点所处的语义角色。
+ */
 function factGraphNodeStyle(node: LinkGraphNode) {
   const presentationRole = node.metadata?.["presentation.role"];
   const isFlowScope = node.type === "FLOW_SCOPE";
@@ -174,6 +191,7 @@ function factGraphNodeStyle(node: LinkGraphNode) {
   };
 }
 
+/** 决定边上显示的文字：优先用边自带标签，控制流/调用/包含类边不重复显示类型名，其余补上类型中文文案。 */
 function factGraphEdgeLabel(edge: LinkGraphEdge): string | undefined {
   if (edge.label?.trim()) {
     return edge.label.trim();
@@ -184,6 +202,7 @@ function factGraphEdgeLabel(edge: LinkGraphEdge): string | undefined {
   return edgeTypeLabel(edge.type);
 }
 
+/** 把边类型映射为 CSS 类名，让样式表能按边类型应用不同的线条颜色与虚线效果。 */
 function factGraphEdgeClassName(edge: LinkGraphEdge): string {
   switch (edge.type) {
     case "CONTAINS_FLOW":
@@ -197,6 +216,7 @@ function factGraphEdgeClassName(edge: LinkGraphEdge): string {
   }
 }
 
+/** 按边类型给出线条颜色、粗细、透明度等内联样式，区分调用、控制流、包含等语义。 */
 function factGraphEdgeStyle(edge: LinkGraphEdge) {
   switch (edge.type) {
     case "CONTAINS_FLOW":
@@ -227,6 +247,11 @@ function factGraphEdgeStyle(edge: LinkGraphEdge) {
   }
 }
 
+/**
+ * 把领域节点模型批量转换为 React Flow 节点：
+ * 计算高亮类名、选中态、是否可拖拽（按投影权限判定），
+ * 并把折叠/草稿比对/溢出回调等运行时数据塞入 node.data。
+ */
 export function buildFactGraphNodes({
   nodes,
   selectedNodeId,
@@ -270,6 +295,11 @@ export function buildFactGraphNodes({
   }));
 }
 
+/**
+ * 把领域边模型批量转换为 React Flow 边：
+ * 设置标签、走线类型、CSS 类名、内联样式与箭头颜色，
+ * 并叠加草稿比对模式的差异样式，使新增/删除/变更的边在比对视图中突出显示。
+ */
 export function buildFactGraphEdges({
   edges,
   draftCompareEdgeStatuses = {},

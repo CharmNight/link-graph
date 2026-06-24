@@ -2,6 +2,9 @@ package com.charmnight.linkgraph.semantic.subject
 
 /**
  * 表示源码中的一段范围。
+ *
+ * 同时保存偏移量与行号（行号可选），便于不同场景使用：
+ * 偏移量用于精确插入与替换，行号用于面向用户的展示与跳转。
  */
 data class SourceRange(
     /** 保存起始偏移量。 */

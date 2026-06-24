@@ -3,34 +3,68 @@ package com.charmnight.linkgraph.review.git
 import java.nio.file.Files
 import java.nio.file.Path
 
+/**
+ * 描述 Git 文件级变更类型。
+ */
 enum class GitChangeKind {
+    /** 表示新增文件。 */
     ADDED,
+    /** 表示已修改文件。 */
     MODIFIED,
+    /** 表示已删除文件。 */
     DELETED,
+    /** 表示重命名文件。 */
     RENAMED,
+    /** 表示复制文件。 */
     COPIED,
 }
 
+/**
+ * 描述一个 Git 代码块（hunk），包含新旧行号区间与具体行内容。
+ */
 data class GitHunk(
+    /** 保存旧文件中代码块起始行号，新增块时为 null。 */
     val oldStart: Int?,
+    /** 保存旧文件中代码块行数。 */
     val oldLineCount: Int?,
+    /** 保存新文件中代码块起始行号，删除块时为 null。 */
     val newStart: Int?,
+    /** 保存新文件中代码块行数。 */
     val newLineCount: Int?,
+    /** 保存原始 hunk 头文本，例如 `@@ -1,3 +1,4 @@`。 */
     val header: String,
+    /** 保存 hunk 内的全部行（含 `+`/`-`/空格前缀）。 */
     val lines: List<String> = emptyList(),
 )
 
+/**
+ * 描述一个 Git 变更文件，包含新旧路径、变更类型与代码块列表。
+ */
 data class GitChangedFile(
+    /** 保存旧路径，删除/重命名前路径。 */
     val oldPath: String?,
+    /** 保存新路径，新增/重命名后路径。 */
     val newPath: String?,
+    /** 保存文件级变更类型。 */
     val changeKind: GitChangeKind,
+    /** 保存该文件包含的代码块列表。 */
     val hunks: List<GitHunk>,
+    /** 保存 rename/copy 时 Git 给出的相似度百分比。 */
     val similarity: Int? = null,
 )
 
+/**
+ * 通过 `git` 命令行获取变更集，并把 unified diff 解析为结构化 [GitChangedFile]。
+ *
+ * 同时覆盖工作区改动、暂存区改动与未跟踪文件，便于上层按统一格式处理。
+ */
 open class GitChangeSetProvider(
+    /** 保存项目根路径，用于定位 Git 仓库。 */
     private val projectBasePath: String?,
 ) {
+    /**
+     * 返回工作区完整变更集，包含 staged、unstaged 与未跟踪文件。
+     */
     open fun workingTreeChangeSet(selectedPaths: List<String> = emptyList()): List<GitChangedFile> =
         (
             unifiedDiff(selectedPaths)
@@ -40,12 +74,18 @@ open class GitChangeSetProvider(
             )
             .mergeChangedFiles()
 
+    /**
+     * 返回暂存区变更集。
+     */
     fun stagedChangeSet(selectedPaths: List<String> = emptyList()): List<GitChangedFile> =
         stagedUnifiedDiff(selectedPaths)
             ?.let(::parseUnifiedDiff)
             .orEmpty()
             .mergeChangedFiles()
 
+    /**
+     * 合并未暂存与已暂存的 unified diff 文本，得到完整 diff。
+     */
     fun unifiedDiff(selectedPaths: List<String> = emptyList()): String? {
         return listOfNotNull(
             unstagedUnifiedDiff(selectedPaths),
@@ -56,12 +96,21 @@ open class GitChangeSetProvider(
             .takeIf(String::isNotBlank)
     }
 
+    /**
+     * 返回暂存区的 unified diff 文本。
+     */
     fun stagedUnifiedDiff(selectedPaths: List<String> = emptyList()): String? =
         diff(selectedPaths, staged = true)
 
+    /**
+     * 返回工作区（未暂存）的 unified diff 文本。
+     */
     private fun unstagedUnifiedDiff(selectedPaths: List<String> = emptyList()): String? =
         diff(selectedPaths, staged = false)
 
+    /**
+     * 把未跟踪文件构造成“新增”型变更集，使它们能与 diff 文件一起被处理。
+     */
     private fun untrackedChangeSet(selectedPaths: List<String>): List<GitChangedFile> {
         val basePath = projectBasePath?.takeIf(String::isNotBlank) ?: return emptyList()
         val command = buildList {
@@ -82,6 +131,7 @@ open class GitChangeSetProvider(
             .filter(String::isNotBlank)
             .mapNotNull { relativePath ->
                 val file = base.resolve(relativePath).normalize()
+                // 跳过越界或非普通文件，避免误读目录或越界文件。
                 if (!file.startsWith(base) || !Files.isRegularFile(file)) {
                     return@mapNotNull null
                 }
@@ -91,6 +141,7 @@ open class GitChangeSetProvider(
                     oldPath = null,
                     newPath = relativePath,
                     changeKind = GitChangeKind.ADDED,
+                    // 整个文件视为一个 hunk，按 unified diff 风格构造行内容。
                     hunks = listOf(
                         GitHunk(
                             oldStart = null,
@@ -106,6 +157,11 @@ open class GitChangeSetProvider(
             .toList()
     }
 
+    /**
+     * 执行 `git diff` 并返回 unified diff 文本。
+     *
+     * 启用 rename/copy 检测，并放大上下文行数以提升后续符号命中率。
+     */
     private fun diff(
         selectedPaths: List<String>,
         staged: Boolean,
@@ -129,12 +185,18 @@ open class GitChangeSetProvider(
             ?.takeIf { text -> text.isNotBlank() && text.contains("diff --git") }
     }
 
+    /**
+     * 读取 HEAD 版本中指定路径的文件内容，供基线符号提取使用。
+     */
     open fun readHeadFile(path: String): String? {
         val basePath = projectBasePath?.takeIf(String::isNotBlank) ?: return null
         return runGit(basePath, listOf("git", "show", "HEAD:$path"))
             ?.takeIf(String::isNotBlank)
     }
 
+    /**
+     * 在项目根目录下执行 git 命令，仅当退出码为 0 时返回输出文本。
+     */
     private fun runGit(
         basePath: String,
         command: List<String>,
@@ -150,6 +212,12 @@ open class GitChangeSetProvider(
         }.getOrNull()
 
     companion object {
+        /**
+         * 解析 unified diff 文本为 [GitChangedFile] 列表。
+         *
+         * 通过逐行扫描识别 diff 头、rename/copy 标记、文件路径以及 hunk，
+         * 把流式状态汇总为可变结构后再转为不可变结果。
+         */
         fun parseUnifiedDiff(text: String): List<GitChangedFile> {
             if (!text.contains("diff --git")) {
                 return emptyList()
@@ -160,6 +228,7 @@ open class GitChangeSetProvider(
             text.lineSequence().forEach { line ->
                 when {
                     line.startsWith("diff --git ") -> {
+                        // 进入新文件 diff 段，先把上一段未提交的 hunk 与文件提交。
                         currentHunk?.let { hunk -> current?.hunks?.add(hunk.toImmutable()) }
                         current?.let { files += it }
                         currentHunk = null
@@ -201,17 +270,22 @@ open class GitChangeSetProvider(
                         current?.newPath = line.removePrefix("+++ ").toDiffPath()
                     }
                     line.startsWith("@@") -> {
+                        // 遇到新 hunk 时先把上一个 hunk 提交，再开始新的 hunk 累积行内容。
                         currentHunk?.let { hunk -> current?.hunks?.add(hunk.toImmutable()) }
                         currentHunk = parseHunkHeader(line)
                     }
                     currentHunk != null -> currentHunk?.lines?.add(line)
                 }
             }
+            // 文本结束后把最后一段 hunk 与文件提交。
             currentHunk?.let { hunk -> current?.hunks?.add(hunk.toImmutable()) }
             current?.let { files += it }
             return files.map { file -> file.toImmutable() }
         }
 
+        /**
+         * 解析 `@@ -start,count +start,count @@` 形式的 hunk 头。
+         */
         private fun parseHunkHeader(header: String): MutableGitHunk {
             val match = HUNK_PATTERN.find(header)
             return MutableGitHunk(
@@ -223,6 +297,9 @@ open class GitChangeSetProvider(
             )
         }
 
+        /**
+         * 把 diff header 中的路径段还原为真实路径，去掉 `a/`、`b/` 前缀并忽略 `/dev/null`。
+         */
         private fun String.toDiffPath(): String? =
             trim()
                 .removePrefix("a/")
@@ -230,10 +307,14 @@ open class GitChangeSetProvider(
                 .takeUnless { it == "/dev/null" }
                 ?.takeIf(String::isNotBlank)
 
+        /** 匹配 unified diff 中的 `@@ -start,count +start,count @@` 行。 */
         private val HUNK_PATTERN = Regex("""@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@""")
     }
 }
 
+/**
+ * 把同名文件的多个变更项合并为单个变更文件，便于上层统一处理。
+ */
 private fun List<GitChangedFile>.mergeChangedFiles(): List<GitChangedFile> =
     groupBy { file ->
         listOf(
@@ -249,6 +330,9 @@ private fun List<GitChangedFile>.mergeChangedFiles(): List<GitChangedFile> =
             first.copy(hunks = sameFile.flatMap(GitChangedFile::hunks))
         }
 
+/**
+ * 解析过程中用于累积单个文件状态的临时可变结构。
+ */
 private data class MutableGitChangedFile(
     var oldPath: String?,
     var newPath: String?,
@@ -256,6 +340,9 @@ private data class MutableGitChangedFile(
     var similarity: Int? = null,
     val hunks: MutableList<GitHunk> = mutableListOf(),
 ) {
+    /**
+     * 转换为不可变 [GitChangedFile]，并在没有显式变更类型时按路径推断类型。
+     */
     fun toImmutable(): GitChangedFile =
         GitChangedFile(
             oldPath = oldPath,
@@ -272,6 +359,9 @@ private data class MutableGitChangedFile(
         )
 }
 
+/**
+ * 解析过程中用于累积单个 hunk 状态的临时可变结构。
+ */
 private data class MutableGitHunk(
     val oldStart: Int?,
     val oldLineCount: Int?,
@@ -280,6 +370,9 @@ private data class MutableGitHunk(
     val header: String,
     val lines: MutableList<String> = mutableListOf(),
 ) {
+    /**
+     * 转换为不可变 [GitHunk]。
+     */
     fun toImmutable(): GitHunk =
         GitHunk(
             oldStart = oldStart,

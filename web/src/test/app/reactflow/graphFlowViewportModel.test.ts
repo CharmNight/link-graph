@@ -10,7 +10,7 @@ import {
 } from "../../../app/reactflow/graphFlowViewportModel";
 import type { LinkGraphEdge, LinkGraphNode } from "../../../app/types";
 
-function node(id: string, position?: { x: number; y: number }, type = "CLASS"): LinkGraphNode {
+function node(id: string, position?: { x: number; y: number }, type: LinkGraphNode["type"] = "CLASS"): LinkGraphNode {
   return {
     id,
     type,

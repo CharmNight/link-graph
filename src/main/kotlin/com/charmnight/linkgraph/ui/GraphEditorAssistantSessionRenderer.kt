@@ -19,6 +19,7 @@ internal object GraphEditorAssistantSessionRenderer {
             "draftSource" to state.composer.draftSource,
             "actionId" to state.composer.actionId?.name,
             "sceneId" to state.composer.sceneId,
+            "qaMode" to state.composer.qaMode.name,
         ),
         "nextResultSequence" to state.nextResultSequence,
         "turns" to state.turns.map { turn ->

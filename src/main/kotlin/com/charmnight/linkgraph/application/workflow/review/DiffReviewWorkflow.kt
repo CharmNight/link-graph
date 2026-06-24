@@ -23,17 +23,33 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.util.concurrency.AppExecutorUtil
 
+/**
+ * 差异复核工作流：在"代码事实图"与"设计基线图"差异基础上，调用 LLM 生成可预览的修订草稿。
+ *
+ * 内部串联了上下文构建、证据包收集、流式预览、超时与失败反馈等完整生命周期，
+ * 通过事件总线向 UI 同步状态。
+ */
 internal class DiffReviewWorkflow(
+    /** 当前 IntelliJ 项目句柄，用于访问架构索引、判断生命周期。 */
     private val project: Project,
+    /** 提供当前编辑器快照（事实图、设计基线、差异、选中项等）的端口。 */
     private val snapshotProvider: EditorSnapshotProvider,
+    /** 应用事件出口，向 UI 广播差异分析过程中的状态变化。 */
     private val eventSink: GraphEditorApplicationEventSink,
+    /** 调用 LLM 进行差异分析并返回草稿补丁的服务。 */
     private val graphDiffPatchService: GraphDiffPatchService,
+    /** 在缺失差异时计算事实图与设计基线之间的差异。 */
     private val graphDiffer: GraphDiffer,
+    /** 延迟获取插件设置（超时、远程开关等），便于运行时读取最新值。 */
     private val settingsProvider: () -> LinkGraphSettingsState,
+    /** 复用通用的异步请求生命周期管理（编号、超时、完成回调等）。 */
     private val asyncRequestLifecycle: AsyncRequestLifecycleSupport,
+    /** 共享日志器，输出警告与错误用于排查差异分析问题。 */
     private val logger: Logger,
+    /** 协助从架构索引中构建差异复核所需的证据包。 */
     private val reviewEvidenceSupport: ReviewEvidenceWorkflowSupport = ReviewEvidenceWorkflowSupport(project),
 ) {
+    /** 异步发起差异分析：编排请求编号、状态展示、上下文构建、后台执行与回调分发。 */
     fun requestDiffReviewAsync(
         question: String,
         selectedDiffItemIds: List<String> = emptyList(),
@@ -146,6 +162,7 @@ internal class DiffReviewWorkflow(
         }
     }
 
+    /** 在后台线程上实际调用 LLM 进行差异分析，并在结果返回后转换为应用事件。 */
     private fun runDiffReviewBackground(
         requestId: Long,
         presentation: com.charmnight.linkgraph.application.request.AsyncRequestLifecycleResult,
@@ -222,6 +239,7 @@ internal class DiffReviewWorkflow(
         )
     }
 
+    /** 从当前快照中收集事实图、设计基线、差异以及证据包，构造提交给 LLM 的差异分析上下文。 */
     private fun buildDiffReviewContext(selectedDiffItemIds: List<String>): DiffReviewContextBuildResult {
         val snapshot = snapshotProvider.snapshot()
         val factGraph = snapshot.semanticFactGraph.takeIf { it.nodes.isNotEmpty() || it.edges.isNotEmpty() }
@@ -252,6 +270,7 @@ internal class DiffReviewWorkflow(
         )
     }
 
+    /** 将证据包压缩为 LLM 可读的多行文本摘要，包含变更符号、影响范围、上下游调用、动态关系等。 */
     private fun summarizeReviewEvidenceBundle(bundle: ReviewEvidenceBundle): String {
         val changed = bundle.changedSymbols.joinToString("\n") { symbol ->
             "- changed ${symbol.qualifiedName} | file=${symbol.filePath ?: "unknown"} | lines=${symbol.startLine ?: "?"}-${symbol.endLine ?: "?"} | hunk=${symbol.hunk?.header ?: "file"} | baselineOnly=${symbol.baselineOnly} | unavailable=${symbol.unavailableReason ?: "none"}"
@@ -302,11 +321,14 @@ internal class DiffReviewWorkflow(
         """.trimIndent()
     }
 
+    /** 统一的事件发送出口，封装对事件总线的访问。 */
     private fun emit(event: GraphEditorApplicationEvent) = eventSink.emit(event)
 
+    /** 广播差异分析请求已开始的事件，携带初始状态和提示文案。 */
     private fun emitReviewRequestStarted(presentation: ReviewRequestStartedResult) =
         emit(GraphEditorApplicationEvent.ReviewRequestStarted(presentation))
 
+    /** 在流式输出过程中持续推送增量预览文本，UI 据此实时更新。 */
     private fun emitReviewStreamingPreview(
         scene: ReviewRequestScene,
         requestId: Long,
@@ -321,16 +343,22 @@ internal class DiffReviewWorkflow(
         ),
     )
 
+    /** 差异分析成功完成时广播结果，包含生成的修订草稿和成功/警告反馈。 */
     private fun emitDiffReviewCompleted(presentation: DiffReviewCompletedResult) =
         emit(GraphEditorApplicationEvent.DiffReviewCompleted(presentation))
 
+    /** 差异分析失败或超时时广播错误信息，触发 UI 错误展示。 */
     private fun emitDiffReviewFailed(presentation: DiffReviewFailedResult) =
         emit(GraphEditorApplicationEvent.DiffReviewFailed(presentation))
 }
 
+/** 差异分析上下文构建过程中的中间状态：被取消、缺少前置输入、或成功就绪。 */
 private sealed interface DiffReviewContextBuildResult {
+    /** 项目已被销毁或请求被显式取消。 */
     data object Cancelled : DiffReviewContextBuildResult
+    /** 缺少必要前置条件（如事实图、设计基线），向用户给出原因。 */
     data class MissingInputs(val message: String) : DiffReviewContextBuildResult
+    /** 上下文构建成功，已包含可直接交给 LLM 的差异分析输入和附带告警。 */
     data class Ready(
         val context: GraphDiffContext,
         val warnings: List<String> = emptyList(),

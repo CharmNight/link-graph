@@ -5,10 +5,15 @@ import { canNavigateToSource } from "../sourceNavigation";
 import type { LinkGraphNode } from "../types";
 import { Button } from "./Button";
 
+/** 把字符串数组拼接为多行文本（用于 textarea 显示）。 */
 function joinLines(values: string[]): string {
   return values.join("\n");
 }
 
+/**
+ * 把多行/逗号分隔的文本解析回字符串数组。
+ * 同时支持换行与逗号作为分隔符，便于用户输入。
+ */
 function parseLines(value: string): string[] {
   return value
     .split(/[\r\n,]+/)
@@ -16,6 +21,7 @@ function parseLines(value: string): string[] {
     .filter((item) => item.length > 0);
 }
 
+/** 解析元数据中的多行字符串字段；空输入返回空数组。 */
 function parseMetadataLines(value?: string): string[] {
   if (!value) {
     return [];
@@ -26,6 +32,7 @@ function parseMetadataLines(value?: string): string[] {
     .filter((item) => item.length > 0);
 }
 
+/** 把锚点解析状态代码转为面向用户的中文说明。 */
 function anchorResolutionStateLabel(state?: string): string | null {
   switch (state) {
     case "AMBIGUOUS":
@@ -39,6 +46,7 @@ function anchorResolutionStateLabel(state?: string): string | null {
   }
 }
 
+/** 把 flow.kind 元数据转换为可读的作用域种类标签。 */
 function flowScopeKindLabel(kind?: string): string {
   switch (kind) {
     case "LAMBDA":
@@ -58,6 +66,12 @@ function flowScopeKindLabel(kind?: string): string {
   }
 }
 
+/**
+ * 计算节点的"草稿签名"——把节点可编辑字段序列化为 JSON 字符串。
+ *
+ * 用于 useEffect 中判断"用户输入与最新选中节点是否一致"，
+ * 避免选中节点变化时覆盖用户正在编辑的内容。
+ */
 function nodeDraftSignature(node: LinkGraphNode | null | undefined): string {
   if (!node) {
     return "";
@@ -74,6 +88,7 @@ function nodeDraftSignature(node: LinkGraphNode | null | undefined): string {
   });
 }
 
+/** 根据节点类型决定"符号签名"字段的展示标签。 */
 function nodeSourceFieldLabel(node: LinkGraphNode): string {
   if (node.type === "FLOW_SCOPE") {
     return "流程摘要";
@@ -84,6 +99,10 @@ function nodeSourceFieldLabel(node: LinkGraphNode): string {
   return "符号签名";
 }
 
+/**
+ * 只读字段展示组件。
+ * 值为空时不渲染，避免出现空字段。
+ */
 function ReadOnlyField({
   label,
   value,
@@ -104,15 +123,34 @@ function ReadOnlyField({
   );
 }
 
+/** PropertyPanel 组件的入参。 */
 interface PropertyPanelProps {
+  /** 当前选中节点；为 null 时不显示面板。 */
   selectedNode: LinkGraphNode | null;
+  /** 保存节点修改的回调。 */
   onUpdateNode: (node: LinkGraphNode) => void;
+  /** 删除节点的回调。 */
   onDeleteNode: (nodeId: string) => void;
+  /** 删除节点及其子树的回调。 */
   onDeleteNodeSubtree?: (nodeId: string) => void;
+  /** 请求跳转到节点源码的回调。 */
   onRequestSourceNavigation: (nodeId: string) => void;
+  /** 关闭面板的回调。 */
   onClose: () => void;
 }
 
+/**
+ * 节点属性编辑面板。
+ *
+ * 用模态抽屉形态展示选中节点的字段，允许用户编辑标题、输入、输出、注释等可写字段。
+ * 源码位置、签名等只读字段只展示不可编辑，避免用户误改导致状态不一致。
+ *
+ * 交互细节：
+ * - 选中节点切换时自动同步表单（除非用户有未保存修改）；
+ * - 打开后自动聚焦标题输入框；
+ * - 按 Escape 关闭面板；
+ * - 阻止事件冒泡到背景，避免误关闭。
+ */
 export function PropertyPanel({
   selectedNode,
   onUpdateNode,
@@ -121,12 +159,16 @@ export function PropertyPanel({
   onRequestSourceNavigation,
   onClose,
 }: PropertyPanelProps) {
+  // 表单状态：draft 是当前编辑中的节点副本
   const [draft, setDraft] = useState<LinkGraphNode | null>(selectedNode);
+  // 输入/输出用文本形式编辑（textarea），保存时再拆分为数组
   const [inputText, setInputText] = useState(() => joinLines(selectedNode?.inputs ?? []));
   const [outputText, setOutputText] = useState(() => joinLines(selectedNode?.outputs ?? []));
+  // 标题输入的 ref 与 useId，用于自动聚焦与无障碍关联
   const titleId = useId();
   const titleInputRef = useRef<HTMLInputElement | null>(null);
 
+  // 选中节点变化时同步表单；但若用户有未保存修改则保留 draft
   useEffect(() => {
     if (!selectedNode) {
       setDraft(null);
@@ -134,7 +176,9 @@ export function PropertyPanel({
       setOutputText("");
       return;
     }
+    // 通过草稿签名判断"用户是否修改过"
     const draftMatchesSelected = nodeDraftSignature(draft) === nodeDraftSignature(selectedNode);
+    // 同步条件：无 draft、ID 不一致、或 draft 与 selectedNode 完全一致（说明用户未修改）
     if (!draft || draft.id !== selectedNode.id || draftMatchesSelected) {
       setDraft(selectedNode);
       setInputText(joinLines(selectedNode.inputs ?? []));
@@ -142,10 +186,12 @@ export function PropertyPanel({
     }
   }, [selectedNode, draft]);
 
+  // draft 变化时（特别是 ID 变化）自动聚焦标题输入
   useEffect(() => {
     if (!draft) {
       return undefined;
     }
+    // 用 setTimeout 让聚焦在渲染后发生，避免与 React 的 commit 阶段冲突
     const timerId = window.setTimeout(() => {
       titleInputRef.current?.focus();
       titleInputRef.current?.select();
@@ -153,6 +199,7 @@ export function PropertyPanel({
     return () => window.clearTimeout(timerId);
   }, [draft?.id]);
 
+  // 全局 Escape 关闭面板
   useEffect(() => {
     if (!draft) {
       return undefined;
@@ -166,25 +213,31 @@ export function PropertyPanel({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [draft, onClose]);
 
+  // 无草稿（未选中节点）：不渲染
   if (!draft) {
     return null;
   }
 
+  /** 阻止事件冒泡；用于面板内部事件不冒泡到背景层。 */
   const stopBoundaryPropagation = (event: SyntheticEvent) => {
     event.stopPropagation();
   };
 
+  /** 吞掉背景层的滚轮事件，避免面板出现时画布跟着滚动。 */
   const swallowBackdropWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
   };
 
   const canOpenSource = canNavigateToSource(draft);
+  // 缺少 location 但仍可跳转（用签名兜底）
   const usesSignatureFallback = !draft.location?.trim() && canOpenSource;
+  // 锚点解析相关元数据
   const anchorResolutionState = draft.metadata?.["linkGraph.anchorResolutionState"];
   const anchorResolutionHint = draft.metadata?.["linkGraph.anchorResolutionHint"]?.trim() ?? "";
   const anchorCandidates = parseMetadataLines(draft.metadata?.["linkGraph.anchorCandidates"]);
   const anchorResolutionStateText = anchorResolutionStateLabel(anchorResolutionState);
+  // 流程相关元数据
   const isFlowScope = draft.type === "FLOW_SCOPE";
   const isFlowAction = draft.type === "FLOW_ACTION";
   const flowKindLabel = flowScopeKindLabel(draft.metadata?.["flow.kind"]);
@@ -206,6 +259,7 @@ export function PropertyPanel({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        // 点击面板内部不关闭（避免误触）
         onClick={(event) => event.stopPropagation()}
         onPointerDownCapture={stopBoundaryPropagation}
         onWheelCapture={stopBoundaryPropagation}
@@ -222,6 +276,7 @@ export function PropertyPanel({
         </div>
 
         <div className="modal-body">
+          {/* 元数据 chip 行：类型 / 代码状态 / 证据 */}
           <div className="drawer-meta">
             <span className="status-pill">类型：{nodeTypeLabel(draft.type)}</span>
             <span className="status-pill">代码状态：{bindingStatusLabel(draft.bindingStatus)}</span>
@@ -238,14 +293,17 @@ export function PropertyPanel({
             />
           </label>
 
+          {/* 源码锚点段：只读 */}
           <section className="panel-section" aria-label="源码锚点">
             <p className="eyebrow">源码锚点</p>
             <ReadOnlyField label="源码位置" value={draft.location} code />
             <ReadOnlyField label={sourceFieldLabel} value={draft.signature} code />
           </section>
 
+          {/* 不可跳转且无签名兜底时给出说明 */}
           {!canOpenSource && !usesSignatureFallback ? <p className="muted">该节点当前没有可跳转的源码位置。</p> : null}
 
+          {/* 锚点解析提示：候选方法、解析状态等 */}
           {anchorResolutionStateText || anchorResolutionHint || anchorCandidates.length > 0 ? (
             <section className="panel-section" aria-label="解析提示">
               {anchorResolutionStateText ? <p className="muted">{anchorResolutionStateText}</p> : null}
@@ -265,6 +323,7 @@ export function PropertyPanel({
             </section>
           ) : null}
 
+          {/* 流程作用域段 */}
           {isFlowScope ? (
             <section className="panel-section" aria-label="流程作用域">
               <div className="form-stack">
@@ -274,6 +333,7 @@ export function PropertyPanel({
             </section>
           ) : null}
 
+          {/* 动作节点段 */}
           {isFlowAction ? (
             <section className="panel-section" aria-label="动作节点">
               {actionAnchorMethod ? (
@@ -293,6 +353,7 @@ export function PropertyPanel({
             </section>
           ) : null}
 
+          {/* 输入/输出：流程节点不显示（流程节点没有可编辑的输入/输出） */}
           {!isFlowScope && !isFlowAction ? (
             <label>
               输入
@@ -323,6 +384,7 @@ export function PropertyPanel({
             </label>
           ) : null}
 
+          {/* 注释：所有节点都可编辑 */}
           <label>
             注释
             <textarea

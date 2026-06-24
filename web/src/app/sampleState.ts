@@ -23,9 +23,12 @@ import type {
   SourceNavigationState,
 } from "./types";
 
+/** 默认的分析展示模式（流程图）。 */
 export const DEFAULT_ANALYSIS_DISPLAY_MODE: AnalysisDisplayMode = "FLOWCHART";
+/** 默认场景 ID（工作台流程图场景）。 */
 export const DEFAULT_SCENE_ID: LinkGraphSceneId = "WORKSPACE_FLOWCHART";
 
+/** 异步请求空闲态：所有字段归零，未在执行任何请求。 */
 export const IDLE_REQUEST_STATE: AsyncRequestState = {
   phase: "IDLE",
   requestId: null,
@@ -44,6 +47,7 @@ export const IDLE_REQUEST_STATE: AsyncRequestState = {
   promptPreviewAvailable: false,
 };
 
+/** 源码导航空闲态：当前未触发任何源码跳转。 */
 export const IDLE_SOURCE_NAVIGATION_STATE: SourceNavigationState = {
   phase: "IDLE",
   nodeId: null,
@@ -54,17 +58,20 @@ export const IDLE_SOURCE_NAVIGATION_STATE: SourceNavigationState = {
   errorMessage: null,
 };
 
+/** QA 请求恢复态初始值：无上次提交，也无上次失败记录。 */
 export const EMPTY_QA_REQUEST_RECOVERY_STATE: QaRequestRecoveryState = {
   lastSubmittedRequest: null,
   lastFailedRequest: null,
 };
 
+/** 索引图（架构图 / 类图 / 评审图）请求状态初始值：均为空闲态。 */
 const DEFAULT_INDEXED_GRAPH_REQUEST_STATES = {
   ARCHITECTURE: IDLE_REQUEST_STATE,
   CLASS_DIAGRAM: IDLE_REQUEST_STATE,
   REVIEW: IDLE_REQUEST_STATE,
 };
 
+/** 默认的助手会话状态：默认意图为代码解释，未锁定上下文，turns 为空。 */
 const DEFAULT_ASSISTANT_SESSION_STATE: AssistantSessionState = {
   sessionId: "assistant-session",
   activeIntent: "EXPLAIN_CODE",
@@ -87,17 +94,21 @@ const DEFAULT_ASSISTANT_SESSION_STATE: AssistantSessionState = {
   turns: [],
 };
 
+/** 助手结果存储空对象：无任何已生成的结果。 */
 const EMPTY_ASSISTANT_RESULT_STORE: AssistantResultStore = {};
 
+/** 空图文档：节点和边均为空。 */
 const EMPTY_DOCUMENT: LinkGraphDocument = {
   nodes: [],
   edges: [],
 };
 
+/** 空布局状态：positions 为空对象。 */
 const EMPTY_LAYOUT_STATE: LinkGraphLayoutState = {
   positions: {},
 };
 
+/** 示例同步预览项：演示两步建议（生成 DTO、补齐服务调用）。 */
 function sampleSyncPreview() {
   return [
     {
@@ -115,6 +126,7 @@ function sampleSyncPreview() {
   ];
 }
 
+/** 示例 Mermaid 问题列表：演示一个语义类问题（方法节点缺少 signature）。 */
 function sampleMermaidIssues() {
   return [
     {
@@ -127,6 +139,7 @@ function sampleMermaidIssues() {
   ];
 }
 
+/** 构造一个场景状态（包含选中节点、锚点、布局状态等）。 */
 function createSceneState(
   selectedNodeId: string | null = null,
   anchorNodeId: string | null = selectedNodeId,
@@ -141,6 +154,7 @@ function createSceneState(
   };
 }
 
+/** 构造所有场景的默认状态表（6 个工作台场景 + 1 个 DIFF 场景）。 */
 function createDefaultSceneStates(
   selectedNodeId: string | null = null,
   layoutState: LinkGraphLayoutState = EMPTY_LAYOUT_STATE,
@@ -156,6 +170,7 @@ function createDefaultSceneStates(
   };
 }
 
+/** 解析锚点节点 ID：优先使用 preferredNodeId（若存在），否则取首个 METHOD 节点，最后兜底到首节点。 */
 function resolveAnchorNodeId(
   nodes: LinkGraphNode[],
   preferredNodeId?: string | null,
@@ -166,6 +181,7 @@ function resolveAnchorNodeId(
   return nodes.find((node) => node.type === "METHOD")?.id ?? nodes[0]?.id ?? null;
 }
 
+/** 派生事实图的摘要：锚点标题、可见/全量节点数、隐藏节点/边数、是否截断。 */
 function deriveFactGraphSummary(
   visibleGraph: LinkGraphDocument,
   fullGraph: LinkGraphDocument,
@@ -184,6 +200,7 @@ function deriveFactGraphSummary(
   };
 }
 
+/** 派生流程图摘要：节点/分支/异常路径数、合成边/合成入口边数、不完整标记统计等。 */
 function deriveFlowchartSummary(
   visibleGraph: LinkGraphDocument,
   fullGraph: LinkGraphDocument = visibleGraph,
@@ -212,6 +229,7 @@ function deriveFlowchartSummary(
   };
 }
 
+/** 计算"样本专用"的隐藏节点/边数：全量图中存在但可见图中不存在的节点/边数量。 */
 function deriveSampleOnlyHiddenCounts(
   visibleGraph: LinkGraphDocument,
   fullGraph: LinkGraphDocument,
@@ -230,6 +248,7 @@ function deriveSampleOnlyHiddenCounts(
   };
 }
 
+/** 派生资源关系图摘要：可见节点/关系/资源数、回退原因、泳道分布。 */
 function deriveResourceRelationSummary(visibleGraph: LinkGraphDocument) {
   const resourceCount = visibleGraph.nodes.filter(isResourceRelationNode).length;
   return {
@@ -249,12 +268,14 @@ function deriveResourceRelationSummary(visibleGraph: LinkGraphDocument) {
   };
 }
 
+/** 判断节点是否属于资源关系节点（带泳道元数据 / 类型含 RESOURCE / 是常见资源类型）。 */
 function isResourceRelationNode(node: LinkGraphNode): boolean {
   return node.metadata?.["resource.lane"] != null ||
     node.type.includes("RESOURCE") ||
     ["SQL", "HTTP_ENDPOINT", "MQ_TOPIC", "CONFIG_ITEM"].includes(node.type);
 }
 
+/** 派生架构图摘要：模块/包/服务/组件/资源/层/库/JDK 数量及关系数等。 */
 function deriveArchitectureGraphSummary(visibleGraph: LinkGraphDocument) {
   return {
     moduleCount: visibleGraph.nodes.filter((node) => node.type === "MODULE").length,
@@ -272,6 +293,7 @@ function deriveArchitectureGraphSummary(visibleGraph: LinkGraphDocument) {
   };
 }
 
+/** 派生类图摘要：类/字段/接口/枚举/注解/record/object 数量及关系数等。 */
 function deriveClassDiagramSummary(visibleGraph: LinkGraphDocument) {
   return {
     classCount: visibleGraph.nodes.filter((node) => node.type === "CLASS").length,
@@ -302,6 +324,7 @@ function deriveClassDiagramSummary(visibleGraph: LinkGraphDocument) {
   };
 }
 
+/** 从方法 signature 中提取包名（取最后一个点之前的部分）。 */
 function packageFromSignature(signature?: string | null): string | null {
   if (!signature) {
     return null;
@@ -311,6 +334,7 @@ function packageFromSignature(signature?: string | null): string | null {
   return index > 0 ? owner.slice(0, index) : null;
 }
 
+/** 派生评审图摘要：变更符号/上游/下游/相关测试数量、受影响包/模块数等。 */
 function deriveReviewGraphSummary(visibleGraph: LinkGraphDocument) {
   return {
     changedSymbolCount: visibleGraph.nodes.filter((node) => node.metadata?.["review.role"] === "CHANGED").length,
@@ -335,6 +359,7 @@ function deriveReviewGraphSummary(visibleGraph: LinkGraphDocument) {
   };
 }
 
+/** 初始示例节点列表（用于 SAMPLE_STATE）：包含一个方法节点和一个 SQL 节点。 */
 const INITIAL_NODES: LinkGraphNode[] = [
   {
     id: "method:place-order",
@@ -371,6 +396,7 @@ const INITIAL_NODES: LinkGraphNode[] = [
   },
 ];
 
+/** 初始示例边列表（用于 SAMPLE_STATE）：一条 CALL 类型的边连接方法到 SQL。 */
 const INITIAL_EDGES: LinkGraphEdge[] = [
   {
     id: "call:place-order->insert-order",
@@ -380,12 +406,15 @@ const INITIAL_EDGES: LinkGraphEdge[] = [
   },
 ];
 
+/** 初始示例图：节点和边组合。 */
 const INITIAL_GRAPH: LinkGraphDocument = {
   nodes: INITIAL_NODES,
   edges: INITIAL_EDGES,
 };
 
+/** 初始选中的节点 ID：首个节点。 */
 const INITIAL_SELECTED_NODE_ID = INITIAL_NODES[0]?.id ?? null;
+/** 初始布局状态：从初始节点中提取有坐标的节点。 */
 const INITIAL_LAYOUT_STATE: LinkGraphLayoutState = {
   positions: Object.fromEntries(
     INITIAL_NODES
@@ -394,11 +423,13 @@ const INITIAL_LAYOUT_STATE: LinkGraphLayoutState = {
   ),
 };
 
+/** 空的投影索引：节点和边的映射均为空对象。 */
 const EMPTY_PROJECTION_INDEX = {
   nodeMappings: {},
   edgeMappings: {},
 };
 
+/** 空的图视图表现层配置：target/lanes/controls 均为空值。 */
 const EMPTY_GRAPH_VIEW_PRESENTATION: GraphViewPresentation = {
   target: {
     nodeId: null,
@@ -416,6 +447,7 @@ const EMPTY_GRAPH_VIEW_PRESENTATION: GraphViewPresentation = {
   },
 };
 
+/** 构造事实图视图文档（包含可见图、全量图、锚点、投影索引、摘要、表现层）。 */
 function buildFactGraphView(
   visibleGraph: LinkGraphDocument,
   fullGraph: LinkGraphDocument,
@@ -431,6 +463,7 @@ function buildFactGraphView(
   };
 }
 
+/** 构造流程图视图文档。 */
 function buildFlowchartView(
   visibleGraph: LinkGraphDocument,
   fullGraph: LinkGraphDocument,
@@ -445,6 +478,7 @@ function buildFlowchartView(
   };
 }
 
+/** 构造资源关系图视图文档。 */
 function buildResourceRelationView(
   visibleGraph: LinkGraphDocument,
   fullGraph: LinkGraphDocument,
@@ -459,6 +493,7 @@ function buildResourceRelationView(
   };
 }
 
+/** 构造架构图视图文档（含表现层）。 */
 function buildArchitectureGraphView(
   visibleGraph: LinkGraphDocument,
   fullGraph: LinkGraphDocument,
@@ -474,6 +509,7 @@ function buildArchitectureGraphView(
   };
 }
 
+/** 构造类图视图文档（含表现层）。 */
 function buildClassDiagramView(
   visibleGraph: LinkGraphDocument,
   fullGraph: LinkGraphDocument,
@@ -489,6 +525,7 @@ function buildClassDiagramView(
   };
 }
 
+/** 构造评审图视图文档。 */
 function buildReviewGraphView(
   visibleGraph: LinkGraphDocument,
   fullGraph: LinkGraphDocument,
@@ -503,6 +540,11 @@ function buildReviewGraphView(
   };
 }
 
+/**
+ * 示例 bootstrap 状态。
+ * 在开发模式且没有真实 bridge / bootstrap 数据时使用，演示完整的初始数据：
+ * 初始示例图 + QA / 助手会话 / 生成计划 / 代码草稿等。
+ */
 export const SAMPLE_STATE: LinkGraphBootstrapState = {
   analysisDisplayMode: DEFAULT_ANALYSIS_DISPLAY_MODE,
   currentSceneId: DEFAULT_SCENE_ID,
@@ -600,6 +642,7 @@ export const SAMPLE_STATE: LinkGraphBootstrapState = {
   snapshotRevision: 0,
 };
 
+/** 空 bootstrap 状态：所有视图均为空，请求状态均为空闲，无选中节点。 */
 export const EMPTY_STATE: LinkGraphBootstrapState = {
   analysisDisplayMode: DEFAULT_ANALYSIS_DISPLAY_MODE,
   currentSceneId: DEFAULT_SCENE_ID,
@@ -648,6 +691,7 @@ export const EMPTY_STATE: LinkGraphBootstrapState = {
   snapshotRevision: 0,
 };
 
+/** 判断是否应该使用示例状态：仅在 dev 模式 + http(s) 协议 + 无 bridge / bootstrap 时为 true。 */
 function shouldUseSampleState(): boolean {
   if (typeof window === "undefined") {
     return false;
@@ -658,6 +702,12 @@ function shouldUseSampleState(): boolean {
   return Boolean(import.meta.env.DEV && import.meta.env.MODE !== "test" && /^https?:$/i.test(window.location.protocol));
 }
 
+/**
+ * 解析初始状态：
+ * - 优先使用真实 bootstrap 状态（从后端注入）；
+ * - 否则在符合条件时使用 sampleState；
+ * - 都不满足时退化为 emptyState。
+ */
 export function resolveInitialState(args: {
   emptyState: LinkGraphBootstrapState;
   sampleState: LinkGraphBootstrapState;
@@ -669,18 +719,22 @@ export function resolveInitialState(args: {
   return shouldUseSampleState() ? args.sampleState : args.emptyState;
 }
 
+/** 解析当前工作图（缺失时退化为空文档）。 */
 export function resolveWorkingGraph(state: LinkGraphBootstrapState): LinkGraphDocument {
   return state.workspaceGraph ?? EMPTY_DOCUMENT;
 }
 
+/** 解析工作台基线图（缺失时返回 null）。 */
 export function resolveWorkspaceBaseGraph(state: LinkGraphBootstrapState): LinkGraphDocument | null {
   return state.workspaceBaseGraph ?? null;
 }
 
+/** 解析语义事实图（缺失时返回 null）。 */
 export function resolveSemanticFactGraph(state: LinkGraphBootstrapState): LinkGraphDocument | null {
   return state.semanticFactGraph ?? null;
 }
 
+/** 解析事实图视图文档（缺失时使用 emptyState 中的版本）。 */
 export function resolveFactGraphView(
   state: LinkGraphBootstrapState,
   emptyState: LinkGraphBootstrapState = EMPTY_STATE,
@@ -688,6 +742,7 @@ export function resolveFactGraphView(
   return state.factGraphView ?? emptyState.factGraphView!;
 }
 
+/** 解析流程图视图文档（缺失时使用 emptyState 中的版本）。 */
 export function resolveFlowchartView(
   state: LinkGraphBootstrapState,
   emptyState: LinkGraphBootstrapState = EMPTY_STATE,
@@ -695,6 +750,7 @@ export function resolveFlowchartView(
   return state.flowchartView ?? emptyState.flowchartView!;
 }
 
+/** 解析资源关系图视图文档（缺失时使用 emptyState 中的版本）。 */
 export function resolveResourceRelationView(
   state: LinkGraphBootstrapState,
   emptyState: LinkGraphBootstrapState = EMPTY_STATE,
@@ -702,6 +758,7 @@ export function resolveResourceRelationView(
   return state.resourceRelationView ?? emptyState.resourceRelationView!;
 }
 
+/** 解析架构图视图文档（缺失时使用 emptyState 中的版本）。 */
 export function resolveArchitectureGraphView(
   state: LinkGraphBootstrapState,
   emptyState: LinkGraphBootstrapState = EMPTY_STATE,
@@ -709,6 +766,7 @@ export function resolveArchitectureGraphView(
   return state.architectureGraphView ?? emptyState.architectureGraphView!;
 }
 
+/** 解析类图视图文档（缺失时使用 emptyState 中的版本）。 */
 export function resolveClassDiagramView(
   state: LinkGraphBootstrapState,
   emptyState: LinkGraphBootstrapState = EMPTY_STATE,
@@ -716,6 +774,7 @@ export function resolveClassDiagramView(
   return state.classDiagramView ?? emptyState.classDiagramView!;
 }
 
+/** 解析评审图视图文档（缺失时使用 emptyState 中的版本）。 */
 export function resolveReviewGraphView(
   state: LinkGraphBootstrapState,
   emptyState: LinkGraphBootstrapState = EMPTY_STATE,
@@ -723,10 +782,12 @@ export function resolveReviewGraphView(
   return state.reviewGraphView ?? emptyState.reviewGraphView!;
 }
 
+/** 解析设计基线图（缺失时返回 null）。 */
 export function resolveDesignBaselineGraph(state: LinkGraphBootstrapState): LinkGraphDocument | null {
   return state.designBaselineGraph ?? null;
 }
 
+/** 解析源码导航状态（缺失时使用 idleState）。 */
 export function resolveSourceNavigationState(
   state: LinkGraphBootstrapState,
   idleState: SourceNavigationState = IDLE_SOURCE_NAVIGATION_STATE,
@@ -734,6 +795,7 @@ export function resolveSourceNavigationState(
   return state.sourceNavigationState ?? idleState;
 }
 
+/** 解析请求状态：用 IDLE_REQUEST_STATE 作为基础，合并外部传入的状态字段。 */
 export function resolveRequestState(state?: AsyncRequestState | null): AsyncRequestState {
   return {
     ...IDLE_REQUEST_STATE,
@@ -741,12 +803,14 @@ export function resolveRequestState(state?: AsyncRequestState | null): AsyncRequ
   };
 }
 
+/** 解析当前场景状态（缺失时构造一个空场景）。 */
 export function resolveCurrentSceneState(
   state: LinkGraphBootstrapState,
 ): LinkGraphSceneState {
   return state.sceneStates[state.currentSceneId] ?? createSceneState();
 }
 
+/** 按展示模式解析当前激活的视图文档（流程图 / 资源关系 / 架构 / 类图 / 评审 / 事实图）。 */
 export function resolveActiveViewDocument(
   state: LinkGraphBootstrapState,
   displayMode: AnalysisDisplayMode = state.analysisDisplayMode ?? DEFAULT_ANALYSIS_DISPLAY_MODE,
@@ -768,6 +832,7 @@ export function resolveActiveViewDocument(
   }
 }
 
+/** 解析初始锚点节点 ID：综合当前激活视图的节点和当前场景的锚点/选中节点。 */
 export function resolveInitialAnchorNodeId(state: LinkGraphBootstrapState): string | null {
   const initialGraph = resolveActiveViewDocument(state).visibleGraph;
   const sceneState = resolveCurrentSceneState(state);

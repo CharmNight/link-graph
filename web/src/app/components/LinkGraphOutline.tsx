@@ -4,15 +4,28 @@ import type {
   LinkGraphOutlineMetrics,
 } from "./hybridDerivations";
 
+/** LinkGraphOutline 组件的入参。 */
 interface LinkGraphOutlineProps {
+  /** 链路指标。 */
   metrics: LinkGraphOutlineMetrics;
+  /** 大纲条目列表（按分组展示）。 */
   items: LinkGraphOutlineItem[];
+  /** 当前高亮的大纲条目 ID。 */
   activeItemId?: string | null;
+  /** 搜索关键词。 */
   query: string;
+  /** 关键词变化回调。 */
   onQueryChange: (value: string) => void;
+  /** 选中条目的回调。 */
   onSelectItem: (id: string) => void;
 }
 
+/**
+ * 大纲分组定义：固定顺序与标签。
+ *
+ * 把链路中的节点按语义角色分为入口、关键路径、证据、风险、草稿五组，
+ * 让用户可以按角色快速定位节点。
+ */
 const GROUPS: Array<{ id: LinkGraphOutlineItem["group"]; label: string }> = [
   { id: "entry", label: "入口" },
   { id: "criticalPath", label: "关键路径" },
@@ -21,6 +34,17 @@ const GROUPS: Array<{ id: LinkGraphOutlineItem["group"]; label: string }> = [
   { id: "draft", label: "草稿影响" },
 ];
 
+/**
+ * 链路大纲侧边栏。
+ *
+ * 在画布左侧展示链路中所有节点的结构化大纲，让用户可以：
+ * - 看到当前链路的整体指标（可见/全量、入口数、证据数等）；
+ * - 按分组浏览节点；
+ * - 通过搜索快速定位节点；
+ * - 点击节点跳转到画布对应位置。
+ *
+ * 支持分组折叠与搜索过滤；空列表与无匹配结果有各自的占位文案。
+ */
 export function LinkGraphOutline({
   metrics,
   items,
@@ -29,13 +53,16 @@ export function LinkGraphOutline({
   onQueryChange,
   onSelectItem,
 }: LinkGraphOutlineProps) {
+  // 各分组的折叠状态：用 Set 记录被折叠的分组 ID
   const [collapsedGroups, setCollapsedGroups] = useState<Set<LinkGraphOutlineItem["group"]>>(() => new Set());
   const normalizedQuery = query.trim().toLowerCase();
+  // 有关键词时按关键词过滤条目
   const filteredItems = normalizedQuery
     ? items.filter((item) => itemMatchesQuery(item, normalizedQuery))
     : items;
   const visibleItemCount = filteredItems.length;
 
+  /** 切换某分组的折叠状态。 */
   function toggleGroup(groupId: LinkGraphOutlineItem["group"]) {
     setCollapsedGroups((current) => {
       const next = new Set(current);
@@ -66,6 +93,7 @@ export function LinkGraphOutline({
       </div>
 
       <div className="link-outline-scroll m-scrollbar">
+        {/* 指标区：展示链路整体统计 */}
         <dl className="link-outline-metrics" aria-label="链路指标">
           <div>
             <dt>可见 / 全量</dt>
@@ -89,6 +117,7 @@ export function LinkGraphOutline({
           </div>
         </dl>
 
+        {/* 完全没有节点时给出空态提示 */}
         {items.length === 0 ? (
           <div className="link-outline-empty">
             <strong>当前图谱没有可展示节点</strong>
@@ -96,6 +125,7 @@ export function LinkGraphOutline({
           </div>
         ) : null}
 
+        {/* 按 GROUPS 顺序渲染各分组 */}
         {GROUPS.map((group) => {
           const groupItems = filteredItems.filter((item) => item.group === group.id);
           const collapsed = collapsedGroups.has(group.id);
@@ -114,6 +144,7 @@ export function LinkGraphOutline({
                 </button>
                 <span className="app-pill">{groupItems.length}</span>
               </div>
+              {/* 折叠时不渲染条目；展开时渲染条目列表 */}
               {collapsed ? null : (
                 <div className="link-outline-section-items">
                   {groupItems.map((item) => (
@@ -136,6 +167,7 @@ export function LinkGraphOutline({
                   ))}
                 </div>
               )}
+              {/* 展开但无匹配项时给出提示 */}
               {!collapsed && groupItems.length === 0 && normalizedQuery ? (
                 <div className="link-outline-group-empty">
                   <span className="muted">本组没有匹配项</span>
@@ -145,6 +177,7 @@ export function LinkGraphOutline({
           );
         })}
 
+        {/* 有节点但搜索后无匹配：给出整体空态提示 */}
         {items.length > 0 && visibleItemCount === 0 ? (
           <div className="link-outline-empty">
             <strong>未找到匹配的方法、资源或证据。请调整关键词，或切换图谱视图查看完整链路。</strong>
@@ -155,6 +188,10 @@ export function LinkGraphOutline({
   );
 }
 
+/**
+ * 判断单个大纲条目是否匹配搜索关键词。
+ * 检查标签、种类、徽章、元数据任一字段是否包含关键词。
+ */
 function itemMatchesQuery(item: LinkGraphOutlineItem, query: string): boolean {
   return [
     item.label,

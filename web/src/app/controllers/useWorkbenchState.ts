@@ -42,9 +42,16 @@ import type {
 } from "../types";
 import type { RequestFailureNotice } from "./bridgeCommandTypes";
 
+// 工作台启动时缺省采用流程图视角来呈现分析结果
 const DEFAULT_ANALYSIS_DISPLAY_MODE: AnalysisDisplayMode = "FLOWCHART";
+// 需要单独跟踪加载/请求状态的索引化图谱视图清单
 const INDEXED_GRAPH_VIEWS: IndexedGraphView[] = ["ARCHITECTURE", "CLASS_DIAGRAM", "REVIEW"];
 
+/**
+ * 工作台画布层面的聚合状态：维护当前可见的节点/边、用户交互态（选中、锚点、当前场景）、
+ * 以及工作区底图、语义事实图与多种分析视图（流程图、资源关系、架构图、类图、评审图）的快照，
+ * 同时承载草稿图等用于支撑差异预览与回滚的中间产物。
+ */
 export interface WorkbenchCanvasState {
   nodes: LinkGraphNode[];
   edges: LinkGraphEdge[];
@@ -66,6 +73,11 @@ export interface WorkbenchCanvasState {
   draftGraph: LinkGraphDocument | null;
 }
 
+/**
+ * 工作台业务投影层面的状态：聚合草稿变更、生成计划、问答、差异评审、Mermaid 校验、
+ * 代码草稿、源码导航、操作反馈、助手会话等跨阶段产物，作为各阶段共享的"事实之窗"，
+ * 让 UI 可以一致地展示从草稿到最终生成的全流程进度与结果。
+ */
 export interface WorkbenchProjectionState {
   detailNodeId: string | null;
   draftWorkbenchState: DraftWorkbenchState;
@@ -111,6 +123,11 @@ export interface WorkbenchProjectionState {
   assistantResultStore: AssistantResultStore;
 }
 
+/**
+ * useWorkbenchState 的入参集合：除启动初始数据外，还包含一组由调用方注入的解析/规整函数，
+ * 用于把引导态（BootstrapState）映射为画布初始快照、对节点做归一化布局、补齐异步请求状态等，
+ * 让该 hook 专注于状态整合，而把数据来源与转换规则解耦到外部。
+ */
 interface UseWorkbenchStateArgs {
   initialState: LinkGraphBootstrapState;
   initialGraph: LinkGraphDocument;
@@ -136,6 +153,10 @@ interface UseWorkbenchStateArgs {
   ) => LinkGraphNode[];
 }
 
+/**
+ * 构造一个绑定到指定字段 key 的 setter：值未变化（Object.is）时直接复用原对象，
+ * 避免无意义的新对象引用传播导致的重渲染；同时支持函数式更新语义。
+ */
 function updateStateField<S, K extends keyof S>(
   setState: Dispatch<SetStateAction<S>>,
   key: K,
@@ -156,12 +177,14 @@ function updateStateField<S, K extends keyof S>(
   };
 }
 
+// 把可能为函数或直接值的 React setState 入参解析成实际取值，便于在自定义 setter 中复用
 function resolveStateAction<T>(value: SetStateAction<T>, currentValue: T): T {
   return typeof value === "function"
     ? (value as (currentValue: T) => T)(currentValue)
     : value;
 }
 
+// 生成一个没有任何选中、锚点和布局信息的空白场景状态，作为缺失场景的兜底
 function createEmptySceneState(): LinkGraphSceneState {
   return {
     selectedNodeId: null,
@@ -174,6 +197,7 @@ function createEmptySceneState(): LinkGraphSceneState {
   };
 }
 
+// 构造一份默认的助手会话状态：EXPLAIN_CODE 意图、上下文未锁定、空草稿，作为冷启动时的占位会话
 function createDefaultAssistantSessionState(): AssistantSessionState {
   return {
     sessionId: "assistant-session",
@@ -192,12 +216,17 @@ function createDefaultAssistantSessionState(): AssistantSessionState {
       target: {
         kind: "NewTask",
       },
+      qaMode: "AUTO",
     },
     nextResultSequence: 1,
     turns: [],
   };
 }
 
+/**
+ * 针对所有索引化图谱视图（架构图、类图、评审图）统一规整请求状态：
+ * 缺失或为空的状态会通过 resolveRequestState 兜底为统一的初始态，保证渲染层拿到的结构一致。
+ */
 export function resolveIndexedGraphRequestStates(
   state: IndexedGraphRequestStates | null | undefined,
   resolveRequestState: (requestState?: AsyncRequestState | null) => AsyncRequestState,
@@ -207,6 +236,7 @@ export function resolveIndexedGraphRequestStates(
   ) as IndexedGraphRequestStates;
 }
 
+// 按顺序比较两个节点 ID 数组是否完全一致，用于折叠节点等列表字段的等价判断以避免无效更新
 function sameNodeIdList(left: string[] | undefined, right: string[] | undefined): boolean {
   const normalizedLeft = left ?? [];
   const normalizedRight = right ?? [];
@@ -216,6 +246,7 @@ function sameNodeIdList(left: string[] | undefined, right: string[] | undefined)
   return normalizedLeft.every((nodeId, index) => nodeId === normalizedRight[index]);
 }
 
+// 比较两份布局状态的位置映射是否逐节点坐标一致，用于判定场景布局是否真的发生变化
 function sameLayoutState(
   left: LinkGraphLayoutState | undefined,
   right: LinkGraphLayoutState | undefined,
@@ -236,6 +267,7 @@ function sameLayoutState(
   });
 }
 
+// 按字段语义判断场景状态某一字段是否等价：折叠列表和布局使用专用比较，其他字段回退到引用相等
 function sameSceneFieldValue<K extends keyof LinkGraphSceneState>(
   key: K,
   left: LinkGraphSceneState[K],
@@ -253,6 +285,11 @@ function sameSceneFieldValue<K extends keyof LinkGraphSceneState>(
   return Object.is(left, right);
 }
 
+/**
+ * 生成一个仅更新"当前场景"指定字段的 setter，并可选地把同一值镜像到画布顶层的便捷字段
+ * （例如 selectedNodeId/anchorNodeId），用于保证场景内状态与画布全局状态保持同步，
+ * 仅在值确有变化时才产生新对象，避免不必要的级联渲染。
+ */
 function updateCurrentSceneStateField<K extends keyof LinkGraphSceneState>(
   setState: Dispatch<SetStateAction<WorkbenchCanvasState>>,
   key: K,
@@ -291,6 +328,10 @@ function updateCurrentSceneStateField<K extends keyof LinkGraphSceneState>(
   };
 }
 
+/**
+ * 专门用于更新当前场景中 selectedNodeId/anchorNodeId 字段的 setter：
+ * 同步刷新场景状态与画布顶层镜像字段，并对空值与等值做短路判断以抑制无意义的重渲染。
+ */
 function updateCurrentSceneNodeField(
   setState: Dispatch<SetStateAction<WorkbenchCanvasState>>,
   key: "selectedNodeId" | "anchorNodeId",
@@ -324,6 +365,11 @@ function updateCurrentSceneNodeField(
   };
 }
 
+/**
+ * 基于引导态和初始图谱，构造画布的初始快照：
+ * 通过各 resolve* 函数从启动数据中抽取工作区底图、语义事实图与各分析视图，
+ * 并对节点执行归一化布局，再结合场景状态推导初始的选中节点和锚点。
+ */
 function buildInitialCanvasState({
   initialState,
   initialGraph,
@@ -385,6 +431,11 @@ function buildInitialCanvasState({
   };
 }
 
+/**
+ * 基于引导态构造业务投影的初始快照：将草稿、问答、差异评审、生成计划、代码草稿、
+ * 助手会话等跨阶段产物的初始值集中规整，并对所有异步请求状态走 resolveRequestState 兜底，
+ * 让上层组件拿到一份字段完整、形态一致的投影初始值。
+ */
 function buildInitialProjectionState(
   initialState: LinkGraphBootstrapState,
   resolveRequestState: (state?: AsyncRequestState | null) => AsyncRequestState,
@@ -440,6 +491,11 @@ function buildInitialProjectionState(
   };
 }
 
+/**
+ * 工作台状态整合 hook：将画布快照、业务投影、问答目标节点、选择分组、导入对话框、
+ * Mermaid 草稿与差异目标项等多个维度的状态聚合成一份统一的对外接口，
+ * 同时为每个字段生成等值短路的 setter，避免无谓的重渲染并向调用方屏蔽场景内部细节。
+ */
 export function useWorkbenchState({
   initialState,
   initialGraph,
@@ -459,6 +515,7 @@ export function useWorkbenchState({
   resolveSourceNavigationState,
   normalizeGraphNodes,
 }: UseWorkbenchStateArgs) {
+  // 画布状态：节点、边、选中/锚点、当前场景、各类分析视图快照
   const [canvasState, setCanvasState] = useState<WorkbenchCanvasState>(() =>
     buildInitialCanvasState({
       initialState,
@@ -477,6 +534,7 @@ export function useWorkbenchState({
       normalizeGraphNodes,
     }),
   );
+  // 投影状态：草稿、问答、差异、生成计划、代码草稿、助手会话等跨阶段产物
   const [projectionState, setProjectionState] = useState<WorkbenchProjectionState>(() =>
     buildInitialProjectionState(
       initialState,
@@ -485,15 +543,24 @@ export function useWorkbenchState({
       resolveSourceNavigationState,
     ),
   );
+  // 当前问答请求的目标节点 ID 列表，用于把问答范围限定在用户选中的子图
   const [qaTargetNodeIds, setQaTargetNodeIds] = useState<string[]>([]);
+  // 多选分组中保存的节点 ID 集合，支撑批量操作和分组高亮
   const [selectionGroupNodeIds, setSelectionGroupNodeIds] = useState<string[]>([]);
+  // 最近一次异步请求失败时展示给用户的提示信息，由调用方按需清除
   const [requestFailureNotice, setRequestFailureNotice] = useState<RequestFailureNotice | null>(null);
+  // 导入对话框的开关状态，控制 Mermaid 等导入入口的弹层显隐
   const [isImportDialogOpen, setImportDialogOpen] = useState(false);
+  // Mermaid 导入对话框中用户正在编辑的源文本草稿
   const [mermaidDraft, setMermaidDraft] = useState("");
+  // 差异对比视图中作为目标的差异项 ID 列表，用于聚焦特定变更
   const [diffTargetItemIds, setDiffTargetItemIds] = useState<string[]>([]);
+  // 从当前场景派生的折叠节点 ID 列表，缺失时回退为空数组
   const collapsedNodeIds = canvasState.sceneStates[canvasState.currentSceneId]?.collapsedNodeIds ?? [];
+  // 更新折叠节点 ID 列表的便捷 setter，写入时会同步落到当前场景状态
   const setCollapsedNodeIds = updateCurrentSceneStateField(setCanvasState, "collapsedNodeIds");
 
+  // 画布状态各字段的等值短路 setter 集合，供调用方按字段名直接更新
   const canvasSetters = {
     setNodes: updateStateField(setCanvasState, "nodes"),
     setEdges: updateStateField(setCanvasState, "edges"),
@@ -516,6 +583,7 @@ export function useWorkbenchState({
     setSceneLayoutState: updateCurrentSceneStateField(setCanvasState, "layoutState"),
   };
 
+  // 投影状态各字段的等值短路 setter 集合，统一对外暴露投影字段的更新入口
   const projectionSetters = {
     setDetailNodeId: updateStateField(setProjectionState, "detailNodeId"),
     setDraftWorkbenchState: updateStateField(setProjectionState, "draftWorkbenchState"),

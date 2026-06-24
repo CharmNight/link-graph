@@ -24,14 +24,17 @@ import type {
 } from "./useWorkbenchState";
 import { resolveIndexedGraphRequestStates } from "./useWorkbenchState";
 
+/** 默认的分析展示模式，在 bootstrap 快照未携带模式信息时兜底使用，优先选择流程图视图。 */
 const DEFAULT_ANALYSIS_DISPLAY_MODE: AnalysisDisplayMode = "FLOWCHART";
 
+/** 视图文档的最小结构契约，复用于各种布局/场景合并工具函数，避免每个具体视图类型重复定义同样的形状。 */
 type GraphViewDocumentLike = {
   visibleGraph: LinkGraphDocument;
   fullGraph: LinkGraphDocument;
   anchorNodeId?: string | null;
 };
 
+/** 工作台六类场景视图文档的聚合快照，用于按场景 id 统一获取对应视图的节点或锚点信息。 */
 type SceneGraphViews = {
   factGraphView: FactGraphViewDocument;
   flowchartView: FlowchartViewDocument;
@@ -41,6 +44,7 @@ type SceneGraphViews = {
   reviewGraphView: ReviewGraphViewDocument;
 };
 
+/** useBootstrapProjectionState hook 的入参集合：包含对外部可变引用（节点、边、草稿、锚点等 ref）、画布与投影状态写入器，以及一组负责从 bootstrap 快照解析派生视图/图/请求状态的策略函数。 */
 interface UseBootstrapProjectionStateArgs {
   nodesRef: MutableRefObject<LinkGraphNode[]>;
   edgesRef: MutableRefObject<LinkGraphDocument["edges"]>;
@@ -92,6 +96,7 @@ interface UseBootstrapProjectionStateArgs {
   resolveRequestState: (state?: AsyncRequestState | null) => AsyncRequestState;
 }
 
+/** 构造一个没有任何选中、布局或折叠信息的空白场景状态，作为缺失场景数据时的统一兜底。 */
 function createEmptySceneState(): LinkGraphSceneState {
   return {
     selectedNodeId: null,
@@ -104,6 +109,7 @@ function createEmptySceneState(): LinkGraphSceneState {
   };
 }
 
+/** 判断 bootstrap 快照是否显式携带了某个字段（区分"未提供"与"显式为 null"），用于像图谱美化结果这类需要保留本地覆写、仅在后台明确下发时才更新的字段。 */
 function hasOwnBootstrapField(
   state: LinkGraphBootstrapState,
   field: keyof LinkGraphBootstrapState,
@@ -111,6 +117,7 @@ function hasOwnBootstrapField(
   return Object.prototype.hasOwnProperty.call(state, field);
 }
 
+/** 仅保留当前节点集合对应的布局坐标，丢弃已不存在的节点坐标，避免场景状态携带陈旧布局数据。 */
 function filterLayoutState(
   layoutState: LinkGraphLayoutState | null | undefined,
   nodes: LinkGraphNode[],
@@ -126,6 +133,7 @@ function filterLayoutState(
   };
 }
 
+/** 将任意来源的场景状态标准化为合法形态：清理掉指向已不存在节点的选中/锚点、回收陈旧布局与折叠列表，并在缺少选中时按优先级回退出一个合法锚点。 */
 function normalizeSceneState(
   sceneState: LinkGraphSceneState | null | undefined,
   nodes: LinkGraphNode[],
@@ -163,6 +171,7 @@ function normalizeSceneState(
   };
 }
 
+/** 把场景状态里保存的布局坐标写回到图谱节点上；对于场景未覆盖的节点，则尽量沿用上一帧同 id 节点的坐标，减少无谓的位置抖动。 */
 function applySceneLayoutToGraph(
   graph: LinkGraphDocument,
   currentGraph: LinkGraphDocument,
@@ -198,6 +207,7 @@ function applySceneLayoutToGraph(
       };
 }
 
+/** 将 bootstrap 快照中"仅布局"的节点坐标合并到目标图谱，用于在后端重新计算布局后把新坐标同步到前端缓存的图上。 */
 function applyBootstrapLayoutToGraph(
   graph: LinkGraphDocument,
   bootstrapGraph: LinkGraphDocument,
@@ -211,6 +221,7 @@ function applyBootstrapLayoutToGraph(
       };
 }
 
+/** 对视图文档的 visible/full 两个图谱分别应用 bootstrap 布局坐标，统一处理"仅替换位置、不重建结构"的同步场景，未发生变化时返回原对象以保持引用稳定。 */
 function applyBootstrapLayoutToViewDocument<T extends GraphViewDocumentLike>(
   view: T,
   bootstrapView: T,
@@ -229,6 +240,7 @@ function applyBootstrapLayoutToViewDocument<T extends GraphViewDocumentLike>(
   };
 }
 
+/** 判断视图文档中是否存在任何节点或边，用于决定是否需要在请求进行中保留旧视图以避免画面闪空。 */
 function hasGraphElements(view: GraphViewDocumentLike): boolean {
   return view.visibleGraph.nodes.length > 0
     || view.visibleGraph.edges.length > 0
@@ -236,6 +248,7 @@ function hasGraphElements(view: GraphViewDocumentLike): boolean {
     || view.fullGraph.edges.length > 0;
 }
 
+/** 当某个图索引请求仍在进行中、且本次 bootstrap 解析出的视图是空时，沿用当前视图以避免清空画面；其余情况一律采用新视图。 */
 function preserveCurrentViewDuringRunningRequest<T extends GraphViewDocumentLike>(
   nextView: T,
   currentView: T,
@@ -253,6 +266,7 @@ function preserveCurrentViewDuringRunningRequest<T extends GraphViewDocumentLike
   return currentView;
 }
 
+/** 把合并后的场景状态（布局、锚点）回写到视图文档的 visible/full 图谱上，确保最终落盘的视图文档携带了用户在本地的视图编排结果。 */
 function applySceneStateToViewDocument<T extends GraphViewDocumentLike>(
   view: T,
   currentView: T,
@@ -285,6 +299,7 @@ function applySceneStateToViewDocument<T extends GraphViewDocumentLike>(
   };
 }
 
+/** 按场景 id 从聚合视图快照中取出该场景对应的可见节点集合，DIFF 场景仅在仍处于差异视图时才返回 fallback 图谱的节点。 */
 function resolveSceneNodes(
   sceneId: LinkGraphSceneId,
   views: SceneGraphViews,
@@ -311,6 +326,7 @@ function resolveSceneNodes(
   }
 }
 
+/** 按场景 id 取出对应视图文档自带的锚点节点 id，作为合并场景状态时判断"锚点是否被权威源改动"的依据。 */
 function resolveSceneViewAnchorNodeId(
   sceneId: LinkGraphSceneId,
   views: SceneGraphViews,
@@ -334,6 +350,7 @@ function resolveSceneViewAnchorNodeId(
   }
 }
 
+/** 把 bootstrap 下发的场景状态与前端当前的场景状态合并：当后端语义未变化且锚点未被权威源切换时保留本地的选中/折叠/布局；否则以后端为准并最终归一化。 */
 function mergeSceneState(args: {
   nextSceneState: LinkGraphSceneState | undefined;
   currentSceneState: LinkGraphSceneState | undefined;
@@ -378,26 +395,41 @@ function mergeSceneState(args: {
   );
 }
 
+/**
+ * 接收后端推送的 LinkGraphBootstrapState，把初始快照投影成工作台所需的派生状态：
+ * 解析六类场景视图、合并用户本地场景编排、应用布局坐标、计算选中/锚点，
+ * 并把结果同步到画布状态、投影状态以及一系列 ref 上，供上层视图与下游副作用消费。
+ */
 export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArgs) {
+  // 以 ref 形式镜像最新的画布状态，便于 applyBootstrapState 在闭包内读取最新值而无需把它塞进依赖
   const canvasStateRef = useRef(args.canvasState);
   canvasStateRef.current = args.canvasState;
 
+  /** 处理一次完整的 bootstrap 快照：完成视图解析、布局/场景合并、ref 与 state 写回等所有副作用，是本 hook 对外暴露的核心入口。 */
   function applyBootstrapState(nextState: LinkGraphBootstrapState) {
+    // 记录本次投影的起始时间，用于在 trace 中输出耗时
     const startedAt = measureStart();
+    // 读取最新的画布状态作为"上一帧"基线，用于判断语义是否变化、决定是否复用本地投影
     const currentCanvasState = canvasStateRef.current;
+    // 按优先级确定本次采用的展示模式：bootstrap 显式 > ref 中暂存的 > 当前画布 > 默认值
     const nextAnalysisDisplayMode = nextState.analysisDisplayMode
       ?? args.analysisDisplayModeRef.current
       ?? currentCanvasState.analysisDisplayMode
       ?? DEFAULT_ANALYSIS_DISPLAY_MODE;
+    // 当前已落地的语义版本号，用于和 bootstrap 中的语义版本比较，判定是否可以复用本地投影结果
     const currentSemanticRevision = args.semanticRevisionRef.current;
+    // 工作区与语义版本都未变化时视为"只是重发同一份快照"，此时优先复用本地已渲染的图，避免布局抖动
     const reuseCurrentProjectionGraphs = nextState.workspaceRevision === currentCanvasState.workspaceRevision
       && nextState.semanticRevision === currentSemanticRevision;
+    // 解析源码导航状态（光标位置/打开的文件等），后续写入投影状态供导航相关 UI 使用
     const nextSourceNavigationState = args.resolveSourceNavigationState(nextState);
+    // 把 bootstrap 携带的各类图索引请求状态规范化为完整的 AsyncRequestState 形态
     const nextIndexedGraphRequestStates = resolveIndexedGraphRequestStates(
       nextState.indexedGraphRequestStates,
       args.resolveRequestState,
     );
 
+    // 对每个视图先解析后端下发的结构、再把当前视图中的路由高亮信息合并上去，得到 bootstrap 视角的视图文档
     const bootstrapFactGraphView = args.applyBootstrapRoutesToViewDocument(
       args.resolveFactGraphView(nextState),
       currentCanvasState.factGraphView,
@@ -438,6 +470,7 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       reuseCurrentProjectionGraphs,
     );
 
+    // 在 bootstrap 视图基础上合并"是否复用当前视图"策略并应用后端布局坐标，得到最终投影视图
     const projectedFactGraphView = applyBootstrapLayoutToViewDocument(
       args.reuseCurrentViewGraphs(
         bootstrapFactGraphView,
@@ -487,6 +520,7 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       bootstrapReviewGraphView,
     );
 
+    // 在未应用场景状态前，先解析出当前展示模式对应的主可见图，作为 DIFF 场景的 fallback 节点来源
     const provisionalVisibleGraph = args.resolveActiveViewDocument({
       ...nextState,
       factGraphView: projectedFactGraphView,
@@ -497,11 +531,13 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       reviewGraphView: projectedReviewGraphView,
     }, nextAnalysisDisplayMode).visibleGraph;
 
+    // 汇总 bootstrap 与当前画布中出现过的所有场景 id，确保不会因为某一方未提及就丢失对应场景的状态
     const sceneIds = Array.from(new Set([
       ...Object.keys(nextState.sceneStates),
       ...Object.keys(currentCanvasState.sceneStates),
     ])) as LinkGraphSceneId[];
 
+    // 逐个场景合并 bootstrap 与本地场景状态，得到这一帧最终采用的场景状态集合
     const mergedSceneStates = Object.fromEntries(
       sceneIds.map((sceneId) => {
         const projectedViews = {
@@ -563,6 +599,7 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       mergedSceneStates.WORKSPACE_REVIEW_GRAPH ?? createEmptySceneState(),
     );
 
+    // 在应用了场景状态后再次解析主可见图，得到最终用于渲染和后续派生的图谱
     const resolvedVisibleGraph = args.resolveActiveViewDocument({
       ...nextState,
       factGraphView: nextFactGraphView,
@@ -574,12 +611,17 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       sceneStates: mergedSceneStates,
     }, nextAnalysisDisplayMode).visibleGraph;
     const visibleGraph = resolvedVisibleGraph;
+    // 当前激活场景的状态，决定选中/锚点/折叠等用户可见的视图编排
     const nextSceneState = mergedSceneStates[nextState.currentSceneId] ?? createEmptySceneState();
     const nextNodes = visibleGraph.nodes;
     const nextEdges = visibleGraph.edges;
+    // 选中的节点：优先沿用场景中的选中，否则回退到第一个节点
     const nextSelectedNodeId = nextSceneState.selectedNodeId ?? nextNodes[0]?.id ?? null;
+    // 锚点节点：优先场景中的锚点，否则按节点集合与偏好选中解算一个合法锚点
     const nextAnchorNodeId = nextSceneState.anchorNodeId ?? args.resolveAnchorNodeId(nextNodes, nextSelectedNodeId);
+    // 工作区底图，作为草稿图等派生数据的来源
     const nextWorkspaceGraph = args.resolveWorkingGraph(nextState);
+    // 草稿图：若可复用本地投影则尽量保留已有草稿（避免丢失未提交的本地修改），否则采用工作区底图
     const nextDraftGraph = reuseCurrentProjectionGraphs
       ? args.draftGraphRef.current ?? nextWorkspaceGraph
       : nextWorkspaceGraph;
@@ -598,6 +640,7 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
     args.analysisDisplayModeRef.current = nextAnalysisDisplayMode;
     args.semanticRevisionRef.current = nextState.semanticRevision ?? args.semanticRevisionRef.current;
     args.layoutRevisionRef.current = nextSceneState.layoutRevision ?? null;
+    // 组装新的画布状态：合并视图文档、场景状态、工作区底图与各类展示元数据，作为下一帧的渲染基线
     const nextCanvasState: WorkbenchCanvasState = {
       ...currentCanvasState,
       nodes: nextNodes,
@@ -680,7 +723,9 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
         : current.artifactContents,
     }));
 
+    // 同步手动新建节点的 id 计数器，避免后续手建节点 id 与本次新节点发生冲突
     args.syncManualNodeIdCounters(nextNodes);
+    // 选中分组与差异目标列表都要剔除本次已不存在的条目，保证 UI 不会引用陈旧数据
     args.setSelectionGroupNodeIds((current) => current.filter((nodeId) => nextNodes.some((node) => node.id === nodeId)));
     args.setDiffTargetItemIds((current) => current.filter((itemId) => nextState.diffItems.some((item) => item.id === itemId)));
   }

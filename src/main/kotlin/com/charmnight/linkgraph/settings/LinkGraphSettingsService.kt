@@ -111,8 +111,13 @@ data class LinkGraphSettingsState(
         )
     }
 
+    /** 校验当前附加 JAR 配置是否合法，返回包含错误信息的校验结果。 */
     fun attachedJarValidation() = AttachedJarSettingsValidator.validate(attachedJars)
 
+    /**
+     * 生成一份用于持久化落盘的状态。
+     * 内部先做规范化，再剔除 API Key 等敏感字段，避免明文写入 XML。
+     */
     fun toPersistentState(): LinkGraphPersistentSettingsState {
         val sanitized = sanitized()
         return LinkGraphPersistentSettingsState(
@@ -130,6 +135,10 @@ data class LinkGraphSettingsState(
         )
     }
 
+    /**
+     * 返回用于日志的字符串表示。
+     * 对 API Key 做脱敏处理，仅展示空或已设置的占位符。
+     */
     override fun toString(): String {
         return "LinkGraphSettingsState(" +
             "llmEnabled=$llmEnabled, " +
@@ -163,11 +172,17 @@ data class LinkGraphSettingsState(
         const val MAX_TIMEOUT_SECONDS: Int = 3_600
         /** 定义默认温度。 */
         const val DEFAULT_TEMPERATURE: Double = 0.2
+        /** 默认开启：允许对 class JAR 提供反编译来源标记。 */
         const val DEFAULT_ALLOW_CLASS_JAR_DECOMPILE: Boolean = true
+        /** 默认开启：允许架构索引展开外部库类。 */
         const val DEFAULT_ALLOW_EXTERNAL_LIBRARY_EXPANSION: Boolean = true
+        /** 默认关闭：是否允许架构索引展开 JDK 类。 */
         const val DEFAULT_ALLOW_JDK_LIBRARY_EXPANSION: Boolean = false
+        /** 默认外部类节点预算上限。 */
         const val DEFAULT_MAX_EXTERNAL_CLASS_NODES: Int = 3000
+        /** 外部类节点数量下限。 */
         const val MIN_EXTERNAL_CLASS_NODES: Int = 0
+        /** 外部类节点数量上限。 */
         const val MAX_EXTERNAL_CLASS_NODES: Int = 50_000
     }
 }
@@ -189,10 +204,15 @@ data class LinkGraphPersistentSettingsState(
     var allowJdkLibraryExpansion: Boolean = LinkGraphSettingsState.DEFAULT_ALLOW_JDK_LIBRARY_EXPANSION,
     var maxExternalClassNodes: Int = LinkGraphSettingsState.DEFAULT_MAX_EXTERNAL_CLASS_NODES,
 ) {
+    /** 规范化当前持久化状态，过滤无效附加 JAR 等脏数据。 */
     fun sanitized(): LinkGraphPersistentSettingsState {
         return toRuntimeState().toPersistentState()
     }
 
+    /**
+     * 把持久化状态转换为运行时状态，并显式注入 API Key。
+     * 调用方需要根据上下文决定是否传入真实密钥。
+     */
     fun toRuntimeState(apiKey: String = ""): LinkGraphSettingsState {
         return LinkGraphSettingsState(
             llmEnabled = llmEnabled,
@@ -223,12 +243,15 @@ data class LinkGraphPersistentSettingsState(
 class LinkGraphSettingsService : PersistentStateComponent<LinkGraphPersistentSettingsState> {
     /** 保存当前持久化状态。 */
     private var state = LinkGraphPersistentSettingsState()
+    /** 密钥存储抽象，默认指向 PasswordSafe 实现。 */
     private val secretStore: LinkGraphSecretStore
 
+    /** 默认构造函数：使用 PasswordSafe 实现管理密钥。 */
     constructor() {
         secretStore = PasswordSafeLinkGraphSecretStore()
     }
 
+    /** 测试用构造函数：允许注入自定义密钥存储以隔离 PasswordSafe 依赖。 */
     internal constructor(secretStore: LinkGraphSecretStore) {
         this.secretStore = secretStore
     }
@@ -287,13 +310,23 @@ class LinkGraphSettingsService : PersistentStateComponent<LinkGraphPersistentSet
     }
 }
 
+/**
+ * 设置变更通知器。
+ * 当影响架构索引的配置发生变化时，通过 IntelliJ 消息总线广播事件，
+ * 让索引重建等监听方及时响应。
+ */
 interface LinkGraphSettingsChangedNotifier {
+    /**
+     * 当影响架构索引的设置发生变化时触发。
+     * 入参 [before] 与 [after] 分别表示变更前后的快照，便于差异分析。
+     */
     fun onArchitectureIndexSettingsChanged(
         before: LinkGraphSettingsState,
         after: LinkGraphSettingsState,
     )
 
     companion object {
+        /** 注册在 IntelliJ 消息总线上的设置变更主题。 */
         @JvmField
         val TOPIC: Topic<LinkGraphSettingsChangedNotifier> = Topic.create(
             "linkGraphSettingsChanged",
@@ -302,6 +335,10 @@ interface LinkGraphSettingsChangedNotifier {
     }
 }
 
+/**
+ * 提取一组用于判断架构索引是否需要重建的稳定字段。
+ * 任何一个字段变化都意味着索引输入发生改变。
+ */
 private fun LinkGraphSettingsState.architectureIndexSettingsKey(): List<Any?> =
     listOf(
         attachedJars,

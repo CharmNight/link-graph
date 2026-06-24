@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.llm.tools
 
+/** 工具实现：返回当前项目架构/JVM 索引的整体摘要信息。 */
 class GetArchitectureIndexSummaryTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
 ) : AgentTool {
@@ -18,6 +19,7 @@ class GetArchitectureIndexSummaryTool(
     }
 }
 
+/** 工具实现：按 id、全限定名或关键字查找 JVM 符号。 */
 class FindJvmSymbolTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
 ) : AgentTool {
@@ -31,6 +33,7 @@ class FindJvmSymbolTool(
     }
 }
 
+/** 工具实现：查找指定 JVM 符号的关系，支持按种类和方向过滤。 */
 class FindJvmRelationsTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
 ) : AgentTool {
@@ -50,6 +53,7 @@ class FindJvmRelationsTool(
     }
 }
 
+/** 工具实现：通过统一架构运行时查询 JVM/架构关系，与 FindJvmRelationsTool 行为等价但走统一运行时入口。 */
 class QueryArchitectureRelationsTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
 ) : AgentTool {
@@ -68,6 +72,7 @@ class QueryArchitectureRelationsTool(
     }
 }
 
+/** 工具实现：查找 Java SPI 接口的 provider 实现类。 */
 class FindServiceProvidersTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
 ) : AgentTool {
@@ -84,6 +89,7 @@ class FindServiceProvidersTool(
     }
 }
 
+/** 工具实现：查找静态可证明的反射调用目标。 */
 class FindReflectionTargetsTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
 ) : AgentTool {
@@ -100,6 +106,7 @@ class FindReflectionTargetsTool(
     }
 }
 
+/** 工具实现：查找静态可识别的代理关系目标。 */
 class FindProxyTargetsTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
 ) : AgentTool {
@@ -120,6 +127,7 @@ class FindProxyTargetsTool(
     }
 }
 
+/** 工具实现：把传入的变更文件列表映射为架构索引符号。 */
 class GetChangedSymbolsTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
 ) : AgentTool {
@@ -135,6 +143,7 @@ class GetChangedSymbolsTool(
     }
 }
 
+/** 工具实现：基于 review graph 查询变更文件的影响面，支持指定遍历深度。 */
 class GetBlastRadiusTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
 ) : AgentTool {
@@ -151,6 +160,7 @@ class GetBlastRadiusTool(
     }
 }
 
+/** 工具实现：基于 review graph 查找变更文件的相关测试符号。 */
 class FindRelatedTestsTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
 ) : AgentTool {
@@ -164,6 +174,7 @@ class FindRelatedTestsTool(
     }
 }
 
+/** 工具实现：为变更审查构建最小证据包，便于后续问答或评审使用。 */
 class BuildReviewEvidenceBundleTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
 ) : AgentTool {

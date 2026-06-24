@@ -28,10 +28,29 @@ import com.charmnight.linkgraph.projection.GraphProjectionMetadata
 import com.charmnight.linkgraph.projection.graphProjectionHiddenCounts
 import com.charmnight.linkgraph.projection.graphProjectionHiddenNodes
 
+/**
+ * 类用法图投影器。
+ *
+ * 把"某个类被哪些地方使用"的搜索结果叠加到既有的类图视图上，
+ * 生成展示用法调用方的图文档。也可以在没有任何基础类图时通过
+ * [projectStandalone] 直接生成一个仅包含目标类的最小视图。
+ */
 class ClassUsageGraphProjector : GraphProjector {
+    /**
+     * 在没有基础类图的情况下，仅根据用法搜索结果生成一个最小类图视图。
+     *
+     * 视图只包含目标类节点和调用方节点，常用于快速查看类用法。
+     */
     fun projectStandalone(usageResult: ClassUsageSearchResult): ClassDiagramResult =
         project(standaloneBaseView(usageResult), usageResult)
 
+    /**
+     * 把类用法结果叠加到基础类图视图上。
+     *
+     * @param baseView 既有的类图视图，作为叠加基础
+     * @param usageResult 类用法搜索结果；为空时直接返回基础视图
+     * @return 叠加调用方节点与用法边后的新视图
+     */
     fun project(
         baseView: ClassDiagramResult,
         usageResult: ClassUsageSearchResult?,
@@ -57,6 +76,11 @@ class ClassUsageGraphProjector : GraphProjector {
         )
     }
 
+    /**
+     * 构造仅含目标类的最小基础视图，用于 [projectStandalone] 流程。
+     *
+     * 该视图自带完整的摘要与索引描述，但不携带任何关系。
+     */
     private fun standaloneBaseView(usageResult: ClassUsageSearchResult): ClassDiagramResult {
         val targetNode = targetNode(usageResult.target)
         val graph = GraphDocument(nodes = listOf(targetNode))
@@ -79,7 +103,11 @@ class ClassUsageGraphProjector : GraphProjector {
         )
     }
 
+    /**
+     * 构造最小视图对应的索引摘要，描述这是一个仅含目标类的"结构仅"视图。
+     */
     private fun standaloneIndexedSummary(target: ClassUsageTarget): IndexedGraphSummary {
+        // 单一项目源类层级计数。
         val projectSourceLayer = IndexedGraphLayerCounts(projectSource = 1)
         return IndexedGraphSummary(
             view = "CLASS_DIAGRAM",
@@ -113,6 +141,10 @@ class ClassUsageGraphProjector : GraphProjector {
         )
     }
 
+    /**
+     * 把用法搜索目标转换为图节点，并附带大量预置元数据，
+     * 让前端能够直接渲染锚点节点（即使在没有详细类信息的情况下）。
+     */
     private fun targetNode(target: ClassUsageTarget): GraphNode {
         val packageName = target.qualifiedName.substringBeforeLast('.', missingDelimiterValue = "")
         val metadata = linkedMapOf(
@@ -163,6 +195,12 @@ class ClassUsageGraphProjector : GraphProjector {
         )
     }
 
+    /**
+     * 把用法分组（一个调用方对应的所有用法集合）转换为图节点。
+     *
+     * 节点元数据携带分组的用法数量、种类、展示与索引元数据，
+     * 用于把每个调用方呈现为一个"使用方"节点。
+     */
     private fun ownerNode(group: ClassUsageGroup): GraphNode {
         val metadata = linkedMapOf(
             "classUsage.groupId" to group.id,
@@ -229,6 +267,12 @@ class ClassUsageGraphProjector : GraphProjector {
         )
     }
 
+    /**
+     * 把用法分组转换为指向目标类的使用边。
+     *
+     * 自引用分组（owner 即目标本身）返回空，避免出现自环。
+     * 边携带用法次数、种类、索引元数据与样本 ID，便于前端呈现与统计。
+     */
     private fun usageEdge(
         group: ClassUsageGroup,
         targetNodeId: String,
@@ -267,6 +311,11 @@ class ClassUsageGraphProjector : GraphProjector {
         )
     }
 
+    /**
+     * 把用法节点和边叠加到既有图文档上。
+     *
+     * 同 ID 的节点会与现有节点合并，边则按 ID 直接覆盖。
+     */
     private fun GraphDocument.withUsageOverlay(
         ownerNodes: List<GraphNode>,
         usageEdges: List<GraphEdge>,
@@ -282,6 +331,9 @@ class ClassUsageGraphProjector : GraphProjector {
         return copy(nodes = nodeById.values.toList(), edges = edgeById.values.toList())
     }
 
+    /**
+     * 把用法叠加节点合并到既有节点上：覆盖文档，并合并与用法/展示/布局相关的元数据。
+     */
     private fun GraphNode.mergeUsageOverlay(overlay: GraphNode): GraphNode =
         copy(
             doc = overlay.doc ?: doc,
@@ -292,6 +344,11 @@ class ClassUsageGraphProjector : GraphProjector {
             },
         )
 
+    /**
+     * 在叠加用法节点后扩展投影索引映射。
+     *
+     * 已有映射保持不变，新增的节点和边按只读、单规范 ID 的方式注入映射。
+     */
     private fun GraphProjectionIndex.withUsageOverlayMappings(
         visibleGraph: GraphDocument,
         fullGraph: GraphDocument,
@@ -324,6 +381,12 @@ class ClassUsageGraphProjector : GraphProjector {
         )
     }
 
+    /**
+     * 用叠加后的图规模更新类图摘要计数。
+     *
+     * 包括按 `jvm.class.kind` 重新统计各类型节点数、字段总数、关系总数，
+     * 并按隐藏计数更新截断标记与索引摘要。
+     */
     private fun com.charmnight.linkgraph.architecture.ClassDiagramSummary.withUsageGraphCounts(
         visibleGraph: GraphDocument,
         fullGraph: GraphDocument,
@@ -359,6 +422,9 @@ class ClassUsageGraphProjector : GraphProjector {
         )
     }
 
+    /**
+     * 用叠加后的图规模更新索引摘要计数，包含层级分布的重新统计。
+     */
     private fun com.charmnight.linkgraph.application.indexed.IndexedGraphSummary.withUsageGraphCounts(
         visibleGraph: GraphDocument,
         fullGraph: GraphDocument,
@@ -381,6 +447,9 @@ class ClassUsageGraphProjector : GraphProjector {
                 .usageIndexedLayerCounts(),
         )
 
+    /**
+     * 把节点集合按 `indexed.layerKind` 元数据归并成索引层级计数。
+     */
     private fun Iterable<GraphNode>.usageIndexedLayerCounts(): IndexedGraphLayerCounts =
         fold(IndexedGraphLayerCounts()) { counts, node ->
             counts + when (node.metadata["indexed.layerKind"]) {
@@ -392,6 +461,9 @@ class ClassUsageGraphProjector : GraphProjector {
             }
         }
 
+    /**
+     * 取两个层级计数中每一层的最大值，用于候选层级数的合并展示。
+     */
     private fun IndexedGraphLayerCounts.maxWith(other: IndexedGraphLayerCounts): IndexedGraphLayerCounts =
         IndexedGraphLayerCounts(
             projectSource = projectSource.coerceAtLeast(other.projectSource),
@@ -401,6 +473,9 @@ class ClassUsageGraphProjector : GraphProjector {
             aggregate = aggregate.coerceAtLeast(other.aggregate),
         )
 
+    /**
+     * 把用法拥有者种类映射到通用节点类型：类、方法或资源（文件）。
+     */
     private fun ClassUsageOwnerKind.toNodeType(): NodeType =
         when (this) {
             ClassUsageOwnerKind.CLASS -> NodeType.CLASS

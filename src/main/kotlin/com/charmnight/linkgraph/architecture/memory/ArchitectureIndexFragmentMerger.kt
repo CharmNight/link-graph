@@ -23,12 +23,15 @@ import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
 import com.charmnight.linkgraph.jvm.relation.JvmRelationSource
 import com.charmnight.linkgraph.source.SourceOrigin
 
+/** 切片合并结果，包含合并后的符号索引与关系索引。 */
 data class ArchitectureIndexMergedFragment(
     val symbolIndex: JvmSymbolIndex,
     val relationIndex: JvmRelationIndex,
 )
 
+/** 切片片段合并器：把多个切片片段重新组装为统一的符号/关系索引。 */
 class ArchitectureIndexFragmentMerger {
+    /** 将多个切片片段合并为单一索引结果。 */
     fun merge(fragments: List<ArchitectureIndexSliceFragment>): ArchitectureIndexMergedFragment {
         val classes = fragments
             .flatMap(ArchitectureIndexSliceFragment::symbols)
@@ -226,6 +229,7 @@ class ArchitectureIndexFragmentMerger {
         )
     }
 
+    /** 把符号切片中的源码定位信息（路径、行号、是否反编译）映射为运行时使用的 JvmSourceRef；缺失路径返回 null */
     private fun sourceRef(symbol: SymbolSliceFragment): JvmSourceRef? =
         symbol.sourcePath?.takeIf(String::isNotBlank)?.let { path ->
             JvmSourceRef(
@@ -237,6 +241,7 @@ class ArchitectureIndexFragmentMerger {
             )
         }
 
+    /** 把资源切片的源码定位信息映射为 JvmSourceRef；资源始终有 path 所以不会返回 null */
     private fun sourceRef(resource: ResourceSliceFragment): JvmSourceRef =
         JvmSourceRef(
             displayPath = resource.path,
@@ -246,6 +251,7 @@ class ArchitectureIndexFragmentMerger {
             decompiled = resource.sourceDecompiled,
         )
 
+    /** 仅给定资源路径时构造最小的 JvmSourceRef；空路径返回 null */
     private fun sourceRef(path: String): JvmSourceRef? =
         path.takeIf(String::isNotBlank)?.let { displayPath ->
             JvmSourceRef(
@@ -257,6 +263,7 @@ class ArchitectureIndexFragmentMerger {
             )
         }
 
+    /** 把字段切片中的类型引用集合映射为 JvmFieldTypeReference 列表；无显式引用时回退到字段类型名作为单一引用 */
     private fun fieldTypeReferences(symbol: SymbolSliceFragment): List<JvmFieldTypeReference> =
         if (symbol.typeReferences.isNotEmpty()) {
             symbol.typeReferences.mapNotNull { reference ->
@@ -271,12 +278,15 @@ class ArchitectureIndexFragmentMerger {
                 .orEmpty()
         }
 
+    /** 安全地把字符串映射为 JvmResourceKind，无效值返回 null */
     private fun resourceKindOrNull(value: String): JvmResourceKind? =
         enumValueOrNull<JvmResourceKind>(value)
 
+    /** 枚举字符串安全转换的通用工具，无效值返回 null，避免单点解析失败导致整批合并失败 */
     private inline fun <reified T : Enum<T>> enumValueOrNull(value: String): T? =
         runCatching { enumValueOf<T>(value) }.getOrNull()
 
+    /** 把来源字符串映射为 SourceOrigin，无效值返回 null */
     private fun sourceOriginOrNull(value: String): SourceOrigin? =
         enumValueOrNull<SourceOrigin>(value)
 }

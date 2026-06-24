@@ -2,6 +2,10 @@ package com.charmnight.linkgraph.codegen
 
 import com.charmnight.linkgraph.llm.LlmJsonCodec
 
+/**
+ * 代码编辑载荷归一化器：把不同命名的 LLM 输出字段统一映射为代码替换所需的字段。
+ * 处理候选键集合与元数据键集合，从原始映射中提取目标文本。
+ */
 internal object CodeEditPayloadNormalizer {
     private val candidateKeys = listOf(
         "with",

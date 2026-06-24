@@ -295,6 +295,7 @@ class SourceNavigationService(
             ?.takeUnless(VirtualFile::isDirectory)
     }
 
+    /** 收集项目级别允许访问的根路径，包含项目根目录和所有内容根，作为后续路径安全校验的基准。 */
     private fun projectScopedRoots(): List<Path> {
         return buildList {
             project.basePath

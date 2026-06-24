@@ -73,10 +73,22 @@ import org.jetbrains.kotlin.psi.KtWhileExpression
 import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * 代码流语义提取器：把一个 [CodeSubjectHandle] 指向的方法体拆解成控制流图（分支/循环/异常），
+ * 再在图上叠加方法调用、资源访问等关系，最终产出供前端渲染的语义分析结果。
+ *
+ * 内部使用双向 BFS：向下展开被调用的方法，向上反查调用方，配合预算策略控制规模。
+ */
 class CodeFlowSemanticExtractor(
+    /** 方法调用语义解析器，用于补全调用与资源/事件等附加关系。 */
     private val invocationResolver: CodeInvocationSemanticResolver = CodeInvocationSemanticResolver(),
+    /** 架构图索引的懒加载提供者，跨源关联时使用；为空表示不参与跨源扩展。 */
     private val architectureIndexProvider: (() -> ArchitectureGraphIndex?)? = null,
 ) {
+    /**
+     * 在读锁中执行：先索引主体方法，再通过 [JavaFlowSemanticBuilder] 或 [KotlinFlowSemanticBuilder]
+     * 解析方法体；按预算沿下游（被调用方）和上游（调用方）展开，最终汇总为 [SemanticAnalysisResult]。
+     */
     fun extract(
         handle: CodeSubjectHandle,
         capturePolicy: SemanticCapturePolicy,
@@ -214,23 +226,37 @@ class CodeFlowSemanticExtractor(
         }
     }
 
+    /** 一次遍历任务：携带目标方法与递归深度，用于 BFS 队列。 */
     private data class TraversalTask(
         val method: PsiMethod,
         val depth: Int,
     )
 }
 
+/**
+ * 流程语义构建器的公共基类：封装了调用片段拼接、动作 / 决策 / 循环 / 终止等通用流程模板，
+ * 具体语言的语法遍历由 [JavaFlowSemanticBuilder] / [KotlinFlowSemanticBuilder] 实现。
+ */
 private abstract class BaseFlowSemanticBuilder(
+    /** 当前正在分析的方法 PSI 节点。 */
     protected val method: PsiMethod,
+    /** 归属方法对应的语义单元 ID，所有派生单元都通过 CONTAINS 关系挂到它名下。 */
     protected val ownerMethodUnitId: String,
+    /** 累加器，负责生成并去重写入所有语义单元与关系。 */
     protected val accumulator: CodeSemanticAccumulator,
+    /** 捕获策略：决定是否生成控制流、调用、异常路径等关系。 */
     protected val capturePolicy: SemanticCapturePolicy,
+    /** 预算策略：限制单次分析的展开深度与每单元连接数。 */
     protected val budgetPolicy: TraversalBudgetPolicy,
 ) {
+    /** 当前方法体内直接发现的可下行方法集合，用于驱动下一层 BFS。 */
     protected val discoveredMethods = linkedSetOf<PsiMethod>()
+    /** 当前方法的签名缓存，用作派生单元 ID 的命名空间。 */
     protected val ownerSignature: String = methodSignature(method)
+    /** 标记是否出现过调用解析失败，便于在结果中加诊断。 */
     private val invocationResolutionIncomplete = AtomicBoolean(false)
 
+    /** 入口方法：解析执行计划，构建根片段并补隐式返回，最终返回新发现的方法与边界。 */
     fun build(): FlowBuildResult {
         val executionPlan = resolveExecutionPlan(method)
         val boundary = executionPlan.boundary
@@ -261,6 +287,7 @@ private abstract class BaseFlowSemanticBuilder(
         )
     }
 
+    /** 若开启控制流捕获且方法体存在正常出口，则在尾部追加一个隐式 RETURN 终止节点，模拟方法自然结束。 */
     private fun attachImplicitMethodCompletion(fragment: FlowFragment): FlowFragment {
         if (!capturePolicy.includeControlFlow || fragment.exits.isEmpty()) {
             return fragment
@@ -273,8 +300,12 @@ private abstract class BaseFlowSemanticBuilder(
         return sequenceFragments(listOf(fragment, implicitReturn))
     }
 
+    /** 子类实现：把根级 PSI 元素列表翻译为一段流程片段。 */
     protected abstract fun buildRoots(roots: List<PsiElement>): FlowFragment
 
+    /**
+     * 安全包装的下游目标解析：捕获任何异常并标记为“解析未完成”，避免单点异常导致整次构建失败。
+     */
     protected fun resolveDownstreamTargetsSafely(
         element: PsiElement,
         includeNestedLambdas: Boolean = true,
@@ -286,6 +317,7 @@ private abstract class BaseFlowSemanticBuilder(
             }
     }
 
+    /** 当 [invocationResolutionIncomplete] 被置位时返回一条统一的警告诊断。 */
     private fun invocationResolutionDiagnostics(): List<SemanticDiagnostic> {
         if (!invocationResolutionIncomplete.get()) {
             return emptyList()
@@ -299,6 +331,10 @@ private abstract class BaseFlowSemanticBuilder(
         )
     }
 
+    /**
+     * 把若干段顺序片段串成一条流水线：首个片段的入口成为合成片段入口；
+     * 当上一段存在多个出口时插入 [MergeUnit] 汇合点，再连向下一段入口。
+     */
     protected fun sequenceFragments(fragments: List<FlowFragment>): FlowFragment {
         var entryUnitId: String? = null
         var entryElement: PsiElement? = null
@@ -360,6 +396,10 @@ private abstract class BaseFlowSemanticBuilder(
         )
     }
 
+    /**
+     * 为一个可执行元素（方法调用、表达式等）创建动作单元；按预算把解析出的下游目标串成调用链，
+     * 每个目标生成一个 [InvocationUnit] 并通过 INVOKES 关系指向被调方法。
+     */
     protected fun actionFragment(
         element: PsiElement,
         title: String,
@@ -454,6 +494,7 @@ private abstract class BaseFlowSemanticBuilder(
         )
     }
 
+    /** 创建终止节点（return/throw）片段，不带出口，标识流程在此结束。 */
     protected fun terminalFragment(
         element: PsiElement,
         title: String,
@@ -473,6 +514,7 @@ private abstract class BaseFlowSemanticBuilder(
         )
     }
 
+    /** 构建条件分支（if）片段：创建 IF 作用域，按 TRUE/FALSE 标签分别连接两个分支入口与出口。 */
     protected fun decisionFragment(
         element: PsiElement,
         title: String,
@@ -545,11 +587,16 @@ private abstract class BaseFlowSemanticBuilder(
         )
     }
 
+    /** 循环条件相对循环体的位置：先判断后执行（while/for）或先执行后判断（do-while）。 */
     protected enum class LoopGuardPlacement {
         BEFORE_BODY,
         AFTER_BODY,
     }
 
+    /**
+     * 构建循环片段：登记循环作用域，按 [guardPlacement] 串联条件片段、循环体和更新片段，
+     * 处理 LOOP_BODY / LOOP_BACK / LOOP_UPDATE / LOOP_EXIT 等边角色。
+     */
     protected fun loopFragment(
         element: PsiElement,
         title: String,
@@ -656,6 +703,7 @@ private abstract class BaseFlowSemanticBuilder(
     }
 }
 
+/** Java 语法专用流程构建器：根据 [PsiStatement] 类型分发到对应的语句构建器。 */
 private class JavaFlowSemanticBuilder(
     method: PsiMethod,
     ownerMethodUnitId: String,
@@ -663,6 +711,7 @@ private class JavaFlowSemanticBuilder(
     capturePolicy: SemanticCapturePolicy,
     budgetPolicy: TraversalBudgetPolicy,
 ) : BaseFlowSemanticBuilder(method, ownerMethodUnitId, accumulator, capturePolicy, budgetPolicy) {
+    /** Java 入口：根据元素类型分派给代码块 / 语句 / 表达式构建器，再串成一条流水线。 */
     override fun buildRoots(roots: List<PsiElement>): FlowFragment {
         val fragments = roots.mapNotNull { root ->
             when (root) {
@@ -675,10 +724,12 @@ private class JavaFlowSemanticBuilder(
         return sequenceFragments(fragments)
     }
 
+    /** 处理 Java 代码块：把每条语句依次构建并串联。 */
     private fun buildCodeBlock(block: PsiCodeBlock): FlowFragment {
         return sequenceFragments(block.statements.map(::buildStatement))
     }
 
+    /** 按语句类型分发：块、if、各类循环、switch、try、return、throw、表达式、声明等。 */
     private fun buildStatement(statement: PsiStatement): FlowFragment {
         return when (statement) {
             is PsiBlockStatement -> buildCodeBlock(statement.codeBlock)
@@ -745,6 +796,7 @@ private class JavaFlowSemanticBuilder(
         }
     }
 
+    /** 处理表达式语句：若参数中含 lambda，则连带 lambda 体一起构建；否则作为普通动作。 */
     private fun buildExpressionStatement(statement: PsiExpressionStatement): FlowFragment {
         val methodCall = statement.expression as? PsiMethodCallExpression
         return if (methodCall != null && methodCall.argumentList.expressions.any { argument -> argument is PsiLambdaExpression }) {
@@ -754,6 +806,7 @@ private class JavaFlowSemanticBuilder(
         }
     }
 
+    /** 对可能是语句或表达式的元素统一适配，分别走 [buildStatement] 或 [actionFragment]。 */
     private fun buildStatementOrExpression(element: PsiElement): FlowFragment {
         return when (element) {
             is PsiStatement -> buildStatement(element)
@@ -762,6 +815,7 @@ private class JavaFlowSemanticBuilder(
         }
     }
 
+    /** 处理含 lambda 参数的方法调用：先创建动作，再为每个 lambda 参数单独生成作用域与流程。 */
     private fun buildMethodCallWithLambdaBodies(expression: PsiMethodCallExpression): FlowFragment {
         val resolvedMethod = expression.resolveMethod()
         val actionFragment = actionFragment(
@@ -781,6 +835,7 @@ private class JavaFlowSemanticBuilder(
         return sequenceFragments(listOf(actionFragment) + lambdaFragments)
     }
 
+    /** 为单个 lambda 参数建立 LAMBDA 作用域并把 lambda 体作为子流程挂上去。 */
     private fun buildLambdaScopeFragment(
         lambdaExpression: PsiLambdaExpression,
         ownerMethod: PsiMethod?,
@@ -819,6 +874,7 @@ private class JavaFlowSemanticBuilder(
         )
     }
 
+    /** 构建 if 语句：解析 then/else 分支并交给通用 [decisionFragment]。 */
     private fun buildIfStatement(statement: PsiIfStatement): FlowFragment {
         val trueFragment = statement.thenBranch?.let(::buildStatementOrExpression) ?: FlowFragment(null, linkedSetOf())
         val falseFragment = statement.elseBranch?.let(::buildStatementOrExpression) ?: FlowFragment(null, linkedSetOf())
@@ -831,6 +887,7 @@ private class JavaFlowSemanticBuilder(
         )
     }
 
+    /** 构建 switch 语句：登记 SWITCH 作用域后，把各 case 标签的语句归并成独立分支。 */
     private fun buildSwitchStatement(statement: PsiSwitchStatement): FlowFragment {
         val switchUnit = accumulator.addScope(
             ownerSignature = ownerSignature,
@@ -875,6 +932,7 @@ private class JavaFlowSemanticBuilder(
         )
     }
 
+    /** 扫描 switch body，按 case/default 标签切分成多个 [SwitchBranch]，保留每个分支内的语句顺序。 */
     private fun buildSwitchBranches(statement: PsiSwitchStatement): List<SwitchBranch> {
         val bodyStatements = statement.body?.statements.orEmpty()
         val branches = mutableListOf<SwitchBranch>()
@@ -903,6 +961,7 @@ private class JavaFlowSemanticBuilder(
         return branches
     }
 
+    /** 把 switch 分支原始文本（`case X:`、`default ->` 等）归一化为统一的标签字符串。 */
     private fun normalizeSwitchBranchLabel(rawLabel: String): String {
         val normalized = rawLabel
             .substringBefore("->")
@@ -915,6 +974,7 @@ private class JavaFlowSemanticBuilder(
         }
     }
 
+    /** 判断循环条件是否非常量 `true`，用于决定是否生成结构化 LOOP_EXIT 边（避免无限循环被画成可退出）。 */
     private fun hasStructuredNormalExit(condition: PsiExpression?): Boolean {
         if (condition == null) {
             return false
@@ -925,6 +985,7 @@ private class JavaFlowSemanticBuilder(
         return constant != true
     }
 
+    /** 构建 try/catch/finally：登记 TRY 作用域，try 块为正常分支，每个 catch 以 EXCEPTION 边接入。 */
     private fun buildTryStatement(statement: PsiTryStatement): FlowFragment {
         val tryScope = accumulator.addScope(
             ownerSignature = ownerSignature,
@@ -982,11 +1043,13 @@ private class JavaFlowSemanticBuilder(
         }
     }
 
+    /** 构建单个 catch 块的流程，作为异常路径分支入口。 */
     private fun buildCatchSection(catchSection: PsiCatchSection): FlowFragment? {
         val block = catchSection.catchBlock ?: return null
         return buildCodeBlock(block)
     }
 
+    /** 构建 return 语句：若有返回值表达式则先构建动作，再连接到 RETURN 终止节点。 */
     private fun buildReturnStatement(statement: PsiReturnStatement): FlowFragment {
         val action = statement.returnValue
             ?.takeIf { expression -> resolveDownstreamTargetsSafely(expression).isNotEmpty() || expression.text != null }
@@ -1015,6 +1078,7 @@ private class JavaFlowSemanticBuilder(
         }
     }
 
+    /** 构建变量声明语句：仅有初始化表达式时才产生动作片段。 */
     private fun buildDeclarationStatement(statement: PsiDeclarationStatement): FlowFragment {
         val fragments = statement.declaredElements.mapNotNull { element ->
             when (element) {
@@ -1029,6 +1093,7 @@ private class JavaFlowSemanticBuilder(
     }
 }
 
+/** Kotlin 语法专用流程构建器：基于 [KtExpression] 类型递归构建控制流。 */
 private class KotlinFlowSemanticBuilder(
     method: PsiMethod,
     ownerMethodUnitId: String,
@@ -1036,6 +1101,7 @@ private class KotlinFlowSemanticBuilder(
     capturePolicy: SemanticCapturePolicy,
     budgetPolicy: TraversalBudgetPolicy,
 ) : BaseFlowSemanticBuilder(method, ownerMethodUnitId, accumulator, capturePolicy, budgetPolicy) {
+    /** Kotlin 入口：仅接受 [KtExpression]，按表达式类型分发构建。 */
     override fun buildRoots(roots: List<PsiElement>): FlowFragment {
         val fragments = roots.mapNotNull { root ->
             (root as? KtExpression)?.let(::buildExpression)
@@ -1043,6 +1109,7 @@ private class KotlinFlowSemanticBuilder(
         return sequenceFragments(fragments)
     }
 
+    /** Kotlin 表达式分发：if、return、throw、try、for、while、do-while、when、二元、循环等。 */
     private fun buildExpression(expression: KtExpression): FlowFragment {
         return when (expression) {
             is KtBlockExpression -> sequenceFragments(expression.statements.map(::buildExpression))
@@ -1099,6 +1166,7 @@ private class KotlinFlowSemanticBuilder(
         }
     }
 
+    /** 构建 Kotlin when 表达式：登记 SWITCH 作用域，把每个 entry 当作带标签分支。 */
     private fun buildWhenExpression(expression: KtWhenExpression): FlowFragment {
         val whenUnit = accumulator.addScope(
             ownerSignature = ownerSignature,
@@ -1143,6 +1211,7 @@ private class KotlinFlowSemanticBuilder(
         )
     }
 
+    /** 把 when entry 的条件文本归一化为分支标签，`else` 转为 `DEFAULT`。 */
     private fun normalizeWhenBranchLabel(entry: KtWhenEntry): String {
         val normalized = entry.text
             .substringBefore("->")
@@ -1154,6 +1223,7 @@ private class KotlinFlowSemanticBuilder(
         }
     }
 
+    /** 判断 Kotlin 循环条件是否常量 `true`，避免无限 while(true) 被画成有正常出口。 */
     private fun hasStructuredNormalExit(condition: KtExpression?): Boolean {
         val normalized = condition?.unwrapParentheses()?.text
             ?.replace(Regex("\\s+"), "")
@@ -1161,6 +1231,7 @@ private class KotlinFlowSemanticBuilder(
         return normalized != "true"
     }
 
+    /** 构建 Kotlin return 表达式：与 Java 版本类似，先构建返回值动作再连到 RETURN 终止。 */
     private fun buildReturnExpression(expression: KtReturnExpression): FlowFragment {
         val action = expression.returnedExpression?.let(::buildExpression)
         val terminal = terminalFragment(expression, "返回", "RETURN")
@@ -1187,6 +1258,7 @@ private class KotlinFlowSemanticBuilder(
         }
     }
 
+    /** 构建 Kotlin try 表达式：登记 TRY 作用域，try 块作为正常入口，catch 子句以 EXCEPTION 边接入。 */
     private fun buildTryExpression(expression: KtTryExpression): FlowFragment {
         val tryScope = accumulator.addScope(
             ownerSignature = ownerSignature,
@@ -1244,7 +1316,12 @@ private class KotlinFlowSemanticBuilder(
     }
 }
 
+/**
+ * 语义累加器：在单次分析过程中收集所有单元、关系、源码映射、锚点、诊断和边界，
+ * 内部维护插入顺序并对相同 key 去重，最终由 [build] 输出不可变结果。
+ */
 private class CodeSemanticAccumulator(
+    /** 当前分析的主体句柄。 */
     private val handle: CodeSubjectHandle,
 ) {
     private val units = linkedMapOf<String, SemanticUnit>()
@@ -1254,6 +1331,7 @@ private class CodeSemanticAccumulator(
     private val diagnostics = mutableListOf<SemanticDiagnostic>()
     private val boundaries = mutableListOf<SemanticBoundary>()
 
+    /** 收尾：把所有内部集合组装成不可变 [SemanticAnalysisResult]，并对诊断/边界做去重。 */
     fun build(): SemanticAnalysisResult {
         return SemanticAnalysisResult(
             subject = handle,
@@ -1266,6 +1344,7 @@ private class CodeSemanticAccumulator(
         )
     }
 
+    /** 为指定单元登记一个锚点（前端用于高亮"当前主体"等标记）。 */
     fun addAnchor(
         targetUnitId: String,
         label: String,
@@ -1280,6 +1359,7 @@ private class CodeSemanticAccumulator(
         )
     }
 
+ /** 把方法 PSI 登记为 [MethodLikeUnit]，附带文档摘要与源码映射。 */
     fun addMethod(method: PsiMethod): MethodLikeUnit {
         val signature = methodSignature(method)
         val unit = MethodLikeUnit(
@@ -1293,6 +1373,7 @@ private class CodeSemanticAccumulator(
         return unit
     }
 
+    /** 登记一个流程作用域（IF/SWITCH/TRY/LOOP/LAMBDA 等），自动挂上 CONTAINS 关系。 */
     fun addScope(
         ownerSignature: String,
         element: PsiElement,
@@ -1315,6 +1396,7 @@ private class CodeSemanticAccumulator(
         return unit
     }
 
+    /** 抽取方法 KDoc/Javadoc 描述段（截止到首个 `@` 标签前）拼接为单行摘要。 */
     private fun methodDocSummary(method: PsiMethod): String? {
         val raw = method.docComment?.text ?: return null
         return raw
@@ -1328,6 +1410,7 @@ private class CodeSemanticAccumulator(
             .ifBlank { null }
     }
 
+    /** 登记一个动作单元（赋值、调用等），自动挂上 CONTAINS 关系与源码映射。 */
     fun addAction(
         ownerSignature: String,
         element: PsiElement,
@@ -1346,6 +1429,7 @@ private class CodeSemanticAccumulator(
         return unit
     }
 
+    /** 登记一个调用单元（带源单元与目标签名），用于在图中显式画出"在哪一步调用了谁"。 */
     fun addInvocation(
         ownerSignature: String,
         sourceUnitId: String,
@@ -1368,6 +1452,7 @@ private class CodeSemanticAccumulator(
         return unit
     }
 
+    /** 登记终止节点（return/throw），不带后续出口。 */
     fun addTerminal(
         ownerSignature: String,
         element: PsiElement,
@@ -1386,6 +1471,7 @@ private class CodeSemanticAccumulator(
         return unit
     }
 
+    /** 登记汇合节点（多个出口汇聚到一处后再继续），常用于 [sequenceFragments] 中的多路合并。 */
     fun addMerge(
         ownerSignature: String,
         element: PsiElement,
@@ -1402,6 +1488,7 @@ private class CodeSemanticAccumulator(
         return unit
     }
 
+    /** 用复合 key 对关系去重后写入；key 包含 kind、两端单元、标签、边角色等关键字段。 */
     fun addRelation(relation: SemanticRelation) {
         val key = listOf(
             relation.kind.name,
@@ -1416,20 +1503,24 @@ private class CodeSemanticAccumulator(
         relations.putIfAbsent(key, relation)
     }
 
+    /** 追加一条流程边界（如方法入口/出口的边界描述）。 */
     fun addBoundary(boundary: SemanticBoundary) {
         boundaries += boundary
     }
 
+    /** 追加一条诊断信息（警告/错误），最终在结果中按整体去重。 */
     fun addDiagnostic(diagnostic: SemanticDiagnostic) {
         diagnostics += diagnostic
     }
 
+    /** 把调用解析器产出的附加单元/关系/源码映射合并进当前累加器。 */
     fun addResolution(resolution: CodeInvocationSemanticResolution) {
         resolution.semanticUnits.forEach { unit -> units.putIfAbsent(unit.id, unit) }
         resolution.relations.forEach(::addRelation)
         resolution.sourceMappings.forEach { mapping -> sourceMappings.putIfAbsent(mapping.targetUnitId, mapping) }
     }
 
+    /** 添加 CONTAINS 关系：方法单元包含其下属的语义单元，形成层级结构。 */
     private fun addContains(
         fromUnitId: String,
         toUnitId: String,
@@ -1443,6 +1534,7 @@ private class CodeSemanticAccumulator(
         )
     }
 
+    /** 把语义单元与源码位置（文件 + 文本区间）建立映射，前端用于点击跳转。 */
     private fun addSourceMapping(
         unitId: String,
         element: PsiElement,
@@ -1459,6 +1551,7 @@ private class CodeSemanticAccumulator(
         )
     }
 
+    /** 拼接语义元素的稳定 ID：命名空间 + 归属签名 + 判别符 + PSI 起始偏移。 */
     private fun semanticElementId(
         namespace: String,
         ownerSignature: String,
@@ -1469,34 +1562,40 @@ private class CodeSemanticAccumulator(
         return SemanticIdFactory.compose(namespace, "$ownerSignature:$discriminator:$startOffset")
     }
 
+    /** 修正可能的反转区间，保证 endOffset >= startOffset，避免 PSI 异常区间导致渲染崩溃。 */
     private fun normalizeTextRange(range: TextRange): TextRange {
         val safeEnd = range.endOffset.coerceAtLeast(range.startOffset)
         return TextRange(range.startOffset, safeEnd)
     }
 }
 
+/** 流程构建中的中间片段：入口单元、出口集合以及触发该片段的 PSI 元素。 */
 private data class FlowFragment(
     val entryUnitId: String?,
     val exits: LinkedHashSet<FlowExit>,
     val entryElement: PsiElement? = null,
 )
 
+/** 流程出口：携带出口单元 ID 与可选的标签/边角色（TRUE/FALSE/EXCEPTION 等）。 */
 private data class FlowExit(
     val unitId: String,
     val label: String? = null,
     val flowEdgeRole: FlowEdgeRole? = null,
 )
 
+/** 带标签的分支片段，用于 switch/when 等多路分支的中间表示。 */
 private data class LabeledBranchFragment(
     val label: String,
     val fragment: FlowFragment,
 )
 
+/** switch 分支的中间结构：标签 + 该分支下的语句列表。 */
 private data class SwitchBranch(
     val label: String,
     val statements: List<PsiStatement>,
 )
 
+/** 把分支标签转换为对应的流程边角色：DEFAULT 标签 → DEFAULT 边，其它 → CASE 边。 */
 private fun String.toCaseFlowRole(): FlowEdgeRole {
     return if (this == "DEFAULT") {
         FlowEdgeRole.DEFAULT
@@ -1505,6 +1604,7 @@ private fun String.toCaseFlowRole(): FlowEdgeRole {
     }
 }
 
+/** 反复剥离外层括号，返回最内层的 Kotlin 表达式，便于条件判断等场景统一处理。 */
 private fun KtExpression.unwrapParentheses(): KtExpression {
     var current: KtExpression = this
     while (current is KtParenthesizedExpression && current.expression != null) {
@@ -1513,18 +1613,21 @@ private fun KtExpression.unwrapParentheses(): KtExpression {
     return current
 }
 
+/** 单个方法的构建产物：发现的可下行方法列表、可选边界与诊断。 */
 private data class FlowBuildResult(
     val discoveredMethods: List<PsiMethod>,
     val boundary: SemanticBoundary? = null,
     val diagnostics: List<SemanticDiagnostic> = emptyList(),
 )
 
+/** 把任意文本规整为流程节点标题：压缩空白、长度超过 96 字符时截断加省略号。 */
 private fun summarize(text: String?): String {
     val normalized = normalizedSummaryText(text)
         ?: return "unknown"
     return if (normalized.length <= 96) normalized else normalized.take(93).trimEnd() + "..."
 }
 
+/** 根据 PSI 元素类型（Java/Kotlin 方法调用、构造器等）生成精简的动作标题。 */
 private fun summarizeExecutable(element: PsiElement?): String {
     return when (element) {
         is PsiMethodCallExpression -> summarizeJavaMethodCall(element)
@@ -1535,6 +1638,7 @@ private fun summarizeExecutable(element: PsiElement?): String {
     }
 }
 
+/** 生成 throw 语句的标题，若无法提取被抛对象则退化为通用文案。 */
 private fun buildThrowTitle(expression: PsiElement?): String {
     val thrown = summarizeExecutable(expression)
     return if (thrown == "unknown") {
@@ -1544,6 +1648,7 @@ private fun buildThrowTitle(expression: PsiElement?): String {
     }
 }
 
+/** 把 Java 方法调用表达式压缩为 `receiver.method(arg, ...)` 形式的标题。 */
 private fun summarizeJavaMethodCall(expression: PsiMethodCallExpression): String {
     val methodName = expression.methodExpression.referenceName
         ?: expression.methodExpression.text.substringAfterLast('.').takeIf { it.isNotBlank() }
@@ -1553,6 +1658,7 @@ private fun summarizeJavaMethodCall(expression: PsiMethodCallExpression): String
     return "$callee(${compactCallArguments(expression.argumentList.expressions.map { argument -> argument.text })})"
 }
 
+/** 把 Java `new X(...)` 表达式压缩为简洁标题，类名缺失时退化为 `object`。 */
 private fun summarizeJavaConstructorCall(expression: PsiNewExpression): String {
     val className = expression.classOrAnonymousClassReference
         ?.referenceName
@@ -1562,6 +1668,7 @@ private fun summarizeJavaConstructorCall(expression: PsiNewExpression): String {
     return "new $className(${compactCallArguments(arguments)})"
 }
 
+ /** 把 Kotlin 限定调用（`receiver.selector(...)`）压缩为简洁标题，无法解析时返回 null。 */
 private fun summarizeKotlinQualifiedCall(expression: KtQualifiedExpression): String? {
     val selectorCall = expression.selectorExpression as? KtCallExpression ?: return null
     val receiver = compactReceiver(expression.receiverExpression.text)
@@ -1569,6 +1676,7 @@ private fun summarizeKotlinQualifiedCall(expression: KtQualifiedExpression): Str
     return listOfNotNull(receiver, call).joinToString(".").takeIf { it.isNotBlank() }
 }
 
+/** 把 Kotlin 普通调用表达式压缩为 `callee(arg, ...)` 形式标题。 */
 private fun summarizeKotlinCall(expression: KtCallExpression): String {
     val callee = normalizedSummaryText(expression.calleeExpression?.text)
         ?: "call"
@@ -1578,6 +1686,7 @@ private fun summarizeKotlinCall(expression: KtCallExpression): String {
     return "$callee(${compactCallArguments(arguments)})"
 }
 
+/** 把参数列表压缩成展示用字符串，含噪声参数时整体退化为 `...`，避免标题过长。 */
 private fun compactCallArguments(arguments: List<String>): String {
     if (arguments.isEmpty()) {
         return ""
@@ -1590,6 +1699,7 @@ private fun compactCallArguments(arguments: List<String>): String {
     }
 }
 
+/** 压缩单个参数：含大括号/分号/等号或超长时退化为 `...`，否则保留规整文本。 */
 private fun compactCallArgument(argument: String?): String {
     val normalized = normalizedSummaryText(argument) ?: return "..."
     return if (isNoisyCallArgument(normalized)) {
@@ -1599,6 +1709,7 @@ private fun compactCallArgument(argument: String?): String {
     }
 }
 
+/** 压缩 receiver 文本：过长或含结构符号（花括号/等号）时返回 null，避免污染标题。 */
 private fun compactReceiver(receiver: String?): String? {
     val normalized = normalizedSummaryText(receiver) ?: return null
     return if (normalized.length <= 40 && !normalized.any { char -> char == '{' || char == '}' || char == '=' }) {
@@ -1608,11 +1719,13 @@ private fun compactReceiver(receiver: String?): String? {
     }
 }
 
+/** 判断参数文本是否属于"噪声"（超长或含结构符号），用于决定是否省略。 */
 private fun isNoisyCallArgument(argument: String): Boolean {
     return argument.length > 32 ||
         argument.any { char -> char == '{' || char == '}' || char == '=' || char == ';' }
 }
 
+/** 把文本中的所有空白（含换行）压缩为单个空格并 trim，返回 null 表示无有效内容。 */
 private fun normalizedSummaryText(text: String?): String? {
     return text
         ?.replace(Regex("\\s+"), " ")
@@ -1620,6 +1733,7 @@ private fun normalizedSummaryText(text: String?): String? {
         ?.takeIf { it.isNotBlank() }
 }
 
+/** 为 Java lambda 生成展示标题：归属方法名 + λ + 参数列表，缺失信息时合理降级。 */
 private fun buildJavaLambdaTitle(
     ownerMethod: PsiMethod?,
     fallbackName: String?,

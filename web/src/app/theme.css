@@ -2587,7 +2587,7 @@ button {
 }
 
 /* P2: PropertyDrawer 改为贴右侧的滑入抽屉，保留图谱可见。
- * - 半透明遮罩只遮罩交互（点击关闭），不遮挡视觉
+ * - 遮罩透明：只承接点击关闭交互，不遮挡视觉，让用户边看图边编辑
  * - 抽屉贴右边缘，宽度取工作台列宽，图谱舞台始终可见 */
 .property-drawer-backdrop {
   position: fixed;
@@ -2596,7 +2596,7 @@ button {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: stretch;
-  background: rgba(0, 0, 0, 0.28);
+  background: transparent;
   overscroll-behavior: contain;
 }
 
@@ -3338,14 +3338,20 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  padding: 0 11px;
+  gap: 7px;  padding: 0 11px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   font-size: 12px;
   line-height: 1;
   white-space: nowrap;
   transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+/* SVG 图标原子：统一尺寸，颜色跟随父按钮 currentColor。 */
+.icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
 }
 
 .primary-button {
@@ -3589,8 +3595,168 @@ button:disabled {
   white-space: nowrap;
 }
 
+/* 左侧阶段引导条：可点击的步骤导航，配合 stage-badge（位置指示）使用。
+ * - done: 绿色圆点 + ✓，表示已产出可消费结果
+ * - active: 蓝色圆点 + 高亮，表示当前所处阶段
+ * - blocked: 红色圆点 + 阻塞旗标，表示进入前需先处理风险
+ * - idle: 灰色圆点 + 顺序编号，表示尚未触达 */
+.workflow-stage-nav {
+  min-width: 0;
+  padding: 10px 10px 6px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--panel-soft);
+}
+
+.workflow-stage-nav-title {
+  margin: 0 0 8px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.workflow-stage-nav-progress {
+  font-family: var(--font-mono);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.workflow-stage-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+
+/* 阶段间竖线连接器：done 阶段下方接出绿色线，连接到下一个阶段，
+ * 形成「进度感」。靠 ::before 伪元素绝对定位实现。 */
+.workflow-stage-li {
+  position: relative;
+}
+
+.workflow-stage-li:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 19px;
+  top: 34px;
+  width: 2px;
+  height: calc(100% - 34px + 2px);
+  background: var(--line-strong);
+  z-index: 0;
+  border-radius: 1px;
+}
+
+.workflow-stage-li-done:not(:last-child)::before {
+  background: var(--success);
+}
+
+.workflow-stage-item {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.workflow-stage-item:hover {
+  background: var(--control-bg-hover);
+}
+
+.workflow-stage-item-active {
+  background: var(--info-bg);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.workflow-stage-num {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: var(--panel-strong);
+  color: var(--dim);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.workflow-stage-item-active .workflow-stage-num {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.workflow-stage-item-done .workflow-stage-num {
+  border-color: var(--success);
+  background: var(--success);
+  color: #fff;
+}
+
+.workflow-stage-item-blocked .workflow-stage-num {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #fff;
+}
+
+.workflow-stage-body {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.workflow-stage-name {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workflow-stage-item-active .workflow-stage-name {
+  color: var(--accent-strong);
+}
+
+.workflow-stage-meta {
+  font-size: 10.5px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workflow-stage-flag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.workflow-stage-flag-blocked {
+  background: var(--danger);
+  color: #fff;
+}
+
 .workflow-taskbar-signals,
-.workflow-taskbar-actions,
 .change-tray-actions,
 .change-tray-summary,
 .graph-stage-footer,
@@ -3602,9 +3768,66 @@ button:disabled {
   align-items: center;
 }
 
-.workflow-taskbar-actions,
+.workflow-taskbar-actions {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(156px, auto) auto auto;
+  gap: 8px;
+  align-items: center;
+  justify-content: end;
+}
+
 .change-tray-actions {
   justify-content: flex-end;
+}
+
+/* 顶栏动作分组：把图操作 / 全局设置 / 主操作分成视觉独立的几组，
+ * 降低一行平铺按钮的扫描成本。组内紧贴，组间用 gap 拉开。
+ * 注意：背景必须与 taskbar 的 --shell 有足够色差，否则分组容器形同虚设。
+ * 用 inset shadow 强化「凹陷分段控件」的视觉，避免与平铺按钮混淆。 */
+.taskbar-group {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-items: center;
+  padding: 3px;
+  background: var(--control-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.taskbar-group-primary {
+  min-width: 156px;
+  justify-self: end;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+/* 主操作 + 副标题：主按钮是当前阶段的具体动作（精确、可变），
+ * 副标题说明这一步在流程里的位置（稳定、不变）。 */
+.taskbar-primary-action {
+  min-width: 156px;
+  display: grid;
+  gap: 2px;
+  justify-items: stretch;
+}
+
+.taskbar-primary-action .primary-button {
+  width: 100%;
+}
+
+.taskbar-primary-subtitle {
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--dim);
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hybrid-workbench-body-slot {
@@ -3636,6 +3859,16 @@ button:disabled {
   grid-column: 1;
   grid-row: 1;
   position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 阶段引导条 slot：位于大纲上方，不受大纲折叠影响。
+ * 折叠态下宽度跟随 rail（52px），阶段条自身负责紧凑展示。 */
+.hybrid-workbench-stage-nav-slot {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--shell);
 }
 
 .hybrid-workbench-graph-slot {
@@ -3650,6 +3883,46 @@ button:disabled {
 
 .hybrid-workbench-layout.outline-collapsed .hybrid-workbench-outline-slot {
   width: var(--outline-width);
+}
+
+.hybrid-workbench-layout.outline-collapsed .workflow-stage-nav {
+  padding: 10px 0 8px;
+  display: grid;
+  justify-items: center;
+}
+
+.hybrid-workbench-layout.outline-collapsed .workflow-stage-nav-title {
+  display: none;
+}
+
+.hybrid-workbench-layout.outline-collapsed .workflow-stage-list {
+  justify-items: center;
+  gap: 4px;
+}
+
+.hybrid-workbench-layout.outline-collapsed .workflow-stage-li:not(:last-child)::before {
+  left: 50%;
+  top: 32px;
+  transform: translateX(-50%);
+}
+
+.hybrid-workbench-layout.outline-collapsed .workflow-stage-item {
+  width: 34px;
+  height: 32px;
+  grid-template-columns: 1fr;
+  gap: 0;
+  place-items: center;
+  padding: 4px;
+}
+
+.hybrid-workbench-layout.outline-collapsed .workflow-stage-num {
+  width: 22px;
+  height: 22px;
+}
+
+.hybrid-workbench-layout.outline-collapsed .workflow-stage-body,
+.hybrid-workbench-layout.outline-collapsed .workflow-stage-flag {
+  display: none;
 }
 
 .hybrid-workbench-outline-collapse,
@@ -4877,6 +5150,46 @@ button:disabled {
   font-weight: 700;
 }
 
+.assistant-composer-mode-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.assistant-composer-mode-row select {
+  min-width: 128px;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.assistant-mode-label {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.assistant-composer-granularity {
+  align-items: flex-start;
+}
+
+.assistant-composer-granularity .workbench-granularity-group {
+  justify-content: flex-end;
+}
+
+.assistant-composer-granularity .workbench-granularity {
+  min-height: 30px;
+  border-radius: var(--radius-md);
+}
+
 .assistant-composer-help {
   margin: -2px 0 0;
   font-size: 12px;
@@ -5227,6 +5540,16 @@ button:disabled {
     justify-items: stretch;
   }
 
+  .assistant-composer-mode-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
+
+  .assistant-composer-mode-row select {
+    width: 100%;
+  }
+
   .assistant-composer-actions .primary-button {
     width: 100%;
   }
@@ -5351,8 +5674,13 @@ button:disabled {
 
 @media (max-width: 1440px) and (min-width: 1061px) {
   .workflow-taskbar-actions {
-    flex-wrap: wrap;
+    grid-template-columns: minmax(156px, auto) minmax(0, auto);
     justify-content: flex-end;
+  }
+
+  .workflow-taskbar-actions .taskbar-group:last-child {
+    grid-column: 2;
+    justify-self: end;
   }
 
   .hybrid-workbench-layout {
@@ -5441,6 +5769,7 @@ button:disabled {
   }
 
   .workflow-taskbar-actions {
+    display: flex;
     flex-wrap: nowrap;
     justify-content: flex-start;
     overflow-x: auto;

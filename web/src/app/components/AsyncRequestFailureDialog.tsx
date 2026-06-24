@@ -1,13 +1,25 @@
 import { Button } from "./Button";
 
+/** AsyncRequestFailureDialog 组件的入参。 */
 interface AsyncRequestFailureDialogProps {
+  /** 是否显示。 */
   open: boolean;
+  /** 弹窗标题。 */
   title: string;
+  /** 主消息。 */
   message: string;
+  /** 详细消息（可选）；用于补充上下文。 */
   detailMessage?: string | null;
+  /** 关闭回调。 */
   onClose: () => void;
 }
 
+/**
+ * 异步请求失败提示弹窗。
+ *
+ * 在异步请求失败时弹出，告知用户具体原因。
+ * 与 [MermaidImportDialog] 类似的页内弹窗形态，避免使用 window.alert 等不稳定 API。
+ */
 export function AsyncRequestFailureDialog({
   open,
   title,
@@ -26,6 +38,7 @@ export function AsyncRequestFailureDialog({
         role="dialog"
         aria-modal="true"
         aria-label="请求状态通知"
+        // 阻止点击事件冒泡到背景
         onClick={(event) => event.stopPropagation()}
       >
         <div className="drawer-header modal-header">

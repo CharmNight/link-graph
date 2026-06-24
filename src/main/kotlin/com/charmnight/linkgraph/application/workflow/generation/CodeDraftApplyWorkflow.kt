@@ -15,11 +15,18 @@ import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.vfs.LocalFileSystem
 import java.nio.file.Files
 
+/**
+ * 代码草稿应用工作流：负责把生成出来的代码草稿批量/单个写入磁盘，
+ * 并提供原生 diff/merge 入口以及源码导航能力。
+ */
 internal class CodeDraftApplyWorkflow(
+    /** 工作流运行所需的依赖集合（项目、日志、快照、写入服务等）。 */
     private val dependencies: GenerationWorkflowDependencies,
 ) {
+    /** 用于校验草稿目标路径必须落在项目目录内的策略。 */
     private val pathPolicy = ProjectScopedPathPolicy()
 
+    /** 批量写入当前快照中的全部代码草稿，并广播写入报告，最后跳转到首个产物。 */
     fun applyCodeDrafts() {
         val snapshot = dependencies.snapshotProvider.snapshot()
         debugLazy(dependencies.logger.isDebugEnabled, dependencies.logger::debug) {
@@ -40,6 +47,11 @@ internal class CodeDraftApplyWorkflow(
         report.writtenFiles.firstOrNull()?.let(dependencies.sourceNavigationServiceProvider()::navigateToPath)
     }
 
+    /**
+     * 按 ID 写入单个代码草稿，并依据写入结果选择成功/警告级别反馈给用户。
+     *
+     * @param draftId 待写入的代码草稿 ID
+     */
     fun applySingleCodeDraft(draftId: String) {
         val snapshot = dependencies.snapshotProvider.snapshot()
         val draft = snapshot.generatedCodeDrafts.firstOrNull { it.id == draftId }
@@ -82,6 +94,12 @@ internal class CodeDraftApplyWorkflow(
         report.writtenFiles.firstOrNull()?.let(dependencies.sourceNavigationServiceProvider()::navigateToPath)
     }
 
+    /**
+     * 打开指定代码草稿的原生三向 merge 窗口，让用户在 IDE 内审阅并选择最终内容。
+     * 会做项目路径约束校验，并禁止对已存在文件直接用纯 content 覆盖。
+     *
+     * @param draftId 目标代码草稿 ID
+     */
     fun openCodeDraftNativeDiff(draftId: String) {
         val snapshot = dependencies.snapshotProvider.snapshot()
         val draft = snapshot.generatedCodeDrafts.firstOrNull { it.id == draftId }
@@ -209,10 +227,12 @@ internal class CodeDraftApplyWorkflow(
         )
     }
 
+    /** 请求跳转到指定项目相对路径对应的源码位置。 */
     fun requestDraftNavigation(targetPath: String) {
         dependencies.sourceNavigationServiceProvider().navigateToProjectPath(targetPath)
     }
 
+    /** 合并历史写入报告与本次写入报告，去重产物，移除已写入的跳过项，并拼接告警信息。 */
     private fun mergeWriteReport(
         previous: GeneratedCodeDraftWriteReport?,
         current: GeneratedCodeDraftWriteReport,

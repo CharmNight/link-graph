@@ -19,11 +19,13 @@ import {
   FLOWCHART_NODE_TYPES,
 } from "./flowchartNodes";
 
+/** 流程图视图组件的属性：在可编辑舞台属性之上扩展当前视图文档与可选的布局视图文档。 */
 interface FlowchartViewProps extends EditableStageProps {
   view: FlowchartViewDocument;
   layoutView?: FlowchartViewDocument;
 }
 
+/** 当节点缺失或不可跳转源码时使用的占位节点，避免 canNavigateToSource 等检查抛错。 */
 function fallbackSourceNode() {
   return {
     type: "DOC_PAGE" as const,
@@ -32,12 +34,17 @@ function fallbackSourceNode() {
   };
 }
 
+/** 判断节点是否可作为方法调用展开的来源：必须是带签名的 INVOCATION 类型 FLOW_ACTION 节点。 */
 function isInvocationExpansionSource(node: LinkGraphDocument["nodes"][number] | null | undefined): boolean {
   return node?.type === "FLOW_ACTION" &&
     node.metadata?.["flow.kind"] === "INVOCATION" &&
     Boolean(node.signature?.trim());
 }
 
+/**
+ * 解析节点对应的方法调用展开来源 ID：节点本身符合条件时直接返回，
+ * 否则遍历其投影别名（如融合节点）查找是否有可作为展开来源的节点，找不到返回 null。
+ */
 function resolveInvocationExpansionNodeId(
   node: LinkGraphDocument["nodes"][number] | null | undefined,
   fullGraphNodeIndex: Map<string, LinkGraphDocument["nodes"][number]>,
@@ -57,6 +64,10 @@ function resolveInvocationExpansionNodeId(
   return null;
 }
 
+/**
+ * 规整流程图输入：先剔除 CONTAINS_FLOW 这类层级关系边只保留可视边，
+ * 当锚点节点没有控制流出口时根据其 CONTAINS_FLOW 关系合成一条入口控制流边，保证布局有起点。
+ */
 function sanitizeFlowchartGraph(
   graph: LinkGraphDocument,
   anchorNodeId: string | null | undefined,
@@ -100,6 +111,7 @@ function sanitizeFlowchartGraph(
   };
 }
 
+/** 提取节点归属的方法签名（优先用元数据中的归属方法，其次用节点自身签名），用于按方法裁剪图。 */
 function resolveNodeOwnerSignature(node: LinkGraphDocument["nodes"][number] | null | undefined): string | null {
   if (!node) {
     return null;
@@ -109,6 +121,10 @@ function resolveNodeOwnerSignature(node: LinkGraphDocument["nodes"][number] | nu
     || null;
 }
 
+/**
+ * 将整张流程图按锚点方法签名裁剪：保留同属一个方法的节点、由该方法调用展开得到的节点，
+ * 以及指向这些节点的入口/方法节点，确保流程图聚焦于当前方法而非整个调用图。
+ */
 function scopeFlowchartGraphToAnchorMethod(
   graph: LinkGraphDocument,
   anchorNodeId: string | null | undefined,
@@ -156,6 +172,10 @@ function scopeFlowchartGraphToAnchorMethod(
   };
 }
 
+/**
+ * 推断当前流程图应聚焦的方法节点：优先按锚点签名查找 METHOD 节点，
+ * 其次按选中节点签名查找，再退而求其次取 ENTRY 标记节点或任意 METHOD 节点，最终回退到锚点本身。
+ */
 function resolveCurrentMethodNode(args: {
   nodes: LinkGraphDocument["nodes"];
   anchorNodeId: string | null | undefined;
@@ -180,6 +200,10 @@ function resolveCurrentMethodNode(args: {
     ?? anchorNode;
 }
 
+/**
+ * 构造节点右键/工具菜单的动作列表：包含查看详情、跳转源码、展开被调方法、
+ * 讲解流程、节点问答、重新布局等通用项，并按权限与上下文动态加入删除节点、移除展开等动作。
+ */
 function flowchartNodeActions(args: {
   nodeId: string;
   canOpenSource: boolean;
@@ -288,6 +312,10 @@ function flowchartNodeActions(args: {
   return actions;
 }
 
+/**
+ * 流程图视图主组件：负责把视图文档裁剪到当前方法、规整入口边、运行 ELK 布局、
+ * 合并投影变更与隐藏节点，最后交给通用画布表面渲染节点/边/菜单和摘要头部。
+ */
 export function FlowchartView({
   view,
   layoutView,

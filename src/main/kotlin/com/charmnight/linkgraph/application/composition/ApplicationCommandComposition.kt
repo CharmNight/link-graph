@@ -28,10 +28,22 @@ import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanDi
 import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanWorkflow
 import com.charmnight.linkgraph.application.workflow.ReviewGraphWorkflow
 
+/**
+ * 应用命令组合根。
+ *
+ * 把所有 ApplicationCommandHandler 实例按固定顺序注册到统一的调度器中，
+ * 上层只需拿到 dispatcher 即可派发任意命令，不需要关心各 handler 的依赖关系。
+ * 命令处理器的注册顺序决定了匹配优先级，新增 handler 时需谨慎放置位置。
+ */
 internal class ApplicationCommandComposition(
+    /** 已组装好的所有工作流集合，作为各 handler 的依赖来源。 */
     private val workflows: ApplicationWorkflows,
-    private val openCodeDraftNativeDiffOverrideProvider: () -> ((String) -> Unit)? = { null },
+    /** 打开代码草稿原生 diff 视图的覆盖回调；调用方必须显式注入（不再提供默认 { null }）。 */
+    private val openCodeDraftNativeDiffOverrideProvider: () -> ((String) -> Unit)?,
 ) {
+    /**
+     * 构造聚合所有 handler 的命令调度器。
+     */
     fun dispatcher(): ApplicationCommandDispatcher =
         ApplicationCommandDispatcher(
             listOf(
@@ -74,6 +86,12 @@ internal class ApplicationCommandComposition(
         )
 }
 
+/**
+ * 应用层工作流集合。
+ *
+ * 把所有工作流及其协调器聚合在一个数据对象里，方便作为依赖统一注入到命令处理器、
+ * 事件处理器等其他组件中，避免散落的多处构造导致依赖图难以追踪。
+ */
 internal data class ApplicationWorkflows(
     val subjectFlow: SubjectGraphWorkflow,
     val workspaceChangeCoordinator: WorkspaceChangeCoordinator,

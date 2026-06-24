@@ -7,6 +7,16 @@ import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
 
+/**
+ * 图谱浏览器桥注册器。
+ *
+ * 负责在 JCEF 浏览器实例上注册前后端通信所需的 JS 桥：
+ * - 监听来自前端 JS 的命令（bridge command），解析并派发给后端 dispatcher。
+ * - 监听前端调试 trace，按策略决定是否记录日志。
+ * - 生成注入到前端页面的桥脚本，将后端能力暴露为 window.linkGraphBridge 等接口。
+ *
+ * 构造时传入一组策略回调与开关，避免直接耦合到具体的 dispatch/日志实现。
+ */
 internal class GraphBrowserBridgeRegistrar(
     browser: JBCefBrowser,
     private val bridge: GraphEditorBridge,
@@ -18,9 +28,17 @@ internal class GraphBrowserBridgeRegistrar(
     private val shouldLogFrontendTrace: (String) -> Boolean,
     private val runtimeTrace: ((String) -> Unit)?,
 ) {
+    // 前端发送 bridge command 的 JS 通道
     private val bridgeCommandQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    // 前端上报调试 trace 的 JS 通道
     private val debugTraceQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
 
+    /**
+     * 在两个 JS 通道上注册处理器。
+     *
+     * bridge command 处理器负责解析命令、派发 artifact 与消息（同步或异步），
+     * trace 处理器负责在开启的情况下记录前端 trace。
+     */
     fun registerHandlers() {
         bridgeCommandQuery.addHandler { payload ->
             safeBridgeResponse("bridge command") {
@@ -54,7 +72,15 @@ internal class GraphBrowserBridgeRegistrar(
         }
     }
 
+    /**
+     * 构建要注入到前端页面的桥脚本。
+     *
+     * 根据调试开关决定是否暴露调试 trace 能力，并组装出
+     * window.linkGraphBridge 上的各个命令方法，前端调用后会通过
+     * bridgeCommandQuery 通道回传到后端处理器。
+     */
     fun buildBridgeScript(): String {
+        // 根据调试开关生成不同的桥脚本片段
         val debugBridgeScript = if (debugTracingEnabled) {
             """
             window.__linkGraphDebugEnabled = true;
@@ -96,6 +122,7 @@ internal class GraphBrowserBridgeRegistrar(
                   selectedDiffItemIds: request && Array.isArray(request.selectedDiffItemIds) ? request.selectedDiffItemIds : [],
                   target: request && request.target ? request.target : { kind: "NewTask" },
                   explanationGranularity: request && request.explanationGranularity ? request.explanationGranularity : null,
+                  mode: request && request.mode ? request.mode : null,
                 }),
                 retryLastQaRequest: () => sendCommand("retryLastQaRequest"),
                 confirmQaCandidateChange: (changeId) => sendCommand("confirmQaCandidateChange", { changeId }),
@@ -139,6 +166,15 @@ internal class GraphBrowserBridgeRegistrar(
         """.trimIndent()
     }
 
+    /**
+     * 在安全包裹下执行 bridge 回调。
+     *
+     * 任何抛出的异常都会被捕获并转为一个带错误码的响应，
+     * 同时通过 logger 记录告警，避免异常冒泡影响 JCEF 通道。
+     *
+     * @param actionLabel 用于日志识别的动作名称
+     * @param action 真正要执行的动作，返回 JS 端的响应
+     */
     private fun safeBridgeResponse(
         actionLabel: String,
         action: () -> JBCefJSQuery.Response,

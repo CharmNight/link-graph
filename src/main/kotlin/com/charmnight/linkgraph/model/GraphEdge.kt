@@ -2,6 +2,9 @@ package com.charmnight.linkgraph.model
 
 /**
  * 表示链路图中的一条关系边。
+ *
+ * 边连接两个节点，描述它们之间的某种语义关系（调用、继承、注入等）。
+ * 与节点类似，边也携带可信度、绑定状态、证据、差异等元信息。
  */
 data class GraphEdge(
     /** 保存边的唯一标识。 */
@@ -37,6 +40,15 @@ data class GraphEdge(
     companion object {
         /**
          * 根据边类型、起止节点和可选归属上下文生成稳定标识。
+         *
+         * 稳定标识意味着同一逻辑边在不同会话中生成的 ID 相同，
+         * 这是差分比对、缓存等机制正常工作的前提。
+         *
+         * @param type 边类型
+         * @param fromNodeId 起点节点 ID
+         * @param toNodeId 终点节点 ID
+         * @param ownerContext 归属上下文（例如视图名）；可空
+         * @return 形如 "TYPE:owner/from->to" 或 "TYPE:from->to" 的稳定 ID
          */
         fun stableId(
             type: EdgeType,

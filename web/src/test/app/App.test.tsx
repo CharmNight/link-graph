@@ -167,10 +167,9 @@ vi.unmock("../../app/components/graph/nodes/ResourceRelationNodeCard");
 import { App, resolveQaTargetNodeIds } from "../../app/App";
 import { dispatchBootstrapForTest, resetEditorTransportForTest } from "../../app/editorTransport";
 import { materializeThreeViewDocuments, type TestBootstrapState, type TestBootstrapStateInput } from "../../app/testBootstrapState";
+import type { AssistantIntent, AssistantTurnKind } from "../../app/assistant/assistantTypes";
 import type {
-  AssistantIntent,
   AssistantResultStoreEntry,
-  AssistantTurnKind,
   CandidateDraftChange,
   GraphBeautificationStep,
   LinkGraphBootstrapState,
@@ -780,7 +779,7 @@ function getExplanationFollowUpButton() {
 }
 
 async function openDraftFromTray(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: "查看草稿" }));
+  await user.click(screen.getByRole("button", { name: "改动列表" }));
 }
 
 async function openCodeFromTray(user: ReturnType<typeof userEvent.setup>) {
@@ -801,20 +800,21 @@ describe.sequential("App", () => {
     vi.useRealTimers();
   });
 
-  it("renders the final assistant workbench with a compact stage badge instead of the old linear workflow stepper", () => {
+  it("renders the final assistant workbench with a lightweight stage nav instead of the old linear workflow stepper", () => {
     render(<App />);
 
-    // 旧的五段状态条彻底移除
+    // 旧的五段状态条彻底移除（以旧的 group 容器、流程概览 list、以及旧文案为准）
     expect(screen.queryByRole("group", { name: "AI 工作状态" })).not.toBeInTheDocument();
     expect(screen.queryByText("理解代码")).not.toBeInTheDocument();
     expect(screen.queryByText("代码问答")).not.toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "流程概览" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("list", { name: "工作流阶段" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /理解链路/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /核验证据/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /风险问答/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /草稿确认/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /代码落地/ })).not.toBeInTheDocument();
+
+    // 新的左侧阶段引导条：取代旧状态条，承担「我在哪、可去哪」的导航职责。
+    // 由只读 badge 升级为可点击导航。
+    expect(screen.getByRole("navigation", { name: "工作流阶段" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /理解链路/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /代码落地/ })).toBeInTheDocument();
+
     expect(screen.getByRole("complementary", { name: "AI 代码工作台" })).toBeInTheDocument();
     expect(screen.getAllByRole("textbox", { name: "AI 工作台输入框" })).toHaveLength(1);
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
@@ -839,7 +839,7 @@ describe.sequential("App", () => {
     render(<App />);
 
     await openDraftFromTray(user);
-    await user.click(getTaskbarButton("生成实现建议"));
+    await user.click(getTaskbarButton("下一步"));
 
     expect(screen.queryByText("正在生成实现建议，请稍候。")).not.toBeInTheDocument();
     expect(getAssistantComposer()).toHaveValue("请基于当前草稿和图谱上下文生成实现建议。");
@@ -870,7 +870,7 @@ describe.sequential("App", () => {
     render(<App />);
 
     await openDraftFromTray(user);
-    await user.click(getTaskbarButton("生成实现建议"));
+    await user.click(getTaskbarButton("下一步"));
 
     expect(getAssistantComposer()).toHaveValue("请基于当前草稿和图谱上下文生成实现建议。");
 
@@ -896,7 +896,7 @@ describe.sequential("App", () => {
     render(<App />);
 
     await openCodeFromTray(user);
-    await user.click(screen.getByRole("button", { name: "生成代码 diff" }));
+    await user.click(screen.getByRole("button", { name: "下一步" }));
 
     expectBridgeCommandCount("requestCodeDrafts", 1);
   });
@@ -1680,6 +1680,24 @@ describe.sequential("App", () => {
     expect(screen.queryByText("等待后端确认执行方式与执行阶段。")).not.toBeInTheDocument();
   });
 
+  it("submits the selected qa mode from the unified assistant composer", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "追问代码" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "问答模式" }), "REVIEW");
+    await setTextboxValue(getAssistantComposer(), "检查这里的异常分支是否缺证据");
+    await user.click(screen.getByRole("button", { name: "发送到 AI 代码工作台" }));
+
+    expectBridgeCommand("requestAssistantTask", expect.objectContaining({
+      intent: "ASK_CODE",
+      mode: "REVIEW",
+      prompt: "检查这里的异常分支是否缺证据",
+      selectedNodeIds: ["method:submit-order"],
+      target: { kind: "NewTask" },
+    }));
+  });
+
   it("retries the last failed qa request directly from the request status page", async () => {
     const user = userEvent.setup();
     window.linkGraphBootstrap = structuredClone({
@@ -1699,6 +1717,7 @@ describe.sequential("App", () => {
           selectedNodeIds: ["method:submit-order"],
           sourceThreadId: null,
           baseSessionId: "qa-method-submit",
+          mode: "REVIEW",
         },
         lastFailedRequest: {
           requestId: "qa-1",
@@ -1707,6 +1726,7 @@ describe.sequential("App", () => {
           selectedNodeIds: ["method:submit-order"],
           sourceThreadId: null,
           baseSessionId: "qa-method-submit",
+          mode: "REVIEW",
         },
       },
     });
@@ -1736,6 +1756,7 @@ describe.sequential("App", () => {
           selectedNodeIds: ["method:submit-order"],
           sourceThreadId: null,
           baseSessionId: "qa-method-submit",
+          mode: "REVIEW",
         },
         lastFailedRequest: {
           requestId: "qa-1",
@@ -1744,6 +1765,7 @@ describe.sequential("App", () => {
           selectedNodeIds: ["method:submit-order"],
           sourceThreadId: null,
           baseSessionId: "qa-method-submit",
+          mode: "REVIEW",
         },
       },
     });
@@ -1752,6 +1774,7 @@ describe.sequential("App", () => {
     await user.click(screen.getByRole("button", { name: "修改后重试" }));
 
     expect(getAssistantComposer()).toHaveValue("这个方法是否遗漏补偿链路？");
+    expect(screen.getByRole("combobox", { name: "问答模式" })).toHaveValue("REVIEW");
   });
 
   it("allows check-change assistant tasks to use the backend default prompt", async () => {
@@ -2143,7 +2166,7 @@ describe.sequential("App", () => {
 
     render(<App />);
 
-    await dispatchClickEvent(screen.getByRole("button", { name: "链路讲解" }));
+    await dispatchClickEvent(screen.getByRole("button", { name: "下一步" }));
 
     expectBridgeCommand("requestAssistantTask", expect.objectContaining({
       intent: "EXPLAIN_CODE",

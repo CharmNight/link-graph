@@ -354,6 +354,48 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
         )
     }
 
+    fun testClassDiagramUsageRequestUsesExplicitTargetOutsideCurrentStructureIndex() {
+        addClassUsageFixture()
+        addClassUsageTargetOutsideStructureFixture()
+        val scopeNodeId = stableJvmId("class", "com.example.usage.OrderService")
+        val targetQualifiedName = "com.example.external.ExternalUsageTarget"
+        val targetNodeId = stableJvmId("class", targetQualifiedName)
+        val indexSupport = CountingCompleteClassDiagramIndexSupport(classUsageStructureIndex())
+        val events = mutableListOf<GraphEditorApplicationEvent>()
+        val logger = Logger.getInstance(ArchitectureWorkflowChainTest::class.java)
+
+        ClassDiagramWorkflow(
+            project = project,
+            indexSupport = indexSupport,
+            eventSink = events::add,
+            logger = logger,
+        ).requestIndexedGraph(
+            requestClassDiagramRequest(scopeNodeId).copy(
+                usage = IndexedClassUsageOptions(
+                    enabled = true,
+                    targetNodeId = targetNodeId,
+                    targetQualifiedName = targetQualifiedName,
+                    maxUsageGroups = 10,
+                    maxUsageEntries = 20,
+                    includeImports = false,
+                ),
+            ),
+        )
+
+        val usageEvent = waitForEvent<GraphEditorApplicationEvent.ClassDiagramLoaded>(
+            events = events,
+            predicate = { event ->
+                event.view.usage != null
+            },
+        )
+        val usage = assertNotNull(
+            usageEvent.view.usage,
+            "显式 usage 请求必须返回查询目标的使用处。",
+        )
+        assertEquals(targetNodeId, usage.target.nodeId)
+        assertEquals(targetQualifiedName, usage.target.qualifiedName)
+    }
+
     fun testScopedBodyRelationRequestBuildsCurrentVisibleScopeWithoutCompleteBuild() {
         val symbolIndex = simpleClassDiagramSymbolIndex()
         val structureIndex = ClassDiagramFastIndex.fromSymbols(symbolIndex)
@@ -997,6 +1039,33 @@ class ArchitectureWorkflowChainTest : BasePlatformTestCase() {
 
                     public void submit(OrderService overrideService) {
                         new OrderService().submit();
+                    }
+                }
+            """.trimIndent(),
+        )
+    }
+
+    private fun addClassUsageTargetOutsideStructureFixture() {
+        myFixture.addFileToProject(
+            "src/main/java/com/example/external/ExternalUsageTarget.java",
+            """
+                package com.example.external;
+
+                public class ExternalUsageTarget {
+                    public void touch() {}
+                }
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/external/ExternalUsageConsumer.java",
+            """
+                package com.example.external;
+
+                public class ExternalUsageConsumer {
+                    private ExternalUsageTarget target;
+
+                    public void run(ExternalUsageTarget overrideTarget) {
+                        new ExternalUsageTarget().touch();
                     }
                 }
             """.trimIndent(),

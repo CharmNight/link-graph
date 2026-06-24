@@ -59,7 +59,9 @@ class RelationExtractionContext(
 
     /** 缓存按扩展名查询到的文件集合。 */
     private val filesByExtension = mutableMapOf<String, List<PsiFile>>()
+    /** 标记架构索引是否已经被计算过，避免重复构建。 */
     private var architectureIndexComputed = false
+    /** 缓存构建完成的架构索引，构建失败时保持为空。 */
     private var architectureIndex: ArchitectureGraphIndex? = null
 
     /**
@@ -103,6 +105,12 @@ class RelationExtractionContext(
             .sortedBy { file -> file.virtualFile?.path ?: file.name }
     }
 
+    /**
+     * 按需获取架构图谱索引。
+     *
+     * 首次调用时通过注入的构建器生成索引并缓存，
+     * 构建过程中出现的异常会被吞掉并视为不可用，避免重复失败。
+     */
     fun architectureIndex(): ArchitectureGraphIndex? {
         if (!architectureIndexComputed) {
             architectureIndex = runCatching { architectureIndexProvider?.invoke() }.getOrNull()

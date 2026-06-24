@@ -11,18 +11,31 @@ import com.charmnight.linkgraph.jvm.relation.JvmRelationIndex
 import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
 import com.charmnight.linkgraph.source.SourceOrigin
 
+/**
+ * 架构图构建器，将 JVM 符号索引与关系索引组装为供架构视图消费的图结构。
+ * 负责模块/包/类/资源等节点生成，以及直接边、聚合边、分层边的构造与合并。
+ */
 class ArchitectureGraphBuilder(
+    /** 用于推断服务边界、组件、分层等信息的分类器。 */
     private val classifier: ArchitectureBoundaryClassifier = ArchitectureBoundaryClassifier(),
 ) {
+    /**
+     * 根据符号索引和关系索引生成完整的架构图。
+     * @param budget 解析预算，用于判断结果是否被截断并附带元数据。
+     */
     fun build(
         symbolIndex: JvmSymbolIndex,
         relationIndex: JvmRelationIndex,
         budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget? = null,
     ): ArchitectureGraph {
+        // 节点容器，按 ID 索引；遍历时使用 LinkedHashMap 保留插入顺序
         val nodes = linkedMapOf<String, ArchitectureNode>()
         val projectClasses = symbolIndex.classesByQualifiedName.values
+        // 通过项目类集合推断可信的服务边界名称映射，避免对每个类重复推断
         val serviceBoundaryNames = ArchitectureBoundaryClassifier.trustedServiceBoundaryNames(projectClasses)
+        // 投影目标缓存：避免对同一类反复执行边界推断与组件归属判定
         val projectionTargets = ArchitectureProjectionTargetCache(symbolIndex, classifier, serviceBoundaryNames)
+        // 模块节点：按全限定名排序以保证构建结果稳定
         symbolIndex.modulesByName.values.sortedBy { it.qualifiedName }.forEach { module ->
             nodes[module.id] = ArchitectureNode(
                 id = module.id,
@@ -32,6 +45,7 @@ class ArchitectureGraphBuilder(
                 source = module.source,
             )
         }
+        // 包节点：默认包显示占位标题，避免出现空字符串
         symbolIndex.packagesByName.values.sortedBy { it.qualifiedName }.forEach { pkg ->
             nodes[pkg.id] = ArchitectureNode(
                 id = pkg.id,
@@ -43,6 +57,7 @@ class ArchitectureGraphBuilder(
                 source = pkg.source,
             )
         }
+        // 类节点：将类符号的元信息（kind、stereotype、abstract 等）一并写入节点 metadata
         symbolIndex.classesByQualifiedName.values.sortedBy { it.qualifiedName }.forEach { cls ->
             nodes[cls.id] = ArchitectureNode(
                 id = cls.id,
@@ -63,6 +78,7 @@ class ArchitectureGraphBuilder(
                 },
             )
         }
+        // 资源节点：作为外部配置、SPI 文件等进入架构图的入口
         symbolIndex.resourcesByPath.values.sortedBy { it.path }.forEach { resource ->
             nodes[resource.id] = ArchitectureNode(
                 id = resource.id,
@@ -78,6 +94,7 @@ class ArchitectureGraphBuilder(
             )
         }
 
+        // 将项目类按包聚合，回填到包节点的 memberClassIds
         val packageClassIds = symbolIndex.classesByQualifiedName.values
             .groupBy(JvmClassSymbol::packageName)
             .mapValues { (_, classes) -> classes.mapTo(linkedSetOf(), JvmClassSymbol::id) }
@@ -85,6 +102,7 @@ class ArchitectureGraphBuilder(
             val pkg = symbolIndex.packagesByName[packageName] ?: return@forEach
             nodes[pkg.id] = nodes.getValue(pkg.id).copy(memberClassIds = classIds)
         }
+        // 资源按其所在目录前缀聚合到包，便于在包视图中查看资源
         val packageResourceIds = symbolIndex.resourcesByPath.values
             .groupBy { resource -> resource.path.substringBeforeLast('/', missingDelimiterValue = "") }
             .mapValues { (_, resources) -> resources.mapTo(linkedSetOf()) { resource -> resource.id } }
@@ -93,6 +111,7 @@ class ArchitectureGraphBuilder(
             nodes[pkg.id] = nodes.getValue(pkg.id).copy(memberResourceIds = resourceIds)
         }
 
+        // 不同维度的聚合节点：服务、组件、资源组、依赖组、分层
         serviceNodes(symbolIndex, serviceBoundaryNames).forEach { serviceNode ->
             nodes[serviceNode.id] = serviceNode
         }
@@ -110,7 +129,9 @@ class ArchitectureGraphBuilder(
         }
 
         val edges = buildEdges(symbolIndex, relationIndex, nodes, serviceBoundaryNames, projectionTargets)
+        // 收集所有入边端点，用于判定根节点
         val incoming = edges.mapTo(linkedSetOf()) { edge -> edge.toNodeId }
+        // 根节点定义为模块节点或没有任何入边的节点，作为架构树的起点
         val roots = nodes.values
             .filter { node -> node.kind == ArchitectureNodeKind.MODULE || node.id !in incoming }
             .map(ArchitectureNode::id)
@@ -118,6 +139,7 @@ class ArchitectureGraphBuilder(
             nodes = nodes.values.sortedWith(compareBy({ it.kind.name }, { it.qualifiedName }, { it.id })),
             edges = edges.sortedBy(ArchitectureEdge::id),
             rootNodeIds = roots,
+            // 任一维度超出预算或被关系索引截断时，整体标记为截断
             truncated = budget?.let { resolutionBudget ->
                 symbolIndex.classesByQualifiedName.size >= resolutionBudget.maxProjectClasses ||
                     symbolIndex.classesByQualifiedName.values.count { symbol -> symbol.external } >= resolutionBudget.maxExternalClasses ||
@@ -141,6 +163,7 @@ class ArchitectureGraphBuilder(
         )
     }
 
+    /** 构造图中所有边：直接关系边 + 投影聚合边 + 分层聚合边，最后按 ID 合并。 */
     private fun buildEdges(
         symbolIndex: JvmSymbolIndex,
         relationIndex: JvmRelationIndex,
@@ -148,13 +171,16 @@ class ArchitectureGraphBuilder(
         serviceBoundaryNames: Map<String, String>,
         projectionTargets: ArchitectureProjectionTargetCache,
     ): List<ArchitectureEdge> {
+        // 直接边：将关系端点投影到类节点后构造的边，是最细粒度的连接
         val directEdges = relationIndex.relations.mapNotNull { relation ->
             val fromNodeId = relation.projectedFromNodeId(symbolIndex)
             val toNodeId = relation.projectedToNodeId(symbolIndex)
+            // 任一端点不存在对应节点时丢弃，避免产生悬空边
             if (!nodes.containsKey(fromNodeId) || !nodes.containsKey(toNodeId)) {
                 return@mapNotNull null
             }
             ArchitectureEdge(
+                // 若端点未被投影改写，复用原关系 ID；否则按投影后的端点重新生成 ID
                 id = if (fromNodeId == relation.fromSymbolId && toNodeId == relation.toSymbolId) {
                     relation.id
                 } else {
@@ -169,6 +195,7 @@ class ArchitectureGraphBuilder(
                 metadata = relation.architectureMetadata(),
             )
         }
+        // 聚合边：按概览与包两种聚合级别生成，分别用于全局架构视图与按包聚合视图
         val projectionEdges = aggregateRelationsToProjectionTargets(
             symbolIndex = symbolIndex,
             relationIndex = relationIndex,
@@ -184,13 +211,16 @@ class ArchitectureGraphBuilder(
             serviceBoundaryNames = serviceBoundaryNames,
             projectionTargets = projectionTargets,
         )
+        // 分层聚合边：仅基于项目源码类，体现 API→Service→Data 等分层依赖方向
         val layerEdges = aggregateClassRelationsToLayers(symbolIndex, relationIndex, nodes)
+        // 合并同 ID 的边，避免重复连接造成视觉与统计冗余
         return (directEdges + projectionEdges + layerEdges)
             .groupBy(ArchitectureEdge::id)
             .values
             .map(::mergeArchitectureEdges)
     }
 
+/** 把关系的源端符号 ID 投影到其所属类的节点 ID（方法/字段归到所属类）。 */
     private fun JvmRelation.projectedFromNodeId(symbolIndex: JvmSymbolIndex): String {
         val symbol = symbolIndex.symbolsById[fromSymbolId] ?: return fromSymbolId
         return (symbol as? JvmMethodSymbol)
@@ -202,6 +232,7 @@ class ArchitectureGraphBuilder(
             ?.id ?: fromSymbolId
     }
 
+    /** 把关系的目标端符号 ID 投影到其所属类的节点 ID。 */
     private fun JvmRelation.projectedToNodeId(symbolIndex: JvmSymbolIndex): String {
         val symbol = symbolIndex.symbolsById[toSymbolId] ?: return toSymbolId
         return when (symbol) {
@@ -211,6 +242,7 @@ class ArchitectureGraphBuilder(
         }
     }
 
+    /** 把关系按指定聚合级别（概览/包级）聚合到投影目标之间，形成聚合边。 */
     private fun aggregateRelationsToProjectionTargets(
         symbolIndex: JvmSymbolIndex,
         relationIndex: JvmRelationIndex,
@@ -220,11 +252,13 @@ class ArchitectureGraphBuilder(
         projectionTargets: ArchitectureProjectionTargetCache,
     ): List<ArchitectureEdge> {
         return relationIndex.relations.mapNotNull { relation ->
+            // 仅对参与聚合的关系类型做投影，过滤掉纯描述性的关系
             if (relation.kind !in architectureAggregateRelationKinds) {
                 return@mapNotNull null
             }
             val fromTarget = projectionTargetFor(symbolIndex, relation.fromSymbolId, level, projectionTargets) ?: return@mapNotNull null
             val toTarget = projectionTargetFor(symbolIndex, relation.toSymbolId, level, projectionTargets) ?: return@mapNotNull null
+            // 同一投影目标内部或目标节点缺失时不产生边
             if (fromTarget.nodeId == toTarget.nodeId || !nodes.containsKey(fromTarget.nodeId) || !nodes.containsKey(toTarget.nodeId)) {
                 return@mapNotNull null
             }
@@ -244,6 +278,7 @@ class ArchitectureGraphBuilder(
         }
     }
 
+    /** 把项目源码类之间的关系聚合到分层（API/SERVICE/DATA 等）之间。 */
     private fun aggregateClassRelationsToLayers(
         symbolIndex: JvmSymbolIndex,
         relationIndex: JvmRelationIndex,
@@ -252,11 +287,13 @@ class ArchitectureGraphBuilder(
         return relationIndex.relations.mapNotNull { relation ->
             val fromClass = ownerClassForRelation(symbolIndex, relation.fromSymbolId) ?: return@mapNotNull null
             val toClass = ownerClassForRelation(symbolIndex, relation.toSymbolId) ?: return@mapNotNull null
+            // 分层视图只关心项目源码类之间的依赖
             if (!classifier.isProjectSourceClass(fromClass) || !classifier.isProjectSourceClass(toClass)) {
                 return@mapNotNull null
             }
             val fromLayer = classifier.layerFor(fromClass).nodeId
             val toLayer = classifier.layerFor(toClass).nodeId
+            // 同层关系不构边，避免在分层图上形成自环噪声
             if (fromLayer == toLayer || !nodes.containsKey(fromLayer) || !nodes.containsKey(toLayer)) {
                 return@mapNotNull null
             }
@@ -272,6 +309,7 @@ class ArchitectureGraphBuilder(
         }
     }
 
+    /** 根据符号 ID 和聚合级别，把符号映射到对应的投影目标。 */
     private fun projectionTargetFor(
         symbolIndex: JvmSymbolIndex,
         symbolId: String,
@@ -290,6 +328,7 @@ class ArchitectureGraphBuilder(
         }
     }
 
+    /** 按聚合级别返回类对应的投影目标；包级别下会落到真实包节点。 */
     private fun projectionTargetForClass(
         symbolIndex: JvmSymbolIndex,
         cls: JvmClassSymbol,
@@ -297,12 +336,15 @@ class ArchitectureGraphBuilder(
         projectionTargets: ArchitectureProjectionTargetCache,
     ): ArchitectureProjectionTarget {
         val target = when (level) {
+            // 概览级别直接使用概览投影（可能是服务、组件、库、JDK 等）
             ArchitectureAggregationLevel.OVERVIEW -> projectionTargets.overviewFor(cls)
+            // 包级别下，外部/JDK 类仍走概览，项目类则落到具体包
             ArchitectureAggregationLevel.PACKAGE -> when {
                 cls.jdk || cls.external || cls.library -> projectionTargets.overviewFor(cls)
                 else -> classifier.packageGroupFor(cls)
             }
         }
+        // 仅项目包需要把投影目标修正为真实包节点（保留 ID 与名称一致）
         if (target.kind != ArchitectureProjectionTargetKind.PROJECT_PACKAGE) {
             return target
         }
@@ -314,12 +356,14 @@ class ArchitectureGraphBuilder(
         )
     }
 
+    /** 把资源符号映射到资源分组投影目标。 */
     private fun projectionTargetForResource(
         resource: com.charmnight.linkgraph.jvm.index.JvmResourceSymbol,
     ): ArchitectureProjectionTarget {
         return classifier.resourceGroupFor(resource.path, resource.simpleName)
     }
 
+    /** 根据两端投影目标种类给出聚合边的可读名称（如 JDK/LIBRARY/SERVICE 等）。 */
     private fun aggregateName(
         fromTarget: ArchitectureProjectionTarget,
         toTarget: ArchitectureProjectionTarget,
@@ -334,6 +378,7 @@ class ArchitectureGraphBuilder(
             else -> "PACKAGE"
         }
 
+    /** 取关系端符号所属的类符号（方法/字段归到类）。 */
     private fun ownerClassForRelation(
         symbolIndex: JvmSymbolIndex,
         symbolId: String,
@@ -346,6 +391,7 @@ class ArchitectureGraphBuilder(
         }
     }
 
+    /** 将关系转换为聚合边（带前缀和自定义元数据）。 */
     private fun JvmRelation.toAggregateEdge(
         prefix: String,
         fromNodeId: String,
@@ -363,6 +409,7 @@ class ArchitectureGraphBuilder(
             metadata = architectureMetadata() + metadata,
         )
 
+    /** 构造架构图使用的元数据（包含关系种类、置信度、来源与计数）。 */
     private fun JvmRelation.architectureMetadata(): Map<String, String> =
         metadata + mapOf(
             "jvm.relation.kind" to kind.name,
@@ -371,6 +418,7 @@ class ArchitectureGraphBuilder(
             "jvm.relation.count" to count.toString(),
         )
 
+    /** 合并同一 ID 的多条边：取最低置信度等级、累加计数、汇总来源关系和元数据。 */
     private fun mergeArchitectureEdges(edges: List<ArchitectureEdge>): ArchitectureEdge {
         val first = edges.first()
         if (edges.size == 1) {
@@ -384,6 +432,7 @@ class ArchitectureGraphBuilder(
         )
     }
 
+    /** 生成服务边界节点：将归属于服务边界的类聚合并附带成员引用。 */
     private fun serviceNodes(
         symbolIndex: JvmSymbolIndex,
         serviceBoundaryNames: Map<String, String>,
@@ -411,6 +460,7 @@ class ArchitectureGraphBuilder(
             }
     }
 
+    /** 生成组件节点：未归属服务边界的项目源码类按组件聚合。 */
     private fun componentNodes(
         symbolIndex: JvmSymbolIndex,
         serviceBoundaryNames: Map<String, String>,
@@ -445,6 +495,7 @@ class ArchitectureGraphBuilder(
             }
     }
 
+    /** 生成资源分组节点：把资源按分组聚合。 */
     private fun resourceGroupNodes(symbolIndex: JvmSymbolIndex): List<ArchitectureNode> {
         return symbolIndex.resourcesByPath.values
             .map { resource -> classifier.resourceGroupFor(resource.path, resource.simpleName) to resource }
@@ -464,6 +515,7 @@ class ArchitectureGraphBuilder(
             }
     }
 
+    /** 生成依赖分组节点：把外部库与 JDK 的类聚合到对应分组。 */
     private fun dependencyGroupNodes(
         symbolIndex: JvmSymbolIndex,
         serviceBoundaryNames: Map<String, String>,
@@ -513,6 +565,7 @@ class ArchitectureGraphBuilder(
             }
     }
 
+    /** 生成分层节点：按类的分层聚合项目源码类。 */
     private fun layerNodes(symbolIndex: JvmSymbolIndex): List<ArchitectureNode> {
         return symbolIndex.classesByQualifiedName.values
             .filter(classifier::isProjectSourceClass)
@@ -530,6 +583,7 @@ class ArchitectureGraphBuilder(
             }
     }
 
+    /** 将 JVM 类种类映射为架构节点种类。 */
     private fun JvmClassKind.toArchitectureNodeKind(): ArchitectureNodeKind =
         when (this) {
             JvmClassKind.CLASS -> ArchitectureNodeKind.CLASS
@@ -541,16 +595,20 @@ class ArchitectureGraphBuilder(
     }
 }
 
+/** 投影目标缓存：避免对同一类重复推断服务边界与组件归属。 */
 private class ArchitectureProjectionTargetCache(
     private val symbolIndex: JvmSymbolIndex,
     private val classifier: ArchitectureBoundaryClassifier,
     private val serviceBoundaryNames: Map<String, String>,
 ) {
+    /** 概览投影目标缓存：类限定名 -> 投影目标。 */
     private val overviewTargetsByClassName = HashMap<String, ArchitectureProjectionTarget>()
+    /** 预先批量计算的项目类组件归属映射。 */
     private val componentTargetsByClassName = classifier.componentTargetsForProjectClasses(
         symbolIndex.classesByQualifiedName.values.filter(classifier::isProjectSourceClass),
     )
 
+    /** 返回类的概览级投影目标，按需缓存。 */
     fun overviewFor(cls: JvmClassSymbol): ArchitectureProjectionTarget =
         overviewTargetsByClassName.getOrPut(cls.qualifiedName) {
             classifier.serviceBoundaryFor(cls, serviceBoundaryNames)
@@ -565,6 +623,7 @@ private class ArchitectureProjectionTargetCache(
                 }
         }
 
+    /** 组件归推断失败时的兜底逻辑：直接以包名或模块名作为组件名。 */
     private fun fallbackComponentTargetFor(cls: JvmClassSymbol): ArchitectureProjectionTarget {
         val componentName = cls.packageName.ifBlank { cls.moduleName ?: "(default)" }
         return ArchitectureProjectionTarget(
@@ -576,6 +635,7 @@ private class ArchitectureProjectionTargetCache(
     }
 }
 
+/** 允许参与聚合的关系种类集合（如调用、类型使用、扩展、SPI、消息等）。 */
 private val architectureAggregateRelationKinds = setOf(
     JvmRelationKind.CALLS,
     JvmRelationKind.USES_TYPE,

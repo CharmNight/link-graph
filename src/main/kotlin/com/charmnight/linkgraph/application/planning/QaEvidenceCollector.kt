@@ -11,17 +11,27 @@ import java.nio.file.InvalidPathException
 import java.nio.file.Path
 import java.util.ArrayDeque
 
+/**
+ * 问答上下文证据采集结果，包含收集到的源码片段以及对应的追溯信息。
+ */
 internal data class QaEvidenceCollection(
     val sourceContext: List<SourceSnippetContext> = emptyList(),
     val evidenceTrace: List<EvidenceTraceEntry> = emptyList(),
 )
 
+/**
+ * 在用户问答场景下，从图谱节点出发收集源码上下文证据的采集器。
+ * 通过广度优先遍历选定节点的关联节点，按预算抽取源码片段用于构造问答上下文。
+ */
 internal class QaEvidenceCollector(
     private val maxSnippets: Int = 12,
     private val maxTraversalDepth: Int = 2,
     private val preferredSnippetLength: Int = 240,
     private val maxSnippetLength: Int = 800,
 ) {
+    /**
+     * 以选定的节点为种子，在图中遍历有限层数，并将收集到的源码片段整理为问答上下文证据。
+     */
     fun collect(
         graph: GraphDocument,
         selectedNodeIds: List<String>,
@@ -83,6 +93,9 @@ internal class QaEvidenceCollector(
         )
     }
 
+    /**
+     * 通过边集合找到与指定节点直接相连的其它节点（去掉节点自身）。
+     */
     private fun relatedCallNodes(
         edges: List<GraphEdge>,
         nodeId: String,
@@ -97,6 +110,10 @@ internal class QaEvidenceCollector(
             .toList()
     }
 
+    /**
+     * 读取单个节点自身源码位置对应的代码片段，将其封装为上下文对象。
+     * 若节点没有有效的文件路径则返回 null。
+     */
     private fun readSourceSnippet(node: GraphNode): SourceSnippetContext? {
         val sourceLocation = node.sourceLocation()
         val filePath = sourceLocation.filePath ?: return null
@@ -113,6 +130,10 @@ internal class QaEvidenceCollector(
         )
     }
 
+    /**
+     * 从节点 metadata 中读取架构分析时记录的关联源码样本，例如反编译产物、跨文件代码示例等。
+     * 这些样本作为节点自身源码的补充，提供更丰富的上下文。
+     */
     private fun architectureSourceSampleSnippets(node: GraphNode): List<SourceSnippetContext> {
         val sampleCount = node.metadata["architecture.sourceSample.count"]?.toIntOrNull()?.coerceAtLeast(0) ?: return emptyList()
         return (0 until sampleCount).mapNotNull { sampleIndex ->
@@ -132,6 +153,10 @@ internal class QaEvidenceCollector(
         }
     }
 
+    /**
+     * 从磁盘读取指定文件内容，并根据给定的字节偏移截取代码片段；不传偏移时仅截取首部有限长度。
+     * 读取失败或文件不存在时返回 null。
+     */
     private fun loadSnippet(
         filePath: String,
         startOffset: Int?,
@@ -159,6 +184,10 @@ internal class QaEvidenceCollector(
         }.getOrNull()
     }
 
+    /**
+     * 规整代码片段：统一换行、去首尾空白，并按预算长度截断。
+     * 截断后仍超过最大长度会被裁剪；空内容则视为无效返回 null。
+     */
     private fun normalizeSnippet(snippet: String): String? {
         val normalized = snippet
             .replace("\r\n", "\n")
@@ -173,6 +202,9 @@ internal class QaEvidenceCollector(
         }
     }
 
+    /**
+     * 遍历队列中的节点条目，记录节点 ID、所处深度以及为何进入队列（便于追溯来源）。
+     */
     private data class TraversalNode(
         val nodeId: String,
         val depth: Int,

@@ -17,7 +17,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 17
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -26,11 +26,5 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Install frontend dependencies
-        run: npm --prefix web ci
-
-      - name: Run backend tests
-        run: ./gradlew test
-
-      - name: Run frontend tests
-        run: npm --prefix web test
+      - name: Run full checks
+        run: ./gradlew check

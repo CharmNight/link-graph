@@ -23,6 +23,7 @@ import com.charmnight.linkgraph.semantic.model.TerminalUnit
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import java.util.ArrayDeque
 
+/** 用于拆解 "全限定名.方法名(参数):返回类型" 形式的方法签名。 */
 private val METHOD_SIGNATURE_PATTERN = Regex("""^(.*)\.([^.]+)\((.*)\):(.+)$""")
 
 /**
@@ -439,6 +440,7 @@ class GraphAssembler {
         }
     }
 
+    /** 用正则拆解方法签名，提取参数类型列表和返回类型。 */
     private fun parseMethodSignature(signature: String): MethodSignatureParts? {
         val match = METHOD_SIGNATURE_PATTERN.matchEntire(signature.trim()) ?: return null
         val rawParameters = match.groupValues[3]
@@ -449,6 +451,7 @@ class GraphAssembler {
         )
     }
 
+    /** 按参数分隔符切分参数类型字符串，需考虑泛型尖括号的嵌套深度。 */
     private fun splitParameterTypes(rawParameters: String): List<String> {
         val parameters = mutableListOf<String>()
         var genericDepth = 0
@@ -467,6 +470,7 @@ class GraphAssembler {
         return parameters
     }
 
+    /** 解析后方法签名的中间产物，便于填充到节点输入输出字段。 */
     private data class MethodSignatureParts(
         val parameterTypes: List<String>,
         val returnType: String?,
@@ -600,6 +604,7 @@ private fun SemanticRelation.toEdgeType(
     }
 }
 
+/** 把控制流作用域的类型字符串映射为流程图分类，用于决定流程节点的展示样式。 */
 private fun String.toScopeCategory(): FlowScopeCategory {
     return when (this) {
         "IF" -> FlowScopeCategory.BRANCH

@@ -13,7 +13,10 @@ internal data class RemoteStructuredResult<T>(
     val warnings: List<String> = emptyList(),
 )
 
-/** 从模型输出里尽量提取可解析的 JSON 片段。 */
+/**
+ * 从模型输出里尽量提取可解析的 JSON 片段。
+ * 优先尝试原始文本、Markdown 代码块、平衡括号片段三种来源，按候选顺序返回首个看起来像 JSON 的内容。
+ */
 internal object RemoteStructuredJsonExtractor {
     /** 提取最像 JSON 的文本片段。 */
     fun extract(content: String): String {
@@ -293,7 +296,7 @@ internal class RemoteStructuredResponseParser(
         return if (normalized.length <= limit) normalized else normalized.take(limit) + "..."
     }
 
-    /** 判断异常是否属于可自动重试的网络故障。 */
+    /** 判断异常是否属于可自动重试的网络故障，例如超时、连接被拒或未知主机。 */
     private fun Throwable.isRetryableTransportFailure(): Boolean {
         /** 归一化后的异常消息。 */
         val message = message.orEmpty().lowercase()
@@ -307,7 +310,7 @@ internal class RemoteStructuredResponseParser(
             message.contains("failed to connect")
     }
 
-    /** 为结构化请求补齐 provider 可消费的 schema 元数据。 */
+    /** 为结构化请求补齐 provider 可消费的 schema 元数据，仅在协议支持时附加。 */
     private fun LlmRequest.withStructuredOutput(
         scene: String,
         schema: String,
@@ -326,7 +329,7 @@ internal class RemoteStructuredResponseParser(
         )
     }
 
-    /** 归一化 provider 侧使用的 schema 名称。 */
+    /** 把场景名称归一化为 provider 侧可消费的 ASCII schema 名称。 */
     private fun normalizeStructuredOutputName(scene: String): String {
         val ascii = scene
             .lowercase()
@@ -339,6 +342,7 @@ internal class RemoteStructuredResponseParser(
         }
     }
 
+    /** 判断当前协议是否支持下发原生结构化输出 schema。 */
     private fun LlmWireProtocol.supportsNativeStructuredOutput(): Boolean {
         return this == LlmWireProtocol.OPENAI_RESPONSES
     }

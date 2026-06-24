@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { resolveFlowchartKind } from "../../flowchartKind";
 import type { GraphPosition, LinkGraphEdge, LinkGraphNode } from "../../types";
 
+/** 决策节点上所有可能用到的逻辑端口标识，覆盖三个入口（顶/左/右）与三个出口（左/右/底）。 */
 export type FlowchartDecisionPortId =
   | "target-top"
   | "target-left"
@@ -10,47 +11,57 @@ export type FlowchartDecisionPortId =
   | "source-right"
   | "source-bottom";
 
+/** 决策节点上可作为出口的端口标识子集，用于约束决策出边解析结果。 */
 export type FlowchartDecisionSourcePortId =
   | "source-left"
   | "source-right"
   | "source-bottom";
 
+/** 决策节点上可作为入口的端口标识子集，用于约束决策入边解析结果。 */
 export type FlowchartDecisionTargetPortId =
   | "target-top"
   | "target-left"
   | "target-right";
 
+/** 汇聚节点的入口端口标识：顶部单一入口加上左右两侧的编号入口，对应多个汇入分支。 */
 export type FlowchartMergeTargetPortId =
   | "target-top"
   | `target-left-${number}`
   | `target-right-${number}`;
 
+/** 汇聚节点左右两侧入口的计数结果，用于决定要渲染多少个目标句柄。 */
 export interface FlowchartMergeTargetPortCounts {
   leftCount: number;
   rightCount: number;
 }
 
+/** 汇聚节点的端口布局结果：每条入边对应的目标端口句柄以及每个节点的左右入口计数。 */
 export interface FlowchartMergeTargetPortLayout {
   targetHandleByEdgeId: Map<string, FlowchartMergeTargetPortId>;
   countsByNodeId: Map<string, FlowchartMergeTargetPortCounts>;
 }
 
+/** 解析决策源端口时所需的上下文：当前边、源节点的全部出边以及节点索引，供循环/穿透等判断使用。 */
 interface DecisionSourcePortResolutionOptions {
   edge?: LinkGraphEdge;
   outgoingEdges?: LinkGraphEdge[];
   nodeIndex?: Map<string, LinkGraphNode>;
 }
 
+/** 决策端口的几何描述：横纵方向上的占比，以及可选的内联样式（用于句柄定位）。 */
 interface DecisionPortGeometry {
   xRatio: number;
   yRatio: number;
   style?: CSSProperties;
 }
 
+/** 把边标签规范化为大写无空白的统一形式，便于条件分支匹配（如 TRUE/FALSE/EXCEPTION）。 */
 function normalizedFlowLabel(edge: LinkGraphEdge | undefined): string {
   return edge?.label?.trim().toUpperCase() ?? "";
 }
 
+// 决策节点各逻辑端口在节点包围盒中的相对位置（横纵占比）以及对应的 CSS 定位样式，
+// 用于在布局后把连线锚点精确贴到菱形的真实分支点上。
 const DECISION_PORT_GEOMETRY: Record<FlowchartDecisionPortId, DecisionPortGeometry> = {
   "target-top": {
     xRatio: 0.5,
@@ -100,18 +111,22 @@ const DECISION_PORT_GEOMETRY: Record<FlowchartDecisionPortId, DecisionPortGeomet
   },
 };
 
+/** 包装节点类型解析逻辑，集中处理节点元数据缺失等边界情况。 */
 function flowchartKind(node?: LinkGraphNode): string {
   return resolveFlowchartKind(node);
 }
 
+/** 读取节点所处的流程作用域类别（如循环前置/后置条件），用于推断循环相关边的端口选择。 */
 function flowScopeCategory(node?: LinkGraphNode): string {
   return node?.metadata?.["flow.scopeCategory"] ?? "";
 }
 
+/** 提取边的流程角色元数据（循环体/回边/退出等），用于在循环结构中选择合适的源/目标端口。 */
 function flowEdgeRole(edge?: LinkGraphEdge): string {
   return edge?.metadata?.["flow.edgeRole"]?.toUpperCase() ?? "";
 }
 
+/** 按源节点构建控制流出边索引，便于快速查询某个节点发出的所有控制流边。 */
 export function buildOutgoingControlFlowIndex(edges: LinkGraphEdge[]): Map<string, LinkGraphEdge[]> {
   const index = new Map<string, LinkGraphEdge[]>();
   edges.forEach((edge) => {
@@ -125,6 +140,7 @@ export function buildOutgoingControlFlowIndex(edges: LinkGraphEdge[]): Map<strin
   return index;
 }
 
+/** 按目标节点构建控制流入边索引，便于快速查询某个节点收到的所有控制流边。 */
 export function buildIncomingControlFlowIndex(edges: LinkGraphEdge[]): Map<string, LinkGraphEdge[]> {
   const index = new Map<string, LinkGraphEdge[]>();
   edges.forEach((edge) => {
@@ -138,6 +154,7 @@ export function buildIncomingControlFlowIndex(edges: LinkGraphEdge[]): Map<strin
   return index;
 }
 
+/** 判断普通节点是否存在异常出口：决策与终端节点不参与，其余节点只要有 EXCEPTION 标签的出边即为真。 */
 export function hasExceptionControlFlowOutlet(
   node: LinkGraphNode | undefined,
   outgoingEdges: LinkGraphEdge[] | undefined,
@@ -150,6 +167,10 @@ export function hasExceptionControlFlowOutlet(
   );
 }
 
+/**
+ * 判断一条决策出边是否属于"穿透"分支：当决策只有两条出边、其中一条指向终端/汇聚节点时，
+ * 另一条（非终端/汇聚目标）边视为穿透分支，应使用底部出口以避免与分支端口重叠。
+ */
 export function isDecisionFallthroughEdge(
   edge: LinkGraphEdge | undefined,
   outgoingEdges: LinkGraphEdge[] | undefined,
@@ -176,8 +197,10 @@ export function isDecisionFallthroughEdge(
   return false;
 }
 
+/** 汇聚节点的入口侧别：顶部、左侧、右侧，对应三组目标端口集合。 */
 type FlowchartMergeTargetSide = "top" | "left" | "right";
 
+/** 在无法用几何关系判断时，根据边的语义标签选择汇聚入口侧别（TRUE 走左、FALSE/EXCEPTION 走右、其余顶部）。 */
 function fallbackMergeTargetSide(edge: LinkGraphEdge | undefined): FlowchartMergeTargetSide {
   switch (normalizedFlowLabel(edge)) {
     case "TRUE":
@@ -191,6 +214,7 @@ function fallbackMergeTargetSide(edge: LinkGraphEdge | undefined): FlowchartMerg
   }
 }
 
+/** 综合穿透分支判断、源/目标节点几何相对位置和语义标签，决定一条入边应进入汇聚节点的哪一侧。 */
 function resolveMergeTargetSide(
   edge: LinkGraphEdge,
   sourceNode: LinkGraphNode | undefined,
@@ -212,6 +236,7 @@ function resolveMergeTargetSide(
   return fallbackMergeTargetSide(edge);
 }
 
+/** 同一侧汇聚入口的排序比较：先按源节点 Y 坐标、再按 X 坐标，最后用边 ID 保证稳定顺序。 */
 function compareMergeSideEdges(
   left: LinkGraphEdge,
   right: LinkGraphEdge,
@@ -230,6 +255,7 @@ function compareMergeSideEdges(
   return left.id.localeCompare(right.id);
 }
 
+/** 根据侧别与序号生成汇聚节点的目标端口 ID 字符串（如 target-left-0、target-right-2）。 */
 export function flowchartMergeTargetPortId(
   side: "left" | "right",
   index: number,
@@ -237,6 +263,7 @@ export function flowchartMergeTargetPortId(
   return `target-${side}-${index}`;
 }
 
+/** 从节点元数据中读取指定侧别的入口计数，缺失或非法时回退为 1，保证至少渲染一个句柄。 */
 export function readFlowchartMergeTargetPortCount(
   node: LinkGraphNode | undefined,
   side: "left" | "right",
@@ -251,6 +278,7 @@ export function readFlowchartMergeTargetPortCount(
   return Math.max(0, Math.round(parsed));
 }
 
+/** 计算某一侧第 index 个汇聚入口在节点纵向上的偏移百分比，多个入口时均匀分布在 28%~72% 区间。 */
 function mergeTargetOffsetPercent(index: number, count: number): number {
   if (count <= 1) {
     return 50;
@@ -258,6 +286,7 @@ function mergeTargetOffsetPercent(index: number, count: number): number {
   return 28 + (44 * index) / (count - 1);
 }
 
+/** 根据侧别、序号与总数，把基础句柄样式定位到汇聚节点侧边的正确纵向位置上。 */
 export function flowchartMergeTargetHandleStyle(
   side: "left" | "right",
   index: number,
@@ -271,6 +300,10 @@ export function flowchartMergeTargetHandleStyle(
   };
 }
 
+/**
+ * 为所有汇聚节点计算入边端口布局：遍历每个汇聚节点的入边，决定侧别并在同侧内排序分配序号，
+ * 输出"边 ID 到端口 ID"的映射以及"节点 ID 到左右入口计数"的映射，供布局与渲染共用。
+ */
 export function buildMergeTargetPortLayout(
   edges: LinkGraphEdge[],
   nodeIndex: Map<string, LinkGraphNode>,
@@ -327,6 +360,7 @@ export function buildMergeTargetPortLayout(
   };
 }
 
+/** 根据决策端口 ID 与节点尺寸计算端口的绝对坐标，用于布局后把连线锚点贴到菱形真实分支点上。 */
 export function flowchartDecisionPortPoint(
   portId: FlowchartDecisionPortId,
   node: LinkGraphNode,
@@ -340,6 +374,7 @@ export function flowchartDecisionPortPoint(
   };
 }
 
+/** 把基础句柄样式与决策端口自带的定位样式叠加，得到 React Flow 句柄的最终内联样式。 */
 export function flowchartDecisionPortHandleStyle(
   portId: FlowchartDecisionPortId,
   baseStyle: CSSProperties,
@@ -348,6 +383,10 @@ export function flowchartDecisionPortHandleStyle(
   return geometry.style ? { ...baseStyle, ...geometry.style } : baseStyle;
 }
 
+/**
+ * 推断决策节点上一条出边应使用的源端口：循环结构按角色（循环体/退出/回边）选择底部或左右端口，
+ * 穿透分支用底部，其余按源/目标节点的横向相对位置选择左/右/底，让连线方向自然贴合分支走向。
+ */
 export function resolveDecisionSourcePort(
   sourceNode: LinkGraphNode | undefined,
   targetNode: LinkGraphNode | undefined,
@@ -392,6 +431,10 @@ export function resolveDecisionSourcePort(
   return "source-bottom";
 }
 
+/**
+ * 推断决策节点上一条入边应使用的目标端口：循环前置条件下的回边根据源节点相对位置选左/右入口，
+ * 其余情况统一从顶部入口进入，避免与决策分支出边冲突。
+ */
 export function resolveDecisionTargetPort(
   sourceNode: LinkGraphNode | undefined,
   targetNode: LinkGraphNode | undefined,

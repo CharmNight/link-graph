@@ -167,6 +167,7 @@ internal object RemoteGraphPatchResultParser {
         )
     }
 
+    /** 解析候选变更附带的 patchIntent 对象。 */
     private fun parsePatchIntent(raw: Map<*, *>?): CandidatePatchIntent? {
         raw ?: return null
         val mode = enumValue<CandidatePatchIntentMode>(raw["mode"] as? String) ?: return null
@@ -238,6 +239,7 @@ internal object RemoteGraphPatchResultParser {
         return enumValueByName<T>(name)
     }
 
+    /** 生成候选变更摘要字符串，用于 trace 日志输出。 */
     private fun candidateSummaries(candidates: List<CandidateDraftChange>): String {
         if (candidates.isEmpty()) {
             return "[]"
@@ -257,7 +259,10 @@ internal object RemoteGraphPatchResultParser {
     }
 }
 
-/** 判断当前设置是否具备远程补丁生成能力。 */
+/**
+ * 判断当前设置是否具备远程补丁生成能力。
+ * 仅当远程连接配置完整可用时返回 true，可用于决定是否启用相关远程功能。
+ */
 internal fun LinkGraphSettingsState.isRemotePatchReady(): Boolean {
     return remoteConnectionOrNull() != null
 }

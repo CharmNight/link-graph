@@ -34,6 +34,12 @@ import com.intellij.diff.merge.MergeRequest
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 
+/**
+ * 代码生成工作流依赖集合。
+ *
+ * 把生成流程所需的外部服务、运行时上下文、事件出口等聚合到一个数据结构中，
+ * 便于工作流各步骤按需取用而无需关心具体装配方式。
+ */
 internal data class GenerationWorkflowDependencies(
     val project: Project,
     val snapshotProvider: EditorSnapshotProvider,
@@ -56,17 +62,20 @@ internal data class GenerationWorkflowDependencies(
     val showCodeDraftMergeRequest: (Project, MergeRequest) -> Unit,
 )
 
+/** 工作流前置条件检查未通过时的失败信息，用于中止流程并向 UI 反馈原因。 */
 internal data class GenerationPrerequisiteFailure(
     val scene: String,
     val message: String,
     val detailMessage: String?,
 )
 
+/** 运行期失败结果，记录用户可见消息与可选的详细原因。 */
 internal data class RuntimeFailureResult(
     val message: String,
     val detailMessage: String?,
 )
 
+/** 把规划阶段输入转换为生成上下文，作为后续 LLM 调用的统一入参来源。 */
 internal fun GenerationWorkflowDependencies.buildGenerationContext(payload: PlanningInput): GenerationContext {
     return GenerationContext(
         graph = payload.planningGraph,
@@ -79,14 +88,17 @@ internal fun GenerationWorkflowDependencies.buildGenerationContext(payload: Plan
     )
 }
 
+/** 把代理运行结果中携带的产物摘要映射为应用层使用的运行时产物摘要列表。 */
 internal fun GenerationWorkflowDependencies.toRuntimeArtifactSummaries(
     result: AgentRunResult<*>,
 ): List<ApplicationRuntimeArtifactSummary> {
     return result.artifactSummaries.map(ApplicationRuntimeArtifactSummary::from)
 }
 
+/** 通过事件出口派发一个应用事件。 */
 internal fun GenerationWorkflowDependencies.emit(event: GraphEditorApplicationEvent) = eventSink.emit(event)
 
+/** 派发生成过程的流式预览事件，把增量文本与是否收尾的状态推送到 UI。 */
 internal fun GenerationWorkflowDependencies.emitGenerationStreamingPreview(
     scene: com.charmnight.linkgraph.application.result.GenerationRequestScene,
     requestId: Long,
@@ -103,6 +115,7 @@ internal fun GenerationWorkflowDependencies.emitGenerationStreamingPreview(
     )
 }
 
+/** 派发一条生成流程反馈消息事件，可指定是否保留上一次的状态类型。 */
 internal fun GenerationWorkflowDependencies.emitGenerationFeedback(
     level: ApplicationFeedbackLevel,
     message: String,
@@ -111,6 +124,7 @@ internal fun GenerationWorkflowDependencies.emitGenerationFeedback(
     emit(GraphEditorApplicationEvent.GenerationFeedback(level, message, preservePreviousStatusKind))
 }
 
+/** 派发合并写盘报告事件，附上反馈级别与消息便于 UI 提示用户。 */
 internal fun GenerationWorkflowDependencies.emitMergeWriteReport(
     report: com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport,
     level: ApplicationFeedbackLevel,
@@ -119,6 +133,7 @@ internal fun GenerationWorkflowDependencies.emitMergeWriteReport(
     emit(GraphEditorApplicationEvent.MergeWriteReported(report, level, message))
 }
 
+/** 基于当前风险解析快照重新评估草稿校验与代码准入，并派发更新事件，返回最新代码准入决策。 */
 internal fun GenerationWorkflowDependencies.refreshDraftAndCodeState(
     snapshot: RiskResolutionSnapshot,
 ): StageEligibilityDecision {
@@ -128,6 +143,7 @@ internal fun GenerationWorkflowDependencies.refreshDraftAndCodeState(
     return codeDecision
 }
 
+/** 当阶段准入未通过时构造失败信息并派发代码草稿失败事件；通过准入则返回 null 继续执行流程。 */
 internal fun GenerationWorkflowDependencies.rejectStageEligibility(
     decision: StageEligibilityDecision,
     scene: String,
@@ -157,6 +173,7 @@ internal fun GenerationWorkflowDependencies.rejectStageEligibility(
     return failure
 }
 
+/** 当快照中存在实现计划但找不到对应 PlanArtifact 时拒绝继续执行，避免脱离产物谱系继续生成代码草稿。 */
 internal fun GenerationWorkflowDependencies.rejectOrphanedGenerationPlan(
     snapshot: WorkflowEditorSnapshot,
     scene: String,

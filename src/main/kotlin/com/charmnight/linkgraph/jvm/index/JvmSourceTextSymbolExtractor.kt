@@ -8,6 +8,7 @@ import com.intellij.psi.PsiFileFactory
 import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiMethod
 
+/** 源码文本符号信息，记录种类、限定名、起始与结束行。 */
 data class JvmSourceTextSymbol(
     val kind: String,
     val qualifiedName: String,
@@ -15,13 +16,18 @@ data class JvmSourceTextSymbol(
     val endLine: Int,
 )
 
+/** 抽象的源码文本符号提取器：从源码文本中提取符号信息。 */
 fun interface JvmSourceTextSymbolExtractor {
+    /** 解析源码文本并返回提取出的符号列表。 */
     fun extract(path: String, text: String): List<JvmSourceTextSymbol>
 }
 
+/** 基于 IntelliJ PSI 的 Java 源码符号提取器实现。 */
 class PsiJvmSourceTextSymbolExtractor(
+    /** 当前项目实例。 */
     private val project: Project,
 ) : JvmSourceTextSymbolExtractor {
+    /** 提取 Java 源码中的类、字段与方法符号。 */
     override fun extract(path: String, text: String): List<JvmSourceTextSymbol> {
         if (!path.endsWith(".java", ignoreCase = true)) {
             return emptyList()

@@ -38,8 +38,11 @@ import java.util.UUID
  * runtime 负责门槛校验与证据读取，最终计划由正式执行器生成。
  */
 internal class PlanCapability(
+    /** 默认运行预算，控制运行期间的最大步数与文件读取上限。 */
     private val defaultBudget: RunBudget = RunBudget(),
+    /** 真正生成实现计划的执行器，通常由上层注入远程模型调用实现。 */
     private val planExecutor: PlanExecutor,
+    /** capability 可用工具注册表，封装草稿、确认意图、图差异与代码读取工具。 */
     private val toolRegistry: AgentToolRegistry = AgentToolRegistry(
         listOf(
             GetDraftWorkbenchTool(DraftToolFacade()),
@@ -49,8 +52,10 @@ internal class PlanCapability(
         ),
     ),
 ) : AgentCapability<PlanCapabilityInput, GenerationPlan> {
+    /** capability 稳定标识，外部通过该字符串识别计划生成能力。 */
     override val capabilityId: String = "plan"
 
+    /** 构造计划运行的初始状态，包含运行 ID、用户目标、预算与初始步号。 */
     override fun buildInitialState(input: PlanCapabilityInput, runtimeContext: AgentRuntimeContext): AgentRunState {
         return AgentRunState(
             runId = "plan-${UUID.randomUUID()}",
@@ -63,12 +68,15 @@ internal class PlanCapability(
         )
     }
 
+    /** 声明本 capability 运行期间允许调用的工具名称集合。 */
     override fun allowedTools(input: PlanCapabilityInput): Set<String> {
         return setOf("get_draft_workbench", "get_confirmed_intent", "get_graph_diff", "read_source_snippet")
     }
 
+    /** 返回默认停止策略，由 coordinator 在每一步前评估是否结束运行。 */
     override fun stopPolicy(input: PlanCapabilityInput): StopPolicy = StopPolicy.default()
 
+    /** 从运行末态的 PlanArtifact 中取出最终计划，缺失则视为运行异常。 */
     override fun finalize(runState: AgentRunState, runtimeContext: AgentRuntimeContext): GenerationPlan {
         val artifact = runState.artifactRefs
             .asSequence()
@@ -79,6 +87,7 @@ internal class PlanCapability(
         return artifact.plan
     }
 
+    /** 创建分步执行器：依次读取草稿边界、确认意图、图差异、代码证据，最后调用执行器生成计划。 */
     override fun createStepExecutor(input: PlanCapabilityInput): StepExecutor {
         return StepExecutor { state, runtimeContext ->
             when (state.stepIndex) {
@@ -91,6 +100,7 @@ internal class PlanCapability(
         }
     }
 
+    /** 第 0 步：读取草稿工作台边界，确认后续证据读取的起点。 */
     private fun readDraftWorkbench(
         state: AgentRunState,
         runtimeContext: AgentRuntimeContext,
@@ -129,6 +139,7 @@ internal class PlanCapability(
         )
     }
 
+    /** 第 1 步：读取 confirmed intent，为空时直接进入下一步并继续生成计划。 */
     private fun readConfirmedIntent(
         state: AgentRunState,
         runtimeContext: AgentRuntimeContext,
@@ -186,6 +197,7 @@ internal class PlanCapability(
         )
     }
 
+    /** 第 2 步：读取图差异，作为计划生成的重要证据来源。 */
     private fun readGraphDiff(
         state: AgentRunState,
         runtimeContext: AgentRuntimeContext,
@@ -239,6 +251,7 @@ internal class PlanCapability(
         )
     }
 
+    /** 第 3 步：基于 confirmed intent 的 edit scope 读取计划所需代码证据。 */
     private fun readCodeEvidence(
         state: AgentRunState,
         runtimeContext: AgentRuntimeContext,
@@ -334,6 +347,7 @@ internal class PlanCapability(
         )
     }
 
+    /** 最后一步：聚合前面读取的证据，调用执行器生成计划并保存为 artifact。 */
     private fun generatePlan(
         state: AgentRunState,
         runtimeContext: AgentRuntimeContext,
@@ -428,6 +442,7 @@ internal class PlanCapability(
         }
     }
 
+    /** 从 artifact 列表中提取 confirmed intent 对应的草稿条目。 */
     private fun extractConfirmedIntents(
         state: AgentRunState,
         runtimeContext: AgentRuntimeContext,
@@ -440,7 +455,9 @@ internal class PlanCapability(
             .toList()
     }
 
+    /** 计划执行器接口，由上层注入真实实现（通常是远程模型调用）。 */
     fun interface PlanExecutor {
+        /** 根据当前 capability 输入、运行上下文与状态生成实现计划。 */
         fun invoke(
             input: PlanCapabilityInput,
             runtimeContext: AgentRuntimeContext,
@@ -449,6 +466,7 @@ internal class PlanCapability(
     }
 }
 
+/** 计划生成 capability 的输入。 */
 internal data class PlanCapabilityInput(
     /** 已准备好的规划载荷。 */
     val planningPayload: PlanningInput,

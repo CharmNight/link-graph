@@ -16,6 +16,13 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.projection.GraphProjectionMetadata
 import com.charmnight.linkgraph.source.SourceOrigin
 
+/**
+ * 计算架构节点所属的分层类别。
+ *
+ * 优先回退到符号索引中的真实分类；找不到时按节点类别推导，
+ * 例如资源节点固定为资源层，库/JDK 节点固定为对应外部层，
+ * 模块/包/层等聚合节点采用成员中最显著的分层。
+ */
 fun ArchitectureNode.indexedLayerKind(index: ArchitectureGraphIndex): IndexedGraphLayerKind =
     index.findSymbol(id)?.indexedLayerKind()
         ?: when (kind) {
@@ -37,6 +44,10 @@ fun ArchitectureNode.indexedLayerKind(index: ArchitectureGraphIndex): IndexedGra
             ArchitectureNodeKind.JDK -> IndexedGraphLayerKind.JDK
         }
 
+/**
+ * 计算架构节点的来源类别，用于在前端区分源码、库、JDK、资源等显示形态。
+ * 聚合节点会被归类为合成的聚合来源。
+ */
 fun ArchitectureNode.indexedSourceKind(index: ArchitectureGraphIndex): IndexedGraphSourceKind =
     index.findSymbol(id)?.indexedSourceKind()
         ?: when (kind) {
@@ -58,6 +69,7 @@ fun ArchitectureNode.indexedSourceKind(index: ArchitectureGraphIndex): IndexedGr
             -> IndexedGraphSourceKind.SYNTHETIC_AGGREGATE
         }
 
+/** 计算架构节点在分层图中的角色（入口、服务、数据等），用于配色与图标。 */
 fun ArchitectureNode.indexedNodeRole(index: ArchitectureGraphIndex): IndexedGraphNodeRole {
     val symbol = index.findSymbol(id)
     if (symbol != null) {
@@ -75,6 +87,12 @@ fun ArchitectureNode.indexedNodeRole(index: ArchitectureGraphIndex): IndexedGrap
     }
 }
 
+/**
+ * 汇总架构节点的索引元数据，作为前端展示和窗口统计使用。
+ *
+ * 输出包含分层、角色、来源类别、成员数量、是否可下钻等。
+ * 同时初始化折叠桶数量为 0（后续由投影器更新）。
+ */
 fun ArchitectureNode.indexedNodeMetadata(
     index: ArchitectureGraphIndex,
     scopeKind: String,
@@ -105,6 +123,7 @@ fun ArchitectureNode.indexedNodeMetadata(
     }
 }
 
+/** 汇总架构边的索引元数据，包括关系种类、分层来源、采样数、置信度等。 */
 fun ArchitectureEdge.indexedEdgeMetadata(index: ArchitectureGraphIndex): Map<String, String> =
     buildMap {
         put("indexed.relationKind", kind.name)
@@ -116,6 +135,7 @@ fun ArchitectureEdge.indexedEdgeMetadata(index: ArchitectureGraphIndex): Map<Str
         put("indexed.confidence", confidence.indexedConfidence())
     }
 
+/** 计算符号表中的符号所属的分层类别。 */
 fun JvmSymbol.indexedLayerKind(): IndexedGraphLayerKind =
     when (this) {
         is JvmResourceSymbol -> IndexedGraphLayerKind.RESOURCE
@@ -129,6 +149,7 @@ fun JvmSymbol.indexedLayerKind(): IndexedGraphLayerKind =
         else -> origin.indexedLayerKind()
     }
 
+/** 计算符号的来源类别，区分源码类、库类、JDK 类、资源文件等。 */
 fun JvmSymbol.indexedSourceKind(): IndexedGraphSourceKind =
     when (this) {
         is JvmResourceSymbol -> IndexedGraphSourceKind.RESOURCE_FILE
@@ -149,6 +170,7 @@ fun JvmSymbol.indexedSourceKind(): IndexedGraphSourceKind =
         }
     }
 
+/** 计算符号的节点角色；测试源、控制器、服务、仓储等都会被识别出来。 */
 fun JvmSymbol.indexedNodeRole(): IndexedGraphNodeRole =
     when (this) {
         is JvmResourceSymbol -> IndexedGraphNodeRole.RESOURCE
@@ -169,9 +191,11 @@ fun JvmSymbol.indexedNodeRole(): IndexedGraphNodeRole =
         }
     }
 
+/** 从图节点元数据读取分层类别；缺失时返回 null。 */
 fun GraphNode.indexedLayerKindOrNull(): IndexedGraphLayerKind? =
     metadata["indexed.layerKind"]?.let { raw -> IndexedGraphLayerKind.entries.firstOrNull { it.name == raw } }
 
+/** 根据起点和终点的分层推断关系属于哪一类跨层关系（项目内部、项目到 JDK 等）。 */
 fun IndexedGraphLayerKind.relationLayerTo(target: IndexedGraphLayerKind): IndexedGraphRelationLayer =
     when {
         this == IndexedGraphLayerKind.AGGREGATE || target == IndexedGraphLayerKind.AGGREGATE -> IndexedGraphRelationLayer.AGGREGATE
@@ -181,6 +205,7 @@ fun IndexedGraphLayerKind.relationLayerTo(target: IndexedGraphLayerKind): Indexe
         else -> IndexedGraphRelationLayer.PROJECT_INTERNAL
     }
 
+/** 计算架构边两端节点所属的跨层关系类别。聚合关系直接归类为聚合层。 */
 private fun ArchitectureEdge.indexedRelationLayer(index: ArchitectureGraphIndex): IndexedGraphRelationLayer {
     if (metadata["architecture.aggregate"] != null || kind in aggregateRelationKinds) {
         return IndexedGraphRelationLayer.AGGREGATE
@@ -194,6 +219,7 @@ private fun ArchitectureEdge.indexedRelationLayer(index: ArchitectureGraphIndex)
     return fromLayer.relationLayerTo(toLayer)
 }
 
+/** 把来源类型映射为分层类别。 */
 private fun SourceOrigin.indexedLayerKind(): IndexedGraphLayerKind =
     when (this) {
         SourceOrigin.JDK_SOURCE,
@@ -211,6 +237,7 @@ private fun SourceOrigin.indexedLayerKind(): IndexedGraphLayerKind =
         -> IndexedGraphLayerKind.PROJECT_SOURCE
     }
 
+/** 统计聚合节点的成员在每层中的数量，用于判断主导分层。 */
 private fun ArchitectureNode.memberLayerCounts(index: ArchitectureGraphIndex): IndexedGraphLayerCounts =
     (memberClassIds + memberResourceIds)
         .fold(IndexedGraphLayerCounts()) { counts, memberId ->
@@ -220,6 +247,7 @@ private fun ArchitectureNode.memberLayerCounts(index: ArchitectureGraphIndex): I
             counts + IndexedGraphLayerCounts.single(layer)
         }
 
+/** 找出唯一非零的分层；用于聚合节点主导分层判断。多种分层同时存在时返回 null。 */
 private fun IndexedGraphLayerCounts.dominantLayerKind(): IndexedGraphLayerKind? {
     val nonZeroLayers = listOf(
         IndexedGraphLayerKind.PROJECT_SOURCE to projectSource,
@@ -231,6 +259,7 @@ private fun IndexedGraphLayerCounts.dominantLayerKind(): IndexedGraphLayerKind? 
     return nonZeroLayers.singleOrNull()?.first
 }
 
+/** 根据聚合节点的限定名（如 API、SERVICE 等）猜测角色。 */
 private fun ArchitectureNode.layerRole(): IndexedGraphNodeRole =
     when (qualifiedName.uppercase()) {
         "API" -> IndexedGraphNodeRole.API
@@ -240,6 +269,7 @@ private fun ArchitectureNode.layerRole(): IndexedGraphNodeRole =
         else -> IndexedGraphNodeRole.UNKNOWN
     }
 
+/** 把关系置信度转换为对外可读的稳定字符串。 */
 private fun JvmRelationConfidence.indexedConfidence(): String =
     when (this) {
         JvmRelationConfidence.PROVEN -> "STATIC"
@@ -248,11 +278,13 @@ private fun JvmRelationConfidence.indexedConfidence(): String =
         JvmRelationConfidence.AMBIGUOUS -> "AMBIGUOUS"
     }
 
+/** 视为聚合结构的关系种类集合。 */
 private val aggregateRelationKinds = setOf(
     JvmRelationKind.MODULE_CONTAINS_PACKAGE,
     JvmRelationKind.PACKAGE_CONTAINS_CLASS,
 )
 
+/** 表示符号来源于外部库的来源种类集合。 */
 private val externalLibraryOrigins = setOf(
     SourceOrigin.LIBRARY_SOURCE_JAR,
     SourceOrigin.LIBRARY_CLASS_JAR,

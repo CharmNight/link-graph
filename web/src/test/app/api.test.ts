@@ -494,6 +494,7 @@ describe("publishGraphEditRequest", () => {
         targetNodeIds: ["method:submit-order"],
       },
       explanationGranularity: "CODE_SEMANTIC",
+      mode: "REVIEW",
     });
 
     expect(result).toEqual({
@@ -510,18 +511,15 @@ describe("publishGraphEditRequest", () => {
     };
 
     const result = requestAssistantTask({
-      actionId: "CHECK_CHANGE",
-      sceneId: "WORKSPACE_REVIEW_GRAPH",
-      intent: "CHECK_CHANGE",
-      prompt: "检查这次改动",
+      actionId: "ASK_CONTEXT",
+      sceneId: "WORKSPACE_FLOWCHART",
+      intent: "ASK_CODE",
+      prompt: "检查这里是否缺少证据",
       selectedNodeIds: ["method:submit-order"],
-      selectedDiffItemIds: ["diff:OrderController.kt"],
-      target: {
-        kind: "RiskInvestigation",
-        threadId: "risk-thread:1",
-        targetNodeIds: ["method:submit-order"],
-      },
-      explanationGranularity: "CODE_SEMANTIC",
+      selectedDiffItemIds: [],
+      target: { kind: "NewTask" },
+      explanationGranularity: "BUSINESS",
+      mode: "REVIEW",
     });
 
     expect(result).toEqual({ ok: true });
@@ -529,18 +527,15 @@ describe("publishGraphEditRequest", () => {
       schemaVersion: 1,
       type: "requestAssistantTask",
       payload: {
-        actionId: "CHECK_CHANGE",
-        sceneId: "WORKSPACE_REVIEW_GRAPH",
-        intent: "CHECK_CHANGE",
-        prompt: "检查这次改动",
+        actionId: "ASK_CONTEXT",
+        sceneId: "WORKSPACE_FLOWCHART",
+        intent: "ASK_CODE",
+        prompt: "检查这里是否缺少证据",
         selectedNodeIds: ["method:submit-order"],
-        selectedDiffItemIds: ["diff:OrderController.kt"],
-        target: {
-          kind: "RiskInvestigation",
-          threadId: "risk-thread:1",
-          targetNodeIds: ["method:submit-order"],
-        },
-        explanationGranularity: "CODE_SEMANTIC",
+        selectedDiffItemIds: [],
+        target: { kind: "NewTask" },
+        explanationGranularity: "BUSINESS",
+        mode: "REVIEW",
       },
     });
   });

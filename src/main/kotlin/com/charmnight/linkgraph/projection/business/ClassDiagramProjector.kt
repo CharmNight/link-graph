@@ -35,11 +35,23 @@ import com.charmnight.linkgraph.projection.graphProjectionHiddenCounts
 import com.charmnight.linkgraph.projection.projectedSourceEdgeIds
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 
+/**
+ * 类图投影器：把架构索引转换为可展示的 UML 类图视图。
+ * 负责从架构索引中圈定锚点类的邻域、过滤类图相关的边、注入成员与展示元数据，
+ * 并最终裁剪成适配视口策略的可见图与完整图。
+ */
 class ClassDiagramProjector(
+    /** 负责把架构索引转换为通用 GraphDocument 的底层投影器。 */
     private val architectureProjector: ArchitectureGraphProjector = ArchitectureGraphProjector(),
+    /** 视口裁剪策略，控制可见图最大节点数与边数。 */
     private val viewportPolicy: GraphViewportPolicy = GraphViewportPolicy(maxVisibleNodes = 48, maxVisibleEdges = 96),
+    /** 折叠桶投影器，用于把折叠的节点按角色聚合成隐藏桶以便 UI 展示。 */
     private val hiddenBucketProjector: GraphHiddenBucketProjector = GraphHiddenBucketProjector(),
 ) : GraphProjector {
+    /**
+     * 把架构索引投影为类图结果。
+     * 处理流程：解析锚点 -> 圈定邻域 -> 生成完整图（含 UML 成员）-> 视口裁剪 -> 注入展示元数据与折叠桶。
+     */
     fun project(
         index: ArchitectureGraphIndex,
         scopeNodeId: String? = null,
@@ -48,31 +60,39 @@ class ClassDiagramProjector(
         cacheState: String = "UNKNOWN",
         freshness: IndexedGraphFreshness = IndexedGraphFreshness(),
     ): ClassDiagramResult {
+        // 当前 scope 节点是否本身就是类类型节点。
         val scopeIsClassLike = scopeNodeId?.let { nodeId -> index.node(nodeId)?.kind in classLikeKinds } == true
+        // 显式 scope 模式下被选中的类集合（例如用户选中包节点）。
         val explicitScopedClassIds = scopeNodeId
             ?.takeUnless { scopeIsClassLike }
             ?.let(index::classesInScope)
             ?.mapTo(linkedSetOf()) { cls -> cls.id }
             .orEmpty()
+        // 实际作为锚点的类 ID：优先用类类型 scope，其次用显式 scope 的首个类，最后回退到默认锚点。
         val anchorClassId = scopeNodeId
             ?.takeIf { nodeId -> index.node(nodeId)?.kind in classLikeKinds }
             ?: explicitScopedClassIds.firstOrNull()
             ?: defaultAnchorClassId(index)
+        // 进入类图可见范围的全部类 ID：显式 scope 模式下包含外部一跳，否则围绕锚点扩展邻居。
         val scopedClassIds = if (explicitScopedClassIds.isNotEmpty()) {
             explicitScopeClassIdsWithExternalOneHop(index, explicitScopedClassIds)
         } else {
             classNeighborhoodIds(index, anchorClassId, request.classDiagram.neighborhoodLimit)
         }
+        // 候选类型总数，用于判断邻居扩展是否被截断。
         val neighborhoodCandidateTypeCount = if (explicitScopedClassIds.isEmpty()) {
             classNeighborhoodCandidateTypeCount(index, anchorClassId)
         } else {
             scopedClassIds.size
         }
+        // 邻居扩展是否因为超出 neighborhoodLimit 被截断。
         val neighborhoodTruncated = explicitScopedClassIds.isEmpty() &&
             neighborhoodCandidateTypeCount > scopedClassIds.size
+        // 进入完整图的类类型节点列表。
         val nodes = index.graph.nodes.filter { node ->
             node.kind in classLikeKinds && node.id in scopedClassIds
         }
+        // 完整图：包含 UML 成员、类图边类型、展示元数据，是问答/导出等后台操作的基线。
         val fullGraph = toUmlClassDiagramEdges(
             index,
             architectureProjector.graphDocument(
@@ -83,9 +103,11 @@ class ClassDiagramProjector(
                 request = request,
             ).withUmlClassMembers(index, request),
         ).withClassDiagramPresentationMetadata(anchorClassId ?: scopeNodeId)
+        // 主图：从完整图中去除纯签名噪声并裁剪成可读邻域，作为视口裁剪的输入。
         val primaryGraph = fullGraph
             .withoutSignatureOnlyNoiseNodes(anchorClassId ?: scopeNodeId)
             .readableClassDiagramProjection(anchorClassId ?: scopeNodeId)
+        // 视口裁剪窗口，按预算保留最重要的节点与边。
         val visibleWindow = primaryGraph.visibleWindow(
             policy = request.classDiagramViewportPolicy(),
             anchorNodeId = anchorClassId ?: scopeNodeId,
@@ -93,25 +115,33 @@ class ClassDiagramProjector(
             nodePriority = ::classDiagramNodePriority,
             edgePriority = ::classDiagramEdgePriority,
         )
+        // 视口裁剪后的图文档。
         val windowGraph = visibleWindow.graph
+        // 最终生效的锚点节点 ID：在窗口中存在的锚点类，依次回退到 scope、首个类、首个节点。
         val anchorNodeId = anchorClassId?.takeIf { nodeId -> windowGraph.nodes.any { it.id == nodeId } }
             ?: scopeNodeId?.takeIf { nodeId -> windowGraph.nodes.any { it.id == nodeId } }
             ?: windowGraph.nodes.firstOrNull { it.type.name == "CLASS" }?.id
             ?: windowGraph.nodes.firstOrNull()?.id
+        // 补齐展示元数据并合并平行关系后的最终可见图。
         val visibleGraphWithPresentation = windowGraph
             .withMissingClassDiagramPresentationMetadata(anchorNodeId)
             .aggregateParallelClassDiagramRelations()
+        // 比较可见图与完整图计算折叠数量。
         val hiddenCounts = graphProjectionHiddenCounts(
             visibleGraph = visibleGraphWithPresentation,
             fullGraph = fullGraph,
         )
+        // 隐藏节点总数，取窗口与全图统计的较大值。
         val hiddenNodeCount = hiddenCounts.hiddenNodeCount.coerceAtLeast(visibleWindow.hiddenNodeCount)
+        // 隐藏边总数，取窗口与全图统计的较大值。
         val hiddenEdgeCount = hiddenCounts.hiddenEdgeCount.coerceAtLeast(visibleWindow.hiddenEdgeCount)
+        // 整体是否被截断：索引/窗口/邻居扩展任一截断，或存在隐藏元素均视为截断。
         val truncated = index.graph.truncated ||
             visibleWindow.truncated ||
             neighborhoodTruncated ||
             hiddenNodeCount > 0 ||
             hiddenEdgeCount > 0
+        // 当关系完整度标记为 PARTIAL 时，把请求中的完整度降级为仅结构，避免误导 UI。
         val effectiveRequest = request.copy(
             completeness = if (relationCompleteness == ClassDiagramFastIndex.RELATION_COMPLETENESS_PARTIAL) {
                 IndexedGraphCompleteness.StructureOnly
@@ -182,6 +212,7 @@ class ClassDiagramProjector(
         )
     }
 
+    /** 在未指定 scope 时挑选默认锚点类：优先关系数最多、命名上更像入口的类。 */
     private fun defaultAnchorClassId(index: ArchitectureGraphIndex): String? {
         val relationScoreByNodeId = index.graph.nodes
             .asSequence()
@@ -203,6 +234,7 @@ class ClassDiagramProjector(
             ?.id
     }
 
+    /** 计算某个类节点参与类图的关系条数，作为选择默认锚点的关键评分。 */
     private fun classRelationScore(
         index: ArchitectureGraphIndex,
         classNodeId: String,
@@ -213,6 +245,7 @@ class ClassDiagramProjector(
                 index.node(edge.toNodeId)?.kind in classLikeKinds
         }
 
+    /** 围绕锚点类按关系优先级圈定邻居，超过 neighborhoodLimit 时按优先级截断。 */
     private fun classNeighborhoodIds(
         index: ArchitectureGraphIndex,
         anchorClassId: String?,
@@ -244,6 +277,7 @@ class ClassDiagramProjector(
         return selected
     }
 
+    /** 统计锚点邻居扩展如果不截断时可达的全部候选类型数，用于判断是否需要标记 truncated。 */
     private fun classNeighborhoodCandidateTypeCount(
         index: ArchitectureGraphIndex,
         anchorClassId: String?,
@@ -262,6 +296,7 @@ class ClassDiagramProjector(
         return candidateIds.size
     }
 
+    /** 显式 scope 模式下补充外部/JDK/库的一跳类，让类图能够展示依赖的外部类型。 */
     private fun explicitScopeClassIdsWithExternalOneHop(
         index: ArchitectureGraphIndex,
         explicitClassIds: Set<String>,
@@ -284,6 +319,7 @@ class ClassDiagramProjector(
         return selected
     }
 
+    /** 把通用图边重新分类为 UML 类图关系边，写入 uml.relation.kind 与展示标签。 */
     private fun toUmlClassDiagramEdges(
         index: ArchitectureGraphIndex,
         graph: GraphDocument,
@@ -307,6 +343,7 @@ class ClassDiagramProjector(
         )
     }
 
+    /** 给类图节点注入展示元数据（角色、泳道、优先级、紧凑标志）以及进入类图的原因。 */
     private fun GraphDocument.withClassDiagramPresentationMetadata(anchorNodeId: String?): GraphDocument {
         val anchorId = anchorNodeId
         val incomingToAnchor = anchorId
@@ -360,6 +397,7 @@ class ClassDiagramProjector(
         )
     }
 
+    /** 仅在节点缺少展示元数据时补充，避免在已经处理过的图上重复计算。 */
     private fun GraphDocument.withMissingClassDiagramPresentationMetadata(anchorNodeId: String?): GraphDocument =
         if (nodes.all { node -> node.metadata["presentation.role"] != null }) {
             this
@@ -367,6 +405,7 @@ class ClassDiagramProjector(
             withClassDiagramPresentationMetadata(anchorNodeId)
         }
 
+    /** 去除只参与“纯签名”噪声关系的节点，让类图聚焦在真实有意义的关系上。 */
     private fun GraphDocument.withoutSignatureOnlyNoiseNodes(anchorNodeId: String?): GraphDocument {
         val incidentEdgesByNodeId = buildMap<String, MutableList<GraphEdge>> {
             edges.forEach { edge ->
@@ -396,6 +435,7 @@ class ClassDiagramProjector(
         )
     }
 
+    /** 围绕锚点保留可读的类图邻域：先取锚点的强相关边，不足时再回退到更宽松的关系集合。 */
     private fun GraphDocument.readableClassDiagramProjection(anchorNodeId: String?): GraphDocument {
         val anchorNode = resolveReadableAnchorNode(anchorNodeId) ?: return this
         val nodeById = nodes.associateBy(GraphNode::id)
@@ -419,7 +459,7 @@ class ClassDiagramProjector(
                 .asSequence()
                 .filter { edge -> edge.fromNodeId in nodeById && edge.toNodeId in nodeById }
                 .filter { edge -> edge.isAnchorRelation(anchorNode.id) }
-                .filterNot { edge -> edge.isNoisyDefaultRelation() }
+                .filter { edge -> edge.isReadableClassDiagramRelation() }
                 .filterNot { edge -> edge.isIncomingNonHierarchyAnchorRelation(anchorNode.id) }
                 .sortedWith(
                     compareByDescending<GraphEdge> { edge -> edge.readableRelationPriority(anchorNode.id) }
@@ -448,9 +488,11 @@ class ClassDiagramProjector(
         )
     }
 
+    /** 判断是否为指向锚点但属于非层级结构关联的边，这类边在类图中常被折叠。 */
     private fun GraphEdge.isIncomingNonHierarchyAnchorRelation(anchorNodeId: String): Boolean =
         toNodeId == anchorNodeId && !isHierarchyRelation() && isStructuralAssociationRelation()
 
+    /** 解析作为可读投影中心的锚点节点，依次回退到 ANCHOR 角色节点、首个类节点、首个节点。 */
     private fun GraphDocument.resolveReadableAnchorNode(anchorNodeId: String?): GraphNode? =
         anchorNodeId
             ?.let { nodeId -> nodes.firstOrNull { node -> node.id == nodeId } }
@@ -458,12 +500,15 @@ class ClassDiagramProjector(
             ?: nodes.firstOrNull { node -> node.type == NodeType.CLASS }
             ?: nodes.firstOrNull()
 
+    /** 返回当前边中相对锚点的另一端节点 ID。 */
     private fun GraphEdge.peerNodeId(anchorNodeId: String): String =
         if (fromNodeId == anchorNodeId) toNodeId else fromNodeId
 
+    /** 判断当前边是否与锚点相连。 */
     private fun GraphEdge.isAnchorRelation(anchorNodeId: String): Boolean =
         fromNodeId == anchorNodeId || toNodeId == anchorNodeId
 
+    /** 判断是否为锚点相关且在类图中可读的边。 */
     private fun GraphEdge.isReadableAnchorRelation(anchorNodeId: String): Boolean {
         if (!isAnchorRelation(anchorNodeId)) {
             return false
@@ -471,32 +516,29 @@ class ClassDiagramProjector(
         return isReadableClassDiagramRelation()
     }
 
+    /** 判断边在类图中是否属于可读关系：层级、字段支撑或权重足够的方法依赖。 */
     private fun GraphEdge.isReadableClassDiagramRelation(): Boolean {
         if (isNoisyDefaultRelation()) {
             return false
         }
-        if (isHierarchyRelation() || isStructuralAssociationRelation()) {
+        if (isHierarchyRelation() || isFieldBackedRelation()) {
             return true
         }
         return when (classDiagramRelationKind()) {
-            ClassDiagramRelationRole.METHOD_CALL.name,
-            ClassDiagramRelationRole.METHOD_RETURN.name,
-            ClassDiagramRelationRole.METHOD_PARAMETER.name,
-            -> relationWeight() >= MIN_READABLE_DEPENDENCY_WEIGHT
-            "DEPENDENCY",
-            "USES_TYPE",
-            "INJECTS",
-            -> relationWeight() >= 75
-            else -> relationWeight() >= 80
+            ClassDiagramRelationRole.METHOD_CALL.name -> relationWeight() >= MIN_READABLE_DEPENDENCY_WEIGHT
+            else -> false
         }
     }
 
+    /** 兜底可见关系：与锚点相关且本身是可读关系。 */
     private fun GraphEdge.isFallbackVisibleRelation(anchorNodeId: String): Boolean =
-        isAnchorRelation(anchorNodeId) && !isNoisyDefaultRelation()
+        isAnchorRelation(anchorNodeId) && isReadableClassDiagramRelation()
 
+    /** 判断是否为默认噪声关系（如局部类型、throws），这类关系默认不展示。 */
     private fun GraphEdge.isNoisyDefaultRelation(): Boolean =
         classDiagramRelationKind() in noisyDefaultRelationKinds
 
+    /** 计算可读关系展示优先级：关系权重 + 角色/层级加成 + 指向锚点的方向加成。 */
     private fun GraphEdge.readableRelationPriority(anchorNodeId: String): Int {
         val directionBonus = if (toNodeId == anchorNodeId) 3 else 0
         val roleBonus = when {
@@ -507,6 +549,7 @@ class ClassDiagramProjector(
         return relationWeight() + roleBonus + directionBonus
     }
 
+    /** 生成边的排序键，统一类图中边的展示顺序。 */
     private fun GraphEdge.classDiagramRelationSortKey(): ClassDiagramRelationSortKey =
         ClassDiagramRelationSortKey(
             priority = classDiagramEdgePriority(this),
@@ -517,12 +560,14 @@ class ClassDiagramProjector(
             id = id,
         )
 
+    /** 返回类图关系类型字符串，依次回退到 role、uml kind、jvm kind、edge type。 */
     private fun GraphEdge.classDiagramRelationKind(): String =
         metadata[ClassDiagramRelationExtractor.ROLE_KEY]
             ?: metadata["uml.relation.kind"]
             ?: metadata["jvm.relation.kind"]
             ?: type.name
 
+    /** 推导边对应的 UML 关系类型（泛化、实现、关联、依赖等），用于展示与聚合。 */
     private fun GraphEdge.classDiagramUmlRelationKind(): String =
         metadata["uml.relation.kind"]
             ?: when (classDiagramRelationRole()) {
@@ -540,16 +585,33 @@ class ClassDiagramProjector(
                 null -> metadata["jvm.relation.kind"] ?: type.name
             }
 
+    /** 解析边在 JVM 关系抽取阶段记录的角色枚举。 */
     private fun GraphEdge.classDiagramRelationRole(): ClassDiagramRelationRole? =
         metadata[ClassDiagramRelationExtractor.ROLE_KEY]
             ?.let { raw -> ClassDiagramRelationRole.entries.firstOrNull { role -> role.name == raw } }
 
+    /** 判断是否为层级关系（继承、实现）。 */
     private fun GraphEdge.isHierarchyRelation(): Boolean =
         classDiagramRelationKind() in hierarchyRelationKinds
 
+    /** 判断是否为结构性关联关系（字段、构造参数、组合、聚合等）。 */
     private fun GraphEdge.isStructuralAssociationRelation(): Boolean =
         classDiagramRelationKind() in structuralAssociationRelationKinds
 
+    /** 判断是否为字段支撑关系：字段直接持有、构造参数赋值给字段、或 UML 类型本身是关联类。 */
+    private fun GraphEdge.isFieldBackedRelation(): Boolean =
+        when (classDiagramRelationRole()) {
+            ClassDiagramRelationRole.FIELD -> metadata[ClassDiagramRelationExtractor.HELD_BY_FIELD_KEY] != "false"
+            ClassDiagramRelationRole.CONSTRUCTOR_PARAMETER ->
+                metadata[ClassDiagramRelationExtractor.FIELD_ASSIGNED_KEY] == "true"
+            else -> classDiagramUmlRelationKind() in setOf(
+                UmlClassRelationKind.COMPOSITION.name,
+                UmlClassRelationKind.AGGREGATION.name,
+                UmlClassRelationKind.ASSOCIATION.name,
+            )
+        }
+
+    /** 计算关系权重：优先使用抽取阶段记录的权重，其次按角色/类型映射默认权重。 */
     private fun GraphEdge.relationWeight(): Int =
         metadata[ClassDiagramRelationExtractor.WEIGHT_KEY]
             ?.toIntOrNull()
@@ -580,6 +642,7 @@ class ClassDiagramProjector(
                 else -> 40
             }
 
+    /** 判断是否为纯签名噪声关系：方法参数未被使用，或构造参数既未被使用也未赋值给字段。 */
     private fun GraphEdge.isSignatureOnlyNoiseRelation(): Boolean {
         val role = metadata[ClassDiagramRelationExtractor.ROLE_KEY] ?: return false
         val usedInBody = metadata[ClassDiagramRelationExtractor.USED_IN_BODY_KEY] == "true"
@@ -591,6 +654,7 @@ class ClassDiagramProjector(
         }
     }
 
+    /** 把同源同终点的平行关系合并成一条聚合边，附带被合并的原始边 ID 与次级标签列表。 */
     private fun GraphDocument.aggregateParallelClassDiagramRelations(): GraphDocument {
         val aggregatedEdges = edges
             .groupBy { edge -> edge.fromNodeId to edge.toNodeId }
@@ -600,6 +664,7 @@ class ClassDiagramProjector(
         return copy(edges = aggregatedEdges)
     }
 
+    /** 把一组同源同终点的边合并为一条聚合边，保留主关系标签并把其余标签汇总为次级标签。 */
     private fun aggregateClassDiagramRelationGroup(edges: List<GraphEdge>): GraphEdge {
         val sortedEdges = edges.sortedBy { edge -> edge.classDiagramRelationSortKey() }
         val primaryEdge = sortedEdges.first()
@@ -626,12 +691,14 @@ class ClassDiagramProjector(
         )
     }
 
+    /** 根据源/终点节点 ID 生成稳定的聚合边 ID。 */
     private fun aggregateRelationId(
         sourceNodeId: String,
         targetNodeId: String,
     ): String =
         "uml:relation:${sourceNodeId}->${targetNodeId}"
 
+    /** 生成聚合后的展示标签：主标签 + 被隐藏的次级标签数量提示。 */
     private fun aggregateRelationLabel(edges: List<GraphEdge>): String {
         val primaryLabel = aggregatePrimaryRelationLabel(edges)
         val hiddenLabelCount = aggregateSecondaryRelationLabels(edges).size
@@ -641,13 +708,16 @@ class ClassDiagramProjector(
         return "$primaryLabel +$hiddenLabelCount"
     }
 
+    /** 取聚合组中优先级最高的一条边的展示标签作为主标签。 */
     private fun aggregatePrimaryRelationLabel(edges: List<GraphEdge>): String =
         aggregateRelationLabels(edges).firstOrNull()
             ?: edges.firstOrNull()?.classDiagramDisplayLabel().orEmpty()
 
+    /** 取聚合组中除主标签外的次级标签列表。 */
     private fun aggregateSecondaryRelationLabels(edges: List<GraphEdge>): List<String> =
         aggregateRelationLabels(edges).drop(1)
 
+    /** 汇总聚合组中所有边的展示标签并去重，按关系优先级排序。 */
     private fun aggregateRelationLabels(edges: List<GraphEdge>): List<String> {
         val labelSourceEdges = edges
             .filter { edge -> edge.metadata[ClassDiagramRelationExtractor.ROLE_KEY] != null }
@@ -660,18 +730,21 @@ class ClassDiagramProjector(
             .distinct()
     }
 
+    /** 返回类图边上对外展示的文本，优先使用聚合标签或抽取阶段标签。 */
     private fun GraphEdge.classDiagramDisplayLabel(): String {
         metadata["uml.relation.aggregate.label"]?.trim()?.takeIf(String::isNotBlank)?.let { return it }
         metadata[ClassDiagramRelationExtractor.LABEL_KEY]?.trim()?.takeIf(String::isNotBlank)?.let { return it }
         return classDiagramRelationLabel()
     }
 
+    /** 返回关系标签文本，依次回退到抽取标签、UML 标签、原始 label、关系类型名。 */
     private fun GraphEdge.classDiagramRelationLabel(): String =
         metadata[ClassDiagramRelationExtractor.LABEL_KEY]?.trim()?.takeIf(String::isNotBlank)
             ?: metadata["uml.relation.label"]?.trim()?.takeIf(String::isNotBlank)
             ?: label?.trim()?.takeIf(String::isNotBlank)
             ?: classDiagramRelationKind()
 
+    /** 把投影后的图包装为只读投影索引，向 UI 声明节点/边不可编辑。 */
     private fun classDiagramProjectionIndex(graph: GraphDocument): GraphProjectionIndex =
         GraphProjectionIndex(
             nodeMappings = graph.nodes.associate { node ->
@@ -692,6 +765,7 @@ class ClassDiagramProjector(
             },
         )
 
+    /** 根据节点与锚点的关系判断展示角色（锚点、抽象接口、调用方、协作对象、输出类型等）。 */
     private fun classDiagramRole(
         node: GraphNode,
         anchorNodeId: String?,
@@ -714,6 +788,7 @@ class ClassDiagramProjector(
             else -> ClassDiagramPresentationRole("collaborator", "TYPE", 45)
         }
 
+    /** 计算每个相邻节点之所以出现在类图中的原因，基于其与锚点间权重最高的关系标签。 */
     private fun classDiagramNodeReasons(
         edges: List<GraphEdge>,
         anchorNodeId: String,
@@ -735,6 +810,7 @@ class ClassDiagramProjector(
             .filterValues(String::isNotBlank)
     }
 
+    /** 用关系标签和成员名拼接节点出现原因的展示文本。 */
     private fun classDiagramNodeReason(edge: GraphEdge): String {
         val label = edge.metadata[ClassDiagramRelationExtractor.LABEL_KEY]
             ?: edge.label
@@ -747,6 +823,7 @@ class ClassDiagramProjector(
         return listOfNotNull(label, memberName).joinToString(" ")
     }
 
+    /** 组装类图展示视图：目标信息、泳道列表、折叠桶以及交互控件。 */
     private fun classDiagramPresentation(
         visibleGraph: GraphDocument,
         fullGraph: GraphDocument,
@@ -777,12 +854,14 @@ class ClassDiagramProjector(
         )
     }
 
+    /** 类图节点的展示角色描述：泳道 ID、角色名、展示优先级、是否紧凑模式。 */
     private data class ClassDiagramPresentationRole(
         val laneId: String,
         val role: String,
         val priority: Int,
         val compact: Boolean = true,
     ) {
+        /** 把展示角色字段序列化为节点 metadata，供前端读取展示。 */
         fun toMetadata(): Map<String, String> =
             mapOf(
                 "presentation.role" to role,
@@ -792,6 +871,7 @@ class ClassDiagramProjector(
             )
     }
 
+    /** 给每个类节点注入 UML 字段与方法成员文本，以及类级元数据（abstract、kind、注释等）。 */
     private fun GraphDocument.withUmlClassMembers(
         index: ArchitectureGraphIndex,
         request: IndexedGraphRequest,
@@ -813,6 +893,7 @@ class ClassDiagramProjector(
         )
     }
 
+    /** 把类符号、字段列表、方法列表汇总写入单个节点的 metadata，用于 UI 渲染 UML 类图卡片。 */
     private fun GraphNode.withUmlClassMetadata(
         classSymbol: com.charmnight.linkgraph.jvm.index.JvmClassSymbol?,
         fields: List<JvmFieldSymbol>,
@@ -840,10 +921,12 @@ class ClassDiagramProjector(
         )
     }
 
+    /** 生成单个 UML 字段的展示文本（字段名 : 类型）。 */
     private fun umlFieldText(field: JvmFieldSymbol): String =
         listOfNotNull(field.simpleName, field.typeName?.let(::shortTypeName))
             .joinToString(": ")
 
+    /** 生成单个 UML 方法的展示文本（方法名(参数) : 返回类型）。 */
     private fun umlMethodText(method: JvmMethodSymbol): String {
         val parameters = method.parameterTypes.joinToString(", ") { type -> shortTypeName(type) }
         val returnType = method.returnType?.let(::shortTypeName)
@@ -851,6 +934,7 @@ class ClassDiagramProjector(
         return returnType?.let { "$signature: $it" } ?: signature
     }
 
+    /** 把全限定类型名简化为短名（去掉包前缀），便于类图展示。 */
     private fun shortTypeName(typeName: String): String {
         val normalized = typeName.trim()
         if (normalized.isEmpty()) {
@@ -862,6 +946,7 @@ class ClassDiagramProjector(
             }
     }
 
+    /** 类图节点展示优先级：类/接口优先于枚举等特殊类型，其他类型最低。 */
     private fun classDiagramNodePriority(node: com.charmnight.linkgraph.model.GraphNode): Int =
         when (node.type) {
             NodeType.CLASS,
@@ -875,6 +960,7 @@ class ClassDiagramProjector(
             else -> 2
         }
 
+    /** 类图边展示优先级：基于权重取负值或按 UML 关系类型分级，权重越高优先级越高。 */
     private fun classDiagramEdgePriority(edge: com.charmnight.linkgraph.model.GraphEdge): Int =
         edge.metadata[ClassDiagramRelationExtractor.WEIGHT_KEY]
             ?.toIntOrNull()
@@ -889,6 +975,7 @@ class ClassDiagramProjector(
                 else -> 6
             }
 
+    /** 根据类名后缀给锚点候选类打分，业务入口类（Action/Controller/Service）优先。 */
     private fun classAnchorPriority(title: String): Int {
         val lower = title.lowercase()
         return when {
@@ -901,6 +988,7 @@ class ClassDiagramProjector(
         }
     }
 
+    /** 解析请求中的视口策略；若请求未指定则回退到构造时传入的默认策略。 */
     private fun IndexedGraphRequest.classDiagramViewportPolicy(): GraphViewportPolicy =
         GraphViewportPolicy(
             maxVisibleNodes = viewport.maxVisibleNodes ?: viewportPolicy.maxVisibleNodes,
@@ -908,6 +996,7 @@ class ClassDiagramProjector(
         )
 
     private companion object {
+        // 视为类图核心类型的架构节点种类集合。
         private val classLikeKinds = setOf(
             ArchitectureNodeKind.CLASS,
             ArchitectureNodeKind.INTERFACE,
@@ -916,7 +1005,9 @@ class ClassDiagramProjector(
             ArchitectureNodeKind.RECORD,
             ArchitectureNodeKind.OBJECT,
         )
+        // 方法依赖类关系视为可读所需的最低权重阈值。
         private const val MIN_READABLE_DEPENDENCY_WEIGHT = 55
+        // 视为层级结构（继承/实现）的关系类型集合。
         private val hierarchyRelationKinds = setOf(
             ClassDiagramRelationRole.EXTENDS.name,
             ClassDiagramRelationRole.IMPLEMENTS.name,
@@ -925,6 +1016,7 @@ class ClassDiagramProjector(
             "EXTENDS",
             "IMPLEMENTS",
         )
+        // 视为结构性关联的关系类型集合（字段、构造参数、组合、聚合、关联）。
         private val structuralAssociationRelationKinds = setOf(
             ClassDiagramRelationRole.FIELD.name,
             ClassDiagramRelationRole.CONSTRUCTOR_PARAMETER.name,
@@ -934,12 +1026,14 @@ class ClassDiagramProjector(
             "FIELD",
             "CONSTRUCTOR_PARAMETER",
         )
+        // 默认视为噪声的关系类型集合（局部类型、throws），这些关系默认不展示。
         private val noisyDefaultRelationKinds = setOf(
             ClassDiagramRelationRole.LOCAL_TYPE.name,
             ClassDiagramRelationRole.THROWS.name,
             "LOCAL_TYPE",
             "THROWS",
         )
+        /** 类图关系排序键：综合优先级、关系类型、标签、端点 ID 与边 ID 形成稳定排序。 */
         private data class ClassDiagramRelationSortKey(
             val priority: Int,
             val kind: String,
@@ -961,6 +1055,7 @@ class ClassDiagramProjector(
                 )
         }
 
+        /** 类图固定的展示泳道列表，按角色把节点划入抽象/调用方/锚点/协作/输出区域。 */
         private fun classDiagramPresentationLanes(): List<GraphPresentationLane> =
             listOf(
                 GraphPresentationLane("abstraction", "抽象与接口", GraphPresentationLaneAxis.ZONE, 10, "INTERFACE"),
@@ -970,6 +1065,7 @@ class ClassDiagramProjector(
                 GraphPresentationLane("output", "输出类型", GraphPresentationLaneAxis.ZONE, 50, "OUTPUT"),
             )
 
+        /** 把折叠桶 ID 映射为中文展示标签。 */
         private fun classDiagramBucketLabel(bucket: String): String =
             when (bucket) {
                 "abstraction" -> "抽象与接口"

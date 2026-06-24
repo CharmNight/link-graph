@@ -72,6 +72,13 @@ import {
 } from "./graphFlowContextMenuModel";
 import { buildRenderedFlowEdges } from "./graphFlowDragEdges";
 
+/** 节点点击事件判定的最小位移阈值，小于该值的点击不会触发选中以避免误触。 */
+const DEFAULT_NODE_CLICK_DISTANCE = 6;
+
+/**
+ * 画布右键菜单上下文，承载菜单弹出位置、当前是否处于多选状态以及可见节点数量等信息，
+ * 供外部构造画布级动作列表时使用。
+ */
 interface PaneActionContext {
   position?: GraphPosition;
   hasGroupedSelection: boolean;
@@ -79,21 +86,34 @@ interface PaneActionContext {
   close: () => void;
 }
 
+/**
+ * 节点右键菜单上下文，标识当前触发菜单的节点，并提供关闭菜单的回调。
+ */
 interface NodeActionContext {
   nodeId: string;
   close: () => void;
 }
 
+/**
+ * 连线右键菜单上下文，标识当前触发菜单的边，并提供关闭菜单的回调。
+ */
 interface EdgeActionContext {
   edgeId: string;
   close: () => void;
 }
 
+/**
+ * 视口覆盖层渲染上下文，把经过拖拽位置修正后的节点与边传给外部以自定义叠加在画布上的内容。
+ */
 interface ViewportOverlayContext {
   nodes: LinkGraphNode[];
   edges: LinkGraphEdge[];
 }
 
+/**
+ * 画布组件对外暴露的契约，集中接收图谱数据、视口策略、交互开关、菜单构建回调以及各类事件回调，
+ * 是 LinkGraph 前端承载节点/边渲染、视口调度、右键菜单和拖拽编辑的中枢组件。
+ */
 interface GraphFlowSurfaceProps {
   nodes: LinkGraphNode[];
   edges: LinkGraphEdge[];
@@ -139,8 +159,12 @@ interface GraphFlowSurfaceProps {
   showLocateAnchorButton?: boolean;
 }
 
+/** 视口重算触发来源：图谱数据变化或画布尺寸变化，用于区分自动适配是否应让位于用户操作。 */
 type ViewportScheduleReason = "graph" | "resize";
 
+/**
+ * 对 DOM 元素的边界框做取整，便于在调试日志中以稳定、可比较的整数形式输出节点尺寸。
+ */
 function roundedRect(element: Element | null) {
   if (!element) {
     return null;
@@ -154,6 +178,9 @@ function roundedRect(element: Element | null) {
   };
 }
 
+/**
+ * 采集选择器命中的 DOM 元素的布局与样式摘要，仅在调试模式开启时用于排查画布层级、可见性等渲染异常。
+ */
 function summarizeElement(selector: string) {
   if (typeof document === "undefined" || typeof window === "undefined") {
     return null;
@@ -176,6 +203,10 @@ function summarizeElement(selector: string) {
   };
 }
 
+/**
+ * 图谱画布主组件：基于 @xyflow/react 渲染节点与边，统筹视口调度（初次适配、增量保持、可读模式聚焦、
+ * 用户拖拽后的让位逻辑）、右键菜单、框选、连线编辑、节点拖拽，并把交互事件回传给上层应用。
+ */
 export function GraphFlowSurface({
   nodes,
   edges,
@@ -194,7 +225,7 @@ export function GraphFlowSurface({
   layoutEditable = true,
   panOnDrag = true,
   panOnScroll, panOnScrollMode, panOnScrollSpeed,
-  zoomOnScroll, preventScrolling, nodeClickDistance, paneClickDistance,
+  zoomOnScroll, preventScrolling, nodeClickDistance = DEFAULT_NODE_CLICK_DISTANCE, paneClickDistance,
   groupSelectionEnabled = true,
   header = null,
   viewportOverlay,
@@ -271,6 +302,7 @@ export function GraphFlowSurface({
     }
   }, [dragShieldingEnabled, isExperimentalDragging]);
 
+  /** 对传入节点补齐坐标，缺失坐标的节点按索引兜底推导，保证渲染前所有节点都有有效位置。 */
   const positionedNodes = useMemo(
     () =>
       nodes.map((node, index) => {
@@ -286,11 +318,13 @@ export function GraphFlowSurface({
     [nodes],
   );
 
+  /** 解析当前锚点节点：优先匹配显式锚点 ID，否则回退到当前选中节点。 */
   const anchorNode = useMemo(
     () => resolveAnchorNode(positionedNodes, anchorNodeId, selectedNodeId),
     [positionedNodes, anchorNodeId, selectedNodeId],
   );
   const hasGroupedSelection = selectedGroupNodeIds.length > 1;
+  /** 渲染用节点列表：将拖拽过程中的实时坐标覆盖到 flowNodes，让拖拽视觉反馈先行于父组件提交。 */
   const renderedFlowNodes = useMemo(() => {
     const liveDragNodeIds = Object.keys(liveDragPositions);
     if (liveDragNodeIds.length === 0) {
@@ -307,6 +341,7 @@ export function GraphFlowSurface({
       };
     });
   }, [flowNodes, liveDragPositions]);
+  /** 视口覆盖层使用的节点列表：与渲染节点一致，把实时拖拽坐标叠加到 positionedNodes 上。 */
   const viewportOverlayNodes = useMemo(() => {
     const liveDragNodeIds = Object.keys(liveDragPositions);
     if (liveDragNodeIds.length === 0) {
@@ -327,11 +362,13 @@ export function GraphFlowSurface({
     nodes: viewportOverlayNodes,
     edges,
   }) ?? null;
+  /** 渲染用连线列表：依据实时拖拽位置和当前选中边构建最终交给 React Flow 的边集合。 */
   const renderedFlowEdges = useMemo(
     () => buildRenderedFlowEdges(flowEdges, liveDragPositions, selectedEdgeId),
     [flowEdges, liveDragPositions, selectedEdgeId],
   );
 
+  /** 图谱形态签名：节点 ID 与边端点拼接的稳定字符串，用于检测图结构是否发生实质变化。 */
   const graphShapeSignature = useMemo(
     () =>
       positionedNodes
@@ -340,6 +377,7 @@ export function GraphFlowSurface({
         .join("|"),
     [positionedNodes, edges],
   );
+  /** 可读适配模式下的内容签名：把节点尺寸、边信息纳入指纹，判断内容是否需要重新适配视口。 */
   const readableFitViewportContentSignature = useMemo(
     () =>
       viewportPolicy === "readable-fit"
@@ -347,7 +385,9 @@ export function GraphFlowSurface({
         : "",
     [positionedNodes, edges, nodeViewportSize, viewportPolicy],
   );
+  /** 当前图谱的几何边界框，用于渲染埋点和调试输出。 */
   const renderCommitBounds = useMemo(() => graphBounds(positionedNodes), [positionedNodes]);
+  /** 渲染提交埋点签名：综合图谱形态、边界、选中态等，控制渲染完成埋点的去重触发。 */
   const renderCommitTraceSignature = graphRenderCommitTraceSignature({
     graphShapeSignature,
     bounds: renderCommitBounds,
@@ -355,6 +395,7 @@ export function GraphFlowSurface({
     selectedGroupNodeCount: selectedGroupNodeIds.length,
     supportsResizeObserver,
   });
+  // 生效的视口重置键：类图模式沿用原始键，可读适配模式叠加内容签名以更精细判断是否需要重置。
   const effectiveViewportResetKey = viewportMode === "CLASS_DIAGRAM"
     ? viewportResetKey
     : viewportPolicy === "readable-fit"
@@ -448,6 +489,9 @@ export function GraphFlowSurface({
     return () => window.clearTimeout(timer);
   }, [edges, positionedNodes, renderedFlowEdges.length, renderedFlowNodes.length, viewportMode]);
 
+  /**
+   * 以平滑过渡方式将视口中心对准指定节点，依据触发原因决定使用全幅缩放还是聚焦缩放，并输出调试埋点。
+   */
   function focusNodeInViewport(node: LinkGraphNode, reason: string) {
     if (!flowInstance || !node.position) {
       return;
@@ -472,6 +516,10 @@ export function GraphFlowSurface({
     );
   }
 
+  /**
+   * 按“可读适配”策略计算并应用视口：根据内容边界和画布尺寸推导缩放与中心点，
+   * 保证节点既不超出可见区域又满足最小可读缩放要求，返回是否成功应用。
+   */
   function fitReadableContentInViewport(reason: ViewportScheduleReason): boolean {
     if (!flowInstance) {
       return false;
@@ -537,6 +585,9 @@ export function GraphFlowSurface({
     return true;
   }
 
+  /**
+   * 取消所有待执行的视口重算定时器，避免叠加触发导致视口反复跳动。
+   */
   function clearScheduledFitView() {
     if (primaryFitViewTimerRef.current !== null) {
       window.clearTimeout(primaryFitViewTimerRef.current);
@@ -552,6 +603,10 @@ export function GraphFlowSurface({
     }
   }
 
+  /**
+   * 视口调度核心：根据触发原因、视口模式与锚点策略，在“聚焦锚点 / 可读适配 / 默认 fitView”等分支中选择，
+   * 同时尊重用户最近的交互保护窗口，必要时通过延时重试以确保布局稳定后再应用。
+   */
   function scheduleViewport(reason: ViewportScheduleReason) {
     if (!flowInstance || positionedNodes.length === 0) {
       traceLinkGraph("graphFlowSurface.scheduleViewport.skipped", {
@@ -747,6 +802,9 @@ export function GraphFlowSurface({
     return () => observer.disconnect();
   }, [supportsResizeObserver, flowInstance, positionedNodes.length > 0, shouldFocusAnchorOnLoad, viewportMode, viewportPolicy]);
 
+  /**
+   * 解析右键事件在画布坐标系下的位置：优先使用传入位置，否则依据事件源 DOM 的边界框推算流式坐标。
+   */
   function resolvePanePosition(
     event: ReactMouseEvent | MouseEvent,
     position?: GraphPosition,
@@ -761,6 +819,9 @@ export function GraphFlowSurface({
     return resolvePanePositionFromRect(event.clientX, event.clientY, target.getBoundingClientRect());
   }
 
+  /**
+   * 将右键事件的视口坐标转换为菜单可显示坐标，并避免菜单超出窗口边界。
+   */
   function resolveMenuPointForViewport(event: ReactMouseEvent | MouseEvent): { x: number; y: number } {
     return resolveContextMenuPoint(
       event.clientX,
@@ -769,10 +830,16 @@ export function GraphFlowSurface({
     );
   }
 
+  /**
+   * 让画布容器获得焦点，使后续的键盘事件（如删除连线）可以被画布捕获。
+   */
   function focusCanvasShell() {
     canvasShellRef.current?.focus();
   }
 
+  /**
+   * 打开画布空白处的右键菜单：取消默认行为、聚焦画布、清空选区并按上下文构造菜单状态。
+   */
   function openPaneMenu(event: ReactMouseEvent | MouseEvent, position?: GraphPosition) {
     event.preventDefault();
     focusCanvasShell();
@@ -787,6 +854,9 @@ export function GraphFlowSurface({
     onSelectNode("");
   }
 
+  /**
+   * 累积更新拖拽过程中的临时节点坐标，让画布在父组件提交新坐标前先以预览位置渲染。
+   */
   function updateLiveDragPositions(updates: Array<{ id: string; position: GraphPosition }>) {
     if (updates.length === 0) {
       return;
@@ -802,6 +872,9 @@ export function GraphFlowSurface({
     }));
   }
 
+  /**
+   * 打开节点右键菜单：阻止冒泡、选中目标节点并按节点上下文构造菜单状态。
+   */
   function openNodeMenu(event: ReactMouseEvent, nodeId: string) {
     event.preventDefault();
     event.stopPropagation();
@@ -817,6 +890,9 @@ export function GraphFlowSurface({
     });
   }
 
+  /**
+   * 打开连线右键菜单：阻止冒泡、选中目标连线并按连线上下文构造菜单状态。
+   */
   function openEdgeMenu(event: ReactMouseEvent, edgeId: string) {
     event.preventDefault();
     event.stopPropagation();
@@ -831,6 +907,7 @@ export function GraphFlowSurface({
     });
   }
 
+  /** 节点单击处理：聚焦画布、选中该节点、清空连线选中和右键菜单。 */
   const handleNodeClick: NodeMouseHandler = (_, node) => {
     focusCanvasShell();
     onSelectNode(node.id);
@@ -838,6 +915,7 @@ export function GraphFlowSurface({
     setContextMenu(null);
   };
 
+  /** 画布空白单击处理：聚焦画布并清空节点/连线选中状态及右键菜单。 */
   const handlePaneClick = () => {
     focusCanvasShell();
     onSelectNode("");
@@ -846,6 +924,10 @@ export function GraphFlowSurface({
   };
 
   // P0-1: track user-driven viewport moves so the auto-fit logic can stand down.
+  /**
+   * 视口移动事件处理：只要用户存在平移/缩放操作，就刷新交互保护时间戳，
+   * 使后续自动适配在保护期内主动让位。
+   */
   const handleViewportChange = useCallback((event: MouseEvent | TouchEvent | null) => {
     if (!event) {
       return;
@@ -853,6 +935,10 @@ export function GraphFlowSurface({
     lastUserViewportMoveRef.current = Date.now();
   }, []);
 
+  /**
+   * 框选变化处理：根据多选开关把 React Flow 选中的节点转换成节点 ID 列表，
+   * 通过签名比对避免无变化的回调抖动，再向上层广播框选结果。
+   */
   const handleFlowSelectionChange = useCallback(({ nodes: nextNodes }: { nodes: Node[] }) => {
     const nodeIds = groupSelectionEnabled ? nextNodes.map((node) => node.id) : [];
     const nextSignature = nodeIds.join("\u0000");
@@ -863,6 +949,7 @@ export function GraphFlowSurface({
     onSelectionGroupChangeRef.current(nodeIds);
   }, [groupSelectionEnabled]);
 
+  /** 当前选中连线对应的操作列表，供操作工具栏渲染使用。 */
   const selectedEdgeActions = selectedEdgeId
     ? buildEdgeActions({
       edgeId: selectedEdgeId,
@@ -871,6 +958,9 @@ export function GraphFlowSurface({
     : [];
   const hasHeader = header !== null && header !== undefined && header !== false;
 
+  /**
+   * 触发当前选中连线的删除动作，供键盘 Delete/Backspace 快捷键调用。
+   */
   function runSelectedEdgeDeleteAction() {
     if (!selectedEdgeId) {
       return;
@@ -882,6 +972,7 @@ export function GraphFlowSurface({
     deleteAction?.onSelect();
   }
 
+  /** 根据右键菜单当前类型，分别构造画布/节点/连线对应的菜单项列表。 */
   const contextMenuActions =
     contextMenu?.kind === "pane"
       ? buildPaneActions({

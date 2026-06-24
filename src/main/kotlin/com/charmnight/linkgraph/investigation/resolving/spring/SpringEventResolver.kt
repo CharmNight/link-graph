@@ -39,6 +39,12 @@ class SpringEventResolver(
             ?: unresolved(goal, "共享 JvmRelationIndex 中未找到 SPRING_EVENT_LISTENS 关系。")
     }
 
+    /**
+     * 从共享 JVM 关系索引中查询 Spring 事件监听关系并构造证据事实列表。
+     *
+     * 当指定了 owner 类时仅在该类范围内查找，否则全量扫描；当指定了 event
+     * 类时按全限定名或简单名匹配 metadata，找不到任何监听关系时返回 null。
+     */
     private fun resolveFromJvmIndex(
         goal: EvidenceGoal,
         index: ArchitectureGraphIndex,

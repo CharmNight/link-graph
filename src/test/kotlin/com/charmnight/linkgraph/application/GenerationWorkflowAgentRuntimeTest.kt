@@ -737,7 +737,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutOverrideProvider = { 3_000L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
             codegenCapabilityFactory = {

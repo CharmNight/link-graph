@@ -13,6 +13,9 @@ import com.charmnight.linkgraph.toolwindow.LinkGraphToolWindowSession
 
 /**
  * 打开链路图工具窗口并加载当前编辑器上下文。
+ *
+ * 该动作出现在主菜单、工具栏以及编辑器右键菜单。
+ * 在右键菜单中会根据光标位置的主题类型（代码 / 资源）动态切换文案。
  */
 class OpenLinkGraphAction : DumbAwareAction(
     LinkGraphBundle.message("action.open-link-graph.text"),
@@ -21,11 +24,20 @@ class OpenLinkGraphAction : DumbAwareAction(
 ) {
     /**
      * 指定动作更新在线程池中执行。
+     * 因为 update 中会调用 PreviewCurrentEditorSubjectKind（可能触发 PSI 访问），
+     * 不能在 EDT 上同步执行。
      */
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     /**
      * 根据当前上下文更新动作文案和可见性。
+     *
+     * 在编辑器右键菜单中：
+     * - 无可识别主题时隐藏；
+     * - 资源主题时切换为"打开当前节点图"文案；
+     * - 其他主题保持默认文案。
+     *
+     * 其他位置（主菜单等）只按"是否有项目"控制可用性。
      */
     override fun update(event: AnActionEvent) {
         // 非空项目是动作可用的最基本前提。
@@ -43,14 +55,17 @@ class OpenLinkGraphAction : DumbAwareAction(
             // 没有可识别主题时隐藏该菜单项，避免误触发。
             event.presentation.isEnabledAndVisible = previewKind != null
             if (previewKind == SubjectPreviewKind.RESOURCE_SUBJECT) {
+                // 资源主题：切换为"打开当前节点图"文案
                 event.presentation.text = LinkGraphBundle.message("action.open-current-node-graph.text")
                 event.presentation.description = LinkGraphBundle.message("action.open-current-node-graph.description")
             } else {
+                // 代码主题：使用默认文案
                 event.presentation.text = LinkGraphBundle.message("action.open-link-graph.text")
                 event.presentation.description = LinkGraphBundle.message("action.open-link-graph.description")
             }
             return
         }
+        // 非右键菜单：按是否有项目控制可用性
         event.presentation.isEnabled = hasProject
     }
 
@@ -61,6 +76,7 @@ class OpenLinkGraphAction : DumbAwareAction(
         // 无项目时无法访问项目级服务。
         val project = event.project ?: return
         val editor = event.getData(CommonDataKeys.EDITOR)
+        // 先打开工具窗口（保证 UI 就绪），再派发载图命令
         project.getService(LinkGraphToolWindowSession::class.java).openToolWindow()
         project.getService(GraphEditorApplicationService::class.java)
             .commandDispatcher

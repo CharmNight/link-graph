@@ -108,8 +108,10 @@ class QaCapability(
     private val wholeGraphEvidenceTargetLimit: Int = 5
     private val explicitSelectionTraversalDepth: Int = 2
 
+    /** capability 稳定标识，外部通过该字符串识别问答能力。 */
     override val capabilityId: String = "qa"
 
+    /** 构造问答运行的初始状态，包含运行 ID、用户问题与预算。 */
     override fun buildInitialState(
         input: QaCapabilityInput,
         runtimeContext: AgentRuntimeContext,
@@ -125,6 +127,7 @@ class QaCapability(
         )
     }
 
+    /** 按问答模式动态决定可用工具集合：基础工具默认开放，review 类工具与图变更工具按需开放。 */
     override fun allowedTools(input: QaCapabilityInput): Set<String> {
         val registeredTools = toolRegistry.names()
         val tools = registeredTools
@@ -138,9 +141,11 @@ class QaCapability(
         return tools
     }
 
+    /** 返回停止策略；关闭证据读取预算触发停止，避免读取到一半被中断。 */
     override fun stopPolicy(input: QaCapabilityInput): StopPolicy =
         StopPolicy.default().copy(stopWhenEvidenceReadBudgetReached = false)
 
+    /** 从运行末态的 QaConclusionArtifact 中取出最终问答结果，缺失则视为运行异常。 */
     override fun finalize(
         runState: AgentRunState,
         runtimeContext: AgentRuntimeContext,
@@ -154,6 +159,7 @@ class QaCapability(
         return qaArtifact.result
     }
 
+    /** 创建分步执行器：依次读取草稿、收集图摘要、按需读取代码证据，最后执行真实问答。 */
     override fun createStepExecutor(input: QaCapabilityInput): StepExecutor {
         return StepExecutor { state, runtimeContext ->
             when (state.stepIndex) {
@@ -165,6 +171,7 @@ class QaCapability(
         }
     }
 
+    /** 第 0 步：读取草稿工作台边界，作为后续证据读取的起点。 */
     private fun readDraftWorkbench(
         state: AgentRunState,
         runtimeContext: AgentRuntimeContext,
@@ -209,6 +216,7 @@ class QaCapability(
         )
     }
 
+    /** 直接执行问答的便捷入口，跳过分步 runtime，主要用于测试或上层直调。 */
     fun executeQa(
         input: QaCapabilityInput,
         runtimeContext: AgentRuntimeContext,
@@ -298,6 +306,7 @@ class QaCapability(
         )
     }
 
+    /** 真正调用执行器执行问答，并把结果固化为 QaConclusionArtifact，同时把候选变更写入草稿。 */
     private fun executeQaStep(
         state: AgentRunState,
         runtimeContext: AgentRuntimeContext,
@@ -570,6 +579,7 @@ class QaCapability(
         )
     }
 
+    /** 解析当前轮需要读取代码证据的节点 ID 列表：优先显式选区，其次 runtime 选取的节点，最后整图采样。 */
     private fun resolveCodeEvidenceTargetNodeIds(
         input: QaCapabilityInput,
         state: AgentRunState,
@@ -590,6 +600,7 @@ class QaCapability(
         return selectWholeGraphEvidenceTargets(runtimeGraph)
     }
 
+    /** 显式选区场景下，按 BFS 在限定深度内展开与选中节点相关的可读证据目标。 */
     private fun expandExplicitSelectionEvidenceTargets(
         graph: GraphDocument,
         selectedNodeIds: List<String>,
@@ -624,6 +635,7 @@ class QaCapability(
         }.toList()
     }
 
+    /** 整图采样场景下，按优先级选取前若干个方法类节点作为代码证据目标。 */
     private fun selectWholeGraphEvidenceTargets(
         graph: GraphDocument,
     ): List<String> {
@@ -642,6 +654,7 @@ class QaCapability(
             .toList()
     }
 
+    /** 返回与指定节点通过边直接相连的其他节点 ID 列表。 */
     private fun relatedNodeIds(
         graph: GraphDocument,
         nodeId: String,
@@ -655,10 +668,12 @@ class QaCapability(
             .toList()
     }
 
+    /** 判断节点是否具备可读取的源码锚点（签名或文件路径）。 */
     private fun hasReadableSourceAnchor(node: GraphNode): Boolean {
         return !node.signature.isNullOrBlank() || !node.sourceLocation().filePath.isNullOrBlank()
     }
 
+    /** 判断节点是否可作为整图场景的代码证据目标，要求有源码锚点且类型属于方法/类等可读类型。 */
     private fun isWholeGraphCodeEvidenceTarget(node: GraphNode): Boolean {
         if (!hasReadableSourceAnchor(node)) {
             return false
@@ -677,6 +692,7 @@ class QaCapability(
         )
     }
 
+    /** 整图采样时按节点类型给出优先级，方法类节点优先于其他类型。 */
     private fun wholeGraphEvidencePriority(node: GraphNode): Int {
         return when (node.type) {
             NodeType.METHOD -> 0
@@ -687,6 +703,7 @@ class QaCapability(
         }
     }
 
+    /** 把外部预加载的源码片段按行数累计到预算中，避免后续读取超额。 */
     private fun recordPreloadedCodeEvidenceBudget(
         budget: RunBudget,
         sourceContexts: List<SourceSnippetContext>,
@@ -744,6 +761,7 @@ class QaCapability(
         )
     }
 
+    /** 把 runtime 期间累积的图、源码证据和取证轨迹归并为执行器可消费的输入。 */
     private fun buildRuntimeEvidenceInput(
         input: QaCapabilityInput,
         state: AgentRunState,
@@ -788,6 +806,7 @@ class QaCapability(
         )
     }
 
+    /** 用 runtime 累积的证据替换原始输入中的相关字段，构造正式执行器使用的输入。 */
     private fun QaRuntimeEvidenceInput.toExecutorInput(
         input: QaCapabilityInput,
     ): QaCapabilityInput {
@@ -802,6 +821,7 @@ class QaCapability(
         )
     }
 
+    /** 把 runtime 累积的源码与取证轨迹合并回问答结果，并在缺失关键证据时附带提示。 */
     private fun GraphPatchResult.withRuntimeEvidence(
         runtimeEvidenceInput: QaRuntimeEvidenceInput,
     ): GraphPatchResult {
@@ -830,6 +850,7 @@ class QaCapability(
         )
     }
 
+    /** 解析节点对应的可读位置标签，用于日志和取证轨迹展示。 */
     private fun traceLocation(anchor: GraphNode): String {
         return anchor.sourceFilePathOrLocationPath()
             ?: anchor.location
@@ -837,6 +858,7 @@ class QaCapability(
             ?: anchor.id
     }
 
+    /** 从 artifact 列表中提取最近一次保存的图摘要 artifact。 */
     private fun extractGraphSummary(
         state: AgentRunState,
         runtimeContext: AgentRuntimeContext,
@@ -848,7 +870,9 @@ class QaCapability(
             .lastOrNull()
     }
 
+    /** 问答执行器接口，由上层注入真实实现（通常是远程模型调用）。 */
     fun interface QaExecutor {
+        /** 根据当前 capability 输入、运行上下文与状态生成问答结果。 */
         fun invoke(
             input: QaCapabilityInput,
             runtimeContext: AgentRuntimeContext,
@@ -856,23 +880,27 @@ class QaCapability(
         ): GraphPatchResult
     }
 
+    /** BFS 遍历过程中记录节点 ID 与已遍历深度。 */
     private data class TraversalTarget(
         val nodeId: String,
         val depth: Int,
     )
 
+    /** 单次源码读取尝试的结果，可携带成功读到的片段或失败原因。 */
     private data class SnippetReadResult(
         val sourceContext: SourceSnippetContext? = null,
         val failureReason: String = "未知原因。",
     )
 }
 
+/** 允许开放 review 类工具的问答模式集合。 */
 private val REVIEW_TOOL_MODES = setOf(
     QaMode.REVIEW,
     QaMode.CHANGE,
     QaMode.INVESTIGATE,
 )
 
+/** review 类工具名称集合。 */
 private val REVIEW_TOOL_NAMES = setOf(
     "get_changed_symbols",
     "get_blast_radius",
@@ -880,25 +908,35 @@ private val REVIEW_TOOL_NAMES = setOf(
     "build_review_evidence_bundle",
 )
 
+/** 允许开放图变更工具的问答模式集合。 */
 private val GRAPH_MUTATION_TOOL_MODES = setOf(
     QaMode.CHANGE,
 )
 
+/** 图变更工具名称集合。 */
 private val GRAPH_MUTATION_TOOL_NAMES = setOf(
     "edit_graph",
+)
+
+/**
+ * 问答 runtime 累积的可信证据输入。
+ * 包装可编辑图、选区、源码片段和取证轨迹，供执行器在生成最终回答时使用。
+ */
+data class QaRuntimeEvidenceInput(
+    /** runtime 当前可用的可编辑图。 */
+    val editableGraph: GraphDocument,
+    /** 当前选中的节点 ID 列表。 */
+    val selectedNodeIds: List<String>,
+    /** runtime 实际读取成功的源码片段。 */
+    val sourceContext: List<SourceSnippetContext> = emptyList(),
+    /** runtime 完整取证轨迹，包括被跳过或失败的尝试。 */
+    val evidenceTrace: List<EvidenceTraceEntry> = emptyList(),
 )
 
 /**
  * 问答 capability 的输入结构。
  * 当前包装问答执行器所需的上下文，后续可继续扩展 tool 决策与 artifact 依赖。
  */
-data class QaRuntimeEvidenceInput(
-    val editableGraph: GraphDocument,
-    val selectedNodeIds: List<String>,
-    val sourceContext: List<SourceSnippetContext> = emptyList(),
-    val evidenceTrace: List<EvidenceTraceEntry> = emptyList(),
-)
-
 data class QaCapabilityInput(
     /** 用户问题。 */
     val question: String,

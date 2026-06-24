@@ -30,9 +30,9 @@ describe("WorkflowTaskbar", () => {
     expect(screen.getByText("候选 3")).toBeInTheDocument();
     expect(screen.getByText("问答正在流式输出")).toBeInTheDocument();
 
-    // 当前阶段降级为轻量 badge，只展示「现在在哪一步」
+    // 阶段 badge 精简为进度指示，完整导航交给左侧 WorkflowStageNav
     const stageBadge = screen.getByRole("status");
-    expect(stageBadge).toHaveTextContent("当前阶段 · 证据");
+    expect(stageBadge).toHaveTextContent("2/5 · 证据");
 
     // 旧的五段状态条彻底移除
     expect(screen.queryByRole("group", { name: "AI 工作状态" })).not.toBeInTheDocument();
@@ -69,7 +69,7 @@ describe("WorkflowTaskbar", () => {
         onPrimaryAction={onPrimaryAction}
       />,
     );
-    expect(screen.getByRole("status")).toHaveTextContent("当前阶段 · 理解");
+    expect(screen.getByRole("status")).toHaveTextContent("1/5 · 理解");
 
     // badge 是纯展示，不可点
     expect(screen.queryByRole("button", { name: /理解代码/ })).not.toBeInTheDocument();
@@ -104,6 +104,6 @@ describe("WorkflowTaskbar", () => {
         onPrimaryAction={onPrimaryAction}
       />,
     );
-    expect(screen.getByRole("status")).toHaveTextContent("当前阶段 · 代码");
+    expect(screen.getByRole("status")).toHaveTextContent("5/5 · 代码");
   });
 });

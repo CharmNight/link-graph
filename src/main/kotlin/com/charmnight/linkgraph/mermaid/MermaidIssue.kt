@@ -2,6 +2,9 @@ package com.charmnight.linkgraph.mermaid
 
 /**
  * 表示 Mermaid 导入或校验阶段发现的一条问题。
+ *
+ * 问题既携带机器可读的 code，也携带面向用户的 message，
+ * 还可以附带行号与关联的节点/边 ID，便于 UI 在编辑器中精准定位。
  */
 data class MermaidIssue(
     /** 记录问题所属的分类。 */
@@ -19,14 +22,20 @@ data class MermaidIssue(
 ) {
     /**
      * 定义 Mermaid 问题的分类。
+     *
+     * 不同分类对应不同处理方式：语法错误必须修；结构问题可能阻断；
+     * 语义问题只是告警；绑定问题影响代码关联。
      */
     enum class Category {
-        /** 表示语法解析错误。 */
+        /** 表示语法解析错误。通常是 Mermaid 文本不符合语法规则。 */
         SYNTAX,
-        /** 表示图结构不合法。 */
+
+        /** 表示图结构不合法。例如缺少必要字段、出现重复 ID 等。 */
         STRUCTURE,
+
         /** 表示语义层面的关系或节点异常。 */
         SEMANTIC,
+
         /** 表示与代码绑定或映射过程中的问题。 */
         BINDING,
     }

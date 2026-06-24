@@ -232,9 +232,9 @@ describe("buildClassDiagramNodes", () => {
     expect(anchorNode?.style).toMatchObject({
       width: 360,
     });
-    expect(String(anchorNode?.style?.border)).toContain("52, 180, 255");
+    expect(String(anchorNode?.style?.border)).toContain("var(--accent)");
     expect(anchorNode?.data.compact).toBe(false);
-    expect(String(collaboratorNode?.style?.border)).not.toContain("52, 180, 255");
+    expect(String(collaboratorNode?.style?.border)).not.toContain("var(--accent)");
     expect(collaboratorNode?.style).toMatchObject({
       width: 248,
     });
@@ -277,7 +277,7 @@ describe("buildClassDiagramNodes", () => {
 
     for (const node of builtNodes) {
       const background = String(node.style?.background ?? "");
-      expect(background).toContain("var(--panel");
+      expect(background).toMatch(/var\(--(?:panel|uml-bg|surface)/);
       expect(background).not.toMatch(/#(?:f|fff)|rgba\(255/i);
     }
   });

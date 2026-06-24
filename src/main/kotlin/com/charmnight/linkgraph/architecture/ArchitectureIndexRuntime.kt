@@ -54,23 +54,35 @@ import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * 项目级架构索引运行时：负责构建/缓存架构图索引，并对外暴露符号/关系/查询服务。
+ * 支持基于切片的持久化缓存，可在多次会话间增量恢复索引。
+ */
 @Service(Service.Level.PROJECT)
 class ArchitectureIndexRuntime(
+    /** 当前 IntelliJ 项目实例。 */
     private val project: Project,
 ) {
+    /** JVM 关系解析器注册表。 */
     private val relationResolverRegistry = JvmRelationResolverRegistry()
+    /** 源码内容解析器工厂，按预算与设置生成对应解析器。 */
     private val sourceResolverFactory = SourceContentResolverFactory(project, ::settingsSnapshot)
     private val logger = Logger.getInstance(ArchitectureIndexRuntime::class.java)
+    /** 是否开启构建阶段追踪。 */
     private val traceEnabled: Boolean =
         LinkGraphDebugEnvironment.isEnabled("LINKGRAPH_DEBUG_TRACE")
+    /** 各缓存键的构建锁，避免重复构建。 */
     private val buildLocks = ConcurrentHashMap<ArchitectureGraphCacheKey, Any>()
+    /** 持久化缓存存储，用于把切片片段落到磁盘。 */
     private val persistentCacheStore: PersistentArchitectureIndexCacheStore by lazy {
         PersistentArchitectureIndexCacheStore(Path.of(PathManager.getSystemPath()))
     }
+    /** 基于存储实现的切片片段缓存。 */
     private val persistentFragmentCache: ArchitectureIndexPersistentFragmentCache by lazy {
         ArchitectureIndexPersistentFragmentCache(persistentCacheStore)
     }
 
+    /** 切片输入文件候选信息，承载模块名、内容根、相对路径、大小、修改时间与虚拟文件。 */
     private data class ProjectSliceInputFileCandidate(
         val moduleName: String?,
         val contentRoot: String,
@@ -80,9 +92,14 @@ class ArchitectureIndexRuntime(
         val virtualFile: VirtualFile,
     )
 
+    /** 返回当前索引服务中已记录的最新索引（可能为空）。 */
     fun currentIndex(): ArchitectureGraphIndex? =
         project.architectureIndexService().currentIndex()
 
+    /**
+     * 主入口：根据预算构建或获取缓存的架构图索引。
+     * 优先复用缓存；支持通过持久化切片加速重建；强制重建时会绕过缓存。
+     */
     fun index(
         budget: JvmResolutionBudget = defaultBudget(),
         symbolIndexHint: JvmSymbolIndex? = null,
@@ -221,27 +238,34 @@ class ArchitectureIndexRuntime(
         }
     }
 
+    /** 基于预算创建源码内容解析器（不带附加 jar 上下文）。 */
     fun sourceQuery(budget: JvmResolutionBudget = defaultBudget()): SourceContentResolver =
         sourceResolverFactory.create(budget).resolver
 
+    /** 获取符号查询服务。 */
     fun symbolQuery(budget: JvmResolutionBudget = defaultBudget()): ArchitectureGraphQueryService =
         queryService(index(budget, recordAsCurrent = false))
 
+    /** 获取关系查询服务。 */
     fun relationQuery(budget: JvmResolutionBudget = defaultBudget()): ArchitectureGraphQueryService =
         queryService(index(budget, recordAsCurrent = false))
 
+    /** 获取架构图查询服务。 */
     fun architectureGraphQuery(budget: JvmResolutionBudget = defaultBudget()): ArchitectureGraphQueryService =
         queryService(index(budget, recordAsCurrent = false))
 
+    /** 获取类图查询服务。 */
     fun classDiagramQuery(budget: JvmResolutionBudget = defaultBudget()): ArchitectureGraphQueryService =
         queryService(index(budget, recordAsCurrent = false))
 
+    /** 获取类图结构专用索引（基于有界读操作执行）。 */
     fun classDiagramStructureIndex(
         budget: JvmResolutionBudget = defaultBudget(),
         forceRebuild: Boolean = false,
     ): ArchitectureGraphIndex =
         classDiagramStructureIndexWithBoundedReadActions(budget, forceRebuild)
 
+    /** 获取架构概览索引（基于有界读操作执行）。 */
     fun architectureOverviewIndex(
         budget: JvmResolutionBudget = defaultBudget(),
         forceRebuild: Boolean = false,
@@ -249,6 +273,7 @@ class ArchitectureIndexRuntime(
     ): ArchitectureGraphIndex =
         architectureOverviewIndexWithBoundedReadActions(budget, forceRebuild, recordAsCurrent)
 
+    /** 判断指定预算下是否已有完整缓存的索引。 */
     fun hasCachedFullIndex(budget: JvmResolutionBudget = defaultBudget()): Boolean {
         val settings = settingsSnapshot()
         val sourceComponents = sourceResolverFactory.create(budget, settings)
@@ -256,6 +281,7 @@ class ArchitectureIndexRuntime(
         return project.architectureIndexService().getCachedIndex(cacheKey) != null
     }
 
+    /** 构造 Code Review 用的查询服务，集成 Git 基线映射。 */
     fun reviewQuery(
         budget: JvmResolutionBudget = defaultBudget(),
         index: ArchitectureGraphIndex = index(budget, recordAsCurrent = false),
@@ -269,10 +295,12 @@ class ArchitectureIndexRuntime(
             ),
         )
 
+    /** 失效所有缓存索引。 */
     fun invalidate() {
         project.architectureIndexService().invalidate()
     }
 
+    /** 基于设置构造默认预算。 */
     fun defaultBudget(): JvmResolutionBudget {
         val settings = settingsSnapshot()
         return JvmResolutionBudget(
@@ -284,6 +312,7 @@ class ArchitectureIndexRuntime(
         )
     }
 
+    /** 获取当前设置的非敏感快照（服务不可用时回退默认）。 */
     fun settingsSnapshot(): LinkGraphSettingsState =
         runCatching {
             ApplicationManager.getApplication().getService(LinkGraphSettingsService::class.java).nonSecretSnapshot()
@@ -295,6 +324,7 @@ class ArchitectureIndexRuntime(
             memorySnapshot = project.architectureIndexService().memorySnapshot(),
         )
 
+    /** 把构建出的索引与切片清单记录到内存快照，并按需写入持久化片段。 */
     private fun recordProjectMemory(
         index: ArchitectureGraphIndex,
         sourceComponents: com.charmnight.linkgraph.source.SourceContentResolverComponents,
@@ -434,7 +464,13 @@ class ArchitectureIndexRuntime(
         if (rebuildSlices.isEmpty() || rebuildSlices.any { slice -> slice.kind == ProjectSliceKind.ATTACHED_JAR.name }) {
             return null
         }
-        val cachedMerged = com.charmnight.linkgraph.architecture.memory.ArchitectureIndexFragmentMerger().merge(cachedFragments)
+        // 防御性过滤：即便上游 restoreCompleteIndex 已跳过 stale slice，这里再按 rebuildSliceIds
+        // 过滤一次，确保任何"标记为待重建"的 slice 的旧 fragment 不会混入合并结果造成幽灵符号。
+        val trustedCachedFragments = cachedFragments.filter { fragment -> fragment.sliceId !in rebuildSliceIds }
+        if (trustedCachedFragments.isEmpty()) {
+            return null
+        }
+        val cachedMerged = com.charmnight.linkgraph.architecture.memory.ArchitectureIndexFragmentMerger().merge(trustedCachedFragments)
         val rebuiltSymbolIndex = readActionIfNeeded {
             val rebuildFiles = rebuildSlices
                 .flatMap(ProjectSlice::files)
@@ -463,7 +499,7 @@ class ArchitectureIndexRuntime(
             )
         }
         val index = ArchitectureGraphIndex.from(symbolIndex, relationIndex, budget = budget)
-        writeProjectSliceFragments(manifest, cacheKey, index)
+        writeProjectSliceFragments(manifest, cacheKey, index, rebuildSliceIds)
         return index
     }
 
@@ -471,13 +507,35 @@ class ArchitectureIndexRuntime(
         manifest: com.charmnight.linkgraph.architecture.memory.ProjectSliceManifest,
         cacheKey: ArchitectureGraphCacheKey,
         index: ArchitectureGraphIndex,
+        rebuildSliceIds: Set<String> = emptySet(),
     ) {
         val relationOwnerSliceIds = relationOwnerSliceIds(manifest, index)
         manifest.slices
             .forEach { slice ->
-                persistentCacheStore.write(fragmentCacheKey(cacheKey, slice), fragmentForSlice(slice, index, relationOwnerSliceIds))
+                // rebuildSliceIds 为空表示全量构建，所有 slice 都要写；
+                // 非空时只写重建范围内的 slice，未触及的 slice 保留磁盘缓存（避免无谓 IO）。
+                if (rebuildSliceIds.isNotEmpty() && slice.id !in rebuildSliceIds) {
+                    return@forEach
+                }
+                val fragment = fragmentForSlice(slice, index, relationOwnerSliceIds)
+                val sliceCacheKey = fragmentCacheKey(cacheKey, slice)
+                // 仅重建范围内的 slice 才需要考虑"重建后内容为空 → 删除缓存"。
+                // 不在 rebuildSliceIds 中的 slice 保持原有 write 语义（即使是空 fragment 也写回，
+                // 用作显式的"已知空"标记）。
+                if (slice.id in rebuildSliceIds && fragment.isEmpty()) {
+                    persistentCacheStore.delete(sliceCacheKey)
+                } else {
+                    persistentCacheStore.write(sliceCacheKey, fragment)
+                }
             }
     }
+
+    /** 判断片段内容是否完全为空（无符号/关系/资源/服务提供者）。 */
+    private fun com.charmnight.linkgraph.architecture.memory.ArchitectureIndexSliceFragment.isEmpty(): Boolean =
+        symbols.isEmpty() &&
+            relations.isEmpty() &&
+            resources.isEmpty() &&
+            serviceProviders.isEmpty()
 
     private fun mergeSymbolIndexes(
         cached: JvmSymbolIndex,
@@ -602,7 +660,7 @@ class ArchitectureIndexRuntime(
     private fun fragmentForSlice(
         slice: ProjectSlice,
         index: ArchitectureGraphIndex,
-        relationOwnerSliceIds: Map<String, String>,
+        relationOwnerSliceIds: Map<String, Set<String>>,
     ): ArchitectureIndexSliceFragment {
         val sliceFiles = slice.files.mapTo(hashSetOf(), ProjectFileFingerprint::relativePath)
         val symbols = index.symbolIndex.symbolsById.values
@@ -707,8 +765,9 @@ class ArchitectureIndexRuntime(
         val localSymbolIds = (symbols.map(SymbolSliceFragment::id) + resources.map(ResourceSliceFragment::id)).toSet()
         val relations = index.relationIndex.relations
             .filter { relation ->
-                relationOwnerSliceIds[relation.id]?.let { ownerSliceId ->
-                    return@filter ownerSliceId == slice.id
+                // 跨 slice 关系：from/to 任一端在本 slice 内即纳入（避免一端 slice 失效后关系消失）
+                relationOwnerSliceIds[relation.id]?.let { ownerSliceIds ->
+                    return@filter slice.id in ownerSliceIds
                 }
                 relation.fromSymbolId in localSymbolIds
             }
@@ -755,18 +814,21 @@ class ArchitectureIndexRuntime(
     private fun relationOwnerSliceIds(
         manifest: com.charmnight.linkgraph.architecture.memory.ProjectSliceManifest,
         index: ArchitectureGraphIndex,
-    ): Map<String, String> {
+    ): Map<String, Set<String>> {
         val symbolToSliceId = linkedMapOf<String, String>()
         manifest.slices.forEach { slice ->
             sliceSymbolIds(slice, index).forEach { symbolId ->
                 symbolToSliceId.putIfAbsent(symbolId, slice.id)
             }
         }
+        // 跨 slice 关系：from/to 任一端在 slice 内，就把关系复制到该 slice 的 fragment 中。
+        // 这样一端 slice 失效重建时，另一端的 fragment 仍持有完整关系副本，避免关系在视图里"消失"。
+        // 旧实现只取一个 owner slice id，关系只写入一端，另一端 slice 失效后关系会丢失。
         return index.relationIndex.relations.mapNotNull { relation ->
-            val ownerSliceId = symbolToSliceId[relation.fromSymbolId]
-                ?: symbolToSliceId[relation.toSymbolId]
-                ?: return@mapNotNull null
-            relation.id to ownerSliceId
+            val ownerSliceIds = linkedSetOf<String>()
+            symbolToSliceId[relation.fromSymbolId]?.let(ownerSliceIds::add)
+            symbolToSliceId[relation.toSymbolId]?.let(ownerSliceIds::add)
+            if (ownerSliceIds.isEmpty()) null else relation.id to ownerSliceIds
         }.toMap()
     }
 
@@ -1084,5 +1146,6 @@ class ArchitectureIndexRuntime(
     }
 }
 
+/** 获取当前项目的架构索引运行时服务。 */
 fun Project.architectureIndexRuntime(): ArchitectureIndexRuntime =
     getService(ArchitectureIndexRuntime::class.java)

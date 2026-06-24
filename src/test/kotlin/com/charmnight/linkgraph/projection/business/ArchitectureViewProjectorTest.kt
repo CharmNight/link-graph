@@ -709,10 +709,23 @@ class ArchitectureViewProjectorTest {
         val result = cls("OrderResult", JvmClassKind.RECORD)
         val localOnly = cls("OrderServiceTest")
         val secondary = cls("SecondaryMapper")
+        val incomingReturn = cls("OrderMapper")
+        val incomingParameter = cls("OrderBatchJob")
+        val realCaller = cls("OrderController")
         val symbolIndex = JvmSymbolIndex(
             modulesByName = mapOf(module.qualifiedName to module),
             packagesByName = mapOf(pkg.qualifiedName to pkg),
-            classesByQualifiedName = listOf(anchor, contract, repository, result, localOnly, secondary)
+            classesByQualifiedName = listOf(
+                anchor,
+                contract,
+                repository,
+                result,
+                localOnly,
+                secondary,
+                incomingReturn,
+                incomingParameter,
+                realCaller,
+            )
                 .associateBy(JvmClassSymbol::qualifiedName),
         )
         fun relation(
@@ -747,6 +760,15 @@ class ArchitectureViewProjectorTest {
                     relation("rel:return", anchor, result, ClassDiagramRelationRole.METHOD_RETURN),
                     relation("rel:local", localOnly, anchor, ClassDiagramRelationRole.LOCAL_TYPE, usedInBody = true),
                     relation("rel:secondary", repository, secondary, ClassDiagramRelationRole.METHOD_PARAMETER),
+                    relation("rel:incoming-return", incomingReturn, anchor, ClassDiagramRelationRole.METHOD_RETURN),
+                    relation(
+                        "rel:incoming-parameter",
+                        incomingParameter,
+                        anchor,
+                        ClassDiagramRelationRole.METHOD_PARAMETER,
+                        usedInBody = true,
+                    ),
+                    relation("rel:incoming-call", realCaller, anchor, ClassDiagramRelationRole.METHOD_CALL),
                 ),
             ),
         )
@@ -754,11 +776,11 @@ class ArchitectureViewProjectorTest {
         val view = ClassDiagramProjector().project(index, anchor.id)
 
         assertEquals(
-            setOf(anchor.id, contract.id, repository.id, result.id),
+            setOf(anchor.id, contract.id, repository.id, realCaller.id),
             view.visibleGraph.nodes.map(GraphNode::id).toSet(),
         )
         assertEquals(
-            setOf("rel:implements", "rel:field", "rel:return"),
+            setOf("rel:implements", "rel:field", "rel:incoming-call"),
             view.visibleGraph.edges.map { edge -> edge.id }.toSet(),
         )
         assertEquals(view.visibleGraph.nodes.size, view.summary.indexed?.visibleNodeCount)
@@ -1285,11 +1307,17 @@ class ArchitectureViewProjectorTest {
         val dependencyRelations = classes.zipWithNext().map { (from, to) ->
             JvmRelation(
                 id = "rel:${from.id}->${to.id}",
-                kind = JvmRelationKind.USES_TYPE,
+                kind = JvmRelationKind.CALLS,
                 fromSymbolId = from.id,
                 toSymbolId = to.id,
                 confidence = JvmRelationConfidence.PROVEN,
                 source = JvmRelationSource.PSI,
+                metadata = ClassDiagramRelationExtractor.metadataFor(
+                    role = ClassDiagramRelationRole.METHOD_CALL,
+                    evidence = "calls ${to.qualifiedName}",
+                    memberName = "call${to.simpleName}",
+                    usedInBody = true,
+                ),
             )
         }
         val resourceRelations = resource?.let { config ->

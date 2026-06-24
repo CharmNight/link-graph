@@ -50,6 +50,10 @@ import java.awt.datatransfer.StringSelection
  * lazily under [LazyThreadSafetyMode.PUBLICATION]; collaborators are pulled from the shared
  * infrastructure composition so cross-workflow wiring (e.g. reviewFlow reusing workspaceFlow's
  * edit-request executor) stays explicit and traceable.
+ *
+ * 中文概述：在基础设施组合之上装配工作流层；所有工作流均以 PUBLICATION 模式延迟构造，
+ * 共享依赖统一来自基础设施组合，使工作流之间的相互调用（如评审流复用工作台编辑执行器）
+ * 保持显式可追溯。
  */
 internal class WorkflowComposition(
     private val project: Project,
@@ -57,14 +61,17 @@ internal class WorkflowComposition(
     private val infrastructure: InfrastructureComposition,
     private val testOverrides: LinkGraphProjectTestOverrides,
 ) {
+    /** 把代码元素（方法/类等）包装为主题句柄的工厂，供语义分析与图谱展开复用。 */
     private val codeSubjectHandleFactory: CodeSubjectHandleFactory by lazy(LazyThreadSafetyMode.PUBLICATION) {
         CodeSubjectHandleFactory()
     }
 
+    /** 默认主题定位器：基于光标位置确定当前关注代码主题。 */
     private val defaultSubjectLocator: SubjectLocator by lazy(LazyThreadSafetyMode.PUBLICATION) {
         CaretSubjectLocator()
     }
 
+    /** 默认语义分析器：注册代码、MyBatis、XML、YAML、Markdown、SQL 等多种语义提供者。 */
     private val defaultSemanticAnalyzer: SemanticAnalyzer by lazy(LazyThreadSafetyMode.PUBLICATION) {
         SemanticAnalyzer(
             registry = SemanticProviderRegistry(
@@ -87,21 +94,26 @@ internal class WorkflowComposition(
         )
     }
 
+    /** 默认分析结果工厂：把分析过程产生的语义单元与关系包装为可发布的结果，并附带运行时追踪。 */
     private val defaultAnalysisOutcomeFactory: AnalysisOutcomeFactory by lazy(LazyThreadSafetyMode.PUBLICATION) {
         AnalysisOutcomeFactory(
             runtimeTrace = infrastructure.runtimeSupport.runtimeTraceSink(),
         )
     }
 
+    /** 主题定位器入口：优先使用测试覆盖注入的实现，否则回落到默认光标定位。 */
     private val subjectLocator: SubjectLocator
         get() = testOverrides.subjectLocator ?: defaultSubjectLocator
 
+    /** 语义分析器入口：优先使用测试覆盖注入的实现，否则回落到默认注册表。 */
     private val semanticAnalyzer: SemanticAnalyzer
         get() = testOverrides.semanticAnalyzer ?: defaultSemanticAnalyzer
 
+    /** 分析结果工厂入口：优先使用测试覆盖注入的实现，否则回落到默认工厂。 */
     private val analysisOutcomeFactory: AnalysisOutcomeFactory
         get() = testOverrides.analysisOutcomeFactory ?: defaultAnalysisOutcomeFactory
 
+    /** 主题图谱工作流：以光标主题为入口触发语义分析并写入工作台图谱。 */
     val subjectFlow: SubjectGraphWorkflow by lazy(LazyThreadSafetyMode.PUBLICATION) {
         SubjectGraphWorkflow(
             project = project,
@@ -120,6 +132,7 @@ internal class WorkflowComposition(
         )
     }
 
+    /** 工作台变更协调器：在工作台提交变更后联动清理主题分析缓存与异步请求，保证多流之间状态一致。 */
     val workspaceChangeCoordinator: WorkspaceChangeCoordinator by lazy(LazyThreadSafetyMode.PUBLICATION) {
         WorkspaceChangeCoordinator(
             workspaceGraphCommitter = infrastructure.workspaceGraphCommitter,
@@ -128,6 +141,7 @@ internal class WorkflowComposition(
         )
     }
 
+    /** 工作台工作流：负责图谱的导入导出、Diff、合并预览与编辑请求处理等核心工作台能力。 */
     val workspaceFlow: GraphWorkspaceWorkflow by lazy(LazyThreadSafetyMode.PUBLICATION) {
         GraphWorkspaceWorkflow(
             snapshotProvider = infrastructure.editorSnapshotProvider,
@@ -147,6 +161,7 @@ internal class WorkflowComposition(
         )
     }
 
+    /** 草稿补丁工作流：把应用层快照中的草稿补丁应用到目标图谱并发布事件。 */
     val draftPatchFlow: DraftPatchWorkflow by lazy(LazyThreadSafetyMode.PUBLICATION) {
         DraftPatchWorkflow(
             snapshotProvider = infrastructure.applicationSnapshotProvider,
@@ -155,6 +170,7 @@ internal class WorkflowComposition(
         )
     }
 
+    /** 生成类工作流共享依赖集合：包含规划上下文、代码生成、产物写入、智能体运行协调等通用能力。 */
     val generationDependencies: GenerationWorkflowDependencies by lazy(LazyThreadSafetyMode.PUBLICATION) {
         GenerationWorkflowDependencies(
             project = project,
@@ -185,22 +201,27 @@ internal class WorkflowComposition(
         )
     }
 
+    /** 生成计划工作流：与用户协作确定代码生成计划，作为后续代码草稿生成的前置流程。 */
     val generationPlanFlow: GenerationPlanWorkflow by lazy(LazyThreadSafetyMode.PUBLICATION) {
         GenerationPlanWorkflow(generationDependencies)
     }
 
+    /** 生成计划讨论工作流：围绕生成计划开展多轮对话，沉淀用户反馈。 */
     val generationDiscussionFlow: GenerationPlanDiscussionWorkflow by lazy(LazyThreadSafetyMode.PUBLICATION) {
         GenerationPlanDiscussionWorkflow(generationDependencies)
     }
 
+    /** 代码草稿生成工作流：基于生成计划产出可应用的代码草稿。 */
     val codeDraftGenerationFlow: CodeDraftGenerationWorkflow by lazy(LazyThreadSafetyMode.PUBLICATION) {
         CodeDraftGenerationWorkflow(generationDependencies)
     }
 
+    /** 代码草稿应用工作流：把已确认的代码草稿合并入项目，触发 Diff 视图与文件写入。 */
     val codeDraftApplyFlow: CodeDraftApplyWorkflow by lazy(LazyThreadSafetyMode.PUBLICATION) {
         CodeDraftApplyWorkflow(generationDependencies)
     }
 
+    /** 评审工作流：综合 QA 补丁、Diff 补丁与图谱美化能力，对当前图谱进行质量评审与修复。 */
     val reviewFlow: ReviewWorkflow by lazy(LazyThreadSafetyMode.PUBLICATION) {
         ReviewWorkflow(
             project = project,
@@ -221,6 +242,7 @@ internal class WorkflowComposition(
         )
     }
 
+    /** 源码导航工作流：把图谱节点跳转请求映射到编辑器中的具体代码位置。 */
     val sourceNavigationFlow: SourceNavigationWorkflow by lazy(LazyThreadSafetyMode.PUBLICATION) {
         SourceNavigationWorkflow(
             project = project,
@@ -233,6 +255,7 @@ internal class WorkflowComposition(
         )
     }
 
+    /** 调用展开工作流：以某个调用为起点向下展开更深的语义关系，丰富当前图谱区域。 */
     val invocationExpansionFlow: InvocationExpansionWorkflow by lazy(LazyThreadSafetyMode.PUBLICATION) {
         InvocationExpansionWorkflow(
             project = project,
@@ -248,6 +271,7 @@ internal class WorkflowComposition(
         )
     }
 
+    /** 架构图谱工作流：维护并对外提供架构索引，作为跨文件/跨服务关系展示的数据源。 */
     val architectureGraphFlow: ArchitectureGraphWorkflow by lazy(LazyThreadSafetyMode.PUBLICATION) {
         ArchitectureGraphWorkflow(
             project = project,
@@ -258,6 +282,7 @@ internal class WorkflowComposition(
         )
     }
 
+    /** 类图工作流：基于架构索引生成类级别关系视图，用于评审整体结构。 */
     val classDiagramFlow: ClassDiagramWorkflow by lazy(LazyThreadSafetyMode.PUBLICATION) {
         ClassDiagramWorkflow(
             project = project,
@@ -269,6 +294,7 @@ internal class WorkflowComposition(
         )
     }
 
+    /** 评审图谱工作流：基于架构索引和图谱差异能力，提供评审所需的对比视图。 */
     val reviewGraphFlow: ReviewGraphWorkflow by lazy(LazyThreadSafetyMode.PUBLICATION) {
         ReviewGraphWorkflow(
             project = project,
@@ -281,6 +307,7 @@ internal class WorkflowComposition(
         )
     }
 
+    /** 已确认草稿变更协调器：统一处理草稿确认后的图谱应用、产物写入、缓存失效与诊断记录。 */
     val confirmedDraftCoordinator: ConfirmedDraftChangeCoordinator by lazy(LazyThreadSafetyMode.PUBLICATION) {
         ConfirmedDraftChangeCoordinator(
             snapshotProvider = infrastructure.applicationSnapshotProvider,
@@ -295,6 +322,7 @@ internal class WorkflowComposition(
         )
     }
 
+    /** 项目调试工作流：在调试会话中提供专用图谱，复用主题图谱并触发 QA 缓存失效。 */
     val debugFlow: ProjectDebugWorkflow by lazy(LazyThreadSafetyMode.PUBLICATION) {
         ProjectDebugWorkflow(
             logger = logger,
@@ -306,6 +334,9 @@ internal class WorkflowComposition(
     }
 }
 
+/**
+ * 在编辑器快照的可信导航节点集合中查找指定节点，避免跳转到尚未通过校验的临时节点。
+ */
 private fun findTrustedNavigationNodeFromIndex(
     snapshot: WorkflowEditorSnapshot,
     nodeId: String,

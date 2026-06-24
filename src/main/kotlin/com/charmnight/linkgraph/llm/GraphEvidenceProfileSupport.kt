@@ -5,6 +5,10 @@ import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 
+/**
+ * 计算链路讲解场景实际生效的证据边界。
+ * 当外部已经预设过证据边界时直接透传，否则基于当前展示图与源码片段现场推导。
+ */
 fun GraphBeautificationContext.effectiveEvidenceProfile(): GraphEvidenceProfile {
     if (evidenceProfile.anchorNodeType != null || evidenceProfile.allowedExplanationModes.isNotEmpty()) {
         return evidenceProfile
@@ -18,6 +22,10 @@ fun GraphBeautificationContext.effectiveEvidenceProfile(): GraphEvidenceProfile 
     )
 }
 
+/**
+ * 计算图问答场景实际生效的证据边界。
+ * 当外部已经预设过证据边界时直接透传，否则基于当前可编辑图（或事实图）和源码片段推导。
+ */
 fun GraphQaContext.effectiveEvidenceProfile(): GraphEvidenceProfile {
     if (evidenceProfile.anchorNodeType != null || evidenceProfile.allowedExplanationModes.isNotEmpty()) {
         return evidenceProfile
@@ -32,6 +40,10 @@ fun GraphQaContext.effectiveEvidenceProfile(): GraphEvidenceProfile {
     )
 }
 
+/**
+ * 基于当前图与选区构建一份完整的图证据边界。
+ * 包含锚点类型、可用关系类型、是否具备方法调用证据、允许讲解模式、禁止声明、证据缺口和推荐下钻目标。
+ */
 fun buildGraphEvidenceProfile(
     graph: GraphDocument,
     fullGraph: GraphDocument = graph,
@@ -76,6 +88,9 @@ fun buildGraphEvidenceProfile(
     )
 }
 
+/**
+ * 优先按锚点 ID、再按选区，最后回退到图中首个节点，解析问答或讲解使用的证据锚点节点。
+ */
 private fun resolveEvidenceAnchor(
     graph: GraphDocument,
     fullGraph: GraphDocument,
@@ -88,6 +103,10 @@ private fun resolveEvidenceAnchor(
     } ?: graph.nodes.firstOrNull() ?: fullGraph.nodes.firstOrNull()
 }
 
+/**
+ * 根据锚点类型与关系证据，推导当前允许的讲解模式集合。
+ * 方法类节点优先使用方法调用链讲解，非方法节点则依据类型映射到结构、组件或资源绑定模式。
+ */
 private fun allowedModesFor(
     anchor: GraphNode?,
     hasMethodCallEvidence: Boolean,
@@ -117,9 +136,14 @@ private fun allowedModesFor(
         else -> listOf(GraphExplanationMode.STRUCTURE_OVERVIEW, GraphExplanationMode.DRILLDOWN_SUGGESTION) + relationSummaryMode(relationKinds)
     }.distinct()
 
+/** 当存在可用关系时附带关系概览模式，否则不附加。 */
 private fun relationSummaryMode(relationKinds: List<String>): List<GraphExplanationMode> =
     if (relationKinds.isEmpty()) emptyList() else listOf(GraphExplanationMode.RELATION_SUMMARY)
 
+/**
+ * 根据锚点类型与方法调用证据，输出当前场景禁止做出的声明。
+ * 这些禁止项会被注入提示词，避免模型输出超出当前证据可支持的结论。
+ */
 private fun forbiddenClaimsFor(anchor: GraphNode?, hasMethodCallEvidence: Boolean): List<String> =
     buildList {
         if (anchor?.type !in methodLikeNodeTypes) {
@@ -132,6 +156,10 @@ private fun forbiddenClaimsFor(anchor: GraphNode?, hasMethodCallEvidence: Boolea
         }
     }
 
+/**
+ * 汇总当前上下文中可观测到的证据缺口。
+ * 这些缺口会暴露给模型与 UI，提示后续应优先补足哪一类证据。
+ */
 private fun evidenceGapsFor(
     anchor: GraphNode?,
     hasMethodCallEvidence: Boolean,
@@ -150,6 +178,10 @@ private fun evidenceGapsFor(
         }
     }
 
+/**
+ * 基于当前锚点推荐可继续下钻的目标节点 ID 列表。
+ * 优先返回方法类节点，再考虑类与接口节点，最多返回 8 个候选。
+ */
 private fun recommendedDrilldowns(
     graph: GraphDocument,
     fullGraph: GraphDocument,
@@ -163,6 +195,7 @@ private fun recommendedDrilldowns(
         .map(GraphNode::id)
 }
 
+/** 表示可被视为“方法级”的节点类型集合，用于判断是否允许方法调用链讲解。 */
 private val methodLikeNodeTypes = setOf(
     NodeType.METHOD,
     NodeType.FLOW_ACTION,

@@ -1,12 +1,18 @@
 package com.charmnight.linkgraph.jvm.index
 
+/** Java 类回退信息：限定名、父类名列表与实现的接口名列表。 */
 internal data class FallbackJavaClassInfo(
     val qualifiedName: String,
     val extendsNames: List<String>,
     val implementsNames: List<String>,
 )
 
+/**
+ * Java 类信息回退提取器：当 PSI 不可用时（例如纯文本解析场景），
+ * 通过正则解析 Java 源码，提取类声明、父类与接口信息。
+ */
 internal object FallbackJavaClassInfoExtractor {
+    /** 解析 Java 源码并返回以限定名为键的类信息映射。 */
     fun extract(
         relativePath: String,
         sourceText: String,
@@ -59,6 +65,7 @@ internal object FallbackJavaClassInfoExtractor {
             .toMap()
     }
 
+    /** 根据文件相对路径推断包名（src/main/java 之后的目录结构）。 */
     private fun inferPackageName(relativePath: String): String =
         relativePath
             .replace('\\', '/')
@@ -68,6 +75,7 @@ internal object FallbackJavaClassInfoExtractor {
             .replace('/', '.')
             .trim('.')
 
+    /** 把类声明中的类型名解析为完整限定名（基于导入与包名推断）。 */
     private fun javaTypeNames(
         rawTypeList: String?,
         packageName: String,
@@ -94,6 +102,7 @@ internal object FallbackJavaClassInfoExtractor {
             }
             .distinct()
 
+    /** 在泛型层级之外按顶层逗号拆分类型列表字符串。 */
     private fun splitTopLevelCommaSeparatedTypes(rawTypeList: String?): List<String> {
         val raw = rawTypeList?.trim()?.takeIf(String::isNotBlank) ?: return emptyList()
         val result = mutableListOf<String>()
@@ -113,6 +122,7 @@ internal object FallbackJavaClassInfoExtractor {
         return result.map(String::trim).filter(String::isNotBlank)
     }
 
+    /** 移除 Java 类型字符串中的泛型参数部分。 */
     private fun String.stripJavaTypeArguments(): String {
         val builder = StringBuilder()
         var depth = 0
@@ -128,6 +138,7 @@ internal object FallbackJavaClassInfoExtractor {
         return builder.toString().trim()
     }
 
+    /** 隐式 java.lang 包下的常见类型集合，无需显式导入。 */
     private val implicitJavaLangTypeNames = setOf(
         "String",
         "Object",

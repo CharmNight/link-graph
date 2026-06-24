@@ -345,16 +345,16 @@ describe("App view modules", () => {
     expect(screen.getByRole("button", { name: "介绍这个类" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "解释关系" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "追问类图" })).toBeInTheDocument();
-    // P1: the class-diagram stage description prose was removed.
-    expect(within(screen.getByRole("banner", { name: "链路任务栏" })).getByRole("button", { name: "解释类关系" })).toBeInTheDocument();
-    expect(within(screen.getByRole("banner", { name: "链路任务栏" })).queryByRole("button", { name: "链路讲解" })).not.toBeInTheDocument();
-    // P1: 五段状态条已删除，类图模式下用通用 badge 展示当前阶段
+    // 主操作固定「下一步」，类图模式与链路模式的区分由副标题承载
+    expect(within(screen.getByRole("banner", { name: "链路任务栏" })).getByRole("button", { name: "下一步" })).toBeInTheDocument();
+    expect(within(screen.getByRole("banner", { name: "链路任务栏" })).getByText(/解释类关系/)).toBeInTheDocument();
+    // P1: 五段状态条已删除，阶段 badge 精简为进度指示「X/5 · 短名」
     expect(screen.queryByRole("group", { name: "AI 工作状态" })).not.toBeInTheDocument();
     expect(screen.queryByText("理解类图")).not.toBeInTheDocument();
     expect(screen.queryByText("类图问答")).not.toBeInTheDocument();
     expect(screen.queryByText("理解代码")).not.toBeInTheDocument();
     expect(screen.queryByText("代码问答")).not.toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(/当前阶段/);
+    expect(screen.getByRole("status")).toHaveTextContent(/^\d+\/5 · /);
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
   });
 
@@ -930,7 +930,7 @@ describe("App view modules", () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "查看草稿" }));
+    await user.click(screen.getByRole("button", { name: "改动列表" }));
 
     expect(screen.getByTestId("flowchart-node-titles")).toHaveTextContent("scope:file-download-if:if (delete == true)");
   });
@@ -1078,7 +1078,7 @@ describe("App view modules", () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "查看草稿" }));
+    await user.click(screen.getByRole("button", { name: "改动列表" }));
 
     expect(screen.getByTestId("flowchart-node-titles")).toHaveTextContent("method:file-download:CommonController.fileDownload");
     expect(screen.getByTestId("flowchart-node-titles")).toHaveTextContent(

@@ -7,6 +7,10 @@ import java.security.MessageDigest
  * bootstrap / workflow slice 只传稳定引用，真正文本按需通过 ARTIFACT_SLICE 回填。
  */
 class GraphEditorArtifactRegistry {
+    /**
+     * 单个助手结果相关的产物引用集合，覆盖 QA、解释、检查、生成方案、生成讨论等场景下的提示词预览，
+     * 以及生成代码草稿内容与其按草稿 ID 索引的映射。
+     */
     data class AssistantResultArtifacts(
         val qaPromptPreviewArtifactId: String? = null,
         val explanationPromptPreviewArtifactId: String? = null,
@@ -16,6 +20,10 @@ class GraphEditorArtifactRegistry {
         val codeDraftContentArtifactIds: Map<String, String> = emptyMap(),
     )
 
+    /**
+     * 一次快照对外暴露的全部产物引用，覆盖各种提示词预览与生成代码草稿内容映射，
+     * 同时按结果 ID 聚合对应的助手结果产物引用。
+     */
     data class SnapshotArtifacts(
         val qaPromptPreviewArtifactId: String? = null,
         val diffReviewPromptPreviewArtifactId: String? = null,
@@ -31,6 +39,7 @@ class GraphEditorArtifactRegistry {
         }
     }
 
+    /** 一次预计算结果：包含对外暴露的产物引用以及产物 ID 到内容的实际映射。 */
     data class PreparedSnapshotArtifacts(
         val refs: SnapshotArtifacts,
         val contents: Map<String, String>,
@@ -39,6 +48,10 @@ class GraphEditorArtifactRegistry {
     @Volatile
     private var artifacts: Map<String, String> = emptyMap()
 
+    /**
+     * 扫描快照内所有大文本字段（提示词预览、生成代码草稿内容等），逐项登记为产物，
+     * 返回对外引用与实际内容映射的预计算结果，便于后续选择性回填。
+     */
     fun prepare(snapshot: GraphEditorStateSnapshot): PreparedSnapshotArtifacts {
         val nextArtifacts = linkedMapOf<String, String>()
 
@@ -136,18 +149,22 @@ class GraphEditorArtifactRegistry {
         )
     }
 
+    /** 基于快照重新计算并替换当前注册表内容，返回对外暴露的产物引用集合。 */
     fun replaceWith(snapshot: GraphEditorStateSnapshot): SnapshotArtifacts {
         val prepared = prepare(snapshot)
         replaceWith(prepared)
         return prepared.refs
     }
 
+    /** 用一份已预计算好的产物集合整体替换当前注册表内容。 */
     fun replaceWith(prepared: PreparedSnapshotArtifacts) {
         artifacts = prepared.contents
     }
 
+    /** 按产物 ID 读取单个产物内容，未登记时返回 null。 */
     fun read(artifactId: String): String? = artifacts[artifactId]
 
+    /** 批量按产物 ID 读取内容，仅返回当前注册表中存在的项，保持入参顺序。 */
     fun readAll(artifactIds: Collection<String>): Map<String, String> {
         val selected = linkedMapOf<String, String>()
         val currentArtifacts = artifacts
@@ -159,8 +176,10 @@ class GraphEditorArtifactRegistry {
         return selected
     }
 
+    /** 把所有不适合用作 ID 的字符替换为短横线，确保 owner key 可以安全嵌入产物 ID。 */
     private fun sanitize(value: String): String = value.replace(NON_ID_CHAR_REGEX, "-")
 
+    /** 计算内容的 SHA-256 指纹并截取前 8 字节的小写十六进制表示，用于稳定标识产物。 */
     private fun fingerprint(content: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val bytes = digest.digest(content.toByteArray(Charsets.UTF_8))

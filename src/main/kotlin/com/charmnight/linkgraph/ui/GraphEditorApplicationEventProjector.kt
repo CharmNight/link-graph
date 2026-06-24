@@ -4,35 +4,50 @@ import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
 import com.charmnight.linkgraph.workbench.RiskResolutionService
 
+/**
+ * 图谱编辑器应用事件投影器。
+ *
+ * 接收来自应用层的事件流，并根据事件类别路由到不同的工作台展示器，
+ * 把抽象的应用事件转换为 UI 状态变更并触发浏览器同步刷新。
+ */
 internal class GraphEditorApplicationEventProjector(
     private val stateService: GraphEditorStateService,
     private val requestBrowserSync: () -> Unit,
     private val riskResolutionService: RiskResolutionService = RiskResolutionService(),
 ) {
+    /** 构造一个事件出口，把外部派发的事件转交给本投影器内部统一处理。 */
     fun eventSink(): GraphEditorApplicationEventSink =
         GraphEditorApplicationEventSink { event -> present(event) }
 
+    /** 工作台状态展示器：负责工作区图谱加载/变更、布局、Mermaid 导入导出等展示。 */
     private fun workspacePresenter(): WorkspaceStatePresenter =
         WorkspaceStatePresenter(stateService, requestBrowserSync)
 
+    /** 主体视图展示器：负责反馈消息、当前选中方法、调试图谱等展示。 */
     private fun subjectPresenter(): SubjectGraphStatePresenter =
         SubjectGraphStatePresenter(stateService, requestBrowserSync)
 
+    /** 评审流程展示器：负责 QA、Diff 评审、代码美化等结果的展示。 */
     private fun reviewPresenter(): ReviewStatePresenter =
         ReviewStatePresenter(stateService, requestBrowserSync)
 
+    /** 代码生成流程展示器：负责生成计划、代码草稿、流式预览等展示。 */
     private fun generationPresenter(): GenerationStatePresenter =
         GenerationStatePresenter(stateService, requestBrowserSync)
 
+    /** 源码导航展示器：负责跳转请求、设置项打开等展示。 */
     private fun sourceNavigationPresenter(): SourceNavigationStatePresenter =
         SourceNavigationStatePresenter(stateService, requestBrowserSync)
 
+    /** 架构视图展示器：负责索引图、类图、评审图等架构级视图的展示。 */
     private fun architecturePresenter(): ArchitectureGraphStatePresenter =
         ArchitectureGraphStatePresenter(stateService, requestBrowserSync)
 
+    /** 草稿补丁展示器：负责草稿预览、应用、清除、撤销等结果的展示。 */
     private fun draftPatchPresenter(): DraftPatchStatePresenter =
         DraftPatchStatePresenter(stateService, requestBrowserSync)
 
+    /** 已确认草稿展示器：结合风险解析服务，把确认/取消确认结果反映到 UI。 */
     private fun confirmedDraftPresenter(): ConfirmedDraftStatePresenter =
         ConfirmedDraftStatePresenter(
             stateService = stateService,
@@ -41,6 +56,10 @@ internal class GraphEditorApplicationEventProjector(
             requestBrowserSync = requestBrowserSync,
         )
 
+    /**
+     * 事件分发入口：根据事件具体类型选择合适的展示器进行呈现。
+     * 一个事件对应一个 when 分支，确保所有应用事件都能被路由到对应的 UI 更新逻辑。
+     */
     private fun present(event: GraphEditorApplicationEvent) {
         when (event) {
             is GraphEditorApplicationEvent.WorkspaceGraphLoaded ->

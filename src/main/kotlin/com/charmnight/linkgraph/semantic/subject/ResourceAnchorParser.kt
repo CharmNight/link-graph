@@ -2,6 +2,15 @@ package com.charmnight.linkgraph.semantic.subject
 
 /**
  * 负责从文本中解析资源锚点描述。
+ *
+ * 资源（Markdown / 文档等）中常以多种格式引用代码方法：
+ * - 完整方法签名：`a.b.C.m(java.lang.String):void`
+ * - 方法调用：`a.b.C.m(`
+ * - 类#方法引用：`a.b.C#m`
+ * - 点号引用：`a.b.C.m`
+ *
+ * 本解析器按优先级尝试匹配上述格式，第一个命中即返回。
+ * 多种格式兼容让用户可以用任意常见写法引用代码。
  */
 class ResourceAnchorParser {
     /** 匹配完整方法签名引用，例如 `a.b.C.m(java.lang.String):void`。 */
@@ -21,6 +30,11 @@ class ResourceAnchorParser {
 
     /**
      * 从输入文本中提取第一个可识别的资源锚点。
+     *
+     * 按优先级尝试四种格式，命中即返回对应锚点；都未命中返回 null。
+     *
+     * @param source 待解析文本（例如 Markdown 段落）
+     * @return 解析出的资源锚点；无可识别引用时为 null
      */
     fun parse(source: String): ResourceAnchor? {
         // 优先解析完整方法签名，保留最丰富的参数与返回值信息。
@@ -58,9 +72,10 @@ class ResourceAnchorParser {
 
     /**
      * 把方法参数文本拆解为参数类型列表。
+     * 空参数列表显式返回空集合，与"解析失败"（null）区分开。
      */
     private fun parseMethodParameterTypes(parametersText: String): List<String>? {
-        // 空参数列表显式返回空集合，和“解析失败”区分开。
+        // 空参数列表显式返回空集合，和"解析失败"区分开。
         val normalized = parametersText.trim()
         if (normalized.isEmpty()) {
             return emptyList()

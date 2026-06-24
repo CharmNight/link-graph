@@ -122,6 +122,15 @@ class AssistantApplicationCommandHandlerTest {
         )
         handler.handle(
             ApplicationCommand.RequestAssistantTask(
+                intent = AssistantIntent.ASK_CODE,
+                actionId = AssistantActionId.ASK_CONTEXT,
+                prompt = "按风险复核模式检查证据",
+                selectedNodeIds = listOf("method:submit-order"),
+                mode = QaMode.REVIEW,
+            ),
+        )
+        handler.handle(
+            ApplicationCommand.RequestAssistantTask(
                 intent = AssistantIntent.GENERATE_CODE,
                 actionId = AssistantActionId.GENERATE_IMPLEMENTATION,
                 prompt = "把第二步拆小一些",
@@ -131,6 +140,7 @@ class AssistantApplicationCommandHandlerTest {
 
         assertTrue(executor.events.contains("explain:继续解释异常分支:method:handle-error:step:error:CODE_SEMANTIC"))
         assertTrue(executor.events.contains("qa:继续取证这个风险:method:submit-order:risk-thread:1:INVESTIGATE"))
+        assertTrue(executor.events.contains("qa:按风险复核模式检查证据:method:submit-order::REVIEW"))
         assertTrue(executor.events.contains("discussion:把第二步拆小一些:plan:item:2"))
     }
 

@@ -3,10 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { AssistantWorkbenchShell } from "../../../app/assistant/AssistantWorkbenchShell";
+import type { AssistantActionId, AssistantIntent } from "../../../app/assistant/assistantTypes";
 import type {
   AnalysisDisplayMode,
-  AssistantActionId,
-  AssistantIntent,
   AssistantSessionState,
   AssistantTurn,
 } from "../../../app/types";
@@ -346,6 +345,47 @@ describe("AssistantWorkbenchShell", () => {
     // still reflects the chosen send action.
     expect(within(composer).getByText("追问代码", { selector: ".tag.active" })).toBeInTheDocument();
     expect(themeCss).toContain("grid-template-columns: repeat(4, minmax(0, 1fr));");
+  });
+
+  it("surfaces qa mode choices for code follow-up submissions", () => {
+    render(<ShellHarness />);
+
+    const composer = screen.getByTestId("assistant-composer");
+    const qaMode = within(composer).getByRole("combobox", { name: "问答模式" });
+
+    expect(qaMode).toHaveValue("AUTO");
+    expect(within(qaMode).getByRole("option", { name: "Auto" })).toBeInTheDocument();
+    expect(within(qaMode).getByRole("option", { name: "只回答" })).toBeInTheDocument();
+    expect(within(qaMode).getByRole("option", { name: "风险复核" })).toBeInTheDocument();
+    expect(within(qaMode).getByRole("option", { name: "代码调整" })).toBeInTheDocument();
+  });
+
+  it("surfaces explanation granularity before the first explanation result", () => {
+    render(
+      <AssistantWorkbenchShell
+        assistantSessionState={sessionState("EXPLAIN_CODE", "FLOWCHART", "OrderController.submit", "EXPLAIN_FLOW")}
+        turns={[]}
+        activeIntent="EXPLAIN_CODE"
+        activeActionId="EXPLAIN_FLOW"
+        requestRunning={false}
+        selectedExplanationGranularity="BUSINESS"
+        onActionChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onRetryLastQaRequest={vi.fn()}
+        onEditFailedQaRequest={vi.fn()}
+        onPrimeGenerationPlan={vi.fn()}
+        onRequestCodeDrafts={vi.fn()}
+        onWriteCodeDrafts={vi.fn()}
+        onRevealReference={vi.fn()}
+      />,
+    );
+
+    const composer = screen.getByTestId("assistant-composer");
+    const granularity = within(composer).getByRole("group", { name: "解释粒度" });
+
+    expect(within(granularity).getByRole("button", { name: "业务级" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(granularity).getByRole("button", { name: "方法调用级" })).toBeInTheDocument();
+    expect(within(granularity).getByRole("button", { name: "代码语义级" })).toBeInTheDocument();
   });
 
   it("uses class-diagram send labels and hides change-review send type", () => {

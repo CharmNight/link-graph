@@ -4,6 +4,10 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import java.util.concurrent.atomic.AtomicReference
 
+/**
+ * UI 线程执行抽象，把 EDT 上的同步/异步调度收敛到统一接口。
+ * 主要用于在不同实现（真实 IntelliJ 线程模型或测试桩）之间切换。
+ */
 internal interface UiThreadExecutor {
     /**
      * 在 UI 线程同步执行动作并返回结果。

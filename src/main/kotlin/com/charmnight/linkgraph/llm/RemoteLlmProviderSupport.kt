@@ -43,12 +43,16 @@ internal data class RemoteLlmConnection(
     }
 }
 
-/** 判断当前设置是否选择了远程 LLM 供应商。 */
+/** 判断当前设置是否选择了远程 LLM 供应商，仅用于决定是否走远程请求路径。 */
 internal fun LinkGraphSettingsState.usesRemoteProvider(): Boolean {
     return sanitized().providerPreset().isRemote
 }
 
-/** 从设置中提取一份可直接发起远程请求的连接配置。 */
+/**
+ * 从设置中提取一份可直接发起远程请求的连接配置。
+ * 校验顺序：LLM 总开关 -> 是否远程预设 -> endpoint -> apiKey -> model -> endpoint 安全校验。
+ * 任一项失败均返回 null，由上层据此回退到本地规则化结果。
+ */
 internal fun LinkGraphSettingsState.remoteConnectionOrNull(
     endpointPolicy: RemoteLlmEndpointPolicy = RemoteLlmEndpointPolicy(),
 ): RemoteLlmConnection? {
@@ -71,6 +75,7 @@ internal fun LinkGraphSettingsState.remoteConnectionOrNull(
     if (endpoint.isBlank() || apiKey.isBlank() || model.isBlank()) {
         return null
     }
+    /** endpoint 安全校验失败时返回 null，避免把不可信地址当作有效连接返回。 */
     if (endpointPolicy.validationError(endpoint) != null) {
         return null
     }

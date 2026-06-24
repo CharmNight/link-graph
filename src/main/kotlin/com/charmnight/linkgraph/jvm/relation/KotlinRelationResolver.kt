@@ -23,9 +23,17 @@ import org.jetbrains.kotlin.psi.KtTypeReference
 import org.jetbrains.kotlin.psi.KtUserType
 import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
 
+/** Kotlin 关系解析器：基于 Kotlin PSI 识别类继承、构造、调用等关系。 */
 class KotlinRelationResolver : JvmRelationResolver {
+    /** 解析器在注册表中的唯一标识，使用基于 PSI 的 Kotlin 解析路径作为标识。 */
     override val id: String = "jvm.kotlin-psi"
 
+    /**
+     * 扫描缓存中的 Kotlin 文件，逐个顶层类收集调用、类型引用、构造注入三类关系。
+     *
+     * @param context 解析过程中需要复用的索引、预算等运行时上下文。
+     * @return 本次扫描得到的关系列表。
+     */
     override fun resolve(context: JvmResolutionContext): List<JvmRelation> {
         val relations = mutableListOf<JvmRelation>()
         context.cachedKotlinFiles().forEach { file ->
@@ -41,6 +49,10 @@ class KotlinRelationResolver : JvmRelationResolver {
         return relations
     }
 
+    /**
+     * 识别当前类内部对其它类的方法调用关系。
+     * 通过 PSI 调用表达式解析被调方法，进而推断出所属类，并将同类证据聚合后输出。
+     */
     private fun resolveCalls(
         context: JvmResolutionContext,
         ktClass: KtClassOrObject,
@@ -76,6 +88,10 @@ class KotlinRelationResolver : JvmRelationResolver {
         }
     }
 
+    /**
+     * 识别当前类对其它类的类型引用关系（如变量声明、返回值、泛型实参等）。
+     * 把每个类型引用作为证据聚合，得到"使用类型"关系。
+     */
     private fun resolveTypeUsages(
         context: JvmResolutionContext,
         ktClass: KtClassOrObject,
@@ -104,6 +120,11 @@ class KotlinRelationResolver : JvmRelationResolver {
         }
     }
 
+    /**
+     * 识别通过构造函数注入的依赖关系。
+     * 根据注入相关注解（如 Autowired/Inject/Resource）或唯一构造函数的启发式规则，
+     * 把构造参数类型视为被注入的依赖项。
+     */
     private fun resolveConstructorInjection(
         context: JvmResolutionContext,
         ktClass: KtClassOrObject,
@@ -133,6 +154,10 @@ class KotlinRelationResolver : JvmRelationResolver {
         }
     }
 
+    /**
+     * 判断当前类是否应将主构造参数视为可注入依赖。
+     * 当主构造带有注入注解，或类只有这一个构造函数时，返回主构造参数列表。
+     */
     private fun KtClassOrObject.primaryConstructorParametersForInjection(): List<KtParameter> {
         if (this !is KtClass) {
             return emptyList()
@@ -145,6 +170,7 @@ class KotlinRelationResolver : JvmRelationResolver {
         return emptyList()
     }
 
+    /** 筛选次级构造中带有注入注解的构造函数，作为依赖注入的候选来源。 */
     private fun KtClassOrObject.secondaryConstructorsForInjection(): List<KtSecondaryConstructor> =
         when (this) {
             is KtClass -> secondaryConstructors.filter { constructor ->
@@ -153,9 +179,11 @@ class KotlinRelationResolver : JvmRelationResolver {
             else -> emptyList()
         }
 
+    /** 把 Kotlin 类/对象转换为对应的 JVM 符号，便于在索引中查找。 */
     private fun KtClassOrObject.jvmClassSymbol(index: JvmSymbolIndex): JvmClassSymbol? =
         toLightClass()?.qualifiedName?.let(index.classesByQualifiedName::get)
 
+    /** 解析构造调用表达式中被调构造函数对应的类，用于补足调用关系的构造场景。 */
     private fun KtCallExpression.constructorTargetClass(index: JvmSymbolIndex): JvmClassSymbol? =
         calleeExpression
             ?.collectDescendantsOfType<KtConstructorCalleeExpression>()
@@ -163,6 +191,7 @@ class KotlinRelationResolver : JvmRelationResolver {
             ?.typeReference
             ?.resolveReferencedClass(index)
 
+    /** 解析类型引用指向的类。优先使用 PSI 引用解析结果，缺失时回退到简单类名匹配。 */
     private fun KtTypeReference.resolveReferencedClass(index: JvmSymbolIndex): JvmClassSymbol? {
         val userType = typeElement as? KtUserType ?: return null
         val resolved = userType.referenceExpression
@@ -175,6 +204,7 @@ class KotlinRelationResolver : JvmRelationResolver {
         return index.classesByQualifiedName[qualifiedName]
     }
 
+    /** 把函数/构造/属性等 PSI 元素转换为方法签名，便于在方法索引中查询。 */
     private fun lightMethodSignature(element: PsiElement): String? =
         when (element) {
             is KtNamedFunction,
@@ -185,10 +215,12 @@ class KotlinRelationResolver : JvmRelationResolver {
             else -> null
         }
 
+    /** 通过方法的所属类名查回它所在的类符号。 */
     private fun JvmMethodSymbol.ownerClass(index: JvmSymbolIndex): JvmClassSymbol? =
         index.classByQualifiedName(ownerClassName)
 
     private companion object {
+        /** 视为依赖注入标记的注解短名集合。 */
         private val injectionAnnotationNames = setOf("Autowired", "Inject", "Resource")
     }
 }

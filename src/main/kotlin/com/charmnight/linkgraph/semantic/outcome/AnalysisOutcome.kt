@@ -5,6 +5,9 @@ import com.charmnight.linkgraph.model.GraphDocument
 
 /**
  * 表示语义分析经过投影后的展示结果。
+ *
+ * 该结构是分析管线的最终输出：包含当前展示模式、可见/完整图、锚点、反馈消息以及
+ * 各视图专用文档（事实/流程/资源）。UI 拿到本结果即可完整渲染工具窗口。
  */
 data class AnalysisOutcome(
     /** 保存当前展示模式。 */

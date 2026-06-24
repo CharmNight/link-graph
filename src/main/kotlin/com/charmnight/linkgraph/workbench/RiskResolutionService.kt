@@ -3,7 +3,15 @@ package com.charmnight.linkgraph.workbench
 import com.charmnight.linkgraph.application.model.RiskResolutionSnapshot
 import com.charmnight.linkgraph.llm.GraphPatchResult
 
+/**
+ * 风险处置服务：负责把风险线程的处置状态写回 patch 结果，并依据草稿与风险线程的状态
+ * 判定草稿层是否已通过验证、代码阶段是否可以继续生成。
+ */
 class RiskResolutionService {
+    /**
+     * 把指定风险线程的处置结论写回 [result]，并在顶层 threads 与 QA 会话 threads 中同步更新。
+     * 当传入的 result 为 null 时直接返回 null，表示当前没有可更新的 patch 结果。
+     */
     fun applyResolution(
         result: GraphPatchResult?,
         threadId: String,
@@ -31,6 +39,12 @@ class RiskResolutionService {
         )
     }
 
+    /**
+     * 评估当前草稿层是否已通过验证：
+     * - 草稿为空时返回 EMPTY，提示先确认草稿变更；
+     * - 存在未处理/暂挂/证据已穷尽的风险线程时返回 REVIEW_REQUIRED；
+     * - 否则返回 READY，可以继续生成实现建议或代码 diff。
+     */
     fun evaluateDraftValidation(
         snapshot: RiskResolutionSnapshot,
     ): DraftValidationState {
@@ -64,6 +78,12 @@ class RiskResolutionService {
         )
     }
 
+    /**
+     * 评估是否可以进入代码生成阶段：
+     * - 草稿为空时不允许进入；
+     * - 存在仍会阻塞代码阶段的风险线程（未处理/暂挂/证据已穷尽）时不允许进入；
+     * - 否则允许继续生成代码草稿。
+     */
     fun evaluateCodeEligibility(
         snapshot: RiskResolutionSnapshot,
     ): StageEligibilityDecision {
@@ -102,6 +122,7 @@ class RiskResolutionService {
         )
     }
 
+    /** 从快照中解析需要评估的风险线程：优先取 QA 会话内的 threads，否则回退到结果顶层的 threads。 */
     private fun resolveThreads(snapshot: RiskResolutionSnapshot): List<InvestigationThread> {
         val result = snapshot.qaResult ?: return emptyList()
         return result.qaSession?.investigationThreads
@@ -109,6 +130,7 @@ class RiskResolutionService {
             ?: result.investigationThreads
     }
 
+    /** 收集仍处于未处理、暂挂或证据已穷尽状态的风险线程 ID。 */
     private fun unresolvedThreadIds(threads: List<InvestigationThread>): List<String> {
         return threads.filter { thread ->
             val status = thread.resolution?.status ?: RiskResolutionStatus.UNRESOLVED
@@ -116,6 +138,7 @@ class RiskResolutionService {
         }.map(InvestigationThread::threadId)
     }
 
+    /** 判断当前线程状态是否会阻塞草稿验证：未处理、暂挂、证据已穷尽均视为阻塞。 */
     private fun isDraftValidationBlocking(thread: InvestigationThread): Boolean {
         return when (thread.resolution?.status ?: RiskResolutionStatus.UNRESOLVED) {
             RiskResolutionStatus.UNRESOLVED,
@@ -126,6 +149,7 @@ class RiskResolutionService {
         }
     }
 
+    /** 判断当前线程状态是否会阻塞代码生成：未处理、暂挂、证据已穷尽视为阻塞；已接受、已排除、已提升不阻塞。 */
     private fun isCodeBlocking(thread: InvestigationThread): Boolean {
         return when (thread.resolution?.status ?: RiskResolutionStatus.UNRESOLVED) {
             RiskResolutionStatus.UNRESOLVED,

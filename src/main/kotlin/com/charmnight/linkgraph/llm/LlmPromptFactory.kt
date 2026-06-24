@@ -842,6 +842,7 @@ class LlmPromptFactory(
         )
     }
 
+    /** 把证据边界对象整理为可直接嵌入提示词的多行文本。 */
     private fun buildEvidenceProfileText(profile: GraphEvidenceProfile): String {
         val modes = profile.allowedExplanationModes.joinToString(", ") { mode -> mode.name }.ifBlank { "无" }
         val forbiddenSummary = profile.forbiddenClaims.joinToString("；").ifBlank { "无" }
@@ -917,13 +918,14 @@ class LlmPromptFactory(
         }
     }
 
-    /** 把边转换成提示词里的单行摘要。 */
+    /** 把边转换成提示词里的单行摘要，附带可读关系类型和展示标签。 */
     private fun edgeSummary(edge: GraphEdge): String {
         /** 边标签字段片段。 */
         val label = edgeDisplayLabel(edge)?.let { " | label=$it" }.orEmpty()
         return "- [${llmRelationKindDisplayLabel(edge.type.name)}] ${edge.fromNodeId} -> ${edge.toNodeId}$label"
     }
 
+    /** 按优先级从边元数据中取出展示标签，并把原始标签映射为用户可读的中文标签。 */
     private fun edgeDisplayLabel(edge: GraphEdge): String? =
         (
             edge.metadata["classDiagram.relation.label"]
@@ -966,7 +968,10 @@ class LlmPromptFactory(
         return "- ${change.sourceChangeId ?: change.entryId} | ${change.title} | targets=$targets | files=${targetFiles.joinToString()} | before=$before | after=$after | reason=$reason | impact=$impact | claimType=$claimType | evidence=${evidenceLevels.joinToString()}"
     }
 
-    /** 拼装用于前端展示的 prompt 预览文本。 */
+    /**
+     * 拼装用于前端展示的 prompt 预览文本。
+     * 把系统提示词与用户提示词按 [system] / [user] 标签拼到一起，便于人工核对。
+     */
     private fun promptPreview(
         systemPrompt: String,
         userPrompt: String,
@@ -996,6 +1001,7 @@ class LlmPromptFactory(
         )
     }
 
+    /** 返回实现计划生成场景的 JSON schema 说明文本。 */
     private fun generationPlanSchemaInstruction(): String {
         return """
             仅返回 JSON，结构如下：
@@ -1015,6 +1021,7 @@ class LlmPromptFactory(
         """.trimIndent()
     }
 
+    /** 返回实现建议追问场景的 JSON schema 说明文本。 */
     private fun generationPlanDiscussionSchemaInstruction(): String {
         return """
             仅返回 JSON，结构如下：
@@ -1026,6 +1033,7 @@ class LlmPromptFactory(
         """.trimIndent()
     }
 
+    /** 返回问答场景的行为约束说明，强调先回答问题、只输出有依据的候选变更。 */
     private fun qaBehaviorInstruction(): String {
         return """
             请逐条对照“用户问题”回答。
@@ -1038,6 +1046,7 @@ class LlmPromptFactory(
         """.trimIndent()
     }
 
+    /** 返回问答场景的 JSON schema 说明文本，覆盖 findings、candidateChanges、investigationThreads 等结构。 */
     private fun qaSchemaInstruction(): String {
         return """
             仅返回 JSON，结构如下：
@@ -1119,6 +1128,7 @@ class LlmPromptFactory(
         """.trimIndent()
     }
 
+    /** 返回差异审查场景的 JSON schema 说明文本。 */
     private fun diffReviewSchemaInstruction(): String {
         return """
             仅返回 JSON，结构如下：
@@ -1171,6 +1181,7 @@ class LlmPromptFactory(
         """.trimIndent()
     }
 
+    /** 返回代码生成场景的行为约束说明，强调对现有文件只允许结构化编辑操作。 */
     private fun codeGenerationBehaviorInstruction(): String {
         return """
             如果目标文件已经明确指向现有源码，请返回结构化 editOperations，而不是整文件内容。
@@ -1179,6 +1190,7 @@ class LlmPromptFactory(
         """.trimIndent()
     }
 
+    /** 返回代码生成场景的 JSON schema 说明文本，覆盖 drafts、editOperations、editScopes 等结构。 */
     private fun codeGenerationSchemaInstruction(): String {
         return """
             仅返回 JSON，结构如下：
@@ -1209,6 +1221,7 @@ class LlmPromptFactory(
         """.trimIndent()
     }
 
+    /** 返回链路讲解场景的 JSON schema 说明文本，覆盖步骤化讲解结构。 */
     private fun beautificationSchemaInstruction(): String {
         return """
             仅返回 JSON，结构如下：

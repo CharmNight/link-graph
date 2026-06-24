@@ -1,6 +1,15 @@
 package com.charmnight.linkgraph.ui
 
+/**
+ * 图谱浏览器的前端调试探针工厂。
+ * 负责把一段注入 JCEF 浏览器的 JavaScript 探针脚本拼装出来，
+ * 用来收集图谱画布、节点、边、视口与交互拖拽过程中的几何与样式信息，便于后端排查渲染问题。
+ */
 object GraphBrowserDebugProbe {
+    /**
+     * 根据触发原因生成一份可直接在浏览器中执行的运行时探针脚本。
+     * 脚本会在若干延时点采样图谱布局，并按需驱动一次模拟拖拽，把诊断数据通过 trace 通道回传。
+     */
     fun buildRuntimeProbeScript(reason: String): String {
         val escapedReason = escapeJsString(reason)
         return """
@@ -834,6 +843,10 @@ object GraphBrowserDebugProbe {
         """.trimIndent()
     }
 
+    /**
+     * 把任意字符串转义成可安全嵌入 JS 双引号字面量的形式，
+     * 防止探针脚本中由 reason 等动态内容注入导致语法错误或脚本注入。
+     */
     private fun escapeJsString(value: String): String = buildString(value.length + 8) {
         value.forEach { char ->
             when (char) {

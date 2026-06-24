@@ -29,8 +29,13 @@ class OpenCurrentClassDiagramAction : DumbAwareAction(
     LinkGraphBundle.message("action.open-current-class-diagram.description"),
     null,
 ) {
+    /** 指定动作更新在后台线程执行，避免阻塞 EDT。 */
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
+    /**
+     * 根据当前光标位置能否解析出有效类来动态调整菜单可用性。
+     * 在编辑器右键菜单中还会同时控制可见性。
+     */
     override fun update(event: AnActionEvent) {
         event.presentation.text = LinkGraphBundle.message("action.open-current-class-diagram.text")
         event.presentation.description = LinkGraphBundle.message("action.open-current-class-diagram.description")
@@ -46,6 +51,10 @@ class OpenCurrentClassDiagramAction : DumbAwareAction(
         }
     }
 
+    /**
+     * 用户触发动作时执行：解析当前光标所在类的稳定节点 ID，
+     * 打开图谱工具窗口并通过命令通道发起该类的类图请求。
+     */
     override fun actionPerformed(event: AnActionEvent) {
         val project = event.project ?: return
         val classNodeId = resolveCurrentClassNodeId(event, commitDocument = true) ?: return
@@ -55,6 +64,11 @@ class OpenCurrentClassDiagramAction : DumbAwareAction(
             .dispatch(ApplicationCommand.RequestIndexedGraph(requestClassDiagramRequest(classNodeId)))
     }
 
+    /**
+     * 在读动作中解析当前光标位置对应类的稳定节点 ID。
+     * 可选择先提交文档以保证拿到最新的 PSI 状态，
+     * 解析失败时返回 null。
+     */
     private fun resolveCurrentClassNodeId(
         event: AnActionEvent,
         commitDocument: Boolean,
@@ -78,6 +92,10 @@ class OpenCurrentClassDiagramAction : DumbAwareAction(
         }.getOrNull()
     }
 
+    /**
+     * 从给定元素向上查找最近的具名类声明，返回其全限定名。
+     * 优先匹配 Kotlin 类，其次匹配非匿名 Java 类，匿名类与空名跳过。
+     */
     private fun classNameFor(element: PsiElement): String? =
         PsiTreeUtil.getParentOfType(element, KtClass::class.java, false)
             ?.toLightClass()
@@ -88,6 +106,10 @@ class OpenCurrentClassDiagramAction : DumbAwareAction(
                 ?.qualifiedName
                 ?.takeIf(String::isNotBlank)
 
+    /**
+     * 当光标处无法定位到具体类时的兜底策略：
+     * 取文件中第一个顶层类（不嵌套在其他类内部）作为目标。
+     */
     private fun fallbackTopLevelClassName(file: PsiFile): String? =
         PsiTreeUtil.findChildrenOfType(file, KtClass::class.java)
             .firstOrNull { ktClass -> PsiTreeUtil.getParentOfType(ktClass, KtClass::class.java, true) == null }
@@ -99,6 +121,7 @@ class OpenCurrentClassDiagramAction : DumbAwareAction(
                 ?.qualifiedName
                 ?.takeIf(String::isNotBlank)
 
+    /** 根据类的全限定名生成跨会话稳定的节点 ID。 */
     private fun classNodeId(qualifiedName: String): String =
         stableJvmId("class", qualifiedName)
 }

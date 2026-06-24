@@ -16,10 +16,12 @@ import type { EditableStageProps } from "../viewStageProps";
 import { factGraphLayoutSizeSignature, layoutFactGraphView } from "./factGraphLayout";
 import { buildFactGraphEdges, buildFactGraphNodes, FACT_GRAPH_NODE_TYPES } from "./factGraphNodes";
 
+/** 事实图主视图的属性：继承可编辑舞台通用属性，并接收具体的事实图视图文档。 */
 interface FactGraphViewProps extends EditableStageProps {
   view: FactGraphViewDocument;
 }
 
+/** 当节点索引查不到时使用的占位空节点，避免后续逻辑因 undefined 崩溃。 */
 function emptyNode(): LinkGraphNode {
   return {
     id: "",
@@ -33,6 +35,10 @@ function emptyNode(): LinkGraphNode {
   };
 }
 
+/**
+ * 节点搜索匹配：把查询串归一化为小写后，
+ * 在节点的标题、签名、定位、文档以及若干架构/流程元数据字段中做包含判断。
+ */
 function nodeMatchesFactQuery(node: LinkGraphNode, query: string): boolean {
   const normalized = query.trim().toLowerCase();
   if (!normalized) {
@@ -49,6 +55,11 @@ function nodeMatchesFactQuery(node: LinkGraphNode, query: string): boolean {
   ].some((value) => value?.toLowerCase().includes(normalized));
 }
 
+/**
+ * 事实图主视图组件：
+ * 负责把视图文档中的节点/边经过搜索过滤、作用域切换后交给布局与 React Flow 表面渲染，
+ * 同时整合工具栏、空状态、上下文菜单（节点/边/画布）以及与外部编辑流程的回调。
+ */
 export function FactGraphView({
   view,
   selectedNodeId,

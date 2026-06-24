@@ -18,13 +18,17 @@ import {
 import type { IndexedReadonlyStageProps } from "../viewStageProps";
 import { layoutReviewGraphView } from "./reviewGraphLayout";
 
+/** Review Graph 主视图的属性，基于 IndexedReadonlyStageProps 并携带当前视图文档。 */
 interface ReviewGraphViewProps extends IndexedReadonlyStageProps {
   view: ReviewGraphViewDocument;
 }
 
+/** Review Graph 中的角色筛选枚举，用于按变更拓扑位置过滤节点。 */
 type ReviewRole = "ALL" | "CHANGED" | "UPSTREAM" | "DOWNSTREAM" | "RELATED_TEST";
 
+/** Review Graph 顶部类型筛选下拉的可选值列表。 */
 const FILTER_TYPES: Array<NodeType | "ALL"> = ["ALL", "CLASS", "METHOD", "INTERFACE", "RESOURCE", "CONFIG_ITEM"];
+/** Review Graph 顶部角色筛选下拉的选项与展示文案。 */
 const ROLE_FILTERS: Array<{ id: ReviewRole; label: string }> = [
   { id: "ALL", label: "全部角色" },
   { id: "CHANGED", label: "变更符号" },
@@ -33,6 +37,7 @@ const ROLE_FILTERS: Array<{ id: ReviewRole; label: string }> = [
   { id: "RELATED_TEST", label: "相关测试" },
 ];
 
+/** 判断节点是否匹配搜索关键字（按标题、签名、位置、文档以及若干 metadata 字段做包含匹配）。 */
 function nodeMatchesQuery(node: LinkGraphNode, query: string): boolean {
   const normalized = query.trim().toLowerCase();
   if (!normalized) {
@@ -49,6 +54,7 @@ function nodeMatchesQuery(node: LinkGraphNode, query: string): boolean {
   ].some((value) => value?.toLowerCase().includes(normalized));
 }
 
+/** 把变更种类枚举映射为中文展示标签，用于变更文件 / 基线符号等列表。 */
 function changeKindLabel(kind: string | undefined | null): string {
   switch (kind) {
     case "ADDED":
@@ -71,6 +77,7 @@ function changeKindLabel(kind: string | undefined | null): string {
   }
 }
 
+/** 把相关关系原因枚举映射为中文展示标签（如调用路径、测试注解等）。 */
 function reasonLabel(reason: string | undefined | null): string {
   switch (reason) {
     case "CALL_PATH":
@@ -84,19 +91,23 @@ function reasonLabel(reason: string | undefined | null): string {
   }
 }
 
+/** 返回用于展示的文件路径：优先取主路径，回退到备用路径；只保留最后 4 段以减少视觉噪声。 */
 function displayPath(primary: string | null | undefined, fallback: string | null | undefined): string {
   const path = primary ?? fallback ?? "";
   return path.split("/").slice(-4).join("/") || path || "unknown";
 }
 
+/** 从全限定名中取最后一段作为简化名，用于在紧凑列表中展示。 */
 function simpleName(value: string): string {
   return value.split(".").pop() ?? value;
 }
 
+/** 将计数值格式化为 zh-CN 千分位字符串，空值视为 0。 */
 function formatCount(value: number | undefined | null): string {
   return (value ?? 0).toLocaleString("zh-CN");
 }
 
+/** 生成行号范围字符串：单行返回 ":n"，区间返回 ":start-end"，空则空串。 */
 function lineRange(start?: number | null, end?: number | null): string {
   if (start == null && end == null) {
     return "";
@@ -107,6 +118,7 @@ function lineRange(start?: number | null, end?: number | null): string {
   return `:${start ?? end}`;
 }
 
+/** 计算审查范围标题：单文件显示路径，多文件显示数量，无文件显示提示语。 */
 function reviewScopeTitle(view: ReviewGraphViewDocument): string {
   const changedFiles = view.changedFiles ?? [];
   if (changedFiles.length === 0) {
@@ -118,6 +130,7 @@ function reviewScopeTitle(view: ReviewGraphViewDocument): string {
   return `${formatCount(changedFiles.length)} 个文件变更`;
 }
 
+/** 计算审查范围副标题：拼接文件数、hunk 数、未匹配 hunk 数（如有）。 */
 function reviewScopeDetail(view: ReviewGraphViewDocument): string {
   const changedHunkCount = view.changedHunks?.length ?? 0;
   const unmatchedHunkCount = view.unmatchedHunks?.length ?? 0;
@@ -132,6 +145,7 @@ function reviewScopeDetail(view: ReviewGraphViewDocument): string {
   return segments.join(" · ");
 }
 
+/** Review Graph 详情面板集合：变更文件、基线符号、影响范围、证据片段四个区块，各区块支持折叠展开。 */
 function ReviewGraphDetailPanels({ view }: { view: ReviewGraphViewDocument }) {
   const [expandedPanels, setExpandedPanels] = useState<Record<string, boolean>>({});
   const changedFiles = view.changedFiles ?? [];
@@ -275,6 +289,7 @@ function ReviewGraphDetailPanels({ view }: { view: ReviewGraphViewDocument }) {
   );
 }
 
+/** 构造节点右键 / 浮层动作列表（查看详情、折叠、打开源码、讲解、问答等），按权限裁剪。 */
 function reviewNodeActions(args: {
   nodeId: string;
   node: LinkGraphNode | null;
@@ -354,6 +369,10 @@ function reviewNodeActions(args: {
   return actions;
 }
 
+/**
+ * Review Graph 主视图组件：把变更影响以 React Flow 图的形式展示，并附带摘要卡片、详情面板、筛选器与右键动作。
+ * 内部维护搜索 / 类型 / 角色三个筛选维度，结合布局测量、节点尺寸注册表、空状态等装配完整的画布体验。
+ */
 export function ReviewGraphView({
   view,
   selectedNodeId,

@@ -14,17 +14,33 @@ import type {
 } from "../types";
 import type { CodeDiffStatus } from "./hybridDerivations";
 
+/** GraphStageFooter 组件的入参。 */
 interface GraphStageFooterProps {
+  /** 当前展示模式。 */
   analysisDisplayMode: AnalysisDisplayMode;
+  /** 当前视图的实际图（用于抽取节点标签等）。 */
   activeViewGraph: LinkGraphDocument;
+  /** 完整节点数（来自上层统计）。 */
   fullNodeCount: number;
+  /** 是否处于讲解聚焦状态。 */
   hasExplanationFocus: boolean;
+  /** 草稿变更涉及的节点数。 */
   draftChangedNodeCount: number;
+  /** 草稿比对投影；可空。 */
   draftCompareProjection?: DraftCompareProjection | null;
+  /** 索引图摘要；仅索引模式相关。 */
   indexedSummary?: IndexedGraphSummary | null;
+  /** 代码 diff 状态。 */
   codeDiffStatus: CodeDiffStatus;
 }
 
+/**
+ * 图谱视图底部的图例 / 统计栏。
+ *
+ * 默认展示：模式标签 + 节点数 + 新鲜度（索引模式下）。
+ * 详情折叠区展示更多遥测：来源标签、确定性、差异状态等。
+ * 这种"主信息 + 可展开详情"的布局让默认视图保持简洁，需要时再展开看细节。
+ */
 export function GraphStageFooter({
   analysisDisplayMode,
   activeViewGraph,
@@ -35,11 +51,13 @@ export function GraphStageFooter({
   indexedSummary = null,
   codeDiffStatus,
 }: GraphStageFooterProps) {
+  // 收集视图节点上的所有来源标签（去重）
   const sourceTags = Array.from(new Set(
     activeViewGraph.nodes
       .map((node) => node.sourceTag)
       .filter((tag): tag is GraphSourceTag => tag != null),
   ));
+  // 合并节点与边的草稿比对状态（去重）
   const compareStatuses = draftCompareProjection == null
     ? []
     : Array.from(new Set([
@@ -47,7 +65,9 @@ export function GraphStageFooter({
       ...Object.values(draftCompareProjection.edgeStatuses),
     ]));
   const visibleNodeCount = activeViewGraph.nodeCount ?? activeViewGraph.nodes.length;
+  // 完整节点数取较大值，避免出现"3 / 2"这种倒挂
   const resolvedFullNodeCount = Math.max(fullNodeCount, visibleNodeCount);
+  // 节点数标签按是否索引模式分支
   const nodeCountLabel = isIndexedGraphDisplayMode(analysisDisplayMode)
     ? indexedGraphNodeCountLabel(indexedSummary)
     : `节点 ${visibleNodeCount} / ${resolvedFullNodeCount}`;
@@ -59,9 +79,8 @@ export function GraphStageFooter({
     : null;
   const visibilityReasons = indexedSummary?.visibilityReasons ?? [];
 
-  // Detail-tier telemetry: only rendered inside a collapsed <details> so the
-  // default footer stays scannable (mode + node count + freshness). These are
-  // diagnostics, not primary information.
+  // 详情级遥测：放在折叠 <details> 内，让默认页脚保持简洁（模式 + 节点数 + 新鲜度）。
+  // 这些是诊断信息而非主信息。
   const hasDetailPills = sourceTags.length > 0
     || hasExplanationFocus
     || draftChangedNodeCount > 0
@@ -104,10 +123,12 @@ export function GraphStageFooter({
   );
 }
 
+/** 判断是否为索引模式（架构图/类图/审查图）。 */
 function isIndexedGraphDisplayMode(mode: AnalysisDisplayMode): boolean {
   return mode === "ARCHITECTURE_GRAPH" || mode === "CLASS_DIAGRAM" || mode === "REVIEW_GRAPH";
 }
 
+/** 生成索引图的节点数标签。包含窗口节点、候选节点、窗口外节点与各层来源分布。 */
 function indexedGraphNodeCountLabel(summary: IndexedGraphSummary | null): string {
   if (summary == null) {
     return "indexed 统计未返回";
@@ -120,6 +141,7 @@ function indexedGraphNodeCountLabel(summary: IndexedGraphSummary | null): string
   ].join(" / ");
 }
 
+/** 把 visibleLayerCounts 转为可读的"项目 N · 三方 M · JDK K ..."摘要。 */
 function indexedVisibleLayerSummary(summary: IndexedGraphSummary): string {
   const counts = summary.visibleLayerCounts;
   if (counts == null) {
@@ -138,6 +160,7 @@ function indexedVisibleLayerSummary(summary: IndexedGraphSummary): string {
     .join(" · ") || "0";
 }
 
+/** 把单条 visibilityReason 转为带计数的可读字符串。 */
 function indexedVisibilityReasonLabel(reason: NonNullable<IndexedGraphSummary["visibilityReasons"]>[number]): string {
   const counts = [
     reason.nodeCount != null && reason.nodeCount > 0 ? `节点 ${reason.nodeCount}` : null,
@@ -146,6 +169,7 @@ function indexedVisibilityReasonLabel(reason: NonNullable<IndexedGraphSummary["v
   return counts.length > 0 ? `${reason.label}（${counts.join(" / ")}）` : reason.label;
 }
 
+/** 把索引新鲜度转为面向用户的标签。 */
 function indexedGraphFreshnessLabel(summary: IndexedGraphSummary | null): string | null {
   const freshness = summary?.freshness;
   if (freshness == null) {
@@ -165,6 +189,7 @@ function indexedGraphFreshnessLabel(summary: IndexedGraphSummary | null): string
   return `索引 ${freshness.state}`;
 }
 
+/** 把索引缓存状态代码转为可读说明。 */
 function indexedGraphCacheLabel(summary: IndexedGraphSummary | null): string | null {
   const cacheState = summary?.cacheState?.trim();
   if (!cacheState) {
@@ -185,6 +210,7 @@ function indexedGraphCacheLabel(summary: IndexedGraphSummary | null): string | n
   }
 }
 
+/** 把代码 diff 状态转为可读文案。 */
 function codeDiffStatusLabel(status: CodeDiffStatus): string {
   switch (status) {
     case "RUNNING":
