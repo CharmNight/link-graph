@@ -1,6 +1,7 @@
 package com.charmnight.linkgraph.llm
 
 import java.io.BufferedReader
+import java.io.InputStream
 import java.io.InputStreamReader
 import java.net.URI
 import java.net.http.HttpClient
@@ -51,17 +52,16 @@ internal object LlmGatewayClient {
             jsonRequestBuilder(request, url, headers)
                 .POST(HttpRequest.BodyPublishers.ofString(payload))
                 .build(),
-            HttpResponse.BodyHandlers.ofString(),
+            HttpResponse.BodyHandlers.ofInputStream(),
         )
 
-        if (response.statusCode() !in 200..299) {
-            error(buildFailureMessage(response.statusCode(), response.body(), errorCodeKeys))
+        val status = response.statusCode()
+        // error / 2xx 都走同一套 size-guarded reader，避免恶意或异常服务器返回超大 body 触发 OOM。
+        val body = response.body().use { input -> readBodyWithSizeGuard(input) }
+        if (status !in 200..299) {
+            error(buildFailureMessage(status, body, errorCodeKeys))
         }
 
-        val body = response.body()
-        if (body.length > MAX_RESPONSE_CHARS) {
-            error("Remote LLM response exceeded maximum supported size.")
-        }
         return LlmResponse(
             content = extractContent(body),
             model = extractModel(body) ?: request.model,
@@ -93,7 +93,8 @@ internal object LlmGatewayClient {
         )
 
         if (response.statusCode() !in 200..299) {
-            val body = response.body().use { input -> String(input.readAllBytes(), StandardCharsets.UTF_8) }
+            // error 路径同样要 size guard：恶意/异常服务器可能返回 200MB 的错误 JSON。
+            val body = response.body().use { input -> readBodyWithSizeGuard(input) }
             error(buildFailureMessage(response.statusCode(), body, errorCodeKeys))
         }
 
@@ -182,6 +183,29 @@ internal object LlmGatewayClient {
             return null
         }
         return trimmed.removePrefix("data:").trim()
+    }
+
+    /**
+     * 以流式 + size guard 读取 HTTP 响应体，避免一次性把整 body 物化进堆。
+     *
+     * - 用 `InputStreamReader` 而非手工 `String(bytes, UTF_8)` 切片，确保 UTF-8
+     *   多字节字符跨 chunk 边界时仍能正确解码（不会出现 � 替换字符）。
+     * - 每次向 StringBuilder append 后检查 char 数；超 [MAX_RESPONSE_CHARS] 立即抛
+     *   IllegalStateException，让上游感知并关闭连接，不再继续消费 InputStream。
+     */
+    private fun readBodyWithSizeGuard(input: InputStream): String {
+        val reader = BufferedReader(InputStreamReader(input, StandardCharsets.UTF_8))
+        val buf = StringBuilder()
+        val chunk = CharArray(8192)
+        while (true) {
+            val read = reader.read(chunk)
+            if (read <= 0) break
+            buf.append(chunk, 0, read)
+            if (buf.length > MAX_RESPONSE_CHARS) {
+                error("Remote LLM response exceeded maximum supported size ($MAX_RESPONSE_CHARS chars).")
+            }
+        }
+        return buf.toString()
     }
 
     /** 构造统一的 HTTP 请求构造器：设置目标 URL、超时、Content-Type 与自定义请求头。 */

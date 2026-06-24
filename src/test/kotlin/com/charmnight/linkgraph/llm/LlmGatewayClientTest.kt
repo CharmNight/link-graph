@@ -67,7 +67,9 @@ class LlmGatewayClientTest {
         val client = RecordingHttpClient(
             response = SimpleHttpResponse(
                 statusCode = 200,
-                body = """{"model":"remote-model","content":"hello"}""",
+                body = ByteArrayInputStream(
+                    """{"model":"remote-model","content":"hello"}""".toByteArray(StandardCharsets.UTF_8),
+                ),
             ),
         )
         val request = testLlmRequest()
@@ -93,7 +95,10 @@ class LlmGatewayClientTest {
         val client = RecordingHttpClient(
             response = SimpleHttpResponse(
                 statusCode = 400,
-                body = """{"error":{"type":"invalid_request_error","message":"Bad request"}}""",
+                body = ByteArrayInputStream(
+                    """{"error":{"type":"invalid_request_error","message":"Bad request"}}"""
+                        .toByteArray(StandardCharsets.UTF_8),
+                ),
             ),
         )
 
@@ -112,6 +117,120 @@ class LlmGatewayClientTest {
         assertEquals(
             "Remote LLM request failed with HTTP 400 (invalid_request_error): Bad request",
             failure.message,
+        )
+    }
+
+    @Test
+    fun generateJsonAbortsWhenBodyExceedsMaxSize() {
+        // 2.5M 字符 > MAX_RESPONSE_CHARS(2M)；服务端返回超大 body 时应提前抛错而非 OOM。
+        val hugeBody = ByteArray(2_500_000) { 'a'.code.toByte() }
+        val client = RecordingHttpClient(
+            response = SimpleHttpResponse(
+                statusCode = 200,
+                body = ByteArrayInputStream(hugeBody),
+            ),
+        )
+
+        val failure = assertFailsWith<IllegalStateException> {
+            LlmGatewayClient.generateJson(
+                client = client,
+                request = testLlmRequest(),
+                url = "https://api.example.com/v1/messages",
+                headers = emptyList(),
+                payload = "{}",
+                extractContent = { error("must not be called for oversized body") },
+            )
+        }
+        assertTrue(
+            failure.message!!.contains("exceeded maximum supported size"),
+            "实际：${failure.message}",
+        )
+    }
+
+    @Test
+    fun generateJsonAbortsWhenErrorBodyExceedsMaxSize() {
+        // 5xx + 超大错误 body：error 路径也应走 size guard，不应尝试解析错误 JSON。
+        val hugeErrorBody = ByteArray(2_500_000) { 'a'.code.toByte() }
+        val client = RecordingHttpClient(
+            response = SimpleHttpResponse(
+                statusCode = 500,
+                body = ByteArrayInputStream(hugeErrorBody),
+            ),
+        )
+
+        val failure = assertFailsWith<IllegalStateException> {
+            LlmGatewayClient.generateJson(
+                client = client,
+                request = testLlmRequest(),
+                url = "https://api.example.com/v1/messages",
+                headers = emptyList(),
+                payload = "{}",
+                extractContent = { error("must not be called for oversized body") },
+            )
+        }
+        assertTrue(
+            failure.message!!.contains("exceeded maximum supported size"),
+            "实际：${failure.message}",
+        )
+    }
+
+    @Test
+    fun generateJsonHandlesUtf8MultiByteAcrossChunkBoundary() {
+        // 构造一个 8190 字节 ASCII 填充 + 3 字节汉字（“中”）+ 余下 ASCII 的 body。
+        // readBodyWithSizeGuard 用 8192 字符 chunk 读；汉字跨 chunk 边界时若用
+        // 字节切片方案会产生 U+FFFD；用 InputStreamReader 解码器跨 chunk 缓冲则正确还原。
+        val prefix = "a".repeat(8190)
+        val chineseChar = "中"  // UTF-8 占 3 字节
+        val suffix = "b".repeat(50)
+        val rawBody = """{"model":"m","content":"$prefix$chineseChar$suffix"}"""
+        val client = RecordingHttpClient(
+            response = SimpleHttpResponse(
+                statusCode = 200,
+                body = ByteArrayInputStream(rawBody.toByteArray(StandardCharsets.UTF_8)),
+            ),
+        )
+
+        val response = LlmGatewayClient.generateJson(
+            client = client,
+            request = testLlmRequest(),
+            url = "https://api.example.com/v1/messages",
+            headers = emptyList(),
+            payload = "{}",
+            extractContent = { body -> LlmJsonCodec.parseObject(body)["content"] as String },
+        )
+
+        assertTrue(
+            response.content.contains("中"),
+            "UTF-8 多字节字符跨 chunk 边界后应完整保留，不应被替换为 U+FFFD；实际：${response.content.takeLast(60)}",
+        )
+        assertEquals(8190 + 1 + 50, response.content.length)
+    }
+
+    @Test
+    fun streamSseAbortsWhenErrorBodyExceedsMaxSize() {
+        // streamSse 在非 2xx 时也要 size guard；恶意服务器可能返回超大错误 JSON。
+        val hugeErrorBody = ByteArray(2_500_000) { 'a'.code.toByte() }
+        val client = RecordingHttpClient(
+            response = SimpleHttpResponse(
+                statusCode = 500,
+                body = ByteArrayInputStream(hugeErrorBody),
+            ),
+        )
+
+        val failure = assertFailsWith<IllegalStateException> {
+            LlmGatewayClient.streamSse(
+                client = client,
+                request = testLlmRequest(),
+                url = "https://api.example.com/v1/responses",
+                headers = emptyList(),
+                payload = """{"stream":true}""",
+                listener = { /* no-op */ },
+                extractTextDelta = { error("must not be called for oversized error body") },
+            )
+        }
+        assertTrue(
+            failure.message!!.contains("exceeded maximum supported size"),
+            "实际：${failure.message}",
         )
     }
 
