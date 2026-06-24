@@ -14,6 +14,7 @@ internal object LlmGatewayPayloadBuilder {
         val root = JsonObject()
         root.addProperty("model", request.model)
         root.addProperty("temperature", finiteTemperature(request.temperature))
+        root.addProperty("max_tokens", request.maxOutputTokens)
         root.add(
             "messages",
             JsonArray().apply {
@@ -58,6 +59,7 @@ internal object LlmGatewayPayloadBuilder {
         val root = JsonObject()
         root.addProperty("model", request.model)
         root.addProperty("temperature", finiteTemperature(request.temperature))
+        root.addProperty("max_output_tokens", request.maxOutputTokens)
         root.addProperty("instructions", request.systemPrompt)
         root.add(
             "input",
@@ -106,7 +108,7 @@ internal object LlmGatewayPayloadBuilder {
     fun anthropicMessagesPayload(request: LlmRequest): String {
         val root = JsonObject()
         root.addProperty("model", request.model)
-        root.addProperty("max_tokens", 4096)
+        root.addProperty("max_tokens", request.maxOutputTokens)
         root.addProperty("temperature", finiteTemperature(request.temperature))
         root.addProperty("system", request.systemPrompt)
         root.add(

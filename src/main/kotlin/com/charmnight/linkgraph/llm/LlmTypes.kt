@@ -494,6 +494,8 @@ data class LlmRequest(
     val deliveryMode: LlmDeliveryMode = LlmDeliveryMode.FULL,
     /** 原生结构化输出约束；不支持的 provider 会忽略。 */
     val structuredOutput: LlmStructuredOutput? = null,
+    /** 单次响应最大输出 token 数；由 provider preset 派生，默认 4096。 */
+    val maxOutputTokens: Int = 4096,
 )
 
 /** 远程模型的最小响应模型，只保留当前一期会消费的字段。 */

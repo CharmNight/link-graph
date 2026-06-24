@@ -32,6 +32,8 @@ data class LlmProviderPreset(
     val defaultModel: String = DEFAULT_GENERIC_MODEL,
     /** 保存当前预设支持的能力集合。 */
     val capabilities: LlmCapabilitySet = if (isRemote) DEFAULT_REMOTE_CAPABILITIES else LlmCapabilitySet(),
+    /** 该预设默认的响应最大 token 数；Anthropic Messages 协议必填，OpenAI 系列协议按需。 */
+    val maxOutputTokens: Int = DEFAULT_MAX_OUTPUT_TOKENS,
 ) {
     /**
      * 返回用于界面展示的本地化名称。
@@ -47,6 +49,8 @@ data class LlmProviderPreset(
         val DEFAULT_REMOTE_CAPABILITIES = LlmCapabilitySet(
             supportsStreaming = false,
         )
+        /** 远程预设默认的最大输出 token 数。 */
+        const val DEFAULT_MAX_OUTPUT_TOKENS: Int = 4096
     }
 }
 

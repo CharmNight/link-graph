@@ -71,6 +71,45 @@ class LlmGatewayPayloadBuilderTest {
     }
 
     @Test
+    fun anthropicPayloadUsesPresetMaxOutputTokens() {
+        val payload = LlmGatewayPayloadBuilder.anthropicMessagesPayload(
+            request = request(
+                protocol = LlmWireProtocol.ANTHROPIC_MESSAGES,
+                maxOutputTokens = 8192,
+            ),
+        )
+        val root = LlmJsonCodec.parseJsonObject(payload)
+
+        assertEquals(8192, root.get("max_tokens").asInt)
+    }
+
+    @Test
+    fun openAiChatPayloadUsesPresetMaxOutputTokens() {
+        val payload = LlmGatewayPayloadBuilder.openAiChatPayload(
+            request = request(
+                protocol = LlmWireProtocol.OPENAI_CHAT_COMPLETIONS,
+                maxOutputTokens = 8192,
+            ),
+        )
+        val root = LlmJsonCodec.parseJsonObject(payload)
+
+        assertEquals(8192, root.get("max_tokens").asInt)
+    }
+
+    @Test
+    fun openAiResponsesPayloadUsesPresetMaxOutputTokens() {
+        val payload = LlmGatewayPayloadBuilder.openAiResponsesPayload(
+            request = request(
+                protocol = LlmWireProtocol.OPENAI_RESPONSES,
+                maxOutputTokens = 8192,
+            ),
+        )
+        val root = LlmJsonCodec.parseJsonObject(payload)
+
+        assertEquals(8192, root.get("max_output_tokens").asInt)
+    }
+
+    @Test
     fun rejectsInvalidStructuredSchemaBeforeRemoteCall() {
         assertFailsWith<IllegalStateException> {
             LlmGatewayPayloadBuilder.openAiResponsesPayload(
@@ -104,6 +143,7 @@ class LlmGatewayPayloadBuilderTest {
         userPrompt: String = "user prompt",
         deliveryMode: LlmDeliveryMode = LlmDeliveryMode.FULL,
         structuredOutput: LlmStructuredOutput? = null,
+        maxOutputTokens: Int = 4096,
     ) = LlmRequest(
         protocol = protocol,
         endpoint = "https://api.example.com/v1",
@@ -115,6 +155,7 @@ class LlmGatewayPayloadBuilderTest {
         userPrompt = userPrompt,
         deliveryMode = deliveryMode,
         structuredOutput = structuredOutput,
+        maxOutputTokens = maxOutputTokens,
     )
 
     private fun structuredOutput() = LlmStructuredOutput(

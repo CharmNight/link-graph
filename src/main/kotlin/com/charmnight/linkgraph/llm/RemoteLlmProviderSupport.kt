@@ -31,6 +31,7 @@ internal data class RemoteLlmConnection(
             temperature = temperature,
             systemPrompt = systemPrompt,
             userPrompt = userPrompt,
+            maxOutputTokens = preset.maxOutputTokens,
         )
     }
 
