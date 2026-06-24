@@ -15,7 +15,6 @@ import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.util.concurrency.AppExecutorUtil
-import java.net.URI
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 
@@ -457,51 +456,20 @@ internal class AsyncRequestLifecycleSupport(
     }
 
     /** 把 runtime 状态、预算和每一步记录格式化为多行文本，用于追加到请求详情中。 */
-    private fun formatRuntimeDetail(runtimeState: AgentRunState): String {
-        val sections = mutableListOf<String>()
-        sections += runtimeHeader(runtimeState)
-        sections += formatBudget(runtimeState.budget)
-        runtimeState.stepRecords.forEach { record ->
-            sections += formatStepRecord(record)
-        }
-        return sections.joinToString(separator = "\n")
-    }
+    private fun formatRuntimeDetail(runtimeState: AgentRunState): String =
+        com.charmnight.linkgraph.application.request.formatRuntimeDetail(runtimeState)
 
     /** 输出包含 runId、capability 与失败原因的 runtime 头部摘要。 */
-    private fun runtimeHeader(runtimeState: AgentRunState): String {
-        return buildString {
-            append("runtime runId=").append(runtimeState.runId)
-            append(", capability=").append(runtimeState.capabilityId)
-            runtimeState.failureReason?.let {
-                append(", failureReason=").append(it.name)
-            }
-        }
-    }
+    private fun runtimeHeader(runtimeState: AgentRunState): String =
+        com.charmnight.linkgraph.application.request.runtimeHeader(runtimeState)
 
     /** 把步数、文件、片段、代码行四类预算消耗格式化为单行文本。 */
-    private fun formatBudget(budget: RunBudget): String {
-        return buildString {
-            append("runtime budget steps=").append(budget.usedSteps).append('/').append(budget.maxSteps)
-            append(", files=").append(budget.filesRead).append('/').append(budget.maxFilesRead)
-            append(", snippets=").append(budget.snippetsRead).append('/').append(budget.maxSnippets)
-            append(", lines=").append(budget.totalSnippetLinesRead).append('/').append(budget.maxTotalSnippetLines)
-        }
-    }
+    private fun formatBudget(budget: RunBudget): String =
+        com.charmnight.linkgraph.application.request.formatBudget(budget)
 
     /** 把单步执行记录（序号、阶段、摘要、工具、节点）格式化为可读文本。 */
-    private fun formatStepRecord(record: AgentStepRecord): String {
-        return buildString {
-            append("step[").append(record.stepIndex).append("]")
-            append(" phase=").append(record.phase.name)
-            append(", summary=").append(record.summary)
-            record.toolName?.let { toolName ->
-                append(", tool=").append(toolName)
-            }
-            record.nodeId?.let { nodeId ->
-                append(", nodeId=").append(nodeId)
-            }
-        }
-    }
+    private fun formatStepRecord(record: AgentStepRecord): String =
+        com.charmnight.linkgraph.application.request.formatStepRecord(record)
 
     /**
      * 提炼前端可展示的 endpoint 摘要。
@@ -509,26 +477,8 @@ internal class AsyncRequestLifecycleSupport(
     private fun resolveEndpointSummary(
         endpoint: String?,
         remotePresetSelected: Boolean,
-    ): String? {
-        if (!remotePresetSelected || endpoint.isNullOrBlank()) {
-            return null
-        }
-        return runCatching {
-            val uri = URI(endpoint)
-            buildString {
-                append(uri.scheme ?: "https")
-                append("://")
-                append(uri.host ?: endpoint)
-                uri.port.takeIf { it > 0 }?.let { append(":").append(it) }
-                val path = uri.path?.trim()?.takeIf { it.isNotEmpty() && it != "/" }
-                if (path != null) {
-                    append(path)
-                }
-            }
-        }.getOrElse {
-            endpoint
-        }
-    }
+    ): String? =
+        com.charmnight.linkgraph.application.request.resolveEndpointSummary(endpoint, remotePresetSelected)
 }
 
 /**
