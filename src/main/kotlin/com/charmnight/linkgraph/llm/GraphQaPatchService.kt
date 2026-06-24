@@ -969,90 +969,18 @@ class GraphQaPatchService(
     )
 
     /** 生成候选变更的简短摘要字符串，用于 trace 日志输出。 */
-    private fun candidateSummaries(changes: List<CandidateDraftChange>): String {
-        if (changes.isEmpty()) {
-            return "[]"
-        }
-        return changes.take(3).joinToString(
-            prefix = "[",
-            postfix = if (changes.size > 3) ", ...]" else "]",
-        ) { change ->
-            buildString {
-                append(change.changeId)
-                append(':')
-                append(change.evidence.maxOfOrNull(ResultEvidenceFinding::evidenceLevel)?.name ?: "NONE")
-                append(':')
-                append(change.targetNodeIds.joinToString("|").ifBlank { "-" })
-            }
-        }
-    }
+    private fun candidateSummaries(changes: List<CandidateDraftChange>): String =
+        com.charmnight.linkgraph.llm.qa.candidateSummaries(changes)
 
     /** 生成风险线程的简短摘要字符串，用于 trace 日志输出。 */
-    private fun threadSummaries(threads: List<InvestigationThread>): String {
-        if (threads.isEmpty()) {
-            return "[]"
-        }
-        return threads.take(3).joinToString(
-            prefix = "[",
-            postfix = if (threads.size > 3) ", ...]" else "]",
-        ) { thread ->
-            buildString {
-                append(thread.threadId)
-                append(':')
-                append(thread.evidence.maxOfOrNull(ResultEvidenceFinding::evidenceLevel)?.name ?: "NONE")
-                append(':')
-                append(thread.targetNodeIds.joinToString("|").ifBlank { "-" })
-            }
-        }
-    }
+    private fun threadSummaries(threads: List<InvestigationThread>): String =
+        com.charmnight.linkgraph.llm.qa.threadSummaries(threads)
 
     /** 生成源码片段的简短摘要字符串，用于 trace 日志输出。 */
-    private fun sourceContextSummaries(sourceContext: List<SourceSnippetContext>): String {
-        if (sourceContext.isEmpty()) {
-            return "[]"
-        }
-        return sourceContext.take(4).joinToString(
-            prefix = "[",
-            postfix = if (sourceContext.size > 4) ", ...]" else "]",
-        ) { snippet ->
-            buildString {
-                append(snippet.nodeId)
-                append('@')
-                append(snippet.filePath)
-                snippet.startLine?.let { append(':').append(it) }
-                snippet.endLine?.let { append('-').append(it) }
-                append(" => ")
-                append(
-                    snippet.snippet
-                        .orEmpty()
-                        .lineSequence()
-                        .joinToString(" \\n ") { it.trim() }
-                        .take(220),
-                )
-            }
-        }
-    }
+    private fun sourceContextSummaries(sourceContext: List<SourceSnippetContext>): String =
+        com.charmnight.linkgraph.llm.qa.sourceContextSummaries(sourceContext)
 
     /** 生成取证轨迹的简短摘要字符串，用于 trace 日志输出。 */
-    private fun evidenceTraceSummaries(evidenceTrace: List<EvidenceTraceEntry>): String {
-        if (evidenceTrace.isEmpty()) {
-            return "[]"
-        }
-        return evidenceTrace.take(6).joinToString(
-            prefix = "[",
-            postfix = if (evidenceTrace.size > 6) ", ...]" else "]",
-        ) { trace ->
-            buildString {
-                append(trace.nodeId)
-                append('@')
-                append(trace.filePath)
-                trace.startLine?.let { append(':').append(it) }
-                trace.endLine?.let { append('-').append(it) }
-                append('#')
-                append(trace.reason)
-                append("#included=")
-                append(trace.includedInPrompt)
-            }
-        }
-    }
+    private fun evidenceTraceSummaries(evidenceTrace: List<EvidenceTraceEntry>): String =
+        com.charmnight.linkgraph.llm.qa.evidenceTraceSummaries(evidenceTrace)
 }
