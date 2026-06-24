@@ -146,26 +146,25 @@ internal class ReviewWorkflow(
     private fun emit(event: GraphEditorApplicationEvent) = eventSink.emit(event)
 
     private fun emitQaCompleted(presentation: QaCompletedResult) =
-        emit(GraphEditorApplicationEvent.QaCompleted(presentation))
+        com.charmnight.linkgraph.application.workflow.review.emitQaCompleted(eventSink, presentation)
 
     private fun emitQaFailed(presentation: QaFailedResult) =
-        emit(GraphEditorApplicationEvent.QaFailed(presentation))
+        com.charmnight.linkgraph.application.workflow.review.emitQaFailed(eventSink, presentation)
 
     private fun emitReviewRequestStarted(presentation: ReviewRequestStartedResult) =
-        emit(GraphEditorApplicationEvent.ReviewRequestStarted(presentation))
+        com.charmnight.linkgraph.application.workflow.review.emitReviewRequestStarted(eventSink, presentation)
 
     private fun emitReviewStreamingPreview(
         scene: ReviewRequestScene,
         requestId: Long,
         previewText: String,
         finalizingStructuredResult: Boolean,
-    ) = emit(
-        GraphEditorApplicationEvent.ReviewStreamingPreview(
-            scene = scene,
-            requestId = requestId,
-            previewText = previewText,
-            finalizingStructuredResult = finalizingStructuredResult,
-        ),
+    ) = com.charmnight.linkgraph.application.workflow.review.emitReviewStreamingPreview(
+        eventSink = eventSink,
+        scene = scene,
+        requestId = requestId,
+        previewText = previewText,
+        finalizingStructuredResult = finalizingStructuredResult,
     )
 
     /**
@@ -315,25 +314,8 @@ internal class ReviewWorkflow(
     private fun investigationTargetHints(
         snapshot: WorkflowEditorSnapshot,
         modeContext: QaModeContext,
-    ): List<InvestigationTargetHint> {
-        val request = modeContext.request
-        val sourceThreadId = requireNotNull(modeContext.sourceThreadId)
-        val sourceThread = request.baseSession?.investigationThreads
-            ?.firstOrNull { thread -> thread.threadId == sourceThreadId }
-        val targetNodeIds = (request.selectedNodeIds + sourceThread?.targetNodeIds.orEmpty()).distinct()
-        if (targetNodeIds.isEmpty()) {
-            return emptyList()
-        }
-        val nodesById = currentVisibleGraph(snapshot).nodes.associateBy { node -> node.id }
-        return targetNodeIds.mapNotNull { nodeId ->
-            val node = nodesById[nodeId] ?: return@mapNotNull null
-            InvestigationTargetHint(
-                nodeId = node.id,
-                title = node.title,
-                signature = node.signature,
-            )
-        }
-    }
+    ): List<InvestigationTargetHint> =
+        com.charmnight.linkgraph.application.workflow.review.investigationTargetHints(snapshot, modeContext)
 
     fun retryLastQaRequestAsync() {
         val snapshot = snapshotProvider.snapshot()
@@ -440,9 +422,8 @@ internal class ReviewWorkflow(
      */
     private fun toRuntimeArtifactSummaries(
         result: AgentRunResult<*>,
-    ): List<com.charmnight.linkgraph.application.result.ApplicationRuntimeArtifactSummary> {
-        return result.artifactSummaries.map(com.charmnight.linkgraph.application.result.ApplicationRuntimeArtifactSummary::from)
-    }
+    ): List<com.charmnight.linkgraph.application.result.ApplicationRuntimeArtifactSummary> =
+        com.charmnight.linkgraph.application.workflow.review.toRuntimeArtifactSummaries(result)
 
     private fun runtimeTrace(message: () -> String) {
         if (runtimeQaTraceEnabled) {
@@ -676,22 +657,8 @@ internal class ReviewWorkflow(
         remoteRequested: Boolean,
         streamingSupported: Boolean,
         modeContext: QaModeContext,
-    ): String {
-        val selectedNodeIds = modeContext.selectedNodeIds
-        val modeSuffix = "实际模式：${modeContext.effectiveMode.name}。"
-        if (remoteRequested) {
-            return if (streamingSupported) {
-                "已发起远程 LLM 问答请求，当前采用流式输出。$modeSuffix"
-            } else {
-                "已发起远程 LLM 问答请求，当前采用完整返回。$modeSuffix"
-            }
-        }
-        return if (selectedNodeIds.isEmpty()) {
-            "正在对整个链路执行问答，请稍候。$modeSuffix"
-        } else {
-            "正在对当前选中范围执行问答，请稍候。$modeSuffix"
-        }
-    }
+    ): String =
+        com.charmnight.linkgraph.application.workflow.review.buildQaStartMessage(remoteRequested, streamingSupported, modeContext)
 
     /**
      * 将可重放请求分类为本轮唯一的模式上下文。
@@ -702,21 +669,8 @@ internal class ReviewWorkflow(
     private fun resolutionFeedbackMessage(
         status: RiskResolutionStatus,
         codeAllowed: Boolean,
-    ): String {
-        return when (status) {
-            RiskResolutionStatus.DEFERRED -> "已暂挂该风险线程。现在可以继续生成实现计划，但代码阶段仍会保持拦截。"
-            RiskResolutionStatus.ACCEPTED_RISK ->
-                if (codeAllowed) {
-                    "已接受该风险。当前已有确认草稿变更，计划与代码阶段都可以继续。"
-                } else {
-                    "已接受该风险。当前可以继续生成实现计划；代码阶段仍需至少一条已确认草稿变更。"
-                }
-            RiskResolutionStatus.EVIDENCE_EXHAUSTED -> "已标记该风险线程证据穷尽。现在可以继续生成实现计划，但代码阶段仍会保持拦截。"
-            RiskResolutionStatus.DISMISSED -> "已排除该风险线程，后续阶段将按剩余风险与草稿状态重新判断。"
-            RiskResolutionStatus.PROMOTED -> "该风险线程已提升为可执行变更，后续阶段将按草稿确认状态继续判断。"
-            RiskResolutionStatus.UNRESOLVED -> "已恢复为未决风险线程，后续阶段将重新进入阻塞判断。"
-        }
-    }
+    ): String =
+        com.charmnight.linkgraph.application.workflow.review.resolutionFeedbackMessage(status, codeAllowed)
 
     /**
      * 异步发起差异问答，并把修订草稿回写到前端。
