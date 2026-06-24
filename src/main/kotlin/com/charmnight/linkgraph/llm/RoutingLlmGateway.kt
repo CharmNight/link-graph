@@ -17,12 +17,17 @@ class RoutingLlmGateway(
     /** 保存 Anthropic 协议兼容网关。 */
     private val anthropicGatewayFactory: () -> LlmGateway = { AnthropicCompatibleLlmGateway() },
 ) : LlmGateway {
-    /** OpenAI Chat Completions 网关的惰性实例。 */
-    private val openAiGateway by lazy(LazyThreadSafetyMode.NONE, openAiGatewayFactory)
-    /** OpenAI Responses 网关的惰性实例。 */
-    private val openAiResponsesGateway by lazy(LazyThreadSafetyMode.NONE, openAiResponsesGatewayFactory)
-    /** Anthropic Messages 网关的惰性实例。 */
-    private val anthropicGateway by lazy(LazyThreadSafetyMode.NONE, anthropicGatewayFactory)
+    /**
+     * 三个具体网关的惰性实例。
+     *
+     * 使用默认 `SYNCHRONIZED` 模式而不是 `LazyThreadSafetyMode.NONE`：
+     * RoutingLlmGateway 实例可能被 `@Service(PROJECT)` 持有并在多项目并发场景下首次访问，
+     * `NONE` 模式在并发首访下不保证可见性，可能让多个线程各自构造一份实例；
+     * `SYNCHRONIZED` 加锁开销只在初始化阶段生效（之后双检锁返回缓存值），可接受。
+     */
+    private val openAiGateway by lazy(openAiGatewayFactory)
+    private val openAiResponsesGateway by lazy(openAiResponsesGatewayFactory)
+    private val anthropicGateway by lazy(anthropicGatewayFactory)
 
     /**
      * 根据请求协议选择对应网关执行生成。
