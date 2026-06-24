@@ -1403,18 +1403,8 @@ class JvmSymbolIndexBuilder(
     }
 
     /** 根据路径前缀/后缀把资源文件分门别类（SPI/MQ/配置文件/文档等），用于后续按类型筛选。 */
-    private fun resourceKind(path: String): JvmResourceKind {
-        return when {
-            path.startsWith("mq:") -> JvmResourceKind.MQ_TOPIC
-            path.contains("META-INF/services/") -> JvmResourceKind.SPI_SERVICE_FILE
-            path.endsWith(".xml", ignoreCase = true) -> JvmResourceKind.XML
-            path.endsWith(".yml", ignoreCase = true) || path.endsWith(".yaml", ignoreCase = true) -> JvmResourceKind.YAML
-            path.endsWith(".properties", ignoreCase = true) -> JvmResourceKind.PROPERTIES
-            path.endsWith(".sql", ignoreCase = true) -> JvmResourceKind.SQL
-            path.endsWith(".md", ignoreCase = true) -> JvmResourceKind.MARKDOWN
-            else -> JvmResourceKind.OTHER
-        }
-    }
+    private fun resourceKind(path: String): JvmResourceKind =
+        com.charmnight.linkgraph.jvm.index.resourceKind(path)
 
     /** 读取 SPI 服务配置文件，逐行剔除注释与空白，得到该接口的实现类全限定名列表。 */
     private fun providerClassNames(file: VirtualFile): List<String> {
@@ -1424,15 +1414,9 @@ class JvmSymbolIndexBuilder(
             .let(::providerClassNames)
     }
 
-    /** 纯文本版本的 SPI 实现名提取，去除行内注释并去重，供 jrt/jar 内的文件复用。 */
-    private fun providerClassNames(text: String): List<String> {
-        return text
-            .lineSequence()
-            .map { line -> line.substringBefore('#').trim() }
-            .filter(String::isNotBlank)
-            .distinct()
-            .toList()
-    }
+    /** 纯文本版本的 SPI 实现名提取：详见 top-level fun spiProviderClassNames。 */
+    private fun providerClassNames(text: String): List<String> =
+        com.charmnight.linkgraph.jvm.index.spiProviderClassNames(text)
 
     /** 扫描类方法上的 MQ 监听注解（Kafka/Rabbit/Jms/RocketMQ 等），把目标主题登记为 MQ 资源节点。 */
     private fun indexFrameworkResources(
