@@ -275,22 +275,10 @@ export function GraphFlowSurface({
   const onlyRenderVisibleElements = experiments?.onlyRenderVisibleElements !== false;
   const dragShieldingEnabled = experiments?.dragShielding === true;
 
-  useEffect(() => {
-    traceLinkGraph("graphFlowSurface.lifecycle.mount", {
-      viewportMode,
-      graph: summarizeGraph({ nodes: positionedNodes, edges }),
-      anchorNodeId: anchorNode?.id ?? null,
-      graphShape: summarizeGraphShapeSignature(graphShapeSignature),
-    });
-    return () => {
-      traceLinkGraph("graphFlowSurface.lifecycle.unmount", {
-        viewportMode,
-        graph: summarizeGraph({ nodes: positionedNodes, edges }),
-        anchorNodeId: anchorNode?.id ?? null,
-        graphShape: summarizeGraphShapeSignature(graphShapeSignature),
-      });
-    };
-  }, []);
+  // P1-6: mount/unmount trace 改用 ref 捕获最新 graph，避免 [] deps 导致 stale closure。
+  // ref 初始化 + sync effect + lifecycle effect 都放在 positionedNodes/anchorNode/
+  // graphShapeSignature 声明之后，否则会触发 TDZ。
+  // 实际代码见下方（搜索 lifecycleTraceRef）。
 
   useEffect(() => {
     onSelectionGroupChangeRef.current = onSelectionGroupChange;
@@ -395,6 +383,40 @@ export function GraphFlowSurface({
     selectedGroupNodeCount: selectedGroupNodeIds.length,
     supportsResizeObserver,
   });
+
+  // P1-6: mount/unmount trace 需要 [] deps 保证只触发一次，但直接闭包会捕获首渲染的 graph。
+  // 用 ref 在每次渲染后同步最新值，lifecycle effect 读 ref.current 即可拿到卸载时的状态。
+  const lifecycleTraceRef = useRef({
+    viewportMode,
+    positionedNodes,
+    edges,
+    anchorNode,
+    graphShapeSignature,
+  });
+  useEffect(() => {
+    lifecycleTraceRef.current = { viewportMode, positionedNodes, edges, anchorNode, graphShapeSignature };
+  }, [viewportMode, positionedNodes, edges, anchorNode, graphShapeSignature]);
+
+  useEffect(() => {
+    const snapshot = lifecycleTraceRef.current;
+    traceLinkGraph("graphFlowSurface.lifecycle.mount", {
+      viewportMode: snapshot.viewportMode,
+      graph: summarizeGraph({ nodes: snapshot.positionedNodes, edges: snapshot.edges }),
+      anchorNodeId: snapshot.anchorNode?.id ?? null,
+      graphShape: summarizeGraphShapeSignature(snapshot.graphShapeSignature),
+    });
+    return () => {
+      // 卸载时 ref.current 是最近一次 sync effect 写入的最新值
+      const current = lifecycleTraceRef.current;
+      traceLinkGraph("graphFlowSurface.lifecycle.unmount", {
+        viewportMode: current.viewportMode,
+        graph: summarizeGraph({ nodes: current.positionedNodes, edges: current.edges }),
+        anchorNodeId: current.anchorNode?.id ?? null,
+        graphShape: summarizeGraphShapeSignature(current.graphShapeSignature),
+      });
+    };
+  }, []);
+
   // 生效的视口重置键：类图模式沿用原始键，可读适配模式叠加内容签名以更精细判断是否需要重置。
   const effectiveViewportResetKey = viewportMode === "CLASS_DIAGRAM"
     ? viewportResetKey
