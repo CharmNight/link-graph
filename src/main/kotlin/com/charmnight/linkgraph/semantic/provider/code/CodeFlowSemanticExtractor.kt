@@ -962,17 +962,8 @@ private class JavaFlowSemanticBuilder(
     }
 
     /** 把 switch 分支原始文本（`case X:`、`default ->` 等）归一化为统一的标签字符串。 */
-    private fun normalizeSwitchBranchLabel(rawLabel: String): String {
-        val normalized = rawLabel
-            .substringBefore("->")
-            .removeSuffix(":")
-            .trim()
-        return when {
-            normalized.equals("default", ignoreCase = true) -> "DEFAULT"
-            normalized.startsWith("case ") -> normalized.removePrefix("case ").trim()
-            else -> normalized
-        }
-    }
+    private fun normalizeSwitchBranchLabel(rawLabel: String): String =
+        com.charmnight.linkgraph.semantic.provider.code.normalizeSwitchBranchLabel(rawLabel)
 
     /** 判断循环条件是否非常量 `true`，用于决定是否生成结构化 LOOP_EXIT 边（避免无限循环被画成可退出）。 */
     private fun hasStructuredNormalExit(condition: PsiExpression?): Boolean {
@@ -1212,16 +1203,8 @@ private class KotlinFlowSemanticBuilder(
     }
 
     /** 把 when entry 的条件文本归一化为分支标签，`else` 转为 `DEFAULT`。 */
-    private fun normalizeWhenBranchLabel(entry: KtWhenEntry): String {
-        val normalized = entry.text
-            .substringBefore("->")
-            .trim()
-        return if (normalized.equals("else", ignoreCase = true)) {
-            "DEFAULT"
-        } else {
-            normalized
-        }
-    }
+    private fun normalizeWhenBranchLabel(entry: KtWhenEntry): String =
+        com.charmnight.linkgraph.semantic.provider.code.normalizeWhenBranchLabel(entry)
 
     /** 判断 Kotlin 循环条件是否常量 `true`，避免无限 while(true) 被画成有正常出口。 */
     private fun hasStructuredNormalExit(condition: KtExpression?): Boolean {
@@ -1397,18 +1380,8 @@ private class CodeSemanticAccumulator(
     }
 
     /** 抽取方法 KDoc/Javadoc 描述段（截止到首个 `@` 标签前）拼接为单行摘要。 */
-    private fun methodDocSummary(method: PsiMethod): String? {
-        val raw = method.docComment?.text ?: return null
-        return raw
-            .removePrefix("/**")
-            .removeSuffix("*/")
-            .lineSequence()
-            .map { line -> line.trim().removePrefix("*").trim() }
-            .takeWhile { line -> !line.startsWith("@") }
-            .filter { line -> line.isNotBlank() }
-            .joinToString(" ")
-            .ifBlank { null }
-    }
+    private fun methodDocSummary(method: PsiMethod): String? =
+        com.charmnight.linkgraph.semantic.provider.code.methodDocSummary(method)
 
     /** 登记一个动作单元（赋值、调用等），自动挂上 CONTAINS 关系与源码映射。 */
     fun addAction(
