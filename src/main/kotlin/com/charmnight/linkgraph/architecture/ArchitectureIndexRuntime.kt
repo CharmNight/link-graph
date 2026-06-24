@@ -833,43 +833,22 @@ class ArchitectureIndexRuntime(
     }
 
     private fun persistedSourcePath(source: JvmSourceRef?): String? =
-        persistedDisplayPath(source?.displayPath).takeIf(String::isNotBlank)
+        com.charmnight.linkgraph.architecture.persistedSourcePath(source, project.basePath)
 
-    private fun persistedDisplayPath(displayPath: String?): String {
-        val normalized = displayPath
-            ?.replace('\\', '/')
-            ?.trim()
-            ?: return ""
-        val basePath = project.basePath?.replace('\\', '/') ?: return normalized
-        return normalized.removePrefix("$basePath/")
-    }
+    private fun persistedDisplayPath(displayPath: String?): String =
+        com.charmnight.linkgraph.architecture.persistedDisplayPath(displayPath, project.basePath)
 
     private fun sourceVirtualFileUrl(source: JvmSourceRef?): String? =
         source?.virtualFileUrl
 
     private fun fieldTypeReferenceFragments(symbol: JvmFieldSymbol): List<FieldTypeReferenceSliceFragment> =
-        symbol.typeReferences.map { reference ->
-            FieldTypeReferenceSliceFragment(
-                typeName = reference.typeName,
-                role = reference.role.name,
-            )
-        }
+        com.charmnight.linkgraph.architecture.fieldTypeReferenceFragments(symbol)
 
     private fun pathMatchesSliceFiles(path: String, sliceFiles: Set<String>): Boolean =
-        path in sliceFiles ||
-            sliceFiles.any { slicePath ->
-                slicePath.endsWith("/$path") || path.endsWith("/$slicePath")
-            }
+        com.charmnight.linkgraph.architecture.pathMatchesSliceFiles(path, sliceFiles)
 
-    private fun toProjectRelativePath(displayPath: String?): String {
-        val normalized = displayPath
-            ?.substringBefore("!/")
-            ?.replace('\\', '/')
-            ?.trim()
-            ?: return ""
-        val basePath = project.basePath?.replace('\\', '/') ?: return normalized
-        return normalized.removePrefix("$basePath/")
-    }
+    private fun toProjectRelativePath(displayPath: String?): String =
+        com.charmnight.linkgraph.architecture.toProjectRelativePath(displayPath, project.basePath)
 
     private fun fileFingerprint(
         relativePath: String,
@@ -914,9 +893,7 @@ class ArchitectureIndexRuntime(
         )
 
     private fun stableSha256(value: String): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest(value.toByteArray(Charsets.UTF_8))
-            .joinToString("") { byte -> "%02x".format(byte) }
+        com.charmnight.linkgraph.architecture.stableSha256(value)
 
     private fun buildUncachedIndex(
         budget: JvmResolutionBudget,
