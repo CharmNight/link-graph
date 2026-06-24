@@ -1,7 +1,5 @@
 package com.charmnight.linkgraph.jvm.relation
 
-import com.charmnight.linkgraph.jvm.index.JvmClassSymbol
-import com.charmnight.linkgraph.jvm.index.JvmMethodSymbol
 import com.charmnight.linkgraph.jvm.index.JvmSymbolIndex
 import com.charmnight.linkgraph.jvm.index.methodSignature
 import com.intellij.openapi.project.Project
@@ -15,75 +13,85 @@ import com.intellij.psi.PsiMethod
 import com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.psi.KtFile
 
-/** PSI 事实索引：把符号 ID 映射到对应的 PSI 类/方法以及 Kotlin 文件，供解析器快速查询。 */
+/**
+ * PSI 事实索引：仅保留按需重解析所需的键（symbolId → QN/方法签名/文件 URL），
+ * 不持有任何 PSI 元素，避免 VFS 变更后出现 PsiInvalidElementAccessException。
+ *
+ * 调用方需要 PsiClass / PsiMethod / KtFile 时通过 [lookupPsiClass] / [lookupPsiMethod] / [lookupKotlinFiles]
+ * 在使用时从 JavaPsiFacade / PsiManager 重新解析，确保拿到的 PSI 与当前 VFS 状态一致。
+ */
 internal data class JvmPsiFactIndex(
-    val classBySymbolId: Map<String, PsiClass>,
-    val methodBySymbolId: Map<String, PsiMethod>,
-    val kotlinFiles: List<KtFile>,
+    val classBySymbolId: Map<String, String>,
+    val methodBySymbolId: Map<String, JvmMethodLookup>,
+    val kotlinFileUrls: List<String>,
 ) {
+    /** 按需重解析符号 ID 对应的 PSI 类；查不到或 PSI 已失效时返回 null。 */
+    fun lookupPsiClass(project: Project, symbolId: String): PsiClass? {
+        val qualifiedName = classBySymbolId[symbolId] ?: return null
+        val facade = JavaPsiFacade.getInstance(project)
+        return facade.findClass(qualifiedName, GlobalSearchScope.projectScope(project))
+    }
+
+    /** 按需重解析符号 ID 对应的 PSI 方法；通过 owner QN 找类，再按签名匹配方法。 */
+    fun lookupPsiMethod(project: Project, symbolId: String): PsiMethod? {
+        val lookup = methodBySymbolId[symbolId] ?: return null
+        val facade = JavaPsiFacade.getInstance(project)
+        val ownerClass = facade.findClass(lookup.ownerQualifiedName, GlobalSearchScope.projectScope(project))
+            ?: return null
+        return ownerClass.methods.firstOrNull { method -> methodSignature(method) == lookup.signature }
+    }
+
+    /** 按需重解析所有 Kotlin 文件；每次调用都返回当前 VFS 状态下的 KtFile 实例。 */
+    fun lookupKotlinFiles(project: Project): List<KtFile> {
+        val psiManager = PsiManager.getInstance(project)
+        val fileIndex = ProjectFileIndex.getInstance(project)
+        val vfs = VirtualFileManager.getInstance()
+        return kotlinFileUrls.mapNotNull { url ->
+            vfs.findFileByUrl(url)
+                ?.takeIf { file -> file.extension?.lowercase() in setOf("kt", "kts") && fileIndex.isInContent(file) }
+                ?.let { file -> psiManager.findFile(file) as? KtFile }
+        }
+    }
+
     companion object {
-        /** 基于符号索引构建 PSI 事实索引。 */
+        /** 基于符号索引构建 PSI 事实索引；只收集 QN/签名/URL，不物化 PSI。 */
         fun build(
             project: Project,
             symbolIndex: JvmSymbolIndex,
         ): JvmPsiFactIndex {
-            val classes = linkedMapOf<String, PsiClass>()
-            val facade = JavaPsiFacade.getInstance(project)
+            val classesBySymbolId = linkedMapOf<String, String>()
             symbolIndex.classesByQualifiedName.values
                 .filterNot { symbol -> symbol.external || symbol.library || symbol.jdk }
                 .forEach { symbol ->
-                    findPsiClass(project, facade, symbol)?.let { psiClass ->
-                        classes[symbol.id] = psiClass
-                    }
+                    classesBySymbolId[symbol.id] = symbol.qualifiedName
                 }
-            val kotlinFiles = projectKotlinFiles(project, symbolIndex)
-            val methods = linkedMapOf<String, PsiMethod>()
+
+            val methodsBySymbolId = linkedMapOf<String, JvmMethodLookup>()
             symbolIndex.methodsBySignature.values.forEach { method ->
-                val owner = symbolIndex.classesByQualifiedName[method.ownerClassName]
-                    ?.let { ownerClass -> classes[ownerClass.id] }
-                    ?: return@forEach
-                owner.methods
-                    .firstOrNull { psiMethod -> methodSignature(psiMethod) == method.signature }
-                    ?.let { psiMethod -> methods[method.id] = psiMethod }
+                val ownerClass = symbolIndex.classesByQualifiedName[method.ownerClassName] ?: return@forEach
+                if (ownerClass.external || ownerClass.library || ownerClass.jdk) return@forEach
+                methodsBySymbolId[method.id] = JvmMethodLookup(
+                    ownerQualifiedName = method.ownerClassName,
+                    signature = method.signature,
+                )
             }
-            return JvmPsiFactIndex(classes, methods, kotlinFiles)
-        }
 
-        private fun findPsiClass(
-            project: Project,
-            facade: JavaPsiFacade,
-            symbol: JvmClassSymbol,
-        ): PsiClass? =
-            symbol.source
-                ?.virtualFileUrl
-                ?.let { url -> VirtualFileManager.getInstance().findFileByUrl(url) }
-                ?.let { file -> PsiManager.getInstance(project).findFile(file) as? PsiJavaFile }
-                ?.classes
-                ?.flatMap(::flattenPsiClasses)
-                ?.firstOrNull { psiClass -> psiClass.qualifiedName == symbol.qualifiedName }
-                ?: facade.findClass(symbol.qualifiedName, GlobalSearchScope.projectScope(project))
-
-        private fun projectKotlinFiles(
-            project: Project,
-            symbolIndex: JvmSymbolIndex,
-        ): List<KtFile> {
-            val psiManager = PsiManager.getInstance(project)
-            val fileIndex = ProjectFileIndex.getInstance(project)
-            return symbolIndex.classesByQualifiedName.values
+            val kotlinFileUrls = symbolIndex.classesByQualifiedName.values
                 .asSequence()
                 .filterNot { symbol -> symbol.external || symbol.library || symbol.jdk }
                 .mapNotNull { symbol -> symbol.source?.virtualFileUrl }
                 .distinct()
-                // 不在循环里调用 refreshAndFindFileByUrl —— 同步 VFS refresh 会阻塞 EDT 并对每个 url 触发 IO；
-                // 文件不存在时直接跳过即可（索引通常是 VFS 已知文件）。
-                .mapNotNull { url -> VirtualFileManager.getInstance().findFileByUrl(url) }
-                .filter { file -> file.extension?.lowercase() in setOf("kt", "kts") && fileIndex.isInContent(file) }
-                .mapNotNull { file -> psiManager.findFile(file) as? KtFile }
-                .distinctBy { file -> file.virtualFile?.url ?: file.name }
+                // 文件 URL 已是 VFS 标识，无需在此触发同步 refresh；不在 VFS 中的 URL 会在 lookup 时跳过。
+                .filter { url -> url.endsWith(".kt", ignoreCase = true) || url.endsWith(".kts", ignoreCase = true) }
                 .toList()
-        }
 
-        private fun flattenPsiClasses(psiClass: PsiClass): List<PsiClass> =
-            listOf(psiClass) + psiClass.innerClasses.flatMap(::flattenPsiClasses)
+            return JvmPsiFactIndex(classesBySymbolId, methodsBySymbolId, kotlinFileUrls)
+        }
     }
 }
+
+/** 方法重解析所需的键：所属类限定名 + 规范签名。 */
+internal data class JvmMethodLookup(
+    val ownerQualifiedName: String,
+    val signature: String,
+)

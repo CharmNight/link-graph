@@ -33,14 +33,14 @@ data class JvmResolutionContext(
         JvmPsiFactIndex.build(project, symbolIndex)
     }
 
-    /** 按 ID 获取缓存的 PSI 类。 */
-    fun cachedPsiClass(symbolId: String): PsiClass? = psiFactIndex.classBySymbolId[symbolId]
+    /** 按 ID 重解析 PSI 类；每次访问都从 JavaPsiFacade 取当前 VFS 状态下的 PsiClass，避免持有失效元素。 */
+    fun cachedPsiClass(symbolId: String): PsiClass? = psiFactIndex.lookupPsiClass(project, symbolId)
 
-    /** 按 ID 获取缓存的 PSI 方法。 */
-    fun cachedPsiMethod(symbolId: String): PsiMethod? = psiFactIndex.methodBySymbolId[symbolId]
+    /** 按 ID 重解析 PSI 方法；每次访问都从 owner 类的方法列表按签名匹配，避免持有失效元素。 */
+    fun cachedPsiMethod(symbolId: String): PsiMethod? = psiFactIndex.lookupPsiMethod(project, symbolId)
 
-    /** 获取缓存的 Kotlin 文件列表。 */
-    fun cachedKotlinFiles(): List<KtFile> = psiFactIndex.kotlinFiles
+    /** 重解析项目内所有 Kotlin 文件；每次访问都返回当前 VFS 状态下的 KtFile 列表。 */
+    fun cachedKotlinFiles(): List<KtFile> = psiFactIndex.lookupKotlinFiles(project)
 }
 
 /** 关系解析预算，控制扫描范围与各项上限。 */
