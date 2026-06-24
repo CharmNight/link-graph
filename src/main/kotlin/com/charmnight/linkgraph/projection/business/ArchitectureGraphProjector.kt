@@ -896,22 +896,8 @@ class ArchitectureGraphProjector(
     /**
      * 计算多组命名分段列表的公共前缀长度。
      */
-    private fun commonRootSize(names: List<List<String>>): Int {
-        if (names.isEmpty()) {
-            return 0
-        }
-        val first = names.first()
-        var rootSize = 0
-        for (index in first.indices) {
-            val part = first[index]
-            if (names.all { name -> name.getOrNull(index) == part }) {
-                rootSize += 1
-            } else {
-                break
-            }
-        }
-        return rootSize
-    }
+    private fun commonRootSize(names: List<List<String>>): Int =
+        com.charmnight.linkgraph.projection.business.commonRootSize(names)
 
     /**
      * 判定组件/服务聚合是否过于宽泛（命名层级过浅或成员类占比过高）。
@@ -1015,7 +1001,7 @@ class ArchitectureGraphProjector(
      * 把隐藏桶的 ID 转换为中文展示标签。
      */
     private fun architectureBucketLabel(bucket: String): String =
-        ArchitectureDisplayLayer.entries.firstOrNull { layer -> layer.laneId == bucket }?.label ?: bucket
+        com.charmnight.linkgraph.projection.business.architectureBucketLabel(bucket)
 
     /**
      * 构造节点的源代码示例元数据：数量、首要示例（用于导航）以及全部样本明细。
