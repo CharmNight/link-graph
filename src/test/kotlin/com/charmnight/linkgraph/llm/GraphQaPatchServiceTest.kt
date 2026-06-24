@@ -114,7 +114,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -205,7 +205,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -330,7 +330,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -560,7 +560,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -688,7 +688,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -792,7 +792,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -898,7 +898,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -990,7 +990,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1117,7 +1117,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1192,7 +1192,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1264,7 +1264,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1379,7 +1379,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1487,7 +1487,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1582,7 +1582,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1667,7 +1667,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1739,7 +1739,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1778,7 +1778,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1815,7 +1815,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -1982,7 +1982,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
@@ -2057,7 +2057,7 @@ class GraphQaPatchServiceTest {
             settings = LinkGraphSettingsState(
                 llmEnabled = true,
                 provider = LlmProviderPresets.OPENAI_COMPATIBLE.id,
-                endpoint = "https://localhost:8080/v1",
+                endpoint = "https://api.example.com/v1",
                 apiKey = "token",
                 model = "gpt-test",
             ),
