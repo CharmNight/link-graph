@@ -70,10 +70,15 @@ internal class AssistantWorkflowRouter(
                 }
             }
             AssistantActionId.CHECK_CHANGE -> {
-                executor.executeReviewGraph(command.selectedDiffItemIds)
+                val diffItemIds = command.selectedDiffItemIds
+                // 选中条目为空时跳过 Review Graph：构造空 review graph 既无意义也浪费 LLM 调用。
+                // executeDiffReview 仍正常执行（用户可能就是想要一个通用 diff review）。
+                if (diffItemIds.isNotEmpty()) {
+                    executor.executeReviewGraph(diffItemIds)
+                }
                 executor.executeDiffReview(
                     question = prompt.ifBlank { DEFAULT_CHECK_CHANGE_PROMPT },
-                    selectedDiffItemIds = command.selectedDiffItemIds,
+                    selectedDiffItemIds = diffItemIds,
                 )
             }
             // 未来新增 AssistantActionId 时，避免路由被静默丢弃 —— 记日志后跳过。

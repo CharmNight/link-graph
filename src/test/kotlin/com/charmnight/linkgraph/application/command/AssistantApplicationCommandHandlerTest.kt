@@ -90,6 +90,28 @@ class AssistantApplicationCommandHandlerTest {
     }
 
     @Test
+    fun checkChangeSkipsReviewGraphWhenNoDiffItemsSelected() {
+        val executor = RecordingAssistantTaskExecutor()
+        val handler = AssistantApplicationCommandHandler(executor)
+
+        handler.handle(
+            ApplicationCommand.RequestAssistantTask(
+                intent = AssistantIntent.CHECK_CHANGE,
+                actionId = AssistantActionId.CHECK_CHANGE,
+                prompt = "随便看看",
+                // 关键：selectedDiffItemIds 为空，不应触发 executeReviewGraph
+            ),
+        )
+
+        assertEquals(0, executor.reviewGraphRequests.size, "空 diff 列表时不应触发 executeReviewGraph")
+        assertEquals(
+            listOf("diff-review:随便看看:"),
+            executor.events.filter { it.startsWith("diff-review:") },
+            "executeDiffReview 仍应执行，使用默认或用户 prompt",
+        )
+    }
+
+    @Test
     fun requestAssistantTaskRoutesUnifiedComposerContext() {
         val executor = RecordingAssistantTaskExecutor()
         val handler = AssistantApplicationCommandHandler(executor)
