@@ -42,8 +42,15 @@ internal class AsyncRequestTracker {
     /**
      * 直接使当前活跃请求失效。
      * 用于"用户切换主题"等需要丢弃所有未完成结果的场景。
+     *
+     * 用 CAS 循环替代直接 set：invalidate 之间夹一个 beginRequest（A 启动 → invalidate → B 启动 → A finish）
+     * 时，set(0) 会错误清掉 B 的活跃标记。CAS 只在当前值非零时清零，避免误清新请求。
      */
     fun invalidate() {
-        activeRequestId.set(0)
+        var expected = activeRequestId.get()
+        while (expected != 0L) {
+            if (activeRequestId.compareAndSet(expected, 0L)) return
+            expected = activeRequestId.get()
+        }
     }
 }
