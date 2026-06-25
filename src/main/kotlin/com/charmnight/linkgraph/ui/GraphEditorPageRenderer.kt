@@ -22,6 +22,8 @@ import com.charmnight.linkgraph.semantic.outcome.ResourceRelationViewDocument
  * 把项目状态序列化成前端可直接消费的 bootstrap JSON，并注入到入口 HTML。
  */
 class GraphEditorPageRenderer {
+    // P2-1 真正的架构分解：bootstrap payload 组装委托给独立的 BootstrapPayloadAssembler
+    private val payloadAssembler = BootstrapPayloadAssembler(this)
     companion object {
         /** 允许完整内联的次级图层最大节点数。 */
         private const val MAX_SECONDARY_LAYER_SERIALIZED_NODES = 96
@@ -184,186 +186,11 @@ class GraphEditorPageRenderer {
         )
     }
 
-    /** 构建完整 bootstrap 状态载荷，供 init 与增量 slice 复用。 */
+    /** 构建完整 bootstrap 状态载荷，供 init 与增量 slice 复用。委托给 [payloadAssembler]。 */
     internal fun bootstrapPayload(
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
-    ): LinkedHashMap<String, Any?> {
-        val domainStates = snapshot.domainStates()
-        val workspaceState = domainStates.workspace
-        val graphViewsState = domainStates.graphViews
-        val reviewState = domainStates.review
-        val generationState = domainStates.generation
-        val assistantState = domainStates.assistant
-        val navigationState = domainStates.navigation
-        val transportState = domainStates.transport
-        val editorSnapshot = snapshot.editorSnapshot()
-        val factSceneState = graphViewsState.sceneStates[GraphSceneId.WORKSPACE_FACT] ?: GraphSceneState()
-        val flowchartSceneState = graphViewsState.sceneStates[GraphSceneId.WORKSPACE_FLOWCHART] ?: GraphSceneState()
-        val resourceSceneState = graphViewsState.sceneStates[GraphSceneId.WORKSPACE_RESOURCE_RELATION] ?: GraphSceneState()
-        val architectureSceneState = graphViewsState.sceneStates[GraphSceneId.WORKSPACE_ARCHITECTURE_GRAPH] ?: GraphSceneState()
-        val classDiagramSceneState = graphViewsState.sceneStates[GraphSceneId.WORKSPACE_CLASS_DIAGRAM] ?: GraphSceneState()
-        val reviewGraphSceneState = graphViewsState.sceneStates[GraphSceneId.WORKSPACE_REVIEW_GRAPH] ?: GraphSceneState()
-        val payload = linkedMapOf<String, Any?>(
-            "analysisDisplayMode" to graphViewsState.analysisDisplayMode.name,
-            "currentSceneId" to graphViewsState.currentSceneId.name,
-            "workspaceGraph" to documentToMap(workspaceState.workspaceGraph, includeFullContent = true),
-            "workspaceBaseGraph" to documentToMap(workspaceState.workspaceBaseGraph, includeFullContent = true),
-            "semanticFactGraph" to documentToMap(workspaceState.semanticFactGraph, includeFullContent = false),
-            "designBaselineGraph" to workspaceState.designBaselineGraph?.let {
-                documentToMap(it, includeFullContent = false)
-            },
-            "sceneStates" to sceneStatesToMap(graphViewsState.sceneStates),
-            "factGraphView" to graphViewsState.factGraphView.let {
-                factGraphViewToMap(it, factSceneState.layoutState)
-            },
-            "flowchartView" to graphViewsState.flowchartView.let {
-                flowchartViewToMap(it, flowchartSceneState.layoutState)
-            },
-            "resourceRelationView" to graphViewsState.resourceRelationView.let {
-                resourceRelationViewToMap(it, resourceSceneState.layoutState)
-            },
-            "architectureGraphView" to architectureGraphViewToMap(
-                graphViewsState.architectureGraphView,
-                architectureSceneState.layoutState,
-            ),
-            "classDiagramView" to classDiagramViewToMap(
-                graphViewsState.classDiagramView,
-                classDiagramSceneState.layoutState,
-            ),
-            "reviewGraphView" to reviewGraphViewToMap(
-                graphViewsState.reviewGraphView,
-                reviewGraphSceneState.layoutState,
-            ),
-            "indexedGraphRequestStates" to graphViewsState.indexedGraphRequestStates.entries.associate { (view, requestState) ->
-                view.name to requestStateToMap(requestState)
-            },
-            "draftPatchPreview" to generationState.draftPatchPreview?.let(::patchToMap),
-            "draftWorkbenchState" to draftWorkbenchStateToMap(generationState.draftWorkbenchState),
-            "canUndoDraftPatchApply" to (generationState.draftPatchUndoState != null),
-            "lastAppliedDraftPatchSummary" to generationState.draftPatchUndoState?.patchPreview?.summary,
-            "lastDraftPatchApplyResult" to generationState.lastDraftPatchApplyResult?.let(::draftPatchApplyResultToMap),
-            "qaResult" to reviewState.qaResult?.let {
-                patchResultToMap(it, artifactRefs.qaPromptPreviewArtifactId)
-            },
-            "qaRequestState" to requestStateToMap(
-                reviewState.qaRequestState,
-                hasPromptPreview = hasPromptPreview(reviewState.qaResult?.promptPreview, artifactRefs.qaPromptPreviewArtifactId),
-            ),
-            "qaRequestRecoveryState" to qaRequestRecoveryStateToMap(reviewState.qaRequestRecoveryState),
-            "runtimeArtifactSummaries" to assistantState.runtimeArtifactSummaries.mapValues { (_, summaries) ->
-                summaries.map { summary ->
-                    linkedMapOf(
-                        "artifactId" to summary.artifactId,
-                        "artifactType" to summary.artifactType,
-                        "title" to summary.title,
-                        "description" to summary.description,
-                    )
-                }
-            },
-            "diffReviewResult" to reviewState.diffReviewResult?.let {
-                patchResultToMap(it, artifactRefs.diffReviewPromptPreviewArtifactId)
-            },
-            "diffReviewRequestState" to requestStateToMap(
-                reviewState.diffReviewRequestState,
-                hasPromptPreview = hasPromptPreview(reviewState.diffReviewResult?.promptPreview, artifactRefs.diffReviewPromptPreviewArtifactId),
-            ),
-            "graphBeautificationResult" to reviewState.graphBeautificationResult?.let {
-                beautificationResultToMap(it, artifactRefs.beautificationPromptPreviewArtifactId)
-            },
-            "graphBeautificationRequestState" to requestStateToMap(
-                reviewState.graphBeautificationRequestState,
-                hasPromptPreview = hasPromptPreview(reviewState.graphBeautificationResult?.promptPreview, artifactRefs.beautificationPromptPreviewArtifactId),
-            ),
-            "mermaidIssues" to workspaceState.mermaidIssues.map { issue ->
-                linkedMapOf(
-                    "category" to issue.category.name,
-                    "code" to issue.code,
-                    "message" to issue.message,
-                    "line" to issue.line,
-                    "nodeId" to issue.nodeId,
-                    "edgeId" to issue.edgeId,
-                )
-            },
-            "diffItems" to workspaceState.diff?.entries.orEmpty().map { entry ->
-                linkedMapOf(
-                    "id" to entry.elementId,
-                    "title" to resolveDiffTitle(entry, workspaceState.workspaceGraph),
-                    "status" to entry.status.name,
-                    "description" to (entry.message ?: entry.fields.joinToString()),
-                )
-            },
-            "syncPreviewItems" to workspaceState.syncPreviewItems.map { item ->
-                linkedMapOf(
-                    "id" to item.id,
-                    "title" to item.title,
-                    "description" to item.description,
-                    "risk" to item.risk.name,
-                )
-            },
-            "draftVersion" to generationState.draftVersion,
-            "generationPlan" to generationState.generationPlan?.let { plan ->
-                generationPlanToMap(plan, artifactRefs.generationPlanPromptPreviewArtifactId)
-            },
-            "generationPlanDraftVersion" to generationState.generationPlanDraftVersion,
-            "generationPlanRequestState" to requestStateToMap(
-                generationState.generationPlanRequestState,
-                hasPromptPreview = hasPromptPreview(generationState.generationPlan?.promptPreview, artifactRefs.generationPlanPromptPreviewArtifactId),
-            ),
-            "draftValidationState" to generationState.draftValidationState?.let(::draftValidationStateToMap),
-            "generationPlanDiscussionSession" to generationState.generationPlanDiscussionSession?.let { session ->
-                generationPlanDiscussionSessionToMap(session, artifactRefs.generationPlanDiscussionPromptPreviewArtifactId)
-            },
-            "generationPlanDiscussionRequestState" to requestStateToMap(
-                generationState.generationPlanDiscussionRequestState,
-                hasPromptPreview = hasPromptPreview(
-                    generationState.generationPlanDiscussionSession?.promptPreview,
-                    artifactRefs.generationPlanDiscussionPromptPreviewArtifactId,
-                ),
-            ),
-            "generatedCodeDrafts" to generationState.generatedCodeDrafts.map { draft ->
-                val contentArtifactId = artifactRefs.generatedCodeDraftContentArtifactIds[draft.id]
-                generatedCodeDraftToMap(draft, contentArtifactId)
-            },
-            "generatedCodeDraftVersion" to generationState.generatedCodeDraftVersion,
-            "generatedCodeDraftWarnings" to generationState.generatedCodeDraftWarnings,
-            "generatedCodeDraftSource" to generationState.generatedCodeDraftSource?.name,
-            "generatedCodeDraftPromptPreviewArtifactId" to artifactRefs.generatedCodeDraftPromptPreviewArtifactId,
-            "codeDraftRequestState" to requestStateToMap(
-                generationState.codeDraftRequestState,
-                hasPromptPreview = hasPromptPreview(
-                    generationState.generatedCodeDraftPromptPreview,
-                    artifactRefs.generatedCodeDraftPromptPreviewArtifactId,
-                ),
-            ),
-            "codeEligibilityDecision" to generationState.codeEligibilityDecision?.let(::stageEligibilityDecisionToMap),
-            "generatedCodeDraftWriteReport" to generationState.generatedCodeDraftWriteReport?.let { report ->
-                linkedMapOf(
-                    "writtenFiles" to report.writtenFiles,
-                    "skippedFiles" to report.skippedFiles,
-                    "warnings" to report.warnings,
-                )
-            },
-            "semanticRevision" to workspaceState.semanticRevision,
-            "workspaceRevision" to workspaceState.workspaceRevision,
-            "snapshotRevision" to transportState.snapshotRevision,
-            "sourceNavigationState" to sourceNavigationStateToMap(navigationState.sourceNavigationState),
-            "assistantSessionState" to GraphEditorAssistantSessionRenderer.assistantSessionStateToMap(assistantState.sessionState),
-            "assistantResultStore" to assistantResultStoreToMap(
-                store = assistantState.resultStore,
-                artifactRefs = artifactRefs.assistantResultArtifacts,
-            ),
-            "lastMessageType" to transportState.lastMessageType,
-            "lastGraphSource" to transportState.lastGraphSource,
-            "operationFeedback" to transportState.operationFeedback?.let { feedback ->
-                linkedMapOf(
-                    "level" to feedback.level.name,
-                    "message" to feedback.message,
-                )
-            },
-        )
-        return payload
-    }
+    ): LinkedHashMap<String, Any?> = payloadAssembler.assemble(snapshot, artifactRefs)
 
     /** 把多个场景的运行时状态映射为前端使用的字典结构。 */
     /** sceneStatesToMap / graphSceneStateToMap 已抽到 top-level（GraphEditorPageRendererHelpers.kt）。 */
@@ -397,7 +224,7 @@ class GraphEditorPageRenderer {
     )
 
     /** 把 QA 请求恢复状态（最近成功/失败的请求）转换为前端可重放的载荷。 */
-    private fun qaRequestRecoveryStateToMap(
+    internal fun qaRequestRecoveryStateToMap(
         state: com.charmnight.linkgraph.workbench.QaRequestRecoveryState,
     ): Map<String, Any?> = com.charmnight.linkgraph.ui.qaRequestRecoveryStateToMap(state)
 
@@ -504,17 +331,17 @@ class GraphEditorPageRenderer {
     }
 
     /** 把阶段准入判定（是否允许进入下一阶段、阻塞原因等）转换为前端结构。 */
-    private fun stageEligibilityDecisionToMap(
+    internal fun stageEligibilityDecisionToMap(
         decision: com.charmnight.linkgraph.workbench.StageEligibilityDecision,
     ): Map<String, Any?> = com.charmnight.linkgraph.ui.stageEligibilityDecisionToMap(decision)
 
     /** 把源码跳转状态转换成前端可消费的映射：详见 top-level fun sourceNavigationStateToMap。 */
-    private fun sourceNavigationStateToMap(
+    internal fun sourceNavigationStateToMap(
         state: com.charmnight.linkgraph.ui.SourceNavigationState,
     ): Map<String, Any?> = com.charmnight.linkgraph.ui.sourceNavigationStateToMap(state)
 
     /** 为 diff 项解析可读标题。 */
-    private fun resolveDiffTitle(
+    internal fun resolveDiffTitle(
         entry: com.charmnight.linkgraph.model.GraphDiffEntry,
         document: GraphDocument,
     ): String = com.charmnight.linkgraph.ui.resolveDiffTitle(entry, document)
@@ -530,7 +357,7 @@ class GraphEditorPageRenderer {
         com.charmnight.linkgraph.ui.edgeToMap(edge)
 
     /** 把图文档转换为前端使用的 Map，并按规模决定是否裁剪内容。 */
-    private fun documentToMap(
+    internal fun documentToMap(
         document: GraphDocument,
         includeFullContent: Boolean,
         layoutState: GraphLayoutState? = null,
@@ -552,7 +379,7 @@ class GraphEditorPageRenderer {
     }
 
     /** 把事实链路视图文档转换为前端使用的 Map。 */
-    private fun factGraphViewToMap(
+    internal fun factGraphViewToMap(
         document: FactGraphViewDocument,
         layoutState: GraphLayoutState? = null,
     ): Map<String, Any?> = viewDocumentToMap(
@@ -573,7 +400,7 @@ class GraphEditorPageRenderer {
     )
 
     /** 把流程图视图文档转换为前端使用的 Map。 */
-    private fun flowchartViewToMap(
+    internal fun flowchartViewToMap(
         document: FlowchartViewDocument,
         layoutState: GraphLayoutState? = null,
     ): Map<String, Any?> = viewDocumentToMap(
@@ -597,7 +424,7 @@ class GraphEditorPageRenderer {
     )
 
     /** 把资源关系视图文档转换为前端使用的 Map。 */
-    private fun resourceRelationViewToMap(
+    internal fun resourceRelationViewToMap(
         document: ResourceRelationViewDocument,
         layoutState: GraphLayoutState? = null,
     ): Map<String, Any?> = viewDocumentToMap(
@@ -616,7 +443,7 @@ class GraphEditorPageRenderer {
     )
 
     /** 把架构图视图结果（含丰富的项目结构摘要）转换为前端结构。 */
-    private fun architectureGraphViewToMap(
+    internal fun architectureGraphViewToMap(
         document: ArchitectureGraphResult,
         layoutState: GraphLayoutState? = null,
     ): Map<String, Any?> = viewDocumentToMap(
@@ -669,7 +496,7 @@ class GraphEditorPageRenderer {
     )
 
     /** 把类图视图结果（类型统计、作用域基础、邻域限制等）转换为前端结构。 */
-    private fun classDiagramViewToMap(
+    internal fun classDiagramViewToMap(
         document: ClassDiagramResult,
         layoutState: GraphLayoutState? = null,
     ): Map<String, Any?> =
@@ -713,7 +540,7 @@ class GraphEditorPageRenderer {
         }
 
     /** 把影响面审查图结果（变更符号、上下游、相关测试、证据片段等）转换为前端结构。 */
-    private fun reviewGraphViewToMap(
+    internal fun reviewGraphViewToMap(
         document: com.charmnight.linkgraph.review.ReviewGraphResult,
         layoutState: GraphLayoutState? = null,
     ): Map<String, Any?> =
@@ -853,7 +680,7 @@ class GraphEditorPageRenderer {
     )
 
     /** 把图补丁转换为前端使用的 Map 结构。 */
-    private fun patchToMap(patch: GraphPatch): Map<String, Any?> =
+    internal fun patchToMap(patch: GraphPatch): Map<String, Any?> =
         com.charmnight.linkgraph.ui.patchToMap(patch)
 
     /** 把单条补丁操作转换为前端使用的 Map 结构：详见 top-level fun patchOperationToMap。 */
@@ -914,7 +741,7 @@ class GraphEditorPageRenderer {
         com.charmnight.linkgraph.ui.resultEvidenceFindingToMap(finding)
 
     /** 把草稿补丁应用结果转换为前端使用的 Map 结构。 */
-    private fun draftPatchApplyResultToMap(result: DraftPatchApplyResult): Map<String, Any?> = linkedMapOf(
+    internal fun draftPatchApplyResultToMap(result: DraftPatchApplyResult): Map<String, Any?> = linkedMapOf(
         "summary" to result.summary,
         "appliedOperationCount" to result.appliedOperationCount,
         "appliedNodeIds" to result.appliedNodeIds,
@@ -924,7 +751,7 @@ class GraphEditorPageRenderer {
     )
 
     /** 把草稿工作台状态（草稿变更与笔记条目）转换为前端结构。 */
-    private fun draftWorkbenchStateToMap(
+    internal fun draftWorkbenchStateToMap(
         state: com.charmnight.linkgraph.workbench.DraftWorkbenchState,
     ): Map<String, Any?> = linkedMapOf(
         "draftChanges" to state.draftChanges.map(::draftWorkbenchEntryToMap),
@@ -1019,7 +846,7 @@ class GraphEditorPageRenderer {
     }
 
     /** 把草稿校验状态（状态、消息、未解决的调查线程）转换为前端结构。 */
-    private fun draftValidationStateToMap(
+    internal fun draftValidationStateToMap(
         state: com.charmnight.linkgraph.workbench.DraftValidationState,
     ): Map<String, Any?> = linkedMapOf(
         "status" to state.status.name,

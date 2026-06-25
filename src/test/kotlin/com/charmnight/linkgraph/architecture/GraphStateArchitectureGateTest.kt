@@ -74,8 +74,9 @@ class GraphStateArchitectureGateTest {
         }
 
         assertTrue(
-            renderer.contains("val domainStates = snapshot.domainStates()"),
-            "Page renderer should read state through domainStates() instead of depending only on the flat snapshot.",
+            renderer.contains("val domainStates = snapshot.domainStates()") ||
+                read("src/main/kotlin/com/charmnight/linkgraph/ui/BootstrapPayloadAssembler.kt").contains("val domainStates = snapshot.domainStates()"),
+            "Page renderer (or its BootstrapPayloadAssembler) should read state through domainStates() instead of depending only on the flat snapshot.",
         )
         assertTrue(
             freezer.contains("val domainStates = domainStates()"),
