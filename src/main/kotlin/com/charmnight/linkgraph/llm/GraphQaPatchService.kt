@@ -41,10 +41,17 @@ class GraphQaPatchService(
     private val logger = Logger.getInstance(GraphQaPatchService::class.java)
     private val traceEnabled: Boolean =
         LinkGraphDebugEnvironment.isEnabled("LINKGRAPH_DEBUG_TRACE")
-    /** 负责处理结构化 JSON 响应与自动修复。 */
-    private val responseSupport = RemoteStructuredResponseParser(gateway)
     /** 统一候选变更 patch 归一化器。 */
     private val candidatePatchComposer = CandidateGraphPatchComposer()
+    /** P2-1 引入：把候选变更 / 风险线程分类与 edit scope 派生收敛为独立 class。 */
+    private val classifier = com.charmnight.linkgraph.llm.qa.QaPatchClassifier(
+        candidatePatchComposer = candidatePatchComposer,
+        trustedEditScopePathResolver = trustedEditScopePathResolver,
+        traceEnabled = traceEnabled,
+        logger = logger,
+    )
+    /** 负责处理结构化 JSON 响应与自动修复。 */
+    private val responseSupport = RemoteStructuredResponseParser(gateway)
 
     /** 执行链路问答，必要时回退到本地规则结果。 */
     fun answer(
@@ -501,7 +508,7 @@ class GraphQaPatchService(
     ): List<CandidateDraftChange> =
         com.charmnight.linkgraph.llm.qa.deriveCandidateChanges(patch, findings)
 
-    /** 把候选变更与风险线程按证据强度分类：直接证据充足的提升为待确认项，证据不足的降级为风险线程。 */
+    /** 把候选变更与风险线程按证据强度分类：委托给 [classifier]（详见 QaPatchClassifier.classify）。 */
     private fun classifyQaOutputs(
         candidateChanges: List<CandidateDraftChange>,
         explicitInvestigationThreads: List<InvestigationThread>,
@@ -512,62 +519,19 @@ class GraphQaPatchService(
         effectiveMode: QaMode,
         sourceThreadId: String?,
     ): ClassifiedQaOutputs {
-        val promotableChanges = mutableListOf<CandidateDraftChange>()
-        val investigationThreads = linkedMapOf<String, InvestigationThread>()
-
-        val candidateInput = if (
-            canUseConfirmableCandidatePath(source, runtimeEvidenceTrusted) &&
-            (effectiveMode == QaMode.CHANGE || effectiveMode == QaMode.AUTO)
-        ) {
-            candidateChanges
-        } else {
-            emptyList()
-        }
-        normalizeCandidateChanges(candidateInput, context).forEach { change ->
-            if (change.hasDirectEvidence()) {
-                if (traceEnabled) {
-                    logger.warn("问答候选变更保留为待确认项: ${CandidateDraftDiagnostics.summarizeCandidateChange(change)}")
-                }
-                promotableChanges += change.copy(editScopes = deriveEditScopes(change, context))
-            } else {
-                val thread = threadFromWeakCandidateChange(change)
-                if (traceEnabled) {
-                    logger.warn(
-                        "问答候选变更降级为线索: ${CandidateDraftDiagnostics.summarizeCandidateChange(change)}, " +
-                            "threadId=${thread.threadId}, strongestEvidence=${change.evidence.maxOfOrNull(ResultEvidenceFinding::evidenceLevel)?.name ?: "NONE"}",
-                    )
-                }
-                investigationThreads[thread.threadId] = thread
-            }
-        }
-        val normalizedInvestigationThreads = normalizeInvestigationThreads(explicitInvestigationThreads)
-        if (
-            canUseConfirmableCandidatePath(source, runtimeEvidenceTrusted) &&
-            (effectiveMode == QaMode.CHANGE || effectiveMode == QaMode.AUTO) &&
-            promotableChanges.isEmpty() &&
-            questionExplicitlyRequestsChange(question)
-        ) {
-            promoteThreadsToCandidateChanges(normalizedInvestigationThreads, context).forEach { change ->
-                if (traceEnabled) {
-                    logger.warn(
-                        "问答风险线程提升为待确认项: threadBackfill=${change.changeId}, " +
-                            "question=${question.trim()}, " +
-                            "candidate=${CandidateDraftDiagnostics.summarizeCandidateChange(change)}",
-                    )
-                }
-                promotableChanges += change.copy(editScopes = deriveEditScopes(change, context))
-            }
-        }
-        normalizedInvestigationThreads
-            .filter { thread -> effectiveMode != QaMode.ANSWER }
-            .filter { thread -> effectiveMode != QaMode.INVESTIGATE || sourceThreadId == null || thread.threadId == sourceThreadId }
-            .forEach { thread ->
-            investigationThreads[thread.threadId] = thread
-        }
-
+        val result = classifier.classify(
+            candidateChanges = candidateChanges,
+            explicitInvestigationThreads = explicitInvestigationThreads,
+            context = context,
+            question = question,
+            source = source,
+            runtimeEvidenceTrusted = runtimeEvidenceTrusted,
+            effectiveMode = effectiveMode,
+            sourceThreadId = sourceThreadId,
+        )
         return ClassifiedQaOutputs(
-            candidateChanges = promotableChanges,
-            investigationThreads = investigationThreads.values.toList(),
+            candidateChanges = result.candidateChanges,
+            investigationThreads = result.investigationThreads,
         )
     }
 
@@ -577,103 +541,12 @@ class GraphQaPatchService(
         runtimeEvidenceTrusted: Boolean,
     ): Boolean = com.charmnight.linkgraph.llm.qa.canUseConfirmableCandidatePath(source, runtimeEvidenceTrusted)
 
-    /** 归一化候选变更列表：去重证据、丢弃无证据项、补充 claimType 与 editScopes 等。 */
-    private fun normalizeCandidateChanges(
-        changes: List<CandidateDraftChange>,
-        context: GraphQaContext,
-    ): List<CandidateDraftChange> {
-        val candidateBaseGraph = GraphDocument(
-            nodes = (context.editableGraph.nodes + context.factGraph.nodes).distinctBy(GraphNode::id),
-            edges = (context.editableGraph.edges + context.factGraph.edges).distinctBy(GraphEdge::id),
-        )
-        return changes.mapNotNull { change ->
-            val normalizedEvidence = change.evidence.distinctBy(ResultEvidenceFinding::id)
-            if (normalizedEvidence.isEmpty()) {
-                if (traceEnabled) {
-                    logger.warn("问答候选变更被丢弃: changeId=${change.changeId}, reason=empty-evidence")
-                }
-                return@mapNotNull null
-            }
-            val normalizedCandidate = candidatePatchComposer.normalizeCandidate(
-                candidate = change.copy(
-                    claimType = change.claimType ?: inferClaimType(normalizedEvidence),
-                    evidence = normalizedEvidence,
-                    editScopes = change.editScopes.distinctBy(EditScope::scopeId),
-                ),
-                baseGraph = candidateBaseGraph,
-            )
-            if (traceEnabled) {
-                logger.warn(
-                    "问答候选变更完成归一化: ${CandidateDraftDiagnostics.summarizeCandidateChange(normalizedCandidate)}, " +
-                        "directEvidence=${normalizedCandidate.hasDirectEvidence()}, " +
-                        "graphPatch=${GraphPatchDiagnostics.summarizeGraphPatch(normalizedCandidate.graphPatch)}",
-                )
-            }
-            normalizedCandidate
-        }
-    }
-
-    /** 基于候选变更的目标节点与源码片段，推导出精确的 edit scope 列表。 */
-    private fun deriveEditScopes(
-        change: CandidateDraftChange,
-        context: GraphQaContext,
-    ): List<EditScope> {
-        val nodeById = (context.editableGraph.nodes + context.factGraph.nodes).distinctBy(GraphNode::id).associateBy(GraphNode::id)
-        val sourceSnippetByNodeId = context.sourceContext.associateBy(SourceSnippetContext::nodeId)
-        val supportingFindingIds = change.evidence.map(ResultEvidenceFinding::id)
-        return change.targetNodeIds.mapNotNull { nodeId ->
-            val node = nodeById[nodeId] ?: return@mapNotNull null
-            val directReference = change.evidence.firstNotNullOfOrNull { finding ->
-                finding.references.firstOrNull { reference ->
-                    reference.nodeId == null || reference.nodeId == nodeId
-                }
-            }
-            val snippet = sourceSnippetByNodeId[nodeId]
-            val location = trustedEditScopePathResolver.resolve(
-                node = node,
-                snippet = snippet,
-                reference = directReference,
-            ) ?: return@mapNotNull null
-            EditScope(
-                scopeId = "scope-${change.changeId}-$nodeId",
-                targetNodeId = nodeId,
-                filePath = location.filePath,
-                language = inferLanguage(location.filePath),
-                symbolKind = node.type.name,
-                symbolSignature = editableSymbolSignature(node),
-                startOffset = location.startOffset,
-                endOffset = location.endOffset,
-                startLine = location.startLine,
-                endLine = location.endLine,
-                allowedChangeKinds = listOf("REPLACE_METHOD_BLOCK", "REPLACE_METHOD_BODY", "ADD_IMPORT"),
-                supportingFindingIds = supportingFindingIds,
-            )
-        }.distinctBy(EditScope::scopeId)
-    }
-
-    /** 根据文件扩展名推断语言种类，未识别时回退为 TEXT。 */
-    private fun inferLanguage(filePath: String): String =
-        com.charmnight.linkgraph.llm.qa.inferLanguage(filePath)
-
-    /** 返回可编辑符号签名：流程类节点优先从元数据取所属方法签名，其他节点直接返回 signature 字段。 */
-    private fun editableSymbolSignature(node: GraphNode): String? =
-        com.charmnight.linkgraph.llm.qa.editableSymbolSignature(node)
+    /** normalizeCandidateChanges / deriveEditScopes / promoteThreadsToCandidateChanges /
+     *  inferLanguage / editableSymbolSignature 已封装到 [classifier]（QaPatchClassifier）。 */
 
     /** 归一化风险线程列表：丢弃无证据项，并补齐 claimType、summary、evidenceGap、recommendedQuestion 等字段。 */
     private fun normalizeInvestigationThreads(threads: List<InvestigationThread>): List<InvestigationThread> =
         com.charmnight.linkgraph.llm.qa.normalizeInvestigationThreads(threads)
-
-    /** 当本轮没有候选变更但用户明确要求修改时，把满足条件的风险线程提升为候选变更。 */
-    private fun promoteThreadsToCandidateChanges(
-        threads: List<InvestigationThread>,
-        context: GraphQaContext,
-    ): List<CandidateDraftChange> {
-        val promotedCandidates = threads
-            .filter(::isEligibleForCandidatePromotion)
-            .map(::candidateFromThread)
-        return normalizeCandidateChanges(promotedCandidates, context)
-            .filter { change -> change.hasDirectEvidence() }
-    }
 
     /** 判断风险线程是否可被提升为候选变更：详见 top-level fun isEligibleForCandidatePromotion。 */
     private fun isEligibleForCandidatePromotion(thread: InvestigationThread): Boolean =
