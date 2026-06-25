@@ -423,23 +423,12 @@ class GraphEditorPageRenderer {
     /** 把 QA 请求恢复状态（最近成功/失败的请求）转换为前端可重放的载荷。 */
     private fun qaRequestRecoveryStateToMap(
         state: com.charmnight.linkgraph.workbench.QaRequestRecoveryState,
-    ): Map<String, Any?> = linkedMapOf(
-        "lastSubmittedRequest" to state.lastSubmittedRequest?.let(::replayableQaRequestToMap),
-        "lastFailedRequest" to state.lastFailedRequest?.let(::replayableQaRequestToMap),
-    )
+    ): Map<String, Any?> = com.charmnight.linkgraph.ui.qaRequestRecoveryStateToMap(state)
 
-    /** 把可重放的 QA 请求结构（用于失败后重试或回放）展开为前端字段。 */
+    /** 把可重放的 QA 请求结构（用于失败后重试或回放）展开为前端字段：详见 top-level fun replayableQaRequestToMap。 */
     private fun replayableQaRequestToMap(
         request: com.charmnight.linkgraph.workbench.ReplayableQaRequest,
-    ): Map<String, Any?> = linkedMapOf(
-        "requestId" to request.requestId,
-        "kind" to request.kind.name,
-        "question" to request.question,
-        "mode" to request.mode.name,
-        "selectedNodeIds" to request.selectedNodeIds,
-        "sourceThreadId" to request.sourceThreadId,
-        "baseSessionId" to request.baseSession?.sessionId,
-    )
+    ): Map<String, Any?> = com.charmnight.linkgraph.ui.replayableQaRequestToMap(request)
 
     /** 把助手结果存储（按结果 ID 索引的多种轮次结果）展开为前端可消费的嵌套结构。 */
     internal fun assistantResultStoreToMap(
@@ -571,28 +560,12 @@ class GraphEditorPageRenderer {
     /** 把阶段准入判定（是否允许进入下一阶段、阻塞原因等）转换为前端结构。 */
     private fun stageEligibilityDecisionToMap(
         decision: com.charmnight.linkgraph.workbench.StageEligibilityDecision,
-    ): Map<String, Any?> = linkedMapOf(
-        "target" to decision.target.name,
-        "stageLabel" to decision.stageLabel,
-        "allowed" to decision.allowed,
-        "message" to decision.message,
-        "detailMessage" to decision.detailMessage,
-        "blockingThreadIds" to decision.blockingThreadIds,
-        "unresolvedThreadIds" to decision.unresolvedThreadIds,
-    )
+    ): Map<String, Any?> = com.charmnight.linkgraph.ui.stageEligibilityDecisionToMap(decision)
 
-    /** 把源码跳转状态转换成前端可消费的映射。 */
+    /** 把源码跳转状态转换成前端可消费的映射：详见 top-level fun sourceNavigationStateToMap。 */
     private fun sourceNavigationStateToMap(
         state: com.charmnight.linkgraph.ui.SourceNavigationState,
-    ): Map<String, Any?> = linkedMapOf(
-        "nodeId" to state.nodeId,
-        "phase" to state.phase.name,
-        "result" to state.result?.name,
-        "targetPath" to state.targetPath,
-        "line" to state.line,
-        "column" to state.column,
-        "errorMessage" to state.errorMessage,
-    )
+    ): Map<String, Any?> = com.charmnight.linkgraph.ui.sourceNavigationStateToMap(state)
 
     /** 为 diff 项解析可读标题。 */
     private fun resolveDiffTitle(
@@ -600,31 +573,11 @@ class GraphEditorPageRenderer {
         document: GraphDocument,
     ): String = com.charmnight.linkgraph.ui.resolveDiffTitle(entry, document)
 
-    /** 把节点转换为前端使用的 Map 结构。 */
+    /** 把节点转换为前端使用的 Map 结构：详见 top-level fun nodeToMap。 */
     private fun nodeToMap(
         node: GraphNode,
         layoutState: GraphLayoutState? = null,
-    ): Map<String, Any?> = linkedMapOf(
-        "id" to node.id,
-        "type" to node.type.name,
-        "title" to node.title,
-        "location" to node.location,
-        "signature" to node.signature,
-        "inputs" to node.inputs,
-        "outputs" to node.outputs,
-        "doc" to node.doc,
-        "certainty" to node.certainty.name,
-        "bindingStatus" to node.bindingStatus.name,
-        "diffStatus" to node.diff.status.takeUnless { it.name == "MATCHED" }?.name,
-        "sourceTag" to node.sourceTag.name,
-        "metadata" to node.metadata.semanticMetadata(),
-        "position" to (layoutState?.positions?.get(node.id)?.let { it.x to it.y } ?: node.metadata.uiPosition())?.let { position ->
-            linkedMapOf(
-                "x" to position.first,
-                "y" to position.second,
-            )
-        },
-    )
+    ): Map<String, Any?> = com.charmnight.linkgraph.ui.nodeToMap(node, layoutState)
 
     /** 把边转换为前端使用的 Map 结构。 */
     private fun edgeToMap(edge: GraphEdge): Map<String, Any?> =
@@ -954,27 +907,12 @@ class GraphEditorPageRenderer {
     )
 
     /** 把图补丁转换为前端使用的 Map 结构。 */
-    private fun patchToMap(patch: GraphPatch): Map<String, Any?> = linkedMapOf(
-        "summary" to patch.summary,
-        "operations" to patch.operations.map(::patchOperationToMap),
-        "addedNodeIds" to patch.addedNodeIds,
-        "removedNodeIds" to patch.removedNodeIds,
-        "addedEdgeIds" to patch.addedEdgeIds,
-        "removedEdgeIds" to patch.removedEdgeIds,
-    )
+    private fun patchToMap(patch: GraphPatch): Map<String, Any?> =
+        com.charmnight.linkgraph.ui.patchToMap(patch)
 
-    /** 把单条补丁操作转换为前端使用的 Map 结构。 */
-    private fun patchOperationToMap(operation: GraphPatchOperation): Map<String, Any?> = linkedMapOf(
-        "id" to operation.id,
-        "action" to operation.action.name,
-        "elementKind" to operation.elementKind.name,
-        "elementId" to operation.elementId,
-        "title" to operation.title,
-        "summary" to operation.summary,
-        "node" to operation.node?.let(::nodeToMap),
-        "edge" to operation.edge?.let(::edgeToMap),
-        "metadata" to operation.metadata,
-    )
+    /** 把单条补丁操作转换为前端使用的 Map 结构：详见 top-level fun patchOperationToMap。 */
+    private fun patchOperationToMap(operation: GraphPatchOperation): Map<String, Any?> =
+        com.charmnight.linkgraph.ui.patchOperationToMap(operation)
 
     /** 把补丁类结果转换为前端使用的 Map 结构。 */
     internal fun patchResultToMap(
@@ -1026,19 +964,8 @@ class GraphEditorPageRenderer {
     )
 
     /** 把证据发现项转换为前端使用的 Map 结构。 */
-    private fun resultEvidenceFindingToMap(finding: com.charmnight.linkgraph.llm.ResultEvidenceFinding): Map<String, Any?> = linkedMapOf(
-        "id" to finding.id,
-        "claim" to finding.claim,
-        "evidenceLevel" to finding.evidenceLevel.name,
-        "references" to finding.references.map { reference ->
-            linkedMapOf(
-                "nodeId" to reference.nodeId,
-                "filePath" to reference.filePath,
-                "startLine" to reference.startLine,
-                "endLine" to reference.endLine,
-            )
-        },
-    )
+    private fun resultEvidenceFindingToMap(finding: com.charmnight.linkgraph.llm.ResultEvidenceFinding): Map<String, Any?> =
+        com.charmnight.linkgraph.ui.resultEvidenceFindingToMap(finding)
 
     /** 把草稿补丁应用结果转换为前端使用的 Map 结构。 */
     private fun draftPatchApplyResultToMap(result: DraftPatchApplyResult): Map<String, Any?> = linkedMapOf(
@@ -1294,24 +1221,6 @@ class GraphEditorPageRenderer {
     )
 
     /** 从节点元数据中提取 UI 坐标。 */
-    private fun Map<String, String>.uiPosition(): Pair<Double, Double>? {
-        /** 节点 x 坐标。 */
-        val x = this[GraphMetadataKeys.Ui.X]?.toDoubleOrNull() ?: return null
-        /** 节点 y 坐标。 */
-        val y = this[GraphMetadataKeys.Ui.Y]?.toDoubleOrNull() ?: return null
-        return x to y
-    }
-
-    /** 过滤掉纯 UI 布局相关元数据，只保留语义元数据。 */
-    private fun Map<String, String>?.semanticMetadata(): Map<String, String>? {
-        if (this == null) {
-            return null
-        }
-        /** 排除 UI 与布局键后的剩余元数据。 */
-        val filtered = this.filterKeys { key ->
-            !key.startsWith(UI_PREFIX) && !key.startsWith(LAYOUT_PREFIX)
-        }
-        return filtered.ifEmpty { null }
-    }
+    /** uiPosition / semanticMetadata 已抽到 top-level（GraphEditorPageRendererHelpers.kt）。 */
 
 }
