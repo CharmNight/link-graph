@@ -67,6 +67,16 @@ class ArchitectureGraphProjector(
     private val displayLayerResolver: ArchitectureDisplayLayerResolver = ArchitectureDisplayLayerResolver(),
     private val hiddenBucketProjector: GraphHiddenBucketProjector = GraphHiddenBucketProjector(),
 ) : GraphProjector {
+    // P2-1 真正的架构分解：包视图投影委托给独立的 PackageGraphProjector
+    private val packageGraphProjector = PackageGraphProjector(
+        graphDocumentBuilder = ::graphDocument,
+        computeDisplayContexts = ::computeStructureDisplayContexts,
+        viewportPolicy = viewportPolicy,
+        enrichGraph = { graph -> graph.withMissingArchitecturePresentationMetadata() },
+        buildPresentation = ::architecturePresentation,
+        buildProjectionIndex = ::readonlyProjectionIndex,
+        selectAnchorNodeId = ::selectArchitectureAnchorNodeId,
+    )
     /**
      * 投影架构索引为架构图视图结果。
      *
@@ -86,7 +96,7 @@ class ArchitectureGraphProjector(
         freshness: IndexedGraphFreshness = IndexedGraphFreshness(),
     ): ArchitectureGraphResult {
         if (request.scope is IndexedGraphScope.Package) {
-            return projectPackageGraph(index, request, cacheState, freshness)
+            return packageGraphProjector.project(index, request, cacheState, freshness)
         }
         // 本次请求允许参与结构视图的节点种类（服务、组件、资源，按需扩展库/JDK）。
         val structureKinds = request.projectStructureKinds()
@@ -99,7 +109,7 @@ class ArchitectureGraphProjector(
         // 至少被一条 OVERVIEW 聚合关系覆盖的节点，用于判断孤立的"清单型"节点。
         val relationBackedNodeIds = relationBackedProjectStructureNodeIds(index)
         // 节点展示上下文（去重后的展示名、可读基名等）。
-        val structureDisplayContexts = structureNodes.structureDisplayContexts()
+        val structureDisplayContexts = computeStructureDisplayContexts(structureNodes)
         val fullGraph = projectStructureGraphDocument(
             index = index,
             nodes = structureNodes,
@@ -171,140 +181,6 @@ class ArchitectureGraphProjector(
         )
     }
 
-    /**
-     * 包视图投影：把架构索引转换为以包为单位的视图。
-     *
-     * 包视图仅保留包、资源、外部库与 JDK 这几类节点；当请求指定了具体包范围时，
-     * 视图会聚焦到该包及其直接相关的边；否则仅保留至少参与一条包级关系的节点。
-     * 剩余未被任何关系覆盖的"清单型"节点会被单独统计，用于摘要展示。
-     *
-     * @param index 架构索引
-     * @param request 索引请求，携带范围与视口参数
-     * @param cacheState 缓存状态描述
-     * @param freshness 索引新鲜度
-     * @return 包视图的架构图投影结果
-     */
-    private fun projectPackageGraph(
-        index: ArchitectureGraphIndex,
-        request: IndexedGraphRequest,
-        cacheState: String,
-        freshness: IndexedGraphFreshness,
-    ): ArchitectureGraphResult {
-        // 包视图允许出现的节点种类。
-        val packageViewKinds = setOf(
-            ArchitectureNodeKind.PACKAGE,
-            ArchitectureNodeKind.RESOURCE,
-            ArchitectureNodeKind.LIBRARY,
-            ArchitectureNodeKind.JDK,
-        )
-        val candidateNodes = index.graph.nodes.filter { node ->
-            node.kind in packageViewKinds && node.isVisibleProjectStructureNode(index)
-        }
-        val packageNodes = candidateNodes.filter { node -> node.kind == ArchitectureNodeKind.PACKAGE }
-        // 所有参与包级关系的节点 ID 集合（默认情况下作为可见集合）。
-        val relationshipNodeIds = index.graph.edges
-            .asSequence()
-            .filter { edge -> edge.metadata["architecture.aggregate.level"] == "PACKAGE" }
-            .flatMap { edge -> sequenceOf(edge.fromNodeId, edge.toNodeId) }
-            .toSet()
-        // 当请求指定了具体包时，scope 范围内的所有包节点 ID。
-        val scopedPackage = (request.scope as? IndexedGraphScope.Package)?.qualifiedName?.takeIf(String::isNotBlank)
-        val scopedNodeIds = scopedPackage
-            ?.let { packageName ->
-                packageNodes
-                    .filter { node -> node.qualifiedName == packageName || node.qualifiedName.startsWith("$packageName.") }
-                    .mapTo(linkedSetOf(), ArchitectureNode::id)
-            }
-            .orEmpty()
-        // 最终需要纳入完整图的节点 ID：聚焦范围时为"范围内 + 与之直接相关的"，
-        // 否则使用全部参与包级关系的节点。
-        val fullGraphNodeIds = if (scopedNodeIds.isNotEmpty()) {
-            scopedNodeIds + index.graph.edges
-                .asSequence()
-                .filter { edge -> edge.metadata["architecture.aggregate.level"] == "PACKAGE" }
-                .filter { edge -> edge.fromNodeId in scopedNodeIds || edge.toNodeId in scopedNodeIds }
-                .flatMap { edge -> sequenceOf(edge.fromNodeId, edge.toNodeId) }
-                .toSet()
-        } else {
-            relationshipNodeIds
-        }
-        // 至少参与一条关系的节点，会进入正式展示图。
-        val relationshipNodes = candidateNodes.filter { node -> node.id in fullGraphNodeIds }
-        // 完全孤立、仅作清单展示的节点，仅参与统计不进入图。
-        val inventoryOnlyNodes = candidateNodes.filter { node -> node.id !in fullGraphNodeIds }
-        val packageDisplayContexts = relationshipNodes.structureDisplayContexts()
-        val packageGraph = graphDocument(
-            index = index,
-            nodes = relationshipNodes,
-            includeClassEdges = true,
-            viewMode = AnalysisDisplayMode.ARCHITECTURE_GRAPH,
-            request = request,
-            displayContexts = packageDisplayContexts,
-        )
-        // 仅保留包级别的边，剔除类级别细枝末节。
-        val fullGraph = packageGraph.copy(
-            edges = packageGraph.edges.filter { edge -> edge.metadata["architecture.aggregate.level"] == "PACKAGE" },
-        )
-        val visibleWindow = fullGraph.visibleWindow(
-            policy = request.architectureViewportPolicy(),
-            seedNodeTypes = setOf(NodeType.PACKAGE, NodeType.RESOURCE, NodeType.LIBRARY),
-            nodePriority = ::architectureNodePriority,
-            edgePriority = ::architectureEdgePriority,
-        )
-        val visibleGraph = visibleWindow.graph.withMissingArchitecturePresentationMetadata()
-        val anchorNodeId = selectArchitectureAnchorNodeId(visibleGraph)
-        val hiddenCounts = graphProjectionHiddenCounts(visibleGraph = visibleGraph, fullGraph = fullGraph)
-        val hiddenNodeCount = hiddenCounts.hiddenNodeCount.coerceAtLeast(visibleWindow.hiddenNodeCount)
-        val hiddenEdgeCount = hiddenCounts.hiddenEdgeCount.coerceAtLeast(visibleWindow.hiddenEdgeCount)
-        return ArchitectureGraphResult(
-            visibleGraph = visibleGraph,
-            fullGraph = fullGraph,
-            anchorNodeId = anchorNodeId,
-            summary = ArchitectureGraphSummary(
-                moduleCount = visibleGraph.nodes.count { it.type == NodeType.MODULE },
-                packageCount = visibleGraph.nodes.count { it.type == NodeType.PACKAGE },
-                serviceCount = visibleGraph.nodes.count { it.type == NodeType.SERVICE },
-                componentCount = visibleGraph.nodes.count { it.type == NodeType.COMPONENT },
-                resourceCount = visibleGraph.nodes.count { it.type == NodeType.RESOURCE },
-                layerCount = visibleGraph.nodes.count { it.type == NodeType.LAYER },
-                libraryCount = visibleGraph.nodes.count { it.type == NodeType.LIBRARY },
-                jdkCount = visibleGraph.nodes.count { it.metadata["architecture.node.kind"] == ArchitectureNodeKind.JDK.name },
-                relationCount = visibleGraph.edges.size,
-                classCount = index.symbolIndex.classesByQualifiedName.size,
-                relationshipNodeCount = relationshipNodes.size,
-                inventoryOnlyNodeCount = inventoryOnlyNodes.size,
-                unconnectedPackageCount = inventoryOnlyNodes.count { it.kind == ArchitectureNodeKind.PACKAGE },
-                unconnectedComponentCount = inventoryOnlyNodes.count { it.kind == ArchitectureNodeKind.COMPONENT },
-                unconnectedServiceBoundaryCount = inventoryOnlyNodes.count { it.kind == ArchitectureNodeKind.SERVICE },
-                unconnectedResourceCount = inventoryOnlyNodes.count { it.kind == ArchitectureNodeKind.RESOURCE },
-                externalDependencyGroupCount = candidateNodes.count { it.kind == ArchitectureNodeKind.LIBRARY },
-                jdkGroupCount = candidateNodes.count { it.kind == ArchitectureNodeKind.JDK },
-                truncated = index.graph.truncated || visibleWindow.truncated || hiddenNodeCount > 0 || hiddenEdgeCount > 0,
-                hiddenNodeCount = hiddenNodeCount,
-                hiddenEdgeCount = hiddenEdgeCount,
-                indexed = request.toSummary(
-                    index = index,
-                    visibleGraph = visibleGraph,
-                    fullGraph = fullGraph,
-                    anchorNodeId = anchorNodeId,
-                    scopedNodeCount = fullGraph.nodes.size,
-                    candidateNodeCount = relationshipNodes.size,
-                    candidateEdgeCount = fullGraph.edges.size,
-                    hiddenNodeCount = hiddenNodeCount,
-                    hiddenEdgeCount = hiddenEdgeCount,
-                    truncated = index.graph.truncated || visibleWindow.truncated || hiddenNodeCount > 0 || hiddenEdgeCount > 0,
-                    cacheState = cacheState,
-                    freshness = freshness,
-                ),
-            ),
-            projectionIndex = readonlyProjectionIndex(visibleGraph),
-            presentation = architecturePresentation(
-                visibleGraph = visibleGraph,
-                fullGraph = fullGraph,
-                anchorNodeId = anchorNodeId,
-            ),
-        )
-    }
 
     /**
      * 把架构节点集合投影为通用图文档。
@@ -331,7 +207,7 @@ class ArchitectureGraphProjector(
         includeClassEdges: Boolean,
         viewMode: AnalysisDisplayMode,
         request: IndexedGraphRequest,
-        displayContexts: Map<String, StructureDisplayContext> = nodes.structureDisplayContexts(),
+        displayContexts: Map<String, StructureDisplayContext> = computeStructureDisplayContexts(nodes),
         supportNodeIds: Set<String> = emptySet(),
         relationBackedNodeIds: Set<String> = emptySet(),
     ): GraphDocument {
@@ -681,19 +557,19 @@ class ArchitectureGraphProjector(
      * 流程：先计算每个节点的"可读基名"，统计出现冲突的基名；
      * 冲突的节点回退到最短唯一后缀，作为展示名。
      */
-    private fun List<ArchitectureNode>.structureDisplayContexts(): Map<String, StructureDisplayContext> {
-        val readableBaseNames = associate { node -> node.id to node.readableStructureBaseName(this) }
-        // 出现次数大于 1 的基名集合，用于回退到更长的唯一名称。
+    /** P2-1: 计算节点展示上下文，供 PackageGraphProjector 通过函数引用调用。 */
+    private fun computeStructureDisplayContexts(nodes: List<ArchitectureNode>): Map<String, StructureDisplayContext> {
+        val readableBaseNames = nodes.associate { node -> node.id to node.readableStructureBaseName(nodes) }
         val duplicateBaseNames = readableBaseNames.values
             .filter(String::isNotBlank)
             .groupingBy { name -> name }
             .eachCount()
             .filterValues { count -> count > 1 }
             .keys
-        return associate { node ->
+        return nodes.associate { node ->
             val baseName = readableBaseNames.getValue(node.id)
             val displayName = if (baseName in duplicateBaseNames) {
-                node.shortestUniqueStructureName(this)
+                node.shortestUniqueStructureName(nodes)
             } else {
                 baseName
             }
