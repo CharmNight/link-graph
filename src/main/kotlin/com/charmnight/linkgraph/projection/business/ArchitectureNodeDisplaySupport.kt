@@ -88,7 +88,7 @@ internal fun ArchitectureNode.memberRoleRank(index: ArchitectureGraphIndex): Int
     if (memberClasses.any { cls -> cls.stereotype == JvmStereotype.SERVICE }) return 1
     if (memberClasses.any { cls -> cls.stereotype == JvmStereotype.REPOSITORY }) return 2
     if (memberClasses.any { cls -> cls.stereotype == JvmStereotype.CONFIGURATION }) return 3
-    return Int.MAX_VALUE
+    return 4
 }
 
 /** 计算节点的可读基名：剥除公共前缀 + 组织前缀 + 模块段后保留的唯一片段。 */
@@ -173,34 +173,56 @@ internal fun ArchitectureNode.isBroadProjectStructureAggregate(index: Architectu
     return memberPaths.size >= 20
 }
 
-/** 判定节点是否属于辅助/测试性质：包名或源码路径命中 support 段集合。 */
+/** 判定组件/服务节点是否属于辅助性质（demo/test/mock/benchmark 等）。 */
 internal fun ArchitectureNode.isSupportProjectStructureNode(index: ArchitectureGraphIndex): Boolean {
-    if (kind == ArchitectureNodeKind.RESOURCE) {
-        return memberResourceIds.mapNotNull { memberId -> index.findSymbol(memberId) }
-            .mapNotNull { symbol -> symbol.source?.displayPath }
-            .any { path -> path.hasSupportSourcePath() }
-    }
-    val packageName = packageName ?: return false
-    if (packageName.split('.').any { segment -> segment.lowercase() in SUPPORT_PACKAGE_SEGMENTS }) {
-        return true
-    }
-    return memberClassIds.mapNotNull { memberId -> index.findSymbol(memberId) }
-        .mapNotNull { symbol -> symbol.source?.displayPath }
-        .any { path -> path.hasSupportSourcePath() }
-}
-
-/** 判定节点是否在项目结构视图中可见：非辅助节点且有成员类或资源。 */
-internal fun ArchitectureNode.isVisibleProjectStructureNode(index: ArchitectureGraphIndex): Boolean {
-    if (isSupportProjectStructureNode(index)) {
+    if (kind !in setOf(ArchitectureNodeKind.COMPONENT, ArchitectureNodeKind.SERVICE)) {
         return false
     }
-    return memberClassIds.isNotEmpty() || memberResourceIds.isNotEmpty()
+    val packageSegments = qualifiedName.split('.').filter(String::isNotBlank).map(String::lowercase)
+    if (packageSegments.any { segment -> segment in SUPPORT_PACKAGE_SEGMENTS }) {
+        return true
+    }
+    val memberClasses = memberClassIds.mapNotNull { memberId -> index.findSymbol(memberId) as? JvmClassSymbol }
+    if (memberClasses.isEmpty()) {
+        return false
+    }
+    return memberClasses.all { cls ->
+        cls.testSource ||
+            cls.source?.displayPath?.hasSupportSourcePath() == true ||
+            cls.packageName.split('.').filter(String::isNotBlank).map(String::lowercase).any { segment ->
+                segment in SUPPORT_PACKAGE_SEGMENTS
+            }
+    }
 }
 
-/** 返回节点所有成员资源的 display path 列表。 */
+/** 判定节点是否在项目结构视图中可见：非 RESOURCE 节点始终可见；RESOURCE 检查排除路径段。 */
+internal fun ArchitectureNode.isVisibleProjectStructureNode(index: ArchitectureGraphIndex): Boolean {
+    if (kind != ArchitectureNodeKind.RESOURCE) {
+        return true
+    }
+    val paths = resourcePaths(index)
+    return paths.isEmpty() || paths.any { path -> !path.hasExcludedResourcePathSegment() }
+}
+
+/** 返回节点所有资源路径：自身 metadata 路径 + 成员资源符号路径。 */
 internal fun ArchitectureNode.resourcePaths(index: ArchitectureGraphIndex): List<String> =
-    memberResourceIds.mapNotNull { memberId -> index.findSymbol(memberId) }
-        .mapNotNull { symbol -> symbol.source?.displayPath }
+    buildList {
+        metadata["resource.path"]?.let(::add)
+        memberResourceIds.mapNotNullTo(this) { resourceId ->
+            index.findSymbol(resourceId)?.source?.displayPath
+        }
+    }
+
+/** 判定路径是否含被排除的资源段（build/coverage/dist/out/target/temp/tmp 等）。 */
+private fun String.hasExcludedResourcePathSegment(): Boolean {
+    val segments = replace('\\', '/').split('/').filter(String::isNotBlank).map(String::lowercase)
+    return segments.any { segment -> segment in GENERATED_RESOURCE_PATH_SEGMENTS }
+}
+
+/** 生成资源路径段集合。 */
+private val GENERATED_RESOURCE_PATH_SEGMENTS = setOf(
+    "build", "coverage", "dist", "out", "target", "temp", "tmp",
+)
 
 /** 判定源码路径是否属于辅助/测试路径。 */
 private fun String.hasSupportSourcePath(): Boolean {

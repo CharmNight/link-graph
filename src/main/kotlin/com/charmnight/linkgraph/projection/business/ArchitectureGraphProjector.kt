@@ -645,88 +645,9 @@ class ArchitectureGraphProjector(
         }
     }
 
-    /**
-     * 节点的可读结构名：资源节点直接使用 title，
-     * 其余类型在 title 为空时回退到全限定名的最后一段。
-     */
-    private fun ArchitectureNode.readableStructureName(): String {
-        if (kind == ArchitectureNodeKind.RESOURCE) {
-            return title
-        }
-        return title.ifBlank { qualifiedName.substringAfterLast('.') }
-    }
+    /** readableStructureName / structureSubtitle 已抽到 top-level（ArchitectureNodeDisplaySupport.kt）。 */
 
-    /**
-     * 构造节点在结构视图中的子标题，区分资源、服务、组件、外部依赖与 JDK。
-     */
-    private fun ArchitectureNode.structureSubtitle(
-        displayName: String,
-        displayLayer: ArchitectureDisplayLayer,
-    ): String =
-        when (kind) {
-            ArchitectureNodeKind.RESOURCE -> "资源 · ${memberResourceIds.size.coerceAtLeast(1)} 项"
-            ArchitectureNodeKind.SERVICE -> "${displayLayer.label} · 服务边界"
-            ArchitectureNodeKind.COMPONENT -> "${displayLayer.label} · 组件"
-            ArchitectureNodeKind.LIBRARY -> "外部依赖 · ${memberClassIds.size} 类型"
-            ArchitectureNodeKind.JDK -> "JDK · ${memberClassIds.size} 类型"
-            else -> displayLayer.label
-        }
-
-    /**
-     * 计算节点在结构视图中的排序权重。
-     *
-     * 数值越小越靠前。综合考虑：聚合是否过宽、是否辅助节点、是否孤立、
-     * 分层权重、成员角色权重、名称权重以及"更小的成员数加分"。
-     */
-    private fun ArchitectureNode.structureRank(
-        index: ArchitectureGraphIndex,
-        displayLayer: ArchitectureDisplayLayer,
-        tooBroad: Boolean,
-        supportNode: Boolean,
-        relationBackedNode: Boolean,
-    ): Int {
-        if (tooBroad) {
-            return 90_000
-        }
-        val name = readableStructureName().lowercase()
-        val nameRank = when (name) {
-            "api", "controller", "web" -> 0
-            "service", "application", "app" -> 1
-            "domain", "model" -> 2
-            "repository", "dao", "mapper", "data" -> 3
-            "config", "infra", "infrastructure" -> 4
-            "resource", "resources" -> 5
-            else -> 40
-        }
-        val supportPenalty = if (supportNode) 5_000 else 0
-        val orphanPenalty = if (relationBackedNode) 0 else 2_000
-        val roleRank = memberRoleRank(index)
-        val sizeBoost = (100 - memberClassIds.size.coerceAtMost(100)).coerceAtLeast(0)
-        return supportPenalty + orphanPenalty + displayLayer.order * 100 + roleRank * 10 + nameRank + sizeBoost
-    }
-
-    /**
-     * 根据成员类中最高优先级的 Stereotype 推断角色权重。
-     *
-     * Controller 优先级最高，依次为 Service、Repository、Configuration，
-     * 都不匹配时返回最大值表示未知。
-     */
-    private fun ArchitectureNode.memberRoleRank(index: ArchitectureGraphIndex): Int {
-        val memberClasses = memberClassIds.mapNotNull { memberId -> index.findSymbol(memberId) as? JvmClassSymbol }
-        if (memberClasses.any { cls -> cls.stereotype == JvmStereotype.CONTROLLER }) {
-            return 0
-        }
-        if (memberClasses.any { cls -> cls.stereotype == JvmStereotype.SERVICE }) {
-            return 1
-        }
-        if (memberClasses.any { cls -> cls.stereotype == JvmStereotype.REPOSITORY }) {
-            return 2
-        }
-        if (memberClasses.any { cls -> cls.stereotype == JvmStereotype.CONFIGURATION }) {
-            return 3
-        }
-        return 4
-    }
+    /** structureRank / memberRoleRank 已抽到 top-level（ArchitectureNodeDisplaySupport.kt）。 */
 
     /**
      * 收集所有被识别为辅助性质（demo/test/mock 等）的组件/服务节点 ID。
@@ -752,43 +673,7 @@ class ArchitectureGraphProjector(
             .flatMap { edge -> sequenceOf(edge.fromNodeId, edge.toNodeId) }
             .toSet()
 
-    /**
-     * 判定组件/服务节点是否属于辅助性质。
-     *
-     * 判定规则：包路径中含 demo/test/mock/benchmark 等关键字，
-     * 或所有成员类都是测试源/位于测试源路径下。
-     */
-    private fun ArchitectureNode.isSupportProjectStructureNode(index: ArchitectureGraphIndex): Boolean {
-        if (kind !in setOf(ArchitectureNodeKind.COMPONENT, ArchitectureNodeKind.SERVICE)) {
-            return false
-        }
-        val packageSegments = qualifiedName.split('.').filter(String::isNotBlank).map(String::lowercase)
-        if (packageSegments.any { segment -> segment in supportPackageSegments }) {
-            return true
-        }
-        val memberClasses = memberClassIds.mapNotNull { memberId -> index.findSymbol(memberId) as? JvmClassSymbol }
-        if (memberClasses.isEmpty()) {
-            return false
-        }
-        return memberClasses.all { cls ->
-            cls.testSource ||
-                cls.source?.displayPath?.hasSupportSourcePath() == true ||
-                cls.packageName.split('.').filter(String::isNotBlank).map(String::lowercase).any { segment ->
-                    segment in supportPackageSegments
-                }
-        }
-    }
-
-    /**
-     * 判定源代码路径是否位于测试/示例目录下。
-     */
-    private fun String.hasSupportSourcePath(): Boolean {
-        val segments = replace('\\', '/')
-            .split('/')
-            .filter(String::isNotBlank)
-            .map(String::lowercase)
-        return segments.any { segment -> segment in supportSourcePathSegments }
-    }
+    /** isSupportProjectStructureNode / hasSupportSourcePath 已抽到 top-level（ArchitectureNodeDisplaySupport.kt）。 */
 
     /**
      * 为一组节点计算展示上下文（用于避免展示名冲突）。
