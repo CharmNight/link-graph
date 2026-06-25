@@ -989,19 +989,8 @@ class ArchitectureGraphProjector(
     /**
      * 把展示分层转换为前端可识别的展示元数据键值对。
      */
-    private fun ArchitectureDisplayLayer.presentationMetadata(): Map<String, String> =
-        mapOf(
-            "presentation.role" to role,
-            "presentation.laneId" to laneId,
-            "presentation.priority" to order.toString(),
-            "presentation.compact" to "true",
-        )
-
-    /**
-     * 把隐藏桶的 ID 转换为中文展示标签。
-     */
-    private fun architectureBucketLabel(bucket: String): String =
-        com.charmnight.linkgraph.projection.business.architectureBucketLabel(bucket)
+    /** ArchitectureDisplayLayer.presentationMetadata 已抽到 top-level（详见 ArchitectureGraphProjectorHelpers.kt）。 */
+    /** architectureBucketLabel 已抽到 top-level（详见 ArchitectureGraphProjectorHelpers.kt）。 */
 
     /**
      * 构造节点的源代码示例元数据：数量、首要示例（用于导航）以及全部样本明细。
@@ -1106,77 +1095,10 @@ class ArchitectureGraphProjector(
      *
      * 注意：外部库与 JDK 在通用类型系统中合并为 [NodeType.LIBRARY]。
      */
-    private fun ArchitectureNodeKind.toNodeType(): NodeType =
-        when (this) {
-            ArchitectureNodeKind.MODULE -> NodeType.MODULE
-            ArchitectureNodeKind.PACKAGE -> NodeType.PACKAGE
-            ArchitectureNodeKind.COMPONENT -> NodeType.COMPONENT
-            ArchitectureNodeKind.CLASS -> NodeType.CLASS
-            ArchitectureNodeKind.INTERFACE -> NodeType.INTERFACE
-            ArchitectureNodeKind.ENUM -> NodeType.ENUM
-            ArchitectureNodeKind.ANNOTATION -> NodeType.ANNOTATION
-            ArchitectureNodeKind.RECORD -> NodeType.RECORD
-            ArchitectureNodeKind.OBJECT -> NodeType.OBJECT
-            ArchitectureNodeKind.SERVICE -> NodeType.SERVICE
-            ArchitectureNodeKind.RESOURCE -> NodeType.RESOURCE
-            ArchitectureNodeKind.LAYER -> NodeType.LAYER
-            ArchitectureNodeKind.LIBRARY,
-            ArchitectureNodeKind.JDK,
-            -> NodeType.LIBRARY
-        }
-
-    /**
-     * 判定节点种类是否属于"类型节点"（可使用全限定名作为签名）。
-     */
-    private fun ArchitectureNodeKind.isTypeLike(): Boolean =
-        this in setOf(
-            ArchitectureNodeKind.CLASS,
-            ArchitectureNodeKind.INTERFACE,
-            ArchitectureNodeKind.ENUM,
-            ArchitectureNodeKind.ANNOTATION,
-            ArchitectureNodeKind.RECORD,
-            ArchitectureNodeKind.OBJECT,
-        )
-
-    /**
-     * 节点优先级：数字越小越优先保留。
-     *
-     * 优先使用预计算的 `architecture.structureRank`，缺失时按节点类型回退。
-     */
-    private fun architectureNodePriority(node: GraphNode): Int =
-        node.metadata["architecture.structureRank"]?.toIntOrNull()
-            ?: when (node.type) {
-            NodeType.MODULE -> 0
-            NodeType.LAYER -> 1
-            NodeType.SERVICE -> 2
-            NodeType.COMPONENT -> 3
-            NodeType.PACKAGE -> 4
-            NodeType.RESOURCE -> 4
-            NodeType.LIBRARY -> 5
-            else -> 6
-        }
-
-    /**
-     * 边优先级：数字越小越优先保留。
-     *
-     * 结构边最优先，其次按聚合层级，再按 JVM 关系种类排序。
-     */
-    private fun architectureEdgePriority(edge: GraphEdge): Int =
-        when {
-            edge.metadata["architecture.graph.kind"] == "STRUCTURE" -> 0
-            else -> when (edge.metadata["architecture.aggregate"]) {
-                "LAYER" -> 1
-                "SERVICE" -> 2
-                "COMPONENT" -> 3
-                "RESOURCE" -> 4
-                "PACKAGE" -> 5
-                else -> when (edge.metadata["jvm.relation.kind"]) {
-                    JvmRelationKind.MODULE_CONTAINS_PACKAGE.name -> 6
-                    JvmRelationKind.SPI_PROVIDES.name -> 7
-                    else -> 6
-                }
-            }
-        }
+    /** ArchitectureNodeKind.toNodeType 已抽到 top-level（详见 ArchitectureGraphProjectorHelpers.kt）。 */
+    /** ArchitectureNodeKind.isTypeLike 已抽到 top-level（详见 ArchitectureGraphProjectorHelpers.kt）。 */
+    /** architectureNodePriority 已抽到 top-level（详见 ArchitectureGraphProjectorHelpers.kt）。 */
+    /** architectureEdgePriority 已抽到 top-level（详见 ArchitectureGraphProjectorHelpers.kt）。 */
 
     /**
      * 把 JVM 关系种类映射到展示层"显示关系种类"和中文标签。
