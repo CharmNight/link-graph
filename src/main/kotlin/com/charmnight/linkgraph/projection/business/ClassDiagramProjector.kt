@@ -48,6 +48,8 @@ class ClassDiagramProjector(
     /** 折叠桶投影器，用于把折叠的节点按角色聚合成隐藏桶以便 UI 展示。 */
     private val hiddenBucketProjector: GraphHiddenBucketProjector = GraphHiddenBucketProjector(),
 ) : GraphProjector {
+    // P2-1 真正的架构分解：类图范围解析委托给独立的 ClassDiagramScopeResolver
+    private val scopeResolver = ClassDiagramScopeResolver()
     /**
      * 把架构索引投影为类图结果。
      * 处理流程：解析锚点 -> 圈定邻域 -> 生成完整图（含 UML 成员）-> 视口裁剪 -> 注入展示元数据与折叠桶。
@@ -72,16 +74,16 @@ class ClassDiagramProjector(
         val anchorClassId = scopeNodeId
             ?.takeIf { nodeId -> index.node(nodeId)?.kind in classLikeKinds }
             ?: explicitScopedClassIds.firstOrNull()
-            ?: defaultAnchorClassId(index)
+            ?: scopeResolver.defaultAnchorClassId(index)
         // 进入类图可见范围的全部类 ID：显式 scope 模式下包含外部一跳，否则围绕锚点扩展邻居。
         val scopedClassIds = if (explicitScopedClassIds.isNotEmpty()) {
-            explicitScopeClassIdsWithExternalOneHop(index, explicitScopedClassIds)
+            scopeResolver.explicitScopeClassIdsWithExternalOneHop(index, explicitScopedClassIds)
         } else {
-            classNeighborhoodIds(index, anchorClassId, request.classDiagram.neighborhoodLimit)
+            scopeResolver.classNeighborhoodIds(index, anchorClassId, request.classDiagram.neighborhoodLimit)
         }
         // 候选类型总数，用于判断邻居扩展是否被截断。
         val neighborhoodCandidateTypeCount = if (explicitScopedClassIds.isEmpty()) {
-            classNeighborhoodCandidateTypeCount(index, anchorClassId)
+            scopeResolver.classNeighborhoodCandidateTypeCount(index, anchorClassId)
         } else {
             scopedClassIds.size
         }
@@ -210,113 +212,6 @@ class ClassDiagramProjector(
                 fallbackAnchorNodeId = anchorClassId ?: scopeNodeId,
             ),
         )
-    }
-
-    /** 在未指定 scope 时挑选默认锚点类：优先关系数最多、命名上更像入口的类。 */
-    private fun defaultAnchorClassId(index: ArchitectureGraphIndex): String? {
-        val relationScoreByNodeId = index.graph.nodes
-            .asSequence()
-            .filter { node -> node.kind in classLikeKinds }
-            .associate { node -> node.id to classRelationScore(index, node.id) }
-        return index.graph.nodes
-            .asSequence()
-            .filter { node -> node.kind in classLikeKinds }
-            .sortedWith(
-                compareBy(
-                    { node -> relationScoreByNodeId.getValue(node.id) == 0 },
-                    { node -> -relationScoreByNodeId.getValue(node.id) },
-                    { node -> classAnchorPriority(node.title) },
-                    { node -> node.qualifiedName },
-                    { node -> node.id },
-                ),
-            )
-            .firstOrNull()
-            ?.id
-    }
-
-    /** 计算某个类节点参与类图的关系条数，作为选择默认锚点的关键评分。 */
-    private fun classRelationScore(
-        index: ArchitectureGraphIndex,
-        classNodeId: String,
-    ): Int =
-        (index.incoming(classNodeId) + index.outgoing(classNodeId)).count { edge ->
-            ClassDiagramRelationPolicy.participatesInClassDiagram(edge) &&
-                index.node(edge.fromNodeId)?.kind in classLikeKinds &&
-                index.node(edge.toNodeId)?.kind in classLikeKinds
-        }
-
-    /** 围绕锚点类按关系优先级圈定邻居，超过 neighborhoodLimit 时按优先级截断。 */
-    private fun classNeighborhoodIds(
-        index: ArchitectureGraphIndex,
-        anchorClassId: String?,
-        neighborhoodLimit: Int,
-    ): Set<String> {
-        val anchorId = anchorClassId ?: return emptySet()
-        val limit = neighborhoodLimit.coerceAtLeast(1)
-        val selected = linkedSetOf(anchorId)
-        val edgeComparator = compareBy<com.charmnight.linkgraph.architecture.ArchitectureEdge>(
-            { edge -> ClassDiagramRelationPolicy.priority(edge) },
-            { edge -> edge.id },
-        )
-        (index.incoming(anchorId) + index.outgoing(anchorId))
-            .asSequence()
-            .filter { edge ->
-                ClassDiagramRelationPolicy.participatesInClassDiagram(edge) &&
-                    index.node(edge.fromNodeId)?.kind in classLikeKinds &&
-                    index.node(edge.toNodeId)?.kind in classLikeKinds
-            }
-            .sortedWith(edgeComparator)
-            .forEach { edge ->
-                for (candidateNodeId in listOf(edge.fromNodeId, edge.toNodeId)) {
-                    if (selected.size >= limit) {
-                        return@forEach
-                    }
-                    selected += candidateNodeId
-                }
-        }
-        return selected
-    }
-
-    /** 统计锚点邻居扩展如果不截断时可达的全部候选类型数，用于判断是否需要标记 truncated。 */
-    private fun classNeighborhoodCandidateTypeCount(
-        index: ArchitectureGraphIndex,
-        anchorClassId: String?,
-    ): Int {
-        val anchorId = anchorClassId ?: return 0
-        val candidateIds = linkedSetOf(anchorId)
-        (index.incoming(anchorId) + index.outgoing(anchorId))
-            .asSequence()
-            .filter { edge ->
-                ClassDiagramRelationPolicy.participatesInClassDiagram(edge) &&
-                    index.node(edge.fromNodeId)?.kind in classLikeKinds &&
-                    index.node(edge.toNodeId)?.kind in classLikeKinds
-            }
-            .flatMap { edge -> sequenceOf(edge.fromNodeId, edge.toNodeId) }
-            .forEach(candidateIds::add)
-        return candidateIds.size
-    }
-
-    /** 显式 scope 模式下补充外部/JDK/库的一跳类，让类图能够展示依赖的外部类型。 */
-    private fun explicitScopeClassIdsWithExternalOneHop(
-        index: ArchitectureGraphIndex,
-        explicitClassIds: Set<String>,
-    ): Set<String> {
-        val selected = linkedSetOf<String>()
-        selected += explicitClassIds
-        explicitClassIds.forEach { classId ->
-            (index.incoming(classId) + index.outgoing(classId))
-                .asSequence()
-                .filter { edge -> ClassDiagramRelationPolicy.participatesInClassDiagram(edge) }
-                .flatMap { edge -> sequenceOf(edge.fromNodeId, edge.toNodeId) }
-                .filter { nodeId -> nodeId !in selected }
-                .filter { nodeId -> index.node(nodeId)?.kind in classLikeKinds }
-                .filter { nodeId ->
-                    val classSymbol = index.findSymbol(nodeId) as? com.charmnight.linkgraph.jvm.index.JvmClassSymbol
-                    classSymbol?.external == true || classSymbol?.library == true || classSymbol?.jdk == true
-                }
-                .forEach { nodeId -> selected += nodeId }
-        }
-        return selected
     }
 
     /** 把通用图边重新分类为 UML 类图关系边，写入 uml.relation.kind 与展示标签。 */
