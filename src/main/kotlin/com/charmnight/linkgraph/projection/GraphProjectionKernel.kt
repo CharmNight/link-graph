@@ -538,8 +538,7 @@ class GraphProjectionKernel(
             ),
         )
 
-    private fun GraphEdge.neighborOf(nodeId: String): String =
-        if (fromNodeId == nodeId) toNodeId else fromNodeId
+    /** GraphEdge.neighborOf 已抽到 top-level（详见 GraphProjectionKernelHelpers.kt）。 */
 
     /** 先为锚点挑选最重要的一圈邻居，作为后续展开种子。 */
     private fun collectAnchorNeighbors(
@@ -791,26 +790,7 @@ class GraphProjectionKernel(
         }
     }
 
-    private fun shouldSuppressCrossMethodBodyExpansion(
-        anchorNodeType: NodeType?,
-        currentNode: GraphNode?,
-        neighborNode: GraphNode?,
-        anchorMethodBodyNodeIds: Set<String>,
-    ): Boolean {
-        if (anchorNodeType != NodeType.METHOD) {
-            return false
-        }
-        if (currentNode == null || neighborNode == null) {
-            return false
-        }
-        if (currentNode.id in anchorMethodBodyNodeIds) {
-            return false
-        }
-        if (currentNode.type != NodeType.METHOD) {
-            return false
-        }
-        return neighborNode.type == NodeType.FLOW_ACTION || neighborNode.type == NodeType.FLOW_SCOPE
-    }
+    /** shouldSuppressCrossMethodBodyExpansion 已抽到 top-level（详见 GraphProjectionKernelHelpers.kt）。 */
 
     /** 从已知隐藏前沿继续扩展，统计完整被折叠的闭包范围。 */
     private fun expandHiddenDirection(
@@ -837,136 +817,12 @@ class GraphProjectionKernel(
     }
 
     /** 计算锚点一跳邻居的初始遍历深度。 */
-    private fun seedDepthFromAnchor(
-        edge: GraphEdge,
-        neighborNode: GraphNode?,
-    ): Int = if (isStructuralFlowEdge(edge, neighborNode)) 0 else 1
-
-    /** 计算沿边继续遍历后的深度。 */
-    private fun nextTraversalDepth(
-        currentDepth: Int,
-        edge: GraphEdge,
-        neighborNode: GraphNode?,
-    ): Int = if (isStructuralFlowEdge(edge, neighborNode)) currentDepth else currentDepth + 1
-
-    /** 判断当前边是否属于方法体结构性流程边。 */
-    private fun isStructuralFlowEdge(
-        edge: GraphEdge,
-        neighborNode: GraphNode?,
-    ): Boolean = edge.type == EdgeType.CONTAINS_FLOW && neighborNode?.type == NodeType.FLOW_SCOPE
-
-    /** 收集锚点方法及其直接流程体内的重要节点。 */
-    private fun collectCurrentMethodNodeIds(
-        anchorNodeId: String,
-        outgoingBySource: Map<String, List<GraphEdge>>,
-        nodeById: Map<String, GraphNode>,
-    ): Set<String> {
-        /** 当前方法相关节点集合。 */
-        val currentMethodNodeIds = linkedSetOf(anchorNodeId)
-        /** 广度遍历队列。 */
-        val queue = ArrayDeque<String>().apply { add(anchorNodeId) }
-        while (queue.isNotEmpty()) {
-            /** 当前出队的源节点 ID。 */
-            val sourceNodeId = queue.removeFirst()
-            outgoingBySource[sourceNodeId]
-                .orEmpty()
-                .sortedWith(rootEdgeComparator(nodeById))
-                .forEach { edge ->
-                    /** 当前边指向的目标节点。 */
-                    val targetNode = nodeById[edge.toNodeId] ?: return@forEach
-                    when {
-                        edge.type == EdgeType.CONTAINS_FLOW && targetNode.type == NodeType.FLOW_SCOPE -> {
-                            if (currentMethodNodeIds.add(targetNode.id)) {
-                                queue += targetNode.id
-                            }
-                        }
-
-                        edge.type == EdgeType.CALL && targetNode.type != NodeType.UNCERTAIN_LINK -> {
-                            if (currentMethodNodeIds.add(targetNode.id) && targetNode.type == NodeType.FLOW_ACTION) {
-                                queue += targetNode.id
-                            }
-                        }
-                    }
-                }
-        }
-        return currentMethodNodeIds
-    }
-
-    /** 收集锚点方法本体中的流程节点，不跨出方法体。 */
-    private fun collectAnchorMethodBodyNodeIds(
-        anchorNodeId: String,
-        outgoingBySource: Map<String, List<GraphEdge>>,
-        nodeById: Map<String, GraphNode>,
-    ): Set<String> {
-        /** 锚点方法体节点集合。 */
-        val bodyNodeIds = linkedSetOf(anchorNodeId)
-        /** 广度遍历队列。 */
-        val queue = ArrayDeque<String>().apply { add(anchorNodeId) }
-        while (queue.isNotEmpty()) {
-            /** 当前出队的源节点 ID。 */
-            val sourceNodeId = queue.removeFirst()
-            outgoingBySource[sourceNodeId]
-                .orEmpty()
-                .sortedWith(rootEdgeComparator(nodeById))
-                .forEach { edge ->
-                    /** 当前边指向的目标节点。 */
-                    val targetNode = nodeById[edge.toNodeId] ?: return@forEach
-                    when {
-                        edge.type == EdgeType.CONTAINS_FLOW && targetNode.type == NodeType.FLOW_SCOPE -> {
-                            if (bodyNodeIds.add(targetNode.id)) {
-                                queue += targetNode.id
-                            }
-                        }
-
-                        edge.type == EdgeType.CALL && targetNode.type == NodeType.FLOW_ACTION -> {
-                            if (bodyNodeIds.add(targetNode.id)) {
-                                queue += targetNode.id
-                            }
-                        }
-                    }
-                }
-        }
-        return bodyNodeIds
-    }
-
-    /** 创建上下游折叠摘要节点。 */
-    private fun overflowNode(
-        anchorNodeId: String,
-        direction: OverflowDirection,
-        hiddenNodeCount: Int,
-        hiddenEdgeCount: Int,
-        hiddenCurrentMethodNodeCount: Int,
-        hiddenCrossMethodNodeCount: Int,
-        boundaryNodeCount: Int = 0,
-        expandableNodeCount: Int = hiddenNodeCount,
-    ) = GraphNode(
-        id = GraphNode.stableId(
-            NodeType.UNCERTAIN_LINK,
-            "$anchorNodeId-${direction.name.lowercase()}-overflow",
-            "interactive",
-        ),
-        type = NodeType.UNCERTAIN_LINK,
-        title = "${direction.label}已折叠 $hiddenNodeCount 个节点",
-        signature = "另有 $hiddenEdgeCount 条链路未在当前交互窗口展开",
-        doc = "完整事实图仍保留在后台，可继续问答、导出 Mermaid，或切换到其他方法重新聚焦。",
-        certainty = Certainty.RULE_INFERRED,
-        bindingStatus = BindingStatus.PARTIALLY_SYNCED,
-        sourceTag = GraphSourceTag.UNCERTAIN_FACT,
-        metadata = mapOf(
-            GraphProjectionMetadata.Overflow.DIRECTION to direction.name,
-            GraphProjectionMetadata.Hidden.NODE_COUNT to hiddenNodeCount.toString(),
-            GraphProjectionMetadata.Hidden.EDGE_COUNT to hiddenEdgeCount.toString(),
-            GraphProjectionMetadata.Hidden.CURRENT_METHOD_NODE_COUNT to hiddenCurrentMethodNodeCount.toString(),
-            GraphProjectionMetadata.Hidden.CROSS_METHOD_NODE_COUNT to hiddenCrossMethodNodeCount.toString(),
-            GraphProjectionMetadata.Overflow.BOUNDARY_NODE_COUNT to boundaryNodeCount.toString(),
-            GraphProjectionMetadata.Overflow.EXPANDABLE_NODE_COUNT to expandableNodeCount.toString(),
-            GraphProjectionMetadata.Overflow.PRESENTATION to if (expandableNodeCount == 0 && boundaryNodeCount > 0) {
-                "METHOD_BOUNDARY"
-            } else {
-                "EXPANDABLE"
-            },
-        ),
-    )
+    /** seedDepthFromAnchor 已抽到 top-level（详见 GraphProjectionKernelHelpers.kt）。 */
+    /** nextTraversalDepth 已抽到 top-level（详见 GraphProjectionKernelHelpers.kt）。 */
+    /** isStructuralFlowEdge 已抽到 top-level（详见 GraphProjectionKernelHelpers.kt）。 */
+    /** collectCurrentMethodNodeIds 已抽到 top-level（详见 GraphProjectionKernelHelpers.kt）。 */
+    /** collectAnchorMethodBodyNodeIds 已抽到 top-level（详见 GraphProjectionKernelHelpers.kt）。 */
+    /** overflowNode 已抽到 top-level（详见 GraphProjectionKernelHelpers.kt）。 */
 
     /** 计算边在展示中的优先级。 */
     private fun edgePriority(
@@ -1008,11 +864,7 @@ class GraphProjectionKernel(
     private fun isAccessorLike(node: GraphNode): Boolean =
         com.charmnight.linkgraph.projection.isAccessorLike(node)
 
-    /** 折叠摘要节点的方向类型。 */
-    private enum class OverflowDirection(val label: String) {
-        UPSTREAM("上游"),
-        DOWNSTREAM("下游"),
-    }
+    /** OverflowDirection 已抽到 top-level（详见 GraphProjectionKernelHelpers.kt）。 */
 
     /** 遍历队列中的一帧状态。 */
     private data class TraversalFrame(
