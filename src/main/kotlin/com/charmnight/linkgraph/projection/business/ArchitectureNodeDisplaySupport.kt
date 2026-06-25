@@ -209,15 +209,38 @@ internal fun ArchitectureNode.resourcePaths(index: ArchitectureGraphIndex): List
     buildList {
         metadata["resource.path"]?.let(::add)
         memberResourceIds.mapNotNullTo(this) { resourceId ->
-            index.findSymbol(resourceId)?.source?.displayPath
+            (index.symbolIndex.findSymbol(resourceId) as? com.charmnight.linkgraph.jvm.index.JvmResourceSymbol)?.path
         }
     }
 
-/** 判定路径是否含被排除的资源段（build/coverage/dist/out/target/temp/tmp 等）。 */
+/**
+ * 判定资源路径是否包含应当排除的目录段。
+ *
+ * - 无条件排除段（.cache/.git/.gradle/.idea/node_modules 等）一旦命中即排除
+ * - 生成产物段（build/coverage/dist/out/target/temp/tmp）仅在未出现在 src 之前时排除
+ */
 private fun String.hasExcludedResourcePathSegment(): Boolean {
-    val segments = replace('\\', '/').split('/').filter(String::isNotBlank).map(String::lowercase)
-    return segments.any { segment -> segment in GENERATED_RESOURCE_PATH_SEGMENTS }
+    val segments = replace('\\', '/')
+        .split('/')
+        .filter(String::isNotBlank)
+    return segments.withIndex().any { (index, segment) ->
+        segment in ALWAYS_EXCLUDED_RESOURCE_PATH_SEGMENTS ||
+            segment in GENERATED_RESOURCE_PATH_SEGMENTS && "src" !in segments.take(index)
+    }
 }
+
+/** 资源路径中应当无条件排除的目录段。 */
+private val ALWAYS_EXCLUDED_RESOURCE_PATH_SEGMENTS = setOf(
+    ".cache",
+    ".git",
+    ".gradle",
+    ".idea",
+    ".next",
+    ".nuxt",
+    ".parcel-cache",
+    "build-idea-sandbox",
+    "node_modules",
+)
 
 /** 生成资源路径段集合。 */
 private val GENERATED_RESOURCE_PATH_SEGMENTS = setOf(

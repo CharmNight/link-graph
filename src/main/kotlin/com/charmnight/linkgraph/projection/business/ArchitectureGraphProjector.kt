@@ -705,110 +705,10 @@ class ArchitectureGraphProjector(
     }
 
     /**
-     * 计算节点的可读基名：去掉公共根前缀和项目组织前缀后的剩余命名。
-     */
-    private fun ArchitectureNode.readableStructureBaseName(allNodes: List<ArchitectureNode>): String {
-        if (kind == ArchitectureNodeKind.RESOURCE) {
-            return title
-        }
-        val parts = qualifiedName.split('.').filter(String::isNotBlank)
-        if (parts.isEmpty()) {
-            return title.ifBlank { qualifiedName }
-        }
-        // 全部节点的全限定名分段，用于计算公共根。
-        val projectNames = allNodes
-            .asSequence()
-            .map { node -> node.qualifiedName.split('.').filter(String::isNotBlank) }
-            .filter(List<String>::isNotEmpty)
-            .toList()
-        val rootSize = commonRootSize(projectNames)
-        val rootTrimmedParts = parts.drop(rootSize).takeIf(List<String>::isNotEmpty) ?: parts
-        return projectNamespaceTrimmedParts(rootTrimmedParts)
-            .joinToString(".")
-            .ifBlank { title.ifBlank { qualifiedName } }
-    }
-
-    /**
-     * 在分段列表中再剥除模块名/组织前缀，得到更短的展示用命名片段。
-     */
-    private fun ArchitectureNode.projectNamespaceTrimmedParts(parts: List<String>): List<String> {
-        val moduleSegment = moduleName
-            ?.substringAfterLast(':')
-            ?.substringBeforeLast('.')
-            ?.lowercase()
-            ?.takeIf(String::isNotBlank)
-        if (moduleSegment != null) {
-            val moduleIndex = parts.indexOfFirst { part -> part.lowercase() == moduleSegment }
-            if (moduleIndex >= 0 && moduleIndex < parts.lastIndex) {
-                return parts.drop(moduleIndex + 1)
-            }
-        }
-        val organizationTrimmedParts = parts.dropWhile { part -> part.lowercase() in organizationPrefixSegments }
-        return organizationTrimmedParts.takeIf(List<String>::isNotEmpty) ?: parts
-    }
-
-    /**
-     * 计算节点在全节点集合中最短且唯一的名称后缀。
-     *
-     * 从最短 2 段后缀开始尝试，遇到不冲突的后缀即返回，确保展示名既短又唯一。
-     */
-    private fun ArchitectureNode.shortestUniqueStructureName(allNodes: List<ArchitectureNode>): String {
-        if (kind == ArchitectureNodeKind.RESOURCE) {
-            return title
-        }
-        val parts = qualifiedName.split('.').filter(String::isNotBlank)
-        if (parts.size <= 2) {
-            return qualifiedName.ifBlank { title }
-        }
-        for (suffixSize in 2..parts.size) {
-            val suffix = parts.takeLast(suffixSize).joinToString(".")
-            val collides = allNodes.any { other ->
-                other.id != id &&
-                    other.kind != ArchitectureNodeKind.RESOURCE &&
-                    other.qualifiedName
-                        .split('.')
-                        .filter(String::isNotBlank)
-                        .takeLast(suffixSize)
-                        .joinToString(".") == suffix
-            }
-            if (!collides) {
-                return suffix
-            }
-        }
-        return qualifiedName.ifBlank { title }
-    }
-
-    /**
      * 计算多组命名分段列表的公共前缀长度。
      */
     private fun commonRootSize(names: List<List<String>>): Int =
         com.charmnight.linkgraph.projection.business.commonRootSize(names)
-
-    /**
-     * 判定组件/服务聚合是否过于宽泛（命名层级过浅或成员类占比过高）。
-     *
-     * 宽泛的聚合会被 UI 降权或隐藏，避免出现"项目根聚合"这类无意义节点。
-     */
-    private fun ArchitectureNode.isBroadProjectStructureAggregate(index: ArchitectureGraphIndex): Boolean {
-        if (kind !in setOf(ArchitectureNodeKind.COMPONENT, ArchitectureNodeKind.SERVICE)) {
-            return false
-        }
-        val parts = qualifiedName.split('.').filter(String::isNotBlank)
-        if (parts.size <= 1) {
-            return true
-        }
-        if (readableStructureName().isBlank()) {
-            return true
-        }
-        // 项目自身源码类的总数，作为成员数比较的分母。
-        val projectClassCount = index.symbolIndex.classesByQualifiedName.values.count { cls ->
-            !cls.external && !cls.library && !cls.jdk && !cls.testSource
-        }.coerceAtLeast(1)
-        if (memberClassIds.size > projectClassCount * BROAD_STRUCTURE_NODE_RATIO) {
-            return true
-        }
-        return false
-    }
 
     /**
      * 构造架构视图的整体呈现层信息：目标节点、泳道、隐藏桶、控件。
@@ -1076,30 +976,6 @@ class ArchitectureGraphProjector(
             .filter { otherQualifiedName -> otherQualifiedName.startsWith("$this.") }
             .count() >= 2
     }
-
-    /**
-     * 判定节点是否应当出现在结构视图的可见集合中。
-     *
-     * 资源节点需要排除构建产物、缓存目录等噪声路径。
-     */
-    private fun ArchitectureNode.isVisibleProjectStructureNode(index: ArchitectureGraphIndex): Boolean {
-        if (kind != ArchitectureNodeKind.RESOURCE) {
-            return true
-        }
-        val paths = resourcePaths(index)
-        return paths.isEmpty() || paths.any { path -> !path.hasExcludedResourcePathSegment() }
-    }
-
-    /**
-     * 收集节点的所有资源路径：自身元数据中的路径 + 成员资源路径。
-     */
-    private fun ArchitectureNode.resourcePaths(index: ArchitectureGraphIndex): List<String> =
-        buildList {
-            metadata["resource.path"]?.let(::add)
-            memberResourceIds.mapNotNullTo(this) { resourceId ->
-                (index.symbolIndex.findSymbol(resourceId) as? JvmResourceSymbol)?.path
-            }
-        }
 
     /**
      * 判定资源路径是否包含应当排除的目录段。
