@@ -185,21 +185,23 @@ class ArchitectureDebtCleanupTest {
     @Test
     fun localRuleQaResultsNeedRuntimeEvidenceTrustBeforeConfirmableCandidatePath() {
         val source = read("src/main/kotlin/com/charmnight/linkgraph/llm/GraphQaPatchService.kt")
-        // P2-1 拆分后，canUseConfirmableCandidatePath 的实现搬到 QaPatchValidator.kt，
-        // 测试需要同时扫描两个文件以确认 LOCAL_RULE 守卫语义仍存在。
+        // P2-1 深度拆分后，classifyQaOutputs 逻辑搬到 QaPatchClassifier.kt，
+        // canUseConfirmableCandidatePath 实现搬到 QaPatchValidator.kt。
+        // 测试改为扫描 QaPatchClassifier.kt 的 classify 方法块。
+        val classifierSource = read("src/main/kotlin/com/charmnight/linkgraph/llm/qa/QaPatchClassifier.kt")
         val validatorSource = read("src/main/kotlin/com/charmnight/linkgraph/llm/qa/QaPatchValidator.kt")
-        val classifierBlock = source.substringAfter("private fun classifyQaOutputs(")
-            .substringBefore("private fun normalizeCandidateChanges(")
+        val classifyBlock = classifierSource.substringAfter("fun classify(")
+            .substringBefore("private fun normalizeCandidateChanges")
         val candidatePathGuardCount = Regex("""canUseConfirmableCandidatePath\(source,\s*runtimeEvidenceTrusted\)""")
-            .findAll(classifierBlock)
+            .findAll(classifyBlock)
             .count()
 
         assertTrue(
-            classifierBlock.contains("source: LlmResultSource"),
+            classifyBlock.contains("source: LlmResultSource"),
             "QA output classification must receive result source so LOCAL_RULE cannot be treated like remote/runtime output.",
         )
         assertTrue(
-            classifierBlock.contains("runtimeEvidenceTrusted: Boolean"),
+            classifyBlock.contains("runtimeEvidenceTrusted: Boolean"),
             "QA output classification must know whether LOCAL_RULE came from trusted runtime evidence.",
         )
         assertTrue(
@@ -208,8 +210,7 @@ class ArchitectureDebtCleanupTest {
         )
         assertTrue(
             validatorSource.contains("source != LlmResultSource.LOCAL_RULE || runtimeEvidenceTrusted"),
-            "LOCAL_RULE QA output may enter confirmable candidate path only when runtime evidence marked it trusted. " +
-                "P2-1 后该守卫位于 QaPatchValidator.kt。",
+            "LOCAL_RULE QA output may enter confirmable candidate path only when runtime evidence marked it trusted.",
         )
         assertFalse(
             source.contains("buildMockCandidateChangeId("),
