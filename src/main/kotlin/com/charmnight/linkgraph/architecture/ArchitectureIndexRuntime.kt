@@ -65,12 +65,19 @@ class ArchitectureIndexRuntime(
 ) {
     /** JVM 关系解析器注册表。 */
     private val relationResolverRegistry = JvmRelationResolverRegistry()
-    /** 源码内容解析器工厂，按预算与设置生成对应解析器。 */
-    private val sourceResolverFactory = SourceContentResolverFactory(project, ::settingsSnapshot)
     private val logger = Logger.getInstance(ArchitectureIndexRuntime::class.java)
     /** 是否开启构建阶段追踪。 */
     private val traceEnabled: Boolean =
         LinkGraphDebugEnvironment.isEnabled("LINKGRAPH_DEBUG_TRACE")
+    /** P2-1 真正的架构分解：索引构建管道委托给独立的 ArchitectureIndexBuildPipeline */
+    private val buildPipeline = ArchitectureIndexBuildPipeline(
+        project = project,
+        relationResolverRegistry = relationResolverRegistry,
+        logger = logger,
+        traceEnabled = traceEnabled,
+    )
+    /** 源码内容解析器工厂，按预算与设置生成对应解析器。 */
+    private val sourceResolverFactory = SourceContentResolverFactory(project, ::settingsSnapshot)
     /** 各缓存键的构建锁，避免重复构建。 */
     private val buildLocks = ConcurrentHashMap<ArchitectureGraphCacheKey, Any>()
     /** 持久化缓存存储，用于把切片片段落到磁盘。 */
@@ -211,7 +218,7 @@ class ArchitectureIndexRuntime(
                 } else {
                     null
                 }
-                val built = buildUncachedIndex(
+                val built = buildPipeline.build(
                     budget = budget,
                     symbolIndexHint = symbolIndexHint,
                     sourceComponents = sourceComponents,
@@ -831,73 +838,6 @@ class ArchitectureIndexRuntime(
     private fun stableSha256(value: String): String =
         com.charmnight.linkgraph.architecture.stableSha256(value)
 
-    private fun buildUncachedIndex(
-        budget: JvmResolutionBudget,
-        symbolIndexHint: JvmSymbolIndex? = null,
-        sourceComponents: com.charmnight.linkgraph.source.SourceContentResolverComponents,
-    ): ArchitectureGraphIndex {
-        val symbolStartedAt = System.nanoTime()
-        val symbolIndex = symbolIndexHint ?: readActionIfNeeded {
-            JvmSymbolIndexBuilder(
-                project = project,
-                attachedJarIndexProvider = { sourceComponents.attachedJarIndex },
-                trace = { event ->
-                    traceStage(event.stage, event.startedAtNanos, event.details)
-                },
-            ).build(budget)
-        }
-        traceStage("architectureIndex.symbolIndex", symbolStartedAt) {
-            listOf(
-                "source=${if (symbolIndexHint == null) "built" else "hint"}",
-                "modules=${symbolIndex.modulesByName.size}",
-                "packages=${symbolIndex.packagesByName.size}",
-                "classes=${symbolIndex.classesByQualifiedName.size}",
-                "methods=${symbolIndex.methodsBySignature.size}",
-                "fields=${symbolIndex.fieldsByQualifiedName.size}",
-                "resources=${symbolIndex.resourcesByPath.size}",
-            )
-        }
-        val relationStartedAt = System.nanoTime()
-        val relationIndex = readActionIfNeeded {
-            relationResolverRegistry.resolveAll(
-                JvmResolutionContext(
-                    project = project,
-                    symbolIndex = symbolIndex,
-                    sourceResolver = sourceComponents.resolver,
-                    budget = budget,
-                ),
-                traceStage = ::traceStage,
-            )
-        }
-        traceStage("architectureIndex.relationIndex", relationStartedAt) {
-            listOf(
-                "relations=${relationIndex.relations.size}",
-                "truncated=${relationIndex.truncated}",
-            )
-        }
-        val graphStartedAt = System.nanoTime()
-        return ArchitectureGraphIndex.from(symbolIndex, relationIndex, budget = budget)
-            .also { index ->
-                traceStage("architectureIndex.graphBuild", graphStartedAt) {
-                    listOf(
-                        "graphNodes=${index.graph.nodes.size}",
-                        "graphEdges=${index.graph.edges.size}",
-                        "truncated=${index.graph.truncated}",
-                    )
-                }
-            }
-    }
-
-    private fun <T> readActionIfNeeded(action: () -> T): T {
-        val application = ApplicationManager.getApplication()
-        return if (application.isReadAccessAllowed) {
-            action()
-        } else {
-            ReadAction.nonBlocking<T> { action() }
-                .expireWith(project)
-                .executeSynchronously()
-        }
-    }
 
     private fun classDiagramStructureIndexWithBoundedReadActions(
         budget: JvmResolutionBudget,
@@ -1041,6 +981,17 @@ class ArchitectureIndexRuntime(
                         )
                     }
                 }
+        }
+    }
+
+    private fun <T> readActionIfNeeded(action: () -> T): T {
+        val application = ApplicationManager.getApplication()
+        return if (application.isReadAccessAllowed) {
+            action()
+        } else {
+            ReadAction.nonBlocking<T> { action() }
+                .expireWith(project)
+                .executeSynchronously()
         }
     }
 
