@@ -226,3 +226,43 @@ internal fun canUseConfirmableCandidatePath(
     source: LlmResultSource,
     runtimeEvidenceTrusted: Boolean,
 ): Boolean = source != LlmResultSource.LOCAL_RULE || runtimeEvidenceTrusted
+
+/**
+ * 当远程仍以 patch 形式返回结果时，把每条 operation 转换为候选变更，便于统一后续归一化流程。
+ *
+ * 每条候选变更携带：
+ * - changeId = operation.id
+ * - title 回退链（operation.title / summary / elementId）
+ * - targetNodeIds = 节点 + 边端点（去重）
+ * - 子 patch（仅含本 operation 对应的 added/removed ID）
+ * - claimType = operation.metadata["draft.claimType"]
+ * - evidence = 调用方传入的 findings（通常是 base.findings）
+ */
+internal fun deriveCandidateChanges(
+    patch: com.charmnight.linkgraph.model.GraphPatch?,
+    findings: List<ResultEvidenceFinding>,
+): List<CandidateDraftChange> {
+    patch ?: return emptyList()
+    return patch.operations.map { operation ->
+        CandidateDraftChange(
+            changeId = operation.id,
+            status = CandidateDraftChangeStatus.PENDING_CONFIRMATION,
+            title = operation.title ?: operation.summary ?: operation.elementId,
+            targetNodeIds = listOfNotNull(operation.node?.id, operation.edge?.fromNodeId, operation.edge?.toNodeId).distinct(),
+            beforeState = null,
+            afterState = operation.summary ?: operation.title,
+            reason = "由远程问答建议生成。",
+            impactSummary = patch.summary ?: "",
+            claimType = operation.metadata["draft.claimType"],
+            evidence = findings,
+            graphPatch = com.charmnight.linkgraph.model.GraphPatch(
+                summary = patch.summary,
+                operations = listOf(operation),
+                addedNodeIds = patch.addedNodeIds.filter { it == operation.elementId },
+                removedNodeIds = patch.removedNodeIds.filter { it == operation.elementId },
+                addedEdgeIds = patch.addedEdgeIds.filter { it == operation.elementId },
+                removedEdgeIds = patch.removedEdgeIds.filter { it == operation.elementId },
+            ),
+        )
+    }
+}
