@@ -550,15 +550,7 @@ class ClassDiagramProjector(
     }
 
     /** 生成边的排序键，统一类图中边的展示顺序。 */
-    private fun GraphEdge.classDiagramRelationSortKey(): ClassDiagramRelationSortKey =
-        ClassDiagramRelationSortKey(
-            priority = classDiagramEdgePriority(this),
-            kind = classDiagramRelationKind(),
-            label = label.orEmpty(),
-            fromNodeId = fromNodeId,
-            toNodeId = toNodeId,
-            id = id,
-        )
+    /** GraphEdge.classDiagramRelationSortKey 已抽到 top-level（详见 ClassDiagramProjectorHelpers.kt）。 */
 
     /** 返回类图关系类型字符串（详见 top-level fun classDiagramRelationKind）。 */
     /** 推导 UML 关系类型（详见 top-level fun classDiagramUmlRelationKind）。 */
@@ -637,58 +629,13 @@ class ClassDiagramProjector(
         )
     }
 
-    /** 根据源/终点节点 ID 生成稳定的聚合边 ID。 */
-    private fun aggregateRelationId(
-        sourceNodeId: String,
-        targetNodeId: String,
-    ): String =
-        "uml:relation:${sourceNodeId}->${targetNodeId}"
-
-    /** 生成聚合后的展示标签：主标签 + 被隐藏的次级标签数量提示。 */
-    private fun aggregateRelationLabel(edges: List<GraphEdge>): String {
-        val primaryLabel = aggregatePrimaryRelationLabel(edges)
-        val hiddenLabelCount = aggregateSecondaryRelationLabels(edges).size
-        if (hiddenLabelCount <= 0) {
-            return primaryLabel
-        }
-        return "$primaryLabel +$hiddenLabelCount"
-    }
-
-    /** 取聚合组中优先级最高的一条边的展示标签作为主标签。 */
-    private fun aggregatePrimaryRelationLabel(edges: List<GraphEdge>): String =
-        aggregateRelationLabels(edges).firstOrNull()
-            ?: edges.firstOrNull()?.classDiagramDisplayLabel().orEmpty()
-
-    /** 取聚合组中除主标签外的次级标签列表。 */
-    private fun aggregateSecondaryRelationLabels(edges: List<GraphEdge>): List<String> =
-        aggregateRelationLabels(edges).drop(1)
-
-    /** 汇总聚合组中所有边的展示标签并去重，按关系优先级排序。 */
-    private fun aggregateRelationLabels(edges: List<GraphEdge>): List<String> {
-        val labelSourceEdges = edges
-            .filter { edge -> edge.metadata[ClassDiagramRelationExtractor.ROLE_KEY] != null }
-            .takeIf(List<GraphEdge>::isNotEmpty)
-            ?: edges
-        return labelSourceEdges
-            .sortedBy { edge -> edge.classDiagramRelationSortKey() }
-            .map { edge -> edge.classDiagramDisplayLabel() }
-            .filter(String::isNotBlank)
-            .distinct()
-    }
-
-    /** 返回类图边上对外展示的文本，优先使用聚合标签或抽取阶段标签。 */
-    private fun GraphEdge.classDiagramDisplayLabel(): String {
-        metadata["uml.relation.aggregate.label"]?.trim()?.takeIf(String::isNotBlank)?.let { return it }
-        metadata[ClassDiagramRelationExtractor.LABEL_KEY]?.trim()?.takeIf(String::isNotBlank)?.let { return it }
-        return classDiagramRelationLabel()
-    }
-
-    /** 返回关系标签文本，依次回退到抽取标签、UML 标签、原始 label、关系类型名。 */
-    private fun GraphEdge.classDiagramRelationLabel(): String =
-        metadata[ClassDiagramRelationExtractor.LABEL_KEY]?.trim()?.takeIf(String::isNotBlank)
-            ?: metadata["uml.relation.label"]?.trim()?.takeIf(String::isNotBlank)
-            ?: label?.trim()?.takeIf(String::isNotBlank)
-            ?: classDiagramRelationKind()
+    /** 根据源/终点节点 ID 生成稳定的聚合边 ID：详见 top-level fun aggregateRelationId。 */
+    /** 生成聚合后的展示标签：详见 top-level fun aggregateRelationLabel。 */
+    /** 取聚合组中优先级最高的一条边的展示标签：详见 top-level fun aggregatePrimaryRelationLabel。 */
+    /** 取聚合组中除主标签外的次级标签列表：详见 top-level fun aggregateSecondaryRelationLabels。 */
+    /** 汇总聚合组中所有边的展示标签并去重：详见 top-level fun aggregateRelationLabels。 */
+    /** 返回类图边上对外展示的文本：详见 top-level fun GraphEdge.classDiagramDisplayLabel。 */
+    /** 返回关系标签文本：详见 top-level fun GraphEdge.classDiagramRelationLabel。 */
 
     /** 把投影后的图包装为只读投影索引，向 UI 声明节点/边不可编辑。 */
     private fun classDiagramProjectionIndex(graph: GraphDocument): GraphProjectionIndex =
@@ -907,32 +854,7 @@ class ClassDiagramProjector(
         }
 
     /** 类图边展示优先级：基于权重取负值或按 UML 关系类型分级，权重越高优先级越高。 */
-    private fun classDiagramEdgePriority(edge: com.charmnight.linkgraph.model.GraphEdge): Int =
-        edge.metadata[ClassDiagramRelationExtractor.WEIGHT_KEY]
-            ?.toIntOrNull()
-            ?.let { weight -> -weight }
-            ?: when (edge.metadata["uml.relation.kind"]) {
-                UmlClassRelationKind.GENERALIZATION.name -> 0
-                UmlClassRelationKind.REALIZATION.name -> 1
-                UmlClassRelationKind.COMPOSITION.name -> 2
-                UmlClassRelationKind.AGGREGATION.name -> 3
-                UmlClassRelationKind.ASSOCIATION.name -> 4
-                UmlClassRelationKind.DEPENDENCY.name -> 5
-                else -> 6
-            }
-
-    /** 根据类名后缀给锚点候选类打分，业务入口类（Action/Controller/Service）优先。 */
-    private fun classAnchorPriority(title: String): Int {
-        val lower = title.lowercase()
-        return when {
-            lower.endsWith("action") -> 0
-            lower.endsWith("controller") -> 1
-            lower.endsWith("service") -> 2
-            lower.endsWith("workflow") -> 3
-            lower.endsWith("projector") -> 4
-            else -> 5
-        }
-    }
+    /** classDiagramEdgePriority / classAnchorPriority 已抽到 top-level（详见 ClassDiagramProjectorHelpers.kt）。 */
 
     /** 解析请求中的视口策略；若请求未指定则回退到构造时传入的默认策略。 */
     private fun IndexedGraphRequest.classDiagramViewportPolicy(): GraphViewportPolicy =
@@ -979,27 +901,7 @@ class ClassDiagramProjector(
             "LOCAL_TYPE",
             "THROWS",
         )
-        /** 类图关系排序键：综合优先级、关系类型、标签、端点 ID 与边 ID 形成稳定排序。 */
-        private data class ClassDiagramRelationSortKey(
-            val priority: Int,
-            val kind: String,
-            val label: String,
-            val fromNodeId: String,
-            val toNodeId: String,
-            val id: String,
-        ) : Comparable<ClassDiagramRelationSortKey> {
-            override fun compareTo(other: ClassDiagramRelationSortKey): Int =
-                compareValuesBy(
-                    this,
-                    other,
-                    ClassDiagramRelationSortKey::priority,
-                    ClassDiagramRelationSortKey::kind,
-                    ClassDiagramRelationSortKey::label,
-                    ClassDiagramRelationSortKey::fromNodeId,
-                    ClassDiagramRelationSortKey::toNodeId,
-                    ClassDiagramRelationSortKey::id,
-                )
-        }
+        /** 类图关系排序键 ClassDiagramRelationSortKey 已抽到 top-level（详见 ClassDiagramProjectorHelpers.kt）。 */
 
         /** 类图固定的展示泳道列表，按角色把节点划入抽象/调用方/锚点/协作/输出区域。 */
         private fun classDiagramPresentationLanes(): List<GraphPresentationLane> =
