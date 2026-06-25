@@ -966,15 +966,9 @@ private class JavaFlowSemanticBuilder(
         com.charmnight.linkgraph.semantic.provider.code.normalizeSwitchBranchLabel(rawLabel)
 
     /** 判断循环条件是否非常量 `true`，用于决定是否生成结构化 LOOP_EXIT 边（避免无限循环被画成可退出）。 */
-    private fun hasStructuredNormalExit(condition: PsiExpression?): Boolean {
-        if (condition == null) {
-            return false
-        }
-        val constant = JavaPsiFacade.getInstance(method.project)
-            .constantEvaluationHelper
-            .computeConstantExpression(condition)
-        return constant != true
-    }
+    /** Java hasStructuredNormalExit：详见 top-level fun javaHasStructuredNormalExit。 */
+    private fun hasStructuredNormalExit(condition: PsiExpression?): Boolean =
+        com.charmnight.linkgraph.semantic.provider.code.javaHasStructuredNormalExit(condition, method.project)
 
     /** 构建 try/catch/finally：登记 TRY 作用域，try 块为正常分支，每个 catch 以 EXCEPTION 边接入。 */
     private fun buildTryStatement(statement: PsiTryStatement): FlowFragment {
@@ -1207,12 +1201,9 @@ private class KotlinFlowSemanticBuilder(
         com.charmnight.linkgraph.semantic.provider.code.normalizeWhenBranchLabel(entry)
 
     /** 判断 Kotlin 循环条件是否常量 `true`，避免无限 while(true) 被画成有正常出口。 */
-    private fun hasStructuredNormalExit(condition: KtExpression?): Boolean {
-        val normalized = condition?.unwrapParentheses()?.text
-            ?.replace(Regex("\\s+"), "")
-            ?: return false
-        return normalized != "true"
-    }
+    /** Kotlin hasStructuredNormalExit：详见 top-level fun ktHasStructuredNormalExit。 */
+    private fun hasStructuredNormalExit(condition: KtExpression?): Boolean =
+        com.charmnight.linkgraph.semantic.provider.code.ktHasStructuredNormalExit(condition)
 
     /** 构建 Kotlin return 表达式：与 Java 版本类似，先构建返回值动作再连到 RETURN 终止。 */
     private fun buildReturnExpression(expression: KtReturnExpression): FlowFragment {
@@ -1577,14 +1568,7 @@ private fun String.toCaseFlowRole(): FlowEdgeRole {
     }
 }
 
-/** 反复剥离外层括号，返回最内层的 Kotlin 表达式，便于条件判断等场景统一处理。 */
-private fun KtExpression.unwrapParentheses(): KtExpression {
-    var current: KtExpression = this
-    while (current is KtParenthesizedExpression && current.expression != null) {
-        current = current.expression!!
-    }
-    return current
-}
+/** KtExpression.unwrapParentheses 已抽到 top-level（详见 CodeFlowSemanticExtractorHelpers.kt）。 */
 
 /** 单个方法的构建产物：发现的可下行方法列表、可选边界与诊断。 */
 private data class FlowBuildResult(
