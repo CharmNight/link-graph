@@ -105,21 +105,21 @@ class JvmSymbolIndexBuilder(
                 }
                 when (file.extension?.lowercase()) {
                     "java" -> {
-                        if (classes.size < budget.maxProjectClasses) {
+                        if (!ctx.isFull()) {
                             (psiManager.findFile(file) as? PsiJavaFile)?.classes.orEmpty().forEach { psiClass ->
-                                indexPsiClass(file, psiClass, modules, packages, classes, methods, fields, budget)
+                                indexPsiClass(file, psiClass, ctx)
                                 indexFrameworkResources(file, psiClass, resources)
                             }
                         }
                     }
                     "kt", "kts" -> {
-                        if (classes.size < budget.maxProjectClasses) {
+                        if (!ctx.isFull()) {
                             val ktFile = psiManager.findFile(file) as? KtFile
                             ktFile?.collectDescendantsOfType<KtClass>().orEmpty()
                                 .filter { ktClass -> PsiTreeUtil.getParentOfType(ktClass, KtClass::class.java, true) == null }
                                 .forEach { ktClass ->
                                     ktClass.toLightClass()?.let { psiClass ->
-                                        indexPsiClass(file, psiClass, modules, packages, classes, methods, fields, budget)
+                                        indexPsiClass(file, psiClass, ctx)
                                         indexFrameworkResources(file, psiClass, resources)
                                     }
                                 }
@@ -127,7 +127,7 @@ class JvmSymbolIndexBuilder(
                     }
                     "scala" -> {
                         if (classes.size < budget.maxProjectClasses) {
-                            indexScalaSourceFile(file, modules, packages, classes, budget)
+                            indexScalaSourceFile(file, ctx)
                         }
                     }
                     else -> {
@@ -160,20 +160,13 @@ class JvmSymbolIndexBuilder(
         }
         checkCanceled()
         if (classes.size < budget.maxProjectClasses) {
-            indexProjectScopeClasses(modules, packages, classes, methods, fields, budget)
+            indexProjectScopeClasses(ctx)
         }
         if (classes.isEmpty() && budget.maxProjectClasses > 0) {
             val fallbackStartedAt = System.nanoTime()
             val fallbackStats = indexProjectBaseSourcesFallback(
                 psiManager = psiManager,
-                modules = modules,
-                packages = packages,
-                classes = classes,
-                methods = methods,
-                fields = fields,
-                resources = resources,
-                serviceFiles = serviceFiles,
-                budget = budget,
+                ctx = ctx,
             )
             traceStage("jvmSymbolIndex.projectBaseFallback") {
                 fallbackStartedAt to listOf(
@@ -273,15 +266,16 @@ class JvmSymbolIndexBuilder(
      */
     private fun indexProjectBaseSourcesFallback(
         psiManager: PsiManager,
-        modules: MutableMap<String, JvmModuleSymbol>,
-        packages: MutableMap<String, JvmPackageSymbol>,
-        classes: MutableMap<String, JvmClassSymbol>,
-        methods: MutableMap<String, JvmMethodSymbol>,
-        fields: MutableMap<String, JvmFieldSymbol>,
-        resources: MutableMap<String, JvmResourceSymbol>,
-        serviceFiles: MutableMap<String, MutableList<JvmServiceProviderFile>>,
-        budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget,
+        ctx: SymbolIndexBuildContext,
     ): ProjectBaseFallbackStats {
+        val modules = ctx.modules
+        val packages = ctx.packages
+        val classes = ctx.classes
+        val methods = ctx.methods
+        val fields = ctx.fields
+        val resources = ctx.resources
+        val serviceFiles = ctx.serviceFiles
+        val budget = ctx.budget
         val basePath = project.basePath
             ?.takeIf(String::isNotBlank)
             ?.let { path -> runCatching { java.nio.file.Path.of(path).normalize() }.getOrNull() }
@@ -332,7 +326,7 @@ class JvmSymbolIndexBuilder(
                         }
                         "scala" -> {
                             stats.scalaFiles += 1
-                            indexScalaSourceFile(file, modules, packages, classes, budget)
+                            indexScalaSourceFile(file, ctx)
                         }
                         else -> {
                             val resource = indexResource(file, resources) ?: return@forEach
@@ -404,6 +398,8 @@ class JvmSymbolIndexBuilder(
         resources: MutableMap<String, JvmResourceSymbol>,
         budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget,
     ) {
+        // 从 individual maps 构造 ctx 供已迁移的 indexPsiClass 调用使用
+        val ctx = SymbolIndexBuildContext(project, budget, fileFilter, modules, packages, classes, methods, fields, resources)
         if (classes.size >= budget.maxProjectClasses) {
             return
         }
@@ -418,7 +414,7 @@ class JvmSymbolIndexBuilder(
             if (classes.size >= budget.maxProjectClasses) {
                 return@forEach
             }
-            indexPsiClass(file, psiClass, modules, packages, classes, methods, fields, budget)
+            indexPsiClass(file, psiClass, ctx)
             applyFallbackJavaClassInfo(psiJavaFile, psiClass, classes, fallbackClassInfo)
             indexFrameworkResources(file, psiClass, resources)
         }
@@ -486,6 +482,8 @@ class JvmSymbolIndexBuilder(
         fields: MutableMap<String, JvmFieldSymbol>,
         budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget,
     ) {
+        // 从 individual maps 构造 ctx 供已迁移的 indexPsiClass 调用使用
+        val ctx = SymbolIndexBuildContext(project, budget, fileFilter, modules, packages, classes, methods, fields)
         if (classes.size >= budget.maxProjectClasses) {
             return
         }
@@ -497,7 +495,7 @@ class JvmSymbolIndexBuilder(
                     return@forEach
                 }
                 ktClass.toLightClass()?.let { psiClass ->
-                    indexPsiClass(file, psiClass, modules, packages, classes, methods, fields, budget)
+                    indexPsiClass(file, psiClass, ctx)
                 }
             }
     }
@@ -1103,13 +1101,14 @@ class JvmSymbolIndexBuilder(
     private fun indexPsiClass(
         file: VirtualFile,
         psiClass: PsiClass,
-        modules: MutableMap<String, JvmModuleSymbol>,
-        packages: MutableMap<String, JvmPackageSymbol>,
-        classes: MutableMap<String, JvmClassSymbol>,
-        methods: MutableMap<String, JvmMethodSymbol>,
-        fields: MutableMap<String, JvmFieldSymbol>,
-        budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget,
+        ctx: SymbolIndexBuildContext,
     ) {
+        val modules = ctx.modules
+        val packages = ctx.packages
+        val classes = ctx.classes
+        val methods = ctx.methods
+        val fields = ctx.fields
+        val budget = ctx.budget
         checkCanceled()
         if (psiClass is PsiAnonymousClass || classes.size >= budget.maxProjectClasses) {
             return
@@ -1176,7 +1175,7 @@ class JvmSymbolIndexBuilder(
             docComment = psiClass.docCommentText(),
         )
         psiClass.innerClasses.forEach { innerClass ->
-            indexPsiClass(file, innerClass, modules, packages, classes, methods, fields, budget)
+            indexPsiClass(file, innerClass, ctx)
         }
         psiClass.fields.forEach { field ->
             checkCanceled()
@@ -1219,11 +1218,12 @@ class JvmSymbolIndexBuilder(
     /** 兜底解析 Scala 源文件：在缺少 Scala 插件时用正则提取包名、顶层声明并写入最小可用类符号。 */
     private fun indexScalaSourceFile(
         file: VirtualFile,
-        modules: MutableMap<String, JvmModuleSymbol>,
-        packages: MutableMap<String, JvmPackageSymbol>,
-        classes: MutableMap<String, JvmClassSymbol>,
-        budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget,
+        ctx: SymbolIndexBuildContext,
     ) {
+        val modules = ctx.modules
+        val packages = ctx.packages
+        val classes = ctx.classes
+        val budget = ctx.budget
         checkCanceled()
         val text = runCatching { String(file.contentsToByteArray(), StandardCharsets.UTF_8) }
             .getOrDefault("")
@@ -1314,13 +1314,12 @@ class JvmSymbolIndexBuilder(
 
     /** 在 content root 扫描不足预算时，再通过 [AllClassesSearch] 和 [PsiShortNamesCache] 双通道兜底补齐项目类。 */
     private fun indexProjectScopeClasses(
-        modules: MutableMap<String, JvmModuleSymbol>,
-        packages: MutableMap<String, JvmPackageSymbol>,
-        classes: MutableMap<String, JvmClassSymbol>,
-        methods: MutableMap<String, JvmMethodSymbol>,
-        fields: MutableMap<String, JvmFieldSymbol>,
-        budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget,
+        ctx: SymbolIndexBuildContext,
     ) {
+        val classes = ctx.classes
+        val methods = ctx.methods
+        val fields = ctx.fields
+        val budget = ctx.budget
         if (classes.size >= budget.maxProjectClasses) {
             return
         }
@@ -1341,7 +1340,7 @@ class JvmSymbolIndexBuilder(
             if (!budget.includeTests && ProjectFileIndex.getInstance(project).isInTestSourceContent(file)) {
                 return
             }
-            indexPsiClass(file, psiClass, modules, packages, classes, methods, fields, budget)
+            indexPsiClass(file, psiClass, ctx)
         }
         if (classes.size < budget.maxProjectClasses) {
             val allClassesStartedAt = System.nanoTime()
