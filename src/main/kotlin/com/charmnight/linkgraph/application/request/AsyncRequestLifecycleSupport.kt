@@ -27,6 +27,8 @@ internal class AsyncRequestLifecycleSupport(
     /** 测试环境下的超时覆盖值。 */
     private val timeoutOverrideProvider: () -> Long?,
 ) {
+    // P2-1 真正的架构分解：线程调度委托给独立的 AsyncTaskDispatcher
+    internal val taskDispatcher = AsyncTaskDispatcher(project)
     /** 图问答请求跟踪器。 */
     private val qaRequestTracker = AsyncRequestTracker()
     /** diff 审核请求跟踪器。 */
@@ -183,25 +185,7 @@ internal class AsyncRequestLifecycleSupport(
     fun createStreamingPreviewUpdater(
         requestId: Long,
         updatePreview: (Long, String, Boolean) -> Unit,
-    ): (String, Boolean) -> Unit {
-        var lastPublishedAt = 0L
-        var lastPublishedText = ""
-        return fun(previewText: String, finalizing: Boolean) {
-            if (project.isDisposed) {
-                return
-            }
-            val now = System.currentTimeMillis()
-            if (!finalizing && previewText == lastPublishedText) {
-                return
-            }
-            if (!finalizing && now - lastPublishedAt < 120L) {
-                return
-            }
-            lastPublishedAt = now
-            lastPublishedText = previewText
-            updatePreview(requestId, previewText, finalizing)
-        }
-    }
+    ): (String, Boolean) -> Unit = taskDispatcher.createStreamingPreviewUpdater(requestId, updatePreview)
 
     /**
      * 安排异步请求超时回调。
@@ -212,21 +196,7 @@ internal class AsyncRequestLifecycleSupport(
         completeRequest: (Long) -> Boolean,
         onTimeout: () -> Unit,
     ) {
-        AppExecutorUtil.getAppScheduledExecutorService().schedule(
-            {
-                ApplicationManager.getApplication().invokeLater(
-                    {
-                        if (project.isDisposed || !completeRequest(requestId)) {
-                            return@invokeLater
-                        }
-                        onTimeout()
-                    },
-                    com.intellij.openapi.application.ModalityState.defaultModalityState(),
-                )
-            },
-            timeoutMillis,
-            TimeUnit.MILLISECONDS,
-        )
+        taskDispatcher.scheduleAsyncRequestTimeout(requestId, timeoutMillis, completeRequest, onTimeout)
     }
 
     /**
@@ -250,31 +220,10 @@ internal class AsyncRequestLifecycleSupport(
         work: () -> T,
         onCompleted: (Result<T>) -> Unit,
         modalityState: ModalityState = ModalityState.defaultModalityState(),
-    ) {
-        AppExecutorUtil.getAppExecutorService().execute {
-            val result = runCatching(work)
-            ApplicationManager.getApplication().invokeLater(
-                {
-                    if (!project.isDisposed) {
-                        onCompleted(result)
-                    }
-                },
-                modalityState,
-            )
-        }
-    }
+    ) = taskDispatcher.runBackgroundTask(work, onCompleted, modalityState)
 
     /** 在后台读线程上以 ReadAction 同步执行计算并等待返回，避免在 EDT 上触发索引访问违规。 */
-    fun <T> computeOnBackgroundReadThread(action: () -> T): T {
-        val future = AppExecutorUtil.getAppExecutorService().submit<T> {
-            ReadAction.compute<T, RuntimeException>(action)
-        }
-        return try {
-            future.get()
-        } catch (error: ExecutionException) {
-            throw error.cause ?: error
-        }
-    }
+    fun <T> computeOnBackgroundReadThread(action: () -> T): T = taskDispatcher.computeOnBackgroundReadThread(action)
 
     /** 把 runtime 状态、预算和每一步记录格式化为多行文本，用于追加到请求详情中。 */
     private fun formatRuntimeDetail(runtimeState: AgentRunState): String =
