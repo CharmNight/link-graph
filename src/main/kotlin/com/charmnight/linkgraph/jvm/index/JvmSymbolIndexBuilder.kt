@@ -65,13 +65,19 @@ class JvmSymbolIndexBuilder(
 ) {
     /** 按预算构建 JVM 符号索引。 */
     fun build(budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget = com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget()): JvmSymbolIndex {
-        val modules = linkedMapOf<String, JvmModuleSymbol>()
-        val packages = linkedMapOf<String, JvmPackageSymbol>()
-        val classes = linkedMapOf<String, JvmClassSymbol>()
-        val methods = linkedMapOf<String, JvmMethodSymbol>()
-        val fields = linkedMapOf<String, JvmFieldSymbol>()
-        val resources = linkedMapOf<String, JvmResourceSymbol>()
-        val serviceFiles = linkedMapOf<String, MutableList<JvmServiceProviderFile>>()
+        // P2-1: 用 SymbolIndexBuildContext 统一管理可变状态，后续 index 方法逐步迁移为接收 context 参数。
+        val ctx = SymbolIndexBuildContext(
+            project = project,
+            budget = budget,
+            fileFilter = fileFilter,
+        )
+        val modules = ctx.modules
+        val packages = ctx.packages
+        val classes = ctx.classes
+        val methods = ctx.methods
+        val fields = ctx.fields
+        val resources = ctx.resources
+        val serviceFiles = ctx.serviceFiles
         val psiManager = PsiManager.getInstance(project)
 
         val contentScanStartedAt = System.nanoTime()
