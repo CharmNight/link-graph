@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.projection.business
 
+import com.charmnight.linkgraph.architecture.ArchitectureEdge
+import com.charmnight.linkgraph.architecture.ArchitectureNode
 import com.charmnight.linkgraph.architecture.ArchitectureNodeKind
 import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
 import com.charmnight.linkgraph.model.GraphEdge
@@ -123,5 +125,82 @@ internal fun architectureEdgePriority(edge: GraphEdge): Int = when {
             else -> 6
         }
     }
+}
+
+/**
+ * 节点默认文档说明：根据节点种类生成成员数量描述。
+ *
+ * SERVICE / COMPONENT / LAYER / PACKAGE / LIBRARY / JDK 各有 "X group with N classes" 模板；
+ * 其他种类返回 null。
+ */
+internal fun ArchitectureNode.docText(): String? = when (kind) {
+    ArchitectureNodeKind.SERVICE -> "Service scope with ${memberClassIds.size} classes"
+    ArchitectureNodeKind.COMPONENT -> "Component group with ${memberClassIds.size} classes"
+    ArchitectureNodeKind.LAYER -> "Layer aggregate with ${memberClassIds.size} classes"
+    ArchitectureNodeKind.PACKAGE -> "Package with ${memberClassIds.size} classes"
+    ArchitectureNodeKind.LIBRARY -> "External dependency group with ${memberClassIds.size} classes"
+    ArchitectureNodeKind.JDK -> "JDK group with ${memberClassIds.size} classes"
+    else -> null
+}
+
+/**
+ * 把 JVM 关系种类映射到展示层"显示关系种类"和中文标签。
+ *
+ * 例如：调用、注入、路由等归为运行时调用（RUNTIME_CALL）；继承、实现归为类型依赖（TYPE_DEPENDENCY）；
+ * 资源绑定（RESOURCE_BINDING）、测试关系（TEST_RELATION）、运行时发现（RUNTIME_DISCOVERY）、
+ * 集成绑定（INTEGRATION_BINDING）、结构包含（STRUCTURE_CONTAINS）等。
+ */
+internal fun ArchitectureEdge.displayRelationMetadata(): Map<String, String> = when (kind) {
+    JvmRelationKind.CALLS,
+    JvmRelationKind.INJECTS,
+    JvmRelationKind.FEIGN_ROUTES_TO,
+    JvmRelationKind.SPRING_ROUTES_TO,
+    JvmRelationKind.FEIGN_CLIENT_CALLS,
+    JvmRelationKind.MQ_PUBLISHES,
+    JvmRelationKind.MQ_CONSUMES,
+    JvmRelationKind.SPRING_EVENT_PUBLISHES,
+    JvmRelationKind.SPRING_EVENT_LISTENS,
+    -> mapOf(
+        "architecture.displayRelationKind" to "RUNTIME_CALL",
+        "architecture.displayRelation" to "运行时调用",
+    )
+    JvmRelationKind.USES_TYPE,
+    JvmRelationKind.EXTENDS,
+    JvmRelationKind.IMPLEMENTS,
+    JvmRelationKind.ANNOTATED_BY,
+    -> mapOf(
+        "architecture.displayRelationKind" to "TYPE_DEPENDENCY",
+        "architecture.displayRelation" to "类型依赖",
+    )
+    JvmRelationKind.RESOURCE_BINDS,
+    -> mapOf(
+        "architecture.displayRelationKind" to "RESOURCE_BINDING",
+        "architecture.displayRelation" to "资源绑定",
+    )
+    JvmRelationKind.TESTS,
+    -> mapOf(
+        "architecture.displayRelationKind" to "TEST_RELATION",
+        "architecture.displayRelation" to "测试关系",
+    )
+    JvmRelationKind.REFLECTS_TO,
+    JvmRelationKind.SPI_PROVIDES,
+    JvmRelationKind.SERVICE_LOADER_LOADS,
+    JvmRelationKind.DUBBO_PROVIDES,
+    -> mapOf(
+        "architecture.displayRelationKind" to "RUNTIME_DISCOVERY",
+        "architecture.displayRelation" to "运行时发现",
+    )
+    JvmRelationKind.USES_PROXY,
+    JvmRelationKind.DUBBO_REFERENCES,
+    -> mapOf(
+        "architecture.displayRelationKind" to "INTEGRATION_BINDING",
+        "architecture.displayRelation" to "集成绑定",
+    )
+    JvmRelationKind.MODULE_CONTAINS_PACKAGE,
+    JvmRelationKind.PACKAGE_CONTAINS_CLASS,
+    -> mapOf(
+        "architecture.displayRelationKind" to "STRUCTURE_CONTAINS",
+        "architecture.displayRelation" to "结构包含",
+    )
 }
 
