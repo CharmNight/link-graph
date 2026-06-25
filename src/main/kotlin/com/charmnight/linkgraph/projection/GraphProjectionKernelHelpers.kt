@@ -149,6 +149,21 @@ internal enum class OverflowDirection(val label: String) {
 internal fun GraphEdge.neighborOf(nodeId: String): String =
     if (fromNodeId == nodeId) toNodeId else fromNodeId
 
+/** 计算节点在跨方法扩展遍历中的优先级（当前方法节点减 10，锚点减 5）。 */
+internal fun traversalNodePriority(
+    nodeId: String,
+    nodeById: Map<String, GraphNode>,
+    currentMethodNodeIds: Set<String>,
+    anchorNodeId: String? = null,
+    methodBodyNodeIds: Set<String>? = null,
+): Int {
+    val basePriority = nodePriority(nodeById[nodeId])
+    if (nodeId == anchorNodeId) return basePriority - 10
+    if (methodBodyNodeIds != null && nodeId in methodBodyNodeIds) return basePriority - 5
+    if (nodeId in currentMethodNodeIds) return basePriority
+    return basePriority + 10
+}
+
 /** 判断边是否属于方法体结构性流程边（CONTAINS_FLOW + 邻居是 FLOW_SCOPE）。 */
 internal fun isStructuralFlowEdge(edge: GraphEdge, neighborNode: GraphNode?): Boolean =
     edge.type == EdgeType.CONTAINS_FLOW && neighborNode?.type == NodeType.FLOW_SCOPE
