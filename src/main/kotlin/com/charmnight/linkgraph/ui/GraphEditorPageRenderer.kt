@@ -366,31 +366,7 @@ class GraphEditorPageRenderer {
     }
 
     /** 把多个场景的运行时状态映射为前端使用的字典结构。 */
-    private fun sceneStatesToMap(
-        sceneStates: Map<GraphSceneId, GraphSceneState>,
-    ): Map<String, Any?> {
-        return sceneStates.entries.associate { (sceneId, state) ->
-            sceneId.name to graphSceneStateToMap(state)
-        }
-    }
-
-    /** 把单个场景的运行时状态（选中节点、锚点、折叠节点、布局）转换为前端结构。 */
-    private fun graphSceneStateToMap(
-        state: GraphSceneState,
-    ): Map<String, Any?> = linkedMapOf(
-        "selectedNodeId" to state.selectedNodeId,
-        "anchorNodeId" to state.anchorNodeId,
-        "collapsedNodeIds" to state.collapsedNodeIds.toList(),
-        "layoutRevision" to state.layoutRevision,
-        "layoutState" to linkedMapOf(
-            "positions" to state.layoutState.positions.mapValues { (_, position) ->
-                linkedMapOf(
-                    "x" to position.x,
-                    "y" to position.y,
-                )
-            },
-        ),
-    )
+    /** sceneStatesToMap / graphSceneStateToMap 已抽到 top-level（GraphEditorPageRendererHelpers.kt）。 */
 
     /** 把异步请求状态转换成前端可消费的映射。 */
     internal fun requestStateToMap(
@@ -505,37 +481,7 @@ class GraphEditorPageRenderer {
     }
 
     /** 把助手调用失败结果转换为前端字段，携带错误消息、阶段与时间戳。 */
-    private fun assistantFailureResultToMap(
-        failure: com.charmnight.linkgraph.workbench.AssistantFailureResult,
-    ): Map<String, Any?> = linkedMapOf(
-        "resultId" to failure.resultId,
-        "message" to failure.message,
-        "detailMessage" to failure.detailMessage,
-        "phase" to failure.phase,
-        "requestId" to failure.requestId,
-        "sourceMessageType" to failure.sourceMessageType,
-        "createdAtEpochMillis" to failure.createdAtEpochMillis,
-    )
-
-    /** 把生成计划（含若干变更项、风险等级和目标路径）转换为前端结构。 */
-    internal fun generationPlanToMap(
-        plan: com.charmnight.linkgraph.llm.GenerationPlan,
-        promptPreviewArtifactId: String?,
-    ): Map<String, Any?> = linkedMapOf(
-        "source" to plan.source.name,
-        "summary" to plan.summary,
-        "warnings" to plan.warnings,
-        "promptPreviewArtifactId" to promptPreviewArtifactId,
-        "items" to plan.items.map { item ->
-            linkedMapOf(
-                "id" to item.id,
-                "title" to item.title,
-                "description" to item.description,
-                "risk" to item.risk.name,
-                "targetPath" to item.targetPath,
-            )
-        },
-    )
+    /** assistantFailureResultToMap / generationPlanToMap 已抽到 top-level（GraphEditorPageRendererHelpers.kt）。 */
 
     /** 把生成的代码草稿（编辑操作、范围、准备好的编辑等）转换为前端结构。 */
     internal fun generatedCodeDraftToMap(

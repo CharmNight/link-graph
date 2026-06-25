@@ -1,5 +1,6 @@
 package com.charmnight.linkgraph.ui
 
+import com.charmnight.linkgraph.llm.GenerationPlan
 import com.charmnight.linkgraph.llm.ResultEvidenceFinding
 import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.GraphDiffEntry
@@ -9,6 +10,7 @@ import com.charmnight.linkgraph.model.GraphMetadataKeys
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.model.GraphPatchOperation
+import com.charmnight.linkgraph.workbench.AssistantFailureResult
 import com.charmnight.linkgraph.workbench.QaRequestRecoveryState
 import com.charmnight.linkgraph.workbench.ReplayableQaRequest
 import com.charmnight.linkgraph.workbench.StageEligibilityDecision
@@ -174,6 +176,65 @@ internal fun resultEvidenceFindingToMap(finding: ResultEvidenceFinding): Map<Str
             "filePath" to reference.filePath,
             "startLine" to reference.startLine,
             "endLine" to reference.endLine,
+        )
+    },
+)
+
+/** 把场景状态集合映射为 sceneId → sceneState 的前端结构。 */
+internal fun sceneStatesToMap(
+    sceneStates: Map<GraphSceneId, GraphSceneState>,
+): Map<String, Any?> =
+    sceneStates.entries.associate { (sceneId, state) ->
+        sceneId.name to graphSceneStateToMap(state)
+    }
+
+/** 把单个场景的运行时状态（选中节点、锚点、折叠节点、布局）转换为前端结构。 */
+internal fun graphSceneStateToMap(
+    state: GraphSceneState,
+): Map<String, Any?> = linkedMapOf(
+    "selectedNodeId" to state.selectedNodeId,
+    "anchorNodeId" to state.anchorNodeId,
+    "collapsedNodeIds" to state.collapsedNodeIds.toList(),
+    "layoutRevision" to state.layoutRevision,
+    "layoutState" to linkedMapOf(
+        "positions" to state.layoutState.positions.mapValues { (_, position) ->
+            linkedMapOf(
+                "x" to position.x,
+                "y" to position.y,
+            )
+        },
+    ),
+)
+
+/** 把助手调用失败结果转换为前端字段，携带错误消息、阶段与时间戳。 */
+internal fun assistantFailureResultToMap(
+    failure: AssistantFailureResult,
+): Map<String, Any?> = linkedMapOf(
+    "resultId" to failure.resultId,
+    "message" to failure.message,
+    "detailMessage" to failure.detailMessage,
+    "phase" to failure.phase,
+    "requestId" to failure.requestId,
+    "sourceMessageType" to failure.sourceMessageType,
+    "createdAtEpochMillis" to failure.createdAtEpochMillis,
+)
+
+/** 把生成计划（含若干变更项、风险等级和目标路径）转换为前端结构。 */
+internal fun generationPlanToMap(
+    plan: GenerationPlan,
+    promptPreviewArtifactId: String?,
+): Map<String, Any?> = linkedMapOf(
+    "source" to plan.source.name,
+    "summary" to plan.summary,
+    "warnings" to plan.warnings,
+    "promptPreviewArtifactId" to promptPreviewArtifactId,
+    "items" to plan.items.map { item ->
+        linkedMapOf(
+            "id" to item.id,
+            "title" to item.title,
+            "description" to item.description,
+            "risk" to item.risk.name,
+            "targetPath" to item.targetPath,
         )
     },
 )
