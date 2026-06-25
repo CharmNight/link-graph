@@ -62,7 +62,9 @@ class JvmSymbolIndexBuilder(
     private val fileFilter: (VirtualFile) -> Boolean = { true },
     /** 附加 jar 索引提供者。 */
     private val attachedJarIndexProvider: () -> AttachedJarIndex = { AttachedJarIndex() },
-) {
+) : IndexerSharedHelpers {
+    // P2-1 真正的架构分解：外部依赖索引委托给独立的 ExternalLibraryIndexer
+    private val externalLibraryIndexer = ExternalLibraryIndexer(project, this)
     /** 按预算构建 JVM 符号索引。 */
     fun build(budget: com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget = com.charmnight.linkgraph.jvm.relation.JvmResolutionBudget()): JvmSymbolIndex {
         // P2-1: 用 SymbolIndexBuildContext 统一管理可变状态，后续 index 方法逐步迁移为接收 context 参数。
@@ -209,9 +211,9 @@ class JvmSymbolIndexBuilder(
         if (budget.includeExternalLibraries || budget.includeJdk) {
             checkCanceled()
             val externalStartedAt = System.nanoTime()
-            indexDirectExternalClasses(classes, methods, fields, budget)
-            indexLibraryServiceFiles(resources, serviceFiles, budget)
-            ensureServiceTypesIndexed(serviceFiles, classes, methods, fields, budget)
+            externalLibraryIndexer.indexDirectExternalClasses(ctx)
+            externalLibraryIndexer.indexLibraryServiceFiles(ctx)
+            externalLibraryIndexer.ensureServiceTypesIndexed(ctx)
             traceStage("jvmSymbolIndex.externalLibraries") {
                 externalStartedAt to listOf(
                     "classes=${classes.size}",
@@ -226,8 +228,8 @@ class JvmSymbolIndexBuilder(
         if (budget.includeJdk) {
             checkCanceled()
             val jdkStartedAt = System.nanoTime()
-            indexJdkServiceFiles(resources, serviceFiles)
-            ensureServiceTypesIndexed(serviceFiles, classes, methods, fields, budget)
+            externalLibraryIndexer.indexJdkServiceFiles(ctx)
+            externalLibraryIndexer.ensureServiceTypesIndexed(ctx)
             traceStage("jvmSymbolIndex.jdk") {
                 jdkStartedAt to listOf(
                     "classes=${classes.size}",
@@ -1485,6 +1487,29 @@ class JvmSymbolIndexBuilder(
         }
     }
 
+    /** P2-1: 构造外部类符号，供 ExternalLibraryIndexer 通过 IndexerSharedHelpers 接口调用。 */
+    override fun buildExternalClassSymbol(
+        qualifiedName: String,
+        psiClass: PsiClass,
+        navigationFile: VirtualFile?,
+        origin: SourceOrigin,
+    ): JvmClassSymbol = JvmClassSymbol(
+        id = stableJvmId("class", qualifiedName),
+        qualifiedName = qualifiedName,
+        simpleName = psiClass.name ?: qualifiedName.substringAfterLast('.'),
+        packageName = packageNameForPsiClass(navigationFile, psiClass),
+        moduleName = externalModuleName(navigationFile, origin),
+        kind = classKind(psiClass),
+        stereotype = JvmStereotype.UNKNOWN,
+        abstract = psiClass.hasModifierProperty(com.intellij.psi.PsiModifier.ABSTRACT),
+        external = true,
+        library = origin in setOf(SourceOrigin.LIBRARY_SOURCE_JAR, SourceOrigin.LIBRARY_CLASS_JAR),
+        jdk = origin in setOf(SourceOrigin.JDK_SOURCE, SourceOrigin.JDK_CLASS),
+        source = navigationFile?.let { file -> sourceRef(file, psiClass.navigationElement ?: psiClass)
+            .copy(decompiled = origin in setOf(SourceOrigin.LIBRARY_CLASS_JAR, SourceOrigin.JDK_CLASS)) },
+        origin = origin,
+    )
+
     /** 根据 Spring/Spring Boot 等框架的常见 stereotype 注解推断类在分层架构中的角色。 */
     private fun stereotypeOf(psiClass: PsiClass): JvmStereotype {
         val names = psiClass.annotations.mapNotNull { annotation -> annotation.qualifiedName?.substringAfterLast('.') }
@@ -1573,7 +1598,7 @@ class JvmSymbolIndexBuilder(
     }
 
     /** 计算 PSI 元素在文件中的起止行号，组装成 [JvmSourceRef]，用于点击节点跳转源码。 */
-    private fun sourceRef(file: VirtualFile, element: PsiElement): JvmSourceRef {
+    override fun sourceRef(file: VirtualFile, element: PsiElement): JvmSourceRef {
         val document = FileDocumentManager.getInstance().getDocument(file)
         val range = element.textRange
         return JvmSourceRef(
