@@ -19,7 +19,7 @@ export const DEFAULT_EXPLANATION_SESSION_LABEL = "当前链路讲解";
  * 从 App.tsx 抽出的独立 hook，封装讲解步骤选择、粒度切换、历史栈和
  * 待处理钻取目标的全部状态。App.tsx 通过解构消费，减少主组件 state 声明数量。
  */
-export function useExplanationState(graphBeautificationResult: GraphBeautificationResult | undefined) {
+export function useExplanationState(graphBeautificationResult: GraphBeautificationResult | undefined | null) {
   const [selectedExplanationStepId, setSelectedExplanationStepId] = useState<string | null>(
     () => graphBeautificationResult?.steps?.[0]?.stepId ?? null,
   );

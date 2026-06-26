@@ -4,7 +4,6 @@ import { AssistantWorkbenchShell } from "./assistant/AssistantWorkbenchShell";
 import { buildAssistantTurns } from "./assistant/assistantResultAdapters";
 import { useAssistantActionController, type AssistantDisplayModeDocuments } from "./assistant/useAssistantActionController";
 import {
-  buildDefaultClassDescriptionPrompt,
   buildDefaultExplanationPrompt,
   buildDefaultQaQuestion,
   DEFAULT_GENERATION_PLAN_PROMPT,
@@ -43,15 +42,8 @@ import {
 } from "./appDisplaySelectors";
 import {
   findExplanationStep,
-  resolveExplanationFollowUpQuestion,
-  resolveExplanationRerunIntent,
   resolveExplanationStepRawNodeId as resolveRawNodeIdForExplanationStep,
 } from "./appExplanationStepModel";
-import {
-  clampAssistantWorkbenchWidth,
-  readHybridWorkbenchLayoutPreference,
-  writeHybridWorkbenchLayoutPreference,
-} from "./appWorkbenchPreferences";
 import {
   primaryWorkflowActionCommand,
 } from "./appPrimaryWorkflowAction";
@@ -139,25 +131,17 @@ import {
   resolveWorkspaceBaseGraph,
   resolveWorkingGraph,
 } from "./sampleState";
+import { useExplanationState, DEFAULT_EXPLANATION_SESSION_LABEL } from "./controllers/useExplanationState";
+import { useExplanationStepActions } from "./controllers/useExplanationStepActions";
+import { useWorkbenchLayoutState } from "./controllers/useWorkbenchLayoutState";
 
-/** 链路讲解请求模式：fresh 表示全新请求，follow_up 表示针对某步骤的追问 */
-type ExplanationRequestMode = "fresh" | "follow_up";
-
-/** 历史讲解会话记录条目，用于在「返回上一步讲解」时还原之前的展示状态 */
-interface ExplanationHistoryEntry {
-  result: GraphBeautificationResult;
-  requestState: AsyncRequestState;
-  selectedStepId: string | null;
-  granularity: StepGranularity;
-  sessionLabel: string;
-}
-
-/** 默认讲解会话标签，用作首次进入讲解时的展示名称 */
-const DEFAULT_EXPLANATION_SESSION_LABEL = "当前链路讲解";
 export { resolveQaTargetNodeIds } from "./appGraphSupport";
 // P2-1: 讲解状态管理委托给 useExplanationState hook
-export { DEFAULT_EXPLANATION_SESSION_LABEL as EXPLANATION_SESSION_LABEL } from "./controllers/useExplanationState";
-export type { ExplanationRequestMode } from "./controllers/useExplanationState";
+export {
+  DEFAULT_EXPLANATION_SESSION_LABEL as EXPLANATION_SESSION_LABEL,
+  type ExplanationRequestMode,
+  type ExplanationHistoryEntry,
+} from "./controllers/useExplanationState";
 
 /** 用户在生成计划讨论未输入问题时使用的默认提示语 */
 const DEFAULT_GENERATION_DISCUSSION_PROMPT = "请继续讨论这份实现建议的取舍、风险和下一步。";
@@ -391,8 +375,14 @@ export function App() {
   ]);
   // 当前激活的工作流阶段（理解/问答/草稿/代码）
   const [activeWorkflowStage, setActiveWorkflowStage] = useState<WorkflowStage>("understand");
-  // 混合工作台布局偏好（大纲折叠、宽度等），从持久化存储读取初始值
-  const [hybridLayoutPreference, setHybridLayoutPreference] = useState(readHybridWorkbenchLayoutPreference);
+  // P2-1: 工作台布局偏好（折叠/宽度/大纲查询）委托给 useWorkbenchLayoutState hook
+  const {
+    hybridLayoutPreference,
+    outlineQuery,
+    setOutlineQuery,
+    handleOutlineCollapsedChange,
+    handleWorkbenchWidthChange,
+  } = useWorkbenchLayoutState();
   const activeAssistantTarget = workflowStageToAssistantTarget(activeWorkflowStage);
 
   /** 用户在助手结果中点击引用证据时，定位到对应节点并打开详情面板 */
@@ -430,20 +420,24 @@ export function App() {
         : [];
     workbenchCommands.handleRequestAnalysisDisplayMode(displayMode, reviewGraphDiffItemIds);
   }
-  // 当前选中的讲解步骤 ID，初始默认取讲解结果首步
-  const [selectedExplanationStepId, setSelectedExplanationStepId] = useState<string | null>(
-    () => graphBeautificationResult?.steps?.[0]?.stepId ?? null,
-  );
-  // 当前选中的讲解粒度（业务/技术），初始回退到业务粒度
-  const [selectedExplanationGranularity, setSelectedExplanationGranularity] = useState<StepGranularity>(
-    () => graphBeautificationResult?.granularity ?? "BUSINESS",
-  );
-  // 讲解历史会话栈，用于「返回上一步讲解」
-  const [explanationHistory, setExplanationHistory] = useState<ExplanationHistoryEntry[]>([]);
-  // 当前讲解会话的展示标签
-  const [currentExplanationSessionLabel, setCurrentExplanationSessionLabel] = useState(DEFAULT_EXPLANATION_SESSION_LABEL);
-  // 鼠标悬停的讲解步骤 ID
-  const [hoveredExplanationStepId, setHoveredExplanationStepId] = useState<string | null>(null);
+  // P2-1: 讲解相关本地状态 + ref 集合委托给 useExplanationState hook
+  const {
+    selectedExplanationStepId,
+    setSelectedExplanationStepId,
+    selectedExplanationGranularity,
+    setSelectedExplanationGranularity,
+    explanationHistory,
+    setExplanationHistory,
+    currentExplanationSessionLabel,
+    setCurrentExplanationSessionLabel,
+    hoveredExplanationStepId,
+    setHoveredExplanationStepId,
+    pendingExplanationDrillTargetRef,
+    explanationLocalOverrideRef,
+    pendingExplanationRequestModeRef,
+    pendingExplanationSessionLabelRef,
+    pendingExplanationHistoryEntryRef,
+  } = useExplanationState(graphBeautificationResult);
   // 当前选中的候选变更条目 ID
   const [selectedQaChangeId, setSelectedQaChangeId] = useState<string | null>(null);
   // 当前选中的 QA 风险线程 ID
@@ -467,16 +461,6 @@ export function App() {
   const draftGraphRef = useRef(draftGraph);
   const anchorNodeIdRef = useRef(anchorNodeId);
   const analysisDisplayModeRef = useRef(analysisDisplayMode);
-  // 待处理的讲解钻取目标，用于跨渲染周期暂存
-  const pendingExplanationDrillTargetRef = useRef<string | null>(null);
-  // 标记讲解结果是否由前端本地覆盖（区别于后端推送）
-  const explanationLocalOverrideRef = useRef(false);
-  // 待执行的讲解请求模式（全新/追问）
-  const pendingExplanationRequestModeRef = useRef<ExplanationRequestMode | null>(null);
-  // 待使用的讲解会话标签
-  const pendingExplanationSessionLabelRef = useRef<string | null>(null);
-  // 待入栈的历史讲解会话快照
-  const pendingExplanationHistoryEntryRef = useRef<ExplanationHistoryEntry | null>(null);
   const assistantViewDocuments = useMemo<AssistantDisplayModeDocuments>(() => ({
     FACT_GRAPH: factGraphView,
     FLOWCHART: flowchartView,
@@ -948,86 +932,32 @@ export function App() {
     return resolveDisplayedNodeId(rawNodeId, nodes) ?? rawNodeId;
   }
 
-  /** 从助手结果中选中某个讲解步骤，并联动定位到对应节点 */
-  function handleSelectExplanationStepFromAssistant(stepId: string) {
-    setSelectedExplanationStepId(stepId);
-    const targetNodeId = resolveExplanationStepTargetNodeId(stepId);
-    if (targetNodeId) {
-      selectExplanationTargetNode(targetNodeId);
-    }
-  }
-
-  /** 从助手结果中定位某步骤的图节点，并触发视图聚焦 */
-  function handleLocateExplanationStepNodeFromAssistant(stepId: string) {
-    setSelectedExplanationStepId(stepId);
-    const targetNodeId = resolveExplanationStepTargetNodeId(stepId);
-    if (!targetNodeId) {
-      setOperationFeedback({
-        level: "WARNING",
-        message: "当前步骤没有可定位的图节点。",
-      });
-      return;
-    }
-    selectExplanationTargetNode(targetNodeId, { focusViewport: true });
-    const targetNode = nodes.find((node) => node.id === targetNodeId) ?? null;
-    setOperationFeedback({
-      level: "INFO",
-      message: `已定位到图中节点：${targetNode?.title ?? targetNodeId}`,
-    });
-  }
-
-  /** 从助手结果中查看某步骤节点的详情面板 */
-  function handleInspectExplanationStepNodeFromAssistant(stepId: string) {
-    setSelectedExplanationStepId(stepId);
-    const targetNodeId = resolveExplanationStepTargetNodeId(stepId);
-    if (!targetNodeId) {
-      setOperationFeedback({
-        level: "WARNING",
-        message: "当前步骤没有可编辑的图节点。",
-      });
-      return;
-    }
-    handleInspectNode(targetNodeId);
-  }
-
-  /** 在助手侧切换讲解粒度并按新粒度重新发起讲解请求 */
-  function handleChangeExplanationGranularityFromAssistant(granularity: StepGranularity) {
-    setSelectedExplanationGranularity(granularity);
-    setAssistantComposer(assistantComposerDraft, NEW_ASSISTANT_COMPOSER_TARGET);
-    const rerunIntent = resolveExplanationRerunIntent(analysisDisplayMode, assistantSessionState.activeIntent);
-    const targetNodeIds = selectedAssistantNodeIds();
-    const targetTitle = assistantTargetTitle(targetNodeIds) ?? selectedNode?.title ?? null;
-    const prompt = rerunIntent === "DESCRIBE_CLASS"
-      ? buildDefaultClassDescriptionPrompt(targetTitle)
-      : buildDefaultExplanationPrompt(targetTitle, analysisDisplayMode);
-    handleAssistantSubmit(rerunIntent, prompt, {
-      explanationGranularity: granularity,
-    });
-  }
-
-  /** 针对某个讲解步骤发起追问：定位步骤节点并预填问答输入框 */
-  function handleFollowUpExplanationStepFromAssistant(stepId: string, customQuestion?: string) {
-    const step = findExplanationStep(graphBeautificationResult, stepId);
-    if (!step) {
-      return;
-    }
-    const question = resolveExplanationFollowUpQuestion(step, customQuestion);
-    const focusNodeId = resolveExplanationStepFocusNodeId(stepId)
-      ?? (selectedNodeId ? resolveDisplayedNodeId(selectedNodeId, nodes) ?? selectedNodeId : null);
-    setSelectedExplanationStepId(step.stepId);
-    if (focusNodeId) {
-      selectExplanationTargetNode(focusNodeId, { focusViewport: true });
-    }
-    primeAssistantComposer("EXPLAIN_CODE", question, {
-      target: {
-        kind: "ExplanationFollowUp",
-        stepId: step.stepId,
-        stepTitle: step.title,
-        focusNodeId,
-      },
-      stage: "understand",
-    });
-  }
+  // P2-1: 讲解步骤交互动作（选中/定位/查看/切换粒度/追问）委托给 useExplanationStepActions hook
+  const {
+    handleSelectExplanationStepFromAssistant,
+    handleLocateExplanationStepNodeFromAssistant,
+    handleInspectExplanationStepNodeFromAssistant,
+    handleChangeExplanationGranularityFromAssistant,
+    handleFollowUpExplanationStepFromAssistant,
+  } = useExplanationStepActions({
+    graphBeautificationResult,
+    nodes,
+    selectedNodeId,
+    selectedNode,
+    analysisDisplayMode,
+    activeIntent: assistantSessionState.activeIntent,
+    setSelectedExplanationStepId,
+    setSelectedExplanationGranularity,
+    selectExplanationTargetNode,
+    handleInspectNode,
+    setOperationFeedback,
+    primeAssistantComposer,
+    setAssistantComposer,
+    handleAssistantSubmit,
+    assistantComposerDraft,
+    selectedAssistantNodeIds,
+    assistantTargetTitle,
+  });
 
   const {
     codeDiffStatus,
@@ -1143,28 +1073,6 @@ export function App() {
     blockingRiskCount: changeTrayState.blockingRiskCount,
     generatedCodeDraftCount: generatedCodeDrafts.length,
   });
-  const [outlineQuery, setOutlineQuery] = useState("");
-
-  useEffect(() => {
-    writeHybridWorkbenchLayoutPreference(hybridLayoutPreference);
-  }, [hybridLayoutPreference]);
-
-  /** 用户切换大纲折叠状态时持久化布局偏好 */
-  function handleOutlineCollapsedChange(outlineCollapsed: boolean) {
-    setHybridLayoutPreference((current) => ({
-      ...current,
-      outlineCollapsed,
-    }));
-  }
-
-  /** 用户拖动调整工作台宽度，钳制到合法区间后持久化 */
-  function handleWorkbenchWidthChange(workbenchWidth: number) {
-    setHybridLayoutPreference((current) => ({
-      ...current,
-      workbenchWidth: clampAssistantWorkbenchWidth(workbenchWidth),
-    }));
-  }
-
   /** 选中某个草稿条目并联动定位到对应的图节点 */
   function handleSelectDraftEntry(entryId: string) {
     setSelectedDraftEntryId(entryId);
