@@ -103,7 +103,11 @@ class InvocationExpansionTargetResolver {
      * 在所有实现类中查找同名同参的具体实现方法。
      *
      * 先收集目标类（接口或抽象类）的全部实现/继承类标识，
-     * 再在这些项目源码的实现类中匹配方法名和参数类型，结果按方法标识去重。
+     * 再在这些项目源码的实现类中按 [matchesByOverrideShape] 匹配，
+     * 结果按方法标识去重。
+     *
+     * 匹配规则用 simpleName + 参数数量：与 JavaOverrideResolver 保持一致，
+     * 覆盖泛型特化、协变返回等 parameterTypes 严格相等会漏匹配的场景。
      */
     private fun implementationMethods(
         method: JvmMethodSymbol,
@@ -114,7 +118,7 @@ class InvocationExpansionTargetResolver {
         if (implementingClassIds.isEmpty()) {
             return emptyList()
         }
-        val parameterTypes = method.parameterTypes
+        val parameterCount = method.parameterTypes.size
         return implementingClassIds
             .asSequence()
             .mapNotNull(index::findSymbol)
@@ -125,7 +129,7 @@ class InvocationExpansionTargetResolver {
                     .filter { candidate ->
                         candidate.ownerClassName == classSymbol.qualifiedName &&
                             candidate.simpleName == method.simpleName &&
-                            candidate.parameterTypes == parameterTypes
+                            candidate.parameterTypes.size == parameterCount
                     }
             }
             .distinctBy(JvmMethodSymbol::id)

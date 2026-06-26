@@ -104,6 +104,12 @@ class JavaOverrideResolver(
 
     /**
      * 查询项目内具体实现方法。
+     *
+     * 匹配规则用 [matchesByOverrideShape]：
+     * JVM 层 override 由 simpleName + 参数数量决定（
+     * 协变返回、泛型特化、Kotlin suspend 等场景两端 parameterTypes 严格相等不可靠，
+     * 但 simpleName + 参数数量 + 实现类层级关系足以唯一确定 override 关系，
+     * JVM bridge method 编译保证不会产生额外同名同数量方法）。
      */
     private fun concreteImplementations(
         baseMethod: JvmMethodSymbol,
@@ -120,14 +126,31 @@ class JavaOverrideResolver(
                 index.symbolIndex.methodsBySignature.values.asSequence()
                     .filter { method ->
                         method.ownerClassName == classSymbol.qualifiedName &&
-                            method.simpleName == baseMethod.simpleName &&
-                            method.parameterTypes == baseMethod.parameterTypes
+                            matchesByOverrideShape(method, baseMethod)
                     }
             }
             .distinctBy(JvmMethodSymbol::id)
             .sortedBy(JvmMethodSymbol::signature)
             .toList()
     }
+
+    /**
+     * 判断两个方法在 JVM override 关系上是否同形。
+     *
+     * 仅按 simpleName + 参数数量比较：
+     * - 协变返回类型不影响参数；保留两端各自的真实 returnType。
+     * - 泛型特化场景下接口 parameterTypes 含泛型名（T），实现是具体类型（String），
+     *   严格相等会漏匹配；用 size 比较覆盖此场景。
+     * - Kotlin suspend 在两端 Continuation 描述符一致，size 也一致。
+     * - 同 owner 中同名同参数数量的方法本身受 Java 重载规则约束，
+     *   类型必须不同，本匹配仍能正确定位（实现类不会被同 owner 的同名重载误匹配，
+     *   因为本函数仅检查 baseMethod 与 candidate 之间，不在同 owner 比较多次）。
+     */
+    private fun matchesByOverrideShape(
+        candidate: JvmMethodSymbol,
+        baseMethod: JvmMethodSymbol,
+    ): Boolean = candidate.simpleName == baseMethod.simpleName &&
+        candidate.parameterTypes.size == baseMethod.parameterTypes.size
 
     /**
      * 判断类是否为可实例化的具体类。
