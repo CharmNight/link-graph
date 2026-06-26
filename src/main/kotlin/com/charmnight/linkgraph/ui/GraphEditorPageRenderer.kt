@@ -223,15 +223,15 @@ class GraphEditorPageRenderer {
         "effectiveMode" to state.effectiveMode?.name,
     )
 
-    /** 把 QA 请求恢复状态（最近成功/失败的请求）转换为前端可重放的载荷。 */
-    internal fun qaRequestRecoveryStateToMap(
+    /** 把 QA 请求恢复状态（最近成功/失败的请求）转换为前端 DTO。 */
+    internal fun qaRequestRecoveryStateToDto(
         state: com.charmnight.linkgraph.workbench.QaRequestRecoveryState,
-    ): Map<String, Any?> = com.charmnight.linkgraph.ui.qaRequestRecoveryStateToMap(state)
+    ): QaRequestRecoveryStateDto = com.charmnight.linkgraph.ui.qaRequestRecoveryStateToDto(state)
 
-    /** 把可重放的 QA 请求结构（用于失败后重试或回放）展开为前端字段：详见 top-level fun replayableQaRequestToMap。 */
-    private fun replayableQaRequestToMap(
+    /** 把可重放的 QA 请求转换为前端 DTO：详见 top-level fun replayableQaRequestToDto。 */
+    private fun replayableQaRequestToDto(
         request: com.charmnight.linkgraph.workbench.ReplayableQaRequest,
-    ): Map<String, Any?> = com.charmnight.linkgraph.ui.replayableQaRequestToMap(request)
+    ): ReplayableQaRequestDto = com.charmnight.linkgraph.ui.replayableQaRequestToDto(request)
 
     /** 把助手结果存储（按结果 ID 索引的多种轮次结果）展开为前端可消费的嵌套结构。 */
     internal fun assistantResultStoreToMap(
@@ -241,7 +241,7 @@ class GraphEditorPageRenderer {
         val resultArtifacts = artifactRefs[resultId] ?: GraphEditorArtifactRegistry.AssistantResultArtifacts()
         linkedMapOf<String, Any?>(
             "kind" to entry.kind.name,
-            "failure" to entry.failure?.let(::assistantFailureResultToMap),
+            "failure" to entry.failure?.let(::assistantFailureResultToDto),
         ).apply {
             when (entry.kind) {
                 com.charmnight.linkgraph.workbench.AssistantTurnKind.EXPLANATION -> {
@@ -262,7 +262,7 @@ class GraphEditorPageRenderer {
                 }
                 com.charmnight.linkgraph.workbench.AssistantTurnKind.GENERATION_PLAN -> {
                     put("generationPlan", entry.generationPlan?.let { plan ->
-                        generationPlanToMap(
+                        generationPlanToDto(
                             plan,
                             promptPreviewArtifactId = resultArtifacts.generationPlanPromptPreviewArtifactId,
                         )
@@ -276,7 +276,7 @@ class GraphEditorPageRenderer {
                 }
                 com.charmnight.linkgraph.workbench.AssistantTurnKind.CODE_DRAFT -> {
                     put("generationPlan", entry.generationPlan?.let { plan ->
-                        generationPlanToMap(
+                        generationPlanToDto(
                             plan,
                             promptPreviewArtifactId = resultArtifacts.generationPlanPromptPreviewArtifactId,
                         )
@@ -330,15 +330,15 @@ class GraphEditorPageRenderer {
         }
     }
 
-    /** 把阶段准入判定（是否允许进入下一阶段、阻塞原因等）转换为前端结构。 */
-    internal fun stageEligibilityDecisionToMap(
+    /** 把阶段准入判定转换为前端 DTO。 */
+    internal fun stageEligibilityDecisionToDto(
         decision: com.charmnight.linkgraph.workbench.StageEligibilityDecision,
-    ): Map<String, Any?> = com.charmnight.linkgraph.ui.stageEligibilityDecisionToMap(decision)
+    ): StageEligibilityDecisionDto = com.charmnight.linkgraph.ui.stageEligibilityDecisionToDto(decision)
 
-    /** 把源码跳转状态转换成前端可消费的映射：详见 top-level fun sourceNavigationStateToMap。 */
-    internal fun sourceNavigationStateToMap(
+    /** 把源码跳转状态转换为前端 DTO：详见 top-level fun sourceNavigationStateToDto。 */
+    internal fun sourceNavigationStateToDto(
         state: com.charmnight.linkgraph.ui.SourceNavigationState,
-    ): Map<String, Any?> = com.charmnight.linkgraph.ui.sourceNavigationStateToMap(state)
+    ): SourceNavigationStateDto = com.charmnight.linkgraph.ui.sourceNavigationStateToDto(state)
 
     /** 为 diff 项解析可读标题。 */
     internal fun resolveDiffTitle(
@@ -346,15 +346,15 @@ class GraphEditorPageRenderer {
         document: GraphDocument,
     ): String = com.charmnight.linkgraph.ui.resolveDiffTitle(entry, document)
 
-    /** 把节点转换为前端使用的 Map 结构：详见 top-level fun nodeToMap。 */
-    private fun nodeToMap(
+    /** 把节点转换为前端 DTO：详见 top-level fun nodeToDto。 */
+    private fun nodeToDto(
         node: GraphNode,
         layoutState: GraphLayoutState? = null,
-    ): Map<String, Any?> = com.charmnight.linkgraph.ui.nodeToMap(node, layoutState)
+    ): GraphNodeDto = com.charmnight.linkgraph.ui.nodeToDto(node, layoutState)
 
-    /** 把边转换为前端使用的 Map 结构。 */
-    private fun edgeToMap(edge: GraphEdge): Map<String, Any?> =
-        com.charmnight.linkgraph.ui.edgeToMap(edge)
+    /** 把边转换为前端 DTO。 */
+    private fun edgeToDto(edge: GraphEdge): GraphEdgeDto =
+        com.charmnight.linkgraph.ui.edgeToDto(edge)
 
     /** 把图文档转换为前端使用的 Map，并按规模决定是否裁剪内容。 */
     internal fun documentToMap(
@@ -369,9 +369,9 @@ class GraphEditorPageRenderer {
                     document.edges.size <= MAX_SECONDARY_LAYER_SERIALIZED_EDGES
                 )
         return linkedMapOf(
-            "nodes" to if (shouldInlineContent) document.nodes.map { node -> nodeToMap(node, layoutState) } else emptyList<Map<String, Any?>>(),
-            "edges" to if (shouldInlineContent) document.edges.map(::edgeToMap) else emptyList<Map<String, Any?>>(),
-            "patch" to document.patch?.let(::patchToMap),
+            "nodes" to if (shouldInlineContent) document.nodes.map { node -> nodeToDto(node, layoutState) } else emptyList(),
+            "edges" to if (shouldInlineContent) document.edges.map(::edgeToDto) else emptyList(),
+            "patch" to document.patch?.let(::patchToDto),
             "nodeCount" to document.nodes.size,
             "edgeCount" to document.edges.size,
             "truncated" to !shouldInlineContent,
@@ -680,12 +680,13 @@ class GraphEditorPageRenderer {
     )
 
     /** 把图补丁转换为前端使用的 Map 结构。 */
-    internal fun patchToMap(patch: GraphPatch): Map<String, Any?> =
-        com.charmnight.linkgraph.ui.patchToMap(patch)
+    /** 把补丁整体转换为前端 DTO：详见 top-level fun patchToDto。 */
+    internal fun patchToDto(patch: GraphPatch): GraphPatchDto =
+        com.charmnight.linkgraph.ui.patchToDto(patch)
 
-    /** 把单条补丁操作转换为前端使用的 Map 结构：详见 top-level fun patchOperationToMap。 */
-    private fun patchOperationToMap(operation: GraphPatchOperation): Map<String, Any?> =
-        com.charmnight.linkgraph.ui.patchOperationToMap(operation)
+    /** 把单条补丁操作转换为前端 DTO：详见 top-level fun patchOperationToDto。 */
+    private fun patchOperationToDto(operation: GraphPatchOperation): GraphPatchOperationDto =
+        com.charmnight.linkgraph.ui.patchOperationToDto(operation)
 
     /** 把补丁类结果转换为前端使用的 Map 结构。 */
     internal fun patchResultToMap(
@@ -699,7 +700,7 @@ class GraphEditorPageRenderer {
         "answer" to result.answer,
         "promptPreviewArtifactId" to promptPreviewArtifactId,
         "warnings" to result.warnings,
-        "findings" to result.findings.map(::resultEvidenceFindingToMap),
+        "findings" to result.findings.map(::resultEvidenceFindingToDto),
         "candidateChanges" to result.candidateChanges.map(::candidateDraftChangeToMap),
         "newCandidateChanges" to result.newCandidateChanges.map(::candidateDraftChangeToMap),
         "investigationThreads" to result.investigationThreads.map(::investigationThreadToMap),
@@ -708,7 +709,7 @@ class GraphEditorPageRenderer {
         "sourceContext" to result.sourceContext.map(::sourceSnippetContextToMap),
         "evidenceTrace" to result.evidenceTrace.map(::evidenceTraceEntryToMap),
         "qaSession" to result.qaSession?.let(::qaConversationSessionToMap),
-        "patch" to result.patch?.let(::patchToMap),
+        "patch" to result.patch?.let(::patchToDto),
     )
 
     /** 把链路讲解结果转换为前端使用的 Map 结构。 */
@@ -727,7 +728,7 @@ class GraphEditorPageRenderer {
                 "description" to step.description,
                 "primaryNodeId" to step.primaryNodeId,
                 "codeSnippet" to step.codeSnippet,
-                "evidence" to step.evidence.map(::resultEvidenceFindingToMap),
+                "evidence" to step.evidence.map(::resultEvidenceFindingToDto),
                 "followUpQuestions" to step.followUpQuestions,
                 "downstreamTargets" to step.downstreamTargets,
             )
@@ -737,8 +738,9 @@ class GraphEditorPageRenderer {
     )
 
     /** 把证据发现项转换为前端使用的 Map 结构。 */
-    private fun resultEvidenceFindingToMap(finding: com.charmnight.linkgraph.llm.ResultEvidenceFinding): Map<String, Any?> =
-        com.charmnight.linkgraph.ui.resultEvidenceFindingToMap(finding)
+    /** 把单条证据结论转换为前端 DTO：详见 top-level fun resultEvidenceFindingToDto。 */
+    private fun resultEvidenceFindingToDto(finding: com.charmnight.linkgraph.llm.ResultEvidenceFinding): ResultEvidenceFindingDto =
+        com.charmnight.linkgraph.ui.resultEvidenceFindingToDto(finding)
 
     /** 把草稿补丁应用结果转换为前端使用的 Map 结构。 */
     internal fun draftPatchApplyResultToMap(result: DraftPatchApplyResult): Map<String, Any?> = linkedMapOf(
@@ -773,10 +775,10 @@ class GraphEditorPageRenderer {
         "reason" to entry.reason,
         "impactSummary" to entry.impactSummary,
         "claimType" to entry.claimType,
-        "evidence" to entry.evidence.map(::resultEvidenceFindingToMap),
+        "evidence" to entry.evidence.map(::resultEvidenceFindingToDto),
         "editScopes" to entry.editScopes.map(::editScopeToMap),
         "patchIntent" to entry.patchIntent?.let(::candidatePatchIntentToMap),
-        "graphPatch" to entry.graphPatch?.let(::patchToMap),
+        "graphPatch" to entry.graphPatch?.let(::patchToDto),
     )
 
     /** 把候选草稿变更（含状态、证据、补丁意图等）转换为前端结构。 */
@@ -793,10 +795,10 @@ class GraphEditorPageRenderer {
         "reason" to change.reason,
         "impactSummary" to change.impactSummary,
         "claimType" to change.claimType,
-        "evidence" to change.evidence.map(::resultEvidenceFindingToMap),
+        "evidence" to change.evidence.map(::resultEvidenceFindingToDto),
         "editScopes" to change.editScopes.map(::editScopeToMap),
         "patchIntent" to change.patchIntent?.let(::candidatePatchIntentToMap),
-        "graphPatch" to change.graphPatch?.let(::patchToMap),
+        "graphPatch" to change.graphPatch?.let(::patchToDto),
     )
 
     /** 把候选补丁意图（附加目标、真假分支节点）转换为前端结构。 */
@@ -869,7 +871,7 @@ class GraphEditorPageRenderer {
         "evidenceGap" to thread.evidenceGap,
         "recommendedQuestion" to thread.recommendedQuestion,
         "claimType" to thread.claimType,
-        "evidence" to thread.evidence.map(::resultEvidenceFindingToMap),
+        "evidence" to thread.evidence.map(::resultEvidenceFindingToDto),
         "latestTurnOutcomeId" to thread.latestTurnOutcomeId,
         "resolution" to thread.resolution?.let(::riskResolutionToMap),
     )

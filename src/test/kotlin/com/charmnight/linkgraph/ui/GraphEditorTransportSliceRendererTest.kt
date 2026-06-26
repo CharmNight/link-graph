@@ -191,10 +191,9 @@ class GraphEditorTransportSliceRendererTest {
         assertFalse(draftPayload.containsKey("content"))
         assertTrue(draftPayload["contentArtifactId"].toString().isNotBlank())
 
-        val generationPlan = snapshotEnvelope.state["generationPlan"] as? Map<*, *>
-        assertNotNull(generationPlan)
-        assertFalse(generationPlan.containsKey("promptPreview"))
-        assertTrue(generationPlan["promptPreviewArtifactId"].toString().isNotBlank())
+        val generationPlan = assertNotNull(snapshotEnvelope.state["generationPlan"] as? GenerationPlanDto)
+        // P2-6: generationPlan.promptPreview 外化到 artifact，DTO 不再有此字段
+        assertTrue(generationPlan.promptPreviewArtifactId?.isNotBlank() == true)
 
         assertFalse(snapshotEnvelope.state.containsKey("generatedCodeDraftPromptPreview"))
         assertTrue(snapshotEnvelope.state["generatedCodeDraftPromptPreviewArtifactId"].toString().isNotBlank())
@@ -422,9 +421,10 @@ class GraphEditorTransportSliceRendererTest {
         val assistantResultStore = envelope.state["assistantResultStore"] as? Map<*, *>
         assertNotNull(assistantResultStore)
         val generationPlanEntry = assertNotNull(assistantResultStore[generationPlanResultId] as? Map<*, *>)
-        val historicalPlan = assertNotNull(generationPlanEntry["generationPlan"] as? Map<*, *>)
-        assertFalse(historicalPlan.containsKey("promptPreview"))
-        assertTrue(historicalPlan["promptPreviewArtifactId"].toString().isNotBlank())
+        val historicalPlan = assertNotNull(generationPlanEntry["generationPlan"] as? GenerationPlanDto)
+        // P2-6: generationPlan 字段 promptPreview 被外化到 artifactStore，DTO 不再带这个字段
+        // DTO 字段 promptPreviewArtifactId 必须非空
+        assertTrue(historicalPlan.promptPreviewArtifactId?.isNotBlank() == true)
 
         val codeDraftEntry = assertNotNull(assistantResultStore[codeDraftResultId] as? Map<*, *>)
         assertEquals(listOf("全局草稿警告需要保留"), codeDraftEntry["codeDraftWarnings"])

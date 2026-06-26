@@ -34,7 +34,7 @@ internal class BootstrapPayloadAssembler(
         payload["workspaceBaseGraph"] = renderer.documentToMap(workspaceState.workspaceBaseGraph, includeFullContent = true)
         payload["semanticFactGraph"] = renderer.documentToMap(workspaceState.semanticFactGraph, includeFullContent = false)
         payload["designBaselineGraph"] = workspaceState.designBaselineGraph?.let { renderer.documentToMap(it, includeFullContent = false) }
-        payload["sceneStates"] = sceneStatesToMap(graphViewsState.sceneStates)
+        payload["sceneStates"] = sceneStatesToDto(graphViewsState.sceneStates)
         payload["factGraphView"] = renderer.factGraphViewToMap(graphViewsState.factGraphView, factSceneState.layoutState)
         payload["flowchartView"] = renderer.flowchartViewToMap(graphViewsState.flowchartView, flowchartSceneState.layoutState)
         payload["resourceRelationView"] = renderer.resourceRelationViewToMap(graphViewsState.resourceRelationView, resourceSceneState.layoutState)
@@ -42,14 +42,14 @@ internal class BootstrapPayloadAssembler(
         payload["classDiagramView"] = renderer.classDiagramViewToMap(graphViewsState.classDiagramView, classDiagramSceneState.layoutState)
         payload["reviewGraphView"] = renderer.reviewGraphViewToMap(graphViewsState.reviewGraphView, reviewGraphSceneState.layoutState)
         payload["indexedGraphRequestStates"] = graphViewsState.indexedGraphRequestStates.entries.associate { (view, requestState) -> view.name to renderer.requestStateToMap(requestState) }
-        payload["draftPatchPreview"] = generationState.draftPatchPreview?.let { renderer.patchToMap(it) }
+        payload["draftPatchPreview"] = generationState.draftPatchPreview?.let { renderer.patchToDto(it) }
         payload["draftWorkbenchState"] = renderer.draftWorkbenchStateToMap(generationState.draftWorkbenchState)
         payload["canUndoDraftPatchApply"] = generationState.draftPatchUndoState != null
         payload["lastAppliedDraftPatchSummary"] = generationState.draftPatchUndoState?.patchPreview?.summary
         payload["lastDraftPatchApplyResult"] = generationState.lastDraftPatchApplyResult?.let { renderer.draftPatchApplyResultToMap(it) }
         payload["qaResult"] = reviewState.qaResult?.let { renderer.patchResultToMap(it, artifactRefs.qaPromptPreviewArtifactId) }
         payload["qaRequestState"] = renderer.requestStateToMap(reviewState.qaRequestState, renderer.hasPromptPreview(reviewState.qaResult?.promptPreview, artifactRefs.qaPromptPreviewArtifactId))
-        payload["qaRequestRecoveryState"] = renderer.qaRequestRecoveryStateToMap(reviewState.qaRequestRecoveryState)
+        payload["qaRequestRecoveryState"] = renderer.qaRequestRecoveryStateToDto(reviewState.qaRequestRecoveryState)
         payload["runtimeArtifactSummaries"] = assistantState.runtimeArtifactSummaries.mapValues { (_, summaries) ->
             summaries.map { s -> linkedMapOf<String, Any?>("artifactId" to s.artifactId, "artifactType" to s.artifactType, "title" to s.title, "description" to s.description) }
         }
@@ -61,7 +61,7 @@ internal class BootstrapPayloadAssembler(
         payload["diffItems"] = workspaceState.diff?.entries.orEmpty().map { e -> linkedMapOf<String, Any?>("id" to e.elementId, "title" to renderer.resolveDiffTitle(e, workspaceState.workspaceGraph), "status" to e.status.name, "description" to (e.message ?: e.fields.joinToString())) }
         payload["syncPreviewItems"] = workspaceState.syncPreviewItems.map { i -> linkedMapOf<String, Any?>("id" to i.id, "title" to i.title, "description" to i.description, "risk" to i.risk.name) }
         payload["draftVersion"] = generationState.draftVersion
-        payload["generationPlan"] = generationState.generationPlan?.let { p -> generationPlanToMap(p, artifactRefs.generationPlanPromptPreviewArtifactId) }
+        payload["generationPlan"] = generationState.generationPlan?.let { p -> generationPlanToDto(p, artifactRefs.generationPlanPromptPreviewArtifactId) }
         payload["generationPlanDraftVersion"] = generationState.generationPlanDraftVersion
         payload["generationPlanRequestState"] = renderer.requestStateToMap(generationState.generationPlanRequestState, renderer.hasPromptPreview(generationState.generationPlan?.promptPreview, artifactRefs.generationPlanPromptPreviewArtifactId))
         payload["draftValidationState"] = generationState.draftValidationState?.let { renderer.draftValidationStateToMap(it) }
@@ -73,12 +73,12 @@ internal class BootstrapPayloadAssembler(
         payload["generatedCodeDraftSource"] = generationState.generatedCodeDraftSource?.name
         payload["generatedCodeDraftPromptPreviewArtifactId"] = artifactRefs.generatedCodeDraftPromptPreviewArtifactId
         payload["codeDraftRequestState"] = renderer.requestStateToMap(generationState.codeDraftRequestState, renderer.hasPromptPreview(generationState.generatedCodeDraftPromptPreview, artifactRefs.generatedCodeDraftPromptPreviewArtifactId))
-        payload["codeEligibilityDecision"] = generationState.codeEligibilityDecision?.let { renderer.stageEligibilityDecisionToMap(it) }
+        payload["codeEligibilityDecision"] = generationState.codeEligibilityDecision?.let { renderer.stageEligibilityDecisionToDto(it) }
         payload["generatedCodeDraftWriteReport"] = generationState.generatedCodeDraftWriteReport?.let { r -> linkedMapOf<String, Any?>("writtenFiles" to r.writtenFiles, "skippedFiles" to r.skippedFiles, "warnings" to r.warnings) }
         payload["semanticRevision"] = workspaceState.semanticRevision
         payload["workspaceRevision"] = workspaceState.workspaceRevision
         payload["snapshotRevision"] = transportState.snapshotRevision
-        payload["sourceNavigationState"] = renderer.sourceNavigationStateToMap(navigationState.sourceNavigationState)
+        payload["sourceNavigationState"] = renderer.sourceNavigationStateToDto(navigationState.sourceNavigationState)
         payload["assistantSessionState"] = GraphEditorAssistantSessionRenderer.assistantSessionStateToDto(assistantState.sessionState)
         payload["assistantResultStore"] = renderer.assistantResultStoreToMap(assistantState.resultStore, artifactRefs.assistantResultArtifacts)
         payload["lastMessageType"] = transportState.lastMessageType

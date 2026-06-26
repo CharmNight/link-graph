@@ -27,7 +27,7 @@ internal class GraphEditorArtifactSlicePayloadBuilder(
                 put("graphBeautificationRequestState", pageRenderer.requestStateToMap(reviewState.graphBeautificationRequestState, pageRenderer.hasPromptPreview(reviewState.graphBeautificationResult?.promptPreview, artifactRefs.beautificationPromptPreviewArtifactId)))
             }
             if (previousArtifactRefs.generationPlanPromptPreviewArtifactId != artifactRefs.generationPlanPromptPreviewArtifactId) {
-                put("generationPlan", generationState.generationPlan?.let { generationPlanToMap(it, artifactRefs.generationPlanPromptPreviewArtifactId) })
+                put("generationPlan", generationState.generationPlan?.let { generationPlanToDto(it, artifactRefs.generationPlanPromptPreviewArtifactId) })
                 put("generationPlanRequestState", pageRenderer.requestStateToMap(generationState.generationPlanRequestState, pageRenderer.hasPromptPreview(generationState.generationPlan?.promptPreview, artifactRefs.generationPlanPromptPreviewArtifactId)))
             }
             if (previousArtifactRefs.generationPlanDiscussionPromptPreviewArtifactId != artifactRefs.generationPlanDiscussionPromptPreviewArtifactId) {

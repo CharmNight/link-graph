@@ -39,17 +39,16 @@ internal fun Map<String, String>?.semanticMetadata(): Map<String, String>? {
 }
 
 /**
- * GraphEditorPageRenderer 的纯展示 / 序列化 helper（P2-1 拆分）。
+ * GraphEditorPageRenderer 的纯展示 / 序列化 helper（P2-1 拆分，P2-6 DTO 化）。
  *
- * 这些函数无状态、把领域对象转换为前端可消费的字符串 / Map，
+ * 这些函数无状态、把领域对象转换为前端可消费的 DTO（data class），
  * 与 GraphEditorPageRenderer 的 HTML 渲染 / bootstrap payload 装配主流程解耦后便于复用与单独测试。
+ *
+ * Gson 反射序列化保证字段顺序与原 linkedMapOf 一致（serializeNulls 已开）。
+ * 字段名拼写错误会在编译期暴露，重构也 IDE 友好。
  */
 
-/**
- * 解析差异条目的可读标题。
- *
- * NODE 类条目优先用文档中对应节点的 title；EDGE 类条目直接用 elementId（边没有 title 字段）。
- */
+/** 解析差异条目的可读标题。 */
 internal fun resolveDiffTitle(
     entry: GraphDiffEntry,
     document: GraphDocument,
@@ -58,184 +57,321 @@ internal fun resolveDiffTitle(
     GraphDiffElementKind.EDGE -> entry.elementId
 }
 
-/** 把边转换为前端使用的 Map 结构（id / type / source / target / label / metadata / sourceTag）。 */
-internal fun edgeToMap(edge: GraphEdge): Map<String, Any?> = linkedMapOf(
-    "id" to edge.id,
-    "type" to edge.type.name,
-    "source" to edge.fromNodeId,
-    "target" to edge.toNodeId,
-    "label" to edge.label,
-    "metadata" to edge.metadata,
-    "sourceTag" to edge.sourceTag.name,
+// ---------- DTO 定义 ----------
+
+internal data class GraphEdgeDto(
+    val id: String,
+    val type: String,
+    val source: String,
+    val target: String,
+    val label: String?,
+    val metadata: Map<String, String>?,
+    val sourceTag: String,
 )
 
-/** 把节点转换为前端使用的 Map 结构（含 layoutState 提供的 UI 坐标）。 */
-internal fun nodeToMap(
+internal data class GraphNodePositionDto(
+    val x: Double,
+    val y: Double,
+)
+
+internal data class GraphNodeDto(
+    val id: String,
+    val type: String,
+    val title: String,
+    val location: String?,
+    val signature: String?,
+    val inputs: List<String>,
+    val outputs: List<String>,
+    val doc: String?,
+    val certainty: String,
+    val bindingStatus: String,
+    val diffStatus: String?,
+    val sourceTag: String,
+    val metadata: Map<String, String>?,
+    val position: GraphNodePositionDto?,
+)
+
+internal data class GraphPatchOperationDto(
+    val id: String,
+    val action: String,
+    val elementKind: String,
+    val elementId: String,
+    val title: String?,
+    val summary: String?,
+    val node: GraphNodeDto?,
+    val edge: GraphEdgeDto?,
+    val metadata: Map<String, String>?,
+)
+
+internal data class GraphPatchDto(
+    val summary: String?,
+    val operations: List<GraphPatchOperationDto>,
+    val addedNodeIds: List<String>,
+    val removedNodeIds: List<String>,
+    val addedEdgeIds: List<String>,
+    val removedEdgeIds: List<String>,
+)
+
+internal data class ReplayableQaRequestDto(
+    val requestId: String,
+    val kind: String,
+    val question: String,
+    val mode: String,
+    val selectedNodeIds: List<String>,
+    val sourceThreadId: String?,
+    val baseSessionId: String?,
+)
+
+internal data class QaRequestRecoveryStateDto(
+    val lastSubmittedRequest: ReplayableQaRequestDto?,
+    val lastFailedRequest: ReplayableQaRequestDto?,
+)
+
+internal data class StageEligibilityDecisionDto(
+    val target: String,
+    val stageLabel: String,
+    val allowed: Boolean,
+    val message: String,
+    val detailMessage: String?,
+    val blockingThreadIds: List<String>,
+    val unresolvedThreadIds: List<String>,
+)
+
+internal data class SourceNavigationStateDto(
+    val nodeId: String?,
+    val phase: String,
+    val result: String?,
+    val targetPath: String?,
+    val line: Int?,
+    val column: Int?,
+    val errorMessage: String?,
+)
+
+internal data class ResultEvidenceReferenceDto(
+    val nodeId: String?,
+    val filePath: String?,
+    val startLine: Int?,
+    val endLine: Int?,
+)
+
+internal data class ResultEvidenceFindingDto(
+    val id: String,
+    val claim: String,
+    val evidenceLevel: String,
+    val references: List<ResultEvidenceReferenceDto>,
+)
+
+internal data class GraphSceneLayoutStateDto(
+    val positions: Map<String, GraphNodePositionDto>,
+)
+
+internal data class GraphSceneStateDto(
+    val selectedNodeId: String?,
+    val anchorNodeId: String?,
+    val collapsedNodeIds: List<String>,
+    val layoutRevision: Long,
+    val layoutState: GraphSceneLayoutStateDto,
+)
+
+internal data class AssistantFailureResultDto(
+    val resultId: String,
+    val message: String,
+    val detailMessage: String?,
+    val phase: String,
+    val requestId: Long?,
+    val sourceMessageType: String?,
+    val createdAtEpochMillis: Long?,
+)
+
+internal data class GenerationPlanItemDto(
+    val id: String,
+    val title: String,
+    val description: String,
+    val risk: String,
+    val targetPath: String?,
+)
+
+internal data class GenerationPlanDto(
+    val source: String,
+    val summary: String,
+    val warnings: List<String>,
+    val promptPreviewArtifactId: String?,
+    val items: List<GenerationPlanItemDto>,
+)
+
+// ---------- DTO 工厂 ----------
+
+/** 把边转换为前端 DTO。 */
+internal fun edgeToDto(edge: GraphEdge): GraphEdgeDto = GraphEdgeDto(
+    id = edge.id,
+    type = edge.type.name,
+    source = edge.fromNodeId,
+    target = edge.toNodeId,
+    label = edge.label,
+    metadata = edge.metadata,
+    sourceTag = edge.sourceTag.name,
+)
+
+/** 把节点转换为前端 DTO（含 layoutState 提供的 UI 坐标）。 */
+internal fun nodeToDto(
     node: GraphNode,
     layoutState: GraphLayoutState? = null,
-): Map<String, Any?> = linkedMapOf(
-    "id" to node.id,
-    "type" to node.type.name,
-    "title" to node.title,
-    "location" to node.location,
-    "signature" to node.signature,
-    "inputs" to node.inputs,
-    "outputs" to node.outputs,
-    "doc" to node.doc,
-    "certainty" to node.certainty.name,
-    "bindingStatus" to node.bindingStatus.name,
-    "diffStatus" to node.diff.status.takeUnless { it.name == "MATCHED" }?.name,
-    "sourceTag" to node.sourceTag.name,
-    "metadata" to node.metadata.semanticMetadata(),
-    "position" to (layoutState?.positions?.get(node.id)?.let { it.x to it.y } ?: node.metadata.uiPosition())?.let { position ->
-        linkedMapOf(
-            "x" to position.first,
-            "y" to position.second,
-        )
+): GraphNodeDto = GraphNodeDto(
+    id = node.id,
+    type = node.type.name,
+    title = node.title,
+    location = node.location,
+    signature = node.signature,
+    inputs = node.inputs,
+    outputs = node.outputs,
+    doc = node.doc,
+    certainty = node.certainty.name,
+    bindingStatus = node.bindingStatus.name,
+    diffStatus = node.diff.status.takeUnless { it.name == "MATCHED" }?.name,
+    sourceTag = node.sourceTag.name,
+    metadata = node.metadata.semanticMetadata(),
+    position = (layoutState?.positions?.get(node.id)?.let { it.x to it.y } ?: node.metadata.uiPosition())?.let { (x, y) ->
+        GraphNodePositionDto(x = x, y = y)
     },
 )
 
-/** 把补丁整体（summary + operations + added/removed ID 集合）转换为前端 Map。 */
-internal fun patchToMap(patch: GraphPatch): Map<String, Any?> = linkedMapOf(
-    "summary" to patch.summary,
-    "operations" to patch.operations.map(::patchOperationToMap),
-    "addedNodeIds" to patch.addedNodeIds,
-    "removedNodeIds" to patch.removedNodeIds,
-    "addedEdgeIds" to patch.addedEdgeIds,
-    "removedEdgeIds" to patch.removedEdgeIds,
+/** 把单条补丁操作转换为前端 DTO。 */
+internal fun patchOperationToDto(operation: GraphPatchOperation): GraphPatchOperationDto = GraphPatchOperationDto(
+    id = operation.id,
+    action = operation.action.name,
+    elementKind = operation.elementKind.name,
+    elementId = operation.elementId,
+    title = operation.title,
+    summary = operation.summary,
+    node = operation.node?.let(::nodeToDto),
+    edge = operation.edge?.let(::edgeToDto),
+    metadata = operation.metadata,
 )
 
-/** 把单条补丁操作（含 node/edge 引用）转换为前端 Map。 */
-internal fun patchOperationToMap(operation: GraphPatchOperation): Map<String, Any?> = linkedMapOf(
-    "id" to operation.id,
-    "action" to operation.action.name,
-    "elementKind" to operation.elementKind.name,
-    "elementId" to operation.elementId,
-    "title" to operation.title,
-    "summary" to operation.summary,
-    "node" to operation.node?.let(::nodeToMap),
-    "edge" to operation.edge?.let(::edgeToMap),
-    "metadata" to operation.metadata,
+/** 把补丁整体转换为前端 DTO。 */
+internal fun patchToDto(patch: GraphPatch): GraphPatchDto = GraphPatchDto(
+    summary = patch.summary,
+    operations = patch.operations.map(::patchOperationToDto),
+    addedNodeIds = patch.addedNodeIds,
+    removedNodeIds = patch.removedNodeIds,
+    addedEdgeIds = patch.addedEdgeIds,
+    removedEdgeIds = patch.removedEdgeIds,
 )
 
-/** 把 QA 请求恢复状态（上次提交 / 上次失败）展开为前端字段。 */
-internal fun qaRequestRecoveryStateToMap(
-    state: QaRequestRecoveryState,
-): Map<String, Any?> = linkedMapOf(
-    "lastSubmittedRequest" to state.lastSubmittedRequest?.let(::replayableQaRequestToMap),
-    "lastFailedRequest" to state.lastFailedRequest?.let(::replayableQaRequestToMap),
-)
-
-/** 把可重放的 QA 请求结构（用于失败后重试或回放）展开为前端字段。 */
-internal fun replayableQaRequestToMap(
+/** 把可重放的 QA 请求转换为前端 DTO。 */
+internal fun replayableQaRequestToDto(
     request: ReplayableQaRequest,
-): Map<String, Any?> = linkedMapOf(
-    "requestId" to request.requestId,
-    "kind" to request.kind.name,
-    "question" to request.question,
-    "mode" to request.mode.name,
-    "selectedNodeIds" to request.selectedNodeIds,
-    "sourceThreadId" to request.sourceThreadId,
-    "baseSessionId" to request.baseSession?.sessionId,
+): ReplayableQaRequestDto = ReplayableQaRequestDto(
+    requestId = request.requestId,
+    kind = request.kind.name,
+    question = request.question,
+    mode = request.mode.name,
+    selectedNodeIds = request.selectedNodeIds,
+    sourceThreadId = request.sourceThreadId,
+    baseSessionId = request.baseSession?.sessionId,
 )
 
-/** 把阶段准入决策（target / allowed / blocking threads 等）转换为前端 Map。 */
-internal fun stageEligibilityDecisionToMap(
+/** 把 QA 请求恢复状态转换为前端 DTO。 */
+internal fun qaRequestRecoveryStateToDto(
+    state: QaRequestRecoveryState,
+): QaRequestRecoveryStateDto = QaRequestRecoveryStateDto(
+    lastSubmittedRequest = state.lastSubmittedRequest?.let(::replayableQaRequestToDto),
+    lastFailedRequest = state.lastFailedRequest?.let(::replayableQaRequestToDto),
+)
+
+/** 把阶段准入决策转换为前端 DTO。 */
+internal fun stageEligibilityDecisionToDto(
     decision: StageEligibilityDecision,
-): Map<String, Any?> = linkedMapOf(
-    "target" to decision.target.name,
-    "stageLabel" to decision.stageLabel,
-    "allowed" to decision.allowed,
-    "message" to decision.message,
-    "detailMessage" to decision.detailMessage,
-    "blockingThreadIds" to decision.blockingThreadIds,
-    "unresolvedThreadIds" to decision.unresolvedThreadIds,
+): StageEligibilityDecisionDto = StageEligibilityDecisionDto(
+    target = decision.target.name,
+    stageLabel = decision.stageLabel,
+    allowed = decision.allowed,
+    message = decision.message,
+    detailMessage = decision.detailMessage,
+    blockingThreadIds = decision.blockingThreadIds,
+    unresolvedThreadIds = decision.unresolvedThreadIds,
 )
 
-/** 把源码跳转状态转换成前端可消费的映射。 */
-internal fun sourceNavigationStateToMap(
+/** 把源码跳转状态转换为前端 DTO。 */
+internal fun sourceNavigationStateToDto(
     state: SourceNavigationState,
-): Map<String, Any?> = linkedMapOf(
-    "nodeId" to state.nodeId,
-    "phase" to state.phase.name,
-    "result" to state.result?.name,
-    "targetPath" to state.targetPath,
-    "line" to state.line,
-    "column" to state.column,
-    "errorMessage" to state.errorMessage,
+): SourceNavigationStateDto = SourceNavigationStateDto(
+    nodeId = state.nodeId,
+    phase = state.phase.name,
+    result = state.result?.name,
+    targetPath = state.targetPath,
+    line = state.line,
+    column = state.column,
+    errorMessage = state.errorMessage,
 )
 
-/** 把单条证据结论（id / claim / evidenceLevel / references）转换为前端 Map。 */
-internal fun resultEvidenceFindingToMap(finding: ResultEvidenceFinding): Map<String, Any?> = linkedMapOf(
-    "id" to finding.id,
-    "claim" to finding.claim,
-    "evidenceLevel" to finding.evidenceLevel.name,
-    "references" to finding.references.map { reference ->
-        linkedMapOf(
-            "nodeId" to reference.nodeId,
-            "filePath" to reference.filePath,
-            "startLine" to reference.startLine,
-            "endLine" to reference.endLine,
+/** 把单条证据结论转换为前端 DTO。 */
+internal fun resultEvidenceFindingToDto(finding: ResultEvidenceFinding): ResultEvidenceFindingDto = ResultEvidenceFindingDto(
+    id = finding.id,
+    claim = finding.claim,
+    evidenceLevel = finding.evidenceLevel.name,
+    references = finding.references.map { reference ->
+        ResultEvidenceReferenceDto(
+            nodeId = reference.nodeId,
+            filePath = reference.filePath,
+            startLine = reference.startLine,
+            endLine = reference.endLine,
         )
     },
 )
 
-/** 把场景状态集合映射为 sceneId → sceneState 的前端结构。 */
-internal fun sceneStatesToMap(
-    sceneStates: Map<GraphSceneId, GraphSceneState>,
-): Map<String, Any?> =
-    sceneStates.entries.associate { (sceneId, state) ->
-        sceneId.name to graphSceneStateToMap(state)
-    }
-
-/** 把单个场景的运行时状态（选中节点、锚点、折叠节点、布局）转换为前端结构。 */
-internal fun graphSceneStateToMap(
+/** 把单个场景的运行时状态转换为前端 DTO。 */
+internal fun graphSceneStateToDto(
     state: GraphSceneState,
-): Map<String, Any?> = linkedMapOf(
-    "selectedNodeId" to state.selectedNodeId,
-    "anchorNodeId" to state.anchorNodeId,
-    "collapsedNodeIds" to state.collapsedNodeIds.toList(),
-    "layoutRevision" to state.layoutRevision,
-    "layoutState" to linkedMapOf(
-        "positions" to state.layoutState.positions.mapValues { (_, position) ->
-            linkedMapOf(
-                "x" to position.x,
-                "y" to position.y,
-            )
+): GraphSceneStateDto = GraphSceneStateDto(
+    selectedNodeId = state.selectedNodeId,
+    anchorNodeId = state.anchorNodeId,
+    collapsedNodeIds = state.collapsedNodeIds.toList(),
+    layoutRevision = state.layoutRevision,
+    layoutState = GraphSceneLayoutStateDto(
+        positions = state.layoutState.positions.mapValues { (_, position) ->
+            GraphNodePositionDto(x = position.x, y = position.y)
         },
     ),
 )
 
-/** 把助手调用失败结果转换为前端字段，携带错误消息、阶段与时间戳。 */
-internal fun assistantFailureResultToMap(
+/** 把场景状态集合映射为 sceneId → sceneState 的 DTO 结构。 */
+internal fun sceneStatesToDto(
+    sceneStates: Map<GraphSceneId, GraphSceneState>,
+): Map<String, GraphSceneStateDto> =
+    sceneStates.entries.associate { (sceneId, state) ->
+        sceneId.name to graphSceneStateToDto(state)
+    }
+
+/** 把助手调用失败结果转换为前端 DTO。 */
+internal fun assistantFailureResultToDto(
     failure: AssistantFailureResult,
-): Map<String, Any?> = linkedMapOf(
-    "resultId" to failure.resultId,
-    "message" to failure.message,
-    "detailMessage" to failure.detailMessage,
-    "phase" to failure.phase,
-    "requestId" to failure.requestId,
-    "sourceMessageType" to failure.sourceMessageType,
-    "createdAtEpochMillis" to failure.createdAtEpochMillis,
+): AssistantFailureResultDto = AssistantFailureResultDto(
+    resultId = failure.resultId,
+    message = failure.message,
+    detailMessage = failure.detailMessage,
+    phase = failure.phase,
+    requestId = failure.requestId,
+    sourceMessageType = failure.sourceMessageType,
+    createdAtEpochMillis = failure.createdAtEpochMillis,
 )
 
-/** 把生成计划（含若干变更项、风险等级和目标路径）转换为前端结构。 */
-internal fun generationPlanToMap(
+/** 把生成计划转换为前端 DTO。 */
+internal fun generationPlanToDto(
     plan: GenerationPlan,
     promptPreviewArtifactId: String?,
-): Map<String, Any?> = linkedMapOf(
-    "source" to plan.source.name,
-    "summary" to plan.summary,
-    "warnings" to plan.warnings,
-    "promptPreviewArtifactId" to promptPreviewArtifactId,
-    "items" to plan.items.map { item ->
-        linkedMapOf(
-            "id" to item.id,
-            "title" to item.title,
-            "description" to item.description,
-            "risk" to item.risk.name,
-            "targetPath" to item.targetPath,
+): GenerationPlanDto = GenerationPlanDto(
+    source = plan.source.name,
+    summary = plan.summary,
+    warnings = plan.warnings,
+    promptPreviewArtifactId = promptPreviewArtifactId,
+    items = plan.items.map { item ->
+        GenerationPlanItemDto(
+            id = item.id,
+            title = item.title,
+            description = item.description,
+            risk = item.risk.name,
+            targetPath = item.targetPath,
         )
     },
 )
-
