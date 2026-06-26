@@ -35,7 +35,13 @@ object LlmGatewayCompositionRoot {
         val routingGateway = RoutingLlmGateway()
 
         // 收集第三方 contributor（动态 EP，支持热加载）
-        val contributors = EP_NAME.extensionList
+        // 注意：测试环境（unit test container）不加载 plugin.xml，EP 不存在，
+        // 走 try/catch 回退到 RoutingLlmGateway，保证测试不依赖 EP 注册。
+        val contributors = try {
+            EP_NAME.extensionList
+        } catch (e: IllegalArgumentException) {
+            return routingGateway
+        }
         if (contributors.isEmpty()) {
             return routingGateway
         }

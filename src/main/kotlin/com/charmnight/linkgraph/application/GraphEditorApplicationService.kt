@@ -39,7 +39,6 @@ internal class GraphEditorApplicationService(
         InfrastructureComposition(
             project = project,
             logger = logger,
-            testOverrides = testOverrides,
         )
     }
 
@@ -49,7 +48,6 @@ internal class GraphEditorApplicationService(
             project = project,
             logger = logger,
             infrastructure = infrastructure,
-            testOverrides = testOverrides,
         )
     }
 

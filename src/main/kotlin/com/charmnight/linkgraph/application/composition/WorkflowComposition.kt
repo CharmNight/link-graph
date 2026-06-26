@@ -59,8 +59,14 @@ internal class WorkflowComposition(
     private val project: Project,
     private val logger: Logger,
     private val infrastructure: InfrastructureComposition,
-    private val testOverrides: LinkGraphProjectTestOverrides,
 ) {
+    /**
+     * 测试覆盖项：从 project service 动态获取（P3-2 重构）。
+     * 生产环境永远拿到默认实例；测试通过 replaceService 注入。
+     */
+    private val testOverrides: LinkGraphProjectTestOverrides
+        get() = project.getService(LinkGraphProjectTestOverrides::class.java)
+
     // P2-1: 共享语义基础设施委托给 CompositionSharedInfrastructure
     private val codeSubjectHandleFactory: CodeSubjectHandleFactory by lazy(LazyThreadSafetyMode.PUBLICATION) {
         CompositionSharedInfrastructure.createCodeSubjectHandleFactory()

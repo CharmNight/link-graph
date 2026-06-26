@@ -39,9 +39,18 @@ internal class InfrastructureComposition(
     private val project: Project,
     /** 用于记录日志的诊断入口。 */
     private val logger: Logger,
-    /** 测试用的覆盖项集合，允许在测试环境中替换真实实现。 */
-    private val testOverrides: LinkGraphProjectTestOverrides,
 ) {
+    /**
+     * 测试覆盖项：从 project service 动态获取，让测试通过 [LinkGraphProjectTestOverrides] 注入。
+     *
+     * 生产环境永远拿到默认实例（所有字段为 null），不会影响运行时行为；
+     * 测试通过 `project.replaceService(LinkGraphProjectTestOverrides::class.java, fake, disposable)` 注入。
+     *
+     * P3-2：从构造参数移到内部 getter，composition 接口不再暴露测试 hook。
+     */
+    private val testOverrides: LinkGraphProjectTestOverrides
+        get() = project.getService(LinkGraphProjectTestOverrides::class.java)
+
     /** 项目级运行时辅助，提供打开设置、生成设置等能力。 */
     val runtimeSupport by lazy(LazyThreadSafetyMode.PUBLICATION) {
         LinkGraphProjectRuntimeSupport(
