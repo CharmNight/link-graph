@@ -568,32 +568,32 @@ export function useBootstrapProjectionState(args: UseBootstrapProjectionStateArg
       }),
     ) as Record<LinkGraphSceneId, LinkGraphSceneState>;
 
-    let nextFactGraphView = applySceneStateToViewDocument(
+    const nextFactGraphView = applySceneStateToViewDocument(
       projectedFactGraphView,
       currentCanvasState.factGraphView,
       mergedSceneStates.WORKSPACE_FACT ?? createEmptySceneState(),
     );
-    let nextFlowchartView = applySceneStateToViewDocument(
+    const nextFlowchartView = applySceneStateToViewDocument(
       projectedFlowchartView,
       currentCanvasState.flowchartView,
       mergedSceneStates.WORKSPACE_FLOWCHART ?? createEmptySceneState(),
     );
-    let nextResourceRelationView = applySceneStateToViewDocument(
+    const nextResourceRelationView = applySceneStateToViewDocument(
       projectedResourceRelationView,
       currentCanvasState.resourceRelationView,
       mergedSceneStates.WORKSPACE_RESOURCE_RELATION ?? createEmptySceneState(),
     );
-    let nextArchitectureGraphView = applySceneStateToViewDocument(
+    const nextArchitectureGraphView = applySceneStateToViewDocument(
       projectedArchitectureGraphView,
       currentCanvasState.architectureGraphView,
       mergedSceneStates.WORKSPACE_ARCHITECTURE_GRAPH ?? createEmptySceneState(),
     );
-    let nextClassDiagramView = applySceneStateToViewDocument(
+    const nextClassDiagramView = applySceneStateToViewDocument(
       projectedClassDiagramView,
       currentCanvasState.classDiagramView,
       mergedSceneStates.WORKSPACE_CLASS_DIAGRAM ?? createEmptySceneState(),
     );
-    let nextReviewGraphView = applySceneStateToViewDocument(
+    const nextReviewGraphView = applySceneStateToViewDocument(
       projectedReviewGraphView,
       currentCanvasState.reviewGraphView,
       mergedSceneStates.WORKSPACE_REVIEW_GRAPH ?? createEmptySceneState(),

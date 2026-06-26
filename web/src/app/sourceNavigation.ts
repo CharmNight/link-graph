@@ -22,11 +22,11 @@ const SIGNATURE_NAVIGABLE_NODE_TYPES = new Set([
  */
 export function canNavigateToSource(node: Pick<LinkGraphNode, "type" | "location" | "signature" | "metadata">): boolean {
   // 节点自带精确位置（文件路径+偏移等）时一定可跳转
-  if (Boolean(node.location?.trim())) {
+  if (node.location?.trim()) {
     return true;
   }
   // 元数据中带有文件路径或虚拟文件 URL 时也可跳转，覆盖导入图等无 location 但记录了来源的场景
-  if (Boolean(node.metadata?.["source.navigation.filePath"]?.trim() || node.metadata?.["source.navigation.virtualFileUrl"]?.trim())) {
+  if (node.metadata?.["source.navigation.filePath"]?.trim() || node.metadata?.["source.navigation.virtualFileUrl"]?.trim()) {
     return true;
   }
   // 元数据里允许覆盖节点类型（例如把 EXTERNAL_CLASS 视为 CLASS 处理）
