@@ -155,6 +155,9 @@ interface ExplanationHistoryEntry {
 /** 默认讲解会话标签，用作首次进入讲解时的展示名称 */
 const DEFAULT_EXPLANATION_SESSION_LABEL = "当前链路讲解";
 export { resolveQaTargetNodeIds } from "./appGraphSupport";
+// P2-1: 讲解状态管理委托给 useExplanationState hook
+export { DEFAULT_EXPLANATION_SESSION_LABEL as EXPLANATION_SESSION_LABEL } from "./controllers/useExplanationState";
+export type { ExplanationRequestMode } from "./controllers/useExplanationState";
 
 /** 用户在生成计划讨论未输入问题时使用的默认提示语 */
 const DEFAULT_GENERATION_DISCUSSION_PROMPT = "请继续讨论这份实现建议的取舍、风险和下一步。";
