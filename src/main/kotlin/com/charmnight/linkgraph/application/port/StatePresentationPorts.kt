@@ -16,8 +16,8 @@ interface GraphEditorPresentationProvider {
     /** 应用快照提供者：读取整个应用层级的全局状态（项目、模块等）。 */
     fun applicationSnapshotProvider(): ApplicationSnapshotProvider
 
-    /** 工具图快照提供者：读取工具窗口相关的图状态。 */
-    fun toolGraphSnapshotProvider(): ToolGraphSnapshotProvider
+    /** 工具图快照提供者：读取工具窗口相关的图状态（P4-2 移到 llm.tools 包）。 */
+    fun toolGraphSnapshotProvider(): com.charmnight.linkgraph.llm.tools.ToolGraphSnapshotProvider
 
     /** 工作台图提交器：把工作台图变更写回底层存储或协同更新通道。 */
     fun workspaceGraphCommitter(): WorkspaceGraphCommitter

@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.testing
 
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
-import com.charmnight.linkgraph.application.port.ToolGraphSnapshotProvider
+import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshotProvider
 import com.charmnight.linkgraph.application.port.WorkspaceGraphCommitter
 import com.charmnight.linkgraph.application.model.GraphEditTransaction
 import com.charmnight.linkgraph.model.GraphDocument

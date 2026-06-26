@@ -4,7 +4,6 @@ import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
 import com.charmnight.linkgraph.application.model.GraphEditTransaction
 import com.charmnight.linkgraph.application.model.GraphEditRequestParseResult
 import com.charmnight.linkgraph.application.model.GraphEditResult
-import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshot
 import com.charmnight.linkgraph.model.GraphDocument
 
 /**
@@ -20,12 +19,6 @@ fun interface EditorSnapshotProvider {
 fun interface ApplicationSnapshotProvider {
     /** 取当前应用层快照。 */
     fun snapshot(): com.charmnight.linkgraph.application.model.ApplicationSnapshot
-}
-
-/** 工具图快照提供者，专供 LLM 工具上下文使用。 */
-fun interface ToolGraphSnapshotProvider {
-    /** 取当前工具图快照。 */
-    fun snapshot(): ToolGraphSnapshot
 }
 
 /**

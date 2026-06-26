@@ -5,7 +5,7 @@ import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
 import com.charmnight.linkgraph.application.planning.PlanningContextFactory
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
 import com.charmnight.linkgraph.application.port.GraphEditRequestExecutor
-import com.charmnight.linkgraph.application.port.ToolGraphSnapshotProvider
+import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshotProvider
 import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
 import com.charmnight.linkgraph.investigation.application.InvestigationGraphPatchAdapter
 import com.charmnight.linkgraph.investigation.application.InvestigationPipeline

@@ -96,3 +96,17 @@ fun currentWorkingGraphSource(snapshot: ToolGraphSnapshot): String {
 
 /** 判断图是否包含任何节点、边或 patch 内容。 */
 private fun GraphDocument.hasGraphContent(): Boolean = nodes.isNotEmpty() || edges.isNotEmpty() || patch != null
+
+/**
+ * 工具图快照提供者（P4-2 从 application/port 移到 llm/tools）。
+ *
+ * 此接口属于 LLM 工具契约（专供 LLM 工具上下文使用），返回值是 [ToolGraphSnapshot]
+ * 也定义在本包；之前放在 application/port 造成 application 层反向依赖 llm/tools。
+ *
+ * 移动后 application/port 不再 import 本包类型；调用方（ReviewWorkflow / GenerationWorkflowDependencies）
+ * 直接从本包取用即可。
+ */
+fun interface ToolGraphSnapshotProvider {
+    /** 取当前工具图快照。 */
+    fun snapshot(): ToolGraphSnapshot
+}

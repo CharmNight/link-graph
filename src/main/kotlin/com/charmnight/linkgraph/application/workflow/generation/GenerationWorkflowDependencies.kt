@@ -5,7 +5,7 @@ import com.charmnight.linkgraph.application.model.PlanningInput
 import com.charmnight.linkgraph.application.model.RiskResolutionSnapshot
 import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
-import com.charmnight.linkgraph.application.port.ToolGraphSnapshotProvider
+import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshotProvider
 import com.charmnight.linkgraph.codegen.CodeDraftWriterService
 import com.charmnight.linkgraph.codegen.CodeGenerationService
 import com.charmnight.linkgraph.codegen.ProjectPathNormalizer
