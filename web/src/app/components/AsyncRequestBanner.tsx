@@ -174,8 +174,9 @@ export function AsyncRequestBanner({
   requestState,
   telemetryCollapsedByDefault = false,
 }: AsyncRequestBannerProps) {
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
   const effectiveRequestState = resolveEffectiveRequestState(requestState);
-  // 无请求状态：不渲染
+  // 无请求状态：不渲染（在所有 Hook 之后）
   if (!effectiveRequestState) {
     return null;
   }
@@ -188,14 +189,13 @@ export function AsyncRequestBanner({
   );
   const preview = effectiveRequestState.previewText?.trim() || null;
   const telemetry = bannerTelemetry(effectiveRequestState);
-  // 所有字段都为空时不渲染
-  if (!tone && !title && !inlineDetail && !expandedDetail && !preview && telemetry.length === 0) {
-    return null;
-  }
   const hasExpandableDetails = Boolean(preview) || telemetry.length > 0 || Boolean(expandedDetail);
   // 默认折叠条件：外部要求折叠 或 存在预览（预览通常较长，默认折叠）
   const shouldCollapseDetailsByDefault = telemetryCollapsedByDefault || Boolean(preview);
-  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  // 所有字段都为空时不渲染（必须在所有 Hook 之后）
+  if (!tone && !title && !inlineDetail && !expandedDetail && !preview && telemetry.length === 0) {
+    return null;
+  }
   const shouldShowDetails = !shouldCollapseDetailsByDefault || detailsExpanded;
 
   return (

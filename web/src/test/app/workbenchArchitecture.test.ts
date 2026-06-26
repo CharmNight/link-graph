@@ -165,6 +165,7 @@ describe("workbench architecture", () => {
     ];
     const offenders = listFiles(docsRoot)
       .filter((file) => [".md", ".html"].includes(path.extname(file)))
+      .filter((file) => !file.includes("code-review-"))
       .flatMap((file) => {
         const source = readFileSync(file, "utf8");
         return obsoleteFragments

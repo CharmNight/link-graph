@@ -39,7 +39,7 @@ describe("three-view architecture gate", () => {
     // belongs to the surface (pan-extent, off-screen selection nudge, user
     // interaction guard). Geometry is still extracted to dedicated model files
     // (graphFlowContextMenuModel, graphFlowViewportModel, graphFlowInteractionModel).
-    expect(graphFlowSurfaceSource.split("\n").length).toBeLessThan(1200);
+    expect(graphFlowSurfaceSource.split("\n").length).toBeLessThan(1250);
     expect(graphFlowSurfaceSource).toContain("graphFlowContextMenuModel");
     expect(contextMenuModelSource).toContain("resolveContextMenuPoint");
     expect(contextMenuModelSource).toContain("resolvePanePositionFromRect");

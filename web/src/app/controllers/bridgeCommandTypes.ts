@@ -53,5 +53,4 @@ export interface RunBridgeCommandOptions
   extends BridgeCommandFailureOptions, BridgeCommandSuccessOptions {}
 
 /** 提交异步桥接命令的选项；当前与 RunBridgeCommandOptions 一致，保留独立类型便于后续扩展。 */
-export interface SubmitAsyncBridgeCommandOptions
-  extends RunBridgeCommandOptions {}
+export type SubmitAsyncBridgeCommandOptions = RunBridgeCommandOptions;
