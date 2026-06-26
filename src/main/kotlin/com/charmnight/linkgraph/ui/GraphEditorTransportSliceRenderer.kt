@@ -443,16 +443,16 @@ class GraphEditorTransportSliceRenderer(
     )
 
     /** 生成 payload 在 trace 中常用的概要字段（覆盖关键 key 是否存在），便于排查 payload 内容。 */
-    private fun payloadDetails(payload: Map<String, Any?>): List<String> = listOf(
-        "payloadKeys=${payload.size}",
-        "hasWorkspaceGraph=${payload.containsKey("workspaceGraph")}",
-        "hasFlowchartView=${payload.containsKey("flowchartView")}",
-        "hasArchitectureGraphView=${payload.containsKey("architectureGraphView")}",
-        "hasClassDiagramView=${payload.containsKey("classDiagramView")}",
+    private fun payloadDetails(payload: BootstrapPayloadDto): List<String> = listOf(
+        "payloadKeys=${payload.javaClass.declaredFields.size}",
+        "hasWorkspaceGraph=true",
+        "hasFlowchartView=true",
+        "hasArchitectureGraphView=true",
+        "hasClassDiagramView=true",
     )
 
     /** 计算 payload 的 SHA-256 哈希，用作增量比对时的"等价性指纹"。 */
-    private fun payloadHash(payload: Map<String, Any?>): String =
+    private fun payloadHash(payload: BootstrapPayloadDto): String =
         MessageDigest.getInstance("SHA-256")
             .digest(JsonCodec.toJson(payload).toByteArray(Charsets.UTF_8))
             .joinToString("") { byte -> "%02x".format(byte) }

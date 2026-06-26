@@ -54,12 +54,14 @@ class GraphEditorTransportSliceRendererTest {
         assertEquals(1, envelopes.size)
         val feedbackEnvelope = envelopes.single()
         assertEquals("FEEDBACK_SLICE", feedbackEnvelope.transportType)
+        @Suppress("UNCHECKED_CAST")
+        val feedbackState = feedbackEnvelope.state as Map<String, Any?>
         assertEquals(
             "只更新提示文案，不应通过完整权威快照下发。",
-            (feedbackEnvelope.state["operationFeedback"] as Map<*, *>)["message"],
+            (feedbackState["operationFeedback"] as Map<*, *>)["message"],
         )
-        assertFalse(feedbackEnvelope.state.containsKey("workspaceGraph"))
-        assertFalse(feedbackEnvelope.state.containsKey("generatedCodeDrafts"))
+        assertFalse(feedbackState.containsKey("workspaceGraph"))
+        assertFalse(feedbackState.containsKey("generatedCodeDrafts"))
         val script = renderer.renderScript(envelopes)
         assertTrue(script.contains("只更新提示文案，不应通过完整权威快照下发。"))
         assertFalse(script.contains("OrderController.submit"))
@@ -185,18 +187,19 @@ class GraphEditorTransportSliceRendererTest {
 
         val snapshotEnvelope = envelopes.singleOrNull()
         assertNotNull(snapshotEnvelope)
+        val snapshotState = assertNotNull(snapshotEnvelope.state as? BootstrapPayloadDto)
 
-        val draftPayload = (snapshotEnvelope.state["generatedCodeDrafts"] as? List<*>)?.singleOrNull() as? Map<*, *>
-        assertNotNull(draftPayload)
-        assertFalse(draftPayload.containsKey("content"))
-        assertTrue(draftPayload["contentArtifactId"].toString().isNotBlank())
+        val draftPayload = assertNotNull(snapshotState.generatedCodeDrafts.singleOrNull())
+        // P2-6: content 外化到 artifact，DTO 的 content 字段为 null（contentArtifactId 不为空时不渲染 content）
+        assertTrue(draftPayload.content == null)
+        assertTrue(draftPayload.contentArtifactId?.isNotBlank() == true)
 
-        val generationPlan = assertNotNull(snapshotEnvelope.state["generationPlan"] as? GenerationPlanDto)
+        val generationPlan = assertNotNull(snapshotState.generationPlan)
         // P2-6: generationPlan.promptPreview 外化到 artifact，DTO 不再有此字段
         assertTrue(generationPlan.promptPreviewArtifactId?.isNotBlank() == true)
 
-        assertFalse(snapshotEnvelope.state.containsKey("generatedCodeDraftPromptPreview"))
-        assertTrue(snapshotEnvelope.state["generatedCodeDraftPromptPreviewArtifactId"].toString().isNotBlank())
+        // P2-6: BootstrapPayloadDto 不再有 generatedCodeDraftPromptPreview 字段（只有 artifactId）
+        assertTrue(snapshotState.generatedCodeDraftPromptPreviewArtifactId?.isNotBlank() == true)
 
         val script = renderer.renderScript(envelopes)
         assertFalse(script.contains("public class OrderDraftDto"))
@@ -335,16 +338,15 @@ class GraphEditorTransportSliceRendererTest {
         assertNotNull(rendered)
         val artifactEnvelope = rendered.envelopes.single()
         assertEquals("ARTIFACT_SLICE", artifactEnvelope.transportType)
-        assertEquals(setOf("snapshotRevision", "generatedCodeDrafts", "artifactContents"), artifactEnvelope.state.keys)
-        val draftPayload = assertNotNull(
-            (artifactEnvelope.state["generatedCodeDrafts"] as? List<*>)?.singleOrNull() as? Map<*, *>,
-        )
-        assertEquals("draft-1", draftPayload["id"])
-        assertTrue(draftPayload["contentArtifactId"].toString().contains("NewDraftDto").not())
-        assertFalse(draftPayload.containsKey("content"))
-        val artifactContents = assertNotNull(artifactEnvelope.state["artifactContents"] as? Map<*, *>)
+        val artifactState = assertNotNull(artifactEnvelope.state as? ArtifactSlicePayloadDto)
+        val draftPayload = assertNotNull(artifactState.generatedCodeDrafts?.singleOrNull())
+        assertEquals("draft-1", draftPayload.id)
+        assertTrue(draftPayload.contentArtifactId?.contains("NewDraftDto")?.not() == true)
+        // P2-6: content 外化到 artifact，DTO 的 content 字段为 null
+        assertTrue(draftPayload.content == null)
+        val artifactContents = artifactState.artifactContents
         assertEquals(1, artifactContents.size)
-        assertEquals(draftPayload["contentArtifactId"], artifactContents.keys.single())
+        assertEquals(draftPayload.contentArtifactId, artifactContents.keys.single())
         assertEquals("package com.example;\npublic class NewDraftDto {}", artifactContents.values.single())
         assertFalse(traceMessages.any { it.contains("stage=transport.payload.current") })
         assertFalse(traceMessages.any { it.contains("stage=transport.payload.compare") })
@@ -417,22 +419,23 @@ class GraphEditorTransportSliceRendererTest {
             snapshot = current,
         ).singleOrNull()
         assertNotNull(envelope)
+        val envelopeState = assertNotNull(envelope.state as? BootstrapPayloadDto)
 
-        val assistantResultStore = envelope.state["assistantResultStore"] as? Map<*, *>
+        val assistantResultStore = envelopeState.assistantResultStore
         assertNotNull(assistantResultStore)
-        val generationPlanEntry = assertNotNull(assistantResultStore[generationPlanResultId] as? Map<*, *>)
-        val historicalPlan = assertNotNull(generationPlanEntry["generationPlan"] as? GenerationPlanDto)
+        val generationPlanEntry = assertNotNull(assistantResultStore[generationPlanResultId] as? AssistantResultEntryDto)
+        val historicalPlan = assertNotNull(generationPlanEntry.generationPlan)
         // P2-6: generationPlan 字段 promptPreview 被外化到 artifactStore，DTO 不再带这个字段
         // DTO 字段 promptPreviewArtifactId 必须非空
         assertTrue(historicalPlan.promptPreviewArtifactId?.isNotBlank() == true)
 
-        val codeDraftEntry = assertNotNull(assistantResultStore[codeDraftResultId] as? Map<*, *>)
-        assertEquals(listOf("全局草稿警告需要保留"), codeDraftEntry["codeDraftWarnings"])
-        val codeDrafts = codeDraftEntry["codeDrafts"] as? List<*>
-        assertNotNull(codeDrafts)
-        val historicalDraft = assertNotNull(codeDrafts.singleOrNull() as? Map<*, *>)
-        assertFalse(historicalDraft.containsKey("content"))
-        assertTrue(historicalDraft["contentArtifactId"].toString().isNotBlank())
+        val codeDraftEntry = assertNotNull(assistantResultStore[codeDraftResultId] as? AssistantResultEntryDto)
+        assertEquals(listOf("全局草稿警告需要保留"), codeDraftEntry.codeDraftWarnings)
+        val codeDrafts = assertNotNull(codeDraftEntry.codeDrafts)
+        val historicalDraft = assertNotNull(codeDrafts.singleOrNull())
+        // P2-6: content 外化到 artifact，DTO 的 content 字段为 null
+        assertTrue(historicalDraft.content == null)
+        assertTrue(historicalDraft.contentArtifactId?.isNotBlank() == true)
 
         val script = renderer.renderScript(listOf(envelope))
         assertFalse(script.contains("public class OrderDraftDto"))

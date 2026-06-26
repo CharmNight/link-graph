@@ -178,50 +178,28 @@ class GraphEditorPageRenderer {
         return JsonCodec.toScriptSafeJson(bootstrapPayload(snapshot, artifactRefs))
     }
 
-    /** 构建完整 bootstrap 状态载荷，供 init 与增量 slice 复用。 */
-    internal fun bootstrapPayload(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): LinkedHashMap<String, Any?> {
+    /** 构建完整 bootstrap 状态载荷（DTO），供 init 与增量 slice 复用。 */
+    internal fun bootstrapPayload(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): BootstrapPayloadDto {
         return bootstrapPayload(
             snapshot = snapshot,
             artifactRefs = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
         )
     }
 
-    /** 构建完整 bootstrap 状态载荷，供 init 与增量 slice 复用。委托给 [payloadAssembler]。 */
+    /** 构建完整 bootstrap 状态载荷（DTO），委托给 [payloadAssembler]。 */
     internal fun bootstrapPayload(
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
-    ): LinkedHashMap<String, Any?> = payloadAssembler.assemble(snapshot, artifactRefs)
+    ): BootstrapPayloadDto = payloadAssembler.assemble(snapshot, artifactRefs)
 
     /** 把多个场景的运行时状态映射为前端使用的字典结构。 */
     /** sceneStatesToMap / graphSceneStateToMap 已抽到 top-level（GraphEditorPageRendererHelpers.kt）。 */
 
-    /** 把异步请求状态转换成前端可消费的映射。 */
-    internal fun requestStateToMap(
+    /** 把异步请求状态转换成前端 DTO：详见 top-level fun asyncRequestStateToDto。 */
+    internal fun requestStateToDto(
         state: com.charmnight.linkgraph.ui.AsyncRequestState,
         hasPromptPreview: Boolean = state.promptPreviewAvailable,
-    ): Map<String, Any?> = linkedMapOf(
-        "phase" to state.phase.name,
-        "requestId" to state.requestId,
-        "scene" to state.scene,
-        "executionMode" to state.executionMode?.name,
-        "statusMessage" to state.statusMessage,
-        "errorMessage" to state.errorMessage,
-        "detailMessage" to state.detailMessage,
-        "startedAtEpochMillis" to state.startedAtEpochMillis,
-        "finishedAtEpochMillis" to state.finishedAtEpochMillis,
-        "streaming" to state.streaming,
-        "fallbackUsed" to state.fallbackUsed,
-        "streamPhase" to state.streamPhase,
-        "previewText" to state.previewText,
-        "previewUpdatedAtEpochMillis" to state.previewUpdatedAtEpochMillis,
-        "finalizingStructuredResult" to state.finalizingStructuredResult,
-        "providerLabel" to state.providerLabel,
-        "model" to state.model,
-        "endpointSummary" to state.endpointSummary,
-        "promptPreviewAvailable" to hasPromptPreview,
-        "requestedMode" to state.requestedMode?.name,
-        "effectiveMode" to state.effectiveMode?.name,
-    )
+    ): AsyncRequestStateDto = com.charmnight.linkgraph.ui.asyncRequestStateToDto(state, hasPromptPreview)
 
     /** 把 QA 请求恢复状态（最近成功/失败的请求）转换为前端 DTO。 */
     internal fun qaRequestRecoveryStateToDto(
@@ -234,101 +212,82 @@ class GraphEditorPageRenderer {
     ): ReplayableQaRequestDto = com.charmnight.linkgraph.ui.replayableQaRequestToDto(request)
 
     /** 把助手结果存储（按结果 ID 索引的多种轮次结果）展开为前端可消费的嵌套结构。 */
-    internal fun assistantResultStoreToMap(
+    internal fun assistantResultStoreToDto(
         store: com.charmnight.linkgraph.workbench.AssistantResultStore,
         artifactRefs: Map<String, GraphEditorArtifactRegistry.AssistantResultArtifacts>,
-    ): Map<String, Any?> = store.results.mapValues { (resultId, entry) ->
+    ): Map<String, AssistantResultEntryDto> = store.results.mapValues { (resultId, entry) ->
         val resultArtifacts = artifactRefs[resultId] ?: GraphEditorArtifactRegistry.AssistantResultArtifacts()
-        linkedMapOf<String, Any?>(
-            "kind" to entry.kind.name,
-            "failure" to entry.failure?.let(::assistantFailureResultToDto),
-        ).apply {
-            when (entry.kind) {
-                com.charmnight.linkgraph.workbench.AssistantTurnKind.EXPLANATION -> {
-                    put("explanation", entry.explanation?.let { result ->
-                        beautificationResultToMap(
-                            result,
-                            promptPreviewArtifactId = resultArtifacts.explanationPromptPreviewArtifactId,
-                        )
-                    })
+        AssistantResultEntryDto(
+            kind = entry.kind.name,
+            failure = entry.failure?.let(::assistantFailureResultToDto),
+            explanation = if (entry.kind == com.charmnight.linkgraph.workbench.AssistantTurnKind.EXPLANATION) {
+                entry.explanation?.let { result ->
+                    beautificationResultToDto(
+                        result,
+                        promptPreviewArtifactId = resultArtifacts.explanationPromptPreviewArtifactId,
+                    )
                 }
-                com.charmnight.linkgraph.workbench.AssistantTurnKind.QA -> {
-                    put("qa", entry.qa?.let { result ->
-                        patchResultToMap(
-                            result,
-                            promptPreviewArtifactId = resultArtifacts.qaPromptPreviewArtifactId,
-                        )
-                    })
+            } else null,
+            qa = if (entry.kind == com.charmnight.linkgraph.workbench.AssistantTurnKind.QA) {
+                entry.qa?.let { result ->
+                    patchResultToDto(
+                        result,
+                        promptPreviewArtifactId = resultArtifacts.qaPromptPreviewArtifactId,
+                    )
                 }
-                com.charmnight.linkgraph.workbench.AssistantTurnKind.GENERATION_PLAN -> {
-                    put("generationPlan", entry.generationPlan?.let { plan ->
-                        generationPlanToDto(
-                            plan,
-                            promptPreviewArtifactId = resultArtifacts.generationPlanPromptPreviewArtifactId,
-                        )
-                    })
-                    put("generationDiscussionSession", entry.generationDiscussionSession?.let { session ->
-                        generationPlanDiscussionSessionToMap(
-                            session,
-                            promptPreviewArtifactId = resultArtifacts.generationDiscussionPromptPreviewArtifactId,
-                        )
-                    })
+            } else null,
+            generationPlan = if (
+                entry.kind == com.charmnight.linkgraph.workbench.AssistantTurnKind.GENERATION_PLAN ||
+                entry.kind == com.charmnight.linkgraph.workbench.AssistantTurnKind.CODE_DRAFT
+            ) {
+                entry.generationPlan?.let { plan ->
+                    generationPlanToDto(
+                        plan,
+                        promptPreviewArtifactId = resultArtifacts.generationPlanPromptPreviewArtifactId,
+                    )
                 }
-                com.charmnight.linkgraph.workbench.AssistantTurnKind.CODE_DRAFT -> {
-                    put("generationPlan", entry.generationPlan?.let { plan ->
-                        generationPlanToDto(
-                            plan,
-                            promptPreviewArtifactId = resultArtifacts.generationPlanPromptPreviewArtifactId,
-                        )
-                    })
-                    put("generationDiscussionSession", entry.generationDiscussionSession?.let { session ->
-                        generationPlanDiscussionSessionToMap(
-                            session,
-                            promptPreviewArtifactId = resultArtifacts.generationDiscussionPromptPreviewArtifactId,
-                        )
-                    })
-                    put("codeDraftWarnings", entry.codeDraftWarnings)
-                    put("codeDrafts", entry.codeDrafts.map { draft ->
-                        generatedCodeDraftToMap(
-                            draft,
-                            contentArtifactId = resultArtifacts.codeDraftContentArtifactIds[draft.id],
-                        )
-                    })
+            } else null,
+            generationDiscussionSession = if (
+                entry.kind == com.charmnight.linkgraph.workbench.AssistantTurnKind.GENERATION_PLAN ||
+                entry.kind == com.charmnight.linkgraph.workbench.AssistantTurnKind.CODE_DRAFT
+            ) {
+                entry.generationDiscussionSession?.let { session ->
+                    generationPlanDiscussionSessionToDto(
+                        session,
+                        promptPreviewArtifactId = resultArtifacts.generationDiscussionPromptPreviewArtifactId,
+                    )
                 }
-                com.charmnight.linkgraph.workbench.AssistantTurnKind.CHECK_RESULT -> {
-                    put("check", entry.check?.let { result ->
-                        patchResultToMap(
-                            result,
-                            promptPreviewArtifactId = resultArtifacts.checkPromptPreviewArtifactId,
-                        )
-                    })
+            } else null,
+            codeDraftWarnings = if (entry.kind == com.charmnight.linkgraph.workbench.AssistantTurnKind.CODE_DRAFT) {
+                entry.codeDraftWarnings
+            } else null,
+            codeDrafts = if (entry.kind == com.charmnight.linkgraph.workbench.AssistantTurnKind.CODE_DRAFT) {
+                entry.codeDrafts.map { draft ->
+                    generatedCodeDraftToDto(
+                        draft,
+                        contentArtifactId = resultArtifacts.codeDraftContentArtifactIds[draft.id],
+                    )
                 }
-            }
-        }
+            } else null,
+            check = if (entry.kind == com.charmnight.linkgraph.workbench.AssistantTurnKind.CHECK_RESULT) {
+                entry.check?.let { result ->
+                    patchResultToDto(
+                        result,
+                        promptPreviewArtifactId = resultArtifacts.checkPromptPreviewArtifactId,
+                    )
+                }
+            } else null,
+        )
     }
 
     /** 把助手调用失败结果转换为前端字段，携带错误消息、阶段与时间戳。 */
     /** assistantFailureResultToMap / generationPlanToMap 已抽到 top-level（GraphEditorPageRendererHelpers.kt）。 */
 
-    /** 把生成的代码草稿（编辑操作、范围、准备好的编辑等）转换为前端结构。 */
-    internal fun generatedCodeDraftToMap(
+    /** 把生成的代码草稿转换为前端 DTO：详见 top-level fun generatedCodeDraftToDto。 */
+    internal fun generatedCodeDraftToDto(
         draft: com.charmnight.linkgraph.codegen.GeneratedCodeDraft,
         contentArtifactId: String?,
-    ): MutableMap<String, Any?> = linkedMapOf<String, Any?>(
-        "id" to draft.id,
-        "sourceNodeId" to draft.sourceNodeId,
-        "title" to draft.title,
-        "targetPath" to draft.targetPath,
-        "contentArtifactId" to contentArtifactId,
-        "editOperations" to draft.editOperations.map(::codeEditOperationToMap),
-        "editScopes" to draft.editScopes.map(::editScopeToMap),
-        "preparedEdits" to draft.preparedEdits.map(::preparedCodeEditToMap),
-        "warnings" to draft.warnings,
-    ).apply {
-        if (contentArtifactId == null && draft.content != null) {
-            put("content", draft.content)
-        }
-    }
+    ): GeneratedCodeDraftDto = com.charmnight.linkgraph.ui.generatedCodeDraftToDto(draft, contentArtifactId)
 
     /** 把阶段准入判定转换为前端 DTO。 */
     internal fun stageEligibilityDecisionToDto(
@@ -356,138 +315,129 @@ class GraphEditorPageRenderer {
     private fun edgeToDto(edge: GraphEdge): GraphEdgeDto =
         com.charmnight.linkgraph.ui.edgeToDto(edge)
 
-    /** 把图文档转换为前端使用的 Map，并按规模决定是否裁剪内容。 */
-    internal fun documentToMap(
+    /** 把图文档转换为前端 DTO：详见 top-level fun graphDocumentToDto。 */
+    internal fun documentToDto(
         document: GraphDocument,
         includeFullContent: Boolean,
         layoutState: GraphLayoutState? = null,
-    ): Map<String, Any?> {
-        /** 是否允许把图内容完整内联到 bootstrap 中。 */
-        val shouldInlineContent = includeFullContent ||
-            (
-                document.nodes.size <= MAX_SECONDARY_LAYER_SERIALIZED_NODES &&
-                    document.edges.size <= MAX_SECONDARY_LAYER_SERIALIZED_EDGES
-                )
-        return linkedMapOf(
-            "nodes" to if (shouldInlineContent) document.nodes.map { node -> nodeToDto(node, layoutState) } else emptyList(),
-            "edges" to if (shouldInlineContent) document.edges.map(::edgeToDto) else emptyList(),
-            "patch" to document.patch?.let(::patchToDto),
-            "nodeCount" to document.nodes.size,
-            "edgeCount" to document.edges.size,
-            "truncated" to !shouldInlineContent,
-        )
-    }
+    ): GraphDocumentDto = com.charmnight.linkgraph.ui.graphDocumentToDto(
+        document = document,
+        includeFullContent = includeFullContent,
+        layoutState = layoutState,
+        maxSecondaryNodes = MAX_SECONDARY_LAYER_SERIALIZED_NODES,
+        maxSecondaryEdges = MAX_SECONDARY_LAYER_SERIALIZED_EDGES,
+    )
 
-    /** 把事实链路视图文档转换为前端使用的 Map。 */
-    internal fun factGraphViewToMap(
+    /** 把事实链路视图文档转换为前端 DTO。 */
+    internal fun factGraphViewToDto(
         document: FactGraphViewDocument,
         layoutState: GraphLayoutState? = null,
-    ): Map<String, Any?> = viewDocumentToMap(
+    ): ViewDocumentDto = viewDocumentToDto(
         visibleGraph = document.visibleGraph,
         fullGraph = document.fullGraph,
         anchorNodeId = document.anchorNodeId,
         projectionIndex = document.projectionIndex,
-        summary = linkedMapOf(
-            "anchorTitle" to document.summary.anchorTitle,
-            "visibleNodeCount" to document.summary.visibleNodeCount,
-            "fullNodeCount" to document.summary.fullNodeCount,
-            "hiddenNodeCount" to document.summary.hiddenNodeCount,
-            "hiddenEdgeCount" to document.summary.hiddenEdgeCount,
-            "truncated" to document.summary.truncated,
+        summary = FactGraphViewSummaryDto(
+            anchorTitle = document.summary.anchorTitle,
+            visibleNodeCount = document.summary.visibleNodeCount,
+            fullNodeCount = document.summary.fullNodeCount,
+            hiddenNodeCount = document.summary.hiddenNodeCount,
+            hiddenEdgeCount = document.summary.hiddenEdgeCount,
+            truncated = document.summary.truncated,
         ),
         layoutState = layoutState,
         presentation = document.presentation,
     )
 
-    /** 把流程图视图文档转换为前端使用的 Map。 */
-    internal fun flowchartViewToMap(
+    /** 把流程图视图文档转换为前端 DTO。 */
+    internal fun flowchartViewToDto(
         document: FlowchartViewDocument,
         layoutState: GraphLayoutState? = null,
-    ): Map<String, Any?> = viewDocumentToMap(
+    ): ViewDocumentDto = viewDocumentToDto(
         visibleGraph = document.visibleGraph,
         fullGraph = document.fullGraph,
         anchorNodeId = document.anchorNodeId,
         projectionIndex = document.projectionIndex,
-        summary = linkedMapOf(
-            "nodeCount" to document.summary.nodeCount,
-            "branchCount" to document.summary.branchCount,
-            "exceptionPathCount" to document.summary.exceptionPathCount,
-            "fullNodeCount" to document.summary.fullNodeCount,
-            "fullEdgeCount" to document.summary.fullEdgeCount,
-            "incompleteNodeCount" to document.summary.incompleteNodeCount,
-            "incompleteEdgeCount" to document.summary.incompleteEdgeCount,
-            "semanticallyIncomplete" to document.summary.semanticallyIncomplete,
-            "syntheticEdgeCount" to document.summary.syntheticEdgeCount,
-            "syntheticEntryEdgeCount" to document.summary.syntheticEntryEdgeCount,
+        summary = FlowchartViewSummaryDto(
+            nodeCount = document.summary.nodeCount,
+            branchCount = document.summary.branchCount,
+            exceptionPathCount = document.summary.exceptionPathCount,
+            fullNodeCount = document.summary.fullNodeCount,
+            fullEdgeCount = document.summary.fullEdgeCount,
+            incompleteNodeCount = document.summary.incompleteNodeCount,
+            incompleteEdgeCount = document.summary.incompleteEdgeCount,
+            semanticallyIncomplete = document.summary.semanticallyIncomplete,
+            syntheticEdgeCount = document.summary.syntheticEdgeCount,
+            syntheticEntryEdgeCount = document.summary.syntheticEntryEdgeCount,
         ),
         layoutState = layoutState,
     )
 
-    /** 把资源关系视图文档转换为前端使用的 Map。 */
-    internal fun resourceRelationViewToMap(
+    /** 把资源关系视图文档转换为前端 DTO。 */
+    internal fun resourceRelationViewToDto(
         document: ResourceRelationViewDocument,
         layoutState: GraphLayoutState? = null,
-    ): Map<String, Any?> = viewDocumentToMap(
+    ): ViewDocumentDto = viewDocumentToDto(
         visibleGraph = document.visibleGraph,
         fullGraph = document.fullGraph,
         anchorNodeId = document.anchorNodeId,
         projectionIndex = document.projectionIndex,
-        summary = linkedMapOf(
-            "visibleNodeCount" to document.summary.visibleNodeCount,
-            "relationCount" to document.summary.relationCount,
-            "resourceCount" to document.summary.resourceCount,
-            "fallbackReason" to document.summary.fallbackReason,
-            "laneCounts" to document.summary.laneCounts,
+        summary = ResourceRelationViewSummaryDto(
+            visibleNodeCount = document.summary.visibleNodeCount,
+            relationCount = document.summary.relationCount,
+            resourceCount = document.summary.resourceCount,
+            fallbackReason = document.summary.fallbackReason,
+            laneCounts = document.summary.laneCounts,
         ),
         layoutState = layoutState,
     )
 
-    /** 把架构图视图结果（含丰富的项目结构摘要）转换为前端结构。 */
-    internal fun architectureGraphViewToMap(
+    /** 把架构图视图结果（含丰富的项目结构摘要）转换为前端 DTO。 */
+    internal fun architectureGraphViewToDto(
         document: ArchitectureGraphResult,
         layoutState: GraphLayoutState? = null,
-    ): Map<String, Any?> = viewDocumentToMap(
+    ): ViewDocumentDto = viewDocumentToDto(
         visibleGraph = document.visibleGraph,
         fullGraph = document.fullGraph,
         anchorNodeId = document.anchorNodeId,
         projectionIndex = document.projectionIndex,
-        summary = linkedMapOf(
-            "moduleCount" to document.summary.moduleCount,
-            "packageCount" to document.summary.packageCount,
-            "serviceCount" to document.summary.serviceCount,
-            "componentCount" to document.summary.componentCount,
-            "resourceCount" to document.summary.resourceCount,
-            "layerCount" to document.summary.layerCount,
-            "libraryCount" to document.summary.libraryCount,
-            "jdkCount" to document.summary.jdkCount,
-            "relationCount" to document.summary.relationCount,
-            "classCount" to document.summary.classCount,
-            "relationshipNodeCount" to document.summary.relationshipNodeCount,
-            "inventoryOnlyNodeCount" to document.summary.inventoryOnlyNodeCount,
-            "unconnectedPackageCount" to document.summary.unconnectedPackageCount,
-            "truncated" to document.summary.truncated,
-            "hiddenNodeCount" to document.summary.hiddenNodeCount,
-            "hiddenEdgeCount" to document.summary.hiddenEdgeCount,
-            "unconnectedComponentCount" to document.summary.unconnectedComponentCount,
-            "unconnectedServiceBoundaryCount" to document.summary.unconnectedServiceBoundaryCount,
-            "unconnectedResourceCount" to document.summary.unconnectedResourceCount,
-            "externalDependencyGroupCount" to document.summary.externalDependencyGroupCount,
-            "jdkGroupCount" to document.summary.jdkGroupCount,
-            "indexed" to document.summary.indexed?.toMap(),
-            "projectStructureRelationGroups" to document.summary.projectStructureRelationGroups.map { group ->
-                linkedMapOf(
-                    "id" to group.id,
-                    "fromNodeId" to group.fromNodeId,
-                    "toNodeId" to group.toNodeId,
-                    "displayRelationKind" to group.displayRelationKind,
-                    "displayRelation" to group.displayRelation,
-                    "relationKinds" to group.relationKinds,
-                    "count" to group.count,
-                    "confidence" to group.confidence,
-                    "sourceRelationIds" to group.sourceRelationIds,
-                    "sampleEvidenceRefs" to group.sampleEvidenceRefs,
-                    "defaultVisible" to group.defaultVisible,
-                    "hiddenReason" to group.hiddenReason,
+        summary = ArchitectureGraphViewSummaryDto(
+            moduleCount = document.summary.moduleCount,
+            packageCount = document.summary.packageCount,
+            serviceCount = document.summary.serviceCount,
+            componentCount = document.summary.componentCount,
+            resourceCount = document.summary.resourceCount,
+            layerCount = document.summary.layerCount,
+            libraryCount = document.summary.libraryCount,
+            jdkCount = document.summary.jdkCount,
+            relationCount = document.summary.relationCount,
+            classCount = document.summary.classCount,
+            relationshipNodeCount = document.summary.relationshipNodeCount,
+            inventoryOnlyNodeCount = document.summary.inventoryOnlyNodeCount,
+            unconnectedPackageCount = document.summary.unconnectedPackageCount,
+            truncated = document.summary.truncated,
+            hiddenNodeCount = document.summary.hiddenNodeCount,
+            hiddenEdgeCount = document.summary.hiddenEdgeCount,
+            unconnectedComponentCount = document.summary.unconnectedComponentCount,
+            unconnectedServiceBoundaryCount = document.summary.unconnectedServiceBoundaryCount,
+            unconnectedResourceCount = document.summary.unconnectedResourceCount,
+            externalDependencyGroupCount = document.summary.externalDependencyGroupCount,
+            jdkGroupCount = document.summary.jdkGroupCount,
+            indexed = document.summary.indexed?.toDto(),
+            projectStructureRelationGroups = document.summary.projectStructureRelationGroups.map { group ->
+                ProjectStructureRelationGroupDto(
+                    id = group.id,
+                    fromNodeId = group.fromNodeId,
+                    toNodeId = group.toNodeId,
+                    displayRelationKind = group.displayRelationKind,
+                    displayRelation = group.displayRelation,
+                    relationKinds = group.relationKinds,
+                    count = group.count,
+                    confidence = group.confidence,
+                    sourceRelationIds = group.sourceRelationIds,
+                    sampleEvidenceRefs = group.sampleEvidenceRefs,
+                    defaultVisible = group.defaultVisible,
+                    hiddenReason = group.hiddenReason,
                 )
             },
         ),
@@ -495,189 +445,172 @@ class GraphEditorPageRenderer {
         presentation = document.presentation,
     )
 
-    /** 把类图视图结果（类型统计、作用域基础、邻域限制等）转换为前端结构。 */
-    internal fun classDiagramViewToMap(
+    /** 把类图视图结果（类型统计、作用域基础、邻域限制等）转换为前端 DTO。 */
+    internal fun classDiagramViewToDto(
         document: ClassDiagramResult,
         layoutState: GraphLayoutState? = null,
-    ): Map<String, Any?> =
-        viewDocumentToMap(
+    ): ViewDocumentDto =
+        viewDocumentToDto(
             visibleGraph = document.visibleGraph,
             fullGraph = document.fullGraph,
             anchorNodeId = document.anchorNodeId,
             projectionIndex = document.projectionIndex,
-            summary = linkedMapOf(
-                "classCount" to document.summary.classCount,
-                "fieldCount" to document.summary.fieldCount,
-                "interfaceCount" to document.summary.interfaceCount,
-                "enumCount" to document.summary.enumCount,
-                "annotationCount" to document.summary.annotationCount,
-                "recordCount" to document.summary.recordCount,
-                "objectCount" to document.summary.objectCount,
-                "relationCount" to document.summary.relationCount,
-                "spiProviderCount" to document.summary.spiProviderCount,
-                "reflectionRelationCount" to document.summary.reflectionRelationCount,
-                "relationCompleteness" to document.summary.relationCompleteness,
-                "scopeTypeCount" to document.summary.scopeTypeCount,
-                "projectTypeCount" to document.summary.projectTypeCount,
-                "projectClassCount" to document.summary.projectClassCount,
-                "scopeBasis" to document.summary.scopeBasis,
-                "anchorTypeNodeId" to document.summary.anchorTypeNodeId,
-                "anchorTypeTitle" to document.summary.anchorTypeTitle,
-                "anchorTypeQualifiedName" to document.summary.anchorTypeQualifiedName,
-                "neighborhoodLimit" to document.summary.neighborhoodLimit,
-                "memberLimit" to document.summary.memberLimit,
-                "neighborhoodCandidateTypeCount" to document.summary.neighborhoodCandidateTypeCount,
-                "neighborhoodTruncated" to document.summary.neighborhoodTruncated,
-                "truncated" to document.summary.truncated,
-                "hiddenNodeCount" to document.summary.hiddenNodeCount,
-                "hiddenEdgeCount" to document.summary.hiddenEdgeCount,
-                "indexed" to document.summary.indexed?.toMap(),
+            summary = ClassDiagramViewSummaryDto(
+                classCount = document.summary.classCount,
+                fieldCount = document.summary.fieldCount,
+                interfaceCount = document.summary.interfaceCount,
+                enumCount = document.summary.enumCount,
+                annotationCount = document.summary.annotationCount,
+                recordCount = document.summary.recordCount,
+                objectCount = document.summary.objectCount,
+                relationCount = document.summary.relationCount,
+                spiProviderCount = document.summary.spiProviderCount,
+                reflectionRelationCount = document.summary.reflectionRelationCount,
+                relationCompleteness = document.summary.relationCompleteness,
+                scopeTypeCount = document.summary.scopeTypeCount,
+                projectTypeCount = document.summary.projectTypeCount,
+                projectClassCount = document.summary.projectClassCount,
+                scopeBasis = document.summary.scopeBasis,
+                anchorTypeNodeId = document.summary.anchorTypeNodeId,
+                anchorTypeTitle = document.summary.anchorTypeTitle,
+                anchorTypeQualifiedName = document.summary.anchorTypeQualifiedName,
+                neighborhoodLimit = document.summary.neighborhoodLimit,
+                memberLimit = document.summary.memberLimit,
+                neighborhoodCandidateTypeCount = document.summary.neighborhoodCandidateTypeCount,
+                neighborhoodTruncated = document.summary.neighborhoodTruncated,
+                truncated = document.summary.truncated,
+                hiddenNodeCount = document.summary.hiddenNodeCount,
+                hiddenEdgeCount = document.summary.hiddenEdgeCount,
+                indexed = document.summary.indexed?.toDto(),
             ),
             layoutState = layoutState,
             presentation = document.presentation,
-        ).toMutableMap().apply {
-            put("usage", document.usage?.toDto())
-        }
+        ).copy(usage = document.usage?.toDto())
 
-    /** 把影响面审查图结果（变更符号、上下游、相关测试、证据片段等）转换为前端结构。 */
-    internal fun reviewGraphViewToMap(
+    /** 把影响面审查图结果转换为前端 ReviewGraphViewDto。 */
+    internal fun reviewGraphViewToDto(
         document: com.charmnight.linkgraph.review.ReviewGraphResult,
         layoutState: GraphLayoutState? = null,
-    ): Map<String, Any?> =
-        viewDocumentToMap(
+    ): ReviewGraphViewDto {
+        val base = viewDocumentToDto(
             visibleGraph = document.visibleGraph,
             fullGraph = document.fullGraph,
             anchorNodeId = document.anchorNodeId,
             projectionIndex = document.projectionIndex,
-            summary = linkedMapOf(
-                "changedSymbolCount" to document.summary.changedSymbolCount,
-                "upstreamCount" to document.summary.upstreamCount,
-                "downstreamCount" to document.summary.downstreamCount,
-                "relatedTestCount" to document.summary.relatedTestCount,
-                "affectedPackageCount" to document.summary.affectedPackageCount,
-                "affectedModuleCount" to document.summary.affectedModuleCount,
-                "evidenceRefCount" to document.summary.evidenceRefCount,
-                "truncated" to document.summary.truncated,
-                "hiddenNodeCount" to document.summary.hiddenNodeCount,
-                "hiddenEdgeCount" to document.summary.hiddenEdgeCount,
-                "selectedDiffItemIds" to document.summary.selectedDiffItemIds,
-                "maxChangedNodes" to document.summary.maxChangedNodes,
-                "maxUpstreamNodes" to document.summary.maxUpstreamNodes,
-                "maxDownstreamNodes" to document.summary.maxDownstreamNodes,
-                "maxRelatedTestNodes" to document.summary.maxRelatedTestNodes,
-                "indexed" to document.summary.indexed?.toMap(),
+            summary = ReviewGraphViewSummaryDto(
+                changedSymbolCount = document.summary.changedSymbolCount,
+                upstreamCount = document.summary.upstreamCount,
+                downstreamCount = document.summary.downstreamCount,
+                relatedTestCount = document.summary.relatedTestCount,
+                affectedPackageCount = document.summary.affectedPackageCount,
+                affectedModuleCount = document.summary.affectedModuleCount,
+                evidenceRefCount = document.summary.evidenceRefCount,
+                truncated = document.summary.truncated,
+                hiddenNodeCount = document.summary.hiddenNodeCount,
+                hiddenEdgeCount = document.summary.hiddenEdgeCount,
+                selectedDiffItemIds = document.summary.selectedDiffItemIds,
+                maxChangedNodes = document.summary.maxChangedNodes,
+                maxUpstreamNodes = document.summary.maxUpstreamNodes,
+                maxDownstreamNodes = document.summary.maxDownstreamNodes,
+                maxRelatedTestNodes = document.summary.maxRelatedTestNodes,
+                indexed = document.summary.indexed?.toDto(),
             ),
             layoutState = layoutState,
-        ).toMutableMap().apply {
-            put("changedFiles", document.changedFiles.map { file ->
-                linkedMapOf(
-                    "oldPath" to file.oldPath,
-                    "newPath" to file.newPath,
-                    "changeKind" to file.changeKind,
-                    "hunkCount" to file.hunkCount,
-                    "similarity" to file.similarity,
-                )
-            })
-            put("changedHunks", document.changedHunks.map { hunk -> reviewHunkToMap(hunk) })
-            put("unmatchedHunks", document.unmatchedHunks.map { hunk -> reviewHunkToMap(hunk) })
-            put("baselineOnlySymbols", document.baselineOnlySymbols.map { symbol ->
-                linkedMapOf(
-                    "symbolId" to symbol.symbolId,
-                    "qualifiedName" to symbol.qualifiedName,
-                    "filePath" to symbol.filePath,
-                    "startLine" to symbol.startLine,
-                    "endLine" to symbol.endLine,
-                    "changeKind" to symbol.changeKind,
-                    "blastRadiusIncomplete" to symbol.blastRadiusIncomplete,
-                    "unavailableReason" to symbol.unavailableReason,
-                    "reason" to symbol.reason,
-                )
-            })
-            put("relatedTests", document.relatedTests.map { test ->
-                linkedMapOf(
-                    "symbolId" to test.symbolId,
-                    "qualifiedName" to test.qualifiedName,
-                    "reason" to test.reason,
-                    "filePath" to test.filePath,
-                    "startLine" to test.startLine,
-                )
-            })
-            put("affectedPackages", document.affectedPackages)
-            put("affectedModules", document.affectedModules)
-            put("evidenceSnippets", document.evidenceSnippets.map { evidence ->
-                linkedMapOf(
-                    "title" to evidence.title,
-                    "kind" to evidence.kind,
-                    "filePath" to evidence.filePath,
-                    "startLine" to evidence.startLine,
-                    "endLine" to evidence.endLine,
-                    "snippet" to evidence.snippet,
-                    "unavailableReason" to evidence.unavailableReason,
-                )
-            })
-        }
-
-    /** 把代码审查中的变更 hunk（含匹配到的符号 ID 和原因）转换为前端结构。 */
-    private fun reviewHunkToMap(
-        hunk: com.charmnight.linkgraph.review.ReviewGraphChangedHunk,
-    ): Map<String, Any?> = linkedMapOf(
-        "filePath" to hunk.filePath,
-        "oldFilePath" to hunk.oldFilePath,
-        "newFilePath" to hunk.newFilePath,
-        "changeKind" to hunk.changeKind,
-        "header" to hunk.header,
-        "oldStartLine" to hunk.oldStartLine,
-        "oldLineCount" to hunk.oldLineCount,
-            "newStartLine" to hunk.newStartLine,
-            "newLineCount" to hunk.newLineCount,
-            "matchedSymbolIds" to hunk.matchedSymbolIds,
-            "reason" to hunk.reason,
         )
+        return ReviewGraphViewDto(
+            visibleGraph = base.visibleGraph,
+            fullGraph = base.fullGraph,
+            anchorNodeId = base.anchorNodeId,
+            projectionIndex = base.projectionIndex,
+            summary = base.summary as ReviewGraphViewSummaryDto,
+            changedFiles = document.changedFiles.map { file ->
+                ReviewChangedFileDto(
+                    oldPath = file.oldPath,
+                    newPath = file.newPath,
+                    changeKind = file.changeKind,
+                    hunkCount = file.hunkCount,
+                    similarity = file.similarity,
+                )
+            },
+            changedHunks = document.changedHunks.map(::reviewHunkToDto),
+            unmatchedHunks = document.unmatchedHunks.map(::reviewHunkToDto),
+            baselineOnlySymbols = document.baselineOnlySymbols.map { symbol ->
+                ReviewBaselineSymbolDto(
+                    symbolId = symbol.symbolId,
+                    qualifiedName = symbol.qualifiedName,
+                    filePath = symbol.filePath,
+                    startLine = symbol.startLine,
+                    endLine = symbol.endLine,
+                    changeKind = symbol.changeKind,
+                    blastRadiusIncomplete = symbol.blastRadiusIncomplete,
+                    unavailableReason = symbol.unavailableReason,
+                    reason = symbol.reason,
+                )
+            },
+            relatedTests = document.relatedTests.map { test ->
+                ReviewRelatedTestDto(
+                    symbolId = test.symbolId,
+                    qualifiedName = test.qualifiedName,
+                    reason = test.reason,
+                    filePath = test.filePath,
+                    startLine = test.startLine,
+                )
+            },
+            affectedPackages = document.affectedPackages,
+            affectedModules = document.affectedModules,
+            evidenceSnippets = document.evidenceSnippets.map { evidence ->
+                ReviewEvidenceSnippetDto(
+                    title = evidence.title,
+                    kind = evidence.kind,
+                    filePath = evidence.filePath,
+                    startLine = evidence.startLine,
+                    endLine = evidence.endLine,
+                    snippet = evidence.snippet,
+                    unavailableReason = evidence.unavailableReason,
+                )
+            },
+        )
+    }
 
-    /** 把三视图通用视图文档转换为前端使用的 Map。 */
-    private fun viewDocumentToMap(
+    /** 把代码审查中的变更 hunk（含匹配到的符号 ID 和原因）转换为前端 DTO。 */
+    private fun reviewHunkToDto(
+        hunk: com.charmnight.linkgraph.review.ReviewGraphChangedHunk,
+    ): ReviewHunkDto = ReviewHunkDto(
+        filePath = hunk.filePath,
+        oldFilePath = hunk.oldFilePath,
+        newFilePath = hunk.newFilePath,
+        changeKind = hunk.changeKind,
+        header = hunk.header,
+        oldStartLine = hunk.oldStartLine,
+        oldLineCount = hunk.oldLineCount,
+        newStartLine = hunk.newStartLine,
+        newLineCount = hunk.newLineCount,
+        matchedSymbolIds = hunk.matchedSymbolIds,
+        reason = hunk.reason,
+    )
+
+    /** 把三视图通用视图文档转换为前端 DTO。 */
+    private fun viewDocumentToDto(
         visibleGraph: GraphDocument,
         fullGraph: GraphDocument,
         anchorNodeId: String?,
         projectionIndex: com.charmnight.linkgraph.application.model.GraphProjectionIndex,
-        summary: Map<String, Any?>,
+        summary: Any,
         layoutState: GraphLayoutState? = null,
         presentation: GraphViewPresentation? = null,
-    ): Map<String, Any?> =
-        linkedMapOf(
-            "visibleGraph" to documentToMap(visibleGraph, includeFullContent = true, layoutState = layoutState),
-            "fullGraph" to documentToMap(fullGraph, includeFullContent = false, layoutState = layoutState),
-            "anchorNodeId" to anchorNodeId,
-            "projectionIndex" to projectionIndexToMap(projectionIndex),
-            "summary" to summary,
-        ).apply {
-            if (presentation != null) {
-                put("presentation", presentation.toMap())
-            }
-        }
-
-    /** 把投影索引（节点/边的规范化映射）转换为前端结构。 */
-    private fun projectionIndexToMap(
-        projectionIndex: com.charmnight.linkgraph.application.model.GraphProjectionIndex,
-    ): Map<String, Any?> = linkedMapOf(
-        "nodeMappings" to projectionIndex.nodeMappings.mapValues { (_, mapping) ->
-            linkedMapOf(
-                "projectedNodeId" to mapping.projectedNodeId,
-                "mappingKind" to mapping.mappingKind.name,
-                "canonicalNodeIds" to mapping.canonicalNodeIds,
-                "editableCommandKinds" to mapping.editableCommandKinds.map { it.name },
-            )
-        },
-        "edgeMappings" to projectionIndex.edgeMappings.mapValues { (_, mapping) ->
-            linkedMapOf(
-                "projectedEdgeId" to mapping.projectedEdgeId,
-                "mappingKind" to mapping.mappingKind.name,
-                "canonicalEdgeIds" to mapping.canonicalEdgeIds,
-                "canonicalPathNodeIds" to mapping.canonicalPathNodeIds,
-                "editableCommandKinds" to mapping.editableCommandKinds.map { it.name },
-            )
-        },
+    ): ViewDocumentDto = ViewDocumentDto(
+        visibleGraph = documentToDto(visibleGraph, includeFullContent = true, layoutState = layoutState),
+        fullGraph = documentToDto(fullGraph, includeFullContent = false, layoutState = layoutState),
+        anchorNodeId = anchorNodeId,
+        projectionIndex = com.charmnight.linkgraph.ui.graphProjectionIndexToDto(projectionIndex),
+        summary = summary,
+        presentation = presentation,
     )
+
+    /** 把投影索引转换为前端 DTO：详见 top-level fun graphProjectionIndexToDto。 */
+    private fun projectionIndexToDto(
+        projectionIndex: com.charmnight.linkgraph.application.model.GraphProjectionIndex,
+    ): GraphProjectionIndexDto = com.charmnight.linkgraph.ui.graphProjectionIndexToDto(projectionIndex)
 
     /** 把图补丁转换为前端使用的 Map 结构。 */
     /** 把补丁整体转换为前端 DTO：详见 top-level fun patchToDto。 */
@@ -688,312 +621,113 @@ class GraphEditorPageRenderer {
     private fun patchOperationToDto(operation: GraphPatchOperation): GraphPatchOperationDto =
         com.charmnight.linkgraph.ui.patchOperationToDto(operation)
 
-    /** 把补丁类结果转换为前端使用的 Map 结构。 */
-    internal fun patchResultToMap(
+    /** 把补丁类结果转换为前端 DTO：详见 top-level fun patchResultToDto。 */
+    internal fun patchResultToDto(
         result: GraphPatchResult,
         promptPreviewArtifactId: String?,
-    ): Map<String, Any?> = linkedMapOf(
-        "source" to result.source.name,
-        "question" to result.question,
-        "requestedMode" to result.requestedMode.name,
-        "effectiveMode" to result.effectiveMode.name,
-        "answer" to result.answer,
-        "promptPreviewArtifactId" to promptPreviewArtifactId,
-        "warnings" to result.warnings,
-        "findings" to result.findings.map(::resultEvidenceFindingToDto),
-        "candidateChanges" to result.candidateChanges.map(::candidateDraftChangeToMap),
-        "newCandidateChanges" to result.newCandidateChanges.map(::candidateDraftChangeToMap),
-        "investigationThreads" to result.investigationThreads.map(::investigationThreadToMap),
-        "latestTurnOutcome" to result.latestTurnOutcome?.let(::investigationTurnOutcomeToMap),
-        "recentTurnOutcomes" to result.recentTurnOutcomes.map(::investigationTurnOutcomeToMap),
-        "sourceContext" to result.sourceContext.map(::sourceSnippetContextToMap),
-        "evidenceTrace" to result.evidenceTrace.map(::evidenceTraceEntryToMap),
-        "qaSession" to result.qaSession?.let(::qaConversationSessionToMap),
-        "patch" to result.patch?.let(::patchToDto),
-    )
+    ): PatchResultDto = com.charmnight.linkgraph.ui.patchResultToDto(result, promptPreviewArtifactId)
 
-    /** 把链路讲解结果转换为前端使用的 Map 结构。 */
-    internal fun beautificationResultToMap(
+    /** 把链路讲解结果转换为前端 DTO：详见 top-level fun beautificationResultToDto。 */
+    internal fun beautificationResultToDto(
         result: GraphBeautificationResult,
         promptPreviewArtifactId: String?,
-    ): Map<String, Any?> = linkedMapOf(
-        "source" to result.source.name,
-        "granularity" to result.granularity.name,
-        "steps" to result.steps.map { step ->
-            linkedMapOf(
-                "stepId" to step.stepId,
-                "title" to step.title,
-                "granularity" to step.granularity.name,
-                "kind" to step.kind.name,
-                "description" to step.description,
-                "primaryNodeId" to step.primaryNodeId,
-                "codeSnippet" to step.codeSnippet,
-                "evidence" to step.evidence.map(::resultEvidenceFindingToDto),
-                "followUpQuestions" to step.followUpQuestions,
-                "downstreamTargets" to step.downstreamTargets,
-            )
-        },
-        "promptPreviewArtifactId" to promptPreviewArtifactId,
-        "warnings" to result.warnings,
-    )
+    ): BeautificationResultDto = com.charmnight.linkgraph.ui.beautificationResultToDto(result, promptPreviewArtifactId)
 
     /** 把证据发现项转换为前端使用的 Map 结构。 */
     /** 把单条证据结论转换为前端 DTO：详见 top-level fun resultEvidenceFindingToDto。 */
     private fun resultEvidenceFindingToDto(finding: com.charmnight.linkgraph.llm.ResultEvidenceFinding): ResultEvidenceFindingDto =
         com.charmnight.linkgraph.ui.resultEvidenceFindingToDto(finding)
 
-    /** 把草稿补丁应用结果转换为前端使用的 Map 结构。 */
-    internal fun draftPatchApplyResultToMap(result: DraftPatchApplyResult): Map<String, Any?> = linkedMapOf(
-        "summary" to result.summary,
-        "appliedOperationCount" to result.appliedOperationCount,
-        "appliedNodeIds" to result.appliedNodeIds,
-        "appliedEdgeIds" to result.appliedEdgeIds,
-        "focusNodeId" to result.focusNodeId,
-        "appliedTargets" to result.appliedTargets,
-    )
+    /** 把草稿补丁应用结果转换为前端 DTO：详见 top-level fun draftPatchApplyResultToDto。 */
+    internal fun draftPatchApplyResultToDto(result: DraftPatchApplyResult): DraftPatchApplyResultDto =
+        com.charmnight.linkgraph.ui.draftPatchApplyResultToDto(result)
 
-    /** 把草稿工作台状态（草稿变更与笔记条目）转换为前端结构。 */
-    internal fun draftWorkbenchStateToMap(
+    /** 把草稿工作台状态转换为前端 DTO：详见 top-level fun draftWorkbenchStateToDto。 */
+    internal fun draftWorkbenchStateToDto(
         state: com.charmnight.linkgraph.workbench.DraftWorkbenchState,
-    ): Map<String, Any?> = linkedMapOf(
-        "draftChanges" to state.draftChanges.map(::draftWorkbenchEntryToMap),
-        "draftNotes" to state.draftNotes.map(::draftWorkbenchEntryToMap),
-    )
+    ): DraftWorkbenchStateDto = com.charmnight.linkgraph.ui.draftWorkbenchStateToDto(state)
 
-    /** 把单条草稿工作台条目（前后状态、影响摘要、证据等）转换为前端结构。 */
-    private fun draftWorkbenchEntryToMap(
+    /** 把单条草稿工作台条目转换为前端 DTO：详见 top-level fun draftWorkbenchEntryToDto。 */
+    private fun draftWorkbenchEntryToDto(
         entry: com.charmnight.linkgraph.workbench.DraftWorkbenchEntry,
-    ): Map<String, Any?> = linkedMapOf(
-        "entryId" to entry.entryId,
-        "kind" to entry.kind.name,
-        "title" to entry.title,
-        "sourceChangeId" to entry.sourceChangeId,
-        "targetStepIds" to entry.targetStepIds,
-        "targetNodeIds" to entry.targetNodeIds,
-        "beforeState" to entry.beforeState,
-        "afterState" to entry.afterState,
-        "reason" to entry.reason,
-        "impactSummary" to entry.impactSummary,
-        "claimType" to entry.claimType,
-        "evidence" to entry.evidence.map(::resultEvidenceFindingToDto),
-        "editScopes" to entry.editScopes.map(::editScopeToMap),
-        "patchIntent" to entry.patchIntent?.let(::candidatePatchIntentToMap),
-        "graphPatch" to entry.graphPatch?.let(::patchToDto),
-    )
+    ): DraftWorkbenchEntryDto = com.charmnight.linkgraph.ui.draftWorkbenchEntryToDto(entry)
 
-    /** 把候选草稿变更（含状态、证据、补丁意图等）转换为前端结构。 */
-    private fun candidateDraftChangeToMap(
+    /** 把候选草稿变更转换为前端 DTO：详见 top-level fun candidateDraftChangeToDto。 */
+    private fun candidateDraftChangeToDto(
         change: com.charmnight.linkgraph.workbench.CandidateDraftChange,
-    ): Map<String, Any?> = linkedMapOf(
-        "changeId" to change.changeId,
-        "status" to change.status.name,
-        "title" to change.title,
-        "targetStepIds" to change.targetStepIds,
-        "targetNodeIds" to change.targetNodeIds,
-        "beforeState" to change.beforeState,
-        "afterState" to change.afterState,
-        "reason" to change.reason,
-        "impactSummary" to change.impactSummary,
-        "claimType" to change.claimType,
-        "evidence" to change.evidence.map(::resultEvidenceFindingToDto),
-        "editScopes" to change.editScopes.map(::editScopeToMap),
-        "patchIntent" to change.patchIntent?.let(::candidatePatchIntentToMap),
-        "graphPatch" to change.graphPatch?.let(::patchToDto),
-    )
+    ): CandidateDraftChangeDto = com.charmnight.linkgraph.ui.candidateDraftChangeToDto(change)
 
-    /** 把候选补丁意图（附加目标、真假分支节点）转换为前端结构。 */
-    private fun candidatePatchIntentToMap(
+    /** 把候选补丁意图转换为前端 DTO：详见 top-level fun candidatePatchIntentToDto。 */
+    private fun candidatePatchIntentToDto(
         intent: com.charmnight.linkgraph.workbench.CandidatePatchIntent,
-    ): Map<String, Any?> = linkedMapOf(
-        "mode" to intent.mode.name,
-        "targetNodeId" to intent.targetNodeId,
-        "attachEdgeId" to intent.attachEdgeId,
-        "falseBranchTargetNodeId" to intent.falseBranchTargetNodeId,
-    )
+    ): CandidatePatchIntentDto = com.charmnight.linkgraph.ui.candidatePatchIntentToDto(intent)
 
-    /** 把 QA 多轮对话会话（消息列表、候选变更、调查线程等）转换为前端结构。 */
-    private fun qaConversationSessionToMap(
+    /** 把 QA 多轮对话会话转换为前端 DTO：详见 top-level fun qaConversationSessionToDto。 */
+    private fun qaConversationSessionToDto(
         session: com.charmnight.linkgraph.workbench.QaConversationSession,
-    ): Map<String, Any?> = linkedMapOf(
-        "sessionId" to session.sessionId,
-        "scopeKey" to session.scopeKey,
-        "messages" to session.messages.map(::qaConversationMessageToMap),
-        "candidateChanges" to session.candidateChanges.map(::candidateDraftChangeToMap),
-        "investigationThreads" to session.investigationThreads.map(::investigationThreadToMap),
-        "turnOutcomes" to session.turnOutcomes.map(::investigationTurnOutcomeToMap),
-        "focusTargetId" to session.focusTargetId,
-    )
+    ): QaConversationSessionDto = com.charmnight.linkgraph.ui.qaConversationSessionToDto(session)
 
-    /** 把生成计划讨论会话（消息列表与当前焦点项）转换为前端结构。 */
-    internal fun generationPlanDiscussionSessionToMap(
+    /** 把生成计划讨论会话转换为前端 DTO：详见 top-level fun generationPlanDiscussionSessionToDto。 */
+    internal fun generationPlanDiscussionSessionToDto(
         session: com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession,
         promptPreviewArtifactId: String?,
-    ): Map<String, Any?> = linkedMapOf(
-        "sessionId" to session.sessionId,
-        "messages" to session.messages.map { message ->
-            linkedMapOf(
-                "messageId" to message.messageId,
-                "role" to message.role.name,
-                "content" to message.content,
-                "focusItemId" to message.focusItemId,
-            )
-        },
-        "focusItemId" to session.focusItemId,
-        "promptPreviewArtifactId" to promptPreviewArtifactId,
-    )
+    ): GenerationPlanDiscussionSessionDto =
+        com.charmnight.linkgraph.ui.generationPlanDiscussionSessionToDto(session, promptPreviewArtifactId)
 
     /** 判断是否拥有可展示的 prompt 预览：文本或工件 ID 至少有一个非空即可。 */
     internal fun hasPromptPreview(promptPreview: String?, promptPreviewArtifactId: String?): Boolean {
         return !promptPreview.isNullOrBlank() || !promptPreviewArtifactId.isNullOrBlank()
     }
 
-    /** 把草稿校验状态（状态、消息、未解决的调查线程）转换为前端结构。 */
-    internal fun draftValidationStateToMap(
+    /** 把草稿校验状态转换为前端 DTO：详见 top-level fun draftValidationStateToDto。 */
+    internal fun draftValidationStateToDto(
         state: com.charmnight.linkgraph.workbench.DraftValidationState,
-    ): Map<String, Any?> = linkedMapOf(
-        "status" to state.status.name,
-        "message" to state.message,
-        "detailMessage" to state.detailMessage,
-        "unresolvedThreadIds" to state.unresolvedThreadIds,
-        "unresolvedThreads" to state.unresolvedThreads.map(::investigationThreadToMap),
-    )
+    ): DraftValidationStateDto = com.charmnight.linkgraph.ui.draftValidationStateToDto(state)
 
-    /** 把单条调查线程（含目标、证据缺口、推荐问题、解决状态）转换为前端结构。 */
-    private fun investigationThreadToMap(
+    /** 把单条调查线程转换为前端 DTO：详见 top-level fun investigationThreadToDto。 */
+    private fun investigationThreadToDto(
         thread: com.charmnight.linkgraph.workbench.InvestigationThread,
-    ): Map<String, Any?> = linkedMapOf(
-        "threadId" to thread.threadId,
-        "status" to thread.status.name,
-        "title" to thread.title,
-        "targetStepIds" to thread.targetStepIds,
-        "targetNodeIds" to thread.targetNodeIds,
-        "summary" to thread.summary,
-        "evidenceGap" to thread.evidenceGap,
-        "recommendedQuestion" to thread.recommendedQuestion,
-        "claimType" to thread.claimType,
-        "evidence" to thread.evidence.map(::resultEvidenceFindingToDto),
-        "latestTurnOutcomeId" to thread.latestTurnOutcomeId,
-        "resolution" to thread.resolution?.let(::riskResolutionToMap),
-    )
+    ): InvestigationThreadDto = com.charmnight.linkgraph.ui.investigationThreadToDto(thread)
 
-    /** 把风险线程的解决结果（状态与备注）转换为前端结构。 */
-    private fun riskResolutionToMap(
+    /** 把风险线程的解决结果转换为前端 DTO：详见 top-level fun riskResolutionToDto。 */
+    private fun riskResolutionToDto(
         resolution: com.charmnight.linkgraph.workbench.RiskResolution,
-    ): Map<String, Any?> = linkedMapOf(
-        "threadId" to resolution.threadId,
-        "status" to resolution.status.name,
-        "note" to resolution.note,
-    )
+    ): RiskResolutionDto = com.charmnight.linkgraph.ui.riskResolutionToDto(resolution)
 
-    /** 把单轮调查结果（含证据增量、观察到的节点/文件、阻塞原因）转换为前端结构。 */
-    private fun investigationTurnOutcomeToMap(
+    /** 把单轮调查结果转换为前端 DTO：详见 top-level fun investigationTurnOutcomeToDto。 */
+    private fun investigationTurnOutcomeToDto(
         outcome: com.charmnight.linkgraph.workbench.InvestigationTurnOutcome,
-    ): Map<String, Any?> = linkedMapOf(
-        "outcomeId" to outcome.outcomeId,
-        "threadId" to outcome.threadId,
-        "status" to outcome.status.name,
-        "summary" to outcome.summary,
-        "detail" to outcome.detail,
-        "candidateChangeId" to outcome.candidateChangeId,
-        "blockedReason" to outcome.blockedReason,
-        "evidenceDelta" to linkedMapOf(
-            "addedNodeIds" to outcome.evidenceDelta.addedNodeIds,
-            "addedFilePaths" to outcome.evidenceDelta.addedFilePaths,
-            "previousStrongestEvidenceLevel" to outcome.evidenceDelta.previousStrongestEvidenceLevel?.name,
-            "currentStrongestEvidenceLevel" to outcome.evidenceDelta.currentStrongestEvidenceLevel?.name,
-            "hitRecommendedQuestion" to outcome.evidenceDelta.hitRecommendedQuestion,
-        ),
-        "observedNodeIds" to outcome.observedNodeIds,
-        "observedFilePaths" to outcome.observedFilePaths,
-        "strongestEvidenceLevel" to outcome.strongestEvidenceLevel?.name,
-    )
+    ): InvestigationTurnOutcomeDto = com.charmnight.linkgraph.ui.investigationTurnOutcomeToDto(outcome)
 
-    /** 把 QA 多轮对话中的单条消息转换为前端结构。 */
-    private fun qaConversationMessageToMap(
+    /** 把 QA 多轮对话中的单条消息转换为前端 DTO：详见 top-level fun qaConversationMessageToDto。 */
+    private fun qaConversationMessageToDto(
         message: com.charmnight.linkgraph.workbench.QaConversationMessage,
-    ): Map<String, Any?> = linkedMapOf(
-        "messageId" to message.messageId,
-        "role" to message.role.name,
-        "content" to message.content,
-        "focusTargetId" to message.focusTargetId,
-        "turnOutcomeId" to message.turnOutcomeId,
-    )
+    ): QaConversationMessageDto = com.charmnight.linkgraph.ui.qaConversationMessageToDto(message)
 
-    /** 把源码片段上下文（行号区间、原始片段、反编译标记）转换为前端结构。 */
-    private fun sourceSnippetContextToMap(
+    /** 把源码片段上下文转换为前端 DTO：详见 top-level fun sourceSnippetContextToDto。 */
+    private fun sourceSnippetContextToDto(
         snippet: com.charmnight.linkgraph.llm.SourceSnippetContext,
-    ): Map<String, Any?> = linkedMapOf(
-        "nodeId" to snippet.nodeId,
-        "filePath" to snippet.filePath,
-        "startOffset" to snippet.startOffset,
-        "endOffset" to snippet.endOffset,
-        "startLine" to snippet.startLine,
-        "endLine" to snippet.endLine,
-        "snippet" to snippet.snippet,
-        "origin" to snippet.origin,
-        "decompiled" to snippet.decompiled,
-        "virtualFileUrl" to snippet.virtualFileUrl,
-    )
+    ): SourceSnippetContextDto = com.charmnight.linkgraph.ui.sourceSnippetContextToDto(snippet)
 
-    /** 把证据追踪条目（节点/文件/行号、是否纳入 prompt）转换为前端结构。 */
-    private fun evidenceTraceEntryToMap(
+    /** 把证据追踪条目转换为前端 DTO：详见 top-level fun evidenceTraceEntryToDto。 */
+    private fun evidenceTraceEntryToDto(
         trace: com.charmnight.linkgraph.llm.EvidenceTraceEntry,
-    ): Map<String, Any?> = linkedMapOf(
-        "nodeId" to trace.nodeId,
-        "resolvedNodeId" to trace.resolvedNodeId,
-        "filePath" to trace.filePath,
-        "reason" to trace.reason,
-        "startLine" to trace.startLine,
-        "endLine" to trace.endLine,
-        "includedInPrompt" to trace.includedInPrompt,
-        "mappingTrace" to trace.mappingTrace,
-    )
+    ): EvidenceTraceEntryDto = com.charmnight.linkgraph.ui.evidenceTraceEntryToDto(trace)
 
-    /** 把代码编辑作用域（目标符号、允许的变更类型）转换为前端结构。 */
-    private fun editScopeToMap(
+    /** 把代码编辑作用域转换为前端 DTO：详见 top-level fun editScopeToDto。 */
+    private fun editScopeToDto(
         scope: com.charmnight.linkgraph.llm.EditScope,
-    ): Map<String, Any?> = linkedMapOf(
-        "scopeId" to scope.scopeId,
-        "targetNodeId" to scope.targetNodeId,
-        "filePath" to scope.filePath,
-        "language" to scope.language,
-        "symbolKind" to scope.symbolKind,
-        "symbolSignature" to scope.symbolSignature,
-        "startOffset" to scope.startOffset,
-        "endOffset" to scope.endOffset,
-        "startLine" to scope.startLine,
-        "endLine" to scope.endLine,
-        "allowedChangeKinds" to scope.allowedChangeKinds,
-        "supportingFindingIds" to scope.supportingFindingIds,
-    )
+    ): EditScopeDto = com.charmnight.linkgraph.ui.editScopeToDto(scope)
 
-    /** 把单条代码编辑操作（文件路径、作用域、操作类型、负载）转换为前端结构。 */
-    private fun codeEditOperationToMap(
+    /** 把单条代码编辑操作转换为前端 DTO：详见 top-level fun codeEditOperationToDto。 */
+    private fun codeEditOperationToDto(
         operation: com.charmnight.linkgraph.codegen.CodeEditOperation,
-    ): Map<String, Any?> = linkedMapOf(
-        "operationId" to operation.operationId,
-        "filePath" to operation.filePath,
-        "scopeId" to operation.scopeId,
-        "kind" to operation.kind.name,
-        "payload" to operation.payload,
-        "warnings" to operation.warnings,
-    )
+    ): CodeEditOperationDto = com.charmnight.linkgraph.ui.codeEditOperationToDto(operation)
 
-    /** 把准备好的代码编辑（带前后锚文本和符号签名）转换为前端结构。 */
-    private fun preparedCodeEditToMap(
+    /** 把准备好的代码编辑转换为前端 DTO：详见 top-level fun preparedCodeEditToDto。 */
+    private fun preparedCodeEditToDto(
         edit: com.charmnight.linkgraph.codegen.PreparedCodeEdit,
-    ): Map<String, Any?> = linkedMapOf(
-        "operationId" to edit.operationId,
-        "filePath" to edit.filePath,
-        "scopeId" to edit.scopeId,
-        "kind" to edit.kind.name,
-        "targetSymbolSignature" to edit.targetSymbolSignature,
-        "startOffset" to edit.startOffset,
-        "endOffset" to edit.endOffset,
-        "beforeText" to edit.beforeText,
-        "afterText" to edit.afterText,
-        "warnings" to edit.warnings,
-    )
+    ): PreparedCodeEditDto = com.charmnight.linkgraph.ui.preparedCodeEditToDto(edit)
 
     /** 从节点元数据中提取 UI 坐标。 */
     /** uiPosition / semanticMetadata 已抽到 top-level（GraphEditorPageRendererHelpers.kt）。 */

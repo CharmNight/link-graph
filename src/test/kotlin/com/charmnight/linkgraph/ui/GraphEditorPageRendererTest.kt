@@ -87,6 +87,7 @@ import com.charmnight.linkgraph.workbench.AssistantTurnRef
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.test.assertNotNull
 
 class GraphEditorPageRendererTest {
     @Test
@@ -560,10 +561,9 @@ class GraphEditorPageRendererTest {
             ),
         )
         val missingPromptPayload = renderer.bootstrapPayload(missingPromptSnapshot)
-        @Suppress("UNCHECKED_CAST")
-        val missingPromptState = missingPromptPayload["qaRequestState"] as Map<String, Any?>
+        val missingPromptState = missingPromptPayload.qaRequestState
 
-        assertFalse(missingPromptState["promptPreviewAvailable"] as Boolean)
+        assertFalse(missingPromptState.promptPreviewAvailable)
 
         val promptSnapshot = testSnapshot(
             qaRequestState = com.charmnight.linkgraph.ui.AsyncRequestState.succeeded(
@@ -580,13 +580,11 @@ class GraphEditorPageRendererTest {
         )
         val artifactRefs = GraphEditorArtifactRegistry().replaceWith(promptSnapshot)
         val promptPayload = renderer.bootstrapPayload(promptSnapshot, artifactRefs)
-        @Suppress("UNCHECKED_CAST")
-        val promptState = promptPayload["qaRequestState"] as Map<String, Any?>
-        @Suppress("UNCHECKED_CAST")
-        val promptResult = promptPayload["qaResult"] as Map<String, Any?>
+        val promptState = promptPayload.qaRequestState
+        val promptResult = assertNotNull(promptPayload.qaResult)
 
-        assertTrue(promptState["promptPreviewAvailable"] as Boolean)
-        assertTrue(promptResult["promptPreviewArtifactId"].toString().startsWith("qa-prompt:qa-result:"))
+        assertTrue(promptState.promptPreviewAvailable)
+        assertTrue(promptResult.promptPreviewArtifactId?.startsWith("qa-prompt:qa-result:") == true)
     }
 
     @Test

@@ -1,10 +1,11 @@
 package com.charmnight.linkgraph.ui
 
 /**
- * Bootstrap payload 组装器（P2-1 真正的架构分解）。
+ * Bootstrap payload 组装器（P2-1 真正的架构分解，P2-6 完整 DTO 化）。
  *
  * 从 GraphEditorPageRenderer 抽出的独立 class，负责把 GraphEditorStateSnapshot
- * 的全部域状态序列化为单个 LinkedHashMap，作为前端 bootstrap JSON 的根对象。
+ * 的全部域状态序列化为单个 [BootstrapPayloadDto]，
+ * 作为前端 bootstrap JSON 的根对象（Gson 反射序列化为 JSON）。
  */
 internal class BootstrapPayloadAssembler(
     private val renderer: GraphEditorPageRenderer,
@@ -12,7 +13,7 @@ internal class BootstrapPayloadAssembler(
     fun assemble(
         snapshot: GraphEditorStateSnapshot,
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
-    ): LinkedHashMap<String, Any?> {
+    ): BootstrapPayloadDto {
         val domainStates = snapshot.domainStates()
         val workspaceState = domainStates.workspace
         val graphViewsState = domainStates.graphViews
@@ -27,63 +28,63 @@ internal class BootstrapPayloadAssembler(
         val architectureSceneState = graphViewsState.sceneStates[GraphSceneId.WORKSPACE_ARCHITECTURE_GRAPH] ?: GraphSceneState()
         val classDiagramSceneState = graphViewsState.sceneStates[GraphSceneId.WORKSPACE_CLASS_DIAGRAM] ?: GraphSceneState()
         val reviewGraphSceneState = graphViewsState.sceneStates[GraphSceneId.WORKSPACE_REVIEW_GRAPH] ?: GraphSceneState()
-        val payload = linkedMapOf<String, Any?>()
-        payload["analysisDisplayMode"] = graphViewsState.analysisDisplayMode.name
-        payload["currentSceneId"] = graphViewsState.currentSceneId.name
-        payload["workspaceGraph"] = renderer.documentToMap(workspaceState.workspaceGraph, includeFullContent = true)
-        payload["workspaceBaseGraph"] = renderer.documentToMap(workspaceState.workspaceBaseGraph, includeFullContent = true)
-        payload["semanticFactGraph"] = renderer.documentToMap(workspaceState.semanticFactGraph, includeFullContent = false)
-        payload["designBaselineGraph"] = workspaceState.designBaselineGraph?.let { renderer.documentToMap(it, includeFullContent = false) }
-        payload["sceneStates"] = sceneStatesToDto(graphViewsState.sceneStates)
-        payload["factGraphView"] = renderer.factGraphViewToMap(graphViewsState.factGraphView, factSceneState.layoutState)
-        payload["flowchartView"] = renderer.flowchartViewToMap(graphViewsState.flowchartView, flowchartSceneState.layoutState)
-        payload["resourceRelationView"] = renderer.resourceRelationViewToMap(graphViewsState.resourceRelationView, resourceSceneState.layoutState)
-        payload["architectureGraphView"] = renderer.architectureGraphViewToMap(graphViewsState.architectureGraphView, architectureSceneState.layoutState)
-        payload["classDiagramView"] = renderer.classDiagramViewToMap(graphViewsState.classDiagramView, classDiagramSceneState.layoutState)
-        payload["reviewGraphView"] = renderer.reviewGraphViewToMap(graphViewsState.reviewGraphView, reviewGraphSceneState.layoutState)
-        payload["indexedGraphRequestStates"] = graphViewsState.indexedGraphRequestStates.entries.associate { (view, requestState) -> view.name to renderer.requestStateToMap(requestState) }
-        payload["draftPatchPreview"] = generationState.draftPatchPreview?.let { renderer.patchToDto(it) }
-        payload["draftWorkbenchState"] = renderer.draftWorkbenchStateToMap(generationState.draftWorkbenchState)
-        payload["canUndoDraftPatchApply"] = generationState.draftPatchUndoState != null
-        payload["lastAppliedDraftPatchSummary"] = generationState.draftPatchUndoState?.patchPreview?.summary
-        payload["lastDraftPatchApplyResult"] = generationState.lastDraftPatchApplyResult?.let { renderer.draftPatchApplyResultToMap(it) }
-        payload["qaResult"] = reviewState.qaResult?.let { renderer.patchResultToMap(it, artifactRefs.qaPromptPreviewArtifactId) }
-        payload["qaRequestState"] = renderer.requestStateToMap(reviewState.qaRequestState, renderer.hasPromptPreview(reviewState.qaResult?.promptPreview, artifactRefs.qaPromptPreviewArtifactId))
-        payload["qaRequestRecoveryState"] = renderer.qaRequestRecoveryStateToDto(reviewState.qaRequestRecoveryState)
-        payload["runtimeArtifactSummaries"] = assistantState.runtimeArtifactSummaries.mapValues { (_, summaries) ->
-            summaries.map { s -> linkedMapOf<String, Any?>("artifactId" to s.artifactId, "artifactType" to s.artifactType, "title" to s.title, "description" to s.description) }
-        }
-        payload["diffReviewResult"] = reviewState.diffReviewResult?.let { renderer.patchResultToMap(it, artifactRefs.diffReviewPromptPreviewArtifactId) }
-        payload["diffReviewRequestState"] = renderer.requestStateToMap(reviewState.diffReviewRequestState, renderer.hasPromptPreview(reviewState.diffReviewResult?.promptPreview, artifactRefs.diffReviewPromptPreviewArtifactId))
-        payload["graphBeautificationResult"] = reviewState.graphBeautificationResult?.let { renderer.beautificationResultToMap(it, artifactRefs.beautificationPromptPreviewArtifactId) }
-        payload["graphBeautificationRequestState"] = renderer.requestStateToMap(reviewState.graphBeautificationRequestState, renderer.hasPromptPreview(reviewState.graphBeautificationResult?.promptPreview, artifactRefs.beautificationPromptPreviewArtifactId))
-        payload["mermaidIssues"] = workspaceState.mermaidIssues.map { i -> linkedMapOf<String, Any?>("category" to i.category.name, "code" to i.code, "message" to i.message, "line" to i.line, "nodeId" to i.nodeId, "edgeId" to i.edgeId) }
-        payload["diffItems"] = workspaceState.diff?.entries.orEmpty().map { e -> linkedMapOf<String, Any?>("id" to e.elementId, "title" to renderer.resolveDiffTitle(e, workspaceState.workspaceGraph), "status" to e.status.name, "description" to (e.message ?: e.fields.joinToString())) }
-        payload["syncPreviewItems"] = workspaceState.syncPreviewItems.map { i -> linkedMapOf<String, Any?>("id" to i.id, "title" to i.title, "description" to i.description, "risk" to i.risk.name) }
-        payload["draftVersion"] = generationState.draftVersion
-        payload["generationPlan"] = generationState.generationPlan?.let { p -> generationPlanToDto(p, artifactRefs.generationPlanPromptPreviewArtifactId) }
-        payload["generationPlanDraftVersion"] = generationState.generationPlanDraftVersion
-        payload["generationPlanRequestState"] = renderer.requestStateToMap(generationState.generationPlanRequestState, renderer.hasPromptPreview(generationState.generationPlan?.promptPreview, artifactRefs.generationPlanPromptPreviewArtifactId))
-        payload["draftValidationState"] = generationState.draftValidationState?.let { renderer.draftValidationStateToMap(it) }
-        payload["generationPlanDiscussionSession"] = generationState.generationPlanDiscussionSession?.let { s -> renderer.generationPlanDiscussionSessionToMap(s, artifactRefs.generationPlanDiscussionPromptPreviewArtifactId) }
-        payload["generationPlanDiscussionRequestState"] = renderer.requestStateToMap(generationState.generationPlanDiscussionRequestState, renderer.hasPromptPreview(generationState.generationPlanDiscussionSession?.promptPreview, artifactRefs.generationPlanDiscussionPromptPreviewArtifactId))
-        payload["generatedCodeDrafts"] = generationState.generatedCodeDrafts.map { d -> renderer.generatedCodeDraftToMap(d, artifactRefs.generatedCodeDraftContentArtifactIds[d.id]) }
-        payload["generatedCodeDraftVersion"] = generationState.generatedCodeDraftVersion
-        payload["generatedCodeDraftWarnings"] = generationState.generatedCodeDraftWarnings
-        payload["generatedCodeDraftSource"] = generationState.generatedCodeDraftSource?.name
-        payload["generatedCodeDraftPromptPreviewArtifactId"] = artifactRefs.generatedCodeDraftPromptPreviewArtifactId
-        payload["codeDraftRequestState"] = renderer.requestStateToMap(generationState.codeDraftRequestState, renderer.hasPromptPreview(generationState.generatedCodeDraftPromptPreview, artifactRefs.generatedCodeDraftPromptPreviewArtifactId))
-        payload["codeEligibilityDecision"] = generationState.codeEligibilityDecision?.let { renderer.stageEligibilityDecisionToDto(it) }
-        payload["generatedCodeDraftWriteReport"] = generationState.generatedCodeDraftWriteReport?.let { r -> linkedMapOf<String, Any?>("writtenFiles" to r.writtenFiles, "skippedFiles" to r.skippedFiles, "warnings" to r.warnings) }
-        payload["semanticRevision"] = workspaceState.semanticRevision
-        payload["workspaceRevision"] = workspaceState.workspaceRevision
-        payload["snapshotRevision"] = transportState.snapshotRevision
-        payload["sourceNavigationState"] = renderer.sourceNavigationStateToDto(navigationState.sourceNavigationState)
-        payload["assistantSessionState"] = GraphEditorAssistantSessionRenderer.assistantSessionStateToDto(assistantState.sessionState)
-        payload["assistantResultStore"] = renderer.assistantResultStoreToMap(assistantState.resultStore, artifactRefs.assistantResultArtifacts)
-        payload["lastMessageType"] = transportState.lastMessageType
-        payload["lastGraphSource"] = transportState.lastGraphSource
-        payload["operationFeedback"] = transportState.operationFeedback?.let { f -> linkedMapOf<String, Any?>("level" to f.level.name, "message" to f.message) }
-        return payload
+        return BootstrapPayloadDto(
+            analysisDisplayMode = graphViewsState.analysisDisplayMode.name,
+            currentSceneId = graphViewsState.currentSceneId.name,
+            workspaceGraph = renderer.documentToDto(workspaceState.workspaceGraph, includeFullContent = true),
+            workspaceBaseGraph = renderer.documentToDto(workspaceState.workspaceBaseGraph, includeFullContent = true),
+            semanticFactGraph = renderer.documentToDto(workspaceState.semanticFactGraph, includeFullContent = false),
+            designBaselineGraph = workspaceState.designBaselineGraph?.let { renderer.documentToDto(it, includeFullContent = false) },
+            sceneStates = sceneStatesToDto(graphViewsState.sceneStates),
+            factGraphView = renderer.factGraphViewToDto(graphViewsState.factGraphView, factSceneState.layoutState),
+            flowchartView = renderer.flowchartViewToDto(graphViewsState.flowchartView, flowchartSceneState.layoutState),
+            resourceRelationView = renderer.resourceRelationViewToDto(graphViewsState.resourceRelationView, resourceSceneState.layoutState),
+            architectureGraphView = renderer.architectureGraphViewToDto(graphViewsState.architectureGraphView, architectureSceneState.layoutState),
+            classDiagramView = renderer.classDiagramViewToDto(graphViewsState.classDiagramView, classDiagramSceneState.layoutState),
+            reviewGraphView = renderer.reviewGraphViewToDto(graphViewsState.reviewGraphView, reviewGraphSceneState.layoutState),
+            indexedGraphRequestStates = graphViewsState.indexedGraphRequestStates.entries.associate { (view, requestState) -> view.name to renderer.requestStateToDto(requestState) },
+            draftPatchPreview = generationState.draftPatchPreview?.let { renderer.patchToDto(it) },
+            draftWorkbenchState = renderer.draftWorkbenchStateToDto(generationState.draftWorkbenchState),
+            canUndoDraftPatchApply = generationState.draftPatchUndoState != null,
+            lastAppliedDraftPatchSummary = generationState.draftPatchUndoState?.patchPreview?.summary,
+            lastDraftPatchApplyResult = generationState.lastDraftPatchApplyResult?.let { renderer.draftPatchApplyResultToDto(it) },
+            qaResult = reviewState.qaResult?.let { renderer.patchResultToDto(it, artifactRefs.qaPromptPreviewArtifactId) },
+            qaRequestState = renderer.requestStateToDto(reviewState.qaRequestState, renderer.hasPromptPreview(reviewState.qaResult?.promptPreview, artifactRefs.qaPromptPreviewArtifactId)),
+            qaRequestRecoveryState = renderer.qaRequestRecoveryStateToDto(reviewState.qaRequestRecoveryState),
+            runtimeArtifactSummaries = assistantState.runtimeArtifactSummaries.mapValues { (_, summaries) ->
+                summaries.map { s -> RuntimeArtifactSummaryDto(s.artifactId, s.artifactType, s.title, s.description) }
+            },
+            diffReviewResult = reviewState.diffReviewResult?.let { renderer.patchResultToDto(it, artifactRefs.diffReviewPromptPreviewArtifactId) },
+            diffReviewRequestState = renderer.requestStateToDto(reviewState.diffReviewRequestState, renderer.hasPromptPreview(reviewState.diffReviewResult?.promptPreview, artifactRefs.diffReviewPromptPreviewArtifactId)),
+            graphBeautificationResult = reviewState.graphBeautificationResult?.let { renderer.beautificationResultToDto(it, artifactRefs.beautificationPromptPreviewArtifactId) },
+            graphBeautificationRequestState = renderer.requestStateToDto(reviewState.graphBeautificationRequestState, renderer.hasPromptPreview(reviewState.graphBeautificationResult?.promptPreview, artifactRefs.beautificationPromptPreviewArtifactId)),
+            mermaidIssues = workspaceState.mermaidIssues.map { i -> MermaidIssueDto(i.category.name, i.code, i.message, i.line, i.nodeId, i.edgeId) },
+            diffItems = workspaceState.diff?.entries.orEmpty().map { e -> DiffItemDto(e.elementId, renderer.resolveDiffTitle(e, workspaceState.workspaceGraph), e.status.name, e.message ?: e.fields.joinToString()) },
+            syncPreviewItems = workspaceState.syncPreviewItems.map { i -> SyncPreviewItemDto(i.id, i.title, i.description, i.risk.name) },
+            draftVersion = generationState.draftVersion,
+            generationPlan = generationState.generationPlan?.let { p -> generationPlanToDto(p, artifactRefs.generationPlanPromptPreviewArtifactId) },
+            generationPlanDraftVersion = generationState.generationPlanDraftVersion,
+            generationPlanRequestState = renderer.requestStateToDto(generationState.generationPlanRequestState, renderer.hasPromptPreview(generationState.generationPlan?.promptPreview, artifactRefs.generationPlanPromptPreviewArtifactId)),
+            draftValidationState = generationState.draftValidationState?.let { renderer.draftValidationStateToDto(it) },
+            generationPlanDiscussionSession = generationState.generationPlanDiscussionSession?.let { s -> renderer.generationPlanDiscussionSessionToDto(s, artifactRefs.generationPlanDiscussionPromptPreviewArtifactId) },
+            generationPlanDiscussionRequestState = renderer.requestStateToDto(generationState.generationPlanDiscussionRequestState, renderer.hasPromptPreview(generationState.generationPlanDiscussionSession?.promptPreview, artifactRefs.generationPlanDiscussionPromptPreviewArtifactId)),
+            generatedCodeDrafts = generationState.generatedCodeDrafts.map { d -> renderer.generatedCodeDraftToDto(d, artifactRefs.generatedCodeDraftContentArtifactIds[d.id]) },
+            generatedCodeDraftVersion = generationState.generatedCodeDraftVersion,
+            generatedCodeDraftWarnings = generationState.generatedCodeDraftWarnings,
+            generatedCodeDraftSource = generationState.generatedCodeDraftSource?.name,
+            generatedCodeDraftPromptPreviewArtifactId = artifactRefs.generatedCodeDraftPromptPreviewArtifactId,
+            codeDraftRequestState = renderer.requestStateToDto(generationState.codeDraftRequestState, renderer.hasPromptPreview(generationState.generatedCodeDraftPromptPreview, artifactRefs.generatedCodeDraftPromptPreviewArtifactId)),
+            codeEligibilityDecision = generationState.codeEligibilityDecision?.let { renderer.stageEligibilityDecisionToDto(it) },
+            generatedCodeDraftWriteReport = generationState.generatedCodeDraftWriteReport?.let { r -> GeneratedCodeDraftWriteReportDto(r.writtenFiles, r.skippedFiles, r.warnings) },
+            semanticRevision = workspaceState.semanticRevision,
+            workspaceRevision = workspaceState.workspaceRevision,
+            snapshotRevision = transportState.snapshotRevision,
+            sourceNavigationState = renderer.sourceNavigationStateToDto(navigationState.sourceNavigationState),
+            assistantSessionState = GraphEditorAssistantSessionRenderer.assistantSessionStateToDto(assistantState.sessionState),
+            assistantResultStore = renderer.assistantResultStoreToDto(assistantState.resultStore, artifactRefs.assistantResultArtifacts),
+            lastMessageType = transportState.lastMessageType,
+            lastGraphSource = transportState.lastGraphSource,
+            operationFeedback = transportState.operationFeedback?.let { f -> OperationFeedbackDto(f.level.name, f.message) },
+        )
     }
 }
