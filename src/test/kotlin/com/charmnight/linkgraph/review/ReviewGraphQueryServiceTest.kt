@@ -63,7 +63,7 @@ class ReviewGraphQueryServiceTest {
         assertEquals(1, radius.serviceLoaderLoads.size)
         val bundle = service.buildEvidenceBundle(listOf("src/main/java/com/example/OrderService.java"))
         assertTrue(bundle.evidenceRefs.any { ref ->
-            ref["kind"] == JvmRelationKind.SERVICE_LOADER_LOADS.name
+            ref is ReviewRelationEvidenceRef && ref.kind == JvmRelationKind.SERVICE_LOADER_LOADS.name
         })
         assertTrue(bundle.evidenceRefs.isNotEmpty())
         assertEquals(listOf("com.example"), radius.affectedPackages)
@@ -179,7 +179,9 @@ class ReviewGraphQueryServiceTest {
         assertTrue(bundle.blastRadius.relatedTests.none { symbol -> symbol.id == test.id })
         assertEquals(listOf("com.example.billing"), bundle.blastRadius.affectedPackages)
         assertTrue(bundle.evidenceRefs.any { ref ->
-            ref["symbolId"] == changed.id && ref["snippet"].toString().contains("InvoiceService")
+            ref is ReviewChangedSymbolEvidenceRef &&
+                ref.symbolId == changed.id &&
+                ref.snippet?.snippet?.contains("InvoiceService") == true
         })
     }
 

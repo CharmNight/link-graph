@@ -44,9 +44,12 @@ import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.model.putSourceLocation
 import com.charmnight.linkgraph.review.ChangedHunk
 import com.charmnight.linkgraph.review.ChangedSymbol
+import com.charmnight.linkgraph.review.ReviewChangedSymbolEvidenceRef
 import com.charmnight.linkgraph.review.ReviewEvidenceBundle
 import com.charmnight.linkgraph.review.ReviewGraphChangedFile
 import com.charmnight.linkgraph.review.ReviewGraphChangedHunk
+import com.charmnight.linkgraph.review.ReviewRelationEvidenceRef
+import com.charmnight.linkgraph.review.ReviewSymbolEvidenceRef
 import com.charmnight.linkgraph.review.ReviewGraphChangedSymbolDetail
 import com.charmnight.linkgraph.review.ReviewGraphEvidenceSnippet
 import com.charmnight.linkgraph.review.ReviewGraphRelatedTestDetail
@@ -386,17 +389,40 @@ class ReviewGraphProjector(
     private fun evidenceSnippets(bundle: ReviewEvidenceBundle): List<ReviewGraphEvidenceSnippet> =
         bundle.evidenceRefs
             .mapNotNull { ref ->
-                val snippet = ref["snippet"] as? String
-                val unavailableReason = (ref["snippetUnavailableReason"] ?: ref["unavailableReason"]) as? String
+                val snippet = ref.snippet?.snippet
+                val unavailableReason = ref.snippetUnavailable?.snippetUnavailableReason ?: when (ref) {
+                    is ReviewChangedSymbolEvidenceRef -> ref.unavailableReason
+                    else -> null
+                }
                 if (snippet.isNullOrBlank() && unavailableReason.isNullOrBlank()) {
                     return@mapNotNull null
                 }
                 ReviewGraphEvidenceSnippet(
-                    title = (ref["qualifiedName"] ?: ref["kind"] ?: ref["relationId"] ?: ref["symbolId"] ?: "evidence").toString(),
-                    kind = (ref["kind"] ?: ref["changeKind"] ?: "SYMBOL").toString(),
-                    filePath = ref["filePath"] as? String,
-                    startLine = ref["snippetStartLine"] as? Int ?: ref["startLine"] as? Int,
-                    endLine = ref["snippetEndLine"] as? Int ?: ref["endLine"] as? Int,
+                    title = when (ref) {
+                        is ReviewChangedSymbolEvidenceRef -> ref.qualifiedName ?: ref.symbolId
+                        is ReviewRelationEvidenceRef -> ref.kind
+                        is ReviewSymbolEvidenceRef -> ref.qualifiedName ?: ref.symbolId
+                    },
+                    kind = when (ref) {
+                        is ReviewChangedSymbolEvidenceRef -> ref.changeKind ?: "SYMBOL"
+                        is ReviewRelationEvidenceRef -> ref.kind
+                        is ReviewSymbolEvidenceRef -> "SYMBOL"
+                    },
+                    filePath = when (ref) {
+                        is ReviewChangedSymbolEvidenceRef -> ref.filePath
+                        is ReviewRelationEvidenceRef -> ref.filePath
+                        is ReviewSymbolEvidenceRef -> ref.filePath
+                    },
+                    startLine = ref.snippet?.snippetStartLine ?: when (ref) {
+                        is ReviewChangedSymbolEvidenceRef -> ref.startLine
+                        is ReviewRelationEvidenceRef -> ref.startLine
+                        is ReviewSymbolEvidenceRef -> null
+                    },
+                    endLine = ref.snippet?.snippetEndLine ?: when (ref) {
+                        is ReviewChangedSymbolEvidenceRef -> ref.endLine
+                        is ReviewRelationEvidenceRef -> ref.endLine
+                        is ReviewSymbolEvidenceRef -> null
+                    },
                     snippet = snippet,
                     unavailableReason = unavailableReason,
                 )

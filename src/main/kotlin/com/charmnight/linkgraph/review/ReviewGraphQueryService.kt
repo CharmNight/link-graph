@@ -114,8 +114,8 @@ data class ReviewEvidenceBundle(
     val changedSymbols: List<ChangedSymbol>,
     /** 保存爆炸半径整体信息。 */
     val blastRadius: BlastRadius,
-    /** 保存扁平化的证据引用列表，每条以字段映射形式描述符号或代码块。 */
-    val evidenceRefs: List<Map<String, Any?>>,
+    /** 保存扁平化的证据引用列表（变更符号 / 关系 / 上游下游符号三类，按 sealed DTO 区分）。 */
+    val evidenceRefs: List<ReviewEvidenceRef>,
     /** 保存原始 Git 变更文件列表，便于前端对照查看。 */
     val gitChangedFiles: List<GitChangedFile> = emptyList(),
 )
@@ -741,21 +741,8 @@ class ReviewEvidenceBundleBuilder {
         sourceResolver: SourceContentResolver? = null,
         gitChangedFiles: List<GitChangedFile> = emptyList(),
     ): ReviewEvidenceBundle {
-        val changedEvidence = radius.changedSymbols.map { symbol ->
-            mapOf(
-                "symbolId" to symbol.symbolId,
-                "qualifiedName" to symbol.qualifiedName,
-                "filePath" to symbol.filePath,
-                "startLine" to symbol.startLine,
-                "endLine" to symbol.endLine,
-                "changeKind" to symbol.changeKind,
-                "baselineOnly" to symbol.baselineOnly,
-                "blastRadiusIncomplete" to symbol.blastRadiusIncomplete,
-                "unavailableReason" to symbol.unavailableReason,
-                "hunkHeader" to symbol.hunk?.header,
-                "hunkNewStartLine" to symbol.hunk?.newStartLine,
-                "hunkNewLineCount" to symbol.hunk?.newLineCount,
-            ) + snippetPayload(
+        val changedEvidence: List<ReviewEvidenceRef> = radius.changedSymbols.map { symbol ->
+            val (snippet, snippetUnavailable) = snippetPayload(
                 resolver = sourceResolver,
                 filePath = symbol.filePath,
                 virtualFileUrl = null,
@@ -764,47 +751,69 @@ class ReviewEvidenceBundleBuilder {
                     start + (symbol.hunk.newLineCount ?: 1).coerceAtLeast(1) - 1
                 } ?: symbol.endLine,
             )
+            ReviewChangedSymbolEvidenceRef(
+                symbolId = symbol.symbolId,
+                qualifiedName = symbol.qualifiedName,
+                filePath = symbol.filePath,
+                startLine = symbol.startLine,
+                endLine = symbol.endLine,
+                changeKind = symbol.changeKind,
+                baselineOnly = symbol.baselineOnly,
+                blastRadiusIncomplete = symbol.blastRadiusIncomplete,
+                unavailableReason = symbol.unavailableReason,
+                hunkHeader = symbol.hunk?.header,
+                hunkNewStartLine = symbol.hunk?.newStartLine,
+                hunkNewLineCount = symbol.hunk?.newLineCount,
+                snippet = snippet,
+                snippetUnavailable = snippetUnavailable,
+            )
         }
         // 关键关系（SPI/反射/ServiceLoader/代理/测试）每条 sample 都生成一条证据项，便于展示具体出处。
-        val relationEvidence = (radius.spiProviders + radius.reflectionTargets + radius.serviceLoaderLoads + radius.proxyTargets + radius.testRelations)
+        val relationEvidence: List<ReviewEvidenceRef> = (radius.spiProviders + radius.reflectionTargets + radius.serviceLoaderLoads + radius.proxyTargets + radius.testRelations)
             .flatMap { relation ->
                 relation.samples.map { sample ->
-                    mapOf(
-                        "relationId" to relation.id,
-                        "kind" to relation.kind.name,
-                        "confidence" to relation.confidence.name,
-                        "filePath" to sample.filePath,
-                        "virtualFileUrl" to sample.virtualFileUrl,
-                        "startLine" to sample.startLine,
-                        "endLine" to sample.endLine,
-                        "decompiled" to sample.decompiled,
-                        "claim" to sample.claim,
-                    ) + snippetPayload(
+                    val (snippet, snippetUnavailable) = snippetPayload(
                         resolver = sourceResolver,
                         filePath = sample.filePath,
                         virtualFileUrl = sample.virtualFileUrl,
                         startLine = sample.startLine,
                         endLine = sample.endLine,
                     )
+                    ReviewRelationEvidenceRef(
+                        relationId = relation.id,
+                        kind = relation.kind.name,
+                        confidence = relation.confidence.name,
+                        filePath = sample.filePath,
+                        virtualFileUrl = sample.virtualFileUrl,
+                        startLine = sample.startLine,
+                        endLine = sample.endLine,
+                        decompiled = sample.decompiled,
+                        claim = sample.claim,
+                        snippet = snippet,
+                        snippetUnavailable = snippetUnavailable,
+                    )
                 }
             }
         // 上下游与相关测试统一截断到 50 条，避免证据包过大。
-        val symbolEvidence = (radius.upstream + radius.downstream + radius.relatedTests)
+        val symbolEvidence: List<ReviewEvidenceRef> = (radius.upstream + radius.downstream + radius.relatedTests)
             .take(50)
             .map { symbol ->
-                mapOf(
-                    "symbolId" to symbol.id,
-                    "qualifiedName" to symbol.qualifiedName,
-                    "filePath" to symbol.source?.displayPath,
-                    "virtualFileUrl" to symbol.source?.virtualFileUrl,
-                    "decompiled" to (symbol.source?.decompiled ?: false),
-                    "origin" to symbol.origin.name,
-                ) + snippetPayload(
+                val (snippet, snippetUnavailable) = snippetPayload(
                     resolver = sourceResolver,
                     filePath = symbol.source?.displayPath,
                     virtualFileUrl = symbol.source?.virtualFileUrl,
                     startLine = symbol.source?.startLine,
                     endLine = symbol.source?.endLine,
+                )
+                ReviewSymbolEvidenceRef(
+                    symbolId = symbol.id,
+                    qualifiedName = symbol.qualifiedName,
+                    filePath = symbol.source?.displayPath,
+                    virtualFileUrl = symbol.source?.virtualFileUrl,
+                    decompiled = symbol.source?.decompiled ?: false,
+                    origin = symbol.origin.name,
+                    snippet = snippet,
+                    snippetUnavailable = snippetUnavailable,
                 )
             }
         return ReviewEvidenceBundle(
@@ -816,9 +825,9 @@ class ReviewEvidenceBundleBuilder {
     }
 
     /**
-     * 读取给定源码位置的代码片段并以字段映射形式返回。
+     * 读取给定源码位置的代码片段并以 DTO 形式返回。
      *
-     * 任一前置条件不满足时返回带原因的不可用标记，便于上层解释缺失原因。
+     * 返回 Pair<可用片段或 null, 不可用原因或 null>，二者互斥。
      */
     private fun snippetPayload(
         resolver: SourceContentResolver?,
@@ -826,20 +835,20 @@ class ReviewEvidenceBundleBuilder {
         virtualFileUrl: String?,
         startLine: Int?,
         endLine: Int?,
-    ): Map<String, Any?> {
-        resolver ?: return mapOf("snippetUnavailableReason" to "SOURCE_RESOLVER_UNAVAILABLE")
-        val path = virtualFileUrl ?: filePath ?: return mapOf("snippetUnavailableReason" to "SOURCE_PATH_UNAVAILABLE")
+    ): Pair<ReviewSnippetPayload?, ReviewSnippetUnavailable?> {
+        if (resolver == null) return null to ReviewSnippetUnavailable("SOURCE_RESOLVER_UNAVAILABLE")
+        val path = virtualFileUrl ?: filePath ?: return null to ReviewSnippetUnavailable("SOURCE_PATH_UNAVAILABLE")
         // 优先按精确区间读取，区间不可用时回退到读取整个文件。
         val content = resolver.readSnippetByPath(path, startLine, endLine)
             ?: resolver.readByPath(path)
-            ?: return mapOf("snippetUnavailableReason" to "SOURCE_SNIPPET_UNAVAILABLE")
-        return mapOf(
-            "snippet" to content.text.take(2_000),
-            "snippetOrigin" to content.origin.name,
-            "snippetVirtualFileUrl" to content.virtualFileUrl,
-            "snippetStartLine" to content.startLine,
-            "snippetEndLine" to content.endLine,
-            "snippetDecompiled" to content.decompiled,
-        )
+            ?: return null to ReviewSnippetUnavailable("SOURCE_SNIPPET_UNAVAILABLE")
+        return ReviewSnippetPayload(
+            snippet = content.text.take(2_000),
+            snippetOrigin = content.origin.name,
+            snippetVirtualFileUrl = content.virtualFileUrl,
+            snippetStartLine = content.startLine,
+            snippetEndLine = content.endLine,
+            snippetDecompiled = content.decompiled,
+        ) to null
     }
 }

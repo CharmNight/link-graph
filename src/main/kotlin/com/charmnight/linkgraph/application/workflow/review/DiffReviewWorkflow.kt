@@ -16,7 +16,10 @@ import com.charmnight.linkgraph.llm.GraphDiffContext
 import com.charmnight.linkgraph.llm.GraphDiffPatchService
 import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.review.ReviewChangedSymbolEvidenceRef
 import com.charmnight.linkgraph.review.ReviewEvidenceBundle
+import com.charmnight.linkgraph.review.ReviewRelationEvidenceRef
+import com.charmnight.linkgraph.review.ReviewSymbolEvidenceRef
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.diagnostic.Logger
@@ -290,12 +293,30 @@ internal class DiffReviewWorkflow(
         val evidence = bundle.evidenceRefs.take(20).joinToString("\n") { ref ->
             buildString {
                 append("- evidence ")
-                append(ref["qualifiedName"] ?: ref["kind"] ?: "ref")
-                append(" | file=")
-                append(ref["filePath"] ?: "unknown")
-                append(" | decompiled=")
-                append(ref["decompiled"])
-                val snippet = ref["snippet"]?.toString()?.takeIf(String::isNotBlank)
+                when (ref) {
+                    is ReviewChangedSymbolEvidenceRef -> {
+                        append(ref.qualifiedName ?: "ref")
+                        append(" | file=")
+                        append(ref.filePath ?: "unknown")
+                        append(" | changeKind=")
+                        append(ref.changeKind ?: "unknown")
+                    }
+                    is ReviewRelationEvidenceRef -> {
+                        append(ref.kind)
+                        append(" | file=")
+                        append(ref.filePath ?: "unknown")
+                        append(" | decompiled=")
+                        append(ref.decompiled ?: false)
+                    }
+                    is ReviewSymbolEvidenceRef -> {
+                        append(ref.qualifiedName ?: "ref")
+                        append(" | file=")
+                        append(ref.filePath ?: "unknown")
+                        append(" | decompiled=")
+                        append(ref.decompiled)
+                    }
+                }
+                val snippet = ref.snippet?.snippet?.takeIf(String::isNotBlank)
                 if (snippet != null) {
                     append("\n  snippet:\n")
                     append(snippet.lineSequence().take(12).joinToString("\n") { line -> "  $line" })
