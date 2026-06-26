@@ -27,7 +27,6 @@ import com.charmnight.linkgraph.semantic.subject.ResourceSubjectHandle
 import com.charmnight.linkgraph.semantic.subject.SubjectLocator
 import com.charmnight.linkgraph.semantic.subject.SubjectPreviewKind
 import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 
@@ -157,13 +156,12 @@ internal class SubjectGraphWorkflow(
     }
 
     /** 异步加载当前编辑器光标所在主体对应的链路图，会先重置投影设置。 */
-    fun loadCurrentEditorContextGraphAsync(editor: Editor? = null) {
+    fun loadCurrentEditorContextGraphAsync() {
         state.resetProjectionSettings()
         val requestId = requestCoordinator.beginRequest()
         loadCurrentEditorContextGraphAsync(
             requestId = requestId,
             deferUntilSmart = true,
-            editor = editor,
         )
     }
 
@@ -269,8 +267,8 @@ internal class SubjectGraphWorkflow(
     }
 
     /** 仅预判当前光标处所属的主体类型（方法/Mapper SQL 等），不触发实际分析，用于 UI 提示。 */
-    fun previewCurrentEditorSubjectKind(editor: Editor? = null): SubjectPreviewKind? {
-        return subjectResolutionWorkflow.previewCurrentEditorSubjectKind(editor)
+    fun previewCurrentEditorSubjectKind(): SubjectPreviewKind? {
+        return subjectResolutionWorkflow.previewCurrentEditorSubjectKind()
     }
 
     /** 调试入口：直接按方法签名异步分析真实链路，绕过光标定位步骤。 */
@@ -302,7 +300,6 @@ internal class SubjectGraphWorkflow(
     private fun loadCurrentEditorContextGraphAsync(
         requestId: Long,
         deferUntilSmart: Boolean,
-        editor: Editor? = null,
     ) {
         if (deferUntilSmart && subjectResolutionWorkflow.shouldDeferCurrentMethodResolutionUntilSmart()) {
             dependencies.emitFeedback(
@@ -315,7 +312,6 @@ internal class SubjectGraphWorkflow(
                         loadCurrentEditorContextGraphAsync(
                             requestId = requestId,
                             deferUntilSmart = false,
-                            editor = editor,
                         )
                     }
                 },
@@ -324,7 +320,7 @@ internal class SubjectGraphWorkflow(
             return
         }
 
-        val handle = runCatching { subjectResolutionWorkflow.locateCurrentSubject(editor) }.getOrElse { throwable ->
+        val handle = runCatching { subjectResolutionWorkflow.locateCurrentSubject() }.getOrElse { throwable ->
             dependencies.logger.warn("解析当前编辑器上下文失败", throwable)
             dependencies.emitFeedback(
                 ApplicationFeedbackLevel.ERROR,

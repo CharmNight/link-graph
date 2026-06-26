@@ -9,7 +9,6 @@ import com.charmnight.linkgraph.semantic.subject.SubjectPreviewKind
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
-import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.DumbService
 import java.util.concurrent.atomic.AtomicBoolean
@@ -33,10 +32,10 @@ internal class SubjectResolutionWorkflow(
      * @param editor 指定的编辑器，传 null 表示使用当前选中的编辑器
      * @return 命中的主题句柄，若没有合适的编辑器或主题则返回 null
      */
-    fun locateCurrentSubject(editor: Editor? = null): SubjectHandle? {
+    fun locateCurrentSubject(): SubjectHandle? {
         return computeOnIdeThread {
-            // 若调用方未指定编辑器，则退回到项目当前选中的文本编辑器
-            val targetEditor = editor ?: FileEditorManager.getInstance(dependencies.project).selectedTextEditor
+            // 不再接受 explicit editor：编辑器选择由 subject locator 内部从 FileEditorManager 拿
+            val targetEditor = FileEditorManager.getInstance(dependencies.project).selectedTextEditor
                 ?: return@computeOnIdeThread null
             dependencies.subjectLocatorProvider().locate(dependencies.project, targetEditor)
         }
@@ -68,8 +67,9 @@ internal class SubjectResolutionWorkflow(
      * @param editor 指定的编辑器，传 null 表示使用当前选中的编辑器
      * @return 预览到的主题类型；无法判断时返回 null
      */
-    fun previewCurrentEditorSubjectKind(editor: Editor? = null): SubjectPreviewKind? {
-        return dependencies.subjectLocatorProvider().previewKind(dependencies.project, editor, commitDocument = false)
+    fun previewCurrentEditorSubjectKind(): SubjectPreviewKind? {
+        // 不再接受 explicit editor：编辑器选择由 subject locator 内部从 FileEditorManager 拿
+        return dependencies.subjectLocatorProvider().previewKind(dependencies.project, null, commitDocument = false)
     }
 
     /**
@@ -169,9 +169,7 @@ internal class SubjectResolutionWorkflow(
      */
     private fun currentEditorPreviewKind(): SubjectPreviewKind? {
         return computeOnIdeThread {
-            val editor = FileEditorManager.getInstance(dependencies.project).selectedTextEditor
-                ?: return@computeOnIdeThread null
-            previewCurrentEditorSubjectKind(editor)
+            previewCurrentEditorSubjectKind()
         }
     }
 
