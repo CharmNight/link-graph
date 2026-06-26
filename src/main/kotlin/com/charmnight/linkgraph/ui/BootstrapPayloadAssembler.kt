@@ -79,7 +79,7 @@ internal class BootstrapPayloadAssembler(
         payload["workspaceRevision"] = workspaceState.workspaceRevision
         payload["snapshotRevision"] = transportState.snapshotRevision
         payload["sourceNavigationState"] = renderer.sourceNavigationStateToMap(navigationState.sourceNavigationState)
-        payload["assistantSessionState"] = GraphEditorAssistantSessionRenderer.assistantSessionStateToMap(assistantState.sessionState)
+        payload["assistantSessionState"] = GraphEditorAssistantSessionRenderer.assistantSessionStateToDto(assistantState.sessionState)
         payload["assistantResultStore"] = renderer.assistantResultStoreToMap(assistantState.resultStore, artifactRefs.assistantResultArtifacts)
         payload["lastMessageType"] = transportState.lastMessageType
         payload["lastGraphSource"] = transportState.lastGraphSource

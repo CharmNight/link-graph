@@ -620,6 +620,34 @@ class CoreShellArchitectureTest {
         )
     }
 
+    @Test
+    fun classUsageAndAssistantSessionPayloadMappersUseDtosInsteadOfMaps() {
+        // P2-6: ClassUsagePayloadMappers 和 AssistantSessionRenderer 已迁移到 DTO，
+        // 不应再出现主动构造 Map<String, Any?> 的代码（linkedMapOf("key" to value) 模式）。
+        // 注：注释里的「linkedMapOf」「Map<String, Any?>」描述历史改动，不算违规。
+        val offenders = listOf(
+            "src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorClassUsagePayloadMappers.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorAssistantSessionRenderer.kt",
+        ).map { path ->
+            val raw = read(path)
+            // 去掉行注释
+            val withoutLineComments = raw.lineSequence()
+                .map { it.substringBefore("//") }
+                .joinToString("\n")
+            // 去掉块注释（KDoc /* ... */）
+            val withoutBlockComments = withoutLineComments
+                .replace(Regex("/\\*[\\s\\S]*?\\*/"), "")
+            path to withoutBlockComments
+        }.filter { (_, code) ->
+            code.contains("Map<String, Any?>") || code.contains("linkedMapOf(")
+        }.map { (path, _) -> path }
+
+        assertTrue(
+            offenders.isEmpty(),
+            "DTO 化后的 mapper 不应再主动构造 Map<String, Any?>（应使用 data class）：${offenders.joinToString()}",
+        )
+    }
+
     private fun read(relativePath: String): String = Files.readString(projectRoot.resolve(relativePath))
 
     private fun assertExists(relativePath: String) {

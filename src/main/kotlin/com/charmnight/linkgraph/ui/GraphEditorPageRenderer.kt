@@ -536,7 +536,7 @@ class GraphEditorPageRenderer {
             layoutState = layoutState,
             presentation = document.presentation,
         ).toMutableMap().apply {
-            put("usage", document.usage?.toMap())
+            put("usage", document.usage?.toDto())
         }
 
     /** 把影响面审查图结果（变更符号、上下游、相关测试、证据片段等）转换为前端结构。 */
