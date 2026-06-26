@@ -161,11 +161,12 @@ class GraphEditorPageRenderer {
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         stateJson: String,
     ): String {
-        /** 发往前端事件的外层载荷。 */
-        val payload = linkedMapOf<String, Any?>(
-            "sessionId" to sessionId,
-            "revision" to snapshot.snapshotRevision,
-            "state" to JsonCodec.parseValue(stateJson),
+        /** 发往前端事件的外层载荷：sessionId + revision + 已 JSON 化的 state。 */
+        val parsedState = JsonCodec.parseValue(stateJson) ?: ""
+        val payload = SnapshotEnvelopePayloadDto(
+            sessionId = sessionId,
+            revision = snapshot.snapshotRevision,
+            state = parsedState,
         )
         return JsonCodec.toScriptSafeJson(payload)
     }
@@ -192,8 +193,7 @@ class GraphEditorPageRenderer {
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
     ): BootstrapPayloadDto = payloadAssembler.assemble(snapshot, artifactRefs)
 
-    /** 把多个场景的运行时状态映射为前端使用的字典结构。 */
-    /** sceneStatesToMap / graphSceneStateToMap 已抽到 top-level（GraphEditorPageRendererHelpers.kt）。 */
+    /** sceneStatesToDto / graphSceneStateToDto 已抽到 top-level（GraphEditorPageRendererHelpers.kt）。 */
 
     /** 把异步请求状态转换成前端 DTO：详见 top-level fun asyncRequestStateToDto。 */
     internal fun requestStateToDto(
@@ -280,8 +280,7 @@ class GraphEditorPageRenderer {
         )
     }
 
-    /** 把助手调用失败结果转换为前端字段，携带错误消息、阶段与时间戳。 */
-    /** assistantFailureResultToMap / generationPlanToMap 已抽到 top-level（GraphEditorPageRendererHelpers.kt）。 */
+    /** assistantFailureResultToDto / generationPlanToDto 已抽到 top-level（GraphEditorPageRendererHelpers.kt）。 */
 
     /** 把生成的代码草稿转换为前端 DTO：详见 top-level fun generatedCodeDraftToDto。 */
     internal fun generatedCodeDraftToDto(
@@ -612,7 +611,6 @@ class GraphEditorPageRenderer {
         projectionIndex: com.charmnight.linkgraph.application.model.GraphProjectionIndex,
     ): GraphProjectionIndexDto = com.charmnight.linkgraph.ui.graphProjectionIndexToDto(projectionIndex)
 
-    /** 把图补丁转换为前端使用的 Map 结构。 */
     /** 把补丁整体转换为前端 DTO：详见 top-level fun patchToDto。 */
     internal fun patchToDto(patch: GraphPatch): GraphPatchDto =
         com.charmnight.linkgraph.ui.patchToDto(patch)
@@ -633,7 +631,6 @@ class GraphEditorPageRenderer {
         promptPreviewArtifactId: String?,
     ): BeautificationResultDto = com.charmnight.linkgraph.ui.beautificationResultToDto(result, promptPreviewArtifactId)
 
-    /** 把证据发现项转换为前端使用的 Map 结构。 */
     /** 把单条证据结论转换为前端 DTO：详见 top-level fun resultEvidenceFindingToDto。 */
     private fun resultEvidenceFindingToDto(finding: com.charmnight.linkgraph.llm.ResultEvidenceFinding): ResultEvidenceFindingDto =
         com.charmnight.linkgraph.ui.resultEvidenceFindingToDto(finding)

@@ -54,14 +54,12 @@ class GraphEditorTransportSliceRendererTest {
         assertEquals(1, envelopes.size)
         val feedbackEnvelope = envelopes.single()
         assertEquals("FEEDBACK_SLICE", feedbackEnvelope.transportType)
-        @Suppress("UNCHECKED_CAST")
-        val feedbackState = feedbackEnvelope.state as Map<String, Any?>
+        val feedbackState = assertNotNull(feedbackEnvelope.state as? FeedbackSlicePayloadDto)
         assertEquals(
             "只更新提示文案，不应通过完整权威快照下发。",
-            (feedbackState["operationFeedback"] as Map<*, *>)["message"],
+            feedbackState.operationFeedback?.message,
         )
-        assertFalse(feedbackState.containsKey("workspaceGraph"))
-        assertFalse(feedbackState.containsKey("generatedCodeDrafts"))
+        // FeedbackSlicePayloadDto 不携带 workspaceGraph / generatedCodeDrafts 字段
         val script = renderer.renderScript(envelopes)
         assertTrue(script.contains("只更新提示文案，不应通过完整权威快照下发。"))
         assertFalse(script.contains("OrderController.submit"))

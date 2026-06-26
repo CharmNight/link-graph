@@ -543,6 +543,56 @@ internal data class ArtifactSlicePayloadDto(
     val artifactContents: Map<String, String> = emptyMap(),
 )
 
+/**
+ * 反馈切片 DTO（仅承载反馈消息和 lastMessageType，不携带图谱内容）。
+ *
+ * 当本快照与上一快照只有反馈文案变化时使用，避免下发完整 bootstrap。
+ */
+internal data class FeedbackSlicePayloadDto(
+    val snapshotRevision: Long,
+    val operationFeedback: OperationFeedbackDto?,
+    val lastMessageType: String?,
+)
+
+/**
+ * 信封 JSON 外层包装（前端 event.detail 结构）。
+ *
+ * type=null 表示完整快照（[Snapshot]）；其他两个分别携带 [ArtifactSlice]/[FeedbackSlice] 的 transportType。
+ * state 字段持有具体 DTO（[BootstrapPayloadDto]/[ArtifactSlicePayloadDto]/[FeedbackSlicePayloadDto]）。
+ */
+internal data class SnapshotEnvelopePayloadDto(
+    val sessionId: String,
+    val revision: Long,
+    val state: Any,
+)
+
+internal data class ArtifactSliceEnvelopePayloadDto(
+    val type: String,
+    val sessionId: String,
+    val revision: Long,
+    val state: Any,
+)
+
+internal data class FeedbackSliceEnvelopePayloadDto(
+    val type: String,
+    val sessionId: String,
+    val revision: Long,
+    val state: Any,
+)
+
+/**
+ * 按需 artifact 拉取响应 DTO（[GraphBrowserTransportDispatcher] 用）。
+ *
+ * 与 [ArtifactSlicePayloadDto] 不同：这是前端主动拉取 artifact 内容时的最小响应，
+ * 只携带 artifactContents + snapshotRevision + 自定义 lastMessageType（"artifactSlice"），
+ * 不携带其他 artifact 变更字段。
+ */
+internal data class ArtifactContentsSliceDto(
+    val artifactContents: Map<String, String>,
+    val snapshotRevision: Long,
+    val lastMessageType: String,
+)
+
 // ---------- 视图相关 DTO ----------
 
 internal data class IndexedGraphLayerCountsDto(

@@ -292,22 +292,22 @@ class GraphEditorTransportSliceRenderer(
         val script = envelopes.joinToString(separator = "\n") { envelope ->
             // 不同信封类型在 payload 中携带的字段略有不同，这里根据类型组装对应的 JSON 结构。
             val payload = when (envelope) {
-                is GraphEditorTransportEnvelope.Snapshot -> linkedMapOf(
-                    "sessionId" to envelope.sessionId,
-                    "revision" to envelope.revision,
-                    "state" to envelope.state,
+                is GraphEditorTransportEnvelope.Snapshot -> SnapshotEnvelopePayloadDto(
+                    sessionId = envelope.sessionId,
+                    revision = envelope.revision,
+                    state = envelope.state,
                 )
-                is GraphEditorTransportEnvelope.ArtifactSlice -> linkedMapOf(
-                    "type" to envelope.transportType,
-                    "sessionId" to envelope.sessionId,
-                    "revision" to envelope.revision,
-                    "state" to envelope.state,
+                is GraphEditorTransportEnvelope.ArtifactSlice -> ArtifactSliceEnvelopePayloadDto(
+                    type = envelope.transportType!!,
+                    sessionId = envelope.sessionId,
+                    revision = envelope.revision,
+                    state = envelope.state,
                 )
-                is GraphEditorTransportEnvelope.FeedbackSlice -> linkedMapOf(
-                    "type" to envelope.transportType,
-                    "sessionId" to envelope.sessionId,
-                    "revision" to envelope.revision,
-                    "state" to envelope.state,
+                is GraphEditorTransportEnvelope.FeedbackSlice -> FeedbackSliceEnvelopePayloadDto(
+                    type = envelope.transportType!!,
+                    sessionId = envelope.sessionId,
+                    revision = envelope.revision,
+                    state = envelope.state,
                 )
             }
             val envelopeJson = JsonCodec.toScriptSafeJson(payload)
@@ -355,15 +355,12 @@ class GraphEditorTransportSliceRenderer(
         if (previousWithoutFeedback != snapshot) {
             return null
         }
-        val state = linkedMapOf<String, Any?>(
-            "snapshotRevision" to snapshot.snapshotRevision,
-            "operationFeedback" to snapshot.operationFeedback?.let { feedback ->
-                linkedMapOf(
-                    "level" to feedback.level.name,
-                    "message" to feedback.message,
-                )
+        val state = FeedbackSlicePayloadDto(
+            snapshotRevision = snapshot.snapshotRevision,
+            operationFeedback = snapshot.operationFeedback?.let { feedback ->
+                OperationFeedbackDto(feedback.level.name, feedback.message)
             },
-            "lastMessageType" to snapshot.lastMessageType,
+            lastMessageType = snapshot.lastMessageType,
         )
         return GraphEditorTransportEnvelope.FeedbackSlice(
             sessionId = sessionId,

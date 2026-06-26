@@ -622,12 +622,21 @@ class CoreShellArchitectureTest {
 
     @Test
     fun classUsageAndAssistantSessionPayloadMappersUseDtosInsteadOfMaps() {
-        // P2-6: ClassUsagePayloadMappers 和 AssistantSessionRenderer 已迁移到 DTO，
+        // P2-6: UI 层 payload mapper / renderer / assembler 已全部迁移到 DTO，
         // 不应再出现主动构造 Map<String, Any?> 的代码（linkedMapOf("key" to value) 模式）。
         // 注：注释里的「linkedMapOf」「Map<String, Any?>」描述历史改动，不算违规。
         val offenders = listOf(
             "src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorClassUsagePayloadMappers.kt",
             "src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorAssistantSessionRenderer.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorPageRendererHelpers.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorPageRenderer.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/ui/BootstrapPayloadAssembler.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorArtifactSlicePayloadBuilder.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorPresentationPayloadMappers.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/ui/PageRendererDtos.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorTransportSliceRenderer.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorTransportEnvelope.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/ui/GraphBrowserTransportDispatcher.kt",
         ).map { path ->
             val raw = read(path)
             // 去掉行注释

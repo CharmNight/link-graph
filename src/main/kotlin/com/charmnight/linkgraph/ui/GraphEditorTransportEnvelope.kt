@@ -5,8 +5,12 @@ import com.charmnight.linkgraph.ui.protocol.GraphEditorProtocol
 /**
  * 传输信封：把图谱状态以不同形式（完整快照 / artifact 切片 / 反馈切片）封装为前端可消费的结构。
  *
- * P2-6：[state] 类型从 Map<String, Any?> 改为 Any，让信封可持有 [BootstrapPayloadDto]（DTO 实例）
- * 或 Map<String, Any?>（增量切片场景），由 [GraphEditorTransportSliceRenderer.renderScript] 整体 JSON 化。
+ * P2-6：[state] 类型为 Any，由各子类约定具体承载类型：
+ * - [Snapshot.state]：[BootstrapPayloadDto]（完整快照根 DTO）
+ * - [ArtifactSlice.state]：[ArtifactSlicePayloadDto]（增量 artifact 切片 DTO）或 [ArtifactContentsSliceDto]（按需拉取响应）
+ * - [FeedbackSlice.state]：[FeedbackSlicePayloadDto]（反馈切片 DTO）
+ *
+ * 由 [GraphEditorTransportSliceRenderer.renderScript] 整体 JSON 化（Gson 反射序列化）。
  */
 sealed interface GraphEditorTransportEnvelope {
     val sessionId: String

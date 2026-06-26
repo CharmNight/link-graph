@@ -92,10 +92,10 @@ internal class GraphBrowserTransportDispatcher(
                 GraphEditorTransportEnvelope.ArtifactSlice(
                     sessionId = transportState.sessionId,
                     revision = dispatchedSnapshot.snapshotRevision,
-                    state = linkedMapOf(
-                        "artifactContents" to artifactContents,
-                        "snapshotRevision" to dispatchedSnapshot.snapshotRevision,
-                        "lastMessageType" to "artifactSlice",
+                    state = ArtifactContentsSliceDto(
+                        artifactContents = artifactContents,
+                        snapshotRevision = dispatchedSnapshot.snapshotRevision,
+                        lastMessageType = "artifactSlice",
                     ),
                 ),
             ),
