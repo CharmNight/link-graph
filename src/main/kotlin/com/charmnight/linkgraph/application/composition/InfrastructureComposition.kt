@@ -129,6 +129,16 @@ internal class InfrastructureComposition(
         com.charmnight.linkgraph.llm.LlmGatewayCompositionRoot.createGateway(project)
     }
 
+    /**
+     * P4-3 平台无关任务调度入口：项目级共享 [com.charmnight.linkgraph.application.runtime.TaskRunner]。
+     *
+     * workflow 通过本字段调度后台 / UI / 读锁任务，不再直接 import IntelliJ 的 ReadAction / invokeLater /
+     * AppExecutorUtil / ModalityState。具体 IntelliJ 适配在 [com.charmnight.linkgraph.ui.runtime.IntelliJTaskRunnerAdapter]。
+     */
+    val taskRunner by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        com.charmnight.linkgraph.ui.runtime.IntelliJTaskRunnerAdapter(project)
+    }
+
     /** 图谱生成服务。 */
     val graphGenerationService by lazy(LazyThreadSafetyMode.PUBLICATION) { GraphGenerationService(gateway = llmGateway) }
     /** 图谱 QA 补丁服务。 */
