@@ -61,53 +61,28 @@ internal class WorkflowComposition(
     private val infrastructure: InfrastructureComposition,
     private val testOverrides: LinkGraphProjectTestOverrides,
 ) {
-    /** 把代码元素（方法/类等）包装为主题句柄的工厂，供语义分析与图谱展开复用。 */
+    // P2-1: 共享语义基础设施委托给 CompositionSharedInfrastructure
     private val codeSubjectHandleFactory: CodeSubjectHandleFactory by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        CodeSubjectHandleFactory()
+        CompositionSharedInfrastructure.createCodeSubjectHandleFactory()
     }
 
-    /** 默认主题定位器：基于光标位置确定当前关注代码主题。 */
     private val defaultSubjectLocator: SubjectLocator by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        CaretSubjectLocator()
+        CompositionSharedInfrastructure.createDefaultSubjectLocator()
     }
 
-    /** 默认语义分析器：注册代码、MyBatis、XML、YAML、Markdown、SQL 等多种语义提供者。 */
     private val defaultSemanticAnalyzer: SemanticAnalyzer by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        SemanticAnalyzer(
-            registry = SemanticProviderRegistry(
-                listOf(
-                    CodeSemanticProvider(
-                        architectureIndexProvider = {
-                            LoggedFailures.orNull(logger, "CodeSemanticProvider architectureIndexSupport.currentIndex") {
-                                infrastructure.architectureIndexSupport.currentIndex()
-                            }
-                        },
-                    ),
-                    MyBatisXmlSemanticProvider(),
-                    XmlResourceSemanticProvider(),
-                    YamlPropertiesSemanticProvider(),
-                    MarkdownSemanticProvider(),
-                    SqlSemanticProvider(),
-                ),
-            ),
-            project = project,
-        )
+        CompositionSharedInfrastructure.createDefaultSemanticAnalyzer(project, logger, infrastructure)
     }
 
-    /** 默认分析结果工厂：把分析过程产生的语义单元与关系包装为可发布的结果，并附带运行时追踪。 */
     private val defaultAnalysisOutcomeFactory: AnalysisOutcomeFactory by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        AnalysisOutcomeFactory(
-            runtimeTrace = infrastructure.runtimeSupport.runtimeTraceSink(),
-        )
+        CompositionSharedInfrastructure.createDefaultAnalysisOutcomeFactory(infrastructure)
     }
 
-    /** 主题定位器入口：优先使用测试覆盖注入的实现，否则回落到默认光标定位。 */
     private val subjectLocator: SubjectLocator
-        get() = testOverrides.subjectLocator ?: defaultSubjectLocator
+        get() = CompositionSharedInfrastructure.resolveSubjectLocator(testOverrides)
 
-    /** 语义分析器入口：优先使用测试覆盖注入的实现，否则回落到默认注册表。 */
     private val semanticAnalyzer: SemanticAnalyzer
-        get() = testOverrides.semanticAnalyzer ?: defaultSemanticAnalyzer
+        get() = CompositionSharedInfrastructure.resolveSemanticAnalyzer(testOverrides, project, logger, infrastructure)
 
     /** 分析结果工厂入口：优先使用测试覆盖注入的实现，否则回落到默认工厂。 */
     private val analysisOutcomeFactory: AnalysisOutcomeFactory

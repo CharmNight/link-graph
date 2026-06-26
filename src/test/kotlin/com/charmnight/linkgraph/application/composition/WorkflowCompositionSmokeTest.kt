@@ -22,7 +22,7 @@ class WorkflowCompositionSmokeTest {
         val source = Files.readString(
             Path.of("src/main/kotlin/com/charmnight/linkgraph/application/composition/WorkflowComposition.kt"),
         )
-
+        // P2-1: 允许共享基础设施分散到子文件，但工作流属性必须在主文件声明
         // 关键 lazy 工作流声明都应存在
         listOf(
             "subjectFlow",
@@ -30,13 +30,30 @@ class WorkflowCompositionSmokeTest {
             "architectureGraphFlow",
             "classDiagramFlow",
             "reviewGraphFlow",
-            "codeSubjectHandleFactory",
-            "defaultSubjectLocator",
-            "defaultSemanticAnalyzer",
         ).forEach { name ->
             assertTrue(
                 source.contains("val $name: ") || source.contains("val $name by lazy"),
                 "WorkflowComposition 应声明 lazy val $name",
+            )
+        }
+
+        // 共享基础设施允许分散到同包其他文件（如 CompositionSharedInfrastructure.kt）
+        val sharedInfraNames = listOf(
+            "codeSubjectHandleFactory",
+            "defaultSubjectLocator",
+            "defaultSemanticAnalyzer",
+        )
+        val compositionDir = Path.of("src/main/kotlin/com/charmnight/linkgraph/application/composition")
+        val allCompositionSources = Files.list(compositionDir).use { stream ->
+            stream
+                .filter { p -> Files.isRegularFile(p) && p.toString().endsWith(".kt") }
+                .map { p -> Files.readString(p) }
+                .toList()
+        }.joinToString("\n")
+        sharedInfraNames.forEach { name ->
+            assertTrue(
+                allCompositionSources.contains("val $name: ") || allCompositionSources.contains("val $name by lazy"),
+                "composition 包内应声明 lazy val $name（允许在子文件中）",
             )
         }
 
