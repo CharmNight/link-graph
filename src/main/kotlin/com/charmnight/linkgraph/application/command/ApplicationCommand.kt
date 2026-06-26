@@ -17,13 +17,26 @@ import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.RiskResolutionStatus
 import com.charmnight.linkgraph.workbench.StepGranularity
-import com.intellij.openapi.editor.Editor
+
+/**
+ * 编辑器引用 token（P4-1：让 application command 不直接依赖 com.intellij.openapi.editor.Editor）。
+ *
+ * 调用方（actions 层）在 UI 层把 Editor 解析为 token（通常是 editor document 的虚拟文件 URL
+ * 或可重新定位的标识），application command 只持有 token，不感知 IntelliJ Editor 类型。
+ *
+ * token 为 null 表示「使用当前焦点编辑器」，由 handler 在解析时回退到平台当前焦点。
+ */
+@JvmInline
+value class EditorReferenceToken(val value: String?)
 
 /**
  * 应用层命令总线的统一抽象。所有可被派发的请求（UI 交互、工作台动作、助理任务、补丁预览等）
  * 都被建模为该 sealed interface 的一个具体子类，并由对应的 CommandHandler 处理。
  *
  * 泛型 R 表示该命令的执行结果类型，供调用方按需同步等待或忽略结果。
+ *
+ * P4-1：command 层不再直接依赖 com.intellij.openapi.editor.Editor，UI 层负责 Editor →
+ * [EditorReferenceToken] 解析后发送。
  */
 internal sealed interface ApplicationCommand<out R> {
     /**
@@ -31,7 +44,7 @@ internal sealed interface ApplicationCommand<out R> {
      * 当 [editor] 为 null 时回退到平台当前焦点编辑器。
      */
     data class PreviewCurrentEditorSubjectKind(
-        val editor: Editor? = null,
+        val editor: EditorReferenceToken = EditorReferenceToken(null),
     ) : ApplicationCommand<SubjectPreviewKind?>
 
     /**
@@ -45,7 +58,7 @@ internal sealed interface ApplicationCommand<out R> {
      * 当 [editor] 为 null 时回退到平台当前焦点编辑器。
      */
     data class LoadCurrentEditorContextGraph(
-        val editor: Editor? = null,
+        val editor: EditorReferenceToken = EditorReferenceToken(null),
     ) : ApplicationCommand<Unit>
 
     /**

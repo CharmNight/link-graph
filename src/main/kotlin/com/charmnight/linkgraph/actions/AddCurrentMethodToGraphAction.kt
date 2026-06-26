@@ -47,7 +47,7 @@ class AddCurrentMethodToGraphAction : DumbAwareAction(
             val previewKind = if (project != null) {
                 project.getService(GraphEditorApplicationService::class.java)
                     .commandDispatcher
-                    .dispatch(ApplicationCommand.PreviewCurrentEditorSubjectKind(event.getData(CommonDataKeys.EDITOR)))
+                    .dispatch(ApplicationCommand.PreviewCurrentEditorSubjectKind())
             } else {
                 null
             }

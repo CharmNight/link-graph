@@ -194,11 +194,11 @@ internal class SubjectApplicationCommandHandler(
     override fun handle(command: ApplicationCommand<*>): Any? =
         when (command) {
             is ApplicationCommand.PreviewCurrentEditorSubjectKind ->
-                subjectFlow.previewCurrentEditorSubjectKind(command.editor)
+                subjectFlow.previewCurrentEditorSubjectKind(editor = null)
             ApplicationCommand.AddCurrentEditorContextNode ->
                 subjectFlow.addCurrentEditorContextNode()
             is ApplicationCommand.LoadCurrentEditorContextGraph ->
-                subjectFlow.loadCurrentEditorContextGraphAsync(command.editor)
+                subjectFlow.loadCurrentEditorContextGraphAsync(editor = null)
             is ApplicationCommand.RequestExpandOverflowNode ->
                 subjectFlow.requestExpandOverflowNode(command.nodeId)
             is ApplicationCommand.RequestAnalysisDisplayMode ->
