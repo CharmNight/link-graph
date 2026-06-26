@@ -30,8 +30,8 @@ class ArchitectureGraphQueryServiceTest {
 
         assertEquals(2, service.queryProjectGraph("Order", budget = 4, mode = TraversalMode.NEIGHBORHOOD).symbols.size)
         assertEquals(listOf("class:OrderService", "class:OrderRepository"), service.shortestPath("OrderService", "OrderRepository")?.symbolIds)
-        assertEquals("class:OrderService", assertNotNull(service.explainNode("OrderService")).symbol["id"])
-        assertEquals(listOf("class:OrderRepository"), service.affectedNodes("OrderService").downstream.map { it["id"] })
+        assertEquals("class:OrderService", assertNotNull(service.explainNode("OrderService")).symbol.id)
+        assertEquals(listOf("class:OrderRepository"), service.affectedNodes("OrderService").downstream.map { it.id })
         val digest = service.communityOrPackageDigest("com.example.orders")
         assertEquals(2, digest.coreNodes.size)
         assertEquals(listOf("jvm_source_main_com.example.orders"), digest.staleSlices)

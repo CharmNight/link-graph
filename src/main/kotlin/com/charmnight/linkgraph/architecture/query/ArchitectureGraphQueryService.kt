@@ -280,24 +280,24 @@ class ArchitectureGraphQueryService(
         return result.mapNotNull(index::findSymbol)
     }
 
-    /** 将符号对象转换成扁平的 Map 载荷，供跨进程（前端/AI）消费 */
-    private fun symbolPayload(symbol: JvmSymbol): Map<String, Any?> =
-        mapOf(
-            "id" to symbol.id,
-            "qualifiedName" to symbol.qualifiedName,
-            "simpleName" to symbol.simpleName,
-            "filePath" to symbol.source?.displayPath,
-            "origin" to symbol.origin.name,
+    /** 将符号对象转换成 [SymbolPayloadDto]，供跨进程（前端/AI）消费。 */
+    private fun symbolPayload(symbol: JvmSymbol): SymbolPayloadDto =
+        SymbolPayloadDto(
+            id = symbol.id,
+            qualifiedName = symbol.qualifiedName,
+            simpleName = symbol.simpleName,
+            filePath = symbol.source?.displayPath,
+            origin = symbol.origin.name,
         )
 
-    /** 将关系对象转换成扁平的 Map 载荷，与 [symbolPayload] 配套使用 */
-    private fun relationPayload(relation: JvmRelation): Map<String, Any?> =
-        mapOf(
-            "id" to relation.id,
-            "kind" to relation.kind.name,
-            "fromSymbolId" to relation.fromSymbolId,
-            "toSymbolId" to relation.toSymbolId,
-            "metadata" to relation.metadata,
+    /** 将关系对象转换成 [RelationPayloadDto]，与 [symbolPayload] 配套使用。 */
+    private fun relationPayload(relation: JvmRelation): RelationPayloadDto =
+        RelationPayloadDto(
+            id = relation.id,
+            kind = relation.kind.name,
+            fromSymbolId = relation.fromSymbolId,
+            toSymbolId = relation.toSymbolId,
+            metadata = relation.metadata,
         )
 }
 
@@ -318,9 +318,9 @@ enum class TraversalMode {
 /** 一次图谱切片查询的结果：包含符号与关系两份数据 */
 data class ProjectGraphQueryResult(
     /** 切片内涉及的符号载荷列表 */
-    val symbols: List<Map<String, Any?>>,
+    val symbols: List<SymbolPayloadDto>,
     /** 切片内涉及的关系载荷列表 */
-    val relations: List<Map<String, Any?>>,
+    val relations: List<RelationPayloadDto>,
 )
 
 /** 符号间的最短路径：以符号 ID 序列与边 ID 序列表达 */
@@ -334,27 +334,27 @@ data class ProjectGraphPath(
 /** 单个符号的解释结果：符号本身加两端关系，用于"节点详情"面板 */
 data class ProjectNodeExplanation(
     /** 被解释的符号载荷 */
-    val symbol: Map<String, Any?>,
+    val symbol: SymbolPayloadDto,
     /** 指向该符号的关系载荷列表 */
-    val incomingRelations: List<Map<String, Any?>>,
+    val incomingRelations: List<RelationPayloadDto>,
     /** 从该符号出发的关系载荷列表 */
-    val outgoingRelations: List<Map<String, Any?>>,
+    val outgoingRelations: List<RelationPayloadDto>,
 )
 
 /** 影响范围结果：上游与下游符号载荷列表，配合变更分析使用 */
 data class ProjectAffectedNodes(
     /** 上游依赖方载荷列表（依赖当前符号的符号） */
-    val upstream: List<Map<String, Any?>>,
+    val upstream: List<SymbolPayloadDto>,
     /** 下游被依赖方载荷列表（当前符号依赖的符号） */
-    val downstream: List<Map<String, Any?>>,
+    val downstream: List<SymbolPayloadDto>,
 )
 
 /** 某个社区/包的索引摘要：核心节点、高度节点、过期信息与建议问题 */
 data class ProjectIndexDigest(
     /** 命名/排序优先取出的核心节点载荷 */
-    val coreNodes: List<Map<String, Any?>>,
+    val coreNodes: List<SymbolPayloadDto>,
     /** 按度数（连接数）排序后的高度节点载荷 */
-    val highDegreeNodes: List<Map<String, Any?>>,
+    val highDegreeNodes: List<SymbolPayloadDto>,
     /** 内存快照中标记为过期的分片 ID */
     val staleSlices: List<String>,
     /** 缓存命中率，可能为空 */

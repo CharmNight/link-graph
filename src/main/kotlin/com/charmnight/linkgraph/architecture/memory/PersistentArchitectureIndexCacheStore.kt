@@ -26,7 +26,7 @@ class PersistentArchitectureIndexCacheStore(
         Files.createDirectories(root)
         val target = pathForTesting(key)
         val temp = Files.createTempFile(root, target.fileName.toString(), ".tmp")
-        Files.writeString(temp, JsonCodec.toJson(fragment.toMap()), StandardCharsets.UTF_8)
+        Files.writeString(temp, JsonCodec.toJson(fragment.toDto()), StandardCharsets.UTF_8)
         // fsync 失败不要静默：缓存一致性比性能更重要，落盘失败要记日志便于排查。
         runCatching {
             FileSync.force(temp)
@@ -93,79 +93,79 @@ class PersistentArchitectureIndexCacheStore(
             .digest(value.toByteArray(StandardCharsets.UTF_8))
             .joinToString("") { byte -> "%02x".format(byte) }
 
-    /** 将切片片段序列化为可写入 JSON 的映射结构。 */
-    private fun ArchitectureIndexSliceFragment.toMap(): Map<String, Any?> =
-        linkedMapOf(
-            "sliceId" to sliceId,
-            "symbols" to symbols.map { symbol ->
-                linkedMapOf(
-                    "id" to symbol.id,
-                    "qualifiedName" to symbol.qualifiedName,
-                    "simpleName" to symbol.simpleName,
-                    "kind" to symbol.kind,
-                    "sourcePath" to symbol.sourcePath,
-                    "sourceVirtualFileUrl" to symbol.sourceVirtualFileUrl,
-                    "sourceStartLine" to symbol.sourceStartLine,
-                    "sourceEndLine" to symbol.sourceEndLine,
-                    "sourceDecompiled" to symbol.sourceDecompiled,
-                    "moduleName" to symbol.moduleName,
-                    "packageName" to symbol.packageName,
-                    "ownerClassName" to symbol.ownerClassName,
-                    "signature" to symbol.signature,
-                    "parameterTypes" to symbol.parameterTypes,
-                    "returnType" to symbol.returnType,
-                    "typeName" to symbol.typeName,
-                    "typeReferences" to symbol.typeReferences.map { reference ->
-                        linkedMapOf(
-                            "typeName" to reference.typeName,
-                            "role" to reference.role,
+    /** 将切片片段序列化为 [SliceFragmentDto]（可写入 JSON）。 */
+    private fun ArchitectureIndexSliceFragment.toDto(): SliceFragmentDto =
+        SliceFragmentDto(
+            sliceId = sliceId,
+            symbols = symbols.map { symbol ->
+                SymbolSliceDto(
+                    id = symbol.id,
+                    qualifiedName = symbol.qualifiedName,
+                    simpleName = symbol.simpleName,
+                    kind = symbol.kind,
+                    sourcePath = symbol.sourcePath,
+                    sourceVirtualFileUrl = symbol.sourceVirtualFileUrl,
+                    sourceStartLine = symbol.sourceStartLine,
+                    sourceEndLine = symbol.sourceEndLine,
+                    sourceDecompiled = symbol.sourceDecompiled,
+                    moduleName = symbol.moduleName,
+                    packageName = symbol.packageName,
+                    ownerClassName = symbol.ownerClassName,
+                    signature = symbol.signature,
+                    parameterTypes = symbol.parameterTypes,
+                    returnType = symbol.returnType,
+                    typeName = symbol.typeName,
+                    typeReferences = symbol.typeReferences.map { reference ->
+                        TypeReferenceSliceDto(
+                            typeName = reference.typeName,
+                            role = reference.role,
                         )
                     },
-                    "abstract" to symbol.abstract,
-                    "classKind" to symbol.classKind,
-                    "stereotype" to symbol.stereotype,
-                    "external" to symbol.external,
-                    "library" to symbol.library,
-                    "jdk" to symbol.jdk,
-                    "testSource" to symbol.testSource,
-                    "superClassName" to symbol.superClassName,
-                    "interfaceNames" to symbol.interfaceNames,
-                    "docComment" to symbol.docComment,
-                    "origin" to symbol.origin,
+                    abstract = symbol.abstract,
+                    classKind = symbol.classKind,
+                    stereotype = symbol.stereotype,
+                    external = symbol.external,
+                    library = symbol.library,
+                    jdk = symbol.jdk,
+                    testSource = symbol.testSource,
+                    superClassName = symbol.superClassName,
+                    interfaceNames = symbol.interfaceNames,
+                    docComment = symbol.docComment,
+                    origin = symbol.origin,
                 )
             },
-            "relations" to relations.map { relation ->
-                linkedMapOf(
-                    "id" to relation.id,
-                    "kind" to relation.kind,
-                    "fromSymbolId" to relation.fromSymbolId,
-                    "toSymbolId" to relation.toSymbolId,
-                    "metadata" to relation.metadata,
-                    "confidence" to relation.confidence,
-                    "source" to relation.source,
-                    "count" to relation.count,
+            relations = relations.map { relation ->
+                RelationSliceDto(
+                    id = relation.id,
+                    kind = relation.kind,
+                    fromSymbolId = relation.fromSymbolId,
+                    toSymbolId = relation.toSymbolId,
+                    metadata = relation.metadata,
+                    confidence = relation.confidence,
+                    source = relation.source,
+                    count = relation.count,
                 )
             },
-            "resources" to resources.map { resource ->
-                linkedMapOf(
-                    "id" to resource.id,
-                    "path" to resource.path,
-                    "kind" to resource.kind,
-                    "sourceVirtualFileUrl" to resource.sourceVirtualFileUrl,
-                    "sourceStartLine" to resource.sourceStartLine,
-                    "sourceEndLine" to resource.sourceEndLine,
-                    "sourceDecompiled" to resource.sourceDecompiled,
-                    "origin" to resource.origin,
+            resources = resources.map { resource ->
+                ResourceSliceDto(
+                    id = resource.id,
+                    path = resource.path,
+                    kind = resource.kind,
+                    sourceVirtualFileUrl = resource.sourceVirtualFileUrl,
+                    sourceStartLine = resource.sourceStartLine,
+                    sourceEndLine = resource.sourceEndLine,
+                    sourceDecompiled = resource.sourceDecompiled,
+                    origin = resource.origin,
                 )
             },
-            "serviceProviders" to serviceProviders.map { provider ->
-                linkedMapOf(
-                    "serviceInterfaceName" to provider.serviceInterfaceName,
-                    "providerClassNames" to provider.providerClassNames,
-                    "resourceId" to provider.resourceId,
-                    "resourcePath" to provider.resourcePath,
-                    "resourceKind" to provider.resourceKind,
-                    "origin" to provider.origin,
+            serviceProviders = serviceProviders.map { provider ->
+                ServiceProviderSliceDto(
+                    serviceInterfaceName = provider.serviceInterfaceName,
+                    providerClassNames = provider.providerClassNames,
+                    resourceId = provider.resourceId,
+                    resourcePath = provider.resourcePath,
+                    resourceKind = provider.resourceKind,
+                    origin = provider.origin,
                 )
             },
         )

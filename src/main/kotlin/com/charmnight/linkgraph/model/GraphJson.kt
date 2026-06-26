@@ -4,6 +4,9 @@ import com.charmnight.linkgraph.json.JsonCodec
 
 /**
  * 负责链路图文档的 JSON 编解码。
+ *
+ * P2-6：序列化（toJson）走 [GraphDocumentJsonDto] 等 DTO，反序列化（fromJson）仍按 Map<*, *> 解析
+ * （因为输入是动态 JSON，Map<*, *> 是合理的解析中间形态）。
  */
 object GraphJson {
     /**
@@ -13,11 +16,10 @@ object GraphJson {
         // 节点和边按标识排序，保证同一图多次序列化结果稳定。
         val sortedNodes = document.nodes.sortedBy { it.id }
         val sortedEdges = document.edges.sortedBy { it.id }
-        // 使用有序映射构造根对象，保持输出字段顺序固定。
-        val root = linkedMapOf<String, Any?>(
-            "nodes" to sortedNodes.map { nodeToMap(it) },
-            "edges" to sortedEdges.map { edgeToMap(it) },
-            "patch" to document.patch?.let { patchToMap(it) },
+        val root = GraphDocumentJsonDto(
+            nodes = sortedNodes.map { nodeToDto(it) },
+            edges = sortedEdges.map { edgeToDto(it) },
+            patch = document.patch?.let { patchToDto(it) },
         )
         return JsonCodec.toJson(root)
     }
@@ -37,113 +39,97 @@ object GraphJson {
         return GraphDocument(nodes = nodes, edges = edges, patch = patch)
     }
 
-    /**
-     * 把节点对象转换为可序列化映射。
-     */
-    private fun nodeToMap(node: GraphNode): Map<String, Any?> = linkedMapOf(
-        "id" to node.id,
-        "type" to node.type.name,
-        "title" to node.title,
-        "location" to node.location,
-        "signature" to node.signature,
-        "inputs" to node.inputs,
-        "outputs" to node.outputs,
-        "doc" to node.doc,
-        "sourceKind" to node.sourceKind,
-        "status" to node.status,
-        "bindingStatus" to node.bindingStatus.name,
-        "certainty" to node.certainty.name,
-        "diff" to diffToMap(node.diff),
-        "evidence" to node.evidence.map { evidenceToMap(it) },
-        "uncertainty" to node.uncertainty?.let { uncertaintyToMap(it) },
-        "metadata" to node.metadata.toSortedMap(),
-        "sourceTag" to node.sourceTag.name,
+    /** 把节点对象转换为 JSON DTO。 */
+    private fun nodeToDto(node: GraphNode): GraphNodeJsonDto = GraphNodeJsonDto(
+        id = node.id,
+        type = node.type.name,
+        title = node.title,
+        location = node.location,
+        signature = node.signature,
+        inputs = node.inputs,
+        outputs = node.outputs,
+        doc = node.doc,
+        sourceKind = node.sourceKind,
+        status = node.status,
+        bindingStatus = node.bindingStatus.name,
+        certainty = node.certainty.name,
+        diff = diffToDto(node.diff),
+        evidence = node.evidence.map { evidenceToDto(it) },
+        uncertainty = node.uncertainty?.let { uncertaintyToDto(it) },
+        metadata = node.metadata.toSortedMap(),
+        sourceTag = node.sourceTag.name,
     )
 
-    /**
-     * 把边对象转换为可序列化映射。
-     */
-    private fun edgeToMap(edge: GraphEdge): Map<String, Any?> = linkedMapOf(
-        "id" to edge.id,
-        "type" to edge.type.name,
-        "fromNodeId" to edge.fromNodeId,
-        "toNodeId" to edge.toNodeId,
-        "label" to edge.label,
-        "certainty" to edge.certainty.name,
-        "bindingStatus" to edge.bindingStatus.name,
-        "status" to edge.status,
-        "diff" to diffToMap(edge.diff),
-        "evidence" to edge.evidence.map { evidenceToMap(it) },
-        "uncertainty" to edge.uncertainty?.let { uncertaintyToMap(it) },
-        "metadata" to edge.metadata.toSortedMap(),
-        "sourceTag" to edge.sourceTag.name,
+    /** 把边对象转换为 JSON DTO。 */
+    private fun edgeToDto(edge: GraphEdge): GraphEdgeJsonDto = GraphEdgeJsonDto(
+        id = edge.id,
+        type = edge.type.name,
+        fromNodeId = edge.fromNodeId,
+        toNodeId = edge.toNodeId,
+        label = edge.label,
+        certainty = edge.certainty.name,
+        bindingStatus = edge.bindingStatus.name,
+        status = edge.status,
+        diff = diffToDto(edge.diff),
+        evidence = edge.evidence.map { evidenceToDto(it) },
+        uncertainty = edge.uncertainty?.let { uncertaintyToDto(it) },
+        metadata = edge.metadata.toSortedMap(),
+        sourceTag = edge.sourceTag.name,
     )
 
-    /**
-     * 把图补丁转换为可序列化映射。
-     */
-    private fun patchToMap(patch: GraphPatch): Map<String, Any?> = linkedMapOf(
-        "summary" to patch.summary,
-        "operations" to patch.operations.map { operationToMap(it) },
-        "addedNodeIds" to patch.addedNodeIds,
-        "removedNodeIds" to patch.removedNodeIds,
-        "addedEdgeIds" to patch.addedEdgeIds,
-        "removedEdgeIds" to patch.removedEdgeIds,
+    /** 把图补丁转换为 JSON DTO。 */
+    private fun patchToDto(patch: GraphPatch): GraphPatchJsonDto = GraphPatchJsonDto(
+        summary = patch.summary,
+        operations = patch.operations.map { operationToDto(it) },
+        addedNodeIds = patch.addedNodeIds,
+        removedNodeIds = patch.removedNodeIds,
+        addedEdgeIds = patch.addedEdgeIds,
+        removedEdgeIds = patch.removedEdgeIds,
     )
 
-    /**
-     * 把单个补丁操作转换为可序列化映射。
-     */
-    private fun operationToMap(operation: GraphPatchOperation): Map<String, Any?> = linkedMapOf(
-        "id" to operation.id,
-        "action" to operation.action.name,
-        "elementKind" to operation.elementKind.name,
-        "elementId" to operation.elementId,
-        "title" to operation.title,
-        "summary" to operation.summary,
-        "node" to operation.node?.let { nodeToMap(it) },
-        "edge" to operation.edge?.let { edgeToMap(it) },
-        "metadata" to operation.metadata.toSortedMap(),
+    /** 把单个补丁操作转换为 JSON DTO。 */
+    private fun operationToDto(operation: GraphPatchOperation): GraphPatchOperationJsonDto = GraphPatchOperationJsonDto(
+        id = operation.id,
+        action = operation.action.name,
+        elementKind = operation.elementKind.name,
+        elementId = operation.elementId,
+        title = operation.title,
+        summary = operation.summary,
+        node = operation.node?.let { nodeToDto(it) },
+        edge = operation.edge?.let { edgeToDto(it) },
+        metadata = operation.metadata.toSortedMap(),
     )
 
-    /**
-     * 把不确定信息转换为可序列化映射。
-     */
-    private fun uncertaintyToMap(uncertainty: GraphUncertainty): Map<String, Any?> = linkedMapOf(
-        "reason" to uncertainty.reason,
-        "confidence" to uncertainty.confidence,
+    /** 把不确定信息转换为 JSON DTO。 */
+    private fun uncertaintyToDto(uncertainty: GraphUncertainty): GraphUncertaintyJsonDto = GraphUncertaintyJsonDto(
+        reason = uncertainty.reason,
+        confidence = uncertainty.confidence,
     )
 
-    /**
-     * 把证据信息转换为可序列化映射。
-     */
-    private fun evidenceToMap(evidence: GraphEvidence): Map<String, Any?> = linkedMapOf(
-        "source" to evidence.source,
-        "detail" to evidence.detail,
+    /** 把证据信息转换为 JSON DTO。 */
+    private fun evidenceToDto(evidence: GraphEvidence): GraphEvidenceJsonDto = GraphEvidenceJsonDto(
+        source = evidence.source,
+        detail = evidence.detail,
     )
 
-    /**
-     * 把差异信息转换为可序列化映射。
-     */
-    private fun diffToMap(diff: GraphDiff): Map<String, Any?> = linkedMapOf(
-        "status" to diff.status.name,
-        "fields" to diff.fields,
-        "counterpartId" to diff.counterpartId,
-        "message" to diff.message,
-        "summary" to diff.summary,
-        "entries" to diff.entries.map { diffEntryToMap(it) },
+    /** 把差异信息转换为 JSON DTO。 */
+    private fun diffToDto(diff: GraphDiff): GraphDiffJsonDto = GraphDiffJsonDto(
+        status = diff.status.name,
+        fields = diff.fields,
+        counterpartId = diff.counterpartId,
+        message = diff.message,
+        summary = diff.summary,
+        entries = diff.entries.map { diffEntryToDto(it) },
     )
 
-    /**
-     * 把单条差异记录转换为可序列化映射。
-     */
-    private fun diffEntryToMap(entry: GraphDiffEntry): Map<String, Any?> = linkedMapOf(
-        "elementKind" to entry.elementKind.name,
-        "elementId" to entry.elementId,
-        "status" to entry.status.name,
-        "counterpartId" to entry.counterpartId,
-        "fields" to entry.fields,
-        "message" to entry.message,
+    /** 把单条差异记录转换为 JSON DTO。 */
+    private fun diffEntryToDto(entry: GraphDiffEntry): GraphDiffEntryJsonDto = GraphDiffEntryJsonDto(
+        elementKind = entry.elementKind.name,
+        elementId = entry.elementId,
+        status = entry.status.name,
+        counterpartId = entry.counterpartId,
+        fields = entry.fields,
+        message = entry.message,
     )
 
     /**
