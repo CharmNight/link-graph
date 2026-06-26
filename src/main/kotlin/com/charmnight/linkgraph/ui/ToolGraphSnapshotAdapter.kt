@@ -53,7 +53,8 @@ internal fun GraphEditorStateSnapshot.toToolGraphSnapshot(): ToolGraphSnapshot {
         selectedMethodSignature = selectedMethodSignature,
         trustedNavigationNodes = trustedNavigationNodes,
         draftWorkbenchState = draftWorkbenchState,
-        qaResult = qaResult,
+        // P4-2：从 qaResult 派生中性候选变更列表（避免 ToolGraphSnapshot 反向依赖 llm.GraphPatchResult）
+        pendingCandidateChanges = qaResult?.candidateChanges.orEmpty(),
     )
 }
 

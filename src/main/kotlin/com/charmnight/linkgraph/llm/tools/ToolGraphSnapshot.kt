@@ -1,9 +1,9 @@
 package com.charmnight.linkgraph.llm.tools
 
-import com.charmnight.linkgraph.llm.GraphPatchResult
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
+import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
 
 /** 标识工作台当前可能切换的图视图场景，工具会按此选择对应的可见图与完整图。 */
@@ -79,8 +79,15 @@ data class ToolGraphSnapshot(
     val trustedNavigationNodes: Map<String, GraphNode> = emptyMap(),
     /** 草稿工作台状态快照。 */
     val draftWorkbenchState: DraftWorkbenchState = DraftWorkbenchState(),
-    /** 最近一次图问答结果，工具可参考其内容做后续判断。 */
-    val qaResult: GraphPatchResult? = null,
+    /**
+     * 待确认候选草稿变更列表（P4-2：替代之前的 qaResult 字段）。
+     *
+     * 之前 ToolGraphSnapshot 直接持有 `qaResult: GraphPatchResult?`（llm 包类型），
+     * 导致 ToolGraphSnapshot 反向依赖 llm 层。这里改为只暴露中性的候选变更列表
+     * （CandidateDraftChange 来自 workbench 包），由 ToolGraphSnapshotAdapter 从 qaResult
+     * 派生此字段，ToolGraphSnapshot 自身不再依赖 llm.GraphPatchResult。
+     */
+    val pendingCandidateChanges: List<CandidateDraftChange> = emptyList(),
 ) {
     /** 返回当前激活场景对应的运行时状态，缺失时返回空状态。 */
     fun currentSceneState(): ToolGraphSceneState = sceneStates[currentSceneId] ?: ToolGraphSceneState()

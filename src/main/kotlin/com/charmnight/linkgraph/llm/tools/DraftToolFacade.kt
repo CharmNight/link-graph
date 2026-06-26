@@ -23,9 +23,12 @@ class DraftToolFacade {
     /**
      * 返回当前候选草稿列表。
      * 只保留 PENDING_CONFIRMATION 状态（即尚未确认/拒绝）。
+     *
+     * P4-2：候选变更从 [ToolGraphSnapshot.pendingCandidateChanges] 读取（中性 workbench 类型），
+     * 不再从 snapshot.qaResult（llm 类型）读取。
      */
     fun candidateDrafts(snapshot: ToolGraphSnapshot): List<CandidateDraftArtifact> {
-        return snapshot.qaResult?.candidateChanges.orEmpty()
+        return snapshot.pendingCandidateChanges
             .filter { change -> change.status == CandidateDraftChangeStatus.PENDING_CONFIRMATION }
             .map { change ->
                 CandidateDraftArtifact(
