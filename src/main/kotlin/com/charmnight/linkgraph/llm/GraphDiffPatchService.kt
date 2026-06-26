@@ -17,7 +17,7 @@ class GraphDiffPatchService(
     /** 负责构造差异问答提示词。 */
     private val promptFactory: LlmPromptFactory = LlmPromptFactory(),
     /** 负责发起远程 LLM 请求。 */
-    private val gateway: LlmGateway = RoutingLlmGateway(),
+    private val gateway: LlmGateway = com.charmnight.linkgraph.llm.RoutingLlmGateway(),
 ) {
     /** 负责处理结构化 JSON 响应与自动修复。 */
     private val responseSupport = RemoteStructuredResponseParser(gateway)

@@ -57,8 +57,10 @@ class LinkGraphSettingsConfigurable : SearchableConfigurable {
     /** 设置持久化服务，负责读取和写回配置快照。 */
     private val service: LinkGraphSettingsService
         get() = serviceProvider()
-    /** 远程 LLM 设置校验器。 */
-    private val validator = RemoteLlmSettingsValidator()
+    /** 远程 LLM 设置校验器。SettingsConfigurable 是 application-level，不在 project scope，使用内置 RoutingLlmGateway。 */
+    private val validator = RemoteLlmSettingsValidator(
+        gateway = com.charmnight.linkgraph.llm.RoutingLlmGateway(),
+    )
     /** 当前 UI 对比用的持久化基线；默认不含 API key，避免 EDT 读取 PasswordSafe。 */
     private var baselineState: LinkGraphSettingsState = LinkGraphSettingsState()
     /** 当前基线是否已经包含真实 API key。 */

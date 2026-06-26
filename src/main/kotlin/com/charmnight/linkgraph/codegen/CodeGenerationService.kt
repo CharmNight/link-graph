@@ -106,7 +106,7 @@ class CodeGenerationService(
     /** 负责构造生成提示词的工厂。 */
     private val promptFactory: LlmPromptFactory = LlmPromptFactory(),
     /** 负责发起远程生成请求的网关。 */
-    private val gateway: LlmGateway = RoutingLlmGateway(),
+    private val gateway: LlmGateway = com.charmnight.linkgraph.llm.RoutingLlmGateway(),
 ) {
     /** 负责结构化响应请求和解析的辅助组件。 */
     private val responseSupport = RemoteStructuredResponseParser(gateway)

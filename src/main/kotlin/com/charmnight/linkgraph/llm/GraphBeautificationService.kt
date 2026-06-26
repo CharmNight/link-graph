@@ -25,7 +25,7 @@ class DefaultGraphBeautificationService(
     /** 负责构造讲解提示词。 */
     private val promptFactory: LlmPromptFactory = LlmPromptFactory(),
     /** 负责发起远程 LLM 请求。 */
-    private val gateway: LlmGateway = RoutingLlmGateway(),
+    private val gateway: LlmGateway = com.charmnight.linkgraph.llm.RoutingLlmGateway(),
     /** 负责构造稳定步骤。 */
     private val stepProjectionService: StepProjectionService = StepProjectionService(),
     /** 远程不可用时使用的本地讲解服务。 */

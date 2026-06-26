@@ -14,7 +14,7 @@ class GenerationPlanDiscussionService(
     /** 负责构造实现建议追问场景提示词的工厂。 */
     private val promptFactory: LlmPromptFactory = LlmPromptFactory(),
     /** 负责真正发起远程请求的网关。 */
-    private val gateway: LlmGateway = RoutingLlmGateway(),
+    private val gateway: LlmGateway = com.charmnight.linkgraph.llm.RoutingLlmGateway(),
 ) {
     /** 负责处理结构化 JSON 响应、自动重试与 JSON 修复的辅助组件。 */
     private val responseSupport = RemoteStructuredResponseParser(gateway)

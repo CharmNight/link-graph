@@ -30,7 +30,7 @@ data class RemoteLlmSettingsValidationResult(
  */
 class RemoteLlmSettingsValidator(
     /** 保存执行远程校验请求的网关。 */
-    private val gateway: LlmGateway = RoutingLlmGateway(),
+    private val gateway: LlmGateway = com.charmnight.linkgraph.llm.RoutingLlmGateway(),
     /** 保存远程 endpoint 协议策略。 */
     private val endpointPolicy: RemoteLlmEndpointPolicy = RemoteLlmEndpointPolicy(),
 ) {

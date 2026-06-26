@@ -108,22 +108,34 @@ internal class InfrastructureComposition(
     val syncPreviewPlanner by lazy(LazyThreadSafetyMode.PUBLICATION) { SyncPreviewPlanner() }
     /** 图谱补丁应用服务。 */
     val graphPatchApplyService by lazy(LazyThreadSafetyMode.PUBLICATION) { GraphPatchApplyService() }
+
+    /**
+     * P3-1 统一 LLM gateway 入口：项目级共享，由 EP 注册的 contributor 路由到具体协议实现。
+     *
+     * 第三方通过 plugin.xml 的 `<com.charmnight.linkgraph.llmGatewayContributor>` EP 注册自定义协议，
+     * 由本类把 contributor 包装为 [com.charmnight.linkgraph.llm.LlmGateway]，
+     * 实际 HTTP 请求强制经过 [com.charmnight.linkgraph.llm.LlmGatewayClient]（SSRF / size guard 自动应用）。
+     */
+    val llmGateway by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        com.charmnight.linkgraph.llm.LlmGatewayCompositionRoot.createGateway(project)
+    }
+
     /** 图谱生成服务。 */
-    val graphGenerationService by lazy(LazyThreadSafetyMode.PUBLICATION) { GraphGenerationService() }
+    val graphGenerationService by lazy(LazyThreadSafetyMode.PUBLICATION) { GraphGenerationService(gateway = llmGateway) }
     /** 图谱 QA 补丁服务。 */
-    val graphQaPatchService by lazy(LazyThreadSafetyMode.PUBLICATION) { GraphQaPatchService() }
+    val graphQaPatchService by lazy(LazyThreadSafetyMode.PUBLICATION) { GraphQaPatchService(gateway = llmGateway) }
     /** 草稿工作台服务。 */
     val draftWorkbenchService by lazy(LazyThreadSafetyMode.PUBLICATION) { DraftWorkbenchService() }
     /** 风险消解服务。 */
     val riskResolutionService by lazy(LazyThreadSafetyMode.PUBLICATION) { RiskResolutionService() }
     /** 图谱差异补丁服务。 */
-    val graphDiffPatchService by lazy(LazyThreadSafetyMode.PUBLICATION) { GraphDiffPatchService() }
+    val graphDiffPatchService by lazy(LazyThreadSafetyMode.PUBLICATION) { GraphDiffPatchService(gateway = llmGateway) }
     /** 图谱美化服务，用于在展示前对生成结果做风格优化。 */
     val graphBeautificationService: GraphBeautificationService by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        DefaultGraphBeautificationService()
+        DefaultGraphBeautificationService(gateway = llmGateway)
     }
     /** 代码生成服务。 */
-    val codeGenerationService by lazy(LazyThreadSafetyMode.PUBLICATION) { CodeGenerationService() }
+    val codeGenerationService by lazy(LazyThreadSafetyMode.PUBLICATION) { CodeGenerationService(gateway = llmGateway) }
     /** 代码草稿写入服务，把生成结果写入到目标位置。 */
     val codeDraftWriterService by lazy(LazyThreadSafetyMode.PUBLICATION) { CodeDraftWriterService(project) }
     /** 图谱诊断日志记录器。 */

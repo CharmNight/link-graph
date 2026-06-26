@@ -169,7 +169,7 @@ internal class WorkflowComposition(
                 CodegenCapability(project = project, codegenExecutor = codegenExecutor)
             },
             riskResolutionService = infrastructure.riskResolutionService,
-            generationPlanDiscussionService = GenerationPlanDiscussionService(),
+            generationPlanDiscussionService = GenerationPlanDiscussionService(gateway = infrastructure.llmGateway),
             showCodeDraftMergeRequest = { currentProject, request ->
                 DiffManager.getInstance().showMerge(currentProject, request)
             },
