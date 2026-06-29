@@ -35,7 +35,7 @@ function failedRecovery(): QaRequestRecoveryState {
   return {
     lastFailedRequest: {
       requestId: "qa-req-42",
-      kind: "QA",
+      kind: "ASK",
       question: "为什么这里会失败？",
       mode: "AUTO",
       selectedNodeIds: ["method:submit-order"],

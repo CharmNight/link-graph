@@ -14,6 +14,7 @@ function baseThread(overrides: Partial<InvestigationThread> = {}): Investigation
     summary: "当前实现未处理 RemoteException 后的状态",
     evidenceGap: "缺少 OrderCompensator.invoke 的调用证据",
     recommendedQuestion: "OrderCompensator.invoke 是否在失败时被调用？",
+    evidence: [],
     ...overrides,
   };
 }

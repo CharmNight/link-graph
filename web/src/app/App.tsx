@@ -96,6 +96,8 @@ import { useBootstrapProjectionState } from "./controllers/useBootstrapProjectio
 import { useBootstrapStateController } from "./controllers/useBootstrapStateController";
 import { useAppBridgeController } from "./controllers/useAppBridgeController";
 import { useBridgeCommandController } from "./controllers/useBridgeCommandController";
+import { useGraphDataRefs } from "./controllers/useGraphDataRefs";
+import { useSelectionState } from "./controllers/useSelectionState";
 import { useAssistantExplanationHistory } from "./controllers/useAssistantExplanationHistory";
 import { useGraphCanvasController } from "./controllers/useGraphCanvasController";
 import { useGraphEditController } from "./controllers/useGraphEditController";
@@ -438,29 +440,29 @@ export function App() {
     pendingExplanationSessionLabelRef,
     pendingExplanationHistoryEntryRef,
   } = useExplanationState(graphBeautificationResult);
-  // 当前选中的候选变更条目 ID
-  const [selectedQaChangeId, setSelectedQaChangeId] = useState<string | null>(null);
-  // 当前选中的 QA 风险线程 ID
-  const [selectedQaThreadId, setSelectedQaThreadId] = useState<string | null>(null);
-  // 当前选中的草稿条目 ID，初始默认取首个草稿
-  const [selectedDraftEntryId, setSelectedDraftEntryId] = useState<string | null>(
-    () => initialState.draftWorkbenchState?.draftChanges[0]?.entryId
-      ?? initialState.draftWorkbenchState?.draftNotes[0]?.entryId
-      ?? null,
-  );
-  // draftCompareMode 控制草稿对比是「看结果 after」还是「看流程变化 compare」。
-  // 入口已从旧 ChangeTray 迁移到 AI 工作台的「查看流程变化」按钮。
-  const [draftCompareMode, setDraftCompareMode] = useState<"after" | "compare">("after");
+  // 当前选中的候选变更 / 风险线程 / 草稿条目 + draftCompareMode 集中委托给 useSelectionState（m7）
+  const {
+    selectedQaChangeId,
+    setSelectedQaChangeId,
+    selectedQaThreadId,
+    setSelectedQaThreadId,
+    selectedDraftEntryId,
+    setSelectedDraftEntryId,
+    draftCompareMode,
+    setDraftCompareMode,
+  } = useSelectionState(initialState, draftWorkbenchState);
   // 用于快照比对的语义版本号，记录最新已知后端版本
   const semanticRevisionRef = useRef<number | null>(initialState.semanticRevision ?? null);
   // 当前场景的布局版本号，记录最新已知后端布局版本
   const layoutRevisionRef = useRef<number | null>(resolveCurrentSceneState(initialState).layoutRevision ?? null);
-  // 当前节点列表的可变引用，便于回调中按需读取最新值
-  const nodesRef = useRef(nodes);
-  const edgesRef = useRef(edges);
-  const draftGraphRef = useRef(draftGraph);
-  const anchorNodeIdRef = useRef(anchorNodeId);
-  const analysisDisplayModeRef = useRef(analysisDisplayMode);
+  // 图谱相关 ref 集合 + 同步 effects 委托给 useGraphDataRefs（m7）
+  const {
+    nodesRef,
+    edgesRef,
+    draftGraphRef,
+    anchorNodeIdRef,
+    analysisDisplayModeRef,
+  } = useGraphDataRefs(nodes, edges, draftGraph, anchorNodeId, analysisDisplayMode);
   const assistantViewDocuments = useMemo<AssistantDisplayModeDocuments>(() => ({
     FACT_GRAPH: factGraphView,
     FLOWCHART: flowchartView,
@@ -532,37 +534,6 @@ export function App() {
     nextManualNodeIdRef,
     syncManualNodeIdCounters,
   } = useManualNodeIdController(initialGraph.nodes);
-  useEffect(() => {
-    nodesRef.current = nodes;
-  }, [nodes]);
-
-  useEffect(() => {
-    edgesRef.current = edges;
-  }, [edges]);
-
-  useEffect(() => {
-    draftGraphRef.current = draftGraph;
-  }, [draftGraph]);
-
-  useEffect(() => {
-    anchorNodeIdRef.current = anchorNodeId;
-  }, [anchorNodeId]);
-
-  useEffect(() => {
-    setSelectedDraftEntryId((current) => {
-      const allEntries = draftWorkbenchState.draftChanges.concat(draftWorkbenchState.draftNotes);
-      if (current && allEntries.some((entry) => entry.entryId === current)) {
-        return current;
-      }
-      return draftWorkbenchState.draftChanges[0]?.entryId
-        ?? draftWorkbenchState.draftNotes[0]?.entryId
-        ?? null;
-    });
-  }, [draftWorkbenchState.draftChanges, draftWorkbenchState.draftNotes]);
-
-  useEffect(() => {
-    analysisDisplayModeRef.current = analysisDisplayMode;
-  }, [analysisDisplayMode]);
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null;
   const detailNode = nodes.find((node) => node.id === detailNodeId) ?? null;
