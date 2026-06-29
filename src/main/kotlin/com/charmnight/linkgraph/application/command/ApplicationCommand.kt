@@ -19,33 +19,22 @@ import com.charmnight.linkgraph.workbench.RiskResolutionStatus
 import com.charmnight.linkgraph.workbench.StepGranularity
 
 /**
- * 编辑器引用 token（P4-1：让 application command 不直接依赖 com.intellij.openapi.editor.Editor）。
- *
- * 调用方（actions 层）在 UI 层把 Editor 解析为 token（通常是 editor document 的虚拟文件 URL
- * 或可重新定位的标识），application command 只持有 token，不感知 IntelliJ Editor 类型。
- *
- * token 为 null 表示「使用当前焦点编辑器」，由 handler 在解析时回退到平台当前焦点。
- */
-@JvmInline
-value class EditorReferenceToken(val value: String?)
-
-/**
  * 应用层命令总线的统一抽象。所有可被派发的请求（UI 交互、工作台动作、助理任务、补丁预览等）
  * 都被建模为该 sealed interface 的一个具体子类，并由对应的 CommandHandler 处理。
  *
  * 泛型 R 表示该命令的执行结果类型，供调用方按需同步等待或忽略结果。
  *
- * P4-1：command 层不再直接依赖 com.intellij.openapi.editor.Editor，UI 层负责 Editor →
- * [EditorReferenceToken] 解析后发送。
+ * P4-1：command 层不再依赖 com.intellij.openapi.editor.Editor。
+ * 主体（subject）/ 上下文（context）解析完全由 workflow 内部走 IntelliJ 平台当前焦点编辑器，
+ * 不再暴露 editor 引用给上层——历史上 [EditorReferenceToken] 字段从未被读取，且 fbda452d 之后
+ * SubjectGraphWorkflow 已移除 Editor 参数，token 是死字段，本类一并移除。
  */
 internal sealed interface ApplicationCommand<out R> {
     /**
      * 解析当前活动编辑器所属的主体（类、资源、方法等）类型，用于在图谱视图等位置对相关节点做高亮或定位。
-     * 当 [editor] 为 null 时回退到平台当前焦点编辑器。
+     * 平台当前焦点编辑器由 workflow 内部解析。
      */
-    data class PreviewCurrentEditorSubjectKind(
-        val editor: EditorReferenceToken = EditorReferenceToken(null),
-    ) : ApplicationCommand<SubjectPreviewKind?>
+    data object PreviewCurrentEditorSubjectKind : ApplicationCommand<SubjectPreviewKind?>
 
     /**
      * 把当前活动编辑器对应的上下文节点加入活动图谱，使后续图谱分析能纳入该上下文。
@@ -55,11 +44,9 @@ internal sealed interface ApplicationCommand<out R> {
 
     /**
      * 基于当前活动编辑器加载上下文图谱（例如该文件相关的类图/调用关系）。
-     * 当 [editor] 为 null 时回退到平台当前焦点编辑器。
+     * 平台当前焦点编辑器由 workflow 内部解析。
      */
-    data class LoadCurrentEditorContextGraph(
-        val editor: EditorReferenceToken = EditorReferenceToken(null),
-    ) : ApplicationCommand<Unit>
+    data object LoadCurrentEditorContextGraph : ApplicationCommand<Unit>
 
     /**
      * 请求展开被折叠聚合（overflow）的节点，让其中被合并的子节点重新可见。

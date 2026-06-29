@@ -132,11 +132,15 @@ internal class InfrastructureComposition(
     /**
      * P4-3 平台无关任务调度入口：项目级共享 [com.charmnight.linkgraph.application.runtime.TaskRunner]。
      *
+     * 通过 `project.getService(TaskRunner::class.java)` 取得实现，与 [presentationProvider] 同模式。
+     * 生产实现是 [com.charmnight.linkgraph.ui.runtime.IntelliJTaskRunnerAdapter]（在 plugin.xml 注册）；
+     * 测试实现走 `testServiceImplementation`，自动替换为 [com.charmnight.linkgraph.application.runtime.SameThreadTaskRunner]。
+     *
      * workflow 通过本字段调度后台 / UI / 读锁任务，不再直接 import IntelliJ 的 ReadAction / invokeLater /
-     * AppExecutorUtil / ModalityState。具体 IntelliJ 适配在 [com.charmnight.linkgraph.ui.runtime.IntelliJTaskRunnerAdapter]。
+     * AppExecutorUtil / ModalityState。application 层与 IntelliJ 平台解耦。
      */
     val taskRunner by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        com.charmnight.linkgraph.ui.runtime.IntelliJTaskRunnerAdapter(project)
+        project.getService(com.charmnight.linkgraph.application.runtime.TaskRunner::class.java)
     }
 
     /** 图谱生成服务。 */

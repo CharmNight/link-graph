@@ -48,7 +48,7 @@ class OpenLinkGraphAction : DumbAwareAction(
             val previewKind = if (project != null) {
                 project.getService(GraphEditorApplicationService::class.java)
                     .commandDispatcher
-                    .dispatch(ApplicationCommand.PreviewCurrentEditorSubjectKind())
+                    .dispatch(ApplicationCommand.PreviewCurrentEditorSubjectKind)
             } else {
                 null
             }
@@ -80,6 +80,6 @@ class OpenLinkGraphAction : DumbAwareAction(
         project.getService(LinkGraphToolWindowSession::class.java).openToolWindow()
         project.getService(GraphEditorApplicationService::class.java)
             .commandDispatcher
-            .dispatch(ApplicationCommand.LoadCurrentEditorContextGraph())
+            .dispatch(ApplicationCommand.LoadCurrentEditorContextGraph)
     }
 }

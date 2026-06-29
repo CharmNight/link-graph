@@ -108,9 +108,14 @@ internal class DraftPatchWorkflow(
      *
      * - [operation] 是 use case 调用，纯计算无副作用，异常会被上抛给调用者（视为业务失败）
      * - operation 成功后 [buildEvent] 把结果包装为事件，再 emit
-     * - emit 抛异常时仅记录 warn 日志，**不再向上传播**——因为 use case 已经成功，
-     *   下游 presenter 抛异常时反向「撤销」use case 没意义（use case 没改 snapshot）；
-     *   真正的事务回滚责任在 presenter 侧（多个 markXxx 步骤），由其自己保证。
+     * - emit 抛异常时仅记录 warn 日志，**不再向上传播**——use case 已计算出结果，
+     *   把结果返回给调用方让其继续后续动作（UI 反馈、其他工作流等）。
+     *
+     * **残余风险（调用方需要知晓）**：emit 抛异常意味着至少一个订阅者没处理本次事件。
+     * 若订阅者中包含真正改 snapshot 的 presenter，可能出现「use case 算出新图、调用方拿到 graph、
+     * 但实际 snapshot 没更新」的瞬时不一致。设计选择：宁可继续把结果给调用方，让 UI 显示
+     * use case 推导出的新图，也不要把整个调用打成失败（因为 use case 没失败）。
+     * 真正的回滚责任在 presenter 侧——presenter 应保证多个 markXxx 步骤要么全成要么全败。
      *
      * 返回 use case 的结果；若调用者不需要结果，使用 [runDraftPatchTransactionUnit]。
      */
@@ -123,8 +128,11 @@ internal class DraftPatchWorkflow(
             eventSink.emit(buildEvent(result))
             result
         } catch (e: Exception) {
-            // emit 失败：use case 已经完成（纯计算），不再向上抛
-            logger.warn("DraftPatchWorkflow emit failed; use case result will be dropped", e)
+            // emit 失败：use case 结果仍返回给调用方（设计选择，见函数 KDoc）；事件订阅者可能不一致
+            logger.warn(
+                "DraftPatchWorkflow emit failed; use case result still returned to caller (event subscribers may be inconsistent)",
+                e,
+            )
             result
         }
     }

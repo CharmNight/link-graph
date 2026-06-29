@@ -33,10 +33,11 @@ class IntelliJTaskRunnerAdapter(
     }
 
     override fun <T> ui(policy: TaskRunner.UiPolicy, block: () -> T): T {
+        // UiPolicy 与 ModalityState 一对一映射；CURRENT_MODAL 已在 UiPolicy 中删除
+        // （历史上与 ANY 行为等价、无调用方，避免歧义）
         val modality = when (policy) {
             TaskRunner.UiPolicy.ANY -> ModalityState.defaultModalityState()
             TaskRunner.UiPolicy.NON_MODAL -> ModalityState.nonModal()
-            TaskRunner.UiPolicy.CURRENT_MODAL -> ModalityState.defaultModalityState()
         }
         var result: T? = null
         ApplicationManager.getApplication().invokeAndWait({

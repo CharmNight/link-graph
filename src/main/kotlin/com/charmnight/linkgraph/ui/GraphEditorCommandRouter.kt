@@ -66,7 +66,7 @@ class GraphEditorCommandRouter(
             )
             GraphEditorMessage.UndoLastDraftPatchApply -> ApplicationCommand.UndoLastDraftPatchApply
             GraphEditorMessage.RequestCodeDrafts -> ApplicationCommand.RequestCodeDrafts
-            GraphEditorMessage.RequestCurrentEditorContextGraph -> ApplicationCommand.LoadCurrentEditorContextGraph()
+            GraphEditorMessage.RequestCurrentEditorContextGraph -> ApplicationCommand.LoadCurrentEditorContextGraph
             is GraphEditorMessage.RequestAnalysisDisplayMode -> ApplicationCommand.RequestAnalysisDisplayMode(current.displayMode)
             is GraphEditorMessage.RequestIndexedGraph -> ApplicationCommand.RequestIndexedGraph(current.request)
             GraphEditorMessage.OpenSettings -> ApplicationCommand.OpenSettings

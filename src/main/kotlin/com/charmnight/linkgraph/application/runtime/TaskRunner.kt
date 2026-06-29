@@ -17,14 +17,24 @@ import java.util.concurrent.CompletableFuture
  * 调用方只依赖本接口，IntelliJ 类型由 [IntelliJTaskRunnerAdapter]（ui 层）映射。
  */
 interface TaskRunner {
-    /** UI 调度的模态策略，application 自己的概念，与 IntelliJ ModalityState 解耦。 */
+    /**
+     * UI 调度的模态策略，application 自己的概念，与 IntelliJ ModalityState 解耦。
+     *
+     * 设计原则：策略值要能映射到具体平台行为，避免「同名但同义」造成歧义。
+     * - [ANY] 对应 IntelliJ `defaultModalityState`（从 UI 线程发起时返回当前模态；从后台线程返回 non-modal）
+     * - [NON_MODAL] 对应 IntelliJ `nonModal()`（必须等到无模态对话框时才执行）
+     */
     enum class UiPolicy {
-        /** 任意模态都执行（含 modal）— 对应 defaultModalityState。 */
+        /**
+         * 在当前默认模态下执行。
+         *
+         * 在 UI 线程上调用 `invokeAndWait` 时，IntelliJ 会取调用线程的当前模态；
+         * 在后台线程上调用时取 non-modal。覆盖「跟当前 UI 流绑定」「任意模态都执行」两种语义。
+         */
         ANY,
-        /** 仅在非模态时执行 — 对应 nonModal。 */
+
+        /** 仅在非模态时执行；如果有 modal 打开，会等到 modal 关闭再跑。 */
         NON_MODAL,
-        /** 在当前模态执行（包括 modal）— 对应 defaultModalityState，常用于「跟当前 UI 流绑定」。 */
-        CURRENT_MODAL,
     }
 
     /** 在后台线程执行 [block]，返回 future。 */
@@ -41,6 +51,8 @@ interface TaskRunner {
  * 单线程同步执行的测试桩 [TaskRunner] 实现。
  *
  * 所有操作在当前线程立即执行，便于单测隔离 IntelliJ 平台依赖。
+ * 测试若需通过 [com.charmnight.linkgraph.application.composition.InfrastructureComposition]
+ * 注入桩，使用 `project.replaceService(TaskRunner::class.java, SameThreadTaskRunner(), testDisposable)`。
  */
 class SameThreadTaskRunner : TaskRunner {
     override fun <T> background(block: () -> T): CompletableFuture<T> {

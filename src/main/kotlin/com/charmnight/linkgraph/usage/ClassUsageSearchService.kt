@@ -235,7 +235,8 @@ class ClassUsageSearchService(
                 seenEntryIds = seenEntryIds,
             )
         }
-        if (allowWordIndexFallback && entries.isEmpty() && entries.size < limit) {
+        if (allowWordIndexFallback && entries.isEmpty()) {
+            // 上一行 isEmpty 已保证 size < limit（limit == 0 时早 return；此处 limit 必 > 0）
             collectProjectJavaFileEntries(
                 targetClass = targetClass,
                 targetQualifiedName = targetQualifiedName,

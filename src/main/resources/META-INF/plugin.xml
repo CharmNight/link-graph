@@ -26,6 +26,9 @@
         <projectService
                 serviceInterface="com.charmnight.linkgraph.application.port.GraphEditorPresentationProvider"
                 serviceImplementation="com.charmnight.linkgraph.ui.GraphEditorApplicationProjectionService"/>
+        <projectService
+                serviceInterface="com.charmnight.linkgraph.application.runtime.TaskRunner"
+                serviceImplementation="com.charmnight.linkgraph.ui.runtime.IntelliJTaskRunnerAdapter"/>
         <postStartupActivity
                 implementation="com.charmnight.linkgraph.toolwindow.debug.LinkGraphDebugStartupActivity"/>
     </extensions>

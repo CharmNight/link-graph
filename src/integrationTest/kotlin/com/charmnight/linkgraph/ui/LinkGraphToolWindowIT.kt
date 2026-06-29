@@ -433,7 +433,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             """.trimIndent(),
         )
 
-        project.getService(GraphEditorApplicationService::class.java).commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
+        project.getService(GraphEditorApplicationService::class.java).commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph)
         drainIdeQueue()
 
         val snapshot = project.getService(GraphEditorStateService::class.java).snapshot()
@@ -474,7 +474,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             )
 
         ApplicationManager.getApplication().invokeAndWait {
-            projectService.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
+            projectService.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph)
         }
         waitForGraphSource("currentContext")
 
@@ -513,7 +513,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             )
 
         ApplicationManager.getApplication().invokeAndWait {
-            projectService.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
+            projectService.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph)
         }
 
         waitForLatch(started, "expected background extraction to start")
@@ -554,7 +554,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             )
 
         ApplicationManager.getApplication().invokeAndWait {
-            projectService.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
+            projectService.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph)
         }
 
         waitForLatch(started, "expected background extraction to start")
@@ -596,7 +596,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             )
 
         ApplicationManager.getApplication().invokeAndWait {
-            projectService.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph(myFixture.editor))
+            projectService.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph)
         }
 
         waitForLatch(started, "expected background extraction to start")
