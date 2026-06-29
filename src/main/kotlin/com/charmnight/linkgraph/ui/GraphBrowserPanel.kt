@@ -6,7 +6,10 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.progress.EmptyProgressIndicator
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Computable
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.util.concurrency.AppExecutorUtil
@@ -342,11 +345,18 @@ class GraphBrowserPanel private constructor(
         messageProvider: () -> GraphEditorMessage,
     ) {
         AppExecutorUtil.getAppExecutorService().execute {
-            runCatching {
-                bridge.dispatch(messageProvider())
-            }.onFailure { error ->
-                logger.warn("异步处理前端请求失败: $actionLabel", error)
-            }
+            val indicator = EmptyProgressIndicator()
+            ProgressManager.getInstance().runProcess(
+                Computable {
+                    try {
+                        bridge.dispatch(messageProvider())
+                    } catch (error: Throwable) {
+                        logger.warn("异步处理前端请求失败: $actionLabel", error)
+                    }
+                    null
+                },
+                indicator,
+            )
         }
     }
 

@@ -3,6 +3,9 @@ package com.charmnight.linkgraph.ui
 import com.charmnight.linkgraph.foundation.debugLazy
 import com.charmnight.linkgraph.ui.bridge.BridgeCommandParser
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.progress.EmptyProgressIndicator
+import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.util.Computable
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
@@ -42,22 +45,27 @@ internal class GraphBrowserBridgeRegistrar(
     fun registerHandlers() {
         bridgeCommandQuery.addHandler { payload ->
             safeBridgeResponse("bridge command") {
-                val parsed = BridgeCommandParser.parse(payload)
-                debugLazy(logger.isDebugEnabled, logger::debug) {
-                    "收到前端 bridge command: type=${parsed.type}, async=${parsed.async}"
-                }
-                if (parsed.artifactIds.isNotEmpty()) {
-                    dispatchArtifactSlice(parsed.artifactIds)
-                }
-                val message = parsed.message
-                if (message != null) {
-                    if (parsed.async) {
-                        dispatchBridgeAsync(parsed.actionLabel) { message }
-                    } else {
-                        bridge.dispatch(message)
-                    }
-                }
-                JBCefJSQuery.Response("ok")
+                ProgressManager.getInstance().runProcess(
+                    Computable {
+                        val parsed = BridgeCommandParser.parse(payload)
+                        debugLazy(logger.isDebugEnabled, logger::debug) {
+                            "收到前端 bridge command: type=${parsed.type}, async=${parsed.async}"
+                        }
+                        if (parsed.artifactIds.isNotEmpty()) {
+                            dispatchArtifactSlice(parsed.artifactIds)
+                        }
+                        val message = parsed.message
+                        if (message != null) {
+                            if (parsed.async) {
+                                dispatchBridgeAsync(parsed.actionLabel) { message }
+                            } else {
+                                bridge.dispatch(message)
+                            }
+                        }
+                        JBCefJSQuery.Response("ok")
+                    },
+                    EmptyProgressIndicator(),
+                )
             }
         }
         debugTraceQuery.addHandler { payload ->

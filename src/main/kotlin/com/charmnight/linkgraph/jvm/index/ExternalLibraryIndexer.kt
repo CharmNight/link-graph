@@ -10,6 +10,7 @@ import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiClass
+import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiField
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiModifier
@@ -222,8 +223,7 @@ internal class ExternalLibraryIndexer(
                 simpleName = fieldName,
                 ownerClassName = ownerClassName,
                 typeName = canonicalTypeTextNear(field.type, ownerPackageName) ?: field.type.canonicalText,
-                source = sourceFile?.let { sharedHelpers.sourceRef(it, field.navigationElement ?: field) }
-                    ?.copy(decompiled = origin in setOf(SourceOrigin.LIBRARY_CLASS_JAR, SourceOrigin.JDK_CLASS)),
+                source = externalSourceRef(field.navigationElement ?: field, sourceFile, origin),
                 origin = origin,
                 typeReferences = fieldTypeReferences(field.type, ownerPackageName),
             ))
@@ -241,11 +241,21 @@ internal class ExternalLibraryIndexer(
                 parameterTypes = method.parameterList.parameters.map { p -> canonicalTypeText(p.type) ?: p.type.canonicalText },
                 returnType = canonicalTypeText(method.returnType) ?: if (method.isConstructor) ownerClassName else "void",
                 abstract = method.hasModifierProperty(com.intellij.psi.PsiModifier.ABSTRACT),
-                source = sourceFile?.let { sharedHelpers.sourceRef(it, method.navigationElement ?: method) }
-                    ?.copy(decompiled = origin in setOf(SourceOrigin.LIBRARY_CLASS_JAR, SourceOrigin.JDK_CLASS)),
+                source = externalSourceRef(method.navigationElement ?: method, sourceFile, origin),
                 origin = origin,
             ))
         }
+    }
+
+    /** 用元素自身的 containingFile 计算 sourceRef，避免 file 与 element 来自不同 PSI 文件导致 textRange 越界。 */
+    private fun externalSourceRef(
+        element: PsiElement,
+        fallbackFile: VirtualFile?,
+        origin: SourceOrigin,
+    ): JvmSourceRef? {
+        val file = element.containingFile?.virtualFile ?: fallbackFile ?: return null
+        return sharedHelpers.sourceRef(file, element)
+            .copy(decompiled = origin in setOf(SourceOrigin.LIBRARY_CLASS_JAR, SourceOrigin.JDK_CLASS))
     }
 
     // ---- 外部文件来源判定 helper ----

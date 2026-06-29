@@ -11,7 +11,6 @@ import com.charmnight.linkgraph.application.usecase.InvocationExpansionTarget
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionTargetKind
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionUseCase
 import com.charmnight.linkgraph.architecture.architectureIndexRuntime
-import com.charmnight.linkgraph.foundation.LoggedFailures
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.semantic.SemanticAnalyzer
@@ -103,15 +102,21 @@ internal class InvocationExpansionWorkflow(
             val targetGraph = analysisOutcomeFactoryProvider()
                 .create(analysisResult, AnalysisDisplayMode.FLOWCHART)
                 .fullGraph
+            logger.warn("expand diagnosis: targetSignature=$targetSignature")
+            logger.warn("expand diagnosis: analysisResult anchors=${analysisResult.anchors.size} semanticUnits=${analysisResult.semanticUnits.size}")
+            logger.warn("expand diagnosis: targetGraph nodes=${targetGraph.nodes.size} edges=${targetGraph.edges.size}")
             val targetEntryNodeId = resolveTargetEntryNodeId(analysisResult, targetGraph, targetSignature)
-                ?: return@runCatching null
-            useCase.mergeExpansion(
+            logger.warn("expand diagnosis: targetEntryNodeId=$targetEntryNodeId")
+            targetEntryNodeId ?: return@runCatching null
+            val merged = useCase.mergeExpansion(
                 workspace = snapshot.workspaceGraph,
                 sourceInvocationNode = node,
                 targetGraph = targetGraph,
                 targetEntryNodeId = targetEntryNodeId,
                 targetSignature = targetSignature,
             )
+            logger.warn("expand diagnosis: merged graph nodes=${merged.graph.nodes.size} edges=${merged.graph.edges.size} workspaceBefore=${snapshot.workspaceGraph.nodes.size}")
+            merged
         }.onFailure { throwable ->
             analysisFailed = true
             logger.warn("展开调用方法失败", throwable)
@@ -175,9 +180,7 @@ internal class InvocationExpansionWorkflow(
     /** 解析方法签名所属的展开目标（项目源码 / JDK / 三方库 / 跨服务等），优先使用自定义覆盖。 */
     private fun resolveTarget(signature: String): InvocationExpansionTarget {
         targetResolverOverrideProvider()?.invoke(project, signature)?.let { target -> return target }
-        val index = LoggedFailures.orNull(logger, "InvocationExpansion architectureIndexRuntime.index") {
-            project.architectureIndexRuntime().index()
-        } ?: return InvocationExpansionTarget(InvocationExpansionTargetKind.NOT_FOUND)
+        val index = project.architectureIndexRuntime().index()
         return targetResolver.resolve(signature, index)
     }
 
