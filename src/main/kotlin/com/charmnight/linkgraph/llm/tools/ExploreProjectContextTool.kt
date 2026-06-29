@@ -1,7 +1,6 @@
 package com.charmnight.linkgraph.llm.tools
 
 import com.charmnight.linkgraph.architecture.architectureIndexService
-import com.charmnight.linkgraph.architecture.query.ArchitectureGraphQueryService
 import com.charmnight.linkgraph.architecture.query.TraversalMode
 
 /** 工具实现：一次性返回项目上下文综合包，包含符号、关系、片段、变更符号、索引新鲜度和告警。 */
@@ -27,17 +26,18 @@ class ExploreProjectContextTool(
     }
 
     override fun invokeTyped(input: ExploreProjectContextInput, context: ToolExecutionContext): ToolResult {
-        val index = facade.buildIndex(context.project)
-        val query = ArchitectureGraphQueryService(index)
-        val rankedSymbols = query.rankedFindSymbol(input.query, input.maxSymbols).map { result ->
-            facade.symbolPayload(result.symbol) + mapOf(
+        // 失败路径统一收集到 warnings，绝不静默吞异常——尤其 freshness 兜底不能再返回误导性的 FRESH。
+        val warnings = mutableListOf<String>()
+        val session = facade.openQuerySession(context.project)
+        val rankedSymbols = session.queryService.rankedFindSymbol(input.query, input.maxSymbols).map { result ->
+            session.symbolPayload(result.symbol) + mapOf(
                 "matchKind" to result.matchKind,
                 "score" to result.score,
             )
         }
         val semanticSeedSymbols = facade.semanticSeeds(context.project, input.query, input.maxSymbols).mapNotNull { seed ->
-            index.findSymbol(seed.nodeId)?.let { symbol ->
-                facade.symbolPayload(symbol) + seed.metadata + mapOf(
+            session.index.findSymbol(seed.nodeId)?.let { symbol ->
+                session.symbolPayload(symbol) + seed.metadata + mapOf(
                     "matchKind" to "SEMANTIC_SEED",
                     "score" to seed.score,
                 )
@@ -48,10 +48,10 @@ class ExploreProjectContextTool(
             .take(input.maxSymbols)
         val symbolIds = symbols.mapNotNull { it["id"] as? String }
         val relations = symbolIds
-            .flatMap { symbolId -> query.relationsForSymbol(symbolId) }
+            .flatMap { symbolId -> session.queryService.relationsForSymbol(symbolId) }
             .distinctBy { relation -> relation.id }
             .take(input.maxRelations)
-            .map { relation -> facade.relationPayload(relation, index) }
+            .map(session::relationPayload)
         val snippets = symbols
             .take(input.maxSnippets)
             .map { symbol ->
@@ -73,7 +73,10 @@ class ExploreProjectContextTool(
                     "baselineOnly" to symbol.baselineOnly,
                 )
             }
-        }.getOrDefault(emptyList())
+        }.getOrElse { error ->
+            warnings += "变更符号查询失败：${error.message?.trim()?.ifBlank { error::class.java.simpleName } ?: error::class.java.simpleName}"
+            emptyList()
+        }
         val freshness = runCatching {
             val snapshot = context.project.architectureIndexService().freshness()
             mapOf(
@@ -84,11 +87,20 @@ class ExploreProjectContextTool(
                 "lastIndexedAtEpochMillis" to snapshot.lastIndexedAtEpochMillis,
                 "staleSinceEpochMillis" to snapshot.staleSinceEpochMillis,
             )
-        }.getOrDefault(mapOf("state" to "FRESH"))
+        }.getOrElse { error ->
+            // 关键：失败时不能默认为 FRESH——那会让模型据此跳过等待索引刷新、给出基于过期索引的判断。
+            // 用 UNKNOWN 显式告诉模型「不知道」，并附失败原因让模型考虑重新调用或换工具。
+            val reason = error.message?.trim()?.ifBlank { error::class.java.simpleName } ?: error::class.java.simpleName
+            warnings += "索引新鲜度查询失败：$reason"
+            mapOf(
+                "state" to "UNKNOWN",
+                "dirtyReason" to "freshness query failed: $reason",
+            )
+        }
         return ToolResult(
             toolName = name,
             payload = mapOf(
-                "status" to "OK",
+                "status" to if (warnings.isEmpty()) "OK" else "PARTIAL",
                 "query" to input.query,
                 "depth" to input.depth,
                 "freshness" to freshness,
@@ -97,7 +109,7 @@ class ExploreProjectContextTool(
                 "snippets" to snippets,
                 "changedSymbols" to changedSymbols,
                 "semanticSeeds" to semanticSeedSymbols,
-                "warnings" to emptyList<String>(),
+                "warnings" to warnings,
             ),
         )
     }
@@ -124,8 +136,12 @@ class QueryProjectGraphTool(
         // 兼容 question / query 两个 key 名（前者是新规范，后者是历史 fallback）
         question = optionalString(raw, "question") ?: optionalString(raw, "query") ?: missing("question"),
         budget = optionalInt(raw, "budget") ?: 20,
+        // mode 缺省 NEIGHBORHOOD；但传了非法值时必须告诉模型而不是静默兜底——否则模型永远学不到正确枚举集合
         mode = optionalString(raw, "mode")
-            ?.let { rawMode -> runCatching { TraversalMode.valueOf(rawMode.uppercase()) }.getOrNull() }
+            ?.let { rawMode ->
+                runCatching { TraversalMode.valueOf(rawMode.uppercase()) }.getOrNull()
+                    ?: wrongEnum("mode", rawMode, TraversalMode.values().map { it.name })
+            }
             ?: TraversalMode.NEIGHBORHOOD,
     )
 

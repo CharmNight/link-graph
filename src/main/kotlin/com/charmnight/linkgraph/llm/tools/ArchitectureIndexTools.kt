@@ -1,5 +1,8 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.architecture.query.RelationDirection
+import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
+
 /** 工具实现：返回当前项目架构/JVM 索引的整体摘要信息。 */
 class GetArchitectureIndexSummaryTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
@@ -10,8 +13,7 @@ class GetArchitectureIndexSummaryTool(
     override fun parseInput(raw: Map<String, Any?>): GetArchitectureIndexSummaryInput = GetArchitectureIndexSummaryInput
 
     override fun invokeTyped(input: GetArchitectureIndexSummaryInput, context: ToolExecutionContext): ToolResult {
-        val index = facade.buildIndex(context.project)
-        val summary = com.charmnight.linkgraph.architecture.query.ArchitectureGraphQueryService(index).summary()
+        val summary = facade.openQuerySession(context.project).queryService.summary()
         return ToolResult(toolName = name, payload = mapOf("summary" to summary))
     }
 }
@@ -31,7 +33,8 @@ class FindJvmSymbolTool(
     )
 
     override fun invokeTyped(input: FindJvmSymbolInput, context: ToolExecutionContext): ToolResult {
-        val symbols = facade.query(context.project).findSymbol(input.query).map(facade::symbolPayload)
+        val session = facade.openQuerySession(context.project)
+        val symbols = session.queryService.findSymbol(input.query).map(session::symbolPayload)
         return ToolResult(toolName = name, payload = mapOf("symbols" to symbols))
     }
 }
@@ -53,13 +56,12 @@ class FindJvmRelationsTool(
     )
 
     override fun invokeTyped(input: JvmRelationsInput, context: ToolExecutionContext): ToolResult {
-        val index = facade.buildIndex(context.project)
-        val query = com.charmnight.linkgraph.architecture.query.ArchitectureGraphQueryService(index)
-        val relations = query.relationsForSymbol(
+        val session = facade.openQuerySession(context.project)
+        val relations = session.queryService.relationsForSymbol(
             symbolIdOrName = input.symbol,
-            kind = facade.relationKind(input.kind),
-            direction = facade.direction(input.direction),
-        ).map { relation -> facade.relationPayload(relation, index) }
+            kind = session.relationKind(input.kind),
+            direction = session.direction(input.direction),
+        ).map(session::relationPayload)
         return ToolResult(toolName = name, payload = mapOf("relations" to relations))
     }
 }
@@ -71,7 +73,12 @@ data class JvmRelationsInput(
     val direction: String?,
 )
 
-/** 工具实现：通过统一架构运行时查询 JVM/架构关系，与 FindJvmRelationsTool 行为等价但走统一运行时入口。 */
+/**
+ * 工具实现：通过统一架构运行时查询 JVM/架构关系。
+ *
+ * 与 [FindJvmRelationsTool] 行为等价（都走 [ArchitectureIndexToolFacade.openQuerySession]），
+ * 区别仅在工具名：保留两个入口便于上层 LLM capability 用不同 prompt 模板分别引用。
+ */
 class QueryArchitectureRelationsTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
 ) : TypedAgentTool<JvmRelationsInput>() {
@@ -85,12 +92,12 @@ class QueryArchitectureRelationsTool(
     )
 
     override fun invokeTyped(input: JvmRelationsInput, context: ToolExecutionContext): ToolResult {
-        val index = facade.buildIndex(context.project)
-        val relations = facade.query(context.project).relationsForSymbol(
+        val session = facade.openQuerySession(context.project)
+        val relations = session.queryService.relationsForSymbol(
             symbolIdOrName = input.symbol,
-            kind = facade.relationKind(input.kind),
-            direction = facade.direction(input.direction),
-        ).map { relation -> facade.relationPayload(relation, index) }
+            kind = session.relationKind(input.kind),
+            direction = session.direction(input.direction),
+        ).map(session::relationPayload)
         return ToolResult(toolName = name, payload = mapOf("relations" to relations))
     }
 }
@@ -107,10 +114,8 @@ class FindServiceProvidersTool(
     )
 
     override fun invokeTyped(input: FindServiceProvidersInput, context: ToolExecutionContext): ToolResult {
-        val index = facade.buildIndex(context.project)
-        val providers = com.charmnight.linkgraph.architecture.query.ArchitectureGraphQueryService(index)
-            .serviceProviders(input.interfaceName)
-            .map { relation -> facade.relationPayload(relation, index) }
+        val session = facade.openQuerySession(context.project)
+        val providers = session.queryService.serviceProviders(input.interfaceName).map(session::relationPayload)
         return ToolResult(toolName = name, payload = mapOf("providers" to providers))
     }
 }
@@ -130,10 +135,8 @@ class FindReflectionTargetsTool(
     )
 
     override fun invokeTyped(input: FindReflectionTargetsInput, context: ToolExecutionContext): ToolResult {
-        val index = facade.buildIndex(context.project)
-        val targets = com.charmnight.linkgraph.architecture.query.ArchitectureGraphQueryService(index)
-            .reflectionTargets(input.symbol)
-            .map { relation -> facade.relationPayload(relation, index) }
+        val session = facade.openQuerySession(context.project)
+        val targets = session.queryService.reflectionTargets(input.symbol).map(session::relationPayload)
         return ToolResult(toolName = name, payload = mapOf("targets" to targets))
     }
 }
@@ -153,14 +156,12 @@ class FindProxyTargetsTool(
     )
 
     override fun invokeTyped(input: FindProxyTargetsInput, context: ToolExecutionContext): ToolResult {
-        val index = facade.buildIndex(context.project)
-        val relations = com.charmnight.linkgraph.architecture.query.ArchitectureGraphQueryService(index)
-            .relationsForSymbol(
-                symbolIdOrName = input.symbol,
-                kind = com.charmnight.linkgraph.jvm.relation.JvmRelationKind.USES_PROXY,
-                direction = com.charmnight.linkgraph.architecture.query.RelationDirection.OUTGOING,
-            )
-            .map { relation -> facade.relationPayload(relation, index) }
+        val session = facade.openQuerySession(context.project)
+        val relations = session.queryService.relationsForSymbol(
+            symbolIdOrName = input.symbol,
+            kind = JvmRelationKind.USES_PROXY,
+            direction = RelationDirection.OUTGOING,
+        ).map(session::relationPayload)
         return ToolResult(toolName = name, payload = mapOf("targets" to relations))
     }
 }

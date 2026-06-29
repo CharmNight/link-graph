@@ -19,7 +19,7 @@ internal object LlmUserMessageFormatter {
     /**
      * 把底层异常转换成适合直接展示给用户的中文文案。
      *
-     * m5：场景化失败（首轮 transport 重试耗尽 / 结构化解析失败）通过 [LlmSceneException]
+     * 场景化失败（首轮 transport 重试耗尽 / 结构化解析失败）通过 [LlmSceneException]
      * 类型化异常传递，本函数按 `when (error)` 分发；不再依赖 rawMessage 字符串匹配，
      * 上游文案改动不会破坏控制流。
      */
@@ -36,8 +36,6 @@ internal object LlmUserMessageFormatter {
         }
         /** 原始异常消息。 */
         val rawMessage = error.message?.trim().orEmpty()
-        /** 小写化后的异常消息。 */
-        val lowerRawMessage = rawMessage.lowercase()
         /** HTTP 模式匹配结果。 */
         val parsed = httpPattern.find(rawMessage)
         /** 解析出的 HTTP 状态码。 */
@@ -76,14 +74,14 @@ internal object LlmUserMessageFormatter {
         }
 
         when {
-            error is HttpConnectTimeoutException || error is HttpTimeoutException || lowerRawMessage.contains("timed out") || lowerRawMessage.contains("timeout") -> {
+            error is HttpConnectTimeoutException || error is HttpTimeoutException -> {
                 return withTag(
                     summary = "请求远程 LLM 超时",
                     suggestion = "请检查网络连通性，或适当调大超时时间。",
                 )
             }
 
-            error is ConnectException || error is UnknownHostException || lowerRawMessage.contains("connection refused") || lowerRawMessage.contains("failed to connect") -> {
+            error is ConnectException || error is UnknownHostException -> {
                 return withTag(
                     summary = "无法连接到远程 LLM 服务",
                     suggestion = "请检查请求地址、代理和网络连通性。",

@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.llm
 
 /**
- * 远程 LLM 场景化请求失败的类型化异常（m5 修复）。
+ * 远程 LLM 场景化请求失败的类型化异常。
  *
  * 历史上 [RemoteStructuredResponseParser] 用 [IllegalStateException] + 中文字面量消息包装失败原因，
  * [LlmUserMessageFormatter.describe] 再用 `rawMessage.contains("结构化 JSON")` / `contains("重试 1 次后仍失败")`
@@ -53,12 +53,6 @@ sealed class LlmSceneException(
     )
 }
 
-/** 规范化并裁剪响应片段，便于写入错误消息。 */
-private fun truncate(content: String, limit: Int): String {
-    val normalized = content.replace("\r", "").replace("\n", "\\n").trim()
-    return if (normalized.length <= limit) normalized else normalized.take(limit) + "..."
-}
-
 /** 拼接两轮解析都失败时的完整错误消息，保留首次/重试错误与返回片段供上游 diagnosticDetail 使用。 */
 private fun buildStructuredFailureMessage(
     scene: String,
@@ -73,9 +67,9 @@ private fun buildStructuredFailureMessage(
     append("\n首次解析错误：")
     append(firstError.message?.trim().orEmpty().ifBlank { firstError::class.java.simpleName })
     append("\n首次返回片段：")
-    append(truncate(firstContent, 240))
+    append(truncateForTrace(firstContent, 240))
     append("\n重试解析错误：")
     append(repairError.message?.trim().orEmpty().ifBlank { repairError::class.java.simpleName })
     append("\n重试返回片段：")
-    append(truncate(repairedContent, 240))
+    append(truncateForTrace(repairedContent, 240))
 }

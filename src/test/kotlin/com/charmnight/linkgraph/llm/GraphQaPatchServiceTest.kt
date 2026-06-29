@@ -1786,7 +1786,11 @@ class GraphQaPatchServiceTest {
 
         assertEquals(2, callCount)
         assertEquals(LlmResultSource.LOCAL_RULE, result.source)
-        assertTrue(result.warnings.any { it.contains("重试 1 次后仍失败") })
+        // 不断言具体文案——文案改动不应破坏测试。只检查语义：
+        // 1) warnings 里出现「重试 + 失败」组合（说明是 transport retry exhausted 路径，而非首轮就 fallback）
+        assertTrue(result.warnings.any { it.contains("重试") && it.contains("失败") },
+            "transport retry 耗尽时 warnings 应说明重试 + 失败；实际：${result.warnings}")
+        // 2) 没走 generic formatter 的「请检查请求地址、鉴权和模型配置」分支（说明 scene-specific 异常被识别）
         assertTrue(result.warnings.none { it.contains("请检查请求地址、鉴权和模型配置") })
     }
 

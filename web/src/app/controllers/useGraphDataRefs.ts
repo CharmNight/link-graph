@@ -5,7 +5,7 @@ import type { AnalysisDisplayMode, LinkGraphDocument, LinkGraphEdge, LinkGraphNo
 /**
  * 图谱相关数据的 ref 集合，便于在回调中按需读取最新值（不触发重渲染）。
  *
- * m7 抽出自 App.tsx：原文件 5 个 useRef + 5 个 useEffect 同步块占 ~30 行，
+ * 抽出自 App.tsx：原文件 5 个 useRef + 5 个 useEffect 同步块占 ~30 行，
  * 集中到本 hook 让 ref 与 sync 语义对齐，调用方只用一份 ref 对象。
  *
  * 注意：本 hook 不替代「按需读最新值」语义；如果调用方依赖 prop 变化触发重渲染，

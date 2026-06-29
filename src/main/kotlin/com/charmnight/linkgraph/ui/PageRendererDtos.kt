@@ -3,7 +3,7 @@ package com.charmnight.linkgraph.ui
 /**
  * PageRenderer 前端传输 DTO 集合入口（P2-6 拆分）。
  *
- * 历史上所有 DTO 与 mapper 集中在本文件，1200+ 行难以导航。m6 拆分按领域分文件：
+ * 历史上所有 DTO 与 mapper 集中在本文件，1200+ 行难以导航。按领域拆分为：
  *
  * - [PageRendererLeafDtos.kt][PageRendererLeafDtos]：独立叶子 DTO（AsyncRequestState / EditScope / CandidatePatchIntent
  *   / QaConversationMessage / InvestigationTurnOutcome / DraftPatchApplyResult 等）

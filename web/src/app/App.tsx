@@ -440,7 +440,7 @@ export function App() {
     pendingExplanationSessionLabelRef,
     pendingExplanationHistoryEntryRef,
   } = useExplanationState(graphBeautificationResult);
-  // 当前选中的候选变更 / 风险线程 / 草稿条目 + draftCompareMode 集中委托给 useSelectionState（m7）
+  // 当前选中的候选变更 / 风险线程 / 草稿条目 + draftCompareMode 集中委托给 useSelectionState
   const {
     selectedQaChangeId,
     setSelectedQaChangeId,
@@ -455,7 +455,7 @@ export function App() {
   const semanticRevisionRef = useRef<number | null>(initialState.semanticRevision ?? null);
   // 当前场景的布局版本号，记录最新已知后端布局版本
   const layoutRevisionRef = useRef<number | null>(resolveCurrentSceneState(initialState).layoutRevision ?? null);
-  // 图谱相关 ref 集合 + 同步 effects 委托给 useGraphDataRefs（m7）
+  // 图谱相关 ref 集合 + 同步 effects 委托给 useGraphDataRefs
   const {
     nodesRef,
     edgesRef,
@@ -1059,6 +1059,11 @@ export function App() {
     }
   }
 
+  // 选中草稿条目后自动定位到主节点。selectedNodeId 只用于"已经选中就不再重复定位"的早退判断，
+  // 不应作为依赖——否则 selectExplanationTargetNode 改动 selectedNodeId 会立刻重触发 effect，形成震荡。
+  // 用 ref 读取最新值，依赖里只放真正应该触发定位的 stage / nodes / selectedDraftEntry。
+  const selectedNodeIdRef = useRef(selectedNodeId);
+  selectedNodeIdRef.current = selectedNodeId;
   useEffect(() => {
     if (activeWorkflowStage !== "draft" || !selectedDraftEntry) {
       return;
@@ -1068,11 +1073,11 @@ export function App() {
     if (!displayedTargetNodeId) {
       return;
     }
-    if (selectedNodeId === displayedTargetNodeId) {
+    if (selectedNodeIdRef.current === displayedTargetNodeId) {
       return;
     }
     selectExplanationTargetNode(displayedTargetNodeId, { focusViewport: true });
-  }, [activeWorkflowStage, nodes, selectedDraftEntry, selectedNodeId]);
+  }, [activeWorkflowStage, nodes, selectedDraftEntry]);
 
   /** 触发对当前作用域的讲解：定位节点、构建默认提示词并按模式直接提交或预填输入框 */
   function handleExplainCurrentScope(focusNodeId?: string) {
@@ -1255,7 +1260,6 @@ export function App() {
     assistantSessionState,
     assistantResultStore,
   ]);
-  const visibleAssistantTurns = assistantTurns;
   const assistantRequestRunning = [
     qaRequestState,
     diffReviewRequestState,
@@ -1267,7 +1271,7 @@ export function App() {
   const assistantWorkbenchContent = (
     <AssistantWorkbenchShell
       assistantSessionState={assistantSessionState}
-      turns={visibleAssistantTurns}
+      turns={assistantTurns}
       activeIntent={assistantSessionState.activeIntent}
       activeActionId={assistantSessionState.activeActionId}
       requestRunning={assistantRequestRunning}

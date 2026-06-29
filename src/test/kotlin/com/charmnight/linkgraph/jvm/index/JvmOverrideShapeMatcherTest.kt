@@ -97,6 +97,35 @@ class JvmOverrideShapeMatcherTest {
         assertTrue(JvmOverrideShapeMatcher.matchesOverride(candidate, base))
     }
 
+    @Test
+    fun matchesKotlinArrayReferenceVsJavaReferenceArray() {
+        // Kotlin `Array<String>` 与 Java `String[]` 在 JVM 层是同一类型（`[Ljava/lang/String;`）。
+        // PSI 在两端给出的 parameterTypes 字面量不同（Kotlin: `Array<String>`，Java: `String[]`），
+        // matcher 必须归一化后视为相容，否则 Kotlin override Java 方法（参数 String[] ↔ Array<String>）会漏匹配。
+        assertTrue(matcher(listOf("Array<String>"), listOf("String[]")))
+        assertTrue(matcher(listOf("String[]"), listOf("Array<String>")))
+        // 全限定元素类型也要归一化
+        assertTrue(matcher(listOf("Array<java.lang.String>"), listOf("java.lang.String[]")))
+    }
+
+    @Test
+    fun matchesKotlinPrimitiveArrayVsJavaPrimitiveArray() {
+        // Kotlin `IntArray` / `ByteArray` 等映射到 Java `int[]` / `byte[]` 原生数组。
+        // 同一 JVM 类型在不同语言 PSI 下字面量不同，必须归一化。
+        assertTrue(matcher(listOf("IntArray"), listOf("int[]")))
+        assertTrue(matcher(listOf("ByteArray"), listOf("byte[]")))
+        assertTrue(matcher(listOf("LongArray"), listOf("long[]")))
+        // 不对称：IntArray 映射 int[]（原生），Array<Int> 映射 Integer[]（装箱）——语义不同，不应匹配
+        assertFalse(matcher(listOf("IntArray"), listOf("Integer[]")))
+        assertFalse(matcher(listOf("IntArray"), listOf("Array<Int>")))
+    }
+
+    @Test
+    fun matchesTypeParameterArrayAgainstConcreteArray() {
+        // 泛型数组 `<T>` 与具体类型数组组合时仍按位置匹配
+        assertTrue(matcher(listOf("Array<T>"), listOf("String[]")))
+    }
+
     private fun matcher(
         candidateParamTypes: List<String>,
         baseParamTypes: List<String>,

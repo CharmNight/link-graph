@@ -5,7 +5,7 @@ import type { DraftWorkbenchState, LinkGraphBootstrapState } from "../types";
 /**
  * 选区状态：当前选中的候选变更 / 风险线程 / 草稿条目，以及 draft 对比模式。
  *
- * P2-1 之后从 App.tsx 抽出（m7），让组件聚焦于渲染与跨 hook 协作，不关心单个 useState 的拼装。
+ * P2-1 之后从 App.tsx 抽出，让组件聚焦于渲染与跨 hook 协作，不关心单个 useState 的拼装。
  *
  * - 初始 selectedDraftEntryId 从 bootstrap 第一条草稿派生，确保首次进入工作台就有一条选中
  * - draftCompareMode 控制草稿对比是「看结果 after」还是「看流程变化 compare」

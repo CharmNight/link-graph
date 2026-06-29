@@ -1,7 +1,9 @@
 package com.charmnight.linkgraph.llm.tools
 
+import kotlin.reflect.KClass
+
 /**
- * 强类型 Agent 工具基类（m4 引入）。
+ * 强类型 Agent 工具基类。
  *
  * 历史上 [AgentTool.invoke] 入参是 `Map<String, Any?>`，每个 tool 自己用 `requiredString("xxx")` /
  * `optionalInt("xxx")` 读字段——缺编译期校验、字段命名依赖魔法字符串，重构时容易漏改。
@@ -47,8 +49,16 @@ abstract class TypedAgentTool<I : Any> : AgentTool {
 
     // ---------- 共享的 input 解析 helper ----------
 
-    /** 抛 [InputParseException]，让基类模板把异常翻译为 failure ToolResult。 */
+    /** 抛 [InputParseException]：必填字段缺失或为空白。 */
     protected fun missing(key: String): Nothing = throw InputParseException("$key 不能为空")
+
+    /** 抛 [InputParseException]：字段存在但类型不符合预期，消息给出期望与实际类型，便于模型纠正。 */
+    protected fun wrongType(key: String, expected: String, actual: String): Nothing =
+        throw InputParseException("$key 类型不匹配：期望 $expected，实际 $actual")
+
+    /** 抛 [InputParseException]：枚举值不在允许集合内，消息列出可选值，便于模型纠正。 */
+    protected fun wrongEnum(key: String, actual: String, allowed: List<String>): Nothing =
+        throw InputParseException("$key 值 '$actual' 不在允许集合内：${allowed.sorted().joinToString(", ")}")
 
     /** 读必填字符串；缺失或空白时抛 [InputParseException]。 */
     protected fun requireString(raw: Map<String, Any?>, key: String): String =
@@ -65,15 +75,22 @@ abstract class TypedAgentTool<I : Any> : AgentTool {
         raw.optionalStringList(key)
 
     /**
-     * 读必填强类型值；类型不匹配或缺失时抛 [InputParseException]。
+     * 读必填强类型值；缺失或类型不匹配时抛 [InputParseException]，消息区分两种场景：
+     * - value 为 null/不在 map → [missing]
+     * - value 类型不符 → [wrongType]，附期望与实际类型，便于模型纠正
      *
      * 注：非 inline 是为了避免「public-API inline 不能访问 internal inline」的限制；
      * 子类调用时显式传入 [KClass]。
      */
-    protected fun <T : Any> requireValue(raw: Map<String, Any?>, key: String, clazz: kotlin.reflect.KClass<T>): T {
+    protected fun <T : Any> requireValue(raw: Map<String, Any?>, key: String, clazz: KClass<T>): T {
         val value = raw[key]
+        if (value == null) missing(key)
         @Suppress("UNCHECKED_CAST")
-        return if (clazz.isInstance(value)) value as T else missing(key)
+        return if (clazz.isInstance(value)) {
+            value as T
+        } else {
+            wrongType(key, expected = clazz.simpleName ?: "未知", actual = value?.javaClass?.simpleName ?: "null")
+        }
     }
 
     /**
@@ -81,7 +98,7 @@ abstract class TypedAgentTool<I : Any> : AgentTool {
      *
      * 与 [requireValue] 同理，非 inline；子类调用时显式传入 [KClass]。
      */
-    protected fun <T : Any> optionalList(raw: Map<String, Any?>, key: String, clazz: kotlin.reflect.KClass<T>): List<T> {
+    protected fun <T : Any> optionalList(raw: Map<String, Any?>, key: String, clazz: KClass<T>): List<T> {
         val rawList = (raw[key] as? List<*>).orEmpty()
         @Suppress("UNCHECKED_CAST")
         return rawList.filter { clazz.isInstance(it) } as List<T>

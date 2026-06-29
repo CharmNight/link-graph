@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
  *
  * 本测试以静态文本扫描方式校验两侧命令集合一致，避免 silent drift。
  *
- * M8：扩展校验 payload key 集合——Kotlin parser 在每个 when 分支里通过
+ * 扩展校验 payload key 集合——Kotlin parser 在每个 when 分支里通过
  * `payload.string("xxx")` / `payload.requiredString("xxx", ...)` / `payload.stringList("xxx")`
  * / `payload.enum("xxx")` 等读 payload 字段；如果某次重构漏改或新增字段未同步 TS，
  * 就会出现「TS 发的 key Kotlin 不读」或「Kotlin 期待 key TS 不发」。
@@ -55,7 +55,7 @@ class BridgeCommandTypeConsistencyTest {
     }
 
     /**
-     * M8：每个命令在 Kotlin parser 中实际读到的 payload key 集合，必须与
+     * 每个命令在 Kotlin parser 中实际读到的 payload key 集合，必须与
      * [BridgeCommandPayloadContract] 显式声明的契约匹配。
      *
      * 契约文件是手动维护的文档；本测试用 regex 从 parser 源码提取实际 key，
@@ -110,12 +110,12 @@ class BridgeCommandTypeConsistencyTest {
      * 从 BridgeCommandParser.kt 提取 parseMessage 函数体内的 when 分支字面量。
      * 必须先把 parseMessage 函数体切出来，否则会误匹配 parseAssistantComposerTarget 等同文件
      * 其他 when 分支里的 PascalCase 字面量（如 "NewTask"、"QaRecovery"）。
+     *
+     * 函数体用 [KotlinSourceExtractor.extractFunction] 按括号配对提取，不依赖缩进格式——
+     * ktlint 改 2-space / 函数变 top-level 都不影响。
      */
     private fun extractKotlinWhenBranchTypes(source: String): Set<String> {
-        val fnStart = source.indexOf("fun parseMessage(")
-        if (fnStart < 0) return emptySet()
-        val fnEnd = source.indexOf("\n    private fun ", fnStart + 1)
-        val body = if (fnEnd < 0) source.substring(fnStart) else source.substring(fnStart, fnEnd)
+        val body = KotlinSourceExtractor.extractFunction(source, "parseMessage") ?: return emptySet()
         val pattern = Regex("""^\s*"([a-zA-Z]+)"\s*->""", RegexOption.MULTILINE)
         return pattern.findAll(body).map { it.groupValues[1] }.toSet()
     }
@@ -133,10 +133,7 @@ class BridgeCommandTypeConsistencyTest {
      * 每个命令分支用 `"cmd" ->` 到下一个 `"cmd" ->`（或函数结束）之间限定。
      */
     private fun extractKotlinPayloadKeysByCommand(source: String): Map<String, Set<String>> {
-        val fnStart = source.indexOf("fun parseMessage(")
-        if (fnStart < 0) return emptyMap()
-        val fnEnd = source.indexOf("\n    private fun ", fnStart + 1)
-        val body = if (fnEnd < 0) source.substring(fnStart) else source.substring(fnStart, fnEnd)
+        val body = KotlinSourceExtractor.extractFunction(source, "parseMessage") ?: return emptyMap()
 
         val branchPattern = Regex("""^\s*"([a-zA-Z]+)"\s*->""", RegexOption.MULTILINE)
         val branches = branchPattern.findAll(body).toList()

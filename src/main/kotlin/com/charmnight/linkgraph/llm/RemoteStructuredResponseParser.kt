@@ -133,8 +133,8 @@ internal class RemoteStructuredResponseParser(
                     onPreview = onPreview,
                 )
             }.getOrElse { retryError ->
-                // m5：用类型化异常代替字符串编码——formatter 按 type 分发，文案改动不影响控制流。
-                // 消息文本保留 "重试 1 次后仍失败" 以兼容既有 warning 断言。
+                // 用类型化异常代替字符串编码——formatter 按 type 分发，文案改动不影响控制流。
+                // 测试应断言异常类型 / 语义关键词，不应 pin 具体文案——文案改动不应破坏测试。
                 throw LlmSceneException.TransportRetryExhausted(
                     scene = scene,
                     cause = retryError,
@@ -174,7 +174,7 @@ internal class RemoteStructuredResponseParser(
                 )
             },
             onFailure = { repairError ->
-                // m5：类型化异常替代 message-as-control-flow
+                // 类型化异常替代 message-as-control-flow
                 throw LlmSceneException.StructuredParseFailed(
                     scene = scene,
                     firstError = firstError,
@@ -261,33 +261,26 @@ internal class RemoteStructuredResponseParser(
             4. 保留原始任务事实，只修复结构与字段类型，不要添加解释文本。
 
             上一次模型输出：
-            ${truncate(originalContent, 10_000)}
+            ${truncateForTrace(originalContent, 10_000)}
 
             上一次输出无法直接解析为结构化 JSON。请基于原始任务上下文与上述校验错误，重新输出一个合法 JSON。
             只返回 JSON。
         """.trimIndent()
     }
 
-    /** 规范化并裁剪响应片段，便于写入错误消息。 */
-    private fun truncate(content: String, limit: Int): String {
-        /** 适合写入日志和提示的标准化文本。 */
-        val normalized = content.replace("\r", "").replace("\n", "\\n").trim()
-        return if (normalized.length <= limit) normalized else normalized.take(limit) + "..."
-    }
-
-    /** 判断异常是否属于可自动重试的网络故障，例如超时、连接被拒或未知主机。 */
-    private fun Throwable.isRetryableTransportFailure(): Boolean {
-        /** 归一化后的异常消息。 */
-        val message = message.orEmpty().lowercase()
-        return this is HttpTimeoutException ||
+    /**
+     * 判断异常是否属于可自动重试的网络故障（仅按类型分发）。
+     *
+     * 故意不使用 message-string 匹配——那是 m5 重构要消除的 anti-pattern：
+     * 文案改动会破坏控制流，不同 JDK / HTTP 库的 message 文案也不同。
+     * 类型分发覆盖 Java HttpClient 抛出的所有可重试 transport 异常；
+     * 第三方 SDK 包装的 IOException 等不在本层处理（由上层各自归一化）。
+     */
+    private fun Throwable.isRetryableTransportFailure(): Boolean =
+        this is HttpTimeoutException ||
             this is HttpConnectTimeoutException ||
             this is ConnectException ||
-            this is UnknownHostException ||
-            message.contains("timed out") ||
-            message.contains("timeout") ||
-            message.contains("connection refused") ||
-            message.contains("failed to connect")
-    }
+            this is UnknownHostException
 
     /** 为结构化请求补齐 provider 可消费的 schema 元数据，仅在协议支持时附加。 */
     private fun LlmRequest.withStructuredOutput(

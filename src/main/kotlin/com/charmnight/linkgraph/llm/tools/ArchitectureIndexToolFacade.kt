@@ -32,9 +32,24 @@ class ArchitectureIndexToolFacade(
         return indexProvider(project)
     }
 
-    /** 基于当前索引创建架构图查询服务。 */
+    /** 基于当前索引创建架构图查询服务。仅供不需要 relation payload 的 tool 使用——
+     *  relation payload 需要同时拿到 index 与 query service，应改走 [openQuerySession]，
+     *  避免 tool 内重复 buildIndex。 */
     fun query(project: Project): ArchitectureGraphQueryService =
         ArchitectureGraphQueryService(buildIndex(project))
+
+    /**
+     * 一次性打开查询会话：构建索引 + 派生查询服务 + 把 relationPayload 闭包到 session 内，
+     * 让 tool 实现只与 [ArchitectureQuerySession] 交互，不再重复 buildIndex、不再 FQN 直构造。
+     */
+    fun openQuerySession(project: Project): ArchitectureQuerySession {
+        val index = buildIndex(project)
+        return ArchitectureQuerySession(
+            facade = this,
+            index = index,
+            queryService = ArchitectureGraphQueryService(index),
+        )
+    }
 
     /** 按查询文本在语义种子索引中检索 TopK 候选结果。 */
     fun semanticSeeds(project: Project, query: String, topK: Int): List<ProjectSemanticSeedResult> =
@@ -93,4 +108,36 @@ class ArchitectureIndexToolFacade(
             runCatching { RelationDirection.valueOf(raw.uppercase()) }.getOrNull()
         } ?: RelationDirection.BOTH
 
+}
+
+/**
+ * 一次 tool 调用内的「索引 + 查询服务 + 负载构造」会话。
+ *
+ * 设计目的：消除 tool 内 `facade.buildIndex()` + `ArchitectureGraphQueryService(index)` 直构造
+ * + `facade.relationPayload(relation, index)` 重复传 index 的样板，让所有 tool 走统一形态：
+ *
+ * ```
+ * val session = facade.openQuerySession(context.project)
+ * val relations = session.queryService.relationsForSymbol(...).map(session::relationPayload)
+ * ```
+ *
+ * session 持有的 [index] 与 [queryService] 来自同一次 buildIndex 调用，避免重复构建。
+ */
+class ArchitectureQuerySession(
+    private val facade: ArchitectureIndexToolFacade,
+    val index: ArchitectureGraphIndex,
+    val queryService: ArchitectureGraphQueryService,
+) {
+    /** 见 [ArchitectureIndexToolFacade.symbolPayload]。 */
+    fun symbolPayload(symbol: JvmSymbol): Map<String, Any?> = facade.symbolPayload(symbol)
+
+    /** 见 [ArchitectureIndexToolFacade.relationPayload]，index 自动绑定为 session 内的索引。 */
+    fun relationPayload(relation: JvmRelation): Map<String, Any?> =
+        facade.relationPayload(relation, index)
+
+    /** 见 [ArchitectureIndexToolFacade.relationKind]。 */
+    fun relationKind(value: String?): JvmRelationKind? = facade.relationKind(value)
+
+    /** 见 [ArchitectureIndexToolFacade.direction]。 */
+    fun direction(value: String?): RelationDirection = facade.direction(value)
 }

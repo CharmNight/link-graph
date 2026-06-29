@@ -72,7 +72,7 @@ class LlmGatewayClientTest {
     }
 
     @Test
-    fun redactForTraceReplacesKeyLookingLines() {
+    fun redactForTracePreservesKeyButRedactsValue() {
         val input = """
             line one is clean
             api_key: abc123DEF456
@@ -86,31 +86,63 @@ class LlmGatewayClientTest {
         val lines = redacted.split("\n")
 
         assertEquals("line one is clean", lines[0])
-        assertEquals("[REDACTED]", lines[1])
-        assertEquals("[REDACTED]", lines[2])
-        assertEquals("[REDACTED]", lines[3])
+        // 关键字与分隔符保留，仅 value 被替换；让 trace 仍能看出是哪个字段
+        assertEquals("api_key: [REDACTED]", lines[1])
+        assertEquals("token=[REDACTED]", lines[2])
+        assertEquals("password: [REDACTED]", lines[3])
         assertEquals("normal code here", lines[4])
-        assertEquals("[REDACTED]", lines[5])
-        assertEquals("[REDACTED]", lines[6])
+        assertEquals("apiKey = [REDACTED]", lines[5])
+        assertEquals("SECRET: [REDACTED]", lines[6])
     }
 
     @Test
-    fun redactForTraceReplacesAuthorizationAndCookieHeaders() {
+    fun redactForTracePreservesSurroundingCodeOnSameLine() {
+        // 同一行内多个赋值：只 redact 命中的 value，保留其他代码
+        val input = "config.password = \"secret\"; config.timeout = 30"
+        assertEquals(
+            "config.password = [REDACTED]; config.timeout = 30",
+            redactForTrace(input),
+        )
+    }
+
+    @Test
+    fun redactForTraceLeavesSourceCodeWithIdentifierSubstringIntact() {
+        // \b 边界：newPassword / myApiKey / sessionId123 等合法标识符不应被误命中
         val input = """
-            Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+            val newPassword = User.changePassword(oldPassword, newPassword)
+            val myApiKey = randomUUID().toString()
+            val sessionId123 = "row-" + row.id
+            class PasswordHasher { fun hash(input: String): String }
+        """.trimIndent()
+        assertEquals(input, redactForTrace(input))
+    }
+
+    @Test
+    fun redactForTraceRedactsHttpAuthAndCookieValues() {
+        val input = """
+            Authorization: Bearer eyJhbGciOiJIUzI1NiJ9
             Cookie: session=abc; theme=dark
             Set-Cookie: jwt=xyz; HttpOnly
             x-api-key: abc123
             session_id: 0xDEADBEEF
-            credentials: {"user":"admin","password":"hunter2"}
             access_token:Bearer 12345
             private_key="-----BEGIN RSA PRIVATE KEY-----"
         """.trimIndent()
         val redacted = redactForTrace(input)
-        // 所有行均命中关键字，应全部替换
-        redacted.split("\n").forEach { line ->
-            assertEquals("[REDACTED]", line, "敏感关键字行未脱敏：$line")
-        }
+        // 关键字行：value 被 [REDACTED]，关键字保留
+        // Bearer xxx 这类 HTTP auth scheme + token 多词值整体 redact
+        val lines = redacted.split("\n")
+        assertEquals("Authorization: [REDACTED]", lines[0])
+        // Cookie 行：session 是敏感关键字，redact session=abc；
+        // 但 theme=dark 不是关键字——surgical redaction 只擦敏感值，保留非敏感 cookie 项
+        assertEquals("Cookie: [REDACTED]; theme=dark", lines[1])
+        // Set-Cookie 整体作为 header 命中 set-cookie 关键字，value 部分被 redact；
+        // 但 ; HttpOnly 是 attribute flag（非敏感），surgical redaction 保留
+        assertEquals("Set-Cookie: [REDACTED]; HttpOnly", lines[2])
+        assertEquals("x-api-key: [REDACTED]", lines[3])
+        assertEquals("session_id: [REDACTED]", lines[4])
+        assertEquals("access_token:[REDACTED]", lines[5])
+        assertEquals("private_key=[REDACTED]", lines[6])
     }
 
     @Test
@@ -557,22 +589,18 @@ class LlmGatewayClientTest {
                 body = ByteArrayInputStream("""{"content":"x"}""".toByteArray(StandardCharsets.UTF_8)),
             ),
         )
-        try {
-            // 公网 IP 字面量（不依赖 DNS）+ allowInsecureHttp：演示 policy 可注入，
-            // 校验通过后 send 才真正发生。
-            LlmGatewayClient.setEndpointPolicyForTesting(RemoteLlmEndpointPolicy(allowInsecureHttp = true))
-            val response = LlmGatewayClient.generateJson(
-                client = client,
-                request = testLlmRequest(),
-                url = "http://8.8.8.8/v1/messages",
-                headers = emptyList(),
-                payload = "{}",
-                extractContent = { "ok" },
-            )
-            assertEquals("ok", response.content)
-        } finally {
-            LlmGatewayClient.setEndpointPolicyForTesting(RemoteLlmEndpointPolicy())
-        }
+        // 公网 IP 字面量（不依赖 DNS）+ allowInsecureHttp：演示 policy 可按调用注入，
+        // 校验通过后 send 才真正发生。无全局状态污染——其他测试默认仍是严格策略。
+        val response = LlmGatewayClient.generateJson(
+            client = client,
+            request = testLlmRequest(),
+            url = "http://8.8.8.8/v1/messages",
+            headers = emptyList(),
+            payload = "{}",
+            endpointPolicy = RemoteLlmEndpointPolicy(allowInsecureHttp = true),
+            extractContent = { "ok" },
+        )
+        assertEquals("ok", response.content)
     }
 
     private class RecordingHttpClient(

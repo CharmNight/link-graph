@@ -70,17 +70,24 @@ class RemoteLlmEndpointPolicy(
      * - 缓解 2：黑名单字符串命中是 O(1) 字符串比较，没有 DNS rebinding 空间。
      * - 残余：要彻底覆盖需要劫持 Java HttpClient 的 DNS 解析或自实现 socket factory，
      *   代价高且对 IDE 插件场景收益边际。本策略保持当前形态，残余窗口可接受。
+     *
+     * 已知未覆盖的绕过路径（仅在文档登记，不做拦截——本策略是 chokepoint，不是 air-gap）：
+     * - DNS rebinding 服务（nip.io / sslip.io）：`127.0.0.1.nip.io` 解析到 127.0.0.1，
+     *   黑名单字面量匹配命中不到；只能靠 send-时刻的 IP 校验，但那时 Java 已做 DNS。
+     * - FQDN 尾点（`localhost.`）：DNS 视角与 `localhost` 等价，但与本类的字面量集合不相等。
+     * - IPv6 等价写法：`::1` / `[::1]` / `0:0:0:0:0:0:0:1` 在 erase 后字符串不同，
+     *   靠 InetAddress 解析归一化兜底，但不靠字面量。
      */
     private fun blockReasonFor(host: String): String? {
         if (host.lowercase() in BLOCKED_HOSTNAMES) {
             return "blocklisted hostname"
         }
         // IP 字面量直接解析（无 DNS）；hostname 触发 DNS 解析。
+        // InetAddress.getByName 只会抛 UnknownHostException（或运行时 SecurityException），
+        // 不抛 PrivilegedActionException——后者只在 Subject.doAs 包装层出现，本调用栈不涉及。
         val ip = try {
             InetAddress.getByName(host)
         } catch (_: UnknownHostException) {
-            return null
-        } catch (_: java.security.PrivilegedActionException) {
             return null
         }
         return when {

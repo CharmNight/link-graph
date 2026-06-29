@@ -144,9 +144,13 @@ class RemoteStructuredResponseParserTest {
         assertTrue(requests[1].structuredOutput?.schema?.contains("\"payload\"") == true)
         assertTrue(requests[1].userPrompt.contains("payload is required"))
         assertTrue(requests[1].userPrompt.contains("上一次结构化校验失败"))
-        assertEquals(
-            listOf("远程 LLM 代码生成 首轮返回不是可解析的结构化 JSON，已自动修复重试 1 次并成功。"),
-            result.warnings,
-        )
+        // 不断言具体文案——文案改动不应破坏测试。只检查语义：
+        // - 唯一一条 warning
+        // - 包含 scene 名 + 修复 + 重试关键词
+        assertEquals(1, result.warnings.size, "修复重试成功路径应只产生一条 warning；实际：${result.warnings}")
+        val warning = result.warnings.single()
+        assertTrue(warning.contains("代码生成"), "warning 应包含 scene 名；实际：$warning")
+        assertTrue(warning.contains("修复"), "warning 应描述修复行为；实际：$warning")
+        assertTrue(warning.contains("重试"), "warning 应说明重试；实际：$warning")
     }
 }

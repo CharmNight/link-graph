@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.ui.bridge
 
 /**
- * M8：Bridge command payload 字段契约——每条命令在 [BridgeCommandParser.parseMessage] 中
+ * Bridge command payload 字段契约——每条命令在 [BridgeCommandParser.parseMessage] 中
  * **直接读**的 payload key 集合。
  *
  * 维护方式：手动维护一份显式契约，与 parser 实际读 key 行为对照。

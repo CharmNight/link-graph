@@ -64,21 +64,6 @@ internal object LlmGatewayClient {
     /** 重试最大尝试次数（含首次），默认 3 = 首次 + 2 次重试。 */
     private const val DEFAULT_MAX_ATTEMPTS = 3
 
-    /**
-     * 远程 endpoint SSRF 策略：作为所有 HTTP 请求的统一 chokepoint，默认启用。
-     *
-     * - 内置 gateway 的 URL 来自 settings，上游已校验过；这里再校验一次是纵深防御
-     * - 第三方 contributor 通过 EP 提供的 URL 未经上游校验，这里是唯一防线
-     * - 测试可通过 endpointPolicy 参数注入宽松策略（如允许 http://localhost）
-     */
-    internal var endpointPolicy: RemoteLlmEndpointPolicy = RemoteLlmEndpointPolicy()
-        private set
-
-    /** 测试场景下临时替换策略；生产代码不应调用。 */
-    internal fun setEndpointPolicyForTesting(policy: RemoteLlmEndpointPolicy) {
-        endpointPolicy = policy
-    }
-
     /** 根据当前请求参数选择共享的 HTTP 客户端实例。 */
     fun defaultHttpClient(request: LlmRequest): HttpClient {
         return SharedLlmHttpClientProvider.clientFor(request)
@@ -93,6 +78,7 @@ internal object LlmGatewayClient {
      * @param headers 附加请求头键值对。
      * @param payload 已序列化为字符串的请求体。
      * @param errorCodeKeys 解析错误码时尝试的字段顺序。
+     * @param endpointPolicy SSRF 策略 chokepoint；默认严格（HTTPS + 非内网），测试可注入宽松策略。
      * @param extractContent 从响应体提取最终文本内容的回调。
      */
     fun generateJson(
@@ -102,6 +88,7 @@ internal object LlmGatewayClient {
         headers: List<Pair<String, String>>,
         payload: String,
         errorCodeKeys: List<String> = listOf("code"),
+        endpointPolicy: RemoteLlmEndpointPolicy = RemoteLlmEndpointPolicy(),
         extractContent: (String) -> String,
     ): LlmResponse {
         // SSRF chokepoint：所有调用路径（内置 gateway / contributor / 任何未来路径）
@@ -141,6 +128,7 @@ internal object LlmGatewayClient {
      * 以 SSE 流式方式发起远程生成请求，把收到的文本增量通过事件回调实时回传。
      *
      * @param listener 用于接收 Started/TextDelta/Completed 事件的回调。
+     * @param endpointPolicy SSRF 策略 chokepoint；默认严格（HTTPS + 非内网），测试可注入宽松策略。
      * @param extractTextDelta 从单个 SSE data 帧中提取文本增量的回调，返回 null 表示该帧没有文本。
      */
     fun streamSse(
@@ -151,6 +139,7 @@ internal object LlmGatewayClient {
         payload: String,
         listener: (LlmStreamEvent) -> Unit,
         errorCodeKeys: List<String> = listOf("code"),
+        endpointPolicy: RemoteLlmEndpointPolicy = RemoteLlmEndpointPolicy(),
         extractTextDelta: (String) -> String?,
     ): LlmResponse {
         // SSRF chokepoint：与 generateJson 对称，所有流式请求同样过 endpoint 策略。
@@ -308,12 +297,10 @@ internal object LlmGatewayClient {
         block: (attempt: Int) -> T,
     ): T {
         require(maxAttempts > 0)
-        var lastError: LlmHttpException? = null
         repeat(maxAttempts) { attempt ->
             try {
                 return block(attempt)
             } catch (e: LlmHttpException) {
-                lastError = e
                 if (e.statusCode !in RETRYABLE_STATUSES) throw e
                 if (attempt == maxAttempts - 1) throw e
                 // 优先用服务端 Retry-After（cap 180s）；没有则指数退避（cap 8s）。
@@ -332,8 +319,9 @@ internal object LlmGatewayClient {
                 }
             }
         }
-        // 理论不可达（repeat 内一定会 return 或 throw），保险起见显式抛。
-        throw lastError ?: error("retryWithBackoff exhausted without exception")
+        // 不可达：require(maxAttempts > 0) + repeat(maxAttempts) 内每轮必 return 或 throw。
+        // 不写 lastError 兜底——如果将来 repeat 内逻辑改成吞异常，让它尽早暴露为非法状态。
+        error("unreachable: retryWithBackoff loop must return or throw inside repeat block")
     }
 
     /**
@@ -380,9 +368,31 @@ internal object LlmGatewayClient {
 internal fun LlmResponse.withoutRawBody(): LlmResponse = copy(rawBody = null)
 
 /**
- * 对要进入 trace / 日志的内容做最低限度的脱敏：把疑似含密钥/口令/会话凭证的整行替换为 `[REDACTED]`。
+ * 规范化并裁剪响应片段，便于写入错误消息 / 日志 / trace。
  *
- * 命中规则：行内出现下列任一关键字后跟 `:` 或 `=`（任意空白）——
+ * - 把 CR / LF 折成字面 `\n`，让多行内容压成单行，便于一行日志承载
+ * - 超过 [limit] 时截断并加 `...` 标记
+ *
+ * 多处用到（[LlmSceneException]、[RemoteStructuredResponseParser]、[redactForTrace] 等），
+ * 统一在此实现避免行为漂移。
+ */
+internal fun truncateForTrace(content: String, limit: Int): String {
+    val normalized = content.replace("\r", "").replace("\n", "\\n").trim()
+    return if (normalized.length <= limit) normalized else normalized.take(limit) + "..."
+}
+
+/**
+ * 对要进入 trace / 日志的内容做最低限度的脱敏：把疑似含密钥/口令/会话凭证的 **值** 替换为 `[REDACTED]`，
+ * 同时保留关键字与代码上下文，便于排查。
+ *
+ * 命中规则：关键字（前后必须是 word boundary，避免 `newPassword` / `myApiKey` 等合法标识符误命中）
+ * 后跟 `:` 或 `=`（任意空白），再跟一个「值」。
+ *
+ * 值的吃法（按顺序尝试）：
+ * - 引号字符串 `"..."` / `'...'` / 反引号 `` `...` `` —— 整段（含引号）吃掉
+ * - 裸值：直到结构性分隔符（空白 / 逗号 / 分号 / `}` / `]` / `)`）
+ *
+ * 命中关键字清单：
  * - 密钥类：`api_key` / `apikey` / `api-key` / `secret` / `client_secret`
  * - 令牌类：`token` / `access_token` / `refresh_token` / `id_token` / `bearer`
  * - 口令类：`password` / `passwd` / `pwd`
@@ -392,7 +402,7 @@ internal fun LlmResponse.withoutRawBody(): LlmResponse = copy(rawBody = null)
  * 关键字大小写无关；分隔符接受 `_` / `-`（兼容 api_key / apiKey / api-key / apikey）。
  *
  * 不做的：
- * - 不尝试解析 JSON 后逐字段脱敏（容易漏判，且性能差）
+ * - 不尝试解析 JSON 后逐字段脱敏（容易漏判，且性能差）；JSON 字面量天然被引号规则覆盖
  * - 不处理多行 PEM / JWT（结构化密钥不在源码片段常见范围）
  *
  * 当 LINKGRAPH_DEBUG_TRACE 开启、需要把 question / sourceContext / answer 写进 IDE 日志时，
@@ -400,11 +410,42 @@ internal fun LlmResponse.withoutRawBody(): LlmResponse = copy(rawBody = null)
  */
 internal fun redactForTrace(content: String): String {
     if (content.isEmpty()) return content
-    val pattern = Regex(
-        """(?i)(api[_-]?key|apikey|secret|client[_-]?secret|token|access[_-]?token|refresh[_-]?token|id[_-]?token|bearer|password|passwd|pwd|authorization|cookie|set-cookie|x-api-key|session|session[_-]?id|jsessionid|credentials|private[_-]?key|privatekey)\s*[:=]""",
-    )
-    return content.lines().joinToString("\n") { line ->
-        if (pattern.containsMatchIn(line)) "[REDACTED]" else line
-    }
+    return content.lines().joinToString("\n") { line -> redactLine(line) }
 }
+
+/** 单行脱敏：保留关键字与代码上下文，只把命中的 value 替换为 [REDACTED]。 */
+private fun redactLine(line: String): String {
+    val output = StringBuilder()
+    var idx = 0
+    while (idx < line.length) {
+        val keyMatch = REDACT_KEY_PATTERN.find(line, idx) ?: run {
+            output.append(line, idx, line.length)
+            return output.toString()
+        }
+        // 命中点之前的代码原样保留
+        output.append(line, idx, keyMatch.range.first)
+        // 关键字 + 分隔符（如 "api_key: " / "token="）保留，让 trace 还能看出是哪个字段
+        output.append(line, keyMatch.range.first, keyMatch.range.last + 1)
+        output.append("[REDACTED]")
+        idx = keyMatch.range.last + 1
+        // 尝试吃掉 value：要求 value 紧跟当前 idx（中间不能再有其他字符）
+        val valueMatch = REDACT_VALUE_PATTERN.find(line, idx)
+        if (valueMatch != null && valueMatch.range.first == idx) {
+            idx = valueMatch.range.last + 1
+        }
+    }
+    return output.toString()
+}
+
+/** 关键字 + 分隔符：前后加 \b 边界，避免 newPassword / myApiKey / sessionId123 等合法标识符被误命中。 */
+private val REDACT_KEY_PATTERN: Regex = Regex(
+    """(?i)\b(api[_-]?key|apikey|secret|client[_-]?secret|token|access[_-]?token|refresh[_-]?token|id[_-]?token|bearer|password|passwd|pwd|authorization|cookie|set-cookie|x-api-key|session|session[_-]?id|jsessionid|credentials|private[_-]?key|privatekey)\b\s*[:=]\s*""",
+)
+
+/** 命中关键字后吃掉的 value 形态：引号字面量优先，其次裸值。
+ *  裸值允许空格分隔的多词延续（覆盖 HTTP auth scheme `Bearer xxx`），
+ *  在结构性分隔符（逗号 / 分号 / 右花括号 / 右方括号 / 右圆括号）或行尾处终止。 */
+private val REDACT_VALUE_PATTERN: Regex = Regex(
+    """"[^"]*"|'[^']*'|`[^`]*`|[^\s,;}\])]+(?:\s+[^\s,;}\])]+)*""",
+)
 

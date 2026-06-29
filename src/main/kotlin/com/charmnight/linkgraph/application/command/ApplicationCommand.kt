@@ -26,7 +26,7 @@ import com.charmnight.linkgraph.workbench.StepGranularity
  *
  * P4-1：command 层不再依赖 com.intellij.openapi.editor.Editor。
  * 主体（subject）/ 上下文（context）解析完全由 workflow 内部走 IntelliJ 平台当前焦点编辑器，
- * 不再暴露 editor 引用给上层——历史上 [EditorReferenceToken] 字段从未被读取，且 fbda452d 之后
+ * 不再暴露 editor 引用给上层——历史上 editor token 字段从未被读取，且 fbda452d 之后
  * SubjectGraphWorkflow 已移除 Editor 参数，token 是死字段，本类一并移除。
  */
 internal sealed interface ApplicationCommand<out R> {
