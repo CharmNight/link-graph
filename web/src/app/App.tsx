@@ -1,29 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { undoLastDraftPatchApply } from "./api";
-import { AssistantWorkbenchShell } from "./assistant/AssistantWorkbenchShell";
-import { buildAssistantTurns } from "./assistant/assistantResultAdapters";
-import { useAssistantActionController, type AssistantDisplayModeDocuments } from "./assistant/useAssistantActionController";
-import {
-  buildDefaultExplanationPrompt,
-  buildDefaultQaQuestion,
-  DEFAULT_GENERATION_PLAN_PROMPT,
-  NEW_ASSISTANT_COMPOSER_TARGET,
-} from "./assistant/assistantPromptDefaults";
 import {
   applyLayoutUpdatesToGraphDocument,
   applyBootstrapRoutesToViewDocument,
   deriveFlowchartSummary,
-  deriveLatestTurnOutcome,
   deriveResourceRelationSummary,
   overlayDraftEntryOntoFlowchartView,
   resolveAnchorNodeId,
   resolveCollapsedDescendantSummary,
   resolveDisplayedNodeId,
-  resolveQaTargetNodeIds,
   resolveDraftEntryPrimaryNodeId,
   resolveDraftEntryTargetNodeIds,
   resolveEntryOwnerSignatures,
-  resolveEvidenceTargetNodeId,
   resolveNodeOwnerSignature,
   reuseCurrentViewGraphs,
   scopeFlowchartGraphToAnchorMethod,
@@ -40,14 +28,7 @@ import {
   activeProjectionIndex,
   workflowStageToAssistantTarget,
 } from "./appDisplaySelectors";
-import {
-  findExplanationStep,
-  resolveExplanationStepRawNodeId as resolveRawNodeIdForExplanationStep,
-} from "./appExplanationStepModel";
-import {
-  primaryWorkflowActionCommand,
-} from "./appPrimaryWorkflowAction";
-import { deriveInvestigationThreads } from "./investigationThreads";
+import { primaryWorkflowActionCommand } from "./appPrimaryWorkflowAction";
 import { AppDialogs } from "./components/AppDialogs";
 import { AppGraphStagePanel } from "./components/AppGraphStagePanel";
 import { AppWorkbenchChrome } from "./components/AppWorkbenchChrome";
@@ -64,41 +45,20 @@ import {
   syncNodePosition,
 } from "./graphState";
 import { canEditNodeLayout } from "./layoutEditability";
-import type { AssistantActionId, AssistantIntent } from "./assistant/assistantTypes";
+import type { AssistantIntent } from "./assistant/assistantTypes";
 import type {
-  AsyncRequestState,
   AnalysisDisplayMode,
-  AssistantComposerTarget,
-  CandidateDraftChange,
-  DraftWorkbenchEntry,
-  GeneratedCodeDraft,
-  GraphBeautificationResult,
-  GraphPatchResult,
-  ArchitectureGraphViewDocument,
-  ClassDiagramViewDocument,
-  FactGraphViewDocument,
-  FlowchartViewDocument,
-  GraphSurfaceExperimentFlags,
-  LinkGraphDocument,
   LinkGraphBootstrapState,
-  LinkGraphEdge,
-  LinkGraphNode,
   LinkGraphSceneId,
-  QaRequestRecoveryState,
-  ResultEvidenceReference,
-  ReviewGraphViewDocument,
-  RiskResolutionStatus,
-  StepGranularity,
 } from "./types";
 import type { EditableStageProps, IndexedReadonlyStageProps } from "./views/viewStageProps";
-import { useAssistantQaActions } from "./controllers/useAssistantQaActions";
+import type { AssistantDisplayModeDocuments } from "./assistant/useAssistantActionController";
+import { useAssistantWorkbench } from "./controllers/useAssistantWorkbench";
 import { useBootstrapProjectionState } from "./controllers/useBootstrapProjectionState";
 import { useBootstrapStateController } from "./controllers/useBootstrapStateController";
 import { useAppBridgeController } from "./controllers/useAppBridgeController";
 import { useBridgeCommandController } from "./controllers/useBridgeCommandController";
 import { useGraphDataRefs } from "./controllers/useGraphDataRefs";
-import { useSelectionState } from "./controllers/useSelectionState";
-import { useAssistantExplanationHistory } from "./controllers/useAssistantExplanationHistory";
 import { useGraphCanvasController } from "./controllers/useGraphCanvasController";
 import { useGraphEditController } from "./controllers/useGraphEditController";
 import { useInteractionProbeController } from "./controllers/useInteractionProbeController";
@@ -133,24 +93,27 @@ import {
   resolveWorkspaceBaseGraph,
   resolveWorkingGraph,
 } from "./sampleState";
-import { useExplanationState, DEFAULT_EXPLANATION_SESSION_LABEL } from "./controllers/useExplanationState";
-import { useExplanationStepActions } from "./controllers/useExplanationStepActions";
 import { useWorkbenchLayoutState } from "./controllers/useWorkbenchLayoutState";
 
 export { resolveQaTargetNodeIds } from "./appGraphSupport";
-// P2-1: 讲解状态管理委托给 useExplanationState hook
+// P2-1: 讲解状态管理委托给 useExplanationState hook；保留对外 re-export 不破坏既有 import
 export {
   DEFAULT_EXPLANATION_SESSION_LABEL as EXPLANATION_SESSION_LABEL,
   type ExplanationRequestMode,
   type ExplanationHistoryEntry,
 } from "./controllers/useExplanationState";
 
-/** 用户在生成计划讨论未输入问题时使用的默认提示语 */
-const DEFAULT_GENERATION_DISCUSSION_PROMPT = "请继续讨论这份实现建议的取舍、风险和下一步。";
-
 /**
- * 前端根组件。汇总工作台、图视图、AI 助手面板等所有核心状态与控制器，
- * 是 LinkGraph 插件前端的总入口。
+ * 前端根组件。
+ *
+ * 经过 P2-11 组件分解后，本文件只承担三件事：
+ * 1. 设置跨域共享的 state（canvas + projection + bridge + bootstrap）
+ * 2. 调用 [useAssistantWorkbench] 把整个 assistant 域收敛到一处（hook 自带 state、handler、JSX）
+ * 3. 装配 graph / dialog / chrome 的 JSX 布局
+ *
+ * 详细的 assistant 业务逻辑（explanation state、composer、QA actions、风险线程取证、
+ * 讲解步骤导航、composer priming 等）全部在 useAssistantWorkbench 内部，
+ * App.tsx 只通过返回的字段消费跨域共享的部分（如 selectedExplanationStepId 用于 derived state）。
  */
 export function App() {
   const initialStateRef = useRef<LinkGraphBootstrapState | null>(null);
@@ -163,6 +126,8 @@ export function App() {
   const initialState = initialStateRef.current;
   const initialGraph = resolveActiveViewDocument(initialState).visibleGraph;
   const initialAnchorNodeId = resolveInitialAnchorNodeId(initialState);
+
+  // ===== 工作台基础 state（canvas + projection + UI flags）=====
   const {
     canvasState,
     setCanvasState,
@@ -322,6 +287,8 @@ export function App() {
     setAssistantSessionState,
     setAssistantResultStore,
   } = projectionSetters;
+
+  // ===== 桥接命令 + 应用层命令控制器 =====
   const bridgeCommands = useBridgeCommandController({
     setOperationFeedback,
     setRequestFailureNotice,
@@ -375,9 +342,9 @@ export function App() {
     lastMessageType,
     operationFeedback,
   ]);
-  // 当前激活的工作流阶段（理解/问答/草稿/代码）
+
+  // ===== 工作流阶段 + 布局偏好 =====
   const [activeWorkflowStage, setActiveWorkflowStage] = useState<WorkflowStage>("understand");
-  // P2-1: 工作台布局偏好（折叠/宽度/大纲查询）委托给 useWorkbenchLayoutState hook
   const {
     hybridLayoutPreference,
     outlineQuery,
@@ -387,75 +354,9 @@ export function App() {
   } = useWorkbenchLayoutState();
   const activeAssistantTarget = workflowStageToAssistantTarget(activeWorkflowStage);
 
-  /** 用户在助手结果中点击引用证据时，定位到对应节点并打开详情面板 */
-  function handleAssistantRevealReference(reference: ResultEvidenceReference) {
-    if (reference.nodeId) {
-      const displayedNodeId = resolveDisplayedNodeId(reference.nodeId, nodes) ?? reference.nodeId;
-      setSelectedNodeId(displayedNodeId);
-      requestViewportFocus(displayedNodeId);
-      setDetailNodeId(displayedNodeId);
-      return;
-    }
-    setOperationFeedback({
-      level: "WARNING",
-      message: reference.filePath
-        ? `当前引用来自源码文件：${reference.filePath}`
-        : "当前引用没有可直接定位的图节点。",
-    });
-  }
-
-  /** 将助手侧的风险线程状态变更转交 QA 线程处理器，仅处理延期/接受/忽略三种状态 */
-  function handleAssistantResolveThread(threadId: string, status: RiskResolutionStatus) {
-    if (status === "DEFERRED" || status === "ACCEPTED_RISK" || status === "DISMISSED") {
-      handleResolveQaThread(threadId, status);
-    }
-  }
-  /** 切换图视图分析模式；切到评审图时联动跳转到 QA 流程并带上当前 diff 目标项 */
-  function handleRequestAnalysisDisplayMode(displayMode: AnalysisDisplayMode) {
-    if (displayMode === "REVIEW_GRAPH") {
-      setActiveWorkflowStage("qa");
-    }
-    const reviewGraphDiffItemIds = diffTargetItemIds.length > 0
-      ? diffTargetItemIds
-      : selectedNodeId && diffItems.some((item) => item.id === selectedNodeId)
-        ? [selectedNodeId]
-        : [];
-    workbenchCommands.handleRequestAnalysisDisplayMode(displayMode, reviewGraphDiffItemIds);
-  }
-  // P2-1: 讲解相关本地状态 + ref 集合委托给 useExplanationState hook
-  const {
-    selectedExplanationStepId,
-    setSelectedExplanationStepId,
-    selectedExplanationGranularity,
-    setSelectedExplanationGranularity,
-    explanationHistory,
-    setExplanationHistory,
-    currentExplanationSessionLabel,
-    setCurrentExplanationSessionLabel,
-    hoveredExplanationStepId,
-    setHoveredExplanationStepId,
-    pendingExplanationDrillTargetRef,
-    explanationLocalOverrideRef,
-    pendingExplanationRequestModeRef,
-    pendingExplanationSessionLabelRef,
-    pendingExplanationHistoryEntryRef,
-  } = useExplanationState(graphBeautificationResult);
-  // 当前选中的候选变更 / 风险线程 / 草稿条目 + draftCompareMode 集中委托给 useSelectionState
-  const {
-    selectedQaChangeId,
-    setSelectedQaChangeId,
-    selectedQaThreadId,
-    setSelectedQaThreadId,
-    selectedDraftEntryId,
-    setSelectedDraftEntryId,
-    draftCompareMode,
-    setDraftCompareMode,
-  } = useSelectionState(initialState, draftWorkbenchState);
-  // 用于快照比对的语义版本号，记录最新已知后端版本
+  // ===== 图数据 ref（供回调内读取最新值）=====
   const semanticRevisionRef = useRef<number | null>(initialState.semanticRevision ?? null);
-  // 当前场景的布局版本号，记录最新已知后端布局版本
   const layoutRevisionRef = useRef<number | null>(resolveCurrentSceneState(initialState).layoutRevision ?? null);
-  // 图谱相关 ref 集合 + 同步 effects 委托给 useGraphDataRefs
   const {
     nodesRef,
     edgesRef,
@@ -463,6 +364,8 @@ export function App() {
     anchorNodeIdRef,
     analysisDisplayModeRef,
   } = useGraphDataRefs(nodes, edges, draftGraph, anchorNodeId, analysisDisplayMode);
+
+  // ===== Assistant 视图文档 memo（assistant 域 + workbench derived 共用）=====
   const assistantViewDocuments = useMemo<AssistantDisplayModeDocuments>(() => ({
     FACT_GRAPH: factGraphView,
     FLOWCHART: flowchartView,
@@ -478,58 +381,8 @@ export function App() {
     classDiagramView,
     reviewGraphView,
   ]);
-  const {
-    assistantComposerDraft,
-    assistantComposerTarget,
-    selectedQaMode,
-    handleAssistantActionChange,
-    handleAssistantQaModeChange,
-    handleAssistantSubmit,
-    primeAssistantComposer,
-    selectedAssistantNodeIds,
-    assistantTargetTitle,
-    setAssistantComposer,
-    setAssistantComposerDraft,
-  } = useAssistantActionController({
-    analysisDisplayMode,
-    currentSceneId,
-    selectedMethodSignature: assistantSessionState.context.selectedMethodSignature ?? null,
-    selectedNodeId,
-    anchorNodeId,
-    selectionGroupNodeIds,
-    diffTargetItemIds,
-    diffItems,
-    viewDocuments: assistantViewDocuments,
-    assistantSessionState,
-    setAssistantSessionState,
-    selectedExplanationGranularity,
-    bridgeCommands,
-    setActiveWorkflowStage,
-    onExplanationAccepted: ({ actionId, intent, target }) => {
-      const explanationFollowUp = intent === "EXPLAIN_CODE" && target.kind === "ExplanationFollowUp" ? target : null;
-      if (explanationFollowUp) {
-        pendingExplanationRequestModeRef.current = "follow_up";
-        pendingExplanationHistoryEntryRef.current = graphBeautificationResult
-          ? {
-              result: graphBeautificationResult,
-              requestState: graphBeautificationRequestState,
-              selectedStepId: selectedExplanationStepId,
-              granularity: selectedExplanationGranularity,
-              sessionLabel: currentExplanationSessionLabel,
-            }
-          : null;
-        pendingExplanationSessionLabelRef.current = `围绕 ${explanationFollowUp.stepTitle ?? explanationFollowUp.stepId} 继续讲解`;
-        setSelectedExplanationStepId(explanationFollowUp.stepId);
-      } else {
-        pendingExplanationRequestModeRef.current = "fresh";
-        pendingExplanationHistoryEntryRef.current = null;
-        pendingExplanationSessionLabelRef.current = actionId === "DESCRIBE_CLASS"
-          ? "当前类介绍"
-          : DEFAULT_EXPLANATION_SESSION_LABEL;
-      }
-      explanationLocalOverrideRef.current = false;
-    },
-  });
+
+  // ===== Manual node id 计数器 + 节点派生 =====
   const {
     nextManualNodeIdRef,
     syncManualNodeIdCounters,
@@ -627,16 +480,6 @@ export function App() {
     setSelectionGroupNodeIds,
   });
 
-  /** 用户请求跳转到某个节点对应的源码位置 */
-  function handleRequestSourceNavigation(nodeId: string) {
-    sourceNavigationCommands.handleRequestSourceNavigation(nodeId);
-  }
-
-  /** 打开 Mermaid 导入对话框，并清空草稿输入 */
-  function handleOpenImportMermaid() {
-    setMermaidDraft("");
-    setImportDialogOpen(true);
-  }
   const {
     handleAddNode,
     handleDeleteNode,
@@ -697,48 +540,55 @@ export function App() {
     resolveCollapsedDescendantSummary,
   });
 
-  const {
-    handleConfirmCandidateChange,
-    handleRetryLastQaRequest,
-    handleSelectQaThread,
-    handleResolveQaThread,
-  } = useAssistantQaActions({
-    qaRequestRecoveryState,
-    qaResult,
+  // ===== Assistant 工作台：所有 assistant 域 state、handler、JSX 收敛到 useAssistantWorkbench =====
+  const assistant = useAssistantWorkbench({
+    initialState,
     nodes,
+    selectedNodeId,
+    selectedNode,
+    anchorNodeId,
+    analysisDisplayMode,
+    currentSceneId,
+    selectionGroupNodeIds,
+    diffTargetItemIds,
+    diffItems,
+    viewDocuments: assistantViewDocuments,
+    assistantSessionState,
+    assistantResultStore,
+    qaResult,
+    qaRequestState,
+    qaRequestRecoveryState,
+    diffReviewResult,
+    diffReviewRequestState,
+    draftWorkbenchState,
+    generationPlan,
+    generationPlanRequestState,
+    generationPlanDiscussionRequestState,
+    generationPlanDiscussionSession,
+    graphBeautificationResult,
+    graphBeautificationRequestState,
+    codeDraftRequestState,
+    setAssistantSessionState,
+    setAssistantResultStore,
+    setGraphBeautificationResult,
+    setGraphBeautificationRequestState,
+    setQaTargetNodeIds,
+    setSelectedNodeId,
+    setDetailNodeId,
+    requestViewportFocus,
     bridgeCommands,
+    workbenchCommands,
+    setActiveWorkflowStage,
     setOperationFeedback,
-    setSelectedQaChangeId,
-    setSelectedQaThreadId,
     selectExplanationTargetNode,
-    resolveDraftEntryTargetNodeIds,
-    resolveDisplayedNodeId,
-    resolveEvidenceTargetNodeId,
+    handleInspectNode,
+    handleWriteSingleCodeDraft,
+    handleOpenCodeDraftNativeDiff,
+    handleRequestArtifact,
+    resolveArtifactText: (artifactId: string) => artifactContents[artifactId] ?? null,
   });
 
-  /** 把上次失败的 QA 请求回填到 AI 工作台输入框，便于用户修改后重新提交 */
-  function handleEditFailedQaRequestFromAssistantWorkbench() {
-    const failedRequest = qaRequestRecoveryState.lastFailedRequest;
-    if (!failedRequest) {
-      return;
-    }
-    setQaTargetNodeIds(failedRequest.selectedNodeIds);
-    primeAssistantComposer("ASK_CODE", failedRequest.question, {
-      target: {
-        kind: "QaRecovery",
-        requestId: failedRequest.requestId,
-        sourceThreadId: failedRequest.sourceThreadId ?? null,
-        mode: failedRequest.mode ?? "AUTO",
-        selectedNodeIds: failedRequest.selectedNodeIds,
-      },
-      stage: "qa",
-      qaMode: failedRequest.mode ?? "AUTO",
-    });
-    setOperationFeedback({
-      level: "INFO",
-      message: "已把失败问答回填到 AI 工作台输入框，可修改后重新提交。",
-    });
-  }
+  // ===== Bootstrap 投影 + 状态控制器 =====
   const { applyBootstrapState } = useBootstrapProjectionState({
     nodesRef,
     edgesRef,
@@ -751,7 +601,7 @@ export function App() {
     setCanvasState,
     projectionState,
     setProjectionState,
-    explanationLocalOverrideRef,
+    explanationLocalOverrideRef: assistant.explanationLocalOverrideRef,
     setSelectionGroupNodeIds,
     setDiffTargetItemIds,
     syncManualNodeIdCounters,
@@ -790,58 +640,27 @@ export function App() {
     handleSelectionGroupChange,
     handleInspectNode,
     handleMoveNode,
-    handleRequestSourceNavigation,
+    handleRequestSourceNavigation: (nodeId: string) => sourceNavigationCommands.handleRequestSourceNavigation(nodeId),
   });
 
-  /** 计算问答作用域的节点 ID 与对应标题（单选时才有标题） */
-  function resolveQaScope(targetNodeId?: string) {
-    const nodeIds = resolveQaTargetNodeIds(targetNodeId, selectionGroupNodeIds);
-    return {
-      nodeIds,
-      title: nodeIds.length === 1
-        ? nodes.find((node) => node.id === nodeIds[0])?.title ?? null
-        : null,
-    };
+  // ===== Graph UI 内联 handler（不属于 assistant 域）=====
+  function handleRequestAnalysisDisplayMode(displayMode: AnalysisDisplayMode) {
+    if (displayMode === "REVIEW_GRAPH") {
+      setActiveWorkflowStage("qa");
+    }
+    const reviewGraphDiffItemIds = diffTargetItemIds.length > 0
+      ? diffTargetItemIds
+      : selectedNodeId && diffItems.some((item) => item.id === selectedNodeId)
+        ? [selectedNodeId]
+        : [];
+    workbenchCommands.handleRequestAnalysisDisplayMode(displayMode, reviewGraphDiffItemIds);
   }
 
-  /** 打开问答：先设置目标节点，再用默认提示词填充助手输入框 */
-  function handleOpenQa(targetNodeId?: string) {
-    const scope = resolveQaScope(targetNodeId);
-    const question = buildDefaultQaQuestion(scope.nodeIds, scope.title, analysisDisplayMode);
-    setQaTargetNodeIds(scope.nodeIds);
-    primeAssistantComposer("ASK_CODE", question, {
-      target: NEW_ASSISTANT_COMPOSER_TARGET,
-      stage: "qa",
-    });
+  function handleOpenImportMermaid() {
+    setMermaidDraft("");
+    setImportDialogOpen(true);
   }
 
-  /** 进入代码阶段并用默认提示词预填生成计划的输入框 */
-  function primeGenerationPlanComposer() {
-    setActiveWorkflowStage("code");
-    primeAssistantComposer("GENERATE_CODE", DEFAULT_GENERATION_PLAN_PROMPT, {
-      target: NEW_ASSISTANT_COMPOSER_TARGET,
-      stage: "code",
-    });
-  }
-
-  /** 进入代码阶段并请求生成代码草稿 */
-  function handleRequestCodeDrafts() {
-    setActiveWorkflowStage("code");
-    workbenchCommands.handleRequestCodeDrafts();
-  }
-
-  /** 进入代码阶段，针对当前生成计划项发起继续讨论 */
-  function handleDiscussGenerationPlanFromAssistant(question?: string) {
-    primeAssistantComposer("GENERATE_CODE", question?.trim() || DEFAULT_GENERATION_DISCUSSION_PROMPT, {
-      target: {
-        kind: "GenerationDiscussion",
-        planItemId: generationPlanDiscussionSession?.focusItemId ?? generationPlan?.items[0]?.id ?? null,
-      },
-      stage: "code",
-    });
-  }
-
-  /** 校验 Mermaid 输入非空后转交导入流程 */
   function handleConfirmImportMermaidDraft() {
     const mermaid = mermaidDraft.trim();
     if (mermaid.length === 0) {
@@ -854,82 +673,21 @@ export function App() {
     handleConfirmImportMermaid(mermaid);
   }
 
-  /** 用户点击展开溢出节点时，把节点标题一并传入对应的展开处理 */
   function handleExpandOverflowNode(nodeId: string) {
     const nodeTitle = nodes.find((node) => node.id === nodeId)?.title ?? nodeId;
     workbenchCommands.handleExpandOverflowNode(nodeId, nodeTitle);
   }
 
-  const {
-    handleReturnToPreviousExplanation,
-    handleOpenExplanationHistory,
-  } = useAssistantExplanationHistory({
-    graphBeautificationResult,
-    graphBeautificationRequestState,
-    explanationHistory,
-    explanationLocalOverrideRef,
-    pendingExplanationRequestModeRef,
-    pendingExplanationSessionLabelRef,
-    pendingExplanationHistoryEntryRef,
-    assistantSessionState,
-    assistantResultStore,
-    setSelectedExplanationStepId,
-    setHoveredExplanationStepId,
-    setSelectedExplanationGranularity,
-    setCurrentExplanationSessionLabel,
-    setExplanationHistory,
-    setGraphBeautificationResult,
-    setGraphBeautificationRequestState,
-    setAssistantSessionState,
-    setAssistantResultStore,
-  });
-
-  /** 根据步骤 ID 反查步骤原始节点 ID（不含显示层映射） */
-  function resolveExplanationStepRawNodeId(stepId: string): string | null {
-    return resolveRawNodeIdForExplanationStep(findExplanationStep(graphBeautificationResult, stepId));
+  function handleUndoDraftPatchApply() {
+    bridgeCommands.runBridgeCommand("回退草稿应用", () => undoLastDraftPatchApply(), {
+      successFeedback: {
+        level: "INFO",
+        message: "已请求回退上次草稿应用。",
+      },
+    });
   }
 
-  /** 解析步骤目标节点 ID（经过显示层映射，找不到返回 null） */
-  function resolveExplanationStepTargetNodeId(stepId: string): string | null {
-    return resolveDisplayedNodeId(resolveExplanationStepRawNodeId(stepId), nodes);
-  }
-
-  /** 解析步骤聚焦用节点 ID（优先显示层映射，回退到原始 ID） */
-  function resolveExplanationStepFocusNodeId(stepId: string): string | null {
-    const rawNodeId = resolveExplanationStepRawNodeId(stepId);
-    if (!rawNodeId) {
-      return null;
-    }
-    return resolveDisplayedNodeId(rawNodeId, nodes) ?? rawNodeId;
-  }
-
-  // P2-1: 讲解步骤交互动作（选中/定位/查看/切换粒度/追问）委托给 useExplanationStepActions hook
-  const {
-    handleSelectExplanationStepFromAssistant,
-    handleLocateExplanationStepNodeFromAssistant,
-    handleInspectExplanationStepNodeFromAssistant,
-    handleChangeExplanationGranularityFromAssistant,
-    handleFollowUpExplanationStepFromAssistant,
-  } = useExplanationStepActions({
-    graphBeautificationResult,
-    nodes,
-    selectedNodeId,
-    selectedNode,
-    analysisDisplayMode,
-    activeIntent: assistantSessionState.activeIntent,
-    setSelectedExplanationStepId,
-    setSelectedExplanationGranularity,
-    selectExplanationTargetNode,
-    handleInspectNode,
-    setOperationFeedback,
-    primeAssistantComposer,
-    setAssistantComposer,
-    handleAssistantSubmit,
-    assistantComposerDraft,
-    selectedAssistantNodeIds,
-    assistantTargetTitle,
-  });
-
+  // ===== Derived state（需要 assistant 输出 + graph state）=====
   const {
     codeDiffStatus,
     activeViewGraph,
@@ -946,18 +704,18 @@ export function App() {
     qaRequestRecoveryState,
     qaTargetNodeIds,
     qaTargetTitle,
-    selectedQaChangeId,
-    selectedQaThreadId,
+    selectedQaChangeId: assistant.selectedQaChangeId,
+    selectedQaThreadId: assistant.selectedQaThreadId,
     graphBeautificationResult,
     graphBeautificationRequestState,
-    selectedExplanationStepId,
-    selectedExplanationGranularity,
-    hoveredExplanationStepId,
-    explanationHistory,
-    currentExplanationSessionLabel,
+    selectedExplanationStepId: assistant.selectedExplanationStepId,
+    selectedExplanationGranularity: assistant.selectedExplanationGranularity,
+    hoveredExplanationStepId: assistant.hoveredExplanationStepId,
+    explanationHistory: assistant.explanationHistory,
+    currentExplanationSessionLabel: assistant.currentExplanationSessionLabel,
     draftWorkbenchState,
-    selectedDraftEntryId,
-    draftCompareMode,
+    selectedDraftEntryId: assistant.selectedDraftEntryId,
+    draftCompareMode: assistant.draftCompareMode,
     draftGraph,
     semanticFactGraph,
     workspaceBaseGraph,
@@ -1044,24 +802,10 @@ export function App() {
     blockingRiskCount: changeTrayState.blockingRiskCount,
     generatedCodeDraftCount: generatedCodeDrafts.length,
   });
-  /** 选中某个草稿条目并联动定位到对应的图节点 */
-  function handleSelectDraftEntry(entryId: string) {
-    setSelectedDraftEntryId(entryId);
-    const entry = draftWorkbenchState.draftChanges.find((item) => item.entryId === entryId)
-      ?? draftWorkbenchState.draftNotes.find((item) => item.entryId === entryId)
-      ?? null;
-    const targetNodeId = resolveDraftEntryTargetNodeIds(entry)
-      .map((nodeId) => resolveDisplayedNodeId(nodeId, nodes))
-      .find(Boolean)
-      ?? null;
-    if (targetNodeId) {
-      selectExplanationTargetNode(targetNodeId, { focusViewport: true });
-    }
-  }
 
-  // 选中草稿条目后自动定位到主节点。selectedNodeId 只用于"已经选中就不再重复定位"的早退判断，
-  // 不应作为依赖——否则 selectExplanationTargetNode 改动 selectedNodeId 会立刻重触发 effect，形成震荡。
-  // 用 ref 读取最新值，依赖里只放真正应该触发定位的 stage / nodes / selectedDraftEntry。
+  // ===== 草稿条目自动定位 effect（需要 assistant.selectedDraftEntryId）=====
+  // selectedNodeId 只用于"已经选中就不再重复定位"的早退判断，不应作为依赖——否则
+  // selectExplanationTargetNode 改动 selectedNodeId 会立刻重触发 effect 形成震荡。
   const selectedNodeIdRef = useRef(selectedNodeId);
   selectedNodeIdRef.current = selectedNodeId;
   useEffect(() => {
@@ -1077,64 +821,62 @@ export function App() {
       return;
     }
     selectExplanationTargetNode(displayedTargetNodeId, { focusViewport: true });
-  }, [activeWorkflowStage, nodes, selectedDraftEntry]);
+  }, [activeWorkflowStage, nodes, selectedDraftEntry, selectExplanationTargetNode]);
 
-  /** 触发对当前作用域的讲解：定位节点、构建默认提示词并按模式直接提交或预填输入框 */
-  function handleExplainCurrentScope(focusNodeId?: string) {
-    const targetNodeId = focusNodeId ?? selectedNodeId ?? null;
-    const displayedTargetNodeId = targetNodeId ? resolveDisplayedNodeId(targetNodeId, nodes) ?? targetNodeId : null;
-    const targetNode = displayedTargetNodeId ? nodes.find((node) => node.id === displayedTargetNodeId) ?? null : null;
-    if (displayedTargetNodeId) {
-      selectExplanationTargetNode(displayedTargetNodeId);
+  // ===== 主工作流动作分发 =====
+  const primaryWorkflowActionState = {
+    activeWorkflowStage,
+    analysisDisplayMode,
+    graphBeautificationRequestState,
+    qaRequestState,
+    generationPlanRequestState,
+    codeDraftRequestState,
+    codeDiffStatus,
+    generatedCodeDraftCount: generatedCodeDrafts.length,
+    blockingRiskCount: changeTrayState.blockingRiskCount,
+    assistantComposerDraft: assistant.assistantComposerDraft,
+    selectedNodeId,
+    selectedNodeTitle: selectedNode?.title ?? null,
+    assistantTargetTitle: assistant.assistantTargetTitle(assistant.selectedAssistantNodeIds()) ?? null,
+  };
+
+  function handlePrimaryWorkflowAction() {
+    const command = primaryWorkflowActionCommand(primaryWorkflowActionState);
+    switch (command.kind) {
+      case "SUBMIT_ASSISTANT":
+        assistant.handleAssistantSubmit(command.intent, command.prompt);
+        return;
+      case "OPEN_QA":
+        assistant.handleOpenQa(command.targetNodeId ?? undefined);
+        return;
+      case "PRIME_GENERATION_PLAN":
+        assistant.primeGenerationPlanComposer();
+        return;
+      case "WRITE_DRAFTS":
+        workbenchCommands.handleWriteDrafts();
+        return;
+      case "REQUEST_CODE_DRAFTS":
+        assistant.handleRequestCodeDrafts();
     }
-    const prompt = buildDefaultExplanationPrompt(targetNode?.title ?? null, analysisDisplayMode);
-    if (analysisDisplayMode === "CLASS_DIAGRAM") {
-      handleAssistantSubmit("EXPLAIN_CODE", prompt, {
-        selectedNodeIds: displayedTargetNodeId ? [displayedTargetNodeId] : undefined,
-        target: NEW_ASSISTANT_COMPOSER_TARGET,
-      });
+  }
+
+  function handleSelectOutlineItem(itemId: string) {
+    if (itemId.startsWith("thread:")) {
+      const threadId = itemId.slice("thread:".length);
+      setActiveWorkflowStage("qa");
+      assistant.handleSelectQaThread(threadId);
       return;
     }
-    primeAssistantComposer("EXPLAIN_CODE", prompt, {
-      stage: "understand",
-    });
-  }
-
-  /** 在 QA 与 diff 评审结果中查找指定 ID 的风险线程 */
-  function findAssistantRiskThread(threadId: string) {
-    return [
-      ...deriveInvestigationThreads(qaResult),
-      ...deriveInvestigationThreads(diffReviewResult),
-    ].find((thread) => thread.threadId === threadId) ?? null;
-  }
-
-  /** 从助手结果发起风险线程取证：设置目标节点并预填取证问题 */
-  function handleInvestigateThreadFromAssistant(threadId: string) {
-    const thread = findAssistantRiskThread(threadId);
-    if (!thread) {
+    if (itemId.startsWith("draft:")) {
+      const entryId = itemId.slice("draft:".length);
+      setActiveWorkflowStage("draft");
+      assistant.handleSelectDraftEntry(entryId);
       return;
     }
-    setSelectedQaThreadId(threadId);
-    setQaTargetNodeIds(thread.targetNodeIds);
-    const question = thread.recommendedQuestion.trim()
-      || `请继续取证：核对“${thread.title}”对应的直接源码证据。`;
-    const targetNodeId = resolveDisplayedNodeId(
-      resolveEvidenceTargetNodeId(thread.targetNodeIds, thread.evidence),
-      nodes,
-    );
-    if (targetNodeId) {
-      selectExplanationTargetNode(targetNodeId, { focusViewport: true });
-    }
-    primeAssistantComposer("ASK_CODE", question, {
-      target: {
-        kind: "RiskInvestigation",
-        threadId,
-        targetNodeIds: thread.targetNodeIds,
-      },
-      stage: "qa",
-    });
+    handleSelectNode(itemId);
   }
 
+  // ===== JSX：基础 stage props + 编辑/只读 stage props =====
   const baseStageProps = {
     selectedNodeId,
     focusNodeRequest,
@@ -1152,11 +894,11 @@ export function App() {
     onMoveNode: handleMoveNode,
     onMoveNodes: handleMoveNodes,
     onFormatLayout: handleFormatLayout,
-    onRequestBeautification: handleExplainCurrentScope,
-    onRequestSourceNavigation: handleRequestSourceNavigation,
-    onPrimeQuestionComposer: handleOpenQa,
+    onRequestBeautification: assistant.handleExplainCurrentScope,
+    onRequestSourceNavigation: (nodeId: string) => sourceNavigationCommands.handleRequestSourceNavigation(nodeId),
+    onPrimeQuestionComposer: assistant.handleOpenQa,
     onToggleCollapseNode: handleToggleCollapseNode,
-    onOpenQa: handleOpenQa,
+    onOpenQa: assistant.handleOpenQa,
     onExpandOverflowNode: handleExpandOverflowNode,
     onExpandInvocation: workbenchCommands.handleExpandInvocation,
     onRemoveInvocationExpansion: workbenchCommands.handleRemoveInvocationExpansion,
@@ -1184,138 +926,7 @@ export function App() {
     onRequestReviewGraphWithOptions: workbenchCommands.handleRequestReviewGraphWithOptions,
   };
 
-  const primaryWorkflowActionState = {
-    activeWorkflowStage,
-    analysisDisplayMode,
-    graphBeautificationRequestState,
-    qaRequestState,
-    generationPlanRequestState,
-    codeDraftRequestState,
-    codeDiffStatus,
-    generatedCodeDraftCount: generatedCodeDrafts.length,
-    blockingRiskCount: changeTrayState.blockingRiskCount,
-    assistantComposerDraft,
-    selectedNodeId,
-    selectedNodeTitle: selectedNode?.title ?? null,
-    assistantTargetTitle: assistantTargetTitle(selectedAssistantNodeIds()) ?? null,
-  };
-
-  /** 根据当前流程状态计算主操作命令并分发到对应处理（提交助手/开 QA/写草稿等） */
-  function handlePrimaryWorkflowAction() {
-    const command = primaryWorkflowActionCommand(primaryWorkflowActionState);
-    switch (command.kind) {
-      case "SUBMIT_ASSISTANT":
-        handleAssistantSubmit(command.intent, command.prompt);
-        return;
-      case "OPEN_QA":
-        handleOpenQa(command.targetNodeId ?? undefined);
-        return;
-      case "PRIME_GENERATION_PLAN":
-        primeGenerationPlanComposer();
-        return;
-      case "WRITE_DRAFTS":
-        workbenchCommands.handleWriteDrafts();
-        return;
-      case "REQUEST_CODE_DRAFTS":
-        handleRequestCodeDrafts();
-    }
-  }
-
-  /** 选中大纲项：按前缀区分风险线程、草稿条目或图节点，分别路由 */
-  function handleSelectOutlineItem(itemId: string) {
-    if (itemId.startsWith("thread:")) {
-      const threadId = itemId.slice("thread:".length);
-      setActiveWorkflowStage("qa");
-      handleSelectQaThread(threadId);
-      return;
-    }
-    if (itemId.startsWith("draft:")) {
-      const entryId = itemId.slice("draft:".length);
-      setActiveWorkflowStage("draft");
-      handleSelectDraftEntry(entryId);
-      return;
-    }
-    handleSelectNode(itemId);
-  }
-
-  /** 通过桥接命令请求回退上次草稿应用 */
-  function handleUndoDraftPatchApply() {
-    bridgeCommands.runBridgeCommand("回退草稿应用", () => undoLastDraftPatchApply(), {
-      successFeedback: {
-        level: "INFO",
-        message: "已请求回退上次草稿应用。",
-      },
-    });
-  }
-
-  /** 按 ID 从本地缓存中读取产物文本内容 */
-  function resolveArtifactText(artifactId: string): string | null {
-    return artifactContents[artifactId] ?? null;
-  }
-
-  const assistantTurns = useMemo(() => buildAssistantTurns({
-    assistantSessionState,
-    assistantResultStore,
-  }), [
-    assistantSessionState,
-    assistantResultStore,
-  ]);
-  const assistantRequestRunning = [
-    qaRequestState,
-    diffReviewRequestState,
-    graphBeautificationRequestState,
-    generationPlanRequestState,
-    generationPlanDiscussionRequestState,
-    codeDraftRequestState,
-  ].some((state) => state.phase === "RUNNING");
-  const assistantWorkbenchContent = (
-    <AssistantWorkbenchShell
-      assistantSessionState={assistantSessionState}
-      turns={assistantTurns}
-      activeIntent={assistantSessionState.activeIntent}
-      activeActionId={assistantSessionState.activeActionId}
-      requestRunning={assistantRequestRunning}
-      qaRequestRecoveryState={qaRequestRecoveryState}
-      composerDraft={assistantComposerDraft}
-      onComposerDraftChange={setAssistantComposerDraft}
-      onActionChange={handleAssistantActionChange}
-      onSubmit={handleAssistantSubmit}
-      onRetryLastQaRequest={handleRetryLastQaRequest}
-      onEditFailedQaRequest={handleEditFailedQaRequestFromAssistantWorkbench}
-      onPrimeGenerationPlan={primeGenerationPlanComposer}
-      onRequestCodeDrafts={handleRequestCodeDrafts}
-      onWriteCodeDrafts={workbenchCommands.handleWriteDrafts}
-      onWriteSingleCodeDraft={handleWriteSingleCodeDraft}
-      onOpenNativeDiff={handleOpenCodeDraftNativeDiff}
-      onOpenDraft={workbenchCommands.handleOpenDraft}
-      onRevealReference={handleAssistantRevealReference}
-      selectedExplanationStepId={selectedExplanationStepId}
-      selectedExplanationGranularity={selectedExplanationGranularity}
-      selectedQaMode={selectedQaMode}
-      explanationHistoryTrail={[
-        ...explanationHistory.map((entry) => entry.sessionLabel),
-        currentExplanationSessionLabel,
-      ]}
-      previousExplanationSessionLabel={explanationHistory[explanationHistory.length - 1]?.sessionLabel ?? null}
-      onSelectExplanationStep={handleSelectExplanationStepFromAssistant}
-      onLocateExplanationStepNode={handleLocateExplanationStepNodeFromAssistant}
-      onInspectExplanationStepNode={handleInspectExplanationStepNodeFromAssistant}
-      onHoverExplanationStep={setHoveredExplanationStepId}
-      onLeaveExplanationStep={() => setHoveredExplanationStepId(null)}
-      onChangeExplanationGranularity={handleChangeExplanationGranularityFromAssistant}
-      onQaModeChange={handleAssistantQaModeChange}
-      onFollowUpExplanationStep={handleFollowUpExplanationStepFromAssistant}
-      onReturnToPreviousExplanation={handleReturnToPreviousExplanation}
-      onOpenExplanationHistory={handleOpenExplanationHistory}
-      canReturnToPreviousExplanation={explanationHistory.length > 0}
-      onDiscussGenerationPlan={handleDiscussGenerationPlanFromAssistant}
-      onConfirmCandidateChange={handleConfirmCandidateChange}
-      onInvestigateThread={handleInvestigateThreadFromAssistant}
-      onResolveThread={handleAssistantResolveThread}
-      resolveArtifactText={resolveArtifactText}
-      onRequestArtifact={handleRequestArtifact}
-    />
-  );
+  // ===== 图 stage JSX（assistant.workbench 是 hook 内部已渲染好的 JSX）=====
   const graphStage = (
     <AppGraphStagePanel
       analysisDisplayMode={analysisDisplayMode}
@@ -1353,7 +964,7 @@ export function App() {
       outlineQuery={outlineQuery}
       selectedNodeId={selectedNodeId}
       graphStage={graphStage}
-      assistantWorkbench={assistantWorkbenchContent}
+      assistantWorkbench={assistant.workbench}
       dialogs={(
         <AppDialogs
           importDialogOpen={isImportDialogOpen}
@@ -1380,18 +991,18 @@ export function App() {
       onApplyChanges={workbenchCommands.handleWriteDrafts}
       onRevertChanges={handleUndoDraftPatchApply}
       onOpenDraft={() => {
-        setDraftCompareMode("after");
+        assistant.setDraftCompareMode("after");
         setActiveWorkflowStage("draft");
       }}
       onOpenDraftCompare={() => {
-        setDraftCompareMode("compare");
+        assistant.setDraftCompareMode("compare");
         setActiveWorkflowStage("draft");
       }}
       onOpenCode={() => setActiveWorkflowStage("code")}
       onUpdateNode={handleUpdateNode}
       onDeleteNode={handleDeleteNode}
       onDeleteNodeSubtree={handleDeleteNodeSubtree}
-      onRequestSourceNavigation={handleRequestSourceNavigation}
+      onRequestSourceNavigation={(nodeId: string) => sourceNavigationCommands.handleRequestSourceNavigation(nodeId)}
       onClosePropertyDrawer={() => setDetailNodeId(null)}
     />
   );

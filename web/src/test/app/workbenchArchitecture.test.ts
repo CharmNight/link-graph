@@ -24,6 +24,7 @@ function listFiles(root: string): string[] {
 describe("workbench architecture", () => {
   it("converges the right side on the final assistant shell without removed page modules", () => {
     const appSource = read("src/app/App.tsx");
+    const assistantWorkbenchSource = read("src/app/controllers/useAssistantWorkbench.tsx");
     const shellSource = read("src/app/assistant/AssistantWorkbenchShell.tsx");
     const composerSource = read("src/app/assistant/AssistantComposer.tsx");
     const threadSource = read("src/app/assistant/AssistantThread.tsx");
@@ -53,7 +54,13 @@ describe("workbench architecture", () => {
       ["update", "Workbench", "Section", "Preference"],
     ].map((parts) => parts.join(""));
 
-    expect(appSource).toContain("AssistantWorkbenchShell");
+    // App.tsx 通过 useAssistantWorkbench hook 委托给 AssistantWorkbenchShell——
+    // hook 把 AssistantWorkbenchShell 的渲染收敛到一处，App.tsx 不再直接持有该 JSX。
+    // 此处断言两种形态都满足：
+    //   1. App.tsx 至少引用了 useAssistantWorkbench（说明走了 hook 路径）
+    //   2. useAssistantWorkbench.tsx 实际渲染了 AssistantWorkbenchShell
+    expect(appSource).toContain("useAssistantWorkbench");
+    expect(assistantWorkbenchSource).toContain("AssistantWorkbenchShell");
     for (const removedName of removedPageModuleNames) {
       expect(appSource).not.toContain(removedName);
     }
