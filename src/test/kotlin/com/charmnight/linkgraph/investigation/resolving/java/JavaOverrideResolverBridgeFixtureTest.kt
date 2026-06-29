@@ -172,6 +172,53 @@ class JavaOverrideResolverBridgeFixtureTest : BasePlatformTestCase() {
         )
     }
 
+    fun testResolverRejectsSameArityDifferentTypeOverload() {
+        // 修复 P1 commit 引入的过匹配：实现类有同名同 arity 但类型不同的方法（重载），
+        // 不应被当作接口方法的 override。
+        // - 接口 Processor 有 process(String)
+        // - FooImpl 实现了 Processor，并自己另定义了 process(Integer)（不是 override）
+        // 解析 Processor.process(String) 应只返回 FooImpl.process(String)，不返回 process(Integer)。
+        myFixture.addFileToProject(
+            "src/main/java/com/example/overload/Processor.java",
+            """
+            package com.example.overload;
+
+            public interface Processor {
+                String process(String input);
+            }
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/overload/FooImpl.java",
+            """
+            package com.example.overload;
+
+            public class FooImpl implements Processor {
+                @Override
+                public String process(String input) {
+                    return input;
+                }
+                // 同名同 arity 异类型：不是 Processor.process 的 override
+                public Integer process(Integer input) {
+                    return input;
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val outcome = resolveOverride(project, "com.example.overload.Processor", "process")
+        // 期望：单实现 FooImpl.process(String)，不会被 process(Integer) 污染成 MultipleCandidates
+        assertIsResolvedSingle(outcome, "FooImpl.process")
+        // 进一步断言 fact 签名里只有 String 参数版本
+        val signatures = (outcome as ResolutionOutcome.Resolved).facts
+            .mapNotNull { it.symbolSignature }
+            .joinToString(";")
+        assertTrue(
+            !signatures.contains("Integer"),
+            "解析结果不应包含 process(Integer) 的重载；实际 fact: $signatures",
+        )
+    }
+
     // ---------- helpers ----------
 
     private fun resolveOverride(

@@ -6,6 +6,7 @@ import com.charmnight.linkgraph.application.usecase.InvocationExpansionTargetKin
 import com.charmnight.linkgraph.jvm.index.JvmClassKind
 import com.charmnight.linkgraph.jvm.index.JvmClassSymbol
 import com.charmnight.linkgraph.jvm.index.JvmMethodSymbol
+import com.charmnight.linkgraph.jvm.index.JvmOverrideShapeMatcher
 import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
 import com.charmnight.linkgraph.source.SourceOrigin
 
@@ -103,11 +104,12 @@ class InvocationExpansionTargetResolver {
      * 在所有实现类中查找同名同参的具体实现方法。
      *
      * 先收集目标类（接口或抽象类）的全部实现/继承类标识，
-     * 再在这些项目源码的实现类中按 [matchesByOverrideShape] 匹配，
+     * 再在这些项目源码的实现类中按 [JvmOverrideShapeMatcher.matchesOverride] 匹配，
      * 结果按方法标识去重。
      *
-     * 匹配规则用 simpleName + 参数数量：与 JavaOverrideResolver 保持一致，
-     * 覆盖泛型特化、协变返回等 parameterTypes 严格相等会漏匹配的场景。
+     * 匹配规则与 [com.charmnight.linkgraph.investigation.resolving.java.JavaOverrideResolver]
+     * 完全一致：simpleName + arity + 每个参数位置的 erasure 相容性，覆盖泛型特化、协变返回，
+     * 拒绝同名同 arity 异类型重载。
      */
     private fun implementationMethods(
         method: JvmMethodSymbol,
@@ -118,7 +120,6 @@ class InvocationExpansionTargetResolver {
         if (implementingClassIds.isEmpty()) {
             return emptyList()
         }
-        val parameterCount = method.parameterTypes.size
         return implementingClassIds
             .asSequence()
             .mapNotNull(index::findSymbol)
@@ -128,8 +129,7 @@ class InvocationExpansionTargetResolver {
                 index.symbolIndex.methodsBySignature.values.asSequence()
                     .filter { candidate ->
                         candidate.ownerClassName == classSymbol.qualifiedName &&
-                            candidate.simpleName == method.simpleName &&
-                            candidate.parameterTypes.size == parameterCount
+                            JvmOverrideShapeMatcher.matchesOverride(candidate, method)
                     }
             }
             .distinctBy(JvmMethodSymbol::id)

@@ -141,7 +141,7 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
                 ),
             ),
         )
-        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph())
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph)
         waitForSnapshot { snapshot ->
             snapshot.lastGraphSource == "currentContext" &&
                 snapshot.analysisDisplayMode == AnalysisDisplayMode.RESOURCE_RELATION_VIEW &&
@@ -239,7 +239,7 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
             registry = SemanticProviderRegistry(listOf(provider)),
         )
 
-        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph())
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph)
         waitForSnapshot { snapshot ->
             snapshot.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART &&
                 currentVisibleGraph(snapshot).nodes.any { node -> node.id == "action:trim" } == true
@@ -262,7 +262,7 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
         )
 
         val service = project.graphEditorApplicationServiceForTest()
-        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph())
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph)
 
         waitForSnapshot { snapshot ->
             snapshot.lastGraphSource == "currentMethod" &&
@@ -356,7 +356,7 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
         )
         service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH))
 
-        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph())
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph)
         waitForSnapshot { snapshot ->
             analyzerCallCount.get() == 1 &&
                 snapshot.analysisDisplayMode == AnalysisDisplayMode.FACT_GRAPH &&
@@ -456,7 +456,7 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
         )
         service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART))
 
-        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph())
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph)
         waitForSnapshot { snapshot ->
             analyzerCallCount.get() == 1 &&
                 snapshot.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART &&
@@ -571,7 +571,7 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
         )
         service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH))
 
-        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph())
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph)
         waitForSnapshot { snapshot ->
             snapshot.analysisDisplayMode == AnalysisDisplayMode.FACT_GRAPH &&
                 currentVisibleGraph(snapshot).nodes.any { node -> node.id == "action:write" } == true
@@ -699,7 +699,7 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
         )
         service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART))
 
-        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph())
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph)
         waitForSnapshot { snapshot ->
             snapshot.analysisDisplayMode == AnalysisDisplayMode.FLOWCHART &&
                 snapshot.flowchartView?.summary?.semanticallyIncomplete == true
@@ -816,7 +816,7 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
         )
         service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH))
 
-        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph())
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph)
         waitForSnapshot { snapshot ->
             currentVisibleGraph(snapshot).nodes.any { node -> node.id == "action:trim" } == true
         }
@@ -936,7 +936,7 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
 
         val service = project.graphEditorApplicationServiceForTest()
         val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
-        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph())
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph)
 
         waitForSnapshot { snapshot ->
             snapshot.lastGraphSource == "currentMethod" &&
@@ -967,7 +967,7 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
 
         val service = project.graphEditorApplicationServiceForTest()
         val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
-        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph())
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph)
 
         waitForSnapshot { snapshot ->
             snapshot.lastGraphSource == "currentMethod" &&
