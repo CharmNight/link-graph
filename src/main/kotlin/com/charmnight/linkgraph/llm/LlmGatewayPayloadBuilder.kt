@@ -48,9 +48,7 @@ internal object LlmGatewayPayloadBuilder {
                 },
             )
         }
-        if (request.deliveryMode == LlmDeliveryMode.STREAM) {
-            root.addProperty("stream", true)
-        }
+        applyStreamFlag(root, request.deliveryMode)
         return LlmJsonCodec.toJson(root)
     }
 
@@ -98,9 +96,7 @@ internal object LlmGatewayPayloadBuilder {
                 },
             )
         }
-        if (request.deliveryMode == LlmDeliveryMode.STREAM) {
-            root.addProperty("stream", true)
-        }
+        applyStreamFlag(root, request.deliveryMode)
         return LlmJsonCodec.toJson(root)
     }
 
@@ -132,7 +128,24 @@ internal object LlmGatewayPayloadBuilder {
                 )
             },
         )
+        applyStreamFlag(root, request.deliveryMode)
         return LlmJsonCodec.toJson(root)
+    }
+
+    /**
+     * 把 [LlmDeliveryMode.STREAM] 标志写到协议 payload 中。
+     *
+     * 三种协议（OpenAI Chat / Responses / Anthropic Messages）的 stream 字段名相同，
+     * 统一走本函数避免任一协议漏写——历史上 [anthropicMessagesPayload] 没有 stream 分支，
+     * 如果未来给 Anthropic gateway 加 `stream()` 覆盖，会静默拿不到流式响应。
+     */
+    private fun applyStreamFlag(
+        root: JsonObject,
+        deliveryMode: LlmDeliveryMode,
+    ) {
+        if (deliveryMode == LlmDeliveryMode.STREAM) {
+            root.addProperty("stream", true)
+        }
     }
 
     /** 校验 temperature 必须是有限数值，避免 NaN/Infinity 透传到 provider 端引发歧义。 */

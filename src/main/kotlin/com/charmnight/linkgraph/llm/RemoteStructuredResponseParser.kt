@@ -133,9 +133,12 @@ internal class RemoteStructuredResponseParser(
                     onPreview = onPreview,
                 )
             }.getOrElse { retryError ->
-                throw IllegalStateException(
-                    "远程 LLM $scene 首轮请求超时或连接失败，重试 1 次后仍失败：${LlmUserMessageFormatter.describe(retryError)}",
-                    retryError,
+                // m5：用类型化异常代替字符串编码——formatter 按 type 分发，文案改动不影响控制流。
+                // 消息文本保留 "重试 1 次后仍失败" 以兼容既有 warning 断言。
+                throw LlmSceneException.TransportRetryExhausted(
+                    scene = scene,
+                    cause = retryError,
+                    formattedMessage = "远程 LLM $scene 首轮请求超时或连接失败，重试 1 次后仍失败：${LlmUserMessageFormatter.describe(retryError)}",
                 )
             }
         }.getOrThrow()
@@ -171,14 +174,13 @@ internal class RemoteStructuredResponseParser(
                 )
             },
             onFailure = { repairError ->
-                error(
-                    buildStructuredFailureMessage(
-                        scene = scene,
-                        firstError = firstError,
-                        firstContent = firstResponse.content,
-                        repairError = repairError,
-                        repairedContent = repairedResponse.content,
-                    ),
+                // m5：类型化异常替代 message-as-control-flow
+                throw LlmSceneException.StructuredParseFailed(
+                    scene = scene,
+                    firstError = firstError,
+                    repairError = repairError,
+                    firstContent = firstResponse.content,
+                    repairedContent = repairedResponse.content,
                 )
             },
         )
@@ -264,29 +266,6 @@ internal class RemoteStructuredResponseParser(
             上一次输出无法直接解析为结构化 JSON。请基于原始任务上下文与上述校验错误，重新输出一个合法 JSON。
             只返回 JSON。
         """.trimIndent()
-    }
-
-    /** 构造两轮解析都失败时的完整错误消息。 */
-    private fun buildStructuredFailureMessage(
-        scene: String,
-        firstError: Throwable,
-        firstContent: String,
-        repairError: Throwable,
-        repairedContent: String,
-    ): String {
-        return buildString {
-            append("远程 LLM ")
-            append(scene)
-            append("失败：返回内容无法解析为结构化 JSON，且自动修复重试仍失败。")
-            append("\n首次解析错误：")
-            append(firstError.message?.trim().orEmpty().ifBlank { firstError::class.java.simpleName })
-            append("\n首次返回片段：")
-            append(truncate(firstContent, 240))
-            append("\n重试解析错误：")
-            append(repairError.message?.trim().orEmpty().ifBlank { repairError::class.java.simpleName })
-            append("\n重试返回片段：")
-            append(truncate(repairedContent, 240))
-        }
     }
 
     /** 规范化并裁剪响应片段，便于写入错误消息。 */

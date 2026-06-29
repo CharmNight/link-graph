@@ -95,6 +95,25 @@ class LlmGatewayClientTest {
     }
 
     @Test
+    fun redactForTraceReplacesAuthorizationAndCookieHeaders() {
+        val input = """
+            Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+            Cookie: session=abc; theme=dark
+            Set-Cookie: jwt=xyz; HttpOnly
+            x-api-key: abc123
+            session_id: 0xDEADBEEF
+            credentials: {"user":"admin","password":"hunter2"}
+            access_token:Bearer 12345
+            private_key="-----BEGIN RSA PRIVATE KEY-----"
+        """.trimIndent()
+        val redacted = redactForTrace(input)
+        // 所有行均命中关键字，应全部替换
+        redacted.split("\n").forEach { line ->
+            assertEquals("[REDACTED]", line, "敏感关键字行未脱敏：$line")
+        }
+    }
+
+    @Test
     fun redactForTraceLeavesNonKeyContentIntact() {
         val input = "val user = User(name = \"Alice\")"
         assertEquals(input, redactForTrace(input))
@@ -483,6 +502,77 @@ class LlmGatewayClientTest {
             systemPrompt = "system",
             userPrompt = "user",
         )
+    }
+
+    @Test
+    fun generateJsonRejectsLoopbackUrlViaSsrfPolicy() {
+        val client = RecordingHttpClient(
+            response = SimpleHttpResponse(
+                statusCode = 200,
+                body = ByteArrayInputStream("""{"content":"x"}""".toByteArray(StandardCharsets.UTF_8)),
+            ),
+        )
+        // 默认 policy 拒绝 127.0.0.1（loopback）；不应真正发出 send（client.sendCount 仍为 0）。
+        // 用 HTTPS 避免 scheme 校验先于 host 校验触发
+        val failure = assertFailsWith<IllegalStateException> {
+            LlmGatewayClient.generateJson(
+                client = client,
+                request = testLlmRequest(),
+                url = "https://127.0.0.1:8080/v1/messages",
+                headers = emptyList(),
+                payload = "{}",
+                extractContent = { "x" },
+            )
+        }
+        assertTrue(failure.message!!.contains("禁止访问内网或元数据服务地址"))
+    }
+
+    @Test
+    fun streamSseRejectsMetadataUrlViaSsrfPolicy() {
+        val client = RecordingHttpClient(
+            response = SimpleHttpResponse(
+                statusCode = 200,
+                body = ByteArrayInputStream("data: {}".toByteArray(StandardCharsets.UTF_8)),
+            ),
+        )
+        val failure = assertFailsWith<IllegalStateException> {
+            LlmGatewayClient.streamSse(
+                client = client,
+                request = testLlmRequest(),
+                url = "https://169.254.169.254/latest/meta-data/",
+                headers = emptyList(),
+                payload = "{}",
+                listener = {},
+                extractTextDelta = { null },
+            )
+        }
+        assertTrue(failure.message!!.contains("禁止访问内网或元数据服务地址"))
+    }
+
+    @Test
+    fun generateJsonAcceptsHttpUrlWhenPolicyRelaxedForTesting() {
+        val client = RecordingHttpClient(
+            response = SimpleHttpResponse(
+                statusCode = 200,
+                body = ByteArrayInputStream("""{"content":"x"}""".toByteArray(StandardCharsets.UTF_8)),
+            ),
+        )
+        try {
+            // 公网 IP 字面量（不依赖 DNS）+ allowInsecureHttp：演示 policy 可注入，
+            // 校验通过后 send 才真正发生。
+            LlmGatewayClient.setEndpointPolicyForTesting(RemoteLlmEndpointPolicy(allowInsecureHttp = true))
+            val response = LlmGatewayClient.generateJson(
+                client = client,
+                request = testLlmRequest(),
+                url = "http://8.8.8.8/v1/messages",
+                headers = emptyList(),
+                payload = "{}",
+                extractContent = { "ok" },
+            )
+            assertEquals("ok", response.content)
+        } finally {
+            LlmGatewayClient.setEndpointPolicyForTesting(RemoteLlmEndpointPolicy())
+        }
     }
 
     private class RecordingHttpClient(

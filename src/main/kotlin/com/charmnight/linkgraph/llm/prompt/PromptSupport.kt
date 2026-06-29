@@ -18,18 +18,32 @@ import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
  * 供各类 prompt builder 复用。无状态、无副作用。
  */
 
+/**
+ * 把任意外部内容片段 sanitize 后嵌入提示词。
+ *
+ * 与 [sanitizeUserField] 行为一致：转义 `<` / `>` 并包入 `<user_input>` tag。
+ * 设计上把 sanitize 责任下沉到渲染 helper（[sourceSnippetSummary] / [confirmedChangeSummary] 等），
+ * 让所有 prompt builder 自动获得等价的注入防御，不需要每个 builder 各自包裹。
+ *
+ * 命名为 `sanitizeContent` 而非 `sanitizeUser` 是因为内容来源不仅是用户直接输入——
+ * 也包含历史消息、候选变更标题、源码片段等——但都属于「不可作为系统指令」的范畴。
+ */
+internal fun sanitizeContent(raw: String): String = sanitizeUserField(raw)
+
 /** 把节点转换为提示词里的单行摘要（id / type / title / signature / inputs / outputs / doc / metadata / sourceTag）。 */
 internal fun nodeSummary(node: GraphNode): String {
     val id = "id=${node.id} | "
     val location = node.location?.let { " @ $it" }.orEmpty()
-    val signature = node.signature?.let { " | signature=$it" }.orEmpty()
+    // title / signature / doc 来自源码或用户编辑，存在 prompt injection 风险，统一 sanitize。
+    val title = sanitizeContent(node.title)
+    val signature = node.signature?.let { " | signature=${sanitizeContent(it)}" }.orEmpty()
     val inputs = if (node.inputs.isEmpty()) "" else " | inputs=${node.inputs.joinToString()}"
     val outputs = if (node.outputs.isEmpty()) "" else " | outputs=${node.outputs.joinToString()}"
-    val doc = node.doc?.takeIf { it.isNotBlank() }?.let { " | doc=$it" }.orEmpty()
+    val doc = node.doc?.takeIf { it.isNotBlank() }?.let { " | doc=${sanitizeContent(it)}" }.orEmpty()
     val flowchartKind = node.metadata["flowchart.kind"]?.let { " | flowchart.kind=$it" }.orEmpty()
     val ownerMethod = node.metadata["flow.ownerMethod"]?.let { " | flow.ownerMethod=$it" }.orEmpty()
     val sourceTag = " | source=${node.sourceTag.name}"
-    return "- $id[${node.type.name}] ${node.title}$location$signature$inputs$outputs$doc$flowchartKind$ownerMethod$sourceTag"
+    return "- $id[${node.type.name}] $title$location$signature$inputs$outputs$doc$flowchartKind$ownerMethod$sourceTag"
 }
 
 /** 把源码片段上下文转换成提示词里的单行摘要。 */
@@ -43,7 +57,10 @@ internal fun sourceSnippetSummary(snippet: SourceSnippetContext): String {
         snippet.endLine?.let { append(" | endLine=").append(it) }
         snippet.startOffset?.let { append(" | startOffset=").append(it) }
         snippet.endOffset?.let { append(" | endOffset=").append(it) }
-        snippet.snippet?.takeIf { it.isNotBlank() }?.let { append(" | snippet=").append(it) }
+        // snippet 是源码原文，可能来自第三方库，按不可信内容 sanitize
+        snippet.snippet?.takeIf { it.isNotBlank() }?.let {
+            append(" | snippet=").append(sanitizeContent(it))
+        }
     }
 }
 
@@ -71,7 +88,8 @@ internal fun edgeDisplayLabel(edge: GraphEdge): String? =
 /** 把差异条目转换成提示词里的单行摘要。 */
 internal fun diffSummary(entry: GraphDiffEntry): String {
     val fields = if (entry.fields.isEmpty()) "" else " | fields=${entry.fields.joinToString()}"
-    val message = entry.message?.let { " | $it" }.orEmpty()
+    // entry.message 可能来自用户编辑或第三方源码注释，sanitize 后嵌入
+    val message = entry.message?.let { " | ${sanitizeContent(it)}" }.orEmpty()
     return "- [${entry.status.name}] ${entry.elementKind.name}:${entry.elementId}$fields$message"
 }
 
@@ -85,13 +103,14 @@ internal fun confirmedChangeSummary(
     val targetFiles = change.targetNodeIds.mapNotNull { nodeId ->
         nodeById[nodeId]?.sourceFilePathOrLocationPath()
     }.distinct().ifEmpty { listOf("未指定文件") }
-    val before = change.beforeState?.takeIf { it.isNotBlank() } ?: "无"
-    val after = change.afterState?.takeIf { it.isNotBlank() } ?: "无"
-    val reason = change.reason.ifBlank { "无" }
-    val impact = change.impactSummary.takeIf { it.isNotBlank() } ?: "无"
+    // beforeState / afterState / reason / impactSummary / title 均可能含用户编辑文本，sanitize 后嵌入
+    val before = sanitizeContent(change.beforeState?.takeIf { it.isNotBlank() } ?: "无")
+    val after = sanitizeContent(change.afterState?.takeIf { it.isNotBlank() } ?: "无")
+    val reason = sanitizeContent(change.reason.ifBlank { "无" })
+    val impact = sanitizeContent(change.impactSummary.takeIf { it.isNotBlank() } ?: "无")
     val claimType = change.claimType ?: "未标注"
     val evidenceLevels = change.evidence.map { it.evidenceLevel.name }.distinct().ifEmpty { listOf("未标注") }
-    return "- ${change.sourceChangeId ?: change.entryId} | ${change.title} | targets=$targets | files=${targetFiles.joinToString()} | before=$before | after=$after | reason=$reason | impact=$impact | claimType=$claimType | evidence=${evidenceLevels.joinToString()}"
+    return "- ${change.sourceChangeId ?: change.entryId} | ${sanitizeContent(change.title)} | targets=$targets | files=${targetFiles.joinToString()} | before=$before | after=$after | reason=$reason | impact=$impact | claimType=$claimType | evidence=${evidenceLevels.joinToString()}"
 }
 
 /** 把证据边界对象整理为可直接嵌入提示词的多行文本。 */

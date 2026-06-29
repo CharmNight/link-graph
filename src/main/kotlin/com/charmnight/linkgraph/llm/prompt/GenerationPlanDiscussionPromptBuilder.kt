@@ -48,7 +48,8 @@ internal fun buildGenerationPlanDiscussionPromptPackage(
         }
     }.ifBlank { "- 无" }
     val history = session?.messages?.joinToString("\n") { message ->
-        "- [${message.role.name}] ${message.content}"
+        // message.content 是历史会话文本（用户输入或 LLM 输出），按不可信 sanitize
+        "- [${message.role.name}] ${sanitizeContent(message.content)}"
     }?.ifBlank { "- 无" } ?: "- 无"
     val focusItem = focusItemId
         ?.let { targetId -> plan.items.firstOrNull { item -> item.id == targetId } }

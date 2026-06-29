@@ -16,8 +16,24 @@ internal object LlmUserMessageFormatter {
     /** 从服务端消息里提取模型名的正则。 */
     private val modelPattern = Regex("""model\s+([A-Za-z0-9._:-]+)""", RegexOption.IGNORE_CASE)
 
-    /** 把底层异常转换成适合直接展示给用户的中文文案。 */
+    /**
+     * 把底层异常转换成适合直接展示给用户的中文文案。
+     *
+     * m5：场景化失败（首轮 transport 重试耗尽 / 结构化解析失败）通过 [LlmSceneException]
+     * 类型化异常传递，本函数按 `when (error)` 分发；不再依赖 rawMessage 字符串匹配，
+     * 上游文案改动不会破坏控制流。
+     */
     fun describe(error: Throwable): String {
+        // 场景化异常优先按 type 分发，避免字符串控制流
+        when (error) {
+            is LlmSceneException.TransportRetryExhausted -> {
+                // message 已包含 cause 的 describe 输出，直接返回
+                return error.message ?: "远程 LLM ${error.scene} 请求失败。"
+            }
+            is LlmSceneException.StructuredParseFailed -> {
+                return "返回内容未通过结构化校验，自动修复重试仍失败。请检查模型输出格式。"
+            }
+        }
         /** 原始异常消息。 */
         val rawMessage = error.message?.trim().orEmpty()
         /** 小写化后的异常消息。 */
@@ -60,14 +76,6 @@ internal object LlmUserMessageFormatter {
         }
 
         when {
-            rawMessage.contains("结构化 JSON") -> {
-                return "返回内容未通过结构化校验，自动修复重试仍失败。请检查模型输出格式。"
-            }
-
-            rawMessage.contains("重试 1 次后仍失败") -> {
-                return rawMessage
-            }
-
             error is HttpConnectTimeoutException || error is HttpTimeoutException || lowerRawMessage.contains("timed out") || lowerRawMessage.contains("timeout") -> {
                 return withTag(
                     summary = "请求远程 LLM 超时",

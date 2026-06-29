@@ -47,13 +47,16 @@ internal fun buildQaPromptPackage(
     val evidenceProfile = context.effectiveEvidenceProfile()
     val evidenceProfileText = buildEvidenceProfileText(evidenceProfile)
     val history = session?.messages?.joinToString("\n") { message ->
-        "- [${message.role.name}] ${message.content}"
+        // message.content 是历史会话文本（用户输入或 LLM 输出），按不可信 sanitize
+        "- [${message.role.name}] ${sanitizeContent(message.content)}"
     }?.ifBlank { "- 无" } ?: "- 无"
     val existingChanges = session?.candidateChanges?.joinToString("\n") { change ->
-        "- ${change.changeId} | ${change.title} | before=${change.beforeState ?: "无"} | after=${change.afterState ?: "无"}"
+        // title / beforeState / afterState 可能含用户编辑文本，sanitize
+        "- ${change.changeId} | ${sanitizeContent(change.title)} | before=${sanitizeContent(change.beforeState ?: "无")} | after=${sanitizeContent(change.afterState ?: "无")}"
     }?.ifBlank { "- 无" } ?: "- 无"
     val existingInvestigationThreads = session?.investigationThreads?.joinToString("\n") { thread ->
-        "- ${thread.threadId} | ${thread.title} | gap=${thread.evidenceGap.ifBlank { "未标注" }} | next=${thread.recommendedQuestion.ifBlank { "未标注" }}"
+        // title / evidenceGap / recommendedQuestion 同为 LLM 产出但可能被编辑，sanitize
+        "- ${thread.threadId} | ${sanitizeContent(thread.title)} | gap=${sanitizeContent(thread.evidenceGap.ifBlank { "未标注" })} | next=${sanitizeContent(thread.recommendedQuestion.ifBlank { "未标注" })}"
     }?.ifBlank { "- 无" } ?: "- 无"
     val sourceSnippets = context.sourceContext.joinToString("\n") { snippet ->
         sourceSnippetSummary(snippet)

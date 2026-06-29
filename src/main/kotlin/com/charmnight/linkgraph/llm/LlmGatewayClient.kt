@@ -64,6 +64,21 @@ internal object LlmGatewayClient {
     /** 重试最大尝试次数（含首次），默认 3 = 首次 + 2 次重试。 */
     private const val DEFAULT_MAX_ATTEMPTS = 3
 
+    /**
+     * 远程 endpoint SSRF 策略：作为所有 HTTP 请求的统一 chokepoint，默认启用。
+     *
+     * - 内置 gateway 的 URL 来自 settings，上游已校验过；这里再校验一次是纵深防御
+     * - 第三方 contributor 通过 EP 提供的 URL 未经上游校验，这里是唯一防线
+     * - 测试可通过 endpointPolicy 参数注入宽松策略（如允许 http://localhost）
+     */
+    internal var endpointPolicy: RemoteLlmEndpointPolicy = RemoteLlmEndpointPolicy()
+        private set
+
+    /** 测试场景下临时替换策略；生产代码不应调用。 */
+    internal fun setEndpointPolicyForTesting(policy: RemoteLlmEndpointPolicy) {
+        endpointPolicy = policy
+    }
+
     /** 根据当前请求参数选择共享的 HTTP 客户端实例。 */
     fun defaultHttpClient(request: LlmRequest): HttpClient {
         return SharedLlmHttpClientProvider.clientFor(request)
@@ -89,6 +104,9 @@ internal object LlmGatewayClient {
         errorCodeKeys: List<String> = listOf("code"),
         extractContent: (String) -> String,
     ): LlmResponse {
+        // SSRF chokepoint：所有调用路径（内置 gateway / contributor / 任何未来路径）
+        // 在 send 之前都先过一次 endpoint 策略，命中内网/元数据服务即 fail-fast。
+        endpointPolicy.requireValidEndpoint(url)
         // 重试只覆盖 send + status check：429/503 时抛 LlmHttpException 由 retryWithBackoff 处理。
         // body 读到一半的错误（size guard 触发、IO 异常等）不是可重试 HTTP 错误，正常向上抛。
         val (status, body) = retryWithBackoff { _ ->
@@ -135,6 +153,8 @@ internal object LlmGatewayClient {
         errorCodeKeys: List<String> = listOf("code"),
         extractTextDelta: (String) -> String?,
     ): LlmResponse {
+        // SSRF chokepoint：与 generateJson 对称，所有流式请求同样过 endpoint 策略。
+        endpointPolicy.requireValidEndpoint(url)
         // 重试只在初始 send + status check 阶段：429/503 时抛 LlmHttpException 由 retryWithBackoff 处理。
         // 一旦进入流式 body 读取就不再重试（streaming 语义要求事务性，半截流不能续传）。
         val response = retryWithBackoff { _ ->
@@ -297,8 +317,10 @@ internal object LlmGatewayClient {
                 if (e.statusCode !in RETRYABLE_STATUSES) throw e
                 if (attempt == maxAttempts - 1) throw e
                 // 优先用服务端 Retry-After（cap 180s）；没有则指数退避（cap 8s）。
+                // attempt 在 [0, maxAttempts-1] 区间；1L shl attempt 在 attempt >= 63 时会溢出，
+                // 先 cap 到 30 位再 shift（30 位内 shift 完全安全，结果不会溢出 Long）。
                 val baseSeconds = when (val retryAfter = e.retryAfterSeconds) {
-                    null -> (1L shl attempt).coerceAtMost(MAX_BACKOFF_BASE_SECONDS)
+                    null -> (1L shl attempt.coerceAtMost(30)).coerceAtMost(MAX_BACKOFF_BASE_SECONDS)
                     else -> retryAfter.coerceAtMost(MAX_RETRY_AFTER_SECONDS)
                 }
                 val delayMs = baseSeconds * 1000L + ThreadLocalRandom.current().nextLong(0, 500)
@@ -358,10 +380,16 @@ internal object LlmGatewayClient {
 internal fun LlmResponse.withoutRawBody(): LlmResponse = copy(rawBody = null)
 
 /**
- * 对要进入 trace / 日志的内容做最低限度的脱敏：把疑似含密钥/口令的整行替换为 `[REDACTED]`。
+ * 对要进入 trace / 日志的内容做最低限度的脱敏：把疑似含密钥/口令/会话凭证的整行替换为 `[REDACTED]`。
  *
- * 命中规则：行内出现 `api_key` / `apikey` / `token` / `password` / `secret` / `passwd`
- * 等关键字后跟 `:` 或 `=`（任意空白）。这种"自我描述"的密钥行最常见，也最危险。
+ * 命中规则：行内出现下列任一关键字后跟 `:` 或 `=`（任意空白）——
+ * - 密钥类：`api_key` / `apikey` / `api-key` / `secret` / `client_secret`
+ * - 令牌类：`token` / `access_token` / `refresh_token` / `id_token` / `bearer`
+ * - 口令类：`password` / `passwd` / `pwd`
+ * - HTTP 头类：`authorization`（含 `Authorization: Bearer …`）/ `cookie` / `set-cookie` / `x-api-key`
+ * - 会话/凭证类：`session` / `session_id` / `jsessionid` / `credentials` / `private_key` / `privatekey`
+ *
+ * 关键字大小写无关；分隔符接受 `_` / `-`（兼容 api_key / apiKey / api-key / apikey）。
  *
  * 不做的：
  * - 不尝试解析 JSON 后逐字段脱敏（容易漏判，且性能差）
@@ -372,7 +400,9 @@ internal fun LlmResponse.withoutRawBody(): LlmResponse = copy(rawBody = null)
  */
 internal fun redactForTrace(content: String): String {
     if (content.isEmpty()) return content
-    val pattern = Regex("""(?i)(api[_-]?key|token|password|passwd|secret)\s*[:=]""")
+    val pattern = Regex(
+        """(?i)(api[_-]?key|apikey|secret|client[_-]?secret|token|access[_-]?token|refresh[_-]?token|id[_-]?token|bearer|password|passwd|pwd|authorization|cookie|set-cookie|x-api-key|session|session[_-]?id|jsessionid|credentials|private[_-]?key|privatekey)\s*[:=]""",
+    )
     return content.lines().joinToString("\n") { line ->
         if (pattern.containsMatchIn(line)) "[REDACTED]" else line
     }

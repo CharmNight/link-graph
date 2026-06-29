@@ -42,6 +42,17 @@ class RemoteLlmEndpointPolicy(
     }
 
     /**
+     * 强校验：不通过直接抛 [IllegalStateException]。
+     *
+     * 给 HTTP 客户端 chokepoint（如 [LlmGatewayClient]）使用：
+     * 把 URL 的协议 + host 解析后的 IP 一并通过本策略，命中即 fail-fast，
+     * 避免不安全地址流入实际网络请求。
+     */
+    fun requireValidEndpoint(endpoint: String) {
+        validationError(endpoint)?.let { error(it) }
+    }
+
+    /**
      * 判断 host 是否属于禁止访问的内网或元数据服务。
      *
      * 校验顺序：先做 O(1) 的字符串黑名单匹配（命中即返回，无需 DNS）；
@@ -50,7 +61,15 @@ class RemoteLlmEndpointPolicy(
      *
      * DNS 失败时返回 null（不阻塞）——IDE 插件的 endpoint 由用户自己配置，
      * 真到 HTTP 请求时客户端会给出更清晰的错误；离线保存设置场景不应被卡住。
-     * 若需要更严格的 TOCTOU 防护，可在 HTTP 客户端 connect 前再做一次。
+     *
+     * TOCTOU：本类校验通过后，[LlmGatewayClient] 真正 send 时 Java HttpClient 会
+     * 再做一次自己的 DNS 解析，理论上存在 DNS rebinding（第一次解析到公网 IP 通过校验，
+     * 第二次解析到 169.254.169.254 等内网 IP）的残余风险。
+     * - 缓解 1：[LlmGatewayClient] 入口（[requireValidEndpoint]）将校验推迟到 send 之前最后一刻，
+     *   把窗口从「settings 保存到 send 的数秒/数分钟」压到「校验到 Java DNS 的数微秒」。
+     * - 缓解 2：黑名单字符串命中是 O(1) 字符串比较，没有 DNS rebinding 空间。
+     * - 残余：要彻底覆盖需要劫持 Java HttpClient 的 DNS 解析或自实现 socket factory，
+     *   代价高且对 IDE 插件场景收益边际。本策略保持当前形态，残余窗口可接受。
      */
     private fun blockReasonFor(host: String): String? {
         if (host.lowercase() in BLOCKED_HOSTNAMES) {

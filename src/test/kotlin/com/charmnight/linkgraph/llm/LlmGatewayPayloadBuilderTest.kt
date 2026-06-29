@@ -2,8 +2,10 @@ package com.charmnight.linkgraph.llm
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class LlmGatewayPayloadBuilderTest {
     @Test
@@ -133,6 +135,45 @@ class LlmGatewayPayloadBuilderTest {
                     temperature = Double.NaN,
                 ),
             )
+        }
+    }
+
+    @Test
+    fun anthropicPayloadWritesStreamFlagWhenDeliveryModeIsStream() {
+        // 修复 M9：之前 anthropicMessagesPayload 没有处理 STREAM，导致后续若给 Anthropic gateway
+        // 加 stream() 覆盖，会静默拿不到流式响应。三个协议必须对称写 stream 字段。
+        val payload = LlmGatewayPayloadBuilder.anthropicMessagesPayload(
+            request = request(
+                protocol = LlmWireProtocol.ANTHROPIC_MESSAGES,
+                deliveryMode = LlmDeliveryMode.STREAM,
+            ),
+        )
+        val root = LlmJsonCodec.parseJsonObject(payload)
+
+        assertEquals(true, root.get("stream").asBoolean)
+    }
+
+    @Test
+    fun allProtocolPayloadsOmitStreamFlagWhenDeliveryModeIsFull() {
+        // 三协议 FULL 模式都不应写 stream 字段
+        data class ProtocolCase(
+            val protocol: LlmWireProtocol,
+            val builder: (LlmRequest) -> String,
+            val maxField: String,
+        )
+        val cases = listOf(
+            ProtocolCase(LlmWireProtocol.OPENAI_CHAT_COMPLETIONS, LlmGatewayPayloadBuilder::openAiChatPayload, "max_tokens"),
+            ProtocolCase(LlmWireProtocol.OPENAI_RESPONSES, LlmGatewayPayloadBuilder::openAiResponsesPayload, "max_output_tokens"),
+            ProtocolCase(LlmWireProtocol.ANTHROPIC_MESSAGES, LlmGatewayPayloadBuilder::anthropicMessagesPayload, "max_tokens"),
+        )
+        cases.forEach { (protocol, builder, maxField) ->
+            val payload = builder.invoke(
+                request(protocol = protocol, deliveryMode = LlmDeliveryMode.FULL),
+            )
+            val root = LlmJsonCodec.parseJsonObject(payload)
+            // FULL 模式不应有 stream 字段；maxField 各协议不同但一定存在
+            assertFalse(root.has("stream"), "$protocol FULL 模式不应写 stream 字段")
+            assertTrue(root.has(maxField), "$protocol payload 应含 $maxField 字段")
         }
     }
 
