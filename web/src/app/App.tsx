@@ -54,6 +54,7 @@ import type {
 import type { EditableStageProps, IndexedReadonlyStageProps } from "./views/viewStageProps";
 import type { AssistantDisplayModeDocuments } from "./assistant/useAssistantActionController";
 import { useAssistantWorkbench } from "./controllers/useAssistantWorkbench";
+import { useWorkbenchChromeActions } from "./controllers/useWorkbenchChromeActions";
 import { useBootstrapProjectionState } from "./controllers/useBootstrapProjectionState";
 import { useBootstrapStateController } from "./controllers/useBootstrapStateController";
 import { useAppBridgeController } from "./controllers/useAppBridgeController";
@@ -643,49 +644,28 @@ export function App() {
     handleRequestSourceNavigation: (nodeId: string) => sourceNavigationCommands.handleRequestSourceNavigation(nodeId),
   });
 
-  // ===== Graph UI 内联 handler（不属于 assistant 域）=====
-  function handleRequestAnalysisDisplayMode(displayMode: AnalysisDisplayMode) {
-    if (displayMode === "REVIEW_GRAPH") {
-      setActiveWorkflowStage("qa");
-    }
-    const reviewGraphDiffItemIds = diffTargetItemIds.length > 0
-      ? diffTargetItemIds
-      : selectedNodeId && diffItems.some((item) => item.id === selectedNodeId)
-        ? [selectedNodeId]
-        : [];
-    workbenchCommands.handleRequestAnalysisDisplayMode(displayMode, reviewGraphDiffItemIds);
-  }
-
-  function handleOpenImportMermaid() {
-    setMermaidDraft("");
-    setImportDialogOpen(true);
-  }
-
-  function handleConfirmImportMermaidDraft() {
-    const mermaid = mermaidDraft.trim();
-    if (mermaid.length === 0) {
-      setOperationFeedback({
-        level: "WARNING",
-        message: "请输入 Mermaid 内容后再导入。",
-      });
-      return;
-    }
-    handleConfirmImportMermaid(mermaid);
-  }
-
-  function handleExpandOverflowNode(nodeId: string) {
-    const nodeTitle = nodes.find((node) => node.id === nodeId)?.title ?? nodeId;
-    workbenchCommands.handleExpandOverflowNode(nodeId, nodeTitle);
-  }
-
-  function handleUndoDraftPatchApply() {
-    bridgeCommands.runBridgeCommand("回退草稿应用", () => undoLastDraftPatchApply(), {
-      successFeedback: {
-        level: "INFO",
-        message: "已请求回退上次草稿应用。",
-      },
-    });
-  }
+  // ===== Chrome 层 handler（toolbar / 大纲 / 导入对话框 / diff 模式切换）=====
+  // 抽出自 App.tsx 的 5 个内联 handler，让 App.tsx 不再关心 chrome 层的事件实现细节
+  const {
+    handleRequestAnalysisDisplayMode,
+    handleOpenImportMermaid,
+    handleConfirmImportMermaidDraft,
+    handleExpandOverflowNode,
+    handleUndoDraftPatchApply,
+  } = useWorkbenchChromeActions({
+    nodes,
+    selectedNodeId,
+    diffTargetItemIds,
+    diffItems,
+    mermaidDraft,
+    bridgeCommands,
+    workbenchCommands,
+    handleConfirmImportMermaid,
+    setActiveWorkflowStage,
+    setMermaidDraft,
+    setImportDialogOpen,
+    setOperationFeedback,
+  });
 
   // ===== Derived state（需要 assistant 输出 + graph state）=====
   const {
