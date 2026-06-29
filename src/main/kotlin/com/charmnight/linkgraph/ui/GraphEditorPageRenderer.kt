@@ -60,12 +60,13 @@ class GraphEditorPageRenderer {
         debugTracingEnabled: Boolean = false,
     ): String {
         /** 当前快照序列化后的状态 JSON。 */
-        val stateJson = bootstrapJson(snapshot, artifactRefs)
+        val payload = bootstrapPayload(snapshot, artifactRefs)
+        val stateJson = JsonCodec.toScriptSafeJson(payload)
         /** 包含会话信息的外层事件载荷。 */
         val envelopeJson = encodeSnapshotEnvelopeJson(
             sessionId = sessionId,
             snapshot = snapshot,
-            stateJson = stateJson,
+            state = payload,
         )
         val debugPrefix = if (debugTracingEnabled) {
             """
@@ -159,14 +160,12 @@ class GraphEditorPageRenderer {
     private fun encodeSnapshotEnvelopeJson(
         sessionId: String,
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
-        stateJson: String,
+        state: BootstrapPayloadDto,
     ): String {
-        /** 发往前端事件的外层载荷：sessionId + revision + 已 JSON 化的 state。 */
-        val parsedState = JsonCodec.parseValue(stateJson) ?: ""
         val payload = SnapshotEnvelopePayloadDto(
             sessionId = sessionId,
             revision = snapshot.snapshotRevision,
-            state = parsedState,
+            state = state,
         )
         return JsonCodec.toScriptSafeJson(payload)
     }
@@ -594,7 +593,7 @@ class GraphEditorPageRenderer {
         fullGraph: GraphDocument,
         anchorNodeId: String?,
         projectionIndex: com.charmnight.linkgraph.application.model.GraphProjectionIndex,
-        summary: Any,
+        summary: ViewDocumentSummaryDto,
         layoutState: GraphLayoutState? = null,
         presentation: GraphViewPresentation? = null,
     ): ViewDocumentDto = ViewDocumentDto(
