@@ -10,27 +10,19 @@ package com.charmnight.linkgraph.llm.tools
  */
 class GetSelectedScopeTool(
     private val graphToolFacade: GraphToolFacade,
-) : AgentTool {
-    /** 工具稳定名称。 */
+) : TypedAgentTool<GetSelectedScopeInput>() {
     override val name: String = "get_selected_scope"
-
-    /** 工具职责说明。 */
     override val description: String = "读取当前选区节点范围"
 
-    /**
-     * @param input 可选 key="selectedNodeIds" 作为候选
-     * @param context 工具执行上下文
-     * @return payload 包含最终确定的选中节点 ID 列表与计数
-     */
-    override fun invoke(
-        input: Map<String, Any?>,
-        context: ToolExecutionContext,
-    ): ToolResult {
+    override fun parseInput(raw: Map<String, Any?>): GetSelectedScopeInput = GetSelectedScopeInput(
+        selectedNodeIds = optionalList(raw, "selectedNodeIds", String::class),
+    )
+
+    override fun invokeTyped(input: GetSelectedScopeInput, context: ToolExecutionContext): ToolResult {
         // 工具调用方可以传入候选 ID，再由 facade 综合考虑 UI 实际选中状态
-        val requestedNodeIds = input.optionalList<String>("selectedNodeIds")
         val selectedNodeIds = graphToolFacade.selectedNodeIds(
             snapshot = context.snapshot,
-            requestedNodeIds = requestedNodeIds,
+            requestedNodeIds = input.selectedNodeIds,
         )
         return ToolResult(
             toolName = name,
@@ -41,3 +33,6 @@ class GetSelectedScopeTool(
         )
     }
 }
+
+/** [GetSelectedScopeTool] 的强类型入参。selectedNodeIds 缺省时由 facade 回退到 UI 实际选中。 */
+data class GetSelectedScopeInput(val selectedNodeIds: List<String>)

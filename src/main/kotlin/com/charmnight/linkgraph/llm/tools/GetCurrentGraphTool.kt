@@ -10,22 +10,13 @@ package com.charmnight.linkgraph.llm.tools
  */
 class GetCurrentGraphTool(
     private val graphToolFacade: GraphToolFacade,
-) : AgentTool {
-    /** 工具稳定名称。 */
+) : TypedAgentTool<GetCurrentGraphInput>() {
     override val name: String = "get_current_graph"
-
-    /** 工具职责说明。 */
     override val description: String = "读取当前工作图及其基础摘要"
 
-    /**
-     * @param input 工具输入（本工具不读取参数）
-     * @param context 工具执行上下文，提供图快照
-     * @return payload 包含图、来源、版本、场景、规模与选区
-     */
-    override fun invoke(
-        input: Map<String, Any?>,
-        context: ToolExecutionContext,
-    ): ToolResult {
+    override fun parseInput(raw: Map<String, Any?>): GetCurrentGraphInput = GetCurrentGraphInput
+
+    override fun invokeTyped(input: GetCurrentGraphInput, context: ToolExecutionContext): ToolResult {
         val graph = graphToolFacade.currentGraph(context.snapshot)
         val selectedNodeIds = graphToolFacade.selectedNodeIds(context.snapshot)
         return ToolResult(
@@ -43,3 +34,6 @@ class GetCurrentGraphTool(
         )
     }
 }
+
+/** [GetCurrentGraphTool] 的入参（工具不接受任何参数，用 object 表达）。 */
+object GetCurrentGraphInput

@@ -13,28 +13,20 @@ import com.charmnight.linkgraph.llm.ResultEvidenceFinding
  */
 class ValidateEvidenceTool(
     private val validationToolFacade: ValidationToolFacade,
-) : AgentTool {
-    /** 工具稳定名称。 */
+) : TypedAgentTool<ValidateEvidenceInput>() {
     override val name: String = "validate_evidence"
-
-    /** 工具职责说明。 */
     override val description: String = "校验当前结果是否具备直接证据"
 
-    /**
-     * @param input 可选 key="findings" 的证据列表
-     * @param context 工具执行上下文
-     * @return payload 中带 valid 字段表示证据是否足够直接
-     */
-    override fun invoke(
-        input: Map<String, Any?>,
-        context: ToolExecutionContext,
-    ): ToolResult {
-        val findings = input.optionalList<ResultEvidenceFinding>("findings")
-        return ToolResult(
+    override fun parseInput(raw: Map<String, Any?>): ValidateEvidenceInput = ValidateEvidenceInput(
+        findings = optionalList(raw, "findings", ResultEvidenceFinding::class),
+    )
+
+    override fun invokeTyped(input: ValidateEvidenceInput, context: ToolExecutionContext): ToolResult =
+        ToolResult(
             toolName = name,
-            payload = mapOf(
-                "valid" to validationToolFacade.hasDirectEvidence(findings),
-            ),
+            payload = mapOf("valid" to validationToolFacade.hasDirectEvidence(input.findings)),
         )
-    }
 }
+
+/** [ValidateEvidenceTool] 的强类型入参；findings 缺省为空列表。 */
+data class ValidateEvidenceInput(val findings: List<ResultEvidenceFinding>)

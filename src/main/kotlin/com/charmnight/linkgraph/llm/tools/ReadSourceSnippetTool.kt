@@ -11,30 +11,23 @@ package com.charmnight.linkgraph.llm.tools
  */
 class ReadSourceSnippetTool(
     private val codeReadToolFacade: CodeReadToolFacade,
-) : AgentTool {
-    /** 工具稳定名称。 */
+) : TypedAgentTool<ReadSourceSnippetInput>() {
     override val name: String = "read_source_snippet"
-
-    /** 工具职责说明。 */
     override val description: String = "读取指定文件的源码片段"
 
-    /**
-     * @param input 必须包含 key="filePath"；可选 startLine/endLine/fallbackSnippet
-     * @param context 工具执行上下文
-     * @return payload 包含文件路径、行号、片段内容、来源与诊断信息
-     */
-    override fun invoke(
-        input: Map<String, Any?>,
-        context: ToolExecutionContext,
-    ): ToolResult {
-        val filePath = input.requiredString("filePath") ?: return missingRequired("filePath")
-        val startLine = input.optionalInt("startLine")
-        val endLine = input.optionalInt("endLine")
+    override fun parseInput(raw: Map<String, Any?>): ReadSourceSnippetInput = ReadSourceSnippetInput(
+        filePath = requireString(raw, "filePath"),
+        startLine = optionalInt(raw, "startLine"),
+        endLine = optionalInt(raw, "endLine"),
+        fallbackSnippet = optionalString(raw, "fallbackSnippet"),
+    )
+
+    override fun invokeTyped(input: ReadSourceSnippetInput, context: ToolExecutionContext): ToolResult {
         val snippet = codeReadToolFacade.readSourceSnippetRich(
-            filePath = filePath,
-            startLine = startLine,
-            endLine = endLine,
-            fallbackSnippet = input.optionalString("fallbackSnippet"),
+            filePath = input.filePath,
+            startLine = input.startLine,
+            endLine = input.endLine,
+            fallbackSnippet = input.fallbackSnippet,
             projectBasePath = context.project.basePath,
             project = context.project,
         ) ?: return failure(
@@ -42,9 +35,9 @@ class ReadSourceSnippetTool(
             "未读取到源码片段",
             payload = mapOf(
                 "sourceUnavailableReason" to codeReadToolFacade.readSourceSnippetFailureReason(
-                    filePath = filePath,
-                    startLine = startLine,
-                    endLine = endLine,
+                    filePath = input.filePath,
+                    startLine = input.startLine,
+                    endLine = input.endLine,
                     projectBasePath = context.project.basePath,
                     project = context.project,
                 ),
@@ -53,9 +46,9 @@ class ReadSourceSnippetTool(
         return ToolResult(
             toolName = name,
             payload = mapOf(
-                "filePath" to filePath,
-                "startLine" to startLine,
-                "endLine" to endLine,
+                "filePath" to input.filePath,
+                "startLine" to input.startLine,
+                "endLine" to input.endLine,
                 "snippet" to snippet.snippet,
                 "origin" to snippet.origin,
                 // 是否来自反编译，让模型知道这段代码可能不精确
@@ -66,3 +59,11 @@ class ReadSourceSnippetTool(
         )
     }
 }
+
+/** [ReadSourceSnippetTool] 的强类型入参。 */
+data class ReadSourceSnippetInput(
+    val filePath: String,
+    val startLine: Int?,
+    val endLine: Int?,
+    val fallbackSnippet: String?,
+)

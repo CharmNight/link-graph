@@ -10,29 +10,21 @@ package com.charmnight.linkgraph.llm.tools
  */
 class ExpandGraphNeighborhoodTool(
     private val graphToolFacade: GraphToolFacade,
-) : AgentTool {
-    /** 工具稳定名称。 */
+) : TypedAgentTool<ExpandGraphNeighborhoodInput>() {
     override val name: String = "expand_graph_neighborhood"
-
-    /** 工具职责说明。 */
     override val description: String = "展开指定节点的一跳或多跳邻域"
 
-    /**
-     * @param input 必须包含 key="nodeId"，可选 key="depth"
-     * @param context 工具执行上下文
-     * @return payload 包含展开后的子图与规模统计
-     */
-    override fun invoke(
-        input: Map<String, Any?>,
-        context: ToolExecutionContext,
-    ): ToolResult {
-        val nodeId = input.requiredString("nodeId") ?: return missingRequired("nodeId")
-        // depth 默认 1，至少为 1（避免传入 0 或负数导致空结果）
-        val depth = input.optionalInt("depth") ?: 1
+    override fun parseInput(raw: Map<String, Any?>): ExpandGraphNeighborhoodInput = ExpandGraphNeighborhoodInput(
+        nodeId = requireString(raw, "nodeId"),
+        depth = optionalInt(raw, "depth") ?: 1,
+    )
+
+    override fun invokeTyped(input: ExpandGraphNeighborhoodInput, context: ToolExecutionContext): ToolResult {
         val graph = graphToolFacade.expandNeighborhood(
             snapshot = context.snapshot,
-            nodeId = nodeId,
-            depth = depth.coerceAtLeast(1),
+            nodeId = input.nodeId,
+            // depth 至少为 1，避免传入 0 或负数导致空结果
+            depth = input.depth.coerceAtLeast(1),
         )
         return ToolResult(
             toolName = name,
@@ -44,3 +36,9 @@ class ExpandGraphNeighborhoodTool(
         )
     }
 }
+
+/** [ExpandGraphNeighborhoodTool] 的强类型入参。depth 缺省为 1。 */
+data class ExpandGraphNeighborhoodInput(
+    val nodeId: String,
+    val depth: Int,
+)

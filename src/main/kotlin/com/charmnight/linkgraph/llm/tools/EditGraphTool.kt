@@ -12,6 +12,10 @@ import com.charmnight.linkgraph.application.model.GraphEditResult
  * 3) 把应用结果（成功 / 拒绝）转译为工具结果。
  *
  * 当 runtime 未提供执行入口时直接拒绝，避免模型在只读场景下越权写图。
+ *
+ * 实现选择：保持直接实现 [AgentTool] 而非 [TypedAgentTool]——本工具不读具体字段，
+ * 而是把整个 input map 转发给 [GraphEditRequestPayloadParser]，
+ * 该 parser 自己定义 schema 并返回 issues。TypedAgentTool 的字段级 parse 在这里没收益。
  */
 class EditGraphTool : AgentTool {
     /** 工具稳定名称。 */

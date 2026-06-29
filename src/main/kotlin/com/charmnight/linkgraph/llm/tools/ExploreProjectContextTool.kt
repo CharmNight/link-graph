@@ -7,26 +7,35 @@ import com.charmnight.linkgraph.architecture.query.TraversalMode
 /** 工具实现：一次性返回项目上下文综合包，包含符号、关系、片段、变更符号、索引新鲜度和告警。 */
 class ExploreProjectContextTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
-) : AgentTool {
+) : TypedAgentTool<ExploreProjectContextInput>() {
     override val name: String = "explore_project_context"
     override val description: String = "一次性获取项目上下文包：符号、关系、片段、变更符号、索引新鲜度和告警"
 
-    override fun invoke(input: Map<String, Any?>, context: ToolExecutionContext): ToolResult {
-        val queryText = input.requiredString("query") ?: return missingRequired("query")
-        val depth = (input.optionalInt("depth") ?: 2).coerceIn(1, 5)
-        val maxSymbols = (input.optionalInt("maxSymbols") ?: 8).coerceIn(1, 50)
-        val maxRelations = (input.optionalInt("maxRelations") ?: 30).coerceIn(0, 200)
-        val maxSnippets = (input.optionalInt("maxSnippets") ?: 6).coerceIn(0, 50)
-        val changedFiles = input.optionalStringList("changedFiles")
+    override fun parseInput(raw: Map<String, Any?>): ExploreProjectContextInput {
+        val depth = (optionalInt(raw, "depth") ?: 2).coerceIn(1, 5)
+        val maxSymbols = (optionalInt(raw, "maxSymbols") ?: 8).coerceIn(1, 50)
+        val maxRelations = (optionalInt(raw, "maxRelations") ?: 30).coerceIn(0, 200)
+        val maxSnippets = (optionalInt(raw, "maxSnippets") ?: 6).coerceIn(0, 50)
+        return ExploreProjectContextInput(
+            query = requireString(raw, "query"),
+            depth = depth,
+            maxSymbols = maxSymbols,
+            maxRelations = maxRelations,
+            maxSnippets = maxSnippets,
+            changedFiles = optionalStringList(raw, "changedFiles"),
+        )
+    }
+
+    override fun invokeTyped(input: ExploreProjectContextInput, context: ToolExecutionContext): ToolResult {
         val index = facade.buildIndex(context.project)
         val query = ArchitectureGraphQueryService(index)
-        val rankedSymbols = query.rankedFindSymbol(queryText, maxSymbols).map { result ->
+        val rankedSymbols = query.rankedFindSymbol(input.query, input.maxSymbols).map { result ->
             facade.symbolPayload(result.symbol) + mapOf(
                 "matchKind" to result.matchKind,
                 "score" to result.score,
             )
         }
-        val semanticSeedSymbols = facade.semanticSeeds(context.project, queryText, maxSymbols).mapNotNull { seed ->
+        val semanticSeedSymbols = facade.semanticSeeds(context.project, input.query, input.maxSymbols).mapNotNull { seed ->
             index.findSymbol(seed.nodeId)?.let { symbol ->
                 facade.symbolPayload(symbol) + seed.metadata + mapOf(
                     "matchKind" to "SEMANTIC_SEED",
@@ -36,15 +45,15 @@ class ExploreProjectContextTool(
         }
         val symbols = (rankedSymbols + semanticSeedSymbols)
             .distinctBy { symbol -> symbol["id"] as? String }
-            .take(maxSymbols)
+            .take(input.maxSymbols)
         val symbolIds = symbols.mapNotNull { it["id"] as? String }
         val relations = symbolIds
             .flatMap { symbolId -> query.relationsForSymbol(symbolId) }
             .distinctBy { relation -> relation.id }
-            .take(maxRelations)
+            .take(input.maxRelations)
             .map { relation -> facade.relationPayload(relation, index) }
         val snippets = symbols
-            .take(maxSnippets)
+            .take(input.maxSnippets)
             .map { symbol ->
                 mapOf(
                     "symbolId" to symbol["id"],
@@ -53,7 +62,7 @@ class ExploreProjectContextTool(
                 )
             }
         val changedSymbols = runCatching {
-            facade.review(context.project).changedSymbols(changedFiles).take(maxSymbols).map { symbol ->
+            facade.review(context.project).changedSymbols(input.changedFiles).take(input.maxSymbols).map { symbol ->
                 mapOf(
                     "symbolId" to symbol.symbolId,
                     "qualifiedName" to symbol.qualifiedName,
@@ -80,8 +89,8 @@ class ExploreProjectContextTool(
             toolName = name,
             payload = mapOf(
                 "status" to "OK",
-                "query" to queryText,
-                "depth" to depth,
+                "query" to input.query,
+                "depth" to input.depth,
                 "freshness" to freshness,
                 "symbols" to symbols,
                 "relations" to relations,
@@ -94,78 +103,138 @@ class ExploreProjectContextTool(
     }
 }
 
+/** [ExploreProjectContextTool] 的强类型入参；所有数值字段在 parse 阶段就做范围 clamp。 */
+data class ExploreProjectContextInput(
+    val query: String,
+    val depth: Int,
+    val maxSymbols: Int,
+    val maxRelations: Int,
+    val maxSnippets: Int,
+    val changedFiles: List<String>,
+)
+
 /** 工具实现：按自然语言问题查询项目图的小上下文子图。 */
 class QueryProjectGraphTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
-) : AgentTool {
+) : TypedAgentTool<QueryProjectGraphInput>() {
     override val name: String = "query_project_graph"
     override val description: String = "查询项目图的小上下文子图"
 
-    override fun invoke(input: Map<String, Any?>, context: ToolExecutionContext): ToolResult {
-        val question = input.requiredString("question") ?: input.requiredString("query") ?: return missingRequired("question")
-        val budget = input.optionalInt("budget") ?: 20
-        val mode = input.optionalString("mode")
-            ?.let { raw -> runCatching { TraversalMode.valueOf(raw.uppercase()) }.getOrNull() }
-            ?: TraversalMode.NEIGHBORHOOD
-        return ToolResult(
+    override fun parseInput(raw: Map<String, Any?>): QueryProjectGraphInput = QueryProjectGraphInput(
+        // 兼容 question / query 两个 key 名（前者是新规范，后者是历史 fallback）
+        question = optionalString(raw, "question") ?: optionalString(raw, "query") ?: missing("question"),
+        budget = optionalInt(raw, "budget") ?: 20,
+        mode = optionalString(raw, "mode")
+            ?.let { rawMode -> runCatching { TraversalMode.valueOf(rawMode.uppercase()) }.getOrNull() }
+            ?: TraversalMode.NEIGHBORHOOD,
+    )
+
+    override fun invokeTyped(input: QueryProjectGraphInput, context: ToolExecutionContext): ToolResult =
+        ToolResult(
             toolName = name,
-            payload = mapOf("result" to facade.query(context.project).queryProjectGraph(question, budget, mode)),
+            payload = mapOf("result" to facade.query(context.project).queryProjectGraph(input.question, input.budget, input.mode)),
         )
-    }
 }
+
+/** [QueryProjectGraphTool] 的强类型入参。 */
+data class QueryProjectGraphInput(
+    val question: String,
+    val budget: Int,
+    val mode: TraversalMode,
+)
 
 /** 工具实现：查找两个项目符号之间的最短关系路径。 */
 class FindProjectPathTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
-) : AgentTool {
+) : TypedAgentTool<FindProjectPathInput>() {
     override val name: String = "find_project_path"
     override val description: String = "查找两个项目符号之间的最短关系路径"
 
-    override fun invoke(input: Map<String, Any?>, context: ToolExecutionContext): ToolResult {
-        val from = input.requiredString("from") ?: return missingRequired("from")
-        val to = input.requiredString("to") ?: return missingRequired("to")
-        return ToolResult(
+    override fun parseInput(raw: Map<String, Any?>): FindProjectPathInput = FindProjectPathInput(
+        from = requireString(raw, "from"),
+        to = requireString(raw, "to"),
+        maxDepth = optionalInt(raw, "maxDepth") ?: 6,
+    )
+
+    override fun invokeTyped(input: FindProjectPathInput, context: ToolExecutionContext): ToolResult =
+        ToolResult(
             toolName = name,
-            payload = mapOf("path" to facade.query(context.project).shortestPath(from, to, input.optionalInt("maxDepth") ?: 6)),
+            payload = mapOf("path" to facade.query(context.project).shortestPath(input.from, input.to, input.maxDepth)),
         )
-    }
 }
+
+/** [FindProjectPathTool] 的强类型入参。maxDepth 缺省 6。 */
+data class FindProjectPathInput(
+    val from: String,
+    val to: String,
+    val maxDepth: Int,
+)
 
 /** 工具实现：解释项目图节点的符号信息和出入关系。 */
 class ExplainProjectNodeTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
-) : AgentTool {
+) : TypedAgentTool<ExplainProjectNodeInput>() {
     override val name: String = "explain_project_node"
     override val description: String = "解释项目图节点的符号和出入关系"
 
-    override fun invoke(input: Map<String, Any?>, context: ToolExecutionContext): ToolResult {
-        val symbol = input.requiredString("symbolOrNodeId") ?: input.requiredString("symbol") ?: return missingRequired("symbolOrNodeId")
-        return ToolResult(toolName = name, payload = mapOf("explanation" to facade.query(context.project).explainNode(symbol)))
-    }
+    override fun parseInput(raw: Map<String, Any?>): ExplainProjectNodeInput = ExplainProjectNodeInput(
+        // 兼容 symbolOrNodeId / symbol 两个 key 名（前者是新规范，后者是历史 fallback）
+        symbol = optionalString(raw, "symbolOrNodeId") ?: optionalString(raw, "symbol") ?: missing("symbolOrNodeId"),
+    )
+
+    override fun invokeTyped(input: ExplainProjectNodeInput, context: ToolExecutionContext): ToolResult =
+        ToolResult(
+            toolName = name,
+            payload = mapOf("explanation" to facade.query(context.project).explainNode(input.symbol)),
+        )
 }
+
+/** [ExplainProjectNodeTool] 的强类型入参。 */
+data class ExplainProjectNodeInput(val symbol: String)
 
 /** 工具实现：按图关系查找指定符号或文件受影响的上下游节点。 */
 class AffectedProjectNodesTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
-) : AgentTool {
+) : TypedAgentTool<AffectedProjectNodesInput>() {
     override val name: String = "affected_project_nodes"
     override val description: String = "按图关系查找受影响的上下游节点"
 
-    override fun invoke(input: Map<String, Any?>, context: ToolExecutionContext): ToolResult {
-        val symbol = input.requiredString("symbolOrFile") ?: input.requiredString("symbol") ?: return missingRequired("symbolOrFile")
-        return ToolResult(toolName = name, payload = mapOf("affected" to facade.query(context.project).affectedNodes(symbol, input.optionalInt("depth") ?: 2)))
-    }
+    override fun parseInput(raw: Map<String, Any?>): AffectedProjectNodesInput = AffectedProjectNodesInput(
+        // 兼容 symbolOrFile / symbol 两个 key 名
+        symbol = optionalString(raw, "symbolOrFile") ?: optionalString(raw, "symbol") ?: missing("symbolOrFile"),
+        depth = optionalInt(raw, "depth") ?: 2,
+    )
+
+    override fun invokeTyped(input: AffectedProjectNodesInput, context: ToolExecutionContext): ToolResult =
+        ToolResult(
+            toolName = name,
+            payload = mapOf("affected" to facade.query(context.project).affectedNodes(input.symbol, input.depth)),
+        )
 }
+
+/** [AffectedProjectNodesTool] 的强类型入参。depth 缺省 2。 */
+data class AffectedProjectNodesInput(
+    val symbol: String,
+    val depth: Int,
+)
 
 /** 工具实现：返回当前项目索引的诊断摘要。 */
 class GetProjectIndexDigestTool(
     private val facade: ArchitectureIndexToolFacade = ArchitectureIndexToolFacade(),
-) : AgentTool {
+) : TypedAgentTool<GetProjectIndexDigestInput>() {
     override val name: String = "get_project_index_digest"
     override val description: String = "获取项目图诊断摘要"
 
-    override fun invoke(input: Map<String, Any?>, context: ToolExecutionContext): ToolResult {
-        val scope = input.optionalString("scope") ?: ""
-        return ToolResult(toolName = name, payload = mapOf("digest" to facade.query(context.project).communityOrPackageDigest(scope)))
-    }
+    override fun parseInput(raw: Map<String, Any?>): GetProjectIndexDigestInput = GetProjectIndexDigestInput(
+        scope = optionalString(raw, "scope") ?: "",
+    )
+
+    override fun invokeTyped(input: GetProjectIndexDigestInput, context: ToolExecutionContext): ToolResult =
+        ToolResult(
+            toolName = name,
+            payload = mapOf("digest" to facade.query(context.project).communityOrPackageDigest(input.scope)),
+        )
 }
+
+/** [GetProjectIndexDigestTool] 的强类型入参；scope 缺省空串（全局 digest）。 */
+data class GetProjectIndexDigestInput(val scope: String)

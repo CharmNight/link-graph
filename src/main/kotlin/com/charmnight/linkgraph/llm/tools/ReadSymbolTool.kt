@@ -14,35 +14,27 @@ import com.charmnight.linkgraph.llm.SourceSnippetContext
  */
 class ReadSymbolTool(
     private val codeReadToolFacade: CodeReadToolFacade,
-) : AgentTool {
-    /** 工具稳定名称。 */
+) : TypedAgentTool<ReadSymbolInput>() {
     override val name: String = "read_symbol"
-
-    /** 工具职责说明。 */
     override val description: String = "按 symbolSignature 读取关联源码片段"
 
-    /**
-     * @param input 必须包含 key="symbolSignature"；可选 fallbackSourceContexts
-     * @param context 工具执行上下文
-     * @return payload 包含源码片段、来源、是否反编译等
-     */
-    override fun invoke(
-        input: Map<String, Any?>,
-        context: ToolExecutionContext,
-    ): ToolResult {
-        val symbolSignature = input.requiredString("symbolSignature") ?: return missingRequired("symbolSignature")
-        val fallbackSourceContexts = input.optionalList<SourceSnippetContext>("fallbackSourceContexts")
+    override fun parseInput(raw: Map<String, Any?>): ReadSymbolInput = ReadSymbolInput(
+        symbolSignature = requireString(raw, "symbolSignature"),
+        fallbackSourceContexts = optionalList(raw, "fallbackSourceContexts", SourceSnippetContext::class),
+    )
+
+    override fun invokeTyped(input: ReadSymbolInput, context: ToolExecutionContext): ToolResult {
         // 先按签名查
         val snippet = codeReadToolFacade.readSymbolRich(
             snapshot = context.snapshot,
-            symbolSignature = symbolSignature,
-            fallbackSourceContexts = fallbackSourceContexts,
+            symbolSignature = input.symbolSignature,
+            fallbackSourceContexts = input.fallbackSourceContexts,
             projectBasePath = context.project.basePath,
             project = context.project,
-        ) ?: if (shouldReadByQualifiedName(symbolSignature)) {
+        ) ?: if (shouldReadByQualifiedName(input.symbolSignature)) {
             // 签名看起来像全限定名时，按全限定名兜底查一次
             codeReadToolFacade.readSymbolByQualifiedNameRich(
-                symbolSignature = symbolSignature,
+                symbolSignature = input.symbolSignature,
                 project = context.project,
             )
         } else {
@@ -52,7 +44,7 @@ class ReadSymbolTool(
                 "未读取到 symbol 对应源码",
                 payload = mapOf(
                     "sourceUnavailableReason" to codeReadToolFacade.readSymbolFailureReason(
-                        symbolSignature = symbolSignature,
+                        symbolSignature = input.symbolSignature,
                         project = context.project,
                         projectBasePath = context.project.basePath,
                     ),
@@ -95,3 +87,9 @@ class ReadSymbolTool(
             trimmed.matches(Regex("""[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)+"""))
     }
 }
+
+/** [ReadSymbolTool] 的强类型入参。fallbackSourceContexts 缺省为空。 */
+data class ReadSymbolInput(
+    val symbolSignature: String,
+    val fallbackSourceContexts: List<SourceSnippetContext>,
+)

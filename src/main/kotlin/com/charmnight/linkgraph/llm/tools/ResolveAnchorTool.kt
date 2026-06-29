@@ -10,26 +10,20 @@ package com.charmnight.linkgraph.llm.tools
  */
 class ResolveAnchorTool(
     private val codeReadToolFacade: CodeReadToolFacade,
-) : AgentTool {
-    /** 工具稳定名称。 */
+) : TypedAgentTool<ResolveAnchorInput>() {
     override val name: String = "resolve_anchor"
-
-    /** 工具职责说明。 */
     override val description: String = "根据 nodeId 或 symbolSignature 解析代码锚点"
 
-    /**
-     * @param input 可选 key="nodeId" 或 "symbolSignature"
-     * @param context 工具执行上下文
-     * @return payload 包含解析后的节点；解析失败时返回失败结果并附带 resolution 上下文
-     */
-    override fun invoke(
-        input: Map<String, Any?>,
-        context: ToolExecutionContext,
-    ): ToolResult {
+    override fun parseInput(raw: Map<String, Any?>): ResolveAnchorInput = ResolveAnchorInput(
+        nodeId = optionalString(raw, "nodeId"),
+        symbolSignature = optionalString(raw, "symbolSignature"),
+    )
+
+    override fun invokeTyped(input: ResolveAnchorInput, context: ToolExecutionContext): ToolResult {
         val resolution = codeReadToolFacade.resolveEvidenceAnchor(
             snapshot = context.snapshot,
-            nodeId = input.optionalString("nodeId"),
-            symbolSignature = input.optionalString("symbolSignature"),
+            nodeId = input.nodeId,
+            symbolSignature = input.symbolSignature,
         )
         // 解析不到节点时返回失败结果，附带 resolution 让模型理解为什么失败
         val anchor = resolution.node ?: return failure(
@@ -45,3 +39,9 @@ class ResolveAnchorTool(
         )
     }
 }
+
+/** [ResolveAnchorTool] 的强类型入参；nodeId 与 symbolSignature 至少一个有值（缺省都为 null）。 */
+data class ResolveAnchorInput(
+    val nodeId: String?,
+    val symbolSignature: String?,
+)

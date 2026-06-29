@@ -10,31 +10,24 @@ package com.charmnight.linkgraph.llm.tools
  */
 class GetNodeDetailTool(
     private val graphToolFacade: GraphToolFacade,
-) : AgentTool {
-    /** 工具稳定名称。 */
+) : TypedAgentTool<GetNodeDetailInput>() {
     override val name: String = "get_node_detail"
-
-    /** 工具职责说明。 */
     override val description: String = "按 nodeId 读取节点详情"
 
-    /**
-     * @param input 包含 key="nodeId" 的节点 ID
-     * @param context 工具执行上下文，提供图快照
-     * @return payload 中带 node 字段；节点不存在时返回失败结果
-     */
-    override fun invoke(
-        input: Map<String, Any?>,
-        context: ToolExecutionContext,
-    ): ToolResult {
-        val nodeId = input.requiredString("nodeId") ?: return missingRequired("nodeId")
-        val node = graphToolFacade.nodeDetail(context.snapshot, nodeId)
+    override fun parseInput(raw: Map<String, Any?>): GetNodeDetailInput = GetNodeDetailInput(
+        nodeId = requireString(raw, "nodeId"),
+    )
+
+    override fun invokeTyped(input: GetNodeDetailInput, context: ToolExecutionContext): ToolResult {
+        val node = graphToolFacade.nodeDetail(context.snapshot, input.nodeId)
             // 节点不存在时返回失败结果，让模型可以判断下一步
-            ?: return failure("未找到节点: $nodeId")
+            ?: return failure("未找到节点: ${input.nodeId}")
         return ToolResult(
             toolName = name,
-            payload = mapOf(
-                "node" to node,
-            ),
+            payload = mapOf("node" to node),
         )
     }
 }
+
+/** [GetNodeDetailTool] 的强类型入参。 */
+data class GetNodeDetailInput(val nodeId: String)
