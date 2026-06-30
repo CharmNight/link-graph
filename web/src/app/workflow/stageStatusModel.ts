@@ -65,8 +65,6 @@ export function deriveStageStatuses(input: StageStatusInput): StageStatusEntry[]
     activeStage,
     graphBeautificationRequestState,
     qaRequestState,
-    generationPlanRequestState,
-    codeDraftRequestState,
     codeDiffStatus,
     confirmedDraftCount,
     pendingCandidateCount,

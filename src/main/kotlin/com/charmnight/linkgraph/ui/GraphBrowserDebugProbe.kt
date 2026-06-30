@@ -8,7 +8,7 @@ package com.charmnight.linkgraph.ui
 object GraphBrowserDebugProbe {
     /**
      * 根据触发原因生成一份可直接在浏览器中执行的运行时探针脚本。
-     * 脚本会在若干延时点采样图谱布局，并按需驱动一次模拟拖拽，把诊断数据通过 trace 通道回传。
+     * 脚本会在若干延时点采样图谱布局，并按需驱动一次模拟拖拽，把诊断数据通过跟踪通道回传。
      */
     fun buildRuntimeProbeScript(reason: String): String {
         val escapedReason = escapeJsString(reason)

@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 import com.charmnight.linkgraph.application.edit.GraphEditRequestPayloadParser
 import com.charmnight.linkgraph.application.model.GraphEditResult
 
@@ -30,7 +32,7 @@ class EditGraphTool : AgentTool {
      * @return payload 包含 status（APPLIED / REJECTED）以及相应字段
      */
     override fun invoke(
-        input: Map<String, Any?>,
+        input: ToolInputPayload,
         context: ToolExecutionContext,
     ): ToolResult {
         // 没有提供执行入口：直接拒绝，避免越权写图

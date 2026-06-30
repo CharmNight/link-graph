@@ -4,8 +4,8 @@ import com.charmnight.linkgraph.application.model.toRiskResolutionSnapshot
 import com.charmnight.linkgraph.testing.*
 import com.charmnight.linkgraph.ui.toApplicationSnapshot
 
-import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.LlmResultSource
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import kotlin.test.Test
 import kotlin.test.assertEquals

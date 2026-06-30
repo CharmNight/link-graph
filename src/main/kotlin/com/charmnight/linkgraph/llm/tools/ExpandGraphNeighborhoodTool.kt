@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 /**
  * 展开指定节点的邻域子图。
  *
@@ -14,7 +16,7 @@ class ExpandGraphNeighborhoodTool(
     override val name: String = "expand_graph_neighborhood"
     override val description: String = "展开指定节点的一跳或多跳邻域"
 
-    override fun parseInput(raw: Map<String, Any?>): ExpandGraphNeighborhoodInput = ExpandGraphNeighborhoodInput(
+    override fun parseInput(raw: ToolInputPayload): ExpandGraphNeighborhoodInput = ExpandGraphNeighborhoodInput(
         nodeId = requireString(raw, "nodeId"),
         depth = optionalInt(raw, "depth") ?: 1,
     )

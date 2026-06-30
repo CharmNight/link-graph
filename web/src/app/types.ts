@@ -22,11 +22,7 @@ import type {
   DiffStatus,
   DraftCompareStatus,
   GraphPatch,
-  GraphPosition,
-  GraphSourceTag,
   LinkGraphDocument,
-  LinkGraphEdge,
-  LinkGraphNode,
   LinkGraphSceneId,
   LinkGraphSceneState,
 } from "./graphTypes";

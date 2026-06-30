@@ -1,5 +1,9 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.agent.model.*
+import com.charmnight.linkgraph.settings.*
+
+import com.charmnight.linkgraph.application.port.GraphBeautificationPort
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
@@ -12,12 +16,12 @@ import com.charmnight.linkgraph.workbench.WorkbenchStep
  * 为“链路 + 代码 -> 可读性美化/解释”预留的稳定服务接口。
  * 当前先用本地规则输出稳定可读的解释结果，后续可平滑接入远程 LLM。
  */
-interface GraphBeautificationService {
+interface GraphBeautificationService : GraphBeautificationPort {
     /** 基于链路讲解上下文生成说明结果。 */
-    fun beautify(
+    override fun beautify(
         context: GraphBeautificationContext,
         settings: LinkGraphSettingsState,
-        onPreview: ((String, Boolean) -> Unit)? = null,
+        onPreview: ((String, Boolean) -> Unit)?,
     ): GraphBeautificationResult
 }
 

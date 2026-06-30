@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 /**
  * 统一管理可用工具集合。
  *
@@ -50,7 +52,7 @@ class AgentToolRegistry(
             override val description: String = tool.description
 
             override fun invoke(
-                input: Map<String, Any?>,
+                input: ToolInputPayload,
                 context: ToolExecutionContext,
             ): ToolResult {
                 // allowedToolNames 为 null 表示该调用点尚未启用 capability 策略，直接放行

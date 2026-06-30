@@ -17,11 +17,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * P1 JavaOverrideResolver / InvocationExpansionTargetResolver fixture 复现测试。
+ * P1 JavaOverrideResolver / InvocationExpansionTargetResolver 夹具复现测试。
  *
  * 直接观察当前实现是否能正确解析：
  * 1. 协变返回（参数相同 → 期望能匹配）
- * 2. 泛型接口 + 具体类型实现（接口 T erasure=Object，实现 String，描述符不一致）
+ * 2. 泛型接口 + 具体类型实现（接口 T 擦除后为 Object，实现 String，描述符不一致）
  * 3. Kotlin suspend 接口 + 实现（两端 Continuation 一致 → 期望能匹配）
  *
  * 测试只观察当前行为，先不加任何修复 ——
@@ -70,7 +70,7 @@ class JavaOverrideResolverBridgeFixtureTest : BasePlatformTestCase() {
     fun testResolvesGenericInterfaceWithConcreteImplementation() {
         // 泛型接口 <T>，接口字节码描述符是 Object
         // 实现类用 String 特化，描述符是 String
-        // 当前按 parameterTypes 严格匹配会漏匹配
+        // 当前按参数类型严格匹配会漏匹配
         myFixture.addFileToProject(
             "src/main/java/com/example/generic/Processor.java",
             """
@@ -173,10 +173,10 @@ class JavaOverrideResolverBridgeFixtureTest : BasePlatformTestCase() {
     }
 
     fun testResolverRejectsSameArityDifferentTypeOverload() {
-        // 修复 P1 commit 引入的过匹配：实现类有同名同 arity 但类型不同的方法（重载），
-        // 不应被当作接口方法的 override。
+        // 修复 P1 提交引入的过匹配：实现类有同名同参数数量但类型不同的方法（重载），
+        // 不应被当作接口方法的重写。
         // - 接口 Processor 有 process(String)
-        // - FooImpl 实现了 Processor，并自己另定义了 process(Integer)（不是 override）
+        // - FooImpl 实现了 Processor，并自己另定义了 process(Integer)（不是重写）
         // 解析 Processor.process(String) 应只返回 FooImpl.process(String)，不返回 process(Integer)。
         myFixture.addFileToProject(
             "src/main/java/com/example/overload/Processor.java",
@@ -198,7 +198,7 @@ class JavaOverrideResolverBridgeFixtureTest : BasePlatformTestCase() {
                 public String process(String input) {
                     return input;
                 }
-                // 同名同 arity 异类型：不是 Processor.process 的 override
+                // 同名同参数数量但类型不同：不是 Processor.process 的重写
                 public Integer process(Integer input) {
                     return input;
                 }
@@ -209,7 +209,7 @@ class JavaOverrideResolverBridgeFixtureTest : BasePlatformTestCase() {
         val outcome = resolveOverride(project, "com.example.overload.Processor", "process")
         // 期望：单实现 FooImpl.process(String)，不会被 process(Integer) 污染成 MultipleCandidates
         assertIsResolvedSingle(outcome, "FooImpl.process")
-        // 进一步断言 fact 签名里只有 String 参数版本
+        // 进一步断言事实签名里只有 String 参数版本
         val signatures = (outcome as ResolutionOutcome.Resolved).facts
             .mapNotNull { it.symbolSignature }
             .joinToString(";")
@@ -219,7 +219,7 @@ class JavaOverrideResolverBridgeFixtureTest : BasePlatformTestCase() {
         )
     }
 
-    // ---------- helpers ----------
+    // ---------- 辅助函数 ----------
 
     private fun resolveOverride(
         project: Project,
@@ -228,11 +228,11 @@ class JavaOverrideResolverBridgeFixtureTest : BasePlatformTestCase() {
     ): ResolutionOutcome {
         val index = buildIndex(project)
         requireNotNull(index.findClass(ownerClassName)) {
-            "找不到 fixture 类 $ownerClassName — 检查 fixture 是否被索引"
+            "找不到测试夹具类 $ownerClassName — 检查测试夹具是否被索引"
         }
         val baseMethod = index.symbolIndex.methodsBySignature.values.firstOrNull {
             it.ownerClassName == ownerClassName && it.simpleName == methodName
-        } ?: error("找不到 fixture 方法 $ownerClassName.$methodName — 检查 fixture 是否被索引")
+        } ?: error("找不到测试夹具方法 $ownerClassName.$methodName — 检查测试夹具是否被索引")
         val goal = EvidenceGoal(
             goalId = "test-goal",
             kind = EvidenceGoalKind.METHOD_OVERRIDE,

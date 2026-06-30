@@ -4,7 +4,7 @@ import com.charmnight.linkgraph.application.model.PlanningInput
 import com.charmnight.linkgraph.codegen.CodeGenerationResult
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
-import com.charmnight.linkgraph.llm.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GenerationPlan
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.model.diagnostics.GraphPatchDiagnostics

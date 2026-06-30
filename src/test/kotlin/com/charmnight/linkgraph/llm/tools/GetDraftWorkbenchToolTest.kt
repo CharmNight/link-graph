@@ -1,11 +1,13 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.llm.artifact.ArtifactType
-import com.charmnight.linkgraph.llm.artifact.CandidateDraftArtifact
-import com.charmnight.linkgraph.llm.artifact.ConfirmedIntentArtifact
-import com.charmnight.linkgraph.llm.runtime.RunBudget
+import com.charmnight.linkgraph.agent.artifact.ArtifactType
+import com.charmnight.linkgraph.agent.artifact.CandidateDraftArtifact
+import com.charmnight.linkgraph.agent.artifact.ConfirmedIntentArtifact
+import com.charmnight.linkgraph.agent.runtime.RunBudget
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
@@ -23,8 +25,8 @@ class GetDraftWorkbenchToolTest : BasePlatformTestCase() {
             context = ToolExecutionContext(
                 project = project,
                 snapshot = testSnapshot(
-                    qaResult = com.charmnight.linkgraph.llm.GraphPatchResult(
-                        source = com.charmnight.linkgraph.llm.LlmResultSource.LOCAL_RULE,
+                    qaResult = com.charmnight.linkgraph.agent.model.GraphPatchResult(
+                        source = com.charmnight.linkgraph.agent.model.LlmResultSource.LOCAL_RULE,
                         question = "Q",
                         answer = "A",
                         promptPreview = "prompt",
@@ -47,7 +49,7 @@ class GetDraftWorkbenchToolTest : BasePlatformTestCase() {
                         ),
                     ),
                 ).toToolGraphSnapshot(),
-                artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
+                artifactStore = com.charmnight.linkgraph.agent.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
         )
@@ -69,8 +71,8 @@ class GetDraftWorkbenchToolTest : BasePlatformTestCase() {
             context = ToolExecutionContext(
                 project = project,
                 snapshot = testSnapshot(
-                    qaResult = com.charmnight.linkgraph.llm.GraphPatchResult(
-                        source = com.charmnight.linkgraph.llm.LlmResultSource.LOCAL_RULE,
+                    qaResult = com.charmnight.linkgraph.agent.model.GraphPatchResult(
+                        source = com.charmnight.linkgraph.agent.model.LlmResultSource.LOCAL_RULE,
                         question = "Q",
                         answer = "A",
                         promptPreview = "prompt",
@@ -99,7 +101,7 @@ class GetDraftWorkbenchToolTest : BasePlatformTestCase() {
                         ),
                     ),
                 ).toToolGraphSnapshot(),
-                artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
+                artifactStore = com.charmnight.linkgraph.agent.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
         )

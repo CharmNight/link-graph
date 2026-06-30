@@ -2,8 +2,8 @@ package com.charmnight.linkgraph.application.workflow.generation
 
 import com.charmnight.linkgraph.application.model.PlanningInput
 import com.charmnight.linkgraph.application.model.toRiskResolutionSnapshot
-import com.charmnight.linkgraph.llm.GenerationContext
-import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.agent.model.GenerationContext
+import com.charmnight.linkgraph.agent.model.LlmResultSource
 import com.charmnight.linkgraph.application.model.AsyncRequestState
 import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.application.result.GenerationDiscussionResult

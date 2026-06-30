@@ -1018,13 +1018,13 @@ button {
 }
 
 /*
- * P3 — interaction animation layer.
- * One consistent motion language for graph interactions. Animations are:
- *   - subtle (≤220ms, transform/opacity/shadow only — no layout reflow)
- *   - disabled during drag (the .is-dragging guard above wins via !important)
- *   - disabled when the user prefers reduced motion (global @media below)
- *   - skipped on large graphs via a [data-graph-density="dense"] attribute set
- *     by GraphFlowSurface when node count exceeds DENSE_GRAPH_NODE_THRESHOLD
+ * P3 交互动效层。
+ * 图谱交互统一使用同一套动效规则：
+ *   - 动效保持轻量（不超过 220ms，只改 transform/opacity/shadow，不触发布局重排）
+ *   - 拖动期间禁用（上方 .is-dragging 保护规则通过 !important 生效）
+ *   - 用户偏好减少动态效果时禁用（见下方全局 @media 规则）
+ *   - 大图跳过动效，由 GraphFlowSurface 在节点数超过 DENSE_GRAPH_NODE_THRESHOLD 时
+ *     设置 [data-graph-density="dense"] 属性
  */
 :root {
   --graph-transition-duration: 180ms;

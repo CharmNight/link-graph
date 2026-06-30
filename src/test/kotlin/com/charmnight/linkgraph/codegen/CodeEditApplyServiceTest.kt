@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.codegen
 
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.llm.EditScope
+import com.charmnight.linkgraph.agent.model.EditScope
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

@@ -1,5 +1,8 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.agent.model.*
+import com.charmnight.linkgraph.settings.*
+
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.net.Authenticator

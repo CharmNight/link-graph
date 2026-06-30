@@ -7,9 +7,9 @@ import com.charmnight.linkgraph.application.result.BeautificationCompletedResult
 import com.charmnight.linkgraph.application.result.DiffReviewCompletedResult
 import com.charmnight.linkgraph.application.result.ReviewRequestScene
 import com.charmnight.linkgraph.application.result.ReviewRequestStartedResult
-import com.charmnight.linkgraph.llm.GraphBeautificationResult
-import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.agent.model.GraphBeautificationResult
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.LlmResultSource
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.workbench.DraftValidationState
 import com.charmnight.linkgraph.workbench.DraftValidationStatus

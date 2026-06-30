@@ -2,13 +2,13 @@ package com.charmnight.linkgraph.application.workflow.generation
 
 import com.charmnight.linkgraph.application.model.PlanningInput
 import com.charmnight.linkgraph.application.model.toRiskResolutionSnapshot
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GenerationPlanSource
-import com.charmnight.linkgraph.llm.capability.PlanCapability
-import com.charmnight.linkgraph.llm.capability.PlanCapabilityInput
-import com.charmnight.linkgraph.llm.runtime.AgentRunResult
-import com.charmnight.linkgraph.llm.runtime.AgentRuntimeContext
-import com.charmnight.linkgraph.llm.runtime.withRuntimeDeadlineTimeout
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GenerationPlanSource
+import com.charmnight.linkgraph.agent.capability.PlanCapability
+import com.charmnight.linkgraph.agent.capability.PlanCapabilityInput
+import com.charmnight.linkgraph.agent.runtime.AgentRunResult
+import com.charmnight.linkgraph.agent.runtime.AgentRuntimeContext
+import com.charmnight.linkgraph.agent.runtime.withRuntimeDeadlineTimeout
 import com.charmnight.linkgraph.application.diagnostics.GenerationDiagnostics
 import com.charmnight.linkgraph.foundation.debugLazy
 import com.charmnight.linkgraph.application.model.AsyncRequestExecutionMode

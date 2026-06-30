@@ -167,6 +167,7 @@ export function PropertyPanel({
   // 标题输入的 ref 与 useId，用于自动聚焦与无障碍关联
   const titleId = useId();
   const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const draftId = draft?.id ?? null;
 
   // 选中节点变化时同步表单；但若用户有未保存修改则保留 draft
   useEffect(() => {
@@ -188,7 +189,7 @@ export function PropertyPanel({
 
   // draft 变化时（特别是 ID 变化）自动聚焦标题输入
   useEffect(() => {
-    if (!draft) {
+    if (!draftId) {
       return undefined;
     }
     // 用 setTimeout 让聚焦在渲染后发生，避免与 React 的 commit 阶段冲突
@@ -197,7 +198,7 @@ export function PropertyPanel({
       titleInputRef.current?.select();
     }, 0);
     return () => window.clearTimeout(timerId);
-  }, [draft?.id]);
+  }, [draftId]);
 
   // 全局 Escape 关闭面板
   useEffect(() => {

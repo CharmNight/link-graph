@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.application.model
 
-import com.charmnight.linkgraph.llm.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
 
 /**

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { undoLastDraftPatchApply } from "./api";
 import {
   applyLayoutUpdatesToGraphDocument,
   applyBootstrapRoutesToViewDocument,
@@ -14,7 +13,6 @@ import {
   resolveEntryOwnerSignatures,
   resolveNodeOwnerSignature,
   reuseCurrentViewGraphs,
-  scopeFlowchartGraphToAnchorMethod,
   syncFactGraphViewDocument,
   syncArchitectureGraphViewLayout,
   syncClassDiagramViewLayout,
@@ -44,12 +42,8 @@ import {
   resolveNodePosition,
   syncNodePosition,
 } from "./graphState";
-import { canEditNodeLayout } from "./layoutEditability";
-import type { AssistantIntent } from "./assistant/assistantTypes";
 import type {
-  AnalysisDisplayMode,
   LinkGraphBootstrapState,
-  LinkGraphSceneId,
 } from "./types";
 import type { EditableStageProps, IndexedReadonlyStageProps } from "./views/viewStageProps";
 import type { AssistantDisplayModeDocuments } from "./assistant/useAssistantActionController";
@@ -204,9 +198,6 @@ export function App() {
   const {
     detailNodeId,
     draftWorkbenchState,
-    designBaseline,
-    draftPatchPreview,
-    lastAppliedDraftPatchPreview,
     canUndoDraftPatchApply,
     lastAppliedDraftPatchSummary,
     qaResult,
@@ -214,9 +205,7 @@ export function App() {
     qaRequestRecoveryState,
     diffReviewResult,
     diffReviewRequestState,
-    mermaidIssues,
     diffItems,
-    syncPreviewItems,
     draftVersion,
     generationPlan,
     generationPlanDraftVersion,
@@ -228,14 +217,8 @@ export function App() {
     graphBeautificationRequestState,
     generatedCodeDrafts,
     generatedCodeDraftVersion,
-    generatedCodeDraftWarnings,
-    generatedCodeDraftSource,
-    generatedCodeDraftPromptPreview,
-    generatedCodeDraftPromptPreviewArtifactId,
-    generatedCodeDraftWriteReport,
     lastDraftPatchApplyResult,
     codeDraftRequestState,
-    codeEligibilityDecision,
     indexedGraphRequestStates,
     sourceNavigationState: _sourceNavigationState,
     operationFeedback,
@@ -247,8 +230,6 @@ export function App() {
   } = projectionState;
   const {
     setDetailNodeId,
-    setDraftWorkbenchState,
-    setDesignBaseline,
     setDraftPatchPreview,
     setLastAppliedDraftPatchPreview,
     setCanUndoDraftPatchApply,
@@ -258,12 +239,8 @@ export function App() {
     setQaRequestRecoveryState,
     setDiffReviewResult,
     setDiffReviewRequestState,
-    setMermaidIssues,
-    setDiffItems,
     setSyncPreviewItems,
-    setDraftVersion,
     setGenerationPlan,
-    setGenerationPlanDraftVersion,
     setGenerationPlanRequestState,
     setDraftValidationState,
     setGenerationPlanDiscussionSession,
@@ -271,7 +248,6 @@ export function App() {
     setGraphBeautificationResult,
     setGraphBeautificationRequestState,
     setGeneratedCodeDrafts,
-    setGeneratedCodeDraftVersion,
     setGeneratedCodeDraftWarnings,
     setGeneratedCodeDraftSource,
     setGeneratedCodeDraftPromptPreview,
@@ -282,9 +258,6 @@ export function App() {
     setCodeEligibilityDecision,
     setSourceNavigationState,
     setOperationFeedback,
-    setLastMessageType,
-    setGraphSurfaceExperiments,
-    setArtifactContents,
     setAssistantSessionState,
     setAssistantResultStore,
   } = projectionSetters;

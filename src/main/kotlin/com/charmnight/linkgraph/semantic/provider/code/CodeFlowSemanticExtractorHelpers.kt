@@ -19,8 +19,8 @@ import org.jetbrains.kotlin.psi.KtWhenEntry
 /**
  * 归一化 Java switch 分支 label：
  * - 去除 "->" / ":" 后缀
- * - "default" → "DEFAULT"
- * - "case X" → "X"
+ * - 默认分支："default" → "DEFAULT"
+ * - case 分支："case X" → "X"
  */
 internal fun normalizeSwitchBranchLabel(rawLabel: String): String {
     val normalized = rawLabel

@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.application.composition
 
 import com.charmnight.linkgraph.application.artifact.ConfirmedDraftArtifactWriter
 import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
-import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
+import com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeHooks
 import com.charmnight.linkgraph.application.workflow.ConfirmedDraftChangeCoordinator
 import com.charmnight.linkgraph.application.workflow.DraftPatchWorkflow
 import com.charmnight.linkgraph.application.workflow.GraphWorkspaceWorkflow
@@ -21,10 +21,9 @@ import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanWo
 import com.charmnight.linkgraph.application.workflow.generation.GenerationWorkflowDependencies
 import com.charmnight.linkgraph.application.workflow.ReviewGraphWorkflow
 import com.charmnight.linkgraph.foundation.LoggedFailures
-import com.charmnight.linkgraph.llm.GenerationPlanDiscussionService
-import com.charmnight.linkgraph.llm.capability.CodegenCapability
-import com.charmnight.linkgraph.llm.capability.PlanCapability
-import com.charmnight.linkgraph.llm.runtime.AgentRunCoordinator
+import com.charmnight.linkgraph.agent.capability.CodegenCapability
+import com.charmnight.linkgraph.agent.capability.PlanCapability
+import com.charmnight.linkgraph.agent.runtime.AgentRunCoordinator
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.navigation.SourceNavigationService
 import com.charmnight.linkgraph.semantic.SemanticAnalyzer
@@ -46,12 +45,7 @@ import com.intellij.openapi.ide.CopyPasteManager
 import java.awt.datatransfer.StringSelection
 
 /**
- * Assembles the workflow layer on top of [InfrastructureComposition]. Each workflow is constructed
- * lazily under [LazyThreadSafetyMode.PUBLICATION]; collaborators are pulled from the shared
- * infrastructure composition so cross-workflow wiring (e.g. reviewFlow reusing workspaceFlow's
- * edit-request executor) stays explicit and traceable.
- *
- * 中文概述：在基础设施组合之上装配工作流层；所有工作流均以 PUBLICATION 模式延迟构造，
+ * 在基础设施组合之上装配工作流层；所有工作流均以 PUBLICATION 模式延迟构造，
  * 共享依赖统一来自基础设施组合，使工作流之间的相互调用（如评审流复用工作台编辑执行器）
  * 保持显式可追溯。
  */
@@ -64,8 +58,8 @@ internal class WorkflowComposition(
      * 测试覆盖项：从 project service 动态获取（P3-2 重构）。
      * 生产环境永远拿到默认实例；测试通过 replaceService 注入。
      */
-    private val testOverrides: LinkGraphProjectTestOverrides
-        get() = project.getService(LinkGraphProjectTestOverrides::class.java)
+    private val runtimeHooks: LinkGraphProjectRuntimeHooks
+        get() = project.getService(LinkGraphProjectRuntimeHooks::class.java)
 
     // P2-1: 共享语义基础设施委托给 CompositionSharedInfrastructure
     private val codeSubjectHandleFactory: CodeSubjectHandleFactory by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -85,14 +79,14 @@ internal class WorkflowComposition(
     }
 
     private val subjectLocator: SubjectLocator
-        get() = CompositionSharedInfrastructure.resolveSubjectLocator(testOverrides)
+        get() = CompositionSharedInfrastructure.resolveSubjectLocator(runtimeHooks)
 
     private val semanticAnalyzer: SemanticAnalyzer
-        get() = CompositionSharedInfrastructure.resolveSemanticAnalyzer(testOverrides, project, logger, infrastructure)
+        get() = CompositionSharedInfrastructure.resolveSemanticAnalyzer(runtimeHooks, project, logger, infrastructure)
 
     /** 分析结果工厂入口：优先使用测试覆盖注入的实现，否则回落到默认工厂。 */
     private val analysisOutcomeFactory: AnalysisOutcomeFactory
-        get() = testOverrides.analysisOutcomeFactory ?: defaultAnalysisOutcomeFactory
+        get() = runtimeHooks.analysisOutcomeFactory ?: defaultAnalysisOutcomeFactory
 
     /** 主题图谱工作流：以光标主题为入口触发语义分析并写入工作台图谱。 */
     val subjectFlow: SubjectGraphWorkflow by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -100,6 +94,7 @@ internal class WorkflowComposition(
             project = project,
             snapshotProvider = infrastructure.editorSnapshotProvider,
             asyncRequestLifecycle = infrastructure.asyncRequestLifecycle,
+            taskRunner = infrastructure.taskRunner,
             subjectLocatorProvider = { subjectLocator },
             semanticAnalyzerProvider = { semanticAnalyzer },
             analysisOutcomeFactoryProvider = { analysisOutcomeFactory },
@@ -165,6 +160,7 @@ internal class WorkflowComposition(
             eventSink = infrastructure.eventSink,
             settingsProvider = infrastructure.runtimeSupport::effectiveGenerationSettings,
             asyncRequestLifecycle = infrastructure.asyncRequestLifecycle,
+            taskRunner = infrastructure.taskRunner,
             logger = logger,
             artifactStoreProvider = { infrastructure.artifactStore },
             agentRunCoordinator = AgentRunCoordinator(),
@@ -175,7 +171,7 @@ internal class WorkflowComposition(
                 CodegenCapability(project = project, codegenExecutor = codegenExecutor)
             },
             riskResolutionService = infrastructure.riskResolutionService,
-            generationPlanDiscussionService = GenerationPlanDiscussionService(gateway = infrastructure.llmGateway),
+            generationPlanDiscussionService = infrastructure.generationPlanDiscussionService,
             showCodeDraftMergeRequest = { currentProject, request ->
                 DiffManager.getInstance().showMerge(currentProject, request)
             },
@@ -215,8 +211,9 @@ internal class WorkflowComposition(
             graphBeautificationService = infrastructure.graphBeautificationService,
             graphDiffer = infrastructure.graphDiffer,
             settingsProvider = infrastructure.runtimeSupport::effectiveGenerationSettings,
-            qaExecutorOverrideProvider = { testOverrides.qaExecutor },
+            qaExecutorHook = { runtimeHooks.qaExecutor },
             asyncRequestLifecycle = infrastructure.asyncRequestLifecycle,
+            taskRunner = infrastructure.taskRunner,
             logger = logger,
             artifactStoreProvider = { infrastructure.artifactStore },
             graphEditRequestExecutor = workspaceFlow::handleGraphEditRequest,
@@ -233,6 +230,7 @@ internal class WorkflowComposition(
             navigationNodeFinder = ::findTrustedNavigationNodeFromIndex,
             showSettingsDialog = infrastructure.runtimeSupport::openSettingsDialog,
             logger = logger,
+            taskRunner = infrastructure.taskRunner,
         )
     }
 
@@ -246,8 +244,8 @@ internal class WorkflowComposition(
             semanticAnalyzerProvider = { semanticAnalyzer },
             analysisOutcomeFactoryProvider = { analysisOutcomeFactory },
             codeSubjectHandleFactory = codeSubjectHandleFactory,
-            targetResolverOverrideProvider = { testOverrides.invocationExpansionTargetResolver },
-            subjectResolverOverrideProvider = { testOverrides.invocationExpansionSubjectResolver },
+            targetResolverHook = { runtimeHooks.invocationExpansionTargetResolver },
+            subjectResolverHook = { runtimeHooks.invocationExpansionSubjectResolver },
             logger = logger,
         )
     }
@@ -259,6 +257,7 @@ internal class WorkflowComposition(
             indexSupport = infrastructure.architectureIndexSupport,
             eventSink = infrastructure.eventSink,
             logger = logger,
+            taskRunner = infrastructure.taskRunner,
             runtimeTrace = infrastructure.runtimeSupport.runtimeTraceSink(),
         )
     }
@@ -271,6 +270,7 @@ internal class WorkflowComposition(
             eventSink = infrastructure.eventSink,
             snapshotProvider = infrastructure.editorSnapshotProvider,
             logger = logger,
+            taskRunner = infrastructure.taskRunner,
             runtimeTrace = infrastructure.runtimeSupport.runtimeTraceSink(),
         )
     }
@@ -284,6 +284,7 @@ internal class WorkflowComposition(
             graphDiffer = infrastructure.graphDiffer,
             eventSink = infrastructure.eventSink,
             logger = logger,
+            taskRunner = infrastructure.taskRunner,
             runtimeTrace = infrastructure.runtimeSupport.runtimeTraceSink(),
         )
     }

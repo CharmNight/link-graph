@@ -3,7 +3,7 @@ package com.charmnight.linkgraph.ui
 import com.intellij.ui.JBColor
 import com.charmnight.linkgraph.presentation.GraphViewPresentation
 import com.charmnight.linkgraph.json.JsonCodec
-import com.charmnight.linkgraph.llm.GraphBeautificationResult
+import com.charmnight.linkgraph.agent.model.GraphBeautificationResult
 import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
@@ -11,7 +11,7 @@ import com.charmnight.linkgraph.model.GraphMetadataKeys
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphPatch
 import com.charmnight.linkgraph.model.GraphPatchOperation
-import com.charmnight.linkgraph.llm.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
 import com.charmnight.linkgraph.architecture.ArchitectureGraphResult
 import com.charmnight.linkgraph.architecture.ClassDiagramResult
 import com.charmnight.linkgraph.semantic.outcome.FactGraphViewDocument
@@ -19,10 +19,10 @@ import com.charmnight.linkgraph.semantic.outcome.FlowchartViewDocument
 import com.charmnight.linkgraph.semantic.outcome.ResourceRelationViewDocument
 
 /**
- * 把项目状态序列化成前端可直接消费的 bootstrap JSON，并注入到入口 HTML。
+ * 把项目状态序列化成前端可直接消费的启动 JSON，并注入到入口 HTML。
  */
 class GraphEditorPageRenderer {
-    // P2-1 真正的架构分解：bootstrap payload 组装委托给独立的 BootstrapPayloadAssembler
+    // P2-1 真正的架构分解：启动载荷组装委托给独立的 BootstrapPayloadAssembler
     private val payloadAssembler = BootstrapPayloadAssembler(this)
     companion object {
         /** 允许完整内联的次级图层最大节点数。 */
@@ -38,7 +38,7 @@ class GraphEditorPageRenderer {
         private fun isIdeaDarkTheme(): Boolean = !JBColor.isBright()
     }
 
-    /** 为指定会话生成 bootstrap 脚本和自定义事件。 */
+    /** 为指定会话生成启动脚本和自定义事件。 */
     fun bootstrapScript(
         sessionId: String,
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
@@ -52,7 +52,7 @@ class GraphEditorPageRenderer {
         )
     }
 
-    /** 为指定会话生成 bootstrap 脚本和自定义事件。 */
+    /** 为指定会话生成启动脚本和自定义事件。 */
     fun bootstrapScript(
         sessionId: String,
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
@@ -90,7 +90,7 @@ class GraphEditorPageRenderer {
         """.trimIndent()
     }
 
-    /** 把 bootstrap 脚本注入入口 HTML 的 `<head>` 中。 */
+    /** 把启动脚本注入入口 HTML 的 `<head>` 中。 */
     fun render(
         entryHtml: String,
         sessionId: String,
@@ -106,7 +106,7 @@ class GraphEditorPageRenderer {
         )
     }
 
-    /** 把 bootstrap 脚本注入入口 HTML 的 `<head>` 中。 */
+    /** 把启动脚本注入入口 HTML 的 `<head>` 中。 */
     fun render(
         entryHtml: String,
         sessionId: String,
@@ -140,7 +140,7 @@ class GraphEditorPageRenderer {
         }
     }
 
-    /** 直接返回前端所需的 bootstrap JSON。 */
+    /** 直接返回前端所需的启动 JSON。 */
     fun bootstrapJson(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): String {
         return bootstrapJson(
             snapshot = snapshot,
@@ -148,7 +148,7 @@ class GraphEditorPageRenderer {
         )
     }
 
-    /** 直接返回前端所需的 bootstrap JSON。 */
+    /** 直接返回前端所需的启动 JSON。 */
     fun bootstrapJson(
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
@@ -156,7 +156,7 @@ class GraphEditorPageRenderer {
         return encodeBootstrapJson(snapshot, artifactRefs)
     }
 
-    /** 生成携带会话信息的外层 envelope JSON。 */
+    /** 生成携带会话信息的外层信封 JSON。 */
     private fun encodeSnapshotEnvelopeJson(
         sessionId: String,
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
@@ -170,7 +170,7 @@ class GraphEditorPageRenderer {
         return JsonCodec.toScriptSafeJson(payload)
     }
 
-    /** 将完整编辑器快照编码成前端 bootstrap JSON。 */
+    /** 将完整编辑器快照编码成前端启动 JSON。 */
     private fun encodeBootstrapJson(
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts,
@@ -178,7 +178,7 @@ class GraphEditorPageRenderer {
         return JsonCodec.toScriptSafeJson(bootstrapPayload(snapshot, artifactRefs))
     }
 
-    /** 构建完整 bootstrap 状态载荷（DTO），供 init 与增量 slice 复用。 */
+    /** 构建完整启动状态载荷（DTO），供初始化与增量切片复用。 */
     internal fun bootstrapPayload(snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): BootstrapPayloadDto {
         return bootstrapPayload(
             snapshot = snapshot,
@@ -186,15 +186,15 @@ class GraphEditorPageRenderer {
         )
     }
 
-    /** 构建完整 bootstrap 状态载荷（DTO），委托给 [payloadAssembler]。 */
+    /** 构建完整启动状态载荷（DTO），委托给 [payloadAssembler]。 */
     internal fun bootstrapPayload(
         snapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot,
         artifactRefs: GraphEditorArtifactRegistry.SnapshotArtifacts = GraphEditorArtifactRegistry.SnapshotArtifacts.EMPTY,
     ): BootstrapPayloadDto = payloadAssembler.assemble(snapshot, artifactRefs)
 
-    /** sceneStatesToDto / graphSceneStateToDto 已抽到 top-level（GraphEditorPageRendererHelpers.kt）。 */
+    /** sceneStatesToDto / graphSceneStateToDto 已抽到顶层函数（GraphEditorPageRendererHelpers.kt）。 */
 
-    /** 把异步请求状态转换成前端 DTO：详见 top-level fun asyncRequestStateToDto。 */
+    /** 把异步请求状态转换成前端 DTO：详见顶层函数 asyncRequestStateToDto。 */
     internal fun requestStateToDto(
         state: com.charmnight.linkgraph.ui.AsyncRequestState,
         hasPromptPreview: Boolean = state.promptPreviewAvailable,
@@ -205,7 +205,7 @@ class GraphEditorPageRenderer {
         state: com.charmnight.linkgraph.workbench.QaRequestRecoveryState,
     ): QaRequestRecoveryStateDto = com.charmnight.linkgraph.ui.qaRequestRecoveryStateToDto(state)
 
-    /** 把可重放的 QA 请求转换为前端 DTO：详见 top-level fun replayableQaRequestToDto。 */
+    /** 把可重放的 QA 请求转换为前端 DTO：详见顶层函数 replayableQaRequestToDto。 */
     private fun replayableQaRequestToDto(
         request: com.charmnight.linkgraph.workbench.ReplayableQaRequest,
     ): ReplayableQaRequestDto = com.charmnight.linkgraph.ui.replayableQaRequestToDto(request)
@@ -279,9 +279,9 @@ class GraphEditorPageRenderer {
         )
     }
 
-    /** assistantFailureResultToDto / generationPlanToDto 已抽到 top-level（GraphEditorPageRendererHelpers.kt）。 */
+    /** assistantFailureResultToDto / generationPlanToDto 已抽到顶层函数（GraphEditorPageRendererHelpers.kt）。 */
 
-    /** 把生成的代码草稿转换为前端 DTO：详见 top-level fun generatedCodeDraftToDto。 */
+    /** 把生成的代码草稿转换为前端 DTO：详见顶层函数 generatedCodeDraftToDto。 */
     internal fun generatedCodeDraftToDto(
         draft: com.charmnight.linkgraph.codegen.GeneratedCodeDraft,
         contentArtifactId: String?,
@@ -292,7 +292,7 @@ class GraphEditorPageRenderer {
         decision: com.charmnight.linkgraph.workbench.StageEligibilityDecision,
     ): StageEligibilityDecisionDto = com.charmnight.linkgraph.ui.stageEligibilityDecisionToDto(decision)
 
-    /** 把源码跳转状态转换为前端 DTO：详见 top-level fun sourceNavigationStateToDto。 */
+    /** 把源码跳转状态转换为前端 DTO：详见顶层函数 sourceNavigationStateToDto。 */
     internal fun sourceNavigationStateToDto(
         state: com.charmnight.linkgraph.ui.SourceNavigationState,
     ): SourceNavigationStateDto = com.charmnight.linkgraph.ui.sourceNavigationStateToDto(state)
@@ -303,7 +303,7 @@ class GraphEditorPageRenderer {
         document: GraphDocument,
     ): String = com.charmnight.linkgraph.ui.resolveDiffTitle(entry, document)
 
-    /** 把节点转换为前端 DTO：详见 top-level fun nodeToDto。 */
+    /** 把节点转换为前端 DTO：详见顶层函数 nodeToDto。 */
     private fun nodeToDto(
         node: GraphNode,
         layoutState: GraphLayoutState? = null,
@@ -313,7 +313,7 @@ class GraphEditorPageRenderer {
     private fun edgeToDto(edge: GraphEdge): GraphEdgeDto =
         com.charmnight.linkgraph.ui.edgeToDto(edge)
 
-    /** 把图文档转换为前端 DTO：详见 top-level fun graphDocumentToDto。 */
+    /** 把图文档转换为前端 DTO：详见顶层函数 graphDocumentToDto。 */
     internal fun documentToDto(
         document: GraphDocument,
         includeFullContent: Boolean,
@@ -605,65 +605,65 @@ class GraphEditorPageRenderer {
         presentation = presentation,
     )
 
-    /** 把投影索引转换为前端 DTO：详见 top-level fun graphProjectionIndexToDto。 */
+    /** 把投影索引转换为前端 DTO：详见顶层函数 graphProjectionIndexToDto。 */
     private fun projectionIndexToDto(
         projectionIndex: com.charmnight.linkgraph.application.model.GraphProjectionIndex,
     ): GraphProjectionIndexDto = com.charmnight.linkgraph.ui.graphProjectionIndexToDto(projectionIndex)
 
-    /** 把补丁整体转换为前端 DTO：详见 top-level fun patchToDto。 */
+    /** 把补丁整体转换为前端 DTO：详见顶层函数 patchToDto。 */
     internal fun patchToDto(patch: GraphPatch): GraphPatchDto =
         com.charmnight.linkgraph.ui.patchToDto(patch)
 
-    /** 把单条补丁操作转换为前端 DTO：详见 top-level fun patchOperationToDto。 */
+    /** 把单条补丁操作转换为前端 DTO：详见顶层函数 patchOperationToDto。 */
     private fun patchOperationToDto(operation: GraphPatchOperation): GraphPatchOperationDto =
         com.charmnight.linkgraph.ui.patchOperationToDto(operation)
 
-    /** 把补丁类结果转换为前端 DTO：详见 top-level fun patchResultToDto。 */
+    /** 把补丁类结果转换为前端 DTO：详见顶层函数 patchResultToDto。 */
     internal fun patchResultToDto(
         result: GraphPatchResult,
         promptPreviewArtifactId: String?,
     ): PatchResultDto = com.charmnight.linkgraph.ui.patchResultToDto(result, promptPreviewArtifactId)
 
-    /** 把链路讲解结果转换为前端 DTO：详见 top-level fun beautificationResultToDto。 */
+    /** 把链路讲解结果转换为前端 DTO：详见顶层函数 beautificationResultToDto。 */
     internal fun beautificationResultToDto(
         result: GraphBeautificationResult,
         promptPreviewArtifactId: String?,
     ): BeautificationResultDto = com.charmnight.linkgraph.ui.beautificationResultToDto(result, promptPreviewArtifactId)
 
-    /** 把单条证据结论转换为前端 DTO：详见 top-level fun resultEvidenceFindingToDto。 */
-    private fun resultEvidenceFindingToDto(finding: com.charmnight.linkgraph.llm.ResultEvidenceFinding): ResultEvidenceFindingDto =
+    /** 把单条证据结论转换为前端 DTO：详见顶层函数 resultEvidenceFindingToDto。 */
+    private fun resultEvidenceFindingToDto(finding: com.charmnight.linkgraph.agent.model.ResultEvidenceFinding): ResultEvidenceFindingDto =
         com.charmnight.linkgraph.ui.resultEvidenceFindingToDto(finding)
 
-    /** 把草稿补丁应用结果转换为前端 DTO：详见 top-level fun draftPatchApplyResultToDto。 */
+    /** 把草稿补丁应用结果转换为前端 DTO：详见顶层函数 draftPatchApplyResultToDto。 */
     internal fun draftPatchApplyResultToDto(result: DraftPatchApplyResult): DraftPatchApplyResultDto =
         com.charmnight.linkgraph.ui.draftPatchApplyResultToDto(result)
 
-    /** 把草稿工作台状态转换为前端 DTO：详见 top-level fun draftWorkbenchStateToDto。 */
+    /** 把草稿工作台状态转换为前端 DTO：详见顶层函数 draftWorkbenchStateToDto。 */
     internal fun draftWorkbenchStateToDto(
         state: com.charmnight.linkgraph.workbench.DraftWorkbenchState,
     ): DraftWorkbenchStateDto = com.charmnight.linkgraph.ui.draftWorkbenchStateToDto(state)
 
-    /** 把单条草稿工作台条目转换为前端 DTO：详见 top-level fun draftWorkbenchEntryToDto。 */
+    /** 把单条草稿工作台条目转换为前端 DTO：详见顶层函数 draftWorkbenchEntryToDto。 */
     private fun draftWorkbenchEntryToDto(
         entry: com.charmnight.linkgraph.workbench.DraftWorkbenchEntry,
     ): DraftWorkbenchEntryDto = com.charmnight.linkgraph.ui.draftWorkbenchEntryToDto(entry)
 
-    /** 把候选草稿变更转换为前端 DTO：详见 top-level fun candidateDraftChangeToDto。 */
+    /** 把候选草稿变更转换为前端 DTO：详见顶层函数 candidateDraftChangeToDto。 */
     private fun candidateDraftChangeToDto(
         change: com.charmnight.linkgraph.workbench.CandidateDraftChange,
     ): CandidateDraftChangeDto = com.charmnight.linkgraph.ui.candidateDraftChangeToDto(change)
 
-    /** 把候选补丁意图转换为前端 DTO：详见 top-level fun candidatePatchIntentToDto。 */
+    /** 把候选补丁意图转换为前端 DTO：详见顶层函数 candidatePatchIntentToDto。 */
     private fun candidatePatchIntentToDto(
         intent: com.charmnight.linkgraph.workbench.CandidatePatchIntent,
     ): CandidatePatchIntentDto = com.charmnight.linkgraph.ui.candidatePatchIntentToDto(intent)
 
-    /** 把 QA 多轮对话会话转换为前端 DTO：详见 top-level fun qaConversationSessionToDto。 */
+    /** 把 QA 多轮对话会话转换为前端 DTO：详见顶层函数 qaConversationSessionToDto。 */
     private fun qaConversationSessionToDto(
         session: com.charmnight.linkgraph.workbench.QaConversationSession,
     ): QaConversationSessionDto = com.charmnight.linkgraph.ui.qaConversationSessionToDto(session)
 
-    /** 把生成计划讨论会话转换为前端 DTO：详见 top-level fun generationPlanDiscussionSessionToDto。 */
+    /** 把生成计划讨论会话转换为前端 DTO：详见顶层函数 generationPlanDiscussionSessionToDto。 */
     internal fun generationPlanDiscussionSessionToDto(
         session: com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession,
         promptPreviewArtifactId: String?,
@@ -675,57 +675,57 @@ class GraphEditorPageRenderer {
         return !promptPreview.isNullOrBlank() || !promptPreviewArtifactId.isNullOrBlank()
     }
 
-    /** 把草稿校验状态转换为前端 DTO：详见 top-level fun draftValidationStateToDto。 */
+    /** 把草稿校验状态转换为前端 DTO：详见顶层函数 draftValidationStateToDto。 */
     internal fun draftValidationStateToDto(
         state: com.charmnight.linkgraph.workbench.DraftValidationState,
     ): DraftValidationStateDto = com.charmnight.linkgraph.ui.draftValidationStateToDto(state)
 
-    /** 把单条调查线程转换为前端 DTO：详见 top-level fun investigationThreadToDto。 */
+    /** 把单条调查线程转换为前端 DTO：详见顶层函数 investigationThreadToDto。 */
     private fun investigationThreadToDto(
         thread: com.charmnight.linkgraph.workbench.InvestigationThread,
     ): InvestigationThreadDto = com.charmnight.linkgraph.ui.investigationThreadToDto(thread)
 
-    /** 把风险线程的解决结果转换为前端 DTO：详见 top-level fun riskResolutionToDto。 */
+    /** 把风险线程的解决结果转换为前端 DTO：详见顶层函数 riskResolutionToDto。 */
     private fun riskResolutionToDto(
         resolution: com.charmnight.linkgraph.workbench.RiskResolution,
     ): RiskResolutionDto = com.charmnight.linkgraph.ui.riskResolutionToDto(resolution)
 
-    /** 把单轮调查结果转换为前端 DTO：详见 top-level fun investigationTurnOutcomeToDto。 */
+    /** 把单轮调查结果转换为前端 DTO：详见顶层函数 investigationTurnOutcomeToDto。 */
     private fun investigationTurnOutcomeToDto(
         outcome: com.charmnight.linkgraph.workbench.InvestigationTurnOutcome,
     ): InvestigationTurnOutcomeDto = com.charmnight.linkgraph.ui.investigationTurnOutcomeToDto(outcome)
 
-    /** 把 QA 多轮对话中的单条消息转换为前端 DTO：详见 top-level fun qaConversationMessageToDto。 */
+    /** 把 QA 多轮对话中的单条消息转换为前端 DTO：详见顶层函数 qaConversationMessageToDto。 */
     private fun qaConversationMessageToDto(
         message: com.charmnight.linkgraph.workbench.QaConversationMessage,
     ): QaConversationMessageDto = com.charmnight.linkgraph.ui.qaConversationMessageToDto(message)
 
-    /** 把源码片段上下文转换为前端 DTO：详见 top-level fun sourceSnippetContextToDto。 */
+    /** 把源码片段上下文转换为前端 DTO：详见顶层函数 sourceSnippetContextToDto。 */
     private fun sourceSnippetContextToDto(
-        snippet: com.charmnight.linkgraph.llm.SourceSnippetContext,
+        snippet: com.charmnight.linkgraph.agent.model.SourceSnippetContext,
     ): SourceSnippetContextDto = com.charmnight.linkgraph.ui.sourceSnippetContextToDto(snippet)
 
-    /** 把证据追踪条目转换为前端 DTO：详见 top-level fun evidenceTraceEntryToDto。 */
+    /** 把证据追踪条目转换为前端 DTO：详见顶层函数 evidenceTraceEntryToDto。 */
     private fun evidenceTraceEntryToDto(
-        trace: com.charmnight.linkgraph.llm.EvidenceTraceEntry,
+        trace: com.charmnight.linkgraph.agent.model.EvidenceTraceEntry,
     ): EvidenceTraceEntryDto = com.charmnight.linkgraph.ui.evidenceTraceEntryToDto(trace)
 
-    /** 把代码编辑作用域转换为前端 DTO：详见 top-level fun editScopeToDto。 */
+    /** 把代码编辑作用域转换为前端 DTO：详见顶层函数 editScopeToDto。 */
     private fun editScopeToDto(
-        scope: com.charmnight.linkgraph.llm.EditScope,
+        scope: com.charmnight.linkgraph.agent.model.EditScope,
     ): EditScopeDto = com.charmnight.linkgraph.ui.editScopeToDto(scope)
 
-    /** 把单条代码编辑操作转换为前端 DTO：详见 top-level fun codeEditOperationToDto。 */
+    /** 把单条代码编辑操作转换为前端 DTO：详见顶层函数 codeEditOperationToDto。 */
     private fun codeEditOperationToDto(
         operation: com.charmnight.linkgraph.codegen.CodeEditOperation,
     ): CodeEditOperationDto = com.charmnight.linkgraph.ui.codeEditOperationToDto(operation)
 
-    /** 把准备好的代码编辑转换为前端 DTO：详见 top-level fun preparedCodeEditToDto。 */
+    /** 把准备好的代码编辑转换为前端 DTO：详见顶层函数 preparedCodeEditToDto。 */
     private fun preparedCodeEditToDto(
         edit: com.charmnight.linkgraph.codegen.PreparedCodeEdit,
     ): PreparedCodeEditDto = com.charmnight.linkgraph.ui.preparedCodeEditToDto(edit)
 
     /** 从节点元数据中提取 UI 坐标。 */
-    /** uiPosition / semanticMetadata 已抽到 top-level（GraphEditorPageRendererHelpers.kt）。 */
+    /** uiPosition / semanticMetadata 已抽到顶层函数（GraphEditorPageRendererHelpers.kt）。 */
 
 }

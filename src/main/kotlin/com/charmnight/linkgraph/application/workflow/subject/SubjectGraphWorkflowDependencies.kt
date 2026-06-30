@@ -6,6 +6,7 @@ import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
 import com.charmnight.linkgraph.application.port.WorkspaceGraphCommitter
 import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
+import com.charmnight.linkgraph.application.runtime.TaskRunner
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.semantic.SemanticAnalyzer
 import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcomeFactory
@@ -28,6 +29,8 @@ internal data class SubjectGraphWorkflowDependencies(
     val snapshotProvider: EditorSnapshotProvider,
     /** 异步请求生命周期支持。 */
     val asyncRequestLifecycle: AsyncRequestLifecycleSupport,
+    /** 平台无关任务调度入口。 */
+    val taskRunner: TaskRunner,
     /** 主题定位器提供者；惰性取得避免早期初始化顺序问题。 */
     val subjectLocatorProvider: () -> SubjectLocator,
     /** 语义分析器提供者。 */

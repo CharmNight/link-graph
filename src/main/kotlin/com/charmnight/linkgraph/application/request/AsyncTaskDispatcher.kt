@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.application.request
 
 import com.charmnight.linkgraph.application.model.AsyncRequestState
 import com.charmnight.linkgraph.foundation.debugLazy
-import com.charmnight.linkgraph.llm.runtime.AgentRunState
+import com.charmnight.linkgraph.agent.runtime.AgentRunState
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction

@@ -7,7 +7,7 @@ import com.charmnight.linkgraph.model.GraphEdge
 /**
  * 类图关系排序键：综合优先级、关系类型、标签、端点 ID 与边 ID 形成稳定排序。
  *
- * 抽到 top-level（原为 ClassDiagramProjector.companion 内 private data class），
+ * 抽到顶层（原为 ClassDiagramProjector 伴生对象内私有数据类），
  * 让 ClassDiagramProjectorHelpers.kt 中的 [classDiagramRelationSortKey] 也能引用。
  */
 internal data class ClassDiagramRelationSortKey(
@@ -32,13 +32,13 @@ internal data class ClassDiagramRelationSortKey(
 }
 
 /**
- * ClassDiagramProjector 的纯 helper 函数（P2-1 拆分）。
+ * ClassDiagramProjector 的纯辅助函数（P2-1 拆分）。
  *
- * 这些 GraphEdge 扩展函数无状态、纯 metadata 读取 / 派生，与 ClassDiagramProjector
- * 的 anchor 选择 / neighborhood 收集 / presentation metadata 写入主流程解耦后便于复用。
+ * 这些 GraphEdge 扩展函数无状态、纯元数据读取 / 派生，与 ClassDiagramProjector
+ * 的锚点选择 / 邻域收集 / 展示元数据写入主流程解耦后便于复用。
  */
 
-/** 返回类图关系类型字符串，依次回退到 role、uml kind、jvm kind、edge type。 */
+/** 返回类图关系类型字符串，依次回退到角色、UML 种类、JVM 种类、边类型。 */
 internal fun GraphEdge.classDiagramRelationKind(): String =
     metadata[ClassDiagramRelationExtractor.ROLE_KEY]
         ?: metadata["uml.relation.kind"]
@@ -68,7 +68,7 @@ internal fun GraphEdge.classDiagramUmlRelationKind(): String =
             null -> metadata["jvm.relation.kind"] ?: type.name
         }
 
-/** 计算关系展示权重；优先用 metadata.weight，其次 role.baseWeight，最后按 kind 兜底。 */
+/** 计算关系展示权重；优先用元数据权重，其次角色基础权重，最后按种类兜底。 */
 internal fun GraphEdge.relationWeight(): Int =
     metadata[ClassDiagramRelationExtractor.WEIGHT_KEY]
         ?.toIntOrNull()
@@ -154,7 +154,7 @@ internal fun aggregateRelationLabel(edges: List<GraphEdge>): String {
 /**
  * 计算类图边的展示优先级（数值越小越优先）。
  *
- * - 有 weight metadata：取负值（权重越大优先级越高）
+ * - 有权重元数据：取负值（权重越大优先级越高）
  * - 否则按 UML 关系类型：GENERALIZATION(0) / REALIZATION(1) / COMPOSITION(2) /
  *   AGGREGATION(3) / ASSOCIATION(4) / DEPENDENCY(5) / 其他(6)
  */

@@ -1,6 +1,8 @@
 package com.charmnight.linkgraph.llm.tools
 
-import com.charmnight.linkgraph.llm.ResultEvidenceFinding
+import com.charmnight.linkgraph.agent.tools.*
+
+import com.charmnight.linkgraph.agent.model.ResultEvidenceFinding
 
 /**
  * 校验证据是否足够直接。
@@ -17,7 +19,7 @@ class ValidateEvidenceTool(
     override val name: String = "validate_evidence"
     override val description: String = "校验当前结果是否具备直接证据"
 
-    override fun parseInput(raw: Map<String, Any?>): ValidateEvidenceInput = ValidateEvidenceInput(
+    override fun parseInput(raw: ToolInputPayload): ValidateEvidenceInput = ValidateEvidenceInput(
         findings = optionalList(raw, "findings", ResultEvidenceFinding::class),
     )
 

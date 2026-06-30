@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.agent.model.LlmResultSource
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftValidationStatus
@@ -16,7 +16,7 @@ import com.charmnight.linkgraph.workbench.StepKind
  * 这些 DTO 引用 [PageRendererLeafDtos] 中的基础类型（EditScope / CandidatePatchIntent /
  * InvestigationTurnOutcome 等），组合出问答会话、候选变更、草稿工作台等高层结构。
  *
- * m3 enum 化：status / kind / source / granularity / role / mode 等字段从 String 改为对应领域 enum。
+ * m3 枚举化：status / kind / source / granularity / role / mode 等字段从 String 改为对应领域枚举。
  */
 
 internal data class InvestigationThreadDto(

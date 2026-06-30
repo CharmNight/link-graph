@@ -104,7 +104,6 @@ export function writeHybridWorkbenchLayoutPreference(
       }),
     );
   } catch {
-    // Layout persistence is a convenience; rendering should not depend on storage availability.
     // 布局持久化是体验增强，渲染不应依赖存储可用性，故静默吞下异常。
   }
 }

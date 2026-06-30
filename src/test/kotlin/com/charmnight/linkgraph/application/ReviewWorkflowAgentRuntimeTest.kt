@@ -8,19 +8,19 @@ import com.charmnight.linkgraph.application.workflow.ReviewWorkflow
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.architecture.ArchitectureGraphResult
-import com.charmnight.linkgraph.llm.LlmProviderPresets
+import com.charmnight.linkgraph.settings.LlmProviderPresets
 import com.charmnight.linkgraph.diff.GraphDiffer
-import com.charmnight.linkgraph.llm.GraphQaContext
+import com.charmnight.linkgraph.agent.model.GraphQaContext
 import com.charmnight.linkgraph.llm.GraphQaPatchService
 import com.charmnight.linkgraph.llm.GraphBeautificationService
 import com.charmnight.linkgraph.llm.GraphDiffPatchService
-import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.llm.LlmResultSource
-import com.charmnight.linkgraph.llm.ResultEvidenceFinding
-import com.charmnight.linkgraph.llm.ResultEvidenceLevel
-import com.charmnight.linkgraph.llm.ResultEvidenceReference
-import com.charmnight.linkgraph.llm.capability.QaCapability
-import com.charmnight.linkgraph.llm.runtime.RunBudget
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.LlmResultSource
+import com.charmnight.linkgraph.agent.model.ResultEvidenceFinding
+import com.charmnight.linkgraph.agent.model.ResultEvidenceLevel
+import com.charmnight.linkgraph.agent.model.ResultEvidenceReference
+import com.charmnight.linkgraph.agent.capability.QaCapability
+import com.charmnight.linkgraph.agent.runtime.RunBudget
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
@@ -68,20 +68,20 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             graphDiffPatchService = GraphDiffPatchService(),
             graphBeautificationService = object : GraphBeautificationService {
                 override fun beautify(
-                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    context: com.charmnight.linkgraph.agent.model.GraphBeautificationContext,
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
-                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                ) = com.charmnight.linkgraph.agent.model.GraphBeautificationResult(
                     source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
             graphDiffer = GraphDiffer(),
             settingsProvider = { LinkGraphSettingsState() },
-            qaExecutorOverrideProvider = { null },
+            qaExecutorHook = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
             qaCapabilityFactory = {
@@ -144,20 +144,20 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             graphDiffPatchService = GraphDiffPatchService(),
             graphBeautificationService = object : GraphBeautificationService {
                 override fun beautify(
-                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    context: com.charmnight.linkgraph.agent.model.GraphBeautificationContext,
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
-                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                ) = com.charmnight.linkgraph.agent.model.GraphBeautificationResult(
                     source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
             graphDiffer = GraphDiffer(),
             settingsProvider = { LinkGraphSettingsState() },
-            qaExecutorOverrideProvider = { null },
+            qaExecutorHook = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
             qaCapabilityFactory = {
@@ -204,20 +204,20 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             graphDiffPatchService = GraphDiffPatchService(),
             graphBeautificationService = object : GraphBeautificationService {
                 override fun beautify(
-                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    context: com.charmnight.linkgraph.agent.model.GraphBeautificationContext,
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
-                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                ) = com.charmnight.linkgraph.agent.model.GraphBeautificationResult(
                     source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
             graphDiffer = GraphDiffer(),
             settingsProvider = { LinkGraphSettingsState() },
-            qaExecutorOverrideProvider = { null },
+            qaExecutorHook = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
             qaCapabilityFactory = {
@@ -316,20 +316,20 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             graphDiffPatchService = GraphDiffPatchService(),
             graphBeautificationService = object : GraphBeautificationService {
                 override fun beautify(
-                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    context: com.charmnight.linkgraph.agent.model.GraphBeautificationContext,
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
-                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                ) = com.charmnight.linkgraph.agent.model.GraphBeautificationResult(
                     source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
             graphDiffer = GraphDiffer(),
             settingsProvider = { LinkGraphSettingsState() },
-            qaExecutorOverrideProvider = { null },
+            qaExecutorHook = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
             qaCapabilityFactory = {
@@ -410,20 +410,20 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             graphDiffPatchService = GraphDiffPatchService(),
             graphBeautificationService = object : GraphBeautificationService {
                 override fun beautify(
-                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    context: com.charmnight.linkgraph.agent.model.GraphBeautificationContext,
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
-                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                ) = com.charmnight.linkgraph.agent.model.GraphBeautificationResult(
                     source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
             graphDiffer = GraphDiffer(),
             settingsProvider = { LinkGraphSettingsState() },
-            qaExecutorOverrideProvider = { null },
+            qaExecutorHook = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
             qaCapabilityFactory = {
@@ -534,20 +534,20 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             graphDiffPatchService = GraphDiffPatchService(),
             graphBeautificationService = object : GraphBeautificationService {
                 override fun beautify(
-                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    context: com.charmnight.linkgraph.agent.model.GraphBeautificationContext,
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
-                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                ) = com.charmnight.linkgraph.agent.model.GraphBeautificationResult(
                     source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
             graphDiffer = GraphDiffer(),
             settingsProvider = { LinkGraphSettingsState() },
-            qaExecutorOverrideProvider = { null },
+            qaExecutorHook = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
             qaCapabilityFactory = {
@@ -656,20 +656,20 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             graphDiffPatchService = GraphDiffPatchService(),
             graphBeautificationService = object : GraphBeautificationService {
                 override fun beautify(
-                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    context: com.charmnight.linkgraph.agent.model.GraphBeautificationContext,
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
-                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                ) = com.charmnight.linkgraph.agent.model.GraphBeautificationResult(
                     source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
             graphDiffer = GraphDiffer(),
             settingsProvider = { LinkGraphSettingsState() },
-            qaExecutorOverrideProvider = { null },
+            qaExecutorHook = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
             qaCapabilityFactory = {
@@ -775,20 +775,20 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             graphDiffPatchService = GraphDiffPatchService(),
             graphBeautificationService = object : GraphBeautificationService {
                 override fun beautify(
-                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    context: com.charmnight.linkgraph.agent.model.GraphBeautificationContext,
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
-                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                ) = com.charmnight.linkgraph.agent.model.GraphBeautificationResult(
                     source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
             graphDiffer = GraphDiffer(),
             settingsProvider = { LinkGraphSettingsState() },
-            qaExecutorOverrideProvider = { null },
+            qaExecutorHook = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
             qaCapabilityFactory = {
@@ -868,20 +868,20 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             graphDiffPatchService = GraphDiffPatchService(),
             graphBeautificationService = object : GraphBeautificationService {
                 override fun beautify(
-                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    context: com.charmnight.linkgraph.agent.model.GraphBeautificationContext,
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
-                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                ) = com.charmnight.linkgraph.agent.model.GraphBeautificationResult(
                     source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
             graphDiffer = GraphDiffer(),
             settingsProvider = { LinkGraphSettingsState() },
-            qaExecutorOverrideProvider = { null },
+            qaExecutorHook = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
             qaCapabilityFactory = {
@@ -973,10 +973,10 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             graphDiffPatchService = GraphDiffPatchService(),
             graphBeautificationService = object : GraphBeautificationService {
                 override fun beautify(
-                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    context: com.charmnight.linkgraph.agent.model.GraphBeautificationContext,
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
-                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                ) = com.charmnight.linkgraph.agent.model.GraphBeautificationResult(
                     source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
@@ -988,10 +988,10 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
                     provider = LlmProviderPresets.MOCK.id,
                 )
             },
-            qaExecutorOverrideProvider = { null },
+            qaExecutorHook = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
         )
@@ -1066,20 +1066,20 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             graphDiffPatchService = GraphDiffPatchService(),
             graphBeautificationService = object : GraphBeautificationService {
                 override fun beautify(
-                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    context: com.charmnight.linkgraph.agent.model.GraphBeautificationContext,
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
-                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                ) = com.charmnight.linkgraph.agent.model.GraphBeautificationResult(
                     source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
             graphDiffer = GraphDiffer(),
             settingsProvider = { LinkGraphSettingsState() },
-            qaExecutorOverrideProvider = { null },
+            qaExecutorHook = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
             qaCapabilityFactory = {
@@ -1183,20 +1183,20 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             graphDiffPatchService = GraphDiffPatchService(),
             graphBeautificationService = object : GraphBeautificationService {
                 override fun beautify(
-                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    context: com.charmnight.linkgraph.agent.model.GraphBeautificationContext,
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
-                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                ) = com.charmnight.linkgraph.agent.model.GraphBeautificationResult(
                     source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
             graphDiffer = GraphDiffer(),
             settingsProvider = { LinkGraphSettingsState() },
-            qaExecutorOverrideProvider = { null },
+            qaExecutorHook = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 2_000L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
             qaCapabilityFactory = {
@@ -1298,20 +1298,20 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             graphDiffPatchService = GraphDiffPatchService(),
             graphBeautificationService = object : GraphBeautificationService {
                 override fun beautify(
-                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    context: com.charmnight.linkgraph.agent.model.GraphBeautificationContext,
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
-                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                ) = com.charmnight.linkgraph.agent.model.GraphBeautificationResult(
                     source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
             graphDiffer = GraphDiffer(),
             settingsProvider = { LinkGraphSettingsState() },
-            qaExecutorOverrideProvider = { null },
+            qaExecutorHook = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
             qaCapabilityFactory = {
@@ -1391,20 +1391,20 @@ class ReviewWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             graphDiffPatchService = GraphDiffPatchService(),
             graphBeautificationService = object : GraphBeautificationService {
                 override fun beautify(
-                    context: com.charmnight.linkgraph.llm.GraphBeautificationContext,
+                    context: com.charmnight.linkgraph.agent.model.GraphBeautificationContext,
                     settings: LinkGraphSettingsState,
                     onPreview: ((String, Boolean) -> Unit)?,
-                ) = com.charmnight.linkgraph.llm.GraphBeautificationResult(
+                ) = com.charmnight.linkgraph.agent.model.GraphBeautificationResult(
                     source = LlmResultSource.LOCAL_RULE,
                     promptPreview = "unused",
                 )
             },
             graphDiffer = GraphDiffer(),
             settingsProvider = { LinkGraphSettingsState() },
-            qaExecutorOverrideProvider = { null },
+            qaExecutorHook = { null },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(ReviewWorkflowAgentRuntimeTest::class.java),
             qaCapabilityFactory = {

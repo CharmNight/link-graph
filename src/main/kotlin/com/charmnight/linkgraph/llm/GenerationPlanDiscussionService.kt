@@ -1,5 +1,9 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.agent.model.*
+import com.charmnight.linkgraph.settings.*
+
+import com.charmnight.linkgraph.application.port.GenerationPlanDiscussionPort
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.workbench.QaMessageRole
 import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionMessage
@@ -15,7 +19,7 @@ class GenerationPlanDiscussionService(
     private val promptFactory: LlmPromptFactory = LlmPromptFactory(),
     /** 负责真正发起远程请求的网关。 */
     private val gateway: LlmGateway = com.charmnight.linkgraph.llm.RoutingLlmGateway(),
-) {
+) : GenerationPlanDiscussionPort {
     /** 负责处理结构化 JSON 响应、自动重试与 JSON 修复的辅助组件。 */
     private val responseSupport = RemoteStructuredResponseParser(gateway)
 
@@ -31,14 +35,14 @@ class GenerationPlanDiscussionService(
      * @param focusItemId 当前聚焦的条目标识，缺失时回退到会话记录的焦点条目。
      * @param onPreview 流式预览回调，用于把远程流式输出实时回传给 UI。
      */
-    fun discuss(
+    override fun discuss(
         context: GenerationContext,
         plan: GenerationPlan,
         question: String,
         settings: LinkGraphSettingsState,
-        session: GenerationPlanDiscussionSession? = null,
-        focusItemId: String? = null,
-        onPreview: ((String, Boolean) -> Unit)? = null,
+        session: GenerationPlanDiscussionSession?,
+        focusItemId: String?,
+        onPreview: ((String, Boolean) -> Unit)?,
     ): GenerationPlanDiscussionResult {
         /** 去除无效字段后的设置快照。 */
         val sanitized = settings.sanitized()

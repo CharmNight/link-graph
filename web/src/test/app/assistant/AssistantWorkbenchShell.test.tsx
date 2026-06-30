@@ -341,8 +341,7 @@ describe("AssistantWorkbenchShell", () => {
     expect(composer).toContainElement(selector);
     expect(screen.queryByLabelText("AI 工作台 intent")).not.toBeInTheDocument();
     expect(within(selector).getByRole("button", { name: "追问代码" })).toHaveAttribute("aria-pressed", "true");
-    // P1: the "发送为" eyebrow and helper prose were removed; the active tag
-    // still reflects the chosen send action.
+    // P1："发送为"眉标和辅助文案已移除；激活标签仍表达当前发送动作。
     expect(within(composer).getByText("追问代码", { selector: ".tag.active" })).toBeInTheDocument();
     expect(themeCss).toContain("grid-template-columns: repeat(4, minmax(0, 1fr));");
   });
@@ -410,8 +409,7 @@ describe("AssistantWorkbenchShell", () => {
     const composer = screen.getByTestId("assistant-composer");
     const selector = screen.getByLabelText("发送动作");
 
-    // P1: the "发送动作" eyebrow text was removed; the selector is still
-    // reachable via its aria-label.
+    // P1："发送动作"眉标文案已移除；选择器仍可通过 aria-label 访问。
     expect(within(composer).queryByText("Send As")).not.toBeInTheDocument();
     expect(within(composer).getByText("追问类图", { selector: ".tag.active" })).toBeInTheDocument();
     expect(within(selector).getByRole("button", { name: "介绍这个类" })).toBeInTheDocument();
@@ -447,8 +445,7 @@ describe("AssistantWorkbenchShell", () => {
       />,
     );
 
-    // P1: the permanent "历史回答" order-note banner was removed; turn order is
-    // still conveyed by the per-turn round labels.
+    // P1：常驻的"历史回答"顺序提示横幅已移除；轮次顺序仍由每轮标签表达。
     expect(screen.getByText("第 1 轮")).toBeInTheDocument();
     expect(screen.getByText("第 2 轮")).toBeInTheDocument();
     expect(screen.getByText("第 3 轮")).toBeInTheDocument();
@@ -736,8 +733,8 @@ describe("AssistantWorkbenchShell", () => {
       />,
     );
 
-    // P1: the "下一次发送上下文" heading and verbose empty help were removed;
-    // the long scope is still surfaced as a context chip (not a heading).
+    // P1："下一次发送上下文"标题和冗长空态帮助已移除；
+    // 长范围仍通过上下文标签展示，而不是标题。
     expect(screen.queryByText(/intent/)).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: longScope })).not.toBeInTheDocument();
     expect(screen.getByTitle(longScope)).toHaveClass("assistant-context-chip");

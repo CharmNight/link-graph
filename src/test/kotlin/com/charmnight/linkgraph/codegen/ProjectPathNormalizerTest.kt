@@ -2,11 +2,11 @@ package com.charmnight.linkgraph.codegen
 
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.llm.EditScope
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GenerationPlanItem
-import com.charmnight.linkgraph.llm.GenerationPlanSource
-import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.agent.model.EditScope
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GenerationPlanItem
+import com.charmnight.linkgraph.agent.model.GenerationPlanSource
+import com.charmnight.linkgraph.agent.model.LlmResultSource
 import com.charmnight.linkgraph.sync.SyncPreviewRisk
 import kotlin.test.Test
 import kotlin.test.assertEquals

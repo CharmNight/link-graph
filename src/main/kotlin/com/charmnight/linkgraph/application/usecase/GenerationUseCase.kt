@@ -11,12 +11,12 @@ import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.codegen.ProjectPathNormalizer
 import com.charmnight.linkgraph.codegen.emptyResultDetailMessage
 import com.charmnight.linkgraph.codegen.emptyResultMessage
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GenerationPlanSource
-import com.charmnight.linkgraph.llm.LlmResultSource
-import com.charmnight.linkgraph.llm.runtime.AgentRunFailureReason
-import com.charmnight.linkgraph.llm.runtime.AgentRunResult
-import com.charmnight.linkgraph.llm.runtime.AgentRunState
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GenerationPlanSource
+import com.charmnight.linkgraph.agent.model.LlmResultSource
+import com.charmnight.linkgraph.agent.runtime.AgentRunFailureReason
+import com.charmnight.linkgraph.agent.runtime.AgentRunResult
+import com.charmnight.linkgraph.agent.runtime.AgentRunState
 
 /**
  * 生成用例结果 sealed 接口：统一封装实现计划与代码草稿生成相关的成功/失败结果类型，
@@ -46,7 +46,7 @@ class GenerationUseCase(
         previewItems: List<com.charmnight.linkgraph.sync.SyncPreviewItem>,
         mermaidIssues: List<com.charmnight.linkgraph.mermaid.MermaidIssue>,
         confirmedChanges: List<com.charmnight.linkgraph.workbench.DraftWorkbenchEntry>,
-        sourceContext: List<com.charmnight.linkgraph.llm.SourceSnippetContext>,
+        sourceContext: List<com.charmnight.linkgraph.agent.model.SourceSnippetContext>,
         userGoal: String,
     ) -> GenerationPlan,
     private val projectBasePathProvider: () -> String?,

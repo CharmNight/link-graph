@@ -5,7 +5,7 @@ import com.charmnight.linkgraph.application.planning.PlanningContextFactory
 import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
-import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshotProvider
+import com.charmnight.linkgraph.agent.tools.ToolGraphSnapshotProvider
 import com.charmnight.linkgraph.application.workflow.generation.CodeDraftApplyWorkflow
 import com.charmnight.linkgraph.application.workflow.generation.CodeDraftGenerationWorkflow
 import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanWorkflow
@@ -18,19 +18,19 @@ import com.charmnight.linkgraph.codegen.CodeEditOperationKind
 import com.charmnight.linkgraph.codegen.CodeGenerationService
 import com.charmnight.linkgraph.codegen.CodeGenerationResult
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
-import com.charmnight.linkgraph.llm.EditScope
+import com.charmnight.linkgraph.agent.model.EditScope
 import com.charmnight.linkgraph.diff.GraphDiffer
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GenerationPlanSource
-import com.charmnight.linkgraph.llm.GenerationPlanDiscussionService
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GenerationPlanSource
+import com.charmnight.linkgraph.application.port.GenerationPlanDiscussionPort
 import com.charmnight.linkgraph.llm.GraphGenerationService
-import com.charmnight.linkgraph.llm.LlmResultSource
-import com.charmnight.linkgraph.llm.artifact.ArtifactStore
-import com.charmnight.linkgraph.llm.artifact.AgentArtifactStoreService
-import com.charmnight.linkgraph.llm.artifact.PlanArtifact
-import com.charmnight.linkgraph.llm.capability.CodegenCapability
-import com.charmnight.linkgraph.llm.capability.PlanCapability
-import com.charmnight.linkgraph.llm.runtime.AgentRunCoordinator
+import com.charmnight.linkgraph.agent.model.LlmResultSource
+import com.charmnight.linkgraph.agent.artifact.ArtifactStore
+import com.charmnight.linkgraph.agent.artifact.AgentArtifactStoreService
+import com.charmnight.linkgraph.agent.artifact.PlanArtifact
+import com.charmnight.linkgraph.agent.capability.CodegenCapability
+import com.charmnight.linkgraph.agent.capability.PlanCapability
+import com.charmnight.linkgraph.agent.runtime.AgentRunCoordinator
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
@@ -42,6 +42,8 @@ import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.charmnight.linkgraph.workbench.DraftEntryKind
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 import com.charmnight.linkgraph.workbench.DraftWorkbenchState
+import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionResult
+import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession
 import com.charmnight.linkgraph.workbench.RiskResolutionService
 import com.intellij.diff.merge.MergeRequest
 import com.intellij.openapi.diagnostic.Logger
@@ -147,7 +149,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
             showCodeDraftMergeRequest = { _, request ->
@@ -224,7 +226,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
             showCodeDraftMergeRequest = { _, request ->
@@ -314,7 +316,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
             showCodeDraftMergeRequest = { _, request ->
@@ -371,7 +373,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
         )
@@ -418,7 +420,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 3_000L },
+                timeoutMillisSupplier = { 3_000L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
             planCapabilityFactory = {
@@ -502,7 +504,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
             planCapabilityFactory = {
@@ -593,7 +595,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
             codegenCapabilityFactory = {
@@ -737,7 +739,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 3_000L },
+                timeoutMillisSupplier = { 3_000L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
             codegenCapabilityFactory = {
@@ -840,7 +842,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
             codegenCapabilityFactory = {
@@ -928,7 +930,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
             codegenCapabilityFactory = {
@@ -967,7 +969,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
 
                                 override fun invoke(
                                     input: Map<String, Any?>,
-                                    context: com.charmnight.linkgraph.llm.tools.ToolExecutionContext,
+                                    context: com.charmnight.linkgraph.agent.tools.ToolExecutionContext,
                                 ): com.charmnight.linkgraph.llm.tools.ToolResult {
                                     return com.charmnight.linkgraph.llm.tools.ToolResult(toolName = name, payload = mapOf("valid" to false))
                                 }
@@ -978,7 +980,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
 
                                 override fun invoke(
                                     input: Map<String, Any?>,
-                                    context: com.charmnight.linkgraph.llm.tools.ToolExecutionContext,
+                                    context: com.charmnight.linkgraph.agent.tools.ToolExecutionContext,
                                 ): com.charmnight.linkgraph.llm.tools.ToolResult {
                                     return com.charmnight.linkgraph.llm.tools.ToolResult(toolName = name, payload = mapOf("writable" to true))
                                 }
@@ -1046,7 +1048,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
             codegenCapabilityFactory = {
@@ -1123,7 +1125,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
             planCapabilityFactory = {
@@ -1220,7 +1222,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
         )
@@ -1274,7 +1276,7 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             settingsProvider = { LinkGraphSettingsState() },
             asyncRequestLifecycle = AsyncRequestLifecycleSupport(
                 project = project,
-                timeoutOverrideProvider = { 500L },
+                timeoutMillisSupplier = { 500L },
             ),
             logger = Logger.getInstance(GenerationWorkflowAgentRuntimeTest::class.java),
             codegenCapabilityFactory = {
@@ -1346,7 +1348,26 @@ class GenerationWorkflowAgentRuntimeTest : BasePlatformTestCase() {
             CodegenCapability(project = project, codegenExecutor = codegenExecutor)
         },
         riskResolutionService: RiskResolutionService = RiskResolutionService(),
-        generationPlanDiscussionService: GenerationPlanDiscussionService = GenerationPlanDiscussionService(),
+        generationPlanDiscussionService: GenerationPlanDiscussionPort = object : GenerationPlanDiscussionPort {
+            override fun discuss(
+                context: com.charmnight.linkgraph.agent.model.GenerationContext,
+                plan: GenerationPlan,
+                question: String,
+                settings: LinkGraphSettingsState,
+                session: GenerationPlanDiscussionSession?,
+                focusItemId: String?,
+                onPreview: ((String, Boolean) -> Unit)?,
+            ): GenerationPlanDiscussionResult {
+                return GenerationPlanDiscussionResult(
+                    source = LlmResultSource.LOCAL_RULE,
+                    question = question,
+                    answer = "test discussion",
+                    promptPreview = "",
+                    focusItemId = focusItemId,
+                    session = session ?: GenerationPlanDiscussionSession(sessionId = "test-session"),
+                )
+            }
+        },
         showCodeDraftMergeRequest: (Project, MergeRequest) -> Unit = { _, _ -> },
     ): GenerationTestFlows {
         val dependencies = GenerationWorkflowDependencies(

@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 /**
  * 读取指定节点详情。
  *
@@ -14,7 +16,7 @@ class GetNodeDetailTool(
     override val name: String = "get_node_detail"
     override val description: String = "按 nodeId 读取节点详情"
 
-    override fun parseInput(raw: Map<String, Any?>): GetNodeDetailInput = GetNodeDetailInput(
+    override fun parseInput(raw: ToolInputPayload): GetNodeDetailInput = GetNodeDetailInput(
         nodeId = requireString(raw, "nodeId"),
     )
 

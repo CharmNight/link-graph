@@ -2,17 +2,13 @@ package com.charmnight.linkgraph.application.workflow.subject
 
 import com.charmnight.linkgraph.application.debug.DebugMethodSignatureLocator
 import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
+import com.charmnight.linkgraph.application.runtime.TaskRunner
 import com.charmnight.linkgraph.foundation.debugLazy
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectHandle
 import com.charmnight.linkgraph.semantic.subject.SubjectHandle
 import com.charmnight.linkgraph.semantic.subject.SubjectPreviewKind
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.DumbService
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 主题解析工作流。
@@ -107,7 +103,7 @@ internal class SubjectResolutionWorkflow(
         val startedAt = System.nanoTime()
         dependencies.asyncRequestLifecycle.runBackgroundTask(
             work = {
-                ReadAction.compute<CodeSubjectHandle?, RuntimeException> {
+                dependencies.taskRunner.read {
                     locateCodeSubjectBySignatureInReadAction(signature)
                 }
             },
@@ -176,36 +172,13 @@ internal class SubjectResolutionWorkflow(
     /**
      * 在 IDEA 的 UI 派发线程上执行指定操作并返回结果。
      *
-     * 若当前已处于派发线程则直接同步执行；否则通过 [ApplicationManager.invokeAndWait] 切换线程，
-     * 并使用原子引用收集结果与可能抛出的异常，确保跨线程调用安全。
+     * 具体线程切换由 [TaskRunner] 适配到当前平台；workflow 不直接依赖 IntelliJ threading API。
      *
      * @param T 操作返回值类型
      * @param action 实际要执行的操作
      * @return 操作的返回值
      */
     private fun <T> computeOnIdeThread(action: () -> T): T {
-        val application = ApplicationManager.getApplication()
-        // 已在派发线程上则无需切换，直接同步执行
-        if (application.isDispatchThread) {
-            return action()
-        }
-        // 跨线程执行：用原子变量分别记录完成状态、返回值与异常
-        val completed = AtomicBoolean(false)
-        val result = AtomicReference<T>()
-        val error = AtomicReference<Throwable?>()
-        application.invokeAndWait(
-            {
-                try {
-                    result.set(action())
-                    completed.set(true)
-                } catch (throwable: Throwable) {
-                    error.set(throwable)
-                }
-            },
-            ModalityState.defaultModalityState(),
-        )
-        error.get()?.let { throw it }
-        check(completed.get()) { "未能在 IDEA 线程中完成链路图请求" }
-        return result.get()
+        return dependencies.taskRunner.ui(TaskRunner.UiPolicy.ANY, action)
     }
 }

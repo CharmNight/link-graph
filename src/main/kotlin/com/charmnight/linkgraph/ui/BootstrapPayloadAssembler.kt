@@ -1,11 +1,11 @@
 package com.charmnight.linkgraph.ui
 
 /**
- * Bootstrap payload 组装器（P2-1 真正的架构分解，P2-6 完整 DTO 化）。
+ * 启动载荷组装器（P2-1 真正的架构分解，P2-6 完整 DTO 化）。
  *
- * 从 GraphEditorPageRenderer 抽出的独立 class，负责把 GraphEditorStateSnapshot
+ * 从 GraphEditorPageRenderer 抽出的独立类，负责把 GraphEditorStateSnapshot
  * 的全部域状态序列化为单个 [BootstrapPayloadDto]，
- * 作为前端 bootstrap JSON 的根对象（Gson 反射序列化为 JSON）。
+ * 作为前端启动 JSON 的根对象（Gson 反射序列化为 JSON）。
  */
 internal class BootstrapPayloadAssembler(
     private val renderer: GraphEditorPageRenderer,

@@ -1,8 +1,8 @@
 package com.charmnight.linkgraph.application.workflow
 
-import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.llm.ResultEvidenceReference
-import com.charmnight.linkgraph.llm.withoutInternalQaTrustMarkers
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.ResultEvidenceReference
+import com.charmnight.linkgraph.agent.model.withoutInternalQaTrustMarkers
 import com.charmnight.linkgraph.workbench.QaConversationMessage
 import com.charmnight.linkgraph.workbench.QaConversationService
 import com.charmnight.linkgraph.workbench.QaConversationSession

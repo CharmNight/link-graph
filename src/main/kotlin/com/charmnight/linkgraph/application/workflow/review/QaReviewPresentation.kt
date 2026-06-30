@@ -10,7 +10,7 @@ import com.charmnight.linkgraph.application.result.ReviewRequestScene
 import com.charmnight.linkgraph.application.result.ReviewRequestStartedResult
 import com.charmnight.linkgraph.application.result.ApplicationRuntimeArtifactSummary
 import com.charmnight.linkgraph.investigation.application.InvestigationTargetHint
-import com.charmnight.linkgraph.llm.runtime.AgentRunResult
+import com.charmnight.linkgraph.agent.runtime.AgentRunResult
 import com.charmnight.linkgraph.workbench.QaModeContext
 import com.charmnight.linkgraph.workbench.RiskResolutionStatus
 import com.charmnight.linkgraph.workbench.ReplayableQaRequest

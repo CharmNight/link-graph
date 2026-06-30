@@ -27,7 +27,7 @@ export interface WorkbenchChromeActionsArgs {
   workbenchCommands: ReturnType<typeof useWorkbenchCommandController>;
   handleConfirmImportMermaid: ReturnType<typeof useAppBridgeController>["handleConfirmImportMermaid"];
   setActiveWorkflowStage: (stage: "understand" | "qa" | "draft" | "code") => void;
-  // Setters
+  // 状态更新器
   setMermaidDraft: Dispatch<SetStateAction<string>>;
   setImportDialogOpen: Dispatch<SetStateAction<boolean>>;
   setOperationFeedback: Dispatch<SetStateAction<OperationFeedback | null>>;

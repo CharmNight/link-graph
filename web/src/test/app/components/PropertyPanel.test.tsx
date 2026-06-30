@@ -122,8 +122,7 @@ describe("PropertyPanel", () => {
       />,
     );
 
-    // P1: the signature-fallback prose was removed; the button staying enabled
-    // is the user-facing signal that navigation still works via signature.
+    // P1：签名兜底说明文案已移除；按钮保持可用就是面向用户的可跳转信号。
     expect(screen.getByRole("button", { name: "打开源码" })).toBeEnabled();
   });
 

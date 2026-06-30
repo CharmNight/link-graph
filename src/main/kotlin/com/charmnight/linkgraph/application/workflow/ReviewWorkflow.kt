@@ -4,7 +4,7 @@ import com.charmnight.linkgraph.application.model.toRiskResolutionSnapshot
 import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
 import com.charmnight.linkgraph.application.port.GraphEditRequestExecutor
-import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshotProvider
+import com.charmnight.linkgraph.agent.tools.ToolGraphSnapshotProvider
 import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.investigation.application.InvestigationGraphPatchAdapter
 import com.charmnight.linkgraph.investigation.application.InvestigationPipeline
@@ -12,27 +12,29 @@ import com.charmnight.linkgraph.investigation.application.InvestigationRequest
 import com.charmnight.linkgraph.investigation.application.InvestigationTargetHint
 import com.charmnight.linkgraph.application.workflow.review.DiffReviewWorkflow
 import com.charmnight.linkgraph.application.workflow.review.GraphBeautificationReviewWorkflow
-import com.charmnight.linkgraph.llm.GraphQaContext
-import com.charmnight.linkgraph.llm.GraphQaPatchService
-import com.charmnight.linkgraph.llm.GraphBeautificationResult
-import com.charmnight.linkgraph.llm.GraphBeautificationService
-import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
-import com.charmnight.linkgraph.llm.GraphDiffPatchService
-import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.llm.LlmResultSource
-import com.charmnight.linkgraph.llm.ResultEvidenceFinding
-import com.charmnight.linkgraph.llm.markRuntimeEvidenceTrusted
-import com.charmnight.linkgraph.llm.artifact.AgentArtifactStoreService
-import com.charmnight.linkgraph.llm.artifact.ArtifactStore
-import com.charmnight.linkgraph.llm.capability.QaCapability
-import com.charmnight.linkgraph.llm.capability.QaCapabilityInput
-import com.charmnight.linkgraph.llm.remoteConnectionOrNull
-import com.charmnight.linkgraph.llm.runtime.AgentRunCoordinator
-import com.charmnight.linkgraph.llm.runtime.AgentRunResult
-import com.charmnight.linkgraph.llm.runtime.AgentRuntimeContext
-import com.charmnight.linkgraph.llm.usesRemoteProvider
+import com.charmnight.linkgraph.agent.model.GraphQaContext
+import com.charmnight.linkgraph.application.port.GraphQaPatchPort
+import com.charmnight.linkgraph.agent.model.GraphBeautificationResult
+import com.charmnight.linkgraph.application.port.GraphBeautificationPort
+import com.charmnight.linkgraph.agent.model.GraphBeautificationFollowUpContext
+import com.charmnight.linkgraph.application.port.GraphDiffPatchPort
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.LlmResultSource
+import com.charmnight.linkgraph.agent.model.ResultEvidenceFinding
+import com.charmnight.linkgraph.agent.model.markRuntimeEvidenceTrusted
+import com.charmnight.linkgraph.agent.artifact.AgentArtifactStoreService
+import com.charmnight.linkgraph.agent.artifact.ArtifactStore
+import com.charmnight.linkgraph.agent.capability.QaCapability
+import com.charmnight.linkgraph.agent.capability.QaCapabilityInput
+import com.charmnight.linkgraph.application.request.remoteConnectionOrNull
+import com.charmnight.linkgraph.agent.runtime.AgentRunCoordinator
+import com.charmnight.linkgraph.agent.runtime.AgentRunResult
+import com.charmnight.linkgraph.agent.runtime.AgentRuntimeContext
+import com.charmnight.linkgraph.application.request.usesRemoteProvider
 import com.charmnight.linkgraph.foundation.LinkGraphDebugEnvironment
 import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
+import com.charmnight.linkgraph.application.runtime.SameThreadTaskRunner
+import com.charmnight.linkgraph.application.runtime.TaskRunner
 import com.charmnight.linkgraph.application.workflow.QaResultNormalizer
 import com.charmnight.linkgraph.application.diagnostics.GenerationDiagnostics
 import com.charmnight.linkgraph.application.planning.PlanningContextFactory
@@ -74,19 +76,21 @@ internal class ReviewWorkflow(
     /** 规划上下文工厂。 */
     private val planningContextFactory: PlanningContextFactory,
     /** 图问答服务。 */
-    private val graphQaPatchService: GraphQaPatchService,
+    private val graphQaPatchService: GraphQaPatchPort,
     /** 差异审核服务。 */
-    private val graphDiffPatchService: GraphDiffPatchService,
+    private val graphDiffPatchService: GraphDiffPatchPort,
     /** 链路讲解服务。 */
-    private val graphBeautificationService: GraphBeautificationService,
+    private val graphBeautificationService: GraphBeautificationPort,
     /** 图差异比较器。 */
     private val graphDiffer: GraphDiffer,
     /** 当前生效设置。 */
     private val settingsProvider: () -> LinkGraphSettingsState,
     /** 测试环境下的问答执行器覆盖。 */
-    private val qaExecutorOverrideProvider: () -> ((GraphQaContext, String) -> GraphPatchResult)?,
+    private val qaExecutorHook: () -> ((GraphQaContext, String) -> GraphPatchResult)?,
     /** 异步请求生命周期支持。 */
     private val asyncRequestLifecycle: AsyncRequestLifecycleSupport,
+    /** 平台无关任务调度入口。 */
+    private val taskRunner: TaskRunner = SameThreadTaskRunner(),
     /** 日志记录器。 */
     private val logger: Logger,
     /** 统一 runtime 协调器。 */
@@ -147,7 +151,7 @@ internal class ReviewWorkflow(
     private val qaRequestExecutor = com.charmnight.linkgraph.application.workflow.review.QaRequestExecutor(
         deps = qaWorkflowDeps,
         graphQaPatchService = graphQaPatchService,
-        qaExecutorOverrideProvider = qaExecutorOverrideProvider,
+        qaExecutorHook = qaExecutorHook,
         reviewUseCase = reviewUseCase,
         eventSink = eventSink,
         logger = logger,
@@ -162,6 +166,7 @@ internal class ReviewWorkflow(
         settingsProvider = settingsProvider,
         asyncRequestLifecycle = asyncRequestLifecycle,
         logger = logger,
+        taskRunner = taskRunner,
     )
     private val graphBeautificationWorkflow = GraphBeautificationReviewWorkflow(
         project = project,

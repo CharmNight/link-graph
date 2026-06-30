@@ -2,8 +2,8 @@ package com.charmnight.linkgraph.application.model
 
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
 import com.charmnight.linkgraph.mermaid.MermaidIssue
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument

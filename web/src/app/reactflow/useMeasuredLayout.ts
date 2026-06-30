@@ -480,7 +480,11 @@ export function useMeasuredLayout({
   // resetKey 变化时完全清空 layoutState，丢弃所有 seed（旧节点位置 / 旧边 route）。
   const previousResetKeyRef = useRef<string | null>(resetKey);
   // 节点尺寸快照（依赖注册表修订号重新计算）
-  const measuredSizes = useMemo(() => nodeSizeRegistry.snapshot(), [nodeSizeRegistry, registryRevision]);
+  const measuredSizes = useMemo(() => {
+    // 显式读取修订号，表达快照需要随尺寸注册表更新而刷新。
+    void registryRevision;
+    return nodeSizeRegistry.snapshot();
+  }, [nodeSizeRegistry, registryRevision]);
   // 各种签名（依赖图等输入）
   const nextGraphSignature = useMemo(() => graphSignature(graph), [graph]);
   const nextCollapsedSignature = useMemo(

@@ -15,12 +15,12 @@ import com.charmnight.linkgraph.architecture.ArchitectureGraphSummary
 import com.charmnight.linkgraph.architecture.ClassDiagramResult
 import com.charmnight.linkgraph.architecture.ClassDiagramSummary
 import com.charmnight.linkgraph.architecture.ProjectStructureRelationGroup
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GraphBeautificationResult
-import com.charmnight.linkgraph.llm.GraphBeautificationStep
-import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.llm.ResultEvidenceFinding
-import com.charmnight.linkgraph.llm.SourceSnippetContext
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GraphBeautificationResult
+import com.charmnight.linkgraph.agent.model.GraphBeautificationStep
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.ResultEvidenceFinding
+import com.charmnight.linkgraph.agent.model.SourceSnippetContext
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
@@ -138,7 +138,7 @@ private fun GraphDocument.freeze(): GraphDocument {
     )
 }
 
-/** 冻结单个节点：把输入输出、diff、证据、metadata 等字段都转为不可变集合。 */
+/** 冻结单个节点：把输入输出、差异、证据、元数据等字段都转为不可变集合。 */
 private fun GraphNode.freeze(): GraphNode {
     return copy(
         inputs = inputs.toList(),
@@ -149,7 +149,7 @@ private fun GraphNode.freeze(): GraphNode {
     )
 }
 
-/** 冻结单条边：把 diff、证据、metadata 转为不可变集合。 */
+/** 冻结单条边：把差异、证据、元数据转为不可变集合。 */
 private fun GraphEdge.freeze(): GraphEdge {
     return copy(
         diff = diff.freeze(),
@@ -326,7 +326,7 @@ private fun DraftWorkbenchState.freeze(): DraftWorkbenchState {
     )
 }
 
-/** 冻结单条草稿条目：把目标步骤、节点 ID、证据、edit scope 与关联补丁冻结。 */
+/** 冻结单条草稿条目：把目标步骤、节点 ID、证据、编辑作用域与关联补丁冻结。 */
 private fun DraftWorkbenchEntry.freeze(): DraftWorkbenchEntry {
     return copy(
         targetStepIds = targetStepIds.toList(),
@@ -359,7 +359,7 @@ private fun ResultEvidenceFinding.freeze(): ResultEvidenceFinding {
     return copy(references = references.toList())
 }
 
-/** 冻结候选变更：把目标步骤/节点、证据、edit scope 与关联补丁冻结。 */
+/** 冻结候选变更：把目标步骤/节点、证据、编辑作用域与关联补丁冻结。 */
 private fun CandidateDraftChange.freeze(): CandidateDraftChange {
     return copy(
         targetStepIds = targetStepIds.toList(),
@@ -534,7 +534,7 @@ private fun PreparedCodeEdit.freeze(): PreparedCodeEdit {
     return copy(warnings = warnings.toList())
 }
 
-/** 冻结生成的代码草稿：递归冻结编辑操作、edit scope、已准备编辑和警告列表。 */
+/** 冻结生成的代码草稿：递归冻结编辑操作、编辑作用域、已准备编辑和警告列表。 */
 private fun GeneratedCodeDraft.freeze(): GeneratedCodeDraft {
     return copy(
         editOperations = editOperations.map { operation ->
@@ -548,8 +548,8 @@ private fun GeneratedCodeDraft.freeze(): GeneratedCodeDraft {
     )
 }
 
-/** 冻结代码 edit scope：把允许的改动种类和支撑 finding ID 列表冻结。 */
-private fun com.charmnight.linkgraph.llm.EditScope.freeze(): com.charmnight.linkgraph.llm.EditScope {
+/** 冻结代码编辑作用域：把允许的改动种类和支撑发现 ID 列表冻结。 */
+private fun com.charmnight.linkgraph.agent.model.EditScope.freeze(): com.charmnight.linkgraph.agent.model.EditScope {
     return copy(
         allowedChangeKinds = allowedChangeKinds.toList(),
         supportingFindingIds = supportingFindingIds.toList(),
@@ -560,6 +560,6 @@ private fun com.charmnight.linkgraph.llm.EditScope.freeze(): com.charmnight.link
 private fun SourceSnippetContext.freeze(): SourceSnippetContext = copy()
 
 /** 冻结证据轨迹条目：把投影节点到真实源码的映射轨迹冻结为不可变列表。 */
-private fun com.charmnight.linkgraph.llm.EvidenceTraceEntry.freeze(): com.charmnight.linkgraph.llm.EvidenceTraceEntry {
+private fun com.charmnight.linkgraph.agent.model.EvidenceTraceEntry.freeze(): com.charmnight.linkgraph.agent.model.EvidenceTraceEntry {
     return copy(mappingTrace = mappingTrace.toList())
 }

@@ -14,10 +14,6 @@ import {
   resolveEvidenceTargetNodeId,
   resolveQaTargetNodeIds,
 } from "../appGraphSupport";
-import {
-  findExplanationStep,
-  resolveExplanationStepRawNodeId as resolveRawNodeIdForExplanationStep,
-} from "../appExplanationStepModel";
 import { deriveInvestigationThreads } from "../investigationThreads";
 import { useAssistantQaActions } from "./useAssistantQaActions";
 import { useAssistantExplanationHistory } from "./useAssistantExplanationHistory";
@@ -164,8 +160,8 @@ export interface AssistantWorkbench {
  * 4. 用返回的跨域共享字段驱动 App.tsx 自己的 derived state / chrome 按钮 / 大纲路由
  *
  * Hook 内部按依赖顺序调用：
- *   useExplanationState → useSelectionState → useAssistantActionController
- *   → useAssistantQaActions / useAssistantExplanationHistory / useExplanationStepActions
+ *   状态 hook：useExplanationState → useSelectionState → useAssistantActionController
+ *   动作 hook：→ useAssistantQaActions / useAssistantExplanationHistory / useExplanationStepActions
  * 然后定义 12+ 个内联 handler，最后把所有内容打包成 [AssistantWorkbench] 返回。
  */
 export function useAssistantWorkbench(ctx: AssistantWorkbenchContext): AssistantWorkbench {
@@ -228,7 +224,6 @@ export function useAssistantWorkbench(ctx: AssistantWorkbenchContext): Assistant
     setCurrentExplanationSessionLabel,
     hoveredExplanationStepId,
     setHoveredExplanationStepId,
-    pendingExplanationDrillTargetRef,
     explanationLocalOverrideRef,
     pendingExplanationRequestModeRef,
     pendingExplanationSessionLabelRef,
@@ -250,7 +245,6 @@ export function useAssistantWorkbench(ctx: AssistantWorkbenchContext): Assistant
   // ===== 助手 composer + 动作 =====
   const {
     assistantComposerDraft,
-    assistantComposerTarget,
     selectedQaMode,
     handleAssistantActionChange,
     handleAssistantQaModeChange,
@@ -533,22 +527,6 @@ export function useAssistantWorkbench(ctx: AssistantWorkbenchContext): Assistant
   }
 
   // ===== 内联 helper：讲解步骤节点解析 =====
-
-  function resolveExplanationStepRawNodeId(stepId: string): string | null {
-    return resolveRawNodeIdForExplanationStep(findExplanationStep(graphBeautificationResult, stepId));
-  }
-
-  function resolveExplanationStepTargetNodeId(stepId: string): string | null {
-    return resolveDisplayedNodeId(resolveExplanationStepRawNodeId(stepId), nodes);
-  }
-
-  function resolveExplanationStepFocusNodeId(stepId: string): string | null {
-    const rawNodeId = resolveExplanationStepRawNodeId(stepId);
-    if (!rawNodeId) {
-      return null;
-    }
-    return resolveDisplayedNodeId(rawNodeId, nodes) ?? rawNodeId;
-  }
 
   // ===== 派生：assistantTurns + requestRunning =====
   const assistantTurns = useMemo(() => buildAssistantTurns({

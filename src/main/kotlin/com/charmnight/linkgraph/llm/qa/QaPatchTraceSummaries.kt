@@ -1,8 +1,8 @@
 package com.charmnight.linkgraph.llm.qa
 
-import com.charmnight.linkgraph.llm.EvidenceTraceEntry
-import com.charmnight.linkgraph.llm.ResultEvidenceFinding
-import com.charmnight.linkgraph.llm.SourceSnippetContext
+import com.charmnight.linkgraph.agent.model.EvidenceTraceEntry
+import com.charmnight.linkgraph.agent.model.ResultEvidenceFinding
+import com.charmnight.linkgraph.agent.model.SourceSnippetContext
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.InvestigationThread
 

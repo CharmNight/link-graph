@@ -1,10 +1,12 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 /**
  * 从工具入参 Map 中读取必填字符串。
  * 值会做去空白处理；空白或缺失返回 null，让调用方走 missingRequired 路径。
  */
-internal fun Map<String, Any?>.requiredString(key: String): String? {
+internal fun ToolInputPayload.requiredString(key: String): String? {
     return this[key]?.toString()?.trim()?.takeIf(String::isNotEmpty)
 }
 
@@ -12,22 +14,22 @@ internal fun Map<String, Any?>.requiredString(key: String): String? {
  * 从工具入参 Map 中读取可选字符串。
  * 与 [requiredString] 行为一致，仅语义上表示"可有可无"。
  */
-internal fun Map<String, Any?>.optionalString(key: String): String? {
+internal fun ToolInputPayload.optionalString(key: String): String? {
     return this[key]?.toString()?.trim()?.takeIf(String::isNotEmpty)
 }
 
 /** 读取可选整数；非数字类型时返回 null。 */
-internal fun Map<String, Any?>.optionalInt(key: String): Int? {
+internal fun ToolInputPayload.optionalInt(key: String): Int? {
     return (this[key] as? Number)?.toInt()
 }
 
 /** 读取必填强类型值；类型不匹配或缺失时返回 null。 */
-internal inline fun <reified T> Map<String, Any?>.requiredValue(key: String): T? {
+internal inline fun <reified T> ToolInputPayload.requiredValue(key: String): T? {
     return this[key] as? T
 }
 
 /** 读取可选列表；自动过滤掉类型不匹配的元素，保证列表元素都是 T。 */
-internal inline fun <reified T> Map<String, Any?>.optionalList(key: String): List<T> {
+internal inline fun <reified T> ToolInputPayload.optionalList(key: String): List<T> {
     return (this[key] as? List<*>).orEmpty().filterIsInstance<T>()
 }
 
@@ -37,7 +39,7 @@ internal inline fun <reified T> Map<String, Any?>.optionalList(key: String): Lis
  * - List<*>：过滤非字符串并去空白；
  * - String：按逗号或换行拆分，便于模型用单字符串表达多值。
  */
-internal fun Map<String, Any?>.optionalStringList(key: String): List<String> {
+internal fun ToolInputPayload.optionalStringList(key: String): List<String> {
     return when (val value = this[key]) {
         is List<*> -> value.mapNotNull { item -> item?.toString()?.trim()?.takeIf(String::isNotEmpty) }
         is String -> value.split(',', '\n').map(String::trim).filter(String::isNotEmpty)
@@ -59,7 +61,7 @@ internal fun AgentTool.missingRequired(key: String): ToolResult {
  */
 internal fun AgentTool.failure(
     errorMessage: String,
-    payload: Map<String, Any?> = emptyMap(),
+    payload: ToolPayload = emptyMap(),
 ): ToolResult {
     return ToolResult(
         toolName = name,

@@ -2,8 +2,6 @@ package com.charmnight.linkgraph.application.request
 
 import com.charmnight.linkgraph.application.model.AsyncRequestExecutionMode
 import com.charmnight.linkgraph.application.model.AsyncRequestState
-import com.charmnight.linkgraph.llm.remoteConnectionOrNull
-import com.charmnight.linkgraph.llm.usesRemoteProvider
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.workbench.QaMode
 

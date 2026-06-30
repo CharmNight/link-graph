@@ -1,8 +1,8 @@
 package com.charmnight.linkgraph.application.request
 
-import com.charmnight.linkgraph.llm.runtime.AgentRunState
-import com.charmnight.linkgraph.llm.runtime.AgentStepRecord
-import com.charmnight.linkgraph.llm.runtime.RunBudget
+import com.charmnight.linkgraph.agent.runtime.AgentRunState
+import com.charmnight.linkgraph.agent.runtime.AgentStepRecord
+import com.charmnight.linkgraph.agent.runtime.RunBudget
 import java.net.URI
 
 /**

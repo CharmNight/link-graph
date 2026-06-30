@@ -57,28 +57,42 @@ interface UseAssistantQaActionsArgs {
  * - 根据问答结果自动维护默认选中的变更/线索。
  */
 export function useAssistantQaActions(args: UseAssistantQaActionsArgs) {
+  const {
+    qaResult,
+    qaRequestRecoveryState,
+    nodes,
+    bridgeCommands,
+    setOperationFeedback,
+    setSelectedQaChangeId,
+    setSelectedQaThreadId,
+    selectExplanationTargetNode,
+    resolveDraftEntryTargetNodeIds,
+    resolveDisplayedNodeId,
+    resolveEvidenceTargetNodeId,
+  } = args;
+
   /**
    * 确认一条候选变更进入草稿层。
    * 缺少直接证据时拒绝确认并给出 WARNING；确认成功后联动选中其目标节点。
    */
   function handleConfirmCandidateChange(changeId: string) {
-    const candidate = args.qaResult?.candidateChanges.find((item) => item.changeId === changeId) ?? null;
+    const candidate = qaResult?.candidateChanges.find((item) => item.changeId === changeId) ?? null;
     if (candidate && !candidateCanConfirm(candidate)) {
-      args.setOperationFeedback({
+      setOperationFeedback({
         level: "WARNING",
         message: "当前候选变更缺少直接证据，不能直接确认进草稿。",
       });
       return;
     }
-    args.bridgeCommands.runBridgeCommand("确认候选变更", () => confirmQaCandidateChange(changeId), {
+    bridgeCommands.runBridgeCommand("确认候选变更", () => confirmQaCandidateChange(changeId), {
       onAccepted: () => {
         if (candidate) {
-          const targetNodeId = args.resolveDraftEntryTargetNodeIds(candidate)
-            .map((nodeId) => args.resolveDisplayedNodeId(nodeId, args.nodes))
+          const targetNodeId = resolveDraftEntryTargetNodeIds(candidate)
+            .map((nodeId) => resolveDisplayedNodeId(nodeId, nodes))
             .find(Boolean)
             ?? null;
           if (targetNodeId) {
-            args.selectExplanationTargetNode(targetNodeId, { focusViewport: true });
+            selectExplanationTargetNode(targetNodeId, { focusViewport: true });
           }
         }
       },
@@ -91,11 +105,11 @@ export function useAssistantQaActions(args: UseAssistantQaActionsArgs) {
 
   /** 重试最近一次失败的问答请求；没有可重试的请求时直接返回。 */
   function handleRetryLastQaRequest() {
-    const failedRequest = args.qaRequestRecoveryState.lastFailedRequest;
+    const failedRequest = qaRequestRecoveryState.lastFailedRequest;
     if (!failedRequest) {
       return;
     }
-    args.bridgeCommands.submitAsyncBridgeCommand("问答", () => retryLastQaRequestAsync(), {
+    bridgeCommands.submitAsyncBridgeCommand("问答", () => retryLastQaRequestAsync(), {
       successFeedback: {
         level: "INFO",
         message: "已提交失败问答的直接重试请求。",
@@ -107,30 +121,30 @@ export function useAssistantQaActions(args: UseAssistantQaActionsArgs) {
    * 选中一条候选变更；若存在证据目标节点，则联动画布选中并聚焦视口。
    */
   function handleSelectQaChange(changeId: string) {
-    args.setSelectedQaChangeId(changeId);
-    const change = args.qaResult?.candidateChanges.find((item) => item.changeId === changeId) ?? null;
+    setSelectedQaChangeId(changeId);
+    const change = qaResult?.candidateChanges.find((item) => item.changeId === changeId) ?? null;
     const targetNodeId = change
-      ? args.resolveDisplayedNodeId(args.resolveEvidenceTargetNodeId(change.targetNodeIds, change.evidence), args.nodes)
+      ? resolveDisplayedNodeId(resolveEvidenceTargetNodeId(change.targetNodeIds, change.evidence), nodes)
       : null;
     if (!targetNodeId) {
       return;
     }
-    args.selectExplanationTargetNode(targetNodeId, { focusViewport: true });
+    selectExplanationTargetNode(targetNodeId, { focusViewport: true });
   }
 
   /**
    * 选中一条调查线索；推导线索对应目标节点并联动选中 + 视口聚焦。
    */
   function handleSelectQaThread(threadId: string) {
-    args.setSelectedQaThreadId(threadId);
-    const thread = deriveInvestigationThreads(args.qaResult).find((item) => item.threadId === threadId) ?? null;
+    setSelectedQaThreadId(threadId);
+    const thread = deriveInvestigationThreads(qaResult).find((item) => item.threadId === threadId) ?? null;
     const targetNodeId = thread
-      ? args.resolveDisplayedNodeId(args.resolveEvidenceTargetNodeId(thread.targetNodeIds, thread.evidence), args.nodes)
+      ? resolveDisplayedNodeId(resolveEvidenceTargetNodeId(thread.targetNodeIds, thread.evidence), nodes)
       : null;
     if (!targetNodeId) {
       return;
     }
-    args.selectExplanationTargetNode(targetNodeId, { focusViewport: true });
+    selectExplanationTargetNode(targetNodeId, { focusViewport: true });
   }
 
   /**
@@ -141,8 +155,8 @@ export function useAssistantQaActions(args: UseAssistantQaActionsArgs) {
     threadId: string,
     resolutionStatus: "DEFERRED" | "ACCEPTED_RISK" | "DISMISSED",
   ) {
-    args.setSelectedQaThreadId(threadId);
-    args.bridgeCommands.runBridgeCommand("风险决策", () => resolveInvestigationThread(threadId, resolutionStatus), {
+    setSelectedQaThreadId(threadId);
+    bridgeCommands.runBridgeCommand("风险决策", () => resolveInvestigationThread(threadId, resolutionStatus), {
       successFeedback: {
         level: "INFO",
         message:
@@ -159,27 +173,27 @@ export function useAssistantQaActions(args: UseAssistantQaActionsArgs) {
   // 1) 没有 PENDING_CONFIRMATION 候选时清空选中；
   // 2) 当前选中已不在待确认列表中时，回退到第一个候选。
   useEffect(() => {
-    const pendingChanges = args.qaResult?.candidateChanges.filter((change) => change.status === "PENDING_CONFIRMATION") ?? [];
+    const pendingChanges = qaResult?.candidateChanges.filter((change) => change.status === "PENDING_CONFIRMATION") ?? [];
     const firstChangeId = pendingChanges[0]?.changeId ?? null;
-    args.setSelectedQaChangeId((current) => {
+    setSelectedQaChangeId((current) => {
       if (!pendingChanges.length) {
         return null;
       }
       return pendingChanges.some((change) => change.changeId === current) ? current : firstChangeId;
     });
-  }, [args.qaResult, args.setSelectedQaChangeId]);
+  }, [qaResult, setSelectedQaChangeId]);
 
   // 自动维护"当前选中调查线索"：规则与上面候选变更同步逻辑一致。
   useEffect(() => {
-    const investigationThreads = deriveInvestigationThreads(args.qaResult);
+    const investigationThreads = deriveInvestigationThreads(qaResult);
     const firstLeadId = investigationThreads[0]?.threadId ?? null;
-    args.setSelectedQaThreadId((current) => {
+    setSelectedQaThreadId((current) => {
       if (!investigationThreads.length) {
         return null;
       }
       return investigationThreads.some((thread) => thread.threadId === current) ? current : firstLeadId;
     });
-  }, [args.qaResult, args.setSelectedQaThreadId]);
+  }, [qaResult, setSelectedQaThreadId]);
 
   return {
     handleConfirmCandidateChange,

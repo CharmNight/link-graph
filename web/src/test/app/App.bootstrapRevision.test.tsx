@@ -2,7 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../app/App";
 import { resetEditorTransportForTest } from "../../app/editorTransport";
-import { materializeThreeViewDocuments, type TestBootstrapState } from "../../app/testBootstrapState";
+import { materializeThreeViewDocuments } from "../../app/testBootstrapState";
 import type { GraphViewPresentation, LinkGraphBootstrapState } from "../../app/types";
 import { installBridgeCommandSpy } from "./bridgeTestUtils";
 

@@ -18,20 +18,20 @@ import java.util.concurrent.atomic.AtomicReference
 internal class LinkGraphProjectRuntimeSupport(
     private val project: Project,
     private val logger: Logger,
-    private val openSettingsOverrideProvider: () -> (() -> Unit)?,
-    private val effectiveGenerationSettingsOverrideProvider: () -> LinkGraphSettingsState?,
+    private val openSettingsHook: () -> (() -> Unit)?,
+    private val effectiveGenerationSettingsHook: () -> LinkGraphSettingsState?,
 ) {
     internal val runtimeTraceEnabled: Boolean =
         LinkGraphDebugEnvironment.isEnabled("LINKGRAPH_DEBUG_TRACE")
 
-    fun effectiveGenerationSettings(): LinkGraphSettingsState = effectiveGenerationSettingsOverrideProvider()
+    fun effectiveGenerationSettings(): LinkGraphSettingsState = effectiveGenerationSettingsHook()
         ?: ApplicationManager.getApplication()
             .getService(LinkGraphSettingsService::class.java)
             .snapshot()
 
     fun openSettingsDialog() {
         computeOnIdeThread {
-            openSettingsOverrideProvider()?.invoke()
+            openSettingsHook()?.invoke()
                 ?: ShowSettingsUtil.getInstance().showSettingsDialog(project, LinkGraphSettingsConfigurable::class.java)
         }
     }

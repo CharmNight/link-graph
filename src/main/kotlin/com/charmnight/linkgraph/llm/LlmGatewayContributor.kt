@@ -1,5 +1,8 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.agent.model.*
+import com.charmnight.linkgraph.settings.*
+
 /**
  * LLM 网关贡献者接口（P3-1 EP 暴露）。
  *

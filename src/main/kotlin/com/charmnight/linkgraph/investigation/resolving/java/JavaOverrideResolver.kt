@@ -107,9 +107,9 @@ class JavaOverrideResolver(
      * 查询项目内具体实现方法。
      *
      * 匹配规则统一走 [JvmOverrideShapeMatcher.matchesOverride]：
-     * - simpleName + arity + 每个参数位置的 erasure 相容性
+     * - 方法简单名 + 参数数量 + 每个参数位置的擦除相容性
      * - 覆盖协变返回、泛型特化、Kotlin suspend 等场景
-     * - 拒绝同名同 arity 但类型不同的重载（过匹配）
+     * - 拒绝同名同参数数量但类型不同的重载（过匹配）
      */
     private fun concreteImplementations(
         baseMethod: JvmMethodSymbol,

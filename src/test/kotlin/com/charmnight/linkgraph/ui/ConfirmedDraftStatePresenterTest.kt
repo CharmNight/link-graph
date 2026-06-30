@@ -49,8 +49,8 @@ class ConfirmedDraftStatePresenterTest {
                 ),
             ),
             rebuiltGraph = GraphDocument(),
-            updatedQaResult = com.charmnight.linkgraph.llm.GraphPatchResult(
-                source = com.charmnight.linkgraph.llm.LlmResultSource.LOCAL_RULE,
+            updatedQaResult = com.charmnight.linkgraph.agent.model.GraphPatchResult(
+                source = com.charmnight.linkgraph.agent.model.LlmResultSource.LOCAL_RULE,
                 question = "q",
                 answer = "a",
                 promptPreview = "p",

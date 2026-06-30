@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
 import com.charmnight.linkgraph.architecture.architectureIndexRuntime
 import com.charmnight.linkgraph.architecture.query.ArchitectureGraphQueryService
@@ -60,7 +62,7 @@ class ArchitectureIndexToolFacade(
         project.architectureIndexRuntime().reviewQuery(index = buildIndex(project))
 
     /** 把符号对象转换为可序列化为工具负载的映射。 */
-    fun symbolPayload(symbol: JvmSymbol): Map<String, Any?> =
+    fun symbolPayload(symbol: JvmSymbol): ToolPayload =
         mapOf(
             "id" to symbol.id,
             "qualifiedName" to symbol.qualifiedName,
@@ -72,7 +74,7 @@ class ArchitectureIndexToolFacade(
         )
 
     /** 把关系对象转换为可序列化为工具负载的映射，并附带样例证据引用。 */
-    fun relationPayload(relation: JvmRelation, index: ArchitectureGraphIndex): Map<String, Any?> =
+    fun relationPayload(relation: JvmRelation, index: ArchitectureGraphIndex): ToolPayload =
         mapOf(
             "id" to relation.id,
             "kind" to relation.kind.name,
@@ -116,10 +118,8 @@ class ArchitectureIndexToolFacade(
  * 设计目的：消除 tool 内 `facade.buildIndex()` + `ArchitectureGraphQueryService(index)` 直构造
  * + `facade.relationPayload(relation, index)` 重复传 index 的样板，让所有 tool 走统一形态：
  *
- * ```
- * val session = facade.openQuerySession(context.project)
- * val relations = session.queryService.relationsForSymbol(...).map(session::relationPayload)
- * ```
+     * 示例：`val session = facade.openQuerySession(context.project)`
+     * 示例：`val relations = session.queryService.relationsForSymbol(...).map(session::relationPayload)`
  *
  * session 持有的 [index] 与 [queryService] 来自同一次 buildIndex 调用，避免重复构建。
  */
@@ -129,10 +129,10 @@ class ArchitectureQuerySession(
     val queryService: ArchitectureGraphQueryService,
 ) {
     /** 见 [ArchitectureIndexToolFacade.symbolPayload]。 */
-    fun symbolPayload(symbol: JvmSymbol): Map<String, Any?> = facade.symbolPayload(symbol)
+    fun symbolPayload(symbol: JvmSymbol): ToolPayload = facade.symbolPayload(symbol)
 
     /** 见 [ArchitectureIndexToolFacade.relationPayload]，index 自动绑定为 session 内的索引。 */
-    fun relationPayload(relation: JvmRelation): Map<String, Any?> =
+    fun relationPayload(relation: JvmRelation): ToolPayload =
         facade.relationPayload(relation, index)
 
     /** 见 [ArchitectureIndexToolFacade.relationKind]。 */

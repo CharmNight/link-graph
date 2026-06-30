@@ -62,6 +62,10 @@ class ClassUsageSearchService(
     private val grouper: ClassUsageResultGrouper = ClassUsageResultGrouper(),
     // 负责将外部提示（如全限定名、源文件）解析为可搜索的 PsiClass
     private val targetResolver: ClassUsageTargetResolver = ClassUsageTargetResolver(project),
+    // 继承搜索入口保持可替换，便于测试确认 Processor(false) 会向搜索引擎传递提前停止信号。
+    private val inheritorSearch: (PsiClass, GlobalSearchScope, Processor<PsiClass>) -> Boolean = { searchTarget, searchScope, processor ->
+        ClassInheritorsSearch.search(searchTarget, searchScope, true).forEach(processor)
+    },
 ) {
     /**
      * 以已解析的 PsiClass 为入口执行搜索，默认不启用基于单词索引的回退策略。
@@ -450,7 +454,7 @@ class ClassUsageSearchService(
         // 用 Processor 形式而非 for+asIterable：false 返回值会把停止信号传回 search engine，
         // 让 ClassInheritorsSearch 自身停止产出更多 inheritor（对 java.lang.Object / Exception
         // 这种被大量继承的类，避免 search engine 持续扫描整个项目）。
-        ClassInheritorsSearch.search(targetClass, scope, true).forEach(Processor { inheritor ->
+        inheritorSearch(targetClass, scope, Processor { inheritor ->
             ProgressManager.checkCanceled()
             val qualifiedName = inheritor.qualifiedName?.takeIf(String::isNotBlank) ?: return@Processor true
             ProgressManager.checkCanceled()

@@ -1,5 +1,8 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.agent.model.*
+import com.charmnight.linkgraph.settings.*
+
 /**
  * 集中维护远程结构化响应场景使用的 machine-readable JSON Schema。
  * 这些 schema 会直接下发给支持原生结构化输出的 provider，而不是只作为 prompt 文本展示。

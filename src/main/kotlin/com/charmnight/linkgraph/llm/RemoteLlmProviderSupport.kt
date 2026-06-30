@@ -1,5 +1,8 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.agent.model.*
+import com.charmnight.linkgraph.settings.*
+
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 
 /** 描述一次可直接发往远程 LLM 服务的连接配置。 */

@@ -6,11 +6,9 @@ import {
   syncNodePosition,
 } from "./graphState";
 import type {
-  AnalysisDisplayMode,
   ArchitectureGraphViewDocument,
   CandidateDraftChange,
   ClassDiagramViewDocument,
-  DiffItem,
   DraftWorkbenchEntry,
   FactGraphViewDocument,
   FlowchartViewDocument,

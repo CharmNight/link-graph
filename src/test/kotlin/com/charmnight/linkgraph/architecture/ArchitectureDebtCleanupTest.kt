@@ -292,7 +292,7 @@ class ArchitectureDebtCleanupTest {
 
     @Test
     fun qaCapabilityUsesRuntimeEvidenceInputInsteadOfLegacyContextBridge() {
-        val source = read("src/main/kotlin/com/charmnight/linkgraph/llm/capability/QaCapability.kt")
+        val source = read("src/main/kotlin/com/charmnight/linkgraph/agent/capability/QaCapability.kt")
 
         assertTrue(
             source.contains("data class QaRuntimeEvidenceInput("),

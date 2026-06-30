@@ -4,10 +4,10 @@ import com.charmnight.linkgraph.application.model.AsyncRequestState
 import com.charmnight.linkgraph.application.result.QaCompletedResult
 import com.charmnight.linkgraph.application.result.QaFailedResult
 import com.charmnight.linkgraph.application.result.ApplicationRuntimeArtifactSummary
-import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.llm.LlmResultSource
-import com.charmnight.linkgraph.llm.runtime.AgentRunResult
-import com.charmnight.linkgraph.llm.runtime.AgentRunState
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.LlmResultSource
+import com.charmnight.linkgraph.agent.runtime.AgentRunResult
+import com.charmnight.linkgraph.agent.runtime.AgentRunState
 import com.charmnight.linkgraph.workbench.QaModeContext
 import com.charmnight.linkgraph.workbench.DraftValidationState
 import com.charmnight.linkgraph.workbench.StageEligibilityDecision

@@ -285,7 +285,7 @@ internal class KotlinFlowSemanticBuilder(
     }
 }
 
-/** CodeSemanticAccumulator / FlowFragment / FlowExit / LabeledBranchFragment / SwitchBranch /
+/** 流程模型 CodeSemanticAccumulator / FlowFragment / FlowExit / LabeledBranchFragment / SwitchBranch /
  *  FlowBuildResult / toCaseFlowRole 已抽到 CodeFlowModels.kt（internal，同包可见）。 */
 
 /** KtExpression.unwrapParentheses 已抽到 top-level（详见 CodeFlowSemanticExtractorHelpers.kt）。 */

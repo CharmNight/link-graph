@@ -1,10 +1,12 @@
 package com.charmnight.linkgraph.ui.runtime
 
+import com.charmnight.linkgraph.application.runtime.CancellableTaskHandle
 import com.charmnight.linkgraph.application.runtime.TaskRunner
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.DumbService
 import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.CompletableFuture
 
@@ -33,20 +35,46 @@ class IntelliJTaskRunnerAdapter(
     }
 
     override fun <T> ui(policy: TaskRunner.UiPolicy, block: () -> T): T {
-        // UiPolicy 与 ModalityState 一对一映射；CURRENT_MODAL 已在 UiPolicy 中删除
-        // （历史上与 ANY 行为等价、无调用方，避免歧义）
-        val modality = when (policy) {
-            TaskRunner.UiPolicy.ANY -> ModalityState.defaultModalityState()
-            TaskRunner.UiPolicy.NON_MODAL -> ModalityState.nonModal()
-        }
         var result: T? = null
         ApplicationManager.getApplication().invokeAndWait({
             result = block()
-        }, modality)
+        }, modality(policy))
         @Suppress("UNCHECKED_CAST")
         return result as T
     }
 
+    override fun smartUi(policy: TaskRunner.UiPolicy, block: () -> Unit) {
+        DumbService.getInstance(project).smartInvokeLater({ block() }, modality(policy))
+    }
+
     override fun <T> read(block: () -> T): T =
         ReadAction.compute<T, RuntimeException> { block() }
+
+    override fun <T> readAsync(
+        requireSmartMode: Boolean,
+        uiPolicy: TaskRunner.UiPolicy,
+        readAction: () -> T,
+        onUi: (T) -> Unit,
+    ): CancellableTaskHandle {
+        var action = ReadAction
+            .nonBlocking<T> { readAction() }
+            .expireWith(project)
+        if (requireSmartMode) {
+            action = action.inSmartMode(project)
+        }
+        val promise = action
+            .finishOnUiThread(modality(uiPolicy)) { result -> onUi(result) }
+            .submit(AppExecutorUtil.getAppExecutorService())
+        return object : CancellableTaskHandle {
+            override fun cancel() {
+                promise.cancel()
+            }
+        }
+    }
+
+    private fun modality(policy: TaskRunner.UiPolicy): ModalityState =
+        when (policy) {
+            TaskRunner.UiPolicy.ANY -> ModalityState.defaultModalityState()
+            TaskRunner.UiPolicy.NON_MODAL -> ModalityState.nonModal()
+        }
 }

@@ -25,9 +25,9 @@ export function resolveEffectiveRequestState(
 /**
  * 根据请求状态推断横幅色调。
  *
- * - FAILED / TIMED_OUT → is-error；
+ * - 失败状态 FAILED / TIMED_OUT → is-error；
  * - 触发回退或非默认执行模式 → is-warning；
- * - RUNNING → is-info；
+ * - 运行状态 RUNNING → is-info；
  * - 其他（成功 / 空闲） → 无色调（null）。
  */
 function bannerTone(requestState: AsyncRequestState): "is-info" | "is-warning" | "is-error" | null {

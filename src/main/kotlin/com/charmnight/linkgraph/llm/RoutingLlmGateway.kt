@@ -1,5 +1,8 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.agent.model.*
+import com.charmnight.linkgraph.settings.*
+
 /**
  * 按协议类型把请求路由到具体 LLM 网关实现。
  *

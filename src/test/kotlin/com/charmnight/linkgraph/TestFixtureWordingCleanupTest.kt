@@ -13,7 +13,7 @@ class TestFixtureWordingCleanupTest {
         val files = listOf(
             "src/test/kotlin/com/charmnight/linkgraph/application/ReviewWorkflowAgentRuntimeTest.kt",
             "src/test/kotlin/com/charmnight/linkgraph/application/GraphEditorApplicationAsyncLifecycleTest.kt",
-            "src/test/kotlin/com/charmnight/linkgraph/llm/capability/QaCapabilityTest.kt",
+            "src/test/kotlin/com/charmnight/linkgraph/agent/capability/QaCapabilityTest.kt",
             "src/test/kotlin/com/charmnight/linkgraph/ui/GraphEditorStateServiceTest.kt",
             "src/integrationTest/kotlin/com/charmnight/linkgraph/ui/LinkGraphToolWindowIT.kt",
             "src/test/kotlin/com/charmnight/linkgraph/ui/GraphEditorPageRendererTest.kt",
@@ -43,9 +43,9 @@ class TestFixtureWordingCleanupTest {
     @Test
     fun runtimeAndSemanticTestsDoNotKeepObsoleteArchitectureNaming() {
         val files = listOf(
-            "src/test/kotlin/com/charmnight/linkgraph/llm/capability/QaCapabilityTest.kt",
-            "src/test/kotlin/com/charmnight/linkgraph/llm/capability/PlanCapabilityTest.kt",
-            "src/test/kotlin/com/charmnight/linkgraph/llm/capability/CodegenCapabilityTest.kt",
+            "src/test/kotlin/com/charmnight/linkgraph/agent/capability/QaCapabilityTest.kt",
+            "src/test/kotlin/com/charmnight/linkgraph/agent/capability/PlanCapabilityTest.kt",
+            "src/test/kotlin/com/charmnight/linkgraph/agent/capability/CodegenCapabilityTest.kt",
             "src/test/kotlin/com/charmnight/linkgraph/application/ReviewWorkflowAgentRuntimeTest.kt",
             "src/test/kotlin/com/charmnight/linkgraph/application/GenerationWorkflowAgentRuntimeTest.kt",
             "src/test/kotlin/com/charmnight/linkgraph/application/GraphEditorApplicationSemanticAnalysisTest.kt",

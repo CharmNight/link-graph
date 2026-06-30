@@ -1,5 +1,8 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.agent.model.*
+import com.charmnight.linkgraph.settings.*
+
 import com.charmnight.linkgraph.testing.*
 
 import java.nio.file.Files
@@ -18,7 +21,7 @@ class QaSourceWordingCleanupTest {
             "src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorMessage.kt",
             "src/main/kotlin/com/charmnight/linkgraph/ui/GraphEditorStateService.kt",
             "src/main/kotlin/com/charmnight/linkgraph/llm/LlmPromptFactory.kt",
-            "src/main/kotlin/com/charmnight/linkgraph/llm/LlmTypes.kt",
+            "src/main/kotlin/com/charmnight/linkgraph/agent/model/LlmTypes.kt",
             "src/main/kotlin/com/charmnight/linkgraph/application/planning/PlanningContextFactory.kt",
             "src/main/kotlin/com/charmnight/linkgraph/llm/GraphQaScopeResolver.kt",
         )

@@ -1,15 +1,15 @@
 package com.charmnight.linkgraph.llm.qa
 
-import com.charmnight.linkgraph.llm.EvidenceTraceEntry
-import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.llm.GraphQaContext
+import com.charmnight.linkgraph.agent.model.EvidenceTraceEntry
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.GraphQaContext
 import com.charmnight.linkgraph.llm.GraphQaScopeResolver
-import com.charmnight.linkgraph.llm.LlmResultSource
-import com.charmnight.linkgraph.llm.ResultEvidenceFinding
-import com.charmnight.linkgraph.llm.ResultEvidenceLevel
-import com.charmnight.linkgraph.llm.ResultEvidenceReference
-import com.charmnight.linkgraph.llm.SourceSnippetContext
-import com.charmnight.linkgraph.llm.markRuntimeEvidenceTrusted
+import com.charmnight.linkgraph.agent.model.LlmResultSource
+import com.charmnight.linkgraph.agent.model.ResultEvidenceFinding
+import com.charmnight.linkgraph.agent.model.ResultEvidenceLevel
+import com.charmnight.linkgraph.agent.model.ResultEvidenceReference
+import com.charmnight.linkgraph.agent.model.SourceSnippetContext
+import com.charmnight.linkgraph.agent.model.markRuntimeEvidenceTrusted
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType

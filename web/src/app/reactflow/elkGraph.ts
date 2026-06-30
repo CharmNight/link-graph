@@ -9,7 +9,6 @@ import type { ElkEdgeSection, ElkExtendedEdge, ElkNode, LayoutOptions } from "el
 import { createElkLayoutEngine } from "./elkLayoutEngine";
 import {
   FLOWCHART_DECISION_MIN_HEIGHT,
-  FLOWCHART_DECISION_WIDTH,
   FLOWCHART_MERGE_WIDTH,
   FLOWCHART_TERMINAL_WIDTH,
   flowchartNodeCardWidth,

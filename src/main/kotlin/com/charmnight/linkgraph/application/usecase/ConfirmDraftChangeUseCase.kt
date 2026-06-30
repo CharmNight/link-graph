@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.application.usecase
 
 import com.charmnight.linkgraph.application.model.ApplicationSnapshot
-import com.charmnight.linkgraph.llm.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.sync.GraphPatchApplyService

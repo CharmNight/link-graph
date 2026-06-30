@@ -2,8 +2,8 @@ package com.charmnight.linkgraph.workbench
 
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.llm.ResultEvidenceFinding
-import com.charmnight.linkgraph.llm.ResultEvidenceLevel
+import com.charmnight.linkgraph.agent.model.ResultEvidenceFinding
+import com.charmnight.linkgraph.agent.model.ResultEvidenceLevel
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

@@ -9,7 +9,7 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 
 /**
- * ArchitectureGraphProjector 的纯展示 / 名称计算 helper（P2-1 拆分）。
+ * ArchitectureGraphProjector 的纯展示 / 名称计算辅助函数（P2-1 拆分）。
  *
  * 这些函数无状态、无 IntelliJ 依赖，与 ArchitectureGraphProjector 的索引查询 /
  * 节点投影主流程解耦后便于复用与单独测试。
@@ -49,7 +49,7 @@ internal fun commonRootSize(names: List<List<String>>): Int {
 internal fun architectureBucketLabel(bucket: String): String =
     ArchitectureDisplayLayer.entries.firstOrNull { layer -> layer.laneId == bucket }?.label ?: bucket
 
-/** 把 [ArchitectureDisplayLayer] 转换为前端展示用的 presentation.* metadata 字段。 */
+/** 把 [ArchitectureDisplayLayer] 转换为前端展示用的 presentation.* 元数据字段。 */
 internal fun ArchitectureDisplayLayer.presentationMetadata(): Map<String, String> =
     mapOf(
         "presentation.role" to role,
@@ -203,4 +203,3 @@ internal fun ArchitectureEdge.displayRelationMetadata(): Map<String, String> = w
         "architecture.displayRelation" to "结构包含",
     )
 }
-

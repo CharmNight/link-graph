@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
 import com.charmnight.linkgraph.application.model.GraphEditRequestParseResult
-import com.charmnight.linkgraph.llm.GraphBeautificationResult as GraphBeautificationPayload
+import com.charmnight.linkgraph.agent.model.GraphBeautificationResult as GraphBeautificationPayload
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.workbench.RiskResolutionStatus
@@ -62,7 +62,7 @@ sealed interface GraphEditorMessage {
     ) : GraphEditorMessage
 
     /**
-     * 请求把当前 scene 的结构编辑请求应用到 canonical workspace graph。
+     * 请求把当前场景的结构编辑请求应用到权威工作区图。
      */
     data class ApplyGraphEditRequest(
         /** 解析结果：成功时 request 非空，失败时仅 issues；workflow 会根据 issues 是否为空决定走 apply 还是 reject。 */

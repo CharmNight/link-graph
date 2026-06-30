@@ -1,12 +1,12 @@
 package com.charmnight.linkgraph.application
 import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 
-import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
+import com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeHooks
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.llm.GraphQaContext
-import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.agent.model.GraphQaContext
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.LlmResultSource
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
@@ -39,9 +39,9 @@ class GraphEditorApplicationAsyncLifecycleTest : BasePlatformTestCase() {
             selectedMethodSignature = "com.example.OrderService.place():void",
         )
 
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        val runtimeHooks = project.getService(LinkGraphProjectRuntimeHooks::class.java)
         val commandRouter = project.getService(GraphEditorCommandRouter::class.java)
-        testOverrides.effectiveGenerationSettings = LinkGraphSettingsState(
+        runtimeHooks.effectiveGenerationSettings = LinkGraphSettingsState(
             llmEnabled = true,
             provider = "MOCK",
             timeoutSeconds = 45,
@@ -78,7 +78,7 @@ class GraphEditorApplicationAsyncLifecycleTest : BasePlatformTestCase() {
             selectedMethodSignature = "com.example.OrderService.place():void",
         )
 
-        project.getService(LinkGraphProjectTestOverrides::class.java)
+        project.getService(LinkGraphProjectRuntimeHooks::class.java)
         project.getService(GraphEditorCommandRouter::class.java).dispatch(GraphEditorMessage.RequestCodeDrafts)
 
         val snapshot = waitForSnapshot { current ->
@@ -100,11 +100,11 @@ class GraphEditorApplicationAsyncLifecycleTest : BasePlatformTestCase() {
             selectedMethodSignature = "com.example.OrderService.place():void",
         )
 
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        val runtimeHooks = project.getService(LinkGraphProjectRuntimeHooks::class.java)
         val commandRouter = project.getService(GraphEditorCommandRouter::class.java)
-        testOverrides.effectiveGenerationSettings = remoteSettings()
-        testOverrides.asyncRequestTimeoutMillis = 120
-        testOverrides.qaExecutor = { _: GraphQaContext, question: String ->
+        runtimeHooks.effectiveGenerationSettings = remoteSettings()
+        runtimeHooks.asyncRequestTimeoutMillis = 120
+        runtimeHooks.qaExecutor = { _: GraphQaContext, question: String ->
             Thread.sleep(20)
             GraphPatchResult(
                 source = LlmResultSource.REMOTE,
@@ -147,11 +147,11 @@ class GraphEditorApplicationAsyncLifecycleTest : BasePlatformTestCase() {
             selectedMethodSignature = "com.example.OrderService.place():void",
         )
 
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        val runtimeHooks = project.getService(LinkGraphProjectRuntimeHooks::class.java)
         val commandRouter = project.getService(GraphEditorCommandRouter::class.java)
-        testOverrides.effectiveGenerationSettings = remoteSettings()
-        testOverrides.asyncRequestTimeoutMillis = 120
-        testOverrides.qaExecutor = { _: GraphQaContext, _: String ->
+        runtimeHooks.effectiveGenerationSettings = remoteSettings()
+        runtimeHooks.asyncRequestTimeoutMillis = 120
+        runtimeHooks.qaExecutor = { _: GraphQaContext, _: String ->
             Thread.sleep(600)
             GraphPatchResult(
                 source = LlmResultSource.REMOTE,
@@ -190,14 +190,14 @@ class GraphEditorApplicationAsyncLifecycleTest : BasePlatformTestCase() {
             selectedMethodSignature = "com.example.OrderService.place():void",
         )
 
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        val runtimeHooks = project.getService(LinkGraphProjectRuntimeHooks::class.java)
         val commandRouter = project.getService(GraphEditorCommandRouter::class.java)
-        testOverrides.effectiveGenerationSettings = LinkGraphSettingsState(
+        runtimeHooks.effectiveGenerationSettings = LinkGraphSettingsState(
             llmEnabled = false,
             provider = "MOCK",
             timeoutSeconds = 45,
         )
-        testOverrides.qaExecutor = { _: GraphQaContext, question: String ->
+        runtimeHooks.qaExecutor = { _: GraphQaContext, question: String ->
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = question,
@@ -238,10 +238,10 @@ class GraphEditorApplicationAsyncLifecycleTest : BasePlatformTestCase() {
             selectedMethodSignature = "com.example.OrderService.place():void",
         )
 
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        val runtimeHooks = project.getService(LinkGraphProjectRuntimeHooks::class.java)
         val commandRouter = project.getService(GraphEditorCommandRouter::class.java)
-        testOverrides.effectiveGenerationSettings = remoteSettings()
-        testOverrides.qaExecutor = { _: GraphQaContext, question: String ->
+        runtimeHooks.effectiveGenerationSettings = remoteSettings()
+        runtimeHooks.qaExecutor = { _: GraphQaContext, question: String ->
             GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = question,

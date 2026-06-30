@@ -1,8 +1,8 @@
 package com.charmnight.linkgraph.settings
 
 import com.charmnight.linkgraph.LinkGraphBundle
-import com.charmnight.linkgraph.llm.LlmProviderPreset
-import com.charmnight.linkgraph.llm.LlmProviderPresets
+import com.charmnight.linkgraph.settings.LlmProviderPreset
+import com.charmnight.linkgraph.settings.LlmProviderPresets
 import com.charmnight.linkgraph.source.AttachedJarEntry
 import com.charmnight.linkgraph.source.AttachedJarSettingsValidator
 import com.intellij.openapi.application.ApplicationManager

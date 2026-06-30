@@ -1,8 +1,8 @@
 package com.charmnight.linkgraph.llm.qa
 
-import com.charmnight.linkgraph.llm.LlmResultSource
-import com.charmnight.linkgraph.llm.ResultEvidenceFinding
-import com.charmnight.linkgraph.llm.ResultEvidenceLevel
+import com.charmnight.linkgraph.agent.model.LlmResultSource
+import com.charmnight.linkgraph.agent.model.ResultEvidenceFinding
+import com.charmnight.linkgraph.agent.model.ResultEvidenceLevel
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
@@ -231,12 +231,12 @@ internal fun canUseConfirmableCandidatePath(
  * 当远程仍以 patch 形式返回结果时，把每条 operation 转换为候选变更，便于统一后续归一化流程。
  *
  * 每条候选变更携带：
- * - changeId = operation.id
+     * - 变更标识：changeId = operation.id
  * - title 回退链（operation.title / summary / elementId）
  * - targetNodeIds = 节点 + 边端点（去重）
  * - 子 patch（仅含本 operation 对应的 added/removed ID）
- * - claimType = operation.metadata["draft.claimType"]
- * - evidence = 调用方传入的 findings（通常是 base.findings）
+     * - 声明类型：claimType = operation.metadata["draft.claimType"]
+     * - 证据列表：evidence = 调用方传入的 findings（通常是 base.findings）
  */
 internal fun deriveCandidateChanges(
     patch: com.charmnight.linkgraph.model.GraphPatch?,

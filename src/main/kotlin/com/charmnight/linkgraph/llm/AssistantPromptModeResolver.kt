@@ -1,5 +1,8 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.agent.model.*
+import com.charmnight.linkgraph.settings.*
+
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.workbench.AssistantActionId
 

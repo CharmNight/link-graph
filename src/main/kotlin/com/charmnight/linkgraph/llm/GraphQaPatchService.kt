@@ -1,5 +1,9 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.agent.model.*
+import com.charmnight.linkgraph.settings.*
+
+import com.charmnight.linkgraph.application.port.GraphQaPatchPort
 import com.charmnight.linkgraph.foundation.LinkGraphDebugEnvironment
 import com.charmnight.linkgraph.llm.qa.withDerivedEvidenceTrace
 import com.charmnight.linkgraph.llm.qa.withPrependedWarnings
@@ -35,37 +39,37 @@ class GraphQaPatchService(
     private val gateway: LlmGateway = com.charmnight.linkgraph.llm.RoutingLlmGateway(),
     /** 负责维护会话与候选变更。 */
     private val qaConversationService: QaConversationService = QaConversationService(),
-    /** 负责从本地可信上下文推导 edit scope 路径。 */
+    /** 负责从本地可信上下文推导编辑作用域路径。 */
     private val trustedEditScopePathResolver: TrustedEditScopePathResolver = TrustedEditScopePathResolver(),
-) {
+) : GraphQaPatchPort {
     private val logger = Logger.getInstance(GraphQaPatchService::class.java)
     private val traceEnabled: Boolean =
         LinkGraphDebugEnvironment.isEnabled("LINKGRAPH_DEBUG_TRACE")
-    /** 统一候选变更 patch 归一化器。 */
+    /** 统一候选变更补丁归一化器。 */
     private val candidatePatchComposer = CandidateGraphPatchComposer()
-    /** P2-1 引入：把候选变更 / 风险线程分类与 edit scope 派生收敛为独立 class。 */
+    /** P2-1 引入：把候选变更 / 风险线程分类与编辑作用域派生收敛为独立类。 */
     private val classifier = com.charmnight.linkgraph.llm.qa.QaPatchClassifier(
         candidatePatchComposer = candidatePatchComposer,
         trustedEditScopePathResolver = trustedEditScopePathResolver,
         traceEnabled = traceEnabled,
         logger = logger,
     )
-    /** P2-1 引入：本地规则化问答结果构造独立 class。 */
+    /** P2-1 引入：本地规则化问答结果构造独立类。 */
     private val localRuleBuilder = com.charmnight.linkgraph.llm.qa.QaPatchLocalRuleBuilder()
     /** 负责处理结构化 JSON 响应与自动修复。 */
     private val responseSupport = RemoteStructuredResponseParser(gateway)
 
     /** 执行链路问答，必要时回退到本地规则结果。 */
-    fun answer(
+    override fun answer(
         context: GraphQaContext,
         question: String,
         settings: LinkGraphSettingsState,
-        session: QaConversationSession? = null,
-        sourceThreadId: String? = null,
-        requestedMode: QaMode = QaMode.AUTO,
-        effectiveMode: QaMode = QaMode.AUTO,
-        onPreview: ((String, Boolean) -> Unit)? = null,
-        runtimeEvidenceTrusted: Boolean = false,
+        session: QaConversationSession?,
+        sourceThreadId: String?,
+        requestedMode: QaMode,
+        effectiveMode: QaMode,
+        onPreview: ((String, Boolean) -> Unit)?,
+        runtimeEvidenceTrusted: Boolean,
     ): GraphPatchResult {
         val effectiveContext = context.withDerivedEvidenceTrace()
         val sanitized = settings.sanitized()
@@ -169,10 +173,10 @@ class GraphQaPatchService(
         question: String,
         prompt: String,
         session: QaConversationSession,
-        sourceThreadId: String? = null,
-        requestedMode: QaMode = QaMode.AUTO,
-        effectiveMode: QaMode = QaMode.AUTO,
-        runtimeEvidenceTrusted: Boolean = false,
+        sourceThreadId: String?,
+        requestedMode: QaMode,
+        effectiveMode: QaMode,
+        runtimeEvidenceTrusted: Boolean,
     ): GraphPatchResult =
         applyConversationTurn(
             base = localRuleBuilder.build(
@@ -190,7 +194,7 @@ class GraphQaPatchService(
             requestedMode = requestedMode,
             effectiveMode = effectiveMode,
         )
-    /** buildMockResult / buildMockDirectSourceFindings / resolveMockDirectSourceTargets /
+    /** 本地规则构造函数 buildMockResult / buildMockDirectSourceFindings / resolveMockDirectSourceTargets /
      *  buildMockCandidateTitle 已封装到 [localRuleBuilder]（QaPatchLocalRuleBuilder）。 */
 
     /** 把本轮回答和候选变更写入会话。 */
@@ -198,9 +202,9 @@ class GraphQaPatchService(
         base: GraphPatchResult,
         context: GraphQaContext,
         session: QaConversationSession,
-        sourceThreadId: String? = null,
-        requestedMode: QaMode = QaMode.AUTO,
-        effectiveMode: QaMode = QaMode.AUTO,
+        sourceThreadId: String?,
+        requestedMode: QaMode,
+        effectiveMode: QaMode,
     ): GraphPatchResult {
         val rawCandidateChanges = base.candidateChanges.ifEmpty { deriveCandidateChanges(base.patch, base.findings) }
         val classification = classifyQaOutputs(
@@ -306,7 +310,7 @@ class GraphQaPatchService(
         )
     }
 
-    /** 当远程仍以 patch 形式返回结果时，把每条 operation 转换为候选变更：详见 top-level fun deriveCandidateChanges。 */
+    /** 当远程仍以补丁形式返回结果时，把每条操作转换为候选变更：详见顶层函数 deriveCandidateChanges。 */
     private fun deriveCandidateChanges(
         patch: com.charmnight.linkgraph.model.GraphPatch?,
         findings: List<ResultEvidenceFinding>,
@@ -340,54 +344,54 @@ class GraphQaPatchService(
         )
     }
 
-    /** 判断当前结果是否具备进入"待确认候选变更"路径的资格：详见 top-level fun canUseConfirmableCandidatePath。 */
+    /** 判断当前结果是否具备进入"待确认候选变更"路径的资格：详见顶层函数 canUseConfirmableCandidatePath。 */
     private fun canUseConfirmableCandidatePath(
         source: LlmResultSource,
         runtimeEvidenceTrusted: Boolean,
     ): Boolean = com.charmnight.linkgraph.llm.qa.canUseConfirmableCandidatePath(source, runtimeEvidenceTrusted)
 
-    /** normalizeCandidateChanges / deriveEditScopes / promoteThreadsToCandidateChanges /
+    /** 候选变更归类函数 normalizeCandidateChanges / deriveEditScopes / promoteThreadsToCandidateChanges /
      *  inferLanguage / editableSymbolSignature 已封装到 [classifier]（QaPatchClassifier）。 */
 
     /** 归一化风险线程列表：丢弃无证据项，并补齐 claimType、summary、evidenceGap、recommendedQuestion 等字段。 */
     private fun normalizeInvestigationThreads(threads: List<InvestigationThread>): List<InvestigationThread> =
         com.charmnight.linkgraph.llm.qa.normalizeInvestigationThreads(threads)
 
-    /** 判断风险线程是否可被提升为候选变更：详见 top-level fun isEligibleForCandidatePromotion。 */
+    /** 判断风险线程是否可被提升为候选变更：详见顶层函数 isEligibleForCandidatePromotion。 */
     private fun isEligibleForCandidatePromotion(thread: InvestigationThread): Boolean =
         com.charmnight.linkgraph.llm.qa.isEligibleForCandidatePromotion(thread)
 
-    /** 把风险线程转换为候选变更：详见 top-level fun candidateFromThread。 */
+    /** 把风险线程转换为候选变更：详见顶层函数 candidateFromThread。 */
     private fun candidateFromThread(thread: InvestigationThread): CandidateDraftChange =
         com.charmnight.linkgraph.llm.qa.candidateFromThread(thread)
 
-    /** 根据线程 ID 生成对应的候选变更 ID：详见 top-level fun promotedChangeIdForThread。 */
+    /** 根据线程 ID 生成对应的候选变更 ID：详见顶层函数 promotedChangeIdForThread。 */
     private fun promotedChangeIdForThread(threadId: String): String =
         com.charmnight.linkgraph.llm.qa.promotedChangeIdForThread(threadId)
 
-    /** 生成风险线程提升为候选变更后的展示标题：详见 top-level fun promotedCandidateTitle。 */
+    /** 生成风险线程提升为候选变更后的展示标题：详见顶层函数 promotedCandidateTitle。 */
     private fun promotedCandidateTitle(thread: InvestigationThread): String =
         com.charmnight.linkgraph.llm.qa.promotedCandidateTitle(thread)
 
-    /** 根据证据等级推断声明类型：详见 top-level fun inferClaimType。 */
+    /** 根据证据等级推断声明类型：详见顶层函数 inferClaimType。 */
     private fun inferClaimType(evidence: List<ResultEvidenceFinding>): String =
         com.charmnight.linkgraph.llm.qa.inferClaimType(evidence)
 
-    /** 把证据不足的候选变更降级为风险线程：详见 top-level fun threadFromWeakCandidateChange。 */
+    /** 把证据不足的候选变更降级为风险线程：详见顶层函数 threadFromWeakCandidateChange。 */
     private fun threadFromWeakCandidateChange(change: CandidateDraftChange): InvestigationThread =
         com.charmnight.linkgraph.llm.qa.threadFromWeakCandidateChange(change)
 
-    /** 根据证据等级推断当前证据缺口描述：详见 top-level fun inferEvidenceGap。 */
+    /** 根据证据等级推断当前证据缺口描述：详见顶层函数 inferEvidenceGap。 */
     private fun inferEvidenceGap(evidence: List<ResultEvidenceFinding>): String =
         com.charmnight.linkgraph.llm.qa.inferEvidenceGap(evidence)
 
-    /** 生成下一轮推荐的追问问题：详见 top-level fun buildRecommendedQuestion。 */
+    /** 生成下一轮推荐的追问问题：详见顶层函数 buildRecommendedQuestion。 */
     private fun buildRecommendedQuestion(
         title: String,
         evidence: List<ResultEvidenceFinding>,
     ): String = com.charmnight.linkgraph.llm.qa.buildRecommendedQuestion(title, evidence)
 
-    /** 启发式判断用户问题是否明确要求修改代码：详见 top-level fun questionExplicitlyRequestsChange。 */
+    /** 启发式判断用户问题是否明确要求修改代码：详见顶层函数 questionExplicitlyRequestsChange。 */
     private fun questionExplicitlyRequestsChange(question: String): Boolean =
         com.charmnight.linkgraph.llm.qa.questionExplicitlyRequestsChange(question)
 
@@ -397,22 +401,22 @@ class GraphQaPatchService(
         question: String,
     ): QaConversationSession = com.charmnight.linkgraph.llm.qa.ensureUserQuestion(session, question)
 
-    /** 基于当前范围生成默认空会话：详见 top-level fun emptySession。 */
+    /** 基于当前范围生成默认空会话：详见顶层函数 emptySession。 */
     private fun emptySession(context: GraphQaContext): QaConversationSession =
         com.charmnight.linkgraph.llm.qa.emptySession(context)
 
-    /** 生成远程失败后的回退警告文案：详见 top-level fun buildRemoteFallbackWarning。 */
+    /** 生成远程失败后的回退警告文案：详见顶层函数 buildRemoteFallbackWarning。 */
     private fun buildRemoteFallbackWarning(
         scene: String,
         error: Throwable,
     ): String = com.charmnight.linkgraph.llm.qa.buildRemoteFallbackWarning(scene, error)
 
-    /** 把警告文本统一加上 RUNTIME 前缀：详见 top-level fun runtimeWarning。 */
+    /** 把警告文本统一加上 RUNTIME 前缀：详见顶层函数 runtimeWarning。 */
     private fun runtimeWarning(warning: String): String =
         com.charmnight.linkgraph.llm.qa.runtimeWarning(warning)
 
-    /** 把远程返回的警告插到结果前面：详见 top-level fun withPrependedWarnings（已 import）。 */
-    /** 把源码片段补充为取证轨迹条目：详见 top-level fun withDerivedEvidenceTrace（已 import）。 */
+    /** 把远程返回的警告插到结果前面：详见顶层函数 withPrependedWarnings（已导入）。 */
+    /** 把源码片段补充为取证轨迹条目：详见顶层函数 withDerivedEvidenceTrace（已导入）。 */
 
     /** 问答结果归一化过程中产生的内部结构，包含分类后的候选变更与风险线程。 */
     private data class ClassifiedQaOutputs(
@@ -420,19 +424,19 @@ class GraphQaPatchService(
         val investigationThreads: List<InvestigationThread>,
     )
 
-    /** 生成候选变更的简短摘要字符串，用于 trace 日志输出。 */
+    /** 生成候选变更的简短摘要字符串，用于跟踪日志输出。 */
     private fun candidateSummaries(changes: List<CandidateDraftChange>): String =
         com.charmnight.linkgraph.llm.qa.candidateSummaries(changes)
 
-    /** 生成风险线程的简短摘要字符串，用于 trace 日志输出。 */
+    /** 生成风险线程的简短摘要字符串，用于跟踪日志输出。 */
     private fun threadSummaries(threads: List<InvestigationThread>): String =
         com.charmnight.linkgraph.llm.qa.threadSummaries(threads)
 
-    /** 生成源码片段的简短摘要字符串，用于 trace 日志输出。 */
+    /** 生成源码片段的简短摘要字符串，用于跟踪日志输出。 */
     private fun sourceContextSummaries(sourceContext: List<SourceSnippetContext>): String =
         com.charmnight.linkgraph.llm.qa.sourceContextSummaries(sourceContext)
 
-    /** 生成取证轨迹的简短摘要字符串，用于 trace 日志输出。 */
+    /** 生成取证轨迹的简短摘要字符串，用于跟踪日志输出。 */
     private fun evidenceTraceSummaries(evidenceTrace: List<EvidenceTraceEntry>): String =
         com.charmnight.linkgraph.llm.qa.evidenceTraceSummaries(evidenceTrace)
 }

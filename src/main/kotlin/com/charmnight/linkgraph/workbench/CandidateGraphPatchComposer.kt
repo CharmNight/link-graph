@@ -907,8 +907,8 @@ class CandidateGraphPatchComposer {
     }
 
     /**
-     * \u63CF\u8FF0\u5019\u9009\u53D8\u66F4\u5728\u9009\u76EE\u6807\u8282\u70B9\u65F6\u7684"\u6253\u5206\u610F\u56FE"\uFF1A\u662F\u5426\u9884\u671F\u5339\u914D\u51B3\u7B56\u8282\u70B9\u3001\u547D\u4E2D\u4E86\u54EA\u4E9B\u63A7\u5236\u6D41\u7247\u6BB5\u3001\u5173\u8054\u7684\u8BCD\u5143\u96C6\u5408\u3002
-     * \u7528\u6765\u5728 [scoreTargetNode] \u4E2D\u6309\u573A\u666F\u8C03\u6574\u6743\u91CD\u3002
+     * 描述候选变更在选目标节点时的"打分意图"：是否预期匹配决策节点、命中了哪些控制流片段、关联的词元集合。
+     * 用来在 [scoreTargetNode] 中按场景调整权重。
      */
     private data class TargetResolutionIntent(
         val expectsDecisionNode: Boolean,
@@ -916,13 +916,13 @@ class CandidateGraphPatchComposer {
         val tokens: Set<String>,
     ) {
         companion object {
-            // \u7528\u4E8E\u4ECE\u6587\u672C\u4E2D\u62BD\u53D6\u63A7\u5236\u6D41\u7247\u6BB5\u7684\u6B63\u5219\uFF08\u4E0E\u5916\u5C42\u7C7B\u540C\u4E49\uFF09\uFF0C\u7528\u4E8E\u63A8\u65AD\u5019\u9009\u662F\u5426\u4E0E\u51B3\u7B56\u76F8\u5173\u3002
+            // 用于从文本中抽取控制流片段的正则（与外层类同义），用于推断候选是否与决策相关。
             private val controlFragmentRegex = Regex("""\b(?:if|switch|while|for|do-while|catch)\s*\([^`\n{}]+\)""", RegexOption.IGNORE_CASE)
-            // \u7528\u4E8E\u628A\u6587\u672C\u5207\u5206\u4E3A\u8BCD\u5143\u7684\u6B63\u5219\uFF1A\u8BC6\u522B\u82F1\u6587/\u4E0B\u5212\u7EBF\u6807\u8BC6\u7B26\u4E0E\u8FDE\u7EED\u4E2D\u6587\u7247\u6BB5\u3002
+            // 用于把文本切分为词元的正则：识别英文/下划线标识符与连续中文片段。
             private val tokenRegex = Regex("""[A-Za-z_][A-Za-z0-9_]*|[\u4E00-\u9FFF]{2,}""")
 
             /**
-             * \u628A\u5019\u9009\u4E0E\u5176\u64CD\u4F5C\u6587\u672C\u805A\u5408\uFF0C\u5206\u6790\u51FA\u9884\u671F\u610F\u56FE\uFF1A\u662F\u5426\u671F\u671B\u51B3\u7B56\u8282\u70B9\u3001\u547D\u4E2D\u7684\u63A7\u5236\u7247\u6BB5\u3001\u6240\u6709\u53EF\u6BD4\u8F83\u7684\u8BCD\u5143\u3002
+             * 把候选与其操作文本聚合，分析出预期意图：是否期望决策节点、命中的控制片段、所有可比较的词元。
              */
             fun from(
                 candidate: CandidateDraftChange,
@@ -958,7 +958,7 @@ class CandidateGraphPatchComposer {
             }
 
             /**
-             * \u628A\u6587\u672C\u5207\u5206\u4E3A\u5F52\u4E00\u5316\u7684\u5C0F\u5199\u8BCD\u5143\u96C6\u5408\uFF0C\u4E22\u5F03\u5355\u5B57\u7B26\u566A\u97F3\uFF0C\u4FBF\u4E8E\u8DE8\u8282\u70B9\u6807\u9898\u8BA1\u7B97\u91CD\u53E0\u5EA6\u3002
+             * 把文本切分为归一化的小写词元集合，丢弃单字符噪音，便于跨节点标题计算重叠度。
              */
             private fun tokenize(text: String): Set<String> {
                 return tokenRegex.findAll(text)
@@ -970,11 +970,11 @@ class CandidateGraphPatchComposer {
     }
 
     private companion object {
-        // \u7C7B\u7EA7\u522B\u5171\u4EAB\u7684\u8BCD\u5143\u5207\u5206\u6B63\u5219\uFF1A\u8BC6\u522B\u82F1\u6587/\u4E0B\u5212\u7EBF\u6807\u8BC6\u7B26\u4E0E\u8FDE\u7EED\u4E2D\u6587\u7247\u6BB5\u3002
+        // 类级别共享的词元切分正则：识别英文/下划线标识符与连续中文片段。
         private val tokenRegex = Regex("""[A-Za-z_][A-Za-z0-9_]*|[\u4E00-\u9FFF]{2,}""")
 
         /**
-         * \u628A\u6587\u672C\u5207\u5206\u4E3A\u5F52\u4E00\u5316\u7684\u5C0F\u5199\u8BCD\u5143\u96C6\u5408\uFF0C\u4F9B\u8282\u70B9\u6253\u5206\u65F6\u8BA1\u7B97\u6807\u9898\u4E4B\u95F4\u7684\u8BCD\u5143\u91CD\u53E0\u3002
+         * 把文本切分为归一化的小写词元集合，供节点打分时计算标题之间的词元重叠。
          */
         fun tokenize(text: String): Set<String> {
             return tokenRegex.findAll(text)

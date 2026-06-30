@@ -1,15 +1,15 @@
 package com.charmnight.linkgraph.settings
 
-import com.charmnight.linkgraph.llm.LlmGateway
-import com.charmnight.linkgraph.llm.LlmDeliveryMode
-import com.charmnight.linkgraph.llm.LlmResponse
-import com.charmnight.linkgraph.llm.LlmRequest
-import com.charmnight.linkgraph.llm.LlmStreamEvent
-import com.charmnight.linkgraph.llm.LlmStructuredOutput
+import com.charmnight.linkgraph.agent.model.LlmGateway
+import com.charmnight.linkgraph.agent.model.LlmDeliveryMode
+import com.charmnight.linkgraph.agent.model.LlmResponse
+import com.charmnight.linkgraph.agent.model.LlmRequest
+import com.charmnight.linkgraph.agent.model.LlmStreamEvent
+import com.charmnight.linkgraph.agent.model.LlmStructuredOutput
 import com.charmnight.linkgraph.llm.LlmStructuredSchemas
 import com.charmnight.linkgraph.llm.LlmUserMessageFormatter
-import com.charmnight.linkgraph.llm.LlmWireProtocol
-import com.charmnight.linkgraph.llm.RemoteLlmEndpointPolicy
+import com.charmnight.linkgraph.settings.LlmWireProtocol
+import com.charmnight.linkgraph.settings.RemoteLlmEndpointPolicy
 import com.charmnight.linkgraph.llm.RemoteLlmConnection
 import com.charmnight.linkgraph.llm.RoutingLlmGateway
 import com.charmnight.linkgraph.llm.remoteConnectionOrNull

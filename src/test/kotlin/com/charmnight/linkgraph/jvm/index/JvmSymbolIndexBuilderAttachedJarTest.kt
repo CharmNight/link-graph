@@ -31,7 +31,7 @@ class JvmSymbolIndexBuilderAttachedJarTest : BasePlatformTestCase() {
             package com.example.docs;
 
             /**
-             * Coordinates documented task execution.
+             * 协调带文档的任务执行。
              */
             public abstract class DocumentedService {
                 public abstract void run();
@@ -42,7 +42,7 @@ class JvmSymbolIndexBuilderAttachedJarTest : BasePlatformTestCase() {
         val symbolIndex = JvmSymbolIndexBuilder(project).build()
         val service = requireNotNull(symbolIndex.findClass("com.example.docs.DocumentedService"))
 
-        assertEquals("Coordinates documented task execution.", service.docComment)
+        assertEquals("协调带文档的任务执行。", service.docComment)
         assertEquals(true, service.abstract)
     }
 

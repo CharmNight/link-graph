@@ -58,6 +58,21 @@ interface UseInteractionProbeControllerArgs {
  * 完成后立即记录耗时并清理 pending 状态。
  */
 export function useInteractionProbeController(args: UseInteractionProbeControllerArgs) {
+  const {
+    nodes,
+    edges,
+    nodesRef,
+    selectionGroupNodeIds,
+    detailNodeId,
+    detailNode,
+    sourceNavigationState,
+    fallbackDesignPosition,
+    handleSelectionGroupChange,
+    handleInspectNode,
+    handleMoveNode,
+    handleRequestSourceNavigation,
+  } = args;
+
   // pending 操作集合：每种操作记录自己的目标与开始时间
   const interactionProbeRef = useRef<{
     scheduled: boolean;
@@ -79,27 +94,27 @@ export function useInteractionProbeController(args: UseInteractionProbeControlle
   useEffect(() => {
     const pendingSource = interactionProbeRef.current.source;
     // 不匹配或仍在进行中：忽略
-    if (!pendingSource || args.sourceNavigationState.nodeId !== pendingSource.nodeId) {
+    if (!pendingSource || sourceNavigationState.nodeId !== pendingSource.nodeId) {
       return;
     }
-    if (args.sourceNavigationState.phase === "IDLE" || args.sourceNavigationState.phase === "RUNNING") {
+    if (sourceNavigationState.phase === "IDLE" || sourceNavigationState.phase === "RUNNING") {
       return;
     }
     traceLinkGraph("probe.app.sourceNavigation.completed", {
       nodeId: pendingSource.nodeId,
-      phase: args.sourceNavigationState.phase,
-      result: args.sourceNavigationState.result ?? null,
-      targetPath: args.sourceNavigationState.targetPath ?? null,
-      errorMessage: args.sourceNavigationState.errorMessage ?? null,
+      phase: sourceNavigationState.phase,
+      result: sourceNavigationState.result ?? null,
+      targetPath: sourceNavigationState.targetPath ?? null,
+      errorMessage: sourceNavigationState.errorMessage ?? null,
       durationMs: measureDuration(pendingSource.startedAt),
     });
     interactionProbeRef.current.source = null;
-  }, [args.sourceNavigationState]);
+  }, [sourceNavigationState]);
 
   // 监听多选变化：完成时记录耗时
   useEffect(() => {
     const pendingSelection = interactionProbeRef.current.selection;
-    if (!pendingSelection || !sameNodeIdList(args.selectionGroupNodeIds, pendingSelection.ids)) {
+    if (!pendingSelection || !sameNodeIdList(selectionGroupNodeIds, pendingSelection.ids)) {
       return;
     }
     traceLinkGraph("probe.app.selection.completed", {
@@ -107,12 +122,12 @@ export function useInteractionProbeController(args: UseInteractionProbeControlle
       durationMs: measureDuration(pendingSelection.startedAt),
     });
     interactionProbeRef.current.selection = null;
-  }, [args.selectionGroupNodeIds]);
+  }, [selectionGroupNodeIds]);
 
   // 监听检查节点变化：完成时记录耗时
   useEffect(() => {
     const pendingInspect = interactionProbeRef.current.inspect;
-    if (!pendingInspect || args.detailNodeId !== pendingInspect.nodeId || args.detailNode?.id !== pendingInspect.nodeId) {
+    if (!pendingInspect || detailNodeId !== pendingInspect.nodeId || detailNode?.id !== pendingInspect.nodeId) {
       return;
     }
     traceLinkGraph("probe.app.inspect.completed", {
@@ -120,7 +135,7 @@ export function useInteractionProbeController(args: UseInteractionProbeControlle
       durationMs: measureDuration(pendingInspect.startedAt),
     });
     interactionProbeRef.current.inspect = null;
-  }, [args.detailNode, args.detailNodeId]);
+  }, [detailNode, detailNodeId]);
 
   // 监听节点位置变化：移动到位时记录耗时
   useEffect(() => {
@@ -128,7 +143,7 @@ export function useInteractionProbeController(args: UseInteractionProbeControlle
     if (!pendingMove) {
       return;
     }
-    const movedNode = args.nodes.find((node) => node.id === pendingMove.nodeId);
+    const movedNode = nodes.find((node) => node.id === pendingMove.nodeId);
     const position = movedNode?.position;
     if (!position) {
       return;
@@ -143,7 +158,7 @@ export function useInteractionProbeController(args: UseInteractionProbeControlle
       durationMs: measureDuration(pendingMove.startedAt),
     });
     interactionProbeRef.current.move = null;
-  }, [args.nodes]);
+  }, [nodes]);
 
   // 卸载时清理所有定时器
   useEffect(() => {
@@ -158,17 +173,17 @@ export function useInteractionProbeController(args: UseInteractionProbeControlle
     if (typeof window === "undefined" || window.__linkGraphInteractionProbe !== true) {
       return;
     }
-    if (interactionProbeRef.current.scheduled || args.nodes.length === 0) {
+    if (interactionProbeRef.current.scheduled || nodes.length === 0) {
       return;
     }
     // 选择目标节点：优先选可跳转源码的节点
-    const targetNode = args.nodes.find((node) => canNavigateToSource(node)) ?? args.nodes[0];
+    const targetNode = nodes.find((node) => canNavigateToSource(node)) ?? nodes[0];
     if (!targetNode) {
       return;
     }
     interactionProbeRef.current.scheduled = true;
     traceLinkGraph("probe.app.start", {
-      graph: summarizeGraph({ nodes: args.nodes, edges: args.edges }),
+      graph: summarizeGraph({ nodes, edges }),
       targetNodeId: targetNode.id,
     });
 
@@ -182,13 +197,13 @@ export function useInteractionProbeController(args: UseInteractionProbeControlle
     };
 
     // 第一步：多选前几个节点（>1 时才模拟）
-    const selectionIds = args.nodes.slice(0, Math.min(3, args.nodes.length)).map((node) => node.id);
+    const selectionIds = nodes.slice(0, Math.min(3, nodes.length)).map((node) => node.id);
     if (selectionIds.length > 1) {
       interactionProbeRef.current.selection = {
         ids: selectionIds,
         startedAt: measureStart(),
       };
-      registerProbeTimer(() => args.handleSelectionGroupChange(selectionIds), 40);
+      registerProbeTimer(() => handleSelectionGroupChange(selectionIds), 40);
     }
 
     // 第二步：检查目标节点
@@ -197,13 +212,13 @@ export function useInteractionProbeController(args: UseInteractionProbeControlle
         nodeId: targetNode.id,
         startedAt: measureStart(),
       };
-      args.handleInspectNode(targetNode.id);
+      handleInspectNode(targetNode.id);
     }, 120);
 
     // 第三步：移动目标节点（小幅偏移）
     registerProbeTimer(() => {
-      const latestNode = args.nodesRef.current.find((node) => node.id === targetNode.id) ?? targetNode;
-      const basePosition = latestNode.position ?? args.fallbackDesignPosition(0);
+      const latestNode = nodesRef.current.find((node) => node.id === targetNode.id) ?? targetNode;
+      const basePosition = latestNode.position ?? fallbackDesignPosition(0);
       const nextPosition = {
         x: basePosition.x + 24,
         y: basePosition.y + 12,
@@ -213,7 +228,7 @@ export function useInteractionProbeController(args: UseInteractionProbeControlle
         position: nextPosition,
         startedAt: measureStart(),
       };
-      args.handleMoveNode(targetNode.id, nextPosition);
+      handleMoveNode(targetNode.id, nextPosition);
     }, 220);
 
     // 第四步：源码跳转（仅当节点可跳转）
@@ -226,8 +241,17 @@ export function useInteractionProbeController(args: UseInteractionProbeControlle
         traceLinkGraph("probe.app.sourceNavigation.start", {
           nodeId: targetNode.id,
         });
-        args.handleRequestSourceNavigation(targetNode.id);
+        handleRequestSourceNavigation(targetNode.id);
       }, 340);
     }
-  }, [args.edges, args.nodes]);
+  }, [
+    edges,
+    fallbackDesignPosition,
+    handleInspectNode,
+    handleMoveNode,
+    handleRequestSourceNavigation,
+    handleSelectionGroupChange,
+    nodes,
+    nodesRef,
+  ]);
 }

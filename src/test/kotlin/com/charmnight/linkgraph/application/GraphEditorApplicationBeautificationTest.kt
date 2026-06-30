@@ -3,7 +3,7 @@ package com.charmnight.linkgraph.application
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.application.command.ApplicationCommand
-import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.agent.model.LlmResultSource
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphDocument

@@ -1,5 +1,9 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.agent.model.*
+import com.charmnight.linkgraph.settings.*
+
+import com.charmnight.linkgraph.application.port.GraphGenerationPort
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.sourceFilePathOrLocationPath
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
@@ -16,15 +20,15 @@ class GraphGenerationService(
     private val promptFactory: LlmPromptFactory = LlmPromptFactory(),
     /** 负责发起远程请求的网关。 */
     private val gateway: LlmGateway = com.charmnight.linkgraph.llm.RoutingLlmGateway(),
-) {
+) : GraphGenerationPort {
     /** 负责结构化响应请求和解析的辅助组件。 */
     private val responseSupport = RemoteStructuredResponseParser(gateway)
 
     /** 根据当前图上下文生成实现计划。 */
-    fun generatePlan(
+    override fun generatePlan(
         context: GenerationContext,
         settings: LinkGraphSettingsState,
-        onPreview: ((String, Boolean) -> Unit)? = null,
+        onPreview: ((String, Boolean) -> Unit)?,
     ): GenerationPlan {
         /** 清洗后的设置快照。 */
         val sanitizedSettings = settings.sanitized()

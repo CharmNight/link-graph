@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 import com.charmnight.linkgraph.application.model.GraphEditIssueCode
 import com.charmnight.linkgraph.application.model.GraphEditRejected
 import com.charmnight.linkgraph.application.model.GraphEditResult
@@ -9,8 +11,8 @@ import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
 import com.charmnight.linkgraph.application.port.GraphEditRequestExecutor
 import com.charmnight.linkgraph.application.usecase.WorkspaceGraphUseCase
 import com.charmnight.linkgraph.application.usecase.WorkspaceGraphUseCaseResult
-import com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore
-import com.charmnight.linkgraph.llm.runtime.RunBudget
+import com.charmnight.linkgraph.agent.artifact.InMemoryArtifactStore
+import com.charmnight.linkgraph.agent.runtime.RunBudget
 import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.mermaid.MermaidExporter
 import com.charmnight.linkgraph.mermaid.MermaidImporter

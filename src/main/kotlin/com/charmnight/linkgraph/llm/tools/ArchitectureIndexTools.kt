@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 import com.charmnight.linkgraph.architecture.query.RelationDirection
 import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
 
@@ -10,7 +12,7 @@ class GetArchitectureIndexSummaryTool(
     override val name: String = "get_architecture_index_summary"
     override val description: String = "获取当前项目架构/JVM 索引摘要"
 
-    override fun parseInput(raw: Map<String, Any?>): GetArchitectureIndexSummaryInput = GetArchitectureIndexSummaryInput
+    override fun parseInput(raw: ToolInputPayload): GetArchitectureIndexSummaryInput = GetArchitectureIndexSummaryInput
 
     override fun invokeTyped(input: GetArchitectureIndexSummaryInput, context: ToolExecutionContext): ToolResult {
         val summary = facade.openQuerySession(context.project).queryService.summary()
@@ -28,7 +30,7 @@ class FindJvmSymbolTool(
     override val name: String = "find_jvm_symbol"
     override val description: String = "按 id、全限定名或关键字查找 JVM 符号"
 
-    override fun parseInput(raw: Map<String, Any?>): FindJvmSymbolInput = FindJvmSymbolInput(
+    override fun parseInput(raw: ToolInputPayload): FindJvmSymbolInput = FindJvmSymbolInput(
         query = requireString(raw, "query"),
     )
 
@@ -49,7 +51,7 @@ class FindJvmRelationsTool(
     override val name: String = "find_jvm_relations"
     override val description: String = "查找某个 JVM 符号的关系"
 
-    override fun parseInput(raw: Map<String, Any?>): JvmRelationsInput = JvmRelationsInput(
+    override fun parseInput(raw: ToolInputPayload): JvmRelationsInput = JvmRelationsInput(
         symbol = requireString(raw, "symbol"),
         kind = optionalString(raw, "kind"),
         direction = optionalString(raw, "direction"),
@@ -85,7 +87,7 @@ class QueryArchitectureRelationsTool(
     override val name: String = "query_architecture_relations"
     override val description: String = "通过统一架构运行时查询 JVM/架构关系"
 
-    override fun parseInput(raw: Map<String, Any?>): JvmRelationsInput = JvmRelationsInput(
+    override fun parseInput(raw: ToolInputPayload): JvmRelationsInput = JvmRelationsInput(
         symbol = requireString(raw, "symbol"),
         kind = optionalString(raw, "kind"),
         direction = optionalString(raw, "direction"),
@@ -109,7 +111,7 @@ class FindServiceProvidersTool(
     override val name: String = "find_service_providers"
     override val description: String = "查找 Java SPI provider"
 
-    override fun parseInput(raw: Map<String, Any?>): FindServiceProvidersInput = FindServiceProvidersInput(
+    override fun parseInput(raw: ToolInputPayload): FindServiceProvidersInput = FindServiceProvidersInput(
         interfaceName = requireString(raw, "interfaceName"),
     )
 
@@ -130,7 +132,7 @@ class FindReflectionTargetsTool(
     override val name: String = "find_reflection_targets"
     override val description: String = "查找静态可证明反射目标"
 
-    override fun parseInput(raw: Map<String, Any?>): FindReflectionTargetsInput = FindReflectionTargetsInput(
+    override fun parseInput(raw: ToolInputPayload): FindReflectionTargetsInput = FindReflectionTargetsInput(
         symbol = requireString(raw, "symbol"),
     )
 
@@ -151,7 +153,7 @@ class FindProxyTargetsTool(
     override val name: String = "find_proxy_targets"
     override val description: String = "查找静态可识别的代理关系目标"
 
-    override fun parseInput(raw: Map<String, Any?>): FindProxyTargetsInput = FindProxyTargetsInput(
+    override fun parseInput(raw: ToolInputPayload): FindProxyTargetsInput = FindProxyTargetsInput(
         symbol = requireString(raw, "symbol"),
     )
 
@@ -176,7 +178,7 @@ class GetChangedSymbolsTool(
     override val name: String = "get_changed_symbols"
     override val description: String = "把 changedFiles 映射为架构索引符号"
 
-    override fun parseInput(raw: Map<String, Any?>): ChangedFilesInput = ChangedFilesInput(
+    override fun parseInput(raw: ToolInputPayload): ChangedFilesInput = ChangedFilesInput(
         changedFiles = optionalStringList(raw, "changedFiles"),
     )
 
@@ -194,7 +196,7 @@ class GetBlastRadiusTool(
     override val name: String = "get_blast_radius"
     override val description: String = "查询 changedFiles 的影响面"
 
-    override fun parseInput(raw: Map<String, Any?>): GetBlastRadiusInput = GetBlastRadiusInput(
+    override fun parseInput(raw: ToolInputPayload): GetBlastRadiusInput = GetBlastRadiusInput(
         changedFiles = optionalStringList(raw, "changedFiles"),
         depth = optionalInt(raw, "depth") ?: 2,
     )
@@ -219,7 +221,7 @@ class FindRelatedTestsTool(
     override val name: String = "find_related_tests"
     override val description: String = "基于架构索引查找 changedFiles 的相关测试"
 
-    override fun parseInput(raw: Map<String, Any?>): ChangedFilesInput = ChangedFilesInput(
+    override fun parseInput(raw: ToolInputPayload): ChangedFilesInput = ChangedFilesInput(
         changedFiles = optionalStringList(raw, "changedFiles"),
     )
 
@@ -236,7 +238,7 @@ class BuildReviewEvidenceBundleTool(
     override val name: String = "build_review_evidence_bundle"
     override val description: String = "为变更审查构建最小证据包"
 
-    override fun parseInput(raw: Map<String, Any?>): BuildReviewEvidenceBundleInput = BuildReviewEvidenceBundleInput(
+    override fun parseInput(raw: ToolInputPayload): BuildReviewEvidenceBundleInput = BuildReviewEvidenceBundleInput(
         changedFiles = optionalStringList(raw, "changedFiles"),
         depth = optionalInt(raw, "depth") ?: 2,
     )

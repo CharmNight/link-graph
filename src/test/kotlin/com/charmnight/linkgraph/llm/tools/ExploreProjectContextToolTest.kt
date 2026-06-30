@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 import com.charmnight.linkgraph.architecture.ArchitectureGraphIndex
 import com.charmnight.linkgraph.architecture.query.ProjectSemanticSeedIndex
 import com.charmnight.linkgraph.architecture.query.ProjectSemanticSeedRecord
@@ -11,8 +13,8 @@ import com.charmnight.linkgraph.jvm.relation.JvmRelationConfidence
 import com.charmnight.linkgraph.jvm.relation.JvmRelationIndex
 import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
 import com.charmnight.linkgraph.jvm.relation.JvmRelationSource
-import com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore
-import com.charmnight.linkgraph.llm.runtime.RunBudget
+import com.charmnight.linkgraph.agent.artifact.InMemoryArtifactStore
+import com.charmnight.linkgraph.agent.runtime.RunBudget
 import com.charmnight.linkgraph.source.SourceOrigin
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlin.test.assertEquals

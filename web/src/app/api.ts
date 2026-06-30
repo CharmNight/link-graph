@@ -6,26 +6,19 @@
 // - 桥接不可用时给出友好的错误信息，并通过埋点记录失败原因。
 import type {
   AnalysisDisplayMode,
-  BindingStatus,
-  Certainty,
   DraftPatchPreviewSource,
-  DiffStatus,
   GraphEditRequest,
   IndexedClassDiagramOptions,
   IndexedClassUsageOptions,
   IndexedReviewGraphOptions,
   IndexedGraphViewportOptions,
-  GraphPosition,
-  GraphSourceTag,
   LinkGraphBootstrapState,
-  LinkGraphEdge,
   LinkGraphNode,
   LinkGraphSnapshotEnvelope,
-  NodeType,
   RiskResolutionStatus,
 } from "./types";
 import { assistantTaskPayload, type AssistantTaskRequest } from "./assistant/assistantBridgeApi";
-import { summarizeGraph, traceLinkGraph } from "./debug";
+import { traceLinkGraph } from "./debug";
 import {
   acknowledgeSnapshot as acknowledgeSnapshotTransport,
   announceFrontendReady as announceFrontendReadyTransport,

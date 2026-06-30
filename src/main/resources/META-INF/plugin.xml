@@ -29,6 +29,9 @@
         <projectService
                 serviceInterface="com.charmnight.linkgraph.application.runtime.TaskRunner"
                 serviceImplementation="com.charmnight.linkgraph.ui.runtime.IntelliJTaskRunnerAdapter"/>
+        <projectService
+                serviceInterface="com.charmnight.linkgraph.application.port.LlmApplicationServices"
+                serviceImplementation="com.charmnight.linkgraph.llm.DefaultLlmApplicationServices"/>
         <postStartupActivity
                 implementation="com.charmnight.linkgraph.toolwindow.debug.LinkGraphDebugStartupActivity"/>
     </extensions>
@@ -80,16 +83,17 @@
         </group>
     </actions>
 
-    <!-- P3-1: 通过 EP 暴露 LLM Gateway，让第三方插件可注册自定义网关实现。
-         注意：第三方实现必须通过 LlmGatewayContributor 描述请求构造 + 响应解析，
-         实际 HTTP 请求由内置 LlmGatewayClient 统一发送，SSRF / size guard 强制生效。 -->
+    <!-- P3-1: 通过 linkGraph.* EP 暴露可扩展能力。
+         LLM 第三方实现只描述请求构造 + 响应解析，实际 HTTP 请求仍由内置
+         LlmGatewayClient 统一发送，SSRF / size guard 强制生效。 -->
     <extensionPoints>
         <extensionPoint
-                name="com.charmnight.linkgraph.llmGatewayContributor"
-                beanClass="com.intellij.ide.presentation.VirtualFileBean"
-                dynamic="true">
-            <with attribute="implementation"
-                  implements="com.charmnight.linkgraph.llm.LlmGatewayContributor"/>
-        </extensionPoint>
+                name="linkGraph.llmGateway"
+                interface="com.charmnight.linkgraph.llm.LlmGatewayContributor"
+                dynamic="true"/>
+        <extensionPoint
+                name="linkGraph.projectionProvider"
+                interface="com.charmnight.linkgraph.projection.ProjectionProvider"
+                dynamic="true"/>
     </extensionPoints>
 </idea-plugin>

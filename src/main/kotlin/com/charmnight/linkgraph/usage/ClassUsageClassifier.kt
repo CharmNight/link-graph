@@ -23,7 +23,7 @@ object ClassUsageClassifier {
      *
      * 判定优先级（命中即返回）：
      * 1) import 语句 → IMPORT；
-     * 2) extends/implements/reference list → EXTENDS/IMPLEMENTS/TYPE_REFERENCE；
+     * 2) 继承 / 实现 / 引用列表（extends/implements/reference list）→ EXTENDS/IMPLEMENTS/TYPE_REFERENCE；
      * 3) new 表达式 → CONSTRUCTOR_CALL；
      * 4) 类型元素的父节点 → FIELD_TYPE/METHOD_PARAMETER/METHOD_RETURN；
      * 5) 兜底 → TYPE_REFERENCE。

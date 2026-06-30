@@ -57,28 +57,43 @@ export interface UseStageNavControllerResult {
 export function useStageNavController(
   args: UseStageNavControllerArgs,
 ): UseStageNavControllerResult {
+  const {
+    activeStage,
+    setActiveStage,
+    setOperationFeedback,
+    graphBeautificationRequestState,
+    qaRequestState,
+    generationPlanRequestState,
+    codeDraftRequestState,
+    codeDiffStatus,
+    confirmedDraftCount,
+    pendingCandidateCount,
+    blockingRiskCount,
+    generatedCodeDraftCount,
+  } = args;
+
   const stageStatusInput: StageStatusInput = useMemo(() => ({
-    activeStage: args.activeStage,
-    graphBeautificationRequestState: args.graphBeautificationRequestState,
-    qaRequestState: args.qaRequestState,
-    generationPlanRequestState: args.generationPlanRequestState,
-    codeDraftRequestState: args.codeDraftRequestState,
-    codeDiffStatus: args.codeDiffStatus,
-    confirmedDraftCount: args.confirmedDraftCount,
-    pendingCandidateCount: args.pendingCandidateCount,
-    blockingRiskCount: args.blockingRiskCount,
-    generatedCodeDraftCount: args.generatedCodeDraftCount,
+    activeStage,
+    graphBeautificationRequestState,
+    qaRequestState,
+    generationPlanRequestState,
+    codeDraftRequestState,
+    codeDiffStatus,
+    confirmedDraftCount,
+    pendingCandidateCount,
+    blockingRiskCount,
+    generatedCodeDraftCount,
   }), [
-    args.activeStage,
-    args.graphBeautificationRequestState,
-    args.qaRequestState,
-    args.generationPlanRequestState,
-    args.codeDraftRequestState,
-    args.codeDiffStatus,
-    args.confirmedDraftCount,
-    args.pendingCandidateCount,
-    args.blockingRiskCount,
-    args.generatedCodeDraftCount,
+    activeStage,
+    graphBeautificationRequestState,
+    qaRequestState,
+    generationPlanRequestState,
+    codeDraftRequestState,
+    codeDiffStatus,
+    confirmedDraftCount,
+    pendingCandidateCount,
+    blockingRiskCount,
+    generatedCodeDraftCount,
   ]);
 
   const stageStatusEntries = useMemo(
@@ -88,21 +103,22 @@ export function useStageNavController(
 
   const handleSelectStage = useCallback((stage: WorkflowStage) => {
     const decision = canEnterStage(stage, {
-      blockingRiskCount: args.blockingRiskCount,
-      hasConfirmedDraft: args.confirmedDraftCount > 0,
+      blockingRiskCount,
+      hasConfirmedDraft: confirmedDraftCount > 0,
     });
     if (!decision.ok) {
-      args.setOperationFeedback({
+      setOperationFeedback({
         level: "WARNING",
         message: decision.reason,
       });
       return;
     }
-    args.setActiveStage(stage);
+    setActiveStage(stage);
   }, [
-    args.blockingRiskCount,
-    args.setOperationFeedback,
-    args.setActiveStage,
+    blockingRiskCount,
+    confirmedDraftCount,
+    setOperationFeedback,
+    setActiveStage,
   ]);
 
   return {

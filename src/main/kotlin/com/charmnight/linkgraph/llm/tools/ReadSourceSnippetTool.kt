@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 /**
  * 读取源码片段。
  *
@@ -15,7 +17,7 @@ class ReadSourceSnippetTool(
     override val name: String = "read_source_snippet"
     override val description: String = "读取指定文件的源码片段"
 
-    override fun parseInput(raw: Map<String, Any?>): ReadSourceSnippetInput = ReadSourceSnippetInput(
+    override fun parseInput(raw: ToolInputPayload): ReadSourceSnippetInput = ReadSourceSnippetInput(
         filePath = requireString(raw, "filePath"),
         startLine = optionalInt(raw, "startLine"),
         endLine = optionalInt(raw, "endLine"),

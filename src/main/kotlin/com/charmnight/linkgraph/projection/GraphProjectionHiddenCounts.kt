@@ -78,7 +78,7 @@ fun graphProjectionHiddenEdges(
  * 取一条边对应的原始边 ID 列表。
  *
  * 投影过程可能把多条同类原始边合并为一条（例如 UML 聚合关系），
- * 通过 metadata 中的 UML_AGGREGATE_EDGE_IDS 字段声明。
+ * 通过元数据中的 UML_AGGREGATE_EDGE_IDS 字段声明。
  * 没有该字段时，边就只代表它自己。
  */
 fun GraphEdge.projectedSourceEdgeIds(): List<String> =

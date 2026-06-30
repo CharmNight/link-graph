@@ -35,10 +35,9 @@ describe("three-view architecture gate", () => {
     const graphFlowSurfaceSource = readFileSync(appPath("reactflow", "GraphFlowSurface.tsx"), "utf8");
     const contextMenuModelSource = readFileSync(appPath("reactflow", "graphFlowContextMenuModel.ts"), "utf8");
 
-    // Size budget covers the viewport/interaction wiring that legitimately
-    // belongs to the surface (pan-extent, off-screen selection nudge, user
-    // interaction guard). Geometry is still extracted to dedicated model files
-    // (graphFlowContextMenuModel, graphFlowViewportModel, graphFlowInteractionModel).
+    // 行数预算覆盖合理保留在 surface 内的视口/交互接线
+    //（平移范围、离屏选择调整、用户交互保护）；几何逻辑仍拆到专用模型文件
+    //（graphFlowContextMenuModel、graphFlowViewportModel、graphFlowInteractionModel）。
     expect(graphFlowSurfaceSource.split("\n").length).toBeLessThan(1250);
     expect(graphFlowSurfaceSource).toContain("graphFlowContextMenuModel");
     expect(contextMenuModelSource).toContain("resolveContextMenuPoint");

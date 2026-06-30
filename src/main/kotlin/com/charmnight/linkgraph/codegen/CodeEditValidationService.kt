@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.codegen
 
-import com.charmnight.linkgraph.llm.EditScope
+import com.charmnight.linkgraph.agent.model.EditScope
 import com.intellij.ide.highlighter.JavaFileType
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiFileFactory
@@ -13,8 +13,8 @@ import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.KtPsiFactory
 
 /**
- * 对结构化 existing-file 改写做本地 authoritative 校验：
- * 在落盘之前基于 PSI 解析对比改写前后的源码，判定本次改写是否落在允许的 scope 范围内、
+ * 对结构化既有文件改写做本地权威校验：
+ * 在落盘之前基于 PSI 解析对比改写前后的源码，判定本次改写是否落在允许的作用域范围内、
  * 是否触发了未授权的删除/新增/越界，从而避免 LLM 输出越权改动真实工程文件。
  */
 class CodeEditValidationService(
@@ -22,16 +22,16 @@ class CodeEditValidationService(
     private val project: Project,
 ) {
     /**
-     * 校验一次 existing-file 改写是否合规。
+     * 校验一次既有文件改写是否合规。
      *
-     * 整体策略：先按目标文件路径过滤出相关的 scope；再根据后缀走 Java 或 Kotlin 校验分支，
-     * 通过 PSI 提取结构快照（imports/fields/methods）对比前后差异，结合 scope 中允许的变更种类与
+     * 整体策略：先按目标文件路径过滤出相关的作用域；再根据后缀走 Java 或 Kotlin 校验分支，
+     * 通过 PSI 提取结构快照（导入、字段、方法）对比前后差异，结合作用域中允许的变更种类与
      * 符号签名白名单做最终判定；任何一项失败都会以 [CodeEditValidationResult] 形式返回告警。
      *
      * @param filePath 目标文件路径
      * @param beforeText 改写前的源码文本
      * @param afterText 改写后的源码文本
-     * @param allowedScopes 上层预授权的 scope 集合（文件 + 允许的变更类型 + 符号签名）
+     * @param allowedScopes 上层预授权的作用域集合（文件 + 允许的变更类型 + 符号签名）
      * @param operations 当前拟执行的结构化操作列表（用于校验操作类型是否在白名单内）
      * @return 校验结果，包含是否有效、变更符号签名与告警列表
      */
@@ -42,17 +42,17 @@ class CodeEditValidationService(
         allowedScopes: List<EditScope>,
         operations: List<CodeEditOperation> = emptyList(),
     ): CodeEditValidationResult {
-        // 统一路径分隔符，便于与 scope 中的路径比较
+        // 统一路径分隔符，便于与作用域中的路径比较
         val normalizedPath = filePath.replace('\\', '/')
         val relevantScopes = allowedScopes.filter { scope ->
             scope.filePath.replace('\\', '/') == normalizedPath
         }
-        // 收集所有相关 scope 允许的变更种类，作为后续判定的白名单
+        // 收集所有相关作用域允许的变更种类，作为后续判定的白名单
         val allowedKinds = relevantScopes.flatMap(EditScope::allowedChangeKinds).toSet()
         if (relevantScopes.isEmpty()) {
             return CodeEditValidationResult(
                 isValid = false,
-                warnings = listOf("existing-file writeback 缺少与目标文件匹配的 validated scope。"),
+                warnings = listOf("既有文件写回缺少与目标文件匹配的已校验作用域。"),
             )
         }
         // 按语言分支：先走 Kotlin 校验路径，再走 Java 校验路径
@@ -60,7 +60,7 @@ class CodeEditValidationService(
             if (!normalizedPath.endsWith(".kt", ignoreCase = true)) {
                 return CodeEditValidationResult(
                     isValid = false,
-                    warnings = listOf("当前结构化 apply gate 仅支持 Java/Kotlin existing-file writeback。"),
+                    warnings = listOf("当前结构化应用门禁仅支持 Java/Kotlin 既有文件写回。"),
                 )
             }
             // Kotlin 分支：提取函数签名差异
@@ -81,10 +81,10 @@ class CodeEditValidationService(
                 return CodeEditValidationResult(
                     isValid = false,
                     changedSymbols = changedSymbols,
-                    warnings = listOf("Kotlin existing-file writeback 当前仅支持函数级替换操作。"),
+                    warnings = listOf("Kotlin 既有文件写回当前仅支持函数级替换操作。"),
                 )
             }
-            // scope 未授予函数替换权限则拒绝
+            // 作用域未授予函数替换权限则拒绝
             if (changedSymbols.isNotEmpty() &&
                 allowedKinds.isNotEmpty() &&
                 allowedKinds.none { it in setOf("REPLACE_METHOD_BLOCK", "REPLACE_METHOD_BODY", "REPLACE_SYMBOL_BODY") }
@@ -92,7 +92,7 @@ class CodeEditValidationService(
                 return CodeEditValidationResult(
                     isValid = false,
                     changedSymbols = changedSymbols,
-                    warnings = listOf("当前 scope 未授权 Kotlin 函数替换。"),
+                warnings = listOf("当前作用域未授权 Kotlin 函数替换。"),
                 )
             }
             // 出现在白名单之外的符号改动一律视为越界
@@ -165,7 +165,7 @@ class CodeEditValidationService(
                 warnings = listOf("检测到越界符号改写：${outOfScope.joinToString()}"),
             )
         }
-        // 即便符号在白名单内，scope 也必须显式授权"方法内容替换"
+        // 即便符号在白名单内，作用域也必须显式授权"方法内容替换"
         if (changedSymbols.isNotEmpty() &&
             allowedKinds.isNotEmpty() &&
             allowedKinds.none { it in setOf("REPLACE_METHOD_BLOCK", "REPLACE_METHOD_BODY", "REPLACE_SYMBOL_BODY") }
@@ -173,7 +173,7 @@ class CodeEditValidationService(
             return CodeEditValidationResult(
                 isValid = false,
                 changedSymbols = changedSymbols,
-                warnings = listOf("当前 scope 未授权方法内容替换。"),
+                warnings = listOf("当前作用域未授权方法内容替换。"),
             )
         }
         // 新增方法/import/字段需要对应类别的显式授权
@@ -181,21 +181,21 @@ class CodeEditValidationService(
             return CodeEditValidationResult(
                 isValid = false,
                 changedSymbols = changedSymbols + addedMethods,
-                warnings = listOf("当前 scope 未授权新增方法：${addedMethods.joinToString()}"),
+                warnings = listOf("当前作用域未授权新增方法：${addedMethods.joinToString()}"),
             )
         }
         if (addedImports.isNotEmpty() && "ADD_IMPORT" !in allowedKinds) {
             return CodeEditValidationResult(
                 isValid = false,
                 changedSymbols = changedSymbols + addedMethods,
-                warnings = listOf("当前 scope 未授权新增 import：${addedImports.joinToString()}"),
+                warnings = listOf("当前作用域未授权新增 import：${addedImports.joinToString()}"),
             )
         }
         if (addedFields.isNotEmpty() && "ADD_FIELD" !in allowedKinds) {
             return CodeEditValidationResult(
                 isValid = false,
                 changedSymbols = changedSymbols + addedMethods,
-                warnings = listOf("当前 scope 未授权新增字段：${addedFields.joinToString()}"),
+                warnings = listOf("当前作用域未授权新增字段：${addedFields.joinToString()}"),
             )
         }
         return CodeEditValidationResult(

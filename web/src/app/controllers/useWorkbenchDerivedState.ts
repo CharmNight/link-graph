@@ -151,155 +151,198 @@ interface UseWorkbenchDerivedStateArgs {
  * 内部大量使用 useMemo，依赖稳定以保证子组件不会重渲染。
  */
 export function useWorkbenchDerivedState(args: UseWorkbenchDerivedStateArgs) {
+  const {
+    analysisDisplayMode,
+    activeAssistantTarget,
+    qaResult,
+    qaRequestState,
+    qaRequestRecoveryState,
+    qaTargetNodeIds,
+    qaTargetTitle,
+    selectedQaChangeId,
+    selectedQaThreadId,
+    graphBeautificationResult,
+    graphBeautificationRequestState,
+    selectedExplanationStepId,
+    selectedExplanationGranularity,
+    hoveredExplanationStepId,
+    explanationHistory,
+    currentExplanationSessionLabel,
+    draftWorkbenchState,
+    selectedDraftEntryId,
+    draftCompareMode,
+    draftGraph,
+    semanticFactGraph,
+    workspaceBaseGraph,
+    factGraphView,
+    flowchartView,
+    resourceRelationView,
+    architectureGraphView,
+    classDiagramView,
+    reviewGraphView,
+    generationPlan,
+    generationPlanRequestState,
+    generationPlanDraftVersion,
+    draftVersion,
+    generatedCodeDrafts,
+    generatedCodeDraftVersion,
+    codeDraftRequestState,
+    resolveNodeOwnerSignature,
+    resolveEntryOwnerSignatures,
+    resolveDraftEntryTargetNodeIds,
+    resolveDisplayedNodeId,
+    overlayDraftEntryOntoFlowchartView,
+  } = args;
+
   // 把六个视图文档打包，方便按展示模式统一选择
   const activeDisplayGraphDocuments = {
-    factGraphView: args.factGraphView,
-    flowchartView: args.flowchartView,
-    resourceRelationView: args.resourceRelationView,
-    architectureGraphView: args.architectureGraphView,
-    classDiagramView: args.classDiagramView,
-    reviewGraphView: args.reviewGraphView,
+    factGraphView,
+    flowchartView,
+    resourceRelationView,
+    architectureGraphView,
+    classDiagramView,
+    reviewGraphView,
   };
   // 当前展示模式下应当呈现的可见图（按模式从对应视图文档中取出）
-  const activeViewGraph = activeVisibleGraphForDisplayMode(args.analysisDisplayMode, activeDisplayGraphDocuments);
+  const activeViewGraph = activeVisibleGraphForDisplayMode(analysisDisplayMode, activeDisplayGraphDocuments);
   // 当前展示模式下的锚点节点 ID（用于节点聚焦、归属解析等）
-  const activeAnchorNodeId = activeAnchorNodeIdForDisplayMode(args.analysisDisplayMode, activeDisplayGraphDocuments);
+  const activeAnchorNodeId = activeAnchorNodeIdForDisplayMode(analysisDisplayMode, activeDisplayGraphDocuments);
 
   // 当前锚点节点对应的方法 / 类型签名；若取不到则视为"未聚焦到具体 owner"
   const activeMethodSignature = useMemo(() => {
     const activeAnchorNode = activeViewGraph.nodes.find((node) => node.id === activeAnchorNodeId) ?? null;
-    return args.resolveNodeOwnerSignature(activeAnchorNode);
-  }, [activeAnchorNodeId, activeViewGraph.nodes, args.resolveNodeOwnerSignature]);
+    return resolveNodeOwnerSignature(activeAnchorNode);
+  }, [activeAnchorNodeId, activeViewGraph.nodes, resolveNodeOwnerSignature]);
 
   // 按当前 owner 签名（或目标节点在可见图中的存在性）过滤草稿条目，
   // 只保留与当前聚焦方法 / 可见节点相关的变更与备注
   const filteredDraftWorkbenchState = useMemo(() => {
     if (!activeMethodSignature) {
-      return args.draftWorkbenchState;
+      return draftWorkbenchState;
     }
     const filterEntries = (entries: DraftWorkbenchEntry[]) => entries.filter((entry) => {
-      const ownerSignatures = args.resolveEntryOwnerSignatures(entry, args.draftGraph ?? { nodes: [], edges: [] });
+      const ownerSignatures = resolveEntryOwnerSignatures(entry, draftGraph ?? { nodes: [], edges: [] });
       if (ownerSignatures.size > 0) {
         return ownerSignatures.has(activeMethodSignature);
       }
-      return args.resolveDraftEntryTargetNodeIds(entry)
-        .some((nodeId) => args.resolveDisplayedNodeId(nodeId, activeViewGraph.nodes) != null);
+      return resolveDraftEntryTargetNodeIds(entry)
+        .some((nodeId) => resolveDisplayedNodeId(nodeId, activeViewGraph.nodes) != null);
     });
     return {
-      draftChanges: filterEntries(args.draftWorkbenchState.draftChanges),
-      draftNotes: filterEntries(args.draftWorkbenchState.draftNotes),
+      draftChanges: filterEntries(draftWorkbenchState.draftChanges),
+      draftNotes: filterEntries(draftWorkbenchState.draftNotes),
     };
   }, [
     activeMethodSignature,
     activeViewGraph.nodes,
-    args.draftGraph,
-    args.draftWorkbenchState,
-    args.resolveDisplayedNodeId,
-    args.resolveDraftEntryTargetNodeIds,
-    args.resolveEntryOwnerSignatures,
+    draftGraph,
+    draftWorkbenchState,
+    resolveDisplayedNodeId,
+    resolveDraftEntryTargetNodeIds,
+    resolveEntryOwnerSignatures,
   ]);
 
   // 给 UI 用的草稿工作台视图状态：合并过滤后的草稿、对比模式、当前选中条目
   const draftState: DraftWorkbenchViewState = {
     draftState: filteredDraftWorkbenchState,
-    compareMode: args.draftCompareMode,
-    selectedEntryId: args.selectedDraftEntryId,
+    compareMode: draftCompareMode,
+    selectedEntryId: selectedDraftEntryId,
   };
 
   // 当前选中的草稿条目（基于过滤后的状态解析）
   const selectedDraftEntry = useMemo(
-    () => selectDraftWorkbenchEntry(filteredDraftWorkbenchState, args.selectedDraftEntryId),
-    [filteredDraftWorkbenchState, args.selectedDraftEntryId],
+    () => selectDraftWorkbenchEntry(filteredDraftWorkbenchState, selectedDraftEntryId),
+    [filteredDraftWorkbenchState, selectedDraftEntryId],
   );
 
   // 把选中的草稿条目叠加到流程图视图上：呈现给用户的最终流程图
   const presentedFlowchartView = useMemo(
-    () => args.overlayDraftEntryOntoFlowchartView({
-      view: args.flowchartView,
-      workingGraph: args.draftGraph,
+    () => overlayDraftEntryOntoFlowchartView({
+      view: flowchartView,
+      workingGraph: draftGraph,
       entry: selectedDraftEntry,
-      activeAssistantTarget: args.activeAssistantTarget,
-      compareMode: args.draftCompareMode,
+      activeAssistantTarget,
+      compareMode: draftCompareMode,
     }),
-    [args.activeAssistantTarget, args.draftCompareMode, args.draftGraph, args.flowchartView, args.overlayDraftEntryOntoFlowchartView, selectedDraftEntry],
+    [activeAssistantTarget, draftCompareMode, draftGraph, flowchartView, overlayDraftEntryOntoFlowchartView, selectedDraftEntry],
   );
 
   // 当前选中的讲解步骤（缺失时回退到第一步）
-  const selectedExplanationStep = args.graphBeautificationResult?.steps.find((step) => step.stepId === args.selectedExplanationStepId)
-    ?? args.graphBeautificationResult?.steps?.[0]
+  const selectedExplanationStep = graphBeautificationResult?.steps.find((step) => step.stepId === selectedExplanationStepId)
+    ?? graphBeautificationResult?.steps?.[0]
     ?? null;
   // 当前鼠标悬停的讲解步骤
-  const hoveredExplanationStep = args.graphBeautificationResult?.steps.find((step) => step.stepId === args.hoveredExplanationStepId)
+  const hoveredExplanationStep = graphBeautificationResult?.steps.find((step) => step.stepId === hoveredExplanationStepId)
     ?? null;
   // 讲解模式下需要聚焦的节点：优先悬停步骤的主节点，再退到选中步骤的主节点；非讲解模式返回 null
-  const explanationFocusNodeId = args.activeAssistantTarget === "explanation"
+  const explanationFocusNodeId = activeAssistantTarget === "explanation"
     ? hoveredExplanationStep?.primaryNodeId ?? selectedExplanationStep?.primaryNodeId ?? null
     : null;
 
   // 汇总所有草稿条目影响到的节点 ID（用于在画布上做变更高亮）
   const draftChangedNodeIds = useMemo(
-    () => collectDraftChangedNodeIds(filteredDraftWorkbenchState, args.resolveDraftEntryTargetNodeIds),
-    [filteredDraftWorkbenchState, args.resolveDraftEntryTargetNodeIds],
+    () => collectDraftChangedNodeIds(filteredDraftWorkbenchState, resolveDraftEntryTargetNodeIds),
+    [filteredDraftWorkbenchState, resolveDraftEntryTargetNodeIds],
   );
 
   // 草稿对比投影：选定基准图（事实图模式用语义图，其他模式用工作区基线），
   // 把选中条目与可见图、工作图组装成对比视图数据
   const draftCompareProjection = useMemo(
     () => {
-      const referenceGraph = args.analysisDisplayMode === "FACT_GRAPH"
-        ? args.semanticFactGraph
-        : args.workspaceBaseGraph;
+      const referenceGraph = analysisDisplayMode === "FACT_GRAPH"
+        ? semanticFactGraph
+        : workspaceBaseGraph;
       return buildDraftCompareProjection({
-        compareMode: args.draftCompareMode,
+        compareMode: draftCompareMode,
         selectedEntry: selectedDraftEntry,
         visibleGraph: activeViewGraph,
         referenceGraph,
-        workingGraph: args.draftGraph ?? { nodes: [], edges: [] },
+        workingGraph: draftGraph ?? { nodes: [], edges: [] },
       });
     },
-    [activeViewGraph, args.analysisDisplayMode, args.draftCompareMode, args.draftGraph, args.semanticFactGraph, args.workspaceBaseGraph, selectedDraftEntry],
+    [activeViewGraph, analysisDisplayMode, draftCompareMode, draftGraph, semanticFactGraph, workspaceBaseGraph, selectedDraftEntry],
   );
 
   // 讲解视图状态：结果、请求状态、当前步骤、粒度，以及历史轨迹与上一条标签
   const explanationState: AssistantExplanationViewState = {
-    result: args.graphBeautificationResult,
-    requestState: args.graphBeautificationRequestState,
-    selectedStepId: args.selectedExplanationStepId,
-    granularity: args.selectedExplanationGranularity,
-    historyDepth: args.explanationHistory.length,
-    canReturnToPrevious: args.explanationHistory.length > 0,
+    result: graphBeautificationResult,
+    requestState: graphBeautificationRequestState,
+    selectedStepId: selectedExplanationStepId,
+    granularity: selectedExplanationGranularity,
+    historyDepth: explanationHistory.length,
+    canReturnToPrevious: explanationHistory.length > 0,
     historyTrail: [
-      ...args.explanationHistory.map((entry) => entry.sessionLabel),
-      args.currentExplanationSessionLabel,
+      ...explanationHistory.map((entry) => entry.sessionLabel),
+      currentExplanationSessionLabel,
     ],
-    currentSessionLabel: args.currentExplanationSessionLabel,
-    previousSessionLabel: args.explanationHistory[args.explanationHistory.length - 1]?.sessionLabel ?? null,
+    currentSessionLabel: currentExplanationSessionLabel,
+    previousSessionLabel: explanationHistory[explanationHistory.length - 1]?.sessionLabel ?? null,
   };
 
   // QA 视图状态：结果、请求状态、恢复策略、当前选中的变更 / 线程，以及范围标签
   const qaState: AssistantQaViewState = {
-    result: args.qaResult,
-    requestState: args.qaRequestState,
-    qaRequestRecoveryState: args.qaRequestRecoveryState,
-    selectedChangeId: args.selectedQaChangeId,
-    selectedThreadId: args.selectedQaThreadId,
-    scopeLabel: buildQaScopeLabel(args.qaTargetNodeIds, args.qaTargetTitle),
+    result: qaResult,
+    requestState: qaRequestState,
+    qaRequestRecoveryState,
+    selectedChangeId: selectedQaChangeId,
+    selectedThreadId: selectedQaThreadId,
+    scopeLabel: buildQaScopeLabel(qaTargetNodeIds, qaTargetTitle),
   };
 
   // 草稿实施建议状态：根据生成计划、版本号、请求状态推断当前建议是否新鲜 / 是否过期
   const draftImplementationSuggestionState = deriveDraftImplementationSuggestionState({
-    generationPlan: args.generationPlan,
-    generationPlanRequestState: args.generationPlanRequestState,
-    generationPlanDraftVersion: args.generationPlanDraftVersion,
-    draftVersion: args.draftVersion,
+    generationPlan,
+    generationPlanRequestState,
+    generationPlanDraftVersion,
+    draftVersion,
   });
 
   // 代码差异状态：根据代码草稿、版本号、请求状态推断差异展示的状态
   const codeDiffStatus: CodeDiffStatus = deriveCodeDiffStatus({
-    generatedCodeDrafts: args.generatedCodeDrafts,
-    generatedCodeDraftVersion: args.generatedCodeDraftVersion,
-    draftVersion: args.draftVersion,
-    codeDraftRequestState: args.codeDraftRequestState,
+    generatedCodeDrafts,
+    generatedCodeDraftVersion,
+    draftVersion,
+    codeDraftRequestState,
   });
 
   return {

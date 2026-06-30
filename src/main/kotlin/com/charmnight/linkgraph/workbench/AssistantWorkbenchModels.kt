@@ -1,9 +1,9 @@
 package com.charmnight.linkgraph.workbench
 
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GraphBeautificationResult
-import com.charmnight.linkgraph.llm.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GraphBeautificationResult
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
 
 /** 助手意图，标识用户在助手会话中的目标。 */
 enum class AssistantIntent {

@@ -4,9 +4,9 @@ import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.codegen.CodeEditOperation
 import com.charmnight.linkgraph.codegen.CodeEditOperationKind
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
-import com.charmnight.linkgraph.llm.EditScope
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GenerationPlanItem
+import com.charmnight.linkgraph.agent.model.EditScope
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GenerationPlanItem
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.GraphSourceTag
@@ -149,7 +149,7 @@ class GraphEditorTransportSliceRendererTest {
         val current = previous.copy(
             snapshotRevision = 11,
             generationPlan = GenerationPlan(
-                source = com.charmnight.linkgraph.llm.GenerationPlanSource.REMOTE,
+                source = com.charmnight.linkgraph.agent.model.GenerationPlanSource.REMOTE,
                 summary = "补齐 DTO 与 service 接线",
                 items = listOf(
                     GenerationPlanItem(
@@ -357,7 +357,7 @@ class GraphEditorTransportSliceRendererTest {
 
         service.asyncRequests.markGenerationPlan(
             GenerationPlan(
-                source = com.charmnight.linkgraph.llm.GenerationPlanSource.REMOTE,
+                source = com.charmnight.linkgraph.agent.model.GenerationPlanSource.REMOTE,
                 summary = "补齐 DTO 与 service 接线",
                 items = listOf(
                     GenerationPlanItem(
@@ -388,7 +388,7 @@ class GraphEditorTransportSliceRendererTest {
                 ),
             ),
             warnings = listOf("全局草稿警告需要保留"),
-            source = com.charmnight.linkgraph.llm.LlmResultSource.REMOTE,
+            source = com.charmnight.linkgraph.agent.model.LlmResultSource.REMOTE,
             promptPreview = "system: assistant history code draft\nuser: produce DTO draft",
             requestState = AsyncRequestState.succeeded(
                 requestId = 101,

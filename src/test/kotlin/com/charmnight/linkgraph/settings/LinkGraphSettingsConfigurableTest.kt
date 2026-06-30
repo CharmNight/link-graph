@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.settings
 
-import com.charmnight.linkgraph.llm.LlmProviderPresets
+import com.charmnight.linkgraph.settings.LlmProviderPresets
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

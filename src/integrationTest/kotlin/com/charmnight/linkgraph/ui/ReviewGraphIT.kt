@@ -3,7 +3,7 @@ package com.charmnight.linkgraph.ui
 import com.charmnight.linkgraph.application.GraphEditorApplicationService
 import com.charmnight.linkgraph.application.indexed.requestReviewGraphRequest
 import com.charmnight.linkgraph.application.model.GraphSceneId
-import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
+import com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeHooks
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType
@@ -19,7 +19,7 @@ class ReviewGraphIT : BasePlatformTestCase() {
     override fun setUp() {
         super.setUp()
         project.registerServiceInstance(GraphEditorStateService::class.java, GraphEditorStateService())
-        project.registerServiceInstance(LinkGraphProjectTestOverrides::class.java, LinkGraphProjectTestOverrides())
+        project.registerServiceInstance(LinkGraphProjectRuntimeHooks::class.java, LinkGraphProjectRuntimeHooks())
         project.registerServiceInstance(GraphEditorApplicationService::class.java, GraphEditorApplicationService(project))
         project.registerServiceInstance(GraphEditorCommandRouter::class.java, GraphEditorCommandRouter(project))
     }

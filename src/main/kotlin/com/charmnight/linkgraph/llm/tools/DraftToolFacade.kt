@@ -1,11 +1,13 @@
 package com.charmnight.linkgraph.llm.tools
 
-import com.charmnight.linkgraph.llm.artifact.CandidateDraftArtifact
-import com.charmnight.linkgraph.llm.artifact.ConfirmedIntentArtifact
-import com.charmnight.linkgraph.llm.artifact.ArtifactRef
-import com.charmnight.linkgraph.llm.artifact.ArtifactStore
-import com.charmnight.linkgraph.llm.artifact.ArtifactStorePruner
-import com.charmnight.linkgraph.llm.artifact.ArtifactType
+import com.charmnight.linkgraph.agent.tools.*
+
+import com.charmnight.linkgraph.agent.artifact.CandidateDraftArtifact
+import com.charmnight.linkgraph.agent.artifact.ConfirmedIntentArtifact
+import com.charmnight.linkgraph.agent.artifact.ArtifactRef
+import com.charmnight.linkgraph.agent.artifact.ArtifactStore
+import com.charmnight.linkgraph.agent.artifact.ArtifactStorePruner
+import com.charmnight.linkgraph.agent.artifact.ArtifactType
 import com.charmnight.linkgraph.workbench.CandidateDraftChangeStatus
 
 /**

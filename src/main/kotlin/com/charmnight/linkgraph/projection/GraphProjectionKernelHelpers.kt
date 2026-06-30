@@ -9,9 +9,9 @@ import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
 
 /**
- * GraphProjectionKernel 的纯展示 / 优先级计算 helper（P2-1 拆分）。
+ * GraphProjectionKernel 的纯展示 / 优先级计算辅助函数（P2-1 拆分）。
  *
- * 这些函数无状态、无副作用、不持有 graph 状态，与方向遍历 / 锚点选择 / 溢出折叠
+ * 这些函数无状态、无副作用、不持有图状态，与方向遍历 / 锚点选择 / 溢出折叠
  * 主流程解耦后便于复用与单独测试。
  */
 
@@ -137,8 +137,8 @@ internal fun isAccessorLike(node: GraphNode): Boolean {
 /**
  * 折叠摘要节点的方向类型。
  *
- * 抽到 top-level（原为 GraphProjectionKernel 内 private enum），让 [overflowNode]
- * helper 也能引用。
+ * 抽到顶层（原为 GraphProjectionKernel 内私有枚举），让 [overflowNode]
+ * 辅助函数也能引用。
  */
 internal enum class OverflowDirection(val label: String) {
     UPSTREAM("上游"),

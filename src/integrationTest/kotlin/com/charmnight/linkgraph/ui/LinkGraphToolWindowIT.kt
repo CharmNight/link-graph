@@ -13,12 +13,12 @@ import com.charmnight.linkgraph.model.GraphPatchAction
 import com.charmnight.linkgraph.model.GraphPatchOperation
 import com.charmnight.linkgraph.model.GraphSourceTag
 import com.charmnight.linkgraph.model.NodeType
-import com.charmnight.linkgraph.llm.EditScope
-import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.llm.LlmResultSource
-import com.charmnight.linkgraph.llm.ResultEvidenceFinding
-import com.charmnight.linkgraph.llm.ResultEvidenceLevel
-import com.charmnight.linkgraph.llm.ResultEvidenceReference
+import com.charmnight.linkgraph.agent.model.EditScope
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.LlmResultSource
+import com.charmnight.linkgraph.agent.model.ResultEvidenceFinding
+import com.charmnight.linkgraph.agent.model.ResultEvidenceLevel
+import com.charmnight.linkgraph.agent.model.ResultEvidenceReference
 import com.charmnight.linkgraph.navigation.SourceNavigationService
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.semantic.SemanticAnalyzer
@@ -41,7 +41,7 @@ import com.charmnight.linkgraph.application.GraphEditorApplicationService
 import com.charmnight.linkgraph.application.command.ApplicationCommand
 import com.charmnight.linkgraph.application.indexed.requestReviewGraphRequest
 import com.charmnight.linkgraph.application.model.DraftPatchPreviewSource
-import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
+import com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeHooks
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.Disposable
 import com.charmnight.linkgraph.toolwindow.LinkGraphToolWindowFactory
@@ -75,8 +75,8 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
             GraphEditorStateService(),
         )
         project.registerServiceInstance(
-            LinkGraphProjectTestOverrides::class.java,
-            LinkGraphProjectTestOverrides(),
+            LinkGraphProjectRuntimeHooks::class.java,
+            LinkGraphProjectRuntimeHooks(),
         )
         project.registerServiceInstance(
             GraphEditorApplicationService::class.java,
@@ -404,7 +404,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
 
     fun testBridgeDispatchCanOpenSettingsThroughProjectService() {
         var opened = false
-        project.getService(LinkGraphProjectTestOverrides::class.java).openSettings = {
+        project.getService(LinkGraphProjectRuntimeHooks::class.java).openSettings = {
             opened = true
         }
 
@@ -460,7 +460,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         )
         var extractorRanOnDispatchThread: Boolean? = null
         val projectService = project.getService(GraphEditorApplicationService::class.java)
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        val testOverrides = project.getService(LinkGraphProjectRuntimeHooks::class.java)
         testOverrides.useResourceSubjectForAsyncIntegration()
         testOverrides.semanticAnalyzer = SemanticAnalyzer(
                 registry = SemanticProviderRegistry(
@@ -498,7 +498,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         val started = CountDownLatch(1)
         val release = CountDownLatch(1)
         val projectService = project.getService(GraphEditorApplicationService::class.java)
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        val testOverrides = project.getService(LinkGraphProjectRuntimeHooks::class.java)
         testOverrides.useResourceSubjectForAsyncIntegration()
         testOverrides.semanticAnalyzer = SemanticAnalyzer(
                 registry = SemanticProviderRegistry(
@@ -540,7 +540,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         )
         val started = CountDownLatch(1)
         val projectService = project.getService(GraphEditorApplicationService::class.java)
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        val testOverrides = project.getService(LinkGraphProjectRuntimeHooks::class.java)
         testOverrides.useResourceSubjectForAsyncIntegration()
         testOverrides.semanticAnalyzer = SemanticAnalyzer(
                 registry = SemanticProviderRegistry(
@@ -582,7 +582,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         )
         val started = CountDownLatch(1)
         val projectService = project.getService(GraphEditorApplicationService::class.java)
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        val testOverrides = project.getService(LinkGraphProjectRuntimeHooks::class.java)
         testOverrides.useResourceSubjectForAsyncIntegration()
         testOverrides.semanticAnalyzer = SemanticAnalyzer(
                 registry = SemanticProviderRegistry(
@@ -1473,7 +1473,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
     fun testBridgeDispatchBuildsGenerationPlan() {
         val bridge = GraphEditorBridge(project)
         val stateService = project.getService(GraphEditorStateService::class.java)
-        project.getService(LinkGraphProjectTestOverrides::class.java).effectiveGenerationSettings = LinkGraphSettingsState(
+        project.getService(LinkGraphProjectRuntimeHooks::class.java).effectiveGenerationSettings = LinkGraphSettingsState(
             llmEnabled = true,
             provider = "MOCK",
             timeoutSeconds = 45,
@@ -2131,7 +2131,7 @@ class LinkGraphToolWindowIT : BasePlatformTestCase() {
         )
     }
 
-    private fun LinkGraphProjectTestOverrides.useResourceSubjectForAsyncIntegration() {
+    private fun LinkGraphProjectRuntimeHooks.useResourceSubjectForAsyncIntegration() {
         val handle = ResourceSubjectHandle(
             subjectId = "resource:order-service-place",
             sourcePath = "OrderService.java",

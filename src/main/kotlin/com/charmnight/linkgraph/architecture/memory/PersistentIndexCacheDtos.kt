@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.architecture.memory
 
 /**
- * PersistentArchitectureIndexCacheStore 序列化 DTO（P2-6 替代之前的 `Map<String, Any?>`）。
+ * PersistentArchitectureIndexCacheStore 序列化 DTO（P2-6 替代之前的 untyped map payload）。
  *
  * 字段名与原 linkedMapOf 的 key 一一对应，Gson 反射序列化保证字段顺序一致。
  * 用于磁盘持久化格式，向后兼容（旧缓存文件能正常读取）。

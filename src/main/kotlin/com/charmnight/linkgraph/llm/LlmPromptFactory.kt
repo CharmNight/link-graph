@@ -1,5 +1,8 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.agent.model.*
+import com.charmnight.linkgraph.settings.*
+
 import com.charmnight.linkgraph.llm.context.PromptComposer
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionSession
@@ -10,21 +13,21 @@ import com.charmnight.linkgraph.workbench.WorkbenchStep
 /**
  * 把当前图上下文整理成可用于问答的提示词。
  *
- * P2-1 深度拆分后，本类只是 **薄壳 facade**：所有具体 prompt 构造逻辑都抽到了
- * `llm/prompt/` 子包下的 top-level fun（6 个 builder + 共享 helper / sanitizer /
- * schema instruction）。本类只负责持有共享 [PromptComposer] 并把调用转发过去，
+ * P2-1 深度拆分后，本类只是**薄外观**：所有具体提示词构造逻辑都抽到了
+ * `llm/prompt/` 子包下的顶层函数（6 个构造器 + 共享辅助函数 / 清洗器 /
+ * 结构指令）。本类只负责持有共享 [PromptComposer] 并把调用转发过去，
  * 保证既有调用点（`LlmPromptFactory().buildXxx(...)`）零改动。
  *
  * 子包文件清单：
  * - [prompt.PromptSupport]：节点 / 边 / 源码片段 / 差异 / 已确认变更 / 证据边界摘要
- * - [prompt.PromptAssembly]：USER_INPUT_CONTRACT / sanitizeUserField / buildPromptPackage / promptPreview
+     * - [prompt.PromptAssembly]：输入契约 USER_INPUT_CONTRACT / sanitizeUserField / buildPromptPackage / promptPreview
  * - [prompt.LlmPromptSchemaInstructions]：8 个 schema / behavior 指令文本
- * - [prompt.GenerationPromptBuilder]：buildGenerationPromptPackage / buildGenerationPrompt
- * - [prompt.GenerationPlanDiscussionPromptBuilder]：buildGenerationPlanDiscussionPromptPackage
- * - [prompt.QaPromptBuilder]：buildQaPromptPackage / buildQaPrompt
- * - [prompt.DiffReviewPromptBuilder]：buildDiffReviewPromptPackage / buildDiffReviewPrompt
- * - [prompt.CodeGenerationPromptBuilder]：buildCodeGenerationPromptPackage
- * - [prompt.BeautificationPromptBuilder]：buildBeautificationPromptPackage / buildBeautificationPrompt
+     * - [prompt.GenerationPromptBuilder]：生成提示词 buildGenerationPromptPackage / buildGenerationPrompt
+     * - [prompt.GenerationPlanDiscussionPromptBuilder]：计划讨论提示词 buildGenerationPlanDiscussionPromptPackage
+     * - [prompt.QaPromptBuilder]：问答提示词 buildQaPromptPackage / buildQaPrompt
+     * - [prompt.DiffReviewPromptBuilder]：差异审查提示词 buildDiffReviewPromptPackage / buildDiffReviewPrompt
+     * - [prompt.CodeGenerationPromptBuilder]：代码生成提示词 buildCodeGenerationPromptPackage
+     * - [prompt.BeautificationPromptBuilder]：美化提示词 buildBeautificationPromptPackage / buildBeautificationPrompt
  */
 class LlmPromptFactory(
     private val promptComposer: PromptComposer = PromptComposer(),

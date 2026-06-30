@@ -1,8 +1,8 @@
 package com.charmnight.linkgraph.codegen
 
-import com.charmnight.linkgraph.llm.EditScope
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GenerationPlanItem
+import com.charmnight.linkgraph.agent.model.EditScope
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GenerationPlanItem
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
 

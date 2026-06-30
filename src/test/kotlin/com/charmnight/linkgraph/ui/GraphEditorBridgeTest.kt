@@ -22,7 +22,7 @@ import com.charmnight.linkgraph.semantic.subject.SourceRange
 import com.charmnight.linkgraph.semantic.subject.SubjectHandle
 import com.charmnight.linkgraph.semantic.subject.SubjectLocator
 import com.charmnight.linkgraph.semantic.subject.SubjectPreviewKind
-import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
+import com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeHooks
 import com.charmnight.linkgraph.testing.registerGraphEditorApplicationServicesForTest
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
@@ -46,7 +46,7 @@ class GraphEditorBridgeTest : BasePlatformTestCase() {
                 当前链路入口
             """.trimIndent(),
         )
-        val testOverrides = project.getService(com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides::class.java)
+        val runtimeHooks = project.getService(com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeHooks::class.java)
         val resourceHandle = ResourceSubjectHandle(
             subjectId = "resource-markdown:order-flow-md",
             sourcePath = "order-flow.md",
@@ -55,7 +55,7 @@ class GraphEditorBridgeTest : BasePlatformTestCase() {
             kind = ResourceSubjectKind.MARKDOWN_PAGE,
             attributes = mapOf("path" to "order-flow.md"),
         )
-        testOverrides.subjectLocator = object : SubjectLocator {
+        runtimeHooks.subjectLocator = object : SubjectLocator {
             override fun locate(
                 project: Project,
                 editor: Editor?,
@@ -68,7 +68,7 @@ class GraphEditorBridgeTest : BasePlatformTestCase() {
                 commitDocument: Boolean,
             ): SubjectPreviewKind = SubjectPreviewKind.RESOURCE_SUBJECT
         }
-        testOverrides.semanticAnalyzer = SemanticAnalyzer(
+        runtimeHooks.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(
                 listOf(
                     object : SemanticProvider {
@@ -137,9 +137,9 @@ class GraphEditorBridgeTest : BasePlatformTestCase() {
     }
 
     fun testDispatchOpenCodeDraftNativeDiffRoutesToProjectService() {
-        val testOverrides = project.getService(com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides::class.java)
+        val runtimeHooks = project.getService(com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeHooks::class.java)
         val requestedDraftIds = mutableListOf<String>()
-        testOverrides.openCodeDraftNativeDiff = { draftId ->
+        runtimeHooks.openCodeDraftNativeDiff = { draftId ->
             requestedDraftIds += draftId
         }
 

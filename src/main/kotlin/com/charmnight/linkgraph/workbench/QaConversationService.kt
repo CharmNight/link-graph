@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.workbench
 
-import com.charmnight.linkgraph.llm.ResultEvidenceFinding
-import com.charmnight.linkgraph.llm.ResultEvidenceLevel
+import com.charmnight.linkgraph.agent.model.ResultEvidenceFinding
+import com.charmnight.linkgraph.agent.model.ResultEvidenceLevel
 
 /**
  * 问答会话状态机核心：负责把模型一轮回答并入既有会话，

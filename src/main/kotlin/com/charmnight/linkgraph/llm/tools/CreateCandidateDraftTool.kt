@@ -1,6 +1,8 @@
 package com.charmnight.linkgraph.llm.tools
 
-import com.charmnight.linkgraph.llm.artifact.CandidateDraftArtifact
+import com.charmnight.linkgraph.agent.tools.*
+
+import com.charmnight.linkgraph.agent.artifact.CandidateDraftArtifact
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 
 /**
@@ -13,7 +15,7 @@ class CreateCandidateDraftTool : TypedAgentTool<CreateCandidateDraftInput>() {
     override val name: String = "create_candidate_draft"
     override val description: String = "创建候选草稿 artifact，不触发确认"
 
-    override fun parseInput(raw: Map<String, Any?>): CreateCandidateDraftInput = CreateCandidateDraftInput(
+    override fun parseInput(raw: ToolInputPayload): CreateCandidateDraftInput = CreateCandidateDraftInput(
         candidate = requireValue(raw, "candidate", CandidateDraftChange::class),
     )
 

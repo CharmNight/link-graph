@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 /**
  * 读取当前草稿箱状态。
  *
@@ -14,7 +16,7 @@ class GetDraftWorkbenchTool(
     override val name: String = "get_draft_workbench"
     override val description: String = "读取当前候选草稿与已确认草稿摘要"
 
-    override fun parseInput(raw: Map<String, Any?>): GetDraftWorkbenchInput = GetDraftWorkbenchInput
+    override fun parseInput(raw: ToolInputPayload): GetDraftWorkbenchInput = GetDraftWorkbenchInput
 
     override fun invokeTyped(input: GetDraftWorkbenchInput, context: ToolExecutionContext): ToolResult {
         val candidates = draftToolFacade.candidateDrafts(context.snapshot)

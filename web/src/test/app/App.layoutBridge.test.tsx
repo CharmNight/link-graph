@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../app/App";
 import { resetEditorTransportForTest } from "../../app/editorTransport";
-import { materializeThreeViewDocuments, type TestBootstrapState } from "../../app/testBootstrapState";
+import { materializeThreeViewDocuments } from "../../app/testBootstrapState";
 import {
   expectBridgeCommand,
   expectBridgeCommandCount,

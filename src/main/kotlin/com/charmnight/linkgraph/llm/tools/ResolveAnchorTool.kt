@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 /**
  * 根据 nodeId 或 symbolSignature 解析代码锚点。
  *
@@ -14,7 +16,7 @@ class ResolveAnchorTool(
     override val name: String = "resolve_anchor"
     override val description: String = "根据 nodeId 或 symbolSignature 解析代码锚点"
 
-    override fun parseInput(raw: Map<String, Any?>): ResolveAnchorInput = ResolveAnchorInput(
+    override fun parseInput(raw: ToolInputPayload): ResolveAnchorInput = ResolveAnchorInput(
         nodeId = optionalString(raw, "nodeId"),
         symbolSignature = optionalString(raw, "symbolSignature"),
     )

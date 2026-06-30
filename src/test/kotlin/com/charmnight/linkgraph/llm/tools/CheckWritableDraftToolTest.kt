@@ -1,9 +1,11 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
-import com.charmnight.linkgraph.llm.runtime.RunBudget
+import com.charmnight.linkgraph.agent.runtime.RunBudget
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlin.test.assertEquals
@@ -22,7 +24,7 @@ class CheckWritableDraftToolTest : BasePlatformTestCase() {
             context = ToolExecutionContext(
                 project = project,
                 snapshot = testSnapshot().toToolGraphSnapshot(),
-                artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
+                artifactStore = com.charmnight.linkgraph.agent.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
         )
@@ -44,7 +46,7 @@ class CheckWritableDraftToolTest : BasePlatformTestCase() {
             context = ToolExecutionContext(
                 project = project,
                 snapshot = testSnapshot().toToolGraphSnapshot(),
-                artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
+                artifactStore = com.charmnight.linkgraph.agent.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
         )

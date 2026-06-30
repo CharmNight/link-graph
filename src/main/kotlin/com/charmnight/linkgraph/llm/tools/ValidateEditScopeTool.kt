@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 
 /**
@@ -16,7 +18,7 @@ class ValidateEditScopeTool(
     override val name: String = "validate_edit_scope"
     override val description: String = "校验 existing-file 草稿是否具备合法 edit scope"
 
-    override fun parseInput(raw: Map<String, Any?>): ValidateEditScopeInput = ValidateEditScopeInput(
+    override fun parseInput(raw: ToolInputPayload): ValidateEditScopeInput = ValidateEditScopeInput(
         draft = requireValue(raw, "draft", GeneratedCodeDraft::class),
     )
 

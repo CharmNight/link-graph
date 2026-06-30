@@ -1,6 +1,8 @@
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.Sync
+import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
+import org.gradle.testing.jacoco.tasks.JacocoReport
 import java.io.ByteArrayOutputStream
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
@@ -12,6 +14,7 @@ import javax.xml.transform.stream.StreamResult
 plugins {
     kotlin("jvm") version "2.1.20"
     id("org.jetbrains.intellij.platform") version "2.5.0"
+    jacoco
 }
 
 group = providers.gradleProperty("pluginGroup").get()
@@ -43,6 +46,29 @@ dependencies {
 
 kotlin {
     jvmToolchain(providers.gradleProperty("javaVersion").get().toInt())
+}
+
+jacoco {
+    toolVersion = "0.8.12"
+}
+
+tasks.withType<Test>().configureEach {
+    extensions.configure<JacocoTaskExtension> {
+        isIncludeNoLocationClasses = true
+        excludes = listOf("jdk.internal.*")
+    }
+}
+
+tasks.named<JacocoReport>("jacocoTestReport") {
+    dependsOn(tasks.named("test"))
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        csv.required.set(false)
+    }
+    sourceDirectories.setFrom(sourceSets["main"].allSource.srcDirs)
+    classDirectories.setFrom(layout.buildDirectory.dir("instrumented/instrumentCode"))
+    executionData.setFrom(layout.buildDirectory.file("jacoco/test.exec"))
 }
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -104,7 +130,12 @@ val integrationTest by tasks.registering(Test::class) {
     val baseTestTask = tasks.named<Test>("test").get()
     testClassesDirs = integrationTestSourceSet.output.classesDirs
     classpath = baseTestTask.classpath + integrationTestSourceSet.output
-    jvmArgumentProviders.addAll(baseTestTask.jvmArgumentProviders)
+    // integrationTest 自身也会被 jacoco 插件增强，继承 test 的 JaCoCo provider 会导致 JVM 加载两份 agent。
+    jvmArgumentProviders.addAll(
+        baseTestTask.jvmArgumentProviders.filterNot { provider ->
+            provider.javaClass.name.contains("jacoco", ignoreCase = true)
+        },
+    )
     systemProperties.putAll(baseTestTask.systemProperties)
     environment(baseTestTask.environment)
     workingDir = baseTestTask.workingDir

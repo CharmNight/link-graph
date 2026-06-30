@@ -3,8 +3,8 @@ package com.charmnight.linkgraph.ui
 import java.security.MessageDigest
 
 /**
- * 管理 transport 中按需下发的大文本 artifact。
- * bootstrap / workflow slice 只传稳定引用，真正文本按需通过 ARTIFACT_SLICE 回填。
+ * 管理传输中按需下发的大文本产物。
+ * 启动载荷 / 工作流切片只传稳定引用，真正文本按需通过 ARTIFACT_SLICE 回填。
  */
 class GraphEditorArtifactRegistry {
     /**

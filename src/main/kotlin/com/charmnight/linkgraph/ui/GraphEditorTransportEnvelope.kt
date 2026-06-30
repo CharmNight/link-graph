@@ -15,7 +15,7 @@ import com.charmnight.linkgraph.ui.protocol.GraphEditorProtocol
 sealed interface TransportSliceStateDto
 
 /**
- * 传输信封：把图谱状态以不同形式（完整快照 / artifact 切片 / 反馈切片）封装为前端可消费的结构。
+ * 传输信封：把图谱状态以不同形式（完整快照 / 产物切片 / 反馈切片）封装为前端可消费的结构。
  *
  * [state] 类型统一为 [TransportSliceStateDto]，由 sealed 体系约束合法子类型；
  * 之前是 `Any`，被 Gson 反射序列化兜底但失去编译期类型保护。

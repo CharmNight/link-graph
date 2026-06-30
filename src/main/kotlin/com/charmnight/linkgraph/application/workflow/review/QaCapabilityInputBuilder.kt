@@ -2,8 +2,8 @@ package com.charmnight.linkgraph.application.workflow.review
 
 import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
 import com.charmnight.linkgraph.application.planning.PlanningContextFactory
-import com.charmnight.linkgraph.llm.GraphQaContext
-import com.charmnight.linkgraph.llm.capability.QaCapabilityInput
+import com.charmnight.linkgraph.agent.model.GraphQaContext
+import com.charmnight.linkgraph.agent.capability.QaCapabilityInput
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.workbench.QaModeContext
 

@@ -1,4 +1,4 @@
-import { useEffect, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, type Dispatch, type SetStateAction } from "react";
 import { requestAssistantTask, type BridgeInvocationResult } from "../api";
 import type { SubmitAsyncBridgeCommandOptions } from "../controllers/bridgeCommandTypes";
 import type { WorkflowStage } from "../workflow/workflowStage";
@@ -109,19 +109,19 @@ export function useAssistantActionController({
   const selectedQaMode = assistantSessionState.composer?.qaMode ?? "AUTO";
 
   // 根据指定的展示模式取得该模式下需要呈现给助手的图谱文档
-  function assistantGraphForDisplayMode(mode: AnalysisDisplayMode): LinkGraphDocument {
+  const assistantGraphForDisplayMode = useCallback((mode: AnalysisDisplayMode): LinkGraphDocument => {
     return viewDocuments[mode].visibleGraph;
-  }
+  }, [viewDocuments]);
 
   // 取得指定展示模式下的锚点节点 ID，若未提供则回退为空
-  function assistantAnchorNodeIdForDisplayMode(mode: AnalysisDisplayMode): string | null {
+  const assistantAnchorNodeIdForDisplayMode = useCallback((mode: AnalysisDisplayMode): string | null => {
     return viewDocuments[mode].anchorNodeId ?? null;
-  }
+  }, [viewDocuments]);
 
   // 解析指定展示模式对应的场景 ID，当前模式直接复用外部传入的场景，其他模式由映射函数推导
-  function assistantSceneIdForDisplayMode(mode: AnalysisDisplayMode): LinkGraphSceneId {
+  const assistantSceneIdForDisplayMode = useCallback((mode: AnalysisDisplayMode): LinkGraphSceneId => {
     return mode === analysisDisplayMode ? currentSceneId : sceneIdForAnalysisDisplayMode(mode);
-  }
+  }, [analysisDisplayMode, currentSceneId]);
 
   // 根据意图更新当前激活的动作，并将其持久化到助手会话状态中
   function updateAssistantAction(intent: AssistantIntent, actionId?: AssistantActionId | null) {
@@ -220,22 +220,29 @@ export function useAssistantActionController({
   }
 
   // 解析当前选择下要传给助手的节点 ID 列表，综合考虑选中节点、组选择和锚点节点
-  function selectedAssistantNodeIds(mode: AnalysisDisplayMode = analysisDisplayMode): string[] {
+  const selectedAssistantNodeIds = useCallback((mode: AnalysisDisplayMode = analysisDisplayMode): string[] => {
     return resolveAssistantNodeIds({
       graph: assistantGraphForDisplayMode(mode),
       selectionGroupNodeIds,
       selectedNodeId,
       anchorNodeId: assistantAnchorNodeIdForDisplayMode(mode) ?? anchorNodeId,
     });
-  }
+  }, [
+    analysisDisplayMode,
+    anchorNodeId,
+    assistantAnchorNodeIdForDisplayMode,
+    assistantGraphForDisplayMode,
+    selectedNodeId,
+    selectionGroupNodeIds,
+  ]);
 
   // 计算当前选中的 Diff 项 ID 列表，优先使用外部传入的目标项，再回退到当前节点是否命中 Diff 项
-  function selectedAssistantDiffItemIds(): string[] {
+  const selectedAssistantDiffItemIds = useCallback((): string[] => {
     if (diffTargetItemIds.length > 0) {
       return diffTargetItemIds;
     }
     return selectedNodeId && diffItems.some((item) => item.id === selectedNodeId) ? [selectedNodeId] : [];
-  }
+  }, [diffItems, diffTargetItemIds, selectedNodeId]);
 
   // 根据输入框的目标类型决定要使用的节点 ID 列表，不同目标类型对节点的来源有不同语义
   function selectedNodeIdsForComposerTarget(target: AssistantComposerTarget): string[] {
@@ -252,30 +259,30 @@ export function useAssistantActionController({
   }
 
   // 当目标节点只有一个时尝试取其展示标题，用于在输入框默认提示中给出更明确的上下文
-  function assistantTargetTitle(
+  const assistantTargetTitle = useCallback((
     targetNodeIds: string[],
     mode: AnalysisDisplayMode = analysisDisplayMode,
-  ): string | null {
+  ): string | null => {
     if (targetNodeIds.length !== 1) {
       return null;
     }
     return assistantGraphForDisplayMode(mode).nodes.find((node) => node.id === targetNodeIds[0])?.title
       ?? targetNodeIds[0];
-  }
+  }, [analysisDisplayMode, assistantGraphForDisplayMode]);
 
   // 构造某个动作在当前上下文下的默认提示语，便于在动作切换或场景初始化时给出推荐输入
-  function buildDefaultAssistantPrompt(
+  const buildDefaultAssistantPrompt = useCallback((
     actionId: AssistantActionId,
     mode: AnalysisDisplayMode = analysisDisplayMode,
     targetNodeIds: string[] = selectedAssistantNodeIds(mode),
-  ): string {
+  ): string => {
     return buildDefaultAssistantPromptText({
       actionId,
       analysisDisplayMode: mode,
       targetNodeIds,
       targetTitle: assistantTargetTitle(targetNodeIds, mode),
     });
-  }
+  }, [analysisDisplayMode, assistantTargetTitle, selectedAssistantNodeIds]);
 
   // 处理动作切换：解析动作定义、更新意图，并在有默认提示时将其作为 AUTO 来源写入草稿
   function handleAssistantActionChange(actionId: AssistantActionId) {
@@ -405,7 +412,11 @@ export function useAssistantActionController({
     diffTargetItemIds,
     diffItems,
     viewDocuments,
+    assistantGraphForDisplayMode,
+    buildDefaultAssistantPrompt,
     setAssistantSessionState,
+    selectedAssistantDiffItemIds,
+    selectedAssistantNodeIds,
   ]);
 
   return {

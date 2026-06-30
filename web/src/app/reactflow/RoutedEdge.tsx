@@ -620,8 +620,8 @@ export function RoutedEdge({
 }: EdgeProps<RoutedGraphEdge>) {
   // 取 React Flow 内部节点查找表
   const nodeLookup = useStore((state) => state.nodeLookup);
-  const currentStartPoint = { x: sourceX, y: sourceY };
-  const currentEndPoint = { x: targetX, y: targetY };
+  const currentStartPoint = useMemo(() => ({ x: sourceX, y: sourceY }), [sourceX, sourceY]);
+  const currentEndPoint = useMemo(() => ({ x: targetX, y: targetY }), [targetX, targetY]);
   const fallback = fallbackPath(sourceX, sourceY, targetX, targetY);
   // stored 模式：必须用存储路由，不做本地修补
   const preserveStoredRoute = data?.routeMode === "stored";
@@ -636,10 +636,8 @@ export function RoutedEdge({
       targetPosition,
     ),
     [
-      currentEndPoint.x,
-      currentEndPoint.y,
-      currentStartPoint.x,
-      currentStartPoint.y,
+      currentEndPoint,
+      currentStartPoint,
       data?.route,
       sourcePosition,
       targetPosition,
@@ -700,10 +698,8 @@ export function RoutedEdge({
     });
   }, [
     adjustedRoute,
-    currentEndPoint.x,
-    currentEndPoint.y,
-    currentStartPoint.x,
-    currentStartPoint.y,
+    currentEndPoint,
+    currentStartPoint,
     nodeLookup,
     preserveStoredRoute,
     source,
@@ -762,22 +758,17 @@ export function RoutedEdge({
       path,
     });
   }, [
-    adjustedRoute?.sections.length,
-    adjustedRouteEnd?.x,
-    adjustedRouteEnd?.y,
-    adjustedRouteStart?.x,
-    adjustedRouteStart?.y,
-    currentEndPoint.x,
-    currentEndPoint.y,
-    currentStartPoint.x,
-    currentStartPoint.y,
+    adjustedRoute,
+    adjustedRouteEnd,
+    adjustedRouteStart,
+    currentEndPoint,
+    currentStartPoint,
     data?.route?.sections.length,
+    data?.routeMode,
     id,
     localRoute,
-    originalRouteEnd?.x,
-    originalRouteEnd?.y,
-    originalRouteStart?.x,
-    originalRouteStart?.y,
+    originalRouteEnd,
+    originalRouteStart,
     path,
     renderedRoute?.sections.length,
     sourcePosition,

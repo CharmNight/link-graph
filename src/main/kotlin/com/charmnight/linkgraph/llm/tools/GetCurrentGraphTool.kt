@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 /**
  * 返回当前 runtime 可读取的工作图摘要。
  *
@@ -14,7 +16,7 @@ class GetCurrentGraphTool(
     override val name: String = "get_current_graph"
     override val description: String = "读取当前工作图及其基础摘要"
 
-    override fun parseInput(raw: Map<String, Any?>): GetCurrentGraphInput = GetCurrentGraphInput
+    override fun parseInput(raw: ToolInputPayload): GetCurrentGraphInput = GetCurrentGraphInput
 
     override fun invokeTyped(input: GetCurrentGraphInput, context: ToolExecutionContext): ToolResult {
         val graph = graphToolFacade.currentGraph(context.snapshot)

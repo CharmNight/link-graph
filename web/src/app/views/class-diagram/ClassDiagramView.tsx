@@ -312,7 +312,6 @@ export function ClassDiagramView({
 
   const hiddenNodeIdSet = useMemo(() => new Set(hiddenNodeIds), [hiddenNodeIds]);
   const collapsedNodeIdSet = useMemo(() => new Set(collapsedNodeIds), [collapsedNodeIds]);
-  const layoutNodeIds = useMemo(() => new Set(layoutState.nodes.map((node) => node.id)), [layoutState.nodes]);
   // 若隐藏集合会让所有已布局节点消失，则忽略隐藏以避免空白画布。
   const effectiveHiddenNodeIdSet = useMemo(() => {
     if (layoutState.nodes.length === 0 || hiddenNodeIdSet.size === 0) {

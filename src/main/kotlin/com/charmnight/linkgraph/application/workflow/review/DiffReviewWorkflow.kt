@@ -10,21 +10,21 @@ import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSin
 import com.charmnight.linkgraph.application.result.ReviewRequestScene
 import com.charmnight.linkgraph.application.result.ReviewRequestStartedResult
 import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
+import com.charmnight.linkgraph.application.runtime.SameThreadTaskRunner
+import com.charmnight.linkgraph.application.runtime.TaskRunner
 import com.charmnight.linkgraph.architecture.architectureIndexRuntime
 import com.charmnight.linkgraph.diff.GraphDiffer
-import com.charmnight.linkgraph.llm.GraphDiffContext
-import com.charmnight.linkgraph.llm.GraphDiffPatchService
-import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.agent.model.GraphDiffContext
+import com.charmnight.linkgraph.application.port.GraphDiffPatchPort
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.LlmResultSource
 import com.charmnight.linkgraph.review.ReviewChangedSymbolEvidenceRef
 import com.charmnight.linkgraph.review.ReviewEvidenceBundle
 import com.charmnight.linkgraph.review.ReviewRelationEvidenceRef
 import com.charmnight.linkgraph.review.ReviewSymbolEvidenceRef
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
-import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
-import com.intellij.util.concurrency.AppExecutorUtil
 
 /**
  * 差异复核工作流：在"代码事实图"与"设计基线图"差异基础上，调用 LLM 生成可预览的修订草稿。
@@ -40,7 +40,7 @@ internal class DiffReviewWorkflow(
     /** 应用事件出口，向 UI 广播差异分析过程中的状态变化。 */
     private val eventSink: GraphEditorApplicationEventSink,
     /** 调用 LLM 进行差异分析并返回草稿补丁的服务。 */
-    private val graphDiffPatchService: GraphDiffPatchService,
+    private val graphDiffPatchService: GraphDiffPatchPort,
     /** 在缺失差异时计算事实图与设计基线之间的差异。 */
     private val graphDiffer: GraphDiffer,
     /** 延迟获取插件设置（超时、远程开关等），便于运行时读取最新值。 */
@@ -49,6 +49,8 @@ internal class DiffReviewWorkflow(
     private val asyncRequestLifecycle: AsyncRequestLifecycleSupport,
     /** 共享日志器，输出警告与错误用于排查差异分析问题。 */
     private val logger: Logger,
+    /** 平台无关任务调度入口。 */
+    private val taskRunner: TaskRunner = SameThreadTaskRunner(),
     /** 协助从架构索引中构建差异复核所需的证据包。 */
     private val reviewEvidenceSupport: ReviewEvidenceWorkflowSupport = ReviewEvidenceWorkflowSupport(project),
 ) {
@@ -116,7 +118,7 @@ internal class DiffReviewWorkflow(
                 )
             },
         )
-        com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread {
+        taskRunner.background {
             val contextResult = runCatching {
                 if (project.isDisposed) {
                     return@runCatching DiffReviewContextBuildResult.Cancelled
@@ -126,15 +128,15 @@ internal class DiffReviewWorkflow(
                 logger.warn("构建差异分析上下文失败", error)
                 DiffReviewContextBuildResult.MissingInputs("差异分析上下文构建失败：${error.message ?: error.javaClass.simpleName}")
             }
-            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater({
+            taskRunner.ui(TaskRunner.UiPolicy.ANY) {
                 if (project.isDisposed) {
-                    return@invokeLater
+                    return@ui
                 }
                 when (contextResult) {
                     DiffReviewContextBuildResult.Cancelled -> Unit
                     is DiffReviewContextBuildResult.MissingInputs -> {
                         if (!asyncRequestLifecycle.completeDiffReviewRequest(requestId)) {
-                            return@invokeLater
+                            return@ui
                         }
                         emitDiffReviewFailed(
                             DiffReviewFailedResult(
@@ -161,7 +163,7 @@ internal class DiffReviewWorkflow(
                         )
                     }
                 }
-            }, ModalityState.defaultModalityState())
+            }
         }
     }
 

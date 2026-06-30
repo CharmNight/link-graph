@@ -36,8 +36,7 @@ export function useNodeCardMeasure(
     if (size) {
       onMeasure?.(size);
     }
-    // deps 由调用方控制——此处故意不传标准 deps
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps 由调用方控制，此处故意不传标准 deps。
   }, deps);
 
   return rootRef;

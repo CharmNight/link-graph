@@ -3,9 +3,9 @@ package com.charmnight.linkgraph.application.result
 import com.charmnight.linkgraph.application.model.AsyncRequestState
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.LlmResultSource
-import com.charmnight.linkgraph.llm.runtime.AgentRunArtifactSummary
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.LlmResultSource
+import com.charmnight.linkgraph.agent.runtime.AgentRunArtifactSummary
 import com.charmnight.linkgraph.workbench.GenerationPlanDiscussionResult
 
 enum class ApplicationFeedbackLevel {

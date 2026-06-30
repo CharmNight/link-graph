@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 /**
  * 工具统一返回结果。
  *
@@ -13,7 +15,7 @@ data class ToolResult(
     /** 工具执行是否成功。 */
     val success: Boolean = true,
     /** 结构化负载。键由具体工具自定义，值可以是任意 JSON 友好的类型。 */
-    val payload: Map<String, Any?> = emptyMap(),
+    val payload: ToolPayload = emptyMap(),
     /** 失败说明。仅在 success=false 时有意义。 */
     val errorMessage: String? = null,
 )

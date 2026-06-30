@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.application
 
 import com.charmnight.linkgraph.architecture.ArchitectureGraphResult
 import com.charmnight.linkgraph.architecture.ClassDiagramResult
-import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
+import com.charmnight.linkgraph.agent.model.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.review.ReviewGraphSummary
 import com.charmnight.linkgraph.review.ReviewGraphResult
 import com.charmnight.linkgraph.application.planning.PlanningContextFactory
@@ -10,10 +10,10 @@ import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.model.EdgeType
-import com.charmnight.linkgraph.llm.EditScope
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GenerationPlanItem
-import com.charmnight.linkgraph.llm.GenerationPlanSource
+import com.charmnight.linkgraph.agent.model.EditScope
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GenerationPlanItem
+import com.charmnight.linkgraph.agent.model.GenerationPlanSource
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode

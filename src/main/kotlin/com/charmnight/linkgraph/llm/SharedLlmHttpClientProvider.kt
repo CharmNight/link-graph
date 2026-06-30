@@ -1,5 +1,8 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.agent.model.*
+import com.charmnight.linkgraph.settings.*
+
 import java.net.http.HttpClient
 import java.time.Duration
 import java.util.concurrent.ConcurrentHashMap

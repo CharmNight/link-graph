@@ -10,14 +10,27 @@ import kotlin.test.assertTrue
 
 class WorkflowArchitectureRegressionTest {
     @Test
-    fun deletedFacadeDoesNotKeepTestOverridesInProductionState() {
+    fun deletedFacadeDoesNotKeepTestHooksInProductionState() {
         assertFalse(
             Files.exists(Path.of("src/main/kotlin/com/charmnight/linkgraph/services/LinkGraphProjectService.kt")),
             "Legacy project-service facade must stay deleted instead of carrying test overrides.",
         )
+        val applicationRoot = Path.of("src/main/kotlin/com/charmnight/linkgraph/application")
+        val offenders = Files.walk(applicationRoot)
+            .filter { path -> path.toString().endsWith(".kt") }
+            .use { paths -> paths.toList() }
+            .flatMap { path ->
+                Files.readString(path).lineSequence().mapIndexedNotNull { index, line ->
+                    if (line.contains("LinkGraphProjectTestOverrides") || line.contains("OverrideProvider")) {
+                        "${applicationRoot.relativize(path)}:${index + 1}: ${line.trim()}"
+                    } else {
+                        null
+                    }
+                }.toList()
+            }
         assertTrue(
-            Files.exists(Path.of("src/main/kotlin/com/charmnight/linkgraph/application/runtime/LinkGraphProjectTestOverrides.kt")),
-            "测试覆写必须迁移到独立的测试钩子对象，不能继续污染生产 service 状态。",
+            offenders.isEmpty(),
+            "application production code must not expose test override hooks: " + offenders.joinToString(),
         )
     }
 
@@ -59,6 +72,61 @@ class WorkflowArchitectureRegressionTest {
         assertFalse(
             subjectWorkflow.contains("ApplicationManager.getApplication().executeOnPooledThread"),
             "SubjectGraphWorkflow 应通过统一生命周期支持调度后台请求，而不是继续手写线程切换模板。",
+        )
+    }
+
+    @Test
+    fun workflowLayerUsesTaskRunnerPortForThreadingPrimitives() {
+        val workflowRoot = Path.of("src/main/kotlin/com/charmnight/linkgraph/application/workflow")
+        val forbiddenPatterns = listOf(
+            Regex("""\bApplicationManager\b""") to "ApplicationManager",
+            Regex("""\bModalityState\b""") to "ModalityState",
+            Regex("""\bAppExecutorUtil\b""") to "AppExecutorUtil",
+            Regex("""\binvokeAndWait\b""") to "invokeAndWait",
+            Regex("""\binvokeLater\b""") to "invokeLater",
+            Regex("""\bexecuteOnPooledThread\b""") to "executeOnPooledThread",
+        )
+        val offenders = Files.walk(workflowRoot)
+            .filter { path -> path.toString().endsWith(".kt") }
+            .use { paths -> paths.toList() }
+            .flatMap { path ->
+                val source = Files.readString(path)
+                forbiddenPatterns.mapNotNull { (pattern, label) ->
+                    if (pattern.containsMatchIn(source)) {
+                        "${workflowRoot.relativize(path)} contains $label"
+                    } else {
+                        null
+                    }
+                }
+            }
+
+        assertTrue(
+            offenders.isEmpty(),
+            "application/workflow must route IntelliJ threading primitives through TaskRunner: " +
+                offenders.joinToString(),
+        )
+    }
+
+    @Test
+    fun applicationLayerDoesNotImportLlmImplementationPackages() {
+        val applicationRoot = Path.of("src/main/kotlin/com/charmnight/linkgraph/application")
+        val offenders = Files.walk(applicationRoot)
+            .filter { path -> path.toString().endsWith(".kt") }
+            .use { paths -> paths.toList() }
+            .flatMap { path ->
+                Files.readString(path).lineSequence().mapIndexedNotNull { index, line ->
+                    if (line.trim().startsWith("import com.charmnight.linkgraph.llm")) {
+                        "${applicationRoot.relativize(path)}:${index + 1}: ${line.trim()}"
+                    } else {
+                        null
+                    }
+                }.toList()
+            }
+
+        assertTrue(
+            offenders.isEmpty(),
+            "application layer must depend on neutral/application contracts, not llm implementation packages: " +
+                offenders.joinToString(),
         )
     }
 

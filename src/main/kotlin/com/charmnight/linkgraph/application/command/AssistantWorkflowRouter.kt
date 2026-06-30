@@ -1,10 +1,9 @@
 package com.charmnight.linkgraph.application.command
 
-import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
+import com.charmnight.linkgraph.agent.model.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.workbench.AssistantActionId
 import com.charmnight.linkgraph.workbench.AssistantComposerTarget
 import com.charmnight.linkgraph.workbench.QaMode
-import com.intellij.openapi.diagnostic.Logger
 
 /**
  * 助手任务路由器：根据应用命令携带的动作标识将请求分发给执行器中对应的工作流。
@@ -23,12 +22,8 @@ internal class AssistantWorkflowRouter(
      * 不同动作会从命令上下文中提取不同参数（焦点节点、追问上下文、模式等），
      * 然后转发给执行器执行。
      *
-     * 显式保留 `else` 分支：当前 AssistantActionId 是穷尽的，编译器会给出冗余告警；
-     * 但若未来新增枚举值忘了在这里加分支，静默丢弃比 noisy warning 更糟，所以保留防御性兜底。
-     *
      * @param command 来自应用层、用户触发的助手任务请求
      */
-    @Suppress("RedundantElseInWhen")
     fun route(command: ApplicationCommand.RequestAssistantTask) {
         // 去掉首尾空白后的提示词，避免空格干扰
         val prompt = command.prompt.trim()
@@ -81,16 +76,12 @@ internal class AssistantWorkflowRouter(
                     selectedDiffItemIds = diffItemIds,
                 )
             }
-            // 未来新增 AssistantActionId 时，避免路由被静默丢弃 —— 记日志后跳过。
-            // 不用 error() 抛异常是为了保持与现有"宽容处理"风格一致。
-            else -> logger.warn("Unknown assistant action: $actionId; request was dropped.")
         }
     }
 
     private companion object {
         // 当用户未输入提示词时的默认复核问句
         const val DEFAULT_CHECK_CHANGE_PROMPT: String = "请检查当前改动的风险、影响范围和相关测试。"
-        val logger: Logger = Logger.getInstance(AssistantWorkflowRouter::class.java)
     }
 }
 

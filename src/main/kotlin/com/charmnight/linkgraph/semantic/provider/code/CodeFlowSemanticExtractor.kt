@@ -233,5 +233,5 @@ class CodeFlowSemanticExtractor(
     )
 }
 
-/** BaseFlowSemanticBuilder / JavaFlowSemanticBuilder / KotlinFlowSemanticBuilder /
+/** 流程构建相关的 BaseFlowSemanticBuilder / JavaFlowSemanticBuilder / KotlinFlowSemanticBuilder /
  *  CodeFlowSupport（summarize 系列函数）已拆到独立文件（同包 internal 可见）。 */

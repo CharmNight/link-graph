@@ -109,7 +109,7 @@ class GraphEditApplierTest {
 
     @Test
     fun sanitizerEmptyOutputDoesNotWriteRawNode() {
-        // 构造一个会让 sanitizer 返回空节点列表的 applier：模拟 sanitizer 拒绝写入
+        // 构造一个会让消毒器返回空节点列表的应用器：模拟消毒器拒绝写入
         val rejectingSanitizer = object : FrontendGraphMutationSanitizer() {
             override fun sanitize(
                 snapshot: WorkflowEditorSnapshot,
@@ -159,7 +159,7 @@ class GraphEditApplierTest {
         )
         // 前端构造的 upsert：试图把 signature、jvm.class.kind 改成恶意值
         // 注意：FrontendGraphMutationSanitizer 对已知节点会保留 trusted 的 title/inputs/outputs/doc，
-        // 但 metadata 字段会从 node.metadata 直传，这里手动构造一个不消毒的 applier 来精确测试合并逻辑
+        // 但元数据字段会从 node.metadata 直传，这里手动构造一个不消毒的应用器来精确测试合并逻辑
         val passthroughSanitizer = object : FrontendGraphMutationSanitizer() {
             override fun sanitize(
                 snapshot: WorkflowEditorSnapshot,

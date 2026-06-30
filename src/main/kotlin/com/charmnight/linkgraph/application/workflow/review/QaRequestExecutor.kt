@@ -7,7 +7,7 @@ import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
 import com.charmnight.linkgraph.application.planning.PlanningContextFactory
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
 import com.charmnight.linkgraph.application.port.GraphEditRequestExecutor
-import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshotProvider
+import com.charmnight.linkgraph.agent.tools.ToolGraphSnapshotProvider
 import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
 import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.application.result.ApplicationRuntimeArtifactSummary
@@ -19,17 +19,17 @@ import com.charmnight.linkgraph.application.usecase.ReviewUseCase
 import com.charmnight.linkgraph.application.usecase.ReviewUseCaseResult
 import com.charmnight.linkgraph.application.workflow.QaResultNormalizer
 import com.charmnight.linkgraph.foundation.debugLazy
-import com.charmnight.linkgraph.llm.GraphQaContext
-import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.llm.LlmResultSource
-import com.charmnight.linkgraph.llm.artifact.AgentArtifactStoreService
-import com.charmnight.linkgraph.llm.artifact.ArtifactStore
-import com.charmnight.linkgraph.llm.capability.QaCapability
-import com.charmnight.linkgraph.llm.capability.QaCapabilityInput
-import com.charmnight.linkgraph.llm.markRuntimeEvidenceTrusted
-import com.charmnight.linkgraph.llm.runtime.AgentRunCoordinator
-import com.charmnight.linkgraph.llm.runtime.AgentRunResult
-import com.charmnight.linkgraph.llm.runtime.AgentRuntimeContext
+import com.charmnight.linkgraph.agent.model.GraphQaContext
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.LlmResultSource
+import com.charmnight.linkgraph.agent.artifact.AgentArtifactStoreService
+import com.charmnight.linkgraph.agent.artifact.ArtifactStore
+import com.charmnight.linkgraph.agent.capability.QaCapability
+import com.charmnight.linkgraph.agent.capability.QaCapabilityInput
+import com.charmnight.linkgraph.agent.model.markRuntimeEvidenceTrusted
+import com.charmnight.linkgraph.agent.runtime.AgentRunCoordinator
+import com.charmnight.linkgraph.agent.runtime.AgentRunResult
+import com.charmnight.linkgraph.agent.runtime.AgentRuntimeContext
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.workbench.QaMode
 import com.charmnight.linkgraph.workbench.QaModeContext
@@ -43,14 +43,14 @@ import com.intellij.openapi.project.Project
 /**
  * 异步问答请求执行器（P2-1 真正的架构分解）。
  *
- * 从 ReviewWorkflow 抽出的独立 class，负责完整的 QA 请求生命周期：
- * - 请求构建 → 异步派发 → runtime 执行 → 结果归一化 → 资格评估 → 事件发射
+ * 从 ReviewWorkflow 抽出的独立类，负责完整的 QA 请求生命周期：
+ * - 请求构建 → 异步派发 → 运行时执行 → 结果归一化 → 资格评估 → 事件发射
  *
  * ReviewWorkflow 不再混入 QA 执行细节，只做"该路由到哪个子工作流"的分发。
  *
  * @param deps QA 工作流共享依赖
  * @param graphQaPatchService 图问答 LLM 服务
- * @param qaExecutorOverrideProvider 测试用执行器覆盖
+ * @param qaExecutorHook 测试用执行器覆盖
  * @param qaResultNormalizer 问答结果归一化
  * @param riskResolutionService 风险决策服务
  * @param reviewUseCase 评审用例
@@ -59,8 +59,8 @@ import com.intellij.openapi.project.Project
  */
 internal class QaRequestExecutor(
     private val deps: QaWorkflowDeps,
-    private val graphQaPatchService: com.charmnight.linkgraph.llm.GraphQaPatchService,
-    private val qaExecutorOverrideProvider: () -> ((GraphQaContext, String) -> GraphPatchResult)?,
+    private val graphQaPatchService: com.charmnight.linkgraph.application.port.GraphQaPatchPort,
+    private val qaExecutorHook: () -> ((GraphQaContext, String) -> GraphPatchResult)?,
     private val reviewUseCase: ReviewUseCase,
     private val eventSink: GraphEditorApplicationEventSink,
     private val logger: Logger,
@@ -140,7 +140,7 @@ internal class QaRequestExecutor(
      * 执行异步 QA 请求：开始请求 → 设置超时 → 后台执行 → 结果处理。
      *
      * 这是整个 QA 流程的核心编排方法。它把 asyncRequestLifecycle 的请求追踪、
-     * runtime 的 agent 执行、reviewUseCase 的结果解析和事件发射串联在一起。
+     * 运行时的代理执行、reviewUseCase 的结果解析和事件发射串联在一起。
      */
     private fun executeQaAsync(
         snapshot: WorkflowEditorSnapshot,
@@ -221,7 +221,7 @@ internal class QaRequestExecutor(
     }
 
     /**
-     * 处理 runtime 成功：归一化结果、评估资格、解析评审用例、发射完成/失败事件。
+     * 处理运行时成功：归一化结果、评估资格、解析评审用例、发射完成/失败事件。
      */
     private fun handleQaRuntimeSuccess(
         runtimeResult: AgentRunResult<GraphPatchResult>,
@@ -336,7 +336,7 @@ internal class QaRequestExecutor(
         }
     }
 
-    /** 处理 runtime 失败：记录日志、发射失败事件。 */
+    /** 处理运行时失败：记录日志、发射失败事件。 */
     private fun handleQaRuntimeFailure(
         throwable: Throwable,
         presentation: com.charmnight.linkgraph.application.request.AsyncRequestLifecycleResult,
@@ -436,12 +436,12 @@ internal class QaRequestExecutor(
     }
 
     /**
-     * 统一执行 runtime 问答：构造 capability + 调用 agentRunCoordinator。
+     * 统一执行运行时问答：构造能力对象并调用 agentRunCoordinator。
      */
     private fun executeQaRuntime(input: QaCapabilityInput): AgentRunResult<GraphPatchResult> {
         val capability = deps.qaCapabilityFactory(
             QaCapability.QaExecutor { qaInput, _, _ ->
-                val overrideExecutor = qaExecutorOverrideProvider()
+                val overrideExecutor = qaExecutorHook()
                 if (overrideExecutor != null) {
                     overrideExecutor(qaInput.qaContext, qaInput.question)
                 } else {
@@ -479,7 +479,7 @@ internal class QaRequestExecutor(
         return runtimeResult
     }
 
-    // ---- 以下为从 ReviewWorkflow 移入的 helper delegates ----
+    // ---- 以下为从 ReviewWorkflow 移入的辅助委托 ----
 
     private fun modeContext(request: com.charmnight.linkgraph.workbench.ReplayableQaRequest): QaModeContext =
         resolveQaModeContext(request, deps.qaModeClassifier)
@@ -512,4 +512,4 @@ internal class QaRequestExecutor(
 }
 
 /** 评估快照的草稿校验状态 + 阶段准入决策。 */
-/** evaluateEligibility 和 toRuntimeArtifactSummaries 使用同包 top-level 函数（QaReviewPresentation.kt / QaEligibilityPolicy.kt）。 */
+/** evaluateEligibility 和 toRuntimeArtifactSummaries 使用同包顶层函数（QaReviewPresentation.kt / QaEligibilityPolicy.kt）。 */

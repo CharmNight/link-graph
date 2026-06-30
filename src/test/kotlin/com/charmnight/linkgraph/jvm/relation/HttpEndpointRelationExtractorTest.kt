@@ -21,7 +21,7 @@ import kotlin.test.assertNull
 class HttpEndpointRelationExtractorTest : BasePlatformTestCase() {
     override fun setUp() {
         super.setUp()
-        // 在测试 fixture 里 stub 出 Spring 的 RequestMethod 枚举，使 `method = RequestMethod.GET`
+        // 在测试夹具里桩出 Spring 的 RequestMethod 枚举，使 `method = RequestMethod.GET`
         // 这样的引用能被 PSI 解析到 PsiEnumConstant，从而走真实的 resolve 路径。
         myFixture.addFileToProject(
             "org/springframework/web/bind/annotation/RequestMethod.java",
@@ -32,7 +32,7 @@ class HttpEndpointRelationExtractorTest : BasePlatformTestCase() {
             }
             """.trimIndent(),
         )
-        // 同时 stub RequestMapping 注解（避免依赖 spring-web jar）
+        // 同时桩出 RequestMapping 注解（避免依赖 spring-web jar）
         myFixture.addFileToProject(
             "org/springframework/web/bind/annotation/RequestMapping.java",
             """

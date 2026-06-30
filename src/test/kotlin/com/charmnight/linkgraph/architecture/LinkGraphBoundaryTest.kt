@@ -38,13 +38,13 @@ class LinkGraphBoundaryTest {
     @Test
     fun runtimeCapabilitiesDoNotDependOnLegacyExecutorsOrArtifactCleanup() {
         val qaCapability = Files.readString(
-            Path.of("src/main/kotlin/com/charmnight/linkgraph/llm/capability/QaCapability.kt"),
+            Path.of("src/main/kotlin/com/charmnight/linkgraph/agent/capability/QaCapability.kt"),
         )
         val planCapability = Files.readString(
-            Path.of("src/main/kotlin/com/charmnight/linkgraph/llm/capability/PlanCapability.kt"),
+            Path.of("src/main/kotlin/com/charmnight/linkgraph/agent/capability/PlanCapability.kt"),
         )
         val codegenCapability = Files.readString(
-            Path.of("src/main/kotlin/com/charmnight/linkgraph/llm/capability/CodegenCapability.kt"),
+            Path.of("src/main/kotlin/com/charmnight/linkgraph/agent/capability/CodegenCapability.kt"),
         )
         val graphSnapshotDocuments = Files.readString(
             Path.of("src/main/kotlin/com/charmnight/linkgraph/application/model/GraphSnapshotDocuments.kt"),
@@ -78,7 +78,7 @@ class LinkGraphBoundaryTest {
             Path.of("src/main/kotlin/com/charmnight/linkgraph/workbench/QaConversationService.kt"),
         )
         val llmTypes = Files.readString(
-            Path.of("src/main/kotlin/com/charmnight/linkgraph/llm/LlmTypes.kt"),
+            Path.of("src/main/kotlin/com/charmnight/linkgraph/agent/model/LlmTypes.kt"),
         )
         val reviewWorkflow = Files.readString(
             Path.of("src/main/kotlin/com/charmnight/linkgraph/application/workflow/ReviewWorkflow.kt"),

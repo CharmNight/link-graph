@@ -1,9 +1,11 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore
-import com.charmnight.linkgraph.llm.runtime.RunBudget
+import com.charmnight.linkgraph.agent.artifact.InMemoryArtifactStore
+import com.charmnight.linkgraph.agent.runtime.RunBudget
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType

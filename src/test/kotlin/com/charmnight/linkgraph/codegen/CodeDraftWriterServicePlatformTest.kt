@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.codegen
 
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.llm.EditScope
+import com.charmnight.linkgraph.agent.model.EditScope
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -391,7 +391,7 @@ class CodeDraftWriterServicePlatformTest : BasePlatformTestCase() {
         val document = FileDocumentManager.getInstance().getDocument(virtualFile)
             ?: error("document not found")
         WriteCommandAction.runWriteCommandAction(project) {
-            document.insertString(document.text.indexOf("public class CommonController {"), "    // unsaved change\n")
+            document.insertString(document.text.indexOf("public class CommonController {"), "    // 未保存改动\n")
         }
 
         val draft = GeneratedCodeDraft(
@@ -430,7 +430,7 @@ class CodeDraftWriterServicePlatformTest : BasePlatformTestCase() {
         val written = Files.readString(targetFile)
 
         assertTrue(report.writtenFiles.contains(draft.targetPath), report.warnings.joinToString(" | "))
-        assertTrue(written.contains("// unsaved change"), written)
+        assertTrue(written.contains("// 未保存改动"), written)
         assertTrue(written.contains("return baseUrl.trim();"), written)
     }
 
@@ -475,7 +475,7 @@ class CodeDraftWriterServicePlatformTest : BasePlatformTestCase() {
                     startOffset = 0,
                     endOffset = 0,
                     beforeText = "",
-                    afterText = "// generated header\n",
+                    afterText = "// 生成的头部\n",
                 ),
                 PreparedCodeEdit(
                     operationId = "op-stale-upload",
@@ -502,7 +502,7 @@ class CodeDraftWriterServicePlatformTest : BasePlatformTestCase() {
         val written = document.text
 
         assertTrue(warnings.any { it.contains("patch 锚点已失效") }, warnings.joinToString(" | "))
-        kotlin.test.assertFalse(written.contains("// generated header"), written)
+        kotlin.test.assertFalse(written.contains("// 生成的头部"), written)
         assertTrue(written.contains("return fileName;"), written)
     }
 }

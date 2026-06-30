@@ -39,7 +39,7 @@ internal class ApplicationCommandComposition(
     /** 已组装好的所有工作流集合，作为各 handler 的依赖来源。 */
     private val workflows: ApplicationWorkflows,
     /** 打开代码草稿原生 diff 视图的覆盖回调；调用方必须显式注入（不再提供默认 { null }）。 */
-    private val openCodeDraftNativeDiffOverrideProvider: () -> ((String) -> Unit)?,
+    private val openCodeDraftNativeDiffHook: () -> ((String) -> Unit)?,
 ) {
     /**
      * 构造聚合所有 handler 的命令调度器。
@@ -79,7 +79,7 @@ internal class ApplicationCommandComposition(
                     generationDiscussionFlow = workflows.generationDiscussionFlow,
                     codeDraftGenerationFlow = workflows.codeDraftGenerationFlow,
                     codeDraftApplyFlow = workflows.codeDraftApplyFlow,
-                    openCodeDraftNativeDiffOverrideProvider = openCodeDraftNativeDiffOverrideProvider,
+                    openCodeDraftNativeDiffHook = openCodeDraftNativeDiffHook,
                 ),
                 DebugApplicationCommandHandler(workflows.debugFlow),
             ),

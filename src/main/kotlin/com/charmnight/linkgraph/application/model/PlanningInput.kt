@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.application.model
 
-import com.charmnight.linkgraph.llm.SourceSnippetContext
+import com.charmnight.linkgraph.agent.model.SourceSnippetContext
 import com.charmnight.linkgraph.mermaid.MermaidIssue
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument

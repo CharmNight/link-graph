@@ -9,9 +9,9 @@ import com.charmnight.linkgraph.application.result.GenerationRequestScene
 import com.charmnight.linkgraph.application.result.GenerationRequestStartedResult
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GenerationPlanSource
-import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GenerationPlanSource
+import com.charmnight.linkgraph.agent.model.LlmResultSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

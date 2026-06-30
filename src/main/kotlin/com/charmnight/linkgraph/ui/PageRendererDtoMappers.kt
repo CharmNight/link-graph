@@ -2,10 +2,10 @@ package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.codegen.CodeEditOperation
 import com.charmnight.linkgraph.codegen.PreparedCodeEdit
-import com.charmnight.linkgraph.llm.EvidenceTraceEntry
-import com.charmnight.linkgraph.llm.GraphBeautificationResult
-import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.llm.SourceSnippetContext
+import com.charmnight.linkgraph.agent.model.EvidenceTraceEntry
+import com.charmnight.linkgraph.agent.model.GraphBeautificationResult
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.SourceSnippetContext
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.workbench.CandidateDraftChange
 import com.charmnight.linkgraph.workbench.CandidatePatchIntent
@@ -22,7 +22,7 @@ import com.charmnight.linkgraph.workbench.RiskResolution
 /**
  * PageRenderer DTO 工厂函数集合（P2-6 拆分自 PageRendererDtos.kt）。
  *
- * 把领域对象（workbench / llm / codegen 包的 data class）转换为对应的 DTO。
+ * 把领域对象（workbench / llm / codegen 包的数据类）转换为对应的 DTO。
  * 函数命名约定：`{domainType}ToDto`，与 DTO 类型一一对应。
  *
  * 这些函数都不修改原对象，纯函数；Gson 序列化由调用方负责。
@@ -235,7 +235,7 @@ internal fun evidenceTraceEntryToDto(
 
 /** 把代码编辑作用域转换为 DTO。 */
 internal fun editScopeToDto(
-    scope: com.charmnight.linkgraph.llm.EditScope,
+    scope: com.charmnight.linkgraph.agent.model.EditScope,
 ): EditScopeDto = EditScopeDto(
     scopeId = scope.scopeId,
     targetNodeId = scope.targetNodeId,

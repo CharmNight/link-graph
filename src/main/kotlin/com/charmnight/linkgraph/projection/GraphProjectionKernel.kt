@@ -237,7 +237,7 @@ class GraphProjectionKernel(
             ),
         )
 
-    /** GraphEdge.neighborOf 已抽到 top-level（详见 GraphProjectionKernelHelpers.kt）。 */
+    /** GraphEdge.neighborOf 已抽到顶层（详见 GraphProjectionKernelHelpers.kt）。 */
 
     /** 先为锚点挑选最重要的一圈邻居，作为后续展开种子。 */
     private fun collectAnchorNeighbors(
@@ -489,7 +489,7 @@ class GraphProjectionKernel(
         }
     }
 
-    /** shouldSuppressCrossMethodBodyExpansion 已抽到 top-level（详见 GraphProjectionKernelHelpers.kt）。 */
+    /** shouldSuppressCrossMethodBodyExpansion 已抽到顶层（详见 GraphProjectionKernelHelpers.kt）。 */
 
     /** 从已知隐藏前沿继续扩展，统计完整被折叠的闭包范围。 */
     private fun expandHiddenDirection(
@@ -516,12 +516,12 @@ class GraphProjectionKernel(
     }
 
     /** 计算锚点一跳邻居的初始遍历深度。 */
-    /** seedDepthFromAnchor 已抽到 top-level（详见 GraphProjectionKernelHelpers.kt）。 */
-    /** nextTraversalDepth 已抽到 top-level（详见 GraphProjectionKernelHelpers.kt）。 */
-    /** isStructuralFlowEdge 已抽到 top-level（详见 GraphProjectionKernelHelpers.kt）。 */
-    /** collectCurrentMethodNodeIds 已抽到 top-level（详见 GraphProjectionKernelHelpers.kt）。 */
-    /** collectAnchorMethodBodyNodeIds 已抽到 top-level（详见 GraphProjectionKernelHelpers.kt）。 */
-    /** overflowNode 已抽到 top-level（详见 GraphProjectionKernelHelpers.kt）。 */
+    /** seedDepthFromAnchor 已抽到顶层（详见 GraphProjectionKernelHelpers.kt）。 */
+    /** nextTraversalDepth 已抽到顶层（详见 GraphProjectionKernelHelpers.kt）。 */
+    /** isStructuralFlowEdge 已抽到顶层（详见 GraphProjectionKernelHelpers.kt）。 */
+    /** collectCurrentMethodNodeIds 已抽到顶层（详见 GraphProjectionKernelHelpers.kt）。 */
+    /** collectAnchorMethodBodyNodeIds 已抽到顶层（详见 GraphProjectionKernelHelpers.kt）。 */
+    /** overflowNode 已抽到顶层（详见 GraphProjectionKernelHelpers.kt）。 */
 
     /** 计算边在展示中的优先级。 */
     private fun edgePriority(
@@ -563,7 +563,7 @@ class GraphProjectionKernel(
     private fun isAccessorLike(node: GraphNode): Boolean =
         com.charmnight.linkgraph.projection.isAccessorLike(node)
 
-    /** OverflowDirection 已抽到 top-level（详见 GraphProjectionKernelHelpers.kt）。 */
+    /** OverflowDirection 已抽到顶层（详见 GraphProjectionKernelHelpers.kt）。 */
 
     /** 遍历队列中的一帧状态。 */
     private data class TraversalFrame(

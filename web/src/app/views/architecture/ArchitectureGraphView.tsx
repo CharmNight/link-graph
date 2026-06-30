@@ -367,6 +367,7 @@ export function ArchitectureGraphView({
       draftChangedNodeIds,
       draftCompareProjection?.nodeStatuses,
       explanationFocusNodeId,
+      isProjectStructureView,
       nodeSizeRegistry,
       view.projectionIndex,
       graphAnchorNodeId,

@@ -445,12 +445,12 @@ class ClassDiagramProjector(
     }
 
     /** 生成边的排序键，统一类图中边的展示顺序。 */
-    /** GraphEdge.classDiagramRelationSortKey 已抽到 top-level（详见 ClassDiagramProjectorHelpers.kt）。 */
+    /** GraphEdge.classDiagramRelationSortKey 已抽到顶层（详见 ClassDiagramProjectorHelpers.kt）。 */
 
-    /** 返回类图关系类型字符串（详见 top-level fun classDiagramRelationKind）。 */
-    /** 推导 UML 关系类型（详见 top-level fun classDiagramUmlRelationKind）。 */
-    /** 解析关系角色枚举（详见 top-level fun classDiagramRelationRole）。 */
-    /** 计算关系展示权重（详见 top-level fun relationWeight）。 */
+    /** 返回类图关系类型字符串（详见顶层函数 classDiagramRelationKind）。 */
+    /** 推导 UML 关系类型（详见顶层函数 classDiagramUmlRelationKind）。 */
+    /** 解析关系角色枚举（详见顶层函数 classDiagramRelationRole）。 */
+    /** 计算关系展示权重（详见顶层函数 relationWeight）。 */
 
     /** 判断是否为层级关系（继承、实现）。 */
     private fun GraphEdge.isHierarchyRelation(): Boolean =
@@ -473,7 +473,7 @@ class ClassDiagramProjector(
             )
         }
 
-    /** 计算关系权重（详见 top-level fun relationWeight）。 */
+    /** 计算关系权重（详见顶层函数 relationWeight）。 */
 
     /** 判断是否为纯签名噪声关系：方法参数未被使用，或构造参数既未被使用也未赋值给字段。 */
     private fun GraphEdge.isSignatureOnlyNoiseRelation(): Boolean {
@@ -524,13 +524,13 @@ class ClassDiagramProjector(
         )
     }
 
-    /** 根据源/终点节点 ID 生成稳定的聚合边 ID：详见 top-level fun aggregateRelationId。 */
-    /** 生成聚合后的展示标签：详见 top-level fun aggregateRelationLabel。 */
-    /** 取聚合组中优先级最高的一条边的展示标签：详见 top-level fun aggregatePrimaryRelationLabel。 */
-    /** 取聚合组中除主标签外的次级标签列表：详见 top-level fun aggregateSecondaryRelationLabels。 */
-    /** 汇总聚合组中所有边的展示标签并去重：详见 top-level fun aggregateRelationLabels。 */
-    /** 返回类图边上对外展示的文本：详见 top-level fun GraphEdge.classDiagramDisplayLabel。 */
-    /** 返回关系标签文本：详见 top-level fun GraphEdge.classDiagramRelationLabel。 */
+    /** 根据源/终点节点 ID 生成稳定的聚合边 ID：详见顶层函数 aggregateRelationId。 */
+    /** 生成聚合后的展示标签：详见顶层函数 aggregateRelationLabel。 */
+    /** 取聚合组中优先级最高的一条边的展示标签：详见顶层函数 aggregatePrimaryRelationLabel。 */
+    /** 取聚合组中除主标签外的次级标签列表：详见顶层函数 aggregateSecondaryRelationLabels。 */
+    /** 汇总聚合组中所有边的展示标签并去重：详见顶层函数 aggregateRelationLabels。 */
+    /** 返回类图边上对外展示的文本：详见顶层函数 GraphEdge.classDiagramDisplayLabel。 */
+    /** 返回关系标签文本：详见顶层函数 GraphEdge.classDiagramRelationLabel。 */
 
     /** 把投影后的图包装为只读投影索引，向 UI 声明节点/边不可编辑。 */
     private fun classDiagramProjectionIndex(graph: GraphDocument): GraphProjectionIndex =
@@ -649,7 +649,7 @@ class ClassDiagramProjector(
         val priority: Int,
         val compact: Boolean = true,
     ) {
-        /** 把展示角色字段序列化为节点 metadata，供前端读取展示。 */
+        /** 把展示角色字段序列化为节点元数据，供前端读取展示。 */
         fun toMetadata(): Map<String, String> =
             mapOf(
                 "presentation.role" to role,
@@ -681,7 +681,7 @@ class ClassDiagramProjector(
         )
     }
 
-    /** 把类符号、字段列表、方法列表汇总写入单个节点的 metadata，用于 UI 渲染 UML 类图卡片。 */
+    /** 把类符号、字段列表、方法列表汇总写入单个节点的元数据，用于 UI 渲染 UML 类图卡片。 */
     private fun GraphNode.withUmlClassMetadata(
         classSymbol: com.charmnight.linkgraph.jvm.index.JvmClassSymbol?,
         fields: List<JvmFieldSymbol>,
@@ -749,7 +749,7 @@ class ClassDiagramProjector(
         }
 
     /** 类图边展示优先级：基于权重取负值或按 UML 关系类型分级，权重越高优先级越高。 */
-    /** classDiagramEdgePriority / classAnchorPriority 已抽到 top-level（详见 ClassDiagramProjectorHelpers.kt）。 */
+    /** classDiagramEdgePriority / classAnchorPriority 已抽到顶层（详见 ClassDiagramProjectorHelpers.kt）。 */
 
     /** 解析请求中的视口策略；若请求未指定则回退到构造时传入的默认策略。 */
     private fun IndexedGraphRequest.classDiagramViewportPolicy(): GraphViewportPolicy =
@@ -796,7 +796,7 @@ class ClassDiagramProjector(
             "LOCAL_TYPE",
             "THROWS",
         )
-        /** 类图关系排序键 ClassDiagramRelationSortKey 已抽到 top-level（详见 ClassDiagramProjectorHelpers.kt）。 */
+        /** 类图关系排序键 ClassDiagramRelationSortKey 已抽到顶层（详见 ClassDiagramProjectorHelpers.kt）。 */
 
         /** 类图固定的展示泳道列表，按角色把节点划入抽象/调用方/锚点/协作/输出区域。 */
         private fun classDiagramPresentationLanes(): List<GraphPresentationLane> =

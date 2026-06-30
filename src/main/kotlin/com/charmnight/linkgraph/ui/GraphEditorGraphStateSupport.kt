@@ -33,7 +33,7 @@ internal class GraphEditorGraphStateSupport(
         }
     }
 
-    /** 加载一份完整图谱作为编辑器当前展示的内容，source 描述来源便于追踪。 */
+    /** 加载一份完整图谱作为编辑器当前展示的内容，来源描述便于追踪。 */
     fun loadGraph(
         graph: GraphDocument,
         source: String,

@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.review
 
 /**
- * Review 证据引用 DTO（P2-6 替代之前的 `Map<String, Any?>`）。
+ * Review 证据引用 DTO（P2-6 替代之前的 untyped map payload）。
  *
  * evidenceRefs 字段是 union 类型，承载 3 类证据：
  * - [ReviewChangedSymbolEvidenceRef]：变更符号（含 hunk 信息）

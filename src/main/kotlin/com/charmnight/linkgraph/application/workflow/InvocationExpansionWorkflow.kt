@@ -47,9 +47,9 @@ internal class InvocationExpansionWorkflow(
     /** 用于把 PSI 方法包装为统一代码主题句柄的工厂。 */
     private val codeSubjectHandleFactory: CodeSubjectHandleFactory,
     /** 目标解析自定义覆盖点，测试或扩展时可注入替代实现。 */
-    private val targetResolverOverrideProvider: () -> ((Project, String) -> InvocationExpansionTarget)?,
+    private val targetResolverHook: () -> ((Project, String) -> InvocationExpansionTarget)?,
     /** 主题解析自定义覆盖点，测试或扩展时可注入替代实现。 */
-    private val subjectResolverOverrideProvider: () -> ((String) -> CodeSubjectHandle?)?,
+    private val subjectResolverHook: () -> ((String) -> CodeSubjectHandle?)?,
     /** 日志记录器。 */
     private val logger: Logger,
     /** 封装展开/合并/移除核心规则的业务用例。 */
@@ -179,14 +179,14 @@ internal class InvocationExpansionWorkflow(
 
     /** 解析方法签名所属的展开目标（项目源码 / JDK / 三方库 / 跨服务等），优先使用自定义覆盖。 */
     private fun resolveTarget(signature: String): InvocationExpansionTarget {
-        targetResolverOverrideProvider()?.invoke(project, signature)?.let { target -> return target }
+        targetResolverHook()?.invoke(project, signature)?.let { target -> return target }
         val index = project.architectureIndexRuntime().index()
         return targetResolver.resolve(signature, index)
     }
 
     /** 把签名解析为可分析的代码主题句柄，优先使用自定义覆盖，否则在 PSI 中定位方法并包装。 */
     private fun resolveSubject(signature: String): CodeSubjectHandle? {
-        subjectResolverOverrideProvider()?.invoke(signature)?.let { handle -> return handle }
+        subjectResolverHook()?.invoke(signature)?.let { handle -> return handle }
         return ReadAction.compute<CodeSubjectHandle?, RuntimeException> {
             val method = DebugMethodSignatureLocator.find(project, signature) ?: return@compute null
             val file = method.containingFile ?: method.navigationElement.containingFile ?: return@compute null

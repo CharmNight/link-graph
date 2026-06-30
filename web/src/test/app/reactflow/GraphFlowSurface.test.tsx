@@ -17,8 +17,6 @@ const reactFlowInstanceMock = {
   screenToFlowPosition: reactFlowScreenToFlowPositionMock,
 };
 
-let resizeObserverCallback: ResizeObserverCallback | null = null;
-
 vi.mock("@xyflow/react", async () => {
   const React = await import("react");
 
@@ -292,8 +290,7 @@ function installResizeObserverStub() {
   vi.stubGlobal(
     "ResizeObserver",
     class ResizeObserver {
-      constructor(callback: ResizeObserverCallback) {
-        resizeObserverCallback = callback;
+      constructor(_callback: ResizeObserverCallback) {
       }
 
       observe() {
@@ -402,7 +399,6 @@ afterEach(() => {
   delete window.__linkGraphDebugEnabled;
   delete window.__linkGraphTraceHistory;
   delete window.__linkGraphLastTrace;
-  resizeObserverCallback = null;
 });
 
 describe("GraphFlowSurface", () => {
@@ -1044,9 +1040,8 @@ describe("GraphFlowSurface", () => {
     });
     vi.useRealTimers();
 
-    // P0-1: selecting a node no longer force-centres the viewport. The canvas
-    // only nudges a node into view when it is off-screen, so selecting an
-    // already-visible node leaves the viewport untouched.
+    // P0-1：选中节点不再强制居中视口；只有节点离屏时画布才会主动调整，
+    // 因此选中已可见节点时视口应保持不变。
     expect(reactFlowSetCenterMock).not.toHaveBeenCalled();
     expect(reactFlowFitViewMock).toHaveBeenCalledTimes(2);
   });

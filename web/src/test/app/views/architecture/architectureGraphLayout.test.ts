@@ -124,7 +124,6 @@ describe("layoutArchitectureGraphView", () => {
       projectStructureView: true,
     });
     const xs = laidOut.nodes.map((node) => node.position?.x ?? 0);
-    const ys = laidOut.nodes.map((node) => node.position?.y ?? 0);
     const root = laidOut.nodes.find((node) => node.id === nodes[0]!.id)!;
     const entryNode = laidOut.nodes.find((node) => node.metadata?.["presentation.laneId"] === "entry");
     const applicationNode = laidOut.nodes.find((node) => node.metadata?.["presentation.laneId"] === "application");

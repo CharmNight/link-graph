@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.application
 
 import com.charmnight.linkgraph.application.command.ApplicationCommand
-import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
+import com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeHooks
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionTarget
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionTargetKind
 import com.charmnight.linkgraph.model.EdgeType
@@ -45,7 +45,7 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
     fun testExpandsProjectSourceInvocationIntoCurrentWorkspaceGraph() {
         val service = project.graphEditorApplicationServiceForTest()
         service.commandDispatcher.dispatch(ApplicationCommand.LoadGraph(callerGraph(), "test"))
-        val overrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        val overrides = project.getService(LinkGraphProjectRuntimeHooks::class.java)
         overrides.invocationExpansionTargetResolver = { _, signature ->
             InvocationExpansionTarget(InvocationExpansionTargetKind.PROJECT_SOURCE, signature = signature)
         }
@@ -69,7 +69,7 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
     fun testExplainsExpandedInvocationContentAfterExpansionWorkflow() {
         val service = project.graphEditorApplicationServiceForTest()
         service.commandDispatcher.dispatch(ApplicationCommand.LoadGraph(callerGraph(), "test"))
-        val overrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        val overrides = project.getService(LinkGraphProjectRuntimeHooks::class.java)
         overrides.invocationExpansionTargetResolver = { _, signature ->
             InvocationExpansionTarget(InvocationExpansionTargetKind.PROJECT_SOURCE, signature = signature)
         }
@@ -120,7 +120,7 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
         val stateService = project.getService(GraphEditorStateService::class.java)
         service.commandDispatcher.dispatch(ApplicationCommand.LoadGraph(projectedCallerGraph(), "test"))
         stateService.switchAnalysisDisplayMode(com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode.FLOWCHART)
-        val overrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        val overrides = project.getService(LinkGraphProjectRuntimeHooks::class.java)
         overrides.invocationExpansionTargetResolver = { _, signature ->
             InvocationExpansionTarget(InvocationExpansionTargetKind.PROJECT_SOURCE, signature = signature)
         }
@@ -169,7 +169,7 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
     fun testExpandsReadableProjectedInvocationAliasIntoCurrentWorkspaceGraph() {
         val service = project.graphEditorApplicationServiceForTest()
         service.commandDispatcher.dispatch(ApplicationCommand.LoadGraph(projectedCallerGraph(), "test"))
-        val overrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        val overrides = project.getService(LinkGraphProjectRuntimeHooks::class.java)
         overrides.invocationExpansionTargetResolver = { _, signature ->
             InvocationExpansionTarget(InvocationExpansionTargetKind.PROJECT_SOURCE, signature = signature)
         }
@@ -206,7 +206,7 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
                 "test",
             ),
         )
-        project.getService(LinkGraphProjectTestOverrides::class.java).invocationExpansionTargetResolver = { _, _ ->
+        project.getService(LinkGraphProjectRuntimeHooks::class.java).invocationExpansionTargetResolver = { _, _ ->
             InvocationExpansionTarget(InvocationExpansionTargetKind.EXTERNAL_JDK)
         }
 
@@ -232,7 +232,7 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
                 "test",
             ),
         )
-        project.getService(LinkGraphProjectTestOverrides::class.java).invocationExpansionTargetResolver = { _, _ ->
+        project.getService(LinkGraphProjectRuntimeHooks::class.java).invocationExpansionTargetResolver = { _, _ ->
             InvocationExpansionTarget(
                 kind = InvocationExpansionTargetKind.MULTIPLE_IMPLEMENTATIONS,
                 candidateSignatures = listOf(
@@ -264,7 +264,7 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
                 "test",
             ),
         )
-        project.getService(LinkGraphProjectTestOverrides::class.java).invocationExpansionTargetResolver = { _, _ ->
+        project.getService(LinkGraphProjectRuntimeHooks::class.java).invocationExpansionTargetResolver = { _, _ ->
             InvocationExpansionTarget(InvocationExpansionTargetKind.EXTERNAL_LIBRARY)
         }
 

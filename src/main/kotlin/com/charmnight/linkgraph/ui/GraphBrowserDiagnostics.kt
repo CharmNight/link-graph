@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.ui
 
 import com.charmnight.linkgraph.model.GraphDocument
-import com.charmnight.linkgraph.llm.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GenerationPlan
 
 /**
  * 图谱浏览器诊断工具：把图谱编辑器当前快照、异步请求状态和生成计划

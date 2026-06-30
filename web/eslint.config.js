@@ -56,10 +56,17 @@ export default tseslint.config(
             ...reactHooks.configs.recommended.rules,
             "react/react-in-jsx-scope": "off",
             "react/prop-types": "off",
-            "react/jsx-key": "warn",
-            "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+            "react/jsx-key": "error",
+            "react-hooks/exhaustive-deps": "error",
+            "@typescript-eslint/no-unused-vars": [
+                "error",
+                {
+                    argsIgnorePattern: "^_",
+                    varsIgnorePattern: "^_",
+                    caughtErrorsIgnorePattern: "^_",
+                },
+            ],
             "@typescript-eslint/no-explicit-any": "off",
-            "@typescript-eslint/ban-ts-comment": "warn",
         },
         settings: {
             react: { version: "detect" },

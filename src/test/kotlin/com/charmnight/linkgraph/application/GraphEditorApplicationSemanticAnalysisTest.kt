@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.application
 
 import com.charmnight.linkgraph.application.command.ApplicationCommand
-import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
+import com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeHooks
 import com.charmnight.linkgraph.architecture.architectureIndexRuntime
 import com.charmnight.linkgraph.testing.*
 
@@ -69,7 +69,7 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
         )
 
         val service = project.graphEditorApplicationServiceForTest()
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        val runtimeHooks = project.getService(LinkGraphProjectRuntimeHooks::class.java)
         val resourceHandle = ResourceSubjectHandle(
             subjectId = "resource-markdown:order-flow-md",
             sourcePath = "order-flow.md",
@@ -78,7 +78,7 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
             kind = ResourceSubjectKind.MARKDOWN_PAGE,
             attributes = mapOf("path" to "order-flow.md"),
         )
-        testOverrides.subjectLocator = object : SubjectLocator {
+        runtimeHooks.subjectLocator = object : SubjectLocator {
             override fun locate(
                 project: Project,
                 editor: Editor?,
@@ -91,7 +91,7 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
                 commitDocument: Boolean,
             ): SubjectPreviewKind = SubjectPreviewKind.RESOURCE_SUBJECT
         }
-        testOverrides.semanticAnalyzer = SemanticAnalyzer(
+        runtimeHooks.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(
                 listOf(
                     object : SemanticProvider {
@@ -217,12 +217,12 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
         }
 
         val service = project.graphEditorApplicationServiceForTest()
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        val runtimeHooks = project.getService(LinkGraphProjectRuntimeHooks::class.java)
         val codeHandle = assertInstanceOf(
             CaretSubjectLocator().locate(project, myFixture.editor),
             CodeSubjectHandle::class.java,
         )
-        testOverrides.subjectLocator = object : SubjectLocator {
+        runtimeHooks.subjectLocator = object : SubjectLocator {
             override fun locate(
                 project: Project,
                 editor: Editor?,
@@ -235,7 +235,7 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
                 commitDocument: Boolean,
             ): SubjectPreviewKind = SubjectPreviewKind.CODE_SUBJECT
         }
-        testOverrides.semanticAnalyzer = SemanticAnalyzer(
+        runtimeHooks.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
 
@@ -350,8 +350,8 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
         }
 
         val service = project.graphEditorApplicationServiceForTest()
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
-        testOverrides.semanticAnalyzer = SemanticAnalyzer(
+        val runtimeHooks = project.getService(LinkGraphProjectRuntimeHooks::class.java)
+        runtimeHooks.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
         service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH))
@@ -450,8 +450,8 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
         }
 
         val service = project.graphEditorApplicationServiceForTest()
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
-        testOverrides.semanticAnalyzer = SemanticAnalyzer(
+        val runtimeHooks = project.getService(LinkGraphProjectRuntimeHooks::class.java)
+        runtimeHooks.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
         service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART))
@@ -565,8 +565,8 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
         }
 
         val service = project.graphEditorApplicationServiceForTest()
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
-        testOverrides.semanticAnalyzer = SemanticAnalyzer(
+        val runtimeHooks = project.getService(LinkGraphProjectRuntimeHooks::class.java)
+        runtimeHooks.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
         service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FACT_GRAPH))
@@ -693,8 +693,8 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
         }
 
         val service = project.graphEditorApplicationServiceForTest()
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
-        testOverrides.semanticAnalyzer = SemanticAnalyzer(
+        val runtimeHooks = project.getService(LinkGraphProjectRuntimeHooks::class.java)
+        runtimeHooks.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(listOf(provider)),
         )
         service.commandDispatcher.dispatch(ApplicationCommand.RequestAnalysisDisplayMode(AnalysisDisplayMode.FLOWCHART))
@@ -744,8 +744,8 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
         )
 
         val service = project.graphEditorApplicationServiceForTest()
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
-        testOverrides.subjectLocator = object : com.charmnight.linkgraph.semantic.subject.SubjectLocator {
+        val runtimeHooks = project.getService(LinkGraphProjectRuntimeHooks::class.java)
+        runtimeHooks.subjectLocator = object : com.charmnight.linkgraph.semantic.subject.SubjectLocator {
             override fun locate(
                 project: com.intellij.openapi.project.Project,
                 editor: com.intellij.openapi.editor.Editor?,
@@ -779,8 +779,8 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
         )
         val analyzerCallCount = AtomicInteger(0)
         val service = project.graphEditorApplicationServiceForTest()
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
-        testOverrides.semanticAnalyzer = SemanticAnalyzer(
+        val runtimeHooks = project.getService(LinkGraphProjectRuntimeHooks::class.java)
+        runtimeHooks.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(
                 listOf(semanticProvider { codeHandle, budgetPolicy ->
                     analyzerCallCount.incrementAndGet()
@@ -869,8 +869,8 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
         )
         val analyzerCallCount = AtomicInteger(0)
         val service = project.graphEditorApplicationServiceForTest()
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
-        testOverrides.semanticAnalyzer = SemanticAnalyzer(
+        val runtimeHooks = project.getService(LinkGraphProjectRuntimeHooks::class.java)
+        runtimeHooks.semanticAnalyzer = SemanticAnalyzer(
             registry = SemanticProviderRegistry(
                 listOf(semanticProvider { handle, _ ->
                     analyzerCallCount.incrementAndGet()
@@ -935,7 +935,7 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
         )
 
         val service = project.graphEditorApplicationServiceForTest()
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        val runtimeHooks = project.getService(LinkGraphProjectRuntimeHooks::class.java)
         service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph)
 
         waitForSnapshot { snapshot ->
@@ -966,7 +966,7 @@ class GraphEditorApplicationSemanticAnalysisTest : BasePlatformTestCase() {
         )
 
         val service = project.graphEditorApplicationServiceForTest()
-        val testOverrides = project.getService(LinkGraphProjectTestOverrides::class.java)
+        val runtimeHooks = project.getService(LinkGraphProjectRuntimeHooks::class.java)
         service.commandDispatcher.dispatch(ApplicationCommand.LoadCurrentEditorContextGraph)
 
         waitForSnapshot { snapshot ->

@@ -3,20 +3,16 @@ package com.charmnight.linkgraph.application.composition
 import com.charmnight.linkgraph.application.diagnostics.GraphDiagnosticsLogger
 import com.charmnight.linkgraph.application.debug.DebugGraphFactory
 import com.charmnight.linkgraph.application.port.GraphEditorPresentationProvider
+import com.charmnight.linkgraph.application.port.GraphBeautificationPort
+import com.charmnight.linkgraph.application.port.LlmApplicationServices
 import com.charmnight.linkgraph.application.planning.PlanningContextFactory
 import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
 import com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeSupport
-import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
+import com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeHooks
 import com.charmnight.linkgraph.application.workflow.architecture.ArchitectureIndexWorkflowSupport
 import com.charmnight.linkgraph.codegen.CodeDraftWriterService
-import com.charmnight.linkgraph.codegen.CodeGenerationService
 import com.charmnight.linkgraph.diff.GraphDiffer
-import com.charmnight.linkgraph.llm.DefaultGraphBeautificationService
-import com.charmnight.linkgraph.llm.GraphBeautificationService
-import com.charmnight.linkgraph.llm.GraphDiffPatchService
-import com.charmnight.linkgraph.llm.GraphGenerationService
-import com.charmnight.linkgraph.llm.GraphQaPatchService
-import com.charmnight.linkgraph.llm.artifact.AgentArtifactStoreService
+import com.charmnight.linkgraph.agent.artifact.AgentArtifactStoreService
 import com.charmnight.linkgraph.mermaid.MermaidExporter
 import com.charmnight.linkgraph.mermaid.MermaidImporter
 import com.charmnight.linkgraph.mermaid.MermaidValidator
@@ -41,23 +37,23 @@ internal class InfrastructureComposition(
     private val logger: Logger,
 ) {
     /**
-     * 测试覆盖项：从 project service 动态获取，让测试通过 [LinkGraphProjectTestOverrides] 注入。
+     * 测试覆盖项：从 project service 动态获取，让测试通过 [LinkGraphProjectRuntimeHooks] 注入。
      *
      * 生产环境永远拿到默认实例（所有字段为 null），不会影响运行时行为；
-     * 测试通过 `project.replaceService(LinkGraphProjectTestOverrides::class.java, fake, disposable)` 注入。
+     * 测试通过 `project.replaceService(LinkGraphProjectRuntimeHooks::class.java, fake, disposable)` 注入。
      *
      * P3-2：从构造参数移到内部 getter，composition 接口不再暴露测试 hook。
      */
-    private val testOverrides: LinkGraphProjectTestOverrides
-        get() = project.getService(LinkGraphProjectTestOverrides::class.java)
+    private val runtimeHooks: LinkGraphProjectRuntimeHooks
+        get() = project.getService(LinkGraphProjectRuntimeHooks::class.java)
 
     /** 项目级运行时辅助，提供打开设置、生成设置等能力。 */
     val runtimeSupport by lazy(LazyThreadSafetyMode.PUBLICATION) {
         LinkGraphProjectRuntimeSupport(
             project = project,
             logger = logger,
-            openSettingsOverrideProvider = { testOverrides.openSettings },
-            effectiveGenerationSettingsOverrideProvider = { testOverrides.effectiveGenerationSettings },
+            openSettingsHook = { runtimeHooks.openSettings },
+            effectiveGenerationSettingsHook = { runtimeHooks.effectiveGenerationSettings },
         )
     }
 
@@ -100,7 +96,7 @@ internal class InfrastructureComposition(
     val asyncRequestLifecycle by lazy(LazyThreadSafetyMode.PUBLICATION) {
         AsyncRequestLifecycleSupport(
             project = project,
-            timeoutOverrideProvider = { testOverrides.asyncRequestTimeoutMillis },
+            timeoutMillisSupplier = { runtimeHooks.asyncRequestTimeoutMillis },
         )
     }
 
@@ -118,15 +114,9 @@ internal class InfrastructureComposition(
     /** 图谱补丁应用服务。 */
     val graphPatchApplyService by lazy(LazyThreadSafetyMode.PUBLICATION) { GraphPatchApplyService() }
 
-    /**
-     * P3-1 统一 LLM gateway 入口：项目级共享，由 EP 注册的 contributor 路由到具体协议实现。
-     *
-     * 第三方通过 plugin.xml 的 `<com.charmnight.linkgraph.llmGatewayContributor>` EP 注册自定义协议，
-     * 由本类把 contributor 包装为 [com.charmnight.linkgraph.llm.LlmGateway]，
-     * 实际 HTTP 请求强制经过 [com.charmnight.linkgraph.llm.LlmGatewayClient]（SSRF / size guard 自动应用）。
-     */
-    val llmGateway by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        com.charmnight.linkgraph.llm.LlmGatewayCompositionRoot.createGateway(project)
+    /** LLM 应用端口；具体网关和服务装配位于应用层之外。 */
+    private val llmServices by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        project.getService(LlmApplicationServices::class.java)
     }
 
     /**
@@ -144,21 +134,25 @@ internal class InfrastructureComposition(
     }
 
     /** 图谱生成服务。 */
-    val graphGenerationService by lazy(LazyThreadSafetyMode.PUBLICATION) { GraphGenerationService(gateway = llmGateway) }
+    val graphGenerationService by lazy(LazyThreadSafetyMode.PUBLICATION) { llmServices.graphGenerationService() }
     /** 图谱 QA 补丁服务。 */
-    val graphQaPatchService by lazy(LazyThreadSafetyMode.PUBLICATION) { GraphQaPatchService(gateway = llmGateway) }
+    val graphQaPatchService by lazy(LazyThreadSafetyMode.PUBLICATION) { llmServices.graphQaPatchService() }
     /** 草稿工作台服务。 */
     val draftWorkbenchService by lazy(LazyThreadSafetyMode.PUBLICATION) { DraftWorkbenchService() }
     /** 风险消解服务。 */
     val riskResolutionService by lazy(LazyThreadSafetyMode.PUBLICATION) { RiskResolutionService() }
     /** 图谱差异补丁服务。 */
-    val graphDiffPatchService by lazy(LazyThreadSafetyMode.PUBLICATION) { GraphDiffPatchService(gateway = llmGateway) }
+    val graphDiffPatchService by lazy(LazyThreadSafetyMode.PUBLICATION) { llmServices.graphDiffPatchService() }
     /** 图谱美化服务，用于在展示前对生成结果做风格优化。 */
-    val graphBeautificationService: GraphBeautificationService by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        DefaultGraphBeautificationService(gateway = llmGateway)
+    val graphBeautificationService: GraphBeautificationPort by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        llmServices.graphBeautificationService()
+    }
+    /** 生成计划追问服务。 */
+    val generationPlanDiscussionService by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        llmServices.generationPlanDiscussionService()
     }
     /** 代码生成服务。 */
-    val codeGenerationService by lazy(LazyThreadSafetyMode.PUBLICATION) { CodeGenerationService(gateway = llmGateway) }
+    val codeGenerationService by lazy(LazyThreadSafetyMode.PUBLICATION) { llmServices.codeGenerationService() }
     /** 代码草稿写入服务，把生成结果写入到目标位置。 */
     val codeDraftWriterService by lazy(LazyThreadSafetyMode.PUBLICATION) { CodeDraftWriterService(project) }
     /** 图谱诊断日志记录器。 */

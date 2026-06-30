@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 /**
  * 读取当前选区节点列表。
  *
@@ -14,7 +16,7 @@ class GetSelectedScopeTool(
     override val name: String = "get_selected_scope"
     override val description: String = "读取当前选区节点范围"
 
-    override fun parseInput(raw: Map<String, Any?>): GetSelectedScopeInput = GetSelectedScopeInput(
+    override fun parseInput(raw: ToolInputPayload): GetSelectedScopeInput = GetSelectedScopeInput(
         selectedNodeIds = optionalList(raw, "selectedNodeIds", String::class),
     )
 

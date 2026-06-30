@@ -4,7 +4,7 @@ import com.charmnight.linkgraph.application.GraphEditorApplicationService
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRelationDetail
 import com.charmnight.linkgraph.application.indexed.requestClassDiagramRequest
 import com.charmnight.linkgraph.application.model.GraphSceneId
-import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
+import com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeHooks
 import com.charmnight.linkgraph.jvm.index.stableJvmId
 import com.charmnight.linkgraph.jvm.relation.JvmRelationKind
 import com.intellij.testFramework.PlatformTestUtil
@@ -20,7 +20,7 @@ class ClassDiagramIT : BasePlatformTestCase() {
     override fun setUp() {
         super.setUp()
         project.registerServiceInstance(GraphEditorStateService::class.java, GraphEditorStateService())
-        project.registerServiceInstance(LinkGraphProjectTestOverrides::class.java, LinkGraphProjectTestOverrides())
+        project.registerServiceInstance(LinkGraphProjectRuntimeHooks::class.java, LinkGraphProjectRuntimeHooks())
         project.registerServiceInstance(GraphEditorApplicationService::class.java, GraphEditorApplicationService(project))
         project.registerServiceInstance(GraphEditorCommandRouter::class.java, GraphEditorCommandRouter(project))
     }

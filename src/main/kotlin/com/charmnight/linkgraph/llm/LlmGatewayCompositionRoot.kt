@@ -1,5 +1,8 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.agent.model.*
+import com.charmnight.linkgraph.settings.*
+
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.project.Project
 
@@ -9,7 +12,7 @@ import com.intellij.openapi.project.Project
  * 设计：
  * - 内置 3 个 gateway（OpenAI Chat / OpenAI Responses / Anthropic Messages）通过 [RoutingLlmGateway]
  *   路由，已经直接调用 [LlmGatewayClient]（SSRF / size guard 已生效）。
- * - 第三方通过 plugin.xml 注册 [LlmGatewayContributor] EP，由本类用 [LlmGatewayContributorBackedGateway]
+ * - 第三方通过 plugin.xml 注册 linkGraph.llmGateway EP，由本类用 [LlmGatewayContributorBackedGateway]
  *   包装为 [LlmGateway]，包装类强制经过 [LlmGatewayClient]，第三方实现无法绕过安全策略。
  *
  * 工厂方法 [createGateway] 集中此装配逻辑，避免 7 个 service 各自 new RoutingLlmGateway() 的散布。
@@ -19,7 +22,7 @@ import com.intellij.openapi.project.Project
 object LlmGatewayCompositionRoot {
     /** EP 名称：第三方 plugin.xml 用此注册自定义 contributor。 */
     val EP_NAME: ExtensionPointName<LlmGatewayContributor> =
-        ExtensionPointName.create("com.charmnight.linkgraph.llmGatewayContributor")
+        ExtensionPointName.create("linkGraph.llmGateway")
 
     /**
      * 构造项目级共享 gateway。

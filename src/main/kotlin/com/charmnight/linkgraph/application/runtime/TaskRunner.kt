@@ -43,8 +43,29 @@ interface TaskRunner {
     /** 在 UI 线程按 [policy] 模态同步执行 [block]。 */
     fun <T> ui(policy: UiPolicy, block: () -> T): T
 
+    /** 在 IDE 进入 smart mode 后于 UI 线程执行 [block]。 */
+    fun smartUi(policy: UiPolicy, block: () -> Unit)
+
     /** 在读锁内同步执行 [block]（PSI / 索引访问需要）。 */
     fun <T> read(block: () -> T): T
+
+    /**
+     * 以平台的非阻塞读动作执行 [readAction]，完成后在 UI 线程派发 [onUi]。
+     *
+     * workflow 层不直接持有 IntelliJ 的 `ReadAction.nonBlocking`、`finishOnUiThread`、
+     * `ModalityState` 或 executor；这些平台细节由具体 adapter 处理。
+     */
+    fun <T> readAsync(
+        requireSmartMode: Boolean = false,
+        uiPolicy: UiPolicy = UiPolicy.ANY,
+        readAction: () -> T,
+        onUi: (T) -> Unit,
+    ): CancellableTaskHandle
+}
+
+/** workflow 保存异步任务引用时只需要取消能力，不暴露平台 promise 类型。 */
+interface CancellableTaskHandle {
+    fun cancel()
 }
 
 /**
@@ -67,5 +88,22 @@ class SameThreadTaskRunner : TaskRunner {
 
     override fun <T> ui(policy: TaskRunner.UiPolicy, block: () -> T): T = block()
 
+    override fun smartUi(policy: TaskRunner.UiPolicy, block: () -> Unit) {
+        block()
+    }
+
     override fun <T> read(block: () -> T): T = block()
+
+    override fun <T> readAsync(
+        requireSmartMode: Boolean,
+        uiPolicy: TaskRunner.UiPolicy,
+        readAction: () -> T,
+        onUi: (T) -> Unit,
+    ): CancellableTaskHandle {
+        val result = read(readAction)
+        ui(uiPolicy) { onUi(result) }
+        return object : CancellableTaskHandle {
+            override fun cancel() = Unit
+        }
+    }
 }

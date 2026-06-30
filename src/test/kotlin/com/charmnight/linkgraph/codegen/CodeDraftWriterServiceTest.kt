@@ -146,7 +146,7 @@ class CodeDraftWriterServiceTest {
                 package com.example;
 
                 /**
-                 * Draft DTO.
+                 * 草稿 DTO。
                  */
                 public class OrderDraftDto {
                 }

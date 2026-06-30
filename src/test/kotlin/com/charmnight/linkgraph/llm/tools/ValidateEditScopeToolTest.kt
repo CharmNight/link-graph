@@ -1,12 +1,14 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.codegen.CodeEditOperation
 import com.charmnight.linkgraph.codegen.CodeEditOperationKind
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
-import com.charmnight.linkgraph.llm.EditScope
-import com.charmnight.linkgraph.llm.runtime.RunBudget
+import com.charmnight.linkgraph.agent.model.EditScope
+import com.charmnight.linkgraph.agent.runtime.RunBudget
 import com.charmnight.linkgraph.ui.GraphEditorStateService
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlin.test.assertEquals
@@ -34,7 +36,7 @@ class ValidateEditScopeToolTest : BasePlatformTestCase() {
             context = ToolExecutionContext(
                 project = project,
                 snapshot = testSnapshot().toToolGraphSnapshot(),
-                artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
+                artifactStore = com.charmnight.linkgraph.agent.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
         )
@@ -76,7 +78,7 @@ class ValidateEditScopeToolTest : BasePlatformTestCase() {
             context = ToolExecutionContext(
                 project = project,
                 snapshot = testSnapshot().toToolGraphSnapshot(),
-                artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
+                artifactStore = com.charmnight.linkgraph.agent.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
         )
@@ -119,7 +121,7 @@ class ValidateEditScopeToolTest : BasePlatformTestCase() {
             context = ToolExecutionContext(
                 project = project,
                 snapshot = testSnapshot().toToolGraphSnapshot(),
-                artifactStore = com.charmnight.linkgraph.llm.artifact.InMemoryArtifactStore(),
+                artifactStore = com.charmnight.linkgraph.agent.artifact.InMemoryArtifactStore(),
                 runBudget = RunBudget(),
             ),
         )

@@ -1,11 +1,15 @@
 package com.charmnight.linkgraph.usage
 
 import com.charmnight.linkgraph.jvm.index.stableJvmId
+import com.intellij.openapi.progress.EmptyProgressIndicator
+import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -423,6 +427,118 @@ class ClassUsageSearchServiceTest : BasePlatformTestCase() {
             result.groups.flatMap { it.usages }.any { it.kind == ClassUsageKind.EXTENDS },
             "继承场景下应至少出现一个 EXTENDS 条目。",
         )
+    }
+
+    fun testInheritorCollectionStopsSearchEngineAfterSmallWindowWhenTenThousandCandidatesExist() {
+        myFixture.addFileToProject(
+            "src/main/java/com/example/inherit/Base.java",
+            """
+            package com.example.inherit;
+            public class Base {}
+            """.trimIndent(),
+        )
+        repeat(11) { index ->
+            myFixture.addFileToProject(
+                "src/main/java/com/example/inherit/Candidate$index.java",
+                """
+                package com.example.inherit;
+                public class Candidate$index {}
+                """.trimIndent(),
+            )
+        }
+        val targetClass = requireNotNull(
+            JavaPsiFacade.getInstance(project).findClass(
+                "com.example.inherit.Base",
+                GlobalSearchScope.projectScope(project),
+            ),
+        )
+        val candidates = (0 until 11).map { index ->
+            requireNotNull(
+                JavaPsiFacade.getInstance(project).findClass(
+                    "com.example.inherit.Candidate$index",
+                    GlobalSearchScope.projectScope(project),
+                ),
+            )
+        }
+        var visitedCandidates = 0
+        val service = ClassUsageSearchService(
+            project = project,
+            inheritorSearch = { _, _, processor ->
+                var keepGoing = true
+                var index = 0
+                while (index < 10_000 && keepGoing) {
+                    visitedCandidates += 1
+                    keepGoing = processor.process(candidates[index % candidates.size])
+                    index += 1
+                }
+                keepGoing
+            },
+        )
+
+        val result = service.search(
+            targetClass = targetClass,
+            targetNodeId = "jvm:class:com-example-inherit-base",
+            options = ClassUsageSearchOptions(maxUsageGroups = 20, maxUsageEntries = 10),
+        )
+
+        val debugSummary = "${result.summary}\n" +
+            result.groups.joinToString("\n") { group -> "${group.title}: ${group.usages.map { "${it.kind}@${it.line}:${it.column}" }}" }
+        assertEquals(10, result.summary.visibleUsageCount, debugSummary)
+        assertTrue(result.summary.truncated, "10k 候选下小窗口应通过哨兵项标记 truncated=true。")
+        assertTrue(
+            visitedCandidates <= 11,
+            "maxUsageEntries=10 时只应消费窗口+哨兵数量的 inheritor；实际消费 $visitedCandidates 个。",
+        )
+    }
+
+    fun testInheritorCollectionPropagatesCancellationPromptly() {
+        myFixture.addFileToProject(
+            "src/main/java/com/example/cancel/Base.java",
+            """
+            package com.example.cancel;
+            public class Base {}
+            """.trimIndent(),
+        )
+        myFixture.addFileToProject(
+            "src/main/java/com/example/cancel/Candidate.java",
+            """
+            package com.example.cancel;
+            public class Candidate {}
+            """.trimIndent(),
+        )
+        val targetClass = requireNotNull(
+            JavaPsiFacade.getInstance(project).findClass(
+                "com.example.cancel.Base",
+                GlobalSearchScope.projectScope(project),
+            ),
+        )
+        val candidate = requireNotNull(
+            JavaPsiFacade.getInstance(project).findClass(
+                "com.example.cancel.Candidate",
+                GlobalSearchScope.projectScope(project),
+            ),
+        )
+        val indicator = EmptyProgressIndicator()
+        val service = ClassUsageSearchService(
+            project = project,
+            inheritorSearch = { _, _, processor ->
+                indicator.cancel()
+                processor.process(candidate)
+            },
+        )
+
+        assertFailsWith<ProcessCanceledException> {
+            ProgressManager.getInstance().runProcess(
+                {
+                    service.search(
+                        targetClass = targetClass,
+                        targetNodeId = "jvm:class:com-example-cancel-base",
+                        options = ClassUsageSearchOptions(maxUsageGroups = 20, maxUsageEntries = 10),
+                    )
+                },
+                indicator,
+            )
+        }
     }
 
     fun testSearchReportsExtendsAndImplementsKindsForInheritorEntries() {

@@ -159,6 +159,52 @@ class PluginBootstrapTest {
     }
 
     @Test
+    fun pluginDeclaresLinkGraphExtensionPointsAndProductionReaders() {
+        val stream = javaClass.classLoader.getResourceAsStream("META-INF/plugin.xml")
+        assertNotNull("Expected META-INF/plugin.xml on the test classpath", stream)
+
+        val document = stream!!.use { input ->
+            DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(input)
+        }
+        val llmGateway = firstElementByTagNameAndAttribute(
+            document,
+            "extensionPoint",
+            "name",
+            "linkGraph.llmGateway",
+        )
+        val projectionProvider = firstElementByTagNameAndAttribute(
+            document,
+            "extensionPoint",
+            "name",
+            "linkGraph.projectionProvider",
+        )
+
+        assertNotNull("Expected linkGraph.llmGateway extension point", llmGateway)
+        assertEquals(
+            "com.charmnight.linkgraph.llm.LlmGatewayContributor",
+            llmGateway!!.getAttribute("interface"),
+        )
+        assertNotNull("Expected linkGraph.projectionProvider extension point", projectionProvider)
+        assertEquals(
+            "com.charmnight.linkgraph.projection.ProjectionProvider",
+            projectionProvider!!.getAttribute("interface"),
+        )
+
+        val llmRoot = Files.readString(Path.of("src/main/kotlin/com/charmnight/linkgraph/llm/LlmGatewayCompositionRoot.kt"))
+        assertTrue(
+            "LLM composition root must read the documented linkGraph.llmGateway EP",
+            llmRoot.contains("ExtensionPointName.create(\"linkGraph.llmGateway\")"),
+        )
+        val projectionExtensions = Files.readString(
+            Path.of("src/main/kotlin/com/charmnight/linkgraph/projection/ProjectionProviderExtensions.kt"),
+        )
+        assertTrue(
+            "Projection provider registry must read the documented linkGraph.projectionProvider EP",
+            projectionExtensions.contains("ExtensionPointName.create(\"linkGraph.projectionProvider\")"),
+        )
+    }
+
+    @Test
     fun pluginBuildHookTargetsWebWorkspace() {
         val buildScript = Path.of("build.gradle.kts")
         assertTrue("Expected build.gradle.kts at project root", Files.exists(buildScript))

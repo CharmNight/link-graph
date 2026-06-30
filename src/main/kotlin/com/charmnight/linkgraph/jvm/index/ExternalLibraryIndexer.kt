@@ -258,7 +258,7 @@ internal class ExternalLibraryIndexer(
             .copy(decompiled = origin in setOf(SourceOrigin.LIBRARY_CLASS_JAR, SourceOrigin.JDK_CLASS))
     }
 
-    // ---- 外部文件来源判定 helper ----
+    // ---- 外部文件来源判定辅助函数 ----
 
     private fun sourceOriginForExternalFile(file: VirtualFile): SourceOrigin {
         val url = file.url

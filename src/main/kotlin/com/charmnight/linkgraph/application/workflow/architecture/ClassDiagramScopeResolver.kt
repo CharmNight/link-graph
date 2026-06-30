@@ -1,10 +1,8 @@
 package com.charmnight.linkgraph.application.workflow.architecture
 
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
+import com.charmnight.linkgraph.application.runtime.TaskRunner
 import com.charmnight.linkgraph.jvm.index.stableJvmId
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiAnonymousClass
@@ -15,8 +13,6 @@ import com.intellij.psi.PsiFile
 import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.asJava.toLightClass
 import org.jetbrains.kotlin.psi.KtClass
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 类图作用域解析器。
@@ -28,6 +24,7 @@ import java.util.concurrent.atomic.AtomicReference
 internal class ClassDiagramScopeResolver(
     private val project: Project,
     private val snapshotProvider: EditorSnapshotProvider? = null,
+    private val taskRunner: TaskRunner,
 ) {
     /**
      * 解析出类图所应聚焦的类节点标识。
@@ -55,15 +52,15 @@ internal class ClassDiagramScopeResolver(
         computeOnIdeThread {
             val editor = FileEditorManager.getInstance(project).selectedTextEditor
                 ?: return@computeOnIdeThread null
-            ReadAction.compute<String?, RuntimeException> {
+            taskRunner.read {
                 val psiDocumentManager = PsiDocumentManager.getInstance(project)
                 psiDocumentManager.commitDocument(editor.document)
                 val psiFile = psiDocumentManager.getPsiFile(editor.document)
-                    ?: return@compute null
+                    ?: return@read null
                 val offset = editor.caretModel.offset.coerceIn(0, psiFile.textLength.coerceAtLeast(0))
                 val element = psiFile.findElementAt(offset)
                     ?: psiFile.findElementAt((offset - 1).coerceAtLeast(0))
-                    ?: return@compute fallbackTopLevelClassName(psiFile)
+                    ?: return@read fallbackTopLevelClassName(psiFile)
                 classNameFor(element) ?: fallbackTopLevelClassName(psiFile)
             }
         }
@@ -126,30 +123,9 @@ internal class ClassDiagramScopeResolver(
     /**
      * 在 IDEA 调度线程上执行给定动作并同步返回结果。
      *
-     * 若当前已在调度线程则直接执行；否则通过 invokeAndWait 阻塞等待，
-     * 期间捕获的异常会被重新抛出，确保解析失败可被上层感知。
+     * 具体线程切换由 [TaskRunner] 适配到当前平台；workflow 不直接依赖 IntelliJ threading API。
      */
     private fun <T> computeOnIdeThread(action: () -> T): T {
-        val application = ApplicationManager.getApplication()
-        if (application.isDispatchThread) {
-            return action()
-        }
-        val completed = AtomicBoolean(false)
-        val result = AtomicReference<T>()
-        val error = AtomicReference<Throwable?>()
-        application.invokeAndWait(
-            {
-                try {
-                    result.set(action())
-                    completed.set(true)
-                } catch (throwable: Throwable) {
-                    error.set(throwable)
-                }
-            },
-            ModalityState.defaultModalityState(),
-        )
-        error.get()?.let { throw it }
-        check(completed.get()) { "未能在 IDEA 线程中完成类图范围解析" }
-        return result.get()
+        return taskRunner.ui(TaskRunner.UiPolicy.ANY, action)
     }
 }

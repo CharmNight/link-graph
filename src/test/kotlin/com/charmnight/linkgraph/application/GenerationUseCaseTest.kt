@@ -7,14 +7,14 @@ import com.charmnight.linkgraph.application.usecase.GenerationUseCase
 import com.charmnight.linkgraph.application.usecase.GenerationUseCaseResult
 import com.charmnight.linkgraph.codegen.CodeGenerationResult
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GenerationPlanSource
-import com.charmnight.linkgraph.llm.LlmResultSource
-import com.charmnight.linkgraph.llm.runtime.AgentRunFailureReason
-import com.charmnight.linkgraph.llm.runtime.AgentRunPhase
-import com.charmnight.linkgraph.llm.runtime.AgentRunResult
-import com.charmnight.linkgraph.llm.runtime.AgentRunState
-import com.charmnight.linkgraph.llm.runtime.RunBudget
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GenerationPlanSource
+import com.charmnight.linkgraph.agent.model.LlmResultSource
+import com.charmnight.linkgraph.agent.runtime.AgentRunFailureReason
+import com.charmnight.linkgraph.agent.runtime.AgentRunPhase
+import com.charmnight.linkgraph.agent.runtime.AgentRunResult
+import com.charmnight.linkgraph.agent.runtime.AgentRunState
+import com.charmnight.linkgraph.agent.runtime.RunBudget
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.sync.SyncPreviewItem
@@ -90,7 +90,7 @@ class GenerationUseCaseTest {
     }
 
     /**
-     * P3-4：runtime 自身失败（output==null + finalState.failureReason 非空）时，
+     * P3-4：运行时自身失败（output==null + finalState.failureReason 非空）时，
      * resolveCodeDrafts 必须走 resolveCodegenRuntimeFailure 路径产出 CodeDraftFailed，
      * 而不是 NPE 或返回空 Ready。
      */
@@ -113,26 +113,26 @@ class GenerationUseCaseTest {
     }
 
     /**
-     * P3-4：runtime 在本地安全校验阶段失败（stepRecords.last.summary = "validate-generated-drafts"）
-     * 必须把消息映射到"未通过本地安全校验"，覆盖 step-summary 分支。
+     * P3-4：运行时在本地安全校验阶段失败（stepRecords.last.summary = "validate-generated-drafts"）
+     * 必须把消息映射到"未通过本地安全校验"，覆盖步骤摘要分支。
      */
     @Test
     fun mapsRuntimeSafetyValidationRejectionToFailurePresentation() {
         val stateWithValidationFailure = runState().copy(
             stepIndex = 2,
-            // 模拟最后一步是 validate-generated-drafts 的 runtime 状态
+            // 模拟最后一步是 validate-generated-drafts 的运行时状态
             stepRecords = listOf(
-                com.charmnight.linkgraph.llm.runtime.AgentStepRecord(
+                com.charmnight.linkgraph.agent.runtime.AgentStepRecord(
                     stepIndex = 0,
                     phase = AgentRunPhase.RUNNING,
                     summary = "plan",
                 ),
-                com.charmnight.linkgraph.llm.runtime.AgentStepRecord(
+                com.charmnight.linkgraph.agent.runtime.AgentStepRecord(
                     stepIndex = 1,
                     phase = AgentRunPhase.RUNNING,
                     summary = "generate",
                 ),
-                com.charmnight.linkgraph.llm.runtime.AgentStepRecord(
+                com.charmnight.linkgraph.agent.runtime.AgentStepRecord(
                     stepIndex = 2,
                     phase = AgentRunPhase.RUNNING,
                     summary = "validate-generated-drafts",

@@ -16,18 +16,17 @@ import com.charmnight.linkgraph.foundation.LinkGraphRenderTrace
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
+import com.charmnight.linkgraph.application.runtime.SameThreadTaskRunner
+import com.charmnight.linkgraph.application.runtime.TaskRunner
 import com.charmnight.linkgraph.jvm.index.JvmSymbolIndex
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.projection.business.ClassUsageGraphProjector
 import com.charmnight.linkgraph.usage.ClassUsageSearchOptions
 import com.charmnight.linkgraph.usage.ClassUsageSearchService
 import com.charmnight.linkgraph.usage.ClassUsageSearchTargetHint
-import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.serviceContainer.AlreadyDisposedException
-import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.CancellationException
 import java.util.concurrent.atomic.AtomicLong
 
@@ -56,8 +55,10 @@ internal class ClassDiagramWorkflow(
     private val usageSearchService: ClassUsageSearchService = ClassUsageSearchService(project),
     /** 类使用处投影器：把检索结果组装成与类图同构的视图。 */
     private val usageProjector: ClassUsageGraphProjector = ClassUsageGraphProjector(),
+    /** 平台无关任务调度入口。 */
+    private val taskRunner: TaskRunner = SameThreadTaskRunner(),
     /** 类图范围解析器：把请求中的 scopeNodeId 还原为实际可用的锚点节点。 */
-    private val scopeResolver: ClassDiagramScopeResolver = ClassDiagramScopeResolver(project, snapshotProvider),
+    private val scopeResolver: ClassDiagramScopeResolver = ClassDiagramScopeResolver(project, snapshotProvider, taskRunner),
     /** 日志记录器。 */
     private val logger: com.intellij.openapi.diagnostic.Logger,
     /** 渲染追踪回调，仅在开启追踪时输出阶段信息。 */
@@ -96,13 +97,14 @@ internal class ClassDiagramWorkflow(
         }.onFailure { error ->
             logger.warn("解析类图范围失败，将回退到项目默认锚点", error)
         }.getOrNull()
-        ReadAction
-            .nonBlocking<ClassDiagramViewResult> {
+        taskRunner.readAsync(
+            requireSmartMode = true,
+            readAction = {
                 if (project.isDisposed) {
-                    return@nonBlocking ClassDiagramViewResult.cancelled()
+                    return@readAsync ClassDiagramViewResult.cancelled()
                 }
                 buildStandaloneUsageView(request)?.let { view ->
-                    return@nonBlocking ClassDiagramViewResult.success(
+                    return@readAsync ClassDiagramViewResult.success(
                         ClassDiagramViewPayload(
                             view = view,
                             resolvedScopeNodeId = view.anchorNodeId,
@@ -209,10 +211,8 @@ internal class ClassDiagramWorkflow(
                         ClassDiagramViewResult.failure(error)
                     },
                 )
-            }
-            .inSmartMode(project)
-            .expireWith(project)
-            .finishOnUiThread(ModalityState.defaultModalityState()) { result ->
+            },
+            onUi = uiResult@ { result ->
                 when {
                     result.cancelled || project.isDisposed -> Unit
                     result.failure != null -> {
@@ -288,8 +288,8 @@ internal class ClassDiagramWorkflow(
                         }
                     }
                 }
-            }
-            .submit(AppExecutorUtil.getAppExecutorService())
+            },
+        )
     }
 
     /**
@@ -307,10 +307,11 @@ internal class ClassDiagramWorkflow(
         if (sourceClassIds.isEmpty()) {
             return
         }
-        ReadAction
-            .nonBlocking<ClassDiagramViewResult> {
+        taskRunner.readAsync(
+            requireSmartMode = true,
+            readAction = {
                 if (project.isDisposed) {
-                    return@nonBlocking ClassDiagramViewResult.cancelled()
+                    return@readAsync ClassDiagramViewResult.cancelled()
                 }
                 runCatching {
                     val cacheState = request.cacheState(indexSupport.hasFullIndex(request))
@@ -370,15 +371,13 @@ internal class ClassDiagramWorkflow(
                     onSuccess = { payload -> ClassDiagramViewResult.success(payload) },
                     onFailure = { error -> ClassDiagramViewResult.failure(error) },
                 )
-            }
-            .inSmartMode(project)
-            .expireWith(project)
-            .finishOnUiThread(ModalityState.defaultModalityState()) { result ->
+            },
+            onUi = uiResult@ { result ->
                 when {
                     result.cancelled || project.isDisposed -> Unit
                     result.failure != null -> {
                         if (isBenignCompleteClassDiagramCancellation(result.failure)) {
-                            return@finishOnUiThread
+                            return@uiResult
                         }
                         logger.warn("补齐当前范围类图调用失败", result.failure)
                         val message = "补齐当前范围调用失败：${result.failure.message ?: result.failure.javaClass.simpleName}"
@@ -411,8 +410,8 @@ internal class ClassDiagramWorkflow(
                         )
                     }
                 }
-            }
-            .submit(AppExecutorUtil.getAppExecutorService())
+            },
+        )
     }
 
     /**
@@ -426,10 +425,11 @@ internal class ClassDiagramWorkflow(
         requestId: Long,
         startedAtEpochMillis: Long?,
     ) {
-        ReadAction
-            .nonBlocking<ClassDiagramViewResult> {
+        taskRunner.readAsync(
+            requireSmartMode = true,
+            readAction = {
                 if (project.isDisposed) {
-                    return@nonBlocking ClassDiagramViewResult.cancelled()
+                    return@readAsync ClassDiagramViewResult.cancelled()
                 }
                 runCatching {
                     val hadCachedFullIndex = indexSupport.hasFullIndex(request)
@@ -488,15 +488,13 @@ internal class ClassDiagramWorkflow(
                     onSuccess = { payload -> ClassDiagramViewResult.success(payload) },
                     onFailure = { error -> ClassDiagramViewResult.failure(error) },
                 )
-            }
-            .inSmartMode(project)
-            .expireWith(project)
-            .finishOnUiThread(ModalityState.defaultModalityState()) { result ->
+            },
+            onUi = uiResult@ { result ->
                 when {
                     result.cancelled || project.isDisposed -> Unit
                     result.failure != null -> {
                         if (isBenignCompleteClassDiagramCancellation(result.failure)) {
-                            return@finishOnUiThread
+                            return@uiResult
                         }
                         logger.warn("补齐类图完整关系失败", result.failure)
                         val message = "补齐类图完整关系失败：${result.failure.message ?: result.failure.javaClass.simpleName}"
@@ -529,8 +527,8 @@ internal class ClassDiagramWorkflow(
                         )
                     }
                 }
-            }
-            .submit(AppExecutorUtil.getAppExecutorService())
+            },
+        )
     }
 
     /**

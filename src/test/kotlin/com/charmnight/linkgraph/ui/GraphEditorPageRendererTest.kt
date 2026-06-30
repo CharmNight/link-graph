@@ -24,17 +24,17 @@ import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
 import com.charmnight.linkgraph.mermaid.MermaidIssue
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraftWriteReport
-import com.charmnight.linkgraph.llm.GraphBeautificationResult
-import com.charmnight.linkgraph.llm.GraphBeautificationStep
-import com.charmnight.linkgraph.llm.EditScope
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GenerationPlanItem
-import com.charmnight.linkgraph.llm.GenerationPlanSource
-import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.llm.LlmResultSource
-import com.charmnight.linkgraph.llm.ResultEvidenceFinding
-import com.charmnight.linkgraph.llm.ResultEvidenceLevel
-import com.charmnight.linkgraph.llm.ResultEvidenceReference
+import com.charmnight.linkgraph.agent.model.GraphBeautificationResult
+import com.charmnight.linkgraph.agent.model.GraphBeautificationStep
+import com.charmnight.linkgraph.agent.model.EditScope
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GenerationPlanItem
+import com.charmnight.linkgraph.agent.model.GenerationPlanSource
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.LlmResultSource
+import com.charmnight.linkgraph.agent.model.ResultEvidenceFinding
+import com.charmnight.linkgraph.agent.model.ResultEvidenceLevel
+import com.charmnight.linkgraph.agent.model.ResultEvidenceReference
 import com.charmnight.linkgraph.model.DiffStatus
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDiffElementKind
@@ -1568,12 +1568,12 @@ class GraphEditorPageRendererTest {
             impactSummary = "影响主流程分支。",
             claimType = "CODE_FACT",
             evidence = listOf(
-                com.charmnight.linkgraph.llm.ResultEvidenceFinding(
+                com.charmnight.linkgraph.agent.model.ResultEvidenceFinding(
                     id = "finding-upload-condition",
                     claim = "当前源码里直接能看到上传条件判断。",
-                    evidenceLevel = com.charmnight.linkgraph.llm.ResultEvidenceLevel.DIRECT_SOURCE,
+                    evidenceLevel = com.charmnight.linkgraph.agent.model.ResultEvidenceLevel.DIRECT_SOURCE,
                     references = listOf(
-                        com.charmnight.linkgraph.llm.ResultEvidenceReference(
+                        com.charmnight.linkgraph.agent.model.ResultEvidenceReference(
                             nodeId = "flow-action:condition",
                         ),
                     ),
@@ -1581,7 +1581,7 @@ class GraphEditorPageRendererTest {
             ),
         )
         val snapshot = testSnapshot(
-            qaResult = com.charmnight.linkgraph.llm.GraphPatchResult(
+            qaResult = com.charmnight.linkgraph.agent.model.GraphPatchResult(
                 source = LlmResultSource.LOCAL_RULE,
                 question = "这里是不是有问题？",
                 answer = "建议修改条件判断。",

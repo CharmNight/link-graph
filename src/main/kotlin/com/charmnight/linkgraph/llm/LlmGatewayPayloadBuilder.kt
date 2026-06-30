@@ -1,5 +1,8 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.agent.model.*
+import com.charmnight.linkgraph.settings.*
+
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 
@@ -133,7 +136,7 @@ internal object LlmGatewayPayloadBuilder {
     }
 
     /**
-     * 把 [LlmDeliveryMode.STREAM] 标志写到协议 payload 中。
+     * 把 [LlmDeliveryMode.STREAM] 标志写到协议载荷中。
      *
      * 三种协议（OpenAI Chat / Responses / Anthropic Messages）的 stream 字段名相同，
      * 统一走本函数避免任一协议漏写——历史上 [anthropicMessagesPayload] 没有 stream 分支，

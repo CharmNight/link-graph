@@ -1,5 +1,8 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.agent.model.*
+import com.charmnight.linkgraph.settings.*
+
 import java.net.ConnectException
 import java.net.UnknownHostException
 import java.net.http.HttpConnectTimeoutException
@@ -174,7 +177,7 @@ internal class RemoteStructuredResponseParser(
                 )
             },
             onFailure = { repairError ->
-                // 类型化异常替代 message-as-control-flow
+                // 用类型化异常替代按消息文本控制流程
                 throw LlmSceneException.StructuredParseFailed(
                     scene = scene,
                     firstError = firstError,

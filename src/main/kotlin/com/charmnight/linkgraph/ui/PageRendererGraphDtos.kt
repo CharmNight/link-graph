@@ -8,9 +8,9 @@ import com.charmnight.linkgraph.presentation.GraphViewPresentation
  * 包含：
  * - 图文档 / 投影索引的传输 DTO（[GraphDocumentDto] 等）
  * - 视图（FactGraph / Flowchart / ResourceRelation / Architecture / ClassDiagram / ReviewGraph）相关 DTO
- * - indexed graph 摘要 / freshness / visibility 相关 DTO
+ * - 索引图摘要 / 新鲜度 / 可见性相关 DTO
  *
- * 视图 summary 走 sealed interface [ViewDocumentSummaryDto]，由各视图 DTO 实现。
+ * 视图摘要走密封接口 [ViewDocumentSummaryDto]，由各视图 DTO 实现。
  */
 
 // ---------- 图文档基础 DTO ----------

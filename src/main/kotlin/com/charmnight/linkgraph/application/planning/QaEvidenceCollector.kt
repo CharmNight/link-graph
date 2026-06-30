@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.application.planning
 
-import com.charmnight.linkgraph.llm.EvidenceTraceEntry
-import com.charmnight.linkgraph.llm.SourceSnippetContext
+import com.charmnight.linkgraph.agent.model.EvidenceTraceEntry
+import com.charmnight.linkgraph.agent.model.SourceSnippetContext
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge
 import com.charmnight.linkgraph.model.GraphNode

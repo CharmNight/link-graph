@@ -1,8 +1,8 @@
 package com.charmnight.linkgraph.workbench
 
-import com.charmnight.linkgraph.llm.EditScope
-import com.charmnight.linkgraph.llm.ResultEvidenceFinding
-import com.charmnight.linkgraph.llm.ResultEvidenceLevel
+import com.charmnight.linkgraph.agent.model.EditScope
+import com.charmnight.linkgraph.agent.model.ResultEvidenceFinding
+import com.charmnight.linkgraph.agent.model.ResultEvidenceLevel
 import com.charmnight.linkgraph.model.GraphPatch
 
 /** 步骤粒度，决定如何把事实图节点投影为工作台步骤。 */
@@ -257,7 +257,7 @@ data class GenerationPlanDiscussionSession(
 
 /** 生成方案讨论单次结果。 */
 data class GenerationPlanDiscussionResult(
-    val source: com.charmnight.linkgraph.llm.LlmResultSource,
+    val source: com.charmnight.linkgraph.agent.model.LlmResultSource,
     val question: String,
     val answer: String,
     val promptPreview: String,

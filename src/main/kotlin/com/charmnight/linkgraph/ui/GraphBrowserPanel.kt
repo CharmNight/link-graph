@@ -20,7 +20,7 @@ import javax.swing.JPanel
 
 /**
  * IDEA 工具窗口里的 JCEF 外壳。
- * 负责把前端产物装进浏览器、注入 bridge，并在项目状态变化时重新下发 bootstrap 数据。
+ * 负责把前端产物装进浏览器、注入桥接对象，并在项目状态变化时重新下发启动数据。
  */
 class GraphBrowserPanel private constructor(
     project: Project,
@@ -70,7 +70,7 @@ class GraphBrowserPanel private constructor(
     private val pendingTransportSnapshotsLock = Any()
     /** 暂存已渲染但尚未确认的快照，按 revision 索引。 */
     private val pendingTransportSnapshots = mutableMapOf<Long, PendingTransportSnapshot>()
-    /** 前端入口使用的虚拟 URL，配合自定义 scheme handler 完成资源加载。 */
+    /** 前端入口使用的虚拟 URL，配合自定义协议处理器完成资源加载。 */
     private val entryUrl: String = INLINE_ENTRY_URL
     /** 加载到的前端入口 HTML 文本，渲染前可能被替换为降级页面。 */
     private val frontendHtml: String = resolveFrontendHtml()
@@ -79,7 +79,7 @@ class GraphBrowserPanel private constructor(
     private var renderedEntryHtml: String? = null
     /** 真正承载前端的 JCEF 浏览器实例，当 JCEF 不可用时为 null。 */
     private val browser: JBCefBrowser? = createBrowser()
-    /** 注册自定义 scheme handler，把前端静态资源请求路由到 classpath 资源。 */
+    /** 注册自定义协议处理器，把前端静态资源请求路由到类路径资源。 */
     private val frontendAssetRegistrar: GraphBrowserFrontendAssetRegistrar? = browser?.let { currentBrowser ->
         GraphBrowserFrontendAssetRegistrar(
             browser = currentBrowser,
@@ -187,7 +187,7 @@ class GraphBrowserPanel private constructor(
      * 这样用户第一次看到的就是真实的项目状态。
      */
     private fun renderEntryHtml(initialSnapshot: com.charmnight.linkgraph.ui.GraphEditorStateSnapshot): String {
-        // 首次入口请求时就内嵌 bootstrap，避免前端先渲染一版演示态再切到真实项目状态。
+        // 首次入口请求时就内嵌启动数据，避免前端先渲染一版演示态再切到真实项目状态。
         val initialArtifactRefs = sliceRenderer.prepareBootstrapSnapshotArtifacts(initialSnapshot)
         return pageRenderer.render(
             frontendHtml,
@@ -410,9 +410,9 @@ class GraphBrowserPanel private constructor(
         private const val DEBUG_INTERACTION_PROBE_ENV: String = "LINKGRAPH_DEBUG_INTERACTION_PROBE"
         // 资源加载失败时使用的降级入口 URL
         const val FALLBACK_ENTRY_URL: String = "linkgraph://shell/index.html"
-        // 默认前端入口 URL，配合自定义 scheme handler 使用
+        // 默认前端入口 URL，配合自定义协议处理器使用
         const val INLINE_ENTRY_URL: String = "https://linkgraph.local/index.html"
-        // 从前端跟踪 payload 中提取事件名的正则
+        // 从前端跟踪载荷中提取事件名的正则
         private val FRONTEND_TRACE_EVENT_REGEX: Regex = Regex(""""event":"([^"]+)"""")
         // 高频且对排查价值不大的前端事件，命中后不再写日志
         private val NOISY_FRONTEND_TRACE_EVENTS: Set<String> = setOf(

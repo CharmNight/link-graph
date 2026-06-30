@@ -7,8 +7,8 @@ import com.charmnight.linkgraph.application.usecase.DraftPatchUseCase
 import com.charmnight.linkgraph.application.usecase.RestoreDraftPatchPreviewSource
 import com.charmnight.linkgraph.application.usecase.RestoreDraftPatchPreviewUseCaseResult
 import com.charmnight.linkgraph.application.usecase.UndoDraftPatchApplyUseCaseResult
-import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.LlmResultSource
 import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode

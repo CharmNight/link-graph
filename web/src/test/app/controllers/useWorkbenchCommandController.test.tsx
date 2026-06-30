@@ -35,11 +35,11 @@ function renderController(availability = {
   classDiagramLoaded: false,
   reviewGraphLoaded: false,
 }) {
-  const runBridgeCommand = vi.fn((_label: string, command: () => BridgeInvocationResult, options?: unknown) => {
+  const runBridgeCommand = vi.fn((_label: string, command: () => BridgeInvocationResult, _options?: unknown) => {
     command();
     return { ok: true } as const;
   });
-  const submitAsyncBridgeCommand = vi.fn((_label: string, command: () => BridgeInvocationResult, options?: unknown) => {
+  const submitAsyncBridgeCommand = vi.fn((_label: string, command: () => BridgeInvocationResult, _options?: unknown) => {
     command();
     return { ok: true } as const;
   });

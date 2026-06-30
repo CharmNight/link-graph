@@ -416,4 +416,4 @@ internal class InteractiveProjectionEngine(
 
 }
 
-// collectCurrentMethodNodeIds / collectAnchorMethodBodyNodeIds 使用同包 top-level 函数（GraphProjectionKernelHelpers.kt）。
+// collectCurrentMethodNodeIds / collectAnchorMethodBodyNodeIds 使用同包顶层函数（GraphProjectionKernelHelpers.kt）。

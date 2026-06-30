@@ -1,8 +1,8 @@
 package com.charmnight.linkgraph.llm.prompt
 
-import com.charmnight.linkgraph.llm.GraphQaContext
+import com.charmnight.linkgraph.agent.model.GraphQaContext
 import com.charmnight.linkgraph.llm.GraphQaScopeResolver
-import com.charmnight.linkgraph.llm.LlmPromptPackage
+import com.charmnight.linkgraph.agent.model.LlmPromptPackage
 import com.charmnight.linkgraph.llm.context.PromptComposer
 import com.charmnight.linkgraph.llm.context.PromptSection
 import com.charmnight.linkgraph.llm.context.PromptSectionPriority.BEHAVIOR_RULE

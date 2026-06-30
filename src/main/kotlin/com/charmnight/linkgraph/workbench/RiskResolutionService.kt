@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.workbench
 
 import com.charmnight.linkgraph.application.model.RiskResolutionSnapshot
-import com.charmnight.linkgraph.llm.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
 
 /**
  * 风险处置服务：负责把风险线程的处置状态写回 patch 结果，并依据草稿与风险线程的状态

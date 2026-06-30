@@ -1,12 +1,15 @@
 package com.charmnight.linkgraph.codegen
 
-import com.charmnight.linkgraph.llm.GenerationContext
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GenerationPlanItem
-import com.charmnight.linkgraph.llm.EditScope
-import com.charmnight.linkgraph.llm.LlmGateway
+import com.charmnight.linkgraph.agent.model.*
+import com.charmnight.linkgraph.settings.*
+
+import com.charmnight.linkgraph.agent.model.GenerationContext
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GenerationPlanItem
+import com.charmnight.linkgraph.agent.model.EditScope
+import com.charmnight.linkgraph.agent.model.LlmGateway
 import com.charmnight.linkgraph.llm.LlmPromptFactory
-import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.agent.model.LlmResultSource
 import com.charmnight.linkgraph.llm.LlmUserMessageFormatter
 import com.charmnight.linkgraph.llm.LlmStructuredSchemas
 import com.charmnight.linkgraph.llm.RemoteStructuredResponseParser
@@ -581,7 +584,7 @@ class CodeGenerationService(
         return normalized
     }
 
-    /** 推断 SQL 列名，优先结构化 metadata，再使用 graph inputs 中看起来像字段名的条目。 */
+    /** 推断 SQL 列名，优先结构化元数据，再使用图输入中看起来像字段名的条目。 */
     private fun inferSqlColumns(node: GraphNode): List<String> {
         val metadataColumns = listOf(
             "sql.columns",

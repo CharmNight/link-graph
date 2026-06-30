@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 import com.charmnight.linkgraph.architecture.architectureIndexService
 import com.charmnight.linkgraph.architecture.query.TraversalMode
 
@@ -10,7 +12,7 @@ class ExploreProjectContextTool(
     override val name: String = "explore_project_context"
     override val description: String = "一次性获取项目上下文包：符号、关系、片段、变更符号、索引新鲜度和告警"
 
-    override fun parseInput(raw: Map<String, Any?>): ExploreProjectContextInput {
+    override fun parseInput(raw: ToolInputPayload): ExploreProjectContextInput {
         val depth = (optionalInt(raw, "depth") ?: 2).coerceIn(1, 5)
         val maxSymbols = (optionalInt(raw, "maxSymbols") ?: 8).coerceIn(1, 50)
         val maxRelations = (optionalInt(raw, "maxRelations") ?: 30).coerceIn(0, 200)
@@ -132,7 +134,7 @@ class QueryProjectGraphTool(
     override val name: String = "query_project_graph"
     override val description: String = "查询项目图的小上下文子图"
 
-    override fun parseInput(raw: Map<String, Any?>): QueryProjectGraphInput = QueryProjectGraphInput(
+    override fun parseInput(raw: ToolInputPayload): QueryProjectGraphInput = QueryProjectGraphInput(
         // 兼容 question / query 两个 key 名（前者是新规范，后者是历史 fallback）
         question = optionalString(raw, "question") ?: optionalString(raw, "query") ?: missing("question"),
         budget = optionalInt(raw, "budget") ?: 20,
@@ -166,7 +168,7 @@ class FindProjectPathTool(
     override val name: String = "find_project_path"
     override val description: String = "查找两个项目符号之间的最短关系路径"
 
-    override fun parseInput(raw: Map<String, Any?>): FindProjectPathInput = FindProjectPathInput(
+    override fun parseInput(raw: ToolInputPayload): FindProjectPathInput = FindProjectPathInput(
         from = requireString(raw, "from"),
         to = requireString(raw, "to"),
         maxDepth = optionalInt(raw, "maxDepth") ?: 6,
@@ -193,7 +195,7 @@ class ExplainProjectNodeTool(
     override val name: String = "explain_project_node"
     override val description: String = "解释项目图节点的符号和出入关系"
 
-    override fun parseInput(raw: Map<String, Any?>): ExplainProjectNodeInput = ExplainProjectNodeInput(
+    override fun parseInput(raw: ToolInputPayload): ExplainProjectNodeInput = ExplainProjectNodeInput(
         // 兼容 symbolOrNodeId / symbol 两个 key 名（前者是新规范，后者是历史 fallback）
         symbol = optionalString(raw, "symbolOrNodeId") ?: optionalString(raw, "symbol") ?: missing("symbolOrNodeId"),
     )
@@ -215,7 +217,7 @@ class AffectedProjectNodesTool(
     override val name: String = "affected_project_nodes"
     override val description: String = "按图关系查找受影响的上下游节点"
 
-    override fun parseInput(raw: Map<String, Any?>): AffectedProjectNodesInput = AffectedProjectNodesInput(
+    override fun parseInput(raw: ToolInputPayload): AffectedProjectNodesInput = AffectedProjectNodesInput(
         // 兼容 symbolOrFile / symbol 两个 key 名
         symbol = optionalString(raw, "symbolOrFile") ?: optionalString(raw, "symbol") ?: missing("symbolOrFile"),
         depth = optionalInt(raw, "depth") ?: 2,
@@ -241,7 +243,7 @@ class GetProjectIndexDigestTool(
     override val name: String = "get_project_index_digest"
     override val description: String = "获取项目图诊断摘要"
 
-    override fun parseInput(raw: Map<String, Any?>): GetProjectIndexDigestInput = GetProjectIndexDigestInput(
+    override fun parseInput(raw: ToolInputPayload): GetProjectIndexDigestInput = GetProjectIndexDigestInput(
         scope = optionalString(raw, "scope") ?: "",
     )
 

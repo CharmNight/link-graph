@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
  * 本测试以静态文本扫描方式校验两侧命令集合一致，避免 silent drift。
  *
  * 扩展校验 payload key 集合——Kotlin parser 在每个 when 分支里通过
- * `payload.string("xxx")` / `payload.requiredString("xxx", ...)` / `payload.stringList("xxx")`
+     * 读取方式示例：`payload.string("xxx")` / `payload.requiredString("xxx", ...)` / `payload.stringList("xxx")`
  * / `payload.enum("xxx")` 等读 payload 字段；如果某次重构漏改或新增字段未同步 TS，
  * 就会出现「TS 发的 key Kotlin 不读」或「Kotlin 期待 key TS 不发」。
  * 本测试从 parseMessage 函数体抽取每条命令实际读到的 payload key 集合，
@@ -124,11 +124,11 @@ class BridgeCommandTypeConsistencyTest {
      * 从 parseMessage 函数体抽取每个命令分支实际读到的 payload key 集合。
      *
      * 匹配的 key 提取模式（覆盖 parser 当前所有读 payload 的方式）：
-     * - `payload.string("xxx")` / `payload.requiredString("xxx", ...)`
-     * - `payload.stringList("xxx")`
-     * - `payload.enum<...>("xxx")` / `payload.enum("xxx")` / `payload.enumOrDefault("xxx", ...)`
-     * - `payload.enumOrNull<...>("xxx")`
-     * - `payload["xxx"]`（如 raw map 访问）
+     * - 字符串读取：`payload.string("xxx")` / `payload.requiredString("xxx", ...)`
+     * - 字符串列表读取：`payload.stringList("xxx")`
+     * - 枚举读取：`payload.enum<...>("xxx")` / `payload.enum("xxx")` / `payload.enumOrDefault("xxx", ...)`
+     * - 可空枚举读取：`payload.enumOrNull<...>("xxx")`
+     * - 原始映射读取：`payload["xxx"]`（如 raw map 访问）
      *
      * 每个命令分支用 `"cmd" ->` 到下一个 `"cmd" ->`（或函数结束）之间限定。
      */

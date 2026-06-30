@@ -7,6 +7,8 @@ import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
 import com.charmnight.linkgraph.application.port.WorkspaceGraphCommitter
 import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
+import com.charmnight.linkgraph.application.runtime.SameThreadTaskRunner
+import com.charmnight.linkgraph.application.runtime.TaskRunner
 import com.charmnight.linkgraph.application.usecase.SubjectGraphUseCase
 import com.charmnight.linkgraph.application.usecase.SubjectGraphUseCaseResult
 import com.charmnight.linkgraph.application.workflow.subject.SubjectAnalysisResultApplier
@@ -26,8 +28,6 @@ import com.charmnight.linkgraph.semantic.subject.CodeSubjectHandleFactory
 import com.charmnight.linkgraph.semantic.subject.ResourceSubjectHandle
 import com.charmnight.linkgraph.semantic.subject.SubjectLocator
 import com.charmnight.linkgraph.semantic.subject.SubjectPreviewKind
-import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 
 /**
@@ -43,6 +43,8 @@ internal class SubjectGraphWorkflow(
     snapshotProvider: EditorSnapshotProvider,
     /** 异步请求生命周期支持，负责请求排队、取消、去抖等通用编排逻辑。 */
     asyncRequestLifecycle: AsyncRequestLifecycleSupport,
+    /** 平台无关任务调度入口。 */
+    taskRunner: TaskRunner = SameThreadTaskRunner(),
     /** 延迟获取主体定位器，避免在初始化阶段过早依赖语义索引。 */
     subjectLocatorProvider: () -> SubjectLocator,
     /** 延迟获取语义分析器，便于在 dumb 模式或后台线程按需构造。 */
@@ -71,6 +73,7 @@ internal class SubjectGraphWorkflow(
         project = project,
         snapshotProvider = snapshotProvider,
         asyncRequestLifecycle = asyncRequestLifecycle,
+        taskRunner = taskRunner,
         subjectLocatorProvider = subjectLocatorProvider,
         semanticAnalyzerProvider = semanticAnalyzerProvider,
         analysisOutcomeFactoryProvider = analysisOutcomeFactoryProvider,
@@ -177,14 +180,11 @@ internal class SubjectGraphWorkflow(
                 ApplicationFeedbackLevel.INFO,
                 "项目正在索引，已在索引完成后追加当前方法节点。",
             )
-            DumbService.getInstance(project).smartInvokeLater(
-                {
-                    if (!project.isDisposed) {
-                        addCurrentEditorContextNode()
-                    }
-                },
-                ModalityState.defaultModalityState(),
-            )
+            dependencies.taskRunner.smartUi(TaskRunner.UiPolicy.ANY) {
+                if (!project.isDisposed) {
+                    addCurrentEditorContextNode()
+                }
+            }
             return true
         }
 
@@ -306,17 +306,14 @@ internal class SubjectGraphWorkflow(
                 ApplicationFeedbackLevel.INFO,
                 "项目正在索引，已在索引完成后继续分析当前编辑器上下文链路。",
             )
-            DumbService.getInstance(project).smartInvokeLater(
-                {
-                    if (!project.isDisposed && requestCoordinator.isLatest(requestId)) {
-                        loadCurrentEditorContextGraphAsync(
-                            requestId = requestId,
-                            deferUntilSmart = false,
-                        )
-                    }
-                },
-                ModalityState.defaultModalityState(),
-            )
+            dependencies.taskRunner.smartUi(TaskRunner.UiPolicy.ANY) {
+                if (!project.isDisposed && requestCoordinator.isLatest(requestId)) {
+                    loadCurrentEditorContextGraphAsync(
+                        requestId = requestId,
+                        deferUntilSmart = false,
+                    )
+                }
+            }
             return
         }
 

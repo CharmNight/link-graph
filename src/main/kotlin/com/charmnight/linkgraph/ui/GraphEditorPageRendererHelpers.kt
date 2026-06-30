@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.ResultEvidenceFinding
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.ResultEvidenceFinding
 import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.GraphDiffEntry
 import com.charmnight.linkgraph.model.GraphDocument
@@ -20,7 +20,7 @@ private const val UI_PREFIX = "ui."
 /** 布局元数据前缀。 */
 private const val LAYOUT_PREFIX = "layout."
 
-/** 从 metadata 读取 UI 坐标（ui.x / ui.y）；任一缺失返回 null。 */
+/** 从元数据读取 UI 坐标（ui.x / ui.y）；任一缺失返回 null。 */
 internal fun Map<String, String>.uiPosition(): Pair<Double, Double>? {
     val x = this[GraphMetadataKeys.Ui.X]?.toDoubleOrNull() ?: return null
     val y = this[GraphMetadataKeys.Ui.Y]?.toDoubleOrNull() ?: return null
@@ -39,10 +39,10 @@ internal fun Map<String, String>?.semanticMetadata(): Map<String, String>? {
 }
 
 /**
- * GraphEditorPageRenderer 的纯展示 / 序列化 helper（P2-1 拆分，P2-6 DTO 化）。
+ * GraphEditorPageRenderer 的纯展示 / 序列化辅助函数（P2-1 拆分，P2-6 DTO 化）。
  *
- * 这些函数无状态、把领域对象转换为前端可消费的 DTO（data class），
- * 与 GraphEditorPageRenderer 的 HTML 渲染 / bootstrap payload 装配主流程解耦后便于复用与单独测试。
+ * 这些函数无状态、把领域对象转换为前端可消费的 DTO（数据类），
+ * 与 GraphEditorPageRenderer 的 HTML 渲染 / 启动载荷装配主流程解耦后便于复用与单独测试。
  *
  * Gson 反射序列化保证字段顺序与原 linkedMapOf 一致（serializeNulls 已开）。
  * 字段名拼写错误会在编译期暴露，重构也 IDE 友好。

@@ -22,8 +22,8 @@ class GraphEditorStateStore(
             val transformed = transform(current)
             val next = normalizeRevision(current, transformed).freeze()
             state = next
-            // Return a defensive copy separate from the stored state. The first freeze protects
-            // the store; this second freeze protects the store from callers holding the result.
+            // 返回与内部存储分离的防御性副本；第一次 freeze 保护 store，
+            // 第二次 freeze 避免调用方持有返回值后影响 store。
             next.freeze()
         }
     }
@@ -44,8 +44,8 @@ class GraphEditorStateStore(
             state = next
             GraphEditorStateCommitResult(
                 committed = true,
-                // Return a defensive copy separate from the stored state. The first freeze protects
-                // the store; this second freeze protects the store from callers holding the result.
+                // 返回与内部存储分离的防御性副本；第一次 freeze 保护 store，
+                // 第二次 freeze 避免调用方持有返回值后影响 store。
                 snapshot = next.freeze(),
             )
         }

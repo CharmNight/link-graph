@@ -12,9 +12,9 @@ import com.charmnight.linkgraph.application.result.ReviewRequestStartedResult
 import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
 import com.charmnight.linkgraph.foundation.LinkGraphDebugEnvironment
 import com.charmnight.linkgraph.foundation.LinkGraphRenderTrace
-import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
-import com.charmnight.linkgraph.llm.GraphBeautificationService
-import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.agent.model.GraphBeautificationFollowUpContext
+import com.charmnight.linkgraph.application.port.GraphBeautificationPort
+import com.charmnight.linkgraph.agent.model.LlmResultSource
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.workbench.AssistantActionId
 import com.charmnight.linkgraph.workbench.AssistantIntent
@@ -33,7 +33,7 @@ internal class GraphBeautificationReviewWorkflow(
     private val snapshotProvider: EditorSnapshotProvider,
     private val eventSink: GraphEditorApplicationEventSink,
     private val planningContextFactory: PlanningContextFactory,
-    private val graphBeautificationService: GraphBeautificationService,
+    private val graphBeautificationService: GraphBeautificationPort,
     private val settingsProvider: () -> LinkGraphSettingsState,
     private val asyncRequestLifecycle: AsyncRequestLifecycleSupport,
     private val logger: Logger,

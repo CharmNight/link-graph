@@ -1,11 +1,11 @@
 package com.charmnight.linkgraph.ui
 
-import com.charmnight.linkgraph.llm.tools.ToolGraphSceneId
-import com.charmnight.linkgraph.llm.tools.ToolGraphSceneState
-import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshot
-import com.charmnight.linkgraph.llm.tools.ToolGraphView
-import com.charmnight.linkgraph.llm.tools.ToolGraphProjectionIndex
-import com.charmnight.linkgraph.llm.tools.ToolGraphProjectionNodeMapping
+import com.charmnight.linkgraph.agent.tools.ToolGraphSceneId
+import com.charmnight.linkgraph.agent.tools.ToolGraphSceneState
+import com.charmnight.linkgraph.agent.tools.ToolGraphSnapshot
+import com.charmnight.linkgraph.agent.tools.ToolGraphView
+import com.charmnight.linkgraph.agent.tools.ToolGraphProjectionIndex
+import com.charmnight.linkgraph.agent.tools.ToolGraphProjectionNodeMapping
 import com.charmnight.linkgraph.ui.GraphEditorStateSnapshot
 import com.charmnight.linkgraph.ui.GraphSceneId
 import com.charmnight.linkgraph.application.model.GraphProjectionIndex

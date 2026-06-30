@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.application
 
 import com.charmnight.linkgraph.application.command.ApplicationCommand
-import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
+import com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeHooks
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionTarget
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionTargetKind
 import com.charmnight.linkgraph.application.usecase.InvocationExpansionUseCase
@@ -27,7 +27,7 @@ class InvocationExpansionBridgeRoutingTest : BasePlatformTestCase() {
     fun testRoutesRequestExpandInvocationMessageToApplicationService() {
         val service = project.graphEditorApplicationServiceForTest()
         service.commandDispatcher.dispatch(ApplicationCommand.LoadGraph(invocationOnlyGraph(), "test"))
-        project.getService(LinkGraphProjectTestOverrides::class.java).invocationExpansionTargetResolver = { _, signature ->
+        project.getService(LinkGraphProjectRuntimeHooks::class.java).invocationExpansionTargetResolver = { _, signature ->
             InvocationExpansionTarget(InvocationExpansionTargetKind.EXTERNAL_JDK, signature = signature)
         }
 

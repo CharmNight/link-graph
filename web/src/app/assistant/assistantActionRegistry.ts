@@ -160,8 +160,8 @@ export function assistantActionDefinition(
  * 不同模式下的同一意图对应不同动作：
  * - DESCRIBE_CLASS → 始终 DESCRIBE_CLASS（但仅在类图模式可用）；
  * - EXPLAIN_CODE → FACT/FLOWCHART 用 EXPLAIN_FLOW，其他用 EXPLAIN_STRUCTURE；
- * - ASK_CODE → ASK_CONTEXT；
- * - GENERATE_CODE → GENERATE_IMPLEMENTATION；
+ * - 提问意图 ASK_CODE → ASK_CONTEXT；
+ * - 生成意图 GENERATE_CODE → GENERATE_IMPLEMENTATION；
  * - CHECK_CHANGE → CHECK_CHANGE（但仅在部分模式可用）。
  */
 export function assistantActionIdForIntent(

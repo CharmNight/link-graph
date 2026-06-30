@@ -1,5 +1,11 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
+typealias ToolInputPayload = Map<String, @JvmSuppressWildcards Any?>
+
+typealias ToolPayload = Map<String, @JvmSuppressWildcards Any?>
+
 /**
  * 统一定义 Agent 可调用工具。
  *
@@ -21,7 +27,7 @@ interface AgentTool {
      * @return 工具执行结果，包含成功标志与结构化 payload
      */
     fun invoke(
-        input: Map<String, Any?>,
+        input: ToolInputPayload,
         context: ToolExecutionContext,
     ): ToolResult
 }

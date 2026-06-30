@@ -10,8 +10,6 @@ import com.charmnight.linkgraph.application.result.CodeDraftWriteResult
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
 import com.intellij.diff.DiffRequestFactory
 import com.intellij.diff.merge.MergeResult
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.vfs.LocalFileSystem
 import java.nio.file.Files
 
@@ -169,15 +167,14 @@ internal class CodeDraftApplyWorkflow(
                 return
             }
         }
-        ApplicationManager.getApplication().invokeLater(
-            {
+        dependencies.taskRunner.ui(com.charmnight.linkgraph.application.runtime.TaskRunner.UiPolicy.ANY) {
                 val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(target)
                 if (virtualFile == null) {
                     dependencies.emitGenerationFeedback(
                         ApplicationFeedbackLevel.ERROR,
                         "无法定位目标文件 '${normalizedDraft.targetPath}' 的 IDE VirtualFile，无法打开可写入 merge。",
                     )
-                    return@invokeLater
+                    return@ui
                 }
                 val request = runCatching {
                     DiffRequestFactory.getInstance().createMergeRequest(
@@ -219,12 +216,10 @@ internal class CodeDraftApplyWorkflow(
                         ApplicationFeedbackLevel.ERROR,
                         error.message ?: "无法为代码草稿创建可写入 merge 请求。",
                     )
-                    return@invokeLater
+                    return@ui
                 }
                 dependencies.showCodeDraftMergeRequest(dependencies.project, request)
-            },
-            ModalityState.defaultModalityState(),
-        )
+        }
     }
 
     /** 请求跳转到指定项目相对路径对应的源码位置。 */

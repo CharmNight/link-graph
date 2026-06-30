@@ -1,7 +1,7 @@
 // 助理链路讲解历史控制器。
 // 主要功能：管理"链路讲解结果"的历史记录，让用户可以回看之前的讲解、回到上一步等。
 // 涉及多个 ref（pending 状态）与多个 state（讲解结果、历史、助理会话等）的协同更新。
-import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type {
   AssistantResultStore,
   AssistantSessionState,
@@ -81,17 +81,42 @@ interface UseAssistantExplanationHistoryArgs {
  * 自动维护步骤选中：当前步骤在新结果中不存在时回退到首步。
  */
 export function useAssistantExplanationHistory(args: UseAssistantExplanationHistoryArgs) {
+  const {
+    graphBeautificationResult,
+    graphBeautificationRequestState,
+    explanationHistory,
+    explanationLocalOverrideRef,
+    pendingExplanationRequestModeRef,
+    pendingExplanationSessionLabelRef,
+    pendingExplanationHistoryEntryRef,
+    assistantSessionState,
+    assistantResultStore,
+    setSelectedExplanationStepId,
+    setHoveredExplanationStepId,
+    setSelectedExplanationGranularity,
+    setCurrentExplanationSessionLabel,
+    setExplanationHistory,
+    setGraphBeautificationResult,
+    setGraphBeautificationRequestState,
+    setAssistantSessionState,
+    setAssistantResultStore,
+  } = args;
+
   // 结果序号：用于生成本地结果 ID；与助理会话的 nextResultSequence 取最大值同步
   const historyResultSequenceRef = useRef(
-    Math.max(args.assistantSessionState.nextResultSequence ?? 1, args.assistantSessionState.turns.length + 1),
+    Math.max(assistantSessionState.nextResultSequence ?? 1, assistantSessionState.turns.length + 1),
   );
 
   /** 清空所有 pending 状态。 */
-  function resetPendingExplanationRequest() {
-    args.pendingExplanationRequestModeRef.current = null;
-    args.pendingExplanationSessionLabelRef.current = null;
-    args.pendingExplanationHistoryEntryRef.current = null;
-  }
+  const resetPendingExplanationRequest = useCallback(() => {
+    pendingExplanationRequestModeRef.current = null;
+    pendingExplanationSessionLabelRef.current = null;
+    pendingExplanationHistoryEntryRef.current = null;
+  }, [
+    pendingExplanationHistoryEntryRef,
+    pendingExplanationRequestModeRef,
+    pendingExplanationSessionLabelRef,
+  ]);
 
   /**
    * 构造一条历史轮次（AssistantTurnRef）。
@@ -120,12 +145,12 @@ export function useAssistantExplanationHistory(args: UseAssistantExplanationHist
   function nextHistoryResultId(): string {
     let nextSequence = Math.max(
       historyResultSequenceRef.current,
-      args.assistantSessionState.nextResultSequence ?? 1,
-      args.assistantSessionState.turns.length + 1,
+      assistantSessionState.nextResultSequence ?? 1,
+      assistantSessionState.turns.length + 1,
     );
     let resultId = `explanation-history:local:${nextSequence}`;
     // 确保唯一：如果已存在则继续递增
-    while (Object.prototype.hasOwnProperty.call(args.assistantResultStore, resultId)) {
+    while (Object.prototype.hasOwnProperty.call(assistantResultStore, resultId)) {
       nextSequence += 1;
       resultId = `explanation-history:local:${nextSequence}`;
     }
@@ -141,7 +166,7 @@ export function useAssistantExplanationHistory(args: UseAssistantExplanationHist
     const resultId = nextHistoryResultId();
     const createdAtEpochMillis = Date.now();
     // 写入结果仓库
-    args.setAssistantResultStore((current) => ({
+    setAssistantResultStore((current) => ({
       ...current,
       [resultId]: {
         kind: "EXPLANATION",
@@ -149,7 +174,7 @@ export function useAssistantExplanationHistory(args: UseAssistantExplanationHist
       },
     }));
     // 在会话中添加一条轮次
-    args.setAssistantSessionState((current) => {
+    setAssistantSessionState((current) => {
       const nextTurn = makeHistoryTurn(current, resultId, createdAtEpochMillis);
       return {
         ...current,
@@ -169,23 +194,23 @@ export function useAssistantExplanationHistory(args: UseAssistantExplanationHist
    * 从历史数组中移除该位置之后的所有历史（"穿越"会丢弃未来分支）。
    */
   function handleOpenExplanationHistory(historyIndex: number) {
-    args.setExplanationHistory((current) => {
+    setExplanationHistory((current) => {
       const snapshot = current[historyIndex];
       if (!snapshot) {
         return current;
       }
       // 标记"当前展示的是历史覆盖"
-      args.explanationLocalOverrideRef.current = true;
+      explanationLocalOverrideRef.current = true;
       resetPendingExplanationRequest();
       // 把该历史写入仓库与会话
       putHistoryResult(snapshot);
       // 切换各 state 到该历史的状态
-      args.setGraphBeautificationResult(snapshot.result);
-      args.setGraphBeautificationRequestState(snapshot.requestState);
-      args.setSelectedExplanationStepId(snapshot.selectedStepId);
-      args.setSelectedExplanationGranularity(snapshot.granularity);
-      args.setCurrentExplanationSessionLabel(snapshot.sessionLabel);
-      args.setHoveredExplanationStepId(null);
+      setGraphBeautificationResult(snapshot.result);
+      setGraphBeautificationRequestState(snapshot.requestState);
+      setSelectedExplanationStepId(snapshot.selectedStepId);
+      setSelectedExplanationGranularity(snapshot.granularity);
+      setCurrentExplanationSessionLabel(snapshot.sessionLabel);
+      setHoveredExplanationStepId(null);
       // 切掉该位置之后的历史
       return current.slice(0, historyIndex);
     });
@@ -193,64 +218,73 @@ export function useAssistantExplanationHistory(args: UseAssistantExplanationHist
 
   /** 返回上一个历史（即数组末尾的那一条）。 */
   function handleReturnToPreviousExplanation() {
-    handleOpenExplanationHistory(args.explanationHistory.length - 1);
+    handleOpenExplanationHistory(explanationHistory.length - 1);
   }
 
   // 请求失败时清理 pending
   useEffect(() => {
-    if (args.graphBeautificationRequestState.phase !== "FAILED" && args.graphBeautificationRequestState.phase !== "TIMED_OUT") {
+    if (graphBeautificationRequestState.phase !== "FAILED" && graphBeautificationRequestState.phase !== "TIMED_OUT") {
       return;
     }
     resetPendingExplanationRequest();
-  }, [args.graphBeautificationRequestState.phase]);
+  }, [graphBeautificationRequestState.phase, resetPendingExplanationRequest]);
 
   // 请求成功时落地 pending
   useEffect(() => {
-    if (args.graphBeautificationRequestState.phase !== "SUCCEEDED" || args.graphBeautificationResult == null) {
+    if (graphBeautificationRequestState.phase !== "SUCCEEDED" || graphBeautificationResult == null) {
       return;
     }
-    const pendingMode = args.pendingExplanationRequestModeRef.current;
-    const pendingSessionLabel = args.pendingExplanationSessionLabelRef.current;
-    const pendingHistoryEntry = args.pendingExplanationHistoryEntryRef.current;
+    const pendingMode = pendingExplanationRequestModeRef.current;
+    const pendingSessionLabel = pendingExplanationSessionLabelRef.current;
+    const pendingHistoryEntry = pendingExplanationHistoryEntryRef.current;
 
     // fresh 模式：清空历史（重新开始）
     if (pendingMode === "fresh") {
-      args.setExplanationHistory([]);
+      setExplanationHistory([]);
     }
     // follow_up 模式：把上一轮作为历史追加
     if (pendingMode === "follow_up" && pendingHistoryEntry) {
-      args.setExplanationHistory((current) => current.concat(pendingHistoryEntry));
+      setExplanationHistory((current) => current.concat(pendingHistoryEntry));
     }
     // 落地会话标签
     if (pendingSessionLabel) {
-      args.setCurrentExplanationSessionLabel(pendingSessionLabel);
+      setCurrentExplanationSessionLabel(pendingSessionLabel);
     }
 
     resetPendingExplanationRequest();
-  }, [args.graphBeautificationRequestState.phase, args.graphBeautificationResult]);
+  }, [
+    graphBeautificationRequestState.phase,
+    graphBeautificationResult,
+    pendingExplanationHistoryEntryRef,
+    pendingExplanationRequestModeRef,
+    pendingExplanationSessionLabelRef,
+    resetPendingExplanationRequest,
+    setCurrentExplanationSessionLabel,
+    setExplanationHistory,
+  ]);
 
   // 当前选中步骤在新结果中不存在时回退到首步
   useEffect(() => {
-    const firstStepId = args.graphBeautificationResult?.steps?.[0]?.stepId ?? null;
-    args.setSelectedExplanationStepId((current) => {
-      if (!args.graphBeautificationResult?.steps?.length) {
+    const firstStepId = graphBeautificationResult?.steps?.[0]?.stepId ?? null;
+    setSelectedExplanationStepId((current) => {
+      if (!graphBeautificationResult?.steps?.length) {
         return null;
       }
-      return args.graphBeautificationResult.steps.some((step) => step.stepId === current) ? current : firstStepId;
+      return graphBeautificationResult.steps.some((step) => step.stepId === current) ? current : firstStepId;
     });
     // 悬停步骤也做类似清理
-    args.setHoveredExplanationStepId((current) =>
-      args.graphBeautificationResult?.steps?.some((step) => step.stepId === current) ? current : null,
+    setHoveredExplanationStepId((current) =>
+      graphBeautificationResult?.steps?.some((step) => step.stepId === current) ? current : null,
     );
-  }, [args.graphBeautificationResult]);
+  }, [graphBeautificationResult, setHoveredExplanationStepId, setSelectedExplanationStepId]);
 
   // 粒度跟随讲解结果
   useEffect(() => {
-    if (!args.graphBeautificationResult?.granularity) {
+    if (!graphBeautificationResult?.granularity) {
       return;
     }
-    args.setSelectedExplanationGranularity(args.graphBeautificationResult.granularity);
-  }, [args.graphBeautificationResult?.granularity]);
+    setSelectedExplanationGranularity(graphBeautificationResult.granularity);
+  }, [graphBeautificationResult?.granularity, setSelectedExplanationGranularity]);
 
   return {
     handleReturnToPreviousExplanation,

@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.model
 
 /**
- * GraphJson 序列化 DTO 集合（P2-6 替代之前的 `Map<String, Any?>`）。
+ * GraphJson 序列化 DTO 集合（P2-6 替代之前的 untyped map payload）。
  *
  * 字段名与原 `linkedMapOf("key" to value)` 的 key 一一对应，Gson 反射序列化保证
  * 字段顺序与原输出完全一致（serializeNulls 已开），不破坏磁盘持久化格式。

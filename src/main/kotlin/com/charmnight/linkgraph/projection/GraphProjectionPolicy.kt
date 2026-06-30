@@ -23,7 +23,7 @@ data class GraphProjectionPolicy(
     val seedNodeTypes: Set<NodeType> = emptySet(),
     /** 投影方向策略：双向、仅上游、仅下游。 */
     val directionPolicy: GraphProjectionDirectionPolicy = GraphProjectionDirectionPolicy.BIDIRECTIONAL,
-    /** 角色 metadata 键名；用于按角色分配配额。 */
+    /** 角色元数据键名；用于按角色分配配额。 */
     val roleMetadataKey: String? = null,
     /** 各角色的配额列表。 */
     val roleQuotas: List<GraphWindowRoleQuota> = emptyList(),
@@ -31,7 +31,7 @@ data class GraphProjectionPolicy(
     val enableOverflowSummary: Boolean = false,
     /** 是否填充无连接节点（让孤岛节点也展示出来）。 */
     val fillDisconnectedNodes: Boolean = true,
-    /** 溢出节点的 owner 上下文标记。 */
+    /** 溢出节点的所属上下文标记。 */
     val overflowOwnerContext: String = "graph-window",
     /** 溢出节点与原节点之间使用的边类型。 */
     val overflowEdgeType: EdgeType = EdgeType.CALL,

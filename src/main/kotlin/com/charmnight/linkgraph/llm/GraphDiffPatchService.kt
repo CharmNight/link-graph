@@ -1,5 +1,9 @@
 package com.charmnight.linkgraph.llm
 
+import com.charmnight.linkgraph.agent.model.*
+import com.charmnight.linkgraph.settings.*
+
+import com.charmnight.linkgraph.application.port.GraphDiffPatchPort
 import com.charmnight.linkgraph.model.DiffStatus
 import com.charmnight.linkgraph.model.GraphDiffElementKind
 import com.charmnight.linkgraph.model.GraphNode
@@ -18,16 +22,16 @@ class GraphDiffPatchService(
     private val promptFactory: LlmPromptFactory = LlmPromptFactory(),
     /** 负责发起远程 LLM 请求。 */
     private val gateway: LlmGateway = com.charmnight.linkgraph.llm.RoutingLlmGateway(),
-) {
+) : GraphDiffPatchPort {
     /** 负责处理结构化 JSON 响应与自动修复。 */
     private val responseSupport = RemoteStructuredResponseParser(gateway)
 
     /** 执行差异问答，必要时回退到本地规则结果。 */
-    fun review(
+    override fun review(
         context: GraphDiffContext,
         question: String,
         settings: LinkGraphSettingsState,
-        onPreview: ((String, Boolean) -> Unit)? = null,
+        onPreview: ((String, Boolean) -> Unit)?,
     ): GraphPatchResult {
         /** 清洗后的生成设置。 */
         val sanitized = settings.sanitized()

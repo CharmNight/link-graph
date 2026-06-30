@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.llm.prompt
 
-import com.charmnight.linkgraph.llm.GraphEvidenceProfile
-import com.charmnight.linkgraph.llm.SourceSnippetContext
+import com.charmnight.linkgraph.agent.model.GraphEvidenceProfile
+import com.charmnight.linkgraph.agent.model.SourceSnippetContext
 import com.charmnight.linkgraph.llm.llmClassDiagramRelationDisplayLabel
 import com.charmnight.linkgraph.llm.llmRelationKindDisplayLabel
 import com.charmnight.linkgraph.model.GraphDiffEntry
@@ -12,18 +12,18 @@ import com.charmnight.linkgraph.model.sourceFilePathOrLocationPath
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 
 /**
- * Prompt builder 共享的纯展示 helper（P2-1 深度拆分）。
+ * 提示词构造器共享的纯展示辅助函数（P2-1 深度拆分）。
  *
  * 把节点 / 边 / 源码片段 / 差异 / 已确认变更 / 证据边界对象渲染为单行摘要，
- * 供各类 prompt builder 复用。无状态、无副作用。
+ * 供各类提示词构造器复用。无状态、无副作用。
  */
 
 /**
- * 把任意外部内容片段 sanitize 后嵌入提示词。
+ * 把任意外部内容片段清洗后嵌入提示词。
  *
- * 与 [sanitizeUserField] 行为一致：转义 `<` / `>` 并包入 `<user_input>` tag。
- * 设计上把 sanitize 责任下沉到渲染 helper（[sourceSnippetSummary] / [confirmedChangeSummary] 等），
- * 让所有 prompt builder 自动获得等价的注入防御，不需要每个 builder 各自包裹。
+ * 与 [sanitizeUserField] 行为一致：转义 `<` / `>` 并包入 `<user_input>` 标签。
+ * 设计上把清洗责任下沉到渲染辅助函数（[sourceSnippetSummary] / [confirmedChangeSummary] 等），
+ * 让所有提示词构造器自动获得等价的注入防御，不需要每个构造器各自包裹。
  *
  * 命名为 `sanitizeContent` 而非 `sanitizeUser` 是因为内容来源不仅是用户直接输入——
  * 也包含历史消息、候选变更标题、源码片段等——但都属于「不可作为系统指令」的范畴。
@@ -34,7 +34,7 @@ internal fun sanitizeContent(raw: String): String = sanitizeUserField(raw)
 internal fun nodeSummary(node: GraphNode): String {
     val id = "id=${node.id} | "
     val location = node.location?.let { " @ $it" }.orEmpty()
-    // title / signature / doc 来自源码或用户编辑，存在 prompt injection 风险，统一 sanitize。
+    // 标题 / 签名 / 文档来自源码或用户编辑，存在提示词注入风险，统一清洗。
     val title = sanitizeContent(node.title)
     val signature = node.signature?.let { " | signature=${sanitizeContent(it)}" }.orEmpty()
     val inputs = if (node.inputs.isEmpty()) "" else " | inputs=${node.inputs.joinToString()}"
@@ -57,7 +57,7 @@ internal fun sourceSnippetSummary(snippet: SourceSnippetContext): String {
         snippet.endLine?.let { append(" | endLine=").append(it) }
         snippet.startOffset?.let { append(" | startOffset=").append(it) }
         snippet.endOffset?.let { append(" | endOffset=").append(it) }
-        // snippet 是源码原文，可能来自第三方库，按不可信内容 sanitize
+        // 源码片段是源码原文，可能来自第三方库，按不可信内容清洗
         snippet.snippet?.takeIf { it.isNotBlank() }?.let {
             append(" | snippet=").append(sanitizeContent(it))
         }

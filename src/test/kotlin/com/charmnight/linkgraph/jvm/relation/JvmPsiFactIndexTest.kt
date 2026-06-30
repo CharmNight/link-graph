@@ -1,6 +1,8 @@
 package com.charmnight.linkgraph.jvm.relation
 
 import com.charmnight.linkgraph.jvm.index.JvmSymbolIndexBuilder
+import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -76,6 +78,59 @@ class JvmPsiFactIndexTest : BasePlatformTestCase() {
             "重解析同一 symbolId 时应返回与 VFS 当前状态一致的 PsiClass",
             first.qualifiedName,
             second.qualifiedName,
+        )
+    }
+
+    fun testLookupReResolvesAfterSourceFileEdit() {
+        val file = myFixture.addFileToProject(
+            "src/main/java/com/example/lookup/EditTarget.java",
+            """
+            package com.example.lookup;
+            public class EditTarget {
+                public String value() { return "before"; }
+            }
+            """.trimIndent(),
+        )
+
+        val symbolIndex = JvmSymbolIndexBuilder(project).build()
+        val psiFactIndex = JvmPsiFactIndex.build(project, symbolIndex)
+        val classSymbol = requireNotNull(symbolIndex.findClass("com.example.lookup.EditTarget"))
+        val methodSymbol = requireNotNull(
+            symbolIndex.methodsBySignature.values.firstOrNull { method ->
+                method.ownerClassName == "com.example.lookup.EditTarget" && method.simpleName == "value"
+            }
+        )
+
+        val beforeClass = requireNotNull(psiFactIndex.lookupPsiClass(project, classSymbol.id))
+        val beforeMethod = requireNotNull(psiFactIndex.lookupPsiMethod(project, methodSymbol.id))
+        assertEquals(1, beforeClass.methods.size)
+        assertTrue(beforeMethod.text.contains("\"before\""))
+
+        myFixture.openFileInEditor(file.virtualFile)
+        WriteCommandAction.runWriteCommandAction(project) {
+            myFixture.editor.document.setText(
+                """
+                package com.example.lookup;
+                public class EditTarget {
+                    public String value() { return "after"; }
+                    public int added() { return 42; }
+                }
+                """.trimIndent(),
+            )
+            PsiDocumentManager.getInstance(project).commitAllDocuments()
+        }
+
+        val afterClass = requireNotNull(psiFactIndex.lookupPsiClass(project, classSymbol.id))
+        val afterMethod = requireNotNull(psiFactIndex.lookupPsiMethod(project, methodSymbol.id))
+
+        assertEquals(
+            listOf("added", "value"),
+            afterClass.methods.map { method -> method.name }.sorted(),
+            "同一个 psiFactIndex 在文件编辑后必须从当前 VFS/PSI 重新解析类成员。",
+        )
+        assertTrue(
+            afterMethod.text.contains("\"after\""),
+            "方法 lookup 不能返回编辑前缓存的 PsiMethod。",
         )
     }
 

@@ -8,7 +8,7 @@ private val SEMANTIC_ID_NON_ALNUM = Regex("[^a-z0-9]+")
  *
  * 语义 ID 必须在不同运行、不同会话之间保持稳定，否则缓存与差分比对都会失效。
  * 本对象把各种来源（方法签名、资源种类等）映射为统一格式的 ID：
- *   "<namespace>:<normalized-key>"
+     *   格式示例："<namespace>:<normalized-key>"
  * 其中所有字符都做小写化和非字母数字替换，避免大小写或特殊字符造成 ID 漂移。
  */
 object SemanticIdFactory {

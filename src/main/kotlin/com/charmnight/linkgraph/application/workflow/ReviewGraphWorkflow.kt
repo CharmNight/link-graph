@@ -8,14 +8,14 @@ import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
 import com.charmnight.linkgraph.application.indexed.cacheState
 import com.charmnight.linkgraph.application.indexed.reviewSelectedDiffItemIds
+import com.charmnight.linkgraph.application.runtime.SameThreadTaskRunner
+import com.charmnight.linkgraph.application.runtime.TaskRunner
 import com.charmnight.linkgraph.application.workflow.architecture.ArchitectureIndexWorkflowSupport
 import com.charmnight.linkgraph.application.workflow.review.ReviewEvidenceWorkflowSupport
 import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.foundation.LinkGraphRenderTrace
 import com.charmnight.linkgraph.projection.business.ReviewGraphProjector
 import com.charmnight.linkgraph.review.ReviewGraphResult
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import java.util.concurrent.atomic.AtomicLong
@@ -35,6 +35,7 @@ internal class ReviewGraphWorkflow(
     private val projector: ReviewGraphProjector = ReviewGraphProjector(),
     private val reviewEvidenceSupport: ReviewEvidenceWorkflowSupport = ReviewEvidenceWorkflowSupport(project),
     private val logger: Logger,
+    private val taskRunner: TaskRunner = SameThreadTaskRunner(),
     private val runtimeTrace: ((() -> String) -> Unit)? = null,
 ) {
     /** 自增的请求序号生成器，用于唯一标识每次复核图构建请求。 */
@@ -61,7 +62,7 @@ internal class ReviewGraphWorkflow(
                 statusMessage = "正在构建 Review Graph。",
             ),
         )
-        ApplicationManager.getApplication().executeOnPooledThread {
+        taskRunner.background {
             val result = if (project.isDisposed) {
                 ReviewGraphViewResult.cancelled()
             } else {
@@ -137,7 +138,7 @@ internal class ReviewGraphWorkflow(
                     onFailure = ReviewGraphViewResult::failure,
                 )
             }
-            ApplicationManager.getApplication().invokeLater({
+            taskRunner.ui(TaskRunner.UiPolicy.ANY) {
                 when {
                     result.cancelled || project.isDisposed -> Unit
                     result.failure != null -> {
@@ -171,7 +172,7 @@ internal class ReviewGraphWorkflow(
                         )
                     }
                 }
-            }, ModalityState.defaultModalityState())
+            }
         }
     }
 

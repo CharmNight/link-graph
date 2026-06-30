@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.llm.context
 
-import com.charmnight.linkgraph.llm.SourceSnippetContext
+import com.charmnight.linkgraph.agent.model.SourceSnippetContext
 
 /**
  * 统一收敛源码片段列表。

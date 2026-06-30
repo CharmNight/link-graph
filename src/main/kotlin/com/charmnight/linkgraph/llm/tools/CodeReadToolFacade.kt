@@ -1,12 +1,14 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 import com.charmnight.linkgraph.architecture.architectureIndexRuntime
 import com.charmnight.linkgraph.jvm.index.JvmClassSymbol
 import com.charmnight.linkgraph.jvm.index.JvmFieldSymbol
 import com.charmnight.linkgraph.jvm.index.JvmMethodSymbol
 import com.charmnight.linkgraph.jvm.index.JvmResourceSymbol
 import com.charmnight.linkgraph.jvm.index.JvmSymbol
-import com.charmnight.linkgraph.llm.SourceSnippetContext
+import com.charmnight.linkgraph.agent.model.SourceSnippetContext
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.sourceLocation
 import com.charmnight.linkgraph.source.AttachedJarContentResolver

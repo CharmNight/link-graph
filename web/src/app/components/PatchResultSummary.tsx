@@ -188,8 +188,6 @@ function readableWarning(warning: string): string {
 export function PatchResultSummary({
   title,
   result,
-  resolveArtifactText,
-  onRequestArtifact,
 }: PatchResultSummaryProps) {
   const sections = splitAnswer(result.answer);
   const patchSummary = result.patch?.summary?.trim() || null;

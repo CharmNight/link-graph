@@ -5,22 +5,24 @@ import com.charmnight.linkgraph.application.model.PlanningInput
 import com.charmnight.linkgraph.application.model.RiskResolutionSnapshot
 import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
-import com.charmnight.linkgraph.llm.tools.ToolGraphSnapshotProvider
+import com.charmnight.linkgraph.agent.tools.ToolGraphSnapshotProvider
 import com.charmnight.linkgraph.codegen.CodeDraftWriterService
 import com.charmnight.linkgraph.codegen.CodeGenerationService
 import com.charmnight.linkgraph.codegen.ProjectPathNormalizer
-import com.charmnight.linkgraph.llm.GenerationContext
-import com.charmnight.linkgraph.llm.GenerationPlanDiscussionService
-import com.charmnight.linkgraph.llm.GraphGenerationService
-import com.charmnight.linkgraph.llm.artifact.ArtifactStore
-import com.charmnight.linkgraph.llm.artifact.ArtifactType
-import com.charmnight.linkgraph.llm.artifact.PlanArtifact
-import com.charmnight.linkgraph.llm.capability.CodegenCapability
-import com.charmnight.linkgraph.llm.capability.PlanCapability
-import com.charmnight.linkgraph.llm.runtime.AgentRunResult
-import com.charmnight.linkgraph.llm.runtime.AgentRunCoordinator
+import com.charmnight.linkgraph.agent.model.GenerationContext
+import com.charmnight.linkgraph.application.port.GenerationPlanDiscussionPort
+import com.charmnight.linkgraph.application.port.GraphGenerationPort
+import com.charmnight.linkgraph.agent.artifact.ArtifactStore
+import com.charmnight.linkgraph.agent.artifact.ArtifactType
+import com.charmnight.linkgraph.agent.artifact.PlanArtifact
+import com.charmnight.linkgraph.agent.capability.CodegenCapability
+import com.charmnight.linkgraph.agent.capability.PlanCapability
+import com.charmnight.linkgraph.agent.runtime.AgentRunResult
+import com.charmnight.linkgraph.agent.runtime.AgentRunCoordinator
 import com.charmnight.linkgraph.navigation.SourceNavigationService
 import com.charmnight.linkgraph.application.request.AsyncRequestLifecycleSupport
+import com.charmnight.linkgraph.application.runtime.SameThreadTaskRunner
+import com.charmnight.linkgraph.application.runtime.TaskRunner
 import com.charmnight.linkgraph.application.planning.PlanningContextFactory
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.application.result.GenerationRequestFailureResult
@@ -45,12 +47,13 @@ internal data class GenerationWorkflowDependencies(
     val snapshotProvider: EditorSnapshotProvider,
     val toolGraphSnapshotProvider: ToolGraphSnapshotProvider,
     val planningContextFactory: PlanningContextFactory,
-    val graphGenerationService: GraphGenerationService,
+    val graphGenerationService: GraphGenerationPort,
     val codeGenerationService: CodeGenerationService,
     val codeDraftWriterService: CodeDraftWriterService,
     val sourceNavigationServiceProvider: () -> SourceNavigationService,
     val settingsProvider: () -> LinkGraphSettingsState,
     val asyncRequestLifecycle: AsyncRequestLifecycleSupport,
+    val taskRunner: TaskRunner = SameThreadTaskRunner(),
     val logger: Logger,
     val agentRunCoordinator: AgentRunCoordinator,
     val artifactStoreProvider: () -> ArtifactStore,
@@ -58,7 +61,7 @@ internal data class GenerationWorkflowDependencies(
     val planCapabilityFactory: (PlanCapability.PlanExecutor) -> PlanCapability,
     val codegenCapabilityFactory: (CodegenCapability.CodegenExecutor) -> CodegenCapability,
     val riskResolutionService: RiskResolutionService,
-    val generationPlanDiscussionService: GenerationPlanDiscussionService,
+    val generationPlanDiscussionService: GenerationPlanDiscussionPort,
     val showCodeDraftMergeRequest: (Project, MergeRequest) -> Unit,
 )
 

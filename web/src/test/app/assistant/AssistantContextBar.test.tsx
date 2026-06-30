@@ -67,8 +67,7 @@ describe("AssistantContextBar", () => {
       />,
     );
 
-    // P1: the eyebrow/heading/help prose was removed; the region (aria-label)
-    // and the chips are the remaining context surface.
+    // P1：眉标、标题和帮助文案已移除；region 的 aria-label 与标签是保留的上下文界面。
     const region = screen.getByRole("region", { name: "下一次类图发送上下文" });
     const chips = within(region).getAllByText((_, element) =>
       element?.classList.contains("assistant-context-chip") ?? false

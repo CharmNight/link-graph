@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 /**
  * 读取当前图 diff。
  *
@@ -15,7 +17,7 @@ class GetGraphDiffTool(
     override val name: String = "get_graph_diff"
     override val description: String = "读取当前图 diff 摘要"
 
-    override fun parseInput(raw: Map<String, Any?>): GetGraphDiffInput = GetGraphDiffInput
+    override fun parseInput(raw: ToolInputPayload): GetGraphDiffInput = GetGraphDiffInput
 
     override fun invokeTyped(input: GetGraphDiffInput, context: ToolExecutionContext): ToolResult {
         val diff = graphToolFacade.currentDiff(context.snapshot)

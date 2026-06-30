@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.settings
 
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.llm.LlmProviderPresets
+import com.charmnight.linkgraph.settings.LlmProviderPresets
 import com.charmnight.linkgraph.source.AttachedJarEntry
 import com.intellij.openapi.application.ApplicationManager
 import kotlin.test.Test

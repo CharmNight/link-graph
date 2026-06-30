@@ -17,7 +17,7 @@ interface GraphEditorPresentationProvider {
     fun applicationSnapshotProvider(): ApplicationSnapshotProvider
 
     /** 工具图快照提供者：读取工具窗口相关的图状态（P4-2 移到 llm.tools 包）。 */
-    fun toolGraphSnapshotProvider(): com.charmnight.linkgraph.llm.tools.ToolGraphSnapshotProvider
+    fun toolGraphSnapshotProvider(): com.charmnight.linkgraph.agent.tools.ToolGraphSnapshotProvider
 
     /** 工作台图提交器：把工作台图变更写回底层存储或协同更新通道。 */
     fun workspaceGraphCommitter(): WorkspaceGraphCommitter

@@ -1,12 +1,14 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.codegen.CodeEditOperation
 import com.charmnight.linkgraph.codegen.CodeEditOperationKind
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
-import com.charmnight.linkgraph.llm.EditScope
-import com.charmnight.linkgraph.llm.artifact.CodeEvidenceArtifact
+import com.charmnight.linkgraph.agent.model.EditScope
+import com.charmnight.linkgraph.agent.artifact.CodeEvidenceArtifact
 import kotlin.test.Test
 import kotlin.test.assertTrue
 

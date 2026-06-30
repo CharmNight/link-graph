@@ -7,13 +7,13 @@ import com.charmnight.linkgraph.application.model.currentWorkingGraph
 import com.charmnight.linkgraph.application.model.toAnalysisDisplayMode
 import com.charmnight.linkgraph.diff.GraphDiffer
 import com.charmnight.linkgraph.codegen.ProjectPathNormalizer
-import com.charmnight.linkgraph.llm.GenerationContext
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GraphBeautificationContext
-import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
-import com.charmnight.linkgraph.llm.GraphGenerationService
-import com.charmnight.linkgraph.llm.GraphPresentationContext
-import com.charmnight.linkgraph.llm.SourceSnippetContext
+import com.charmnight.linkgraph.agent.model.GenerationContext
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GraphBeautificationContext
+import com.charmnight.linkgraph.agent.model.GraphBeautificationFollowUpContext
+import com.charmnight.linkgraph.application.port.GraphGenerationPort
+import com.charmnight.linkgraph.agent.model.GraphPresentationContext
+import com.charmnight.linkgraph.agent.model.SourceSnippetContext
 import com.charmnight.linkgraph.model.GraphDiff
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphNode
@@ -38,7 +38,7 @@ internal class PlanningContextFactory(
     /** 同步预览规划器。 */
     private val syncPreviewPlanner: SyncPreviewPlanner,
     /** 图生成服务。 */
-    private val graphGenerationService: GraphGenerationService,
+    private val graphGenerationService: GraphGenerationPort,
     /** 问答源码证据收集器。 */
     private val qaEvidenceCollector: QaEvidenceCollector = QaEvidenceCollector(),
     /** 当前真正生效的生成设置。 */
@@ -753,7 +753,7 @@ internal data class QaGraphs(
     val factGraph: GraphDocument,
     val editableGraph: GraphDocument,
     val sourceContext: List<SourceSnippetContext> = emptyList(),
-    val evidenceTrace: List<com.charmnight.linkgraph.llm.EvidenceTraceEntry> = emptyList(),
+    val evidenceTrace: List<com.charmnight.linkgraph.agent.model.EvidenceTraceEntry> = emptyList(),
 )
 
 private data class InteractiveGraphContext(

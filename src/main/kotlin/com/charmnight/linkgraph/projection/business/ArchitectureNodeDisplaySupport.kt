@@ -21,7 +21,7 @@ private val SUPPORT_SOURCE_PATH_SEGMENTS = SUPPORT_PACKAGE_SEGMENTS + setOf(
     "src/test", "src/integrationtest", "src/integration-test",
 )
 
-/** ArchitectureGraphProjector 的节点展示名称 / 结构排序 / 辅助节点判定 helper（P2-1 深度拆分）。 */
+/** ArchitectureGraphProjector 的节点展示名称 / 结构排序 / 辅助节点判定辅助函数（P2-1 深度拆分）。 */
 
 /** 返回结构视图下的节点可读名称：RESOURCE 用 title，其他取 title 或全限定名最后一段。 */
 internal fun ArchitectureNode.readableStructureName(): String {

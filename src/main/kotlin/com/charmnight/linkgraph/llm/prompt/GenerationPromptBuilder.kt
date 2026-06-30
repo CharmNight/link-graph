@@ -1,7 +1,7 @@
 package com.charmnight.linkgraph.llm.prompt
 
-import com.charmnight.linkgraph.llm.GenerationContext
-import com.charmnight.linkgraph.llm.LlmPromptPackage
+import com.charmnight.linkgraph.agent.model.GenerationContext
+import com.charmnight.linkgraph.agent.model.LlmPromptPackage
 import com.charmnight.linkgraph.llm.context.PromptComposer
 import com.charmnight.linkgraph.llm.context.PromptSection
 import com.charmnight.linkgraph.llm.context.PromptSectionPriority.CONFIRMED_CHANGE

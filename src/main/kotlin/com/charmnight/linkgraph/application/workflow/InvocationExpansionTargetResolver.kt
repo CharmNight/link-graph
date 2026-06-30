@@ -108,8 +108,8 @@ class InvocationExpansionTargetResolver {
      * 结果按方法标识去重。
      *
      * 匹配规则与 [com.charmnight.linkgraph.investigation.resolving.java.JavaOverrideResolver]
-     * 完全一致：simpleName + arity + 每个参数位置的 erasure 相容性，覆盖泛型特化、协变返回，
-     * 拒绝同名同 arity 异类型重载。
+     * 完全一致：方法简单名 + 参数数量 + 每个参数位置的擦除相容性，覆盖泛型特化、协变返回，
+     * 拒绝同名同参数数量但类型不同的重载。
      */
     private fun implementationMethods(
         method: JvmMethodSymbol,

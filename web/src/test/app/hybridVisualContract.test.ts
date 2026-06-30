@@ -115,8 +115,8 @@ describe("hybrid visual contract", () => {
   });
 
   it("keeps graph footer chrome compact so the canvas keeps vertical space", () => {
-    // P1: footer now wraps (so the collapsed <details> detail pills reflow) and
-    // grows when details expand, but stays compact by default via min-height.
+    // P1：页脚现在允许换行（折叠的 <details> 详情标签会重排），
+    // 展开详情时可增长，但默认通过 min-height 保持紧凑。
     expect(themeCss).toMatch(
       /\.graph-stage-footer\s*\{(?=[^}]*flex-wrap:\s*wrap;)(?=[^}]*overflow-x:\s*auto;)(?=[^}]*min-height:\s*42px;)[^}]*\}/s,
     );

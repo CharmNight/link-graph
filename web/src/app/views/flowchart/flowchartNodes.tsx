@@ -10,7 +10,6 @@ import {
 } from "@xyflow/react";
 import {
   FLOWCHART_DECISION_MIN_HEIGHT,
-  FLOWCHART_DECISION_WIDTH,
   FLOWCHART_MERGE_WIDTH,
   flowchartNodeCardWidth,
 } from "../../graphNodeSizing";

@@ -6,16 +6,16 @@ import com.charmnight.linkgraph.application.command.ApplicationCommand
 import com.charmnight.linkgraph.ui.GraphEditorSyncNotifier
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.llm.EditScope
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GenerationPlanSource
-import com.charmnight.linkgraph.llm.LlmResultSource
-import com.charmnight.linkgraph.llm.ResultEvidenceFinding
-import com.charmnight.linkgraph.llm.ResultEvidenceLevel
-import com.charmnight.linkgraph.llm.ResultEvidenceReference
-import com.charmnight.linkgraph.llm.artifact.AgentArtifactStoreService
-import com.charmnight.linkgraph.llm.artifact.ArtifactType
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.EditScope
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GenerationPlanSource
+import com.charmnight.linkgraph.agent.model.LlmResultSource
+import com.charmnight.linkgraph.agent.model.ResultEvidenceFinding
+import com.charmnight.linkgraph.agent.model.ResultEvidenceLevel
+import com.charmnight.linkgraph.agent.model.ResultEvidenceReference
+import com.charmnight.linkgraph.agent.artifact.AgentArtifactStoreService
+import com.charmnight.linkgraph.agent.artifact.ArtifactType
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge

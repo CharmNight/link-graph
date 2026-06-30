@@ -521,9 +521,9 @@ class ArchitectureGraphProjector(
         }
     }
 
-    /** readableStructureName / structureSubtitle 已抽到 top-level（ArchitectureNodeDisplaySupport.kt）。 */
+    /** readableStructureName / structureSubtitle 已抽到顶层（ArchitectureNodeDisplaySupport.kt）。 */
 
-    /** structureRank / memberRoleRank 已抽到 top-level（ArchitectureNodeDisplaySupport.kt）。 */
+    /** structureRank / memberRoleRank 已抽到顶层（ArchitectureNodeDisplaySupport.kt）。 */
 
     /**
      * 收集所有被识别为辅助性质（demo/test/mock 等）的组件/服务节点 ID。
@@ -549,7 +549,7 @@ class ArchitectureGraphProjector(
             .flatMap { edge -> sequenceOf(edge.fromNodeId, edge.toNodeId) }
             .toSet()
 
-    /** isSupportProjectStructureNode / hasSupportSourcePath 已抽到 top-level（ArchitectureNodeDisplaySupport.kt）。 */
+    /** isSupportProjectStructureNode / hasSupportSourcePath 已抽到顶层（ArchitectureNodeDisplaySupport.kt）。 */
 
     /**
      * 为一组节点计算展示上下文（用于避免展示名冲突）。
@@ -650,8 +650,8 @@ class ArchitectureGraphProjector(
     /**
      * 把展示分层转换为前端可识别的展示元数据键值对。
      */
-    /** ArchitectureDisplayLayer.presentationMetadata 已抽到 top-level（详见 ArchitectureGraphProjectorHelpers.kt）。 */
-    /** architectureBucketLabel 已抽到 top-level（详见 ArchitectureGraphProjectorHelpers.kt）。 */
+    /** ArchitectureDisplayLayer.presentationMetadata 已抽到顶层（详见 ArchitectureGraphProjectorHelpers.kt）。 */
+    /** architectureBucketLabel 已抽到顶层（详见 ArchitectureGraphProjectorHelpers.kt）。 */
 
     /**
      * 构造节点的源代码示例元数据：数量、首要示例（用于导航）以及全部样本明细。
@@ -740,24 +740,24 @@ class ArchitectureGraphProjector(
     /**
      * 节点默认文档说明：根据节点种类生成成员数量描述。
      */
-    /** ArchitectureNode.docText 已抽到 top-level（详见 ArchitectureGraphProjectorHelpers.kt）。 */
+    /** ArchitectureNode.docText 已抽到顶层（详见 ArchitectureGraphProjectorHelpers.kt）。 */
 
     /**
      * 把架构节点种类映射到通用图节点类型。
      *
      * 注意：外部库与 JDK 在通用类型系统中合并为 [NodeType.LIBRARY]。
      */
-    /** ArchitectureNodeKind.toNodeType 已抽到 top-level（详见 ArchitectureGraphProjectorHelpers.kt）。 */
-    /** ArchitectureNodeKind.isTypeLike 已抽到 top-level（详见 ArchitectureGraphProjectorHelpers.kt）。 */
-    /** architectureNodePriority 已抽到 top-level（详见 ArchitectureGraphProjectorHelpers.kt）。 */
-    /** architectureEdgePriority 已抽到 top-level（详见 ArchitectureGraphProjectorHelpers.kt）。 */
+    /** ArchitectureNodeKind.toNodeType 已抽到顶层（详见 ArchitectureGraphProjectorHelpers.kt）。 */
+    /** ArchitectureNodeKind.isTypeLike 已抽到顶层（详见 ArchitectureGraphProjectorHelpers.kt）。 */
+    /** architectureNodePriority 已抽到顶层（详见 ArchitectureGraphProjectorHelpers.kt）。 */
+    /** architectureEdgePriority 已抽到顶层（详见 ArchitectureGraphProjectorHelpers.kt）。 */
 
     /**
      * 把 JVM 关系种类映射到展示层"显示关系种类"和中文标签。
      *
      * 例如：调用、注入、路由等归为运行时调用；继承、实现归为类型依赖。
      */
-    /** ArchitectureEdge.displayRelationMetadata 已抽到 top-level（详见 ArchitectureGraphProjectorHelpers.kt）。 */
+    /** ArchitectureEdge.displayRelationMetadata 已抽到顶层（详见 ArchitectureGraphProjectorHelpers.kt）。 */
 
     /**
      * 从可见图中挑选架构锚点节点。

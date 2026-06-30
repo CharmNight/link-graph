@@ -49,7 +49,6 @@ describe("targetPortForRoute DATA-source non-DATA-target", () => {
 
   const emptySize = new Map<string, NodeMeasuredSize>();
   const emptyEdgeIndex = new Map<string, LinkGraphEdge[]>();
-  const emptyNodeIndex = new Map<string, LinkGraphNode>();
 
   it("returns right port when target is to the right of source, regardless of Y", () => {
     const sourceAbove = dataNode("d1", 0, 0);

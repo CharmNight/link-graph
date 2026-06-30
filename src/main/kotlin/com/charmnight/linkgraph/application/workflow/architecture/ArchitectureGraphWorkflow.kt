@@ -6,13 +6,12 @@ import com.charmnight.linkgraph.application.model.AsyncRequestState
 import com.charmnight.linkgraph.application.indexed.IndexedGraphRequest
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
 import com.charmnight.linkgraph.application.indexed.cacheState
+import com.charmnight.linkgraph.application.runtime.SameThreadTaskRunner
+import com.charmnight.linkgraph.application.runtime.TaskRunner
 import com.charmnight.linkgraph.foundation.LinkGraphRenderTrace
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
-import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
-import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -28,6 +27,7 @@ internal class ArchitectureGraphWorkflow(
     private val eventSink: GraphEditorApplicationEventSink,
     private val projector: ArchitectureGraphProjector = ArchitectureGraphProjector(),
     private val logger: com.intellij.openapi.diagnostic.Logger,
+    private val taskRunner: TaskRunner = SameThreadTaskRunner(),
     private val runtimeTrace: ((() -> String) -> Unit)? = null,
 ) {
     // 自增的请求 ID，用于区分不同次架构图请求
@@ -37,7 +37,7 @@ internal class ArchitectureGraphWorkflow(
      * 请求构建并加载架构图。
      *
      * 流程：先发出请求开始事件，随后在后台线程上构建索引并投影，
-     * 若 project 已被释放则直接取消；最终通过 invokeLater 在主线程上
+     * 若 project 已被释放则直接取消；最终通过 TaskRunner 在主线程上
      * 根据 result 派发失败或加载完成事件，并对各阶段进行 trace 记录。
      */
     fun requestIndexedGraph(request: IndexedGraphRequest) {
@@ -55,7 +55,7 @@ internal class ArchitectureGraphWorkflow(
                 statusMessage = "正在构建项目结构索引。",
             ),
         )
-        AppExecutorUtil.getAppExecutorService().submit {
+        taskRunner.background {
             // project 已被销毁则直接走取消分支
             val result =
                 if (project.isDisposed) {
@@ -99,10 +99,10 @@ internal class ArchitectureGraphWorkflow(
                         onFailure = { error -> ArchitectureGraphViewResult.failure(error) },
                     )
                 }
-            ApplicationManager.getApplication().invokeLater({
+            taskRunner.ui(TaskRunner.UiPolicy.ANY) {
                 // 主线程回调里再次检查 project 是否已销毁
                 if (project.isDisposed) {
-                    return@invokeLater
+                    return@ui
                 }
                 when {
                     result.cancelled -> Unit
@@ -138,7 +138,7 @@ internal class ArchitectureGraphWorkflow(
                         )
                     }
                 }
-            }, ModalityState.defaultModalityState())
+            }
         }
     }
 

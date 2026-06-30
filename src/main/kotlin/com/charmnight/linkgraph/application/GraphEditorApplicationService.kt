@@ -6,7 +6,7 @@ import com.charmnight.linkgraph.application.composition.ApplicationWorkflowCompo
 import com.charmnight.linkgraph.application.composition.ApplicationWorkflows
 import com.charmnight.linkgraph.application.composition.InfrastructureComposition
 import com.charmnight.linkgraph.application.composition.WorkflowComposition
-import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
+import com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeHooks
 import com.charmnight.linkgraph.application.workflow.generation.CodeDraftApplyWorkflow
 import com.charmnight.linkgraph.application.workflow.generation.CodeDraftGenerationWorkflow
 import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanDiscussionWorkflow
@@ -31,8 +31,8 @@ internal class GraphEditorApplicationService(
     private val project: Project,
 ) : Disposable {
     /** 测试桩注入入口；运行期为空，仅在单元测试中被覆写。 */
-    private val testOverrides: LinkGraphProjectTestOverrides
-        get() = project.getService(LinkGraphProjectTestOverrides::class.java)
+    private val runtimeHooks: LinkGraphProjectRuntimeHooks
+        get() = project.getService(LinkGraphProjectRuntimeHooks::class.java)
 
     /** 共享基础设施协作者集合；惰性初始化以避免循环依赖。 */
     private val infrastructure: InfrastructureComposition by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -81,7 +81,7 @@ internal class GraphEditorApplicationService(
     val commandDispatcher: ApplicationCommandDispatcher by lazy(LazyThreadSafetyMode.PUBLICATION) {
         ApplicationCommandComposition(
             workflows = workflowComposition.workflows(),
-            openCodeDraftNativeDiffOverrideProvider = { testOverrides.openCodeDraftNativeDiff },
+            openCodeDraftNativeDiffHook = { runtimeHooks.openCodeDraftNativeDiff },
         ).dispatcher()
     }
 

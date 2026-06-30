@@ -2,18 +2,18 @@ package com.charmnight.linkgraph.codegen
 
 import com.charmnight.linkgraph.testing.*
 
-import com.charmnight.linkgraph.llm.LlmProviderPresets
-import com.charmnight.linkgraph.llm.GenerationContext
-import com.charmnight.linkgraph.llm.GenerationPlan
-import com.charmnight.linkgraph.llm.GenerationPlanItem
-import com.charmnight.linkgraph.llm.GenerationPlanSource
-import com.charmnight.linkgraph.llm.EditScope
-import com.charmnight.linkgraph.llm.LlmGateway
-import com.charmnight.linkgraph.llm.LlmRequest
-import com.charmnight.linkgraph.llm.LlmResponse
-import com.charmnight.linkgraph.llm.LlmResultSource
+import com.charmnight.linkgraph.settings.LlmProviderPresets
+import com.charmnight.linkgraph.agent.model.GenerationContext
+import com.charmnight.linkgraph.agent.model.GenerationPlan
+import com.charmnight.linkgraph.agent.model.GenerationPlanItem
+import com.charmnight.linkgraph.agent.model.GenerationPlanSource
+import com.charmnight.linkgraph.agent.model.EditScope
+import com.charmnight.linkgraph.agent.model.LlmGateway
+import com.charmnight.linkgraph.agent.model.LlmRequest
+import com.charmnight.linkgraph.agent.model.LlmResponse
+import com.charmnight.linkgraph.agent.model.LlmResultSource
 import com.charmnight.linkgraph.llm.LlmPromptFactory
-import com.charmnight.linkgraph.llm.SourceSnippetContext
+import com.charmnight.linkgraph.agent.model.SourceSnippetContext
 import com.charmnight.linkgraph.model.DiffStatus
 import com.charmnight.linkgraph.model.EdgeType
 import com.charmnight.linkgraph.model.GraphDiff

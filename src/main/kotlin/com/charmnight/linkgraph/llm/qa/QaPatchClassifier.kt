@@ -1,9 +1,9 @@
 package com.charmnight.linkgraph.llm.qa
 
-import com.charmnight.linkgraph.llm.EditScope
-import com.charmnight.linkgraph.llm.GraphQaContext
-import com.charmnight.linkgraph.llm.LlmResultSource
-import com.charmnight.linkgraph.llm.ResultEvidenceFinding
+import com.charmnight.linkgraph.agent.model.EditScope
+import com.charmnight.linkgraph.agent.model.GraphQaContext
+import com.charmnight.linkgraph.agent.model.LlmResultSource
+import com.charmnight.linkgraph.agent.model.ResultEvidenceFinding
 import com.charmnight.linkgraph.llm.TrustedEditScopePathResolver
 import com.charmnight.linkgraph.model.GraphDocument
 import com.charmnight.linkgraph.model.GraphEdge

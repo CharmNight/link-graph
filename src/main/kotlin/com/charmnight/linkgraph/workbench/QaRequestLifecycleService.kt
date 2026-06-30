@@ -1,6 +1,6 @@
 package com.charmnight.linkgraph.workbench
 
-import com.charmnight.linkgraph.llm.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
 import java.util.UUID
 
 /**

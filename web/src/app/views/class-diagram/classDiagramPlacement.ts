@@ -97,7 +97,6 @@ export class ClassDiagramPlacementEngine {
     const incomingLaneWidth = laneColumnWidth("INCOMING", incomingPlan.columnCount);
     const outgoingLaneWidth = laneColumnWidth("OUTGOING", outgoingPlan.columnCount);
     const dataLaneWidth = laneColumnWidth("DATA", dataPlan.columnCount);
-    const relatedLaneWidth = laneColumnWidth("RELATED", relatedPlan.columnCount);
 
     // 根据锚点出入向扇出边数量推导连线路由通道的宽度，避免锚点附近边重叠。
     const incomingLaneGap = this.anchorFanoutLaneGap(this.anchorIncomingFanoutCount(topology.anchorId, incomingBucket, topology.incoming));

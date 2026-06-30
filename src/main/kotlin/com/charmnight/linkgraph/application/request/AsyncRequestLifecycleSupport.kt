@@ -1,12 +1,10 @@
 package com.charmnight.linkgraph.application.request
 
 import com.charmnight.linkgraph.foundation.debugLazy
-import com.charmnight.linkgraph.llm.runtime.AgentRunFailureReason
-import com.charmnight.linkgraph.llm.runtime.AgentRunState
-import com.charmnight.linkgraph.llm.runtime.AgentStepRecord
-import com.charmnight.linkgraph.llm.runtime.RunBudget
-import com.charmnight.linkgraph.llm.remoteConnectionOrNull
-import com.charmnight.linkgraph.llm.usesRemoteProvider
+import com.charmnight.linkgraph.agent.runtime.AgentRunFailureReason
+import com.charmnight.linkgraph.agent.runtime.AgentRunState
+import com.charmnight.linkgraph.agent.runtime.AgentStepRecord
+import com.charmnight.linkgraph.agent.runtime.RunBudget
 import com.charmnight.linkgraph.settings.LinkGraphSettingsState
 import com.charmnight.linkgraph.workbench.QaMode
 import com.intellij.openapi.application.ApplicationManager
@@ -25,7 +23,7 @@ internal class AsyncRequestLifecycleSupport(
     /** 当前项目。 */
     private val project: Project,
     /** 测试环境下的超时覆盖值。 */
-    private val timeoutOverrideProvider: () -> Long?,
+    private val timeoutMillisSupplier: () -> Long?,
 ) {
     // P2-1 真正的架构分解：线程调度委托给独立的 AsyncTaskDispatcher
     internal val taskDispatcher = AsyncTaskDispatcher(project)
@@ -105,7 +103,7 @@ internal class AsyncRequestLifecycleSupport(
         requestId = requestId,
         sceneLabel = sceneLabel,
         settings = settings,
-        timeoutOverrideMillis = timeoutOverrideProvider(),
+        timeoutOverrideMillis = timeoutMillisSupplier(),
         disabledMode = disabledMode,
         promptPreviewAvailable = promptPreviewAvailable,
         requestedMode = requestedMode,

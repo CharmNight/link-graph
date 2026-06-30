@@ -2,7 +2,7 @@ package com.charmnight.linkgraph.application.command
 
 import com.charmnight.linkgraph.application.indexed.IndexedGraphView
 import com.charmnight.linkgraph.application.indexed.reviewSelectedDiffItemIds
-import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
+import com.charmnight.linkgraph.agent.model.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.workbench.AssistantActionId
 import com.charmnight.linkgraph.workbench.AssistantComposerTarget
 import com.charmnight.linkgraph.workbench.AssistantIntent

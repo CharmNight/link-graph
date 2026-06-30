@@ -14,8 +14,8 @@ import com.intellij.ui.jcef.JBCefJSQuery
  * 图谱浏览器桥注册器。
  *
  * 负责在 JCEF 浏览器实例上注册前后端通信所需的 JS 桥：
- * - 监听来自前端 JS 的命令（bridge command），解析并派发给后端 dispatcher。
- * - 监听前端调试 trace，按策略决定是否记录日志。
+ * - 监听来自前端 JS 的桥接命令，解析并派发给后端派发器。
+ * - 监听前端调试跟踪，按策略决定是否记录日志。
  * - 生成注入到前端页面的桥脚本，将后端能力暴露为 window.linkGraphBridge 等接口。
  *
  * 构造时传入一组策略回调与开关，避免直接耦合到具体的 dispatch/日志实现。
@@ -31,16 +31,16 @@ internal class GraphBrowserBridgeRegistrar(
     private val shouldLogFrontendTrace: (String) -> Boolean,
     private val runtimeTrace: ((String) -> Unit)?,
 ) {
-    // 前端发送 bridge command 的 JS 通道
+    // 前端发送桥接命令的 JS 通道
     private val bridgeCommandQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
-    // 前端上报调试 trace 的 JS 通道
+    // 前端上报调试跟踪的 JS 通道
     private val debugTraceQuery: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
 
     /**
      * 在两个 JS 通道上注册处理器。
      *
-     * bridge command 处理器负责解析命令、派发 artifact 与消息（同步或异步），
-     * trace 处理器负责在开启的情况下记录前端 trace。
+     * 桥接命令处理器负责解析命令、派发产物与消息（同步或异步），
+     * 跟踪处理器负责在开启的情况下记录前端跟踪。
      */
     fun registerHandlers() {
         bridgeCommandQuery.addHandler { payload ->
@@ -49,7 +49,7 @@ internal class GraphBrowserBridgeRegistrar(
                     Computable {
                         val parsed = BridgeCommandParser.parse(payload)
                         debugLazy(logger.isDebugEnabled, logger::debug) {
-                            "收到前端 bridge command: type=${parsed.type}, async=${parsed.async}"
+                            "收到前端桥接命令: type=${parsed.type}, async=${parsed.async}"
                         }
                         if (parsed.artifactIds.isNotEmpty()) {
                             dispatchArtifactSlice(parsed.artifactIds)
@@ -69,11 +69,11 @@ internal class GraphBrowserBridgeRegistrar(
             }
         }
         debugTraceQuery.addHandler { payload ->
-            safeBridgeResponse("前端 trace") {
+            safeBridgeResponse("前端跟踪") {
                 if (shouldLogFrontendTrace(payload)) {
                     GraphBrowserPayloadParser.validatePayloadSize(payload, GraphBrowserPayloadKind.DEBUG_TRACE)
-                    runtimeTrace?.invoke("前端 trace: $payload")
-                    debugLazy(logger.isDebugEnabled, logger::debug) { "前端 trace: $payload" }
+                    runtimeTrace?.invoke("前端跟踪: $payload")
+                    debugLazy(logger.isDebugEnabled, logger::debug) { "前端跟踪: $payload" }
                 }
                 JBCefJSQuery.Response("ok")
             }
@@ -83,7 +83,7 @@ internal class GraphBrowserBridgeRegistrar(
     /**
      * 构建要注入到前端页面的桥脚本。
      *
-     * 根据调试开关决定是否暴露调试 trace 能力，并组装出
+     * 根据调试开关决定是否暴露调试跟踪能力，并组装出
      * window.linkGraphBridge 上的各个命令方法，前端调用后会通过
      * bridgeCommandQuery 通道回传到后端处理器。
      */

@@ -4,15 +4,14 @@ import com.charmnight.linkgraph.application.model.WorkflowEditorSnapshot
 import com.charmnight.linkgraph.application.port.EditorSnapshotProvider
 import com.charmnight.linkgraph.application.usecase.SourceNavigationUseCase
 import com.charmnight.linkgraph.application.usecase.SourceNavigationUseCaseResult
+import com.charmnight.linkgraph.application.runtime.SameThreadTaskRunner
+import com.charmnight.linkgraph.application.runtime.TaskRunner
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.navigation.SourceNavigationService
 import com.charmnight.linkgraph.foundation.debugLazy
 import com.charmnight.linkgraph.application.result.ApplicationFeedbackLevel
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEvent
 import com.charmnight.linkgraph.application.event.GraphEditorApplicationEventSink
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 
@@ -32,6 +31,8 @@ internal class SourceNavigationWorkflow(
     private val showSettingsDialog: () -> Unit,
     /** 日志记录器。 */
     private val logger: Logger,
+    /** 平台无关任务调度入口。 */
+    private val taskRunner: TaskRunner = SameThreadTaskRunner(),
 ) {
     private val useCase = SourceNavigationUseCase(navigationNodeFinder)
 
@@ -72,10 +73,10 @@ internal class SourceNavigationWorkflow(
         eventSink.emit(GraphEditorApplicationEvent.NavigationStarting(node.title))
 
         val navigationService = sourceNavigationServiceProvider()
-        ApplicationManager.getApplication().executeOnPooledThread {
+        taskRunner.background {
             val result = runCatching {
                 val resolveStartedAt = System.nanoTime()
-                val resolvedTarget = ReadAction.compute<SourceNavigationService.NavigationTarget?, RuntimeException> {
+                val resolvedTarget = taskRunner.read {
                     navigationService.resolve(node)
                 }
                 val resolveDurationMs = (System.nanoTime() - resolveStartedAt) / 1_000_000
@@ -94,38 +95,35 @@ internal class SourceNavigationWorkflow(
                 }
             }
 
-            ApplicationManager.getApplication().invokeLater(
-                {
-                    result.fold(
-                        onSuccess = { target ->
-                            if (target != null) {
-                                eventSink.emit(
-                                    GraphEditorApplicationEvent.NavigationOpened(
-                                        nodeId = nodeId,
-                                        targetPath = target.filePath,
-                                        line = target.line,
-                                        column = target.column,
-                                        title = node.title,
-                                    ),
-                                )
-                            } else {
-                                eventSink.emit(
-                                    GraphEditorApplicationEvent.NavigationNotFound(
-                                        nodeId = nodeId,
-                                        label = node.location ?: node.signature ?: node.title,
-                                    ),
-                                )
-                            }
-                        },
-                        onFailure = { throwable ->
-                            logger.warn("打开源码失败", throwable)
-                            val errorMessage = throwable.message ?: throwable.javaClass.simpleName
-                            eventSink.emit(GraphEditorApplicationEvent.NavigationFailed(nodeId, errorMessage))
-                        },
-                    )
-                },
-                ModalityState.defaultModalityState(),
-            )
+            taskRunner.ui(TaskRunner.UiPolicy.ANY) {
+                result.fold(
+                    onSuccess = { target ->
+                        if (target != null) {
+                            eventSink.emit(
+                                GraphEditorApplicationEvent.NavigationOpened(
+                                    nodeId = nodeId,
+                                    targetPath = target.filePath,
+                                    line = target.line,
+                                    column = target.column,
+                                    title = node.title,
+                                ),
+                            )
+                        } else {
+                            eventSink.emit(
+                                GraphEditorApplicationEvent.NavigationNotFound(
+                                    nodeId = nodeId,
+                                    label = node.location ?: node.signature ?: node.title,
+                                ),
+                            )
+                        }
+                    },
+                    onFailure = { throwable ->
+                        logger.warn("打开源码失败", throwable)
+                        val errorMessage = throwable.message ?: throwable.javaClass.simpleName
+                        eventSink.emit(GraphEditorApplicationEvent.NavigationFailed(nodeId, errorMessage))
+                    },
+                )
+            }
         }
         return null
     }

@@ -1,6 +1,8 @@
 package com.charmnight.linkgraph.llm.tools
 
-import com.charmnight.linkgraph.llm.SourceSnippetContext
+import com.charmnight.linkgraph.agent.tools.*
+
+import com.charmnight.linkgraph.agent.model.SourceSnippetContext
 
 /**
  * 根据 symbolSignature 读取关联源码片段。
@@ -18,7 +20,7 @@ class ReadSymbolTool(
     override val name: String = "read_symbol"
     override val description: String = "按 symbolSignature 读取关联源码片段"
 
-    override fun parseInput(raw: Map<String, Any?>): ReadSymbolInput = ReadSymbolInput(
+    override fun parseInput(raw: ToolInputPayload): ReadSymbolInput = ReadSymbolInput(
         symbolSignature = requireString(raw, "symbolSignature"),
         fallbackSourceContexts = optionalList(raw, "fallbackSourceContexts", SourceSnippetContext::class),
     )

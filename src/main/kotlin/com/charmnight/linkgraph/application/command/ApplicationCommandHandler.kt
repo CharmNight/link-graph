@@ -18,7 +18,7 @@ import com.charmnight.linkgraph.application.workflow.generation.CodeDraftGenerat
 import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanDiscussionWorkflow
 import com.charmnight.linkgraph.application.workflow.generation.GenerationPlanWorkflow
 import com.charmnight.linkgraph.application.workflow.ReviewGraphWorkflow
-import com.charmnight.linkgraph.llm.GraphBeautificationFollowUpContext
+import com.charmnight.linkgraph.agent.model.GraphBeautificationFollowUpContext
 import com.charmnight.linkgraph.workbench.AssistantActionId
 import com.charmnight.linkgraph.workbench.AssistantIntent
 import com.charmnight.linkgraph.workbench.QaMode
@@ -379,7 +379,7 @@ internal class GenerationApplicationCommandHandler(
     private val codeDraftGenerationFlow: CodeDraftGenerationWorkflow,
     private val codeDraftApplyFlow: CodeDraftApplyWorkflow,
     // 打开代码草稿原生 diff 的覆盖函数，便于在测试或定制场景中替换默认实现
-    private val openCodeDraftNativeDiffOverrideProvider: () -> ((String) -> Unit)? = { null },
+    private val openCodeDraftNativeDiffHook: () -> ((String) -> Unit)? = { null },
 ) : ApplicationCommandHandler {
     override fun canHandle(command: ApplicationCommand<*>): Boolean =
         command is ApplicationCommand.RequestCodeDrafts ||
@@ -397,7 +397,7 @@ internal class GenerationApplicationCommandHandler(
             is ApplicationCommand.ApplySingleCodeDraft ->
                 codeDraftApplyFlow.applySingleCodeDraft(command.draftId)
             is ApplicationCommand.OpenCodeDraftNativeDiff ->
-                openCodeDraftNativeDiffOverrideProvider()?.invoke(command.draftId)
+                openCodeDraftNativeDiffHook()?.invoke(command.draftId)
                     ?: codeDraftApplyFlow.openCodeDraftNativeDiff(command.draftId)
             is ApplicationCommand.RequestDraftNavigation ->
                 codeDraftApplyFlow.requestDraftNavigation(command.targetPath)

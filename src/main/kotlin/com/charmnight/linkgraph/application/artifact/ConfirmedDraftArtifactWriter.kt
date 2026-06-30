@@ -1,8 +1,8 @@
 package com.charmnight.linkgraph.application.artifact
 
-import com.charmnight.linkgraph.llm.artifact.ArtifactStore
-import com.charmnight.linkgraph.llm.artifact.ArtifactStorePruner
-import com.charmnight.linkgraph.llm.artifact.ConfirmedIntentArtifact
+import com.charmnight.linkgraph.agent.artifact.ArtifactStore
+import com.charmnight.linkgraph.agent.artifact.ArtifactStorePruner
+import com.charmnight.linkgraph.agent.artifact.ConfirmedIntentArtifact
 import com.charmnight.linkgraph.workbench.DraftWorkbenchEntry
 
 /**

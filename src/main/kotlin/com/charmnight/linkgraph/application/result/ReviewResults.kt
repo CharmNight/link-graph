@@ -1,8 +1,8 @@
 package com.charmnight.linkgraph.application.result
 
 import com.charmnight.linkgraph.application.model.AsyncRequestState
-import com.charmnight.linkgraph.llm.GraphBeautificationResult
-import com.charmnight.linkgraph.llm.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.GraphBeautificationResult
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
 import com.charmnight.linkgraph.workbench.DraftValidationState
 import com.charmnight.linkgraph.workbench.AssistantActionId
 import com.charmnight.linkgraph.workbench.AssistantIntent

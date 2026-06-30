@@ -24,11 +24,6 @@ function isVerticalSegment(startPoint: GraphPosition, endPoint: GraphPosition): 
   return Math.abs(startPoint.x - endPoint.x) <= 0.5;
 }
 
-/** 判断段是否为水平（y 坐标相同）。 */
-function isHorizontalSegment(startPoint: GraphPosition, endPoint: GraphPosition): boolean {
-  return Math.abs(startPoint.y - endPoint.y) <= 0.5;
-}
-
 /** 把点的 x 坐标平移 deltaX。 */
 function shiftPointX(point: GraphPosition, deltaX: number): GraphPosition {
   return { ...point, x: point.x + deltaX };

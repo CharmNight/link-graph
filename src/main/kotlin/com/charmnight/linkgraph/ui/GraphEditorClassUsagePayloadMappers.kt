@@ -11,7 +11,7 @@ import com.charmnight.linkgraph.usage.ClassUsageTarget
 /**
  * 类使用搜索结果的前端传输对象（DTO）。
  *
- * P2-6 替代之前的 `Map<String, Any?>`，给出类型稳定的契约：
+ * P2-6 替代之前的无类型映射载荷，给出类型稳定的契约：
  * - 字段名拼写错误会在编译期暴露
  * - 字段缺省或新增会被 IDE / 重构识别
  * - Gson 序列化时按声明顺序输出，与原 `linkedMapOf` 顺序一致

@@ -1,8 +1,8 @@
 package com.charmnight.linkgraph.llm.qa
 
-import com.charmnight.linkgraph.llm.EvidenceTraceEntry
-import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.llm.GraphQaContext
+import com.charmnight.linkgraph.agent.model.EvidenceTraceEntry
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.GraphQaContext
 import com.charmnight.linkgraph.llm.LlmUserMessageFormatter
 import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.model.NodeType

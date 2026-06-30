@@ -1,5 +1,7 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
 
 /**
@@ -17,7 +19,7 @@ class CheckWritableDraftTool(
     override val name: String = "check_writable_draft"
     override val description: String = "检查草稿是否满足最小写回条件"
 
-    override fun parseInput(raw: Map<String, Any?>): CheckWritableDraftInput = CheckWritableDraftInput(
+    override fun parseInput(raw: ToolInputPayload): CheckWritableDraftInput = CheckWritableDraftInput(
         draft = requireValue(raw, "draft", GeneratedCodeDraft::class),
     )
 

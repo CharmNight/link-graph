@@ -4,7 +4,7 @@ import com.charmnight.linkgraph.testing.*
 
 import com.charmnight.linkgraph.model.NodeType
 import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
-import com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides
+import com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeHooks
 import com.charmnight.linkgraph.testing.registerGraphEditorApplicationServicesForTest
 import com.charmnight.linkgraph.semantic.subject.SubjectHandle
 import com.charmnight.linkgraph.semantic.subject.SubjectLocator
@@ -126,8 +126,8 @@ class EditorPopupContextActionTest : BasePlatformTestCase() {
                 plain <caret>text
             """.trimIndent(),
         )
-        val testOverrides = project.getService(com.charmnight.linkgraph.application.runtime.LinkGraphProjectTestOverrides::class.java)
-        testOverrides.subjectLocator = object : SubjectLocator {
+        val runtimeHooks = project.getService(com.charmnight.linkgraph.application.runtime.LinkGraphProjectRuntimeHooks::class.java)
+        runtimeHooks.subjectLocator = object : SubjectLocator {
             override fun locate(
                 project: com.intellij.openapi.project.Project,
                 editor: com.intellij.openapi.editor.Editor?,

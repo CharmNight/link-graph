@@ -7,11 +7,8 @@ import com.charmnight.linkgraph.foundation.debugLazy
 import com.charmnight.linkgraph.semantic.policy.SemanticCapturePolicy
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectHandle
 import com.charmnight.linkgraph.semantic.subject.SubjectHandle
-import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.serviceContainer.AlreadyDisposedException
-import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.CancellationException
 
 /**
@@ -42,10 +39,11 @@ internal class SubjectAnalysisWorkflow(
         requestId: Long,
         source: String,
     ) {
-        var analysisTask = ReadAction
-            .nonBlocking<AnalysisOutcomeAsyncResult> {
+        val analysisTask = dependencies.taskRunner.readAsync(
+            requireSmartMode = handle is CodeSubjectHandle,
+            readAction = {
                 if (dependencies.project.isDisposed) {
-                    return@nonBlocking AnalysisOutcomeAsyncResult.cancelled()
+                    return@readAsync AnalysisOutcomeAsyncResult.cancelled()
                 }
                 try {
                     AnalysisOutcomeAsyncResult.success(computeAnalysisResultInReadAction(handle))
@@ -56,17 +54,12 @@ internal class SubjectAnalysisWorkflow(
                         AnalysisOutcomeAsyncResult.failure(throwable)
                     }
                 }
-            }
-            .expireWith(dependencies.project)
-        if (handle is CodeSubjectHandle) {
-            analysisTask = analysisTask.inSmartMode(dependencies.project)
-        }
-        val promise = analysisTask
-            .finishOnUiThread(ModalityState.defaultModalityState()) { result ->
+            },
+            onUi = { result ->
                 handleResult(requestId, handle, source, result)
-            }
-            .submit(AppExecutorUtil.getAppExecutorService())
-        requestCoordinator.replaceCurrentAnalysis(promise)
+            },
+        )
+        requestCoordinator.replaceCurrentAnalysis(analysisTask)
     }
 
     /**

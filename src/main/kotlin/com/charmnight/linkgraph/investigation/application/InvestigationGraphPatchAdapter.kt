@@ -4,11 +4,11 @@ import com.charmnight.linkgraph.investigation.application.EvidenceFact
 import com.charmnight.linkgraph.investigation.application.EvidenceLevel
 import com.charmnight.linkgraph.investigation.application.InvestigationStatus
 import com.charmnight.linkgraph.investigation.application.InvestigationTurnResult
-import com.charmnight.linkgraph.llm.GraphPatchResult
-import com.charmnight.linkgraph.llm.LlmResultSource
-import com.charmnight.linkgraph.llm.ResultEvidenceFinding
-import com.charmnight.linkgraph.llm.ResultEvidenceLevel
-import com.charmnight.linkgraph.llm.ResultEvidenceReference
+import com.charmnight.linkgraph.agent.model.GraphPatchResult
+import com.charmnight.linkgraph.agent.model.LlmResultSource
+import com.charmnight.linkgraph.agent.model.ResultEvidenceFinding
+import com.charmnight.linkgraph.agent.model.ResultEvidenceLevel
+import com.charmnight.linkgraph.agent.model.ResultEvidenceReference
 import com.charmnight.linkgraph.workbench.InvestigationThread
 import com.charmnight.linkgraph.workbench.InvestigationThreadStatus
 import com.charmnight.linkgraph.workbench.ReplayableQaRequest

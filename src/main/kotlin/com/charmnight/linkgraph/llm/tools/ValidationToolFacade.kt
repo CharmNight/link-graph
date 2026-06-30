@@ -1,12 +1,14 @@
 package com.charmnight.linkgraph.llm.tools
 
+import com.charmnight.linkgraph.agent.tools.*
+
 import com.charmnight.linkgraph.codegen.CodeEditOperation
 import com.charmnight.linkgraph.codegen.CodeEditScopeResolver
 import com.charmnight.linkgraph.codegen.GeneratedCodeDraft
-import com.charmnight.linkgraph.llm.ResultEvidenceFinding
-import com.charmnight.linkgraph.llm.ResultEvidenceLevel
-import com.charmnight.linkgraph.llm.artifact.CodeEvidenceArtifact
-import com.charmnight.linkgraph.llm.EditScope
+import com.charmnight.linkgraph.agent.model.ResultEvidenceFinding
+import com.charmnight.linkgraph.agent.model.ResultEvidenceLevel
+import com.charmnight.linkgraph.agent.artifact.CodeEvidenceArtifact
+import com.charmnight.linkgraph.agent.model.EditScope
 
 /**
  * 聚合 runtime 里需要的本地校验逻辑。

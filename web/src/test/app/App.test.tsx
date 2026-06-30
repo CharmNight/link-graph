@@ -665,8 +665,8 @@ function materializeEnvelopeState(state: TestBootstrapStateInput): LinkGraphBoot
 }
 
 async function applyBootstrapEnvelope(envelope: Parameters<typeof dispatchBootstrapForTest>[0]) {
-  // The transport updates React via startTransition; forcing act() around the dispatch
-  // can deadlock tests that intentionally replay older snapshots over newer local UI state.
+  // transport 通过 startTransition 更新 React；强制在 dispatch 外包 act()
+  // 可能让“旧快照覆盖较新本地 UI 状态”的回放测试死锁。
   await withSuppressedActWarnings(async () => {
     dispatchBootstrapForTest({
       ...envelope,
@@ -681,15 +681,6 @@ function render(...args: Parameters<typeof rtlRender>): ReturnType<typeof rtlRen
     window.linkGraphBootstrap = materializeWithFreshAssistantHistory(window.linkGraphBootstrap);
   }
   return rtlRender(...args);
-}
-
-function runWithSuppressedActWarnings<T>(callback: () => T): T {
-  const restore = suppressActWarnings();
-  try {
-    return callback();
-  } finally {
-    restore();
-  }
 }
 
 function suppressActWarnings() {
@@ -1395,8 +1386,7 @@ describe.sequential("App", () => {
   it("renders a compact Chinese workspace and keeps the graph as primary", () => {
     render(<App />);
 
-    // P1: the graph-stage title/description prose was removed; the stage region
-    // and its mode switch are the remaining header surface.
+    // P1：图谱舞台的标题/描述文案已移除；阶段 region 与模式切换是保留的头部界面。
     expect(screen.getByRole("region", { name: "图谱舞台" })).toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "链路大纲" })).toBeInTheDocument();
     expect(screen.getByRole("contentinfo", { name: "变更托盘" })).toBeInTheDocument();

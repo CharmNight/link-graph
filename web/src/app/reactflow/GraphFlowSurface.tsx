@@ -15,7 +15,6 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { DEFAULT_NODE_CARD_WIDTH } from "../graphNodeSizing";
 import { measureDuration, measureStart, summarizeGraph, traceLinkGraph } from "../debug";
 import type {
   AnalysisDisplayMode,
@@ -43,8 +42,6 @@ import {
   READABLE_FIT_MIN_ZOOM,
   RESIZE_SETTLE_DELAY_MS,
   USER_INTERACTION_GUARD_MS,
-  VIEWPORT_EASE,
-  VIEWPORT_TRANSITION_DURATION_MS,
   WIDE_GRAPH_FOCUS_ZOOM,
 } from "./viewportConfig";
 import {
@@ -235,7 +232,6 @@ export function GraphFlowSurface({
   buildEdgeActions,
   onSelectNode,
   onSelectionGroupChange = () => undefined,
-  onInspectNode,
   onCreateEdge,
   onMoveNode,
   onMoveNodes,
@@ -261,17 +257,16 @@ export function GraphFlowSurface({
   const lastResizeShellSizeRef = useRef<{ width: number; height: number } | null>(null);
   const previousViewportGraphRef = useRef<GraphViewportSnapshot | null>(null);
   const handledFocusNonceRef = useRef<number | null>(null);
+  const lastRenderCommitTraceSignatureRef = useRef<string | null>(null);
   const onSelectionGroupChangeRef = useRef(onSelectionGroupChange);
   const lastSelectionChangeSignatureRef = useRef<string>(selectedGroupNodeIds.join("\u0000"));
   /**
-   * Timestamp of the last user-initiated pan/zoom. While
-   * {@link USER_INTERACTION_GUARD_MS} hasn't elapsed, automatic viewport moves
-   * (incremental re-fit, off-screen selection focus) are suppressed so the
-   * canvas stops fighting the user mid-interaction.
+   * 最近一次用户主动平移/缩放的时间戳。
+   * 在交互保护窗口内，自动视口移动会让位于用户操作，避免画布在交互中跳动。
    */
   const lastUserViewportMoveRef = useRef(0);
 
-  // P0-3: virtualise large graphs by default; opt back out via experiments flag.
+  // P0-3：默认启用大图虚拟化，可通过 experiments 标记回退。
   const onlyRenderVisibleElements = experiments?.onlyRenderVisibleElements !== false;
   const dragShieldingEnabled = experiments?.dragShielding === true;
 
@@ -425,8 +420,7 @@ export function GraphFlowSurface({
     : viewportResetKey;
 
   /**
-   * P0-1: was the viewport recently moved by the user? While this is true we
-   * suppress automatic fit/selection moves so the canvas does not "jump".
+   * 判断用户近期是否主动移动过视口；为 true 时会抑制自动适配，避免画布跳动。
    */
   const isWithinUserInteractionGuard = useCallback(() => {
     if (lastUserViewportMoveRef.current === 0) {
@@ -440,7 +434,7 @@ export function GraphFlowSurface({
     if (liveDragNodeIds.length === 0) {
       return;
     }
-    // Drop live-drag overlays once the parent commits the same coordinates.
+    // 父组件提交同坐标后移除实时拖拽覆盖，避免覆盖层继续接管渲染位置。
     const committedPositions = new Map(
       flowNodes.map((node) => [node.id, node.position]),
     );
@@ -456,6 +450,10 @@ export function GraphFlowSurface({
   }, [flowNodes, liveDragPositions]);
 
   useEffect(() => {
+    if (lastRenderCommitTraceSignatureRef.current === renderCommitTraceSignature) {
+      return;
+    }
+    lastRenderCommitTraceSignatureRef.current = renderCommitTraceSignature;
     traceLinkGraph("graphFlowSurface.renderCommitted", {
       graph: summarizeGraph({ nodes: positionedNodes, edges }),
       selectedNodeId,
@@ -464,7 +462,15 @@ export function GraphFlowSurface({
       supportsResizeObserver,
       durationMs: measureDuration(renderStartedAtRef.current),
     });
-  }, [renderCommitTraceSignature]);
+  }, [
+    edges,
+    positionedNodes,
+    renderCommitBounds,
+    renderCommitTraceSignature,
+    selectedGroupNodeIds.length,
+    selectedNodeId,
+    supportsResizeObserver,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined" || window.__linkGraphDebugEnabled !== true) {
@@ -514,7 +520,7 @@ export function GraphFlowSurface({
   /**
    * 以平滑过渡方式将视口中心对准指定节点，依据触发原因决定使用全幅缩放还是聚焦缩放，并输出调试埋点。
    */
-  function focusNodeInViewport(node: LinkGraphNode, reason: string) {
+  const focusNodeInViewport = useCallback((node: LinkGraphNode, reason: string) => {
     if (!flowInstance || !node.position) {
       return;
     }
@@ -536,13 +542,13 @@ export function GraphFlowSurface({
       Math.round((node.position.y + size.height / 2) * 10) / 10,
       zoomOptions,
     );
-  }
+  }, [flowInstance, nodeViewportSize]);
 
   /**
    * 按“可读适配”策略计算并应用视口：根据内容边界和画布尺寸推导缩放与中心点，
    * 保证节点既不超出可见区域又满足最小可读缩放要求，返回是否成功应用。
    */
-  function fitReadableContentInViewport(reason: ViewportScheduleReason): boolean {
+  const fitReadableContentInViewport = useCallback((reason: ViewportScheduleReason): boolean => {
     if (!flowInstance) {
       return false;
     }
@@ -605,12 +611,12 @@ export function GraphFlowSurface({
     });
     flowInstance.setCenter(centerX, centerY, { zoom, ...VIEWPORT_TRANSITION });
     return true;
-  }
+  }, [edges, fitViewMaxZoom, fitViewPadding, flowInstance, nodeViewportSize, positionedNodes]);
 
   /**
    * 取消所有待执行的视口重算定时器，避免叠加触发导致视口反复跳动。
    */
-  function clearScheduledFitView() {
+  const clearScheduledFitView = useCallback(() => {
     if (primaryFitViewTimerRef.current !== null) {
       window.clearTimeout(primaryFitViewTimerRef.current);
       primaryFitViewTimerRef.current = null;
@@ -623,13 +629,13 @@ export function GraphFlowSurface({
       window.clearTimeout(resizeViewportTimerRef.current);
       resizeViewportTimerRef.current = null;
     }
-  }
+  }, []);
 
   /**
    * 视口调度核心：根据触发原因、视口模式与锚点策略，在“聚焦锚点 / 可读适配 / 默认 fitView”等分支中选择，
    * 同时尊重用户最近的交互保护窗口，必要时通过延时重试以确保布局稳定后再应用。
    */
-  function scheduleViewport(reason: ViewportScheduleReason) {
+  const scheduleViewport = useCallback((reason: ViewportScheduleReason) => {
     if (!flowInstance || positionedNodes.length === 0) {
       traceLinkGraph("graphFlowSurface.scheduleViewport.skipped", {
         reason,
@@ -638,8 +644,7 @@ export function GraphFlowSurface({
       });
       return;
     }
-    // P0-1: a resize-induced re-fit is user-driven; never override it. But a
-    // graph-induced re-fit right after the user panned/zoomed would fight them.
+    // P0-1：resize 触发的重新适配来自用户环境变化；图谱触发的适配在用户刚交互后需要让位。
     if (reason === "graph" && isWithinUserInteractionGuard()) {
       traceLinkGraph("graphFlowSurface.scheduleViewport.suppressedByUserInteraction", {
         reason,
@@ -729,7 +734,22 @@ export function GraphFlowSurface({
         retryFitViewTimerRef.current = null;
       }, FIT_VIEW_RETRY_DELAY_MS);
     }
-  }
+  }, [
+    anchorNode,
+    clearScheduledFitView,
+    edges,
+    fitReadableContentInViewport,
+    fitViewMaxZoom,
+    fitViewPadding,
+    flowInstance,
+    focusNodeInViewport,
+    graphShapeSignature,
+    isWithinUserInteractionGuard,
+    positionedNodes,
+    shouldFocusAnchorOnLoad,
+    viewportMode,
+    viewportPolicy,
+  ]);
 
   useEffect(() => {
     if (!focusNodeRequest || handledFocusNonceRef.current === focusNodeRequest.nonce) {
@@ -741,11 +761,9 @@ export function GraphFlowSurface({
     }
     handledFocusNonceRef.current = focusNodeRequest.nonce;
     focusNodeInViewport(targetNode, "explicitNodeFocus");
-  }, [flowInstance, focusNodeRequest, positionedNodes]);
+  }, [flowInstance, focusNodeInViewport, focusNodeRequest, positionedNodes]);
 
-  // Selecting a node never moves the viewport — the user is in full control of
-  // pan/zoom. (Previously a "nudge into view" fired on selection, which users
-  // experienced as the canvas jumping when they clicked a node.)
+  // 选中节点不再移动视口，平移/缩放完全由用户控制，避免点击节点时画布跳动。
 
   useEffect(() => {
     if (!flowInstance) {
@@ -782,19 +800,23 @@ export function GraphFlowSurface({
     scheduleViewport("graph");
     return clearScheduledFitView;
   }, [
+    anchorNode?.id,
+    clearScheduledFitView,
+    edges,
+    effectiveViewportResetKey,
     flowInstance,
     graphShapeSignature,
-    anchorNode?.id,
+    positionedNodes,
+    scheduleViewport,
     shouldFocusAnchorOnLoad,
     viewportMode,
-    viewportPolicy,
-    effectiveViewportResetKey,
-    fitViewPadding,
-    fitViewMaxZoom,
+    viewportResetKey,
   ]);
 
+  const hasPositionedNodes = positionedNodes.length > 0;
+
   useEffect(() => {
-    if (!supportsResizeObserver || !flowInstance || positionedNodes.length === 0 || !canvasShellRef.current) {
+    if (!supportsResizeObserver || !flowInstance || !hasPositionedNodes || !canvasShellRef.current) {
       return;
     }
     const initialRect = canvasShellRef.current.getBoundingClientRect();
@@ -822,7 +844,7 @@ export function GraphFlowSurface({
     });
     observer.observe(canvasShellRef.current);
     return () => observer.disconnect();
-  }, [supportsResizeObserver, flowInstance, positionedNodes.length > 0, shouldFocusAnchorOnLoad, viewportMode, viewportPolicy]);
+  }, [supportsResizeObserver, flowInstance, hasPositionedNodes, scheduleViewport]);
 
   /**
    * 解析右键事件在画布坐标系下的位置：优先使用传入位置，否则依据事件源 DOM 的边界框推算流式坐标。
@@ -945,7 +967,6 @@ export function GraphFlowSurface({
     setContextMenu(null);
   };
 
-  // P0-1: track user-driven viewport moves so the auto-fit logic can stand down.
   /**
    * 视口移动事件处理：只要用户存在平移/缩放操作，就刷新交互保护时间戳，
    * 使后续自动适配在保护期内主动让位。
@@ -1076,8 +1097,7 @@ export function GraphFlowSurface({
             });
             setFlowInstance(instance);
           }}
-          // P0-1: stamp the interaction guard whenever the user pans/zooms so
-          // the auto-fit effects know to yield.
+          // P0-1：用户平移/缩放时刷新交互保护，让自动适配主动让位。
           onMove={handleViewportChange}
           onNodeClick={handleNodeClick}
           onNodeContextMenu={(event, node) => openNodeMenu(event, node.id)}
