@@ -21,14 +21,13 @@ import com.charmnight.linkgraph.model.GraphNode
 import com.charmnight.linkgraph.semantic.SemanticAnalyzer
 import com.charmnight.linkgraph.semantic.model.MethodLikeUnit
 import com.charmnight.linkgraph.semantic.model.SemanticAnalysisResult
-import com.charmnight.linkgraph.semantic.outcome.AnalysisDisplayMode
-import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcomeFactory
 import com.charmnight.linkgraph.semantic.policy.SemanticCapturePolicy
 import com.charmnight.linkgraph.semantic.policy.TraversalBudgetPolicy
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectHandle
 import com.charmnight.linkgraph.semantic.subject.CodeSubjectHandleFactory
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
+import java.util.Locale
 
 /**
  * 调用展开工作流：把图谱中代表一次方法调用的节点展开为该方法自身的链路，
@@ -46,8 +45,6 @@ internal class InvocationExpansionWorkflow(
     private val eventSink: GraphEditorApplicationEventSink,
     /** 语义分析器延迟提供者，避免不必要的初始化。 */
     private val semanticAnalyzerProvider: () -> SemanticAnalyzer,
-    /** 分析结果工厂延迟提供者，把分析结果转为可渲染的图谱。 */
-    private val analysisOutcomeFactoryProvider: () -> AnalysisOutcomeFactory,
     /** 用于把 PSI 方法包装为统一代码主题句柄的工厂。 */
     private val codeSubjectHandleFactory: CodeSubjectHandleFactory,
     /** 目标解析自定义覆盖点，测试或扩展时可注入替代实现。 */
@@ -64,100 +61,230 @@ internal class InvocationExpansionWorkflow(
     private val useCase: InvocationExpansionUseCase = InvocationExpansionUseCase(),
     /** 把签名解析为可展开目标的解析器。 */
     private val targetResolver: InvocationExpansionTargetResolver = InvocationExpansionTargetResolver(),
+    /** 只构建展开合并所需的目标流程图，不执行 UI 可读投影、窗口裁剪和投影索引计算。 */
+    private val targetGraphBuilder: InvocationExpansionTargetGraphBuilder = InvocationExpansionTargetGraphBuilder(),
 ) {
     /** 接收一个调用节点 ID，校验后展开其对应方法并把链路合入工作区图谱。 */
-    fun requestExpandInvocation(nodeId: String) {
-        val snapshot = snapshotProvider.snapshot()
-        val node = findInvocationNode(snapshot, nodeId)
-        if (node == null) {
-            emitFeedback(ApplicationFeedbackLevel.WARNING, "未找到需要展开的调用节点。")
-            return
-        }
-
-        when (useCase.validateInvocationNode(node)) {
-            InvocationExpansionUseCase.ValidationResult.NOT_INVOCATION -> {
-                emitFeedback(ApplicationFeedbackLevel.WARNING, "当前节点不是可展开的方法调用节点。")
-                return
-            }
-            InvocationExpansionUseCase.ValidationResult.MISSING_SIGNATURE -> {
-                emitFeedback(ApplicationFeedbackLevel.WARNING, "当前调用节点缺少目标方法签名，无法展开。")
-                return
-            }
-            InvocationExpansionUseCase.ValidationResult.READY -> Unit
-        }
-
-        val sourceSignature = node.signature.orEmpty().trim()
-        val target = resolveTarget(sourceSignature)
-        val targetSignatures = expandableTargetSignatures(target, sourceSignature)
-        if (targetSignatures.isEmpty()) {
-            emitFeedback(ApplicationFeedbackLevel.INFO, nonExpandableMessage(target, sourceSignature))
-            return
-        }
-
-        var analysisFailed = false
-        var workingGraph = snapshot.workspaceGraph
-        var mergedCount = 0
-        val missingSignatures = mutableListOf<String>()
-        targetSignatures.forEach { targetSignature ->
-            val handle = resolveSubject(targetSignature)
-            if (handle == null) {
-                missingSignatures += targetSignature
-                return@forEach
-            }
-            val mergeResult = runCatching {
-                val analysisResult = semanticAnalyzerProvider().analyze(
-                    handle = handle,
-                    capturePolicy = SemanticCapturePolicy(),
-                    budgetPolicy = TraversalBudgetPolicy(),
-                )
-                val targetGraph = analysisOutcomeFactoryProvider()
-                    .create(analysisResult, AnalysisDisplayMode.FLOWCHART)
-                    .fullGraph
-                val targetEntryNodeId = resolveTargetEntryNodeId(analysisResult, targetGraph, targetSignature)
-                targetEntryNodeId ?: return@runCatching null
-                useCase.mergeExpansion(
-                    workspace = workingGraph,
-                    sourceInvocationNode = node,
-                    targetGraph = targetGraph,
-                    targetEntryNodeId = targetEntryNodeId,
-                    targetSignature = targetSignature,
-                )
-            }.onFailure { throwable ->
-                analysisFailed = true
-                logger.warn("展开调用方法失败", throwable)
-                emitFeedback(
-                    ApplicationFeedbackLevel.ERROR,
-                    "展开调用方法失败：${throwable.message ?: throwable.javaClass.simpleName}",
-                )
-            }.getOrNull()
-            if (mergeResult != null) {
-                workingGraph = mergeResult.graph
-                mergedCount += 1
-            }
-        }
-
-        if (mergedCount == 0) {
-            when {
-                missingSignatures.isNotEmpty() ->
-                    emitFeedback(ApplicationFeedbackLevel.WARNING, "未在当前项目中找到方法：${missingSignatures.joinToString("；")}")
-                !analysisFailed ->
-                    emitFeedback(ApplicationFeedbackLevel.WARNING, "目标方法没有可合入当前图的链路。")
-            }
-            return
-        }
-
-        val committed = workspaceGraphCommitter.commitWorkspaceGraph(
-            expectedSnapshotRevision = snapshot.snapshotRevision,
-            graph = workingGraph,
-            selectedMethodSignature = snapshot.selectedMethodSignature,
-            preserveDraftPatchUndo = true,
-            workingGraphDirty = true,
-            syncBrowser = true,
+    fun requestExpandInvocation(
+        nodeId: String,
+        frontendRequestedAtMs: Long? = null,
+    ) {
+        val timing = InvocationExpansionTiming(
+            nodeId = nodeId,
+            frontendRequestedAtMs = frontendRequestedAtMs,
+            logger = logger,
+            enabled = LinkGraphDebugEnvironment.isEnabled(DEBUG_TRACE_ENV),
         )
-        if (committed) {
-            emitFeedback(ApplicationFeedbackLevel.SUCCESS, "已展开调用方法：${node.title}")
-        } else {
-            emitFeedback(ApplicationFeedbackLevel.WARNING, "当前图已变化，请重新选择调用节点后再展开。")
+        timing.logStart()
+        var outcome = "unknown"
+        var committed: Boolean? = null
+        var mergedCount = 0
+        var workspaceNodesBefore = 0
+        var workspaceEdgesBefore = 0
+        var workspaceNodesAfter = 0
+        var workspaceEdgesAfter = 0
+
+        try {
+            val snapshot = timing.measurePhase("snapshot") {
+                snapshotProvider.snapshot()
+            }
+            workspaceNodesBefore = snapshot.workspaceGraph.nodes.size
+            workspaceEdgesBefore = snapshot.workspaceGraph.edges.size
+            workspaceNodesAfter = workspaceNodesBefore
+            workspaceEdgesAfter = workspaceEdgesBefore
+
+            val node = timing.measurePhase(
+                phase = "findNode",
+                details = { candidate -> "found=${candidate != null}" },
+            ) {
+                findInvocationNode(snapshot, nodeId)
+            }
+            if (node == null) {
+                outcome = "missingNode"
+                emitFeedback(ApplicationFeedbackLevel.WARNING, "未找到需要展开的调用节点。")
+                return
+            }
+
+            val validationResult = timing.measurePhase(
+                phase = "validate",
+                details = { result -> "result=$result" },
+            ) {
+                useCase.validateInvocationNode(node)
+            }
+            when (validationResult) {
+                InvocationExpansionUseCase.ValidationResult.NOT_INVOCATION -> {
+                    outcome = "notInvocation"
+                    emitFeedback(ApplicationFeedbackLevel.WARNING, "当前节点不是可展开的方法调用节点。")
+                    return
+                }
+                InvocationExpansionUseCase.ValidationResult.MISSING_SIGNATURE -> {
+                    outcome = "missingSignature"
+                    emitFeedback(ApplicationFeedbackLevel.WARNING, "当前调用节点缺少目标方法签名，无法展开。")
+                    return
+                }
+                InvocationExpansionUseCase.ValidationResult.READY -> Unit
+            }
+
+            val sourceSignature = node.signature.orEmpty().trim()
+            val target = timing.measureLinkPhase(
+                phase = "target",
+                details = { resolved ->
+                    "sourceSignature=$sourceSignature, targetKind=${resolved.kind}, " +
+                        "targetSignature=${resolved.signature.orEmpty()}, " +
+                        "candidateCount=${resolved.candidateSignatures.size}"
+                },
+            ) {
+                resolveTarget(sourceSignature)
+            }
+            val targetSignatures = timing.measureLinkPhase(
+                phase = "targetSignatures",
+                details = { signatures ->
+                    "targetSignatureCount=${signatures.size}, targetSignatures=${signatures.joinToString("|")}"
+                },
+            ) {
+                expandableTargetSignatures(target, sourceSignature)
+            }
+            if (targetSignatures.isEmpty()) {
+                outcome = "nonExpandable:${target.kind}"
+                emitFeedback(ApplicationFeedbackLevel.INFO, nonExpandableMessage(target, sourceSignature))
+                return
+            }
+
+            var analysisFailed = false
+            var workingGraph = snapshot.workspaceGraph
+            val missingSignatures = mutableListOf<String>()
+            targetSignatures.forEach { targetSignature ->
+                val handle = timing.measureLinkPhase(
+                    phase = "subject",
+                    details = { resolvedHandle ->
+                        "targetSignature=$targetSignature, found=${resolvedHandle != null}"
+                    },
+                ) {
+                    resolveSubject(targetSignature)
+                }
+                if (handle == null) {
+                    missingSignatures += targetSignature
+                    return@forEach
+                }
+                val mergeResult = runCatching {
+                    val analysisResult = timing.measureLinkPhase(
+                        phase = "analyze",
+                        details = { result ->
+                            "targetSignature=$targetSignature, semanticUnits=${result.semanticUnits.size}, " +
+                                "relations=${result.relations.size}, anchors=${result.anchors.size}"
+                        },
+                    ) {
+                        semanticAnalyzerProvider().analyze(
+                            handle = handle,
+                            capturePolicy = INVOCATION_EXPANSION_CAPTURE_POLICY,
+                            budgetPolicy = INVOCATION_EXPANSION_BUDGET_POLICY,
+                        )
+                    }
+                    val targetGraph = timing.measureLinkPhase(
+                        phase = "project",
+                        details = { graph ->
+                            "targetSignature=$targetSignature, targetGraphNodes=${graph.nodes.size}, " +
+                                "targetGraphEdges=${graph.edges.size}"
+                        },
+                    ) {
+                        targetGraphBuilder.build(analysisResult)
+                    }
+                    val targetEntryNodeId = timing.measureLinkPhase(
+                        phase = "entry",
+                        details = { entryNodeId ->
+                            "targetSignature=$targetSignature, targetEntryNodeId=${entryNodeId.orEmpty()}"
+                        },
+                    ) {
+                        resolveTargetEntryNodeId(analysisResult, targetGraph, targetSignature)
+                    }
+                    targetEntryNodeId ?: return@runCatching null
+                    timing.measureLinkPhase(
+                        phase = "merge",
+                        details = { result ->
+                            "targetSignature=$targetSignature, mergedGraphNodes=${result.graph.nodes.size}, " +
+                                "mergedGraphEdges=${result.graph.edges.size}"
+                        },
+                    ) {
+                        useCase.mergeExpansion(
+                            workspace = workingGraph,
+                            sourceInvocationNode = node,
+                            targetGraph = targetGraph,
+                            targetEntryNodeId = targetEntryNodeId,
+                            targetSignature = targetSignature,
+                        )
+                    }
+                }.onFailure { throwable ->
+                    analysisFailed = true
+                    logger.warn("展开调用方法失败", throwable)
+                    emitFeedback(
+                        ApplicationFeedbackLevel.ERROR,
+                        "展开调用方法失败：${throwable.message ?: throwable.javaClass.simpleName}",
+                    )
+                }.getOrNull()
+                if (mergeResult != null) {
+                    workingGraph = mergeResult.graph
+                    workspaceNodesAfter = workingGraph.nodes.size
+                    workspaceEdgesAfter = workingGraph.edges.size
+                    mergedCount += 1
+                }
+            }
+
+            if (mergedCount == 0) {
+                when {
+                    missingSignatures.isNotEmpty() -> {
+                        outcome = "subjectMissing"
+                        emitFeedback(
+                            ApplicationFeedbackLevel.WARNING,
+                            "未在当前项目中找到方法：${missingSignatures.joinToString("；")}",
+                        )
+                    }
+                    !analysisFailed -> {
+                        outcome = "noMergeableGraph"
+                        emitFeedback(ApplicationFeedbackLevel.WARNING, "目标方法没有可合入当前图的链路。")
+                    }
+                    else -> {
+                        outcome = "analysisFailed"
+                    }
+                }
+                return
+            }
+
+            committed = timing.measurePhase(
+                phase = "commit",
+                details = { result ->
+                    "committed=$result, workspaceNodesBefore=$workspaceNodesBefore, " +
+                        "workspaceNodesAfter=${workingGraph.nodes.size}, " +
+                        "workspaceEdgesBefore=$workspaceEdgesBefore, workspaceEdgesAfter=${workingGraph.edges.size}"
+                },
+            ) {
+                workspaceGraphCommitter.commitWorkspaceGraph(
+                    expectedSnapshotRevision = snapshot.snapshotRevision,
+                    graph = workingGraph,
+                    selectedMethodSignature = snapshot.selectedMethodSignature,
+                    preserveDraftPatchUndo = true,
+                    workingGraphDirty = true,
+                    syncBrowser = true,
+                )
+            }
+            workspaceNodesAfter = workingGraph.nodes.size
+            workspaceEdgesAfter = workingGraph.edges.size
+            if (committed == true) {
+                outcome = "committed"
+                emitFeedback(ApplicationFeedbackLevel.SUCCESS, "已展开调用方法：${node.title}")
+            } else {
+                outcome = "staleSnapshot"
+                emitFeedback(ApplicationFeedbackLevel.WARNING, "当前图已变化，请重新选择调用节点后再展开。")
+            }
+        } finally {
+            timing.logDone(
+                outcome = outcome,
+                committed = committed,
+                mergedCount = mergedCount,
+                workspaceNodesBefore = workspaceNodesBefore,
+                workspaceNodesAfter = workspaceNodesAfter,
+                workspaceEdgesBefore = workspaceEdgesBefore,
+                workspaceEdgesAfter = workspaceEdgesAfter,
+            )
         }
     }
 
@@ -329,8 +456,143 @@ internal class InvocationExpansionWorkflow(
         eventSink.emit(GraphEditorApplicationEvent.Feedback(level, message))
     }
 
+    private class InvocationExpansionTiming(
+        private val nodeId: String,
+        private val frontendRequestedAtMs: Long?,
+        private val logger: Logger,
+        private val enabled: Boolean,
+    ) {
+        private val startedAtNanos: Long = System.nanoTime()
+        private val backendStartedAtMs: Long = System.currentTimeMillis()
+        private var linkProcessingNanos: Long = 0L
+
+        fun logStart() {
+            if (!enabled) {
+                return
+            }
+            val frontendToBackendMs = frontendRequestedAtMs
+                ?.let { requestedAtMs -> (backendStartedAtMs - requestedAtMs).coerceAtLeast(0L) }
+            logger.warn(
+                "调用展开计时: phase=start, nodeId=$nodeId, " +
+                    "frontendRequestedAtMs=${frontendRequestedAtMs ?: -1}, " +
+                    "backendStartedAtMs=$backendStartedAtMs, " +
+                    "frontendToBackendMs=${frontendToBackendMs ?: -1}",
+            )
+        }
+
+        fun <T> measurePhase(
+            phase: String,
+            details: ((T) -> String)? = null,
+            block: () -> T,
+        ): T {
+            val started = System.nanoTime()
+            try {
+                val result = block()
+                logPhase(
+                    phase = phase,
+                    durationNanos = System.nanoTime() - started,
+                    details = details?.invoke(result).orEmpty(),
+                )
+                return result
+            } catch (throwable: Throwable) {
+                logPhase(
+                    phase = phase,
+                    durationNanos = System.nanoTime() - started,
+                    details = "failed=${throwable.javaClass.simpleName}",
+                )
+                throw throwable
+            }
+        }
+
+        fun <T> measureLinkPhase(
+            phase: String,
+            details: ((T) -> String)? = null,
+            block: () -> T,
+        ): T {
+            val started = System.nanoTime()
+            try {
+                val result = block()
+                val elapsed = System.nanoTime() - started
+                linkProcessingNanos += elapsed.coerceAtLeast(0L)
+                logPhase(
+                    phase = phase,
+                    durationNanos = elapsed,
+                    details = details?.invoke(result).orEmpty(),
+                )
+                return result
+            } catch (throwable: Throwable) {
+                val elapsed = System.nanoTime() - started
+                linkProcessingNanos += elapsed.coerceAtLeast(0L)
+                logPhase(
+                    phase = phase,
+                    durationNanos = elapsed,
+                    details = "failed=${throwable.javaClass.simpleName}",
+                )
+                throw throwable
+            }
+        }
+
+        fun logDone(
+            outcome: String,
+            committed: Boolean?,
+            mergedCount: Int,
+            workspaceNodesBefore: Int,
+            workspaceNodesAfter: Int,
+            workspaceEdgesBefore: Int,
+            workspaceEdgesAfter: Int,
+        ) {
+            if (!enabled) {
+                return
+            }
+            val totalNanos = System.nanoTime() - startedAtNanos
+            val totalMs = nanosToMillis(totalNanos)
+            val linkProcessingMs = nanosToMillis(linkProcessingNanos)
+            logger.warn(
+                "调用展开计时: phase=done, nodeId=$nodeId, outcome=$outcome, " +
+                    "committed=${committed ?: "unknown"}, mergedCount=$mergedCount, " +
+                    "totalMs=${formatMillis(totalMs)}, internalMs=${formatMillis(totalMs)}, " +
+                    "linkProcessingMs=${formatMillis(linkProcessingMs)}, " +
+                    "workspaceNodesBefore=$workspaceNodesBefore, workspaceNodesAfter=$workspaceNodesAfter, " +
+                    "workspaceEdgesBefore=$workspaceEdgesBefore, workspaceEdgesAfter=$workspaceEdgesAfter",
+            )
+        }
+
+        private fun logPhase(
+            phase: String,
+            durationNanos: Long,
+            details: String,
+        ) {
+            if (!enabled) {
+                return
+            }
+            val suffix = details.takeIf(String::isNotBlank)?.let { ", $it" }.orEmpty()
+            logger.warn(
+                "调用展开计时: phase=$phase, nodeId=$nodeId, " +
+                    "durationMs=${formatMillis(nanosToMillis(durationNanos))}$suffix",
+            )
+        }
+
+        private fun nanosToMillis(nanos: Long): Double =
+            nanos.coerceAtLeast(0L) / 1_000_000.0
+
+        private fun formatMillis(value: Double): String =
+            String.format(Locale.ROOT, "%.2f", value)
+    }
+
     private companion object {
         private const val DEBUG_TRACE_ENV = "LINKGRAPH_DEBUG_TRACE"
+        private val INVOCATION_EXPANSION_CAPTURE_POLICY = SemanticCapturePolicy(
+            includeControlFlow = true,
+            includeInvocations = true,
+            includeExceptionPath = true,
+            includeResourceReferences = false,
+        )
+        private val INVOCATION_EXPANSION_BUDGET_POLICY = TraversalBudgetPolicy(
+            maxDownstreamDepth = 0,
+            maxUpstreamDepth = 0,
+            maxInvocationsPerUnit = 12,
+            maxRelatedResourcesPerUnit = 0,
+        )
     }
 
 }

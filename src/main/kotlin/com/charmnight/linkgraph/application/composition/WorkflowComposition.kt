@@ -243,7 +243,6 @@ internal class WorkflowComposition(
             workspaceGraphCommitter = infrastructure.workspaceGraphCommitter,
             eventSink = infrastructure.eventSink,
             semanticAnalyzerProvider = { semanticAnalyzer },
-            analysisOutcomeFactoryProvider = { analysisOutcomeFactory },
             codeSubjectHandleFactory = codeSubjectHandleFactory,
             targetResolverHook = { runtimeHooks.invocationExpansionTargetResolver },
             subjectResolverHook = { runtimeHooks.invocationExpansionSubjectResolver },

@@ -164,7 +164,10 @@ internal class GraphBrowserBridgeRegistrar(
                 layoutChanged: (payload) => sendCommand("layoutChanged", payload || { positions: [] }),
                 requestSourceNavigation: (nodeId) => sendCommand("requestSourceNavigation", { nodeId }),
                 requestExpandOverflowNode: (nodeId) => sendCommand("requestExpandOverflowNode", { nodeId }),
-                requestExpandInvocation: (nodeId) => sendCommand("requestExpandInvocation", { nodeId }),
+                requestExpandInvocation: (nodeId) => sendCommand("requestExpandInvocation", {
+                  nodeId,
+                  frontendRequestedAtMs: Date.now()
+                }),
                 requestRemoveInvocationExpansion: (expansionId) => sendCommand("requestRemoveInvocationExpansion", { expansionId }),
                 collapseInvocationExpansion: (expansionId) => sendCommand("collapseInvocationExpansion", { expansionId }),
                 openInvocationExpansion: (expansionId) => sendCommand("openInvocationExpansion", { expansionId }),

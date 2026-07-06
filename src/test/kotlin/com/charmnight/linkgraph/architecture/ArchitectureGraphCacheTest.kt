@@ -117,6 +117,22 @@ class ArchitectureGraphCacheTest {
     }
 
     @Test
+    fun evictsOldestEntriesWhenCacheExceedsCapacity() {
+        var now = 100L
+        val cache = ArchitectureGraphCache(clockMillis = { now++ })
+        val keys = (1..9).map(::cacheKey)
+
+        keys.forEach { key ->
+            cache.put(key, ArchitectureGraphIndex.from(JvmSymbolIndex(), JvmRelationIndex()))
+        }
+
+        assertNull(cache.get(keys.first()))
+        keys.takeLast(8).forEach { key ->
+            assertNotNull(cache.get(key))
+        }
+    }
+
+    @Test
     fun invalidateDoesNotBlockBehindLongRunningBuildForSameKey() {
         val cache = ArchitectureGraphCache(clockMillis = { 123L })
         val key = ArchitectureGraphCacheKey(
@@ -161,4 +177,20 @@ class ArchitectureGraphCacheTest {
         executor.shutdownNow()
         assertEquals(true, invalidatedWithinDeadline)
     }
+
+    private fun cacheKey(maxRelations: Int): ArchitectureGraphCacheKey =
+        ArchitectureGraphCacheKey(
+            projectLocationHash = 1,
+            projectRootModificationCount = 2L,
+            psiModificationCount = 3L,
+            includeTests = true,
+            includeExternalLibraries = false,
+            includeJdk = false,
+            includeUserAttachedJars = false,
+            maxProjectClasses = 10,
+            maxExternalClasses = 20,
+            maxMethods = 30,
+            maxRelations = maxRelations,
+            attachedJars = emptyList(),
+        )
 }

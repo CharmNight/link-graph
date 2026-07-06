@@ -57,15 +57,9 @@ fun buildGraphEvidenceProfile(
     val anchor = resolveEvidenceAnchor(graph, fullGraph, anchorNodeId, selectedNodeIds)
     val relationGraph = fullGraph.takeIf { it.edges.isNotEmpty() } ?: graph
     val anchorId = anchor?.id ?: anchorNodeId
-    val incomingEdges = relationGraph.edges.filter { edge -> anchorId != null && edge.toNodeId == anchorId }
-    val outgoingEdges = relationGraph.edges.filter { edge -> anchorId != null && edge.fromNodeId == anchorId }
-    val relationKinds = (incomingEdges + outgoingEdges)
-        .map { edge -> edge.metadata["jvm.relation.kind"] ?: edge.type.name }
-        .distinct()
-        .sorted()
-    val hasMethodCallEvidence = (incomingEdges + outgoingEdges).any { edge ->
-        edge.type == EdgeType.CALL || edge.metadata["jvm.relation.kind"] == "CALLS"
-    }
+    val relationEvidence = collectAnchorRelationEvidence(relationGraph, anchorId)
+    val relationKinds = relationEvidence.relationKinds.sorted()
+    val hasMethodCallEvidence = relationEvidence.hasMethodCallEvidence
     val hasSourceEvidence = sourceContext.any { snippet ->
         snippet.nodeId == anchorId || selectedNodeIds.contains(snippet.nodeId)
     }
@@ -73,14 +67,19 @@ fun buildGraphEvidenceProfile(
         anchor?.metadata?.get("architecture.sourceSample.count")?.toIntOrNull()?.let { it > 0 } == true
     val modes = allowedModesFor(anchor, hasMethodCallEvidence, relationKinds)
     val forbiddenClaims = forbiddenClaimsFor(anchor, hasMethodCallEvidence)
-    val evidenceGaps = evidenceGapsFor(anchor, hasMethodCallEvidence, incomingEdges.size, outgoingEdges.size)
+    val evidenceGaps = evidenceGapsFor(
+        anchor = anchor,
+        hasMethodCallEvidence = hasMethodCallEvidence,
+        incomingRelationCount = relationEvidence.incomingRelationCount,
+        outgoingRelationCount = relationEvidence.outgoingRelationCount,
+    )
     return GraphEvidenceProfile(
         anchorNodeId = anchorId,
         anchorNodeType = anchor?.type,
         anchorArchitectureKind = anchor?.metadata?.get("architecture.node.kind"),
         availableRelationKinds = relationKinds,
-        incomingRelationCount = incomingEdges.size,
-        outgoingRelationCount = outgoingEdges.size,
+        incomingRelationCount = relationEvidence.incomingRelationCount,
+        outgoingRelationCount = relationEvidence.outgoingRelationCount,
         hasMethodCallEvidence = hasMethodCallEvidence,
         hasSourceEvidence = hasSourceEvidence,
         hasPackageMemberEvidence = hasPackageMemberEvidence,
@@ -88,6 +87,42 @@ fun buildGraphEvidenceProfile(
         forbiddenClaims = forbiddenClaims,
         evidenceGaps = evidenceGaps,
         recommendedDrilldowns = recommendedDrilldowns(graph, fullGraph, anchor),
+    )
+}
+
+private fun collectAnchorRelationEvidence(
+    relationGraph: GraphDocument,
+    anchorId: String?,
+): AnchorRelationEvidence {
+    if (anchorId == null) {
+        return AnchorRelationEvidence()
+    }
+    var incomingRelationCount = 0
+    var outgoingRelationCount = 0
+    var hasMethodCallEvidence = false
+    val relationKinds = linkedSetOf<String>()
+    for (edge in relationGraph.edges) {
+        val touchesAnchor = edge.toNodeId == anchorId || edge.fromNodeId == anchorId
+        if (!touchesAnchor) {
+            continue
+        }
+        if (edge.toNodeId == anchorId) {
+            incomingRelationCount += 1
+        }
+        if (edge.fromNodeId == anchorId) {
+            outgoingRelationCount += 1
+        }
+        val relationKind = edge.metadata["jvm.relation.kind"] ?: edge.type.name
+        relationKinds += relationKind
+        if (edge.type == EdgeType.CALL || relationKind == "CALLS") {
+            hasMethodCallEvidence = true
+        }
+    }
+    return AnchorRelationEvidence(
+        incomingRelationCount = incomingRelationCount,
+        outgoingRelationCount = outgoingRelationCount,
+        relationKinds = relationKinds,
+        hasMethodCallEvidence = hasMethodCallEvidence,
     )
 }
 
@@ -190,13 +225,37 @@ private fun recommendedDrilldowns(
     fullGraph: GraphDocument,
     anchor: GraphNode?,
 ): List<String> {
-    val nodes = (graph.nodes + fullGraph.nodes).distinctBy(GraphNode::id)
     val anchorId = anchor?.id ?: return emptyList()
-    return nodes
-        .filter { node -> node.id != anchorId && node.type in methodLikeNodeTypes + NodeType.CLASS + NodeType.INTERFACE }
-        .take(8)
-        .map(GraphNode::id)
+    val drilldownNodeTypes = methodLikeNodeTypes + NodeType.CLASS + NodeType.INTERFACE
+    val seenNodeIds = linkedSetOf(anchorId)
+    val result = mutableListOf<String>()
+    fun collect(nodes: List<GraphNode>): Boolean {
+        for (node in nodes) {
+            if (!seenNodeIds.add(node.id)) {
+                continue
+            }
+            if (node.type in drilldownNodeTypes) {
+                result += node.id
+                if (result.size == 8) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+    if (collect(graph.nodes)) {
+        return result
+    }
+    collect(fullGraph.nodes)
+    return result
 }
+
+private data class AnchorRelationEvidence(
+    val incomingRelationCount: Int = 0,
+    val outgoingRelationCount: Int = 0,
+    val relationKinds: Set<String> = emptySet(),
+    val hasMethodCallEvidence: Boolean = false,
+)
 
 /** 表示可被视为“方法级”的节点类型集合，用于判断是否允许方法调用链讲解。 */
 private val methodLikeNodeTypes = setOf(

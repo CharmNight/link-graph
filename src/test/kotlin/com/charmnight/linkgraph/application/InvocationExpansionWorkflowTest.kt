@@ -16,8 +16,10 @@ import com.charmnight.linkgraph.semantic.model.SemanticAnalysisResult
 import com.charmnight.linkgraph.semantic.model.SemanticAnchor
 import com.charmnight.linkgraph.semantic.model.SemanticRelation
 import com.charmnight.linkgraph.semantic.model.SemanticRelationKind
+import com.charmnight.linkgraph.semantic.outcome.AnalysisOutcomeFactory
 import com.charmnight.linkgraph.semantic.policy.SemanticCapturePolicy
 import com.charmnight.linkgraph.semantic.policy.TraversalBudgetPolicy
+import com.charmnight.linkgraph.semantic.provider.code.CodeSemanticProvider
 import com.charmnight.linkgraph.semantic.provider.code.CodeSubjectSemanticProvider
 import com.charmnight.linkgraph.semantic.provider.SemanticProvider
 import com.charmnight.linkgraph.semantic.provider.SemanticProviderRegistry
@@ -64,6 +66,101 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
         assertTrue(snapshot.workspaceGraph.edges.any { edge ->
             edge.fromNodeId == "invoke:create-info" && edge.toNodeId == "method:create-info"
         })
+    }
+
+    fun testRightClickExpansionUsesLocalFlowBudgetWithoutUpstreamOrResourceTraversal() {
+        val service = project.graphEditorApplicationServiceForTest()
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadGraph(callerGraph(), "test"))
+        val overrides = project.getService(LinkGraphProjectRuntimeHooks::class.java)
+        var capturedCapturePolicy: SemanticCapturePolicy? = null
+        var capturedBudgetPolicy: TraversalBudgetPolicy? = null
+        overrides.invocationExpansionTargetResolver = { _, signature ->
+            InvocationExpansionTarget(InvocationExpansionTargetKind.PROJECT_SOURCE, signature = signature)
+        }
+        overrides.invocationExpansionSubjectResolver = { signature -> testCodeSubject(signature) }
+        overrides.semanticAnalyzer = SemanticAnalyzer(
+            registry = SemanticProviderRegistry(
+                listOf(
+                    targetProvider { capturePolicy, budgetPolicy ->
+                        capturedCapturePolicy = capturePolicy
+                        capturedBudgetPolicy = budgetPolicy
+                    },
+                ),
+            ),
+        )
+
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestExpandInvocation("invoke:create-info"))
+        waitForSnapshot {
+            it.workspaceGraph.nodes.any { node -> node.id == "action:save-info" }
+        }
+
+        val capturePolicy = requireNotNull(capturedCapturePolicy)
+        val budgetPolicy = requireNotNull(capturedBudgetPolicy)
+        assertEquals(0, budgetPolicy.maxDownstreamDepth)
+        assertEquals(0, budgetPolicy.maxUpstreamDepth)
+        assertEquals(0, budgetPolicy.maxRelatedResourcesPerUnit)
+        assertFalse(capturePolicy.includeResourceReferences)
+    }
+
+    fun testRightClickExpansionDoesNotMaterializeAllAnalysisOutcomeViews() {
+        val service = project.graphEditorApplicationServiceForTest()
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadGraph(callerGraph(), "test"))
+        val overrides = project.getService(LinkGraphProjectRuntimeHooks::class.java)
+        val outcomeTraceMessages = mutableListOf<String>()
+        overrides.invocationExpansionTargetResolver = { _, signature ->
+            InvocationExpansionTarget(InvocationExpansionTargetKind.PROJECT_SOURCE, signature = signature)
+        }
+        overrides.invocationExpansionSubjectResolver = { signature -> testCodeSubject(signature) }
+        overrides.semanticAnalyzer = SemanticAnalyzer(
+            registry = SemanticProviderRegistry(listOf(targetProvider())),
+        )
+        overrides.analysisOutcomeFactory = AnalysisOutcomeFactory(
+            runtimeTrace = { message -> outcomeTraceMessages += message() },
+        )
+
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestExpandInvocation("invoke:create-info"))
+        waitForSnapshot {
+            it.workspaceGraph.nodes.any { node -> node.id == "action:save-info" }
+        }
+
+        assertTrue(
+            outcomeTraceMessages.none { message -> message.contains("analysis.outcome.") },
+            "right-click expansion should not materialize full multi-view AnalysisOutcome, trace=$outcomeTraceMessages",
+        )
+    }
+
+    fun testRightClickExpansionDoesNotMaterializeNestedCalleeBodies() {
+        val service = project.graphEditorApplicationServiceForTest()
+        service.commandDispatcher.dispatch(ApplicationCommand.LoadGraph(callerGraph(), "test"))
+        val overrides = project.getService(LinkGraphProjectRuntimeHooks::class.java)
+        val handle = nestedCalleeSubject(CREATE_INFO_SIGNATURE)
+        overrides.invocationExpansionTargetResolver = { _, signature ->
+            InvocationExpansionTarget(InvocationExpansionTargetKind.PROJECT_SOURCE, signature = signature)
+        }
+        overrides.invocationExpansionSubjectResolver = { handle }
+        overrides.semanticAnalyzer = SemanticAnalyzer(
+            registry = SemanticProviderRegistry(listOf(CodeSemanticProvider())),
+        )
+
+        service.commandDispatcher.dispatch(ApplicationCommand.RequestExpandInvocation("invoke:create-info"))
+        val snapshot = waitForSnapshot {
+            it.workspaceGraph.nodes.any { node -> node.title.contains("auditInfo()") }
+        }
+
+        val expandedTitles = snapshot.workspaceGraph.nodes
+            .filter { node -> node.id != "method:caller" && node.id != "invoke:create-info" }
+            .map(GraphNode::title)
+        assertTrue(expandedTitles.any { title -> title.contains("saveInfo()") })
+        assertTrue(expandedTitles.any { title -> title.contains("notifyInfo()") })
+        assertTrue(expandedTitles.any { title -> title.contains("auditInfo()") })
+        assertFalse(
+            expandedTitles.any { title ->
+                title.contains("deepSave()") ||
+                    title.contains("deepNotify()") ||
+                    title.contains("deepAudit()")
+            },
+            "right-click expansion should keep target method local; expandedTitles=$expandedTitles",
+        )
     }
 
     fun testExplainsExpandedInvocationContentAfterExpansionWorkflow() {
@@ -407,7 +504,33 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
         return handle.copy(methodSignature = signature)
     }
 
-    private fun targetProvider(): SemanticProvider =
+    private fun nestedCalleeSubject(signature: String): CodeSubjectHandle {
+        myFixture.configureByText(
+            "SystemService.java",
+            """
+                package com.example;
+                class SystemService {
+                    void createInfo() {
+                        <caret>saveInfo();
+                        notifyInfo();
+                        auditInfo();
+                    }
+                    void saveInfo() { deepSave(); }
+                    void notifyInfo() { deepNotify(); }
+                    void auditInfo() { deepAudit(); }
+                    void deepSave() {}
+                    void deepNotify() {}
+                    void deepAudit() {}
+                }
+            """.trimIndent(),
+        )
+        val handle = CaretSubjectLocator().locate(project, myFixture.editor) as CodeSubjectHandle
+        return handle.copy(methodSignature = signature)
+    }
+
+    private fun targetProvider(
+        onAnalyze: (SemanticCapturePolicy, TraversalBudgetPolicy) -> Unit = { _, _ -> },
+    ): SemanticProvider =
         object : CodeSubjectSemanticProvider {
             override val supportedKinds: Set<CodeSubjectKind> = setOf(CodeSubjectKind.JAVA_METHOD)
 
@@ -416,6 +539,7 @@ class InvocationExpansionWorkflowTest : BasePlatformTestCase() {
                 capturePolicy: SemanticCapturePolicy,
                 budgetPolicy: TraversalBudgetPolicy,
             ): SemanticAnalysisResult {
+                onAnalyze(capturePolicy, budgetPolicy)
                 val codeHandle = handle as CodeSubjectHandle
                 return SemanticAnalysisResult(
                     subject = codeHandle,

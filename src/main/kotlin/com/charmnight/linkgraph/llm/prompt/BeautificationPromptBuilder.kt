@@ -30,11 +30,6 @@ internal fun buildBeautificationPromptPackage(
     projectedSteps: List<WorkbenchStep> = emptyList(),
 ): LlmPromptPackage {
     val graph = context.presentationContext.graph
-    val nodes = graph.nodes.joinToString("\n") { nodeSummary(it) }.ifBlank { "- 无" }
-    val edges = graph.edges.joinToString("\n") { edgeSummary(it) }.ifBlank { "- 无" }
-    val sourceSnippets = context.sourceContext.joinToString("\n") { snippet ->
-        sourceSnippetSummary(snippet)
-    }.ifBlank { "- 无" }
     val invocationExpansionContextText = buildInvocationExpansionContextText(context.presentationContext.invocationExpansionContext)
     val steps = projectedSteps.joinToString("\n") { step ->
         "- ${step.stepId} | ${step.kind.name} | ${step.title} | nodeRefs=${step.nodeRefs.joinToString()}"
@@ -141,26 +136,23 @@ internal fun buildBeautificationPromptPackage(
                 """.trimIndent(),
                 priority = EVIDENCE,
             ),
-            PromptSection(
-                """
-                相关源码片段：
-                $sourceSnippets
-                """.trimIndent(),
+            budgetedPromptSection(
+                header = "相关源码片段：",
+                items = context.sourceContext,
                 priority = SOURCE,
+                renderItem = ::sourceSnippetSummary,
             ),
-            PromptSection(
-                """
-                图节点：
-                $nodes
-                """.trimIndent(),
+            budgetedPromptSection(
+                header = "图节点：",
+                items = graph.nodes,
                 priority = GRAPH,
+                renderItem = ::nodeSummary,
             ),
-            PromptSection(
-                """
-                图连线：
-                $edges
-                """.trimIndent(),
+            budgetedPromptSection(
+                header = "图连线：",
+                items = graph.edges,
                 priority = GRAPH,
+                renderItem = ::edgeSummary,
             ),
             PromptSection(beautificationSchemaInstruction(), priority = SCHEMA),
         ),

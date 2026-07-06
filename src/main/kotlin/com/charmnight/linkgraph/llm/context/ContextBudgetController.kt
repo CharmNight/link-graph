@@ -12,19 +12,23 @@ data class ContextBudgetController(
 ) {
     /** 在字符数与估算 token 数双重约束下裁剪文本，返回尽可能保留前缀的结果。 */
     fun trim(text: String): String {
-        val charTrimmed = text.take(maxCharacters)
-        if (estimateTokens(charTrimmed) <= maxTokens) {
+        return trim(text, maxCharacters, maxTokens)
+    }
+
+    /** 在指定字符和 token 上限内裁剪文本，返回尽可能保留前缀的结果。 */
+    fun trim(
+        text: String,
+        characterLimit: Int,
+        tokenLimit: Int,
+    ): String {
+        if (characterLimit <= 0 || tokenLimit <= 0) {
+            return ""
+        }
+        val charTrimmed = text.take(characterLimit)
+        if (estimateTokens(charTrimmed) <= tokenLimit) {
             return charTrimmed
         }
-        val result = StringBuilder()
-        charTrimmed.forEach { ch ->
-            val candidate = result.toString() + ch
-            if (estimateTokens(candidate) > maxTokens) {
-                return result.toString()
-            }
-            result.append(ch)
-        }
-        return result.toString()
+        return trimToBudgets(text, characterLimit, tokenLimit)
     }
 
     /**
@@ -89,11 +93,11 @@ data class ContextBudgetController(
         }
         val result = StringBuilder()
         charTrimmed.forEach { ch ->
-            val candidate = result.toString() + ch
-            if (estimateTokens(candidate) > remainingTokens) {
+            result.append(ch)
+            if (estimateTokens(result.toString()) > remainingTokens) {
+                result.setLength(result.length - 1)
                 return result.toString()
             }
-            result.append(ch)
         }
         return result.toString()
     }

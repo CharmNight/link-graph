@@ -28,8 +28,6 @@ internal fun buildCodeGenerationPromptPackage(
     plan: GenerationPlan?,
     settings: LinkGraphSettingsState,
 ): LlmPromptPackage {
-    val nodes = context.graph.nodes.joinToString("\n") { nodeSummary(it) }.ifBlank { "- 无" }
-    val edges = context.graph.edges.joinToString("\n") { edgeSummary(it) }.ifBlank { "- 无" }
     val diff = context.diff.entries.joinToString("\n") { entry -> diffSummary(entry) }.ifBlank { "- 无" }
     val planItems = plan?.items.orEmpty().joinToString("\n") { item ->
         "- [${item.risk.name}] ${item.title} | target=${item.targetPath ?: "未指定"} | ${item.description}"
@@ -54,9 +52,6 @@ internal fun buildCodeGenerationPromptPackage(
     val confirmedChanges = context.confirmedChanges
         .joinToString("\n") { change -> confirmedChangeSummary(change, context.graph) }
         .ifBlank { "- 无" }
-    val sourceSnippets = context.sourceContext.joinToString("\n") { snippet ->
-        sourceSnippetSummary(snippet)
-    }.ifBlank { "- 无" }
     val systemPrompt = """
         你是 IDEA Link Graph 的代码生成器。
         你的职责是基于链路图、已确认草稿变更、真实源码片段、差异和计划项，输出可写入项目目录的代码草稿。
@@ -101,12 +96,11 @@ internal fun buildCodeGenerationPromptPackage(
                 """.trimIndent(),
                 priority = CONFIRMED_CHANGE,
             ),
-            PromptSection(
-                """
-                相关源码片段：
-                $sourceSnippets
-                """.trimIndent(),
+            budgetedPromptSection(
+                header = "相关源码片段：",
+                items = context.sourceContext,
                 priority = SOURCE,
+                renderItem = ::sourceSnippetSummary,
             ),
             PromptSection(
                 """
@@ -122,19 +116,17 @@ internal fun buildCodeGenerationPromptPackage(
                 """.trimIndent(),
                 priority = EVIDENCE,
             ),
-            PromptSection(
-                """
-                图节点：
-                $nodes
-                """.trimIndent(),
+            budgetedPromptSection(
+                header = "图节点：",
+                items = context.graph.nodes,
                 priority = GRAPH,
+                renderItem = ::nodeSummary,
             ),
-            PromptSection(
-                """
-                图连线：
-                $edges
-                """.trimIndent(),
+            budgetedPromptSection(
+                header = "图连线：",
+                items = context.graph.edges,
                 priority = GRAPH,
+                renderItem = ::edgeSummary,
             ),
             PromptSection(
                 """

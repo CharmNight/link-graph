@@ -24,8 +24,6 @@ internal fun buildDiffReviewPromptPackage(
     question: String,
     settings: LinkGraphSettingsState,
 ): LlmPromptPackage {
-    val factNodes = context.factGraph.nodes.joinToString("\n") { nodeSummary(it) }.ifBlank { "- 无" }
-    val designNodes = context.designBaseline.nodes.joinToString("\n") { nodeSummary(it) }.ifBlank { "- 无" }
     val diff = context.diff.entries.joinToString("\n") { entry -> diffSummary(entry) }.ifBlank { "- 无" }
     val focusedDiffs = context.diff.entries
         .filter { entry -> entry.elementId in context.selectedDiffItemIds }
@@ -71,19 +69,17 @@ internal fun buildDiffReviewPromptPackage(
                 """.trimIndent(),
                 priority = EVIDENCE,
             ),
-            PromptSection(
-                """
-                左侧设计基线节点：
-                $designNodes
-                """.trimIndent(),
+            budgetedPromptSection(
+                header = "左侧设计基线节点：",
+                items = context.designBaseline.nodes,
                 priority = GRAPH,
+                renderItem = ::nodeSummary,
             ),
-            PromptSection(
-                """
-                右侧代码事实节点：
-                $factNodes
-                """.trimIndent(),
+            budgetedPromptSection(
+                header = "右侧代码事实节点：",
+                items = context.factGraph.nodes,
                 priority = GRAPH,
+                renderItem = ::nodeSummary,
             ),
             PromptSection(
                 """

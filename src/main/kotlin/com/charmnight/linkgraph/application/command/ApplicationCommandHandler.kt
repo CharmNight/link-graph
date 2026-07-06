@@ -298,7 +298,7 @@ internal class SourceNavigationApplicationCommandHandler(
             is ApplicationCommand.RequestSourceNavigation ->
                 sourceNavigationFlow.requestSourceNavigation(command.nodeId)
             is ApplicationCommand.RequestExpandInvocation ->
-                invocationExpansionFlow.requestExpandInvocation(command.nodeId)
+                invocationExpansionFlow.requestExpandInvocation(command.nodeId, command.frontendRequestedAtMs)
             is ApplicationCommand.RequestRemoveInvocationExpansion ->
                 invocationExpansionFlow.requestRemoveInvocationExpansion(command.expansionId)
             ApplicationCommand.OpenSettings -> sourceNavigationFlow.openSettings()

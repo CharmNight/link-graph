@@ -74,6 +74,9 @@ internal object GraphQaScopeResolver {
         context: GraphQaContext,
         scopeNodes: List<GraphNode> = resolveScopeNodes(context),
     ): List<GraphEdge> {
+        if (context.selectedNodeIds.isEmpty()) {
+            return scopeEdges(context)
+        }
         // 先把作用域节点转成集合，后续做边过滤。
         val scopeNodeIds = scopeNodes.mapTo(linkedSetOf(), GraphNode::id)
         if (scopeNodeIds.isEmpty()) {

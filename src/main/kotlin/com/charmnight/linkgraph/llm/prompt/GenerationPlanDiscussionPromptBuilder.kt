@@ -31,8 +31,6 @@ internal fun buildGenerationPlanDiscussionPromptPackage(
     session: GenerationPlanDiscussionSession? = null,
     focusItemId: String? = null,
 ): LlmPromptPackage {
-    val nodes = context.graph.nodes.joinToString("\n") { nodeSummary(it) }.ifBlank { "- 无" }
-    val edges = context.graph.edges.joinToString("\n") { edgeSummary(it) }.ifBlank { "- 无" }
     val confirmedChanges = context.confirmedChanges
         .joinToString("\n") { change -> confirmedChangeSummary(change, context.graph) }
         .ifBlank { "- 无" }
@@ -109,19 +107,17 @@ internal fun buildGenerationPlanDiscussionPromptPackage(
                 """.trimIndent(),
                 priority = CONFIRMED_CHANGE,
             ),
-            PromptSection(
-                """
-                当前工作图节点：
-                $nodes
-                """.trimIndent(),
+            budgetedPromptSection(
+                header = "当前工作图节点：",
+                items = context.graph.nodes,
                 priority = GRAPH,
+                renderItem = ::nodeSummary,
             ),
-            PromptSection(
-                """
-                当前工作图连线：
-                $edges
-                """.trimIndent(),
+            budgetedPromptSection(
+                header = "当前工作图连线：",
+                items = context.graph.edges,
                 priority = GRAPH,
+                renderItem = ::edgeSummary,
             ),
             PromptSection(
                 """

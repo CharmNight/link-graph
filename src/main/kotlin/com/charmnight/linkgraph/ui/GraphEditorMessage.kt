@@ -115,6 +115,8 @@ sealed interface GraphEditorMessage {
     data class RequestExpandInvocation(
         /** 保存调用节点标识。 */
         val nodeId: String,
+        /** 保存前端发出请求时的 epoch millis，用于测量点击到后端处理的桥接耗时。 */
+        val frontendRequestedAtMs: Long? = null,
     ) : GraphEditorMessage
 
     /**

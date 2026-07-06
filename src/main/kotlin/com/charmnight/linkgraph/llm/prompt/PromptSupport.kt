@@ -4,6 +4,9 @@ import com.charmnight.linkgraph.agent.model.GraphEvidenceProfile
 import com.charmnight.linkgraph.agent.model.InvocationExpansionContext
 import com.charmnight.linkgraph.agent.model.InvocationExpansionSummary
 import com.charmnight.linkgraph.agent.model.SourceSnippetContext
+import com.charmnight.linkgraph.llm.context.PromptRenderBudget
+import com.charmnight.linkgraph.llm.context.PromptSection
+import com.charmnight.linkgraph.llm.context.PromptSectionPriority
 import com.charmnight.linkgraph.llm.llmClassDiagramRelationDisplayLabel
 import com.charmnight.linkgraph.llm.llmRelationKindDisplayLabel
 import com.charmnight.linkgraph.model.GraphDiffEntry
@@ -100,11 +103,15 @@ internal fun confirmedChangeSummary(
     change: DraftWorkbenchEntry,
     graph: GraphDocument,
 ): String {
-    val nodeById = graph.nodes.associateBy { it.id }
+    val targetFiles = targetFilesFor(change, graph)
+    return confirmedChangeSummary(change, targetFiles)
+}
+
+private fun confirmedChangeSummary(
+    change: DraftWorkbenchEntry,
+    targetFiles: List<String>,
+): String {
     val targets = change.targetNodeIds.joinToString("; ").ifBlank { "未指定节点" }
-    val targetFiles = change.targetNodeIds.mapNotNull { nodeId ->
-        nodeById[nodeId]?.sourceFilePathOrLocationPath()
-    }.distinct().ifEmpty { listOf("未指定文件") }
     // beforeState / afterState / reason / impactSummary / title 均可能含用户编辑文本，sanitize 后嵌入
     val before = sanitizeContent(change.beforeState?.takeIf { it.isNotBlank() } ?: "无")
     val after = sanitizeContent(change.afterState?.takeIf { it.isNotBlank() } ?: "无")
@@ -113,6 +120,27 @@ internal fun confirmedChangeSummary(
     val claimType = change.claimType ?: "未标注"
     val evidenceLevels = change.evidence.map { it.evidenceLevel.name }.distinct().ifEmpty { listOf("未标注") }
     return "- ${change.sourceChangeId ?: change.entryId} | ${sanitizeContent(change.title)} | targets=$targets | files=${targetFiles.joinToString()} | before=$before | after=$after | reason=$reason | impact=$impact | claimType=$claimType | evidence=${evidenceLevels.joinToString()}"
+}
+
+private fun targetFilesFor(
+    change: DraftWorkbenchEntry,
+    graph: GraphDocument,
+): List<String> {
+    val remainingTargetIds = change.targetNodeIds.toMutableSet()
+    if (remainingTargetIds.isEmpty()) {
+        return listOf("未指定文件")
+    }
+    val targetFiles = linkedSetOf<String>()
+    for (node in graph.nodes) {
+        if (node.id in remainingTargetIds) {
+            node.sourceFilePathOrLocationPath()?.let(targetFiles::add)
+            remainingTargetIds -= node.id
+            if (remainingTargetIds.isEmpty()) {
+                break
+            }
+        }
+    }
+    return targetFiles.ifEmpty { linkedSetOf("未指定文件") }.toList()
 }
 
 /** 把证据边界对象整理为可直接嵌入提示词的多行文本。 */
@@ -177,4 +205,84 @@ internal fun invocationExpansionSummaryText(summary: InvocationExpansionSummary)
     val title = summary.title?.let { " | title=${sanitizeContent(it)}" }.orEmpty()
     val signature = summary.targetSignature?.let { " | signature=${sanitizeContent(it)}" }.orEmpty()
     return "- ${summary.expansionId}$title$signature$source$root | ownedNodes=${summary.ownedNodeCount} | branches=${summary.branchCount} | returns=${summary.returnCount} | children=${summary.childExpansionCount} | borrowedRoot=${summary.hasBorrowedRoot}"
+}
+
+internal fun <T> budgetedPromptSection(
+    header: String,
+    items: Iterable<T>,
+    priority: PromptSectionPriority,
+    emptyText: String = "- 无",
+    renderItem: (T) -> String,
+): PromptSection =
+    PromptSection.lazy(priority) { budget ->
+        renderBudgetedLines(
+            budget = budget,
+            header = header,
+            items = items,
+            emptyText = emptyText,
+            renderItem = renderItem,
+        )
+    }
+
+internal fun budgetedStaticPromptSection(
+    header: String,
+    body: String,
+    priority: PromptSectionPriority,
+): PromptSection =
+    PromptSection.lazy(priority) { budget ->
+        budget.trim(
+            """
+            $header
+            ${body.ifBlank { "- 无" }}
+            """.trimIndent(),
+        )
+    }
+
+private fun <T> renderBudgetedLines(
+    budget: PromptRenderBudget,
+    header: String,
+    items: Iterable<T>,
+    emptyText: String,
+    renderItem: (T) -> String,
+): String {
+    val builder = StringBuilder(header)
+    if (builder.length >= budget.maxCharacters || budget.estimateTokens(builder.toString()) >= budget.maxTokens) {
+        return budget.trim(builder.toString())
+    }
+    val iterator = items.iterator()
+    if (!iterator.hasNext()) {
+        appendLineWithinBudget(builder, emptyText, budget)
+        return builder.toString()
+    }
+    while (iterator.hasNext()) {
+        val line = renderItem(iterator.next())
+        if (!appendLineWithinBudget(builder, line, budget)) {
+            break
+        }
+    }
+    return builder.toString()
+}
+
+private fun appendLineWithinBudget(
+    builder: StringBuilder,
+    line: String,
+    budget: PromptRenderBudget,
+): Boolean {
+    val prefix = if (builder.isEmpty()) "" else "\n"
+    val candidate = builder.toString() + prefix + line
+    if (candidate.length <= budget.maxCharacters && budget.estimateTokens(candidate) <= budget.maxTokens) {
+        builder.append(prefix).append(line)
+        return true
+    }
+    val remainingCharacters = budget.maxCharacters - builder.length - prefix.length
+    val remainingTokens = budget.maxTokens - budget.estimateTokens(builder.toString()) - budget.estimateTokens(prefix)
+    if (remainingCharacters <= 0 || remainingTokens <= 0) {
+        return false
+    }
+    val trimmedLine = budget.budgetController.trim(line, remainingCharacters, remainingTokens)
+    if (trimmedLine.isBlank()) {
+        return false
+    }
+    builder.append(prefix).append(trimmedLine)
+    return false
 }

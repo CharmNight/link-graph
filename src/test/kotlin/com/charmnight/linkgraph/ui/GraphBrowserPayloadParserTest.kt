@@ -400,6 +400,23 @@ class GraphBrowserPayloadParserTest {
     }
 
     @Test
+    fun bridgeCommandEnvelopeParsesInvocationExpansionRequestTiming() {
+        val parsed = BridgeCommandParser.parse(
+            command(
+                "requestExpandInvocation",
+                mapOf(
+                    "nodeId" to "invoke:create-info",
+                    "frontendRequestedAtMs" to 1_788_888_888_123L,
+                ),
+            ),
+        )
+
+        val message = assertIs<GraphEditorMessage.RequestExpandInvocation>(parsed.message)
+        assertEquals("invoke:create-info", message.nodeId)
+        assertEquals(1_788_888_888_123L, message.frontendRequestedAtMs)
+    }
+
+    @Test
     fun bridgeCommandEnvelopeParsesRiskResolution() {
         val parsed = BridgeCommandParser.parse(
             command(

@@ -42,8 +42,6 @@ internal fun buildQaPromptPackage(
     } else {
         "框选组（${context.selectedNodeIds.size} 个节点）"
     }
-    val selectedNodes = scopeNodes.joinToString("\n") { nodeSummary(it) }.ifBlank { "- 无" }
-    val selectedEdges = scopeEdges.joinToString("\n") { edgeSummary(it) }.ifBlank { "- 无" }
     val evidenceProfile = context.effectiveEvidenceProfile()
     val evidenceProfileText = buildEvidenceProfileText(evidenceProfile)
     val history = session?.messages?.joinToString("\n") { message ->
@@ -58,9 +56,6 @@ internal fun buildQaPromptPackage(
         // title / evidenceGap / recommendedQuestion 同为 LLM 产出但可能被编辑，sanitize
         "- ${thread.threadId} | ${sanitizeContent(thread.title)} | gap=${sanitizeContent(thread.evidenceGap.ifBlank { "未标注" })} | next=${sanitizeContent(thread.recommendedQuestion.ifBlank { "未标注" })}"
     }?.ifBlank { "- 无" } ?: "- 无"
-    val sourceSnippets = context.sourceContext.joinToString("\n") { snippet ->
-        sourceSnippetSummary(snippet)
-    }.ifBlank { "- 无" }
     val invocationExpansionContextText = buildInvocationExpansionContextText(context.invocationExpansionContext)
     val evidenceTrace = context.evidenceTrace.joinToString("\n") { trace ->
         buildString {
@@ -141,19 +136,17 @@ internal fun buildQaPromptPackage(
                 """.trimIndent(),
                 priority = USER_GOAL,
             ),
-            PromptSection(
-                """
-                当前范围节点：
-                $selectedNodes
-                """.trimIndent(),
+            budgetedPromptSection(
+                header = "当前范围节点：",
+                items = scopeNodes,
                 priority = GRAPH,
+                renderItem = ::nodeSummary,
             ),
-            PromptSection(
-                """
-                当前范围边：
-                $selectedEdges
-                """.trimIndent(),
+            budgetedPromptSection(
+                header = "当前范围边：",
+                items = scopeEdges,
                 priority = GRAPH,
+                renderItem = ::edgeSummary,
             ),
             PromptSection(
                 """
@@ -162,12 +155,11 @@ internal fun buildQaPromptPackage(
                 """.trimIndent(),
                 priority = BEHAVIOR_RULE,
             ),
-            PromptSection(
-                """
-                相关源码片段：
-                $sourceSnippets
-                """.trimIndent(),
+            budgetedPromptSection(
+                header = "相关源码片段：",
+                items = context.sourceContext,
                 priority = SOURCE,
+                renderItem = ::sourceSnippetSummary,
             ),
             PromptSection(
                 """

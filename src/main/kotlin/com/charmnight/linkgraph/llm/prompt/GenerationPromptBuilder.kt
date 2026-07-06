@@ -22,8 +22,6 @@ internal fun buildGenerationPromptPackage(
     snapshot: GenerationContext,
     settings: LinkGraphSettingsState,
 ): LlmPromptPackage {
-    val nodes = snapshot.graph.nodes.joinToString("\n") { nodeSummary(it) }.ifBlank { "- 无" }
-    val edges = snapshot.graph.edges.joinToString("\n") { edgeSummary(it) }.ifBlank { "- 无" }
     val issues = snapshot.mermaidIssues.joinToString("\n") { issue ->
         "- [${issue.category.name}] ${issue.code}: ${issue.message}"
     }.ifBlank { "- 无" }
@@ -34,9 +32,6 @@ internal fun buildGenerationPromptPackage(
     val confirmedChanges = snapshot.confirmedChanges
         .joinToString("\n") { change -> confirmedChangeSummary(change, snapshot.graph) }
         .ifBlank { "- 无" }
-    val sourceSnippets = snapshot.sourceContext.joinToString("\n") { snippet ->
-        sourceSnippetSummary(snippet)
-    }.ifBlank { "- 无" }
     val systemPrompt = """
         你是 IDEA Link Graph 的实现计划生成器。
         你的职责是基于链路图、已确认草稿变更、真实源码片段、Mermaid 问题和同步预览，输出结构化实现计划。
@@ -66,26 +61,23 @@ internal fun buildGenerationPromptPackage(
                 """.trimIndent(),
                 priority = CONFIRMED_CHANGE,
             ),
-            PromptSection(
-                """
-                相关源码片段：
-                $sourceSnippets
-                """.trimIndent(),
+            budgetedPromptSection(
+                header = "相关源码片段：",
+                items = snapshot.sourceContext,
                 priority = SOURCE,
+                renderItem = ::sourceSnippetSummary,
             ),
-            PromptSection(
-                """
-                图节点：
-                $nodes
-                """.trimIndent(),
+            budgetedPromptSection(
+                header = "图节点：",
+                items = snapshot.graph.nodes,
                 priority = GRAPH,
+                renderItem = ::nodeSummary,
             ),
-            PromptSection(
-                """
-                图连线：
-                $edges
-                """.trimIndent(),
+            budgetedPromptSection(
+                header = "图连线：",
+                items = snapshot.graph.edges,
                 priority = GRAPH,
+                renderItem = ::edgeSummary,
             ),
             PromptSection(
                 """

@@ -127,6 +127,7 @@ internal sealed interface ApplicationCommand<out R> {
      */
     data class RequestExpandInvocation(
         val nodeId: String,
+        val frontendRequestedAtMs: Long? = null,
     ) : ApplicationCommand<Unit>
 
     /**

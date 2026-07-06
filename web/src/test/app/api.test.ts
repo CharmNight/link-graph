@@ -603,12 +603,18 @@ describe("publishGraphEditRequest", () => {
 
   it("把调用方法展开请求转发给 IDE bridge", () => {
     const sendCommand = installBridgeCommandSpy();
+    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(1_788_888_888_123);
 
-    requestExpandInvocation("invoke:create-info");
+    try {
+      requestExpandInvocation("invoke:create-info");
 
-    expectCommand(sendCommand, 0, "requestExpandInvocation", {
-      nodeId: "invoke:create-info",
-    });
+      expectCommand(sendCommand, 0, "requestExpandInvocation", {
+        nodeId: "invoke:create-info",
+        frontendRequestedAtMs: 1_788_888_888_123,
+      });
+    } finally {
+      dateNowSpy.mockRestore();
+    }
   });
 
   it("把移除调用展开请求转发给 IDE bridge", () => {

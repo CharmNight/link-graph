@@ -1,12 +1,44 @@
 package com.charmnight.linkgraph.llm.context
 
-/** 表示一段可参与 prompt 拼装的文本，附带优先级用于预算裁剪排序。 */
-data class PromptSection(
+/**
+ * 表示一段可参与 prompt 拼装的文本，附带优先级用于预算裁剪排序。
+ *
+ * 普通 class 是有意选择：budgeted renderer 是行为状态，不适合 data class 的 copy/equality 值语义。
+ */
+class PromptSection(
     /** 当前片段的文本内容。 */
     val text: String,
     /** 当前片段的优先级，预算不足时优先保留高权重片段。 */
     val priority: PromptSectionPriority = PromptSectionPriority.BACKGROUND,
-)
+    private val budgetedRenderer: ((PromptRenderBudget) -> String)? = null,
+) {
+    internal fun render(budget: PromptRenderBudget): String =
+        budgetedRenderer?.invoke(budget) ?: text
+
+    internal fun materialized(renderedText: String): PromptSection =
+        PromptSection(renderedText, priority)
+
+    companion object {
+        internal fun lazy(
+            priority: PromptSectionPriority = PromptSectionPriority.BACKGROUND,
+            renderer: (PromptRenderBudget) -> String,
+        ): PromptSection =
+            PromptSection("", priority, renderer)
+    }
+}
+
+/** 单个 prompt 片段实际渲染时可用的剩余预算。 */
+data class PromptRenderBudget(
+    val maxCharacters: Int,
+    val maxTokens: Int,
+    val budgetController: ContextBudgetController,
+) {
+    fun trim(text: String): String =
+        budgetController.trim(text, maxCharacters, maxTokens)
+
+    fun estimateTokens(text: String): Int =
+        budgetController.estimateTokens(text)
+}
 
 /** prompt 片段优先级，权重越高越优先保留。 */
 enum class PromptSectionPriority(val weight: Int) {
@@ -73,12 +105,32 @@ class PromptComposer(
         systemSections: List<PromptSection>,
         userSections: List<PromptSection>,
     ): PromptComposition {
-        val sections = systemSections.mapIndexed { index, section ->
-            IndexedPromptSection(index, PromptMessageRole.SYSTEM, section)
-        } + userSections.mapIndexed { index, section ->
-            IndexedPromptSection(index + systemSections.size, PromptMessageRole.USER, section)
-        }
-        val trimmed = trimPrioritized(sections)
+        val systemBudget = roleBudget(
+            hasOtherRole = userSections.isNotEmpty(),
+            requestedCharacters = budgetController.maxCharacters,
+            requestedTokens = budgetController.maxTokens,
+        )
+        val trimmedSystem = trimPrioritized(
+            systemSections.mapIndexed { index, section ->
+                IndexedPromptSection(index, PromptMessageRole.SYSTEM, section)
+            },
+            PromptBudget(
+                maxCharacters = systemBudget.maxCharacters,
+                maxTokens = systemBudget.maxTokens,
+            ),
+        )
+        val consumedSystemCharacters = joinedLength(trimmedSystem)
+        val consumedSystemTokens = joinedTokens(trimmedSystem)
+        val trimmedUser = trimPrioritized(
+            userSections.mapIndexed { index, section ->
+                IndexedPromptSection(index + systemSections.size, PromptMessageRole.USER, section)
+            },
+            PromptBudget(
+                maxCharacters = (budgetController.maxCharacters - consumedSystemCharacters).coerceAtLeast(0),
+                maxTokens = (budgetController.maxTokens - consumedSystemTokens).coerceAtLeast(0),
+            ),
+        )
+        val trimmed = trimmedSystem + trimmedUser
         return PromptComposition(
             systemPrompt = trimmed
                 .filter { section -> section.role == PromptMessageRole.SYSTEM }
@@ -95,9 +147,12 @@ class PromptComposer(
      * 按优先级与原索引顺序裁剪并保留可放入预算的片段。
      * 裁剪过程中逐段扣减字符与 token 预算，同时为每段预留下一段分隔符的开销。
      */
-    private fun trimPrioritized(sections: List<IndexedPromptSection>): List<IndexedPromptSection> {
-        var remaining = budgetController.maxCharacters
-        var remainingTokens = budgetController.maxTokens
+    private fun trimPrioritized(
+        sections: List<IndexedPromptSection>,
+        budget: PromptBudget = PromptBudget(budgetController.maxCharacters, budgetController.maxTokens),
+    ): List<IndexedPromptSection> {
+        var remaining = budget.maxCharacters
+        var remainingTokens = budget.maxTokens
         var emittedCount = 0
         return sections
             .sortedWith(
@@ -113,15 +168,18 @@ class PromptComposer(
                 if (remaining <= separatorCost || remainingTokens <= separatorTokenCost) {
                     return@mapNotNull null
                 }
-                val trimmedText = budgetController.trimSections(listOf(section.section.text.take(remaining - separatorCost)))
-                    .firstOrNull()
+                val renderBudget = PromptRenderBudget(
+                    maxCharacters = remaining - separatorCost,
+                    maxTokens = remainingTokens - separatorTokenCost,
+                    budgetController = budgetController,
+                )
+                val trimmedText = budgetController.trim(
+                    section.section.render(renderBudget),
+                    characterLimit = renderBudget.maxCharacters,
+                    tokenLimit = renderBudget.maxTokens,
+                )
+                    .takeIf { text -> text.isNotBlank() }
                     ?.takeIf { text -> budgetController.estimateTokens(text) <= remainingTokens - separatorTokenCost }
-                    ?: section.section.text
-                        .asSequence()
-                        .runningFold("") { acc, ch -> acc + ch }
-                        .drop(1)
-                        .takeWhile { text -> text.length <= remaining - separatorCost && budgetController.estimateTokens(text) <= remainingTokens - separatorTokenCost }
-                        .lastOrNull()
                     ?: ""
                 if (trimmedText.isBlank()) {
                     return@mapNotNull null
@@ -129,9 +187,54 @@ class PromptComposer(
                 remaining -= trimmedText.length + separatorCost
                 remainingTokens -= budgetController.estimateTokens(trimmedText) + separatorTokenCost
                 emittedCount += 1
-                section.copy(section = section.section.copy(text = trimmedText))
+                section.copy(section = section.section.materialized(trimmedText))
             }
     }
+
+    /**
+     * System prompt is important, but it must not consume the whole shared prompt budget.
+     * When user sections exist, cap system at roughly half so the actual user goal and schema survive.
+     */
+    private fun roleBudget(
+        hasOtherRole: Boolean,
+        requestedCharacters: Int,
+        requestedTokens: Int,
+    ): RoleBudget {
+        if (!hasOtherRole) {
+            return RoleBudget(
+                maxCharacters = requestedCharacters,
+                maxTokens = requestedTokens,
+            )
+        }
+        val maxCharacters = (requestedCharacters / 2).coerceAtLeast(1)
+        val maxTokens = (requestedTokens / 2).coerceAtLeast(1)
+        return RoleBudget(
+            maxCharacters = maxCharacters,
+            maxTokens = maxTokens,
+        )
+    }
+
+    private fun joinedLength(sections: List<IndexedPromptSection>): Int =
+        sections.sumOf { section -> section.section.text.length } + separatorLength(sections.size)
+
+    private fun joinedTokens(sections: List<IndexedPromptSection>): Int =
+        sections.sumOf { section -> budgetController.estimateTokens(section.section.text) } +
+            separatorTokenCount(sections.size)
+
+    private fun separatorLength(sectionCount: Int): Int = if (sectionCount <= 1) 0 else (sectionCount - 1) * 2
+
+    private fun separatorTokenCount(sectionCount: Int): Int =
+        if (sectionCount <= 1) 0 else (sectionCount - 1) * budgetController.estimateTokens("\n\n")
+
+    private data class PromptBudget(
+        val maxCharacters: Int,
+        val maxTokens: Int,
+    )
+
+    private data class RoleBudget(
+        val maxCharacters: Int,
+        val maxTokens: Int,
+    )
 
     /** 同时记录片段在原列表中的位置、消息角色与片段内容，用于稳定排序与重组。 */
     private data class IndexedPromptSection(

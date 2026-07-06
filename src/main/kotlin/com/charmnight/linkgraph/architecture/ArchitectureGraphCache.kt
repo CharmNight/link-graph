@@ -124,6 +124,8 @@ data class CachedArchitectureGraph(
 class ArchitectureGraphCache(
     /** 用于获取当前时间毫秒的时钟函数，便于测试替换。 */
     private val clockMillis: () -> Long = System::currentTimeMillis,
+    /** 热缓存最多保留的索引数量，避免不同预算/用途的大索引无界常驻内存。 */
+    private val maxEntries: Int = DEFAULT_MAX_ENTRIES,
 ) {
     /** 实际存储的缓存映射（按 key 替换实现整体失效）。 */
     @Volatile
@@ -152,6 +154,7 @@ class ArchitectureGraphCache(
             sourceModificationStamp = sourceModificationStamp,
         )
         cached[key] = value
+        evictOverflowEntries()
         return value
     }
 
@@ -191,6 +194,7 @@ class ArchitectureGraphCache(
                 )
                 if (generation.get() == generationAtStart) {
                     cached[key] = cachedGraph
+                    evictOverflowEntries()
                 }
                 cachedGraph
             }
@@ -207,5 +211,28 @@ class ArchitectureGraphCache(
         } else {
             cached.remove(key)
         }
+    }
+
+    private fun evictOverflowEntries() {
+        val overflow = cached.size - maxEntries.coerceAtLeast(1)
+        if (overflow <= 0) {
+            return
+        }
+        cached.entries
+            .sortedWith(
+                compareBy<Map.Entry<ArchitectureGraphCacheKey, CachedArchitectureGraph>> { entry ->
+                    entry.value.createdAtMillis
+                }.thenBy { entry ->
+                    entry.key.hashCode()
+                },
+            )
+            .take(overflow)
+            .forEach { entry ->
+                cached.remove(entry.key, entry.value)
+            }
+    }
+
+    private companion object {
+        private const val DEFAULT_MAX_ENTRIES = 8
     }
 }

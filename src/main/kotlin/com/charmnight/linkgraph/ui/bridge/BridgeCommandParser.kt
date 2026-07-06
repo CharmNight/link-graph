@@ -121,6 +121,7 @@ internal object BridgeCommandParser {
             )
             "requestExpandInvocation" -> GraphEditorMessage.RequestExpandInvocation(
                 nodeId = payload.requiredString("nodeId", "nodeId"),
+                frontendRequestedAtMs = (payload["frontendRequestedAtMs"] as? Number)?.toLong(),
             )
             "requestRemoveInvocationExpansion" -> GraphEditorMessage.RequestRemoveInvocationExpansion(
                 expansionId = payload.requiredString("expansionId", "expansionId"),

@@ -565,7 +565,11 @@ export function requestExpandOverflowNode(nodeId: string): BridgeInvocationResul
 
 /** 请求展开某节点的调用展开（展开其内部调用结构）。 */
 export function requestExpandInvocation(nodeId: string): BridgeInvocationResult {
-  return invokeBridgeAction("requestExpandInvocation", { nodeId }, { nodeId });
+  const payload = {
+    nodeId,
+    frontendRequestedAtMs: Date.now(),
+  };
+  return invokeBridgeAction("requestExpandInvocation", payload, payload);
 }
 
 /** 请求移除某次调用展开（按展开 ID 撤销）。 */

@@ -36,7 +36,8 @@ class GraphEditorCommandRouter(
             is GraphEditorMessage.LayoutChanged -> ApplicationCommand.LayoutChanged(current.positions)
             is GraphEditorMessage.RequestSourceNavigation -> ApplicationCommand.RequestSourceNavigation(current.nodeId)
             is GraphEditorMessage.RequestExpandOverflowNode -> ApplicationCommand.RequestExpandOverflowNode(current.nodeId)
-            is GraphEditorMessage.RequestExpandInvocation -> ApplicationCommand.RequestExpandInvocation(current.nodeId)
+            is GraphEditorMessage.RequestExpandInvocation ->
+                ApplicationCommand.RequestExpandInvocation(current.nodeId, current.frontendRequestedAtMs)
             is GraphEditorMessage.RequestRemoveInvocationExpansion ->
                 ApplicationCommand.RequestRemoveInvocationExpansion(current.expansionId)
             GraphEditorMessage.RequestSyncPreview -> ApplicationCommand.RequestSyncPreview
